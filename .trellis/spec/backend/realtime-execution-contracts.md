@@ -129,6 +129,87 @@ await db.insert(agentMessages).values({
 
 ---
 
+## 场景：standalone Agent 已完成会话的工作区目录树快照 fallback
+
+### 1. Scope / Trigger
+- 触发条件：修改以下任一文件时，必须回看本节
+  - `src/modules/agent-execution/workspace-integration.service.ts`
+  - `src/modules/agent-conversation/agent-conversation.controller.ts`
+  - `src/modules/agent-conversation/agent-conversation.service.ts`
+- 风险点：standalone conversation 的右侧 workspace 目前主要依赖 live sandbox；一旦 runtime 释放，前端就会退化成“工作区暂不可见”。如果为了 completed 态继续预览文件而强行保存整份 workspace 内容，存储成本会明显膨胀。
+
+### 2. Signatures
+- `WorkspaceIntegrationService.onConversationEnd(conversationId, tenantId, organizationId, userId): Promise<void>`
+- `WorkspaceIntegrationService.getFileTree(conversationId, tenantId): Promise<FileTreeNode[]>`
+- `WorkspaceIntegrationService.getFileContent(conversationId, tenantId, filePath): Promise<FileContentResult>`
+- `GET /agent-conversations/:id/workspace/tree`
+- `GET /agent-conversations/:id/workspace/files/*`
+- `agent_conversations.metadata.workspaceTreeSnapshot`
+
+### 3. Contracts
+- standalone conversation 结束时，服务端必须尝试从 live container 读取当前 `/workspace` 目录树，并把快照写入 `agent_conversations.metadata.workspaceTreeSnapshot`。
+- `workspaceTreeSnapshot` 至少包含：
+  - `nodes: FileTreeNode[]`
+  - `capturedAt: string`
+  - `previewUnavailableReason: string`
+- conversation 结束后的 workspace fallback 只保留目录树，不保留文件内容预览。
+  - `GET /agent-conversations/:id/workspace/tree`：
+    - 优先读 live container。
+    - live container 不存在时，若 metadata 中存在 `workspaceTreeSnapshot`，必须回退到该快照。
+  - `GET /agent-conversations/:id/workspace/files/*`：
+    - 优先读 live container。
+    - live container 不存在但 metadata 中存在 `workspaceTreeSnapshot` 时，必须返回明确错误，说明“仅保留目录结构，未保留文件内容预览”，而不是伪造空文件或回 404。
+- standalone conversation 的 completed/failure 目录树 fallback 不能依赖 `workspace_snapshots` 整包 tar 归档。
+  - workflow step viewer 继续允许走 `workspaceSnapshotId` + tar 归档恢复文件预览。
+  - standalone conversation completed 态只为 UI 保留目录树 manifest。
+
+### 4. Validation & Error Matrix
+
+| 条件 | 预期行为 | 断言点 |
+|------|----------|--------|
+| 对话结束时仍有 live container | 写入 `metadata.workspaceTreeSnapshot` | `workspace-integration.service.spec.ts` |
+| 对话结束时无 `persistencePath` | 仍应保存目录树快照，不能跳过 | `workspace-integration.service.spec.ts` |
+| live container 已释放，但 metadata 有 `workspaceTreeSnapshot` | `GET /workspace/tree` 返回目录树快照 | `workspace-integration.service.spec.ts` |
+| live container 已释放，但 metadata 有 `workspaceTreeSnapshot` | `GET /workspace/files/*` 返回明确的 tree-only 错误 | `workspace-integration.service.spec.ts` |
+| live container 已释放，metadata 无快照 | 维持现有 `没有运行中的沙箱容器` 错误 | `workspace-integration.service.spec.ts` |
+
+### 5. Good / Base / Bad Cases
+- Good：completed 的 standalone conversation 刷新后仍能看到工作区目录树；点击文件时明确提示“未保留文件内容预览”。
+- Base：若该轮没有产出文件，workspace tree API 返回空数组，前端显示“没有文件树”，而不是“工作区暂不可见”。
+- Bad：completed conversation 为了支持文件预览而继续保存整份 workspace tar，或者在 runtime 释放后直接让前端看起来像“工作区没实现”。
+
+### 6. Tests Required
+- `src/modules/agent-execution/__tests__/workspace-integration.service.spec.ts`
+  - 断言 conversation end 会写入 `metadata.workspaceTreeSnapshot`
+  - 断言无 `persistencePath` 时仍保存目录树快照
+  - 断言 tree API 会回退到 metadata snapshot
+  - 断言 file API 在 snapshot-only 模式下返回明确 tree-only 错误
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```ts
+if (!persistencePath) {
+  return;
+}
+
+await workspaceService.createFromSandbox(...);
+```
+
+#### Correct
+
+```ts
+const tree = await readFileTreeFromContainer(session.containerId);
+await persistConversationWorkspaceTreeSnapshot(
+  conversationId,
+  tenantId,
+  tree,
+);
+```
+
+---
+
 ## 场景：Persistent Sandbox 在 workflow rerun 中的绑定复用
 
 ### 1. Scope / Trigger

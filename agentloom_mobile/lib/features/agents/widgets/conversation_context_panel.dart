@@ -73,10 +73,7 @@ class ConversationContextPanel extends StatelessWidget {
               child: TabBarView(
                 children: [
                   _TerminalTab(entries: state.terminalEntries),
-                  _WorkspaceTab(
-                    state: state,
-                    onOpenFile: onOpenFile,
-                  ),
+                  _WorkspaceTab(state: state, onOpenFile: onOpenFile),
                   _FileChangesTab(changes: state.fileChanges),
                 ],
               ),
@@ -116,17 +113,14 @@ class _TerminalTab extends StatelessWidget {
 }
 
 class _WorkspaceTab extends StatelessWidget {
-  const _WorkspaceTab({
-    required this.state,
-    required this.onOpenFile,
-  });
+  const _WorkspaceTab({required this.state, required this.onOpenFile});
 
   final ConversationState state;
   final Future<void> Function(String path) onOpenFile;
 
   @override
   Widget build(BuildContext context) {
-    if (state.fileTree.isEmpty && state.selectedFileContent == null) {
+    if (!state.hasLoadedWorkspaceTree && state.selectedFileContent == null) {
       return const _EmptyPanelState(
         icon: Icons.folder_open_outlined,
         title: '工作区暂不可见',
@@ -150,6 +144,9 @@ class _WorkspaceTab extends StatelessWidget {
               const Divider(height: 1),
               Expanded(
                 child: _WorkspacePreview(
+                  workspaceTreeOnly: state.workspaceTreeOnly,
+                  workspacePreviewUnavailableReason:
+                      state.workspacePreviewUnavailableReason,
                   selectedFilePath: state.selectedFilePath,
                   selectedFileContent: state.selectedFileContent,
                 ),
@@ -171,6 +168,9 @@ class _WorkspaceTab extends StatelessWidget {
             const VerticalDivider(width: 1),
             Expanded(
               child: _WorkspacePreview(
+                workspaceTreeOnly: state.workspaceTreeOnly,
+                workspacePreviewUnavailableReason:
+                    state.workspacePreviewUnavailableReason,
                 selectedFilePath: state.selectedFilePath,
                 selectedFileContent: state.selectedFileContent,
               ),
@@ -205,13 +205,15 @@ class _WorkspaceTree extends StatelessWidget {
 
     return ListView(
       padding: const EdgeInsets.all(8),
-      children: nodes.map((node) {
-        return _WorkspaceTreeNode(
-          node: node,
-          selectedFilePath: selectedFilePath,
-          onOpenFile: onOpenFile,
-        );
-      }).toList(growable: false),
+      children: nodes
+          .map((node) {
+            return _WorkspaceTreeNode(
+              node: node,
+              selectedFilePath: selectedFilePath,
+              onOpenFile: onOpenFile,
+            );
+          })
+          .toList(growable: false),
     );
   }
 }
@@ -234,11 +236,7 @@ class _WorkspaceTreeNode extends StatelessWidget {
         tilePadding: const EdgeInsets.symmetric(horizontal: 8),
         childrenPadding: const EdgeInsets.only(left: 12),
         leading: const Icon(Icons.folder_outlined, size: 18),
-        title: Text(
-          node.name,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
+        title: Text(node.name, maxLines: 1, overflow: TextOverflow.ellipsis),
         children: node.children
             .map(
               (child) => _WorkspaceTreeNode(
@@ -256,18 +254,14 @@ class _WorkspaceTreeNode extends StatelessWidget {
       dense: true,
       selected: selected,
       leading: const Icon(Icons.insert_drive_file_outlined, size: 18),
-      title: Text(
-        node.name,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-      ),
+      title: Text(node.name, maxLines: 1, overflow: TextOverflow.ellipsis),
       subtitle: Text(
         node.path,
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-          fontFamily: 'monospace',
-        ),
+        style: Theme.of(
+          context,
+        ).textTheme.labelSmall?.copyWith(fontFamily: 'monospace'),
       ),
       onTap: () => onOpenFile(node.path),
     );
@@ -276,15 +270,29 @@ class _WorkspaceTreeNode extends StatelessWidget {
 
 class _WorkspacePreview extends StatelessWidget {
   const _WorkspacePreview({
+    required this.workspaceTreeOnly,
+    required this.workspacePreviewUnavailableReason,
     required this.selectedFilePath,
     required this.selectedFileContent,
   });
 
+  final bool workspaceTreeOnly;
+  final String? workspacePreviewUnavailableReason;
   final String? selectedFilePath;
   final WorkspaceFileContent? selectedFileContent;
 
   @override
   Widget build(BuildContext context) {
+    if (workspaceTreeOnly) {
+      return _EmptyPanelState(
+        icon: Icons.inventory_2_outlined,
+        title: '仅保留目录结构',
+        description: selectedFilePath == null
+            ? (workspacePreviewUnavailableReason ?? '此运行已结束，仅保留工作区目录结构。')
+            : '$selectedFilePath\n\n${workspacePreviewUnavailableReason ?? '此运行已结束，仅保留工作区目录结构。'}',
+      );
+    }
+
     if (selectedFilePath == null) {
       return const _EmptyPanelState(
         icon: Icons.description_outlined,
@@ -315,9 +323,9 @@ class _WorkspacePreview extends StatelessWidget {
             children: [
               Text(
                 selectedFileContent!.path,
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                  fontFamily: 'monospace',
-                ),
+                style: Theme.of(
+                  context,
+                ).textTheme.labelLarge?.copyWith(fontFamily: 'monospace'),
               ),
               const SizedBox(height: 10),
               Expanded(
@@ -464,10 +472,7 @@ class _FileChangeCard extends StatelessWidget {
 }
 
 class _MonospacePanel extends StatelessWidget {
-  const _MonospacePanel({
-    required this.label,
-    required this.content,
-  });
+  const _MonospacePanel({required this.label, required this.content});
 
   final String label;
   final String content;
@@ -479,9 +484,9 @@ class _MonospacePanel extends StatelessWidget {
       children: [
         Text(
           label,
-          style: Theme.of(context).textTheme.labelMedium?.copyWith(
-            fontWeight: FontWeight.w700,
-          ),
+          style: Theme.of(
+            context,
+          ).textTheme.labelMedium?.copyWith(fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: 8),
         DecoratedBox(
@@ -528,11 +533,7 @@ class _EmptyPanelState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              icon,
-              size: 28,
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
+            Icon(icon, size: 28, color: theme.colorScheme.onSurfaceVariant),
             const SizedBox(height: 12),
             Text(
               title,

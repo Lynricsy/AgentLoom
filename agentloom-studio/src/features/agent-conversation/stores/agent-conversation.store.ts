@@ -112,6 +112,7 @@ interface AgentConversationActions {
     ) => Promise<void>;
     selectFile: (path: string | null) => void;
     loadHistory: (conversationId: string) => Promise<void>;
+    loadWorkspaceTree: (conversationId: string) => Promise<void>;
     pushAgentView: (handle: string) => void;
     popAgentView: () => void;
     navigateToAgentView: (index: number) => void;
@@ -1009,6 +1010,45 @@ function fileExistsInTree(tree: FileTreeNode[], path: string): boolean {
   return false;
 }
 
+function normalizeFileTreeNode(value: unknown): FileTreeNode | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const name = readString(value.name);
+  const path = readString(value.path);
+  const type =
+    value.type === "directory"
+      ? "directory"
+      : value.type === "file"
+        ? "file"
+        : null;
+
+  if (!name || !path || !type) {
+    return null;
+  }
+
+  return {
+    name,
+    path,
+    type,
+    ...(type === "directory"
+      ? { children: normalizeFileTree(value.children) }
+      : {}),
+  };
+}
+
+function normalizeFileTree(value: unknown): FileTreeNode[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.flatMap((item) => {
+    const node = normalizeFileTreeNode(item);
+    return node ? [node] : [];
+  });
+}
+
 export const useAgentConversationStore = create<
   AgentConversationState & AgentConversationActions
 >()(
@@ -1606,6 +1646,34 @@ export const useAgentConversationStore = create<
             } catch (error) {
               console.error(
                 "[AgentConversation] Failed to load history:",
+                error,
+              );
+            }
+          },
+
+          loadWorkspaceTree: async (conversationId) => {
+            try {
+              const response = await apiClient
+                .get(`agent-conversations/${conversationId}/workspace/tree`)
+                .json<unknown>();
+              const normalizedTree = normalizeFileTree(response);
+
+              set((s) => {
+                if (s.conversationId !== conversationId) {
+                  return;
+                }
+
+                s.fileTree = normalizedTree;
+                if (
+                  s.selectedFilePath &&
+                  !fileExistsInTree(normalizedTree, s.selectedFilePath)
+                ) {
+                  s.selectedFilePath = null;
+                }
+              });
+            } catch (error) {
+              console.error(
+                "[AgentConversation] Failed to load workspace tree:",
                 error,
               );
             }

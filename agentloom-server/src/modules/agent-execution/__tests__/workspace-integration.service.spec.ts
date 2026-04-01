@@ -1,6 +1,6 @@
 import { Readable } from 'node:stream';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
-import { NotFoundException } from '@nestjs/common';
+import { ConflictException, NotFoundException } from '@nestjs/common';
 
 import { WorkspaceIntegrationService } from '../workspace-integration.service';
 
@@ -38,6 +38,7 @@ const {
   },
   mockDb: {
     select: vi.fn(),
+    update: vi.fn(),
   },
 }));
 
@@ -96,6 +97,12 @@ function createSelectChain<T>(value: T) {
       }),
     }),
   };
+}
+
+function createUpdateChain() {
+  const where = vi.fn().mockResolvedValue(undefined);
+  const set = vi.fn().mockReturnValue({ where });
+  return { set, where };
 }
 
 function writeTarString(
@@ -245,6 +252,7 @@ describe('WorkspaceIntegrationService', () => {
       .mockReset()
       .mockResolvedValue(null);
     mockDb.select.mockReset();
+    mockDb.update.mockReset();
 
     service = new WorkspaceIntegrationService(
       mockDb as never,
@@ -293,6 +301,12 @@ describe('WorkspaceIntegrationService', () => {
 
     it('沙箱不存在时应抛出 NotFoundException', async () => {
       mockSandboxService.findByConversationId.mockResolvedValue(null);
+      mockDb.select.mockReturnValue(
+        createSelectChain({
+          id: CONVERSATION_ID,
+          metadata: {},
+        }),
+      );
 
       await expect(
         service.getFileTree(CONVERSATION_ID, TENANT_ID),
@@ -302,6 +316,12 @@ describe('WorkspaceIntegrationService', () => {
     it('容器 ID 为空时应抛出 NotFoundException', async () => {
       mockSandboxService.findByConversationId.mockResolvedValue(
         mockSandboxSession({ containerId: null }),
+      );
+      mockDb.select.mockReturnValue(
+        createSelectChain({
+          id: CONVERSATION_ID,
+          metadata: {},
+        }),
       );
 
       await expect(
@@ -317,6 +337,55 @@ describe('WorkspaceIntegrationService', () => {
 
       const result = await service.getFileTree(CONVERSATION_ID, TENANT_ID);
       expect(result).toEqual([]);
+    });
+
+    it('运行中容器不存在但 conversation metadata 含目录树快照时应回退到快照', async () => {
+      mockSandboxService.findByConversationId.mockResolvedValue(null);
+      mockDb.select.mockReturnValue(
+        createSelectChain({
+          id: CONVERSATION_ID,
+          metadata: {
+            workspaceTreeSnapshot: {
+              nodes: [
+                {
+                  name: 'workspace',
+                  path: 'workspace',
+                  type: 'directory',
+                  children: [
+                    {
+                      name: 'summary.txt',
+                      path: 'workspace/summary.txt',
+                      type: 'file',
+                      size: 24,
+                    },
+                  ],
+                },
+              ],
+              capturedAt: '2026-04-01T09:00:00.000Z',
+              previewUnavailableReason:
+                '此运行已结束，仅保留工作区目录结构，未保留文件内容预览',
+            },
+          },
+        }),
+      );
+
+      const result = await service.getFileTree(CONVERSATION_ID, TENANT_ID);
+
+      expect(result).toEqual([
+        {
+          name: 'workspace',
+          path: 'workspace',
+          type: 'directory',
+          children: [
+            {
+              name: 'summary.txt',
+              path: 'workspace/summary.txt',
+              type: 'file',
+              size: 24,
+            },
+          ],
+        },
+      ]);
     });
   });
 
@@ -590,6 +659,37 @@ describe('WorkspaceIntegrationService', () => {
 
       expect(result.path).toBe('src/main.ts');
     });
+
+    it('运行中容器不存在但存在目录树快照时应明确拒绝文件预览', async () => {
+      mockSandboxService.findByConversationId.mockResolvedValue(null);
+      mockDb.select.mockReturnValue(
+        createSelectChain({
+          id: CONVERSATION_ID,
+          metadata: {
+            workspaceTreeSnapshot: {
+              nodes: [
+                {
+                  name: 'summary.txt',
+                  path: 'summary.txt',
+                  type: 'file',
+                  size: 12,
+                },
+              ],
+              capturedAt: '2026-04-01T09:00:00.000Z',
+              previewUnavailableReason:
+                '此运行已结束，仅保留工作区目录结构，未保留文件内容预览',
+            },
+          },
+        }),
+      );
+
+      await expect(
+        service.getFileContent(CONVERSATION_ID, TENANT_ID, 'summary.txt'),
+      ).rejects.toBeInstanceOf(ConflictException);
+      await expect(
+        service.getFileContent(CONVERSATION_ID, TENANT_ID, 'summary.txt'),
+      ).rejects.toThrow('仅保留工作区目录结构');
+    });
   });
 
   describe('getExecutionStepFileContent', () => {
@@ -771,35 +871,23 @@ describe('WorkspaceIntegrationService', () => {
   });
 
   describe('onConversationEnd', () => {
-    it('有 persistencePath 时应触发工作区归档', async () => {
+    it('应保存目录树快照并写回 conversation metadata', async () => {
       mockSandboxService.findByConversationId.mockResolvedValue(
         mockSandboxSession({
           config: { persistencePath: '/data/workspaces' },
         }),
       );
-      mockWorkspaceService.createFromSandbox.mockResolvedValue({});
-
-      await service.onConversationEnd(
-        CONVERSATION_ID,
-        TENANT_ID,
-        ORG_ID,
-        USER_ID,
+      setupExecWithOutput(
+        ['d|0|workspace', 'f|24|workspace/summary.txt'].join('\n'),
       );
-
-      expect(mockWorkspaceService.createFromSandbox).toHaveBeenCalledWith(
-        TENANT_ID,
-        ORG_ID,
-        USER_ID,
-        SESSION_ID,
-        `conversation-${CONVERSATION_ID}-workspace`,
-        expect.stringContaining('自动归档'),
+      mockDb.select.mockReturnValue(
+        createSelectChain({
+          id: CONVERSATION_ID,
+          metadata: { title: 'existing-metadata' },
+        }),
       );
-    });
-
-    it('没有 persistencePath 时应跳过归档', async () => {
-      mockSandboxService.findByConversationId.mockResolvedValue(
-        mockSandboxSession({ config: {} }),
-      );
+      const updateChain = createUpdateChain();
+      mockDb.update.mockReturnValue(updateChain);
 
       await service.onConversationEnd(
         CONVERSATION_ID,
@@ -809,9 +897,59 @@ describe('WorkspaceIntegrationService', () => {
       );
 
       expect(mockWorkspaceService.createFromSandbox).not.toHaveBeenCalled();
+      expect(updateChain.set).toHaveBeenCalledWith({
+        metadata: {
+          title: 'existing-metadata',
+          workspaceTreeSnapshot: {
+            nodes: [
+              {
+                name: 'workspace',
+                path: 'workspace',
+                type: 'directory',
+                children: [
+                  {
+                    name: 'summary.txt',
+                    path: 'workspace/summary.txt',
+                    type: 'file',
+                    size: 24,
+                  },
+                ],
+              },
+            ],
+            capturedAt: expect.any(String),
+            previewUnavailableReason:
+              '此运行已结束，仅保留工作区目录结构，未保留文件内容预览',
+          },
+        },
+        updatedAt: expect.any(Date),
+      });
     });
 
-    it('没有沙箱会话时应跳过归档', async () => {
+    it('没有 persistencePath 时也应保存目录树快照', async () => {
+      mockSandboxService.findByConversationId.mockResolvedValue(
+        mockSandboxSession({ config: {} }),
+      );
+      setupExecWithOutput(['f|12|summary.txt'].join('\n'));
+      mockDb.select.mockReturnValue(
+        createSelectChain({
+          id: CONVERSATION_ID,
+          metadata: {},
+        }),
+      );
+      const updateChain = createUpdateChain();
+      mockDb.update.mockReturnValue(updateChain);
+
+      await service.onConversationEnd(
+        CONVERSATION_ID,
+        TENANT_ID,
+        ORG_ID,
+        USER_ID,
+      );
+
+      expect(updateChain.set).toHaveBeenCalled();
+    });
+
+    it('没有沙箱会话时应跳过目录树快照', async () => {
       mockSandboxService.findByConversationId.mockResolvedValue(null);
 
       await service.onConversationEnd(
@@ -821,18 +959,16 @@ describe('WorkspaceIntegrationService', () => {
         USER_ID,
       );
 
-      expect(mockWorkspaceService.createFromSandbox).not.toHaveBeenCalled();
+      expect(mockDb.update).not.toHaveBeenCalled();
     });
 
-    it('归档失败时应捕获异常而不是抛出', async () => {
+    it('目录树快照保存失败时应捕获异常而不是抛出', async () => {
       mockSandboxService.findByConversationId.mockResolvedValue(
         mockSandboxSession({
           config: { persistencePath: '/data' },
         }),
       );
-      mockWorkspaceService.createFromSandbox.mockRejectedValue(
-        new Error('MinIO down'),
-      );
+      mockDockerService.createExec.mockRejectedValue(new Error('exec down'));
 
       await expect(
         service.onConversationEnd(CONVERSATION_ID, TENANT_ID, ORG_ID, USER_ID),

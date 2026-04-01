@@ -93,6 +93,93 @@ const segments = checkpointData.segments?.length
 
 ---
 
+## 场景：standalone Agent 已完成会话的工作区目录树 fallback
+
+### 1. Scope / Trigger
+- 触发条件：修改以下任一文件时，必须回看本节
+  - `agentloom-studio/src/features/agent-conversation/stores/agent-conversation.store.ts`
+  - `agentloom-studio/src/features/agent-conversation/components/AgentConversationPage.tsx`
+  - `agentloom-studio/src/features/agent-conversation/components/WorkspaceFileTree.tsx`
+  - `agentloom_mobile/lib/features/agents/providers/agent_conversation_provider.dart`
+  - `agentloom_mobile/lib/features/agents/widgets/conversation_context_panel.dart`
+  - `agentloom_mobile/lib/features/agents/api/agent_api.dart`
+- 风险点：completed conversation 如果只读 live runtime，就会在刷新或冷开后退化成“工作区暂不可见”；如果前端继续尝试文件预览，又会把服务端 tree-only fallback 误报成加载失败。
+
+### 2. Signatures
+- Studio:
+  - `loadWorkspaceTree(conversationId): Promise<void>`
+  - `AgentConversationPage`
+  - `WorkspaceFileTree`
+- Flutter:
+  - `AgentConversationNotifier.refreshWorkspaceTree()`
+  - `AgentConversationNotifier.openWorkspaceFile(path)`
+  - `ConversationContextPanel`
+  - `ConversationState.hasLoadedWorkspaceTree`
+  - `ConversationState.workspaceTreeOnly`
+  - `ConversationState.workspacePreviewUnavailableReason`
+
+### 3. Contracts
+- standalone conversation 页面在 mount / 冷开时，必须主动拉一次 `GET /agent-conversations/:id/workspace/tree`。
+  - 不能只依赖 `conversation.sandbox.file_change` 增量事件，否则 completed 冷开后不会有任何树数据。
+- completed conversation 的 workspace fallback 只保留目录树，不保留文件预览。
+  - Studio standalone 侧：
+    - 只需要恢复目录树。
+    - 不需要为了 completed 态新增文件预览面板。
+  - Flutter standalone 侧：
+    - 成功拉到 tree 后，即使 tree 为空，也要把状态视为“工作区已加载”，不能继续显示“工作区暂不可见”。
+    - 当 `openWorkspaceFile()` 收到后端的 tree-only 错误时，必须切到 `workspaceTreeOnly` 模式，并把提示展示在 preview 区域，而不是当成普通红色错误 banner。
+- workspace tree 刷新后，如果当前选中文件不再存在，必须清空旧的 `selectedFilePath` / `selectedFileContent`。
+
+### 4. Validation & Error Matrix
+
+| 条件 | 预期行为 | 断言点 |
+|------|----------|--------|
+| completed conversation 冷开 | Studio / Flutter 都能拉到目录树 | `agent-conversation.store.test.ts` / Flutter 手动 QA |
+| tree API 成功但返回空数组 | Flutter 显示“没有文件树”，而不是“工作区暂不可见” | `conversation_context_panel_test.dart` |
+| Flutter 点击 completed conversation 文件 | 切到 `workspaceTreeOnly` 模式并显示 tree-only 提示 | `agent_conversation_provider_test.dart` |
+| workspace tree 刷新后当前选中文件已失效 | 选中态被清空，不保留 stale 文件 | `agent-conversation.store.test.ts` |
+| workspace tree 请求响应晚到且会话已切换/重置 | 不得污染当前会话状态 | `agent-conversation.store.test.ts` |
+
+### 5. Good / Base / Bad Cases
+- Good：completed conversation 刷新后仍能看到目录树；Flutter 点击文件时提示“未保留文件内容预览”，Studio 继续仅展示树。
+- Base：目录树为空时，Flutter 仍显示 workspace 面板，只是左侧为空树、右侧不给预览。
+- Bad：completed conversation 冷开后整个 workspace 面板看起来像没实现；或者 Flutter 把 tree-only 错误直接展示成“读取文件失败”。
+
+### 6. Tests Required
+- `agentloom-studio/src/features/agent-conversation/stores/agent-conversation.store.test.ts`
+  - 断言 `loadWorkspaceTree()` 会恢复目录树
+  - 断言过期 workspace tree 响应不会污染已重置会话
+- `agentloom_mobile/test/features/agents/providers/agent_conversation_provider_test.dart`
+  - 断言 tree-only 错误会切换 `workspaceTreeOnly`
+  - 断言 tree-only 模式下再次点击文件不会继续发起文件预览请求
+- `agentloom_mobile/test/features/agents/widgets/conversation_context_panel_test.dart`
+  - 断言空 tree 但已加载时显示“没有文件树”
+  - 断言 tree-only 模式显示目录结构保留提示
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```dart
+if (state.fileTree.isEmpty && state.selectedFileContent == null) {
+  return const EmptyState(title: '工作区暂不可见');
+}
+```
+
+#### Correct
+
+```dart
+if (!state.hasLoadedWorkspaceTree && state.selectedFileContent == null) {
+  return const EmptyState(title: '工作区暂不可见');
+}
+
+if (state.workspaceTreeOnly) {
+  return TreeOnlyPreviewHint(reason: state.workspacePreviewUnavailableReason);
+}
+```
+
+---
+
 ## 场景：Flutter execution 页面与 workflow-agent viewer 的终态收敛
 
 ### 1. Scope / Trigger

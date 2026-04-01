@@ -414,6 +414,117 @@ describe("agentConversationStore", () => {
     });
   });
 
+  it("loadWorkspaceTree 会在 completed 冷开时恢复目录树，并清理失效选中文件", async () => {
+    const jsonMock = vi.fn().mockResolvedValue([
+      {
+        name: "workspace",
+        path: "workspace",
+        type: "directory",
+        children: [
+          {
+            name: "summary.txt",
+            path: "workspace/summary.txt",
+            type: "file",
+          },
+        ],
+      },
+    ]);
+
+    getMock.mockReturnValue({
+      json: jsonMock,
+    });
+
+    useAgentConversationStore.getState().actions.connect({
+      conversationId: "conv-1",
+      agentId: "agent-1",
+      agentName: "Agent 1",
+      authToken: "token-1",
+    });
+
+    useAgentConversationStore.setState((state) => ({
+      ...state,
+      selectedFilePath: "workspace/missing.txt",
+      fileTree: [
+        {
+          name: "workspace",
+          path: "workspace",
+          type: "directory",
+          children: [
+            {
+              name: "missing.txt",
+              path: "workspace/missing.txt",
+              type: "file",
+            },
+          ],
+        },
+      ],
+    }));
+
+    await useAgentConversationStore
+      .getState()
+      .actions.loadWorkspaceTree("conv-1");
+
+    expect(getMock).toHaveBeenCalledWith(
+      "agent-conversations/conv-1/workspace/tree",
+    );
+    expect(useAgentConversationStore.getState().fileTree).toEqual([
+      {
+        name: "workspace",
+        path: "workspace",
+        type: "directory",
+        children: [
+          {
+            name: "summary.txt",
+            path: "workspace/summary.txt",
+            type: "file",
+          },
+        ],
+      },
+    ]);
+    expect(useAgentConversationStore.getState().selectedFilePath).toBeNull();
+  });
+
+  it("loadWorkspaceTree 的过期响应不会污染已重置的会话状态", async () => {
+    const deferred = createDeferred<
+      Array<{
+        name: string;
+        path: string;
+        type: "file";
+      }>
+    >();
+    const jsonMock = vi.fn().mockImplementation(() => deferred.promise);
+
+    getMock.mockReturnValue({
+      json: jsonMock,
+    });
+
+    useAgentConversationStore.getState().actions.connect({
+      conversationId: "conv-1",
+      agentId: "agent-1",
+      agentName: "Agent 1",
+      authToken: "token-1",
+    });
+
+    const pendingLoad = useAgentConversationStore
+      .getState()
+      .actions.loadWorkspaceTree("conv-1");
+
+    useAgentConversationStore.getState().actions.reset();
+
+    deferred.resolve([
+      {
+        name: "summary.txt",
+        path: "summary.txt",
+        type: "file",
+      },
+    ]);
+
+    await pendingLoad;
+
+    expect(useAgentConversationStore.getState().conversationId).toBeNull();
+    expect(useAgentConversationStore.getState().fileTree).toEqual([]);
+  });
+
   it("切换 conversation 时会清空上一条会话残留的运行上下文", () => {
     useAgentConversationStore.getState().actions.connect({
       conversationId: "conv-1",

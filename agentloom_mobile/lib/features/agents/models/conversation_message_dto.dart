@@ -138,7 +138,9 @@ List<ConversationToolResultDto> _toolResultsFromJson(Object? value) {
       .toList(growable: false);
 }
 
-ConversationToolPermissionRequestDto? _permissionRequestFromJson(Object? value) {
+ConversationToolPermissionRequestDto? _permissionRequestFromJson(
+  Object? value,
+) {
   final map = _nullableMapFromJson(value);
   if (map == null) {
     return null;
@@ -147,12 +149,7 @@ ConversationToolPermissionRequestDto? _permissionRequestFromJson(Object? value) 
 }
 
 /// 消息角色
-enum MessageRole {
-  user,
-  assistant,
-  system,
-  tool,
-}
+enum MessageRole { user, assistant, system, tool }
 
 /// 工具调用状态
 enum ConversationToolStatus {
@@ -176,13 +173,7 @@ extension ConversationToolStatusX on ConversationToolStatus {
       this == ConversationToolStatus.failed;
 }
 
-enum ConversationStatus {
-  idle,
-  connecting,
-  connected,
-  executing,
-  error,
-}
+enum ConversationStatus { idle, connecting, connected, executing, error }
 
 /// 沙箱启动准备阶段
 enum PreparationPhase {
@@ -214,18 +205,10 @@ PreparationPhase? parsePreparationPhase(String? value) {
   }
 }
 
-enum MessageSegmentKind {
-  text,
-  thinking,
-  toolCall,
-}
+enum MessageSegmentKind { text, thinking, toolCall }
 
 class MessageSegment {
-  const MessageSegment._({
-    required this.kind,
-    this.content,
-    this.toolCallId,
-  });
+  const MessageSegment._({required this.kind, this.content, this.toolCallId});
 
   const MessageSegment.text(String content)
     : this._(kind: MessageSegmentKind.text, content: content);
@@ -290,10 +273,8 @@ abstract class ConversationToolCallDto with _$ConversationToolCallDto {
     List<ConversationToolTransitionDto> transitions,
     @JsonKey(fromJson: _permissionRequestFromJson)
     ConversationToolPermissionRequestDto? permissionRequest,
-    @JsonKey(includeFromJson: false, includeToJson: false)
-    DateTime? startedAt,
-    @JsonKey(includeFromJson: false, includeToJson: false)
-    DateTime? updatedAt,
+    @JsonKey(includeFromJson: false, includeToJson: false) DateTime? startedAt,
+    @JsonKey(includeFromJson: false, includeToJson: false) DateTime? updatedAt,
   }) = _ConversationToolCallDto;
 
   factory ConversationToolCallDto.fromJson(Map<String, dynamic> json) =>
@@ -336,8 +317,7 @@ abstract class ConversationMessageDto with _$ConversationMessageDto {
     @Default(<String, dynamic>{})
     Map<String, dynamic> metadata,
     required String createdAt,
-    @JsonKey(includeFromJson: false, includeToJson: false)
-    String? thinking,
+    @JsonKey(includeFromJson: false, includeToJson: false) String? thinking,
     @JsonKey(includeFromJson: false, includeToJson: false)
     @Default(<MessageSegment>[])
     List<MessageSegment> segments,
@@ -462,6 +442,9 @@ class ConversationState {
     this.isConnected = false,
     this.terminalEntries = const <TerminalEntry>[],
     this.fileTree = const <WorkspaceFileNode>[],
+    this.hasLoadedWorkspaceTree = false,
+    this.workspaceTreeOnly = false,
+    this.workspacePreviewUnavailableReason,
     this.fileChanges = const <WorkspaceFileChange>[],
     this.selectedFilePath,
     this.selectedFileContent,
@@ -479,6 +462,9 @@ class ConversationState {
   final bool isConnected;
   final List<TerminalEntry> terminalEntries;
   final List<WorkspaceFileNode> fileTree;
+  final bool hasLoadedWorkspaceTree;
+  final bool workspaceTreeOnly;
+  final String? workspacePreviewUnavailableReason;
   final List<WorkspaceFileChange> fileChanges;
   final String? selectedFilePath;
   final WorkspaceFileContent? selectedFileContent;
@@ -533,6 +519,10 @@ class ConversationState {
     bool? isConnected,
     List<TerminalEntry>? terminalEntries,
     List<WorkspaceFileNode>? fileTree,
+    bool? hasLoadedWorkspaceTree,
+    bool? workspaceTreeOnly,
+    String? workspacePreviewUnavailableReason,
+    bool clearWorkspacePreviewUnavailableReason = false,
     List<WorkspaceFileChange>? fileChanges,
     String? selectedFilePath,
     bool clearSelectedFilePath = false,
@@ -557,6 +547,13 @@ class ConversationState {
       isConnected: isConnected ?? this.isConnected,
       terminalEntries: terminalEntries ?? this.terminalEntries,
       fileTree: fileTree ?? this.fileTree,
+      hasLoadedWorkspaceTree:
+          hasLoadedWorkspaceTree ?? this.hasLoadedWorkspaceTree,
+      workspaceTreeOnly: workspaceTreeOnly ?? this.workspaceTreeOnly,
+      workspacePreviewUnavailableReason: clearWorkspacePreviewUnavailableReason
+          ? null
+          : workspacePreviewUnavailableReason ??
+                this.workspacePreviewUnavailableReason,
       fileChanges: fileChanges ?? this.fileChanges,
       selectedFilePath: clearSelectedFilePath
           ? null

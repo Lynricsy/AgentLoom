@@ -8,6 +8,7 @@ import 'package:agentloom_mobile/features/auth/models/login_user.dart';
 import 'package:agentloom_mobile/features/auth/providers/auth_provider.dart';
 import 'package:agentloom_mobile/shared/models/paginated_response.dart';
 import 'package:agentloom_mobile/shared/providers/env_provider.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
@@ -77,6 +78,11 @@ void main() {
     when(
       () => mockApi.getWorkspaceTree(any()),
     ).thenAnswer((_) async => const []);
+    when(() => mockApi.getWorkspaceFile(any(), any())).thenThrow(
+      DioException(
+        requestOptions: RequestOptions(path: '/workspace/files/summary.txt'),
+      ),
+    );
     when(() => mockSocket.on(any(), any())).thenAnswer((invocation) {
       final event = invocation.positionalArguments[0] as String;
       final handler = invocation.positionalArguments[1] as Function;
@@ -168,6 +174,66 @@ void main() {
       capturedSocketOptions?['auth'],
       equals({'token': testTokens.accessToken}),
     );
+  });
+
+  test('已完成会话只保留目录树时应进入 tree-only 模式并停止再次请求文件预览', () async {
+    when(() => mockApi.getWorkspaceTree(any())).thenAnswer(
+      (_) async => const [
+        WorkspaceFileNode(
+          name: 'summary.txt',
+          path: 'summary.txt',
+          type: 'file',
+        ),
+      ],
+    );
+    when(() => mockApi.getWorkspaceFile(any(), any())).thenThrow(
+      DioException(
+        requestOptions: RequestOptions(path: '/workspace/files/summary.txt'),
+        response: Response<Map<String, dynamic>>(
+          requestOptions: RequestOptions(path: '/workspace/files/summary.txt'),
+          data: const {'message': '此运行已结束，仅保留工作区目录结构，未保留文件内容预览'},
+          statusCode: 409,
+        ),
+        type: DioExceptionType.badResponse,
+      ),
+    );
+
+    container.listen(
+      agentConversationProvider(params),
+      (_, __) {},
+      fireImmediately: true,
+    );
+
+    await container.read(authProvider.future);
+    await container.read(agentConversationProvider(params).future);
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    final notifier = container.read(agentConversationProvider(params).notifier);
+
+    await notifier.openWorkspaceFile('summary.txt');
+
+    final stateAfterFallback = container
+        .read(agentConversationProvider(params))
+        .value;
+    expect(stateAfterFallback, isNotNull);
+    expect(stateAfterFallback!.workspaceTreeOnly, isTrue);
+    expect(
+      stateAfterFallback.workspacePreviewUnavailableReason,
+      '此运行已结束，仅保留工作区目录结构，未保留文件内容预览',
+    );
+    expect(stateAfterFallback.selectedFileContent, isNull);
+    expect(stateAfterFallback.error, isNull);
+
+    clearInteractions(mockApi);
+
+    await notifier.openWorkspaceFile('summary.txt');
+
+    verifyNever(() => mockApi.getWorkspaceFile(any(), any()));
+    final stateAfterSecondTap = container
+        .read(agentConversationProvider(params))
+        .value;
+    expect(stateAfterSecondTap!.selectedFilePath, 'summary.txt');
+    expect(stateAfterSecondTap.workspaceTreeOnly, isTrue);
   });
 }
 

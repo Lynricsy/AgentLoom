@@ -390,6 +390,7 @@ export function AgentConversationPage({
     const token = authTokenRef.current;
     a.connect({ conversationId, agentId, agentName: "", authToken: token });
     a.loadHistory(conversationId);
+    void a.loadWorkspaceTree(conversationId);
 
     return () => {
       a.disconnect();

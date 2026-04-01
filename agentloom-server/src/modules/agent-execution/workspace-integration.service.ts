@@ -1,6 +1,12 @@
-import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 
 import {
   SANDBOX_RUNTIME_DRIVER,
@@ -8,7 +14,6 @@ import {
 } from '../sandbox/sandbox-runtime-driver.port';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { WorkspaceService } from '../workspace/workspace.service';
-import type { SandboxConfig } from '../../database/schema';
 import type { AgentSession } from '../agent/types/agent-session.types';
 import { SessionPersistenceService } from '../execution/services/session-persistence.service';
 import { StorageService } from '../../infrastructure/storage/storage.service';
@@ -21,6 +26,9 @@ const MAX_TEXT_FILE_BYTES = 10 * 1024 * 1024;
 const MAX_WORKSPACE_ARCHIVE_BYTES = 50 * 1024 * 1024;
 const FILE_WATCH_POLL_INTERVAL_MS = 3000;
 const MARKER_FILE = '/tmp/.workspace_marker';
+const CONVERSATION_WORKSPACE_TREE_SNAPSHOT_KEY = 'workspaceTreeSnapshot';
+const CONVERSATION_WORKSPACE_TREE_ONLY_REASON =
+  '此运行已结束，仅保留工作区目录结构，未保留文件内容预览';
 
 export interface FileTreeNode {
   name: string;
@@ -77,6 +85,22 @@ type ResolvedExecutionStepWorkspaceSource =
       workspaceSnapshotId: string;
     };
 
+type ConversationWorkspaceTreeSnapshot = {
+  nodes: FileTreeNode[];
+  capturedAt: string;
+  previewUnavailableReason: string;
+};
+
+type ResolvedConversationWorkspaceSource =
+  | {
+      kind: 'live';
+      containerId: string;
+    }
+  | {
+      kind: 'snapshot';
+      snapshot: ConversationWorkspaceTreeSnapshot;
+    };
+
 type ArchiveEntry = {
   path: string;
   type: 'file' | 'directory';
@@ -113,12 +137,16 @@ export class WorkspaceIntegrationService {
     conversationId: string,
     tenantId: string,
   ): Promise<FileTreeNode[]> {
-    const containerId = await this.resolveConversationContainerId(
+    const workspaceSource = await this.resolveConversationWorkspaceSource(
       conversationId,
       tenantId,
     );
 
-    return this.readFileTreeFromContainer(containerId);
+    if (workspaceSource.kind === 'live') {
+      return this.readFileTreeFromContainer(workspaceSource.containerId);
+    }
+
+    return workspaceSource.snapshot.nodes;
   }
 
   async getExecutionStepFileTree(
@@ -147,12 +175,22 @@ export class WorkspaceIntegrationService {
     tenantId: string,
     filePath: string,
   ): Promise<FileContentResult> {
-    const containerId = await this.resolveConversationContainerId(
+    this.normalizePath(filePath);
+    const workspaceSource = await this.resolveConversationWorkspaceSource(
       conversationId,
       tenantId,
     );
 
-    return this.readFileContentFromContainer(containerId, filePath);
+    if (workspaceSource.kind === 'live') {
+      return this.readFileContentFromContainer(
+        workspaceSource.containerId,
+        filePath,
+      );
+    }
+
+    throw new ConflictException(
+      workspaceSource.snapshot.previewUnavailableReason,
+    );
   }
 
   async getExecutionStepFileContent(
@@ -322,8 +360,8 @@ export class WorkspaceIntegrationService {
   async onConversationEnd(
     conversationId: string,
     tenantId: string,
-    organizationId: string,
-    userId: string,
+    _organizationId: string,
+    _userId: string,
   ): Promise<void> {
     this.stopFileWatcher(conversationId);
 
@@ -332,37 +370,27 @@ export class WorkspaceIntegrationService {
       tenantId,
     );
 
-    if (!session) {
-      this.logger.debug(`对话 ${conversationId} 没有关联的沙箱会话，跳过归档`);
-      return;
-    }
-
-    const sandboxConfig = session.config as SandboxConfig | null;
-    const persistencePath = sandboxConfig?.persistencePath;
-
-    if (!persistencePath) {
+    if (!session?.containerId) {
       this.logger.debug(
-        `对话 ${conversationId} 的沙箱没有 persistencePath 配置，跳过归档`,
+        `对话 ${conversationId} 没有关联的运行中沙箱容器，跳过目录树快照保存`,
       );
       return;
     }
 
     try {
-      await this.workspaceService.createFromSandbox(
+      const tree = await this.readFileTreeFromContainer(session.containerId);
+      await this.persistConversationWorkspaceTreeSnapshot(
+        conversationId,
         tenantId,
-        organizationId,
-        userId,
-        session.id,
-        `conversation-${conversationId}-workspace`,
-        `对话 ${conversationId} 结束时自动归档的工作区快照`,
+        tree,
       );
 
       this.logger.log(
-        `对话 ${conversationId} 工作区已归档: sandbox=${session.id}`,
+        `对话 ${conversationId} 工作区目录树快照已保存: sandbox=${session.id}, nodes=${tree.length}`,
       );
     } catch (error) {
       this.logger.error(
-        `对话 ${conversationId} 工作区归档失败`,
+        `对话 ${conversationId} 工作区目录树快照保存失败`,
         error instanceof Error ? error.stack : error,
       );
     }
@@ -407,6 +435,174 @@ export class WorkspaceIntegrationService {
     }
 
     return session.containerId;
+  }
+
+  private async resolveConversationWorkspaceSource(
+    conversationId: string,
+    tenantId: string,
+  ): Promise<ResolvedConversationWorkspaceSource> {
+    try {
+      const containerId = await this.resolveConversationContainerId(
+        conversationId,
+        tenantId,
+      );
+
+      return {
+        kind: 'live',
+        containerId,
+      };
+    } catch (error) {
+      const snapshot = await this.loadConversationWorkspaceTreeSnapshot(
+        conversationId,
+        tenantId,
+      );
+
+      if (snapshot) {
+        return {
+          kind: 'snapshot',
+          snapshot,
+        };
+      }
+
+      throw error;
+    }
+  }
+
+  private async loadConversationWorkspaceTreeSnapshot(
+    conversationId: string,
+    tenantId: string,
+  ): Promise<ConversationWorkspaceTreeSnapshot | null> {
+    const conversation = await this.loadConversationRecord(
+      conversationId,
+      tenantId,
+    );
+
+    return this.readConversationWorkspaceTreeSnapshot(conversation.metadata);
+  }
+
+  private async loadConversationRecord(
+    conversationId: string,
+    tenantId: string,
+  ): Promise<Pick<schema.AgentConversation, 'id' | 'metadata'>> {
+    const [conversation] = await this.tenantDb
+      .select({
+        id: schema.agentConversations.id,
+        metadata: schema.agentConversations.metadata,
+      })
+      .from(schema.agentConversations)
+      .where(
+        and(
+          eq(schema.agentConversations.id, conversationId),
+          eq(schema.agentConversations.tenantId, tenantId),
+        ),
+      )
+      .limit(1);
+
+    if (!conversation) {
+      throw new NotFoundException(`对话 ${conversationId} 不存在`);
+    }
+
+    return conversation;
+  }
+
+  private readConversationWorkspaceTreeSnapshot(
+    metadata: unknown,
+  ): ConversationWorkspaceTreeSnapshot | null {
+    const metadataRecord = this.isRecord(metadata) ? metadata : null;
+    const snapshotRecord =
+      metadataRecord &&
+      this.isRecord(metadataRecord[CONVERSATION_WORKSPACE_TREE_SNAPSHOT_KEY])
+        ? metadataRecord[CONVERSATION_WORKSPACE_TREE_SNAPSHOT_KEY]
+        : null;
+
+    if (!snapshotRecord) {
+      return null;
+    }
+
+    return {
+      nodes: this.normalizeStoredFileTreeNodes(snapshotRecord.nodes),
+      capturedAt:
+        this.readString(snapshotRecord.capturedAt) ?? new Date(0).toISOString(),
+      previewUnavailableReason:
+        this.readString(snapshotRecord.previewUnavailableReason) ??
+        CONVERSATION_WORKSPACE_TREE_ONLY_REASON,
+    };
+  }
+
+  private normalizeStoredFileTreeNodes(value: unknown): FileTreeNode[] {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+
+    return value.flatMap((entry) => {
+      if (!this.isRecord(entry)) {
+        return [];
+      }
+
+      const name = this.readString(entry.name);
+      const path = this.readString(entry.path);
+      const type =
+        entry.type === 'directory'
+          ? 'directory'
+          : entry.type === 'file'
+            ? 'file'
+            : null;
+
+      if (!name || !path || !type) {
+        return [];
+      }
+
+      const size =
+        typeof entry.size === 'number' && Number.isFinite(entry.size)
+          ? entry.size
+          : undefined;
+
+      return [
+        {
+          name,
+          path,
+          type,
+          ...(size !== undefined ? { size } : {}),
+          ...(type === 'directory'
+            ? { children: this.normalizeStoredFileTreeNodes(entry.children) }
+            : {}),
+        } satisfies FileTreeNode,
+      ];
+    });
+  }
+
+  private async persistConversationWorkspaceTreeSnapshot(
+    conversationId: string,
+    tenantId: string,
+    nodes: FileTreeNode[],
+  ): Promise<void> {
+    const conversation = await this.loadConversationRecord(
+      conversationId,
+      tenantId,
+    );
+    const metadata = this.isRecord(conversation.metadata)
+      ? conversation.metadata
+      : {};
+
+    await this.tenantDb
+      .update(schema.agentConversations)
+      .set({
+        metadata: {
+          ...metadata,
+          [CONVERSATION_WORKSPACE_TREE_SNAPSHOT_KEY]: {
+            nodes,
+            capturedAt: new Date().toISOString(),
+            previewUnavailableReason: CONVERSATION_WORKSPACE_TREE_ONLY_REASON,
+          } satisfies ConversationWorkspaceTreeSnapshot,
+        },
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(schema.agentConversations.id, conversationId),
+          eq(schema.agentConversations.tenantId, tenantId),
+        ),
+      );
   }
 
   private async resolveExecutionStepContainer(

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 
@@ -95,6 +96,40 @@ String? _readString(Object? value) {
     return value;
   }
   return null;
+}
+
+String _describeConversationApiError(Object error) {
+  if (error is DioException) {
+    if (error.type == DioExceptionType.connectionTimeout ||
+        error.type == DioExceptionType.receiveTimeout) {
+      return '请求超时，请稍后重试';
+    }
+    if (error.type == DioExceptionType.connectionError) {
+      return '无法连接到服务器，请检查网络或服务器地址';
+    }
+
+    final data = error.response?.data;
+    if (data is Map<String, dynamic>) {
+      final message =
+          _readString(data['message']) ?? _readString(data['detail']);
+      if (message != null) {
+        return message;
+      }
+    }
+    if (data is Map<Object?, Object?>) {
+      final map = data.map((key, value) => MapEntry('$key', value));
+      final message = _readString(map['message']) ?? _readString(map['detail']);
+      if (message != null) {
+        return message;
+      }
+    }
+  }
+
+  return error.toString();
+}
+
+bool _isTreeOnlyWorkspacePreviewMessage(String message) {
+  return message.contains('仅保留工作区目录结构') || message.contains('未保留文件内容预览');
 }
 
 bool? _readBool(Object? value) {
@@ -677,6 +712,20 @@ String _nextLocalId(String prefix) {
   return '$prefix-${DateTime.now().microsecondsSinceEpoch}';
 }
 
+bool _workspaceTreeContainsPath(List<WorkspaceFileNode> nodes, String path) {
+  for (final node in nodes) {
+    if (node.path == path) {
+      return true;
+    }
+    if (node.children.isNotEmpty &&
+        _workspaceTreeContainsPath(node.children, path)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 ConversationMessageDto _seedAssistantMessage({
   required String messageId,
   required String conversationId,
@@ -1098,6 +1147,9 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
             content: payload.content,
           ),
         ],
+        hasLoadedWorkspaceTree: true,
+        workspaceTreeOnly: false,
+        clearWorkspacePreviewUnavailableReason: true,
         selectedFileContent: selectedFileContent,
         clearSelectedFileContent: clearSelected,
         clearError: true,
@@ -1221,6 +1273,8 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
         clearPreparationError: true,
         clearPreparationFailedPhase: true,
         sandboxReused: false,
+        workspaceTreeOnly: false,
+        clearWorkspacePreviewUnavailableReason: true,
         clearError: true,
       ),
     );
@@ -1352,21 +1406,31 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
       if (!ref.mounted) {
         return;
       }
-      _updateState(
-        (current) => current.copyWith(
+      _updateState((current) {
+        final keepSelected =
+            current.selectedFilePath != null &&
+            _workspaceTreeContainsPath(tree, current.selectedFilePath!);
+        return current.copyWith(
           fileTree: tree,
+          hasLoadedWorkspaceTree: true,
+          workspaceTreeOnly: false,
+          clearWorkspacePreviewUnavailableReason: true,
           isLoadingWorkspace: false,
+          clearSelectedFilePath: !keepSelected,
+          clearSelectedFileContent:
+              !keepSelected || current.selectedFileContent == null,
           clearError: true,
-        ),
-      );
+        );
+      });
     } catch (error) {
       if (!ref.mounted) {
         return;
       }
+      final message = _describeConversationApiError(error);
       _updateState(
         (current) => current.copyWith(
           isLoadingWorkspace: false,
-          error: silent ? current.error : '加载工作区失败：$error',
+          error: silent ? current.error : '加载工作区失败：$message',
         ),
       );
     }
@@ -1374,6 +1438,18 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
 
   Future<void> openWorkspaceFile(String path) async {
     if (path.trim().isEmpty) {
+      return;
+    }
+
+    final currentState = state.value;
+    if (currentState?.workspaceTreeOnly == true) {
+      _updateState(
+        (current) => current.copyWith(
+          selectedFilePath: path,
+          clearSelectedFileContent: true,
+          clearError: true,
+        ),
+      );
       return;
     }
 
@@ -1396,6 +1472,8 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
         (current) => current.copyWith(
           selectedFilePath: path,
           selectedFileContent: file,
+          workspaceTreeOnly: false,
+          clearWorkspacePreviewUnavailableReason: true,
           isLoadingWorkspace: false,
           clearError: true,
         ),
@@ -1404,9 +1482,26 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
       if (!ref.mounted) {
         return;
       }
+      final message = _describeConversationApiError(error);
+      if (_isTreeOnlyWorkspacePreviewMessage(message)) {
+        _updateState(
+          (current) => current.copyWith(
+            selectedFilePath: path,
+            hasLoadedWorkspaceTree: true,
+            workspaceTreeOnly: true,
+            workspacePreviewUnavailableReason: message,
+            clearSelectedFileContent: true,
+            isLoadingWorkspace: false,
+            clearError: true,
+          ),
+        );
+        return;
+      }
       _updateState(
-        (current) =>
-            current.copyWith(isLoadingWorkspace: false, error: '读取文件失败：$error'),
+        (current) => current.copyWith(
+          isLoadingWorkspace: false,
+          error: '读取文件失败：$message',
+        ),
       );
     }
   }
