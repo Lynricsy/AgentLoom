@@ -14,39 +14,44 @@ import '../models/agent_conversation_dto.dart';
 import '../models/conversation_message_dto.dart';
 
 typedef ConversationParams = ({String agentId, String conversationId});
+typedef AgentConversationSocketFactory =
+    io.Socket Function(String url, Map<String, dynamic> options);
 
-typedef _ChunkPayload =
-    ({String conversationId, String messageId, String chunk});
-typedef _ThinkingPayload =
-    ({String conversationId, String messageId, String content});
-typedef _ToolPayload =
-    ({
-      String conversationId,
-      String messageId,
-      String toolCallId,
-      String tool,
-      Object? args,
-      ConversationToolStatus status,
-      Object? result,
-      String? error,
-      List<ConversationToolTransitionDto> transitions,
-      ConversationToolPermissionRequestDto? permissionRequest,
-    });
-typedef _TerminalPayload =
-    ({
-      String conversationId,
-      String output,
-      String? command,
-      String? sessionId,
-    });
-typedef _FileChangePayload =
-    ({
-      String conversationId,
-      String path,
-      String changeType,
-      String? diff,
-      String? content,
-    });
+typedef _ChunkPayload = ({
+  String conversationId,
+  String messageId,
+  String chunk,
+});
+typedef _ThinkingPayload = ({
+  String conversationId,
+  String messageId,
+  String content,
+});
+typedef _ToolPayload = ({
+  String conversationId,
+  String messageId,
+  String toolCallId,
+  String tool,
+  Object? args,
+  ConversationToolStatus status,
+  Object? result,
+  String? error,
+  List<ConversationToolTransitionDto> transitions,
+  ConversationToolPermissionRequestDto? permissionRequest,
+});
+typedef _TerminalPayload = ({
+  String conversationId,
+  String output,
+  String? command,
+  String? sessionId,
+});
+typedef _FileChangePayload = ({
+  String conversationId,
+  String path,
+  String changeType,
+  String? diff,
+  String? content,
+});
 typedef _DonePayload = ({String conversationId, String? messageId});
 typedef _StatusPayload = ({
   String conversationId,
@@ -68,6 +73,11 @@ String _resolveConversationSocketUrl(String apiBaseUrl) {
   );
   return resolvedApiUrl.replace(path: namespacePath).toString();
 }
+
+final agentConversationSocketFactoryProvider =
+    Provider<AgentConversationSocketFactory>((ref) {
+      return (url, options) => io.io(url, options);
+    });
 
 Map<String, dynamic> _asMap(Object? value) {
   if (value is Map<String, dynamic>) {
@@ -226,8 +236,7 @@ String? _extractThinkingContent(Map<String, dynamic> metadata) {
 
   final parts = <String>[
     if (_readString(decision['rationale']) case final rationale?) rationale,
-    if (_readString(decision['suggestedContent'])
-        case final suggestedContent?)
+    if (_readString(decision['suggestedContent']) case final suggestedContent?)
       suggestedContent,
   ];
 
@@ -289,12 +298,9 @@ List<ConversationToolCallDto> _normalizeHistoryToolCalls(
         : toolCalls.indexWhere((item) => item.id == toolCallId);
 
     final nextTool = _readString(result.tool) ?? 'unknown_tool';
-    final nextStatus = result.status ??
-        _normalizeToolStatus(
-          null,
-          error: result.error,
-          result: result.result,
-        );
+    final nextStatus =
+        result.status ??
+        _normalizeToolStatus(null, error: result.error, result: result.result);
 
     if (index >= 0) {
       final current = toolCalls[index];
@@ -317,7 +323,9 @@ List<ConversationToolCallDto> _normalizeHistoryToolCalls(
 
     toolCalls.add(
       ConversationToolCallDto(
-        id: toolCallId ?? 'tool-result-${DateTime.now().microsecondsSinceEpoch}',
+        id:
+            toolCallId ??
+            'tool-result-${DateTime.now().microsecondsSinceEpoch}',
         tool: nextTool,
         status: nextStatus,
         result: _unwrapMcpResult(result.result),
@@ -332,15 +340,14 @@ List<ConversationToolCallDto> _normalizeHistoryToolCalls(
   return toolCalls;
 }
 
-ConversationMessageDto _normalizeHistoryMessage(ConversationMessageDto message) {
-  final thinking = _extractThinkingContent(message.metadata);
+ConversationMessageDto _normalizeHistoryMessage(
+  ConversationMessageDto message,
+) {
   final toolCalls = _normalizeHistoryToolCalls(message);
-  final segments = <MessageSegment>[
-    if (thinking != null && thinking.trim().isNotEmpty)
-      MessageSegment.thinking(thinking),
-    if (message.content.trim().isNotEmpty) MessageSegment.text(message.content),
-    for (final toolCall in toolCalls) MessageSegment.toolCall(toolCall.id),
-  ];
+  final segments = _normalizeHistorySegments(message, toolCalls);
+  final thinking =
+      _extractThinkingContent(message.metadata) ??
+      _collectThinkingSegments(segments);
 
   return message.copyWith(
     toolCalls: toolCalls,
@@ -350,7 +357,72 @@ ConversationMessageDto _normalizeHistoryMessage(ConversationMessageDto message) 
   );
 }
 
-({Map<String, dynamic> root, Map<String, dynamic> data, Map<String, dynamic> event})
+List<MessageSegment> _normalizeHistorySegments(
+  ConversationMessageDto message,
+  List<ConversationToolCallDto> toolCalls,
+) {
+  final rawSegments = message.metadata['segments'];
+  if (rawSegments is List) {
+    final segments = <MessageSegment>[];
+    for (final rawSegment in rawSegments) {
+      final segment = _asMap(rawSegment);
+      final type = _readString(segment['type']);
+      if (type == 'text' || type == 'thinking') {
+        final content = _readString(segment['content']);
+        if (content == null || content.isEmpty) {
+          continue;
+        }
+
+        segments.add(
+          type == 'thinking'
+              ? MessageSegment.thinking(content)
+              : MessageSegment.text(content),
+        );
+        continue;
+      }
+
+      if (type == 'tool_call') {
+        final toolCallId =
+            _readString(segment['toolCallId']) ??
+            _readString(segment['tool_call_id']);
+        if (toolCallId != null &&
+            toolCalls.any((toolCall) => toolCall.id == toolCallId)) {
+          segments.add(MessageSegment.toolCall(toolCallId));
+        }
+      }
+    }
+
+    if (segments.isNotEmpty) {
+      return segments;
+    }
+  }
+
+  return <MessageSegment>[
+    if (_extractThinkingContent(message.metadata) case final thinking?
+        when thinking.trim().isNotEmpty)
+      MessageSegment.thinking(thinking),
+    if (message.content.trim().isNotEmpty) MessageSegment.text(message.content),
+    for (final toolCall in toolCalls) MessageSegment.toolCall(toolCall.id),
+  ];
+}
+
+String? _collectThinkingSegments(List<MessageSegment> segments) {
+  final parts = segments
+      .where((segment) => segment.kind == MessageSegmentKind.thinking)
+      .map((segment) => segment.content?.trim() ?? '')
+      .where((content) => content.isNotEmpty)
+      .toList(growable: false);
+  if (parts.isEmpty) {
+    return null;
+  }
+  return parts.join('\n\n');
+}
+
+({
+  Map<String, dynamic> root,
+  Map<String, dynamic> data,
+  Map<String, dynamic> event,
+})
 _unwrapConversationPayload(Object? raw) {
   final root = _asMap(raw);
   final data = _asMap(root['data']);
@@ -427,8 +499,7 @@ _ToolPayload? _normalizeToolPayload(Object? raw) {
     return null;
   }
 
-  final result =
-      payload.root.containsKey('result')
+  final result = payload.root.containsKey('result')
       ? payload.root['result']
       : payload.data.containsKey('result')
       ? payload.data['result']
@@ -464,8 +535,7 @@ _ToolPayload? _normalizeToolPayload(Object? raw) {
         _readString(payload.event['toolName']) ??
         _readString(call['tool']) ??
         'unknown_tool',
-    args:
-        payload.root.containsKey('args')
+    args: payload.root.containsKey('args')
         ? payload.root['args']
         : payload.data.containsKey('args')
         ? payload.data['args']
@@ -540,7 +610,8 @@ _FileChangePayload? _normalizeFileChangePayload(Object? raw) {
       'deleted' => 'deleted',
       _ => 'modified',
     },
-    diff: _readString(payload.root['diff']) ?? _readString(payload.data['diff']),
+    diff:
+        _readString(payload.root['diff']) ?? _readString(payload.data['diff']),
     content:
         _readString(payload.root['content']) ??
         _readString(payload.data['content']),
@@ -566,7 +637,8 @@ _DonePayload _normalizeDonePayload(Object? raw) {
 _StatusPayload? _normalizeStatusPayload(Object? raw) {
   final payload = _unwrapConversationPayload(raw);
   final status =
-      _readString(payload.root['status']) ?? _readString(payload.data['status']);
+      _readString(payload.root['status']) ??
+      _readString(payload.data['status']);
   if (status == null) {
     return null;
   }
@@ -664,8 +736,9 @@ List<ConversationToolCallDto> _upsertToolCall(
 ) {
   final index = toolCalls.indexWhere((item) => item.id == payload.toolCallId);
   final current = index >= 0 ? toolCalls[index] : null;
-  final nextTool =
-      payload.tool != 'unknown_tool' || current == null ? payload.tool : current.tool;
+  final nextTool = payload.tool != 'unknown_tool' || current == null
+      ? payload.tool
+      : current.tool;
 
   final updated = ConversationToolCallDto(
     id: payload.toolCallId,
@@ -764,6 +837,7 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
   final ConversationParams params;
   io.Socket? _socket;
   int _historyRequestVersion = 0;
+  bool _isCleaningUp = false;
 
   @override
   Future<ConversationState> build() async {
@@ -811,11 +885,7 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
       if (!ref.mounted || silent) {
         return;
       }
-      _updateState(
-        (current) => current.copyWith(
-          error: '加载对话历史失败：$error',
-        ),
-      );
+      _updateState((current) => current.copyWith(error: '加载对话历史失败：$error'));
     }
   }
 
@@ -836,7 +906,8 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
       return;
     }
 
-    final socket = io.io(
+    final socketFactory = ref.read(agentConversationSocketFactoryProvider);
+    final socket = socketFactory(
       _resolveConversationSocketUrl(env.apiBaseUrl),
       io.OptionBuilder()
           .setTransports(['websocket'])
@@ -1076,8 +1147,7 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
         return current.copyWith(
           status: ConversationStatus.executing,
           preparationPhase: phase,
-          preparationStartTime:
-              current.preparationStartTime ?? DateTime.now(),
+          preparationStartTime: current.preparationStartTime ?? DateTime.now(),
           sandboxReused: nextSandboxReused,
           clearError: true,
         );
@@ -1105,8 +1175,8 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
 
       // 其他常规状态变更（completed / cancelled / 无 phase 的 running 等）
       // 终态（completed/cancelled）需要清除准备状态
-      final isTerminal = payload.status == 'completed' ||
-          payload.status == 'cancelled';
+      final isTerminal =
+          payload.status == 'completed' || payload.status == 'cancelled';
       return current.copyWith(
         status: _normalizeConversationStatus(payload.status),
         sandboxReused: nextSandboxReused,
@@ -1139,10 +1209,9 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
     );
 
     try {
-      final response = await ref.read(agentApiProvider).sendMessage(
-        params.conversationId,
-        content: trimmed,
-      );
+      final response = await ref
+          .read(agentApiProvider)
+          .sendMessage(params.conversationId, content: trimmed);
       if (!ref.mounted) {
         return;
       }
@@ -1175,7 +1244,9 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
       _socket?.emit('conversation:cancel', {
         'conversationId': params.conversationId,
       });
-      await ref.read(agentApiProvider).cancelConversation(params.conversationId);
+      await ref
+          .read(agentApiProvider)
+          .cancelConversation(params.conversationId);
       if (!ref.mounted) {
         return;
       }
@@ -1191,24 +1262,19 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
       if (!ref.mounted) {
         return;
       }
-      _updateState(
-        (current) => current.copyWith(
-          error: '取消执行失败：$error',
-        ),
-      );
+      _updateState((current) => current.copyWith(error: '取消执行失败：$error'));
     }
   }
 
-  Future<void> resolveToolPermission(
-    String toolCallId,
-    String action,
-  ) async {
+  Future<void> resolveToolPermission(String toolCallId, String action) async {
     try {
-      await ref.read(agentApiProvider).resolveToolPermission(
-        params.conversationId,
-        toolCallId,
-        action: action,
-      );
+      await ref
+          .read(agentApiProvider)
+          .resolveToolPermission(
+            params.conversationId,
+            toolCallId,
+            action: action,
+          );
       if (!ref.mounted) {
         return;
       }
@@ -1226,23 +1292,25 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
       );
 
       _updateState((current) {
-        final messages = current.messages.map((message) {
-          final index = message.toolCalls.indexWhere(
-            (toolCall) => toolCall.id == toolCallId,
-          );
-          if (index < 0) {
-            return message;
-          }
+        final messages = current.messages
+            .map((message) {
+              final index = message.toolCalls.indexWhere(
+                (toolCall) => toolCall.id == toolCallId,
+              );
+              if (index < 0) {
+                return message;
+              }
 
-          final nextToolCalls = [...message.toolCalls];
-          final toolCall = nextToolCalls[index];
-          nextToolCalls[index] = toolCall.copyWith(
-            status: nextStatus,
-            transitions: [...toolCall.transitions, nextTransition],
-            updatedAt: DateTime.now(),
-          );
-          return message.copyWith(toolCalls: nextToolCalls);
-        }).toList(growable: false);
+              final nextToolCalls = [...message.toolCalls];
+              final toolCall = nextToolCalls[index];
+              nextToolCalls[index] = toolCall.copyWith(
+                status: nextStatus,
+                transitions: [...toolCall.transitions, nextTransition],
+                updatedAt: DateTime.now(),
+              );
+              return message.copyWith(toolCalls: nextToolCalls);
+            })
+            .toList(growable: false);
 
         return current.copyWith(messages: messages, clearError: true);
       });
@@ -1250,11 +1318,7 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
       if (!ref.mounted) {
         return;
       }
-      _updateState(
-        (current) => current.copyWith(
-          error: '处理工具权限失败：$error',
-        ),
-      );
+      _updateState((current) => current.copyWith(error: '处理工具权限失败：$error'));
     }
   }
 
@@ -1265,9 +1329,9 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
   Future<void> _refreshWorkspaceTree({bool silent = false}) async {
     _updateState((current) => current.copyWith(isLoadingWorkspace: true));
     try {
-      final tree = await ref.read(agentApiProvider).getWorkspaceTree(
-        params.conversationId,
-      );
+      final tree = await ref
+          .read(agentApiProvider)
+          .getWorkspaceTree(params.conversationId);
       if (!ref.mounted) {
         return;
       }
@@ -1305,10 +1369,9 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
     );
 
     try {
-      final file = await ref.read(agentApiProvider).getWorkspaceFile(
-        params.conversationId,
-        path,
-      );
+      final file = await ref
+          .read(agentApiProvider)
+          .getWorkspaceFile(params.conversationId, path);
       if (!ref.mounted) {
         return;
       }
@@ -1325,10 +1388,8 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
         return;
       }
       _updateState(
-        (current) => current.copyWith(
-          isLoadingWorkspace: false,
-          error: '读取文件失败：$error',
-        ),
+        (current) =>
+            current.copyWith(isLoadingWorkspace: false, error: '读取文件失败：$error'),
       );
     }
   }
@@ -1336,6 +1397,9 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
   void _updateState(
     ConversationState Function(ConversationState current) transform,
   ) {
+    if (_isCleaningUp || !ref.mounted) {
+      return;
+    }
     final current = state.value;
     if (current == null) {
       return;
@@ -1349,11 +1413,14 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
       return;
     }
 
+    _isCleaningUp = true;
+    _socket = null;
+
     socket.emit('conversation:unsubscribe', {
       'conversationId': params.conversationId,
     });
+    socket.clearListeners();
     socket.dispose();
-    _socket = null;
   }
 }
 

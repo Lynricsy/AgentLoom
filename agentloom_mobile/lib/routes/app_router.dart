@@ -14,6 +14,7 @@ import '../features/auth/screens/mfa_enroll_screen.dart';
 import '../features/auth/screens/mfa_verify_screen.dart';
 import '../features/dashboard/screens/dashboard_screen.dart';
 import '../features/execution/screens/execution_monitor_screen.dart';
+import '../features/execution/screens/workflow_agent_viewer_screen.dart';
 import '../features/memory/models/memory_audit_entry.dart';
 import '../features/memory/providers/memory_providers.dart';
 import '../features/memory/screens/memory_audit_detail_screen.dart';
@@ -62,6 +63,7 @@ class AuthRouteNotifier extends ChangeNotifier {
 final goRouterProvider = Provider<GoRouter>((ref) {
   final authRouteNotifier = AuthRouteNotifier(ref);
   ref.onDispose(authRouteNotifier.dispose);
+  GoRouter.optionURLReflectsImperativeAPIs = true;
 
   final router = GoRouter(
     initialLocation: '/dashboard',
@@ -106,6 +108,18 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         builder: (context, state) {
           final executionId = state.pathParameters['executionId']!;
           return ExecutionMonitorScreen(executionId: executionId);
+        },
+      ),
+      GoRoute(
+        path: '/executions/:executionId/steps/:stepId/agent',
+        name: RouteNames.workflowAgentViewer,
+        builder: (context, state) {
+          final executionId = state.pathParameters['executionId']!;
+          final stepId = state.pathParameters['stepId']!;
+          return WorkflowAgentViewerScreen(
+            executionId: executionId,
+            stepId: stepId,
+          );
         },
       ),
       GoRoute(

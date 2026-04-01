@@ -3,6 +3,7 @@ import 'package:agentloom_mobile/config/env.dart';
 import 'package:agentloom_mobile/features/auth/models/auth_tokens.dart';
 import 'package:agentloom_mobile/features/auth/providers/token_storage_provider.dart';
 import 'package:agentloom_mobile/features/execution/screens/execution_monitor_screen.dart';
+import 'package:agentloom_mobile/features/execution/screens/workflow_agent_viewer_screen.dart';
 import 'package:agentloom_mobile/routes/app_router.dart';
 import 'package:agentloom_mobile/routes/route_names.dart';
 import 'package:agentloom_mobile/shared/providers/env_provider.dart';
@@ -154,6 +155,58 @@ void main() {
 
     testWidgets('RouteNames.executionMonitor 常量正确', (tester) async {
       expect(RouteNames.executionMonitor, 'executionMonitor');
+    });
+
+    testWidgets('路由名 workflowAgentViewer 已注册', (tester) async {
+      final container = createTestContainer();
+      addTearDown(container.dispose);
+
+      final router = container.read(goRouterProvider);
+      router.goNamed(
+        RouteNames.workflowAgentViewer,
+        pathParameters: {
+          'executionId': 'test-exec-001',
+          'stepId': 'step-agent-001',
+        },
+      );
+
+      expect(
+        router.routeInformationProvider.value.uri.path,
+        '/executions/test-exec-001/steps/step-agent-001/agent',
+      );
+    });
+
+    testWidgets('通过 pushNamed 导航到 workflow agent viewer', (tester) async {
+      final container = createTestContainer();
+      addTearDown(container.dispose);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const AgentLoomApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final router = container.read(goRouterProvider);
+      router.pushNamed(
+        RouteNames.workflowAgentViewer,
+        pathParameters: {
+          'executionId': 'test-exec-005',
+          'stepId': 'step-agent-005',
+        },
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(WorkflowAgentViewerScreen), findsOneWidget);
+      expect(
+        router.routeInformationProvider.value.uri.path,
+        '/executions/test-exec-005/steps/step-agent-005/agent',
+      );
+    });
+
+    testWidgets('RouteNames.workflowAgentViewer 常量正确', (tester) async {
+      expect(RouteNames.workflowAgentViewer, 'workflowAgentViewer');
     });
   });
 }
