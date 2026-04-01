@@ -111,6 +111,20 @@ function createAsyncIterable<T>(items: readonly T[]): AsyncIterable<T> {
   };
 }
 
+function createFailingAsyncIterable<T>(
+  items: readonly T[],
+  error: unknown,
+): AsyncIterable<T> {
+  return {
+    async *[Symbol.asyncIterator]() {
+      for (const item of items) {
+        yield item;
+      }
+      throw error;
+    },
+  };
+}
+
 type WorkerInternals = {
   loadConversationExecutionContext: ReturnType<typeof vi.fn>;
   prepareRuntimeSession: ReturnType<typeof vi.fn>;
@@ -516,6 +530,95 @@ describe('AgentExecutionWorker', () => {
         'c-1',
         expect.objectContaining({
           errorMessage: 'Agent conversation execution failed',
+        }),
+      );
+    });
+
+    it('运行中 terminated 时会先持久化 partial assistant turn，再以 failed 收口', async () => {
+      mockExecutionService.registerActiveRun.mockImplementation(
+        (_id: string, abort: AbortController) => ({ abort, notify: vi.fn() }),
+      );
+
+      setupLoopMocks(workerInternals, {
+        pendingMessages: [
+          [
+            {
+              id: 'message-1',
+              content: '请继续研究这个项目的记忆系统',
+              createdAt: new Date(),
+            },
+          ],
+        ],
+      });
+
+      const persistSpy = vi.fn().mockResolvedValue({
+        sessionId: 'session-1',
+        lastProcessedMessageId: 'message-1',
+        lastAssistantMessageId: 'assistant-1',
+        lastStopReason: 'end_turn',
+        runningState: 'running',
+      });
+      workerInternals.persistConversationTurn = persistSpy;
+
+      mockRuntime.prompt.mockReturnValueOnce(
+        createFailingAsyncIterable(
+          [
+            { type: 'message_chunk', content: '先整理仓库结构，再回看记忆模块。' },
+            {
+              type: 'tool_call',
+              call: {
+                id: 'tool-1',
+                tool: 'git.clone',
+                args: { repo: 'https://github.com/Dataojitori/nocturne_memory' },
+                status: 'completed',
+                result: { ok: true },
+              },
+            },
+          ],
+          new Error('terminated'),
+        ),
+      );
+
+      await expect(worker.executeAgentLoop('conversation-1', 'tenant-1')).rejects.toThrow(
+        'terminated',
+      );
+
+      expect(persistSpy).toHaveBeenCalledWith(
+        'conversation-1',
+        'tenant-1',
+        expect.any(Object),
+        [
+          expect.objectContaining({
+            id: 'message-1',
+            content: '请继续研究这个项目的记忆系统',
+          }),
+        ],
+        expect.objectContaining({
+          assistantText: '先整理仓库结构，再回看记忆模块。',
+          toolCalls: [
+            expect.objectContaining({
+              id: 'tool-1',
+              tool: 'git.clone',
+              status: 'completed',
+            }),
+          ],
+          segments: [
+            { type: 'text', content: '先整理仓库结构，再回看记忆模块。' },
+            { type: 'tool_call', toolCallId: 'tool-1' },
+          ],
+        }),
+        'session-1',
+        expect.objectContaining({
+          incomplete: true,
+          errorMessage: 'terminated',
+        }),
+      );
+      expect(mockEventBridge.emitExecutionStatusChanged).toHaveBeenCalledWith(
+        'tenant-1',
+        'conversation-1',
+        expect.objectContaining({
+          status: 'failed',
+          errorMessage: 'terminated',
         }),
       );
     });
@@ -1219,6 +1322,75 @@ describe('AgentExecutionWorker', () => {
           status: 'completed',
         }),
       );
+    });
+
+    it('runtime.prompt 中途 terminated 时会把已流出的 partial turn 挂到错误对象上', async () => {
+      const turnWorker = worker as unknown as {
+        runConversationTurn: (
+          runtime: typeof mockRuntime,
+          session: ReturnType<typeof makeSession>,
+          conversationId: string,
+          tenantId: string,
+          pendingMessages: Array<{
+            id: string;
+            content: string;
+            createdAt: Date;
+          }>,
+          hasPriorTurns: boolean,
+        ) => Promise<{
+          assistantText: string;
+          toolCalls: Array<{ id: string; tool: string; status: string }>;
+          segments: Array<
+            | { type: 'text'; content: string }
+            | { type: 'tool_call'; toolCallId: string }
+          >;
+        }>;
+      };
+
+      mockRuntime.prompt.mockReturnValueOnce(
+        createFailingAsyncIterable(
+          [
+            { type: 'message_chunk', content: '已经抓到第一批线索。' },
+            {
+              type: 'tool_call',
+              call: {
+                id: 'tool-1',
+                tool: 'git.clone',
+                args: { repo: 'https://github.com/Dataojitori/nocturne_memory' },
+                status: 'in_progress',
+              },
+            },
+          ],
+          new Error('terminated'),
+        ),
+      );
+
+      await expect(
+        turnWorker.runConversationTurn(
+          mockRuntime as never,
+          makeSession(),
+          'conversation-1',
+          'tenant-1',
+          [{ id: 'message-1', content: '继续分析', createdAt: new Date() }],
+          true,
+        ),
+      ).rejects.toMatchObject({
+        message: 'terminated',
+        turnResult: {
+          assistantText: '已经抓到第一批线索。',
+          toolCalls: [
+            expect.objectContaining({
+              id: 'tool-1',
+              tool: 'git.clone',
+              status: 'in_progress',
+            }),
+          ],
+          segments: [
+            { type: 'text', content: '已经抓到第一批线索。' },
+            { type: 'tool_call', toolCallId: 'tool-1' },
+          ],
+        },
+      });
     });
   });
 

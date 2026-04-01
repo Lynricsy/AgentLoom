@@ -299,6 +299,96 @@ describe("agentConversationStore", () => {
     expect(useAgentConversationStore.getState().messages).toEqual([]);
   });
 
+  it("历史回拉晚到时不会覆盖当前 live tail", async () => {
+    const deferred = createDeferred<ReturnType<typeof createHistoryResponse>>();
+    const jsonMock = vi.fn().mockImplementation(() => deferred.promise);
+
+    getMock.mockReturnValue({
+      json: jsonMock,
+    });
+
+    useAgentConversationStore.getState().actions.connect({
+      conversationId: "conv-1",
+      agentId: "agent-1",
+      agentName: "Agent 1",
+      authToken: "token-1",
+    });
+
+    emitSocketEvent("connect");
+
+    useAgentConversationStore.getState().actions.sendMessage("第一轮问题");
+    emitSocketEvent("conversation.agent.message_chunk", {
+      conversationId: "conv-1",
+      messageId: "stream-1",
+      chunk: "第一轮结论",
+    });
+    emitSocketEvent("conversation.agent.done", {
+      conversationId: "conv-1",
+      messageId: "stream-1",
+    });
+
+    await vi.waitFor(() => {
+      expect(jsonMock).toHaveBeenCalledTimes(1);
+    });
+
+    useAgentConversationStore.getState().actions.sendMessage("第二轮补充");
+    emitSocketEvent("conversation.agent.message_chunk", {
+      conversationId: "conv-1",
+      messageId: "stream-2",
+      chunk: "第二轮还在分析",
+    });
+
+    deferred.resolve(
+      createHistoryResponse([
+        {
+          id: "user-1",
+          role: "user",
+          content: "第一轮问题",
+          metadata: {},
+          toolCalls: null,
+          createdAt: "2026-04-01T05:44:09.000Z",
+        },
+        {
+          id: "assistant-1",
+          role: "assistant",
+          content: "第一轮结论",
+          metadata: {
+            segments: [{ type: "text", content: "第一轮结论" }],
+          },
+          toolCalls: null,
+          createdAt: "2026-04-01T05:44:40.000Z",
+        },
+      ]),
+    );
+
+    await vi.waitFor(() => {
+      expect(useAgentConversationStore.getState().messages).toEqual([
+        expect.objectContaining({
+          id: "user-1",
+          role: "user",
+          content: "第一轮问题",
+        }),
+        expect.objectContaining({
+          id: "assistant-1",
+          role: "assistant",
+          content: "第一轮结论",
+          isStreaming: false,
+        }),
+        expect.objectContaining({
+          role: "user",
+          content: "第二轮补充",
+        }),
+        expect.objectContaining({
+          id: "stream-2",
+          role: "assistant",
+          content: "第二轮还在分析",
+          segments: [{ type: "text", content: "第二轮还在分析" }],
+          isStreaming: true,
+        }),
+      ]);
+    });
+  });
+
   it("切换 conversation 时会清空上一条会话残留的运行上下文", () => {
     useAgentConversationStore.getState().actions.connect({
       conversationId: "conv-1",

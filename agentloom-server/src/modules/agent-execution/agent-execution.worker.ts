@@ -148,6 +148,26 @@ type ConversationTurnResult = {
   segments: ConversationMessageSegmentRecord[];
 };
 
+class ConversationTurnFailedError extends Error {
+  constructor(
+    cause: unknown,
+    readonly turnResult: ConversationTurnResult,
+  ) {
+    super(
+      cause instanceof Error
+        ? cause.message
+        : 'Agent conversation turn failed',
+    );
+    this.name = 'ConversationTurnFailedError';
+    if (cause instanceof Error && cause.stack) {
+      this.stack = cause.stack;
+    }
+    if ('cause' in this) {
+      this.cause = cause;
+    }
+  }
+}
+
 @Injectable()
 @Processor(AGENT_CONVERSATION_EXECUTION_QUEUE)
 export class AgentExecutionWorker extends WorkerHost {
@@ -222,6 +242,7 @@ export class AgentExecutionWorker extends WorkerHost {
     let conversationStatus: 'active' | 'paused' | 'ended' | 'failed' = 'active';
     let memorySessionIds: string[] = [];
     let currentPhase: PreparationPhase = 'queued';
+    let currentPendingMessages: PendingMessage[] = [];
     const subAgentTracker: SubAgentExecutionTracker = {
       abortControllers: new Map(),
     };
@@ -324,13 +345,13 @@ export class AgentExecutionWorker extends WorkerHost {
       });
 
       while (!abort.signal.aborted) {
-        const pendingMessages = await this.loadPendingUserMessages(
+        currentPendingMessages = await this.loadPendingUserMessages(
           conversationId,
           tenantId,
           executionMetadata.lastProcessedMessageId,
         );
 
-        if (pendingMessages.length === 0) {
+        if (currentPendingMessages.length === 0) {
           const waitResult = await this.executionService.waitForNotification(
             conversationId,
             abort.signal,
@@ -353,7 +374,7 @@ export class AgentExecutionWorker extends WorkerHost {
             ? await this.loadConversationHistoryMessages(
                 conversationId,
                 tenantId,
-                pendingMessages[0]?.id,
+                currentPendingMessages[0]?.id,
               )
             : [];
 
@@ -362,7 +383,7 @@ export class AgentExecutionWorker extends WorkerHost {
           session,
           conversationId,
           tenantId,
-          pendingMessages,
+          currentPendingMessages,
           Boolean(executionMetadata.lastProcessedMessageId),
           historyMessages,
         );
@@ -373,7 +394,7 @@ export class AgentExecutionWorker extends WorkerHost {
           conversationId,
           tenantId,
           conversationMetadata,
-          pendingMessages,
+          currentPendingMessages,
           turnResult,
           session.id,
         );
@@ -398,9 +419,50 @@ export class AgentExecutionWorker extends WorkerHost {
           terminalStatus = 'cancelled';
           break;
         }
+
+        currentPendingMessages = [];
       }
     } catch (error) {
       terminalStatus = abort.signal.aborted ? 'cancelled' : 'failed';
+      const errorMessage =
+        error instanceof Error
+          ? error.message
+          : 'Agent conversation execution failed';
+
+      if (
+        error instanceof ConversationTurnFailedError &&
+        session &&
+        currentPendingMessages.length > 0 &&
+        this.turnResultHasPersistableOutput(error.turnResult)
+      ) {
+        try {
+          executionMetadata = await this.persistConversationTurn(
+            conversationId,
+            tenantId,
+            conversationMetadata,
+            currentPendingMessages,
+            error.turnResult,
+            session.id,
+            {
+              incomplete: true,
+              errorMessage,
+            },
+          );
+          conversationMetadata = this.writeExecutionMetadata(
+            conversationMetadata,
+            executionMetadata,
+          );
+          currentPendingMessages = [];
+        } catch (persistError) {
+          this.logger.warn(
+            `Failed to persist partial assistant turn for ${conversationId}: ${
+              persistError instanceof Error
+                ? persistError.message
+                : String(persistError)
+            }`,
+          );
+        }
+      }
 
       await this.safeUpdateExecutionMetadata(tenantId, conversationId, {
         ...executionMetadata,
@@ -413,11 +475,6 @@ export class AgentExecutionWorker extends WorkerHost {
           executionMetadata.memorySessionIds ?? memorySessionIds,
         );
       }
-
-      const errorMessage =
-        error instanceof Error
-          ? error.message
-          : 'Agent conversation execution failed';
 
       this.eventBridge.emitExecutionStatusChanged(tenantId, conversationId, {
         executionId: conversationId,
@@ -816,72 +873,85 @@ export class AgentExecutionWorker extends WorkerHost {
     );
 
     while (true) {
-      for await (const event of runtime.prompt(session.id, promptBlocks)) {
-        if (event.type === 'message_chunk') {
-          assistantText += event.content;
-          segments = appendTextConversationMessageSegment(
-            segments,
-            event.content,
-          );
-          this.eventBridge.emitOutputChunk(tenantId, conversationId, {
+      try {
+        for await (const event of runtime.prompt(session.id, promptBlocks)) {
+          if (event.type === 'message_chunk') {
+            assistantText += event.content;
+            segments = appendTextConversationMessageSegment(
+              segments,
+              event.content,
+            );
+            this.eventBridge.emitOutputChunk(tenantId, conversationId, {
+              stepId: conversationId,
+              chunk: event.content,
+              index: chunkIndex,
+              executionType: 'conversation',
+            });
+            chunkIndex += 1;
+            continue;
+          }
+
+          const thinkingContent = this.extractThinkingEventContent(event);
+          if (thinkingContent) {
+            segments = appendThinkingConversationMessageSegment(
+              segments,
+              thinkingContent,
+            );
+          }
+
+          this.eventBridge.emitStepAgentEvent(tenantId, conversationId, {
             stepId: conversationId,
-            chunk: event.content,
-            index: chunkIndex,
             executionType: 'conversation',
+            event,
           });
-          chunkIndex += 1;
-          continue;
-        }
 
-        const thinkingContent = this.extractThinkingEventContent(event);
-        if (thinkingContent) {
-          segments = appendThinkingConversationMessageSegment(
+          if (event.type === 'tool_call') {
+            const nextCall = this.mergeToolCallEvent(
+              toolCalls.get(event.call.id),
+              event.call,
+            );
+            toolCalls.set(nextCall.id, nextCall);
+            segments = ensureToolCallConversationMessageSegment(
+              segments,
+              nextCall.id,
+            );
+            this.eventBridge.emitToolCallStatus(tenantId, conversationId, {
+              stepId: conversationId,
+              nodeId: conversationId,
+              toolCallId: nextCall.id,
+              tool: nextCall.tool,
+              executionType: 'conversation',
+              status: nextCall.status,
+              args: nextCall.args,
+              result: nextCall.result,
+              error: nextCall.error,
+              transitions: nextCall.transitions
+                ? [...nextCall.transitions]
+                : undefined,
+            });
+            continue;
+          }
+
+          if (event.type === 'decision') {
+            decision = event;
+            continue;
+          }
+
+          if (event.type === 'done') {
+            lastStopReason = event.stopReason;
+          }
+        }
+      } catch (error) {
+        throw new ConversationTurnFailedError(
+          error,
+          this.buildConversationTurnResult(
+            assistantText,
+            decision,
+            lastStopReason,
+            toolCalls,
             segments,
-            thinkingContent,
-          );
-        }
-
-        this.eventBridge.emitStepAgentEvent(tenantId, conversationId, {
-          stepId: conversationId,
-          executionType: 'conversation',
-          event,
-        });
-
-        if (event.type === 'tool_call') {
-          const nextCall = this.mergeToolCallEvent(
-            toolCalls.get(event.call.id),
-            event.call,
-          );
-          toolCalls.set(nextCall.id, nextCall);
-          segments = ensureToolCallConversationMessageSegment(
-            segments,
-            nextCall.id,
-          );
-          this.eventBridge.emitToolCallStatus(tenantId, conversationId, {
-            stepId: conversationId,
-            nodeId: conversationId,
-            toolCallId: nextCall.id,
-            tool: nextCall.tool,
-            executionType: 'conversation',
-            status: nextCall.status,
-            args: nextCall.args,
-            result: nextCall.result,
-            error: nextCall.error,
-            transitions: nextCall.transitions
-              ? [...nextCall.transitions]
-              : undefined,
-          });
-          continue;
-        }
-
-        if (event.type === 'decision') {
-          decision = event;
-          continue;
-        }
-
-        if (event.type === 'done') {
-          lastStopReason = event.stopReason;
-        }
+          ),
+        );
       }
 
       if (lastStopReason !== 'tool_use') {
@@ -891,6 +961,22 @@ export class AgentExecutionWorker extends WorkerHost {
       promptBlocks = [];
     }
 
+    return this.buildConversationTurnResult(
+      assistantText,
+      decision,
+      lastStopReason,
+      toolCalls,
+      segments,
+    );
+  }
+
+  private buildConversationTurnResult(
+    assistantText: string,
+    decision: DecisionEvent | undefined,
+    stopReason: StopReason,
+    toolCalls: Map<string, ToolCallEvent>,
+    segments: ConversationMessageSegmentRecord[],
+  ): ConversationTurnResult {
     const toolCallList = [...toolCalls.values()];
     const toolResults = toolCallList
       .filter((call) => call.result !== undefined || call.error !== undefined)
@@ -905,11 +991,23 @@ export class AgentExecutionWorker extends WorkerHost {
     return {
       assistantText,
       decision,
-      stopReason: lastStopReason,
+      stopReason,
       toolCalls: toolCallList,
       toolResults,
       segments,
     };
+  }
+
+  private turnResultHasPersistableOutput(
+    turnResult: ConversationTurnResult,
+  ): boolean {
+    return (
+      turnResult.assistantText.length > 0 ||
+      turnResult.toolCalls.length > 0 ||
+      turnResult.toolResults.length > 0 ||
+      turnResult.segments.length > 0 ||
+      Boolean(turnResult.decision)
+    );
   }
 
   private mergeToolCallEvent(
@@ -989,6 +1087,10 @@ export class AgentExecutionWorker extends WorkerHost {
     pendingMessages: PendingMessage[],
     turnResult: ConversationTurnResult,
     sessionId: string,
+    options?: {
+      incomplete?: boolean;
+      errorMessage?: string;
+    },
   ): Promise<ConversationExecutionMetadata> {
     return runInTenantTransaction(this.db, tenantId, async (dbClient) => {
       let lastAssistantMessageId: string | undefined;
@@ -1033,6 +1135,10 @@ export class AgentExecutionWorker extends WorkerHost {
                 ? { segments: turnResult.segments }
                 : {}),
               ...(isEmptyTurn ? { emptyTurn: true } : {}),
+              ...(options?.incomplete ? { incomplete: true } : {}),
+              ...(options?.errorMessage
+                ? { errorMessage: options.errorMessage }
+                : {}),
             },
           })
           .returning({ id: agentMessages.id });

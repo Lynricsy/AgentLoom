@@ -385,6 +385,57 @@ function normalizeConversationHistoryMessage(
   };
 }
 
+function projectComparableMessage(message: ConversationMessage) {
+  return {
+    role: message.role,
+    content: message.content,
+    thinking: message.thinking ?? null,
+    toolCalls: message.toolCalls.map((toolCall) => ({
+      id: toolCall.id,
+      tool: toolCall.tool,
+      status: toolCall.status,
+      args: toolCall.args ?? null,
+      result: toolCall.result ?? null,
+      error: toolCall.error ?? null,
+    })),
+    segments: message.segments.map((segment) =>
+      segment.type === "tool_call"
+        ? { type: "tool_call", toolCallId: segment.toolCallId }
+        : { type: segment.type, content: segment.content },
+    ),
+  };
+}
+
+function areMessagesEquivalent(
+  current: ConversationMessage,
+  canonical: ConversationMessage,
+): boolean {
+  return (
+    JSON.stringify(projectComparableMessage(current)) ===
+    JSON.stringify(projectComparableMessage(canonical))
+  );
+}
+
+function mergeHistoryWithLiveTail(
+  currentMessages: ConversationMessage[],
+  canonicalMessages: ConversationMessage[],
+): ConversationMessage[] {
+  if (currentMessages.length < canonicalMessages.length) {
+    return canonicalMessages;
+  }
+
+  const isCanonicalPrefix = canonicalMessages.every((message, index) => {
+    const current = currentMessages[index];
+    return current ? areMessagesEquivalent(current, message) : false;
+  });
+
+  if (!isCanonicalPrefix) {
+    return canonicalMessages;
+  }
+
+  return [...canonicalMessages, ...currentMessages.slice(canonicalMessages.length)];
+}
+
 function normalizeHistorySegments(
   metadata: ConversationMessageMetadata | undefined,
   content: string,
@@ -1523,7 +1574,10 @@ export const useAgentConversationStore = create<
                   return;
                 }
 
-                s.messages = normalizedMessages;
+                s.messages = mergeHistoryWithLiveTail(
+                  s.messages,
+                  normalizedMessages,
+                );
               });
             } catch (error) {
               console.error(

@@ -37,12 +37,16 @@
   - 不允许像普通 Agent 对话页一样继续发送新消息。
 - workspace 面板必须使用 execution step 作用域 API，而不是 conversation API。
 - workspace 刷新后，如果当前选中文件已不存在，必须清空选中态和旧预览，不能继续显示 stale 内容。
+- standalone Agent 的 `loadHistory()` 不能无条件整包替换当前 `messages`。
+  - 如果 history 响应只是当前消息流的 canonical 前缀，必须保留尚未落库的 live tail。
+  - 否则上一轮 `done` 触发的迟到 history 响应，会把下一轮已在 streaming 的 user / assistant 消息覆盖掉。
 
 ### 4. Validation & Error Matrix
 
 | 条件 | 预期行为 | 断言点 |
 |------|----------|--------|
 | step 有 `segments` | viewer 按真实顺序渲染文本/思考/工具 | `workflowAgentViewer.test.ts` |
+| standalone agent 的 history 晚于下一轮 live 流返回 | store 保留当前 live tail，不得覆盖新一轮消息 | `agent-conversation.store.test.ts` |
 | step 无 `segments`，但有 `partialContent + toolCalls` | viewer 退化成基础 fallback，不抛错 | `workflowAgentViewer.test.ts` |
 | 用户快速切换文件或刷新 workspace | 旧请求不得覆盖新文件内容 | `WorkflowAgentViewer.test.tsx` |
 | 运行中 `fileChanges` 增加 | viewer 触发 workspace 刷新 | `WorkflowAgentViewer.test.tsx` |
@@ -56,6 +60,7 @@
 ### 6. Tests Required
 - `agentloom-studio/src/features/agent-conversation/stores/agent-conversation.store.test.ts`
   - 断言 standalone agent history 使用 stored segments。
+  - 断言 history 晚到时不会覆盖当前 live tail。
 - `agentloom-studio/src/features/execution/lib/workflowAgentViewer.test.ts`
   - 断言 ordered segments、live output merge、tool/file/terminal normalization。
 - `agentloom-studio/src/features/execution/components/WorkflowAgentViewer.test.tsx`

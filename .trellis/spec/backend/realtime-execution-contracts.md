@@ -43,6 +43,9 @@
   - `message_chunk` 追加到 `text` segment。
   - `plan` / `decision` 追加到 `thinking` segment。
   - `tool_call` 只按 `toolCallId` 插入一次 `tool_call` segment。
+- 如果 standalone Agent 的单轮 prompt 在运行中已产出 `message_chunk` / `tool_call`，但最终以 runtime error 失败（例如 sandbox 返回 `terminated`）：
+  - worker 仍必须把当前轮已积累的 `assistantText`、`toolCalls`、`segments` 作为 partial turn 落库。
+  - 该 assistant message 的 `metadata` 需要带 `incomplete=true`，并保留 `errorMessage`，避免刷新或回拉 history 后整轮消息蒸发。
 - workflow-agent 运行中必须把以下字段持续写入 `execution_steps.checkpointData`：
   - `partialContent`
   - `segments`
@@ -66,6 +69,7 @@
 | 条件 | 预期行为 | 断言点 |
 |------|----------|--------|
 | `segments` 已持久化 | viewer 必须按 `text/thinking/tool_call` 的真实顺序恢复历史 | `agent-execution.worker.spec.ts` / `workflow-agent-adapter.spec.ts` |
+| conversation turn 运行中已产出 partial output，但最终 runtime error 失败 | worker 仍需持久化 partial assistant turn，刷新后不能丢失 | `agent-execution.worker.spec.ts` |
 | `segments` 缺失，但 `partialContent + toolCalls` 存在 | 允许 fallback 恢复基础内容，但会丢交错顺序；这是临时兼容，不是目标形态 | `workflowAgentViewer.test.ts` / `workflow_agent_runtime_test.dart` |
 | workflow-agent 冷开时 step 仍在运行 | snapshot 后必须能补到 active step buffered live events | `execution.gateway.spec.ts` |
 | `file_change` 事件只带 `conversationId` | 不得推送到 `/execution` namespace | `event-bridge.service.spec.ts` |
