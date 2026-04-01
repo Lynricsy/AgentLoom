@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   cancelExecution,
   getExecution,
+  getExecutionStepWorkspaceFile,
+  getExecutionStepWorkspaceTree,
   resolveIntervention,
   resolveToolPermission,
   runWorkflow,
@@ -149,6 +151,24 @@ describe('executionApi', () => {
             action: 'approve',
           },
         },
+      )
+    })
+  })
+
+  describe('workspace', () => {
+    it('发送 GET 请求到 step workspace tree 路径', async () => {
+      await getExecutionStepWorkspaceTree('exec-001', 'step-001')
+
+      expect(mocks.getMock).toHaveBeenCalledWith(
+        'executions/exec-001/steps/step-001/workspace/tree',
+      )
+    })
+
+    it('发送 GET 请求到 step workspace file 路径并保留目录分隔符', async () => {
+      await getExecutionStepWorkspaceFile('exec-001', 'step-001', 'src/main.ts')
+
+      expect(mocks.getMock).toHaveBeenCalledWith(
+        'executions/exec-001/steps/step-001/workspace/files/src/main.ts',
       )
     })
   })

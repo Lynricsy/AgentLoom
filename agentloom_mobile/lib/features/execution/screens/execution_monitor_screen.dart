@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../models/execution_state.dart';
 import '../models/execution_status.dart';
+import '../models/execution_runtime.dart';
 import '../providers/execution_monitor_provider.dart';
 import '../widgets/execution_alert_banner.dart';
 import '../widgets/execution_status_header.dart';
-import '../widgets/step_timeline.dart';
+import '../widgets/execution_waterfall.dart';
+import '../../../routes/route_names.dart';
 
 /// 执行监控主屏幕
 ///
@@ -32,11 +35,14 @@ class _ExecutionMonitorScreenState
 
     return Scaffold(
       appBar: AppBar(title: const Text('Execution')),
-      body: _buildBody(monitorAsync),
+      body: _buildBody(context, monitorAsync),
     );
   }
 
-  Widget _buildBody(AsyncValue<ExecutionMonitorState> monitorAsync) {
+  Widget _buildBody(
+    BuildContext context,
+    AsyncValue<ExecutionMonitorState> monitorAsync,
+  ) {
     // Riverpod 3.x error guard: AsyncLoading 可能携带 error
     if (monitorAsync.hasError && !monitorAsync.hasValue) {
       return _buildErrorView(monitorAsync.error.toString());
@@ -48,12 +54,20 @@ class _ExecutionMonitorScreenState
       data: (state) => switch (state) {
         ExecutionMonitorLoading() => _buildLoadingView(),
         ExecutionMonitorError(:final message) => _buildErrorView(message),
-        ExecutionMonitorDisconnected(:final lastSnapshot) =>
-          _buildDisconnectedView(lastSnapshot),
-        ExecutionMonitorConnected(:final snapshot, :final connectionMode) =>
-          _buildConnectedView(snapshot, connectionMode),
-        ExecutionMonitorPolling(:final snapshot, :final connectionMode) =>
-          _buildConnectedView(snapshot, connectionMode),
+        ExecutionMonitorDisconnected(:final lastSnapshot, :final runtime) =>
+          _buildDisconnectedView(context, lastSnapshot, runtime),
+        ExecutionMonitorConnected(
+          :final snapshot,
+          :final connectionMode,
+          :final runtime,
+        ) =>
+          _buildConnectedView(context, snapshot, connectionMode, runtime),
+        ExecutionMonitorPolling(
+          :final snapshot,
+          :final connectionMode,
+          :final runtime,
+        ) =>
+          _buildConnectedView(context, snapshot, connectionMode, runtime),
       },
     );
   }
@@ -93,7 +107,11 @@ class _ExecutionMonitorScreenState
     );
   }
 
-  Widget _buildDisconnectedView(ExecutionStateSnapshot? lastSnapshot) {
+  Widget _buildDisconnectedView(
+    BuildContext context,
+    ExecutionStateSnapshot? lastSnapshot,
+    ExecutionMonitorRuntimeData runtime,
+  ) {
     if (lastSnapshot == null) {
       return _buildErrorView('Execution ended');
     }
@@ -134,15 +152,29 @@ class _ExecutionMonitorScreenState
             connectionMode: ConnectionMode.disconnected,
           ),
           ExecutionAlertBanner(snapshot: lastSnapshot),
-          StepTimeline(steps: lastSnapshot.steps),
+          ExecutionWaterfall(
+            snapshot: lastSnapshot,
+            runtime: runtime,
+            onOpenAgentStep: (step) {
+              context.pushNamed(
+                RouteNames.workflowAgentViewer,
+                pathParameters: {
+                  'executionId': widget.executionId,
+                  'stepId': step.stepId,
+                },
+              );
+            },
+          ),
         ],
       ),
     );
   }
 
   Widget _buildConnectedView(
+    BuildContext context,
     ExecutionStateSnapshot snapshot,
     ConnectionMode connectionMode,
+    ExecutionMonitorRuntimeData runtime,
   ) {
     return SingleChildScrollView(
       child: Column(
@@ -153,7 +185,19 @@ class _ExecutionMonitorScreenState
             connectionMode: connectionMode,
           ),
           ExecutionAlertBanner(snapshot: snapshot),
-          StepTimeline(steps: snapshot.steps),
+          ExecutionWaterfall(
+            snapshot: snapshot,
+            runtime: runtime,
+            onOpenAgentStep: (step) {
+              context.pushNamed(
+                RouteNames.workflowAgentViewer,
+                pathParameters: {
+                  'executionId': widget.executionId,
+                  'stepId': step.stepId,
+                },
+              );
+            },
+          ),
         ],
       ),
     );

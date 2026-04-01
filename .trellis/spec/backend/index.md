@@ -21,6 +21,7 @@ Guidelines for **agentloom-server** — a NestJS v11 + Fastify v5 backend with D
 | [Database Guidelines](./database-guidelines.md) | Drizzle schema, RLS policies, queries, transactions | Done |
 | [API Guidelines](./api-guidelines.md) | Controllers, guards, DTOs, response format, Swagger | Done |
 | [Error Handling](./error-handling.md) | DomainException hierarchy, filters, RFC 7807 | Done |
+| [Execution Realtime Contracts](./realtime-execution-contracts.md) | Agent ordered segments, workflow-agent realtime viewer, persistent sandbox rebinding | Done |
 | [Queue Guidelines](./queue-guidelines.md) | BullMQ workers, schedulers, job data typing | Done |
 | [Testing Guidelines](./testing-guidelines.md) | Vitest, vi.hoisted, Drizzle mocking, Testcontainers E2E | Done |
 

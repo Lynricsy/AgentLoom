@@ -159,6 +159,39 @@ void main() {
           ),
         ).called(1);
       });
+
+      test('parses camelCase execution payload returned by live API', () async {
+        when(
+          () => mockDio.get(
+            any(),
+            queryParameters: any(named: 'queryParameters'),
+          ),
+        ).thenAnswer(
+          (_) async => okResponse({
+            'data': [
+              {
+                'id': 'exec-1',
+                'workflowId': 'wf-1',
+                'workflowDefinitionId': 'wf-1',
+                'status': 'completed',
+                'triggerType': 'manual',
+                'totalSteps': 3,
+                'completedSteps': 3,
+                'createdAt': '2026-01-01T10:00:00.000Z',
+                'updatedAt': '2026-01-01T10:05:00.000Z',
+              },
+            ],
+            'meta': {'total': 1, 'page': 1, 'page_size': 5, 'total_pages': 1},
+          }),
+        );
+
+        final result = await api.listExecutions('wf-1');
+
+        expect(result.data, hasLength(1));
+        expect(result.data.first.workflowId, 'wf-1');
+        expect(result.data.first.triggerType, 'manual');
+        expect(result.data.first.createdAt, '2026-01-01T10:00:00.000Z');
+      });
     });
 
     group('runWorkflow', () {

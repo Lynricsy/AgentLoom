@@ -9,6 +9,7 @@ import { CheckpointService } from '../checkpoint.service';
 import { EXECUTION_QUEUE } from '../execution.constants';
 import { InterventionPermissionDeniedException } from '../execution.exceptions';
 import { SandboxAgentAdapter } from '../../agent/sandbox-agent.adapter';
+import { WorkspaceIntegrationService } from '../../agent-execution/workspace-integration.service';
 
 const TENANT_ID = '019391d4-a000-7000-0000-000000000001';
 const USER_ID = '019391d4-b000-7000-0000-000000000002';
@@ -66,6 +67,14 @@ const mockSandboxAgentAdapter: Record<string, ReturnType<typeof vi.fn>> = {
   ptyWrite: vi.fn(),
 };
 
+const mockWorkspaceIntegrationService: Record<
+  string,
+  ReturnType<typeof vi.fn>
+> = {
+  getExecutionStepFileTree: vi.fn(),
+  getExecutionStepFileContent: vi.fn(),
+};
+
 function createMockReply() {
   return {
     code: vi.fn().mockReturnThis(),
@@ -89,6 +98,10 @@ describe('ExecutionController', () => {
           useValue: mockExecutionQueue,
         },
         { provide: SandboxAgentAdapter, useValue: mockSandboxAgentAdapter },
+        {
+          provide: WorkspaceIntegrationService,
+          useValue: mockWorkspaceIntegrationService,
+        },
       ],
     }).compile();
 
@@ -266,6 +279,48 @@ describe('ExecutionController', () => {
         executionId: EXECUTION_ID,
         tenantId: TENANT_ID,
       });
+    });
+  });
+
+  describe('workflow agent workspace', () => {
+    it('应返回指定 step 的工作区文件树', async () => {
+      const expected = [{ name: 'src', type: 'directory', path: 'src' }];
+      mockWorkspaceIntegrationService.getExecutionStepFileTree.mockResolvedValue(
+        expected,
+      );
+
+      await expect(
+        controller.getStepWorkspaceTree(EXECUTION_ID, STEP_ID, TENANT_ID),
+      ).resolves.toEqual(expected);
+
+      expect(
+        mockWorkspaceIntegrationService.getExecutionStepFileTree,
+      ).toHaveBeenCalledWith(EXECUTION_ID, STEP_ID, TENANT_ID);
+    });
+
+    it('应返回指定 step 的工作区文件内容', async () => {
+      const expected = {
+        path: 'src/main.ts',
+        content: 'console.log("hi")',
+        size: 17,
+        encoding: 'utf-8',
+      };
+      mockWorkspaceIntegrationService.getExecutionStepFileContent.mockResolvedValue(
+        expected,
+      );
+
+      await expect(
+        controller.getStepWorkspaceFile(
+          EXECUTION_ID,
+          STEP_ID,
+          'src/main.ts',
+          TENANT_ID,
+        ),
+      ).resolves.toEqual(expected);
+
+      expect(
+        mockWorkspaceIntegrationService.getExecutionStepFileContent,
+      ).toHaveBeenCalledWith(EXECUTION_ID, STEP_ID, TENANT_ID, 'src/main.ts');
     });
   });
 

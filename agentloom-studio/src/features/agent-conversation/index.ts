@@ -26,6 +26,7 @@ export {
 export type {
   ConversationMessage,
   ConversationStatus,
+  MessageSegment,
   MessageRole,
   ToolCall,
   ToolCallStatus,

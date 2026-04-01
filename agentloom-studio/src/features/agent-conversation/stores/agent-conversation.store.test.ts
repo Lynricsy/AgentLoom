@@ -138,8 +138,14 @@ describe("agentConversationStore", () => {
         {
           id: "assistant-1",
           role: "assistant",
-          content: "KB-ALPHA-20260329-FOX",
-          metadata: {},
+          content: "先整理线索\n\nKB-ALPHA-20260329-FOX",
+          metadata: {
+            segments: [
+              { type: "text", content: "先整理线索" },
+              { type: "tool_call", toolCallId: "tool-1" },
+              { type: "text", content: "KB-ALPHA-20260329-FOX" },
+            ],
+          },
           toolCalls: [
             {
               id: "tool-1",
@@ -234,13 +240,18 @@ describe("agentConversationStore", () => {
         expect.objectContaining({
           id: "assistant-1",
           role: "assistant",
-          content: "KB-ALPHA-20260329-FOX",
+          content: "先整理线索\n\nKB-ALPHA-20260329-FOX",
           toolCalls: [
             expect.objectContaining({
               id: "tool-1",
               tool: "search_knowledge",
               status: "completed",
             }),
+          ],
+          segments: [
+            { type: "text", content: "先整理线索" },
+            { type: "tool_call", toolCallId: "tool-1" },
+            { type: "text", content: "KB-ALPHA-20260329-FOX" },
           ],
           isStreaming: false,
         }),
@@ -286,5 +297,89 @@ describe("agentConversationStore", () => {
 
     expect(useAgentConversationStore.getState().conversationId).toBeNull();
     expect(useAgentConversationStore.getState().messages).toEqual([]);
+  });
+
+  it("切换 conversation 时会清空上一条会话残留的运行上下文", () => {
+    useAgentConversationStore.getState().actions.connect({
+      conversationId: "conv-1",
+      agentId: "agent-1",
+      agentName: "Agent 1",
+      authToken: "token-1",
+    });
+
+    useAgentConversationStore
+      .getState()
+      .actions.sendMessage("为旧会话写入一条用户消息");
+
+    emitSocketEvent("conversation.sandbox.terminal_output", {
+      conversationId: "conv-1",
+      output: "old terminal output",
+      command: "pwd",
+      sessionId: "pty-1",
+    });
+
+    emitSocketEvent("conversation.sandbox.file_change", {
+      conversationId: "conv-1",
+      path: "workspace/old.txt",
+      changeType: "created",
+      content: "old content",
+    });
+
+    const currentState = useAgentConversationStore.getState();
+    expect(currentState.conversationId).toBe("conv-1");
+    expect(currentState.messages).toEqual([
+      expect.objectContaining({
+        role: "user",
+        content: "为旧会话写入一条用户消息",
+      }),
+    ]);
+    expect(currentState.terminalEntries).toEqual([
+      expect.objectContaining({
+        output: "old terminal output",
+        command: "pwd",
+      }),
+    ]);
+    expect(currentState.fileChanges).toEqual([
+      expect.objectContaining({
+        path: "workspace/old.txt",
+        changeType: "created",
+      }),
+    ]);
+    expect(currentState.fileTree).toEqual([
+      expect.objectContaining({
+        name: "workspace",
+        path: "/workspace",
+        children: [
+          expect.objectContaining({
+            name: "old.txt",
+            path: "/workspace/old.txt",
+          }),
+        ],
+      }),
+    ]);
+
+    useAgentConversationStore.getState().actions.connect({
+      conversationId: "conv-2",
+      agentId: "agent-1",
+      agentName: "Agent 1",
+      authToken: "token-1",
+    });
+
+    expect(useAgentConversationStore.getState()).toEqual(
+      expect.objectContaining({
+        conversationId: "conv-2",
+        agentId: "agent-1",
+        agentName: "Agent 1",
+        status: "connecting",
+        messages: [],
+        terminalEntries: [],
+        fileChanges: [],
+        fileTree: [],
+        selectedFilePath: null,
+        sandboxStatus: "idle",
+        subAgentStreams: {},
+        agentViewStack: [],
+      }),
+    );
   });
 });

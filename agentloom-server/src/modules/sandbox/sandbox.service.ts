@@ -838,7 +838,7 @@ export class SandboxService {
       );
     }
 
-    if (session.status === 'failed' || session.status === 'stopping') {
+    if (session.status === 'stopping') {
       throw new SandboxInvalidStateException(session.id, session.status, 'use');
     }
 
@@ -864,7 +864,7 @@ export class SandboxService {
       });
     }
 
-    if (session.status === 'stopped') {
+    if (session.status === 'stopped' || session.status === 'failed') {
       await this.startSandbox(session.id, params.tenantId);
     }
 
@@ -1072,7 +1072,8 @@ export class SandboxService {
       throw new SandboxNotPersistentException(sessionId);
     }
 
-    if (session.status !== 'stopped') {
+    const restartableStatuses = ['stopped', 'failed'];
+    if (!restartableStatuses.includes(session.status)) {
       throw new SandboxInvalidStateException(
         sessionId,
         session.status,
@@ -1080,7 +1081,29 @@ export class SandboxService {
       );
     }
 
-    await this.updateSessionStatus(sessionId, 'creating');
+    if (session.containerId) {
+      await this.dockerService
+        .stopContainer(session.containerId)
+        .catch((error) => {
+          this.logger.warn(
+            `Failed to stop stale container ${session.containerId} before restarting sandbox ${sessionId}: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        });
+      await this.dockerService
+        .removeContainer(session.containerId)
+        .catch((error) => {
+          this.logger.warn(
+            `Failed to remove stale container ${session.containerId} before restarting sandbox ${sessionId}: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        });
+    }
+
+    await this.updateSessionStatus(sessionId, 'creating', {
+      containerId: null,
+      workspacePath: null,
+      startedAt: null,
+      stoppedAt: null,
+    });
 
     await this.enqueueLifecycleTask(async () => {
       await this.lifecycleProducer.addCreateTask({

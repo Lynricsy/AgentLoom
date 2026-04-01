@@ -1,3 +1,5 @@
+// ignore_for_file: invalid_annotation_target
+
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'execution_state.dart';
 
@@ -7,6 +9,7 @@ part 'subscribe_ack.g.dart';
 /// execution:subscribe ACK 响应
 @freezed
 abstract class SubscribeAck with _$SubscribeAck {
+  @JsonSerializable(fieldRename: FieldRename.snake)
   const factory SubscribeAck({
     required String status,
     ExecutionStateSnapshot? currentState,

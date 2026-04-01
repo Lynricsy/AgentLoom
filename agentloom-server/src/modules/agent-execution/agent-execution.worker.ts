@@ -56,6 +56,13 @@ import type { MemoryBootSequenceResult } from '../agent-memory/services/boot-pro
 import { SkillResolverService } from '../skill/skill-resolver.service';
 import { ConversationTitleService } from '../agent-conversation/conversation-title.service';
 import {
+  appendTextConversationMessageSegment,
+  appendThinkingConversationMessageSegment,
+  ensureToolCallConversationMessageSegment,
+  type ConversationMessageSegmentRecord,
+} from '../agent-conversation/message-segments';
+import { WorkspaceIntegrationService } from './workspace-integration.service';
+import {
   type ExecuteSubAgentParams,
   type SubAgentCompletionNotice,
   type SubAgentHandle,
@@ -138,6 +145,7 @@ type ConversationTurnResult = {
   stopReason: StopReason;
   toolCalls: ToolCallEvent[];
   toolResults: Array<Record<string, unknown>>;
+  segments: ConversationMessageSegmentRecord[];
 };
 
 @Injectable()
@@ -152,6 +160,7 @@ export class AgentExecutionWorker extends WorkerHost {
     private readonly executionService: AgentExecutionService,
     private readonly eventBridge: EventBridgeService,
     private readonly sandboxService: SandboxService,
+    private readonly workspaceIntegrationService: WorkspaceIntegrationService,
     private readonly agentDefinitionService: AgentDefinitionService,
     private readonly llmService?: LlmService,
     private readonly memoryToolsService?: MemoryToolsService,
@@ -612,6 +621,7 @@ export class AgentExecutionWorker extends WorkerHost {
           currentDepth: 0,
           subAgentTracker,
         });
+        await this.startConversationWorkspaceWatcher(conversationId, tenantId);
         return {
           runtime,
           session,
@@ -676,6 +686,8 @@ export class AgentExecutionWorker extends WorkerHost {
       throw error;
     }
 
+    await this.startConversationWorkspaceWatcher(conversationId, tenantId);
+
     return {
       runtime,
       session,
@@ -692,6 +704,26 @@ export class AgentExecutionWorker extends WorkerHost {
     void context;
     void this.agentRuntime;
     return this.adapterFactory.selectAdapter(true);
+  }
+
+  private async startConversationWorkspaceWatcher(
+    conversationId: string,
+    tenantId: string,
+  ): Promise<void> {
+    const sandboxSession = await this.sandboxService.findByConversationId(
+      conversationId,
+      tenantId,
+    );
+
+    if (!sandboxSession?.containerId) {
+      return;
+    }
+
+    this.workspaceIntegrationService.startFileWatcher(
+      conversationId,
+      tenantId,
+      sandboxSession.containerId,
+    );
   }
 
   private async loadPendingUserMessages(
@@ -776,6 +808,7 @@ export class AgentExecutionWorker extends WorkerHost {
     let decision: DecisionEvent | undefined;
     let lastStopReason: StopReason = 'end_turn';
     let chunkIndex = 0;
+    let segments: ConversationMessageSegmentRecord[] = [];
     let promptBlocks = this.buildPromptBlocks(
       pendingMessages,
       hasPriorTurns,
@@ -786,13 +819,26 @@ export class AgentExecutionWorker extends WorkerHost {
       for await (const event of runtime.prompt(session.id, promptBlocks)) {
         if (event.type === 'message_chunk') {
           assistantText += event.content;
+          segments = appendTextConversationMessageSegment(
+            segments,
+            event.content,
+          );
           this.eventBridge.emitOutputChunk(tenantId, conversationId, {
             stepId: conversationId,
             chunk: event.content,
             index: chunkIndex,
+            executionType: 'conversation',
           });
           chunkIndex += 1;
           continue;
+        }
+
+        const thinkingContent = this.extractThinkingEventContent(event);
+        if (thinkingContent) {
+          segments = appendThinkingConversationMessageSegment(
+            segments,
+            thinkingContent,
+          );
         }
 
         this.eventBridge.emitStepAgentEvent(tenantId, conversationId, {
@@ -807,6 +853,10 @@ export class AgentExecutionWorker extends WorkerHost {
             event.call,
           );
           toolCalls.set(nextCall.id, nextCall);
+          segments = ensureToolCallConversationMessageSegment(
+            segments,
+            nextCall.id,
+          );
           this.eventBridge.emitToolCallStatus(tenantId, conversationId, {
             stepId: conversationId,
             nodeId: conversationId,
@@ -858,6 +908,7 @@ export class AgentExecutionWorker extends WorkerHost {
       stopReason: lastStopReason,
       toolCalls: toolCallList,
       toolResults,
+      segments,
     };
   }
 
@@ -910,6 +961,27 @@ export class AgentExecutionWorker extends WorkerHost {
     return !!args && Object.keys(args).length > 0;
   }
 
+  private extractThinkingEventContent(event: {
+    type?: unknown;
+    content?: unknown;
+    rationale?: unknown;
+    suggestedContent?: unknown;
+  }): string | undefined {
+    switch (event.type) {
+      case 'thinking':
+      case 'plan':
+        return this.readStringValue(event.content);
+      case 'decision': {
+        const rationale = this.readStringValue(event.rationale);
+        const suggestedContent = this.readStringValue(event.suggestedContent);
+        const parts = [rationale, suggestedContent].filter(Boolean);
+        return parts.length > 0 ? parts.join('\n\n') : undefined;
+      }
+      default:
+        return undefined;
+    }
+  }
+
   private async persistConversationTurn(
     conversationId: string,
     tenantId: string,
@@ -957,6 +1029,9 @@ export class AgentExecutionWorker extends WorkerHost {
             metadata: {
               ...(turnResult.decision ? { decision: turnResult.decision } : {}),
               stopReason: turnResult.stopReason,
+              ...(turnResult.segments.length > 0
+                ? { segments: turnResult.segments }
+                : {}),
               ...(isEmptyTurn ? { emptyTurn: true } : {}),
             },
           })

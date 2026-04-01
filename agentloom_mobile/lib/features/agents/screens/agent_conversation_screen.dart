@@ -8,6 +8,7 @@ import '../providers/agent_conversation_provider.dart';
 import '../widgets/conversation_context_panel.dart';
 import '../widgets/message_bubble.dart';
 import '../widgets/preparation_card.dart';
+import '../../../shared/utils/scrolling.dart';
 
 class AgentConversationScreen extends ConsumerStatefulWidget {
   const AgentConversationScreen({
@@ -28,13 +29,27 @@ class _AgentConversationScreenState
     extends ConsumerState<AgentConversationScreen> {
   final _textController = TextEditingController();
   final _scrollController = ScrollController();
+  Timer? _workspaceRefreshDebounce;
   String? _lastScrollSignature;
+  int _lastFileChangeCount = 0;
 
   ConversationParams get _params =>
       (agentId: widget.agentId, conversationId: widget.conversationId);
 
   @override
+  void didUpdateWidget(covariant AgentConversationScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.agentId != widget.agentId ||
+        oldWidget.conversationId != widget.conversationId) {
+      _lastScrollSignature = null;
+      _lastFileChangeCount = 0;
+      _workspaceRefreshDebounce?.cancel();
+    }
+  }
+
+  @override
   void dispose() {
+    _workspaceRefreshDebounce?.cancel();
     _textController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -55,6 +70,12 @@ class _AgentConversationScreenState
         }
         _lastScrollSignature = nextSignature;
         _scrollToBottom();
+
+        final nextFileChangeCount = state.fileChanges.length;
+        if (nextFileChangeCount > _lastFileChangeCount) {
+          _scheduleWorkspaceRefresh();
+        }
+        _lastFileChangeCount = nextFileChangeCount;
       },
     );
 
@@ -231,15 +252,25 @@ class _AgentConversationScreenState
   }
 
   void _scrollToBottom() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!_scrollController.hasClients) {
+    unawaited(settleScrollToBottom(_scrollController));
+  }
+
+  void _scheduleWorkspaceRefresh() {
+    _workspaceRefreshDebounce?.cancel();
+    _workspaceRefreshDebounce = Timer(const Duration(milliseconds: 250), () {
+      if (!mounted) {
         return;
       }
 
-      _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOutCubic,
+      final state = ref.read(agentConversationProvider(_params)).value;
+      if (state == null || state.isLoadingWorkspace) {
+        return;
+      }
+
+      unawaited(
+        ref
+            .read(agentConversationProvider(_params).notifier)
+            .refreshWorkspaceTree(),
       );
     });
   }
@@ -293,7 +324,7 @@ class _MessageListView extends StatelessWidget {
   final ConversationState state;
   final ScrollController scrollController;
   final Future<void> Function(String toolCallId, String action)
-      onResolvePermission;
+  onResolvePermission;
 
   @override
   Widget build(BuildContext context) {
@@ -313,7 +344,8 @@ class _MessageListView extends StatelessWidget {
         }
 
         // 最后一项：准备卡片
-        final isCollapsed = state.preparationPhase == null &&
+        final isCollapsed =
+            state.preparationPhase == null &&
             state.preparationFailedPhase == null;
         return PreparationCard(
           phase: state.preparationPhase,
@@ -379,10 +411,7 @@ class _ConversationPane extends StatelessWidget {
                 ),
         ),
         if (onOpenContext != null && _shouldShowDock(state))
-          _ContextDock(
-            state: state,
-            onTap: onOpenContext!,
-          ),
+          _ContextDock(state: state, onTap: onOpenContext!),
         _InputBar(
           controller: textController,
           onSend: onSend,
@@ -420,9 +449,9 @@ class _InlineBanner extends StatelessWidget {
           Expanded(
             child: Text(
               text,
-              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: foregroundColor,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.bodySmall?.copyWith(color: foregroundColor),
             ),
           ),
         ],
@@ -432,10 +461,7 @@ class _InlineBanner extends StatelessWidget {
 }
 
 class _ContextDock extends StatelessWidget {
-  const _ContextDock({
-    required this.state,
-    required this.onTap,
-  });
+  const _ContextDock({required this.state, required this.onTap});
 
   final ConversationState state;
   final VoidCallback onTap;
@@ -572,10 +598,7 @@ class _InputBar extends StatelessWidget {
 }
 
 class _LoadErrorState extends StatelessWidget {
-  const _LoadErrorState({
-    required this.message,
-    required this.onRetry,
-  });
+  const _LoadErrorState({required this.message, required this.onRetry});
 
   final String message;
   final VoidCallback onRetry;
@@ -589,11 +612,7 @@ class _LoadErrorState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.error_outline,
-              size: 48,
-              color: theme.colorScheme.error,
-            ),
+            Icon(Icons.error_outline, size: 48, color: theme.colorScheme.error),
             const SizedBox(height: 16),
             Text(
               message,

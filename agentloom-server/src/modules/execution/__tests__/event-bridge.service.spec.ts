@@ -330,12 +330,24 @@ describe('EventBridgeService', () => {
         stepId: 's1',
         chunk: 'Hello world',
         index: 0,
+        executionType: 'conversation',
       };
 
       const result = service.emitOutputChunk(TENANT, EXEC, payload);
 
       expect(result.event).toBe(ExecutionEventName.OUTPUT_CHUNK);
       expect(result.data.chunk).toBe('Hello world');
+      expect(eventEmitter.emit).toHaveBeenCalledWith(
+        ExecutionEventName.OUTPUT_CHUNK,
+        expect.objectContaining({
+          tenantId: TENANT,
+          executionId: EXEC,
+          stepId: payload.stepId,
+          chunk: payload.chunk,
+          index: payload.index,
+          executionType: 'conversation',
+        }),
+      );
     });
   });
 

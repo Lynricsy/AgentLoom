@@ -9,6 +9,7 @@ import { indexRoute } from "./index";
 import { workflowCanvasRoute } from "./workflows/$workflowId";
 import { resourceKnowledgeBaseDetailRoute } from "./resources/knowledge-bases.$knowledgeBaseId";
 import { executionDebugRoute } from "./executions/$executionId";
+import { executionAgentViewerRoute } from "./executions/$executionId.steps.$stepId.agent";
 import { settingsIndexRoute } from './settings/index'
 import { mcpServerDetailRoute } from './resources/mcp-servers.$serverId'
 import { auditLogsRoute } from './settings/audit-logs'
@@ -113,6 +114,7 @@ export const routeTree = rootRoute.addChildren([
   workflowsIndexRoute,
   workflowCanvasRoute,
   executionDebugRoute,
+  executionAgentViewerRoute,
   settingsIndexRoute,
   auditLogsRoute,
   templatesRoute,

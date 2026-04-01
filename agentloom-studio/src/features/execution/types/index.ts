@@ -41,6 +41,7 @@ export type {
   AgentEventType,
   DecisionEvent,
   DoneEvent,
+  FileChangeEvent,
   MessageChunkEvent,
   PlanEvent,
   StopReason,

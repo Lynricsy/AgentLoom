@@ -12,6 +12,7 @@ const {
   mockExecutionService,
   mockEventBridge,
   mockSandboxService,
+  mockWorkspaceIntegrationService,
   mockAgentDefinitionService,
   mockLlmService,
   mockMemoryToolsService,
@@ -58,7 +59,11 @@ const {
     emitToolCallStatus: vi.fn(),
   },
   mockSandboxService: {
+    findByConversationId: vi.fn(),
     createSandboxSession: vi.fn(),
+  },
+  mockWorkspaceIntegrationService: {
+    startFileWatcher: vi.fn(),
   },
   mockAgentDefinitionService: {
     compileCanvas: vi.fn(),
@@ -225,6 +230,11 @@ describe('AgentExecutionWorker', () => {
     mockDb.select.mockReset().mockReturnValue(mockDbSelectChain);
     mockDbSelectChain.from.mockReset().mockReturnThis();
     mockDbSelectChain.where.mockReset().mockResolvedValue([]);
+    mockSandboxService.findByConversationId.mockReset().mockResolvedValue(null);
+    mockSandboxService.createSandboxSession.mockReset().mockResolvedValue({
+      id: 'sandbox-session-1',
+    });
+    mockWorkspaceIntegrationService.startFileWatcher.mockReset();
     mockMemoryToolsService.createSessionToolProvider.mockReset();
     mockMemoryFusionService.bootAll.mockReset();
     mockMemoryResourceProvider.create.mockReset();
@@ -240,6 +250,7 @@ describe('AgentExecutionWorker', () => {
       mockExecutionService as never,
       mockEventBridge as never,
       mockSandboxService as never,
+      mockWorkspaceIntegrationService as never,
       mockAgentDefinitionService as never,
       mockLlmService as unknown as LlmService,
       mockMemoryToolsService as never,
@@ -318,7 +329,30 @@ describe('AgentExecutionWorker', () => {
       await worker.executeAgentLoop('c-1', 't-1');
 
       expect(mockExecutionService.clearActiveRun).toHaveBeenCalled();
-      expect(mockEventBridge.emitExecutionStatusChanged).not.toHaveBeenCalled();
+      expect(
+        mockEventBridge.emitExecutionStatusChanged,
+      ).toHaveBeenNthCalledWith(
+        1,
+        't-1',
+        'c-1',
+        expect.objectContaining({
+          status: 'preparing',
+          phase: 'queued',
+          executionType: 'conversation',
+        }),
+      );
+      expect(
+        mockEventBridge.emitExecutionStatusChanged,
+      ).toHaveBeenNthCalledWith(
+        2,
+        't-1',
+        'c-1',
+        expect.objectContaining({
+          status: 'preparing',
+          phase: 'preparing',
+          executionType: 'conversation',
+        }),
+      );
     });
   });
 
@@ -347,7 +381,30 @@ describe('AgentExecutionWorker', () => {
       await worker.executeAgentLoop('c-1', 't-1');
 
       expect(mockExecutionService.clearActiveRun).toHaveBeenCalled();
-      expect(mockEventBridge.emitExecutionStatusChanged).not.toHaveBeenCalled();
+      expect(
+        mockEventBridge.emitExecutionStatusChanged,
+      ).toHaveBeenNthCalledWith(
+        1,
+        't-1',
+        'c-1',
+        expect.objectContaining({
+          status: 'preparing',
+          phase: 'queued',
+          executionType: 'conversation',
+        }),
+      );
+      expect(
+        mockEventBridge.emitExecutionStatusChanged,
+      ).toHaveBeenNthCalledWith(
+        2,
+        't-1',
+        'c-1',
+        expect.objectContaining({
+          status: 'preparing',
+          phase: 'preparing',
+          executionType: 'conversation',
+        }),
+      );
     });
 
     it('ended 状态的会话直接退出，不发送状态事件', async () => {
@@ -374,7 +431,30 @@ describe('AgentExecutionWorker', () => {
       await worker.executeAgentLoop('c-1', 't-1');
 
       expect(mockExecutionService.clearActiveRun).toHaveBeenCalled();
-      expect(mockEventBridge.emitExecutionStatusChanged).not.toHaveBeenCalled();
+      expect(
+        mockEventBridge.emitExecutionStatusChanged,
+      ).toHaveBeenNthCalledWith(
+        1,
+        't-1',
+        'c-1',
+        expect.objectContaining({
+          status: 'preparing',
+          phase: 'queued',
+          executionType: 'conversation',
+        }),
+      );
+      expect(
+        mockEventBridge.emitExecutionStatusChanged,
+      ).toHaveBeenNthCalledWith(
+        2,
+        't-1',
+        'c-1',
+        expect.objectContaining({
+          status: 'preparing',
+          phase: 'preparing',
+          executionType: 'conversation',
+        }),
+      );
     });
   });
 
@@ -1074,11 +1154,16 @@ describe('AgentExecutionWorker', () => {
           assistantText: string;
           stopReason: string;
           toolCalls: Array<{ id: string; tool: string; status: string }>;
+          segments: Array<
+            | { type: 'text'; content: string }
+            | { type: 'tool_call'; toolCallId: string }
+          >;
         }>;
       };
 
       mockRuntime.prompt.mockReturnValueOnce(
         createAsyncIterable([
+          { type: 'message_chunk', content: '先整理线索' },
           {
             type: 'tool_call',
             call: {
@@ -1098,6 +1183,7 @@ describe('AgentExecutionWorker', () => {
               result: { ok: true },
             },
           },
+          { type: 'message_chunk', content: 'KB-ALPHA-20260331-FOX' },
           { type: 'done', stopReason: 'end_turn' },
         ]),
       );
@@ -1111,12 +1197,18 @@ describe('AgentExecutionWorker', () => {
         false,
       );
 
+      expect(result.assistantText).toBe('先整理线索KB-ALPHA-20260331-FOX');
       expect(result.toolCalls).toEqual([
         expect.objectContaining({
           id: 'tool-1',
           tool: 'mcp__WebSearch__fast_search',
           status: 'completed',
         }),
+      ]);
+      expect(result.segments).toEqual([
+        { type: 'text', content: '先整理线索' },
+        { type: 'tool_call', toolCallId: 'tool-1' },
+        { type: 'text', content: 'KB-ALPHA-20260331-FOX' },
       ]);
       expect(mockEventBridge.emitToolCallStatus).toHaveBeenLastCalledWith(
         'tenant-1',

@@ -5,7 +5,7 @@ import type { ExecutionDetail } from '../types'
 
 const mocks = vi.hoisted(() => ({
   navigateMock: vi.fn(),
-  useExecutionMock: vi.fn(),
+  useLiveExecutionDetailMock: vi.fn(),
   usePtySessionsMock: vi.fn(),
   sendPtyWriteMock: vi.fn(),
 }))
@@ -14,8 +14,9 @@ vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => mocks.navigateMock,
 }))
 
-vi.mock('../hooks/useExecutionList', () => ({
-  useExecution: (...args: unknown[]) => mocks.useExecutionMock(...args),
+vi.mock('../hooks/useLiveExecutionDetail', () => ({
+  useLiveExecutionDetail: (...args: unknown[]) =>
+    mocks.useLiveExecutionDetailMock(...args),
 }))
 
 vi.mock('../hooks/usePtySessions', () => ({
@@ -124,7 +125,7 @@ function createExecutionDetail(): ExecutionDetail {
 describe('ExecutionDebugView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mocks.useExecutionMock.mockReturnValue({
+    mocks.useLiveExecutionDetailMock.mockReturnValue({
       data: createExecutionDetail(),
       isLoading: false,
       error: null,

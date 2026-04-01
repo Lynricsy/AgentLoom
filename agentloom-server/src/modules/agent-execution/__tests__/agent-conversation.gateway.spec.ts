@@ -891,15 +891,6 @@ describe('AgentConversationGateway', () => {
     });
   });
 
-  describe('onModuleInit', () => {
-    it('should register flush handler with throttleService', () => {
-      gateway.onModuleInit();
-      expect(mockThrottleService.registerFlushHandler).toHaveBeenCalledWith(
-        expect.any(Function),
-      );
-    });
-  });
-
   describe('onModuleDestroy', () => {
     it('should clear all timers and queues', async () => {
       const client = makeSocket();
@@ -1069,6 +1060,48 @@ describe('AgentConversationGateway', () => {
         data: {},
       });
       expect(result).toBeNull();
+    });
+  });
+
+  describe('handleOutputChunk', () => {
+    it('应将 conversation output chunk 广播到 agent message chunk 事件', () => {
+      mockThrottleService.tryConsume.mockReturnValue(true);
+
+      gateway.handleOutputChunk({
+        tenantId: 'tenant-1',
+        executionId: 'conv-1',
+        stepId: 'conv-1',
+        chunk: 'hello',
+        index: 0,
+        executionType: 'conversation',
+      });
+
+      expect(server.to).toHaveBeenCalledWith('conversation:tenant-1:conv-1');
+      const emitFn = (server.to as ReturnType<typeof vi.fn>).mock.results.at(-1)
+        ?.value.emit;
+      expect(emitFn).toBeDefined();
+      expect(emitFn).toHaveBeenCalledWith(
+        ConversationEventName.AGENT_MESSAGE_CHUNK,
+        expect.objectContaining({
+          conversationId: 'conv-1',
+          tenantId: 'tenant-1',
+          chunk: 'hello',
+          index: 0,
+        }),
+      );
+    });
+
+    it('应忽略 workflow output chunk，避免串到 conversation room', () => {
+      gateway.handleOutputChunk({
+        tenantId: 'tenant-1',
+        executionId: 'exec-1',
+        stepId: 'step-1',
+        chunk: 'hello',
+        index: 0,
+        executionType: 'workflow',
+      });
+
+      expect(server.to).not.toHaveBeenCalled();
     });
   });
 });

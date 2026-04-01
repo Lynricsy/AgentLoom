@@ -1,4 +1,8 @@
+// ignore_for_file: invalid_annotation_target
+
 import 'package:freezed_annotation/freezed_annotation.dart';
+
+import 'json_compat.dart';
 
 part 'execution_step_dto.freezed.dart';
 part 'execution_step_dto.g.dart';
@@ -6,6 +10,7 @@ part 'execution_step_dto.g.dart';
 /// 执行步骤 DTO（执行详情接口返回）
 @freezed
 abstract class ExecutionStepDto with _$ExecutionStepDto {
+  @JsonSerializable(fieldRename: FieldRename.snake)
   const factory ExecutionStepDto({
     required String id,
     String? executionId,
@@ -24,7 +29,26 @@ abstract class ExecutionStepDto with _$ExecutionStepDto {
   }) = _ExecutionStepDto;
 
   factory ExecutionStepDto.fromJson(Map<String, dynamic> json) =>
-      _$ExecutionStepDtoFromJson(json);
+      _$ExecutionStepDtoFromJson(normalizeExecutionStepJson(json));
+}
+
+Map<String, dynamic> normalizeExecutionStepJson(Map<String, dynamic> json) {
+  return normalizeJsonAliases(
+    json,
+    aliases: const {
+      'execution_id': ['executionId'],
+      'node_id': ['nodeId'],
+      'step_order': ['stepOrder'],
+      'node_type': ['nodeType'],
+      'node_data': ['nodeData'],
+      'checkpoint_data': ['checkpointData'],
+      'error_message': ['errorMessage'],
+      'started_at': ['startedAt'],
+      'completed_at': ['completedAt'],
+      'created_at': ['createdAt'],
+      'updated_at': ['updatedAt'],
+    },
+  );
 }
 
 extension ExecutionStepDtoX on ExecutionStepDto {

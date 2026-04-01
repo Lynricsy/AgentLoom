@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../agents/models/conversation_message_dto.dart';
 import '../../../shared/models/paginated_response.dart';
 import '../../../shared/providers/api_client_provider.dart';
 import '../models/execution_summary_dto.dart';
@@ -93,6 +94,44 @@ class WorkflowApi {
     final response = await _dio.get('/api/v1/executions/$executionId');
     final body = response.data as Map<String, dynamic>;
     return ExecutionSummaryDto.fromJson(body['data'] as Map<String, dynamic>);
+  }
+
+  Future<List<WorkspaceFileNode>> getExecutionStepWorkspaceTree(
+    String executionId,
+    String stepId,
+  ) async {
+    final response = await _dio.get(
+      '/api/v1/executions/$executionId/steps/$stepId/workspace/tree',
+    );
+    final body = response.data;
+    if (body is! List) {
+      return const <WorkspaceFileNode>[];
+    }
+
+    return body
+        .whereType<Map<Object?, Object?>>()
+        .map(
+          (node) => WorkspaceFileNode.fromJson(
+            node.map((key, value) => MapEntry('$key', value)),
+          ),
+        )
+        .toList(growable: false);
+  }
+
+  Future<WorkspaceFileContent> getExecutionStepWorkspaceFile(
+    String executionId,
+    String stepId,
+    String filePath,
+  ) async {
+    final encodedPath = Uri.encodeComponent(
+      filePath,
+    ).replaceAll('%2F', '/').replaceAll('%5C', '/');
+    final response = await _dio.get(
+      '/api/v1/executions/$executionId/steps/$stepId/workspace/files/$encodedPath',
+    );
+
+    final body = response.data as Map<String, dynamic>;
+    return WorkspaceFileContent.fromJson(body);
   }
 
   Map<String, dynamic> _normalizeInputSchema(Map<String, dynamic> payload) {

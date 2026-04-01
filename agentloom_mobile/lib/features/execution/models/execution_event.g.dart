@@ -9,71 +9,71 @@ part of 'execution_event.dart';
 _ExecutionEventEnvelope _$ExecutionEventEnvelopeFromJson(
   Map<String, dynamic> json,
 ) => _ExecutionEventEnvelope(
-  eventId: (json['eventId'] as num).toInt(),
+  eventId: (json['event_id'] as num).toInt(),
   event: json['event'] as String,
   timestamp: json['timestamp'] as String,
-  executionId: json['executionId'] as String,
-  tenantId: json['tenantId'] as String?,
+  executionId: json['execution_id'] as String,
+  tenantId: json['tenant_id'] as String?,
   data: json['data'] as Map<String, dynamic>,
 );
 
 Map<String, dynamic> _$ExecutionEventEnvelopeToJson(
   _ExecutionEventEnvelope instance,
 ) => <String, dynamic>{
-  'eventId': instance.eventId,
+  'event_id': instance.eventId,
   'event': instance.event,
   'timestamp': instance.timestamp,
-  'executionId': instance.executionId,
-  'tenantId': instance.tenantId,
+  'execution_id': instance.executionId,
+  'tenant_id': instance.tenantId,
   'data': instance.data,
 };
 
 _ExecutionStatusChangedData _$ExecutionStatusChangedDataFromJson(
   Map<String, dynamic> json,
 ) => _ExecutionStatusChangedData(
-  executionId: json['executionId'] as String,
+  executionId: json['execution_id'] as String,
   status: json['status'] as String,
-  completedSteps: (json['completedSteps'] as num?)?.toInt(),
-  totalSteps: (json['totalSteps'] as num?)?.toInt(),
-  errorMessage: json['errorMessage'] as String?,
+  completedSteps: (json['completed_steps'] as num?)?.toInt(),
+  totalSteps: (json['total_steps'] as num?)?.toInt(),
+  errorMessage: json['error_message'] as String?,
 );
 
 Map<String, dynamic> _$ExecutionStatusChangedDataToJson(
   _ExecutionStatusChangedData instance,
 ) => <String, dynamic>{
-  'executionId': instance.executionId,
+  'execution_id': instance.executionId,
   'status': instance.status,
-  'completedSteps': instance.completedSteps,
-  'totalSteps': instance.totalSteps,
-  'errorMessage': instance.errorMessage,
+  'completed_steps': instance.completedSteps,
+  'total_steps': instance.totalSteps,
+  'error_message': instance.errorMessage,
 };
 
 _NodeStatusChangedData _$NodeStatusChangedDataFromJson(
   Map<String, dynamic> json,
 ) => _NodeStatusChangedData(
-  stepId: json['stepId'] as String,
-  nodeId: json['nodeId'] as String,
-  nodeName: json['nodeName'] as String?,
-  nodeType: json['nodeType'] as String?,
+  stepId: json['step_id'] as String,
+  nodeId: json['node_id'] as String,
+  nodeName: json['node_name'] as String?,
+  nodeType: json['node_type'] as String?,
   from: json['from'] as String,
   to: json['to'] as String,
-  startedAt: json['startedAt'] as String?,
-  completedAt: json['completedAt'] as String?,
-  errorDetail: json['errorDetail'] as Map<String, dynamic>?,
-  errorMessage: json['errorMessage'] as String?,
+  startedAt: json['started_at'] as String?,
+  completedAt: json['completed_at'] as String?,
+  errorDetail: json['error_detail'] as Map<String, dynamic>?,
+  errorMessage: json['error_message'] as String?,
 );
 
 Map<String, dynamic> _$NodeStatusChangedDataToJson(
   _NodeStatusChangedData instance,
 ) => <String, dynamic>{
-  'stepId': instance.stepId,
-  'nodeId': instance.nodeId,
-  'nodeName': instance.nodeName,
-  'nodeType': instance.nodeType,
+  'step_id': instance.stepId,
+  'node_id': instance.nodeId,
+  'node_name': instance.nodeName,
+  'node_type': instance.nodeType,
   'from': instance.from,
   'to': instance.to,
-  'startedAt': instance.startedAt,
-  'completedAt': instance.completedAt,
-  'errorDetail': instance.errorDetail,
-  'errorMessage': instance.errorMessage,
+  'started_at': instance.startedAt,
+  'completed_at': instance.completedAt,
+  'error_detail': instance.errorDetail,
+  'error_message': instance.errorMessage,
 };

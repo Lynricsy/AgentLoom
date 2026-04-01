@@ -67,6 +67,7 @@ import { getModelRoutingMeta } from '../llm/llm-provider-catalog';
 import { SkillResolverService } from '../skill/skill-resolver.service';
 import { McpService } from '../mcp/mcp.service';
 import type { McpRuntimeConnection } from '../mcp/mcp.service';
+import { WorkspaceIntegrationService } from '../agent-execution/workspace-integration.service';
 
 /** 调度决策 */
 type SchedulingDecision = 'schedule' | 'skip' | 'wait';
@@ -97,6 +98,7 @@ export class NodeSchedulerService {
     private readonly stepStateMachine: StepStateMachineService,
     private readonly sandboxService: SandboxService,
     private readonly checkpointService: CheckpointService,
+    private readonly workspaceIntegrationService: WorkspaceIntegrationService,
     private readonly eventBridge: EventBridgeService,
     private readonly interventionPolicyService: InterventionPolicyService,
     private readonly rbacCacheService: RbacCacheService,
@@ -1758,9 +1760,7 @@ export class NodeSchedulerService {
           }
         } catch (itemError) {
           const message =
-            itemError instanceof Error
-              ? itemError.message
-              : String(itemError);
+            itemError instanceof Error ? itemError.message : String(itemError);
 
           if (errorStrategy === 'stop') {
             throw itemError;
@@ -1780,8 +1780,7 @@ export class NodeSchedulerService {
         }
       }
 
-      const truncated =
-        !stoppedEarly && items.length > iteratedItems.length;
+      const truncated = !stoppedEarly && items.length > iteratedItems.length;
       const itemOutput =
         iteratedItems.length === 1 ? iteratedItems[0] : iteratedItems;
       const done: Record<string, unknown> = {
@@ -1789,7 +1788,8 @@ export class NodeSchedulerService {
         totalItems: items.length,
         processedCount: iteratedItems.length,
         remainingCount: Math.max(
-          items.length - (stoppedEarly ? iteratedItems.length : iteratedItems.length),
+          items.length -
+            (stoppedEarly ? iteratedItems.length : iteratedItems.length),
           0,
         ),
         maxIterations,
@@ -1862,9 +1862,10 @@ export class NodeSchedulerService {
 
     try {
       const nodeData = this.getRuntimeNodeData(step.nodeData ?? {});
-      const mode = this.readFirstString(nodeData.mode) === 'merge-by-key'
-        ? 'merge-by-key'
-        : 'append';
+      const mode =
+        this.readFirstString(nodeData.mode) === 'merge-by-key'
+          ? 'merge-by-key'
+          : 'append';
       const mergeKey = this.readFirstString(
         nodeData.mergeKey,
         nodeData.merge_key,
@@ -1873,9 +1874,8 @@ export class NodeSchedulerService {
         nodeData.inputCount,
         nodeData.input_count,
       );
-      const inputCount = rawInputCount && rawInputCount >= 2
-        ? Math.floor(rawInputCount)
-        : 2;
+      const inputCount =
+        rawInputCount && rawInputCount >= 2 ? Math.floor(rawInputCount) : 2;
 
       // 按端口 ID 顺序收集输入（input-0, input-1, ...）
       const collectedInputs: unknown[] = [];
@@ -2817,8 +2817,6 @@ export class NodeSchedulerService {
     edges: ReactFlowEdge[],
     steps: ExecutionStep[],
   ): Promise<void> {
-    await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'running');
-
     try {
       const nodeData = step.nodeData ?? {};
       const agentDefinitionId = this.getWorkflowAgentDefinitionId(nodeData);
@@ -2835,6 +2833,30 @@ export class NodeSchedulerService {
         edges,
         steps,
       );
+      const workflowSandboxNodeId =
+        workflowSandboxBinding?.sandboxNodeId ?? step.nodeId;
+      const runningCheckpointData = this.buildWorkflowAgentCheckpointData(
+        step.checkpointData,
+        executionId,
+        workflowSandboxNodeId,
+      );
+
+      await this.stepStateMachine.updateStepStatus(
+        tenantId,
+        step.id,
+        'running',
+        {
+          checkpointData: runningCheckpointData,
+        },
+      );
+      step.checkpointData = runningCheckpointData;
+      await this.workspaceIntegrationService.startExecutionStepFileWatcher({
+        executionId,
+        stepId: step.id,
+        tenantId,
+        sandboxNodeId: workflowSandboxNodeId,
+      });
+
       const workflowSandboxConfig = this.getWorkflowSandboxOverride(
         step.nodeId,
         edges,
@@ -2860,12 +2882,31 @@ export class NodeSchedulerService {
             ? { agentVersionId: nodeData.agent_version_id }
             : {}),
       });
+      const workspaceSnapshotId =
+        await this.workspaceIntegrationService.archiveExecutionStepWorkspace(
+          executionId,
+          step.id,
+          tenantId,
+          workflowSandboxNodeId,
+        );
 
       await this.stepStateMachine.updateStepStatus(
         tenantId,
         step.id,
         'completed',
-        { result },
+        {
+          result,
+          checkpointData: this.buildWorkflowAgentCheckpointData(
+            step.checkpointData,
+            executionId,
+            workflowSandboxNodeId,
+            workspaceSnapshotId ?? undefined,
+          ),
+        },
+      );
+      this.workspaceIntegrationService.stopExecutionStepFileWatcher(
+        executionId,
+        step.id,
       );
 
       await this.onNodeCompleted(executionId, step.id, tenantId);
@@ -2878,6 +2919,16 @@ export class NodeSchedulerService {
       }
 
       const message = error instanceof Error ? error.message : String(error);
+      const workflowSandboxNodeId =
+        this.getExecutionSandboxBinding(step.nodeId, executionId, edges, steps)
+          ?.sandboxNodeId ?? step.nodeId;
+      const workspaceSnapshotId =
+        await this.workspaceIntegrationService.archiveExecutionStepWorkspace(
+          executionId,
+          step.id,
+          tenantId,
+          workflowSandboxNodeId,
+        );
       await this.stepStateMachine.updateStepStatus(
         tenantId,
         step.id,
@@ -2895,10 +2946,46 @@ export class NodeSchedulerService {
               : {}),
             nodeId: step.nodeId,
           },
+          checkpointData: this.buildWorkflowAgentCheckpointData(
+            step.checkpointData,
+            executionId,
+            workflowSandboxNodeId,
+            workspaceSnapshotId ?? undefined,
+          ),
         },
       );
+      this.workspaceIntegrationService.stopExecutionStepFileWatcher(
+        executionId,
+        step.id,
+      );
       await this.onNodeFailed(executionId, step.id, tenantId);
+    } finally {
+      this.workspaceIntegrationService.stopExecutionStepFileWatcher(
+        executionId,
+        step.id,
+      );
     }
+  }
+
+  private buildWorkflowAgentCheckpointData(
+    checkpointData: ExecutionStep['checkpointData'],
+    executionId: string,
+    sandboxNodeId: string,
+    workspaceSnapshotId?: string,
+  ): Record<string, unknown> {
+    const existingCheckpoint = this.isRecord(checkpointData)
+      ? checkpointData
+      : {};
+
+    return {
+      ...existingCheckpoint,
+      sandboxNodeId,
+      serverSandbox: {
+        executionId,
+        sandboxNodeId,
+      },
+      ...(workspaceSnapshotId ? { workspaceSnapshotId } : {}),
+    };
   }
 
   private getWorkflowSandboxOverride(
@@ -4963,9 +5050,7 @@ export class NodeSchedulerService {
   /**
    * 从 nodeData 解析循环停止条件（visual 模式下的 ConditionGroup）
    */
-  private resolveLoopStopCondition(
-    nodeData: Record<string, unknown>,
-  ):
+  private resolveLoopStopCondition(nodeData: Record<string, unknown>):
     | {
         rules: Array<{ field: string; operator: string; value: string }>;
         logic: 'and' | 'or';
@@ -5051,9 +5136,7 @@ export class NodeSchedulerService {
   /**
    * 将循环迭代项包装为 evaluateConditionBranch 期望的 input 格式
    */
-  private wrapLoopItemAsInput(
-    item: unknown,
-  ): Record<string, unknown> {
+  private wrapLoopItemAsInput(item: unknown): Record<string, unknown> {
     if (this.isRecord(item)) {
       return item;
     }

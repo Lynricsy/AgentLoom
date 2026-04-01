@@ -38,6 +38,18 @@ String resolveExecutionSocketUrl(String apiBaseUrl) {
   return resolvedApiUrl.replace(path: namespacePath).toString();
 }
 
+Map<String, dynamic>? coerceSocketJsonMap(Object? value) {
+  if (value is Map<String, dynamic>) {
+    return value;
+  }
+
+  if (value is Map<Object?, Object?>) {
+    return value.map((key, item) => MapEntry('$key', item));
+  }
+
+  return null;
+}
+
 /// 执行监控 Socket.IO 服务
 ///
 /// 管理与服务端 /execution namespace 的 WebSocket 连接，
@@ -61,6 +73,19 @@ class ExecutionSocketService {
       StreamController<ExecutionEventEnvelope>.broadcast();
   final _nodeStatusChanged =
       StreamController<ExecutionEventEnvelope>.broadcast();
+  final _stepAgentEvent = StreamController<ExecutionEventEnvelope>.broadcast();
+  final _stepRetrying = StreamController<ExecutionEventEnvelope>.broadcast();
+  final _outputChunk = StreamController<ExecutionEventEnvelope>.broadcast();
+  final _interventionRequired =
+      StreamController<ExecutionEventEnvelope>.broadcast();
+  final _interventionResolved =
+      StreamController<ExecutionEventEnvelope>.broadcast();
+  final _toolCallStatusChanged =
+      StreamController<ExecutionEventEnvelope>.broadcast();
+  final _toolPermissionRequired =
+      StreamController<ExecutionEventEnvelope>.broadcast();
+  final _toolPermissionResolved =
+      StreamController<ExecutionEventEnvelope>.broadcast();
   final _stateSnapshot = StreamController<ExecutionStateSnapshot>.broadcast();
   final _onConnected = StreamController<void>.broadcast();
   final _onDisconnected = StreamController<String>.broadcast();
@@ -72,6 +97,19 @@ class ExecutionSocketService {
       _executionStatusChanged.stream;
   Stream<ExecutionEventEnvelope> get nodeStatusChanged =>
       _nodeStatusChanged.stream;
+  Stream<ExecutionEventEnvelope> get stepAgentEvent => _stepAgentEvent.stream;
+  Stream<ExecutionEventEnvelope> get stepRetrying => _stepRetrying.stream;
+  Stream<ExecutionEventEnvelope> get outputChunk => _outputChunk.stream;
+  Stream<ExecutionEventEnvelope> get interventionRequired =>
+      _interventionRequired.stream;
+  Stream<ExecutionEventEnvelope> get interventionResolved =>
+      _interventionResolved.stream;
+  Stream<ExecutionEventEnvelope> get toolCallStatusChanged =>
+      _toolCallStatusChanged.stream;
+  Stream<ExecutionEventEnvelope> get toolPermissionRequired =>
+      _toolPermissionRequired.stream;
+  Stream<ExecutionEventEnvelope> get toolPermissionResolved =>
+      _toolPermissionResolved.stream;
   Stream<ExecutionStateSnapshot> get stateSnapshot => _stateSnapshot.stream;
   Stream<void> get onConnected => _onConnected.stream;
   Stream<String> get onDisconnected => _onDisconnected.stream;
@@ -121,9 +159,10 @@ class ExecutionSocketService {
 
     // 业务事件
     socket.on('execution.status.changed', (data) {
-      if (data is Map<String, dynamic>) {
+      final payload = coerceSocketJsonMap(data);
+      if (payload != null) {
         try {
-          _executionStatusChanged.add(ExecutionEventEnvelope.fromJson(data));
+          _executionStatusChanged.add(ExecutionEventEnvelope.fromJson(payload));
         } catch (_) {
           // 解析失败则忽略
         }
@@ -131,9 +170,98 @@ class ExecutionSocketService {
     });
 
     socket.on('execution.node.status-changed', (data) {
-      if (data is Map<String, dynamic>) {
+      final payload = coerceSocketJsonMap(data);
+      if (payload != null) {
         try {
-          _nodeStatusChanged.add(ExecutionEventEnvelope.fromJson(data));
+          _nodeStatusChanged.add(ExecutionEventEnvelope.fromJson(payload));
+        } catch (_) {
+          // 解析失败则忽略
+        }
+      }
+    });
+
+    socket.on('execution.node.agent-event', (data) {
+      final payload = coerceSocketJsonMap(data);
+      if (payload != null) {
+        try {
+          _stepAgentEvent.add(ExecutionEventEnvelope.fromJson(payload));
+        } catch (_) {
+          // 解析失败则忽略
+        }
+      }
+    });
+
+    socket.on('execution.node.retrying', (data) {
+      final payload = coerceSocketJsonMap(data);
+      if (payload != null) {
+        try {
+          _stepRetrying.add(ExecutionEventEnvelope.fromJson(payload));
+        } catch (_) {
+          // 解析失败则忽略
+        }
+      }
+    });
+
+    socket.on('execution.node.output-chunk', (data) {
+      final payload = coerceSocketJsonMap(data);
+      if (payload != null) {
+        try {
+          _outputChunk.add(ExecutionEventEnvelope.fromJson(payload));
+        } catch (_) {
+          // 解析失败则忽略
+        }
+      }
+    });
+
+    socket.on('execution.node.intervention-required', (data) {
+      final payload = coerceSocketJsonMap(data);
+      if (payload != null) {
+        try {
+          _interventionRequired.add(ExecutionEventEnvelope.fromJson(payload));
+        } catch (_) {
+          // 解析失败则忽略
+        }
+      }
+    });
+
+    socket.on('execution.node.intervention-resolved', (data) {
+      final payload = coerceSocketJsonMap(data);
+      if (payload != null) {
+        try {
+          _interventionResolved.add(ExecutionEventEnvelope.fromJson(payload));
+        } catch (_) {
+          // 解析失败则忽略
+        }
+      }
+    });
+
+    socket.on('execution.node.tool-call-status', (data) {
+      final payload = coerceSocketJsonMap(data);
+      if (payload != null) {
+        try {
+          _toolCallStatusChanged.add(ExecutionEventEnvelope.fromJson(payload));
+        } catch (_) {
+          // 解析失败则忽略
+        }
+      }
+    });
+
+    socket.on('execution.node.tool-permission-required', (data) {
+      final payload = coerceSocketJsonMap(data);
+      if (payload != null) {
+        try {
+          _toolPermissionRequired.add(ExecutionEventEnvelope.fromJson(payload));
+        } catch (_) {
+          // 解析失败则忽略
+        }
+      }
+    });
+
+    socket.on('execution.node.tool-permission-resolved', (data) {
+      final payload = coerceSocketJsonMap(data);
+      if (payload != null) {
+        try {
+          _toolPermissionResolved.add(ExecutionEventEnvelope.fromJson(payload));
         } catch (_) {
           // 解析失败则忽略
         }
@@ -141,9 +269,10 @@ class ExecutionSocketService {
     });
 
     socket.on('execution.state.snapshot', (data) {
-      if (data is Map<String, dynamic>) {
+      final payload = coerceSocketJsonMap(data);
+      if (payload != null) {
         try {
-          _stateSnapshot.add(ExecutionStateSnapshot.fromJson(data));
+          _stateSnapshot.add(ExecutionStateSnapshot.fromJson(payload));
         } catch (_) {
           // 解析失败则忽略
         }
@@ -172,8 +301,9 @@ class ExecutionSocketService {
           .emitWithAckAsync('execution:subscribe', payload)
           .timeout(Duration(milliseconds: _ackTimeoutMs));
 
-      if (result is Map<String, dynamic>) {
-        return SubscribeAck.fromJson(result);
+      final ack = coerceSocketJsonMap(result);
+      if (ack != null) {
+        return SubscribeAck.fromJson(ack);
       }
       return const SubscribeAck(status: 'error', error: 'INVALID_RESPONSE');
     } on TimeoutException {
@@ -199,6 +329,14 @@ class ExecutionSocketService {
     _socket = null;
     _executionStatusChanged.close();
     _nodeStatusChanged.close();
+    _stepAgentEvent.close();
+    _stepRetrying.close();
+    _outputChunk.close();
+    _interventionRequired.close();
+    _interventionResolved.close();
+    _toolCallStatusChanged.close();
+    _toolPermissionRequired.close();
+    _toolPermissionResolved.close();
     _stateSnapshot.close();
     _onConnected.close();
     _onDisconnected.close();

@@ -63,6 +63,7 @@ describe('ExecutionGateway', () => {
   let mockEventBridge: {
     getLastEventId: Mock;
     getEventsSince: Mock;
+    getBufferedEvents: Mock;
     emitOutputChunk: Mock;
     emitStepStatusChanged: Mock;
     emitExecutionStatusChanged: Mock;
@@ -88,6 +89,7 @@ describe('ExecutionGateway', () => {
     mockEventBridge = {
       getLastEventId: vi.fn().mockReturnValue(0),
       getEventsSince: vi.fn().mockReturnValue(null),
+      getBufferedEvents: vi.fn().mockReturnValue([]),
       emitOutputChunk: vi.fn(),
       emitStepStatusChanged: vi.fn(),
       emitExecutionStatusChanged: vi.fn(),
@@ -236,6 +238,90 @@ describe('ExecutionGateway', () => {
       expect(client.emit).toHaveBeenCalledWith(
         'execution.state.snapshot',
         snapshot,
+      );
+    });
+
+    it('首次订阅时会在快照后补发活动步骤的缓冲事件', async () => {
+      const snapshot = makeSnapshot({
+        steps: [
+          {
+            stepId: 'step-active',
+            nodeId: 'node-active',
+            status: 'running',
+            startedAt: '2025-01-01T00:00:01.000Z',
+            completedAt: null,
+          },
+          {
+            stepId: 'step-done',
+            nodeId: 'node-done',
+            status: 'completed',
+            startedAt: '2025-01-01T00:00:00.000Z',
+            completedAt: '2025-01-01T00:00:10.000Z',
+          },
+        ],
+      });
+      mockStateReplay.getExecutionSnapshot.mockResolvedValue(snapshot);
+
+      const bufferedEvents = [
+        {
+          eventId: 1,
+          event: 'execution.node.output-chunk',
+          timestamp: '2025-01-01T00:00:02.000Z',
+          executionId: 'exec-1',
+          tenantId: 'tenant-1',
+          data: { stepId: 'step-active', chunk: 'Hello', index: 1 },
+        },
+        {
+          eventId: 2,
+          event: 'execution.node.tool-call-status',
+          timestamp: '2025-01-01T00:00:03.000Z',
+          executionId: 'exec-1',
+          tenantId: 'tenant-1',
+          data: {
+            stepId: 'step-active',
+            nodeId: 'node-active',
+            toolCallId: 'tool-1',
+            tool: 'search_docs',
+            status: 'in_progress',
+          },
+        },
+        {
+          eventId: 3,
+          event: 'execution.node.output-chunk',
+          timestamp: '2025-01-01T00:00:04.000Z',
+          executionId: 'exec-1',
+          tenantId: 'tenant-1',
+          data: { stepId: 'step-done', chunk: 'Ignore', index: 9 },
+        },
+        {
+          eventId: 4,
+          event: 'execution.status.changed',
+          timestamp: '2025-01-01T00:00:05.000Z',
+          executionId: 'exec-1',
+          tenantId: 'tenant-1',
+          data: { executionId: 'exec-1', status: 'running' },
+        },
+      ];
+      mockEventBridge.getBufferedEvents.mockReturnValue(bufferedEvents);
+
+      const client = makeSocket();
+      await gateway.handleSubscribe(client as any, { executionId: 'exec-1' });
+
+      expect(client.emit).toHaveBeenCalledTimes(3);
+      expect(client.emit).toHaveBeenNthCalledWith(
+        1,
+        'execution.state.snapshot',
+        snapshot,
+      );
+      expect(client.emit).toHaveBeenNthCalledWith(
+        2,
+        'execution.node.output-chunk',
+        bufferedEvents[0],
+      );
+      expect(client.emit).toHaveBeenNthCalledWith(
+        3,
+        'execution.node.tool-call-status',
+        bufferedEvents[1],
       );
     });
 

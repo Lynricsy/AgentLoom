@@ -169,6 +169,8 @@ describe('SandboxService', () => {
 
     mockDockerService = {
       getContainerStats: vi.fn(),
+      stopContainer: vi.fn().mockResolvedValue(undefined),
+      removeContainer: vi.fn().mockResolvedValue(undefined),
     };
 
     vi.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
@@ -379,6 +381,74 @@ describe('SandboxService', () => {
           ],
         }),
       });
+    });
+
+    it('failed 持久沙箱被 workflow 节点再次引用时应自动恢复并继续绑定', async () => {
+      const failedPersistentSession = buildSession({
+        status: 'failed',
+        containerId: 'container-old',
+        sandboxNodeId: null,
+        config: {
+          ...TEST_CONFIG,
+          lifecycleMode: 'persistent',
+          name: 'Persistent Sandbox',
+          activeBindings: [
+            {
+              executionId: TEST_EXECUTION_ID,
+              sandboxNodeId: 'sandbox-1',
+            },
+          ],
+        },
+      });
+      const attachedSession = buildSession({
+        status: 'creating',
+        containerId: null,
+        sandboxNodeId: null,
+        config: {
+          ...failedPersistentSession.config,
+          activeBindings: [
+            {
+              executionId: TEST_EXECUTION_ID,
+              sandboxNodeId: 'sandbox-1',
+            },
+            {
+              executionId: TEST_EXECUTION_ID,
+              sandboxNodeId: 'sandbox-2',
+            },
+          ],
+        },
+      });
+      const updateChain = createUpdateChainNoReturn();
+      const startSandboxSpy = vi
+        .spyOn(service, 'startSandbox')
+        .mockResolvedValue(attachedSession);
+
+      db.select
+        .mockReturnValueOnce(createSelectChainWithLimit([]))
+        .mockReturnValueOnce(createSelectChainWithLimit([]))
+        .mockReturnValueOnce(
+          createSelectChainWithLimit([failedPersistentSession]),
+        )
+        .mockReturnValueOnce(createSelectChainWithLimit([attachedSession]));
+      db.update.mockReturnValueOnce(updateChain);
+
+      const result = await service.createSandboxSession({
+        executionId: TEST_EXECUTION_ID,
+        sandboxNodeId: 'sandbox-2',
+        config: {
+          ...TEST_CONFIG,
+          lifecycleMode: 'persistent',
+          persistentSandboxId: TEST_SESSION_ID,
+        },
+        tenantId: TEST_TENANT_ID,
+      });
+
+      expect(result).toEqual(attachedSession);
+      expect(startSandboxSpy).toHaveBeenCalledWith(
+        TEST_SESSION_ID,
+        TEST_TENANT_ID,
+      );
+      expect(mockLifecycleProducer.addCreateTask).not.toHaveBeenCalled();
     });
   });
 
@@ -671,6 +741,62 @@ describe('SandboxService', () => {
         lifecycleMode: 'persistent',
       });
       expect(setPayload?.config?.activeBindings).toBeUndefined();
+    });
+  });
+
+  describe('startSandbox', () => {
+    it('failed 持久沙箱应清理旧容器并重新入队 create 任务', async () => {
+      const failedSession = buildSession({
+        status: 'failed',
+        containerId: 'container-old',
+        workspacePath: '/workspace/',
+        startedAt: new Date('2025-01-01T00:00:00.000Z'),
+        stoppedAt: new Date('2025-01-02T00:00:00.000Z'),
+        config: {
+          ...TEST_CONFIG,
+          lifecycleMode: 'persistent',
+          name: 'Persistent Sandbox',
+        },
+      });
+      const creatingSession = buildSession({
+        status: 'creating',
+        containerId: null,
+        workspacePath: null,
+        startedAt: null,
+        stoppedAt: null,
+        config: failedSession.config,
+      });
+      const updateChain = createUpdateChainReturning([{ id: TEST_SESSION_ID }]);
+
+      db.select
+        .mockReturnValueOnce(createSelectChainWithLimit([failedSession]))
+        .mockReturnValueOnce(createSelectChainWithLimit([creatingSession]));
+      db.update.mockReturnValueOnce(updateChain);
+
+      await expect(
+        service.startSandbox(TEST_SESSION_ID, TEST_TENANT_ID),
+      ).resolves.toEqual(creatingSession);
+
+      expect(mockDockerService.stopContainer).toHaveBeenCalledWith(
+        'container-old',
+      );
+      expect(mockDockerService.removeContainer).toHaveBeenCalledWith(
+        'container-old',
+      );
+      expect(updateChain.set).toHaveBeenCalledWith({
+        status: 'creating',
+        containerId: null,
+        workspacePath: null,
+        startedAt: null,
+        stoppedAt: null,
+      });
+      expect(mockLifecycleProducer.addCreateTask).toHaveBeenCalledWith({
+        sessionId: TEST_SESSION_ID,
+        executionId: TEST_EXECUTION_ID,
+        sandboxNodeId: 'sandbox-1',
+        tenantId: TEST_TENANT_ID,
+        config: failedSession.config,
+      });
     });
   });
 

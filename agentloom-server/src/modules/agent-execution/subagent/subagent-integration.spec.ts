@@ -19,6 +19,7 @@ const {
   mockExecutionService,
   mockEventBridge,
   mockSandboxService,
+  mockWorkspaceIntegrationService,
   mockAgentDefinitionService,
   mockSubAgentToolsProvider,
 } = vi.hoisted(() => ({
@@ -40,6 +41,9 @@ const {
   },
   mockSandboxService: {
     createSandboxSession: vi.fn(),
+  },
+  mockWorkspaceIntegrationService: {
+    startFileWatcher: vi.fn(),
   },
   mockAgentDefinitionService: {
     findDetailById: vi.fn(),
@@ -196,6 +200,7 @@ function createWorker() {
     mockExecutionService as never,
     mockEventBridge as never,
     mockSandboxService as never,
+    mockWorkspaceIntegrationService as never,
     mockAgentDefinitionService as never,
     undefined,
     undefined,

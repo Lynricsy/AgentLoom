@@ -133,14 +133,27 @@ describe('WorkflowAgentAdapter', () => {
   const mockEventBridge = {
     emitOutputChunk: vi.fn(),
     emitStepAgentEvent: vi.fn(),
+    emitToolCallStatus: vi.fn(),
+    emitToolPermissionRequired: vi.fn(),
   };
   const mockSkillResolverService = {
     resolveSkillsForAgent: vi.fn(),
     buildSkillAugmentedPrompt: vi.fn(),
   };
+  let updateWhereMock: ReturnType<typeof vi.fn>;
+  let updateSetMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.useRealTimers();
+
+    updateWhereMock = vi.fn().mockResolvedValue(undefined);
+    updateSetMock = vi.fn().mockReturnValue({
+      where: updateWhereMock,
+    });
+    db.update.mockReturnValue({
+      set: updateSetMock,
+    });
 
     mockRuntimeAdapterFactory.selectAdapter.mockReturnValue(mockSandboxRuntime);
     mockAgentDefinitionService.findDetailById.mockImplementation(
@@ -604,6 +617,158 @@ describe('WorkflowAgentAdapter', () => {
     expect(mockSandboxRuntime.createSession).toHaveBeenCalled();
     expect(mockAgentRuntime.createSession).not.toHaveBeenCalled();
     expect(result.content).toBe('direct-output');
+  });
+
+  it('会按运行中进度把 partialContent 与 segments 持久化到 checkpoint', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-04-01T00:00:00.000Z'));
+    setupNoSandboxAgent();
+    mockAgentDefinitionService.buildRuntimeConfigFromNodes.mockReturnValue({
+      modelConfig: { modelId: 'model-1' },
+      subAgents: [],
+    });
+    mockSandboxRuntime.createSession.mockResolvedValue({ id: 'session-1' });
+    mockSandboxRuntime.prompt.mockImplementation(
+      async function* (): AsyncGenerator<AgentEvent> {
+        yield { type: 'message_chunk', content: '第一段' };
+        vi.setSystemTime(new Date('2026-04-01T00:00:01.000Z'));
+        yield { type: 'message_chunk', content: '第二段' };
+        yield { type: 'plan', title: '计划', content: '先整理上下文' };
+        yield { type: 'done', stopReason: 'end_turn' };
+      },
+    );
+
+    const step = makeStep();
+    const adapter = createAdapter({
+      db,
+      agentRuntime: mockAgentRuntime,
+      runtimeAdapterFactory: mockRuntimeAdapterFactory,
+      agentDefinitionService: mockAgentDefinitionService,
+      sandboxService: mockSandboxService,
+      eventBridge: mockEventBridge,
+    });
+
+    const result = await adapter.execute({
+      executionId: EXECUTION_ID,
+      step,
+      input: { prompt: 'test' },
+      tenantId: TENANT_ID,
+      versionSnapshot: makeSnapshot('no-sandbox-node'),
+    });
+
+    expect(result).toMatchObject({ content: '第一段第二段' });
+    expect(db.update.mock.calls.length).toBeGreaterThan(1);
+    expect(step.checkpointData).toMatchObject({
+      sessionId: 'session-1',
+      partialContent: '第一段第二段',
+      segments: [
+        { type: 'text', content: '第一段第二段' },
+        { type: 'thinking', content: '先整理上下文' },
+      ],
+      round: 1,
+      chunkIndex: 2,
+    });
+  });
+
+  it('tool_call 事件会写入 checkpoint 瀑布流并广播 dedicated tool 状态事件', async () => {
+    setupNoSandboxAgent();
+    mockAgentDefinitionService.buildRuntimeConfigFromNodes.mockReturnValue({
+      modelConfig: { modelId: 'model-1' },
+      subAgents: [],
+    });
+    mockSandboxRuntime.createSession.mockResolvedValue({ id: 'session-1' });
+    mockSandboxRuntime.prompt.mockReturnValue(
+      emit([
+        { type: 'message_chunk', content: '准备写文件' },
+        {
+          type: 'decision',
+          suggestedContent: '先创建 notes.md',
+          rationale: '需要先落盘中间结果',
+        },
+        {
+          type: 'tool_call',
+          call: {
+            id: 'tool-1',
+            tool: 'write_file',
+            args: { path: 'notes.md' },
+            status: 'awaiting_permission',
+            permissionRequest: {
+              description: '写入工作区文件 notes.md',
+              resourcePaths: ['notes.md'],
+            },
+            transitions: [
+              {
+                to: 'awaiting_permission',
+                timestamp: '2026-04-01T00:00:01.500Z',
+                source: 'runtime',
+              },
+            ],
+          },
+        },
+        { type: 'done', stopReason: 'end_turn' },
+      ]),
+    );
+
+    const step = makeStep();
+    const adapter = createAdapter({
+      db,
+      agentRuntime: mockAgentRuntime,
+      runtimeAdapterFactory: mockRuntimeAdapterFactory,
+      agentDefinitionService: mockAgentDefinitionService,
+      sandboxService: mockSandboxService,
+      eventBridge: mockEventBridge,
+    });
+
+    await adapter.execute({
+      executionId: EXECUTION_ID,
+      step,
+      input: { prompt: 'test' },
+      tenantId: TENANT_ID,
+      versionSnapshot: makeSnapshot('no-sandbox-node'),
+    });
+
+    expect(mockEventBridge.emitToolCallStatus).toHaveBeenCalledWith(
+      TENANT_ID,
+      EXECUTION_ID,
+      expect.objectContaining({
+        stepId: step.id,
+        nodeId: step.nodeId,
+        executionType: 'workflow',
+        toolCallId: 'tool-1',
+        tool: 'write_file',
+        status: 'awaiting_permission',
+      }),
+    );
+    expect(mockEventBridge.emitToolPermissionRequired).toHaveBeenCalledWith(
+      TENANT_ID,
+      EXECUTION_ID,
+      expect.objectContaining({
+        stepId: step.id,
+        nodeId: step.nodeId,
+        executionType: 'workflow',
+        toolCallId: 'tool-1',
+        tool: 'write_file',
+      }),
+    );
+    expect(step.checkpointData).toMatchObject({
+      partialContent: '准备写文件',
+      decision: {
+        suggestedContent: '先创建 notes.md',
+        rationale: '需要先落盘中间结果',
+      },
+      toolCalls: [
+        expect.objectContaining({
+          id: 'tool-1',
+          tool: 'write_file',
+          status: 'awaiting_permission',
+        }),
+      ],
+      segments: [
+        { type: 'text', content: '准备写文件' },
+        { type: 'thinking', content: '需要先落盘中间结果' },
+        { type: 'tool_call', toolCallId: 'tool-1' },
+      ],
+    });
   });
 
   it('tool_use 触发多轮循环直到 end_turn', async () => {

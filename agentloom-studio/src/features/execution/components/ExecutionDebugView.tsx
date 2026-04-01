@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from '@tanstack/react-router'
-import { ArrowLeft, Loader2 } from 'lucide-react'
-import { useExecution } from '../hooks/useExecutionList'
+import { ArrowLeft, Loader2, MessageSquare } from 'lucide-react'
+import { useLiveExecutionDetail } from '../hooks/useLiveExecutionDetail'
 import { ReadonlyCanvas } from './ReadonlyCanvas'
 import { ExecutionTimelineVertical } from './timeline'
 import { useTimelineData } from '../hooks/useTimelineData'
@@ -36,7 +36,7 @@ export const ExecutionDebugView = memo(function ExecutionDebugView({
   executionId,
 }: ExecutionDebugViewProps) {
   const navigate = useNavigate()
-  const { data: execution, isLoading, error } = useExecution(executionId)
+  const { data: execution, isLoading, error } = useLiveExecutionDetail(executionId)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'debug' | 'provenance' | 'terminals'>('debug')
   const handleTabChange = useCallback((value: string) => {
@@ -133,6 +133,7 @@ export const ExecutionDebugView = memo(function ExecutionDebugView({
     () => execution?.steps.find((step) => step.nodeId === selectedNodeId) ?? null,
     [execution?.steps, selectedNodeId],
   )
+  const isAgentStep = selectedStep?.nodeType?.includes('agent') ?? false
 
   if (isLoading) {
     return (
@@ -271,6 +272,27 @@ export const ExecutionDebugView = memo(function ExecutionDebugView({
             />
 
             <div style={{ width: `${rightWidth}%` }} className="min-w-0" data-testid="execution-debug-right-panel">
+              {isAgentStep && (
+                <div className="mb-3 flex justify-end">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      navigate({
+                        to: '/executions/$executionId/steps/$stepId/agent',
+                        params: {
+                          executionId,
+                          stepId: selectedStep!.id,
+                        },
+                      })
+                    }}
+                  >
+                    <MessageSquare className="mr-2 size-4" />
+                    打开 Agent 运行视图
+                  </Button>
+                </div>
+              )}
               <ExecutionNodeDetail step={selectedStep} />
             </div>
           </div>
@@ -290,6 +312,25 @@ export const ExecutionDebugView = memo(function ExecutionDebugView({
               executionStartedAt={execution.startedAt ?? null}
               executionCompletedAt={execution.completedAt ?? null}
             />
+            {isAgentStep && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  navigate({
+                    to: '/executions/$executionId/steps/$stepId/agent',
+                    params: {
+                      executionId,
+                      stepId: selectedStep!.id,
+                    },
+                  })
+                }}
+              >
+                <MessageSquare className="mr-2 size-4" />
+                打开 Agent 运行视图
+              </Button>
+            )}
             <ExecutionNodeDetail step={selectedStep} />
           </div>
         </TabsContent>

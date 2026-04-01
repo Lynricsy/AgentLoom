@@ -9,7 +9,6 @@ import {
 import {
   Logger,
   UseGuards,
-  OnModuleInit,
   OnModuleDestroy,
   Inject,
   forwardRef,
@@ -28,6 +27,7 @@ import type {
   ExecutionStatusChangedPayload,
   StepStatusChangedPayload,
   StepAgentEventPayload,
+  OutputChunkPayload,
   ToolCallStatusPayload,
   InterventionRequiredPayload,
   InterventionResolvedPayload,
@@ -100,7 +100,6 @@ export class AgentConversationGateway
     OnGatewayInit,
     OnGatewayConnection,
     OnGatewayDisconnect,
-    OnModuleInit,
     OnModuleDestroy
 {
   private readonly logger = new Logger(AgentConversationGateway.name);
@@ -124,33 +123,6 @@ export class AgentConversationGateway
     private readonly tokenBlacklistService: TokenBlacklistService,
     private readonly agentExecutionService: AgentExecutionService,
   ) {}
-
-  onModuleInit() {
-    this.throttleService.registerFlushHandler((executionId, merged) => {
-      const parts = executionId.split(':');
-      const tenantId = parts.length >= 2 ? parts[0] : '';
-      const convId = parts.length >= 2 ? parts[1] : executionId;
-
-      for (const chunk of merged) {
-        const envelope = this.eventBridgeService['createEnvelope'](
-          ExecutionEventName.OUTPUT_CHUNK,
-          tenantId,
-          convId,
-          {
-            stepId: chunk.stepId,
-            chunk: chunk.chunk,
-            index: chunk.startIndex,
-          },
-        );
-        this.broadcastConversationEvent(
-          tenantId,
-          convId,
-          ConversationEventName.AGENT_MESSAGE_CHUNK,
-          envelope as unknown as Record<string, unknown>,
-        );
-      }
-    });
-  }
 
   onModuleDestroy(): void {
     for (const timer of this.drainTimers.values()) {
@@ -427,6 +399,35 @@ export class AgentConversationGateway
     );
   }
 
+  @OnEvent(ExecutionEventName.OUTPUT_CHUNK)
+  handleOutputChunk(
+    payload: OutputChunkPayload & {
+      tenantId: string;
+      executionId: string;
+    },
+  ): void {
+    const isConversationChunk =
+      payload.executionType === 'conversation' ||
+      (!payload.executionType && payload.stepId === payload.executionId);
+
+    if (!isConversationChunk) {
+      return;
+    }
+
+    const conversationId = payload.executionId;
+    const envelope = this.buildEventPayload(
+      conversationId,
+      payload.tenantId,
+      payload,
+    );
+    this.broadcastConversationEvent(
+      payload.tenantId,
+      conversationId,
+      ConversationEventName.AGENT_MESSAGE_CHUNK,
+      envelope,
+    );
+  }
+
   @OnEvent(ExecutionEventName.STEP_AGENT_EVENT)
   handleStepAgentEvent(
     payload: StepAgentEventPayload & {
@@ -560,11 +561,15 @@ export class AgentConversationGateway
 
   @OnEvent('workspace.file_change')
   handleWorkspaceFileChange(payload: {
-    conversationId: string;
     tenantId: string;
     changedFiles: string[];
     timestamp: string;
+    conversationId?: string;
   }): void {
+    if (!payload.conversationId) {
+      return;
+    }
+
     for (const path of payload.changedFiles) {
       const envelope = this.buildEventPayload(
         payload.conversationId,

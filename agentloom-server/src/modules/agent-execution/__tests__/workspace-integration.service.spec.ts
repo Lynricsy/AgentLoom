@@ -1,3 +1,4 @@
+import { Readable } from 'node:stream';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { NotFoundException } from '@nestjs/common';
 
@@ -7,7 +8,10 @@ const {
   mockDockerService,
   mockSandboxService,
   mockWorkspaceService,
+  mockStorageService,
   mockEventEmitter,
+  mockSessionPersistence,
+  mockDb,
 } = vi.hoisted(() => ({
   mockDockerService: {
     createExec: vi.fn(),
@@ -16,21 +20,39 @@ const {
   },
   mockSandboxService: {
     findByConversationId: vi.fn(),
+    findByExecutionId: vi.fn(),
   },
   mockWorkspaceService: {
     createFromSandbox: vi.fn(),
+    findOne: vi.fn(),
+    resolveOrganizationId: vi.fn(),
+  },
+  mockStorageService: {
+    download: vi.fn(),
   },
   mockEventEmitter: {
     emit: vi.fn(),
+  },
+  mockSessionPersistence: {
+    loadFromCheckpoint: vi.fn(),
+  },
+  mockDb: {
+    select: vi.fn(),
   },
 }));
 
 const CONVERSATION_ID = 'conv-001';
 const TENANT_ID = 'tenant-001';
 const CONTAINER_ID = 'container-abc';
+const EXECUTION_ID = 'exec-001';
+const STEP_ID = 'step-001';
+const SANDBOX_NODE_ID = 'sandbox-node-001';
 const ORG_ID = 'org-001';
 const USER_ID = 'user-001';
 const SESSION_ID = 'session-001';
+const WORKSPACE_SNAPSHOT_ID = 'workspace-001';
+const WORKSPACE_STORAGE_KEY =
+  'tenants/tenant-001/workspaces/workspace-001/snapshot.tar';
 
 function mockSandboxSession(overrides: Record<string, unknown> = {}) {
   return {
@@ -41,6 +63,114 @@ function mockSandboxSession(overrides: Record<string, unknown> = {}) {
     tenantId: TENANT_ID,
     ...overrides,
   };
+}
+
+function mockWorkflowSession(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 'workflow-session-001',
+    agentId: 'agent-001',
+    mode: 'workflow',
+    status: 'active',
+    tenantId: TENANT_ID,
+    context: {
+      history: [],
+      workflowState: {
+        executionId: EXECUTION_ID,
+        serverSandbox: {
+          executionId: EXECUTION_ID,
+          sandboxNodeId: SANDBOX_NODE_ID,
+        },
+      },
+    },
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    ...overrides,
+  };
+}
+
+function createSelectChain<T>(value: T) {
+  return {
+    from: vi.fn().mockReturnValue({
+      where: vi.fn().mockReturnValue({
+        limit: vi.fn().mockResolvedValue([value]),
+      }),
+    }),
+  };
+}
+
+function writeTarString(
+  header: Buffer,
+  offset: number,
+  length: number,
+  value: string,
+) {
+  Buffer.from(value).copy(
+    header,
+    offset,
+    0,
+    Math.min(Buffer.byteLength(value), length),
+  );
+}
+
+function writeTarOctal(
+  header: Buffer,
+  offset: number,
+  length: number,
+  value: number,
+) {
+  const octal = value.toString(8).padStart(length - 1, '0');
+  header.write(`${octal}\0`, offset, length, 'ascii');
+}
+
+function createTarBuffer(
+  entries: Array<{
+    path: string;
+    type: 'file' | 'directory';
+    content?: string;
+  }>,
+): Buffer {
+  const chunks: Buffer[] = [];
+
+  for (const entry of entries) {
+    const content =
+      entry.type === 'file'
+        ? Buffer.from(entry.content ?? '', 'utf-8')
+        : Buffer.alloc(0);
+    const header = Buffer.alloc(512, 0);
+    const normalizedPath =
+      entry.type === 'directory' ? `${entry.path}/` : entry.path;
+
+    writeTarString(header, 0, 100, normalizedPath);
+    writeTarOctal(header, 100, 8, entry.type === 'directory' ? 0o755 : 0o644);
+    writeTarOctal(header, 108, 8, 0);
+    writeTarOctal(header, 116, 8, 0);
+    writeTarOctal(header, 124, 12, content.length);
+    writeTarOctal(header, 136, 12, 0);
+    header.fill(' ', 148, 156);
+    header[156] =
+      entry.type === 'directory' ? '5'.charCodeAt(0) : '0'.charCodeAt(0);
+    writeTarString(header, 257, 6, 'ustar');
+    writeTarString(header, 263, 2, '00');
+
+    let checksum = 0;
+    for (const byte of header.values()) {
+      checksum += byte;
+    }
+    const checksumField = checksum.toString(8).padStart(6, '0');
+    header.write(`${checksumField}\0 `, 148, 8, 'ascii');
+
+    chunks.push(header);
+    if (content.length > 0) {
+      chunks.push(content);
+      const remainder = content.length % 512;
+      if (remainder !== 0) {
+        chunks.push(Buffer.alloc(512 - remainder, 0));
+      }
+    }
+  }
+
+  chunks.push(Buffer.alloc(1024, 0));
+  return Buffer.concat(chunks);
 }
 
 /**
@@ -104,12 +234,26 @@ describe('WorkspaceIntegrationService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useFakeTimers();
+    mockSandboxService.findByConversationId.mockReset();
+    mockSandboxService.findByExecutionId.mockReset();
+    mockWorkspaceService.findOne.mockReset();
+    mockWorkspaceService.resolveOrganizationId
+      .mockReset()
+      .mockResolvedValue(ORG_ID);
+    mockStorageService.download.mockReset();
+    mockSessionPersistence.loadFromCheckpoint
+      .mockReset()
+      .mockResolvedValue(null);
+    mockDb.select.mockReset();
 
     service = new WorkspaceIntegrationService(
+      mockDb as never,
       mockDockerService as never,
       mockSandboxService as never,
       mockWorkspaceService as never,
       mockEventEmitter as never,
+      mockSessionPersistence as never,
+      mockStorageService as never,
     );
   });
 
@@ -173,6 +317,149 @@ describe('WorkspaceIntegrationService', () => {
 
       const result = await service.getFileTree(CONVERSATION_ID, TENANT_ID);
       expect(result).toEqual([]);
+    });
+  });
+
+  describe('getExecutionStepFileTree', () => {
+    it('应按 step checkpoint 解析对应 workflow sandbox 的文件树', async () => {
+      mockDb.select.mockReturnValue(
+        createSelectChain({
+          id: STEP_ID,
+          executionId: EXECUTION_ID,
+          checkpointData: {},
+        }),
+      );
+      mockSessionPersistence.loadFromCheckpoint.mockResolvedValue(
+        mockWorkflowSession(),
+      );
+      mockSandboxService.findByExecutionId.mockResolvedValue(
+        mockSandboxSession(),
+      );
+
+      setupExecWithOutput(['d|0|src', 'f|128|src/main.ts'].join('\n'));
+
+      const result = await service.getExecutionStepFileTree(
+        EXECUTION_ID,
+        STEP_ID,
+        TENANT_ID,
+      );
+
+      expect(result).toHaveLength(1);
+      expect(result[0]?.name).toBe('src');
+      expect(mockSessionPersistence.loadFromCheckpoint).toHaveBeenCalledWith(
+        TENANT_ID,
+        STEP_ID,
+      );
+      expect(mockSandboxService.findByExecutionId).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        TENANT_ID,
+        SANDBOX_NODE_ID,
+      );
+    });
+
+    it('checkpoint 指向其他 execution 时应抛出异常', async () => {
+      mockDb.select.mockReturnValue(
+        createSelectChain({
+          id: STEP_ID,
+          executionId: EXECUTION_ID,
+          checkpointData: {},
+        }),
+      );
+      mockSessionPersistence.loadFromCheckpoint.mockResolvedValue(
+        mockWorkflowSession({
+          context: {
+            history: [],
+            workflowState: {
+              executionId: 'exec-other',
+              serverSandbox: {
+                executionId: 'exec-other',
+                sandboxNodeId: SANDBOX_NODE_ID,
+              },
+            },
+          },
+        }),
+      );
+
+      await expect(
+        service.getExecutionStepFileTree(EXECUTION_ID, STEP_ID, TENANT_ID),
+      ).rejects.toThrow('不属于执行');
+    });
+
+    it('运行中容器不存在但 checkpoint 含 workspaceSnapshotId 时应回退到快照', async () => {
+      mockDb.select.mockReturnValue(
+        createSelectChain({
+          id: STEP_ID,
+          executionId: EXECUTION_ID,
+          checkpointData: {
+            workspaceSnapshotId: WORKSPACE_SNAPSHOT_ID,
+          },
+        }),
+      );
+      mockSessionPersistence.loadFromCheckpoint.mockResolvedValue(
+        mockWorkflowSession(),
+      );
+      mockSandboxService.findByExecutionId.mockResolvedValue(null);
+      mockWorkspaceService.findOne.mockResolvedValue({
+        id: WORKSPACE_SNAPSHOT_ID,
+        status: 'ready',
+        storageKey: WORKSPACE_STORAGE_KEY,
+      });
+      mockStorageService.download.mockResolvedValue(
+        Readable.from(
+          createTarBuffer([
+            { path: 'workspace/src', type: 'directory' },
+            {
+              path: 'workspace/src/main.ts',
+              type: 'file',
+              content: 'hello snapshot',
+            },
+          ]),
+        ),
+      );
+
+      const result = await service.getExecutionStepFileTree(
+        EXECUTION_ID,
+        STEP_ID,
+        TENANT_ID,
+      );
+
+      expect(result).toHaveLength(1);
+      expect(result[0]?.path).toBe('src');
+      expect(result[0]?.children?.[0]?.path).toBe('src/main.ts');
+      expect(mockWorkspaceService.findOne).toHaveBeenCalledWith(
+        TENANT_ID,
+        WORKSPACE_SNAPSHOT_ID,
+      );
+    });
+
+    it('session checkpoint 缺失时应回退到 step checkpoint 中的 sandboxNodeId', async () => {
+      mockDb.select.mockReturnValue(
+        createSelectChain({
+          id: STEP_ID,
+          executionId: EXECUTION_ID,
+          checkpointData: {
+            sandboxNodeId: SANDBOX_NODE_ID,
+            serverSandbox: {
+              executionId: EXECUTION_ID,
+              sandboxNodeId: SANDBOX_NODE_ID,
+            },
+          },
+        }),
+      );
+      mockSessionPersistence.loadFromCheckpoint.mockResolvedValue(null);
+      mockSandboxService.findByExecutionId.mockResolvedValue(
+        mockSandboxSession(),
+      );
+
+      setupExecWithOutput(['d|0|src', 'f|128|src/main.ts'].join('\n'));
+
+      await service.getExecutionStepFileTree(EXECUTION_ID, STEP_ID, TENANT_ID);
+
+      expect(mockSandboxService.findByExecutionId).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        TENANT_ID,
+        SANDBOX_NODE_ID,
+      );
     });
   });
 
@@ -305,6 +592,88 @@ describe('WorkspaceIntegrationService', () => {
     });
   });
 
+  describe('getExecutionStepFileContent', () => {
+    it('应读取 workflow step 对应沙箱中的文本文件', async () => {
+      mockDb.select.mockReturnValue(
+        createSelectChain({
+          id: STEP_ID,
+          executionId: EXECUTION_ID,
+          checkpointData: {},
+        }),
+      );
+      mockSessionPersistence.loadFromCheckpoint.mockResolvedValue(
+        mockWorkflowSession(),
+      );
+      mockSandboxService.findByExecutionId.mockResolvedValue(
+        mockSandboxSession(),
+      );
+
+      setupExecWithSequentialOutputs([
+        '42|regular file',
+        'hello workflow',
+        'hello workflow',
+      ]);
+
+      const result = await service.getExecutionStepFileContent(
+        EXECUTION_ID,
+        STEP_ID,
+        TENANT_ID,
+        'src/main.ts',
+      );
+
+      expect(result.path).toBe('src/main.ts');
+      expect(result.content).toBe('hello workflow');
+      expect(mockSandboxService.findByExecutionId).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        TENANT_ID,
+        SANDBOX_NODE_ID,
+      );
+    });
+
+    it('运行中容器不存在但存在 workspace 快照时应读取归档文件内容', async () => {
+      mockDb.select.mockReturnValue(
+        createSelectChain({
+          id: STEP_ID,
+          executionId: EXECUTION_ID,
+          checkpointData: {
+            workspaceSnapshotId: WORKSPACE_SNAPSHOT_ID,
+          },
+        }),
+      );
+      mockSessionPersistence.loadFromCheckpoint.mockResolvedValue(
+        mockWorkflowSession(),
+      );
+      mockSandboxService.findByExecutionId.mockResolvedValue(null);
+      mockWorkspaceService.findOne.mockResolvedValue({
+        id: WORKSPACE_SNAPSHOT_ID,
+        status: 'ready',
+        storageKey: WORKSPACE_STORAGE_KEY,
+      });
+      mockStorageService.download.mockResolvedValue(
+        Readable.from(
+          createTarBuffer([
+            { path: 'workspace/src', type: 'directory' },
+            {
+              path: 'workspace/src/main.ts',
+              type: 'file',
+              content: 'hello snapshot',
+            },
+          ]),
+        ),
+      );
+
+      const result = await service.getExecutionStepFileContent(
+        EXECUTION_ID,
+        STEP_ID,
+        TENANT_ID,
+        'src/main.ts',
+      );
+
+      expect(result.content).toBe('hello snapshot');
+      expect(result.path).toBe('src/main.ts');
+    });
+  });
+
   describe('startFileWatcher', () => {
     it('应启动轮询定时器并在检测到变更时发出事件', async () => {
       setupExecWithOutput('');
@@ -350,6 +719,38 @@ describe('WorkspaceIntegrationService', () => {
       expect(mockEventEmitter.emit).not.toHaveBeenCalledWith(
         'workspace.file_change',
         expect.anything(),
+      );
+    });
+  });
+
+  describe('startExecutionStepFileWatcher', () => {
+    it('应为 workflow step 启动独立 watcher 并发出 execution 维度事件', async () => {
+      mockSandboxService.findByExecutionId.mockResolvedValue(
+        mockSandboxSession(),
+      );
+      setupExecWithOutput('');
+
+      await service.startExecutionStepFileWatcher({
+        executionId: EXECUTION_ID,
+        stepId: STEP_ID,
+        tenantId: TENANT_ID,
+        sandboxNodeId: SANDBOX_NODE_ID,
+      });
+
+      await vi.advanceTimersByTimeAsync(0);
+
+      setupExecWithOutput('src/main.ts\nsrc/utils.ts');
+      await vi.advanceTimersByTimeAsync(3000);
+
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+        'workspace.file_change',
+        expect.objectContaining({
+          executionId: EXECUTION_ID,
+          stepId: STEP_ID,
+          sandboxNodeId: SANDBOX_NODE_ID,
+          tenantId: TENANT_ID,
+          changedFiles: ['src/main.ts', 'src/utils.ts'],
+        }),
       );
     });
   });
@@ -454,6 +855,89 @@ describe('WorkspaceIntegrationService', () => {
       mockDockerService.createExec.mockClear();
       await vi.advanceTimersByTimeAsync(3000);
       expect(mockDockerService.createExec).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('archiveExecutionStepWorkspace', () => {
+    it('应为 workflow step 归档工作区并返回快照 ID', async () => {
+      mockDb.select
+        .mockReturnValueOnce(
+          createSelectChain({
+            id: STEP_ID,
+            executionId: EXECUTION_ID,
+            checkpointData: {},
+          }),
+        )
+        .mockReturnValueOnce(
+          createSelectChain({
+            createdBy: USER_ID,
+          }),
+        );
+      mockSessionPersistence.loadFromCheckpoint.mockResolvedValue(
+        mockWorkflowSession(),
+      );
+      mockSandboxService.findByExecutionId.mockResolvedValue(
+        mockSandboxSession(),
+      );
+      mockWorkspaceService.createFromSandbox.mockResolvedValue({
+        id: WORKSPACE_SNAPSHOT_ID,
+      });
+
+      const snapshotId = await service.archiveExecutionStepWorkspace(
+        EXECUTION_ID,
+        STEP_ID,
+        TENANT_ID,
+      );
+
+      expect(snapshotId).toBe(WORKSPACE_SNAPSHOT_ID);
+      expect(mockWorkspaceService.resolveOrganizationId).toHaveBeenCalledWith(
+        TENANT_ID,
+      );
+      expect(mockWorkspaceService.createFromSandbox).toHaveBeenCalledWith(
+        TENANT_ID,
+        ORG_ID,
+        USER_ID,
+        SESSION_ID,
+        `execution-${EXECUTION_ID}-step-${STEP_ID}-workspace`,
+        expect.stringContaining('自动归档'),
+      );
+    });
+
+    it('session checkpoint 缺失时应使用显式 sandboxNodeId 归档 workflow step', async () => {
+      mockDb.select
+        .mockReturnValueOnce(
+          createSelectChain({
+            id: STEP_ID,
+            executionId: EXECUTION_ID,
+            checkpointData: {},
+          }),
+        )
+        .mockReturnValueOnce(
+          createSelectChain({
+            createdBy: USER_ID,
+          }),
+        );
+      mockSessionPersistence.loadFromCheckpoint.mockResolvedValue(null);
+      mockSandboxService.findByExecutionId.mockResolvedValue(
+        mockSandboxSession(),
+      );
+      mockWorkspaceService.createFromSandbox.mockResolvedValue({
+        id: WORKSPACE_SNAPSHOT_ID,
+      });
+
+      const snapshotId = await service.archiveExecutionStepWorkspace(
+        EXECUTION_ID,
+        STEP_ID,
+        TENANT_ID,
+        SANDBOX_NODE_ID,
+      );
+
+      expect(snapshotId).toBe(WORKSPACE_SNAPSHOT_ID);
+      expect(mockSandboxService.findByExecutionId).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        TENANT_ID,
+        SANDBOX_NODE_ID,
+      );
     });
   });
 

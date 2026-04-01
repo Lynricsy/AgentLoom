@@ -174,6 +174,21 @@ export interface ToolPermissionResolveRequest {
   action: 'approve' | 'deny'
 }
 
+export interface ExecutionWorkspaceFileNode {
+  name: string
+  path: string
+  type: 'file' | 'directory'
+  size?: number
+  children?: ExecutionWorkspaceFileNode[]
+}
+
+export interface ExecutionWorkspaceFileContent {
+  path: string
+  content: string
+  size: number
+  encoding: 'utf-8'
+}
+
 export async function resolveToolPermission(
   executionId: string,
   stepId: string,
@@ -186,4 +201,27 @@ export async function resolveToolPermission(
       { json: toSnakeBody(body) },
     )
     .json<void>()
+}
+
+export async function getExecutionStepWorkspaceTree(
+  executionId: string,
+  stepId: string,
+) {
+  return apiClient
+    .get(`executions/${executionId}/steps/${stepId}/workspace/tree`)
+    .json<ExecutionWorkspaceFileNode[]>()
+}
+
+export async function getExecutionStepWorkspaceFile(
+  executionId: string,
+  stepId: string,
+  filePath: string,
+) {
+  const encodedPath = encodeURIComponent(filePath)
+    .replaceAll('%2F', '/')
+    .replaceAll('%5C', '/')
+
+  return apiClient
+    .get(`executions/${executionId}/steps/${stepId}/workspace/files/${encodedPath}`)
+    .json<ExecutionWorkspaceFileContent>()
 }

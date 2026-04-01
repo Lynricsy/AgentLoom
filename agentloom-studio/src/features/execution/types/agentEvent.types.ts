@@ -1,5 +1,12 @@
 // 客户端 Agent 事件类型 — 与服务端 agent.types.ts 保持对齐
 
+import type {
+  PtyExitEvent,
+  PtyKilledEvent,
+  PtyOutputEvent,
+  PtySpawnedEvent,
+} from './pty'
+
 // ─── Tool Call ───
 
 export type ToolCallStatus =
@@ -41,6 +48,11 @@ export type AgentEventType =
   | 'tool_call'
   | 'decision'
   | 'done'
+  | 'file_change'
+  | 'pty.spawned'
+  | 'pty.output'
+  | 'pty.exit'
+  | 'pty.killed'
 
 export type StopReason =
   | 'end_turn'
@@ -77,12 +89,25 @@ export interface DoneEvent {
   stopReason: StopReason
 }
 
+export interface FileChangeEvent {
+  type: 'file_change'
+  path: string
+  changeType: 'created' | 'modified' | 'deleted'
+  diff?: string
+  content?: string
+}
+
 export type AgentEvent =
   | PlanEvent
   | MessageChunkEvent
   | ToolCallAgentEvent
   | DecisionEvent
   | DoneEvent
+  | FileChangeEvent
+  | PtySpawnedEvent
+  | PtyOutputEvent
+  | PtyExitEvent
+  | PtyKilledEvent
 
 // ─── Socket 事件 Payload ───
 

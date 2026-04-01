@@ -19,6 +19,7 @@ Guidelines for **agentloom-studio** — a React 19 + Vite 7 + TanStack Router fr
 | [Directory Structure](./directory-structure.md) | Feature-Slice architecture, 31 feature modules, barrel imports | Done |
 | [Component Guidelines](./component-guidelines.md) | forwardRef+CVA primitives, memo pattern, Radix composition | Done |
 | [Hook Guidelines](./hook-guidelines.md) | 4-file API layer, query key factory, ky client | Done |
+| [Realtime Execution Views](./realtime-execution-views.md) | Studio + Flutter realtime execution/viewer contracts, ordered segments, workspace preview | Done |
 | [State Management](./state-management.md) | 3-tier: TanStack Query + Zustand + useState | Done |
 | [Quality Guidelines](./quality-guidelines.md) | ESLint 9, Vitest 4, Prettier+Tailwind, strict TS | Done |
 | [Type Safety](./type-safety.md) | Strict mode, Zod forms, string unions, null not undefined | Done |

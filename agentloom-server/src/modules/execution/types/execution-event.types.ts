@@ -101,6 +101,7 @@ export interface OutputChunkPayload {
   readonly stepId: string;
   readonly chunk: string;
   readonly index: number;
+  readonly executionType?: 'workflow' | 'conversation';
 }
 
 export interface InterventionDecision {

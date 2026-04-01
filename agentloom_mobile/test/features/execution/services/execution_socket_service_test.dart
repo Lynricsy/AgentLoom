@@ -3,7 +3,12 @@ import 'package:agentloom_mobile/features/execution/models/execution_event.dart'
 import 'package:agentloom_mobile/features/execution/models/execution_state.dart';
 import 'package:agentloom_mobile/features/execution/models/execution_status.dart';
 import 'package:agentloom_mobile/features/execution/models/subscribe_ack.dart';
-import 'package:agentloom_mobile/features/execution/services/execution_socket_service.dart';
+import 'package:agentloom_mobile/features/execution/services/execution_socket_service.dart'
+    show
+        ExecutionSocketService,
+        coerceSocketJsonMap,
+        executionSocketServiceProvider,
+        resolveExecutionSocketUrl;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -72,6 +77,53 @@ void main() {
       test('nodeStatusChanged 是 ExecutionEventEnvelope stream', () {
         expect(
           service.nodeStatusChanged,
+          isA<Stream<ExecutionEventEnvelope>>(),
+        );
+      });
+
+      test('stepAgentEvent 是 ExecutionEventEnvelope stream', () {
+        expect(service.stepAgentEvent, isA<Stream<ExecutionEventEnvelope>>());
+      });
+
+      test('stepRetrying 是 ExecutionEventEnvelope stream', () {
+        expect(service.stepRetrying, isA<Stream<ExecutionEventEnvelope>>());
+      });
+
+      test('outputChunk 是 ExecutionEventEnvelope stream', () {
+        expect(service.outputChunk, isA<Stream<ExecutionEventEnvelope>>());
+      });
+
+      test('interventionRequired 是 ExecutionEventEnvelope stream', () {
+        expect(
+          service.interventionRequired,
+          isA<Stream<ExecutionEventEnvelope>>(),
+        );
+      });
+
+      test('interventionResolved 是 ExecutionEventEnvelope stream', () {
+        expect(
+          service.interventionResolved,
+          isA<Stream<ExecutionEventEnvelope>>(),
+        );
+      });
+
+      test('toolCallStatusChanged 是 ExecutionEventEnvelope stream', () {
+        expect(
+          service.toolCallStatusChanged,
+          isA<Stream<ExecutionEventEnvelope>>(),
+        );
+      });
+
+      test('toolPermissionRequired 是 ExecutionEventEnvelope stream', () {
+        expect(
+          service.toolPermissionRequired,
+          isA<Stream<ExecutionEventEnvelope>>(),
+        );
+      });
+
+      test('toolPermissionResolved 是 ExecutionEventEnvelope stream', () {
+        expect(
+          service.toolPermissionResolved,
           isA<Stream<ExecutionEventEnvelope>>(),
         );
       });
@@ -237,6 +289,27 @@ void main() {
         resolveExecutionSocketUrl('https://example.com'),
         'https://example.com/execution',
       );
+    });
+  });
+
+  group('coerceSocketJsonMap', () {
+    test('converts Map<Object?, Object?> into Map<String, dynamic>', () {
+      final payload = coerceSocketJsonMap(
+        {
+              'status': 'subscribed',
+              'current_state': {'execution_id': 'exec-1'},
+            }
+            as Map<Object?, Object?>,
+      );
+
+      expect(payload, isNotNull);
+      expect(payload!['status'], 'subscribed');
+      expect(payload['current_state'], isA<Map<Object?, Object?>>());
+    });
+
+    test('returns null for non-map payloads', () {
+      expect(coerceSocketJsonMap('invalid'), isNull);
+      expect(coerceSocketJsonMap(42), isNull);
     });
   });
 

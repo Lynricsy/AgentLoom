@@ -489,7 +489,8 @@ extension ExecutionSummaryDtoPatterns on ExecutionSummaryDto {
 }
 
 /// @nodoc
-@JsonSerializable()
+
+@JsonSerializable(fieldRename: FieldRename.snake)
 class _ExecutionSummaryDto implements ExecutionSummaryDto {
   const _ExecutionSummaryDto({
     required this.id,

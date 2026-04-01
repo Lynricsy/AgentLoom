@@ -467,7 +467,8 @@ extension ExecutionStepDtoPatterns on ExecutionStepDto {
 }
 
 /// @nodoc
-@JsonSerializable()
+
+@JsonSerializable(fieldRename: FieldRename.snake)
 class _ExecutionStepDto implements ExecutionStepDto {
   const _ExecutionStepDto({
     required this.id,

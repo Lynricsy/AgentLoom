@@ -9,6 +9,7 @@ import { ThrottleService } from '../services/throttle.service';
 import { EventBridgeService } from '../services/event-bridge.service';
 import { SessionPersistenceService } from '../services/session-persistence.service';
 import { ToolCallStateMachineService } from '../services/tool-call-state-machine.service';
+import { WorkspaceIntegrationService } from '../../agent-execution/workspace-integration.service';
 import { InterventionPolicyService } from '../../intervention-policy/intervention-policy.service';
 import { LlmEncryptionService } from '../../llm/llm-encryption.service';
 import { NotificationService } from '../../notification/notification.service';
@@ -222,6 +223,15 @@ describe('AgentTaskWorker', () => {
     deserializeSession: vi.fn(),
   };
 
+  const mockWorkspaceIntegrationService: Record<
+    string,
+    ReturnType<typeof vi.fn>
+  > = {
+    startExecutionStepFileWatcher: vi.fn(),
+    stopExecutionStepFileWatcher: vi.fn(),
+    archiveExecutionStepWorkspace: vi.fn(),
+  };
+
   const mockAgentRuntime: Record<
     keyof IAgentRuntime,
     ReturnType<typeof vi.fn>
@@ -323,6 +333,13 @@ describe('AgentTaskWorker', () => {
       .mockResolvedValue('LLM_SUGGEST');
     mockMemoryToolsService.createSessionToolProvider.mockReset();
     mockMemoryFusionService.bootAll.mockReset();
+    mockWorkspaceIntegrationService.startExecutionStepFileWatcher
+      .mockReset()
+      .mockResolvedValue(undefined);
+    mockWorkspaceIntegrationService.stopExecutionStepFileWatcher.mockReset();
+    mockWorkspaceIntegrationService.archiveExecutionStepWorkspace
+      .mockReset()
+      .mockResolvedValue(null);
     mockNodeScheduler.onNodeCompleted.mockReset().mockResolvedValue(undefined);
     mockNodeScheduler.onNodeFailed.mockReset().mockResolvedValue(undefined);
     mockNodeScheduler.enqueueInterventionTimeout
@@ -380,6 +397,10 @@ describe('AgentTaskWorker', () => {
         {
           provide: SessionPersistenceService,
           useValue: mockSessionPersistence,
+        },
+        {
+          provide: WorkspaceIntegrationService,
+          useValue: mockWorkspaceIntegrationService,
         },
         { provide: AGENT_RUNTIME, useValue: mockAgentRuntime },
         { provide: AGENT_RUNTIME_FACTORY, useValue: mockAdapterFactory },
@@ -685,14 +706,16 @@ describe('AgentTaskWorker', () => {
           stepId: STEP_ID,
           chunk: '建议给主人展示摘要',
           index: 1,
+          executionType: 'workflow',
         },
       );
-      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+      expect(mockStateMachine.updateStepStatus).toHaveBeenNthCalledWith(
+        2,
         TENANT_ID,
         STEP_ID,
         'waiting_intervention',
         expect.objectContaining({
-          checkpointData: {
+          checkpointData: expect.objectContaining({
             sessionId: SESSION_ID,
             partialContent: '建议给主人展示摘要',
             stopReason: 'intervention_required',
@@ -702,7 +725,7 @@ describe('AgentTaskWorker', () => {
               suggestedContent: '建议给主人展示摘要',
               confidence: 0.8,
             },
-          },
+          }),
           result: {
             content: '建议给主人展示摘要',
             stopReason: 'intervention_required',
@@ -752,16 +775,56 @@ describe('AgentTaskWorker', () => {
 
       await worker.process(createMockJob());
 
-      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+      expect(mockStateMachine.updateStepStatus).toHaveBeenNthCalledWith(
+        2,
         TENANT_ID,
         STEP_ID,
         'completed',
-        { result: { content: '截断的内容', stopReason: 'max_tokens' } },
+        expect.objectContaining({
+          result: { content: '截断的内容', stopReason: 'max_tokens' },
+        }),
       );
       expect(mockNodeScheduler.onNodeCompleted).toHaveBeenCalledWith(
         EXECUTION_ID,
         STEP_ID,
         TENANT_ID,
+      );
+      expect(
+        mockWorkspaceIntegrationService.stopExecutionStepFileWatcher.mock
+          .invocationCallOrder[0],
+      ).toBeLessThan(
+        mockNodeScheduler.onNodeCompleted.mock.invocationCallOrder[0]!,
+      );
+    });
+
+    it('完成步骤时应把归档得到的 workspaceSnapshotId 写入 checkpointData', async () => {
+      mockDb.select.mockReturnValue(createSelectChain(makeStep()));
+      mockAgentRuntime.createSession.mockResolvedValue(makeSession());
+      mockAgentRuntime.prompt.mockReturnValue(
+        createEventStream([
+          { type: 'message_chunk', content: '完成内容' },
+          { type: 'done', stopReason: 'end_turn' },
+        ]),
+      );
+      mockWorkspaceIntegrationService.archiveExecutionStepWorkspace.mockResolvedValue(
+        'workspace-snapshot-001',
+      );
+
+      await worker.process(createMockJob());
+
+      expect(
+        mockWorkspaceIntegrationService.archiveExecutionStepWorkspace,
+      ).toHaveBeenCalledWith(EXECUTION_ID, STEP_ID, TENANT_ID);
+      expect(mockStateMachine.updateStepStatus).toHaveBeenNthCalledWith(
+        2,
+        TENANT_ID,
+        STEP_ID,
+        'completed',
+        expect.objectContaining({
+          checkpointData: expect.objectContaining({
+            workspaceSnapshotId: 'workspace-snapshot-001',
+          }),
+        }),
       );
     });
 
@@ -1975,9 +2038,9 @@ describe('AgentTaskWorker', () => {
           TENANT_ID,
           STEP_ID,
           'completed',
-          {
+          expect.objectContaining({
             result: { content: 'previous content + next' },
-          },
+          }),
         );
       });
 
@@ -2020,9 +2083,9 @@ describe('AgentTaskWorker', () => {
           TENANT_ID,
           STEP_ID,
           'completed',
-          {
+          expect.objectContaining({
             result: { content: 'fresh' },
-          },
+          }),
         );
       });
     });
@@ -2420,11 +2483,14 @@ describe('AgentTaskWorker', () => {
             ],
           }),
         });
-        expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        expect(mockStateMachine.updateStepStatus).toHaveBeenNthCalledWith(
+          2,
           TENANT_ID,
           STEP_ID,
           'completed',
-          { result: { content: '完成' } },
+          expect.objectContaining({
+            result: { content: '完成' },
+          }),
         );
       });
 
@@ -2692,7 +2758,9 @@ describe('AgentTaskWorker', () => {
           TENANT_ID,
           STEP_ID,
           'completed',
-          { result: { content: '', stopReason: 'tool_use' } },
+          expect.objectContaining({
+            result: { content: '', stopReason: 'tool_use' },
+          }),
         );
         expect(mockNodeScheduler.onNodeCompleted).toHaveBeenCalledWith(
           EXECUTION_ID,

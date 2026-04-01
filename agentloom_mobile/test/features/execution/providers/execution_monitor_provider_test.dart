@@ -5,6 +5,7 @@ import 'package:agentloom_mobile/features/auth/models/auth_state.dart';
 import 'package:agentloom_mobile/features/auth/models/auth_tokens.dart';
 import 'package:agentloom_mobile/features/auth/models/login_user.dart';
 import 'package:agentloom_mobile/features/auth/providers/auth_provider.dart';
+import 'package:agentloom_mobile/features/agents/models/conversation_message_dto.dart';
 import 'package:agentloom_mobile/features/execution/models/execution_event.dart';
 import 'package:agentloom_mobile/features/execution/models/execution_state.dart';
 import 'package:agentloom_mobile/features/execution/models/subscribe_ack.dart';
@@ -82,6 +83,26 @@ void main() {
     ).thenAnswer((_) => const Stream.empty());
     when(
       () => mockSocket.nodeStatusChanged,
+    ).thenAnswer((_) => const Stream.empty());
+    when(
+      () => mockSocket.stepAgentEvent,
+    ).thenAnswer((_) => const Stream.empty());
+    when(() => mockSocket.stepRetrying).thenAnswer((_) => const Stream.empty());
+    when(() => mockSocket.outputChunk).thenAnswer((_) => const Stream.empty());
+    when(
+      () => mockSocket.interventionRequired,
+    ).thenAnswer((_) => const Stream.empty());
+    when(
+      () => mockSocket.interventionResolved,
+    ).thenAnswer((_) => const Stream.empty());
+    when(
+      () => mockSocket.toolCallStatusChanged,
+    ).thenAnswer((_) => const Stream.empty());
+    when(
+      () => mockSocket.toolPermissionRequired,
+    ).thenAnswer((_) => const Stream.empty());
+    when(
+      () => mockSocket.toolPermissionResolved,
     ).thenAnswer((_) => const Stream.empty());
     when(
       () => mockSocket.stateSnapshot,
@@ -182,6 +203,100 @@ void main() {
 
         sub.close();
       });
+
+      test(
+        'REST 终态 execution 会从 checkpointData 恢复 agent 瀑布流 runtime',
+        () async {
+          final execution = createTestExecution(
+            id: 'exec-1',
+            status: 'completed',
+            totalSteps: 1,
+            completedSteps: 1,
+            definitionSnapshot: {
+              'nodes': [
+                {
+                  'id': 'node-agent-1',
+                  'type': 'chat-agent',
+                  'data': {'label': 'Agent Node', 'nodeType': 'agent'},
+                },
+              ],
+            },
+            steps: [
+              createTestExecutionStep(
+                id: 'step-agent-1',
+                executionId: 'exec-1',
+                nodeId: 'node-agent-1',
+                nodeType: 'chat-agent',
+                nodeData: {'label': 'Agent Node', 'nodeType': 'agent'},
+                status: 'completed',
+                checkpointData: {
+                  'partialContent': '先查\n再总结',
+                  'stopReason': 'end_turn',
+                  'decision': {'rationale': '先判断资料可信度'},
+                  'toolCalls': [
+                    {
+                      'id': 'tool-1',
+                      'tool': 'read_file',
+                      'status': 'completed',
+                      'result': {
+                        'content': [
+                          {'type': 'text', 'text': 'alpha'},
+                        ],
+                      },
+                    },
+                  ],
+                  'segments': [
+                    {'type': 'text', 'content': '先查\n'},
+                    {'type': 'tool_call', 'toolCallId': 'tool-1'},
+                    {'type': 'text', 'content': '再总结'},
+                  ],
+                },
+                result: {'content': '先查\n再总结'},
+              ),
+            ],
+          );
+          when(
+            () => mockApi.getExecution('exec-1'),
+          ).thenAnswer((_) async => execution);
+
+          container = createContainer();
+          await ensureAuthReady(container);
+
+          final sub = container.listen(
+            executionMonitorProvider('exec-1'),
+            (_, __) {},
+          );
+          await container.read(executionMonitorProvider('exec-1').future);
+
+          final state = container
+              .read(executionMonitorProvider('exec-1'))
+              .value;
+
+          expect(state, isA<ExecutionMonitorDisconnected>());
+          final disconnected = state as ExecutionMonitorDisconnected;
+          final runtimeStep = disconnected.runtime.stepById('step-agent-1');
+          expect(runtimeStep, isNotNull);
+          expect(runtimeStep!.output, '先查\n再总结');
+          expect(runtimeStep.stopReason, 'end_turn');
+          expect(runtimeStep.toolCalls, hasLength(1));
+          expect(runtimeStep.toolCalls.single.tool, 'read_file');
+          expect(
+            runtimeStep.toolCalls.single.status,
+            ConversationToolStatus.completed,
+          );
+          expect(runtimeStep.segments, hasLength(4));
+          expect(runtimeStep.segments[0].kind, MessageSegmentKind.text);
+          expect(runtimeStep.segments[1].kind, MessageSegmentKind.toolCall);
+          expect(runtimeStep.segments[1].toolCallId, 'tool-1');
+          expect(runtimeStep.segments[2].content, '再总结');
+          expect(runtimeStep.segments[3].kind, MessageSegmentKind.thinking);
+          expect(runtimeStep.thinking, '先判断资料可信度');
+
+          verifyNever(() => mockSocket.connect());
+
+          sub.close();
+        },
+      );
 
       test('REST 失败 → Error 状态', () async {
         when(
@@ -485,6 +600,130 @@ void main() {
         await statusController.close();
       });
 
+      test('execution.status.changed 到终态时会回拉最终 REST 快照避免步骤卡在运行中', () async {
+        final statusController =
+            StreamController<ExecutionEventEnvelope>.broadcast();
+        when(
+          () => mockSocket.executionStatusChanged,
+        ).thenAnswer((_) => statusController.stream);
+
+        final initialExecution = createTestExecution(
+          id: 'exec-1',
+          status: 'running',
+          totalSteps: 3,
+          completedSteps: 2,
+          steps: [
+            createTestExecutionStep(id: 'step-1', status: 'completed'),
+            createTestExecutionStep(
+              id: 'step-2',
+              status: 'running',
+              completedAt: null,
+            ),
+            createTestExecutionStep(
+              id: 'step-3',
+              status: 'pending',
+              startedAt: null,
+              completedAt: null,
+            ),
+          ],
+        );
+        final finalExecution = createTestExecution(
+          id: 'exec-1',
+          status: 'completed',
+          totalSteps: 3,
+          completedSteps: 3,
+          steps: [
+            createTestExecutionStep(id: 'step-1', status: 'completed'),
+            createTestExecutionStep(id: 'step-2', status: 'completed'),
+            createTestExecutionStep(id: 'step-3', status: 'completed'),
+          ],
+        );
+
+        final responses = [initialExecution, finalExecution];
+        var responseIndex = 0;
+        when(() => mockApi.getExecution('exec-1')).thenAnswer((_) async {
+          final safeIndex = responseIndex < responses.length
+              ? responseIndex
+              : responses.length - 1;
+          responseIndex += 1;
+          return responses[safeIndex];
+        });
+
+        final ackSnapshot = createTestStateSnapshot(
+          executionId: 'exec-1',
+          status: 'running',
+          completedSteps: 2,
+          totalSteps: 3,
+          steps: const [
+            StepSnapshot(
+              stepId: 'step-1',
+              nodeId: 'node-1',
+              nodeName: 'Node 1',
+              nodeType: 'agent',
+              status: 'completed',
+              startedAt: '2026-01-01T10:00:00.000Z',
+              completedAt: '2026-01-01T10:01:00.000Z',
+            ),
+            StepSnapshot(
+              stepId: 'step-2',
+              nodeId: 'node-2',
+              nodeName: 'Node 2',
+              nodeType: 'agent',
+              status: 'running',
+              startedAt: '2026-01-01T10:01:00.000Z',
+            ),
+            StepSnapshot(
+              stepId: 'step-3',
+              nodeId: 'node-3',
+              nodeName: 'Node 3',
+              nodeType: 'agent',
+              status: 'pending',
+            ),
+          ],
+          lastEventId: 10,
+        );
+        when(
+          () => mockSocket.subscribe(
+            executionId: any(named: 'executionId'),
+            lastEventId: any(named: 'lastEventId'),
+          ),
+        ).thenAnswer(
+          (_) async => createTestSubscribeAck(currentState: ackSnapshot),
+        );
+
+        final sub = await startMonitor();
+
+        statusController.add(
+          createTestEventEnvelope(
+            eventId: 11,
+            event: 'execution.status.changed',
+            data: {
+              'execution_id': 'exec-1',
+              'status': 'completed',
+              'completed_steps': 3,
+              'total_steps': 3,
+            },
+          ),
+        );
+
+        await Future<void>.delayed(const Duration(milliseconds: 80));
+
+        final state = container.read(executionMonitorProvider('exec-1')).value;
+
+        expect(state, isA<ExecutionMonitorDisconnected>());
+        final disconnected = state as ExecutionMonitorDisconnected;
+        expect(disconnected.lastSnapshot?.status, 'completed');
+        final step2 = disconnected.lastSnapshot?.steps.firstWhere(
+          (step) => step.stepId == 'step-2',
+        );
+        expect(step2?.status, 'completed');
+
+        verify(() => mockApi.getExecution('exec-1')).called(2);
+
+        sub.close();
+        await statusController.close();
+      });
+
       test('execution.node.status-changed → 更新步骤状态', () async {
         final nodeController =
             StreamController<ExecutionEventEnvelope>.broadcast();
@@ -556,6 +795,94 @@ void main() {
         await snapshotController.close();
       });
 
+      test('execution.node.output-chunk 会驱动 agent 节点的实时文本与段落流', () async {
+        final outputController =
+            StreamController<ExecutionEventEnvelope>.broadcast();
+        when(
+          () => mockSocket.outputChunk,
+        ).thenAnswer((_) => outputController.stream);
+
+        final execution = createTestExecution(
+          id: 'exec-1',
+          status: 'running',
+          definitionSnapshot: {
+            'nodes': [
+              {
+                'id': 'node-1',
+                'type': 'llm-agent',
+                'data': {'label': 'Agent Node', 'nodeType': 'agent'},
+              },
+            ],
+          },
+          steps: [
+            createTestExecutionStep(
+              id: 'step-1',
+              executionId: 'exec-1',
+              nodeId: 'node-1',
+              nodeType: 'agent',
+              nodeData: {'label': 'Agent Node'},
+              status: 'running',
+              completedAt: null,
+            ),
+          ],
+        );
+        when(
+          () => mockApi.getExecution('exec-1'),
+        ).thenAnswer((_) async => execution);
+
+        final ackSnapshot = createTestStateSnapshot(
+          executionId: 'exec-1',
+          status: 'running',
+          steps: const [
+            StepSnapshot(
+              stepId: 'step-1',
+              nodeId: 'node-1',
+              nodeName: 'Agent Node',
+              nodeType: 'agent',
+              status: 'running',
+              startedAt: '2026-01-01T10:00:00.000Z',
+              completedAt: null,
+            ),
+          ],
+          lastEventId: 10,
+        );
+        when(
+          () => mockSocket.subscribe(
+            executionId: any(named: 'executionId'),
+            lastEventId: any(named: 'lastEventId'),
+          ),
+        ).thenAnswer(
+          (_) async => createTestSubscribeAck(currentState: ackSnapshot),
+        );
+
+        final sub = await startMonitor();
+
+        outputController.add(
+          createTestEventEnvelope(
+            eventId: 11,
+            event: 'execution.node.output-chunk',
+            executionId: 'exec-1',
+            data: {'stepId': 'step-1', 'chunk': '实时输出', 'index': 1},
+          ),
+        );
+
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+
+        final state = container.read(executionMonitorProvider('exec-1')).value;
+
+        expect(state, isA<ExecutionMonitorConnected>());
+        final connected = state as ExecutionMonitorConnected;
+        final runtimeStep = connected.runtime.stepById('step-1');
+        expect(runtimeStep, isNotNull);
+        expect(runtimeStep!.output, '实时输出');
+        expect(runtimeStep.segments, hasLength(1));
+        expect(runtimeStep.segments.first.kind, MessageSegmentKind.text);
+        expect(runtimeStep.segments.first.content, '实时输出');
+
+        sub.close();
+        await outputController.close();
+      });
+
       test('终态快照 → Disconnected', () async {
         final snapshotController =
             StreamController<ExecutionStateSnapshot>.broadcast();
@@ -579,6 +906,76 @@ void main() {
 
         sub.close();
         await snapshotController.close();
+      });
+
+      test('WebSocket 已连接时也会通过 REST 对账收敛到终态', () async {
+        final initialExecution = createTestExecution(
+          id: 'exec-1',
+          status: 'running',
+          totalSteps: 1,
+          completedSteps: 0,
+          completedAt: null,
+          steps: [
+            createTestExecutionStep(
+              id: 'step-1',
+              status: 'running',
+              completedAt: null,
+            ),
+          ],
+        );
+        final finalExecution = createTestExecution(
+          id: 'exec-1',
+          status: 'completed',
+          totalSteps: 1,
+          completedSteps: 1,
+          steps: [createTestExecutionStep(id: 'step-1', status: 'completed')],
+        );
+
+        var requestCount = 0;
+        when(() => mockApi.getExecution('exec-1')).thenAnswer((_) async {
+          requestCount += 1;
+          return requestCount == 1 ? initialExecution : finalExecution;
+        });
+
+        final ackSnapshot = createTestStateSnapshot(
+          executionId: 'exec-1',
+          status: 'running',
+          completedSteps: 0,
+          totalSteps: 1,
+          steps: const [
+            StepSnapshot(
+              stepId: 'step-1',
+              nodeId: 'node-1',
+              nodeName: 'Node 1',
+              nodeType: 'agent',
+              status: 'running',
+              startedAt: '2026-01-01T10:00:00.000Z',
+            ),
+          ],
+          lastEventId: 10,
+        );
+        when(
+          () => mockSocket.subscribe(
+            executionId: any(named: 'executionId'),
+            lastEventId: any(named: 'lastEventId'),
+          ),
+        ).thenAnswer(
+          (_) async => createTestSubscribeAck(currentState: ackSnapshot),
+        );
+
+        final sub = await startMonitor();
+
+        await Future<void>.delayed(const Duration(seconds: 6));
+
+        final state = container.read(executionMonitorProvider('exec-1')).value;
+
+        expect(state, isA<ExecutionMonitorDisconnected>());
+        final disconnected = state as ExecutionMonitorDisconnected;
+        expect(disconnected.lastSnapshot?.status, 'completed');
+        expect(disconnected.lastSnapshot?.steps.single.status, 'completed');
+        expect(requestCount, greaterThanOrEqualTo(2));
+
+        sub.close();
       });
     });
 
@@ -969,6 +1366,118 @@ void main() {
         final connected = state as ExecutionMonitorConnected;
         expect(connected.snapshot.steps.first.nodeName, 'Email Agent');
         expect(connected.snapshot.steps.first.nodeType, 'agent');
+
+        sub.close();
+      });
+
+      test('subscribe ACK 快照会立刻恢复 checkpointData 的工具与段落瀑布流', () async {
+        final execution = createTestExecution(
+          id: 'exec-1',
+          status: 'running',
+          totalSteps: 1,
+          completedSteps: 0,
+          definitionSnapshot: {
+            'nodes': [
+              {
+                'id': 'node-1',
+                'type': 'chat-agent',
+                'data': {'label': 'Agent Node', 'nodeType': 'agent'},
+              },
+            ],
+          },
+          steps: [
+            createTestExecutionStep(
+              id: 'step-1',
+              executionId: 'exec-1',
+              nodeId: 'node-1',
+              nodeType: 'chat-agent',
+              nodeData: {'label': 'Agent Node', 'nodeType': 'agent'},
+              status: 'running',
+              completedAt: null,
+            ),
+          ],
+        );
+        when(
+          () => mockApi.getExecution('exec-1'),
+        ).thenAnswer((_) async => execution);
+
+        final ackSnapshot = ExecutionStateSnapshot.fromJson({
+          'execution_id': 'exec-1',
+          'status': 'running',
+          'completed_steps': 0,
+          'total_steps': 1,
+          'steps': [
+            {
+              'step_id': 'step-1',
+              'node_id': 'node-1',
+              'status': 'running',
+              'started_at': '2026-01-01T10:00:00.000Z',
+              'checkpoint_data': {
+                'partial_content': '第一段第二段',
+                'decision': {'rationale': '先整理上下文'},
+                'tool_calls': [
+                  {
+                    'id': 'tool-1',
+                    'tool': 'search_web',
+                    'status': 'awaiting_permission',
+                    'permission_request': {
+                      'description': '读取外部网页',
+                      'resource_paths': ['https://example.com'],
+                    },
+                  },
+                ],
+                'segments': [
+                  {'type': 'text', 'content': '第一段'},
+                  {'type': 'tool_call', 'tool_call_id': 'tool-1'},
+                  {'type': 'text', 'content': '第二段'},
+                ],
+              },
+            },
+          ],
+          'snapshot_at': '2026-01-01T10:00:00.000Z',
+          'last_event_id': 42,
+        });
+        when(
+          () => mockSocket.subscribe(
+            executionId: any(named: 'executionId'),
+            lastEventId: any(named: 'lastEventId'),
+          ),
+        ).thenAnswer(
+          (_) async => createTestSubscribeAck(currentState: ackSnapshot),
+        );
+
+        container = createContainer();
+        await ensureAuthReady(container);
+
+        final sub = container.listen(
+          executionMonitorProvider('exec-1'),
+          (_, __) {},
+        );
+        await container.read(executionMonitorProvider('exec-1').future);
+
+        final state = container.read(executionMonitorProvider('exec-1')).value;
+
+        expect(state, isA<ExecutionMonitorConnected>());
+        final connected = state as ExecutionMonitorConnected;
+        final runtimeStep = connected.runtime.stepById('step-1');
+        expect(runtimeStep, isNotNull);
+        expect(runtimeStep!.output, '第一段第二段');
+        expect(runtimeStep.thinking, '先整理上下文');
+        expect(runtimeStep.toolCalls, hasLength(1));
+        expect(runtimeStep.toolCalls.single.tool, 'search_web');
+        expect(
+          runtimeStep.toolCalls.single.status,
+          ConversationToolStatus.awaitingPermission,
+        );
+        expect(
+          runtimeStep.toolCalls.single.permissionRequest?.description,
+          '读取外部网页',
+        );
+        expect(runtimeStep.segments, hasLength(4));
+        expect(runtimeStep.segments[0].content, '第一段');
+        expect(runtimeStep.segments[1].toolCallId, 'tool-1');
+        expect(runtimeStep.segments[2].content, '第二段');
+        expect(runtimeStep.segments[3].kind, MessageSegmentKind.thinking);
 
         sub.close();
       });

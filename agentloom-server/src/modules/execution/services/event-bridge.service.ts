@@ -171,6 +171,11 @@ export class EventBridgeService implements OnModuleDestroy {
       payload,
     );
     this.broadcast(tenantId, executionId, envelope);
+    this.eventEmitter?.emit(ExecutionEventName.OUTPUT_CHUNK, {
+      tenantId,
+      executionId,
+      ...payload,
+    });
     return envelope;
   }
 
@@ -348,6 +353,12 @@ export class EventBridgeService implements OnModuleDestroy {
     }
 
     return buffer.filter((e) => e.eventId > lastEventId);
+  }
+
+  /** 返回当前仍保留在环形缓冲区中的事件副本。 */
+  getBufferedEvents(executionId: string): ExecutionEvent[] {
+    const buffer = this.eventBuffers.get(executionId);
+    return buffer ? [...buffer] : [];
   }
 
   private nextEventId(executionId: string): number {

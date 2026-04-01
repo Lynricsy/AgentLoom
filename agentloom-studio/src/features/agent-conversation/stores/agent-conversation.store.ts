@@ -366,16 +366,11 @@ function normalizeConversationHistoryMessage(
   const record = isRecord(raw) ? raw : {};
   const metadata = normalizeMessageMetadata(record.metadata);
   const content = readString(record.content) ?? "";
-  const thinking = extractThinkingContent(record.metadata);
   const toolCalls = normalizeHistoryToolCalls(record.toolCalls);
-
-  // 从历史数据重建 segments（无法还原原始交错顺序，按 thinking→text→toolCalls 排列）
-  const segments: MessageSegment[] = [];
-  if (thinking) segments.push({ type: "thinking", content: thinking });
-  if (content) segments.push({ type: "text", content });
-  for (const tc of toolCalls) {
-    segments.push({ type: "tool_call", toolCallId: tc.id });
-  }
+  const segments = normalizeHistorySegments(metadata, content, toolCalls);
+  const thinking =
+    extractThinkingContent(record.metadata) ??
+    collectThinkingSegments(segments);
 
   return {
     id: readString(record.id) ?? crypto.randomUUID(),
@@ -388,6 +383,73 @@ function normalizeConversationHistoryMessage(
     createdAt: readTimestamp(record.createdAt),
     ...(metadata ? { metadata } : {}),
   };
+}
+
+function normalizeHistorySegments(
+  metadata: ConversationMessageMetadata | undefined,
+  content: string,
+  toolCalls: ToolCall[],
+): MessageSegment[] {
+  const storedSegments: MessageSegment[] = [];
+
+  if (Array.isArray(metadata?.segments)) {
+    for (const segment of metadata.segments) {
+      if (!isRecord(segment)) {
+        continue;
+      }
+
+      switch (segment.type) {
+        case "text":
+        case "thinking": {
+          const segmentContent = readString(segment.content);
+          if (!segmentContent) {
+            continue;
+          }
+
+          storedSegments.push({
+            type: segment.type,
+            content: segmentContent,
+          } satisfies MessageSegment);
+          break;
+        }
+        case "tool_call": {
+          const toolCallId =
+            readString(segment.toolCallId) ?? readString(segment.tool_call_id);
+          if (
+            !toolCallId ||
+            !toolCalls.some((toolCall) => toolCall.id === toolCallId)
+          ) {
+            continue;
+          }
+
+          storedSegments.push({
+            type: "tool_call",
+            toolCallId,
+          } satisfies MessageSegment);
+          break;
+        }
+        default:
+          break;
+      }
+    }
+  }
+
+  if (storedSegments.length > 0) {
+    return storedSegments;
+  }
+
+  const fallbackSegments: MessageSegment[] = [];
+  const thinking = extractThinkingContent(metadata);
+  if (thinking) {
+    fallbackSegments.push({ type: "thinking", content: thinking });
+  }
+  if (content) {
+    fallbackSegments.push({ type: "text", content });
+  }
+  for (const toolCall of toolCalls) {
+    fallbackSegments.push({ type: "tool_call", toolCallId: toolCall.id });
+  }
+  return fallbackSegments;
 }
 
 function normalizeHistoryToolCalls(value: unknown): ToolCall[] {
@@ -414,7 +476,9 @@ function normalizeHistoryToolCalls(value: unknown): ToolCall[] {
           readString(item.name) ??
           "unknown_tool",
         ...(item.args !== undefined ? { args: item.args } : {}),
-        ...(item.result !== undefined ? { result: unwrapMcpResult(item.result) } : {}),
+        ...(item.result !== undefined
+          ? { result: unwrapMcpResult(item.result) }
+          : {}),
         ...(readString(item.error) ? { error: readString(item.error)! } : {}),
         status: normalizeToolCallStatus(item.status),
         ...(normalizeToolCallTransitions(item.transitions)
@@ -443,6 +507,17 @@ function extractThinkingContent(value: unknown): string | undefined {
   const suggestedContent = readString(value.decision.suggestedContent);
   const parts = [rationale, suggestedContent].filter(Boolean);
 
+  return parts.length > 0 ? parts.join("\n\n") : undefined;
+}
+
+function collectThinkingSegments(
+  segments: MessageSegment[],
+): string | undefined {
+  const parts = segments.flatMap((segment) =>
+    segment.type === "thinking" && segment.content.trim().length > 0
+      ? [segment.content]
+      : [],
+  );
   return parts.length > 0 ? parts.join("\n\n") : undefined;
 }
 
@@ -706,7 +781,8 @@ function normalizeStatusChangedPayload(
   }
 
   const phase = readString(root.phase) ?? readString(data.phase);
-  const failedPhase = readString(root.failedPhase) ?? readString(data.failedPhase);
+  const failedPhase =
+    readString(root.failedPhase) ?? readString(data.failedPhase);
   const error = readString(root.error) ?? readString(data.error);
   const sandboxReused = root.sandboxReused ?? data.sandboxReused;
 
@@ -718,7 +794,9 @@ function normalizeStatusChangedPayload(
       "unknown-conversation",
     status: status as StatusChangedPayload["status"],
     ...(phase ? { phase: phase as StatusChangedPayload["phase"] } : {}),
-    ...(failedPhase ? { failedPhase: failedPhase as StatusChangedPayload["failedPhase"] } : {}),
+    ...(failedPhase
+      ? { failedPhase: failedPhase as StatusChangedPayload["failedPhase"] }
+      : {}),
     ...(error ? { error } : {}),
     ...(typeof sandboxReused === "boolean" ? { sandboxReused } : {}),
   };
@@ -762,7 +840,8 @@ function upsertToolCall(
   if (existing) {
     existing.tool = nextTool;
     if (payload.args !== undefined) existing.args = payload.args;
-    if (payload.result !== undefined) existing.result = unwrapMcpResult(payload.result);
+    if (payload.result !== undefined)
+      existing.result = unwrapMcpResult(payload.result);
     if (payload.error !== undefined) existing.error = payload.error;
     existing.status = payload.status;
     if (payload.transitions) existing.transitions = payload.transitions;
@@ -776,7 +855,9 @@ function upsertToolCall(
     id: payload.toolCallId,
     tool: nextTool,
     ...(payload.args !== undefined ? { args: payload.args } : {}),
-    ...(payload.result !== undefined ? { result: unwrapMcpResult(payload.result) } : {}),
+    ...(payload.result !== undefined
+      ? { result: unwrapMcpResult(payload.result) }
+      : {}),
     ...(payload.error !== undefined ? { error: payload.error } : {}),
     status: payload.status,
     ...(payload.transitions ? { transitions: payload.transitions } : {}),
@@ -886,6 +967,9 @@ export const useAgentConversationStore = create<
             }
 
             set((s) => {
+              const titleUpdateCounter = s.titleUpdateCounter;
+              Object.assign(s, createInitialState());
+              s.titleUpdateCounter = titleUpdateCounter;
               s.conversationId = conversationId;
               s.agentId = agentId;
               s.agentName = agentName;
@@ -1006,8 +1090,7 @@ export const useAgentConversationStore = create<
                   (message.thinking ?? "") + normalized.content;
 
                 // 维护 segments 瀑布流顺序
-                const lastSeg =
-                  message.segments[message.segments.length - 1];
+                const lastSeg = message.segments[message.segments.length - 1];
                 if (lastSeg && lastSeg.type === "thinking") {
                   lastSeg.content += normalized.content;
                 } else {

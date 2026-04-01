@@ -7,15 +7,21 @@ import {
   type AgentVersionSnapshot,
 } from '../../database/schema/agent-definitions.schema';
 import type { DrizzleDB } from '../../database/database.module';
-import type { ExecutionStep, SandboxConfig } from '../../database/schema';
+import {
+  executionSteps,
+  type ExecutionStep,
+  type SandboxConfig,
+} from '../../database/schema';
 import type { IAgentAdapterFactory as RuntimeAdapterFactory } from '../agent/agent-adapter.factory';
 import type { IAgentRuntime } from '../agent/ports/agent-runtime.port';
 import type { ServerSandboxBinding } from '../agent/types/agent-session.types';
 import type {
   DecisionEvent,
   StopReason,
+  AgentEvent,
 } from '../agent/types/agent-event.types';
 import type { ContentBlock } from '../agent/types/content-block.types';
+import type { ToolCallEvent } from '../agent/types/tool-call-event.types';
 import { AgentDefinitionService } from '../agent-definition/agent-definition.service';
 import type {
   AgentKnowledgeBinding,
@@ -33,8 +39,15 @@ import { resolveAgentRuntimeSandboxConfig } from '../sandbox/agent-runtime-sandb
 import { SandboxService } from '../sandbox/sandbox.service';
 import { SkillResolverService } from '../skill/skill-resolver.service';
 import type { SkillPromptPayload } from '../skill/skill.types';
+import {
+  appendTextConversationMessageSegment,
+  appendThinkingConversationMessageSegment,
+  ensureToolCallConversationMessageSegment,
+  type ConversationMessageSegmentRecord,
+} from '../agent-conversation/message-segments';
 
 const MAX_TOOL_ROUNDS = 10;
+const PROGRESS_CHECKPOINT_INTERVAL_MS = 400;
 
 interface WorkflowAgentAdapterDependencies {
   readonly db: DrizzleDB;
@@ -160,6 +173,46 @@ export class WorkflowAgentAdapter {
     let stopReason: StopReason = 'end_turn';
     let chunkIndex = 0;
     let turnInput = promptBlocks;
+    let toolCalls: ToolCallEvent[] = [];
+    let segments: ConversationMessageSegmentRecord[] = [];
+    let checkpointDirty = false;
+    let lastCheckpointAt = 0;
+
+    const flushProgressCheckpoint = async (
+      round: number,
+      force = false,
+    ): Promise<void> => {
+      const now = Date.now();
+      if (
+        !force &&
+        (!checkpointDirty ||
+          now - lastCheckpointAt < PROGRESS_CHECKPOINT_INTERVAL_MS)
+      ) {
+        return;
+      }
+
+      try {
+        await this.saveProgressCheckpoint({
+          tenantId: params.tenantId,
+          step: params.step,
+          sessionId: session.id,
+          partialContent: accumulatedContent,
+          toolCalls,
+          segments,
+          round,
+          chunkIndex,
+          decision,
+        });
+        checkpointDirty = false;
+        lastCheckpointAt = now;
+      } catch (error) {
+        this.logger.warn(
+          `Failed to persist workflow-agent checkpoint for step ${params.step.id}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    };
 
     for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
       stopReason = 'end_turn';
@@ -167,6 +220,10 @@ export class WorkflowAgentAdapter {
       for await (const event of runtime.prompt(session.id, turnInput)) {
         if (event.type === 'message_chunk') {
           accumulatedContent += event.content;
+          segments = appendTextConversationMessageSegment(
+            segments,
+            event.content,
+          );
           if (emitEvents) {
             this.dependencies.eventBridge.emitOutputChunk(
               params.tenantId,
@@ -175,10 +232,13 @@ export class WorkflowAgentAdapter {
                 stepId: params.step.id,
                 chunk: event.content,
                 index: chunkIndex,
+                executionType: 'workflow',
               },
             );
           }
           chunkIndex += 1;
+          checkpointDirty = true;
+          await flushProgressCheckpoint(round, false);
           continue;
         }
 
@@ -193,8 +253,40 @@ export class WorkflowAgentAdapter {
           );
         }
 
+        const thinkingContent = this.extractThinkingEventContent(event);
+        if (thinkingContent) {
+          segments = appendThinkingConversationMessageSegment(
+            segments,
+            thinkingContent,
+          );
+          checkpointDirty = true;
+        }
+
+        if (event.type === 'tool_call') {
+          toolCalls = this.mergeToolCall(toolCalls, event.call);
+          segments = ensureToolCallConversationMessageSegment(
+            segments,
+            event.call.id,
+          );
+          checkpointDirty = true;
+
+          if (emitEvents) {
+            this.emitToolCallStatus({
+              tenantId: params.tenantId,
+              executionId: params.executionId,
+              step: params.step,
+              toolCall: event.call,
+            });
+          }
+
+          await flushProgressCheckpoint(round, true);
+          continue;
+        }
+
         if (event.type === 'decision') {
           decision = this.toDecisionPayload(event);
+          checkpointDirty = true;
+          await flushProgressCheckpoint(round, false);
           continue;
         }
 
@@ -202,6 +294,8 @@ export class WorkflowAgentAdapter {
           stopReason = event.stopReason;
         }
       }
+
+      await flushProgressCheckpoint(round + 1, true);
 
       if (stopReason !== 'tool_use') {
         break;
@@ -669,7 +763,12 @@ export class WorkflowAgentAdapter {
   ): Record<string, unknown> {
     const sanitizedEntries = Object.entries(input)
       .map(([key, value]) => {
-        if (key === 'skills-in' || key === 'skills' || key === 'tools-in' || key === 'sub-agents-in') {
+        if (
+          key === 'skills-in' ||
+          key === 'skills' ||
+          key === 'tools-in' ||
+          key === 'sub-agents-in'
+        ) {
           return null;
         }
 
@@ -919,6 +1018,145 @@ export class WorkflowAgentAdapter {
         : {}),
       ...(event.rationale ? { rationale: event.rationale } : {}),
     };
+  }
+
+  private extractThinkingEventContent(event: AgentEvent): string | undefined {
+    switch (event.type) {
+      case 'plan':
+        return event.content || event.title;
+      case 'decision':
+        return event.rationale || event.suggestedContent;
+      default:
+        return undefined;
+    }
+  }
+
+  private mergeToolCall(
+    toolCalls: ToolCallEvent[],
+    toolCall: ToolCallEvent,
+  ): ToolCallEvent[] {
+    const index = toolCalls.findIndex((current) => current.id === toolCall.id);
+    if (index === -1) {
+      return [...toolCalls, toolCall];
+    }
+
+    const current = toolCalls[index];
+    const merged: ToolCallEvent = {
+      ...current,
+      ...toolCall,
+      transitions: toolCall.transitions ?? current.transitions,
+      args: toolCall.args ?? current.args,
+      result: toolCall.result ?? current.result,
+      error: toolCall.error ?? current.error,
+      permissionRequest:
+        toolCall.permissionRequest ?? current.permissionRequest,
+    };
+
+    return toolCalls.map((item, itemIndex) =>
+      itemIndex === index ? merged : item,
+    );
+  }
+
+  private async saveProgressCheckpoint(params: {
+    tenantId: string;
+    step: ExecutionStep;
+    sessionId: string;
+    partialContent: string;
+    toolCalls: ToolCallEvent[];
+    segments: ConversationMessageSegmentRecord[];
+    round: number;
+    chunkIndex: number;
+    decision?: Record<string, unknown>;
+  }): Promise<Record<string, unknown>> {
+    const {
+      tenantId,
+      step,
+      sessionId,
+      partialContent,
+      toolCalls,
+      segments,
+      round,
+      chunkIndex,
+      decision,
+    } = params;
+
+    return this.mergeCheckpointData(tenantId, step, {
+      sessionId,
+      partialContent,
+      toolCalls,
+      segments,
+      round,
+      chunkIndex,
+      ...(decision ? { decision } : {}),
+    });
+  }
+
+  private async mergeCheckpointData(
+    _tenantId: string,
+    step: ExecutionStep,
+    patch: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const checkpointData = {
+      ...this.getCheckpointData(step),
+      ...patch,
+    };
+
+    await this.tenantDb
+      .update(executionSteps)
+      .set({ checkpointData })
+      .where(eq(executionSteps.id, step.id));
+
+    step.checkpointData = checkpointData;
+    return checkpointData;
+  }
+
+  private getCheckpointData(step: ExecutionStep): Record<string, unknown> {
+    return step.checkpointData ?? {};
+  }
+
+  private emitToolCallStatus(params: {
+    tenantId: string;
+    executionId: string;
+    step: ExecutionStep;
+    toolCall: ToolCallEvent;
+  }): void {
+    const { tenantId, executionId, step, toolCall } = params;
+
+    this.dependencies.eventBridge.emitToolCallStatus(tenantId, executionId, {
+      stepId: step.id,
+      nodeId: step.nodeId,
+      executionType: 'workflow',
+      toolCallId: toolCall.id,
+      tool: toolCall.tool,
+      status: toolCall.status,
+      ...(toolCall.args ? { args: toolCall.args } : {}),
+      ...(toolCall.result !== undefined ? { result: toolCall.result } : {}),
+      ...(toolCall.error ? { error: toolCall.error } : {}),
+      ...(toolCall.transitions
+        ? { transitions: [...toolCall.transitions] }
+        : {}),
+    });
+
+    if (
+      toolCall.status === 'awaiting_permission' &&
+      toolCall.permissionRequest
+    ) {
+      this.dependencies.eventBridge.emitToolPermissionRequired(
+        tenantId,
+        executionId,
+        {
+          stepId: step.id,
+          nodeId: step.nodeId,
+          executionType: 'workflow',
+          toolCallId: toolCall.id,
+          tool: toolCall.tool,
+          args: toolCall.args,
+          requestedAt:
+            toolCall.transitions?.at(-1)?.timestamp ?? new Date().toISOString(),
+          permissionRequest: toolCall.permissionRequest,
+        },
+      );
+    }
   }
 
   private buildContentBlocks(

@@ -42,6 +42,7 @@ vi.mock('../index', () => ({ indexRoute: {} }));
 vi.mock('../workflows/$workflowId', () => ({ workflowCanvasRoute: {} }));
 vi.mock('../resources/knowledge-bases.$knowledgeBaseId', () => ({ resourceKnowledgeBaseDetailRoute: {} }));
 vi.mock('../executions/$executionId', () => ({ executionDebugRoute: {} }));
+vi.mock('../executions/$executionId.steps.$stepId.agent', () => ({ executionAgentViewerRoute: {} }));
 vi.mock('../settings/tool-library', () => ({ toolLibraryRoute: {} }));
 vi.mock('../settings/audit-logs', () => ({ auditLogsRoute: {} }));
 vi.mock('../templates', () => ({ templatesRoute: {} }));

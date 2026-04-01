@@ -20,6 +20,7 @@ import { SharedResourcesModule } from '../shared-resources/shared-resources.modu
 import { SkillModule } from '../skill/skill.module';
 import { SkillResolverService } from '../skill/skill-resolver.service';
 import { McpModule } from '../mcp/mcp.module';
+import { WorkspaceIntegrationModule } from '../agent-execution/workspace-integration.module';
 import { RbacCacheService } from '../../common/services/rbac-cache.service';
 import { ExecutionController } from './execution.controller';
 import { ExecutionService } from './execution.service';
@@ -31,6 +32,7 @@ import { NodeSchedulerService } from './node-scheduler.service';
 import { AgentTaskWorker } from './agent-task.worker';
 import { CheckpointService } from './checkpoint.service';
 import { EventBridgeService } from './services/event-bridge.service';
+import { ExecutionWorkspaceRealtimeBridgeService } from './services/execution-workspace-realtime-bridge.service';
 import { ThrottleService } from './services/throttle.service';
 import { StateReplayService } from './services/state-replay.service';
 import { ToolCallStateMachineService } from './services/tool-call-state-machine.service';
@@ -58,6 +60,7 @@ import {
     SharedResourcesModule,
     SkillModule,
     McpModule,
+    WorkspaceIntegrationModule,
     BullModule.registerQueue({
       name: EXECUTION_QUEUE,
       defaultJobOptions: EXECUTION_QUEUE_DEFAULT_JOB_OPTIONS,
@@ -78,6 +81,7 @@ import {
     AgentTaskWorker,
     CheckpointService,
     EventBridgeService,
+    ExecutionWorkspaceRealtimeBridgeService,
     ThrottleService,
     StateReplayService,
     ToolCallStateMachineService,

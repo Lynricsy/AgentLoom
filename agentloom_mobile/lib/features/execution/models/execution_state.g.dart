@@ -8,56 +8,56 @@ part of 'execution_state.dart';
 
 _StepSnapshot _$StepSnapshotFromJson(Map<String, dynamic> json) =>
     _StepSnapshot(
-      stepId: json['stepId'] as String,
-      nodeId: json['nodeId'] as String,
-      nodeName: json['nodeName'] as String?,
-      nodeType: json['nodeType'] as String?,
+      stepId: json['step_id'] as String,
+      nodeId: json['node_id'] as String,
+      nodeName: json['node_name'] as String?,
+      nodeType: json['node_type'] as String?,
       status: json['status'] as String,
-      startedAt: json['startedAt'] as String?,
-      completedAt: json['completedAt'] as String?,
-      errorMessage: json['errorMessage'] as String?,
-      errorDetail: json['errorDetail'] as Map<String, dynamic>?,
-      checkpointData: json['checkpointData'] as Map<String, dynamic>?,
+      startedAt: json['started_at'] as String?,
+      completedAt: json['completed_at'] as String?,
+      errorMessage: json['error_message'] as String?,
+      errorDetail: json['error_detail'] as Map<String, dynamic>?,
+      checkpointData: json['checkpoint_data'] as Map<String, dynamic>?,
       result: json['result'] as Map<String, dynamic>?,
     );
 
 Map<String, dynamic> _$StepSnapshotToJson(_StepSnapshot instance) =>
     <String, dynamic>{
-      'stepId': instance.stepId,
-      'nodeId': instance.nodeId,
-      'nodeName': instance.nodeName,
-      'nodeType': instance.nodeType,
+      'step_id': instance.stepId,
+      'node_id': instance.nodeId,
+      'node_name': instance.nodeName,
+      'node_type': instance.nodeType,
       'status': instance.status,
-      'startedAt': instance.startedAt,
-      'completedAt': instance.completedAt,
-      'errorMessage': instance.errorMessage,
-      'errorDetail': instance.errorDetail,
-      'checkpointData': instance.checkpointData,
+      'started_at': instance.startedAt,
+      'completed_at': instance.completedAt,
+      'error_message': instance.errorMessage,
+      'error_detail': instance.errorDetail,
+      'checkpoint_data': instance.checkpointData,
       'result': instance.result,
     };
 
 _ExecutionStateSnapshot _$ExecutionStateSnapshotFromJson(
   Map<String, dynamic> json,
 ) => _ExecutionStateSnapshot(
-  executionId: json['executionId'] as String,
+  executionId: json['execution_id'] as String,
   status: json['status'] as String,
-  completedSteps: (json['completedSteps'] as num?)?.toInt(),
-  totalSteps: (json['totalSteps'] as num?)?.toInt(),
+  completedSteps: (json['completed_steps'] as num?)?.toInt(),
+  totalSteps: (json['total_steps'] as num?)?.toInt(),
   steps: (json['steps'] as List<dynamic>)
       .map((e) => StepSnapshot.fromJson(e as Map<String, dynamic>))
       .toList(),
-  snapshotAt: json['snapshotAt'] as String?,
-  lastEventId: (json['lastEventId'] as num?)?.toInt(),
+  snapshotAt: json['snapshot_at'] as String?,
+  lastEventId: (json['last_event_id'] as num?)?.toInt(),
 );
 
 Map<String, dynamic> _$ExecutionStateSnapshotToJson(
   _ExecutionStateSnapshot instance,
 ) => <String, dynamic>{
-  'executionId': instance.executionId,
+  'execution_id': instance.executionId,
   'status': instance.status,
-  'completedSteps': instance.completedSteps,
-  'totalSteps': instance.totalSteps,
+  'completed_steps': instance.completedSteps,
+  'total_steps': instance.totalSteps,
   'steps': instance.steps.map((e) => e.toJson()).toList(),
-  'snapshotAt': instance.snapshotAt,
-  'lastEventId': instance.lastEventId,
+  'snapshot_at': instance.snapshotAt,
+  'last_event_id': instance.lastEventId,
 };

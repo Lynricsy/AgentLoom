@@ -46,6 +46,7 @@ import { AgentAdapterFactory } from '../adapters/agent-adapter-factory';
 import { SharedResourceRegistry } from '../../shared-resources/shared-resource-registry';
 import { McpService } from '../../mcp/mcp.service';
 import { CodeExecutionService } from '../../agent/code-execution.service';
+import { WorkspaceIntegrationService } from '../../agent-execution/workspace-integration.service';
 import type {
   ExecutionStep,
   ReactFlowEdge,
@@ -221,6 +222,11 @@ describe('NodeSchedulerService', () => {
   let mockSharedResourceRegistry: {
     createResource: ReturnType<typeof vi.fn>;
   };
+  let mockWorkspaceIntegrationService: {
+    archiveExecutionStepWorkspace: ReturnType<typeof vi.fn>;
+    startExecutionStepFileWatcher: ReturnType<typeof vi.fn>;
+    stopExecutionStepFileWatcher: ReturnType<typeof vi.fn>;
+  };
   let savedFetch: typeof globalThis.fetch;
 
   beforeAll(() => {
@@ -343,6 +349,13 @@ describe('NodeSchedulerService', () => {
         tenantId: TENANT_ID,
       }),
     };
+    mockWorkspaceIntegrationService = {
+      archiveExecutionStepWorkspace: vi
+        .fn()
+        .mockResolvedValue('workspace-snapshot-001'),
+      startExecutionStepFileWatcher: vi.fn().mockResolvedValue(undefined),
+      stopExecutionStepFileWatcher: vi.fn(),
+    };
 
     const module = await Test.createTestingModule({
       providers: [
@@ -382,6 +395,10 @@ describe('NodeSchedulerService', () => {
         {
           provide: SharedResourceRegistry,
           useValue: mockSharedResourceRegistry,
+        },
+        {
+          provide: WorkspaceIntegrationService,
+          useValue: mockWorkspaceIntegrationService,
         },
       ],
     }).compile();
@@ -458,7 +475,12 @@ describe('NodeSchedulerService', () => {
 
     it('condition 分支输出应为下游解包单一 input payload', () => {
       const edges = [
-        makeEdge('node-condition', 'node-preprocessor', 'matched-out', 'json-in'),
+        makeEdge(
+          'node-condition',
+          'node-preprocessor',
+          'matched-out',
+          'json-in',
+        ),
       ];
       const steps = [
         makeStep({
@@ -1506,7 +1528,8 @@ describe('NodeSchedulerService', () => {
         'step-l',
         'running',
       );
-      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+      expect(mockStateMachine.updateStepStatus).toHaveBeenNthCalledWith(
+        2,
         TENANT_ID,
         'step-l',
         'completed',
@@ -1521,11 +1544,13 @@ describe('NodeSchedulerService', () => {
               remainingCount: 1,
               maxIterations: 2,
               truncated: true,
+              stoppedEarly: false,
             },
             totalItems: 3,
             processedCount: 2,
             maxIterations: 2,
             truncated: true,
+            stoppedEarly: false,
           },
         }),
       );
@@ -1574,7 +1599,8 @@ describe('NodeSchedulerService', () => {
 
       await service.scheduleNode(EXECUTION_ID, 'L', TENANT_ID, snapshot, steps);
 
-      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+      expect(mockStateMachine.updateStepStatus).toHaveBeenNthCalledWith(
+        2,
         TENANT_ID,
         'step-l',
         'completed',
@@ -1599,11 +1625,13 @@ describe('NodeSchedulerService', () => {
               remainingCount: 0,
               maxIterations: 1,
               truncated: false,
+              stoppedEarly: false,
             },
             totalItems: 1,
             processedCount: 1,
             maxIterations: 1,
             truncated: false,
+            stoppedEarly: false,
           },
         }),
       );
@@ -1873,19 +1901,132 @@ describe('NodeSchedulerService', () => {
         TENANT_ID,
         'step-a',
         'running',
+        {
+          checkpointData: {
+            sandboxNodeId: 'S',
+            serverSandbox: {
+              executionId: EXECUTION_ID,
+              sandboxNodeId: 'S',
+            },
+          },
+        },
       );
+      expect(
+        mockWorkspaceIntegrationService.startExecutionStepFileWatcher,
+      ).toHaveBeenCalledWith({
+        executionId: EXECUTION_ID,
+        stepId: 'step-a',
+        tenantId: TENANT_ID,
+        sandboxNodeId: 'S',
+      });
+      expect(
+        mockWorkspaceIntegrationService.archiveExecutionStepWorkspace,
+      ).toHaveBeenCalledWith(EXECUTION_ID, 'step-a', TENANT_ID, 'S');
       expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
         TENANT_ID,
         'step-a',
         'completed',
-        { result: { content: 'workflow-agent-output' } },
+        {
+          result: { content: 'workflow-agent-output' },
+          checkpointData: {
+            sandboxNodeId: 'S',
+            serverSandbox: {
+              executionId: EXECUTION_ID,
+              sandboxNodeId: 'S',
+            },
+            workspaceSnapshotId: 'workspace-snapshot-001',
+          },
+        },
       );
+      expect(
+        mockWorkspaceIntegrationService.stopExecutionStepFileWatcher,
+      ).toHaveBeenCalledWith(EXECUTION_ID, 'step-a');
+      expect(
+        mockWorkspaceIntegrationService.stopExecutionStepFileWatcher.mock
+          .invocationCallOrder[0],
+      ).toBeLessThan(onNodeCompleted.mock.invocationCallOrder[0]!);
       expect(onNodeCompleted).toHaveBeenCalledWith(
         EXECUTION_ID,
         'step-a',
         TENANT_ID,
       );
       expect(mockQueue.add).not.toHaveBeenCalled();
+    });
+
+    it('workflow-agent 运行时写入的 checkpointData 会在 completed 时保留下来', async () => {
+      const snapshot = makeSnapshot(
+        [
+          makeNode('A', 'agent', {
+            agentDefinitionId: 'agent-def-1',
+          }),
+        ],
+        [],
+      );
+      const steps = [
+        makeStep({
+          id: 'step-a',
+          nodeId: 'A',
+          status: 'pending',
+          nodeType: 'agent',
+          nodeData: {
+            agentDefinitionId: 'agent-def-1',
+          },
+        }),
+      ];
+      const workflowAgentAdapter = {
+        execute: vi
+          .fn()
+          .mockImplementation(async ({ step }: { step: ExecutionStep }) => {
+            step.checkpointData = {
+              ...(step.checkpointData ?? {}),
+              partialContent: 'live-output',
+              segments: [{ type: 'text', content: 'live-output' }],
+              toolCalls: [
+                {
+                  id: 'tool-1',
+                  tool: 'write_file',
+                  args: { path: 'notes.md' },
+                  status: 'completed',
+                },
+              ],
+            };
+            return { content: 'workflow-agent-output' };
+          }),
+      };
+
+      db.update.mockReturnValueOnce(createUpdateChainVoid());
+      mockWorkflowAgentAdapterFactory.createFromAgentDefinition.mockReturnValue(
+        workflowAgentAdapter,
+      );
+
+      await service.scheduleNode(EXECUTION_ID, 'A', TENANT_ID, snapshot, steps);
+
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID,
+        'step-a',
+        'completed',
+        {
+          result: { content: 'workflow-agent-output' },
+          checkpointData: {
+            sandboxNodeId: 'A',
+            serverSandbox: {
+              executionId: EXECUTION_ID,
+              sandboxNodeId: 'A',
+            },
+            workspaceSnapshotId: 'workspace-snapshot-001',
+            partialContent: 'live-output',
+            segments: [{ type: 'text', content: 'live-output' }],
+            toolCalls: [
+              {
+                id: 'tool-1',
+                tool: 'write_file',
+                args: { path: 'notes.md' },
+                status: 'completed',
+              },
+            ],
+          },
+        },
+      );
     });
 
     it('smart-routing 节点会默认使用 FALLBACK_CHAIN，并产出完整运行时 metadata', async () => {
@@ -2946,15 +3087,15 @@ describe('NodeSchedulerService', () => {
         'completed',
         {
           result: {
-            branch: 'matched',
+            branch: 'branch-0',
+            'branch-0': { A: { score: 92 } },
+            else: null,
             'matched-out': { A: { score: 92 } },
             'unmatched-out': null,
             matched: { A: { score: 92 } },
             unmatched: null,
             true: { A: { score: 92 } },
             false: null,
-            expression: 'input.A.score >= 80',
-            evaluatedValue: true,
           },
         },
       );
@@ -3003,7 +3144,11 @@ describe('NodeSchedulerService', () => {
         'completed',
         {
           result: {
-            branch: 'unmatched',
+            branch: 'else',
+            'branch-0': null,
+            else: {
+              input: { route: 'skip', topic: '验证 skip 分支' },
+            },
             'matched-out': null,
             'unmatched-out': {
               input: { route: 'skip', topic: '验证 skip 分支' },
@@ -3016,9 +3161,6 @@ describe('NodeSchedulerService', () => {
             false: {
               input: { route: 'skip', topic: '验证 skip 分支' },
             },
-            evaluatedField: 'route',
-            actualValue: 'skip',
-            expectedValue: 'match',
           },
         },
       );
@@ -3872,6 +4014,16 @@ describe('NodeSchedulerService', () => {
           {
             provide: SharedResourceRegistry,
             useValue: { createResource: vi.fn() },
+          },
+          {
+            provide: WorkspaceIntegrationService,
+            useValue: {
+              archiveExecutionStepWorkspace: vi.fn().mockResolvedValue(null),
+              startExecutionStepFileWatcher: vi
+                .fn()
+                .mockResolvedValue(undefined),
+              stopExecutionStepFileWatcher: vi.fn(),
+            },
           },
           { provide: McpService, useValue: mockMcpService },
         ],

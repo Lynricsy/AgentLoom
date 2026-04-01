@@ -74,12 +74,7 @@ void main() {
       ).thenAnswer(
         (_) async => const PaginatedResponse(
           data: <ConversationMessageDto>[],
-          meta: PaginationMeta(
-            total: 0,
-            page: 1,
-            pageSize: 50,
-            totalPages: 0,
-          ),
+          meta: PaginationMeta(total: 0, page: 1, pageSize: 50, totalPages: 0),
         ),
       );
 
@@ -128,6 +123,71 @@ void main() {
       expect(find.text('Hello Agent'), findsOneWidget);
       expect(find.text('Hi! How can I help?'), findsOneWidget);
     });
+
+    testWidgets(
+      'uses persisted metadata segments to render tool waterfall order',
+      (tester) async {
+        when(
+          () => mockApi.getMessages(
+            any(),
+            page: any(named: 'page'),
+            pageSize: any(named: 'pageSize'),
+          ),
+        ).thenAnswer(
+          (_) async => const PaginatedResponse(
+            data: [
+              ConversationMessageDto(
+                id: 'assistant-1',
+                conversationId: 'conv-001',
+                role: MessageRole.assistant,
+                content: '先整理线索\n\nKB-ALPHA-20260329-FOX',
+                toolCalls: [
+                  ConversationToolCallDto(
+                    id: 'tool-1',
+                    tool: 'search_knowledge',
+                    status: ConversationToolStatus.completed,
+                  ),
+                ],
+                metadata: {
+                  'segments': [
+                    {'type': 'text', 'content': '先整理线索'},
+                    {'type': 'tool_call', 'toolCallId': 'tool-1'},
+                    {'type': 'text', 'content': 'KB-ALPHA-20260329-FOX'},
+                  ],
+                },
+                createdAt: '2026-03-31T12:00:00.000Z',
+              ),
+            ],
+            meta: PaginationMeta(
+              total: 1,
+              page: 1,
+              pageSize: 50,
+              totalPages: 1,
+            ),
+          ),
+        );
+
+        await tester.pumpWidget(createTestWidget());
+        await tester.pumpAndSettle();
+
+        final firstText = find.text('先整理线索');
+        final toolName = find.text('search_knowledge');
+        final finalText = find.text('KB-ALPHA-20260329-FOX');
+
+        expect(firstText, findsOneWidget);
+        expect(toolName, findsOneWidget);
+        expect(finalText, findsOneWidget);
+
+        expect(
+          tester.getTopLeft(firstText).dy,
+          lessThan(tester.getTopLeft(toolName).dy),
+        );
+        expect(
+          tester.getTopLeft(toolName).dy,
+          lessThan(tester.getTopLeft(finalText).dy),
+        );
+      },
+    );
 
     testWidgets('shows back button in app bar', (tester) async {
       when(

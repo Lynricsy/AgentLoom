@@ -23,9 +23,11 @@ import { StateReplayService } from './services/state-replay.service';
 import { ThrottleService } from './services/throttle.service';
 import { EventBridgeService } from './services/event-bridge.service';
 import type { JwtPayload } from '../../common/guards/auth.guard';
+import { ExecutionEventName } from './types/execution-event.types';
 import type {
-  ExecutionEventName,
+  ExecutionEvent,
   ExecutionStateSnapshot,
+  StepSnapshot,
   SubscribeAck,
 } from './types/execution-event.types';
 
@@ -37,6 +39,24 @@ const BACKPRESSURE_QUEUE_LIMIT = 500;
 
 /** 背压队列排空重试间隔 (ms) */
 const BACKPRESSURE_DRAIN_INTERVAL_MS = 100;
+
+const INITIAL_REPLAY_ACTIVE_STEP_STATUSES = new Set([
+  'queued',
+  'running',
+  'waiting_intervention',
+]);
+
+const INITIAL_REPLAY_EVENT_NAMES = new Set<ExecutionEventName>([
+  ExecutionEventName.STEP_STATUS_CHANGED,
+  ExecutionEventName.STEP_AGENT_EVENT,
+  ExecutionEventName.STEP_RETRYING,
+  ExecutionEventName.OUTPUT_CHUNK,
+  ExecutionEventName.NODE_INTERVENTION_REQUIRED,
+  ExecutionEventName.NODE_INTERVENTION_RESOLVED,
+  ExecutionEventName.NODE_TOOL_CALL_STATUS,
+  ExecutionEventName.NODE_TOOL_PERMISSION_REQUIRED,
+  ExecutionEventName.NODE_TOOL_PERMISSION_RESOLVED,
+]);
 
 interface SubscribePayload {
   tenantId?: string;
@@ -396,6 +416,45 @@ export class ExecutionGateway
     }
 
     client.emit('execution.state.snapshot' satisfies `${string}`, snapshot);
+
+    for (const event of this.getInitialReplayEvents(snapshot)) {
+      client.emit(event.event satisfies `${string}`, event);
+    }
+  }
+
+  private getInitialReplayEvents(
+    snapshot: ExecutionStateSnapshot,
+  ): ExecutionEvent[] {
+    const activeStepIds = new Set(
+      snapshot.steps
+        .filter((step) => this.shouldReplayBufferedEventsForStep(step))
+        .map((step) => step.stepId),
+    );
+
+    if (activeStepIds.size === 0) {
+      return [];
+    }
+
+    return this.eventBridgeService
+      .getBufferedEvents(snapshot.executionId)
+      .filter((event) => {
+        if (!INITIAL_REPLAY_EVENT_NAMES.has(event.event)) {
+          return false;
+        }
+
+        const stepId = this.readEventStepId(event);
+        return stepId !== null && activeStepIds.has(stepId);
+      });
+  }
+
+  private shouldReplayBufferedEventsForStep(step: StepSnapshot): boolean {
+    return INITIAL_REPLAY_ACTIVE_STEP_STATUSES.has(step.status);
+  }
+
+  private readEventStepId(event: ExecutionEvent): string | null {
+    const stepId =
+      'stepId' in event.data ? (event.data.stepId as unknown) : undefined;
+    return typeof stepId === 'string' && stepId.length > 0 ? stepId : null;
   }
 
   /**

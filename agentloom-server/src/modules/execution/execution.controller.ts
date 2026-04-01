@@ -23,6 +23,7 @@ import {
   auditLogCaptureConfigs,
 } from '../evidence/audit-log.capture';
 import { SandboxAgentAdapter } from '../agent/sandbox-agent.adapter';
+import { WorkspaceIntegrationService } from '../agent-execution/workspace-integration.service';
 import { ExecutionService } from './execution.service';
 import { CheckpointService } from './checkpoint.service';
 import { ListExecutionsQueryDto } from './dto/list-executions-query.dto';
@@ -53,6 +54,7 @@ export class ExecutionController {
     private readonly nodeScheduler: NodeSchedulerService,
     private readonly checkpointService: CheckpointService,
     private readonly sandboxAgentAdapter: SandboxAgentAdapter,
+    private readonly workspaceIntegrationService: WorkspaceIntegrationService,
     @InjectQueue(EXECUTION_QUEUE) private readonly executionQueue: Queue,
   ) {}
 
@@ -220,6 +222,40 @@ export class ExecutionController {
         status: 'permission_resolved',
       },
     };
+  }
+
+  @Get('executions/:executionId/steps/:stepId/workspace/tree')
+  @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
+  @ApiOperation({ summary: '获取 workflow agent 步骤的工作区文件树' })
+  @ApiResponse({ status: 200, description: '工作区文件树' })
+  async getStepWorkspaceTree(
+    @Param('executionId', ParseUUIDPipe) executionId: string,
+    @Param('stepId', ParseUUIDPipe) stepId: string,
+    @CurrentTenant() tenantId: string,
+  ) {
+    return this.workspaceIntegrationService.getExecutionStepFileTree(
+      executionId,
+      stepId,
+      tenantId,
+    );
+  }
+
+  @Get('executions/:executionId/steps/:stepId/workspace/files/*')
+  @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
+  @ApiOperation({ summary: '读取 workflow agent 步骤工作区中的文件内容' })
+  @ApiResponse({ status: 200, description: '文件内容' })
+  async getStepWorkspaceFile(
+    @Param('executionId', ParseUUIDPipe) executionId: string,
+    @Param('stepId', ParseUUIDPipe) stepId: string,
+    @Param('*') filePath: string,
+    @CurrentTenant() tenantId: string,
+  ) {
+    return this.workspaceIntegrationService.getExecutionStepFileContent(
+      executionId,
+      stepId,
+      tenantId,
+      filePath,
+    );
   }
 
   @Get('dlq')

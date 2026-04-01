@@ -98,5 +98,58 @@ void main() {
       expect(copy.completedSteps, 3);
       expect(copy.id, dto.id);
     });
+
+    test('fromJson 兼容 camelCase 执行摘要与步骤', () {
+      final camelCaseJson = {
+        'id': 'exec-003',
+        'workflowId': 'wf-003',
+        'status': 'running',
+        'triggerType': 'manual',
+        'totalSteps': 2,
+        'completedSteps': 1,
+        'startedAt': '2026-01-01T10:00:00.000Z',
+        'createdAt': '2026-01-01T10:00:00.000Z',
+        'updatedAt': '2026-01-01T10:01:00.000Z',
+        'definitionSnapshot': {
+          'nodes': [
+            {
+              'id': 'node-1',
+              'data': {'label': 'Agent A', 'nodeType': 'agent'},
+            },
+          ],
+        },
+        'steps': [
+          {
+            'id': 'step-1',
+            'executionId': 'exec-003',
+            'nodeId': 'node-1',
+            'stepOrder': 1,
+            'status': 'running',
+            'nodeType': 'agent',
+            'nodeData': {'label': 'Agent A'},
+            'checkpointData': {
+              'session': {'id': 'sess-1'},
+            },
+            'errorMessage': null,
+            'startedAt': '2026-01-01T10:00:00.000Z',
+            'createdAt': '2026-01-01T10:00:00.000Z',
+            'updatedAt': '2026-01-01T10:01:00.000Z',
+          },
+        ],
+      };
+
+      final dto = ExecutionSummaryDto.fromJson(camelCaseJson);
+
+      expect(dto.workflowId, 'wf-003');
+      expect(dto.triggerType, 'manual');
+      expect(dto.totalSteps, 2);
+      expect(dto.createdAt, '2026-01-01T10:00:00.000Z');
+      expect(dto.definitionSnapshot?['nodes'], isA<List<dynamic>>());
+      expect(dto.steps, hasLength(1));
+      expect(dto.steps!.first.executionId, 'exec-003');
+      expect(dto.steps!.first.nodeId, 'node-1');
+      expect(dto.steps!.first.stepOrder, 1);
+      expect(dto.steps!.first.createdAt, '2026-01-01T10:00:00.000Z');
+    });
   });
 }

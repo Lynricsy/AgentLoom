@@ -57,11 +57,11 @@ void main() {
       final dto = WorkflowDefinitionDto.fromJson(sampleJson);
       final json = dto.toJson();
 
-      expect(json.containsKey('created_at'), isTrue);
-      expect(json.containsKey('updated_at'), isTrue);
-      expect(json.containsKey('created_by'), isTrue);
-      expect(json.containsKey('updated_by'), isTrue);
-      expect(json.containsKey('createdAt'), isFalse);
+      expect(json.containsKey('createdAt'), isTrue);
+      expect(json.containsKey('updatedAt'), isTrue);
+      expect(json.containsKey('createdBy'), isTrue);
+      expect(json.containsKey('updatedBy'), isTrue);
+      expect(json.containsKey('created_at'), isFalse);
     });
 
     test('toJson → fromJson 往返一致', () {
@@ -91,6 +91,30 @@ void main() {
 
       expect(a, equals(b));
       expect(a.hashCode, equals(b.hashCode));
+    });
+
+    test('fromJson 兼容 camelCase 响应', () {
+      final camelCaseJson = {
+        'id': 'wf-003',
+        'name': 'Camel Workflow',
+        'slug': 'camel-workflow',
+        'description': 'camel case payload',
+        'status': 'published',
+        'version': 3,
+        'publishedReleaseNumber': 2,
+        'metadata': {'origin': 'api'},
+        'createdBy': 'user-003',
+        'updatedBy': 'user-004',
+        'createdAt': '2026-01-03T00:00:00.000Z',
+        'updatedAt': '2026-01-04T00:00:00.000Z',
+      };
+
+      final dto = WorkflowDefinitionDto.fromJson(camelCaseJson);
+
+      expect(dto.id, 'wf-003');
+      expect(dto.publishedReleaseNumber, 2);
+      expect(dto.createdBy, 'user-003');
+      expect(dto.updatedAt, '2026-01-04T00:00:00.000Z');
     });
   });
 }

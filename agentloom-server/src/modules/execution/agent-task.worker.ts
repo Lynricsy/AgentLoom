@@ -71,6 +71,14 @@ import type { MemoryBootSequenceResult } from '../agent-memory/services/boot-pro
 import { SkillResolverService } from '../skill/skill-resolver.service';
 import type { SkillPromptPayload } from '../skill/skill.types';
 import { buildAgentPromptContentBlocks } from './agent-prompt-content.builder';
+import {
+  appendTextConversationMessageSegment,
+  appendThinkingConversationMessageSegment,
+  ensureToolCallConversationMessageSegment,
+  normalizeConversationMessageSegments,
+  type ConversationMessageSegmentRecord,
+} from '../agent-conversation/message-segments';
+import { WorkspaceIntegrationService } from '../agent-execution/workspace-integration.service';
 
 const MAX_TOOL_CALL_ROUNDS = 10;
 
@@ -106,6 +114,7 @@ export class AgentTaskWorker extends WorkerHost {
     private readonly llmEncryptionService: LlmEncryptionService,
     private readonly smartRoutingService: SmartRoutingService,
     private readonly organizationAutonomyPolicyService: OrganizationAutonomyPolicyService,
+    private readonly workspaceIntegrationService: WorkspaceIntegrationService,
     @InjectQueue(AGENT_TASK_QUEUE)
     private readonly agentTaskQueue: Queue,
     @Optional()
@@ -183,6 +192,9 @@ export class AgentTaskWorker extends WorkerHost {
       tenantId,
       ...workflowContextExtras,
     };
+    const sandboxNodeId = this.resolveWorkflowSandboxNodeId(
+      workflowContextExtras,
+    );
     const memorySessionIds = this.resolveMemorySessionIds(
       workflowContextExtras.memorySessionIds,
     );
@@ -191,6 +203,8 @@ export class AgentTaskWorker extends WorkerHost {
     let lastStopReason: string | undefined;
     let decision: Record<string, unknown> | undefined;
     let chunkIndex = 0;
+    let toolCalls: ToolCallEvent[] = [];
+    let segments: ConversationMessageSegmentRecord[] = [];
     const effectiveAutonomyMode = await this.resolveEffectiveAutonomyMode(
       tenantId,
       nodeData,
@@ -218,6 +232,15 @@ export class AgentTaskWorker extends WorkerHost {
         accumulatedContent = toolLoopState.partialContent;
         decision = toolLoopState.decision;
         chunkIndex = toolLoopState.chunkIndex;
+        toolCalls = toolLoopState.toolCalls;
+        segments = toolLoopState.segments;
+        await this.startStepWorkspaceWatcher({
+          executionId,
+          stepId,
+          tenantId,
+          sandboxNodeId,
+          enabled: Boolean(hasSandbox),
+        });
         const contentBlocks = await this.resolveToolPermissionAndBuildBlocks({
           executionId,
           stepId,
@@ -242,6 +265,7 @@ export class AgentTaskWorker extends WorkerHost {
           chunkIndex,
           startRound: resumedToolLoopState.round,
           existingToolCalls: resumedToolLoopState.toolCalls,
+          existingSegments: resumedToolLoopState.segments,
           effectiveAutonomyMode,
         });
 
@@ -255,6 +279,8 @@ export class AgentTaskWorker extends WorkerHost {
         accumulatedContent = loopResult.accumulatedContent;
         lastStopReason = loopResult.lastStopReason;
         decision = loopResult.decision;
+        toolCalls = loopResult.toolCalls;
+        segments = loopResult.segments;
       } else {
         await this.withTenantContext(tenantId, async () => {
           await this.stepStateMachine.updateStepStatus(
@@ -321,6 +347,11 @@ export class AgentTaskWorker extends WorkerHost {
             ...this.getCheckpointData(step),
             session: this.sessionPersistence.serializeSession(session),
           };
+          await this.sessionPersistence.saveToCheckpoint(
+            tenantId,
+            stepId,
+            session,
+          );
         }
 
         if (isExistingSession) {
@@ -330,6 +361,14 @@ export class AgentTaskWorker extends WorkerHost {
             memorySessionIds,
           );
         }
+
+        await this.startStepWorkspaceWatcher({
+          executionId,
+          stepId,
+          tenantId,
+          sandboxNodeId,
+          enabled: Boolean(hasSandbox),
+        });
 
         const initialContentBlocks = this.buildContentBlocks(input);
         const loopResult = await this.executeMultiTurnLoop({
@@ -348,6 +387,7 @@ export class AgentTaskWorker extends WorkerHost {
           startRound: 0,
           existingToolCalls:
             this.loadToolLoopStateFromCheckpoint(step).toolCalls,
+          existingSegments: this.loadToolLoopStateFromCheckpoint(step).segments,
           effectiveAutonomyMode,
         });
 
@@ -361,6 +401,8 @@ export class AgentTaskWorker extends WorkerHost {
         accumulatedContent = loopResult.accumulatedContent;
         lastStopReason = loopResult.lastStopReason;
         decision = loopResult.decision;
+        toolCalls = loopResult.toolCalls;
+        segments = loopResult.segments;
       }
 
       if (lastStopReason === 'intervention_required') {
@@ -378,6 +420,8 @@ export class AgentTaskWorker extends WorkerHost {
                 stopReason: lastStopReason,
                 interventionRequestedAt: requestedAt,
                 interventionNodeName: nodeName,
+                ...(toolCalls.length > 0 ? { toolCalls } : {}),
+                ...(segments.length > 0 ? { segments } : {}),
                 ...(decision ? { decision } : {}),
               },
               result: {
@@ -458,6 +502,13 @@ export class AgentTaskWorker extends WorkerHost {
         result.encryptionFailed = true;
       }
 
+      await this.archiveStepWorkspaceSnapshot({
+        executionId,
+        stepId,
+        tenantId,
+        step,
+      });
+
       await this.withTenantContext(tenantId, async () => {
         await this.stepStateMachine.updateStepStatus(
           tenantId,
@@ -465,9 +516,23 @@ export class AgentTaskWorker extends WorkerHost {
           'completed',
           {
             result,
+            checkpointData: {
+              ...this.getCheckpointData(step),
+              ...(sessionId ? { sessionId } : {}),
+              partialContent: accumulatedContent,
+              ...(toolCalls.length > 0 ? { toolCalls } : {}),
+              ...(segments.length > 0 ? { segments } : {}),
+              ...(decision ? { decision } : {}),
+            },
             ...(isEncrypted ? { isEncrypted } : {}),
           },
         );
+      });
+      this.workspaceIntegrationService.stopExecutionStepFileWatcher(
+        executionId,
+        stepId,
+      );
+      await this.withTenantContext(tenantId, async () => {
         await this.nodeScheduler.onNodeCompleted(executionId, stepId, tenantId);
       });
       this.cleanupMemoryToolsProvider(runtime, sessionId, memorySessionIds);
@@ -511,6 +576,8 @@ export class AgentTaskWorker extends WorkerHost {
           ? { partialContent: finalAccumulatedContent }
           : {}),
         ...(sessionId ? { sessionId } : {}),
+        ...(toolCalls.length > 0 ? { toolCalls } : {}),
+        ...(segments.length > 0 ? { segments } : {}),
         ...(decision ? { decision } : {}),
         attempts: allAttempts,
       };
@@ -691,6 +758,23 @@ export class AgentTaskWorker extends WorkerHost {
             )
           : err;
 
+      await this.archiveStepWorkspaceSnapshot({
+        executionId,
+        stepId,
+        tenantId,
+        step,
+      });
+      const archivedWorkspaceSnapshotId =
+        typeof step.checkpointData?.workspaceSnapshotId === 'string'
+          ? step.checkpointData.workspaceSnapshotId
+          : undefined;
+      const terminalCheckpointData = {
+        ...checkpointData,
+        ...(archivedWorkspaceSnapshotId
+          ? { workspaceSnapshotId: archivedWorkspaceSnapshotId }
+          : {}),
+      };
+
       await this.withTenantContext(tenantId, async () => {
         await this.tenantDb
           .update(schema.executionSteps)
@@ -722,13 +806,24 @@ export class AgentTaskWorker extends WorkerHost {
                   }
                 : {}),
             },
-            checkpointData,
+            checkpointData: terminalCheckpointData,
           },
         );
+      });
+      this.workspaceIntegrationService.stopExecutionStepFileWatcher(
+        executionId,
+        stepId,
+      );
+      await this.withTenantContext(tenantId, async () => {
         await this.nodeScheduler.onNodeFailed(executionId, stepId, tenantId);
       });
       this.cleanupMemoryToolsProvider(runtime, sessionId, memorySessionIds);
       throw finalError;
+    } finally {
+      this.workspaceIntegrationService.stopExecutionStepFileWatcher(
+        executionId,
+        stepId,
+      );
     }
   }
 
@@ -756,6 +851,13 @@ export class AgentTaskWorker extends WorkerHost {
     intervention: InterventionResolution;
   }): Promise<void> {
     const { executionId, stepId, tenantId, step, intervention } = params;
+    await this.archiveStepWorkspaceSnapshot({
+      executionId,
+      stepId,
+      tenantId,
+      step,
+    });
+
     const checkpointData = step.checkpointData ?? {};
     const interventionRecord = this.resolveInterventionRecord(
       checkpointData,
@@ -779,6 +881,10 @@ export class AgentTaskWorker extends WorkerHost {
           intervention: interventionRecord,
         },
       });
+      this.workspaceIntegrationService.stopExecutionStepFileWatcher(
+        executionId,
+        stepId,
+      );
       await this.nodeScheduler.onNodeFailed(executionId, stepId, tenantId);
       return;
     }
@@ -816,6 +922,10 @@ export class AgentTaskWorker extends WorkerHost {
         },
       },
     );
+    this.workspaceIntegrationService.stopExecutionStepFileWatcher(
+      executionId,
+      stepId,
+    );
     await this.nodeScheduler.onNodeCompleted(executionId, stepId, tenantId);
     this.cleanupMemoryToolsProvider(
       this.agentRuntime,
@@ -824,6 +934,52 @@ export class AgentTaskWorker extends WorkerHost {
         : null,
       [],
     );
+  }
+
+  private resolveWorkflowSandboxNodeId(
+    workflowContext: Record<string, unknown>,
+  ): string | undefined {
+    const nestedSandbox =
+      this.isRecord(workflowContext.serverSandbox) &&
+      typeof workflowContext.serverSandbox.sandboxNodeId === 'string'
+        ? workflowContext.serverSandbox.sandboxNodeId
+        : undefined;
+
+    if (
+      typeof workflowContext.sandboxNodeId === 'string' &&
+      workflowContext.sandboxNodeId.trim().length > 0
+    ) {
+      return workflowContext.sandboxNodeId.trim();
+    }
+
+    if (nestedSandbox && nestedSandbox.trim().length > 0) {
+      return nestedSandbox.trim();
+    }
+
+    return undefined;
+  }
+
+  private isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null;
+  }
+
+  private async startStepWorkspaceWatcher(params: {
+    executionId: string;
+    stepId: string;
+    tenantId: string;
+    sandboxNodeId?: string;
+    enabled: boolean;
+  }): Promise<void> {
+    if (!params.enabled) {
+      return;
+    }
+
+    await this.workspaceIntegrationService.startExecutionStepFileWatcher({
+      executionId: params.executionId,
+      stepId: params.stepId,
+      tenantId: params.tenantId,
+      ...(params.sandboxNodeId ? { sandboxNodeId: params.sandboxNodeId } : {}),
+    });
   }
 
   private resolveInterventionRecord(
@@ -1075,6 +1231,28 @@ export class AgentTaskWorker extends WorkerHost {
     return step.checkpointData ?? {};
   }
 
+  private async archiveStepWorkspaceSnapshot(params: {
+    executionId: string;
+    stepId: string;
+    tenantId: string;
+    step: typeof schema.executionSteps.$inferSelect;
+  }): Promise<void> {
+    const snapshotId =
+      await this.workspaceIntegrationService.archiveExecutionStepWorkspace(
+        params.executionId,
+        params.stepId,
+        params.tenantId,
+      );
+
+    if (!snapshotId) {
+      return;
+    }
+
+    await this.mergeCheckpointData(params.tenantId, params.step, {
+      workspaceSnapshotId: snapshotId,
+    });
+  }
+
   private loadToolLoopStateFromCheckpoint(
     step: typeof schema.executionSteps.$inferSelect,
   ): {
@@ -1083,6 +1261,7 @@ export class AgentTaskWorker extends WorkerHost {
     round: number;
     decision?: Record<string, unknown>;
     toolCalls: ToolCallEvent[];
+    segments: ConversationMessageSegmentRecord[];
   } {
     const checkpointData = this.getCheckpointData(step);
 
@@ -1106,6 +1285,7 @@ export class AgentTaskWorker extends WorkerHost {
       toolCalls: Array.isArray(checkpointData.toolCalls)
         ? (checkpointData.toolCalls as ToolCallEvent[])
         : [],
+      segments: normalizeConversationMessageSegments(checkpointData.segments),
     };
   }
 
@@ -1136,6 +1316,7 @@ export class AgentTaskWorker extends WorkerHost {
     sessionId: string;
     partialContent: string;
     toolCalls: ToolCallEvent[];
+    segments: ConversationMessageSegmentRecord[];
     round: number;
     chunkIndex: number;
     decision?: Record<string, unknown>;
@@ -1146,6 +1327,7 @@ export class AgentTaskWorker extends WorkerHost {
       sessionId,
       partialContent,
       toolCalls,
+      segments,
       round,
       chunkIndex,
       decision,
@@ -1155,6 +1337,7 @@ export class AgentTaskWorker extends WorkerHost {
       sessionId,
       partialContent,
       toolCalls,
+      segments,
       round,
       chunkIndex,
       ...(decision ? { decision } : {}),
@@ -1243,12 +1426,16 @@ export class AgentTaskWorker extends WorkerHost {
     sessionId: string;
     partialContent: string;
     toolCalls: ToolCallEvent[];
+    segments: ConversationMessageSegmentRecord[];
     toolCall: ToolCallEvent;
     source: ToolCallTransitionSource;
     round: number;
     chunkIndex: number;
     decision?: Record<string, unknown>;
-  }): Promise<ToolCallEvent[]> {
+  }): Promise<{
+    toolCalls: ToolCallEvent[];
+    segments: ConversationMessageSegmentRecord[];
+  }> {
     const {
       tenantId,
       executionId,
@@ -1263,6 +1450,10 @@ export class AgentTaskWorker extends WorkerHost {
       decision,
     } = params;
     let toolCalls = [...params.toolCalls];
+    const segments = ensureToolCallConversationMessageSegment(
+      params.segments,
+      params.toolCall.id,
+    );
     let current = toolCalls.find((item) => item.id === params.toolCall.id);
 
     if (!current) {
@@ -1326,12 +1517,16 @@ export class AgentTaskWorker extends WorkerHost {
       sessionId,
       partialContent,
       toolCalls,
+      segments,
       round,
       chunkIndex,
       decision,
     });
 
-    return toolCalls;
+    return {
+      toolCalls,
+      segments,
+    };
   }
 
   private resolveToolCallTransitions(
@@ -1448,17 +1643,21 @@ export class AgentTaskWorker extends WorkerHost {
     chunkIndex: number;
     startRound: number;
     existingToolCalls: ToolCallEvent[];
+    existingSegments: ConversationMessageSegmentRecord[];
     effectiveAutonomyMode: string;
   }): Promise<{
     waitingPermission: boolean;
     accumulatedContent: string;
     lastStopReason?: string;
     decision?: Record<string, unknown>;
+    toolCalls: ToolCallEvent[];
+    segments: ConversationMessageSegmentRecord[];
   }> {
     let { accumulatedContent, decision, chunkIndex } = params;
     let contentBlocks = params.initialContentBlocks;
     let lastStopReason: string | undefined;
     let toolCalls = [...params.existingToolCalls];
+    let segments = [...params.existingSegments];
     const autonomyMode = params.effectiveAutonomyMode;
 
     for (let round = params.startRound; round < MAX_TOOL_CALL_ROUNDS; round++) {
@@ -1481,6 +1680,10 @@ export class AgentTaskWorker extends WorkerHost {
 
           if (event.type === 'message_chunk') {
             accumulatedContent += event.content;
+            segments = appendTextConversationMessageSegment(
+              segments,
+              event.content,
+            );
             chunkIndex++;
             this.eventBridge.emitOutputChunk(
               params.tenantId,
@@ -1489,13 +1692,22 @@ export class AgentTaskWorker extends WorkerHost {
                 stepId: params.stepId,
                 chunk: event.content,
                 index: chunkIndex,
+                executionType: 'workflow',
               },
             );
             continue;
           }
 
+          const thinkingContent = this.extractThinkingEventContent(event);
+          if (thinkingContent) {
+            segments = appendThinkingConversationMessageSegment(
+              segments,
+              thinkingContent,
+            );
+          }
+
           if (event.type === 'tool_call') {
-            toolCalls = await this.applyToolCallUpdate({
+            const updatedToolLoop = await this.applyToolCallUpdate({
               tenantId: params.tenantId,
               executionId: params.executionId,
               stepId: params.stepId,
@@ -1504,12 +1716,15 @@ export class AgentTaskWorker extends WorkerHost {
               sessionId: params.sessionId,
               partialContent: accumulatedContent,
               toolCalls,
+              segments,
               toolCall: event.call,
               source: 'runtime',
               round,
               chunkIndex,
               decision,
             });
+            toolCalls = updatedToolLoop.toolCalls;
+            segments = updatedToolLoop.segments;
             roundToolCallIds.add(event.call.id);
             continue;
           }
@@ -1584,6 +1799,7 @@ export class AgentTaskWorker extends WorkerHost {
           sessionId: params.sessionId,
           partialContent: accumulatedContent,
           toolCalls,
+          segments,
           round: round + 1,
           chunkIndex,
           decision,
@@ -1639,6 +1855,7 @@ export class AgentTaskWorker extends WorkerHost {
           sessionId: params.sessionId,
           partialContent: accumulatedContent,
           toolCalls,
+          segments,
           round: round + 1,
           chunkIndex,
           decision,
@@ -1649,6 +1866,8 @@ export class AgentTaskWorker extends WorkerHost {
           accumulatedContent,
           lastStopReason,
           decision,
+          toolCalls,
+          segments,
         };
       }
     }
@@ -1658,7 +1877,30 @@ export class AgentTaskWorker extends WorkerHost {
       accumulatedContent,
       lastStopReason,
       decision,
+      toolCalls,
+      segments,
     };
+  }
+
+  private extractThinkingEventContent(event: {
+    type?: unknown;
+    content?: unknown;
+    rationale?: unknown;
+    suggestedContent?: unknown;
+  }): string | undefined {
+    switch (event.type) {
+      case 'thinking':
+      case 'plan':
+        return this.readString(event.content) ?? undefined;
+      case 'decision': {
+        const rationale = this.readString(event.rationale);
+        const suggestedContent = this.readString(event.suggestedContent);
+        const parts = [rationale, suggestedContent].filter(Boolean);
+        return parts.length > 0 ? parts.join('\n\n') : undefined;
+      }
+      default:
+        return undefined;
+    }
   }
 
   private async resolveEffectiveAutonomyMode(

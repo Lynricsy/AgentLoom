@@ -11,6 +11,10 @@ import { ZodValidationPipe } from './common/pipes/zod-validation.pipe';
 import { RedisIoAdapter } from './common/adapters/redis-io.adapter';
 import { Logger } from '@nestjs/common';
 import {
+  collectAllowedCorsOrigins,
+  createCorsOriginDelegate,
+} from './common/http/cors';
+import {
   API_GLOBAL_PREFIX,
   createSwaggerDocument,
   SWAGGER_DOCUMENT_PATH,
@@ -47,6 +51,14 @@ async function bootstrap() {
   app.setGlobalPrefix(API_GLOBAL_PREFIX);
   app.useGlobalFilters(new AllExceptionsFilter());
   app.useGlobalPipes(new ZodValidationPipe());
+  app.enableCors({
+    origin: createCorsOriginDelegate(
+      collectAllowedCorsOrigins(process.env.APP_FRONTEND_URL),
+    ),
+    credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Api-Key'],
+  });
 
   const document = createSwaggerDocument(app);
   SwaggerModule.setup(SWAGGER_DOCUMENT_PATH, app, document, {

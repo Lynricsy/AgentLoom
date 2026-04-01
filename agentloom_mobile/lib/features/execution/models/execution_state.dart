@@ -1,3 +1,5 @@
+// ignore_for_file: invalid_annotation_target
+
 import 'package:freezed_annotation/freezed_annotation.dart';
 import 'execution_status.dart';
 
@@ -7,6 +9,7 @@ part 'execution_state.g.dart';
 /// 步骤快照，与服务端 ExecutionStateSnapshot.steps[] 对齐
 @freezed
 abstract class StepSnapshot with _$StepSnapshot {
+  @JsonSerializable(fieldRename: FieldRename.snake)
   const factory StepSnapshot({
     required String stepId,
     required String nodeId,
@@ -28,6 +31,7 @@ abstract class StepSnapshot with _$StepSnapshot {
 /// 执行状态快照，subscribe ACK 或 state.snapshot 事件返回
 @freezed
 abstract class ExecutionStateSnapshot with _$ExecutionStateSnapshot {
+  @JsonSerializable(fieldRename: FieldRename.snake)
   const factory ExecutionStateSnapshot({
     required String executionId,
     required String status,

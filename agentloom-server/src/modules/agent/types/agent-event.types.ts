@@ -39,6 +39,14 @@ export interface DoneEvent {
   readonly stopReason: StopReason;
 }
 
+export interface FileChangeEvent {
+  readonly type: 'file_change';
+  readonly path: string;
+  readonly changeType: 'created' | 'modified' | 'deleted';
+  readonly diff?: string;
+  readonly content?: string;
+}
+
 /** PTY 会话元信息，与沙箱容器 PTYSessionInfo 对齐 */
 export interface PtySessionInfo {
   readonly id: string;
@@ -98,6 +106,7 @@ export type AgentEvent =
   | ToolCallAgentEvent
   | DecisionEvent
   | DoneEvent
+  | FileChangeEvent
   | PtySpawnedEvent
   | PtyOutputEvent
   | PtyExitEvent
@@ -125,6 +134,10 @@ export function isDecisionEvent(event: AgentEvent): event is DecisionEvent {
 
 export function isDoneEvent(event: AgentEvent): event is DoneEvent {
   return event.type === 'done';
+}
+
+export function isFileChangeEvent(event: AgentEvent): event is FileChangeEvent {
+  return event.type === 'file_change';
 }
 
 export function isPtyEvent(event: AgentEvent): event is PtyEvent {

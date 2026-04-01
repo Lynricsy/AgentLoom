@@ -32,6 +32,7 @@ import { McpService } from '../mcp/mcp.service';
 import { SkillModule } from '../skill/skill.module';
 import { SkillResolverService } from '../skill/skill-resolver.service';
 import { ConversationTitleService } from '../agent-conversation/conversation-title.service';
+import { WorkspaceIntegrationService } from './workspace-integration.service';
 import { SubAgentToolsProvider } from './subagent';
 import {
   AGENT_CONVERSATION_EXECUTION_QUEUE,
@@ -64,6 +65,7 @@ const agentExecutionWorkerProvider: Provider = {
     executionService: AgentExecutionService,
     eventBridge: EventBridgeService,
     sandboxService: SandboxService,
+    workspaceIntegrationService: WorkspaceIntegrationService,
     agentDefinitionService: AgentDefinitionService,
     llmService?: LlmService,
     memoryToolsService?: MemoryToolsService,
@@ -81,6 +83,7 @@ const agentExecutionWorkerProvider: Provider = {
       executionService,
       eventBridge,
       sandboxService,
+      workspaceIntegrationService,
       agentDefinitionService,
       llmService,
       memoryToolsService,
@@ -98,6 +101,7 @@ const agentExecutionWorkerProvider: Provider = {
     AgentExecutionService,
     EventBridgeService,
     SandboxService,
+    WorkspaceIntegrationService,
     AgentDefinitionService,
     { token: LlmService, optional: true },
     { token: MemoryToolsService, optional: true },

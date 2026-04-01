@@ -93,6 +93,7 @@ export interface OutputChunkPayload {
   stepId: string
   chunk: string
   index: number
+  executionType?: 'workflow' | 'conversation'
 }
 
 export interface InterventionDecision {
