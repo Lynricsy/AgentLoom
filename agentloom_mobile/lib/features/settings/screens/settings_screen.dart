@@ -59,6 +59,21 @@ class SettingsScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 20),
           const _SectionTitle(
+            title: '个人偏好',
+            subtitle: '管理个人 AI 行为偏好设置。',
+          ),
+          const SizedBox(height: 12),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.tune_rounded),
+              title: const Text('AI 偏好设置'),
+              subtitle: const Text('标题生成模型等个人偏好'),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () => context.goNamed(RouteNames.preferences),
+            ),
+          ),
+          const SizedBox(height: 20),
+          const _SectionTitle(
             title: '安全',
             subtitle: '管理认证、双因素验证和设备会话。',
           ),

@@ -62,6 +62,27 @@ class SecurityInfo {
   final List<String> linkedProviders;
 }
 
+/// 用户偏好设置 DTO
+class UserPreferenceDto {
+  const UserPreferenceDto({
+    required this.id,
+    required this.titleModelConfigId,
+  });
+
+  factory UserPreferenceDto.fromJson(Map<String, dynamic> json) {
+    // 兼容 { data: {...} } 信封或直接 map
+    final map =
+        json.containsKey('data') ? json['data'] as Map<String, dynamic> : json;
+    return UserPreferenceDto(
+      id: map['id'] as String? ?? '',
+      titleModelConfigId: map['titleModelConfigId'] as String?,
+    );
+  }
+
+  final String id;
+  final String? titleModelConfigId;
+}
+
 /// 设置 API 客户端
 class SettingsApi {
   final Dio _dio;
@@ -129,6 +150,23 @@ class SettingsApi {
   /// 注销所有会话（当前设备除外）
   Future<void> revokeAllSessions() async {
     await _dio.post('/api/v1/auth/sessions/revoke-all');
+  }
+
+  /// 获取用户偏好设置
+  Future<UserPreferenceDto> getUserPreferences() async {
+    final response = await _dio.get('/api/v1/user-preferences');
+    return UserPreferenceDto.fromJson(response.data as Map<String, dynamic>);
+  }
+
+  /// 更新用户偏好设置
+  Future<UserPreferenceDto> updateUserPreferences({
+    String? titleModelConfigId,
+  }) async {
+    final response = await _dio.patch(
+      '/api/v1/user-preferences',
+      data: {'titleModelConfigId': titleModelConfigId},
+    );
+    return UserPreferenceDto.fromJson(response.data as Map<String, dynamic>);
   }
 }
 

@@ -31,6 +31,7 @@ import '../features/resources/screens/workspaces_screen.dart';
 import '../features/settings/screens/change_password_screen.dart';
 import '../features/settings/screens/mfa_manage_screen.dart';
 import '../features/settings/screens/server_config_screen.dart';
+import '../features/settings/screens/preferences_screen.dart';
 import '../features/settings/screens/session_list_screen.dart';
 import '../features/settings/screens/settings_screen.dart';
 import '../features/skills/screens/skill_detail_screen.dart';
@@ -373,6 +374,11 @@ final goRouterProvider = Provider<GoRouter>((ref) {
                     path: 'sessions',
                     name: RouteNames.sessions,
                     builder: (context, state) => const SessionListScreen(),
+                  ),
+                  GoRoute(
+                    path: 'preferences',
+                    name: RouteNames.preferences,
+                    builder: (context, state) => const PreferencesScreen(),
                   ),
                 ],
               ),

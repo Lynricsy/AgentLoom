@@ -49,4 +49,5 @@ class RouteNames {
   static const String mfaManage = 'mfaManage';
   static const String sessions = 'sessions';
   static const String serverConfig = 'serverConfig';
+  static const String preferences = 'preferences';
 }

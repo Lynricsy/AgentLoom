@@ -8,10 +8,17 @@ import {
   Gauge,
   Server,
   FileText,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { rootRoute } from '../__root';
 
 const SETTINGS_SECTIONS = [
+  {
+    label: '个人偏好',
+    description: '管理个人 AI 行为偏好',
+    to: '/settings/preferences',
+    icon: SlidersHorizontal,
+  },
   {
     label: '安全设置',
     description: '管理认证与访问控制',
