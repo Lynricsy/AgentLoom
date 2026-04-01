@@ -1,13 +1,15 @@
 import { useCallback, type DragEvent } from 'react'
 import type { ReactFlowInstance } from '@xyflow/react'
 import { DRAG_TRANSFER_TYPE } from '../components/NodePalette'
-import { useCanvasActions } from '../stores/canvasStore'
+import { useCanvasActions, useCanvasNodes } from '../stores/canvasStore'
+import { useToast } from '@/shared/ui/toast'
 import type {
   AddNodeInput,
   CanvasEdge,
   CanvasNode,
   PaletteNodeItem,
 } from '../types'
+import { isCompoundContainerNodeType } from '../types/controlFlow.types'
 
 function generateNodeId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -21,6 +23,49 @@ export function useCanvasDrop(
   reactFlowInstance: ReactFlowInstance<CanvasNode, CanvasEdge>
 ) {
   const { addNode } = useCanvasActions()
+  const nodes = useCanvasNodes()
+  const { notify } = useToast()
+
+  const resolveCompoundParent = useCallback(
+    (position: { x: number; y: number }, item: PaletteNodeItem): CanvasNode | null => {
+      if (item.compoundParentId) {
+        return nodes.find((node) => node.id === item.compoundParentId) ?? null
+      }
+
+      const candidate = [...nodes]
+        .reverse()
+        .find((node) => {
+          if (!isCompoundContainerNodeType(node.data.nodeType)) {
+            return false
+          }
+
+          const width =
+            typeof node.style?.width === 'number'
+              ? node.style.width
+              : typeof node.width === 'number'
+                ? node.width
+                : 0
+          const height =
+            typeof node.style?.height === 'number'
+              ? node.style.height
+              : typeof node.height === 'number'
+                ? node.height
+                : 0
+
+          return (
+            width > 0
+            && height > 0
+            && position.x >= node.position.x
+            && position.x <= node.position.x + width
+            && position.y >= node.position.y
+            && position.y <= node.position.y + height
+          )
+        })
+
+      return candidate ?? null
+    },
+    [nodes],
+  )
 
   const onDragOver = useCallback((event: DragEvent) => {
     event.preventDefault()
@@ -45,19 +90,47 @@ export function useCanvasDrop(
         x: event.clientX,
         y: event.clientY,
       })
+      const compoundParent = resolveCompoundParent(position, item)
+
+      if (item.compoundOnly && !compoundParent) {
+        notify({
+          variant: 'error',
+          description: '该节点只能放在已选中的 loop / iteration 容器内部。',
+        })
+        return
+      }
+
+      if (compoundParent && (item.type === 'loop' || item.type === 'iteration')) {
+        notify({
+          variant: 'error',
+          description: '当前版本暂不支持在 compound 内部继续嵌套 loop / iteration。',
+        })
+        return
+      }
 
       const input: AddNodeInput = {
         id: generateNodeId(),
         nodeType: item.type,
         category: item.category,
-        position,
+        position: compoundParent
+          ? {
+              x: position.x - compoundParent.position.x,
+              y: position.y - compoundParent.position.y,
+            }
+          : position,
+        ...(compoundParent
+          ? {
+              parentId: compoundParent.id,
+              extent: 'parent' as const,
+            }
+          : {}),
         label: item.label,
         description: item.description,
       }
 
       addNode(input)
     },
-    [addNode, reactFlowInstance]
+    [addNode, notify, reactFlowInstance, resolveCompoundParent]
   )
 
   return { onDragOver, onDrop }

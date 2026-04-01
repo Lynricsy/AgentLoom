@@ -3,8 +3,11 @@ import { BlockLibraryPanel } from '@/features/block-library/components/BlockLibr
 import { useActivePlugins } from '@/features/plugin'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs'
 import { cn } from '../../../shared/lib/utils'
+import { useCanvasStore, useSelectedNodeData } from '../stores/canvasStore'
 import { PALETTE_GROUPS, NODE_CATEGORIES } from './nodeCategories'
 import type { PaletteGroup, PaletteNodeItem } from '../types'
+import { getNodeTypeConfig } from '../types/nodeTypeRegistry'
+import { isCompoundContainerNodeType } from '../types/controlFlow.types'
 
 export const DRAG_TRANSFER_TYPE = 'application/agentloom-node'
 
@@ -21,6 +24,20 @@ export const NodePalette = memo(function NodePalette({ className }: NodePaletteP
   const [searchQuery, setSearchQuery] = useState('')
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
   const { data: pluginsResponse } = useActivePlugins()
+  const selectedNodeData = useSelectedNodeData()
+  const selectedNodeId = useCanvasStore((state) => state.selectedNodeId)
+
+  const selectedCompoundNodeId = useMemo(() => {
+    if (!selectedNodeData?.nodeType) {
+      return null
+    }
+
+    if (isCompoundContainerNodeType(selectedNodeData.nodeType)) {
+      return selectedNodeId
+    }
+
+    return null
+  }, [selectedNodeData, selectedNodeId])
 
   const pluginGroup = useMemo<PaletteGroup | null>(() => {
     const plugins = pluginsResponse?.data ?? []
@@ -50,11 +67,46 @@ export const NodePalette = memo(function NodePalette({ className }: NodePaletteP
     }
   }, [pluginsResponse])
 
+  const compoundGroup = useMemo<PaletteGroup | null>(() => {
+    if (!selectedCompoundNodeId) {
+      return null
+    }
+
+    const internalTypes = ['result', 'break', 'continue', 'loop-state'] as const
+    const items: PaletteNodeItem[] = internalTypes
+      .filter((type) =>
+        type === 'loop-state'
+          ? selectedNodeData?.nodeType === 'loop'
+          : true,
+      )
+      .map((type) => {
+        const config = getNodeTypeConfig(type)
+        return {
+          type: config.type,
+          label: config.label,
+          category: config.category,
+          icon: config.icon,
+          description: config.description,
+          compoundOnly: true,
+          compoundParentId: selectedCompoundNodeId,
+        }
+      })
+
+    return {
+      category: 'control',
+      label: 'Compound 内部节点',
+      icon: NODE_CATEGORIES.control.icon,
+      color: NODE_CATEGORIES.control.color,
+      items,
+    }
+  }, [selectedCompoundNodeId, selectedNodeData?.nodeType])
+
   const allGroups = useMemo(() => {
     const groups = [...PALETTE_GROUPS]
+    if (compoundGroup) groups.push(compoundGroup)
     if (pluginGroup) groups.push(pluginGroup)
     return groups
-  }, [pluginGroup])
+  }, [compoundGroup, pluginGroup])
 
   const toggleGroup = useCallback((groupKey: string) => {
     setCollapsedGroups((prev) => {

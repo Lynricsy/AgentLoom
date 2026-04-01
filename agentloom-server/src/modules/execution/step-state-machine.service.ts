@@ -7,6 +7,7 @@ import { InvalidStepTransitionException } from './execution.exceptions';
 import { EventBridgeService } from './services/event-bridge.service';
 import type { AgentEvent } from '../agent/types/agent-event.types';
 import type { StepStatusChangedPayload } from './types/execution-event.types';
+import { isTrackedExecutionStep } from './compound-runtime.util';
 
 export type StepStatus = schema.ExecutionStep['status'];
 
@@ -169,15 +170,22 @@ export class StepStateMachineService {
       return;
     }
 
-    const completedCount = steps.filter((s) =>
+    const trackedSteps = steps.filter((step) => isTrackedExecutionStep(step));
+    if (trackedSteps.length === 0) {
+      return;
+    }
+
+    const completedCount = trackedSteps.filter((s) =>
       COMPLETED_STEP_STATUSES.has(s.status),
     ).length;
-    const allCompleted = completedCount === steps.length;
-    const anyFailed = steps.some((s) => s.status === 'failed');
-    const anyRunning = steps.some(
+    const allCompleted = completedCount === trackedSteps.length;
+    const anyFailed = trackedSteps.some((s) => s.status === 'failed');
+    const anyRunning = trackedSteps.some(
       (s) => s.status === 'running' || s.status === 'queued',
     );
-    const anyWaiting = steps.some((s) => s.status === 'waiting_intervention');
+    const anyWaiting = trackedSteps.some(
+      (s) => s.status === 'waiting_intervention',
+    );
 
     let executionStatus: schema.WorkflowExecution['status'];
 
@@ -208,11 +216,11 @@ export class StepStateMachineService {
       executionId,
       status: executionStatus,
       completedSteps: completedCount,
-      totalSteps: steps.length,
+      totalSteps: trackedSteps.length,
     });
 
     this.logger.log(
-      `Execution status updated: ${JSON.stringify({ executionId, status: executionStatus, completedSteps: completedCount })}`,
+      `Execution status updated: ${JSON.stringify({ executionId, status: executionStatus, completedSteps: completedCount, trackedSteps: trackedSteps.length })}`,
     );
   }
 
@@ -254,7 +262,8 @@ export class StepStateMachineService {
       .from(schema.executionSteps)
       .where(eq(schema.executionSteps.executionId, executionId));
 
-    const completedCount = steps.filter((step) =>
+    const trackedSteps = steps.filter((step) => isTrackedExecutionStep(step));
+    const completedCount = trackedSteps.filter((step) =>
       COMPLETED_STEP_STATUSES.has(step.status),
     ).length;
 
@@ -274,8 +283,8 @@ export class StepStateMachineService {
     this.eventBridge.emitExecutionStatusChanged(tenantId, executionId, {
       executionId,
       status: 'failed',
-      completedSteps: completedCount,
-      totalSteps: steps.length,
+        completedSteps: completedCount,
+        totalSteps: trackedSteps.length,
       ...(errorMessage ? { errorMessage: errorMessage.message } : {}),
     });
   }

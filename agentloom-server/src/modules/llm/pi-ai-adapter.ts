@@ -1,13 +1,20 @@
 import { Injectable, Logger } from '@nestjs/common';
 
 import type { LlmModelConfig } from '../../database/schema/llm-model-configs.schema';
+import type { LlmProvider } from '../../database/schema/llm-providers.schema';
 import { DecryptionBoundaryService } from '../api-key/decryption-boundary.service';
+import { PRIVATE_CLOUD_NO_AUTH_PLACEHOLDER } from './private-cloud-auth.constants';
 import { LlmProviderException, LlmTimeoutException } from './llm.exceptions';
 
 const TIMEOUT_MS = 120_000;
 const MAX_RETRIES = 2;
 const BASE_DELAY_MS = 1_000;
 const RETRYABLE_MODEL_METHODS = new Set(['doGenerate', 'doStream']);
+
+/**
+ * 解析后的模型配置：模型配置 + 关联的提供商信息
+ */
+export type ResolvedModelConfig = LlmModelConfig & { provider: LlmProvider };
 
 interface LanguageModelProvider {
   (modelId: string, options?: Record<string, unknown>): unknown;
@@ -18,49 +25,50 @@ type WrappableModel = Record<PropertyKey, unknown>;
 @Injectable()
 export class PiAiAdapter {
   private readonly logger = new Logger(PiAiAdapter.name);
-  private static readonly PRIVATE_CLOUD_NO_AUTH_PLACEHOLDER =
-    '__agentloom_private_cloud_no_auth__';
 
   constructor(
     private readonly decryptionBoundaryService: DecryptionBoundaryService,
   ) {}
 
-  async getModel(config: LlmModelConfig, apiKey?: string): Promise<unknown> {
-    // private_cloud: 仅 authMethod=api_key 时解密 key，否则跳过
-    const resolvedApiKey =
-      config.provider === 'private_cloud' && config.authMethod !== 'api_key'
-        ? undefined
-        : (apiKey ?? (await this.resolveApiKey(config)));
+  async getModel(
+    config: ResolvedModelConfig,
+    apiKey?: string,
+  ): Promise<unknown> {
+    const providerSlug = config.provider.slug;
 
-    const provider = await this.resolveProvider(
-      config.provider,
+    // 仅在提供商配置了 apiKeyId 时解密 key
+    const resolvedApiKey = !config.provider.apiKeyId
+      ? undefined
+      : (apiKey ?? (await this.resolveApiKey(config)));
+
+    const sdkProvider = await this.resolveProvider(
+      providerSlug,
       resolvedApiKey,
       config,
     );
 
-    // private_cloud 使用配置的超时时间
-    const timeout =
-      config.provider === 'private_cloud'
-        ? (config.timeoutMs ?? TIMEOUT_MS)
-        : TIMEOUT_MS;
+    const timeout = config.timeoutMs ?? TIMEOUT_MS;
 
     return this.wrapModelWithRetry(
-      provider(config.modelName),
-      config.provider,
+      sdkProvider(config.modelId),
+      providerSlug,
       timeout,
     );
   }
 
   private async resolveProvider(
-    providerName: string,
+    providerSlug: string,
     apiKey: string | undefined,
-    config: LlmModelConfig,
+    config: ResolvedModelConfig,
   ): Promise<LanguageModelProvider> {
-    const baseUrl = (config.parameters as Record<string, unknown>)?.baseUrl as
-      | string
-      | undefined;
+    const baseUrl =
+      config.provider.baseUrl ??
+      config.provider.defaultBaseUrl ??
+      ((config.parameters as Record<string, unknown>)?.baseUrl as
+        | string
+        | undefined);
 
-    switch (providerName) {
+    switch (providerSlug) {
       case 'openai': {
         const { createOpenAI } = await import('@ai-sdk/openai');
         return createOpenAI({
@@ -93,7 +101,7 @@ export class PiAiAdapter {
         const { createOpenAI } = await import('@ai-sdk/openai');
         if (!baseUrl) {
           throw new LlmProviderException(
-            providerName,
+            providerSlug,
             'Custom 提供商必须在 parameters 中指定 baseUrl',
           );
         }
@@ -101,17 +109,18 @@ export class PiAiAdapter {
       }
       case 'private_cloud': {
         const { createOpenAI } = await import('@ai-sdk/openai');
-        if (!config.endpointUrl) {
+        const endpointUrl = config.provider.baseUrl;
+        if (!endpointUrl) {
           throw new LlmProviderException(
-            providerName,
+            providerSlug,
             'Private Cloud 提供商必须指定 endpointUrl',
           );
         }
 
-        const requiresAuth = config.authMethod === 'api_key';
+        const requiresAuth = !!config.provider.apiKeyId;
         return createOpenAI({
-          apiKey: apiKey ?? PiAiAdapter.PRIVATE_CLOUD_NO_AUTH_PLACEHOLDER,
-          baseURL: config.endpointUrl,
+          apiKey: apiKey ?? PRIVATE_CLOUD_NO_AUTH_PLACEHOLDER,
+          baseURL: endpointUrl,
           ...(requiresAuth
             ? {}
             : { fetch: this.createAuthorizationStrippingFetch() }),
@@ -119,8 +128,8 @@ export class PiAiAdapter {
       }
       default:
         throw new LlmProviderException(
-          providerName,
-          `不支持的 LLM 提供商: ${providerName}`,
+          providerSlug,
+          `不支持的 LLM 提供商: ${providerSlug}`,
         );
     }
   }
@@ -243,13 +252,13 @@ export class PiAiAdapter {
     };
   }
 
-  private async resolveApiKey(config: LlmModelConfig): Promise<string> {
+  private async resolveApiKey(config: ResolvedModelConfig): Promise<string> {
     return this.decryptionBoundaryService.decryptConfiguredApiKey(
       {
-        apiKeyId: config.apiKeyId,
+        apiKeyId: config.provider.apiKeyId,
         organizationId: config.orgId,
         tenantId: config.tenantId,
-        provider: config.provider,
+        provider: config.provider.slug,
       },
       PiAiAdapter.name,
     );

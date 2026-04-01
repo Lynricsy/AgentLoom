@@ -76,6 +76,7 @@ export function serializePortDefinition(port: PortDefinition): SerializedPortDef
     label: port.label,
     direction: port.direction,
     dataType: port.dataType,
+    acceptsAnyDataType: port.acceptsAnyDataType,
     description: port.description,
     required: port.required,
     multiple: port.multiple,

@@ -17,6 +17,7 @@ const APPLICABLE_THRESHOLD = 0.70
 const SCHEMA_TYPE_LABELS: Record<Exclude<PortDataType, 'json'>, string> = {
   model: '模型',
   text: '文本',
+  array: '数组',
   image: '图像',
   audio: '音频',
   tool: '工具',

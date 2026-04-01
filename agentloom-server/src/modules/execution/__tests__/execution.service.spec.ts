@@ -1884,6 +1884,72 @@ describe('ExecutionService', () => {
       ]);
     });
 
+    it('应兼容 snake_case parent_id 并将 compound 内部节点排除出 tracked step 统计', async () => {
+      const workflowWithSnakeCaseCompound = {
+        ...mockExecution,
+        definitionSnapshot: {
+          ...mockSnapshot,
+          nodes: [
+            {
+              id: 'iteration',
+              type: 'control',
+              data: { label: 'Iteration', node_type: 'iteration' },
+              position: { x: 0, y: 0 },
+            },
+            {
+              id: 'iter-start',
+              type: 'control',
+              data: { label: 'Iteration Start', node_type: 'iteration-start' },
+              position: { x: 100, y: 0 },
+              parent_id: 'iteration',
+              extent: 'parent',
+            },
+          ],
+          edges: [],
+        },
+      };
+
+      db.select.mockReturnValueOnce(
+        createSelectChain([workflowWithSnakeCaseCompound]),
+      );
+      txDb.select
+        .mockReturnValueOnce(createSelectChain([workflowWithSnakeCaseCompound]))
+        .mockReturnValueOnce(createSelectChain([]));
+      txDb.update.mockReturnValueOnce(
+        createUpdateChainReturning([{ status: 'running' }]),
+      );
+      const insertChain = createInsertChainVoid();
+      txDb.insert.mockReturnValueOnce(insertChain);
+
+      await service.initializeSteps(EXECUTION_ID);
+
+      const updateValues = txDb.update.mock.results[0].value.set.mock.calls[0][0];
+      expect(updateValues.totalSteps).toBe(1);
+      expect(insertChain.values).toHaveBeenCalledWith([
+        expect.objectContaining({
+          nodeId: 'iteration',
+          nodeType: 'iteration',
+          nodeData: expect.objectContaining({
+            __execution: expect.objectContaining({
+              isCompoundContainer: true,
+              isCompoundInternal: false,
+            }),
+          }),
+        }),
+        expect.objectContaining({
+          nodeId: 'iter-start',
+          nodeType: 'iteration-start',
+          nodeData: expect.objectContaining({
+            __execution: expect.objectContaining({
+              compoundParentId: 'iteration',
+              isCompoundInternal: true,
+              isCompoundContainer: false,
+            }),
+          }),
+        }),
+      ]);
+    });
+
     it('应在没有节点时跳过步骤插入并直接完成 execution', async () => {
       const emptyExecution = {
         ...mockExecution,

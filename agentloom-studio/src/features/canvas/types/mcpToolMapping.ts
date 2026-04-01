@@ -36,6 +36,7 @@ const BACKEND_TO_FRONTEND_DATA_TYPE: Record<BackendPortDataType, PortDataType> =
   number: 'json',
   boolean: 'json',
   json: 'json',
+  array: 'array',
   image: 'image',
   audio: 'audio',
   tool: 'tool',
@@ -55,6 +56,19 @@ export function mapBackendDataType(backendType: BackendPortDataType): PortDataTy
 function buildSchemaForDataType(dataType: PortDataType, description?: string): TypeSchema {
   if (dataType === 'json') {
     return { kind: 'json', shape: 'object', properties: {}, additionalProperties: true, description }
+  }
+  if (dataType === 'array') {
+    return {
+      kind: 'json',
+      shape: 'array',
+      description,
+      items: {
+        kind: 'json',
+        shape: 'object',
+        properties: {},
+        additionalProperties: true,
+      },
+    }
   }
   return { kind: dataType, description }
 }

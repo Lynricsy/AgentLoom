@@ -204,6 +204,62 @@ void main() {
         sub.close();
       });
 
+      test('compound 内部节点会继承父容器名称作为展示前缀', () async {
+        final execution = createTestExecution(
+          id: 'exec-1',
+          status: 'completed',
+          definitionSnapshot: {
+            'nodes': [
+              {
+                'id': 'loop-1',
+                'type': 'loop',
+                'data': {'label': '文章循环', 'nodeType': 'loop'},
+              },
+              {
+                'id': 'result-1',
+                'type': 'result',
+                'parentId': 'loop-1',
+                'data': {'label': '输出摘要', 'nodeType': 'result'},
+              },
+            ],
+          },
+          steps: [
+            createTestExecutionStep(
+              id: 'step-1',
+              executionId: 'exec-1',
+              nodeId: 'result-1',
+              nodeType: 'result',
+              nodeData: {'label': '输出摘要', 'nodeType': 'result'},
+              status: 'completed',
+            ),
+          ],
+        );
+        when(
+          () => mockApi.getExecution('exec-1'),
+        ).thenAnswer((_) async => execution);
+
+        container = createContainer();
+        await ensureAuthReady(container);
+
+        final sub = container.listen(
+          executionMonitorProvider('exec-1'),
+          (_, __) {},
+        );
+
+        await container.read(executionMonitorProvider('exec-1').future);
+
+        final state = container.read(executionMonitorProvider('exec-1')).value;
+
+        expect(state, isA<ExecutionMonitorDisconnected>());
+        final disconnected = state as ExecutionMonitorDisconnected;
+        expect(
+          disconnected.lastSnapshot?.steps.first.nodeName,
+          '文章循环 / 输出摘要',
+        );
+
+        sub.close();
+      });
+
       test(
         'REST 终态 execution 会从 checkpointData 恢复 agent 瀑布流 runtime',
         () async {

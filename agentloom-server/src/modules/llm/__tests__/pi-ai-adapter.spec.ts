@@ -3,8 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DefaultApiKeyNotConfiguredException } from '../../api-key/api-key.exceptions';
 import type { DecryptionBoundaryService } from '../../api-key/decryption-boundary.service';
 import { LlmProviderException } from '../llm.exceptions';
-import { PiAiAdapter } from '../pi-ai-adapter';
-import type { LlmModelConfig } from '../../../database/schema/llm-model-configs.schema';
+import { PiAiAdapter, type ResolvedModelConfig } from '../pi-ai-adapter';
 
 type WrappedModel = {
   doGenerate: (...args: unknown[]) => Promise<unknown>;
@@ -40,26 +39,57 @@ vi.mock('@ai-sdk/google', () => ({
   createGoogleGenerativeAI: mockCreateGoogle,
 }));
 
-function createConfig(overrides: Partial<LlmModelConfig> = {}): LlmModelConfig {
+function createConfig(
+  overrides: Partial<ResolvedModelConfig> & {
+    providerOverrides?: Record<string, unknown>;
+  } = {},
+): ResolvedModelConfig {
+  const { providerOverrides, ...configOverrides } = overrides;
+  const providerSlug = (configOverrides as Record<string, unknown>)
+    .providerSlug as string | undefined;
+  // 允许通过顶层 providerSlug 快捷设置 provider.slug（测试便利）
+  const slug =
+    providerSlug ?? (providerOverrides?.slug as string | undefined) ?? 'openai';
+
   return {
     id: 'config-id',
     orgId: 'org-id',
     tenantId: 'tenant-id',
     name: 'Test Config',
-    provider: 'openai',
-    modelName: 'gpt-4o',
+    providerId: 'provider-id',
+    modelId: 'gpt-4o',
     parameters: {},
-    apiKeyId: null,
-    endpointUrl: null,
-    authMethod: null,
-    authConfig: null,
+    isEnabled: true,
+    isDefault: false,
+    capabilities: {},
+    contextWindow: null,
+    maxOutputTokens: null,
+    pricing: null,
+    metadataSource: null,
     timeoutMs: null,
     modelType: 'chat',
     embeddingDimensions: null,
-    isDefault: false,
     createdAt: new Date(),
     updatedAt: new Date(),
-    ...overrides,
+    ...configOverrides,
+    provider: {
+      id: 'provider-id',
+      orgId: 'org-id',
+      tenantId: 'tenant-id',
+      slug,
+      name: slug.charAt(0).toUpperCase() + slug.slice(1),
+      iconUrl: null,
+      baseUrl: null,
+      defaultBaseUrl: null,
+      isBuiltin: true,
+      isEnabled: true,
+      apiProtocol: 'openai_chat' as const,
+      apiKeyId: 'provider-api-key-id',
+      sortOrder: 0,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      ...providerOverrides,
+    },
   };
 }
 
@@ -91,7 +121,7 @@ describe('PiAiAdapter', () => {
   describe('getModel - 各提供商', () => {
     it('应当为 openai 创建模型', async () => {
       const result = await adapter.getModel(
-        createConfig({ provider: 'openai' }),
+        createConfig({ providerOverrides: { slug: 'openai' } }),
         'sk-key',
       );
 
@@ -103,7 +133,10 @@ describe('PiAiAdapter', () => {
 
     it('应当为 anthropic 创建模型', async () => {
       const result = await adapter.getModel(
-        createConfig({ provider: 'anthropic', modelName: 'claude-3-opus' }),
+        createConfig({
+          modelId: 'claude-3-opus',
+          providerOverrides: { slug: 'anthropic' },
+        }),
         'sk-key',
       );
 
@@ -115,7 +148,10 @@ describe('PiAiAdapter', () => {
 
     it('应当为 google 创建模型', async () => {
       const result = await adapter.getModel(
-        createConfig({ provider: 'google', modelName: 'gemini-pro' }),
+        createConfig({
+          modelId: 'gemini-pro',
+          providerOverrides: { slug: 'google' },
+        }),
         'sk-key',
       );
 
@@ -127,7 +163,10 @@ describe('PiAiAdapter', () => {
 
     it('应当为 deepseek 使用 OpenAI SDK 及自定义 baseURL', async () => {
       const result = await adapter.getModel(
-        createConfig({ provider: 'deepseek', modelName: 'deepseek-chat' }),
+        createConfig({
+          modelId: 'deepseek-chat',
+          providerOverrides: { slug: 'deepseek' },
+        }),
         'sk-key',
       );
 
@@ -140,9 +179,9 @@ describe('PiAiAdapter', () => {
     it('应当为 custom 使用参数中的 baseUrl', async () => {
       const result = await adapter.getModel(
         createConfig({
-          provider: 'custom',
-          modelName: 'custom-model',
+          modelId: 'custom-model',
           parameters: { baseUrl: 'https://my-llm.example.com/v1' },
+          providerOverrides: { slug: 'custom' },
         }),
         'sk-key',
       );
@@ -153,15 +192,15 @@ describe('PiAiAdapter', () => {
       );
     });
 
-    it('应当为 private_cloud 使用 endpointUrl 和 apiKey 创建模型', async () => {
+    it('应当为 private_cloud 使用 provider.baseUrl 创建模型', async () => {
       const result = await adapter.getModel(
         createConfig({
-          provider: 'private_cloud',
-          modelName: 'private-model',
-          endpointUrl: 'https://private-cloud.example.com/v1',
-          authMethod: 'api_key',
-          apiKeyId: 'config-key-id',
-          timeoutMs: 45_000,
+          modelId: 'private-model',
+          providerOverrides: {
+            slug: 'private_cloud',
+            baseUrl: 'https://private-cloud.example.com/v1',
+            apiKeyId: 'provider-api-key-id',
+          },
         }),
         'sk-private-cloud',
       );
@@ -177,14 +216,21 @@ describe('PiAiAdapter', () => {
   });
 
   describe('getModel - 错误处理', () => {
-    it('应当在未显式传入 apiKey 时通过 DecryptionBoundary 解密配置绑定的密钥', async () => {
-      await adapter.getModel(createConfig({ apiKeyId: 'config-key-id' }));
+    it('应当在未显式传入 apiKey 时通过 DecryptionBoundary 解密提供商绑定的密钥', async () => {
+      await adapter.getModel(
+        createConfig({
+          providerOverrides: {
+            slug: 'openai',
+            apiKeyId: 'provider-api-key-id',
+          },
+        }),
+      );
 
       expect(
         decryptionBoundaryService.decryptConfiguredApiKey,
       ).toHaveBeenCalledWith(
         {
-          apiKeyId: 'config-key-id',
+          apiKeyId: 'provider-api-key-id',
           organizationId: 'org-id',
           tenantId: 'tenant-id',
           provider: 'openai',
@@ -193,20 +239,16 @@ describe('PiAiAdapter', () => {
       );
     });
 
-    it('应当在配置未绑定 apiKey 时回退到组织默认 API Key', async () => {
-      await adapter.getModel(createConfig({ apiKeyId: null }));
+    it('应当在提供商未绑定 apiKey 时跳过解密', async () => {
+      await adapter.getModel(
+        createConfig({
+          providerOverrides: { slug: 'openai', apiKeyId: null },
+        }),
+      );
 
       expect(
         decryptionBoundaryService.decryptConfiguredApiKey,
-      ).toHaveBeenCalledWith(
-        {
-          apiKeyId: null,
-          organizationId: 'org-id',
-          tenantId: 'tenant-id',
-          provider: 'openai',
-        },
-        'PiAiAdapter',
-      );
+      ).not.toHaveBeenCalled();
     });
 
     it('应当透传默认 API Key 未配置错误', async () => {
@@ -215,18 +257,26 @@ describe('PiAiAdapter', () => {
       );
 
       await expect(
-        adapter.getModel(createConfig({ apiKeyId: null })),
+        adapter.getModel(
+          createConfig({
+            providerOverrides: {
+              slug: 'openai',
+              apiKeyId: 'provider-api-key-id',
+            },
+          }),
+        ),
       ).rejects.toBeInstanceOf(DefaultApiKeyNotConfiguredException);
     });
 
-    it('应当在 private_cloud 非 api_key 认证时跳过 API Key 解析', async () => {
+    it('应当在 private_cloud 无 apiKeyId 时跳过 API Key 解析并剥离 Authorization', async () => {
       const result = await adapter.getModel(
         createConfig({
-          provider: 'private_cloud',
-          modelName: 'private-model',
-          endpointUrl: 'https://private-cloud.example.com/v1',
-          authMethod: 'none',
-          authConfig: {},
+          modelId: 'private-model',
+          providerOverrides: {
+            slug: 'private_cloud',
+            baseUrl: 'https://private-cloud.example.com/v1',
+            apiKeyId: null,
+          },
         }),
       );
 
@@ -272,18 +322,22 @@ describe('PiAiAdapter', () => {
 
     it('应当在 custom 缺少 baseUrl 时抛出 LlmProviderException', async () => {
       await expect(
-        adapter.getModel(createConfig({ provider: 'custom' }), 'sk-key'),
+        adapter.getModel(
+          createConfig({ providerOverrides: { slug: 'custom' } }),
+          'sk-key',
+        ),
       ).rejects.toBeInstanceOf(LlmProviderException);
     });
 
-    it('应当在 private_cloud 缺少 endpointUrl 时抛出 LlmProviderException', async () => {
+    it('应当在 private_cloud 缺少 baseUrl 时抛出 LlmProviderException', async () => {
       await expect(
         adapter.getModel(
           createConfig({
-            provider: 'private_cloud',
-            endpointUrl: null,
-            authMethod: 'api_key',
-            apiKeyId: 'config-key-id',
+            providerOverrides: {
+              slug: 'private_cloud',
+              baseUrl: null,
+              apiKeyId: 'provider-api-key-id',
+            },
           }),
           'sk-key',
         ),
@@ -294,7 +348,10 @@ describe('PiAiAdapter', () => {
 
     it('应当在不支持的提供商时抛出 LlmProviderException', async () => {
       await expect(
-        adapter.getModel(createConfig({ provider: 'unknown' }), 'sk-key'),
+        adapter.getModel(
+          createConfig({ providerOverrides: { slug: 'unknown' } }),
+          'sk-key',
+        ),
       ).rejects.toBeInstanceOf(LlmProviderException);
     });
 
@@ -364,11 +421,13 @@ describe('PiAiAdapter', () => {
       expect(mockModel.doStream).toHaveBeenCalledTimes(2);
     });
 
-    it('应当在 openai 提供商可传入自定义 baseURL', async () => {
+    it('应当在 openai 提供商可通过 provider.baseUrl 传入自定义 baseURL', async () => {
       const result = await adapter.getModel(
         createConfig({
-          provider: 'openai',
-          parameters: { baseUrl: 'https://my-proxy.com/v1' },
+          providerOverrides: {
+            slug: 'openai',
+            baseUrl: 'https://my-proxy.com/v1',
+          },
         }),
         'sk-key',
       );

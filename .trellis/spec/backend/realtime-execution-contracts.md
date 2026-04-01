@@ -295,3 +295,100 @@ if (session.status === 'stopped' || session.status === 'failed') {
   await this.startSandbox(session.id, tenantId);
 }
 ```
+
+---
+
+## 场景：Workflow compound 节点的父子归属兼容与 jump 收口
+
+### 1. Scope / Trigger
+- 触发条件：修改以下任一文件时，必须回看本节
+  - `src/modules/execution/compound-runtime.util.ts`
+  - `src/modules/execution/execution.service.ts`
+  - `src/modules/execution/node-scheduler.service.ts`
+- 风险点：
+  - workflow snapshot 如果混用了 `parentId` 与 `parent_id`，compound 内部节点会被误��成顶层步骤；
+  - `break / continue` 提前结束当前轮次时，未执行的内部节点若继续停在 `pending`，Studio 调试视图会错误显示“等待中”。
+
+### 2. Signatures
+- `readCompoundParentNodeId(node): string | undefined`
+- `attachExecutionRuntimeMeta(node, nodesById): Record<string, unknown>`
+- `filterTopLevelExecutionGraph(snapshot): { nodes; edges }`
+- `ExecutionService.initializeSteps(executionId): Promise<void>`
+- `NodeSchedulerService.createCompoundContext(...)`
+- `NodeSchedulerService.scheduleNextCompoundNode(context, tenantId): Promise<void>`
+- `NodeSchedulerService.skipPendingCompoundInternalSteps(steps, tenantId): Promise<void>`
+
+### 3. Contracts
+- compound 内部节点父容器读取必须同时兼容：
+  - `node.parentId`
+  - `node.parent_id`
+- `ExecutionService.initializeSteps()` 必须把 compound 内部节点写成：
+  - `nodeData.__execution.compoundParentId`
+  - `nodeData.__execution.isCompoundInternal = true`
+  - `nodeData.__execution.isCompoundContainer = false`
+- compound 内部节点不得计入顶层 execution 进度：
+  - `totalSteps`
+  - `completedSteps`
+  - `StepStateMachine.updateExecutionStatus()` 的 tracked steps
+- `filterTopLevelExecutionGraph()` 必须把所有带父容器的 compound 内部节点��顶层 DAG 中排除；否则 `iteration-start / loop-start / result / break / continue / 普通内部 agent` 会被错误地直接调度。
+- `NodeSchedulerService.createCompoundContext()` 必须用同一套父节点读取规则收集内部子图；不能只认 `parentId`。
+- `break / continue` 命中后：
+  - 当前轮剩余 `pending` 的 compound 内部节点必须先显式转成 `skipped`；
+  - `break` 再结束当前 compound；
+  - `continue` 再推进下一轮并重置内部步骤；
+  - execution 完成后不得残留 compound 内部节点 `pending`。
+
+### 4. Validation & Error Matrix
+
+| 条件 | 预期行为 | 断言点 |
+|------|----------|--------|
+| snapshot 子节点只有 `parent_id` | internal step 正确生成 `compoundParentId`，且不进入顶层 DAG | `compound-runtime.util.spec.ts` |
+| `initializeSteps()` 读到 `parent_id` 子节点 | tracked step 统计排除该内部节点 | `execution.service.spec.ts` |
+| `createCompoundContext()` 读到 `parent_id` 子节点 | 正确收集内部节点与内部 DAG 顺序 | `node-scheduler.service.spec.ts` |
+| `break` 命中且后面还有未执行内部节点 | 这些节点变成 `skipped`，不能残留 `pending` | `node-scheduler.service.spec.ts` + browser QA |
+| `continue` 命中且进入下一轮 | 本轮剩余节点先 `skipped`，随后下一轮 reset 回 `pending` 再继续调度 | browser QA + execution detail |
+| 内部节点缺少任何父容器标识 | 仍允许失败，但错误必须明确指向 compound 归属缺失 | runtime error / QA |
+
+### 5. Good / Base / Bad Cases
+- Good：`iteration-start / continue / agent / result` 都挂在 `iteration` 下；运行时只调度顶层 `iteration`，内部节点由 compound context 驱动。
+- Base：`break` 在第 2 轮一开始命中，`loop-prompt / loop-agent / loop-state / result` 都显示 `skipped`，父 `loop` 以 `stopReason='break'` 完成。
+- Bad：`iter-agent` 因漏掉父节点字段被当成顶层 root；或者 `loop` 已 completed，但剩余内部节点还显示 `pending`。
+
+### 6. Tests Required
+- `src/modules/execution/__tests__/compound-runtime.util.spec.ts`
+  - 断言 `parent_id` 兼容
+  - 断言顶层 DAG 过滤会排除 compound 内部节点
+- `src/modules/execution/__tests__/execution.service.spec.ts`
+  - 断言 `initializeSteps()` 对 `parent_id` 内部节点写入 runtime meta，并排除 tracked step 统计
+- `src/modules/execution/__tests__/node-scheduler.service.spec.ts`
+  - 断言 `createCompoundContext()` 兼容 `parent_id`
+  - 断言 `break` 命中后剩余 pending internal nodes 先转 `skipped`
+- Manual QA
+  - `QA Iteration Agent Sandbox 20260401`
+  - `QA Loop Agent Sandbox 20260401`
+  - 确认 `continue` 丢弃当前轮结果，`break` 后剩余内部节点显示 `skipped`
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```ts
+const topLevelNodes = snapshot.nodes.filter((node) => !node.parentId);
+
+if (context.breakRequested) {
+  await this.finalizeCompoundExecution(context, tenantId);
+}
+```
+
+#### Correct
+
+```ts
+const topLevelNodes = snapshot.nodes.filter(
+  (node) => !readCompoundParentNodeId(node),
+);
+
+if (context.breakRequested) {
+  await this.skipPendingCompoundInternalSteps(internalSteps, tenantId);
+  await this.finalizeCompoundExecution(context, tenantId);
+}
+```

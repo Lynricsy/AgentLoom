@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Background,
   BackgroundVariant,
@@ -53,6 +53,7 @@ import {
   type CanvasNode,
 } from '../types'
 import type { PortDataType } from '../types/typeSchema'
+import { isCompoundContainerNodeType } from '../types/controlFlow.types'
 
 interface WorkflowCanvasProps {
   className?: string
@@ -292,6 +293,48 @@ function applyConnectionClasses(root: HTMLElement, state: ActiveConnectionState)
   })
 }
 
+function isCollapsedCompoundNode(node: CanvasNode): boolean {
+  return (
+    isCompoundContainerNodeType(node.data.nodeType) &&
+    node.data.config?.isCollapsed === true
+  )
+}
+
+function collectCollapsedCompoundDescendantIds(
+  nodes: readonly CanvasNode[],
+): Set<string> {
+  const collapsedContainerIds = new Set(
+    nodes.filter(isCollapsedCompoundNode).map((node) => node.id),
+  )
+
+  if (collapsedContainerIds.size === 0) {
+    return new Set()
+  }
+
+  const hiddenIds = new Set<string>()
+  let changed = true
+
+  while (changed) {
+    changed = false
+    for (const node of nodes) {
+      const parentId = node.parentId
+      if (!parentId) {
+        continue
+      }
+
+      if (
+        (collapsedContainerIds.has(parentId) || hiddenIds.has(parentId)) &&
+        !hiddenIds.has(node.id)
+      ) {
+        hiddenIds.add(node.id)
+        changed = true
+      }
+    }
+  }
+
+  return hiddenIds
+}
+
 export const WorkflowCanvas = memo(function WorkflowCanvas({
   className,
   workflowStatus = 'draft',
@@ -322,6 +365,30 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
   const reactFlowInstance = useReactFlow<CanvasNode, CanvasEdge>()
   const { onDragOver, onDrop } = useCanvasDrop(reactFlowInstance)
   const isReadOnly = workflowStatus === 'archived'
+  const hiddenCompoundNodeIds = useMemo(
+    () => collectCollapsedCompoundDescendantIds(nodes),
+    [nodes],
+  )
+  const renderedNodes = useMemo(
+    () =>
+      nodes.map((node) =>
+        hiddenCompoundNodeIds.has(node.id) || node.hidden
+          ? { ...node, hidden: true }
+          : node,
+      ),
+    [hiddenCompoundNodeIds, nodes],
+  )
+  const renderedEdges = useMemo(
+    () =>
+      edges.map((edge) =>
+        hiddenCompoundNodeIds.has(edge.source) ||
+        hiddenCompoundNodeIds.has(edge.target) ||
+        edge.hidden
+          ? { ...edge, hidden: true }
+          : edge,
+      ),
+    [edges, hiddenCompoundNodeIds],
+  )
 
   const [activeConnection, setActiveConnection] = useState<ActiveConnectionState | null>(null)
   const [contextMenuState, setContextMenuState] = useState<CanvasContextMenuState | null>(null)
@@ -330,7 +397,7 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
   const containerRef = useRef<HTMLDivElement>(null)
   const previewRef = useRef<CompatibilityPreviewHandle>(null)
 
-  useExecutionHighlight({ containerRef, edges })
+  useExecutionHighlight({ containerRef, edges: renderedEdges })
   const pointerRef = useRef({ x: -9999, y: -9999 })
   const frameRef = useRef<number | null>(null)
   const activeConnectionRef = useRef<ActiveConnectionState | null>(null)
@@ -901,8 +968,8 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
   return (
     <div ref={containerRef} className={cn(className, 'focus:outline-none')}>
       <ReactFlow<CanvasNode, CanvasEdge>
-        nodes={nodes}
-        edges={edges}
+        nodes={renderedNodes}
+        edges={renderedEdges}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         defaultEdgeOptions={{ type: 'smart' }}

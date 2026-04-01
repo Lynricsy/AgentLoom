@@ -11,6 +11,7 @@ export interface SerializedPortDefinition {
   label: string
   direction: PortDefinition['direction']
   dataType: PortDefinition['dataType']
+  acceptsAnyDataType?: boolean
   description?: string
   required: boolean
   multiple: boolean

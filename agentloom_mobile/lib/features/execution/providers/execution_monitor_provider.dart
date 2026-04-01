@@ -137,7 +137,40 @@ ExecutionMonitorRuntimeData extractMonitorRuntime(ExecutionMonitorState? s) {
   return const ExecutionMonitorRuntimeData();
 }
 
-typedef _GraphNodeMeta = ({String? nodeName, String? nodeType});
+typedef _GraphNodeMeta =
+    ({String? nodeName, String? nodeType, String? parentNodeId});
+
+bool _isCompoundContainerNodeType(String? nodeType) {
+  return nodeType == 'loop' || nodeType == 'iteration';
+}
+
+String? _buildCompoundAwareNodeName(
+  String nodeId,
+  _GraphNodeMeta meta,
+  Map<String, _GraphNodeMeta> graphNodeMeta,
+) {
+  final baseNodeName =
+      meta.nodeName?.trim().isNotEmpty == true ? meta.nodeName : nodeId;
+  final parentNodeId = meta.parentNodeId;
+  if (parentNodeId == null) {
+    return baseNodeName;
+  }
+
+  final parentMeta = graphNodeMeta[parentNodeId];
+  if (parentMeta == null || !_isCompoundContainerNodeType(parentMeta.nodeType)) {
+    return baseNodeName;
+  }
+
+  final parentNodeName = parentMeta.nodeName?.trim().isNotEmpty == true
+      ? parentMeta.nodeName
+      : parentNodeId;
+
+  if (parentNodeName == null || parentNodeName.isEmpty) {
+    return baseNodeName;
+  }
+
+  return '$parentNodeName / $baseNodeName';
+}
 
 Map<String, _GraphNodeMeta> _extractGraphNodeMeta(
   Map<String, dynamic>? definitionSnapshot,
@@ -173,11 +206,30 @@ Map<String, _GraphNodeMeta> _extractGraphNodeMeta(
         _ => null,
       },
     };
+    final parentNodeId = switch (rawNode['parentId']) {
+      final String value when value.isNotEmpty => value,
+      _ => null,
+    };
 
-    graphNodeMeta[id] = (nodeName: nodeName, nodeType: nodeType);
+    graphNodeMeta[id] = (
+      nodeName: nodeName,
+      nodeType: nodeType,
+      parentNodeId: parentNodeId,
+    );
   }
 
-  return graphNodeMeta;
+  return {
+    for (final entry in graphNodeMeta.entries)
+      entry.key: (
+        nodeName: _buildCompoundAwareNodeName(
+          entry.key,
+          entry.value,
+          graphNodeMeta,
+        ),
+        nodeType: entry.value.nodeType,
+        parentNodeId: entry.value.parentNodeId,
+      ),
+  };
 }
 
 StepSnapshot _mapExecutionStep(

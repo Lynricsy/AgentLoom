@@ -57,18 +57,38 @@ describe('SandboxAgentAdapter', () => {
     id: 'model-config-001',
     orgId: 'org-001',
     tenantId: 'tenant-001',
+    providerId: 'provider-001',
     name: 'Claude Opus 4.6',
-    provider: 'anthropic',
-    modelName: 'claude-opus-4-6',
-    parameters: {},
-    apiKeyId: 'api-key-001',
-    endpointUrl: 'https://api.anthropic.com',
-    authMethod: 'api_key',
-    authConfig: null,
-    timeoutMs: 30_000,
+    modelId: 'claude-opus-4-6',
     modelType: 'chat',
-    embeddingDimensions: null,
+    isEnabled: true,
     isDefault: true,
+    capabilities: {},
+    contextWindow: 200_000,
+    maxOutputTokens: 8_192,
+    pricing: null,
+    parameters: {},
+    metadataSource: 'manual',
+    timeoutMs: 30_000,
+    embeddingDimensions: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  const storedProvider = {
+    id: 'provider-001',
+    orgId: 'org-001',
+    tenantId: 'tenant-001',
+    slug: 'anthropic',
+    name: 'Anthropic',
+    iconUrl: null,
+    baseUrl: 'https://api.anthropic.com',
+    defaultBaseUrl: 'https://api.anthropic.com',
+    isBuiltin: true,
+    isEnabled: true,
+    apiProtocol: 'anthropic',
+    apiKeyId: 'api-key-001',
+    sortOrder: 0,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
@@ -97,7 +117,14 @@ describe('SandboxAgentAdapter', () => {
       ),
       select: vi.fn(() => ({
         from: vi.fn(() => ({
-          where: vi.fn().mockResolvedValue([storedModelConfig]),
+          innerJoin: vi.fn(() => ({
+            where: vi.fn().mockResolvedValue([
+              {
+                config: storedModelConfig,
+                provider: storedProvider,
+              },
+            ]),
+          })),
         })),
       })),
     };

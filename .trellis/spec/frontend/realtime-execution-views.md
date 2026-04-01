@@ -303,3 +303,71 @@ if (payload.status.isTerminal) {
   );
 }
 ```
+
+---
+
+## 场景：Studio workflow 运行页与调试页中的 compound 节点状态收敛
+
+### 1. Scope / Trigger
+- 触发条件：修改以下任一文件时，必须回看本节
+  - `agentloom-studio/src/features/canvas/components/WorkflowCanvas.tsx`
+  - `agentloom-studio/src/features/execution/components/ReadonlyCanvas.tsx`
+  - `agentloom-studio/src/features/execution/components/ExecutionDebugView.tsx`
+  - `agentloom-studio/src/features/execution/stores/executionStore.ts`
+- 风险点：compound runtime 如果没有把内部节点终态收敛好，Studio 在 workflow 运行页和 execution 调试页里会把 `break / continue` 后未执行的节点错误展示成“等待中”，用户会误判为流程没跑完。
+
+### 2. Signatures
+- `WorkflowCanvasPage`
+- `ReadonlyCanvas`
+- `ExecutionDebugView`
+- `/workflows/$workflowId`
+- `/executions/$executionId`
+
+### 3. Contracts
+- workflow 运行页在 execution 进行中必须持续展示节点状态高亮：
+  - 已完成的顶层节点显示 `已完成`
+  - 当前活跃 compound 容器显示 `运行中`
+  - 尚未进入本轮的内部节点允许显示 `空闲/等待`
+- execution 调试页必须直接反映 execution step 终态，而不是自行猜测 compound 行为：
+  - `iteration` 成功后，`Iteration Start / Continue / Iteration Agent / Result` 要显示各自最终状态
+  - `condition` 未命中的分支节点要显示 `已跳过`
+  - `loop` 中 `break` 命中后，本轮未执行的 `loop-prompt / loop-next-state / loop-state / loop-agent / loop-result` 要显示 `已跳过`，不能停留在 `等待中`
+- execution 已 completed 时，调试页不应再出现“内部节点 pending 但 execution 已完成”的可见矛盾。
+
+### 4. Validation & Error Matrix
+
+| 条件 | ���期行为 | 断言点 |
+|------|----------|--------|
+| `iteration` 运行中 | workflow 页能看到顶层资源节点完成、compound 容器运行中、内部节点等待本轮执行 | browser QA |
+| `iteration` 完成 | 调试页显示 `Iteration Agent` 已完成，`Result` 已完成 | browser QA |
+| `condition` 未命中 fail 分支 | 调试页显示 `Condition Agent Fail` 为 `已跳过` | browser QA |
+| `loop` 被 `break` 提前结束 | 调试页把当前轮未执行内部节点显示成 `已跳过` | browser QA |
+| execution 已 completed | 调试页 banner 与时间线状态一致，不得一个显示完成一个显示等待 | browser QA |
+
+### 5. Good / Base / Bad Cases
+- Good：`loop` 在第 2 轮命中 `break` 后，调试页中剩余内部节点统一显示 `已跳过`，父 `loop` 显示 `已完成`。
+- Base：`iteration` 中 `continue` 命中后，最终聚合结果只保留未被丢弃轮次的输出。
+- Bad：workflow 页显示 `loop` 已完成，但调试页里 `loop-agent / result` 还显示 `等待中`。
+
+### 6. Tests Required
+- Manual QA
+  - `QA Condition 端口表达式 20260401`
+  - `QA Iteration Agent Sandbox 20260401`
+  - `QA Loop Agent Sandbox 20260401`
+  - 覆盖 workflow 运行页节点高亮与 execution 调试页状态收敛
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```ts
+// UI 把 compound 未执行节点继续展示成 waiting
+status = step.status === 'pending' ? 'waiting' : step.status
+```
+
+#### Correct
+
+```ts
+// UI 直接消费 execution step 最终状态，允许 skipped 透传到调试与高亮层
+status = step.status
+```

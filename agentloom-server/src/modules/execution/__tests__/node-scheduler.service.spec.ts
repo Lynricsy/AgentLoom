@@ -1483,159 +1483,302 @@ describe('NodeSchedulerService', () => {
       );
     });
 
-    it('loop 节点会同步完成并按 maxIterations 截断 items', async () => {
+    it('iteration compound 上下文会保留数组输入顺序，并默认按 collect-array 聚合', () => {
+      mockDagResolver.resolveDag.mockReturnValue(
+        makePlan([], new Map(), new Map()),
+      );
       const snapshot = makeSnapshot(
         [
-          makeNode('T', 'manual-trigger'),
-          makeNode('L', 'loop', {
+          makeNode('I', 'iteration', {
             config: {
-              maxIterations: 2,
+              outputMode: 'collect-array',
             },
           }),
         ],
-        [makeEdge('T', 'L', 'payload-out', 'items')],
+        [],
       );
-      const steps = [
-        makeStep({
-          id: 'step-t',
-          nodeId: 'T',
-          status: 'completed',
-          nodeType: 'manual-trigger',
-          result: {
-            payload: ['spec', 'qa', 'release'],
+      const step = makeStep({
+        id: 'step-i',
+        nodeId: 'I',
+        nodeType: 'iteration',
+        nodeData: {
+          config: {
+            outputMode: 'collect-array',
           },
-        }),
+        },
+      });
+
+      const context = (
+        service as unknown as {
+          createCompoundContext: (
+            step: ExecutionStep,
+            input: Record<string, unknown>,
+            tenantId: string,
+            executionId: string,
+            snapshot: ReturnType<typeof makeSnapshot>,
+            parentNodeType: 'loop' | 'iteration',
+          ) => {
+            iterationItems: unknown[];
+            outputMode: 'none' | 'collect-array' | 'last';
+            completedRounds: number;
+          };
+        }
+      ).createCompoundContext(
+        step,
+        {
+          'items-in': ['spec', 'qa', 'release'],
+        },
+        TENANT_ID,
+        EXECUTION_ID,
+        snapshot,
+        'iteration',
+      );
+
+      expect(context.iterationItems).toEqual(['spec', 'qa', 'release']);
+      expect(context.outputMode).toBe('collect-array');
+      expect(context.completedRounds).toBe(0);
+    });
+
+    it('iteration 单对象输入会被包装成数组，loop 会优先读取 state-in 并兼容 snake_case 配置', () => {
+      mockDagResolver.resolveDag.mockReturnValue(
+        makePlan([], new Map(), new Map()),
+      );
+      const iterationContext = (
+        service as unknown as {
+          createCompoundContext: (
+            step: ExecutionStep,
+            input: Record<string, unknown>,
+            tenantId: string,
+            executionId: string,
+            snapshot: ReturnType<typeof makeSnapshot>,
+            parentNodeType: 'loop' | 'iteration',
+          ) => {
+            iterationItems: unknown[];
+          };
+        }
+      ).createCompoundContext(
         makeStep({
-          id: 'step-l',
-          nodeId: 'L',
-          status: 'pending',
-          nodeType: 'loop',
+          id: 'step-i',
+          nodeId: 'I',
+          nodeType: 'iteration',
           nodeData: {
             config: {
-              maxIterations: 2,
+              output_mode: 'collect-array',
             },
           },
         }),
+        {
+          'items-in': {
+            topic: 'workflow orchestration',
+          },
+        },
+        TENANT_ID,
+        EXECUTION_ID,
+        makeSnapshot([makeNode('I', 'iteration')], []),
+        'iteration',
+      );
+
+      const loopContext = (
+        service as unknown as {
+          createCompoundContext: (
+            step: ExecutionStep,
+            input: Record<string, unknown>,
+            tenantId: string,
+            executionId: string,
+            snapshot: ReturnType<typeof makeSnapshot>,
+            parentNodeType: 'loop' | 'iteration',
+          ) => {
+            loopState: unknown;
+            maxIterations: number;
+          };
+        }
+      ).createCompoundContext(
+        makeStep({
+          id: 'step-l',
+          nodeId: 'L',
+          nodeType: 'loop',
+          nodeData: {
+            config: {
+              default_state: { topic: 'fallback' },
+              max_iterations: 5,
+            },
+          },
+        }),
+        {
+          'state-in': { topic: 'from-input' },
+        },
+        TENANT_ID,
+        EXECUTION_ID,
+        makeSnapshot([makeNode('L', 'loop')], []),
+        'loop',
+      );
+
+      expect(iterationContext.iterationItems).toEqual([
+        {
+          topic: 'workflow orchestration',
+        },
+      ]);
+      expect(loopContext.loopState).toEqual({ topic: 'from-input' });
+      expect(loopContext.maxIterations).toBe(5);
+    });
+
+    it('createCompoundContext 应兼容 snake_case parent_id 的内部节点', () => {
+      mockDagResolver.resolveDag.mockReturnValue(
+        makePlan(
+          [['iter-start', 'iter-result']],
+          new Map([
+            ['iter-start', ['iter-result']],
+            ['iter-result', []],
+          ]),
+          new Map([
+            ['iter-start', 0],
+            ['iter-result', 1],
+          ]),
+        ),
+      );
+
+      const context = (
+        service as unknown as {
+          createCompoundContext: (
+            step: ExecutionStep,
+            input: Record<string, unknown>,
+            tenantId: string,
+            executionId: string,
+            snapshot: ReturnType<typeof makeSnapshot>,
+            parentNodeType: 'loop' | 'iteration',
+          ) => {
+            internalNodes: ReactFlowNode[];
+            orderedNodeIds: string[];
+          };
+        }
+      ).createCompoundContext(
+        makeStep({
+          id: 'step-iteration',
+          nodeId: 'iteration',
+          nodeType: 'iteration',
+        }),
+        {
+          'items-in': ['one'],
+        },
+        TENANT_ID,
+        EXECUTION_ID,
+        makeSnapshot(
+          [
+            makeNode('iteration', 'iteration'),
+            {
+              ...makeNode('iter-start', 'iteration-start'),
+              parent_id: 'iteration',
+              extent: 'parent',
+            } as ReactFlowNode,
+            {
+              ...makeNode('iter-result', 'result'),
+              parent_id: 'iteration',
+              extent: 'parent',
+            } as ReactFlowNode,
+          ],
+          [makeEdge('iter-start', 'iter-result')],
+        ),
+        'iteration',
+      );
+
+      expect(context.internalNodes.map((node) => node.id)).toEqual([
+        'iter-start',
+        'iter-result',
+      ]);
+      expect(context.orderedNodeIds).toEqual(['iter-start', 'iter-result']);
+    });
+
+    it('break 命中后应将当前轮剩余 pending internal 节点标记为 skipped 再结束 compound', async () => {
+      const context = {
+        executionId: EXECUTION_ID,
+        tenantId: TENANT_ID,
+        parentNodeId: 'loop',
+        parentStepId: 'step-loop',
+        parentNodeType: 'loop' as const,
+        parentInput: {},
+        outputMode: 'last' as const,
+        internalNodes: [
+          makeNode('loop-start', 'loop-start'),
+          makeNode('break', 'break'),
+          makeNode('loop-agent', 'agent'),
+          makeNode('loop-result', 'result'),
+        ],
+        internalEdges: [],
+        orderedNodeIds: ['loop-start', 'break', 'loop-agent', 'loop-result'],
+        extraInputPortIds: [],
+        iterationItems: [],
+        iterationIndex: 0,
+        completedRounds: 1,
+        loopState: { count: 1 },
+        loopRound: 1,
+        maxIterations: 5,
+        previousResult: null,
+        roundOutputs: {},
+        finalOutputs: {},
+        breakRequested: true,
+        continueRequested: false,
+        nextStateProvided: false,
+        nextState: undefined,
+      };
+      const internalSteps = [
+        makeStep({
+          id: 'step-loop-start',
+          nodeId: 'loop-start',
+          nodeType: 'loop-start',
+          status: 'completed',
+        }),
+        makeStep({
+          id: 'step-break',
+          nodeId: 'break',
+          nodeType: 'break',
+          status: 'completed',
+        }),
+        makeStep({
+          id: 'step-loop-agent',
+          nodeId: 'loop-agent',
+          nodeType: 'agent',
+          status: 'pending',
+        }),
+        makeStep({
+          id: 'step-loop-result',
+          nodeId: 'loop-result',
+          nodeType: 'result',
+          status: 'pending',
+        }),
       ];
 
-      db.update.mockReturnValueOnce(createUpdateChainVoid());
-      vi.spyOn(service, 'onNodeCompleted').mockResolvedValue(undefined);
+      vi.spyOn(service as never, 'loadExecutionContext').mockResolvedValue({
+        execution: makeExecution(makeSnapshot([], [])),
+        snapshot: makeSnapshot([], []),
+        steps: internalSteps,
+      } as never);
+      const finalizeCompoundExecution = vi
+        .spyOn(service as never, 'finalizeCompoundExecution')
+        .mockResolvedValue(undefined as never);
 
-      await service.scheduleNode(EXECUTION_ID, 'L', TENANT_ID, snapshot, steps);
+      await (
+        service as unknown as {
+          scheduleNextCompoundNode: (
+            context: typeof context,
+            tenantId: string,
+          ) => Promise<void>;
+        }
+      ).scheduleNextCompoundNode(context, TENANT_ID);
 
       expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
         TENANT_ID,
-        'step-l',
-        'running',
+        'step-loop-agent',
+        'skipped',
       );
-      expect(mockStateMachine.updateStepStatus).toHaveBeenNthCalledWith(
-        2,
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
         TENANT_ID,
-        'step-l',
-        'completed',
-        expect.objectContaining({
-          result: {
-            item: ['spec', 'qa'],
-            items: ['spec', 'qa'],
-            done: {
-              items: ['spec', 'qa'],
-              totalItems: 3,
-              processedCount: 2,
-              remainingCount: 1,
-              maxIterations: 2,
-              truncated: true,
-              stoppedEarly: false,
-            },
-            totalItems: 3,
-            processedCount: 2,
-            maxIterations: 2,
-            truncated: true,
-            stoppedEarly: false,
-          },
-        }),
+        'step-loop-result',
+        'skipped',
       );
-      expect(mockQueue.add).not.toHaveBeenCalled();
-    });
-
-    it('loop 节点应兼容 snake_case max_iterations 配置并支持单对象输入', async () => {
-      const snapshot = makeSnapshot(
-        [
-          makeNode('T', 'manual-trigger'),
-          makeNode('L', 'loop', {
-            config: {
-              max_iterations: 1,
-            },
-          }),
-        ],
-        [makeEdge('T', 'L', 'payload-out', 'items')],
-      );
-      const steps = [
-        makeStep({
-          id: 'step-t',
-          nodeId: 'T',
-          status: 'completed',
-          nodeType: 'manual-trigger',
-          result: {
-            payload: {
-              topic: 'workflow orchestration',
-            },
-          },
-        }),
-        makeStep({
-          id: 'step-l',
-          nodeId: 'L',
-          status: 'pending',
-          nodeType: 'loop',
-          nodeData: {
-            config: {
-              max_iterations: 1,
-            },
-          },
-        }),
-      ];
-
-      db.update.mockReturnValueOnce(createUpdateChainVoid());
-      vi.spyOn(service, 'onNodeCompleted').mockResolvedValue(undefined);
-
-      await service.scheduleNode(EXECUTION_ID, 'L', TENANT_ID, snapshot, steps);
-
-      expect(mockStateMachine.updateStepStatus).toHaveBeenNthCalledWith(
-        2,
+      expect(finalizeCompoundExecution).toHaveBeenCalledWith(
+        context,
         TENANT_ID,
-        'step-l',
-        'completed',
-        expect.objectContaining({
-          result: {
-            item: {
-              topic: 'workflow orchestration',
-            },
-            items: [
-              {
-                topic: 'workflow orchestration',
-              },
-            ],
-            done: {
-              items: [
-                {
-                  topic: 'workflow orchestration',
-                },
-              ],
-              totalItems: 1,
-              processedCount: 1,
-              remainingCount: 0,
-              maxIterations: 1,
-              truncated: false,
-              stoppedEarly: false,
-            },
-            totalItems: 1,
-            processedCount: 1,
-            maxIterations: 1,
-            truncated: false,
-            stoppedEarly: false,
-          },
-        }),
       );
-      expect(mockQueue.add).not.toHaveBeenCalled();
     });
 
     it('sandbox 节点会从上游 workspace 节点透传 restoreWorkspaceId', async () => {
@@ -2952,7 +3095,10 @@ describe('NodeSchedulerService', () => {
         EXECUTION_ID,
         'B',
         TENANT_ID,
-        snapshot,
+        {
+          nodes: snapshot.nodes,
+          edges: snapshot.edges,
+        },
         steps,
       );
     });

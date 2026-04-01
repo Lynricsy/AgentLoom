@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import { PRIVATE_CLOUD_NO_AUTH_PLACEHOLDER } from '../../llm/private-cloud-auth.constants';
 import {
   PiConfigGeneratorService,
   type PiModelConfig,
@@ -171,7 +172,7 @@ describe('PiConfigGeneratorService', () => {
       );
     });
 
-    it('private_cloud 非 api_key 鉴权时不应写入 apiKey 字段', () => {
+    it('private_cloud 非 api_key 鉴权时应写入 no-auth 占位 key 并覆盖空 Authorization 头', () => {
       const cfg: PiModelConfig = {
         provider: 'private_cloud',
         model: 'claude-opus-4-6',
@@ -182,7 +183,12 @@ describe('PiConfigGeneratorService', () => {
         service.generateModelsJson({ modelConfig: cfg }),
       ) as { providers: Record<string, Record<string, unknown>> };
 
-      expect(parsed.providers['private_cloud']).not.toHaveProperty('apiKey');
+      expect(parsed.providers['private_cloud'].apiKey).toBe(
+        PRIVATE_CLOUD_NO_AUTH_PLACEHOLDER,
+      );
+      expect(parsed.providers['private_cloud'].headers).toEqual({
+        Authorization: '',
+      });
     });
 
     it('maps openrouter provider to openai-completions api', () => {

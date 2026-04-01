@@ -36,6 +36,10 @@ import {
   type InputFieldDefinition,
   type WorkflowInputSchema,
 } from '../workflow/dto/workflow-input-schema.dto';
+import {
+  attachExecutionRuntimeMeta,
+  isTrackedExecutionStep,
+} from './compound-runtime.util';
 
 export interface ExecutionJobData {
   executionId: string;
@@ -959,6 +963,7 @@ export class ExecutionService {
         }
 
         const { nodes } = scopedExecution.definitionSnapshot;
+        const nodesById = new Map(nodes.map((node) => [node.id, node]));
         const existingSteps = await tenantDb
           .select()
           .from(schema.executionSteps)
@@ -969,17 +974,20 @@ export class ExecutionService {
           stepOrder: index,
           status: 'pending' as const,
           nodeType: resolveWorkflowExecutionNodeType(node),
-          nodeData: node.data ?? null,
+          nodeData: attachExecutionRuntimeMeta(node, nodesById),
         }));
+        const trackedStepCount = stepValues.filter((step) =>
+          isTrackedExecutionStep({ nodeData: step.nodeData }),
+        ).length;
 
-        const shouldCompleteImmediately = stepValues.length === 0;
+        const shouldCompleteImmediately = trackedStepCount === 0;
 
         if (scopedExecution.status === 'pending') {
           const [preparedExecution] = await tenantDb
             .update(schema.workflowExecutions)
             .set({
               status: shouldCompleteImmediately ? 'completed' : 'running',
-              totalSteps: stepValues.length,
+              totalSteps: trackedStepCount,
               startedAt: new Date(),
               ...(shouldCompleteImmediately ? { completedAt: new Date() } : {}),
               updatedAt: new Date(),
@@ -1015,7 +1023,7 @@ export class ExecutionService {
         }
 
         this.logger.log(
-          `Execution prepared: ${JSON.stringify({ executionId, totalSteps: stepValues.length, existingSteps: existingSteps.length, status: shouldCompleteImmediately ? 'completed' : 'running' })}`,
+          `Execution prepared: ${JSON.stringify({ executionId, totalSteps: trackedStepCount, actualStepRows: stepValues.length, existingSteps: existingSteps.length, status: shouldCompleteImmediately ? 'completed' : 'running' })}`,
         );
 
         if (shouldCompleteImmediately) {

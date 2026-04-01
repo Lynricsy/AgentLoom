@@ -1,4 +1,4 @@
-const portDataTypes = ['model', 'text', 'json', 'image', 'audio', 'tool', 'sandbox', 'knowledge', 'skill', 'agent'] as const;
+const portDataTypes = ['model', 'text', 'json', 'array', 'image', 'audio', 'tool', 'sandbox', 'knowledge', 'skill', 'agent'] as const;
 
 /**
  * Canonical 10 个端口数据类型，必须与 server/studio/type-engine 保持同步。
@@ -7,6 +7,7 @@ export type PortDataType =
   | 'model'
   | 'text'
   | 'json'
+  | 'array'
   | 'image'
   | 'audio'
   | 'tool'

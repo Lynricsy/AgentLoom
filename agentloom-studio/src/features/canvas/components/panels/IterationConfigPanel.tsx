@@ -1,53 +1,27 @@
 import { memo, useCallback, useMemo } from 'react'
-import { ChevronDown, ChevronUp, Plus, Repeat, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronUp, ListOrdered, Plus, Trash2 } from 'lucide-react'
 import { useCanvasActions, useCanvasNodes } from '../../stores/canvasStore'
 import type { PortDefinition } from '../../types/nodeTypeRegistry'
 import {
-  buildLoopInputPorts,
-  buildLoopStartOutputPorts,
+  buildIterationInputPorts,
+  buildIterationStartOutputPorts,
   COMPOUND_EXTRA_INPUT_PREFIX,
-  createDefaultLoopCompoundNodeConfig,
-  createDefaultLoopStartNodeConfig,
+  createDefaultIterationNodeConfig,
+  createDefaultIterationStartNodeConfig,
   getCompoundExtraInputPortIds,
 } from '../../types/controlFlow.types'
 
-interface LoopConfigPanelProps {
+interface IterationConfigPanelProps {
   nodeId: string
   inputPorts: PortDefinition[]
   config: Record<string, unknown>
   onApply: (patch: Record<string, unknown>) => void
 }
 
-function parseLoopConfig(config: Record<string, unknown>) {
-  const defaults = createDefaultLoopCompoundNodeConfig()
+function parseIterationConfig(config: Record<string, unknown>) {
   return {
-    ...defaults,
+    ...createDefaultIterationNodeConfig(),
     ...(config ?? {}),
-  }
-}
-
-function stringifyDefaultState(value: unknown): string {
-  if (value == null) {
-    return ''
-  }
-
-  if (typeof value === 'string') {
-    return value
-  }
-
-  return JSON.stringify(value, null, 2)
-}
-
-function parseDefaultState(raw: string): unknown {
-  const trimmed = raw.trim()
-  if (!trimmed) {
-    return null
-  }
-
-  try {
-    return JSON.parse(trimmed)
-  } catch {
-    return trimmed
   }
 }
 
@@ -67,15 +41,15 @@ function nextExtraInputId(inputPorts: readonly PortDefinition[]): string {
   return `${COMPOUND_EXTRA_INPUT_PREFIX}${maxIndex + 1}`
 }
 
-export const LoopConfigPanel = memo(function LoopConfigPanel({
+export const IterationConfigPanel = memo(function IterationConfigPanel({
   nodeId,
   inputPorts,
   config,
   onApply,
-}: LoopConfigPanelProps) {
+}: IterationConfigPanelProps) {
   const nodes = useCanvasNodes()
   const { updateNodeData } = useCanvasActions()
-  const parsed = useMemo(() => parseLoopConfig(config), [config])
+  const parsed = useMemo(() => parseIterationConfig(config), [config])
   const extraInputIds = useMemo(
     () => getCompoundExtraInputPortIds(inputPorts),
     [inputPorts],
@@ -84,17 +58,17 @@ export const LoopConfigPanel = memo(function LoopConfigPanel({
   const syncStartNodePorts = useCallback(
     (nextExtraInputIds: readonly string[]) => {
       const startNode = nodes.find(
-        (node) => node.parentId === nodeId && node.data.nodeType === 'loop-start',
+        (node) => node.parentId === nodeId && node.data.nodeType === 'iteration-start',
       )
       if (!startNode) {
         return
       }
 
       updateNodeData(startNode.id, {
-        outputPorts: buildLoopStartOutputPorts(
+        outputPorts: buildIterationStartOutputPorts(
           nextExtraInputIds,
           {
-            ...createDefaultLoopStartNodeConfig(),
+            ...createDefaultIterationStartNodeConfig(),
             ...(startNode.data.config ?? {}),
           },
         ),
@@ -127,22 +101,10 @@ export const LoopConfigPanel = memo(function LoopConfigPanel({
     [onApply, parsed],
   )
 
-  const handleDefaultStateChange = useCallback(
-    (event: React.ChangeEvent<HTMLTextAreaElement>) => {
-      onApply({
-        config: {
-          ...parsed,
-          defaultState: parseDefaultState(event.target.value),
-        },
-      })
-    },
-    [onApply, parsed],
-  )
-
   const handleAddInputPort = useCallback(() => {
     const nextExtraInputIds = [...extraInputIds, nextExtraInputId(inputPorts)]
     onApply({
-      inputPorts: buildLoopInputPorts(nextExtraInputIds),
+      inputPorts: buildIterationInputPorts(nextExtraInputIds),
       config: parsed,
     })
     syncStartNodePorts(nextExtraInputIds)
@@ -165,7 +127,7 @@ export const LoopConfigPanel = memo(function LoopConfigPanel({
       nextExtraInputIds[index] = target
       nextExtraInputIds[nextIndex] = current
       onApply({
-        inputPorts: buildLoopInputPorts(nextExtraInputIds),
+        inputPorts: buildIterationInputPorts(nextExtraInputIds),
         config: parsed,
       })
       syncStartNodePorts(nextExtraInputIds)
@@ -177,7 +139,7 @@ export const LoopConfigPanel = memo(function LoopConfigPanel({
     (portId: string) => {
       const nextExtraInputIds = extraInputIds.filter((currentId) => currentId !== portId)
       onApply({
-        inputPorts: buildLoopInputPorts(nextExtraInputIds),
+        inputPorts: buildIterationInputPorts(nextExtraInputIds),
         config: parsed,
       })
       syncStartNodePorts(nextExtraInputIds)
@@ -188,8 +150,8 @@ export const LoopConfigPanel = memo(function LoopConfigPanel({
   return (
     <div className="space-y-4 px-4 py-4">
       <div className="flex items-center gap-2">
-        <Repeat className="h-4 w-4 text-muted-foreground" />
-        <span className="text-xs font-medium text-foreground">循环容器</span>
+        <ListOrdered className="h-4 w-4 text-muted-foreground" />
+        <span className="text-xs font-medium text-foreground">迭代容器</span>
       </div>
 
       <div className="space-y-2 rounded-lg border border-border bg-card p-3">
@@ -197,7 +159,7 @@ export const LoopConfigPanel = memo(function LoopConfigPanel({
           <div>
             <p className="text-xs font-medium text-foreground">额外输入端口</p>
             <p className="mt-1 text-[10px] text-muted-foreground">
-              这些输入会同步映射到内部 `loop-start` 节点输出。
+              这些输入会同步映射到内部 `iteration-start` 节点输出。
             </p>
           </div>
           <button
@@ -257,37 +219,21 @@ export const LoopConfigPanel = memo(function LoopConfigPanel({
       </div>
 
       <div>
-        <label className="mb-2 block text-xs font-medium text-foreground">
-          默认初始状态
-        </label>
-        <textarea
-          rows={4}
-          value={stringifyDefaultState(parsed.defaultState)}
-          onChange={handleDefaultStateChange}
-          placeholder='可输入 JSON，例如 {"count":0}'
-          className="w-full rounded-md border border-border bg-background px-3 py-2 font-mono text-xs leading-relaxed text-foreground"
-        />
-        <p className="mt-1 text-[10px] text-muted-foreground">
-          当 `state-in` 未连线时，循环运行会回退到这里定义的默认 state。
-        </p>
-      </div>
-
-      <div>
         <label
-          htmlFor="loop-output-mode"
+          htmlFor="iteration-output-mode"
           className="mb-2 block text-xs font-medium text-foreground"
         >
           输出模式
         </label>
         <select
-          id="loop-output-mode"
+          id="iteration-output-mode"
           value={parsed.outputMode}
           onChange={handleOutputModeChange}
           className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
         >
           <option value="none">纯控制流</option>
-          <option value="last">保留最后一次结果</option>
           <option value="collect-array">收集为数组</option>
+          <option value="last">保留最后一次结果</option>
         </select>
       </div>
 

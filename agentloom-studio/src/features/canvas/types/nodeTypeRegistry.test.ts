@@ -32,6 +32,13 @@ describe('nodeTypeRegistry', () => {
       'json-output',
       'condition',
       'loop',
+      'iteration',
+      'loop-start',
+      'iteration-start',
+      'loop-state',
+      'result',
+      'break',
+      'continue',
       'reusable-block',
       'smart-routing',
       'plugin',
@@ -196,7 +203,9 @@ describe('nodeTypeRegistry', () => {
       'memory',
       'text-output',
       'json-output',
+      'condition',
       'loop',
+      'iteration',
     ])
     expect(new Set(groupedTypes)).toEqual(new Set(staticTypes))
     expect(Object.keys(NODE_TYPE_REGISTRY).sort()).toEqual([...NODE_TYPES].sort())

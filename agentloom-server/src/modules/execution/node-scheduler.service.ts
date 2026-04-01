@@ -68,13 +68,50 @@ import { SkillResolverService } from '../skill/skill-resolver.service';
 import { McpService } from '../mcp/mcp.service';
 import type { McpRuntimeConnection } from '../mcp/mcp.service';
 import { WorkspaceIntegrationService } from '../agent-execution/workspace-integration.service';
+import {
+  filterTopLevelExecutionGraph,
+  isCompoundInternalStep,
+  readCompoundParentNodeId,
+  readExecutionRuntimeMeta,
+} from './compound-runtime.util';
 
 /** 调度决策 */
 type SchedulingDecision = 'schedule' | 'skip' | 'wait';
 
+interface ScheduleNodeOptions {
+  readonly skipLatestState?: boolean;
+}
+
 interface InterventionTimeoutOptions {
   readonly escalated?: boolean;
   readonly escalationCount?: number;
+}
+
+interface CompoundExecutionContext {
+  executionId: string;
+  tenantId: string;
+  parentNodeId: string;
+  parentStepId: string;
+  parentNodeType: 'loop' | 'iteration';
+  parentInput: Record<string, unknown>;
+  outputMode: 'none' | 'collect-array' | 'last';
+  internalNodes: schema.ReactFlowNode[];
+  internalEdges: ReactFlowEdge[];
+  orderedNodeIds: string[];
+  extraInputPortIds: string[];
+  iterationItems: unknown[];
+  iterationIndex: number;
+  completedRounds: number;
+  loopState: unknown;
+  loopRound: number;
+  maxIterations: number;
+  previousResult: Record<string, unknown> | null;
+  roundOutputs: Record<string, unknown>;
+  finalOutputs: Record<string, unknown>;
+  breakRequested: boolean;
+  continueRequested: boolean;
+  nextStateProvided: boolean;
+  nextState: unknown;
 }
 
 function buildInterventionTimeoutJobId(stepId: string): string {
@@ -88,9 +125,17 @@ function buildEscalatedInterventionTimeoutJobId(
   return `intervention-timeout:${stepId}:escalated:${escalationCount}`;
 }
 
+function buildCompoundContextKey(
+  executionId: string,
+  parentNodeId: string,
+): string {
+  return `${executionId}:${parentNodeId}`;
+}
+
 @Injectable()
 export class NodeSchedulerService {
   private readonly logger = new Logger(NodeSchedulerService.name);
+  private readonly compoundContexts = new Map<string, CompoundExecutionContext>();
 
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
@@ -134,7 +179,11 @@ export class NodeSchedulerService {
    */
   async startExecution(executionId: string, tenantId: string): Promise<void> {
     const { snapshot, steps } = await this.loadExecutionContext(executionId);
-    const plan = this.dagResolver.resolveDag(snapshot.nodes, snapshot.edges);
+    const topLevelGraph = filterTopLevelExecutionGraph(snapshot);
+    const plan = this.dagResolver.resolveDag(
+      topLevelGraph.nodes,
+      topLevelGraph.edges,
+    );
 
     // 空图直接收尾
     if (plan.layers.length === 0) {
@@ -144,7 +193,13 @@ export class NodeSchedulerService {
 
     await Promise.all(
       plan.layers[0].map((nodeId) =>
-        this.scheduleNode(executionId, nodeId, tenantId, snapshot, steps),
+            this.scheduleNode(
+              executionId,
+              nodeId,
+              tenantId,
+              topLevelGraph,
+              steps,
+            ),
       ),
     );
   }
@@ -173,7 +228,22 @@ export class NodeSchedulerService {
       return;
     }
 
-    const plan = this.dagResolver.resolveDag(snapshot.nodes, snapshot.edges);
+    if (isCompoundInternalStep(completedStep)) {
+      await this.onCompoundInternalNodeCompleted(
+        executionId,
+        completedStep,
+        steps,
+        tenantId,
+      );
+      await this.checkpointService.saveCheckpoint(tenantId, executionId, stepId);
+      return;
+    }
+
+    const topLevelGraph = filterTopLevelExecutionGraph(snapshot);
+    const plan = this.dagResolver.resolveDag(
+      topLevelGraph.nodes,
+      topLevelGraph.edges,
+    );
 
     const successors = plan.adjacencyMap.get(completedStep.nodeId) ?? [];
 
@@ -187,7 +257,7 @@ export class NodeSchedulerService {
         executionId,
         completedStep.nodeId,
         completedStep.result.branch as string,
-        snapshot,
+        topLevelGraph,
         steps,
         tenantId,
       );
@@ -196,7 +266,7 @@ export class NodeSchedulerService {
       for (const successorId of successors) {
         const decision = this.getSchedulingDecision(
           successorId,
-          snapshot.edges,
+          topLevelGraph.edges,
           steps,
         );
 
@@ -205,7 +275,7 @@ export class NodeSchedulerService {
             executionId,
             successorId,
             tenantId,
-            snapshot,
+            topLevelGraph,
             steps,
           );
         } else if (decision === 'skip') {
@@ -232,6 +302,7 @@ export class NodeSchedulerService {
     tenantId: string,
     snapshot: { nodes: schema.ReactFlowNode[]; edges: ReactFlowEdge[] },
     steps: ExecutionStep[],
+    options?: ScheduleNodeOptions,
   ): Promise<void> {
     const latestState = await this.loadLatestSchedulingState(executionId);
     if (
@@ -243,8 +314,12 @@ export class NodeSchedulerService {
       return;
     }
 
-    const resolvedSnapshot = latestState?.snapshot ?? snapshot;
-    const resolvedSteps = latestState?.steps ?? steps;
+    const resolvedSnapshot = options?.skipLatestState
+      ? snapshot
+      : latestState?.snapshot ?? snapshot;
+    const resolvedSteps = options?.skipLatestState
+      ? steps
+      : latestState?.steps ?? steps;
     const step = resolvedSteps.find((s) => s.nodeId === nodeId);
     if (!step) return;
     if (step.status !== 'pending') return;
@@ -394,6 +469,34 @@ export class NodeSchedulerService {
 
       case 'loop':
         await this.executeLoopNode(step, input, tenantId, executionId);
+        break;
+
+      case 'iteration':
+        await this.executeIterationNode(step, input, tenantId, executionId);
+        break;
+
+      case 'loop-start':
+        await this.executeLoopStartNode(step, tenantId, executionId);
+        break;
+
+      case 'iteration-start':
+        await this.executeIterationStartNode(step, tenantId, executionId);
+        break;
+
+      case 'loop-state':
+        await this.executeLoopStateNode(step, input, tenantId, executionId);
+        break;
+
+      case 'result':
+        await this.executeResultNode(step, input, tenantId, executionId);
+        break;
+
+      case 'break':
+        await this.executeBreakNode(step, input, tenantId, executionId);
+        break;
+
+      case 'continue':
+        await this.executeContinueNode(step, input, tenantId, executionId);
         break;
 
       case 'merge':
@@ -606,7 +709,11 @@ export class NodeSchedulerService {
    */
   async resumeScheduling(executionId: string, tenantId: string): Promise<void> {
     const { snapshot, steps } = await this.loadExecutionContext(executionId);
-    const plan = this.dagResolver.resolveDag(snapshot.nodes, snapshot.edges);
+    const topLevelGraph = filterTopLevelExecutionGraph(snapshot);
+    const plan = this.dagResolver.resolveDag(
+      topLevelGraph.nodes,
+      topLevelGraph.edges,
+    );
 
     for (const layer of plan.layers) {
       for (const nodeId of layer) {
@@ -615,7 +722,7 @@ export class NodeSchedulerService {
 
         const decision = this.getSchedulingDecision(
           nodeId,
-          snapshot.edges,
+          topLevelGraph.edges,
           steps,
         );
         if (decision === 'schedule') {
@@ -623,7 +730,7 @@ export class NodeSchedulerService {
             executionId,
             nodeId,
             tenantId,
-            snapshot,
+            topLevelGraph,
             steps,
           );
         }
@@ -647,6 +754,15 @@ export class NodeSchedulerService {
     if (!failedStep) return;
 
     const { steps } = await this.loadExecutionContext(executionId);
+    if (isCompoundInternalStep(failedStep)) {
+      await this.onCompoundInternalNodeFailed(
+        executionId,
+        failedStep,
+        steps,
+        tenantId,
+      );
+      return;
+    }
     const cancellableStatuses = new Set([
       'pending',
       'queued',
@@ -1698,124 +1814,48 @@ export class NodeSchedulerService {
     tenantId: string,
     executionId: string,
   ): Promise<void> {
+    await this.startCompoundExecution(
+      step,
+      input,
+      tenantId,
+      executionId,
+      'loop',
+    );
+  }
+
+  async executeIterationNode(
+    step: ExecutionStep,
+    input: Record<string, unknown>,
+    tenantId: string,
+    executionId: string,
+  ): Promise<void> {
+    await this.startCompoundExecution(
+      step,
+      input,
+      tenantId,
+      executionId,
+      'iteration',
+    );
+  }
+
+  async executeLoopStartNode(
+    step: ExecutionStep,
+    tenantId: string,
+    executionId: string,
+  ): Promise<void> {
     await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'running');
 
     try {
-      const nodeData = this.getRuntimeNodeData(step.nodeData ?? {});
-      const configuredMaxIterations = this.readOptionalNumber(
-        nodeData.maxIterations,
-        nodeData.max_iterations,
+      const context = await this.requireCompoundContextForStep(
+        step,
+        executionId,
       );
-      const maxIterations =
-        configuredMaxIterations && configuredMaxIterations > 0
-          ? Math.floor(configuredMaxIterations)
-          : 10;
-
-      const stopConditionMode = this.readFirstString(
-        nodeData.stopConditionMode,
-        nodeData.stop_condition_mode,
-      );
-      const stopCondition = this.resolveLoopStopCondition(nodeData);
-      const stopExpression = this.readFirstString(
-        nodeData.stopExpression,
-        nodeData.stop_expression,
-      );
-      const errorStrategy = this.resolveLoopErrorStrategy(nodeData);
-
-      const items = this.normalizeLoopItemsInput(input);
-      const iteratedItems: unknown[] = [];
-      const errors: Array<{ index: number; message: string }> = [];
-      let stoppedEarly = false;
-      let stopReason: string | undefined;
-
-      for (
-        let i = 0;
-        i < items.length && iteratedItems.length < maxIterations;
-        i += 1
-      ) {
-        const currentItem = items[i];
-
-        try {
-          iteratedItems.push(currentItem);
-
-          // 评估停止条件
-          if (
-            stopConditionMode === 'condition' &&
-            stopCondition &&
-            this.evaluateLoopStopCondition(stopCondition, currentItem)
-          ) {
-            stoppedEarly = true;
-            stopReason = 'stop_condition_met';
-            break;
-          }
-
-          if (
-            stopConditionMode === 'expression' &&
-            stopExpression &&
-            this.evaluateLoopStopExpression(stopExpression, currentItem)
-          ) {
-            stoppedEarly = true;
-            stopReason = 'stop_expression_met';
-            break;
-          }
-        } catch (itemError) {
-          const message =
-            itemError instanceof Error ? itemError.message : String(itemError);
-
-          if (errorStrategy === 'stop') {
-            throw itemError;
-          }
-
-          if (errorStrategy === 'skip') {
-            // 跳过出错的项，移除刚 push 的 currentItem
-            iteratedItems.pop();
-            errors.push({ index: i, message });
-            continue;
-          }
-
-          if (errorStrategy === 'collect') {
-            errors.push({ index: i, message });
-            continue;
-          }
-        }
-      }
-
-      const truncated = !stoppedEarly && items.length > iteratedItems.length;
-      const itemOutput =
-        iteratedItems.length === 1 ? iteratedItems[0] : iteratedItems;
-      const done: Record<string, unknown> = {
-        items: iteratedItems,
-        totalItems: items.length,
-        processedCount: iteratedItems.length,
-        remainingCount: Math.max(
-          items.length -
-            (stoppedEarly ? iteratedItems.length : iteratedItems.length),
-          0,
-        ),
-        maxIterations,
-        truncated,
-        stoppedEarly,
-        ...(stopReason ? { stopReason } : {}),
-        ...(errors.length > 0 ? { errors } : {}),
-      };
-
       await this.stepStateMachine.updateStepStatus(
         tenantId,
         step.id,
         'completed',
         {
-          result: {
-            item: itemOutput,
-            items: iteratedItems,
-            done,
-            totalItems: items.length,
-            processedCount: iteratedItems.length,
-            maxIterations,
-            truncated,
-            stoppedEarly,
-            ...(stopReason ? { stopReason } : {}),
-            ...(errors.length > 0 ? { errors } : {}),
-          },
+          result: this.buildLoopStartResult(context),
         },
       );
 
@@ -1850,6 +1890,886 @@ export class NodeSchedulerService {
       );
       await this.onNodeFailed(executionId, step.id, tenantId);
     }
+  }
+
+  async executeIterationStartNode(
+    step: ExecutionStep,
+    tenantId: string,
+    executionId: string,
+  ): Promise<void> {
+    await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'running');
+
+    try {
+      const context = await this.requireCompoundContextForStep(
+        step,
+        executionId,
+      );
+      await this.stepStateMachine.updateStepStatus(
+        tenantId,
+        step.id,
+        'completed',
+        {
+          result: this.buildIterationStartResult(context),
+        },
+      );
+
+      await this.onNodeCompleted(executionId, step.id, tenantId);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.constructor.name === 'InvalidStepTransitionException'
+      ) {
+        throw error;
+      }
+
+      const message = error instanceof Error ? error.message : String(error);
+      await this.stepStateMachine.updateStepStatus(
+        tenantId,
+        step.id,
+        'failed',
+        {
+          errorMessage: {
+            message,
+            ...(error instanceof Error ? { stack: error.stack } : {}),
+            ...(error instanceof DomainException
+              ? {
+                  type: error.type,
+                  title: error.message,
+                  detail: error.detail,
+                }
+              : {}),
+            nodeId: step.nodeId,
+          },
+        },
+      );
+      await this.onNodeFailed(executionId, step.id, tenantId);
+    }
+  }
+
+  async executeLoopStateNode(
+    step: ExecutionStep,
+    input: Record<string, unknown>,
+    tenantId: string,
+    executionId: string,
+  ): Promise<void> {
+    await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'running');
+
+    try {
+      const context = await this.requireCompoundContextForStep(
+        step,
+        executionId,
+      );
+      context.nextStateProvided = true;
+      context.nextState = this.extractCompoundValueInput(
+        input,
+        'state-in',
+      );
+
+      await this.stepStateMachine.updateStepStatus(
+        tenantId,
+        step.id,
+        'completed',
+        {
+          result: {
+            state: context.nextState,
+            'exec-out': { triggered: true },
+          },
+        },
+      );
+      await this.onNodeCompleted(executionId, step.id, tenantId);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.constructor.name === 'InvalidStepTransitionException'
+      ) {
+        throw error;
+      }
+
+      const message = error instanceof Error ? error.message : String(error);
+      await this.stepStateMachine.updateStepStatus(
+        tenantId,
+        step.id,
+        'failed',
+        {
+          errorMessage: {
+            message,
+            ...(error instanceof Error ? { stack: error.stack } : {}),
+            ...(error instanceof DomainException
+              ? {
+                  type: error.type,
+                  title: error.message,
+                  detail: error.detail,
+                }
+              : {}),
+            nodeId: step.nodeId,
+          },
+        },
+      );
+      await this.onNodeFailed(executionId, step.id, tenantId);
+    }
+  }
+
+  async executeResultNode(
+    step: ExecutionStep,
+    input: Record<string, unknown>,
+    tenantId: string,
+    executionId: string,
+  ): Promise<void> {
+    await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'running');
+
+    try {
+      const context = await this.requireCompoundContextForStep(
+        step,
+        executionId,
+      );
+      const nodeData = this.getRuntimeNodeData(step.nodeData ?? {});
+      const outputKey =
+        this.readFirstString(nodeData.outputKey, nodeData.output_key) ??
+        'result';
+      const value = this.extractCompoundValueInput(input, 'value-in');
+
+      context.roundOutputs[outputKey] = value;
+
+      await this.stepStateMachine.updateStepStatus(
+        tenantId,
+        step.id,
+        'completed',
+        {
+          result: {
+            outputKey,
+            value,
+          },
+        },
+      );
+      await this.onNodeCompleted(executionId, step.id, tenantId);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.constructor.name === 'InvalidStepTransitionException'
+      ) {
+        throw error;
+      }
+
+      const message = error instanceof Error ? error.message : String(error);
+      await this.stepStateMachine.updateStepStatus(
+        tenantId,
+        step.id,
+        'failed',
+        {
+          errorMessage: {
+            message,
+            ...(error instanceof Error ? { stack: error.stack } : {}),
+            ...(error instanceof DomainException
+              ? {
+                  type: error.type,
+                  title: error.message,
+                  detail: error.detail,
+                }
+              : {}),
+            nodeId: step.nodeId,
+          },
+        },
+      );
+      await this.onNodeFailed(executionId, step.id, tenantId);
+    }
+  }
+
+  async executeBreakNode(
+    step: ExecutionStep,
+    input: Record<string, unknown>,
+    tenantId: string,
+    executionId: string,
+  ): Promise<void> {
+    await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'running');
+
+    try {
+      const context = await this.requireCompoundContextForStep(
+        step,
+        executionId,
+      );
+      const triggered = this.shouldTriggerJumpNode(step, input);
+      if (triggered) {
+        context.breakRequested = true;
+      }
+
+      await this.stepStateMachine.updateStepStatus(
+        tenantId,
+        step.id,
+        'completed',
+        {
+          result: {
+            action: 'break',
+            triggered,
+          },
+        },
+      );
+      await this.onNodeCompleted(executionId, step.id, tenantId);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.constructor.name === 'InvalidStepTransitionException'
+      ) {
+        throw error;
+      }
+
+      const message = error instanceof Error ? error.message : String(error);
+      await this.stepStateMachine.updateStepStatus(
+        tenantId,
+        step.id,
+        'failed',
+        {
+          errorMessage: {
+            message,
+            ...(error instanceof Error ? { stack: error.stack } : {}),
+            ...(error instanceof DomainException
+              ? {
+                  type: error.type,
+                  title: error.message,
+                  detail: error.detail,
+                }
+              : {}),
+            nodeId: step.nodeId,
+          },
+        },
+      );
+      await this.onNodeFailed(executionId, step.id, tenantId);
+    }
+  }
+
+  async executeContinueNode(
+    step: ExecutionStep,
+    input: Record<string, unknown>,
+    tenantId: string,
+    executionId: string,
+  ): Promise<void> {
+    await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'running');
+
+    try {
+      const context = await this.requireCompoundContextForStep(
+        step,
+        executionId,
+      );
+      const triggered = this.shouldTriggerJumpNode(step, input);
+      if (triggered) {
+        context.continueRequested = true;
+      }
+
+      await this.stepStateMachine.updateStepStatus(
+        tenantId,
+        step.id,
+        'completed',
+        {
+          result: {
+            action: 'continue',
+            triggered,
+          },
+        },
+      );
+      await this.onNodeCompleted(executionId, step.id, tenantId);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.constructor.name === 'InvalidStepTransitionException'
+      ) {
+        throw error;
+      }
+
+      const message = error instanceof Error ? error.message : String(error);
+      await this.stepStateMachine.updateStepStatus(
+        tenantId,
+        step.id,
+        'failed',
+        {
+          errorMessage: {
+            message,
+            ...(error instanceof Error ? { stack: error.stack } : {}),
+            ...(error instanceof DomainException
+              ? {
+                  type: error.type,
+                  title: error.message,
+                  detail: error.detail,
+                }
+              : {}),
+            nodeId: step.nodeId,
+          },
+        },
+      );
+      await this.onNodeFailed(executionId, step.id, tenantId);
+    }
+  }
+
+  private async startCompoundExecution(
+    step: ExecutionStep,
+    input: Record<string, unknown>,
+    tenantId: string,
+    executionId: string,
+    parentNodeType: 'loop' | 'iteration',
+  ): Promise<void> {
+    await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'running');
+
+    try {
+      const { snapshot, steps } = await this.loadExecutionContext(executionId);
+      const context = this.createCompoundContext(
+        step,
+        input,
+        tenantId,
+        executionId,
+        snapshot,
+        parentNodeType,
+      );
+
+      const contextKey = buildCompoundContextKey(
+        executionId,
+        context.parentNodeId,
+      );
+      this.compoundContexts.set(contextKey, context);
+
+      if (
+        context.internalNodes.length === 0 ||
+        (context.parentNodeType === 'iteration' &&
+          context.iterationItems.length === 0)
+      ) {
+        await this.finalizeCompoundExecution(context, tenantId);
+        return;
+      }
+
+      await this.resetCompoundRoundSteps(context, steps, tenantId);
+      await this.scheduleNextCompoundNode(context, tenantId);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.constructor.name === 'InvalidStepTransitionException'
+      ) {
+        throw error;
+      }
+
+      const message = error instanceof Error ? error.message : String(error);
+      await this.stepStateMachine.updateStepStatus(
+        tenantId,
+        step.id,
+        'failed',
+        {
+          errorMessage: {
+            message,
+            ...(error instanceof Error ? { stack: error.stack } : {}),
+            ...(error instanceof DomainException
+              ? {
+                  type: error.type,
+                  title: error.message,
+                  detail: error.detail,
+                }
+              : {}),
+            nodeId: step.nodeId,
+          },
+        },
+      );
+      await this.onNodeFailed(executionId, step.id, tenantId);
+    }
+  }
+
+  private createCompoundContext(
+    step: ExecutionStep,
+    input: Record<string, unknown>,
+    tenantId: string,
+    executionId: string,
+    snapshot: { nodes: schema.ReactFlowNode[]; edges: ReactFlowEdge[] },
+    parentNodeType: 'loop' | 'iteration',
+  ): CompoundExecutionContext {
+    const parentNodeId = step.nodeId;
+    const internalNodes = snapshot.nodes.filter(
+      (node) => readCompoundParentNodeId(node) === parentNodeId,
+    );
+    const internalNodeIds = new Set(internalNodes.map((node) => node.id));
+    const internalEdges = snapshot.edges.filter(
+      (edge) =>
+        internalNodeIds.has(edge.source) && internalNodeIds.has(edge.target),
+    );
+    const orderedNodeIds = this.dagResolver
+      .resolveDag(internalNodes, internalEdges)
+      .layers.flat();
+
+    const nodeData = this.getRuntimeNodeData(step.nodeData ?? {});
+    const inputPorts = Array.isArray(nodeData.inputPorts)
+      ? nodeData.inputPorts
+      : Array.isArray(nodeData.input_ports)
+        ? nodeData.input_ports
+        : [];
+    const extraInputPortIds = inputPorts
+      .filter(
+        (port) =>
+          this.isRecord(port) &&
+          typeof port.id === 'string' &&
+          port.id.startsWith('input-'),
+      )
+      .map((port) => port.id as string);
+    const configuredMaxIterations = this.readOptionalNumber(
+      nodeData.maxIterations,
+      nodeData.max_iterations,
+    );
+
+    return {
+      executionId,
+      tenantId,
+      parentNodeId,
+      parentStepId: step.id,
+      parentNodeType,
+      parentInput: input,
+      outputMode:
+        this.readFirstString(nodeData.outputMode, nodeData.output_mode) ===
+          'none'
+          ? 'none'
+          : this.readFirstString(nodeData.outputMode, nodeData.output_mode) ===
+                'collect-array'
+            ? 'collect-array'
+            : this.readFirstString(nodeData.outputMode, nodeData.output_mode) ===
+                  'last'
+              ? 'last'
+              : parentNodeType === 'iteration'
+                ? 'collect-array'
+                : 'last',
+      internalNodes,
+      internalEdges,
+      orderedNodeIds,
+      extraInputPortIds,
+      iterationItems:
+        parentNodeType === 'iteration'
+          ? this.normalizeLoopItemsInput(input)
+          : [],
+      iterationIndex: 0,
+      completedRounds: 0,
+      loopState:
+        input['state-in'] ??
+        this.readFirstDefined(nodeData.defaultState, nodeData.default_state) ??
+        null,
+      loopRound: 0,
+      maxIterations:
+        configuredMaxIterations && configuredMaxIterations > 0
+          ? Math.floor(configuredMaxIterations)
+          : 100,
+      previousResult: null,
+      roundOutputs: {},
+      finalOutputs: {},
+      breakRequested: false,
+      continueRequested: false,
+      nextStateProvided: false,
+      nextState: undefined,
+    };
+  }
+
+  private async requireCompoundContextForStep(
+    step: ExecutionStep,
+    executionId: string,
+  ): Promise<CompoundExecutionContext> {
+    const meta = readExecutionRuntimeMeta(step.nodeData);
+    const parentNodeId = meta.compoundParentId;
+    if (!parentNodeId) {
+      throw new Error(`步骤 ${step.nodeId} 不属于 compound 内部节点`);
+    }
+
+    const context = this.compoundContexts.get(
+      buildCompoundContextKey(executionId, parentNodeId),
+    );
+    if (!context) {
+      throw new Error(`compound 上下文不存在: ${executionId}:${parentNodeId}`);
+    }
+
+    return context;
+  }
+
+  private shouldTriggerJumpNode(
+    step: ExecutionStep,
+    input: Record<string, unknown>,
+  ): boolean {
+    const nodeData = this.getRuntimeNodeData(step.nodeData ?? {});
+    const mode =
+      this.readFirstString(nodeData.mode, nodeData.jumpMode) === 'expression'
+        ? 'expression'
+        : 'always';
+
+    if (mode !== 'expression') {
+      return true;
+    }
+
+    const expression = this.readFirstString(
+      nodeData.expression,
+      nodeData.jumpExpression,
+    );
+    if (!expression?.trim()) {
+      return false;
+    }
+
+    return Boolean(this.evaluateExpression(expression, input));
+  }
+
+  private buildLoopStartResult(
+    context: CompoundExecutionContext,
+  ): Record<string, unknown> {
+    const result: Record<string, unknown> = {
+      'exec-out': { triggered: true, round: context.loopRound },
+      round: context.loopRound,
+      state: context.loopState,
+    };
+
+    for (const inputPortId of context.extraInputPortIds) {
+      result[inputPortId] = context.parentInput[inputPortId];
+    }
+
+    if (context.previousResult) {
+      result['previous-result'] = context.previousResult;
+    }
+
+    result['is-first'] = context.loopRound === 0;
+    return result;
+  }
+
+  private buildIterationStartResult(
+    context: CompoundExecutionContext,
+  ): Record<string, unknown> {
+    const currentItem = context.iterationItems[context.iterationIndex];
+    const result: Record<string, unknown> = {
+      'exec-out': { triggered: true, index: context.iterationIndex },
+      item: currentItem,
+      index: context.iterationIndex,
+      total: context.iterationItems.length,
+      'is-first': context.iterationIndex === 0,
+      'is-last': context.iterationIndex === context.iterationItems.length - 1,
+    };
+
+    for (const inputPortId of context.extraInputPortIds) {
+      result[inputPortId] = context.parentInput[inputPortId];
+    }
+
+    return result;
+  }
+
+  private extractCompoundValueInput(
+    input: Record<string, unknown>,
+    portId: string,
+  ): unknown {
+    if (Object.prototype.hasOwnProperty.call(input, portId)) {
+      return input[portId];
+    }
+
+    return this.extractOutputValue(input);
+  }
+
+  private async resetCompoundRoundSteps(
+    context: CompoundExecutionContext,
+    steps: ExecutionStep[],
+    tenantId: string,
+  ): Promise<void> {
+    const internalNodeIds = new Set(context.internalNodes.map((node) => node.id));
+    const internalSteps = steps.filter((step) => internalNodeIds.has(step.nodeId));
+    const now = new Date();
+
+    for (const step of internalSteps) {
+      if (step.status !== 'pending') {
+        this.eventBridge.emitStepStatusChanged(
+          tenantId,
+          context.executionId,
+          {
+            stepId: step.id,
+            nodeId: step.nodeId,
+            from: step.status,
+            to: 'pending',
+          },
+        );
+      }
+    }
+
+    if (internalSteps.length === 0) {
+      return;
+    }
+
+    await this.tenantDb
+      .update(schema.executionSteps)
+      .set({
+        status: 'pending',
+        input: null,
+        result: null,
+        errorMessage: null,
+        checkpointData: null,
+        startedAt: null,
+        completedAt: null,
+        updatedAt: now,
+      })
+      .where(
+        inArray(
+          schema.executionSteps.id,
+          internalSteps.map((step) => step.id),
+        ),
+      );
+
+    context.roundOutputs = {};
+    context.breakRequested = false;
+    context.continueRequested = false;
+    context.nextStateProvided = false;
+    context.nextState = undefined;
+  }
+
+  private async scheduleNextCompoundNode(
+    context: CompoundExecutionContext,
+    tenantId: string,
+  ): Promise<void> {
+    const { steps } = await this.loadExecutionContext(context.executionId);
+    const internalNodeIds = new Set(context.internalNodes.map((node) => node.id));
+    const internalSteps = steps.filter((step) => internalNodeIds.has(step.nodeId));
+
+    const hasActiveStep = internalSteps.some(
+      (step) =>
+        step.status === 'queued' ||
+        step.status === 'running' ||
+        step.status === 'waiting_intervention',
+    );
+    if (hasActiveStep) {
+      return;
+    }
+
+    if (context.breakRequested) {
+      await this.skipPendingCompoundInternalSteps(internalSteps, tenantId);
+      context.completedRounds += 1;
+      await this.finalizeCompoundExecution(context, tenantId);
+      return;
+    }
+
+    if (context.continueRequested) {
+      await this.skipPendingCompoundInternalSteps(internalSteps, tenantId);
+      const { steps: latestSteps } = await this.loadExecutionContext(
+        context.executionId,
+      );
+      const internalNodeIds = new Set(
+        context.internalNodes.map((node) => node.id),
+      );
+      const latestInternalSteps = latestSteps.filter((step) =>
+        internalNodeIds.has(step.nodeId),
+      );
+      await this.advanceCompoundRound(
+        context,
+        latestInternalSteps,
+        tenantId,
+        true,
+      );
+      return;
+    }
+
+    for (const nodeId of context.orderedNodeIds) {
+      const step = internalSteps.find((candidate) => candidate.nodeId === nodeId);
+      if (!step || step.status !== 'pending') {
+        continue;
+      }
+
+      const decision = this.getSchedulingDecision(
+        nodeId,
+        context.internalEdges,
+        internalSteps,
+      );
+
+      if (decision === 'skip') {
+        await this.stepStateMachine.updateStepStatus(
+          tenantId,
+          step.id,
+          'skipped',
+        );
+        await this.onNodeCompleted(context.executionId, step.id, tenantId);
+        return;
+      }
+
+      if (decision === 'schedule') {
+        await this.scheduleNode(
+          context.executionId,
+          nodeId,
+          tenantId,
+          {
+            nodes: context.internalNodes,
+            edges: context.internalEdges,
+          },
+          internalSteps,
+          { skipLatestState: true },
+        );
+        return;
+      }
+    }
+
+    const hasPending = internalSteps.some((step) => step.status === 'pending');
+    if (!hasPending) {
+      await this.advanceCompoundRound(context, internalSteps, tenantId, false);
+    }
+  }
+
+  private async skipPendingCompoundInternalSteps(
+    steps: ExecutionStep[],
+    tenantId: string,
+  ): Promise<void> {
+    for (const step of steps) {
+      if (step.status !== 'pending') {
+        continue;
+      }
+
+      await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'skipped');
+    }
+  }
+
+  private async advanceCompoundRound(
+    context: CompoundExecutionContext,
+    steps: ExecutionStep[],
+    tenantId: string,
+    discardRoundOutputs: boolean,
+  ): Promise<void> {
+    context.completedRounds += 1;
+
+    if (!discardRoundOutputs) {
+      this.mergeCompoundRoundOutputs(context);
+    }
+
+    if (!discardRoundOutputs && Object.keys(context.roundOutputs).length > 0) {
+      context.previousResult = { ...context.roundOutputs };
+    }
+
+    if (context.parentNodeType === 'iteration') {
+      context.iterationIndex += 1;
+      if (context.iterationIndex >= context.iterationItems.length) {
+        await this.finalizeCompoundExecution(context, tenantId);
+        return;
+      }
+    } else {
+      context.loopRound += 1;
+      if (context.nextStateProvided) {
+        context.loopState = context.nextState;
+      }
+
+      if (context.loopRound >= context.maxIterations) {
+        await this.finalizeCompoundExecution(context, tenantId, 'max_iterations');
+        return;
+      }
+    }
+
+    await this.resetCompoundRoundSteps(context, steps, tenantId);
+    await this.scheduleNextCompoundNode(context, tenantId);
+  }
+
+  private mergeCompoundRoundOutputs(
+    context: CompoundExecutionContext,
+  ): void {
+    if (context.outputMode === 'none') {
+      return;
+    }
+
+    for (const [outputKey, value] of Object.entries(context.roundOutputs)) {
+      if (context.outputMode === 'collect-array') {
+        const current = Array.isArray(context.finalOutputs[outputKey])
+          ? (context.finalOutputs[outputKey] as unknown[])
+          : [];
+        context.finalOutputs[outputKey] = [...current, value];
+        continue;
+      }
+
+      context.finalOutputs[outputKey] = value;
+    }
+  }
+
+  private async finalizeCompoundExecution(
+    context: CompoundExecutionContext,
+    tenantId: string,
+    stopReason?: string,
+  ): Promise<void> {
+    this.compoundContexts.delete(
+      buildCompoundContextKey(context.executionId, context.parentNodeId),
+    );
+
+    const result: Record<string, unknown> = {
+      'exec-out': {
+        triggered: true,
+        stopReason: stopReason ?? (context.breakRequested ? 'break' : 'completed'),
+      },
+      ...context.finalOutputs,
+      compound: {
+        mode: context.parentNodeType,
+        rounds: context.completedRounds,
+        ...(context.parentNodeType === 'iteration'
+          ? { totalItems: context.iterationItems.length }
+          : { finalState: context.loopState }),
+        ...(stopReason ? { stopReason } : {}),
+      },
+    };
+
+    await this.stepStateMachine.updateStepStatus(
+      tenantId,
+      context.parentStepId,
+      'completed',
+      {
+        result,
+      },
+    );
+
+    await this.onNodeCompleted(
+      context.executionId,
+      context.parentStepId,
+      tenantId,
+    );
+  }
+
+  private async onCompoundInternalNodeCompleted(
+    executionId: string,
+    completedStep: ExecutionStep,
+    steps: ExecutionStep[],
+    tenantId: string,
+  ): Promise<void> {
+    const meta = readExecutionRuntimeMeta(completedStep.nodeData);
+    if (!meta.compoundParentId) {
+      return;
+    }
+
+    const context = this.compoundContexts.get(
+      buildCompoundContextKey(executionId, meta.compoundParentId),
+    );
+    if (!context) {
+      return;
+    }
+
+    await this.scheduleNextCompoundNode(context, tenantId);
+  }
+
+  private async onCompoundInternalNodeFailed(
+    executionId: string,
+    failedStep: ExecutionStep,
+    steps: ExecutionStep[],
+    tenantId: string,
+  ): Promise<void> {
+    const meta = readExecutionRuntimeMeta(failedStep.nodeData);
+    if (!meta.compoundParentId) {
+      return;
+    }
+
+    const context = this.compoundContexts.get(
+      buildCompoundContextKey(executionId, meta.compoundParentId),
+    );
+    if (!context) {
+      return;
+    }
+
+    this.compoundContexts.delete(
+      buildCompoundContextKey(executionId, meta.compoundParentId),
+    );
+
+    const message =
+      failedStep.errorMessage?.message ??
+      `compound 内部节点 ${failedStep.nodeId} 执行失败`;
+
+    await this.stepStateMachine.updateStepStatus(
+      tenantId,
+      context.parentStepId,
+      'failed',
+      {
+        errorMessage: {
+          ...(failedStep.errorMessage ?? { message }),
+          message,
+          nodeId: context.parentNodeId,
+          detail: `内部节点 ${failedStep.nodeId} 执行失败`,
+        },
+      },
+    );
+
+    await this.onNodeFailed(executionId, context.parentStepId, tenantId);
   }
 
   async executeMerge(
@@ -2486,10 +3406,14 @@ export class NodeSchedulerService {
       .select({
         id: schema.llmModelConfigs.id,
         name: schema.llmModelConfigs.name,
-        provider: schema.llmModelConfigs.provider,
-        modelName: schema.llmModelConfigs.modelName,
+        providerSlug: schema.llmProviders.slug,
+        modelId: schema.llmModelConfigs.modelId,
       })
       .from(schema.llmModelConfigs)
+      .innerJoin(
+        schema.llmProviders,
+        eq(schema.llmModelConfigs.providerId, schema.llmProviders.id),
+      )
       .where(
         and(
           eq(schema.llmModelConfigs.tenantId, tenantId),
@@ -2530,8 +3454,8 @@ export class NodeSchedulerService {
 
       const routingMetadata = routingMetadataById.get(modelConfigId);
       const fallbackMeta = getModelRoutingMeta(
-        modelConfig.provider,
-        modelConfig.modelName,
+        modelConfig.providerSlug,
+        modelConfig.modelId,
       );
       const rawRoutingMeta = this.isRecord(routingMetadata?.routingMeta)
         ? routingMetadata.routingMeta
@@ -2544,7 +3468,7 @@ export class NodeSchedulerService {
         id: modelConfig.id,
         modelConfigId: modelConfig.id,
         name: modelConfig.name,
-        provider: routingMetadata?.providerName ?? modelConfig.provider,
+        provider: routingMetadata?.providerName ?? modelConfig.providerSlug,
         routingMeta: {
           contextWindow: this.readNumber(
             rawRoutingMeta?.contextWindow,
@@ -4208,6 +5132,7 @@ export class NodeSchedulerService {
       {
         input,
         flatInput: this.flattenInput(input),
+        ports: this.buildExpressionPorts(input),
       },
       { timeout: 1000 },
     );
@@ -4708,17 +5633,28 @@ export class NodeSchedulerService {
   }
 
   /**
-   * 简单 JSON 路径解析（支持 `key.nested.field` 格式）。
+   * 简单 JSON 路径解析（支持 `key.nested.field` 与 `items[0].name` 格式）。
    */
   private resolveJsonPath(obj: Record<string, unknown>, path: string): unknown {
     if (!path) {
       return obj;
     }
 
-    return path.split('.').reduce<unknown>((acc, key) => {
+    const segments = path
+      .replace(/\[(\d+)\]/g, '.$1')
+      .split('.')
+      .filter(Boolean);
+
+    return segments.reduce<unknown>((acc, key) => {
+      if (Array.isArray(acc)) {
+        const index = Number.parseInt(key, 10);
+        return Number.isFinite(index) ? acc[index] : undefined;
+      }
+
       if (acc && typeof acc === 'object') {
         return (acc as Record<string, unknown>)[key];
       }
+
       return undefined;
     }, obj);
   }
@@ -4779,7 +5715,12 @@ export class NodeSchedulerService {
     mode: 'visual' | 'expression';
     expression: string;
     conditions: {
-      rules: Array<{ field: string; operator: string; value: string }>;
+      rules: Array<{
+        sourcePortId: string;
+        fieldPath: string;
+        operator: string;
+        value: string;
+      }>;
       logic: 'and' | 'or';
     };
   }> {
@@ -4830,7 +5771,14 @@ export class NodeSchedulerService {
           mode: 'visual' as const,
           expression: '',
           conditions: {
-            rules: [{ field: field ?? '', operator: 'equals', value }],
+            rules: [
+              {
+                sourcePortId: 'input-0',
+                fieldPath: field ?? '',
+                operator: 'equals',
+                value,
+              },
+            ],
             logic: 'and' as const,
           },
         },
@@ -4868,7 +5816,14 @@ export class NodeSchedulerService {
           mode: 'visual',
           expression: '',
           conditions: {
-            rules: [{ field: fallbackField, operator: 'equals', value }],
+            rules: [
+              {
+                sourcePortId: 'input-0',
+                fieldPath: fallbackField,
+                operator: 'equals',
+                value,
+              },
+            ],
             logic: 'and',
           },
         },
@@ -4880,7 +5835,12 @@ export class NodeSchedulerService {
   }
 
   private normalizeConditionGroup(value: unknown): {
-    rules: Array<{ field: string; operator: string; value: string }>;
+    rules: Array<{
+      sourcePortId: string;
+      fieldPath: string;
+      operator: string;
+      value: string;
+    }>;
     logic: 'and' | 'or';
   } {
     if (!this.isRecord(value)) {
@@ -4892,7 +5852,16 @@ export class NodeSchedulerService {
     const rules = rawRules
       .filter((r) => this.isRecord(r))
       .map((r) => ({
-        field: typeof r.field === 'string' ? r.field : '',
+        sourcePortId:
+          typeof r.sourcePortId === 'string' && r.sourcePortId.length > 0
+            ? r.sourcePortId
+            : 'input-0',
+        fieldPath:
+          typeof r.fieldPath === 'string'
+            ? r.fieldPath
+            : typeof r.field === 'string'
+              ? r.field
+              : '',
         operator: typeof r.operator === 'string' ? r.operator : 'equals',
         value: typeof r.value === 'string' ? r.value : '',
       }));
@@ -4908,7 +5877,12 @@ export class NodeSchedulerService {
       mode: 'visual' | 'expression';
       expression: string;
       conditions: {
-        rules: Array<{ field: string; operator: string; value: string }>;
+        rules: Array<{
+          sourcePortId: string;
+          fieldPath: string;
+          operator: string;
+          value: string;
+        }>;
         logic: 'and' | 'or';
       };
     },
@@ -4944,7 +5918,12 @@ export class NodeSchedulerService {
    * 评估单条规则（11 种运算符 + 向后兼容 expression 运算符）
    */
   private evaluateConditionRule(
-    rule: { field: string; operator: string; value: string },
+    rule: {
+      sourcePortId: string;
+      fieldPath: string;
+      operator: string;
+      value: string;
+    },
     input: Record<string, unknown>,
     flatInput: Record<string, unknown>,
   ): boolean {
@@ -4959,7 +5938,8 @@ export class NodeSchedulerService {
     }
 
     const fieldValue = this.resolveConditionFieldValue(
-      rule.field,
+      rule.sourcePortId,
+      rule.fieldPath,
       input,
       flatInput,
     );
@@ -5015,21 +5995,31 @@ export class NodeSchedulerService {
    * 解析条件规则中的字段值：先在 flatInput 中查找，再在 input 中做路径解析
    */
   private resolveConditionFieldValue(
-    field: string,
+    sourcePortId: string,
+    fieldPath: string,
     input: Record<string, unknown>,
     flatInput: Record<string, unknown>,
   ): unknown {
-    if (!field) {
+    if (!sourcePortId) {
       return undefined;
     }
 
+    const portValue = input[sourcePortId];
+    if (!fieldPath) {
+      return portValue;
+    }
+
+    const normalizedPath = fieldPath.startsWith('[')
+      ? `${sourcePortId}${fieldPath}`
+      : `${sourcePortId}.${fieldPath}`;
+
     // 直接查 flatInput
-    if (Object.prototype.hasOwnProperty.call(flatInput, field)) {
-      return flatInput[field];
+    if (Object.prototype.hasOwnProperty.call(flatInput, normalizedPath)) {
+      return flatInput[normalizedPath];
     }
 
     // 路径解析
-    return this.resolveJsonPath(input, field);
+    return this.resolveJsonPath(input, normalizedPath);
   }
 
   private flattenInput(
@@ -5039,10 +6029,56 @@ export class NodeSchedulerService {
     for (const [key, value] of Object.entries(input)) {
       result[key] = value;
       if (value && typeof value === 'object') {
-        Object.assign(result, value);
+        this.flattenInputInto(result, key, value);
       }
     }
     return result;
+  }
+
+  private flattenInputInto(
+    target: Record<string, unknown>,
+    prefix: string,
+    value: unknown,
+  ): void {
+    if (Array.isArray(value)) {
+      value.forEach((entry, index) => {
+        const nextPath = `${prefix}[${index}]`;
+        target[nextPath] = entry;
+        if (entry && typeof entry === 'object') {
+          this.flattenInputInto(target, nextPath, entry);
+        }
+      });
+      return;
+    }
+
+    if (!this.isRecord(value)) {
+      return;
+    }
+
+    for (const [childKey, childValue] of Object.entries(value)) {
+      const nextPath = `${prefix}.${childKey}`;
+      target[nextPath] = childValue;
+      if (childValue && typeof childValue === 'object') {
+        this.flattenInputInto(target, nextPath, childValue);
+      }
+    }
+  }
+
+  private buildExpressionPorts(
+    input: Record<string, unknown>,
+  ): Record<number, unknown> {
+    const ports: Record<number, unknown> = {};
+    const orderedInputs = Object.entries(input)
+      .filter(([key]) => key.startsWith('input-'))
+      .sort(([left], [right]) =>
+        left.localeCompare(right, undefined, { numeric: true }),
+      );
+
+    orderedInputs.forEach(([_, value], index) => {
+      ports[index + 1] = value;
+    });
+
+    return ports;
   }
 
   // ── Loop 停止条件辅助方法 ─────────────────────────────────────
@@ -5052,7 +6088,12 @@ export class NodeSchedulerService {
    */
   private resolveLoopStopCondition(nodeData: Record<string, unknown>):
     | {
-        rules: Array<{ field: string; operator: string; value: string }>;
+        rules: Array<{
+          sourcePortId: string;
+          fieldPath: string;
+          operator: string;
+          value: string;
+        }>;
         logic: 'and' | 'or';
       }
     | undefined {
@@ -5070,7 +6111,13 @@ export class NodeSchedulerService {
     const rules = rawRules
       .filter((r) => this.isRecord(r))
       .map((r) => ({
-        field: typeof r.field === 'string' ? r.field : '',
+        sourcePortId: 'input-0',
+        fieldPath:
+          typeof r.fieldPath === 'string'
+            ? r.fieldPath
+            : typeof r.field === 'string'
+              ? r.field
+              : '',
         operator: typeof r.operator === 'string' ? r.operator : 'equals',
         value: typeof r.value === 'string' ? r.value : '',
       }));
@@ -5103,7 +6150,12 @@ export class NodeSchedulerService {
    */
   private evaluateLoopStopCondition(
     conditions: {
-      rules: Array<{ field: string; operator: string; value: string }>;
+      rules: Array<{
+        sourcePortId: string;
+        fieldPath: string;
+        operator: string;
+        value: string;
+      }>;
       logic: 'and' | 'or';
     },
     currentItem: unknown,

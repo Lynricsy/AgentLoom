@@ -1,10 +1,15 @@
 /**
  * 条件节点共享类型定义
  *
- * 同时被 Condition 节点和 Loop 节点的停止条件复用。
+ * Condition 节点与 break / continue 等控制流节点共用。
  */
 
 import { createPort, type PortDefinition } from './nodeTypeRegistry'
+
+export const CONDITION_EXEC_PORT_ID = 'exec-in'
+export const CONDITION_VALUE_PORT_PREFIX = 'input-'
+export const DEFAULT_CONDITION_VALUE_PORT_ID = `${CONDITION_VALUE_PORT_PREFIX}0`
+export const CONDITION_EXPRESSION_PORT_PATTERN = /ports\[(\d+)\]/g
 
 export const CONDITION_OPERATORS = [
   'equals',
@@ -27,7 +32,8 @@ export type ConditionOperator = (typeof CONDITION_OPERATORS)[number]
 export type ConditionLogic = 'and' | 'or'
 
 export interface ConditionRule {
-  field: string
+  sourcePortId: string
+  fieldPath: string
   operator: ConditionOperator
   value: string
 }
@@ -47,6 +53,112 @@ export interface ConditionBranch {
 
 export interface ConditionNodeConfig {
   branches: ConditionBranch[]
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function buildConditionValueSchema(label: string) {
+  return {
+    kind: 'json' as const,
+    shape: 'object' as const,
+    title: label,
+    properties: {},
+    additionalProperties: true,
+  }
+}
+
+function createConditionValuePort(id: string, index: number): PortDefinition {
+  return createPort(id, `输入 ${index + 1}`, 'input', 'json', {
+    acceptsAnyDataType: true,
+    description: `第 ${index + 1} 个条件输入口，可接收任意上游端口值`,
+    schema: buildConditionValueSchema(`输入 ${index + 1}`),
+  })
+}
+
+export function getConditionValueInputPorts(
+  inputPorts: readonly PortDefinition[],
+): PortDefinition[] {
+  return inputPorts.filter((port) => port.id !== CONDITION_EXEC_PORT_ID)
+}
+
+export function buildConditionInputPorts(
+  count: number,
+  previousValuePortIds?: readonly string[],
+): PortDefinition[] {
+  const safeCount = Math.max(1, Math.min(12, Math.floor(count)))
+  const valuePorts = Array.from({ length: safeCount }, (_, index) =>
+    createConditionValuePort(
+      previousValuePortIds?.[index] ?? `${CONDITION_VALUE_PORT_PREFIX}${index}`,
+      index,
+    ),
+  )
+
+  return [
+    createPort(CONDITION_EXEC_PORT_ID, '', 'input', 'exec', {
+      description: '执行流入口，前序节点完成后触发条件判断',
+    }),
+    ...valuePorts,
+  ]
+}
+
+export function getConditionPortOrder(
+  inputPorts: readonly PortDefinition[],
+): string[] {
+  return getConditionValueInputPorts(inputPorts).map((port) => port.id)
+}
+
+function normalizeFieldPath(path: unknown): string {
+  return typeof path === 'string' ? path.trim() : ''
+}
+
+function createRuleFromUnknown(
+  raw: unknown,
+  defaultPortId: string,
+): ConditionRule {
+  if (!isRecord(raw)) {
+    return createDefaultRule(defaultPortId)
+  }
+
+  const sourcePortId =
+    typeof raw.sourcePortId === 'string' && raw.sourcePortId.trim().length > 0
+      ? (raw.sourcePortId === 'input-in' || raw.sourcePortId === 'input'
+          ? defaultPortId
+          : raw.sourcePortId.trim())
+      : defaultPortId
+  const fieldPath = normalizeFieldPath(raw.fieldPath ?? raw.path ?? raw.field)
+  const operator =
+    typeof raw.operator === 'string' && CONDITION_OPERATORS.includes(raw.operator as ConditionOperator)
+      ? (raw.operator as ConditionOperator)
+      : 'equals'
+  const value = raw.value != null ? String(raw.value) : ''
+
+  return {
+    sourcePortId,
+    fieldPath,
+    operator,
+    value,
+  }
+}
+
+function normalizeConditionGroup(
+  raw: unknown,
+  defaultPortId: string,
+): ConditionGroup {
+  if (!isRecord(raw)) {
+    return createDefaultConditionGroup(defaultPortId)
+  }
+
+  const logic: ConditionLogic = raw.logic === 'or' ? 'or' : 'and'
+  const rules = Array.isArray(raw.rules)
+    ? raw.rules.map((rule) => createRuleFromUnknown(rule, defaultPortId))
+    : [createDefaultRule(defaultPortId)]
+
+  return {
+    logic,
+    rules: rules.length > 0 ? rules : [createDefaultRule(defaultPortId)],
+  }
 }
 
 /** 运算符元数据 */
@@ -72,21 +184,33 @@ export const OPERATOR_META: Record<ConditionOperator, OperatorMeta> = {
 }
 
 /** 创建默认条件规则 */
-export function createDefaultRule(): ConditionRule {
-  return { field: '', operator: 'equals', value: '' }
+export function createDefaultRule(
+  sourcePortId = DEFAULT_CONDITION_VALUE_PORT_ID,
+): ConditionRule {
+  return {
+    sourcePortId,
+    fieldPath: '',
+    operator: 'equals',
+    value: '',
+  }
 }
 
 /** 创建默认条件组 */
-export function createDefaultConditionGroup(): ConditionGroup {
-  return { rules: [createDefaultRule()], logic: 'and' }
+export function createDefaultConditionGroup(
+  sourcePortId = DEFAULT_CONDITION_VALUE_PORT_ID,
+): ConditionGroup {
+  return { rules: [createDefaultRule(sourcePortId)], logic: 'and' }
 }
 
 /** 创建默认分支 */
-export function createDefaultBranch(index: number): ConditionBranch {
+export function createDefaultBranch(
+  index: number,
+  sourcePortId = DEFAULT_CONDITION_VALUE_PORT_ID,
+): ConditionBranch {
   return {
     id: `branch-${index}`,
     label: index === 0 ? 'IF' : 'ELSE IF',
-    conditions: createDefaultConditionGroup(),
+    conditions: createDefaultConditionGroup(sourcePortId),
     mode: 'visual',
     expression: '',
   }
@@ -99,6 +223,20 @@ export function createDefaultConditionNodeConfig(): ConditionNodeConfig {
   }
 }
 
+function describeConditionSource(rule: ConditionRule): string {
+  const match = rule.sourcePortId.match(/^input-(\d+)$/)
+  const portLabel = match ? `ports[${Number(match[1]) + 1}]` : rule.sourcePortId
+  if (!rule.fieldPath) {
+    return portLabel
+  }
+
+  if (rule.fieldPath.startsWith('[')) {
+    return `${portLabel}${rule.fieldPath}`
+  }
+
+  return `${portLabel}.${rule.fieldPath}`
+}
+
 /**
  * 格式化条件规则为摘要文本
  */
@@ -106,14 +244,16 @@ export function formatRuleSummary(rule: ConditionRule): string {
   const op = OPERATOR_META[rule.operator]
   if (!op) return ''
 
+  const source = describeConditionSource(rule)
+
   if (!op.requiresValue) {
-    return rule.field ? `${rule.field} ${op.label}` : op.label
+    return source ? `${source} ${op.label}` : op.label
   }
 
-  if (!rule.field && !rule.value) return ''
-  if (!rule.field) return `? ${op.label} ${rule.value}`
-  if (!rule.value) return `${rule.field} ${op.label} ?`
-  return `${rule.field} ${op.label} ${rule.value}`
+  if (!source && !rule.value) return ''
+  if (!source) return `? ${op.label} ${rule.value}`
+  if (!rule.value) return `${source} ${op.label} ?`
+  return `${source} ${op.label} ${rule.value}`
 }
 
 /**
@@ -142,9 +282,32 @@ export function formatBranchSummary(branch: ConditionBranch): string {
 export function migrateConditionConfig(
   config: Record<string, unknown>,
 ): ConditionNodeConfig {
+  const firstPortId =
+    Array.isArray(config.inputPorts) && config.inputPorts.length > 0
+      ? getConditionPortOrder(config.inputPorts as PortDefinition[])[0] ?? DEFAULT_CONDITION_VALUE_PORT_ID
+      : DEFAULT_CONDITION_VALUE_PORT_ID
+
   // 已经是新格式
   if (Array.isArray(config.branches)) {
-    return config as unknown as ConditionNodeConfig
+    return {
+      branches: config.branches.map((branch, index) => {
+        if (!isRecord(branch)) {
+          return createDefaultBranch(index, firstPortId)
+        }
+
+        return {
+          id:
+            typeof branch.id === 'string' && branch.id.trim().length > 0
+              ? branch.id
+              : `branch-${index}`,
+          label: index === 0 ? 'IF' : 'ELSE IF',
+          conditions: normalizeConditionGroup(branch.conditions, firstPortId),
+          mode: branch.mode === 'expression' ? 'expression' : 'visual',
+          expression:
+            typeof branch.expression === 'string' ? branch.expression : '',
+        }
+      }),
+    }
   }
 
   const mode = config.mode
@@ -156,7 +319,7 @@ export function migrateConditionConfig(
         {
           id: 'branch-0',
           label: 'IF',
-          conditions: createDefaultConditionGroup(),
+          conditions: createDefaultConditionGroup(firstPortId),
           mode: 'expression',
           expression,
         },
@@ -173,7 +336,14 @@ export function migrateConditionConfig(
           id: 'branch-0',
           label: 'IF',
           conditions: {
-            rules: [{ field, operator: 'equals', value }],
+            rules: [
+              {
+                sourcePortId: firstPortId,
+                fieldPath: field,
+                operator: 'equals',
+                value,
+              },
+            ],
             logic: 'and',
           },
           mode: 'visual',
@@ -185,6 +355,93 @@ export function migrateConditionConfig(
 
   // 完全空 config
   return createDefaultConditionNodeConfig()
+}
+
+export interface ConditionExpressionRewriteResult {
+  ok: boolean
+  expression: string
+  error?: string
+}
+
+export function rewriteConditionExpressionPorts(
+  expression: string,
+  previousPortOrder: readonly string[],
+  nextPortOrder: readonly string[],
+): ConditionExpressionRewriteResult {
+  if (!expression.trim()) {
+    return { ok: true, expression }
+  }
+
+  let error: string | undefined
+  const rewritten = expression.replace(
+    CONDITION_EXPRESSION_PORT_PATTERN,
+    (fullMatch, rawIndex) => {
+      const oldIndex = Number.parseInt(rawIndex, 10)
+      if (!Number.isFinite(oldIndex) || oldIndex <= 0) {
+        error = `无法解析表达式中的端口引用：${fullMatch}`
+        return fullMatch
+      }
+
+      const previousPortId = previousPortOrder[oldIndex - 1]
+      if (!previousPortId) {
+        error = `表达式引用了不存在的输入端口：${fullMatch}`
+        return fullMatch
+      }
+
+      const nextIndex = nextPortOrder.indexOf(previousPortId)
+      if (nextIndex === -1) {
+        error = `表达式仍然引用了已删除的输入端口：${fullMatch}`
+        return fullMatch
+      }
+
+      return `ports[${nextIndex + 1}]`
+    },
+  )
+
+  return error
+    ? { ok: false, expression, error }
+    : { ok: true, expression: rewritten }
+}
+
+export function rewriteConditionBranchExpressions(
+  branches: readonly ConditionBranch[],
+  previousPortOrder: readonly string[],
+  nextPortOrder: readonly string[],
+): { ok: true; branches: ConditionBranch[] } | { ok: false; error: string } {
+  const nextBranches: ConditionBranch[] = []
+
+  for (const branch of branches) {
+    if (branch.mode !== 'expression') {
+      nextBranches.push(branch)
+      continue
+    }
+
+    const rewritten = rewriteConditionExpressionPorts(
+      branch.expression,
+      previousPortOrder,
+      nextPortOrder,
+    )
+    if (!rewritten.ok) {
+      return { ok: false, error: rewritten.error ?? '条件表达式迁移失败' }
+    }
+
+    nextBranches.push({
+      ...branch,
+      expression: rewritten.expression,
+    })
+  }
+
+  return { ok: true, branches: nextBranches }
+}
+
+export function renumberConditionBranches(
+  branches: readonly ConditionBranch[],
+): ConditionBranch[] {
+  return branches.map((branch, index) => ({
+    ...branch,
+    id: `branch-${index}`,
+    label: index === 0 ? 'IF' : 'ELSE IF',
+  }))
 }
 
 // ── Loop 节点配置类型 ───────────────────────────────────────────
@@ -238,11 +495,7 @@ export function parseLoopNodeConfig(config: Record<string, unknown>): LoopNodeCo
         (r): r is Record<string, unknown> =>
           typeof r === 'object' && r !== null && !Array.isArray(r),
       )
-      .map((r) => ({
-        field: typeof r.field === 'string' ? r.field : '',
-        operator: (typeof r.operator === 'string' ? r.operator : 'equals') as ConditionOperator,
-        value: typeof r.value === 'string' ? r.value : '',
-      }))
+      .map((r) => createRuleFromUnknown(r, DEFAULT_CONDITION_VALUE_PORT_ID))
     stopCondition = { rules, logic }
   }
 

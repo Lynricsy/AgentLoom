@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 
 import type { McpServerConfig } from '../agent/types/agent-session.types';
+import { PRIVATE_CLOUD_NO_AUTH_PLACEHOLDER } from '../llm/private-cloud-auth.constants';
 
 export interface PiModelConfig {
   provider: string;
@@ -190,6 +191,37 @@ function resolvePiProviderCompat(
   };
 }
 
+function resolvePiProviderHeaders(
+  modelConfig: PiModelConfig,
+): Record<string, string> | undefined {
+  if (
+    modelConfig.provider === 'private_cloud' &&
+    modelConfig.authMethod &&
+    modelConfig.authMethod !== 'api_key'
+  ) {
+    return {
+      // 覆盖 OpenAI SDK 基于占位 apiKey 自动拼出的 Bearer 头。
+      Authorization: '',
+    };
+  }
+
+  return undefined;
+}
+
+function resolvePiProviderInlineApiKey(
+  modelConfig: PiModelConfig,
+): string | undefined {
+  if (
+    modelConfig.provider === 'private_cloud' &&
+    modelConfig.authMethod &&
+    modelConfig.authMethod !== 'api_key'
+  ) {
+    return PRIVATE_CLOUD_NO_AUTH_PLACEHOLDER;
+  }
+
+  return undefined;
+}
+
 @Injectable()
 export class PiConfigGeneratorService {
   /**
@@ -239,10 +271,13 @@ export class PiConfigGeneratorService {
     const baseUrl = resolvePiModelBaseUrl(modelCfg, api);
     const apiKeyEnv = resolvePiProviderApiKeyEnv(modelCfg);
     const compat = resolvePiProviderCompat(modelCfg, api);
+    const headers = resolvePiProviderHeaders(modelCfg);
+    const inlineApiKey = resolvePiProviderInlineApiKey(modelCfg);
 
     const providerEntry: Record<string, unknown> = {
       api,
-      ...(apiKeyEnv ? { apiKey: apiKeyEnv } : {}),
+      ...((apiKeyEnv ?? inlineApiKey) ? { apiKey: apiKeyEnv ?? inlineApiKey } : {}),
+      ...(headers ? { headers } : {}),
       ...(baseUrl ? { baseUrl } : {}),
       ...(compat ? { compat } : {}),
       models: [{ id: modelCfg.model, name: modelCfg.model }],

@@ -26,7 +26,27 @@ import {
 } from '../lib/connectionCompatibility'
 import { getNodePortContractSignature } from '../lib/typeEngine/serialize'
 import type { NodeType } from '../types/nodeTypeRegistry'
-import { migrateConditionConfig, buildConditionOutputPorts, parseMergeNodeConfig, buildMergeInputPorts } from '../types/condition.types'
+import {
+  buildConditionInputPorts,
+  buildConditionOutputPorts,
+  getConditionValueInputPorts,
+  migrateConditionConfig,
+  parseMergeNodeConfig,
+  buildMergeInputPorts,
+} from '../types/condition.types'
+import {
+  buildIterationInputPorts,
+  buildIterationStartOutputPorts,
+  buildLoopInputPorts,
+  buildLoopStartOutputPorts,
+  buildCompoundOutputPorts,
+  COMPOUND_CONTAINER_DEFAULT_SIZE,
+  COMPOUND_START_NODE_DEFAULT_POSITION,
+  createDefaultIterationNodeConfig,
+  createDefaultIterationStartNodeConfig,
+  createDefaultLoopCompoundNodeConfig,
+  createDefaultLoopStartNodeConfig,
+} from '../types/controlFlow.types'
 
 enableMapSet()
 
@@ -115,6 +135,56 @@ interface CanvasActions {
   }
 }
 
+function collectPortIds(ports: readonly { id: string }[]): Set<string> {
+  return new Set(ports.map((port) => port.id))
+}
+
+function collectDescendantNodeIds(
+  nodes: readonly CanvasNode[],
+  rootNodeIds: readonly string[],
+): Set<string> {
+  const collected = new Set(rootNodeIds)
+  let changed = true
+
+  while (changed) {
+    changed = false
+    for (const node of nodes) {
+      if (node.parentId && collected.has(node.parentId) && !collected.has(node.id)) {
+        collected.add(node.id)
+        changed = true
+      }
+    }
+  }
+
+  return collected
+}
+
+function syncCompoundParentOutputPorts(
+  nodes: CanvasNode[],
+  parentNodeId: string,
+): void {
+  const parentNode = nodes.find((node) => node.id === parentNodeId)
+  if (!parentNode) {
+    return
+  }
+
+  if (parentNode.data.nodeType !== 'loop' && parentNode.data.nodeType !== 'iteration') {
+    return
+  }
+
+  const outputKeys = nodes
+    .filter((node) => node.parentId === parentNodeId && node.data.nodeType === 'result')
+    .map((node) => {
+      const outputKey = node.data.config?.outputKey
+      return typeof outputKey === 'string' && outputKey.trim().length > 0
+        ? outputKey.trim()
+        : 'result'
+    })
+    .filter((value, index, items) => items.indexOf(value) === index)
+
+  parentNode.data.outputPorts = buildCompoundOutputPorts(outputKeys)
+}
+
 function createInitialState(): CanvasState {
   return {
     nodes: [],
@@ -146,6 +216,14 @@ function createEdgeId(): string {
   }
 
   return `edge-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+}
+
+function createNodeId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+
+  return `node-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
 }
 
 function matchesSearchQuery(node: CanvasNode, lowerQuery: string): boolean {
@@ -338,17 +416,70 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
           addNode: (input) =>
             set((state) => {
               const config = getNodeTypeConfig(input.nodeType)
+              const nextResultOutputKey =
+                input.parentId && input.nodeType === 'result'
+                  ? (() => {
+                      const siblingKeys = state.nodes
+                        .filter((node) => node.parentId === input.parentId && node.data.nodeType === 'result')
+                        .map((node) => {
+                          const outputKey = node.data.config?.outputKey
+                          return typeof outputKey === 'string' && outputKey.trim().length > 0
+                            ? outputKey.trim()
+                            : 'result'
+                        })
+                      if (!siblingKeys.includes('result')) {
+                        return 'result'
+                      }
+
+                      let suffix = 2
+                      while (siblingKeys.includes(`result_${suffix}`)) {
+                        suffix += 1
+                      }
+                      return `result_${suffix}`
+                    })()
+                  : null
+              const nextConfig = (
+                input.config
+                ?? (input.nodeType === 'iteration'
+                  ? createDefaultIterationNodeConfig()
+                  : input.nodeType === 'loop'
+                    ? createDefaultLoopCompoundNodeConfig()
+                    : input.nodeType === 'result' && nextResultOutputKey
+                      ? { outputKey: nextResultOutputKey }
+                    : {})
+              ) as Record<string, unknown>
+              const nextInputPorts =
+                input.inputPorts
+                ?? (input.nodeType === 'iteration'
+                  ? buildIterationInputPorts()
+                  : input.nodeType === 'loop'
+                    ? buildLoopInputPorts()
+                    : config.inputPorts)
               const node: CanvasNode = {
                 id: input.id,
                 type: input.category,
                 position: input.position,
+                ...(input.parentId ? { parentId: input.parentId } : {}),
+                ...(input.extent ? { extent: input.extent } : {}),
+                ...(input.expandParent !== undefined ? { expandParent: input.expandParent } : {}),
+                ...(input.hidden !== undefined ? { hidden: input.hidden } : {}),
+                ...(input.style
+                  ? { style: input.style }
+                  : input.nodeType === 'loop' || input.nodeType === 'iteration'
+                    ? {
+                        style: {
+                          width: COMPOUND_CONTAINER_DEFAULT_SIZE.width,
+                          height: COMPOUND_CONTAINER_DEFAULT_SIZE.height,
+                        },
+                      }
+                    : {}),
                 data: {
                   label: input.label ?? input.blockName ?? config.label,
                   nodeType: input.nodeType,
                   category: input.category,
                   description: input.description ?? config.description,
-                  config: input.config ?? {},
-                  inputPorts: clonePortDefinitions(input.inputPorts ?? config.inputPorts),
+                  config: nextConfig,
+                  inputPorts: clonePortDefinitions(nextInputPorts),
                   outputPorts: clonePortDefinitions(input.outputPorts ?? config.outputPorts),
                   ...(input.mcpToolDefinitionId ? { mcpToolDefinitionId: input.mcpToolDefinitionId } : {}),
                   ...(isAgentNodeType(input.nodeType) ? createDefaultAgentNodeData() : {}),
@@ -359,22 +490,94 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
                 },
               }
               state.nodes.push(node)
+
+              if (input.nodeType === 'loop' || input.nodeType === 'iteration') {
+                const extraInputIds = node.data.inputPorts
+                  .filter((port) => port.id.startsWith('input-'))
+                  .map((port) => port.id)
+                const startNodeType =
+                  input.nodeType === 'loop' ? 'loop-start' : 'iteration-start'
+                const startNodeOutputPorts =
+                  input.nodeType === 'loop'
+                    ? buildLoopStartOutputPorts(
+                        extraInputIds,
+                        createDefaultLoopStartNodeConfig(),
+                      )
+                    : buildIterationStartOutputPorts(
+                        extraInputIds,
+                        createDefaultIterationStartNodeConfig(),
+                      )
+                const startNodeConfigMeta = getNodeTypeConfig(startNodeType)
+
+                state.nodes.push({
+                  id: createNodeId(),
+                  type: 'control',
+                  parentId: input.id,
+                  extent: 'parent',
+                  position: {
+                    x: COMPOUND_START_NODE_DEFAULT_POSITION.x,
+                    y: COMPOUND_START_NODE_DEFAULT_POSITION.y,
+                  },
+                  data: {
+                    label: startNodeConfigMeta.label,
+                    nodeType: startNodeType,
+                    category: 'control',
+                    description: startNodeConfigMeta.description,
+                    config:
+                      input.nodeType === 'loop'
+                        ? ({
+                            ...createDefaultLoopStartNodeConfig(),
+                          } as Record<string, unknown>)
+                        : ({
+                            ...createDefaultIterationStartNodeConfig(),
+                          } as Record<string, unknown>),
+                    inputPorts: clonePortDefinitions(startNodeConfigMeta.inputPorts),
+                    outputPorts: clonePortDefinitions(startNodeOutputPorts),
+                  },
+                })
+              }
+
+              if (input.parentId && input.nodeType === 'result') {
+                syncCompoundParentOutputPorts(state.nodes, input.parentId)
+              }
+
               state.isDirty = true
             }),
 
           deleteSelectedNode: () =>
             set((state) => {
               if (!state.selectedNodeId) return
-              const nodeId = state.selectedNodeId
+              const selectedNode = state.nodes.find((node) => node.id === state.selectedNodeId)
+              if (
+                selectedNode?.data.nodeType === 'loop-start' ||
+                selectedNode?.data.nodeType === 'iteration-start'
+              ) {
+                return
+              }
+
+              const nodeIdsToDelete = collectDescendantNodeIds(
+                state.nodes,
+                [state.selectedNodeId],
+              )
               const nextSelectedNodeIds = new Set(state.selectedNodeIds)
-              nextSelectedNodeIds.delete(nodeId)
+              for (const nodeId of nodeIdsToDelete) {
+                nextSelectedNodeIds.delete(nodeId)
+              }
               const removedEdgeIds = new Set(
-                state.edges.filter((e) => e.source === nodeId || e.target === nodeId).map((e) => e.id)
+                state.edges
+                  .filter((edge) => nodeIdsToDelete.has(edge.source) || nodeIdsToDelete.has(edge.target))
+                  .map((edge) => edge.id),
               )
-              state.nodes = state.nodes.filter((n) => n.id !== nodeId)
+              const affectedParentIds = state.nodes
+                .filter((node) => node.parentId && nodeIdsToDelete.has(node.id))
+                .map((node) => node.parentId as string)
+              state.nodes = state.nodes.filter((n) => !nodeIdsToDelete.has(n.id))
               state.edges = state.edges.filter(
-                (e) => e.source !== nodeId && e.target !== nodeId
+                (e) => !nodeIdsToDelete.has(e.source) && !nodeIdsToDelete.has(e.target)
               )
+              for (const parentId of affectedParentIds) {
+                syncCompoundParentOutputPorts(state.nodes, parentId)
+              }
               state.selectedNodeIds = nextSelectedNodeIds
               state.selectedNodeId = Array.from(nextSelectedNodeIds).at(-1) ?? null
               if (state.selectedEdgeId && removedEdgeIds.has(state.selectedEdgeId)) {
@@ -383,7 +586,9 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
               if (state.mappingPanelEdgeId && removedEdgeIds.has(state.mappingPanelEdgeId)) {
                 state.mappingPanelEdgeId = null
               }
-              delete state.nodeValidationErrors[nodeId]
+              for (const nodeId of nodeIdsToDelete) {
+                delete state.nodeValidationErrors[nodeId]
+              }
               state.isDirty = true
             }),
 
@@ -423,17 +628,39 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
             set((state) => {
               if (state.selectedNodeIds.size === 0) return
 
-              const nodeIdsToDelete = new Set(state.selectedNodeIds)
+              const protectedNodeIds = new Set(
+                state.nodes
+                  .filter(
+                    (node) =>
+                      state.selectedNodeIds.has(node.id) &&
+                      (node.data.nodeType === 'loop-start' || node.data.nodeType === 'iteration-start'),
+                  )
+                  .map((node) => node.id),
+              )
+              const requestedNodeIds = Array.from(state.selectedNodeIds).filter(
+                (nodeId) => !protectedNodeIds.has(nodeId),
+              )
+              const nodeIdsToDelete = collectDescendantNodeIds(
+                state.nodes,
+                requestedNodeIds,
+              )
+              if (nodeIdsToDelete.size === 0) return
               const removedEdgeIds = new Set(
                 state.edges
                   .filter((edge) => nodeIdsToDelete.has(edge.source) || nodeIdsToDelete.has(edge.target))
                   .map((edge) => edge.id),
               )
+              const affectedParentIds = state.nodes
+                .filter((node) => node.parentId && nodeIdsToDelete.has(node.id))
+                .map((node) => node.parentId as string)
 
               state.nodes = state.nodes.filter((node) => !nodeIdsToDelete.has(node.id))
               state.edges = state.edges.filter(
                 (edge) => !nodeIdsToDelete.has(edge.source) && !nodeIdsToDelete.has(edge.target),
               )
+              for (const parentId of affectedParentIds) {
+                syncCompoundParentOutputPorts(state.nodes, parentId)
+              }
 
               for (const nodeId of nodeIdsToDelete) {
                 delete state.nodeValidationErrors[nodeId]
@@ -597,6 +824,7 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
             invalidateEdgeCompatibilityRefreshVersion()
 
             set((state) => {
+              const rawNodesById = new Map(nodes.map((node) => [node.id, node]))
               state.nodes = nodes.map((n) => {
                 const typeConfig = getNodeTypeConfigOrNull(n.data.nodeType)
                 const agentNodeDefaults = isAgentNodeType(n.data.nodeType)
@@ -619,6 +847,14 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
                 // 条件节点: 从 config.branches 推导输出端口（兼容旧格式迁移）
                 if (n.data.nodeType === 'condition') {
                   const condConfig = migrateConditionConfig(n.data.config ?? {})
+                  const currentValuePorts = getConditionValueInputPorts(inputPorts)
+                  const normalizedPortIds = currentValuePorts.map((port, index) =>
+                    port.id.startsWith('input-') ? port.id : `input-${index}`,
+                  )
+                  inputPorts = buildConditionInputPorts(
+                    Math.max(1, normalizedPortIds.length),
+                    normalizedPortIds.length > 0 ? normalizedPortIds : undefined,
+                  )
                   outputPorts = buildConditionOutputPorts(condConfig.branches)
                 }
 
@@ -626,6 +862,35 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
                 if (n.data.nodeType === 'merge') {
                   const mergeConfig = parseMergeNodeConfig(n.data.config ?? {})
                   inputPorts = buildMergeInputPorts(mergeConfig.inputCount)
+                }
+
+                if (
+                  (n.data.nodeType === 'loop-start' || n.data.nodeType === 'iteration-start')
+                  && n.parentId
+                ) {
+                  const parentNode = rawNodesById.get(n.parentId)
+                  const parentInputPorts = Array.isArray(parentNode?.data?.inputPorts)
+                    ? parentNode.data.inputPorts
+                    : []
+                  const extraInputIds = parentInputPorts
+                    .filter((port) => port.id.startsWith('input-'))
+                    .map((port) => port.id)
+
+                  outputPorts = n.data.nodeType === 'loop-start'
+                    ? buildLoopStartOutputPorts(
+                        extraInputIds,
+                        {
+                          ...createDefaultLoopStartNodeConfig(),
+                          ...(n.data.config ?? {}),
+                        } as ReturnType<typeof createDefaultLoopStartNodeConfig>,
+                      )
+                    : buildIterationStartOutputPorts(
+                        extraInputIds,
+                        {
+                          ...createDefaultIterationStartNodeConfig(),
+                          ...(n.data.config ?? {}),
+                        } as ReturnType<typeof createDefaultIterationStartNodeConfig>,
+                      )
                 }
 
                 return {
@@ -767,6 +1032,8 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
                 const node = state.nodes.find((n) => n.id === nodeId)
                 if (!node) return
 
+                const previousInputPortIds = collectPortIds(node.data.inputPorts)
+                const previousOutputPortIds = collectPortIds(node.data.outputPorts)
                 const previousSignature = getNodePortContractSignature({
                   inputPorts: node.data.inputPorts,
                   outputPorts: node.data.outputPorts,
@@ -775,6 +1042,8 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
                   ...node.data,
                   ...patch,
                 }
+                const nextInputPortIds = collectPortIds(nextNodeData.inputPorts)
+                const nextOutputPortIds = collectPortIds(nextNodeData.outputPorts)
                 const nextSignature = getNodePortContractSignature({
                   inputPorts: nextNodeData.inputPorts,
                   outputPorts: nextNodeData.outputPorts,
@@ -782,6 +1051,36 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
 
                 Object.assign(node.data, patch)
                 state.isDirty = true
+
+                if (previousSignature !== nextSignature) {
+                  const removedInputHandles = [...previousInputPortIds].filter(
+                    (portId) => !nextInputPortIds.has(portId),
+                  )
+                  const removedOutputHandles = [...previousOutputPortIds].filter(
+                    (portId) => !nextOutputPortIds.has(portId),
+                  )
+
+                  if (removedInputHandles.length > 0 || removedOutputHandles.length > 0) {
+                    const removedEdgeIds = new Set(
+                      state.edges
+                        .filter((edge) =>
+                          (edge.target === nodeId && removedInputHandles.includes(edge.targetHandle ?? ''))
+                          || (edge.source === nodeId && removedOutputHandles.includes(edge.sourceHandle ?? '')),
+                        )
+                        .map((edge) => edge.id),
+                    )
+
+                    if (removedEdgeIds.size > 0) {
+                      state.edges = state.edges.filter((edge) => !removedEdgeIds.has(edge.id))
+                      if (state.selectedEdgeId && removedEdgeIds.has(state.selectedEdgeId)) {
+                        state.selectedEdgeId = null
+                      }
+                      if (state.mappingPanelEdgeId && removedEdgeIds.has(state.mappingPanelEdgeId)) {
+                        state.mappingPanelEdgeId = null
+                      }
+                    }
+                  }
+                }
 
                 if (previousSignature !== nextSignature) {
                   shouldRevalidate = true

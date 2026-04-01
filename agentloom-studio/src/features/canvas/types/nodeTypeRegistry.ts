@@ -24,6 +24,13 @@ export const NODE_TYPES = [
   'json-output',
   'condition',
   'loop',
+  'iteration',
+  'loop-start',
+  'iteration-start',
+  'loop-state',
+  'result',
+  'break',
+  'continue',
   'reusable-block',
   'smart-routing',
   'plugin',
@@ -35,7 +42,17 @@ export const NODE_TYPES = [
   'merge',
 ] as const
 
-export const DYNAMIC_ONLY_NODE_TYPES: ReadonlySet<NodeType> = new Set(['reusable-block', 'plugin', 'condition', 'merge'])
+export const DYNAMIC_ONLY_NODE_TYPES: ReadonlySet<NodeType> = new Set([
+  'reusable-block',
+  'plugin',
+  'merge',
+  'loop-start',
+  'iteration-start',
+  'loop-state',
+  'result',
+  'break',
+  'continue',
+])
 
 export type NodeType = (typeof NODE_TYPES)[number]
 
@@ -56,6 +73,7 @@ export interface PortDefinition {
   label: string
   direction: PortDirection
   dataType: PortDataType
+  acceptsAnyDataType?: boolean
   description?: string
   required: boolean
   multiple: boolean
@@ -102,6 +120,7 @@ export const PORT_DATA_TYPE_META: Record<PortDataType, PortDataTypeMeta> = {
   model: { label: 'Model', colorToken: 'var(--color-type-model)', shape: 'circle' },
   text: { label: 'Text', colorToken: 'var(--color-type-text)', shape: 'circle' },
   json: { label: 'JSON', colorToken: 'var(--color-type-json)', shape: 'square' },
+  array: { label: 'Array', colorToken: 'var(--color-type-json)', shape: 'square' },
   image: { label: 'Image', colorToken: 'var(--color-type-image)', shape: 'diamond' },
   audio: { label: 'Audio', colorToken: 'var(--color-type-audio)', shape: 'capsule' },
   tool: { label: 'Tool', colorToken: 'var(--color-type-tool)', shape: 'hexagon' },
@@ -150,10 +169,21 @@ function createJsonSchema(title: string, description?: string): ObjectTypeSchema
   }
 }
 
+function createArraySchema(title: string, description?: string): TypeSchema {
+  return {
+    kind: 'json',
+    shape: 'array',
+    title,
+    description,
+    items: createJsonSchema(`${title} Item`),
+  }
+}
+
 export interface CreatePortOptions {
   required?: boolean
   multiple?: boolean
   maxConnections?: number | null
+  acceptsAnyDataType?: boolean
   description?: string
   schema?: TypeSchema
 }
@@ -168,13 +198,16 @@ export function createPort(
   const schema = options?.schema
     ?? (dataType === 'json'
       ? createJsonSchema(label)
-      : createScalarSchema(dataType, label))
+      : dataType === 'array'
+        ? createArraySchema(label)
+        : createScalarSchema(dataType, label))
 
   return {
     id,
     label,
     direction,
     dataType,
+    acceptsAnyDataType: options?.acceptsAnyDataType,
     description: options?.description,
     required: options?.required ?? false,
     multiple: options?.multiple ?? false,
@@ -539,8 +572,16 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
       createPort('exec-in', '', 'input', 'exec', {
         description: '执行流入口，前序节点完成后触发条件判断',
       }),
-      createPort('input-in', '判断值', 'input', 'json', {
-        description: '传入用于条件判断的数据，将根据分支规则决定走哪条路径',
+      createPort('input-0', '输入 1', 'input', 'json', {
+        acceptsAnyDataType: true,
+        description: '第 1 个条件输入口，可接收任意上游端口值并在规则中引用',
+        schema: {
+          kind: 'json',
+          shape: 'object',
+          title: '输入 1',
+          properties: {},
+          additionalProperties: true,
+        },
       }),
     ],
     outputPorts: [
@@ -558,38 +599,271 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     category: 'control',
     label: 'Loop',
     icon: 'Repeat',
-    description: '循环控制节点',
+    description: '循环 compound 容器',
     colorToken: CATEGORY_COLOR_TOKENS.control,
     inputPorts: [
       createPort('exec-in', '', 'input', 'exec', {
         description: '执行流入口，前序节点完成后开始循环',
       }),
-      createPort('items-in', '列表', 'input', 'json', {
-        description: '传入待遍历的数组数据，循环将逐个处理其中的每个元素',
+      createPort('state-in', '初始状态', 'input', 'json', {
+        acceptsAnyDataType: true,
+        description: '循环的初始状态输入，未连线时回退到默认 state',
+        schema: {
+          kind: 'json',
+          shape: 'object',
+          title: '初始状态',
+          properties: {},
+          additionalProperties: true,
+        },
       }),
     ],
     outputPorts: [
-      createPort('item-out', '当前项', 'output', 'json', {
-        description: '每次迭代输出当前正在处理的单个元素，连接到循环体节点',
-      }),
-      createPort('done-out', '完成', 'output', 'json', {
-        description: '全部元素遍历结束后输出汇总结果，连接到后续处理节点',
+      createPort('exec-out', '', 'output', 'exec', {
+        description: '循环容器执行完成后触发下游节点',
       }),
     ],
     configSchema: {
       type: 'object',
       properties: {
-        maxIterations: createConfigField('number', '最大迭代次数', { default: 10 }),
-        stopConditionMode: createConfigField('string', '停止条件', {
-          enum: ['none', 'condition', 'expression'],
-          default: 'none',
+        defaultState: createConfigField('object', '默认初始状态'),
+        outputMode: createConfigField('string', '输出模式', {
+          enum: ['none', 'last', 'collect-array'],
+          default: 'last',
         }),
-        stopCondition: createConfigField('object', '停止条件配置'),
-        stopExpression: createConfigField('string', '停止表达式'),
-        errorStrategy: createConfigField('string', '错误处理', {
-          enum: ['stop', 'skip', 'collect'],
-          default: 'stop',
+        isCollapsed: createConfigField('boolean', '收起状态', {
+          default: false,
         }),
+      },
+      required: [],
+    },
+  },
+  iteration: {
+    type: 'iteration',
+    category: 'control',
+    label: 'Iteration',
+    icon: 'Repeat2',
+    description: '数组迭代 compound 容器',
+    colorToken: CATEGORY_COLOR_TOKENS.control,
+    inputPorts: [
+      createPort('exec-in', '', 'input', 'exec', {
+        description: '执行流��口，前序节点完成后开始迭代',
+      }),
+      createPort('items-in', '数组', 'input', 'array', {
+        description: '待迭代的数组输入',
+      }),
+    ],
+    outputPorts: [
+      createPort('exec-out', '', 'output', 'exec', {
+        description: '迭代容器执行完成后触发下游节点',
+      }),
+    ],
+    configSchema: {
+      type: 'object',
+      properties: {
+        outputMode: createConfigField('string', '输出模式', {
+          enum: ['none', 'collect-array', 'last'],
+          default: 'collect-array',
+        }),
+        isCollapsed: createConfigField('boolean', '收起状态', {
+          default: false,
+        }),
+      },
+      required: [],
+    },
+  },
+  'loop-start': {
+    type: 'loop-start',
+    category: 'control',
+    label: 'Loop Start',
+    icon: 'Play',
+    description: '循环子图入口节点',
+    colorToken: CATEGORY_COLOR_TOKENS.control,
+    inputPorts: [],
+    outputPorts: [
+      createPort('exec-out', '', 'output', 'exec', {
+        description: '每轮开始时触发内部子图',
+      }),
+      createPort('round', '轮次', 'output', 'json', {
+        acceptsAnyDataType: true,
+        description: '当前循环轮次（从 0 开始）',
+      }),
+      createPort('state', '当前状态', 'output', 'json', {
+        acceptsAnyDataType: true,
+        description: '当前循环轮次可见的 state',
+        schema: {
+          kind: 'json',
+          shape: 'object',
+          title: '当前状态',
+          properties: {},
+          additionalProperties: true,
+        },
+      }),
+    ],
+    configSchema: {
+      type: 'object',
+      properties: {
+        exposePreviousResult: createConfigField('boolean', '暴露上一轮结果', {
+          default: false,
+        }),
+        exposeIsFirst: createConfigField('boolean', '暴露首轮标记', {
+          default: false,
+        }),
+      },
+      required: [],
+    },
+  },
+  'iteration-start': {
+    type: 'iteration-start',
+    category: 'control',
+    label: 'Iteration Start',
+    icon: 'Play',
+    description: '迭代子图入口节点',
+    colorToken: CATEGORY_COLOR_TOKENS.control,
+    inputPorts: [],
+    outputPorts: [
+      createPort('exec-out', '', 'output', 'exec', {
+        description: '每个数组项开始时触发内部子图',
+      }),
+      createPort('item', '当前项', 'output', 'json', {
+        acceptsAnyDataType: true,
+        description: '当前迭代项',
+        schema: {
+          kind: 'json',
+          shape: 'object',
+          title: '当前项',
+          properties: {},
+          additionalProperties: true,
+        },
+      }),
+      createPort('index', '索引', 'output', 'json', {
+        acceptsAnyDataType: true,
+        description: '当前项索引（从 0 开始）',
+      }),
+    ],
+    configSchema: {
+      type: 'object',
+      properties: {
+        exposeTotal: createConfigField('boolean', '暴露总数', {
+          default: false,
+        }),
+        exposeIsFirst: createConfigField('boolean', '暴露首项标记', {
+          default: false,
+        }),
+        exposeIsLast: createConfigField('boolean', '暴露末项标记', {
+          default: false,
+        }),
+      },
+      required: [],
+    },
+  },
+  'loop-state': {
+    type: 'loop-state',
+    category: 'control',
+    label: 'Loop State',
+    icon: 'RefreshCcw',
+    description: '提交下一轮循环状态',
+    colorToken: CATEGORY_COLOR_TOKENS.control,
+    inputPorts: [
+      createPort('exec-in', '', 'input', 'exec', {
+        description: '执行流进入后提交下一轮状态',
+      }),
+      createPort('state-in', '下一轮状态', 'input', 'json', {
+        acceptsAnyDataType: true,
+        description: '提交给下一轮循环的状态值',
+        schema: {
+          kind: 'json',
+          shape: 'object',
+          title: '下一轮状态',
+          properties: {},
+          additionalProperties: true,
+        },
+      }),
+    ],
+    outputPorts: [
+      createPort('exec-out', '', 'output', 'exec', {
+        description: '状态提交后继续内部执行链路',
+      }),
+    ],
+    configSchema: EMPTY_CONFIG_SCHEMA,
+  },
+  result: {
+    type: 'result',
+    category: 'control',
+    label: 'Result',
+    icon: 'ArrowRightFromLine',
+    description: '向父 compound 显式提交结果',
+    colorToken: CATEGORY_COLOR_TOKENS.control,
+    inputPorts: [
+      createPort('exec-in', '', 'input', 'exec', {
+        description: '执行流进入后提交结果',
+      }),
+      createPort('value-in', '结果值', 'input', 'json', {
+        acceptsAnyDataType: true,
+        description: '要提交给父容器的结果值',
+        schema: {
+          kind: 'json',
+          shape: 'object',
+          title: '结果值',
+          properties: {},
+          additionalProperties: true,
+        },
+      }),
+    ],
+    outputPorts: [],
+    configSchema: {
+      type: 'object',
+      properties: {
+        outputKey: createConfigField('string', '输出键', { default: 'result' }),
+      },
+      required: ['outputKey'],
+    },
+  },
+  break: {
+    type: 'break',
+    category: 'control',
+    label: 'Break',
+    icon: 'CircleOff',
+    description: '结束整个 compound',
+    colorToken: CATEGORY_COLOR_TOKENS.control,
+    inputPorts: [
+      createPort('exec-in', '', 'input', 'exec', {
+        description: '执行流进入后结束整个容器',
+      }),
+    ],
+    outputPorts: [],
+    configSchema: {
+      type: 'object',
+      properties: {
+        mode: createConfigField('string', '触发模式', {
+          enum: ['always', 'expression'],
+          default: 'always',
+        }),
+        expression: createConfigField('string', '条件表达式'),
+      },
+      required: [],
+    },
+  },
+  continue: {
+    type: 'continue',
+    category: 'control',
+    label: 'Continue',
+    icon: 'FastForward',
+    description: '跳过当前轮次并进入下一轮',
+    colorToken: CATEGORY_COLOR_TOKENS.control,
+    inputPorts: [
+      createPort('exec-in', '', 'input', 'exec', {
+        description: '执行流进入后跳过当前轮次',
+      }),
+    ],
+    outputPorts: [],
+    configSchema: {
+      type: 'object',
+      properties: {
+        mode: createConfigField('string', '触发模式', {
+          enum: ['always', 'expression'],
+          default: 'always',
+        }),
+        expression: createConfigField('string', '条件表达式'),
       },
       required: [],
     },
@@ -919,6 +1193,7 @@ function cloneTypeSchema(schema: TypeSchema): TypeSchema {
     }
     case 'model':
     case 'text':
+    case 'array':
     case 'image':
     case 'audio':
     case 'tool':

@@ -1,11 +1,12 @@
 /**
- * 可视化条件构建器 — 共享组件
+ * 可视化条件构建器
  *
- * 被 ConditionConfigPanel（Condition 节点）和未来的 LoopConfigPanel（Loop 停止条件）复用。
- * 渲染条件行: [变量输入] [运算符下拉] [值输入]，同一组内支持 AND/OR 切换。
+ * - 条件左值基于输入端口引用，而不是变量名
+ * - 结构化输入允许补充字段路径
+ * - 表达式模式统一使用 `ports[n]`
  */
 import { memo, useCallback, type ChangeEvent } from 'react'
-import { Plus, Trash2, Code, Eye } from 'lucide-react'
+import { Code, Eye, Plus, Trash2 } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
 import {
   CONDITION_OPERATORS,
@@ -17,16 +18,30 @@ import {
   type ConditionRule,
 } from '../../types/condition.types'
 
-// ── 单条件规则行 ─────────────────────────────────────────────
+export interface ConditionInputBinding {
+  portId: string
+  label: string
+  portRef: string
+  supportsFieldPath: boolean
+  dataTypeLabel?: string
+}
 
 interface ConditionRuleRowProps {
   rule: ConditionRule
   index: number
   totalRules: number
   logic: ConditionLogic
+  availablePorts: ConditionInputBinding[]
   onUpdate: (index: number, patch: Partial<ConditionRule>) => void
   onRemove: (index: number) => void
   onLogicToggle: () => void
+}
+
+function findSelectedPort(
+  availablePorts: ConditionInputBinding[],
+  portId: string,
+): ConditionInputBinding | null {
+  return availablePorts.find((port) => port.portId === portId) ?? null
 }
 
 const ConditionRuleRow = memo(function ConditionRuleRow({
@@ -34,29 +49,46 @@ const ConditionRuleRow = memo(function ConditionRuleRow({
   index,
   totalRules,
   logic,
+  availablePorts,
   onUpdate,
   onRemove,
   onLogicToggle,
 }: ConditionRuleRowProps) {
   const operatorMeta = OPERATOR_META[rule.operator]
+  const selectedPort =
+    findSelectedPort(availablePorts, rule.sourcePortId)
+    ?? availablePorts[0]
+    ?? null
+  const supportsFieldPath = selectedPort?.supportsFieldPath ?? false
 
-  const handleFieldChange = useCallback(
-    (e: ChangeEvent<HTMLInputElement>) => {
-      onUpdate(index, { field: e.target.value })
+  const handlePortChange = useCallback(
+    (event: ChangeEvent<HTMLSelectElement>) => {
+      const nextPort = findSelectedPort(availablePorts, event.target.value)
+      onUpdate(index, {
+        sourcePortId: event.target.value,
+        fieldPath: nextPort?.supportsFieldPath ? rule.fieldPath : '',
+      })
+    },
+    [availablePorts, index, onUpdate, rule.fieldPath],
+  )
+
+  const handleFieldPathChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      onUpdate(index, { fieldPath: event.target.value })
     },
     [index, onUpdate],
   )
 
   const handleOperatorChange = useCallback(
-    (e: ChangeEvent<HTMLSelectElement>) => {
-      onUpdate(index, { operator: e.target.value as ConditionOperator })
+    (event: ChangeEvent<HTMLSelectElement>) => {
+      onUpdate(index, { operator: event.target.value as ConditionOperator })
     },
     [index, onUpdate],
   )
 
   const handleValueChange = useCallback(
-    (e: ChangeEvent<HTMLInputElement>) => {
-      onUpdate(index, { value: e.target.value })
+    (event: ChangeEvent<HTMLInputElement>) => {
+      onUpdate(index, { value: event.target.value })
     },
     [index, onUpdate],
   )
@@ -67,7 +99,6 @@ const ConditionRuleRow = memo(function ConditionRuleRow({
 
   return (
     <div className="space-y-1.5">
-      {/* AND/OR 连接符（第二行起显示） */}
       {index > 0 && (
         <div className="flex items-center gap-2 px-1">
           <div className="h-px flex-1 bg-border/50" />
@@ -87,42 +118,54 @@ const ConditionRuleRow = memo(function ConditionRuleRow({
         </div>
       )}
 
-      {/* 条件行 */}
-      <div className="flex items-start gap-1.5">
-        {/* 变量 */}
+      <div className="grid gap-1.5 md:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)_auto_minmax(0,1fr)_auto]">
+        <select
+          value={selectedPort?.portId ?? rule.sourcePortId}
+          onChange={handlePortChange}
+          className="h-8 min-w-0 rounded-md border border-border bg-background px-2 text-xs"
+        >
+          {availablePorts.map((port) => (
+            <option key={port.portId} value={port.portId}>
+              {port.label} · {port.portRef}
+            </option>
+          ))}
+        </select>
+
         <input
           type="text"
-          value={rule.field}
-          onChange={handleFieldChange}
-          placeholder="变量名"
-          className="h-8 min-w-0 flex-1 rounded-md border border-border bg-background px-2 text-xs"
+          value={supportsFieldPath ? rule.fieldPath : ''}
+          onChange={handleFieldPathChange}
+          disabled={!supportsFieldPath}
+          placeholder={supportsFieldPath ? '字段路径（可选）' : '该输入只支持整值比较'}
+          className="h-8 min-w-0 rounded-md border border-border bg-background px-2 text-xs disabled:cursor-not-allowed disabled:opacity-50"
         />
 
-        {/* 运算符 */}
         <select
           value={rule.operator}
           onChange={handleOperatorChange}
           className="h-8 shrink-0 rounded-md border border-border bg-background px-1.5 text-xs"
         >
-          {CONDITION_OPERATORS.map((op) => (
-            <option key={op} value={op}>
-              {OPERATOR_META[op].label}
+          {CONDITION_OPERATORS.map((operator) => (
+            <option key={operator} value={operator}>
+              {OPERATOR_META[operator].label}
             </option>
           ))}
         </select>
 
-        {/* 值（仅当运算符需要值时显示） */}
-        {operatorMeta.requiresValue && (
+        {operatorMeta.requiresValue ? (
           <input
             type="text"
             value={rule.value}
             onChange={handleValueChange}
             placeholder="值"
-            className="h-8 min-w-0 flex-1 rounded-md border border-border bg-background px-2 text-xs"
+            className="h-8 min-w-0 rounded-md border border-border bg-background px-2 text-xs"
           />
+        ) : (
+          <div className="h-8 rounded-md border border-dashed border-border/50 bg-muted/10 px-2 text-xs leading-8 text-muted-foreground">
+            当前运算符不需要右值
+          </div>
         )}
 
-        {/* 删除按钮（至少保留一行） */}
         <button
           type="button"
           onClick={handleRemove}
@@ -133,34 +176,33 @@ const ConditionRuleRow = memo(function ConditionRuleRow({
           <Trash2 className="h-3.5 w-3.5" />
         </button>
       </div>
+
+      {selectedPort && (
+        <p className="px-1 text-[10px] text-muted-foreground">
+          左值来源：{selectedPort.portRef}
+          {selectedPort.dataTypeLabel ? ` · 当前输入类型 ${selectedPort.dataTypeLabel}` : ''}
+        </p>
+      )}
     </div>
   )
 })
 
-// ── 条件组构建器 ─────────────────────────────────────────────
-
 export interface ConditionBuilderProps {
-  /** 条件组（rules + logic） */
   conditions: ConditionGroup
-  /** 条件变更回调 */
   onChange: (conditions: ConditionGroup) => void
-  /** 是否处于表达式模式（隐藏可视化构建器） */
+  availablePorts: ConditionInputBinding[]
   isExpressionMode?: boolean
-  /** 表达式内容 */
   expression?: string
-  /** 表达式变更回调 */
   onExpressionChange?: (expression: string) => void
-  /** 模式切换回调 */
   onModeToggle?: () => void
-  /** 当前模式 */
   mode?: 'visual' | 'expression'
-  /** 是否显示模式切换按钮 */
   showModeToggle?: boolean
 }
 
 export const ConditionBuilder = memo(function ConditionBuilder({
   conditions,
   onChange,
+  availablePorts,
   isExpressionMode,
   expression,
   onExpressionChange,
@@ -168,10 +210,12 @@ export const ConditionBuilder = memo(function ConditionBuilder({
   mode = 'visual',
   showModeToggle = true,
 }: ConditionBuilderProps) {
+  const fallbackPortId = availablePorts[0]?.portId
+
   const handleRuleUpdate = useCallback(
     (index: number, patch: Partial<ConditionRule>) => {
-      const nextRules = conditions.rules.map((rule, i) =>
-        i === index ? { ...rule, ...patch } : rule,
+      const nextRules = conditions.rules.map((rule, ruleIndex) =>
+        ruleIndex === index ? { ...rule, ...patch } : rule,
       )
       onChange({ ...conditions, rules: nextRules })
     },
@@ -180,8 +224,11 @@ export const ConditionBuilder = memo(function ConditionBuilder({
 
   const handleRuleRemove = useCallback(
     (index: number) => {
-      if (conditions.rules.length <= 1) return
-      const nextRules = conditions.rules.filter((_, i) => i !== index)
+      if (conditions.rules.length <= 1) {
+        return
+      }
+
+      const nextRules = conditions.rules.filter((_, ruleIndex) => ruleIndex !== index)
       onChange({ ...conditions, rules: nextRules })
     },
     [conditions, onChange],
@@ -197,20 +244,19 @@ export const ConditionBuilder = memo(function ConditionBuilder({
   const handleAddRule = useCallback(() => {
     onChange({
       ...conditions,
-      rules: [...conditions.rules, createDefaultRule()],
+      rules: [...conditions.rules, createDefaultRule(fallbackPortId)],
     })
-  }, [conditions, onChange])
+  }, [conditions, fallbackPortId, onChange])
 
-  const handleExpressionChange = useCallback(
-    (e: ChangeEvent<HTMLTextAreaElement>) => {
-      onExpressionChange?.(e.target.value)
+  const handleExpressionInputChange = useCallback(
+    (event: ChangeEvent<HTMLTextAreaElement>) => {
+      onExpressionChange?.(event.target.value)
     },
     [onExpressionChange],
   )
 
   return (
     <div className="space-y-2">
-      {/* 模式切换 */}
       {showModeToggle && onModeToggle && (
         <div className="flex justify-end">
           <button
@@ -233,32 +279,31 @@ export const ConditionBuilder = memo(function ConditionBuilder({
         </div>
       )}
 
-      {/* 表达式模式 */}
       {(isExpressionMode || mode === 'expression') && (
         <div className="space-y-1.5">
           <textarea
             value={expression ?? ''}
-            onChange={handleExpressionChange}
+            onChange={handleExpressionInputChange}
             rows={3}
-            placeholder={'例: input.score > 80\n例: input.status === "active" && input.verified'}
+            placeholder={'例: ports[1] === "ready"\n例: ports[2].score > 80 && ports[3]'}
             className="w-full rounded-md border border-border bg-background px-3 py-2 font-mono text-xs leading-relaxed"
           />
           <p className="text-[10px] text-muted-foreground">
-            JavaScript 表达式，输入数据以 input 变量传入，返回 truthy 值表示匹配
+            表达式左值统一使用 `ports[n]`。`ports[1]` 表示第 1 个输入端口，结构化输入可继续写字段路径。
           </p>
         </div>
       )}
 
-      {/* 可视化模式 */}
       {mode === 'visual' && !isExpressionMode && (
         <div className="space-y-1.5">
           {conditions.rules.map((rule, index) => (
             <ConditionRuleRow
-              key={index}
+              key={`${rule.sourcePortId}-${index}`}
               rule={rule}
               index={index}
               totalRules={conditions.rules.length}
               logic={conditions.logic}
+              availablePorts={availablePorts}
               onUpdate={handleRuleUpdate}
               onRemove={handleRuleRemove}
               onLogicToggle={handleLogicToggle}

@@ -2,6 +2,7 @@ export const PORT_DATA_TYPES = [
   'model',
   'text',
   'json',
+  'array',
   'image',
   'audio',
   'tool',

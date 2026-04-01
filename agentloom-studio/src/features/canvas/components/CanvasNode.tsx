@@ -6,20 +6,26 @@ import {
   useRef,
   useState,
   type CSSProperties,
+  type MouseEvent,
 } from 'react'
 import * as Tooltip from '@radix-ui/react-tooltip'
 import {
   AlertTriangle,
+  ArrowRightFromLine,
   Bot,
   BookOpenText,
   Brain,
   BrainCircuit,
   Braces,
+  CircleOff,
   Clock,
   Code,
   Container,
   Database,
+  ChevronDown,
+  ChevronRight,
   FileText,
+  FastForward,
   Filter,
   GitBranch,
   GitFork,
@@ -31,7 +37,9 @@ import {
   Plug,
   Puzzle,
   Radio,
+  RefreshCcw,
   Repeat,
+  Repeat2,
   Webhook,
   type LucideIcon,
 } from 'lucide-react'
@@ -70,6 +78,8 @@ import { MemoryNodeBody } from './nodes/MemoryNodeBody'
 import { WorkspaceNodeBody } from './nodes/WorkspaceNodeBody'
 import { InputPreprocessorNodeBody } from './nodes/InputPreprocessorNodeBody'
 import { ConditionNodeBody } from './nodes/ConditionNodeBody'
+import { ControlFlowSpecialNodeBody } from './nodes/ControlFlowSpecialNodeBody'
+import { IterationNodeBody } from './nodes/IterationNodeBody'
 import { LoopNodeBody } from './nodes/LoopNodeBody'
 import { MergeNodeBody } from './nodes/MergeNodeBody'
 import { HttpToolNodeBody } from './nodes/HttpToolNodeBody'
@@ -80,6 +90,10 @@ import { WebhookTriggerNodeBody } from './nodes/WebhookTriggerNodeBody'
 import { ApiEventTriggerNodeBody } from './nodes/ApiEventTriggerNodeBody'
 import { SkillBody } from '../../agent-canvas/components/nodes/SkillBody'
 import { SubAgentNodeBody } from '../../agent-canvas/components/nodes/SubAgentNodeBody'
+import {
+  isCompoundContainerNodeType,
+  isCompoundSpecialNodeType,
+} from '../types/controlFlow.types'
 
 const NODE_TYPE_ICONS: Record<string, LucideIcon> = {
   Bot,
@@ -99,12 +113,17 @@ const NODE_TYPE_ICONS: Record<string, LucideIcon> = {
   GitFork,
   GitMerge,
   Repeat,
+  Repeat2,
   Package,
   Puzzle,
   Radio,
   BrainCircuit,
   Webhook,
   Filter,
+  RefreshCcw,
+  ArrowRightFromLine,
+  CircleOff,
+  FastForward,
 }
 
 type NodeShellStatus =
@@ -277,6 +296,9 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
   )
   const inputPorts = Array.isArray(data.inputPorts) ? data.inputPorts : config.inputPorts
   const outputPorts = Array.isArray(data.outputPorts) ? data.outputPorts : config.outputPorts
+  const isCompoundContainer = isCompoundContainerNodeType(data.nodeType)
+  const isCompoundCollapsed =
+    isCompoundContainer && data.config?.isCollapsed === true
   const subtitle = data.nodeType === 'llm-model'
     ? llmConfig
       ? `${providerInfo?.name ?? llmConfig.provider} · ${llmConfig.name}`
@@ -325,7 +347,7 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
     )
   }, [canvasEdges, data.nodeType, id])
 
-  const { setHoveredNodeId } = useCanvasActions()
+  const { setHoveredNodeId, updateNodeData } = useCanvasActions()
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const isSearchActive = useCanvasStore((s) => s.isSearchOpen && s.searchQuery.length > 0)
@@ -345,6 +367,25 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
     }
     setHoveredNodeId(null)
   }, [setHoveredNodeId])
+
+  const onToggleCompoundCollapse = useCallback(
+    (event: MouseEvent<HTMLButtonElement>) => {
+      event.preventDefault()
+      event.stopPropagation()
+
+      if (!isCompoundContainer) {
+        return
+      }
+
+      updateNodeData(id, {
+        config: {
+          ...data.config,
+          isCollapsed: !isCompoundCollapsed,
+        },
+      })
+    },
+    [data.config, id, isCompoundCollapsed, isCompoundContainer, updateNodeData],
+  )
 
   useEffect(() => {
     return () => {
@@ -378,7 +419,15 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
       data-selected={selected ? 'true' : 'false'}
       className={cn(
         'canvas-node-shell relative rounded-lg border bg-card text-card-foreground transition-[width,box-shadow,border-color,transform] duration-200',
-        lod === 'full' && 'min-w-[180px] max-w-[260px]',
+        lod === 'full' && !isCompoundContainer && 'min-w-[180px] max-w-[260px]',
+        lod === 'full' &&
+          isCompoundContainer &&
+          !isCompoundCollapsed &&
+          'min-h-[360px] min-w-[540px] max-w-none overflow-hidden',
+        lod === 'full' &&
+          isCompoundContainer &&
+          isCompoundCollapsed &&
+          'min-h-[180px] min-w-[320px] max-w-[360px] overflow-hidden',
         lod === 'compact' && 'min-w-[156px] max-w-[180px]',
         lod === 'minimal' && 'h-[80px] min-w-[80px] max-w-[80px]',
         selected && 'ring-0',
@@ -405,6 +454,16 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
       ) : null}
 
       {!isMinimal ? <NodeExecutionOverlay nodeId={id} /> : null}
+
+      {isCompoundContainer && lod === 'full' ? (
+        <div
+          aria-hidden="true"
+          className={cn(
+            'pointer-events-none absolute inset-x-3 bottom-3 rounded-2xl border border-dashed border-border/50 bg-[radial-gradient(circle_at_top,rgba(148,163,184,0.10),transparent_58%)]',
+            isCompoundCollapsed ? 'top-[116px]' : 'top-[124px]',
+          )}
+        />
+      ) : null}
 
       {hasValidationError && lod !== 'minimal' ? (
         <div
@@ -486,6 +545,21 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
               <h3 className="truncate text-sm font-medium leading-tight">{title}</h3>
               {data.nodeType === 'llm-model' && llmState === 'warning' ? (
                 <AlertTriangle className="h-4 w-4 shrink-0 text-warning" />
+              ) : null}
+              {isCompoundContainer ? (
+                <button
+                  type="button"
+                  onClick={onToggleCompoundCollapse}
+                  className="ml-auto inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-border/60 bg-background/70 text-muted-foreground transition hover:border-primary/40 hover:text-foreground"
+                  aria-label={isCompoundCollapsed ? '展开容器' : '收起容器'}
+                  data-testid={`compound-toggle-${id}`}
+                >
+                  {isCompoundCollapsed ? (
+                    <ChevronRight className="h-3.5 w-3.5" />
+                  ) : (
+                    <ChevronDown className="h-3.5 w-3.5" />
+                  )}
+                </button>
               ) : null}
             </div>
             <p className="truncate text-xs text-muted-foreground">{subtitle}</p>
@@ -591,6 +665,10 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
             <ConditionNodeBody config={data.config} />
           ) : data.nodeType === 'loop' ? (
             <LoopNodeBody config={data.config} />
+          ) : data.nodeType === 'iteration' ? (
+            <IterationNodeBody config={data.config} />
+          ) : isCompoundSpecialNodeType(data.nodeType) ? (
+            <ControlFlowSpecialNodeBody nodeType={data.nodeType} config={data.config} />
           ) : data.nodeType === 'merge' ? (
             <MergeNodeBody config={data.config} />
           ) : data.nodeType === 'http-tool' ? (

@@ -29,8 +29,12 @@ import { MemoryConfigPanel } from './MemoryConfigPanel'
 import { WorkspaceConfigPanel } from './WorkspaceConfigPanel'
 import { InputPreprocessorConfigPanel } from './InputPreprocessorConfigPanel'
 import { ConditionConfigPanel } from './ConditionConfigPanel'
+import { CompoundStartConfigPanel } from './CompoundStartConfigPanel'
+import { IterationConfigPanel } from './IterationConfigPanel'
 import { LoopConfigPanel } from './LoopConfigPanel'
+import { JumpConfigPanel } from './JumpConfigPanel'
 import { MergeConfigPanel } from './MergeConfigPanel'
+import { ResultConfigPanel } from './ResultConfigPanel'
 import { ScheduleTriggerConfigPanel } from './ScheduleTriggerConfigPanel'
 import { WebhookTriggerConfigPanel } from './WebhookTriggerConfigPanel'
 import { ApiEventTriggerConfigPanel } from './ApiEventTriggerConfigPanel'
@@ -178,6 +182,8 @@ export const CUSTOM_PANEL_REGISTRY: Partial<Record<string, CustomPanelEntry>> = 
   'condition': {
     render: ({ node, onConfigChange }) => (
       <ConditionConfigPanel
+        nodeId={node.id}
+        inputPorts={node.data.inputPorts}
         config={node.data.config}
         onApply={onConfigChange}
       />
@@ -186,6 +192,70 @@ export const CUSTOM_PANEL_REGISTRY: Partial<Record<string, CustomPanelEntry>> = 
   'loop': {
     render: ({ node, onConfigChange }) => (
       <LoopConfigPanel
+        nodeId={node.id}
+        inputPorts={node.data.inputPorts}
+        config={node.data.config}
+        onApply={onConfigChange}
+      />
+    ),
+  },
+  'iteration': {
+    render: ({ node, onConfigChange }) => (
+      <IterationConfigPanel
+        nodeId={node.id}
+        inputPorts={node.data.inputPorts}
+        config={node.data.config}
+        onApply={onConfigChange}
+      />
+    ),
+  },
+  'loop-start': {
+    render: ({ node, onConfigChange }) => (
+      <CompoundStartConfigPanel
+        nodeId={node.id}
+        nodeType="loop-start"
+        parentId={node.parentId}
+        config={node.data.config}
+        onApply={onConfigChange}
+      />
+    ),
+  },
+  'iteration-start': {
+    render: ({ node, onConfigChange }) => (
+      <CompoundStartConfigPanel
+        nodeId={node.id}
+        nodeType="iteration-start"
+        parentId={node.parentId}
+        config={node.data.config}
+        onApply={onConfigChange}
+      />
+    ),
+  },
+  'result': {
+    render: ({ node, onConfigChange }) => (
+      <ResultConfigPanel
+        nodeId={node.id}
+        parentId={node.parentId}
+        config={node.data.config}
+        onApply={onConfigChange}
+      />
+    ),
+  },
+  'break': {
+    render: ({ node, onConfigChange }) => (
+      <JumpConfigPanel
+        nodeType="break"
+        inputPorts={node.data.inputPorts}
+        config={node.data.config}
+        onApply={onConfigChange}
+      />
+    ),
+  },
+  'continue': {
+    render: ({ node, onConfigChange }) => (
+      <JumpConfigPanel
+        nodeType="continue"
+        inputPorts={node.data.inputPorts}
         config={node.data.config}
         onApply={onConfigChange}
       />

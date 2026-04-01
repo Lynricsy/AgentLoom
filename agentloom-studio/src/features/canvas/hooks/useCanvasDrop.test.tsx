@@ -6,6 +6,12 @@ import { useCanvasStore } from '../stores/canvasStore'
 import { DRAG_TRANSFER_TYPE } from '../components/NodePalette'
 import { useCanvasDrop } from './useCanvasDrop'
 
+vi.mock('@/shared/ui/toast', () => ({
+  useToast: () => ({
+    notify: vi.fn(),
+  }),
+}))
+
 const mockPaletteNode: PaletteNodeItem = {
   type: 'chat-agent',
   label: 'LLM Agent',

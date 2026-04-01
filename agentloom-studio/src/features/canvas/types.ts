@@ -223,6 +223,11 @@ export interface AddNodeInput {
   nodeType: NodeType
   category: NodeCategory
   position: XYPosition
+  parentId?: string
+  extent?: 'parent'
+  expandParent?: boolean
+  hidden?: boolean
+  style?: Record<string, unknown>
   label?: string
   description?: string
   config?: Record<string, unknown>
@@ -242,6 +247,8 @@ export interface PaletteNodeItem {
   icon: string
   description: string
   searchText?: string
+  compoundOnly?: boolean
+  compoundParentId?: string
   mcpToolDefinitionId?: string
   pluginId?: string
   inputPorts?: PortDefinition[]

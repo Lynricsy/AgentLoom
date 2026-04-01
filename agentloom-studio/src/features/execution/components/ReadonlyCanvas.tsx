@@ -1,4 +1,4 @@
-import { memo, useMemo } from 'react'
+import { memo, useMemo, type CSSProperties } from 'react'
 import {
   Background,
   BackgroundVariant,
@@ -28,6 +28,8 @@ interface ExecutionCanvasNodeData extends Record<string, unknown> {
   nodeType: string
   status: ExecutionStepStatus
   isSelected: boolean
+  isCompoundContainer: boolean
+  summary: string | null
 }
 
 type ExecutionCanvasNode = Node<ExecutionCanvasNodeData, 'execution-node'>
@@ -44,25 +46,92 @@ function isPosition(value: unknown): value is { x: number; y: number } {
   return isRecord(value) && typeof value.x === 'number' && typeof value.y === 'number'
 }
 
+function isCompoundContainerNodeType(nodeType: string): boolean {
+  return nodeType === 'loop' || nodeType === 'iteration'
+}
+
+function readConfig(value: unknown): Record<string, unknown> {
+  return isRecord(value) ? value : {}
+}
+
+function resolveCompoundOutputMode(
+  config: Record<string, unknown>,
+  fallback: 'none' | 'collect-array' | 'last',
+): 'none' | 'collect-array' | 'last' {
+  return config.outputMode === 'none'
+    || config.outputMode === 'collect-array'
+    || config.outputMode === 'last'
+    ? config.outputMode
+    : fallback
+}
+
+function readNodeSummary(
+  nodeType: string,
+  config: Record<string, unknown>,
+): string | null {
+  switch (nodeType) {
+    case 'loop':
+      return `循环容器 · 输出 ${resolveCompoundOutputMode(config, 'last')}`
+    case 'iteration':
+      return `迭代容器 · 输出 ${resolveCompoundOutputMode(config, 'collect-array')}`
+    case 'loop-start':
+      return '输出 round / state'
+    case 'iteration-start':
+      return '输出 item / index'
+    case 'loop-state':
+      return '写回下一轮 state'
+    case 'result': {
+      const outputKey =
+        typeof config.outputKey === 'string' && config.outputKey.trim().length > 0
+          ? config.outputKey.trim()
+          : 'result'
+      return `输出键 ${outputKey}`
+    }
+    case 'break':
+      return config.mode === 'expression' ? '命中表达式后结束整个容器' : '立即结束整个容器'
+    case 'continue':
+      return config.mode === 'expression' ? '命中表达式后进入下一轮' : '立即进入下一轮'
+    default:
+      return null
+  }
+}
+
 function ReadonlyCanvasNodeCard({ data }: NodeProps<ExecutionCanvasNode>) {
   const statusMeta = stepStatusMeta[data.status]
 
   return (
     <article
       className={cn(
-        'min-w-[180px] rounded-2xl border px-3 py-2 text-left shadow-md transition',
+        'relative h-full w-full rounded-[26px] border px-3 py-2 text-left shadow-md transition',
+        data.isCompoundContainer
+          ? 'overflow-hidden border-dashed bg-[linear-gradient(180deg,rgba(15,23,42,0.72),rgba(15,23,42,0.46))]'
+          : 'min-w-[180px]',
         statusMeta.nodeClassName,
         data.status === 'running' && 'animate-pulse',
         data.isSelected &&
           'ring-2 ring-primary/50 ring-offset-2 ring-offset-background',
       )}
     >
-      <div className="flex items-center justify-between gap-3">
+      {data.isCompoundContainer ? (
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-x-3 bottom-3 top-[72px] rounded-2xl border border-dashed border-border/40 bg-[radial-gradient(circle_at_top,rgba(148,163,184,0.12),transparent_60%)]"
+        />
+      ) : null}
+
+      <div className="relative z-[1] flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold text-foreground">{data.label}</p>
-          <p className="truncate text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-            {data.nodeType}
-          </p>
+          <div className="mt-1 flex flex-wrap items-center gap-2">
+            <p className="truncate text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+              {data.nodeType}
+            </p>
+            {data.isCompoundContainer ? (
+              <span className="inline-flex items-center rounded-full border border-border/60 bg-background/40 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+                compound
+              </span>
+            ) : null}
+          </div>
         </div>
         <span
           className={cn(
@@ -75,15 +144,21 @@ function ReadonlyCanvasNodeCard({ data }: NodeProps<ExecutionCanvasNode>) {
         </span>
       </div>
 
+      {data.summary ? (
+        <p className="relative z-[1] mt-3 text-[11px] leading-4 text-muted-foreground">
+          {data.summary}
+        </p>
+      ) : null}
+
       <Handle
         type="target"
-        position={Position.Top}
+        position={Position.Left}
         isConnectable={false}
         className="!opacity-0"
       />
       <Handle
         type="source"
-        position={Position.Bottom}
+        position={Position.Right}
         isConnectable={false}
         className="!opacity-0"
       />
@@ -119,24 +194,37 @@ export const ReadonlyCanvas = memo(function ReadonlyCanvas({
 
       const rawData = isRecord(rawNode.data) ? rawNode.data : {}
       const label = typeof rawData.label === 'string' ? rawData.label : rawNode.id
-      const nodeType = typeof rawData.nodeType === 'string'
-        ? rawData.nodeType
-        : typeof rawNode.type === 'string'
-          ? rawNode.type
-          : 'node'
+      const nodeType =
+        typeof rawData.nodeType === 'string'
+          ? rawData.nodeType
+          : typeof rawNode.type === 'string'
+            ? rawNode.type
+            : 'node'
       const position = isPosition(rawNode.position) ? rawNode.position : { x: 0, y: 0 }
+      const rawStyle = isRecord(rawNode.style)
+        ? (rawNode.style as CSSProperties)
+        : undefined
+      const isCompoundContainer = isCompoundContainerNodeType(nodeType)
 
       return [{
         id: rawNode.id,
         position,
         type: 'execution-node',
+        parentId: typeof rawNode.parentId === 'string' ? rawNode.parentId : undefined,
+        extent: rawNode.extent === 'parent' ? 'parent' : undefined,
+        hidden: rawNode.hidden === true,
+        draggable: false,
+        sourcePosition: Position.Right,
+        targetPosition: Position.Left,
+        ...(rawStyle ? { style: rawStyle } : {}),
         data: {
           label,
           nodeType,
           status: stepStatusByNodeId.get(rawNode.id) ?? 'pending',
           isSelected: rawNode.id === selectedNodeId,
+          isCompoundContainer,
+          summary: readNodeSummary(nodeType, readConfig(rawData.config)),
         },
-        draggable: false,
       }]
     })
   }, [graph.nodes, selectedNodeId, stepStatusByNodeId])
@@ -160,15 +248,17 @@ export const ReadonlyCanvas = memo(function ReadonlyCanvas({
         id: rawEdge.id,
         source: rawEdge.source,
         target: rawEdge.target,
-        // 执行调试画布使用只读卡片节点，不暴露编排画布里的 handle。
-        // 保留 handle id 会让 React Flow 判定边无法挂接，从而持续刷 warning。
+        ...(rawEdge.hidden === true ? { hidden: true } : {}),
         animated: stepStatusByNodeId.get(rawEdge.target) === 'running',
       }]
     })
   }, [graph.edges, stepStatusByNodeId])
 
   return (
-    <div className="h-full min-h-[320px] overflow-hidden rounded-3xl border border-border/70 bg-background/80" data-testid="readonly-canvas">
+    <div
+      className="h-full min-h-[320px] overflow-hidden rounded-3xl border border-border/70 bg-background/80"
+      data-testid="readonly-canvas"
+    >
       <ReactFlow<ExecutionCanvasNode, ExecutionCanvasEdge>
         nodes={nodes}
         edges={edges}
@@ -186,7 +276,10 @@ export const ReadonlyCanvas = memo(function ReadonlyCanvas({
         colorMode={resolvedTheme}
       >
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} />
-        <Controls showInteractive={false} className="!border-border !bg-surface-elevated !shadow-lg" />
+        <Controls
+          showInteractive={false}
+          className="!border-border !bg-surface-elevated !shadow-lg"
+        />
       </ReactFlow>
     </div>
   )

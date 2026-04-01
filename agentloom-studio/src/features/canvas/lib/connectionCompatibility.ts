@@ -30,6 +30,13 @@ export interface ConnectionLike {
   targetHandle?: string | null
 }
 
+function shouldBypassStrictTypeCheck(
+  sourcePort: PortDefinition,
+  targetPort: PortDefinition,
+): boolean {
+  return sourcePort.acceptsAnyDataType === true || targetPort.acceptsAnyDataType === true
+}
+
 function buildIncompatibleEdgeData(reasonKey: string): CanvasEdgeData {
   return {
     ...createDefaultEdgeData(),
@@ -225,6 +232,25 @@ function runSynchronousGuards(
     return { rejected: createIncompatibleResult('节点不能连接到自身') }
   }
 
+  const sourceParentId = source.node.parentId ?? null
+  const targetParentId = target.node.parentId ?? null
+
+  if (sourceParentId !== targetParentId) {
+    return {
+      rejected: createIncompatibleResult(
+        '当前版本不支持跨 compound 边界直接连线，请通过父容器输入/输出端口传值',
+      ),
+    }
+  }
+
+  if (sourceParentId && (source.node.id === sourceParentId || target.node.id === sourceParentId)) {
+    return {
+      rejected: createIncompatibleResult(
+        '当前版本不支持父容器与内部子节点直接连线，请改用 start / result / loop-state 等专用节点',
+      ),
+    }
+  }
+
   if (target.port.maxConnections !== null) {
     const existingCount = edges.filter(
       (edge) =>
@@ -254,6 +280,12 @@ export function getCachedConnectionEvaluation(
   }
 
   const { source, target } = guarded.resolved
+  if (shouldBypassStrictTypeCheck(source.port, target.port)) {
+    return {
+      compatible: true,
+      edgeData: createDefaultEdgeData(),
+    }
+  }
   const cachedResult = getTypeEngineService().getCachedCompatibility(source.port, target.port)
   if (!cachedResult) {
     return null
@@ -277,6 +309,12 @@ export async function evaluateConnection(
   }
 
   const { source, target } = guarded.resolved
+  if (shouldBypassStrictTypeCheck(source.port, target.port)) {
+    return {
+      compatible: true,
+      edgeData: createDefaultEdgeData(),
+    }
+  }
   const sourceSignature = getPortContractSignature(source.port)
   const targetSignature = getPortContractSignature(target.port)
   const result = await getTypeEngineService().evaluateCompatibility(source.port, target.port, {
@@ -298,6 +336,8 @@ export async function evaluateConnection(
 const SYNC_TRANSFORM_PAIRS: ReadonlySet<string> = new Set([
   'text->json',
   'json->text',
+  'json->array',
+  'array->json',
   'skill->text',
 ])
 

@@ -38,6 +38,7 @@ vi.mock('../../stores/canvasStore', () => ({
     updateNodeData: mocks.updateNodeData,
     setNodeValidationError: mocks.setNodeValidationError,
   }),
+  useCanvasNodes: () => (mocks.node ? [mocks.node] : []),
 }))
 
 vi.mock('@/features/execution/stores/executionStore', () => ({
@@ -275,11 +276,11 @@ describe('NodeConfigPanel', () => {
   })
 
   it('falls back to the schema-driven dynamic form when no custom panel is registered', () => {
-    mocks.node = createNode('loop')
+    mocks.node = createNode('chat-agent')
 
     render(<NodeConfigPanel />)
 
-    expect(screen.getByText('Dynamic Form: maxIterations')).toBeInTheDocument()
+    expect(screen.getByText('Dynamic Form: systemPrompt')).toBeInTheDocument()
   })
 
   it('shows the empty state when a node has no additional config schema', () => {
@@ -312,7 +313,7 @@ describe('NodeConfigPanel', () => {
 
   it('forwards validation state changes from dynamic config forms to the canvas store', async () => {
     const user = userEvent.setup()
-    mocks.node = createNode('loop')
+    mocks.node = createNode('chat-agent')
 
     render(<NodeConfigPanel />)
     await user.click(screen.getByRole('button', { name: '触发动态表单校验' }))
