@@ -1,9 +1,9 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../api/device_api.dart';
+import '../platform/push_platform_support.dart';
 import '../services/notification_service.dart';
 
 enum PushNotificationStatus {
@@ -35,9 +35,14 @@ class PushNotificationState {
 }
 
 final notificationServiceProvider = Provider<NotificationService>((ref) {
-  final service = NotificationService();
+  final platformSupport = ref.read(pushPlatformSupportProvider);
+  final service = NotificationService(platformSupport: platformSupport);
   ref.onDispose(service.dispose);
   return service;
+});
+
+final pushPlatformSupportProvider = Provider<PushPlatformSupport>((ref) {
+  return const PushPlatformSupport();
 });
 
 final pushNotificationProvider =
@@ -76,9 +81,17 @@ class PushNotificationNotifier extends AsyncNotifier<PushNotificationState> {
   Future<void> _doInitialize() async {
     final service = ref.read(notificationServiceProvider);
     final deviceApi = ref.read(deviceApiProvider);
+    final platformSupport = ref.read(pushPlatformSupportProvider);
 
     await _tokenRefreshSub?.cancel();
     _tokenRefreshSub = null;
+
+    if (!platformSupport.isSupported) {
+      if (ref.mounted) {
+        state = const AsyncData(PushNotificationState());
+      }
+      return;
+    }
 
     try {
       await service.initialize();
@@ -99,8 +112,10 @@ class PushNotificationNotifier extends AsyncNotifier<PushNotificationState> {
 
       final token = await service.getToken();
       if (token != null && token != service.lastRegisteredToken) {
-        final platform = Platform.isIOS ? 'ios' : 'android';
-        await deviceApi.registerDevice(deviceToken: token, platform: platform);
+        await deviceApi.registerDevice(
+          deviceToken: token,
+          platform: platformSupport.registrationPlatform,
+        );
         service.lastRegisteredToken = token;
       }
 
@@ -110,10 +125,9 @@ class PushNotificationNotifier extends AsyncNotifier<PushNotificationState> {
         }
 
         try {
-          final platform = Platform.isIOS ? 'ios' : 'android';
           await deviceApi.registerDevice(
             deviceToken: newToken,
-            platform: platform,
+            platform: platformSupport.registrationPlatform,
           );
           service.lastRegisteredToken = newToken;
         } catch (e) {

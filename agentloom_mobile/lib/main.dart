@@ -7,6 +7,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 
 import 'app/app.dart';
 import 'config/env.dart';
+import 'features/notifications/platform/push_platform_support.dart';
 import 'shared/providers/env_provider.dart';
 import 'shared/providers/secure_storage_provider.dart';
 
@@ -36,12 +37,17 @@ void main() async {
   final resolvedEnvConfig = savedStudioBaseUrl == null
       ? bootstrapEnvConfig
       : bootstrapEnvConfig.copyWith(studioBaseUrl: savedStudioBaseUrl);
+  const pushPlatformSupport = PushPlatformSupport();
 
-  try {
-    await Firebase.initializeApp();
-    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-  } catch (_) {
-    // Firebase 未配置时允许应用继续启动，推送功能保持禁用。
+  if (pushPlatformSupport.isSupported) {
+    try {
+      await Firebase.initializeApp();
+      FirebaseMessaging.onBackgroundMessage(
+        _firebaseMessagingBackgroundHandler,
+      );
+    } catch (_) {
+      // Firebase 未配置时允许应用继续启动，推送功能保持禁用。
+    }
   }
 
   runApp(

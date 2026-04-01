@@ -189,6 +189,46 @@ void main() {
       },
     );
 
+    testWidgets('shows persisted incomplete turn error for assistant message', (
+      tester,
+    ) async {
+      when(
+        () => mockApi.getMessages(
+          any(),
+          page: any(named: 'page'),
+          pageSize: any(named: 'pageSize'),
+        ),
+      ).thenAnswer(
+        (_) async => const PaginatedResponse(
+          data: [
+            ConversationMessageDto(
+              id: 'assistant-err',
+              conversationId: 'conv-001',
+              role: MessageRole.assistant,
+              content: '先整理仓库结构，再回看记忆模块。',
+              metadata: {
+                'incomplete': true,
+                'errorMessage': '上游模型流中断（MODEL_PROVIDER_ERROR: terminated）',
+                'segments': [
+                  {'type': 'text', 'content': '先整理仓库结构，再回看记忆模块。'},
+                ],
+              },
+              createdAt: '2026-04-01T05:00:00.000Z',
+            ),
+          ],
+          meta: PaginationMeta(total: 1, page: 1, pageSize: 50, totalPages: 1),
+        ),
+      );
+
+      await tester.pumpWidget(createTestWidget());
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text('本轮在输出过程中中断：上游模型流中断（MODEL_PROVIDER_ERROR: terminated）'),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('shows back button in app bar', (tester) async {
       when(
         () => mockApi.getMessages(

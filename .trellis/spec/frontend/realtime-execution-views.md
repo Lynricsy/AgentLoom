@@ -40,6 +40,9 @@
 - standalone Agent 的 `loadHistory()` 不能无条件整包替换当前 `messages`。
   - 如果 history 响应只是当前消息流的 canonical 前缀，必须保留尚未落库的 live tail。
   - 否则上一轮 `done` 触发的迟到 history 响应，会把下一轮已在 streaming 的 user / assistant 消息覆盖掉。
+- standalone Agent 的 failed realtime status 必须同时兼容 `errorMessage` 与 `error`。
+  - 连接错误与执行错误必须分开展示，不能把 runtime failed 误报成“连接失败”。
+  - 如果历史 assistant message `metadata.incomplete === true` 且存在 `metadata.errorMessage`，消息列表必须直接渲染该 turn 的中断原因。
 
 ### 4. Validation & Error Matrix
 
@@ -94,6 +97,11 @@ const segments = checkpointData.segments?.length
 
 ### 1. Scope / Trigger
 - 触发条件：修改以下任一文件时，必须回看本节
+  - `agentloom_mobile/lib/main.dart`
+  - `agentloom_mobile/lib/config/theme.dart`
+  - `agentloom_mobile/lib/features/notifications/platform/push_platform_support.dart`
+  - `agentloom_mobile/lib/features/notifications/providers/push_notification_provider.dart`
+  - `agentloom_mobile/lib/features/notifications/services/notification_service.dart`
   - `agentloom_mobile/lib/features/execution/providers/execution_monitor_provider.dart`
   - `agentloom_mobile/lib/features/execution/services/execution_socket_service.dart`
   - `agentloom_mobile/lib/features/execution/screens/execution_monitor_screen.dart`
@@ -101,9 +109,14 @@ const segments = checkpointData.segments?.length
   - `agentloom_mobile/lib/features/execution/lib/workflow_agent_runtime.dart`
   - `agentloom_mobile/lib/features/workflows/api/workflow_api.dart`
   - `agentloom_mobile/lib/routes/app_router.dart`
-- 风险点：只靠 WebSocket 不够，终态事件或 ACK 偶发丢失时，Flutter Web 会长期停在 `running`；workspace 面板如果不跟随 `fileChanges` 刷新，也会看起来像“实时没实现”。
+- 风险点：只靠 WebSocket 不够，终态事件或 ACK 偶发丢失时，Flutter Web 会长期停在 `running`；workspace 面板如果不跟随 `fileChanges` 刷新，也会看起来像“实时没实现”；如果 Flutter Web 在 `runApp()` 前强依赖 Firebase Web SDK 或远端 CJK 字体，真实 QA 会直接落成白屏或中文方块。
 
 ### 2. Signatures
+- `PushPlatformSupport.isSupported`
+- `PushPlatformSupport.registrationPlatform`
+- `NotificationService.initialize()`
+- `NotificationService.requestPermission()`
+- `NotificationService.getToken()`
 - `executionMonitorProvider(executionId)`
 - `extractMonitorSnapshot(state)`
 - `extractMonitorRuntime(state)`
@@ -117,6 +130,15 @@ const segments = checkpointData.segments?.length
   - `/executions/:executionId/steps/:stepId/agent`
 
 ### 3. Contracts
+- Flutter Web 启动链不能依赖 Firebase Push 可用。
+  - `main.dart` 只允许在原生移动端执行 `Firebase.initializeApp()` 与 `FirebaseMessaging.onBackgroundMessage(...)`。
+  - Web 平台上的 push 初始化必须显式 no-op，不能在 build/login 恢复路径里再次触发 Firebase Web SDK 动态加载。
+- `PushPlatformSupport` 是 Flutter push 能力判断的单一事实源。
+  - `isSupported == false` 时，`push_notification_provider` 不得继续调用 `NotificationService.initialize()/requestPermission()/getToken()`。
+  - `NotificationService` 自身也必须在 unsupported 平台上返回可恢复的空行为，而不是向上抛运行时异常。
+- Flutter Web 文本渲染不能依赖远端 Noto 字体。
+  - `AppTheme.textTheme` 必须提供本地 CJK `fontFamilyFallback`，至少覆盖正文与标题文本。
+  - 远端字体拉取失败时，中文正文必须继续可读，不能退化成方块。
 - `ExecutionMonitorConnected` 期间也必须继续 REST polling，对账终态。
 - 收到 `execution.status.changed` 且状态进入终态时，provider 不能直接冻结当前 snapshot；必须先再拉一次 `GET /executions/:executionId`，用最终 REST detail 收口。
 - 如果最终 REST 失败，才允许 fallback 到当前 snapshot + runtime merge。
@@ -128,11 +150,16 @@ const segments = checkpointData.segments?.length
   - 用户点击“刷新工作区”
 - workspace 刷新后，如果当前选中文件已不存在，必须清空 `_selectedFilePath` 与 `_selectedFileContent`。
 - Socket.IO payload/ACK 必须先做 `Map<Object?, Object?> -> Map<String, dynamic>` 兼容，不能直接假设所有 payload 都是 `Map<String, dynamic>`。
+- standalone Agent 的 failed realtime status 必须同时兼容 `errorMessage` 与 `error`，并把运行时失败 banner 与连接失败 banner 分开。
+- 如果历史 assistant message `metadata.incomplete === true` 且存在 `metadata.errorMessage`，消息气泡必须在该条消息下方显示中断原因，避免刷新后只剩不完整正文。
 
 ### 4. Validation & Error Matrix
 
 | 条件 | 预期行为 | 断言点 |
 |------|----------|--------|
+| Flutter Web 冷开且 `gstatic/firebasejs` 不可达 | 登录页/执行页仍能启动，不得在 `runApp()` 前白屏 | `theme_test.dart` + 手动 QA |
+| Flutter Web 冷开且远端 CJK 字体不可达 | 中文正文继续可读，不得退化成方块 | `theme_test.dart` + 手动 QA |
+| `PushPlatformSupport.isSupported == false` | push provider / service 走 no-op，不发起 Firebase Push 初始化 | `push_notification_provider_test.dart` / `notification_service_test.dart` |
 | 终态 `execution.status.changed` 先到，step 状态事件后到或丢失 | provider 通过最终 REST detail 收口到 completed/failed | `execution_monitor_provider_test.dart` |
 | WebSocket 连接正常但终态事件漏到前端状态机 | polling 最终把状态收敛到终态 | `execution_monitor_provider_test.dart` |
 | Socket ACK / event 为 `Map<Object?, Object?>` | parser 正常归一化，不吞事件 | `execution_socket_service_test.dart` |
@@ -145,6 +172,14 @@ const segments = checkpointData.segments?.length
 - Bad：运行时文本和工具能看见，但 `done` 后又被历史重组覆盖；或者 execution API 已 completed，Flutter 头部仍长期显示 `running`。
 
 ### 6. Tests Required
+- `agentloom_mobile/test/config/theme_test.dart`
+  - 断言主题为标题/正文文本提供本地 CJK fallback。
+- `agentloom_mobile/test/features/notifications/platform/push_platform_support_test.dart`
+  - 断言 Web/Android/iOS 的 capability 判断与 registration platform。
+- `agentloom_mobile/test/features/notifications/providers/push_notification_provider_test.dart`
+  - 断言 unsupported 平台不触发 push 初始化。
+- `agentloom_mobile/test/features/notifications/services/notification_service_test.dart`
+  - 断言 unsupported 平台返回 no-op 而不是触发 Firebase 访问。
 - `agentloom_mobile/test/features/execution/providers/execution_monitor_provider_test.dart`
   - 终态 REST 收口
   - Connected 状态下 polling 兜底收口

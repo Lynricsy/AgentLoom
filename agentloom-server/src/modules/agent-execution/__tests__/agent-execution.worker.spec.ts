@@ -563,25 +563,33 @@ describe('AgentExecutionWorker', () => {
       mockRuntime.prompt.mockReturnValueOnce(
         createFailingAsyncIterable(
           [
-            { type: 'message_chunk', content: '先整理仓库结构，再回看记忆模块。' },
+            {
+              type: 'message_chunk',
+              content: '先整理仓库结构，再回看记忆模块。',
+            },
             {
               type: 'tool_call',
               call: {
                 id: 'tool-1',
                 tool: 'git.clone',
-                args: { repo: 'https://github.com/Dataojitori/nocturne_memory' },
+                args: {
+                  repo: 'https://github.com/Dataojitori/nocturne_memory',
+                },
                 status: 'completed',
                 result: { ok: true },
               },
             },
           ],
-          new Error('terminated'),
+          Object.assign(new Error('terminated'), {
+            code: 'MODEL_PROVIDER_ERROR',
+            rawMessage: 'terminated',
+          }),
         ),
       );
 
-      await expect(worker.executeAgentLoop('conversation-1', 'tenant-1')).rejects.toThrow(
-        'terminated',
-      );
+      await expect(
+        worker.executeAgentLoop('conversation-1', 'tenant-1'),
+      ).rejects.toThrow('terminated');
 
       expect(persistSpy).toHaveBeenCalledWith(
         'conversation-1',
@@ -610,7 +618,9 @@ describe('AgentExecutionWorker', () => {
         'session-1',
         expect.objectContaining({
           incomplete: true,
-          errorMessage: 'terminated',
+          errorMessage: '上游模型流中断（MODEL_PROVIDER_ERROR: terminated）',
+          errorCode: 'MODEL_PROVIDER_ERROR',
+          rawErrorMessage: 'terminated',
         }),
       );
       expect(mockEventBridge.emitExecutionStatusChanged).toHaveBeenCalledWith(
@@ -618,7 +628,8 @@ describe('AgentExecutionWorker', () => {
         'conversation-1',
         expect.objectContaining({
           status: 'failed',
-          errorMessage: 'terminated',
+          errorMessage: '上游模型流中断（MODEL_PROVIDER_ERROR: terminated）',
+          error: '上游模型流中断（MODEL_PROVIDER_ERROR: terminated）',
         }),
       );
     });
@@ -1356,7 +1367,9 @@ describe('AgentExecutionWorker', () => {
               call: {
                 id: 'tool-1',
                 tool: 'git.clone',
-                args: { repo: 'https://github.com/Dataojitori/nocturne_memory' },
+                args: {
+                  repo: 'https://github.com/Dataojitori/nocturne_memory',
+                },
                 status: 'in_progress',
               },
             },

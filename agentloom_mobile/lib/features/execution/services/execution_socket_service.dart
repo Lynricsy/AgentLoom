@@ -10,6 +10,8 @@ typedef SocketCallback = void Function();
 typedef SocketErrorCallback = void Function(dynamic error);
 typedef SocketDisconnectCallback = void Function(String reason);
 
+const List<String> _defaultSocketTransports = <String>['polling', 'websocket'];
+
 String _stripApiSuffix(String path) {
   final normalizedPath = path.replaceFirst(RegExp(r'/$'), '');
 
@@ -36,6 +38,17 @@ String resolveExecutionSocketUrl(String apiBaseUrl) {
   final basePath = _stripApiSuffix(resolvedApiUrl.path);
   final namespacePath = '$basePath/execution'.replaceAll(RegExp(r'/+'), '/');
   return resolvedApiUrl.replace(path: namespacePath).toString();
+}
+
+Map<String, dynamic> buildSocketConnectionOptions({required String authToken}) {
+  // Flutter Web 本地调试经由反向代理时，direct websocket 握手可能返回 502；
+  // 保留 polling -> websocket 升级链路，避免实时页直接白屏。
+  return io.OptionBuilder()
+      .setTransports(_defaultSocketTransports)
+      .setAuth({'token': authToken})
+      .disableAutoConnect()
+      .enableForceNew()
+      .build();
 }
 
 Map<String, dynamic>? coerceSocketJsonMap(Object? value) {
@@ -125,12 +138,7 @@ class ExecutionSocketService {
 
     _socket = io.io(
       resolveExecutionSocketUrl(_baseUrl),
-      io.OptionBuilder()
-          .setTransports(['websocket'])
-          .setAuth({'token': _authToken})
-          .disableAutoConnect()
-          .enableForceNew()
-          .build(),
+      buildSocketConnectionOptions(authToken: _authToken),
     );
 
     _setupEventListeners();

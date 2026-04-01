@@ -46,6 +46,11 @@
 - 如果 standalone Agent 的单轮 prompt 在运行中已产出 `message_chunk` / `tool_call`，但最终以 runtime error 失败（例如 sandbox 返回 `terminated`）：
   - worker 仍必须把当前轮已积累的 `assistantText`、`toolCalls`、`segments` 作为 partial turn 落库。
   - 该 assistant message 的 `metadata` 需要带 `incomplete=true`，并保留 `errorMessage`，避免刷新或回拉 history 后整轮消息蒸发。
+  - 如果 sandbox SSE `error` 事件带有 `code='MODEL_PROVIDER_ERROR'`，adapter / worker 还必须保留：
+    - `errorCode`
+    - `rawErrorMessage`
+    - 面向 UI 的人类可读 `errorMessage`
+  - `execution.status.changed` 在 conversation failed 路径中必须同时带 `errorMessage` 与 `error`，不能只在 `failedPhase` 存在时才发送错误文案。
 - workflow-agent 运行中必须把以下字段持续写入 `execution_steps.checkpointData`：
   - `partialContent`
   - `segments`

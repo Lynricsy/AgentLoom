@@ -20,6 +20,7 @@ class MessageBubble extends StatelessWidget {
     final isUser = message.role == MessageRole.user;
     final theme = Theme.of(context);
     final segments = _resolvedSegments(message);
+    final incompleteError = _incompleteErrorMessage(message);
 
     if (isUser) {
       return Align(
@@ -109,6 +110,42 @@ class MessageBubble extends StatelessWidget {
                 ],
               ),
             ],
+            if (incompleteError != null) ...[
+              const SizedBox(height: 10),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.errorContainer.withValues(
+                    alpha: 0.7,
+                  ),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 10,
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(
+                        Icons.error_outline,
+                        size: 16,
+                        color: theme.colorScheme.onErrorContainer,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '本轮在输出过程中中断：$incompleteError',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.onErrorContainer,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -170,10 +207,7 @@ class _MessageSegmentView extends StatelessWidget {
         final toolCall = message.toolCalls
             .where((item) => item.id == segment.toolCallId)
             .cast<ConversationToolCallDto?>()
-            .firstWhere(
-              (item) => item != null,
-              orElse: () => null,
-            );
+            .firstWhere((item) => item != null, orElse: () => null);
         if (toolCall == null) {
           return const SizedBox.shrink();
         }
@@ -235,10 +269,7 @@ class _ThinkingBlock extends StatelessWidget {
 }
 
 class _MessageMarkdown extends StatelessWidget {
-  const _MessageMarkdown({
-    required this.content,
-    this.color,
-  });
+  const _MessageMarkdown({required this.content, this.color});
 
   final String content;
   final Color? color;
@@ -252,10 +283,7 @@ class _MessageMarkdown extends StatelessWidget {
       selectable: true,
       shrinkWrap: true,
       styleSheet: MarkdownStyleSheet.fromTheme(theme).copyWith(
-        p: theme.textTheme.bodyMedium?.copyWith(
-          color: textColor,
-          height: 1.45,
-        ),
+        p: theme.textTheme.bodyMedium?.copyWith(color: textColor, height: 1.45),
         pPadding: EdgeInsets.zero,
         code: theme.textTheme.bodySmall?.copyWith(
           fontFamily: 'monospace',
@@ -273,10 +301,7 @@ class _MessageMarkdown extends StatelessWidget {
         blockquotePadding: const EdgeInsets.all(12),
         blockquoteDecoration: BoxDecoration(
           border: Border(
-            left: BorderSide(
-              color: theme.colorScheme.primary,
-              width: 3,
-            ),
+            left: BorderSide(color: theme.colorScheme.primary, width: 3),
           ),
         ),
       ),
@@ -291,6 +316,20 @@ List<MessageSegment> _resolvedSegments(ConversationMessageDto message) {
 
   return <MessageSegment>[
     if (message.content.trim().isNotEmpty) MessageSegment.text(message.content),
-    for (final toolCall in message.toolCalls) MessageSegment.toolCall(toolCall.id),
+    for (final toolCall in message.toolCalls)
+      MessageSegment.toolCall(toolCall.id),
   ];
+}
+
+String? _incompleteErrorMessage(ConversationMessageDto message) {
+  if (message.isStreaming || message.metadata['incomplete'] != true) {
+    return null;
+  }
+
+  final error = message.metadata['errorMessage'];
+  if (error is String && error.trim().isNotEmpty) {
+    return error;
+  }
+
+  return null;
 }

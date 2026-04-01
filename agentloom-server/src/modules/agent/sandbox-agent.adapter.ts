@@ -139,6 +139,16 @@ type RemoteToolExecutionCallback = {
 
 type AiJsonSchemaInput = Parameters<typeof jsonSchema>[0];
 
+class SandboxPromptError extends Error {
+  constructor(
+    readonly rawMessage: string,
+    readonly code?: string,
+  ) {
+    super(rawMessage);
+    this.name = 'SandboxPromptError';
+  }
+}
+
 type McpRuntimeToolDescriptor = {
   toolName: string;
   description: string;
@@ -1871,8 +1881,14 @@ export class SandboxAgentAdapter implements IAgentRuntime {
           this.readString((envelope as Record<string, unknown>)['message']) ??
           this.readString(payload) ??
           'Sandbox agent error';
+        const code =
+          this.readString((envelope as Record<string, unknown>)['code']) ??
+          this.readString(data?.code);
         this.clearPendingPermissions(sessionId, 'deny');
-        return { events: [], error: new Error(message) };
+        return {
+          events: [],
+          error: new SandboxPromptError(message, code),
+        };
       }
 
       case 'pty_spawned': {

@@ -22,6 +22,7 @@ void main() {
   late MockSocket mockSocket;
   late ProviderContainer container;
   late Map<String, Function> listeners;
+  Map<String, dynamic>? capturedSocketOptions;
 
   const testTokens = AuthTokens(
     accessToken: 'test-access-token',
@@ -50,9 +51,13 @@ void main() {
             const AuthState.authenticated(user: testUser, tokens: testTokens),
           ),
         ),
-        agentConversationSocketFactoryProvider.overrideWithValue(
-          (url, options) => mockSocket,
-        ),
+        agentConversationSocketFactoryProvider.overrideWithValue((
+          url,
+          options,
+        ) {
+          capturedSocketOptions = options;
+          return mockSocket;
+        }),
       ],
     );
   }
@@ -61,16 +66,12 @@ void main() {
     mockApi = MockAgentApi();
     mockSocket = MockSocket();
     listeners = <String, Function>{};
+    capturedSocketOptions = null;
 
     when(() => mockApi.getMessages(any())).thenAnswer(
       (_) async => const PaginatedResponse<ConversationMessageDto>(
         data: <ConversationMessageDto>[],
-        meta: PaginationMeta(
-          page: 1,
-          pageSize: 50,
-          total: 0,
-          totalPages: 0,
-        ),
+        meta: PaginationMeta(page: 1, pageSize: 50, total: 0, totalPages: 0),
       ),
     );
     when(
@@ -119,6 +120,54 @@ void main() {
       () => mockSocket.clearListeners(),
       () => mockSocket.dispose(),
     ]);
+  });
+
+  test('failed 状态事件应读取 errorMessage 并写入会话错误', () async {
+    container.listen(
+      agentConversationProvider(params),
+      (_, __) {},
+      fireImmediately: true,
+    );
+
+    await container.read(authProvider.future);
+    await container.read(agentConversationProvider(params).future);
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    final statusHandler = listeners['conversation.status.changed'];
+    expect(statusHandler, isNotNull);
+
+    statusHandler?.call({
+      'conversationId': 'conv-001',
+      'status': 'failed',
+      'errorMessage': '上游模型流中断（MODEL_PROVIDER_ERROR: terminated）',
+    });
+
+    final state = container.read(agentConversationProvider(params)).value;
+    expect(state, isNotNull);
+    expect(state!.status, ConversationStatus.error);
+    expect(state.error, '上游模型流中断（MODEL_PROVIDER_ERROR: terminated）');
+    expect(state.preparationPhase, isNull);
+    expect(state.preparationFailedPhase, isNull);
+  });
+
+  test('socket 连接配置应允许 polling 回退再升级 websocket', () async {
+    container.listen(
+      agentConversationProvider(params),
+      (_, __) {},
+      fireImmediately: true,
+    );
+
+    await container.read(authProvider.future);
+    await container.read(agentConversationProvider(params).future);
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    final transports = (capturedSocketOptions?['transports'] as List<Object?>?)
+        ?.cast<String>();
+    expect(transports, equals(const <String>['polling', 'websocket']));
+    expect(
+      capturedSocketOptions?['auth'],
+      equals({'token': testTokens.accessToken}),
+    );
   });
 }
 

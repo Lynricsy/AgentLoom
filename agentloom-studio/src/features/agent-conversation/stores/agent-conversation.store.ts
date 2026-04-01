@@ -87,6 +87,7 @@ interface AgentConversationState {
   /** Which phase failed during preparation. */
   preparationFailedPhase: PreparationPhase | null;
 
+  executionError: string | null;
   connectionError: string | null;
   lastEventId: number;
 
@@ -137,6 +138,7 @@ function createInitialState(): AgentConversationState {
     sandboxReused: false,
     preparationError: null,
     preparationFailedPhase: null,
+    executionError: null,
     connectionError: null,
     lastEventId: 0,
     titleUpdateCounter: 0,
@@ -433,7 +435,10 @@ function mergeHistoryWithLiveTail(
     return canonicalMessages;
   }
 
-  return [...canonicalMessages, ...currentMessages.slice(canonicalMessages.length)];
+  return [
+    ...canonicalMessages,
+    ...currentMessages.slice(canonicalMessages.length),
+  ];
 }
 
 function normalizeHistorySegments(
@@ -834,7 +839,11 @@ function normalizeStatusChangedPayload(
   const phase = readString(root.phase) ?? readString(data.phase);
   const failedPhase =
     readString(root.failedPhase) ?? readString(data.failedPhase);
-  const error = readString(root.error) ?? readString(data.error);
+  const errorMessage =
+    readString(root.error) ??
+    readString(data.error) ??
+    readString(root.errorMessage) ??
+    readString(data.errorMessage);
   const sandboxReused = root.sandboxReused ?? data.sandboxReused;
 
   return {
@@ -848,7 +857,7 @@ function normalizeStatusChangedPayload(
     ...(failedPhase
       ? { failedPhase: failedPhase as StatusChangedPayload["failedPhase"] }
       : {}),
-    ...(error ? { error } : {}),
+    ...(errorMessage ? { error: errorMessage, errorMessage } : {}),
     ...(typeof sandboxReused === "boolean" ? { sandboxReused } : {}),
   };
 }
@@ -1257,6 +1266,7 @@ export const useAgentConversationStore = create<
                 s.sandboxReused = false;
                 s.preparationError = null;
                 s.preparationFailedPhase = null;
+                s.executionError = null;
               });
 
               void get().actions.loadHistory(normalized.conversationId);
@@ -1341,6 +1351,7 @@ export const useAgentConversationStore = create<
                   if (normalized.sandboxReused != null) {
                     s.sandboxReused = normalized.sandboxReused;
                   }
+                  s.executionError = null;
                   return;
                 }
 
@@ -1360,6 +1371,7 @@ export const useAgentConversationStore = create<
                   if (normalized.sandboxReused != null) {
                     s.sandboxReused = normalized.sandboxReused;
                   }
+                  s.executionError = null;
                   return;
                 }
 
@@ -1369,10 +1381,19 @@ export const useAgentConversationStore = create<
                 ) {
                   s.status = "error";
                   s.sandboxStatus = "error";
+                  s.executionError =
+                    normalized.error ?? normalized.errorMessage ?? null;
                   // Track which phase failed
                   if (normalized.failedPhase) {
                     s.preparationFailedPhase = normalized.failedPhase;
-                    s.preparationError = normalized.error ?? null;
+                    s.preparationError =
+                      normalized.error ?? normalized.errorMessage ?? null;
+                  } else {
+                    s.preparationPhase = null;
+                    s.preparationStartTime = null;
+                    s.sandboxReused = false;
+                    s.preparationError = null;
+                    s.preparationFailedPhase = null;
                   }
                   return;
                 }
@@ -1385,6 +1406,7 @@ export const useAgentConversationStore = create<
                 s.sandboxReused = false;
                 s.preparationError = null;
                 s.preparationFailedPhase = null;
+                s.executionError = null;
               });
             });
 
@@ -1455,6 +1477,7 @@ export const useAgentConversationStore = create<
             set((s) => {
               s.status = "idle";
               s.connectionError = null;
+              s.executionError = null;
             });
           },
 
@@ -1480,6 +1503,7 @@ export const useAgentConversationStore = create<
               s.sandboxReused = false;
               s.preparationError = null;
               s.preparationFailedPhase = null;
+              s.executionError = null;
             });
 
             socketInstance.emit("conversation:message", {
@@ -1699,6 +1723,12 @@ export const usePreparationError = () =>
 
 export const usePreparationFailedPhase = () =>
   useAgentConversationStore((s) => s.preparationFailedPhase);
+
+export const useExecutionError = () =>
+  useAgentConversationStore((s) => s.executionError);
+
+export const useConversationConnectionError = () =>
+  useAgentConversationStore((s) => s.connectionError);
 
 export const useTitleUpdateCounter = () =>
   useAgentConversationStore((s) => s.titleUpdateCounter);

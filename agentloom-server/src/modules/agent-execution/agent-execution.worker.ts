@@ -154,17 +154,13 @@ class ConversationTurnFailedError extends Error {
     readonly turnResult: ConversationTurnResult,
   ) {
     super(
-      cause instanceof Error
-        ? cause.message
-        : 'Agent conversation turn failed',
+      cause instanceof Error ? cause.message : 'Agent conversation turn failed',
     );
     this.name = 'ConversationTurnFailedError';
     if (cause instanceof Error && cause.stack) {
       this.stack = cause.stack;
     }
-    if ('cause' in this) {
-      this.cause = cause;
-    }
+    this.cause = cause;
   }
 }
 
@@ -424,10 +420,8 @@ export class AgentExecutionWorker extends WorkerHost {
       }
     } catch (error) {
       terminalStatus = abort.signal.aborted ? 'cancelled' : 'failed';
-      const errorMessage =
-        error instanceof Error
-          ? error.message
-          : 'Agent conversation execution failed';
+      const errorSummary = this.describeConversationExecutionError(error);
+      const errorMessage = errorSummary.errorMessage;
 
       if (
         error instanceof ConversationTurnFailedError &&
@@ -446,6 +440,12 @@ export class AgentExecutionWorker extends WorkerHost {
             {
               incomplete: true,
               errorMessage,
+              ...(errorSummary.errorCode
+                ? { errorCode: errorSummary.errorCode }
+                : {}),
+              ...(errorSummary.rawErrorMessage
+                ? { rawErrorMessage: errorSummary.rawErrorMessage }
+                : {}),
             },
           );
           conversationMetadata = this.writeExecutionMetadata(
@@ -481,9 +481,12 @@ export class AgentExecutionWorker extends WorkerHost {
         status: terminalStatus,
         executionType: 'conversation',
         errorMessage,
+        ...(terminalStatus === 'failed' && errorMessage
+          ? { error: errorMessage }
+          : {}),
         // Attach the phase where failure occurred so clients can show which step failed
         ...(terminalStatus === 'failed' && currentPhase !== 'running'
-          ? { failedPhase: currentPhase, error: errorMessage }
+          ? { failedPhase: currentPhase }
           : {}),
       });
 
@@ -1010,6 +1013,73 @@ export class AgentExecutionWorker extends WorkerHost {
     );
   }
 
+  private describeConversationExecutionError(error: unknown): {
+    errorMessage: string;
+    errorCode?: string;
+    rawErrorMessage?: string;
+  } {
+    const target =
+      error instanceof ConversationTurnFailedError && error.cause
+        ? error.cause
+        : error;
+
+    if (!(target instanceof Error)) {
+      return {
+        errorMessage:
+          error instanceof Error
+            ? error.message
+            : 'Agent conversation execution failed',
+      };
+    }
+
+    const errorCode = this.readErrorCode(target);
+    const rawErrorMessage =
+      this.readStringValue(
+        this.isRecord(target) ? target['rawMessage'] : undefined,
+      ) ?? target.message;
+
+    return {
+      errorMessage: this.formatConversationExecutionErrorMessage(
+        errorCode,
+        rawErrorMessage,
+      ),
+      ...(errorCode ? { errorCode } : {}),
+      ...(rawErrorMessage ? { rawErrorMessage } : {}),
+    };
+  }
+
+  private formatConversationExecutionErrorMessage(
+    errorCode: string | undefined,
+    rawErrorMessage: string,
+  ): string {
+    if (errorCode === 'MODEL_PROVIDER_ERROR') {
+      const label = this.isUpstreamModelStreamAbort(rawErrorMessage)
+        ? '上游模型流中断'
+        : '模型提供方错误';
+      return `${label}（${errorCode}: ${rawErrorMessage}）`;
+    }
+
+    if (this.isUpstreamModelStreamAbort(rawErrorMessage)) {
+      return `上游模型流中断（${rawErrorMessage}）`;
+    }
+
+    return rawErrorMessage;
+  }
+
+  private isUpstreamModelStreamAbort(message: string): boolean {
+    return /terminated|STREAM_UPSTREAM_ABORTED|upstream.?aborted|other side closed|fetch failed|upstream.?connect|reset before headers|socket hang up|timed? out|timeout/i.test(
+      message,
+    );
+  }
+
+  private readErrorCode(error: Error): string | undefined {
+    if (!this.isRecord(error)) {
+      return undefined;
+    }
+
+    return this.readStringValue(error['code']);
+  }
+
   private mergeToolCallEvent(
     previous: ToolCallEvent | undefined,
     next: ToolCallEvent,
@@ -1090,6 +1160,8 @@ export class AgentExecutionWorker extends WorkerHost {
     options?: {
       incomplete?: boolean;
       errorMessage?: string;
+      errorCode?: string;
+      rawErrorMessage?: string;
     },
   ): Promise<ConversationExecutionMetadata> {
     return runInTenantTransaction(this.db, tenantId, async (dbClient) => {
@@ -1138,6 +1210,10 @@ export class AgentExecutionWorker extends WorkerHost {
               ...(options?.incomplete ? { incomplete: true } : {}),
               ...(options?.errorMessage
                 ? { errorMessage: options.errorMessage }
+                : {}),
+              ...(options?.errorCode ? { errorCode: options.errorCode } : {}),
+              ...(options?.rawErrorMessage
+                ? { rawErrorMessage: options.rawErrorMessage }
                 : {}),
             },
           })

@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:agentloom_mobile/features/notifications/platform/push_platform_support.dart';
 import 'package:agentloom_mobile/features/notifications/models/push_notification_payload.dart';
 import 'package:agentloom_mobile/features/notifications/services/notification_service.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -175,6 +176,32 @@ void main() {
       await service.initialize();
 
       await expectation;
+    });
+
+    test('Web 不支持推送时 initialize 直接跳过 Firebase 依赖', () async {
+      final webService = NotificationService(
+        messaging: mockMessaging,
+        localNotifications: mockLocalNotifications,
+        onMessageStream: const Stream.empty(),
+        onMessageOpenedAppStream: const Stream.empty(),
+        platformSupport: const PushPlatformSupport(isWeb: true),
+      );
+      addTearDown(webService.dispose);
+
+      await expectLater(webService.initialize(), completes);
+      await expectLater(webService.requestPermission(), completion(isFalse));
+      await expectLater(webService.getToken(), completion(isNull));
+
+      verifyNever(
+        () => mockLocalNotifications.initialize(
+          any(),
+          onDidReceiveNotificationResponse: any(
+            named: 'onDidReceiveNotificationResponse',
+          ),
+        ),
+      );
+      verifyNever(() => mockMessaging.requestPermission());
+      verifyNever(() => mockMessaging.getToken());
     });
   });
 

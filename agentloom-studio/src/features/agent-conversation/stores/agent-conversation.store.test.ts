@@ -259,6 +259,31 @@ describe("agentConversationStore", () => {
     });
   });
 
+  it("运行时 failed 状态会读取 errorMessage 并保留 executionError", () => {
+    useAgentConversationStore.getState().actions.connect({
+      conversationId: "conv-1",
+      agentId: "agent-1",
+      agentName: "QA KB Agent",
+      authToken: "token-1",
+    });
+
+    emitSocketEvent("connect");
+    emitSocketEvent("conversation.status.changed", {
+      conversationId: "conv-1",
+      status: "failed",
+      errorMessage: "上游模型流中断（MODEL_PROVIDER_ERROR: terminated）",
+    });
+
+    expect(useAgentConversationStore.getState()).toEqual(
+      expect.objectContaining({
+        status: "error",
+        executionError: "上游模型流中断（MODEL_PROVIDER_ERROR: terminated）",
+        preparationPhase: null,
+        preparationFailedPhase: null,
+      }),
+    );
+  });
+
   it("loadHistory 的过期响应不会污染已切换或已重置的会话状态", async () => {
     const deferred = createDeferred<ReturnType<typeof createHistoryResponse>>();
     const jsonMock = vi.fn().mockImplementation(() => deferred.promise);

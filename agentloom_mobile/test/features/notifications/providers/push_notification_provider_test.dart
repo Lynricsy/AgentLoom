@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:agentloom_mobile/features/notifications/api/device_api.dart';
+import 'package:agentloom_mobile/features/notifications/platform/push_platform_support.dart';
 import 'package:agentloom_mobile/features/notifications/providers/push_notification_provider.dart';
 import 'package:agentloom_mobile/features/notifications/services/notification_service.dart';
 import 'package:dio/dio.dart';
@@ -182,6 +183,31 @@ void main() {
     final state = container.read(pushNotificationProvider).value;
     expect(state?.status, PushNotificationStatus.error);
     expect(state?.errorMessage, contains('boom'));
+  });
+
+  test('initializeAfterAuth: Web 不支持推送时直接降级为 no-op', () async {
+    final webContainer = ProviderContainer(
+      overrides: [
+        notificationServiceProvider.overrideWithValue(fakeNotificationService),
+        deviceApiProvider.overrideWithValue(fakeDeviceApi),
+        pushPlatformSupportProvider.overrideWithValue(
+          const PushPlatformSupport(isWeb: true),
+        ),
+      ],
+    );
+    addTearDown(webContainer.dispose);
+    await webContainer.read(pushNotificationProvider.future);
+
+    await webContainer
+        .read(pushNotificationProvider.notifier)
+        .initializeAfterAuth();
+
+    expect(fakeNotificationService.initializeCalled, isFalse);
+    expect(fakeDeviceApi.registerRequests, isEmpty);
+    expect(
+      webContainer.read(pushNotificationProvider).value,
+      const PushNotificationState(),
+    );
   });
 
   test('token refresh 新 token 时会重新注册', () async {

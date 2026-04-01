@@ -6,6 +6,7 @@ import 'package:agentloom_mobile/features/execution/models/subscribe_ack.dart';
 import 'package:agentloom_mobile/features/execution/services/execution_socket_service.dart'
     show
         ExecutionSocketService,
+        buildSocketConnectionOptions,
         coerceSocketJsonMap,
         executionSocketServiceProvider,
         resolveExecutionSocketUrl;
@@ -64,6 +65,17 @@ void main() {
       // 再次 dispose 不应抛异常
       // 注意：StreamController close 后再 add 会抛异常，
       // 但 dispose() 已将 _socket 置为 null 所以不会触发
+    });
+
+    test('buildSocketConnectionOptions 应保留 polling 到 websocket 升级链路', () {
+      final options = buildSocketConnectionOptions(authToken: 'test-token');
+      expect(
+        options['transports'],
+        equals(const <String>['polling', 'websocket']),
+      );
+      expect(options['auth'], equals({'token': 'test-token'}));
+      expect(options['forceNew'], isTrue);
+      expect(options['autoConnect'], isFalse);
     });
 
     group('Stream 类型正确', () {

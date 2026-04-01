@@ -6,7 +6,7 @@ import {
   useMemo,
   type KeyboardEvent,
   type PointerEvent as ReactPointerEvent,
-} from 'react';
+} from "react";
 import {
   Send,
   Square,
@@ -15,17 +15,17 @@ import {
   Loader2,
   AlertCircle,
   ImagePlus,
-} from 'lucide-react';
-import { cn } from '@/shared/lib/utils';
-import { Button } from '@/shared/ui/button';
-import { useAuthToken } from '@/features/auth/hooks/useAuthToken';
-import { SubAgentNavContext } from '@/shared/components/tool-renderers/renderers/SubAgentRenderer';
-import { MessageList } from './MessageList';
-import { SandboxComputerPanel } from './SandboxComputerPanel';
-import { WorkspaceFileTree } from './WorkspaceFileTree';
-import { AgentViewBreadcrumb } from './AgentViewBreadcrumb';
-import type { ConversationMessage, SubAgentStream, ToolCall } from '../types';
-import type { ToolCallData } from '@/shared/components/tool-renderers/types';
+} from "lucide-react";
+import { cn } from "@/shared/lib/utils";
+import { Button } from "@/shared/ui/button";
+import { useAuthToken } from "@/features/auth/hooks/useAuthToken";
+import { SubAgentNavContext } from "@/shared/components/tool-renderers/renderers/SubAgentRenderer";
+import { MessageList } from "./MessageList";
+import { SandboxComputerPanel } from "./SandboxComputerPanel";
+import { WorkspaceFileTree } from "./WorkspaceFileTree";
+import { AgentViewBreadcrumb } from "./AgentViewBreadcrumb";
+import type { ConversationMessage, SubAgentStream, ToolCall } from "../types";
+import type { ToolCallData } from "@/shared/components/tool-renderers/types";
 import {
   useConversationMessages,
   useConversationStatus,
@@ -38,7 +38,9 @@ import {
   useAgentName,
   useAgentViewStack,
   useSubAgentStreams,
-} from '../stores/agent-conversation.store';
+  useExecutionError,
+  useConversationConnectionError,
+} from "../stores/agent-conversation.store";
 
 interface AgentConversationPageProps {
   agentId: string;
@@ -58,8 +60,8 @@ function buildSubAgentMessages(stream: SubAgentStream): ConversationMessage[] {
     if (assistantIdx >= 0) return messages[assistantIdx]!;
     const msg: ConversationMessage = {
       id: crypto.randomUUID(),
-      role: 'assistant',
-      content: '',
+      role: "assistant",
+      content: "",
       toolCalls: [],
       segments: [],
       isStreaming: true,
@@ -72,34 +74,34 @@ function buildSubAgentMessages(stream: SubAgentStream): ConversationMessage[] {
 
   for (const event of stream.events) {
     switch (event.type) {
-      case 'message_chunk': {
+      case "message_chunk": {
         const msg = ensureAssistant();
         const payload = event.payload as { chunk?: string };
-        const chunk = payload.chunk ?? '';
+        const chunk = payload.chunk ?? "";
         msg.content += chunk;
         // 维护 segments
         const lastSeg = msg.segments[msg.segments.length - 1];
-        if (lastSeg && lastSeg.type === 'text') {
+        if (lastSeg && lastSeg.type === "text") {
           lastSeg.content += chunk;
         } else {
-          msg.segments.push({ type: 'text', content: chunk });
+          msg.segments.push({ type: "text", content: chunk });
         }
         break;
       }
-      case 'thinking': {
+      case "thinking": {
         const msg = ensureAssistant();
         const payload = event.payload as { content?: string };
-        const content = payload.content ?? '';
-        msg.thinking = (msg.thinking ?? '') + content;
+        const content = payload.content ?? "";
+        msg.thinking = (msg.thinking ?? "") + content;
         const lastSeg = msg.segments[msg.segments.length - 1];
-        if (lastSeg && lastSeg.type === 'thinking') {
+        if (lastSeg && lastSeg.type === "thinking") {
           lastSeg.content += content;
         } else {
-          msg.segments.push({ type: 'thinking', content });
+          msg.segments.push({ type: "thinking", content });
         }
         break;
       }
-      case 'tool_call': {
+      case "tool_call": {
         const msg = ensureAssistant();
         const p = event.payload as {
           toolCallId?: string;
@@ -113,17 +115,17 @@ function buildSubAgentMessages(stream: SubAgentStream): ConversationMessage[] {
         if (!msg.toolCalls.some((tc) => tc.id === toolCallId)) {
           msg.toolCalls.push({
             id: toolCallId,
-            tool: p.tool ?? p.toolName ?? p.name ?? 'unknown',
+            tool: p.tool ?? p.toolName ?? p.name ?? "unknown",
             args: p.args,
-            status: (p.status as ToolCall['status']) ?? 'pending',
+            status: (p.status as ToolCall["status"]) ?? "pending",
             startedAt: event.timestamp,
             updatedAt: event.timestamp,
           });
-          msg.segments.push({ type: 'tool_call', toolCallId });
+          msg.segments.push({ type: "tool_call", toolCallId });
         }
         break;
       }
-      case 'tool_result': {
+      case "tool_result": {
         const msg = ensureAssistant();
         const p = event.payload as {
           toolCallId?: string;
@@ -140,24 +142,24 @@ function buildSubAgentMessages(stream: SubAgentStream): ConversationMessage[] {
         if (existing) {
           if (p.result !== undefined) existing.result = p.result;
           if (p.error) existing.error = p.error;
-          existing.status = (p.status as ToolCall['status']) ?? 'completed';
+          existing.status = (p.status as ToolCall["status"]) ?? "completed";
           existing.updatedAt = event.timestamp;
         } else {
           msg.toolCalls.push({
             id: toolCallId,
-            tool: p.tool ?? p.toolName ?? p.name ?? 'unknown',
+            tool: p.tool ?? p.toolName ?? p.name ?? "unknown",
             args: p.args,
             result: p.result,
             error: p.error,
-            status: (p.status as ToolCall['status']) ?? 'completed',
+            status: (p.status as ToolCall["status"]) ?? "completed",
             startedAt: event.timestamp,
             updatedAt: event.timestamp,
           });
-          msg.segments.push({ type: 'tool_call', toolCallId });
+          msg.segments.push({ type: "tool_call", toolCallId });
         }
         break;
       }
-      case 'done': {
+      case "done": {
         if (assistantIdx >= 0) {
           messages[assistantIdx]!.isStreaming = false;
           assistantIdx = -1;
@@ -175,7 +177,7 @@ function ResizableDivider({
   direction,
 }: {
   onResize: (delta: number) => void;
-  direction: 'horizontal' | 'vertical';
+  direction: "horizontal" | "vertical";
 }) {
   const startPosRef = useRef(0);
   const isDraggingRef = useRef(false);
@@ -184,8 +186,7 @@ function ResizableDivider({
     (e: ReactPointerEvent<HTMLDivElement>) => {
       e.preventDefault();
       isDraggingRef.current = true;
-      startPosRef.current =
-        direction === 'horizontal' ? e.clientX : e.clientY;
+      startPosRef.current = direction === "horizontal" ? e.clientX : e.clientY;
       (e.target as HTMLDivElement).setPointerCapture(e.pointerId);
     },
     [direction],
@@ -194,8 +195,7 @@ function ResizableDivider({
   const handlePointerMove = useCallback(
     (e: ReactPointerEvent<HTMLDivElement>) => {
       if (!isDraggingRef.current) return;
-      const currentPos =
-        direction === 'horizontal' ? e.clientX : e.clientY;
+      const currentPos = direction === "horizontal" ? e.clientX : e.clientY;
       const delta = currentPos - startPosRef.current;
       startPosRef.current = currentPos;
       onResize(delta);
@@ -214,10 +214,10 @@ function ResizableDivider({
   return (
     <div
       className={cn(
-        'shrink-0 transition-colors hover:bg-info/30 active:bg-info/50',
-        direction === 'horizontal'
-          ? 'w-1 cursor-col-resize hover:w-1.5'
-          : 'h-1 cursor-row-resize hover:h-1.5',
+        "shrink-0 transition-colors hover:bg-info/30 active:bg-info/50",
+        direction === "horizontal"
+          ? "w-1 cursor-col-resize hover:w-1.5"
+          : "h-1 cursor-row-resize hover:h-1.5",
       )}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
@@ -235,22 +235,22 @@ function MessageInput({
   isExecuting: boolean;
   onCancel: () => void;
 }) {
-  const [draft, setDraft] = useState('');
+  const [draft, setDraft] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const handleSend = useCallback(() => {
     const trimmed = draft.trim();
     if (!trimmed) return;
     onSend(trimmed);
-    setDraft('');
+    setDraft("");
     if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto';
+      textareaRef.current.style.height = "auto";
     }
   }, [draft, onSend]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
-      if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+      if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
         e.preventDefault();
         handleSend();
       }
@@ -261,7 +261,7 @@ function MessageInput({
   const handleInput = useCallback(() => {
     const el = textareaRef.current;
     if (!el) return;
-    el.style.height = 'auto';
+    el.style.height = "auto";
     el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
   }, []);
 
@@ -297,13 +297,15 @@ function MessageInput({
             onKeyDown={handleKeyDown}
             onInput={handleInput}
             placeholder={
-              isExecuting ? 'Agent 正在思考中...' : '输入消息，Enter 发送，Shift+Enter 换行'
+              isExecuting
+                ? "Agent 正在思考中..."
+                : "输入消息，Enter 发送，Shift+Enter 换行"
             }
             className={cn(
-              'w-full resize-none rounded-lg border border-border bg-background px-3 py-2.5',
-              'text-sm text-foreground placeholder:text-muted-foreground',
-              'focus:outline-none focus:ring-1 focus:ring-info/50 focus:border-info/50',
-              'min-h-[40px] max-h-[160px]',
+              "w-full resize-none rounded-lg border border-border bg-background px-3 py-2.5",
+              "text-sm text-foreground placeholder:text-muted-foreground",
+              "focus:outline-none focus:ring-1 focus:ring-info/50 focus:border-info/50",
+              "min-h-[40px] max-h-[160px]",
             )}
             rows={1}
             disabled={isExecuting}
@@ -345,6 +347,15 @@ function ConnectionError({ error }: { error: string }) {
   );
 }
 
+function RuntimeError({ error }: { error: string }) {
+  return (
+    <div className="flex items-center gap-2 px-4 py-2 bg-error/10 border-b border-error/20 text-xs text-error">
+      <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+      <span>运行失败: {error}</span>
+    </div>
+  );
+}
+
 export function AgentConversationPage({
   agentId,
   conversationId,
@@ -362,9 +373,8 @@ export function AgentConversationPage({
   const authToken = useAuthToken();
   const agentViewStack = useAgentViewStack();
   const subAgentStreams = useSubAgentStreams();
-  const connectionError = useConversationStatus() === 'error'
-    ? '连接失败，请刷新重试'
-    : null;
+  const executionError = useExecutionError();
+  const connectionError = useConversationConnectionError();
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [leftWidth, setLeftWidth] = useState<number | null>(null);
@@ -378,7 +388,7 @@ export function AgentConversationPage({
   useEffect(() => {
     const a = actionsRef.current;
     const token = authTokenRef.current;
-    a.connect({ conversationId, agentId, agentName: '', authToken: token });
+    a.connect({ conversationId, agentId, agentName: "", authToken: token });
     a.loadHistory(conversationId);
 
     return () => {
@@ -412,7 +422,7 @@ export function AgentConversationPage({
     (delta: number) => {
       const container = containerRef.current;
       if (!container) return;
-      const rightColumn = container.querySelector('[data-right-column]');
+      const rightColumn = container.querySelector("[data-right-column]");
       if (!rightColumn) return;
       const totalH = rightColumn.clientHeight;
       const minH = 120;
@@ -423,16 +433,14 @@ export function AgentConversationPage({
     [rightTopHeight],
   );
 
-  const isExecuting = status === 'executing';
+  const isExecuting = status === "executing";
   const currentLeftWidth = leftWidth ?? initLeftWidth();
 
   const isSubAgentView = agentViewStack.length > 0;
   const currentHandle = isSubAgentView
     ? agentViewStack[agentViewStack.length - 1]
     : null;
-  const currentStream = currentHandle
-    ? subAgentStreams[currentHandle]
-    : null;
+  const currentStream = currentHandle ? subAgentStreams[currentHandle] : null;
   const displayMessages = useMemo(
     () => (currentStream ? buildSubAgentMessages(currentStream) : messages),
     [currentStream, messages],
@@ -448,13 +456,13 @@ export function AgentConversationPage({
     if (!isExecuting) return undefined;
     for (let i = displayMessages.length - 1; i >= 0; i--) {
       const msg = displayMessages[i]!;
-      if (msg.role !== 'assistant') continue;
+      if (msg.role !== "assistant") continue;
       for (let j = msg.toolCalls.length - 1; j >= 0; j--) {
         const tc = msg.toolCalls[j]!;
         if (
-          tc.status === 'pending' ||
-          tc.status === 'in_progress' ||
-          tc.status === 'awaiting_permission'
+          tc.status === "pending" ||
+          tc.status === "in_progress" ||
+          tc.status === "awaiting_permission"
         ) {
           return {
             id: tc.id,
@@ -484,112 +492,117 @@ export function AgentConversationPage({
 
   return (
     <SubAgentNavContext.Provider value={subAgentNavValue}>
-    <div className="flex flex-col h-full bg-background">
-      <header className="flex items-center gap-3 px-4 py-2.5 border-b border-border bg-surface shrink-0">
-        {onBack && (
-          <button
-            type="button"
-            onClick={onBack}
-            className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-surface-elevated transition-colors"
-          >
-            <ArrowLeft className="h-4 w-4" />
-          </button>
-        )}
-        <div className="flex items-center gap-2">
-          <div
-            className={cn(
-              'h-2 w-2 rounded-full',
-              status === 'connected' || status === 'executing'
-                ? 'bg-success'
-                : status === 'connecting'
-                  ? 'bg-warning animate-pulse'
-                  : status === 'error'
-                    ? 'bg-error'
-                    : 'bg-muted-foreground',
-            )}
-          />
-          <h1 className="text-sm font-medium text-foreground">
-            {agentName || 'Agent'} 对话
-          </h1>
-        </div>
-        {isExecuting && (
-          <div className="flex items-center gap-1.5 text-xs text-info ml-auto">
-            <Loader2 className="h-3 w-3 animate-spin" />
-            <span>处理中</span>
-          </div>
-        )}
-      </header>
-
-      {isSubAgentView && (
-        <AgentViewBreadcrumb
-          agentName={agentName || 'Agent'}
-          viewStack={agentViewStack}
-          subAgentStreams={subAgentStreams}
-          onNavigate={actions.navigateToAgentView}
-        />
-      )}
-
-      {connectionError && <ConnectionError error={connectionError} />}
-
-      <div ref={containerRef} className="flex flex-1 overflow-hidden">
-        <div
-          className="flex flex-col shrink-0 overflow-hidden"
-          style={{ width: `${currentLeftWidth}px`, minWidth: MIN_LEFT_WIDTH }}
-        >
-          <div className="flex-1 min-h-0 overflow-hidden">
-            <MessageList messages={displayMessages} isExecuting={isExecuting && !isSubAgentView} />
-          </div>
-          {!isSubAgentView && (
-            <MessageInput
-              onSend={actions.sendMessage}
-              isExecuting={isExecuting}
-              onCancel={actions.cancelExecution}
-            />
+      <div className="flex flex-col h-full bg-background">
+        <header className="flex items-center gap-3 px-4 py-2.5 border-b border-border bg-surface shrink-0">
+          {onBack && (
+            <button
+              type="button"
+              onClick={onBack}
+              className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-surface-elevated transition-colors"
+            >
+              <ArrowLeft className="h-4 w-4" />
+            </button>
           )}
-        </div>
-
-        <ResizableDivider
-          onResize={handleHorizontalResize}
-          direction="horizontal"
-        />
-
-        <div
-          data-right-column
-          className="flex flex-col flex-1 overflow-hidden"
-          style={{ minWidth: MIN_RIGHT_WIDTH }}
-        >
-          <div
-            className="overflow-hidden"
-            style={{
-              height: rightTopHeight
-                ? `${rightTopHeight}px`
-                : '60%',
-            }}
-          >
-            <SandboxComputerPanel
-              agentName={agentName || 'Agent'}
-              terminalEntries={terminalEntries}
-              fileChanges={fileChanges}
-              sandboxStatus={sandboxStatus}
-              activeToolCall={activeToolCall}
+          <div className="flex items-center gap-2">
+            <div
+              className={cn(
+                "h-2 w-2 rounded-full",
+                status === "connected" || status === "executing"
+                  ? "bg-success"
+                  : status === "connecting"
+                    ? "bg-warning animate-pulse"
+                    : status === "error"
+                      ? "bg-error"
+                      : "bg-muted-foreground",
+              )}
             />
+            <h1 className="text-sm font-medium text-foreground">
+              {agentName || "Agent"} 对话
+            </h1>
+          </div>
+          {isExecuting && (
+            <div className="flex items-center gap-1.5 text-xs text-info ml-auto">
+              <Loader2 className="h-3 w-3 animate-spin" />
+              <span>处理中</span>
+            </div>
+          )}
+        </header>
+
+        {isSubAgentView && (
+          <AgentViewBreadcrumb
+            agentName={agentName || "Agent"}
+            viewStack={agentViewStack}
+            subAgentStreams={subAgentStreams}
+            onNavigate={actions.navigateToAgentView}
+          />
+        )}
+
+        {connectionError ? (
+          <ConnectionError error={connectionError} />
+        ) : executionError ? (
+          <RuntimeError error={executionError} />
+        ) : null}
+
+        <div ref={containerRef} className="flex flex-1 overflow-hidden">
+          <div
+            className="flex flex-col shrink-0 overflow-hidden"
+            style={{ width: `${currentLeftWidth}px`, minWidth: MIN_LEFT_WIDTH }}
+          >
+            <div className="flex-1 min-h-0 overflow-hidden">
+              <MessageList
+                messages={displayMessages}
+                isExecuting={isExecuting && !isSubAgentView}
+              />
+            </div>
+            {!isSubAgentView && (
+              <MessageInput
+                onSend={actions.sendMessage}
+                isExecuting={isExecuting}
+                onCancel={actions.cancelExecution}
+              />
+            )}
           </div>
 
           <ResizableDivider
-            onResize={handleVerticalResize}
-            direction="vertical"
+            onResize={handleHorizontalResize}
+            direction="horizontal"
           />
 
-          <div className="flex-1 overflow-hidden">
-            <WorkspaceFileTree
-              tree={fileTree}
-              selectedPath={selectedFilePath}
-              onSelectFile={actions.selectFile}
+          <div
+            data-right-column
+            className="flex flex-col flex-1 overflow-hidden"
+            style={{ minWidth: MIN_RIGHT_WIDTH }}
+          >
+            <div
+              className="overflow-hidden"
+              style={{
+                height: rightTopHeight ? `${rightTopHeight}px` : "60%",
+              }}
+            >
+              <SandboxComputerPanel
+                agentName={agentName || "Agent"}
+                terminalEntries={terminalEntries}
+                fileChanges={fileChanges}
+                sandboxStatus={sandboxStatus}
+                activeToolCall={activeToolCall}
+              />
+            </div>
+
+            <ResizableDivider
+              onResize={handleVerticalResize}
+              direction="vertical"
             />
+
+            <div className="flex-1 overflow-hidden">
+              <WorkspaceFileTree
+                tree={fileTree}
+                selectedPath={selectedFilePath}
+                onSelectFile={actions.selectFile}
+              />
+            </div>
           </div>
         </div>
       </div>
-    </div>
     </SubAgentNavContext.Provider>
   );
 }

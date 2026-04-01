@@ -1,26 +1,22 @@
-import {
-  memo,
-  useCallback,
-  useRef,
-  useState,
-} from 'react';
+import { memo, useCallback, useRef, useState } from "react";
 import {
   Bot,
   ChevronDown,
   ChevronRight,
   User,
   Brain,
-} from 'lucide-react';
-import { MarkdownRenderer } from '@/shared/components/markdown/MarkdownRenderer';
-import { ToolCallCard } from '@/shared/components/tool-renderers';
-import type { ToolCallData } from '@/shared/components/tool-renderers';
+  AlertTriangle,
+} from "lucide-react";
+import { MarkdownRenderer } from "@/shared/components/markdown/MarkdownRenderer";
+import { ToolCallCard } from "@/shared/components/tool-renderers";
+import type { ToolCallData } from "@/shared/components/tool-renderers";
 import type {
   ConversationMessage,
   MessageSegment,
   SubAgentHandle,
   SubAgentRunStatus,
   ToolCall,
-} from '../types';
+} from "../types";
 import {
   useConversationActions,
   useSubAgentStreams,
@@ -29,9 +25,9 @@ import {
   useSandboxReused,
   usePreparationError,
   usePreparationFailedPhase,
-} from '../stores/agent-conversation.store';
-import { SubAgentCompletionNotice } from './SubAgentStreamView';
-import { PreparationCard } from './PreparationCard';
+} from "../stores/agent-conversation.store";
+import { SubAgentCompletionNotice } from "./SubAgentStreamView";
+import { PreparationCard } from "./PreparationCard";
 
 /** 将 conversation ToolCall 转为 ToolCallCard 所需的 ToolCallData */
 function toToolCallData(tc: ToolCall): ToolCallData {
@@ -56,7 +52,11 @@ function ThinkingBlock({ content }: { content: string }) {
         className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer w-full"
         onClick={() => setOpen((v) => !v)}
       >
-        {open ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
+        {open ? (
+          <ChevronDown className="size-3" />
+        ) : (
+          <ChevronRight className="size-3" />
+        )}
         <Brain className="size-3 text-primary/60" />
         <span className="font-medium">思考过程</span>
         {!open && content.length > 0 && (
@@ -118,7 +118,7 @@ const AssistantMessage = memo(function AssistantMessage({
   const { resolveToolPermission } = useConversationActions();
 
   const handleResolvePermission = useCallback(
-    async (toolCallId: string, action: 'approve' | 'deny') => {
+    async (toolCallId: string, action: "approve" | "deny") => {
       await resolveToolPermission(toolCallId, action);
     },
     [resolveToolPermission],
@@ -129,6 +129,13 @@ const AssistantMessage = memo(function AssistantMessage({
     !message.content &&
     !message.isStreaming &&
     message.metadata?.emptyTurn === true;
+  const incompleteError =
+    message.isStreaming || message.metadata?.incomplete !== true
+      ? null
+      : typeof message.metadata?.errorMessage === "string" &&
+          message.metadata.errorMessage.length > 0
+        ? message.metadata.errorMessage
+        : null;
 
   return (
     <div className="flex gap-3 px-4 py-3">
@@ -149,12 +156,19 @@ const AssistantMessage = memo(function AssistantMessage({
         ) : message.isStreaming ? (
           <TypingIndicator />
         ) : showEmptyTurnPlaceholder ? (
-          <p className="italic text-muted-foreground text-sm">本轮未返回可展示内容</p>
+          <p className="italic text-muted-foreground text-sm">
+            本轮未返回可展示内容
+          </p>
         ) : null}
 
         {/* 流式输出时最后一个 segment 后的光标 */}
-        {message.isStreaming && segments.length > 0 && (
-          <TypingIndicator />
+        {message.isStreaming && segments.length > 0 && <TypingIndicator />}
+
+        {incompleteError && (
+          <div className="flex items-start gap-2 rounded-md border border-error/30 bg-error/10 px-3 py-2 text-xs text-error">
+            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            <span>本轮在输出过程中中断：{incompleteError}</span>
+          </div>
         )}
 
         <span className="block px-1 text-[10px] text-muted-foreground/60">
@@ -173,20 +187,23 @@ const SegmentRenderer = memo(function SegmentRenderer({
 }: {
   segment: MessageSegment;
   message: ConversationMessage;
-  onResolvePermission: (toolCallId: string, action: 'approve' | 'deny') => Promise<void>;
+  onResolvePermission: (
+    toolCallId: string,
+    action: "approve" | "deny",
+  ) => Promise<void>;
 }) {
   switch (segment.type) {
-    case 'text':
+    case "text":
       return <MarkdownRenderer content={segment.content} />;
-    case 'thinking':
+    case "thinking":
       return <ThinkingBlock content={segment.content} />;
-    case 'tool_call': {
+    case "tool_call": {
       const tc = message.toolCalls.find((t) => t.id === segment.toolCallId);
       if (!tc) return null;
       const isActive =
-        tc.status === 'pending' ||
-        tc.status === 'in_progress' ||
-        tc.status === 'awaiting_permission';
+        tc.status === "pending" ||
+        tc.status === "in_progress" ||
+        tc.status === "awaiting_permission";
       return (
         <ToolCallCard
           toolCall={toToolCallData(tc)}
@@ -199,20 +216,20 @@ const SegmentRenderer = memo(function SegmentRenderer({
 });
 
 function segmentKey(seg: MessageSegment, index: number): string {
-  if (seg.type === 'tool_call') return `tc-${seg.toolCallId}`;
+  if (seg.type === "tool_call") return `tc-${seg.toolCallId}`;
   return `${seg.type}-${index}`;
 }
 
 function formatTime(ts: number): string {
   const d = new Date(ts);
   return d.toLocaleTimeString(undefined, {
-    hour: '2-digit',
-    minute: '2-digit',
+    hour: "2-digit",
+    minute: "2-digit",
   });
 }
 
 function isCompletionNotice(message: ConversationMessage): boolean {
-  return message.metadata?.type === 'subagent_completion_notice';
+  return message.metadata?.type === "subagent_completion_notice";
 }
 
 export interface MessageListProps {
@@ -241,7 +258,7 @@ export function MessageList({ messages, isExecuting }: MessageListProps) {
     prevMessageCount.current = messages.length;
     if (autoScroll) {
       queueMicrotask(() => {
-        bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+        bottomRef.current?.scrollIntoView({ behavior: "smooth" });
       });
     }
   }
@@ -275,15 +292,27 @@ export function MessageList({ messages, isExecuting }: MessageListProps) {
               <SubAgentCompletionNotice
                 key={msg.id}
                 handle={
-                  ((msg.metadata?.handle ?? msg.metadata?.subagentHandle ?? 'sa_unknown') as string) as SubAgentHandle
+                  (msg.metadata?.handle ??
+                    msg.metadata?.subagentHandle ??
+                    "sa_unknown") as string as SubAgentHandle
                 }
-                alias={((msg.metadata?.alias ?? msg.metadata?.subagentAlias ?? 'Sub-Agent') as string)}
+                alias={
+                  (msg.metadata?.alias ??
+                    msg.metadata?.subagentAlias ??
+                    "Sub-Agent") as string
+                }
                 status={
-                  ((msg.metadata?.status ?? msg.metadata?.subagentStatus ?? 'completed') as SubAgentRunStatus)
+                  (msg.metadata?.status ??
+                    msg.metadata?.subagentStatus ??
+                    "completed") as SubAgentRunStatus
                 }
-                error={(msg.metadata?.error ?? msg.metadata?.subagentError) as string | undefined}
+                error={
+                  (msg.metadata?.error ?? msg.metadata?.subagentError) as
+                    | string
+                    | undefined
+                }
               />
-            ) : msg.role === 'user' ? (
+            ) : msg.role === "user" ? (
               <UserBubble key={msg.id} message={msg} />
             ) : (
               <AssistantMessage key={msg.id} message={msg} />
@@ -311,9 +340,7 @@ export function MessageList({ messages, isExecuting }: MessageListProps) {
           {/* Generic executing indicator (only when no preparation card and no streaming message) */}
           {isExecuting &&
             !showPreparationCard &&
-            !messages.some(
-              (m) => m.role === 'assistant' && m.isStreaming,
-            ) && (
+            !messages.some((m) => m.role === "assistant" && m.isStreaming) && (
               <div className="flex gap-3 px-4 py-3">
                 <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-info/15 text-info">
                   <Bot className="size-4" />

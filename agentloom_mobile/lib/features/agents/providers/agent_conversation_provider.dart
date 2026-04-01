@@ -8,7 +8,7 @@ import '../../../shared/providers/env_provider.dart';
 import '../../auth/models/auth_state.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../execution/services/execution_socket_service.dart'
-    show resolveExecutionSocketUrl;
+    show buildSocketConnectionOptions, resolveExecutionSocketUrl;
 import '../api/agent_api.dart';
 import '../models/agent_conversation_dto.dart';
 import '../models/conversation_message_dto.dart';
@@ -59,6 +59,7 @@ typedef _StatusPayload = ({
   String? phase,
   String? failedPhase,
   String? error,
+  String? errorMessage,
   bool? sandboxReused,
 });
 
@@ -658,6 +659,13 @@ _StatusPayload? _normalizeStatusPayload(Object? raw) {
         _readString(payload.data['failedPhase']),
     error:
         _readString(payload.root['error']) ??
+        _readString(payload.data['error']) ??
+        _readString(payload.root['errorMessage']) ??
+        _readString(payload.data['errorMessage']),
+    errorMessage:
+        _readString(payload.root['errorMessage']) ??
+        _readString(payload.data['errorMessage']) ??
+        _readString(payload.root['error']) ??
         _readString(payload.data['error']),
     sandboxReused:
         _readBool(payload.root['sandboxReused']) ??
@@ -909,12 +917,7 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
     final socketFactory = ref.read(agentConversationSocketFactoryProvider);
     final socket = socketFactory(
       _resolveConversationSocketUrl(env.apiBaseUrl),
-      io.OptionBuilder()
-          .setTransports(['websocket'])
-          .setAuth({'token': accessToken})
-          .enableForceNew()
-          .disableAutoConnect()
-          .build(),
+      buildSocketConnectionOptions(authToken: accessToken),
     );
 
     _socket = socket;
@@ -1141,6 +1144,7 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
     _updateState((current) {
       // 记录沙箱复用标志
       final nextSandboxReused = payload.sandboxReused ?? current.sandboxReused;
+      final runtimeError = payload.error ?? payload.errorMessage;
 
       // 准备阶段事件（status == 'preparing'）
       if (payload.status == 'preparing' && phase != null) {
@@ -1154,12 +1158,25 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
       }
 
       // 失败事件，附带 failedPhase
-      if (payload.status == 'failed' && failedPhase != null) {
+      if (payload.status == 'failed' || payload.status == 'error') {
+        if (failedPhase != null) {
+          return current.copyWith(
+            status: ConversationStatus.error,
+            preparationFailedPhase: failedPhase,
+            preparationError: runtimeError,
+            sandboxReused: nextSandboxReused,
+            error: runtimeError,
+          );
+        }
+
         return current.copyWith(
           status: ConversationStatus.error,
-          preparationFailedPhase: failedPhase,
-          preparationError: payload.error,
           sandboxReused: nextSandboxReused,
+          error: runtimeError,
+          clearPreparationPhase: true,
+          clearPreparationStartTime: true,
+          clearPreparationError: true,
+          clearPreparationFailedPhase: true,
         );
       }
 

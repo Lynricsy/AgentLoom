@@ -19,6 +19,16 @@ class AppTheme {
   static const Color _success = Color(0xFF0F9D7A);
   static const Color _warning = Color(0xFFC97A18);
   static const Color _error = Color(0xFFD64545);
+  static const List<String> _cjkFontFallback = [
+    'Noto Sans SC',
+    'Noto Sans CJK SC',
+    'Source Han Sans SC',
+    'PingFang SC',
+    'Hiragino Sans GB',
+    'Microsoft YaHei',
+    'WenQuanYi Micro Hei',
+    'Arial Unicode MS',
+  ];
 
   /// Light 主题
   static ThemeData light() {
@@ -46,51 +56,50 @@ class AppTheme {
       useMaterial3: true,
       colorScheme: colorScheme,
     ).textTheme;
-    final textTheme = baseTextTheme.copyWith(
-      headlineLarge: baseTextTheme.headlineLarge?.copyWith(
-        fontWeight: FontWeight.w800,
-        color: _textPrimary,
-        letterSpacing: -0.6,
-      ),
-      headlineMedium: baseTextTheme.headlineMedium?.copyWith(
-        fontWeight: FontWeight.w700,
-        color: _textPrimary,
-        letterSpacing: -0.3,
-      ),
-      titleLarge: baseTextTheme.titleLarge?.copyWith(
-        fontWeight: FontWeight.w700,
-        color: _textPrimary,
-      ),
-      titleMedium: baseTextTheme.titleMedium?.copyWith(
-        fontWeight: FontWeight.w600,
-        color: _textPrimary,
-      ),
-      titleSmall: baseTextTheme.titleSmall?.copyWith(
-        fontWeight: FontWeight.w600,
-        color: _textPrimary,
-      ),
-      bodyLarge: baseTextTheme.bodyLarge?.copyWith(
-        color: _textPrimary,
-        height: 1.35,
-      ),
-      bodyMedium: baseTextTheme.bodyMedium?.copyWith(
-        color: _textPrimary,
-        height: 1.4,
-      ),
-      bodySmall: baseTextTheme.bodySmall?.copyWith(
-        color: _textMuted,
-        height: 1.35,
-      ),
-      labelLarge: baseTextTheme.labelLarge?.copyWith(
-        fontWeight: FontWeight.w600,
+    final textTheme = _withCjkFallbackTheme(
+      baseTextTheme.copyWith(
+        headlineLarge: baseTextTheme.headlineLarge?.copyWith(
+          fontWeight: FontWeight.w800,
+          color: _textPrimary,
+          letterSpacing: -0.6,
+        ),
+        headlineMedium: baseTextTheme.headlineMedium?.copyWith(
+          fontWeight: FontWeight.w700,
+          color: _textPrimary,
+          letterSpacing: -0.3,
+        ),
+        titleLarge: baseTextTheme.titleLarge?.copyWith(
+          fontWeight: FontWeight.w700,
+          color: _textPrimary,
+        ),
+        titleMedium: baseTextTheme.titleMedium?.copyWith(
+          fontWeight: FontWeight.w600,
+          color: _textPrimary,
+        ),
+        titleSmall: baseTextTheme.titleSmall?.copyWith(
+          fontWeight: FontWeight.w600,
+          color: _textPrimary,
+        ),
+        bodyLarge: baseTextTheme.bodyLarge?.copyWith(
+          color: _textPrimary,
+          height: 1.35,
+        ),
+        bodyMedium: baseTextTheme.bodyMedium?.copyWith(
+          color: _textPrimary,
+          height: 1.4,
+        ),
+        bodySmall: baseTextTheme.bodySmall?.copyWith(
+          color: _textMuted,
+          height: 1.35,
+        ),
+        labelLarge: baseTextTheme.labelLarge?.copyWith(
+          fontWeight: FontWeight.w600,
+        ),
       ),
     );
     final chipLabelStyle =
         textTheme.labelMedium ??
-        const TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w600,
-        );
+        const TextStyle(fontSize: 12, fontWeight: FontWeight.w600);
 
     return ThemeData(
       useMaterial3: true,
@@ -188,9 +197,7 @@ class AppTheme {
         ),
       ),
       listTileTheme: ListTileThemeData(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         iconColor: _textMuted,
         textColor: _textPrimary,
         tileColor: _surface,
@@ -206,9 +213,7 @@ class AppTheme {
         selectedColor: _primary.withValues(alpha: 0.12),
         secondarySelectedColor: _secondary.withValues(alpha: 0.12),
         side: const BorderSide(color: _outline),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(999),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
         labelStyle: chipLabelStyle,
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       ),
@@ -221,11 +226,7 @@ class AppTheme {
         ),
       ),
       extensions: const <ThemeExtension<dynamic>>[
-        AppSemanticColors(
-          success: _success,
-          warning: _warning,
-          error: _error,
-        ),
+        AppSemanticColors(success: _success, warning: _warning, error: _error),
       ],
     );
   }
@@ -240,6 +241,30 @@ class AppTheme {
       brightness: Brightness.dark,
       colorScheme: scheme,
     );
+  }
+
+  static TextTheme _withCjkFallbackTheme(TextTheme theme) {
+    return TextTheme(
+      displayLarge: _withCjkFallback(theme.displayLarge),
+      displayMedium: _withCjkFallback(theme.displayMedium),
+      displaySmall: _withCjkFallback(theme.displaySmall),
+      headlineLarge: _withCjkFallback(theme.headlineLarge),
+      headlineMedium: _withCjkFallback(theme.headlineMedium),
+      headlineSmall: _withCjkFallback(theme.headlineSmall),
+      titleLarge: _withCjkFallback(theme.titleLarge),
+      titleMedium: _withCjkFallback(theme.titleMedium),
+      titleSmall: _withCjkFallback(theme.titleSmall),
+      bodyLarge: _withCjkFallback(theme.bodyLarge),
+      bodyMedium: _withCjkFallback(theme.bodyMedium),
+      bodySmall: _withCjkFallback(theme.bodySmall),
+      labelLarge: _withCjkFallback(theme.labelLarge),
+      labelMedium: _withCjkFallback(theme.labelMedium),
+      labelSmall: _withCjkFallback(theme.labelSmall),
+    );
+  }
+
+  static TextStyle? _withCjkFallback(TextStyle? style) {
+    return style?.copyWith(fontFamilyFallback: _cjkFontFallback);
   }
 }
 
@@ -256,11 +281,7 @@ class AppSemanticColors extends ThemeExtension<AppSemanticColors> {
   final Color error;
 
   @override
-  AppSemanticColors copyWith({
-    Color? success,
-    Color? warning,
-    Color? error,
-  }) {
+  AppSemanticColors copyWith({Color? success, Color? warning, Color? error}) {
     return AppSemanticColors(
       success: success ?? this.success,
       warning: warning ?? this.warning,

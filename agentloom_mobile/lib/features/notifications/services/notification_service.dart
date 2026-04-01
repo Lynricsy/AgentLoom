@@ -1,11 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 import '../models/push_notification_payload.dart';
+import '../platform/push_platform_support.dart';
 
 class NotificationService {
   NotificationService({
@@ -13,16 +13,19 @@ class NotificationService {
     FlutterLocalNotificationsPlugin? localNotifications,
     Stream<RemoteMessage>? onMessageStream,
     Stream<RemoteMessage>? onMessageOpenedAppStream,
+    PushPlatformSupport platformSupport = const PushPlatformSupport(),
   }) : _messagingOverride = messaging,
        _localNotifications =
            localNotifications ?? FlutterLocalNotificationsPlugin(),
        _onMessageStreamOverride = onMessageStream,
-       _onMessageOpenedAppStreamOverride = onMessageOpenedAppStream;
+       _onMessageOpenedAppStreamOverride = onMessageOpenedAppStream,
+       _platformSupport = platformSupport;
 
   FirebaseMessaging? _messagingOverride;
   final FlutterLocalNotificationsPlugin _localNotifications;
   final Stream<RemoteMessage>? _onMessageStreamOverride;
   final Stream<RemoteMessage>? _onMessageOpenedAppStreamOverride;
+  final PushPlatformSupport _platformSupport;
 
   StreamSubscription<RemoteMessage>? _foregroundMessageSubscription;
   StreamSubscription<RemoteMessage>? _messageOpenedAppSubscription;
@@ -47,6 +50,11 @@ class NotificationService {
 
   Future<void> initialize() async {
     if (_isInitialized) {
+      return;
+    }
+
+    if (!_platformSupport.isSupported) {
+      _isInitialized = true;
       return;
     }
 
@@ -77,7 +85,7 @@ class NotificationService {
         }
       }
 
-      if (Platform.isAndroid) {
+      if (_platformSupport.usesAndroidNotificationChannel) {
         await _localNotifications
             .resolvePlatformSpecificImplementation<
               AndroidFlutterLocalNotificationsPlugin
@@ -115,6 +123,10 @@ class NotificationService {
   }
 
   Future<bool> requestPermission() async {
+    if (!_platformSupport.isSupported) {
+      return false;
+    }
+
     final settings = await _messaging.requestPermission(
       alert: true,
       badge: true,
@@ -126,12 +138,23 @@ class NotificationService {
   }
 
   Future<String?> getToken() async {
+    if (!_platformSupport.isSupported) {
+      return null;
+    }
+
     return _messaging.getToken();
   }
 
-  Stream<String> get onTokenRefresh => _messaging.onTokenRefresh;
+  Stream<String> get onTokenRefresh => _platformSupport.isSupported
+      ? _messaging.onTokenRefresh
+      : const Stream<String>.empty();
 
   Future<void> deleteToken() async {
+    if (!_platformSupport.isSupported) {
+      lastRegisteredToken = null;
+      return;
+    }
+
     await _messaging.deleteToken();
     lastRegisteredToken = null;
   }
