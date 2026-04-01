@@ -74,7 +74,7 @@ export const AGENT_CANVAS_NODE_REGISTRY = new Map<string, AgentNodeTypeConfig>([
       inputPorts: [],
       outputPorts: [
         createPort('model-out', '模型', 'output', 'model', {
-          description: '模型配置输出，连接到 Agent Main',
+          description: '输出配置好的 LLM 模型实例，连接到 Agent Main 节点使用',
         }),
       ],
       configSchema: EMPTY_AGENT_CONFIG_SCHEMA,
@@ -90,13 +90,20 @@ export const AGENT_CANVAS_NODE_REGISTRY = new Map<string, AgentNodeTypeConfig>([
       description: '根据策略从多个 LLM 模型中选择最优模型',
       colorToken: AGENT_CATEGORY_COLOR_TOKENS.agent,
       inputPorts: [
-        createPort('model-in-0', '模型 1', 'input', 'model', { required: true }),
-        createPort('model-in-1', '模型 2', 'input', 'model', { required: true }),
+        createPort('model-in-0', '模型 1', 'input', 'model', {
+          required: true,
+          description: '第一个候选模型，路由策略将从候选模型中选择最优项',
+        }),
+        createPort('model-in-1', '模型 2', 'input', 'model', {
+          required: true,
+          description: '第二个候选模型，路由策略将从候选模型中选择最优项',
+        }),
       ],
       outputPorts: [
         createPort('model-out', '选定模型', 'output', 'model', {
           multiple: true,
           maxConnections: 5,
+          description: '根据路由策略（如成本优先、质量优先）选出的模型实例',
         }),
       ],
       configSchema: {
@@ -130,7 +137,7 @@ export const AGENT_CANVAS_NODE_REGISTRY = new Map<string, AgentNodeTypeConfig>([
       inputPorts: [],
       outputPorts: [
         createPort('tool-out', '工具', 'output', 'tool', {
-          description: 'MCP 工具执行结果',
+          description: '连接后该 MCP 工具将注册到 Agent，Agent 可在对话中按需调用',
         }),
       ],
       configSchema: EMPTY_AGENT_CONFIG_SCHEMA,
@@ -148,7 +155,7 @@ export const AGENT_CANVAS_NODE_REGISTRY = new Map<string, AgentNodeTypeConfig>([
       inputPorts: [],
       outputPorts: [
         createPort('knowledge-out', '知识库', 'output', 'knowledge', {
-          description: '检索到的知识条目',
+          description: '向量知识库，连接后 Agent 可检索其中的文档进行回答',
         }),
       ],
       configSchema: {
@@ -172,7 +179,7 @@ export const AGENT_CANVAS_NODE_REGISTRY = new Map<string, AgentNodeTypeConfig>([
       inputPorts: [],
       outputPorts: [
         createPort('memory-out', '记忆', 'output', 'memory', {
-          description: '记忆会话引用',
+          description: 'Agent 的长期记忆存储，跨对话保留关键信息和用户偏好',
         }),
       ],
       configSchema: {
@@ -203,15 +210,15 @@ export const AGENT_CANVAS_NODE_REGISTRY = new Map<string, AgentNodeTypeConfig>([
       colorToken: AGENT_CATEGORY_COLOR_TOKENS.agent,
       inputPorts: [
         createPort('text-in', '文本', 'input', 'text', {
-          description: '文本格式任务输入',
+          description: '传入文本作为子 Agent 的默认输入',
         }),
         createPort('json-in', 'JSON', 'input', 'json', {
-          description: 'JSON 格式任务输入',
+          description: '传入 JSON 数据作为子 Agent 的结构化配置',
         }),
       ],
       outputPorts: [
         createPort('agent-out', 'Agent', 'output', 'agent', {
-          description: '子 Agent 引用输出',
+          description: '输出子 Agent 实例，连接到主 Agent 的"子 Agent"端口即可注册',
         }),
       ],
       configSchema: {
@@ -239,15 +246,15 @@ export const AGENT_CANVAS_NODE_REGISTRY = new Map<string, AgentNodeTypeConfig>([
       colorToken: AGENT_CATEGORY_COLOR_TOKENS.tool,
       inputPorts: [
         createPort('text-in', '文本', 'input', 'text', {
-          description: '文本格式输入数据',
+          description: '接收待预处理的原始文本，如用户输入或上游节点的文本输出',
         }),
         createPort('json-in', 'JSON', 'input', 'json', {
-          description: 'JSON 格式输入数据',
+          description: '接收待预处理的原始 JSON 数据',
         }),
       ],
       outputPorts: [
         createPort('json-out', 'JSON', 'output', 'json', {
-          description: '预处理转换结果',
+          description: '经过预处理规则转换后的 JSON 数据',
         }),
       ],
       configSchema: {
@@ -275,7 +282,9 @@ export const AGENT_CANVAS_NODE_REGISTRY = new Map<string, AgentNodeTypeConfig>([
       colorToken: AGENT_CATEGORY_COLOR_TOKENS.knowledge,
       inputPorts: [],
       outputPorts: [
-        createPort('skill-out', 'Skill', 'output', 'skill'),
+        createPort('skill-out', 'Skill', 'output', 'skill', {
+          description: '预定义的能力模板，连接后 Agent 在对话中可按需激活使用',
+        }),
       ],
       configSchema: {
         type: 'object',
@@ -299,11 +308,14 @@ export const AGENT_CANVAS_NODE_REGISTRY = new Map<string, AgentNodeTypeConfig>([
       colorToken: AGENT_CATEGORY_COLOR_TOKENS.tool,
       maxInstances: 1,
       inputPorts: [
-        createPort('volume-in', '工作区', 'input', 'volume', { required: false }),
+        createPort('volume-in', '工作区', 'input', 'volume', {
+          required: false,
+          description: '可选挂载持久化工作区，沙箱内的文件读写将保存到该工作区',
+        }),
       ],
       outputPorts: [
         createPort('sandbox-out', '沙箱', 'output', 'sandbox', {
-          description: '沙箱环境输出，连接到 Agent Main',
+          description: '提供隔离的代码执行环境，连接到 Agent 后可运行代码和终端命令',
         }),
       ],
       configSchema: {
@@ -331,7 +343,7 @@ export const AGENT_CANVAS_NODE_REGISTRY = new Map<string, AgentNodeTypeConfig>([
       inputPorts: [],
       outputPorts: [
         createPort('volume-out', '工作区', 'output', 'volume', {
-          description: '挂载到沙箱的工作区存储',
+          description: '持久化存储卷，可跨多次执行保留文件，需连接到沙箱节点使用',
         }),
       ],
       configSchema: {
@@ -356,43 +368,43 @@ export const AGENT_CANVAS_NODE_REGISTRY = new Map<string, AgentNodeTypeConfig>([
       maxInstances: 1,
       inputPorts: [
         createPort('model-in', '模型', 'input', 'model', {
-          description: '来自 LLM 模型节点的模型配置',
+          description: '指定 Agent 使用的 LLM 模型，决定推理能力和成本',
         }),
         createPort('tools-in', '工具', 'input', 'tool', {
           multiple: true,
           maxConnections: null,
-          description: '来自 MCP 工具节点的工具集',
+          description: '为 Agent 挂载 MCP 工具，Agent 可在对话中按需调用',
         }),
         createPort('knowledge-in', '知识库', 'input', 'knowledge', {
           multiple: true,
           maxConnections: null,
-          description: '来自知识库节点的知识源',
+          description: '绑定向量知识库，Agent 回答时可检索相关文档作为参考',
         }),
         createPort('sandbox-in', '沙箱', 'input', 'sandbox', {
           maxConnections: 1,
-          description: '专属沙箱环境（独占连接）',
+          description: '绑定沙箱执行环境，Agent 可运行代码和终端命令',
         }),
         createPort('skills-in', 'Skills', 'input', 'skill', {
           multiple: true,
           maxConnections: null,
-          description: '来自 Skill 节点的技能指令',
+          description: '启用 Skill 能力模板，Agent 在对话中可按需激活',
         }),
         createPort('memory-in', '记忆', 'input', 'memory', {
           multiple: true,
           maxConnections: null,
-          description: '来自 Memory 节点的记忆会话配置',
+          description: '绑定长期记忆存储，Agent 可跨对话记住关键信息',
         }),
         createPort('system-prompt-in', '系统提示词', 'input', 'text', {
           maxConnections: 1,
-          description: '系统提示词（独占连接）',
+          description: '注入自定义系统提示词，定义 Agent 的角色和行为准则',
         }),
         createPort('sub-agents-in', '子 Agent', 'input', 'agent', {
           multiple: true,
           maxConnections: null,
-          description: '来自子 Agent 节点的 Agent 引用',
+          description: '注册可调度的子 Agent，主 Agent 可将子任务委派给它们',
         }),
         createPort('input-preprocessor-in', '输入预处理', 'input', 'json', {
-          description: '来自输入预处理节点的预处理数据',
+          description: '连接输入预处理管道，用户消息先经过预处理再交给 Agent',
         }),
       ],
       outputPorts: [],

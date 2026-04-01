@@ -7,6 +7,7 @@ import {
   useState,
   type CSSProperties,
 } from 'react'
+import * as Tooltip from '@radix-ui/react-tooltip'
 import {
   AlertTriangle,
   Bot,
@@ -528,7 +529,27 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
                 isConnectable={isConnectable}
               />
               {lod === 'full' ? (
-                <span className="ml-3 truncate text-xs text-muted-foreground">{port.label}</span>
+                port.description ? (
+                  <Tooltip.Provider delayDuration={400}>
+                    <Tooltip.Root>
+                      <Tooltip.Trigger asChild>
+                        <span className="ml-3 truncate text-xs text-muted-foreground">{port.label}</span>
+                      </Tooltip.Trigger>
+                      <Tooltip.Portal>
+                        <Tooltip.Content
+                          side="bottom"
+                          sideOffset={4}
+                          className="z-50 max-w-56 rounded-md bg-popover px-2.5 py-1.5 text-xs text-popover-foreground shadow-md"
+                        >
+                          {port.description}
+                          <Tooltip.Arrow className="fill-popover" />
+                        </Tooltip.Content>
+                      </Tooltip.Portal>
+                    </Tooltip.Root>
+                  </Tooltip.Provider>
+                ) : (
+                  <span className="ml-3 truncate text-xs text-muted-foreground">{port.label}</span>
+                )
               ) : null}
             </div>
           ))}
@@ -620,7 +641,27 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
               )}
             >
               {lod === 'full' ? (
-                <span className="mr-3 truncate text-xs text-muted-foreground">{port.label}</span>
+                port.description ? (
+                  <Tooltip.Provider delayDuration={400}>
+                    <Tooltip.Root>
+                      <Tooltip.Trigger asChild>
+                        <span className="mr-3 truncate text-xs text-muted-foreground">{port.label}</span>
+                      </Tooltip.Trigger>
+                      <Tooltip.Portal>
+                        <Tooltip.Content
+                          side="bottom"
+                          sideOffset={4}
+                          className="z-50 max-w-56 rounded-md bg-popover px-2.5 py-1.5 text-xs text-popover-foreground shadow-md"
+                        >
+                          {port.description}
+                          <Tooltip.Arrow className="fill-popover" />
+                        </Tooltip.Content>
+                      </Tooltip.Portal>
+                    </Tooltip.Root>
+                  </Tooltip.Provider>
+                ) : (
+                  <span className="mr-3 truncate text-xs text-muted-foreground">{port.label}</span>
+                )
               ) : null}
               <TypedPort
                 nodeId={id}

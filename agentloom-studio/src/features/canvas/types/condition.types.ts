@@ -305,12 +305,12 @@ export function getErrorStrategyLabel(strategy: ErrorStrategy): string {
 export function buildConditionOutputPorts(branches: ConditionBranch[]): PortDefinition[] {
   const ports: PortDefinition[] = branches.map((branch) =>
     createPort(branch.id, branch.label, 'output', 'json', {
-      description: `${branch.label} 分支输出`,
+      description: `条件匹配时数据从此分支输出，标签由用户在分支规则中定义`,
     }),
   )
   ports.push(
     createPort('else', 'ELSE', 'output', 'json', {
-      description: '默认分支输出',
+      description: '兜底分支，当所有条件均不满足时数据从此输出',
     }),
   )
   return ports
@@ -365,6 +365,8 @@ export function getMergeModeLabel(mode: MergeMode): string {
 export function buildMergeInputPorts(inputCount: number): PortDefinition[] {
   const count = Math.max(2, Math.min(10, Math.floor(inputCount)))
   return Array.from({ length: count }, (_, i) =>
-    createPort(`input-${i}`, `输入 ${i + 1}`, 'input', 'json'),
+    createPort(`input-${i}`, `输入 ${i + 1}`, 'input', 'json', {
+      description: `第 ${i + 1} 路输入，等待所有输入就绪后进行合并`,
+    }),
   )
 }

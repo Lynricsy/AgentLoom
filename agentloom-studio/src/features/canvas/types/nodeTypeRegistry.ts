@@ -209,8 +209,22 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     icon: 'MessageSquare',
     description: '对话型 Agent 节点',
     colorToken: CATEGORY_COLOR_TOKENS.agent,
-    inputPorts: [createPort('messages-in', 'messages', 'input', 'json'), createPort('model-in', '模型', 'input', 'model')],
-    outputPorts: [createPort('reply-out', 'reply', 'output', 'text'), createPort('structured-out', 'structured', 'output', 'json')],
+    inputPorts: [
+      createPort('messages-in', '消息', 'input', 'json', {
+        description: '传入的对话消息列表，包含历史 user/assistant 消息用于多轮对话',
+      }),
+      createPort('model-in', '模型', 'input', 'model', {
+        description: '指定对话使用的 LLM 模型，决定推理能力和成本',
+      }),
+    ],
+    outputPorts: [
+      createPort('reply-out', '回复', 'output', 'text', {
+        description: 'Agent 生成的自然语言文本回复',
+      }),
+      createPort('structured-out', '结构化', 'output', 'json', {
+        description: 'Agent 按 Schema 约束输出的结构化 JSON 数据',
+      }),
+    ],
     configSchema: {
       type: 'object',
       properties: {
@@ -230,6 +244,7 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     outputPorts: [createPort('model-out', '模型', 'output', 'model', {
       multiple: true,
       maxConnections: 5,
+      description: '输出配置好的 LLM 模型实例，连接到 Agent 或智能路由节点使用',
     })],
     configSchema: EMPTY_CONFIG_SCHEMA,
   },
@@ -240,8 +255,22 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     icon: 'Globe',
     description: 'HTTP 请求工具',
     colorToken: CATEGORY_COLOR_TOKENS.tool,
-    inputPorts: [createPort('exec-in', '', 'input', 'exec'), createPort('request-in', 'JSON', 'input', 'json')],
-    outputPorts: [createPort('exec-out', '', 'output', 'exec'), createPort('response-out', 'JSON', 'output', 'json')],
+    inputPorts: [
+      createPort('exec-in', '', 'input', 'exec', {
+        description: '执行流入口，前序节点完成后触发 HTTP 请求',
+      }),
+      createPort('request-in', '请求体', 'input', 'json', {
+        description: 'HTTP 请求发送的 JSON Body 数据',
+      }),
+    ],
+    outputPorts: [
+      createPort('exec-out', '', 'output', 'exec', {
+        description: '执行流出口，HTTP 请求完成后触发下游节点',
+      }),
+      createPort('response-out', '响应体', 'output', 'json', {
+        description: 'HTTP 响应返回的 JSON Body 数据',
+      }),
+    ],
     configSchema: {
       type: 'object',
       properties: {
@@ -270,8 +299,25 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     icon: 'Code',
     description: '代码执行工具',
     colorToken: CATEGORY_COLOR_TOKENS.tool,
-    inputPorts: [createPort('exec-in', '', 'input', 'exec'), createPort('input-in', 'input', 'input', 'json')],
-    outputPorts: [createPort('exec-out', '', 'output', 'exec'), createPort('result-out', 'result', 'output', 'json'), createPort('stdout-out', 'stdout', 'output', 'text')],
+    inputPorts: [
+      createPort('exec-in', '', 'input', 'exec', {
+        description: '执行流入口，前序节点完成后触发代码执行',
+      }),
+      createPort('input-in', '参数', 'input', 'json', {
+        description: '以 JSON 形式传入代码的输入参数，在代码中通过 input 变量访问',
+      }),
+    ],
+    outputPorts: [
+      createPort('exec-out', '', 'output', 'exec', {
+        description: '执行流出口，代码执行完成后触发下游节点',
+      }),
+      createPort('result-out', '返回值', 'output', 'json', {
+        description: '代码中 return 语句返回的 JSON 结果',
+      }),
+      createPort('stdout-out', 'stdout', 'output', 'text', {
+        description: '代码执行过程中 console.log / print 输出的文本内容',
+      }),
+    ],
     configSchema: {
       type: 'object',
       properties: {
@@ -294,7 +340,7 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     colorToken: CATEGORY_COLOR_TOKENS.tool,
     inputPorts: [],
     outputPorts: [createPort('tool-out', '工具', 'output', 'tool', {
-      description: '连接到 Agent 的工具端口',
+      description: '连接后该 MCP 工具将注册到 Agent，Agent 可在对话中按需调用',
     })],
     configSchema: EMPTY_CONFIG_SCHEMA,
   },
@@ -306,13 +352,16 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     description: '代码执行沙箱环境',
     colorToken: CATEGORY_COLOR_TOKENS.tool,
     inputPorts: [
-      createPort('volume-in', '工作区', 'input', 'volume', { required: false }),
+      createPort('volume-in', '工作区', 'input', 'volume', {
+        required: false,
+        description: '可选挂载持久化工作区，沙箱内的文件读写将保存到该工作区',
+      }),
     ],
     outputPorts: [
       createPort('sandbox-out', '沙箱', 'output', 'sandbox', {
         multiple: true,
         maxConnections: null,
-        description: 'Agent 可用的沙箱环境',
+        description: '提供隔离的代码执行环境，连接到 Agent 后可运行代码和终端命令',
       }),
     ],
     configSchema: {
@@ -335,7 +384,14 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     description: '手动触发器',
     colorToken: CATEGORY_COLOR_TOKENS.trigger,
     inputPorts: [],
-    outputPorts: [createPort('exec-out', '', 'output', 'exec'), createPort('payload-out', 'payload', 'output', 'json')],
+    outputPorts: [
+      createPort('exec-out', '', 'output', 'exec', {
+        description: '执行流出口，触发后启动工作流的后续节点',
+      }),
+      createPort('payload-out', '触发数据', 'output', 'json', {
+        description: '手动触发时传入的表单参数数据',
+      }),
+    ],
     configSchema: EMPTY_CONFIG_SCHEMA,
   },
   'schedule-trigger': {
@@ -346,7 +402,14 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     description: '定时触发器',
     colorToken: CATEGORY_COLOR_TOKENS.trigger,
     inputPorts: [],
-    outputPorts: [createPort('exec-out', '', 'output', 'exec'), createPort('payload-out', 'payload', 'output', 'json')],
+    outputPorts: [
+      createPort('exec-out', '', 'output', 'exec', {
+        description: '执行流出口，定时触发后启动工作流',
+      }),
+      createPort('payload-out', '触发数据', 'output', 'json', {
+        description: '定时触发时的调度信息（触发时间、Cron 表达式等）',
+      }),
+    ],
     configSchema: {
       type: 'object',
       properties: {
@@ -364,7 +427,14 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     description: 'Webhook 触发器',
     colorToken: CATEGORY_COLOR_TOKENS.trigger,
     inputPorts: [],
-    outputPorts: [createPort('exec-out', '', 'output', 'exec'), createPort('payload-out', 'payload', 'output', 'json')],
+    outputPorts: [
+      createPort('exec-out', '', 'output', 'exec', {
+        description: '执行流出口，Webhook 请求到达后触发工作流',
+      }),
+      createPort('payload-out', '触发数据', 'output', 'json', {
+        description: 'Webhook 请求携带的 JSON Body 数据',
+      }),
+    ],
     configSchema: {
       type: 'object',
       properties: {
@@ -385,7 +455,14 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     description: 'API 事件触发器',
     colorToken: CATEGORY_COLOR_TOKENS.trigger,
     inputPorts: [],
-    outputPorts: [createPort('exec-out', '', 'output', 'exec'), createPort('payload-out', 'payload', 'output', 'json')],
+    outputPorts: [
+      createPort('exec-out', '', 'output', 'exec', {
+        description: '执行流出口，API 事件到达后触发工作流',
+      }),
+      createPort('payload-out', '触发数据', 'output', 'json', {
+        description: '外部 API 事件携带的 JSON 数据（GitHub Webhook、自定义事件等）',
+      }),
+    ],
     configSchema: {
       type: 'object',
       properties: {
@@ -404,7 +481,9 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     description: '知识库检索节点',
     colorToken: CATEGORY_COLOR_TOKENS.knowledge,
     inputPorts: [],
-    outputPorts: [createPort('knowledge-out', '知识库', 'output', 'knowledge')],
+    outputPorts: [createPort('knowledge-out', '知识库', 'output', 'knowledge', {
+      description: '向量知识库，连接后 Agent 可检索其中的文档进行回答',
+    })],
     configSchema: {
       type: 'object',
       properties: {
@@ -420,7 +499,14 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     icon: 'FileText',
     description: '文本输出节点',
     colorToken: CATEGORY_COLOR_TOKENS.output,
-    inputPorts: [createPort('exec-in', '', 'input', 'exec'), createPort('content-in', 'content', 'input', 'text')],
+    inputPorts: [
+      createPort('exec-in', '', 'input', 'exec', {
+        description: '执行流入口，前序节点完成后触发输出',
+      }),
+      createPort('content-in', '文本', 'input', 'text', {
+        description: '接收要作为工作流最终结果输出的文本内容',
+      }),
+    ],
     outputPorts: [],
     configSchema: EMPTY_CONFIG_SCHEMA,
   },
@@ -431,7 +517,14 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     icon: 'Braces',
     description: 'JSON 输出节点',
     colorToken: CATEGORY_COLOR_TOKENS.output,
-    inputPorts: [createPort('exec-in', '', 'input', 'exec'), createPort('content-in', 'content', 'input', 'json')],
+    inputPorts: [
+      createPort('exec-in', '', 'input', 'exec', {
+        description: '执行流入口，前序节点完成后触发输出',
+      }),
+      createPort('content-in', 'JSON', 'input', 'json', {
+        description: '接收要作为工作流最终结果输出的 JSON 数据',
+      }),
+    ],
     outputPorts: [],
     configSchema: EMPTY_CONFIG_SCHEMA,
   },
@@ -442,10 +535,21 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     icon: 'GitBranch',
     description: '条件分支节点',
     colorToken: CATEGORY_COLOR_TOKENS.control,
-    inputPorts: [createPort('exec-in', '', 'input', 'exec'), createPort('input-in', 'input', 'input', 'json')],
+    inputPorts: [
+      createPort('exec-in', '', 'input', 'exec', {
+        description: '执行流入口，前序节点完成后触发条件判断',
+      }),
+      createPort('input-in', '判断值', 'input', 'json', {
+        description: '传入用于条件判断的数据，将根据分支规则决定走哪条路径',
+      }),
+    ],
     outputPorts: [
-      createPort('branch-0', 'IF', 'output', 'json', { description: 'IF 分支输出' }),
-      createPort('else', 'ELSE', 'output', 'json', { description: '默认分支输出' }),
+      createPort('branch-0', 'IF', 'output', 'json', {
+        description: '第一个条件匹配时数据从此分支输出',
+      }),
+      createPort('else', 'ELSE', 'output', 'json', {
+        description: '兜底分支，当所有条件均不满足时数据从此输出',
+      }),
     ],
     configSchema: EMPTY_CONFIG_SCHEMA,
   },
@@ -456,8 +560,22 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     icon: 'Repeat',
     description: '循环控制节点',
     colorToken: CATEGORY_COLOR_TOKENS.control,
-    inputPorts: [createPort('exec-in', '', 'input', 'exec'), createPort('items-in', 'items', 'input', 'json')],
-    outputPorts: [createPort('item-out', 'item', 'output', 'json'), createPort('done-out', 'done', 'output', 'json')],
+    inputPorts: [
+      createPort('exec-in', '', 'input', 'exec', {
+        description: '执行流入口，前序节点完成后开始循环',
+      }),
+      createPort('items-in', '列表', 'input', 'json', {
+        description: '传入待遍历的数组数据，循环将逐个处理其中的每个元素',
+      }),
+    ],
+    outputPorts: [
+      createPort('item-out', '当前项', 'output', 'json', {
+        description: '每次迭代输出当前正在处理的单个元素，连接到循环体节点',
+      }),
+      createPort('done-out', '完成', 'output', 'json', {
+        description: '全部元素遍历结束后输出汇总结果，连接到后续处理节点',
+      }),
+    ],
     configSchema: {
       type: 'object',
       properties: {
@@ -495,13 +613,20 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     description: '根据策略从多个 LLM 模型中选择最优模型',
     colorToken: CATEGORY_COLOR_TOKENS.agent,
     inputPorts: [
-      createPort('model-in-0', '模型 1', 'input', 'model', { required: true }),
-      createPort('model-in-1', '模型 2', 'input', 'model', { required: true }),
+      createPort('model-in-0', '模型 1', 'input', 'model', {
+        required: true,
+        description: '第一个候选模型，路由策略将从候选模型中选择最优项',
+      }),
+      createPort('model-in-1', '模型 2', 'input', 'model', {
+        required: true,
+        description: '第二个候选模型，路由策略将从候选模型中选择最优项',
+      }),
     ],
     outputPorts: [
       createPort('model-out', '选定模型', 'output', 'model', {
         multiple: true,
         maxConnections: 5,
+        description: '根据路由策略（如成本优先、质量优先）选出的模型实例',
       }),
     ],
     configSchema: {
@@ -547,23 +672,27 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     description: '对输入数据进行转换预处理（JMESPath / JSONata / 模板 / 脚本）',
     colorToken: CATEGORY_COLOR_TOKENS.tool,
     inputPorts: [
-      createPort('exec-in', '', 'input', 'exec'),
+      createPort('exec-in', '', 'input', 'exec', {
+        description: '执行流入口，前序节点完成后触发预处理',
+      }),
       createPort('text-in', '文本', 'input', 'text', {
-        description: '文本格式输入数据',
+        description: '接收待预处理的原始文本，如用户输入或上游节点的文本输出',
       }),
       createPort('json-in', 'JSON', 'input', 'json', {
-        description: 'JSON 格式输入数据',
+        description: '接收待预处理的原始 JSON 数据',
       }),
     ],
     outputPorts: [
-      createPort('exec-out', '', 'output', 'exec'),
+      createPort('exec-out', '', 'output', 'exec', {
+        description: '执行流出口，预处理完成后触发下游节点',
+      }),
       createPort('text-out', '文本', 'output', 'text', {
-        description: '文本格式转换结果',
+        description: '经过预处理规则转换后的文本，可连接多个下游节点',
         multiple: true,
         maxConnections: null,
       }),
       createPort('json-out', 'JSON', 'output', 'json', {
-        description: 'JSON 格式转换结果',
+        description: '经过预处理规则转换后的 JSON 数据，可连接多个下游节点',
         multiple: true,
         maxConnections: null,
       }),
@@ -591,7 +720,7 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     inputPorts: [],
     outputPorts: [
       createPort('memory-out', '记忆', 'output', 'memory', {
-        description: '记忆会话引用',
+        description: 'Agent 的长期记忆存储，跨对话保留关键信息和用户偏好',
       }),
     ],
     configSchema: {
@@ -620,45 +749,45 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     inputPorts: [
       createPort('text-in', '文本', 'input', 'text', {
         required: true,
-        description: 'Agent 的文本输入',
+        description: '发送给 Agent 的输入文本，通常来自上游节点或触发数据',
       }),
       createPort('sandbox-in', '沙箱', 'input', 'sandbox', {
         maxConnections: 1,
-        description: '外部沙箱（覆盖 Agent 内置沙箱配置）',
+        description: '绑定沙箱执行环境，Agent 可在其中运行代码和终端命令',
       }),
       createPort('context-in', '上下文', 'input', 'json', {
-        description: '附加上下文数据',
+        description: '传入附加上下文 JSON 数据，Agent 推理时可作为参考信息',
       }),
       createPort('skills-in', 'Skills', 'input', 'skill', {
         multiple: true,
         maxConnections: null,
-        description: 'Agent 可加载的技能指令',
+        description: '启用 Skill 能力模板，Agent 在对话中可按需激活使用',
       }),
       createPort('tools-in', '扩展工具', 'input', 'tool', {
         multiple: true,
         maxConnections: null,
-        description: '外部工具扩展（合并到 Agent 工具集）',
+        description: '额外挂载 MCP 工具，Agent 可在对话中按需调用这些工具',
       }),
       createPort('sub-agents-in', '子 Agent', 'input', 'agent', {
         multiple: true,
         maxConnections: null,
-        description: '委托子 Agent（可被主 Agent 调度）',
+        description: '注册可调度的子 Agent，主 Agent 可将子任务委派给它们',
       }),
-      createPort('schema-in', '输出 Schema', 'input', 'json', {
+      createPort('schema-in', 'Schema', 'input', 'json', {
         maxConnections: 1,
-        description: '结构化输出 Schema（连接后 Agent 输出为 JSON）',
+        description: '定义 Agent 输出的 JSON Schema，约束回复格式为结构化数据',
       }),
     ],
     outputPorts: [
-      createPort('agent-out', 'Agent 文本', 'output', 'text', {
+      createPort('agent-out', '回复', 'output', 'text', {
         multiple: true,
         maxConnections: null,
-        description: 'Agent 执行的文本输出',
+        description: 'Agent 生成的自然语言文本回复',
       }),
       createPort('structured-out', '结构化', 'output', 'json', {
         multiple: true,
         maxConnections: null,
-        description: 'Agent 执行的结构化输出',
+        description: 'Agent 按 Schema 约束输出的结构化 JSON 数据',
       }),
     ],
     configSchema: EMPTY_CONFIG_SCHEMA,
@@ -673,7 +802,7 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     inputPorts: [],
     outputPorts: [
       createPort('skill-out', 'Skill', 'output', 'skill', {
-        description: '技能输出，连接到 Agent 的 Skills 端口',
+        description: '预定义的能力模板，连接后 Agent 在对话中可按需激活使用',
       }),
     ],
     configSchema: {
@@ -698,7 +827,7 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     inputPorts: [],
     outputPorts: [
       createPort('volume-out', '工作区', 'output', 'volume', {
-        description: '挂载到沙箱的工作区存储',
+        description: '持久化存储卷，可跨多次执行保留文件，需连接到沙箱节点使用',
       }),
     ],
     configSchema: {
@@ -718,10 +847,16 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     description: '合并多分支数据',
     colorToken: CATEGORY_COLOR_TOKENS.control,
     inputPorts: [
-      createPort('input-0', '输入 1', 'input', 'json'),
-      createPort('input-1', '输入 2', 'input', 'json'),
+      createPort('input-0', '输入 1', 'input', 'json', {
+        description: '第 1 路输入，等待所有输入就绪后进行合并',
+      }),
+      createPort('input-1', '输入 2', 'input', 'json', {
+        description: '第 2 路输入，等待所有输入就绪后进行合并',
+      }),
     ],
-    outputPorts: [createPort('merged-out', 'merged', 'output', 'json')],
+    outputPorts: [createPort('merged-out', '合并结果', 'output', 'json', {
+      description: '将所有输入路的数据合并为一个 JSON 对象后输出',
+    })],
     configSchema: {
       type: 'object',
       properties: {
