@@ -148,6 +148,10 @@ await db.insert(agentMessages).values({
 
 ### 3. Contracts
 - standalone conversation 结束时，服务端必须尝试从 live container 读取当前 `/workspace` 目录树，并把快照写入 `agent_conversations.metadata.workspaceTreeSnapshot`。
+- `agent-conversation.ended` 必须在 conversation 状态变更事务提交后再发出；不能在事务体内直接 fire-and-forget，否则异步 listener 里再注册 after-commit hook 时，会把 destroy job 丢掉。
+- `agent-conversation.ended` 事件链路必须在目录树快照尝试完成后，继续释放 conversation 关联的 live sandbox。
+  - 顺序要求：先 best-effort snapshot，再 `endConversationSandbox()`。
+  - 即使 snapshot 失败，也不能把 live sandbox 永久留在 `ready/running`，否则 ended conversation 仍会错误暴露 live file preview。
 - `workspaceTreeSnapshot` 至少包含：
   - `nodes: FileTreeNode[]`
   - `capturedAt: string`
@@ -168,6 +172,8 @@ await db.insert(agentMessages).values({
 | 条件 | 预期行为 | 断言点 |
 |------|----------|--------|
 | 对话结束时仍有 live container | 写入 `metadata.workspaceTreeSnapshot` | `workspace-integration.service.spec.ts` |
+| 对话在租户事务内被结束 | `agent-conversation.ended` 必须 after-commit 才触发 | `agent-conversation.service.spec.ts` |
+| 对话结束事件触发 | 目录树快照尝试完成后必须释放 live sandbox | `workspace-integration.service.spec.ts` |
 | 对话结束时无 `persistencePath` | 仍应保存目录树快照，不能跳过 | `workspace-integration.service.spec.ts` |
 | live container 已释放，但 metadata 有 `workspaceTreeSnapshot` | `GET /workspace/tree` 返回目录树快照 | `workspace-integration.service.spec.ts` |
 | live container 已释放，但 metadata 有 `workspaceTreeSnapshot` | `GET /workspace/files/*` 返回明确的 tree-only 错误 | `workspace-integration.service.spec.ts` |

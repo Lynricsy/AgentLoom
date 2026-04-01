@@ -2,6 +2,10 @@ import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { and, desc, eq, sql } from 'drizzle-orm';
 
+import {
+  hasActiveTenantTransaction,
+  registerAfterCommitHook,
+} from '../../common/interceptors/tenant-transaction.context';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import {
@@ -285,12 +289,21 @@ export class AgentConversationService {
 
     this.logger.log(`Conversation ${conversationId} ended`);
 
-    this.eventEmitter.emit('agent-conversation.ended', {
+    const payload = {
       conversationId: conversation.id,
       tenantId: conversation.tenantId,
       organizationId: conversation.tenantId,
       userId: conversation.createdBy,
-    });
+    };
+
+    if (hasActiveTenantTransaction()) {
+      registerAfterCommitHook(async () => {
+        this.eventEmitter.emit('agent-conversation.ended', payload);
+      });
+      return;
+    }
+
+    this.eventEmitter.emit('agent-conversation.ended', payload);
   }
 
   async updateConversation(

@@ -6,6 +6,24 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DRIZZLE } from '../../database/database.module';
 import { AgentConversationService } from './agent-conversation.service';
 
+const tenantTransactionMocks = vi.hoisted(() => ({
+  hasActiveTenantTransaction: vi.fn(() => false),
+  registerAfterCommitHook: vi.fn(),
+}));
+
+vi.mock('../../common/interceptors/tenant-transaction.context', async () => {
+  const actual = await vi.importActual<
+    typeof import('../../common/interceptors/tenant-transaction.context')
+  >('../../common/interceptors/tenant-transaction.context');
+
+  return {
+    ...actual,
+    hasActiveTenantTransaction:
+      tenantTransactionMocks.hasActiveTenantTransaction,
+    registerAfterCommitHook: tenantTransactionMocks.registerAfterCommitHook,
+  };
+});
+
 type MockFn = ReturnType<typeof vi.fn>;
 
 interface MockDb {
@@ -106,6 +124,8 @@ describe('AgentConversationService', () => {
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
     vi.clearAllMocks();
+    tenantTransactionMocks.hasActiveTenantTransaction.mockReturnValue(false);
+    tenantTransactionMocks.registerAfterCommitHook.mockImplementation(() => {});
 
     db = {
       select: vi.fn(),
@@ -437,6 +457,39 @@ describe('AgentConversationService', () => {
       db.update.mockReturnValueOnce(updateChain);
 
       await service.end(CONVERSATION_ID);
+
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+        'agent-conversation.ended',
+        {
+          conversationId: CONVERSATION_ID,
+          tenantId: TENANT_ID,
+          organizationId: TENANT_ID,
+          userId: USER_ID,
+        },
+      );
+    });
+
+    it('事务内结束对话时应注册 after-commit hook，而不是提前发事件', async () => {
+      const updated = createConversationRecord({ status: 'ended' });
+      const updateChain = createUpdateChain([updated]);
+      db.update.mockReturnValueOnce(updateChain);
+      tenantTransactionMocks.hasActiveTenantTransaction.mockReturnValue(true);
+
+      let afterCommitHook: (() => Promise<void>) | undefined;
+      tenantTransactionMocks.registerAfterCommitHook.mockImplementation(
+        (hook: () => Promise<void>) => {
+          afterCommitHook = hook;
+        },
+      );
+
+      await service.end(CONVERSATION_ID);
+
+      expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+      expect(
+        tenantTransactionMocks.registerAfterCommitHook,
+      ).toHaveBeenCalledTimes(1);
+
+      await afterCommitHook?.();
 
       expect(mockEventEmitter.emit).toHaveBeenCalledWith(
         'agent-conversation.ended',

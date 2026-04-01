@@ -403,12 +403,26 @@ export class WorkspaceIntegrationService {
     organizationId: string;
     userId: string;
   }): Promise<void> {
-    await this.onConversationEnd(
-      payload.conversationId,
-      payload.tenantId,
-      payload.organizationId,
-      payload.userId,
-    );
+    try {
+      await this.onConversationEnd(
+        payload.conversationId,
+        payload.tenantId,
+        payload.organizationId,
+        payload.userId,
+      );
+    } finally {
+      try {
+        await this.sandboxService.endConversationSandbox(
+          payload.conversationId,
+          payload.tenantId,
+        );
+      } catch (error) {
+        this.logger.error(
+          `对话 ${payload.conversationId} 结束后释放沙箱失败`,
+          error instanceof Error ? error.stack : error,
+        );
+      }
+    }
   }
 
   stopAllWatchers(): void {

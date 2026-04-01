@@ -21,6 +21,7 @@ const {
   mockSandboxService: {
     findByConversationId: vi.fn(),
     findByExecutionId: vi.fn(),
+    endConversationSandbox: vi.fn(),
   },
   mockWorkspaceService: {
     createFromSandbox: vi.fn(),
@@ -243,6 +244,7 @@ describe('WorkspaceIntegrationService', () => {
     vi.useFakeTimers();
     mockSandboxService.findByConversationId.mockReset();
     mockSandboxService.findByExecutionId.mockReset();
+    mockSandboxService.endConversationSandbox.mockReset();
     mockWorkspaceService.findOne.mockReset();
     mockWorkspaceService.resolveOrganizationId
       .mockReset()
@@ -1078,7 +1080,40 @@ describe('WorkspaceIntegrationService', () => {
   });
 
   describe('handleConversationEnded', () => {
-    it('应代理到 onConversationEnd', async () => {
+    it('应先保存目录树快照，再释放 conversation sandbox', async () => {
+      mockSandboxService.findByConversationId.mockResolvedValue(
+        mockSandboxSession({
+          config: { persistencePath: '/data/workspaces' },
+        }),
+      );
+      setupExecWithOutput(['f|24|workspace/summary.txt'].join('\n'));
+      mockDb.select.mockReturnValue(
+        createSelectChain({
+          id: CONVERSATION_ID,
+          metadata: {},
+        }),
+      );
+      const updateChain = createUpdateChain();
+      mockDb.update.mockReturnValue(updateChain);
+
+      await service.handleConversationEnded({
+        conversationId: CONVERSATION_ID,
+        tenantId: TENANT_ID,
+        organizationId: ORG_ID,
+        userId: USER_ID,
+      });
+
+      expect(updateChain.set).toHaveBeenCalled();
+      expect(mockSandboxService.endConversationSandbox).toHaveBeenCalledWith(
+        CONVERSATION_ID,
+        TENANT_ID,
+      );
+      expect(updateChain.set.mock.invocationCallOrder[0]).toBeLessThan(
+        mockSandboxService.endConversationSandbox.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('目录树保存路径没有 live session 时也应尝试释放 conversation sandbox', async () => {
       mockSandboxService.findByConversationId.mockResolvedValue(null);
 
       await service.handleConversationEnded({
@@ -1092,6 +1127,26 @@ describe('WorkspaceIntegrationService', () => {
         CONVERSATION_ID,
         TENANT_ID,
       );
+      expect(mockSandboxService.endConversationSandbox).toHaveBeenCalledWith(
+        CONVERSATION_ID,
+        TENANT_ID,
+      );
+    });
+
+    it('释放 sandbox 失败时应吞掉异常，避免结束事件链路中断', async () => {
+      mockSandboxService.findByConversationId.mockResolvedValue(null);
+      mockSandboxService.endConversationSandbox.mockRejectedValue(
+        new Error('cleanup failed'),
+      );
+
+      await expect(
+        service.handleConversationEnded({
+          conversationId: CONVERSATION_ID,
+          tenantId: TENANT_ID,
+          organizationId: ORG_ID,
+          userId: USER_ID,
+        }),
+      ).resolves.toBeUndefined();
     });
   });
 
