@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -51,6 +51,16 @@ const MOCK_PROVIDER: LlmProviderEntity = {
   sortOrder: 0,
   createdAt: "2026-03-01T00:00:00Z",
   updatedAt: "2026-03-01T00:00:00Z",
+};
+
+const DISABLED_PROVIDER: LlmProviderEntity = {
+  ...MOCK_PROVIDER,
+  id: "prov-anthropic-uuid",
+  slug: "anthropic",
+  name: "Anthropic",
+  defaultBaseUrl: "https://api.anthropic.com",
+  apiProtocol: "anthropic",
+  isEnabled: false,
 };
 
 function createLlmModelEntity(
@@ -123,7 +133,8 @@ describe("LlmModelConfigPanel", () => {
     render(<LlmModelConfigPanel config={null} onApply={onApply} />);
 
     await user.click(screen.getByRole("button", { name: "选择已有配置" }));
-    await user.selectOptions(screen.getByRole("combobox"), "cfg-1");
+    await user.click(screen.getByRole("combobox", { name: "已保存配置" }));
+    await user.click(screen.getByRole("option", { name: /OpenAI 主模型/i }));
 
     expect(onApply).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -162,6 +173,54 @@ describe("LlmModelConfigPanel", () => {
         variant: "success",
       }),
     );
+  });
+
+  it("已有配置选择器不会展示禁用的 provider 或模型", async () => {
+    const user = userEvent.setup();
+
+    mocks.useLlmModels.mockReturnValue({
+      data: [
+        adaptModelEntityToInfo(createLlmModelEntity()),
+        adaptModelEntityToInfo(
+          createLlmModelEntity({
+            id: "cfg-disabled-model",
+            name: "Disabled GPT-4o",
+            modelId: "gpt-4o-disabled",
+            isEnabled: false,
+          }),
+        ),
+        adaptModelEntityToInfo(
+          createLlmModelEntity({
+            id: "cfg-disabled-provider",
+            providerId: DISABLED_PROVIDER.id,
+            name: "Claude Sonnet",
+            modelId: "claude-sonnet-4",
+            provider: DISABLED_PROVIDER,
+          }),
+        ),
+      ],
+      isLoading: false,
+      error: null,
+    });
+    mocks.useLlmProviders.mockReturnValue({
+      data: [MOCK_PROVIDER, DISABLED_PROVIDER],
+      error: null,
+    });
+
+    render(<LlmModelConfigPanel config={null} onApply={vi.fn()} />);
+
+    await user.click(screen.getByRole("button", { name: "选择已有配置" }));
+    await user.click(screen.getByRole("combobox", { name: "已保存配置" }));
+
+    const listbox = screen.getByRole("listbox");
+    expect(within(listbox).getByText("OpenAI")).toBeInTheDocument();
+    expect(within(listbox).queryByText("Anthropic")).not.toBeInTheDocument();
+    expect(
+      within(listbox).queryByRole("option", { name: /Disabled GPT-4o/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(listbox).queryByRole("option", { name: /Claude Sonnet/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("创建新配置后调用 create mutation 并写回节点 patch", async () => {

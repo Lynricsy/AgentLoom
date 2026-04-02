@@ -1,59 +1,66 @@
-import { act, fireEvent, render, screen, within } from '@testing-library/react'
-import type { NodeProps } from '@xyflow/react'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { useCanvasStore } from '../stores/canvasStore'
-import { useExecutionStore, type NodeExecutionState } from '@/features/execution/stores/executionStore'
-import { CanvasNodeShell } from './CanvasNode'
-import { clonePortDefinitions, getNodeTypeConfig } from '../types/nodeTypeRegistry'
-import type { CanvasNode, CanvasNodeData } from '../types'
-import type { LevelOfDetail } from '../hooks/useLevelOfDetail'
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import type { NodeProps } from "@xyflow/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useCanvasStore } from "../stores/canvasStore";
+import {
+  useExecutionStore,
+  type NodeExecutionState,
+} from "@/features/execution/stores/executionStore";
+import { CanvasNodeShell } from "./CanvasNode";
+import {
+  clonePortDefinitions,
+  getNodeTypeConfig,
+} from "../types/nodeTypeRegistry";
+import type { CanvasNode, CanvasNodeData } from "../types";
+import type { LevelOfDetail } from "../hooks/useLevelOfDetail";
 
 const nodeShellMocks = vi.hoisted(() => ({
-  mockUseLevelOfDetail: vi.fn<() => LevelOfDetail>(() => 'full'),
-}))
+  mockUseLevelOfDetail: vi.fn<() => LevelOfDetail>(() => "full"),
+}));
 
 const llmModuleMocks = vi.hoisted(() => {
-  let mockApiKeys: Array<Record<string, unknown>> = []
+  let mockApiKeys: Array<Record<string, unknown>> = [];
 
   return {
     mockUseLlmApiKeys: vi.fn(() => ({ data: mockApiKeys })),
     resetMockApiKeys: () => {
-      mockApiKeys = []
+      mockApiKeys = [];
     },
     setMockApiKeys: (next: Array<Record<string, unknown>>) => {
-      mockApiKeys = next
+      mockApiKeys = next;
     },
-  }
-})
+  };
+});
 
-vi.mock('@/features/llm', async () => {
-  const actual = await vi.importActual<typeof import('@/features/llm')>('@/features/llm')
+vi.mock("@/features/llm", async () => {
+  const actual =
+    await vi.importActual<typeof import("@/features/llm")>("@/features/llm");
 
   return {
     ...actual,
     useLlmApiKeys: llmModuleMocks.mockUseLlmApiKeys,
-  }
-})
+  };
+});
 
-vi.mock('../hooks/useLevelOfDetail', () => ({
+vi.mock("../hooks/useLevelOfDetail", () => ({
   useLevelOfDetail: () => nodeShellMocks.mockUseLevelOfDetail(),
-}))
+}));
 
-vi.mock('@xyflow/react', () => ({
+vi.mock("@xyflow/react", () => ({
   Handle: ({
     className,
-    'data-testid': dataTestId,
-    'data-port-type': dataPortType,
-    'data-port-shape': dataPortShape,
-    'data-port-state': dataPortState,
-    'aria-label': ariaLabel,
+    "data-testid": dataTestId,
+    "data-port-type": dataPortType,
+    "data-port-shape": dataPortShape,
+    "data-port-state": dataPortState,
+    "aria-label": ariaLabel,
   }: {
-    className?: string
-    'data-testid'?: string
-    'data-port-type'?: string
-    'data-port-shape'?: string
-    'data-port-state'?: string
-    'aria-label'?: string
+    className?: string;
+    "data-testid"?: string;
+    "data-port-type"?: string;
+    "data-port-shape"?: string;
+    "data-port-state"?: string;
+    "aria-label"?: string;
   }) => (
     <button
       type="button"
@@ -65,44 +72,49 @@ vi.mock('@xyflow/react', () => ({
       aria-label={ariaLabel}
     />
   ),
-  Position: { Left: 'left', Right: 'right' },
+  Position: { Left: "left", Right: "right" },
   useNodeConnections: vi.fn(() => []),
-}))
+}));
 
 function createExecutionState(
-  status: NodeExecutionState['status'],
+  status: NodeExecutionState["status"],
   overrides: Partial<NodeExecutionState> = {},
 ): NodeExecutionState {
   return {
-    stepId: 'step-1',
-    nodeId: 'node-1',
+    stepId: "step-1",
+    nodeId: "node-1",
     status,
-    output: '',
+    output: "",
     isStreaming: false,
     toolCalls: {},
     agentEvents: [],
     ...overrides,
-  }
+  };
 }
 
-function createMockNodeData(nodeType: Parameters<typeof getNodeTypeConfig>[0] = 'chat-agent'): CanvasNodeData {
-  const config = getNodeTypeConfig(nodeType)
+function createMockNodeData(
+  nodeType: Parameters<typeof getNodeTypeConfig>[0] = "chat-agent",
+): CanvasNodeData {
+  const config = getNodeTypeConfig(nodeType);
 
   return {
     label: config.label,
     nodeType: config.type,
     category: config.category,
-    description: '执行多步推理',
+    description: "执行多步推理",
     config: {},
     inputPorts: clonePortDefinitions(config.inputPorts),
     outputPorts: clonePortDefinitions(config.outputPorts),
-  }
+  };
 }
 
-function renderNode(data: CanvasNodeData, overrides: Partial<NodeProps<CanvasNode>> = {}) {
+function renderNode(
+  data: CanvasNodeData,
+  overrides: Partial<NodeProps<CanvasNode>> = {},
+) {
   const props: NodeProps<CanvasNode> = {
     ...overrides,
-    id: overrides.id ?? 'node-1',
+    id: overrides.id ?? "node-1",
     type: overrides.type ?? data.category,
     data,
     selected: overrides.selected ?? false,
@@ -114,179 +126,196 @@ function renderNode(data: CanvasNodeData, overrides: Partial<NodeProps<CanvasNod
     isConnectable: overrides.isConnectable ?? true,
     positionAbsoluteX: overrides.positionAbsoluteX ?? 0,
     positionAbsoluteY: overrides.positionAbsoluteY ?? 0,
-  }
+  };
 
-  return render(<CanvasNodeShell {...props} />)
+  return render(<CanvasNodeShell {...props} />);
 }
 
-describe('CanvasNodeShell', () => {
+describe("CanvasNodeShell", () => {
   beforeEach(() => {
-    useCanvasStore.getState().actions.reset()
-    useExecutionStore.getState().actions.reset()
-    llmModuleMocks.resetMockApiKeys()
-    llmModuleMocks.mockUseLlmApiKeys.mockClear()
-    nodeShellMocks.mockUseLevelOfDetail.mockReturnValue('full')
-  })
+    useCanvasStore.getState().actions.reset();
+    useExecutionStore.getState().actions.reset();
+    llmModuleMocks.resetMockApiKeys();
+    llmModuleMocks.mockUseLlmApiKeys.mockClear();
+    nodeShellMocks.mockUseLevelOfDetail.mockReturnValue("full");
+  });
 
   afterEach(() => {
-    vi.useRealTimers()
-  })
+    vi.useRealTimers();
+  });
 
-  it('renders the required slots and header metadata', () => {
-    renderNode(createMockNodeData())
+  it("renders the required slots and header metadata", () => {
+    renderNode(createMockNodeData());
 
-    const node = screen.getByTestId('canvas-node-node-1')
+    const node = screen.getByTestId("canvas-node-node-1");
 
-    expect(node).toHaveAttribute('data-selected', 'false')
-    expect(within(node).getByText('Chat Agent')).toBeInTheDocument()
-    expect(within(node).getByText('Agent')).toBeInTheDocument()
-    expect(within(node).getByText('chat-agent')).toBeInTheDocument()
-    expect(within(node).getByText('执行多步推理')).toBeInTheDocument()
-    expect(within(node).getByText('对话型 Agent 节点')).toBeInTheDocument()
-    expect(node.querySelector('[data-slot="header"]')).not.toBeNull()
-    expect(node.querySelector('[data-slot="inputs"]')).not.toBeNull()
-    expect(node.querySelector('[data-slot="body"]')).not.toBeNull()
-    expect(node.querySelector('[data-slot="outputs"]')).not.toBeNull()
-    expect(node.querySelector('[data-slot="state"]')).toHaveAttribute('data-state', 'idle')
-  })
+    expect(node).toHaveAttribute("data-selected", "false");
+    expect(within(node).getByText("Chat Agent")).toBeInTheDocument();
+    expect(within(node).getByText("Agent")).toBeInTheDocument();
+    expect(within(node).getByText("chat-agent")).toBeInTheDocument();
+    expect(within(node).getByText("执行多步推理")).toBeInTheDocument();
+    expect(within(node).getByText("对话型 Agent 节点")).toBeInTheDocument();
+    expect(node.querySelector('[data-slot="header"]')).not.toBeNull();
+    expect(node.querySelector('[data-slot="inputs"]')).not.toBeNull();
+    expect(node.querySelector('[data-slot="body"]')).not.toBeNull();
+    expect(node.querySelector('[data-slot="outputs"]')).not.toBeNull();
+    expect(node.querySelector('[data-slot="state"]')).toHaveAttribute(
+      "data-state",
+      "idle",
+    );
+  });
 
-  it('marks selected nodes with a stable DOM attribute', () => {
-    renderNode(createMockNodeData(), { id: 'node-2', selected: true })
+  it("marks selected nodes with a stable DOM attribute", () => {
+    renderNode(createMockNodeData(), { id: "node-2", selected: true });
 
-    expect(screen.getByTestId('canvas-node-node-2')).toHaveAttribute('data-selected', 'true')
-  })
+    expect(screen.getByTestId("canvas-node-node-2")).toHaveAttribute(
+      "data-selected",
+      "true",
+    );
+  });
 
-  it('preserves explicitly empty port arrays without rehydrating defaults in the renderer', () => {
+  it("preserves explicitly empty port arrays without rehydrating defaults in the renderer", () => {
     renderNode(
       {
         ...createMockNodeData(),
         inputPorts: [],
         outputPorts: [],
       },
-      { id: 'node-3' },
-    )
+      { id: "node-3" },
+    );
 
-    const node = screen.getByTestId('canvas-node-node-3')
+    const node = screen.getByTestId("canvas-node-node-3");
 
-    expect(node.querySelector('[data-slot="inputs"]')).toBeNull()
-    expect(node.querySelector('[data-slot="outputs"]')).toBeNull()
-  })
+    expect(node.querySelector('[data-slot="inputs"]')).toBeNull();
+    expect(node.querySelector('[data-slot="outputs"]')).toBeNull();
+  });
 
-  it('prefers the provided description as a friendly subtitle', () => {
-    renderNode(createMockNodeData('chat-agent'), { id: 'node-4' })
+  it("prefers the provided description as a friendly subtitle", () => {
+    renderNode(createMockNodeData("chat-agent"), { id: "node-4" });
 
-    expect(screen.getByText('执行多步推理')).toBeInTheDocument()
-    expect(screen.getByText('chat-agent')).toBeInTheDocument()
-  })
+    expect(screen.getByText("执行多步推理")).toBeInTheDocument();
+    expect(screen.getByText("chat-agent")).toBeInTheDocument();
+  });
 
-  it('renders mcp-tool nodes with MCP badge and server info', () => {
+  it("renders mcp-tool nodes with MCP badge and server info", () => {
     renderNode(
       {
-        label: 'My MCP Server',
-        nodeType: 'mcp-tool',
-        category: 'tool',
-        description: '搜索知识库',
+        label: "My MCP Server",
+        nodeType: "mcp-tool",
+        category: "tool",
+        description: "搜索知识库",
         config: {
-          mcpServerConfigId: 'server-1',
-          mcpServerName: 'My MCP Server',
-          enabledToolIds: ['tool-1', 'tool-2'],
+          mcpServerConfigId: "server-1",
+          mcpServerName: "My MCP Server",
+          enabledToolIds: ["tool-1", "tool-2"],
           tools: [],
         },
         inputPorts: [],
         outputPorts: [
           {
-            id: 'tool-out',
-            label: 'Tool',
-            direction: 'output',
-            dataType: 'tool',
+            id: "tool-out",
+            label: "Tool",
+            direction: "output",
+            dataType: "tool",
             required: false,
             multiple: false,
             maxConnections: 1,
-            schema: { kind: 'tool', title: 'Tool' },
+            schema: { kind: "tool", title: "Tool" },
           },
         ],
       },
-      { id: 'mcp-node' },
-    )
+      { id: "mcp-node" },
+    );
 
-    const node = screen.getByTestId('canvas-node-mcp-node')
+    const node = screen.getByTestId("canvas-node-mcp-node");
 
-    expect(within(node).getByRole('heading', { name: 'My MCP Server' })).toBeInTheDocument()
-    expect(within(node).getByText('MCP')).toBeInTheDocument()
-    expect(within(node).getByText('2 个工具')).toBeInTheDocument()
-    expect(within(node).getAllByText('Tool')).not.toHaveLength(0)
-  })
+    expect(
+      within(node).getByRole("heading", { name: "My MCP Server" }),
+    ).toBeInTheDocument();
+    expect(within(node).getByText("MCP")).toBeInTheDocument();
+    expect(within(node).getByText("2 个工具")).toBeInTheDocument();
+    expect(within(node).getAllByText("Tool")).not.toHaveLength(0);
+  });
 
-  it('applies search highlight classes based on current search state', () => {
+  it("applies search highlight classes based on current search state", () => {
     useCanvasStore.setState((state) => ({
       ...state,
       isSearchOpen: true,
-      searchQuery: 'agent',
-      searchMatchIds: ['node-1', 'node-2'],
+      searchQuery: "agent",
+      searchMatchIds: ["node-1", "node-2"],
       currentSearchIndex: 0,
-    }))
+    }));
 
-    renderNode(createMockNodeData(), { id: 'node-1' })
-    renderNode(createMockNodeData(), { id: 'node-2' })
-    renderNode(createMockNodeData(), { id: 'node-3' })
+    renderNode(createMockNodeData(), { id: "node-1" });
+    renderNode(createMockNodeData(), { id: "node-2" });
+    renderNode(createMockNodeData(), { id: "node-3" });
 
-    expect(screen.getByTestId('canvas-node-node-1')).toHaveClass('search-current')
-    expect(screen.getByTestId('canvas-node-node-2')).toHaveClass('search-match')
-    expect(screen.getByTestId('canvas-node-node-3')).toHaveClass('search-dimmed')
-  })
+    expect(screen.getByTestId("canvas-node-node-1")).toHaveClass(
+      "search-current",
+    );
+    expect(screen.getByTestId("canvas-node-node-2")).toHaveClass(
+      "search-match",
+    );
+    expect(screen.getByTestId("canvas-node-node-3")).toHaveClass(
+      "search-dimmed",
+    );
+  });
 
-  it('sets hovered node after 300ms and clears it on mouse leave', () => {
-    vi.useFakeTimers()
-    renderNode(createMockNodeData(), { id: 'node-hover' })
+  it("sets hovered node after 300ms and clears it on mouse leave", () => {
+    vi.useFakeTimers();
+    renderNode(createMockNodeData(), { id: "node-hover" });
 
-    const node = screen.getByTestId('canvas-node-node-hover')
+    const node = screen.getByTestId("canvas-node-node-hover");
 
-    fireEvent.mouseEnter(node)
+    fireEvent.mouseEnter(node);
     act(() => {
-      vi.advanceTimersByTime(299)
-    })
-    expect(useCanvasStore.getState().hoveredNodeId).toBeNull()
+      vi.advanceTimersByTime(299);
+    });
+    expect(useCanvasStore.getState().hoveredNodeId).toBeNull();
 
     act(() => {
-      vi.advanceTimersByTime(1)
-    })
-    expect(useCanvasStore.getState().hoveredNodeId).toBe('node-hover')
+      vi.advanceTimersByTime(1);
+    });
+    expect(useCanvasStore.getState().hoveredNodeId).toBe("node-hover");
 
-    fireEvent.mouseLeave(node)
-    expect(useCanvasStore.getState().hoveredNodeId).toBeNull()
-  })
+    fireEvent.mouseLeave(node);
+    expect(useCanvasStore.getState().hoveredNodeId).toBeNull();
+  });
 
-  it('renders llm-model nodes as unconfigured when no valid config is present', () => {
-    renderNode(createMockNodeData('llm-model'), { id: 'llm-node-empty' })
+  it("renders llm-model nodes as unconfigured when no valid config is present", () => {
+    renderNode(createMockNodeData("llm-model"), { id: "llm-node-empty" });
 
-    const node = screen.getByTestId('canvas-node-llm-node-empty')
+    const node = screen.getByTestId("canvas-node-llm-node-empty");
 
-    expect(node.querySelector('[data-slot="state"]')).toHaveAttribute('data-state', 'unconfigured')
-    expect(within(node).getAllByText('点击配置模型')).toHaveLength(2)
-    expect(within(node).queryByText('缺少 API Key')).not.toBeInTheDocument()
-  })
+    expect(node.querySelector('[data-slot="state"]')).toHaveAttribute(
+      "data-state",
+      "unconfigured",
+    );
+    expect(within(node).getAllByText("点击配置模型")).toHaveLength(2);
+    expect(within(node).queryByText("缺少 API Key")).not.toBeInTheDocument();
+  });
 
-  it('treats provider default api keys as configured for llm-model nodes', () => {
+  it("treats provider default api keys as configured for llm-model nodes", () => {
     llmModuleMocks.setMockApiKeys([
       {
-        id: 'key-default',
-        provider: 'openai',
-        label: '默认 OpenAI Key',
-        keyPreview: 'sk-****',
+        id: "key-default",
+        provider: "openai",
+        label: "默认 OpenAI Key",
+        keyPreview: "sk-****",
         isDefault: true,
-        status: 'active',
+        status: "active",
       },
-    ])
+    ]);
 
     renderNode(
       {
-        ...createMockNodeData('llm-model'),
-        label: 'LLM 模型',
+        ...createMockNodeData("llm-model"),
+        label: "LLM 模型",
         config: {
-          llmConfigId: 'config-openai',
-          name: '默认 GPT-4o',
-          provider: 'openai',
-          modelName: 'gpt-4o',
+          llmConfigId: "config-openai",
+          name: "默认 GPT-4o",
+          provider: "openai",
+          modelName: "gpt-4o",
           parameters: {
             temperature: 0.7,
             topP: 1,
@@ -298,26 +327,37 @@ describe('CanvasNodeShell', () => {
           isDefault: true,
         },
       },
-      { id: 'llm-node-default-key' },
-    )
+      { id: "llm-node-default-key" },
+    );
 
-    const node = screen.getByTestId('canvas-node-llm-node-default-key')
+    const node = screen.getByTestId("canvas-node-llm-node-default-key");
 
-    expect(node.querySelector('[data-slot="state"]')).toHaveAttribute('data-state', 'configured')
-    expect(within(node).getByRole('heading', { name: 'gpt-4o' })).toBeInTheDocument()
-    expect(within(node).getByText('OpenAI · 默认 GPT-4o')).toBeInTheDocument()
-    expect(within(node).queryByText('缺少 API Key')).not.toBeInTheDocument()
-  })
+    expect(node.querySelector('[data-slot="state"]')).toHaveAttribute(
+      "data-state",
+      "configured",
+    );
+    expect(
+      within(node).getByRole("heading", { name: "默认 GPT-4o" }),
+    ).toBeInTheDocument();
+    expect(within(node).getByText("OpenAI")).toBeInTheDocument();
+    expect(within(node).getByText("gpt-4o")).toBeInTheDocument();
+    expect(within(node).getAllByText("默认 GPT-4o")).toHaveLength(1);
+    expect(
+      within(node).queryByText("OpenAI · 默认 GPT-4o"),
+    ).not.toBeInTheDocument();
+    expect(within(node).queryByText("OpenAI: gpt-4o")).not.toBeInTheDocument();
+    expect(within(node).queryByText("缺少 API Key")).not.toBeInTheDocument();
+  });
 
-  it('marks llm-model nodes as warning when neither explicit nor default api keys exist', () => {
+  it("marks llm-model nodes as warning when neither explicit nor default api keys exist", () => {
     renderNode(
       {
-        ...createMockNodeData('llm-model'),
+        ...createMockNodeData("llm-model"),
         config: {
-          llmConfigId: 'config-anthropic',
-          name: 'Claude Sonnet',
-          provider: 'anthropic',
-          modelName: 'claude-3-7-sonnet',
+          llmConfigId: "config-anthropic",
+          name: "Claude Sonnet",
+          provider: "anthropic",
+          modelName: "claude-3-7-sonnet",
           parameters: {
             temperature: 0.3,
             topP: 0.9,
@@ -328,27 +368,37 @@ describe('CanvasNodeShell', () => {
           apiKeyId: null,
         },
       },
-      { id: 'llm-node-warning' },
-    )
+      { id: "llm-node-warning" },
+    );
 
-    const node = screen.getByTestId('canvas-node-llm-node-warning')
+    const node = screen.getByTestId("canvas-node-llm-node-warning");
 
-    expect(node.querySelector('[data-slot="state"]')).toHaveAttribute('data-state', 'warning')
-    expect(within(node).getByText('缺少 API Key')).toBeInTheDocument()
-    expect(within(node).getByRole('heading', { name: 'claude-3-7-sonnet' })).toBeInTheDocument()
-  })
+    expect(node.querySelector('[data-slot="state"]')).toHaveAttribute(
+      "data-state",
+      "warning",
+    );
+    expect(within(node).getByText("缺少 API Key")).toBeInTheDocument();
+    expect(
+      within(node).getByRole("heading", { name: "Claude Sonnet" }),
+    ).toBeInTheDocument();
+    expect(within(node).getByText("Anthropic")).toBeInTheDocument();
+    expect(within(node).getByText("claude-3-7-sonnet")).toBeInTheDocument();
+    expect(
+      within(node).queryByText("Anthropic: claude-3-7-sonnet"),
+    ).not.toBeInTheDocument();
+  });
 
-  it('marks private_cloud llm-model nodes as warning when api_key auth has no explicit or default key', () => {
-    llmModuleMocks.setMockApiKeys([])
+  it("marks private_cloud llm-model nodes as warning when api_key auth has no explicit or default key", () => {
+    llmModuleMocks.setMockApiKeys([]);
 
     renderNode(
       {
-        ...createMockNodeData('llm-model'),
+        ...createMockNodeData("llm-model"),
         config: {
-          llmConfigId: 'config-private-cloud-warning',
-          name: '私有云配置',
-          provider: 'private_cloud',
-          modelName: 'llama-3-70b',
+          llmConfigId: "config-private-cloud-warning",
+          name: "私有云配置",
+          provider: "private_cloud",
+          modelName: "llama-3-70b",
           parameters: {
             temperature: 0.4,
             topP: 1,
@@ -357,41 +407,53 @@ describe('CanvasNodeShell', () => {
             stop: [],
           },
           apiKeyId: null,
-          endpointUrl: 'https://private-cloud.example.com/v1',
-          authMethod: 'api_key',
+          endpointUrl: "https://private-cloud.example.com/v1",
+          authMethod: "api_key",
         },
       },
-      { id: 'llm-node-private-cloud-warning' },
-    )
+      { id: "llm-node-private-cloud-warning" },
+    );
 
-    const node = screen.getByTestId('canvas-node-llm-node-private-cloud-warning')
+    const node = screen.getByTestId(
+      "canvas-node-llm-node-private-cloud-warning",
+    );
 
-    expect(node.querySelector('[data-slot="state"]')).toHaveAttribute('data-state', 'warning')
-    expect(within(node).getByText('缺少 API Key')).toBeInTheDocument()
-    expect(within(node).getByRole('heading', { name: 'llama-3-70b' })).toBeInTheDocument()
-  })
+    expect(node.querySelector('[data-slot="state"]')).toHaveAttribute(
+      "data-state",
+      "warning",
+    );
+    expect(within(node).getByText("缺少 API Key")).toBeInTheDocument();
+    expect(
+      within(node).getByRole("heading", { name: "私有云配置" }),
+    ).toBeInTheDocument();
+    expect(within(node).getByText("Private Cloud")).toBeInTheDocument();
+    expect(within(node).getByText("llama-3-70b")).toBeInTheDocument();
+    expect(
+      within(node).queryByText("Private Cloud: llama-3-70b"),
+    ).not.toBeInTheDocument();
+  });
 
-  it('treats private_cloud default api keys as configured when explicit key is absent', () => {
+  it("treats private_cloud default api keys as configured when explicit key is absent", () => {
     llmModuleMocks.setMockApiKeys([
       {
-        id: 'key-private-cloud-default',
-        provider: 'private_cloud',
-        label: '默认 Private Cloud Key',
-        keyPreview: 'sk-****',
+        id: "key-private-cloud-default",
+        provider: "private_cloud",
+        label: "默认 Private Cloud Key",
+        keyPreview: "sk-****",
         isDefault: true,
-        status: 'active',
+        status: "active",
       },
-    ])
+    ]);
 
     renderNode(
       {
-        ...createMockNodeData('llm-model'),
-        label: '私有云 LLM',
+        ...createMockNodeData("llm-model"),
+        label: "私有云 LLM",
         config: {
-          llmConfigId: 'config-private-cloud-default',
-          name: '默认私有云模型',
-          provider: 'private_cloud',
-          modelName: 'qwen-2.5-72b',
+          llmConfigId: "config-private-cloud-default",
+          name: "默认私有云模型",
+          provider: "private_cloud",
+          modelName: "qwen-2.5-72b",
           parameters: {
             temperature: 0.5,
             topP: 1,
@@ -400,138 +462,195 @@ describe('CanvasNodeShell', () => {
             stop: [],
           },
           apiKeyId: null,
-          endpointUrl: 'https://private-cloud.example.com/v1',
-          authMethod: 'api_key',
+          endpointUrl: "https://private-cloud.example.com/v1",
+          authMethod: "api_key",
           isDefault: false,
         },
       },
-      { id: 'llm-node-private-cloud-default-key' },
-    )
+      { id: "llm-node-private-cloud-default-key" },
+    );
 
-    const node = screen.getByTestId('canvas-node-llm-node-private-cloud-default-key')
+    const node = screen.getByTestId(
+      "canvas-node-llm-node-private-cloud-default-key",
+    );
 
-    expect(node.querySelector('[data-slot="state"]')).toHaveAttribute('data-state', 'configured')
-    expect(within(node).queryByText('缺少 API Key')).not.toBeInTheDocument()
-    expect(within(node).getByRole('heading', { name: 'qwen-2.5-72b' })).toBeInTheDocument()
-  })
+    expect(node.querySelector('[data-slot="state"]')).toHaveAttribute(
+      "data-state",
+      "configured",
+    );
+    expect(within(node).queryByText("缺少 API Key")).not.toBeInTheDocument();
+    expect(
+      within(node).getByRole("heading", { name: "默认私有云模型" }),
+    ).toBeInTheDocument();
+    expect(within(node).getByText("Private Cloud")).toBeInTheDocument();
+    expect(within(node).getByText("qwen-2.5-72b")).toBeInTheDocument();
+    expect(
+      within(node).queryByText("Private Cloud: qwen-2.5-72b"),
+    ).not.toBeInTheDocument();
+  });
 
-  it('renders compact mode with icon, title, and a compact status badge while hiding body details', () => {
-    nodeShellMocks.mockUseLevelOfDetail.mockReturnValue('compact' as LevelOfDetail)
+  it("renders compact mode with icon, title, and a compact status badge while hiding body details", () => {
+    nodeShellMocks.mockUseLevelOfDetail.mockReturnValue(
+      "compact" as LevelOfDetail,
+    );
     useExecutionStore.setState((state) => ({
       ...state,
-      status: 'running',
+      status: "running",
       nodes: {
-        'node-compact': createExecutionState('running', { nodeId: 'node-compact' }),
+        "node-compact": createExecutionState("running", {
+          nodeId: "node-compact",
+        }),
       },
-    }))
+    }));
 
-    renderNode(createMockNodeData(), { id: 'node-compact' })
+    renderNode(createMockNodeData(), { id: "node-compact" });
 
-    const node = screen.getByTestId('canvas-node-node-compact')
+    const node = screen.getByTestId("canvas-node-node-compact");
 
-    expect(node).toHaveAttribute('data-lod', 'compact')
-    expect(screen.getByTestId('canvas-node-icon-node-compact')).toBeInTheDocument()
-    expect(screen.getByTestId('canvas-node-status-badge-node-compact')).toHaveTextContent('运行中')
-    expect(node.querySelector('[data-slot="body"]')).toBeNull()
-    expect(within(node).queryByText('Tools')).not.toBeInTheDocument()
-  })
+    expect(node).toHaveAttribute("data-lod", "compact");
+    expect(
+      screen.getByTestId("canvas-node-icon-node-compact"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("canvas-node-status-badge-node-compact"),
+    ).toHaveTextContent("运行中");
+    expect(node.querySelector('[data-slot="body"]')).toBeNull();
+    expect(within(node).queryByText("Tools")).not.toBeInTheDocument();
+  });
 
-  it('renders minimal mode as an icon-only square while keeping handles functional during execution', () => {
-    nodeShellMocks.mockUseLevelOfDetail.mockReturnValue('minimal' as LevelOfDetail)
+  it("renders minimal mode as an icon-only square while keeping handles functional during execution", () => {
+    nodeShellMocks.mockUseLevelOfDetail.mockReturnValue(
+      "minimal" as LevelOfDetail,
+    );
     useExecutionStore.setState((state) => ({
       ...state,
-      status: 'running',
+      status: "running",
       nodes: {
-        'node-minimal': createExecutionState('running', { nodeId: 'node-minimal' }),
+        "node-minimal": createExecutionState("running", {
+          nodeId: "node-minimal",
+        }),
       },
-    }))
+    }));
 
-    renderNode(createMockNodeData(), { id: 'node-minimal' })
+    renderNode(createMockNodeData(), { id: "node-minimal" });
 
-    const node = screen.getByTestId('canvas-node-node-minimal')
+    const node = screen.getByTestId("canvas-node-node-minimal");
 
-    expect(node).toHaveAttribute('data-lod', 'minimal')
-    expect(node).toHaveAttribute('data-shell-status', 'running')
-    expect(screen.getByTestId('canvas-node-icon-node-minimal')).toBeInTheDocument()
-    expect(node.querySelector('[data-slot="icon-only"]')).not.toBeNull()
-    expect(within(node).queryByRole('heading')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('exec-overlay-node-minimal')).not.toBeInTheDocument()
-    expect(node.querySelector('[data-slot="inputs"]')).toBeNull()
-    expect(node.querySelector('[data-slot="outputs"]')).toBeNull()
-    expect(node.querySelector('[data-slot="body"]')).toBeNull()
-    expect(node.querySelectorAll('.port-row')).toHaveLength(0)
-    expect(screen.getByTestId('port-node-minimal-messages-in-input')).toBeInTheDocument()
-    expect(screen.getByTestId('port-node-minimal-model-in-input')).toBeInTheDocument()
-    expect(screen.getByTestId('port-node-minimal-reply-out-output')).toBeInTheDocument()
-    expect(screen.getByTestId('port-node-minimal-structured-out-output')).toBeInTheDocument()
-  })
+    expect(node).toHaveAttribute("data-lod", "minimal");
+    expect(node).toHaveAttribute("data-shell-status", "running");
+    expect(
+      screen.getByTestId("canvas-node-icon-node-minimal"),
+    ).toBeInTheDocument();
+    expect(node.querySelector('[data-slot="icon-only"]')).not.toBeNull();
+    expect(within(node).queryByRole("heading")).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("exec-overlay-node-minimal"),
+    ).not.toBeInTheDocument();
+    expect(node.querySelector('[data-slot="inputs"]')).toBeNull();
+    expect(node.querySelector('[data-slot="outputs"]')).toBeNull();
+    expect(node.querySelector('[data-slot="body"]')).toBeNull();
+    expect(node.querySelectorAll(".port-row")).toHaveLength(0);
+    expect(
+      screen.getByTestId("port-node-minimal-messages-in-input"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("port-node-minimal-model-in-input"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("port-node-minimal-reply-out-output"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTestId("port-node-minimal-structured-out-output"),
+    ).toBeInTheDocument();
+  });
 
-  it('shows a single validation warning badge outside minimal mode', () => {
-    useCanvasStore.getState().actions.setNodeValidationError('node-warning', true)
+  it("shows a single validation warning badge outside minimal mode", () => {
+    useCanvasStore
+      .getState()
+      .actions.setNodeValidationError("node-warning", true);
 
-    renderNode(createMockNodeData(), { id: 'node-warning' })
+    renderNode(createMockNodeData(), { id: "node-warning" });
 
-    expect(screen.getByTestId('canvas-node-validation-badge-node-warning')).toBeInTheDocument()
-  })
+    expect(
+      screen.getByTestId("canvas-node-validation-badge-node-warning"),
+    ).toBeInTheDocument();
+  });
 
-  it('hides the validation warning badge in minimal mode', () => {
-    nodeShellMocks.mockUseLevelOfDetail.mockReturnValue('minimal' as LevelOfDetail)
-    useCanvasStore.getState().actions.setNodeValidationError('node-warning-minimal', true)
+  it("hides the validation warning badge in minimal mode", () => {
+    nodeShellMocks.mockUseLevelOfDetail.mockReturnValue(
+      "minimal" as LevelOfDetail,
+    );
+    useCanvasStore
+      .getState()
+      .actions.setNodeValidationError("node-warning-minimal", true);
 
-    renderNode(createMockNodeData(), { id: 'node-warning-minimal' })
+    renderNode(createMockNodeData(), { id: "node-warning-minimal" });
 
-    expect(screen.queryByTestId('canvas-node-validation-badge-node-warning-minimal')).not.toBeInTheDocument()
-  })
+    expect(
+      screen.queryByTestId("canvas-node-validation-badge-node-warning-minimal"),
+    ).not.toBeInTheDocument();
+  });
 
   it.each([
-    ['running', 'running'],
-    ['failed', 'failed'],
-    ['waiting_intervention', 'waiting_intervention'],
-    ['queued', 'queued'],
-  ] as const)('applies execution shell visuals for %s nodes', (status, shellStatus) => {
+    ["running", "running"],
+    ["failed", "failed"],
+    ["waiting_intervention", "waiting_intervention"],
+    ["queued", "queued"],
+  ] as const)(
+    "applies execution shell visuals for %s nodes",
+    (status, shellStatus) => {
+      useExecutionStore.setState((state) => ({
+        ...state,
+        status: status === "failed" ? "failed" : "running",
+        nodes: {
+          "node-shell": createExecutionState(status, { nodeId: "node-shell" }),
+        },
+      }));
+
+      renderNode(createMockNodeData(), { id: "node-shell" });
+
+      expect(screen.getByTestId("canvas-node-node-shell")).toHaveAttribute(
+        "data-shell-status",
+        shellStatus,
+      );
+      expect(
+        screen.getByTestId("canvas-node-shell-accent-node-shell"),
+      ).toHaveAttribute("data-shell-status", shellStatus);
+    },
+  );
+
+  it("fades the completed shell accent after roughly two seconds", () => {
+    vi.useFakeTimers();
     useExecutionStore.setState((state) => ({
       ...state,
-      status: status === 'failed' ? 'failed' : 'running',
+      status: "completed",
       nodes: {
-        'node-shell': createExecutionState(status, { nodeId: 'node-shell' }),
+        "node-completed": createExecutionState("completed", {
+          nodeId: "node-completed",
+        }),
       },
-    }))
+    }));
 
-    renderNode(createMockNodeData(), { id: 'node-shell' })
+    renderNode(createMockNodeData(), { id: "node-completed" });
 
-    expect(screen.getByTestId('canvas-node-node-shell')).toHaveAttribute('data-shell-status', shellStatus)
-    expect(screen.getByTestId('canvas-node-shell-accent-node-shell')).toHaveAttribute(
-      'data-shell-status',
-      shellStatus,
-    )
-  })
+    const node = screen.getByTestId("canvas-node-node-completed");
 
-  it('fades the completed shell accent after roughly two seconds', () => {
-    vi.useFakeTimers()
-    useExecutionStore.setState((state) => ({
-      ...state,
-      status: 'completed',
-      nodes: {
-        'node-completed': createExecutionState('completed', { nodeId: 'node-completed' }),
-      },
-    }))
-
-    renderNode(createMockNodeData(), { id: 'node-completed' })
-
-    const node = screen.getByTestId('canvas-node-node-completed')
-
-    expect(node).toHaveAttribute('data-shell-status', 'completed')
-    expect(screen.getByTestId('canvas-node-shell-accent-node-completed')).toBeInTheDocument()
+    expect(node).toHaveAttribute("data-shell-status", "completed");
+    expect(
+      screen.getByTestId("canvas-node-shell-accent-node-completed"),
+    ).toBeInTheDocument();
 
     act(() => {
-      vi.advanceTimersByTime(2000)
-    })
+      vi.advanceTimersByTime(2000);
+    });
 
-    expect(node).toHaveAttribute('data-shell-status', 'idle')
-    expect(screen.getByTestId('exec-overlay-node-completed')).toHaveAttribute(
-      'data-exec-status',
-      'completed',
-    )
-    expect(screen.queryByTestId('canvas-node-shell-accent-node-completed')).not.toBeInTheDocument()
-  })
-})
+    expect(node).toHaveAttribute("data-shell-status", "idle");
+    expect(screen.getByTestId("exec-overlay-node-completed")).toHaveAttribute(
+      "data-exec-status",
+      "completed",
+    );
+    expect(
+      screen.queryByTestId("canvas-node-shell-accent-node-completed"),
+    ).not.toBeInTheDocument();
+  });
+});

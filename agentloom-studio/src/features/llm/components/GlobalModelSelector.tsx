@@ -30,6 +30,8 @@ export interface GlobalModelSelectorProps extends Pick<
   placeholder?: string;
   /** 仅显示已启用的模型（默认 true） */
   enabledOnly?: boolean;
+  /** 是否允许选择空值（默认 true） */
+  allowEmpty?: boolean;
 }
 
 /**
@@ -46,6 +48,7 @@ export function GlobalModelSelector({
   modelType,
   placeholder = "请选择模型",
   enabledOnly = true,
+  allowEmpty = true,
   id,
   name,
   required,
@@ -213,24 +216,26 @@ export function GlobalModelSelector({
           role="listbox"
           className="absolute z-50 mt-2 max-h-80 w-full overflow-y-auto rounded-xl border border-border bg-surface-elevated p-2 shadow-2xl"
         >
-          <button
-            type="button"
-            role="option"
-            aria-selected={value === ""}
-            className={cn(
-              "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors",
-              value === ""
-                ? "bg-primary/10 text-primary"
-                : "text-foreground hover:bg-muted/60",
-            )}
-            onClick={() => {
-              onValueChange("");
-              setOpen(false);
-            }}
-          >
-            <span className="min-w-0 flex-1 truncate">{placeholder}</span>
-            {value === "" ? <Check className="h-4 w-4 shrink-0" /> : null}
-          </button>
+          {allowEmpty ? (
+            <button
+              type="button"
+              role="option"
+              aria-selected={value === ""}
+              className={cn(
+                "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors",
+                value === ""
+                  ? "bg-primary/10 text-primary"
+                  : "text-foreground hover:bg-muted/60",
+              )}
+              onClick={() => {
+                onValueChange("");
+                setOpen(false);
+              }}
+            >
+              <span className="min-w-0 flex-1 truncate">{placeholder}</span>
+              {value === "" ? <Check className="h-4 w-4 shrink-0" /> : null}
+            </button>
+          ) : null}
 
           {groups.map((group) => (
             <div key={group.provider.id} className="mt-2 first:mt-3">

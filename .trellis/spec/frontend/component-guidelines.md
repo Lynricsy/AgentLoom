@@ -18,49 +18,54 @@ Used in `shared/ui/`. Low-level building blocks. All 8 files in `shared/ui/` fol
 
 ```tsx
 // src/shared/ui/button.tsx
-import { forwardRef, type ButtonHTMLAttributes } from 'react'
-import { cva, type VariantProps } from 'class-variance-authority'
-import { cn } from '@/shared/lib/utils'
+import { forwardRef, type ButtonHTMLAttributes } from "react";
+import { cva, type VariantProps } from "class-variance-authority";
+import { cn } from "@/shared/lib/utils";
 
 const buttonVariants = cva(
-  'inline-flex items-center justify-center rounded-md text-sm font-medium ...',
+  "inline-flex items-center justify-center rounded-md text-sm font-medium ...",
   {
     variants: {
       variant: {
-        default: 'bg-primary text-primary-foreground hover:bg-primary/90',
-        outline: 'border border-border bg-background text-foreground hover:bg-muted',
-        ghost: 'text-foreground hover:bg-muted',
+        default: "bg-primary text-primary-foreground hover:bg-primary/90",
+        outline:
+          "border border-border bg-background text-foreground hover:bg-muted",
+        ghost: "text-foreground hover:bg-muted",
       },
       size: {
-        default: 'h-9 px-4 py-2',
-        sm: 'h-8 px-3 text-xs',
-        lg: 'h-10 px-5',
+        default: "h-9 px-4 py-2",
+        sm: "h-8 px-3 text-xs",
+        lg: "h-10 px-5",
       },
     },
-    defaultVariants: { variant: 'default', size: 'default' },
+    defaultVariants: { variant: "default", size: "default" },
   },
-)
+);
 
 export interface ButtonProps
-  extends ButtonHTMLAttributes<HTMLButtonElement>,
+  extends
+    ButtonHTMLAttributes<HTMLButtonElement>,
     VariantProps<typeof buttonVariants> {}
 
-export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
-  { className, variant, size, type = 'button', ...props },
-  ref,
-) {
-  return (
-    <button
-      ref={ref}
-      type={type}
-      className={cn(buttonVariants({ variant, size }), className)}
-      {...props}
-    />
-  )
-})
+export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
+  function Button(
+    { className, variant, size, type = "button", ...props },
+    ref,
+  ) {
+    return (
+      <button
+        ref={ref}
+        type={type}
+        className={cn(buttonVariants({ variant, size }), className)}
+        {...props}
+      />
+    );
+  },
+);
 ```
 
 Key rules:
+
 - **Named function expression** inside `forwardRef` (not anonymous arrow) for DevTools display
 - Props interface extends native HTML attributes + CVA `VariantProps`
 - `cn()` merges CVA output with caller `className`
@@ -74,11 +79,14 @@ Used for list items, cards, and frequently re-rendered components.
 // src/features/agent/components/AgentListPage.tsx
 const AgentCard = memo(function AgentCard({ agent, onClick }: AgentCardProps) {
   return (
-    <div className="rounded-lg border border-border p-4 hover:bg-muted/50" onClick={onClick}>
+    <div
+      className="rounded-lg border border-border p-4 hover:bg-muted/50"
+      onClick={onClick}
+    >
       {/* card content */}
     </div>
-  )
-})
+  );
+});
 ```
 
 Rule: always `memo(function ComponentName(...))` -- never anonymous arrows.
@@ -91,18 +99,14 @@ Route-level components are plain exported functions, co-located with route defin
 // src/app/routes/auth/login.tsx
 export function LoginPage() {
   // hooks, state, handlers...
-  return (
-    <AuthLayout>
-      {/* page content */}
-    </AuthLayout>
-  )
+  return <AuthLayout>{/* page content */}</AuthLayout>;
 }
 
 export const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: '/login',
+  path: "/login",
   component: LoginPage,
-})
+});
 ```
 
 ### Pattern D: Radix Primitives Composition
@@ -136,23 +140,26 @@ export function useToast() {
 ## Props Conventions
 
 1. **Extend native HTML attributes** for primitive components:
+
    ```tsx
    interface InputProps extends InputHTMLAttributes<HTMLInputElement> {}
    ```
 
 2. **Use interface for domain props** in feature components:
+
    ```tsx
    interface AgentCardProps {
-     agent: AgentDefinition
-     onClick: (id: string) => void
+     agent: AgentDefinition;
+     onClick: (id: string) => void;
    }
    ```
 
 3. **`string | null` for nullable API fields** (not `string | undefined`):
+
    ```tsx
    interface AgentDefinition {
-     description: string | null
-     systemPrompt: string | null
+     description: string | null;
+     systemPrompt: string | null;
    }
    ```
 
@@ -165,13 +172,13 @@ export function useToast() {
 
 ## Styling Patterns
 
-| Tool | Purpose | Example |
-|------|---------|---------|
-| **Tailwind CSS 4** | All styling | `className="rounded-lg border p-4"` |
-| **CVA** | Variant-driven primitives | `buttonVariants({ variant: 'outline' })` |
-| **cn()** | Conditional class merging | `cn('base-class', isActive && 'active-class')` |
-| **Radix UI** | Accessible primitives | Dialog, Popover, Toast, Select |
-| **lucide-react** | Icons | `<Plus className="h-4 w-4" />` |
+| Tool               | Purpose                   | Example                                        |
+| ------------------ | ------------------------- | ---------------------------------------------- |
+| **Tailwind CSS 4** | All styling               | `className="rounded-lg border p-4"`            |
+| **CVA**            | Variant-driven primitives | `buttonVariants({ variant: 'outline' })`       |
+| **cn()**           | Conditional class merging | `cn('base-class', isActive && 'active-class')` |
+| **Radix UI**       | Accessible primitives     | Dialog, Popover, Toast, Select                 |
+| **lucide-react**   | Icons                     | `<Plus className="h-4 w-4" />`                 |
 
 Design tokens are CSS-variable-based: `text-foreground`, `bg-primary`, `border-border`, `text-muted-foreground`.
 
@@ -211,11 +218,11 @@ customPanelRegistry.tsx        ← 单一数据源：节点类型 → 面板渲�
 
 ### 关键文件
 
-| 文件 | 职责 |
-|------|------|
-| `canvas/components/panels/customPanelRegistry.tsx` | 面板注册表定义 + 所有面板组件 import |
-| `canvas/components/panels/NodeConfigPanel.tsx` | Workflow Canvas 面板容器，查表渲染 |
-| `agent-canvas/components/panels/AgentNodeConfigPanel.tsx` | Agent Canvas 面板容器，查表渲染 |
+| 文件                                                      | 职责                                 |
+| --------------------------------------------------------- | ------------------------------------ |
+| `canvas/components/panels/customPanelRegistry.tsx`        | 面板注册表定义 + 所有面板组件 import |
+| `canvas/components/panels/NodeConfigPanel.tsx`            | Workflow Canvas 面板容器，查表渲染   |
+| `agent-canvas/components/panels/AgentNodeConfigPanel.tsx` | Agent Canvas 面板容器，查表渲染      |
 
 ### 新增节点配置面板
 
@@ -236,18 +243,56 @@ customPanelRegistry.tsx        ← 单一数据源：节点类型 → 面板渲�
 - 面板的 `onApply` 签名应接受 `Record<string, unknown>` patch 对象
 - 如果面板需要管理自身验证状态，设置 `handlesValidation: true` 并使用 `onValidationChange` 回调
 
+## LLM Model Selector Reuse
+
+Studio 中任何“选择现有 LLM 模型配置”的入口都应复用 `features/llm/components/GlobalModelSelector`，不要退回原生 `<Select>` 手工拼 option。
+
+原因：
+
+- `GlobalModelSelector` 已统一封装 Provider 分组
+- 内置/自定义 Provider 图标展示
+- `enabledOnly` 过滤，确保禁用的 provider/model 不会继续出现在选择面板
+- 模型名 + modelId 的双层展示，避免不同入口各自拼接文案
+
+正确示例：
+
+```tsx
+<GlobalModelSelector
+  aria-label="已保存配置"
+  value={selectedConfigId}
+  onValueChange={handleExistingSelect}
+  modelType="chat"
+  allowEmpty={false}
+  placeholder="请选择已有配置"
+/>
+```
+
+错误示例：
+
+```tsx
+<Select value={selectedConfigId} onValueChange={handleExistingSelect}>
+  {(models ?? []).map((item) => (
+    <option key={item.id} value={item.id}>
+      {item.provider} / {item.modelName} / {item.name}
+    </option>
+  ))}
+</Select>
+```
+
+后者会绕过启用态过滤，也会让不同页面重新发散出各自的文案结构。
+
 ### Agent Canvas Node Registry Sync
 
 Agent Canvas 新增或修复节点时，不能只改 `CanvasNode.tsx` 或单个面板。`agent-canvas` 有一套独立于 workflow canvas 的节点注册和持久化快照加载链路，任何一处漏同步都会导致真实页面回退成 ReactFlow 默认方块节点，或者旧 Agent 继续保留过期端口元数据。
 
 #### 必须同步的文件
 
-| 文件 | 责任 |
-|------|------|
-| `features/canvas/registry/agent-canvas-registry.ts` | Agent Canvas 节点定义、端口契约、`maxInstances` |
-| `features/agent-canvas/components/AgentCanvas.tsx` | ReactFlow `nodeTypes` 映射；新增 category 时必须补渲染映射 |
-| `features/canvas/components/AgentNodePalette.tsx` | Agent 画布 palette 暴露入口 |
-| `features/agent-canvas/stores/agent-canvas.store.ts` | 历史快照加载与节点端口归一化 |
+| 文件                                                 | 责任                                                       |
+| ---------------------------------------------------- | ---------------------------------------------------------- |
+| `features/canvas/registry/agent-canvas-registry.ts`  | Agent Canvas 节点定义、端口契约、`maxInstances`            |
+| `features/agent-canvas/components/AgentCanvas.tsx`   | ReactFlow `nodeTypes` 映射；新增 category 时必须补渲染映射 |
+| `features/canvas/components/AgentNodePalette.tsx`    | Agent 画布 palette 暴露入口                                |
+| `features/agent-canvas/stores/agent-canvas.store.ts` | 历史快照加载与节点端口归一化                               |
 
 #### 快照归一化规则
 

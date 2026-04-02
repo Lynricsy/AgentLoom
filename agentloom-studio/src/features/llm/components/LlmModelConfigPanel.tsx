@@ -44,6 +44,7 @@ import {
 import { ManagedApiKeyField } from "./ManagedApiKeyField";
 import { ProviderIcon } from "./ProviderIcon";
 import { PrivateCloudConfigSection } from "./PrivateCloudConfigSection";
+import { GlobalModelSelector } from "./GlobalModelSelector";
 import {
   buildProviderCredentialInput,
   hasEffectiveProviderApiKey,
@@ -356,21 +357,32 @@ export const LlmModelConfigPanel = memo(function LlmModelConfigPanel({
     defaultValues: toFormValues(config),
   });
 
-  const providerCatalog = useMemo<LlmProviderInfo[]>(() => {
-    if (providersQuery.data && providersQuery.data.length > 0) {
-      return providersQuery.data.map((p) => ({
-        id: p.slug,
-        name: p.name,
-        description: "",
-        models: [] as string[],
-      }));
-    }
-    return [...LLM_PROVIDERS];
-  }, [providersQuery.data]);
   const selectedProvider = useWatch({
     control: form.control,
     name: "provider",
   });
+  const providerCatalog = useMemo<LlmProviderInfo[]>(() => {
+    if (providersQuery.data && providersQuery.data.length > 0) {
+      return providersQuery.data
+        .filter(
+          (provider) =>
+            provider.isEnabled || provider.slug === selectedProvider,
+        )
+        .map((provider) => {
+          const fallbackInfo = LLM_PROVIDERS.find(
+            (item) => item.id === provider.slug,
+          );
+
+          return {
+            id: provider.slug,
+            name: provider.name,
+            description: fallbackInfo?.description ?? "",
+            models: fallbackInfo ? [...fallbackInfo.models] : [],
+          };
+        });
+    }
+    return [...LLM_PROVIDERS];
+  }, [providersQuery.data, selectedProvider]);
   const selectedModelName = useWatch({
     control: form.control,
     name: "modelName",
@@ -398,6 +410,30 @@ export const LlmModelConfigPanel = memo(function LlmModelConfigPanel({
       llmModelsQuery.data?.find((item) => item.id === selectedConfigId) ?? null,
     [llmModelsQuery.data, selectedConfigId],
   );
+  const hasSelectableExistingModels = useMemo(() => {
+    if (!llmModelsQuery.data || llmModelsQuery.data.length === 0) {
+      return false;
+    }
+
+    if (!providersQuery.data || providersQuery.data.length === 0) {
+      return llmModelsQuery.data.some(
+        (item) => item.modelType === "chat" && item.isEnabled,
+      );
+    }
+
+    const enabledProviderIds = new Set(
+      providersQuery.data
+        .filter((provider) => provider.isEnabled)
+        .map((provider) => provider.id),
+    );
+
+    return llmModelsQuery.data.some(
+      (item) =>
+        item.modelType === "chat" &&
+        item.isEnabled &&
+        enabledProviderIds.has(item.providerId),
+    );
+  }, [llmModelsQuery.data, providersQuery.data]);
 
   const availableModels = useMemo(() => {
     const providerInfo = providerCatalog.find(
@@ -616,24 +652,17 @@ export const LlmModelConfigPanel = memo(function LlmModelConfigPanel({
           <div className="space-y-4">
             <div className="space-y-2">
               <Label>已保存配置</Label>
-              <Select
+              <GlobalModelSelector
+                aria-label="已保存配置"
                 value={selectedConfigId}
                 onValueChange={handleExistingSelect}
+                modelType="chat"
+                allowEmpty={false}
+                placeholder="请选择已有配置"
                 disabled={
-                  llmModelsQuery.isLoading || !llmModelsQuery.data?.length
+                  llmModelsQuery.isLoading || !hasSelectableExistingModels
                 }
-              >
-                <option value="">请选择已有配置</option>
-                {(llmModelsQuery.data ?? []).map((item) => {
-                  const providerInfo = getProviderInfo(item.provider);
-                  return (
-                    <option key={item.id} value={item.id}>
-                      {providerInfo?.name ?? item.provider} / {item.modelName} /{" "}
-                      {item.name}
-                    </option>
-                  );
-                })}
-              </Select>
+              />
               <p className="text-[11px] text-muted-foreground">
                 选择后会立即调用 `updateNodeData(nodeId, {"{"} llmConfigId,
                 parameters {"}"})` 所在的数据链路，并交给现有自动保存流程处理。

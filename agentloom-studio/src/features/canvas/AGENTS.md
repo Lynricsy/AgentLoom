@@ -6,19 +6,19 @@
 
 9 大类 21 种节点，注册在 `types/nodeTypeRegistry.ts`:
 
-| 分类 | 节点类型 | 说明 |
-|------|----------|------|
-| Agent | llm-agent, chat-agent, llm-model, agent | AI 智能体（`agent` 为独立 Agent 定义节点） |
-| Tool | http-tool, code-tool, mcp-tool, sandbox | 工具节点 |
-| Trigger | manual-trigger, schedule-trigger | 触发器 |
-| Knowledge | knowledge-base | 知识库资源节点；每个节点代表一个具体知识库，连接到 Agent 后形成可访问白名单 |
-| Output | text-output, json-output | 输出节点 |
-| Control | condition, loop, reusable-block | 流程控制 / 可复用块 |
-| Routing | smart-routing | 智能路由（多策略模型选择） |
-| Plugin | plugin | 插件扩展节点 |
-| Preprocessing | input-preprocessor | 输��预处理 |
-| Memory | memory | Agent 记忆节点 |
-| Skill | skill | Skill 注入节点 |
+| 分类          | 节点类型                                | 说明                                                                        |
+| ------------- | --------------------------------------- | --------------------------------------------------------------------------- |
+| Agent         | llm-agent, chat-agent, llm-model, agent | AI 智能体（`agent` 为独立 Agent 定义节点）                                  |
+| Tool          | http-tool, code-tool, mcp-tool, sandbox | 工具节点                                                                    |
+| Trigger       | manual-trigger, schedule-trigger        | 触发器                                                                      |
+| Knowledge     | knowledge-base                          | 知识库资源节点；每个节点代表一个具体知识库，连接到 Agent 后形成可访问白名单 |
+| Output        | text-output, json-output                | 输出节点                                                                    |
+| Control       | condition, loop, reusable-block         | 流程控制 / 可复用块                                                         |
+| Routing       | smart-routing                           | 智能路由（多策略模型选择）                                                  |
+| Plugin        | plugin                                  | 插件扩展节点                                                                |
+| Preprocessing | input-preprocessor                      | 输��预处理                                                                  |
+| Memory        | memory                                  | Agent 记忆节点                                                              |
+| Skill         | skill                                   | Skill 注入节点                                                              |
 
 **添加新节点**: 注册 `NODE_TYPE_REGISTRY` → 创建 `nodes/XxxBody.tsx` → 创建 `panels/XxxPanel.tsx`
 **动态节点补充**: `reusable-block`、`mcp-tool`、`plugin` 属于 dynamic-only node type，不会作为静态内置节点直接出现在 palette。`plugin` 节点通过 `useActivePlugins()` 查询已安装的活跃插件，动态生成 Plugins 分组显示在 NodePalette 中。
@@ -67,14 +67,14 @@ WorkflowCanvasPage.tsx
 
 ## 目录
 
-| 目录 | 职责 |
-|------|------|
-| `api/` | 画布相关 API 调用；含 `mcpToolQueries.ts` / `mcpToolKeys.ts` 兼容适配层（复用 `features/mcp/` 的 shared query key，违反单一归属原则但保证 NodePalette 与 ToolLibrary 同步刷新） |
-| `components/` | 上述组件树，含 `BlockCreateDialog` / `nodes/ReusableBlockBody.tsx` / `panels/ReusableBlockPanel.tsx` |
-| `hooks/` | 画布交互 hooks（拖拽/连接/快捷键 + `useLevelOfDetail`） |
-| `lib/` | `connectionCompatibility.ts`（同步 guard + cache 读取 + async 适配）、`encapsulation.ts`（多选节点封装分析与 block 替换纯函数）、`typeEngine/`（runtime/worker/fallback/serialize）、`configSchemaToZod.ts`、`nestedFieldTree.ts`（MAX_NESTED_DEPTH=5，buildSchemaTree/buildNestedFieldTree/collectLeafPaths）、`fieldSuggestionEngine.ts`（Levenshtein + token overlap + type compat 三维评分，Top-3 建议 + 0.70 阈值）、`coercionStrategies.ts`（text↔json 转换策略注册表） |
-| `stores/` | canvasStore（Zustand，含 `nodeValidationErrors`） |
-| `types/` | nodeTypeRegistry.ts, typeSchema.ts |
+| 目录          | 职责                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| ------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `api/`        | 画布相关 API 调用；含 `mcpToolQueries.ts` / `mcpToolKeys.ts` 兼容适配层（复用 `features/mcp/` 的 shared query key，违反单一归属原则但保证 NodePalette 与 ToolLibrary 同步刷新）                                                                                                                                                                                                                                                                                               |
+| `components/` | 上述组件树，含 `BlockCreateDialog` / `nodes/ReusableBlockBody.tsx` / `panels/ReusableBlockPanel.tsx`                                                                                                                                                                                                                                                                                                                                                                          |
+| `hooks/`      | 画布交互 hooks（拖拽/连接/快捷键 + `useLevelOfDetail`）                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `lib/`        | `connectionCompatibility.ts`（同步 guard + cache 读取 + async 适配）、`encapsulation.ts`（多选节点封装分析与 block 替换纯函数）、`typeEngine/`（runtime/worker/fallback/serialize）、`configSchemaToZod.ts`、`nestedFieldTree.ts`（MAX_NESTED_DEPTH=5，buildSchemaTree/buildNestedFieldTree/collectLeafPaths）、`fieldSuggestionEngine.ts`（Levenshtein + token overlap + type compat 三维评分，Top-3 建议 + 0.70 阈值）、`coercionStrategies.ts`（text↔json 转换策略注册表） |
+| `stores/`     | canvasStore（Zustand，含 `nodeValidationErrors`）                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| `types/`      | nodeTypeRegistry.ts, typeSchema.ts                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 
 ## 关键类型文件
 
@@ -107,6 +107,7 @@ WorkflowCanvasPage.tsx
 - SmartEdge 有粒子动画效果
 - `NodeConfigPanel` 会在节点状态为 `waiting_intervention` 时嵌入 `InterventionPanel`；所需数据由 executionStore 的实时事件和 snapshot 恢复共同驱动
 - `NodeConfigPanel` 配置分发规则：先命中自定义面板（llm-model/mcp-tool/knowledge-base/sandbox/llm-agent/http-tool/reusable-block），否则走 `DynamicConfigForm`，空 schema 显示“该节点无需额外配置”
+- `llm-model` 节点在 full LOD 下的展示层级固定为：header title 显示配置名称（`config.name`），subtitle 显示 Provider 名称，body 第一行显示模型 ID（`config.modelName`）与状态 badge；不要在 subtitle 或 body 再拼接 `provider:modelId` 这类重复文案
 - `knowledge-base` 节点不再直接向运行时展开成独立工具；连接到 Agent 的这些节点会汇总成统一 `search_knowledge` 工具的可选 `knowledgeBaseIds` 白名单，模型调用时必须显式选择知识库 ID
 - `DynamicConfigForm` 使用 react-hook-form + Zod；任一字段 blur 后会触发整表校验，以满足多必填字段同时报错
 - `LlmAgentConfigPanel` 使用 `@monaco-editor/react` lazy import，编辑器内容必须能在 mount 后响应外部 config 更新；面板会通过 auth token 的组织 claim 查询 organization autonomy policy，显示自治上限、禁用超 cap 的新选项、阻止保存 stale over-cap 模式，并对 legacy raw mode 给出显式迁移提示，同时保持现有 react-hook-form + zodResolver + 300ms debounce + hidden drafts 架构；当前 autonomy mode 读取优先级为 `node.data.autonomyMode -> node.data.autonomyConfig.mode -> node.data.settings.autonomyMode -> node.data.config.autonomyMode`，autosave 必须同步写回这四个 mirror 并保留 `config/settings/autonomyConfig` 里的无关字段
