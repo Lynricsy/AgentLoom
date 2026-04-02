@@ -1236,6 +1236,42 @@ describe('AgentExecutionWorker', () => {
       );
     });
 
+    it('runtimeConfig.skillIds 缺失时不应把未连接到 agent-main 的 skill 兜底注入', () => {
+      const skillResolverWorker = worker as unknown as {
+        resolveConfiguredSkillIds: (
+          runtimeSkillIds: string[] | undefined,
+          nodes: Array<Record<string, unknown>>,
+          edges: Array<Record<string, unknown>>,
+        ) => string[];
+      };
+
+      const skillIds = skillResolverWorker.resolveConfiguredSkillIds(
+        undefined,
+        [
+          { id: 'main', type: 'agent', data: { nodeType: 'agent-main' } },
+          {
+            id: 'model-connected',
+            type: 'agent',
+            data: { nodeType: 'llm-model', config: { modelId: 'model-1' } },
+          },
+          {
+            id: 'skill-orphan',
+            type: 'knowledge',
+            data: { nodeType: 'skill', config: { skillId: 'skill-orphan' } },
+          },
+        ],
+        [
+          {
+            source: 'model-connected',
+            target: 'main',
+            targetHandle: 'model-in',
+          },
+        ],
+      );
+
+      expect(skillIds).toEqual([]);
+    });
+
     it('无显式 sandbox 配置时也应默认使用 SandboxAgentAdapter', async () => {
       const runtimeSessionWorker = worker as unknown as {
         prepareRuntimeSession: (

@@ -1140,6 +1140,36 @@ describe('AgentDefinitionService', () => {
       expect(skillIds).toEqual(['skill-1']);
     });
 
+    it('存在 agent-main 但 skill 未接到 skills-in 时不应回退编译孤儿 skill', () => {
+      const nodes = [
+        { id: 'main', type: 'agent', data: { nodeType: 'agent-main' } },
+        {
+          id: 'model-connected',
+          type: 'agent',
+          data: {
+            nodeType: 'llm-model',
+            config: { modelId: 'gpt-4.1' },
+          },
+        },
+        {
+          id: 'skill-orphan',
+          type: 'knowledge',
+          data: { nodeType: 'skill', config: { skillId: 'skill-orphan' } },
+        },
+      ];
+      const edges = [
+        {
+          source: 'model-connected',
+          target: 'main',
+          targetHandle: 'model-in',
+        },
+      ];
+
+      const config = service.buildRuntimeConfigFromNodes(nodes as any[], edges);
+
+      expect(config.skillIds).toBeUndefined();
+    });
+
     it('knowledge-base 无 knowledgeBaseId 时应被忽略', () => {
       const nodes = [{ id: 'n1', type: 'knowledge-base', data: {} }];
 

@@ -1074,21 +1074,20 @@ export class AgentDefinitionService {
       return [];
     }
 
-    const connectedNodeIds = new Set<string>();
-    for (const edge of edges) {
-      if (typeof edge?.source === 'string') {
-        connectedNodeIds.add(edge.source);
-      }
-      if (typeof edge?.target === 'string') {
-        connectedNodeIds.add(edge.target);
-      }
-    }
-
-    const connectedSkillNodes = skillNodes.filter((node) =>
-      connectedNodeIds.has(node.id),
+    const agentMainNode = nodes.find(
+      (node) => this.resolveNodeType(node) === 'agent-main',
     );
-    const activeSkillNodes = connectedSkillNodes.length
-      ? connectedSkillNodes
+    const agentMainId =
+      typeof agentMainNode?.id === 'string' ? agentMainNode.id : null;
+    const activeSkillNodes = agentMainId
+      ? skillNodes.filter((node) =>
+          edges.some(
+            (edge) =>
+              edge?.source === node.id &&
+              edge?.target === agentMainId &&
+              edge?.targetHandle === 'skills-in',
+          ),
+        )
       : skillNodes;
 
     return [
