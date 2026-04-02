@@ -3,6 +3,8 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DRIZZLE } from '../../../database/database.module';
+import type { CreateLlmModelConfigDto } from '../dto/create-llm-model-config.dto';
+import type { UpdateLlmModelConfigDto } from '../dto/update-llm-model-config.dto';
 import {
   LlmModelConfigConflictException,
   LlmModelConfigNotFoundException,
@@ -19,14 +21,16 @@ const TENANT_ID = '00000000-0000-0000-0000-000000000010';
 const ORG_ID = '00000000-0000-0000-0000-000000000020';
 const USER_ID = '00000000-0000-0000-0000-000000000001';
 const CONFIG_ID = '00000000-0000-0000-0000-000000000100';
+const PROVIDER_ID = '00000000-0000-0000-0000-000000000200';
 
 function createSelectChain(result: unknown) {
   const limit = vi.fn().mockResolvedValue(result);
   const where = vi
     .fn()
     .mockReturnValue(Object.assign(Promise.resolve(result), { limit }));
-  const from = vi.fn().mockReturnValue({ where });
-  return { from, where, limit };
+  const innerJoin = vi.fn().mockReturnValue({ where });
+  const from = vi.fn().mockReturnValue({ where, innerJoin });
+  return { from, where, limit, innerJoin };
 }
 
 function createInsertChain(result: unknown) {
@@ -49,27 +53,85 @@ function createDeleteChain() {
   return { where };
 }
 
+function mockProvider(overrides: Record<string, unknown> = {}) {
+  return {
+    id: PROVIDER_ID,
+    orgId: ORG_ID,
+    tenantId: TENANT_ID,
+    slug: 'openai',
+    name: 'OpenAI',
+    iconUrl: null,
+    baseUrl: null,
+    defaultBaseUrl: null,
+    isBuiltin: true,
+    isEnabled: true,
+    apiProtocol: 'openai_chat' as const,
+    apiKeyId: null,
+    sortOrder: 0,
+    createdAt: NOW,
+    updatedAt: NOW,
+    ...overrides,
+  };
+}
+
 function mockConfig(overrides: Record<string, unknown> = {}) {
   return {
     id: CONFIG_ID,
     orgId: ORG_ID,
     tenantId: TENANT_ID,
     name: 'My GPT Config',
-    provider: 'openai',
-    modelName: 'gpt-4o',
+    providerId: PROVIDER_ID,
+    modelId: 'gpt-4o',
     parameters: {},
-    apiKeyId: null,
-    endpointUrl: null,
-    authMethod: null,
-    authConfig: null,
+    isEnabled: true,
+    isDefault: false,
+    capabilities: {},
+    contextWindow: null,
+    maxOutputTokens: null,
+    pricing: null,
+    metadataSource: null,
     timeoutMs: null,
     modelType: 'chat' as const,
     embeddingDimensions: null,
-    isDefault: false,
     createdAt: NOW,
     updatedAt: NOW,
     ...overrides,
   };
+}
+
+/** findById / findAll 等 join 查询返回的行格式 */
+function mockJoinRow(
+  configOverrides: Record<string, unknown> = {},
+  providerOverrides: Record<string, unknown> = {},
+) {
+  return {
+    config: mockConfig(configOverrides),
+    provider: mockProvider(providerOverrides),
+  };
+}
+
+/** 构造 CreateLlmModelConfigDto 测试数据，自动填充 Zod default 字段 */
+function createDto(
+  overrides: Record<string, unknown> = {},
+): CreateLlmModelConfigDto {
+  return {
+    name: 'My GPT Config',
+    providerId: PROVIDER_ID,
+    modelId: 'gpt-4o',
+    parameters: {},
+    modelType: 'chat',
+    isDefault: false,
+    isEnabled: true,
+    capabilities: {},
+    ...overrides,
+  } as CreateLlmModelConfigDto;
+}
+
+/** 构造 UpdateLlmModelConfigDto 测试数据 */
+function updateDto(
+  overrides: Record<string, unknown> = {},
+): UpdateLlmModelConfigDto {
+  return overrides as unknown as UpdateLlmModelConfigDto;
 }
 
 describe('LlmService', () => {
@@ -111,18 +173,7 @@ describe('LlmService', () => {
       const insertChain = createInsertChain([mockConfig()]);
       db.insert.mockReturnValueOnce(insertChain);
 
-      const result = await service.create(
-        {
-          name: 'My GPT Config',
-          provider: 'openai',
-          modelName: 'gpt-4o',
-          parameters: {},
-          modelType: 'chat',
-          isDefault: false,
-        },
-        TENANT_ID,
-        USER_ID,
-      );
+      const result = await service.create(createDto(), TENANT_ID, USER_ID);
 
       expect(result.id).toBe(CONFIG_ID);
       expect(result.name).toBe('My GPT Config');
@@ -131,122 +182,8 @@ describe('LlmService', () => {
           orgId: ORG_ID,
           tenantId: TENANT_ID,
           name: 'My GPT Config',
-          provider: 'openai',
-          modelName: 'gpt-4o',
-        }),
-      );
-    });
-
-    it('应当在创建 private_cloud 配置时写入新增列', async () => {
-      vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
-
-      db.select.mockReturnValueOnce(createSelectChain([{ id: ORG_ID }]));
-      db.select.mockReturnValueOnce(createSelectChain([]));
-
-      const insertChain = createInsertChain([
-        mockConfig({
-          provider: 'private_cloud',
-          modelName: 'private-model',
-          apiKeyId: 'api-key-id',
-          endpointUrl: 'https://private-cloud.example.com/v1',
-          authMethod: 'api_key',
-          authConfig: null,
-          timeoutMs: 30_000,
-        }),
-      ]);
-      db.insert.mockReturnValueOnce(insertChain);
-
-      const result = await service.create(
-        {
-          name: 'Private Cloud Config',
-          provider: 'private_cloud',
-          modelName: 'private-model',
-          parameters: {},
-          modelType: 'chat',
-          isDefault: false,
-          apiKeyId: 'api-key-id',
-          endpointUrl: 'https://private-cloud.example.com/v1',
-          authMethod: 'api_key',
-          authConfig: { apiKey: 'secret-key' },
-          timeoutMs: 30_000,
-        },
-        TENANT_ID,
-        USER_ID,
-      );
-
-      expect(result.provider).toBe('private_cloud');
-      expect(insertChain.values).toHaveBeenCalledWith(
-        expect.objectContaining({
-          orgId: ORG_ID,
-          tenantId: TENANT_ID,
-          name: 'Private Cloud Config',
-          provider: 'private_cloud',
-          modelName: 'private-model',
-          apiKeyId: 'api-key-id',
-          endpointUrl: 'https://private-cloud.example.com/v1',
-          authMethod: 'api_key',
-          authConfig: null,
-          timeoutMs: 30_000,
-        }),
-      );
-    });
-
-    it('应当在 private_cloud 使用 api_key 且缺少 apiKeyId 时抛出验证错误', async () => {
-      db.select.mockReturnValueOnce(createSelectChain([{ id: ORG_ID }]));
-      db.select.mockReturnValueOnce(createSelectChain([]));
-
-      await expect(
-        service.create(
-          {
-            name: 'Private Cloud Config',
-            provider: 'private_cloud',
-            modelName: 'private-model',
-            parameters: {},
-            modelType: 'chat',
-            isDefault: false,
-            endpointUrl: 'https://private-cloud.example.com/v1',
-            authMethod: 'api_key',
-          },
-          TENANT_ID,
-          USER_ID,
-        ),
-      ).rejects.toBeInstanceOf(LlmModelConfigValidationException);
-
-      expect(db.insert).not.toHaveBeenCalled();
-    });
-
-    it('应当在非 private_cloud provider 时清空私有云专属字段', async () => {
-      vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
-
-      db.select.mockReturnValueOnce(createSelectChain([{ id: ORG_ID }]));
-      db.select.mockReturnValueOnce(createSelectChain([]));
-
-      const insertChain = createInsertChain([mockConfig()]);
-      db.insert.mockReturnValueOnce(insertChain);
-
-      await service.create(
-        {
-          name: 'OpenAI Config',
-          provider: 'openai',
-          modelName: 'gpt-4o',
-          parameters: {},
-          modelType: 'chat',
-          isDefault: false,
-          endpointUrl: 'https://should-be-cleared.example.com',
-          authMethod: 'none',
-          authConfig: { leaked: true },
-          timeoutMs: 15_000,
-        },
-        TENANT_ID,
-        USER_ID,
-      );
-
-      expect(insertChain.values).toHaveBeenCalledWith(
-        expect.objectContaining({
-          endpointUrl: null,
-          authMethod: null,
-          authConfig: null,
-          timeoutMs: null,
+          providerId: PROVIDER_ID,
+          modelId: 'gpt-4o',
         }),
       );
     });
@@ -258,18 +195,7 @@ describe('LlmService', () => {
       db.select.mockReturnValueOnce(createSelectChain([{ id: 'existing-id' }]));
 
       await expect(
-        service.create(
-          {
-            name: 'Dup',
-            provider: 'openai',
-            modelName: 'gpt-4o',
-            parameters: {},
-            modelType: 'chat',
-            isDefault: false,
-          },
-          TENANT_ID,
-          USER_ID,
-        ),
+        service.create(createDto({ name: 'Dup' }), TENANT_ID, USER_ID),
       ).rejects.toBeInstanceOf(LlmModelConfigConflictException);
 
       expect(db.insert).not.toHaveBeenCalled();
@@ -280,18 +206,7 @@ describe('LlmService', () => {
       db.select.mockReturnValueOnce(createSelectChain([]));
 
       await expect(
-        service.create(
-          {
-            name: 'X',
-            provider: 'openai',
-            modelName: 'gpt-4o',
-            parameters: {},
-            modelType: 'chat',
-            isDefault: false,
-          },
-          TENANT_ID,
-          USER_ID,
-        ),
+        service.create(createDto({ name: 'X' }), TENANT_ID, USER_ID),
       ).rejects.toThrow('当前租户无关联组织');
     });
 
@@ -310,14 +225,7 @@ describe('LlmService', () => {
       );
 
       const result = await service.create(
-        {
-          name: 'My GPT Config',
-          provider: 'openai',
-          modelName: 'gpt-4o',
-          parameters: {},
-          modelType: 'chat',
-          isDefault: true,
-        },
+        createDto({ isDefault: true }),
         TENANT_ID,
         USER_ID,
       );
@@ -325,19 +233,38 @@ describe('LlmService', () => {
       expect(result.isDefault).toBe(true);
       expect(db.update).toHaveBeenCalledTimes(1);
     });
+
+    it('应当在 embedding 模型缺少维度时抛出验证错误', async () => {
+      db.select.mockReturnValueOnce(createSelectChain([{ id: ORG_ID }]));
+      db.select.mockReturnValueOnce(createSelectChain([]));
+
+      await expect(
+        service.create(
+          createDto({
+            name: 'Embed Config',
+            modelId: 'text-embedding-3-small',
+            modelType: 'embedding',
+          }),
+          TENANT_ID,
+          USER_ID,
+        ),
+      ).rejects.toBeInstanceOf(LlmModelConfigValidationException);
+
+      expect(db.insert).not.toHaveBeenCalled();
+    });
   });
 
   describe('findAll', () => {
     it('应当返回所有模型配置', async () => {
-      const configs = [
-        mockConfig(),
-        mockConfig({ id: 'id-2', name: 'Config 2' }),
+      const rows = [
+        mockJoinRow(),
+        mockJoinRow({ id: 'id-2', name: 'Config 2' }),
       ];
 
       // org lookup
       db.select.mockReturnValueOnce(createSelectChain([{ id: ORG_ID }]));
-      // list
-      db.select.mockReturnValueOnce(createSelectChain(configs));
+      // list with join
+      db.select.mockReturnValueOnce(createSelectChain(rows));
 
       const result = await service.findAll(TENANT_ID);
       expect(result).toHaveLength(2);
@@ -353,11 +280,12 @@ describe('LlmService', () => {
   });
 
   describe('findById', () => {
-    it('应当返回指定配置', async () => {
-      db.select.mockReturnValueOnce(createSelectChain([mockConfig()]));
+    it('应当返回指定配置（含 provider）', async () => {
+      db.select.mockReturnValueOnce(createSelectChain([mockJoinRow()]));
 
       const result = await service.findById(CONFIG_ID, TENANT_ID);
       expect(result.id).toBe(CONFIG_ID);
+      expect(result.provider.slug).toBe('openai');
     });
 
     it('应当在未找到时抛出 404', async () => {
@@ -373,186 +301,28 @@ describe('LlmService', () => {
     it('应当更新模型配置', async () => {
       vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
 
-      // findById
-      db.select.mockReturnValueOnce(createSelectChain([mockConfig()]));
-      // update (no name change, no isDefault change → straight to update)
-      const updated = mockConfig({ modelName: 'gpt-4o-mini' });
+      // findById (join query)
+      db.select.mockReturnValueOnce(createSelectChain([mockJoinRow()]));
+      // update
+      const updated = mockConfig({ modelId: 'gpt-4o-mini' });
       db.update.mockReturnValueOnce(createUpdateChain([updated]));
 
       const result = await service.update(
         CONFIG_ID,
-        { modelName: 'gpt-4o-mini' },
+        updateDto({ modelId: 'gpt-4o-mini' }),
         TENANT_ID,
       );
-      expect(result.modelName).toBe('gpt-4o-mini');
-    });
-
-    it('应当在更新时写入 private_cloud 新增列', async () => {
-      vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
-
-      db.select.mockReturnValueOnce(createSelectChain([mockConfig()]));
-      const updateChain = createUpdateChain([
-        mockConfig({
-          provider: 'private_cloud',
-          apiKeyId: 'api-key-id',
-          endpointUrl: 'https://private-cloud.example.com/v1',
-          authMethod: 'api_key',
-          authConfig: null,
-          timeoutMs: 45_000,
-        }),
-      ]);
-      db.update.mockReturnValueOnce(updateChain);
-
-      const result = await service.update(
-        CONFIG_ID,
-        {
-          provider: 'private_cloud',
-          apiKeyId: 'api-key-id',
-          endpointUrl: 'https://private-cloud.example.com/v1',
-          authMethod: 'api_key',
-          authConfig: { apiKey: 'secret-key' },
-          timeoutMs: 45_000,
-        },
-        TENANT_ID,
-      );
-
-      expect(result.endpointUrl).toBe('https://private-cloud.example.com/v1');
-      expect(updateChain.set).toHaveBeenCalledWith(
-        expect.objectContaining({
-          apiKeyId: 'api-key-id',
-          endpointUrl: 'https://private-cloud.example.com/v1',
-          authMethod: 'api_key',
-          authConfig: null,
-          timeoutMs: 45_000,
-          updatedAt: NOW,
-        }),
-      );
-    });
-
-    it('应当在更新时允许将 private_cloud 新增列清空为 null', async () => {
-      vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
-
-      db.select.mockReturnValueOnce(
-        createSelectChain([
-          mockConfig({
-            apiKeyId: 'legacy-api-key-id',
-            endpointUrl: 'https://private-cloud.example.com/v1',
-            authMethod: 'mtls',
-            authConfig: { clientCert: 'cert-data' },
-            timeoutMs: 60_000,
-          }),
-        ]),
-      );
-
-      const updateChain = createUpdateChain([
-        mockConfig({
-          endpointUrl: null,
-          authMethod: null,
-          authConfig: null,
-          timeoutMs: null,
-        }),
-      ]);
-      db.update.mockReturnValueOnce(updateChain);
-
-      const result = await service.update(
-        CONFIG_ID,
-        {
-          endpointUrl: null,
-          authMethod: null,
-          authConfig: null,
-          timeoutMs: null,
-        },
-        TENANT_ID,
-      );
-
-      expect(result.endpointUrl).toBeNull();
-      expect(result.authMethod).toBeNull();
-      expect(result.authConfig).toBeNull();
-      expect(result.timeoutMs).toBeNull();
-      expect(updateChain.set).toHaveBeenCalledWith(
-        expect.objectContaining({
-          apiKeyId: null,
-          endpointUrl: null,
-          authMethod: null,
-          authConfig: null,
-          timeoutMs: null,
-          updatedAt: NOW,
-        }),
-      );
-    });
-
-    it('应当在更新为 private_cloud api_key 且缺少 apiKeyId 时抛出验证错误', async () => {
-      db.select.mockReturnValueOnce(createSelectChain([mockConfig()]));
-
-      await expect(
-        service.update(
-          CONFIG_ID,
-          {
-            provider: 'private_cloud',
-            endpointUrl: 'https://private-cloud.example.com/v1',
-            authMethod: 'api_key',
-          },
-          TENANT_ID,
-        ),
-      ).rejects.toBeInstanceOf(LlmModelConfigValidationException);
-
-      expect(db.update).not.toHaveBeenCalled();
-    });
-
-    it('应当在更新为非 private_cloud provider 时清空私有云字段', async () => {
-      vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
-
-      db.select.mockReturnValueOnce(
-        createSelectChain([
-          mockConfig({
-            provider: 'private_cloud',
-            apiKeyId: 'api-key-id',
-            endpointUrl: 'https://private-cloud.example.com/v1',
-            authMethod: 'api_key',
-            authConfig: null,
-            timeoutMs: 60_000,
-          }),
-        ]),
-      );
-
-      const updateChain = createUpdateChain([
-        mockConfig({
-          provider: 'openai',
-          endpointUrl: null,
-          authMethod: null,
-          authConfig: null,
-          timeoutMs: null,
-        }),
-      ]);
-      db.update.mockReturnValueOnce(updateChain);
-
-      await service.update(
-        CONFIG_ID,
-        {
-          provider: 'openai',
-        },
-        TENANT_ID,
-      );
-
-      expect(updateChain.set).toHaveBeenCalledWith(
-        expect.objectContaining({
-          endpointUrl: null,
-          authMethod: null,
-          authConfig: null,
-          timeoutMs: null,
-          updatedAt: NOW,
-        }),
-      );
+      expect(result.modelId).toBe('gpt-4o-mini');
     });
 
     it('应当在名称冲突时抛出 409', async () => {
       // findById
-      db.select.mockReturnValueOnce(createSelectChain([mockConfig()]));
+      db.select.mockReturnValueOnce(createSelectChain([mockJoinRow()]));
       // name conflict check → conflict exists
       db.select.mockReturnValueOnce(createSelectChain([{ id: 'other-id' }]));
 
       await expect(
-        service.update(CONFIG_ID, { name: 'Conflict' }, TENANT_ID),
+        service.update(CONFIG_ID, updateDto({ name: 'Conflict' }), TENANT_ID),
       ).rejects.toBeInstanceOf(LlmModelConfigConflictException);
     });
 
@@ -560,7 +330,7 @@ describe('LlmService', () => {
       vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
 
       // findById
-      db.select.mockReturnValueOnce(createSelectChain([mockConfig()]));
+      db.select.mockReturnValueOnce(createSelectChain([mockJoinRow()]));
       // clearDefaultInOrg
       db.update.mockReturnValueOnce(createUpdateChain());
       db.update.mockReturnValueOnce(
@@ -569,7 +339,7 @@ describe('LlmService', () => {
 
       const result = await service.update(
         CONFIG_ID,
-        { isDefault: true },
+        updateDto({ isDefault: true }),
         TENANT_ID,
       );
       expect(result.isDefault).toBe(true);
@@ -580,7 +350,7 @@ describe('LlmService', () => {
       db.select.mockReturnValueOnce(createSelectChain([]));
 
       await expect(
-        service.update('non-existent', { name: 'X' }, TENANT_ID),
+        service.update('non-existent', updateDto({ name: 'X' }), TENANT_ID),
       ).rejects.toBeInstanceOf(LlmModelConfigNotFoundException);
     });
   });
@@ -589,7 +359,7 @@ describe('LlmService', () => {
     it('应当删除模型配置', async () => {
       vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
 
-      db.select.mockReturnValueOnce(createSelectChain([mockConfig()]));
+      db.select.mockReturnValueOnce(createSelectChain([mockJoinRow()]));
       db.delete.mockReturnValueOnce(createDeleteChain());
 
       await service.delete(CONFIG_ID, TENANT_ID);

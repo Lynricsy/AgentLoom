@@ -1,9 +1,8 @@
 import { z } from 'zod';
-import { LLM_PROVIDERS } from './create-api-key.dto';
 
 export const apiKeyResponseSchema = z.object({
   id: z.string().uuid(),
-  provider: z.enum(LLM_PROVIDERS),
+  provider: z.string(),
   label: z.string(),
   keyPreview: z.string(),
   isDefault: z.boolean(),

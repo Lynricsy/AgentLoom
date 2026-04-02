@@ -1,108 +1,66 @@
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 
-const LLM_PROVIDERS = [
-  'openai',
-  'anthropic',
-  'google',
-  'deepseek',
-  'custom',
-  'private_cloud',
-] as const;
-
-export type LlmProvider = (typeof LLM_PROVIDERS)[number];
-
 const LLM_MODEL_TYPES = ['chat', 'embedding'] as const;
 
 export type LlmModelType = (typeof LLM_MODEL_TYPES)[number];
 
-const AUTH_METHODS = ['api_key', 'mtls', 'none'] as const;
+const pricingTierSchema = z.object({
+  aboveTokens: z.number(),
+  inputPer1MTokens: z.number(),
+  outputPer1MTokens: z.number(),
+  cachedReadPer1MTokens: z.number().optional(),
+  cachedWritePer1MTokens: z.number().optional(),
+});
 
-const PRIVATE_CLOUD_TIMEOUT_MIN = 5_000;
-const PRIVATE_CLOUD_TIMEOUT_MAX = 600_000;
+const pricingSchema = z.object({
+  inputPer1MTokens: z.number(),
+  outputPer1MTokens: z.number(),
+  cachedReadPer1MTokens: z.number().optional(),
+  cachedWritePer1MTokens: z.number().optional(),
+  tiers: z.array(pricingTierSchema).optional(),
+});
 
-export type AuthMethod = (typeof AUTH_METHODS)[number];
+const capabilitiesSchema = z.object({
+  vision: z.boolean().optional(),
+  functionCalling: z.boolean().optional(),
+  reasoning: z.boolean().optional(),
+  structuredOutput: z.boolean().optional(),
+});
 
-const createLlmModelConfigSchema = z
-  .object({
-    name: z
-      .string()
-      .min(1, '配置名称不能为空')
-      .max(100, '配置名称不能超过 100 个字符'),
-    provider: z.enum(LLM_PROVIDERS, {
-      message: '不支持的 LLM 提供商',
-    }),
-    modelName: z
-      .string()
-      .min(1, '模型名称不能为空')
-      .max(100, '模型名称不能超过 100 个字符'),
-    parameters: z.record(z.string(), z.unknown()).optional().default({}),
-    apiKeyId: z.string().uuid('API Key ID 格式无效').nullish(),
-    isDefault: z.boolean().optional().default(false),
-    endpointUrl: z
-      .string()
-      .url('端点 URL 格式无效')
-      .max(2048, '端点 URL 不能超过 2048 个字符')
-      .optional(),
-    authMethod: z.enum(AUTH_METHODS).optional(),
-    authConfig: z.record(z.string(), z.unknown()).optional(),
-    timeoutMs: z
-      .number()
-      .int()
-      .min(
-        PRIVATE_CLOUD_TIMEOUT_MIN,
-        `超时时间不能小于 ${PRIVATE_CLOUD_TIMEOUT_MIN}ms`,
-      )
-      .max(
-        PRIVATE_CLOUD_TIMEOUT_MAX,
-        `超时时间不能超过 ${PRIVATE_CLOUD_TIMEOUT_MAX}ms`,
-      )
-      .optional(),
-    modelType: z.enum(LLM_MODEL_TYPES).optional().default('chat'),
-    embeddingDimensions: z
-      .number()
-      .int('Embedding 维度必须为整数')
-      .min(1, 'Embedding 维度必须大于 0')
-      .optional(),
-  })
-  .superRefine((data, ctx) => {
-    if (data.provider !== 'private_cloud') {
-      return;
-    }
-
-    if (!data.endpointUrl) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: '私有云部署必须提供端点 URL',
-        path: ['endpointUrl'],
-      });
-    }
-
-    if (!data.authMethod) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: '私有云部署必须指定认证方式',
-        path: ['authMethod'],
-      });
-    }
-
-    if (data.authMethod === 'api_key' && !data.apiKeyId) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: '私有云 API Key 认证必须选择 API Key',
-        path: ['apiKeyId'],
-      });
-    }
-  });
+const createLlmModelConfigSchema = z.object({
+  name: z
+    .string()
+    .min(1, '配置名称不能为空')
+    .max(100, '配置名称不能超过 100 个字符'),
+  providerId: z.string().uuid('提供商 ID 格式无效'),
+  modelId: z
+    .string()
+    .min(1, '模型 ID 不能为空')
+    .max(100, '模型 ID 不能超过 100 个字符'),
+  parameters: z.record(z.string(), z.unknown()).optional().default({}),
+  isDefault: z.boolean().optional().default(false),
+  isEnabled: z.boolean().optional().default(true),
+  modelType: z.enum(LLM_MODEL_TYPES).optional().default('chat'),
+  capabilities: capabilitiesSchema.optional().default({}),
+  contextWindow: z.number().int().positive().nullish(),
+  maxOutputTokens: z.number().int().positive().nullish(),
+  pricing: pricingSchema.nullish(),
+  timeoutMs: z
+    .number()
+    .int()
+    .min(5_000, '超时时间不能小于 5000ms')
+    .max(600_000, '超时时间不能超过 600000ms')
+    .optional(),
+  embeddingDimensions: z
+    .number()
+    .int('Embedding 维度必须为整数')
+    .min(1, 'Embedding 维度必须大于 0')
+    .optional(),
+});
 
 export class CreateLlmModelConfigDto extends createZodDto(
   createLlmModelConfigSchema,
 ) {}
 
-export {
-  LLM_PROVIDERS,
-  LLM_MODEL_TYPES,
-  AUTH_METHODS,
-  PRIVATE_CLOUD_TIMEOUT_MIN,
-  PRIVATE_CLOUD_TIMEOUT_MAX,
-};
+export { LLM_MODEL_TYPES };

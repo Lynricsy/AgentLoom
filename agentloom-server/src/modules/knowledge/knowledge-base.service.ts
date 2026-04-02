@@ -343,7 +343,7 @@ export class KnowledgeBaseService {
         throw new Error('知识库只能绑定 Embedding 模型配置');
       }
       return {
-        modelName: config.modelName,
+        modelName: config.modelId,
         modelConfigId: config.id,
       };
     }
@@ -354,7 +354,7 @@ export class KnowledgeBaseService {
     );
     if (defaultEmbeddingModel) {
       return {
-        modelName: defaultEmbeddingModel.modelName,
+        modelName: defaultEmbeddingModel.modelId,
         modelConfigId: defaultEmbeddingModel.id,
       };
     }

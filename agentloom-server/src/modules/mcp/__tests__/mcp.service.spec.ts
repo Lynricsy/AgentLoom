@@ -833,7 +833,7 @@ describe('McpService', () => {
           },
           {
             name: 'tags',
-            dataType: 'json',
+            dataType: 'array',
             description: '标签列表',
             required: false,
           },

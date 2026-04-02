@@ -114,6 +114,7 @@ type PendingPermissionGate = {
 type ResolvedPiModelConfig = {
   modelConfig: PiModelConfig;
   sourceModelConfig?: schema.LlmModelConfig;
+  sourceProvider?: schema.LlmProvider;
 };
 
 type ContainerEventEnvelope = {
@@ -805,9 +806,16 @@ export class SandboxAgentAdapter implements IAgentRuntime {
 
     return runInTenantTransaction(this.db, tenantId, async () => {
       if (llmModelConfigId) {
-        const [modelConfig] = await this.tenantDb
-          .select()
+        const [row] = await this.tenantDb
+          .select({
+            config: schema.llmModelConfigs,
+            provider: schema.llmProviders,
+          })
           .from(schema.llmModelConfigs)
+          .innerJoin(
+            schema.llmProviders,
+            eq(schema.llmModelConfigs.providerId, schema.llmProviders.id),
+          )
           .where(
             and(
               eq(schema.llmModelConfigs.id, llmModelConfigId),
@@ -815,19 +823,27 @@ export class SandboxAgentAdapter implements IAgentRuntime {
             ),
           );
 
-        if (!modelConfig) {
+        if (!row) {
           throw new Error(`LLM 模型配置不存在: ${llmModelConfigId}`);
         }
 
         return {
-          modelConfig: this.toPiModelConfig(modelConfig),
-          sourceModelConfig: modelConfig,
+          modelConfig: this.toPiModelConfig(row.config, row.provider),
+          sourceModelConfig: row.config,
+          sourceProvider: row.provider,
         };
       }
 
-      const [defaultModelConfig] = await this.tenantDb
-        .select()
+      const [defaultRow] = await this.tenantDb
+        .select({
+          config: schema.llmModelConfigs,
+          provider: schema.llmProviders,
+        })
         .from(schema.llmModelConfigs)
+        .innerJoin(
+          schema.llmProviders,
+          eq(schema.llmModelConfigs.providerId, schema.llmProviders.id),
+        )
         .where(
           and(
             eq(schema.llmModelConfigs.tenantId, tenantId),
@@ -835,15 +851,19 @@ export class SandboxAgentAdapter implements IAgentRuntime {
           ),
         );
 
-      if (!defaultModelConfig) {
+      if (!defaultRow) {
         throw new Error(`租户 ${tenantId} 未配置默认 LLM 模型`);
       }
 
-      session.llmModelConfigId = defaultModelConfig.id;
+      session.llmModelConfigId = defaultRow.config.id;
 
       return {
-        modelConfig: this.toPiModelConfig(defaultModelConfig),
-        sourceModelConfig: defaultModelConfig,
+        modelConfig: this.toPiModelConfig(
+          defaultRow.config,
+          defaultRow.provider,
+        ),
+        sourceModelConfig: defaultRow.config,
+        sourceProvider: defaultRow.provider,
       };
     });
   }
@@ -872,7 +892,8 @@ export class SandboxAgentAdapter implements IAgentRuntime {
       return undefined;
     }
 
-    const { modelConfig, sourceModelConfig } = resolvedModelConfig;
+    const { modelConfig, sourceModelConfig, sourceProvider } =
+      resolvedModelConfig;
     const providerApiKeyEnv = resolvePiProviderApiKeyEnv(modelConfig);
 
     if (!providerApiKeyEnv) {
@@ -886,7 +907,7 @@ export class SandboxAgentAdapter implements IAgentRuntime {
       sourceModelConfig?.orgId ?? modelConfig.organizationId,
     );
     const apiKeyId = this.normalizeOptionalString(
-      sourceModelConfig?.apiKeyId ?? modelConfig.apiKeyId,
+      sourceProvider?.apiKeyId ?? modelConfig.apiKeyId,
     );
 
     if (!tenantId) {
@@ -963,28 +984,31 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     }
   }
 
-  private toPiModelConfig(modelConfig: schema.LlmModelConfig): PiModelConfig {
-    const baseUrl = this.resolvePiModelBaseUrl(modelConfig);
+  private toPiModelConfig(
+    modelConfig: schema.LlmModelConfig,
+    provider: schema.LlmProvider,
+  ): PiModelConfig {
+    const baseUrl = this.resolvePiModelBaseUrl(modelConfig, provider);
 
     return {
-      provider: modelConfig.provider,
-      model: modelConfig.modelName,
+      provider: provider.slug,
+      model: modelConfig.modelId,
       ...(baseUrl ? { apiBaseUrl: baseUrl } : {}),
-      apiKeyId: modelConfig.apiKeyId ?? null,
+      apiKeyId: provider.apiKeyId ?? null,
       organizationId: modelConfig.orgId,
       tenantId: modelConfig.tenantId,
-      ...(this.normalizeOptionalString(modelConfig.authMethod)
-        ? { authMethod: this.normalizeOptionalString(modelConfig.authMethod) }
-        : {}),
     };
   }
 
   private resolvePiModelBaseUrl(
-    modelConfig: Pick<schema.LlmModelConfig, 'endpointUrl' | 'parameters'>,
+    modelConfig: schema.LlmModelConfig,
+    provider: schema.LlmProvider,
   ): string | undefined {
-    const endpointUrl = this.normalizeOptionalString(modelConfig.endpointUrl);
-    if (endpointUrl) {
-      return endpointUrl;
+    const providerBaseUrl = this.normalizeOptionalString(
+      provider.baseUrl ?? provider.defaultBaseUrl,
+    );
+    if (providerBaseUrl) {
+      return providerBaseUrl;
     }
 
     const parameters =

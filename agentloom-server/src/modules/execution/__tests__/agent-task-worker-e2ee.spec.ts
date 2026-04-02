@@ -21,6 +21,7 @@ import {
 import { NotificationService } from '../../notification/notification.service';
 import { SmartRoutingService } from '../../smart-routing/smart-routing.service';
 import { OrganizationAutonomyPolicyService } from '../../organization/organization-autonomy-policy.service';
+import { WorkspaceIntegrationService } from '../../agent-execution/workspace-integration.service';
 import { DRIZZLE } from '../../../database/database.module';
 import {
   AGENT_TASK_QUEUE,
@@ -91,6 +92,12 @@ const mocks = vi.hoisted(() => ({
   },
   organizationAutonomyPolicyService: {
     resolveAutonomyCapForTenant: vi.fn(),
+  },
+  workspaceIntegrationService: {
+    startFileWatcher: vi.fn(),
+    startExecutionStepFileWatcher: vi.fn(),
+    stopExecutionStepFileWatcher: vi.fn(),
+    archiveExecutionStepWorkspace: vi.fn(),
   },
   agentRuntime: {
     createSession: vi.fn(),
@@ -336,6 +343,10 @@ describe('AgentTaskWorker E2EE integration', () => {
         {
           provide: OrganizationAutonomyPolicyService,
           useValue: mocks.organizationAutonomyPolicyService,
+        },
+        {
+          provide: WorkspaceIntegrationService,
+          useValue: mocks.workspaceIntegrationService,
         },
         {
           provide: getQueueToken(AGENT_TASK_QUEUE),

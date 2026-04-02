@@ -1,4 +1,11 @@
-import type { LlmProvider } from './dto/create-llm-model-config.dto';
+/** 已知的提供商 slug 标识 */
+export type LlmProviderSlug =
+  | 'openai'
+  | 'anthropic'
+  | 'google'
+  | 'deepseek'
+  | 'custom'
+  | 'private_cloud';
 
 export interface LlmModelRoutingMeta {
   /** 上下文窗口大小 (tokens) */
@@ -14,7 +21,7 @@ export interface LlmModelRoutingMeta {
 }
 
 export interface LlmProviderInfo {
-  id: LlmProvider;
+  id: LlmProviderSlug;
   name: string;
   models: string[];
   defaultModel: string;

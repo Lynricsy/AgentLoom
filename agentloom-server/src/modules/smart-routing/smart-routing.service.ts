@@ -428,9 +428,9 @@ export class SmartRoutingService {
 
     const candidates: ModelCandidate[] = orderedModelConfigs.map((config) => ({
       id: config.id,
-      name: config.modelName,
-      provider: config.provider,
-      routingMeta: getModelRoutingMeta(config.provider, config.modelName),
+      name: config.modelId,
+      provider: config.provider.slug,
+      routingMeta: getModelRoutingMeta(config.provider.slug, config.modelId),
     }));
 
     if (candidates.length < 2) {

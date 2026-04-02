@@ -3,6 +3,7 @@ import { and, eq, inArray } from 'drizzle-orm';
 import type { DrizzleDB } from '../database.module';
 import {
   llmModelConfigs,
+  llmProviders,
   routerModels,
   routingBenchmarks,
   ROUTING_BENCHMARK_TASK_CATEGORIES,
@@ -314,14 +315,13 @@ async function loadRouterModelTargets(
     .select({
       routerModelId: routerModels.id,
       tenantId: routerModels.tenantId,
-      providerId: llmModelConfigs.provider,
-      modelName: llmModelConfigs.modelName,
+      providerId: llmProviders.slug,
+      modelName: llmModelConfigs.modelId,
     })
     .from(routerModels)
     .innerJoin(llmModelConfigs, eq(routerModels.modelId, llmModelConfigs.id))
-    .where(
-      inArray(llmModelConfigs.provider, ROUTING_BENCHMARK_SUPPORTED_PROVIDERS),
-    );
+    .innerJoin(llmProviders, eq(llmModelConfigs.providerId, llmProviders.id))
+    .where(inArray(llmProviders.slug, ROUTING_BENCHMARK_SUPPORTED_PROVIDERS));
 }
 
 export async function seedRoutingBenchmarks(

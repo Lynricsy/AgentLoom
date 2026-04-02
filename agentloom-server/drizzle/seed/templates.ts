@@ -5,6 +5,7 @@ import * as schema from '../../src/database/schema';
 import { seedRoutingBenchmarks } from '../../src/database/seeds/routing-benchmarks.seed';
 import { seedTemplates } from '../../src/database/seeds/template-seeds';
 import { seedSkills } from '../../src/database/seeds/skill-seeds';
+import { seedLlmProviders } from '../../src/database/seeds/provider-seeds';
 
 async function main() {
   const databaseUrl = process.env.APP_DATABASE_URL;
@@ -15,6 +16,10 @@ async function main() {
 
   const sql = postgres(databaseUrl);
   const db = drizzle(sql, { schema });
+
+  console.log('Seeding LLM providers...');
+  await seedLlmProviders(db);
+  console.log('Done — 24 built-in LLM providers seeded.');
 
   console.log('Seeding workflow templates...');
   await seedTemplates(db);

@@ -123,6 +123,11 @@ type InjectedTool = {
 function createSelectChain(result: unknown) {
   return {
     from: vi.fn().mockReturnValue({
+      innerJoin: vi.fn().mockReturnValue({
+        where: vi
+          .fn()
+          .mockResolvedValue(Array.isArray(result) ? result : [result]),
+      }),
       where: vi
         .fn()
         .mockResolvedValue(Array.isArray(result) ? result : [result]),
@@ -181,13 +186,49 @@ describe('compiler → runtime tool injection E2E', () => {
   let mockRagService: { search: ReturnType<typeof vi.fn> };
   let mockEventBridge: { emitAgentEvent: ReturnType<typeof vi.fn> };
 
-  const defaultModelConfig = {
+  const storedModelConfig = {
     id: 'model-config-001',
+    orgId: 'org-001',
     tenantId: 'tenant-001',
-    provider: 'openai',
-    modelName: 'gpt-4.1-mini',
-    apiKeyId: 'api-key-001',
+    providerId: 'provider-001',
+    name: 'GPT-4.1 Mini',
+    modelId: 'gpt-4.1-mini',
+    modelType: 'chat',
+    isEnabled: true,
     isDefault: true,
+    capabilities: {},
+    contextWindow: 128_000,
+    maxOutputTokens: 4_096,
+    pricing: null,
+    parameters: {},
+    metadataSource: 'manual',
+    timeoutMs: 30_000,
+    embeddingDimensions: null,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  const storedProvider = {
+    id: 'provider-001',
+    orgId: 'org-001',
+    tenantId: 'tenant-001',
+    slug: 'openai',
+    name: 'OpenAI',
+    iconUrl: null,
+    baseUrl: null,
+    defaultBaseUrl: null,
+    isBuiltin: true,
+    isEnabled: true,
+    apiProtocol: 'openai_chat',
+    apiKeyId: 'api-key-001',
+    sortOrder: 0,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  };
+
+  const defaultModelConfig = {
+    config: storedModelConfig,
+    provider: storedProvider,
   };
 
   const baseNodes: CanvasNode[] = [createNode('agent-main', 'agent-main')];

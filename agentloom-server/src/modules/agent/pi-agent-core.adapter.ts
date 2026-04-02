@@ -1333,7 +1333,7 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
 
   private async resolveModelConfig(
     session: AgentSession,
-  ): Promise<schema.LlmModelConfig> {
+  ): Promise<schema.LlmModelConfig & { provider: schema.LlmProvider }> {
     if (!session.tenantId) {
       throw new Error(`Session ${session.id} 缺少 tenantId`);
     }
@@ -1343,9 +1343,16 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
 
     return runInTenantTransaction(this.db, tenantId, async () => {
       if (llmModelConfigId) {
-        const [modelConfig] = await this.tenantDb
-          .select()
+        const rows = await this.tenantDb
+          .select({
+            config: schema.llmModelConfigs,
+            provider: schema.llmProviders,
+          })
           .from(schema.llmModelConfigs)
+          .innerJoin(
+            schema.llmProviders,
+            eq(schema.llmModelConfigs.providerId, schema.llmProviders.id),
+          )
           .where(
             and(
               eq(schema.llmModelConfigs.id, llmModelConfigId),
@@ -1353,16 +1360,23 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
             ),
           );
 
-        if (!modelConfig) {
+        if (rows.length === 0) {
           throw new Error(`LLM 模型配置不存在: ${llmModelConfigId}`);
         }
 
-        return modelConfig;
+        return { ...rows[0].config, provider: rows[0].provider };
       }
 
-      const [modelConfig] = await this.tenantDb
-        .select()
+      const rows = await this.tenantDb
+        .select({
+          config: schema.llmModelConfigs,
+          provider: schema.llmProviders,
+        })
         .from(schema.llmModelConfigs)
+        .innerJoin(
+          schema.llmProviders,
+          eq(schema.llmModelConfigs.providerId, schema.llmProviders.id),
+        )
         .where(
           and(
             eq(schema.llmModelConfigs.tenantId, tenantId),
@@ -1370,12 +1384,13 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
           ),
         );
 
-      if (!modelConfig) {
+      if (rows.length === 0) {
         throw new Error(`租户 ${tenantId} 未配置默认 LLM 模型`);
       }
 
-      session.llmModelConfigId = modelConfig.id;
-      return modelConfig;
+      const resolved = { ...rows[0].config, provider: rows[0].provider };
+      session.llmModelConfigId = resolved.id;
+      return resolved;
     });
   }
 

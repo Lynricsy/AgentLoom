@@ -1,11 +1,9 @@
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 
-import {
-  AUTH_METHODS,
-  PRIVATE_CLOUD_TIMEOUT_MAX,
-  PRIVATE_CLOUD_TIMEOUT_MIN,
-} from './create-llm-model-config.dto';
+const AUTH_METHODS = ['api_key', 'mtls', 'none'] as const;
+const PRIVATE_CLOUD_TIMEOUT_MIN = 5_000;
+const PRIVATE_CLOUD_TIMEOUT_MAX = 600_000;
 
 const testConnectionSchema = z
   .object({

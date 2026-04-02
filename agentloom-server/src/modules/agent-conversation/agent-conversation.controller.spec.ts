@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AgentConversationController } from './agent-conversation.controller';
 import { SandboxAgentAdapter } from '../agent/sandbox-agent.adapter';
 import { AgentConversationService } from './agent-conversation.service';
+import { ConversationTitleService } from './conversation-title.service';
 import { WorkspaceIntegrationService } from '../agent-execution/workspace-integration.service';
 
 const mockService = {
@@ -14,6 +15,10 @@ const mockService = {
   sendMessage: vi.fn(),
   cancel: vi.fn(),
   end: vi.fn(),
+};
+
+const mockConversationTitleService = {
+  generateTitle: vi.fn(),
 };
 
 const mockWorkspaceIntegrationService = {
@@ -43,6 +48,10 @@ describe('AgentConversationController', () => {
       controllers: [AgentConversationController],
       providers: [
         { provide: AgentConversationService, useValue: mockService },
+        {
+          provide: ConversationTitleService,
+          useValue: mockConversationTitleService,
+        },
         {
           provide: WorkspaceIntegrationService,
           useValue: mockWorkspaceIntegrationService,

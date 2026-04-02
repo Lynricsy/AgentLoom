@@ -123,6 +123,7 @@ Agent 与 Workflow 为两个并行顶层概念:
 
 ## 关键约定
 
+- **生产部署地址**: `https://agentloom.ling.plus/` — Studio 前端访问地址，Flutter 移动端配置的后端基础地址也是此 URL（客户端自行拼接 `/api/v1/` 等路径）
 - **NO CI/CD** — 仅开发环境
 - **Fastify** 非 Express，**Drizzle** 非 TypeORM，**Zod** 非 class-validator，**Vitest** 非 Jest
 - **ESLint**: flat config + typescript-eslint + prettier (singleQuote, trailingComma:all)

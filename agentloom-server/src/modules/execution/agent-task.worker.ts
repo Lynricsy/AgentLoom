@@ -2348,8 +2348,12 @@ export class AgentTaskWorker extends WorkerHost {
     }
 
     const modelRows = await this.tenantDb
-      .select({ provider: schema.llmModelConfigs.provider })
+      .select({ providerSlug: schema.llmProviders.slug })
       .from(schema.llmModelConfigs)
+      .innerJoin(
+        schema.llmProviders,
+        eq(schema.llmModelConfigs.providerId, schema.llmProviders.id),
+      )
       .where(
         and(
           eq(schema.llmModelConfigs.tenantId, tenantId),
@@ -2358,7 +2362,7 @@ export class AgentTaskWorker extends WorkerHost {
       )
       .limit(1);
 
-    const provider = modelRows[0]?.provider;
+    const provider = modelRows[0]?.providerSlug;
     return provider ? { modelId: selectedModelId, provider } : null;
   }
 

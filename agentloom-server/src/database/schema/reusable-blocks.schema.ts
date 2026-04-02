@@ -22,6 +22,7 @@ export interface BlockPort {
     | 'model'
     | 'text'
     | 'json'
+    | 'array'
     | 'image'
     | 'audio'
     | 'tool'

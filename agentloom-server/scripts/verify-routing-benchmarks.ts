@@ -34,8 +34,8 @@ async function main() {
     const benchmarkRows = await db
       .select({
         taskCategory: schema.routingBenchmarks.taskCategory,
-        providerId: schema.llmModelConfigs.provider,
-        modelName: schema.llmModelConfigs.modelName,
+        providerId: schema.llmProviders.slug,
+        modelName: schema.llmModelConfigs.modelId,
       })
       .from(schema.routingBenchmarks)
       .innerJoin(
@@ -45,6 +45,10 @@ async function main() {
       .innerJoin(
         schema.llmModelConfigs,
         eq(schema.routerModels.modelId, schema.llmModelConfigs.id),
+      )
+      .innerJoin(
+        schema.llmProviders,
+        eq(schema.llmModelConfigs.providerId, schema.llmProviders.id),
       );
 
     if (benchmarkRows.length === 0) {
@@ -64,14 +68,19 @@ async function main() {
     }
 
     const missingCategories = schema.ROUTING_BENCHMARK_TASK_CATEGORIES.filter(
-      (category) => !categoryCounts.has(category) || (categoryCounts.get(category) ?? 0) < 10,
+      (category) =>
+        !categoryCounts.has(category) ||
+        (categoryCounts.get(category) ?? 0) < 10,
     );
     const missingProviders = ROUTING_BENCHMARK_SUPPORTED_PROVIDERS.filter(
       (providerId) => !providers.has(providerId),
     );
 
     console.log('Routing benchmark rows: %d', benchmarkRows.length);
-    console.log('Expected blueprint count: %d', ROUTING_BENCHMARK_SEED_BLUEPRINTS.length);
+    console.log(
+      'Expected blueprint count: %d',
+      ROUTING_BENCHMARK_SEED_BLUEPRINTS.length,
+    );
     console.log('Per-category counts:');
     for (const category of schema.ROUTING_BENCHMARK_TASK_CATEGORIES) {
       console.log('  %s: %d', category, categoryCounts.get(category) ?? 0);

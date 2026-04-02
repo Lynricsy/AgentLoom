@@ -1230,11 +1230,12 @@ export class McpService {
     switch (type) {
       case 'string':
         return 'text';
+      case 'array':
+        return 'array';
       case 'number':
       case 'integer':
       case 'boolean':
       case 'object':
-      case 'array':
         return 'json';
       default:
         return 'text';

@@ -14,6 +14,7 @@ const MOCK_VERSION_DTO: VersionResponseDto = {
   id: VERSION_ID,
   workflowDefinitionId: WORKFLOW_ID,
   versionNumber: 1,
+  releaseNumber: null,
   label: null,
   snapshot: {
     nodes: [],

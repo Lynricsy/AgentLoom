@@ -108,6 +108,11 @@ vi.mock('../tool-schema-converter', () => ({
 function createSelectChain(result: unknown) {
   return {
     from: vi.fn().mockReturnValue({
+      innerJoin: vi.fn().mockReturnValue({
+        where: vi
+          .fn()
+          .mockResolvedValue(Array.isArray(result) ? result : [result]),
+      }),
       where: vi
         .fn()
         .mockResolvedValue(Array.isArray(result) ? result : [result]),
@@ -149,13 +154,49 @@ describe('PiAgentCoreAdapter', () => {
   let mockRagService: { search: ReturnType<typeof vi.fn> };
 
   const NOW = new Date('2026-03-23T10:00:00.000Z');
-  const defaultModelConfig = {
+  const storedModelConfig = {
     id: 'model-config-001',
+    orgId: 'org-001',
     tenantId: 'tenant-001',
-    provider: 'openai',
-    modelName: 'gpt-4.1-mini',
-    apiKeyId: 'api-key-001',
+    providerId: 'provider-001',
+    name: 'GPT-4.1 Mini',
+    modelId: 'gpt-4.1-mini',
+    modelType: 'chat',
+    isEnabled: true,
     isDefault: true,
+    capabilities: {},
+    contextWindow: 128_000,
+    maxOutputTokens: 4_096,
+    pricing: null,
+    parameters: {},
+    metadataSource: 'manual',
+    timeoutMs: 30_000,
+    embeddingDimensions: null,
+    createdAt: NOW,
+    updatedAt: NOW,
+  };
+
+  const storedProvider = {
+    id: 'provider-001',
+    orgId: 'org-001',
+    tenantId: 'tenant-001',
+    slug: 'openai',
+    name: 'OpenAI',
+    iconUrl: null,
+    baseUrl: null,
+    defaultBaseUrl: null,
+    isBuiltin: true,
+    isEnabled: true,
+    apiProtocol: 'openai_chat',
+    apiKeyId: 'api-key-001',
+    sortOrder: 0,
+    createdAt: NOW,
+    updatedAt: NOW,
+  };
+
+  const defaultModelConfig = {
+    config: storedModelConfig,
+    provider: storedProvider,
   };
 
   function createParams(
@@ -268,7 +309,10 @@ describe('PiAgentCoreAdapter', () => {
       const agent = hoisted.MockPiAgent.instances[0];
 
       expect(hoisted.importPiAgentCore).toHaveBeenCalledTimes(1);
-      expect(mockPiAiAdapter.getModel).toHaveBeenCalledWith(defaultModelConfig);
+      expect(mockPiAiAdapter.getModel).toHaveBeenCalledWith({
+        ...storedModelConfig,
+        provider: storedProvider,
+      });
       expect(hoisted.streamFnFactory).toHaveBeenCalledWith(
         'mock-language-model',
         undefined,

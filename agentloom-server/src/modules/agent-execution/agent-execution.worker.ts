@@ -15,7 +15,7 @@ import {
   agentVersions,
   type AgentVersionSnapshot,
 } from '../../database/schema/agent-definitions.schema';
-import type { LlmModelConfig as StoredLlmModelConfig } from '../../database/schema/llm-model-configs.schema';
+import type { ResolvedModelConfig } from '../llm/pi-ai-adapter';
 import {
   mcpServerConfigs,
   memorySessions,
@@ -1713,38 +1713,36 @@ export class AgentExecutionWorker extends WorkerHost {
     }
   }
 
-  private toPiModelConfig(modelConfig: StoredLlmModelConfig): PiModelConfig {
-    const baseUrl = this.resolvePiModelBaseUrl(modelConfig);
+  private toPiModelConfig(resolved: ResolvedModelConfig): PiModelConfig {
+    const baseUrl = this.resolvePiModelBaseUrl(resolved);
 
     return {
-      provider: modelConfig.provider,
-      model: modelConfig.modelName,
+      provider: resolved.provider.slug,
+      model: resolved.modelId,
       ...(baseUrl ? { apiBaseUrl: baseUrl } : {}),
-      apiKeyId: modelConfig.apiKeyId ?? null,
-      organizationId: modelConfig.orgId,
-      tenantId: modelConfig.tenantId,
-      ...(typeof modelConfig.authMethod === 'string' &&
-      modelConfig.authMethod.length > 0
-        ? { authMethod: modelConfig.authMethod }
-        : {}),
+      apiKeyId: resolved.provider.apiKeyId ?? null,
+      organizationId: resolved.orgId,
+      tenantId: resolved.tenantId,
     };
   }
 
   private resolvePiModelBaseUrl(
-    modelConfig: Pick<StoredLlmModelConfig, 'endpointUrl' | 'parameters'>,
+    resolved: ResolvedModelConfig,
   ): string | undefined {
+    const providerBaseUrl =
+      resolved.provider.baseUrl ?? resolved.provider.defaultBaseUrl;
     if (
-      typeof modelConfig.endpointUrl === 'string' &&
-      modelConfig.endpointUrl.trim().length > 0
+      typeof providerBaseUrl === 'string' &&
+      providerBaseUrl.trim().length > 0
     ) {
-      return modelConfig.endpointUrl.trim();
+      return providerBaseUrl.trim();
     }
 
     const parameters =
-      modelConfig.parameters &&
-      typeof modelConfig.parameters === 'object' &&
-      !Array.isArray(modelConfig.parameters)
-        ? (modelConfig.parameters as Record<string, unknown>)
+      resolved.parameters &&
+      typeof resolved.parameters === 'object' &&
+      !Array.isArray(resolved.parameters)
+        ? (resolved.parameters as Record<string, unknown>)
         : {};
 
     const candidates = [

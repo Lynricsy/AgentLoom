@@ -68,10 +68,20 @@ export {
 } from './workflow-versions.schema';
 export {
   llmModelTypeEnum,
+  metadataSourceEnum,
   llmModelConfigs,
+  type ModelCapabilities,
+  type PricingTier,
+  type ModelPricing,
   type LlmModelConfig,
   type NewLlmModelConfig,
 } from './llm-model-configs.schema';
+export {
+  apiProtocolEnum,
+  llmProviders,
+  type LlmProvider,
+  type NewLlmProvider,
+} from './llm-providers.schema';
 export {
   mcpTransportTypeEnum,
   mcpServerStatusEnum,

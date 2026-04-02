@@ -42,6 +42,10 @@ export const apiKeyStatusEnum = pgEnum('api_key_status', [
   'expired',
 ]);
 
+/**
+ * @deprecated llmProviderEnum 已废弃，api_keys.provider 改为 varchar。
+ * 保留 pgEnum 定义以便迁移脚本能正确处理 enum 删除。
+ */
 export const llmProviderEnum = pgEnum('llm_provider', [
   'openai',
   'anthropic',
@@ -66,7 +70,7 @@ export const apiKeys = pgTable(
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    provider: llmProviderEnum('provider').notNull(),
+    provider: varchar('provider', { length: 50 }).notNull(),
     label: varchar('label', { length: 255 }).notNull(),
     keyPreview: varchar('key_preview', { length: 10 }).notNull(),
     // 信封加密字段 — 撤销时置空

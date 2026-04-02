@@ -1747,23 +1747,16 @@ describe('NodeSchedulerService', () => {
         }),
       ];
 
-      vi.spyOn(service as never, 'loadExecutionContext').mockResolvedValue({
+      vi.spyOn(service as any, 'loadExecutionContext').mockResolvedValue({
         execution: makeExecution(makeSnapshot([], [])),
         snapshot: makeSnapshot([], []),
         steps: internalSteps,
-      } as never);
+      });
       const finalizeCompoundExecution = vi
-        .spyOn(service as never, 'finalizeCompoundExecution')
-        .mockResolvedValue(undefined as never);
+        .spyOn(service as any, 'finalizeCompoundExecution')
+        .mockResolvedValue(undefined);
 
-      await (
-        service as unknown as {
-          scheduleNextCompoundNode: (
-            context: typeof context,
-            tenantId: string,
-          ) => Promise<void>;
-        }
-      ).scheduleNextCompoundNode(context, TENANT_ID);
+      await (service as any).scheduleNextCompoundNode(context, TENANT_ID);
 
       expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
         TENANT_ID,

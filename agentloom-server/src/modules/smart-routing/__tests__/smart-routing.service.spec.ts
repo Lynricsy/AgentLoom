@@ -80,13 +80,21 @@ const {
     }),
     createMockRouterRegistry: () => ({}),
     mockModelConfigs: [
-      { id: 'model-1', modelName: 'gpt-4o', provider: 'openai' },
+      {
+        id: 'model-1',
+        modelId: 'gpt-4o',
+        provider: { slug: 'openai' },
+      },
       {
         id: 'model-2',
-        modelName: 'claude-sonnet-4-20250514',
-        provider: 'anthropic',
+        modelId: 'claude-sonnet-4-20250514',
+        provider: { slug: 'anthropic' },
       },
-      { id: 'model-3', modelName: 'gemini-1.5-pro', provider: 'google' },
+      {
+        id: 'model-3',
+        modelId: 'gemini-1.5-pro',
+        provider: { slug: 'google' },
+      },
     ],
   };
 });

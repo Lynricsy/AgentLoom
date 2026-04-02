@@ -1,7 +1,7 @@
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 
-import { AUTH_METHODS } from './create-llm-model-config.dto';
+const AUTH_METHODS = ['api_key', 'mtls', 'none'] as const;
 
 const fetchPrivateCloudModelsSchema = z
   .object({

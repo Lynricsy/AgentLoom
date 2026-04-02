@@ -713,20 +713,23 @@ export class RagService {
         );
       }
 
-      if (config.provider !== 'openai' && config.provider !== 'private_cloud') {
+      if (
+        config.provider.slug !== 'openai' &&
+        config.provider.slug !== 'private_cloud'
+      ) {
         throw new Error(
-          `Embedding 模型仅支持 openai/private_cloud，当前为 ${config.provider}`,
+          `Embedding 模型仅支持 openai/private_cloud，当前为 ${config.provider.slug}`,
         );
       }
 
       return {
         organizationId,
         tenantId,
-        provider: config.provider,
-        modelName: config.modelName,
-        apiKeyId: config.apiKeyId,
-        endpointUrl: config.endpointUrl,
-        authMethod: config.authMethod,
+        provider: config.provider.slug as 'openai' | 'private_cloud',
+        modelName: config.modelId,
+        apiKeyId: config.provider.apiKeyId,
+        endpointUrl: config.provider.baseUrl,
+        authMethod: null,
         dimensions: config.embeddingDimensions,
       };
     }

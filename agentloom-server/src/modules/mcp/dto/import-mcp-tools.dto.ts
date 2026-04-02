@@ -31,6 +31,7 @@ export const portMappingSchema = z.object({
     'model',
     'text',
     'json',
+    'array',
     'image',
     'audio',
     'tool',
