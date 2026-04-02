@@ -18,18 +18,23 @@ import { Slider } from '@/shared/ui/slider'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs'
 import { useToast } from '@/shared/ui/toast'
 import {
+  adaptModelEntityToInfo,
   buildLlmNodePatch,
   DEFAULT_LLM_PARAMETERS,
   getProviderInfo,
   LLM_PROVIDERS,
+  normalizeLlmParameters,
   parseLlmModelConfig,
   toLlmModelConfig,
   type ApiKeyInfo,
   type CreateLlmModelInput,
   type LlmModelConfig,
+  type LlmModelConfigEntity,
   type LlmModelInfo,
   type LlmNodeDataPatch,
   type LlmProvider,
+  type LlmProviderEntity,
+  type LlmProviderInfo,
 } from '../types'
 import {
   useCreateLlmModel,
@@ -155,12 +160,13 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : '发生未知错误'
 }
 
-function buildCreatePayload(values: LlmModelFormValues): CreateLlmModelInput {
-  const payload: CreateLlmModelInput = {
+function buildCreatePayload(values: LlmModelFormValues, providers?: LlmProviderEntity[]): CreateLlmModelInput {
+  const providerEntity = providers?.find(p => p.slug === values.provider)
+  return {
     name: values.name.trim(),
-    provider: values.provider,
+    providerId: providerEntity?.id ?? values.provider,
+    modelId: values.modelName.trim(),
     modelType: 'chat',
-    modelName: values.modelName.trim(),
     parameters: {
       temperature: values.temperature,
       maxTokens: values.maxTokens ? Number.parseInt(values.maxTokens, 10) : undefined,
@@ -170,27 +176,8 @@ function buildCreatePayload(values: LlmModelFormValues): CreateLlmModelInput {
       stop: values.stop,
     },
     isDefault: false,
+    timeoutMs: values.timeoutMs,
   }
-
-  if (values.apiKeyId) {
-    payload.apiKeyId = values.apiKeyId
-  }
-
-  if (values.provider === 'private_cloud') {
-    payload.endpointUrl = values.endpointUrl || undefined
-    payload.authMethod = values.authMethod || undefined
-    payload.authConfig = values.authMethod === 'mtls' && values.authConfig && Object.keys(values.authConfig).length > 0
-      ? values.authConfig
-      : undefined
-    payload.timeoutMs = values.timeoutMs
-    if (values.authMethod === 'api_key' && values.apiKeyId) {
-      payload.apiKeyId = values.apiKeyId
-    } else {
-      delete payload.apiKeyId
-    }
-  }
-
-  return payload
 }
 
 function TagInput({ tags, onChange, placeholder = '输入后回车添加 stop token' }: TagInputProps) {
@@ -262,8 +249,11 @@ function ExistingConfigSummary({ apiKeys, current }: { apiKeys: ApiKeyInfo[]; cu
     return null
   }
 
-  const apiKey = apiKeys.find((item) => item.id === current.apiKeyId) ?? null
   const providerInfo = getProviderInfo(current.provider)
+  const params = normalizeLlmParameters(current.parameters)
+  // API Key 现在在 Provider 级别管理，尝试通过 providerId 查找
+  const providerApiKeyId = (current as LlmModelConfigEntity).provider?.apiKeyId
+  const apiKey = providerApiKeyId ? apiKeys.find((item) => item.id === providerApiKeyId) ?? null : null
 
   return (
     <div className="rounded-lg border border-border bg-muted/20 p-3 text-xs">
@@ -283,7 +273,7 @@ function ExistingConfigSummary({ apiKeys, current }: { apiKeys: ApiKeyInfo[]; cu
         </div>
         <div className="flex items-center justify-between gap-3">
           <dt>Temperature</dt>
-          <dd>{current.parameters.temperature.toFixed(1)}</dd>
+          <dd>{params.temperature.toFixed(1)}</dd>
         </div>
         <div className="flex items-center justify-between gap-3">
           <dt>API Key</dt>
@@ -313,8 +303,18 @@ export const LlmModelConfigPanel = memo(function LlmModelConfigPanel({
     defaultValues: toFormValues(config),
   })
 
-  const providerCatalog = useMemo(
-    () => (providersQuery.data && providersQuery.data.length > 0 ? providersQuery.data : LLM_PROVIDERS),
+  const providerCatalog = useMemo<LlmProviderInfo[]>(
+    () => {
+      if (providersQuery.data && providersQuery.data.length > 0) {
+        return providersQuery.data.map(p => ({
+          id: p.slug,
+          name: p.name,
+          description: '',
+          models: [] as string[],
+        }))
+      }
+      return [...LLM_PROVIDERS]
+    },
     [providersQuery.data],
   )
   const selectedProvider = useWatch({ control: form.control, name: 'provider' })
@@ -434,15 +434,16 @@ export const LlmModelConfigPanel = memo(function LlmModelConfigPanel({
 
   const handleSubmit = form.handleSubmit(async (values) => {
     try {
-      const payload = buildCreatePayload(values)
+      const payload = buildCreatePayload(values, providersQuery.data ?? undefined)
       const currentConfigId = selectedConfigId.trim()
       const savedModel = currentConfigId
         ? await updateMutation.mutateAsync({ id: currentConfigId, payload })
         : await createMutation.mutateAsync(payload)
 
-      onApply(buildLlmNodePatch(savedModel))
+      const adapted = adaptModelEntityToInfo(savedModel)
+      onApply(buildLlmNodePatch(adapted))
       setSelectedConfigId(savedModel.id)
-      form.reset(toFormValues(toLlmModelConfig(savedModel)))
+      form.reset(toFormValues(toLlmModelConfig(adapted)))
       setMode('existing')
 
       notify({

@@ -27,9 +27,12 @@ import {
   getProviderInfo,
   LLM_MODEL_TYPES,
   LLM_PROVIDERS,
+  normalizeLlmParameters,
   type CreateLlmModelInput,
   type LlmModelInfo,
   type LlmProvider,
+  type LlmProviderEntity,
+  type LlmProviderInfo,
 } from '../types'
 import {
   useCreateLlmModel,
@@ -113,12 +116,13 @@ const dialogFormSchema = z.object({
 
 type DialogFormValues = z.infer<typeof dialogFormSchema>
 
-function buildDialogPayload(values: DialogFormValues): CreateLlmModelInput {
+function buildDialogPayload(values: DialogFormValues, providers?: LlmProviderEntity[]): CreateLlmModelInput {
+  const providerEntity = providers?.find(p => p.slug === values.provider)
   const payload: CreateLlmModelInput = {
     name: values.name.trim(),
-    provider: values.provider,
+    providerId: providerEntity?.id ?? values.provider,
+    modelId: values.modelName.trim(),
     modelType: values.modelType,
-    modelName: values.modelName.trim(),
     parameters: {
       temperature: values.temperature,
       maxTokens: values.maxTokens ? Number.parseInt(values.maxTokens, 10) : undefined,
@@ -128,29 +132,11 @@ function buildDialogPayload(values: DialogFormValues): CreateLlmModelInput {
       stop: values.stop,
     },
     isDefault: values.isDefault,
+    timeoutMs: values.timeoutMs,
   }
 
   if (values.modelType === 'embedding' && values.embeddingDimensions) {
     payload.embeddingDimensions = Number.parseInt(values.embeddingDimensions, 10)
-  }
-
-  if (values.apiKeyId) {
-    payload.apiKeyId = values.apiKeyId
-  }
-
-  if (values.provider === 'private_cloud') {
-    payload.endpointUrl = values.endpointUrl || undefined
-    payload.authMethod = values.authMethod || undefined
-    payload.authConfig =
-      values.authMethod === 'mtls' && values.authConfig && Object.keys(values.authConfig).length > 0
-        ? values.authConfig
-        : undefined
-    payload.timeoutMs = values.timeoutMs
-    if (values.authMethod === 'api_key' && values.apiKeyId) {
-      payload.apiKeyId = values.apiKeyId
-    } else {
-      delete payload.apiKeyId
-    }
   }
 
   return payload
@@ -182,24 +168,23 @@ function getDefaultFormValues(provider: LlmProvider = 'openai'): DialogFormValue
 }
 
 function modelToFormValues(model: LlmModelInfo): DialogFormValues {
+  const params = normalizeLlmParameters(model.parameters)
   return {
     name: model.name,
     provider: model.provider,
     modelType: model.modelType ?? 'chat',
     modelName: model.modelName,
-    apiKeyId: model.apiKeyId ?? '',
-    temperature: model.parameters.temperature,
-    maxTokens: typeof model.parameters.maxTokens === 'number' ? String(model.parameters.maxTokens) : '',
-    topP: model.parameters.topP,
-    frequencyPenalty: model.parameters.frequencyPenalty,
-    presencePenalty: model.parameters.presencePenalty,
-    stop: model.parameters.stop,
+    apiKeyId: '',
+    temperature: params.temperature,
+    maxTokens: typeof params.maxTokens === 'number' ? String(params.maxTokens) : '',
+    topP: params.topP,
+    frequencyPenalty: params.frequencyPenalty,
+    presencePenalty: params.presencePenalty,
+    stop: params.stop,
     isDefault: model.isDefault,
-    endpointUrl: model.endpointUrl ?? '',
-    authMethod: (model.authMethod === 'api_key' || model.authMethod === 'mtls' ? model.authMethod : 'none') as 'api_key' | 'mtls' | 'none',
-    authConfig: Object.fromEntries(
-      Object.entries(model.authConfig ?? {}).map(([k, v]) => [k, String(v ?? '')]),
-    ),
+    endpointUrl: '',
+    authMethod: 'none' as const,
+    authConfig: {},
     timeoutMs: typeof model.timeoutMs === 'number' ? model.timeoutMs : undefined,
     embeddingDimensions:
       typeof model.embeddingDimensions === 'number' ? String(model.embeddingDimensions) : '',
@@ -246,11 +231,11 @@ export function LlmModelConfigDialog({
         : (apiKeysQuery.data ?? []).filter((item) => item.provider === selectedProvider),
     [apiKeysQuery.data, selectedProvider],
   )
-  const providerCatalog = useMemo(() => {
-    const source =
+  const providerCatalog = useMemo<LlmProviderInfo[]>(() => {
+    const source: LlmProviderInfo[] =
       providersQuery.data && providersQuery.data.length > 0
-        ? providersQuery.data
-        : LLM_PROVIDERS
+        ? providersQuery.data.map(p => ({ id: p.slug, name: p.name, description: '', models: [] as string[] }))
+        : [...LLM_PROVIDERS]
 
     if (selectedModelType !== 'embedding') {
       return source
@@ -317,7 +302,7 @@ export function LlmModelConfigDialog({
 
   const handleSubmit = form.handleSubmit(async (values) => {
     try {
-      const payload = buildDialogPayload(values)
+      const payload = buildDialogPayload(values, providersQuery.data ?? undefined)
 
       if (isEditMode) {
         await updateMutation.mutateAsync({ id: editingModel.id, payload })
