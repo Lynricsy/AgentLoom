@@ -12,20 +12,21 @@ import { LlmModelConfigPanel } from "./LlmModelConfigPanel";
 const mocks = vi.hoisted(() => ({
   useLlmModels: vi.fn(),
   useLlmProviders: vi.fn(),
-  useLlmApiKeys: vi.fn(),
   useCreateLlmModel: vi.fn(),
   useUpdateLlmModel: vi.fn(),
+  useUpdateProvider: vi.fn(),
   notify: vi.fn(),
   createMutateAsync: vi.fn(),
   updateMutateAsync: vi.fn(),
+  updateProviderMutateAsync: vi.fn(),
 }));
 
 vi.mock("../hooks/useLlmModels", () => ({
   useLlmModels: mocks.useLlmModels,
   useLlmProviders: mocks.useLlmProviders,
-  useLlmApiKeys: mocks.useLlmApiKeys,
   useCreateLlmModel: mocks.useCreateLlmModel,
   useUpdateLlmModel: mocks.useUpdateLlmModel,
+  useUpdateProvider: mocks.useUpdateProvider,
 }));
 
 vi.mock("@/shared/ui/toast", () => ({
@@ -98,10 +99,6 @@ describe("LlmModelConfigPanel", () => {
       data: [MOCK_PROVIDER],
       error: null,
     });
-    mocks.useLlmApiKeys.mockReturnValue({
-      data: [],
-      error: null,
-    });
     mocks.useCreateLlmModel.mockReturnValue({
       mutateAsync: mocks.createMutateAsync,
       isPending: false,
@@ -109,6 +106,11 @@ describe("LlmModelConfigPanel", () => {
     });
     mocks.useUpdateLlmModel.mockReturnValue({
       mutateAsync: mocks.updateMutateAsync,
+      isPending: false,
+      error: null,
+    });
+    mocks.useUpdateProvider.mockReturnValue({
+      mutateAsync: mocks.updateProviderMutateAsync,
       isPending: false,
       error: null,
     });

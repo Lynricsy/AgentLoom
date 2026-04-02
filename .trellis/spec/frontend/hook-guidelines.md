@@ -212,6 +212,87 @@ export async function createLlmModel(config: CreateLlmModelInput) {
 }
 ```
 
+## Scenario: LLM Provider Direct API Key Forms
+
+### 1. Scope / Trigger
+
+- Trigger: touching `src/features/llm/components/*`, `src/features/llm/api/llmModelApi.ts`, or `src/features/llm/hooks/useLlmModels.ts` while changing how Provider credentials are entered or how private cloud raw testing works.
+
+### 2. Signatures
+
+- `CreateLlmProviderInput`
+- `UpdateLlmProviderInput`
+- `testPrivateCloudConnection(input: TestConnectionInput)`
+- `fetchPrivateCloudModels(input: FetchModelsInput)`
+- `ManagedApiKeyField`
+- `buildProviderCredentialInput(options): UpdateLlmProviderInput | null`
+- `hasEffectiveProviderApiKey(options): boolean`
+
+### 3. Contracts
+
+- Provider editor, model config dialog, and canvas `LlmModelConfigPanel` must use direct plaintext `apiKey` input instead of requiring the user to preselect an `apiKeyId`.
+- Frontend must never attempt to echo back stored plaintext keys; edit forms only expose:
+  - empty password input
+  - “已配置，留空保持不变”
+  - optional “移除当前 Key”
+- For private cloud raw test/discovery:
+  - if the user typed a new `apiKey`, send `apiKey`
+  - else if the selected Provider already has `apiKeyId`, send `apiKeyId`
+- Provider-level credential edits must be treated as Provider-global changes and the UI should say so explicitly.
+- `UpdateLlmProviderInput.baseUrl` must allow `null`; do not type it through `Partial<CreateLlmProviderInput>` alone, or `null` will be lost by intersection.
+
+### 4. Validation & Error Matrix
+
+| Condition | Expected Behavior | Verification Point |
+|-----------|-------------------|--------------------|
+| Private cloud + `authMethod='api_key'` + no stored key + empty input | Disable test/discovery and surface “请输入 API Key” | `PrivateCloudConfigSection.test.tsx` |
+| Private cloud + stored managed key + empty input | Allow test/discovery and send `apiKeyId` | `PrivateCloudConfigSection.test.tsx` |
+| Private cloud + user typed new key | Send direct `apiKey` and ignore stored `apiKeyId` for that request | `llmModelApi.test.ts`, `PrivateCloudConfigSection.test.tsx` |
+| Non-private-cloud Provider has stored key | Show “已配置，留空保持不变；输入新 key 会替换” | component render QA |
+| User clicks remove current key | Submit `clearApiKey=true` instead of stale `apiKeyId=null` compatibility hacks | form submit assertions |
+| `UpdateLlmProviderInput.baseUrl = null` | TypeScript accepts payload and API helper transmits `null` | `pnpm typecheck` |
+
+### 5. Good / Base / Bad Cases
+
+- Good: user opens Provider panel, enters a new API key, saves, then immediately tests connection successfully.
+- Base: user leaves the API key field empty on an already-configured Provider; no credential mutation is sent and the stored key remains active.
+- Bad: UI pre-fills a masked or real API key into the input field, or forces the user to navigate to a separate API key management flow before creating a Provider/model.
+
+### 6. Tests Required
+
+- `src/features/llm/api/llmModelApi.test.ts`
+  - Assert raw private cloud API helpers send direct `apiKey` / fallback `apiKeyId`.
+- `src/features/llm/components/__tests__/PrivateCloudConfigSection.test.tsx`
+  - Assert direct key input path, stored-key fallback path, and model discovery flow.
+- `src/features/llm/components/LlmModelConfigPanel.test.tsx`
+  - Assert panel still applies saved model patches after Provider credential sync support is introduced.
+- Manual/browser QA:
+  - Resource Provider panel direct key save
+  - Model dialog direct key replace/remove
+  - Canvas `LlmModelConfigPanel` create flow with direct key
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```tsx
+<Select value={apiKeyId} onValueChange={setApiKeyId}>
+  <option value="">请选择 API Key</option>
+</Select>
+```
+
+#### Correct
+
+```tsx
+<ManagedApiKeyField
+  value={apiKey}
+  onValueChange={setApiKey}
+  hasStoredApiKey={Boolean(provider.apiKeyId)}
+  clearRequested={clearApiKey}
+  onClearRequestedChange={setClearApiKey}
+/>
+```
+
 ---
 
 ## WebSocket Hook Pattern

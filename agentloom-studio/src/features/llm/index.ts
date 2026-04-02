@@ -27,7 +27,7 @@ export type {
   UpdateLlmModelInput,
   PrivateCloudModelInfo,
   TestConnectionInput,
-} from './types'
+} from "./types";
 export {
   API_PROTOCOL_VALUES,
   AUTH_METHODS,
@@ -42,10 +42,10 @@ export {
   normalizeLlmParameters,
   parseLlmModelConfig,
   toLlmModelConfig,
-} from './types'
+} from "./types";
 
 // === Query Keys ===
-export { llmModelKeys, llmProviderKeys } from './api/llmModelKeys'
+export { llmModelKeys, llmProviderKeys } from "./api/llmModelKeys";
 
 // === API Functions ===
 export {
@@ -60,6 +60,8 @@ export {
   discoverProviderModels,
   searchProviderLiteLLMModels,
   lookupModelMetadata,
+  testPrivateCloudConnection,
+  fetchPrivateCloudModels,
   // Model API
   fetchLlmModels,
   fetchLlmModel,
@@ -68,7 +70,7 @@ export {
   deleteLlmModel,
   // API Keys
   fetchApiKeys,
-} from './api/llmModelApi'
+} from "./api/llmModelApi";
 
 // === Hooks ===
 export {
@@ -93,12 +95,15 @@ export {
   // Legacy compat hooks
   useTestPrivateCloudConnection,
   usePrivateCloudModels,
-} from './hooks/useLlmModels'
+} from "./hooks/useLlmModels";
 
 // === Components ===
-export { ProviderIcon } from './components/ProviderIcon'
-export { LlmModelConfigPanel } from './components/LlmModelConfigPanel'
-export { LlmModelConfigDialog } from './components/LlmModelConfigDialog'
-export { LlmModelManagementPage } from './components/LlmModelManagementPage'
-export { PrivateCloudConfigSection } from './components/PrivateCloudConfigSection'
-export { GlobalModelSelector, type GlobalModelSelectorProps } from './components/GlobalModelSelector'
+export { ProviderIcon } from "./components/ProviderIcon";
+export { LlmModelConfigPanel } from "./components/LlmModelConfigPanel";
+export { LlmModelConfigDialog } from "./components/LlmModelConfigDialog";
+export { LlmModelManagementPage } from "./components/LlmModelManagementPage";
+export { PrivateCloudConfigSection } from "./components/PrivateCloudConfigSection";
+export {
+  GlobalModelSelector,
+  type GlobalModelSelectorProps,
+} from "./components/GlobalModelSelector";

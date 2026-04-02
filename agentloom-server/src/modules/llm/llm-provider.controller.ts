@@ -13,6 +13,7 @@ import {
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
+import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CreateLlmProviderDto } from './dto/create-llm-provider.dto';
 import { TestProviderConnectionDto } from './dto/test-provider-connection.dto';
@@ -82,8 +83,9 @@ export class LlmProviderController {
   async create(
     @Body() dto: CreateLlmProviderDto,
     @CurrentTenant() tenantId: string,
+    @CurrentUser('sub') userId: string,
   ) {
-    const provider = await this.providerService.create(dto, tenantId);
+    const provider = await this.providerService.create(dto, tenantId, userId);
     return { data: provider };
   }
 
@@ -98,8 +100,14 @@ export class LlmProviderController {
     @Param('id') id: string,
     @Body() dto: UpdateLlmProviderDto,
     @CurrentTenant() tenantId: string,
+    @CurrentUser('sub') userId: string,
   ) {
-    const provider = await this.providerService.update(id, dto, tenantId);
+    const provider = await this.providerService.update(
+      id,
+      dto,
+      tenantId,
+      userId,
+    );
     return { data: provider };
   }
 

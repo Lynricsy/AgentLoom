@@ -49,7 +49,7 @@ AgentLoom Flutter 客户端，当前定位为移动优先、全端兼容的使�
   - Provider / Model 二级管理下的模型配置列表与详情
   - 创建 / 编辑 / 删除
   - Chat / Embedding 类型
-  - API Key 选择
+  - Provider 新建 / 编辑时直接填写 API Key，由服务端加密托管
   - 缓存读/写与 token 阶梯定价展示
   - Private Cloud 连接测试与远端模型探测
 - 个人偏好：

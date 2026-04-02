@@ -158,7 +158,6 @@ describe('LlmController', () => {
 // ---------------------------------------------------------------------------
 
 const PROVIDER_ID = '00000000-0000-0000-0000-000000000200';
-
 const MOCK_PROVIDER = {
   id: PROVIDER_ID,
   orgId: 'org-id',
@@ -304,9 +303,13 @@ describe('LlmProviderController', () => {
   describe('create', () => {
     it('应当调用 providerService.create 并返回 { data }', async () => {
       const dto = { name: 'Custom', baseUrl: 'https://custom.api.com' };
-      const result = await controller.create(dto as never, TENANT_ID);
+      const result = await controller.create(dto as never, TENANT_ID, USER_ID);
 
-      expect(providerService.create).toHaveBeenCalledWith(dto, TENANT_ID);
+      expect(providerService.create).toHaveBeenCalledWith(
+        dto,
+        TENANT_ID,
+        USER_ID,
+      );
       expect(result).toEqual({ data: MOCK_PROVIDER });
     });
   });
@@ -318,12 +321,14 @@ describe('LlmProviderController', () => {
         PROVIDER_ID,
         dto as never,
         TENANT_ID,
+        USER_ID,
       );
 
       expect(providerService.update).toHaveBeenCalledWith(
         PROVIDER_ID,
         dto,
         TENANT_ID,
+        USER_ID,
       );
       expect(result).toEqual({ data: MOCK_PROVIDER });
     });

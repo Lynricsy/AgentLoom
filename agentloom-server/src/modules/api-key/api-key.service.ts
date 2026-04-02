@@ -10,11 +10,18 @@ import {
   ApiKeyRevokedException,
 } from './api-key.exceptions';
 import type { ApiKeyResponseDto } from './dto/api-key-response.dto';
-import { LLM_PROVIDERS, type CreateApiKeyDto } from './dto/create-api-key.dto';
+import type { CreateApiKeyDto } from './dto/create-api-key.dto';
 import type { RotateApiKeyDto } from './dto/rotate-api-key.dto';
 import type { ApiKey } from '../../database/schema';
 
 const MAX_API_KEYS_PER_TENANT = 50;
+
+export interface StoredApiKeyInput {
+  provider: string;
+  label: string;
+  apiKey: string;
+  isDefault?: boolean;
+}
 
 @Injectable()
 export class ApiKeyService {
@@ -34,6 +41,14 @@ export class ApiKeyService {
     userId: string,
     tenantId: string,
   ): Promise<ApiKeyResponseDto> {
+    return this.createStoredKey(dto, userId, tenantId);
+  }
+
+  async createStoredKey(
+    input: StoredApiKeyInput,
+    userId: string,
+    tenantId: string,
+  ): Promise<ApiKeyResponseDto> {
     const existingCount = await this.countByTenant(tenantId);
     if (existingCount >= MAX_API_KEYS_PER_TENANT) {
       throw new ApiKeyLimitExceededException();
@@ -44,12 +59,12 @@ export class ApiKeyService {
       .from(organizations)
       .where(eq(organizations.tenantId, tenantId));
 
-    if (dto.isDefault) {
-      await this.clearDefaultInOrganization(org.id, tenantId, dto.provider);
+    if (input.isDefault) {
+      await this.clearDefaultInOrganization(org.id, tenantId, input.provider);
     }
 
-    const keyPreview = this.createKeyPreview(dto.apiKey);
-    const encrypted = this.encryptionService.encrypt(dto.apiKey);
+    const keyPreview = this.createKeyPreview(input.apiKey);
+    const encrypted = this.encryptionService.encrypt(input.apiKey);
 
     const [created] = await this.tenantDb
       .insert(apiKeys)
@@ -57,10 +72,10 @@ export class ApiKeyService {
         tenantId,
         organizationId: org.id,
         userId,
-        provider: dto.provider,
-        label: dto.label,
+        provider: input.provider,
+        label: input.label,
         keyPreview,
-        isDefault: dto.isDefault ?? false,
+        isDefault: input.isDefault ?? false,
         encryptedKey: encrypted.encryptedKey,
         encryptedDek: encrypted.encryptedDek,
         iv: encrypted.iv,
@@ -100,14 +115,23 @@ export class ApiKeyService {
     tenantId: string,
     actorId: string,
   ): Promise<ApiKeyResponseDto> {
+    return this.rotateStoredKey(id, dto.apiKey, tenantId, actorId);
+  }
+
+  async rotateStoredKey(
+    id: string,
+    apiKey: string,
+    tenantId: string,
+    actorId: string,
+  ): Promise<ApiKeyResponseDto> {
     const existing = await this.findByIdOrThrow(id, tenantId);
     if (existing.status === 'revoked') {
       throw new ApiKeyRevokedException(id);
     }
 
-    const keyPreview = this.createKeyPreview(dto.apiKey);
+    const keyPreview = this.createKeyPreview(apiKey);
     const rotatedAt = new Date();
-    const encrypted = this.encryptionService.encrypt(dto.apiKey);
+    const encrypted = this.encryptionService.encrypt(apiKey);
 
     const [updated] = await this.tenantDb
       .update(apiKeys)
@@ -178,10 +202,6 @@ export class ApiKeyService {
     tenantId: string,
     provider: string,
   ): Promise<ApiKey | undefined> {
-    if (!this.isStoredProvider(provider)) {
-      return undefined;
-    }
-
     const [key] = await this.tenantDb
       .select()
       .from(apiKeys)
@@ -266,10 +286,6 @@ export class ApiKeyService {
           eq(apiKeys.isDefault, true),
         ),
       );
-  }
-
-  private isStoredProvider(provider: string): provider is ApiKey['provider'] {
-    return (LLM_PROVIDERS as readonly string[]).includes(provider);
   }
 
   private logAuditEvent(

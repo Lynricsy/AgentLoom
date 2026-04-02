@@ -8,6 +8,7 @@ import {
   type LlmProvider,
 } from '../../database/schema/llm-providers.schema';
 import { organizations } from '../../database/schema/organizations.schema';
+import { ApiKeyService } from '../api-key/api-key.service';
 import type { CreateLlmProviderDto } from './dto/create-llm-provider.dto';
 import type { UpdateLlmProviderDto } from './dto/update-llm-provider.dto';
 import {
@@ -28,7 +29,10 @@ const STATIC_LOBEHUB_PNG_ICON_BASE =
 export class LlmProviderService {
   private readonly logger = new Logger(LlmProviderService.name);
 
-  constructor(@Inject(DRIZZLE) private readonly db: DrizzleDB) {}
+  constructor(
+    @Inject(DRIZZLE) private readonly db: DrizzleDB,
+    private readonly apiKeyService: ApiKeyService,
+  ) {}
 
   private get tenantDb(): DrizzleDB {
     return getTenantDb(this.db);
@@ -73,6 +77,7 @@ export class LlmProviderService {
   async create(
     dto: CreateLlmProviderDto,
     tenantId: string,
+    userId: string,
   ): Promise<LlmProvider> {
     const orgId = await this.resolveOrgId(tenantId);
 
@@ -94,6 +99,14 @@ export class LlmProviderService {
       throw new LlmProviderSlugConflictException(slug);
     }
 
+    const apiKeyId = await this.resolveProviderApiKeyId({
+      tenantId,
+      userId,
+      providerSlug: slug,
+      apiKey: dto.apiKey,
+      explicitApiKeyId: dto.apiKeyId ?? null,
+    });
+
     const [result] = await this.tenantDb
       .insert(llmProviders)
       .values({
@@ -106,7 +119,7 @@ export class LlmProviderService {
         isBuiltin: false,
         isEnabled: dto.isEnabled ?? true,
         apiProtocol: dto.apiProtocol ?? 'openai_chat',
-        apiKeyId: dto.apiKeyId ?? null,
+        apiKeyId,
         iconUrl: dto.iconUrl ?? null,
         sortOrder: dto.sortOrder ?? 0,
       })
@@ -125,9 +138,9 @@ export class LlmProviderService {
     id: string,
     dto: UpdateLlmProviderDto,
     tenantId: string,
+    userId: string,
   ): Promise<LlmProvider> {
-    // 先确认存在
-    await this.findById(id, tenantId);
+    const existing = await this.findById(id, tenantId);
 
     const orgId = await this.resolveOrgId(tenantId);
 
@@ -152,7 +165,19 @@ export class LlmProviderService {
     if (dto.slug !== undefined) updateData.slug = dto.slug;
     if ('baseUrl' in dto) updateData.baseUrl = dto.baseUrl;
     if (dto.apiProtocol !== undefined) updateData.apiProtocol = dto.apiProtocol;
-    if ('apiKeyId' in dto) updateData.apiKeyId = dto.apiKeyId;
+    if (dto.apiKey?.trim()) {
+      updateData.apiKeyId = await this.resolveProviderApiKeyId({
+        tenantId,
+        userId,
+        providerSlug: dto.slug ?? existing.slug,
+        apiKey: dto.apiKey,
+        explicitApiKeyId: existing.apiKeyId,
+      });
+    } else if (dto.clearApiKey === true) {
+      updateData.apiKeyId = null;
+    } else if ('apiKeyId' in dto) {
+      updateData.apiKeyId = dto.apiKeyId;
+    }
     if (dto.iconUrl !== undefined) updateData.iconUrl = dto.iconUrl;
     if (dto.sortOrder !== undefined) updateData.sortOrder = dto.sortOrder;
     if (dto.isEnabled !== undefined) updateData.isEnabled = dto.isEnabled;
@@ -331,5 +356,60 @@ export class LlmProviderService {
     }
 
     return orgResult[0].id;
+  }
+
+  private buildManagedApiKeyLabel(providerSlug: string): string {
+    return `LLM Provider / ${providerSlug}`;
+  }
+
+  private async resolveProviderApiKeyId(params: {
+    tenantId: string;
+    userId: string;
+    providerSlug: string;
+    apiKey?: string | null;
+    explicitApiKeyId: string | null;
+  }): Promise<string | null> {
+    const normalizedApiKey = params.apiKey?.trim();
+
+    if (!normalizedApiKey) {
+      return params.explicitApiKeyId;
+    }
+
+    const managedLabel = this.buildManagedApiKeyLabel(params.providerSlug);
+    const existingKey = params.explicitApiKeyId
+      ? await this.apiKeyService.findByIdInternal(
+          params.explicitApiKeyId,
+          params.tenantId,
+        )
+      : undefined;
+
+    if (
+      existingKey &&
+      existingKey.provider === params.providerSlug &&
+      existingKey.label === managedLabel &&
+      existingKey.isDefault === false &&
+      existingKey.status === 'active'
+    ) {
+      const rotated = await this.apiKeyService.rotateStoredKey(
+        existingKey.id,
+        normalizedApiKey,
+        params.tenantId,
+        params.userId,
+      );
+      return rotated.id;
+    }
+
+    const created = await this.apiKeyService.createStoredKey(
+      {
+        provider: params.providerSlug,
+        label: managedLabel,
+        apiKey: normalizedApiKey,
+        isDefault: false,
+      },
+      params.userId,
+      params.tenantId,
+    );
+
+    return created.id;
   }
 }

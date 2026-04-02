@@ -22,6 +22,13 @@ const updateLlmProviderSchema = z.object({
     .nullish(),
   apiProtocol: z.enum(API_PROTOCOL_VALUES).optional(),
   apiKeyId: z.string().uuid('API Key ID 格式无效').nullish(),
+  apiKey: z
+    .string()
+    .trim()
+    .min(1, 'API Key 不能为空')
+    .max(4096, 'API Key 长度不能超过 4096 个字符')
+    .optional(),
+  clearApiKey: z.boolean().optional(),
   iconUrl: z
     .string()
     .url('图标 URL 格式无效')

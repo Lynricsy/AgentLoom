@@ -1,80 +1,132 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type {
-  CreateLlmModelInput,
-} from '../types'
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { CreateLlmModelInput } from "../types";
 import {
   createLlmModel,
+  fetchPrivateCloudModels,
+  testPrivateCloudConnection,
   testProviderConnection,
-} from './llmModelApi'
+} from "./llmModelApi";
 
 const { postMock } = vi.hoisted(() => ({
   postMock: vi.fn(),
-}))
+}));
 
-vi.mock('@/shared/api/client', () => ({
+vi.mock("@/shared/api/client", () => ({
   apiClient: {
     post: postMock,
   },
-}))
+}));
 
-describe('llmModelApi', () => {
+describe("llmModelApi", () => {
   beforeEach(() => {
-    postMock.mockReset()
-  })
+    postMock.mockReset();
+  });
 
-  it('创建模型时应保留 camelCase 字段名', async () => {
+  it("创建模型时应保留 camelCase 字段名", async () => {
     const payload: CreateLlmModelInput = {
-      name: 'QA SiliconFlow Qwen3 Embedding 8B',
-      providerId: 'provider-uuid-1',
-      modelId: 'Qwen/Qwen3-Embedding-8B',
-      modelType: 'embedding',
+      name: "QA SiliconFlow Qwen3 Embedding 8B",
+      providerId: "provider-uuid-1",
+      modelId: "Qwen/Qwen3-Embedding-8B",
+      modelType: "embedding",
       capabilities: {},
       embeddingDimensions: 4096,
       timeoutMs: 15000,
       isDefault: false,
-    }
+    };
 
     postMock.mockReturnValue({
-      json: vi.fn().mockResolvedValue({ data: { id: 'cfg-1' } }),
-    })
+      json: vi.fn().mockResolvedValue({ data: { id: "cfg-1" } }),
+    });
 
-    await createLlmModel(payload)
+    await createLlmModel(payload);
 
-    expect(postMock).toHaveBeenCalledWith('llm-models', {
+    expect(postMock).toHaveBeenCalledWith("llm-models", {
       json: payload,
-    })
-  })
+    });
+  });
 
-  it('测试 Provider 连接时应传入 provider id 和可选 timeoutMs', async () => {
-    const providerId = 'provider-uuid-1'
-    const timeoutMs = 15000
+  it("测试 Provider 连接时应传入 provider id 和可选 timeoutMs", async () => {
+    const providerId = "provider-uuid-1";
+    const timeoutMs = 15000;
 
     postMock.mockReturnValue({
       json: vi.fn().mockResolvedValue({
         data: { success: true, latencyMs: 80 },
       }),
-    })
+    });
 
-    await testProviderConnection(providerId, timeoutMs)
+    await testProviderConnection(providerId, timeoutMs);
 
-    expect(postMock).toHaveBeenCalledWith(`llm-providers/${providerId}/test-connection`, {
-      json: { timeoutMs },
-    })
-  })
+    expect(postMock).toHaveBeenCalledWith(
+      `llm-providers/${providerId}/test-connection`,
+      {
+        json: { timeoutMs },
+      },
+    );
+  });
 
-  it('测试 Provider 连接不传 timeoutMs 时发送空对象', async () => {
-    const providerId = 'provider-uuid-2'
+  it("测试 Provider 连接不传 timeoutMs 时发送空对象", async () => {
+    const providerId = "provider-uuid-2";
 
     postMock.mockReturnValue({
       json: vi.fn().mockResolvedValue({
         data: { success: true, latencyMs: 42 },
       }),
-    })
+    });
 
-    await testProviderConnection(providerId)
+    await testProviderConnection(providerId);
 
-    expect(postMock).toHaveBeenCalledWith(`llm-providers/${providerId}/test-connection`, {
-      json: {},
-    })
-  })
-})
+    expect(postMock).toHaveBeenCalledWith(
+      `llm-providers/${providerId}/test-connection`,
+      {
+        json: {},
+      },
+    );
+  });
+
+  it("测试私有云连接时应保留直接填写的 apiKey 字段", async () => {
+    postMock.mockReturnValue({
+      json: vi.fn().mockResolvedValue({
+        data: { success: true, latencyMs: 36 },
+      }),
+    });
+
+    await testPrivateCloudConnection({
+      endpointUrl: "https://models.example.test",
+      authMethod: "api_key",
+      apiKey: "sk-direct-input",
+      timeoutMs: 20000,
+    });
+
+    expect(postMock).toHaveBeenCalledWith("llm/test-connection", {
+      json: {
+        endpointUrl: "https://models.example.test",
+        authMethod: "api_key",
+        apiKey: "sk-direct-input",
+        timeoutMs: 20000,
+      },
+    });
+  });
+
+  it("获取私有云模型列表时应透传 apiKeyId 或 apiKey", async () => {
+    postMock.mockReturnValue({
+      json: vi.fn().mockResolvedValue({
+        data: [],
+      }),
+    });
+
+    await fetchPrivateCloudModels({
+      endpointUrl: "https://models.example.test",
+      authMethod: "api_key",
+      apiKeyId: "provider-key-id",
+    });
+
+    expect(postMock).toHaveBeenCalledWith("llm/private-cloud/models", {
+      json: {
+        endpointUrl: "https://models.example.test",
+        authMethod: "api_key",
+        apiKeyId: "provider-key-id",
+      },
+    });
+  });
+});

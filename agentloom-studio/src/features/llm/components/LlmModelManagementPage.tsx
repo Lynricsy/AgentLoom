@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import {
   Brain,
@@ -37,7 +37,6 @@ import {
 } from "@/shared/ui/alert-dialog";
 import { cn } from "@/shared/lib/utils";
 import type {
-  ApiKeyInfo,
   ApiProtocol,
   ConnectionTestResult,
   CreateLlmModelInput,
@@ -56,7 +55,6 @@ import {
   useDeleteLlmModel,
   useDeleteProvider,
   useDiscoverModels,
-  useLlmApiKeys,
   useLlmModels,
   useLlmProviders,
   useLookupModelMetadata,
@@ -65,7 +63,9 @@ import {
   useUpdateLlmModel,
   useUpdateProvider,
 } from "../hooks/useLlmModels";
+import { ManagedApiKeyField } from "./ManagedApiKeyField";
 import { ProviderIcon } from "./ProviderIcon";
+import { buildProviderCredentialInput } from "./providerCredentialUtils";
 
 // ============================================================================
 // 常量
@@ -978,14 +978,9 @@ function EditModelForm({ model, onClose }: EditModelFormProps) {
 interface ProviderConfigPanelProps {
   provider: LlmProviderEntity;
   models: LlmModelInfo[];
-  apiKeys: ApiKeyInfo[];
 }
 
-function ProviderConfigPanel({
-  provider,
-  models,
-  apiKeys,
-}: ProviderConfigPanelProps) {
+function ProviderConfigPanel({ provider, models }: ProviderConfigPanelProps) {
   const { notify } = useToast();
   const updateProviderMutation = useUpdateProvider();
   const resetBaseUrlMutation = useResetProviderBaseUrl();
@@ -995,6 +990,8 @@ function ProviderConfigPanel({
   const updateModelMutation = useUpdateLlmModel();
 
   const [baseUrl, setBaseUrl] = useState(provider.baseUrl ?? "");
+  const [apiKey, setApiKey] = useState("");
+  const [clearApiKey, setClearApiKey] = useState(false);
   const [connectionResult, setConnectionResult] =
     useState<ConnectionTestResult | null>(null);
   const [showAddModel, setShowAddModel] = useState(false);
@@ -1003,12 +1000,6 @@ function ProviderConfigPanel({
     useState<LlmModelInfo | null>(null);
   const [discoveredModels, setDiscoveredModels] = useState<DiscoveredModel[]>(
     [],
-  );
-
-  // 匹配当前 provider 的 API Keys
-  const providerApiKeys = useMemo(
-    () => apiKeys.filter((k) => k.provider === provider.slug),
-    [apiKeys, provider.slug],
   );
 
   // Base URL 是否不同于默认
@@ -1048,24 +1039,34 @@ function ProviderConfigPanel({
     }
   }, [resetBaseUrlMutation, provider.id, provider.defaultBaseUrl, notify]);
 
-  const handleApiKeyChange = useCallback(
-    async (apiKeyId: string) => {
-      try {
-        await updateProviderMutation.mutateAsync({
-          id: provider.id,
-          input: { apiKeyId: apiKeyId || undefined },
-        });
-        notify({ description: "API Key 已更新", variant: "success" });
-      } catch (err) {
-        notify({
-          title: "更新失败",
-          description: err instanceof Error ? err.message : "请稍后重试",
-          variant: "error",
-        });
-      }
-    },
-    [updateProviderMutation, provider.id, notify],
-  );
+  const handleApiKeySave = useCallback(async () => {
+    const input = buildProviderCredentialInput({
+      provider,
+      apiKey,
+      clearApiKey,
+    });
+
+    if (!input) {
+      notify({ description: "没有可保存的 API Key 变更", variant: "error" });
+      return;
+    }
+
+    try {
+      await updateProviderMutation.mutateAsync({
+        id: provider.id,
+        input,
+      });
+      setApiKey("");
+      setClearApiKey(false);
+      notify({ description: "API Key 已更新", variant: "success" });
+    } catch (err) {
+      notify({
+        title: "更新失败",
+        description: err instanceof Error ? err.message : "请稍后重试",
+        variant: "error",
+      });
+    }
+  }, [apiKey, clearApiKey, notify, provider, updateProviderMutation]);
 
   const handleTestConnection = useCallback(async () => {
     setConnectionResult(null);
@@ -1152,14 +1153,15 @@ function ProviderConfigPanel({
   }, [deleteConfirmModel, deleteMutation, notify]);
 
   // 当 provider 切换时重置本地状态
-  useMemo(() => {
+  useEffect(() => {
     setBaseUrl(provider.baseUrl ?? "");
+    setApiKey("");
+    setClearApiKey(false);
     setConnectionResult(null);
     setShowAddModel(false);
     setEditingModel(null);
     setDeleteConfirmModel(null);
     setDiscoveredModels([]);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅在 provider.id 变更时重置
   }, [provider.id]);
 
   return (
@@ -1245,27 +1247,38 @@ function ProviderConfigPanel({
         {/* API Key */}
         <section className="space-y-2">
           <Label>API Key</Label>
-          <Select
-            value={provider.apiKeyId ?? ""}
-            onValueChange={(v) => void handleApiKeyChange(v)}
-          >
-            <option value="">
-              {providerApiKeys.length === 0
-                ? "暂无可用的 API Key"
-                : "暂不绑定 API Key"}
-            </option>
-            {providerApiKeys.map((apiKey) => (
-              <option key={apiKey.id} value={apiKey.id}>
-                {apiKey.label} / {apiKey.keyPreview}
-                {apiKey.isDefault ? " (默认)" : ""}
-              </option>
-            ))}
-          </Select>
-          {providerApiKeys.length === 0 && (
-            <p className="text-[11px] text-muted-foreground">
-              该提供商暂无 API Key，请先在 API Keys 管理页面添加。
-            </p>
-          )}
+          <ManagedApiKeyField
+            value={apiKey}
+            onValueChange={(next) => {
+              setApiKey(next);
+              if (next.trim().length > 0) {
+                setClearApiKey(false);
+              }
+            }}
+            hasStoredApiKey={Boolean(provider.apiKeyId)}
+            clearRequested={clearApiKey}
+            onClearRequestedChange={setClearApiKey}
+            helperText="输入后会由服务端加密托管；这里修改的是 Provider 级凭据，会影响该 Provider 下的所有模型。"
+            inputTestId="provider-config-api-key-input"
+          />
+          <div className="flex justify-end">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void handleApiKeySave()}
+              disabled={
+                updateProviderMutation.isPending ||
+                (apiKey.trim().length === 0 &&
+                  (!clearApiKey || provider.apiKeyId == null))
+              }
+            >
+              {updateProviderMutation.isPending ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                "保存凭据"
+              )}
+            </Button>
+          </div>
         </section>
 
         {/* 连接测试 */}
@@ -1438,6 +1451,7 @@ function CreateProviderDialog({
 
   const [name, setName] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
+  const [apiKey, setApiKey] = useState("");
   const [apiProtocol, setApiProtocol] = useState<ApiProtocol>("openai_chat");
 
   const handleSubmit = useCallback(async () => {
@@ -1453,6 +1467,7 @@ function CreateProviderDialog({
     const input: CreateLlmProviderInput = {
       name: name.trim(),
       baseUrl: baseUrl.trim(),
+      apiKey: apiKey.trim() || undefined,
       apiProtocol,
       isEnabled: true,
     };
@@ -1466,6 +1481,7 @@ function CreateProviderDialog({
       });
       setName("");
       setBaseUrl("");
+      setApiKey("");
       setApiProtocol("openai_chat");
       onOpenChange(false);
     } catch (err) {
@@ -1538,6 +1554,19 @@ function CreateProviderDialog({
               </Select>
             </div>
 
+            <div className="space-y-2">
+              <Label>API Key</Label>
+              <ManagedApiKeyField
+                value={apiKey}
+                onValueChange={setApiKey}
+                hasStoredApiKey={false}
+                clearRequested={false}
+                onClearRequestedChange={() => undefined}
+                helperText="可选。若填写，会在创建 Provider 时由服务端直接加密托管。"
+                inputTestId="create-provider-api-key-input"
+              />
+            </div>
+
             <div className="flex justify-end gap-3 pt-2">
               <Dialog.Close asChild>
                 <Button variant="outline">取消</Button>
@@ -1567,7 +1596,6 @@ export function LlmModelManagementPage() {
   const { notify } = useToast();
   const providersQuery = useLlmProviders();
   const modelsQuery = useLlmModels();
-  const apiKeysQuery = useLlmApiKeys();
   const updateProviderMutation = useUpdateProvider();
   const deleteProviderMutation = useDeleteProvider();
 
@@ -1583,14 +1611,12 @@ export function LlmModelManagementPage() {
     [providersQuery.data],
   );
   const allModels = useMemo(() => modelsQuery.data ?? [], [modelsQuery.data]);
-  const apiKeys = useMemo(() => apiKeysQuery.data ?? [], [apiKeysQuery.data]);
 
   // 自动选中第一个 provider
-  useMemo(() => {
+  useEffect(() => {
     if (selectedProviderId == null && providers.length > 0 && providers[0]) {
       setSelectedProviderId(providers[0].id);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅在 providers 首次加载时
   }, [providers.length]);
 
   const selectedProvider = useMemo(
@@ -1694,7 +1720,6 @@ export function LlmModelManagementPage() {
             key={selectedProvider.id}
             provider={selectedProvider}
             models={selectedProviderModels}
-            apiKeys={apiKeys}
           />
         ) : (
           <div className="flex flex-1 flex-col items-center justify-center gap-3">

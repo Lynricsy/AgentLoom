@@ -407,6 +407,7 @@ class ResourcesApi {
     required String baseUrl,
     String? slug,
     String apiProtocol = 'openai_chat',
+    String? apiKey,
     String? apiKeyId,
     String? iconUrl,
     int? sortOrder,
@@ -419,6 +420,7 @@ class ResourcesApi {
         'baseUrl': baseUrl.trim(),
         if (slug != null && slug.trim().isNotEmpty) 'slug': slug.trim(),
         'apiProtocol': apiProtocol,
+        if (apiKey != null && apiKey.trim().isNotEmpty) 'apiKey': apiKey.trim(),
         if (apiKeyId != null && apiKeyId.isNotEmpty) 'apiKeyId': apiKeyId,
         if (iconUrl != null && iconUrl.trim().isNotEmpty)
           'iconUrl': iconUrl.trim(),
@@ -435,6 +437,8 @@ class ResourcesApi {
     String? baseUrl,
     bool clearBaseUrl = false,
     String? apiProtocol,
+    String? apiKey,
+    bool clearApiKey = false,
     String? apiKeyId,
     bool clearApiKeyId = false,
     String? iconUrl,
@@ -453,7 +457,11 @@ class ResourcesApi {
     if (apiProtocol != null) {
       payload['apiProtocol'] = apiProtocol;
     }
-    if (clearApiKeyId) {
+    if (clearApiKey) {
+      payload['clearApiKey'] = true;
+    } else if (apiKey != null && apiKey.trim().isNotEmpty) {
+      payload['apiKey'] = apiKey.trim();
+    } else if (clearApiKeyId) {
       payload['apiKeyId'] = null;
     } else if (apiKeyId != null) {
       payload['apiKeyId'] = apiKeyId;
@@ -491,9 +499,7 @@ class ResourcesApi {
   }) async {
     final response = await _dio.post(
       '/api/v1/llm-providers/$id/test-connection',
-      data: {
-        if (timeoutMs != null) 'timeoutMs': timeoutMs,
-      },
+      data: {if (timeoutMs != null) 'timeoutMs': timeoutMs},
     );
     return TestLlmConnectionResultDto.fromJson(_unwrapDataEnvelope(response));
   }
@@ -512,9 +518,7 @@ class ResourcesApi {
   Future<List<LiteLLMModelInfoDto>> searchLlmProviderLiteLLMModels(
     String id,
   ) async {
-    final response = await _dio.get(
-      '/api/v1/llm-providers/$id/litellm-models',
-    );
+    final response = await _dio.get('/api/v1/llm-providers/$id/litellm-models');
     return _unwrapListEnvelope(
       response,
     ).map(LiteLLMModelInfoDto.fromJson).toList(growable: false);
@@ -526,10 +530,7 @@ class ResourcesApi {
   ) async {
     final response = await _dio.get(
       '/api/v1/llm-providers/metadata/lookup',
-      queryParameters: {
-        'providerSlug': providerSlug,
-        'modelId': modelId,
-      },
+      queryParameters: {'providerSlug': providerSlug, 'modelId': modelId},
     );
     final body = response.data as Map<String, dynamic>;
     final data = body['data'];
@@ -656,10 +657,7 @@ class ResourcesApi {
       payload['timeoutMs'] = timeoutMs;
     }
 
-    final response = await _dio.patch(
-      '/api/v1/llm-models/$id',
-      data: payload,
-    );
+    final response = await _dio.patch('/api/v1/llm-models/$id', data: payload);
     return LlmModelConfigDto.fromJson(_unwrapDataEnvelope(response));
   }
 
@@ -792,6 +790,7 @@ class ResourcesApi {
   Future<TestLlmConnectionResultDto> testPrivateCloudConnection({
     required String endpointUrl,
     required String authMethod,
+    String? apiKey,
     String? apiKeyId,
     int? timeoutMs,
   }) async {
@@ -800,6 +799,7 @@ class ResourcesApi {
       data: {
         'endpointUrl': endpointUrl.trim(),
         'authMethod': authMethod,
+        if (apiKey != null && apiKey.trim().isNotEmpty) 'apiKey': apiKey.trim(),
         if (apiKeyId != null && apiKeyId.isNotEmpty) 'apiKeyId': apiKeyId,
         if (timeoutMs != null) 'timeoutMs': timeoutMs,
       },
@@ -810,6 +810,7 @@ class ResourcesApi {
   Future<List<PrivateCloudModelInfoDto>> fetchPrivateCloudModels({
     required String endpointUrl,
     required String authMethod,
+    String? apiKey,
     String? apiKeyId,
   }) async {
     final response = await _dio.post(
@@ -817,6 +818,7 @@ class ResourcesApi {
       data: {
         'endpointUrl': endpointUrl.trim(),
         'authMethod': authMethod,
+        if (apiKey != null && apiKey.trim().isNotEmpty) 'apiKey': apiKey.trim(),
         if (apiKeyId != null && apiKeyId.isNotEmpty) 'apiKeyId': apiKeyId,
       },
     );

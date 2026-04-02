@@ -28,6 +28,12 @@ const createLlmProviderSchema = z.object({
     .max(2048, '基础 URL 不能超过 2048 个字符'),
   apiProtocol: z.enum(API_PROTOCOL_VALUES).optional().default('openai_chat'),
   apiKeyId: z.string().uuid('API Key ID 格式无效').optional(),
+  apiKey: z
+    .string()
+    .trim()
+    .min(1, 'API Key 不能为空')
+    .max(4096, 'API Key 长度不能超过 4096 个字符')
+    .optional(),
   iconUrl: z
     .string()
     .url('图标 URL 格式无效')

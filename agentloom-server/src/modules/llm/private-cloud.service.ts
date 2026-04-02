@@ -40,9 +40,14 @@ export class PrivateCloudService {
     dto: TestConnectionDto,
     context: PrivateCloudRequestContext,
   ): Promise<TestConnectionResult> {
-    const { endpointUrl, authMethod, apiKeyId, timeoutMs } = dto;
+    const { endpointUrl, authMethod, apiKeyId, apiKey, timeoutMs } = dto;
     const timeout = timeoutMs ?? 10000;
-    const headers = await this.buildHeaders(authMethod, apiKeyId, context);
+    const headers = await this.buildHeaders(
+      authMethod,
+      apiKeyId,
+      apiKey,
+      context,
+    );
     const baseUrl = this.normalizeBaseUrl(endpointUrl);
 
     const start = Date.now();
@@ -120,8 +125,13 @@ export class PrivateCloudService {
     dto: FetchPrivateCloudModelsDto,
     context: PrivateCloudRequestContext,
   ): Promise<PrivateCloudModelInfo[]> {
-    const { endpointUrl, authMethod, apiKeyId } = dto;
-    const headers = await this.buildHeaders(authMethod, apiKeyId, context);
+    const { endpointUrl, authMethod, apiKeyId, apiKey } = dto;
+    const headers = await this.buildHeaders(
+      authMethod,
+      apiKeyId,
+      apiKey,
+      context,
+    );
     const baseUrl = this.normalizeBaseUrl(endpointUrl);
 
     try {
@@ -171,24 +181,32 @@ export class PrivateCloudService {
   private async buildHeaders(
     authMethod: string,
     apiKeyId: string | undefined,
+    apiKey: string | undefined,
     context: PrivateCloudRequestContext,
   ): Promise<Record<string, string>> {
     if (authMethod !== 'api_key') {
       return {};
     }
 
-    const apiKey = await this.decryptionBoundaryService.decryptConfiguredApiKey(
-      {
-        apiKeyId: apiKeyId ?? null,
-        organizationId: context.orgId,
-        tenantId: context.tenantId,
-        provider: 'private_cloud',
-      },
-      PrivateCloudService.name,
-    );
+    if (apiKey?.trim()) {
+      return {
+        Authorization: `Bearer ${apiKey.trim()}`,
+      };
+    }
+
+    const resolvedApiKey =
+      await this.decryptionBoundaryService.decryptConfiguredApiKey(
+        {
+          apiKeyId: apiKeyId ?? null,
+          organizationId: context.orgId,
+          tenantId: context.tenantId,
+          provider: 'private_cloud',
+        },
+        PrivateCloudService.name,
+      );
 
     return {
-      Authorization: `Bearer ${apiKey}`,
+      Authorization: `Bearer ${resolvedApiKey}`,
     };
   }
 

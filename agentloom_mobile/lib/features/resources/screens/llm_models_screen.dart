@@ -564,15 +564,12 @@ class _ProviderDetailScreenState extends ConsumerState<_ProviderDetailScreen> {
     }
   }
 
-  Future<void> _editProviderSettings(
-    LlmProviderEntityDto provider,
-    List<ApiKeyInfoDto> apiKeys,
-  ) async {
+  Future<void> _editProviderSettings(LlmProviderEntityDto provider) async {
     final changed = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      builder: (_) => _EditProviderSheet(provider: provider, apiKeys: apiKeys),
+      builder: (_) => _EditProviderSheet(provider: provider),
     );
     if (changed == true) {
       _markChanged();
@@ -752,8 +749,7 @@ class _ProviderDetailScreenState extends ConsumerState<_ProviderDetailScreen> {
                         label: const Text('恢复默认 URL'),
                       ),
                     OutlinedButton.icon(
-                      onPressed: () =>
-                          _editProviderSettings(provider, data.apiKeys),
+                      onPressed: () => _editProviderSettings(provider),
                       icon: const Icon(Icons.edit_outlined),
                       label: const Text('编辑'),
                     ),
@@ -959,6 +955,7 @@ class _CreateProviderSheetState extends ConsumerState<_CreateProviderSheet> {
   final _nameController = TextEditingController();
   final _slugController = TextEditingController();
   final _baseUrlController = TextEditingController();
+  final _apiKeyController = TextEditingController();
   String _apiProtocol = 'openai_chat';
   bool _isSaving = false;
   String? _errorMessage;
@@ -968,6 +965,7 @@ class _CreateProviderSheetState extends ConsumerState<_CreateProviderSheet> {
     _nameController.dispose();
     _slugController.dispose();
     _baseUrlController.dispose();
+    _apiKeyController.dispose();
     super.dispose();
   }
 
@@ -997,6 +995,9 @@ class _CreateProviderSheetState extends ConsumerState<_CreateProviderSheet> {
             baseUrl: baseUrl,
             slug: slug.isNotEmpty ? slug : null,
             apiProtocol: _apiProtocol,
+            apiKey: _apiKeyController.text.trim().isEmpty
+                ? null
+                : _apiKeyController.text.trim(),
           );
       if (!mounted) return;
       Navigator.of(context).pop(true);
@@ -1038,6 +1039,15 @@ class _CreateProviderSheetState extends ConsumerState<_CreateProviderSheet> {
             decoration: const InputDecoration(
               labelText: 'Base URL',
               hintText: 'https://api.example.com',
+            ),
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: _apiKeyController,
+            obscureText: true,
+            decoration: const InputDecoration(
+              labelText: 'API Key',
+              helperText: '可选。填写后会由服务端直接加密托管。',
             ),
           ),
           const SizedBox(height: 12),
@@ -1085,10 +1095,9 @@ class _CreateProviderSheetState extends ConsumerState<_CreateProviderSheet> {
 // ==========================================================================
 
 class _EditProviderSheet extends ConsumerStatefulWidget {
-  const _EditProviderSheet({required this.provider, required this.apiKeys});
+  const _EditProviderSheet({required this.provider});
 
   final LlmProviderEntityDto provider;
-  final List<ApiKeyInfoDto> apiKeys;
 
   @override
   ConsumerState<_EditProviderSheet> createState() => _EditProviderSheetState();
@@ -1097,8 +1106,9 @@ class _EditProviderSheet extends ConsumerStatefulWidget {
 class _EditProviderSheetState extends ConsumerState<_EditProviderSheet> {
   late final TextEditingController _nameController;
   late final TextEditingController _baseUrlController;
+  final _apiKeyController = TextEditingController();
   late String _apiProtocol;
-  String? _selectedApiKeyId;
+  bool _clearApiKey = false;
   late bool _isEnabled;
   bool _isSaving = false;
   String? _errorMessage;
@@ -1111,7 +1121,6 @@ class _EditProviderSheetState extends ConsumerState<_EditProviderSheet> {
       text: widget.provider.baseUrl ?? widget.provider.defaultBaseUrl ?? '',
     );
     _apiProtocol = widget.provider.apiProtocol;
-    _selectedApiKeyId = widget.provider.apiKeyId;
     _isEnabled = widget.provider.isEnabled;
   }
 
@@ -1119,6 +1128,7 @@ class _EditProviderSheetState extends ConsumerState<_EditProviderSheet> {
   void dispose() {
     _nameController.dispose();
     _baseUrlController.dispose();
+    _apiKeyController.dispose();
     super.dispose();
   }
 
@@ -1144,8 +1154,10 @@ class _EditProviderSheetState extends ConsumerState<_EditProviderSheet> {
             baseUrl: baseUrlText.isEmpty ? null : baseUrlText,
             clearBaseUrl: baseUrlText.isEmpty,
             apiProtocol: _apiProtocol,
-            apiKeyId: _selectedApiKeyId,
-            clearApiKeyId: _selectedApiKeyId == null,
+            apiKey: _apiKeyController.text.trim().isEmpty
+                ? null
+                : _apiKeyController.text.trim(),
+            clearApiKey: _clearApiKey,
             isEnabled: _isEnabled,
           );
       if (!mounted) return;
@@ -1198,25 +1210,37 @@ class _EditProviderSheetState extends ConsumerState<_EditProviderSheet> {
             },
           ),
           const SizedBox(height: 12),
-          DropdownButtonFormField<String?>(
-            initialValue: _selectedApiKeyId,
-            decoration: const InputDecoration(labelText: 'API Key'),
-            items: [
-              const DropdownMenuItem<String?>(value: null, child: Text('不绑定')),
-              ...widget.apiKeys
-                  .where((k) => k.status == 'active')
-                  .map(
-                    (k) => DropdownMenuItem<String?>(
-                      value: k.id,
-                      child: Text('${k.label} (${k.keyPreview})'),
-                    ),
-                  ),
-            ],
+          TextField(
+            controller: _apiKeyController,
+            obscureText: true,
             onChanged: (value) {
-              setState(() => _selectedApiKeyId = value);
+              if (value.trim().isNotEmpty && _clearApiKey) {
+                setState(() => _clearApiKey = false);
+              }
             },
+            decoration: InputDecoration(
+              labelText: 'API Key',
+              helperText: widget.provider.apiKeyId != null
+                  ? '当前已配置 API Key；留空表示保持不变，输入新值会替换。'
+                  : '留空表示暂不配置。',
+            ),
           ),
           const SizedBox(height: 12),
+          if (widget.provider.apiKeyId != null)
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('移除当前 API Key'),
+              value: _clearApiKey,
+              onChanged: (value) {
+                setState(() {
+                  _clearApiKey = value;
+                  if (value) {
+                    _apiKeyController.clear();
+                  }
+                });
+              },
+            ),
+          if (widget.provider.apiKeyId != null) const SizedBox(height: 12),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
             title: const Text('启用'),

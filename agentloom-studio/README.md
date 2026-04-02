@@ -55,10 +55,11 @@ src/
 `features/llm/` 当前已经提供：
 
 - `Provider → Model` 二级结构：Provider 与模型分离管理，Provider 负责 `baseUrl / apiKey / protocol / enablement`，模型负责能力、上下文窗口、定价与默认值
-- `LlmModelManagementPage`：左侧 Provider 列表，右侧配置面板；支持连接测试、远端模型发现、LiteLLM fallback 检索、手动补录模型
+- `LlmModelManagementPage`：左侧 Provider 列表，右侧配置面板；Provider 凭据直接填写明文 API Key，由服务端加密托管；支持连接测试、远端模型发现、LiteLLM fallback 检索、手动补录模型
 - 模型列表与 LiteLLM 检索结果会同时展示基础输入/输出价、缓存读/写价与 token 阶梯价 badge
 - `GlobalModelSelector` 已改为自定义 listbox，按 Provider 分组，组头与已选摘要均显示 Provider 图标，只展示启用中的 Provider/模型
 - 兼容层 `adaptModelEntityToInfo()` 会保留 `providerEntity`，避免编辑已有模型时丢失 Provider 级 `baseUrl/apiKeyId` 与缓存/阶梯定价元信息
+- `PrivateCloudConfigSection` 现在直接调用真实私有云测试/拉模型接口，既能复用已托管的 Provider key，也能在当前表单里临时输入 API Key 做联调
 
 ## 资源治理前端事实
 

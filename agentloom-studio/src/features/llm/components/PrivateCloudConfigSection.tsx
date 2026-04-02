@@ -1,159 +1,220 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Controller, useFormContext, useWatch } from 'react-hook-form'
-import { CheckCircle2, Loader2, Lock, PlugZap, XCircle } from 'lucide-react'
-import { Button } from '@/shared/ui/button'
-import { Input } from '@/shared/ui/input'
-import { Label } from '@/shared/ui/label'
-import { Select } from '@/shared/ui/select'
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Controller, useFormContext, useWatch } from "react-hook-form";
+import { CheckCircle2, Loader2, Lock, PlugZap, XCircle } from "lucide-react";
+
+import { Button } from "@/shared/ui/button";
+import { Input } from "@/shared/ui/input";
+import { Label } from "@/shared/ui/label";
+import { Select } from "@/shared/ui/select";
+
 import {
   AUTH_METHODS,
   type AuthMethod,
   type FetchModelsInput,
+  type LlmProviderEntity,
   type PrivateCloudModelInfo,
   type TestConnectionInput,
-} from '../types'
-import { useLlmApiKeys, usePrivateCloudModels, useTestPrivateCloudConnection } from '../hooks/useLlmModels'
+} from "../types";
+import {
+  usePrivateCloudModels,
+  useTestPrivateCloudConnection,
+} from "../hooks/useLlmModels";
+import { ManagedApiKeyField } from "./ManagedApiKeyField";
+import {
+  hasEffectiveProviderApiKey,
+  hasStoredProviderApiKey,
+} from "./providerCredentialUtils";
 
 const AUTH_METHOD_LABELS: Record<AuthMethod, string> = {
-  api_key: 'API Key',
-  mtls: 'mTLS 证书（即将支持）',
-  none: '无认证',
-}
+  api_key: "API Key",
+  mtls: "mTLS 证书（即将支持）",
+  none: "无认证",
+};
 
 interface ConnectionStatus {
-  success: boolean
-  latencyMs?: number
-  error?: string
-  serverVersion?: string
+  success: boolean;
+  latencyMs?: number;
+  error?: string;
+  serverVersion?: string;
 }
 
 interface LlmModelFormValues {
-  name: string
-  provider: string
-  modelType: string
-  modelName: string
-  apiKeyId: string
-  endpointUrl: string
-  authMethod: string
-  authConfig: Record<string, unknown>
-  timeoutMs: number | undefined
-  temperature: number
-  maxTokens: string
-  topP: number
-  frequencyPenalty: number
-  presencePenalty: number
-  stop: string[]
+  name: string;
+  provider: string;
+  modelType: string;
+  modelName: string;
+  apiKey: string;
+  clearApiKey: boolean;
+  endpointUrl: string;
+  authMethod: string;
+  authConfig: Record<string, unknown>;
+  timeoutMs: number | undefined;
+  temperature: number;
+  maxTokens: string;
+  topP: number;
+  frequencyPenalty: number;
+  presencePenalty: number;
+  stop: string[];
 }
 
-export function PrivateCloudConfigSection() {
-  const form = useFormContext<LlmModelFormValues>()
-  const testConnectionMutation = useTestPrivateCloudConnection()
-  const fetchModelsMutation = usePrivateCloudModels()
-  const [connectionStatus, setConnectionStatus] = useState<ConnectionStatus | null>(null)
-  const [remoteModels, setRemoteModels] = useState<PrivateCloudModelInfo[]>([])
-  const { data: apiKeys } = useLlmApiKeys()
+interface PrivateCloudConfigSectionProps {
+  provider?: LlmProviderEntity | null;
+}
 
-  const endpointUrl = useWatch({ control: form.control, name: 'endpointUrl' })
-  const authMethod = useWatch({ control: form.control, name: 'authMethod' })
-  const apiKeyId = useWatch({ control: form.control, name: 'apiKeyId' })
-  const privateCloudApiKeys = useMemo(
-    () => apiKeys ?? [],
-    [apiKeys],
-  )
-  const connectionSignature = `${endpointUrl ?? ''}::${authMethod ?? ''}::${apiKeyId ?? ''}`
-  const prevConnectionSignatureRef = useRef(connectionSignature)
-  const requiresApiKeySelection = authMethod === 'api_key' && !apiKeyId
+export function PrivateCloudConfigSection({
+  provider = null,
+}: PrivateCloudConfigSectionProps) {
+  const form = useFormContext<LlmModelFormValues>();
+  const testConnectionMutation = useTestPrivateCloudConnection();
+  const fetchModelsMutation = usePrivateCloudModels();
+  const [connectionStatus, setConnectionStatus] =
+    useState<ConnectionStatus | null>(null);
+  const [remoteModels, setRemoteModels] = useState<PrivateCloudModelInfo[]>([]);
+
+  const endpointUrl = useWatch({ control: form.control, name: "endpointUrl" });
+  const authMethod = useWatch({ control: form.control, name: "authMethod" });
+  const apiKey = useWatch({ control: form.control, name: "apiKey" });
+  const clearApiKey = useWatch({ control: form.control, name: "clearApiKey" });
+  const hasStoredApiKey = hasStoredProviderApiKey(provider);
+  const requiresApiKeyInput =
+    authMethod === "api_key" &&
+    !hasEffectiveProviderApiKey({
+      provider,
+      apiKey: apiKey ?? "",
+      clearApiKey: clearApiKey ?? false,
+    });
+  const connectionSignature = [
+    endpointUrl ?? "",
+    authMethod ?? "",
+    apiKey ?? "",
+    clearApiKey ? "clear" : "keep",
+    hasStoredApiKey ? (provider?.apiKeyId ?? "stored") : "empty",
+  ].join("::");
+  const prevConnectionSignatureRef = useRef(connectionSignature);
 
   useEffect(() => {
     if (connectionSignature !== prevConnectionSignatureRef.current) {
-      prevConnectionSignatureRef.current = connectionSignature
-      setRemoteModels([])
-      setConnectionStatus(null)
+      prevConnectionSignatureRef.current = connectionSignature;
+      setRemoteModels([]);
+      setConnectionStatus(null);
     }
-  }, [connectionSignature])
+  }, [connectionSignature]);
 
   const buildConnectionInput = useCallback((): TestConnectionInput => {
-    const currentEndpointUrl = form.getValues('endpointUrl')
-    const currentAuthMethod = form.getValues('authMethod') as AuthMethod
-    const currentApiKeyId = form.getValues('apiKeyId')
-    const currentTimeoutMs = form.getValues('timeoutMs')
+    const currentEndpointUrl = form.getValues("endpointUrl");
+    const currentAuthMethod = form.getValues("authMethod") as AuthMethod;
+    const currentApiKey = form.getValues("apiKey").trim();
+    const shouldClearApiKey = form.getValues("clearApiKey");
+    const currentTimeoutMs = form.getValues("timeoutMs");
 
     return {
       endpointUrl: currentEndpointUrl,
-      authMethod: currentAuthMethod || 'none',
-      apiKeyId: currentAuthMethod === 'api_key' && currentApiKeyId
-        ? currentApiKeyId
-        : undefined,
+      authMethod: currentAuthMethod || "none",
+      apiKey:
+        currentAuthMethod === "api_key" && currentApiKey
+          ? currentApiKey
+          : undefined,
+      apiKeyId:
+        currentAuthMethod === "api_key" &&
+        !currentApiKey &&
+        !shouldClearApiKey &&
+        provider?.apiKeyId
+          ? provider.apiKeyId
+          : undefined,
       timeoutMs: currentTimeoutMs ?? 10000,
-    }
-  }, [form])
+    };
+  }, [form, provider?.apiKeyId]);
 
   const handleTestConnection = useCallback(async () => {
-    const isValid = await form.trigger(['endpointUrl', 'authMethod', 'apiKeyId'])
+    const isValid = await form.trigger(["endpointUrl", "authMethod", "apiKey"]);
     if (!isValid) {
-      setConnectionStatus(null)
-      return
+      setConnectionStatus(null);
+      return;
     }
 
-    const currentEndpointUrl = form.getValues('endpointUrl')
+    const currentEndpointUrl = form.getValues("endpointUrl");
     if (!currentEndpointUrl) {
-      setConnectionStatus({ success: false, error: '请先输入端点 URL' })
-      return
+      setConnectionStatus({ success: false, error: "请先输入端点 URL" });
+      return;
     }
 
-    setConnectionStatus(null)
-    setRemoteModels([])
+    if (requiresApiKeyInput) {
+      form.setError("apiKey", {
+        type: "manual",
+        message: "请输入 API Key",
+      });
+      setConnectionStatus(null);
+      return;
+    }
+
+    setConnectionStatus(null);
+    setRemoteModels([]);
 
     try {
-      const result = await testConnectionMutation.mutateAsync(buildConnectionInput())
+      const result = await testConnectionMutation.mutateAsync(
+        buildConnectionInput(),
+      );
       if (result.success) {
         setConnectionStatus({
           success: true,
           latencyMs: result.latencyMs,
           serverVersion: result.serverInfo?.version,
-        })
+        });
       } else {
-        setConnectionStatus({ success: false, error: '连接失败，请检查端点地址和认证配置' })
+        setConnectionStatus({
+          success: false,
+          error: "连接失败，请检查端点地址和认证配置",
+        });
       }
     } catch (error) {
       setConnectionStatus({
         success: false,
-        error: error instanceof Error ? error.message : '连接测试失败',
-      })
+        error: error instanceof Error ? error.message : "连接测试失败",
+      });
     }
-  }, [buildConnectionInput, form, testConnectionMutation])
+  }, [buildConnectionInput, form, requiresApiKeyInput, testConnectionMutation]);
 
   const handleFetchModels = useCallback(async () => {
-    const isValid = await form.trigger(['endpointUrl', 'authMethod', 'apiKeyId'])
+    const isValid = await form.trigger(["endpointUrl", "authMethod", "apiKey"]);
     if (!isValid) {
-      setConnectionStatus(null)
-      return
+      setConnectionStatus(null);
+      return;
+    }
+
+    if (requiresApiKeyInput) {
+      form.setError("apiKey", {
+        type: "manual",
+        message: "请输入 API Key",
+      });
+      setConnectionStatus(null);
+      return;
     }
 
     try {
-      const input = buildConnectionInput()
+      const input = buildConnectionInput();
       const request: FetchModelsInput = {
         endpointUrl: input.endpointUrl,
         authMethod: input.authMethod,
+        apiKey: input.apiKey,
         apiKeyId: input.apiKeyId,
-      }
-      const models = await fetchModelsMutation.mutateAsync(request)
-      setRemoteModels(models)
+      };
+      const models = await fetchModelsMutation.mutateAsync(request);
+      setRemoteModels(models);
 
-      if (models.length > 0 && !form.getValues('modelName')) {
-        const firstModel = models[0]
+      if (models.length > 0 && !form.getValues("modelName")) {
+        const firstModel = models[0];
         if (firstModel) {
-          form.setValue('modelName', firstModel.id, { shouldValidate: true })
+          form.setValue("modelName", firstModel.id, { shouldValidate: true });
         }
       }
     } catch (error) {
-      setRemoteModels([])
+      setRemoteModels([]);
       setConnectionStatus({
         success: false,
-        error: error instanceof Error ? error.message : '获取模型列表失败',
-      })
+        error: error instanceof Error ? error.message : "获取模型列表失败",
+      });
     }
-  }, [buildConnectionInput, fetchModelsMutation, form])
+  }, [buildConnectionInput, fetchModelsMutation, form, requiresApiKeyInput]);
 
   return (
     <div className="space-y-4" data-testid="private-cloud-config-section">
@@ -161,7 +222,7 @@ export function PrivateCloudConfigSection() {
         <Label>端点 URL</Label>
         <Input
           placeholder="https://your-vllm-server:8000/v1"
-          {...form.register('endpointUrl')}
+          {...form.register("endpointUrl")}
           data-testid="endpoint-url-input"
         />
         {form.formState.errors.endpointUrl ? (
@@ -187,7 +248,11 @@ export function PrivateCloudConfigSection() {
                 data-testid="auth-method-select"
               >
                 {AUTH_METHODS.map((method) => (
-                  <option key={method} value={method} disabled={method === 'mtls'}>
+                  <option
+                    key={method}
+                    value={method}
+                    disabled={method === "mtls"}
+                  >
                     {AUTH_METHOD_LABELS[method]}
                   </option>
                 ))}
@@ -208,7 +273,7 @@ export function PrivateCloudConfigSection() {
             min={5000}
             max={600000}
             placeholder="120000"
-            {...form.register('timeoutMs', { valueAsNumber: true })}
+            {...form.register("timeoutMs", { valueAsNumber: true })}
             data-testid="timeout-input"
           />
           {form.formState.errors.timeoutMs ? (
@@ -219,44 +284,46 @@ export function PrivateCloudConfigSection() {
         </div>
       </div>
 
-      {authMethod === 'api_key' ? (
+      {authMethod === "api_key" ? (
         <div className="space-y-2" data-testid="api-key-auth-section">
           <Label>API Key</Label>
           <Controller
             control={form.control}
-            name="apiKeyId"
+            name="apiKey"
             render={({ field }) => (
-              <Select
+              <ManagedApiKeyField
                 value={field.value}
-                onValueChange={field.onChange}
-                data-testid="api-key-select"
-              >
-                <option value="">选择 API Key</option>
-                {privateCloudApiKeys.map((key) => (
-                <option key={key.id} value={key.id}>
-                    {key.label} ({key.provider} / {key.keyPreview})
-                  </option>
-                ))}
-              </Select>
+                onValueChange={(next) => {
+                  field.onChange(next);
+                  form.clearErrors("apiKey");
+                  if (next.trim().length > 0) {
+                    form.setValue("clearApiKey", false, { shouldDirty: true });
+                  }
+                }}
+                hasStoredApiKey={hasStoredApiKey}
+                clearRequested={clearApiKey ?? false}
+                onClearRequestedChange={(next) => {
+                  form.clearErrors("apiKey");
+                  form.setValue("clearApiKey", next, { shouldDirty: true });
+                }}
+                errorText={
+                  form.formState.errors.apiKey?.message as string | undefined
+                }
+                warningText={
+                  requiresApiKeyInput
+                    ? "请输入 API Key 以测试连接或获取模型。"
+                    : null
+                }
+                helperText="输入后会由服务端加密托管；如果当前已配置，也可以留空保持不变。"
+                inputTestId="api-key-input"
+                sectionTestId="api-key-field"
+              />
             )}
           />
-          {form.formState.errors.apiKeyId ? (
-            <p className="text-[11px] text-error">
-              {form.formState.errors.apiKeyId.message as string}
-            </p>
-          ) : requiresApiKeySelection ? (
-            <p className="text-[11px] text-warning">
-              请选择 API Key 以测试连接或获取模型。
-            </p>
-          ) : (
-            <p className="text-[11px] text-muted-foreground">
-              选择已配置的 API Key 用于私有云端点认证。
-            </p>
-          )}
         </div>
       ) : null}
 
-      {authMethod === 'mtls' ? (
+      {authMethod === "mtls" ? (
         <div
           className="flex items-center gap-2 rounded-lg border border-muted px-3 py-3 text-xs text-muted-foreground"
           data-testid="mtls-auth-section"
@@ -271,7 +338,11 @@ export function PrivateCloudConfigSection() {
           type="button"
           variant="outline"
           size="sm"
-          disabled={!endpointUrl || requiresApiKeySelection || testConnectionMutation.isPending}
+          disabled={
+            !endpointUrl ||
+            requiresApiKeyInput ||
+            testConnectionMutation.isPending
+          }
           onClick={handleTestConnection}
           data-testid="test-connection-btn"
         >
@@ -288,7 +359,7 @@ export function PrivateCloudConfigSection() {
             type="button"
             variant="outline"
             size="sm"
-            disabled={requiresApiKeySelection || fetchModelsMutation.isPending}
+            disabled={requiresApiKeyInput || fetchModelsMutation.isPending}
             onClick={handleFetchModels}
             data-testid="fetch-models-btn"
           >
@@ -304,8 +375,8 @@ export function PrivateCloudConfigSection() {
         <div
           className={
             connectionStatus.success
-              ? 'flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2 text-xs text-emerald-400'
-              : 'flex items-center gap-2 rounded-lg border border-error/50 bg-error/5 px-3 py-2 text-xs text-error'
+              ? "flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2 text-xs text-emerald-400"
+              : "flex items-center gap-2 rounded-lg border border-error/50 bg-error/5 px-3 py-2 text-xs text-error"
           }
           data-testid="connection-status"
         >
@@ -314,7 +385,9 @@ export function PrivateCloudConfigSection() {
               <CheckCircle2 className="h-4 w-4 shrink-0" />
               <span>
                 连接成功 — 延迟 {connectionStatus.latencyMs}ms
-                {connectionStatus.serverVersion ? ` · 版本 ${connectionStatus.serverVersion}` : ''}
+                {connectionStatus.serverVersion
+                  ? ` · 版本 ${connectionStatus.serverVersion}`
+                  : ""}
               </span>
             </>
           ) : (
@@ -338,38 +411,32 @@ export function PrivateCloudConfigSection() {
                 onValueChange={field.onChange}
                 data-testid="remote-model-select"
               >
-                <option value="">请选择模型</option>
                 {remoteModels.map((model) => (
                   <option key={model.id} value={model.id}>
-                    {model.name}{model.ownedBy ? ` (${model.ownedBy})` : ''}
+                    {model.name}
+                    {model.ownedBy ? ` (${model.ownedBy})` : ""}
                   </option>
                 ))}
               </Select>
             )}
           />
+          <p className="text-[11px] text-muted-foreground">
+            已从端点发现 {remoteModels.length} 个模型，可继续手动修改模型名称。
+          </p>
         </div>
       ) : connectionStatus?.success ? (
         <div className="space-y-2">
           <Label>模型名称</Label>
           <Input
-            placeholder="输入模型名称，例如 llama-3-70b"
-            {...form.register('modelName')}
+            placeholder="例如: llama-3.1-70b-instruct"
+            {...form.register("modelName")}
             data-testid="manual-model-input"
           />
+          <p className="text-[11px] text-muted-foreground">
+            如果端点未返回模型列表，可以手动输入模型 ID。
+          </p>
         </div>
-      ) : (
-        <div className="space-y-2">
-          <Label>模型名称</Label>
-          <Input
-            placeholder="请先测试连接，或手动输入模型名称"
-            {...form.register('modelName')}
-          />
-        </div>
-      )}
-
-      {form.formState.errors.modelName ? (
-        <p className="text-[11px] text-error">{form.formState.errors.modelName.message}</p>
       ) : null}
     </div>
-  )
+  );
 }

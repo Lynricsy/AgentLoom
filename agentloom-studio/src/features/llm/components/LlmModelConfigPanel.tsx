@@ -26,7 +26,6 @@ import {
   normalizeLlmParameters,
   parseLlmModelConfig,
   toLlmModelConfig,
-  type ApiKeyInfo,
   type CreateLlmModelInput,
   type LlmModelConfig,
   type LlmModelInfo,
@@ -37,16 +36,18 @@ import {
 } from "../types";
 import {
   useCreateLlmModel,
-  useLlmApiKeys,
   useLlmModels,
   useLlmProviders,
+  useUpdateProvider,
   useUpdateLlmModel,
 } from "../hooks/useLlmModels";
+import { ManagedApiKeyField } from "./ManagedApiKeyField";
 import { ProviderIcon } from "./ProviderIcon";
 import { PrivateCloudConfigSection } from "./PrivateCloudConfigSection";
-
-const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+import {
+  buildProviderCredentialInput,
+  hasEffectiveProviderApiKey,
+} from "./providerCredentialUtils";
 
 const llmModelFormSchema = z
   .object({
@@ -57,10 +58,8 @@ const llmModelFormSchema = z
       .max(100, "配置名称不能超过 100 个字符"),
     provider: z.string().min(1, "请选择 Provider"),
     modelName: z.string().trim().min(1, "请选择模型"),
-    apiKeyId: z.union([
-      z.literal(""),
-      z.string().trim().regex(UUID_PATTERN, "请选择有效的 API Key"),
-    ]),
+    apiKey: z.string(),
+    clearApiKey: z.boolean(),
     temperature: z
       .number()
       .min(0, "Temperature 不能小于 0")
@@ -115,14 +114,6 @@ const llmModelFormSchema = z
         message: "请选择认证方式",
       });
     }
-
-    if (values.authMethod === "api_key" && !values.apiKeyId) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["apiKeyId"],
-        message: "请选择 API Key",
-      });
-    }
   });
 
 type LlmModelFormValues = z.infer<typeof llmModelFormSchema>;
@@ -167,7 +158,8 @@ function toFormValues(config: LlmModelConfig | null): LlmModelFormValues {
     name: current.name,
     provider: current.provider,
     modelName: current.modelName,
-    apiKeyId: current.apiKeyId ?? "",
+    apiKey: "",
+    clearApiKey: false,
     temperature: current.parameters.temperature,
     maxTokens:
       typeof current.parameters.maxTokens === "number"
@@ -300,13 +292,7 @@ function TagInput({
   );
 }
 
-function ExistingConfigSummary({
-  apiKeys,
-  current,
-}: {
-  apiKeys: ApiKeyInfo[];
-  current: LlmModelInfo | null;
-}) {
+function ExistingConfigSummary({ current }: { current: LlmModelInfo | null }) {
   if (!current) {
     return null;
   }
@@ -316,10 +302,7 @@ function ExistingConfigSummary({
     current.providerEntity ? [current.providerEntity] : undefined,
   );
   const params = normalizeLlmParameters(current.parameters);
-  const providerApiKeyId = current.providerEntity?.apiKeyId;
-  const apiKey = providerApiKeyId
-    ? (apiKeys.find((item) => item.id === providerApiKeyId) ?? null)
-    : null;
+  const hasConfiguredApiKey = Boolean(current.providerEntity?.apiKeyId);
 
   return (
     <div className="rounded-lg border border-border bg-muted/20 p-3 text-xs">
@@ -343,7 +326,7 @@ function ExistingConfigSummary({
         </div>
         <div className="flex items-center justify-between gap-3">
           <dt>API Key</dt>
-          <dd>{apiKey ? apiKey.label : "未绑定"}</dd>
+          <dd>{hasConfiguredApiKey ? "已配置" : "未绑定"}</dd>
         </div>
       </dl>
     </div>
@@ -358,9 +341,9 @@ export const LlmModelConfigPanel = memo(function LlmModelConfigPanel({
   const normalizedConfig = parseLlmModelConfig(config);
   const llmModelsQuery = useLlmModels();
   const providersQuery = useLlmProviders();
-  const apiKeysQuery = useLlmApiKeys();
   const createMutation = useCreateLlmModel();
   const updateMutation = useUpdateLlmModel();
+  const updateProviderMutation = useUpdateProvider();
   const [mode, setMode] = useState<ConfigMode>(
     config?.llmConfigId ? "existing" : "create",
   );
@@ -392,9 +375,9 @@ export const LlmModelConfigPanel = memo(function LlmModelConfigPanel({
     control: form.control,
     name: "modelName",
   });
-  const selectedApiKeyId = useWatch({
+  const clearApiKey = useWatch({
     control: form.control,
-    name: "apiKeyId",
+    name: "clearApiKey",
   });
   const selectedTemperature = useWatch({
     control: form.control,
@@ -410,13 +393,6 @@ export const LlmModelConfigPanel = memo(function LlmModelConfigPanel({
     name: "presencePenalty",
   });
 
-  const providerApiKeys = useMemo(
-    () =>
-      (apiKeysQuery.data ?? []).filter(
-        (item) => item.provider === selectedProvider,
-      ),
-    [apiKeysQuery.data, selectedProvider],
-  );
   const selectedExistingConfig = useMemo(
     () =>
       llmModelsQuery.data?.find((item) => item.id === selectedConfigId) ?? null,
@@ -435,11 +411,24 @@ export const LlmModelConfigPanel = memo(function LlmModelConfigPanel({
 
     return models;
   }, [providerCatalog, selectedModelName, selectedProvider]);
+  const selectedProviderEntity = useMemo(
+    () =>
+      providersQuery.data?.find((item) => item.slug === selectedProvider) ??
+      selectedExistingConfig?.providerEntity ??
+      null,
+    [
+      providersQuery.data,
+      selectedExistingConfig?.providerEntity,
+      selectedProvider,
+    ],
+  );
 
-  const mutationError = createMutation.error || updateMutation.error;
+  const mutationError =
+    createMutation.error ||
+    updateMutation.error ||
+    updateProviderMutation.error;
   const createError = mutationError ? getErrorMessage(mutationError) : null;
-  const queryError =
-    llmModelsQuery.error || providersQuery.error || apiKeysQuery.error;
+  const queryError = llmModelsQuery.error || providersQuery.error;
 
   useEffect(() => {
     const initialConfig = normalizedConfig ?? createEmptyConfig();
@@ -464,23 +453,6 @@ export const LlmModelConfigPanel = memo(function LlmModelConfigPanel({
       form.setValue("modelName", nextModel, { shouldValidate: true });
     }
   }, [availableModels, form, selectedModelName, selectedProvider]);
-
-  useEffect(() => {
-    if (!selectedApiKeyId) {
-      return;
-    }
-
-    const matchesProvider = providerApiKeys.some(
-      (apiKey) => apiKey.id === selectedApiKeyId,
-    );
-
-    if (!matchesProvider) {
-      form.setValue("apiKeyId", "", {
-        shouldValidate: true,
-        shouldDirty: true,
-      });
-    }
-  }, [form, providerApiKeys, selectedApiKeyId]);
 
   const handleModeChange = useCallback(
     (nextMode: ConfigMode) => {
@@ -543,6 +515,45 @@ export const LlmModelConfigPanel = memo(function LlmModelConfigPanel({
 
   const handleSubmit = form.handleSubmit(async (values) => {
     try {
+      if (
+        values.provider === "private_cloud" &&
+        values.authMethod === "api_key" &&
+        !hasEffectiveProviderApiKey({
+          provider: selectedProviderEntity,
+          apiKey: values.apiKey,
+          clearApiKey: values.clearApiKey,
+        })
+      ) {
+        form.setError("apiKey", {
+          type: "manual",
+          message: "请输入 API Key",
+        });
+        return;
+      }
+
+      if (!selectedProviderEntity) {
+        throw new Error("Provider 尚未加载完成，请稍后重试");
+      }
+
+      const providerInput = buildProviderCredentialInput({
+        provider: selectedProviderEntity,
+        apiKey: values.apiKey,
+        clearApiKey:
+          values.provider === "private_cloud" && values.authMethod !== "api_key"
+            ? true
+            : values.clearApiKey,
+        baseUrl:
+          values.provider === "private_cloud" ? values.endpointUrl : undefined,
+        includeBaseUrl: values.provider === "private_cloud",
+      });
+
+      const syncedProvider = providerInput
+        ? await updateProviderMutation.mutateAsync({
+            id: selectedProviderEntity.id,
+            input: providerInput,
+          })
+        : selectedProviderEntity;
+
       const payload = buildCreatePayload(
         values,
         providersQuery.data ?? undefined,
@@ -552,7 +563,10 @@ export const LlmModelConfigPanel = memo(function LlmModelConfigPanel({
         ? await updateMutation.mutateAsync({ id: currentConfigId, payload })
         : await createMutation.mutateAsync(payload);
 
-      const adapted = adaptModelEntityToInfo(savedModel);
+      const adapted = adaptModelEntityToInfo({
+        ...savedModel,
+        provider: savedModel.provider ?? syncedProvider,
+      });
       onApply(buildLlmNodePatch(adapted));
       setSelectedConfigId(savedModel.id);
       form.reset(toFormValues(toLlmModelConfig(adapted)));
@@ -627,10 +641,7 @@ export const LlmModelConfigPanel = memo(function LlmModelConfigPanel({
             </div>
 
             {selectedConfigId ? (
-              <ExistingConfigSummary
-                apiKeys={apiKeysQuery.data ?? []}
-                current={selectedExistingConfig}
-              />
+              <ExistingConfigSummary current={selectedExistingConfig} />
             ) : (
               <div className="rounded-lg border border-dashed border-border px-3 py-4 text-xs text-muted-foreground">
                 尚未选择配置。请从列表中选一项，节点会自动切换到已配置状态。
@@ -674,7 +685,9 @@ export const LlmModelConfigPanel = memo(function LlmModelConfigPanel({
 
               {selectedProvider === "private_cloud" ? (
                 <div className="sm:col-span-2">
-                  <PrivateCloudConfigSection />
+                  <PrivateCloudConfigSection
+                    provider={selectedProviderEntity}
+                  />
                 </div>
               ) : (
                 <>
@@ -715,27 +728,37 @@ export const LlmModelConfigPanel = memo(function LlmModelConfigPanel({
                     <Label>API Key</Label>
                     <Controller
                       control={form.control}
-                      name="apiKeyId"
+                      name="apiKey"
                       render={({ field }) => (
-                        <Select
+                        <ManagedApiKeyField
                           value={field.value}
-                          onValueChange={field.onChange}
-                        >
-                          <option value="">暂不绑定 API Key</option>
-                          {providerApiKeys.map((apiKey) => (
-                            <option key={apiKey.id} value={apiKey.id}>
-                              {apiKey.label} / {apiKey.keyPreview}
-                              {apiKey.isDefault ? " / 默认" : ""}
-                            </option>
-                          ))}
-                        </Select>
+                          onValueChange={(next) => {
+                            field.onChange(next);
+                            if (next.trim().length > 0) {
+                              form.setValue("clearApiKey", false, {
+                                shouldDirty: true,
+                              });
+                            }
+                          }}
+                          hasStoredApiKey={Boolean(
+                            selectedProviderEntity?.apiKeyId,
+                          )}
+                          clearRequested={clearApiKey}
+                          onClearRequestedChange={(next) =>
+                            form.setValue("clearApiKey", next, {
+                              shouldDirty: true,
+                            })
+                          }
+                          errorText={
+                            form.formState.errors.apiKey?.message as
+                              | string
+                              | undefined
+                          }
+                          helperText="输入后会由服务端加密托管。这里修改的是 Provider 级凭据，会影响该 Provider 下的所有模型。"
+                          inputTestId="panel-provider-api-key-input"
+                        />
                       )}
                     />
-                    {selectedApiKeyId ? null : (
-                      <p className="text-[11px] text-warning">
-                        未选择 API Key 时，节点会进入 warning 视觉状态。
-                      </p>
-                    )}
                   </div>
                 </>
               )}

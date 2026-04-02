@@ -69,7 +69,7 @@ describe('PrivateCloudController', () => {
       const dto = {
         endpointUrl: 'https://private-cloud.example.com/v1',
         authMethod: 'api_key',
-        apiKeyId: '00000000-0000-0000-0000-000000000001',
+        apiKey: 'sk-direct-input',
         timeoutMs: 10_000,
       };
 

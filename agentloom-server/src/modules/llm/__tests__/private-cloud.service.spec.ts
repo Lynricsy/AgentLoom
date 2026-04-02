@@ -122,6 +122,36 @@ describe('PrivateCloudService', () => {
       );
     });
 
+    it('直接提供 apiKey 时应优先使用明文，不再解密受管密钥', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => ({ status: 'healthy' }),
+        headers: new Headers({ 'content-type': 'application/json' }),
+      });
+
+      await service.testConnection(
+        createTestConnectionDto({
+          apiKeyId: undefined,
+          apiKey: 'sk-direct-input',
+        }),
+        REQUEST_CONTEXT,
+      );
+
+      expect(
+        decryptionBoundaryService.decryptConfiguredApiKey,
+      ).not.toHaveBeenCalled();
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://private-cloud.example.com/health',
+        expect.objectContaining({
+          headers: {
+            Authorization: 'Bearer sk-direct-input',
+          },
+          signal: expect.any(AbortSignal),
+        }),
+      );
+    });
+
     it('应当在 /health 返回非 ok 时回退到 /v1/models', async () => {
       vi.spyOn(Logger.prototype, 'debug').mockImplementation(() => undefined);
       vi.spyOn(Date, 'now')

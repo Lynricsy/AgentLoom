@@ -31,15 +31,17 @@ import {
 } from "../types";
 import {
   useCreateLlmModel,
-  useLlmApiKeys,
   useLlmProviders,
+  useUpdateProvider,
   useUpdateLlmModel,
 } from "../hooks/useLlmModels";
+import { ManagedApiKeyField } from "./ManagedApiKeyField";
 import { ProviderIcon } from "./ProviderIcon";
 import { PrivateCloudConfigSection } from "./PrivateCloudConfigSection";
-
-const UUID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+import {
+  buildProviderCredentialInput,
+  hasEffectiveProviderApiKey,
+} from "./providerCredentialUtils";
 const EMBEDDING_PROVIDER_IDS = new Set<LlmProvider>([
   "openai",
   "private_cloud",
@@ -55,10 +57,8 @@ const dialogFormSchema = z
     provider: z.string().min(1, "请选择 Provider"),
     modelType: z.enum(LLM_MODEL_TYPES),
     modelName: z.string().trim().min(1, "请选择或输入模型名称"),
-    apiKeyId: z.union([
-      z.literal(""),
-      z.string().trim().regex(UUID_PATTERN, "请选择有效的 API Key"),
-    ]),
+    apiKey: z.string(),
+    clearApiKey: z.boolean(),
     temperature: z
       .number()
       .min(0, "Temperature 不能小于 0")
@@ -110,14 +110,6 @@ const dialogFormSchema = z
         code: z.ZodIssueCode.custom,
         path: ["authMethod"],
         message: "请选择认证方式",
-      });
-    }
-
-    if (values.authMethod === "api_key" && !values.apiKeyId) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["apiKeyId"],
-        message: "请选择 API Key",
       });
     }
 
@@ -195,7 +187,8 @@ function getDefaultFormValues(
     provider,
     modelType: "chat",
     modelName: initialModel,
-    apiKeyId: "",
+    apiKey: "",
+    clearApiKey: false,
     temperature: DEFAULT_LLM_PARAMETERS.temperature,
     maxTokens: "",
     topP: DEFAULT_LLM_PARAMETERS.topP,
@@ -218,7 +211,8 @@ function modelToFormValues(model: LlmModelInfo): DialogFormValues {
     provider: model.provider,
     modelType: model.modelType ?? "chat",
     modelName: model.modelName,
-    apiKeyId: model.providerEntity?.apiKeyId ?? "",
+    apiKey: "",
+    clearApiKey: false,
     temperature: params.temperature,
     maxTokens:
       typeof params.maxTokens === "number" ? String(params.maxTokens) : "",
@@ -254,8 +248,8 @@ export function LlmModelConfigDialog({
   const isEditMode = editingModel !== null;
   const createMutation = useCreateLlmModel();
   const updateMutation = useUpdateLlmModel();
+  const updateProviderMutation = useUpdateProvider();
   const providersQuery = useLlmProviders();
-  const apiKeysQuery = useLlmApiKeys();
   const [paramsExpanded, setParamsExpanded] = useState(false);
 
   const form = useForm<DialogFormValues>({
@@ -277,9 +271,9 @@ export function LlmModelConfigDialog({
     control: form.control,
     name: "modelName",
   });
-  const selectedApiKeyId = useWatch({
+  const clearApiKey = useWatch({
     control: form.control,
-    name: "apiKeyId",
+    name: "clearApiKey",
   });
   const selectedTemperature = useWatch({
     control: form.control,
@@ -295,15 +289,6 @@ export function LlmModelConfigDialog({
     name: "presencePenalty",
   });
 
-  const providerApiKeys = useMemo(
-    () =>
-      selectedProvider === "private_cloud"
-        ? (apiKeysQuery.data ?? [])
-        : (apiKeysQuery.data ?? []).filter(
-            (item) => item.provider === selectedProvider,
-          ),
-    [apiKeysQuery.data, selectedProvider],
-  );
   const providerCatalog = useMemo<LlmProviderInfo[]>(() => {
     const source: LlmProviderInfo[] =
       providersQuery.data && providersQuery.data.length > 0
@@ -331,6 +316,13 @@ export function LlmModelConfigDialog({
     }
     return models;
   }, [providerCatalog, selectedModelName, selectedProvider]);
+  const selectedProviderEntity = useMemo(
+    () =>
+      providersQuery.data?.find((item) => item.slug === selectedProvider) ??
+      editingModel?.providerEntity ??
+      null,
+    [editingModel?.providerEntity, providersQuery.data, selectedProvider],
+  );
 
   // Provider 切换时重置模型选择（仅创建模式）
   useEffect(() => {
@@ -361,22 +353,6 @@ export function LlmModelConfigDialog({
     });
   }, [form, selectedModelType, selectedProvider]);
 
-  // Provider 切换时清除不匹配的 API Key
-  useEffect(() => {
-    if (!selectedApiKeyId) return;
-    if (selectedProvider === "private_cloud") return;
-
-    const matchesProvider = providerApiKeys.some(
-      (apiKey) => apiKey.id === selectedApiKeyId,
-    );
-    if (!matchesProvider) {
-      form.setValue("apiKeyId", "", {
-        shouldValidate: true,
-        shouldDirty: true,
-      });
-    }
-  }, [form, providerApiKeys, selectedApiKeyId]);
-
   // 自动填充名称：provider 或 model 变更时，如果名称为空则自动生成
   useEffect(() => {
     const currentName = form.getValues("name");
@@ -391,6 +367,45 @@ export function LlmModelConfigDialog({
 
   const handleSubmit = form.handleSubmit(async (values) => {
     try {
+      if (
+        values.provider === "private_cloud" &&
+        values.authMethod === "api_key" &&
+        !hasEffectiveProviderApiKey({
+          provider: selectedProviderEntity,
+          apiKey: values.apiKey,
+          clearApiKey: values.clearApiKey,
+        })
+      ) {
+        form.setError("apiKey", {
+          type: "manual",
+          message: "请输入 API Key",
+        });
+        return;
+      }
+
+      if (!selectedProviderEntity) {
+        throw new Error("Provider 尚未加载完成，请稍后重试");
+      }
+
+      const providerInput = buildProviderCredentialInput({
+        provider: selectedProviderEntity,
+        apiKey: values.apiKey,
+        clearApiKey:
+          values.provider === "private_cloud" && values.authMethod !== "api_key"
+            ? true
+            : values.clearApiKey,
+        baseUrl:
+          values.provider === "private_cloud" ? values.endpointUrl : undefined,
+        includeBaseUrl: values.provider === "private_cloud",
+      });
+
+      if (providerInput) {
+        await updateProviderMutation.mutateAsync({
+          id: selectedProviderEntity.id,
+          input: providerInput,
+        });
+      }
+
       const payload = buildDialogPayload(
         values,
         providersQuery.data ?? undefined,
@@ -422,7 +437,10 @@ export function LlmModelConfigDialog({
     }
   });
 
-  const isSaving = createMutation.isPending || updateMutation.isPending;
+  const isSaving =
+    createMutation.isPending ||
+    updateMutation.isPending ||
+    updateProviderMutation.isPending;
 
   const handleProviderChange = useCallback(
     (value: string) => {
@@ -431,7 +449,8 @@ export function LlmModelConfigDialog({
 
       // 切换 provider 时重置相关字段
       form.setValue("modelName", "", { shouldValidate: false });
-      form.setValue("apiKeyId", "", { shouldValidate: false });
+      form.setValue("apiKey", "", { shouldValidate: false });
+      form.setValue("clearApiKey", false, { shouldValidate: false });
 
       if (nextProvider === "private_cloud") {
         form.setValue("endpointUrl", "", { shouldValidate: false });
@@ -534,7 +553,7 @@ export function LlmModelConfigDialog({
 
               {/* 模型和 API Key（非 private_cloud） */}
               {selectedProvider === "private_cloud" ? (
-                <PrivateCloudConfigSection />
+                <PrivateCloudConfigSection provider={selectedProviderEntity} />
               ) : (
                 <>
                   <div className="space-y-2">
@@ -583,32 +602,37 @@ export function LlmModelConfigDialog({
                     <Label>API Key</Label>
                     <Controller
                       control={form.control}
-                      name="apiKeyId"
+                      name="apiKey"
                       render={({ field }) => (
-                        <Select
+                        <ManagedApiKeyField
                           value={field.value}
-                          onValueChange={field.onChange}
-                          disabled={providerApiKeys.length === 0}
-                        >
-                          <option value="">
-                            {providerApiKeys.length === 0
-                              ? "暂无可用的 API Key"
-                              : "暂不绑定 API Key"}
-                          </option>
-                          {providerApiKeys.map((apiKey) => (
-                            <option key={apiKey.id} value={apiKey.id}>
-                              {apiKey.label} / {apiKey.keyPreview}
-                              {apiKey.isDefault ? " / 默认" : ""}
-                            </option>
-                          ))}
-                        </Select>
+                          onValueChange={(next) => {
+                            field.onChange(next);
+                            if (next.trim().length > 0) {
+                              form.setValue("clearApiKey", false, {
+                                shouldDirty: true,
+                              });
+                            }
+                          }}
+                          hasStoredApiKey={Boolean(
+                            selectedProviderEntity?.apiKeyId,
+                          )}
+                          clearRequested={clearApiKey}
+                          onClearRequestedChange={(next) =>
+                            form.setValue("clearApiKey", next, {
+                              shouldDirty: true,
+                            })
+                          }
+                          errorText={
+                            form.formState.errors.apiKey?.message as
+                              | string
+                              | undefined
+                          }
+                          helperText="输入后会由服务端加密托管。这里修改的是 Provider 级凭据，会影响该 Provider 下的所有模型。"
+                          inputTestId="provider-api-key-input"
+                        />
                       )}
                     />
-                    {providerApiKeys.length === 0 ? (
-                      <p className="text-[11px] text-muted-foreground">
-                        该提供商暂无 API Key，请先在 API Keys 管理页面中添加。
-                      </p>
-                    ) : null}
                   </div>
                 </>
               )}

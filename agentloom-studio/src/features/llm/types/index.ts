@@ -98,15 +98,24 @@ export interface CreateLlmProviderInput {
   baseUrl: string;
   apiProtocol?: ApiProtocol;
   apiKeyId?: string;
+  apiKey?: string;
+  clearApiKey?: boolean;
   iconUrl?: string;
   sortOrder?: number;
   isEnabled?: boolean;
 }
 
 /** 更新 Provider 请求体 */
-export type UpdateLlmProviderInput = Partial<CreateLlmProviderInput> & {
+export type UpdateLlmProviderInput = Partial<
+  Omit<
+    CreateLlmProviderInput,
+    "baseUrl" | "apiKeyId" | "apiKey" | "clearApiKey"
+  >
+> & {
   baseUrl?: string | null;
   apiKeyId?: string | null;
+  apiKey?: string;
+  clearApiKey?: boolean;
 };
 
 // ============================================================================
@@ -194,6 +203,7 @@ export type AuthMethod = (typeof AUTH_METHODS)[number];
 export interface TestConnectionInput {
   endpointUrl: string;
   authMethod: AuthMethod;
+  apiKey?: string;
   apiKeyId?: string;
   timeoutMs?: number;
 }
@@ -215,6 +225,7 @@ export interface PrivateCloudModelInfo {
 export interface FetchModelsInput {
   endpointUrl: string;
   authMethod: AuthMethod;
+  apiKey?: string;
   apiKeyId?: string;
 }
 

@@ -13,6 +13,12 @@ const testConnectionSchema = z
       .max(2048, '端点 URL 不能超过 2048 个字符'),
     authMethod: z.enum(AUTH_METHODS),
     apiKeyId: z.string().uuid('API Key ID 格式无效').optional(),
+    apiKey: z
+      .string()
+      .trim()
+      .min(1, 'API Key 不能为空')
+      .max(4096, 'API Key 长度不能超过 4096 个字符')
+      .optional(),
     timeoutMs: z
       .number()
       .int()
@@ -28,11 +34,15 @@ const testConnectionSchema = z
       .default(10000),
   })
   .superRefine((data, ctx) => {
-    if (data.authMethod === 'api_key' && !data.apiKeyId) {
+    if (
+      data.authMethod === 'api_key' &&
+      !data.apiKeyId &&
+      !data.apiKey?.trim()
+    ) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
-        message: '私有云 API Key 认证必须选择 API Key',
-        path: ['apiKeyId'],
+        message: '私有云 API Key 认证必须填写 API Key',
+        path: ['apiKey'],
       });
     }
   });

@@ -186,6 +186,95 @@ import { RagService } from '../knowledge/services/rag.service';
 import { CodeExecutionService } from './code-execution.service';
 ```
 
+## Scenario: LLM Provider Direct API Key Persistence
+
+### 1. Scope / Trigger
+
+- Trigger: touching `src/modules/llm/` Provider CRUD or `src/modules/llm/private-cloud.*` raw test/discovery endpoints while changing how users provide API credentials.
+
+### 2. Signatures
+
+- `LlmProviderController.create(dto, tenantId, userId)`
+- `LlmProviderController.update(id, dto, tenantId, userId)`
+- `LlmProviderService.create(dto, tenantId, userId): Promise<LlmProvider>`
+- `LlmProviderService.update(id, dto, tenantId, userId): Promise<LlmProvider>`
+- `PrivateCloudService.testConnection(dto, context): Promise<TestConnectionResult>`
+- `PrivateCloudService.fetchModels(dto, context): Promise<PrivateCloudModelInfo[]>`
+- `ApiKeyService.createStoredKey(input, userId, tenantId): Promise<ApiKeyResponseDto>`
+- `ApiKeyService.rotateStoredKey(id, apiKey, tenantId, actorId): Promise<ApiKeyResponseDto>`
+
+### 3. Contracts
+
+- `CreateLlmProviderDto` / `UpdateLlmProviderDto` may accept both legacy `apiKeyId` and direct `apiKey`.
+- When direct `apiKey` is present, server must persist ciphertext into managed `api_keys` rows and keep `llm_providers.api_key_id` as the only stored reference inside the provider record.
+- `UpdateLlmProviderDto.clearApiKey=true` must clear the provider binding by setting `llm_providers.api_key_id = null`.
+- `TestConnectionDto` / `FetchPrivateCloudModelsDto` may accept either:
+  - direct `apiKey`
+  - managed `apiKeyId`
+- `PrivateCloudService.buildHeaders()` must prefer direct `apiKey`; when absent, it may fall back to `DecryptionBoundaryService.decryptConfiguredApiKey(...)`.
+- Public runtime code (`PiAiAdapter`, provider discovery, private cloud test/discovery) must continue consuming resolved plaintext keys via the existing decryption boundary; no plaintext key may be stored in `llm_providers` or `llm_model_configs`.
+
+### 4. Validation & Error Matrix
+
+| Condition | Expected Behavior | Verification Point |
+|-----------|-------------------|--------------------|
+| Provider create/update body only has `apiKeyId` | Keep legacy behavior | Provider service/controller tests |
+| Provider create/update body has direct `apiKey` | Create or rotate managed `api_keys` row, then write returned `apiKeyId` into provider | `llm-provider.service.spec.ts` |
+| Update body has `clearApiKey=true` | Clear provider binding (`apiKeyId=null`) | `llm-provider.service.spec.ts` |
+| Private cloud raw test/discovery body has direct `apiKey` | Build `Authorization: Bearer <apiKey>` without decrypt call | `private-cloud.service.spec.ts` |
+| Private cloud raw test/discovery body has neither `apiKey` nor `apiKeyId` while `authMethod='api_key'` | DTO validation fails | DTO schema + controller/manual negative test |
+| Provider slug is custom / `private_cloud` | Managed API key persistence still works because `api_keys.provider` is varchar, not enum-bound | Service logic + manual browser/mobile QA |
+
+### 5. Good / Base / Bad Cases
+
+- Good: Studio Provider editor submits `{ apiKey: 'sk-...' }`; server creates/rotates managed ciphertext row and returns provider entity with non-null `apiKeyId`.
+- Base: Old clients continue sending only `apiKeyId`; provider CRUD and runtime still work unchanged.
+- Bad: Writing plaintext `apiKey` directly into `llm_providers.base_url` / `parameters` / any JSON payload field, which would bypass the managed encryption boundary and leak secrets.
+
+### 6. Tests Required
+
+- `src/modules/llm/__tests__/llm-provider.service.spec.ts`
+  - Assert direct `apiKey` creates managed key and persists returned `apiKeyId`.
+  - Assert `clearApiKey=true` clears the provider binding.
+- `src/modules/llm/__tests__/private-cloud.service.spec.ts`
+  - Assert direct `apiKey` bypasses `DecryptionBoundaryService`.
+  - Assert legacy `apiKeyId` path still decrypts as before.
+- `src/modules/llm/__tests__/llm.controller.spec.ts`
+  - Assert Provider controller forwards `userId` so managed key writes have an audit actor.
+- Manual/browser QA:
+  - Create/update a Provider by entering a plaintext API key.
+  - Reload `/resources/llm-models` and confirm the Provider remains configured.
+  - Use private cloud test/discovery with a one-off plaintext API key and confirm the request succeeds without saving first.
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```typescript
+await this.tenantDb.update(llmProviders).set({
+  apiKey: dto.apiKey,
+});
+```
+
+#### Correct
+
+```typescript
+const created = await this.apiKeyService.createStoredKey(
+  {
+    provider: providerSlug,
+    label: `LLM Provider / ${providerSlug}`,
+    apiKey: dto.apiKey,
+    isDefault: false,
+  },
+  userId,
+  tenantId,
+);
+
+await this.tenantDb.update(llmProviders).set({
+  apiKeyId: created.id,
+});
+```
+
 ---
 
 ## Response Envelope

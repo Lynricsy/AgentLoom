@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DRIZZLE } from '../../../database/database.module';
+import { ApiKeyService } from '../../api-key/api-key.service';
 import { LlmProviderService } from '../llm-provider.service';
 
 vi.mock('../../../common/providers/tenant-aware-db.provider', () => ({
@@ -18,6 +19,13 @@ function createSelectChain(result: unknown) {
   const where = vi.fn().mockResolvedValue(result);
   const from = vi.fn().mockReturnValue({ where });
   return { from, where };
+}
+
+function createSelectChainWithLimit(result: unknown) {
+  const limit = vi.fn().mockResolvedValue(result);
+  const where = vi.fn().mockReturnValue({ limit });
+  const from = vi.fn().mockReturnValue({ where });
+  return { from, where, limit };
 }
 
 function createInsertChain() {
@@ -56,6 +64,7 @@ function createBuiltinProvider(overrides: Record<string, unknown> = {}) {
 describe('LlmProviderService', () => {
   let service: LlmProviderService;
   let db: Record<string, ReturnType<typeof vi.fn>>;
+  let apiKeyService: Record<string, ReturnType<typeof vi.fn>>;
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -67,9 +76,18 @@ describe('LlmProviderService', () => {
       insert: vi.fn(),
       update: vi.fn(),
     };
+    apiKeyService = {
+      createStoredKey: vi.fn(),
+      findByIdInternal: vi.fn(),
+      rotateStoredKey: vi.fn(),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
-      providers: [LlmProviderService, { provide: DRIZZLE, useValue: db }],
+      providers: [
+        LlmProviderService,
+        { provide: DRIZZLE, useValue: db },
+        { provide: ApiKeyService, useValue: apiKeyService },
+      ],
     }).compile();
 
     service = module.get<LlmProviderService>(LlmProviderService);
@@ -185,5 +203,120 @@ describe('LlmProviderService', () => {
 
     expect(db.insert).not.toHaveBeenCalled();
     expect(db.update).not.toHaveBeenCalled();
+  });
+
+  it('创建 provider 时若直接提供 apiKey，应创建受管密钥并写入 apiKeyId', async () => {
+    db.select
+      .mockReturnValueOnce(createSelectChainWithLimit([{ id: ORG_ID }]))
+      .mockReturnValueOnce(createSelectChain([]));
+
+    const insertChain = {
+      values: vi.fn().mockReturnValue({
+        returning: vi.fn().mockResolvedValue([
+          {
+            id: 'provider-custom',
+            orgId: ORG_ID,
+            tenantId: TENANT_ID,
+            slug: 'my-proxy',
+            name: 'My Proxy',
+            baseUrl: 'https://proxy.example.com',
+            defaultBaseUrl: 'https://proxy.example.com',
+            isBuiltin: false,
+            isEnabled: true,
+            apiProtocol: 'openai_chat' as const,
+            apiKeyId: 'managed-key-1',
+            iconUrl: null,
+            sortOrder: 0,
+            createdAt: NOW,
+            updatedAt: NOW,
+          },
+        ]),
+      }),
+    };
+    db.insert.mockReturnValue(insertChain);
+    apiKeyService.findByIdInternal.mockResolvedValue(undefined);
+    apiKeyService.createStoredKey.mockResolvedValue({ id: 'managed-key-1' });
+
+    const result = await service.create(
+      {
+        name: 'My Proxy',
+        baseUrl: 'https://proxy.example.com',
+        apiKey: 'sk-managed',
+      } as never,
+      TENANT_ID,
+      'user-id',
+    );
+
+    expect(apiKeyService.createStoredKey).toHaveBeenCalledWith(
+      {
+        provider: 'my-proxy',
+        label: 'LLM Provider / my-proxy',
+        apiKey: 'sk-managed',
+        isDefault: false,
+      },
+      'user-id',
+      TENANT_ID,
+    );
+    expect(insertChain.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        apiKeyId: 'managed-key-1',
+      }),
+    );
+    expect(result.apiKeyId).toBe('managed-key-1');
+  });
+
+  it('更新 provider 时若 clearApiKey=true，应清空绑定的 apiKeyId', async () => {
+    const existing = {
+      id: 'provider-custom',
+      orgId: ORG_ID,
+      tenantId: TENANT_ID,
+      slug: 'my-proxy',
+      name: 'My Proxy',
+      iconUrl: null,
+      baseUrl: 'https://proxy.example.com',
+      defaultBaseUrl: 'https://proxy.example.com',
+      isBuiltin: false,
+      isEnabled: true,
+      apiProtocol: 'openai_chat' as const,
+      apiKeyId: 'managed-key-1',
+      sortOrder: 0,
+      createdAt: NOW,
+      updatedAt: NOW,
+    };
+
+    db.select
+      .mockReturnValueOnce(createSelectChainWithLimit([{ id: ORG_ID }]))
+      .mockReturnValueOnce(createSelectChain([existing]))
+      .mockReturnValueOnce(createSelectChainWithLimit([{ id: ORG_ID }]));
+
+    const updateChain = {
+      set: vi.fn().mockReturnValue({
+        where: vi.fn().mockReturnValue({
+          returning: vi.fn().mockResolvedValue([
+            {
+              ...existing,
+              apiKeyId: null,
+              updatedAt: NOW,
+            },
+          ]),
+        }),
+      }),
+    };
+    db.update.mockReturnValue(updateChain);
+
+    const result = await service.update(
+      existing.id,
+      { clearApiKey: true } as never,
+      TENANT_ID,
+      'user-id',
+    );
+
+    expect(updateChain.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        apiKeyId: null,
+        updatedAt: NOW,
+      }),
+    );
+    expect(result.apiKeyId).toBeNull();
   });
 });
