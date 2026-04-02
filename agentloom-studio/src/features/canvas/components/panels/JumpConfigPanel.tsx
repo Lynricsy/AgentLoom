@@ -19,12 +19,17 @@ interface JumpConfigPanelProps {
 
 function parseJumpConfig(config: Record<string, unknown>) {
   const defaults = createDefaultJumpNodeConfig()
+  const portLabels =
+    config.portLabels && typeof config.portLabels === 'object' && !Array.isArray(config.portLabels)
+      ? (config.portLabels as Record<string, string>)
+      : undefined
   return {
     ...defaults,
     ...(config ?? {}),
     mode: config.mode === 'expression' ? 'expression' : defaults.mode,
     expression:
       typeof config.expression === 'string' ? config.expression : defaults.expression,
+    portLabels,
   }
 }
 
@@ -84,7 +89,7 @@ export const JumpConfigPanel = memo(function JumpConfigPanel({
   const handleAddInputPort = useCallback(() => {
     const nextExtraInputIds = [...extraInputIds, nextExtraInputId(inputPorts)]
     onApply({
-      inputPorts: buildJumpInputPorts(nextExtraInputIds),
+      inputPorts: buildJumpInputPorts(nextExtraInputIds, parsed.portLabels),
       config: parsed,
     })
   }, [extraInputIds, inputPorts, onApply, parsed])
@@ -120,7 +125,7 @@ export const JumpConfigPanel = memo(function JumpConfigPanel({
       }
 
       onApply({
-        inputPorts: buildJumpInputPorts(nextExtraInputIds),
+        inputPorts: buildJumpInputPorts(nextExtraInputIds, parsed.portLabels),
         config: {
           ...parsed,
           expression: rewritten.expression,
@@ -146,15 +151,40 @@ export const JumpConfigPanel = memo(function JumpConfigPanel({
         return
       }
 
+      const nextLabels = parsed.portLabels ? { ...parsed.portLabels } : undefined
+      if (nextLabels) {
+        delete nextLabels[portId]
+      }
+      const cleanLabels = nextLabels && Object.keys(nextLabels).length > 0 ? nextLabels : undefined
+
       onApply({
-        inputPorts: buildJumpInputPorts(nextExtraInputIds),
+        inputPorts: buildJumpInputPorts(nextExtraInputIds, cleanLabels),
         config: {
           ...parsed,
           expression: rewritten.expression,
+          portLabels: cleanLabels,
         },
       })
     },
     [extraInputIds, notify, onApply, parsed],
+  )
+
+  const handleRenameInputPort = useCallback(
+    (portId: string, label: string, index: number) => {
+      const defaultLabel = `输入 ${index + 1}`
+      const nextLabels = { ...(parsed.portLabels ?? {}) }
+      if (label && label !== defaultLabel) {
+        nextLabels[portId] = label
+      } else {
+        delete nextLabels[portId]
+      }
+      const cleanLabels = Object.keys(nextLabels).length > 0 ? nextLabels : undefined
+      onApply({
+        inputPorts: buildJumpInputPorts(extraInputIds, cleanLabels),
+        config: { ...parsed, portLabels: cleanLabels },
+      })
+    },
+    [extraInputIds, onApply, parsed],
   )
 
   const actionMeta =
@@ -231,10 +261,14 @@ export const JumpConfigPanel = memo(function JumpConfigPanel({
                 className="flex items-center gap-2 rounded-md border border-border/60 bg-background/60 px-2 py-2"
               >
                 <div className="min-w-0 flex-1">
-                  <p className="text-xs font-medium text-foreground">
-                    输入 {index + 1}
-                  </p>
-                  <p className="text-[10px] font-mono text-muted-foreground">
+                  <input
+                    type="text"
+                    value={parsed.portLabels?.[portId] ?? `输入 ${index + 1}`}
+                    onChange={(e) => handleRenameInputPort(portId, e.target.value, index)}
+                    placeholder={`输入 ${index + 1}`}
+                    className="min-w-0 w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-xs font-medium text-foreground hover:border-border focus:border-primary/50 focus:outline-none"
+                  />
+                  <p className="px-1 text-[10px] font-mono text-muted-foreground">
                     {`ports[${index + 1}]`} · {portId}
                   </p>
                 </div>

@@ -53,6 +53,7 @@ export interface ConditionBranch {
 
 export interface ConditionNodeConfig {
   branches: ConditionBranch[]
+  portLabels?: Record<string, string>
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -69,11 +70,12 @@ function buildConditionValueSchema(label: string) {
   }
 }
 
-function createConditionValuePort(id: string, index: number): PortDefinition {
-  return createPort(id, `输入 ${index + 1}`, 'input', 'json', {
+function createConditionValuePort(id: string, index: number, customLabel?: string): PortDefinition {
+  const label = customLabel ?? `输入 ${index + 1}`
+  return createPort(id, label, 'input', 'json', {
     acceptsAnyDataType: true,
     description: `第 ${index + 1} 个条件输入口，可接收任意上游端口值`,
-    schema: buildConditionValueSchema(`输入 ${index + 1}`),
+    schema: buildConditionValueSchema(label),
   })
 }
 
@@ -86,14 +88,13 @@ export function getConditionValueInputPorts(
 export function buildConditionInputPorts(
   count: number,
   previousValuePortIds?: readonly string[],
+  portLabels?: Record<string, string>,
 ): PortDefinition[] {
   const safeCount = Math.max(1, Math.min(12, Math.floor(count)))
-  const valuePorts = Array.from({ length: safeCount }, (_, index) =>
-    createConditionValuePort(
-      previousValuePortIds?.[index] ?? `${CONDITION_VALUE_PORT_PREFIX}${index}`,
-      index,
-    ),
-  )
+  const valuePorts = Array.from({ length: safeCount }, (_, index) => {
+    const portId = previousValuePortIds?.[index] ?? `${CONDITION_VALUE_PORT_PREFIX}${index}`
+    return createConditionValuePort(portId, index, portLabels?.[portId])
+  })
 
   return [
     createPort(CONDITION_EXEC_PORT_ID, '', 'input', 'exec', {
@@ -287,6 +288,11 @@ export function migrateConditionConfig(
       ? getConditionPortOrder(config.inputPorts as PortDefinition[])[0] ?? DEFAULT_CONDITION_VALUE_PORT_ID
       : DEFAULT_CONDITION_VALUE_PORT_ID
 
+  const portLabels =
+    config.portLabels && typeof config.portLabels === 'object' && !Array.isArray(config.portLabels)
+      ? (config.portLabels as Record<string, string>)
+      : undefined
+
   // 已经是新格式
   if (Array.isArray(config.branches)) {
     return {
@@ -307,6 +313,7 @@ export function migrateConditionConfig(
             typeof branch.expression === 'string' ? branch.expression : '',
         }
       }),
+      portLabels,
     }
   }
 
@@ -324,6 +331,7 @@ export function migrateConditionConfig(
           expression,
         },
       ],
+      portLabels,
     }
   }
 
@@ -350,6 +358,7 @@ export function migrateConditionConfig(
           expression: '',
         },
       ],
+      portLabels,
     }
   }
 

@@ -19,9 +19,14 @@ interface IterationConfigPanelProps {
 }
 
 function parseIterationConfig(config: Record<string, unknown>) {
+  const portLabels =
+    config.portLabels && typeof config.portLabels === 'object' && !Array.isArray(config.portLabels)
+      ? (config.portLabels as Record<string, string>)
+      : undefined
   return {
     ...createDefaultIterationNodeConfig(),
     ...(config ?? {}),
+    portLabels,
   }
 }
 
@@ -104,7 +109,7 @@ export const IterationConfigPanel = memo(function IterationConfigPanel({
   const handleAddInputPort = useCallback(() => {
     const nextExtraInputIds = [...extraInputIds, nextExtraInputId(inputPorts)]
     onApply({
-      inputPorts: buildIterationInputPorts(nextExtraInputIds),
+      inputPorts: buildIterationInputPorts(nextExtraInputIds, parsed.portLabels),
       config: parsed,
     })
     syncStartNodePorts(nextExtraInputIds)
@@ -127,7 +132,7 @@ export const IterationConfigPanel = memo(function IterationConfigPanel({
       nextExtraInputIds[index] = target
       nextExtraInputIds[nextIndex] = current
       onApply({
-        inputPorts: buildIterationInputPorts(nextExtraInputIds),
+        inputPorts: buildIterationInputPorts(nextExtraInputIds, parsed.portLabels),
         config: parsed,
       })
       syncStartNodePorts(nextExtraInputIds)
@@ -138,13 +143,36 @@ export const IterationConfigPanel = memo(function IterationConfigPanel({
   const handleRemoveInputPort = useCallback(
     (portId: string) => {
       const nextExtraInputIds = extraInputIds.filter((currentId) => currentId !== portId)
+      const nextLabels = parsed.portLabels ? { ...parsed.portLabels } : undefined
+      if (nextLabels) {
+        delete nextLabels[portId]
+      }
+      const cleanLabels = nextLabels && Object.keys(nextLabels).length > 0 ? nextLabels : undefined
       onApply({
-        inputPorts: buildIterationInputPorts(nextExtraInputIds),
-        config: parsed,
+        inputPorts: buildIterationInputPorts(nextExtraInputIds, cleanLabels),
+        config: { ...parsed, portLabels: cleanLabels },
       })
       syncStartNodePorts(nextExtraInputIds)
     },
     [extraInputIds, onApply, parsed, syncStartNodePorts],
+  )
+
+  const handleRenameInputPort = useCallback(
+    (portId: string, label: string, index: number) => {
+      const defaultLabel = `输入 ${index + 1}`
+      const nextLabels = { ...(parsed.portLabels ?? {}) }
+      if (label && label !== defaultLabel) {
+        nextLabels[portId] = label
+      } else {
+        delete nextLabels[portId]
+      }
+      const cleanLabels = Object.keys(nextLabels).length > 0 ? nextLabels : undefined
+      onApply({
+        inputPorts: buildIterationInputPorts(extraInputIds, cleanLabels),
+        config: { ...parsed, portLabels: cleanLabels },
+      })
+    },
+    [extraInputIds, onApply, parsed],
   )
 
   return (
@@ -182,10 +210,14 @@ export const IterationConfigPanel = memo(function IterationConfigPanel({
                 className="flex items-center gap-2 rounded-md border border-border/60 bg-background/60 px-2 py-2"
               >
                 <div className="min-w-0 flex-1">
-                  <p className="text-xs font-medium text-foreground">
-                    输入 {index + 1}
-                  </p>
-                  <p className="text-[10px] font-mono text-muted-foreground">
+                  <input
+                    type="text"
+                    value={parsed.portLabels?.[portId] ?? `输入 ${index + 1}`}
+                    onChange={(e) => handleRenameInputPort(portId, e.target.value, index)}
+                    placeholder={`输入 ${index + 1}`}
+                    className="min-w-0 w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-xs font-medium text-foreground hover:border-border focus:border-primary/50 focus:outline-none"
+                  />
+                  <p className="px-1 text-[10px] font-mono text-muted-foreground">
                     {portId}
                   </p>
                 </div>

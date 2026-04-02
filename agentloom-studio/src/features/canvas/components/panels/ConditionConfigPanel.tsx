@@ -294,7 +294,7 @@ export const ConditionConfigPanel = memo(function ConditionConfigPanel({
 
   const handleAddInputPort = useCallback(() => {
     const previousOrder = getConditionPortOrder(inputPorts)
-    const nextPorts = buildConditionInputPorts(previousOrder.length + 1, previousOrder)
+    const nextPorts = buildConditionInputPorts(previousOrder.length + 1, previousOrder, parsed.portLabels)
     applyConfig(parsed, nextPorts)
   }, [applyConfig, inputPorts, parsed])
 
@@ -326,8 +326,8 @@ export const ConditionConfigPanel = memo(function ConditionConfigPanel({
       }
 
       applyConfig(
-        { branches: rewritten.branches },
-        buildConditionInputPorts(nextOrder.length, nextOrder),
+        { branches: rewritten.branches, portLabels: parsed.portLabels },
+        buildConditionInputPorts(nextOrder.length, nextOrder, parsed.portLabels),
       )
     },
     [applyConfig, inputPorts, notify, parsed.branches],
@@ -362,12 +362,37 @@ export const ConditionConfigPanel = memo(function ConditionConfigPanel({
         return
       }
 
+      const nextLabels = parsed.portLabels ? { ...parsed.portLabels } : undefined
+      if (nextLabels) {
+        delete nextLabels[portId]
+      }
+
       applyConfig(
-        { branches: rewritten.branches },
-        buildConditionInputPorts(nextOrder.length, nextOrder),
+        { branches: rewritten.branches, portLabels: nextLabels },
+        buildConditionInputPorts(nextOrder.length, nextOrder, nextLabels),
       )
     },
     [applyConfig, inputPorts, notify, parsed.branches, valueInputPorts.length],
+  )
+
+  const handleRenameInputPort = useCallback(
+    (portId: string, label: string) => {
+      const index = valueInputPorts.findIndex((p) => p.id === portId)
+      const defaultLabel = index >= 0 ? `输入 ${index + 1}` : ''
+      const nextLabels = { ...(parsed.portLabels ?? {}) }
+      if (label && label !== defaultLabel) {
+        nextLabels[portId] = label
+      } else {
+        delete nextLabels[portId]
+      }
+      const cleanLabels = Object.keys(nextLabels).length > 0 ? nextLabels : undefined
+      const previousOrder = getConditionPortOrder(inputPorts)
+      applyConfig(
+        { ...parsed, portLabels: cleanLabels },
+        buildConditionInputPorts(previousOrder.length, previousOrder, cleanLabels),
+      )
+    },
+    [applyConfig, inputPorts, parsed, valueInputPorts],
   )
 
   return (
@@ -405,13 +430,19 @@ export const ConditionConfigPanel = memo(function ConditionConfigPanel({
               className="flex items-center gap-2 rounded-md border border-border/60 bg-background/60 px-2 py-2"
             >
               <div className="min-w-0 flex-1">
-                <p className="text-xs font-medium text-foreground">
-                  {port.label}
-                  <span className="ml-2 font-mono text-muted-foreground">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={port.label}
+                    onChange={(e) => handleRenameInputPort(port.id, e.target.value)}
+                    placeholder={`输入 ${index + 1}`}
+                    className="min-w-0 flex-1 rounded border border-transparent bg-transparent px-1 py-0.5 text-xs font-medium text-foreground hover:border-border focus:border-primary/50 focus:outline-none"
+                  />
+                  <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
                     ports[{index + 1}]
                   </span>
-                </p>
-                <p className="text-[10px] text-muted-foreground">
+                </div>
+                <p className="mt-0.5 px-1 text-[10px] text-muted-foreground">
                   {availablePorts[index]?.dataTypeLabel
                     ? `当前已连接 ${availablePorts[index]?.dataTypeLabel} 输入`
                     : '当前未连接上游，默认按整值比较'}

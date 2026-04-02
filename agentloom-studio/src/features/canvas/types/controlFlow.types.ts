@@ -161,20 +161,22 @@ function createCompoundValueInputPort(id: string, label: string): PortDefinition
 
 export function buildCompoundExtraInputPorts(
   extraInputIds: readonly string[],
+  portLabels?: Record<string, string>,
 ): PortDefinition[] {
   return extraInputIds.map((portId, index) =>
-    createCompoundValueInputPort(portId, `输入 ${index + 1}`),
+    createCompoundValueInputPort(portId, portLabels?.[portId] ?? `输入 ${index + 1}`),
   )
 }
 
 export function buildJumpInputPorts(
   extraInputIds: readonly string[] = [],
+  portLabels?: Record<string, string>,
 ): PortDefinition[] {
   return [
     createPort(JUMP_EXEC_INPUT_ID, '', 'input', 'exec', {
       description: '执行流进入后评估当前控制节点是否触发',
     }),
-    ...buildCompoundExtraInputPorts(extraInputIds),
+    ...buildCompoundExtraInputPorts(extraInputIds, portLabels),
   ]
 }
 
@@ -188,6 +190,7 @@ export function getCompoundExtraInputPortIds(
 
 export function buildIterationInputPorts(
   extraInputIds: readonly string[] = [],
+  portLabels?: Record<string, string>,
 ): PortDefinition[] {
   return [
     createPort(COMPOUND_PARENT_EXEC_INPUT_ID, '', 'input', 'exec', {
@@ -196,19 +199,20 @@ export function buildIterationInputPorts(
     createPort(ITERATION_ITEMS_INPUT_ID, '数组', 'input', 'array', {
       description: '待迭代的数组输入',
     }),
-    ...buildCompoundExtraInputPorts(extraInputIds),
+    ...buildCompoundExtraInputPorts(extraInputIds, portLabels),
   ]
 }
 
 export function buildLoopInputPorts(
   extraInputIds: readonly string[] = [],
+  portLabels?: Record<string, string>,
 ): PortDefinition[] {
   return [
     createPort(COMPOUND_PARENT_EXEC_INPUT_ID, '', 'input', 'exec', {
       description: '执行流入口，前序节点完成后触发循环容器',
     }),
     createCompoundValueInputPort(LOOP_STATE_INPUT_ID, '初始状态'),
-    ...buildCompoundExtraInputPorts(extraInputIds),
+    ...buildCompoundExtraInputPorts(extraInputIds, portLabels),
   ]
 }
 
