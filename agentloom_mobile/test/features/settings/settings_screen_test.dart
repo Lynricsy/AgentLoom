@@ -16,6 +16,15 @@ void main() {
   late MockTokenStorage mockTokenStorage;
   late MockAuthApi mockAuthApi;
 
+  Future<void> scrollToVisible(WidgetTester tester, Finder finder) async {
+    await tester.scrollUntilVisible(
+      finder,
+      240,
+      scrollable: find.byType(Scrollable),
+    );
+    await tester.pumpAndSettle();
+  }
+
   setUp(() {
     mockTokenStorage = MockTokenStorage();
     mockAuthApi = MockAuthApi();
@@ -40,7 +49,7 @@ void main() {
       await tester.pumpWidget(buildTestWidget());
       await tester.pumpAndSettle();
 
-      expect(find.text('设置'), findsOneWidget);
+      expect(find.text('Settings'), findsOneWidget);
       expect(find.text('安全'), findsOneWidget);
     });
 
@@ -72,6 +81,7 @@ void main() {
       await tester.pumpWidget(buildTestWidget());
       await tester.pumpAndSettle();
 
+      await scrollToVisible(tester, find.text('账户'));
       expect(find.text('账户'), findsOneWidget);
       expect(find.text('退出登录'), findsOneWidget);
     });
@@ -82,6 +92,7 @@ void main() {
       await tester.pumpWidget(buildTestWidget());
       await tester.pumpAndSettle();
 
+      await scrollToVisible(tester, find.text('退出所有设备'));
       expect(find.text('退出所有设备'), findsOneWidget);
       expect(find.text('在所有已登录设备上退出'), findsOneWidget);
     });
@@ -92,6 +103,7 @@ void main() {
       await tester.pumpWidget(buildTestWidget());
       await tester.pumpAndSettle();
 
+      await scrollToVisible(tester, find.byIcon(Icons.logout));
       expect(find.byIcon(Icons.lock_outline), findsOneWidget);
       expect(find.byIcon(Icons.security_outlined), findsOneWidget);
       expect(find.byIcon(Icons.logout), findsOneWidget);
@@ -116,6 +128,7 @@ void main() {
       await tester.pumpWidget(buildTestWidget());
       await tester.pumpAndSettle();
 
+      await scrollToVisible(tester, find.text('退出登录'));
       await tester.tap(find.text('退出登录'));
       await tester.pumpAndSettle();
 
@@ -131,6 +144,7 @@ void main() {
       await tester.pumpWidget(buildTestWidget());
       await tester.pumpAndSettle();
 
+      await scrollToVisible(tester, find.text('退出登录'));
       await tester.tap(find.text('退出登录'));
       await tester.pumpAndSettle();
 

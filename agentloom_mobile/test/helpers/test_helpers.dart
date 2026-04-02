@@ -95,12 +95,12 @@ WorkflowInputSchema createTestWorkflowInputSchema({
   List<InputFieldDefinition>? fields,
   ConversationPlan? conversationPlan,
 }) {
-  return WorkflowInputSchema.fromJson({
-    'version': version,
-    'collection_mode': collectionMode,
-    'fields': (fields ?? []).map((field) => field.toJson()).toList(),
-    'conversation_plan': conversationPlan?.toJson(),
-  });
+  return WorkflowInputSchema(
+    version: version,
+    collectionMode: collectionMode,
+    fields: fields ?? const [],
+    conversationPlan: conversationPlan,
+  );
 }
 
 /// 测试用 ExecutionStateSnapshot 工厂
@@ -191,6 +191,7 @@ WorkflowDefinitionDto createTestWorkflow({
   String? description = 'A test workflow description',
   String status = 'published',
   int version = 1,
+  int? publishedReleaseNumber,
   Map<String, dynamic>? metadata,
   String? createdBy = 'user-001',
   String? updatedBy = 'user-001',
@@ -204,6 +205,7 @@ WorkflowDefinitionDto createTestWorkflow({
     'description': description,
     'status': status,
     'version': version,
+    'published_release_number': publishedReleaseNumber,
     'metadata': metadata,
     'created_by': createdBy,
     'updated_by': updatedBy,

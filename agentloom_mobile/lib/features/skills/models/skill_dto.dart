@@ -26,5 +26,26 @@ abstract class SkillDto with _$SkillDto {
   }) = _SkillDto;
 
   factory SkillDto.fromJson(Map<String, dynamic> json) =>
-      _$SkillDtoFromJson(json);
+      _$SkillDtoFromJson(_normalizeSkillJson(json));
+}
+
+Map<String, dynamic> _normalizeSkillJson(Map<String, dynamic> json) {
+  final normalized = Map<String, dynamic>.from(json);
+
+  const aliases = {
+    'tenantId': 'tenant_id',
+    'isBuiltin': 'is_builtin',
+    'fileCount': 'file_count',
+    'totalSizeBytes': 'total_size_bytes',
+    'createdBy': 'created_by',
+    'updatedBy': 'updated_by',
+    'createdAt': 'created_at',
+    'updatedAt': 'updated_at',
+  };
+
+  for (final entry in aliases.entries) {
+    normalized.putIfAbsent(entry.key, () => json[entry.value]);
+  }
+
+  return normalized;
 }

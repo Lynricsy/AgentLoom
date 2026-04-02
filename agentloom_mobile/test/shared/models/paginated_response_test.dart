@@ -14,7 +14,7 @@ void main() {
       expect(meta.totalPages, 3);
     });
 
-    test('toJson 输出 snake_case JSON', () {
+    test('toJson 输出 camelCase JSON', () {
       const meta = PaginationMeta(
         total: 10,
         page: 1,
@@ -26,8 +26,8 @@ void main() {
 
       expect(json['total'], 10);
       expect(json['page'], 1);
-      expect(json['page_size'], 5);
-      expect(json['total_pages'], 2);
+      expect(json['pageSize'], 5);
+      expect(json['totalPages'], 2);
     });
   });
 

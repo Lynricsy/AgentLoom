@@ -67,10 +67,10 @@ void main() {
   test('fromJson/toJson 可往返', () {
     const json = {
       'type': 'intervention_required',
-      'execution_id': 'exec-500',
-      'workflow_id': 'wf-500',
-      'node_id': 'node-500',
-      'notification_id': 'notif-500',
+      'executionId': 'exec-500',
+      'workflowId': 'wf-500',
+      'nodeId': 'node-500',
+      'notificationId': 'notif-500',
     };
 
     final payload = PushNotificationPayload.fromJson(json);

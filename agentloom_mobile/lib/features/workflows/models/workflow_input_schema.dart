@@ -2,6 +2,7 @@ import 'package:freezed_annotation/freezed_annotation.dart';
 
 import 'conversation_plan.dart';
 import 'input_field_definition.dart';
+import 'json_compat.dart';
 
 part 'workflow_input_schema.freezed.dart';
 part 'workflow_input_schema.g.dart';
@@ -17,5 +18,13 @@ abstract class WorkflowInputSchema with _$WorkflowInputSchema {
   }) = _WorkflowInputSchema;
 
   factory WorkflowInputSchema.fromJson(Map<String, dynamic> json) =>
-      _$WorkflowInputSchemaFromJson(json);
+      _$WorkflowInputSchemaFromJson(
+        normalizeJsonAliases(
+          json,
+          aliases: const {
+            'collectionMode': ['collection_mode'],
+            'conversationPlan': ['conversation_plan'],
+          },
+        ),
+      );
 }

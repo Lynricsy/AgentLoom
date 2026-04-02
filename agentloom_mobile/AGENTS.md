@@ -18,7 +18,7 @@ AgentLoom Flutter 移动端应用：
 - 执行监控：Socket.IO `/execution` 实时状态 + REST detail 轮询降级，状态头、告警横幅、步骤时间线、断连语义纠正
 - Agent 管理：列表 / 详情 / 对话三屏
 - Agent 对话：`AgentConversationScreen` 为 Shell 外全屏路由，Socket.IO `/agent-conversation` 实时消息推送，按 `message_chunk / thinking / tool_call / tool_result / done / terminal_output / file_change / status.changed` 分段渲染，包含权限审批、终端输出、文件变更与工作区上下文面板
-- 资源域：`ResourcesHubScreen` 统一挂载 `Memory / Skills / Workspaces / Sandboxes / Knowledge Bases / MCP Servers / LLM Models`
+- 资源域：`ResourcesHubScreen` 以无分类统一资源列表挂载 `Memory / Skills / Workspaces / Sandboxes / Knowledge Bases / MCP Servers / LLM Models`
 - 资源管理：
   - `Workspaces / Sandboxes / Knowledge Bases` 已接入真实 CRUD / 详情
   - `MCP Servers` 支持发现、导入、重导入、测试、编辑、删除与工具停用
@@ -80,7 +80,7 @@ flutter test --coverage
 
 ## 测试模式
 
-- **602 个测试** 覆盖 models / api / providers / widgets / screens / routes / auth / execution / dashboard / workflows / notifications / resources
+- **650 个测试** 覆盖 models / api / providers / widgets / screens / routes / auth / execution / dashboard / workflows / notifications / resources
 - Provider 错误测试使用 `container.listen()` + `Completer<void>` 模式避免 Riverpod 3.x dispose `StateError`
 - Widget / Screen 测试使用 `UncontrolledProviderScope` 配合 `ProviderContainer`
 - Mock 使用 `mocktail`，测试工厂函数集中在 `test/helpers/test_helpers.dart`

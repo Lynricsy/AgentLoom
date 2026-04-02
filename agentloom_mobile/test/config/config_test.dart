@@ -31,7 +31,7 @@ void main() {
 
       final config = EnvConfig.fromDotEnv(environment: AppEnvironment.dev);
 
-      expect(config.apiBaseUrl, 'https://api-dev.agentloom.com/api/v1');
+      expect(config.apiBaseUrl, 'https://api-dev.agentloom.com');
       expect(config.studioBaseUrl, 'https://api-dev.agentloom.com');
       expect(config.appName, 'AgentLoom Dev');
       expect(config.environment, AppEnvironment.dev);
@@ -42,7 +42,7 @@ void main() {
 
       final config = EnvConfig.fromDotEnv(environment: AppEnvironment.staging);
 
-      expect(config.apiBaseUrl, 'http://localhost:3000/api/v1');
+      expect(config.apiBaseUrl, 'http://localhost:3000');
       expect(config.studioBaseUrl, 'http://localhost:3000');
       expect(config.appName, 'AgentLoom');
       expect(config.environment, AppEnvironment.staging);
@@ -59,10 +59,10 @@ void main() {
       );
     });
 
-    test('deriveApiBaseUrl keeps sub path deployments', () {
+    test('deriveApiBaseUrl keeps normalized studio base URL', () {
       expect(
         EnvConfig.deriveApiBaseUrl('https://example.com/agentloom'),
-        'https://example.com/agentloom/api/v1',
+        'https://example.com/agentloom',
       );
     });
   });

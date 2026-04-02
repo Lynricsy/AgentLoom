@@ -49,7 +49,7 @@ void main() {
         ],
       );
       final json = original.toJson();
-      expect(json['collection_mode'], 'conversation');
+      expect(json['collectionMode'], 'conversation');
       expect(json['version'], 3);
 
       final restored = WorkflowInputSchema.fromJson(json);
@@ -117,9 +117,9 @@ void main() {
       );
 
       final json = original.toJson();
-      expect(json['conversation_plan'], {
-        'system_prompt': '先确认目标，再继续追问。',
-        'max_turns': 4,
+      expect(json['conversationPlan'], {
+        'systemPrompt': '先确认目标，再继续追问。',
+        'maxTurns': 4,
       });
 
       final restored = WorkflowInputSchema.fromJson(json);

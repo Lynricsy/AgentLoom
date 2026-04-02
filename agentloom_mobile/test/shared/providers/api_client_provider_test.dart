@@ -35,7 +35,7 @@ void main() {
 
     test('base URL matches env config', () {
       final dio = container.read(apiClientProvider);
-      expect(dio.options.baseUrl, 'https://api-dev.agentloom.com/api/v1');
+      expect(dio.options.baseUrl, 'https://api-dev.agentloom.com');
     });
 
     test('connect timeout is 10 seconds', () {
@@ -82,7 +82,7 @@ void main() {
       addTearDown(stagingContainer.dispose);
 
       final dio = stagingContainer.read(apiClientProvider);
-      expect(dio.options.baseUrl, 'https://api-staging.agentloom.com/api/v1');
+      expect(dio.options.baseUrl, 'https://api-staging.agentloom.com');
     });
 
     test('prod env uses prod URL', () {
@@ -100,7 +100,7 @@ void main() {
       addTearDown(prodContainer.dispose);
 
       final dio = prodContainer.read(apiClientProvider);
-      expect(dio.options.baseUrl, 'https://api.agentloom.com/api/v1');
+      expect(dio.options.baseUrl, 'https://api.agentloom.com');
     });
   });
 }

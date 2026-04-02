@@ -59,6 +59,7 @@ void main() {
           description: 'Detail description',
           status: 'published',
           version: 3,
+          publishedReleaseNumber: 3,
         ),
       );
       when(

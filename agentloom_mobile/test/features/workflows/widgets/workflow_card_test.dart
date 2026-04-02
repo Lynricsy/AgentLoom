@@ -58,8 +58,11 @@ void main() {
       expect(find.text('A test workflow description'), findsNothing);
     });
 
-    testWidgets('renders version', (tester) async {
-      final workflow = createTestWorkflow(version: 3);
+    testWidgets('renders published release number', (tester) async {
+      final workflow = createTestWorkflow(
+        version: 3,
+        publishedReleaseNumber: 3,
+      );
 
       await tester.pumpWidget(
         MaterialApp(

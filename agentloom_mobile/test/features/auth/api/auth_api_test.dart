@@ -21,7 +21,7 @@ void main() {
     test('正常登录返回 AuthLoginSuccess', () async {
       when(
         () => mockDio.post<Map<String, dynamic>>(
-          '/auth/login',
+          '/api/v1/auth/login',
           data: {'email': 'fox@test.com', 'password': 'pass123'},
         ),
       ).thenAnswer(
@@ -59,7 +59,7 @@ void main() {
     test('MFA 分支 (camelCase) 返回 AuthLoginMfaRequired', () async {
       when(
         () => mockDio.post<Map<String, dynamic>>(
-          '/auth/login',
+          '/api/v1/auth/login',
           data: {'email': 'mfa@test.com', 'password': 'pass'},
         ),
       ).thenAnswer(
@@ -90,7 +90,7 @@ void main() {
     test('MFA 分支 (snake_case) 返回 AuthLoginMfaRequired', () async {
       when(
         () => mockDio.post<Map<String, dynamic>>(
-          '/auth/login',
+          '/api/v1/auth/login',
           data: {'email': 'mfa@test.com', 'password': 'pass'},
         ),
       ).thenAnswer(
@@ -118,7 +118,7 @@ void main() {
     test('网络错误时抛出 DioException', () async {
       when(
         () => mockDio.post<Map<String, dynamic>>(
-          '/auth/login',
+          '/api/v1/auth/login',
           data: any(named: 'data'),
         ),
       ).thenThrow(
@@ -136,7 +136,7 @@ void main() {
     test('注册成功返回 AuthRegisterSuccess', () async {
       when(
         () => mockDio.post<Map<String, dynamic>>(
-          '/auth/register',
+          '/api/v1/auth/register',
           data: {
             'email': 'new@test.com',
             'password': 'pass123',
@@ -175,7 +175,7 @@ void main() {
     test('注册需要邮箱确认返回 AuthRegisterEmailConfirmation', () async {
       when(
         () => mockDio.post<Map<String, dynamic>>(
-          '/auth/register',
+          '/api/v1/auth/register',
           data: {'email': 'confirm@test.com', 'password': 'pass'},
         ),
       ).thenAnswer(
@@ -196,7 +196,7 @@ void main() {
     test('不传 displayName 时请求体不包含该字段', () async {
       when(
         () => mockDio.post<Map<String, dynamic>>(
-          '/auth/register',
+          '/api/v1/auth/register',
           data: {'email': 'no-name@test.com', 'password': 'pass'},
         ),
       ).thenAnswer(
@@ -220,7 +220,7 @@ void main() {
 
       final captured = verify(
         () => mockDio.post<Map<String, dynamic>>(
-          '/auth/register',
+          '/api/v1/auth/register',
           data: captureAny(named: 'data'),
         ),
       ).captured;
@@ -234,7 +234,7 @@ void main() {
     test('刷新成功返回新 AuthTokens', () async {
       when(
         () => mockDio.post<Map<String, dynamic>>(
-          '/auth/refresh',
+          '/api/v1/auth/refresh',
           data: {'refresh_token': 'old-rt'},
         ),
       ).thenAnswer(
@@ -263,7 +263,7 @@ void main() {
     test('刷新失败时抛出 DioException', () async {
       when(
         () => mockDio.post<Map<String, dynamic>>(
-          '/auth/refresh',
+          '/api/v1/auth/refresh',
           data: {'refresh_token': 'expired-rt'},
         ),
       ).thenThrow(
@@ -282,7 +282,10 @@ void main() {
     test('登出发送正确的 Authorization header', () async {
       when(
         () =>
-            mockDio.post<void>('/auth/logout', options: any(named: 'options')),
+            mockDio.post<void>(
+              '/api/v1/auth/logout',
+              options: any(named: 'options'),
+            ),
       ).thenAnswer(
         (_) async => Response(statusCode: 204, requestOptions: reqOpts()),
       );
@@ -291,7 +294,7 @@ void main() {
 
       final captured = verify(
         () => mockDio.post<void>(
-          '/auth/logout',
+          '/api/v1/auth/logout',
           options: captureAny(named: 'options'),
         ),
       ).captured;
@@ -305,7 +308,7 @@ void main() {
     test('返回服务端提供的 OAuth 跳转 URL', () async {
       when(
         () => mockDio.post<Map<String, dynamic>>(
-          '/auth/oauth/google',
+          '/api/v1/auth/oauth/google',
           data: {'redirect_url': null, 'platform': 'mobile'},
         ),
       ).thenAnswer(
@@ -329,7 +332,7 @@ void main() {
     test('兼容 redirect_url 字段名', () async {
       when(
         () => mockDio.post<Map<String, dynamic>>(
-          '/auth/oauth/github',
+          '/api/v1/auth/oauth/github',
           data: {'redirect_url': null, 'platform': 'mobile'},
         ),
       ).thenAnswer(
@@ -353,7 +356,7 @@ void main() {
     test('响应中无 URL 字段时返回空字符串', () async {
       when(
         () => mockDio.post<Map<String, dynamic>>(
-          '/auth/oauth/google',
+          '/api/v1/auth/oauth/google',
           data: {'redirect_url': null, 'platform': 'mobile'},
         ),
       ).thenAnswer(
@@ -372,7 +375,7 @@ void main() {
     test('网络错误时抛出 DioException', () async {
       when(
         () => mockDio.post<Map<String, dynamic>>(
-          '/auth/oauth/google',
+          '/api/v1/auth/oauth/google',
           data: any(named: 'data'),
         ),
       ).thenThrow(

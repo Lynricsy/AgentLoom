@@ -77,7 +77,7 @@ void main() {
       await tester.tap(find.text('设置'));
       await tester.pumpAndSettle();
 
-      expect(find.widgetWithText(AppBar, '设置'), findsOneWidget);
+      expect(find.widgetWithText(AppBar, 'Settings'), findsOneWidget);
     });
 
     testWidgets('can navigate back to /dashboard from /workflows', (
