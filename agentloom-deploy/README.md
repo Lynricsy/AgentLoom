@@ -66,7 +66,7 @@ cp agentloom-deploy/.env.template agentloom-deploy/.env
 
 `agentloom-deploy/docker-compose.yml` 会启动这些服务：
 
-- `reverse-proxy`：唯一对外入口，转发 `/api/`、`/socket.io/` 到 `server`，其余路径到 `studio`
+- `reverse-proxy`：唯一对外入口，转发 `/api/`、`/socket.io/` 到 `server`，`/auth/` 到 `supabase-kong`，其余路径到 `studio`
 - `studio`：前端静态站点，默认使用 `VITE_API_BASE_URL=/api/v1`
 - `server`：对外 API / Socket.IO 暴露点，同时也会处理队列
 - `worker`：内部-only 部署单元，**仍然运行完整的 `node dist/src/main.js`**，并非 worker-only 进程
@@ -78,6 +78,7 @@ cp agentloom-deploy/.env.template agentloom-deploy/.env
 ### 单机部署资源与网络基线
 
 - 最小建议：4 vCPU / 8 GiB RAM / 100 GiB SSD；若要在同一主机上同时保留 7 天 PostgreSQL + MinIO 备份，建议预留额外 100 GiB 以上备份盘空间。
+- `reverse-proxy` 当前使用 Docker embedded DNS（`127.0.0.11`）做运行时上游解析，避免 `server` / `studio` / `docs` / `supabase-kong` 在 Compose 重建后换 IP 时，Nginx 继续把流量打到旧容器地址。
 - 对外只暴露 `NGINX_HTTP_PORT`（默认 `8080`）；MinIO Console（默认 `127.0.0.1:9001`）与 Qdrant HTTP（默认 `127.0.0.1:6333`）只绑定回环地址，供运维跳板机或 SSH 隧道使用。
 - 如需正式域名 / TLS，优先在外层 LB 或反向代理终止 TLS，并把 `APP_FRONTEND_URL`、`APP_OAUTH_REDIRECT_URL` 与 `PUBLIC_BASE_URL` 改成企业域名；若直接使用当前 `nginx.conf`，则应在进入生产前替换为带证书的企业反向代理配置。
 
