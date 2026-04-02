@@ -1,81 +1,106 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 import { ProviderIcon } from '../ProviderIcon'
 
 vi.mock('lucide-react', () => ({
-  Sparkles: ({ className, size }: { className?: string; size?: number }) => (
-    <svg data-testid="icon-sparkles" className={className} width={size} height={size} />
-  ),
   Bot: ({ className, size }: { className?: string; size?: number }) => (
     <svg data-testid="icon-bot" className={className} width={size} height={size} />
-  ),
-  Globe: ({ className, size }: { className?: string; size?: number }) => (
-    <svg data-testid="icon-globe" className={className} width={size} height={size} />
-  ),
-  Search: ({ className, size }: { className?: string; size?: number }) => (
-    <svg data-testid="icon-search" className={className} width={size} height={size} />
-  ),
-  Settings: ({ className, size }: { className?: string; size?: number }) => (
-    <svg data-testid="icon-settings" className={className} width={size} height={size} />
-  ),
-  Server: ({ className, size }: { className?: string; size?: number }) => (
-    <svg data-testid="icon-server" className={className} width={size} height={size} />
   ),
 }))
 
 describe('ProviderIcon', () => {
-  it('openai 渲染 Sparkles 图标', () => {
-    render(<ProviderIcon provider="openai" />)
-    expect(screen.getByTestId('icon-sparkles')).toBeInTheDocument()
+  it('slug prop builds lobehub CDN URL', () => {
+    render(<ProviderIcon slug="openai" />)
+    const img = screen.getByRole('img')
+    expect(img).toHaveAttribute(
+      'src',
+      'https://icons.lobehub.com/icons/openai/color.svg',
+    )
+    expect(img).toHaveAttribute('alt', 'openai')
   })
 
-  it('anthropic 渲染 Bot 图标', () => {
+  it('deprecated provider prop still works', () => {
     render(<ProviderIcon provider="anthropic" />)
+    const img = screen.getByRole('img')
+    expect(img).toHaveAttribute(
+      'src',
+      'https://icons.lobehub.com/icons/anthropic/color.svg',
+    )
+    expect(img).toHaveAttribute('alt', 'anthropic')
+  })
+
+  it('slug takes precedence over provider', () => {
+    render(<ProviderIcon slug="deepseek" provider="openai" />)
+    const img = screen.getByRole('img')
+    expect(img).toHaveAttribute(
+      'src',
+      'https://icons.lobehub.com/icons/deepseek/color.svg',
+    )
+  })
+
+  it('iconUrl overrides the CDN URL', () => {
+    render(<ProviderIcon slug="custom" iconUrl="https://example.com/icon.svg" />)
+    const img = screen.getByRole('img')
+    expect(img).toHaveAttribute('src', 'https://example.com/icon.svg')
+  })
+
+  it('falls back to Bot icon on image load error', () => {
+    render(<ProviderIcon slug="nonexistent" />)
+    const img = screen.getByRole('img')
+    fireEvent.error(img)
     expect(screen.getByTestId('icon-bot')).toBeInTheDocument()
+    expect(screen.queryByRole('img')).not.toBeInTheDocument()
   })
 
-  it('google 渲染 Globe 图标', () => {
-    render(<ProviderIcon provider="google" />)
-    expect(screen.getByTestId('icon-globe')).toBeInTheDocument()
+  it('default size is 20', () => {
+    render(<ProviderIcon slug="openai" />)
+    const img = screen.getByRole('img')
+    expect(img).toHaveAttribute('width', '20')
+    expect(img).toHaveAttribute('height', '20')
   })
 
-  it('deepseek 渲染 Search 图标', () => {
-    render(<ProviderIcon provider="deepseek" />)
-    expect(screen.getByTestId('icon-search')).toBeInTheDocument()
+  it('custom size is applied', () => {
+    render(<ProviderIcon slug="openai" size={32} />)
+    const img = screen.getByRole('img')
+    expect(img).toHaveAttribute('width', '32')
+    expect(img).toHaveAttribute('height', '32')
   })
 
-  it('custom 渲染 Settings 图标', () => {
-    render(<ProviderIcon provider="custom" />)
-    expect(screen.getByTestId('icon-settings')).toBeInTheDocument()
+  it('custom className is applied', () => {
+    render(<ProviderIcon slug="openai" className="text-blue-400" />)
+    const img = screen.getByRole('img')
+    expect(img).toHaveClass('text-blue-400')
   })
 
-  it('private_cloud 渲染 Server 图标', () => {
-    render(<ProviderIcon provider="private_cloud" />)
-    expect(screen.getByTestId('icon-server')).toBeInTheDocument()
+  it('fallback Bot icon receives className', () => {
+    render(<ProviderIcon slug="bad" className="text-red-500" />)
+    fireEvent.error(screen.getByRole('img'))
+    const bot = screen.getByTestId('icon-bot')
+    expect(bot).toHaveClass('text-red-500')
   })
 
-  it('未知 provider 回退到 Settings 图标', () => {
-    render(<ProviderIcon provider={'unknown_provider' as never} />)
-    expect(screen.getByTestId('icon-settings')).toBeInTheDocument()
+  it('resolves to "unknown" when neither slug nor provider given', () => {
+    render(<ProviderIcon />)
+    const img = screen.getByRole('img')
+    expect(img).toHaveAttribute(
+      'src',
+      'https://icons.lobehub.com/icons/unknown/color.svg',
+    )
+    expect(img).toHaveAttribute('alt', 'unknown')
   })
 
-  it('自定义 size 属性生效', () => {
-    render(<ProviderIcon provider="openai" size={24} />)
-    const icon = screen.getByTestId('icon-sparkles')
-    expect(icon).toHaveAttribute('width', '24')
-    expect(icon).toHaveAttribute('height', '24')
+  it('null iconUrl falls back to CDN URL', () => {
+    render(<ProviderIcon slug="google" iconUrl={null} />)
+    const img = screen.getByRole('img')
+    expect(img).toHaveAttribute(
+      'src',
+      'https://icons.lobehub.com/icons/google/color.svg',
+    )
   })
 
-  it('自定义 className 属性生效', () => {
-    render(<ProviderIcon provider="private_cloud" className="text-blue-400" />)
-    const icon = screen.getByTestId('icon-server')
-    expect(icon).toHaveClass('text-blue-400')
-  })
-
-  it('默认 size 为 16', () => {
-    render(<ProviderIcon provider="google" />)
-    const icon = screen.getByTestId('icon-globe')
-    expect(icon).toHaveAttribute('width', '16')
-    expect(icon).toHaveAttribute('height', '16')
+  it('img has lazy loading attribute', () => {
+    render(<ProviderIcon slug="openai" />)
+    const img = screen.getByRole('img')
+    expect(img).toHaveAttribute('loading', 'lazy')
   })
 })

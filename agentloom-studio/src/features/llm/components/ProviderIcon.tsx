@@ -1,27 +1,47 @@
-import { memo } from 'react'
-import { Bot, Globe, Search, Server, Settings, Sparkles, type LucideIcon } from 'lucide-react'
-import type { LlmProvider } from '../types'
+import { memo, useState } from 'react'
+import { Bot } from 'lucide-react'
+import { cn } from '@/shared/lib/utils'
 
-const PROVIDER_ICONS: Record<LlmProvider, LucideIcon> = {
-  openai: Sparkles,
-  anthropic: Bot,
-  google: Globe,
-  deepseek: Search,
-  custom: Settings,
-  private_cloud: Server,
-}
+const LOBEHUB_ICON_BASE = 'https://icons.lobehub.com/icons'
 
 interface ProviderIconProps {
-  provider: LlmProvider
-  className?: string
+  /** Provider slug (e.g., 'openai', 'anthropic') -- used to build lobehub CDN URL */
+  slug?: string
+  /** @deprecated Use `slug` instead */
+  provider?: string
+  /** Custom icon URL -- if provided, overrides the lobehub CDN URL */
+  iconUrl?: string | null
+  /** Icon size in pixels (default: 20) */
   size?: number
+  /** Additional CSS classes */
+  className?: string
 }
 
 export const ProviderIcon = memo(function ProviderIcon({
+  slug,
   provider,
+  iconUrl,
+  size = 20,
   className,
-  size = 16,
 }: ProviderIconProps) {
-  const Icon = PROVIDER_ICONS[provider] ?? Settings
-  return <Icon className={className} size={size} />
+  const [hasError, setHasError] = useState(false)
+
+  const resolvedSlug = slug ?? provider ?? 'unknown'
+  const src = iconUrl ?? `${LOBEHUB_ICON_BASE}/${resolvedSlug}/color.svg`
+
+  if (hasError) {
+    return <Bot size={size} className={cn('text-muted-foreground', className)} />
+  }
+
+  return (
+    <img
+      src={src}
+      alt={resolvedSlug}
+      width={size}
+      height={size}
+      className={cn('shrink-0', className)}
+      onError={() => setHasError(true)}
+      loading="lazy"
+    />
+  )
 })

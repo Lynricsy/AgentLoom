@@ -22,7 +22,6 @@ import {
   DEFAULT_LLM_PARAMETERS,
   getProviderInfo,
   LLM_PROVIDERS,
-  LLM_PROVIDER_IDS,
   parseLlmModelConfig,
   toLlmModelConfig,
   type ApiKeyInfo,
@@ -46,7 +45,7 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3
 
 const llmModelFormSchema = z.object({
   name: z.string().trim().min(1, '请输入配置名称').max(100, '配置名称不能超过 100 个字符'),
-  provider: z.enum(LLM_PROVIDER_IDS),
+  provider: z.string().min(1, '请选择 Provider'),
   modelName: z.string().trim().min(1, '请选择模型'),
   apiKeyId: z.union([z.literal(''), z.string().trim().regex(UUID_PATTERN, '请选择有效的 API Key')]),
   temperature: z.number().min(0, 'Temperature 不能小于 0').max(2, 'Temperature 不能大于 2'),

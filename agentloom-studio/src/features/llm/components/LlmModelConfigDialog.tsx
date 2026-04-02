@@ -27,7 +27,6 @@ import {
   getProviderInfo,
   LLM_MODEL_TYPES,
   LLM_PROVIDERS,
-  LLM_PROVIDER_IDS,
   type CreateLlmModelInput,
   type LlmModelInfo,
   type LlmProvider,
@@ -46,7 +45,7 @@ const EMBEDDING_PROVIDER_IDS = new Set<LlmProvider>(['openai', 'private_cloud'])
 
 const dialogFormSchema = z.object({
   name: z.string().trim().min(1, '请输入配置名称').max(100, '配置名称不能超过 100 个字符'),
-  provider: z.enum(LLM_PROVIDER_IDS),
+  provider: z.string().min(1, '请选择 Provider'),
   modelType: z.enum(LLM_MODEL_TYPES),
   modelName: z.string().trim().min(1, '请选择或输入模型名称'),
   apiKeyId: z.union([z.literal(''), z.string().trim().regex(UUID_PATTERN, '请选择有效的 API Key')]),

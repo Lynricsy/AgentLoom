@@ -4,14 +4,13 @@ import { FormProvider, useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import type { ReactNode } from 'react'
-import { LLM_PROVIDER_IDS } from '../../types'
 import { PrivateCloudConfigSection } from '../PrivateCloudConfigSection'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
 const formSchema = z.object({
   name: z.string().min(1),
-  provider: z.enum(LLM_PROVIDER_IDS),
+  provider: z.string().min(1),
   modelName: z.string(),
   apiKeyId: z.union([z.literal(''), z.string().regex(UUID_PATTERN)]),
   temperature: z.number(),
