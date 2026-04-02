@@ -93,6 +93,7 @@ PG 备份完成后自动执行 `pg_restore --list` 结构校验，避免产生�
 - **共享**：`APP_DEPLOYMENT_MODE`、`APP_DATABASE_URL`、`APP_REDIS_URL`、`APP_MINIO_*`、`APP_QDRANT_URL`
 - **Server 专属**：`APP_JWT_SECRET`、`APP_MASTER_ENCRYPTION_KEY`（32 字节 Base64）、`APP_SUPABASE_*`（private 模式可全留空）、`APP_PRIVATE_DEPLOYMENT_LICENSE_PUBLIC_KEY`
 - **Studio 专属**：`VITE_API_BASE_URL`、`VITE_AUTOSAVE_DEBOUNCE_MS`
+- **Supabase 资源调优**：`SUPABASE_AUTH_CPU_LIMIT`、`SUPABASE_AUTH_MEMORY_LIMIT`、`SUPABASE_KONG_CPU_LIMIT`、`SUPABASE_KONG_MEMORY_LIMIT`、`SUPABASE_KONG_HEALTHCHECK_TIMEOUT`、`SUPABASE_KONG_HEALTHCHECK_RETRIES`、`SUPABASE_KONG_HEALTHCHECK_START_PERIOD`
 - **运维**：`POSTGRES_BACKUP_RETENTION_DAYS`、`MINIO_BACKUP_RETENTION_DAYS`（默认均为 7）
 
 `envs/` 下提供按职责拆分的三份 example 文件，变量名与根模板一致。
@@ -192,6 +193,7 @@ docker compose down -v         # 停止并移除容器+卷（完全重置数据�
 - systemd timer 仅适用于单机 Compose 部署；Kubernetes 环境需另行配置 CronJob
 - `docker/docker-compose.prod.yml` 与根 `docker-compose.yml` 存在重复，根文件为主入口
 - private 模式下 `APP_SUPABASE_*` 三个变量遵循"全空或全填"契约，全空时 Supabase 相关认证链路不可用
+- `docker-compose.supabase.yml` 中 `supabase-auth` 与 `supabase-kong` 的资源限制现通过 env 变量控制；当前默认基线为 Auth `1 CPU / 1GiB`、Kong `1 CPU / 1GiB`，Kong healthcheck 为 `kong health`，`timeout=10s`、`retries=10`、`start_period=30s`
 
 ## 沙箱容器 (sandbox/)
 

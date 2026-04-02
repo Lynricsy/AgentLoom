@@ -43,8 +43,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '1'
-          memory: 512M
+          cpus: '${SUPABASE_AUTH_CPU_LIMIT:-1}'
+          memory: ${SUPABASE_AUTH_MEMORY_LIMIT:-1G}
     healthcheck:
       test: ['CMD', 'wget', '--spider', '-q', 'http://localhost:9999/health']
       interval: 10s
@@ -75,14 +75,14 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '0.5'
-          memory: 256M
+          cpus: '${SUPABASE_KONG_CPU_LIMIT:-1}'
+          memory: ${SUPABASE_KONG_MEMORY_LIMIT:-1G}
     healthcheck:
       test: ['CMD', 'kong', 'health']
       interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 15s
+      timeout: ${SUPABASE_KONG_HEALTHCHECK_TIMEOUT:-10s}
+      retries: ${SUPABASE_KONG_HEALTHCHECK_RETRIES:-10}
+      start_period: ${SUPABASE_KONG_HEALTHCHECK_START_PERIOD:-30s}
 
   supabase-db-ready:
     image: ${POSTGRES_IMAGE:-postgres:16-alpine}

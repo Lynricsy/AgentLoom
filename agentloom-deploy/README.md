@@ -92,6 +92,7 @@ cp agentloom-deploy/.env.template agentloom-deploy/.env
 - 应用健康：`GET /api/v1/health`，返回 `{ status: 'ok', timestamp }`
 - 反向代理健康：`GET /healthz`
 - Compose 中还对 PostgreSQL、Redis、MinIO、Studio、Server/Worker 加了容器级 healthcheck
+- 使用 `docker-compose.supabase.yml` 时，`supabase-auth` 与 `supabase-kong` 也带容器级 healthcheck；当前默认基线为 Auth `1 CPU / 1 GiB`、Kong `1 CPU / 1 GiB`，并把 `kong health` timeout 放宽到 `10s`
 
 ## Compose 快速启动
 
@@ -112,6 +113,16 @@ cp agentloom-deploy/.env.template agentloom-deploy/.env
 此外，当前沙箱生命周期会由 `server` / `worker` 直接通过宿主 Docker daemon 拉起 `agentloom/sandbox:latest`，因此 `.env` 里还需要设置：
 
 - `HOST_DOCKER_GID=$(stat -c '%g' /var/run/docker.sock)`
+
+如果自托管 Supabase 需要承受更高认证流量，或宿主资源充足，也可以在 `.env` 中继续调大：
+
+- `SUPABASE_AUTH_CPU_LIMIT`
+- `SUPABASE_AUTH_MEMORY_LIMIT`
+- `SUPABASE_KONG_CPU_LIMIT`
+- `SUPABASE_KONG_MEMORY_LIMIT`
+- `SUPABASE_KONG_HEALTHCHECK_TIMEOUT`
+- `SUPABASE_KONG_HEALTHCHECK_RETRIES`
+- `SUPABASE_KONG_HEALTHCHECK_START_PERIOD`
 
 其中 `APP_MASTER_ENCRYPTION_KEY` 必须是 **32 字节 Base64**，例如：
 
