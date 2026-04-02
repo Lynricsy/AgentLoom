@@ -362,6 +362,18 @@ class ResourcesApi {
     ).map(LlmModelInfoDto.fromJson).toList(growable: false);
   }
 
+  Future<List<LlmModelConfigDto>> listLlmModelConfigs() async {
+    final response = await _dio.get('/api/v1/llm-models');
+    return _unwrapListEnvelope(
+      response,
+    ).map(LlmModelConfigDto.fromJson).toList(growable: false);
+  }
+
+  Future<LlmModelConfigDto> getLlmModelConfig(String modelId) async {
+    final response = await _dio.get('/api/v1/llm-models/$modelId');
+    return LlmModelConfigDto.fromJson(_unwrapDataEnvelope(response));
+  }
+
   Future<LlmModelInfoDto> getLlmModel(String modelId) async {
     final response = await _dio.get('/api/v1/llm-models/$modelId');
     return LlmModelInfoDto.fromJson(_unwrapDataEnvelope(response));
@@ -372,6 +384,287 @@ class ResourcesApi {
     return _unwrapListEnvelope(
       response,
     ).map(LlmProviderInfoDto.fromJson).toList(growable: false);
+  }
+
+  // -----------------------------------------------------------------------
+  // Provider CRUD (两级架构 API)
+  // -----------------------------------------------------------------------
+
+  Future<List<LlmProviderEntityDto>> listLlmProviderEntities() async {
+    final response = await _dio.get('/api/v1/llm-providers');
+    return _unwrapListEnvelope(
+      response,
+    ).map(LlmProviderEntityDto.fromJson).toList(growable: false);
+  }
+
+  Future<LlmProviderEntityDto> getLlmProviderEntity(String id) async {
+    final response = await _dio.get('/api/v1/llm-providers/$id');
+    return LlmProviderEntityDto.fromJson(_unwrapDataEnvelope(response));
+  }
+
+  Future<LlmProviderEntityDto> createLlmProvider({
+    required String name,
+    required String baseUrl,
+    String? slug,
+    String apiProtocol = 'openai_chat',
+    String? apiKeyId,
+    String? iconUrl,
+    int? sortOrder,
+    bool? isEnabled,
+  }) async {
+    final response = await _dio.post(
+      '/api/v1/llm-providers',
+      data: {
+        'name': name.trim(),
+        'baseUrl': baseUrl.trim(),
+        if (slug != null && slug.trim().isNotEmpty) 'slug': slug.trim(),
+        'apiProtocol': apiProtocol,
+        if (apiKeyId != null && apiKeyId.isNotEmpty) 'apiKeyId': apiKeyId,
+        if (iconUrl != null && iconUrl.trim().isNotEmpty)
+          'iconUrl': iconUrl.trim(),
+        if (sortOrder != null) 'sortOrder': sortOrder,
+        if (isEnabled != null) 'isEnabled': isEnabled,
+      },
+    );
+    return LlmProviderEntityDto.fromJson(_unwrapDataEnvelope(response));
+  }
+
+  Future<LlmProviderEntityDto> updateLlmProvider(
+    String id, {
+    String? name,
+    String? baseUrl,
+    bool clearBaseUrl = false,
+    String? apiProtocol,
+    String? apiKeyId,
+    bool clearApiKeyId = false,
+    String? iconUrl,
+    int? sortOrder,
+    bool? isEnabled,
+  }) async {
+    final payload = <String, dynamic>{};
+    if (name != null) {
+      payload['name'] = name.trim();
+    }
+    if (clearBaseUrl) {
+      payload['baseUrl'] = null;
+    } else if (baseUrl != null) {
+      payload['baseUrl'] = baseUrl.trim().isEmpty ? null : baseUrl.trim();
+    }
+    if (apiProtocol != null) {
+      payload['apiProtocol'] = apiProtocol;
+    }
+    if (clearApiKeyId) {
+      payload['apiKeyId'] = null;
+    } else if (apiKeyId != null) {
+      payload['apiKeyId'] = apiKeyId;
+    }
+    if (iconUrl != null) {
+      payload['iconUrl'] = iconUrl.trim().isEmpty ? null : iconUrl.trim();
+    }
+    if (sortOrder != null) {
+      payload['sortOrder'] = sortOrder;
+    }
+    if (isEnabled != null) {
+      payload['isEnabled'] = isEnabled;
+    }
+    final response = await _dio.patch(
+      '/api/v1/llm-providers/$id',
+      data: payload,
+    );
+    return LlmProviderEntityDto.fromJson(_unwrapDataEnvelope(response));
+  }
+
+  Future<void> deleteLlmProvider(String id) async {
+    await _dio.delete('/api/v1/llm-providers/$id');
+  }
+
+  Future<LlmProviderEntityDto> resetLlmProviderBaseUrl(String id) async {
+    final response = await _dio.post(
+      '/api/v1/llm-providers/$id/reset-base-url',
+    );
+    return LlmProviderEntityDto.fromJson(_unwrapDataEnvelope(response));
+  }
+
+  Future<TestLlmConnectionResultDto> testLlmProviderConnection(
+    String id, {
+    int? timeoutMs,
+  }) async {
+    final response = await _dio.post(
+      '/api/v1/llm-providers/$id/test-connection',
+      data: {
+        if (timeoutMs != null) 'timeoutMs': timeoutMs,
+      },
+    );
+    return TestLlmConnectionResultDto.fromJson(_unwrapDataEnvelope(response));
+  }
+
+  Future<List<PrivateCloudModelInfoDto>> discoverLlmProviderModels(
+    String id,
+  ) async {
+    final response = await _dio.post(
+      '/api/v1/llm-providers/$id/discover-models',
+    );
+    return _unwrapListEnvelope(
+      response,
+    ).map(PrivateCloudModelInfoDto.fromJson).toList(growable: false);
+  }
+
+  Future<List<LiteLLMModelInfoDto>> searchLlmProviderLiteLLMModels(
+    String id,
+  ) async {
+    final response = await _dio.get(
+      '/api/v1/llm-providers/$id/litellm-models',
+    );
+    return _unwrapListEnvelope(
+      response,
+    ).map(LiteLLMModelInfoDto.fromJson).toList(growable: false);
+  }
+
+  Future<LiteLLMModelInfoDto?> lookupModelMetadata(
+    String providerSlug,
+    String modelId,
+  ) async {
+    final response = await _dio.get(
+      '/api/v1/llm-providers/metadata/lookup',
+      queryParameters: {
+        'providerSlug': providerSlug,
+        'modelId': modelId,
+      },
+    );
+    final body = response.data as Map<String, dynamic>;
+    final data = body['data'];
+    if (data == null) {
+      return null;
+    }
+    if (data is Map<String, dynamic>) {
+      return LiteLLMModelInfoDto.fromJson(data);
+    }
+    return null;
+  }
+
+  // -----------------------------------------------------------------------
+  // Model Config CRUD (新版, 使用 providerId + modelId)
+  // -----------------------------------------------------------------------
+
+  Future<LlmModelConfigDto> createLlmModelConfig({
+    required String name,
+    required String providerId,
+    required String modelId,
+    String modelType = 'chat',
+    bool isDefault = false,
+    bool isEnabled = true,
+    ModelCapabilitiesDto? capabilities,
+    int? contextWindow,
+    int? maxOutputTokens,
+    ModelPricingDto? pricing,
+    Map<String, dynamic>? parameters,
+    int? embeddingDimensions,
+    int? timeoutMs,
+  }) async {
+    final response = await _dio.post(
+      '/api/v1/llm-models',
+      data: {
+        'name': name.trim(),
+        'providerId': providerId,
+        'modelId': modelId.trim(),
+        'modelType': modelType,
+        'isDefault': isDefault,
+        'isEnabled': isEnabled,
+        if (capabilities != null) 'capabilities': capabilities.toJson(),
+        if (contextWindow != null) 'contextWindow': contextWindow,
+        if (maxOutputTokens != null) 'maxOutputTokens': maxOutputTokens,
+        if (pricing != null) 'pricing': pricing.toJson(),
+        if (parameters != null && parameters.isNotEmpty)
+          'parameters': parameters,
+        if (embeddingDimensions != null)
+          'embeddingDimensions': embeddingDimensions,
+        if (timeoutMs != null) 'timeoutMs': timeoutMs,
+      },
+    );
+    return LlmModelConfigDto.fromJson(_unwrapDataEnvelope(response));
+  }
+
+  Future<LlmModelConfigDto> updateLlmModelConfig(
+    String id, {
+    String? name,
+    String? providerId,
+    String? modelId,
+    String? modelType,
+    bool? isDefault,
+    bool? isEnabled,
+    ModelCapabilitiesDto? capabilities,
+    int? contextWindow,
+    bool clearContextWindow = false,
+    int? maxOutputTokens,
+    bool clearMaxOutputTokens = false,
+    ModelPricingDto? pricing,
+    bool clearPricing = false,
+    Map<String, dynamic>? parameters,
+    int? embeddingDimensions,
+    bool clearEmbeddingDimensions = false,
+    int? timeoutMs,
+    bool clearTimeoutMs = false,
+  }) async {
+    final payload = <String, dynamic>{};
+    if (name != null) {
+      payload['name'] = name.trim();
+    }
+    if (providerId != null) {
+      payload['providerId'] = providerId;
+    }
+    if (modelId != null) {
+      payload['modelId'] = modelId.trim();
+    }
+    if (modelType != null) {
+      payload['modelType'] = modelType;
+    }
+    if (isDefault != null) {
+      payload['isDefault'] = isDefault;
+    }
+    if (isEnabled != null) {
+      payload['isEnabled'] = isEnabled;
+    }
+    if (capabilities != null) {
+      payload['capabilities'] = capabilities.toJson();
+    }
+    if (clearContextWindow) {
+      payload['contextWindow'] = null;
+    } else if (contextWindow != null) {
+      payload['contextWindow'] = contextWindow;
+    }
+    if (clearMaxOutputTokens) {
+      payload['maxOutputTokens'] = null;
+    } else if (maxOutputTokens != null) {
+      payload['maxOutputTokens'] = maxOutputTokens;
+    }
+    if (clearPricing) {
+      payload['pricing'] = null;
+    } else if (pricing != null) {
+      payload['pricing'] = pricing.toJson();
+    }
+    if (parameters != null) {
+      payload['parameters'] = parameters;
+    }
+    if (clearEmbeddingDimensions) {
+      payload['embeddingDimensions'] = null;
+    } else if (embeddingDimensions != null) {
+      payload['embeddingDimensions'] = embeddingDimensions;
+    }
+    if (clearTimeoutMs) {
+      payload['timeoutMs'] = null;
+    } else if (timeoutMs != null) {
+      payload['timeoutMs'] = timeoutMs;
+    }
+
+    final response = await _dio.patch(
+      '/api/v1/llm-models/$id',
+      data: payload,
+    );
+    return LlmModelConfigDto.fromJson(_unwrapDataEnvelope(response));
+  }
+
+  Future<void> deleteLlmModelConfig(String id) async {
+    await _dio.delete('/api/v1/llm-models/$id');
   }
 
   Future<LlmModelInfoDto> createLlmModel({

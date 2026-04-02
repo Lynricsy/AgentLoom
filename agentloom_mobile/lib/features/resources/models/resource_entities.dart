@@ -84,6 +84,14 @@ const List<String> llmProviderIds = <String>[
   'private_cloud',
 ];
 
+const List<String> llmApiProtocols = <String>[
+  'openai_chat',
+  'openai_responses',
+  'anthropic',
+  'google',
+  'cohere',
+];
+
 const List<String> llmModelTypes = <String>['chat', 'embedding'];
 
 const List<String> llmAuthMethods = <String>['api_key', 'mtls', 'none'];
@@ -1027,4 +1035,261 @@ class PrivateCloudModelInfoDto {
   final String id;
   final String name;
   final String? ownedBy;
+}
+
+// ---------------------------------------------------------------------------
+// Provider → Model 两级架构 DTO
+// ---------------------------------------------------------------------------
+
+/// LLM 提供商实体 DTO
+class LlmProviderEntityDto {
+  const LlmProviderEntityDto({
+    required this.id,
+    required this.orgId,
+    required this.tenantId,
+    required this.slug,
+    required this.name,
+    required this.isBuiltin,
+    required this.isEnabled,
+    required this.apiProtocol,
+    required this.sortOrder,
+    required this.createdAt,
+    required this.updatedAt,
+    this.iconUrl,
+    this.baseUrl,
+    this.defaultBaseUrl,
+    this.apiKeyId,
+  });
+
+  factory LlmProviderEntityDto.fromJson(Map<String, dynamic> json) {
+    return LlmProviderEntityDto(
+      id: _readValue(json, 'id') as String? ?? '',
+      orgId: _readValue(json, 'orgId') as String? ?? '',
+      tenantId: _readValue(json, 'tenantId') as String? ?? '',
+      slug: _readValue(json, 'slug') as String? ?? '',
+      name: _readValue(json, 'name') as String? ?? '',
+      iconUrl: _readValue(json, 'iconUrl') as String?,
+      baseUrl: _readValue(json, 'baseUrl') as String?,
+      defaultBaseUrl: _readValue(json, 'defaultBaseUrl') as String?,
+      isBuiltin: _asBool(_readValue(json, 'isBuiltin')),
+      isEnabled: _asBool(_readValue(json, 'isEnabled'), fallback: true),
+      apiProtocol:
+          _readValue(json, 'apiProtocol') as String? ?? 'openai_chat',
+      apiKeyId: _readValue(json, 'apiKeyId') as String?,
+      sortOrder: _asNullableInt(_readValue(json, 'sortOrder')) ?? 0,
+      createdAt: _readValue(json, 'createdAt') as String? ?? '',
+      updatedAt: _readValue(json, 'updatedAt') as String? ?? '',
+    );
+  }
+
+  final String id;
+  final String orgId;
+  final String tenantId;
+  final String slug;
+  final String name;
+  final String? iconUrl;
+  final String? baseUrl;
+  final String? defaultBaseUrl;
+  final bool isBuiltin;
+  final bool isEnabled;
+  final String apiProtocol;
+  final String? apiKeyId;
+  final int sortOrder;
+  final String createdAt;
+  final String updatedAt;
+}
+
+/// 模型能力 DTO
+class ModelCapabilitiesDto {
+  const ModelCapabilitiesDto({
+    this.vision = false,
+    this.functionCalling = false,
+    this.reasoning = false,
+    this.structuredOutput = false,
+  });
+
+  factory ModelCapabilitiesDto.fromJson(Map<String, dynamic> json) {
+    return ModelCapabilitiesDto(
+      vision: _asBool(_readValue(json, 'vision')),
+      functionCalling: _asBool(_readValue(json, 'functionCalling')),
+      reasoning: _asBool(_readValue(json, 'reasoning')),
+      structuredOutput: _asBool(_readValue(json, 'structuredOutput')),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return <String, dynamic>{
+      'vision': vision,
+      'functionCalling': functionCalling,
+      'reasoning': reasoning,
+      'structuredOutput': structuredOutput,
+    };
+  }
+
+  final bool vision;
+  final bool functionCalling;
+  final bool reasoning;
+  final bool structuredOutput;
+}
+
+/// 模型定价 DTO
+class ModelPricingDto {
+  const ModelPricingDto({
+    required this.inputPer1MTokens,
+    required this.outputPer1MTokens,
+    this.cachedReadPer1MTokens,
+    this.cachedWritePer1MTokens,
+  });
+
+  factory ModelPricingDto.fromJson(Map<String, dynamic> json) {
+    return ModelPricingDto(
+      inputPer1MTokens: _asDouble(
+        _readValue(json, 'inputPer1MTokens'),
+        0,
+      ),
+      outputPer1MTokens: _asDouble(
+        _readValue(json, 'outputPer1MTokens'),
+        0,
+      ),
+      cachedReadPer1MTokens: _readValue(json, 'cachedReadPer1MTokens') == null
+          ? null
+          : _asDouble(_readValue(json, 'cachedReadPer1MTokens'), 0),
+      cachedWritePer1MTokens:
+          _readValue(json, 'cachedWritePer1MTokens') == null
+              ? null
+              : _asDouble(_readValue(json, 'cachedWritePer1MTokens'), 0),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return <String, dynamic>{
+      'inputPer1MTokens': inputPer1MTokens,
+      'outputPer1MTokens': outputPer1MTokens,
+      if (cachedReadPer1MTokens != null)
+        'cachedReadPer1MTokens': cachedReadPer1MTokens,
+      if (cachedWritePer1MTokens != null)
+        'cachedWritePer1MTokens': cachedWritePer1MTokens,
+    };
+  }
+
+  final double inputPer1MTokens;
+  final double outputPer1MTokens;
+  final double? cachedReadPer1MTokens;
+  final double? cachedWritePer1MTokens;
+}
+
+/// LiteLLM 模型元数据 DTO
+class LiteLLMModelInfoDto {
+  const LiteLLMModelInfoDto({
+    required this.modelId,
+    required this.capabilities,
+    this.contextWindow,
+    this.maxOutputTokens,
+    this.pricing,
+  });
+
+  factory LiteLLMModelInfoDto.fromJson(Map<String, dynamic> json) {
+    final pricingJson = _asMap(_readValue(json, 'pricing'));
+    final capsJson = _asMap(_readValue(json, 'capabilities'));
+    return LiteLLMModelInfoDto(
+      modelId: _readValue(json, 'modelId') as String? ?? '',
+      contextWindow: _asNullableInt(_readValue(json, 'contextWindow')),
+      maxOutputTokens: _asNullableInt(_readValue(json, 'maxOutputTokens')),
+      pricing:
+          pricingJson.isEmpty ? null : ModelPricingDto.fromJson(pricingJson),
+      capabilities: capsJson.isEmpty
+          ? const ModelCapabilitiesDto()
+          : ModelCapabilitiesDto.fromJson(capsJson),
+    );
+  }
+
+  final String modelId;
+  final int? contextWindow;
+  final int? maxOutputTokens;
+  final ModelPricingDto? pricing;
+  final ModelCapabilitiesDto capabilities;
+}
+
+/// 新版 LLM 模型配置 DTO (包含嵌套 provider 对象)
+class LlmModelConfigDto {
+  const LlmModelConfigDto({
+    required this.id,
+    required this.orgId,
+    required this.tenantId,
+    required this.providerId,
+    required this.name,
+    required this.modelId,
+    required this.modelType,
+    required this.isEnabled,
+    required this.isDefault,
+    required this.capabilities,
+    required this.parameters,
+    required this.createdAt,
+    required this.updatedAt,
+    this.contextWindow,
+    this.maxOutputTokens,
+    this.pricing,
+    this.metadataSource,
+    this.embeddingDimensions,
+    this.timeoutMs,
+    this.provider,
+  });
+
+  factory LlmModelConfigDto.fromJson(Map<String, dynamic> json) {
+    final capsJson = _asMap(_readValue(json, 'capabilities'));
+    final pricingJson = _asMap(_readValue(json, 'pricing'));
+    final providerJson = _asMap(_readValue(json, 'provider'));
+    return LlmModelConfigDto(
+      id: _readValue(json, 'id') as String? ?? '',
+      orgId: _readValue(json, 'orgId') as String? ?? '',
+      tenantId: _readValue(json, 'tenantId') as String? ?? '',
+      providerId: _readValue(json, 'providerId') as String? ?? '',
+      name: _readValue(json, 'name') as String? ?? '',
+      modelId: _readValue(json, 'modelId') as String? ??
+          _readValue(json, 'modelName') as String? ??
+          '',
+      modelType: _readValue(json, 'modelType') as String? ?? 'chat',
+      isEnabled: _asBool(_readValue(json, 'isEnabled'), fallback: true),
+      isDefault: _asBool(_readValue(json, 'isDefault')),
+      capabilities: capsJson.isEmpty
+          ? const ModelCapabilitiesDto()
+          : ModelCapabilitiesDto.fromJson(capsJson),
+      contextWindow: _asNullableInt(_readValue(json, 'contextWindow')),
+      maxOutputTokens: _asNullableInt(_readValue(json, 'maxOutputTokens')),
+      pricing:
+          pricingJson.isEmpty ? null : ModelPricingDto.fromJson(pricingJson),
+      parameters: _asMap(_readValue(json, 'parameters')),
+      metadataSource: _readValue(json, 'metadataSource') as String?,
+      embeddingDimensions: _asNullableInt(
+        _readValue(json, 'embeddingDimensions'),
+      ),
+      timeoutMs: _asNullableInt(_readValue(json, 'timeoutMs')),
+      createdAt: _readValue(json, 'createdAt') as String? ?? '',
+      updatedAt: _readValue(json, 'updatedAt') as String? ?? '',
+      provider: providerJson.isEmpty
+          ? null
+          : LlmProviderEntityDto.fromJson(providerJson),
+    );
+  }
+
+  final String id;
+  final String orgId;
+  final String tenantId;
+  final String providerId;
+  final String name;
+  final String modelId;
+  final String modelType;
+  final bool isEnabled;
+  final bool isDefault;
+  final ModelCapabilitiesDto capabilities;
+  final int? contextWindow;
+  final int? maxOutputTokens;
+  final ModelPricingDto? pricing;
+  final Map<String, dynamic> parameters;
+  final String? metadataSource;
+  final int? embeddingDimensions;
+  final int? timeoutMs;
+  final String createdAt;
+  final String updatedAt;
+  final LlmProviderEntityDto? provider;
 }
