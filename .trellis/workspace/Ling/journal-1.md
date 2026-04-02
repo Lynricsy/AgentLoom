@@ -955,3 +955,36 @@ studio 前端大量页面无法滚轮滚动、没有滚动条。
 ### Next Steps
 
 - None - task complete
+
+
+## Session 18: compound 内框拖拽边界与默认尺寸修复
+
+**Date**: 2026-04-02
+**Task**: compound 内框拖拽边界与默认尺寸修复
+**Branch**: `main`
+
+### Summary
+
+收紧 compound 默认尺寸，改为按子节点真实尺寸计算内框拖拽边界，并去掉 expandParent 自动扩容。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `a066f18` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
