@@ -22,7 +22,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "db:seed": "tsx --env-file=.env drizzle/seed/templates.ts",
+    "db:seed": "tsx drizzle/seed/templates.ts",
     "openapi:export": "pnpm build && node scripts/export-openapi-spec.mjs",
     "sdk:export-spec": "pnpm openapi:export",
     "sdk:generate:ts": "openapi-generator-cli generate --generator-key typescript && node scripts/postprocess-typescript-sdk.mjs",

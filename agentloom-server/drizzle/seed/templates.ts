@@ -10,7 +10,7 @@ import { seedLlmProviders } from '../../src/database/seeds/provider-seeds';
 async function main() {
   const databaseUrl = process.env.APP_DATABASE_URL;
   if (!databaseUrl) {
-    console.error('APP_DATABASE_URL is required. Set it in .env or environment.');
+    console.error('APP_DATABASE_URL is required in the environment.');
     process.exit(1);
   }
 

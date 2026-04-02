@@ -122,6 +122,8 @@ docker compose up -d
 docker compose run --rm server-migrator sh -c "pnpm db:migrate && pnpm db:seed"
 ```
 
+`server-migrator` 与 `init-db.sh` 的 seed 步骤直接依赖 Compose 注入的 `APP_DATABASE_URL`，不要求镜像内额外存在 `.env` 文件。
+
 ### 日常重建与重启
 
 ```bash

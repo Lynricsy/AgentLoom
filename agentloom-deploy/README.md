@@ -148,6 +148,8 @@ openssl rand -base64 32
 5. 使用 **同一份 server 镜像** 执行 `pnpm db:migrate`
 6. 当 `RUN_DB_SEED=true` 时追加执行 `pnpm db:seed`
 
+`pnpm db:seed` 直接读取进程环境中的 `APP_DATABASE_URL`，因此 `server-migrator` / `init-db.sh` 不要求镜像内另带一份 `.env` 文件。
+
 > 之所以要先 bootstrap 这些角色与 `auth.users`，是因为当前应用迁移既会引用 `auth.users(id)`，也会向 `supabase_auth_admin` / `authenticated` 授权；而私有化部署默认使用的是普通 PostgreSQL，而不是已经预置这些角色与 schema 的 Supabase 托管实例。
 
 此外，`init-db.sh` 在发现 `agentloom-deploy/docker/.pi-tarballs` 缺失时，会自动调用 `agentloom-deploy/scripts/prepare-pi-tarballs.sh`。该脚本默认从 `https://github.com/badlogic/pi-mono` 拉取源码并构建 tarballs，因此 server/worker 的 Docker 构建不再依赖宿主机预先准备固定的 `pi-mono` 工作树。
