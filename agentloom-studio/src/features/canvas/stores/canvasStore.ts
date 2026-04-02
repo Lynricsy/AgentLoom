@@ -25,6 +25,12 @@ import {
   resolveConnectionPorts,
 } from '../lib/connectionCompatibility'
 import { getNodePortContractSignature } from '../lib/typeEngine/serialize'
+import {
+  buildCompoundChildExtent,
+  clampPositionToExtent,
+  getCompoundInitialChildPosition,
+  resolveCompoundContainerSize,
+} from '../lib/compoundLayout'
 import type { NodeType } from '../types/nodeTypeRegistry'
 import {
   buildConditionInputPorts,
@@ -40,12 +46,11 @@ import {
   buildLoopInputPorts,
   buildLoopStartOutputPorts,
   buildCompoundOutputPorts,
-  COMPOUND_CONTAINER_DEFAULT_SIZE,
-  COMPOUND_START_NODE_DEFAULT_POSITION,
   createDefaultIterationNodeConfig,
   createDefaultIterationStartNodeConfig,
   createDefaultLoopCompoundNodeConfig,
   createDefaultLoopStartNodeConfig,
+  isCompoundContainerNodeType,
 } from '../types/controlFlow.types'
 
 enableMapSet()
@@ -53,6 +58,10 @@ enableMapSet()
 const AGENT_NODE_TYPES: ReadonlySet<NodeType> = new Set(['chat-agent'])
 function isAgentNodeType(nodeType: string): boolean {
   return AGENT_NODE_TYPES.has(nodeType as NodeType)
+}
+
+function readNumericNodeDimension(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
 function findLastIndex<T>(arr: readonly T[], predicate: (item: T) => boolean): number {
@@ -183,6 +192,56 @@ function syncCompoundParentOutputPorts(
     .filter((value, index, items) => items.indexOf(value) === index)
 
   parentNode.data.outputPorts = buildCompoundOutputPorts(outputKeys)
+}
+
+function syncCompoundParentLayout(
+  nodes: CanvasNode[],
+  parentNodeId: string,
+): void {
+  const parentNode = nodes.find((node) => node.id === parentNodeId)
+  if (!parentNode || !isCompoundContainerNodeType(parentNode.data.nodeType)) {
+    return
+  }
+
+  const isCollapsed = parentNode.data.config?.isCollapsed === true
+  const parentSize = resolveCompoundContainerSize({
+    inputPortCount: parentNode.data.inputPorts.length,
+    outputPortCount: parentNode.data.outputPorts.length,
+    width:
+      readNumericNodeDimension(parentNode.style?.width)
+      ?? readNumericNodeDimension(parentNode.width),
+    height:
+      readNumericNodeDimension(parentNode.style?.height)
+      ?? readNumericNodeDimension(parentNode.height),
+    isCollapsed,
+  })
+
+  parentNode.style = {
+    ...(parentNode.style ?? {}),
+    width: parentSize.width,
+    height: parentSize.height,
+  }
+
+  if (isCollapsed) {
+    return
+  }
+
+  const extent = buildCompoundChildExtent({
+    inputPortCount: parentNode.data.inputPorts.length,
+    outputPortCount: parentNode.data.outputPorts.length,
+    width: parentSize.width,
+    height: parentSize.height,
+  })
+
+  for (const childNode of nodes) {
+    if (childNode.parentId !== parentNodeId) {
+      continue
+    }
+
+    childNode.extent = extent
+    childNode.expandParent = true
+    childNode.position = clampPositionToExtent(childNode.position, extent)
+  }
 }
 
 function createInitialState(): CanvasState {
@@ -463,16 +522,7 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
                 ...(input.extent ? { extent: input.extent } : {}),
                 ...(input.expandParent !== undefined ? { expandParent: input.expandParent } : {}),
                 ...(input.hidden !== undefined ? { hidden: input.hidden } : {}),
-                ...(input.style
-                  ? { style: input.style }
-                  : input.nodeType === 'loop' || input.nodeType === 'iteration'
-                    ? {
-                        style: {
-                          width: COMPOUND_CONTAINER_DEFAULT_SIZE.width,
-                          height: COMPOUND_CONTAINER_DEFAULT_SIZE.height,
-                        },
-                      }
-                    : {}),
+                ...(input.style ? { style: input.style } : {}),
                 data: {
                   label: input.label ?? input.blockName ?? config.label,
                   nodeType: input.nodeType,
@@ -508,16 +558,16 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
                         createDefaultIterationStartNodeConfig(),
                       )
                 const startNodeConfigMeta = getNodeTypeConfig(startNodeType)
+                const startNodePosition = getCompoundInitialChildPosition({
+                  inputPortCount: node.data.inputPorts.length,
+                  outputPortCount: node.data.outputPorts.length,
+                })
 
                 state.nodes.push({
                   id: createNodeId(),
                   type: 'control',
                   parentId: input.id,
-                  extent: 'parent',
-                  position: {
-                    x: COMPOUND_START_NODE_DEFAULT_POSITION.x,
-                    y: COMPOUND_START_NODE_DEFAULT_POSITION.y,
-                  },
+                  position: startNodePosition,
                   data: {
                     label: startNodeConfigMeta.label,
                     nodeType: startNodeType,
@@ -539,6 +589,12 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
 
               if (input.parentId && input.nodeType === 'result') {
                 syncCompoundParentOutputPorts(state.nodes, input.parentId)
+              }
+
+              if (input.nodeType === 'loop' || input.nodeType === 'iteration') {
+                syncCompoundParentLayout(state.nodes, input.id)
+              } else if (input.parentId) {
+                syncCompoundParentLayout(state.nodes, input.parentId)
               }
 
               state.isDirty = true
@@ -577,6 +633,7 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
               )
               for (const parentId of affectedParentIds) {
                 syncCompoundParentOutputPorts(state.nodes, parentId)
+                syncCompoundParentLayout(state.nodes, parentId)
               }
               state.selectedNodeIds = nextSelectedNodeIds
               state.selectedNodeId = Array.from(nextSelectedNodeIds).at(-1) ?? null
@@ -660,6 +717,7 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
               )
               for (const parentId of affectedParentIds) {
                 syncCompoundParentOutputPorts(state.nodes, parentId)
+                syncCompoundParentLayout(state.nodes, parentId)
               }
 
               for (const nodeId of nodeIdsToDelete) {
@@ -924,6 +982,14 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
                   },
                 }
               })
+              for (const node of state.nodes) {
+                if (!isCompoundContainerNodeType(node.data.nodeType)) {
+                  continue
+                }
+
+                syncCompoundParentOutputPorts(state.nodes, node.id)
+                syncCompoundParentLayout(state.nodes, node.id)
+              }
               state.edges = edges.map((e) => ({
                 ...e,
                 data: { ...createDefaultEdgeData(), ...(e.data ?? {}) },
@@ -1051,6 +1117,10 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
 
                 Object.assign(node.data, patch)
                 state.isDirty = true
+
+                if (isCompoundContainerNodeType(node.data.nodeType)) {
+                  syncCompoundParentLayout(state.nodes, nodeId)
+                }
 
                 if (previousSignature !== nextSignature) {
                   const removedInputHandles = [...previousInputPortIds].filter(

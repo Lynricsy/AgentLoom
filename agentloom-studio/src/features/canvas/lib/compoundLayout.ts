@@ -1,0 +1,158 @@
+import type { CoordinateExtent, XYPosition } from '@xyflow/react'
+import { COMPOUND_CONTAINER_DEFAULT_SIZE } from '../types/controlFlow.types'
+
+const COMPOUND_COLLAPSED_SIZE = {
+  width: 360,
+  height: 220,
+} as const
+
+const COMPOUND_HEADER_HEIGHT = 72
+const COMPOUND_PORT_SECTION_PADDING = 8
+const COMPOUND_PORT_ROW_HEIGHT = 24
+const COMPOUND_SUMMARY_HEIGHT = 48
+const COMPOUND_FRAME_GAP = 12
+const COMPOUND_FRAME_HORIZONTAL_INSET = 20
+const COMPOUND_FRAME_BOTTOM_PADDING = 20
+const COMPOUND_FRAME_CHILD_PADDING = 16
+const COMPOUND_CHILD_GUARD_SIZE = {
+  width: 260,
+  height: 260,
+} as const
+const COMPOUND_MIN_FRAME_SIZE = {
+  width: 720,
+  height: 340,
+} as const
+
+export interface CompoundLayoutSize {
+  width: number
+  height: number
+}
+
+export interface CompoundFrameInsets {
+  top: number
+  right: number
+  bottom: number
+  left: number
+}
+
+interface CompoundLayoutOptions {
+  inputPortCount: number
+  outputPortCount: number
+  width?: number | null
+  height?: number | null
+  isCollapsed?: boolean
+}
+
+function getPortSectionHeight(portCount: number): number {
+  if (portCount <= 0) {
+    return 0
+  }
+
+  return COMPOUND_PORT_SECTION_PADDING * 2 + portCount * COMPOUND_PORT_ROW_HEIGHT
+}
+
+export function getCompoundFrameInsets(
+  inputPortCount: number,
+  outputPortCount: number,
+): CompoundFrameInsets {
+  return {
+    top:
+      COMPOUND_HEADER_HEIGHT +
+      getPortSectionHeight(inputPortCount) +
+      COMPOUND_SUMMARY_HEIGHT +
+      COMPOUND_FRAME_GAP,
+    right: COMPOUND_FRAME_HORIZONTAL_INSET,
+    bottom:
+      COMPOUND_FRAME_BOTTOM_PADDING + getPortSectionHeight(outputPortCount),
+    left: COMPOUND_FRAME_HORIZONTAL_INSET,
+  }
+}
+
+export function resolveCompoundContainerSize({
+  inputPortCount,
+  outputPortCount,
+  width,
+  height,
+  isCollapsed = false,
+}: CompoundLayoutOptions): CompoundLayoutSize {
+  const minSize = isCollapsed
+    ? COMPOUND_COLLAPSED_SIZE
+    : (() => {
+        const insets = getCompoundFrameInsets(inputPortCount, outputPortCount)
+        return {
+          width: Math.max(
+            COMPOUND_CONTAINER_DEFAULT_SIZE.width,
+            COMPOUND_MIN_FRAME_SIZE.width + insets.left + insets.right,
+          ),
+          height: Math.max(
+            COMPOUND_CONTAINER_DEFAULT_SIZE.height,
+            COMPOUND_MIN_FRAME_SIZE.height + insets.top + insets.bottom,
+          ),
+        }
+      })()
+
+  return {
+    width:
+      typeof width === 'number' && Number.isFinite(width)
+        ? Math.max(width, minSize.width)
+        : minSize.width,
+    height:
+      typeof height === 'number' && Number.isFinite(height)
+        ? Math.max(height, minSize.height)
+        : minSize.height,
+  }
+}
+
+export function buildCompoundChildExtent(
+  options: CompoundLayoutOptions,
+): CoordinateExtent {
+  const size = resolveCompoundContainerSize(options)
+  const frameInsets = getCompoundFrameInsets(
+    options.inputPortCount,
+    options.outputPortCount,
+  )
+
+  return [
+    [
+      frameInsets.left + COMPOUND_FRAME_CHILD_PADDING,
+      frameInsets.top + COMPOUND_FRAME_CHILD_PADDING,
+    ],
+    [
+      Math.max(
+        frameInsets.left + COMPOUND_FRAME_CHILD_PADDING,
+        size.width -
+          frameInsets.right -
+          COMPOUND_FRAME_CHILD_PADDING -
+          COMPOUND_CHILD_GUARD_SIZE.width,
+      ),
+      Math.max(
+        frameInsets.top + COMPOUND_FRAME_CHILD_PADDING,
+        size.height -
+          frameInsets.bottom -
+          COMPOUND_FRAME_CHILD_PADDING -
+          COMPOUND_CHILD_GUARD_SIZE.height,
+      ),
+    ],
+  ]
+}
+
+export function clampPositionToExtent(
+  position: XYPosition,
+  extent: CoordinateExtent,
+): XYPosition {
+  return {
+    x: Math.min(Math.max(position.x, extent[0][0]), extent[1][0]),
+    y: Math.min(Math.max(position.y, extent[0][1]), extent[1][1]),
+  }
+}
+
+export function getCompoundInitialChildPosition(
+  options: CompoundLayoutOptions,
+): XYPosition {
+  const extent = buildCompoundChildExtent(options)
+
+  return {
+    x: extent[0][0],
+    y: extent[0][1],
+  }
+}

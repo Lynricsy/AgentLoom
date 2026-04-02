@@ -92,4 +92,50 @@ describe('useCanvasDrop', () => {
     expect(state.nodes[0]?.data.outputPorts.length).toBeGreaterThan(0)
     expect(state.nodes[0]?.data.outputPorts[0]?.dataType).toBe('tool')
   })
+
+  it('会把 compound 内拖入节点限制到可见循环体内框里', () => {
+    useCanvasStore.getState().actions.addNode({
+      id: 'loop-1',
+      nodeType: 'loop',
+      category: 'control',
+      position: { x: 100, y: 100 },
+      label: 'Loop',
+    })
+
+    const reactFlowInstance = {
+      screenToFlowPosition: vi.fn(() => ({ x: 110, y: 110 })),
+    } as Pick<ReactFlowInstance<CanvasNode, CanvasEdge>, 'screenToFlowPosition'> as ReactFlowInstance<CanvasNode, CanvasEdge>
+
+    const { result } = renderHook(() => useCanvasDrop(reactFlowInstance))
+
+    act(() => {
+      result.current.onDrop({
+        preventDefault: vi.fn(),
+        clientX: 110,
+        clientY: 110,
+        dataTransfer: {
+          getData: (type: string) =>
+            type === DRAG_TRANSFER_TYPE ? JSON.stringify(mockPaletteNode) : '',
+        },
+      } as unknown as React.DragEvent)
+    })
+
+    const childNode = useCanvasStore
+      .getState()
+      .nodes.find((node) => node.parentId === 'loop-1' && node.data.nodeType === 'chat-agent')
+
+    expect(childNode).toBeDefined()
+    expect(Array.isArray(childNode?.extent)).toBe(true)
+    expect(childNode?.expandParent).toBe(true)
+
+    const extent = childNode?.extent
+    if (!Array.isArray(extent)) {
+      throw new Error('Expected compound child extent to be an array extent')
+    }
+
+    expect(childNode?.position).toEqual({
+      x: extent[0][0],
+      y: extent[0][1],
+    })
+  })
 })

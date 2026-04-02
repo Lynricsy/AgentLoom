@@ -46,8 +46,8 @@ export const JUMP_EXEC_INPUT_ID = 'exec-in'
 export type CompoundOutputMode = 'none' | 'collect-array' | 'last'
 
 export const COMPOUND_CONTAINER_DEFAULT_SIZE = {
-  width: 540,
-  height: 360,
+  width: 800,
+  height: 600,
 } as const
 
 export const COMPOUND_START_NODE_DEFAULT_POSITION = {

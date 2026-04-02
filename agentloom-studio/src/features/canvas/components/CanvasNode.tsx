@@ -94,6 +94,10 @@ import {
   isCompoundContainerNodeType,
   isCompoundSpecialNodeType,
 } from '../types/controlFlow.types'
+import {
+  getCompoundFrameInsets,
+  resolveCompoundContainerSize,
+} from '../lib/compoundLayout'
 
 const NODE_TYPE_ICONS: Record<string, LucideIcon> = {
   Bot,
@@ -299,6 +303,24 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
   const isCompoundContainer = isCompoundContainerNodeType(data.nodeType)
   const isCompoundCollapsed =
     isCompoundContainer && data.config?.isCollapsed === true
+  const compoundMinimumSize = useMemo(
+    () =>
+      isCompoundContainer
+        ? resolveCompoundContainerSize({
+            inputPortCount: inputPorts.length,
+            outputPortCount: outputPorts.length,
+            isCollapsed: isCompoundCollapsed,
+          })
+        : null,
+    [inputPorts.length, isCompoundCollapsed, isCompoundContainer, outputPorts.length],
+  )
+  const compoundFrameInsets = useMemo(
+    () =>
+      isCompoundContainer && !isCompoundCollapsed
+        ? getCompoundFrameInsets(inputPorts.length, outputPorts.length)
+        : null,
+    [inputPorts.length, isCompoundCollapsed, isCompoundContainer, outputPorts.length],
+  )
   const subtitle = data.nodeType === 'llm-model'
     ? llmConfig
       ? `${providerInfo?.name ?? llmConfig.provider} · ${llmConfig.name}`
@@ -419,15 +441,16 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
       data-selected={selected ? 'true' : 'false'}
       className={cn(
         'canvas-node-shell relative rounded-lg border bg-card text-card-foreground transition-[width,box-shadow,border-color,transform] duration-200',
+        isCompoundContainer && 'h-full w-full',
         lod === 'full' && !isCompoundContainer && 'min-w-[180px] max-w-[260px]',
         lod === 'full' &&
           isCompoundContainer &&
           !isCompoundCollapsed &&
-          'min-h-[360px] min-w-[540px] max-w-none overflow-hidden',
+          'max-w-none overflow-hidden',
         lod === 'full' &&
           isCompoundContainer &&
           isCompoundCollapsed &&
-          'min-h-[180px] min-w-[320px] max-w-[360px] overflow-hidden',
+          'max-w-[360px] overflow-hidden',
         lod === 'compact' && 'min-w-[156px] max-w-[180px]',
         lod === 'minimal' && 'h-[80px] min-w-[80px] max-w-[80px]',
         selected && 'ring-0',
@@ -437,7 +460,17 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
         isSearchActive && isCurrent && 'search-current',
         isSearchActive && !isMatch && 'search-dimmed',
       )}
-      style={{ '--node-color': colorToken } as CSSProperties}
+      style={
+        {
+          '--node-color': colorToken,
+          ...(compoundMinimumSize
+            ? {
+                minWidth: compoundMinimumSize.width,
+                minHeight: compoundMinimumSize.height,
+              }
+            : {}),
+        } as CSSProperties
+      }
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
     >
@@ -455,13 +488,16 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
 
       {!isMinimal ? <NodeExecutionOverlay nodeId={id} /> : null}
 
-      {isCompoundContainer && lod === 'full' ? (
+      {isCompoundContainer && lod === 'full' && compoundFrameInsets ? (
         <div
           aria-hidden="true"
-          className={cn(
-            'pointer-events-none absolute inset-x-3 bottom-3 rounded-2xl border border-dashed border-border/50 bg-[radial-gradient(circle_at_top,rgba(148,163,184,0.10),transparent_58%)]',
-            isCompoundCollapsed ? 'top-[116px]' : 'top-[124px]',
-          )}
+          className="pointer-events-none absolute rounded-2xl border border-dashed border-border/50 bg-[radial-gradient(circle_at_top,rgba(148,163,184,0.10),transparent_58%)]"
+          style={{
+            top: compoundFrameInsets.top,
+            right: compoundFrameInsets.right,
+            bottom: compoundFrameInsets.bottom,
+            left: compoundFrameInsets.left,
+          }}
         />
       ) : null}
 

@@ -224,10 +224,10 @@ export interface AddNodeInput {
   category: NodeCategory
   position: XYPosition
   parentId?: string
-  extent?: 'parent'
+  extent?: CanvasNode['extent']
   expandParent?: boolean
   hidden?: boolean
-  style?: Record<string, unknown>
+  style?: CanvasNode['style']
   label?: string
   description?: string
   config?: Record<string, unknown>

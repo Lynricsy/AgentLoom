@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AddNodeInput, CanvasEdge, CanvasNode } from '../types'
 import { createDefaultAgentNodeData, createDefaultEdgeData } from '../types'
-import { clonePortDefinitions } from '../types/nodeTypeRegistry'
+import { clonePortDefinitions, getNodeTypeConfig } from '../types/nodeTypeRegistry'
 import type {
   TypeEngineCompatibilityResult,
   TypeEngineServiceLike,
@@ -185,6 +185,87 @@ describe('canvasStore', () => {
     })
     expect(node?.data.inputPorts[0]?.id).toBe('custom-input')
     expect(node?.data.outputPorts[0]?.id).toBe('custom-output')
+  })
+
+  it('applyServerSnapshot 会把 compound 子节点重新夹回内框并补足父容器尺寸', () => {
+    const loopConfig = getNodeTypeConfig('loop')
+    const loopStartConfig = getNodeTypeConfig('loop-start')
+    const chatAgentConfig = getNodeTypeConfig('chat-agent')
+
+    useCanvasStore.getState().actions.applyServerSnapshot({
+      workflowId: 'wf-1',
+      version: 1,
+      viewport: { x: 0, y: 0, zoom: 1 },
+      nodes: [
+        {
+          id: 'loop-1',
+          type: 'control',
+          position: { x: 120, y: 80 },
+          style: { width: 540, height: 360 },
+          data: {
+            label: 'Loop',
+            nodeType: 'loop',
+            category: 'control',
+            description: '循环 compound 容器',
+            config: { isCollapsed: false, outputMode: 'last', defaultState: null },
+            inputPorts: clonePortDefinitions(loopConfig.inputPorts),
+            outputPorts: clonePortDefinitions(loopConfig.outputPorts),
+          },
+        },
+        {
+          id: 'loop-start-1',
+          type: 'control',
+          parentId: 'loop-1',
+          extent: 'parent',
+          position: { x: 0, y: 0 },
+          data: {
+            label: 'Loop Start',
+            nodeType: 'loop-start',
+            category: 'control',
+            description: '循环子图入口节点',
+            config: {},
+            inputPorts: clonePortDefinitions(loopStartConfig.inputPorts),
+            outputPorts: clonePortDefinitions(loopStartConfig.outputPorts),
+          },
+        },
+        {
+          id: 'agent-1',
+          type: 'agent',
+          parentId: 'loop-1',
+          extent: 'parent',
+          position: { x: 0, y: 0 },
+          data: {
+            label: 'Chat Agent',
+            nodeType: 'chat-agent',
+            category: 'agent',
+            description: '对话型 Agent 节点',
+            config: {},
+            inputPorts: clonePortDefinitions(chatAgentConfig.inputPorts),
+            outputPorts: clonePortDefinitions(chatAgentConfig.outputPorts),
+            ...createDefaultAgentNodeData(),
+          },
+        },
+      ],
+      edges: [],
+    })
+
+    const state = useCanvasStore.getState()
+    const loopNode = state.nodes.find((node) => node.id === 'loop-1')
+    const childNode = state.nodes.find((node) => node.id === 'agent-1')
+
+    expect(loopNode?.style?.width).toBeGreaterThanOrEqual(800)
+    expect(loopNode?.style?.height).toBeGreaterThanOrEqual(600)
+    expect(Array.isArray(childNode?.extent)).toBe(true)
+
+    const extent = childNode?.extent
+    if (!Array.isArray(extent)) {
+      throw new Error('Expected loaded compound child to receive array extent')
+    }
+
+    expect(childNode?.position).toEqual({
+      x: extent[0][0],
+      y: extent[0][1],
+    })
   })
 
   it('deletes the selected node and its connected edges', () => {

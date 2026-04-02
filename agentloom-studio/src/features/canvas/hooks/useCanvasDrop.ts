@@ -10,6 +10,11 @@ import type {
   PaletteNodeItem,
 } from '../types'
 import { isCompoundContainerNodeType } from '../types/controlFlow.types'
+import {
+  buildCompoundChildExtent,
+  clampPositionToExtent,
+  resolveCompoundContainerSize,
+} from '../lib/compoundLayout'
 
 function generateNodeId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -113,16 +118,71 @@ export function useCanvasDrop(
         nodeType: item.type,
         category: item.category,
         position: compoundParent
-          ? {
-              x: position.x - compoundParent.position.x,
-              y: position.y - compoundParent.position.y,
-            }
+          ? (() => {
+              const parentSize = resolveCompoundContainerSize({
+                inputPortCount: compoundParent.data.inputPorts.length,
+                outputPortCount: compoundParent.data.outputPorts.length,
+                width:
+                  typeof compoundParent.style?.width === 'number'
+                    ? compoundParent.style.width
+                    : typeof compoundParent.width === 'number'
+                      ? compoundParent.width
+                      : null,
+                height:
+                  typeof compoundParent.style?.height === 'number'
+                    ? compoundParent.style.height
+                    : typeof compoundParent.height === 'number'
+                      ? compoundParent.height
+                      : null,
+                isCollapsed: compoundParent.data.config?.isCollapsed === true,
+              })
+              const extent = buildCompoundChildExtent({
+                inputPortCount: compoundParent.data.inputPorts.length,
+                outputPortCount: compoundParent.data.outputPorts.length,
+                width: parentSize.width,
+                height: parentSize.height,
+              })
+
+              return clampPositionToExtent(
+                {
+                  x: position.x - compoundParent.position.x,
+                  y: position.y - compoundParent.position.y,
+                },
+                extent,
+              )
+            })()
           : position,
         ...(compoundParent
-          ? {
-              parentId: compoundParent.id,
-              extent: 'parent' as const,
-            }
+          ? (() => {
+              const parentSize = resolveCompoundContainerSize({
+                inputPortCount: compoundParent.data.inputPorts.length,
+                outputPortCount: compoundParent.data.outputPorts.length,
+                width:
+                  typeof compoundParent.style?.width === 'number'
+                    ? compoundParent.style.width
+                    : typeof compoundParent.width === 'number'
+                      ? compoundParent.width
+                      : null,
+                height:
+                  typeof compoundParent.style?.height === 'number'
+                    ? compoundParent.style.height
+                    : typeof compoundParent.height === 'number'
+                      ? compoundParent.height
+                      : null,
+                isCollapsed: compoundParent.data.config?.isCollapsed === true,
+              })
+
+              return {
+                parentId: compoundParent.id,
+                extent: buildCompoundChildExtent({
+                  inputPortCount: compoundParent.data.inputPorts.length,
+                  outputPortCount: compoundParent.data.outputPorts.length,
+                  width: parentSize.width,
+                  height: parentSize.height,
+                }),
+                expandParent: true,
+              }
+            })()
           : {}),
         label: item.label,
         description: item.description,
