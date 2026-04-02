@@ -46,8 +46,7 @@ describe('useCanvasDrop', () => {
         clientX: 640,
         clientY: 320,
         dataTransfer: {
-          getData: (type: string) =>
-            type === DRAG_TRANSFER_TYPE ? JSON.stringify(mockPaletteNode) : '',
+          getData: (type: string) => (type === DRAG_TRANSFER_TYPE ? JSON.stringify(mockPaletteNode) : ''),
         },
       } as unknown as React.DragEvent)
     })
@@ -80,8 +79,7 @@ describe('useCanvasDrop', () => {
         clientX: 400,
         clientY: 200,
         dataTransfer: {
-          getData: (type: string) =>
-            type === DRAG_TRANSFER_TYPE ? JSON.stringify(mockMcpPaletteNode) : '',
+          getData: (type: string) => (type === DRAG_TRANSFER_TYPE ? JSON.stringify(mockMcpPaletteNode) : ''),
         },
       } as unknown as React.DragEvent)
     })
@@ -114,19 +112,16 @@ describe('useCanvasDrop', () => {
         clientX: 110,
         clientY: 110,
         dataTransfer: {
-          getData: (type: string) =>
-            type === DRAG_TRANSFER_TYPE ? JSON.stringify(mockPaletteNode) : '',
+          getData: (type: string) => (type === DRAG_TRANSFER_TYPE ? JSON.stringify(mockPaletteNode) : ''),
         },
       } as unknown as React.DragEvent)
     })
 
-    const childNode = useCanvasStore
-      .getState()
-      .nodes.find((node) => node.parentId === 'loop-1' && node.data.nodeType === 'chat-agent')
+    const childNode = useCanvasStore.getState().nodes.find((node) => node.parentId === 'loop-1' && node.data.nodeType === 'chat-agent')
 
     expect(childNode).toBeDefined()
     expect(Array.isArray(childNode?.extent)).toBe(true)
-    expect(childNode?.expandParent).toBe(true)
+    expect(childNode?.expandParent).toBe(false)
 
     const extent = childNode?.extent
     if (!Array.isArray(extent)) {
@@ -137,5 +132,6 @@ describe('useCanvasDrop', () => {
       x: extent[0][0],
       y: extent[0][1],
     })
+    expect(extent[1][1] - extent[0][1]).toBeGreaterThanOrEqual(80)
   })
 })

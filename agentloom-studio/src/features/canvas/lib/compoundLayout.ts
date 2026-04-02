@@ -14,13 +14,13 @@ const COMPOUND_FRAME_GAP = 12
 const COMPOUND_FRAME_HORIZONTAL_INSET = 20
 const COMPOUND_FRAME_BOTTOM_PADDING = 20
 const COMPOUND_FRAME_CHILD_PADDING = 16
-const COMPOUND_CHILD_GUARD_SIZE = {
+const COMPOUND_CHILD_FALLBACK_SIZE = {
   width: 260,
-  height: 260,
+  height: 160,
 } as const
 const COMPOUND_MIN_FRAME_SIZE = {
-  width: 720,
-  height: 340,
+  width: 560,
+  height: 280,
 } as const
 
 export interface CompoundLayoutSize {
@@ -41,6 +41,8 @@ interface CompoundLayoutOptions {
   width?: number | null
   height?: number | null
   isCollapsed?: boolean
+  childWidth?: number | null
+  childHeight?: number | null
 }
 
 function getPortSectionHeight(portCount: number): number {
@@ -51,104 +53,51 @@ function getPortSectionHeight(portCount: number): number {
   return COMPOUND_PORT_SECTION_PADDING * 2 + portCount * COMPOUND_PORT_ROW_HEIGHT
 }
 
-export function getCompoundFrameInsets(
-  inputPortCount: number,
-  outputPortCount: number,
-): CompoundFrameInsets {
+export function getCompoundFrameInsets(inputPortCount: number, outputPortCount: number): CompoundFrameInsets {
   return {
-    top:
-      COMPOUND_HEADER_HEIGHT +
-      getPortSectionHeight(inputPortCount) +
-      COMPOUND_SUMMARY_HEIGHT +
-      COMPOUND_FRAME_GAP,
+    top: COMPOUND_HEADER_HEIGHT + getPortSectionHeight(inputPortCount) + COMPOUND_SUMMARY_HEIGHT + COMPOUND_FRAME_GAP,
     right: COMPOUND_FRAME_HORIZONTAL_INSET,
-    bottom:
-      COMPOUND_FRAME_BOTTOM_PADDING + getPortSectionHeight(outputPortCount),
+    bottom: COMPOUND_FRAME_BOTTOM_PADDING + getPortSectionHeight(outputPortCount),
     left: COMPOUND_FRAME_HORIZONTAL_INSET,
   }
 }
 
-export function resolveCompoundContainerSize({
-  inputPortCount,
-  outputPortCount,
-  width,
-  height,
-  isCollapsed = false,
-}: CompoundLayoutOptions): CompoundLayoutSize {
+export function resolveCompoundContainerSize({ inputPortCount, outputPortCount, width, height, isCollapsed = false }: CompoundLayoutOptions): CompoundLayoutSize {
   const minSize = isCollapsed
     ? COMPOUND_COLLAPSED_SIZE
     : (() => {
         const insets = getCompoundFrameInsets(inputPortCount, outputPortCount)
         return {
-          width: Math.max(
-            COMPOUND_CONTAINER_DEFAULT_SIZE.width,
-            COMPOUND_MIN_FRAME_SIZE.width + insets.left + insets.right,
-          ),
-          height: Math.max(
-            COMPOUND_CONTAINER_DEFAULT_SIZE.height,
-            COMPOUND_MIN_FRAME_SIZE.height + insets.top + insets.bottom,
-          ),
+          width: Math.max(COMPOUND_CONTAINER_DEFAULT_SIZE.width, COMPOUND_MIN_FRAME_SIZE.width + insets.left + insets.right),
+          height: Math.max(COMPOUND_CONTAINER_DEFAULT_SIZE.height, COMPOUND_MIN_FRAME_SIZE.height + insets.top + insets.bottom),
         }
       })()
 
   return {
-    width:
-      typeof width === 'number' && Number.isFinite(width)
-        ? Math.max(width, minSize.width)
-        : minSize.width,
-    height:
-      typeof height === 'number' && Number.isFinite(height)
-        ? Math.max(height, minSize.height)
-        : minSize.height,
+    width: typeof width === 'number' && Number.isFinite(width) ? Math.max(width, minSize.width) : minSize.width,
+    height: typeof height === 'number' && Number.isFinite(height) ? Math.max(height, minSize.height) : minSize.height,
   }
 }
 
-export function buildCompoundChildExtent(
-  options: CompoundLayoutOptions,
-): CoordinateExtent {
+export function buildCompoundChildExtent(options: CompoundLayoutOptions): CoordinateExtent {
   const size = resolveCompoundContainerSize(options)
-  const frameInsets = getCompoundFrameInsets(
-    options.inputPortCount,
-    options.outputPortCount,
-  )
+  const frameInsets = getCompoundFrameInsets(options.inputPortCount, options.outputPortCount)
+  const childSize = resolveCompoundChildSize(options)
 
   return [
-    [
-      frameInsets.left + COMPOUND_FRAME_CHILD_PADDING,
-      frameInsets.top + COMPOUND_FRAME_CHILD_PADDING,
-    ],
-    [
-      Math.max(
-        frameInsets.left + COMPOUND_FRAME_CHILD_PADDING,
-        size.width -
-          frameInsets.right -
-          COMPOUND_FRAME_CHILD_PADDING -
-          COMPOUND_CHILD_GUARD_SIZE.width,
-      ),
-      Math.max(
-        frameInsets.top + COMPOUND_FRAME_CHILD_PADDING,
-        size.height -
-          frameInsets.bottom -
-          COMPOUND_FRAME_CHILD_PADDING -
-          COMPOUND_CHILD_GUARD_SIZE.height,
-      ),
-    ],
+    [frameInsets.left + COMPOUND_FRAME_CHILD_PADDING, frameInsets.top + COMPOUND_FRAME_CHILD_PADDING],
+    [Math.max(frameInsets.left + COMPOUND_FRAME_CHILD_PADDING, size.width - frameInsets.right - COMPOUND_FRAME_CHILD_PADDING - childSize.width), Math.max(frameInsets.top + COMPOUND_FRAME_CHILD_PADDING, size.height - frameInsets.bottom - COMPOUND_FRAME_CHILD_PADDING - childSize.height)],
   ]
 }
 
-export function clampPositionToExtent(
-  position: XYPosition,
-  extent: CoordinateExtent,
-): XYPosition {
+export function clampPositionToExtent(position: XYPosition, extent: CoordinateExtent): XYPosition {
   return {
     x: Math.min(Math.max(position.x, extent[0][0]), extent[1][0]),
     y: Math.min(Math.max(position.y, extent[0][1]), extent[1][1]),
   }
 }
 
-export function getCompoundInitialChildPosition(
-  options: CompoundLayoutOptions,
-): XYPosition {
+export function getCompoundInitialChildPosition(options: CompoundLayoutOptions): XYPosition {
   const extent = buildCompoundChildExtent(options)
 
   return {
@@ -157,7 +106,12 @@ export function getCompoundInitialChildPosition(
   }
 }
 
-const COMPOUND_CHILD_FALLBACK_SIZE = { width: 260, height: 160 } as const
+function resolveCompoundChildSize({ childWidth, childHeight }: Pick<CompoundLayoutOptions, 'childWidth' | 'childHeight'>): CompoundLayoutSize {
+  return {
+    width: typeof childWidth === 'number' && Number.isFinite(childWidth) && childWidth > 0 ? childWidth : COMPOUND_CHILD_FALLBACK_SIZE.width,
+    height: typeof childHeight === 'number' && Number.isFinite(childHeight) && childHeight > 0 ? childHeight : COMPOUND_CHILD_FALLBACK_SIZE.height,
+  }
+}
 
 /**
  * 计算所有子节点的包围盒（基于子节点相对于 compound 父节点的本地坐标）。
@@ -181,10 +135,8 @@ export function computeChildrenBoundingBox(
   let maxY = -Infinity
 
   for (const child of children) {
-    const w =
-      child.measured?.width ?? (typeof child.width === 'number' ? child.width : null) ?? COMPOUND_CHILD_FALLBACK_SIZE.width
-    const h =
-      child.measured?.height ?? (typeof child.height === 'number' ? child.height : null) ?? COMPOUND_CHILD_FALLBACK_SIZE.height
+    const w = child.measured?.width ?? (typeof child.width === 'number' ? child.width : null) ?? COMPOUND_CHILD_FALLBACK_SIZE.width
+    const h = child.measured?.height ?? (typeof child.height === 'number' ? child.height : null) ?? COMPOUND_CHILD_FALLBACK_SIZE.height
     minX = Math.min(minX, child.position.x)
     minY = Math.min(minY, child.position.y)
     maxX = Math.max(maxX, child.position.x + w)
@@ -198,10 +150,7 @@ export function computeChildrenBoundingBox(
  * 根据子节点包围盒和帧内距计算 compound 节点的最小 resize 尺寸。
  * 保证 resize 不能把 compound 缩小到无法容纳已有子节点。
  */
-export function computeMinResizeSize(
-  childrenBBox: { maxX: number; maxY: number } | null,
-  frameInsets: CompoundFrameInsets,
-): CompoundLayoutSize {
+export function computeMinResizeSize(childrenBBox: { maxX: number; maxY: number } | null, frameInsets: CompoundFrameInsets): CompoundLayoutSize {
   const baseMinWidth = COMPOUND_MIN_FRAME_SIZE.width + frameInsets.left + frameInsets.right
   const baseMinHeight = COMPOUND_MIN_FRAME_SIZE.height + frameInsets.top + frameInsets.bottom
 

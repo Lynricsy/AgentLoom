@@ -2,10 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AddNodeInput, CanvasEdge, CanvasNode } from '../types'
 import { createDefaultAgentNodeData, createDefaultEdgeData } from '../types'
 import { clonePortDefinitions, getNodeTypeConfig } from '../types/nodeTypeRegistry'
-import type {
-  TypeEngineCompatibilityResult,
-  TypeEngineServiceLike,
-} from '../lib/typeEngine/contracts'
+import type { TypeEngineCompatibilityResult, TypeEngineServiceLike } from '../lib/typeEngine/contracts'
 import { setTypeEngineServiceForTesting } from '../lib/typeEngine/service'
 import { useCanvasStore } from './canvasStore'
 
@@ -14,10 +11,8 @@ const getCachedCompatibilityMock = vi.fn()
 
 const mockTypeEngineService: TypeEngineServiceLike = {
   warmup: vi.fn(async () => undefined),
-  getCachedCompatibility: (sourcePort, targetPort) =>
-    getCachedCompatibilityMock(sourcePort, targetPort),
-  evaluateCompatibility: (sourcePort, targetPort, context) =>
-    evaluateCompatibilityMock(sourcePort, targetPort, context),
+  getCachedCompatibility: (sourcePort, targetPort) => getCachedCompatibilityMock(sourcePort, targetPort),
+  evaluateCompatibility: (sourcePort, targetPort, context) => evaluateCompatibilityMock(sourcePort, targetPort, context),
   getRuntimeState: () => ({
     wasmReady: true,
     workerBusy: false,
@@ -207,7 +202,11 @@ describe('canvasStore', () => {
             nodeType: 'loop',
             category: 'control',
             description: '循环 compound 容器',
-            config: { isCollapsed: false, outputMode: 'last', defaultState: null },
+            config: {
+              isCollapsed: false,
+              outputMode: 'last',
+              defaultState: null,
+            },
             inputPorts: clonePortDefinitions(loopConfig.inputPorts),
             outputPorts: clonePortDefinitions(loopConfig.outputPorts),
           },
@@ -253,9 +252,10 @@ describe('canvasStore', () => {
     const loopNode = state.nodes.find((node) => node.id === 'loop-1')
     const childNode = state.nodes.find((node) => node.id === 'agent-1')
 
-    expect(loopNode?.style?.width).toBeGreaterThanOrEqual(800)
-    expect(loopNode?.style?.height).toBeGreaterThanOrEqual(600)
+    expect(loopNode?.style?.width).toBe(600)
+    expect(loopNode?.style?.height).toBe(540)
     expect(Array.isArray(childNode?.extent)).toBe(true)
+    expect(childNode?.expandParent).toBe(false)
 
     const extent = childNode?.extent
     if (!Array.isArray(extent)) {
@@ -266,6 +266,7 @@ describe('canvasStore', () => {
       x: extent[0][0],
       y: extent[0][1],
     })
+    expect(extent[1][1] - extent[0][1]).toBeGreaterThanOrEqual(80)
   })
 
   it('deletes the selected node and its connected edges', () => {
@@ -360,13 +361,11 @@ describe('canvasStore', () => {
     expect(hydratedNode.data.config).toEqual({})
     expect(hydratedNode.data.inputPorts).toHaveLength(2)
     expect(hydratedNode.data.outputPorts).toHaveLength(2)
-    expect(hydratedNode.data.modelConfig).toEqual({ connectedModelNodeId: null })
-    expect(hydratedNode.data.autonomyConfig).toEqual(
-      createDefaultAgentNodeData().autonomyConfig,
-    )
-    expect(hydratedNode.data.outputFormatStrategy).toEqual(
-      createDefaultAgentNodeData().outputFormatStrategy,
-    )
+    expect(hydratedNode.data.modelConfig).toEqual({
+      connectedModelNodeId: null,
+    })
+    expect(hydratedNode.data.autonomyConfig).toEqual(createDefaultAgentNodeData().autonomyConfig)
+    expect(hydratedNode.data.outputFormatStrategy).toEqual(createDefaultAgentNodeData().outputFormatStrategy)
     expect(hydratedNode.data.toolBindings).toEqual([])
     expect(hydratedNode.data.knowledgeBindings).toEqual([])
     expect(state.isDirty).toBe(false)
@@ -715,8 +714,22 @@ describe('canvasStore', () => {
   it('updates field mappings and recalculates summary', () => {
     const defaultData = createDefaultEdgeData()
     defaultData.missingFields = [
-      { path: 'name', expectedType: { kind: 'text', title: 'name' }, required: true },
-      { path: 'age', expectedType: { kind: 'json', shape: 'object', title: 'age', properties: {}, additionalProperties: false }, required: true },
+      {
+        path: 'name',
+        expectedType: { kind: 'text', title: 'name' },
+        required: true,
+      },
+      {
+        path: 'age',
+        expectedType: {
+          kind: 'json',
+          shape: 'object',
+          title: 'age',
+          properties: {},
+          additionalProperties: false,
+        },
+        required: true,
+      },
     ]
     const edge: CanvasEdge = {
       id: 'edge-1',
@@ -728,7 +741,13 @@ describe('canvasStore', () => {
     useCanvasStore.setState((s) => ({ ...s, edges: [edge] }))
 
     useCanvasStore.getState().actions.updateFieldMapping('edge-1', [
-      { sourceField: 'fullName', targetField: 'name', compatLevel: 'L0', autoRecommended: true, confidence: 0.95 },
+      {
+        sourceField: 'fullName',
+        targetField: 'name',
+        compatLevel: 'L0',
+        autoRecommended: true,
+        confidence: 0.95,
+      },
     ])
 
     const state = useCanvasStore.getState()
@@ -849,7 +868,7 @@ describe('canvasStore', () => {
         sourceHandle: 'result',
         targetHandle: 'input',
       },
-      edgeData
+      edgeData,
     )
     useCanvasStore.getState().actions.createConnection(
       {
@@ -858,7 +877,7 @@ describe('canvasStore', () => {
         sourceHandle: 'result',
         targetHandle: 'input',
       },
-      edgeData
+      edgeData,
     )
 
     const state = useCanvasStore.getState()
@@ -1253,12 +1272,22 @@ describe('canvasStore', () => {
     })
 
     it('setSearchQuery finds matching nodes by label', () => {
-      const nodeA = createNode({ id: 'a', data: { ...createNode().data, label: 'LLM Agent' } })
+      const nodeA = createNode({
+        id: 'a',
+        data: { ...createNode().data, label: 'LLM Agent' },
+      })
       const nodeB = createNode({
         id: 'b',
-        data: { ...createNode().data, label: 'HTTP Request', nodeType: 'http-tool' },
+        data: {
+          ...createNode().data,
+          label: 'HTTP Request',
+          nodeType: 'http-tool',
+        },
       })
-      const nodeC = createNode({ id: 'c', data: { ...createNode().data, label: 'Data Agent' } })
+      const nodeC = createNode({
+        id: 'c',
+        data: { ...createNode().data, label: 'Data Agent' },
+      })
       useCanvasStore.setState((s) => ({ ...s, nodes: [nodeA, nodeB, nodeC] }))
 
       useCanvasStore.getState().actions.setSearchQuery('agent')
@@ -1269,7 +1298,10 @@ describe('canvasStore', () => {
     })
 
     it('setSearchQuery is case-insensitive', () => {
-      const node = createNode({ id: 'x', data: { ...createNode().data, label: 'LLM Agent' } })
+      const node = createNode({
+        id: 'x',
+        data: { ...createNode().data, label: 'LLM Agent' },
+      })
       useCanvasStore.setState((s) => ({ ...s, nodes: [node] }))
 
       useCanvasStore.getState().actions.setSearchQuery('llm')
@@ -1317,9 +1349,18 @@ describe('canvasStore', () => {
 
     it('nextSearchResult cycles forward through matches', () => {
       const nodes = [
-        createNode({ id: 'a', data: { ...createNode().data, label: 'Agent 1' } }),
-        createNode({ id: 'b', data: { ...createNode().data, label: 'Agent 2' } }),
-        createNode({ id: 'c', data: { ...createNode().data, label: 'Agent 3' } }),
+        createNode({
+          id: 'a',
+          data: { ...createNode().data, label: 'Agent 1' },
+        }),
+        createNode({
+          id: 'b',
+          data: { ...createNode().data, label: 'Agent 2' },
+        }),
+        createNode({
+          id: 'c',
+          data: { ...createNode().data, label: 'Agent 3' },
+        }),
       ]
       useCanvasStore.setState((s) => ({ ...s, nodes }))
       useCanvasStore.getState().actions.setSearchQuery('Agent')
@@ -1335,8 +1376,14 @@ describe('canvasStore', () => {
 
     it('prevSearchResult cycles backward through matches', () => {
       const nodes = [
-        createNode({ id: 'a', data: { ...createNode().data, label: 'Agent 1' } }),
-        createNode({ id: 'b', data: { ...createNode().data, label: 'Agent 2' } }),
+        createNode({
+          id: 'a',
+          data: { ...createNode().data, label: 'Agent 1' },
+        }),
+        createNode({
+          id: 'b',
+          data: { ...createNode().data, label: 'Agent 2' },
+        }),
       ]
       useCanvasStore.setState((s) => ({ ...s, nodes }))
       useCanvasStore.getState().actions.setSearchQuery('Agent')
@@ -1455,8 +1502,22 @@ describe('canvasStore', () => {
     const setupEdgeWithMappings = (mappings: import('../types').FieldMapping[] = []) => {
       const defaultData = createDefaultEdgeData()
       defaultData.missingFields = [
-        { path: 'name', expectedType: { kind: 'text', title: 'name' }, required: true },
-        { path: 'age', expectedType: { kind: 'json', shape: 'object', title: 'age', properties: {}, additionalProperties: false }, required: true },
+        {
+          path: 'name',
+          expectedType: { kind: 'text', title: 'name' },
+          required: true,
+        },
+        {
+          path: 'age',
+          expectedType: {
+            kind: 'json',
+            shape: 'object',
+            title: 'age',
+            properties: {},
+            additionalProperties: false,
+          },
+          required: true,
+        },
       ]
       defaultData.fieldMapping = mappings
       const edge: CanvasEdge = {
@@ -1588,7 +1649,12 @@ describe('canvasStore', () => {
           ...s,
           edges: [
             ...s.edges,
-            { id: 'edge-2', source: 'node-2', target: 'node-3', data: edge2Data },
+            {
+              id: 'edge-2',
+              source: 'node-2',
+              target: 'node-3',
+              data: edge2Data,
+            },
           ],
         }))
 

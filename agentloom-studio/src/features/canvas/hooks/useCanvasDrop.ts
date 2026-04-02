@@ -3,18 +3,9 @@ import type { ReactFlowInstance } from '@xyflow/react'
 import { DRAG_TRANSFER_TYPE } from '../components/NodePalette'
 import { useCanvasActions, useCanvasNodes } from '../stores/canvasStore'
 import { useToast } from '@/shared/ui/toast'
-import type {
-  AddNodeInput,
-  CanvasEdge,
-  CanvasNode,
-  PaletteNodeItem,
-} from '../types'
+import type { AddNodeInput, CanvasEdge, CanvasNode, PaletteNodeItem } from '../types'
 import { isCompoundContainerNodeType } from '../types/controlFlow.types'
-import {
-  buildCompoundChildExtent,
-  clampPositionToExtent,
-  resolveCompoundContainerSize,
-} from '../lib/compoundLayout'
+import { buildCompoundChildExtent, clampPositionToExtent, resolveCompoundContainerSize } from '../lib/compoundLayout'
 
 function generateNodeId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -24,9 +15,7 @@ function generateNodeId(): string {
   return `node_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
 }
 
-export function useCanvasDrop(
-  reactFlowInstance: ReactFlowInstance<CanvasNode, CanvasEdge>
-) {
+export function useCanvasDrop(reactFlowInstance: ReactFlowInstance<CanvasNode, CanvasEdge>) {
   const { addNode } = useCanvasActions()
   const nodes = useCanvasNodes()
   const { notify } = useToast()
@@ -37,35 +26,16 @@ export function useCanvasDrop(
         return nodes.find((node) => node.id === item.compoundParentId) ?? null
       }
 
-      const candidate = [...nodes]
-        .reverse()
-        .find((node) => {
-          if (!isCompoundContainerNodeType(node.data.nodeType)) {
-            return false
-          }
+      const candidate = [...nodes].reverse().find((node) => {
+        if (!isCompoundContainerNodeType(node.data.nodeType)) {
+          return false
+        }
 
-          const width =
-            typeof node.style?.width === 'number'
-              ? node.style.width
-              : typeof node.width === 'number'
-                ? node.width
-                : 0
-          const height =
-            typeof node.style?.height === 'number'
-              ? node.style.height
-              : typeof node.height === 'number'
-                ? node.height
-                : 0
+        const width = typeof node.style?.width === 'number' ? node.style.width : typeof node.width === 'number' ? node.width : 0
+        const height = typeof node.style?.height === 'number' ? node.style.height : typeof node.height === 'number' ? node.height : 0
 
-          return (
-            width > 0
-            && height > 0
-            && position.x >= node.position.x
-            && position.x <= node.position.x + width
-            && position.y >= node.position.y
-            && position.y <= node.position.y + height
-          )
-        })
+        return width > 0 && height > 0 && position.x >= node.position.x && position.x <= node.position.x + width && position.y >= node.position.y && position.y <= node.position.y + height
+      })
 
       return candidate ?? null
     },
@@ -122,18 +92,8 @@ export function useCanvasDrop(
               const parentSize = resolveCompoundContainerSize({
                 inputPortCount: compoundParent.data.inputPorts.length,
                 outputPortCount: compoundParent.data.outputPorts.length,
-                width:
-                  typeof compoundParent.style?.width === 'number'
-                    ? compoundParent.style.width
-                    : typeof compoundParent.width === 'number'
-                      ? compoundParent.width
-                      : null,
-                height:
-                  typeof compoundParent.style?.height === 'number'
-                    ? compoundParent.style.height
-                    : typeof compoundParent.height === 'number'
-                      ? compoundParent.height
-                      : null,
+                width: typeof compoundParent.style?.width === 'number' ? compoundParent.style.width : typeof compoundParent.width === 'number' ? compoundParent.width : null,
+                height: typeof compoundParent.style?.height === 'number' ? compoundParent.style.height : typeof compoundParent.height === 'number' ? compoundParent.height : null,
                 isCollapsed: compoundParent.data.config?.isCollapsed === true,
               })
               const extent = buildCompoundChildExtent({
@@ -157,18 +117,8 @@ export function useCanvasDrop(
               const parentSize = resolveCompoundContainerSize({
                 inputPortCount: compoundParent.data.inputPorts.length,
                 outputPortCount: compoundParent.data.outputPorts.length,
-                width:
-                  typeof compoundParent.style?.width === 'number'
-                    ? compoundParent.style.width
-                    : typeof compoundParent.width === 'number'
-                      ? compoundParent.width
-                      : null,
-                height:
-                  typeof compoundParent.style?.height === 'number'
-                    ? compoundParent.style.height
-                    : typeof compoundParent.height === 'number'
-                      ? compoundParent.height
-                      : null,
+                width: typeof compoundParent.style?.width === 'number' ? compoundParent.style.width : typeof compoundParent.width === 'number' ? compoundParent.width : null,
+                height: typeof compoundParent.style?.height === 'number' ? compoundParent.style.height : typeof compoundParent.height === 'number' ? compoundParent.height : null,
                 isCollapsed: compoundParent.data.config?.isCollapsed === true,
               })
 
@@ -180,7 +130,6 @@ export function useCanvasDrop(
                   width: parentSize.width,
                   height: parentSize.height,
                 }),
-                expandParent: true,
               }
             })()
           : {}),
@@ -190,7 +139,7 @@ export function useCanvasDrop(
 
       addNode(input)
     },
-    [addNode, notify, reactFlowInstance, resolveCompoundParent]
+    [addNode, notify, reactFlowInstance, resolveCompoundParent],
   )
 
   return { onDragOver, onDrop }

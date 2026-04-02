@@ -95,6 +95,7 @@ import { ApiEventTriggerNodeBody } from "./nodes/ApiEventTriggerNodeBody";
 import { SkillBody } from "../../agent-canvas/components/nodes/SkillBody";
 import { SubAgentNodeBody } from "../../agent-canvas/components/nodes/SubAgentNodeBody";
 import {
+  COMPOUND_CONTAINER_DEFAULT_SIZE,
   isCompoundContainerNodeType,
   isCompoundSpecialNodeType,
 } from "../types/controlFlow.types";
@@ -574,9 +575,15 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
       {isCompoundContainer && !isCompoundCollapsed && compoundFrameInsets ? (
         <NodeResizer
           isVisible={!!selected}
-          minWidth={parsedMinResize?.width ?? compoundMinimumSize?.width ?? 800}
+          minWidth={
+            parsedMinResize?.width ??
+            compoundMinimumSize?.width ??
+            COMPOUND_CONTAINER_DEFAULT_SIZE.width
+          }
           minHeight={
-            parsedMinResize?.height ?? compoundMinimumSize?.height ?? 600
+            parsedMinResize?.height ??
+            compoundMinimumSize?.height ??
+            COMPOUND_CONTAINER_DEFAULT_SIZE.height
           }
           lineClassName="!border-primary/30"
           handleClassName="!h-2.5 !w-2.5 !rounded-sm !border-primary/50 !bg-background"

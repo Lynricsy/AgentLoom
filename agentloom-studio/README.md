@@ -13,17 +13,17 @@ AgentLoom Studio 是基于 **React 19 + Vite 7** 的前端工作台，负责工�
 
 ## 当前关键页面
 
-| 路由 | 页面 | 说明 |
-|------|------|------|
-| `/workflows/$workflowId` | WorkflowCanvasPage | React Flow 画布编辑器、自动保存、节点配置 |
-| `/executions/$executionId` | ExecutionDebugView | 只读执行调试视图与垂直时间线 |
-| `/settings/audit-logs` | AuditLogPage | owner/admin 审计日志查询页 |
-| `/settings/security/autonomy-policy` | OrganizationAutonomyPolicyPage | owner-only 组织自治策略设置页 |
-| `/settings/resource-quotas` | ResourceGovernancePage | owner/admin 资源治理页：quota、tenant/workflow governance、异常 execution 终止 |
-| `/settings/monitoring` | MonitoringDashboardPage | owner/admin 组织级只读运行监控页：执行趋势、当前队列快照摘要、alerts、hotspots、risk summary |
-| `/resources/knowledge-bases` | KnowledgeBasesPage | 知识库管理（列表页展示文档数 / 知识节点数 / 策略摘要） |
-| `/settings/tool-library` | ToolLibraryPage | MCP 工具库 |
-| `/marketplace` | MarketplaceBrowsePage | 工作流 / 插件市场 |
+| 路由                                 | 页面                           | 说明                                                                                         |
+| ------------------------------------ | ------------------------------ | -------------------------------------------------------------------------------------------- |
+| `/workflows/$workflowId`             | WorkflowCanvasPage             | React Flow 画布编辑器、自动保存、节点配置                                                    |
+| `/executions/$executionId`           | ExecutionDebugView             | 只读执行调试视图与垂直时间线                                                                 |
+| `/settings/audit-logs`               | AuditLogPage                   | owner/admin 审计日志查询页                                                                   |
+| `/settings/security/autonomy-policy` | OrganizationAutonomyPolicyPage | owner-only 组织自治策略设置页                                                                |
+| `/settings/resource-quotas`          | ResourceGovernancePage         | owner/admin 资源治理页：quota、tenant/workflow governance、异常 execution 终止               |
+| `/settings/monitoring`               | MonitoringDashboardPage        | owner/admin 组织级只读运行监控页：执行趋势、当前队列快照摘要、alerts、hotspots、risk summary |
+| `/resources/knowledge-bases`         | KnowledgeBasesPage             | 知识库管理（列表页展示文档数 / 知识节点数 / 策略摘要）                                       |
+| `/settings/tool-library`             | ToolLibraryPage                | MCP 工具库                                                                                   |
+| `/marketplace`                       | MarketplaceBrowsePage          | 工作流 / 插件市场                                                                            |
 
 ## Feature-Slice 结构
 
@@ -49,6 +49,15 @@ src/
 │   └── utils/
 └── test-setup.ts
 ```
+
+## 画布控制流容器事实
+
+`features/canvas/` 当前对 `loop / iteration` compound 容器采用以下前端契约：
+
+- 默认展开态容器尺寸由 `lib/compoundLayout.ts` 统一计算，当前默认起点约为 `600 x 540`
+- 可见“循环体 / 迭代体”内框不是纯装饰，而是内部子节点的真实拖拽边界
+- 子节点 extent 需要按节点 `measured.width/height` 计算，回退到内置默认尺寸，避免把纵向拖拽空间压成一条线
+- compound 子节点保持 `expandParent = false`，父容器本身就是固定边界，不通过拖拽自动撑大
 
 ## LLM 模型管理前端事实
 

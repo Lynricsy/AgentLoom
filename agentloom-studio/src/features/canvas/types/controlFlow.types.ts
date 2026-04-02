@@ -2,20 +2,11 @@ import type { PortDefinition } from './nodeTypeRegistry'
 import { createPort } from './nodeTypeRegistry'
 
 export const COMPOUND_CONTAINER_NODE_TYPES = ['loop', 'iteration'] as const
-export type CompoundContainerNodeType =
-  (typeof COMPOUND_CONTAINER_NODE_TYPES)[number]
+export type CompoundContainerNodeType = (typeof COMPOUND_CONTAINER_NODE_TYPES)[number]
 
-export const COMPOUND_SPECIAL_NODE_TYPES = [
-  'loop-start',
-  'iteration-start',
-  'loop-state',
-  'result',
-  'break',
-  'continue',
-] as const
+export const COMPOUND_SPECIAL_NODE_TYPES = ['loop-start', 'iteration-start', 'loop-state', 'result', 'break', 'continue'] as const
 
-export type CompoundSpecialNodeType =
-  (typeof COMPOUND_SPECIAL_NODE_TYPES)[number]
+export type CompoundSpecialNodeType = (typeof COMPOUND_SPECIAL_NODE_TYPES)[number]
 
 export const COMPOUND_PARENT_EXEC_INPUT_ID = 'exec-in'
 export const COMPOUND_PARENT_EXEC_OUTPUT_ID = 'exec-out'
@@ -46,8 +37,8 @@ export const JUMP_EXEC_INPUT_ID = 'exec-in'
 export type CompoundOutputMode = 'none' | 'collect-array' | 'last'
 
 export const COMPOUND_CONTAINER_DEFAULT_SIZE = {
-  width: 800,
-  height: 600,
+  width: 600,
+  height: 540,
 } as const
 
 export const COMPOUND_START_NODE_DEFAULT_POSITION = {
@@ -88,17 +79,11 @@ export interface JumpNodeConfig {
   expression: string
 }
 
-export function isCompoundContainerNodeType(
-  nodeType: string | null | undefined,
-): nodeType is CompoundContainerNodeType {
-  return COMPOUND_CONTAINER_NODE_TYPES.includes(
-    nodeType as CompoundContainerNodeType,
-  )
+export function isCompoundContainerNodeType(nodeType: string | null | undefined): nodeType is CompoundContainerNodeType {
+  return COMPOUND_CONTAINER_NODE_TYPES.includes(nodeType as CompoundContainerNodeType)
 }
 
-export function isCompoundSpecialNodeType(
-  nodeType: string | null | undefined,
-): nodeType is CompoundSpecialNodeType {
+export function isCompoundSpecialNodeType(nodeType: string | null | undefined): nodeType is CompoundSpecialNodeType {
   return COMPOUND_SPECIAL_NODE_TYPES.includes(nodeType as CompoundSpecialNodeType)
 }
 
@@ -159,19 +144,11 @@ function createCompoundValueInputPort(id: string, label: string): PortDefinition
   })
 }
 
-export function buildCompoundExtraInputPorts(
-  extraInputIds: readonly string[],
-  portLabels?: Record<string, string>,
-): PortDefinition[] {
-  return extraInputIds.map((portId, index) =>
-    createCompoundValueInputPort(portId, portLabels?.[portId] ?? `输入 ${index + 1}`),
-  )
+export function buildCompoundExtraInputPorts(extraInputIds: readonly string[], portLabels?: Record<string, string>): PortDefinition[] {
+  return extraInputIds.map((portId, index) => createCompoundValueInputPort(portId, portLabels?.[portId] ?? `输入 ${index + 1}`))
 }
 
-export function buildJumpInputPorts(
-  extraInputIds: readonly string[] = [],
-  portLabels?: Record<string, string>,
-): PortDefinition[] {
+export function buildJumpInputPorts(extraInputIds: readonly string[] = [], portLabels?: Record<string, string>): PortDefinition[] {
   return [
     createPort(JUMP_EXEC_INPUT_ID, '', 'input', 'exec', {
       description: '执行流进入后评估当前控制节点是否触发',
@@ -180,18 +157,11 @@ export function buildJumpInputPorts(
   ]
 }
 
-export function getCompoundExtraInputPortIds(
-  inputPorts: readonly PortDefinition[],
-): string[] {
-  return inputPorts
-    .filter((port) => port.id.startsWith(COMPOUND_EXTRA_INPUT_PREFIX))
-    .map((port) => port.id)
+export function getCompoundExtraInputPortIds(inputPorts: readonly PortDefinition[]): string[] {
+  return inputPorts.filter((port) => port.id.startsWith(COMPOUND_EXTRA_INPUT_PREFIX)).map((port) => port.id)
 }
 
-export function buildIterationInputPorts(
-  extraInputIds: readonly string[] = [],
-  portLabels?: Record<string, string>,
-): PortDefinition[] {
+export function buildIterationInputPorts(extraInputIds: readonly string[] = [], portLabels?: Record<string, string>): PortDefinition[] {
   return [
     createPort(COMPOUND_PARENT_EXEC_INPUT_ID, '', 'input', 'exec', {
       description: '执行流入口，前序节点完成后触发迭代容器',
@@ -203,10 +173,7 @@ export function buildIterationInputPorts(
   ]
 }
 
-export function buildLoopInputPorts(
-  extraInputIds: readonly string[] = [],
-  portLabels?: Record<string, string>,
-): PortDefinition[] {
+export function buildLoopInputPorts(extraInputIds: readonly string[] = [], portLabels?: Record<string, string>): PortDefinition[] {
   return [
     createPort(COMPOUND_PARENT_EXEC_INPUT_ID, '', 'input', 'exec', {
       description: '执行流入口，前序节点完成后触发循环容器',
@@ -216,9 +183,7 @@ export function buildLoopInputPorts(
   ]
 }
 
-export function buildCompoundOutputPorts(
-  outputKeys: readonly string[],
-): PortDefinition[] {
+export function buildCompoundOutputPorts(outputKeys: readonly string[]): PortDefinition[] {
   return [
     createPort(COMPOUND_PARENT_EXEC_OUTPUT_ID, '', 'output', 'exec', {
       description: '容器执行完成后触发下游节点',
@@ -231,58 +196,33 @@ export function buildCompoundOutputPorts(
   ]
 }
 
-export function buildIterationStartOutputPorts(
-  extraInputIds: readonly string[],
-  config: IterationStartNodeConfig,
-): PortDefinition[] {
+export function buildIterationStartOutputPorts(extraInputIds: readonly string[], config: IterationStartNodeConfig): PortDefinition[] {
   return [
     createPort(ITERATION_START_EXEC_OUTPUT_ID, '', 'output', 'exec', {
       description: '迭代轮次开始后触发内部子图',
     }),
     createCompoundValueInputPort(ITERATION_START_ITEM_OUTPUT_ID, '当前项'),
     createCompoundValueInputPort(ITERATION_START_INDEX_OUTPUT_ID, '索引'),
-    ...extraInputIds.map((portId, index) =>
-      createCompoundValueInputPort(portId, `输入 ${index + 1}`),
-    ),
-    ...(config.exposeTotal
-      ? [createCompoundValueInputPort(ITERATION_START_TOTAL_OUTPUT_ID, '总数')]
-      : []),
-    ...(config.exposeIsFirst
-      ? [createCompoundValueInputPort(ITERATION_START_IS_FIRST_OUTPUT_ID, '是否首项')]
-      : []),
-    ...(config.exposeIsLast
-      ? [createCompoundValueInputPort(ITERATION_START_IS_LAST_OUTPUT_ID, '是否末项')]
-      : []),
+    ...extraInputIds.map((portId, index) => createCompoundValueInputPort(portId, `输入 ${index + 1}`)),
+    ...(config.exposeTotal ? [createCompoundValueInputPort(ITERATION_START_TOTAL_OUTPUT_ID, '总数')] : []),
+    ...(config.exposeIsFirst ? [createCompoundValueInputPort(ITERATION_START_IS_FIRST_OUTPUT_ID, '是否首项')] : []),
+    ...(config.exposeIsLast ? [createCompoundValueInputPort(ITERATION_START_IS_LAST_OUTPUT_ID, '是否末项')] : []),
   ].map((port) => ({
     ...port,
     direction: 'output',
   }))
 }
 
-export function buildLoopStartOutputPorts(
-  extraInputIds: readonly string[],
-  config: LoopStartNodeConfig,
-): PortDefinition[] {
+export function buildLoopStartOutputPorts(extraInputIds: readonly string[], config: LoopStartNodeConfig): PortDefinition[] {
   return [
     createPort(LOOP_START_EXEC_OUTPUT_ID, '', 'output', 'exec', {
       description: '循环轮次开始后触发内部子图',
     }),
     createCompoundValueInputPort(LOOP_START_ROUND_OUTPUT_ID, '轮次'),
     createCompoundValueInputPort(LOOP_START_STATE_OUTPUT_ID, '当前状态'),
-    ...extraInputIds.map((portId, index) =>
-      createCompoundValueInputPort(portId, `输入 ${index + 1}`),
-    ),
-    ...(config.exposePreviousResult
-      ? [
-          createCompoundValueInputPort(
-            LOOP_START_PREVIOUS_RESULT_OUTPUT_ID,
-            '上一轮结果',
-          ),
-        ]
-      : []),
-    ...(config.exposeIsFirst
-      ? [createCompoundValueInputPort(LOOP_START_IS_FIRST_OUTPUT_ID, '是否首轮')]
-      : []),
+    ...extraInputIds.map((portId, index) => createCompoundValueInputPort(portId, `输入 ${index + 1}`)),
+    ...(config.exposePreviousResult ? [createCompoundValueInputPort(LOOP_START_PREVIOUS_RESULT_OUTPUT_ID, '上一轮结果')] : []),
+    ...(config.exposeIsFirst ? [createCompoundValueInputPort(LOOP_START_IS_FIRST_OUTPUT_ID, '是否首轮')] : []),
   ].map((port) => ({
     ...port,
     direction: 'output',
