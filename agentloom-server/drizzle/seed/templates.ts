@@ -40,8 +40,8 @@ async function main() {
   }
 
   console.log('Seeding skills...');
-  await seedSkills(db);
-  console.log('Done — %d skills seeded.', 5);
+  const seededSkillCount = await seedSkills(db);
+  console.log('Done — %d skills seeded.', seededSkillCount);
 
   await sql.end();
 }

@@ -6,7 +6,7 @@ import { skills } from '../schema';
 
 const SYSTEM_UUID = '00000000-0000-0000-0000-000000000000';
 
-const SKILL_NAMES = [
+export const BUILTIN_SKILL_SLUGS = [
   'code-review',
   'documentation',
   'test-generation',
@@ -47,14 +47,14 @@ function parseFrontmatter(content: string): Record<string, string> {
   return result;
 }
 
-export async function seedSkills(db: DrizzleDB): Promise<void> {
+export async function seedSkills(db: DrizzleDB): Promise<number> {
   // session_replication_role = 'replica' bypasses PostgreSQL trigger-based FK
   // enforcement, allowing builtin skills to be inserted with a sentinel system
   // UUID without requiring a real users/organizations row to exist first.
   await db.execute(sql`SET session_replication_role = 'replica'`);
 
   try {
-    for (const name of SKILL_NAMES) {
+    for (const name of BUILTIN_SKILL_SLUGS) {
       const skillDir = join(__dirname, 'skills', name);
       const filePath = join(skillDir, 'SKILL.md');
       const content = readFileSync(filePath, 'utf-8');
@@ -99,4 +99,6 @@ export async function seedSkills(db: DrizzleDB): Promise<void> {
   } finally {
     await db.execute(sql`SET session_replication_role = DEFAULT`);
   }
+
+  return BUILTIN_SKILL_SLUGS.length;
 }
