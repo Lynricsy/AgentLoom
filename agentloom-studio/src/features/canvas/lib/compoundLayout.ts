@@ -156,3 +156,64 @@ export function getCompoundInitialChildPosition(
     y: extent[0][1],
   }
 }
+
+const COMPOUND_CHILD_FALLBACK_SIZE = { width: 260, height: 160 } as const
+
+/**
+ * 计算所有子节点的包围盒（基于子节点相对于 compound 父节点的本地坐标）。
+ * 当子节点列表为空时返回 null。
+ */
+export function computeChildrenBoundingBox(
+  children: readonly {
+    position: XYPosition
+    measured?: { width?: number; height?: number } | null
+    width?: number | null
+    height?: number | null
+  }[],
+): { minX: number; minY: number; maxX: number; maxY: number } | null {
+  if (children.length === 0) {
+    return null
+  }
+
+  let minX = Infinity
+  let minY = Infinity
+  let maxX = -Infinity
+  let maxY = -Infinity
+
+  for (const child of children) {
+    const w =
+      child.measured?.width ?? (typeof child.width === 'number' ? child.width : null) ?? COMPOUND_CHILD_FALLBACK_SIZE.width
+    const h =
+      child.measured?.height ?? (typeof child.height === 'number' ? child.height : null) ?? COMPOUND_CHILD_FALLBACK_SIZE.height
+    minX = Math.min(minX, child.position.x)
+    minY = Math.min(minY, child.position.y)
+    maxX = Math.max(maxX, child.position.x + w)
+    maxY = Math.max(maxY, child.position.y + h)
+  }
+
+  return { minX, minY, maxX, maxY }
+}
+
+/**
+ * 根据子节点包围盒和帧内距计算 compound 节点的最小 resize 尺寸。
+ * 保证 resize 不能把 compound 缩小到无法容纳已有子节点。
+ */
+export function computeMinResizeSize(
+  childrenBBox: { maxX: number; maxY: number } | null,
+  frameInsets: CompoundFrameInsets,
+): CompoundLayoutSize {
+  const baseMinWidth = COMPOUND_MIN_FRAME_SIZE.width + frameInsets.left + frameInsets.right
+  const baseMinHeight = COMPOUND_MIN_FRAME_SIZE.height + frameInsets.top + frameInsets.bottom
+
+  if (!childrenBBox) {
+    return { width: baseMinWidth, height: baseMinHeight }
+  }
+
+  const childRequiredWidth = childrenBBox.maxX + frameInsets.right + COMPOUND_FRAME_CHILD_PADDING
+  const childRequiredHeight = childrenBBox.maxY + frameInsets.bottom + COMPOUND_FRAME_CHILD_PADDING
+
+  return {
+    width: Math.max(childRequiredWidth, baseMinWidth),
+    height: Math.max(childRequiredHeight, baseMinHeight),
+  }
+}

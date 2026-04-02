@@ -301,28 +301,86 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
         actions: {
           onNodesChange: (changes) =>
             set((state) => {
-              const selectionChanges = changes.filter(
+              // 钳制 compound 子节点拖拽位置到循环体区域内
+              const clampedChanges = changes.map((change) => {
+                if (change.type !== 'position' || !change.position) {
+                  return change
+                }
+
+                const node = state.nodes.find((n) => n.id === change.id)
+                if (!node?.parentId) {
+                  return change
+                }
+
+                const parent = state.nodes.find((n) => n.id === node.parentId)
+                if (
+                  !parent
+                  || !isCompoundContainerNodeType(parent.data.nodeType)
+                  || parent.data.config?.isCollapsed === true
+                ) {
+                  return change
+                }
+
+                const extent = buildCompoundChildExtent({
+                  inputPortCount: parent.data.inputPorts.length,
+                  outputPortCount: parent.data.outputPorts.length,
+                  width:
+                    readNumericNodeDimension(parent.style?.width)
+                    ?? readNumericNodeDimension(parent.width),
+                  height:
+                    readNumericNodeDimension(parent.style?.height)
+                    ?? readNumericNodeDimension(parent.height),
+                })
+
+                const clamped = clampPositionToExtent(change.position, extent)
+                if (clamped.x !== change.position.x || clamped.y !== change.position.y) {
+                  return { ...change, position: clamped }
+                }
+
+                return change
+              })
+
+              const selectionChanges = clampedChanges.filter(
                 (change): change is NodeChange<CanvasNode> & { type: 'select'; selected: boolean } =>
                   change.type === 'select',
               )
-              const removedNodeIds = changes
+              const removedNodeIds = clampedChanges
                 .filter(
                   (change): change is NodeChange<CanvasNode> & { type: 'remove' } =>
                     change.type === 'remove',
                 )
                 .map((change) => change.id)
 
-              state.nodes = applyNodeChanges(changes, state.nodes)
+              state.nodes = applyNodeChanges(clampedChanges, state.nodes)
+
+              // compound 节点 resize 后重新同步子节点 extent
+              const resizedCompoundIds = clampedChanges
+                .filter(
+                  (change): change is NodeChange<CanvasNode> & { type: 'dimensions'; id: string; resizing: boolean } =>
+                    change.type === 'dimensions'
+                    && 'resizing' in change
+                    && change.resizing === false,
+                )
+                .map((change) => change.id)
+                .filter((id) => {
+                  const n = state.nodes.find((node) => node.id === id)
+                  return n && isCompoundContainerNodeType(n.data.nodeType)
+                })
+
+              for (const compoundId of resizedCompoundIds) {
+                syncCompoundParentLayout(state.nodes, compoundId)
+              }
               if (removedNodeIds.length > 0) {
                 for (const nodeId of removedNodeIds) {
                   delete state.nodeValidationErrors[nodeId]
                 }
               }
-              const isDirtyChange = changes.some(
+              const isDirtyChange = clampedChanges.some(
                 (c) =>
                   c.type === 'remove' ||
                   c.type === 'add' ||
-                  (c.type === 'position' && c.dragging === false)
+                  (c.type === 'position' && c.dragging === false) ||
+                  (c.type === 'dimensions' && 'resizing' in c && c.resizing === false)
               )
               if (isDirtyChange) {
                 state.isDirty = true

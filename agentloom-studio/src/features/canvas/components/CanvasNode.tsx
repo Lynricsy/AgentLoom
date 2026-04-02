@@ -43,7 +43,7 @@ import {
   Webhook,
   type LucideIcon,
 } from 'lucide-react'
-import { Position, type NodeProps } from '@xyflow/react'
+import { Position, NodeResizer, type NodeProps } from '@xyflow/react'
 import { cn } from '@/shared/lib/utils'
 import {
   getLlmConfigState,
@@ -97,6 +97,8 @@ import {
 import {
   getCompoundFrameInsets,
   resolveCompoundContainerSize,
+  computeChildrenBoundingBox,
+  computeMinResizeSize,
 } from '../lib/compoundLayout'
 
 const NODE_TYPE_ICONS: Record<string, LucideIcon> = {
@@ -321,6 +323,31 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
         : null,
     [inputPorts.length, isCompoundCollapsed, isCompoundContainer, outputPorts.length],
   )
+  const compoundMinResizeSize = useCanvasStore(
+    useCallback(
+      (s) => {
+        if (!isCompoundContainer || isCompoundCollapsed) {
+          return null
+        }
+
+        const frameInsets = getCompoundFrameInsets(inputPorts.length, outputPorts.length)
+        const children = s.nodes.filter((n) => n.parentId === id)
+        const bbox = computeChildrenBoundingBox(children)
+        const minSize = computeMinResizeSize(bbox, frameInsets)
+        return `${minSize.width},${minSize.height}`
+      },
+      [id, inputPorts.length, isCompoundCollapsed, isCompoundContainer, outputPorts.length],
+    ),
+  )
+  const parsedMinResize = useMemo(() => {
+    if (!compoundMinResizeSize) {
+      return null
+    }
+
+    const [w, h] = compoundMinResizeSize.split(',').map(Number)
+    return { width: w!, height: h! }
+  }, [compoundMinResizeSize])
+  const compoundBodyLabel = data.nodeType === 'loop' ? '循环体' : data.nodeType === 'iteration' ? '迭代体' : '容器体'
   const subtitle = data.nodeType === 'llm-model'
     ? llmConfig
       ? `${providerInfo?.name ?? llmConfig.provider} · ${llmConfig.name}`
@@ -488,17 +515,37 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
 
       {!isMinimal ? <NodeExecutionOverlay nodeId={id} /> : null}
 
+      {isCompoundContainer && !isCompoundCollapsed && compoundFrameInsets ? (
+        <NodeResizer
+          isVisible={!!selected}
+          minWidth={parsedMinResize?.width ?? compoundMinimumSize?.width ?? 800}
+          minHeight={parsedMinResize?.height ?? compoundMinimumSize?.height ?? 600}
+          lineClassName="!border-primary/30"
+          handleClassName="!h-2.5 !w-2.5 !rounded-sm !border-primary/50 !bg-background"
+        />
+      ) : null}
+
       {isCompoundContainer && lod === 'full' && compoundFrameInsets ? (
         <div
-          aria-hidden="true"
-          className="pointer-events-none absolute rounded-2xl border border-dashed border-border/50 bg-[radial-gradient(circle_at_top,rgba(148,163,184,0.10),transparent_58%)]"
+          className="pointer-events-none absolute flex flex-col overflow-hidden rounded-xl border border-border/40 bg-muted/[0.06]"
           style={{
             top: compoundFrameInsets.top,
             right: compoundFrameInsets.right,
             bottom: compoundFrameInsets.bottom,
             left: compoundFrameInsets.left,
           }}
-        />
+        >
+          <div className="flex items-center gap-1.5 border-b border-border/25 px-3 py-1">
+            {data.nodeType === 'iteration' ? (
+              <Repeat2 className="h-3 w-3 text-muted-foreground/50" />
+            ) : (
+              <Repeat className="h-3 w-3 text-muted-foreground/50" />
+            )}
+            <span className="text-[10px] font-medium uppercase tracking-widest text-muted-foreground/50">
+              {compoundBodyLabel}
+            </span>
+          </div>
+        </div>
       ) : null}
 
       {hasValidationError && lod !== 'minimal' ? (
