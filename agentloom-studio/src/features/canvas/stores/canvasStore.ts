@@ -977,7 +977,7 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
                 // 合并节点: 从 config.inputCount 推导输入端口
                 if (n.data.nodeType === 'merge') {
                   const mergeConfig = parseMergeNodeConfig(n.data.config ?? {})
-                  inputPorts = buildMergeInputPorts(mergeConfig.inputCount)
+                  inputPorts = buildMergeInputPorts(mergeConfig.inputCount, mergeConfig.portLabels)
                 }
 
                 if (

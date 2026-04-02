@@ -577,6 +577,7 @@ export interface MergeNodeConfig {
   mode: MergeMode
   mergeKey: string
   inputCount: number
+  portLabels?: Record<string, string>
 }
 
 /** 创建默认 Merge 节点配置 */
@@ -599,7 +600,12 @@ export function parseMergeNodeConfig(config: Record<string, unknown>): MergeNode
     typeof config.inputCount === 'number' ? config.inputCount : 2
   const inputCount = Math.max(2, Math.min(10, Math.floor(rawCount)))
 
-  return { mode, mergeKey, inputCount }
+  const portLabels =
+    config.portLabels && typeof config.portLabels === 'object' && !Array.isArray(config.portLabels)
+      ? (config.portLabels as Record<string, string>)
+      : undefined
+
+  return { mode, mergeKey, inputCount, portLabels }
 }
 
 const MERGE_MODE_LABELS: Record<MergeMode, string> = {
@@ -613,13 +619,19 @@ export function getMergeModeLabel(mode: MergeMode): string {
 }
 
 /**
- * 从 inputCount 生成 Merge 节点的动态输入端口
+ * 从 inputCount 生成 Merge 节点的动态输入端口。
+ * 支持自定义端口标签。
  */
-export function buildMergeInputPorts(inputCount: number): PortDefinition[] {
+export function buildMergeInputPorts(
+  inputCount: number,
+  portLabels?: Record<string, string>,
+): PortDefinition[] {
   const count = Math.max(2, Math.min(10, Math.floor(inputCount)))
-  return Array.from({ length: count }, (_, i) =>
-    createPort(`input-${i}`, `输入 ${i + 1}`, 'input', 'json', {
+  return Array.from({ length: count }, (_, i) => {
+    const portId = `input-${i}`
+    const label = portLabels?.[portId] ?? `输入 ${i + 1}`
+    return createPort(portId, label, 'input', 'json', {
       description: `第 ${i + 1} 路输入，等待所有输入就绪后进行合并`,
-    }),
-  )
+    })
+  })
 }

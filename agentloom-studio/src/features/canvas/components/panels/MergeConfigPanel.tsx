@@ -6,6 +6,7 @@ import {
   type MergeNodeConfig,
   type MergeMode,
 } from '../../types/condition.types'
+import { DynamicPortEditor, type DynamicPortEntry } from './DynamicPortEditor'
 
 // ── MergeConfigPanel ──────────────────────────────────────────────
 
@@ -14,9 +15,8 @@ interface MergeConfigPanelProps {
   onApply: (patch: Record<string, unknown>) => void
 }
 
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value))
-}
+const createMergePortId = (index: number) => `input-${index}`
+const createMergeDefaultLabel = (index: number) => `输入 ${index + 1}`
 
 export const MergeConfigPanel = memo(function MergeConfigPanel({
   config,
@@ -27,7 +27,7 @@ export const MergeConfigPanel = memo(function MergeConfigPanel({
   const applyConfig = useCallback(
     (patch: Partial<MergeNodeConfig>) => {
       const next: MergeNodeConfig = { ...parsed, ...patch }
-      const inputPorts = buildMergeInputPorts(next.inputCount)
+      const inputPorts = buildMergeInputPorts(next.inputCount, next.portLabels)
       onApply({ config: next, inputPorts })
     },
     [parsed, onApply],
@@ -49,12 +49,34 @@ export const MergeConfigPanel = memo(function MergeConfigPanel({
     [applyConfig],
   )
 
-  // ── inputCount ───────────────────────────────────────────────
-  const handleInputCountChange = useCallback(
-    (e: ChangeEvent<HTMLInputElement>) => {
-      const raw = Number(e.target.value)
-      const value = Number.isFinite(raw) ? clamp(Math.floor(raw), 2, 10) : 2
-      applyConfig({ inputCount: value })
+  // ── ports (count + labels) ───────────────────────────────────
+  const portEntries: DynamicPortEntry[] = useMemo(
+    () =>
+      Array.from({ length: parsed.inputCount }, (_, i) => {
+        const portId = createMergePortId(i)
+        return {
+          id: portId,
+          label: parsed.portLabels?.[portId] ?? createMergeDefaultLabel(i),
+        }
+      }),
+    [parsed.inputCount, parsed.portLabels],
+  )
+
+  const handlePortsChange = useCallback(
+    (ports: DynamicPortEntry[]) => {
+      const nextLabels: Record<string, string> = {}
+      for (let i = 0; i < ports.length; i++) {
+        const port = ports[i]!
+        const defaultLabel = createMergeDefaultLabel(i)
+        if (port.label && port.label !== defaultLabel) {
+          nextLabels[createMergePortId(i)] = port.label
+        }
+      }
+
+      applyConfig({
+        inputCount: ports.length,
+        portLabels: Object.keys(nextLabels).length > 0 ? nextLabels : undefined,
+      })
     },
     [applyConfig],
   )
@@ -114,45 +136,18 @@ export const MergeConfigPanel = memo(function MergeConfigPanel({
         </div>
       )}
 
-      {/* 输入数量 */}
-      <div>
-        <label
-          htmlFor="merge-input-count"
-          className="mb-2 block text-xs font-medium text-foreground"
-        >
-          输入数量
-        </label>
-        <input
-          id="merge-input-count"
-          type="number"
-          min={2}
-          max={10}
-          step={1}
-          value={parsed.inputCount}
-          onChange={handleInputCountChange}
-          className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-        />
-        <p className="mt-1 text-[10px] text-muted-foreground">
-          动态输入端口数量（2 - 10）
-        </p>
-      </div>
-
-      {/* 输入端口预览 */}
+      {/* 输入端口编辑器 */}
       <div className="space-y-2 rounded-lg border border-border bg-card p-3">
         <p className="text-xs font-medium text-foreground">输入端口</p>
-        <div className="flex flex-col gap-1.5 text-xs">
-          {Array.from({ length: parsed.inputCount }, (_, i) => (
-            <div key={`input-${i}`} className="flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full bg-muted-foreground/40" />
-              <span className="font-medium text-foreground">
-                input-{i}
-              </span>
-              <span className="text-muted-foreground">
-                输入 {i + 1}
-              </span>
-            </div>
-          ))}
-        </div>
+        <DynamicPortEditor
+          ports={portEntries}
+          onChange={handlePortsChange}
+          minPorts={2}
+          maxPorts={10}
+          createPortId={createMergePortId}
+          createDefaultLabel={createMergeDefaultLabel}
+          addLabel="添加输入"
+        />
       </div>
 
       {/* 配置摘要 */}
