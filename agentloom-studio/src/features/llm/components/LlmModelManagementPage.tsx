@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import {
   Brain,
@@ -19,6 +25,7 @@ import {
   Wrench,
   X,
   Zap,
+  type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
@@ -79,6 +86,28 @@ const PROTOCOL_LABELS: Record<ApiProtocol, string> = {
   cohere: "Cohere",
 };
 
+type ModelMetaTone = "neutral" | "primary" | "info" | "success" | "warning";
+
+const MODEL_META_CHIP_BASE =
+  "inline-flex max-w-full items-center gap-1 whitespace-nowrap rounded-full border px-2 py-1 text-[11px] font-medium leading-none shadow-sm";
+
+const MODEL_META_CHIP_TONE_CLASS: Record<ModelMetaTone, string> = {
+  neutral: "border-border/80 bg-background/90 text-foreground/80",
+  primary: "border-primary/35 bg-primary/10 text-primary",
+  info: "border-sky-500/35 bg-sky-500/12 text-sky-700 dark:text-sky-300",
+  success:
+    "border-emerald-500/35 bg-emerald-500/12 text-emerald-700 dark:text-emerald-300",
+  warning:
+    "border-amber-500/35 bg-amber-500/14 text-amber-800 dark:text-amber-300",
+};
+
+interface PricingBadgeSpec {
+  key: string;
+  label: string;
+  title: string;
+  tone: ModelMetaTone;
+}
+
 // ============================================================================
 // 工具函数
 // ============================================================================
@@ -95,21 +124,27 @@ function formatTokenThresholdLabel(tokens: number): string {
   return `${tokens}+`;
 }
 
-function buildPricingBadges(pricing: ModelPricing) {
+function buildPricingBadges(pricing: ModelPricing): PricingBadgeSpec[] {
   return [
     {
       key: "input",
-      label: `输入 ${formatPrice(pricing.inputPer1MTokens)} / 1M`,
+      label: `输入 ${formatPrice(pricing.inputPer1MTokens)}`,
+      title: `输入 ${formatPrice(pricing.inputPer1MTokens)} / 1M tokens`,
+      tone: "info",
     },
     {
       key: "output",
-      label: `输出 ${formatPrice(pricing.outputPer1MTokens)} / 1M`,
+      label: `输出 ${formatPrice(pricing.outputPer1MTokens)}`,
+      title: `输出 ${formatPrice(pricing.outputPer1MTokens)} / 1M tokens`,
+      tone: "primary",
     },
     ...(pricing.cachedReadPer1MTokens != null
       ? [
           {
             key: "cached-read",
-            label: `缓存读 ${formatPrice(pricing.cachedReadPer1MTokens)} / 1M`,
+            label: `缓存读 ${formatPrice(pricing.cachedReadPer1MTokens)}`,
+            title: `缓存读 ${formatPrice(pricing.cachedReadPer1MTokens)} / 1M tokens`,
+            tone: "success" as const,
           },
         ]
       : []),
@@ -117,7 +152,9 @@ function buildPricingBadges(pricing: ModelPricing) {
       ? [
           {
             key: "cached-write",
-            label: `缓存写 ${formatPrice(pricing.cachedWritePer1MTokens)} / 1M`,
+            label: `缓存写 ${formatPrice(pricing.cachedWritePer1MTokens)}`,
+            title: `缓存写 ${formatPrice(pricing.cachedWritePer1MTokens)} / 1M tokens`,
+            tone: "neutral" as const,
           },
         ]
       : []),
@@ -125,8 +162,13 @@ function buildPricingBadges(pricing: ModelPricing) {
       key: `tier-${index}`,
       label:
         `${formatTokenThresholdLabel(tier.aboveTokens)} ` +
-        `输入 ${formatPrice(tier.inputPer1MTokens)} / ` +
-        `输出 ${formatPrice(tier.outputPer1MTokens)}`,
+        `入 ${formatPrice(tier.inputPer1MTokens)} · ` +
+        `出 ${formatPrice(tier.outputPer1MTokens)}`,
+      title:
+        `${formatTokenThresholdLabel(tier.aboveTokens)} 以上：` +
+        `输入 ${formatPrice(tier.inputPer1MTokens)} / 1M，` +
+        `输出 ${formatPrice(tier.outputPer1MTokens)} / 1M`,
+      tone: "warning" as const,
     })),
   ];
 }
@@ -138,10 +180,43 @@ const CAPABILITY_BADGES: {
   icon: typeof Eye;
 }[] = [
   { key: "vision", label: "视觉", icon: Eye },
-  { key: "functionCalling", label: "函数调用", icon: Wrench },
+  { key: "functionCalling", label: "工具调用", icon: Wrench },
   { key: "reasoning", label: "推理", icon: Brain },
-  { key: "structuredOutput", label: "结构化输出", icon: FileJson },
+  { key: "structuredOutput", label: "结构化", icon: FileJson },
 ];
+
+interface ModelMetaChipProps {
+  children: ReactNode;
+  tone?: ModelMetaTone;
+  icon?: LucideIcon;
+  compact?: boolean;
+  numeric?: boolean;
+  title?: string;
+}
+
+function ModelMetaChip({
+  children,
+  tone = "neutral",
+  icon: Icon,
+  compact = false,
+  numeric = false,
+  title,
+}: ModelMetaChipProps) {
+  return (
+    <span
+      className={cn(
+        MODEL_META_CHIP_BASE,
+        MODEL_META_CHIP_TONE_CLASS[tone],
+        compact && "px-2 py-0.5 text-[10px]",
+        numeric && "[font-variant-numeric:tabular-nums]",
+      )}
+      title={title}
+    >
+      {Icon ? <Icon className={compact ? "h-3 w-3" : "h-3.5 w-3.5"} /> : null}
+      <span className="truncate">{children}</span>
+    </span>
+  );
+}
 
 // ============================================================================
 // 子组件: ProviderListPanel
@@ -291,6 +366,9 @@ interface ModelRowProps {
 function ModelRow({ model, onEdit, onDelete, onToggleEnabled }: ModelRowProps) {
   const capabilities = model.capabilities ?? {};
   const pricing = model.pricing;
+  const activeCapabilities = CAPABILITY_BADGES.filter(
+    ({ key }) => capabilities[key],
+  );
 
   return (
     <div className="flex items-center gap-3 rounded-lg border border-border bg-surface-elevated px-4 py-3 transition-colors hover:border-border/80">
@@ -303,51 +381,42 @@ function ModelRow({ model, onEdit, onDelete, onToggleEnabled }: ModelRowProps) {
 
       {/* 信息 */}
       <div className="min-w-0 flex-1">
-        <div className="flex flex-wrap items-center gap-1.5">
-          <span className="truncate text-sm font-medium text-foreground">
-            {model.name}
-          </span>
-          {model.isDefault && (
-            <span className="inline-flex items-center rounded-full bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-400">
-              默认
-            </span>
-          )}
-          <span className="inline-flex items-center rounded-full bg-sky-500/10 px-1.5 py-0.5 text-[10px] font-medium text-sky-500">
-            {model.modelType === "embedding" ? "Embedding" : "聊天"}
-          </span>
-        </div>
+        <span className="block truncate text-sm font-medium text-foreground">
+          {model.name}
+        </span>
         <p className="mt-0.5 truncate text-xs text-muted-foreground">
           {model.modelId}
         </p>
+
+        <div className="mt-1.5 flex flex-wrap gap-1.5">
+          {model.isDefault && (
+            <ModelMetaChip tone="warning">默认</ModelMetaChip>
+          )}
+          <ModelMetaChip tone="primary">
+            {model.modelType === "embedding" ? "Embedding" : "聊天"}
+          </ModelMetaChip>
+          {activeCapabilities.map(({ key, label, icon: Icon }) => (
+            <ModelMetaChip key={key} tone="neutral" icon={Icon}>
+              {label}
+            </ModelMetaChip>
+          ))}
+        </div>
+
         {pricing ? (
-          <div className="mt-1 flex flex-wrap gap-1">
+          <div className="mt-2 flex flex-wrap gap-1.5">
             {buildPricingBadges(pricing).map((badge) => (
-              <span
+              <ModelMetaChip
                 key={badge.key}
-                className="inline-flex items-center rounded-md bg-muted/60 px-1.5 py-0.5 text-[10px] text-muted-foreground"
+                tone={badge.tone}
+                compact
+                numeric
+                title={badge.title}
               >
                 {badge.label}
-              </span>
+              </ModelMetaChip>
             ))}
           </div>
         ) : null}
-      </div>
-
-      {/* 能力 badges */}
-      <div className="hidden shrink-0 items-center gap-1 lg:flex">
-        {CAPABILITY_BADGES.map(({ key, label, icon: Icon }) => {
-          if (!capabilities[key]) return null;
-          return (
-            <span
-              key={key}
-              className="inline-flex items-center gap-0.5 rounded-md bg-muted/60 px-1.5 py-0.5 text-[10px] text-muted-foreground"
-              title={label}
-            >
-              <Icon className="h-3 w-3" />
-              {label}
-            </span>
-          );
-        })}
       </div>
 
       {/* 操作 */}
@@ -577,29 +646,31 @@ function AddModelForm({
                   <div className="flex flex-wrap items-center gap-2 text-emerald-500">
                     <Check className="h-3 w-3" />
                     <span>已获取元数据</span>
-                    {metadata.contextWindow && (
-                      <span className="text-muted-foreground">
-                        ctx: {(metadata.contextWindow / 1000).toFixed(0)}k
-                      </span>
-                    )}
-                    {metadata.pricing && (
-                      <span className="text-muted-foreground">
-                        ${metadata.pricing.inputPer1MTokens}/
-                        {metadata.pricing.outputPer1MTokens}
-                      </span>
-                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {metadata.contextWindow ? (
+                      <ModelMetaChip tone="success" compact>
+                        ctx {(metadata.contextWindow / 1000).toFixed(0)}k
+                      </ModelMetaChip>
+                    ) : null}
+                    {metadata.pricing
+                      ? buildPricingBadges(metadata.pricing).map((badge) => (
+                          <ModelMetaChip
+                            key={badge.key}
+                            tone={badge.tone}
+                            compact
+                            numeric
+                            title={badge.title}
+                          >
+                            {badge.label}
+                          </ModelMetaChip>
+                        ))
+                      : null}
                   </div>
                   {metadata.pricing ? (
-                    <div className="flex flex-wrap gap-1">
-                      {buildPricingBadges(metadata.pricing).map((badge) => (
-                        <span
-                          key={badge.key}
-                          className="inline-flex items-center rounded-md bg-muted/60 px-1.5 py-0.5 text-[10px] text-muted-foreground"
-                        >
-                          {badge.label}
-                        </span>
-                      ))}
-                    </div>
+                    <p className="text-[11px] text-muted-foreground">
+                      定价单位：$/1M tokens
+                    </p>
                   ) : null}
                 </div>
               ) : (
@@ -926,14 +997,17 @@ function EditModelForm({ model, onClose }: EditModelFormProps) {
           </div>
         </div>
         {pricingMeta ? (
-          <div className="flex flex-wrap gap-1">
+          <div className="flex flex-wrap gap-1.5">
             {buildPricingBadges(pricingMeta).map((badge) => (
-              <span
+              <ModelMetaChip
                 key={badge.key}
-                className="inline-flex items-center rounded-md bg-muted/60 px-1.5 py-0.5 text-[10px] text-muted-foreground"
+                tone={badge.tone}
+                compact
+                numeric
+                title={badge.title}
               >
                 {badge.label}
-              </span>
+              </ModelMetaChip>
             ))}
           </div>
         ) : null}
@@ -1179,13 +1253,13 @@ function ProviderConfigPanel({ provider, models }: ProviderConfigPanelProps) {
               <h2 className="text-lg font-bold text-foreground">
                 {provider.name}
               </h2>
-              <span className="inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+              <ModelMetaChip compact>
                 {PROTOCOL_LABELS[provider.apiProtocol] ?? provider.apiProtocol}
-              </span>
+              </ModelMetaChip>
               {provider.isBuiltin && (
-                <span className="inline-flex items-center rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+                <ModelMetaChip tone="primary" compact>
                   内置
-                </span>
+                </ModelMetaChip>
               )}
             </div>
             <p className="text-xs text-muted-foreground">
