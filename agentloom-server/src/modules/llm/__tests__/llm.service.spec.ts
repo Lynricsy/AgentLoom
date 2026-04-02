@@ -10,6 +10,7 @@ import {
   LlmModelConfigNotFoundException,
   LlmModelConfigValidationException,
 } from '../llm.exceptions';
+import { LlmProviderService } from '../llm-provider.service';
 import { LlmService } from '../llm.service';
 
 vi.mock('../../../common/providers/tenant-aware-db.provider', () => ({
@@ -137,6 +138,7 @@ function updateDto(
 describe('LlmService', () => {
   let service: LlmService;
   let db: Record<string, ReturnType<typeof vi.fn>>;
+  let llmProviderService: Record<string, ReturnType<typeof vi.fn>>;
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -150,8 +152,16 @@ describe('LlmService', () => {
       delete: vi.fn(),
     };
 
+    llmProviderService = {
+      syncBuiltinProviders: vi.fn().mockResolvedValue(undefined),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
-      providers: [LlmService, { provide: DRIZZLE, useValue: db }],
+      providers: [
+        LlmService,
+        { provide: DRIZZLE, useValue: db },
+        { provide: LlmProviderService, useValue: llmProviderService },
+      ],
     }).compile();
 
     service = module.get<LlmService>(LlmService);
@@ -267,6 +277,10 @@ describe('LlmService', () => {
       db.select.mockReturnValueOnce(createSelectChain(rows));
 
       const result = await service.findAll(TENANT_ID);
+      expect(llmProviderService.syncBuiltinProviders).toHaveBeenCalledWith(
+        ORG_ID,
+        TENANT_ID,
+      );
       expect(result).toHaveLength(2);
     });
 

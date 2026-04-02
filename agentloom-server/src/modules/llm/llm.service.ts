@@ -15,12 +15,16 @@ import {
   LlmModelConfigNotFoundException,
   LlmModelConfigValidationException,
 } from './llm.exceptions';
+import { LlmProviderService } from './llm-provider.service';
 
 @Injectable()
 export class LlmService {
   private readonly logger = new Logger(LlmService.name);
 
-  constructor(@Inject(DRIZZLE) private readonly db: DrizzleDB) {}
+  constructor(
+    @Inject(DRIZZLE) private readonly db: DrizzleDB,
+    private readonly llmProviderService: LlmProviderService,
+  ) {}
 
   private get tenantDb() {
     return getTenantDb(this.db);
@@ -125,6 +129,8 @@ export class LlmService {
     if (orgResult.length === 0) {
       return [];
     }
+
+    await this.llmProviderService.syncBuiltinProviders(orgResult[0].id, tenantId);
 
     const rows = await this.tenantDb
       .select({

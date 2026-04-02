@@ -18,6 +18,11 @@ import {
 
 /** 系统级 sentinel 组织 ID，用于存储内置提供商种子数据 */
 const SENTINEL_ORG_ID = '00000000-0000-0000-0000-000000000000';
+const LEGACY_LOBEHUB_ICON_BASE = 'https://icons.lobehub.com/icons/';
+const STATIC_LOBEHUB_SVG_ICON_BASE =
+  'https://unpkg.com/@lobehub/icons-static-svg@latest/icons/';
+const STATIC_LOBEHUB_PNG_ICON_BASE =
+  'https://unpkg.com/@lobehub/icons-static-png@latest/';
 
 @Injectable()
 export class LlmProviderService {
@@ -31,21 +36,11 @@ export class LlmProviderService {
 
   /**
    * 列出组织下所有提供商，按 sortOrder / name 排序。
-   * 若组织尚无任何提供商，自动从 sentinel 同步内置提供商。
+   * 每次读取前都会补齐缺失的内置 provider，并为旧迁移出来的 builtin 行回填缺失元数据。
    */
   async findAll(tenantId: string): Promise<LlmProvider[]> {
     const orgId = await this.resolveOrgId(tenantId);
-
-    // 检查组织是否已有提供商
-    const existing = await this.tenantDb
-      .select({ id: llmProviders.id })
-      .from(llmProviders)
-      .where(eq(llmProviders.orgId, orgId))
-      .limit(1);
-
-    if (existing.length === 0) {
-      await this.syncBuiltinProviders(orgId, tenantId);
-    }
+    await this.syncBuiltinProviders(orgId, tenantId);
 
     return this.tenantDb
       .select()
@@ -212,10 +207,9 @@ export class LlmProviderService {
 
   /**
    * 从 sentinel 组织复制内置提供商到目标组织。
-   * 使用 onConflictDoNothing 保证幂等。
+   * 若目标组织已存在部分 builtin，则补齐缺失项，并为旧迁移产生的 builtin 行回填 icon/defaultBaseUrl 等缺失元数据。
    */
   async syncBuiltinProviders(orgId: string, tenantId: string): Promise<void> {
-    // 从 sentinel 组织查询所有内置提供商
     const sentinelProviders = await this.db
       .select()
       .from(llmProviders)
@@ -231,10 +225,23 @@ export class LlmProviderService {
       return;
     }
 
+    const existingProviders = await this.tenantDb
+      .select()
+      .from(llmProviders)
+      .where(eq(llmProviders.orgId, orgId));
+
+    const existingBySlug = new Map(
+      existingProviders.map((provider) => [provider.slug, provider] as const),
+    );
+
+    let insertedCount = 0;
+    let backfilledCount = 0;
+
     for (const provider of sentinelProviders) {
-      await this.tenantDb
-        .insert(llmProviders)
-        .values({
+      const existing = existingBySlug.get(provider.slug);
+
+      if (!existing) {
+        await this.tenantDb.insert(llmProviders).values({
           orgId,
           tenantId,
           slug: provider.slug,
@@ -246,15 +253,67 @@ export class LlmProviderService {
           isEnabled: true,
           apiProtocol: provider.apiProtocol,
           sortOrder: provider.sortOrder,
-        })
-        .onConflictDoNothing({
-          target: [llmProviders.orgId, llmProviders.slug],
         });
+        insertedCount += 1;
+        continue;
+      }
+
+      // 自定义 provider 占用了内置 slug 时不强行覆盖，避免抹掉用户配置。
+      if (!existing.isBuiltin) {
+        continue;
+      }
+
+      const patch = this.buildBuiltinMetadataPatch(existing, provider);
+      if (!patch) {
+        continue;
+      }
+
+      await this.tenantDb
+        .update(llmProviders)
+        .set({
+          ...patch,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(eq(llmProviders.id, existing.id), eq(llmProviders.orgId, orgId)),
+        );
+      backfilledCount += 1;
     }
 
-    this.logger.log(
-      `已同步 ${sentinelProviders.length} 个内置提供商到组织 ${orgId}`,
-    );
+    if (insertedCount > 0 || backfilledCount > 0) {
+      this.logger.log(
+        `已同步内置提供商到组织 ${orgId}: 新增 ${insertedCount} 个，回填 ${backfilledCount} 个`,
+      );
+    }
+  }
+
+  private buildBuiltinMetadataPatch(
+    existing: LlmProvider,
+    builtin: LlmProvider,
+  ): Partial<LlmProvider> | null {
+    const patch: Partial<LlmProvider> = {};
+
+    if (
+      builtin.iconUrl &&
+      (!existing.iconUrl ||
+        existing.iconUrl.startsWith(LEGACY_LOBEHUB_ICON_BASE) ||
+        ((existing.iconUrl.startsWith(STATIC_LOBEHUB_SVG_ICON_BASE) ||
+          existing.iconUrl.startsWith(STATIC_LOBEHUB_PNG_ICON_BASE)) &&
+          existing.iconUrl !== builtin.iconUrl))
+    ) {
+      patch.iconUrl = builtin.iconUrl;
+    }
+
+    if (!existing.defaultBaseUrl && builtin.defaultBaseUrl) {
+      patch.defaultBaseUrl = builtin.defaultBaseUrl;
+    }
+
+    // 旧迁移出来的 builtin 行可能同时缺少 base/default base URL，这里只在双缺失时补齐。
+    if (!existing.baseUrl && !existing.defaultBaseUrl && builtin.baseUrl) {
+      patch.baseUrl = builtin.baseUrl;
+    }
+
+    return Object.keys(patch).length > 0 ? patch : null;
   }
 
   /**

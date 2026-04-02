@@ -7,7 +7,7 @@ type DB = PostgresJsDatabase<typeof schema>;
 
 /**
  * 24 个内置 LLM 提供商 seed 数据
- * lobehub icons CDN: https://icons.lobehub.com/icons/{slug}/color.svg
+ * lobehub static png CDN: https://unpkg.com/@lobehub/icons-static-png@latest/dark/{asset}.png
  */
 const BUILTIN_PROVIDERS = [
   {
@@ -180,9 +180,55 @@ const BUILTIN_PROVIDERS = [
   },
 ] as const;
 
-const LOBEHUB_ICON_BASE = 'https://icons.lobehub.com/icons';
+const LOBEHUB_ICON_BASE =
+  'https://unpkg.com/@lobehub/icons-static-png@latest/dark';
 const SYSTEM_TENANT_ID = '00000000-0000-0000-0000-000000000000';
 const SYSTEM_ORG_ID = '00000000-0000-0000-0000-000000000000';
+
+function resolveBuiltinProviderIconSlug(slug: string): string {
+  switch (slug) {
+    case 'anthropic':
+      return 'claude-color';
+    case 'google':
+      return 'gemini-color';
+    case 'deepseek':
+      return 'deepseek-color';
+    case 'mistral':
+      return 'mistral-color';
+    case 'cohere':
+      return 'cohere-color';
+    case 'xai':
+      return 'grok';
+    case 'together':
+      return 'together-color';
+    case 'fireworks':
+      return 'fireworks-color';
+    case 'perplexity':
+      return 'perplexity-color';
+    case 'siliconflow':
+      return 'siliconcloud-color';
+    case 'zhipu':
+      return 'zhipu-color';
+    case 'moonshot':
+      return 'kimi-color';
+    case 'qwen':
+      return 'qwen-color';
+    case 'doubao':
+      return 'doubao-color';
+    case 'minimax':
+      return 'minimax-color';
+    case 'baichuan':
+      return 'baichuan-color';
+    case 'yi':
+      return 'yi-color';
+    case 'stepfun':
+      return 'stepfun-color';
+    case 'hunyuan':
+      return 'hunyuan-color';
+    default:
+      return slug;
+  }
+}
 
 /**
  * 为系统级 sentinel 租户种子 24 个内置提供商。
@@ -201,7 +247,7 @@ export async function seedLlmProviders(db: DB): Promise<void> {
           orgId: SYSTEM_ORG_ID,
           slug: provider.slug,
           name: provider.name,
-          iconUrl: `${LOBEHUB_ICON_BASE}/${provider.slug}/color.svg`,
+          iconUrl: `${LOBEHUB_ICON_BASE}/${resolveBuiltinProviderIconSlug(provider.slug)}.png`,
           baseUrl: provider.defaultBaseUrl,
           defaultBaseUrl: provider.defaultBaseUrl,
           isBuiltin: true,
