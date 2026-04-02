@@ -35,6 +35,7 @@ import { LoopConfigPanel } from './LoopConfigPanel'
 import { JumpConfigPanel } from './JumpConfigPanel'
 import { MergeConfigPanel } from './MergeConfigPanel'
 import { ResultConfigPanel } from './ResultConfigPanel'
+import { ManualTriggerConfigPanel } from './ManualTriggerConfigPanel'
 import { ScheduleTriggerConfigPanel } from './ScheduleTriggerConfigPanel'
 import { WebhookTriggerConfigPanel } from './WebhookTriggerConfigPanel'
 import { ApiEventTriggerConfigPanel } from './ApiEventTriggerConfigPanel'
@@ -264,6 +265,14 @@ export const CUSTOM_PANEL_REGISTRY: Partial<Record<string, CustomPanelEntry>> = 
   'merge': {
     render: ({ node, onConfigChange }) => (
       <MergeConfigPanel
+        config={node.data.config}
+        onApply={onConfigChange}
+      />
+    ),
+  },
+  'manual-trigger': {
+    render: ({ node, onConfigChange }) => (
+      <ManualTriggerConfigPanel
         config={node.data.config}
         onApply={onConfigChange}
       />

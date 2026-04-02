@@ -284,7 +284,7 @@ describe('NodeConfigPanel', () => {
   })
 
   it('shows the empty state when a node has no additional config schema', () => {
-    mocks.node = createNode('manual-trigger')
+    mocks.node = createNode('text-output')
 
     render(<NodeConfigPanel />)
 

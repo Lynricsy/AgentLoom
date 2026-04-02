@@ -223,6 +223,7 @@ export function WorkflowCanvasPage() {
       viewport: workflow.viewport ?? undefined,
       workflowId: workflow.id,
       version: workflow.version,
+      inputSchema: workflow.inputSchema,
     });
   }, [
     workflow,

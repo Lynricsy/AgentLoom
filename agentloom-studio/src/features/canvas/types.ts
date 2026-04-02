@@ -268,6 +268,7 @@ export interface CanvasSnapshot {
   nodes: CanvasNode[]
   edges: CanvasEdge[]
   viewport?: Viewport
+  inputSchema?: import('@/features/workflow/types').WorkflowInputSchema | null
 }
 
 export interface CanvasContextMenuState {

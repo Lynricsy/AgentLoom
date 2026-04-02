@@ -52,6 +52,11 @@ import {
   createDefaultLoopStartNodeConfig,
   isCompoundContainerNodeType,
 } from '../types/controlFlow.types'
+import {
+  buildManualTriggerOutputPorts,
+  inputSchemaFieldsToOutputFields,
+  parseManualTriggerConfig,
+} from '../types/trigger.types'
 
 enableMapSet()
 
@@ -936,7 +941,7 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
               state.isDirty = true
             }),
 
-          applyServerSnapshot: ({ nodes, edges, viewport, workflowId, version }) => {
+          applyServerSnapshot: ({ nodes, edges, viewport, workflowId, version, inputSchema }) => {
             invalidateEdgeCompatibilityRefreshVersion()
 
             set((state) => {
@@ -978,6 +983,22 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
                 if (n.data.nodeType === 'merge') {
                   const mergeConfig = parseMergeNodeConfig(n.data.config ?? {})
                   inputPorts = buildMergeInputPorts(mergeConfig.inputCount, mergeConfig.portLabels)
+                }
+
+                // 手动触发器: 从 inputSchema 或 config.outputFields 推导输出端口
+                if (n.data.nodeType === 'manual-trigger') {
+                  const schemaFields = inputSchema?.fields
+                  if (schemaFields && schemaFields.length > 0) {
+                    const triggerFields = inputSchemaFieldsToOutputFields(schemaFields)
+                    outputPorts = buildManualTriggerOutputPorts(triggerFields)
+                    // 同步 outputFields 到 config 以便后续编辑
+                    n.data.config = { ...(n.data.config ?? {}), outputFields: triggerFields }
+                  } else {
+                    const triggerConfig = parseManualTriggerConfig(n.data.config ?? {})
+                    if (triggerConfig.outputFields.length > 0) {
+                      outputPorts = buildManualTriggerOutputPorts(triggerConfig.outputFields)
+                    }
+                  }
                 }
 
                 if (

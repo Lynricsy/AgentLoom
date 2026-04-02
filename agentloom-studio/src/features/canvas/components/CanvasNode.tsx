@@ -759,7 +759,7 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
           ) : data.nodeType === 'code-tool' ? (
             <CodeToolNodeBody config={data.config} />
           ) : data.nodeType === 'manual-trigger' ? (
-            <ManualTriggerNodeBody />
+            <ManualTriggerNodeBody config={data.config} />
           ) : data.nodeType === 'schedule-trigger' ? (
             <ScheduleTriggerNodeBody config={data.config} />
           ) : data.nodeType === 'webhook-trigger' ? (
