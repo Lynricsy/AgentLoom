@@ -12,6 +12,7 @@ Common cross-layer bugs:
 - API returns format A, frontend expects format B
 - Database stores X, service transforms to Y, but loses data
 - Multiple layers implement the same logic differently
+- Compatibility adapter flattens nested entities but forgets to preserve hidden metadata needed for edit/save round-trip
 
 ---
 
@@ -82,6 +83,7 @@ After implementation:
 - [ ] Tested with edge cases (null, empty, invalid)
 - [ ] Verified error handling at each boundary
 - [ ] Checked data survives round-trip
+- [ ] Checked compatibility adapters do not drop nested metadata required by later save flows
 
 ---
 

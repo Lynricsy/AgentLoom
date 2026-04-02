@@ -22,7 +22,8 @@ AgentLoom Flutter 移动端应用：
 - 资源管理：
   - `Workspaces / Sandboxes / Knowledge Bases` 已接入真实 CRUD / 详情
   - `MCP Servers` 支持发现、导入、重导入、测试、编辑、删除与工具停用
-  - `LLM Models` 支持列表、详情、创建、编辑、删除、私有云测试与远端模型探测
+  - `LLM Models` 支持 Provider / Model 二级管理、列表、详情、创建、编辑、删除、缓存读/写与 token 阶梯定价展示、私有云测试与远端模型探测
+- `PreferencesScreen` 使用按 Provider 分组的标题生成模型选择器，分组头展示 Provider 图标，仅显示启用中的 chat 模型，并在已选摘要中展示 Provider 名称
 - Skill 管理：列表 / 详情 / 编辑，仅支持 `name/description` 编辑（`SKILL.md` 正文仍以 Studio Web 为主）
 - Memory 管理：列表 / 详情 / 连接 / 配置 / 图谱五屏
 - 推送通知：FCM token 生命周期管理、前台本地通知、后台/终止态深链到执行详情

@@ -1073,8 +1073,7 @@ class LlmProviderEntityDto {
       defaultBaseUrl: _readValue(json, 'defaultBaseUrl') as String?,
       isBuiltin: _asBool(_readValue(json, 'isBuiltin')),
       isEnabled: _asBool(_readValue(json, 'isEnabled'), fallback: true),
-      apiProtocol:
-          _readValue(json, 'apiProtocol') as String? ?? 'openai_chat',
+      apiProtocol: _readValue(json, 'apiProtocol') as String? ?? 'openai_chat',
       apiKeyId: _readValue(json, 'apiKeyId') as String?,
       sortOrder: _asNullableInt(_readValue(json, 'sortOrder')) ?? 0,
       createdAt: _readValue(json, 'createdAt') as String? ?? '',
@@ -1132,6 +1131,49 @@ class ModelCapabilitiesDto {
   final bool structuredOutput;
 }
 
+/// 阶梯定价 DTO
+class PricingTierDto {
+  const PricingTierDto({
+    required this.aboveTokens,
+    required this.inputPer1MTokens,
+    required this.outputPer1MTokens,
+    this.cachedReadPer1MTokens,
+    this.cachedWritePer1MTokens,
+  });
+
+  factory PricingTierDto.fromJson(Map<String, dynamic> json) {
+    return PricingTierDto(
+      aboveTokens: _asNullableInt(_readValue(json, 'aboveTokens')) ?? 0,
+      inputPer1MTokens: _asDouble(_readValue(json, 'inputPer1MTokens'), 0),
+      outputPer1MTokens: _asDouble(_readValue(json, 'outputPer1MTokens'), 0),
+      cachedReadPer1MTokens: _readValue(json, 'cachedReadPer1MTokens') == null
+          ? null
+          : _asDouble(_readValue(json, 'cachedReadPer1MTokens'), 0),
+      cachedWritePer1MTokens: _readValue(json, 'cachedWritePer1MTokens') == null
+          ? null
+          : _asDouble(_readValue(json, 'cachedWritePer1MTokens'), 0),
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return <String, dynamic>{
+      'aboveTokens': aboveTokens,
+      'inputPer1MTokens': inputPer1MTokens,
+      'outputPer1MTokens': outputPer1MTokens,
+      if (cachedReadPer1MTokens != null)
+        'cachedReadPer1MTokens': cachedReadPer1MTokens,
+      if (cachedWritePer1MTokens != null)
+        'cachedWritePer1MTokens': cachedWritePer1MTokens,
+    };
+  }
+
+  final int aboveTokens;
+  final double inputPer1MTokens;
+  final double outputPer1MTokens;
+  final double? cachedReadPer1MTokens;
+  final double? cachedWritePer1MTokens;
+}
+
 /// 模型定价 DTO
 class ModelPricingDto {
   const ModelPricingDto({
@@ -1139,25 +1181,26 @@ class ModelPricingDto {
     required this.outputPer1MTokens,
     this.cachedReadPer1MTokens,
     this.cachedWritePer1MTokens,
+    this.tiers = const <PricingTierDto>[],
   });
 
   factory ModelPricingDto.fromJson(Map<String, dynamic> json) {
+    final tiers = _asList(_readValue(json, 'tiers'))
+        .map(_asMap)
+        .where((item) => item.isNotEmpty)
+        .map(PricingTierDto.fromJson)
+        .toList(growable: false);
+
     return ModelPricingDto(
-      inputPer1MTokens: _asDouble(
-        _readValue(json, 'inputPer1MTokens'),
-        0,
-      ),
-      outputPer1MTokens: _asDouble(
-        _readValue(json, 'outputPer1MTokens'),
-        0,
-      ),
+      inputPer1MTokens: _asDouble(_readValue(json, 'inputPer1MTokens'), 0),
+      outputPer1MTokens: _asDouble(_readValue(json, 'outputPer1MTokens'), 0),
       cachedReadPer1MTokens: _readValue(json, 'cachedReadPer1MTokens') == null
           ? null
           : _asDouble(_readValue(json, 'cachedReadPer1MTokens'), 0),
-      cachedWritePer1MTokens:
-          _readValue(json, 'cachedWritePer1MTokens') == null
-              ? null
-              : _asDouble(_readValue(json, 'cachedWritePer1MTokens'), 0),
+      cachedWritePer1MTokens: _readValue(json, 'cachedWritePer1MTokens') == null
+          ? null
+          : _asDouble(_readValue(json, 'cachedWritePer1MTokens'), 0),
+      tiers: tiers,
     );
   }
 
@@ -1169,6 +1212,8 @@ class ModelPricingDto {
         'cachedReadPer1MTokens': cachedReadPer1MTokens,
       if (cachedWritePer1MTokens != null)
         'cachedWritePer1MTokens': cachedWritePer1MTokens,
+      if (tiers.isNotEmpty)
+        'tiers': tiers.map((tier) => tier.toJson()).toList(growable: false),
     };
   }
 
@@ -1176,6 +1221,7 @@ class ModelPricingDto {
   final double outputPer1MTokens;
   final double? cachedReadPer1MTokens;
   final double? cachedWritePer1MTokens;
+  final List<PricingTierDto> tiers;
 }
 
 /// LiteLLM 模型元数据 DTO
@@ -1195,8 +1241,9 @@ class LiteLLMModelInfoDto {
       modelId: _readValue(json, 'modelId') as String? ?? '',
       contextWindow: _asNullableInt(_readValue(json, 'contextWindow')),
       maxOutputTokens: _asNullableInt(_readValue(json, 'maxOutputTokens')),
-      pricing:
-          pricingJson.isEmpty ? null : ModelPricingDto.fromJson(pricingJson),
+      pricing: pricingJson.isEmpty
+          ? null
+          : ModelPricingDto.fromJson(pricingJson),
       capabilities: capsJson.isEmpty
           ? const ModelCapabilitiesDto()
           : ModelCapabilitiesDto.fromJson(capsJson),
@@ -1245,7 +1292,8 @@ class LlmModelConfigDto {
       tenantId: _readValue(json, 'tenantId') as String? ?? '',
       providerId: _readValue(json, 'providerId') as String? ?? '',
       name: _readValue(json, 'name') as String? ?? '',
-      modelId: _readValue(json, 'modelId') as String? ??
+      modelId:
+          _readValue(json, 'modelId') as String? ??
           _readValue(json, 'modelName') as String? ??
           '',
       modelType: _readValue(json, 'modelType') as String? ?? 'chat',
@@ -1256,8 +1304,9 @@ class LlmModelConfigDto {
           : ModelCapabilitiesDto.fromJson(capsJson),
       contextWindow: _asNullableInt(_readValue(json, 'contextWindow')),
       maxOutputTokens: _asNullableInt(_readValue(json, 'maxOutputTokens')),
-      pricing:
-          pricingJson.isEmpty ? null : ModelPricingDto.fromJson(pricingJson),
+      pricing: pricingJson.isEmpty
+          ? null
+          : ModelPricingDto.fromJson(pricingJson),
       parameters: _asMap(_readValue(json, 'parameters')),
       metadataSource: _readValue(json, 'metadataSource') as String?,
       embeddingDimensions: _asNullableInt(

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../resources/api/resources_api.dart';
 import '../../resources/models/resource_entities.dart';
+import '../../resources/widgets/llm_provider_icon.dart';
 import '../api/settings_api.dart';
 
 /// 个人偏好设置页面
@@ -17,7 +18,7 @@ class _PreferencesScreenState extends ConsumerState<PreferencesScreen> {
   bool _loading = true;
   String? _errorMessage;
   UserPreferenceDto? _preference;
-  List<LlmModelInfoDto> _chatModels = [];
+  List<LlmModelConfigDto> _chatModels = [];
   bool _saving = false;
 
   @override
@@ -37,13 +38,31 @@ class _PreferencesScreenState extends ConsumerState<PreferencesScreen> {
 
       final results = await Future.wait([
         settingsApi.getUserPreferences(),
-        resourcesApi.listLlmModels(),
+        resourcesApi.listLlmModelConfigs(),
       ]);
 
       final pref = results[0] as UserPreferenceDto;
-      final allModels = results[1] as List<LlmModelInfoDto>;
+      final allModels = results[1] as List<LlmModelConfigDto>;
       final chatModels =
-          allModels.where((m) => m.modelType == 'chat').toList();
+          allModels
+              .where(
+                (m) =>
+                    m.modelType == 'chat' &&
+                    m.isEnabled &&
+                    (m.provider?.isEnabled ?? true),
+              )
+              .toList()
+            ..sort((left, right) {
+              final providerOrder = (left.provider?.sortOrder ?? 9999)
+                  .compareTo(right.provider?.sortOrder ?? 9999);
+              if (providerOrder != 0) {
+                return providerOrder;
+              }
+              if (left.isDefault != right.isDefault) {
+                return left.isDefault ? -1 : 1;
+              }
+              return left.name.compareTo(right.name);
+            });
 
       if (mounted) {
         setState(() {
@@ -74,31 +93,71 @@ class _PreferencesScreenState extends ConsumerState<PreferencesScreen> {
         _preference = updated;
         _saving = false;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('偏好设置已保存')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('偏好设置已保存')));
     } catch (e) {
       if (!mounted) return;
       setState(() => _saving = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('保存失败: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('保存失败: $e')));
     }
   }
 
+  List<_ProviderModelGroup> _buildProviderGroups() {
+    final groups = <String, _ProviderModelGroup>{};
+    for (final model in _chatModels) {
+      final provider = model.provider;
+      final key = provider?.id ?? model.providerId;
+      final current =
+          groups[key] ??
+          _ProviderModelGroup(
+            providerId: key,
+            providerName: provider?.name ?? model.providerId,
+            providerSlug: provider?.slug ?? 'unknown',
+            iconUrl: provider?.iconUrl,
+            sortOrder: provider?.sortOrder ?? 9999,
+            models: <LlmModelConfigDto>[],
+          );
+      current.models.add(model);
+      groups[key] = current;
+    }
+
+    final result = groups.values.toList(growable: false)
+      ..sort((left, right) {
+        if (left.sortOrder != right.sortOrder) {
+          return left.sortOrder.compareTo(right.sortOrder);
+        }
+        return left.providerName.compareTo(right.providerName);
+      });
+
+    for (final group in result) {
+      group.models.sort((left, right) {
+        if (left.isDefault != right.isDefault) {
+          return left.isDefault ? -1 : 1;
+        }
+        return left.name.compareTo(right.name);
+      });
+    }
+
+    return result;
+  }
+
   void _showModelPicker() {
-    final defaultModel =
-        _chatModels.where((m) => m.isDefault).firstOrNull;
-    final defaultLabel =
-        defaultModel != null ? '使用组织默认（${defaultModel.name}）' : '使用组织默认';
+    final defaultModel = _chatModels.where((m) => m.isDefault).firstOrNull;
+    final defaultLabel = defaultModel != null
+        ? '使用组织默认（${defaultModel.name}）'
+        : '使用组织默认';
+    final groups = _buildProviderGroups();
 
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       builder: (sheetContext) {
         return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
+          child: ListView(
+            shrinkWrap: true,
             children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
@@ -123,22 +182,40 @@ class _PreferencesScreenState extends ConsumerState<PreferencesScreen> {
                   _updateTitleModel(null);
                 },
               ),
-              ..._chatModels.map((model) {
-                final selected =
-                    _preference?.titleModelConfigId == model.id;
-                return ListTile(
-                  leading: const Icon(Icons.smart_toy_outlined),
-                  title: Text(model.name),
-                  subtitle: Text(model.provider),
-                  trailing: selected
-                      ? const Icon(Icons.check_rounded)
-                      : null,
-                  onTap: () {
-                    Navigator.of(sheetContext).pop();
-                    _updateTitleModel(model.id);
-                  },
-                );
-              }),
+              for (final group in groups) ...[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                  child: Row(
+                    children: [
+                      LlmProviderIcon(
+                        slug: group.providerSlug,
+                        iconUrl: group.iconUrl,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          group.providerName,
+                          style: Theme.of(context).textTheme.titleSmall,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                ...group.models.map((model) {
+                  final selected = _preference?.titleModelConfigId == model.id;
+                  return ListTile(
+                    leading: const Icon(Icons.smart_toy_outlined),
+                    title: Text(model.name),
+                    subtitle: Text(model.modelId),
+                    trailing: selected ? const Icon(Icons.check_rounded) : null,
+                    onTap: () {
+                      Navigator.of(sheetContext).pop();
+                      _updateTitleModel(model.id);
+                    },
+                  );
+                }),
+              ],
               const SizedBox(height: 8),
             ],
           ),
@@ -152,14 +229,12 @@ class _PreferencesScreenState extends ConsumerState<PreferencesScreen> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('个人偏好'),
-      ),
+      appBar: AppBar(title: const Text('个人偏好')),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _errorMessage != null
-              ? _buildErrorView(theme)
-              : _buildContent(theme),
+          ? _buildErrorView(theme)
+          : _buildContent(theme),
     );
   }
 
@@ -172,10 +247,7 @@ class _PreferencesScreenState extends ConsumerState<PreferencesScreen> {
           const SizedBox(height: 16),
           Text('加载失败: $_errorMessage'),
           const SizedBox(height: 16),
-          OutlinedButton(
-            onPressed: _loadData,
-            child: const Text('重试'),
-          ),
+          OutlinedButton(onPressed: _loadData, child: const Text('重试')),
         ],
       ),
     );
@@ -184,14 +256,15 @@ class _PreferencesScreenState extends ConsumerState<PreferencesScreen> {
   Widget _buildContent(ThemeData theme) {
     final selectedModel = _preference?.titleModelConfigId != null
         ? _chatModels
-            .where((m) => m.id == _preference!.titleModelConfigId)
-            .firstOrNull
+              .where((m) => m.id == _preference!.titleModelConfigId)
+              .firstOrNull
         : null;
-    final defaultModel =
-        _chatModels.where((m) => m.isDefault).firstOrNull;
-    final defaultLabel =
-        defaultModel != null ? '使用组织默认（${defaultModel.name}）' : '使用组织默认';
+    final defaultModel = _chatModels.where((m) => m.isDefault).firstOrNull;
+    final defaultLabel = defaultModel != null
+        ? '使用组织默认（${defaultModel.name}）'
+        : '使用组织默认';
     final currentLabel = selectedModel?.name ?? defaultLabel;
+    final currentProviderName = selectedModel?.provider?.name;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 24),
@@ -201,10 +274,7 @@ class _PreferencesScreenState extends ConsumerState<PreferencesScreen> {
           children: [
             Text('AI 行为偏好', style: theme.textTheme.titleMedium),
             const SizedBox(height: 4),
-            Text(
-              '为特定 AI 功能单独指定模型。',
-              style: theme.textTheme.bodySmall,
-            ),
+            Text('为特定 AI 功能单独指定模型。', style: theme.textTheme.bodySmall),
           ],
         ),
         const SizedBox(height: 12),
@@ -215,7 +285,9 @@ class _PreferencesScreenState extends ConsumerState<PreferencesScreen> {
               leading: const Icon(Icons.title_rounded),
               title: const Text('标题生成模型'),
               subtitle: Text(
-                currentLabel,
+                currentProviderName == null
+                    ? currentLabel
+                    : '$currentLabel\n$currentProviderName',
                 style: theme.textTheme.bodySmall,
               ),
               trailing: _saving
@@ -232,4 +304,22 @@ class _PreferencesScreenState extends ConsumerState<PreferencesScreen> {
       ],
     );
   }
+}
+
+class _ProviderModelGroup {
+  _ProviderModelGroup({
+    required this.providerId,
+    required this.providerName,
+    required this.providerSlug,
+    required this.iconUrl,
+    required this.sortOrder,
+    required this.models,
+  });
+
+  final String providerId;
+  final String providerName;
+  final String providerSlug;
+  final String? iconUrl;
+  final int sortOrder;
+  final List<LlmModelConfigDto> models;
 }

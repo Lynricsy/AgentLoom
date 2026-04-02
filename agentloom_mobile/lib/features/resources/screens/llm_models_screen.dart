@@ -5,7 +5,61 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../api/resources_api.dart';
 import '../models/resource_entities.dart';
+import '../widgets/llm_provider_icon.dart';
 import '../widgets/resource_shared.dart';
+
+// ==========================================================================
+// 定价辅助
+// ==========================================================================
+
+String _formatPriceLabel(double value) {
+  return '\$${value.toStringAsFixed(2)} / 1M';
+}
+
+String _formatThresholdLabel(int tokens) {
+  if (tokens % 1000000 == 0) {
+    return '${tokens ~/ 1000000}M+';
+  }
+  if (tokens % 1000 == 0) {
+    return '${tokens ~/ 1000}K+';
+  }
+  return '$tokens+';
+}
+
+List<Widget> _buildPricingChips(ModelPricingDto pricing) {
+  return <Widget>[
+    Chip(
+      label: Text('输入 ${_formatPriceLabel(pricing.inputPer1MTokens)}'),
+      visualDensity: VisualDensity.compact,
+    ),
+    Chip(
+      label: Text('输出 ${_formatPriceLabel(pricing.outputPer1MTokens)}'),
+      visualDensity: VisualDensity.compact,
+    ),
+    if (pricing.cachedReadPer1MTokens != null)
+      Chip(
+        label: Text('缓存读 ${_formatPriceLabel(pricing.cachedReadPer1MTokens!)}'),
+        visualDensity: VisualDensity.compact,
+      ),
+    if (pricing.cachedWritePer1MTokens != null)
+      Chip(
+        label: Text(
+          '缓存写 ${_formatPriceLabel(pricing.cachedWritePer1MTokens!)}',
+        ),
+        visualDensity: VisualDensity.compact,
+      ),
+    ...pricing.tiers.map(
+      (tier) => Chip(
+        label: Text(
+          '${_formatThresholdLabel(tier.aboveTokens)} '
+          '输入 ${_formatPriceLabel(tier.inputPer1MTokens)} '
+          '输出 ${_formatPriceLabel(tier.outputPer1MTokens)}',
+        ),
+        visualDensity: VisualDensity.compact,
+      ),
+    ),
+  ];
+}
 
 // ==========================================================================
 // 主屏: LLM 提供商列表
@@ -75,9 +129,7 @@ class _LlmModelsScreenState extends ConsumerState<LlmModelsScreen> {
   ) async {
     final changed = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
-        builder: (_) => _ProviderDetailScreen(
-          providerId: provider.id,
-        ),
+        builder: (_) => _ProviderDetailScreen(providerId: provider.id),
       ),
     );
     if (changed == true) {
@@ -90,16 +142,15 @@ class _LlmModelsScreenState extends ConsumerState<LlmModelsScreen> {
     bool value,
   ) async {
     try {
-      await ref.read(resourcesApiProvider).updateLlmProvider(
-            provider.id,
-            isEnabled: value,
-          );
+      await ref
+          .read(resourcesApiProvider)
+          .updateLlmProvider(provider.id, isEnabled: value);
       await _reload();
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(describeResourceError(error))),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(describeResourceError(error))));
     }
   }
 
@@ -175,8 +226,7 @@ class _LlmModelsScreenState extends ConsumerState<LlmModelsScreen> {
                             ResourceEmptyState(
                               icon: Icons.hub_outlined,
                               title: '暂无 LLM 提供商',
-                              description:
-                                  '系统会自动同步内置提供商，也可以手动添加自定义提供商。',
+                              description: '系统会自动同步内置提供商，也可以手动添加自定义提供商。',
                             ),
                           ],
                         ),
@@ -197,7 +247,10 @@ class _LlmModelsScreenState extends ConsumerState<LlmModelsScreen> {
                             return Card(
                               child: ListTile(
                                 contentPadding: const EdgeInsets.all(16),
-                                leading: _ProviderIcon(slug: provider.slug),
+                                leading: LlmProviderIcon(
+                                  slug: provider.slug,
+                                  iconUrl: provider.iconUrl,
+                                ),
                                 title: Text(provider.name),
                                 subtitle: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -218,7 +271,8 @@ class _LlmModelsScreenState extends ConsumerState<LlmModelsScreen> {
                                             label: const Text('内置'),
                                             visualDensity:
                                                 VisualDensity.compact,
-                                            backgroundColor: theme.colorScheme
+                                            backgroundColor: theme
+                                                .colorScheme
                                                 .secondaryContainer,
                                           ),
                                         Chip(
@@ -230,8 +284,9 @@ class _LlmModelsScreenState extends ConsumerState<LlmModelsScreen> {
                                             label: const Text('已绑定密钥'),
                                             visualDensity:
                                                 VisualDensity.compact,
-                                            backgroundColor:
-                                                theme.colorScheme.tertiaryContainer,
+                                            backgroundColor: theme
+                                                .colorScheme
+                                                .tertiaryContainer,
                                           ),
                                       ],
                                     ),
@@ -244,17 +299,15 @@ class _LlmModelsScreenState extends ConsumerState<LlmModelsScreen> {
                                       value: provider.isEnabled,
                                       onChanged: (value) =>
                                           _toggleProviderEnabled(
-                                        provider,
-                                        value,
-                                      ),
+                                            provider,
+                                            value,
+                                          ),
                                     ),
                                     const Icon(Icons.chevron_right_rounded),
                                   ],
                                 ),
-                                onTap: () => _openProviderDetail(
-                                  provider,
-                                  data.models,
-                                ),
+                                onTap: () =>
+                                    _openProviderDetail(provider, data.models),
                               ),
                             );
                           },
@@ -288,8 +341,7 @@ class _ProviderDetailScreen extends ConsumerStatefulWidget {
       _ProviderDetailScreenState();
 }
 
-class _ProviderDetailScreenState
-    extends ConsumerState<_ProviderDetailScreen> {
+class _ProviderDetailScreenState extends ConsumerState<_ProviderDetailScreen> {
   late Future<_ProviderDetailData> _future;
   bool _isTesting = false;
   bool _isDiscovering = false;
@@ -350,8 +402,8 @@ class _ProviderDetailScreenState
         _connectionMessage = info == null
             ? '连接成功, 耗时 ${result.latencyMs}ms'
             : '连接成功, 耗时 ${result.latencyMs}ms'
-                '${info.version == null ? '' : ' - 版本 ${info.version}'}'
-                '${info.status == null ? '' : ' - 状态 ${info.status}'}';
+                  '${info.version == null ? '' : ' - 版本 ${info.version}'}'
+                  '${info.status == null ? '' : ' - 状态 ${info.status}'}';
       });
     } catch (error) {
       if (!mounted) return;
@@ -393,22 +445,22 @@ class _ProviderDetailScreenState
       _markChanged();
       await _reload();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Base URL 已恢复默认值')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Base URL 已恢复默认值')));
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(describeResourceError(error))),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(describeResourceError(error))));
     }
   }
 
   Future<void> _confirmDeleteProvider(LlmProviderEntityDto provider) async {
     if (provider.isBuiltin) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('内置提供商不可删除')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('内置提供商不可删除')));
       return;
     }
     final confirmed = await showDialog<bool>(
@@ -435,9 +487,9 @@ class _ProviderDetailScreenState
       Navigator.of(context).pop(true);
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(describeResourceError(error))),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(describeResourceError(error))));
     }
   }
 
@@ -486,30 +538,29 @@ class _ProviderDetailScreenState
       _markChanged();
       await _reload();
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('模型配置已删除')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('模型配置已删除')));
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(describeResourceError(error))),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(describeResourceError(error))));
     }
   }
 
   Future<void> _toggleModelEnabled(LlmModelConfigDto model, bool value) async {
     try {
-      await ref.read(resourcesApiProvider).updateLlmModelConfig(
-            model.id,
-            isEnabled: value,
-          );
+      await ref
+          .read(resourcesApiProvider)
+          .updateLlmModelConfig(model.id, isEnabled: value);
       _markChanged();
       await _reload();
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(describeResourceError(error))),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(describeResourceError(error))));
     }
   }
 
@@ -521,10 +572,7 @@ class _ProviderDetailScreenState
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      builder: (_) => _EditProviderSheet(
-        provider: provider,
-        apiKeys: apiKeys,
-      ),
+      builder: (_) => _EditProviderSheet(provider: provider, apiKeys: apiKeys),
     );
     if (changed == true) {
       _markChanged();
@@ -546,8 +594,7 @@ class _ProviderDetailScreenState
       child: FutureBuilder<_ProviderDetailData>(
         future: _future,
         builder: (context, snapshot) {
-          final providerName =
-              snapshot.data?.provider.name ?? '提供商详情';
+          final providerName = snapshot.data?.provider.name ?? '提供商详情';
 
           return Scaffold(
             appBar: AppBar(
@@ -580,7 +627,10 @@ class _ProviderDetailScreenState
     );
   }
 
-  Widget _buildBody(ThemeData theme, AsyncSnapshot<_ProviderDetailData> snapshot) {
+  Widget _buildBody(
+    ThemeData theme,
+    AsyncSnapshot<_ProviderDetailData> snapshot,
+  ) {
     if (snapshot.connectionState != ConnectionState.done) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -607,7 +657,11 @@ class _ProviderDetailScreenState
               children: [
                 Row(
                   children: [
-                    _ProviderIcon(slug: provider.slug, size: 32),
+                    LlmProviderIcon(
+                      slug: provider.slug,
+                      iconUrl: provider.iconUrl,
+                      size: 32,
+                    ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
@@ -641,9 +695,7 @@ class _ProviderDetailScreenState
                 ),
                 ResourceMetadataRow(
                   label: 'Base URL',
-                  value: provider.baseUrl ??
-                      provider.defaultBaseUrl ??
-                      '未配置',
+                  value: provider.baseUrl ?? provider.defaultBaseUrl ?? '未配置',
                 ),
                 if (provider.defaultBaseUrl != null &&
                     provider.baseUrl != null &&
@@ -673,8 +725,7 @@ class _ProviderDetailScreenState
                           ? const SizedBox(
                               width: 16,
                               height: 16,
-                              child:
-                                  CircularProgressIndicator(strokeWidth: 2),
+                              child: CircularProgressIndicator(strokeWidth: 2),
                             )
                           : const Icon(Icons.network_check_rounded),
                       label: const Text('测试连接'),
@@ -687,8 +738,7 @@ class _ProviderDetailScreenState
                           ? const SizedBox(
                               width: 16,
                               height: 16,
-                              child:
-                                  CircularProgressIndicator(strokeWidth: 2),
+                              child: CircularProgressIndicator(strokeWidth: 2),
                             )
                           : const Icon(Icons.cloud_download_outlined),
                       label: const Text('发现模型'),
@@ -702,10 +752,8 @@ class _ProviderDetailScreenState
                         label: const Text('恢复默认 URL'),
                       ),
                     OutlinedButton.icon(
-                      onPressed: () => _editProviderSettings(
-                        provider,
-                        data.apiKeys,
-                      ),
+                      onPressed: () =>
+                          _editProviderSettings(provider, data.apiKeys),
                       icon: const Icon(Icons.edit_outlined),
                       label: const Text('编辑'),
                     ),
@@ -719,10 +767,7 @@ class _ProviderDetailScreenState
                 ),
                 if (_connectionMessage != null) ...[
                   const SizedBox(height: 12),
-                  Text(
-                    _connectionMessage!,
-                    style: theme.textTheme.bodySmall,
-                  ),
+                  Text(_connectionMessage!, style: theme.textTheme.bodySmall),
                 ],
               ],
             ),
@@ -843,12 +888,7 @@ class _ProviderDetailScreenState
                             visualDensity: VisualDensity.compact,
                           ),
                         if (model.pricing != null)
-                          Chip(
-                            label: Text(
-                              '\$${model.pricing!.inputPer1MTokens.toStringAsFixed(2)} / 1M',
-                            ),
-                            visualDensity: VisualDensity.compact,
-                          ),
+                          ..._buildPricingChips(model.pricing!),
                       ],
                     ),
                   ],
@@ -950,7 +990,9 @@ class _CreateProviderSheetState extends ConsumerState<_CreateProviderSheet> {
 
     try {
       final slug = _slugController.text.trim();
-      await ref.read(resourcesApiProvider).createLlmProvider(
+      await ref
+          .read(resourcesApiProvider)
+          .createLlmProvider(
             name: name,
             baseUrl: baseUrl,
             slug: slug.isNotEmpty ? slug : null,
@@ -1003,9 +1045,7 @@ class _CreateProviderSheetState extends ConsumerState<_CreateProviderSheet> {
             initialValue: _apiProtocol,
             decoration: const InputDecoration(labelText: 'API 协议'),
             items: llmApiProtocols
-                .map(
-                  (p) => DropdownMenuItem(value: p, child: Text(p)),
-                )
+                .map((p) => DropdownMenuItem(value: p, child: Text(p)))
                 .toList(growable: false),
             onChanged: (value) {
               setState(() {
@@ -1045,17 +1085,13 @@ class _CreateProviderSheetState extends ConsumerState<_CreateProviderSheet> {
 // ==========================================================================
 
 class _EditProviderSheet extends ConsumerStatefulWidget {
-  const _EditProviderSheet({
-    required this.provider,
-    required this.apiKeys,
-  });
+  const _EditProviderSheet({required this.provider, required this.apiKeys});
 
   final LlmProviderEntityDto provider;
   final List<ApiKeyInfoDto> apiKeys;
 
   @override
-  ConsumerState<_EditProviderSheet> createState() =>
-      _EditProviderSheetState();
+  ConsumerState<_EditProviderSheet> createState() => _EditProviderSheetState();
 }
 
 class _EditProviderSheetState extends ConsumerState<_EditProviderSheet> {
@@ -1100,7 +1136,9 @@ class _EditProviderSheetState extends ConsumerState<_EditProviderSheet> {
 
     try {
       final baseUrlText = _baseUrlController.text.trim();
-      await ref.read(resourcesApiProvider).updateLlmProvider(
+      await ref
+          .read(resourcesApiProvider)
+          .updateLlmProvider(
             widget.provider.id,
             name: name,
             baseUrl: baseUrlText.isEmpty ? null : baseUrlText,
@@ -1151,9 +1189,7 @@ class _EditProviderSheetState extends ConsumerState<_EditProviderSheet> {
             initialValue: _apiProtocol,
             decoration: const InputDecoration(labelText: 'API 协议'),
             items: llmApiProtocols
-                .map(
-                  (p) => DropdownMenuItem(value: p, child: Text(p)),
-                )
+                .map((p) => DropdownMenuItem(value: p, child: Text(p)))
                 .toList(growable: false),
             onChanged: (value) {
               setState(() {
@@ -1166,10 +1202,7 @@ class _EditProviderSheetState extends ConsumerState<_EditProviderSheet> {
             initialValue: _selectedApiKeyId,
             decoration: const InputDecoration(labelText: 'API Key'),
             items: [
-              const DropdownMenuItem<String?>(
-                value: null,
-                child: Text('不绑定'),
-              ),
+              const DropdownMenuItem<String?>(value: null, child: Text('不绑定')),
               ...widget.apiKeys
                   .where((k) => k.status == 'active')
                   .map(
@@ -1256,6 +1289,7 @@ class _ModelEditorSheetState extends ConsumerState<_ModelEditorSheet> {
   late bool _functionCalling;
   late bool _reasoning;
   late bool _structuredOutput;
+  ModelPricingDto? _pricingDetails;
   bool _isSaving = false;
   bool _isLookingUp = false;
   String? _errorMessage;
@@ -1298,6 +1332,7 @@ class _ModelEditorSheetState extends ConsumerState<_ModelEditorSheet> {
     _functionCalling = m?.capabilities.functionCalling ?? false;
     _reasoning = m?.capabilities.reasoning ?? false;
     _structuredOutput = m?.capabilities.structuredOutput ?? false;
+    _pricingDetails = m?.pricing;
   }
 
   @override
@@ -1325,10 +1360,9 @@ class _ModelEditorSheetState extends ConsumerState<_ModelEditorSheet> {
     });
 
     try {
-      final info = await ref.read(resourcesApiProvider).lookupModelMetadata(
-            widget.provider.slug,
-            modelId,
-          );
+      final info = await ref
+          .read(resourcesApiProvider)
+          .lookupModelMetadata(widget.provider.slug, modelId);
       if (!mounted) return;
       if (info == null) {
         setState(() => _errorMessage = '未找到该模型的元数据');
@@ -1342,20 +1376,21 @@ class _ModelEditorSheetState extends ConsumerState<_ModelEditorSheet> {
           _maxOutputTokensController.text = info.maxOutputTokens.toString();
         }
         if (info.pricing != null) {
-          _inputPricingController.text =
-              info.pricing!.inputPer1MTokens.toStringAsFixed(4);
-          _outputPricingController.text =
-              info.pricing!.outputPer1MTokens.toStringAsFixed(4);
+          _inputPricingController.text = info.pricing!.inputPer1MTokens
+              .toStringAsFixed(4);
+          _outputPricingController.text = info.pricing!.outputPer1MTokens
+              .toStringAsFixed(4);
         }
+        _pricingDetails = info.pricing;
         _vision = info.capabilities.vision;
         _functionCalling = info.capabilities.functionCalling;
         _reasoning = info.capabilities.reasoning;
         _structuredOutput = info.capabilities.structuredOutput;
       });
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('已自动填充模型元数据')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('已自动填充模型元数据')));
       }
     } catch (error) {
       if (!mounted) return;
@@ -1393,14 +1428,22 @@ class _ModelEditorSheetState extends ConsumerState<_ModelEditorSheet> {
       reasoning: _reasoning,
       structuredOutput: _structuredOutput,
     );
-    final inputPricing =
-        double.tryParse(_inputPricingController.text.trim());
-    final outputPricing =
-        double.tryParse(_outputPricingController.text.trim());
-    final pricing = inputPricing != null || outputPricing != null
+    final inputPricing = double.tryParse(_inputPricingController.text.trim());
+    final outputPricing = double.tryParse(_outputPricingController.text.trim());
+    final hasExtraPricing =
+        _pricingDetails?.cachedReadPer1MTokens != null ||
+        _pricingDetails?.cachedWritePer1MTokens != null ||
+        (_pricingDetails?.tiers.isNotEmpty ?? false);
+    final pricing =
+        inputPricing != null || outputPricing != null || hasExtraPricing
         ? ModelPricingDto(
-            inputPer1MTokens: inputPricing ?? 0,
-            outputPer1MTokens: outputPricing ?? 0,
+            inputPer1MTokens:
+                inputPricing ?? _pricingDetails?.inputPer1MTokens ?? 0,
+            outputPer1MTokens:
+                outputPricing ?? _pricingDetails?.outputPer1MTokens ?? 0,
+            cachedReadPer1MTokens: _pricingDetails?.cachedReadPer1MTokens,
+            cachedWritePer1MTokens: _pricingDetails?.cachedWritePer1MTokens,
+            tiers: _pricingDetails?.tiers ?? const <PricingTierDto>[],
           )
         : null;
     final parameters = <String, dynamic>{};
@@ -1420,16 +1463,10 @@ class _ModelEditorSheetState extends ConsumerState<_ModelEditorSheet> {
           isDefault: _isDefault,
           isEnabled: _isEnabled,
           capabilities: capabilities,
-          contextWindow: int.tryParse(
-            _contextWindowController.text.trim(),
-          ),
-          clearContextWindow:
-              _contextWindowController.text.trim().isEmpty,
-          maxOutputTokens: int.tryParse(
-            _maxOutputTokensController.text.trim(),
-          ),
-          clearMaxOutputTokens:
-              _maxOutputTokensController.text.trim().isEmpty,
+          contextWindow: int.tryParse(_contextWindowController.text.trim()),
+          clearContextWindow: _contextWindowController.text.trim().isEmpty,
+          maxOutputTokens: int.tryParse(_maxOutputTokensController.text.trim()),
+          clearMaxOutputTokens: _maxOutputTokensController.text.trim().isEmpty,
           pricing: pricing,
           clearPricing: pricing == null,
           parameters: parameters,
@@ -1449,12 +1486,8 @@ class _ModelEditorSheetState extends ConsumerState<_ModelEditorSheet> {
           isDefault: _isDefault,
           isEnabled: _isEnabled,
           capabilities: capabilities,
-          contextWindow: int.tryParse(
-            _contextWindowController.text.trim(),
-          ),
-          maxOutputTokens: int.tryParse(
-            _maxOutputTokensController.text.trim(),
-          ),
+          contextWindow: int.tryParse(_contextWindowController.text.trim()),
+          maxOutputTokens: int.tryParse(_maxOutputTokensController.text.trim()),
           pricing: pricing,
           parameters: parameters.isNotEmpty ? parameters : null,
           embeddingDimensions: _modelType == 'embedding'
@@ -1531,9 +1564,7 @@ class _ModelEditorSheetState extends ConsumerState<_ModelEditorSheet> {
             initialValue: _modelType,
             decoration: const InputDecoration(labelText: '模型类型'),
             items: llmModelTypes
-                .map(
-                  (t) => DropdownMenuItem(value: t, child: Text(t)),
-                )
+                .map((t) => DropdownMenuItem(value: t, child: Text(t)))
                 .toList(growable: false),
             onChanged: (value) {
               setState(() => _modelType = value ?? _modelType);
@@ -1577,9 +1608,7 @@ class _ModelEditorSheetState extends ConsumerState<_ModelEditorSheet> {
                 child: TextField(
                   controller: _contextWindowController,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: '上下文窗口',
-                  ),
+                  decoration: const InputDecoration(labelText: '上下文窗口'),
                 ),
               ),
               const SizedBox(width: 12),
@@ -1587,13 +1616,22 @@ class _ModelEditorSheetState extends ConsumerState<_ModelEditorSheet> {
                 child: TextField(
                   controller: _maxOutputTokensController,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: '最大输出 tokens',
-                  ),
+                  decoration: const InputDecoration(labelText: '最大输出 tokens'),
                 ),
               ),
             ],
           ),
+          if (_pricingDetails != null &&
+              (_pricingDetails!.cachedReadPer1MTokens != null ||
+                  _pricingDetails!.cachedWritePer1MTokens != null ||
+                  _pricingDetails!.tiers.isNotEmpty)) ...[
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: _buildPricingChips(_pricingDetails!),
+            ),
+          ],
           const SizedBox(height: 16),
           Text('定价 (USD / 1M tokens)', style: theme.textTheme.titleSmall),
           const SizedBox(height: 8),
@@ -1602,8 +1640,9 @@ class _ModelEditorSheetState extends ConsumerState<_ModelEditorSheet> {
               Expanded(
                 child: TextField(
                   controller: _inputPricingController,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
                   decoration: const InputDecoration(labelText: '输入'),
                 ),
               ),
@@ -1611,8 +1650,9 @@ class _ModelEditorSheetState extends ConsumerState<_ModelEditorSheet> {
               Expanded(
                 child: TextField(
                   controller: _outputPricingController,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
                   decoration: const InputDecoration(labelText: '输出'),
                 ),
               ),
@@ -1626,11 +1666,10 @@ class _ModelEditorSheetState extends ConsumerState<_ModelEditorSheet> {
               Expanded(
                 child: TextField(
                   controller: _temperatureController,
-                  keyboardType:
-                      const TextInputType.numberWithOptions(decimal: true),
-                  decoration: const InputDecoration(
-                    labelText: 'Temperature',
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
                   ),
+                  decoration: const InputDecoration(labelText: 'Temperature'),
                 ),
               ),
               const SizedBox(width: 12),
@@ -1638,9 +1677,7 @@ class _ModelEditorSheetState extends ConsumerState<_ModelEditorSheet> {
                 child: TextField(
                   controller: _maxTokensController,
                   keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Max Tokens',
-                  ),
+                  decoration: const InputDecoration(labelText: 'Max Tokens'),
                 ),
               ),
             ],
@@ -1701,53 +1738,11 @@ class _ModelEditorSheetState extends ConsumerState<_ModelEditorSheet> {
 }
 
 // ==========================================================================
-// 提供商图标组件 (Lobehub icons)
-// ==========================================================================
-
-class _ProviderIcon extends StatelessWidget {
-  const _ProviderIcon({required this.slug, this.size = 24});
-
-  final String slug;
-  final double size;
-
-  @override
-  Widget build(BuildContext context) {
-    return Image.network(
-      'https://icons.lobehub.com/icons/$slug/color.svg',
-      width: size,
-      height: size,
-      errorBuilder: (_, __, ___) => Icon(
-        _fallbackIcon(slug),
-        size: size,
-      ),
-    );
-  }
-
-  static IconData _fallbackIcon(String slug) {
-    switch (slug) {
-      case 'openai':
-        return Icons.auto_awesome_rounded;
-      case 'anthropic':
-        return Icons.psychology_alt_rounded;
-      case 'google':
-        return Icons.token_rounded;
-      case 'deepseek':
-        return Icons.explore_rounded;
-      default:
-        return Icons.hub_rounded;
-    }
-  }
-}
-
-// ==========================================================================
 // 内部数据类
 // ==========================================================================
 
 class _ProviderScreenData {
-  const _ProviderScreenData({
-    required this.providers,
-    required this.models,
-  });
+  const _ProviderScreenData({required this.providers, required this.models});
 
   final List<LlmProviderEntityDto> providers;
   final List<LlmModelConfigDto> models;

@@ -6,6 +6,7 @@ import type { LlmProvider } from '../../database/schema/llm-providers.schema';
 import type {
   ModelCapabilities,
   ModelPricing,
+  PricingTier,
 } from '../../database/schema/llm-model-configs.schema';
 import { LlmProviderException, LlmTimeoutException } from './llm.exceptions';
 
@@ -524,13 +525,18 @@ export class ModelDiscoveryService {
         ? { cachedWritePer1MTokens: cachedWriteCost * 1_000_000 }
         : {}),
     };
+    const tiers = this.extractTokenPricingTiers(entry, pricing);
+    if (tiers.length > 0) {
+      pricing.tiers = tiers;
+    }
 
     // 如果所有价格都为 0 且无缓存价格，视为无定价信息
     const hasPricing =
       inputCost > 0 ||
       outputCost > 0 ||
       cachedReadCost !== null ||
-      cachedWriteCost !== null;
+      cachedWriteCost !== null ||
+      tiers.length > 0;
 
     const contextWindow =
       typeof entry.max_input_tokens === 'number'
@@ -556,5 +562,74 @@ export class ModelDiscoveryService {
         structuredOutput: !!entry.supports_response_schema,
       },
     };
+  }
+
+  private extractTokenPricingTiers(
+    entry: Record<string, unknown>,
+    basePricing: ModelPricing,
+  ): PricingTier[] {
+    const tiers = new Map<number, PricingTier>();
+
+    for (const [field, rawValue] of Object.entries(entry)) {
+      if (typeof rawValue !== 'number') {
+        continue;
+      }
+
+      const threshold = this.parseTokenThreshold(field);
+      if (threshold === null) {
+        continue;
+      }
+
+      const tier = tiers.get(threshold) ?? {
+        aboveTokens: threshold,
+        inputPer1MTokens: basePricing.inputPer1MTokens,
+        outputPer1MTokens: basePricing.outputPer1MTokens,
+        ...(basePricing.cachedReadPer1MTokens !== undefined
+          ? { cachedReadPer1MTokens: basePricing.cachedReadPer1MTokens }
+          : {}),
+        ...(basePricing.cachedWritePer1MTokens !== undefined
+          ? { cachedWritePer1MTokens: basePricing.cachedWritePer1MTokens }
+          : {}),
+      };
+
+      if (field.startsWith('input_cost_per_token_')) {
+        tier.inputPer1MTokens = rawValue * 1_000_000;
+      } else if (field.startsWith('output_cost_per_token_')) {
+        tier.outputPer1MTokens = rawValue * 1_000_000;
+      } else if (field.startsWith('cache_read_input_token_cost_')) {
+        tier.cachedReadPer1MTokens = rawValue * 1_000_000;
+      } else if (field.startsWith('cache_creation_input_token_cost_')) {
+        tier.cachedWritePer1MTokens = rawValue * 1_000_000;
+      }
+
+      tiers.set(threshold, tier);
+    }
+
+    return [...tiers.values()].sort(
+      (left, right) => left.aboveTokens - right.aboveTokens,
+    );
+  }
+
+  private parseTokenThreshold(field: string): number | null {
+    const match = field.match(
+      /^(?:input_cost_per_token|output_cost_per_token|cache_read_input_token_cost|cache_creation_input_token_cost)_above_(\d+)([km]?)_tokens$/,
+    );
+    if (!match) {
+      return null;
+    }
+
+    const value = Number.parseInt(match[1], 10);
+    if (!Number.isFinite(value)) {
+      return null;
+    }
+
+    const unit = match[2]?.toLowerCase();
+    if (unit === 'm') {
+      return value * 1_000_000;
+    }
+    if (unit === 'k') {
+      return value * 1_000;
+    }
+    return value;
   }
 }

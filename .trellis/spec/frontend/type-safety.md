@@ -163,6 +163,7 @@ Enables typed `useParams`, `Link to=`, and route search params.
 2. **`as const` tuples**: For query key factories
 3. **Generic API responses**: `ApiResponse<T>`, `PaginatedResponse<T>`
 4. **Type narrowing**: Prefer type guards over type assertions
+5. **Compatibility adapters preserve round-trip data**: 当为旧组件扁平化嵌套实体时，必须用显式字段保留原始实体（例如 `providerEntity`），避免编辑态丢失 `baseUrl/apiKeyId/pricing tiers` 这类只存在于实体层的元数据
 
 ---
 

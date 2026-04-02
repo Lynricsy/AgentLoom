@@ -1,8 +1,13 @@
-import { render, screen, waitFor } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import type { CreateLlmModelInput, LlmModelInfo } from '../types'
-import { LlmModelConfigPanel } from './LlmModelConfigPanel'
+import { render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  adaptModelEntityToInfo,
+  type CreateLlmModelInput,
+  type LlmModelConfigEntity,
+  type LlmProviderEntity,
+} from "../types";
+import { LlmModelConfigPanel } from "./LlmModelConfigPanel";
 
 const mocks = vi.hoisted(() => ({
   useLlmModels: vi.fn(),
@@ -13,94 +18,124 @@ const mocks = vi.hoisted(() => ({
   notify: vi.fn(),
   createMutateAsync: vi.fn(),
   updateMutateAsync: vi.fn(),
-}))
+}));
 
-vi.mock('../hooks/useLlmModels', () => ({
+vi.mock("../hooks/useLlmModels", () => ({
   useLlmModels: mocks.useLlmModels,
   useLlmProviders: mocks.useLlmProviders,
   useLlmApiKeys: mocks.useLlmApiKeys,
   useCreateLlmModel: mocks.useCreateLlmModel,
   useUpdateLlmModel: mocks.useUpdateLlmModel,
-}))
+}));
 
-vi.mock('@/shared/ui/toast', () => ({
+vi.mock("@/shared/ui/toast", () => ({
   useToast: () => ({
     notify: mocks.notify,
   }),
-}))
+}));
 
-function createLlmModel(overrides: Partial<LlmModelInfo> = {}): LlmModelInfo {
+const MOCK_PROVIDER: LlmProviderEntity = {
+  id: "prov-openai-uuid",
+  orgId: "org-id",
+  tenantId: "tenant-id",
+  slug: "openai",
+  name: "OpenAI",
+  iconUrl: null,
+  baseUrl: null,
+  defaultBaseUrl: "https://api.openai.com",
+  isBuiltin: true,
+  isEnabled: true,
+  apiProtocol: "openai_responses",
+  apiKeyId: null,
+  sortOrder: 0,
+  createdAt: "2026-03-01T00:00:00Z",
+  updatedAt: "2026-03-01T00:00:00Z",
+};
+
+function createLlmModelEntity(
+  overrides: Partial<LlmModelConfigEntity> = {},
+): LlmModelConfigEntity {
   return {
-    id: 'cfg-1',
-    name: 'OpenAI 主模型',
-    provider: 'openai',
-    modelName: 'gpt-4o',
+    id: "cfg-1",
+    orgId: "org-id",
+    tenantId: "tenant-id",
+    providerId: MOCK_PROVIDER.id,
+    name: "OpenAI 主模型",
+    modelId: "gpt-4o",
+    modelType: "chat",
+    isEnabled: true,
+    isDefault: false,
+    capabilities: {},
+    contextWindow: null,
+    maxOutputTokens: null,
+    pricing: null,
     parameters: {
       temperature: 0.7,
-      maxTokens: undefined,
       topP: 1,
       frequencyPenalty: 0,
       presencePenalty: 0,
       stop: [],
     },
-    apiKeyId: null,
-    isDefault: false,
-    createdAt: '2026-03-01T00:00:00Z',
-    updatedAt: '2026-03-01T00:00:00Z',
+    metadataSource: null,
+    embeddingDimensions: null,
+    timeoutMs: null,
+    createdAt: "2026-03-01T00:00:00Z",
+    updatedAt: "2026-03-01T00:00:00Z",
+    provider: MOCK_PROVIDER,
     ...overrides,
-  }
+  };
 }
 
-describe('LlmModelConfigPanel', () => {
+describe("LlmModelConfigPanel", () => {
   beforeEach(() => {
-    vi.clearAllMocks()
+    vi.clearAllMocks();
     mocks.useLlmModels.mockReturnValue({
-      data: [createLlmModel()],
+      data: [adaptModelEntityToInfo(createLlmModelEntity())],
       isLoading: false,
       error: null,
-    })
+    });
     mocks.useLlmProviders.mockReturnValue({
-      data: undefined,
+      data: [MOCK_PROVIDER],
       error: null,
-    })
+    });
     mocks.useLlmApiKeys.mockReturnValue({
       data: [],
       error: null,
-    })
+    });
     mocks.useCreateLlmModel.mockReturnValue({
       mutateAsync: mocks.createMutateAsync,
       isPending: false,
       error: null,
-    })
+    });
     mocks.useUpdateLlmModel.mockReturnValue({
       mutateAsync: mocks.updateMutateAsync,
       isPending: false,
       error: null,
-    })
-  })
+    });
+  });
 
-  it('选择已有配置时立即写回节点 patch', async () => {
-    const user = userEvent.setup()
-    const onApply = vi.fn()
+  it("选择已有配置时立即写回节点 patch", async () => {
+    const user = userEvent.setup();
+    const onApply = vi.fn();
 
-    render(<LlmModelConfigPanel config={null} onApply={onApply} />)
+    render(<LlmModelConfigPanel config={null} onApply={onApply} />);
 
-    await user.click(screen.getByRole('button', { name: '选择已有配置' }))
-    await user.selectOptions(screen.getByRole('combobox'), 'cfg-1')
+    await user.click(screen.getByRole("button", { name: "选择已有配置" }));
+    await user.selectOptions(screen.getByRole("combobox"), "cfg-1");
 
     expect(onApply).toHaveBeenCalledWith(
       expect.objectContaining({
         config: expect.objectContaining({
-          llmConfigId: 'cfg-1',
-          provider: 'openai',
-          modelName: 'gpt-4o',
-          name: 'OpenAI 主模型',
+          llmConfigId: "cfg-1",
+          provider: "openai",
+          modelName: "gpt-4o",
+          name: "OpenAI 主模型",
         }),
-        llmConfigId: 'cfg-1',
-        modelId: 'gpt-4o',
-        name: 'OpenAI 主模型',
-        provider: 'openai',
-        modelName: 'gpt-4o',
+        llmConfigId: "cfg-1",
+        modelId: "gpt-4o",
+        name: "OpenAI 主模型",
+        provider: "openai",
+        modelName: "gpt-4o",
         apiKeyId: null,
         isDefault: false,
         parameters: {
@@ -116,39 +151,42 @@ describe('LlmModelConfigPanel', () => {
         topP: 1,
         frequencyPenalty: 0,
         presencePenalty: 0,
-        label: 'gpt-4o',
+        label: "gpt-4o",
       }),
-    )
+    );
     expect(mocks.notify).toHaveBeenCalledWith(
       expect.objectContaining({
-        title: '已应用模型配置',
-        variant: 'success',
+        title: "已应用模型配置",
+        variant: "success",
       }),
-    )
-  })
+    );
+  });
 
-  it('创建新配置后调用 create mutation 并写回节点 patch', async () => {
-    const user = userEvent.setup()
-    const onApply = vi.fn()
-    const savedModel = createLlmModel({
-      id: 'cfg-2',
-      name: '新建 OpenAI 配置',
-    })
+  it("创建新配置后调用 create mutation 并写回节点 patch", async () => {
+    const user = userEvent.setup();
+    const onApply = vi.fn();
+    const savedModel = createLlmModelEntity({
+      id: "cfg-2",
+      name: "新建 OpenAI 配置",
+    });
 
-    mocks.createMutateAsync.mockResolvedValue(savedModel)
+    mocks.createMutateAsync.mockResolvedValue(savedModel);
 
-    render(<LlmModelConfigPanel config={null} onApply={onApply} />)
+    render(<LlmModelConfigPanel config={null} onApply={onApply} />);
 
-    await user.clear(screen.getByPlaceholderText('例如：OpenAI 主模型'))
-    await user.type(screen.getByPlaceholderText('例如：OpenAI 主模型'), '新建 OpenAI 配置')
-    await user.click(screen.getByRole('button', { name: '保存并应用新配置' }))
+    await user.clear(screen.getByPlaceholderText("例如：OpenAI 主模型"));
+    await user.type(
+      screen.getByPlaceholderText("例如：OpenAI 主模型"),
+      "新建 OpenAI 配置",
+    );
+    await user.click(screen.getByRole("button", { name: "保存并应用新配置" }));
 
     await waitFor(() => {
       expect(mocks.createMutateAsync).toHaveBeenCalledWith({
-        name: '新建 OpenAI 配置',
-        provider: 'openai',
-        modelType: 'chat',
-        modelName: 'gpt-4o',
+        name: "新建 OpenAI 配置",
+        providerId: MOCK_PROVIDER.id,
+        modelId: "gpt-4o",
+        modelType: "chat",
         parameters: {
           temperature: 0.7,
           maxTokens: undefined,
@@ -158,22 +196,23 @@ describe('LlmModelConfigPanel', () => {
           stop: [],
         },
         isDefault: false,
-      } satisfies CreateLlmModelInput)
-    })
+        timeoutMs: undefined,
+      } satisfies CreateLlmModelInput);
+    });
 
     expect(onApply).toHaveBeenCalledWith(
       expect.objectContaining({
         config: expect.objectContaining({
-          llmConfigId: 'cfg-2',
-          provider: 'openai',
-          modelName: 'gpt-4o',
-          name: '新建 OpenAI 配置',
+          llmConfigId: "cfg-2",
+          provider: "openai",
+          modelName: "gpt-4o",
+          name: "新建 OpenAI 配置",
         }),
-        llmConfigId: 'cfg-2',
-        modelId: 'gpt-4o',
-        name: '新建 OpenAI 配置',
-        provider: 'openai',
-        modelName: 'gpt-4o',
+        llmConfigId: "cfg-2",
+        modelId: "gpt-4o",
+        name: "新建 OpenAI 配置",
+        provider: "openai",
+        modelName: "gpt-4o",
         apiKeyId: null,
         isDefault: false,
         parameters: savedModel.parameters,
@@ -182,14 +221,14 @@ describe('LlmModelConfigPanel', () => {
         topP: 1,
         frequencyPenalty: 0,
         presencePenalty: 0,
-        label: 'gpt-4o',
+        label: "gpt-4o",
       }),
-    )
+    );
     expect(mocks.notify).toHaveBeenCalledWith(
       expect.objectContaining({
-        title: 'LLM 配置已保存',
-        variant: 'success',
+        title: "LLM 配置已保存",
+        variant: "success",
       }),
-    )
-  })
-})
+    );
+  });
+});
