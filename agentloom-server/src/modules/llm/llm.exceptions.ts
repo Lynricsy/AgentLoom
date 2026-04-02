@@ -61,3 +61,36 @@ export class LlmProviderException extends DomainException {
     });
   }
 }
+
+export class LlmProviderNotFoundException extends DomainException {
+  constructor(id: string) {
+    super({
+      type: 'https://agentloom.dev/errors/llm/provider-not-found',
+      title: 'LLM 提供商未找到',
+      status: HttpStatus.NOT_FOUND,
+      detail: `未找到 ID 为 ${id} 的 LLM 提供商`,
+    });
+  }
+}
+
+export class LlmProviderSlugConflictException extends DomainException {
+  constructor(slug: string) {
+    super({
+      type: 'https://agentloom.dev/errors/llm/provider-slug-conflict',
+      title: 'LLM 提供商标识冲突',
+      status: HttpStatus.CONFLICT,
+      detail: `组织中已存在标识为 "${slug}" 的 LLM 提供商`,
+    });
+  }
+}
+
+export class LlmProviderDeletionForbiddenException extends DomainException {
+  constructor(slug: string) {
+    super({
+      type: 'https://agentloom.dev/errors/llm/provider-deletion-forbidden',
+      title: '内置提供商不可删除',
+      status: HttpStatus.FORBIDDEN,
+      detail: `内置提供商 "${slug}" 不可删除，只能禁用`,
+    });
+  }
+}

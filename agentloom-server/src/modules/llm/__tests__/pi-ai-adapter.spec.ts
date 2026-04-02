@@ -23,7 +23,11 @@ const {
     doStream: vi.fn().mockResolvedValue('streamed'),
     provider: 'mock-provider',
   };
-  const fn = vi.fn().mockReturnValue(model);
+  // OpenAI provider 对象：可作为函数调用，也有 .chat() / .responses() 方法
+  const fn = Object.assign(vi.fn().mockReturnValue(model), {
+    chat: vi.fn().mockReturnValue(model),
+    responses: vi.fn().mockReturnValue(model),
+  });
   return {
     mockProviderFn: fn,
     mockCreateOpenAI: vi.fn().mockReturnValue(fn),
@@ -45,11 +49,8 @@ function createConfig(
   } = {},
 ): ResolvedModelConfig {
   const { providerOverrides, ...configOverrides } = overrides;
-  const providerSlug = (configOverrides as Record<string, unknown>)
-    .providerSlug as string | undefined;
-  // 允许通过顶层 providerSlug 快捷设置 provider.slug（测试便利）
-  const slug =
-    providerSlug ?? (providerOverrides?.slug as string | undefined) ?? 'openai';
+  const providerSlug =
+    (providerOverrides?.slug as string | undefined) ?? 'openai';
 
   return {
     id: 'config-id',
@@ -76,8 +77,8 @@ function createConfig(
       id: 'provider-id',
       orgId: 'org-id',
       tenantId: 'tenant-id',
-      slug,
-      name: slug.charAt(0).toUpperCase() + slug.slice(1),
+      slug: providerSlug,
+      name: providerSlug.charAt(0).toUpperCase() + providerSlug.slice(1),
       iconUrl: null,
       baseUrl: null,
       defaultBaseUrl: null,
@@ -118,10 +119,15 @@ describe('PiAiAdapter', () => {
     vi.unstubAllGlobals();
   });
 
-  describe('getModel - 各提供商', () => {
-    it('应当为 openai 创建模型', async () => {
+  describe('getModel - 按协议路由', () => {
+    it('应当为 openai_chat 协议使用 createOpenAI + provider.chat()', async () => {
       const result = await adapter.getModel(
-        createConfig({ providerOverrides: { slug: 'openai' } }),
+        createConfig({
+          providerOverrides: {
+            slug: 'openai',
+            apiProtocol: 'openai_chat' as const,
+          },
+        }),
         'sk-key',
       );
 
@@ -129,13 +135,39 @@ describe('PiAiAdapter', () => {
       expect(mockCreateOpenAI).toHaveBeenCalledWith(
         expect.objectContaining({ apiKey: 'sk-key' }),
       );
+      // openai_chat 应走 .chat() 方法
+      expect(mockProviderFn.chat).toHaveBeenCalledWith('gpt-4o');
+      expect(mockProviderFn.responses).not.toHaveBeenCalled();
     });
 
-    it('应当为 anthropic 创建模型', async () => {
+    it('应当为 openai_responses 协议使用 createOpenAI + provider.responses()', async () => {
+      const result = await adapter.getModel(
+        createConfig({
+          providerOverrides: {
+            slug: 'openai',
+            apiProtocol: 'openai_responses' as const,
+          },
+        }),
+        'sk-key',
+      );
+
+      expect(result).toBeTypeOf('object');
+      expect(mockCreateOpenAI).toHaveBeenCalledWith(
+        expect.objectContaining({ apiKey: 'sk-key' }),
+      );
+      // openai_responses 应走 .responses() 方法
+      expect(mockProviderFn.responses).toHaveBeenCalledWith('gpt-4o');
+      expect(mockProviderFn.chat).not.toHaveBeenCalled();
+    });
+
+    it('应当为 anthropic 协议使用 createAnthropic', async () => {
       const result = await adapter.getModel(
         createConfig({
           modelId: 'claude-3-opus',
-          providerOverrides: { slug: 'anthropic' },
+          providerOverrides: {
+            slug: 'anthropic',
+            apiProtocol: 'anthropic' as const,
+          },
         }),
         'sk-key',
       );
@@ -146,11 +178,14 @@ describe('PiAiAdapter', () => {
       );
     });
 
-    it('应当为 google 创建模型', async () => {
+    it('应当为 google 协议使用 createGoogleGenerativeAI', async () => {
       const result = await adapter.getModel(
         createConfig({
           modelId: 'gemini-pro',
-          providerOverrides: { slug: 'google' },
+          providerOverrides: {
+            slug: 'google',
+            apiProtocol: 'google' as const,
+          },
         }),
         'sk-key',
       );
@@ -161,43 +196,142 @@ describe('PiAiAdapter', () => {
       );
     });
 
-    it('应当为 deepseek 使用 OpenAI SDK 及自定义 baseURL', async () => {
+    it('应当为 cohere 协议使用 createOpenAI + provider.chat()', async () => {
+      const result = await adapter.getModel(
+        createConfig({
+          modelId: 'command-r-plus',
+          providerOverrides: {
+            slug: 'cohere',
+            apiProtocol: 'cohere' as const,
+            baseUrl: 'https://api.cohere.com/v1',
+          },
+        }),
+        'sk-key',
+      );
+
+      expect(result).toBeTypeOf('object');
+      expect(mockCreateOpenAI).toHaveBeenCalledWith(
+        expect.objectContaining({
+          apiKey: 'sk-key',
+          baseURL: 'https://api.cohere.com/v1',
+        }),
+      );
+      // cohere 走 Chat Completions 兼容模式
+      expect(mockProviderFn.chat).toHaveBeenCalledWith('command-r-plus');
+    });
+
+    it('应当为 deepseek 等第三方 openai_chat 提供商自动走 openai_chat 路径', async () => {
       const result = await adapter.getModel(
         createConfig({
           modelId: 'deepseek-chat',
-          providerOverrides: { slug: 'deepseek' },
+          providerOverrides: {
+            slug: 'deepseek',
+            apiProtocol: 'openai_chat' as const,
+            defaultBaseUrl: 'https://api.deepseek.com/v1',
+          },
         }),
         'sk-key',
       );
 
       expect(result).toBeTypeOf('object');
       expect(mockCreateOpenAI).toHaveBeenCalledWith(
-        expect.objectContaining({ baseURL: 'https://api.deepseek.com/v1' }),
+        expect.objectContaining({
+          apiKey: 'sk-key',
+          baseURL: 'https://api.deepseek.com/v1',
+        }),
       );
+      expect(mockProviderFn.chat).toHaveBeenCalledWith('deepseek-chat');
     });
 
-    it('应当为 custom 使用参数中的 baseUrl', async () => {
+    it('应当为 custom 提供商通过 openai_chat 协议使用 provider.baseUrl', async () => {
       const result = await adapter.getModel(
         createConfig({
           modelId: 'custom-model',
-          parameters: { baseUrl: 'https://my-llm.example.com/v1' },
-          providerOverrides: { slug: 'custom' },
+          providerOverrides: {
+            slug: 'custom',
+            apiProtocol: 'openai_chat' as const,
+            baseUrl: 'https://my-llm.example.com/v1',
+          },
         }),
         'sk-key',
       );
 
       expect(result).toBeTypeOf('object');
       expect(mockCreateOpenAI).toHaveBeenCalledWith(
-        expect.objectContaining({ baseURL: 'https://my-llm.example.com/v1' }),
+        expect.objectContaining({
+          apiKey: 'sk-key',
+          baseURL: 'https://my-llm.example.com/v1',
+        }),
       );
+      expect(mockProviderFn.chat).toHaveBeenCalledWith('custom-model');
+    });
+  });
+
+  describe('getModel - 无认证 (private cloud / local)', () => {
+    it('应当在无 apiKeyId 时使用占位符密钥并剥离 Authorization 头', async () => {
+      const result = await adapter.getModel(
+        createConfig({
+          modelId: 'local-model',
+          providerOverrides: {
+            slug: 'private_cloud',
+            apiProtocol: 'openai_chat' as const,
+            baseUrl: 'https://private-cloud.example.com/v1',
+            apiKeyId: null,
+          },
+        }),
+      );
+
+      expect(result).toBeTypeOf('object');
+      expect(
+        decryptionBoundaryService.decryptConfiguredApiKey,
+      ).not.toHaveBeenCalled();
+
+      const callOptions = mockCreateOpenAI.mock.calls.at(-1)?.[0] as
+        | {
+            apiKey: string;
+            baseURL: string;
+            fetch?: typeof fetch;
+          }
+        | undefined;
+
+      expect(callOptions).toMatchObject({
+        apiKey: '__agentloom_private_cloud_no_auth__',
+        baseURL: 'https://private-cloud.example.com/v1',
+      });
+      expect(callOptions?.fetch).toBeTypeOf('function');
+
+      // 验证 .chat() 被调用（openai_chat 协议）
+      expect(mockProviderFn.chat).toHaveBeenCalledWith('local-model');
+
+      // 验证 fetch 代理确实剥离了 Authorization 头
+      const rawFetch = vi
+        .fn<typeof fetch>()
+        .mockResolvedValue(new Response(null, { status: 200 }));
+      vi.stubGlobal('fetch', rawFetch);
+
+      await callOptions?.fetch?.(
+        new Request('https://private-cloud.example.com/v1/responses', {
+          headers: {
+            Authorization: 'Bearer should-not-leak',
+            'X-Test-Header': 'preserved',
+          },
+        }),
+      );
+
+      expect(rawFetch).toHaveBeenCalledTimes(1);
+      const [, forwardedInit] = rawFetch.mock.calls[0];
+      const forwardedHeaders = new Headers(forwardedInit?.headers);
+      expect(forwardedHeaders.get('authorization')).toBeNull();
+      expect(forwardedHeaders.get('x-test-header')).toBe('preserved');
     });
 
-    it('应当为 private_cloud 使用 provider.baseUrl 创建模型', async () => {
+    it('应当在有 apiKeyId 的 private cloud 正常传递密钥', async () => {
       const result = await adapter.getModel(
         createConfig({
           modelId: 'private-model',
           providerOverrides: {
             slug: 'private_cloud',
+            apiProtocol: 'openai_chat' as const,
             baseUrl: 'https://private-cloud.example.com/v1',
             apiKeyId: 'provider-api-key-id',
           },
@@ -206,12 +340,42 @@ describe('PiAiAdapter', () => {
       );
 
       expect(result).toBeTypeOf('object');
-      expect(mockCreateOpenAI).toHaveBeenCalledWith(
-        expect.objectContaining({
-          apiKey: 'sk-private-cloud',
-          baseURL: 'https://private-cloud.example.com/v1',
+      const callOptions = mockCreateOpenAI.mock.calls.at(-1)?.[0] as Record<
+        string,
+        unknown
+      >;
+      expect(callOptions).toMatchObject({
+        apiKey: 'sk-private-cloud',
+        baseURL: 'https://private-cloud.example.com/v1',
+      });
+      // 有认证时不应注入 auth-stripping fetch
+      expect(callOptions).not.toHaveProperty('fetch');
+    });
+
+    it('应当在 openai_responses 协议无 apiKeyId 时同样剥离 Authorization', async () => {
+      await adapter.getModel(
+        createConfig({
+          modelId: 'local-model',
+          providerOverrides: {
+            slug: 'ollama',
+            apiProtocol: 'openai_responses' as const,
+            baseUrl: 'http://localhost:11434/v1',
+            apiKeyId: null,
+          },
         }),
       );
+
+      const callOptions = mockCreateOpenAI.mock.calls.at(-1)?.[0] as Record<
+        string,
+        unknown
+      >;
+      expect(callOptions).toMatchObject({
+        apiKey: '__agentloom_private_cloud_no_auth__',
+        baseURL: 'http://localhost:11434/v1',
+      });
+      expect(callOptions.fetch).toBeTypeOf('function');
+      // openai_responses 应走 .responses() 方法
+      expect(mockProviderFn.responses).toHaveBeenCalledWith('local-model');
     });
   });
 
@@ -221,6 +385,7 @@ describe('PiAiAdapter', () => {
         createConfig({
           providerOverrides: {
             slug: 'openai',
+            apiProtocol: 'openai_chat' as const,
             apiKeyId: 'provider-api-key-id',
           },
         }),
@@ -242,7 +407,11 @@ describe('PiAiAdapter', () => {
     it('应当在提供商未绑定 apiKey 时跳过解密', async () => {
       await adapter.getModel(
         createConfig({
-          providerOverrides: { slug: 'openai', apiKeyId: null },
+          providerOverrides: {
+            slug: 'openai',
+            apiProtocol: 'openai_chat' as const,
+            apiKeyId: null,
+          },
         }),
       );
 
@@ -261,6 +430,7 @@ describe('PiAiAdapter', () => {
           createConfig({
             providerOverrides: {
               slug: 'openai',
+              apiProtocol: 'openai_chat' as const,
               apiKeyId: 'provider-api-key-id',
             },
           }),
@@ -268,91 +438,20 @@ describe('PiAiAdapter', () => {
       ).rejects.toBeInstanceOf(DefaultApiKeyNotConfiguredException);
     });
 
-    it('应当在 private_cloud 无 apiKeyId 时跳过 API Key 解析并剥离 Authorization', async () => {
-      const result = await adapter.getModel(
-        createConfig({
-          modelId: 'private-model',
-          providerOverrides: {
-            slug: 'private_cloud',
-            baseUrl: 'https://private-cloud.example.com/v1',
-            apiKeyId: null,
-          },
-        }),
-      );
-
-      expect(result).toBeTypeOf('object');
-      expect(
-        decryptionBoundaryService.decryptConfiguredApiKey,
-      ).not.toHaveBeenCalled();
-
-      const privateCloudOptions = mockCreateOpenAI.mock.calls.at(-1)?.[0] as
-        | {
-            apiKey: string;
-            baseURL: string;
-            fetch?: typeof fetch;
-          }
-        | undefined;
-
-      expect(privateCloudOptions).toMatchObject({
-        apiKey: '__agentloom_private_cloud_no_auth__',
-        baseURL: 'https://private-cloud.example.com/v1',
-      });
-      expect(privateCloudOptions?.fetch).toBeTypeOf('function');
-
-      const rawFetch = vi
-        .fn<typeof fetch>()
-        .mockResolvedValue(new Response(null, { status: 200 }));
-      vi.stubGlobal('fetch', rawFetch);
-
-      await privateCloudOptions?.fetch?.(
-        new Request('https://private-cloud.example.com/v1/responses', {
-          headers: {
-            Authorization: 'Bearer should-not-leak',
-            'X-Test-Header': 'preserved',
-          },
-        }),
-      );
-
-      expect(rawFetch).toHaveBeenCalledTimes(1);
-      const [, forwardedInit] = rawFetch.mock.calls[0];
-      const forwardedHeaders = new Headers(forwardedInit?.headers);
-      expect(forwardedHeaders.get('authorization')).toBeNull();
-      expect(forwardedHeaders.get('x-test-header')).toBe('preserved');
-    });
-
-    it('应当在 custom 缺少 baseUrl 时抛出 LlmProviderException', async () => {
-      await expect(
-        adapter.getModel(
-          createConfig({ providerOverrides: { slug: 'custom' } }),
-          'sk-key',
-        ),
-      ).rejects.toBeInstanceOf(LlmProviderException);
-    });
-
-    it('应当在 private_cloud 缺少 baseUrl 时抛出 LlmProviderException', async () => {
+    it('应当在不支持的 API 协议时抛出 LlmProviderException', async () => {
       await expect(
         adapter.getModel(
           createConfig({
             providerOverrides: {
-              slug: 'private_cloud',
-              baseUrl: null,
-              apiKeyId: 'provider-api-key-id',
+              slug: 'unknown',
+              apiProtocol: 'unsupported_protocol' as never,
             },
           }),
           'sk-key',
         ),
       ).rejects.toMatchObject({
-        detail: 'Private Cloud 提供商必须指定 endpointUrl',
+        detail: '不支持的 API 协议: unsupported_protocol',
       });
-    });
-
-    it('应当在不支持的提供商时抛出 LlmProviderException', async () => {
-      await expect(
-        adapter.getModel(
-          createConfig({ providerOverrides: { slug: 'unknown' } }),
-          'sk-key',
-        ),
-      ).rejects.toBeInstanceOf(LlmProviderException);
     });
 
     it('应当在 5xx 错误时重试', async () => {
@@ -421,11 +520,12 @@ describe('PiAiAdapter', () => {
       expect(mockModel.doStream).toHaveBeenCalledTimes(2);
     });
 
-    it('应当在 openai 提供商可通过 provider.baseUrl 传入自定义 baseURL', async () => {
+    it('应当通过 provider.baseUrl 传入自定义 baseURL', async () => {
       const result = await adapter.getModel(
         createConfig({
           providerOverrides: {
             slug: 'openai',
+            apiProtocol: 'openai_chat' as const,
             baseUrl: 'https://my-proxy.com/v1',
           },
         }),
@@ -435,6 +535,24 @@ describe('PiAiAdapter', () => {
       expect(result).toBeTypeOf('object');
       expect(mockCreateOpenAI).toHaveBeenCalledWith(
         expect.objectContaining({ baseURL: 'https://my-proxy.com/v1' }),
+      );
+    });
+
+    it('应当通过 provider.defaultBaseUrl 传入默认 baseURL（当 baseUrl 为空时）', async () => {
+      await adapter.getModel(
+        createConfig({
+          providerOverrides: {
+            slug: 'deepseek',
+            apiProtocol: 'openai_chat' as const,
+            baseUrl: null,
+            defaultBaseUrl: 'https://api.deepseek.com/v1',
+          },
+        }),
+        'sk-key',
+      );
+
+      expect(mockCreateOpenAI).toHaveBeenCalledWith(
+        expect.objectContaining({ baseURL: 'https://api.deepseek.com/v1' }),
       );
     });
 

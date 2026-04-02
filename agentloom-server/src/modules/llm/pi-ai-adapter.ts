@@ -61,20 +61,34 @@ export class PiAiAdapter {
     apiKey: string | undefined,
     config: ResolvedModelConfig,
   ): Promise<LanguageModelProvider> {
-    const baseUrl =
-      config.provider.baseUrl ??
-      config.provider.defaultBaseUrl ??
-      ((config.parameters as Record<string, unknown>)?.baseUrl as
-        | string
-        | undefined);
+    const baseUrl = config.provider.baseUrl ?? config.provider.defaultBaseUrl;
+    const protocol = config.provider.apiProtocol;
+    const requiresAuth = !!config.provider.apiKeyId;
 
-    switch (providerSlug) {
-      case 'openai': {
+    switch (protocol) {
+      case 'openai_chat': {
         const { createOpenAI } = await import('@ai-sdk/openai');
-        return createOpenAI({
-          apiKey: apiKey!,
+        const provider = createOpenAI({
+          apiKey: apiKey ?? PRIVATE_CLOUD_NO_AUTH_PLACEHOLDER,
           ...(baseUrl && { baseURL: baseUrl }),
+          ...(!requiresAuth && {
+            fetch: this.createAuthorizationStrippingFetch(),
+          }),
         });
+        // 使用 .chat() 强制走 Chat Completions API
+        return (modelId: string) => provider.chat(modelId);
+      }
+      case 'openai_responses': {
+        const { createOpenAI } = await import('@ai-sdk/openai');
+        const provider = createOpenAI({
+          apiKey: apiKey ?? PRIVATE_CLOUD_NO_AUTH_PLACEHOLDER,
+          ...(baseUrl && { baseURL: baseUrl }),
+          ...(!requiresAuth && {
+            fetch: this.createAuthorizationStrippingFetch(),
+          }),
+        });
+        // 默认调用走 Responses API
+        return (modelId: string) => provider.responses(modelId);
       }
       case 'anthropic': {
         const { createAnthropic } = await import('@ai-sdk/anthropic');
@@ -90,46 +104,19 @@ export class PiAiAdapter {
           ...(baseUrl && { baseURL: baseUrl }),
         });
       }
-      case 'deepseek': {
+      case 'cohere': {
+        // Cohere 支持 OpenAI 兼容端点，使用 createOpenAI + .chat() 走 Chat Completions
         const { createOpenAI } = await import('@ai-sdk/openai');
-        return createOpenAI({
+        const provider = createOpenAI({
           apiKey: apiKey!,
-          baseURL: baseUrl ?? 'https://api.deepseek.com/v1',
+          ...(baseUrl && { baseURL: baseUrl }),
         });
-      }
-      case 'custom': {
-        const { createOpenAI } = await import('@ai-sdk/openai');
-        if (!baseUrl) {
-          throw new LlmProviderException(
-            providerSlug,
-            'Custom 提供商必须在 parameters 中指定 baseUrl',
-          );
-        }
-        return createOpenAI({ apiKey: apiKey!, baseURL: baseUrl });
-      }
-      case 'private_cloud': {
-        const { createOpenAI } = await import('@ai-sdk/openai');
-        const endpointUrl = config.provider.baseUrl;
-        if (!endpointUrl) {
-          throw new LlmProviderException(
-            providerSlug,
-            'Private Cloud 提供商必须指定 endpointUrl',
-          );
-        }
-
-        const requiresAuth = !!config.provider.apiKeyId;
-        return createOpenAI({
-          apiKey: apiKey ?? PRIVATE_CLOUD_NO_AUTH_PLACEHOLDER,
-          baseURL: endpointUrl,
-          ...(requiresAuth
-            ? {}
-            : { fetch: this.createAuthorizationStrippingFetch() }),
-        });
+        return (modelId: string) => provider.chat(modelId);
       }
       default:
         throw new LlmProviderException(
           providerSlug,
-          `不支持的 LLM 提供商: ${providerSlug}`,
+          `不支持的 API 协议: ${protocol}`,
         );
     }
   }
