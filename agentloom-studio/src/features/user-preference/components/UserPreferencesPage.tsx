@@ -1,7 +1,7 @@
 import { SlidersHorizontal, Loader2 } from 'lucide-react'
-import { Select } from '@/shared/ui/select'
 import { Skeleton } from '@/shared/ui/skeleton'
 import { useToast } from '@/shared/ui/toast'
+import { GlobalModelSelector } from '@/features/llm/components/GlobalModelSelector'
 import { useLlmModels } from '@/features/llm/hooks/useLlmModels'
 import { useUserPreference, useUpdateUserPreference } from '../hooks/useUserPreference'
 
@@ -19,10 +19,8 @@ export function UserPreferencesPage() {
 
   const isLoading = isPreferenceLoading || isModelsLoading
 
-  // 只展示 chat 类型的模型
-  const chatModels = llmModels?.filter((m) => m.modelType === 'chat' || !m.modelType) ?? []
   // 找到组织默认 chat 模型
-  const defaultModel = chatModels.find((m) => m.isDefault) ?? null
+  const defaultModel = llmModels?.find((m) => (m.modelType === 'chat' || !m.modelType) && m.isDefault) ?? null
 
   function handleModelChange(value: string) {
     const titleModelConfigId = value === '' ? null : value
@@ -83,21 +81,16 @@ export function UserPreferencesPage() {
             <label className="space-y-2 text-sm text-foreground" htmlFor="title-model-select">
               <span>标题生成模型</span>
               <div className="relative flex items-center gap-2">
-                <Select
+                <GlobalModelSelector
                   id="title-model-select"
                   value={currentValue}
                   onValueChange={handleModelChange}
+                  modelType="chat"
+                  placeholder={defaultModelLabel}
                   disabled={updateMutation.isPending}
                   aria-label="标题生成模型"
                   className="flex-1"
-                >
-                  <option value="">{defaultModelLabel}</option>
-                  {chatModels.map((model) => (
-                    <option key={model.id} value={model.id}>
-                      {model.name}
-                    </option>
-                  ))}
-                </Select>
+                />
                 {updateMutation.isPending ? (
                   <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" />
                 ) : null}
