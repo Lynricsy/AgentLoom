@@ -8,6 +8,7 @@ import type { SkillPromptPayload, SkillSummary } from './skill.types';
 const mocks = vi.hoisted(() => ({
   createMockSkillService: () => ({
     findByIds: vi.fn().mockResolvedValue([]),
+    getSkillFileMap: vi.fn().mockResolvedValue({}),
   }),
 }));
 
@@ -207,6 +208,9 @@ describe('SkillResolverService', () => {
           status: 'active',
         },
       ]);
+      skillService.getSkillFileMap.mockResolvedValue({
+        'SKILL.md': '# Content',
+      });
 
       const result = await resolver.resolveSkillsForAgent(TENANT_ID, ['id-1']);
 
@@ -215,6 +219,39 @@ describe('SkillResolverService', () => {
         name: 'Skill',
         description: 'desc',
         content: '# Content',
+        files: { 'SKILL.md': '# Content' },
+      });
+    });
+
+    it('loads multi-file skill maps for sandbox runtime consumption', async () => {
+      skillService.findByIds.mockResolvedValue([
+        {
+          id: 'id-1',
+          name: 'Skill',
+          description: 'desc',
+          content: '# Content',
+          status: 'active',
+        },
+      ]);
+      skillService.getSkillFileMap.mockResolvedValue({
+        'SKILL.md': '# Content',
+        'resource-management.md': '## Resource management',
+      });
+
+      const result = await resolver.resolveSkillsForAgent(TENANT_ID, ['id-1']);
+
+      expect(skillService.getSkillFileMap).toHaveBeenCalledWith(
+        TENANT_ID,
+        'id-1',
+        '# Content',
+        {
+          isBuiltin: undefined,
+          slug: undefined,
+        },
+      );
+      expect(result[0].files).toEqual({
+        'SKILL.md': '# Content',
+        'resource-management.md': '## Resource management',
       });
     });
   });

@@ -451,7 +451,10 @@ describe('ApiKeyService', () => {
       expect(result).toEqual(record);
     });
 
-    it('应当在 provider 不受支持时直接返回 undefined', async () => {
+    it('查询不到默认活跃密钥时应返回 undefined', async () => {
+      const selectChain = createSelectChain([]);
+      db.select.mockReturnValueOnce(selectChain);
+
       const result = await service.findDefaultActiveByOrganizationInternal(
         ORG_ID,
         TENANT_ID,
@@ -459,7 +462,7 @@ describe('ApiKeyService', () => {
       );
 
       expect(result).toBeUndefined();
-      expect(db.select).not.toHaveBeenCalled();
+      expect(db.select).toHaveBeenCalledTimes(1);
     });
   });
 });

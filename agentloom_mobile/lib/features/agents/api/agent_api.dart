@@ -178,11 +178,27 @@ class AgentApi {
     String conversationId,
     String toolCallId, {
     required String action,
+    String? rememberScope,
   }) async {
+    final body = <String, dynamic>{'action': action};
+    if (rememberScope != null && rememberScope.isNotEmpty) {
+      body['rememberScope'] = rememberScope;
+    }
     await _dio.post(
       '/api/v1/agent-conversations/$conversationId/tool-permissions/$toolCallId/resolve',
-      data: {'action': action},
+      data: body,
     );
+  }
+
+  Future<String?> restartConversationToLatestVersion(String conversationId) async {
+    final response = await _dio.post(
+      '/api/v1/agent-conversations/$conversationId/restart-latest-version',
+    );
+    final data = _unwrapDataEnvelope(response);
+    final nextConversationId = data['conversationId'];
+    return nextConversationId is String && nextConversationId.isNotEmpty
+        ? nextConversationId
+        : null;
   }
 
   Future<List<WorkspaceFileNode>> getWorkspaceTree(String conversationId) async {

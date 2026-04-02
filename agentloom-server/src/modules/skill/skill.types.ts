@@ -40,4 +40,5 @@ export interface SkillPromptPayload {
   name: string;
   description: string;
   content: string | null;
+  files?: Record<string, string>;
 }

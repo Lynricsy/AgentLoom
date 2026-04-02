@@ -15,6 +15,16 @@ function toToolCallData(toolCall: ConversationMessage['toolCalls'][number]): Too
     status: toolCall.status,
     permissionDescription: toolCall.permissionRequest?.description,
     permissionResourcePaths: toolCall.permissionRequest?.resourcePaths,
+    permissionDomain: toolCall.permissionRequest?.domain,
+    permissionCategory: toolCall.permissionRequest?.category,
+    permissionRiskLevel: toolCall.permissionRequest?.riskLevel,
+    permissionSourceLabel: toolCall.permissionRequest?.sourceLabel,
+    permissionTargetType: toolCall.permissionRequest?.targetType,
+    permissionTargetLabel: toolCall.permissionRequest?.targetLabel,
+    permissionApproveEffect: toolCall.permissionRequest?.approveEffect,
+    permissionDenyEffect: toolCall.permissionRequest?.denyEffect,
+    permissionDiffPreview: toolCall.permissionRequest?.diffPreview,
+    permissionRememberable: toolCall.permissionRequest?.rememberable,
   }
 }
 

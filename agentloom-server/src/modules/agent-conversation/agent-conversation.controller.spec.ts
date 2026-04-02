@@ -7,6 +7,8 @@ import { SandboxAgentAdapter } from '../agent/sandbox-agent.adapter';
 import { AgentConversationService } from './agent-conversation.service';
 import { ConversationTitleService } from './conversation-title.service';
 import { WorkspaceIntegrationService } from '../agent-execution/workspace-integration.service';
+import { SelfEvolutionPermissionService } from '../self-evolution/self-evolution-permission.service';
+import { SelfEvolutionService } from '../self-evolution/self-evolution.service';
 
 const mockService = {
   create: vi.fn(),
@@ -30,6 +32,14 @@ const mockSandboxAgentAdapter = {
   awaitToolPermission: vi.fn(),
   resolveConversationToolPermission: vi.fn(),
   ptyWrite: vi.fn(),
+};
+
+const mockSelfEvolutionPermissionService = {
+  resolveConversationRequest: vi.fn(),
+};
+
+const mockSelfEvolutionService = {
+  restartConversationToLatestVersion: vi.fn(),
 };
 
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
@@ -57,10 +67,21 @@ describe('AgentConversationController', () => {
           useValue: mockWorkspaceIntegrationService,
         },
         { provide: SandboxAgentAdapter, useValue: mockSandboxAgentAdapter },
+        {
+          provide: SelfEvolutionPermissionService,
+          useValue: mockSelfEvolutionPermissionService,
+        },
+        {
+          provide: SelfEvolutionService,
+          useValue: mockSelfEvolutionService,
+        },
       ],
     }).compile();
 
     controller = module.get(AgentConversationController);
+    mockSelfEvolutionPermissionService.resolveConversationRequest.mockResolvedValue(
+      false,
+    );
   });
 
   afterEach(async () => {
@@ -210,7 +231,7 @@ describe('AgentConversationController', () => {
   });
 
   describe('resolveToolPermission', () => {
-    it('应调用 sandbox adapter 解析权限并返回 accepted payload', async () => {
+    it('未被自进化权限服务接管时，应调用 sandbox adapter 解析权限并返回 accepted payload', async () => {
       mockSandboxAgentAdapter.resolveConversationToolPermission.mockResolvedValueOnce(
         undefined,
       );
@@ -223,6 +244,14 @@ describe('AgentConversationController', () => {
       );
 
       expect(
+        mockSelfEvolutionPermissionService.resolveConversationRequest,
+      ).toHaveBeenCalledWith({
+        conversationId: CONVERSATION_ID,
+        toolCallId: 'tool-1',
+        action: 'approve',
+        rememberScope: undefined,
+      });
+      expect(
         mockSandboxAgentAdapter.resolveConversationToolPermission,
       ).toHaveBeenCalledWith(CONVERSATION_ID, 'tool-1', 'approve');
       expect(result).toEqual({
@@ -232,6 +261,64 @@ describe('AgentConversationController', () => {
           status: 'permission_resolved',
         },
       });
+    });
+
+    it('被自进化权限服务接管时，不应再调用 sandbox adapter', async () => {
+      mockSelfEvolutionPermissionService.resolveConversationRequest.mockResolvedValueOnce(
+        true,
+      );
+
+      const result = await controller.resolveToolPermission(
+        CONVERSATION_ID,
+        'tool-1',
+        {
+          action: 'deny',
+          rememberScope: 'conversation_category',
+        } as any,
+        TENANT_ID,
+      );
+
+      expect(
+        mockSelfEvolutionPermissionService.resolveConversationRequest,
+      ).toHaveBeenCalledWith({
+        conversationId: CONVERSATION_ID,
+        toolCallId: 'tool-1',
+        action: 'deny',
+        rememberScope: 'conversation_category',
+      });
+      expect(
+        mockSandboxAgentAdapter.resolveConversationToolPermission,
+      ).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        data: {
+          conversationId: CONVERSATION_ID,
+          toolCallId: 'tool-1',
+          status: 'permission_resolved',
+          rememberScope: 'conversation_category',
+        },
+      });
+    });
+  });
+
+  describe('restartLatestVersion', () => {
+    it('应调用 selfEvolutionService.restartConversationToLatestVersion', async () => {
+      const expected = {
+        data: { conversationId: '55555555-5555-4555-8555-555555555555' },
+      };
+      mockSelfEvolutionService.restartConversationToLatestVersion.mockResolvedValueOnce(
+        expected,
+      );
+
+      const result = await controller.restartLatestVersion(
+        CONVERSATION_ID,
+        TENANT_ID,
+        USER_ID,
+      );
+
+      expect(
+        mockSelfEvolutionService.restartConversationToLatestVersion,
+      ).toHaveBeenCalledWith(CONVERSATION_ID, TENANT_ID, USER_ID);
+      expect(result).toEqual(expected);
     });
   });
 

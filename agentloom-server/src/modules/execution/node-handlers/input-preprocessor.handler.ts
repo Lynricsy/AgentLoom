@@ -14,6 +14,41 @@ export interface InputPreprocessorConfig {
   outputFormat?: string;
 }
 
+function readStringAlias(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
+}
+
+function normalizeTransformType(
+  value: unknown,
+): InputPreprocessorTransformType {
+  return value === 'jsonata' ||
+    value === 'template' ||
+    value === 'script'
+    ? value
+    : 'jmespath';
+}
+
+export function normalizeInputPreprocessorConfig(
+  value: Record<string, unknown>,
+  fallbackTransformType?: string | null,
+): InputPreprocessorConfig {
+  const expression =
+    readStringAlias(value.expression) ?? readStringAlias(value.template) ?? '';
+  const outputFormat =
+    readStringAlias(value.outputFormat) ??
+    readStringAlias(value.output_format);
+
+  return {
+    transformType: normalizeTransformType(
+      readStringAlias(value.transformType) ??
+        readStringAlias(value.transform_type) ??
+        fallbackTransformType,
+    ),
+    expression,
+    ...(outputFormat ? { outputFormat } : {}),
+  };
+}
+
 export interface InputPreprocessorNodeHandler {
   execute(
     input: string | Record<string, unknown>,

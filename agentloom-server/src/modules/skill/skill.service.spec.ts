@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => {
     deleteSkillFiles: vi.fn().mockResolvedValue(undefined),
     listSkillFiles: vi.fn().mockResolvedValue([]),
     getSkillContent: vi.fn(),
+    getSkillFileMap: vi.fn().mockResolvedValue({}),
   });
 
   const getTenantDb = vi.fn();
@@ -411,6 +412,43 @@ describe('SkillService', () => {
       const result = await service.findByIds(TENANT_ID, []);
       expect(result).toEqual([]);
       expect(db.select).not.toHaveBeenCalled();
+    });
+  });
+
+  // ─── getSkillFileMap ───────────────────────────────────────────────────
+  describe('getSkillFileMap', () => {
+    it('returns storage file map when extra files exist', async () => {
+      storageService.getSkillFileMap.mockResolvedValue({
+        'SKILL.md': '# Main',
+        'resource-management.md': '## Resource management',
+      });
+
+      const result = await service.getSkillFileMap(
+        TENANT_ID,
+        SKILL_ID,
+        '# Fallback',
+      );
+
+      expect(result).toEqual({
+        'SKILL.md': '# Main',
+        'resource-management.md': '## Resource management',
+      });
+      expect(storageService.getSkillFileMap).toHaveBeenCalledWith(
+        TENANT_ID,
+        SKILL_ID,
+      );
+    });
+
+    it('falls back to stored content when no files were uploaded', async () => {
+      storageService.getSkillFileMap.mockResolvedValue({});
+
+      const result = await service.getSkillFileMap(
+        TENANT_ID,
+        SKILL_ID,
+        '# Stored content',
+      );
+
+      expect(result).toEqual({ 'SKILL.md': '# Stored content' });
     });
   });
 

@@ -6,6 +6,7 @@ import {
   executionStepSchema,
 } from '../dto/execution-response.dto';
 import { listExecutionsQuerySchema } from '../dto/list-executions-query.dto';
+import { resolveToolPermissionSchema } from '../dto/resolve-tool-permission.dto';
 import { RunWorkflowDto } from '../dto/run-workflow.dto';
 
 const executionId = '019391d4-d000-7000-8000-000000000004';
@@ -71,6 +72,28 @@ describe('execution dto schemas', () => {
     ).toEqual({
       inputParams: { topic: 'AgentLoom' },
       launchSource: 'api',
+    });
+  });
+
+  it('应兼容 resolve tool permission body 的 snake_case 与 camelCase rememberScope', () => {
+    expect(
+      resolveToolPermissionSchema.parse({
+        action: 'approve',
+        remember_scope: 'conversation_category',
+      }),
+    ).toEqual({
+      action: 'approve',
+      rememberScope: 'conversation_category',
+    });
+
+    expect(
+      resolveToolPermissionSchema.parse({
+        action: 'deny',
+        rememberScope: 'none',
+      }),
+    ).toEqual({
+      action: 'deny',
+      rememberScope: 'none',
     });
   });
 

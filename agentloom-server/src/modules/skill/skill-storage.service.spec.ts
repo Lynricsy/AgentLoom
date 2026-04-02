@@ -210,6 +210,40 @@ describe('SkillStorageService', () => {
     });
   });
 
+  // ─── getSkillFileMap ───────────────────────────────────────────────────
+  describe('getSkillFileMap', () => {
+    it('downloads every listed file into a text map', async () => {
+      const prefix = `tenants/${TENANT_ID}/skills/${SKILL_ID}/`;
+      minioClient.listObjectsV2.mockReturnValue(
+        createAsyncIterable([
+          { name: `${prefix}SKILL.md`, size: 100 },
+          { name: `${prefix}resource-management.md`, size: 120 },
+        ]),
+      );
+      storageService.download
+        .mockResolvedValueOnce(Readable.from([Buffer.from('# Main skill')]))
+        .mockResolvedValueOnce(
+          Readable.from([Buffer.from('## Resource management')]),
+        );
+
+      const result = await service.getSkillFileMap(TENANT_ID, SKILL_ID);
+
+      expect(result).toEqual({
+        'SKILL.md': '# Main skill',
+        'resource-management.md': '## Resource management',
+      });
+    });
+
+    it('returns empty map when no files exist', async () => {
+      minioClient.listObjectsV2.mockReturnValue(createAsyncIterable([]));
+
+      const result = await service.getSkillFileMap(TENANT_ID, SKILL_ID);
+
+      expect(result).toEqual({});
+      expect(storageService.download).not.toHaveBeenCalled();
+    });
+  });
+
   // ─── getSkillContent ───────────────────────────────────────────────────
   describe('getSkillContent', () => {
     it('returns utf-8 content when SKILL.md exists', async () => {

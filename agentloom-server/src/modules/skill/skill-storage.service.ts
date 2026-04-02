@@ -114,6 +114,31 @@ export class SkillStorageService {
     return files;
   }
 
+  async getSkillFileMap(
+    tenantId: string,
+    skillId: string,
+  ): Promise<Record<string, string>> {
+    const files = await this.listSkillFiles(tenantId, skillId);
+    if (files.length === 0) {
+      return {};
+    }
+
+    const entries = await Promise.all(
+      files.map(async (file) => {
+        const stream = await this.downloadSkillFile(tenantId, skillId, file.name);
+        const chunks: Buffer[] = [];
+
+        for await (const chunk of stream) {
+          chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+        }
+
+        return [file.name, Buffer.concat(chunks).toString('utf-8')] as const;
+      }),
+    );
+
+    return Object.fromEntries(entries);
+  }
+
   async getSkillContent(
     tenantId: string,
     skillId: string,

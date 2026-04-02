@@ -153,6 +153,23 @@ describe('executionApi', () => {
         },
       )
     })
+
+    it('在传入 rememberScope 时一并发送', async () => {
+      await resolveToolPermission('exec-001', 'step-001', 'tool-001', {
+        action: 'approve',
+        rememberScope: 'conversation_category',
+      })
+
+      expect(mocks.postMock).toHaveBeenCalledWith(
+        'executions/exec-001/steps/step-001/tool-calls/tool-001/resolve',
+        {
+          json: {
+            action: 'approve',
+            remember_scope: 'conversation_category',
+          },
+        },
+      )
+    })
   })
 
   describe('workspace', () => {

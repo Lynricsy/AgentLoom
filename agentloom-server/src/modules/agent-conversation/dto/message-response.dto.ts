@@ -180,9 +180,36 @@ function serializePermissionRequest(
       )
     : [];
 
+  const domain = readString(value.domain);
+  const category = readString(value.category);
+  const riskLevel =
+    value.riskLevel === 'low' ||
+    value.riskLevel === 'medium' ||
+    value.riskLevel === 'high'
+      ? value.riskLevel
+      : undefined;
+  const sourceLabel = readString(value.sourceLabel);
+  const targetType = readString(value.targetType);
+  const targetLabel = readString(value.targetLabel);
+  const approveEffect = readString(value.approveEffect);
+  const denyEffect = readString(value.denyEffect);
+  const diffPreview = isRecord(value.diffPreview) ? value.diffPreview : undefined;
+  const rememberable =
+    typeof value.rememberable === 'boolean' ? value.rememberable : undefined;
+
   return {
     description,
     ...(resourcePaths.length > 0 ? { resourcePaths } : {}),
+    ...(domain ? { domain } : {}),
+    ...(category ? { category } : {}),
+    ...(riskLevel ? { riskLevel } : {}),
+    ...(sourceLabel ? { sourceLabel } : {}),
+    ...(targetType ? { targetType } : {}),
+    ...(targetLabel ? { targetLabel } : {}),
+    ...(approveEffect ? { approveEffect } : {}),
+    ...(denyEffect ? { denyEffect } : {}),
+    ...(diffPreview ? { diffPreview } : {}),
+    ...(rememberable !== undefined ? { rememberable } : {}),
   };
 }
 

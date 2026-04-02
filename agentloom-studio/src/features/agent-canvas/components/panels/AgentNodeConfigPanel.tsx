@@ -2,6 +2,7 @@ import { memo, useCallback } from 'react';
 import { cn } from '@/shared/lib/utils';
 import type { CanvasNode, CanvasNodeData } from '@/features/canvas/types';
 import { CUSTOM_PANEL_REGISTRY } from '@/features/canvas/components/panels/customPanelRegistry';
+import { AgentMainConfigPanel } from './AgentMainConfigPanel';
 import {
   useAgentCanvasSelectedNodeId,
   useAgentCanvasNodes,
@@ -90,6 +91,13 @@ const AgentOnlyNodeConfig = memo(function AgentOnlyNodeConfig({
   onConfigChange: (config: Record<string, unknown>) => void;
 }) {
   switch (nodeData.nodeType as string) {
+    case 'agent-main':
+      return (
+        <AgentMainConfigPanel
+          config={nodeData.config}
+          onApply={onConfigChange}
+        />
+      );
     case 'smart-routing':
       return (
         <SmartRoutingConfigStub

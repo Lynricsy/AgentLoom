@@ -447,6 +447,17 @@ mixin _$ConversationToolPermissionRequestDto {
   String? get description;
   @JsonKey(fromJson: _stringListFromJson)
   List<String> get resourcePaths;
+  String? get domain;
+  String? get category;
+  String? get riskLevel;
+  String? get sourceLabel;
+  String? get targetType;
+  String? get targetLabel;
+  String? get approveEffect;
+  String? get denyEffect;
+  @JsonKey(fromJson: _nullableMapFromJson)
+  Map<String, dynamic>? get diffPreview;
+  bool? get rememberable;
 
   /// Create a copy of ConversationToolPermissionRequestDto
   /// with the given fields replaced by the non-null parameter values.
@@ -473,7 +484,28 @@ mixin _$ConversationToolPermissionRequestDto {
             const DeepCollectionEquality().equals(
               other.resourcePaths,
               resourcePaths,
-            ));
+            ) &&
+            (identical(other.domain, domain) || other.domain == domain) &&
+            (identical(other.category, category) ||
+                other.category == category) &&
+            (identical(other.riskLevel, riskLevel) ||
+                other.riskLevel == riskLevel) &&
+            (identical(other.sourceLabel, sourceLabel) ||
+                other.sourceLabel == sourceLabel) &&
+            (identical(other.targetType, targetType) ||
+                other.targetType == targetType) &&
+            (identical(other.targetLabel, targetLabel) ||
+                other.targetLabel == targetLabel) &&
+            (identical(other.approveEffect, approveEffect) ||
+                other.approveEffect == approveEffect) &&
+            (identical(other.denyEffect, denyEffect) ||
+                other.denyEffect == denyEffect) &&
+            const DeepCollectionEquality().equals(
+              other.diffPreview,
+              diffPreview,
+            ) &&
+            (identical(other.rememberable, rememberable) ||
+                other.rememberable == rememberable));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
@@ -482,11 +514,21 @@ mixin _$ConversationToolPermissionRequestDto {
     runtimeType,
     description,
     const DeepCollectionEquality().hash(resourcePaths),
+    domain,
+    category,
+    riskLevel,
+    sourceLabel,
+    targetType,
+    targetLabel,
+    approveEffect,
+    denyEffect,
+    const DeepCollectionEquality().hash(diffPreview),
+    rememberable,
   );
 
   @override
   String toString() {
-    return 'ConversationToolPermissionRequestDto(description: $description, resourcePaths: $resourcePaths)';
+    return 'ConversationToolPermissionRequestDto(description: $description, resourcePaths: $resourcePaths, domain: $domain, category: $category, riskLevel: $riskLevel, sourceLabel: $sourceLabel, targetType: $targetType, targetLabel: $targetLabel, approveEffect: $approveEffect, denyEffect: $denyEffect, diffPreview: $diffPreview, rememberable: $rememberable)';
   }
 }
 
@@ -500,6 +542,16 @@ abstract mixin class $ConversationToolPermissionRequestDtoCopyWith<$Res> {
   $Res call({
     String? description,
     @JsonKey(fromJson: _stringListFromJson) List<String> resourcePaths,
+    String? domain,
+    String? category,
+    String? riskLevel,
+    String? sourceLabel,
+    String? targetType,
+    String? targetLabel,
+    String? approveEffect,
+    String? denyEffect,
+    @JsonKey(fromJson: _nullableMapFromJson) Map<String, dynamic>? diffPreview,
+    bool? rememberable,
   });
 }
 
@@ -515,7 +567,20 @@ class _$ConversationToolPermissionRequestDtoCopyWithImpl<$Res>
   /// with the given fields replaced by the non-null parameter values.
   @pragma('vm:prefer-inline')
   @override
-  $Res call({Object? description = freezed, Object? resourcePaths = null}) {
+  $Res call({
+    Object? description = freezed,
+    Object? resourcePaths = null,
+    Object? domain = freezed,
+    Object? category = freezed,
+    Object? riskLevel = freezed,
+    Object? sourceLabel = freezed,
+    Object? targetType = freezed,
+    Object? targetLabel = freezed,
+    Object? approveEffect = freezed,
+    Object? denyEffect = freezed,
+    Object? diffPreview = freezed,
+    Object? rememberable = freezed,
+  }) {
     return _then(
       _self.copyWith(
         description: freezed == description
@@ -526,6 +591,46 @@ class _$ConversationToolPermissionRequestDtoCopyWithImpl<$Res>
             ? _self.resourcePaths
             : resourcePaths // ignore: cast_nullable_to_non_nullable
                   as List<String>,
+        domain: freezed == domain
+            ? _self.domain
+            : domain // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        category: freezed == category
+            ? _self.category
+            : category // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        riskLevel: freezed == riskLevel
+            ? _self.riskLevel
+            : riskLevel // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        sourceLabel: freezed == sourceLabel
+            ? _self.sourceLabel
+            : sourceLabel // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        targetType: freezed == targetType
+            ? _self.targetType
+            : targetType // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        targetLabel: freezed == targetLabel
+            ? _self.targetLabel
+            : targetLabel // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        approveEffect: freezed == approveEffect
+            ? _self.approveEffect
+            : approveEffect // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        denyEffect: freezed == denyEffect
+            ? _self.denyEffect
+            : denyEffect // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        diffPreview: freezed == diffPreview
+            ? _self.diffPreview
+            : diffPreview // ignore: cast_nullable_to_non_nullable
+                  as Map<String, dynamic>?,
+        rememberable: freezed == rememberable
+            ? _self.rememberable
+            : rememberable // ignore: cast_nullable_to_non_nullable
+                  as bool?,
       ),
     );
   }
@@ -628,6 +733,17 @@ extension ConversationToolPermissionRequestDtoPatterns
     TResult Function(
       String? description,
       @JsonKey(fromJson: _stringListFromJson) List<String> resourcePaths,
+      String? domain,
+      String? category,
+      String? riskLevel,
+      String? sourceLabel,
+      String? targetType,
+      String? targetLabel,
+      String? approveEffect,
+      String? denyEffect,
+      @JsonKey(fromJson: _nullableMapFromJson)
+      Map<String, dynamic>? diffPreview,
+      bool? rememberable,
     )?
     $default, {
     required TResult orElse(),
@@ -635,7 +751,20 @@ extension ConversationToolPermissionRequestDtoPatterns
     final _that = this;
     switch (_that) {
       case _ConversationToolPermissionRequestDto() when $default != null:
-        return $default(_that.description, _that.resourcePaths);
+        return $default(
+          _that.description,
+          _that.resourcePaths,
+          _that.domain,
+          _that.category,
+          _that.riskLevel,
+          _that.sourceLabel,
+          _that.targetType,
+          _that.targetLabel,
+          _that.approveEffect,
+          _that.denyEffect,
+          _that.diffPreview,
+          _that.rememberable,
+        );
       case _:
         return orElse();
     }
@@ -659,13 +788,37 @@ extension ConversationToolPermissionRequestDtoPatterns
     TResult Function(
       String? description,
       @JsonKey(fromJson: _stringListFromJson) List<String> resourcePaths,
+      String? domain,
+      String? category,
+      String? riskLevel,
+      String? sourceLabel,
+      String? targetType,
+      String? targetLabel,
+      String? approveEffect,
+      String? denyEffect,
+      @JsonKey(fromJson: _nullableMapFromJson)
+      Map<String, dynamic>? diffPreview,
+      bool? rememberable,
     )
     $default,
   ) {
     final _that = this;
     switch (_that) {
       case _ConversationToolPermissionRequestDto():
-        return $default(_that.description, _that.resourcePaths);
+        return $default(
+          _that.description,
+          _that.resourcePaths,
+          _that.domain,
+          _that.category,
+          _that.riskLevel,
+          _that.sourceLabel,
+          _that.targetType,
+          _that.targetLabel,
+          _that.approveEffect,
+          _that.denyEffect,
+          _that.diffPreview,
+          _that.rememberable,
+        );
       case _:
         throw StateError('Unexpected subclass');
     }
@@ -688,13 +841,37 @@ extension ConversationToolPermissionRequestDtoPatterns
     TResult? Function(
       String? description,
       @JsonKey(fromJson: _stringListFromJson) List<String> resourcePaths,
+      String? domain,
+      String? category,
+      String? riskLevel,
+      String? sourceLabel,
+      String? targetType,
+      String? targetLabel,
+      String? approveEffect,
+      String? denyEffect,
+      @JsonKey(fromJson: _nullableMapFromJson)
+      Map<String, dynamic>? diffPreview,
+      bool? rememberable,
     )?
     $default,
   ) {
     final _that = this;
     switch (_that) {
       case _ConversationToolPermissionRequestDto() when $default != null:
-        return $default(_that.description, _that.resourcePaths);
+        return $default(
+          _that.description,
+          _that.resourcePaths,
+          _that.domain,
+          _that.category,
+          _that.riskLevel,
+          _that.sourceLabel,
+          _that.targetType,
+          _that.targetLabel,
+          _that.approveEffect,
+          _that.denyEffect,
+          _that.diffPreview,
+          _that.rememberable,
+        );
       case _:
         return null;
     }
@@ -709,7 +886,19 @@ class _ConversationToolPermissionRequestDto
     this.description,
     @JsonKey(fromJson: _stringListFromJson)
     final List<String> resourcePaths = const <String>[],
-  }) : _resourcePaths = resourcePaths;
+    this.domain,
+    this.category,
+    this.riskLevel,
+    this.sourceLabel,
+    this.targetType,
+    this.targetLabel,
+    this.approveEffect,
+    this.denyEffect,
+    @JsonKey(fromJson: _nullableMapFromJson)
+    final Map<String, dynamic>? diffPreview,
+    this.rememberable,
+  }) : _resourcePaths = resourcePaths,
+       _diffPreview = diffPreview;
   factory _ConversationToolPermissionRequestDto.fromJson(
     Map<String, dynamic> json,
   ) => _$ConversationToolPermissionRequestDtoFromJson(json);
@@ -724,6 +913,36 @@ class _ConversationToolPermissionRequestDto
     // ignore: implicit_dynamic_type
     return EqualUnmodifiableListView(_resourcePaths);
   }
+
+  @override
+  final String? domain;
+  @override
+  final String? category;
+  @override
+  final String? riskLevel;
+  @override
+  final String? sourceLabel;
+  @override
+  final String? targetType;
+  @override
+  final String? targetLabel;
+  @override
+  final String? approveEffect;
+  @override
+  final String? denyEffect;
+  final Map<String, dynamic>? _diffPreview;
+  @override
+  @JsonKey(fromJson: _nullableMapFromJson)
+  Map<String, dynamic>? get diffPreview {
+    final value = _diffPreview;
+    if (value == null) return null;
+    if (_diffPreview is EqualUnmodifiableMapView) return _diffPreview;
+    // ignore: implicit_dynamic_type
+    return EqualUnmodifiableMapView(value);
+  }
+
+  @override
+  final bool? rememberable;
 
   /// Create a copy of ConversationToolPermissionRequestDto
   /// with the given fields replaced by the non-null parameter values.
@@ -753,7 +972,28 @@ class _ConversationToolPermissionRequestDto
             const DeepCollectionEquality().equals(
               other._resourcePaths,
               _resourcePaths,
-            ));
+            ) &&
+            (identical(other.domain, domain) || other.domain == domain) &&
+            (identical(other.category, category) ||
+                other.category == category) &&
+            (identical(other.riskLevel, riskLevel) ||
+                other.riskLevel == riskLevel) &&
+            (identical(other.sourceLabel, sourceLabel) ||
+                other.sourceLabel == sourceLabel) &&
+            (identical(other.targetType, targetType) ||
+                other.targetType == targetType) &&
+            (identical(other.targetLabel, targetLabel) ||
+                other.targetLabel == targetLabel) &&
+            (identical(other.approveEffect, approveEffect) ||
+                other.approveEffect == approveEffect) &&
+            (identical(other.denyEffect, denyEffect) ||
+                other.denyEffect == denyEffect) &&
+            const DeepCollectionEquality().equals(
+              other._diffPreview,
+              _diffPreview,
+            ) &&
+            (identical(other.rememberable, rememberable) ||
+                other.rememberable == rememberable));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
@@ -762,11 +1002,21 @@ class _ConversationToolPermissionRequestDto
     runtimeType,
     description,
     const DeepCollectionEquality().hash(_resourcePaths),
+    domain,
+    category,
+    riskLevel,
+    sourceLabel,
+    targetType,
+    targetLabel,
+    approveEffect,
+    denyEffect,
+    const DeepCollectionEquality().hash(_diffPreview),
+    rememberable,
   );
 
   @override
   String toString() {
-    return 'ConversationToolPermissionRequestDto(description: $description, resourcePaths: $resourcePaths)';
+    return 'ConversationToolPermissionRequestDto(description: $description, resourcePaths: $resourcePaths, domain: $domain, category: $category, riskLevel: $riskLevel, sourceLabel: $sourceLabel, targetType: $targetType, targetLabel: $targetLabel, approveEffect: $approveEffect, denyEffect: $denyEffect, diffPreview: $diffPreview, rememberable: $rememberable)';
   }
 }
 
@@ -782,6 +1032,16 @@ abstract mixin class _$ConversationToolPermissionRequestDtoCopyWith<$Res>
   $Res call({
     String? description,
     @JsonKey(fromJson: _stringListFromJson) List<String> resourcePaths,
+    String? domain,
+    String? category,
+    String? riskLevel,
+    String? sourceLabel,
+    String? targetType,
+    String? targetLabel,
+    String? approveEffect,
+    String? denyEffect,
+    @JsonKey(fromJson: _nullableMapFromJson) Map<String, dynamic>? diffPreview,
+    bool? rememberable,
   });
 }
 
@@ -797,7 +1057,20 @@ class __$ConversationToolPermissionRequestDtoCopyWithImpl<$Res>
   /// with the given fields replaced by the non-null parameter values.
   @override
   @pragma('vm:prefer-inline')
-  $Res call({Object? description = freezed, Object? resourcePaths = null}) {
+  $Res call({
+    Object? description = freezed,
+    Object? resourcePaths = null,
+    Object? domain = freezed,
+    Object? category = freezed,
+    Object? riskLevel = freezed,
+    Object? sourceLabel = freezed,
+    Object? targetType = freezed,
+    Object? targetLabel = freezed,
+    Object? approveEffect = freezed,
+    Object? denyEffect = freezed,
+    Object? diffPreview = freezed,
+    Object? rememberable = freezed,
+  }) {
     return _then(
       _ConversationToolPermissionRequestDto(
         description: freezed == description
@@ -808,6 +1081,46 @@ class __$ConversationToolPermissionRequestDtoCopyWithImpl<$Res>
             ? _self._resourcePaths
             : resourcePaths // ignore: cast_nullable_to_non_nullable
                   as List<String>,
+        domain: freezed == domain
+            ? _self.domain
+            : domain // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        category: freezed == category
+            ? _self.category
+            : category // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        riskLevel: freezed == riskLevel
+            ? _self.riskLevel
+            : riskLevel // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        sourceLabel: freezed == sourceLabel
+            ? _self.sourceLabel
+            : sourceLabel // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        targetType: freezed == targetType
+            ? _self.targetType
+            : targetType // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        targetLabel: freezed == targetLabel
+            ? _self.targetLabel
+            : targetLabel // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        approveEffect: freezed == approveEffect
+            ? _self.approveEffect
+            : approveEffect // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        denyEffect: freezed == denyEffect
+            ? _self.denyEffect
+            : denyEffect // ignore: cast_nullable_to_non_nullable
+                  as String?,
+        diffPreview: freezed == diffPreview
+            ? _self._diffPreview
+            : diffPreview // ignore: cast_nullable_to_non_nullable
+                  as Map<String, dynamic>?,
+        rememberable: freezed == rememberable
+            ? _self.rememberable
+            : rememberable // ignore: cast_nullable_to_non_nullable
+                  as bool?,
       ),
     );
   }

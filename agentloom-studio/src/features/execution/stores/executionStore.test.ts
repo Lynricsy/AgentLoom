@@ -894,6 +894,33 @@ describe('executionStore', () => {
       expect(tc?.error).toBe('API timeout')
       expect(tc?.args).toEqual({ q: 'test' })
     })
+
+    it('updates tool call with permissionRequest from status payload', () => {
+      const { actions } = useExecutionStore.getState()
+      const permissionRequest = {
+        description: '需要创建 Skill 资源',
+        category: 'skill_resource_management' as const,
+        rememberable: true,
+      }
+
+      actions.updateToolCall(
+        makeEvent<ToolCallStatusPayload>({
+          event: 'execution.node.agent-event',
+          eventId: 1,
+          data: {
+            stepId: 'step-1',
+            nodeId: 'node-1',
+            toolCallId: 'tc-1',
+            tool: 'create_resource',
+            status: 'awaiting_permission',
+            permissionRequest,
+          },
+        }),
+      )
+
+      const tc = getNode('node-1').toolCalls['tc-1']
+      expect(tc?.permissionRequest).toEqual(permissionRequest)
+    })
   })
 
   describe('setToolPermissionRequired', () => {
@@ -1136,6 +1163,29 @@ describe('executionStore', () => {
         'step-1',
         'tc-1',
         { action: 'deny' },
+      )
+    })
+
+    it('传入 rememberScope 时应透传到 resolveToolPermission API', async () => {
+      vi.mocked(resolveToolPermission).mockResolvedValueOnce(undefined)
+
+      const { actions } = useExecutionStore.getState()
+      await actions.submitToolPermission(
+        'exec-1',
+        'step-1',
+        'tc-1',
+        'approve',
+        'conversation_category',
+      )
+
+      expect(resolveToolPermission).toHaveBeenCalledWith(
+        'exec-1',
+        'step-1',
+        'tc-1',
+        {
+          action: 'approve',
+          rememberScope: 'conversation_category',
+        },
       )
     })
   })

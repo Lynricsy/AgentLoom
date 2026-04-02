@@ -51,6 +51,7 @@ import { SandboxService } from '../sandbox/sandbox.service';
 import { CodeExecutionService } from './code-execution.service';
 import { executeHttpToolRequest } from './http-tool-request.util';
 import { typeBoxToZod } from './tool-schema-converter';
+import { SelfEvolutionService } from '../self-evolution/self-evolution.service';
 
 import type {
   IAgentRuntime,
@@ -75,6 +76,7 @@ import type {
   ToolCallTransitionRecord,
   ToolCallTransitionSource,
 } from './types/tool-call-event.types';
+import type { SelfEvolutionRemoteToolOutcome } from '../self-evolution/self-evolution.types';
 
 const CONTAINER_WORKSPACE = '/workspace/';
 const REQUEST_TIMEOUT_MS = 900_000;
@@ -136,6 +138,7 @@ type RemoteToolExecutionCallback = {
   toolCallId: string;
   toolName: string;
   input?: unknown;
+  phase?: 'preflight' | 'execute';
 };
 
 type AiJsonSchemaInput = Parameters<typeof jsonSchema>[0];
@@ -248,6 +251,7 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     private readonly decryptionBoundaryService?: DecryptionBoundaryService,
     @Optional()
     private readonly piConfigGenerator?: PiConfigGeneratorService,
+    @Optional() private readonly selfEvolutionService?: SelfEvolutionService,
   ) {}
 
   private get tenantDb(): DrizzleDB {
@@ -284,6 +288,7 @@ export class SandboxAgentAdapter implements IAgentRuntime {
       llmModelConfigId: params.llmModelConfigId,
       systemPrompt: params.systemPrompt,
       autonomyMode: params.autonomyMode,
+      runtimeConfig: params.runtimeConfig,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -543,7 +548,10 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     sessionId: string,
     callback: RemoteToolExecutionCallback,
     callbackToken?: string,
-  ): Promise<{ result: unknown }> {
+  ): Promise<
+    | { result: unknown }
+    | SelfEvolutionRemoteToolOutcome
+  > {
     if (callback.sessionId !== sessionId) {
       throw new Error(
         `Remote tool callback sessionId mismatch: expected ${sessionId}, got ${callback.sessionId}`,
@@ -556,6 +564,30 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     const tenantId = session.tenantId;
     if (!tenantId) {
       throw new Error(`Sandbox session ${sessionId} is missing tenantId`);
+    }
+
+    const selfEvolutionService = this.selfEvolutionService;
+    if (selfEvolutionService?.supportsTool(callback.toolName)) {
+      return await runInTenantTransaction(this.db, tenantId, async () => {
+        const phase =
+          callback.phase === 'execute' ? 'execute' : 'preflight';
+
+        if (phase === 'execute') {
+          return selfEvolutionService.handleSessionToolExecute(
+            session,
+            callback.toolName as never,
+            callback.toolCallId,
+            this.normalizeSessionToolInput(callback.input),
+          );
+        }
+
+        return selfEvolutionService.handleSessionToolPreflight(
+          session,
+          callback.toolName as never,
+          callback.toolCallId,
+          this.normalizeSessionToolInput(callback.input),
+        );
+      });
     }
 
     const tool = await this.resolveSessionTool(sessionId, callback.toolName);
@@ -575,6 +607,10 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     );
 
     return { result };
+  }
+
+  private normalizeSessionToolInput(input: unknown): Record<string, unknown> {
+    return this.isRecord(input) ? input : {};
   }
 
   private async waitForSandboxReady(
@@ -2103,6 +2139,36 @@ export class SandboxAgentAdapter implements IAgentRuntime {
       return {
         description,
         ...(resourcePaths.length > 0 ? { resourcePaths } : {}),
+        ...(this.readString(value.domain)
+          ? { domain: this.readString(value.domain) }
+          : {}),
+        ...(this.readString(value.category)
+          ? { category: this.readString(value.category) }
+          : {}),
+        ...(this.readRiskLevel(value.riskLevel)
+          ? { riskLevel: this.readRiskLevel(value.riskLevel) }
+          : {}),
+        ...(this.readString(value.sourceLabel)
+          ? { sourceLabel: this.readString(value.sourceLabel) }
+          : {}),
+        ...(this.readString(value.targetType)
+          ? { targetType: this.readString(value.targetType) }
+          : {}),
+        ...(this.readString(value.targetLabel)
+          ? { targetLabel: this.readString(value.targetLabel) }
+          : {}),
+        ...(this.readString(value.approveEffect)
+          ? { approveEffect: this.readString(value.approveEffect) }
+          : {}),
+        ...(this.readString(value.denyEffect)
+          ? { denyEffect: this.readString(value.denyEffect) }
+          : {}),
+        ...(this.isRecord(value.diffPreview)
+          ? { diffPreview: value.diffPreview }
+          : {}),
+        ...(typeof value.rememberable === 'boolean'
+          ? { rememberable: value.rememberable }
+          : {}),
       };
     }
 
@@ -2115,7 +2181,48 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     return {
       description: description ?? `允许工具 ${toolName} 执行`,
       ...(resourcePaths.length > 0 ? { resourcePaths } : {}),
+      ...(this.readString(data?.domain) ? { domain: this.readString(data?.domain) } : {}),
+      ...(this.readString(data?.category)
+        ? { category: this.readString(data?.category) }
+        : {}),
+      ...(this.readRiskLevel(data?.riskLevel)
+        ? { riskLevel: this.readRiskLevel(data?.riskLevel) }
+        : {}),
+      ...(this.readString(data?.sourceLabel)
+        ? { sourceLabel: this.readString(data?.sourceLabel) }
+        : {}),
+      ...(this.readString(data?.targetType)
+        ? { targetType: this.readString(data?.targetType) }
+        : {}),
+      ...(this.readString(data?.targetLabel)
+        ? { targetLabel: this.readString(data?.targetLabel) }
+        : {}),
+      ...(this.readString(data?.approveEffect)
+        ? { approveEffect: this.readString(data?.approveEffect) }
+        : {}),
+      ...(this.readString(data?.denyEffect)
+        ? { denyEffect: this.readString(data?.denyEffect) }
+        : {}),
+      ...(this.isRecord(data?.diffPreview)
+        ? { diffPreview: data?.diffPreview }
+        : {}),
+      ...(typeof data?.rememberable === 'boolean'
+        ? { rememberable: data.rememberable }
+        : {}),
     };
+  }
+
+  private readRiskLevel(
+    value: unknown,
+  ): ToolPermissionRequest['riskLevel'] | undefined {
+    switch (value) {
+      case 'low':
+      case 'medium':
+      case 'high':
+        return value;
+      default:
+        return undefined;
+    }
   }
 
   private normalizeStopReason(value: unknown): StopReason {

@@ -867,6 +867,48 @@ describe('AgentDefinitionService', () => {
       expect(config.inputPreprocessors).toBeUndefined();
     });
 
+    it('agent-main 的原生工具与自进化策略应编译进 runtimeConfig', () => {
+      const config = service.buildRuntimeConfigFromNodes(
+        [
+          {
+            id: 'main',
+            type: 'agent',
+            data: {
+              nodeType: 'agent-main',
+              config: {
+                nativeToolPolicy: {
+                  readEnabled: true,
+                  writeEnabled: false,
+                  editEnabled: true,
+                  terminalEnabled: false,
+                },
+                selfEvolutionPolicy: {
+                  enabled: true,
+                  resourceManagement: true,
+                  externalEditing: false,
+                  sandboxManagement: true,
+                },
+              },
+            },
+          },
+        ],
+        [],
+      );
+
+      expect(config.nativeToolPolicy).toEqual({
+        readEnabled: true,
+        writeEnabled: false,
+        editEnabled: true,
+        terminalEnabled: false,
+      });
+      expect(config.selfEvolutionPolicy).toEqual({
+        enabled: true,
+        resourceManagement: true,
+        externalEditing: false,
+        sandboxManagement: true,
+      });
+    });
+
     it('应仅编译通过 agent-main 连接的节点', () => {
       const nodes = [
         { id: 'main', type: 'agent', data: { nodeType: 'agent-main' } },
@@ -1020,7 +1062,10 @@ describe('AgentDefinitionService', () => {
         }),
       ]);
       expect(config.inputPreprocessors).toEqual([
-        expect.objectContaining({ type: 'jmespath', config: { foo: 'bar' } }),
+        expect.objectContaining({
+          type: 'jmespath',
+          config: expect.objectContaining({ foo: 'bar' }),
+        }),
       ]);
       expect(config.routingConfig).toEqual(
         expect.objectContaining({ strategy: 'QUALITY_FIRST' }),
@@ -1194,6 +1239,36 @@ describe('AgentDefinitionService', () => {
       expect(config.inputPreprocessors).toBeUndefined();
     });
 
+    it('input-preprocessor 应保留现代 config 中的表达式配置', () => {
+      const nodes = [
+        {
+          id: 'n1',
+          type: 'tool',
+          data: {
+            nodeType: 'input-preprocessor',
+            config: {
+              transformType: 'script',
+              expression: "({ value: input.toUpperCase() })",
+              outputFormat: 'json',
+            },
+          },
+        },
+      ];
+
+      const config = service.buildRuntimeConfigFromNodes(nodes, []);
+
+      expect(config.inputPreprocessors).toEqual([
+        {
+          type: 'script',
+          config: {
+            transformType: 'script',
+            expression: "({ value: input.toUpperCase() })",
+            outputFormat: 'json',
+          },
+        },
+      ]);
+    });
+
     it('应支持 snake_case 字段别名', () => {
       const nodes = [
         {
@@ -1284,6 +1359,71 @@ describe('AgentDefinitionService', () => {
       const config = service.buildRuntimeConfigFromNodes(nodes, []);
 
       expect(config.routingConfig!.strategy).toBe('FALLBACK_CHAIN');
+    });
+
+    it('smart-routing 接到 agent-main 时应按候选模型连线推导 candidateModelIds', () => {
+      const nodes = [
+        {
+          id: 'main',
+          type: 'agent',
+          data: { nodeType: 'agent-main' },
+        },
+        {
+          id: 'router',
+          type: 'agent',
+          data: {
+            nodeType: 'smart-routing',
+            strategy: 'FALLBACK_CHAIN',
+            fallbackPriority: ['model-in-1', 'model-in-0'],
+            inputPorts: [{ id: 'model-in-0' }, { id: 'model-in-1' }],
+          },
+        },
+        {
+          id: 'model-a',
+          type: 'agent',
+          data: {
+            nodeType: 'llm-model',
+            config: { modelId: 'model-a' },
+          },
+        },
+        {
+          id: 'model-b',
+          type: 'agent',
+          data: {
+            nodeType: 'llm-model',
+            config: { modelId: 'model-b' },
+          },
+        },
+      ];
+      const edges = [
+        {
+          id: 'e-main-router',
+          source: 'router',
+          target: 'main',
+          targetHandle: 'model-in',
+        },
+        {
+          id: 'e-model-a',
+          source: 'model-a',
+          target: 'router',
+          targetHandle: 'model-in-0',
+        },
+        {
+          id: 'e-model-b',
+          source: 'model-b',
+          target: 'router',
+          targetHandle: 'model-in-1',
+        },
+      ];
+
+      const config = service.buildRuntimeConfigFromNodes(nodes, edges);
+
+      expect(config.routingConfig).toEqual({
+        strategy: 'FALLBACK_CHAIN',
+        candidateModelIds: ['model-b', 'model-a'],
+        fallbackModelId: undefined,
+      });
+      expect(config.modelConfig).toBeUndefined();
     });
 
     it('子代理别名重复时应抛出错误', () => {
@@ -1729,6 +1869,147 @@ describe('AgentDefinitionService', () => {
 
       expect(config.modelConfig).toBeDefined();
       expect(config.modelConfig!.modelId).toBe('gpt-4');
+    });
+  });
+
+  // ─── createVersion ────────────────────────────────────────
+  describe('applyCanvasSnapshot', () => {
+    it('应更新草稿画布并返回新的 detail', async () => {
+      const agent = makeAgent({
+        version: 4,
+        publishedVersionId: null,
+      });
+      const updatedDraft = makeAgent({
+        version: 5,
+        nodes: [
+          {
+            id: 'node-2',
+            type: 'skill',
+            position: { x: 0, y: 0 },
+            data: { skillId: 'skill-1' },
+          },
+        ],
+      });
+
+      mockTxClient.select.mockImplementation(() => {
+        const c: Record<string, any> = {};
+        c.from = vi.fn().mockReturnValue(c);
+        c.where = vi.fn().mockResolvedValue([agent]);
+        return c;
+      });
+
+      mockTxClient.update.mockImplementation(() => {
+        const c: Record<string, any> = {};
+        c.set = vi.fn().mockReturnValue(c);
+        c.where = vi.fn().mockReturnValue(c);
+        c.returning = vi.fn().mockResolvedValue([updatedDraft]);
+        return c;
+      });
+
+      const result = await service.applyCanvasSnapshot(
+        'agent-1',
+        {
+          canvasNodes: updatedDraft.nodes as never,
+          canvasEdges: [],
+          expectedVersion: 4,
+        },
+        'user-1',
+      );
+
+      expect(result).toEqual({
+        detail: expect.objectContaining({
+          id: 'agent-1',
+          version: 5,
+          nodes: updatedDraft.nodes,
+        }),
+      });
+      expect(mockTxClient.insert).not.toHaveBeenCalled();
+    });
+
+    it('已发布 Agent 且 publishIfCurrentlyPublished=true 时应原子生成新发布版本', async () => {
+      const agent = makeAgent({
+        status: 'published',
+        version: 2,
+        publishedVersionId: 'version-old',
+        nodes: [{ id: 'node-1', type: 'llm-model', data: { modelId: 'gpt-4' } }],
+      });
+      const updatedDraft = makeAgent({
+        status: 'published',
+        version: 3,
+        publishedVersionId: 'version-old',
+        nodes: [
+          {
+            id: 'node-2',
+            type: 'skill',
+            position: { x: 0, y: 0 },
+            data: { skillId: 'skill-1' },
+          },
+        ],
+      });
+      const publishedDetail = makeAgent({
+        status: 'published',
+        version: 3,
+        publishedVersionId: 'version-3',
+        nodes: updatedDraft.nodes,
+      });
+      const version = makeVersion({
+        id: 'version-3',
+        versionNumber: 3,
+        publishedAt: new Date('2025-01-01'),
+      });
+
+      let selectCallCount = 0;
+      mockTxClient.select.mockImplementation(() => {
+        selectCallCount += 1;
+        const c: Record<string, any> = {};
+        c.from = vi.fn().mockReturnValue(c);
+        c.where = vi
+          .fn()
+          .mockResolvedValue(
+            selectCallCount === 1 ? [agent] : [{ maxVersion: 2 }],
+          );
+        return c;
+      });
+
+      let updateCallCount = 0;
+      mockTxClient.update.mockImplementation(() => {
+        updateCallCount += 1;
+        const c: Record<string, any> = {};
+        c.set = vi.fn().mockReturnValue(c);
+        c.where = vi.fn().mockReturnValue(c);
+        c.returning = vi
+          .fn()
+          .mockResolvedValue(updateCallCount === 1 ? [updatedDraft] : [publishedDetail]);
+        return c;
+      });
+
+      mockTxClient.insert.mockImplementation(() => {
+        const c: Record<string, any> = {};
+        c.values = vi.fn().mockReturnValue(c);
+        c.returning = vi.fn().mockResolvedValue([version]);
+        return c;
+      });
+
+      const result = await service.applyCanvasSnapshot(
+        'agent-1',
+        {
+          canvasNodes: updatedDraft.nodes as never,
+          canvasEdges: [],
+          expectedVersion: 2,
+          publishIfCurrentlyPublished: true,
+        },
+        'user-1',
+      );
+
+      expect(mockTxClient.insert).toHaveBeenCalledTimes(1);
+      expect(result.detail).toMatchObject({
+        id: 'agent-1',
+        status: 'published',
+        version: 3,
+        nodes: updatedDraft.nodes,
+      });
+      expect(result.publishedVersionId).toBe('version-3');
+      expect(result.publishedVersionNumber).toBe(3);
     });
   });
 

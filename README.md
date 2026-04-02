@@ -16,8 +16,9 @@ AgentLoom 让你像编织织布机上的经纬线一样，将多个 AI Agent 编
 - **🔌 插件生态系统** — 完整的 SDK + CLI + 市场，`.alp` 插件包 RSA-PSS 签名验证，Extism WASM 沙箱隔离执行
 - **🔐 端到端加密 (E2EE)** — RSA-4096 + AES-256-GCM 混合加密，LLM 输出和决策证据全链路加密
 - **📱 跨端体验** — Web Studio + Flutter 移动端，Socket.IO 实时推送 + FCM 通知
+- **🧬 Agent 自进化** — `agent-main` 可配置 read/write/edit/terminal 与自进化策略；内置 `self-evolution` Skill 通过低层工具在审批边界内修改自身编排、创建资源、编辑外部 Agent/Workflow，并在发布后提示“重启到新版本”以继承消息历史与会话级授权策略
 - **🧠 知识库 RAG** — 基于 LlamaIndex.TS 的文档解析、知识节点索引、重排与查询编排，支持知识增强的 Agent 推理
-- **📖 Skill 管理** — SKILL.md 格式 Agent 行为指导文件，`SkillResolverService` 将 `<available_skills>` XML 注入 Agent 对话与工作流执行系统提示，Monaco 编辑器 Web 编辑，5 个内置 Skill
+- **📖 Skill 管理** — SKILL.md 格式 Agent 行为指导文件，支持多文件 Skill 下发到 sandbox runtime；`SkillResolverService` 将 `<available_skills>` XML 注入 Agent 对话与工作流执行系统提示，Monaco 编辑器 Web 编辑，6 个内置 Skill（含 `self-evolution`）
 - **🏢 多租户架构** — AsyncLocalStorage 租户事务隔离，RBAC 五级权限（Owner → Viewer）
 - **📊 证据溯源链** — SHA-256 完整性校验，LLM 决策全程留痕可审计
 - **🧾 审计日志与保留归档** — evidence 域统一采集管理/执行关键事件，提供 owner/admin 审计查询页、资源级事件序列与 hot/archive 回查
@@ -108,6 +109,7 @@ AgentLoom/
 | `execution` | DAG 调度引擎 + 状态机 + 人工介入 |
 | `resource-governance` | 租户资源配额、治理暂停、异常 execution 终止、治理通知/审计 |
 | `agent` | AI Agent 六边形架构 (Ports/Adapters) |
+| `self-evolution` | Agent 自进化低层工具、分类审批记忆、已发布版本重启继承历史 |
 | `llm` | 多模型集成 + Provider 管理 |
 | `smart-routing` | 6 种智能路由策略 |
 | `knowledge` | LlamaIndex-first 知识库（知识节点索引 → 检索 → 重排 → 查询编排） |

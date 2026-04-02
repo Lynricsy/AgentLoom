@@ -1426,7 +1426,7 @@ describe('NodeSchedulerService', () => {
           makeNode('P', 'input-preprocessor', {
             config: {
               transform_type: 'template',
-              expression:
+              template:
                 '主题：{{json-in.topic}}\\n请保留 route={{json-in.route}}。',
               output_format: 'text',
             },
@@ -1455,7 +1455,7 @@ describe('NodeSchedulerService', () => {
           nodeData: {
             config: {
               transform_type: 'template',
-              expression:
+              template:
                 '主题：{{json-in.topic}}\\n请保留 route={{json-in.route}}。',
               output_format: 'text',
             },

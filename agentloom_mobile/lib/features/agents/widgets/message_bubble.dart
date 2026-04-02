@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
@@ -9,11 +11,17 @@ class MessageBubble extends StatelessWidget {
     super.key,
     required this.message,
     this.onResolvePermission,
+    this.onRestartConversation,
   });
 
   final ConversationMessageDto message;
-  final Future<void> Function(String toolCallId, String action)?
+  final Future<void> Function(
+    String toolCallId,
+    String action, {
+    String? rememberScope,
+  })?
   onResolvePermission;
+  final Future<void> Function()? onRestartConversation;
 
   @override
   Widget build(BuildContext context) {
@@ -21,6 +29,7 @@ class MessageBubble extends StatelessWidget {
     final theme = Theme.of(context);
     final segments = _resolvedSegments(message);
     final incompleteError = _incompleteErrorMessage(message);
+    final restartSuggestion = _extractRestartSuggestion(message);
 
     if (isUser) {
       return Align(
@@ -146,6 +155,13 @@ class MessageBubble extends StatelessWidget {
                 ),
               ),
             ],
+            if (restartSuggestion != null && onRestartConversation != null) ...[
+              const SizedBox(height: 10),
+              _RestartConversationCard(
+                publishedVersionNumber: restartSuggestion.publishedVersionNumber,
+                onRestartConversation: onRestartConversation!,
+              ),
+            ],
           ],
         ),
       ),
@@ -193,7 +209,11 @@ class _MessageSegmentView extends StatelessWidget {
 
   final ConversationMessageDto message;
   final MessageSegment segment;
-  final Future<void> Function(String toolCallId, String action)?
+  final Future<void> Function(
+    String toolCallId,
+    String action, {
+    String? rememberScope,
+  })?
   onResolvePermission;
 
   @override
@@ -268,6 +288,95 @@ class _ThinkingBlock extends StatelessWidget {
   }
 }
 
+class _RestartConversationCard extends StatefulWidget {
+  const _RestartConversationCard({
+    required this.onRestartConversation,
+    this.publishedVersionNumber,
+  });
+
+  final Future<void> Function() onRestartConversation;
+  final int? publishedVersionNumber;
+
+  @override
+  State<_RestartConversationCard> createState() =>
+      _RestartConversationCardState();
+}
+
+class _RestartConversationCardState extends State<_RestartConversationCard> {
+  bool _submitting = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primaryContainer.withValues(alpha: 0.55),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.upgrade_outlined,
+                  size: 16,
+                  color: theme.colorScheme.onPrimaryContainer,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    widget.publishedVersionNumber != null
+                        ? 'Agent 已升级到 v${widget.publishedVersionNumber}'
+                        : 'Agent 已升级到最新已发布版本',
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      color: theme.colorScheme.onPrimaryContainer,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              '重启后会新建会话，并继承完整消息历史与已记住的自进化授权策略。',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onPrimaryContainer,
+              ),
+            ),
+            const SizedBox(height: 12),
+            FilledButton.tonalIcon(
+              onPressed: _submitting
+                  ? null
+                  : () async {
+                      setState(() => _submitting = true);
+                      try {
+                        await widget.onRestartConversation();
+                      } finally {
+                        if (mounted) {
+                          setState(() => _submitting = false);
+                        }
+                      }
+                    },
+              icon: _submitting
+                  ? const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.refresh),
+              label: Text(_submitting ? '重启中…' : '重启到新版本'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _MessageMarkdown extends StatelessWidget {
   const _MessageMarkdown({required this.content, this.color});
 
@@ -331,5 +440,67 @@ String? _incompleteErrorMessage(ConversationMessageDto message) {
     return error;
   }
 
+  return null;
+}
+
+({int? publishedVersionNumber})? _extractRestartSuggestion(
+  ConversationMessageDto message,
+) {
+  for (final toolCall in message.toolCalls) {
+    final root = _asRestartMap(toolCall.result);
+    final data = _asRestartMap(root?['data']);
+    final suggestion = _asRestartMap(data?['restartSuggestion']);
+    if (suggestion == null || suggestion['available'] != true) {
+      continue;
+    }
+
+    return (
+      publishedVersionNumber: suggestion['publishedVersionNumber'] is int
+          ? suggestion['publishedVersionNumber'] as int
+          : null,
+    );
+  }
+
+  return null;
+}
+
+Map<String, dynamic>? _asRestartMap(Object? value) {
+  if (value is String) {
+    try {
+      return _asRestartMap(jsonDecode(value));
+    } catch (_) {
+      return null;
+    }
+  }
+  if (value is Map<String, dynamic>) {
+    final content = value['content'];
+    if (content is List) {
+      final text = content
+          .map((item) {
+            final entry = item is Map<String, dynamic>
+                ? item
+                : item is Map<Object?, Object?>
+                ? item.map((key, data) => MapEntry('$key', data))
+                : <String, dynamic>{};
+            return entry['type'] == 'text' && entry['text'] is String
+                ? entry['text'] as String
+                : null;
+          })
+          .whereType<String>()
+          .join();
+      if (text.isNotEmpty) {
+        final parsed = _asRestartMap(text);
+        if (parsed != null) {
+          return parsed;
+        }
+      }
+    }
+  }
+  if (value is Map<String, dynamic>) {
+    return value;
+  }
+  if (value is Map<Object?, Object?>) {
+    return _asRestartMap(value.map((key, item) => MapEntry('$key', item)));
+  }
   return null;
 }

@@ -153,8 +153,23 @@ export interface SseEventEnvelope {
 export type SseEventParams =
   | { type: 'text_delta'; text: string }
   | { type: 'tool_call_start'; toolName: string; toolCallId: string; input: unknown }
-  | { type: 'tool_call_update'; toolCallId: string; toolName?: string; content?: string }
-  | { type: 'tool_call_end'; toolCallId: string; toolName?: string; result?: unknown; isError?: boolean }
+  | {
+      type: 'tool_call_update';
+      toolCallId: string;
+      toolName?: string;
+      content?: string;
+      status?: string;
+      permissionRequest?: Record<string, unknown>;
+    }
+  | {
+      type: 'tool_call_end';
+      toolCallId: string;
+      toolName?: string;
+      result?: unknown;
+      isError?: boolean;
+      status?: string;
+      permissionRequest?: Record<string, unknown>;
+    }
   | { type: 'done'; stopReason?: string }
   | { type: 'error'; message: string; code?: string }
   | { type: 'pty_spawned'; sessionId: string; info: import('./pty/types.js').PTYSessionInfo }
@@ -184,11 +199,23 @@ export interface RemoteToolExecutionRequest {
   toolCallId: string;
   toolName: string;
   input?: unknown;
+  phase?: 'preflight' | 'execute';
 }
 
-export interface RemoteToolExecutionResponse {
-  result: unknown;
-}
+export type RemoteToolExecutionResponse =
+  | {
+      outcome?: 'completed';
+      result: unknown;
+    }
+  | {
+      outcome: 'awaiting_permission';
+      permissionRequest: Record<string, unknown>;
+    }
+  | {
+      outcome: 'denied';
+      result: unknown;
+      permissionRequest?: Record<string, unknown>;
+    };
 
 export interface SessionEntry {
   id: string;

@@ -259,6 +259,78 @@ describe("agentConversationStore", () => {
     });
   });
 
+  it("loadHistory 应保留自进化工具结果中的结构化 restartSuggestion", async () => {
+    const jsonMock = vi.fn().mockResolvedValue(
+      createHistoryResponse([
+        {
+          id: "assistant-1",
+          role: "assistant",
+          content: "已完成自进化发布",
+          metadata: {
+            segments: [{ type: "tool_call", toolCallId: "tool-1" }],
+          },
+          toolCalls: [
+            {
+              id: "tool-1",
+              tool: "apply_change",
+              status: "completed",
+              result: {
+                content: [
+                  {
+                    type: "text",
+                    text: JSON.stringify({
+                      data: {
+                        restartSuggestion: {
+                          available: true,
+                          publishedVersionId: "pub-1",
+                          publishedVersionNumber: 7,
+                        },
+                      },
+                    }),
+                  },
+                ],
+              },
+            },
+          ],
+          createdAt: "2026-04-02T10:00:01.000Z",
+        },
+      ]),
+    );
+
+    getMock.mockReturnValue({
+      json: jsonMock,
+    });
+
+    useAgentConversationStore.getState().actions.connect({
+      conversationId: "conv-1",
+      agentId: "agent-1",
+      agentName: "QA SelfEvo Agent",
+      authToken: "token-1",
+    });
+
+    await useAgentConversationStore.getState().actions.loadHistory("conv-1");
+
+    expect(useAgentConversationStore.getState().messages).toEqual([
+      expect.objectContaining({
+        id: "assistant-1",
+        toolCalls: [
+          expect.objectContaining({
+            id: "tool-1",
+            result: {
+              data: {
+                restartSuggestion: {
+                  available: true,
+                  publishedVersionId: "pub-1",
+                  publishedVersionNumber: 7,
+                },
+              },
+            },
+          }),
+        ],
+      }),
+    ]);
+  });
+
   it("运行时 failed 状态会读取 errorMessage 并保留 executionError", () => {
     useAgentConversationStore.getState().actions.connect({
       conversationId: "conv-1",

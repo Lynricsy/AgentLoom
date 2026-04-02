@@ -45,7 +45,7 @@ src/
 ├── features/         # 业务功能 (Feature-Slice)
 │   ├── auth/         # Supabase Auth 集成：stores/auth.store.ts (Zustand), hooks/useAuth.ts, hooks/useAuthToken.ts (backward-compat), hooks/useMfa.ts, components (AuthLayout/OAuthButtons/PasswordInput/MfaEnrollDialog/MfaVerifyDialog/SecuritySettings)
 │   ├── canvas/       # 工作流画布 (见子 AGENTS.md) ← 最复杂
-│   ├── execution/    # 执行监控 (hooks, stores, types)
+│   ├── execution/    # 执行监控 (hooks, stores, types)，workflow agent viewer 的 ToolCallList 也承载 rememberable self-evolution 审批卡片
 │   ├── workflow/     # 工作流列表/管理
 │   ├── knowledge/    # 知识库管理（策略配置、测试检索、重建索引/重切分、统一 `search_knowledge` 工具提示）
 │   ├── mcp/          # MCP imported tools 管理工作台（shared api/keys/queries/mutations/components）
@@ -71,8 +71,8 @@ src/
 │   ├── workflow-input-schema/ # 工作流输入参数 schema 编辑器（无 api/、无 index.ts，属于例外布局）
 │   ├── block-library/ # 可复用块库管理
 │   ├── agent/       # Agent CRUD 页面 (api/components/hooks/stores/types)：列表/创建/设置，query hooks 与 mutations
-│   ├── agent-canvas/ # Agent 配置编辑器画布 (components/hooks/stores)：CPU/memory/timeout/lifecycle 参数编辑，使用 ReactFlow + AGENT_CANVAS_NODE_REGISTRY 子集，非执行 DAG
-│   ├── agent-conversation/ # Agent 对话 UI (components/stores/types)：三列布局 (对话列表/消息流/上下文面板)，Socket.IO `/agent-conversation` namespace 实时消息推送
+│   ├── agent-canvas/ # Agent 配置编辑器画布 (components/hooks/stores)：CPU/memory/timeout/lifecycle 参数编���、`agent-main` 的 `nativeToolPolicy/selfEvolutionPolicy` 面板，使用 ReactFlow + AGENT_CANVAS_NODE_REGISTRY 子集，非执行 DAG
+│   ├── agent-conversation/ # Agent 对话 UI (components/stores/types)：三列布局 (对话列表/消息流/上下文面板)，Socket.IO `/agent-conversation` namespace 实时消息推送，含可展开自进化审批卡片与“重启到新版本”系统卡片
 │   └── agent-memory/ # Agent 记忆管理 (35 files)：记忆图谱可视化 (d3-force + dagre + ReactFlow)、记忆检索/创建/编辑、审计日志集成
 ├── shared/           # 跨 feature 共享层
 │   ├── api/          # ky client + queryClient + query key factory
@@ -115,7 +115,7 @@ src/
   - `useExecutionMonitor`: 桥接 hook，连接 socket 回调到 executionStore actions
   - 已集成到 `WorkflowCanvasPage`，通过 `useExecutionId` 获取活跃执行 ID
 - **通知 Socket.IO**: `/notification` namespace，`useNotificationSocket` 复用 execution 的 `resolveSocketUrl + callbacksRef + 单 useEffect` 模式；根布局 `__root.tsx` 负责激活连接，并通过 `NotificationBell`/`NotificationDropdown` 暴露未读数与最近 20 条通知
-- **Agent 对话 Socket.IO**: `/agent-conversation` namespace，与 `/execution` 对称，复用 EventBridge 模式实现对话级实时事件推送，支持 JWT + MFA 认证；`useAgentConversationSocket` 管理连接与事件监听，桥接 `agentConversationStore` 更新消息流
+- **Agent 对话 Socket.IO**: `/agent-conversation` namespace，与 `/execution` 对称，复用 EventBridge 模式实现对话级实时事件推送，支持 JWT + MFA 认证；`useAgentConversationSocket` 管理连接与事件监听，桥接 `agentConversationStore` 更新消息流；`MessageList` 与共享 `ToolCallCard` 负责渲染自进化 diff/风险信息、四档审批按钮（允许一次 / 本会话同类始终允许 / 拒绝一次 / 本会话同类始终拒绝）以及“重启到新版本”卡片
 - **执行 API 层** (`features/execution/api/`):
   - `executionKeys`: TanStack Query key factory (all/lists/details)
   - `executionApi`: `runWorkflow` (POST /workflow-definitions/:id/run), `listExecutions` (GET /workflow-definitions/:id/executions), `getExecution`, `cancelExecution`, `resolveIntervention` (POST /executions/:id/steps/:stepId/intervene)
@@ -132,7 +132,7 @@ src/
 - **执行触发** (`features/execution/hooks/useStartExecution.ts`): POST /run → executionStore.initExecution(id) 桥接
 - **Barrel 导出** (`features/execution/index.ts`): 统一导出所有 execution feature 的公共 API
 - **Agent feature** (`features/agent/`): Agent CRUD 页面 (列表/创建/设置)。`agentApi.ts` 封装 Agent 定义与版本 REST API，`agentKeys.ts` 提供 TanStack Query key factory，`useAgentList`/`useAgentDetail` query hooks，`useCreateAgent`/`useUpdateAgent`/`usePublishAgent` mutations。`AgentListPage` 支持搜索与状态筛选
-- **Agent Canvas feature** (`features/agent-canvas/`): Agent 配置编辑器画布，使用 ReactFlow 渲染 `AGENT_CANVAS_NODE_REGISTRY` 子集节点（CPU/memory/timeout/lifecycle 等运行时参数），非执行 DAG。`agentCanvasStore` (Zustand) 管理画布状态，支持自动保存到 `agent_versions`
+- **Agent Canvas feature** (`features/agent-canvas/`): Agent 配置编辑器画布，使用 ReactFlow 渲染 `AGENT_CANVAS_NODE_REGISTRY` 子集节点（CPU/memory/timeout/lifecycle 等运行时参数），非执行 DAG。`AgentNodeConfigPanel` 为 `agent-main` 挂载 `AgentMainConfigPanel`，统一编辑 `nativeToolPolicy` 与 `selfEvolutionPolicy`；`agentCanvasStore` (Zustand) 管理画布状态，支持自动保存到 `agent_versions`
 - **Agent Conversation feature** (`features/agent-conversation/`): 三列对话 UI (对话列表/消息流/上下文面板)。`agentConversationStore` (Zustand) 管理消息列表与流式状态，页面进入时先通过 `GET /agent-conversations/:id/messages` 加载历史，再通过 Socket.IO `/agent-conversation` namespace 接续实时消息与 mid-stream injection。assistant 历史消息会保留 `toolCalls`，因此知识库检索结果可在消息列表中复现；对话收到顶层 `conversation.agent.done` 后会重新拉取一次消息历史，把数据库中的最终 assistant 正文作为 canonical 收口，避免纯工具调用轮次因没有 `message_chunk` 而丢失最终回复
 - **LLM feature** (`features/llm/`): 采用 `Provider → Model` 二级结构，Provider 与模型各自通过独立 query/mutation 管理；Provider 面板、模型配置弹窗与画布 `LlmModelConfigPanel` 现在统一改为直接输入明文 API Key，服务端负责加密托管并回写 provider 级 `apiKeyId`，不再依赖单独的 API Key 选择页；`PrivateCloudConfigSection` 现在直连真实 `/api/v1/llm/test-connection` 与 `/api/v1/llm/private-cloud/models`，支持“复用已托管 key 或本次临时输入 key”两条路径；模型管理页支持 `chat|embedding` 两种用途，embedding 配置可录入 `embeddingDimensions`，列表卡片会展示 `Embedding` 标记与维度，并展示基础价、缓存读/写价与 token 阶梯价 badge；编辑已有模型时必须保留 `pricing.tiers` 与 `cachedReadPer1MTokens/cachedWritePer1MTokens` 元信息；`GlobalModelSelector` 已改为自定义 listbox，按 Provider 分组并显示 `ProviderIcon`，仅展示启用中的 Provider/模型；`ProviderIcon` 在 Studio 深色界面统一使用 `@lobehub/icons-static-png` 的 unpkg dark PNG 资源，并将 `anthropic -> claude-color`、`google -> gemini-color`、`siliconflow -> siliconcloud-color` 等 provider slug 归一到对应产品彩色资产；legacy `icons.lobehub.com/icons/.../color.svg` 与旧 `icons-static-svg` / `icons-static-png light` managed URL 都会被重写到当前 dark canonical 资源；`adaptModelEntityToInfo()` 会保留 `providerEntity` 供编辑态回填 provider 级 `baseUrl/apiKeyId`；`llmModelApi.ts` 对该资源使用 camelCase 请求体（如 `modelType`、`embeddingDimensions`），不要机械套用 `toSnakeBody()`
 - **Knowledge feature** (`features/knowledge/`): `KnowledgeBaseDetailPage` 设置表单使用 `embeddingModelConfigId` 绑定 embedding 模型配置，并且只展示 `modelType === 'embedding'` 的模型选项；文档列表与处理状态继续通过 REST + WebSocket 组合刷新

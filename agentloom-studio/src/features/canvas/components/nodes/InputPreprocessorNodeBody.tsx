@@ -14,12 +14,23 @@ export const InputPreprocessorNodeBody = memo(function InputPreprocessorNodeBody
   config: Record<string, unknown>
 }) {
   const transformType =
-    typeof config.transformType === 'string' ? config.transformType : 'jmespath'
+    typeof config.transformType === 'string'
+      ? config.transformType
+      : typeof config.transform_type === 'string'
+        ? config.transform_type
+        : 'jmespath'
   const expression =
-    typeof config.expression === 'string' ? config.expression : ''
+    typeof config.expression === 'string'
+      ? config.expression
+      : typeof config.template === 'string'
+        ? config.template
+        : ''
   const outputFormat =
     typeof config.outputFormat === 'string' && config.outputFormat.length > 0
       ? config.outputFormat
+      : typeof config.output_format === 'string' &&
+          config.output_format.length > 0
+        ? config.output_format
       : ''
   const label = TRANSFORM_TYPE_LABELS[transformType] ?? transformType
 

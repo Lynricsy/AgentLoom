@@ -6,6 +6,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { and, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { join, relative } from 'node:path';
 
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import type { DrizzleDB } from '../../database/database.module';
@@ -84,6 +86,60 @@ export class SkillService {
       fileCount: files.length,
       totalSizeBytes: files.reduce((sum, f) => sum + f.size, 0),
     };
+  }
+
+  private collectBuiltinSkillFiles(dirPath: string): string[] {
+    const entries = readdirSync(dirPath, { withFileTypes: true });
+    const files: string[] = [];
+
+    for (const entry of entries) {
+      const entryPath = join(dirPath, entry.name);
+      if (entry.isDirectory()) {
+        files.push(...this.collectBuiltinSkillFiles(entryPath));
+        continue;
+      }
+
+      files.push(entryPath);
+    }
+
+    return files;
+  }
+
+  private loadBuiltinSkillFiles(
+    slug: string,
+    fallbackContent?: string | null,
+  ): Record<string, string> {
+    const candidateDirs = [
+      join(process.cwd(), 'src', 'database', 'seeds', 'skills', slug),
+      join(__dirname, '../../database/seeds/skills', slug),
+    ];
+    const skillDir = candidateDirs.find((dirPath) => existsSync(dirPath));
+
+    if (!skillDir) {
+      return typeof fallbackContent === 'string'
+        ? { 'SKILL.md': fallbackContent }
+        : {};
+    }
+
+    const files = this.collectBuiltinSkillFiles(skillDir);
+    const entries = files.map((filePath) => [
+      relative(skillDir, filePath).replace(/\\/g, '/'),
+      readFileSync(filePath, 'utf-8'),
+    ] as const);
+    const result = Object.fromEntries(entries);
+
+    if (
+      !('SKILL.md' in result) &&
+      typeof fallbackContent === 'string' &&
+      fallbackContent.length > 0
+    ) {
+      return {
+        ...result,
+        'SKILL.md': fallbackContent,
+      };
+    }
+
+    return result;
   }
 
   async create(
@@ -257,6 +313,50 @@ export class SkillService {
       .select()
       .from(schema.skills)
       .where(inArray(schema.skills.id, skillIds));
+  }
+
+  async getSkillFileMap(
+    tenantId: string,
+    skillId: string,
+    fallbackContent?: string | null,
+    options?: {
+      isBuiltin?: boolean;
+      slug?: string;
+    },
+  ): Promise<Record<string, string>> {
+    const files = await this.skillStorageService.getSkillFileMap(
+      tenantId,
+      skillId,
+    );
+
+    if (Object.keys(files).length === 0) {
+      if (options?.isBuiltin && options.slug) {
+        const builtinFiles = this.loadBuiltinSkillFiles(
+          options.slug,
+          fallbackContent,
+        );
+        if (Object.keys(builtinFiles).length > 0) {
+          return builtinFiles;
+        }
+      }
+
+      return typeof fallbackContent === 'string'
+        ? { 'SKILL.md': fallbackContent }
+        : {};
+    }
+
+    if (
+      !('SKILL.md' in files) &&
+      typeof fallbackContent === 'string' &&
+      fallbackContent.length > 0
+    ) {
+      return {
+        ...files,
+        'SKILL.md': fallbackContent,
+      };
+    }
+
+    return files;
   }
 
   async update(

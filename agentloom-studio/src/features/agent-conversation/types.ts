@@ -18,6 +18,16 @@ export interface ToolCallTransition {
 export interface ToolCallPermissionRequest {
   description?: string;
   resourcePaths?: string[];
+  domain?: string;
+  category?: string;
+  riskLevel?: 'low' | 'medium' | 'high';
+  sourceLabel?: string;
+  targetType?: string;
+  targetLabel?: string;
+  approveEffect?: string;
+  denyEffect?: string;
+  diffPreview?: Record<string, unknown>;
+  rememberable?: boolean;
 }
 
 export interface ToolCall {

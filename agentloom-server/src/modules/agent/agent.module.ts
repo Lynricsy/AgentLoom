@@ -6,6 +6,7 @@ import { SandboxModule } from '../sandbox/sandbox.module';
 import { LlmModule } from '../llm/llm.module';
 import { McpModule } from '../mcp/mcp.module';
 import { KnowledgeModule } from '../knowledge/knowledge.module';
+import { SelfEvolutionModule } from '../self-evolution/self-evolution.module';
 
 import {
   AGENT_RUNTIME_FACTORY,
@@ -29,6 +30,7 @@ import { SessionPersistenceService } from '../execution/services/session-persist
     SandboxModule,
     McpModule,
     KnowledgeModule,
+    SelfEvolutionModule,
   ],
   controllers: [AgentRuntimeController],
   providers: [

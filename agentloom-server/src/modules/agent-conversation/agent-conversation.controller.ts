@@ -22,6 +22,8 @@ import { SandboxAgentAdapter } from '../agent/sandbox-agent.adapter';
 import { AgentConversationService } from './agent-conversation.service';
 import { ConversationTitleService } from './conversation-title.service';
 import { WorkspaceIntegrationService } from '../agent-execution/workspace-integration.service';
+import { SelfEvolutionPermissionService } from '../self-evolution/self-evolution-permission.service';
+import { SelfEvolutionService } from '../self-evolution/self-evolution.service';
 import { CreateConversationDto } from './dto/create-conversation.dto';
 import { ListConversationsQueryDto } from './dto/list-conversations-query.dto';
 import { ResolveConversationToolPermissionDto } from './dto/resolve-tool-permission.dto';
@@ -37,6 +39,8 @@ export class AgentConversationController {
     private readonly conversationTitleService: ConversationTitleService,
     private readonly workspaceIntegrationService: WorkspaceIntegrationService,
     private readonly sandboxAgentAdapter: SandboxAgentAdapter,
+    private readonly selfEvolutionPermissionService: SelfEvolutionPermissionService,
+    private readonly selfEvolutionService: SelfEvolutionService,
   ) {}
 
   @Post('agent-definitions/:agentId/conversations')
@@ -144,19 +148,47 @@ export class AgentConversationController {
     @Body() dto: ResolveConversationToolPermissionDto,
     @CurrentTenant() _tenantId: string,
   ) {
-    await this.sandboxAgentAdapter.resolveConversationToolPermission(
-      id,
-      toolCallId,
-      dto.action,
-    );
+    const handledBySelfEvolution =
+      await this.selfEvolutionPermissionService.resolveConversationRequest({
+        conversationId: id,
+        toolCallId,
+        action: dto.action,
+        rememberScope: dto.rememberScope,
+      });
+
+    if (!handledBySelfEvolution) {
+      await this.sandboxAgentAdapter.resolveConversationToolPermission(
+        id,
+        toolCallId,
+        dto.action,
+      );
+    }
 
     return {
       data: {
         conversationId: id,
         toolCallId,
         status: 'permission_resolved',
+        ...(dto.rememberScope ? { rememberScope: dto.rememberScope } : {}),
       },
     };
+  }
+
+  @Post('agent-conversations/:id/restart-latest-version')
+  @Roles('operator', 'creator', 'admin', 'owner')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: '重启当前会话到 Agent 最新已发布版本并继承历史消息' })
+  @ApiResponse({ status: 201, description: '新会话已创建' })
+  async restartLatestVersion(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentTenant() tenantId: string,
+    @CurrentUser('sub') userId: string,
+  ) {
+    return this.selfEvolutionService.restartConversationToLatestVersion(
+      id,
+      tenantId,
+      userId,
+    );
   }
 
   @Patch('agent-conversations/:id')

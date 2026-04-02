@@ -443,6 +443,11 @@ describe('EventBridgeService', () => {
         status: 'completed',
         args: { command: 'ls' },
         result: { stdout: 'file.txt' },
+        permissionRequest: {
+          description: '需要创建 Skill',
+          category: 'skill_resource_management',
+          rememberable: true,
+        },
         transitions: [
           {
             to: 'completed',

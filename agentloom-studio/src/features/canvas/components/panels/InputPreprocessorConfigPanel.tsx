@@ -22,7 +22,10 @@ const TRANSFORM_TYPE_OPTIONS: { value: InputPreprocessorTransformType; label: st
 ]
 
 function parseInputPreprocessorConfig(config: Record<string, unknown>): InputPreprocessorConfig {
-  const transformType = config.transformType
+  const transformType =
+    typeof config.transformType === 'string'
+      ? config.transformType
+      : config.transform_type
   return {
     transformType:
       transformType === 'jmespath' ||
@@ -31,8 +34,18 @@ function parseInputPreprocessorConfig(config: Record<string, unknown>): InputPre
       transformType === 'script'
         ? transformType
         : 'jmespath',
-    expression: typeof config.expression === 'string' ? config.expression : '',
-    outputFormat: typeof config.outputFormat === 'string' ? config.outputFormat : '',
+    expression:
+      typeof config.expression === 'string'
+        ? config.expression
+        : typeof config.template === 'string'
+          ? config.template
+          : '',
+    outputFormat:
+      typeof config.outputFormat === 'string'
+        ? config.outputFormat
+        : typeof config.output_format === 'string'
+          ? config.output_format
+          : '',
   }
 }
 

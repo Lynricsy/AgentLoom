@@ -17,7 +17,10 @@ describe('ModelDiscoveryService', () => {
   });
 
   it('lookupModelMetadata 应解析缓存价格与基于 token 阈值的阶梯定价', async () => {
-    vi.spyOn(service as never, 'getLiteLLMData').mockResolvedValue({
+    vi.spyOn(
+      service as unknown as { getLiteLLMData: () => Promise<unknown> },
+      'getLiteLLMData',
+    ).mockResolvedValue({
       'claude-sonnet-4-20250514': {
         input_cost_per_token: 3e-6,
         output_cost_per_token: 1.5e-5,
@@ -69,7 +72,10 @@ describe('ModelDiscoveryService', () => {
   });
 
   it('lookupModelMetadata 应忽略非 token 阈值的价格字段', async () => {
-    vi.spyOn(service as never, 'getLiteLLMData').mockResolvedValue({
+    vi.spyOn(
+      service as unknown as { getLiteLLMData: () => Promise<unknown> },
+      'getLiteLLMData',
+    ).mockResolvedValue({
       'gpt-4o': {
         input_cost_per_token: 2.5e-6,
         output_cost_per_token: 1e-5,

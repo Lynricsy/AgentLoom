@@ -37,12 +37,33 @@ import type {
   AgentInputPreprocessor,
   AgentRoutingConfig,
   AgentModelConfig,
+  AgentNativeToolPolicy,
+  AgentSelfEvolutionPolicy,
 } from './agent-runtime-config.interface';
 
 type AgentDbClient = Pick<
   DrizzleDB,
   'execute' | 'insert' | 'select' | 'update'
 >;
+
+export interface ApplyAgentCanvasSnapshotOptions {
+  canvasNodes: schema.ReactFlowNode[];
+  canvasEdges: schema.ReactFlowEdge[];
+  canvasViewport?: schema.ReactFlowViewport;
+  globalSandboxConfig?: Record<string, unknown> | null;
+  workspaceSnapshotId?: string | null;
+  inputSchema?: Record<string, unknown> | null;
+  memoryInstanceIds?: string[];
+  sandboxLifecycle?: string;
+  expectedVersion?: number;
+  publishIfCurrentlyPublished?: boolean;
+}
+
+export interface ApplyAgentCanvasSnapshotResult {
+  detail: AgentDefinitionDetailResponseDto;
+  publishedVersionId?: string;
+  publishedVersionNumber?: number;
+}
 
 const MAX_SLUG_RETRIES = 3;
 
@@ -389,6 +410,138 @@ export class AgentDefinitionService {
     });
   }
 
+  async applyCanvasSnapshot(
+    agentId: string,
+    options: ApplyAgentCanvasSnapshotOptions,
+    userId: string,
+  ): Promise<ApplyAgentCanvasSnapshotResult> {
+    return this.withAgentWriteLock(agentId, async (dbClient) => {
+      const [agent] = await dbClient
+        .select()
+        .from(schema.agentDefinitions)
+        .where(eq(schema.agentDefinitions.id, agentId));
+
+      if (!agent) {
+        throw new AgentNotFoundException(agentId);
+      }
+
+      if (agent.status === 'archived') {
+        throw new AgentArchivedException(agentId);
+      }
+
+      if (
+        options.expectedVersion !== undefined &&
+        agent.version !== options.expectedVersion
+      ) {
+        throw new AgentVersionConflictException(agentId, agent.version);
+      }
+
+      const setClause: Record<string, any> = {
+        nodes: options.canvasNodes,
+        edges: options.canvasEdges,
+        version: sql`${schema.agentDefinitions.version} + 1`,
+        updatedBy: userId,
+        updatedAt: new Date(),
+      };
+
+      if (options.canvasViewport !== undefined) {
+        setClause.viewport = options.canvasViewport;
+      }
+      if (options.globalSandboxConfig !== undefined) {
+        setClause.sandboxConfig = options.globalSandboxConfig;
+      }
+      if (options.workspaceSnapshotId !== undefined) {
+        setClause.workspaceSnapshotId = options.workspaceSnapshotId;
+      }
+
+      const metadataSetters: Array<{ path: string; value: unknown }> = [];
+      if (options.inputSchema !== undefined) {
+        metadataSetters.push({
+          path: 'inputSchema',
+          value: options.inputSchema,
+        });
+      }
+      if (options.memoryInstanceIds !== undefined) {
+        metadataSetters.push({
+          path: 'memoryInstanceIds',
+          value: options.memoryInstanceIds,
+        });
+      }
+      if (options.sandboxLifecycle !== undefined) {
+        metadataSetters.push({
+          path: 'sandboxLifecycle',
+          value: options.sandboxLifecycle,
+        });
+      }
+
+      if (metadataSetters.length > 0) {
+        let metadataExpression = sql`COALESCE(${schema.agentDefinitions.metadata}, '{}'::jsonb)`;
+        for (const setter of metadataSetters) {
+          metadataExpression = sql`jsonb_set(
+            ${metadataExpression},
+            ${sql.raw(`'{${setter.path}}'`)},
+            ${JSON.stringify(setter.value)}::jsonb,
+            true
+          )`;
+        }
+        setClause.metadata = metadataExpression;
+      }
+
+      const [updatedDraft] = await dbClient
+        .update(schema.agentDefinitions)
+        .set(setClause)
+        .where(eq(schema.agentDefinitions.id, agentId))
+        .returning();
+
+      const shouldPublish =
+        options.publishIfCurrentlyPublished === true &&
+        agent.publishedVersionId !== null;
+
+      if (!shouldPublish) {
+        return {
+          detail: serializeAgentDefinitionDetail(updatedDraft),
+        };
+      }
+
+      if (!updatedDraft.nodes || updatedDraft.nodes.length === 0) {
+        throw new AgentPublishValidationException('Agent 画布不包含任何节点，无法发布');
+      }
+
+      const nextVersion = await this.getNextVersionNumber(dbClient, agentId);
+      const snapshot = this.buildSnapshot(updatedDraft);
+
+      const [version] = await dbClient
+        .insert(schema.agentVersions)
+        .values({
+          agentDefinitionId: agentId,
+          tenantId: updatedDraft.tenantId,
+          versionNumber: nextVersion,
+          label: `v${nextVersion} (published)`,
+          snapshot,
+          publishedAt: new Date(),
+          createdBy: userId,
+        })
+        .returning();
+
+      const [publishedDetail] = await dbClient
+        .update(schema.agentDefinitions)
+        .set({
+          status: 'published',
+          publishedVersionId: version.id,
+          updatedBy: userId,
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.agentDefinitions.id, agentId))
+        .returning();
+
+      return {
+        detail: serializeAgentDefinitionDetail(publishedDetail),
+        publishedVersionId: version.id,
+        publishedVersionNumber: nextVersion,
+      };
+    });
+  }
+
   async compileCanvas(agentId: string): Promise<AgentRuntimeConfig> {
     const detail = await this.findDetailById(agentId);
     return this.buildRuntimeConfigFromNodes(
@@ -414,6 +567,15 @@ export class AgentDefinitionService {
     const agentMainNode = nodes.find(
       (node) => this.resolveNodeType(node) === 'agent-main',
     );
+    const agentMainRuntimeConfig = agentMainNode
+      ? this.extractAgentMainRuntimeConfig(this.resolveNodeData(agentMainNode))
+      : {};
+    if (agentMainRuntimeConfig.nativeToolPolicy) {
+      config.nativeToolPolicy = agentMainRuntimeConfig.nativeToolPolicy;
+    }
+    if (agentMainRuntimeConfig.selfEvolutionPolicy) {
+      config.selfEvolutionPolicy = agentMainRuntimeConfig.selfEvolutionPolicy;
+    }
     const nodesById = new Map(
       nodes
         .filter((node) => typeof node?.id === 'string')
@@ -498,7 +660,11 @@ export class AgentDefinitionService {
 
         case 'smart-routing': {
           if (!agentMainNode || targetHandle === 'model-in') {
-            config.routingConfig = this.extractRoutingConfig(data);
+            config.routingConfig = this.extractRoutingConfig(data, {
+              routingNodeId: nodeId,
+              nodesById,
+              edges,
+            });
           }
           break;
         }
@@ -1010,32 +1176,254 @@ export class AgentDefinitionService {
     const type = data.preprocessorType ?? data.transformType ?? data.type;
     if (!type) return null;
 
-    const nestedConfig =
-      data.config &&
-      typeof data.config === 'object' &&
-      !Array.isArray(data.config)
-        ? (data.config as Record<string, any>)
-        : null;
+    const nestedConfig = this.asRecord(data.config);
+    const directConfig = this.asRecord(data.preprocessorConfig);
+    const nestedInnerConfig = nestedConfig
+      ? this.asRecord(nestedConfig.config) ??
+        this.asRecord(nestedConfig.preprocessorConfig)
+      : null;
+    const nestedInlineConfig = nestedConfig
+      ? Object.fromEntries(
+          Object.entries(nestedConfig).filter(
+            ([key]) => key !== 'config' && key !== 'preprocessorConfig',
+          ),
+        )
+      : null;
+    const inlineConfig = this.buildInlineInputPreprocessorConfig(data);
     const resolvedConfig =
-      data.preprocessorConfig ??
-      (nestedConfig &&
-      (nestedConfig.preprocessorType !== undefined ||
-        nestedConfig.transformType !== undefined ||
-        nestedConfig.type !== undefined)
-        ? (nestedConfig.config ?? nestedConfig.preprocessorConfig)
-        : data.config);
+      directConfig ??
+      (nestedInnerConfig && nestedInlineConfig
+        ? { ...nestedInnerConfig, ...nestedInlineConfig }
+        : nestedInnerConfig ?? nestedInlineConfig ?? inlineConfig ?? undefined);
 
     return {
       type,
-      config: resolvedConfig,
+      ...(resolvedConfig ? { config: resolvedConfig } : {}),
     };
   }
 
-  private extractRoutingConfig(data: Record<string, any>): AgentRoutingConfig {
+  private extractRoutingConfig(
+    data: Record<string, any>,
+    options?: {
+      routingNodeId?: string;
+      nodesById?: Map<string, any>;
+      edges?: any[];
+    },
+  ): AgentRoutingConfig {
+    const directCandidateModelIds = this.readStringArray(
+      data.candidateModelIds ?? data.candidate_model_ids,
+    );
+    const connectedCandidateModelIds = this.extractConnectedRoutingModelIds(
+      data,
+      options,
+    );
+    const candidateModelIds =
+      connectedCandidateModelIds.length > 0
+        ? connectedCandidateModelIds
+        : directCandidateModelIds;
+
     return {
       strategy: data.strategy ?? 'FALLBACK_CHAIN',
-      candidateModelIds: data.candidateModelIds ?? data.candidate_model_ids,
+      ...(candidateModelIds.length > 0 ? { candidateModelIds } : {}),
       fallbackModelId: data.fallbackModelId ?? data.fallback_model_id,
+    };
+  }
+
+  private buildInlineInputPreprocessorConfig(
+    data: Record<string, any>,
+  ): Record<string, unknown> | null {
+    const inlineConfig = Object.fromEntries(
+      Object.entries(data).filter(([key, value]) => {
+        if (
+          key === 'config' ||
+          key === 'preprocessorConfig' ||
+          key === 'nodeType' ||
+          key === 'label' ||
+          key === 'description' ||
+          key === 'category' ||
+          key === 'inputPorts' ||
+          key === 'outputPorts' ||
+          key === 'icon' ||
+          key === 'colorToken'
+        ) {
+          return false;
+        }
+
+        return value !== undefined;
+      }),
+    );
+
+    return Object.keys(inlineConfig).length > 0 ? inlineConfig : null;
+  }
+
+  private extractConnectedRoutingModelIds(
+    data: Record<string, any>,
+    options?: {
+      routingNodeId?: string;
+      nodesById?: Map<string, any>;
+      edges?: any[];
+    },
+  ): string[] {
+    if (!options?.routingNodeId || !options.nodesById || !options.edges?.length) {
+      return [];
+    }
+
+    const inboundEdges = options.edges.filter(
+      (edge) =>
+        edge &&
+        edge.target === options.routingNodeId &&
+        typeof edge.source === 'string',
+    );
+
+    if (inboundEdges.length === 0) {
+      return [];
+    }
+
+    const modelIdsByPort = new Map<string, string[]>();
+    const fallbackPriority = this.readStringArray(data.fallbackPriority);
+    const inputPortOrder = Array.isArray(data.inputPorts)
+      ? data.inputPorts
+          .map((port) =>
+            port && typeof port === 'object' && typeof port.id === 'string'
+              ? port.id
+              : null,
+          )
+          .filter(
+            (portId): portId is string =>
+              typeof portId === 'string' && portId.startsWith('model-in-'),
+          )
+      : [];
+
+    for (const edge of inboundEdges) {
+      const sourceNode = options.nodesById.get(edge.source);
+      if (!sourceNode || this.resolveNodeType(sourceNode) !== 'llm-model') {
+        continue;
+      }
+
+      const sourceData = this.resolveNodeData(sourceNode);
+      const modelConfig = this.extractModelConfig(sourceData);
+      if (!modelConfig.modelId) {
+        continue;
+      }
+
+      const portId =
+        typeof edge.targetHandle === 'string' && edge.targetHandle.length > 0
+          ? edge.targetHandle
+          : 'model-in-0';
+      const current = modelIdsByPort.get(portId) ?? [];
+      if (!current.includes(modelConfig.modelId)) {
+        current.push(modelConfig.modelId);
+        modelIdsByPort.set(portId, current);
+      }
+    }
+
+    const orderedPortIds =
+      fallbackPriority.length > 0
+        ? fallbackPriority
+        : inputPortOrder.length > 0
+          ? inputPortOrder
+          : [...modelIdsByPort.keys()].sort((left, right) => {
+              const leftIndex = this.extractRoutingPortIndex(left);
+              const rightIndex = this.extractRoutingPortIndex(right);
+              if (leftIndex !== rightIndex) {
+                return leftIndex - rightIndex;
+              }
+              return left.localeCompare(right);
+            });
+
+    const orderedModelIds: string[] = [];
+    const seen = new Set<string>();
+    for (const portId of orderedPortIds) {
+      for (const modelId of modelIdsByPort.get(portId) ?? []) {
+        if (!seen.has(modelId)) {
+          seen.add(modelId);
+          orderedModelIds.push(modelId);
+        }
+      }
+    }
+
+    for (const modelIds of modelIdsByPort.values()) {
+      for (const modelId of modelIds) {
+        if (!seen.has(modelId)) {
+          seen.add(modelId);
+          orderedModelIds.push(modelId);
+        }
+      }
+    }
+
+    return orderedModelIds;
+  }
+
+  private extractRoutingPortIndex(portId: string): number {
+    const match = /^model-in-(\d+)$/.exec(portId);
+    return match ? Number(match[1]) : Number.MAX_SAFE_INTEGER;
+  }
+
+  private extractAgentMainRuntimeConfig(
+    data: Record<string, any>,
+  ): Pick<
+    AgentRuntimeConfig,
+    'nativeToolPolicy' | 'selfEvolutionPolicy'
+  > {
+    const nativeToolPolicyRecord = this.asRecord(data.nativeToolPolicy);
+    const selfEvolutionPolicyRecord = this.asRecord(data.selfEvolutionPolicy);
+
+    const nativeToolPolicy =
+      nativeToolPolicyRecord &&
+      this.hasAnyBoolean(
+        nativeToolPolicyRecord.readEnabled,
+        nativeToolPolicyRecord.writeEnabled,
+        nativeToolPolicyRecord.editEnabled,
+        nativeToolPolicyRecord.terminalEnabled,
+      )
+        ? ({
+            readEnabled: this.readBoolean(
+              nativeToolPolicyRecord.readEnabled,
+              true,
+            ),
+            writeEnabled: this.readBoolean(
+              nativeToolPolicyRecord.writeEnabled,
+              true,
+            ),
+            editEnabled: this.readBoolean(
+              nativeToolPolicyRecord.editEnabled,
+              true,
+            ),
+            terminalEnabled: this.readBoolean(
+              nativeToolPolicyRecord.terminalEnabled,
+              true,
+            ),
+          } satisfies AgentNativeToolPolicy)
+        : undefined;
+
+    const selfEvolutionPolicy =
+      selfEvolutionPolicyRecord &&
+      this.hasAnyBoolean(
+        selfEvolutionPolicyRecord.enabled,
+        selfEvolutionPolicyRecord.resourceManagement,
+        selfEvolutionPolicyRecord.externalEditing,
+        selfEvolutionPolicyRecord.sandboxManagement,
+      )
+        ? ({
+            enabled: this.readBoolean(selfEvolutionPolicyRecord.enabled, false),
+            resourceManagement: this.readBoolean(
+              selfEvolutionPolicyRecord.resourceManagement,
+              false,
+            ),
+            externalEditing: this.readBoolean(
+              selfEvolutionPolicyRecord.externalEditing,
+              false,
+            ),
+            sandboxManagement: this.readBoolean(
+              selfEvolutionPolicyRecord.sandboxManagement,
+              false,
+            ),
+          } satisfies AgentSelfEvolutionPolicy)
+        : undefined;
+
+    return {
+      ...(nativeToolPolicy ? { nativeToolPolicy } : {}),
+      ...(selfEvolutionPolicy ? { selfEvolutionPolicy } : {}),
     };
   }
 
@@ -1064,6 +1452,22 @@ export class AgentDefinitionService {
       ...config,
       ...data,
     };
+  }
+
+  private asRecord(value: unknown): Record<string, unknown> | null {
+    if (!value || Array.isArray(value) || typeof value !== 'object') {
+      return null;
+    }
+
+    return value as Record<string, unknown>;
+  }
+
+  private hasAnyBoolean(...values: unknown[]): boolean {
+    return values.some((value) => typeof value === 'boolean');
+  }
+
+  private readBoolean(value: unknown, fallback: boolean): boolean {
+    return typeof value === 'boolean' ? value : fallback;
   }
 
   private extractConversationSkillIds(nodes: any[], edges: any[]): string[] {
@@ -1139,6 +1543,17 @@ export class AgentDefinitionService {
     }
 
     return undefined;
+  }
+
+  private readStringArray(value: unknown): string[] {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+
+    return value.filter(
+      (entry): entry is string =>
+        typeof entry === 'string' && entry.trim().length > 0,
+    );
   }
 
   private readNullableString(value: unknown): string | null | undefined {

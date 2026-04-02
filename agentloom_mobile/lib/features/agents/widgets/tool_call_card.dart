@@ -14,7 +14,11 @@ class ToolCallCard extends StatefulWidget {
 
   final ConversationToolCallDto toolCall;
   final bool defaultExpanded;
-  final Future<void> Function(String toolCallId, String action)?
+  final Future<void> Function(
+    String toolCallId,
+    String action, {
+    String? rememberScope,
+  })?
   onResolvePermission;
 
   @override
@@ -144,7 +148,11 @@ class _PermissionSection extends StatelessWidget {
 
   final ConversationToolCallDto toolCall;
   final String? submittingAction;
-  final Future<void> Function(String toolCallId, String action)?
+  final Future<void> Function(
+    String toolCallId,
+    String action, {
+    String? rememberScope,
+  })?
   onResolvePermission;
   final ValueChanged<String?> onSubmittingChanged;
 
@@ -153,6 +161,11 @@ class _PermissionSection extends StatelessWidget {
     final theme = Theme.of(context);
     final description = toolCall.permissionRequest?.description;
     final resourcePaths = toolCall.permissionRequest?.resourcePaths ?? const [];
+    final diffPreview = toolCall.permissionRequest?.diffPreview;
+    final diffPreviewText = diffPreview == null
+        ? null
+        : const JsonEncoder.withIndent('  ').convert(diffPreview);
+    final rememberable = toolCall.permissionRequest?.rememberable == true;
 
     return Container(
       width: double.infinity,
@@ -176,11 +189,15 @@ class _PermissionSection extends StatelessWidget {
                   ),
                   const SizedBox(width: 8),
                   Text(
-                    '需要授权',
+                    _categoryLabel(toolCall.permissionRequest?.category),
                     style: theme.textTheme.labelLarge?.copyWith(
                       color: theme.colorScheme.onTertiaryContainer,
                       fontWeight: FontWeight.w700,
                     ),
+                  ),
+                  const SizedBox(width: 8),
+                  _TinyBadge(
+                    label: _riskLabel(toolCall.permissionRequest?.riskLevel),
                   ),
                 ],
               ),
@@ -193,6 +210,24 @@ class _PermissionSection extends StatelessWidget {
                   ),
                 ),
               ],
+              if (toolCall.permissionRequest?.sourceLabel != null ||
+                  toolCall.permissionRequest?.targetLabel != null ||
+                  toolCall.permissionRequest?.targetType != null) ...[
+                const SizedBox(height: 10),
+                _CodePanel(
+                  label: '来源 / 目标',
+                  content: [
+                    if (toolCall.permissionRequest?.sourceLabel case final source?)
+                      '来源: $source',
+                    if (toolCall.permissionRequest?.targetType != null ||
+                        toolCall.permissionRequest?.targetLabel != null)
+                      '目标: ${[
+                        toolCall.permissionRequest?.targetType,
+                        toolCall.permissionRequest?.targetLabel,
+                      ].whereType<String>().join(' / ')}',
+                  ].join('\n'),
+                ),
+              ],
               if (resourcePaths.isNotEmpty) ...[
                 const SizedBox(height: 10),
                 _CodePanel(
@@ -200,36 +235,102 @@ class _PermissionSection extends StatelessWidget {
                   content: resourcePaths.join('\n'),
                 ),
               ],
+              if (toolCall.permissionRequest?.approveEffect case final approveEffect?) ...[
+                const SizedBox(height: 10),
+                Text(
+                  '批准后：$approveEffect',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onTertiaryContainer,
+                  ),
+                ),
+              ],
+              if (toolCall.permissionRequest?.denyEffect case final denyEffect?) ...[
+                const SizedBox(height: 6),
+                Text(
+                  '拒绝后：$denyEffect',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onTertiaryContainer,
+                  ),
+                ),
+              ],
+              if (diffPreviewText != null) ...[
+                const SizedBox(height: 10),
+                _CodePanel(
+                  label: '变更预览',
+                  content: diffPreviewText,
+                ),
+              ],
               const SizedBox(height: 12),
-              Row(
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
                 children: [
                   FilledButton.tonalIcon(
-                    onPressed: onResolvePermission == null || submittingAction != null
+                    onPressed:
+                        onResolvePermission == null || submittingAction != null
                         ? null
                         : () => _resolve('approve'),
-                    icon: submittingAction == 'approve'
+                    icon: submittingAction == 'approve_once'
                         ? const SizedBox(
                             width: 14,
                             height: 14,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Icon(Icons.check),
-                    label: const Text('批准'),
+                    label: const Text('允许一次'),
                   ),
-                  const SizedBox(width: 10),
+                  if (rememberable)
+                    FilledButton.tonalIcon(
+                      onPressed:
+                          onResolvePermission == null ||
+                              submittingAction != null
+                          ? null
+                          : () => _resolve(
+                              'approve',
+                              rememberScope: 'conversation_category',
+                            ),
+                      icon: submittingAction == 'approve_session'
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.done_all),
+                      label: const Text('本会话同类始终允许'),
+                    ),
                   OutlinedButton.icon(
-                    onPressed: onResolvePermission == null || submittingAction != null
+                    onPressed:
+                        onResolvePermission == null || submittingAction != null
                         ? null
                         : () => _resolve('deny'),
-                    icon: submittingAction == 'deny'
+                    icon: submittingAction == 'deny_once'
                         ? const SizedBox(
                             width: 14,
                             height: 14,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : const Icon(Icons.close),
-                    label: const Text('拒绝'),
+                    label: const Text('拒绝一次'),
                   ),
+                  if (rememberable)
+                    OutlinedButton.icon(
+                      onPressed:
+                          onResolvePermission == null ||
+                              submittingAction != null
+                          ? null
+                          : () => _resolve(
+                              'deny',
+                              rememberScope: 'conversation_category',
+                            ),
+                      icon: submittingAction == 'deny_session'
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.block),
+                      label: const Text('本会话同类始终拒绝'),
+                    ),
                 ],
               ),
             ],
@@ -239,16 +340,92 @@ class _PermissionSection extends StatelessWidget {
     );
   }
 
-  Future<void> _resolve(String action) async {
+  Future<void> _resolve(String action, {String? rememberScope}) async {
     if (onResolvePermission == null) {
       return;
     }
-    onSubmittingChanged(action);
+    onSubmittingChanged(
+      action == 'approve'
+          ? rememberScope == 'conversation_category'
+                ? 'approve_session'
+                : 'approve_once'
+          : rememberScope == 'conversation_category'
+              ? 'deny_session'
+              : 'deny_once',
+    );
     try {
-      await onResolvePermission!(toolCall.id, action);
+      await onResolvePermission!(
+        toolCall.id,
+        action,
+        rememberScope: rememberScope,
+      );
     } finally {
       onSubmittingChanged(null);
     }
+  }
+}
+
+class _TinyBadge extends StatelessWidget {
+  const _TinyBadge({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        child: Text(
+          label,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+String _categoryLabel(String? category) {
+  switch (category) {
+    case 'agent_self_canvas_edit':
+      return '自编排修改';
+    case 'agent_external_edit':
+      return '外部 Agent 编辑';
+    case 'workflow_edit':
+      return 'Workflow 编辑';
+    case 'skill_resource_management':
+      return 'Skill 资源管理';
+    case 'mcp_resource_management':
+      return 'MCP 资源管理';
+    case 'model_resource_management':
+      return '模型资源管理';
+    case 'workspace_resource_management':
+      return 'Workspace 资源管理';
+    case 'workspace_sandbox_binding_adjustment':
+      return 'Workspace / Sandbox 绑定';
+    case 'sandbox_spec_adjustment':
+      return 'Sandbox 规格调整';
+    default:
+      return '需要授权';
+  }
+}
+
+String _riskLabel(String? riskLevel) {
+  switch (riskLevel) {
+    case 'low':
+      return '低风险';
+    case 'medium':
+      return '中风险';
+    case 'high':
+      return '高风险';
+    default:
+      return '待确认';
   }
 }
 

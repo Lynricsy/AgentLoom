@@ -31,6 +31,16 @@ _$ConversationToolPermissionRequestDtoFromJson(Map<String, dynamic> json) =>
       resourcePaths: json['resourcePaths'] == null
           ? const <String>[]
           : _stringListFromJson(json['resourcePaths']),
+      domain: json['domain'] as String?,
+      category: json['category'] as String?,
+      riskLevel: json['riskLevel'] as String?,
+      sourceLabel: json['sourceLabel'] as String?,
+      targetType: json['targetType'] as String?,
+      targetLabel: json['targetLabel'] as String?,
+      approveEffect: json['approveEffect'] as String?,
+      denyEffect: json['denyEffect'] as String?,
+      diffPreview: _nullableMapFromJson(json['diffPreview']),
+      rememberable: json['rememberable'] as bool?,
     );
 
 Map<String, dynamic> _$ConversationToolPermissionRequestDtoToJson(
@@ -38,6 +48,16 @@ Map<String, dynamic> _$ConversationToolPermissionRequestDtoToJson(
 ) => <String, dynamic>{
   'description': instance.description,
   'resourcePaths': instance.resourcePaths,
+  'domain': instance.domain,
+  'category': instance.category,
+  'riskLevel': instance.riskLevel,
+  'sourceLabel': instance.sourceLabel,
+  'targetType': instance.targetType,
+  'targetLabel': instance.targetLabel,
+  'approveEffect': instance.approveEffect,
+  'denyEffect': instance.denyEffect,
+  'diffPreview': instance.diffPreview,
+  'rememberable': instance.rememberable,
 };
 
 _ConversationToolCallDto _$ConversationToolCallDtoFromJson(

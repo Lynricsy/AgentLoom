@@ -1132,6 +1132,9 @@ export class WorkflowAgentAdapter {
       ...(toolCall.args ? { args: toolCall.args } : {}),
       ...(toolCall.result !== undefined ? { result: toolCall.result } : {}),
       ...(toolCall.error ? { error: toolCall.error } : {}),
+      ...(toolCall.permissionRequest
+        ? { permissionRequest: toolCall.permissionRequest }
+        : {}),
       ...(toolCall.transitions
         ? { transitions: [...toolCall.transitions] }
         : {}),

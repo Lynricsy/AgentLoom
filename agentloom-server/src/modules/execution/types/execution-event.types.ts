@@ -154,6 +154,20 @@ export interface ToolCallStatusPayload {
   readonly args?: Record<string, unknown>;
   readonly result?: unknown;
   readonly error?: string;
+  readonly permissionRequest?: {
+    readonly description?: string;
+    readonly resourcePaths?: readonly string[];
+    readonly domain?: string;
+    readonly category?: string;
+    readonly riskLevel?: 'low' | 'medium' | 'high';
+    readonly sourceLabel?: string;
+    readonly targetType?: string;
+    readonly targetLabel?: string;
+    readonly approveEffect?: string;
+    readonly denyEffect?: string;
+    readonly diffPreview?: Record<string, unknown>;
+    readonly rememberable?: boolean;
+  };
   readonly transitions?: Array<{
     readonly from?: ToolCallStatus;
     readonly to: ToolCallStatus;
@@ -173,6 +187,16 @@ export interface ToolPermissionRequiredPayload {
   readonly permissionRequest?: {
     readonly description?: string;
     readonly resourcePaths?: readonly string[];
+    readonly domain?: string;
+    readonly category?: string;
+    readonly riskLevel?: 'low' | 'medium' | 'high';
+    readonly sourceLabel?: string;
+    readonly targetType?: string;
+    readonly targetLabel?: string;
+    readonly approveEffect?: string;
+    readonly denyEffect?: string;
+    readonly diffPreview?: Record<string, unknown>;
+    readonly rememberable?: boolean;
   };
 }
 

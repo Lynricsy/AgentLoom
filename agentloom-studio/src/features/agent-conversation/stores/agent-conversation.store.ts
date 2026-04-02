@@ -109,7 +109,9 @@ interface AgentConversationActions {
     resolveToolPermission: (
       toolCallId: string,
       action: "approve" | "deny",
+      rememberScope?: "none" | "conversation_category",
     ) => Promise<void>;
+    restartToLatestVersion: () => Promise<string | null>;
     selectFile: (path: string | null) => void;
     loadHistory: (conversationId: string) => Promise<void>;
     loadWorkspaceTree: (conversationId: string) => Promise<void>;
@@ -304,14 +306,55 @@ function normalizePermissionRequest(
         (item): item is string => typeof item === "string" && item.length > 0,
       )
     : [];
+  const domain = readString(value.domain);
+  const category = readString(value.category);
+  const riskLevel =
+    value.riskLevel === "low" ||
+    value.riskLevel === "medium" ||
+    value.riskLevel === "high"
+      ? value.riskLevel
+      : undefined;
+  const sourceLabel = readString(value.sourceLabel);
+  const targetType = readString(value.targetType);
+  const targetLabel = readString(value.targetLabel);
+  const approveEffect = readString(value.approveEffect);
+  const denyEffect = readString(value.denyEffect);
+  const diffPreview = isRecord(value.diffPreview)
+    ? (value.diffPreview as Record<string, unknown>)
+    : undefined;
+  const rememberable =
+    typeof value.rememberable === "boolean" ? value.rememberable : undefined;
 
-  if (!description && resourcePaths.length === 0) {
+  if (
+    !description &&
+    resourcePaths.length === 0 &&
+    !domain &&
+    !category &&
+    !riskLevel &&
+    !sourceLabel &&
+    !targetType &&
+    !targetLabel &&
+    !approveEffect &&
+    !denyEffect &&
+    !diffPreview &&
+    rememberable === undefined
+  ) {
     return undefined;
   }
 
   return {
     ...(description ? { description } : {}),
     ...(resourcePaths.length > 0 ? { resourcePaths } : {}),
+    ...(domain ? { domain } : {}),
+    ...(category ? { category } : {}),
+    ...(riskLevel ? { riskLevel } : {}),
+    ...(sourceLabel ? { sourceLabel } : {}),
+    ...(targetType ? { targetType } : {}),
+    ...(targetLabel ? { targetLabel } : {}),
+    ...(approveEffect ? { approveEffect } : {}),
+    ...(denyEffect ? { denyEffect } : {}),
+    ...(diffPreview ? { diffPreview } : {}),
+    ...(rememberable !== undefined ? { rememberable } : {}),
   };
 }
 
@@ -934,33 +977,36 @@ function isConcreteToolName(tool: string): boolean {
   return tool.length > 0 && tool !== "unknown_tool";
 }
 
+function parseJsonLikeValue(value: unknown): unknown {
+  if (typeof value !== "string") {
+    return value;
+  }
+
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+}
+
 /**
  * 解包 MCP 工具结果信封。
  * MCP 协议返回 `{ content: [{ type: "text", text: "..." }, ...] }`，
  * 前端渲染器需要的是里面的纯文本内容。
  */
 function unwrapMcpResult(value: unknown): unknown {
-  let parsed = value;
+  const parsed = parseJsonLikeValue(value);
 
-  // 字符串可能是 JSON 序列化的 MCP 信封
-  if (typeof value === "string") {
-    try {
-      parsed = JSON.parse(value);
-    } catch {
-      return value;
-    }
-  }
-
-  if (!isRecord(parsed)) return value;
+  if (!isRecord(parsed)) return parsed;
 
   const content = parsed.content;
-  if (!Array.isArray(content) || content.length === 0) return value;
+  if (!Array.isArray(content) || content.length === 0) return parsed;
 
   // 校验是否为 MCP 格式（至少一个条目有 type + text 字段）
   const isMcpFormat = content.some(
     (item) => isRecord(item) && typeof item.type === "string" && "text" in item,
   );
-  if (!isMcpFormat) return value;
+  if (!isMcpFormat) return parsed;
 
   const textParts: string[] = [];
   for (const item of content) {
@@ -973,7 +1019,11 @@ function unwrapMcpResult(value: unknown): unknown {
     }
   }
 
-  return textParts.length > 0 ? textParts.join("") : value;
+  if (textParts.length === 0) {
+    return parsed;
+  }
+
+  return parseJsonLikeValue(textParts.join(""));
 }
 
 function finishStreamingAssistantMessage(
@@ -1561,14 +1611,19 @@ export const useAgentConversationStore = create<
             });
           },
 
-          resolveToolPermission: async (toolCallId, action) => {
+          resolveToolPermission: async (toolCallId, action, rememberScope) => {
             const { conversationId } = get();
             if (!conversationId) return;
 
             await apiClient
               .post(
                 `agent-conversations/${conversationId}/tool-permissions/${toolCallId}/resolve`,
-                { json: toSnakeBody({ action }) },
+                {
+                  json: toSnakeBody({
+                    action,
+                    ...(rememberScope ? { rememberScope } : {}),
+                  }),
+                },
               )
               .json<void>();
 
@@ -1597,6 +1652,22 @@ export const useAgentConversationStore = create<
                 toolCall.updatedAt = Date.now();
               }
             });
+          },
+
+          restartToLatestVersion: async () => {
+            const { conversationId } = get();
+            if (!conversationId) {
+              return null;
+            }
+
+            const response = await apiClient
+              .post(`agent-conversations/${conversationId}/restart-latest-version`)
+              .json<{ data?: { conversationId?: string } }>();
+
+            const nextConversationId = response.data?.conversationId;
+            return typeof nextConversationId === "string"
+              ? nextConversationId
+              : null;
           },
 
           selectFile: (path) => {

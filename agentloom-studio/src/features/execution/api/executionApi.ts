@@ -172,6 +172,7 @@ export async function resolveIntervention(
 
 export interface ToolPermissionResolveRequest {
   action: 'approve' | 'deny'
+  rememberScope?: 'none' | 'conversation_category'
 }
 
 export interface ExecutionWorkspaceFileNode {

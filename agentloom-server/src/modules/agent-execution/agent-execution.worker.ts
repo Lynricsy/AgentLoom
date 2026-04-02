@@ -37,8 +37,17 @@ import { AgentDefinitionService } from '../agent-definition/agent-definition.ser
 import type { AgentRuntimeConfig } from '../agent-definition/agent-runtime-config.interface';
 import { EventBridgeService } from '../execution/services/event-bridge.service';
 import type { PreparationPhase } from '../execution/types/execution-event.types';
+import {
+  InputPreprocessorHandlerImpl,
+  normalizeInputPreprocessorConfig,
+} from '../execution/node-handlers/input-preprocessor.handler';
 import { LlmService } from '../llm/llm.service';
 import { McpService } from '../mcp/mcp.service';
+import { SelfEvolutionToolsProvider } from '../self-evolution/self-evolution-tools.provider';
+import {
+  SmartRoutingService,
+} from '../smart-routing/smart-routing.service';
+import type { RoutingStrategy } from '../smart-routing/dto/routing-context.dto';
 import { resolveAgentRuntimeSandboxConfig } from '../sandbox/agent-runtime-sandbox-config';
 import { SandboxService } from '../sandbox/sandbox.service';
 import type {
@@ -168,6 +177,8 @@ class ConversationTurnFailedError extends Error {
 @Processor(AGENT_CONVERSATION_EXECUTION_QUEUE)
 export class AgentExecutionWorker extends WorkerHost {
   private readonly logger = new Logger(AgentExecutionWorker.name);
+  private readonly inputPreprocessorHandler =
+    new InputPreprocessorHandlerImpl();
 
   constructor(
     private readonly db: DrizzleDB,
@@ -186,6 +197,8 @@ export class AgentExecutionWorker extends WorkerHost {
     private readonly subAgentToolsProvider?: SubAgentToolsProvider,
     private readonly mcpService?: McpService,
     private readonly conversationTitleService?: ConversationTitleService,
+    private readonly selfEvolutionToolsProvider?: SelfEvolutionToolsProvider,
+    private readonly smartRoutingService?: SmartRoutingService,
   ) {
     super();
   }
@@ -274,6 +287,20 @@ export class AgentExecutionWorker extends WorkerHost {
         return;
       }
 
+      let seededPendingMessages: PendingMessage[] = [];
+      if (
+        !executionMetadata.sessionId &&
+        this.extractStringArray(
+          context.runtimeConfig.routingConfig?.candidateModelIds,
+        ).length > 0
+      ) {
+        seededPendingMessages = await this.loadPendingUserMessages(
+          conversationId,
+          tenantId,
+          executionMetadata.lastProcessedMessageId,
+        );
+      }
+
       // Phases 3-4 are emitted inside prepareRuntimeSession
       currentPhase = 'sandbox_creating';
       const runtimeSessionContext = await this.prepareRuntimeSession(
@@ -283,6 +310,7 @@ export class AgentExecutionWorker extends WorkerHost {
         abort.signal,
         subAgentTracker,
         context.conversation.agentDefinitionId,
+        seededPendingMessages,
       );
       currentPhase = runtimeSessionContext.lastPhase;
       runtime = runtimeSessionContext.runtime;
@@ -322,7 +350,6 @@ export class AgentExecutionWorker extends WorkerHost {
       executionMetadata = await this.updateExecutionMetadata(
         tenantId,
         conversationId,
-        conversationMetadata,
         {
           sessionId: session.id,
           ...(memorySessionIds.length ? { memorySessionIds } : {}),
@@ -341,11 +368,15 @@ export class AgentExecutionWorker extends WorkerHost {
       });
 
       while (!abort.signal.aborted) {
-        currentPendingMessages = await this.loadPendingUserMessages(
-          conversationId,
-          tenantId,
-          executionMetadata.lastProcessedMessageId,
-        );
+        currentPendingMessages =
+          seededPendingMessages.length > 0
+            ? seededPendingMessages
+            : await this.loadPendingUserMessages(
+                conversationId,
+                tenantId,
+                executionMetadata.lastProcessedMessageId,
+              );
+        seededPendingMessages = [];
 
         if (currentPendingMessages.length === 0) {
           const waitResult = await this.executionService.waitForNotification(
@@ -389,7 +420,6 @@ export class AgentExecutionWorker extends WorkerHost {
         executionMetadata = await this.persistConversationTurn(
           conversationId,
           tenantId,
-          conversationMetadata,
           currentPendingMessages,
           turnResult,
           session.id,
@@ -433,7 +463,6 @@ export class AgentExecutionWorker extends WorkerHost {
           executionMetadata = await this.persistConversationTurn(
             conversationId,
             tenantId,
-            conversationMetadata,
             currentPendingMessages,
             error.turnResult,
             session.id,
@@ -594,10 +623,15 @@ export class AgentExecutionWorker extends WorkerHost {
         );
       }
 
-      const memoryInstanceIds = this.resolveDefaultMemoryInstanceIds(
-        definition.metadata,
-        snapshot?.metadata,
+      const compiledMemoryInstanceIds = this.extractStringArray(
+        runtimeConfig.memoryInstanceIds,
       );
+      const memoryInstanceIds = compiledMemoryInstanceIds.length
+        ? compiledMemoryInstanceIds
+        : this.resolveDefaultMemoryInstanceIds(
+            definition.metadata,
+            snapshot?.metadata,
+          );
       runtimeConfig.memoryInstanceIds = memoryInstanceIds;
 
       return {
@@ -613,6 +647,116 @@ export class AgentExecutionWorker extends WorkerHost {
     });
   }
 
+  private async resolveConversationStartupRuntimeConfig(
+    runtimeConfig: AgentRuntimeConfig,
+    tenantId: string,
+    pendingMessages: PendingMessage[],
+  ): Promise<AgentRuntimeConfig> {
+    const routingConfig = runtimeConfig.routingConfig;
+    const candidateModelIds = this.extractStringArray(
+      routingConfig?.candidateModelIds,
+    );
+
+    if (!routingConfig || candidateModelIds.length === 0) {
+      return runtimeConfig;
+    }
+
+    const selectedModelId = await this.selectConversationRoutingModelId({
+      tenantId,
+      routingConfig,
+      candidateModelIds,
+      pendingMessages,
+    });
+
+    if (!selectedModelId) {
+      return runtimeConfig;
+    }
+
+    return {
+      ...runtimeConfig,
+      modelConfig: {
+        ...(runtimeConfig.modelConfig ?? {}),
+        modelId: selectedModelId,
+      },
+      routingConfig: {
+        ...routingConfig,
+        candidateModelIds,
+      },
+    };
+  }
+
+  private async selectConversationRoutingModelId(params: {
+    tenantId: string;
+    routingConfig: NonNullable<AgentRuntimeConfig['routingConfig']>;
+    candidateModelIds: string[];
+    pendingMessages: PendingMessage[];
+  }): Promise<string | undefined> {
+    if (params.candidateModelIds.length === 1) {
+      return params.candidateModelIds[0];
+    }
+
+    const strategy = this.normalizeConversationRoutingStrategy(
+      params.routingConfig.strategy,
+    );
+    if (!strategy || !this.smartRoutingService) {
+      return params.candidateModelIds[0];
+    }
+
+    const latestPrompt = this.formatLatestPendingMessages(params.pendingMessages);
+
+    try {
+      const decision = await this.smartRoutingService.evaluate(
+        params.candidateModelIds,
+        {
+          inputTokenCount: this.estimateConversationTokenCount(latestPrompt),
+          taskType: 'agent_conversation',
+        },
+        strategy,
+        params.tenantId,
+      );
+      return decision.selectedModelId;
+    } catch (error) {
+      this.logger.warn(
+        `Conversation smart routing failed, falling back to first candidate: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+      return params.candidateModelIds[0];
+    }
+  }
+
+  private normalizeConversationRoutingStrategy(
+    value: string | undefined,
+  ): RoutingStrategy | null {
+    const normalized = value?.trim();
+    if (!normalized) {
+      return 'FALLBACK_CHAIN';
+    }
+
+    const aliases: Record<string, RoutingStrategy> = {
+      TOKEN_OPTIMIZED: 'TOKEN_OPTIMIZED',
+      token_optimized: 'TOKEN_OPTIMIZED',
+      COST_OPTIMIZED: 'COST_OPTIMIZED',
+      cost_optimized: 'COST_OPTIMIZED',
+      QUALITY_FIRST: 'QUALITY_FIRST',
+      quality_first: 'QUALITY_FIRST',
+      LATENCY_FIRST: 'LATENCY_FIRST',
+      latency_first: 'LATENCY_FIRST',
+      HISTORICAL_BEST: 'HISTORICAL_BEST',
+      historical_best: 'HISTORICAL_BEST',
+      FALLBACK_CHAIN: 'FALLBACK_CHAIN',
+      fallback_chain: 'FALLBACK_CHAIN',
+    };
+
+    return aliases[normalized] ?? null;
+  }
+
+  private estimateConversationTokenCount(value: unknown): number {
+    const serialized =
+      typeof value === 'string' ? value : JSON.stringify(value ?? {});
+    return Math.max(0, Math.ceil(serialized.length / 4));
+  }
+
   private async prepareRuntimeSession(
     context: ConversationExecutionContext,
     conversationId: string,
@@ -620,7 +764,13 @@ export class AgentExecutionWorker extends WorkerHost {
     parentAbortSignal: AbortSignal,
     subAgentTracker: SubAgentExecutionTracker,
     currentAgentDefinitionId: string,
+    initialPendingMessages: PendingMessage[] = [],
   ): Promise<RuntimeSessionContext> {
+    context.runtimeConfig = await this.resolveConversationStartupRuntimeConfig(
+      context.runtimeConfig,
+      tenantId,
+      initialPendingMessages,
+    );
     const runtime = this.resolveConversationRuntime(context);
     const memorySessionIds = await this.ensureConversationMemorySessions(
       context,
@@ -670,6 +820,14 @@ export class AgentExecutionWorker extends WorkerHost {
       try {
         const session = await runtime.loadSession(sessionId);
         this.registerMemoryToolsProvider(runtime, session.id, memorySessionIds);
+        await this.registerSelfEvolutionToolsProvider({
+          runtime,
+          sessionId: session.id,
+          runtimeConfig: context.runtimeConfig,
+          conversationId,
+          tenantId,
+          currentAgentDefinitionId,
+        });
         this.registerSubAgentToolsProvider({
           runtime,
           sessionId: session.id,
@@ -711,6 +869,14 @@ export class AgentExecutionWorker extends WorkerHost {
 
     const nextSessionId = randomUUID();
     this.registerMemoryToolsProvider(runtime, nextSessionId, memorySessionIds);
+    await this.registerSelfEvolutionToolsProvider({
+      runtime,
+      sessionId: nextSessionId,
+      runtimeConfig: context.runtimeConfig,
+      conversationId,
+      tenantId,
+      currentAgentDefinitionId,
+    });
     this.registerSubAgentToolsProvider({
       runtime,
       sessionId: nextSessionId,
@@ -869,10 +1035,15 @@ export class AgentExecutionWorker extends WorkerHost {
     let lastStopReason: StopReason = 'end_turn';
     let chunkIndex = 0;
     let segments: ConversationMessageSegmentRecord[] = [];
+    const latestPromptText = await this.applyConversationInputPreprocessors(
+      this.formatLatestPendingMessages(pendingMessages),
+      session.runtimeConfig,
+    );
     let promptBlocks = this.buildPromptBlocks(
       pendingMessages,
       hasPriorTurns,
       historyMessages,
+      latestPromptText,
     );
 
     while (true) {
@@ -928,6 +1099,7 @@ export class AgentExecutionWorker extends WorkerHost {
               args: nextCall.args,
               result: nextCall.result,
               error: nextCall.error,
+              permissionRequest: nextCall.permissionRequest,
               transitions: nextCall.transitions
                 ? [...nextCall.transitions]
                 : undefined,
@@ -1153,7 +1325,6 @@ export class AgentExecutionWorker extends WorkerHost {
   private async persistConversationTurn(
     conversationId: string,
     tenantId: string,
-    baseMetadata: Record<string, unknown>,
     pendingMessages: PendingMessage[],
     turnResult: ConversationTurnResult,
     sessionId: string,
@@ -1165,6 +1336,10 @@ export class AgentExecutionWorker extends WorkerHost {
     },
   ): Promise<ConversationExecutionMetadata> {
     return runInTenantTransaction(this.db, tenantId, async (dbClient) => {
+      const currentMetadata = await this.loadConversationMetadata(
+        dbClient,
+        conversationId,
+      );
       let lastAssistantMessageId: string | undefined;
       const isEmptyTurn =
         turnResult.assistantText.length === 0 &&
@@ -1223,7 +1398,7 @@ export class AgentExecutionWorker extends WorkerHost {
       }
 
       const lastProcessedMessageId = pendingMessages.at(-1)?.id;
-      const executionMetadata = this.mergeExecutionMetadata(baseMetadata, {
+      const executionMetadata = this.mergeExecutionMetadata(currentMetadata, {
         sessionId,
         lastProcessedMessageId,
         lastAssistantMessageId,
@@ -1235,7 +1410,7 @@ export class AgentExecutionWorker extends WorkerHost {
         .update(agentConversations)
         .set({
           metadata: this.writeExecutionMetadata(
-            baseMetadata,
+            currentMetadata,
             executionMetadata,
           ),
           updatedAt: new Date(),
@@ -1249,19 +1424,22 @@ export class AgentExecutionWorker extends WorkerHost {
   private async updateExecutionMetadata(
     tenantId: string,
     conversationId: string,
-    baseMetadata: Record<string, unknown>,
     patch: Partial<ConversationExecutionMetadata>,
   ): Promise<ConversationExecutionMetadata> {
     return runInTenantTransaction(this.db, tenantId, async (dbClient) => {
+      const currentMetadata = await this.loadConversationMetadata(
+        dbClient,
+        conversationId,
+      );
       const nextExecutionMetadata = this.mergeExecutionMetadata(
-        baseMetadata,
+        currentMetadata,
         patch,
       );
       await dbClient
         .update(agentConversations)
         .set({
           metadata: this.writeExecutionMetadata(
-            baseMetadata,
+            currentMetadata,
             nextExecutionMetadata,
           ),
           updatedAt: new Date(),
@@ -1282,18 +1460,12 @@ export class AgentExecutionWorker extends WorkerHost {
         this.db,
         tenantId,
         async (dbClient) => {
-          const [conversation] = await dbClient
-            .select({ metadata: agentConversations.metadata })
-            .from(agentConversations)
-            .where(eq(agentConversations.id, conversationId))
-            .limit(1);
-
-          if (!conversation) {
-            return metadata;
-          }
-
+          const currentMetadata = await this.loadConversationMetadata(
+            dbClient,
+            conversationId,
+          );
           const nextMetadata = this.writeExecutionMetadata(
-            conversation.metadata,
+            currentMetadata,
             metadata,
           );
 
@@ -1313,18 +1485,29 @@ export class AgentExecutionWorker extends WorkerHost {
     }
   }
 
+  private async loadConversationMetadata(
+    dbClient: DrizzleDB,
+    conversationId: string,
+  ): Promise<Record<string, unknown>> {
+    const [conversation] = await dbClient
+      .select({ metadata: agentConversations.metadata })
+      .from(agentConversations)
+      .where(eq(agentConversations.id, conversationId))
+      .limit(1);
+
+    return conversation?.metadata ?? {};
+  }
+
   private buildPromptBlocks(
     pendingMessages: PendingMessage[],
     hasPriorTurns: boolean,
     historyMessages: ConversationHistoryMessage[] = [],
+    latestPromptOverride?: string,
   ): ContentBlock[] {
+    const latestPrompt =
+      latestPromptOverride ?? this.formatLatestPendingMessages(pendingMessages);
+
     if (historyMessages.length > 0) {
-      const latestPrompt =
-        pendingMessages.length === 1
-          ? pendingMessages[0].content
-          : pendingMessages
-              .map((message, index) => `${index + 1}. ${message.content}`)
-              .join('\n');
 
       return [
         {
@@ -1341,7 +1524,7 @@ export class AgentExecutionWorker extends WorkerHost {
       return [
         {
           type: 'text',
-          text: pendingMessages[0].content,
+          text: latestPrompt,
         } satisfies TextContentBlock,
       ];
     }
@@ -1353,11 +1536,62 @@ export class AgentExecutionWorker extends WorkerHost {
     return [
       {
         type: 'text',
-        text: `${prefix}\n${pendingMessages
-          .map((message, index) => `${index + 1}. ${message.content}`)
-          .join('\n')}`,
+        text: `${prefix}\n${latestPrompt}`,
       } satisfies TextContentBlock,
     ];
+  }
+
+  private formatLatestPendingMessages(
+    pendingMessages: PendingMessage[],
+  ): string {
+    return pendingMessages.length === 1
+      ? pendingMessages[0].content
+      : pendingMessages
+          .map((message, index) => `${index + 1}. ${message.content}`)
+          .join('\n');
+  }
+
+  private async applyConversationInputPreprocessors(
+    latestPrompt: string,
+    runtimeConfig?: AgentRuntimeConfig,
+  ): Promise<string> {
+    const preprocessors = runtimeConfig?.inputPreprocessors ?? [];
+    if (preprocessors.length === 0) {
+      return latestPrompt;
+    }
+
+    let current: string | Record<string, unknown> = latestPrompt;
+
+    for (const preprocessor of preprocessors) {
+      const transformType = this.normalizeOptionalString(preprocessor.type);
+      const configRecord = this.isRecord(preprocessor.config)
+        ? preprocessor.config
+        : {};
+
+      if (!transformType) {
+        continue;
+      }
+
+      const handlerInput: string | Record<string, unknown> =
+        typeof current === 'string'
+          ? {
+              text: current,
+              value: current,
+              raw: current,
+            }
+          : current;
+
+      current = (
+        await this.inputPreprocessorHandler.execute(
+          handlerInput,
+          normalizeInputPreprocessorConfig(configRecord, transformType),
+        )
+      ).output;
+    }
+
+    return typeof current === 'string'
+      ? current
+      : JSON.stringify(current, null, 2);
   }
 
   private formatConversationHistory(
@@ -1951,10 +2185,15 @@ export class AgentExecutionWorker extends WorkerHost {
   private toSkillInput(
     skill: import('../skill/skill.types').SkillPromptPayload,
   ): SkillInput {
+    const files =
+      skill.files && Object.keys(skill.files).length > 0
+        ? skill.files
+        : { 'SKILL.md': skill.content ?? '' };
+
     return {
       name: skill.name,
       description: skill.description,
-      files: { 'SKILL.md': skill.content ?? '' },
+      files,
     };
   }
 
@@ -2222,6 +2461,76 @@ export class AgentExecutionWorker extends WorkerHost {
     );
   }
 
+  private async registerSelfEvolutionToolsProvider(params: {
+    runtime: IAgentRuntime;
+    sessionId: string;
+    runtimeConfig: AgentRuntimeConfig;
+    conversationId: string;
+    tenantId: string;
+    currentAgentDefinitionId: string;
+  }): Promise<void> {
+    if (
+      !params.runtimeConfig.selfEvolutionPolicy?.enabled ||
+      !this.selfEvolutionToolsProvider ||
+      !params.runtime.registerSessionToolProvider
+    ) {
+      return;
+    }
+
+    const context = await runInTenantTransaction(
+      this.db,
+      params.tenantId,
+      async (dbClient) => {
+        const [[conversation], [agent]] = await Promise.all([
+          dbClient
+            .select({
+              createdBy: agentConversations.createdBy,
+            })
+            .from(agentConversations)
+            .where(eq(agentConversations.id, params.conversationId))
+            .limit(1),
+          dbClient
+            .select({
+              name: agentDefinitions.name,
+            })
+            .from(agentDefinitions)
+            .where(eq(agentDefinitions.id, params.currentAgentDefinitionId))
+            .limit(1),
+        ]);
+
+        if (!conversation) {
+          throw new Error(
+            `Conversation ${params.conversationId} not found for self-evolution provider`,
+          );
+        }
+
+        if (!agent) {
+          throw new Error(
+            `Agent ${params.currentAgentDefinitionId} not found for self-evolution provider`,
+          );
+        }
+
+        return {
+          actorUserId: conversation.createdBy,
+          currentAgentName: agent.name,
+        };
+      },
+    );
+
+    params.runtime.registerSessionToolProvider(
+      params.sessionId,
+      this.selfEvolutionToolsProvider.createSessionToolProvider({
+        sessionId: params.sessionId,
+        conversationId: params.conversationId,
+        tenantId: params.tenantId,
+        currentAgentDefinitionId: params.currentAgentDefinitionId,
+        runtimeConfig: params.runtimeConfig,
+        actorUserId: context.actorUserId,
+        currentAgentName: context.currentAgentName,
+      }),
+    );
+  }
+
   private async executeSubAgent(
     params: ExecuteSubAgentParams,
     subAgentTracker: SubAgentExecutionTracker,
@@ -2310,6 +2619,14 @@ export class AgentExecutionWorker extends WorkerHost {
         nextSessionId,
         memorySessionIds,
       );
+      await this.registerSelfEvolutionToolsProvider({
+        runtime,
+        sessionId: nextSessionId,
+        runtimeConfig,
+        conversationId: params.parentContext.conversationId,
+        tenantId: params.parentContext.tenantId,
+        currentAgentDefinitionId: params.agentDefinition.id,
+      });
       this.registerSubAgentToolsProvider({
         runtime,
         sessionId: nextSessionId,

@@ -37,6 +37,16 @@ export interface ToolCallEventData {
   permissionRequest?: {
     description: string
     resourcePaths?: string[]
+    domain?: string
+    category?: string
+    riskLevel?: 'low' | 'medium' | 'high'
+    sourceLabel?: string
+    targetType?: string
+    targetLabel?: string
+    approveEffect?: string
+    denyEffect?: string
+    diffPreview?: Record<string, unknown>
+    rememberable?: boolean
   }
 }
 
@@ -120,6 +130,20 @@ export interface ToolCallStatusPayload {
   args?: Record<string, unknown>
   result?: unknown
   error?: string
+  permissionRequest?: {
+    description: string
+    resourcePaths?: string[]
+    domain?: string
+    category?: string
+    riskLevel?: 'low' | 'medium' | 'high'
+    sourceLabel?: string
+    targetType?: string
+    targetLabel?: string
+    approveEffect?: string
+    denyEffect?: string
+    diffPreview?: Record<string, unknown>
+    rememberable?: boolean
+  }
 }
 
 export interface ToolPermissionRequiredPayload {
@@ -131,6 +155,16 @@ export interface ToolPermissionRequiredPayload {
   permissionRequest?: {
     description: string
     resourcePaths?: string[]
+    domain?: string
+    category?: string
+    riskLevel?: 'low' | 'medium' | 'high'
+    sourceLabel?: string
+    targetType?: string
+    targetLabel?: string
+    approveEffect?: string
+    denyEffect?: string
+    diffPreview?: Record<string, unknown>
+    rememberable?: boolean
   }
   requestedAt: string
 }

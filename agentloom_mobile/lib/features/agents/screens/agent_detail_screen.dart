@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../routes/route_names.dart';
 import '../../../shared/widgets/entity_icon.dart';
 import '../api/agent_api.dart';
+import '../models/agent_main_config_view.dart';
 import '../providers/agent_conversation_provider.dart';
 import '../providers/agent_provider.dart';
 
@@ -145,6 +146,10 @@ class AgentDetailScreen extends ConsumerWidget {
                         ),
                       ),
                     ),
+                  ),
+
+                  SliverToBoxAdapter(
+                    child: _AgentCapabilityCard(config: agent.agentMainConfig),
                   ),
 
                   // 对话列表标题
@@ -452,6 +457,176 @@ class _MetadataRow extends StatelessWidget {
         ),
         Expanded(child: Text(value, style: theme.textTheme.bodyMedium)),
       ],
+    );
+  }
+}
+
+class _AgentCapabilityCard extends StatelessWidget {
+  const _AgentCapabilityCard({required this.config});
+
+  final AgentMainConfigView config;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Card(
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 0),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Runtime Capabilities',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Mobile only shows the current capability policy. Editing remains in Studio.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 16),
+            _CapabilitySection(
+              title: 'Native Tools',
+              subtitle: config.nativeToolPolicy.isConfigured
+                  ? 'Configured on agent-main'
+                  : 'Using agent default policy',
+              chips: [
+                _CapabilityChip(
+                  label: 'Read',
+                  enabled: config.nativeToolPolicy.readEnabled,
+                ),
+                _CapabilityChip(
+                  label: 'Write',
+                  enabled: config.nativeToolPolicy.writeEnabled,
+                ),
+                _CapabilityChip(
+                  label: 'Edit',
+                  enabled: config.nativeToolPolicy.editEnabled,
+                ),
+                _CapabilityChip(
+                  label: 'Terminal',
+                  enabled: config.nativeToolPolicy.terminalEnabled,
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _CapabilitySection(
+              title: 'Self Evolution',
+              subtitle: config.selfEvolutionPolicy.enabled
+                  ? 'Self evolution is enabled for this agent'
+                  : config.selfEvolutionPolicy.isConfigured
+                  ? 'Configured but currently disabled'
+                  : 'Disabled until enabled in Studio',
+              chips: [
+                _CapabilityChip(
+                  label: 'Enabled',
+                  enabled: config.selfEvolutionPolicy.enabled,
+                ),
+                _CapabilityChip(
+                  label: 'Resource Mgmt',
+                  enabled: config.selfEvolutionPolicy.resourceManagement,
+                ),
+                _CapabilityChip(
+                  label: 'External Edit',
+                  enabled: config.selfEvolutionPolicy.externalEditing,
+                ),
+                _CapabilityChip(
+                  label: 'Sandbox Mgmt',
+                  enabled: config.selfEvolutionPolicy.sandboxManagement,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _CapabilitySection extends StatelessWidget {
+  const _CapabilitySection({
+    required this.title,
+    required this.subtitle,
+    required this.chips,
+  });
+
+  final String title;
+  final String subtitle;
+  final List<Widget> chips;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          subtitle,
+          style: theme.textTheme.bodySmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Wrap(spacing: 8, runSpacing: 8, children: chips),
+      ],
+    );
+  }
+}
+
+class _CapabilityChip extends StatelessWidget {
+  const _CapabilityChip({required this.label, required this.enabled});
+
+  final String label;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final backgroundColor = enabled
+        ? theme.colorScheme.primaryContainer
+        : theme.colorScheme.surfaceContainerHighest;
+    final foregroundColor = enabled
+        ? theme.colorScheme.onPrimaryContainer
+        : theme.colorScheme.onSurfaceVariant;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            enabled ? Icons.check_circle_rounded : Icons.cancel_rounded,
+            size: 14,
+            color: foregroundColor,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            '$label ${enabled ? 'On' : 'Off'}',
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: foregroundColor,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -6,6 +6,7 @@ export const sessionToolExecutionCallbackSchema = z.object({
   toolCallId: z.string().min(1),
   toolName: z.string().min(1),
   input: z.unknown().optional(),
+  phase: z.enum(['preflight', 'execute']).optional(),
 });
 
 export class SessionToolExecutionCallbackDto extends createZodDto(

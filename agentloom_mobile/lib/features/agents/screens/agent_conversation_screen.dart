@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../models/conversation_message_dto.dart';
 import '../providers/agent_conversation_provider.dart';
@@ -9,6 +10,7 @@ import '../widgets/conversation_context_panel.dart';
 import '../widgets/message_bubble.dart';
 import '../widgets/preparation_card.dart';
 import '../../../shared/utils/scrolling.dart';
+import '../../../routes/route_names.dart';
 
 class AgentConversationScreen extends ConsumerStatefulWidget {
   const AgentConversationScreen({
@@ -112,10 +114,34 @@ class _AgentConversationScreenState
                         .cancelConversation(),
                   );
                 },
-                onResolvePermission: (toolCallId, action) {
+                onResolvePermission: (
+                  toolCallId,
+                  action, {
+                  rememberScope,
+                }) {
                   return ref
                       .read(agentConversationProvider(_params).notifier)
-                      .resolveToolPermission(toolCallId, action);
+                      .resolveToolPermission(
+                        toolCallId,
+                        action,
+                        rememberScope: rememberScope,
+                      );
+                },
+                onRestartConversation: () async {
+                  final nextConversationId = await ref
+                      .read(agentConversationProvider(_params).notifier)
+                      .restartConversationToLatestVersion();
+                  if (!context.mounted || nextConversationId == null) {
+                    return;
+                  }
+
+                  context.goNamed(
+                    RouteNames.agentConversation,
+                    pathParameters: {
+                      'agentId': widget.agentId,
+                      'conversationId': nextConversationId,
+                    },
+                  );
                 },
                 onOpenContext: showSidePanel
                     ? null
@@ -319,12 +345,18 @@ class _MessageListView extends StatelessWidget {
     required this.state,
     required this.scrollController,
     required this.onResolvePermission,
+    required this.onRestartConversation,
   });
 
   final ConversationState state;
   final ScrollController scrollController;
-  final Future<void> Function(String toolCallId, String action)
+  final Future<void> Function(
+    String toolCallId,
+    String action, {
+    String? rememberScope,
+  })
   onResolvePermission;
+  final Future<void> Function() onRestartConversation;
 
   @override
   Widget build(BuildContext context) {
@@ -340,6 +372,7 @@ class _MessageListView extends StatelessWidget {
           return MessageBubble(
             message: state.messages[index],
             onResolvePermission: onResolvePermission,
+            onRestartConversation: onRestartConversation,
           );
         }
 
@@ -368,6 +401,7 @@ class _ConversationPane extends StatelessWidget {
     required this.onSend,
     required this.onCancel,
     required this.onResolvePermission,
+    required this.onRestartConversation,
     required this.onOpenContext,
   });
 
@@ -376,8 +410,13 @@ class _ConversationPane extends StatelessWidget {
   final TextEditingController textController;
   final VoidCallback onSend;
   final VoidCallback onCancel;
-  final Future<void> Function(String toolCallId, String action)
+  final Future<void> Function(
+    String toolCallId,
+    String action, {
+    String? rememberScope,
+  })
   onResolvePermission;
+  final Future<void> Function() onRestartConversation;
   final VoidCallback? onOpenContext;
 
   @override
@@ -408,6 +447,7 @@ class _ConversationPane extends StatelessWidget {
                   state: state,
                   scrollController: scrollController,
                   onResolvePermission: onResolvePermission,
+                  onRestartConversation: onRestartConversation,
                 ),
         ),
         if (onOpenContext != null && _shouldShowDock(state))

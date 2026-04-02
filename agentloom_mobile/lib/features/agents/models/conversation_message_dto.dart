@@ -251,6 +251,17 @@ abstract class ConversationToolPermissionRequestDto
     @JsonKey(fromJson: _stringListFromJson)
     @Default(<String>[])
     List<String> resourcePaths,
+    String? domain,
+    String? category,
+    String? riskLevel,
+    String? sourceLabel,
+    String? targetType,
+    String? targetLabel,
+    String? approveEffect,
+    String? denyEffect,
+    @JsonKey(fromJson: _nullableMapFromJson)
+    Map<String, dynamic>? diffPreview,
+    bool? rememberable,
   }) = _ConversationToolPermissionRequestDto;
 
   factory ConversationToolPermissionRequestDto.fromJson(

@@ -47,7 +47,8 @@ export class SkillResolverService {
   }
 
   formatSkillContentForPrompt(skill: SkillPromptPayload): string {
-    return `<skill name="${escapeXml(skill.name)}">\n${skill.content ?? ''}\n</skill>`;
+    const content = skill.content ?? skill.files?.['SKILL.md'] ?? '';
+    return `<skill name="${escapeXml(skill.name)}">\n${content}\n</skill>`;
   }
 
   async resolveSkillsForAgent(
@@ -61,22 +62,43 @@ export class SkillResolverService {
     const skills = await this.skillService.findByIds(tenantId, skillIds);
     const activeSkills = skills.filter((skill) => skill.status === 'active');
     const skillMap = new Map(activeSkills.map((skill) => [skill.id, skill]));
+    const skillFileEntries = await Promise.all(
+      activeSkills.map(
+        async (skill) =>
+          [
+            skill.id,
+            await this.skillService.getSkillFileMap(
+              tenantId,
+              skill.id,
+              skill.content,
+              {
+                isBuiltin: skill.isBuiltin,
+                slug: skill.slug,
+              },
+            ),
+          ] as const,
+      ),
+    );
+    const skillFilesById = new Map(skillFileEntries);
 
-    return skillIds
-      .map((skillId) => {
-        const skill = skillMap.get(skillId);
-        if (!skill) {
-          return null;
-        }
+    const payloads: SkillPromptPayload[] = [];
 
-        return {
-          id: skill.id,
-          name: skill.name,
-          description: skill.description,
-          content: skill.content,
-        } satisfies SkillPromptPayload;
-      })
-      .filter((skill): skill is SkillPromptPayload => skill !== null);
+    for (const skillId of skillIds) {
+      const skill = skillMap.get(skillId);
+      if (!skill) {
+        continue;
+      }
+
+      payloads.push({
+        id: skill.id,
+        name: skill.name,
+        description: skill.description,
+        content: skill.content,
+        files: skillFilesById.get(skill.id),
+      });
+    }
+
+    return payloads;
   }
 
   buildSkillAugmentedPrompt(
@@ -95,7 +117,8 @@ export class SkillResolverService {
       })),
     );
     const totalContentSize = skills.reduce(
-      (sum, skill) => sum + (skill.content?.length ?? 0),
+      (sum, skill) =>
+        sum + (skill.content ?? skill.files?.['SKILL.md'] ?? '').length,
       0,
     );
 

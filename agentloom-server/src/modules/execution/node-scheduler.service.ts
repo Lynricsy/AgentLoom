@@ -61,6 +61,7 @@ import { SharedResourceRegistry } from '../shared-resources/shared-resource-regi
 import {
   InputPreprocessorHandlerImpl,
   type InputPreprocessorConfig,
+  normalizeInputPreprocessorConfig,
 } from './node-handlers/input-preprocessor.handler';
 import { AgentAdapterFactory } from './adapters/agent-adapter-factory';
 import { getModelRoutingMeta } from '../llm/llm-provider-catalog';
@@ -1235,28 +1236,8 @@ export class NodeSchedulerService {
 
     try {
       const nodeData = this.getRuntimeNodeData(step.nodeData ?? {});
-      const transformType = this.readFirstString(
-        nodeData.transformType,
-        nodeData.transform_type,
-      );
-      const configuredOutputFormat = this.readFirstString(
-        nodeData.outputFormat,
-        nodeData.output_format,
-      );
-
-      const config: InputPreprocessorConfig = {
-        transformType:
-          transformType === 'jsonata' ||
-          transformType === 'template' ||
-          transformType === 'script'
-            ? transformType
-            : 'jmespath',
-        expression:
-          typeof nodeData.expression === 'string' ? nodeData.expression : '',
-        ...(configuredOutputFormat
-          ? { outputFormat: configuredOutputFormat }
-          : {}),
-      };
+      const config: InputPreprocessorConfig =
+        normalizeInputPreprocessorConfig(nodeData);
 
       const handler = new InputPreprocessorHandlerImpl();
       const { output, outputFormat } = await handler.execute(input, config);

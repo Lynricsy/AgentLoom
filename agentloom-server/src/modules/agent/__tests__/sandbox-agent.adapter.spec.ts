@@ -51,6 +51,11 @@ describe('SandboxAgentAdapter', () => {
     decryptApiKey: ReturnType<typeof vi.fn>;
     decryptConfiguredApiKey: ReturnType<typeof vi.fn>;
   };
+  let mockSelfEvolutionService: {
+    supportsTool: ReturnType<typeof vi.fn>;
+    handleSessionToolPreflight: ReturnType<typeof vi.fn>;
+    handleSessionToolExecute: ReturnType<typeof vi.fn>;
+  };
   let piConfigGenerator: PiConfigGeneratorService;
 
   const storedModelConfig = {
@@ -161,6 +166,11 @@ describe('SandboxAgentAdapter', () => {
       decryptApiKey: vi.fn().mockResolvedValue('sk-ant-test'),
       decryptConfiguredApiKey: vi.fn(),
     };
+    mockSelfEvolutionService = {
+      supportsTool: vi.fn().mockReturnValue(false),
+      handleSessionToolPreflight: vi.fn(),
+      handleSessionToolExecute: vi.fn(),
+    };
     piConfigGenerator = new PiConfigGeneratorService();
     // createSession 的容器初始化 POST 默认返回成功
     globalThis.fetch = vi.fn().mockResolvedValue({
@@ -177,6 +187,7 @@ describe('SandboxAgentAdapter', () => {
       mockCodeExecutionService as never,
       mockDecryptionBoundaryService as never,
       piConfigGenerator,
+      mockSelfEvolutionService as never,
     );
   });
 
@@ -250,6 +261,24 @@ describe('SandboxAgentAdapter', () => {
       });
 
       expect(Object.keys(session.context.mcpServers ?? {})).toHaveLength(1);
+    });
+
+    it('应保留 runtimeConfig 供 remote tool 回调使用', async () => {
+      const runtimeConfig = {
+        selfEvolutionPolicy: {
+          enabled: true,
+          resourceManagement: true,
+          externalEditing: true,
+          sandboxManagement: true,
+        },
+      };
+
+      const session = await adapter.createSession({
+        ...defaultParams,
+        runtimeConfig,
+      });
+
+      expect(session.runtimeConfig).toEqual(runtimeConfig);
     });
 
     it('有 executionId 和 tenantId 时应调用容器 session 初始化', async () => {
@@ -1089,6 +1118,102 @@ describe('SandboxAgentAdapter', () => {
           messages: [],
         }),
       );
+    });
+
+    it('应将 self-evolution 工具的 preflight callback 分流到 SelfEvolutionService', async () => {
+      mockSelfEvolutionService.supportsTool.mockReturnValue(true);
+      mockSelfEvolutionService.handleSessionToolPreflight.mockResolvedValue({
+        outcome: 'awaiting_permission',
+        permissionRequest: {
+          description: '主人授权后，Agent 将修改自身编排',
+        },
+      });
+      vi.spyOn(adapter as any, 'assertValidSessionToolCallbackToken').mockImplementation(
+        () => undefined,
+      );
+      vi.spyOn(adapter as any, 'loadSession').mockResolvedValue({
+        id: 'session-self-1',
+        agentId: 'agent-001',
+        mode: 'conversation',
+        context: {},
+        status: 'active',
+        tenantId: 'tenant-001',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      const result = await adapter.executeSessionToolCallback('session-self-1', {
+        sessionId: 'session-self-1',
+        toolCallId: 'tool-call-self-1',
+        toolName: 'apply_change',
+        input: { proposal: { summary: '修改自身编排' } },
+        phase: 'preflight',
+      });
+
+      expect(mockSelfEvolutionService.handleSessionToolPreflight).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'session-self-1',
+        }),
+        'apply_change',
+        'tool-call-self-1',
+        { proposal: { summary: '修改自身编排' } },
+      );
+      expect(result).toEqual({
+        outcome: 'awaiting_permission',
+        permissionRequest: {
+          description: '主人授权后，Agent 将修改自身编排',
+        },
+      });
+    });
+
+    it('应将 self-evolution 工具的 execute callback 分流到 SelfEvolutionService', async () => {
+      mockSelfEvolutionService.supportsTool.mockReturnValue(true);
+      mockSelfEvolutionService.handleSessionToolExecute.mockResolvedValue({
+        result: {
+          success: true,
+          data: {
+            applied: true,
+          },
+        },
+      });
+      vi.spyOn(adapter as any, 'assertValidSessionToolCallbackToken').mockImplementation(
+        () => undefined,
+      );
+      vi.spyOn(adapter as any, 'loadSession').mockResolvedValue({
+        id: 'session-self-2',
+        agentId: 'agent-001',
+        mode: 'conversation',
+        context: {},
+        status: 'active',
+        tenantId: 'tenant-001',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      });
+
+      const result = await adapter.executeSessionToolCallback('session-self-2', {
+        sessionId: 'session-self-2',
+        toolCallId: 'tool-call-self-2',
+        toolName: 'apply_change',
+        input: { proposal: { summary: '修改自身编排' } },
+        phase: 'execute',
+      });
+
+      expect(mockSelfEvolutionService.handleSessionToolExecute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'session-self-2',
+        }),
+        'apply_change',
+        'tool-call-self-2',
+        { proposal: { summary: '修改自身编排' } },
+      );
+      expect(result).toEqual({
+        result: {
+          success: true,
+          data: {
+            applied: true,
+          },
+        },
+      });
     });
   });
 

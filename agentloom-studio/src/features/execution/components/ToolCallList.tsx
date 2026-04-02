@@ -45,6 +45,70 @@ const statusConfig: Record<
   },
 }
 
+function formatPermissionCategoryLabel(category?: string): string {
+  switch (category) {
+    case 'agent_self_canvas_edit':
+      return '自编排修改'
+    case 'agent_external_edit':
+      return '外部 Agent 编辑'
+    case 'workflow_edit':
+      return 'Workflow 编辑'
+    case 'skill_resource_management':
+      return 'Skill 资源管理'
+    case 'mcp_resource_management':
+      return 'MCP 资源管理'
+    case 'model_resource_management':
+      return '模型资源管理'
+    case 'workspace_resource_management':
+      return 'Workspace 资源管理'
+    case 'workspace_sandbox_binding_adjustment':
+      return 'Workspace / Sandbox 绑定'
+    case 'sandbox_spec_adjustment':
+      return 'Sandbox 规格调整'
+    default:
+      return category ?? '待审批操作'
+  }
+}
+
+function formatRiskLabel(
+  riskLevel?: ToolCallEventData['permissionRequest'] extends infer T
+    ? T extends { riskLevel?: infer R }
+      ? R
+      : never
+    : never,
+): string {
+  switch (riskLevel) {
+    case 'low':
+      return '低风险'
+    case 'medium':
+      return '中风险'
+    case 'high':
+      return '高风险'
+    default:
+      return '待确认'
+  }
+}
+
+function stringifyDiffPreview(value?: Record<string, unknown>): string | null {
+  if (!value) {
+    return null
+  }
+
+  const summary =
+    typeof value.summary === 'string' && value.summary.length > 0
+      ? value.summary
+      : null
+
+  try {
+    const serialized = JSON.stringify(value, null, 2)
+    return summary && !serialized.includes(summary)
+      ? `${summary}\n\n${serialized}`
+      : serialized
+  } catch {
+    return summary
+  }
+}
+
 function ToolCallCard({
   tc,
   executionId,
@@ -55,7 +119,9 @@ function ToolCallCard({
   stepId: string
 }) {
   const [argsExpanded, setArgsExpanded] = useState(false)
-  const [submitting, setSubmitting] = useState(false)
+  const [submitting, setSubmitting] = useState<
+    'approve_once' | 'approve_session' | 'deny_once' | 'deny_session' | null
+  >(null)
   const { submitToolPermission } = useExecutionActions()
 
   const isTerminal =
@@ -64,18 +130,42 @@ function ToolCallCard({
     tc.status === 'denied'
 
   const handlePermission = useCallback(
-    async (action: 'approve' | 'deny') => {
-      setSubmitting(true)
+    async (
+      action: 'approve' | 'deny',
+      rememberScope: 'none' | 'conversation_category' = 'none',
+    ) => {
+      const nextSubmitting =
+        action === 'approve'
+          ? rememberScope === 'conversation_category'
+            ? 'approve_session'
+            : 'approve_once'
+          : rememberScope === 'conversation_category'
+            ? 'deny_session'
+            : 'deny_once'
+      setSubmitting(nextSubmitting)
       try {
-        await submitToolPermission(executionId, stepId, tc.id, action)
+        if (rememberScope === 'none') {
+          await submitToolPermission(executionId, stepId, tc.id, action)
+          return
+        }
+
+        await submitToolPermission(
+          executionId,
+          stepId,
+          tc.id,
+          action,
+          rememberScope,
+        )
       } finally {
-        setSubmitting(false)
+        setSubmitting(null)
       }
     },
     [executionId, stepId, tc.id, submitToolPermission],
   )
 
   const cfg = statusConfig[tc.status]
+  const permissionRequest = tc.permissionRequest
+  const diffPreview = stringifyDiffPreview(permissionRequest?.diffPreview)
 
   return (
     <div
@@ -140,45 +230,150 @@ function ToolCallCard({
 
       {tc.status === 'awaiting_permission' && (
         <div className="mt-3 space-y-2">
-          {tc.permissionRequest?.description && (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-300">
+              {formatPermissionCategoryLabel(permissionRequest?.category)}
+            </span>
+            <span className="rounded-full border border-border/60 px-2 py-0.5 text-[10px] text-muted-foreground">
+              {formatRiskLabel(permissionRequest?.riskLevel)}
+            </span>
+          </div>
+
+          {permissionRequest?.description && (
             <div className="flex items-start gap-1.5 rounded-md bg-amber-500/10 px-2 py-1.5">
               <ShieldAlert className="mt-0.5 size-3 shrink-0 text-amber-400" />
               <p className="text-[11px] leading-4 text-amber-300">
-                {tc.permissionRequest.description}
+                {permissionRequest.description}
               </p>
             </div>
           )}
-          <div className="flex gap-2">
+
+          {(permissionRequest?.sourceLabel ||
+            permissionRequest?.targetLabel ||
+            permissionRequest?.targetType) && (
+            <div className="grid gap-1 rounded-md border border-border/40 bg-surface px-2 py-2 text-[11px] text-muted-foreground">
+              {permissionRequest?.sourceLabel && (
+                <div>
+                  请求来源:{' '}
+                  <span className="text-foreground/90">
+                    {permissionRequest.sourceLabel}
+                  </span>
+                </div>
+              )}
+              {(permissionRequest?.targetLabel ||
+                permissionRequest?.targetType) && (
+                <div>
+                  目标对象:{' '}
+                  <span className="text-foreground/90">
+                    {[permissionRequest.targetType, permissionRequest.targetLabel]
+                      .filter(Boolean)
+                      .join(' / ')}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {permissionRequest?.resourcePaths &&
+            permissionRequest.resourcePaths.length > 0 && (
+              <pre className="overflow-x-auto rounded-md border border-border/40 bg-surface px-2 py-2 text-[11px] leading-5 text-muted-foreground">
+                {permissionRequest.resourcePaths.join('\n')}
+              </pre>
+            )}
+
+          {permissionRequest?.approveEffect && (
+            <p className="text-[11px] text-muted-foreground">
+              批准后:{' '}
+              <span className="text-foreground/90">
+                {permissionRequest.approveEffect}
+              </span>
+            </p>
+          )}
+
+          {permissionRequest?.denyEffect && (
+            <p className="text-[11px] text-muted-foreground">
+              拒绝后:{' '}
+              <span className="text-foreground/90">
+                {permissionRequest.denyEffect}
+              </span>
+            </p>
+          )}
+
+          {diffPreview && (
+            <pre className="overflow-x-auto rounded-md border border-border/40 bg-surface px-2 py-2 text-[11px] leading-5 text-muted-foreground">
+              {diffPreview}
+            </pre>
+          )}
+
+          <div className="flex flex-wrap gap-2">
             <Button
               size="sm"
               variant="outline"
               className="h-7 gap-1 text-xs"
-              disabled={submitting}
-              onClick={() => handlePermission('approve')}
+              disabled={submitting !== null}
+              onClick={() => void handlePermission('approve')}
               data-testid={`tool-call-approve-${tc.id}`}
             >
-              {submitting ? (
+              {submitting === 'approve_once' ? (
                 <Loader2 className="size-3 animate-spin" />
               ) : (
                 <Check className="size-3" />
               )}
-              批准
+              允许一次
             </Button>
+            {permissionRequest?.rememberable && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 gap-1 text-xs"
+                disabled={submitting !== null}
+                onClick={() =>
+                  void handlePermission('approve', 'conversation_category')
+                }
+                data-testid={`tool-call-approve-session-${tc.id}`}
+              >
+                {submitting === 'approve_session' ? (
+                  <Loader2 className="size-3 animate-spin" />
+                ) : (
+                  <Check className="size-3" />
+                )}
+                本会话同类始终允许
+              </Button>
+            )}
             <Button
               size="sm"
               variant="outline"
               className="h-7 gap-1 text-xs text-error hover:text-error"
-              disabled={submitting}
-              onClick={() => handlePermission('deny')}
+              disabled={submitting !== null}
+              onClick={() => void handlePermission('deny')}
               data-testid={`tool-call-deny-${tc.id}`}
             >
-              {submitting ? (
+              {submitting === 'deny_once' ? (
                 <Loader2 className="size-3 animate-spin" />
               ) : (
                 <X className="size-3" />
               )}
-              拒绝
+              拒绝一次
             </Button>
+            {permissionRequest?.rememberable && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 gap-1 text-xs text-error hover:text-error"
+                disabled={submitting !== null}
+                onClick={() =>
+                  void handlePermission('deny', 'conversation_category')
+                }
+                data-testid={`tool-call-deny-session-${tc.id}`}
+              >
+                {submitting === 'deny_session' ? (
+                  <Loader2 className="size-3 animate-spin" />
+                ) : (
+                  <X className="size-3" />
+                )}
+                本会话同类始终拒绝
+              </Button>
+            )}
           </div>
         </div>
       )}

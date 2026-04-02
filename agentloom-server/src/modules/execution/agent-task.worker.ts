@@ -1387,6 +1387,7 @@ export class AgentTaskWorker extends WorkerHost {
       args: toolCall.args,
       result: toolCall.result,
       error: toolCall.error,
+      permissionRequest: toolCall.permissionRequest,
       transitions: toolCall.transitions?.map((transition) => ({
         ...(transition.from ? { from: transition.from } : {}),
         to: transition.to,

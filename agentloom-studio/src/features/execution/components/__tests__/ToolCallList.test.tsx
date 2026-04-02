@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { act, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -174,7 +174,9 @@ describe('ToolCallList', () => {
       expect(screen.getByTestId('tool-call-deny-tc1')).toBeDisabled()
     })
 
-    resolvePermission()
+    await act(async () => {
+      resolvePermission()
+    })
   })
 
   it.each(['pending', 'in_progress', 'completed', 'failed', 'denied'] as const)(
@@ -283,6 +285,103 @@ describe('ToolCallList', () => {
     render(<ToolCallList {...defaultProps} />)
 
     expect(screen.getByText('此工具需要访问文件系统')).toBeInTheDocument()
+  })
+
+  it('renders session-scoped allow and deny buttons for rememberable requests', () => {
+    mocks.toolCalls = {
+      tc1: makeToolCall({
+        id: 'tc1',
+        status: 'awaiting_permission',
+        permissionRequest: {
+          description: '允许修改自己的编排',
+          category: 'agent_self_canvas_edit',
+          riskLevel: 'medium',
+          sourceLabel: '主 Agent',
+          targetType: 'agent',
+          targetLabel: '当前 Agent',
+          approveEffect: '立即应用到当前草稿',
+          denyEffect: '保留当前编排不变',
+          diffPreview: { summary: '新增一个 skill 节点' },
+          rememberable: true,
+        },
+      }),
+    }
+
+    render(<ToolCallList {...defaultProps} />)
+
+    expect(screen.getByText('自编排修改')).toBeInTheDocument()
+    expect(screen.getByText('中风险')).toBeInTheDocument()
+    expect(screen.getByText('请求来源:')).toBeInTheDocument()
+    expect(screen.getByText('主 Agent')).toBeInTheDocument()
+    expect(screen.getByText(/立即应用到当前草稿/)).toBeInTheDocument()
+    expect(screen.getByText(/保留当前编排不变/)).toBeInTheDocument()
+    expect(screen.getByTestId('tool-call-approve-session-tc1')).toBeInTheDocument()
+    expect(screen.getByTestId('tool-call-deny-session-tc1')).toBeInTheDocument()
+  })
+
+  it('calls submitToolPermission with rememberScope when session allow is clicked', async () => {
+    const user = userEvent.setup()
+    mocks.toolCalls = {
+      tc1: makeToolCall({
+        id: 'tc1',
+        status: 'awaiting_permission',
+        permissionRequest: {
+          description: '允许修改自己的编排',
+          rememberable: true,
+        },
+      }),
+    }
+
+    render(<ToolCallList {...defaultProps} />)
+
+    await user.click(screen.getByTestId('tool-call-approve-session-tc1'))
+
+    await waitFor(() => {
+      expect(mocks.submitToolPermission).toHaveBeenCalledWith(
+        'exec-1',
+        'step-1',
+        'tc1',
+        'approve',
+        'conversation_category',
+      )
+    })
+  })
+
+  it('disables session-scoped buttons during submission', async () => {
+    const user = userEvent.setup()
+    let resolvePermission!: () => void
+    mocks.submitToolPermission.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolvePermission = resolve
+        }),
+    )
+
+    mocks.toolCalls = {
+      tc1: makeToolCall({
+        id: 'tc1',
+        status: 'awaiting_permission',
+        permissionRequest: {
+          description: '允许修改自己的编排',
+          rememberable: true,
+        },
+      }),
+    }
+
+    render(<ToolCallList {...defaultProps} />)
+
+    await user.click(screen.getByTestId('tool-call-approve-session-tc1'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('tool-call-approve-tc1')).toBeDisabled()
+      expect(screen.getByTestId('tool-call-approve-session-tc1')).toBeDisabled()
+      expect(screen.getByTestId('tool-call-deny-tc1')).toBeDisabled()
+      expect(screen.getByTestId('tool-call-deny-session-tc1')).toBeDisabled()
+    })
+
+    await act(async () => {
+      resolvePermission()
+    })
   })
 
   it('collapses tool call list when header is clicked', async () => {

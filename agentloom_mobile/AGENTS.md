@@ -16,8 +16,8 @@ AgentLoom Flutter 移动端应用：
 - Dashboard：快速访问工作流 + 最近执行聚合，点击最近执行跳转执行监控
 - 工作流：列表、筛选、详情、执行历史、参数输入启动链路
 - 执行监控：Socket.IO `/execution` 实时状态 + REST detail 轮询降级，状态头、告警横幅、步骤时间线、断连语义纠正
-- Agent 管理：列表 / 详情 / 对话三屏
-- Agent 对话：`AgentConversationScreen` 为 Shell 外全屏路由，Socket.IO `/agent-conversation` 实时消息推送，按 `message_chunk / thinking / tool_call / tool_result / done / terminal_output / file_change / status.changed` 分段渲染，包含权限审批、终端输出、文件变更与工作区上下文面板
+- Agent 管理：列表 / 详情 / 对话三屏；详情页会解析 `agent-main` 节点并展示 `nativeToolPolicy` / `selfEvolutionPolicy` 能力摘要
+- Agent 对话：`AgentConversationScreen` 为 Shell 外全屏路由，Socket.IO `/agent-conversation` 实时消息推送，按 `message_chunk / thinking / tool_call / tool_result / done / terminal_output / file_change / status.changed` 分段渲染，包含权限审批、终端输出、文件变更、工作区上下文面板，以及自进化升级后的“重启到新版本”提示卡片
 - 资源域：`ResourcesHubScreen` 以无分类统一资源列表挂载 `Memory / Skills / Workspaces / Sandboxes / Knowledge Bases / MCP Servers / LLM Models`
 - 资源管理：
   - `Workspaces / Sandboxes / Knowledge Bases` 已接入真实 CRUD / 详情
@@ -77,11 +77,11 @@ flutter test --coverage
 - **WorkflowApi**：`runWorkflow()` 发送 canonical camelCase `inputParams / launchSource`，`getInputSchema()` 对 `collectionMode / visibility / collectionHint` 做兼容归一化
 - **WorkflowInputSchema**：含可选 `conversationPlan { systemPrompt, maxTurns }`，非表单采集统一走 `ConversationModePrompt`
 - **Execution monitor**：REST detail 建立初始 snapshot；WS ACK / plain snapshot 通过 metadata merge 保留 `nodeName/nodeType/startedAt/completedAt`；断连后 5 秒 polling fallback
-- **AgentConversationNotifier**：维护对话消息流、Socket 连接、权限审批、终端输出、文件树与历史回拉
+- **AgentConversationNotifier**：维护对话消息流、Socket 连接、权限审批、终端输出、文件树与历史回拉；权限审批支持 `rememberScope=conversation_category`，并能消费服务端下发的升级重启建议
 
 ## 测试模式
 
-- **650 个测试** 覆盖 models / api / providers / widgets / screens / routes / auth / execution / dashboard / workflows / notifications / resources
+- **659 个测试** 覆盖 models / api / providers / widgets / screens / routes / auth / execution / dashboard / workflows / notifications / resources
 - Provider 错误测试使用 `container.listen()` + `Completer<void>` 模式避免 Riverpod 3.x dispose `StateError`
 - Widget / Screen 测试使用 `UncontrolledProviderScope` 配合 `ProviderContainer`
 - Mock 使用 `mocktail`，测试工厂函数集中在 `test/helpers/test_helpers.dart`

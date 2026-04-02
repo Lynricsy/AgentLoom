@@ -20,6 +20,8 @@ const {
   mockMemoryResourceProvider,
   mockSkillResolverService,
   mockMcpService,
+  mockSelfEvolutionToolsProvider,
+  mockSmartRoutingService,
 } = vi.hoisted(() => ({
   mockDbSelectChain: {
     from: vi.fn().mockReturnThis(),
@@ -88,6 +90,12 @@ const {
   },
   mockMcpService: {
     resolveRuntimeConnection: vi.fn(),
+  },
+  mockSelfEvolutionToolsProvider: {
+    createSessionToolProvider: vi.fn(),
+  },
+  mockSmartRoutingService: {
+    evaluate: vi.fn(),
   },
 }));
 
@@ -277,6 +285,8 @@ describe('AgentExecutionWorker', () => {
     mockSkillResolverService.resolveSkillsForAgent.mockReset();
     mockSkillResolverService.buildSkillAugmentedPrompt.mockReset();
     mockMcpService.resolveRuntimeConnection.mockReset();
+    mockSelfEvolutionToolsProvider.createSessionToolProvider.mockReset();
+    mockSmartRoutingService.evaluate.mockReset();
 
     worker = new AgentExecutionWorker(
       mockDb as never,
@@ -294,6 +304,9 @@ describe('AgentExecutionWorker', () => {
       mockSkillResolverService as never,
       undefined,
       mockMcpService as never,
+      undefined,
+      mockSelfEvolutionToolsProvider as never,
+      mockSmartRoutingService as never,
     );
     workerInternals = worker as unknown as WorkerInternals;
   });
@@ -615,7 +628,6 @@ describe('AgentExecutionWorker', () => {
       expect(persistSpy).toHaveBeenCalledWith(
         'conversation-1',
         'tenant-1',
-        expect.any(Object),
         [
           expect.objectContaining({
             id: 'message-1',
@@ -713,6 +725,7 @@ describe('AgentExecutionWorker', () => {
         expect.any(AbortSignal),
         expect.objectContaining({ abortControllers: expect.any(Map) }),
         'agent-1',
+        [],
       );
     });
   });
@@ -742,6 +755,7 @@ describe('AgentExecutionWorker', () => {
         expect.any(AbortSignal),
         expect.objectContaining({ abortControllers: expect.any(Map) }),
         'agent-1',
+        [],
       );
     });
 
@@ -938,6 +952,70 @@ describe('AgentExecutionWorker', () => {
     });
   });
 
+  describe('loadConversationExecutionContext() — memory source priority', () => {
+    it('应优先保留画布编译出的 memoryInstanceIds，仅在缺失时才回退 metadata 默认值', async () => {
+      const contextLoader = worker as unknown as {
+        loadConversationExecutionContext: (
+          conversationId: string,
+          tenantId: string,
+        ) => Promise<{
+          runtimeConfig: {
+            memoryInstanceIds?: string[];
+          };
+          memoryInstanceIds: string[];
+        } | null>;
+      };
+
+      const selectChain = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn(),
+      };
+      mockDb.select.mockReturnValue(selectChain);
+      selectChain.limit
+        .mockResolvedValueOnce([
+          {
+            id: 'conversation-1',
+            agentDefinitionId: 'agent-1',
+            tenantId: 'tenant-1',
+            status: 'active',
+            metadata: {},
+          },
+        ])
+        .mockResolvedValueOnce([
+          {
+            id: 'agent-1',
+            publishedVersionId: null,
+            systemPrompt: 'system',
+            nodes: [],
+            edges: [],
+            sandboxConfig: null,
+            metadata: {
+              memoryInstanceIds: ['legacy-memory-instance'],
+            },
+          },
+        ]);
+      mockAgentDefinitionService.compileCanvas.mockResolvedValue({
+        modelConfig: { modelId: 'model-1' },
+        memoryInstanceIds: ['canvas-memory-instance'],
+      });
+
+      const context = await contextLoader.loadConversationExecutionContext(
+        'conversation-1',
+        'tenant-1',
+      );
+
+      expect(context).toEqual(
+        expect.objectContaining({
+          memoryInstanceIds: ['canvas-memory-instance'],
+          runtimeConfig: expect.objectContaining({
+            memoryInstanceIds: ['canvas-memory-instance'],
+          }),
+        }),
+      );
+    });
+  });
+
   describe('prepareRuntimeSession() — runtime routing', () => {
     it('sandbox 配置存在时应选择 SandboxAgentAdapter', async () => {
       const runtimeSessionWorker = worker as unknown as {
@@ -1038,6 +1116,123 @@ describe('AgentExecutionWorker', () => {
       );
       expect(mockRuntime.createSession).not.toHaveBeenCalled();
       expect(result.runtime).toBe(mockSandboxRuntime);
+    });
+
+    it('smart-routing 候选模型存在时应在建会话前选中运行模型', async () => {
+      const runtimeSessionWorker = worker as unknown as {
+        prepareRuntimeSession: (
+          context: Record<string, unknown>,
+          conversationId: string,
+          tenantId: string,
+          parentAbortSignal: AbortSignal,
+          subAgentTracker: { abortControllers: Map<string, AbortController> },
+          currentAgentDefinitionId: string,
+          initialPendingMessages?: Array<{
+            id: string;
+            content: string;
+            createdAt: Date;
+          }>,
+        ) => Promise<{
+          runtime: typeof mockSandboxRuntime;
+          session: ReturnType<typeof makeSession>;
+        }>;
+      };
+
+      mockSmartRoutingService.evaluate.mockResolvedValue({
+        selectedModelId: 'model-2',
+        strategy: 'FALLBACK_CHAIN',
+        reasoning: '优先使用第二个候选模型',
+        evaluatedModels: [],
+        latencyMs: 7,
+      });
+      mockLlmService.findById.mockImplementation(async (id: string) => ({
+        id,
+        orgId: 'org-1',
+        tenantId: 'tenant-1',
+        name: `Model ${id}`,
+        providerId: 'provider-1',
+        modelId: id === 'model-2' ? 'claude-sonnet-4-6' : 'claude-opus-4-6',
+        modelType: 'chat',
+        isEnabled: true,
+        capabilities: {},
+        contextWindow: null,
+        maxOutputTokens: null,
+        pricing: null,
+        metadataSource: null,
+        embeddingDimensions: null,
+        parameters: { baseUrl: 'https://models.example.test/v1' },
+        timeoutMs: 120000,
+        isDefault: false,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        provider: {
+          id: 'provider-1',
+          orgId: 'org-1',
+          tenantId: 'tenant-1',
+          slug: 'private_cloud',
+          name: 'Private Cloud',
+          iconUrl: null,
+          baseUrl: 'https://models.example.test/v1',
+          defaultBaseUrl: null,
+          isBuiltin: false,
+          isEnabled: true,
+          apiProtocol: 'openai_chat',
+          apiKeyId: 'api-key-1',
+          sortOrder: 0,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        },
+      }));
+      mockSandboxRuntime.createSession.mockResolvedValue(
+        makeSession({ id: 'sandbox-session-routing' }),
+      );
+
+      await runtimeSessionWorker.prepareRuntimeSession(
+        makeActiveContext({
+          runtimeConfig: {
+            sandboxConfig: { image: 'agentloom/sandbox:latest' },
+            routingConfig: {
+              strategy: 'FALLBACK_CHAIN',
+              candidateModelIds: ['model-1', 'model-2'],
+            },
+          },
+        }),
+        'conversation-1',
+        'tenant-1',
+        new AbortController().signal,
+        { abortControllers: new Map() },
+        'agent-1',
+        [{ id: 'message-1', content: '请总结这个需求', createdAt: new Date() }],
+      );
+
+      expect(mockSmartRoutingService.evaluate).toHaveBeenCalledWith(
+        ['model-1', 'model-2'],
+        expect.objectContaining({
+          taskType: 'agent_conversation',
+          inputTokenCount: expect.any(Number),
+        }),
+        'FALLBACK_CHAIN',
+        'tenant-1',
+      );
+      expect(mockSandboxService.createSandboxSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          piConfigInput: expect.objectContaining({
+            modelConfig: expect.objectContaining({
+              model: 'claude-sonnet-4-6',
+            }),
+          }),
+        }),
+      );
+      expect(mockSandboxRuntime.createSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          llmModelConfigId: 'model-2',
+          runtimeConfig: expect.objectContaining({
+            modelConfig: expect.objectContaining({
+              modelId: 'model-2',
+            }),
+          }),
+        }),
+      );
     });
 
     it('会把启用的 MCP 绑定编译进 piConfigInput.mcpServers', async () => {
@@ -1186,6 +1381,10 @@ describe('AgentExecutionWorker', () => {
           name: 'E2E Skill',
           description: '用于验证 skill 文件编译',
           content: '# Skill Body',
+          files: {
+            'SKILL.md': '# Skill Body',
+            'resource-management.md': '## Resource management',
+          },
         },
       ]);
       mockSandboxRuntime.createSession.mockResolvedValue(
@@ -1228,7 +1427,10 @@ describe('AgentExecutionWorker', () => {
               {
                 name: 'E2E Skill',
                 description: '用于验证 skill 文件编译',
-                files: { 'SKILL.md': '# Skill Body' },
+                files: {
+                  'SKILL.md': '# Skill Body',
+                  'resource-management.md': '## Resource management',
+                },
               },
             ],
           }),
@@ -1327,7 +1529,178 @@ describe('AgentExecutionWorker', () => {
     });
   });
 
+  describe('registerSelfEvolutionToolsProvider()', () => {
+    it('启用 selfEvolutionPolicy 时应注册 self-evolution tools provider', async () => {
+      const runtime = {
+        registerSessionToolProvider: vi.fn(),
+      };
+      const provider = vi.fn();
+      mockSelfEvolutionToolsProvider.createSessionToolProvider.mockReturnValue(
+        provider,
+      );
+      mockDb.select
+        .mockImplementationOnce(() => ({
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              limit: vi.fn().mockResolvedValue([{ createdBy: 'user-1' }]),
+            }),
+          }),
+        }))
+        .mockImplementationOnce(() => ({
+          from: vi.fn().mockReturnValue({
+            where: vi.fn().mockReturnValue({
+              limit: vi.fn().mockResolvedValue([{ name: '当前 Agent' }]),
+            }),
+          }),
+        }));
+
+      await (worker as any).registerSelfEvolutionToolsProvider({
+        runtime,
+        sessionId: 'session-1',
+        runtimeConfig: {
+          selfEvolutionPolicy: {
+            enabled: true,
+            resourceManagement: true,
+            externalEditing: true,
+            sandboxManagement: true,
+          },
+        },
+        conversationId: 'conversation-1',
+        tenantId: 'tenant-1',
+        currentAgentDefinitionId: 'agent-1',
+      });
+
+      expect(
+        mockSelfEvolutionToolsProvider.createSessionToolProvider,
+      ).toHaveBeenCalledWith({
+        sessionId: 'session-1',
+        conversationId: 'conversation-1',
+        tenantId: 'tenant-1',
+        currentAgentDefinitionId: 'agent-1',
+        runtimeConfig: {
+          selfEvolutionPolicy: {
+            enabled: true,
+            resourceManagement: true,
+            externalEditing: true,
+            sandboxManagement: true,
+          },
+        },
+        actorUserId: 'user-1',
+        currentAgentName: '当前 Agent',
+      });
+      expect(runtime.registerSessionToolProvider).toHaveBeenCalledWith(
+        'session-1',
+        provider,
+      );
+    });
+  });
+
   describe('runConversationTurn() — tool event merge', () => {
+    it('input-preprocessor 存在时应在 runtime.prompt 前改写最新用户输入', async () => {
+      const turnWorker = worker as unknown as {
+        runConversationTurn: (
+          runtime: typeof mockRuntime,
+          session: ReturnType<typeof makeSession>,
+          conversationId: string,
+          tenantId: string,
+          pendingMessages: Array<{
+            id: string;
+            content: string;
+            createdAt: Date;
+          }>,
+          hasPriorTurns: boolean,
+        ) => Promise<{
+          assistantText: string;
+          stopReason: string;
+        }>;
+      };
+
+      mockRuntime.prompt.mockReturnValueOnce(
+        createAsyncIterable([{ type: 'done', stopReason: 'end_turn' }]),
+      );
+
+      await turnWorker.runConversationTurn(
+        mockRuntime as never,
+        makeSession({
+          runtimeConfig: {
+            inputPreprocessors: [
+              {
+                type: 'script',
+                config: {
+                  expression:
+                    "({ marker: 'PREPROCESSED', value: input.text.toUpperCase() })",
+                },
+              },
+            ],
+          },
+        }),
+        'conversation-1',
+        'tenant-1',
+        [{ id: 'message-1', content: 'hello', createdAt: new Date() }],
+        false,
+      );
+
+      expect(mockRuntime.prompt).toHaveBeenCalledWith('session-1', [
+        {
+          type: 'text',
+          text:
+            '{\n  "marker": "PREPROCESSED",\n  "value": "HELLO"\n}',
+        },
+      ]);
+    });
+
+    it('input-preprocessor 应兼容 template 别名配置', async () => {
+      const turnWorker = worker as unknown as {
+        runConversationTurn: (
+          runtime: typeof mockRuntime,
+          session: ReturnType<typeof makeSession>,
+          conversationId: string,
+          tenantId: string,
+          pendingMessages: Array<{
+            id: string;
+            content: string;
+            createdAt: Date;
+          }>,
+          hasPriorTurns: boolean,
+        ) => Promise<{
+          assistantText: string;
+          stopReason: string;
+        }>;
+      };
+
+      mockRuntime.prompt.mockReturnValueOnce(
+        createAsyncIterable([{ type: 'done', stopReason: 'end_turn' }]),
+      );
+
+      await turnWorker.runConversationTurn(
+        mockRuntime as never,
+        makeSession({
+          runtimeConfig: {
+            inputPreprocessors: [
+              {
+                type: 'template',
+                config: {
+                  template: '预处理={{text}}',
+                  output_format: 'text',
+                },
+              },
+            ],
+          },
+        }),
+        'conversation-1',
+        'tenant-1',
+        [{ id: 'message-1', content: 'hello', createdAt: new Date() }],
+        false,
+      );
+
+      expect(mockRuntime.prompt).toHaveBeenCalledWith('session-1', [
+        {
+          type: 'text',
+          text: '预处理=hello',
+        },
+      ]);
+    });
+
     it('后续事件缺失 toolName 时应保留先前的真实工具名', async () => {
       const turnWorker = worker as unknown as {
         runConversationTurn: (

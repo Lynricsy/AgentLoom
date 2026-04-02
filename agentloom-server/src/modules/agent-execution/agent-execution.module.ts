@@ -29,6 +29,10 @@ import { LlmModule } from '../llm/llm.module';
 import { LlmService } from '../llm/llm.service';
 import { McpModule } from '../mcp/mcp.module';
 import { McpService } from '../mcp/mcp.service';
+import { SelfEvolutionModule } from '../self-evolution/self-evolution.module';
+import { SelfEvolutionToolsProvider } from '../self-evolution/self-evolution-tools.provider';
+import { SmartRoutingModule } from '../smart-routing/smart-routing.module';
+import { SmartRoutingService } from '../smart-routing/smart-routing.service';
 import { SkillModule } from '../skill/skill.module';
 import { SkillResolverService } from '../skill/skill-resolver.service';
 import { ConversationTitleService } from '../agent-conversation/conversation-title.service';
@@ -75,6 +79,8 @@ const agentExecutionWorkerProvider: Provider = {
     subAgentToolsProvider?: SubAgentToolsProvider,
     mcpService?: McpService,
     conversationTitleService?: ConversationTitleService,
+    selfEvolutionToolsProvider?: SelfEvolutionToolsProvider,
+    smartRoutingService?: SmartRoutingService,
   ) =>
     new AgentExecutionWorker(
       db,
@@ -93,6 +99,8 @@ const agentExecutionWorkerProvider: Provider = {
       subAgentToolsProvider,
       mcpService,
       conversationTitleService,
+      selfEvolutionToolsProvider,
+      smartRoutingService,
     ),
   inject: [
     DRIZZLE,
@@ -111,6 +119,8 @@ const agentExecutionWorkerProvider: Provider = {
     { token: SubAgentToolsProvider, optional: true },
     { token: McpService, optional: true },
     { token: ConversationTitleService, optional: true },
+    { token: SelfEvolutionToolsProvider, optional: true },
+    { token: SmartRoutingService, optional: true },
   ],
 };
 
@@ -124,8 +134,10 @@ const agentExecutionWorkerProvider: Provider = {
     SandboxModule,
     AgentMemoryModule,
     McpModule,
+    SmartRoutingModule,
     SkillModule,
     LlmModule,
+    SelfEvolutionModule,
     BullModule.registerQueue({
       name: AGENT_CONVERSATION_EXECUTION_QUEUE,
       defaultJobOptions: AGENT_CONVERSATION_EXECUTION_QUEUE_DEFAULT_JOB_OPTIONS,

@@ -57,6 +57,20 @@ export interface AgentRoutingConfig {
   fallbackChain?: string[]
 }
 
+export interface AgentNativeToolPolicy {
+  readEnabled: boolean
+  writeEnabled: boolean
+  editEnabled: boolean
+  terminalEnabled: boolean
+}
+
+export interface AgentSelfEvolutionPolicy {
+  enabled: boolean
+  resourceManagement: boolean
+  externalEditing: boolean
+  sandboxManagement: boolean
+}
+
 export interface AgentRuntimeConfig {
   modelConfig?: AgentModelConfig
   tools?: AgentToolBinding[]
@@ -65,6 +79,8 @@ export interface AgentRuntimeConfig {
   inputPreprocessors?: AgentInputPreprocessor[]
   sandboxConfig?: AgentGlobalSandboxConfig
   routingConfig?: AgentRoutingConfig
+  nativeToolPolicy?: AgentNativeToolPolicy
+  selfEvolutionPolicy?: AgentSelfEvolutionPolicy
 }
 
 export interface AgentVersionSnapshot {

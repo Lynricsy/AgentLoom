@@ -95,6 +95,20 @@ export interface AgentRoutingConfig {
   fallbackModelId?: string;
 }
 
+export interface AgentNativeToolPolicy {
+  readEnabled: boolean;
+  writeEnabled: boolean;
+  editEnabled: boolean;
+  terminalEnabled: boolean;
+}
+
+export interface AgentSelfEvolutionPolicy {
+  enabled: boolean;
+  resourceManagement: boolean;
+  externalEditing: boolean;
+  sandboxManagement: boolean;
+}
+
 export interface AgentRuntimeConfig {
   modelConfig?: AgentModelConfig;
   tools?: AgentToolBinding[];
@@ -105,4 +119,6 @@ export interface AgentRuntimeConfig {
   routingConfig?: AgentRoutingConfig;
   memoryInstanceIds?: string[];
   skillIds?: string[];
+  nativeToolPolicy?: AgentNativeToolPolicy;
+  selfEvolutionPolicy?: AgentSelfEvolutionPolicy;
 }

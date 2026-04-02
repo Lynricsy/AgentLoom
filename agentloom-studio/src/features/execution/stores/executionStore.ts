@@ -105,6 +105,7 @@ export interface ExecutionStoreActions {
       stepId: string,
       toolCallId: string,
       action: 'approve' | 'deny',
+      rememberScope?: 'none' | 'conversation_category',
     ) => Promise<void>
     applySnapshot: (snapshot: ExecutionStateSnapshot) => void
     initExecution: (executionId: string) => void
@@ -428,7 +429,8 @@ export const useExecutionStore = create<
                 args: event.data.args ?? existing?.args,
                 result: event.data.result ?? existing?.result,
                 error: event.data.error ?? existing?.error,
-                permissionRequest: existing?.permissionRequest,
+                permissionRequest:
+                  event.data.permissionRequest ?? existing?.permissionRequest,
               }
               pushEvent(state, event)
             })
@@ -495,9 +497,11 @@ export const useExecutionStore = create<
             stepId: string,
             toolCallId: string,
             action: 'approve' | 'deny',
+            rememberScope: 'none' | 'conversation_category' = 'none',
           ) => {
             await resolveToolPermission(executionId, stepId, toolCallId, {
               action,
+              ...(rememberScope !== 'none' ? { rememberScope } : {}),
             })
           },
 

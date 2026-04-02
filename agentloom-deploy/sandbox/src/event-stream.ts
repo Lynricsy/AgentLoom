@@ -44,14 +44,21 @@ export function translateEvent(event: SandboxAgentEvent): SseEventParams | null 
         toolCallId: event.toolCallId,
         toolName: event.toolName,
         content: readToolExecutionUpdateContent(event),
+        status: readToolExecutionUpdateStatus(event),
+        permissionRequest: readToolExecutionPermissionRequest(
+          event.partialResult,
+        ),
       };
     case 'tool_execution_end':
+      const normalizedToolResult = normalizeToolExecutionEndResult(event.result);
       return {
         type: 'tool_call_end',
         toolCallId: event.toolCallId,
         toolName: event.toolName,
-        result: event.result,
+        result: normalizedToolResult.result,
         isError: event.isError,
+        status: normalizedToolResult.status,
+        permissionRequest: normalizedToolResult.permissionRequest,
       };
     case 'pty_spawned':
       return {
@@ -250,6 +257,51 @@ function readToolExecutionUpdateContent(
   }
 
   return undefined;
+}
+
+function readToolExecutionUpdateStatus(
+  event: Extract<SandboxAgentEvent, { type: 'tool_execution_update' }>,
+): string | undefined {
+  if (isRecord(event.partialResult) && typeof event.partialResult.status === 'string') {
+    return event.partialResult.status;
+  }
+
+  return undefined;
+}
+
+function readToolExecutionPermissionRequest(
+  value: unknown,
+): Record<string, unknown> | undefined {
+  if (!isRecord(value) || !isRecord(value.permissionRequest)) {
+    return undefined;
+  }
+
+  return value.permissionRequest;
+}
+
+function normalizeToolExecutionEndResult(value: unknown): {
+  result: unknown;
+  status?: string;
+  permissionRequest?: Record<string, unknown>;
+} {
+  if (!isRecord(value)) {
+    return { result: value };
+  }
+
+  const status =
+    typeof value.__agentloomToolStatus === 'string'
+      ? value.__agentloomToolStatus
+      : undefined;
+  const permissionRequest = isRecord(value.permissionRequest)
+    ? value.permissionRequest
+    : undefined;
+  const result = 'payload' in value ? value.payload : value;
+
+  return {
+    result,
+    ...(status ? { status } : {}),
+    ...(permissionRequest ? { permissionRequest } : {}),
+  };
 }
 
 function readToolResultText(value: unknown): string | undefined {

@@ -30,6 +30,16 @@ export interface ToolCallTransitionRecord {
 export interface ToolPermissionRequest {
   readonly description: string;
   readonly resourcePaths?: readonly string[];
+  readonly domain?: string;
+  readonly category?: string;
+  readonly riskLevel?: 'low' | 'medium' | 'high';
+  readonly sourceLabel?: string;
+  readonly targetType?: string;
+  readonly targetLabel?: string;
+  readonly approveEffect?: string;
+  readonly denyEffect?: string;
+  readonly diffPreview?: Record<string, unknown>;
+  readonly rememberable?: boolean;
 }
 
 export interface ToolCallEvent {

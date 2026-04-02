@@ -41,6 +41,16 @@ export interface ToolCallData {
   permissionDescription?: string
   /** 权限请求涉及的资源路径 */
   permissionResourcePaths?: string[]
+  permissionDomain?: string
+  permissionCategory?: string
+  permissionRiskLevel?: 'low' | 'medium' | 'high'
+  permissionSourceLabel?: string
+  permissionTargetType?: string
+  permissionTargetLabel?: string
+  permissionApproveEffect?: string
+  permissionDenyEffect?: string
+  permissionDiffPreview?: Record<string, unknown>
+  permissionRememberable?: boolean
 }
 
 /**

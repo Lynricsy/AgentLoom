@@ -42,6 +42,7 @@ describe('RagService', () => {
     select: Mock;
     from: Mock;
     where: Mock;
+    orderBy: Mock;
     limit: Mock;
   };
   let eventEmitter: { emit: Mock };
@@ -74,11 +75,13 @@ describe('RagService', () => {
       select: vi.fn(),
       from: vi.fn(),
       where: vi.fn(),
+      orderBy: vi.fn(),
       limit: vi.fn(),
     };
     mockDb.select.mockReturnValue(mockDb);
     mockDb.from.mockReturnValue(mockDb);
     mockDb.where.mockReturnValue(mockDb);
+    mockDb.orderBy.mockReturnValue(mockDb);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -463,6 +466,188 @@ describe('RagService', () => {
           charOffset: 120,
           charLength: 20,
         },
+      }),
+    ]);
+  });
+
+  it('searchSingleKnowledgeBase 在缺少向量集合时应回退 lexical search', async () => {
+    const lexicalNode = new TextNode({
+      id_: 'lexical-node-1',
+      text: 'KB-ALPHA-20260329-FOX',
+      metadata: {
+        documentId: 'doc-lexical',
+        fileName: 'qa.txt',
+        sourceSectionIndex: 2,
+      },
+    });
+
+    vectorStoreService.collectionExists.mockResolvedValue(false);
+    mockDb.limit.mockResolvedValueOnce([
+      {
+        id: 'lexical-node-1',
+        payload: {
+          _node_content: JSON.stringify(lexicalNode.toJSON()),
+          _node_type: 'TextNode',
+        },
+        score: 2,
+      },
+    ]);
+    vi.spyOn(
+      service as unknown as {
+        buildQueryVariants: (
+          query: string,
+          tenantId: string,
+          orchestration: unknown,
+        ) => Promise<string[]>;
+      },
+      'buildQueryVariants',
+    ).mockResolvedValue(['QA KB 20260329 的唯一校验码是什么？']);
+
+    const result = await (
+      service as unknown as {
+        searchSingleKnowledgeBase: (
+          query: string,
+          tenantId: string,
+          knowledgeBase: {
+            id: string;
+            tenantId: string;
+            embeddingModel: string;
+            embeddingModelConfigId: string | null;
+            chunkingStrategy: { type: 'sentence_window'; windowSize: number };
+            retrievalStrategy: {
+              topK: number;
+              similarityThreshold: number | null;
+            };
+            rerankingStrategy: { type: 'none' };
+            queryOrchestration: { type: 'none' };
+          },
+          limit: number,
+          scoreThreshold?: number,
+        ) => Promise<unknown>;
+      }
+    ).searchSingleKnowledgeBase(
+      'QA KB 20260329 的唯一校验码是什么？',
+      TENANT_ID,
+      {
+        id: KB_ID,
+        tenantId: TENANT_ID,
+        embeddingModel: 'text-embedding-3-small',
+        embeddingModelConfigId: null,
+        chunkingStrategy: { type: 'sentence_window', windowSize: 3 },
+        retrievalStrategy: { topK: 8, similarityThreshold: null },
+        rerankingStrategy: { type: 'none' },
+        queryOrchestration: { type: 'none' },
+      },
+      5,
+    );
+
+    expect(embeddingService.generateEmbeddings).not.toHaveBeenCalled();
+    expect(result).toEqual([
+      expect.objectContaining({
+        nodeId: 'lexical-node-1',
+        content: 'KB-ALPHA-20260329-FOX',
+        documentId: 'doc-lexical',
+        fileName: 'qa.txt',
+      }),
+    ]);
+  });
+
+  it('searchSingleKnowledgeBase 在 embedding 调用失败时应回退 lexical search', async () => {
+    const lexicalNode = new TextNode({
+      id_: 'lexical-node-2',
+      text: 'KB-BETA-20260329-FOX',
+      metadata: {
+        documentId: 'doc-lexical-2',
+        fileName: 'qa-beta.txt',
+        sourceSectionIndex: 4,
+      },
+    });
+
+    vectorStoreService.collectionExists.mockResolvedValue(true);
+    embeddingService.generateEmbeddings.mockRejectedValue(
+      new Error('Embedding API error 503'),
+    );
+    mockDb.limit.mockResolvedValueOnce([
+      {
+        id: 'lexical-node-2',
+        payload: {
+          _node_content: JSON.stringify(lexicalNode.toJSON()),
+          _node_type: 'TextNode',
+        },
+        score: 2,
+      },
+    ]);
+    vi.spyOn(
+      service as unknown as {
+        resolveEmbeddingConfig: (
+          tenantId: string,
+          knowledgeBaseId: string,
+        ) => Promise<unknown>;
+      },
+      'resolveEmbeddingConfig',
+    ).mockResolvedValue({
+      provider: 'private_cloud',
+      modelName: 'Qwen/Qwen3-Embedding-8B',
+      tenantId: TENANT_ID,
+      organizationId: 'org-1',
+      endpointUrl: 'https://models.example.test',
+    });
+    vi.spyOn(
+      service as unknown as {
+        buildQueryVariants: (
+          query: string,
+          tenantId: string,
+          orchestration: unknown,
+        ) => Promise<string[]>;
+      },
+      'buildQueryVariants',
+    ).mockResolvedValue(['唯一校验码是什么？']);
+
+    const result = await (
+      service as unknown as {
+        searchSingleKnowledgeBase: (
+          query: string,
+          tenantId: string,
+          knowledgeBase: {
+            id: string;
+            tenantId: string;
+            embeddingModel: string;
+            embeddingModelConfigId: string | null;
+            chunkingStrategy: { type: 'sentence_window'; windowSize: number };
+            retrievalStrategy: {
+              topK: number;
+              similarityThreshold: number | null;
+            };
+            rerankingStrategy: { type: 'none' };
+            queryOrchestration: { type: 'none' };
+          },
+          limit: number,
+          scoreThreshold?: number,
+        ) => Promise<unknown>;
+      }
+    ).searchSingleKnowledgeBase(
+      '唯一校验码是什么？',
+      TENANT_ID,
+      {
+        id: KB_ID,
+        tenantId: TENANT_ID,
+        embeddingModel: 'Qwen/Qwen3-Embedding-8B',
+        embeddingModelConfigId: 'model-embedding-1',
+        chunkingStrategy: { type: 'sentence_window', windowSize: 3 },
+        retrievalStrategy: { topK: 8, similarityThreshold: null },
+        rerankingStrategy: { type: 'none' },
+        queryOrchestration: { type: 'none' },
+      },
+      5,
+    );
+
+    expect(vectorStoreService.search).not.toHaveBeenCalled();
+    expect(result).toEqual([
+      expect.objectContaining({
+        nodeId: 'lexical-node-2',
+        content: 'KB-BETA-20260329-FOX',
+        documentId: 'doc-lexical-2',
+        fileName: 'qa-beta.txt',
       }),
     ]);
   });

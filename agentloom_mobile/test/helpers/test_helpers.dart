@@ -353,6 +353,7 @@ AgentDefinitionDto createTestAgent({
   int? version = 1,
   String createdAt = '2026-01-01T00:00:00.000Z',
   String updatedAt = '2026-01-01T00:00:00.000Z',
+  List<Map<String, dynamic>> nodes = const [],
 }) {
   return AgentDefinitionDto(
     id: id,
@@ -369,6 +370,7 @@ AgentDefinitionDto createTestAgent({
     version: version,
     createdAt: createdAt,
     updatedAt: updatedAt,
+    nodes: nodes,
   );
 }
 

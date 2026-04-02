@@ -176,6 +176,69 @@ void main() {
     );
   });
 
+  test('历史消息中的 MCP 文本信封结果应保留结构化 restartSuggestion', () async {
+    when(() => mockApi.getMessages(any())).thenAnswer(
+      (_) async => const PaginatedResponse(
+        data: [
+          ConversationMessageDto(
+            id: 'assistant-1',
+            conversationId: 'conv-001',
+            role: MessageRole.assistant,
+            content: '已完成自进化发布',
+            toolCalls: [
+              ConversationToolCallDto(
+                id: 'tool-1',
+                tool: 'apply_change',
+                status: ConversationToolStatus.completed,
+                result: {
+                  'content': [
+                    {
+                      'type': 'text',
+                      'text':
+                          '{"data":{"restartSuggestion":{"available":true,"publishedVersionId":"pub-1","publishedVersionNumber":7}}}',
+                    },
+                  ],
+                },
+              ),
+            ],
+            metadata: {
+              'segments': [
+                {'type': 'tool_call', 'toolCallId': 'tool-1'},
+              ],
+            },
+            createdAt: '2026-04-02T00:00:00.000Z',
+          ),
+        ],
+        meta: PaginationMeta(
+          page: 1,
+          pageSize: 50,
+          total: 1,
+          totalPages: 1,
+        ),
+      ),
+    );
+
+    container.listen(
+      agentConversationProvider(params),
+      (_, __) {},
+      fireImmediately: true,
+    );
+
+    await container.read(authProvider.future);
+    final state = await container.read(agentConversationProvider(params).future);
+
+    expect(
+      (state.messages.first.toolCalls.first.result as Map<String, dynamic>)['data'],
+      equals({
+        'restartSuggestion': {
+          'available': true,
+          'publishedVersionId': 'pub-1',
+          'publishedVersionNumber': 7,
+        },
+      }),
+    );
+  });
+
   test('已完成会话只保留目录树时应进入 tree-only 模式并停止再次请求文件预览', () async {
     when(() => mockApi.getWorkspaceTree(any())).thenAnswer(
       (_) async => const [
@@ -234,6 +297,98 @@ void main() {
         .value;
     expect(stateAfterSecondTap!.selectedFilePath, 'summary.txt');
     expect(stateAfterSecondTap.workspaceTreeOnly, isTrue);
+  });
+
+  test('resolveToolPermission 应透传 rememberScope 并更新本地工具状态', () async {
+    when(() => mockApi.getMessages(any())).thenAnswer(
+      (_) async => const PaginatedResponse(
+        data: [
+          ConversationMessageDto(
+            id: 'assistant-1',
+            conversationId: 'conv-001',
+            role: MessageRole.assistant,
+            content: '准备修改自身编排',
+            toolCalls: [
+              ConversationToolCallDto(
+                id: 'tool-1',
+                tool: 'apply_change',
+                status: ConversationToolStatus.awaitingPermission,
+              ),
+            ],
+            metadata: {
+              'segments': [
+                {'type': 'tool_call', 'toolCallId': 'tool-1'},
+              ],
+            },
+            createdAt: '2026-04-02T00:00:00.000Z',
+          ),
+        ],
+        meta: PaginationMeta(page: 1, pageSize: 50, total: 1, totalPages: 1),
+      ),
+    );
+    when(
+      () => mockApi.resolveToolPermission(
+        any(),
+        any(),
+        action: any(named: 'action'),
+        rememberScope: any(named: 'rememberScope'),
+      ),
+    ).thenAnswer((_) async {});
+
+    container.listen(
+      agentConversationProvider(params),
+      (_, __) {},
+      fireImmediately: true,
+    );
+    await container.read(authProvider.future);
+    await container.read(agentConversationProvider(params).future);
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    final notifier = container.read(agentConversationProvider(params).notifier);
+    await notifier.resolveToolPermission(
+      'tool-1',
+      'approve',
+      rememberScope: 'conversation_category',
+    );
+
+    verify(
+      () => mockApi.resolveToolPermission(
+        'conv-001',
+        'tool-1',
+        action: 'approve',
+        rememberScope: 'conversation_category',
+      ),
+    ).called(1);
+
+    final state = container.read(agentConversationProvider(params)).value;
+    final toolCall = state!.messages.single.toolCalls.single;
+    expect(toolCall.status, ConversationToolStatus.inProgress);
+    expect(toolCall.transitions.last.source, 'user');
+    expect(toolCall.transitions.last.to, ConversationToolStatus.inProgress);
+  });
+
+  test('restartConversationToLatestVersion 应返回新会话 id', () async {
+    when(() => mockApi.restartConversationToLatestVersion(any())).thenAnswer(
+      (_) async => 'conv-002',
+    );
+
+    container.listen(
+      agentConversationProvider(params),
+      (_, __) {},
+      fireImmediately: true,
+    );
+    await container.read(authProvider.future);
+    await container.read(agentConversationProvider(params).future);
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    final notifier = container.read(agentConversationProvider(params).notifier);
+    final nextConversationId =
+        await notifier.restartConversationToLatestVersion();
+
+    expect(nextConversationId, 'conv-002');
+    verify(
+      () => mockApi.restartConversationToLatestVersion('conv-001'),
+    ).called(1);
   });
 }
 

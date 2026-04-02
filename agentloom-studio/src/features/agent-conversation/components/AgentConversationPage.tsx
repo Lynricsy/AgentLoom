@@ -7,6 +7,7 @@ import {
   type KeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import {
   Send,
   Square,
@@ -361,6 +362,7 @@ export function AgentConversationPage({
   conversationId,
   onBack,
 }: AgentConversationPageProps) {
+  const navigate = useNavigate();
   const messages = useConversationMessages();
   const status = useConversationStatus();
   const actions = useConversationActions();
@@ -451,6 +453,21 @@ export function AgentConversationPage({
     () => ({ onDrillIn: actions.pushAgentView }),
     [actions.pushAgentView],
   );
+
+  const handleRestartConversation = useCallback(async () => {
+    const nextConversationId = await actions.restartToLatestVersion();
+    if (!nextConversationId) {
+      return;
+    }
+
+    navigate({
+      to: "/agents/$agentId/conversations/$conversationId",
+      params: {
+        agentId,
+        conversationId: nextConversationId,
+      },
+    });
+  }, [actions, agentId, navigate]);
 
   // 从最新的 assistant 消息中提取当前活跃的工具调用（用于 Computer 面板联动）
   const activeToolCall = useMemo<ToolCallData | undefined>(() => {
@@ -553,6 +570,7 @@ export function AgentConversationPage({
               <MessageList
                 messages={displayMessages}
                 isExecuting={isExecuting && !isSubAgentView}
+                onRestartConversation={handleRestartConversation}
               />
             </div>
             {!isSubAgentView && (

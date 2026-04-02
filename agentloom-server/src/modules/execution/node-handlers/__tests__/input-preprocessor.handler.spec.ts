@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import {
   InputPreprocessorHandlerImpl,
   InputPreprocessorConfig,
+  normalizeInputPreprocessorConfig,
 } from '../input-preprocessor.handler';
 
 describe('InputPreprocessorHandlerImpl', () => {
@@ -12,6 +13,34 @@ describe('InputPreprocessorHandlerImpl', () => {
   });
 
   describe('共通行为', () => {
+    it('normalizeInputPreprocessorConfig 应兼容 template/output_format/transform_type 别名', () => {
+      expect(
+        normalizeInputPreprocessorConfig({
+          transform_type: 'template',
+          template: 'Hello, {{name}}!',
+          output_format: 'text',
+        }),
+      ).toEqual({
+        transformType: 'template',
+        expression: 'Hello, {{name}}!',
+        outputFormat: 'text',
+      });
+    });
+
+    it('normalizeInputPreprocessorConfig 应允许 fallback transformType', () => {
+      expect(
+        normalizeInputPreprocessorConfig(
+          {
+            template: 'Hi',
+          },
+          'template',
+        ),
+      ).toEqual({
+        transformType: 'template',
+        expression: 'Hi',
+      });
+    });
+
     it('expression 为空时抛出错误', async () => {
       const config: InputPreprocessorConfig = {
         transformType: 'jmespath',

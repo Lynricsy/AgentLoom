@@ -91,6 +91,11 @@ Map<String, dynamic> _asMap(Object? value) {
   return <String, dynamic>{};
 }
 
+Map<String, dynamic>? _asNullableMap(Object? value) {
+  final map = _asMap(value);
+  return map.isEmpty ? null : map;
+}
+
 String? _readString(Object? value) {
   if (value is String && value.trim().isNotEmpty) {
     return value;
@@ -223,14 +228,59 @@ ConversationToolPermissionRequestDto? _normalizePermissionRequest(
   final resourcePaths = _readStringList(
     payload['resourcePaths'] ?? payload['resource_paths'],
   );
+  final domain = _readString(payload['domain']);
+  final category = _readString(payload['category']);
+  final riskLevel = _readString(payload['riskLevel'] ?? payload['risk_level']);
+  final sourceLabel = _readString(
+    payload['sourceLabel'] ?? payload['source_label'],
+  );
+  final targetType = _readString(
+    payload['targetType'] ?? payload['target_type'],
+  );
+  final targetLabel = _readString(
+    payload['targetLabel'] ?? payload['target_label'],
+  );
+  final approveEffect = _readString(
+    payload['approveEffect'] ?? payload['approve_effect'],
+  );
+  final denyEffect = _readString(
+    payload['denyEffect'] ?? payload['deny_effect'],
+  );
+  final diffPreview = _asNullableMap(
+    payload['diffPreview'] ?? payload['diff_preview'],
+  );
+  final rememberable = _readBool(
+    payload['rememberable'] ?? payload['remember_able'],
+  );
 
-  if (description == null && resourcePaths.isEmpty) {
+  if (description == null &&
+      resourcePaths.isEmpty &&
+      domain == null &&
+      category == null &&
+      riskLevel == null &&
+      sourceLabel == null &&
+      targetType == null &&
+      targetLabel == null &&
+      approveEffect == null &&
+      denyEffect == null &&
+      diffPreview == null &&
+      rememberable == null) {
     return null;
   }
 
   return ConversationToolPermissionRequestDto(
     description: description,
     resourcePaths: resourcePaths,
+    domain: domain,
+    category: category,
+    riskLevel: riskLevel,
+    sourceLabel: sourceLabel,
+    targetType: targetType,
+    targetLabel: targetLabel,
+    approveEffect: approveEffect,
+    denyEffect: denyEffect,
+    diffPreview: diffPreview,
+    rememberable: rememberable,
   );
 }
 
@@ -284,23 +334,16 @@ String? _extractThinkingContent(Map<String, dynamic> metadata) {
 }
 
 Object? _unwrapMcpResult(Object? value) {
-  var parsed = value;
-  if (value is String) {
-    try {
-      parsed = jsonDecode(value);
-    } catch (_) {
-      return value;
-    }
-  }
+  final parsed = _parseJsonLike(value);
 
   final payload = _asMap(parsed);
   if (payload.isEmpty) {
-    return value;
+    return parsed;
   }
 
   final content = payload['content'];
   if (content is! List || content.isEmpty) {
-    return value;
+    return parsed;
   }
 
   final textParts = <String>[];
@@ -311,7 +354,23 @@ Object? _unwrapMcpResult(Object? value) {
     }
   }
 
-  return textParts.isEmpty ? value : textParts.join('');
+  if (textParts.isEmpty) {
+    return parsed;
+  }
+
+  return _parseJsonLike(textParts.join(''));
+}
+
+Object? _parseJsonLike(Object? value) {
+  if (value is! String) {
+    return value;
+  }
+
+  try {
+    return jsonDecode(value);
+  } catch (_) {
+    return value;
+  }
 }
 
 List<ConversationToolCallDto> _normalizeHistoryToolCalls(
@@ -1337,7 +1396,11 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
     }
   }
 
-  Future<void> resolveToolPermission(String toolCallId, String action) async {
+  Future<void> resolveToolPermission(
+    String toolCallId,
+    String action, {
+    String? rememberScope,
+  }) async {
     try {
       await ref
           .read(agentApiProvider)
@@ -1345,6 +1408,7 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
             params.conversationId,
             toolCallId,
             action: action,
+            rememberScope: rememberScope,
           );
       if (!ref.mounted) {
         return;
@@ -1390,6 +1454,20 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
         return;
       }
       _updateState((current) => current.copyWith(error: '处理工具权限失败：$error'));
+    }
+  }
+
+  Future<String?> restartConversationToLatestVersion() async {
+    try {
+      return await ref
+          .read(agentApiProvider)
+          .restartConversationToLatestVersion(params.conversationId);
+    } catch (error) {
+      if (!ref.mounted) {
+        return null;
+      }
+      _updateState((current) => current.copyWith(error: '重启会话失败：$error'));
+      return null;
     }
   }
 

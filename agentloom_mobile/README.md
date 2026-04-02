@@ -28,8 +28,11 @@ AgentLoom Flutter 客户端，当前定位为移动优先、全端兼容的使�
   - Shell 外深链接 `/executions/:executionId`
 - Agents：
   - Agent 列表、详情、会话入口
+  - 详情页展示 `agent-main` 的 native tool 与 self-evolution 能力摘要
   - 对话页支持实时消息流、thinking 段、工具调用 / 工具结果瀑布流
   - 权限审批、终端输出、文件变更、工作区上下文面板
+  - 自进化审批支持“允许一次 / 本会话同类始终允许 / 拒绝一次 / 本会话同类始终拒绝”
+  - 已发布 Agent 完成自进化升级后，可在消息流内直接“重启到新版本”
 - Resources：
   - ResourcesHub 以无分类统一列表呈现资源入口
   - Memory
@@ -107,7 +110,7 @@ lib/
 ## 测试与验证
 
 - `flutter analyze`：静态检查通过
-- `flutter test`：当前全量测试为 `650/650` 通过
+- `flutter test`：当前全量测试为 `659/659` 通过
 - `dart run build_runner build --delete-conflicting-outputs`：更新 Freezed / JSON 生成物
 
 ## 环境文件

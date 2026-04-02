@@ -9,13 +9,14 @@ import {
   jsonToNode,
   type NodeWithScore,
 } from 'llamaindex';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import type { QdrantClient } from '@qdrant/js-client-rest';
 
 import { DRIZZLE, type DrizzleDB } from '../../../database/database.module';
 import {
   documents,
   knowledgeBases,
+  knowledgeNodes,
   organizations,
   type KnowledgeBase,
 } from '../../../database/schema';
@@ -264,11 +265,8 @@ export class RagService {
     scoreThreshold?: number,
   ): Promise<RagSearchResult[]> {
     const collectionName = this.getCollectionName(knowledgeBase.id);
-    const exists =
+    const collectionExists =
       await this.vectorStoreService.collectionExists(collectionName);
-    if (!exists) {
-      return [];
-    }
 
     const retrievalStrategy =
       this.knowledgeBaseService.getRetrievalStrategy(knowledgeBase);
@@ -286,58 +284,163 @@ export class RagService {
     const effectiveThreshold =
       scoreThreshold ?? retrievalStrategy.similarityThreshold ?? undefined;
 
-    const embeddingConfig = await this.resolveEmbeddingConfig(
-      tenantId,
-      knowledgeBase.id,
-    );
-    const embedModel = new LlamaIndexEmbeddingAdapter(
-      this.embeddingService,
-      embeddingConfig,
-    );
     const queryVariants = await this.buildQueryVariants(
       query,
       tenantId,
       queryOrchestration,
     );
+    const finalizeResults = async (
+      nodes: NodeWithScore[],
+    ): Promise<RagSearchResult[]> => {
+      const thresholdedNodes =
+        effectiveThreshold === undefined
+          ? nodes
+          : nodes.filter(
+              (node) =>
+                typeof node.score !== 'number' ||
+                node.score >= effectiveThreshold,
+            );
 
-    const queryEmbeddings = await embedModel.getTextEmbeddings(queryVariants);
-    const queryResults = await Promise.all(
-      queryEmbeddings.map((vector) =>
-        this.vectorStoreService.search({
-          collectionName,
-          vector,
-          limit: retrievalLimit,
-          scoreThreshold: effectiveThreshold,
+      const rerankedNodes = await this.applyReranker(
+        thresholdedNodes,
+        query,
+        tenantId,
+        knowledgeBase,
+        finalLimit,
+      );
+
+      return rerankedNodes
+        .slice(0, finalLimit)
+        .map((node) => this.toSearchResult(node, knowledgeBase.id));
+    };
+
+    if (collectionExists) {
+      try {
+        const embeddingConfig = await this.resolveEmbeddingConfig(
+          tenantId,
+          knowledgeBase.id,
+        );
+        const embedModel = new LlamaIndexEmbeddingAdapter(
+          this.embeddingService,
+          embeddingConfig,
+        );
+        const queryEmbeddings = await embedModel.getTextEmbeddings(queryVariants);
+        const queryResults = await Promise.all(
+          queryEmbeddings.map((vector) =>
+            this.vectorStoreService.search({
+              collectionName,
+              vector,
+              limit: retrievalLimit,
+              scoreThreshold: effectiveThreshold,
+            }),
+          ),
+        );
+        const mergedNodes = this.mergeNodeScores(
+          queryResults.flat().flatMap((result) => {
+            const hydrated = this.hydrateNodeWithScore(result);
+            return hydrated ? [hydrated] : [];
+          }),
+        );
+
+        return finalizeResults(mergedNodes);
+      } catch (error) {
+        this.logger.warn(
+          `知识库 ${knowledgeBase.id} 向量检索失败，回退 lexical search: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    } else {
+      this.logger.warn(
+        `知识库 ${knowledgeBase.id} 缺少向量集合，回退 lexical search`,
+      );
+    }
+
+    const lexicalNodes = await this.searchKnowledgeBaseLexically({
+      knowledgeBaseId: knowledgeBase.id,
+      tenantId,
+      queryVariants,
+      limit: retrievalLimit,
+    });
+    return finalizeResults(lexicalNodes);
+  }
+
+  private async searchKnowledgeBaseLexically(params: {
+    knowledgeBaseId: string;
+    tenantId: string;
+    queryVariants: string[];
+    limit: number;
+  }): Promise<NodeWithScore[]> {
+    const variantResults = await Promise.all(
+      params.queryVariants.map((queryVariant) =>
+        this.searchKnowledgeBaseLexicallyByVariant({
+          knowledgeBaseId: params.knowledgeBaseId,
+          tenantId: params.tenantId,
+          queryVariant,
+          limit: params.limit,
         }),
       ),
     );
-    const mergedNodes = this.mergeNodeScores(
-      queryResults.flat().flatMap((result) => {
-        const hydrated = this.hydrateNodeWithScore(result);
-        return hydrated ? [hydrated] : [];
-      }),
+
+    return this.mergeNodeScores(variantResults.flat());
+  }
+
+  private async searchKnowledgeBaseLexicallyByVariant(params: {
+    knowledgeBaseId: string;
+    tenantId: string;
+    queryVariant: string;
+    limit: number;
+  }): Promise<NodeWithScore[]> {
+    const tokens = this.extractLexicalTokens(params.queryVariant);
+    if (tokens.length === 0) {
+      return [];
+    }
+
+    const tokenMatchClauses = tokens.map((token) => {
+      const loweredToken = token.toLowerCase();
+      return sql<number>`CASE WHEN lower(${knowledgeNodes.content}) LIKE ${`%${loweredToken}%`} THEN 1 ELSE 0 END`;
+    });
+    const lexicalScore = tokenMatchClauses.reduce(
+      (accumulator, clause) => sql<number>`${accumulator} + ${clause}`,
+      sql<number>`0`,
     );
 
-    const thresholdedNodes =
-      effectiveThreshold === undefined
-        ? mergedNodes
-        : mergedNodes.filter(
-            (node) =>
-              typeof node.score !== 'number' ||
-              node.score >= effectiveThreshold,
-          );
+    const rows = await this.db
+      .select({
+        id: knowledgeNodes.id,
+        payload: knowledgeNodes.payload,
+        score: lexicalScore,
+      })
+      .from(knowledgeNodes)
+      .where(
+        and(
+          eq(knowledgeNodes.tenantId, params.tenantId),
+          eq(knowledgeNodes.knowledgeBaseId, params.knowledgeBaseId),
+          sql`${lexicalScore} > 0`,
+        ),
+      )
+      .orderBy(desc(lexicalScore))
+      .limit(params.limit);
 
-    const rerankedNodes = await this.applyReranker(
-      thresholdedNodes,
-      query,
-      tenantId,
-      knowledgeBase,
-      finalLimit,
-    );
+    return rows.flatMap((row) => {
+      const payload =
+        row.payload && typeof row.payload === 'object'
+          ? (row.payload as Record<string, unknown>)
+          : {};
+      const node =
+        this.parseLlamaIndexNodeFromPayload(payload) ??
+        this.parseLegacyNodeFromPayload(row.id, payload);
+      if (!node) {
+        return [];
+      }
 
-    return rerankedNodes
-      .slice(0, finalLimit)
-      .map((node) => this.toSearchResult(node, knowledgeBase.id));
+      return [
+        {
+          node,
+          score: row.score,
+        } satisfies NodeWithScore,
+      ];
+    });
   }
 
   private mergeNodeScores(nodes: NodeWithScore[]): NodeWithScore[] {
@@ -362,6 +465,16 @@ export class RagService {
     return Array.from(merged.values()).sort((left, right) => {
       return (right.score ?? 0) - (left.score ?? 0);
     });
+  }
+
+  private extractLexicalTokens(query: string): string[] {
+    const normalized = query.toLowerCase();
+    const tokens = normalized.match(/[a-z0-9][a-z0-9._-]{1,}|\p{Script=Han}{2,}/gu);
+    if (!tokens) {
+      return [];
+    }
+
+    return Array.from(new Set(tokens));
   }
 
   private hydrateNodeWithScore(

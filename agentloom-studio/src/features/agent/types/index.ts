@@ -12,6 +12,8 @@ export type {
   AgentSubAgentRef,
   AgentInputPreprocessor,
   AgentRoutingConfig,
+  AgentNativeToolPolicy,
+  AgentSelfEvolutionPolicy,
 } from './agent.types'
 
 export type { AgentNodeData, AgentCanvasNodeData } from './agent-node.types'

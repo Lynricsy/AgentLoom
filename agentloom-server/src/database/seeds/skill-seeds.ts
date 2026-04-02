@@ -1,4 +1,4 @@
-import { readFileSync } from 'fs';
+import { readFileSync, readdirSync, statSync } from 'fs';
 import { join } from 'path';
 import { sql } from 'drizzle-orm';
 import type { DrizzleDB } from '../database.module';
@@ -12,7 +12,25 @@ const SKILL_NAMES = [
   'test-generation',
   'refactoring',
   'debugging',
+  'self-evolution',
 ] as const;
+
+function collectSkillFiles(dirPath: string): string[] {
+  const entries = readdirSync(dirPath, { withFileTypes: true });
+  const files: string[] = [];
+
+  for (const entry of entries) {
+    const entryPath = join(dirPath, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...collectSkillFiles(entryPath));
+      continue;
+    }
+
+    files.push(entryPath);
+  }
+
+  return files;
+}
 
 function parseFrontmatter(content: string): Record<string, string> {
   const match = content.match(/^---\n([\s\S]*?)\n---/);
@@ -37,10 +55,16 @@ export async function seedSkills(db: DrizzleDB): Promise<void> {
 
   try {
     for (const name of SKILL_NAMES) {
-      const filePath = join(__dirname, 'skills', name, 'SKILL.md');
+      const skillDir = join(__dirname, 'skills', name);
+      const filePath = join(skillDir, 'SKILL.md');
       const content = readFileSync(filePath, 'utf-8');
       const frontmatter = parseFrontmatter(content);
-      const totalSizeBytes = Buffer.byteLength(content, 'utf-8');
+      const skillFiles = collectSkillFiles(skillDir);
+      const totalSizeBytes = skillFiles.reduce(
+        (sum, currentFile) => sum + statSync(currentFile).size,
+        0,
+      );
+      const fileCount = skillFiles.length;
 
       await db
         .insert(skills)
@@ -53,7 +77,7 @@ export async function seedSkills(db: DrizzleDB): Promise<void> {
           frontmatter: frontmatter as Record<string, unknown>,
           isBuiltin: true,
           status: 'active',
-          fileCount: 1,
+          fileCount,
           totalSizeBytes,
           createdBy: SYSTEM_UUID,
           updatedBy: SYSTEM_UUID,

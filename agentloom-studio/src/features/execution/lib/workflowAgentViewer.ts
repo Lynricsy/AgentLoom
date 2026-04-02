@@ -57,6 +57,43 @@ function normalizeToolCall(value: unknown): ToolCall | null {
               ),
             }
           : {}),
+        ...(readString(value.permissionRequest.domain)
+          ? { domain: readString(value.permissionRequest.domain) }
+          : {}),
+        ...(readString(value.permissionRequest.category)
+          ? { category: readString(value.permissionRequest.category) }
+          : {}),
+        ...(value.permissionRequest.riskLevel === 'low' ||
+        value.permissionRequest.riskLevel === 'medium' ||
+        value.permissionRequest.riskLevel === 'high'
+          ? {
+              riskLevel: value.permissionRequest.riskLevel as
+                | 'low'
+                | 'medium'
+                | 'high',
+            }
+          : {}),
+        ...(readString(value.permissionRequest.sourceLabel)
+          ? { sourceLabel: readString(value.permissionRequest.sourceLabel) }
+          : {}),
+        ...(readString(value.permissionRequest.targetType)
+          ? { targetType: readString(value.permissionRequest.targetType) }
+          : {}),
+        ...(readString(value.permissionRequest.targetLabel)
+          ? { targetLabel: readString(value.permissionRequest.targetLabel) }
+          : {}),
+        ...(readString(value.permissionRequest.approveEffect)
+          ? { approveEffect: readString(value.permissionRequest.approveEffect) }
+          : {}),
+        ...(readString(value.permissionRequest.denyEffect)
+          ? { denyEffect: readString(value.permissionRequest.denyEffect) }
+          : {}),
+        ...(isRecord(value.permissionRequest.diffPreview)
+          ? { diffPreview: value.permissionRequest.diffPreview }
+          : {}),
+        ...(typeof value.permissionRequest.rememberable === 'boolean'
+          ? { rememberable: value.permissionRequest.rememberable }
+          : {}),
       }
     : undefined
 
