@@ -612,6 +612,73 @@ describe('WorkflowVersionService', () => {
       expect(result).toHaveProperty('viewport');
     });
 
+    it('应当归一化 legacy workflow graph 后再返回详情', async () => {
+      const legacyWorkflow = createDraftWorkflow({
+        nodes: [
+          {
+            id: 'trigger-a',
+            type: 'workflow-node',
+            position: { x: 0, y: 0 },
+            data: {
+              label: 'Manual Trigger',
+              node_type: 'manual-trigger',
+              input_ports: [],
+              output_ports: [{ id: 'payload-out' }],
+            },
+          },
+          {
+            id: 'output-a',
+            type: 'workflow-node',
+            position: { x: 240, y: 0 },
+            data: {
+              label: 'Text Output',
+              node_type: 'text-output',
+              input_ports: [{ id: 'content-in' }],
+              output_ports: [],
+            },
+          },
+        ],
+        edges: [
+          {
+            id: 'edge-1',
+            source: 'trigger-a',
+            target: 'output-a',
+            source_handle: 'payload',
+            target_handle: 'content',
+          },
+        ],
+      });
+      db.select.mockReturnValueOnce(createSelectChain([legacyWorkflow]));
+
+      const result = await service.findDefinitionDetailById(WORKFLOW_ID);
+
+      expect(result.nodes).toEqual([
+        expect.objectContaining({
+          id: 'trigger-a',
+          type: 'trigger',
+          data: expect.objectContaining({
+            nodeType: 'manual-trigger',
+            category: 'trigger',
+          }),
+        }),
+        expect.objectContaining({
+          id: 'output-a',
+          type: 'output',
+          data: expect.objectContaining({
+            nodeType: 'text-output',
+            category: 'output',
+          }),
+        }),
+      ]);
+      expect(result.edges).toEqual([
+        expect.objectContaining({
+          id: 'edge-1',
+          sourceHandle: 'payload-out',
+          targetHandle: 'content-in',
+        }),
+      ]);
+    });
+
     it('工作流不存在时应当抛出 WorkflowNotFoundException', async () => {
       db.select.mockReturnValueOnce(createSelectChain([]));
 
@@ -773,10 +840,108 @@ describe('WorkflowVersionService', () => {
         viewport: newViewport,
       });
 
-      expect(result.nodes).toEqual(newNodes);
+      expect(result.nodes).toEqual([
+        {
+          id: 'new-node',
+          type: 'agent',
+          position: { x: 100, y: 100 },
+          data: {
+            nodeType: 'agent',
+            category: 'agent',
+          },
+        },
+      ]);
       expect(result.edges).toEqual(newEdges);
       expect(result.viewport).toEqual(newViewport);
       expect(result.version).toBe(2);
+    });
+
+    it('应在更新画布时归一化 legacy workflow graph 后再持久化', async () => {
+      const workflow = createDraftWorkflow({ version: 1 });
+      const updatedWorkflow = createDraftWorkflow({
+        version: 2,
+        nodes: [
+          {
+            id: 'trigger-a',
+            type: 'trigger',
+            position: { x: 0, y: 0 },
+            data: {
+              label: 'Manual Trigger',
+              nodeType: 'manual-trigger',
+              category: 'trigger',
+              inputPorts: [],
+              outputPorts: [{ id: 'payload-out' }],
+            },
+          },
+          {
+            id: 'output-a',
+            type: 'output',
+            position: { x: 240, y: 0 },
+            data: {
+              label: 'Text Output',
+              nodeType: 'text-output',
+              category: 'output',
+              inputPorts: [{ id: 'content-in' }],
+              outputPorts: [],
+            },
+          },
+        ],
+        edges: [
+          {
+            id: 'edge-1',
+            source: 'trigger-a',
+            target: 'output-a',
+            sourceHandle: 'payload-out',
+            targetHandle: 'content-in',
+          },
+        ],
+        updatedBy: USER_ID,
+      });
+
+      db.select.mockReturnValueOnce(createSelectChain([workflow]));
+      db.update.mockReturnValueOnce(createUpdateChain([updatedWorkflow]));
+
+      await service.updateDefinition(WORKFLOW_ID, USER_ID, {
+        version: 1,
+        nodes: [
+          {
+            id: 'trigger-a',
+            type: 'workflow-node',
+            position: { x: 0, y: 0 },
+            data: {
+              label: 'Manual Trigger',
+              node_type: 'manual-trigger',
+              input_ports: [],
+              output_ports: [{ id: 'payload-out' }],
+            },
+          },
+          {
+            id: 'output-a',
+            type: 'workflow-node',
+            position: { x: 240, y: 0 },
+            data: {
+              label: 'Text Output',
+              node_type: 'text-output',
+              input_ports: [{ id: 'content-in' }],
+              output_ports: [],
+            },
+          },
+        ] as never,
+        edges: [
+          {
+            id: 'edge-1',
+            source: 'trigger-a',
+            target: 'output-a',
+            source_handle: 'payload',
+            target_handle: 'content',
+          },
+        ] as never,
+      });
+
+      const updateSetClause =
+        db.update.mock.results[0].value.set.mock.calls[0][0];
+      expect(updateSetClause.nodes).toEqual(updatedWorkflow.nodes);
+      expect(updateSetClause.edges).toEqual(updatedWorkflow.edges);
     });
 
     it('应当在 detail PATCH 时持久化 inputSchema 并返回最新 schema', async () => {

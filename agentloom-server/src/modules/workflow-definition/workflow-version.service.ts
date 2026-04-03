@@ -20,6 +20,7 @@ import { WorkflowNotPublishedException } from '../execution/execution.exceptions
 import { OrganizationAutonomyPolicyService } from '../organization/organization-autonomy-policy.service';
 import { generateSlug, appendSlugSuffix } from '../organization/slug.utils';
 import { cloneDefinitionWithNewIds } from './utils/clone-template.utils';
+import { normalizeWorkflowNodesAndEdges } from './utils/normalize-workflow-graph.utils';
 import { sanitizeDefinition } from './utils/sanitize-export.utils';
 import type { CreateWorkflowDefinitionDto } from './dto/create-workflow-definition.dto';
 import type { CreateVersionDto } from './dto/create-version.dto';
@@ -332,13 +333,22 @@ export class WorkflowVersionService {
       }
     }
 
+    const normalizedDefinition = normalizeWorkflowNodesAndEdges(
+      definition.nodes,
+      definition.edges,
+    );
+
     return {
       schema_version: WORKFLOW_EXPORT_VERSION,
       exported_at: new Date().toISOString(),
       workflow: {
         name: workflow.name,
         description: workflow.description,
-        definition: sanitizeDefinition(definition),
+        definition: sanitizeDefinition({
+          nodes: normalizedDefinition.nodes,
+          edges: normalizedDefinition.edges,
+          viewport: definition.viewport,
+        }),
         input_schema: inputSchema,
       },
     };
@@ -650,13 +660,25 @@ export class WorkflowVersionService {
           updatedBy: userId,
           updatedAt: new Date(),
         };
+        const shouldNormalizeGraph =
+          dto.nodes !== undefined || dto.edges !== undefined;
+        const normalizedGraph = shouldNormalizeGraph
+          ? normalizeWorkflowNodesAndEdges(
+              (dto.nodes ?? workflow.nodes ?? []) as schema.ReactFlowNode[],
+              (dto.edges ?? workflow.edges ?? []) as schema.ReactFlowEdge[],
+            )
+          : null;
 
         if (dto.name !== undefined) setClause.name = dto.name;
         if (dto.description !== undefined)
           setClause.description = dto.description;
         if (dto.icon !== undefined) setClause.icon = dto.icon;
-        if (dto.nodes !== undefined) setClause.nodes = dto.nodes;
-        if (dto.edges !== undefined) setClause.edges = dto.edges;
+        if (dto.nodes !== undefined && normalizedGraph) {
+          setClause.nodes = normalizedGraph.nodes;
+        }
+        if (dto.edges !== undefined && normalizedGraph) {
+          setClause.edges = normalizedGraph.edges;
+        }
         if (dto.viewport !== undefined) setClause.viewport = dto.viewport;
         if (dto.inputSchema !== undefined) {
           setClause.inputSchema = normalizeWorkflowInputSchemaForUpdate(
@@ -808,12 +830,16 @@ export class WorkflowVersionService {
           versionId,
           workflowId,
         );
+        const normalizedGraph = normalizeWorkflowNodesAndEdges(
+          targetVersion.snapshot.nodes,
+          targetVersion.snapshot.edges,
+        );
 
         await dbClient
           .update(schema.workflowDefinitions)
           .set({
-            nodes: targetVersion.snapshot.nodes,
-            edges: targetVersion.snapshot.edges,
+            nodes: normalizedGraph.nodes,
+            edges: normalizedGraph.edges,
             viewport: targetVersion.snapshot.viewport,
             version: sql`${schema.workflowDefinitions.version} + 1`,
             updatedBy: userId,
@@ -866,14 +892,18 @@ export class WorkflowVersionService {
         const edges: schema.ReactFlowEdge[] = Array.isArray(workflow.edges)
           ? workflow.edges
           : [];
-        const warnings = this.validateEdgeTypeCompatibility(nodes, edges);
+        const normalizedGraph = normalizeWorkflowNodesAndEdges(nodes, edges);
+        const warnings = this.validateEdgeTypeCompatibility(
+          normalizedGraph.nodes,
+          normalizedGraph.edges,
+        );
         const autonomyPolicyInspection =
           await this.organizationAutonomyPolicyService.inspectWorkflowNodesAgainstPolicy(
             {
               tenantId: workflow.tenantId,
               workflowId: workflow.id,
               workflowName: workflow.name,
-              nodes,
+              nodes: normalizedGraph.nodes,
             },
           );
 
@@ -1210,14 +1240,19 @@ export class WorkflowVersionService {
     releaseNotes: string | null = null,
     releaseNumber: number | null = null,
   ): WorkflowVersionSnapshot {
+    const normalizedGraph = normalizeWorkflowNodesAndEdges(
+      workflow.nodes ?? [],
+      workflow.edges ?? [],
+    );
+
     return {
-      nodes: workflow.nodes ?? [],
-      edges: workflow.edges ?? [],
+      nodes: normalizedGraph.nodes,
+      edges: normalizedGraph.edges,
       viewport: workflow.viewport ?? null,
       inputSchema: workflow.inputSchema ?? null,
       metadata: {
-        nodeCount: Array.isArray(workflow.nodes) ? workflow.nodes.length : 0,
-        edgeCount: Array.isArray(workflow.edges) ? workflow.edges.length : 0,
+        nodeCount: normalizedGraph.nodes.length,
+        edgeCount: normalizedGraph.edges.length,
         createdFromVersion: workflow.version,
         releaseNotes,
         releaseNumber,
@@ -1351,6 +1386,10 @@ export class WorkflowVersionService {
       version.snapshot,
       version.publishedAt,
     );
+    const normalizedGraph = normalizeWorkflowNodesAndEdges(
+      version.snapshot.nodes,
+      version.snapshot.edges,
+    );
 
     return {
       id: version.id,
@@ -1358,7 +1397,11 @@ export class WorkflowVersionService {
       versionNumber: version.versionNumber,
       releaseNumber,
       label: version.label ?? null,
-      snapshot: version.snapshot,
+      snapshot: {
+        ...version.snapshot,
+        nodes: normalizedGraph.nodes,
+        edges: normalizedGraph.edges,
+      },
       publishedAt: version.publishedAt?.toISOString() ?? null,
       archivedAt: version.archivedAt?.toISOString() ?? null,
       createdBy: version.createdBy,

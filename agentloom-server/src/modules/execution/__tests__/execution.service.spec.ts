@@ -548,7 +548,21 @@ describe('ExecutionService', () => {
       const insertValues =
         db.insert.mock.results[0].value.values.mock.calls[0][0];
       expect(insertValues.definitionSnapshot).toEqual({
-        nodes: draftSnapshotWorkflow.nodes,
+        nodes: [
+          {
+            id: 'draft-http-tool',
+            type: 'tool',
+            position: { x: 120, y: 80 },
+            data: {
+              nodeType: 'http-tool',
+              category: 'tool',
+              config: {
+                url: 'https://api.day.app/device/test',
+                method: 'POST',
+              },
+            },
+          },
+        ],
         edges: [],
         viewport: draftSnapshotWorkflow.viewport,
         inputSchema: CONDITIONAL_RUN_INPUT_SCHEMA,
@@ -560,6 +574,91 @@ describe('ExecutionService', () => {
         },
       });
       expect(insertValues.workflowVersionId).toBe(VERSION_ID);
+    });
+
+    it('应在运行前归一化 legacy published workflow graph', async () => {
+      const legacyPublishedVersion = {
+        ...mockVersion,
+        snapshot: {
+          ...mockSnapshot,
+          nodes: [
+            {
+              id: 'trigger-a',
+              type: 'workflow-node',
+              position: { x: 0, y: 0 },
+              data: {
+                label: 'Manual Trigger',
+                node_type: 'manual-trigger',
+                input_ports: [],
+                output_ports: [{ id: 'payload-out' }],
+              },
+            },
+            {
+              id: 'output-a',
+              type: 'workflow-node',
+              position: { x: 240, y: 0 },
+              data: {
+                label: 'Text Output',
+                node_type: 'text-output',
+                input_ports: [{ id: 'content-in' }],
+                output_ports: [],
+              },
+            },
+          ],
+          edges: [
+            {
+              id: 'edge-1',
+              source: 'trigger-a',
+              target: 'output-a',
+              source_handle: 'payload',
+              target_handle: 'content',
+            },
+          ],
+        },
+      };
+
+      db.select
+        .mockReturnValueOnce(createSelectChain([mockPublishedWorkflow]))
+        .mockReturnValueOnce(createSelectChain([legacyPublishedVersion]));
+      db.insert.mockReturnValueOnce(
+        createInsertChainReturning([mockExecution]),
+      );
+      mockQueue.add.mockResolvedValue(undefined);
+
+      await service.runWorkflow(
+        WORKFLOW_ID,
+        { inputParams: { source: 'manual-trigger' } },
+        TENANT_ID,
+        USER_ID,
+      );
+
+      const insertValues =
+        db.insert.mock.results[0].value.values.mock.calls[0][0];
+      expect(insertValues.definitionSnapshot.nodes).toEqual([
+        expect.objectContaining({
+          id: 'trigger-a',
+          type: 'trigger',
+          data: expect.objectContaining({
+            nodeType: 'manual-trigger',
+            category: 'trigger',
+          }),
+        }),
+        expect.objectContaining({
+          id: 'output-a',
+          type: 'output',
+          data: expect.objectContaining({
+            nodeType: 'text-output',
+            category: 'output',
+          }),
+        }),
+      ]);
+      expect(insertValues.definitionSnapshot.edges).toEqual([
+        expect.objectContaining({
+          id: 'edge-1',
+          sourceHandle: 'payload-out',
+          targetHandle: 'content-in',
+        }),
+      ]);
     });
 
     it('应将 launchSource 合并到 inputParams._meta 中', async () => {
@@ -1923,7 +2022,8 @@ describe('ExecutionService', () => {
 
       await service.initializeSteps(EXECUTION_ID);
 
-      const updateValues = txDb.update.mock.results[0].value.set.mock.calls[0][0];
+      const updateValues =
+        txDb.update.mock.results[0].value.set.mock.calls[0][0];
       expect(updateValues.totalSteps).toBe(1);
       expect(insertChain.values).toHaveBeenCalledWith([
         expect.objectContaining({

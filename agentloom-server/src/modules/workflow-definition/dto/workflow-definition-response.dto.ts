@@ -5,6 +5,7 @@ import type {
   WorkflowDefinition,
 } from '../../../database/schema/workflow-definitions.schema';
 import type { WorkflowInputSchema } from '../../workflow/dto/workflow-input-schema.dto';
+import { normalizeWorkflowNodesAndEdges } from '../utils/normalize-workflow-graph.utils';
 
 /**
  * 工作流定义响应 DTO（排除 nodes/edges/viewport 大字段）
@@ -104,10 +105,12 @@ export function serializeWorkflowDefinitionDetail(
     publishedReleaseNumber?: number | null;
   },
 ): WorkflowDefinitionDetailResponseDto {
+  const normalizedGraph = normalizeWorkflowNodesAndEdges(row.nodes, row.edges);
+
   return {
     ...serializeWorkflowDefinition(row),
-    nodes: row.nodes ?? [],
-    edges: row.edges ?? [],
+    nodes: normalizedGraph.nodes,
+    edges: normalizedGraph.edges,
     viewport: row.viewport ?? null,
     inputSchema: row.inputSchema ?? null,
   };

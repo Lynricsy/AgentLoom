@@ -40,6 +40,7 @@ import {
   attachExecutionRuntimeMeta,
   isTrackedExecutionStep,
 } from './compound-runtime.util';
+import { normalizeWorkflowNodesAndEdges } from '../workflow-definition/utils/normalize-workflow-graph.utils';
 
 export interface ExecutionJobData {
   executionId: string;
@@ -142,16 +143,16 @@ function collectSandboxSessionIds(steps: schema.ExecutionStep[]): string[] {
 
   for (const step of steps) {
     if (isRecord(step.input)) {
-      const inputSandboxId = readSandboxSessionId(step.input['sandbox-in']) ?? readSandboxSessionId(step.input.sandbox);
+      const inputSandboxId =
+        readSandboxSessionId(step.input['sandbox-in']) ??
+        readSandboxSessionId(step.input.sandbox);
       if (inputSandboxId) {
         sessionIds.add(inputSandboxId);
       }
 
-      const inputSandboxOutputId = readSandboxSessionId(
-        step.input['sandbox-out'],
-      ) ?? readSandboxSessionId(
-        step.input['sandbox-output'],
-      );
+      const inputSandboxOutputId =
+        readSandboxSessionId(step.input['sandbox-out']) ??
+        readSandboxSessionId(step.input['sandbox-output']);
       if (inputSandboxOutputId) {
         sessionIds.add(inputSandboxOutputId);
       }
@@ -166,11 +167,9 @@ function collectSandboxSessionIds(steps: schema.ExecutionStep[]): string[] {
       sessionIds.add(resultSandboxId);
     }
 
-    const resultSandboxOutputId = readSandboxSessionId(
-      step.result['sandbox-out'],
-    ) ?? readSandboxSessionId(
-      step.result['sandbox-output'],
-    );
+    const resultSandboxOutputId =
+      readSandboxSessionId(step.result['sandbox-out']) ??
+      readSandboxSessionId(step.result['sandbox-output']);
     if (resultSandboxOutputId) {
       sessionIds.add(resultSandboxOutputId);
     }
@@ -197,7 +196,8 @@ function patchExecutionStepSandboxStatuses(
     );
 
     const origSandbox = step.input['sandbox-in'] ?? step.input.sandbox;
-    const origSandboxOutput = step.input['sandbox-out'] ?? step.input['sandbox-output'];
+    const origSandboxOutput =
+      step.input['sandbox-out'] ?? step.input['sandbox-output'];
 
     if (
       nextSandbox !== origSandbox ||
@@ -223,7 +223,8 @@ function patchExecutionStepSandboxStatuses(
       statusBySessionId,
     );
 
-    const origSandboxOutput = step.result['sandbox-out'] ?? step.result['sandbox-output'];
+    const origSandboxOutput =
+      step.result['sandbox-out'] ?? step.result['sandbox-output'];
 
     if (
       nextRootResult !== step.result ||
@@ -603,14 +604,19 @@ export class ExecutionService {
   private buildDraftExecutionSnapshot(
     workflow: typeof schema.workflowDefinitions.$inferSelect,
   ): schema.WorkflowExecution['definitionSnapshot'] {
+    const normalizedGraph = normalizeWorkflowNodesAndEdges(
+      workflow.nodes ?? [],
+      workflow.edges ?? [],
+    );
+
     return {
-      nodes: workflow.nodes ?? [],
-      edges: workflow.edges ?? [],
+      nodes: normalizedGraph.nodes,
+      edges: normalizedGraph.edges,
       viewport: workflow.viewport ?? null,
       inputSchema: workflow.inputSchema ?? null,
       metadata: {
-        nodeCount: Array.isArray(workflow.nodes) ? workflow.nodes.length : 0,
-        edgeCount: Array.isArray(workflow.edges) ? workflow.edges.length : 0,
+        nodeCount: normalizedGraph.nodes.length,
+        edgeCount: normalizedGraph.edges.length,
         createdFromVersion: workflow.version,
         releaseNotes: null,
       },
@@ -693,7 +699,18 @@ export class ExecutionService {
 
     const definitionSnapshot = useDraftDefinition
       ? this.buildDraftExecutionSnapshot(workflow)
-      : publishedVersion.snapshot;
+      : (() => {
+          const normalizedGraph = normalizeWorkflowNodesAndEdges(
+            publishedVersion.snapshot.nodes,
+            publishedVersion.snapshot.edges,
+          );
+
+          return {
+            ...publishedVersion.snapshot,
+            nodes: normalizedGraph.nodes,
+            edges: normalizedGraph.edges,
+          };
+        })();
 
     const admissionDecision =
       await this.resourceGovernanceService.resolveExecutionAdmissionDecision({
