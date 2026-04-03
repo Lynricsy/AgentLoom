@@ -208,11 +208,31 @@ export function deriveAgentSandboxConfigFromCanvas(
 ): SandboxConfig | null {
   const nodeList = Array.isArray(nodes) ? (nodes as CanvasNodeLike[]) : [];
   const edgeList = Array.isArray(edges) ? (edges as CanvasEdgeLike[]) : [];
-  const sandboxNode =
-    findConnectedSandboxNode(nodeList, edgeList) ??
-    nodeList.find((node) => resolveNodeType(node) === 'sandbox') ??
-    null;
+  const connectedSandboxNode = findConnectedSandboxNode(nodeList, edgeList);
+  const hasAgentMainNode = nodeList.some(
+    (node) => resolveNodeType(node) === 'agent-main',
+  );
 
+  if (connectedSandboxNode) {
+    const sandboxConfig = extractSandboxConfig(
+      resolveNodeData(connectedSandboxNode),
+    );
+    if (sandboxConfig) {
+      return attachRestoreWorkspaceId(
+        sandboxConfig,
+        nodeList,
+        edgeList,
+        connectedSandboxNode.id,
+      );
+    }
+  }
+
+  if (hasAgentMainNode) {
+    return null;
+  }
+
+  const sandboxNode =
+    nodeList.find((node) => resolveNodeType(node) === 'sandbox') ?? null;
   if (sandboxNode) {
     const sandboxConfig = extractSandboxConfig(resolveNodeData(sandboxNode));
     if (sandboxConfig) {

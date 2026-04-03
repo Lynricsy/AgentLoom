@@ -162,4 +162,62 @@ describe('serializeAgentDefinitionDetail', () => {
     });
     expect(result.sandboxLifecycle).toBeNull();
   });
+
+  it('agent-main 存在但未连接 sandbox 时不应在 detail response 中隐式回退 sandboxConfig', () => {
+    const createdAt = new Date('2026-04-03T00:00:00.000Z');
+    const updatedAt = new Date('2026-04-03T00:30:00.000Z');
+
+    const result = serializeAgentDefinitionDetail({
+      id: 'agent-1',
+      tenantId: 'tenant-1',
+      name: 'Agent',
+      slug: 'agent',
+      description: null,
+      icon: null,
+      status: 'draft',
+      version: 2,
+      publishedVersionId: null,
+      createdBy: 'user-1',
+      updatedBy: 'user-1',
+      createdAt,
+      updatedAt,
+      systemPrompt: null,
+      nodes: [
+        {
+          id: 'agent-main',
+          type: 'agent',
+          position: { x: 0, y: 0 },
+          data: {
+            nodeType: 'agent-main',
+          },
+        },
+        {
+          id: 'sandbox-orphan',
+          type: 'tool',
+          position: { x: 100, y: 0 },
+          data: {
+            nodeType: 'sandbox',
+            cpuLimit: 2,
+            memoryLimitMb: 1024,
+            diskLimitGb: 4,
+            timeoutSeconds: 600,
+          },
+        },
+      ] as never,
+      edges: [] as never,
+      viewport: null,
+      sandboxConfig: {
+        cpu: 2,
+        memory: 1024,
+        disk: 4,
+        timeout: 1,
+        timeoutSeconds: 600,
+      },
+      workspaceSnapshotId: null,
+      metadata: {},
+    });
+
+    expect(result.sandboxConfig).toBeNull();
+    expect(result.sandboxLifecycle).toBeNull();
+  });
 });

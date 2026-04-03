@@ -87,4 +87,40 @@ describe('deriveAgentSandboxConfigFromCanvas', () => {
       lifecycleMode: 'persistent',
     });
   });
+
+  it('存在 agent-main 但 sandbox 未连接时不应回退到孤儿节点或 persisted config', () => {
+    const sandboxConfig = deriveAgentSandboxConfigFromCanvas(
+      [
+        {
+          id: 'agent-main',
+          type: 'agent',
+          data: {
+            nodeType: 'agent-main',
+          },
+          position: { x: 0, y: 0 },
+        },
+        {
+          id: 'sandbox-orphan',
+          type: 'tool',
+          data: {
+            nodeType: 'sandbox',
+            cpuLimit: 2,
+            memoryLimitMb: 1024,
+            diskLimitGb: 4,
+            timeoutSeconds: 600,
+          },
+          position: { x: 100, y: 0 },
+        },
+      ] as never,
+      [] as never,
+      {
+        cpu: 9,
+        memory: 9999,
+        disk: 9,
+        timeout: 9,
+      },
+    );
+
+    expect(sandboxConfig).toBeNull();
+  });
 });

@@ -35,6 +35,7 @@ import type {
 import type { ToolCallEvent } from '../agent/types/tool-call-event.types';
 import { AgentDefinitionService } from '../agent-definition/agent-definition.service';
 import type { AgentRuntimeConfig } from '../agent-definition/agent-runtime-config.interface';
+import { AgentSandboxNotConnectedException } from '../agent-definition/agent-definition.exceptions';
 import {
   deriveAgentSandboxConfigFromCanvas,
   mergeSandboxConfigCandidates,
@@ -592,6 +593,7 @@ export class AgentExecutionWorker extends WorkerHost {
       let runtimeConfig: AgentRuntimeConfig;
       let systemPrompt = definition.systemPrompt ?? undefined;
       let snapshot: AgentVersionSnapshot | null = null;
+      let resolvedSandboxConfig: AgentRuntimeConfig['sandboxConfig'] | null;
       const normalizedDefinitionSandboxConfig =
         deriveAgentSandboxConfigFromCanvas(
           definition.nodes,
@@ -624,27 +626,30 @@ export class AgentExecutionWorker extends WorkerHost {
           snapshot.nodes,
           snapshot.edges,
         );
-        runtimeConfig.sandboxConfig = resolveAgentRuntimeSandboxConfig(
+        resolvedSandboxConfig =
           mergeSandboxConfigCandidates(
             runtimeConfig.sandboxConfig ?? null,
             normalizedSnapshotSandboxConfig,
-          ) ??
-            normalizedDefinitionSandboxConfig ??
-            definition.sandboxConfig,
-        );
+          ) ?? normalizedDefinitionSandboxConfig;
         systemPrompt =
           snapshot.systemPrompt ?? definition.systemPrompt ?? undefined;
       } else {
         runtimeConfig = await this.agentDefinitionService.compileCanvas(
           definition.id,
         );
-        runtimeConfig.sandboxConfig = resolveAgentRuntimeSandboxConfig(
+        resolvedSandboxConfig =
           mergeSandboxConfigCandidates(
             runtimeConfig.sandboxConfig ?? null,
             normalizedDefinitionSandboxConfig,
-          ) ?? definition.sandboxConfig,
-        );
+          ) ?? null;
       }
+
+      if (!resolvedSandboxConfig) {
+        throw new AgentSandboxNotConnectedException(definition.id);
+      }
+      runtimeConfig.sandboxConfig = resolveAgentRuntimeSandboxConfig(
+        resolvedSandboxConfig,
+      );
 
       const compiledMemoryInstanceIds = this.extractStringArray(
         runtimeConfig.memoryInstanceIds,
@@ -791,6 +796,10 @@ export class AgentExecutionWorker extends WorkerHost {
     currentAgentDefinitionId: string,
     initialPendingMessages: PendingMessage[] = [],
   ): Promise<RuntimeSessionContext> {
+    if (!context.hasSandbox || !context.runtimeConfig.sandboxConfig) {
+      throw new AgentSandboxNotConnectedException(currentAgentDefinitionId);
+    }
+
     context.runtimeConfig = await this.resolveConversationStartupRuntimeConfig(
       context.runtimeConfig,
       tenantId,

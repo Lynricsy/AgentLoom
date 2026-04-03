@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AgentExecutionWorker } from '../agent-execution.worker';
+import { AgentSandboxNotConnectedException } from '../../agent-definition/agent-definition.exceptions';
 import type { LlmService } from '../../llm/llm.service';
 
 const {
@@ -1065,6 +1066,7 @@ describe('AgentExecutionWorker', () => {
       mockAgentDefinitionService.compileCanvas.mockResolvedValue({
         modelConfig: { modelId: 'model-1' },
         memoryInstanceIds: ['canvas-memory-instance'],
+        sandboxConfig: { cpu: 1, memory: 512, disk: 2, timeout: 2 },
       });
 
       const context = await contextLoader.loadConversationExecutionContext(
@@ -1131,8 +1133,27 @@ describe('AgentExecutionWorker', () => {
         .mockResolvedValueOnce([
           {
             snapshot: {
-              nodes: [{ id: 'sandbox-node', type: 'tool', data: {} }],
-              edges: [],
+              nodes: [
+                {
+                  id: 'agent-main',
+                  type: 'agent',
+                  data: { nodeType: 'agent-main' },
+                },
+                {
+                  id: 'sandbox-node',
+                  type: 'tool',
+                  data: { nodeType: 'sandbox' },
+                },
+              ],
+              edges: [
+                {
+                  id: 'edge-sandbox-main',
+                  source: 'sandbox-node',
+                  target: 'agent-main',
+                  sourceHandle: 'sandbox-out',
+                  targetHandle: 'sandbox-in',
+                },
+              ],
               sandboxConfig: { cpu: 1, memory: 512, disk: 2, timeout: 2 },
               metadata: {},
             },
@@ -1156,6 +1177,7 @@ describe('AgentExecutionWorker', () => {
               memory: 1536,
               disk: 5,
               timeout: 901,
+              timeoutSeconds: 300,
             },
           }),
         }),
@@ -1264,6 +1286,64 @@ describe('AgentExecutionWorker', () => {
           }),
         }),
       );
+    });
+
+    it('agent-main 存在但没有连接任何 sandbox 时应抛出显式错误', async () => {
+      const contextLoader = worker as unknown as {
+        loadConversationExecutionContext: (
+          conversationId: string,
+          tenantId: string,
+        ) => Promise<unknown>;
+      };
+
+      const selectChain = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn(),
+      };
+      mockDb.select.mockReturnValue(selectChain);
+      selectChain.limit
+        .mockResolvedValueOnce([
+          {
+            id: 'conversation-1',
+            agentDefinitionId: 'agent-1',
+            tenantId: 'tenant-1',
+            status: 'active',
+            metadata: {},
+          },
+        ])
+        .mockResolvedValueOnce([
+          {
+            id: 'agent-1',
+            publishedVersionId: null,
+            systemPrompt: 'system',
+            nodes: [
+              {
+                id: 'agent-main',
+                type: 'agent',
+                data: { nodeType: 'agent-main' },
+              },
+              {
+                id: 'sandbox-orphan',
+                type: 'tool',
+                data: { nodeType: 'sandbox', timeoutSeconds: 300 },
+              },
+            ],
+            edges: [],
+            sandboxConfig: { cpu: 1, memory: 512, disk: 2, timeout: 2 },
+            metadata: {},
+          },
+        ]);
+      mockAgentDefinitionService.compileCanvas.mockResolvedValue({
+        modelConfig: { modelId: 'model-1' },
+      });
+
+      await expect(
+        contextLoader.loadConversationExecutionContext(
+          'conversation-1',
+          'tenant-1',
+        ),
+      ).rejects.toThrow(AgentSandboxNotConnectedException);
     });
   });
 
@@ -1725,7 +1805,7 @@ describe('AgentExecutionWorker', () => {
       expect(skillIds).toEqual([]);
     });
 
-    it('无显式 sandbox 配置时也应默认使用 SandboxAgentAdapter', async () => {
+    it('缺少 sandboxConfig 时应抛出未连接沙箱错误', async () => {
       const runtimeSessionWorker = worker as unknown as {
         prepareRuntimeSession: (
           context: Record<string, unknown>,
@@ -1740,43 +1820,25 @@ describe('AgentExecutionWorker', () => {
         }>;
       };
 
-      mockSandboxRuntime.createSession.mockResolvedValue(
-        makeSession({ id: 'sandbox-session-2' }),
-      );
+      await expect(
+        runtimeSessionWorker.prepareRuntimeSession(
+          makeActiveContext({
+            hasSandbox: false,
+            runtimeConfig: {
+              modelConfig: { modelId: 'model-1' },
+            },
+          }),
+          'conversation-1',
+          'tenant-1',
+          new AbortController().signal,
+          { abortControllers: new Map() },
+          'agent-1',
+        ),
+      ).rejects.toThrow(AgentSandboxNotConnectedException);
 
-      const result = await runtimeSessionWorker.prepareRuntimeSession(
-        makeActiveContext({
-          hasSandbox: true,
-          runtimeConfig: {
-            modelConfig: { modelId: 'model-1' },
-            sandboxConfig: { cpu: 1, memory: 512, disk: 2, timeout: 2 },
-          },
-        }),
-        'conversation-1',
-        'tenant-1',
-        new AbortController().signal,
-        { abortControllers: new Map() },
-        'agent-1',
-      );
-
-      expect(mockAdapterFactory.selectAdapter).toHaveBeenCalledWith(true);
-      expect(mockSandboxService.createSandboxSession).toHaveBeenCalledWith(
-        expect.objectContaining({
-          sandboxNodeId: null,
-          tenantId: 'tenant-1',
-          agentConversationId: 'conversation-1',
-          config: { cpu: 1, memory: 512, disk: 2, timeout: 2 },
-        }),
-      );
-      expect(mockSandboxRuntime.createSession).toHaveBeenCalledWith(
-        expect.objectContaining({
-          agentId: 'agent-1',
-          mode: 'conversation',
-          tenantId: 'tenant-1',
-        }),
-      );
-      expect(mockRuntime.createSession).not.toHaveBeenCalled();
-      expect(result.runtime).toBe(mockSandboxRuntime);
+      expect(mockAdapterFactory.selectAdapter).not.toHaveBeenCalled();
+      expect(mockSandboxService.createSandboxSession).not.toHaveBeenCalled();
+      expect(mockSandboxRuntime.createSession).not.toHaveBeenCalled();
     });
   });
 

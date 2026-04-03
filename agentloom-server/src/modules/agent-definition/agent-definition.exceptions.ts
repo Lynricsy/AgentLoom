@@ -70,3 +70,14 @@ export class AgentPublishValidationException extends DomainException {
     });
   }
 }
+
+export class AgentSandboxNotConnectedException extends DomainException {
+  constructor(agentId: string) {
+    super({
+      type: 'https://agentloom.dev/errors/agent-sandbox-not-connected',
+      title: '当前 Agent 未连接任何沙箱，无法启动对话',
+      status: HttpStatus.CONFLICT,
+      detail: `Agent ${agentId} 未将任何 sandbox 节点连接到 agent-main 的 sandbox-in 端口，请先连线后再运行`,
+    });
+  }
+}
