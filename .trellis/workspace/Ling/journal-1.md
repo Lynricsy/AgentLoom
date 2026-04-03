@@ -988,3 +988,36 @@ studio 前端大量页面无法滚轮滚动、没有滚动条。
 ### Next Steps
 
 - None - task complete
+
+
+## Session 19: compound 内部节点拖拽边界修复
+
+**Date**: 2026-04-03
+**Task**: compound 内部节点拖拽边界修复
+**Branch**: `main`
+
+### Summary
+
+修正 compound child extent 与 ReactFlow clamp contract，恢复内部节点在内框内的完整拖拽空间，并补回归测试。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `90f1f96` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
