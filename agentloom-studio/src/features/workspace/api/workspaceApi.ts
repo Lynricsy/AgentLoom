@@ -19,6 +19,9 @@ export async function fetchWorkspaces(
   if (params?.page) searchParams.page = params.page
   if (params?.pageSize) searchParams.pageSize = params.pageSize
   if (params?.search) searchParams.search = params.search
+  if (typeof params?.includeAutoArchived === 'boolean') {
+    searchParams.includeAutoArchived = params.includeAutoArchived ? 'true' : 'false'
+  }
 
   return apiClient
     .get(BASE_PATH, { searchParams })
@@ -30,9 +33,12 @@ export async function fetchAllWorkspaces(): Promise<Workspace[]> {
   let page = 1
   const pageSize = 100
 
-  // eslint-disable-next-line no-constant-condition
   while (true) {
-    const response = await fetchWorkspaces({ page, pageSize })
+    const response = await fetchWorkspaces({
+      page,
+      pageSize,
+      includeAutoArchived: false,
+    })
     allItems.push(...response.data)
 
     if (page >= response.meta.totalPages) {

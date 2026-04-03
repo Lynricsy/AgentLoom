@@ -32,6 +32,28 @@ export class AgentConversationService {
     return getTenantDb(this.db);
   }
 
+  private emitConversationEnded(conversation: {
+    id: string;
+    tenantId: string;
+    createdBy: string;
+  }): void {
+    const payload = {
+      conversationId: conversation.id,
+      tenantId: conversation.tenantId,
+      organizationId: conversation.tenantId,
+      userId: conversation.createdBy,
+    };
+
+    if (hasActiveTenantTransaction()) {
+      registerAfterCommitHook(async () => {
+        this.eventEmitter.emit('agent-conversation.ended', payload);
+      });
+      return;
+    }
+
+    this.eventEmitter.emit('agent-conversation.ended', payload);
+  }
+
   async create(
     agentDefinitionId: string,
     tenantId: string,
@@ -272,6 +294,7 @@ export class AgentConversationService {
     }
 
     this.logger.log(`Conversation ${conversationId} cancelled`);
+    this.emitConversationEnded(conversation);
 
     return { data: serializeConversation(conversation) };
   }
@@ -288,22 +311,7 @@ export class AgentConversationService {
     }
 
     this.logger.log(`Conversation ${conversationId} ended`);
-
-    const payload = {
-      conversationId: conversation.id,
-      tenantId: conversation.tenantId,
-      organizationId: conversation.tenantId,
-      userId: conversation.createdBy,
-    };
-
-    if (hasActiveTenantTransaction()) {
-      registerAfterCommitHook(async () => {
-        this.eventEmitter.emit('agent-conversation.ended', payload);
-      });
-      return;
-    }
-
-    this.eventEmitter.emit('agent-conversation.ended', payload);
+    this.emitConversationEnded(conversation);
   }
 
   async updateConversation(

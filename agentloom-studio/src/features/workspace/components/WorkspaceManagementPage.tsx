@@ -17,6 +17,7 @@ export function WorkspaceManagementPage() {
 
   const [page, setPage] = useState(1)
   const [search, setSearch] = useState('')
+  const [showExecutionArchives, setShowExecutionArchives] = useState(false)
 
   const [createOpen, setCreateOpen] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState<Workspace | null>(null)
@@ -24,10 +25,14 @@ export function WorkspaceManagementPage() {
   const deleteMutation = useDeleteWorkspace()
 
   const params = useMemo<WorkspaceListParams>(() => {
-    const p: WorkspaceListParams = { page, pageSize: PAGE_SIZE }
+    const p: WorkspaceListParams = {
+      page,
+      pageSize: PAGE_SIZE,
+      includeAutoArchived: showExecutionArchives,
+    }
     if (search.trim()) p.search = search.trim()
     return p
-  }, [page, search])
+  }, [page, search, showExecutionArchives])
 
   const { data, isLoading, isError, refetch } = useWorkspaces(params)
   const workspaces = data?.data ?? []
@@ -63,7 +68,7 @@ export function WorkspaceManagementPage() {
     })
   }, [confirmDelete, deleteMutation, notify])
 
-  const hasFilters = search.trim() !== ''
+  const hasFilters = search.trim() !== '' || showExecutionArchives
 
   return (
     <div className="flex h-full flex-col gap-4 p-6">
@@ -91,7 +96,22 @@ export function WorkspaceManagementPage() {
             className="pl-9"
           />
         </div>
+        <select
+          value={showExecutionArchives ? 'all' : 'primary'}
+          onChange={(e) => {
+            setShowExecutionArchives(e.target.value === 'all')
+            setPage(1)
+          }}
+          className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+        >
+          <option value="primary">常规工作区</option>
+          <option value="all">包含执行归档</option>
+        </select>
       </div>
+
+      <p className="text-xs text-muted-foreground">
+        默认隐藏工作流执行自动归档出来的快照，避免资源页被历史执行结果淹没。
+      </p>
 
       {/* Content */}
       {isLoading ? (

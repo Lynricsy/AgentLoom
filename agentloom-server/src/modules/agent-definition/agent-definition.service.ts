@@ -28,6 +28,11 @@ import {
   AgentPublishValidationException,
 } from './agent-definition.exceptions';
 import { resolveAgentRuntimeSandboxConfig } from '../sandbox/agent-runtime-sandbox-config';
+import {
+  DEFAULT_AGENT_SANDBOX_TIMEOUT_SECONDS,
+  deriveSandboxTimeoutHours,
+  normalizeSandboxTimeoutSeconds,
+} from '../sandbox/sandbox-timeout.utils';
 import type {
   AgentCodeToolBinding,
   AgentHttpToolBinding,
@@ -512,7 +517,9 @@ export class AgentDefinitionService {
       }
 
       if (!updatedDraft.nodes || updatedDraft.nodes.length === 0) {
-        throw new AgentPublishValidationException('Agent 画布不包含任何节点，无法发布');
+        throw new AgentPublishValidationException(
+          'Agent 画布不包含任何节点，无法发布',
+        );
       }
 
       const nextVersion = await this.getNextVersionNumber(dbClient, agentId);
@@ -1191,8 +1198,8 @@ export class AgentDefinitionService {
     const nestedConfig = this.asRecord(data.config);
     const directConfig = this.asRecord(data.preprocessorConfig);
     const nestedInnerConfig = nestedConfig
-      ? this.asRecord(nestedConfig.config) ??
-        this.asRecord(nestedConfig.preprocessorConfig)
+      ? (this.asRecord(nestedConfig.config) ??
+        this.asRecord(nestedConfig.preprocessorConfig))
       : null;
     const nestedInlineConfig = nestedConfig
       ? Object.fromEntries(
@@ -1206,7 +1213,10 @@ export class AgentDefinitionService {
       directConfig ??
       (nestedInnerConfig && nestedInlineConfig
         ? { ...nestedInnerConfig, ...nestedInlineConfig }
-        : nestedInnerConfig ?? nestedInlineConfig ?? inlineConfig ?? undefined);
+        : (nestedInnerConfig ??
+          nestedInlineConfig ??
+          inlineConfig ??
+          undefined));
 
     return {
       type,
@@ -1276,7 +1286,11 @@ export class AgentDefinitionService {
       edges?: any[];
     },
   ): string[] {
-    if (!options?.routingNodeId || !options.nodesById || !options.edges?.length) {
+    if (
+      !options?.routingNodeId ||
+      !options.nodesById ||
+      !options.edges?.length
+    ) {
       return [];
     }
 
@@ -1373,10 +1387,7 @@ export class AgentDefinitionService {
 
   private extractAgentMainRuntimeConfig(
     data: Record<string, any>,
-  ): Pick<
-    AgentRuntimeConfig,
-    'nativeToolPolicy' | 'selfEvolutionPolicy'
-  > {
+  ): Pick<AgentRuntimeConfig, 'nativeToolPolicy' | 'selfEvolutionPolicy'> {
     const nativeToolPolicyRecord = this.asRecord(data.nativeToolPolicy);
     const selfEvolutionPolicyRecord = this.asRecord(data.selfEvolutionPolicy);
 
@@ -1529,11 +1540,33 @@ export class AgentDefinitionService {
       return null;
     }
 
+    const hasTimeoutHours =
+      typeof data.timeout === 'number' &&
+      Number.isFinite(data.timeout) &&
+      data.timeout > 0;
+    const hasTimeoutSeconds =
+      typeof data.timeoutSeconds === 'number' &&
+      Number.isFinite(data.timeoutSeconds) &&
+      data.timeoutSeconds > 0;
+    const timeoutSeconds =
+      hasTimeoutSeconds || !hasTimeoutHours
+        ? normalizeSandboxTimeoutSeconds(
+            data.timeoutSeconds,
+            DEFAULT_AGENT_SANDBOX_TIMEOUT_SECONDS,
+          )
+        : undefined;
+    const fallbackTimeoutSeconds =
+      timeoutSeconds ?? DEFAULT_AGENT_SANDBOX_TIMEOUT_SECONDS;
+
     return {
       cpu: data.cpu ?? data.cpuLimit ?? 1,
       memory: data.memory ?? data.memoryLimitMb ?? 512,
       disk: data.disk ?? data.diskLimitGb ?? 1,
-      timeout: data.timeout ?? data.timeoutSeconds ?? 300,
+      timeout:
+        hasTimeoutHours && !hasTimeoutSeconds
+          ? data.timeout
+          : deriveSandboxTimeoutHours(fallbackTimeoutSeconds),
+      ...(typeof timeoutSeconds === 'number' ? { timeoutSeconds } : {}),
       lifecycleMode: data.lifecycleMode,
       persistencePath: data.persistencePath,
       restoreWorkspaceId: data.restoreWorkspaceId,

@@ -900,7 +900,7 @@ describe('SandboxService', () => {
       });
 
       expect(result).toEqual({
-        data: [session],
+        data: [{ ...session, bindingType: 'execution' }],
         meta: {
           page: 1,
           pageSize: 20,
@@ -908,6 +908,27 @@ describe('SandboxService', () => {
           totalPages: 1,
         },
       });
+    });
+
+    it('应支持按绑定类型过滤资源沙箱', async () => {
+      const listChain = createSelectChainForList([]);
+      db.select
+        .mockReturnValueOnce(listChain)
+        .mockReturnValueOnce(createSelectChainForCount(0));
+
+      await service.listSandboxes(TEST_TENANT_ID, {
+        page: 1,
+        pageSize: 20,
+        bindingType: 'resource',
+      });
+
+      const [whereClause] = listChain.from().where.mock.calls[0] ?? [];
+      const rendered = renderSql(whereClause).toLowerCase();
+
+      expect(rendered).toContain('"sandbox_sessions"."execution_id" is null');
+      expect(rendered).toContain(
+        '"sandbox_sessions"."agent_conversation_id" is null',
+      );
     });
 
     it('搜索条件应将 UUID id cast 为 text 再执行 ILIKE，避免 Postgres uuid ~~* 错误', async () => {

@@ -21,8 +21,21 @@ const STATUS_LABEL: Record<string, string> = {
   archived: '已归档',
 }
 
+const SOURCE_BADGE: Record<NonNullable<Workspace['sourceKind']>, string> = {
+  manual: 'bg-slate-500/10 text-slate-300',
+  sandbox_snapshot: 'bg-blue-500/10 text-blue-400',
+  execution_archive: 'bg-amber-500/10 text-amber-400',
+}
+
+const SOURCE_LABEL: Record<NonNullable<Workspace['sourceKind']>, string> = {
+  manual: '常规',
+  sandbox_snapshot: '沙箱快照',
+  execution_archive: '执行归档',
+}
+
 function formatSize(bytes: number | null): string {
-  if (bytes === null || bytes === 0) return '0 B'
+  if (bytes === null) return '未知'
+  if (bytes === 0) return '0 B'
   const units = ['B', 'KB', 'MB', 'GB']
   const k = 1024
   const i = Math.floor(Math.log(bytes) / Math.log(k))
@@ -84,6 +97,7 @@ export const WorkspaceCard = memo(function WorkspaceCard({
   onDelete,
 }: WorkspaceCardProps) {
   const statusKey = workspace.status === 'creating' ? 'creating' : workspace.status === 'archived' ? 'archived' : 'ready'
+  const sourceKind = workspace.sourceKind ?? 'manual'
 
   return (
     <article className="group relative rounded-2xl border border-border bg-surface-elevated p-5 shadow-sm transition-shadow hover:shadow-md">
@@ -114,6 +128,17 @@ export const WorkspaceCard = memo(function WorkspaceCard({
           {workspace.description}
         </p>
       )}
+
+      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+        <span
+          className={cn(
+            'inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium',
+            SOURCE_BADGE[sourceKind],
+          )}
+        >
+          {SOURCE_LABEL[sourceKind]}
+        </span>
+      </div>
 
       {/* Footer */}
       <div className="mt-4 flex items-center gap-4 text-xs text-muted-foreground">

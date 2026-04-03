@@ -6,6 +6,8 @@ export interface Workspace {
   sizeBytes: number | null
   status: 'creating' | 'ready' | 'archived' | 'deleted'
   config: Record<string, unknown> | null
+  sourceKind?: 'manual' | 'sandbox_snapshot' | 'execution_archive'
+  isAutoArchived?: boolean
   createdAt: string
   updatedAt: string
 }
@@ -19,6 +21,7 @@ export interface WorkspaceListParams {
   page?: number
   pageSize?: number
   search?: string
+  includeAutoArchived?: boolean
 }
 
 export interface CreateWorkspacePayload {

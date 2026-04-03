@@ -28,6 +28,16 @@ const LIFECYCLE_OPTIONS: { value: '' | 'session' | 'persistent'; label: string }
   { value: 'persistent', label: '持久' },
 ]
 
+const BINDING_OPTIONS: {
+  value: '' | 'resource' | 'conversation' | 'execution'
+  label: string
+}[] = [
+  { value: 'resource', label: '资源沙箱' },
+  { value: '', label: '全部绑定' },
+  { value: 'conversation', label: '对话沙箱' },
+  { value: 'execution', label: '执行沙箱' },
+]
+
 export function SandboxManagementPage() {
   const { notify } = useToast()
 
@@ -35,6 +45,7 @@ export function SandboxManagementPage() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<SandboxStatus | ''>('')
   const [lifecycleFilter, setLifecycleFilter] = useState<'' | 'session' | 'persistent'>('')
+  const [bindingFilter, setBindingFilter] = useState<'' | 'resource' | 'conversation' | 'execution'>('resource')
 
   const [createOpen, setCreateOpen] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState<SandboxSession | null>(null)
@@ -48,8 +59,9 @@ export function SandboxManagementPage() {
     if (search.trim()) p.search = search.trim()
     if (statusFilter) p.status = statusFilter
     if (lifecycleFilter) p.lifecycleMode = lifecycleFilter
+    if (bindingFilter) p.bindingType = bindingFilter
     return p
-  }, [page, search, statusFilter, lifecycleFilter])
+  }, [page, search, statusFilter, lifecycleFilter, bindingFilter])
 
   const { data, isLoading, isError, refetch } = useSandboxes(params)
   const sessions = data?.data ?? []
@@ -169,7 +181,25 @@ export function SandboxManagementPage() {
             </option>
           ))}
         </select>
+        <select
+          value={bindingFilter}
+          onChange={(e) => {
+            setBindingFilter(e.target.value as '' | 'resource' | 'conversation' | 'execution')
+            setPage(1)
+          }}
+          className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+        >
+          {BINDING_OPTIONS.map((opt) => (
+            <option key={opt.value || 'all'} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
       </div>
+
+      <p className="text-xs text-muted-foreground">
+        默认只显示真正可复用的资源型沙箱；对话和执行过程里的会话沙箱可按需切换查看。
+      </p>
 
       {/* Content */}
       {isLoading ? (

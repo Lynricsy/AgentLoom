@@ -24,8 +24,10 @@ import {
   SandboxCreationException,
   SandboxTimeoutException,
 } from './sandbox.exceptions';
-
-const HOURS_TO_MS = 60 * 60 * 1000;
+import {
+  formatSandboxTimeoutLabel,
+  resolveSandboxTimeoutDelayMs,
+} from './sandbox-timeout.utils';
 const CONTAINER_WORKSPACE = '/workspace/';
 const ACTIVE_STEP_STATUSES = [
   'pending',
@@ -167,7 +169,7 @@ export class SandboxLifecycleWorker extends WorkerHost {
         });
       });
 
-      const delayMs = config.timeout * HOURS_TO_MS;
+      const delayMs = resolveSandboxTimeoutDelayMs(config);
       await this.lifecycleProducer.addTimeoutCheckTask({
         sessionId,
         tenantId,
@@ -189,8 +191,7 @@ export class SandboxLifecycleWorker extends WorkerHost {
           });
       }
 
-      const isSessionMode =
-        (config?.lifecycleMode ?? 'session') === 'session';
+      const isSessionMode = (config?.lifecycleMode ?? 'session') === 'session';
 
       await runInTenantTransaction(this.db, tenantId, async (tenantDb) => {
         if (isSessionMode) {
@@ -418,7 +419,9 @@ export class SandboxLifecycleWorker extends WorkerHost {
     }
 
     if (binding.executionId) {
-      throw new SandboxTimeoutException(session.config.timeout);
+      throw new SandboxTimeoutException(
+        formatSandboxTimeoutLabel(session.config),
+      );
     }
   }
 

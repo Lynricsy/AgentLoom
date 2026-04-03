@@ -57,7 +57,9 @@ mockSelect.mockReturnValue({ from: mockFrom });
 mockFrom.mockReturnValue({ where: mockSelectWhere });
 mockSelectWhere.mockReturnValue({ limit: mockLimit });
 // Default: no lifecycleMode → defaults to 'session' mode
-mockLimit.mockResolvedValue([{ config: { cpu: 1, memory: 512, disk: 2, timeout: 2 } }]);
+mockLimit.mockResolvedValue([
+  { config: { cpu: 1, memory: 512, disk: 2, timeout: 2 } },
+]);
 
 vi.mock('../../../common/interceptors/tenant-transaction.context', () => ({
   runInTenantTransaction: vi.fn(
@@ -118,7 +120,9 @@ describe('SandboxLifecycleWorker', () => {
     mockSelect.mockReturnValue({ from: mockFrom });
     mockFrom.mockReturnValue({ where: mockSelectWhere });
     mockSelectWhere.mockReturnValue({ limit: mockLimit });
-    mockLimit.mockResolvedValue([{ config: { cpu: 1, memory: 512, disk: 2, timeout: 2 } }]);
+    mockLimit.mockResolvedValue([
+      { config: { cpu: 1, memory: 512, disk: 2, timeout: 2 } },
+    ]);
 
     worker = new SandboxLifecycleWorker(
       {} as any,
@@ -187,6 +191,29 @@ describe('SandboxLifecycleWorker', () => {
       });
     });
 
+    it('config.timeoutSeconds 存在时应优先按秒调度超时检查', async () => {
+      await worker.process(
+        createJob({
+          jobType: 'create',
+          sessionId: 's-seconds',
+          agentConversationId: 'conv-seconds',
+          tenantId: 't1',
+          config: {
+            ...DEFAULT_CONFIG,
+            timeout: 1,
+            timeoutSeconds: 300,
+          },
+        }),
+      );
+
+      expect(mockLifecycleProducer.addTimeoutCheckTask).toHaveBeenCalledWith({
+        sessionId: 's-seconds',
+        agentConversationId: 'conv-seconds',
+        tenantId: 't1',
+        delayMs: 300 * 1000,
+      });
+    });
+
     it('session 已离开 creating 状态时应回收新建容器且不覆盖为 ready', async () => {
       mockReturning.mockResolvedValueOnce([]);
 
@@ -233,7 +260,10 @@ describe('SandboxLifecycleWorker', () => {
         new Error('image not found'),
       );
 
-      const persistentConfig = { ...DEFAULT_CONFIG, lifecycleMode: 'persistent' as const };
+      const persistentConfig = {
+        ...DEFAULT_CONFIG,
+        lifecycleMode: 'persistent' as const,
+      };
 
       await expect(
         worker.process(
@@ -357,7 +387,15 @@ describe('SandboxLifecycleWorker', () => {
 
     it('persistent 模式应停止容器、更新状态为 stopped 并记录日志', async () => {
       mockLimit.mockResolvedValueOnce([
-        { config: { cpu: 1, memory: 512, disk: 2, timeout: 24, lifecycleMode: 'persistent' } },
+        {
+          config: {
+            cpu: 1,
+            memory: 512,
+            disk: 2,
+            timeout: 24,
+            lifecycleMode: 'persistent',
+          },
+        },
       ]);
 
       await worker.process(
@@ -545,7 +583,13 @@ describe('SandboxLifecycleWorker', () => {
         executionId: 'e1',
         status: 'ready',
         containerId: 'c-123',
-        config: { cpu: 1, memory: 512, disk: 2, timeout: 24, lifecycleMode: 'persistent' },
+        config: {
+          cpu: 1,
+          memory: 512,
+          disk: 2,
+          timeout: 24,
+          lifecycleMode: 'persistent',
+        },
       });
 
       await expect(

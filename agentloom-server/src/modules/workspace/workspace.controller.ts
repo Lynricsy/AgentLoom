@@ -23,6 +23,7 @@ import { CreateWorkspaceSchema } from './dto/create-workspace.dto';
 import { ListWorkspacesQueryDto } from './dto/list-workspaces-query.dto';
 import { WorkspaceService } from './workspace.service';
 import type { WorkspaceSnapshot } from '../../database/schema';
+import { enrichWorkspaceSnapshot } from './workspace-source.utils';
 
 type AuthenticatedRequest = FastifyRequest & {
   tenantId?: string;
@@ -68,7 +69,7 @@ export class WorkspaceController {
       );
     }
 
-    return { data };
+    return { data: enrichWorkspaceSnapshot(data) };
   }
 
   @Get()
@@ -86,6 +87,7 @@ export class WorkspaceController {
       page,
       pageSize,
       search: query.search,
+      includeAutoArchived: query.includeAutoArchived,
     });
 
     return {

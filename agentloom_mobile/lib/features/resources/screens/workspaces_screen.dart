@@ -17,6 +17,7 @@ class WorkspacesScreen extends ConsumerStatefulWidget {
 
 class _WorkspacesScreenState extends ConsumerState<WorkspacesScreen> {
   final _searchController = TextEditingController();
+  bool _showExecutionArchives = false;
   late Future<PaginatedResponse<WorkspaceDto>> _future;
 
   @override
@@ -32,11 +33,14 @@ class _WorkspacesScreenState extends ConsumerState<WorkspacesScreen> {
   }
 
   Future<PaginatedResponse<WorkspaceDto>> _load() {
-    return ref.read(resourcesApiProvider).listWorkspaces(
-      search: _searchController.text.trim().isEmpty
-          ? null
-          : _searchController.text.trim(),
-    );
+    return ref
+        .read(resourcesApiProvider)
+        .listWorkspaces(
+          search: _searchController.text.trim().isEmpty
+              ? null
+              : _searchController.text.trim(),
+          includeAutoArchived: _showExecutionArchives,
+        );
   }
 
   Future<void> _reload() async {
@@ -83,6 +87,22 @@ class _WorkspacesScreenState extends ConsumerState<WorkspacesScreen> {
               onSubmitted: (_) => unawaited(_reload()),
             ),
           ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: FilterChip(
+                label: const Text('显示执行归档'),
+                selected: _showExecutionArchives,
+                onSelected: (selected) {
+                  setState(() {
+                    _showExecutionArchives = selected;
+                    _future = _load();
+                  });
+                },
+              ),
+            ),
+          ),
           Expanded(
             child: FutureBuilder<PaginatedResponse<WorkspaceDto>>(
               future: _future,
@@ -102,12 +122,14 @@ class _WorkspacesScreenState extends ConsumerState<WorkspacesScreen> {
                   return RefreshIndicator(
                     onRefresh: _reload,
                     child: ListView(
-                      children: const [
-                        SizedBox(height: 80),
+                      children: [
+                        const SizedBox(height: 80),
                         ResourceEmptyState(
                           icon: Icons.folder_open_outlined,
                           title: '还没有工作区',
-                          description: '可以先创建一个空工作区，后续再绑定到 Agent 或沙箱。',
+                          description: _showExecutionArchives
+                              ? '当前筛选下没有工作区。'
+                              : '默认隐藏执行归档快照，可以先创建一个空工作区，后续再绑定到 Agent 或沙箱。',
                         ),
                       ],
                     ),
@@ -134,7 +156,7 @@ class _WorkspacesScreenState extends ConsumerState<WorkspacesScreen> {
                               Text(workspace.description ?? '无描述'),
                               const SizedBox(height: 8),
                               Text(
-                                '${workspace.status} · ${formatBytes(workspace.sizeBytes)} · ${formatDateTime(workspace.updatedAt)}',
+                                '${workspace.sourceLabel} · ${workspace.status} · ${formatBytes(workspace.sizeBytes)} · ${formatDateTime(workspace.updatedAt)}',
                                 style: Theme.of(context).textTheme.labelSmall,
                               ),
                             ],
@@ -187,10 +209,12 @@ class _WorkspacesScreenState extends ConsumerState<WorkspacesScreen> {
               ),
               FilledButton(
                 onPressed: () async {
-                  await ref.read(resourcesApiProvider).createWorkspace(
-                    name: nameController.text.trim(),
-                    description: descriptionController.text.trim(),
-                  );
+                  await ref
+                      .read(resourcesApiProvider)
+                      .createWorkspace(
+                        name: nameController.text.trim(),
+                        description: descriptionController.text.trim(),
+                      );
                   if (!context.mounted) {
                     return;
                   }
@@ -228,9 +252,11 @@ class _WorkspacesScreenState extends ConsumerState<WorkspacesScreen> {
                 style: Theme.of(context).textTheme.headlineSmall,
               ),
               const SizedBox(height: 12),
-              if (workspace.description != null && workspace.description!.isNotEmpty)
+              if (workspace.description != null &&
+                  workspace.description!.isNotEmpty)
                 Text(workspace.description!),
               const SizedBox(height: 16),
+              ResourceMetadataRow(label: '来源', value: workspace.sourceLabel),
               ResourceMetadataRow(label: '状态', value: workspace.status),
               ResourceMetadataRow(
                 label: '大小',

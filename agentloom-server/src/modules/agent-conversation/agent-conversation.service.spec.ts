@@ -427,6 +427,57 @@ describe('AgentConversationService', () => {
         NotFoundException,
       );
     });
+
+    it('取消对话后应发出 agent-conversation.ended 事件并携带正确载荷', async () => {
+      const updated = createConversationRecord({ status: 'ended' });
+      const updateChain = createUpdateChain([updated]);
+      db.update.mockReturnValueOnce(updateChain);
+
+      await service.cancel(CONVERSATION_ID);
+
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+        'agent-conversation.ended',
+        {
+          conversationId: CONVERSATION_ID,
+          tenantId: TENANT_ID,
+          organizationId: TENANT_ID,
+          userId: USER_ID,
+        },
+      );
+    });
+
+    it('事务内取消对话时应注册 after-commit hook，而不是提前发事件', async () => {
+      const updated = createConversationRecord({ status: 'ended' });
+      const updateChain = createUpdateChain([updated]);
+      db.update.mockReturnValueOnce(updateChain);
+      tenantTransactionMocks.hasActiveTenantTransaction.mockReturnValue(true);
+
+      let afterCommitHook: (() => Promise<void>) | undefined;
+      tenantTransactionMocks.registerAfterCommitHook.mockImplementation(
+        (hook: () => Promise<void>) => {
+          afterCommitHook = hook;
+        },
+      );
+
+      await service.cancel(CONVERSATION_ID);
+
+      expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+      expect(
+        tenantTransactionMocks.registerAfterCommitHook,
+      ).toHaveBeenCalledTimes(1);
+
+      await afterCommitHook?.();
+
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+        'agent-conversation.ended',
+        {
+          conversationId: CONVERSATION_ID,
+          tenantId: TENANT_ID,
+          organizationId: TENANT_ID,
+          userId: USER_ID,
+        },
+      );
+    });
   });
 
   describe('end', () => {

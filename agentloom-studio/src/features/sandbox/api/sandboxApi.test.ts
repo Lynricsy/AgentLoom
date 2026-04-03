@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { fetchPersistentSandboxes } from './sandboxApi'
+import { fetchPersistentSandboxes, fetchSandboxes } from './sandboxApi'
 
 const mocks = vi.hoisted(() => {
   const jsonMock = vi.fn()
@@ -54,6 +54,35 @@ describe('fetchPersistentSandboxes', () => {
 
     expect(mocks.getMock).toHaveBeenCalledWith('sandboxes', {
       searchParams: { lifecycleMode: 'persistent', pageSize: 100 },
+    })
+  })
+})
+
+describe('fetchSandboxes', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('应透传 bindingType 参数，支持资源/对话/执行过滤', async () => {
+    mocks.jsonMock.mockResolvedValue({
+      data: [],
+      meta: { page: 1, pageSize: 20, total: 0, totalPages: 0 },
+    })
+
+    await fetchSandboxes({
+      page: 1,
+      pageSize: 20,
+      bindingType: 'resource',
+      status: 'ready',
+    })
+
+    expect(mocks.getMock).toHaveBeenCalledWith('sandboxes', {
+      searchParams: {
+        page: 1,
+        pageSize: 20,
+        status: 'ready',
+        bindingType: 'resource',
+      },
     })
   })
 })

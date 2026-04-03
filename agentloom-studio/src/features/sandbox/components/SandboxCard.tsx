@@ -33,6 +33,26 @@ const STATUS_LABEL: Record<SandboxStatus, string> = {
 
 const RUNNING_STATUSES: ReadonlySet<SandboxStatus> = new Set(['creating', 'ready', 'busy'])
 
+const BINDING_BADGE: Record<NonNullable<SandboxSession['bindingType']>, string> = {
+  resource: 'bg-emerald-500/10 text-emerald-400',
+  conversation: 'bg-blue-500/10 text-blue-400',
+  execution: 'bg-violet-500/10 text-violet-400',
+}
+
+const BINDING_LABEL: Record<NonNullable<SandboxSession['bindingType']>, string> = {
+  resource: '资源',
+  conversation: '对话',
+  execution: '执行',
+}
+
+function formatTimeoutLabel(config: SandboxSession['config']): string {
+  if (typeof config.timeoutSeconds === 'number') {
+    return `${config.timeoutSeconds}s`
+  }
+
+  return `${config.timeout}h`
+}
+
 function CardActions({
   session,
   onStop,
@@ -129,6 +149,7 @@ export const SandboxCard = memo(function SandboxCard({
   const isPersistent = session.config.lifecycleMode === 'persistent'
   const isRunning = RUNNING_STATUSES.has(session.status)
   const displayName = session.config.name || session.id.slice(0, 8)
+  const bindingType = session.bindingType ?? 'resource'
 
   const { data: stats } = useSandboxStats(session.id, session.status)
 
@@ -172,11 +193,21 @@ export const SandboxCard = memo(function SandboxCard({
         >
           {isPersistent ? '持久' : '临时'}
         </span>
+        <span
+          className={cn(
+            'inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium',
+            BINDING_BADGE[bindingType],
+          )}
+        >
+          {BINDING_LABEL[bindingType]}
+        </span>
         <span>{session.config.cpu} C</span>
         <span>&middot;</span>
         <span>{session.config.memory} MB</span>
         <span>&middot;</span>
         <span>{session.config.disk} GB</span>
+        <span>&middot;</span>
+        <span>{formatTimeoutLabel(session.config)}</span>
       </div>
 
       {/* Stats: real-time for running, disk-only for stopped */}

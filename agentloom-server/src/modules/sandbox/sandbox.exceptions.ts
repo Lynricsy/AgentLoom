@@ -14,12 +14,12 @@ export class SandboxCreationException extends DomainException {
 }
 
 export class SandboxTimeoutException extends DomainException {
-  constructor(timeout: number) {
+  constructor(timeoutLabel: string) {
     super({
       type: 'https://agentloom.dev/errors/sandbox-timeout',
       title: '沙箱容器超时',
       status: HttpStatus.GATEWAY_TIMEOUT,
-      detail: `Sandbox container exceeded timeout: ${timeout}h`,
+      detail: `Sandbox container exceeded timeout: ${timeoutLabel}`,
     });
   }
 }

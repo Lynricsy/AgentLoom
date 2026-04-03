@@ -22,6 +22,7 @@ export async function fetchSandboxes(
   if (params?.pageSize) searchParams.pageSize = params.pageSize
   if (params?.status) searchParams.status = params.status
   if (params?.lifecycleMode) searchParams.lifecycleMode = params.lifecycleMode
+  if (params?.bindingType) searchParams.bindingType = params.bindingType
   if (params?.search) searchParams.search = params.search
 
   return apiClient

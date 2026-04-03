@@ -17,6 +17,7 @@ class SandboxesScreen extends ConsumerStatefulWidget {
 
 class _SandboxesScreenState extends ConsumerState<SandboxesScreen> {
   final _searchController = TextEditingController();
+  String _bindingType = 'resource';
   late Future<PaginatedResponse<SandboxSessionDto>> _future;
 
   @override
@@ -32,11 +33,14 @@ class _SandboxesScreenState extends ConsumerState<SandboxesScreen> {
   }
 
   Future<PaginatedResponse<SandboxSessionDto>> _load() {
-    return ref.read(resourcesApiProvider).listSandboxes(
-      search: _searchController.text.trim().isEmpty
-          ? null
-          : _searchController.text.trim(),
-    );
+    return ref
+        .read(resourcesApiProvider)
+        .listSandboxes(
+          search: _searchController.text.trim().isEmpty
+              ? null
+              : _searchController.text.trim(),
+          bindingType: _bindingType.isEmpty ? null : _bindingType,
+        );
   }
 
   Future<void> _reload() async {
@@ -83,6 +87,57 @@ class _SandboxesScreenState extends ConsumerState<SandboxesScreen> {
               onSubmitted: (_) => unawaited(_reload()),
             ),
           ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Wrap(
+                spacing: 8,
+                children: [
+                  ChoiceChip(
+                    label: const Text('资源'),
+                    selected: _bindingType == 'resource',
+                    onSelected: (_) {
+                      setState(() {
+                        _bindingType = 'resource';
+                        _future = _load();
+                      });
+                    },
+                  ),
+                  ChoiceChip(
+                    label: const Text('全部'),
+                    selected: _bindingType.isEmpty,
+                    onSelected: (_) {
+                      setState(() {
+                        _bindingType = '';
+                        _future = _load();
+                      });
+                    },
+                  ),
+                  ChoiceChip(
+                    label: const Text('对话'),
+                    selected: _bindingType == 'conversation',
+                    onSelected: (_) {
+                      setState(() {
+                        _bindingType = 'conversation';
+                        _future = _load();
+                      });
+                    },
+                  ),
+                  ChoiceChip(
+                    label: const Text('执行'),
+                    selected: _bindingType == 'execution',
+                    onSelected: (_) {
+                      setState(() {
+                        _bindingType = 'execution';
+                        _future = _load();
+                      });
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
           Expanded(
             child: FutureBuilder<PaginatedResponse<SandboxSessionDto>>(
               future: _future,
@@ -97,17 +152,20 @@ class _SandboxesScreenState extends ConsumerState<SandboxesScreen> {
                   );
                 }
 
-                final items = snapshot.data?.data ?? const <SandboxSessionDto>[];
+                final items =
+                    snapshot.data?.data ?? const <SandboxSessionDto>[];
                 if (items.isEmpty) {
                   return RefreshIndicator(
                     onRefresh: _reload,
                     child: ListView(
-                      children: const [
-                        SizedBox(height: 80),
+                      children: [
+                        const SizedBox(height: 80),
                         ResourceEmptyState(
                           icon: Icons.computer_outlined,
                           title: '还没有沙箱',
-                          description: '可以创建持久沙箱，后续在 Agent 对话或工作流里复用。',
+                          description: _bindingType == 'resource'
+                              ? '默认只展示可复用的资源沙箱，可以创建持久沙箱后在 Agent 对话或工作流里复用。'
+                              : '当前筛选下没有沙箱。',
                         ),
                       ],
                     ),
@@ -134,7 +192,8 @@ class _SandboxesScreenState extends ConsumerState<SandboxesScreen> {
                                   const SizedBox(width: 12),
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           sandbox.config.name ?? sandbox.id,
@@ -143,7 +202,7 @@ class _SandboxesScreenState extends ConsumerState<SandboxesScreen> {
                                           ).textTheme.titleMedium,
                                         ),
                                         Text(
-                                          '${sandbox.status} · ${sandbox.config.lifecycleMode}',
+                                          '${sandbox.bindingLabel} · ${sandbox.status} · ${sandbox.config.lifecycleMode}',
                                           style: Theme.of(
                                             context,
                                           ).textTheme.labelSmall,
@@ -157,23 +216,29 @@ class _SandboxesScreenState extends ConsumerState<SandboxesScreen> {
                                         case 'detail':
                                           _showDetailSheet(sandbox);
                                         case 'start':
-                                          unawaited(_executeAction(() async {
-                                            await ref
-                                                .read(resourcesApiProvider)
-                                                .startSandbox(sandbox.id);
-                                          }));
+                                          unawaited(
+                                            _executeAction(() async {
+                                              await ref
+                                                  .read(resourcesApiProvider)
+                                                  .startSandbox(sandbox.id);
+                                            }),
+                                          );
                                         case 'stop':
-                                          unawaited(_executeAction(() async {
-                                            await ref
-                                                .read(resourcesApiProvider)
-                                                .stopSandbox(sandbox.id);
-                                          }));
+                                          unawaited(
+                                            _executeAction(() async {
+                                              await ref
+                                                  .read(resourcesApiProvider)
+                                                  .stopSandbox(sandbox.id);
+                                            }),
+                                          );
                                         case 'delete':
-                                          unawaited(_executeAction(() async {
-                                            await ref
-                                                .read(resourcesApiProvider)
-                                                .deleteSandbox(sandbox.id);
-                                          }));
+                                          unawaited(
+                                            _executeAction(() async {
+                                              await ref
+                                                  .read(resourcesApiProvider)
+                                                  .deleteSandbox(sandbox.id);
+                                            }),
+                                          );
                                       }
                                     },
                                     itemBuilder: (context) => [
@@ -205,7 +270,10 @@ class _SandboxesScreenState extends ConsumerState<SandboxesScreen> {
                                 spacing: 8,
                                 runSpacing: 8,
                                 children: [
-                                  _MetricChip(label: 'CPU', value: '${sandbox.config.cpu}'),
+                                  _MetricChip(
+                                    label: 'CPU',
+                                    value: '${sandbox.config.cpu}',
+                                  ),
                                   _MetricChip(
                                     label: '内存',
                                     value: '${sandbox.config.memory} MB',
@@ -216,7 +284,7 @@ class _SandboxesScreenState extends ConsumerState<SandboxesScreen> {
                                   ),
                                   _MetricChip(
                                     label: '超时',
-                                    value: '${sandbox.config.timeout} h',
+                                    value: sandbox.config.timeoutLabel,
                                   ),
                                 ],
                               ),
@@ -267,7 +335,9 @@ class _SandboxesScreenState extends ConsumerState<SandboxesScreen> {
               const SizedBox(height: 12),
               TextField(
                 controller: cpuController,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
                 decoration: const InputDecoration(labelText: 'CPU'),
               ),
               const SizedBox(height: 12),
@@ -291,12 +361,14 @@ class _SandboxesScreenState extends ConsumerState<SandboxesScreen> {
             ),
             FilledButton(
               onPressed: () async {
-                await ref.read(resourcesApiProvider).createSandbox(
-                  name: nameController.text.trim(),
-                  cpu: double.tryParse(cpuController.text.trim()) ?? 1,
-                  memory: int.tryParse(memoryController.text.trim()) ?? 512,
-                  disk: int.tryParse(diskController.text.trim()) ?? 2,
-                );
+                await ref
+                    .read(resourcesApiProvider)
+                    .createSandbox(
+                      name: nameController.text.trim(),
+                      cpu: double.tryParse(cpuController.text.trim()) ?? 1,
+                      memory: int.tryParse(memoryController.text.trim()) ?? 512,
+                      disk: int.tryParse(diskController.text.trim()) ?? 2,
+                    );
                 if (!context.mounted) {
                   return;
                 }
@@ -343,6 +415,7 @@ class _SandboxesScreenState extends ConsumerState<SandboxesScreen> {
                     style: Theme.of(context).textTheme.headlineSmall,
                   ),
                   const SizedBox(height: 16),
+                  ResourceMetadataRow(label: '绑定', value: sandbox.bindingLabel),
                   ResourceMetadataRow(label: '状态', value: sandbox.status),
                   ResourceMetadataRow(
                     label: '生命周期',
@@ -363,9 +436,7 @@ class _SandboxesScreenState extends ConsumerState<SandboxesScreen> {
                     )
                   else if (snapshot.hasData) ...[
                     const SizedBox(height: 16),
-                    _MetricChipRow(
-                      stats: snapshot.data!.$1,
-                    ),
+                    _MetricChipRow(stats: snapshot.data!.$1),
                     const SizedBox(height: 16),
                     JsonCodePanel(
                       label: '沙箱配置',
@@ -374,6 +445,7 @@ class _SandboxesScreenState extends ConsumerState<SandboxesScreen> {
                         'memory': sandbox.config.memory,
                         'disk': sandbox.config.disk,
                         'timeout': sandbox.config.timeout,
+                        'timeoutSeconds': sandbox.config.timeoutSeconds,
                         'lifecycleMode': sandbox.config.lifecycleMode,
                         'restoreWorkspaceId': sandbox.config.restoreWorkspaceId,
                       },

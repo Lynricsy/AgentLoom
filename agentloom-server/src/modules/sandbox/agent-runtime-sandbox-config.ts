@@ -27,6 +27,9 @@ export function resolveAgentRuntimeSandboxConfig(
       typeof config?.timeout === 'number'
         ? config.timeout
         : DEFAULT_AGENT_RUNTIME_SANDBOX_CONFIG.timeout,
+    ...(typeof config?.timeoutSeconds === 'number'
+      ? { timeoutSeconds: config.timeoutSeconds }
+      : {}),
     ...(typeof config?.persistencePath === 'string'
       ? { persistencePath: config.persistencePath }
       : {}),

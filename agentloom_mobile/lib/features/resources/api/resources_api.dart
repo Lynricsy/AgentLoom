@@ -48,6 +48,7 @@ class ResourcesApi {
     int page = 1,
     int pageSize = 20,
     String? search,
+    bool includeAutoArchived = false,
   }) async {
     final response = await _dio.get(
       '/api/v1/workspaces',
@@ -55,6 +56,7 @@ class ResourcesApi {
         'page': page,
         'page_size': pageSize,
         if (search != null && search.trim().isNotEmpty) 'search': search.trim(),
+        'include_auto_archived': includeAutoArchived,
       },
     );
     return PaginatedResponse.fromJson(
@@ -88,6 +90,7 @@ class ResourcesApi {
     String? search,
     String? status,
     String? lifecycleMode,
+    String? bindingType,
   }) async {
     final response = await _dio.get(
       '/api/v1/sandboxes',
@@ -98,6 +101,8 @@ class ResourcesApi {
         if (status != null && status.isNotEmpty) 'status': status,
         if (lifecycleMode != null && lifecycleMode.isNotEmpty)
           'lifecycle_mode': lifecycleMode,
+        if (bindingType != null && bindingType.isNotEmpty)
+          'binding_type': bindingType,
       },
     );
     return PaginatedResponse.fromJson(

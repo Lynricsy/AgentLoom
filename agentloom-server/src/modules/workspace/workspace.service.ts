@@ -17,6 +17,10 @@ import {
   type SandboxRuntimeDriver,
 } from '../sandbox/sandbox-runtime-driver.port';
 import { buildWorkspaceStorageKey } from './workspace.constants';
+import {
+  enrichWorkspaceSnapshot,
+  type WorkspaceListItem,
+} from './workspace-source.utils';
 
 const CONTAINER_WORKSPACE = '/workspace/';
 const CONTAINER_TEMP_ROOT = '/tmp';
@@ -196,20 +200,16 @@ export class WorkspaceService {
         CONTAINER_TEMP_ROOT,
       );
 
-      await this.execInContainer(
-        containerId,
-        'sh',
+      await this.execInContainer(containerId, 'sh', [
+        '-lc',
         [
-          '-lc',
-          [
-            'set -eu',
-            `test -f ${this.quoteShellPath(containerArchivePath)}`,
-            `mkdir -p ${this.quoteShellPath(CONTAINER_WORKSPACE)}`,
-            `find ${this.quoteShellPath(CONTAINER_WORKSPACE)} -mindepth 1 -maxdepth 1 -exec rm -rf {} +`,
-            `tar -xf ${this.quoteShellPath(containerArchivePath)} -C ${this.quoteShellPath(CONTAINER_WORKSPACE)} --strip-components=1`,
-          ].join('; '),
-        ],
-      );
+          'set -eu',
+          `test -f ${this.quoteShellPath(containerArchivePath)}`,
+          `mkdir -p ${this.quoteShellPath(CONTAINER_WORKSPACE)}`,
+          `find ${this.quoteShellPath(CONTAINER_WORKSPACE)} -mindepth 1 -maxdepth 1 -exec rm -rf {} +`,
+          `tar -xf ${this.quoteShellPath(containerArchivePath)} -C ${this.quoteShellPath(CONTAINER_WORKSPACE)} --strip-components=1`,
+        ].join('; '),
+      ]);
     } finally {
       await stagedArchive.cleanup();
       try {
@@ -241,9 +241,12 @@ export class WorkspaceService {
 
     const outputChunks: string[] = [];
 
-    await this.dockerService.attachExecOutput(handle.execId, (_level, message) => {
-      outputChunks.push(message);
-    });
+    await this.dockerService.attachExecOutput(
+      handle.execId,
+      (_level, message) => {
+        outputChunks.push(message);
+      },
+    );
 
     const exitInfo = await this.dockerService.waitForExecExit(handle.execId);
 
@@ -327,9 +330,13 @@ export class WorkspaceService {
     archivePath: string,
   ): Promise<void> {
     await new Promise<void>((resolve, reject) => {
-      const tar = spawn('tar', ['-cf', archivePath, '-C', sourceDir, fileName], {
-        stdio: ['ignore', 'ignore', 'pipe'],
-      });
+      const tar = spawn(
+        'tar',
+        ['-cf', archivePath, '-C', sourceDir, fileName],
+        {
+          stdio: ['ignore', 'ignore', 'pipe'],
+        },
+      );
 
       let stderr = '';
 
@@ -417,8 +424,13 @@ export class WorkspaceService {
 
   async findAll(
     tenantId: string,
-    options: { page?: number; pageSize?: number; search?: string } = {},
-  ): Promise<{ data: schema.WorkspaceSnapshot[]; total: number }> {
+    options: {
+      page?: number;
+      pageSize?: number;
+      search?: string;
+      includeAutoArchived?: boolean;
+    } = {},
+  ): Promise<{ data: WorkspaceListItem[]; total: number }> {
     const tenantDb = getTenantDb(this.db);
     const page = options.page ?? 1;
     const pageSize = options.pageSize ?? 20;
@@ -429,6 +441,12 @@ export class WorkspaceService {
     if (options.search) {
       conditions.push(
         sql`${schema.workspaceSnapshots.name} ILIKE ${'%' + options.search + '%'}`,
+      );
+    }
+
+    if (options.includeAutoArchived === false) {
+      conditions.push(
+        sql`${schema.workspaceSnapshots.name} NOT ILIKE 'execution-%-step-%-workspace'`,
       );
     }
 
@@ -449,7 +467,7 @@ export class WorkspaceService {
     ]);
 
     return {
-      data,
+      data: data.map(enrichWorkspaceSnapshot),
       total: countRow?.total ?? 0,
     };
   }
@@ -457,7 +475,7 @@ export class WorkspaceService {
   async findOne(
     tenantId: string,
     workspaceId: string,
-  ): Promise<schema.WorkspaceSnapshot> {
+  ): Promise<WorkspaceListItem> {
     const tenantDb = getTenantDb(this.db);
     const [snapshot] = await tenantDb
       .select()
@@ -476,6 +494,6 @@ export class WorkspaceService {
       );
     }
 
-    return snapshot;
+    return enrichWorkspaceSnapshot(snapshot);
   }
 }

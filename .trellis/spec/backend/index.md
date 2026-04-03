@@ -24,6 +24,7 @@ Guidelines for **agentloom-server** — a NestJS v11 + Fastify v5 backend with D
 | [Error Handling](./error-handling.md) | DomainException hierarchy, filters, RFC 7807 | Done |
 | [Execution Realtime Contracts](./realtime-execution-contracts.md) | Agent ordered segments, workflow-agent realtime viewer, persistent sandbox rebinding | Done |
 | [Queue Guidelines](./queue-guidelines.md) | BullMQ workers, schedulers, job data typing | Done |
+| [Resource Management List Semantics](./resource-management-list-semantics.md) | workspace/sandbox 资源列表来源语义、Agent sandbox timeout 双字段与 conversation cleanup 契约 | Done |
 | [Testing Guidelines](./testing-guidelines.md) | Vitest, vi.hoisted, Drizzle mocking, Testcontainers E2E | Done |
 
 ---

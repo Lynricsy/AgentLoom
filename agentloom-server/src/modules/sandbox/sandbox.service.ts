@@ -49,6 +49,12 @@ type ActiveSandboxLookupParams = {
   tenantId: string;
 };
 
+export type SandboxBindingType = 'conversation' | 'execution' | 'resource';
+
+export type SandboxListItem = SandboxSession & {
+  bindingType: SandboxBindingType;
+};
+
 @Injectable()
 export class SandboxService {
   private readonly logger = new Logger(SandboxService.name);
@@ -893,13 +899,15 @@ export class SandboxService {
       pageSize: number;
       status?: SandboxSession['status'];
       lifecycleMode?: 'session' | 'persistent';
+      bindingType?: SandboxBindingType;
       search?: string;
     },
   ): Promise<{
-    data: SandboxSession[];
+    data: SandboxListItem[];
     meta: { page: number; pageSize: number; total: number; totalPages: number };
   }> {
-    const { page, pageSize, status, lifecycleMode, search } = query;
+    const { page, pageSize, status, lifecycleMode, bindingType, search } =
+      query;
     const offset = (page - 1) * pageSize;
 
     const conditions = [eq(schema.sandboxSessions.tenantId, tenantId)];
@@ -911,6 +919,22 @@ export class SandboxService {
     if (lifecycleMode) {
       conditions.push(
         sql`${schema.sandboxSessions.config}->>'lifecycleMode' = ${lifecycleMode}`,
+      );
+    }
+
+    if (bindingType === 'conversation') {
+      conditions.push(
+        sql`${schema.sandboxSessions.agentConversationId} IS NOT NULL`,
+      );
+    }
+
+    if (bindingType === 'execution') {
+      conditions.push(sql`${schema.sandboxSessions.executionId} IS NOT NULL`);
+    }
+
+    if (bindingType === 'resource') {
+      conditions.push(
+        sql`${schema.sandboxSessions.executionId} IS NULL AND ${schema.sandboxSessions.agentConversationId} IS NULL`,
       );
     }
 
@@ -943,7 +967,10 @@ export class SandboxService {
     const total_ = total ?? 0;
 
     return {
-      data,
+      data: data.map((session) => ({
+        ...session,
+        bindingType: this.deriveBindingType(session),
+      })),
       meta: {
         page,
         pageSize,
@@ -951,6 +978,18 @@ export class SandboxService {
         totalPages: total_ === 0 ? 0 : Math.ceil(total_ / pageSize),
       },
     };
+  }
+
+  private deriveBindingType(session: SandboxSession): SandboxBindingType {
+    if (session.agentConversationId) {
+      return 'conversation';
+    }
+
+    if (session.executionId) {
+      return 'execution';
+    }
+
+    return 'resource';
   }
 
   async createPersistentSandbox(

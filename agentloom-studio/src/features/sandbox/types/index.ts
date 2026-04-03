@@ -4,6 +4,7 @@ export interface SandboxSessionConfig {
   memory: number
   disk: number
   timeout: number
+  timeoutSeconds?: number
   lifecycleMode?: 'session' | 'persistent'
   restoreWorkspaceId?: string
 }
@@ -16,6 +17,7 @@ export interface SandboxSession {
   containerId: string | null
   status: 'creating' | 'ready' | 'busy' | 'stopping' | 'stopped' | 'failed'
   config: SandboxSessionConfig
+  bindingType?: 'conversation' | 'execution' | 'resource'
   workspacePath: string | null
   startedAt: string | null
   stoppedAt: string | null
@@ -37,6 +39,7 @@ export interface SandboxListParams {
   pageSize?: number
   status?: SandboxStatus | ''
   lifecycleMode?: 'session' | 'persistent' | ''
+  bindingType?: 'conversation' | 'execution' | 'resource' | ''
   search?: string
 }
 

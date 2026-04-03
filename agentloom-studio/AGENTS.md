@@ -202,6 +202,7 @@ react-hook-form + @hookform/resolvers + Zod v4
 - **跨 feature 共享类型**: `canvas/autonomy.types.ts` 位于 feature 根目录，被 organization-autonomy-policy 和 optimization-suggestion 跨 feature 引用
 - **shared/ui 组件**: 仅含 8 个基础组件（button/input/label/select/slider/switch/tabs/toast）；其中 tabs 为自定义 Context-based 实现，非 Radix Tabs
 - **Query Key Factory 模式**: 各 feature 的 `[feature]Keys.ts` 遵循 `all → lists → list(filters) → details → detail(id)` 层级模式
+- **资源页默认语义**: `WorkspaceManagementPage` 默认请求 `includeAutoArchived=false` 并展示 `sourceKind` 标签；`SandboxManagementPage` 默认请求 `bindingType=resource` 并展示 binding / timeout 标签，避免把 execution archive 与会话沙箱误当成可复用资源
 
 ## 测试约定
 

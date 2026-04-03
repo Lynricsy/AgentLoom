@@ -2,6 +2,7 @@ import { Test } from '@nestjs/testing';
 import { Logger, NotFoundException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Readable } from 'node:stream';
+import { PgDialect } from 'drizzle-orm/pg-core';
 
 import { DRIZZLE } from '../../../database/database.module';
 import { WorkspaceService } from '../workspace.service';
@@ -66,6 +67,10 @@ function createPaginatedChain(dataResult: unknown[], countResult: number) {
       }),
     },
   };
+}
+
+function renderSql(sql: Parameters<PgDialect['sqlToQuery']>[0]): string {
+  return new PgDialect().sqlToQuery(sql).sql;
 }
 
 // ─── Test constants ──────────────────────────────────────────────────────────
@@ -314,17 +319,25 @@ describe('WorkspaceService', () => {
         expect.any(Object),
         '/tmp',
       );
-      expect(mockDockerService.createExec).toHaveBeenNthCalledWith(1, TEST_CONTAINER_ID, {
-        command: 'sh',
-        args: [
-          '-lc',
-          `set -eu; test -f '${TEST_CONTAINER_ARCHIVE_PATH}'; mkdir -p '/workspace/'; find '/workspace/' -mindepth 1 -maxdepth 1 -exec rm -rf {} +; tar -xf '${TEST_CONTAINER_ARCHIVE_PATH}' -C '/workspace/' --strip-components=1`,
-        ],
-      });
-      expect(mockDockerService.createExec).toHaveBeenNthCalledWith(2, TEST_CONTAINER_ID, {
-        command: 'sh',
-        args: ['-lc', `rm -f '${TEST_CONTAINER_ARCHIVE_PATH}'`],
-      });
+      expect(mockDockerService.createExec).toHaveBeenNthCalledWith(
+        1,
+        TEST_CONTAINER_ID,
+        {
+          command: 'sh',
+          args: [
+            '-lc',
+            `set -eu; test -f '${TEST_CONTAINER_ARCHIVE_PATH}'; mkdir -p '/workspace/'; find '/workspace/' -mindepth 1 -maxdepth 1 -exec rm -rf {} +; tar -xf '${TEST_CONTAINER_ARCHIVE_PATH}' -C '/workspace/' --strip-components=1`,
+          ],
+        },
+      );
+      expect(mockDockerService.createExec).toHaveBeenNthCalledWith(
+        2,
+        TEST_CONTAINER_ID,
+        {
+          command: 'sh',
+          args: ['-lc', `rm -f '${TEST_CONTAINER_ARCHIVE_PATH}'`],
+        },
+      );
     });
 
     it('恢复命令失败时应当抛错并仍尝试清理临时目录', async () => {
@@ -545,6 +558,52 @@ describe('WorkspaceService', () => {
       expect(result.data).toHaveLength(1);
       expect(result.total).toBe(1);
     });
+
+    it('应为列表项补充来源语义', async () => {
+      const snapshots = [
+        buildSnapshot({ id: 'manual-1', name: 'manual-space' }),
+        buildSnapshot({
+          id: 'snapshot-1',
+          name: 'saved-from-sandbox',
+          config: { sourceSandboxSessionId: TEST_SESSION_ID },
+        }),
+        buildSnapshot({
+          id: 'archive-1',
+          name: 'execution-run-1-step-node-1-workspace',
+          config: { sourceSandboxSessionId: TEST_SESSION_ID },
+        }),
+      ];
+      const { dataChain, countChain } = createPaginatedChain(snapshots, 3);
+      db.select.mockReturnValueOnce(dataChain).mockReturnValueOnce(countChain);
+
+      const result = await service.findAll(TEST_TENANT_ID);
+
+      expect(result.data.map((item) => item.sourceKind)).toEqual([
+        'manual',
+        'sandbox_snapshot',
+        'execution_archive',
+      ]);
+      expect(result.data.map((item) => item.isAutoArchived)).toEqual([
+        false,
+        false,
+        true,
+      ]);
+    });
+
+    it('includeAutoArchived=false 时应过滤执行归档快照', async () => {
+      const { dataChain, countChain } = createPaginatedChain([], 0);
+      db.select.mockReturnValueOnce(dataChain).mockReturnValueOnce(countChain);
+
+      await service.findAll(TEST_TENANT_ID, {
+        includeAutoArchived: false,
+      });
+
+      const whereCalls = dataChain.from().where.mock.calls;
+      const [predicate] = whereCalls[0] ?? [];
+      const rendered = renderSql(predicate).toLowerCase();
+      expect(rendered).toContain('not ilike');
+      expect(rendered).toContain('execution-%-step-%-workspace');
+    });
   });
 
   // ─── findOne ────────────────────────────────────────────────────────────
@@ -557,6 +616,7 @@ describe('WorkspaceService', () => {
       const result = await service.findOne(TEST_TENANT_ID, TEST_WORKSPACE_ID);
 
       expect(result.id).toBe(TEST_WORKSPACE_ID);
+      expect(result.sourceKind).toBe('manual');
     });
 
     it('快照不存在时应当抛出 NotFoundException', async () => {

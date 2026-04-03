@@ -111,6 +111,8 @@ class WorkspaceDto {
     required this.sizeBytes,
     required this.status,
     required this.config,
+    required this.sourceKind,
+    required this.isAutoArchived,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -126,6 +128,8 @@ class WorkspaceDto {
       config: _readValue(json, 'config') == null
           ? null
           : _asMap(_readValue(json, 'config')),
+      sourceKind: _readValue(json, 'sourceKind') as String? ?? 'manual',
+      isAutoArchived: _asBool(_readValue(json, 'isAutoArchived')),
       createdAt: _readValue(json, 'createdAt') as String? ?? '',
       updatedAt: _readValue(json, 'updatedAt') as String? ?? '',
     );
@@ -138,8 +142,21 @@ class WorkspaceDto {
   final int? sizeBytes;
   final String status;
   final Map<String, dynamic>? config;
+  final String sourceKind;
+  final bool isAutoArchived;
   final String createdAt;
   final String updatedAt;
+
+  String get sourceLabel {
+    switch (sourceKind) {
+      case 'sandbox_snapshot':
+        return '沙箱快照';
+      case 'execution_archive':
+        return '执行归档';
+      default:
+        return '常规';
+    }
+  }
 }
 
 class SandboxConfigDto {
@@ -148,6 +165,7 @@ class SandboxConfigDto {
     required this.memory,
     required this.disk,
     required this.timeout,
+    required this.timeoutSeconds,
     required this.lifecycleMode,
     this.name,
     this.persistenceExpiryHours,
@@ -160,6 +178,7 @@ class SandboxConfigDto {
       memory: _asNullableInt(_readValue(json, 'memory')) ?? 512,
       disk: _asNullableInt(_readValue(json, 'disk')) ?? 2,
       timeout: _asNullableInt(_readValue(json, 'timeout')) ?? 24,
+      timeoutSeconds: _asNullableInt(_readValue(json, 'timeoutSeconds')),
       lifecycleMode: _readValue(json, 'lifecycleMode') as String? ?? 'session',
       name: _readValue(json, 'name') as String?,
       persistenceExpiryHours: _asNullableInt(
@@ -173,10 +192,14 @@ class SandboxConfigDto {
   final int memory;
   final int disk;
   final int timeout;
+  final int? timeoutSeconds;
   final String lifecycleMode;
   final String? name;
   final int? persistenceExpiryHours;
   final String? restoreWorkspaceId;
+
+  String get timeoutLabel =>
+      timeoutSeconds == null ? '${timeout}h' : '${timeoutSeconds}s';
 }
 
 class SandboxSessionDto {
@@ -186,6 +209,7 @@ class SandboxSessionDto {
     required this.status,
     required this.config,
     required this.createdAt,
+    required this.bindingType,
     this.executionId,
     this.agentConversationId,
     this.sandboxNodeId,
@@ -202,6 +226,7 @@ class SandboxSessionDto {
       status: _readValue(json, 'status') as String? ?? 'creating',
       config: SandboxConfigDto.fromJson(_asMap(_readValue(json, 'config'))),
       createdAt: _readValue(json, 'createdAt') as String? ?? '',
+      bindingType: _readValue(json, 'bindingType') as String? ?? 'resource',
       executionId: _readValue(json, 'executionId') as String?,
       agentConversationId: _readValue(json, 'agentConversationId') as String?,
       sandboxNodeId: _readValue(json, 'sandboxNodeId') as String?,
@@ -217,6 +242,7 @@ class SandboxSessionDto {
   final String status;
   final SandboxConfigDto config;
   final String createdAt;
+  final String bindingType;
   final String? executionId;
   final String? agentConversationId;
   final String? sandboxNodeId;
@@ -224,6 +250,17 @@ class SandboxSessionDto {
   final String? workspacePath;
   final String? startedAt;
   final String? stoppedAt;
+
+  String get bindingLabel {
+    switch (bindingType) {
+      case 'conversation':
+        return '对话';
+      case 'execution':
+        return '执行';
+      default:
+        return '资源';
+    }
+  }
 }
 
 class SandboxStatsDto {

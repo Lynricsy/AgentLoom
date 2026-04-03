@@ -38,8 +38,10 @@ export interface SandboxConfig {
   disk: number;
   /** 持久化路径（可选，指向 MinIO） */
   persistencePath?: string;
-  /** 超时时间（小时，1-24） */
+  /** 基础超时时间（小时，1-24），主要用于持久沙箱和 legacy runtime */
   timeout: number;
+  /** Agent runtime 会话级秒数超时；存在时优先于 timeout 小时字段 */
+  timeoutSeconds?: number;
   /** 工作区快照 ID（可选，创建时恢复到容器） */
   restoreWorkspaceId?: string;
   /** 生命周期模式：session=对话结束时销毁，persistent=保持存活直到过期或手动销毁（默认 session） */

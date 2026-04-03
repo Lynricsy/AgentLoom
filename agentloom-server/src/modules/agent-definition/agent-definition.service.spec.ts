@@ -816,12 +816,13 @@ describe('AgentDefinitionService', () => {
 
       expect(capturedSetClause).not.toBeNull();
       expect(
-        ((capturedSetClause as unknown as Record<string, any>).sandboxConfig),
+        (capturedSetClause as unknown as Record<string, any>).sandboxConfig,
       ).toEqual({
         cpu: 2,
         memory: 1536,
         disk: 5,
-        timeout: 901,
+        timeout: 1,
+        timeoutSeconds: 901,
         lifecycleMode: undefined,
         persistencePath: undefined,
         restoreWorkspaceId: 'workspace-1',
@@ -1152,11 +1153,13 @@ describe('AgentDefinitionService', () => {
         cpu: 2,
         memory: 1024,
         disk: 4,
-        timeout: 600,
+        timeout: 1,
+        timeoutSeconds: 600,
         lifecycleMode: undefined,
         persistencePath: undefined,
         restoreWorkspaceId: undefined,
         persistenceExpiryHours: undefined,
+        persistentSandboxId: undefined,
       });
     });
 
@@ -1204,7 +1207,8 @@ describe('AgentDefinitionService', () => {
           cpu: 1.5,
           memory: 768,
           disk: 3,
-          timeout: 120,
+          timeout: 1,
+          timeoutSeconds: 120,
         }),
       );
     });
@@ -1327,7 +1331,7 @@ describe('AgentDefinitionService', () => {
             nodeType: 'input-preprocessor',
             config: {
               transformType: 'script',
-              expression: "({ value: input.toUpperCase() })",
+              expression: '({ value: input.toUpperCase() })',
               outputFormat: 'json',
             },
           },
@@ -1341,7 +1345,7 @@ describe('AgentDefinitionService', () => {
           type: 'script',
           config: {
             transformType: 'script',
-            expression: "({ value: input.toUpperCase() })",
+            expression: '({ value: input.toUpperCase() })',
             outputFormat: 'json',
           },
         },
@@ -1795,7 +1799,8 @@ describe('AgentDefinitionService', () => {
       expect(config.sandboxConfig!.cpu).toBe(1);
       expect(config.sandboxConfig!.memory).toBe(512);
       expect(config.sandboxConfig!.disk).toBe(1);
-      expect(config.sandboxConfig!.timeout).toBe(300);
+      expect(config.sandboxConfig!.timeout).toBe(1);
+      expect(config.sandboxConfig!.timeoutSeconds).toBe(300);
     });
 
     it('skill 节点通过 skills-in 连接到 agent-main 时应被编译', () => {
@@ -2010,7 +2015,9 @@ describe('AgentDefinitionService', () => {
         status: 'published',
         version: 2,
         publishedVersionId: 'version-old',
-        nodes: [{ id: 'node-1', type: 'llm-model', data: { modelId: 'gpt-4' } }],
+        nodes: [
+          { id: 'node-1', type: 'llm-model', data: { modelId: 'gpt-4' } },
+        ],
       });
       const updatedDraft = makeAgent({
         status: 'published',
@@ -2058,7 +2065,9 @@ describe('AgentDefinitionService', () => {
         c.where = vi.fn().mockReturnValue(c);
         c.returning = vi
           .fn()
-          .mockResolvedValue(updateCallCount === 1 ? [updatedDraft] : [publishedDetail]);
+          .mockResolvedValue(
+            updateCallCount === 1 ? [updatedDraft] : [publishedDetail],
+          );
         return c;
       });
 
@@ -2274,7 +2283,9 @@ describe('AgentDefinitionService', () => {
         c.where = vi.fn().mockReturnValue(c);
         c.returning = vi
           .fn()
-          .mockResolvedValue(updateCallCount === 1 ? [updatedDraft] : [publishedDetail]);
+          .mockResolvedValue(
+            updateCallCount === 1 ? [updatedDraft] : [publishedDetail],
+          );
         return c;
       });
 
@@ -2302,12 +2313,13 @@ describe('AgentDefinitionService', () => {
 
       expect(updateClauses[0]).toBeDefined();
       expect(
-        ((updateClauses[0] as unknown as Record<string, any>).sandboxConfig),
+        (updateClauses[0] as unknown as Record<string, any>).sandboxConfig,
       ).toEqual({
         cpu: 2,
         memory: 1536,
         disk: 5,
-        timeout: 901,
+        timeout: 1,
+        timeoutSeconds: 901,
         lifecycleMode: undefined,
         persistencePath: undefined,
         restoreWorkspaceId: 'workspace-1',
@@ -2317,14 +2329,17 @@ describe('AgentDefinitionService', () => {
       expect(insertValues).not.toBeNull();
       expect(
         (
-          (insertValues as unknown as Record<string, any>)
-            .snapshot as Record<string, any>
+          (insertValues as unknown as Record<string, any>).snapshot as Record<
+            string,
+            any
+          >
         ).sandboxConfig,
       ).toEqual({
         cpu: 2,
         memory: 1536,
         disk: 5,
-        timeout: 901,
+        timeout: 1,
+        timeoutSeconds: 901,
         lifecycleMode: undefined,
         persistencePath: undefined,
         restoreWorkspaceId: 'workspace-1',
