@@ -5,6 +5,7 @@ import type {
   ReactFlowViewport,
 } from '../../../database/schema/workflow-definitions.schema';
 import type { SandboxConfig } from '../../../database/schema/sandbox-sessions.schema';
+import { deriveAgentSandboxConfigFromCanvas } from '../agent-sandbox-config.utils';
 
 export interface AgentDefinitionResponseDto {
   id: string;
@@ -129,7 +130,12 @@ export function serializeAgentDefinition(
 export function serializeAgentDefinitionDetail(
   row: DetailRow,
 ): AgentDefinitionDetailResponseDto {
-  const metadata = readDetailMetadata(row.metadata, row.sandboxConfig ?? null);
+  const sandboxConfig = deriveAgentSandboxConfigFromCanvas(
+    row.nodes,
+    row.edges,
+    row.sandboxConfig ?? null,
+  );
+  const metadata = readDetailMetadata(row.metadata, sandboxConfig);
 
   return {
     ...serializeAgentDefinition(row),
@@ -137,7 +143,7 @@ export function serializeAgentDefinitionDetail(
     nodes: row.nodes,
     edges: row.edges,
     viewport: row.viewport ?? null,
-    sandboxConfig: row.sandboxConfig ?? null,
+    sandboxConfig,
     workspaceSnapshotId: row.workspaceSnapshotId ?? null,
     inputSchema: metadata.inputSchema,
     memoryInstanceIds: metadata.memoryInstanceIds,

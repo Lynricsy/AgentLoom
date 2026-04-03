@@ -93,4 +93,73 @@ describe('serializeAgentDefinitionDetail', () => {
     expect(result.memoryInstanceIds).toBeNull();
     expect(result.sandboxLifecycle).toBe('session');
   });
+
+  it('应从画布节点恢复旧 sandboxConfig 丢失的 timeoutSeconds', () => {
+    const createdAt = new Date('2026-04-03T00:00:00.000Z');
+    const updatedAt = new Date('2026-04-03T00:30:00.000Z');
+
+    const result = serializeAgentDefinitionDetail({
+      id: 'agent-1',
+      tenantId: 'tenant-1',
+      name: 'Agent',
+      slug: 'agent',
+      description: null,
+      icon: null,
+      status: 'published',
+      version: 25,
+      publishedVersionId: 'version-25',
+      createdBy: 'user-1',
+      updatedBy: 'user-1',
+      createdAt,
+      updatedAt,
+      systemPrompt: null,
+      nodes: [
+        {
+          id: 'agent-main',
+          type: 'agent',
+          position: { x: 0, y: 0 },
+          data: { nodeType: 'agent-main' },
+        },
+        {
+          id: 'sandbox-1',
+          type: 'tool',
+          position: { x: 120, y: 0 },
+          data: {
+            nodeType: 'sandbox',
+            cpuLimit: 3,
+            memoryLimitMb: 1536,
+            diskLimitGb: 6,
+            timeoutSeconds: 450,
+          },
+        },
+      ] as never,
+      edges: [
+        {
+          id: 'edge-sandbox-main',
+          source: 'sandbox-1',
+          target: 'agent-main',
+          sourceHandle: 'sandbox-out',
+          targetHandle: 'sandbox-in',
+        },
+      ] as never,
+      viewport: null,
+      sandboxConfig: {
+        cpu: 3,
+        memory: 1536,
+        disk: 6,
+        timeout: 450,
+      },
+      workspaceSnapshotId: null,
+      metadata: {},
+    });
+
+    expect(result.sandboxConfig).toEqual({
+      cpu: 3,
+      memory: 1536,
+      disk: 6,
+      timeout: 1,
+      timeoutSeconds: 450,
+    });
+    expect(result.sandboxLifecycle).toBeNull();
+  });
 });

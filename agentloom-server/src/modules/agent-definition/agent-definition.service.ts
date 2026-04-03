@@ -21,13 +21,13 @@ import type {
   AgentDefinitionResponseDto,
   AgentDefinitionDetailResponseDto,
 } from './dto/agent-definition-response.dto';
+import { deriveAgentSandboxConfigFromCanvas } from './agent-sandbox-config.utils';
 import {
   AgentNotFoundException,
   AgentArchivedException,
   AgentVersionConflictException,
   AgentPublishValidationException,
 } from './agent-definition.exceptions';
-import { resolveAgentRuntimeSandboxConfig } from '../sandbox/agent-runtime-sandbox-config';
 import {
   DEFAULT_AGENT_SANDBOX_TIMEOUT_SECONDS,
   deriveSandboxTimeoutHours,
@@ -1583,26 +1583,11 @@ export class AgentDefinitionService {
       | Record<string, unknown>
       | null,
   ): AgentRuntimeConfig['sandboxConfig'] | null {
-    const compiledSandboxConfig = this.buildRuntimeConfigFromNodes(
-      nodes ?? [],
-      edges ?? [],
-    ).sandboxConfig;
-
-    if (compiledSandboxConfig) {
-      return compiledSandboxConfig;
-    }
-
-    if (
-      fallbackConfig &&
-      typeof fallbackConfig === 'object' &&
-      !Array.isArray(fallbackConfig)
-    ) {
-      return resolveAgentRuntimeSandboxConfig(
-        fallbackConfig as unknown as AgentRuntimeConfig['sandboxConfig'],
-      );
-    }
-
-    return null;
+    return deriveAgentSandboxConfigFromCanvas(
+      nodes as never,
+      edges as never,
+      fallbackConfig ?? null,
+    );
   }
 
   private readFirstString(...candidates: unknown[]): string | undefined {
@@ -1660,12 +1645,21 @@ export interface AgentVersionResponseDto {
 function toVersionResponseDto(
   version: typeof schema.agentVersions.$inferSelect,
 ): AgentVersionResponseDto {
+  const sandboxConfig = deriveAgentSandboxConfigFromCanvas(
+    version.snapshot.nodes,
+    version.snapshot.edges,
+    version.snapshot.sandboxConfig ?? null,
+  );
+
   return {
     id: version.id,
     agentDefinitionId: version.agentDefinitionId,
     versionNumber: version.versionNumber,
     label: version.label,
-    snapshot: version.snapshot,
+    snapshot: {
+      ...version.snapshot,
+      ...(sandboxConfig ? { sandboxConfig } : {}),
+    },
     publishedAt: version.publishedAt?.toISOString() ?? null,
     archivedAt: version.archivedAt?.toISOString() ?? null,
     createdBy: version.createdBy,

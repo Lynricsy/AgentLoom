@@ -35,6 +35,10 @@ import type {
 import type { ToolCallEvent } from '../agent/types/tool-call-event.types';
 import { AgentDefinitionService } from '../agent-definition/agent-definition.service';
 import type { AgentRuntimeConfig } from '../agent-definition/agent-runtime-config.interface';
+import {
+  deriveAgentSandboxConfigFromCanvas,
+  mergeSandboxConfigCandidates,
+} from '../agent-definition/agent-sandbox-config.utils';
 import { EventBridgeService } from '../execution/services/event-bridge.service';
 import type { PreparationPhase } from '../execution/types/execution-event.types';
 import {
@@ -44,9 +48,7 @@ import {
 import { LlmService } from '../llm/llm.service';
 import { McpService } from '../mcp/mcp.service';
 import { SelfEvolutionToolsProvider } from '../self-evolution/self-evolution-tools.provider';
-import {
-  SmartRoutingService,
-} from '../smart-routing/smart-routing.service';
+import { SmartRoutingService } from '../smart-routing/smart-routing.service';
 import type { RoutingStrategy } from '../smart-routing/dto/routing-context.dto';
 import { resolveAgentRuntimeSandboxConfig } from '../sandbox/agent-runtime-sandbox-config';
 import { SandboxService } from '../sandbox/sandbox.service';
@@ -590,6 +592,12 @@ export class AgentExecutionWorker extends WorkerHost {
       let runtimeConfig: AgentRuntimeConfig;
       let systemPrompt = definition.systemPrompt ?? undefined;
       let snapshot: AgentVersionSnapshot | null = null;
+      const normalizedDefinitionSandboxConfig =
+        deriveAgentSandboxConfigFromCanvas(
+          definition.nodes,
+          definition.edges,
+          definition.sandboxConfig,
+        );
 
       if (definition.publishedVersionId) {
         const [version] = await dbClient
@@ -606,13 +614,22 @@ export class AgentExecutionWorker extends WorkerHost {
       }
 
       if (snapshot) {
+        const normalizedSnapshotSandboxConfig =
+          deriveAgentSandboxConfigFromCanvas(
+            snapshot.nodes,
+            snapshot.edges,
+            snapshot.sandboxConfig ?? null,
+          );
         runtimeConfig = this.agentDefinitionService.buildRuntimeConfigFromNodes(
           snapshot.nodes,
           snapshot.edges,
         );
         runtimeConfig.sandboxConfig = resolveAgentRuntimeSandboxConfig(
-          runtimeConfig.sandboxConfig ??
-            snapshot.sandboxConfig ??
+          mergeSandboxConfigCandidates(
+            runtimeConfig.sandboxConfig ?? null,
+            normalizedSnapshotSandboxConfig,
+          ) ??
+            normalizedDefinitionSandboxConfig ??
             definition.sandboxConfig,
         );
         systemPrompt =
@@ -622,7 +639,10 @@ export class AgentExecutionWorker extends WorkerHost {
           definition.id,
         );
         runtimeConfig.sandboxConfig = resolveAgentRuntimeSandboxConfig(
-          runtimeConfig.sandboxConfig ?? definition.sandboxConfig,
+          mergeSandboxConfigCandidates(
+            runtimeConfig.sandboxConfig ?? null,
+            normalizedDefinitionSandboxConfig,
+          ) ?? definition.sandboxConfig,
         );
       }
 
@@ -705,7 +725,9 @@ export class AgentExecutionWorker extends WorkerHost {
       return params.candidateModelIds[0];
     }
 
-    const latestPrompt = this.formatLatestPendingMessages(params.pendingMessages);
+    const latestPrompt = this.formatLatestPendingMessages(
+      params.pendingMessages,
+    );
 
     try {
       const decision = await this.smartRoutingService.evaluate(
@@ -2573,6 +2595,19 @@ export class AgentExecutionWorker extends WorkerHost {
 
     try {
       const versionSnapshot = params.versionSnapshot?.snapshot;
+      const normalizedDefinitionSandboxConfig =
+        deriveAgentSandboxConfigFromCanvas(
+          params.agentDefinition.nodes,
+          params.agentDefinition.edges,
+          params.agentDefinition.sandboxConfig,
+        );
+      const normalizedVersionSandboxConfig = versionSnapshot
+        ? deriveAgentSandboxConfigFromCanvas(
+            versionSnapshot.nodes,
+            versionSnapshot.edges,
+            versionSnapshot.sandboxConfig ?? null,
+          )
+        : null;
       const runtimeConfig = versionSnapshot
         ? this.agentDefinitionService.buildRuntimeConfigFromNodes(
             versionSnapshot.nodes,
@@ -2584,8 +2619,11 @@ export class AgentExecutionWorker extends WorkerHost {
           );
 
       runtimeConfig.sandboxConfig = resolveAgentRuntimeSandboxConfig(
-        runtimeConfig.sandboxConfig ??
-          versionSnapshot?.sandboxConfig ??
+        mergeSandboxConfigCandidates(
+          runtimeConfig.sandboxConfig ?? null,
+          normalizedVersionSandboxConfig,
+        ) ??
+          normalizedDefinitionSandboxConfig ??
           params.agentDefinition.sandboxConfig,
       );
 

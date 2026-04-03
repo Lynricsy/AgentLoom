@@ -316,7 +316,11 @@ describe('AgentExecutionWorker', () => {
       const blocks = (
         worker as unknown as {
           buildPromptBlocks: (
-            pendingMessages: Array<{ id: string; content: string; createdAt: Date }>,
+            pendingMessages: Array<{
+              id: string;
+              content: string;
+              createdAt: Date;
+            }>,
             hasPriorTurns: boolean,
             historyMessages: Array<{
               id: string;
@@ -362,7 +366,9 @@ describe('AgentExecutionWorker', () => {
       });
       expect(blocks[0]?.text).toContain('继承副本');
       expect(blocks[0]?.text).toContain('不要继续执行历史里未完成的编号任务');
-      expect(blocks[0]?.text).toContain('只读取 /workspace/qa-selfevo-bind-marker.txt');
+      expect(blocks[0]?.text).toContain(
+        '只读取 /workspace/qa-selfevo-bind-marker.txt',
+      );
     });
   });
 
@@ -1155,6 +1161,110 @@ describe('AgentExecutionWorker', () => {
         }),
       );
     });
+
+    it('快照 persisted sandboxConfig 丢失 timeoutSeconds 时应从画布节点恢复秒级超时', async () => {
+      const contextLoader = worker as unknown as {
+        loadConversationExecutionContext: (
+          conversationId: string,
+          tenantId: string,
+        ) => Promise<{
+          runtimeConfig: {
+            sandboxConfig?: {
+              cpu: number;
+              memory: number;
+              disk: number;
+              timeout: number;
+              timeoutSeconds?: number;
+            };
+          };
+        } | null>;
+      };
+
+      const selectChain = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn(),
+      };
+      mockDb.select.mockReturnValue(selectChain);
+      selectChain.limit
+        .mockResolvedValueOnce([
+          {
+            id: 'conversation-1',
+            agentDefinitionId: 'agent-1',
+            tenantId: 'tenant-1',
+            status: 'active',
+            metadata: {},
+          },
+        ])
+        .mockResolvedValueOnce([
+          {
+            id: 'agent-1',
+            publishedVersionId: 'version-1',
+            systemPrompt: 'system',
+            nodes: [],
+            edges: [],
+            sandboxConfig: { cpu: 3, memory: 1536, disk: 6, timeout: 450 },
+            metadata: {},
+          },
+        ])
+        .mockResolvedValueOnce([
+          {
+            snapshot: {
+              nodes: [
+                {
+                  id: 'agent-main',
+                  type: 'agent',
+                  data: { nodeType: 'agent-main' },
+                },
+                {
+                  id: 'sandbox-node',
+                  type: 'tool',
+                  data: {
+                    nodeType: 'sandbox',
+                    cpuLimit: 3,
+                    memoryLimitMb: 1536,
+                    diskLimitGb: 6,
+                    timeoutSeconds: 450,
+                  },
+                },
+              ],
+              edges: [
+                {
+                  id: 'edge-sandbox-main',
+                  source: 'sandbox-node',
+                  target: 'agent-main',
+                  sourceHandle: 'sandbox-out',
+                  targetHandle: 'sandbox-in',
+                },
+              ],
+              sandboxConfig: { cpu: 3, memory: 1536, disk: 6, timeout: 450 },
+              metadata: {},
+            },
+          },
+        ]);
+      mockAgentDefinitionService.buildRuntimeConfigFromNodes.mockReturnValue({
+        modelConfig: { modelId: 'model-1' },
+      });
+
+      const context = await contextLoader.loadConversationExecutionContext(
+        'conversation-1',
+        'tenant-1',
+      );
+
+      expect(context).toEqual(
+        expect.objectContaining({
+          runtimeConfig: expect.objectContaining({
+            sandboxConfig: {
+              cpu: 3,
+              memory: 1536,
+              disk: 6,
+              timeout: 1,
+              timeoutSeconds: 450,
+            },
+          }),
+        }),
+      );
+    });
   });
 
   describe('prepareRuntimeSession() — runtime routing', () => {
@@ -1784,8 +1894,7 @@ describe('AgentExecutionWorker', () => {
       expect(mockRuntime.prompt).toHaveBeenCalledWith('session-1', [
         {
           type: 'text',
-          text:
-            '{\n  "marker": "PREPROCESSED",\n  "value": "HELLO"\n}',
+          text: '{\n  "marker": "PREPROCESSED",\n  "value": "HELLO"\n}',
         },
       ]);
     });

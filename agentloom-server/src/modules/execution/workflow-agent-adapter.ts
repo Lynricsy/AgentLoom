@@ -30,6 +30,10 @@ import type {
   AgentSubAgentRef,
 } from '../agent-definition/agent-runtime-config.interface';
 import {
+  deriveAgentSandboxConfigFromCanvas,
+  mergeSandboxConfigCandidates,
+} from '../agent-definition/agent-sandbox-config.utils';
+import {
   resolveSubAgent,
   MAX_SUB_AGENT_DEPTH,
 } from './node-handlers/sub-agent.handler';
@@ -351,6 +355,18 @@ export class WorkflowAgentAdapter {
       );
     }
 
+    const normalizedDefinitionSandboxConfig =
+      deriveAgentSandboxConfigFromCanvas(
+        definition.nodes,
+        definition.edges,
+        definition.sandboxConfig,
+      );
+    const normalizedSnapshotSandboxConfig = deriveAgentSandboxConfigFromCanvas(
+      snapshot.nodes,
+      snapshot.edges,
+      snapshot.sandboxConfig ?? null,
+    );
+
     const runtimeConfig =
       this.dependencies.agentDefinitionService.buildRuntimeConfigFromNodes(
         snapshot.nodes,
@@ -359,8 +375,11 @@ export class WorkflowAgentAdapter {
 
     runtimeConfig.sandboxConfig = resolveAgentRuntimeSandboxConfig(
       this.config.sandboxConfig ??
-        runtimeConfig.sandboxConfig ??
-        snapshot.sandboxConfig ??
+        mergeSandboxConfigCandidates(
+          runtimeConfig.sandboxConfig ?? null,
+          normalizedSnapshotSandboxConfig,
+        ) ??
+        normalizedDefinitionSandboxConfig ??
         definition.sandboxConfig,
     );
 

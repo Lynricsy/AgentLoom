@@ -356,6 +356,97 @@ describe('WorkflowAgentAdapter', () => {
     expect(result).toMatchObject({ content: 'sandbox-output' });
   });
 
+  it('已发布快照 persisted sandboxConfig 丢失 timeoutSeconds 时应从画布节点恢复秒级超时', async () => {
+    const snapshotWithLegacySandbox = {
+      nodes: [
+        {
+          id: 'parent-main',
+          type: 'agent',
+          position: { x: 0, y: 0 },
+          data: { nodeType: 'agent-main' },
+        },
+        {
+          id: 'parent-sandbox',
+          type: 'tool',
+          position: { x: 120, y: 0 },
+          data: {
+            nodeType: 'sandbox',
+            cpuLimit: 3,
+            memoryLimitMb: 1536,
+            diskLimitGb: 6,
+            timeoutSeconds: 450,
+          },
+        },
+      ],
+      edges: [
+        {
+          id: 'edge-parent-sandbox',
+          source: 'parent-sandbox',
+          target: 'parent-main',
+          sourceHandle: 'sandbox-out',
+          targetHandle: 'sandbox-in',
+        },
+      ],
+      viewport: null,
+      sandboxConfig: { cpu: 3, memory: 1536, disk: 6, timeout: 450 },
+      metadata: {
+        nodeCount: 2,
+        edgeCount: 1,
+        createdFromVersion: 1,
+      },
+    } satisfies AgentVersionSnapshot;
+
+    mockAgentDefinitionService.findDetailById.mockResolvedValue({
+      id: 'parent-agent',
+      publishedVersionId: 'parent-agent-version',
+      systemPrompt: '父 Agent 提示词',
+      nodes: snapshotWithLegacySandbox.nodes,
+      edges: snapshotWithLegacySandbox.edges,
+      sandboxConfig: { cpu: 3, memory: 1536, disk: 6, timeout: 450 },
+    });
+    mockAgentDefinitionService.buildRuntimeConfigFromNodes.mockReturnValue({
+      modelConfig: { modelId: 'model-parent' },
+      subAgents: [],
+    });
+    mockSandboxRuntime.createSession.mockResolvedValue({ id: 'solo-session' });
+    mockSandboxRuntime.prompt.mockImplementation(() =>
+      emit([
+        { type: 'message_chunk', content: 'legacy-timeout-fixed' },
+        { type: 'done', stopReason: 'end_turn' },
+      ]),
+    );
+
+    const adapter = createAdapter({
+      db,
+      agentRuntime: mockAgentRuntime,
+      runtimeAdapterFactory: mockRuntimeAdapterFactory,
+      agentDefinitionService: mockAgentDefinitionService,
+      sandboxService: mockSandboxService,
+      eventBridge: mockEventBridge,
+    });
+
+    await adapter.execute({
+      executionId: EXECUTION_ID,
+      step: makeStep(),
+      input: { prompt: 'hello' },
+      tenantId: TENANT_ID,
+      versionSnapshot: snapshotWithLegacySandbox,
+    });
+
+    expect(mockSandboxService.createSandboxSession).toHaveBeenCalledWith({
+      executionId: EXECUTION_ID,
+      sandboxNodeId: 'workflow-agent-node',
+      config: {
+        cpu: 3,
+        memory: 1536,
+        disk: 6,
+        timeout: 1,
+        timeoutSeconds: 450,
+      },
+      tenantId: TENANT_ID,
+    });
+  });
+
   it('text-in 应作为主提示文本注入，并从摘要 JSON 中剔除', async () => {
     mockAgentDefinitionService.buildRuntimeConfigFromNodes.mockReturnValue({
       modelConfig: { modelId: 'model-parent' },

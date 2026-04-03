@@ -18,6 +18,7 @@
 - `AgentConversationService.cancel(conversationId)`
 - `AgentConversationService.end(conversationId)`
 - `AgentDefinitionService.extractSandboxConfig(data): AgentRuntimeConfig['sandboxConfig'] | null`
+- `deriveAgentSandboxConfigFromCanvas(nodes, edges, fallbackConfig): SandboxConfig | null`
 - `resolveAgentRuntimeSandboxConfig(config?: SandboxConfig | null): SandboxConfig`
 - `resolveSandboxTimeoutDelayMs(config): number`
 - `WorkspaceService.findAll(tenantId, { page?, pageSize?, search?, includeAutoArchived? })`
@@ -57,6 +58,7 @@
     - `timeout = 1`
   - 只有显式 legacy `timeout(hours)` 且不存在 `timeoutSeconds` 时，才继续沿用小时语义
 - `SandboxLifecycleWorker` 调度 timeout check 时，必须优先使用 `timeoutSeconds`；不存在时才回退到 `timeout(hours)`
+- `agent_definitions.sandbox_config` 与 `agent_versions.snapshot.sandboxConfig` 属于 persisted mirror，不应被视为绝对真源；当旧记录缺失 `timeoutSeconds` 时，detail response、version response 和 runtime 启动链都必须优先根据 canvas / snapshot 的 `nodes + edges` 重新推导 canonical sandboxConfig，再只把 persisted mirror 作为 fallback
 
 ### 3.3 Workspace list semantics
 
@@ -91,6 +93,7 @@
 | Agent sandbox `timeoutSeconds=901` | 编译后 `timeoutSeconds=901` 且兼容回填 `timeout=1` | `agent-definition.service.spec.ts` |
 | Agent sandbox 未显式配置 timeout | 默认得到 `timeoutSeconds=300` + `timeout=1` | `agent-definition.service.spec.ts` |
 | lifecycle create job 含 `timeoutSeconds=300` | timeout check delay = `300_000ms` | `sandbox-lifecycle.worker.spec.ts` |
+| 旧 published snapshot 只有 `sandboxConfig.timeout=450`，但节点仍有 `timeoutSeconds=450` | detail / versions / runtime 都必须恢复成 `timeout=1 + timeoutSeconds=450` | `agent-definition-response.dto.spec.ts`, `agent-execution.worker.spec.ts`, `workflow-agent-adapter.spec.ts` |
 | workspace list 默认过滤 execution archive | API 仍返回 `sourceKind`，但 `execution_archive` 被排除 | `workspace.service.spec.ts` |
 | `includeAutoArchived=false` query string | DTO 必须把 `'false'` 解析成 `false`，不能回退成 truthy | `list-workspaces-query.dto.spec.ts` |
 | sandbox list `bindingType=resource` | SQL where 同时要求 `execution_id is null` + `agent_conversation_id is null` | `sandbox.service.spec.ts` |
