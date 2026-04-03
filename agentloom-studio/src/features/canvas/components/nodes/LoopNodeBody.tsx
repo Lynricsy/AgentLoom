@@ -1,6 +1,5 @@
 import { memo } from 'react'
-import { Repeat, TimerReset } from 'lucide-react'
-import { cn } from '@/shared/lib/utils'
+import { Repeat } from 'lucide-react'
 
 function resolveOutputMode(config: Record<string, unknown>): string {
   return config.outputMode === 'none'
@@ -35,18 +34,6 @@ export const LoopNodeBody = memo(function LoopNodeBody({
         <span className="rounded border border-border/50 bg-muted/10 px-1.5 py-0.5 text-[10px] text-muted-foreground">
           支持 loop-state / result
         </span>
-      </div>
-
-      <div
-        className={cn(
-          'rounded border border-dashed border-border/60 px-2 py-2 text-[10px] leading-4 text-muted-foreground',
-          'bg-background/60',
-        )}
-      >
-        <div className="flex items-center gap-1">
-          <TimerReset className="h-3 w-3 shrink-0" />
-          <span>初始 state 优先读取 `state-in`，未连线时回退到默认值。</span>
-        </div>
       </div>
     </div>
   )
