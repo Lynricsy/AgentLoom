@@ -115,4 +115,26 @@ describe('AgentNodeConfigPanel', () => {
       },
     });
   });
+
+  it('stops wheel propagation from the scroll container so the canvas does not steal scroll', () => {
+    mocks.selectedNodeId = 'main';
+    mocks.nodes = [
+      {
+        id: 'main',
+        data: createAgentMainNodeData(),
+      },
+    ];
+
+    const parentWheelHandler = vi.fn();
+
+    render(
+      <div onWheel={parentWheelHandler}>
+        <AgentNodeConfigPanel />
+      </div>,
+    );
+
+    fireEvent.wheel(screen.getByTestId('agent-node-config-scroll'));
+
+    expect(parentWheelHandler).not.toHaveBeenCalled();
+  });
 });

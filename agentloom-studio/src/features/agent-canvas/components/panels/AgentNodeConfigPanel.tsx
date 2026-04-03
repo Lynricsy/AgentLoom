@@ -1,4 +1,4 @@
-import { memo, useCallback } from 'react';
+import { memo, useCallback, type WheelEvent } from 'react';
 import { cn } from '@/shared/lib/utils';
 import type { CanvasNode, CanvasNodeData } from '@/features/canvas/types';
 import { CUSTOM_PANEL_REGISTRY } from '@/features/canvas/components/panels/customPanelRegistry';
@@ -27,6 +27,9 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
     },
     [selectedNodeId, updateNodeData],
   );
+  const handleWheelCapture = useCallback((event: WheelEvent<HTMLDivElement>) => {
+    event.stopPropagation();
+  }, []);
 
   const selectedNode = selectedNodeId
     ? nodes.find((n) => n.id === selectedNodeId)
@@ -65,6 +68,7 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
       <div
         data-testid="agent-node-config-scroll"
         className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3"
+        onWheelCapture={handleWheelCapture}
       >
         {customPanel ? (
           customPanel.render({
