@@ -9,12 +9,15 @@ const {
   selectResults,
   insertResults,
   insertValuesCalls,
+  updateSetCalls,
   selectChain,
   insertChain,
+  updateChain,
 } = vi.hoisted(() => {
   const selectResults: unknown[][] = [];
   const insertResults: unknown[][] = [];
   const insertValuesCalls: Array<Record<string, unknown>> = [];
+  const updateSetCalls: Array<Record<string, unknown>> = [];
 
   const selectChain = {
     from: vi.fn().mockReturnThis(),
@@ -31,9 +34,18 @@ const {
     returning: vi.fn().mockImplementation(async () => insertResults.shift() ?? []),
   };
 
+  const updateChain = {
+    set: vi.fn().mockImplementation((value: Record<string, unknown>) => {
+      updateSetCalls.push(value);
+      return updateChain;
+    }),
+    where: vi.fn().mockResolvedValue([]),
+  };
+
   const mockTenantDb = {
     select: vi.fn().mockReturnValue(selectChain),
     insert: vi.fn().mockReturnValue(insertChain),
+    update: vi.fn().mockReturnValue(updateChain),
   };
 
   return {
@@ -41,8 +53,10 @@ const {
     selectResults,
     insertResults,
     insertValuesCalls,
+    updateSetCalls,
     selectChain,
     insertChain,
+    updateChain,
   };
 });
 
@@ -136,8 +150,10 @@ describe('SelfEvolutionService', () => {
     selectResults.length = 0;
     insertResults.length = 0;
     insertValuesCalls.length = 0;
+    updateSetCalls.length = 0;
     mockTenantDb.select.mockReturnValue(selectChain);
     mockTenantDb.insert.mockReturnValue(insertChain);
+    mockTenantDb.update.mockReturnValue(updateChain);
 
     mockAgentDefinitionService = {
       findDetailById: vi.fn(),
@@ -237,6 +253,107 @@ describe('SelfEvolutionService', () => {
     });
   });
 
+  it('proposeChange 应识别仅按 nodeId 局部更新的 sandbox 节点为高风险审批', async () => {
+    vi.spyOn(service as any, 'loadGraphTarget').mockResolvedValueOnce({
+      kind: 'agent',
+      id: 'agent-1',
+      label: '当前 Agent',
+      version: 16,
+      publishedVersionId: 'version-16',
+      nodes: [
+        {
+          id: 'sandbox-1',
+          type: 'tool',
+          data: {
+            nodeType: 'sandbox',
+            cpuLimit: 2,
+            memoryLimitMb: 1536,
+            diskLimitGb: 5,
+            timeoutSeconds: 906,
+          },
+        },
+      ],
+      edges: [],
+      viewport: null,
+    });
+
+    const result = await (service as any).proposeChange(makeContext(), {
+      targetKind: 'self',
+      nodeOperations: [
+        {
+          op: 'update',
+          nodeId: 'sandbox-1',
+          patch: {
+            data: {
+              memoryLimitMb: 768,
+              diskLimitGb: 3,
+              timeoutSeconds: 180,
+            },
+          },
+        },
+      ],
+      publishTarget: true,
+    });
+
+    expect(result.proposal).toMatchObject({
+      category: 'sandbox_spec_adjustment',
+      riskLevel: 'high',
+      requiresConfirmation: true,
+    });
+  });
+
+  it('proposeChange 应识别仅按 edgeId 删除的 workspace 绑定为审批类变更', async () => {
+    vi.spyOn(service as any, 'loadGraphTarget').mockResolvedValueOnce({
+      kind: 'agent',
+      id: 'agent-1',
+      label: '当前 Agent',
+      version: 16,
+      publishedVersionId: 'version-16',
+      nodes: [
+        {
+          id: 'workspace-1',
+          type: 'tool',
+          data: {
+            nodeType: 'workspace',
+          },
+        },
+        {
+          id: 'sandbox-1',
+          type: 'tool',
+          data: {
+            nodeType: 'sandbox',
+          },
+        },
+      ],
+      edges: [
+        {
+          id: 'binding-edge-1',
+          source: 'workspace-1',
+          target: 'sandbox-1',
+          sourceHandle: 'volume-out',
+          targetHandle: 'volume-in',
+        },
+      ],
+      viewport: null,
+    });
+
+    const result = await (service as any).proposeChange(makeContext(), {
+      targetKind: 'self',
+      edgeOperations: [
+        {
+          op: 'remove',
+          edgeId: 'binding-edge-1',
+        },
+      ],
+    });
+
+    expect(result.proposal).toMatchObject({
+      category: 'workspace_sandbox_binding_adjustment',
+      riskLevel: 'medium',
+      requiresConfirmation: true,
+    });
+  });
+
   it('高风险 create_resource preflight 应进入 awaiting_permission，并注册待审批请求', async () => {
     vi.spyOn(service as any, 'buildSessionContext').mockResolvedValue(
       makeContext(),
@@ -315,6 +432,184 @@ describe('SelfEvolutionService', () => {
     });
   });
 
+  it('applyChange 在 publishedVersionId 未变化时不应返回 restartSuggestion', async () => {
+    vi.spyOn(service as any, 'loadGraphTarget').mockResolvedValueOnce({
+      kind: 'agent',
+      id: 'agent-1',
+      label: '当前 Agent',
+      version: 12,
+      publishedVersionId: 'version-12',
+      nodes: [],
+      edges: [],
+      viewport: null,
+    });
+    mockAgentDefinitionService.applyCanvasSnapshot.mockResolvedValueOnce({
+      publishedVersionId: 'version-12',
+      publishedVersionNumber: 12,
+      detail: { summary: '未产生新发布版本', version: 12 },
+    });
+
+    const result = await (service as any).applyChange(makeContext(), {
+      proposal: {
+        domain: 'self_evolution',
+        targetKind: 'self',
+        targetId: 'agent-1',
+        targetLabel: '当前 Agent',
+        baseVersion: 12,
+        publishTarget: true,
+        nodeOperations: [],
+        edgeOperations: [],
+        summary: '调整 timeout',
+        category: 'agent_self_canvas_edit',
+        riskLevel: 'low',
+        requiresConfirmation: false,
+        diffPreview: {
+          summary: '调整 timeout',
+        },
+      },
+    });
+
+    expect(result).toMatchObject({
+      success: true,
+      data: {
+        targetType: 'agent',
+        publishedVersionId: 'version-12',
+        publishedVersionNumber: 12,
+        versionInfo: {
+          draftVersion: 12,
+          publishedVersionNumber: 12,
+          userVisibleVersionNumber: 12,
+        },
+      },
+    });
+    expect(
+      (result.data as { restartSuggestion?: unknown }).restartSuggestion,
+    ).toBeUndefined();
+  });
+
+  it('applyChange 在产生新 publishedVersionId 时应返回 restartSuggestion', async () => {
+    vi.spyOn(service as any, 'loadGraphTarget').mockResolvedValueOnce({
+      kind: 'agent',
+      id: 'agent-1',
+      label: '当前 Agent',
+      version: 12,
+      publishedVersionId: 'version-12',
+      nodes: [],
+      edges: [],
+      viewport: null,
+    });
+    mockAgentDefinitionService.applyCanvasSnapshot.mockResolvedValueOnce({
+      publishedVersionId: 'version-13',
+      publishedVersionNumber: 17,
+      detail: { summary: '已生成新发布版本', version: 18 },
+    });
+
+    const result = await (service as any).applyChange(makeContext(), {
+      proposal: {
+        domain: 'self_evolution',
+        targetKind: 'self',
+        targetId: 'agent-1',
+        targetLabel: '当前 Agent',
+        baseVersion: 12,
+        publishTarget: true,
+        nodeOperations: [],
+        edgeOperations: [],
+        summary: '调整 timeout',
+        category: 'agent_self_canvas_edit',
+        riskLevel: 'low',
+        requiresConfirmation: false,
+        diffPreview: {
+          summary: '调整 timeout',
+        },
+      },
+    });
+
+    expect(result).toMatchObject({
+      success: true,
+      data: {
+        targetType: 'agent',
+        publishedVersionId: 'version-13',
+        publishedVersionNumber: 17,
+        versionInfo: {
+          draftVersion: 18,
+          publishedVersionNumber: 17,
+          userVisibleVersionNumber: 17,
+        },
+        restartSuggestion: {
+          available: true,
+          currentConversationId: 'conversation-1',
+          publishedVersionId: 'version-13',
+          publishedVersionNumber: 17,
+        },
+      },
+    });
+  });
+
+  it('applyChange 对外部 draft Agent 且 publishTarget=true 时应请求保存后直接发布', async () => {
+    vi.spyOn(service as any, 'loadGraphTarget').mockResolvedValueOnce({
+      kind: 'agent',
+      id: 'agent-2',
+      label: '外部 Agent',
+      version: 2,
+      publishedVersionId: null,
+      nodes: [],
+      edges: [],
+      viewport: null,
+    });
+    mockAgentDefinitionService.applyCanvasSnapshot.mockResolvedValueOnce({
+      publishedVersionId: 'version-1',
+      publishedVersionNumber: 1,
+      detail: { summary: '已发布外部 Agent', version: 3, status: 'published' },
+    });
+
+    const result = await (service as any).applyChange(makeContext(), {
+      proposal: {
+        domain: 'self_evolution',
+        targetKind: 'agent',
+        targetId: 'agent-2',
+        targetLabel: '外部 Agent',
+        baseVersion: 2,
+        publishTarget: true,
+        nodeOperations: [
+          {
+            op: 'add',
+            node: {
+              id: 'agent-main-1',
+              type: 'agent',
+              data: { nodeType: 'agent-main' },
+            },
+          },
+        ],
+        edgeOperations: [],
+        summary: '创建最小外部 Agent 编排',
+        category: 'agent_external_edit',
+        riskLevel: 'high',
+        requiresConfirmation: true,
+        diffPreview: {
+          summary: '创建最小外部 Agent 编排',
+        },
+      },
+    });
+
+    expect(mockAgentDefinitionService.applyCanvasSnapshot).toHaveBeenCalledWith(
+      'agent-2',
+      expect.objectContaining({
+        expectedVersion: 2,
+        publishAfterSave: true,
+      }),
+      'user-1',
+    );
+    expect(result).toMatchObject({
+      success: true,
+      data: {
+        targetType: 'agent',
+        targetId: 'agent-2',
+        publishedVersionId: 'version-1',
+        publishedVersionNumber: 1,
+      },
+    });
+  });
+
   it('restartConversationToLatestVersion 应复制完整消息历史并继承 remembered policies', async () => {
     mockAgentDefinitionService.findDetailById.mockResolvedValueOnce({
       id: 'agent-1',
@@ -389,6 +684,19 @@ describe('SelfEvolutionService', () => {
       role: 'assistant',
       content: '你好，主人',
       parentMessageId: 'message-copy-1',
+    });
+    expect(updateSetCalls[0]).toMatchObject({
+      metadata: {
+        restartFromConversationId: 'conversation-1',
+        inheritedMessageHistory: true,
+        restartTargetPublishedVersionId: 'published-version-2',
+        execution: {
+          lastProcessedMessageId: 'message-copy-1',
+          lastAssistantMessageId: 'message-copy-2',
+          lastStopReason: 'end_turn',
+          runningState: 'idle',
+        },
+      },
     });
     expect(mockPermissionService.cloneRememberedPolicies).toHaveBeenCalledWith(
       'conversation-1',

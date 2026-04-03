@@ -1360,6 +1360,7 @@ export const useAgentConversationStore = create<
               });
 
               void get().actions.loadHistory(normalized.conversationId);
+              void get().actions.loadWorkspaceTree(normalized.conversationId);
             });
 
             socket.on(

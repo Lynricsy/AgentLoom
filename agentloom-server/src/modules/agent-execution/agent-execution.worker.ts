@@ -413,6 +413,7 @@ export class AgentExecutionWorker extends WorkerHost {
           currentPendingMessages,
           Boolean(executionMetadata.lastProcessedMessageId),
           historyMessages,
+          conversationMetadata,
         );
 
         const hadPriorAssistant = !!executionMetadata.lastAssistantMessageId;
@@ -610,7 +611,9 @@ export class AgentExecutionWorker extends WorkerHost {
           snapshot.edges,
         );
         runtimeConfig.sandboxConfig = resolveAgentRuntimeSandboxConfig(
-          snapshot.sandboxConfig ?? definition.sandboxConfig,
+          runtimeConfig.sandboxConfig ??
+            snapshot.sandboxConfig ??
+            definition.sandboxConfig,
         );
         systemPrompt =
           snapshot.systemPrompt ?? definition.systemPrompt ?? undefined;
@@ -1028,6 +1031,7 @@ export class AgentExecutionWorker extends WorkerHost {
     pendingMessages: PendingMessage[],
     hasPriorTurns: boolean,
     historyMessages: ConversationHistoryMessage[] = [],
+    conversationMetadata: Record<string, unknown> = {},
   ): Promise<ConversationTurnResult> {
     const toolCalls = new Map<string, ToolCallEvent>();
     let assistantText = '';
@@ -1044,6 +1048,7 @@ export class AgentExecutionWorker extends WorkerHost {
       hasPriorTurns,
       historyMessages,
       latestPromptText,
+      conversationMetadata,
     );
 
     while (true) {
@@ -1503,17 +1508,23 @@ export class AgentExecutionWorker extends WorkerHost {
     hasPriorTurns: boolean,
     historyMessages: ConversationHistoryMessage[] = [],
     latestPromptOverride?: string,
+    conversationMetadata: Record<string, unknown> = {},
   ): ContentBlock[] {
     const latestPrompt =
       latestPromptOverride ?? this.formatLatestPendingMessages(pendingMessages);
 
     if (historyMessages.length > 0) {
+      const historyPreface = this.isRestartedInheritedHistoryConversation(
+        conversationMetadata,
+      )
+        ? '以下历史消息来自旧会话的继承副本，只能作为上下文参考。不要继续执行历史里未完成的编号任务、旧计划或旧命令；你现在只能响应并执行下方“用户最新消息”。如果历史与最新消息冲突，必须以最新用户消息为准。'
+        : '以下是该 conversation 已有的历史，请保持上下文连续：';
 
       return [
         {
           type: 'text',
           text:
-            `以下是该 conversation 已有的历史，请保持上下文连续：\n` +
+            `${historyPreface}\n` +
             `${this.formatConversationHistory(historyMessages)}\n\n` +
             `请继续回应用户最新消息：\n${latestPrompt}`,
         } satisfies TextContentBlock,
@@ -1667,6 +1678,20 @@ export class AgentExecutionWorker extends WorkerHost {
     });
 
     return items.length > 0 ? items.join('；') : null;
+  }
+
+  private isRestartedInheritedHistoryConversation(
+    metadata: Record<string, unknown> | null | undefined,
+  ): boolean {
+    if (!this.isRecord(metadata)) {
+      return false;
+    }
+
+    return (
+      metadata.inheritedMessageHistory === true &&
+      typeof metadata.restartFromConversationId === 'string' &&
+      metadata.restartFromConversationId.length > 0
+    );
   }
 
   private isRecord(value: unknown): value is Record<string, unknown> {
@@ -2559,8 +2584,8 @@ export class AgentExecutionWorker extends WorkerHost {
           );
 
       runtimeConfig.sandboxConfig = resolveAgentRuntimeSandboxConfig(
-        versionSnapshot?.sandboxConfig ??
-          runtimeConfig.sandboxConfig ??
+        runtimeConfig.sandboxConfig ??
+          versionSnapshot?.sandboxConfig ??
           params.agentDefinition.sandboxConfig,
       );
 

@@ -6,6 +6,7 @@ import '../app/shell_scaffold.dart';
 import '../features/agents/screens/agent_conversation_screen.dart';
 import '../features/agents/screens/agent_detail_screen.dart';
 import '../features/agents/screens/agent_list_screen.dart';
+import '../features/agents/screens/agent_new_conversation_screen.dart';
 import '../features/auth/models/auth_state.dart';
 import '../features/auth/providers/auth_provider.dart';
 import '../features/auth/screens/auth_callback_screen.dart';
@@ -121,6 +122,13 @@ final goRouterProvider = Provider<GoRouter>((ref) {
             executionId: executionId,
             stepId: stepId,
           );
+        },
+      ),
+      GoRoute(
+        path: '/agents/:agentId/conversations/new',
+        builder: (context, state) {
+          final agentId = state.pathParameters['agentId']!;
+          return AgentNewConversationScreen(agentId: agentId);
         },
       ),
       GoRoute(

@@ -252,7 +252,7 @@ export class SelfEvolutionService {
       }),
       apply_change: tool({
         description:
-          '应用 propose_change 返回的 proposal。已发布的自身 Agent 会直接生成新 published version。',
+          '应用 propose_change 返回的 proposal。已发布的自身 Agent 会直接生成新 published version；结果里的 publishedVersionNumber 才是用户可见发布版号，detail.version 仅是草稿修订号。',
         inputSchema: jsonSchema(APPLY_CHANGE_SCHEMA as never),
         execute: async (input) =>
           this.executeMutationDirect(
@@ -366,6 +366,8 @@ export class SelfEvolutionService {
       .returning();
 
     const messageIdMap = new Map<string, string>();
+    let lastProcessedMessageId: string | undefined;
+    let lastAssistantMessageId: string | undefined;
     for (const sourceMessage of sourceMessages) {
       const [insertedMessage] = await this.tenantDb
         .insert(agentMessages)
@@ -386,7 +388,33 @@ export class SelfEvolutionService {
         .returning({ id: agentMessages.id });
 
       messageIdMap.set(sourceMessage.id, insertedMessage.id);
+
+      if (sourceMessage.role === 'user') {
+        lastProcessedMessageId = insertedMessage.id;
+      }
+
+      if (sourceMessage.role === 'assistant') {
+        lastAssistantMessageId = insertedMessage.id;
+      }
     }
+
+    const restartMetadata = this.buildRestartConversationMetadata(
+      this.readRecord(newConversation.metadata) ?? {},
+      {
+        restartFromConversationId: conversationId,
+        targetPublishedVersionId: agentDetail.publishedVersionId,
+        lastProcessedMessageId,
+        lastAssistantMessageId,
+      },
+    );
+
+    await this.tenantDb
+      .update(agentConversations)
+      .set({
+        metadata: restartMetadata,
+        updatedAt: new Date(),
+      })
+      .where(eq(agentConversations.id, newConversation.id));
 
     await this.permissionService.cloneRememberedPolicies(
       conversationId,
@@ -779,9 +807,12 @@ export class SelfEvolutionService {
     const permissionProfile = this.determineGraphChangePermissionProfile({
       context,
       target,
+      currentNodes: target.nodes,
+      currentEdges: target.edges,
       nodeOperations,
       edgeOperations,
       nextNodes,
+      nextEdges,
     });
 
     const publishTarget =
@@ -869,7 +900,7 @@ export class SelfEvolutionService {
           canvasNodes: nextNodes as never,
           canvasEdges: nextEdges as never,
           expectedVersion: proposal.baseVersion,
-          publishIfCurrentlyPublished: proposal.publishTarget,
+          publishAfterSave: proposal.publishTarget,
           ...(proposal.viewport
             ? { canvasViewport: proposal.viewport as never }
             : {}),
@@ -880,6 +911,8 @@ export class SelfEvolutionService {
           agentOptions,
           context.actorUserId,
         );
+        const detailRecord = this.readRecord(result.detail);
+        const detailVersion = this.readOptionalNumber(detailRecord?.version);
 
         return {
           success: true,
@@ -890,9 +923,33 @@ export class SelfEvolutionService {
             applied: true,
             publishedVersionId: result.publishedVersionId,
             publishedVersionNumber: result.publishedVersionNumber,
+            versionInfo: {
+              ...(detailVersion === undefined
+                ? {}
+                : {
+                    draftVersion: detailVersion,
+                  }),
+              ...(typeof result.publishedVersionNumber === 'number'
+                ? {
+                    publishedVersionNumber: result.publishedVersionNumber,
+                    userVisibleVersionNumber: result.publishedVersionNumber,
+                    note:
+                      'publishedVersionNumber 才是用户可见的发布版号；detail.version 是当前草稿修订号，可能比发布版号更大。',
+                  }
+                : detailVersion === undefined
+                  ? {}
+                  : {
+                      userVisibleVersionNumber: detailVersion,
+                      note:
+                        '当前操作未生成新的发布版号；如需对外展示版本，请优先使用 publishedVersionNumber，缺失时再回退到 detail.version。',
+                    }),
+            },
             restartSuggestion:
               target.id === context.currentAgentDefinitionId &&
-              result.publishedVersionId
+              this.hasNewPublishedVersion(
+                target.publishedVersionId,
+                result.publishedVersionId,
+              )
                 ? {
                     available: true,
                     currentConversationId: context.conversationId,
@@ -1247,9 +1304,12 @@ export class SelfEvolutionService {
       kind: 'agent' | 'workflow';
       id: string;
     };
+    currentNodes: GenericRecord[];
+    currentEdges: GenericRecord[];
     nodeOperations: Array<{ op: string; nodeId?: string; node?: GenericRecord; patch?: GenericRecord }>;
     edgeOperations: Array<{ op: string; edgeId?: string; edge?: GenericRecord; patch?: GenericRecord }>;
     nextNodes: GenericRecord[];
+    nextEdges: GenericRecord[];
   }): {
     category: SelfEvolutionCategory;
     riskLevel: SelfEvolutionRiskLevel;
@@ -1279,7 +1339,12 @@ export class SelfEvolutionService {
     const touchedNodeTypes = new Set<string>();
     for (const operation of params.nodeOperations) {
       const nodeType =
-        this.readNodeType(operation.node) ?? this.readNodeType(operation.patch);
+        this.readNodeType(operation.node) ??
+        this.readNodeType(operation.patch) ??
+        this.readNodeType(
+          this.findNodeById(params.currentNodes, operation.nodeId) ??
+            this.findNodeById(params.nextNodes, operation.nodeId),
+        );
       if (nodeType) {
         touchedNodeTypes.add(nodeType);
       }
@@ -1288,13 +1353,17 @@ export class SelfEvolutionService {
     const touchesWorkspace = touchedNodeTypes.has('workspace');
     const touchesSandbox = touchedNodeTypes.has('sandbox');
     const touchesWorkspaceBinding = params.edgeOperations.some((operation) => {
-      const edge = operation.edge ?? operation.patch;
+      const edge =
+        operation.edge ??
+        operation.patch ??
+        this.findEdgeById(params.currentEdges, operation.edgeId) ??
+        this.findEdgeById(params.nextEdges, operation.edgeId);
       if (!edge || typeof edge !== 'object') {
         return false;
       }
       return (
         this.readString((edge as GenericRecord).sourceHandle) === 'volume-out' ||
-        this.readString((edge as GenericRecord).targetHandle) === 'sandbox-in'
+        this.readString((edge as GenericRecord).targetHandle) === 'volume-in'
       );
     });
 
@@ -1976,6 +2045,46 @@ export class SelfEvolutionService {
       : undefined;
   }
 
+  private hasNewPublishedVersion(
+    previousPublishedVersionId: string | null | undefined,
+    nextPublishedVersionId: string | null | undefined,
+  ): nextPublishedVersionId is string {
+    return (
+      typeof nextPublishedVersionId === 'string' &&
+      nextPublishedVersionId.length > 0 &&
+      nextPublishedVersionId !== previousPublishedVersionId
+    );
+  }
+
+  private buildRestartConversationMetadata(
+    baseMetadata: Record<string, unknown>,
+    params: {
+      restartFromConversationId: string;
+      targetPublishedVersionId: string;
+      lastProcessedMessageId?: string;
+      lastAssistantMessageId?: string;
+    },
+  ): Record<string, unknown> {
+    const executionMetadata: Record<string, unknown> = {
+      runningState: 'idle',
+      lastStopReason: 'end_turn',
+      ...(params.lastProcessedMessageId
+        ? { lastProcessedMessageId: params.lastProcessedMessageId }
+        : {}),
+      ...(params.lastAssistantMessageId
+        ? { lastAssistantMessageId: params.lastAssistantMessageId }
+        : {}),
+    };
+
+    return {
+      ...baseMetadata,
+      restartFromConversationId: params.restartFromConversationId,
+      inheritedMessageHistory: true,
+      restartTargetPublishedVersionId: params.targetPublishedVersionId,
+      execution: executionMetadata,
+    };
+  }
+
   private readRecord(value: unknown): GenericRecord | null {
     if (!value || typeof value !== 'object' || Array.isArray(value)) {
       return null;
@@ -2017,8 +2126,30 @@ export class SelfEvolutionService {
     }
 
     return (
-      this.readString(value.type) ??
-      this.readString(this.readRecord(value.data)?.nodeType)
+      this.readString(this.readRecord(value.data)?.nodeType) ??
+      this.readString(value.type)
     );
+  }
+
+  private findNodeById(
+    nodes: GenericRecord[],
+    nodeId: string | undefined,
+  ): GenericRecord | undefined {
+    if (!nodeId) {
+      return undefined;
+    }
+
+    return nodes.find((node) => this.readString(node.id) === nodeId);
+  }
+
+  private findEdgeById(
+    edges: GenericRecord[],
+    edgeId: string | undefined,
+  ): GenericRecord | undefined {
+    if (!edgeId) {
+      return undefined;
+    }
+
+    return edges.find((edge) => this.readString(edge.id) === edgeId);
   }
 }

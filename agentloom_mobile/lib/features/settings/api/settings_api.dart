@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../shared/providers/api_client_provider.dart';
 
+const _emptyJsonBody = <String, dynamic>{};
+
 /// 会话信息
 class SessionInfo {
   const SessionInfo({
@@ -64,15 +66,13 @@ class SecurityInfo {
 
 /// 用户偏好设置 DTO
 class UserPreferenceDto {
-  const UserPreferenceDto({
-    required this.id,
-    required this.titleModelConfigId,
-  });
+  const UserPreferenceDto({required this.id, required this.titleModelConfigId});
 
   factory UserPreferenceDto.fromJson(Map<String, dynamic> json) {
     // 兼容 { data: {...} } 信封或直接 map
-    final map =
-        json.containsKey('data') ? json['data'] as Map<String, dynamic> : json;
+    final map = json.containsKey('data')
+        ? json['data'] as Map<String, dynamic>
+        : json;
     return UserPreferenceDto(
       id: map['id'] as String? ?? '',
       titleModelConfigId: map['titleModelConfigId'] as String?,
@@ -149,7 +149,7 @@ class SettingsApi {
 
   /// 注销所有会话（当前设备除外）
   Future<void> revokeAllSessions() async {
-    await _dio.post('/api/v1/auth/sessions/revoke-all');
+    await _dio.post('/api/v1/auth/sessions/revoke-all', data: _emptyJsonBody);
   }
 
   /// 获取用户偏好设置

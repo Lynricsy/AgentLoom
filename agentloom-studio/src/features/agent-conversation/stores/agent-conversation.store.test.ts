@@ -125,49 +125,63 @@ describe("agentConversationStore", () => {
   });
 
   it("顶层 done 后会回拉历史消息并展示最终 assistant 正文", async () => {
-    const jsonMock = vi.fn().mockResolvedValue(
-      createHistoryResponse([
-        {
-          id: "user-1",
-          role: "user",
-          content: "请使用已连接的知识库查找唯一校验码",
-          metadata: {},
-          toolCalls: null,
-          createdAt: "2026-03-29T10:00:00.000Z",
-        },
-        {
-          id: "assistant-1",
-          role: "assistant",
-          content: "先整理线索\n\nKB-ALPHA-20260329-FOX",
-          metadata: {
-            segments: [
-              { type: "text", content: "先整理线索" },
-              { type: "tool_call", toolCallId: "tool-1" },
-              { type: "text", content: "KB-ALPHA-20260329-FOX" },
-            ],
-          },
-          toolCalls: [
-            {
-              id: "tool-1",
-              tool: "search_knowledge",
-              status: "completed",
-              args: {
-                query: "唯一校验码",
-                knowledgeBaseIds: ["kb-1"],
-              },
-              result: {
-                hits: [{ content: "KB-ALPHA-20260329-FOX" }],
-              },
-            },
+    const historyResponse = createHistoryResponse([
+      {
+        id: "user-1",
+        role: "user",
+        content: "请使用已连接的知识库查找唯一校验码",
+        metadata: {},
+        toolCalls: null,
+        createdAt: "2026-03-29T10:00:00.000Z",
+      },
+      {
+        id: "assistant-1",
+        role: "assistant",
+        content: "先整理线索\n\nKB-ALPHA-20260329-FOX",
+        metadata: {
+          segments: [
+            { type: "text", content: "先整理线索" },
+            { type: "tool_call", toolCallId: "tool-1" },
+            { type: "text", content: "KB-ALPHA-20260329-FOX" },
           ],
-          createdAt: "2026-03-29T10:00:01.000Z",
         },
-      ]),
-    );
+        toolCalls: [
+          {
+            id: "tool-1",
+            tool: "search_knowledge",
+            status: "completed",
+            args: {
+              query: "唯一校验码",
+              knowledgeBaseIds: ["kb-1"],
+            },
+            result: {
+              hits: [{ content: "KB-ALPHA-20260329-FOX" }],
+            },
+          },
+        ],
+        createdAt: "2026-03-29T10:00:01.000Z",
+      },
+    ]);
+    const workspaceTree = [
+      {
+        name: "kb-result.txt",
+        path: "kb-result.txt",
+        type: "file",
+      },
+    ];
+    const jsonMock = vi.fn((url?: unknown) => {
+      if (url === "agent-conversations/conv-1/workspace/tree") {
+        return {
+          json: vi.fn().mockResolvedValue(workspaceTree),
+        };
+      }
 
-    getMock.mockReturnValue({
-      json: jsonMock,
+      return {
+        json: vi.fn().mockResolvedValue(historyResponse),
+      };
     });
+
+    getMock.mockImplementation((url: string) => jsonMock(url));
 
     useAgentConversationStore.getState().actions.connect({
       conversationId: "conv-1",
@@ -231,6 +245,9 @@ describe("agentConversationStore", () => {
       expect(getMock).toHaveBeenCalledWith(
         "agent-conversations/conv-1/messages",
       );
+      expect(getMock).toHaveBeenCalledWith(
+        "agent-conversations/conv-1/workspace/tree",
+      );
       expect(useAgentConversationStore.getState().messages).toEqual([
         expect.objectContaining({
           id: "user-1",
@@ -254,6 +271,13 @@ describe("agentConversationStore", () => {
             { type: "text", content: "KB-ALPHA-20260329-FOX" },
           ],
           isStreaming: false,
+        }),
+      ]);
+      expect(useAgentConversationStore.getState().fileTree).toEqual([
+        expect.objectContaining({
+          name: "kb-result.txt",
+          path: "kb-result.txt",
+          type: "file",
         }),
       ]);
     });
@@ -400,8 +424,16 @@ describe("agentConversationStore", () => {
     const deferred = createDeferred<ReturnType<typeof createHistoryResponse>>();
     const jsonMock = vi.fn().mockImplementation(() => deferred.promise);
 
-    getMock.mockReturnValue({
-      json: jsonMock,
+    getMock.mockImplementation((url: string) => {
+      if (url === "agent-conversations/conv-1/workspace/tree") {
+        return {
+          json: vi.fn().mockResolvedValue([]),
+        };
+      }
+
+      return {
+        json: jsonMock,
+      };
     });
 
     useAgentConversationStore.getState().actions.connect({

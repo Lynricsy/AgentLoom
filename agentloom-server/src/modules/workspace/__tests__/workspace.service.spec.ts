@@ -76,6 +76,8 @@ const TEST_USER_ID = '00000000-0000-0000-0000-000000000020';
 const TEST_SESSION_ID = '00000000-0000-0000-0000-000000000030';
 const TEST_WORKSPACE_ID = '00000000-0000-0000-0000-000000000040';
 const TEST_CONTAINER_ID = 'abc123def456';
+const TEST_CONTAINER_ARCHIVE_PATH = `/tmp/agentloom-workspace-restore-${TEST_WORKSPACE_ID}.tar`;
+const TEST_ARCHIVE_SIZE = Buffer.byteLength('fake-tar-data');
 
 function buildSnapshot(
   overrides?: Partial<WorkspaceSnapshot>,
@@ -138,6 +140,13 @@ describe('WorkspaceService', () => {
     mockDockerService = {
       getArchive: vi.fn().mockResolvedValue(createReadableStream()),
       putArchive: vi.fn().mockResolvedValue(undefined),
+      createExec: vi.fn(),
+      attachExecOutput: vi.fn().mockResolvedValue(undefined),
+      waitForExecExit: vi.fn().mockResolvedValue({
+        running: false,
+        exitCode: 0,
+        pid: 123,
+      }),
     };
 
     vi.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
@@ -162,7 +171,10 @@ describe('WorkspaceService', () => {
     it('应当从沙箱创建工作区快照并上传到 MinIO', async () => {
       const session = buildSandboxSession();
       const creatingSnapshot = buildSnapshot({ status: 'creating' });
-      const readySnapshot = buildSnapshot({ status: 'ready' });
+      const readySnapshot = buildSnapshot({
+        status: 'ready',
+        sizeBytes: TEST_ARCHIVE_SIZE,
+      });
 
       db.select.mockReturnValueOnce(createSelectChainWithLimit([session]));
       db.insert.mockReturnValueOnce(
@@ -188,9 +200,10 @@ describe('WorkspaceService', () => {
       expect(mockStorageService.upload).toHaveBeenCalledWith(
         expect.stringContaining('snapshot.tar'),
         expect.any(Object),
-        undefined,
+        TEST_ARCHIVE_SIZE,
         'application/x-tar',
       );
+      expect(result.sizeBytes).toBe(TEST_ARCHIVE_SIZE);
     });
 
     it('沙箱会话不存在时应当抛出 NotFoundException', async () => {
@@ -283,6 +296,9 @@ describe('WorkspaceService', () => {
     it('应当从 MinIO 下载归档并恢复到 Docker 容器', async () => {
       const snapshot = buildSnapshot({ status: 'ready' });
       db.select.mockReturnValueOnce(createSelectChainWithLimit([snapshot]));
+      mockDockerService.createExec
+        .mockResolvedValueOnce({ execId: 'exec-apply' })
+        .mockResolvedValueOnce({ execId: 'exec-cleanup' });
 
       await service.restoreToSandbox(
         TEST_WORKSPACE_ID,
@@ -296,7 +312,78 @@ describe('WorkspaceService', () => {
       expect(mockDockerService.putArchive).toHaveBeenCalledWith(
         TEST_CONTAINER_ID,
         expect.any(Object),
-        '/workspace/',
+        '/tmp',
+      );
+      expect(mockDockerService.createExec).toHaveBeenNthCalledWith(1, TEST_CONTAINER_ID, {
+        command: 'sh',
+        args: [
+          '-lc',
+          `set -eu; test -f '${TEST_CONTAINER_ARCHIVE_PATH}'; mkdir -p '/workspace/'; find '/workspace/' -mindepth 1 -maxdepth 1 -exec rm -rf {} +; tar -xf '${TEST_CONTAINER_ARCHIVE_PATH}' -C '/workspace/' --strip-components=1`,
+        ],
+      });
+      expect(mockDockerService.createExec).toHaveBeenNthCalledWith(2, TEST_CONTAINER_ID, {
+        command: 'sh',
+        args: ['-lc', `rm -f '${TEST_CONTAINER_ARCHIVE_PATH}'`],
+      });
+    });
+
+    it('恢复命令失败时应当抛错并仍尝试清理临时目录', async () => {
+      const snapshot = buildSnapshot({ status: 'ready' });
+      db.select.mockReturnValueOnce(createSelectChainWithLimit([snapshot]));
+      mockDockerService.createExec
+        .mockResolvedValueOnce({ execId: 'exec-apply' })
+        .mockResolvedValueOnce({ execId: 'exec-cleanup' });
+      mockDockerService.attachExecOutput.mockImplementationOnce(
+        async (
+          _execId: string,
+          callback: (level: string, message: string) => void,
+        ) => {
+          callback('stderr', 'copy failed');
+        },
+      );
+      mockDockerService.waitForExecExit
+        .mockResolvedValueOnce({
+          running: false,
+          exitCode: 2,
+          pid: 123,
+        })
+        .mockResolvedValueOnce({
+          running: false,
+          exitCode: 0,
+          pid: 124,
+        });
+
+      await expect(
+        service.restoreToSandbox(
+          TEST_WORKSPACE_ID,
+          TEST_CONTAINER_ID,
+          TEST_TENANT_ID,
+        ),
+      ).rejects.toThrow('Container command failed');
+
+      expect(mockDockerService.createExec).toHaveBeenCalledTimes(2);
+    });
+
+    it('sizeBytes 为空时仍应尝试恢复归档内容', async () => {
+      const snapshot = buildSnapshot({ status: 'ready', sizeBytes: null });
+      db.select.mockReturnValueOnce(createSelectChainWithLimit([snapshot]));
+      mockDockerService.createExec
+        .mockResolvedValueOnce({ execId: 'exec-apply' })
+        .mockResolvedValueOnce({ execId: 'exec-cleanup' });
+
+      await service.restoreToSandbox(
+        TEST_WORKSPACE_ID,
+        TEST_CONTAINER_ID,
+        TEST_TENANT_ID,
+      );
+
+      expect(mockStorageService.download).toHaveBeenCalledWith(
+        snapshot.storageKey,
+      );
+      expect(mockDockerService.putArchive).toHaveBeenCalledWith(
+        TEST_CONTAINER_ID,
+        expect.any(Object),
+        '/tmp',
       );
     });
 
@@ -336,6 +423,7 @@ describe('WorkspaceService', () => {
 
       expect(mockStorageService.download).not.toHaveBeenCalled();
       expect(mockDockerService.putArchive).not.toHaveBeenCalled();
+      expect(mockDockerService.createExec).not.toHaveBeenCalled();
     });
   });
 

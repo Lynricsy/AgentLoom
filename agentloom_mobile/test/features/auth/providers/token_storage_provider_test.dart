@@ -87,6 +87,16 @@ void main() {
       expect(result, isNull);
     });
 
+    test('readTokens 在 storage 读取抛错时返回 null', () async {
+      when(
+        () => mockStorage.read(key: TokenStorageKeys.accessToken),
+      ).thenThrow(Exception('storage-broken'));
+
+      final result = await tokenStorage.readTokens();
+
+      expect(result, isNull);
+    });
+
     test('hasTokens 在全部 token 字段完整时返回 true', () async {
       when(
         () => mockStorage.read(key: TokenStorageKeys.accessToken),
@@ -131,6 +141,14 @@ void main() {
       verify(
         () => mockStorage.delete(key: TokenStorageKeys.tokenExpiresIn),
       ).called(1);
+    });
+
+    test('clearTokens 在部分 key 删除失败时不抛错', () async {
+      when(
+        () => mockStorage.delete(key: TokenStorageKeys.refreshToken),
+      ).thenThrow(Exception('delete-failed'));
+
+      await expectLater(tokenStorage.clearTokens(), completes);
     });
   });
 }

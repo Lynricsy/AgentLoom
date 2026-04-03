@@ -1,5 +1,12 @@
 import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { eq, and, desc, ne, count, sql } from 'drizzle-orm';
+import { spawn } from 'node:child_process';
+import { createReadStream, createWriteStream } from 'node:fs';
+import { rm, mkdtemp, stat } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import type { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
@@ -12,6 +19,7 @@ import {
 import { buildWorkspaceStorageKey } from './workspace.constants';
 
 const CONTAINER_WORKSPACE = '/workspace/';
+const CONTAINER_TEMP_ROOT = '/tmp';
 
 @Injectable()
 export class WorkspaceService {
@@ -84,18 +92,28 @@ export class WorkspaceService {
         session.containerId,
         CONTAINER_WORKSPACE,
       );
-
-      await this.storageService.upload(
-        storageKey,
+      const stagedArchive = await this.stageStreamToTempFile(
+        `agentloom-workspace-snapshot-${snapshot.id}`,
+        'snapshot.tar',
         archiveStream,
-        undefined,
-        'application/x-tar',
       );
+
+      try {
+        await this.storageService.upload(
+          storageKey,
+          createReadStream(stagedArchive.filePath),
+          stagedArchive.sizeBytes,
+          'application/x-tar',
+        );
+      } finally {
+        await stagedArchive.cleanup();
+      }
 
       const [updated] = await tenantDb
         .update(schema.workspaceSnapshots)
         .set({
           storageKey,
+          sizeBytes: stagedArchive.sizeBytes,
           status: 'ready',
           updatedAt: new Date(),
         })
@@ -155,7 +173,7 @@ export class WorkspaceService {
       `Restoring workspace ${workspaceId} to container ${containerId}`,
     );
 
-    if ((snapshot.sizeBytes ?? 0) === 0) {
+    if (snapshot.sizeBytes === 0) {
       this.logger.log(
         `Workspace ${workspaceId} is empty, skipping archive restore for container ${containerId}`,
       );
@@ -165,16 +183,178 @@ export class WorkspaceService {
     const archiveStream = await this.storageService.download(
       snapshot.storageKey,
     );
-
-    await this.dockerService.putArchive(
-      containerId,
+    const stagedArchive = await this.stageRestoreArchive(
+      workspaceId,
       archiveStream,
-      CONTAINER_WORKSPACE,
     );
+    const containerArchivePath = `${CONTAINER_TEMP_ROOT}/${stagedArchive.containerFileName}`;
+
+    try {
+      await this.dockerService.putArchive(
+        containerId,
+        createReadStream(stagedArchive.uploadArchivePath),
+        CONTAINER_TEMP_ROOT,
+      );
+
+      await this.execInContainer(
+        containerId,
+        'sh',
+        [
+          '-lc',
+          [
+            'set -eu',
+            `test -f ${this.quoteShellPath(containerArchivePath)}`,
+            `mkdir -p ${this.quoteShellPath(CONTAINER_WORKSPACE)}`,
+            `find ${this.quoteShellPath(CONTAINER_WORKSPACE)} -mindepth 1 -maxdepth 1 -exec rm -rf {} +`,
+            `tar -xf ${this.quoteShellPath(containerArchivePath)} -C ${this.quoteShellPath(CONTAINER_WORKSPACE)} --strip-components=1`,
+          ].join('; '),
+        ],
+      );
+    } finally {
+      await stagedArchive.cleanup();
+      try {
+        await this.execInContainer(containerId, 'sh', [
+          '-lc',
+          `rm -f ${this.quoteShellPath(containerArchivePath)}`,
+        ]);
+      } catch (cleanupError) {
+        this.logger.warn(
+          `Failed to cleanup temporary workspace restore files in container ${containerId}: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`,
+        );
+      }
+    }
 
     this.logger.log(
       `Workspace ${workspaceId} restored to container ${containerId}`,
     );
+  }
+
+  private async execInContainer(
+    containerId: string,
+    command: string,
+    args: string[],
+  ): Promise<string> {
+    const handle = await this.dockerService.createExec(containerId, {
+      command,
+      args,
+    });
+
+    const outputChunks: string[] = [];
+
+    await this.dockerService.attachExecOutput(handle.execId, (_level, message) => {
+      outputChunks.push(message);
+    });
+
+    const exitInfo = await this.dockerService.waitForExecExit(handle.execId);
+
+    if (exitInfo.exitCode !== 0) {
+      throw new Error(
+        `Container command failed (exit=${exitInfo.exitCode}): ${outputChunks.join('').slice(0, 400)}`,
+      );
+    }
+
+    return outputChunks.join('');
+  }
+
+  private async stageRestoreArchive(
+    workspaceId: string,
+    archiveStream: Readable,
+  ): Promise<{
+    uploadArchivePath: string;
+    containerFileName: string;
+    cleanup: () => Promise<void>;
+  }> {
+    const containerFileName = `agentloom-workspace-restore-${workspaceId}.tar`;
+    const stagedArchive = await this.stageStreamToTempFile(
+      `agentloom-workspace-restore-${workspaceId}`,
+      containerFileName,
+      archiveStream,
+    );
+    const uploadArchivePath = join(stagedArchive.tempDir, 'upload.tar');
+
+    try {
+      await this.createUploadArchive(
+        stagedArchive.tempDir,
+        containerFileName,
+        uploadArchivePath,
+      );
+    } catch (error) {
+      await stagedArchive.cleanup();
+      throw error;
+    }
+
+    return {
+      uploadArchivePath,
+      containerFileName,
+      cleanup: stagedArchive.cleanup,
+    };
+  }
+
+  private async stageStreamToTempFile(
+    prefix: string,
+    fileName: string,
+    archiveStream: Readable,
+  ): Promise<{
+    tempDir: string;
+    filePath: string;
+    sizeBytes: number;
+    cleanup: () => Promise<void>;
+  }> {
+    const tempDir = await mkdtemp(join(tmpdir(), `${prefix}-`));
+    const filePath = join(tempDir, fileName);
+
+    try {
+      await pipeline(archiveStream, createWriteStream(filePath));
+      const fileStats = await stat(filePath);
+
+      return {
+        tempDir,
+        filePath,
+        sizeBytes: fileStats.size,
+        cleanup: async () => {
+          await rm(tempDir, { recursive: true, force: true });
+        },
+      };
+    } catch (error) {
+      await rm(tempDir, { recursive: true, force: true });
+      throw error;
+    }
+  }
+
+  private async createUploadArchive(
+    sourceDir: string,
+    fileName: string,
+    archivePath: string,
+  ): Promise<void> {
+    await new Promise<void>((resolve, reject) => {
+      const tar = spawn('tar', ['-cf', archivePath, '-C', sourceDir, fileName], {
+        stdio: ['ignore', 'ignore', 'pipe'],
+      });
+
+      let stderr = '';
+
+      tar.stderr.on('data', (chunk: Buffer | string) => {
+        stderr += chunk.toString();
+      });
+
+      tar.on('error', reject);
+      tar.on('close', (code) => {
+        if (code === 0) {
+          resolve();
+          return;
+        }
+
+        reject(
+          new Error(
+            `Failed to prepare workspace restore upload archive${stderr.trim() ? `: ${stderr.trim()}` : ''}`,
+          ),
+        );
+      });
+    });
+  }
+
+  private quoteShellPath(value: string): string {
+    return `'${value.replace(/'/g, `'\\''`)}'`;
   }
 
   async createEmpty(

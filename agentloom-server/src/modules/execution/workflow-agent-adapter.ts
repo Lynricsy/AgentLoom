@@ -359,6 +359,7 @@ export class WorkflowAgentAdapter {
 
     runtimeConfig.sandboxConfig = resolveAgentRuntimeSandboxConfig(
       this.config.sandboxConfig ??
+        runtimeConfig.sandboxConfig ??
         snapshot.sandboxConfig ??
         definition.sandboxConfig,
     );

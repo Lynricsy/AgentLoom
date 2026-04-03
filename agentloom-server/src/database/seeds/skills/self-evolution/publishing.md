@@ -5,6 +5,7 @@
 如果当前 Agent 已经发布：
 
 - `apply_change` 落到自己的编排时，会直接生成新的 published version
+- `publishedVersionNumber` 才是用户可见的发布版号；`detail.version` 只是草稿修订号，可能比发布版号更大
 - 当前会话不会被强制切换
 - 主人可以手动重启到新版本
 
@@ -13,6 +14,7 @@
 - 继承完整消息历史
 - 继承已经记住的自进化审批策略
 - 不继承旧 sandbox session / memory session 运行态
+- 继承的历史消息只用于上下文参考；重启后的新会话只能执行最新用户消息，不应继续执行历史里的旧计划或编号任务
 
 ## 对外部目标
 

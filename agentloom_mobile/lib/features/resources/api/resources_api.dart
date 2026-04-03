@@ -5,6 +5,8 @@ import '../../../shared/models/paginated_response.dart';
 import '../../../shared/providers/api_client_provider.dart';
 import '../models/resource_entities.dart';
 
+const _emptyJsonBody = <String, dynamic>{};
+
 Map<String, dynamic> _unwrapDataEnvelope(Response<dynamic> response) {
   final body = response.data as Map<String, dynamic>;
   final data = body['data'];
@@ -130,11 +132,11 @@ class ResourcesApi {
   }
 
   Future<void> startSandbox(String sessionId) async {
-    await _dio.post('/api/v1/sandboxes/$sessionId/start');
+    await _dio.post('/api/v1/sandboxes/$sessionId/start', data: _emptyJsonBody);
   }
 
   Future<void> stopSandbox(String sessionId) async {
-    await _dio.post('/api/v1/sandboxes/$sessionId/stop');
+    await _dio.post('/api/v1/sandboxes/$sessionId/stop', data: _emptyJsonBody);
   }
 
   Future<void> deleteSandbox(String sessionId) async {
@@ -241,7 +243,10 @@ class ResourcesApi {
   Future<TestMcpConnectionResultDto> testSavedMcpConfigConnection(
     String configId,
   ) async {
-    final response = await _dio.post('/api/v1/mcp/configs/$configId/test');
+    final response = await _dio.post(
+      '/api/v1/mcp/configs/$configId/test',
+      data: _emptyJsonBody,
+    );
     return TestMcpConnectionResultDto.fromJson(_unwrapDataEnvelope(response));
   }
 

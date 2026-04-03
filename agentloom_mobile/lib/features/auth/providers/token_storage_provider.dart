@@ -39,11 +39,16 @@ class TokenStorage {
 
   /// 读取 tokens，任一缺失返回 null
   Future<AuthTokens?> readTokens() async {
-    final results = await Future.wait([
-      _storage.read(key: TokenStorageKeys.accessToken),
-      _storage.read(key: TokenStorageKeys.refreshToken),
-      _storage.read(key: TokenStorageKeys.tokenExpiresIn),
-    ]);
+    List<String?> results;
+    try {
+      results = await Future.wait([
+        _storage.read(key: TokenStorageKeys.accessToken),
+        _storage.read(key: TokenStorageKeys.refreshToken),
+        _storage.read(key: TokenStorageKeys.tokenExpiresIn),
+      ]);
+    } catch (_) {
+      return null;
+    }
 
     final accessToken = results[0];
     final refreshToken = results[1];
@@ -67,11 +72,17 @@ class TokenStorage {
 
   /// 清除所有 tokens
   Future<void> clearTokens() async {
-    await Future.wait([
-      _storage.delete(key: TokenStorageKeys.accessToken),
-      _storage.delete(key: TokenStorageKeys.refreshToken),
-      _storage.delete(key: TokenStorageKeys.tokenExpiresIn),
-    ]);
+    for (final key in const <String>[
+      TokenStorageKeys.accessToken,
+      TokenStorageKeys.refreshToken,
+      TokenStorageKeys.tokenExpiresIn,
+    ]) {
+      try {
+        await _storage.delete(key: key);
+      } catch (_) {
+        // Web 端本地加密状态损坏时，删除也可能失败；这里按“尽力清理”处理。
+      }
+    }
   }
 }
 

@@ -7,6 +7,8 @@ import '../models/agent_conversation_dto.dart';
 import '../models/agent_definition_dto.dart';
 import '../models/conversation_message_dto.dart';
 
+const _emptyJsonBody = <String, dynamic>{};
+
 Map<String, dynamic> _unwrapDataEnvelope(Response<dynamic> response) {
   final body = response.data as Map<String, dynamic>;
   final data = body['data'];
@@ -22,7 +24,9 @@ Map<String, dynamic> _unwrapDataEnvelope(Response<dynamic> response) {
   return body;
 }
 
-List<WorkspaceFileNode> _workspaceNodesFromResponse(Response<dynamic> response) {
+List<WorkspaceFileNode> _workspaceNodesFromResponse(
+  Response<dynamic> response,
+) {
   final body = response.data;
   if (body is! List) {
     return const <WorkspaceFileNode>[];
@@ -157,13 +161,17 @@ class AgentApi {
   }
 
   Future<void> cancelConversation(String conversationId) async {
-    await _dio.post('/api/v1/agent-conversations/$conversationId/cancel');
+    await _dio.post(
+      '/api/v1/agent-conversations/$conversationId/cancel',
+      data: _emptyJsonBody,
+    );
   }
 
   /// 重新生成对话标题
   Future<String?> generateConversationTitle(String conversationId) async {
     final response = await _dio.post(
       '/api/v1/agent-conversations/$conversationId/generate-title',
+      data: _emptyJsonBody,
     );
     final data = _unwrapDataEnvelope(response);
     return data['title'] as String?;
@@ -190,9 +198,12 @@ class AgentApi {
     );
   }
 
-  Future<String?> restartConversationToLatestVersion(String conversationId) async {
+  Future<String?> restartConversationToLatestVersion(
+    String conversationId,
+  ) async {
     final response = await _dio.post(
       '/api/v1/agent-conversations/$conversationId/restart-latest-version',
+      data: _emptyJsonBody,
     );
     final data = _unwrapDataEnvelope(response);
     final nextConversationId = data['conversationId'];
@@ -201,7 +212,9 @@ class AgentApi {
         : null;
   }
 
-  Future<List<WorkspaceFileNode>> getWorkspaceTree(String conversationId) async {
+  Future<List<WorkspaceFileNode>> getWorkspaceTree(
+    String conversationId,
+  ) async {
     final response = await _dio.get(
       '/api/v1/agent-conversations/$conversationId/workspace/tree',
     );
@@ -212,9 +225,9 @@ class AgentApi {
     String conversationId,
     String filePath,
   ) async {
-    final encodedPath = Uri.encodeComponent(filePath)
-        .replaceAll('%2F', '/')
-        .replaceAll('%5C', '/');
+    final encodedPath = Uri.encodeComponent(
+      filePath,
+    ).replaceAll('%2F', '/').replaceAll('%5C', '/');
     final response = await _dio.get(
       '/api/v1/agent-conversations/$conversationId/workspace/files/$encodedPath',
     );

@@ -165,7 +165,7 @@ void main() {
       expect(sentBody['launchSource'], 'mobile');
     });
 
-    test('发送 POST 不包含可选参数时 body 为 null', () async {
+    test('发送 POST 不包含可选参数时 body 为空 JSON 对象', () async {
       when(
         () => mockDio.post(
           '/api/v1/workflow-definitions/wf-2/run',
@@ -186,7 +186,7 @@ void main() {
         ),
       );
       capturedCall.called(1);
-      expect(capturedCall.captured.first, isNull);
+      expect(capturedCall.captured.first, const <String, dynamic>{});
     });
   });
 }

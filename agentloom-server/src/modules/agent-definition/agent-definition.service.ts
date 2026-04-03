@@ -27,6 +27,7 @@ import {
   AgentVersionConflictException,
   AgentPublishValidationException,
 } from './agent-definition.exceptions';
+import { resolveAgentRuntimeSandboxConfig } from '../sandbox/agent-runtime-sandbox-config';
 import type {
   AgentCodeToolBinding,
   AgentHttpToolBinding,
@@ -57,6 +58,7 @@ export interface ApplyAgentCanvasSnapshotOptions {
   sandboxLifecycle?: string;
   expectedVersion?: number;
   publishIfCurrentlyPublished?: boolean;
+  publishAfterSave?: boolean;
 }
 
 export interface ApplyAgentCanvasSnapshotResult {
@@ -358,6 +360,11 @@ export class AgentDefinitionService {
       const setClause: Record<string, any> = {
         nodes: dto.canvasNodes,
         edges: dto.canvasEdges,
+        sandboxConfig: this.derivePersistedSandboxConfig(
+          dto.canvasNodes,
+          dto.canvasEdges,
+          dto.globalSandboxConfig,
+        ),
         version: sql`${schema.agentDefinitions.version} + 1`,
         updatedBy: userId,
         updatedAt: new Date(),
@@ -365,8 +372,6 @@ export class AgentDefinitionService {
 
       if (dto.canvasViewport !== undefined)
         setClause.viewport = dto.canvasViewport;
-      if (dto.globalSandboxConfig !== undefined)
-        setClause.sandboxConfig = dto.globalSandboxConfig;
       if (dto.workspaceSnapshotId !== undefined)
         setClause.workspaceSnapshotId = dto.workspaceSnapshotId;
 
@@ -439,6 +444,11 @@ export class AgentDefinitionService {
       const setClause: Record<string, any> = {
         nodes: options.canvasNodes,
         edges: options.canvasEdges,
+        sandboxConfig: this.derivePersistedSandboxConfig(
+          options.canvasNodes,
+          options.canvasEdges,
+          options.globalSandboxConfig,
+        ),
         version: sql`${schema.agentDefinitions.version} + 1`,
         updatedBy: userId,
         updatedAt: new Date(),
@@ -446,9 +456,6 @@ export class AgentDefinitionService {
 
       if (options.canvasViewport !== undefined) {
         setClause.viewport = options.canvasViewport;
-      }
-      if (options.globalSandboxConfig !== undefined) {
-        setClause.sandboxConfig = options.globalSandboxConfig;
       }
       if (options.workspaceSnapshotId !== undefined) {
         setClause.workspaceSnapshotId = options.workspaceSnapshotId;
@@ -494,8 +501,9 @@ export class AgentDefinitionService {
         .returning();
 
       const shouldPublish =
-        options.publishIfCurrentlyPublished === true &&
-        agent.publishedVersionId !== null;
+        options.publishAfterSave === true ||
+        (options.publishIfCurrentlyPublished === true &&
+          agent.publishedVersionId !== null);
 
       if (!shouldPublish) {
         return {
@@ -931,7 +939,11 @@ export class AgentDefinitionService {
       edges: agent.edges,
       viewport: agent.viewport,
       systemPrompt: agent.systemPrompt,
-      sandboxConfig: agent.sandboxConfig,
+      sandboxConfig: this.derivePersistedSandboxConfig(
+        agent.nodes ?? [],
+        agent.edges ?? [],
+        agent.sandboxConfig,
+      ),
       workspaceSnapshotId: agent.workspaceSnapshotId,
       metadata: {
         nodeCount: agent.nodes?.length ?? 0,
@@ -1520,7 +1532,7 @@ export class AgentDefinitionService {
     return {
       cpu: data.cpu ?? data.cpuLimit ?? 1,
       memory: data.memory ?? data.memoryLimitMb ?? 512,
-      disk: data.disk ?? 1,
+      disk: data.disk ?? data.diskLimitGb ?? 1,
       timeout: data.timeout ?? data.timeoutSeconds ?? 300,
       lifecycleMode: data.lifecycleMode,
       persistencePath: data.persistencePath,
@@ -1528,6 +1540,36 @@ export class AgentDefinitionService {
       persistenceExpiryHours: data.persistenceExpiryHours,
       persistentSandboxId: data.persistentSandboxId,
     };
+  }
+
+  private derivePersistedSandboxConfig(
+    nodes: any[],
+    edges: any[],
+    fallbackConfig?:
+      | AgentRuntimeConfig['sandboxConfig']
+      | Record<string, unknown>
+      | null,
+  ): AgentRuntimeConfig['sandboxConfig'] | null {
+    const compiledSandboxConfig = this.buildRuntimeConfigFromNodes(
+      nodes ?? [],
+      edges ?? [],
+    ).sandboxConfig;
+
+    if (compiledSandboxConfig) {
+      return compiledSandboxConfig;
+    }
+
+    if (
+      fallbackConfig &&
+      typeof fallbackConfig === 'object' &&
+      !Array.isArray(fallbackConfig)
+    ) {
+      return resolveAgentRuntimeSandboxConfig(
+        fallbackConfig as unknown as AgentRuntimeConfig['sandboxConfig'],
+      );
+    }
+
+    return null;
   }
 
   private readFirstString(...candidates: unknown[]): string | undefined {

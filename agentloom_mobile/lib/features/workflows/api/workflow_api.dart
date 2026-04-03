@@ -84,7 +84,7 @@ class WorkflowApi {
 
     final response = await _dio.post(
       '/api/v1/workflow-definitions/$workflowId/run',
-      data: body.isNotEmpty ? body : null,
+      data: body.isNotEmpty ? body : const <String, dynamic>{},
     );
     return response.data as Map<String, dynamic>;
   }

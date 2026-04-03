@@ -18,7 +18,11 @@ class RuntimeEnvStorage {
   final FlutterSecureStorage _storage;
 
   Future<String?> readStudioBaseUrl() async {
-    return _storage.read(key: RuntimeEnvStorageKeys.studioBaseUrl);
+    try {
+      return await _storage.read(key: RuntimeEnvStorageKeys.studioBaseUrl);
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<void> saveStudioBaseUrl(String studioBaseUrl) async {
@@ -29,7 +33,11 @@ class RuntimeEnvStorage {
   }
 
   Future<void> clearStudioBaseUrl() async {
-    await _storage.delete(key: RuntimeEnvStorageKeys.studioBaseUrl);
+    try {
+      await _storage.delete(key: RuntimeEnvStorageKeys.studioBaseUrl);
+    } catch (_) {
+      // Web 端本地加密状态损坏时，清理失败不应阻断用户��退到默认地址。
+    }
   }
 }
 

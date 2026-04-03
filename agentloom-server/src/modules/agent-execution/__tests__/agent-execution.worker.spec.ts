@@ -311,6 +311,61 @@ describe('AgentExecutionWorker', () => {
     workerInternals = worker as unknown as WorkerInternals;
   });
 
+  describe('buildPromptBlocks()', () => {
+    it('重启继承历史的会话应明确要求只执行最新用户消息', () => {
+      const blocks = (
+        worker as unknown as {
+          buildPromptBlocks: (
+            pendingMessages: Array<{ id: string; content: string; createdAt: Date }>,
+            hasPriorTurns: boolean,
+            historyMessages: Array<{
+              id: string;
+              role: 'user' | 'assistant' | 'system' | 'tool';
+              content: string;
+              toolCalls: Record<string, unknown>[] | null;
+              metadata: Record<string, unknown>;
+              createdAt: Date;
+            }>,
+            latestPromptOverride?: string,
+            conversationMetadata?: Record<string, unknown>,
+          ) => Array<{ type: string; text: string }>;
+        }
+      ).buildPromptBlocks(
+        [
+          {
+            id: 'message-new',
+            content: '只读取 /workspace/qa-selfevo-bind-marker.txt',
+            createdAt: new Date('2025-01-01T00:00:02.000Z'),
+          },
+        ],
+        true,
+        [
+          {
+            id: 'message-old',
+            role: 'user',
+            content: '旧任务：继续调整 sandbox',
+            toolCalls: null,
+            metadata: {},
+            createdAt: new Date('2025-01-01T00:00:00.000Z'),
+          },
+        ],
+        undefined,
+        {
+          restartFromConversationId: 'conversation-legacy',
+          inheritedMessageHistory: true,
+        },
+      );
+
+      expect(blocks).toHaveLength(1);
+      expect(blocks[0]).toMatchObject({
+        type: 'text',
+      });
+      expect(blocks[0]?.text).toContain('继承副本');
+      expect(blocks[0]?.text).toContain('不要继续执行历史里未完成的编号任务');
+      expect(blocks[0]?.text).toContain('只读取 /workspace/qa-selfevo-bind-marker.txt');
+    });
+  });
+
   describe('process()', () => {
     it('跳过非 agent-conversation-execution job', async () => {
       const job = createJob('other-job', {
@@ -842,6 +897,12 @@ describe('AgentExecutionWorker', () => {
         expect.arrayContaining([expect.objectContaining({ id: 'message-1' })]),
         true,
         historyMessages,
+        expect.objectContaining({
+          execution: expect.objectContaining({
+            lastProcessedMessageId: 'message-0',
+            sessionId: 'session-1',
+          }),
+        }),
       );
     });
   });
@@ -1010,6 +1071,86 @@ describe('AgentExecutionWorker', () => {
           memoryInstanceIds: ['canvas-memory-instance'],
           runtimeConfig: expect.objectContaining({
             memoryInstanceIds: ['canvas-memory-instance'],
+          }),
+        }),
+      );
+    });
+  });
+
+  describe('loadConversationExecutionContext() — sandbox config priority', () => {
+    it('已发布快照存在时应优先使用节点编译出的 sandboxConfig，而不是旧 snapshot.sandboxConfig', async () => {
+      const contextLoader = worker as unknown as {
+        loadConversationExecutionContext: (
+          conversationId: string,
+          tenantId: string,
+        ) => Promise<{
+          runtimeConfig: {
+            sandboxConfig?: {
+              cpu: number;
+              memory: number;
+              disk: number;
+              timeout: number;
+            };
+          };
+        } | null>;
+      };
+
+      const selectChain = {
+        from: vi.fn().mockReturnThis(),
+        where: vi.fn().mockReturnThis(),
+        limit: vi.fn(),
+      };
+      mockDb.select.mockReturnValue(selectChain);
+      selectChain.limit
+        .mockResolvedValueOnce([
+          {
+            id: 'conversation-1',
+            agentDefinitionId: 'agent-1',
+            tenantId: 'tenant-1',
+            status: 'active',
+            metadata: {},
+          },
+        ])
+        .mockResolvedValueOnce([
+          {
+            id: 'agent-1',
+            publishedVersionId: 'version-1',
+            systemPrompt: 'system',
+            nodes: [],
+            edges: [],
+            sandboxConfig: { cpu: 1, memory: 512, disk: 2, timeout: 2 },
+            metadata: {},
+          },
+        ])
+        .mockResolvedValueOnce([
+          {
+            snapshot: {
+              nodes: [{ id: 'sandbox-node', type: 'tool', data: {} }],
+              edges: [],
+              sandboxConfig: { cpu: 1, memory: 512, disk: 2, timeout: 2 },
+              metadata: {},
+            },
+          },
+        ]);
+      mockAgentDefinitionService.buildRuntimeConfigFromNodes.mockReturnValue({
+        modelConfig: { modelId: 'model-1' },
+        sandboxConfig: { cpu: 2, memory: 1536, disk: 5, timeout: 901 },
+      });
+
+      const context = await contextLoader.loadConversationExecutionContext(
+        'conversation-1',
+        'tenant-1',
+      );
+
+      expect(context).toEqual(
+        expect.objectContaining({
+          runtimeConfig: expect.objectContaining({
+            sandboxConfig: {
+              cpu: 2,
+              memory: 1536,
+              disk: 5,
+              timeout: 901,
+            },
           }),
         }),
       );

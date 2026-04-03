@@ -753,6 +753,83 @@ describe('AgentDefinitionService', () => {
       expect(capturedSetClause!.metadata).toBeDefined();
     });
 
+    it('未显式传 globalSandboxConfig 时应从 sandbox 节点派生并同步顶层 sandboxConfig', async () => {
+      const agent = makeAgent({
+        sandboxConfig: { cpu: 1, memory: 512, disk: 2, timeout: 2 },
+      });
+      const updated = makeAgent({ version: 2 });
+
+      mockTxClient.select.mockImplementation(() => {
+        const c: Record<string, any> = {};
+        c.from = vi.fn().mockReturnValue(c);
+        c.where = vi.fn().mockResolvedValue([agent]);
+        return c;
+      });
+
+      let capturedSetClause: Record<string, any> | null = null;
+      mockTxClient.update.mockImplementation(() => {
+        const c: Record<string, any> = {};
+        c.set = vi.fn().mockImplementation((clause: Record<string, any>) => {
+          capturedSetClause = clause;
+          return c;
+        });
+        c.where = vi.fn().mockReturnValue(c);
+        c.returning = vi.fn().mockResolvedValue([updated]);
+        return c;
+      });
+
+      await service.saveCanvas(
+        'agent-1',
+        {
+          canvasNodes: [
+            {
+              id: 'workspace-1',
+              type: 'tool',
+              data: {
+                nodeType: 'workspace',
+                workspaceId: 'workspace-1',
+              },
+            },
+            {
+              id: 'sandbox-1',
+              type: 'tool',
+              data: {
+                nodeType: 'sandbox',
+                enabled: true,
+                cpuLimit: 2,
+                memoryLimitMb: 1536,
+                diskLimitGb: 5,
+                timeoutSeconds: 901,
+              },
+            },
+          ] as never,
+          canvasEdges: [
+            {
+              id: 'edge-workspace-sandbox',
+              source: 'workspace-1',
+              target: 'sandbox-1',
+            },
+          ] as never,
+        },
+        'user-1',
+      );
+
+      expect(capturedSetClause).not.toBeNull();
+      expect(
+        ((capturedSetClause as unknown as Record<string, any>).sandboxConfig),
+      ).toEqual({
+        cpu: 2,
+        memory: 1536,
+        disk: 5,
+        timeout: 901,
+        lifecycleMode: undefined,
+        persistencePath: undefined,
+        restoreWorkspaceId: 'workspace-1',
+        persistenceExpiryHours: undefined,
+        persistentSandboxId: undefined,
+      });
+    });
+
     it('Agent 不存在时应抛出 AgentNotFoundException', async () => {
       mockTxClient.select.mockImplementation(() => {
         const c: Record<string, any> = {};
@@ -986,6 +1063,7 @@ describe('AgentDefinitionService', () => {
               enabled: true,
               cpuLimit: 2,
               memoryLimitMb: 1024,
+              diskLimitGb: 4,
               timeoutSeconds: 600,
             },
           },
@@ -1073,7 +1151,7 @@ describe('AgentDefinitionService', () => {
       expect(config.sandboxConfig).toEqual({
         cpu: 2,
         memory: 1024,
-        disk: 1,
+        disk: 4,
         timeout: 600,
         lifecycleMode: undefined,
         persistencePath: undefined,
@@ -1106,6 +1184,7 @@ describe('AgentDefinitionService', () => {
               enabled: true,
               cpuLimit: 1.5,
               memoryLimitMb: 768,
+              diskLimitGb: 3,
               timeoutSeconds: 120,
             },
           },
@@ -1124,8 +1203,8 @@ describe('AgentDefinitionService', () => {
         expect.objectContaining({
           cpu: 1.5,
           memory: 768,
+          disk: 3,
           timeout: 120,
-          disk: 1,
         }),
       );
     });
@@ -2010,6 +2089,248 @@ describe('AgentDefinitionService', () => {
       });
       expect(result.publishedVersionId).toBe('version-3');
       expect(result.publishedVersionNumber).toBe(3);
+    });
+
+    it('草稿 Agent 且 publishAfterSave=true 时应在同一写锁中直接发布', async () => {
+      const agent = makeAgent({
+        status: 'draft',
+        version: 2,
+        publishedVersionId: null,
+        nodes: [],
+      });
+      const updatedDraft = makeAgent({
+        status: 'draft',
+        version: 3,
+        publishedVersionId: null,
+        nodes: [
+          {
+            id: 'model-node-1',
+            type: 'agent',
+            position: { x: 0, y: 0 },
+            data: { nodeType: 'llm-model', modelId: 'model-1' },
+          },
+          {
+            id: 'agent-main-1',
+            type: 'agent',
+            position: { x: 240, y: 0 },
+            data: { nodeType: 'agent-main' },
+          },
+        ],
+      });
+      const publishedDetail = makeAgent({
+        status: 'published',
+        version: 3,
+        publishedVersionId: 'version-1',
+        nodes: updatedDraft.nodes,
+      });
+      const version = makeVersion({
+        id: 'version-1',
+        versionNumber: 1,
+        publishedAt: new Date('2025-01-01'),
+      });
+
+      let selectCallCount = 0;
+      mockTxClient.select.mockImplementation(() => {
+        selectCallCount += 1;
+        const c: Record<string, any> = {};
+        c.from = vi.fn().mockReturnValue(c);
+        c.where = vi
+          .fn()
+          .mockResolvedValue(
+            selectCallCount === 1 ? [agent] : [{ maxVersion: 0 }],
+          );
+        return c;
+      });
+
+      let updateCallCount = 0;
+      mockTxClient.update.mockImplementation(() => {
+        updateCallCount += 1;
+        const c: Record<string, any> = {};
+        c.set = vi.fn().mockReturnValue(c);
+        c.where = vi.fn().mockReturnValue(c);
+        c.returning = vi
+          .fn()
+          .mockResolvedValue(
+            updateCallCount === 1 ? [updatedDraft] : [publishedDetail],
+          );
+        return c;
+      });
+
+      mockTxClient.insert.mockImplementation(() => {
+        const c: Record<string, any> = {};
+        c.values = vi.fn().mockReturnValue(c);
+        c.returning = vi.fn().mockResolvedValue([version]);
+        return c;
+      });
+
+      const result = await service.applyCanvasSnapshot(
+        'agent-1',
+        {
+          canvasNodes: updatedDraft.nodes as never,
+          canvasEdges: [],
+          expectedVersion: 2,
+          publishAfterSave: true,
+        },
+        'user-1',
+      );
+
+      expect(mockTxClient.insert).toHaveBeenCalledTimes(1);
+      expect(result.detail).toMatchObject({
+        id: 'agent-1',
+        status: 'published',
+        version: 3,
+        nodes: updatedDraft.nodes,
+      });
+      expect(result.publishedVersionId).toBe('version-1');
+      expect(result.publishedVersionNumber).toBe(1);
+    });
+
+    it('发布时应把节点派生的 sandboxConfig 同步到草稿与版本快照', async () => {
+      const agent = makeAgent({
+        status: 'published',
+        version: 2,
+        publishedVersionId: 'version-old',
+        sandboxConfig: { cpu: 1, memory: 512, disk: 2, timeout: 2 },
+      });
+      const canvasNodes = [
+        {
+          id: 'workspace-1',
+          type: 'tool',
+          data: {
+            nodeType: 'workspace',
+            workspaceId: 'workspace-1',
+          },
+        },
+        {
+          id: 'sandbox-1',
+          type: 'tool',
+          data: {
+            nodeType: 'sandbox',
+            enabled: true,
+            cpuLimit: 2,
+            memoryLimitMb: 1536,
+            diskLimitGb: 5,
+            timeoutSeconds: 901,
+          },
+        },
+      ];
+      const canvasEdges = [
+        {
+          id: 'edge-workspace-sandbox',
+          source: 'workspace-1',
+          target: 'sandbox-1',
+        },
+      ];
+      const updatedDraft = makeAgent({
+        status: 'published',
+        version: 3,
+        publishedVersionId: 'version-old',
+        nodes: canvasNodes,
+        edges: canvasEdges,
+        sandboxConfig: agent.sandboxConfig,
+      });
+      const publishedDetail = makeAgent({
+        status: 'published',
+        version: 3,
+        publishedVersionId: 'version-3',
+        nodes: canvasNodes,
+        edges: canvasEdges,
+        sandboxConfig: {
+          cpu: 2,
+          memory: 1536,
+          disk: 5,
+          timeout: 901,
+          restoreWorkspaceId: 'workspace-1',
+        },
+      });
+      const version = makeVersion({
+        id: 'version-3',
+        versionNumber: 3,
+        publishedAt: new Date('2025-01-01'),
+      });
+
+      let selectCallCount = 0;
+      mockTxClient.select.mockImplementation(() => {
+        selectCallCount += 1;
+        const c: Record<string, any> = {};
+        c.from = vi.fn().mockReturnValue(c);
+        c.where = vi
+          .fn()
+          .mockResolvedValue(
+            selectCallCount === 1 ? [agent] : [{ maxVersion: 2 }],
+          );
+        return c;
+      });
+
+      const updateClauses: Record<string, any>[] = [];
+      let updateCallCount = 0;
+      mockTxClient.update.mockImplementation(() => {
+        updateCallCount += 1;
+        const c: Record<string, any> = {};
+        c.set = vi.fn().mockImplementation((clause: Record<string, any>) => {
+          updateClauses.push(clause);
+          return c;
+        });
+        c.where = vi.fn().mockReturnValue(c);
+        c.returning = vi
+          .fn()
+          .mockResolvedValue(updateCallCount === 1 ? [updatedDraft] : [publishedDetail]);
+        return c;
+      });
+
+      let insertValues: Record<string, any> | null = null;
+      mockTxClient.insert.mockImplementation(() => {
+        const c: Record<string, any> = {};
+        c.values = vi.fn().mockImplementation((value: Record<string, any>) => {
+          insertValues = value;
+          return c;
+        });
+        c.returning = vi.fn().mockResolvedValue([version]);
+        return c;
+      });
+
+      await service.applyCanvasSnapshot(
+        'agent-1',
+        {
+          canvasNodes: canvasNodes as never,
+          canvasEdges: canvasEdges as never,
+          expectedVersion: 2,
+          publishIfCurrentlyPublished: true,
+        },
+        'user-1',
+      );
+
+      expect(updateClauses[0]).toBeDefined();
+      expect(
+        ((updateClauses[0] as unknown as Record<string, any>).sandboxConfig),
+      ).toEqual({
+        cpu: 2,
+        memory: 1536,
+        disk: 5,
+        timeout: 901,
+        lifecycleMode: undefined,
+        persistencePath: undefined,
+        restoreWorkspaceId: 'workspace-1',
+        persistenceExpiryHours: undefined,
+        persistentSandboxId: undefined,
+      });
+      expect(insertValues).not.toBeNull();
+      expect(
+        (
+          (insertValues as unknown as Record<string, any>)
+            .snapshot as Record<string, any>
+        ).sandboxConfig,
+      ).toEqual({
+        cpu: 2,
+        memory: 1536,
+        disk: 5,
+        timeout: 901,
+        lifecycleMode: undefined,
+        persistencePath: undefined,
+        restoreWorkspaceId: 'workspace-1',
+        persistenceExpiryHours: undefined,
+        persistentSandboxId: undefined,
+      });
     });
   });
 

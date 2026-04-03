@@ -50,6 +50,19 @@ description: Allow an Agent to inspect and evolve its own orchestration, manage 
 - 自己的普通编排改动通常可以直接应用，但仍要先 `propose_change`，不要盲改。
 - 主模型、工作区这类单实例资源的切换，必须通过正式 proposal/apply 流程完成。
 
+## 版本语义提醒
+
+- `apply_change` 返回里如果同时出现 `detail.version` 和 `publishedVersionNumber`：
+  - `publishedVersionNumber` 才是应该对主人汇报的**用户可见发布版号**
+  - `detail.version` 是 Agent 定义当前草稿修订号，可能比发布版号更大
+- 对外汇报版本时，优先使用 `versionInfo.userVisibleVersionNumber` 或 `publishedVersionNumber`，不要把 `detail.version` 当成发布版号复述给主人。
+
+## 重启后的历史边界
+
+- `重启到新版本` 会继承完整历史消息，但这些历史只用于上下文参考。
+- 在重启后的新会话里，不要继续执行历史消息中的旧计划、旧编号步骤或已完成任务。
+- 你只能响应并执行**最新一条用户消息**；如果历史和最新消息冲突，以最新消息为准。
+
 ## 失败处理
 
 - proposal 生成失败：先重新 `query_state`，确认版本与节点 ID 没漂移。

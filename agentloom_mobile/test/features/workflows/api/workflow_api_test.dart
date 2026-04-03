@@ -207,8 +207,10 @@ void main() {
         final result = await api.runWorkflow('wf-1');
 
         verify(
-          () =>
-              mockDio.post('/api/v1/workflow-definitions/wf-1/run', data: null),
+          () => mockDio.post(
+            '/api/v1/workflow-definitions/wf-1/run',
+            data: const <String, dynamic>{},
+          ),
         ).called(1);
         expect(result['executionId'], 'exec-1');
       });
