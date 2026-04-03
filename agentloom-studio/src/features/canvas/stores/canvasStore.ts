@@ -9,7 +9,7 @@ import { createDefaultEdgeData, createDefaultAgentNodeData } from '../types'
 import { clonePortDefinitions, getNodeTypeConfig, getNodeTypeConfigOrNull } from '../types/nodeTypeRegistry'
 import { arePortDataTypesCompatible, evaluateConnection, mergeEdgeDataWithStoredMappings, resolveConnectionPorts } from '../lib/connectionCompatibility'
 import { getNodePortContractSignature } from '../lib/typeEngine/serialize'
-import { buildCompoundChildExtent, clampPositionToExtent, getCompoundInitialChildPosition, resolveCompoundContainerSize } from '../lib/compoundLayout'
+import { buildCompoundChildExtent, clampPositionToExtent, getCompoundInitialChildPosition, readCompoundNodeDimension, resolveCompoundContainerSize } from '../lib/compoundLayout'
 import type { NodeType } from '../types/nodeTypeRegistry'
 import { buildConditionInputPorts, buildConditionOutputPorts, getConditionValueInputPorts, migrateConditionConfig, parseMergeNodeConfig, buildMergeInputPorts } from '../types/condition.types'
 import { buildIterationInputPorts, buildIterationStartOutputPorts, buildLoopInputPorts, buildLoopStartOutputPorts, buildCompoundOutputPorts, createDefaultIterationNodeConfig, createDefaultIterationStartNodeConfig, createDefaultLoopCompoundNodeConfig, createDefaultLoopStartNodeConfig, isCompoundContainerNodeType } from '../types/controlFlow.types'
@@ -20,10 +20,6 @@ enableMapSet()
 const AGENT_NODE_TYPES: ReadonlySet<NodeType> = new Set(['chat-agent'])
 function isAgentNodeType(nodeType: string): boolean {
   return AGENT_NODE_TYPES.has(nodeType as NodeType)
-}
-
-function readNumericNodeDimension(value: unknown): number | null {
-  return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
 function findLastIndex<T>(arr: readonly T[], predicate: (item: T) => boolean): number {
@@ -156,8 +152,8 @@ function syncCompoundParentLayout(nodes: CanvasNode[], parentNodeId: string): vo
   const parentSize = resolveCompoundContainerSize({
     inputPortCount: parentNode.data.inputPorts.length,
     outputPortCount: parentNode.data.outputPorts.length,
-    width: readNumericNodeDimension(parentNode.style?.width) ?? readNumericNodeDimension(parentNode.width),
-    height: readNumericNodeDimension(parentNode.style?.height) ?? readNumericNodeDimension(parentNode.height),
+    width: readCompoundNodeDimension(parentNode, 'width'),
+    height: readCompoundNodeDimension(parentNode, 'height'),
     isCollapsed,
   })
 
@@ -186,8 +182,8 @@ function syncCompoundParentLayout(nodes: CanvasNode[], parentNodeId: string): vo
     childNode.extent = childExtent
     childNode.expandParent = false
     childNode.position = clampPositionToExtent(childNode.position, childExtent, {
-      childWidth: readNumericNodeDimension(childNode.measured?.width) ?? readNumericNodeDimension(childNode.width),
-      childHeight: readNumericNodeDimension(childNode.measured?.height) ?? readNumericNodeDimension(childNode.height),
+      childWidth: readCompoundNodeDimension(childNode, 'width'),
+      childHeight: readCompoundNodeDimension(childNode, 'height'),
     })
   }
 }
@@ -265,13 +261,13 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
                 const extent = buildCompoundChildExtent({
                   inputPortCount: parent.data.inputPorts.length,
                   outputPortCount: parent.data.outputPorts.length,
-                  width: readNumericNodeDimension(parent.style?.width) ?? readNumericNodeDimension(parent.width),
-                  height: readNumericNodeDimension(parent.style?.height) ?? readNumericNodeDimension(parent.height),
+                  width: readCompoundNodeDimension(parent, 'width'),
+                  height: readCompoundNodeDimension(parent, 'height'),
                 })
 
                 const clamped = clampPositionToExtent(change.position, extent, {
-                  childWidth: readNumericNodeDimension(node.measured?.width) ?? readNumericNodeDimension(node.width),
-                  childHeight: readNumericNodeDimension(node.measured?.height) ?? readNumericNodeDimension(node.height),
+                  childWidth: readCompoundNodeDimension(node, 'width'),
+                  childHeight: readCompoundNodeDimension(node, 'height'),
                 })
                 if (clamped.x !== change.position.x || clamped.y !== change.position.y) {
                   return { ...change, position: clamped }
@@ -300,8 +296,8 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
                   ): change is NodeChange<CanvasNode> & {
                     type: 'dimensions'
                     id: string
-                    resizing: boolean
-                  } => change.type === 'dimensions' && 'resizing' in change && change.resizing === false,
+                    resizing?: boolean
+                  } => change.type === 'dimensions',
                 )
                 .map((change) => change.id)
                 .filter((id) => {

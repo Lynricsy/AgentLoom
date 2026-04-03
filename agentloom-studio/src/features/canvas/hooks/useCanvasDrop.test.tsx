@@ -134,4 +134,58 @@ describe('useCanvasDrop', () => {
     })
     expect(extent[1][1] - extent[0][1]).toBeGreaterThanOrEqual(80)
   })
+
+  it('resize 后解析 compound 父容器时会优先使用 live width/height', () => {
+    useCanvasStore.getState().actions.addNode({
+      id: 'loop-1',
+      nodeType: 'loop',
+      category: 'control',
+      position: { x: 100, y: 100 },
+      label: 'Loop',
+    })
+
+    useCanvasStore.setState((state) => ({
+      ...state,
+      nodes: state.nodes.map((node) =>
+        node.id === 'loop-1'
+          ? {
+              ...node,
+              style: {
+                ...(node.style ?? {}),
+                width: 600,
+                height: 540,
+              },
+              width: 900,
+              height: 700,
+              measured: {
+                width: 900,
+                height: 700,
+              },
+            }
+          : node,
+      ),
+    }))
+
+    const reactFlowInstance = {
+      screenToFlowPosition: vi.fn(() => ({ x: 850, y: 200 })),
+    } as Pick<ReactFlowInstance<CanvasNode, CanvasEdge>, 'screenToFlowPosition'> as ReactFlowInstance<CanvasNode, CanvasEdge>
+
+    const { result } = renderHook(() => useCanvasDrop(reactFlowInstance))
+
+    act(() => {
+      result.current.onDrop({
+        preventDefault: vi.fn(),
+        clientX: 850,
+        clientY: 200,
+        dataTransfer: {
+          getData: (type: string) => (type === DRAG_TRANSFER_TYPE ? JSON.stringify(mockPaletteNode) : ''),
+        },
+      } as unknown as React.DragEvent)
+    })
+
+    const childNode = useCanvasStore.getState().nodes.find((node) => node.parentId === 'loop-1' && node.data.nodeType === 'chat-agent')
+
+    expect(childNode).toBeDefined()
+    expect(childNode?.parentId).toBe('loop-1')
+  })
 })

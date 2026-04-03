@@ -45,6 +45,17 @@ interface CompoundLayoutOptions {
   childHeight?: number | null
 }
 
+interface CompoundNodeDimensionSource {
+  measured?: { width?: number; height?: number } | null
+  width?: number | null
+  height?: number | null
+  style?: { width?: unknown; height?: unknown } | null
+}
+
+function readNumericDimension(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
 function getPortSectionHeight(portCount: number): number {
   if (portCount <= 0) {
     return 0
@@ -77,6 +88,10 @@ export function resolveCompoundContainerSize({ inputPortCount, outputPortCount, 
     width: typeof width === 'number' && Number.isFinite(width) ? Math.max(width, minSize.width) : minSize.width,
     height: typeof height === 'number' && Number.isFinite(height) ? Math.max(height, minSize.height) : minSize.height,
   }
+}
+
+export function readCompoundNodeDimension(source: CompoundNodeDimensionSource, axis: 'width' | 'height'): number | null {
+  return readNumericDimension(source.measured?.[axis]) ?? readNumericDimension(source[axis]) ?? readNumericDimension(source.style?.[axis])
 }
 
 export function buildCompoundChildExtent(options: CompoundLayoutOptions): CoordinateExtent {

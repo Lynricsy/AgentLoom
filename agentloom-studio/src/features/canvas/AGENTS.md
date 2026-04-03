@@ -104,7 +104,7 @@ WorkflowCanvasPage.tsx
 - `WorkflowCanvas` 现使用自定义 Portal `CanvasContextMenu`（禁止使用 Radix ContextMenu）；多选封装相关的纯函数分析/替换逻辑位于 `lib/encapsulation.ts`，创建前确认表单位于 `components/BlockCreateDialog.tsx`
 - `CanvasNode` 使用 `React.memo` 避免重渲染
 - `CanvasNode` 现在有 3 档 LOD：`full (>=0.7)` / `compact (0.4–0.7)` / `minimal (<0.4)`；minimal 模式应保持图标方块 + 可连线 handles，不渲染 body、port row 与 execution overlay
-- `compoundLayout.ts` 是 `loop / iteration` 内框布局的单一事实源：负责容器最小尺寸、frame insets、child extent 与 resize 下限。这里的 `child extent` 表示**内框本身**，不要在 `buildCompoundChildExtent()` 里提前扣掉子节点宽高；`@xyflow/react` 在真实拖拽时会再按 `node.measured.width/height` 做一次 clamp，所以尺寸扣减必须放在 `clampPositionToExtent()` 阶段完成。compound 子节点仍需按节点 `measured.width/height`（回退到内部默认尺寸）计算最终可达位置，且 `expandParent` 必须保持 `false`，因为父容器本身就是权威拖拽边界
+- `compoundLayout.ts` 是 `loop / iteration` 内框布局的单一事实源：负责容器最小尺寸、frame insets、child extent 与 resize 下限。这里的 `child extent` 表示**内框本身**，不要在 `buildCompoundChildExtent()` 里提前扣掉子节点宽高；`@xyflow/react` 在真实拖拽时会再按 `node.measured.width/height` 做一次 clamp，所以尺寸扣减必须放在 `clampPositionToExtent()` 阶段完成。compound 子节点仍需按节点 `measured.width/height`（回退到内部默认尺寸）计算最终可达位置，且 `expandParent` 必须保持 `false`，因为父容器本身就是权威拖拽边界。另一个易错点是：ReactFlow 的 `dimensions` 变更会更新 `measured/width/height`，但不会同步刷新 `style.width/height`，所以 resize 相关逻辑必须优先读取 live `measured/width/height`，不能优先信任 `style`
 - SmartEdge 有粒子动画效果
 - `NodeConfigPanel` 会在节点状态为 `waiting_intervention` 时嵌入 `InterventionPanel`；所需数据由 executionStore 的实时事件和 snapshot 恢复共同驱动
 - `NodeConfigPanel` 配置分发规则：先命中自定义面板（llm-model/mcp-tool/knowledge-base/sandbox/llm-agent/http-tool/reusable-block），否则走 `DynamicConfigForm`，空 schema 显示“该节点无需额外配置”

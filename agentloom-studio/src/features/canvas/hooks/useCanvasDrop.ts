@@ -5,7 +5,7 @@ import { useCanvasActions, useCanvasNodes } from '../stores/canvasStore'
 import { useToast } from '@/shared/ui/toast'
 import type { AddNodeInput, CanvasEdge, CanvasNode, PaletteNodeItem } from '../types'
 import { isCompoundContainerNodeType } from '../types/controlFlow.types'
-import { buildCompoundChildExtent, clampPositionToExtent, resolveCompoundContainerSize } from '../lib/compoundLayout'
+import { buildCompoundChildExtent, clampPositionToExtent, readCompoundNodeDimension, resolveCompoundContainerSize } from '../lib/compoundLayout'
 
 function generateNodeId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -31,8 +31,8 @@ export function useCanvasDrop(reactFlowInstance: ReactFlowInstance<CanvasNode, C
           return false
         }
 
-        const width = typeof node.style?.width === 'number' ? node.style.width : typeof node.width === 'number' ? node.width : 0
-        const height = typeof node.style?.height === 'number' ? node.style.height : typeof node.height === 'number' ? node.height : 0
+        const width = readCompoundNodeDimension(node, 'width') ?? 0
+        const height = readCompoundNodeDimension(node, 'height') ?? 0
 
         return width > 0 && height > 0 && position.x >= node.position.x && position.x <= node.position.x + width && position.y >= node.position.y && position.y <= node.position.y + height
       })
@@ -92,8 +92,8 @@ export function useCanvasDrop(reactFlowInstance: ReactFlowInstance<CanvasNode, C
               const parentSize = resolveCompoundContainerSize({
                 inputPortCount: compoundParent.data.inputPorts.length,
                 outputPortCount: compoundParent.data.outputPorts.length,
-                width: typeof compoundParent.style?.width === 'number' ? compoundParent.style.width : typeof compoundParent.width === 'number' ? compoundParent.width : null,
-                height: typeof compoundParent.style?.height === 'number' ? compoundParent.style.height : typeof compoundParent.height === 'number' ? compoundParent.height : null,
+                width: readCompoundNodeDimension(compoundParent, 'width'),
+                height: readCompoundNodeDimension(compoundParent, 'height'),
                 isCollapsed: compoundParent.data.config?.isCollapsed === true,
               })
               const extent = buildCompoundChildExtent({
@@ -117,8 +117,8 @@ export function useCanvasDrop(reactFlowInstance: ReactFlowInstance<CanvasNode, C
               const parentSize = resolveCompoundContainerSize({
                 inputPortCount: compoundParent.data.inputPorts.length,
                 outputPortCount: compoundParent.data.outputPorts.length,
-                width: typeof compoundParent.style?.width === 'number' ? compoundParent.style.width : typeof compoundParent.width === 'number' ? compoundParent.width : null,
-                height: typeof compoundParent.style?.height === 'number' ? compoundParent.style.height : typeof compoundParent.height === 'number' ? compoundParent.height : null,
+                width: readCompoundNodeDimension(compoundParent, 'width'),
+                height: readCompoundNodeDimension(compoundParent, 'height'),
                 isCollapsed: compoundParent.data.config?.isCollapsed === true,
               })
 
