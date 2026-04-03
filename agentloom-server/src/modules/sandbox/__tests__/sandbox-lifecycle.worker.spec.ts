@@ -577,7 +577,7 @@ describe('SandboxLifecycleWorker', () => {
       expect(mockInsert).not.toHaveBeenCalled();
     });
 
-    it('persistent 模式 timeout 应标记为 failed 并记录日志', async () => {
+    it('persistent 模式 timeout 应标记为 stopped 并记录日志', async () => {
       mockSandboxService.getSessionById.mockResolvedValueOnce({
         id: 's1',
         executionId: 'e1',
@@ -606,10 +606,59 @@ describe('SandboxLifecycleWorker', () => {
       const updatePayloads = mockSet.mock.calls.map(([payload]) => payload);
       expect(updatePayloads).toContainEqual(
         expect.objectContaining({
-          status: 'failed',
+          status: 'stopped',
           stoppedAt: expect.any(Date),
         }),
       );
+      expect(mockInsert).toHaveBeenCalled();
+    });
+
+    it('resource persistent sandbox timeout 应自动停止且不抛出失败', async () => {
+      mockSandboxService.getSessionById.mockResolvedValueOnce({
+        id: 's-resource',
+        status: 'ready',
+        containerId: 'c-123',
+        executionId: null,
+        agentConversationId: null,
+        sandboxNodeId: null,
+        config: {
+          cpu: 1,
+          memory: 512,
+          disk: 2,
+          timeout: 24,
+          lifecycleMode: 'persistent',
+        },
+      });
+
+      await expect(
+        worker.process(
+          createJob({
+            jobType: 'timeout_check',
+            sessionId: 's-resource',
+            tenantId: 't1',
+          }),
+        ),
+      ).resolves.toBeUndefined();
+
+      expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
+      expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123');
+
+      const updatePayloads = mockSet.mock.calls.map(([payload]) => payload);
+      expect(updatePayloads).toContainEqual(
+        expect.objectContaining({
+          status: 'stopped',
+          stoppedAt: expect.any(Date),
+        }),
+      );
+      expect(
+        updatePayloads.some(
+          (payload) =>
+            payload &&
+            typeof payload === 'object' &&
+            'failedAt' in payload &&
+            'errorMessage' in payload,
+        ),
+      ).toBe(false);
       expect(mockInsert).toHaveBeenCalled();
     });
 

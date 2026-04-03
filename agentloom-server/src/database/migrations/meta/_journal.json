@@ -442,6 +442,20 @@
       "when": 1775242800000,
       "tag": "0062_llm_providers_model_config_redesign",
       "breakpoints": true
+    },
+    {
+      "idx": 63,
+      "version": "7",
+      "when": 1775190300000,
+      "tag": "0063_reclassify_persistent_sandbox_timeouts",
+      "breakpoints": true
+    },
+    {
+      "idx": 64,
+      "version": "7",
+      "when": 1775190900000,
+      "tag": "0064_backfill_persistent_timeout_stop_status",
+      "breakpoints": true
     }
   ]
 }

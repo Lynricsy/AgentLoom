@@ -372,7 +372,7 @@ export class SandboxLifecycleWorker extends WorkerHost {
         await tenantDb
           .update(schema.sandboxSessions)
           .set({
-            status: 'failed',
+            status: 'stopped',
             stoppedAt: new Date(),
           })
           .where(eq(schema.sandboxSessions.id, sessionId));
@@ -415,7 +415,12 @@ export class SandboxLifecycleWorker extends WorkerHost {
     });
 
     if (!isSessionMode) {
-      await this.insertLog(sessionId, 'system', 'Sandbox timed out', tenantId);
+      await this.insertLog(
+        sessionId,
+        'system',
+        'Sandbox auto-stopped after timeout',
+        tenantId,
+      );
     }
 
     if (binding.executionId) {

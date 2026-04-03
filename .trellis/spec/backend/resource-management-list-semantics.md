@@ -82,6 +82,11 @@
   - 否则 `executionId != null` → `execution`
   - 否则 → `resource`
 - `bindingType` 过滤必须在 SQL where 层生效，不能只在分页后内存过滤
+- persistent sandbox 命中 timeout/expiry 时，资源状态必须视为**自动停止**：
+  - `sandbox_sessions.status = 'stopped'`
+  - 允许后续通过 `startSandbox()` 或 attach 恢复
+  - 只有真实创建/运行失败才应保留 `failed`
+  - 若 timeout 同时打断 workflow / agent 执行，失败语义只属于上层 execution / conversation，不应把资源沙箱本体标记成 `failed`
 
 ---
 
@@ -97,6 +102,7 @@
 | workspace list 默认过滤 execution archive | API 仍返回 `sourceKind`，但 `execution_archive` 被排除 | `workspace.service.spec.ts` |
 | `includeAutoArchived=false` query string | DTO 必须把 `'false'` 解析成 `false`，不能回退成 truthy | `list-workspaces-query.dto.spec.ts` |
 | sandbox list `bindingType=resource` | SQL where 同时要求 `execution_id is null` + `agent_conversation_id is null` | `sandbox.service.spec.ts` |
+| persistent resource sandbox timeout | 资源状态应落为 `stopped`，而不是 `failed` | `sandbox-lifecycle.worker.spec.ts` |
 
 ---
 

@@ -28,6 +28,7 @@
 
 - `SandboxManagementPage` 默认请求 `bindingType='resource'`
 - 页面必须明确提示：默认只展示真正可复用的资源型沙箱
+- persistent sandbox 因 timeout / expiry 被系统回收时，资源页必须显示为 `已停止`，不能显示为 `失败`
 - `SandboxCard` 必须显示：
   - lifecycle 标签（持久 / 临时）
   - binding 标签（资源 / 对话 / 执行）
@@ -66,4 +67,5 @@
 
 - Studio workspace 页默认不应再被 `execution-*-step-*-workspace` 大量占满
 - Studio sandbox 页默认不应再把 conversation / execution session 当成“资源沙箱”展示
+- persistent 资源沙箱到期后，应显示 `已停止`，而不应被渲染成 `失败`
 - Flutter 两个资源页要与 Studio 保持同一套默认语义和标签
