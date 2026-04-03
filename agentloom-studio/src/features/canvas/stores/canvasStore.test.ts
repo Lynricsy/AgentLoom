@@ -269,6 +269,80 @@ describe('canvasStore', () => {
     expect(extent[1][1] - extent[0][1]).toBeGreaterThanOrEqual(80)
   })
 
+  it('拖拽 compound 子节点到右下角时不会把节点尺寸重复扣减两次', () => {
+    const loopConfig = getNodeTypeConfig('loop')
+    const chatAgentConfig = getNodeTypeConfig('chat-agent')
+
+    useCanvasStore.getState().actions.applyServerSnapshot({
+      workflowId: 'wf-1',
+      version: 1,
+      viewport: { x: 0, y: 0, zoom: 1 },
+      nodes: [
+        {
+          id: 'loop-1',
+          type: 'control',
+          position: { x: 120, y: 80 },
+          style: { width: 800, height: 600 },
+          data: {
+            label: 'Loop',
+            nodeType: 'loop',
+            category: 'control',
+            description: '循环 compound 容器',
+            config: {
+              isCollapsed: false,
+              outputMode: 'last',
+              defaultState: null,
+            },
+            inputPorts: clonePortDefinitions(loopConfig.inputPorts),
+            outputPorts: clonePortDefinitions(loopConfig.outputPorts),
+          },
+        },
+        {
+          id: 'agent-1',
+          type: 'agent',
+          parentId: 'loop-1',
+          position: { x: 0, y: 0 },
+          width: 260,
+          height: 160,
+          data: {
+            label: 'Chat Agent',
+            nodeType: 'chat-agent',
+            category: 'agent',
+            description: '对话型 Agent 节点',
+            config: {},
+            inputPorts: clonePortDefinitions(chatAgentConfig.inputPorts),
+            outputPorts: clonePortDefinitions(chatAgentConfig.outputPorts),
+            ...createDefaultAgentNodeData(),
+          },
+        },
+      ],
+      edges: [],
+    })
+
+    useCanvasStore.getState().actions.onNodesChange([
+      {
+        id: 'agent-1',
+        type: 'position',
+        position: { x: 9999, y: 9999 },
+        dragging: false,
+      },
+    ])
+
+    const childNode = useCanvasStore.getState().nodes.find((node) => node.id === 'agent-1')
+    const extent = childNode?.extent
+
+    if (!childNode || !Array.isArray(extent)) {
+      throw new Error('Expected compound child to have synchronized extent after snapshot load')
+    }
+
+    expect(childNode.position).toEqual({
+      x: extent[1][0] - 260,
+      y: extent[1][1] - 160,
+    })
+    expect(childNode.position.x - extent[0][0]).toBeGreaterThanOrEqual(400)
+    expect(childNode.position.y - extent[0][1]).toBeGreaterThanOrEqual(150)
+  })
+
   it('deletes the selected node and its connected edges', () => {
     const node = createNode()
     const edge: CanvasEdge = {

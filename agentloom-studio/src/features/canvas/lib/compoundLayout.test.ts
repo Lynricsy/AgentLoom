@@ -14,23 +14,31 @@ describe('compoundLayout', () => {
     })
   })
 
-  it('把子节点 extent 收紧到可见循环体内框内部并保留足够的二维移动空间', () => {
+  it('把子节点 extent 对齐到可见循环体内框本身，并在 clamp 时再扣除节点尺寸', () => {
     const frameInsets = getCompoundFrameInsets(2, 1)
     const extent = buildCompoundChildExtent({
       inputPortCount: 2,
       outputPortCount: 1,
       width: 800,
       height: 600,
+    })
+
+    expect(extent).toEqual([
+      [frameInsets.left + 16, frameInsets.top + 16],
+      [800 - frameInsets.right - 16, 600 - frameInsets.bottom - 16],
+    ])
+
+    const clamped = clampPositionToExtent({ x: 9999, y: 9999 }, extent, {
       childWidth: 260,
       childHeight: 160,
     })
 
-    expect(extent[0][0]).toBeGreaterThan(frameInsets.left)
-    expect(extent[0][1]).toBeGreaterThan(frameInsets.top)
-    expect(extent[1][0]).toBeLessThan(800 - frameInsets.right)
-    expect(extent[1][1]).toBeLessThan(600 - frameInsets.bottom)
-    expect(extent[1][0] - extent[0][0]).toBeGreaterThanOrEqual(200)
-    expect(extent[1][1] - extent[0][1]).toBeGreaterThanOrEqual(80)
+    expect(clamped).toEqual({
+      x: extent[1][0] - 260,
+      y: extent[1][1] - 160,
+    })
+    expect(clamped.x - extent[0][0]).toBeGreaterThanOrEqual(400)
+    expect(clamped.y - extent[0][1]).toBeGreaterThanOrEqual(150)
     expect(
       getCompoundInitialChildPosition({
         inputPortCount: 2,
@@ -50,17 +58,25 @@ describe('compoundLayout', () => {
       outputPortCount: 1,
       width: 800,
       height: 600,
-      childWidth: 260,
-      childHeight: 160,
     })
 
-    expect(clampPositionToExtent({ x: -40, y: 12 }, extent)).toEqual({
+    expect(
+      clampPositionToExtent({ x: -40, y: 12 }, extent, {
+        childWidth: 260,
+        childHeight: 160,
+      }),
+    ).toEqual({
       x: extent[0][0],
       y: extent[0][1],
     })
-    expect(clampPositionToExtent({ x: 9999, y: 9999 }, extent)).toEqual({
-      x: extent[1][0],
-      y: extent[1][1],
+    expect(
+      clampPositionToExtent({ x: 9999, y: 9999 }, extent, {
+        childWidth: 260,
+        childHeight: 160,
+      }),
+    ).toEqual({
+      x: extent[1][0] - 260,
+      y: extent[1][1] - 160,
     })
   })
 })

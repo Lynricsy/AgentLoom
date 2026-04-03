@@ -82,18 +82,23 @@ export function resolveCompoundContainerSize({ inputPortCount, outputPortCount, 
 export function buildCompoundChildExtent(options: CompoundLayoutOptions): CoordinateExtent {
   const size = resolveCompoundContainerSize(options)
   const frameInsets = getCompoundFrameInsets(options.inputPortCount, options.outputPortCount)
-  const childSize = resolveCompoundChildSize(options)
 
+  // React Flow 会在真正拖拽时再次按 node.measured.width/height 扣减 upper bound，
+  // 所以这里返回的是“内框本身”的盒子，而不是已经减过子节点尺寸的 top-left 范围。
   return [
     [frameInsets.left + COMPOUND_FRAME_CHILD_PADDING, frameInsets.top + COMPOUND_FRAME_CHILD_PADDING],
-    [Math.max(frameInsets.left + COMPOUND_FRAME_CHILD_PADDING, size.width - frameInsets.right - COMPOUND_FRAME_CHILD_PADDING - childSize.width), Math.max(frameInsets.top + COMPOUND_FRAME_CHILD_PADDING, size.height - frameInsets.bottom - COMPOUND_FRAME_CHILD_PADDING - childSize.height)],
+    [Math.max(frameInsets.left + COMPOUND_FRAME_CHILD_PADDING, size.width - frameInsets.right - COMPOUND_FRAME_CHILD_PADDING), Math.max(frameInsets.top + COMPOUND_FRAME_CHILD_PADDING, size.height - frameInsets.bottom - COMPOUND_FRAME_CHILD_PADDING)],
   ]
 }
 
-export function clampPositionToExtent(position: XYPosition, extent: CoordinateExtent): XYPosition {
+export function clampPositionToExtent(position: XYPosition, extent: CoordinateExtent, options: Pick<CompoundLayoutOptions, 'childWidth' | 'childHeight'> = {}): XYPosition {
+  const childSize = resolveCompoundChildSize(options)
+  const maxX = Math.max(extent[0][0], extent[1][0] - childSize.width)
+  const maxY = Math.max(extent[0][1], extent[1][1] - childSize.height)
+
   return {
-    x: Math.min(Math.max(position.x, extent[0][0]), extent[1][0]),
-    y: Math.min(Math.max(position.y, extent[0][1]), extent[1][1]),
+    x: Math.min(Math.max(position.x, extent[0][0]), maxX),
+    y: Math.min(Math.max(position.y, extent[0][1]), maxY),
   }
 }
 

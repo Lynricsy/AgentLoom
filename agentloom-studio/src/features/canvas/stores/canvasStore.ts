@@ -181,13 +181,14 @@ function syncCompoundParentLayout(nodes: CanvasNode[], parentNodeId: string): vo
       outputPortCount: parentNode.data.outputPorts.length,
       width: parentSize.width,
       height: parentSize.height,
-      childWidth: readNumericNodeDimension(childNode.measured?.width) ?? readNumericNodeDimension(childNode.width),
-      childHeight: readNumericNodeDimension(childNode.measured?.height) ?? readNumericNodeDimension(childNode.height),
     })
 
     childNode.extent = childExtent
     childNode.expandParent = false
-    childNode.position = clampPositionToExtent(childNode.position, childExtent)
+    childNode.position = clampPositionToExtent(childNode.position, childExtent, {
+      childWidth: readNumericNodeDimension(childNode.measured?.width) ?? readNumericNodeDimension(childNode.width),
+      childHeight: readNumericNodeDimension(childNode.measured?.height) ?? readNumericNodeDimension(childNode.height),
+    })
   }
 }
 
@@ -266,11 +267,12 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
                   outputPortCount: parent.data.outputPorts.length,
                   width: readNumericNodeDimension(parent.style?.width) ?? readNumericNodeDimension(parent.width),
                   height: readNumericNodeDimension(parent.style?.height) ?? readNumericNodeDimension(parent.height),
+                })
+
+                const clamped = clampPositionToExtent(change.position, extent, {
                   childWidth: readNumericNodeDimension(node.measured?.width) ?? readNumericNodeDimension(node.width),
                   childHeight: readNumericNodeDimension(node.measured?.height) ?? readNumericNodeDimension(node.height),
                 })
-
-                const clamped = clampPositionToExtent(change.position, extent)
                 if (clamped.x !== change.position.x || clamped.y !== change.position.y) {
                   return { ...change, position: clamped }
                 }

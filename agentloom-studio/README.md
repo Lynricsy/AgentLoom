@@ -56,7 +56,7 @@ src/
 
 - 默认展开态容器尺寸由 `lib/compoundLayout.ts` 统一计算，当前默认起点约为 `600 x 540`
 - 可见“循环体 / 迭代体”内框不是纯装饰，而是内部子节点的真实拖拽边界
-- 子节点 extent 需要按节点 `measured.width/height` 计算，回退到内置默认尺寸，避免把纵向拖拽空间压成一条线
+- 子节点 `extent` 表示真实内框盒子本身，最终拖拽 clamp 才会按节点 `measured.width/height`（回退到内置默认尺寸）扣除尺寸；不要在 extent 上提前减一次，否则 React Flow 拖拽时会重复扣减，导致内部节点只能在很窄的范围移动
 - compound 子节点保持 `expandParent = false`，父容器本身就是固定边界，不通过拖拽自动撑大
 
 ## LLM 模型管理前端事实
