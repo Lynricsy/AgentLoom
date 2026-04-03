@@ -668,7 +668,7 @@ describe('DockerService', () => {
   });
 
   describe('getContainerStats', () => {
-    it('应正确计算 CPU 百分比和内存使用量', async () => {
+    it('应正确计算 CPU 百分比、内存使用量和工作区磁盘占用', async () => {
       mockContainer.stats.mockResolvedValueOnce({
         cpu_stats: {
           cpu_usage: { total_usage: 200_000_000 },
@@ -684,12 +684,63 @@ describe('DockerService', () => {
           limit: 1024 * 1024 * 1024,
         },
       });
+      const createExecSpy = vi
+        .spyOn(service, 'createExec')
+        .mockResolvedValueOnce({ execId: 'exec-disk-1' });
+      const attachExecOutputSpy = vi
+        .spyOn(service, 'attachExecOutput')
+        .mockImplementationOnce(async (_execId, callback) => {
+          callback('stdout', '4096\n');
+        });
+      const waitForExecExitSpy = vi
+        .spyOn(service, 'waitForExecExit')
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          pid: 4321,
+          running: false,
+        });
 
       const result = await service.getContainerStats('container-abc123');
 
       expect(result.cpuPercent).toBe(40);
       expect(result.memoryUsageMb).toBe(256);
       expect(result.memoryLimitMb).toBe(1024);
+      expect(result.diskUsage).toBe(4096);
+      expect(createExecSpy).toHaveBeenCalledWith('container-abc123', {
+        command: 'sh',
+        args: ['-lc', expect.stringContaining('find /workspace')],
+      });
+      expect(attachExecOutputSpy).toHaveBeenCalledWith(
+        'exec-disk-1',
+        expect.any(Function),
+      );
+      expect(waitForExecExitSpy).toHaveBeenCalledWith('exec-disk-1');
+    });
+
+    it('磁盘占用采集失败时仍应返回 CPU 和内存统计', async () => {
+      mockContainer.stats.mockResolvedValueOnce({
+        cpu_stats: {
+          cpu_usage: { total_usage: 200_000_000 },
+          system_cpu_usage: 1_000_000_000,
+          online_cpus: 2,
+        },
+        precpu_stats: {
+          cpu_usage: { total_usage: 100_000_000 },
+          system_cpu_usage: 500_000_000,
+        },
+        memory_stats: {
+          usage: 256 * 1024 * 1024,
+          limit: 1024 * 1024 * 1024,
+        },
+      });
+      mockContainer.exec.mockRejectedValueOnce(new Error('exec create failed'));
+
+      const result = await service.getContainerStats('container-abc123');
+
+      expect(result.cpuPercent).toBe(40);
+      expect(result.memoryUsageMb).toBe(256);
+      expect(result.memoryLimitMb).toBe(1024);
+      expect(result.diskUsage).toBeUndefined();
     });
   });
 

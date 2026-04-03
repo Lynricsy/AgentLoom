@@ -523,6 +523,12 @@ class _MetricChipRow extends StatelessWidget {
           value:
               '${stats.memoryUsageMb.toStringAsFixed(0)} / ${stats.memoryLimitMb.toStringAsFixed(0)} MB',
         ),
+        if (stats.hasDiskStats)
+          _MetricChip(
+            label: '磁盘',
+            value:
+                '${formatBytes(stats.diskUsage)} / ${formatBytes(stats.diskTotal)}',
+          ),
       ],
     );
   }

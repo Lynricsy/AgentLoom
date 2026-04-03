@@ -1,34 +1,15 @@
 import { memo } from 'react'
+import {
+  formatSandboxBytes,
+  formatSandboxMegabytes,
+  getSandboxDiskPercent,
+  safeSandboxPercent,
+} from '../lib/sandboxStats'
 import type { SandboxStats } from '../types'
 
 interface SandboxStatsDisplayProps {
   stats: SandboxStats
   compact?: boolean
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB']
-  const k = 1024
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  const size = bytes / Math.pow(k, i)
-  return `${size.toFixed(i === 0 ? 0 : 1)} ${units[i]}`
-}
-
-function formatMegabytes(megabytes: number): string {
-  if (megabytes <= 0) return '0 MB'
-  if (megabytes < 1024) return `${Math.round(megabytes)} MB`
-
-  const gigabytes = megabytes / 1024
-  return `${gigabytes.toFixed(gigabytes >= 10 ? 0 : 1)} GB`
-}
-
-function safePercent(value: number): number {
-  if (!Number.isFinite(value)) {
-    return 0
-  }
-
-  return Math.round(value * 100) / 100
 }
 
 function ProgressBar({ percent, color }: { percent: number; color: string }) {
@@ -53,13 +34,11 @@ export const SandboxStatsDisplay = memo(function SandboxStatsDisplay({
   stats,
   compact = false,
 }: SandboxStatsDisplayProps) {
-  const cpuPercent = safePercent(stats.cpuPercent)
+  const cpuPercent = safeSandboxPercent(stats.cpuPercent)
   const memPercent = stats.memoryLimitMb > 0
-    ? safePercent((stats.memoryUsageMb / stats.memoryLimitMb) * 100)
+    ? safeSandboxPercent((stats.memoryUsageMb / stats.memoryLimitMb) * 100)
     : 0
-  const diskPercent = stats.diskTotal && stats.diskUsage
-    ? safePercent((stats.diskUsage / stats.diskTotal) * 100)
-    : null
+  const diskPercent = getSandboxDiskPercent(stats)
 
   if (compact) {
     return (
@@ -105,9 +84,9 @@ export const SandboxStatsDisplay = memo(function SandboxStatsDisplay({
       {/* Memory */}
       <div>
         <div className="mb-1 flex items-center justify-between text-xs">
-          <span className="text-muted-foreground">Memory</span>
-          <span className="font-medium text-foreground">
-            {formatMegabytes(stats.memoryUsageMb)} / {formatMegabytes(stats.memoryLimitMb)}
+            <span className="text-muted-foreground">Memory</span>
+            <span className="font-medium text-foreground">
+            {formatSandboxMegabytes(stats.memoryUsageMb)} / {formatSandboxMegabytes(stats.memoryLimitMb)}
             <span className="ml-1 text-muted-foreground">({memPercent}%)</span>
           </span>
         </div>
@@ -120,7 +99,7 @@ export const SandboxStatsDisplay = memo(function SandboxStatsDisplay({
           <div className="mb-1 flex items-center justify-between text-xs">
             <span className="text-muted-foreground">Disk</span>
             <span className="font-medium text-foreground">
-              {formatBytes(stats.diskUsage)} / {formatBytes(stats.diskTotal)}
+              {formatSandboxBytes(stats.diskUsage)} / {formatSandboxBytes(stats.diskTotal)}
               <span className="ml-1 text-muted-foreground">({diskPercent}%)</span>
             </span>
           </div>

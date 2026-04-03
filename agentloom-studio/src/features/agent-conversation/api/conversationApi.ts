@@ -1,5 +1,6 @@
 import { apiClient, toSnakeBody } from '@/shared/api/client';
 import type { PaginatedResponse } from '@/shared/types/api';
+import type { SandboxStats } from '@/features/sandbox/types';
 
 export interface ConversationListItem {
   id: string;
@@ -54,4 +55,13 @@ export async function deleteConversation(
   conversationId: string,
 ): Promise<void> {
   await apiClient.delete(`agent-conversations/${conversationId}`);
+}
+
+export async function fetchConversationSandboxStats(
+  conversationId: string,
+): Promise<SandboxStats> {
+  return apiClient
+    .get(`agent-conversations/${conversationId}/sandbox/stats`)
+    .json<{ data: SandboxStats }>()
+    .then((response) => response.data)
 }

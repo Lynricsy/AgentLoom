@@ -552,6 +552,36 @@ describe('SandboxService', () => {
     });
   });
 
+  describe('getContainerStats', () => {
+    it('应在 driver 返回磁盘占用时补齐磁盘总配额', async () => {
+      const session = buildSession({
+        containerId: 'container-abc123',
+        status: 'ready',
+        config: { ...TEST_CONFIG, disk: 6 },
+      });
+      db.select.mockReturnValueOnce(createSelectChainWithLimit([session]));
+      mockDockerService.getContainerStats.mockResolvedValueOnce({
+        cpuPercent: 10,
+        memoryUsageMb: 128,
+        memoryLimitMb: 512,
+        diskUsage: 4096,
+      });
+
+      const result = await service.getContainerStats(TEST_SESSION_ID);
+
+      expect(mockDockerService.getContainerStats).toHaveBeenCalledWith(
+        'container-abc123',
+      );
+      expect(result).toEqual({
+        cpuPercent: 10,
+        memoryUsageMb: 128,
+        memoryLimitMb: 512,
+        diskUsage: 4096,
+        diskTotal: 6 * 1024 * 1024 * 1024,
+      });
+    });
+  });
+
   describe('updateSessionStatus', () => {
     it('セッションステータスを正常に更新', async () => {
       db.update.mockReturnValueOnce(

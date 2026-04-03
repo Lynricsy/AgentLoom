@@ -7,6 +7,7 @@ import { SandboxAgentAdapter } from '../agent/sandbox-agent.adapter';
 import { AgentConversationService } from './agent-conversation.service';
 import { ConversationTitleService } from './conversation-title.service';
 import { WorkspaceIntegrationService } from '../agent-execution/workspace-integration.service';
+import { SandboxService } from '../sandbox/sandbox.service';
 import { SelfEvolutionPermissionService } from '../self-evolution/self-evolution-permission.service';
 import { SelfEvolutionService } from '../self-evolution/self-evolution.service';
 
@@ -32,6 +33,10 @@ const mockSandboxAgentAdapter = {
   awaitToolPermission: vi.fn(),
   resolveConversationToolPermission: vi.fn(),
   ptyWrite: vi.fn(),
+};
+
+const mockSandboxService = {
+  getConversationSandboxStats: vi.fn(),
 };
 
 const mockSelfEvolutionPermissionService = {
@@ -67,6 +72,7 @@ describe('AgentConversationController', () => {
           useValue: mockWorkspaceIntegrationService,
         },
         { provide: SandboxAgentAdapter, useValue: mockSandboxAgentAdapter },
+        { provide: SandboxService, useValue: mockSandboxService },
         {
           provide: SelfEvolutionPermissionService,
           useValue: mockSelfEvolutionPermissionService,
@@ -227,6 +233,36 @@ describe('AgentConversationController', () => {
         dto,
       );
       expect(result).toEqual({ allowed: true });
+    });
+  });
+
+  describe('getSandboxStats', () => {
+    it('应调用 sandboxService 并返回对话沙箱资源统计', async () => {
+      mockSandboxService.getConversationSandboxStats.mockResolvedValueOnce({
+        cpuPercent: 12.5,
+        memoryUsageMb: 128,
+        memoryLimitMb: 512,
+        diskUsage: 1024,
+        diskTotal: 2147483648,
+      });
+
+      const result = await controller.getSandboxStats(
+        CONVERSATION_ID,
+        TENANT_ID,
+      );
+
+      expect(
+        mockSandboxService.getConversationSandboxStats,
+      ).toHaveBeenCalledWith(CONVERSATION_ID, TENANT_ID);
+      expect(result).toEqual({
+        data: {
+          cpuPercent: 12.5,
+          memoryUsageMb: 128,
+          memoryLimitMb: 512,
+          diskUsage: 1024,
+          diskTotal: 2147483648,
+        },
+      });
     });
   });
 

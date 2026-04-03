@@ -22,6 +22,7 @@ import { SandboxAgentAdapter } from '../agent/sandbox-agent.adapter';
 import { AgentConversationService } from './agent-conversation.service';
 import { ConversationTitleService } from './conversation-title.service';
 import { WorkspaceIntegrationService } from '../agent-execution/workspace-integration.service';
+import { SandboxService } from '../sandbox/sandbox.service';
 import { SelfEvolutionPermissionService } from '../self-evolution/self-evolution-permission.service';
 import { SelfEvolutionService } from '../self-evolution/self-evolution.service';
 import { CreateConversationDto } from './dto/create-conversation.dto';
@@ -39,6 +40,7 @@ export class AgentConversationController {
     private readonly conversationTitleService: ConversationTitleService,
     private readonly workspaceIntegrationService: WorkspaceIntegrationService,
     private readonly sandboxAgentAdapter: SandboxAgentAdapter,
+    private readonly sandboxService: SandboxService,
     private readonly selfEvolutionPermissionService: SelfEvolutionPermissionService,
     private readonly selfEvolutionService: SelfEvolutionService,
   ) {}
@@ -177,7 +179,9 @@ export class AgentConversationController {
   @Post('agent-conversations/:id/restart-latest-version')
   @Roles('operator', 'creator', 'admin', 'owner')
   @HttpCode(HttpStatus.CREATED)
-  @ApiOperation({ summary: '重启当前会话到 Agent 最新已发布版本并继承历史消息' })
+  @ApiOperation({
+    summary: '重启当前会话到 Agent 最新已发布版本并继承历史消息',
+  })
   @ApiResponse({ status: 201, description: '新会话已创建' })
   async restartLatestVersion(
     @Param('id', ParseUUIDPipe) id: string,
@@ -241,6 +245,21 @@ export class AgentConversationController {
     @CurrentTenant() tenantId: string,
   ) {
     return this.workspaceIntegrationService.getFileTree(id, tenantId);
+  }
+
+  @Get('agent-conversations/:id/sandbox/stats')
+  @Roles('viewer', 'operator', 'creator', 'admin', 'owner')
+  @ApiOperation({ summary: 'Get resource stats for a conversation sandbox' })
+  @ApiResponse({ status: 200, description: 'Conversation sandbox stats' })
+  async getSandboxStats(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentTenant() tenantId: string,
+  ) {
+    const data = await this.sandboxService.getConversationSandboxStats(
+      id,
+      tenantId,
+    );
+    return { data };
   }
 
   @Get('agent-conversations/:id/workspace/files/*')

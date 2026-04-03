@@ -59,6 +59,10 @@ const SANDBOX_AGENT_PORT = '8080/tcp';
 const STOP_TIMEOUT_SECONDS = 10;
 const MB_TO_BYTES = 1024 * 1024;
 const CPU_CORE_TO_NANO = 1e9;
+const WORKSPACE_DISK_USAGE_COMMAND = [
+  "find /workspace -mindepth 1 \\( -type f -o -type l \\) -printf '%s\\n'",
+  "awk 'BEGIN { sum = 0 } { sum += $1 } END { print sum + 0 }'",
+].join(' | ');
 const HEALTHCHECK_INTERVAL_NS = 30 * 1_000_000_000;
 const HEALTHCHECK_START_PERIOD_NS = 5 * 1_000_000_000;
 const HEALTHCHECK_TIMEOUT_NS = 5 * 1_000_000_000;
@@ -595,11 +599,53 @@ export class DockerService implements SandboxRuntimeDriver {
     const cpuPercent =
       systemDelta > 0 ? (cpuDelta / systemDelta) * numCpus * 100 : 0;
 
+    let diskUsage: number | undefined;
+    try {
+      diskUsage = await this.getWorkspaceDiskUsageBytes(containerId);
+    } catch (error) {
+      this.logger.warn(
+        `Failed to collect workspace disk usage for container ${containerId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+
     return {
       cpuPercent: Math.round(cpuPercent * 100) / 100,
       memoryUsageMb: Math.round(stats.memory_stats.usage / MB_TO_BYTES),
       memoryLimitMb: Math.round(stats.memory_stats.limit / MB_TO_BYTES),
+      ...(diskUsage !== undefined ? { diskUsage } : {}),
     };
+  }
+
+  private async getWorkspaceDiskUsageBytes(
+    containerId: string,
+  ): Promise<number> {
+    const handle = await this.createExec(containerId, {
+      command: 'sh',
+      args: ['-lc', WORKSPACE_DISK_USAGE_COMMAND],
+    });
+    const outputChunks: string[] = [];
+
+    await this.attachExecOutput(handle.execId, (_level, message) => {
+      outputChunks.push(message);
+    });
+
+    const exitInfo = await this.waitForExecExit(handle.execId);
+    if (exitInfo.exitCode !== 0) {
+      throw new Error(
+        `workspace disk usage command failed (exit=${exitInfo.exitCode})`,
+      );
+    }
+
+    const output = outputChunks.join('').trim();
+    const parsed = Number.parseInt(output, 10);
+
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      throw new Error(`invalid workspace disk usage output: ${output}`);
+    }
+
+    return parsed;
   }
 
   private trackExecStream(execId: string, stream: NodeJS.ReadableStream): void {

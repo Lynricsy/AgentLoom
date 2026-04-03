@@ -180,6 +180,73 @@ if (state.workspaceTreeOnly) {
 
 ---
 
+## 场景：standalone Agent “agent 的电脑”面板必须显示真实资源值
+
+### 1. Scope / Trigger
+- 触发条件：修改以下任一文件时，必须回看本节
+  - `agentloom-studio/src/features/agent-conversation/components/SandboxComputerPanel.tsx`
+  - `agentloom-studio/src/features/agent-conversation/api/conversationApi.ts`
+  - `agentloom-studio/src/features/agent-conversation/api/conversationQueries.ts`
+  - `agentloom-server/src/modules/agent-conversation/agent-conversation.controller.ts`
+  - `agentloom-server/src/modules/sandbox/sandbox.service.ts`
+- 风险点：如果面板只显示静态 `CPU/MEM` 标签，用户会误以为“Agent 的电脑”有资源监控但实际是空壳；如果把缺失的 disk stats 回退成 `0 B`，又会把“未知”伪装成“空工作区”。
+
+### 2. Signatures
+- `GET /api/v1/agent-conversations/:id/sandbox/stats`
+- `fetchConversationSandboxStats(conversationId): Promise<SandboxStats>`
+- `useConversationSandboxStats(conversationId, sandboxStatus)`
+- `SandboxComputerPanel`
+- `ContainerStats`
+
+### 3. Contracts
+- `SandboxComputerPanel` 右上角必须显示**实际值**，不能只保留标签：
+  - `CPU <percent>`
+  - `MEM <usage / limit>`
+  - `DISK <usage / total>`
+- 面板必须通过 `GET /agent-conversations/:id/sandbox/stats` 拉取 conversation 绑定的 active sandbox stats，不能让前端自行扫资源列表。
+- `sandboxStatus === 'running'` 时必须持续轮询；离开 running 后允许保留上一份成功数据作为只读展示。
+- `diskUsage=0` 时必须显示 `0 B / ...`。
+- `diskUsage/diskTotal` 缺失时必须显示占位值（如 `--`），不能自行推导 `0 B`。
+- `404/409` 必须被视为“当前没有可用 sandbox stats”，而不是全局红错态。
+
+### 4. Validation & Error Matrix
+
+| 条件 | 预期行为 | 断言点 |
+|------|----------|--------|
+| conversation 有活跃 sandbox 且 stats 可用 | 面板显示真实 CPU/MEM/DISK 值 | `SandboxComputerPanel.test.tsx` |
+| `diskUsage=0` | 面板显示 `0 B / ...` | `SandboxComputerPanel.test.tsx` |
+| `GET /agent-conversations/:id/sandbox/stats` 返回 404/409 | hook 返回 `null`，面板显示占位值，不抛全局错误 | query hook 测试或手动 QA |
+| sandbox 进入 `running -> idle` | 停止轮询，但保留最近一次成功数据 | 手动 QA |
+
+### 5. Good / Base / Bad Cases
+- Good：Agent 真正写入文件后，`agent 的电脑` 面板里的 `DISK` 会变大；空工作区显示 `0 B / 2.0 GB`。
+- Base：当前会话还没拿到 active sandbox stats 时，面板显示 `CPU -- / MEM -- / DISK --`。
+- Bad：右上角永远只有 `CPU / MEM` 字样，不显示任何值；或者 disk stats 缺失时直接渲染成 `0 B`。
+
+### 6. Tests Required
+- `agentloom-studio/src/features/agent-conversation/components/SandboxComputerPanel.test.tsx`
+- `agentloom-server/src/modules/agent-conversation/agent-conversation.controller.spec.ts`
+- 手动 QA：
+  - Agent 对话页确认 `agent 的电脑` 面板出现真实值
+  - 让 Agent 在工作区写入 marker 文件，确认 `DISK` 数值变化
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```tsx
+<div className="flex items-center gap-1 text-[10px] text-muted-foreground">
+  <Cpu className="h-3 w-3" />
+  <span>CPU</span>
+</div>
+```
+
+#### Correct
+
+```tsx
+<HeaderMetric icon={Cpu} label="CPU" value={cpuLabel} />
+```
+
 ## 场景：Flutter execution 页面与 workflow-agent viewer 的终态收敛
 
 ### 1. Scope / Trigger
@@ -336,7 +403,7 @@ if (payload.status.isTerminal) {
 
 ### 4. Validation & Error Matrix
 
-| 条件 | ���期行为 | 断言点 |
+| 条件 | 预期行为 | 断言点 |
 |------|----------|--------|
 | `iteration` 运行中 | workflow 页能看到顶层资源节点完成、compound 容器运行中、内部节点等待本轮执行 | browser QA |
 | `iteration` 完成 | 调试页显示 `Iteration Agent` 已完成，`Result` 已完成 | browser QA |

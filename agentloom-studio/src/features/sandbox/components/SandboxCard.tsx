@@ -3,6 +3,7 @@ import { Container, MoreVertical, Square, Play, Trash2 } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
 import { formatRelativeTime } from '@/features/canvas'
 import { useSandboxStats } from '../api/sandboxQueries'
+import { formatSandboxBytes, getSandboxDiskPercent } from '../lib/sandboxStats'
 import { SandboxStatsDisplay } from './SandboxStatsDisplay'
 import type { SandboxSession, SandboxStatus } from '../types'
 
@@ -152,6 +153,7 @@ export const SandboxCard = memo(function SandboxCard({
   const bindingType = session.bindingType ?? 'resource'
 
   const { data: stats } = useSandboxStats(session.id, session.status)
+  const diskPercent = stats ? getSandboxDiskPercent(stats) : null
 
   return (
     <article className="group relative rounded-2xl border border-border bg-surface-elevated p-5 shadow-sm transition-shadow hover:shadow-md">
@@ -217,20 +219,20 @@ export const SandboxCard = memo(function SandboxCard({
         </div>
       )}
 
-      {!isRunning && stats?.diskUsage != null && stats.diskTotal != null && (
+      {!isRunning && stats?.diskUsage != null && stats.diskTotal != null && diskPercent !== null && (
         <div className="mt-3">
           <div className="text-xs text-muted-foreground">
             <div className="mb-1 flex items-center justify-between">
               <span>Disk</span>
               <span className="font-medium text-foreground">
-                {formatDiskSize(stats.diskUsage)} / {formatDiskSize(stats.diskTotal)}
+                {formatSandboxBytes(stats.diskUsage)} / {formatSandboxBytes(stats.diskTotal)}
               </span>
             </div>
             <div className="h-2 rounded-full bg-muted">
               <div
                 className="h-2 rounded-full bg-emerald-500"
                 style={{
-                  width: `${Math.min(100, (stats.diskUsage / stats.diskTotal) * 100)}%`,
+                  width: `${Math.min(100, diskPercent)}%`,
                 }}
               />
             </div>
@@ -245,12 +247,3 @@ export const SandboxCard = memo(function SandboxCard({
     </article>
   )
 })
-
-function formatDiskSize(bytes: number): string {
-  if (bytes === 0) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB']
-  const k = 1024
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  const size = bytes / Math.pow(k, i)
-  return `${size.toFixed(i === 0 ? 0 : 1)} ${units[i]}`
-}

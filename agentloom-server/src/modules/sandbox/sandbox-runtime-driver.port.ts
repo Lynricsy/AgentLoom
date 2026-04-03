@@ -9,6 +9,8 @@ export interface ContainerStats {
   cpuPercent: number;
   memoryUsageMb: number;
   memoryLimitMb: number;
+  diskUsage?: number;
+  diskTotal?: number;
 }
 
 export interface DockerExecCreateOptions {

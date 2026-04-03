@@ -268,6 +268,8 @@ class SandboxStatsDto {
     required this.cpuPercent,
     required this.memoryUsageMb,
     required this.memoryLimitMb,
+    this.diskUsage,
+    this.diskTotal,
   });
 
   factory SandboxStatsDto.fromJson(Map<String, dynamic> json) {
@@ -275,12 +277,18 @@ class SandboxStatsDto {
       cpuPercent: _asDouble(_readValue(json, 'cpuPercent'), 0),
       memoryUsageMb: _asDouble(_readValue(json, 'memoryUsageMb'), 0),
       memoryLimitMb: _asDouble(_readValue(json, 'memoryLimitMb'), 0),
+      diskUsage: _asNullableInt(_readValue(json, 'diskUsage')),
+      diskTotal: _asNullableInt(_readValue(json, 'diskTotal')),
     );
   }
 
   final double cpuPercent;
   final double memoryUsageMb;
   final double memoryLimitMb;
+  final int? diskUsage;
+  final int? diskTotal;
+
+  bool get hasDiskStats => diskUsage != null && diskTotal != null;
 }
 
 class SandboxLogDto {

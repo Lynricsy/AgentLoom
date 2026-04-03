@@ -13,6 +13,13 @@ import {
   Wrench,
 } from 'lucide-react';
 import { cn } from '@/shared/lib/utils';
+import { useConversationSandboxStats } from '../api/conversationQueries';
+import {
+  formatSandboxBytes,
+  formatSandboxMegabytes,
+  getSandboxDiskPercent,
+  safeSandboxPercent,
+} from '@/features/sandbox/lib/sandboxStats';
 import { getToolRenderer } from '@/shared/components/tool-renderers/registry';
 import { defaultRendererDefinition } from '@/shared/components/tool-renderers/DefaultRenderer';
 import { deriveRenderState } from '@/shared/components/tool-renderers/ToolCallCard';
@@ -20,6 +27,7 @@ import type { ToolCallData } from '@/shared/components/tool-renderers/types';
 import type { TerminalEntry, FileChange, SandboxStatus } from '../types';
 
 interface SandboxComputerPanelProps {
+  conversationId?: string | null;
   agentName: string;
   terminalEntries: TerminalEntry[];
   fileChanges: FileChange[];
@@ -27,6 +35,26 @@ interface SandboxComputerPanelProps {
   /** 当前活跃的工具调用（正在执行的），传入后自动切到工具详情 tab */
   activeToolCall?: ToolCallData;
 }
+
+const HeaderMetric = memo(function HeaderMetric({
+  icon,
+  label,
+  value,
+}: {
+  icon?: typeof Cpu;
+  label: string;
+  value: string;
+}) {
+  const Icon = icon;
+
+  return (
+    <div className="flex items-center gap-1 rounded-md border border-border/40 bg-surface px-2 py-1 text-[10px] text-muted-foreground">
+      {Icon ? <Icon className="h-3 w-3 shrink-0" /> : null}
+      <span className="uppercase tracking-wide">{label}</span>
+      <span className="font-medium text-foreground">{value}</span>
+    </div>
+  );
+});
 
 function StatusDot({ status }: { status: SandboxStatus }) {
   return (
@@ -267,6 +295,7 @@ function ActiveToolView({ toolCall }: { toolCall: ToolCallData }) {
 type PanelTab = 'terminal' | 'changes' | 'tool';
 
 export function SandboxComputerPanel({
+  conversationId,
   agentName,
   terminalEntries,
   fileChanges,
@@ -275,6 +304,24 @@ export function SandboxComputerPanel({
 }: SandboxComputerPanelProps) {
   const [activeTab, setActiveTab] = useState<PanelTab>('terminal');
   const prevToolRef = useRef<string | undefined>(undefined);
+  const { data: sandboxStats } = useConversationSandboxStats(
+    conversationId,
+    sandboxStatus,
+  );
+  const diskPercent = sandboxStats ? getSandboxDiskPercent(sandboxStats) : null;
+  const cpuLabel = sandboxStats
+    ? `${safeSandboxPercent(sandboxStats.cpuPercent)}%`
+    : '--';
+  const memoryLabel = sandboxStats
+    ? `${formatSandboxMegabytes(sandboxStats.memoryUsageMb)} / ${formatSandboxMegabytes(sandboxStats.memoryLimitMb)}`
+    : '--';
+  const diskLabel =
+    sandboxStats &&
+    sandboxStats.diskUsage != null &&
+    sandboxStats.diskTotal != null &&
+    diskPercent !== null
+      ? `${formatSandboxBytes(sandboxStats.diskUsage)} / ${formatSandboxBytes(sandboxStats.diskTotal)}`
+      : '--';
 
   // 当有新的活跃工具调用时自动切到 tool tab
   useEffect(() => {
@@ -297,15 +344,10 @@ export function SandboxComputerPanel({
           <StatusDot status={sandboxStatus} />
         </div>
 
-        <div className="flex items-center gap-1">
-          <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
-            <Cpu className="h-3 w-3" />
-            <span>CPU</span>
-          </div>
-          <div className="flex items-center gap-1 text-[10px] text-muted-foreground ml-2">
-            <HardDrive className="h-3 w-3" />
-            <span>MEM</span>
-          </div>
+        <div className="flex items-center gap-2">
+          <HeaderMetric icon={Cpu} label="CPU" value={cpuLabel} />
+          <HeaderMetric label="MEM" value={memoryLabel} />
+          <HeaderMetric icon={HardDrive} label="DISK" value={diskLabel} />
         </div>
       </div>
 

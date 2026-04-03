@@ -599,6 +599,7 @@ export function AgentConversationPage({
               }}
             >
               <SandboxComputerPanel
+                conversationId={conversationId}
                 agentName={agentName || "Agent"}
                 terminalEntries={terminalEntries}
                 fileChanges={fileChanges}

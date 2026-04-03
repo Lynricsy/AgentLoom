@@ -32,6 +32,7 @@ import {
 const TERMINAL_STATUSES = ['stopped', 'failed'] as const;
 const NON_ACTIVE_SESSION_STATUSES = ['stopping', ...TERMINAL_STATUSES] as const;
 const DEFAULT_PERSISTENT_TIMEOUT = 24;
+const GB_TO_BYTES = 1024 * 1024 * 1024;
 
 type CreateSandboxSessionParams = {
   executionId?: string;
@@ -158,6 +159,22 @@ export class SandboxService {
     tenantId: string,
   ): Promise<SandboxSession | null> {
     return this.findActiveSession({ agentConversationId, tenantId });
+  }
+
+  async getConversationSandboxStats(
+    agentConversationId: string,
+    tenantId: string,
+  ): Promise<ContainerStats> {
+    const session = await this.findByConversationId(
+      agentConversationId,
+      tenantId,
+    );
+
+    if (!session) {
+      throw new SandboxStatsUnavailableException(agentConversationId);
+    }
+
+    return this.buildContainerStats(session);
   }
 
   async updateSessionStatus(
@@ -1047,16 +1064,31 @@ export class SandboxService {
   async getContainerStats(sessionId: string): Promise<ContainerStats> {
     const session = await this.getSessionById(sessionId);
 
+    return this.buildContainerStats(session);
+  }
+
+  private async buildContainerStats(
+    session: Pick<SandboxSession, 'id' | 'status' | 'containerId' | 'config'>,
+  ): Promise<ContainerStats> {
     if (
       !session.containerId ||
       TERMINAL_STATUSES.includes(
         session.status as (typeof TERMINAL_STATUSES)[number],
       )
     ) {
-      throw new SandboxStatsUnavailableException(sessionId);
+      throw new SandboxStatsUnavailableException(session.id);
     }
 
-    return this.dockerService.getContainerStats(session.containerId);
+    const stats = await this.dockerService.getContainerStats(
+      session.containerId,
+    );
+
+    return {
+      ...stats,
+      ...(stats.diskUsage !== undefined
+        ? { diskTotal: session.config.disk * GB_TO_BYTES }
+        : {}),
+    };
   }
 
   async stopSandbox(

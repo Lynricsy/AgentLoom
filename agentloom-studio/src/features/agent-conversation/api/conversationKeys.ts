@@ -5,4 +5,6 @@ export const conversationKeys = {
     [...conversationKeys.lists(), agentId, filters] as const,
   details: () => [...conversationKeys.all, 'detail'] as const,
   detail: (id: string) => [...conversationKeys.details(), id] as const,
+  sandboxStats: (id: string) =>
+    [...conversationKeys.all, 'sandbox-stats', id] as const,
 };

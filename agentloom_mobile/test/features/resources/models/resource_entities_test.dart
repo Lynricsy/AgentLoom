@@ -48,4 +48,20 @@ void main() {
       expect(dto.config.timeoutLabel, '300s');
     });
   });
+
+  group('SandboxStatsDto', () {
+    test('应解析磁盘占用字段并保留 0 B', () {
+      final dto = SandboxStatsDto.fromJson({
+        'cpuPercent': 18.4,
+        'memoryUsageMb': 128,
+        'memoryLimitMb': 512,
+        'diskUsage': 0,
+        'diskTotal': 2147483648,
+      });
+
+      expect(dto.diskUsage, 0);
+      expect(dto.diskTotal, 2147483648);
+      expect(dto.hasDiskStats, isTrue);
+    });
+  });
 }

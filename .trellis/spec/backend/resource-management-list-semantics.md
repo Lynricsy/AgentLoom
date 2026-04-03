@@ -8,6 +8,7 @@
 
 - 触发条件：
   - 修改 `workspace` / `sandbox` 资源列表 API
+  - 修改 sandbox stats API 或对话沙箱 stats API
   - 修改 Agent sandbox timeout 编译或 lifecycle worker 调度
   - 修改 conversation 结束后 sandbox 回收链路
 
@@ -24,6 +25,11 @@
 - `WorkspaceService.findAll(tenantId, { page?, pageSize?, search?, includeAutoArchived? })`
 - `WorkspaceService.findOne(tenantId, workspaceId)`
 - `SandboxService.listSandboxes(tenantId, { page, pageSize, status?, lifecycleMode?, bindingType?, search? })`
+- `SandboxService.getContainerStats(sessionId)`
+- `SandboxService.getConversationSandboxStats(agentConversationId, tenantId)`
+- `DockerService.getContainerStats(containerId)`
+- `GET /api/v1/sandboxes/:sessionId/stats`
+- `GET /api/v1/agent-conversations/:id/sandbox/stats`
 
 ### Query DTOs
 
@@ -50,7 +56,7 @@
 - `SandboxConfig.timeout` 仍保留为**小时字段**，用于 persistent / legacy runtime。
 - Agent 画布来源的 timeout 语义是 `timeoutSeconds`。
 - `AgentDefinitionService.extractSandboxConfig()` 的规则：
-  - 若显式提供 `timeoutSeconds`，编译结���必须写入：
+  - 若显式提供 `timeoutSeconds`，编译结果必须写入：
     - `timeoutSeconds`
     - `timeout = ceil(timeoutSeconds / 3600)`，仅作为兼容回填
   - 若未提供 `timeoutSeconds`，但也没有 legacy `timeout`，默认视为 Agent session 秒级 timeout：
@@ -88,6 +94,25 @@
   - 只有真实创建/运行失败才应保留 `failed`
   - 若 timeout 同时打断 workflow / agent 执行，失败语义只属于上层 execution / conversation，不应把资源沙箱本体标记成 `failed`
 
+### 3.5 Sandbox stats semantics
+
+- `ContainerStats` 的 canonical 字段为：
+  - `cpuPercent`
+  - `memoryUsageMb`
+  - `memoryLimitMb`
+  - `diskUsage?`
+  - `diskTotal?`
+- `cpuPercent / memory*` 继续来自 Docker container stats。
+- `diskUsage` 表示 `/workspace` 内实际文件占用的**字节数**，不是配置磁盘配额，也不是 UI 猜测值。
+  - 允许通过容器内命令统计文件总大小。
+  - 统计失败时允许省略 `diskUsage`，但**禁止**把“未知”伪装成 `0`。
+- `diskTotal` 表示 session config 中配置的磁盘配额，单位为字节：
+  - `diskTotal = session.config.disk * 1024^3`
+  - 只有在 `diskUsage` 成功得到时，才应一起返回 `diskTotal`
+- `GET /sandboxes/:sessionId/stats` 与 `GET /agent-conversations/:id/sandbox/stats` 必须复用同一 `ContainerStats` contract。
+- conversation sandbox stats 必须通过 `SandboxService.findByConversationId()` 定位 active session，而不是让前端自行扫资源列表。
+- 前端看到缺失的 `diskUsage/diskTotal` 时，必须按“不可用/未知”处理，不能自行回退成 `0 B`。
+
 ---
 
 ## 4. Validation Matrix
@@ -103,6 +128,9 @@
 | `includeAutoArchived=false` query string | DTO 必须把 `'false'` 解析成 `false`，不能回退成 truthy | `list-workspaces-query.dto.spec.ts` |
 | sandbox list `bindingType=resource` | SQL where 同时要求 `execution_id is null` + `agent_conversation_id is null` | `sandbox.service.spec.ts` |
 | persistent resource sandbox timeout | 资源状态应落为 `stopped`，而不是 `failed` | `sandbox-lifecycle.worker.spec.ts` |
+| running sandbox stats 成功拿到 workspace usage | 返回 `diskUsage(bytes)`，service 补齐 `diskTotal(bytes)` | `docker.service.spec.ts`, `sandbox.service.spec.ts` |
+| workspace usage 统计失败 | 仍返回 CPU/内存，且不伪造 `diskUsage=0` | `docker.service.spec.ts` |
+| conversation sandbox stats 查询 | `GET /agent-conversations/:id/sandbox/stats` 返回与资源页一致的 `ContainerStats` | `agent-conversation.controller.spec.ts` |
 
 ---
 
@@ -112,5 +140,7 @@
 - `src/modules/agent-definition/agent-definition.service.spec.ts`
 - `src/modules/workspace/__tests__/workspace.service.spec.ts`
 - `src/modules/workspace/dto/list-workspaces-query.dto.spec.ts`
+- `src/modules/agent-conversation/agent-conversation.controller.spec.ts`
+- `src/modules/sandbox/__tests__/docker.service.spec.ts`
 - `src/modules/sandbox/__tests__/sandbox.service.spec.ts`
 - `src/modules/sandbox/__tests__/sandbox-lifecycle.worker.spec.ts`
