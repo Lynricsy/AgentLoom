@@ -242,6 +242,7 @@ customPanelRegistry.tsx        ← 单一数据源：节点类型 → 面板渲�
 - **禁止**在 `AgentNodeConfigPanel` 或 `NodeConfigPanel` 中直接写面板 switch/case
 - 面板的 `onApply` 签名应接受 `Record<string, unknown>` patch 对象
 - 如果面板需要管理自身验证状态，设置 `handlesValidation: true` 并使用 `onValidationChange` 回调
+- `AgentNodeConfigPanel` 这类覆盖在画布上的浮层如果承载长表单，外壳必须使用 `flex flex-col`，内容区必须是 `min-h-0 flex-1 overflow-y-auto`；只有 `max-h` 而没有真实滚动容器时，表单底部字段会被裁掉，鼠标滚轮也无法继续查看
 
 ## LLM Model Selector Reuse
 

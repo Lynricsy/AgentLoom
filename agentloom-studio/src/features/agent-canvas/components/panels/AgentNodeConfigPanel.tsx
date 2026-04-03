@@ -42,11 +42,11 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
   return (
     <div
       className={cn(
-        'absolute top-3 right-3 z-10 w-80 bg-neutral-900/95 backdrop-blur-sm border border-neutral-700 rounded-lg overflow-hidden max-h-[calc(100vh-6rem)]',
+        'absolute top-3 right-3 z-10 flex max-h-[calc(100vh-6rem)] w-80 flex-col overflow-hidden rounded-lg border border-neutral-700 bg-neutral-900/95 backdrop-blur-sm',
         className,
       )}
     >
-      <div className="flex items-center justify-between p-3 border-b border-neutral-700">
+      <div className="flex shrink-0 items-center justify-between border-b border-neutral-700 p-3">
         <div className="flex flex-col gap-0.5">
           <span className="text-sm font-medium text-neutral-200">
             {nodeData.label}
@@ -62,7 +62,10 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
         </button>
       </div>
 
-      <div className="p-3 overflow-y-auto">
+      <div
+        data-testid="agent-node-config-scroll"
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3"
+      >
         {customPanel ? (
           customPanel.render({
             node: selectedNode as unknown as CanvasNode,

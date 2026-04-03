@@ -89,6 +89,18 @@ describe('AgentNodeConfigPanel', () => {
 
     expect(screen.getByText('原生工具')).toBeInTheDocument();
     expect(screen.getByText('自进化')).toBeInTheDocument();
+    expect(screen.getByTestId('agent-node-config-scroll')).toHaveClass(
+      'min-h-0',
+      'flex-1',
+      'overflow-y-auto',
+      'overscroll-contain',
+    );
+    expect(screen.getByTestId('agent-node-config-scroll').parentElement).toHaveClass(
+      'flex',
+      'max-h-[calc(100vh-6rem)]',
+      'flex-col',
+      'overflow-hidden',
+    );
 
     fireEvent.click(screen.getByRole('checkbox', { name: '文件写入' }));
 
