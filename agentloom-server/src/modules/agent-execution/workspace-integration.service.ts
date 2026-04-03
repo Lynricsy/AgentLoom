@@ -137,16 +137,25 @@ export class WorkspaceIntegrationService {
     conversationId: string,
     tenantId: string,
   ): Promise<FileTreeNode[]> {
-    const workspaceSource = await this.resolveConversationWorkspaceSource(
-      conversationId,
-      tenantId,
-    );
+    try {
+      const workspaceSource = await this.resolveConversationWorkspaceSource(
+        conversationId,
+        tenantId,
+      );
 
-    if (workspaceSource.kind === 'live') {
-      return this.readFileTreeFromContainer(workspaceSource.containerId);
+      if (workspaceSource.kind === 'live') {
+        return this.readFileTreeFromContainer(workspaceSource.containerId);
+      }
+
+      return workspaceSource.snapshot.nodes;
+    } catch (error) {
+      if (error instanceof NotFoundException) {
+        await this.loadConversationRecord(conversationId, tenantId);
+        return [];
+      }
+
+      throw error;
     }
-
-    return workspaceSource.snapshot.nodes;
   }
 
   async getExecutionStepFileTree(
@@ -364,7 +373,13 @@ export class WorkspaceIntegrationService {
     _userId: string,
   ): Promise<void> {
     this.stopFileWatcher(conversationId);
+    await this.captureConversationWorkspaceTreeSnapshot(conversationId, tenantId);
+  }
 
+  async captureConversationWorkspaceTreeSnapshot(
+    conversationId: string,
+    tenantId: string,
+  ): Promise<void> {
     const session = await this.sandboxService.findByConversationId(
       conversationId,
       tenantId,

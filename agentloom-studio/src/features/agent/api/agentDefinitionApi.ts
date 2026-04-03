@@ -1,11 +1,12 @@
 import { apiClient, toSnakeBody } from '../../../shared/api/client'
 import type { ApiResponse, PaginatedResponse } from '../../../shared/types/api'
-import type { AgentDefinition, AgentVersion } from '../types'
+import type { AgentDefinition, AgentRuntimeMode, AgentVersion } from '../types'
 
 export interface CreateAgentPayload {
   name: string
   description?: string
   icon?: string | null
+  runtimeMode: AgentRuntimeMode
 }
 
 export interface UpdateAgentPayload {

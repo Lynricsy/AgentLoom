@@ -1,5 +1,6 @@
 import { memo, useCallback, type ComponentType, type ReactNode } from 'react'
 import {
+  Cpu,
   FilePenLine,
   FolderOpen,
   Settings2,
@@ -9,12 +10,14 @@ import {
 } from 'lucide-react'
 import type {
   AgentNativeToolPolicy,
+  AgentRuntimeMode,
   AgentSelfEvolutionPolicy,
 } from '@/features/agent/types'
 import { Switch } from '@/shared/ui/switch'
 
 interface AgentMainConfigPanelProps {
   config: Record<string, unknown>
+  runtimeMode: AgentRuntimeMode
   onApply: (config: Record<string, unknown>) => void
 }
 
@@ -133,6 +136,7 @@ const ToggleRow = memo(function ToggleRow({
 
 export const AgentMainConfigPanel = memo(function AgentMainConfigPanel({
   config,
+  runtimeMode,
   onApply,
 }: AgentMainConfigPanelProps) {
   const nativeToolPolicy = parseNativeToolPolicy(config)
@@ -167,40 +171,59 @@ export const AgentMainConfigPanel = memo(function AgentMainConfigPanel({
   return (
     <div className="flex flex-col gap-4">
       <SectionCard
-        title="原生工具"
-        description="控制 Agent 在沙箱内可直接调用的文件与终端能力。"
-        icon={Wrench}
+        title="运行形态"
+        description="创建后固定，用于决定 Agent 是否拥有沙箱运行时与工作区能力。"
+        icon={Cpu}
       >
-        <ToggleRow
-          title="文件读取"
-          description="允许读取工作区和沙箱中的文本文件。"
-          icon={FolderOpen}
-          checked={nativeToolPolicy.readEnabled}
-          onCheckedChange={(checked) => patchNativeToolPolicy('readEnabled', checked)}
-        />
-        <ToggleRow
-          title="文件写入"
-          description="允许创建和覆盖文件内容。"
-          icon={Settings2}
-          checked={nativeToolPolicy.writeEnabled}
-          onCheckedChange={(checked) => patchNativeToolPolicy('writeEnabled', checked)}
-        />
-        <ToggleRow
-          title="文本编辑"
-          description="允许以局部 diff 方式修改现有文件。"
-          icon={FilePenLine}
-          checked={nativeToolPolicy.editEnabled}
-          onCheckedChange={(checked) => patchNativeToolPolicy('editEnabled', checked)}
-        />
-        <ToggleRow
-          title="终端执行"
-          description="允许在沙箱中创建和运行终端命令。"
-          icon={SquareTerminal}
-          checked={nativeToolPolicy.terminalEnabled}
-          onCheckedChange={(checked) =>
-            patchNativeToolPolicy('terminalEnabled', checked)}
-        />
+        <div className="rounded-md border border-neutral-700 bg-neutral-800/50 px-3 py-3">
+          <div className="text-sm font-medium text-neutral-200">
+            {runtimeMode === 'sandbox' ? '有沙箱' : '无沙箱'}
+          </div>
+          <p className="mt-1 text-xs leading-5 text-neutral-500">
+            {runtimeMode === 'sandbox'
+              ? '当前 Agent 通过 sandbox runtime 运行，可挂载工作区并使用文件/终端内置工具。'
+              : '当前 Agent 通过 no_sandbox runtime 运行，不提供内置文件或终端工具；若被有沙箱 Agent 调用为子 Agent，系统会自动授予只读 read 权限。'}
+          </p>
+        </div>
       </SectionCard>
+
+      {runtimeMode === 'sandbox' && (
+        <SectionCard
+          title="原生工具"
+          description="控制 Agent 在沙箱内可直接调用的文件与终端能力。"
+          icon={Wrench}
+        >
+          <ToggleRow
+            title="文件读取"
+            description="允许读取工作区和沙箱中的文本文件。"
+            icon={FolderOpen}
+            checked={nativeToolPolicy.readEnabled}
+            onCheckedChange={(checked) => patchNativeToolPolicy('readEnabled', checked)}
+          />
+          <ToggleRow
+            title="文件写入"
+            description="允许创建和覆盖文件内容。"
+            icon={Settings2}
+            checked={nativeToolPolicy.writeEnabled}
+            onCheckedChange={(checked) => patchNativeToolPolicy('writeEnabled', checked)}
+          />
+          <ToggleRow
+            title="文本编辑"
+            description="允许以局部 diff 方式修改现有文件。"
+            icon={FilePenLine}
+            checked={nativeToolPolicy.editEnabled}
+            onCheckedChange={(checked) => patchNativeToolPolicy('editEnabled', checked)}
+          />
+          <ToggleRow
+            title="终端执行"
+            description="允许在沙箱中创建和运行终端命令。"
+            icon={SquareTerminal}
+            checked={nativeToolPolicy.terminalEnabled}
+            onCheckedChange={(checked) =>
+              patchNativeToolPolicy('terminalEnabled', checked)}
+          />
+        </SectionCard>
+      )}
 
       <SectionCard
         title="自进化"

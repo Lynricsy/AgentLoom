@@ -1,10 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
+import type { Api as PiApi, Model as PiModel } from '@mariozechner/pi-ai';
 
 import type { LlmModelConfig } from '../../database/schema/llm-model-configs.schema';
 import type { LlmProvider } from '../../database/schema/llm-providers.schema';
 import { DecryptionBoundaryService } from '../api-key/decryption-boundary.service';
 import { PRIVATE_CLOUD_NO_AUTH_PLACEHOLDER } from './private-cloud-auth.constants';
 import { LlmProviderException, LlmTimeoutException } from './llm.exceptions';
+import {
+  resolvePiModelApi,
+  resolvePiModelBaseUrl,
+  resolvePiProviderCompat,
+} from '../sandbox/pi-config-generator.service';
 
 const TIMEOUT_MS = 120_000;
 const MAX_RETRIES = 2;
@@ -15,6 +21,11 @@ const RETRYABLE_MODEL_METHODS = new Set(['doGenerate', 'doStream']);
  * 解析后的模型配置：模型配置 + 关联的提供商信息
  */
 export type ResolvedModelConfig = LlmModelConfig & { provider: LlmProvider };
+
+export type PiRuntimeResolvedModel = {
+  model: PiModel<PiApi>;
+  apiKey?: string;
+};
 
 interface LanguageModelProvider {
   (modelId: string, options?: Record<string, unknown>): unknown;
@@ -54,6 +65,72 @@ export class PiAiAdapter {
       providerSlug,
       timeout,
     );
+  }
+
+  async getPiRuntimeModel(
+    config: ResolvedModelConfig,
+    apiKey?: string,
+  ): Promise<PiRuntimeResolvedModel> {
+    const providerSlug = config.provider.slug;
+    const apiBaseUrl =
+      config.provider.baseUrl ?? config.provider.defaultBaseUrl ?? undefined;
+    const resolvedApiKey = !config.provider.apiKeyId
+      ? undefined
+      : (apiKey ?? (await this.resolveApiKey(config)));
+
+    const api = resolvePiModelApi({
+      provider: providerSlug,
+      model: config.modelId,
+    });
+    const baseUrl =
+      resolvePiModelBaseUrl(
+        {
+          provider: providerSlug,
+          model: config.modelId,
+          apiBaseUrl,
+        },
+        api,
+      ) ?? '';
+
+    const compat = resolvePiProviderCompat(
+      {
+        provider: providerSlug,
+        model: config.modelId,
+        apiBaseUrl,
+      },
+      api,
+    );
+
+    const model: PiModel<PiApi> = {
+      id: config.modelId,
+      name: config.name,
+      api: api as PiApi,
+      provider: providerSlug,
+      baseUrl,
+      reasoning: true,
+      input: ['text', 'image'],
+      cost: {
+        input: 0,
+        output: 0,
+        cacheRead: 0,
+        cacheWrite: 0,
+      },
+      contextWindow: config.contextWindow ?? 0,
+      maxTokens: config.maxOutputTokens ?? 4096,
+      ...(compat ? { compat } : {}),
+      ...(!config.provider.apiKeyId && providerSlug === 'private_cloud'
+        ? { headers: { Authorization: '' } }
+        : {}),
+    };
+
+    return {
+      model,
+      ...(resolvedApiKey
+        ? { apiKey: resolvedApiKey }
+        : !config.provider.apiKeyId && providerSlug === 'private_cloud'
+          ? { apiKey: PRIVATE_CLOUD_NO_AUTH_PLACEHOLDER }
+          : {}),
+    };
   }
 
   private async resolveProvider(

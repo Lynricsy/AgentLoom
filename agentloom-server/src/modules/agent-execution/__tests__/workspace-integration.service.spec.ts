@@ -301,7 +301,7 @@ describe('WorkspaceIntegrationService', () => {
       expect(readme!.size).toBe(256);
     });
 
-    it('沙箱不存在时应抛出 NotFoundException', async () => {
+    it('沙箱不存在时应返回空目录树', async () => {
       mockSandboxService.findByConversationId.mockResolvedValue(null);
       mockDb.select.mockReturnValue(
         createSelectChain({
@@ -310,12 +310,12 @@ describe('WorkspaceIntegrationService', () => {
         }),
       );
 
-      await expect(
-        service.getFileTree(CONVERSATION_ID, TENANT_ID),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.getFileTree(CONVERSATION_ID, TENANT_ID)).resolves.toEqual(
+        [],
+      );
     });
 
-    it('容器 ID 为空时应抛出 NotFoundException', async () => {
+    it('容器 ID 为空时应返回空目录树', async () => {
       mockSandboxService.findByConversationId.mockResolvedValue(
         mockSandboxSession({ containerId: null }),
       );
@@ -326,9 +326,9 @@ describe('WorkspaceIntegrationService', () => {
         }),
       );
 
-      await expect(
-        service.getFileTree(CONVERSATION_ID, TENANT_ID),
-      ).rejects.toThrow(NotFoundException);
+      await expect(service.getFileTree(CONVERSATION_ID, TENANT_ID)).resolves.toEqual(
+        [],
+      );
     });
 
     it('空输出应返回空数组', async () => {

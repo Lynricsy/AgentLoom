@@ -72,6 +72,7 @@ vi.mock('../hooks/useAgentCanvasDrop', () => ({
 vi.mock('../stores/agent-canvas.store', () => ({
   useAgentCanvasNodes: () => mocks.nodes,
   useAgentCanvasEdges: () => mocks.edges,
+  useAgentCanvasRuntimeMode: () => 'sandbox',
   useAgentCanvasActions: () => ({
     onNodesChange: mocks.onNodesChange,
     onEdgesChange: mocks.onEdgesChange,

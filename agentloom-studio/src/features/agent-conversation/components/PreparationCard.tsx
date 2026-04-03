@@ -127,6 +127,7 @@ export interface PreparationCardProps {
   phase: PreparationPhase | null;
   startTime: number | null;
   sandboxReused: boolean;
+  showSandboxPhase: boolean;
   error: string | null;
   failedPhase: PreparationPhase | null;
 }
@@ -135,6 +136,7 @@ export const PreparationCard = memo(function PreparationCard({
   phase,
   startTime,
   sandboxReused,
+  showSandboxPhase,
   error,
   failedPhase,
 }: PreparationCardProps) {
@@ -166,9 +168,11 @@ export const PreparationCard = memo(function PreparationCard({
   }, [phase, startTime]);
 
   // Determine which phases to display (filter out sandbox_creating when reused)
-  const displayPhases = sandboxReused
-    ? ALL_PHASES.filter((p) => p !== 'sandbox_creating')
-    : ALL_PHASES;
+  const displayPhases = ALL_PHASES.filter(
+    (p) =>
+      (showSandboxPhase || p !== 'sandbox_creating') &&
+      (!sandboxReused || p !== 'sandbox_creating'),
+  );
 
   // Collapsed summary view
   if (collapsed) {

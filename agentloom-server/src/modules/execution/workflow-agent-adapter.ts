@@ -4,6 +4,7 @@ import { and, eq } from 'drizzle-orm';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import {
   agentVersions,
+  type AgentRuntimeMode,
   type AgentVersionSnapshot,
 } from '../../database/schema/agent-definitions.schema';
 import type { DrizzleDB } from '../../database/database.module';
@@ -78,6 +79,7 @@ export interface WorkflowAgentExecutionParams {
   readonly currentDepth?: number;
   readonly visitedIds?: Set<string>;
   readonly sandboxBinding?: ServerSandboxBinding;
+  readonly parentUsesSandboxRuntime?: boolean;
   readonly emitEvents?: boolean;
 }
 
@@ -91,6 +93,7 @@ export interface WorkflowAgentExecutionResult extends Record<string, unknown> {
 interface CompiledWorkflowAgentDefinition {
   readonly runtimeConfig: AgentRuntimeConfig;
   readonly systemPrompt?: string;
+  readonly runtimeMode: AgentRuntimeMode;
 }
 
 export class WorkflowAgentAdapter {
@@ -127,40 +130,66 @@ export class WorkflowAgentAdapter {
       compiledDefinition,
       input: params.input,
     });
+    if (
+      params.parentUsesSandboxRuntime === false &&
+      compiledDefinition.runtimeMode === 'sandbox'
+    ) {
+      throw new Error('无 sandbox Agent 不支持调用有 sandbox 的子 Agent');
+    }
+    const usesSandboxRuntime =
+      compiledDefinition.runtimeMode === 'sandbox' ||
+      (compiledDefinition.runtimeMode === 'no_sandbox' &&
+        params.parentUsesSandboxRuntime === true);
+    const effectiveRuntimeConfig =
+      compiledDefinition.runtimeMode === 'no_sandbox' && usesSandboxRuntime
+        ? {
+            ...runtimeConfigWithExtensions,
+            nativeToolPolicy: this.buildReadOnlyNativeToolPolicy(),
+          }
+        : runtimeConfigWithExtensions;
+    const sandboxBinding =
+      compiledDefinition.runtimeMode === 'sandbox'
+        ? await this.ensureSandboxBinding({
+            executionId: params.executionId,
+            nodeId: params.step.nodeId,
+            tenantId: params.tenantId,
+            existingBinding: params.sandboxBinding,
+            runtimeConfig: effectiveRuntimeConfig,
+          })
+        : usesSandboxRuntime
+          ? params.sandboxBinding
+          : undefined;
 
-    const sandboxBinding = await this.ensureSandboxBinding({
-      executionId: params.executionId,
-      nodeId: params.step.nodeId,
-      tenantId: params.tenantId,
-      existingBinding: params.sandboxBinding,
-      runtimeConfig: runtimeConfigWithExtensions,
-    });
+    if (usesSandboxRuntime && !sandboxBinding) {
+      throw new Error('当前子 Agent 缺少可复用的 sandbox 绑定');
+    }
 
     const subAgentResults = await this.executeSubAgents({
       executionId: params.executionId,
       step: params.step,
       tenantId: params.tenantId,
       input: sanitizedInput,
-      runtimeConfig: runtimeConfigWithExtensions,
+      runtimeConfig: effectiveRuntimeConfig,
       currentDepth,
       visitedIds,
       sandboxBinding,
+      parentUsesSandboxRuntime: usesSandboxRuntime,
     });
 
     const promptBlocks = this.buildContentBlocks(
       sanitizedInput,
       subAgentResults,
     );
-    void this.dependencies.agentRuntime;
-    const runtime = this.dependencies.runtimeAdapterFactory.selectAdapter(true);
+    const runtime =
+      this.dependencies.runtimeAdapterFactory.selectAdapter(usesSandboxRuntime);
 
     const session = await runtime.createSession({
       agentId: this.config.agentDefinitionId,
       mode: 'workflow',
       tenantId: params.tenantId,
-      llmModelConfigId: runtimeConfigWithExtensions.modelConfig?.modelId,
+      llmModelConfigId: effectiveRuntimeConfig.modelConfig?.modelId,
       systemPrompt,
-      runtimeConfig: runtimeConfigWithExtensions,
+      runtimeConfig: effectiveRuntimeConfig,
       ...(sandboxBinding ? { serverSandbox: sandboxBinding } : {}),
       context: {
         executionId: params.executionId,
@@ -371,19 +400,34 @@ export class WorkflowAgentAdapter {
       this.dependencies.agentDefinitionService.buildRuntimeConfigFromNodes(
         snapshot.nodes,
         snapshot.edges,
+        undefined,
+        this.resolveAgentRuntimeMode(
+          definition.runtimeMode,
+          snapshot.runtimeMode,
+        ),
       );
-
-    runtimeConfig.sandboxConfig = resolveAgentRuntimeSandboxConfig(
-      this.config.sandboxConfig ??
-        mergeSandboxConfigCandidates(
-          runtimeConfig.sandboxConfig ?? null,
-          normalizedSnapshotSandboxConfig,
-        ) ??
-        normalizedDefinitionSandboxConfig ??
-        definition.sandboxConfig,
+    runtimeConfig.runtimeMode ??= this.resolveAgentRuntimeMode(
+      definition.runtimeMode,
+      snapshot.runtimeMode,
     );
+    const runtimeMode = runtimeConfig.runtimeMode ?? 'sandbox';
+    runtimeConfig.runtimeMode = runtimeMode;
+
+    runtimeConfig.sandboxConfig =
+      runtimeMode === 'sandbox'
+        ? resolveAgentRuntimeSandboxConfig(
+            this.config.sandboxConfig ??
+              mergeSandboxConfigCandidates(
+                runtimeConfig.sandboxConfig ?? null,
+                normalizedSnapshotSandboxConfig,
+              ) ??
+              normalizedDefinitionSandboxConfig ??
+              definition.sandboxConfig,
+          )
+        : undefined;
 
     return {
+      runtimeMode,
       runtimeConfig,
       systemPrompt:
         snapshot.systemPrompt ?? definition.systemPrompt ?? undefined,
@@ -411,6 +455,7 @@ export class WorkflowAgentAdapter {
     });
 
     return {
+      runtimeMode: params.compiledDefinition.runtimeMode,
       runtimeConfig,
       systemPrompt,
       sanitizedInput: this.sanitizePromptInput(params.input),
@@ -963,6 +1008,7 @@ export class WorkflowAgentAdapter {
     currentDepth: number;
     visitedIds: Set<string>;
     sandboxBinding?: ServerSandboxBinding;
+    parentUsesSandboxRuntime: boolean;
   }): Promise<Record<string, WorkflowAgentExecutionResult>> {
     const subAgents = params.runtimeConfig.subAgents ?? [];
     if (subAgents.length === 0) {
@@ -1010,6 +1056,7 @@ export class WorkflowAgentAdapter {
         currentDepth: params.currentDepth + 1,
         visitedIds: nextVisited,
         sandboxBinding: params.sandboxBinding,
+        parentUsesSandboxRuntime: params.parentUsesSandboxRuntime,
         emitEvents: false,
       });
 
@@ -1190,6 +1237,26 @@ export class WorkflowAgentAdapter {
       input,
       ...(Object.keys(subAgentResults).length > 0 ? { subAgentResults } : {}),
     });
+  }
+
+  private resolveAgentRuntimeMode(
+    definitionRuntimeMode: unknown,
+    snapshotRuntimeMode: unknown,
+  ): AgentRuntimeMode {
+    if (snapshotRuntimeMode === 'sandbox' || snapshotRuntimeMode === 'no_sandbox') {
+      return snapshotRuntimeMode;
+    }
+
+    return definitionRuntimeMode === 'no_sandbox' ? 'no_sandbox' : 'sandbox';
+  }
+
+  private buildReadOnlyNativeToolPolicy() {
+    return {
+      readEnabled: true,
+      writeEnabled: false,
+      editEnabled: false,
+      terminalEnabled: false,
+    } as const;
   }
 
   private isRecord(value: unknown): value is Record<string, unknown> {

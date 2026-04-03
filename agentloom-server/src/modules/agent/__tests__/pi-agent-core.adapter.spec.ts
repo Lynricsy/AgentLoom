@@ -3,6 +3,7 @@ import type { ToolSet } from 'ai';
 import { Logger } from '@nestjs/common';
 import { z } from 'zod';
 import { runInTenantTransaction } from '../../../common/interceptors/tenant-transaction.context';
+import type { AgentToolPermissionSyncService } from '../agent-tool-permission-sync.service';
 import { PiAgentCoreAdapter } from '../pi-agent-core.adapter';
 import type { AgentEvent } from '../types/agent-event.types';
 import type { CreateSessionParams } from '../types/agent-session.types';
@@ -12,6 +13,7 @@ const hoisted = vi.hoisted(() => {
   type MockAgentOptions = {
     streamFn?: unknown;
     sessionId?: string;
+    getApiKey?: (provider: string) => Promise<string | undefined>;
     beforeToolCall?: (
       context: Record<string, unknown>,
       signal?: AbortSignal,
@@ -66,14 +68,12 @@ const hoisted = vi.hoisted(() => {
 
   return {
     MockPiAgent,
-    streamFnFactory: vi.fn((model: unknown, toolSet?: ToolSet) => ({
-      model,
-      toolSet,
-      tag: 'mock-stream-fn',
-    })),
     importPiAgentCore: vi.fn(async () => ({ Agent: MockPiAgent })),
     typeBoxToZod: vi.fn((schema: unknown) => ({ typeBoxConverted: schema })),
-    zodToTypeBox: vi.fn((schema: unknown) => ({ converted: schema })),
+    normalizeFlexibleSchemaJson: vi.fn((schema: unknown) => schema),
+    flexibleSchemaToTypeBox: vi.fn((schema: unknown) => ({
+      converted: schema,
+    })),
     getTenantDb: vi.fn((db: unknown) => db),
   };
 });
@@ -96,13 +96,10 @@ vi.mock('../pi-imports', () => ({
   importPiAgentCore: hoisted.importPiAgentCore,
 }));
 
-vi.mock('../stream-fn.adapter', () => ({
-  createVercelStreamFn: hoisted.streamFnFactory,
-}));
-
 vi.mock('../tool-schema-converter', () => ({
   typeBoxToZod: hoisted.typeBoxToZod,
-  zodToTypeBox: hoisted.zodToTypeBox,
+  normalizeFlexibleSchemaJson: hoisted.normalizeFlexibleSchemaJson,
+  flexibleSchemaToTypeBox: hoisted.flexibleSchemaToTypeBox,
 }));
 
 function createSelectChain(result: unknown) {
@@ -146,12 +143,17 @@ async function collectIteratorRest(
 describe('PiAgentCoreAdapter', () => {
   let adapter: PiAgentCoreAdapter;
   let mockDb: { select: ReturnType<typeof vi.fn> };
-  let mockPiAiAdapter: { getModel: ReturnType<typeof vi.fn> };
+  let mockPiAiAdapter: { getPiRuntimeModel: ReturnType<typeof vi.fn> };
   let mockMcpService: {
     resolveRuntimeConnection: ReturnType<typeof vi.fn>;
     callRuntimeTool: ReturnType<typeof vi.fn>;
   };
   let mockRagService: { search: ReturnType<typeof vi.fn> };
+  let mockToolPermissionSyncService: {
+    registerPendingResolution: ReturnType<typeof vi.fn>;
+    unregisterPendingResolution: ReturnType<typeof vi.fn>;
+    publishResolution: ReturnType<typeof vi.fn>;
+  };
 
   const NOW = new Date('2026-03-23T10:00:00.000Z');
   const storedModelConfig = {
@@ -218,15 +220,29 @@ describe('PiAgentCoreAdapter', () => {
     vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => {});
 
     hoisted.MockPiAgent.reset();
-    hoisted.streamFnFactory.mockClear();
     hoisted.importPiAgentCore.mockClear();
     hoisted.typeBoxToZod.mockClear();
-    hoisted.zodToTypeBox.mockClear();
+    hoisted.normalizeFlexibleSchemaJson.mockClear();
+    hoisted.flexibleSchemaToTypeBox.mockClear();
     hoisted.getTenantDb.mockClear();
 
     mockDb = { select: vi.fn() };
     mockPiAiAdapter = {
-      getModel: vi.fn().mockResolvedValue('mock-language-model'),
+      getPiRuntimeModel: vi.fn().mockResolvedValue({
+        model: {
+          id: 'mock-model-id',
+          name: 'mock-model-name',
+          api: 'anthropic-messages',
+          provider: 'mock-provider',
+          baseUrl: 'https://mock-base',
+          reasoning: true,
+          input: ['text'],
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+          contextWindow: 128000,
+          maxTokens: 4096,
+        },
+        apiKey: 'mock-api-key',
+      }),
     };
     mockMcpService = {
       resolveRuntimeConnection: vi.fn().mockResolvedValue({
@@ -248,6 +264,11 @@ describe('PiAgentCoreAdapter', () => {
         },
       ]),
     };
+    mockToolPermissionSyncService = {
+      registerPendingResolution: vi.fn(),
+      unregisterPendingResolution: vi.fn(),
+      publishResolution: vi.fn().mockResolvedValue(undefined),
+    };
 
     type AdapterArgs = ConstructorParameters<typeof PiAgentCoreAdapter>;
     adapter = new PiAgentCoreAdapter(
@@ -255,6 +276,8 @@ describe('PiAgentCoreAdapter', () => {
       mockPiAiAdapter as unknown as AdapterArgs[1],
       mockMcpService as unknown as AdapterArgs[2],
       mockRagService as unknown as AdapterArgs[3],
+      undefined,
+      mockToolPermissionSyncService as unknown as AgentToolPermissionSyncService,
     );
   });
 
@@ -309,20 +332,20 @@ describe('PiAgentCoreAdapter', () => {
       const agent = hoisted.MockPiAgent.instances[0];
 
       expect(hoisted.importPiAgentCore).toHaveBeenCalledTimes(1);
-      expect(mockPiAiAdapter.getModel).toHaveBeenCalledWith({
+      expect(mockPiAiAdapter.getPiRuntimeModel).toHaveBeenCalledWith({
         ...storedModelConfig,
         provider: storedProvider,
       });
-      expect(hoisted.streamFnFactory).toHaveBeenCalledWith(
-        'mock-language-model',
-        undefined,
-      );
       expect(agent.options.sessionId).toBe(session.id);
       expect(agent.options.initialState).toMatchObject({
         systemPrompt: '你是一个测试助手',
-        model: 'mock-language-model',
+        model: expect.objectContaining({
+          id: 'mock-model-id',
+          provider: 'mock-provider',
+        }),
         tools: [],
       });
+      expect(agent.options.getApiKey).toBeTypeOf('function');
       expect(typeof agent.options.beforeToolCall).toBe('function');
     });
 
@@ -402,7 +425,7 @@ describe('PiAgentCoreAdapter', () => {
   });
 
   describe('tool provider lifecycle', () => {
-    it('prompt 前注册 provider 会刷新 streamFn 并调用 zodToTypeBox 转换工具 schema', async () => {
+    it('prompt 前注册 provider 会刷新 tools 并转换工具 schema', async () => {
       mockDb.select.mockReturnValueOnce(
         createSelectChain([defaultModelConfig]),
       );
@@ -410,7 +433,7 @@ describe('PiAgentCoreAdapter', () => {
       const toolSet = {
         'docs/search': {
           description: '搜索文档',
-          inputSchema: { type: 'zod-object' },
+          inputSchema: z.object({ query: z.string() }),
           execute: vi.fn().mockResolvedValue({ hits: [] }),
         },
       } as unknown as ToolSet;
@@ -428,19 +451,19 @@ describe('PiAgentCoreAdapter', () => {
       );
 
       const agent = hoisted.MockPiAgent.instances[0];
-      expect(hoisted.zodToTypeBox).toHaveBeenCalledWith({ type: 'zod-object' });
+      expect(hoisted.flexibleSchemaToTypeBox).toHaveBeenCalledWith(
+        toolSet['docs/search'].inputSchema,
+      );
       expect(agent.setTools).toHaveBeenCalledWith([
         expect.objectContaining({
           name: 'docs/search',
           label: 'docs/search',
           description: '搜索文档',
-          parameters: { converted: { type: 'zod-object' } },
+          parameters: {
+            converted: toolSet['docs/search'].inputSchema,
+          },
         }),
       ]);
-      expect(hoisted.streamFnFactory).toHaveBeenLastCalledWith(
-        'mock-language-model',
-        toolSet,
-      );
     });
 
     it('unregister 后 prompt 不再注入 tools', async () => {
@@ -474,7 +497,7 @@ describe('PiAgentCoreAdapter', () => {
 
       const agent = hoisted.MockPiAgent.instances[0];
       expect(agent.setTools).toHaveBeenCalledWith([]);
-      expect(hoisted.zodToTypeBox).not.toHaveBeenCalled();
+      expect(hoisted.flexibleSchemaToTypeBox).not.toHaveBeenCalled();
     });
 
     it('会把 runtimeConfig 的 MCP 工具与额外 provider 一起注入 prompt', async () => {
@@ -497,9 +520,6 @@ describe('PiAgentCoreAdapter', () => {
           ]),
         )
         .mockReturnValueOnce(createSelectChain([defaultModelConfig]));
-      hoisted.typeBoxToZod.mockImplementationOnce(
-        () => z.object({ query: z.string() }) as never,
-      );
 
       const session = await adapter.createSession(
         createParams({
@@ -563,13 +583,23 @@ describe('PiAgentCoreAdapter', () => {
       ).resolves.toMatchObject({
         details: { hits: ['doc-1'] },
       });
-      expect(hoisted.typeBoxToZod).toHaveBeenCalledWith({
+      expect(hoisted.normalizeFlexibleSchemaJson).toHaveBeenCalledWith({
         type: 'object',
         properties: {
           query: { type: 'string' },
         },
         required: ['query'],
       });
+      expect(hoisted.flexibleSchemaToTypeBox).toHaveBeenCalledWith(
+        expect.objectContaining({
+          jsonSchema: expect.objectContaining({
+            required: ['query'],
+            properties: {
+              query: { type: 'string' },
+            },
+          }),
+        }),
+      );
       expect(mockMcpService.resolveRuntimeConnection).toHaveBeenCalledWith(
         'mcp-server-1',
         'tenant-001',
@@ -993,6 +1023,9 @@ describe('PiAgentCoreAdapter', () => {
           },
         },
       });
+      expect(
+        mockToolPermissionSyncService.registerPendingResolution,
+      ).toHaveBeenCalledWith(session.id, 'call-1', expect.any(Function));
 
       await adapter.resolveToolPermission(session.id, 'call-1', 'approve');
 
@@ -1019,6 +1052,9 @@ describe('PiAgentCoreAdapter', () => {
         },
         { type: 'done', stopReason: 'end_turn' },
       ]);
+      expect(
+        mockToolPermissionSyncService.unregisterPendingResolution,
+      ).toHaveBeenCalledWith(session.id, 'call-1');
     });
 
     it('deny 后会发出 denied 并阻止后续错误结果重复透传', async () => {
@@ -1141,14 +1177,18 @@ describe('PiAgentCoreAdapter', () => {
       ]);
     });
 
-    it('未命中 pending gate 时 resolveToolPermission 会抛错', async () => {
+    it('未命中本地 pending gate 时会回退到分布式广播', async () => {
       await expect(
         adapter.resolveToolPermission(
           'missing-session',
           'missing-call',
           'approve',
         ),
-      ).rejects.toThrow(/no pending tool permission/i);
+      ).resolves.toBeUndefined();
+
+      expect(
+        mockToolPermissionSyncService.publishResolution,
+      ).toHaveBeenCalledWith('missing-session', 'missing-call', 'approve');
     });
   });
 

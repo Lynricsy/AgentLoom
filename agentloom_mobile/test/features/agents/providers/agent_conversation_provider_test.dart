@@ -69,6 +69,9 @@ void main() {
     listeners = <String, Function>{};
     capturedSocketOptions = null;
 
+    when(
+      () => mockApi.getAgent(any()),
+    ).thenAnswer((_) async => createTestAgent(id: 'agent-001'));
     when(() => mockApi.getMessages(any())).thenAnswer(
       (_) async => const PaginatedResponse<ConversationMessageDto>(
         data: <ConversationMessageDto>[],
@@ -209,12 +212,7 @@ void main() {
             createdAt: '2026-04-02T00:00:00.000Z',
           ),
         ],
-        meta: PaginationMeta(
-          page: 1,
-          pageSize: 50,
-          total: 1,
-          totalPages: 1,
-        ),
+        meta: PaginationMeta(page: 1, pageSize: 50, total: 1, totalPages: 1),
       ),
     );
 
@@ -225,10 +223,13 @@ void main() {
     );
 
     await container.read(authProvider.future);
-    final state = await container.read(agentConversationProvider(params).future);
+    final state = await container.read(
+      agentConversationProvider(params).future,
+    );
 
     expect(
-      (state.messages.first.toolCalls.first.result as Map<String, dynamic>)['data'],
+      (state.messages.first.toolCalls.first.result
+          as Map<String, dynamic>)['data'],
       equals({
         'restartSuggestion': {
           'available': true,
@@ -297,6 +298,29 @@ void main() {
         .value;
     expect(stateAfterSecondTap!.selectedFilePath, 'summary.txt');
     expect(stateAfterSecondTap.workspaceTreeOnly, isTrue);
+  });
+
+  test('无 sandbox agent 初始化时不请求工作区树', () async {
+    when(() => mockApi.getAgent('agent-001')).thenAnswer(
+      (_) async => createTestAgent(id: 'agent-001', runtimeMode: 'no_sandbox'),
+    );
+
+    container.listen(
+      agentConversationProvider(params),
+      (_, __) {},
+      fireImmediately: true,
+    );
+
+    await container.read(authProvider.future);
+    await container.read(agentConversationProvider(params).future);
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    verifyNever(() => mockApi.getWorkspaceTree(any()));
+    final state = container.read(agentConversationProvider(params)).value;
+    expect(state, isNotNull);
+    expect(state!.runtimeMode, 'no_sandbox');
+    expect(state.hasSandboxRuntime, isFalse);
+    expect(state.hasLoadedWorkspaceTree, isFalse);
   });
 
   test('resolveToolPermission 应透传 rememberScope 并更新本地工具状态', () async {
@@ -368,9 +392,9 @@ void main() {
   });
 
   test('restartConversationToLatestVersion 应返回新会话 id', () async {
-    when(() => mockApi.restartConversationToLatestVersion(any())).thenAnswer(
-      (_) async => 'conv-002',
-    );
+    when(
+      () => mockApi.restartConversationToLatestVersion(any()),
+    ).thenAnswer((_) async => 'conv-002');
 
     container.listen(
       agentConversationProvider(params),
@@ -382,8 +406,8 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 20));
 
     final notifier = container.read(agentConversationProvider(params).notifier);
-    final nextConversationId =
-        await notifier.restartConversationToLatestVersion();
+    final nextConversationId = await notifier
+        .restartConversationToLatestVersion();
 
     expect(nextConversationId, 'conv-002');
     verify(

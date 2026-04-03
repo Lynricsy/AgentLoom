@@ -33,7 +33,7 @@ React 19 + Vite 7 前端。Feature-Slice 架构，TanStack Router/Query，Zustan
 | `/agents`                                        | AgentListPage                  | Agent 列表/创建入口                                                                                                                                                           |
 | `/agents/$agentId`                               | AgentCanvasPage                | Agent 配置编辑器画布 (ReactFlow, CPU/memory/timeout/lifecycle 参数)                                                                                                           |
 | `/agents/$agentId/conversations/new`             | AgentConversationPage          | 创建新对话                                                                                                                                                                    |
-| `/agents/$agentId/conversations/$conversationId` | AgentConversationPage          | 三列对话 UI (对话列表/消息流/上下文面板)                                                                                                                                      |
+| `/agents/$agentId/conversations/$conversationId` | AgentConversationPage          | 三列对话 UI (对话列表/消息流/上下文面板)；按 Agent `runtimeMode` 显示 `有沙箱 / 无沙箱` 标记，`no_sandbox` 不渲染工作区/终端上下文面板                                       |
 
 TanStack Router v1，手动路由树 (`src/app/routes/`)。`__root.tsx` 包含 auth guard：未认证用户重定向到 `/login`。
 
@@ -72,7 +72,7 @@ src/
 │   ├── block-library/ # 可复用块库管理
 │   ├── agent/       # Agent CRUD 页面 (api/components/hooks/stores/types)：列表/创建/设置，query hooks 与 mutations
 │   ├── agent-canvas/ # Agent 配置编辑器画布 (components/hooks/stores)：CPU/memory/timeout/lifecycle 参数编���、`agent-main` 的 `nativeToolPolicy/selfEvolutionPolicy` 面板，使用 ReactFlow + AGENT_CANVAS_NODE_REGISTRY 子集，非执行 DAG
-│   ├── agent-conversation/ # Agent 对话 UI (components/stores/types)：三列布局 (对话列表/消息流/上下文面板)，Socket.IO `/agent-conversation` namespace 实时消息推送，含可展开自进化审批卡片与“重启到新版本”系统卡片
+│   ├── agent-conversation/ # Agent 对话 UI (components/stores/types)：三列布局 (对话列表/消息流/上下文面板)，Socket.IO `/agent-conversation` namespace 实时消息推送，含可展开自进化审批卡片与“重启到新版本”系统卡片；`sandbox` 对话显示工作区/终端上下文，`no_sandbox` 仅保留消息流中的 Skill/Knowledge/Memory/MCP/自进化能力
 │   └── agent-memory/ # Agent 记忆管理 (35 files)：记忆图谱可视化 (d3-force + dagre + ReactFlow)、记忆检索/创建/编辑、审计日志集成
 ├── shared/           # 跨 feature 共享层
 │   ├── api/          # ky client + queryClient + query key factory
@@ -115,7 +115,7 @@ src/
   - `useExecutionMonitor`: 桥接 hook，连接 socket 回调到 executionStore actions
   - 已集成到 `WorkflowCanvasPage`，通过 `useExecutionId` 获取活跃执行 ID
 - **通知 Socket.IO**: `/notification` namespace，`useNotificationSocket` 复用 execution 的 `resolveSocketUrl + callbacksRef + 单 useEffect` 模式；根布局 `__root.tsx` 负责激活连接，并通过 `NotificationBell`/`NotificationDropdown` 暴露未读数与最近 20 条通知
-- **Agent 对话 Socket.IO**: `/agent-conversation` namespace，与 `/execution` 对称，复用 EventBridge 模式实现对话级实时事件推送，支持 JWT + MFA 认证；`useAgentConversationSocket` 管理连接与事件监听，桥接 `agentConversationStore` 更新消息流；`MessageList` 与共享 `ToolCallCard` 负责渲染自进化 diff/风险信息、四档审批按钮（允许一次 / 本会话同类始终允许 / 拒绝一次 / 本会话同类始终拒绝）以及“重启到新版本”卡片
+- **Agent 对话 Socket.IO**: `/agent-conversation` namespace，与 `/execution` 对称，复用 EventBridge 模式实现对话级实时事件推送，支持 JWT + MFA 认证；`useAgentConversationSocket` 管理连接与事件监听，桥接 `agentConversationStore` 更新消息流；`MessageList` 与共享 `ToolCallCard` 负责渲染自进化 diff/风险信息、四档审批按钮（允许一次 / 本会话同类始终允许 / 拒绝一次 / 本会话同类始终拒绝）以及“重启到新版本”卡片；`PreparationCard` / `AgentConversationPage` 会根据 `runtimeMode` 区分“沙箱启动中”与“无沙箱 Agent 无需准备沙箱”，并避免对 `no_sandbox` 会话误请求 sandbox stats
 - **执行 API 层** (`features/execution/api/`):
   - `executionKeys`: TanStack Query key factory (all/lists/details)
   - `executionApi`: `runWorkflow` (POST /workflow-definitions/:id/run), `listExecutions` (GET /workflow-definitions/:id/executions), `getExecution`, `cancelExecution`, `resolveIntervention` (POST /executions/:id/steps/:stepId/intervene)

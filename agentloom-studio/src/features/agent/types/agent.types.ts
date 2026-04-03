@@ -1,5 +1,6 @@
 import type { Viewport } from '@xyflow/react'
 import type { CanvasEdge, CanvasNode } from '@/features/canvas/types'
+import type { AgentRuntimeMode } from './agentRuntimeMode'
 
 export type AgentStatus = 'draft' | 'published' | 'archived'
 
@@ -72,6 +73,7 @@ export interface AgentSelfEvolutionPolicy {
 }
 
 export interface AgentRuntimeConfig {
+  runtimeMode?: AgentRuntimeMode
   modelConfig?: AgentModelConfig
   tools?: AgentToolBinding[]
   knowledgeBindings?: AgentKnowledgeBinding[]
@@ -84,6 +86,7 @@ export interface AgentRuntimeConfig {
 }
 
 export interface AgentVersionSnapshot {
+  runtimeMode?: AgentRuntimeMode
   nodes: CanvasNode[]
   edges: CanvasEdge[]
   viewport: Viewport | null
@@ -125,6 +128,7 @@ export interface AgentDefinition {
   slug: string
   description: string | null
   icon: string | null
+  runtimeMode: AgentRuntimeMode
   systemPrompt: string | null
   nodes: CanvasNode[]
   edges: CanvasEdge[]

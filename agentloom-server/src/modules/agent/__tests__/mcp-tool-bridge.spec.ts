@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { z } from 'zod';
+import { jsonSchema } from 'ai';
 import {
   convertMcpToolToPiTool,
   convertMcpToolsToPiTools,
@@ -42,7 +43,7 @@ describe('convertMcpToolToPiTool()', () => {
     expect(result.description).toBe('');
   });
 
-  it('converts Zod parameters to TypeBox via zodToTypeBox', () => {
+  it('converts Zod parameters to pi-compatible schema', () => {
     const schema = z.object({ n: z.number() });
     const tool = makeTool('Desc', schema);
     const result = convertMcpToolToPiTool('calc', tool);
@@ -51,6 +52,24 @@ describe('convertMcpToolToPiTool()', () => {
     expect(typeof result.parameters).toBe('object');
     const params = result.parameters as Record<string, unknown>;
     expect(params).toHaveProperty('type', 'object');
+  });
+
+  it('accepts AI jsonSchema wrappers as tool parameters', () => {
+    const tool: ToolSet[string] = {
+      description: 'Search docs',
+      inputSchema: jsonSchema({
+        type: 'object',
+        properties: {
+          query: { type: 'string' },
+        },
+        required: ['query'],
+      }),
+    };
+
+    const result = convertMcpToolToPiTool('search_docs', tool);
+    const params = result.parameters as Record<string, unknown>;
+    expect(params).toHaveProperty('type', 'object');
+    expect(params).toHaveProperty('properties');
   });
 
   it('returns content[0].text from execute result when result is a string', async () => {

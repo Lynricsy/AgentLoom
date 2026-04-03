@@ -1,11 +1,14 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { and, asc, desc, eq, ilike, max, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, inArray, max, or, sql } from 'drizzle-orm';
 
 import { transactionStorage } from '../../common/interceptors/tenant-transaction.interceptor';
 import type { DrizzleDB } from '../../database/database.module';
 import { DRIZZLE } from '../../database/database.module';
 import * as schema from '../../database/schema';
-import type { AgentVersionSnapshot } from '../../database/schema/agent-definitions.schema';
+import type {
+  AgentRuntimeMode,
+  AgentVersionSnapshot,
+} from '../../database/schema/agent-definitions.schema';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import { generateSlug, appendSlugSuffix } from '../organization/slug.utils';
 import type { CreateAgentDefinitionDto } from './dto/create-agent-definition.dto';
@@ -81,6 +84,7 @@ const LIST_COLUMNS = {
   slug: schema.agentDefinitions.slug,
   description: schema.agentDefinitions.description,
   icon: schema.agentDefinitions.icon,
+  runtimeMode: schema.agentDefinitions.runtimeMode,
   status: schema.agentDefinitions.status,
   version: schema.agentDefinitions.version,
   publishedVersionId: schema.agentDefinitions.publishedVersionId,
@@ -153,7 +157,11 @@ export class AgentDefinitionService {
             slug,
             description: dto.description ?? null,
             icon: dto.icon ?? null,
-            sandboxConfig: (dto.globalSandboxConfig as any) ?? null,
+            runtimeMode: dto.runtimeMode,
+            sandboxConfig:
+              dto.runtimeMode === 'sandbox'
+                ? ((dto.globalSandboxConfig as any) ?? null)
+                : null,
             createdBy: userId,
             updatedBy: userId,
           })
@@ -288,8 +296,10 @@ export class AgentDefinitionService {
       if (dto.description !== undefined)
         setClause.description = dto.description;
       if (dto.icon !== undefined) setClause.icon = dto.icon;
-      if (dto.globalSandboxConfig !== undefined)
-        setClause.sandboxConfig = dto.globalSandboxConfig;
+      if (dto.globalSandboxConfig !== undefined) {
+        setClause.sandboxConfig =
+          agent.runtimeMode === 'sandbox' ? dto.globalSandboxConfig : null;
+      }
 
       const updateResult = await dbClient
         .update(schema.agentDefinitions)
@@ -369,6 +379,7 @@ export class AgentDefinitionService {
           dto.canvasNodes,
           dto.canvasEdges,
           dto.globalSandboxConfig,
+          agent.runtimeMode,
         ),
         version: sql`${schema.agentDefinitions.version} + 1`,
         updatedBy: userId,
@@ -446,6 +457,13 @@ export class AgentDefinitionService {
         throw new AgentVersionConflictException(agentId, agent.version);
       }
 
+      await this.assertRuntimeModeConstraints(
+        dbClient,
+        agent.runtimeMode,
+        options.canvasNodes,
+        options.canvasEdges,
+      );
+
       const setClause: Record<string, any> = {
         nodes: options.canvasNodes,
         edges: options.canvasEdges,
@@ -453,6 +471,7 @@ export class AgentDefinitionService {
           options.canvasNodes,
           options.canvasEdges,
           options.globalSandboxConfig,
+          agent.runtimeMode,
         ),
         version: sql`${schema.agentDefinitions.version} + 1`,
         updatedBy: userId,
@@ -563,6 +582,7 @@ export class AgentDefinitionService {
       detail.nodes,
       detail.edges,
       agentId,
+      detail.runtimeMode,
     );
   }
 
@@ -570,8 +590,9 @@ export class AgentDefinitionService {
     nodes: any[],
     edges: any[],
     agentDefinitionId?: string,
+    runtimeMode: AgentRuntimeMode = 'sandbox',
   ): AgentRuntimeConfig {
-    const config: AgentRuntimeConfig = {};
+    const config: AgentRuntimeConfig = { runtimeMode };
 
     const tools: AgentToolBinding[] = [];
     const knowledgeBindings: AgentKnowledgeBinding[] = [];
@@ -583,7 +604,10 @@ export class AgentDefinitionService {
       (node) => this.resolveNodeType(node) === 'agent-main',
     );
     const agentMainRuntimeConfig = agentMainNode
-      ? this.extractAgentMainRuntimeConfig(this.resolveNodeData(agentMainNode))
+      ? this.extractAgentMainRuntimeConfig(
+          this.resolveNodeData(agentMainNode),
+          runtimeMode,
+        )
       : {};
     if (agentMainRuntimeConfig.nativeToolPolicy) {
       config.nativeToolPolicy = agentMainRuntimeConfig.nativeToolPolicy;
@@ -685,7 +709,10 @@ export class AgentDefinitionService {
         }
 
         case 'sandbox': {
-          if (!agentMainNode || targetHandle === 'sandbox-in') {
+          if (
+            runtimeMode === 'sandbox' &&
+            (!agentMainNode || targetHandle === 'sandbox-in')
+          ) {
             const sandboxConfig = this.extractSandboxConfig(data);
             if (sandboxConfig) {
               config.sandboxConfig = sandboxConfig;
@@ -806,6 +833,13 @@ export class AgentDefinitionService {
         throw new AgentArchivedException(agentId);
       }
 
+      await this.assertRuntimeModeConstraints(
+        dbClient,
+        agent.runtimeMode,
+        agent.nodes ?? [],
+        agent.edges ?? [],
+      );
+
       const nextVersion = await this.getNextVersionNumber(dbClient, agentId);
       const snapshot = this.buildSnapshot(agent, dto.changelog);
 
@@ -889,6 +923,13 @@ export class AgentDefinitionService {
         );
       }
 
+      await this.assertRuntimeModeConstraints(
+        dbClient,
+        agent.runtimeMode,
+        agent.nodes ?? [],
+        agent.edges ?? [],
+      );
+
       const nextVersion = await this.getNextVersionNumber(dbClient, agentId);
       const snapshot = this.buildSnapshot(agent);
 
@@ -942,6 +983,7 @@ export class AgentDefinitionService {
     const canvasMetadata = this.extractCanvasMetadata(agent.metadata);
 
     return {
+      runtimeMode: agent.runtimeMode,
       nodes: agent.nodes,
       edges: agent.edges,
       viewport: agent.viewport,
@@ -950,6 +992,7 @@ export class AgentDefinitionService {
         agent.nodes ?? [],
         agent.edges ?? [],
         agent.sandboxConfig,
+        agent.runtimeMode,
       ),
       workspaceSnapshotId: agent.workspaceSnapshotId,
       metadata: {
@@ -1387,11 +1430,13 @@ export class AgentDefinitionService {
 
   private extractAgentMainRuntimeConfig(
     data: Record<string, any>,
+    runtimeMode: AgentRuntimeMode,
   ): Pick<AgentRuntimeConfig, 'nativeToolPolicy' | 'selfEvolutionPolicy'> {
     const nativeToolPolicyRecord = this.asRecord(data.nativeToolPolicy);
     const selfEvolutionPolicyRecord = this.asRecord(data.selfEvolutionPolicy);
 
     const nativeToolPolicy =
+      runtimeMode === 'sandbox' &&
       nativeToolPolicyRecord &&
       this.hasAnyBoolean(
         nativeToolPolicyRecord.readEnabled,
@@ -1582,11 +1627,73 @@ export class AgentDefinitionService {
       | AgentRuntimeConfig['sandboxConfig']
       | Record<string, unknown>
       | null,
+    runtimeMode: AgentRuntimeMode = 'sandbox',
   ): AgentRuntimeConfig['sandboxConfig'] | null {
+    if (runtimeMode === 'no_sandbox') {
+      return null;
+    }
+
     return deriveAgentSandboxConfigFromCanvas(
       nodes as never,
       edges as never,
       fallbackConfig ?? null,
+    );
+  }
+
+  private async assertRuntimeModeConstraints(
+    dbClient: AgentDbClient,
+    runtimeMode: AgentRuntimeMode,
+    nodes: any[],
+    edges: any[],
+  ): Promise<void> {
+    if (runtimeMode !== 'no_sandbox') {
+      return;
+    }
+
+    const runtimeConfig = this.buildRuntimeConfigFromNodes(
+      nodes,
+      edges,
+      undefined,
+      runtimeMode,
+    );
+    const mcpServerConfigIds = Array.from(
+      new Set(
+        (runtimeConfig.tools ?? []).flatMap((tool) =>
+          typeof tool === 'object' &&
+          tool !== null &&
+          'mcpServerConfigId' in tool &&
+          typeof tool.mcpServerConfigId === 'string' &&
+          tool.mcpServerConfigId.trim().length > 0
+            ? [tool.mcpServerConfigId.trim()]
+            : [],
+        ),
+      ),
+    );
+
+    if (mcpServerConfigIds.length === 0) {
+      return;
+    }
+
+    const configs = await dbClient
+      .select({
+        id: schema.mcpServerConfigs.id,
+        name: schema.mcpServerConfigs.name,
+        transportType: schema.mcpServerConfigs.transportType,
+      })
+      .from(schema.mcpServerConfigs)
+      .where(inArray(schema.mcpServerConfigs.id, mcpServerConfigIds));
+
+    const stdioConfigs = configs.filter(
+      (config) => config.transportType === 'stdio',
+    );
+    if (stdioConfigs.length === 0) {
+      return;
+    }
+
+    throw new AgentPublishValidationException(
+      `无 sandbox Agent 只能绑定 HTTP MCP，以下 MCP server 使用了 stdio: ${stdioConfigs
+        .map((config) => config.name)
+        .join('、')}`,
     );
   }
 
@@ -1645,11 +1752,14 @@ export interface AgentVersionResponseDto {
 function toVersionResponseDto(
   version: typeof schema.agentVersions.$inferSelect,
 ): AgentVersionResponseDto {
-  const sandboxConfig = deriveAgentSandboxConfigFromCanvas(
-    version.snapshot.nodes,
-    version.snapshot.edges,
-    version.snapshot.sandboxConfig ?? null,
-  );
+  const sandboxConfig =
+    version.snapshot.runtimeMode === 'no_sandbox'
+      ? null
+      : deriveAgentSandboxConfigFromCanvas(
+          version.snapshot.nodes,
+          version.snapshot.edges,
+          version.snapshot.sandboxConfig ?? null,
+        );
 
   return {
     id: version.id,
@@ -1658,6 +1768,7 @@ function toVersionResponseDto(
     label: version.label,
     snapshot: {
       ...version.snapshot,
+      runtimeMode: version.snapshot.runtimeMode ?? 'sandbox',
       ...(sandboxConfig ? { sandboxConfig } : {}),
     },
     publishedAt: version.publishedAt?.toISOString() ?? null,

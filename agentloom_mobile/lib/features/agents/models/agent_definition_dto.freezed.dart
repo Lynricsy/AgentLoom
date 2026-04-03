@@ -19,6 +19,7 @@ mixin _$AgentDefinitionDto {
   String? get description;
   String? get icon;
   String get status;
+  String get runtimeMode;
   int? get version;
   String? get publishedVersionId;
   String? get tenantId;
@@ -72,6 +73,8 @@ mixin _$AgentDefinitionDto {
                 other.description == description) &&
             (identical(other.icon, icon) || other.icon == icon) &&
             (identical(other.status, status) || other.status == status) &&
+            (identical(other.runtimeMode, runtimeMode) ||
+                other.runtimeMode == runtimeMode) &&
             (identical(other.version, version) || other.version == version) &&
             (identical(other.publishedVersionId, publishedVersionId) ||
                 other.publishedVersionId == publishedVersionId) &&
@@ -127,6 +130,7 @@ mixin _$AgentDefinitionDto {
     description,
     icon,
     status,
+    runtimeMode,
     version,
     publishedVersionId,
     tenantId,
@@ -152,7 +156,7 @@ mixin _$AgentDefinitionDto {
 
   @override
   String toString() {
-    return 'AgentDefinitionDto(id: $id, name: $name, slug: $slug, description: $description, icon: $icon, status: $status, version: $version, publishedVersionId: $publishedVersionId, tenantId: $tenantId, createdBy: $createdBy, updatedBy: $updatedBy, createdAt: $createdAt, updatedAt: $updatedAt, systemPrompt: $systemPrompt, nodes: $nodes, edges: $edges, viewport: $viewport, sandboxConfig: $sandboxConfig, workspaceSnapshotId: $workspaceSnapshotId, inputSchema: $inputSchema, memoryInstanceIds: $memoryInstanceIds, sandboxLifecycle: $sandboxLifecycle, organizationId: $organizationId, modelId: $modelId, autonomyMode: $autonomyMode, maxIterations: $maxIterations, timeoutSeconds: $timeoutSeconds)';
+    return 'AgentDefinitionDto(id: $id, name: $name, slug: $slug, description: $description, icon: $icon, status: $status, runtimeMode: $runtimeMode, version: $version, publishedVersionId: $publishedVersionId, tenantId: $tenantId, createdBy: $createdBy, updatedBy: $updatedBy, createdAt: $createdAt, updatedAt: $updatedAt, systemPrompt: $systemPrompt, nodes: $nodes, edges: $edges, viewport: $viewport, sandboxConfig: $sandboxConfig, workspaceSnapshotId: $workspaceSnapshotId, inputSchema: $inputSchema, memoryInstanceIds: $memoryInstanceIds, sandboxLifecycle: $sandboxLifecycle, organizationId: $organizationId, modelId: $modelId, autonomyMode: $autonomyMode, maxIterations: $maxIterations, timeoutSeconds: $timeoutSeconds)';
   }
 }
 
@@ -170,6 +174,7 @@ abstract mixin class $AgentDefinitionDtoCopyWith<$Res> {
     String? description,
     String? icon,
     String status,
+    String runtimeMode,
     int? version,
     String? publishedVersionId,
     String? tenantId,
@@ -215,6 +220,7 @@ class _$AgentDefinitionDtoCopyWithImpl<$Res>
     Object? description = freezed,
     Object? icon = freezed,
     Object? status = null,
+    Object? runtimeMode = null,
     Object? version = freezed,
     Object? publishedVersionId = freezed,
     Object? tenantId = freezed,
@@ -262,6 +268,10 @@ class _$AgentDefinitionDtoCopyWithImpl<$Res>
         status: null == status
             ? _self.status
             : status // ignore: cast_nullable_to_non_nullable
+                  as String,
+        runtimeMode: null == runtimeMode
+            ? _self.runtimeMode
+            : runtimeMode // ignore: cast_nullable_to_non_nullable
                   as String,
         version: freezed == version
             ? _self.version
@@ -452,6 +462,7 @@ extension AgentDefinitionDtoPatterns on AgentDefinitionDto {
       String? description,
       String? icon,
       String status,
+      String runtimeMode,
       int? version,
       String? publishedVersionId,
       String? tenantId,
@@ -490,6 +501,7 @@ extension AgentDefinitionDtoPatterns on AgentDefinitionDto {
           _that.description,
           _that.icon,
           _that.status,
+          _that.runtimeMode,
           _that.version,
           _that.publishedVersionId,
           _that.tenantId,
@@ -539,6 +551,7 @@ extension AgentDefinitionDtoPatterns on AgentDefinitionDto {
       String? description,
       String? icon,
       String status,
+      String runtimeMode,
       int? version,
       String? publishedVersionId,
       String? tenantId,
@@ -576,6 +589,7 @@ extension AgentDefinitionDtoPatterns on AgentDefinitionDto {
           _that.description,
           _that.icon,
           _that.status,
+          _that.runtimeMode,
           _that.version,
           _that.publishedVersionId,
           _that.tenantId,
@@ -624,6 +638,7 @@ extension AgentDefinitionDtoPatterns on AgentDefinitionDto {
       String? description,
       String? icon,
       String status,
+      String runtimeMode,
       int? version,
       String? publishedVersionId,
       String? tenantId,
@@ -661,6 +676,7 @@ extension AgentDefinitionDtoPatterns on AgentDefinitionDto {
           _that.description,
           _that.icon,
           _that.status,
+          _that.runtimeMode,
           _that.version,
           _that.publishedVersionId,
           _that.tenantId,
@@ -691,7 +707,7 @@ extension AgentDefinitionDtoPatterns on AgentDefinitionDto {
 
 /// @nodoc
 @JsonSerializable()
-class _AgentDefinitionDto implements AgentDefinitionDto {
+class _AgentDefinitionDto extends AgentDefinitionDto {
   const _AgentDefinitionDto({
     required this.id,
     required this.name,
@@ -699,6 +715,7 @@ class _AgentDefinitionDto implements AgentDefinitionDto {
     this.description,
     this.icon,
     required this.status,
+    this.runtimeMode = 'sandbox',
     this.version,
     this.publishedVersionId,
     this.tenantId,
@@ -731,7 +748,8 @@ class _AgentDefinitionDto implements AgentDefinitionDto {
        _viewport = viewport,
        _sandboxConfig = sandboxConfig,
        _inputSchema = inputSchema,
-       _memoryInstanceIds = memoryInstanceIds;
+       _memoryInstanceIds = memoryInstanceIds,
+       super._();
   factory _AgentDefinitionDto.fromJson(Map<String, dynamic> json) =>
       _$AgentDefinitionDtoFromJson(json);
 
@@ -747,6 +765,9 @@ class _AgentDefinitionDto implements AgentDefinitionDto {
   final String? icon;
   @override
   final String status;
+  @override
+  @JsonKey()
+  final String runtimeMode;
   @override
   final int? version;
   @override
@@ -866,6 +887,8 @@ class _AgentDefinitionDto implements AgentDefinitionDto {
                 other.description == description) &&
             (identical(other.icon, icon) || other.icon == icon) &&
             (identical(other.status, status) || other.status == status) &&
+            (identical(other.runtimeMode, runtimeMode) ||
+                other.runtimeMode == runtimeMode) &&
             (identical(other.version, version) || other.version == version) &&
             (identical(other.publishedVersionId, publishedVersionId) ||
                 other.publishedVersionId == publishedVersionId) &&
@@ -921,6 +944,7 @@ class _AgentDefinitionDto implements AgentDefinitionDto {
     description,
     icon,
     status,
+    runtimeMode,
     version,
     publishedVersionId,
     tenantId,
@@ -946,7 +970,7 @@ class _AgentDefinitionDto implements AgentDefinitionDto {
 
   @override
   String toString() {
-    return 'AgentDefinitionDto(id: $id, name: $name, slug: $slug, description: $description, icon: $icon, status: $status, version: $version, publishedVersionId: $publishedVersionId, tenantId: $tenantId, createdBy: $createdBy, updatedBy: $updatedBy, createdAt: $createdAt, updatedAt: $updatedAt, systemPrompt: $systemPrompt, nodes: $nodes, edges: $edges, viewport: $viewport, sandboxConfig: $sandboxConfig, workspaceSnapshotId: $workspaceSnapshotId, inputSchema: $inputSchema, memoryInstanceIds: $memoryInstanceIds, sandboxLifecycle: $sandboxLifecycle, organizationId: $organizationId, modelId: $modelId, autonomyMode: $autonomyMode, maxIterations: $maxIterations, timeoutSeconds: $timeoutSeconds)';
+    return 'AgentDefinitionDto(id: $id, name: $name, slug: $slug, description: $description, icon: $icon, status: $status, runtimeMode: $runtimeMode, version: $version, publishedVersionId: $publishedVersionId, tenantId: $tenantId, createdBy: $createdBy, updatedBy: $updatedBy, createdAt: $createdAt, updatedAt: $updatedAt, systemPrompt: $systemPrompt, nodes: $nodes, edges: $edges, viewport: $viewport, sandboxConfig: $sandboxConfig, workspaceSnapshotId: $workspaceSnapshotId, inputSchema: $inputSchema, memoryInstanceIds: $memoryInstanceIds, sandboxLifecycle: $sandboxLifecycle, organizationId: $organizationId, modelId: $modelId, autonomyMode: $autonomyMode, maxIterations: $maxIterations, timeoutSeconds: $timeoutSeconds)';
   }
 }
 
@@ -966,6 +990,7 @@ abstract mixin class _$AgentDefinitionDtoCopyWith<$Res>
     String? description,
     String? icon,
     String status,
+    String runtimeMode,
     int? version,
     String? publishedVersionId,
     String? tenantId,
@@ -1011,6 +1036,7 @@ class __$AgentDefinitionDtoCopyWithImpl<$Res>
     Object? description = freezed,
     Object? icon = freezed,
     Object? status = null,
+    Object? runtimeMode = null,
     Object? version = freezed,
     Object? publishedVersionId = freezed,
     Object? tenantId = freezed,
@@ -1058,6 +1084,10 @@ class __$AgentDefinitionDtoCopyWithImpl<$Res>
         status: null == status
             ? _self.status
             : status // ignore: cast_nullable_to_non_nullable
+                  as String,
+        runtimeMode: null == runtimeMode
+            ? _self.runtimeMode
+            : runtimeMode // ignore: cast_nullable_to_non_nullable
                   as String,
         version: freezed == version
             ? _self.version

@@ -36,6 +36,10 @@ const DEFAULT_SESSION_MODEL_MAX_TOKENS = 16_384;
 
 export interface PiCodingAgentBindings {
   createAgentSession: (...args: any[]) => Promise<{ session: unknown }>;
+  createReadTool?: (cwd: string, options?: Record<string, unknown>) => unknown;
+  createBashTool?: (cwd: string, options?: Record<string, unknown>) => unknown;
+  createEditTool?: (cwd: string, options?: Record<string, unknown>) => unknown;
+  createWriteTool?: (cwd: string, options?: Record<string, unknown>) => unknown;
   DefaultResourceLoader: new (options: Record<string, unknown>) => {
     reload: () => Promise<void>;
   };
@@ -116,6 +120,41 @@ function mergeRecords(
   }
 
   return merged;
+}
+
+function resolveNativeToolPolicy(
+  value: CreateSessionRequest['nativeToolPolicy'],
+): Required<NonNullable<CreateSessionRequest['nativeToolPolicy']>> {
+  return {
+    readEnabled: value?.readEnabled ?? true,
+    writeEnabled: value?.writeEnabled ?? true,
+    editEnabled: value?.editEnabled ?? true,
+    terminalEnabled: value?.terminalEnabled ?? true,
+  };
+}
+
+function buildNativeTools(
+  piAgent: PiCodingAgentBindings,
+  cwd: string,
+  nativeToolPolicy: CreateSessionRequest['nativeToolPolicy'],
+): unknown[] {
+  const policy = resolveNativeToolPolicy(nativeToolPolicy);
+  const tools: unknown[] = [];
+
+  if (policy.readEnabled && piAgent.createReadTool) {
+    tools.push(piAgent.createReadTool(cwd));
+  }
+  if (policy.terminalEnabled && piAgent.createBashTool) {
+    tools.push(piAgent.createBashTool(cwd));
+  }
+  if (policy.editEnabled && piAgent.createEditTool) {
+    tools.push(piAgent.createEditTool(cwd));
+  }
+  if (policy.writeEnabled && piAgent.createWriteTool) {
+    tools.push(piAgent.createWriteTool(cwd));
+  }
+
+  return tools;
 }
 
 function normalizeDynamicModelDefinition(
@@ -419,6 +458,10 @@ export function createPiSessionFactory(
   return async (cwd, config, request) => {
     const {
       createAgentSession,
+      createReadTool,
+      createBashTool,
+      createEditTool,
+      createWriteTool,
       DefaultResourceLoader,
       SessionManager,
       SettingsManager,
@@ -463,6 +506,17 @@ export function createPiSessionFactory(
       settingsManager,
       authStorage,
       modelRegistry,
+      tools: buildNativeTools(
+        {
+          ...piAgent,
+          createReadTool,
+          createBashTool,
+          createEditTool,
+          createWriteTool,
+        },
+        cwd,
+        request.nativeToolPolicy,
+      ),
       resourceLoader,
       customTools: createRemoteToolDefinitions(request.remoteToolExecution),
     });

@@ -1,3 +1,5 @@
+import type { AgentRuntimeMode } from '@/features/agent/types/agentRuntimeMode'
+
 export type MessageRole = "user" | "assistant" | "system";
 
 export type ToolCallStatus =
@@ -252,3 +254,5 @@ export interface ConversationMessageMetadata {
   incomplete?: boolean;
   [key: string]: unknown;
 }
+
+export type { AgentRuntimeMode }

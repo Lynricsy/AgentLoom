@@ -1,5 +1,5 @@
 import type { ToolSet } from 'ai';
-import { zodToTypeBox } from './tool-schema-converter';
+import { flexibleSchemaToTypeBox } from './tool-schema-converter';
 
 // Inline replica of pi-agent-core AgentTool<TSchema> to avoid static ESM import
 // See: pi-mono/packages/agent/src/types.ts AgentTool interface
@@ -23,8 +23,9 @@ export interface PiAgentTool {
  * Convert a single AgentLoom MCP tool (Vercel AI SDK `CoreTool` format) to a
  * pi-agent-core compatible `AgentTool`.
  *
- * The tool's Zod parameter schema is converted to TypeBox via `zodToTypeBox()`.
- * The `execute` wrapper adapts the Vercel AI SDK callback signature to pi's signature.
+ * The tool's flexible `inputSchema` is normalized to a pi-agent-core compatible
+ * TypeBox/JSON-Schema shape via `flexibleSchemaToTypeBox()`. The `execute`
+ * wrapper adapts the Vercel AI SDK callback signature to pi's signature.
  */
 export function convertMcpToolToPiTool(
   name: string,
@@ -34,8 +35,8 @@ export function convertMcpToolToPiTool(
     name,
     label: name,
     description: tool.description ?? '',
-    parameters: zodToTypeBox(
-      tool.inputSchema as Parameters<typeof zodToTypeBox>[0],
+    parameters: flexibleSchemaToTypeBox(
+      tool.inputSchema as Parameters<typeof flexibleSchemaToTypeBox>[0],
     ),
     execute: async (
       toolCallId: string,

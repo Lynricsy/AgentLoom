@@ -72,6 +72,8 @@ export interface SubAgentParentContext {
   depth: number;
   /** 租户 ID */
   tenantId: string;
+  /** 父级当前是否运行在 sandbox runtime 中 */
+  parentUsesSandboxRuntime: boolean;
   /** 父级 AbortSignal（用于级联取消） */
   parentAbortSignal?: AbortSignal;
   /** 已访问的 Agent IDs (用于循环检测) */

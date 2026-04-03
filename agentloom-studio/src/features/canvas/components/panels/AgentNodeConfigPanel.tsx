@@ -2,8 +2,12 @@ import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { Brain, Container, Loader2, Plus, Search, Trash2 } from 'lucide-react'
 import { listAgents, listAgentVersions } from '@/features/agent/api/agentDefinitionApi'
 import type { AgentDefinition, AgentVersion } from '@/features/agent/types'
+import type { AgentRuntimeMode } from '@/features/agent/types/agentRuntimeMode'
+import type { CanvasNode } from '../../types'
+import { getWorkflowAgentInputPorts } from '../../types/nodeTypeRegistry'
 
 interface AgentNodeConfigPanelProps {
+  node: CanvasNode
   config: Record<string, unknown>
   onApply: (patch: Record<string, unknown>) => void
 }
@@ -12,6 +16,7 @@ interface AgentConfig {
   selectedAgentId: string | null
   agentVersionId: string | null
   agentName: string | null
+  agentRuntimeMode: AgentRuntimeMode | null
   versionLabel: string | null
   inputMapping: Record<string, string>
 }
@@ -30,12 +35,17 @@ function parseAgentConfig(config: Record<string, unknown>): AgentConfig {
     selectedAgentId: typeof config.selectedAgentId === 'string' ? config.selectedAgentId : null,
     agentVersionId: typeof config.agentVersionId === 'string' ? config.agentVersionId : null,
     agentName: typeof config.agentName === 'string' ? config.agentName : null,
+    agentRuntimeMode:
+      config.agentRuntimeMode === 'sandbox' || config.agentRuntimeMode === 'no_sandbox'
+        ? config.agentRuntimeMode
+        : null,
     versionLabel: typeof config.versionLabel === 'string' ? config.versionLabel : null,
     inputMapping: parseInputMapping(config.inputMapping),
   }
 }
 
 export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
+  node,
   config,
   onApply,
 }: AgentNodeConfigPanelProps) {
@@ -97,16 +107,20 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
   const handleSelectAgent = useCallback(
     (agent: AgentDefinition) => {
       const latestVersion = agent.publishedVersionId
+      const inputPorts = getWorkflowAgentInputPorts(agent.runtimeMode)
       onApply({
         config: {
           ...parseAgentConfig(config),
           selectedAgentId: agent.id,
           agentVersionId: latestVersion,
           agentName: agent.name,
+          agentRuntimeMode: agent.runtimeMode,
           versionLabel: null,
         },
         selectedAgentId: agent.id,
         agentVersionId: latestVersion,
+        agentRuntimeMode: agent.runtimeMode,
+        inputPorts,
       })
     },
     [config, onApply],
@@ -181,6 +195,37 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
     )
     : agents
 
+  useEffect(() => {
+    if (!agentConfig.selectedAgentId) {
+      return
+    }
+
+    const selectedAgent = agents.find((agent) => agent.id === agentConfig.selectedAgentId)
+    if (!selectedAgent) {
+      return
+    }
+
+    const expectedPorts = getWorkflowAgentInputPorts(selectedAgent.runtimeMode)
+    const currentPortIds = node.data.inputPorts.map((port) => port.id)
+    const expectedPortIds = expectedPorts.map((port) => port.id)
+    const portShapeChanged =
+      currentPortIds.length !== expectedPortIds.length
+      || currentPortIds.some((portId, index) => portId !== expectedPortIds[index])
+
+    if (!portShapeChanged && agentConfig.agentRuntimeMode === selectedAgent.runtimeMode) {
+      return
+    }
+
+    onApply({
+      config: {
+        ...parseAgentConfig(config),
+        agentRuntimeMode: selectedAgent.runtimeMode,
+      },
+      agentRuntimeMode: selectedAgent.runtimeMode,
+      inputPorts: expectedPorts,
+    })
+  }, [agentConfig.agentRuntimeMode, agentConfig.selectedAgentId, agents, config, node.data.inputPorts, onApply])
+
   return (
     <div className="space-y-4 px-4 py-4">
       <div className="flex items-center gap-2">
@@ -234,6 +279,9 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
                 <div className="flex items-center gap-2">
                   <Brain className="h-3.5 w-3.5 shrink-0 text-type-model" />
                   <span className="truncate">{agent.name}</span>
+                  <span className="rounded-full border border-border px-1.5 py-0.5 text-[10px] text-muted-foreground">
+                    {agent.runtimeMode === 'sandbox' ? '有沙箱' : '无沙箱'}
+                  </span>
                 </div>
                 {agent.description && (
                   <p className="mt-0.5 truncate text-xs text-muted-foreground pl-5.5">
@@ -249,6 +297,15 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
       {/* 版本选择 */}
       {agentConfig.selectedAgentId && (
         <div>
+          <div className="mb-2 rounded-md border border-border/60 bg-surface px-3 py-2 text-xs text-muted-foreground">
+            当前 Agent 运行形态：
+            <span className="ml-1 font-medium text-foreground">
+              {agentConfig.agentRuntimeMode === 'no_sandbox' ? '无沙箱' : '有沙箱'}
+            </span>
+            {agentConfig.agentRuntimeMode === 'no_sandbox' && (
+              <span className="ml-1">输入端口将移除 `sandbox-in`。</span>
+            )}
+          </div>
           <label
             htmlFor="agent-version"
             className="mb-2 block text-xs font-medium text-foreground"

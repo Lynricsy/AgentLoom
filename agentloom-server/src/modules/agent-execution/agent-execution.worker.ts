@@ -13,6 +13,7 @@ import {
 import {
   agentDefinitions,
   agentVersions,
+  type AgentRuntimeMode,
   type AgentVersionSnapshot,
 } from '../../database/schema/agent-definitions.schema';
 import type { ResolvedModelConfig } from '../llm/pi-ai-adapter';
@@ -252,6 +253,7 @@ export class AgentExecutionWorker extends WorkerHost {
     let conversationMetadata: Record<string, unknown> = {};
     let terminalStatus: 'completed' | 'cancelled' | 'failed' = 'completed';
     let conversationStatus: 'active' | 'paused' | 'ended' | 'failed' = 'active';
+    let conversationHasSandbox = false;
     let memorySessionIds: string[] = [];
     let currentPhase: PreparationPhase = 'queued';
     let currentPendingMessages: PendingMessage[] = [];
@@ -279,6 +281,7 @@ export class AgentExecutionWorker extends WorkerHost {
       executionMetadata = context.executionMetadata;
       conversationMetadata = context.conversation.metadata;
       conversationStatus = context.conversation.status;
+      conversationHasSandbox = context.hasSandbox;
 
       if (context.conversation.status !== 'active') {
         terminalStatus =
@@ -305,7 +308,9 @@ export class AgentExecutionWorker extends WorkerHost {
       }
 
       // Phases 3-4 are emitted inside prepareRuntimeSession
-      currentPhase = 'sandbox_creating';
+      currentPhase = context.hasSandbox
+        ? 'sandbox_creating'
+        : 'agent_initializing';
       const runtimeSessionContext = await this.prepareRuntimeSession(
         context,
         conversationId,
@@ -428,6 +433,12 @@ export class AgentExecutionWorker extends WorkerHost {
           turnResult,
           session.id,
         );
+        if (conversationHasSandbox) {
+          await this.workspaceIntegrationService.captureConversationWorkspaceTreeSnapshot(
+            conversationId,
+            tenantId,
+          );
+        }
         conversationMetadata = this.writeExecutionMetadata(
           conversationMetadata,
           executionMetadata,
@@ -481,6 +492,12 @@ export class AgentExecutionWorker extends WorkerHost {
                 : {}),
             },
           );
+          if (conversationHasSandbox) {
+            await this.workspaceIntegrationService.captureConversationWorkspaceTreeSnapshot(
+              conversationId,
+              tenantId,
+            );
+          }
           conversationMetadata = this.writeExecutionMetadata(
             conversationMetadata,
             executionMetadata,
@@ -576,6 +593,7 @@ export class AgentExecutionWorker extends WorkerHost {
         .select({
           id: agentDefinitions.id,
           publishedVersionId: agentDefinitions.publishedVersionId,
+          runtimeMode: agentDefinitions.runtimeMode,
           systemPrompt: agentDefinitions.systemPrompt,
           nodes: agentDefinitions.nodes,
           edges: agentDefinitions.edges,
@@ -616,6 +634,10 @@ export class AgentExecutionWorker extends WorkerHost {
       }
 
       if (snapshot) {
+        const snapshotRuntimeMode = this.resolveAgentRuntimeMode(
+          definition.runtimeMode,
+          snapshot.runtimeMode,
+        );
         const normalizedSnapshotSandboxConfig =
           deriveAgentSandboxConfigFromCanvas(
             snapshot.nodes,
@@ -625,7 +647,10 @@ export class AgentExecutionWorker extends WorkerHost {
         runtimeConfig = this.agentDefinitionService.buildRuntimeConfigFromNodes(
           snapshot.nodes,
           snapshot.edges,
+          undefined,
+          snapshotRuntimeMode,
         );
+        runtimeConfig.runtimeMode ??= snapshotRuntimeMode;
         resolvedSandboxConfig =
           mergeSandboxConfigCandidates(
             runtimeConfig.sandboxConfig ?? null,
@@ -637,6 +662,10 @@ export class AgentExecutionWorker extends WorkerHost {
         runtimeConfig = await this.agentDefinitionService.compileCanvas(
           definition.id,
         );
+        runtimeConfig.runtimeMode ??= this.resolveAgentRuntimeMode(
+          definition.runtimeMode,
+          undefined,
+        );
         resolvedSandboxConfig =
           mergeSandboxConfigCandidates(
             runtimeConfig.sandboxConfig ?? null,
@@ -644,12 +673,13 @@ export class AgentExecutionWorker extends WorkerHost {
           ) ?? null;
       }
 
-      if (!resolvedSandboxConfig) {
+      if (runtimeConfig.runtimeMode === 'sandbox' && !resolvedSandboxConfig) {
         throw new AgentSandboxNotConnectedException(definition.id);
       }
-      runtimeConfig.sandboxConfig = resolveAgentRuntimeSandboxConfig(
-        resolvedSandboxConfig,
-      );
+      runtimeConfig.sandboxConfig =
+        runtimeConfig.runtimeMode === 'sandbox' && resolvedSandboxConfig
+          ? resolveAgentRuntimeSandboxConfig(resolvedSandboxConfig)
+          : undefined;
 
       const compiledMemoryInstanceIds = this.extractStringArray(
         runtimeConfig.memoryInstanceIds,
@@ -668,7 +698,7 @@ export class AgentExecutionWorker extends WorkerHost {
         systemPrompt,
         canvasNodes: snapshot?.nodes ?? definition.nodes ?? [],
         canvasEdges: snapshot?.edges ?? definition.edges ?? [],
-        hasSandbox: true,
+        hasSandbox: runtimeConfig.runtimeMode === 'sandbox',
         memoryInstanceIds,
         executionMetadata: this.readExecutionMetadata(conversation.metadata),
       };
@@ -796,15 +826,13 @@ export class AgentExecutionWorker extends WorkerHost {
     currentAgentDefinitionId: string,
     initialPendingMessages: PendingMessage[] = [],
   ): Promise<RuntimeSessionContext> {
-    if (!context.hasSandbox || !context.runtimeConfig.sandboxConfig) {
-      throw new AgentSandboxNotConnectedException(currentAgentDefinitionId);
-    }
-
     context.runtimeConfig = await this.resolveConversationStartupRuntimeConfig(
       context.runtimeConfig,
       tenantId,
       initialPendingMessages,
     );
+    const hasSandboxRuntime =
+      context.hasSandbox && Boolean(context.runtimeConfig.sandboxConfig);
     const runtime = this.resolveConversationRuntime(context);
     const memorySessionIds = await this.ensureConversationMemorySessions(
       context,
@@ -812,37 +840,34 @@ export class AgentExecutionWorker extends WorkerHost {
       tenantId,
     );
 
-    // Standalone Agent conversations now always execute inside the sandbox
-    // runtime so pi-coding-agent remains the single agent loop / LLM entry.
-    const skillPayloads = await this.resolveSkillPayloads(context);
-    const piConfigInput = await this.buildPiConfigInput({
-      tenantId,
-      runtimeConfig: context.runtimeConfig,
-      systemPrompt: context.systemPrompt,
-      skillPayloads,
-    });
+    let sandboxReused = false;
+    if (hasSandboxRuntime) {
+      const skillPayloads = await this.resolveSkillPayloads(context);
+      const piConfigInput = await this.buildPiConfigInput({
+        tenantId,
+        runtimeConfig: context.runtimeConfig,
+        systemPrompt: context.systemPrompt,
+        skillPayloads,
+      });
 
-    // Check for existing sandbox session to detect reuse *before* calling
-    // sandboxService.createSandboxSession, so we can decide whether to emit
-    // the sandbox_creating phase.
-    const existingSession = await this.sandboxService.findByConversationId(
-      conversationId,
-      tenantId,
-    );
-    const sandboxReused = existingSession != null;
+      const existingSession = await this.sandboxService.findByConversationId(
+        conversationId,
+        tenantId,
+      );
+      sandboxReused = existingSession != null;
 
-    if (!sandboxReused) {
-      // Phase 3: sandbox_creating — no existing session, a new container will be spun up
-      this.emitPreparationPhase(tenantId, conversationId, 'sandbox_creating');
+      if (!sandboxReused) {
+        this.emitPreparationPhase(tenantId, conversationId, 'sandbox_creating');
+      }
+
+      await this.sandboxService.createSandboxSession({
+        sandboxNodeId: null,
+        config: context.runtimeConfig.sandboxConfig!,
+        tenantId,
+        agentConversationId: conversationId,
+        piConfigInput,
+      });
     }
-
-    await this.sandboxService.createSandboxSession({
-      sandboxNodeId: null,
-      config: context.runtimeConfig.sandboxConfig!,
-      tenantId,
-      agentConversationId: conversationId,
-      piConfigInput,
-    });
 
     // Phase 4: agent_initializing — sandbox ready, creating agent runtime session
     this.emitPreparationPhase(tenantId, conversationId, 'agent_initializing', {
@@ -871,9 +896,12 @@ export class AgentExecutionWorker extends WorkerHost {
           parentAbortSignal,
           currentAgentDefinitionId,
           currentDepth: 0,
+          parentUsesSandboxRuntime: hasSandboxRuntime,
           subAgentTracker,
         });
-        await this.startConversationWorkspaceWatcher(conversationId, tenantId);
+        if (hasSandboxRuntime) {
+          await this.startConversationWorkspaceWatcher(conversationId, tenantId);
+        }
         return {
           runtime,
           session,
@@ -892,7 +920,7 @@ export class AgentExecutionWorker extends WorkerHost {
     // For sandbox path, skills are passed as independent files via piConfigInput
     // so the system prompt should not include skill content.
     // For non-sandbox path, embed skills into the system prompt as before.
-    const baseSystemPrompt = context.hasSandbox
+    const baseSystemPrompt = hasSandboxRuntime
       ? context.systemPrompt
       : await this.resolveConversationSkillPrompt(context);
 
@@ -920,6 +948,7 @@ export class AgentExecutionWorker extends WorkerHost {
       parentAbortSignal,
       currentAgentDefinitionId,
       currentDepth: 0,
+      parentUsesSandboxRuntime: hasSandboxRuntime,
       subAgentTracker,
     });
 
@@ -933,11 +962,15 @@ export class AgentExecutionWorker extends WorkerHost {
         llmModelConfigId: context.runtimeConfig.modelConfig?.modelId,
         systemPrompt,
         runtimeConfig: context.runtimeConfig,
-        serverSandbox: { agentConversationId: conversationId },
+        ...(hasSandboxRuntime
+          ? { serverSandbox: { agentConversationId: conversationId } }
+          : {}),
         context: {
           tenantId,
           agentConversationId: conversationId,
-          serverSandbox: { agentConversationId: conversationId },
+          ...(hasSandboxRuntime
+            ? { serverSandbox: { agentConversationId: conversationId } }
+            : {}),
           ...(memorySessionIds.length ? { memorySessionIds } : {}),
         },
       });
@@ -946,7 +979,9 @@ export class AgentExecutionWorker extends WorkerHost {
       throw error;
     }
 
-    await this.startConversationWorkspaceWatcher(conversationId, tenantId);
+    if (hasSandboxRuntime) {
+      await this.startConversationWorkspaceWatcher(conversationId, tenantId);
+    }
 
     return {
       runtime,
@@ -961,9 +996,7 @@ export class AgentExecutionWorker extends WorkerHost {
   private resolveConversationRuntime(
     context: ConversationExecutionContext,
   ): IAgentRuntime {
-    void context;
-    void this.agentRuntime;
-    return this.adapterFactory.selectAdapter(true);
+    return this.adapterFactory.selectAdapter(context.hasSandbox);
   }
 
   private async startConversationWorkspaceWatcher(
@@ -2410,6 +2443,26 @@ export class AgentExecutionWorker extends WorkerHost {
     };
   }
 
+  private resolveAgentRuntimeMode(
+    definitionRuntimeMode: unknown,
+    snapshotRuntimeMode: unknown,
+  ): AgentRuntimeMode {
+    if (snapshotRuntimeMode === 'sandbox' || snapshotRuntimeMode === 'no_sandbox') {
+      return snapshotRuntimeMode;
+    }
+
+    return definitionRuntimeMode === 'no_sandbox' ? 'no_sandbox' : 'sandbox';
+  }
+
+  private buildReadOnlyNativeToolPolicy() {
+    return {
+      readEnabled: true,
+      writeEnabled: false,
+      editEnabled: false,
+      terminalEnabled: false,
+    } as const;
+  }
+
   private normalizeOptionalString(value: unknown): string | undefined {
     if (typeof value !== 'string') {
       return undefined;
@@ -2486,6 +2539,7 @@ export class AgentExecutionWorker extends WorkerHost {
     parentAbortSignal: AbortSignal;
     currentAgentDefinitionId: string;
     currentDepth: number;
+    parentUsesSandboxRuntime: boolean;
     visitedAgentIds?: Set<string>;
     subAgentTracker: SubAgentExecutionTracker;
   }): void {
@@ -2505,6 +2559,7 @@ export class AgentExecutionWorker extends WorkerHost {
           conversationId: params.conversationId,
           depth: params.currentDepth,
           tenantId: params.tenantId,
+          parentUsesSandboxRuntime: params.parentUsesSandboxRuntime,
           parentAbortSignal: params.parentAbortSignal,
           visitedAgentIds: new Set([
             ...(params.visitedAgentIds ?? []),
@@ -2604,6 +2659,10 @@ export class AgentExecutionWorker extends WorkerHost {
 
     try {
       const versionSnapshot = params.versionSnapshot?.snapshot;
+      const runtimeMode = this.resolveAgentRuntimeMode(
+        params.agentDefinition.runtimeMode,
+        versionSnapshot?.runtimeMode,
+      );
       const normalizedDefinitionSandboxConfig =
         deriveAgentSandboxConfigFromCanvas(
           params.agentDefinition.nodes,
@@ -2622,19 +2681,45 @@ export class AgentExecutionWorker extends WorkerHost {
             versionSnapshot.nodes,
             versionSnapshot.edges,
             params.agentDefinition.id,
+            runtimeMode,
           )
         : await this.agentDefinitionService.compileCanvas(
             params.agentDefinition.id,
           );
+      runtimeConfig.runtimeMode ??= runtimeMode;
+      const usesSandboxRuntime =
+        runtimeConfig.runtimeMode === 'sandbox' ||
+        (runtimeConfig.runtimeMode === 'no_sandbox' &&
+          params.parentContext.parentUsesSandboxRuntime);
 
-      runtimeConfig.sandboxConfig = resolveAgentRuntimeSandboxConfig(
-        mergeSandboxConfigCandidates(
-          runtimeConfig.sandboxConfig ?? null,
-          normalizedVersionSandboxConfig,
-        ) ??
+      if (
+        runtimeConfig.runtimeMode === 'sandbox' &&
+        !params.parentContext.parentUsesSandboxRuntime
+      ) {
+        throw new Error('无 sandbox Agent 不支持调用有 sandbox 的子 Agent');
+      }
+
+      if (runtimeConfig.runtimeMode === 'sandbox') {
+        const sandboxConfig =
+          mergeSandboxConfigCandidates(
+            runtimeConfig.sandboxConfig ?? null,
+            normalizedVersionSandboxConfig,
+          ) ??
           normalizedDefinitionSandboxConfig ??
-          params.agentDefinition.sandboxConfig,
-      );
+          params.agentDefinition.sandboxConfig;
+
+        if (!sandboxConfig) {
+          throw new AgentSandboxNotConnectedException(params.agentDefinition.id);
+        }
+
+        runtimeConfig.sandboxConfig =
+          resolveAgentRuntimeSandboxConfig(sandboxConfig);
+      } else {
+        runtimeConfig.sandboxConfig = undefined;
+        if (usesSandboxRuntime) {
+          runtimeConfig.nativeToolPolicy = this.buildReadOnlyNativeToolPolicy();
+        }
+      }
 
       const memoryInstanceIds = runtimeConfig.memoryInstanceIds ?? [];
       const memorySessionIds = await this.ensureAttachedMemorySessions(
@@ -2643,31 +2728,33 @@ export class AgentExecutionWorker extends WorkerHost {
         params.parentContext.tenantId,
       );
 
-      runtime = this.adapterFactory.selectAdapter(true);
+      runtime = this.adapterFactory.selectAdapter(usesSandboxRuntime);
 
-      const skillPayloads = await this.resolveSkillPayloadsForGraph({
-        tenantId: params.parentContext.tenantId,
-        agentDefinitionId: params.agentDefinition.id,
-        skillIds: runtimeConfig.skillIds,
-        nodes: versionSnapshot?.nodes ?? params.agentDefinition.nodes,
-        edges: versionSnapshot?.edges ?? params.agentDefinition.edges,
-      });
-      const piConfigInput = await this.buildPiConfigInput({
-        tenantId: params.parentContext.tenantId,
-        runtimeConfig,
-        systemPrompt:
-          versionSnapshot?.systemPrompt ??
-          params.agentDefinition.systemPrompt ??
-          undefined,
-        skillPayloads,
-      });
-      await this.sandboxService.createSandboxSession({
-        sandboxNodeId: null,
-        config: runtimeConfig.sandboxConfig,
-        tenantId: params.parentContext.tenantId,
-        agentConversationId: params.parentContext.conversationId,
-        piConfigInput,
-      });
+      if (runtimeConfig.runtimeMode === 'sandbox') {
+        const skillPayloads = await this.resolveSkillPayloadsForGraph({
+          tenantId: params.parentContext.tenantId,
+          agentDefinitionId: params.agentDefinition.id,
+          skillIds: runtimeConfig.skillIds,
+          nodes: versionSnapshot?.nodes ?? params.agentDefinition.nodes,
+          edges: versionSnapshot?.edges ?? params.agentDefinition.edges,
+        });
+        const piConfigInput = await this.buildPiConfigInput({
+          tenantId: params.parentContext.tenantId,
+          runtimeConfig,
+          systemPrompt:
+            versionSnapshot?.systemPrompt ??
+            params.agentDefinition.systemPrompt ??
+            undefined,
+          skillPayloads,
+        });
+        await this.sandboxService.createSandboxSession({
+          sandboxNodeId: null,
+          config: runtimeConfig.sandboxConfig!,
+          tenantId: params.parentContext.tenantId,
+          agentConversationId: params.parentContext.conversationId,
+          piConfigInput,
+        });
+      }
 
       const baseSystemPrompt = await this.resolveSkillAugmentedPrompt({
         tenantId: params.parentContext.tenantId,
@@ -2708,6 +2795,7 @@ export class AgentExecutionWorker extends WorkerHost {
         parentAbortSignal: linkedAbort.signal,
         currentAgentDefinitionId: params.agentDefinition.id,
         currentDepth: params.depth,
+        parentUsesSandboxRuntime: usesSandboxRuntime,
         visitedAgentIds: params.parentContext.visitedAgentIds,
         subAgentTracker,
       });
@@ -2721,15 +2809,23 @@ export class AgentExecutionWorker extends WorkerHost {
           llmModelConfigId: runtimeConfig.modelConfig?.modelId,
           systemPrompt,
           runtimeConfig,
-          serverSandbox: {
-            agentConversationId: params.parentContext.conversationId,
-          },
+          ...(usesSandboxRuntime
+            ? {
+                serverSandbox: {
+                  agentConversationId: params.parentContext.conversationId,
+                },
+              }
+            : {}),
           context: {
             tenantId: params.parentContext.tenantId,
             agentConversationId: params.parentContext.conversationId,
-            serverSandbox: {
-              agentConversationId: params.parentContext.conversationId,
-            },
+            ...(usesSandboxRuntime
+              ? {
+                  serverSandbox: {
+                    agentConversationId: params.parentContext.conversationId,
+                  },
+                }
+              : {}),
             ...(memorySessionIds.length ? { memorySessionIds } : {}),
           },
         });

@@ -392,3 +392,131 @@ if (context.breakRequested) {
   await this.finalizeCompoundExecution(context, tenantId);
 }
 ```
+
+---
+
+## 场景：`sandbox / no_sandbox` Agent 双运行态与 workflow `agent` 节点契约
+
+### 1. Scope / Trigger
+- 触发条件：修改以下任一文件时，必须回看本节
+  - `src/modules/agent-definition/agent-definition.service.ts`
+  - `src/modules/agent-definition/dto/create-agent-definition.dto.ts`
+  - `src/modules/agent-conversation/agent-conversation.service.ts`
+  - `src/modules/agent-conversation/agent-conversation.controller.ts`
+  - `src/modules/agent-execution/agent-execution.worker.ts`
+  - `src/modules/execution/workflow-agent-adapter.ts`
+  - `src/modules/execution/node-scheduler.service.ts`
+  - `src/modules/agent/pi-agent-core.adapter.ts`
+  - `src/modules/agent/sandbox-agent.adapter.ts`
+- 风险点：如果 `runtimeMode`、workflow 端口、tool permission resolve、MCP transport 限制、sandbox→no_sandbox 子 Agent 的运行语义任一处漂移，就会出现“创建时可选、运行时失效”或“UI 看似 no_sandbox，底层仍起 sandbox”的伪支持。
+
+### 2. Signatures
+- `CreateAgentDefinitionSchema`
+- `AgentDefinitionService.buildRuntimeConfigFromNodes(nodes, edges, agentDefinitionId?, runtimeMode?)`
+- `AgentExecutionWorker.resolveAgentRuntimeMode(definitionRuntimeMode, snapshotRuntimeMode): AgentRuntimeMode`
+- `AgentConversationService.getPermissionResolutionTarget(conversationId): Promise<{ runtimeMode; sessionId? }>`
+- `AgentConversationController.resolveToolPermission(id, toolCallId, dto, tenantId)`
+- `WorkflowAgentAdapter.execute(params): Promise<WorkflowAgentExecutionResult>`
+- `WorkflowAgentAdapter.buildReadOnlyNativeToolPolicy()`
+- `NodeSchedulerService.resolveSourceHandleValue(sourceStep, sourceHandle)`
+- `PiAgentCoreAdapter.assertMcpTransportAllowed(session, transportType)`
+- `SandboxAgentAdapter.assertMcpTransportAllowed(session, transportType)`
+- Agent 相关 API / 事件：
+  - `PUT /agent-definitions/:id/canvas`
+  - `POST /agent-definitions/:id/versions`
+  - `POST /agent-definitions/:id/publish`
+  - `POST /agent-conversations/:id/tool-permissions/:toolCallId/resolve`
+  - `POST /workflow-definitions/:id/run`
+
+### 3. Contracts
+- Agent 创建时必须显式持久化 `runtimeMode = sandbox | no_sandbox`，创建后固定；后续保存画布、创建版本、发布和会话恢复都必须继续沿用该运行形态。
+- 顶层 `no_sandbox` standalone Agent 对话与 workflow `agent` 节点必须走 `InProcessAgentAdapter -> PiAgentCoreAdapter -> pi-agent-core`。
+- 顶层 `sandbox` Agent 继续走 `SandboxAgentAdapter` + 容器 runtime。
+- `no_sandbox` Agent 仍支持：
+  - Skill
+  - `search_knowledge`
+  - Memory tools
+  - HTTP MCP
+  - self-evolution tools
+- `no_sandbox` Agent 不允许：
+  - 内置 coding tools
+  - stdio MCP
+  - 独立 sandbox workspace / terminal 上下文
+- stdio MCP 必须双重 fail-closed：
+  - 发布/创建版本时，若 runtime graph 中绑定了 stdio MCP，返回 `AgentPublishValidationException`
+  - 运行时即使混入了 stdio MCP 连接，也必须在 adapter 调用前拒绝执行
+- workflow `agent` 节点必须跟随目标 Agent 的 `runtimeMode` 动态切端口：
+  - `sandbox`：保留 `sandbox-in`
+  - `no_sandbox`：移除 `sandbox-in`
+- trigger 命名输出端口与 workflow input field id 必须同名直通：
+  - `manual-trigger` / `schedule-trigger` / `webhook-trigger` / `api-event-trigger`
+  - 若 source handle 为命名字段（例如 `text-in`），后端必须返回 `result.payload[sourceHandle]`
+- sandbox 父 Agent 调用 `no_sandbox` 子 Agent 时：
+  - child 不起独立 in-process runtime
+  - child 并入父 sandbox runtime 配置
+  - child 的 `nativeToolPolicy` 强制收敛为只开放 `read`
+- `no_sandbox -> sandbox` 子 Agent 不支持，运行时必须明确报错。
+- standalone `no_sandbox` 工具权限 resolve 必须按 conversation 的 `runtimeMode` 路由到 in-process session，而不能误打 sandbox adapter。
+
+### 4. Validation & Error Matrix
+
+| 条件 | 预期行为 | 断言点 |
+|------|----------|--------|
+| 创建 `no_sandbox` Agent | `runtimeMode` 持久化为 `no_sandbox` | DTO / service 单测 |
+| `no_sandbox` Agent 发布时绑定 stdio MCP | 422 `agent-publish-validation`，错误文案点名 MCP server 名称 | API 手测 + service 单测 |
+| `no_sandbox` conversation 收到工具权限审批 | resolve 必须使用 `sessionId` 命中 in-process runtime | `agent-conversation.controller.spec.ts` |
+| workflow `agent` 节点选择 `no_sandbox` Agent | 输入端口不含 `sandbox-in` | Studio 单测 + 浏览器手测 |
+| `manual-trigger.text-in -> agent.text-in` | Agent step.input 必须拿到 launch input 原值 | `node-scheduler.service.spec.ts` + execution 手测 |
+| `sandbox` 父 Agent 调用 `no_sandbox` 子 Agent | 子 Agent 只能读父上下文可见资源，不能获得 write/edit/terminal | sub-agent 集成测试 + 浏览器手测 |
+| `no_sandbox` 父 Agent 调用 `sandbox` 子 Agent | 明确报错“不支持调用有 sandbox 的子 Agent” | worker / adapter 单测 |
+
+### 5. Good / Base / Bad Cases
+- Good：顶层 `no_sandbox` Agent 在浏览器对话中能实际调用 Memory、Knowledge、HTTP MCP、自进化；workflow `agent` 节点没有 `sandbox-in`，运行后 step.input 正确收到 launch text。
+- Base：sandbox 父 Agent 调用 `no_sandbox` 子 Agent 时，子 Agent 能读取父工作区文件并完成任务，但不会暴露写权限或单独的 runtime session UI。
+- Bad：UI 选择了 `no_sandbox`，但运行时仍要求 sandbox 节点；或 workflow trigger 的命名端口看起来连上了，实际 step.input 仍为空。
+
+### 6. Tests Required
+- `src/modules/agent-conversation/agent-conversation.controller.spec.ts`
+  - 断言 `no_sandbox` 对话的工具权限 resolve 走 in-process runtime
+- `src/modules/agent/__tests__/pi-agent-core.adapter.spec.ts`
+  - 断言 no_sandbox runtime 支持 Memory/Knowledge/HTTP MCP，并在 stdio MCP 上 fail-closed
+- `src/modules/agent/__tests__/mcp-tool-bridge.spec.ts`
+  - 断言 MCP schema / descriptor 在 no_sandbox runtime 中可用
+- `src/modules/execution/__tests__/node-scheduler.service.spec.ts`
+  - 断言 trigger 命名输出端口会读取 `payload[sourceHandle]`
+- `src/modules/agent-execution/subagent/subagent-integration.spec.ts`
+  - 断言 `sandbox -> no_sandbox(read-only)` 子 Agent 语义
+- Manual/browser E2E
+  - 顶层 `no_sandbox` Agent：Memory + Skill、Knowledge、HTTP MCP、自进化
+  - `no_sandbox -> no_sandbox` 子 Agent
+  - `sandbox -> no_sandbox(read-only)` 子 Agent
+  - workflow `agent` 节点动态端口 + 运行成功
+  - stdio MCP 发布阻断
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```ts
+await this.sandboxAgentAdapter.resolveConversationToolPermission(
+  conversationId,
+  toolCallId,
+  dto.action,
+);
+```
+
+#### Correct
+
+```ts
+const target = await this.conversationService.getPermissionResolutionTarget(
+  conversationId,
+);
+
+if (target.runtimeMode === 'no_sandbox') {
+  await this.inProcessAgentRuntime.resolveToolPermission?.(
+    target.sessionId!,
+    toolCallId,
+    dto.action,
+  );
+}
+```

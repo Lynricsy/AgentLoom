@@ -3,10 +3,16 @@ import {
   ConflictException,
   Injectable,
   NotFoundException,
+  Optional,
+  Inject,
 } from '@nestjs/common';
 import { jsonSchema, tool, type ToolSet } from 'ai';
+import { inArray } from 'drizzle-orm';
 
+import { runInTenantTransaction } from '../../common/interceptors/tenant-transaction.context';
+import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import type { MemoryPath, MemoryVersion } from '../../database/schema';
+import { memorySessions } from '../../database/schema';
 import type { SessionToolProvider } from '../agent/ports/agent-runtime.port';
 import { MemoryFusionService } from './services/memory-fusion.service';
 import { GlossaryService } from './services/glossary.service';
@@ -259,6 +265,7 @@ export class MemoryToolsService {
     private readonly memoryNodeService: MemoryNodeService,
     private readonly memoryVersionService: MemoryVersionService,
     private readonly glossaryService: GlossaryService,
+    @Optional() @Inject(DRIZZLE) private readonly db?: DrizzleDB,
   ) {}
 
   createSessionToolProvider(sessionIds: string[]): SessionToolProvider {
@@ -287,8 +294,10 @@ export class MemoryToolsService {
           'Read memory content by URI, including boot/index/glossary resources.',
         inputSchema: READ_MEMORY_SCHEMA,
         execute: (input) =>
-          this.withTimeout(() =>
-            this.executeReadMemory(sessionIds, input as ReadMemoryInput),
+          this.executeWithTenantContext(sessionIds, () =>
+            this.withTimeout(() =>
+              this.executeReadMemory(sessionIds, input as ReadMemoryInput),
+            ),
           ),
       },
       {
@@ -297,8 +306,10 @@ export class MemoryToolsService {
           'Create a new memory node and bind it to the specified URI.',
         inputSchema: CREATE_MEMORY_SCHEMA,
         execute: (input) =>
-          this.withTimeout(() =>
-            this.executeCreateMemory(sessionIds, input as CreateMemoryInput),
+          this.executeWithTenantContext(sessionIds, () =>
+            this.withTimeout(() =>
+              this.executeCreateMemory(sessionIds, input as CreateMemoryInput),
+            ),
           ),
       },
       {
@@ -307,8 +318,10 @@ export class MemoryToolsService {
           'Update an existing memory by appending content or patching old text.',
         inputSchema: UPDATE_MEMORY_SCHEMA,
         execute: (input) =>
-          this.withTimeout(() =>
-            this.executeUpdateMemory(sessionIds, input as UpdateMemoryInput),
+          this.executeWithTenantContext(sessionIds, () =>
+            this.withTimeout(() =>
+              this.executeUpdateMemory(sessionIds, input as UpdateMemoryInput),
+            ),
           ),
       },
       {
@@ -317,8 +330,10 @@ export class MemoryToolsService {
           'Delete a memory path binding without deleting the underlying node content.',
         inputSchema: DELETE_MEMORY_SCHEMA,
         execute: (input) =>
-          this.withTimeout(() =>
-            this.executeDeleteMemory(sessionIds, input as DeleteMemoryInput),
+          this.executeWithTenantContext(sessionIds, () =>
+            this.withTimeout(() =>
+              this.executeDeleteMemory(sessionIds, input as DeleteMemoryInput),
+            ),
           ),
       },
       {
@@ -326,8 +341,10 @@ export class MemoryToolsService {
         description: 'Add an alias URI that points to an existing memory node.',
         inputSchema: ADD_ALIAS_SCHEMA,
         execute: (input) =>
-          this.withTimeout(() =>
-            this.executeAddAlias(sessionIds, input as AddAliasInput),
+          this.executeWithTenantContext(sessionIds, () =>
+            this.withTimeout(() =>
+              this.executeAddAlias(sessionIds, input as AddAliasInput),
+            ),
           ),
       },
       {
@@ -336,10 +353,12 @@ export class MemoryToolsService {
           'Add or remove glossary keyword triggers for a memory URI.',
         inputSchema: MANAGE_TRIGGERS_SCHEMA,
         execute: (input) =>
-          this.withTimeout(() =>
-            this.executeManageTriggers(
-              sessionIds,
-              input as ManageTriggersInput,
+          this.executeWithTenantContext(sessionIds, () =>
+            this.withTimeout(() =>
+              this.executeManageTriggers(
+                sessionIds,
+                input as ManageTriggersInput,
+              ),
             ),
           ),
       },
@@ -348,8 +367,10 @@ export class MemoryToolsService {
         description: 'Search memory content across all active memory sessions.',
         inputSchema: SEARCH_MEMORY_SCHEMA,
         execute: (input) =>
-          this.withTimeout(() =>
-            this.executeSearchMemory(sessionIds, input as SearchMemoryInput),
+          this.executeWithTenantContext(sessionIds, () =>
+            this.withTimeout(() =>
+              this.executeSearchMemory(sessionIds, input as SearchMemoryInput),
+            ),
           ),
       },
     ];
@@ -666,6 +687,37 @@ export class MemoryToolsService {
         clearTimeout(timer);
       }
     }
+  }
+
+  private async executeWithTenantContext<TData>(
+    sessionIds: string[],
+    operation: () => Promise<TData>,
+  ): Promise<TData> {
+    const tenantId = await this.resolveTenantId(sessionIds);
+    if (!tenantId || !this.db) {
+      return operation();
+    }
+
+    return runInTenantTransaction(this.db, tenantId, async () => operation());
+  }
+
+  private async resolveTenantId(sessionIds: string[]): Promise<string | null> {
+    if (!this.db) {
+      return null;
+    }
+
+    const uniqueSessionIds = [...new Set(sessionIds.filter(Boolean))];
+    if (uniqueSessionIds.length === 0) {
+      return null;
+    }
+
+    const [session] = await this.db
+      .select({ tenantId: memorySessions.tenantId })
+      .from(memorySessions)
+      .where(inArray(memorySessions.id, uniqueSessionIds))
+      .limit(1);
+
+    return session?.tenantId ?? null;
   }
 
   private async listNodePaths(nodeId: string): Promise<EnrichedMemoryPath[]> {

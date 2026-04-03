@@ -12,7 +12,10 @@ import {
   agentConversations,
   agentMessages,
 } from '../../database/schema/agent-conversations.schema';
-import { agentDefinitions } from '../../database/schema/agent-definitions.schema';
+import {
+  agentDefinitions,
+  type AgentRuntimeMode,
+} from '../../database/schema/agent-definitions.schema';
 import type { CreateConversationDto } from './dto/create-conversation.dto';
 import type { SendMessageDto } from './dto/send-message.dto';
 import type { UpdateConversationDto } from './dto/update-conversation.dto';
@@ -222,6 +225,37 @@ export class AgentConversationService {
     };
   }
 
+  async getPermissionResolutionTarget(conversationId: string): Promise<{
+    runtimeMode: AgentRuntimeMode;
+    sessionId?: string;
+  }> {
+    const [conversation] = await this.tenantDb
+      .select({
+        id: agentConversations.id,
+        metadata: agentConversations.metadata,
+        runtimeMode: agentDefinitions.runtimeMode,
+      })
+      .from(agentConversations)
+      .innerJoin(
+        agentDefinitions,
+        eq(agentDefinitions.id, agentConversations.agentDefinitionId),
+      )
+      .where(eq(agentConversations.id, conversationId))
+      .limit(1);
+
+    if (!conversation) {
+      throw new NotFoundException(`Conversation ${conversationId} not found`);
+    }
+
+    const executionRecord = this.readExecutionMetadata(conversation.metadata);
+    return {
+      runtimeMode: conversation.runtimeMode ?? 'sandbox',
+      ...(executionRecord.sessionId
+        ? { sessionId: executionRecord.sessionId }
+        : {}),
+    };
+  }
+
   async sendMessage(
     conversationId: string,
     tenantId: string,
@@ -339,5 +373,24 @@ export class AgentConversationService {
     }
 
     return { data: serializeConversation(conversation) };
+  }
+
+  private readExecutionMetadata(
+    metadata: unknown,
+  ): { sessionId?: string } & Record<string, unknown> {
+    if (
+      metadata &&
+      typeof metadata === 'object' &&
+      'execution' in metadata &&
+      metadata.execution &&
+      typeof metadata.execution === 'object'
+    ) {
+      return metadata.execution as { sessionId?: string } & Record<
+        string,
+        unknown
+      >;
+    }
+
+    return {};
   }
 }

@@ -7,6 +7,7 @@ import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import { EmojiIconPicker } from '@/shared/components/emoji-icon-picker'
 import { useCreateAgent } from '../api/agentMutations'
+import type { AgentRuntimeMode } from '../types'
 
 interface CreateOrchestrationDialogProps {
   open: boolean
@@ -22,12 +23,14 @@ export const CreateOrchestrationDialog = memo(function CreateOrchestrationDialog
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [icon, setIcon] = useState<string | null>(null)
+  const [runtimeMode, setRuntimeMode] = useState<AgentRuntimeMode>('sandbox')
 
   function handleOpenChange(nextOpen: boolean) {
     if (!nextOpen) {
       setName('')
       setDescription('')
       setIcon(null)
+      setRuntimeMode('sandbox')
     }
     onOpenChange(nextOpen)
   }
@@ -42,6 +45,7 @@ export const CreateOrchestrationDialog = memo(function CreateOrchestrationDialog
         name: agentName,
         description: description.trim() || undefined,
         icon: icon ?? undefined,
+        runtimeMode,
       })
       handleOpenChange(false)
       navigate({ to: '/agents/$agentId', params: { agentId: agent.id } })
@@ -97,6 +101,42 @@ export const CreateOrchestrationDialog = memo(function CreateOrchestrationDialog
                   autoFocus
                   className="flex-1"
                 />
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <span className="text-sm font-medium text-foreground">运行形态</span>
+              <div className="grid gap-2 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => setRuntimeMode('sandbox')}
+                  className={cn(
+                    'rounded-lg border px-3 py-3 text-left transition-colors',
+                    runtimeMode === 'sandbox'
+                      ? 'border-info bg-info/10'
+                      : 'border-border bg-background hover:border-info/40',
+                  )}
+                >
+                  <div className="text-sm font-medium text-foreground">有沙箱</div>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    支持工作区、终端和内置文件工具，可调用有沙箱或无沙箱子 Agent。
+                  </p>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRuntimeMode('no_sandbox')}
+                  className={cn(
+                    'rounded-lg border px-3 py-3 text-left transition-colors',
+                    runtimeMode === 'no_sandbox'
+                      ? 'border-info bg-info/10'
+                      : 'border-border bg-background hover:border-info/40',
+                  )}
+                >
+                  <div className="text-sm font-medium text-foreground">无沙箱</div>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    不提供内置文件/终端工具，仅支持 HTTP MCP，适合纯推理与资源编排。
+                  </p>
+                </button>
               </div>
             </div>
 

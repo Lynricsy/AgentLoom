@@ -55,4 +55,21 @@ void main() {
     expect(find.text('仅保留目录结构'), findsOneWidget);
     expect(find.textContaining('未保留文件内容预览'), findsOneWidget);
   });
+
+  testWidgets('无 sandbox 会话应显示降级说明而不是工作区标签页', (tester) async {
+    await tester.pumpWidget(
+      _wrapWithMaterial(
+        ConversationContextPanel(
+          state: const ConversationState(runtimeMode: 'no_sandbox'),
+          onRefreshWorkspace: () async {},
+          onOpenFile: (_) async {},
+        ),
+      ),
+    );
+
+    expect(find.text('无沙箱运行'), findsOneWidget);
+    expect(find.textContaining('没有终端、工作区和文件变更面板'), findsOneWidget);
+    expect(find.text('工作区'), findsNothing);
+    expect(find.text('终端'), findsNothing);
+  });
 }

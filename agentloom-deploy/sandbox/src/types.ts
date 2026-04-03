@@ -112,6 +112,12 @@ export interface CreateSessionRequest {
   mcpServers?: McpServersConfig;
   runtimeApiKeys?: Record<string, string>;
   remoteToolExecution?: RemoteToolExecutionConfig;
+  nativeToolPolicy?: {
+    readEnabled?: boolean;
+    writeEnabled?: boolean;
+    editEnabled?: boolean;
+    terminalEnabled?: boolean;
+  };
 }
 
 export interface CreateSessionResponse {

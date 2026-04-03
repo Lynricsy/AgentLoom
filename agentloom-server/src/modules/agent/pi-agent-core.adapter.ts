@@ -1,6 +1,6 @@
 import { Injectable, Optional } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
-import { jsonSchema, tool, type LanguageModel, type ToolSet } from 'ai';
+import { jsonSchema, tool, type FlexibleSchema, type ToolSet } from 'ai';
 import { and, eq } from 'drizzle-orm';
 import { z } from 'zod';
 import * as schema from '../../database/schema';
@@ -16,15 +16,17 @@ import type {
   AgentToolBinding,
 } from '../agent-definition/agent-runtime-config.interface';
 import { RagService } from '../knowledge/services/rag.service';
-import { PiAiAdapter } from '../llm/pi-ai-adapter';
+import { PiAiAdapter, type PiRuntimeResolvedModel } from '../llm/pi-ai-adapter';
 import { McpService } from '../mcp/mcp.service';
 import type {
   IAgentRuntime,
   SessionToolProvider,
 } from './ports/agent-runtime.port';
 import { importPiAgentCore } from './pi-imports';
-import { createVercelStreamFn } from './stream-fn.adapter';
-import { typeBoxToZod, zodToTypeBox } from './tool-schema-converter';
+import {
+  flexibleSchemaToTypeBox,
+  normalizeFlexibleSchemaJson,
+} from './tool-schema-converter';
 import type { AgentEvent, StopReason } from './types/agent-event.types';
 import type {
   AgentSession,
@@ -38,6 +40,10 @@ import type {
 } from './types/tool-call-event.types';
 import type { CodeExecutionService } from './code-execution.service';
 import { executeHttpToolRequest } from './http-tool-request.util';
+import {
+  AgentToolPermissionSyncService,
+  type DistributedToolPermissionResolution,
+} from './agent-tool-permission-sync.service';
 
 const PERMISSION_EXEMPT_TOOLS = new Set([
   'call_subagent',
@@ -105,7 +111,7 @@ interface PendingPermissionGate {
 interface RuntimeSession {
   readonly session: AgentSession;
   readonly agent: PiAgentInstance;
-  readonly model: LanguageModel;
+  readonly model: PiRuntimeResolvedModel;
   activeSink?: AsyncAgentEventSink;
 }
 
@@ -269,6 +275,8 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
     @Optional() private readonly mcpService?: McpService,
     @Optional() private readonly ragService?: RagService,
     @Optional() private readonly codeExecutionService?: CodeExecutionService,
+    @Optional()
+    private readonly toolPermissionSyncService?: AgentToolPermissionSyncService,
   ) {}
 
   private get tenantDb(): DrizzleDB {
@@ -301,20 +309,17 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
 
     const toolSet = await this.resolveSessionTools(session.id);
     const modelConfig = await this.resolveModelConfig(session);
-    const model = (await this.piAiAdapter.getModel(
-      modelConfig,
-    )) as LanguageModel;
-    const streamFn = createVercelStreamFn(model, toolSet);
+    const model = await this.piAiAdapter.getPiRuntimeModel(modelConfig);
     const tools = this.convertToolSetToPiTools(toolSet);
     const piAgentCore =
       (await importPiAgentCore()) as unknown as PiAgentCoreModule;
     const agent = new piAgentCore.Agent({
       initialState: {
         systemPrompt: params.systemPrompt ?? '',
-        model,
+        model: model.model,
         tools,
       },
-      streamFn,
+      ...(model.apiKey ? { getApiKey: async () => model.apiKey } : {}),
       sessionId: session.id,
       beforeToolCall: async (
         context: PiBeforeToolCallContext,
@@ -357,7 +362,6 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
     const toolSet = await this.resolveSessionTools(sessionId);
 
     agent.setTools?.(this.convertToolSetToPiTools(toolSet));
-    agent.streamFn = createVercelStreamFn(runtimeSession.model, toolSet);
 
     session.context.history.push(...content);
     session.status = 'active';
@@ -431,22 +435,22 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
     toolCallId: string,
     action: 'approve' | 'deny',
   ): Promise<void> {
-    const sessionResolvers = this.pendingPermissionResolvers.get(sessionId);
-    const gate = sessionResolvers?.get(toolCallId);
+    if (this.resolvePendingPermissionLocally(sessionId, toolCallId, action)) {
+      return;
+    }
 
-    if (!gate) {
-      throw new Error(
-        `Session ${sessionId} has no pending tool permission for ${toolCallId}`,
+    if (this.toolPermissionSyncService) {
+      await this.toolPermissionSyncService.publishResolution(
+        sessionId,
+        toolCallId,
+        action,
       );
+      return;
     }
 
-    clearTimeout(gate.timer);
-    sessionResolvers?.delete(toolCallId);
-    if (sessionResolvers?.size === 0) {
-      this.pendingPermissionResolvers.delete(sessionId);
-    }
-
-    gate.resolve(action);
+    throw new Error(
+      `Session ${sessionId} has no pending tool permission for ${toolCallId}`,
+    );
   }
 
   private buildSessionContext(params: CreateSessionParams): SessionContext {
@@ -644,6 +648,7 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
             descriptor.mcpServerConfigId,
             session.tenantId!,
           );
+          this.assertMcpTransportAllowed(session, connection.transportType);
           const result = await this.mcpService!.callRuntimeTool(
             connection,
             descriptor.toolName,
@@ -861,16 +866,8 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
 
   private resolveMcpInputSchema(
     inputSchema?: Record<string, unknown>,
-  ): z.ZodTypeAny {
-    if (!inputSchema) {
-      return z.object({}).passthrough();
-    }
-
-    try {
-      return typeBoxToZod(inputSchema as Parameters<typeof typeBoxToZod>[0]);
-    } catch {
-      return z.object({}).passthrough();
-    }
+  ): FlexibleSchema<Record<string, unknown>> {
+    return jsonSchema(normalizeFlexibleSchemaJson(inputSchema));
   }
 
   private normalizeExecuteArgs(
@@ -888,6 +885,18 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
     input: Record<string, unknown>,
   ): Promise<Record<string, unknown>> {
     return executeHttpToolRequest(binding, input);
+  }
+
+  private assertMcpTransportAllowed(
+    session: AgentSession,
+    transportType: string,
+  ): void {
+    if (
+      session.runtimeConfig?.runtimeMode === 'no_sandbox' &&
+      transportType === 'stdio'
+    ) {
+      throw new Error('无 sandbox Agent 只能使用 HTTP MCP，禁止执行 stdio MCP');
+    }
   }
 
   private sanitizeToolName(
@@ -933,8 +942,8 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
       name,
       label: name,
       description: tool.description ?? '',
-      parameters: zodToTypeBox(
-        tool.inputSchema as Parameters<typeof zodToTypeBox>[0],
+      parameters: flexibleSchemaToTypeBox(
+        tool.inputSchema as Parameters<typeof flexibleSchemaToTypeBox>[0],
       ),
       execute: async (
         toolCallId: string,
@@ -1074,6 +1083,10 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
         if (sessionResolvers.size === 0) {
           this.pendingPermissionResolvers.delete(sessionId);
         }
+        this.toolPermissionSyncService?.unregisterPendingResolution(
+          sessionId,
+          toolCallId,
+        );
         if (signal) {
           signal.removeEventListener('abort', onAbort);
         }
@@ -1086,6 +1099,11 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
         resolve: finish,
         timer,
       });
+      this.toolPermissionSyncService?.registerPendingResolution(
+        sessionId,
+        toolCallId,
+        (action) => finish(action),
+      );
 
       if (signal?.aborted) {
         finish('cancelled');
@@ -1098,6 +1116,28 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
 
   private emitAgentEvent(sessionId: string, event: AgentEvent): void {
     this.sessions.get(sessionId)?.activeSink?.emit(event);
+  }
+
+  private resolvePendingPermissionLocally(
+    sessionId: string,
+    toolCallId: string,
+    action: DistributedToolPermissionResolution,
+  ): boolean {
+    const sessionResolvers = this.pendingPermissionResolvers.get(sessionId);
+    const gate = sessionResolvers?.get(toolCallId);
+
+    if (!gate) {
+      return false;
+    }
+
+    clearTimeout(gate.timer);
+    sessionResolvers?.delete(toolCallId);
+    if (sessionResolvers?.size === 0) {
+      this.pendingPermissionResolvers.delete(sessionId);
+    }
+
+    gate.resolve(action);
+    return true;
   }
 
   private translatePiEvent(

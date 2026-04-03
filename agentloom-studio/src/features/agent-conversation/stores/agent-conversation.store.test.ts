@@ -187,6 +187,7 @@ describe("agentConversationStore", () => {
       conversationId: "conv-1",
       agentId: "agent-1",
       agentName: "QA KB Agent",
+      runtimeMode: "sandbox",
       authToken: "token-1",
     });
 
@@ -329,6 +330,7 @@ describe("agentConversationStore", () => {
       conversationId: "conv-1",
       agentId: "agent-1",
       agentName: "QA SelfEvo Agent",
+      runtimeMode: "sandbox",
       authToken: "token-1",
     });
 
@@ -360,6 +362,7 @@ describe("agentConversationStore", () => {
       conversationId: "conv-1",
       agentId: "agent-1",
       agentName: "QA KB Agent",
+      runtimeMode: "sandbox",
       authToken: "token-1",
     });
 
@@ -392,6 +395,7 @@ describe("agentConversationStore", () => {
       conversationId: "conv-1",
       agentId: "agent-1",
       agentName: "Agent 1",
+      runtimeMode: "sandbox",
       authToken: "token-1",
     });
 
@@ -440,6 +444,7 @@ describe("agentConversationStore", () => {
       conversationId: "conv-1",
       agentId: "agent-1",
       agentName: "Agent 1",
+      runtimeMode: "sandbox",
       authToken: "token-1",
     });
 
@@ -542,6 +547,7 @@ describe("agentConversationStore", () => {
       conversationId: "conv-1",
       agentId: "agent-1",
       agentName: "Agent 1",
+      runtimeMode: "sandbox",
       authToken: "token-1",
     });
 
@@ -606,6 +612,7 @@ describe("agentConversationStore", () => {
       conversationId: "conv-1",
       agentId: "agent-1",
       agentName: "Agent 1",
+      runtimeMode: "sandbox",
       authToken: "token-1",
     });
 
@@ -634,6 +641,7 @@ describe("agentConversationStore", () => {
       conversationId: "conv-1",
       agentId: "agent-1",
       agentName: "Agent 1",
+      runtimeMode: "sandbox",
       authToken: "token-1",
     });
 
@@ -692,6 +700,7 @@ describe("agentConversationStore", () => {
       conversationId: "conv-2",
       agentId: "agent-1",
       agentName: "Agent 1",
+      runtimeMode: "sandbox",
       authToken: "token-1",
     });
 

@@ -1,11 +1,13 @@
 import {
   Body,
+  ConflictException,
   Controller,
   Delete,
   Get,
   HttpCode,
   HttpException,
   HttpStatus,
+  Inject,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -18,6 +20,10 @@ import { Public } from '../../common/decorators/public.decorator';
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
+import {
+  AGENT_RUNTIME,
+  type IAgentRuntime,
+} from '../agent/ports/agent-runtime.port';
 import { SandboxAgentAdapter } from '../agent/sandbox-agent.adapter';
 import { AgentConversationService } from './agent-conversation.service';
 import { ConversationTitleService } from './conversation-title.service';
@@ -40,6 +46,8 @@ export class AgentConversationController {
     private readonly conversationTitleService: ConversationTitleService,
     private readonly workspaceIntegrationService: WorkspaceIntegrationService,
     private readonly sandboxAgentAdapter: SandboxAgentAdapter,
+    @Inject(AGENT_RUNTIME)
+    private readonly inProcessAgentRuntime: IAgentRuntime,
     private readonly sandboxService: SandboxService,
     private readonly selfEvolutionPermissionService: SelfEvolutionPermissionService,
     private readonly selfEvolutionService: SelfEvolutionService,
@@ -159,11 +167,28 @@ export class AgentConversationController {
       });
 
     if (!handledBySelfEvolution) {
-      await this.sandboxAgentAdapter.resolveConversationToolPermission(
-        id,
-        toolCallId,
-        dto.action,
-      );
+      const target =
+        await this.conversationService.getPermissionResolutionTarget(id);
+
+      if (target.runtimeMode === 'no_sandbox') {
+        if (!target.sessionId) {
+          throw new ConflictException(
+            `Conversation ${id} has no active in-process session`,
+          );
+        }
+
+        await this.inProcessAgentRuntime.resolveToolPermission?.(
+          target.sessionId,
+          toolCallId,
+          dto.action,
+        );
+      } else {
+        await this.sandboxAgentAdapter.resolveConversationToolPermission(
+          id,
+          toolCallId,
+          dto.action,
+        );
+      }
     }
 
     return {

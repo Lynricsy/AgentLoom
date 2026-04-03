@@ -133,6 +133,7 @@ export const CUSTOM_PANEL_REGISTRY: Partial<Record<string, CustomPanelEntry>> = 
   'agent': {
     render: ({ node, onConfigChange }) => (
       <AgentNodeConfigPanel
+        node={node}
         config={node.data.config}
         onApply={onConfigChange}
       />

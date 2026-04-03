@@ -1,4 +1,5 @@
 import type { SandboxConfig } from '../../database/schema/sandbox-sessions.schema';
+import type { AgentRuntimeMode } from '../../database/schema/agent-definitions.schema';
 
 export interface AgentModelConfig {
   modelId: string;
@@ -110,6 +111,7 @@ export interface AgentSelfEvolutionPolicy {
 }
 
 export interface AgentRuntimeConfig {
+  runtimeMode?: AgentRuntimeMode;
   modelConfig?: AgentModelConfig;
   tools?: AgentToolBinding[];
   knowledgeBindings?: AgentKnowledgeBinding[];

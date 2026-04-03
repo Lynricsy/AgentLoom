@@ -18,6 +18,12 @@ void main() {
 
   setUp(() {
     mockApi = MockAgentApi();
+    when(
+      () => mockApi.getAgent(any()),
+    ).thenAnswer((_) async => createTestAgent(id: 'agent-001'));
+    when(
+      () => mockApi.getWorkspaceTree(any()),
+    ).thenAnswer((_) async => const []);
   });
 
   Widget createTestWidget({
@@ -85,6 +91,32 @@ void main() {
       expect(find.byType(TextField), findsOneWidget);
       // 应有发送按钮
       expect(find.byIcon(Icons.send), findsOneWidget);
+    });
+
+    testWidgets('无 sandbox 对话不展示刷新工作区按钮', (tester) async {
+      when(() => mockApi.getAgent('agent-001')).thenAnswer(
+        (_) async =>
+            createTestAgent(id: 'agent-001', runtimeMode: 'no_sandbox'),
+      );
+      when(
+        () => mockApi.getMessages(
+          any(),
+          page: any(named: 'page'),
+          pageSize: any(named: 'pageSize'),
+        ),
+      ).thenAnswer(
+        (_) async => const PaginatedResponse(
+          data: <ConversationMessageDto>[],
+          meta: PaginationMeta(total: 0, page: 1, pageSize: 50, totalPages: 0),
+        ),
+      );
+
+      await tester.pumpWidget(createTestWidget());
+      await tester.pumpAndSettle();
+
+      expect(find.text('Agent 对话 · 无沙箱'), findsOneWidget);
+      expect(find.byTooltip('刷新工作区'), findsNothing);
+      expect(find.byTooltip('工作区'), findsOneWidget);
     });
 
     testWidgets('renders messages after loading', (tester) async {

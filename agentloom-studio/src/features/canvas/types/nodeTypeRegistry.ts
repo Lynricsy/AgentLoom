@@ -7,6 +7,7 @@ import type {
   TypeSchema,
 } from './typeSchema'
 import { AGENT_CANVAS_NODE_REGISTRY } from '../registry/agent-canvas-registry'
+import type { AgentRuntimeMode } from '@/features/agent/types/agentRuntimeMode'
 
 export const NODE_TYPES = [
   'chat-agent',
@@ -1144,6 +1145,15 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
       required: ['mode'],
     },
   },
+}
+
+export function getWorkflowAgentInputPorts(
+  runtimeMode: AgentRuntimeMode | null | undefined,
+): PortDefinition[] {
+  const inputPorts = clonePortDefinitions(NODE_TYPE_REGISTRY.agent.inputPorts)
+  return runtimeMode === 'no_sandbox'
+    ? inputPorts.filter((port) => port.id !== 'sandbox-in')
+    : inputPorts
 }
 
 export function getNodeTypeConfig(type: NodeType): NodeTypeConfig {

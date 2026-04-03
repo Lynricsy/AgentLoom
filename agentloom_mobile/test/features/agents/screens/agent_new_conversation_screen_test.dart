@@ -18,6 +18,9 @@ void main() {
 
   setUp(() {
     mockApi = MockAgentApi();
+    when(
+      () => mockApi.getAgent(any()),
+    ).thenAnswer((_) async => createTestAgent(id: 'agent-001'));
   });
 
   GoRouter createRouter() {
@@ -49,12 +52,8 @@ void main() {
 
   Widget createTestWidget() {
     return ProviderScope(
-      overrides: [
-        agentApiProvider.overrideWithValue(mockApi),
-      ],
-      child: MaterialApp.router(
-        routerConfig: createRouter(),
-      ),
+      overrides: [agentApiProvider.overrideWithValue(mockApi)],
+      child: MaterialApp.router(routerConfig: createRouter()),
     );
   }
 
@@ -84,12 +83,7 @@ void main() {
     ).thenAnswer(
       (_) async => const PaginatedResponse<ConversationMessageDto>(
         data: <ConversationMessageDto>[],
-        meta: PaginationMeta(
-          total: 0,
-          page: 1,
-          pageSize: 50,
-          totalPages: 0,
-        ),
+        meta: PaginationMeta(total: 0, page: 1, pageSize: 50, totalPages: 0),
       ),
     );
     when(

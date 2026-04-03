@@ -199,8 +199,9 @@ class _AgentListScreenState extends ConsumerState<AgentListScreen> {
                       ref.read(agentListProvider.notifier).refresh(),
                   child: LayoutBuilder(
                     builder: (context, constraints) {
-                      final crossAxisCount =
-                          _crossAxisCount(constraints.maxWidth);
+                      final crossAxisCount = _crossAxisCount(
+                        constraints.maxWidth,
+                      );
 
                       return NotificationListener<ScrollNotification>(
                         onNotification: (scrollInfo) {
@@ -220,46 +221,49 @@ class _AgentListScreenState extends ConsumerState<AgentListScreen> {
                               sliver: SliverGrid(
                                 gridDelegate:
                                     SliverGridDelegateWithFixedCrossAxisCount(
-                                  crossAxisCount: crossAxisCount,
-                                  mainAxisSpacing: 8,
-                                  crossAxisSpacing: 8,
-                                  childAspectRatio: 0.88,
-                                ),
-                                delegate: SliverChildBuilderDelegate(
-                                  (context, index) {
-                                    final agent = state.agents[index];
+                                      crossAxisCount: crossAxisCount,
+                                      mainAxisSpacing: 8,
+                                      crossAxisSpacing: 8,
+                                      childAspectRatio: 0.88,
+                                    ),
+                                delegate: SliverChildBuilderDelegate((
+                                  context,
+                                  index,
+                                ) {
+                                  final agent = state.agents[index];
 
-                                    return EntityGridCard(
-                                      icon: agent.icon,
-                                      fallbackIcon: Icons.smart_toy_outlined,
-                                      name: agent.name,
-                                      description: agent.description,
-                                      status: agent.status,
-                                      date: _formatDate(agent.updatedAt),
-                                      versionLabel: agent.version != null
-                                          ? 'v${agent.version}'
-                                          : null,
-                                      onTap: () => context.pushNamed(
-                                        RouteNames.agentDetail,
-                                        pathParameters: {
-                                          'agentId': agent.id,
-                                        },
-                                      ),
-                                      onSecondaryAction:
-                                          agent.status == 'published'
-                                              ? () => _startConversation(
-                                                    context,
-                                                    agent.id,
-                                                  )
-                                              : null,
-                                      secondaryActionIcon:
-                                          agent.status == 'published'
-                                              ? Icons.chat_bubble_outline
-                                              : null,
-                                    );
-                                  },
-                                  childCount: state.agents.length,
-                                ),
+                                  return EntityGridCard(
+                                    icon: agent.icon,
+                                    fallbackIcon: Icons.smart_toy_outlined,
+                                    name: agent.name,
+                                    description: [
+                                      agent.runtimeModeLabel,
+                                      if (agent.description != null &&
+                                          agent.description!.trim().isNotEmpty)
+                                        agent.description!.trim(),
+                                    ].join(' · '),
+                                    status: agent.status,
+                                    date: _formatDate(agent.updatedAt),
+                                    versionLabel: agent.version != null
+                                        ? 'v${agent.version}'
+                                        : null,
+                                    onTap: () => context.pushNamed(
+                                      RouteNames.agentDetail,
+                                      pathParameters: {'agentId': agent.id},
+                                    ),
+                                    onSecondaryAction:
+                                        agent.status == 'published'
+                                        ? () => _startConversation(
+                                            context,
+                                            agent.id,
+                                          )
+                                        : null,
+                                    secondaryActionIcon:
+                                        agent.status == 'published'
+                                        ? Icons.chat_bubble_outline
+                                        : null,
+                                  );
+                                }, childCount: state.agents.length),
                               ),
                             ),
                             // 加载更多指示器
@@ -293,10 +297,7 @@ class _AgentListScreenState extends ConsumerState<AgentListScreen> {
       if (!context.mounted) return;
       context.pushNamed(
         RouteNames.agentConversation,
-        pathParameters: {
-          'agentId': agentId,
-          'conversationId': conversation.id,
-        },
+        pathParameters: {'agentId': agentId, 'conversationId': conversation.id},
       );
     } catch (e) {
       if (!context.mounted) return;

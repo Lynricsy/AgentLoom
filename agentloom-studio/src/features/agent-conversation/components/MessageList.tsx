@@ -10,6 +10,7 @@ import {
 import { MarkdownRenderer } from "@/shared/components/markdown/MarkdownRenderer";
 import { ToolCallCard } from "@/shared/components/tool-renderers";
 import type { ToolCallData } from "@/shared/components/tool-renderers";
+import type { AgentRuntimeMode } from "@/features/agent/types";
 import { Button } from "@/shared/ui/button";
 import type {
   ConversationMessage,
@@ -386,12 +387,14 @@ function isCompletionNotice(message: ConversationMessage): boolean {
 export interface MessageListProps {
   messages: ConversationMessage[];
   isExecuting: boolean;
+  runtimeMode: AgentRuntimeMode;
   onRestartConversation: () => Promise<void>;
 }
 
 export function MessageList({
   messages,
   isExecuting,
+  runtimeMode,
   onRestartConversation,
 }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -490,6 +493,7 @@ export function MessageList({
                   phase={preparationPhase}
                   startTime={preparationStartTime}
                   sandboxReused={sandboxReused}
+                  showSandboxPhase={runtimeMode === "sandbox"}
                   error={preparationError}
                   failedPhase={preparationFailedPhase}
                 />

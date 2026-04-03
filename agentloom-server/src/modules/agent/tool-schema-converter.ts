@@ -4,6 +4,7 @@ import {
   type TLiteralValue,
   type TSchema,
 } from '@sinclair/typebox';
+import { asSchema, type FlexibleSchema } from 'ai';
 import { z } from 'zod';
 
 type ZodAny = z.ZodType;
@@ -44,6 +45,12 @@ type ZodDef =
   | ZodArrayDef
   | ZodObjectDef
   | ZodEnumDef;
+
+const DEFAULT_FLEXIBLE_SCHEMA_JSON = {
+  type: 'object',
+  properties: {},
+  additionalProperties: true,
+} satisfies Record<string, unknown>;
 
 export function zodToTypeBox(schema: ZodAny): TSchema {
   const def = schema._def as ZodDef;
@@ -193,4 +200,53 @@ export function typeBoxToZod(schema: TSchema, _skipOptional = false): ZodAny {
     `typeBoxToZod: unsupported TypeBox schema kind. ` +
       `Schema: ${JSON.stringify(schema)}`,
   );
+}
+
+export function flexibleSchemaToTypeBox(
+  schema?: FlexibleSchema<Record<string, unknown>> | null,
+): TSchema {
+  if (!schema) {
+    return Type.Unsafe({ ...DEFAULT_FLEXIBLE_SCHEMA_JSON });
+  }
+
+  const json = asSchema(schema).jsonSchema;
+  return Type.Unsafe(normalizeFlexibleSchemaJson(json));
+}
+
+export function normalizeFlexibleSchemaJson(
+  schema: unknown,
+): Record<string, unknown> {
+  if (!isPlainObject(schema)) {
+    return { ...DEFAULT_FLEXIBLE_SCHEMA_JSON };
+  }
+
+  return normalizeSchemaNode(schema);
+}
+
+function normalizeSchemaNode(
+  node: Record<string, unknown>,
+): Record<string, unknown> {
+  const normalizedEntries = Object.entries(node)
+    .filter(([key]) => key !== '$schema')
+    .map(([key, value]) => [key, normalizeSchemaValue(value)] as const);
+
+  return Object.fromEntries(normalizedEntries);
+}
+
+function normalizeSchemaValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) =>
+      isPlainObject(item) ? normalizeSchemaNode(item) : item,
+    );
+  }
+
+  if (isPlainObject(value)) {
+    return normalizeSchemaNode(value);
+  }
+
+  return value;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

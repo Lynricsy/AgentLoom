@@ -67,6 +67,7 @@ const {
   },
   mockWorkspaceIntegrationService: {
     startFileWatcher: vi.fn(),
+    captureConversationWorkspaceTreeSnapshot: vi.fn(),
   },
   mockAgentDefinitionService: {
     compileCanvas: vi.fn(),
@@ -279,6 +280,7 @@ describe('AgentExecutionWorker', () => {
       id: 'sandbox-session-1',
     });
     mockWorkspaceIntegrationService.startFileWatcher.mockReset();
+    mockWorkspaceIntegrationService.captureConversationWorkspaceTreeSnapshot.mockReset();
     mockMemoryToolsService.createSessionToolProvider.mockReset();
     mockMemoryFusionService.bootAll.mockReset();
     mockMemoryResourceProvider.create.mockReset();
@@ -1805,7 +1807,7 @@ describe('AgentExecutionWorker', () => {
       expect(skillIds).toEqual([]);
     });
 
-    it('缺少 sandboxConfig 时应抛出未连接沙箱错误', async () => {
+    it('无 sandbox 运行时缺少 sandboxConfig 也应直接走 in-process runtime', async () => {
       const runtimeSessionWorker = worker as unknown as {
         prepareRuntimeSession: (
           context: Record<string, unknown>,
@@ -1819,26 +1821,30 @@ describe('AgentExecutionWorker', () => {
           session: ReturnType<typeof makeSession>;
         }>;
       };
+      mockAdapterFactory.selectAdapter.mockImplementation((hasSandbox) =>
+        hasSandbox ? mockSandboxRuntime : mockRuntime,
+      );
 
-      await expect(
-        runtimeSessionWorker.prepareRuntimeSession(
-          makeActiveContext({
-            hasSandbox: false,
-            runtimeConfig: {
-              modelConfig: { modelId: 'model-1' },
-            },
-          }),
-          'conversation-1',
-          'tenant-1',
-          new AbortController().signal,
-          { abortControllers: new Map() },
-          'agent-1',
-        ),
-      ).rejects.toThrow(AgentSandboxNotConnectedException);
+      const runtimeSession = await runtimeSessionWorker.prepareRuntimeSession(
+        makeActiveContext({
+          hasSandbox: false,
+          runtimeConfig: {
+            runtimeMode: 'no_sandbox',
+            modelConfig: { modelId: 'model-1' },
+          },
+        }),
+        'conversation-1',
+        'tenant-1',
+        new AbortController().signal,
+        { abortControllers: new Map() },
+        'agent-1',
+      );
 
-      expect(mockAdapterFactory.selectAdapter).not.toHaveBeenCalled();
+      expect(mockAdapterFactory.selectAdapter).toHaveBeenCalledWith(false);
       expect(mockSandboxService.createSandboxSession).not.toHaveBeenCalled();
       expect(mockSandboxRuntime.createSession).not.toHaveBeenCalled();
+      expect(mockRuntime.createSession).toHaveBeenCalledTimes(1);
+      expect(runtimeSession.runtime).toBe(mockRuntime);
     });
   });
 
@@ -2333,6 +2339,78 @@ describe('AgentExecutionWorker', () => {
       'conversation-1',
       expect.objectContaining({ status: 'completed' }),
     );
+  });
+
+  it('有沙箱对话在每轮落库后应刷新工作区目录树快照', async () => {
+    mockExecutionService.registerActiveRun.mockImplementation(
+      (_conversationId: string, abort: AbortController) => ({
+        abort,
+        notify: vi.fn(),
+      }),
+    );
+    mockExecutionService.waitForNotification.mockResolvedValue('timeout');
+
+    workerInternals.loadConversationExecutionContext = vi
+      .fn()
+      .mockResolvedValue({
+        conversation: {
+          id: 'conversation-1',
+          agentDefinitionId: 'agent-1',
+          tenantId: 'tenant-1',
+          status: 'active',
+          metadata: {},
+        },
+        runtimeConfig: {},
+        systemPrompt: 'system',
+        hasSandbox: true,
+        executionMetadata: {},
+      });
+    workerInternals.prepareRuntimeSession = vi.fn().mockResolvedValue({
+      runtime: mockSandboxRuntime,
+      session: {
+        id: 'session-1',
+        agentId: 'agent-1',
+        mode: 'conversation',
+        context: { history: [] },
+        status: 'active',
+        tenantId: 'tenant-1',
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      },
+    });
+    workerInternals.loadPendingUserMessages = vi
+      .fn()
+      .mockResolvedValueOnce([
+        { id: 'message-1', content: '读取工作区文件', createdAt: new Date() },
+      ])
+      .mockResolvedValueOnce([]);
+    workerInternals.updateExecutionMetadata = vi.fn().mockResolvedValue({
+      sessionId: 'session-1',
+      runningState: 'running',
+    });
+    workerInternals.persistConversationTurn = vi.fn().mockResolvedValue({
+      sessionId: 'session-1',
+      lastProcessedMessageId: 'message-1',
+      lastStopReason: 'end_turn',
+      runningState: 'running',
+    });
+    workerInternals.safeUpdateExecutionMetadata = vi.fn().mockResolvedValue({
+      sessionId: 'session-1',
+      runningState: 'idle',
+    });
+
+    mockSandboxRuntime.prompt.mockReturnValueOnce(
+      createAsyncIterable([
+        { type: 'message_chunk', content: '处理完成' },
+        { type: 'done', stopReason: 'end_turn' },
+      ]),
+    );
+
+    await worker.executeAgentLoop('conversation-1', 'tenant-1');
+
+    expect(
+      mockWorkspaceIntegrationService.captureConversationWorkspaceTreeSnapshot,
+    ).toHaveBeenCalledWith('conversation-1', 'tenant-1');
   });
 
   it('检测到新增消息后会继续下一轮 prompt', async () => {

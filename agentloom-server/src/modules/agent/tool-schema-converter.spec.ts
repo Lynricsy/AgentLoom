@@ -1,7 +1,13 @@
+import { jsonSchema } from 'ai';
 import { Type, TypeGuard } from '@sinclair/typebox';
 import { z } from 'zod';
 import { describe, expect, it } from 'vitest';
-import { typeBoxToZod, zodToTypeBox } from './tool-schema-converter';
+import {
+  flexibleSchemaToTypeBox,
+  normalizeFlexibleSchemaJson,
+  typeBoxToZod,
+  zodToTypeBox,
+} from './tool-schema-converter';
 
 describe('zodToTypeBox', () => {
   it('converts z.string() to Type.String()', () => {
@@ -255,5 +261,70 @@ describe('round-trip', () => {
     const original = z.string().nullable();
     const roundTripped = typeBoxToZod(zodToTypeBox(original));
     expect(roundTripped._def.type).toBe('nullable');
+  });
+});
+
+describe('flexibleSchemaToTypeBox', () => {
+  it('accepts AI jsonSchema wrappers without touching zod internals', () => {
+    const result = flexibleSchemaToTypeBox(
+      jsonSchema({
+        type: 'object',
+        properties: {
+          query: { type: 'string' },
+        },
+        required: ['query'],
+      }),
+    ) as ReturnType<typeof Type.Object>;
+
+    expect(result.type).toBe('object');
+    expect(result.properties.query).toEqual({ type: 'string' });
+    expect(result.required).toEqual(['query']);
+  });
+
+  it('removes draft $schema recursively from flexible schemas', () => {
+    const result = flexibleSchemaToTypeBox(
+      jsonSchema({
+        $schema: 'https://json-schema.org/draft/2020-12/schema',
+        type: 'object',
+        properties: {
+          nested: {
+            type: 'object',
+            $schema: 'https://json-schema.org/draft/2020-12/schema',
+            properties: {
+              query: { type: 'string' },
+            },
+          },
+        },
+      }),
+    ) as ReturnType<typeof Type.Object>;
+
+    expect(result).not.toHaveProperty('$schema');
+    expect(
+      (
+        result.properties.nested as ReturnType<typeof Type.Object> & {
+          $schema?: string;
+        }
+      ).$schema,
+    ).toBeUndefined();
+  });
+
+  it('falls back to a permissive object schema for invalid inputs', () => {
+    const result = flexibleSchemaToTypeBox(null);
+
+    expect(result).toMatchObject({
+      type: 'object',
+      properties: {},
+      additionalProperties: true,
+    });
+  });
+});
+
+describe('normalizeFlexibleSchemaJson', () => {
+  it('returns a permissive object schema for non-object inputs', () => {
+    expect(normalizeFlexibleSchemaJson('bad')).toEqual({
+      type: 'object',
+      properties: {},
+      additionalProperties: true,
+    });
   });
 });

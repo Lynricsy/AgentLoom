@@ -473,6 +473,28 @@ describe('NodeSchedulerService', () => {
       });
     });
 
+    it('trigger 命名输出端口应读取 payload 中的同名字段', () => {
+      const edges = [
+        makeEdge('node-trigger', 'node-agent', 'text-in', 'text-in'),
+      ];
+      const steps = [
+        makeStep({
+          nodeId: 'node-trigger',
+          nodeType: 'manual-trigger',
+          status: 'completed',
+          result: {
+            payload: {
+              'text-in': 'WORKFLOW_TRIGGER_FIELD_OK_20260403',
+            },
+          },
+        }),
+      ];
+
+      expect(service.resolveNodeInput('node-agent', edges, steps)).toEqual({
+        'text-in': 'WORKFLOW_TRIGGER_FIELD_OK_20260403',
+      });
+    });
+
     it('condition 分支输出应为下游解包单一 input payload', () => {
       const edges = [
         makeEdge(
@@ -2027,6 +2049,7 @@ describe('NodeSchedulerService', () => {
         step: steps[1],
         input: { S: { sessionId: 'sandbox-session-001', status: 'ready' } },
         tenantId: TENANT_ID,
+        parentUsesSandboxRuntime: true,
         sandboxBinding: {
           executionId: EXECUTION_ID,
           sandboxNodeId: 'S',

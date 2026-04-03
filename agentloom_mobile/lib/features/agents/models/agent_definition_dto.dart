@@ -20,9 +20,7 @@ List<Map<String, dynamic>> _mapListFromJson(Object? value) {
 
   return value
       .whereType<Map<Object?, Object?>>()
-      .map(
-        (item) => item.map((key, entry) => MapEntry('$key', entry)),
-      )
+      .map((item) => item.map((key, entry) => MapEntry('$key', entry)))
       .toList(growable: false);
 }
 
@@ -45,6 +43,7 @@ abstract class AgentDefinitionDto with _$AgentDefinitionDto {
     String? description,
     String? icon,
     required String status,
+    @Default('sandbox') String runtimeMode,
     int? version,
     String? publishedVersionId,
     String? tenantId,
@@ -59,13 +58,11 @@ abstract class AgentDefinitionDto with _$AgentDefinitionDto {
     @JsonKey(fromJson: _mapListFromJson)
     @Default(<Map<String, dynamic>>[])
     List<Map<String, dynamic>> edges,
-    @JsonKey(fromJson: _nullableMapFromJson)
-    Map<String, dynamic>? viewport,
+    @JsonKey(fromJson: _nullableMapFromJson) Map<String, dynamic>? viewport,
     @JsonKey(fromJson: _nullableMapFromJson)
     Map<String, dynamic>? sandboxConfig,
     String? workspaceSnapshotId,
-    @JsonKey(fromJson: _nullableMapFromJson)
-    Map<String, dynamic>? inputSchema,
+    @JsonKey(fromJson: _nullableMapFromJson) Map<String, dynamic>? inputSchema,
     @JsonKey(fromJson: _nullableStringListFromJson)
     List<String>? memoryInstanceIds,
     String? sandboxLifecycle,
@@ -78,6 +75,14 @@ abstract class AgentDefinitionDto with _$AgentDefinitionDto {
 
   factory AgentDefinitionDto.fromJson(Map<String, dynamic> json) =>
       _$AgentDefinitionDtoFromJson(json);
+
+  const AgentDefinitionDto._();
+
+  bool get isNoSandboxRuntime => runtimeMode == 'no_sandbox';
+
+  bool get hasSandboxRuntime => !isNoSandboxRuntime;
+
+  String get runtimeModeLabel => isNoSandboxRuntime ? '无沙箱' : '有沙箱';
 }
 
 /// Agent 列表分页状态

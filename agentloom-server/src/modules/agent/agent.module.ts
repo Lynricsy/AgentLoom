@@ -14,6 +14,7 @@ import {
 } from './agent-adapter.factory';
 import { AgentRuntimeController } from './agent-runtime.controller';
 import { AutonomyResolverService } from './autonomy-resolver.service';
+import { AgentToolPermissionSyncService } from './agent-tool-permission-sync.service';
 import { CodeExecutionService } from './code-execution.service';
 import { InProcessAgentAdapter } from './in-process-agent.adapter';
 import { OutputFormatService } from './output-format.service';
@@ -35,6 +36,7 @@ import { SessionPersistenceService } from '../execution/services/session-persist
   controllers: [AgentRuntimeController],
   providers: [
     AutonomyResolverService,
+    AgentToolPermissionSyncService,
     CodeExecutionService,
     OutputFormatService,
     AgentSessionFactory,

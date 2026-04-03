@@ -3714,6 +3714,20 @@ export class NodeSchedulerService {
     );
   }
 
+  private getWorkflowAgentRuntimeMode(
+    nodeData: Record<string, unknown>,
+  ): 'sandbox' | 'no_sandbox' {
+    const runtimeNodeData = this.getRuntimeNodeData(nodeData);
+    const runtimeMode = this.readFirstString(
+      runtimeNodeData.agentRuntimeMode,
+      runtimeNodeData.agent_runtime_mode,
+      runtimeNodeData.runtimeMode,
+      runtimeNodeData.runtime_mode,
+    );
+
+    return runtimeMode === 'no_sandbox' ? 'no_sandbox' : 'sandbox';
+  }
+
   private async executeWorkflowAgentNode(
     step: ExecutionStep,
     input: Record<string, unknown>,
@@ -3738,8 +3752,13 @@ export class NodeSchedulerService {
         edges,
         steps,
       );
+      const workflowAgentRuntimeMode =
+        this.getWorkflowAgentRuntimeMode(nodeData);
+      const usesSandboxRuntime = workflowAgentRuntimeMode === 'sandbox';
       const workflowSandboxNodeId =
-        workflowSandboxBinding?.sandboxNodeId ?? step.nodeId;
+        usesSandboxRuntime
+          ? (workflowSandboxBinding?.sandboxNodeId ?? step.nodeId)
+          : undefined;
       const runningCheckpointData = this.buildWorkflowAgentCheckpointData(
         step.checkpointData,
         executionId,
@@ -3755,18 +3774,18 @@ export class NodeSchedulerService {
         },
       );
       step.checkpointData = runningCheckpointData;
-      await this.workspaceIntegrationService.startExecutionStepFileWatcher({
-        executionId,
-        stepId: step.id,
-        tenantId,
-        sandboxNodeId: workflowSandboxNodeId,
-      });
+      if (workflowSandboxNodeId) {
+        await this.workspaceIntegrationService.startExecutionStepFileWatcher({
+          executionId,
+          stepId: step.id,
+          tenantId,
+          sandboxNodeId: workflowSandboxNodeId,
+        });
+      }
 
-      const workflowSandboxConfig = this.getWorkflowSandboxOverride(
-        step.nodeId,
-        edges,
-        steps,
-      );
+      const workflowSandboxConfig = workflowSandboxNodeId
+        ? this.getWorkflowSandboxOverride(step.nodeId, edges, steps)
+        : undefined;
       const adapter =
         this.workflowAgentAdapterFactory.createFromAgentDefinition(
           agentDefinitionId,
@@ -3781,19 +3800,23 @@ export class NodeSchedulerService {
         ...(workflowSandboxBinding
           ? { sandboxBinding: workflowSandboxBinding }
           : {}),
+        ...(usesSandboxRuntime
+          ? { parentUsesSandboxRuntime: true }
+          : { parentUsesSandboxRuntime: false }),
         ...(typeof nodeData.agentVersionId === 'string'
           ? { agentVersionId: nodeData.agentVersionId }
           : typeof nodeData.agent_version_id === 'string'
             ? { agentVersionId: nodeData.agent_version_id }
             : {}),
       });
-      const workspaceSnapshotId =
-        await this.workspaceIntegrationService.archiveExecutionStepWorkspace(
-          executionId,
-          step.id,
-          tenantId,
-          workflowSandboxNodeId,
-        );
+      const workspaceSnapshotId = workflowSandboxNodeId
+        ? await this.workspaceIntegrationService.archiveExecutionStepWorkspace(
+            executionId,
+            step.id,
+            tenantId,
+            workflowSandboxNodeId,
+          )
+        : null;
 
       await this.stepStateMachine.updateStepStatus(
         tenantId,
@@ -3875,20 +3898,27 @@ export class NodeSchedulerService {
   private buildWorkflowAgentCheckpointData(
     checkpointData: ExecutionStep['checkpointData'],
     executionId: string,
-    sandboxNodeId: string,
+    sandboxNodeId?: string,
     workspaceSnapshotId?: string,
   ): Record<string, unknown> {
-    const existingCheckpoint = this.isRecord(checkpointData)
-      ? checkpointData
-      : {};
+    const rawCheckpoint = this.isRecord(checkpointData) ? checkpointData : {};
+    const {
+      sandboxNodeId: _sandboxNodeId,
+      serverSandbox: _serverSandbox,
+      ...existingCheckpoint
+    } = rawCheckpoint;
 
     return {
       ...existingCheckpoint,
-      sandboxNodeId,
-      serverSandbox: {
-        executionId,
-        sandboxNodeId,
-      },
+      ...(sandboxNodeId ? { sandboxNodeId } : {}),
+      ...(sandboxNodeId
+        ? {
+            serverSandbox: {
+              executionId,
+              sandboxNodeId,
+            },
+          }
+        : {}),
       ...(workspaceSnapshotId ? { workspaceSnapshotId } : {}),
     };
   }
@@ -5337,6 +5367,9 @@ export class NodeSchedulerService {
         }
         if (sourceHandle === 'exec-out' || sourceHandle === 'exec_out') {
           return sourceStep.result['exec-out'] ?? sourceStep.result.exec_out;
+        }
+        if (this.isRecord(sourceStep.result.payload)) {
+          return sourceStep.result.payload[sourceHandle];
         }
         return undefined;
       case 'llm-model':

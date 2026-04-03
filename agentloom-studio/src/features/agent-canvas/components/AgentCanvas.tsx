@@ -20,6 +20,7 @@ import {
   useAgentCanvasNodes,
   useAgentCanvasEdges,
   useAgentCanvasActions,
+  useAgentCanvasRuntimeMode,
   type AgentCanvasEdge,
 } from '../stores/agent-canvas.store';
 import { useAgentCanvasDrop } from '../hooks/useAgentCanvasDrop';
@@ -54,6 +55,7 @@ export const AgentCanvas = memo(function AgentCanvas({
 }: AgentCanvasProps) {
   const nodes = useAgentCanvasNodes();
   const edges = useAgentCanvasEdges();
+  const runtimeMode = useAgentCanvasRuntimeMode();
   const {
     onNodesChange,
     onEdgesChange,
@@ -159,7 +161,10 @@ export const AgentCanvas = memo(function AgentCanvas({
         <Controls showInteractive={false} />
       </ReactFlow>
 
-      <AgentNodePalette className="absolute top-3 left-3 z-10" />
+      <AgentNodePalette
+        className="absolute top-3 left-3 z-10"
+        runtimeMode={runtimeMode}
+      />
       <AgentNodeConfigPanel />
     </div>
   );

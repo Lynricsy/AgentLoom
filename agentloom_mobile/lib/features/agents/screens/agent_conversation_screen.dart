@@ -83,10 +83,13 @@ class _AgentConversationScreenState
 
     final conversationAsync = ref.watch(agentConversationProvider(_params));
     final theme = Theme.of(context);
+    final runtimeModeLabel = conversationAsync.value?.isNoSandboxRuntime == true
+        ? '无沙箱'
+        : '有沙箱';
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Agent 对话'),
+        title: Text('Agent 对话 · $runtimeModeLabel'),
         actions: [
           if (conversationAsync.value case final state?)
             ..._buildActions(context, ref, state),
@@ -114,11 +117,7 @@ class _AgentConversationScreenState
                         .cancelConversation(),
                   );
                 },
-                onResolvePermission: (
-                  toolCallId,
-                  action, {
-                  rememberScope,
-                }) {
+                onResolvePermission: (toolCallId, action, {rememberScope}) {
                   return ref
                       .read(agentConversationProvider(_params).notifier)
                       .resolveToolPermission(
@@ -199,25 +198,26 @@ class _AgentConversationScreenState
         onPressed: () => _openContextSheet(context),
         icon: const Icon(Icons.dock_outlined),
       ),
-      IconButton(
-        tooltip: '刷新工作区',
-        onPressed: state.isLoadingWorkspace
-            ? null
-            : () {
-                unawaited(
-                  ref
-                      .read(agentConversationProvider(_params).notifier)
-                      .refreshWorkspaceTree(),
-                );
-              },
-        icon: state.isLoadingWorkspace
-            ? const SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            : const Icon(Icons.refresh),
-      ),
+      if (state.hasSandboxRuntime)
+        IconButton(
+          tooltip: '刷新工作区',
+          onPressed: state.isLoadingWorkspace
+              ? null
+              : () {
+                  unawaited(
+                    ref
+                        .read(agentConversationProvider(_params).notifier)
+                        .refreshWorkspaceTree(),
+                  );
+                },
+          icon: state.isLoadingWorkspace
+              ? const SizedBox(
+                  width: 18,
+                  height: 18,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.refresh),
+        ),
       if (state.isBusy)
         IconButton(
           tooltip: '停止',
@@ -289,7 +289,9 @@ class _AgentConversationScreenState
       }
 
       final state = ref.read(agentConversationProvider(_params)).value;
-      if (state == null || state.isLoadingWorkspace) {
+      if (state == null ||
+          !state.hasSandboxRuntime ||
+          state.isLoadingWorkspace) {
         return;
       }
 
@@ -382,6 +384,7 @@ class _MessageListView extends StatelessWidget {
             state.preparationFailedPhase == null;
         return PreparationCard(
           phase: state.preparationPhase,
+          showSandboxPhase: state.hasSandboxRuntime,
           sandboxReused: state.sandboxReused,
           failedPhase: state.preparationFailedPhase,
           error: state.preparationError,

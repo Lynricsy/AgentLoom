@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../../stores/agent-canvas.store', () => ({
   useAgentCanvasSelectedNodeId: () => mocks.selectedNodeId,
   useAgentCanvasNodes: () => mocks.nodes,
+  useAgentCanvasRuntimeMode: () => 'sandbox',
   useAgentCanvasActions: () => ({
     updateNodeData: mocks.updateNodeData,
     deleteSelectedNode: mocks.deleteSelectedNode,

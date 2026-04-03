@@ -176,7 +176,7 @@ export function resolvePiProviderApiKeyEnv(
   );
 }
 
-function resolvePiProviderCompat(
+export function resolvePiProviderCompat(
   modelConfig: PiModelConfig,
   api: string,
 ): Record<string, unknown> | undefined {

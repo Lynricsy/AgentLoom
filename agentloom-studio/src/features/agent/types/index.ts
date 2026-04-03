@@ -16,4 +16,7 @@ export type {
   AgentSelfEvolutionPolicy,
 } from './agent.types'
 
+export type { AgentRuntimeMode } from './agentRuntimeMode'
+export { AGENT_RUNTIME_MODES, isNoSandboxRuntimeMode } from './agentRuntimeMode'
+
 export type { AgentNodeData, AgentCanvasNodeData } from './agent-node.types'

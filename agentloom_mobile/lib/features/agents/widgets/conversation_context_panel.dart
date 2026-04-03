@@ -18,6 +18,22 @@ class ConversationContextPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (!state.hasSandboxRuntime) {
+      return DecoratedBox(
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceContainerLowest,
+          border: compact
+              ? null
+              : Border(
+                  left: BorderSide(
+                    color: Theme.of(context).colorScheme.outlineVariant,
+                  ),
+                ),
+        ),
+        child: const _NoSandboxContextState(),
+      );
+    }
+
     return DecoratedBox(
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surfaceContainerLowest,
@@ -81,6 +97,20 @@ class ConversationContextPanel extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _NoSandboxContextState extends StatelessWidget {
+  const _NoSandboxContextState();
+
+  @override
+  Widget build(BuildContext context) {
+    return const _EmptyPanelState(
+      icon: Icons.cloud_off_outlined,
+      title: '无沙箱运行',
+      description:
+          '这个 Agent 以无沙箱形态运行，因此没有终端、工作区和文件变更面板。Skill、知识库、记忆、HTTP MCP 与自进化结果仍会在消息流中展示。',
     );
   }
 }

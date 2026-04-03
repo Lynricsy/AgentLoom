@@ -72,6 +72,14 @@ TenantMiddleware (extract tenantId from JWT no-verify; skip when X-Api-Key prese
 | health | `modules/health/` | 健康检查 (public) | — |
 | agent-memory | `modules/agent-memory/` | 图拓扑 Agent 记忆系统：`MemoryNodeService` / `MemoryEdgeService`（循环检测）/ `MemoryVersionService`（create/patch/append + 版本回滚）/ `PathResolverService`（URI 域寻址 `domain://path/segments`）/ `GlossaryService`（Aho-Corasick 词汇表自动标注）/ `BootProtocolService`（`system://boot\|index\|glossary` 启动协议）/ `MemorySearchService`（纯 PostgreSQL FTS，无 Qdrant）/ `MemoryFusionService`（多实例融合）/ `MemoryToolsService`（7 个 Agent 工具）；25 个 REST 端点（`/memory-instances`）；Socket.IO `/memory` namespace；`MemoryResourceProvider` 注册于 `SharedResourceRegistry`；`memory_sessions` 双 FK 对齐 `sandbox_sessions` 设计 | SharedResourcesModule, EvidenceModule |
 
+### No Sandbox Agent 补充事实
+
+- Agent 创建时显式持久化 `runtimeMode = sandbox | no_sandbox`，创建后固定；顶层 standalone Agent 对话与 workflow `agent` 节点中的 `no_sandbox` Agent 走 `InProcessAgentAdapter -> PiAgentCoreAdapter -> pi-agent-core`，而 `sandbox` Agent 继续走容器化 `SandboxAgentAdapter`。
+- `no_sandbox` Agent 仍支持 Skill、知识库、Memory、HTTP MCP 与自进化，但不暴露内置 coding tools，也不会生成 sandbox workspace / terminal / file-change 侧栏上下文。
+- `no_sandbox` Agent 只允许 HTTP MCP；stdio MCP 在 `createVersion()/publish()/applyCanvasSnapshot()` 的发布校验层与 runtime MCP 调用层都会被 fail-closed。
+- workflow `agent` 节点会跟随目标 Agent 的 `runtimeMode` 动态切换输入端口：`sandbox` 保留 `sandbox-in`，`no_sandbox` 则移除该端口。
+- 当 `sandbox` Agent 调用 `no_sandbox` 子 Agent 时，child 不会起独立 in-process runtime，而是并入父 sandbox runtime 配置，并收敛为只开放内置 `read` 的只读 sub-agent profile。
+
 ### ACP terminal 补充事实
 
 - `AcpTerminalProxyService` 在 spawn 前会同时做命令 basename 归一化 denylist 校验、危险 shell/pattern 拒绝、`cwd` `/workspace` 边界校验，以及赋值式 flag 路径参数（如 `--directory=../../..`）的 fail-closed 检查；拒绝路径统一写 `acp.terminal.server_sandbox.rejected` 正式审计。

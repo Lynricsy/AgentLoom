@@ -259,8 +259,7 @@ abstract class ConversationToolPermissionRequestDto
     String? targetLabel,
     String? approveEffect,
     String? denyEffect,
-    @JsonKey(fromJson: _nullableMapFromJson)
-    Map<String, dynamic>? diffPreview,
+    @JsonKey(fromJson: _nullableMapFromJson) Map<String, dynamic>? diffPreview,
     bool? rememberable,
   }) = _ConversationToolPermissionRequestDto;
 
@@ -450,6 +449,7 @@ class ConversationState {
   const ConversationState({
     this.messages = const <ConversationMessageDto>[],
     this.status = ConversationStatus.idle,
+    this.runtimeMode = 'sandbox',
     this.isConnected = false,
     this.terminalEntries = const <TerminalEntry>[],
     this.fileTree = const <WorkspaceFileNode>[],
@@ -470,6 +470,7 @@ class ConversationState {
 
   final List<ConversationMessageDto> messages;
   final ConversationStatus status;
+  final String runtimeMode;
   final bool isConnected;
   final List<TerminalEntry> terminalEntries;
   final List<WorkspaceFileNode> fileTree;
@@ -501,6 +502,10 @@ class ConversationState {
       status == ConversationStatus.connecting ||
       status == ConversationStatus.executing;
 
+  bool get isNoSandboxRuntime => runtimeMode == 'no_sandbox';
+
+  bool get hasSandboxRuntime => !isNoSandboxRuntime;
+
   ConversationToolCallDto? get latestToolCall {
     for (final message in messages.reversed) {
       if (message.toolCalls.isNotEmpty) {
@@ -527,6 +532,7 @@ class ConversationState {
   ConversationState copyWith({
     List<ConversationMessageDto>? messages,
     ConversationStatus? status,
+    String? runtimeMode,
     bool? isConnected,
     List<TerminalEntry>? terminalEntries,
     List<WorkspaceFileNode>? fileTree,
@@ -555,6 +561,7 @@ class ConversationState {
     return ConversationState(
       messages: messages ?? this.messages,
       status: status ?? this.status,
+      runtimeMode: runtimeMode ?? this.runtimeMode,
       isConnected: isConnected ?? this.isConnected,
       terminalEntries: terminalEntries ?? this.terminalEntries,
       fileTree: fileTree ?? this.fileTree,

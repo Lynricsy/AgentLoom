@@ -36,6 +36,7 @@ class PreparationCard extends StatefulWidget {
   const PreparationCard({
     super.key,
     required this.phase,
+    required this.showSandboxPhase,
     this.sandboxReused = false,
     this.failedPhase,
     this.error,
@@ -45,6 +46,9 @@ class PreparationCard extends StatefulWidget {
 
   /// 当前准备阶段（null 时不应渲染此组件）
   final PreparationPhase? phase;
+
+  /// 当前运行态是否应展示沙箱创建步骤
+  final bool showSandboxPhase;
 
   /// 是否复用了已有沙箱
   final bool sandboxReused;
@@ -133,6 +137,7 @@ class _PreparationCardState extends State<PreparationCard>
                 : _ExpandedStepper(
                     key: const ValueKey('expanded'),
                     phase: widget.phase,
+                    showSandboxPhase: widget.showSandboxPhase,
                     sandboxReused: widget.sandboxReused,
                     failedPhase: widget.failedPhase,
                     error: widget.error,
@@ -194,12 +199,14 @@ class _ExpandedStepper extends StatelessWidget {
   const _ExpandedStepper({
     super.key,
     required this.phase,
+    required this.showSandboxPhase,
     required this.sandboxReused,
     this.failedPhase,
     this.error,
   });
 
   final PreparationPhase? phase;
+  final bool showSandboxPhase;
   final bool sandboxReused;
   final PreparationPhase? failedPhase;
   final String? error;
@@ -209,11 +216,15 @@ class _ExpandedStepper extends StatelessWidget {
     final theme = Theme.of(context);
 
     // 根据是否复用沙箱过滤步骤
-    final steps = sandboxReused
-        ? _kAllSteps
-              .where((s) => s.phase != PreparationPhase.sandboxCreating)
-              .toList(growable: false)
-        : _kAllSteps;
+    final steps = _kAllSteps
+        .where(
+          (s) =>
+              (showSandboxPhase ||
+                  s.phase != PreparationPhase.sandboxCreating) &&
+              (!sandboxReused ||
+                  s.phase != PreparationPhase.sandboxCreating),
+        )
+        .toList(growable: false);
 
     final currentIndex = phase != null ? _phaseIndex(phase!, steps) : -1;
     final failedIndex =

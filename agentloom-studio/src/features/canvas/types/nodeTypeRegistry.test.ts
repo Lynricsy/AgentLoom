@@ -4,6 +4,7 @@ import { PORT_DATA_TYPES } from './typeSchema'
 import {
   clonePortDefinitions,
   DYNAMIC_ONLY_NODE_TYPES,
+  getWorkflowAgentInputPorts,
   getAllNodeTypes,
   getNodeTypeConfig,
   getNodeTypeConfigOrNull,
@@ -175,6 +176,15 @@ describe('nodeTypeRegistry', () => {
       'model-out',
     ])
     expect(smartRoutingNode.configSchema.properties.strategy?.default).toBe('random')
+  })
+
+  it('workflow agent 输入端口会跟随 agent runtimeMode 移除 sandbox 句柄', () => {
+    expect(getWorkflowAgentInputPorts('sandbox').map((port) => port.id)).toContain(
+      'sandbox-in',
+    )
+    expect(
+      getWorkflowAgentInputPorts('no_sandbox').map((port) => port.id),
+    ).not.toContain('sandbox-in')
   })
 
   it('exposes every registry entry through ordered helpers and palette groups', () => {

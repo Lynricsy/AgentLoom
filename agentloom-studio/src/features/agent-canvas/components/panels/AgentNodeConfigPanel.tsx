@@ -7,6 +7,7 @@ import {
   useAgentCanvasSelectedNodeId,
   useAgentCanvasNodes,
   useAgentCanvasActions,
+  useAgentCanvasRuntimeMode,
 } from '../../stores/agent-canvas.store';
 
 interface AgentNodeConfigPanelProps {
@@ -18,6 +19,7 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
 }: AgentNodeConfigPanelProps) {
   const selectedNodeId = useAgentCanvasSelectedNodeId();
   const nodes = useAgentCanvasNodes();
+  const runtimeMode = useAgentCanvasRuntimeMode();
   const { updateNodeData, deleteSelectedNode } = useAgentCanvasActions();
 
   const handlePatchNode = useCallback(
@@ -79,6 +81,7 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
         ) : (
           <AgentOnlyNodeConfig
             nodeData={nodeData}
+            runtimeMode={runtimeMode}
             onConfigChange={(config) => updateNodeData(selectedNode.id, { config })}
           />
         )}
@@ -92,9 +95,11 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
  */
 const AgentOnlyNodeConfig = memo(function AgentOnlyNodeConfig({
   nodeData,
+  runtimeMode,
   onConfigChange,
 }: {
   nodeData: CanvasNodeData;
+  runtimeMode: 'sandbox' | 'no_sandbox';
   onConfigChange: (config: Record<string, unknown>) => void;
 }) {
   switch (nodeData.nodeType as string) {
@@ -102,6 +107,7 @@ const AgentOnlyNodeConfig = memo(function AgentOnlyNodeConfig({
       return (
         <AgentMainConfigPanel
           config={nodeData.config}
+          runtimeMode={runtimeMode}
           onApply={onConfigChange}
         />
       );

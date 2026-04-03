@@ -5,6 +5,7 @@ import type {
   ReactFlowViewport,
 } from '../../../database/schema/workflow-definitions.schema';
 import type { SandboxConfig } from '../../../database/schema/sandbox-sessions.schema';
+import type { AgentRuntimeMode } from '../../../database/schema/agent-definitions.schema';
 import { deriveAgentSandboxConfigFromCanvas } from '../agent-sandbox-config.utils';
 
 export interface AgentDefinitionResponseDto {
@@ -14,6 +15,7 @@ export interface AgentDefinitionResponseDto {
   slug: string;
   description: string | null;
   icon: string | null;
+  runtimeMode: AgentRuntimeMode;
   status: 'draft' | 'published' | 'archived';
   version: number;
   publishedVersionId: string | null;
@@ -42,6 +44,7 @@ type ListField =
   | 'slug'
   | 'description'
   | 'icon'
+  | 'runtimeMode'
   | 'status'
   | 'version'
   | 'publishedVersionId'
@@ -117,6 +120,7 @@ export function serializeAgentDefinition(
     slug: row.slug,
     description: row.description ?? null,
     icon: row.icon ?? null,
+    runtimeMode: row.runtimeMode,
     status: row.status,
     version: row.version,
     publishedVersionId: row.publishedVersionId ?? null,
@@ -130,11 +134,14 @@ export function serializeAgentDefinition(
 export function serializeAgentDefinitionDetail(
   row: DetailRow,
 ): AgentDefinitionDetailResponseDto {
-  const sandboxConfig = deriveAgentSandboxConfigFromCanvas(
-    row.nodes,
-    row.edges,
-    row.sandboxConfig ?? null,
-  );
+  const sandboxConfig =
+    row.runtimeMode === 'sandbox'
+      ? deriveAgentSandboxConfigFromCanvas(
+          row.nodes,
+          row.edges,
+          row.sandboxConfig ?? null,
+        )
+      : null;
   const metadata = readDetailMetadata(row.metadata, sandboxConfig);
 
   return {

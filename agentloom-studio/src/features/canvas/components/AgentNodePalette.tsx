@@ -8,9 +8,11 @@ import {
   type AgentNodeTypeConfig,
 } from '../registry/agent-canvas-registry'
 import type { NodeCategory } from '../types'
+import type { AgentRuntimeMode } from '@/features/agent/types/agentRuntimeMode'
 
 /** 自动创建的节点类型 — 新画布初始化时自动放置，不可从面板拖入 */
 const AUTO_CREATED_NODE_TYPES = new Set<string>(['agent-main', 'sandbox'])
+const NO_SANDBOX_NODE_TYPES = new Set<AgentCanvasNodeType>(['sandbox', 'workspace'])
 
 interface AgentPaletteNodeItem {
   type: AgentCanvasNodeType
@@ -99,10 +101,12 @@ function getGroupKey(group: Pick<AgentPaletteGroup, 'label'>): string {
 
 interface AgentNodePaletteProps {
   className?: string
+  runtimeMode?: AgentRuntimeMode
 }
 
 export const AgentNodePalette = memo(function AgentNodePalette({
   className,
+  runtimeMode = 'sandbox',
 }: AgentNodePaletteProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
@@ -129,9 +133,16 @@ export const AgentNodePalette = memo(function AgentNodePalette({
   }, [])
 
   const filteredGroups = useMemo(() => {
-    if (!searchQuery.trim()) return AGENT_PALETTE_GROUPS
+    const visibleGroups = AGENT_PALETTE_GROUPS.map((group) => ({
+      ...group,
+      items: group.items.filter((item) =>
+        runtimeMode === 'sandbox' ? true : !NO_SANDBOX_NODE_TYPES.has(item.type),
+      ),
+    })).filter((group) => group.items.length > 0)
+
+    if (!searchQuery.trim()) return visibleGroups
     const normalizedQuery = searchQuery.toLowerCase()
-    return AGENT_PALETTE_GROUPS.map((group) => ({
+    return visibleGroups.map((group) => ({
       ...group,
       items: group.items.filter((item) => {
         const searchableText = [item.label, item.description, item.searchText]
@@ -141,7 +152,7 @@ export const AgentNodePalette = memo(function AgentNodePalette({
         return searchableText.includes(normalizedQuery)
       }),
     })).filter((group) => group.items.length > 0)
-  }, [searchQuery])
+  }, [runtimeMode, searchQuery])
 
   return (
     <aside

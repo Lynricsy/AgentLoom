@@ -29,6 +29,9 @@ export function useConversationSandboxStats(
   conversationId: string | null | undefined,
   sandboxStatus: SandboxStatus,
 ) {
+  const shouldFetchStats =
+    Boolean(conversationId) && sandboxStatus === 'running'
+
   return useQuery({
     queryKey: conversationId
       ? conversationKeys.sandboxStats(conversationId)
@@ -51,7 +54,7 @@ export function useConversationSandboxStats(
         throw error
       }
     },
-    enabled: Boolean(conversationId) && sandboxStatus !== 'error',
+    enabled: shouldFetchStats,
     refetchInterval: sandboxStatus === 'running' ? 5_000 : false,
     staleTime: 4_000,
     retry: false,

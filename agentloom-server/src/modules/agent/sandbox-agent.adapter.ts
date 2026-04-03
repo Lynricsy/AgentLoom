@@ -50,7 +50,7 @@ import {
 import { SandboxService } from '../sandbox/sandbox.service';
 import { CodeExecutionService } from './code-execution.service';
 import { executeHttpToolRequest } from './http-tool-request.util';
-import { typeBoxToZod } from './tool-schema-converter';
+import { normalizeFlexibleSchemaJson } from './tool-schema-converter';
 import { SelfEvolutionService } from '../self-evolution/self-evolution.service';
 
 import type {
@@ -746,6 +746,10 @@ export class SandboxAgentAdapter implements IAgentRuntime {
       payload['mcpServers'] = params.mcpServers;
     }
 
+    if (params.runtimeConfig?.nativeToolPolicy) {
+      payload['nativeToolPolicy'] = params.runtimeConfig.nativeToolPolicy;
+    }
+
     const piConfig = await this.resolveSessionPiConfig(
       params.session,
       params.runtimeConfig,
@@ -1424,6 +1428,7 @@ export class SandboxAgentAdapter implements IAgentRuntime {
             descriptor.mcpServerConfigId,
             session.tenantId!,
           );
+          this.assertMcpTransportAllowed(session, connection.transportType);
           const result = await this.mcpService!.callRuntimeTool(
             connection,
             descriptor.toolName,
@@ -1641,16 +1646,8 @@ export class SandboxAgentAdapter implements IAgentRuntime {
 
   private resolveMcpInputSchema(
     inputSchema?: Record<string, unknown>,
-  ): z.ZodTypeAny {
-    if (!inputSchema) {
-      return z.object({}).passthrough();
-    }
-
-    try {
-      return typeBoxToZod(inputSchema as Parameters<typeof typeBoxToZod>[0]);
-    } catch {
-      return z.object({}).passthrough();
-    }
+  ): FlexibleSchema<Record<string, unknown>> {
+    return jsonSchema(normalizeFlexibleSchemaJson(inputSchema));
   }
 
   private normalizeExecuteArgs(
@@ -1668,6 +1665,18 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     input: Record<string, unknown>,
   ): Promise<Record<string, unknown>> {
     return executeHttpToolRequest(binding, input);
+  }
+
+  private assertMcpTransportAllowed(
+    session: AgentSession,
+    transportType: string,
+  ): void {
+    if (
+      session.runtimeConfig?.runtimeMode === 'no_sandbox' &&
+      transportType === 'stdio'
+    ) {
+      throw new Error('无 sandbox Agent 只能使用 HTTP MCP，禁止执行 stdio MCP');
+    }
   }
 
   private sanitizeToolName(

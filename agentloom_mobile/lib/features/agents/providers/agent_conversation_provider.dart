@@ -13,6 +13,7 @@ import '../../execution/services/execution_socket_service.dart'
 import '../api/agent_api.dart';
 import '../models/agent_conversation_dto.dart';
 import '../models/conversation_message_dto.dart';
+import 'agent_provider.dart';
 
 typedef ConversationParams = ({String agentId, String conversationId});
 typedef AgentConversationSocketFactory =
@@ -959,19 +960,34 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
   Future<ConversationState> build() async {
     ref.onDispose(_cleanup);
 
-    final messages = await _fetchHistory();
+    final messagesFuture = _fetchHistory();
+    final runtimeModeFuture = _resolveRuntimeMode();
+    final messages = await messagesFuture;
+    final runtimeMode = await runtimeModeFuture;
     Future<void>.microtask(() {
       if (!ref.mounted) {
         return;
       }
       _connectSocket();
-      unawaited(_refreshWorkspaceTree(silent: true));
+      if (runtimeMode == 'sandbox') {
+        unawaited(_refreshWorkspaceTree(silent: true));
+      }
     });
 
     return ConversationState(
       messages: messages,
       status: ConversationStatus.connecting,
+      runtimeMode: runtimeMode,
     );
+  }
+
+  Future<String> _resolveRuntimeMode() async {
+    try {
+      final agent = await ref.read(agentDetailProvider(params.agentId).future);
+      return agent.runtimeMode;
+    } catch (_) {
+      return 'sandbox';
+    }
   }
 
   Future<List<ConversationMessageDto>> _fetchHistory() async {
@@ -1156,6 +1172,10 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
     if (payload == null || payload.conversationId != params.conversationId) {
       return;
     }
+    final currentState = state.value;
+    if (currentState == null || !currentState.hasSandboxRuntime) {
+      return;
+    }
 
     _updateState(
       (current) => current.copyWith(
@@ -1177,6 +1197,10 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
   void _handleFileChange(Object? raw) {
     final payload = _normalizeFileChangePayload(raw);
     if (payload == null || payload.conversationId != params.conversationId) {
+      return;
+    }
+    final currentState = state.value;
+    if (currentState == null || !currentState.hasSandboxRuntime) {
       return;
     }
 
@@ -1221,6 +1245,7 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
     if (payload.conversationId != params.conversationId) {
       return;
     }
+    final hasSandboxRuntime = state.value?.hasSandboxRuntime ?? true;
 
     _updateState(
       (current) => current.copyWith(
@@ -1240,7 +1265,9 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
     );
 
     unawaited(_loadHistory(silent: true));
-    unawaited(_refreshWorkspaceTree(silent: true));
+    if (hasSandboxRuntime) {
+      unawaited(_refreshWorkspaceTree(silent: true));
+    }
   }
 
   void _handleStatusChanged(Object? raw) {
@@ -1476,6 +1503,10 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
   }
 
   Future<void> _refreshWorkspaceTree({bool silent = false}) async {
+    final currentState = state.value;
+    if (currentState != null && !currentState.hasSandboxRuntime) {
+      return;
+    }
     _updateState((current) => current.copyWith(isLoadingWorkspace: true));
     try {
       final tree = await ref
@@ -1520,6 +1551,9 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
     }
 
     final currentState = state.value;
+    if (currentState != null && !currentState.hasSandboxRuntime) {
+      return;
+    }
     if (currentState?.workspaceTreeOnly == true) {
       _updateState(
         (current) => current.copyWith(

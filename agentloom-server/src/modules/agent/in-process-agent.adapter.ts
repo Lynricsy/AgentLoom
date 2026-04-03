@@ -6,6 +6,7 @@ import { SessionPersistenceService } from '../execution/services/session-persist
 import { RagService } from '../knowledge/services/rag.service';
 import { McpService } from '../mcp/mcp.service';
 import { CodeExecutionService } from './code-execution.service';
+import { AgentToolPermissionSyncService } from './agent-tool-permission-sync.service';
 import { PiAgentCoreAdapter } from './pi-agent-core.adapter';
 import type {
   IAgentRuntime,
@@ -44,6 +45,8 @@ export class InProcessAgentAdapter implements IAgentRuntime {
     private readonly codeExecutionService: CodeExecutionService,
     @Optional() private readonly mcpService?: McpService,
     @Optional() private readonly ragService?: RagService,
+    @Optional()
+    private readonly toolPermissionSyncService?: AgentToolPermissionSyncService,
   ) {
     void this.agentSessionFactory;
     this.coreAdapter = new PiAgentCoreAdapter(
@@ -52,6 +55,7 @@ export class InProcessAgentAdapter implements IAgentRuntime {
       this.mcpService,
       this.ragService,
       this.codeExecutionService,
+      this.toolPermissionSyncService,
     );
   }
 

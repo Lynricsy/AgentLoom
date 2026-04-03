@@ -20,6 +20,7 @@ import {
 import { cn } from "@/shared/lib/utils";
 import { Button } from "@/shared/ui/button";
 import { useAuthToken } from "@/features/auth/hooks/useAuthToken";
+import { useAgent } from "@/features/agent/api/agentQueries";
 import { SubAgentNavContext } from "@/shared/components/tool-renderers/renderers/SubAgentRenderer";
 import { MessageList } from "./MessageList";
 import { SandboxComputerPanel } from "./SandboxComputerPanel";
@@ -363,6 +364,7 @@ export function AgentConversationPage({
   onBack,
 }: AgentConversationPageProps) {
   const navigate = useNavigate();
+  const agentQuery = useAgent(agentId);
   const messages = useConversationMessages();
   const status = useConversationStatus();
   const actions = useConversationActions();
@@ -377,6 +379,14 @@ export function AgentConversationPage({
   const subAgentStreams = useSubAgentStreams();
   const executionError = useExecutionError();
   const connectionError = useConversationConnectionError();
+  const runtimeMode = agentQuery.data?.runtimeMode;
+  const hasSandbox = runtimeMode === "sandbox";
+  const runtimeModeLabel =
+    runtimeMode === "sandbox"
+      ? "有沙箱"
+      : runtimeMode === "no_sandbox"
+        ? "无沙箱"
+        : "加载中";
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [leftWidth, setLeftWidth] = useState<number | null>(null);
@@ -388,16 +398,28 @@ export function AgentConversationPage({
   authTokenRef.current = authToken;
 
   useEffect(() => {
+    if (!agentQuery.data) {
+      return;
+    }
+
     const a = actionsRef.current;
     const token = authTokenRef.current;
-    a.connect({ conversationId, agentId, agentName: "", authToken: token });
+    a.connect({
+      conversationId,
+      agentId,
+      agentName: "",
+      runtimeMode: agentQuery.data.runtimeMode,
+      authToken: token,
+    });
     a.loadHistory(conversationId);
-    void a.loadWorkspaceTree(conversationId);
+    if (hasSandbox) {
+      void a.loadWorkspaceTree(conversationId);
+    }
 
     return () => {
       a.disconnect();
     };
-  }, [conversationId, agentId]);
+  }, [agentId, agentQuery.data, conversationId, hasSandbox, runtimeMode]);
 
   const initLeftWidth = useCallback(() => {
     if (leftWidth !== null) return leftWidth;
@@ -537,6 +559,9 @@ export function AgentConversationPage({
             <h1 className="text-sm font-medium text-foreground">
               {agentName || "Agent"} 对话
             </h1>
+            <span className="rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground">
+              {runtimeModeLabel}
+            </span>
           </div>
           {isExecuting && (
             <div className="flex items-center gap-1.5 text-xs text-info ml-auto">
@@ -570,6 +595,7 @@ export function AgentConversationPage({
               <MessageList
                 messages={displayMessages}
                 isExecuting={isExecuting && !isSubAgentView}
+                runtimeMode={runtimeMode === "no_sandbox" ? "no_sandbox" : "sandbox"}
                 onRestartConversation={handleRestartConversation}
               />
             </div>
@@ -582,45 +608,63 @@ export function AgentConversationPage({
             )}
           </div>
 
-          <ResizableDivider
-            onResize={handleHorizontalResize}
-            direction="horizontal"
-          />
-
-          <div
-            data-right-column
-            className="flex flex-col flex-1 overflow-hidden"
-            style={{ minWidth: MIN_RIGHT_WIDTH }}
-          >
-            <div
-              className="overflow-hidden"
-              style={{
-                height: rightTopHeight ? `${rightTopHeight}px` : "60%",
-              }}
-            >
-              <SandboxComputerPanel
-                conversationId={conversationId}
-                agentName={agentName || "Agent"}
-                terminalEntries={terminalEntries}
-                fileChanges={fileChanges}
-                sandboxStatus={sandboxStatus}
-                activeToolCall={activeToolCall}
+          {hasSandbox ? (
+            <>
+              <ResizableDivider
+                onResize={handleHorizontalResize}
+                direction="horizontal"
               />
-            </div>
 
-            <ResizableDivider
-              onResize={handleVerticalResize}
-              direction="vertical"
-            />
+              <div
+                data-right-column
+                className="flex flex-col flex-1 overflow-hidden"
+                style={{ minWidth: MIN_RIGHT_WIDTH }}
+              >
+                <div
+                  className="overflow-hidden"
+                  style={{
+                    height: rightTopHeight ? `${rightTopHeight}px` : "60%",
+                  }}
+                >
+                  <SandboxComputerPanel
+                    conversationId={conversationId}
+                    agentName={agentName || "Agent"}
+                    terminalEntries={terminalEntries}
+                    fileChanges={fileChanges}
+                    sandboxStatus={sandboxStatus}
+                    activeToolCall={activeToolCall}
+                  />
+                </div>
 
-            <div className="flex-1 overflow-hidden">
-              <WorkspaceFileTree
-                tree={fileTree}
-                selectedPath={selectedFilePath}
-                onSelectFile={actions.selectFile}
-              />
+                <ResizableDivider
+                  onResize={handleVerticalResize}
+                  direction="vertical"
+                />
+
+                <div className="flex-1 overflow-hidden">
+                  <WorkspaceFileTree
+                    tree={fileTree}
+                    selectedPath={selectedFilePath}
+                    onSelectFile={actions.selectFile}
+                  />
+                </div>
+              </div>
+            </>
+          ) : runtimeMode === "no_sandbox" ? (
+            <div className="flex min-w-0 flex-1 items-start justify-center border-l border-border bg-surface p-6">
+              <div className="max-w-sm rounded-lg border border-border bg-surface-elevated/50 px-4 py-3 text-sm text-muted-foreground">
+                无沙箱 Agent
+                不提供工作区、终端和文件变更面板；Skill、知识库、Memory、HTTP
+                MCP 与自进化能力仍会在对话消息流中展示。
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="flex min-w-0 flex-1 items-start justify-center border-l border-border bg-surface p-6">
+              <div className="max-w-sm rounded-lg border border-border bg-surface-elevated/50 px-4 py-3 text-sm text-muted-foreground">
+                正在加载 Agent 运行模式...
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </SubAgentNavContext.Provider>

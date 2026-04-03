@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { JwtPayload } from '../../../common/guards/auth.guard';
 import { WorkspaceController } from '../workspace.controller';
 import type { WorkspaceService } from '../workspace.service';
+import { enrichWorkspaceSnapshot } from '../workspace-source.utils';
 
 const TEST_TENANT_ID = '00000000-0000-0000-0000-000000000001';
 const TEST_ORG_ID = '00000000-0000-0000-0000-000000000010';
@@ -65,6 +66,6 @@ describe('WorkspaceController', () => {
       'Chore',
       undefined,
     );
-    expect(result).toEqual({ data: snapshot });
+    expect(result).toEqual({ data: enrichWorkspaceSnapshot(snapshot as never) });
   });
 });

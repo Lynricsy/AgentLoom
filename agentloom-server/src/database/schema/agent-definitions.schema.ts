@@ -27,6 +27,14 @@ export const agentStatusEnum = pgEnum('agent_status_enum', [
   'archived',
 ]);
 
+export const agentRuntimeModeEnum = pgEnum('agent_runtime_mode_enum', [
+  'sandbox',
+  'no_sandbox',
+]);
+
+export type AgentRuntimeMode =
+  (typeof agentRuntimeModeEnum.enumValues)[number];
+
 export const agentDefinitions = pgTable(
   'agent_definitions',
   {
@@ -40,6 +48,9 @@ export const agentDefinitions = pgTable(
     slug: varchar('slug', { length: 255 }).notNull(),
     description: text('description'),
     icon: varchar('icon', { length: 255 }),
+    runtimeMode: agentRuntimeModeEnum('runtime_mode')
+      .notNull()
+      .default('sandbox'),
 
     systemPrompt: text('system_prompt'),
 
@@ -102,6 +113,7 @@ export type AgentDefinition = typeof agentDefinitions.$inferSelect;
 export type NewAgentDefinition = typeof agentDefinitions.$inferInsert;
 
 export interface AgentVersionSnapshot {
+  runtimeMode?: AgentRuntimeMode;
   nodes: ReactFlowNode[];
   edges: ReactFlowEdge[];
   viewport: ReactFlowViewport | null;

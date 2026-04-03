@@ -79,7 +79,8 @@ class AgentDetailScreen extends ConsumerWidget {
                                       icon: agent.icon,
                                       fallbackIcon: Icons.smart_toy,
                                       size: 28,
-                                      color: theme.colorScheme.onPrimaryContainer,
+                                      color:
+                                          theme.colorScheme.onPrimaryContainer,
                                     ),
                                   ),
                                 ),
@@ -119,6 +120,11 @@ class AgentDetailScreen extends ConsumerWidget {
                               value: 'v${agent.version}',
                             ),
                             const SizedBox(height: 4),
+                            _MetadataRow(
+                              label: 'Runtime',
+                              value: agent.runtimeModeLabel,
+                            ),
+                            const SizedBox(height: 4),
                             if (agent.modelId != null) ...[
                               _MetadataRow(
                                 label: 'Model',
@@ -149,7 +155,10 @@ class AgentDetailScreen extends ConsumerWidget {
                   ),
 
                   SliverToBoxAdapter(
-                    child: _AgentCapabilityCard(config: agent.agentMainConfig),
+                    child: _AgentCapabilityCard(
+                      config: agent.agentMainConfig,
+                      runtimeMode: agent.runtimeMode,
+                    ),
                   ),
 
                   // 对话列表标题
@@ -309,7 +318,10 @@ class AgentDetailScreen extends ConsumerWidget {
               onTap: () => Navigator.pop(ctx, 'regenerate'),
             ),
             ListTile(
-              leading: Icon(Icons.delete_outline, color: Theme.of(ctx).colorScheme.error),
+              leading: Icon(
+                Icons.delete_outline,
+                color: Theme.of(ctx).colorScheme.error,
+              ),
               title: Text(
                 'Delete Conversation',
                 style: TextStyle(color: Theme.of(ctx).colorScheme.error),
@@ -343,13 +355,19 @@ class AgentDetailScreen extends ConsumerWidget {
       if (!context.mounted) return;
       ref.invalidate(agentConversationsProvider(agentId));
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(title != null ? 'Title updated: $title' : 'Could not generate title')),
+        SnackBar(
+          content: Text(
+            title != null
+                ? 'Title updated: $title'
+                : 'Could not generate title',
+          ),
+        ),
       );
     } catch (e) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to regenerate title: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Failed to regenerate title: $e')));
     }
   }
 
@@ -386,9 +404,9 @@ class AgentDetailScreen extends ConsumerWidget {
       await api.deleteConversation(conversationId);
       if (!context.mounted) return;
       ref.invalidate(agentConversationsProvider(agentId));
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Conversation deleted')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Conversation deleted')));
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -462,13 +480,23 @@ class _MetadataRow extends StatelessWidget {
 }
 
 class _AgentCapabilityCard extends StatelessWidget {
-  const _AgentCapabilityCard({required this.config});
+  const _AgentCapabilityCard({required this.config, required this.runtimeMode});
 
   final AgentMainConfigView config;
+  final String runtimeMode;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isNoSandboxRuntime = runtimeMode == 'no_sandbox';
+    final nativeToolsSubtitle = isNoSandboxRuntime
+        ? '无 sandbox Agent 不提供内置 read/write/edit/terminal 工具'
+        : config.nativeToolPolicy.isConfigured
+        ? 'Configured on agent-main'
+        : 'Using agent default policy';
+    final capabilityDescription = isNoSandboxRuntime
+        ? '当前 Agent 以无沙箱形态运行：可使用 Skill、知识库、记忆、HTTP MCP 和自进化；不会提供终端或工作区工具。'
+        : 'Mobile only shows the current capability policy. Editing remains in Studio.';
 
     return Card(
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 0),
@@ -485,7 +513,7 @@ class _AgentCapabilityCard extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             Text(
-              'Mobile only shows the current capability policy. Editing remains in Studio.',
+              capabilityDescription,
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
@@ -493,25 +521,31 @@ class _AgentCapabilityCard extends StatelessWidget {
             const SizedBox(height: 16),
             _CapabilitySection(
               title: 'Native Tools',
-              subtitle: config.nativeToolPolicy.isConfigured
-                  ? 'Configured on agent-main'
-                  : 'Using agent default policy',
+              subtitle: nativeToolsSubtitle,
               chips: [
                 _CapabilityChip(
                   label: 'Read',
-                  enabled: config.nativeToolPolicy.readEnabled,
+                  enabled: isNoSandboxRuntime
+                      ? false
+                      : config.nativeToolPolicy.readEnabled,
                 ),
                 _CapabilityChip(
                   label: 'Write',
-                  enabled: config.nativeToolPolicy.writeEnabled,
+                  enabled: isNoSandboxRuntime
+                      ? false
+                      : config.nativeToolPolicy.writeEnabled,
                 ),
                 _CapabilityChip(
                   label: 'Edit',
-                  enabled: config.nativeToolPolicy.editEnabled,
+                  enabled: isNoSandboxRuntime
+                      ? false
+                      : config.nativeToolPolicy.editEnabled,
                 ),
                 _CapabilityChip(
                   label: 'Terminal',
-                  enabled: config.nativeToolPolicy.terminalEnabled,
+                  enabled: isNoSandboxRuntime
+                      ? false
+                      : config.nativeToolPolicy.terminalEnabled,
                 ),
               ],
             ),

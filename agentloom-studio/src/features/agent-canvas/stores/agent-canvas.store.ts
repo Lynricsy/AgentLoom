@@ -18,6 +18,7 @@ import type {
   AgentGlobalSandboxConfig,
   AgentDefinition,
 } from '@/features/agent/types';
+import type { AgentRuntimeMode } from '@/features/agent/types';
 import type { CanvasNodeData, CanvasEdgeData } from '@/features/canvas/types';
 import type { AgentCanvasNodeType } from '@/features/canvas/registry/agent-canvas-registry';
 import { AGENT_CANVAS_NODE_REGISTRY } from '@/features/canvas/registry/agent-canvas-registry';
@@ -46,6 +47,7 @@ interface AgentCanvasState {
   agentId: string | null;
   agentName: string;
   version: number;
+  runtimeMode: AgentRuntimeMode;
 
   nodes: AgentCanvasNode[];
   edges: AgentCanvasEdge[];
@@ -87,7 +89,7 @@ interface AgentCanvasActions {
 
     loadAgent: (agentId: string) => Promise<void>;
     applyServerSnapshot: (
-      data: Pick<AgentDefinition, 'nodes' | 'edges' | 'viewport' | 'sandboxConfig' | 'workspaceSnapshotId' | 'inputSchema' | 'memoryInstanceIds' | 'sandboxLifecycle' | 'version' | 'name'>,
+      data: Pick<AgentDefinition, 'nodes' | 'edges' | 'viewport' | 'sandboxConfig' | 'workspaceSnapshotId' | 'inputSchema' | 'memoryInstanceIds' | 'sandboxLifecycle' | 'version' | 'name' | 'runtimeMode'>,
     ) => void;
     saveCanvas: () => Promise<void>;
     compileConfig: () => Promise<void>;
@@ -157,6 +159,7 @@ function createInitialState(): AgentCanvasState {
     agentId: null,
     agentName: '',
     version: 0,
+    runtimeMode: 'sandbox',
     nodes: [],
     edges: [],
     viewport: { x: 0, y: 0, zoom: 1 },
@@ -207,6 +210,61 @@ function createRequiredNode(
 const AGENT_MAIN_DEFAULT_POSITION = { x: 400, y: 300 };
 const SANDBOX_DEFAULT_POSITION = { x: 600, y: 300 };
 const PORT_STATEFUL_AGENT_NODE_TYPES = new Set<AgentCanvasNodeType>(['smart-routing']);
+const NO_SANDBOX_NODE_TYPES = new Set<AgentCanvasNodeType>(['sandbox', 'workspace']);
+
+function buildAgentMainInputPorts(
+  runtimeMode: AgentRuntimeMode,
+) {
+  const config = AGENT_CANVAS_NODE_REGISTRY.get('agent-main')
+  const inputPorts = config ? clonePortDefinitions(config.inputPorts) : []
+  return runtimeMode === 'no_sandbox'
+    ? inputPorts.filter((port) => port.id !== 'sandbox-in')
+    : inputPorts
+}
+
+function sanitizeNodesForRuntimeMode(
+  nodes: AgentCanvasNode[],
+  runtimeMode: AgentRuntimeMode,
+): AgentCanvasNode[] {
+  return nodes
+    .filter((node) => {
+      const nodeType = node.data?.nodeType as AgentCanvasNodeType | undefined
+      return runtimeMode === 'sandbox'
+        ? true
+        : !nodeType || !NO_SANDBOX_NODE_TYPES.has(nodeType)
+    })
+    .map((node) => {
+      if (node.type !== 'agent-main') {
+        return node
+      }
+
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          inputPorts: buildAgentMainInputPorts(runtimeMode),
+        },
+      }
+    })
+}
+
+function sanitizeEdgesForRuntimeMode(
+  nodes: AgentCanvasNode[],
+  edges: AgentCanvasEdge[],
+  runtimeMode: AgentRuntimeMode,
+): AgentCanvasEdge[] {
+  const nodeIds = new Set(nodes.map((node) => node.id))
+  return edges.filter((edge) => {
+    if (!nodeIds.has(edge.source) || !nodeIds.has(edge.target)) {
+      return false
+    }
+
+    return !(
+      runtimeMode === 'no_sandbox'
+      && edge.targetHandle === 'sandbox-in'
+    )
+  })
+}
 
 function normalizePersistedNode(node: AgentCanvasNode): AgentCanvasNode {
   const nodeType = node.data?.nodeType as AgentCanvasNodeType | undefined;
@@ -247,22 +305,29 @@ function normalizePersistedNodes(nodes: AgentCanvasNode[]): AgentCanvasNode[] {
   return nodes.map(normalizePersistedNode);
 }
 
-function ensureRequiredNodes(nodes: AgentCanvasNode[]): AgentCanvasNode[] {
-  const hasAgentMain = nodes.some((n) => (n.data?.nodeType as string) === 'agent-main');
+function ensureRequiredNodes(
+  nodes: AgentCanvasNode[],
+  runtimeMode: AgentRuntimeMode,
+): AgentCanvasNode[] {
+  const hasAgentMain = nodes.some((node) => node.type === 'agent-main')
   if (hasAgentMain) return nodes;
 
   const agentMainNode = createRequiredNode('agent-main', AGENT_MAIN_DEFAULT_POSITION);
   if (!agentMainNode) return nodes;
-  return [...nodes, agentMainNode];
+  return sanitizeNodesForRuntimeMode([...nodes, agentMainNode], runtimeMode);
 }
 
-function createInitialNodes(): AgentCanvasNode[] {
+function createInitialNodes(
+  runtimeMode: AgentRuntimeMode,
+): AgentCanvasNode[] {
   const result: AgentCanvasNode[] = [];
   const agentMain = createRequiredNode('agent-main', AGENT_MAIN_DEFAULT_POSITION);
   if (agentMain) result.push(agentMain);
-  const sandbox = createRequiredNode('sandbox', SANDBOX_DEFAULT_POSITION);
-  if (sandbox) result.push(sandbox);
-  return result;
+  if (runtimeMode === 'sandbox') {
+    const sandbox = createRequiredNode('sandbox', SANDBOX_DEFAULT_POSITION);
+    if (sandbox) result.push(sandbox);
+  }
+  return sanitizeNodesForRuntimeMode(result, runtimeMode);
 }
 
 export function canAddNodeType(
@@ -488,6 +553,7 @@ export const useAgentCanvasStore = create<AgentCanvasState & AgentCanvasActions>
                 sandboxLifecycle: agent.sandboxLifecycle,
                 version: agent.version,
                 name: agent.name,
+                runtimeMode: agent.runtimeMode,
               });
               set((state) => {
                 state.agentId = agentId;
@@ -502,25 +568,42 @@ export const useAgentCanvasStore = create<AgentCanvasState & AgentCanvasActions>
             set((state) => {
               const rawNodes = (data.nodes as AgentCanvasNode[]) ?? [];
               const isNewCanvas = rawNodes.length === 0;
-              const normalizedNodes = normalizePersistedNodes(rawNodes);
+              const runtimeMode = data.runtimeMode ?? 'sandbox';
+              const normalizedNodes = sanitizeNodesForRuntimeMode(
+                normalizePersistedNodes(rawNodes),
+                runtimeMode,
+              );
+              const ensuredNodes = isNewCanvas
+                ? createInitialNodes(runtimeMode)
+                : ensureRequiredNodes(normalizedNodes, runtimeMode);
               state.nodes = isNewCanvas
-                ? createInitialNodes()
-                : ensureRequiredNodes(normalizedNodes);
-              state.edges = (data.edges as AgentCanvasEdge[]) ?? [];
+                ? createInitialNodes(runtimeMode)
+                : ensuredNodes;
+              state.edges = sanitizeEdgesForRuntimeMode(
+                state.nodes,
+                (data.edges as AgentCanvasEdge[]) ?? [],
+                runtimeMode,
+              );
               state.viewport = data.viewport ?? { x: 0, y: 0, zoom: 1 };
               state.globalSandboxConfig = {
                 ...DEFAULT_SANDBOX_CONFIG,
                 ...(data.sandboxConfig ?? {}),
               };
               state.inputSchema = normalizeInputSchema(data.inputSchema);
-              state.workspaceId = data.workspaceSnapshotId ?? null;
+              state.workspaceId =
+                runtimeMode === 'sandbox' ? (data.workspaceSnapshotId ?? null) : null;
               state.memoryInstanceIds = data.memoryInstanceIds ?? [];
               state.sandboxLifecycle =
-                data.sandboxLifecycle ??
-                data.sandboxConfig?.lifecycleMode ??
-                'session';
+                runtimeMode === 'sandbox'
+                  ? (
+                      data.sandboxLifecycle ??
+                      data.sandboxConfig?.lifecycleMode ??
+                      'session'
+                    )
+                  : 'session';
               state.version = data.version ?? 0;
               state.agentName = data.name ?? '';
+              state.runtimeMode = runtimeMode;
               state.isDirty = isNewCanvas || rawNodes.length !== state.nodes.length;
               state.lastSavedAt = Date.now();
             });
@@ -533,6 +616,7 @@ export const useAgentCanvasStore = create<AgentCanvasState & AgentCanvasActions>
               edges,
               viewport,
               globalSandboxConfig,
+              runtimeMode,
               inputSchema,
               memoryInstanceIds,
               sandboxLifecycle,
@@ -553,13 +637,17 @@ export const useAgentCanvasStore = create<AgentCanvasState & AgentCanvasActions>
                     canvasNodes: nodes,
                     canvasEdges: edges,
                     canvasViewport: viewport,
-                    globalSandboxConfig,
                     inputSchema,
                     memoryInstanceIds,
-                    sandboxLifecycle,
-                    ...(workspaceSnapshotId === undefined
-                      ? {}
-                      : { workspaceSnapshotId }),
+                    ...(runtimeMode === 'sandbox'
+                      ? {
+                          globalSandboxConfig,
+                          sandboxLifecycle,
+                          ...(workspaceSnapshotId === undefined
+                            ? {}
+                            : { workspaceSnapshotId }),
+                        }
+                      : { workspaceSnapshotId: null }),
                   },
                 })
                 .json<ApiResponse<Pick<AgentDefinition, 'version'>>>();
@@ -639,6 +727,9 @@ export const useAgentCanvasActions = () =>
 
 export const useAgentCanvasSelectedNodeId = () =>
   useAgentCanvasStore((s) => s.selectedNodeId);
+
+export const useAgentCanvasRuntimeMode = () =>
+  useAgentCanvasStore((s) => s.runtimeMode);
 
 export const useAgentCanvasSaveStatus = () =>
   useAgentCanvasStore(

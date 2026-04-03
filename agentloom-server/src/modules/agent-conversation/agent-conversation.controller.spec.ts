@@ -3,6 +3,7 @@ import { Test, type TestingModule } from '@nestjs/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AgentConversationController } from './agent-conversation.controller';
+import { AGENT_RUNTIME } from '../agent/ports/agent-runtime.port';
 import { SandboxAgentAdapter } from '../agent/sandbox-agent.adapter';
 import { AgentConversationService } from './agent-conversation.service';
 import { ConversationTitleService } from './conversation-title.service';
@@ -15,6 +16,7 @@ const mockService = {
   create: vi.fn(),
   listByAgent: vi.fn(),
   getDetail: vi.fn(),
+  getPermissionResolutionTarget: vi.fn(),
   sendMessage: vi.fn(),
   cancel: vi.fn(),
   end: vi.fn(),
@@ -33,6 +35,10 @@ const mockSandboxAgentAdapter = {
   awaitToolPermission: vi.fn(),
   resolveConversationToolPermission: vi.fn(),
   ptyWrite: vi.fn(),
+};
+
+const mockInProcessAgentRuntime = {
+  resolveToolPermission: vi.fn(),
 };
 
 const mockSandboxService = {
@@ -72,6 +78,7 @@ describe('AgentConversationController', () => {
           useValue: mockWorkspaceIntegrationService,
         },
         { provide: SandboxAgentAdapter, useValue: mockSandboxAgentAdapter },
+        { provide: AGENT_RUNTIME, useValue: mockInProcessAgentRuntime },
         { provide: SandboxService, useValue: mockSandboxService },
         {
           provide: SelfEvolutionPermissionService,
@@ -268,6 +275,9 @@ describe('AgentConversationController', () => {
 
   describe('resolveToolPermission', () => {
     it('未被自进化权限服务接管时，应调用 sandbox adapter 解析权限并返回 accepted payload', async () => {
+      mockService.getPermissionResolutionTarget.mockResolvedValueOnce({
+        runtimeMode: 'sandbox',
+      });
       mockSandboxAgentAdapter.resolveConversationToolPermission.mockResolvedValueOnce(
         undefined,
       );
@@ -290,6 +300,9 @@ describe('AgentConversationController', () => {
       expect(
         mockSandboxAgentAdapter.resolveConversationToolPermission,
       ).toHaveBeenCalledWith(CONVERSATION_ID, 'tool-1', 'approve');
+      expect(
+        mockInProcessAgentRuntime.resolveToolPermission,
+      ).not.toHaveBeenCalled();
       expect(result).toEqual({
         data: {
           conversationId: CONVERSATION_ID,
@@ -325,6 +338,9 @@ describe('AgentConversationController', () => {
       expect(
         mockSandboxAgentAdapter.resolveConversationToolPermission,
       ).not.toHaveBeenCalled();
+      expect(
+        mockInProcessAgentRuntime.resolveToolPermission,
+      ).not.toHaveBeenCalled();
       expect(result).toEqual({
         data: {
           conversationId: CONVERSATION_ID,
@@ -333,6 +349,61 @@ describe('AgentConversationController', () => {
           rememberScope: 'conversation_category',
         },
       });
+    });
+
+    it('no_sandbox 对话应改用 in-process runtime 解析权限', async () => {
+      mockService.getPermissionResolutionTarget.mockResolvedValueOnce({
+        runtimeMode: 'no_sandbox',
+        sessionId: 'runtime-session-1',
+      });
+      mockInProcessAgentRuntime.resolveToolPermission.mockResolvedValueOnce(
+        undefined,
+      );
+
+      const result = await controller.resolveToolPermission(
+        CONVERSATION_ID,
+        'tool-2',
+        { action: 'approve' } as any,
+        TENANT_ID,
+      );
+
+      expect(
+        mockInProcessAgentRuntime.resolveToolPermission,
+      ).toHaveBeenCalledWith('runtime-session-1', 'tool-2', 'approve');
+      expect(
+        mockSandboxAgentAdapter.resolveConversationToolPermission,
+      ).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        data: {
+          conversationId: CONVERSATION_ID,
+          toolCallId: 'tool-2',
+          status: 'permission_resolved',
+        },
+      });
+    });
+
+    it('no_sandbox 对话缺少 sessionId 时应返回冲突错误', async () => {
+      mockService.getPermissionResolutionTarget.mockResolvedValueOnce({
+        runtimeMode: 'no_sandbox',
+      });
+
+      await expect(
+        controller.resolveToolPermission(
+          CONVERSATION_ID,
+          'tool-3',
+          { action: 'approve' } as any,
+          TENANT_ID,
+        ),
+      ).rejects.toMatchObject({
+        status: HttpStatus.CONFLICT,
+      });
+
+      expect(
+        mockInProcessAgentRuntime.resolveToolPermission,
+      ).not.toHaveBeenCalled();
+      expect(
+        mockSandboxAgentAdapter.resolveConversationToolPermission,
+      ).not.toHaveBeenCalled();
     });
   });
 

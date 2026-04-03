@@ -30,6 +30,7 @@ describe("MessageList", () => {
       <MessageList
         messages={[message]}
         isExecuting={false}
+        runtimeMode="sandbox"
         onRestartConversation={async () => {}}
       />,
     );
@@ -85,6 +86,7 @@ describe("MessageList", () => {
       <MessageList
         messages={[message]}
         isExecuting={false}
+        runtimeMode="sandbox"
         onRestartConversation={onRestartConversation}
       />,
     );

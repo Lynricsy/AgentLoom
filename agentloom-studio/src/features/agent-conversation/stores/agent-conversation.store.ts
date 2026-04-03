@@ -31,6 +31,7 @@ import type {
   ToolCallStatus,
   ToolCallTransition,
   PreparationPhase,
+  AgentRuntimeMode,
 } from "../types";
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "/api/v1").replace(
@@ -65,6 +66,7 @@ interface AgentConversationState {
   conversationId: string | null;
   agentId: string | null;
   agentName: string;
+  runtimeMode: AgentRuntimeMode;
 
   messages: ConversationMessage[];
   status: ConversationStatus;
@@ -101,6 +103,7 @@ interface AgentConversationActions {
       conversationId: string;
       agentId: string;
       agentName: string;
+      runtimeMode: AgentRuntimeMode;
       authToken?: string;
     }) => void;
     disconnect: () => void;
@@ -127,6 +130,7 @@ function createInitialState(): AgentConversationState {
     conversationId: null,
     agentId: null,
     agentName: "",
+    runtimeMode: "sandbox",
     messages: [],
     status: "idle",
     sandboxStatus: "idle",
@@ -1108,7 +1112,13 @@ export const useAgentConversationStore = create<
         ...createInitialState(),
 
         actions: {
-          connect: ({ conversationId, agentId, agentName, authToken }) => {
+          connect: ({
+            conversationId,
+            agentId,
+            agentName,
+            runtimeMode,
+            authToken,
+          }) => {
             const prev = socketInstance;
             if (prev) {
               prev.removeAllListeners();
@@ -1123,6 +1133,7 @@ export const useAgentConversationStore = create<
               s.conversationId = conversationId;
               s.agentId = agentId;
               s.agentName = agentName;
+              s.runtimeMode = runtimeMode;
               s.status = "connecting";
               s.connectionError = null;
             });
@@ -1360,7 +1371,9 @@ export const useAgentConversationStore = create<
               });
 
               void get().actions.loadHistory(normalized.conversationId);
-              void get().actions.loadWorkspaceTree(normalized.conversationId);
+              if (get().runtimeMode === "sandbox") {
+                void get().actions.loadWorkspaceTree(normalized.conversationId);
+              }
             });
 
             socket.on(
@@ -1724,6 +1737,17 @@ export const useAgentConversationStore = create<
           },
 
           loadWorkspaceTree: async (conversationId) => {
+            if (get().runtimeMode === "no_sandbox") {
+              set((s) => {
+                if (s.conversationId !== conversationId) {
+                  return
+                }
+
+                s.fileTree = []
+                s.selectedFilePath = null
+              })
+              return
+            }
             try {
               const response = await apiClient
                 .get(`agent-conversations/${conversationId}/workspace/tree`)

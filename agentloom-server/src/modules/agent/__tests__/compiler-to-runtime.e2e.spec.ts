@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ToolSet } from 'ai';
 import { z } from 'zod';
 import { AgentDefinitionService } from '../../agent-definition/agent-definition.service';
 import type { AgentRuntimeConfig } from '../../agent-definition/agent-runtime-config.interface';
@@ -12,6 +11,7 @@ const hoisted = vi.hoisted(() => {
   type MockAgentOptions = {
     streamFn?: unknown;
     sessionId?: string;
+    getApiKey?: (provider: string) => Promise<string | undefined>;
     beforeToolCall?: (
       context: Record<string, unknown>,
       signal?: AbortSignal,
@@ -64,13 +64,13 @@ const hoisted = vi.hoisted(() => {
   return {
     MockPiAgent,
     importPiAgentCore: vi.fn(async () => ({ Agent: MockPiAgent })),
-    streamFnFactory: vi.fn((model: unknown, toolSet?: ToolSet) => ({
-      model,
-      toolSet,
-      tag: 'mock-stream-fn',
-    })),
     typeBoxToZod: vi.fn(() => z.any()),
-    zodToTypeBox: vi.fn((schema: unknown) => ({ converted: schema })),
+    normalizeFlexibleSchemaJson: vi.fn((schema: unknown) =>
+      typeof schema === 'object' && schema !== null ? schema : {},
+    ),
+    flexibleSchemaToTypeBox: vi.fn((schema: unknown) => ({
+      converted: schema,
+    })),
     getTenantDb: vi.fn((db: unknown) => db),
   };
 });
@@ -93,13 +93,10 @@ vi.mock('../pi-imports', () => ({
   importPiAgentCore: hoisted.importPiAgentCore,
 }));
 
-vi.mock('../stream-fn.adapter', () => ({
-  createVercelStreamFn: hoisted.streamFnFactory,
-}));
-
 vi.mock('../tool-schema-converter', () => ({
   typeBoxToZod: hoisted.typeBoxToZod,
-  zodToTypeBox: hoisted.zodToTypeBox,
+  normalizeFlexibleSchemaJson: hoisted.normalizeFlexibleSchemaJson,
+  flexibleSchemaToTypeBox: hoisted.flexibleSchemaToTypeBox,
 }));
 
 type CanvasNode = {
@@ -178,7 +175,7 @@ describe('compiler → runtime tool injection E2E', () => {
   let adapter: PiAgentCoreAdapter;
   let subAgentToolsProvider: SubAgentToolsProvider;
   let mockDb: { select: ReturnType<typeof vi.fn> };
-  let mockPiAiAdapter: { getModel: ReturnType<typeof vi.fn> };
+  let mockPiAiAdapter: { getPiRuntimeModel: ReturnType<typeof vi.fn> };
   let mockMcpService: {
     resolveRuntimeConnection: ReturnType<typeof vi.fn>;
     callRuntimeTool: ReturnType<typeof vi.fn>;
@@ -236,16 +233,29 @@ describe('compiler → runtime tool injection E2E', () => {
   beforeEach(() => {
     hoisted.MockPiAgent.reset();
     hoisted.importPiAgentCore.mockClear();
-    hoisted.streamFnFactory.mockClear();
     hoisted.typeBoxToZod.mockClear();
-    hoisted.zodToTypeBox.mockClear();
+    hoisted.flexibleSchemaToTypeBox.mockClear();
     hoisted.getTenantDb.mockClear();
 
     mockDb = {
       select: vi.fn().mockReturnValue(createSelectChain([defaultModelConfig])),
     };
     mockPiAiAdapter = {
-      getModel: vi.fn().mockResolvedValue('mock-language-model'),
+      getPiRuntimeModel: vi.fn().mockResolvedValue({
+        model: {
+          id: 'mock-model-id',
+          name: 'mock-model-name',
+          api: 'anthropic-messages',
+          provider: 'mock-provider',
+          baseUrl: 'https://mock-base',
+          reasoning: true,
+          input: ['text'],
+          cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+          contextWindow: 128000,
+          maxTokens: 4096,
+        },
+        apiKey: 'mock-api-key',
+      }),
     };
     mockMcpService = {
       resolveRuntimeConnection: vi.fn().mockResolvedValue({
