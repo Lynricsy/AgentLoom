@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 19
+- **Total Sessions**: 20
 - **Last Active**: 2026-04-03
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1023 | Active |
+| `journal-1.md` | ~1056 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 20 | 2026-04-03 | compound resize 边界同步修复 | `439f062` | `main` |
 | 19 | 2026-04-03 | compound 内部节点拖拽边界修复 | `90f1f96` | `main` |
 | 18 | 2026-04-02 | compound 内框拖拽边界与默认尺寸修复 | `a066f18` | `main` |
 | 17 | 2026-03-31 | Flutter workflow/agent 卡片式布局重构 | `51d84c6`, `c1d81d5`, `0f9090d` | `main` |

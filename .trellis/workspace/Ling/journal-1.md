@@ -1021,3 +1021,36 @@ studio 前端大量页面无法滚轮滚动、没有滚动条。
 ### Next Steps
 
 - None - task complete
+
+
+## Session 20: compound resize 边界同步修复
+
+**Date**: 2026-04-03
+**Task**: compound resize 边界同步修复
+**Branch**: `main`
+
+### Summary
+
+修正 compound resize 期间与 resize 后的内部边界同步，统一优先读取 live measured/width/height，并补回归测试。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `439f062` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
