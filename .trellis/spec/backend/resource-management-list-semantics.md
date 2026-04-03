@@ -68,6 +68,7 @@
   - 否则 `config.sourceSandboxSessionId` 存在 → `sandbox_snapshot`
   - 其余 → `manual`
 - `includeAutoArchived=false` 时，API 必须过滤 `execution_archive`
+- Query DTO 不能使用裸 `z.coerce.boolean()` 解析布尔筛选，因为 query string `'false'` 会被错误地当成 `true`；必须显式把 `'true'/'false'` 规范化后再进入 `z.boolean()`
 - `create()` / `findOne()` / `findAll()` 都应返回 enrichment 后的 workspace 数据，避免前端列表与详情语义漂移
 
 ### 3.4 Sandbox list semantics
@@ -91,6 +92,7 @@
 | Agent sandbox 未显式配置 timeout | 默认得到 `timeoutSeconds=300` + `timeout=1` | `agent-definition.service.spec.ts` |
 | lifecycle create job 含 `timeoutSeconds=300` | timeout check delay = `300_000ms` | `sandbox-lifecycle.worker.spec.ts` |
 | workspace list 默认过滤 execution archive | API 仍返回 `sourceKind`，但 `execution_archive` 被排除 | `workspace.service.spec.ts` |
+| `includeAutoArchived=false` query string | DTO 必须把 `'false'` 解析成 `false`，不能回退成 truthy | `list-workspaces-query.dto.spec.ts` |
 | sandbox list `bindingType=resource` | SQL where 同时要求 `execution_id is null` + `agent_conversation_id is null` | `sandbox.service.spec.ts` |
 
 ---
@@ -100,5 +102,6 @@
 - `src/modules/agent-conversation/agent-conversation.service.spec.ts`
 - `src/modules/agent-definition/agent-definition.service.spec.ts`
 - `src/modules/workspace/__tests__/workspace.service.spec.ts`
+- `src/modules/workspace/dto/list-workspaces-query.dto.spec.ts`
 - `src/modules/sandbox/__tests__/sandbox.service.spec.ts`
 - `src/modules/sandbox/__tests__/sandbox-lifecycle.worker.spec.ts`
