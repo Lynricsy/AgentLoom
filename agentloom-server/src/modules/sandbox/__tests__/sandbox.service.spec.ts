@@ -167,7 +167,9 @@ describe('SandboxService', () => {
       addStartTask: vi.fn().mockResolvedValue(undefined),
       addStopTask: vi.fn().mockResolvedValue(undefined),
       addDestroyTask: vi.fn().mockResolvedValue(undefined),
+      addConversationIdleEndCheckTask: vi.fn().mockResolvedValue(undefined),
       removeTimeoutCheckTask: vi.fn().mockResolvedValue(undefined),
+      removeConversationIdleEndCheckTask: vi.fn().mockResolvedValue(undefined),
     };
 
     mockDockerService = {
@@ -582,6 +584,54 @@ describe('SandboxService', () => {
         diskUsage: 4096,
         diskTotal: 6 * 1024 * 1024 * 1024,
       });
+    });
+  });
+
+  describe('conversation idle auto end', () => {
+    it('应按 session config 的分钟数为对话沙箱调度 idle end check', async () => {
+      const session = buildSession({
+        executionId: null,
+        agentConversationId: TEST_CONVERSATION_ID,
+        status: 'ready',
+        config: {
+          ...TEST_CONFIG,
+          conversationIdleAutoEndMinutes: 15,
+        },
+      });
+
+      db.select.mockReturnValueOnce(createSelectChainWithLimit([session]));
+
+      await service.scheduleConversationIdleAutoEnd(
+        TEST_CONVERSATION_ID,
+        TEST_TENANT_ID,
+      );
+
+      expect(
+        mockLifecycleProducer.addConversationIdleEndCheckTask,
+      ).toHaveBeenCalledWith({
+        sessionId: TEST_SESSION_ID,
+        tenantId: TEST_TENANT_ID,
+        delayMs: 15 * 60 * 1000,
+      });
+    });
+
+    it('取消对话 idle auto end 时应移除对应 session 的延迟任务', async () => {
+      const session = buildSession({
+        executionId: null,
+        agentConversationId: TEST_CONVERSATION_ID,
+        status: 'ready',
+      });
+
+      db.select.mockReturnValueOnce(createSelectChainWithLimit([session]));
+
+      await service.cancelConversationIdleAutoEnd(
+        TEST_CONVERSATION_ID,
+        TEST_TENANT_ID,
+      );
+
+      expect(
+        mockLifecycleProducer.removeConversationIdleEndCheckTask,
+      ).toHaveBeenCalledWith(TEST_SESSION_ID);
     });
   });
 

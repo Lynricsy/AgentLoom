@@ -14,6 +14,7 @@ import { devtools, subscribeWithSelector } from 'zustand/middleware';
 import { immer } from 'zustand/middleware/immer';
 import { apiClient } from '@/shared/api/client';
 import type { ApiResponse } from '@/shared/types/api';
+import { DEFAULT_SANDBOX_CONVERSATION_IDLE_AUTO_END_MINUTES } from '@/shared/lib/sandboxConversationIdleAutoEnd';
 import type {
   AgentGlobalSandboxConfig,
   AgentDefinition,
@@ -103,6 +104,8 @@ const DEFAULT_SANDBOX_CONFIG: AgentGlobalSandboxConfig = {
   cpuLimit: 1,
   memoryLimitMb: 512,
   timeoutSeconds: 300,
+  conversationIdleAutoEndMinutes:
+    DEFAULT_SANDBOX_CONVERSATION_IDLE_AUTO_END_MINUTES,
   lifecycleMode: 'session',
 };
 

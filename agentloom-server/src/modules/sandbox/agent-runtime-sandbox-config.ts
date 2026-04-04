@@ -1,4 +1,5 @@
 import type { SandboxConfig } from '../../database/schema';
+import { resolveSandboxConversationIdleAutoEndMinutes } from './sandbox-conversation-idle.utils';
 
 const DEFAULT_AGENT_RUNTIME_SANDBOX_CONFIG = {
   cpu: 1,
@@ -30,6 +31,8 @@ export function resolveAgentRuntimeSandboxConfig(
     ...(typeof config?.timeoutSeconds === 'number'
       ? { timeoutSeconds: config.timeoutSeconds }
       : {}),
+    conversationIdleAutoEndMinutes:
+      resolveSandboxConversationIdleAutoEndMinutes(config ?? {}),
     ...(typeof config?.persistencePath === 'string'
       ? { persistencePath: config.persistencePath }
       : {}),

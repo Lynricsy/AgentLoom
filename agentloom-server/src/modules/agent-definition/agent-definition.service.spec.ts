@@ -748,6 +748,7 @@ describe('AgentDefinitionService', () => {
         memory: 512,
         disk: 1,
         timeout: 60,
+        conversationIdleAutoEndMinutes: 10,
       });
       // metadata 应包含 inputSchema (via SQL jsonb_set)
       expect(capturedSetClause!.metadata).toBeDefined();
@@ -823,6 +824,7 @@ describe('AgentDefinitionService', () => {
         disk: 5,
         timeout: 1,
         timeoutSeconds: 901,
+        conversationIdleAutoEndMinutes: 10,
         lifecycleMode: undefined,
         persistencePath: undefined,
         restoreWorkspaceId: 'workspace-1',
@@ -1155,6 +1157,7 @@ describe('AgentDefinitionService', () => {
         disk: 4,
         timeout: 1,
         timeoutSeconds: 600,
+        conversationIdleAutoEndMinutes: 10,
         lifecycleMode: undefined,
         persistencePath: undefined,
         restoreWorkspaceId: undefined,
@@ -2320,6 +2323,7 @@ describe('AgentDefinitionService', () => {
         disk: 5,
         timeout: 1,
         timeoutSeconds: 901,
+        conversationIdleAutoEndMinutes: 10,
         lifecycleMode: undefined,
         persistencePath: undefined,
         restoreWorkspaceId: 'workspace-1',
@@ -2340,6 +2344,7 @@ describe('AgentDefinitionService', () => {
         disk: 5,
         timeout: 1,
         timeoutSeconds: 901,
+        conversationIdleAutoEndMinutes: 10,
         lifecycleMode: undefined,
         persistencePath: undefined,
         restoreWorkspaceId: 'workspace-1',

@@ -22,11 +22,18 @@ const mockSandboxService = {
 
 const mockLifecycleProducer = {
   addTimeoutCheckTask: vi.fn().mockResolvedValue({ id: 'timeout-job' }),
+  addConversationIdleEndCheckTask: vi.fn().mockResolvedValue({
+    id: 'idle-end-job',
+  }),
   removeTimeoutCheckTask: vi.fn().mockResolvedValue(undefined),
+  removeConversationIdleEndCheckTask: vi.fn().mockResolvedValue(undefined),
 };
 
 const mockStorageService = {
   upload: vi.fn().mockResolvedValue(undefined),
+};
+const mockModuleRef = {
+  get: vi.fn(),
 };
 
 const mockUpdate = vi.fn().mockReturnThis();
@@ -125,10 +132,12 @@ describe('SandboxLifecycleWorker', () => {
     mockLimit.mockResolvedValue([
       { config: { cpu: 1, memory: 512, disk: 2, timeout: 2 } },
     ]);
+    mockModuleRef.get.mockReset();
+    mockModuleRef.get.mockReturnValue(undefined);
 
     worker = new SandboxLifecycleWorker(
       {} as any,
-      {} as any,
+      mockModuleRef as any,
       mockDockerService as any,
       mockSandboxService as any,
       mockLifecycleProducer as any,
@@ -961,6 +970,168 @@ describe('SandboxLifecycleWorker', () => {
         'application/x-tar',
       );
       expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
+    });
+  });
+
+  describe('conversation_idle_end_check job', () => {
+    function createSelectWhereChain(result: unknown[]) {
+      return {
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockResolvedValue(result),
+        }),
+      };
+    }
+
+    function createSelectOrderByChain(result: unknown[]) {
+      return {
+        from: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            orderBy: vi.fn().mockResolvedValue(result),
+          }),
+        }),
+      };
+    }
+
+    it('所有绑定对话都空闲且无未处理消息时，应自动 end 对话', async () => {
+      const endConversation = vi.fn().mockResolvedValue(undefined);
+      mockSandboxService.getSessionById.mockResolvedValueOnce({
+        id: 's-conv',
+        status: 'ready',
+        executionId: null,
+        sandboxNodeId: null,
+        agentConversationId: 'conv-1',
+        config: {
+          ...DEFAULT_CONFIG,
+          conversationIdleAutoEndMinutes: 12,
+        },
+      });
+      mockModuleRef.get.mockImplementation((token: unknown) => {
+        if (
+          token &&
+          typeof token === 'function' &&
+          token.name === 'AgentConversationService'
+        ) {
+          return { end: endConversation };
+        }
+
+        if (
+          token &&
+          typeof token === 'function' &&
+          token.name === 'AgentExecutionService'
+        ) {
+          return { getActiveRun: vi.fn().mockReturnValue(undefined) };
+        }
+
+        return undefined;
+      });
+      mockSelect
+        .mockReturnValueOnce(
+          createSelectWhereChain([
+            {
+              id: 'conv-1',
+              status: 'active',
+              metadata: {
+                execution: {
+                  runningState: 'idle',
+                  lastProcessedMessageId: 'msg-1',
+                },
+              },
+            },
+          ]),
+        )
+        .mockReturnValueOnce(
+          createSelectOrderByChain([
+            {
+              conversationId: 'conv-1',
+              id: 'msg-1',
+              createdAt: new Date('2026-04-04T00:00:00.000Z'),
+            },
+          ]),
+        );
+
+      await worker.process(
+        createJob({
+          jobType: 'conversation_idle_end_check',
+          sessionId: 's-conv',
+          tenantId: 't1',
+        }),
+      );
+
+      expect(endConversation).toHaveBeenCalledWith('conv-1');
+      expect(
+        mockLifecycleProducer.addConversationIdleEndCheckTask,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('仍有未处理消息时不应结束对话', async () => {
+      const endConversation = vi.fn().mockResolvedValue(undefined);
+      mockSandboxService.getSessionById.mockResolvedValueOnce({
+        id: 's-conv',
+        status: 'ready',
+        executionId: null,
+        sandboxNodeId: null,
+        agentConversationId: 'conv-1',
+        config: {
+          ...DEFAULT_CONFIG,
+          conversationIdleAutoEndMinutes: 12,
+        },
+      });
+      mockModuleRef.get.mockImplementation((token: unknown) => {
+        if (
+          token &&
+          typeof token === 'function' &&
+          token.name === 'AgentConversationService'
+        ) {
+          return { end: endConversation };
+        }
+
+        if (
+          token &&
+          typeof token === 'function' &&
+          token.name === 'AgentExecutionService'
+        ) {
+          return { getActiveRun: vi.fn().mockReturnValue(undefined) };
+        }
+
+        return undefined;
+      });
+      mockSelect
+        .mockReturnValueOnce(
+          createSelectWhereChain([
+            {
+              id: 'conv-1',
+              status: 'active',
+              metadata: {
+                execution: {
+                  runningState: 'idle',
+                  lastProcessedMessageId: 'msg-1',
+                },
+              },
+            },
+          ]),
+        )
+        .mockReturnValueOnce(
+          createSelectOrderByChain([
+            {
+              conversationId: 'conv-1',
+              id: 'msg-2',
+              createdAt: new Date('2026-04-04T00:01:00.000Z'),
+            },
+          ]),
+        );
+
+      await worker.process(
+        createJob({
+          jobType: 'conversation_idle_end_check',
+          sessionId: 's-conv',
+          tenantId: 't1',
+        }),
+      );
+
+      expect(endConversation).not.toHaveBeenCalled();
+      expect(
+        mockLifecycleProducer.addConversationIdleEndCheckTask,
+      ).not.toHaveBeenCalled();
     });
   });
 });

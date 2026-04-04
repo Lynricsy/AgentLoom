@@ -115,7 +115,7 @@ AgentLoom/
 | `smart-routing` | 6 种智能路由策略 |
 | `knowledge` | LlamaIndex-first 知识库（知识节点索引 → 检索 → 重排 → 查询编排） |
 | `mcp` | Model Context Protocol 工具管理 |
-| `sandbox` | 隔离执行环境（session stop+remove；persistent stop/timeout 仅 stop 容器，delete 才 remove） |
+| `sandbox` | 隔离执行环境（session stop+remove；persistent stop/timeout 仅 stop 容器，delete 才 remove；direct Agent conversation 可按 `conversationIdleAutoEndMinutes` 在空闲后自动 end） |
 | `plugin` | `.alp` 上传 + WASM 沙箱 + 使用量/收益 |
 | `private-deployment` | 组织级私有部署设置 API、受管 secret 引用、许可证校验 |
 | `optimization-suggestion` | 基于执行记录的 Agent 配置优化建议、采纳率统计与工作流节点配置更新（含 workflow OCC 与 dirty-canvas 防覆盖保护） |

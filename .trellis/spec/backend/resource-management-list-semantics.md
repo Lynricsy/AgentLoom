@@ -1,6 +1,6 @@
 # Resource Management List Semantics
 
-> Workspace / Sandbox 资源列表语义、Agent sandbox timeout 双字段约定，以及 conversation sandbox 回收事件契约。
+> Workspace / Sandbox 资源列表语义、Agent sandbox timeout / idle-auto-end 配置约定，以及 conversation sandbox 回收事件契约。
 
 ---
 
@@ -22,11 +22,14 @@
 - `deriveAgentSandboxConfigFromCanvas(nodes, edges, fallbackConfig): SandboxConfig | null`
 - `resolveAgentRuntimeSandboxConfig(config?: SandboxConfig | null): SandboxConfig`
 - `resolveSandboxTimeoutDelayMs(config): number`
+- `resolveSandboxConversationIdleAutoEndDelayMs(config): number`
 - `WorkspaceService.findAll(tenantId, { page?, pageSize?, search?, includeAutoArchived? })`
 - `WorkspaceService.findOne(tenantId, workspaceId)`
 - `SandboxService.listSandboxes(tenantId, { page, pageSize, status?, lifecycleMode?, bindingType?, search? })`
 - `SandboxService.getContainerStats(sessionId)`
 - `SandboxService.getConversationSandboxStats(agentConversationId, tenantId)`
+- `SandboxService.scheduleConversationIdleAutoEnd(agentConversationId, tenantId)`
+- `SandboxService.cancelConversationIdleAutoEnd(agentConversationId, tenantId)`
 - `DockerService.getContainerStats(containerId)`
 - `GET /api/v1/sandboxes/:sessionId/stats`
 - `GET /api/v1/agent-conversations/:id/sandbox/stats`
@@ -50,6 +53,20 @@
 - `cancel()` 与 `end()` 都必须走同一条 `agent-conversation.ended` 发射链路。
 - 当存在 tenant transaction 时，`agent-conversation.ended` 必须通过 `registerAfterCommitHook()` 延后到事务提交后再发。
 - `WorkspaceIntegrationService.handleConversationEnded()` 继续以 `agent-conversation.ended` 作为唯一入口，先尝试保存目录树快照，再释放 conversation sandbox。
+- direct Agent conversation 的 sandbox config 新增 `conversationIdleAutoEndMinutes`：
+  - 缺省值视为 `10`
+  - 该字段只作用于 `agentConversationId` 绑定的 sandbox session；workflow `execution` 绑定不会消费该字段
+  - session sandbox 与 persistent sandbox 都必须支持该配置
+- `agent-conversation.message-sent` 之后，若当前 conversation 绑定 sandbox，必须取消对应 sandbox session 的 idle auto-end delayed job；当存在 tenant transaction 时，这个取消动作必须延迟到事务提交后再执行。
+- sandbox conversation 一轮执行结束后，只要 conversation 仍为 `active` 且不是 `cancelled`，都必须按该 sandbox session 的 `conversationIdleAutoEndMinutes` 重新调度 delayed idle-end check。
+- idle-end check 只能在以下条件都满足时自动 `end()` conversation：
+  - sandbox 仍处于 active 状态（不是 `stopping/stopped/failed`）
+  - sandbox 当前绑定的所有 active conversation 都没有运行中的 execution loop
+  - 所有 active conversation 都不存在未处理的 user message
+  - 对于多 binding persistent sandbox，必须以“该 sandbox 下所有 active conversation 都已空闲”为整体判断条件，而不是逐个 conversation 独立结束
+- idle-end check 自动结束 conversation 后，后续 sandbox 清理仍沿用现有 ended 链路：
+  - session lifecycle → destroy conversation sandbox
+  - persistent lifecycle → detach conversation binding，资源回到 `ready/idle`
 
 ### 3.2 Agent sandbox timeout
 
@@ -65,6 +82,9 @@
   - 只有显式 legacy `timeout(hours)` 且不存在 `timeoutSeconds` 时，才继续沿用小时语义
 - `SandboxLifecycleWorker` 调度 timeout check 时，必须优先使用 `timeoutSeconds`；不存在时才回退到 `timeout(hours)`
 - `agent_definitions.sandbox_config` 与 `agent_versions.snapshot.sandboxConfig` 属于 persisted mirror，不应被视为绝对真源；当旧记录缺失 `timeoutSeconds` 时，detail response、version response 和 runtime 启动链都必须优先根据 canvas / snapshot 的 `nodes + edges` 重新推导 canonical sandboxConfig，再只把 persisted mirror 作为 fallback
+- `SandboxConfig.conversationIdleAutoEndMinutes` 也必须遵循相同约定：
+  - Agent 画布来源与 persistent sandbox 资源创建来源都允许配置该字段
+  - 旧记录缺失该字段时，runtime 与 detail response 必须回退到默认值 `10`
 
 ### 3.3 Workspace list semantics
 
@@ -127,7 +147,11 @@
 | conversation 走 `cancel()` | 事务提交后仍会触发 `agent-conversation.ended` | `agent-conversation.service.spec.ts` |
 | Agent sandbox `timeoutSeconds=901` | 编译后 `timeoutSeconds=901` 且兼容回填 `timeout=1` | `agent-definition.service.spec.ts` |
 | Agent sandbox 未显式配置 timeout | 默认得到 `timeoutSeconds=300` + `timeout=1` | `agent-definition.service.spec.ts` |
+| Agent sandbox 未显式配置 `conversationIdleAutoEndMinutes` | runtime / detail response 回退到默认值 `10` | `agent-definition.service.spec.ts`, `agent-definition-response.dto.spec.ts` |
 | lifecycle create job 含 `timeoutSeconds=300` | timeout check delay = `300_000ms` | `sandbox-lifecycle.worker.spec.ts` |
+| sandbox conversation 一轮执行完成 | 会调度 delayed idle-end check | `agent-execution.worker.spec.ts`, `sandbox.service.spec.ts` |
+| sandbox conversation 有新消息进入 | 会取消 delayed idle-end check | `sandbox.service.spec.ts` |
+| idle-end check 命中时 conversation 仍无运行中任务且无未处理消息 | worker 应自动调用 `end()` | `sandbox-lifecycle.worker.spec.ts` |
 | 旧 published snapshot 只有 `sandboxConfig.timeout=450`，但节点仍有 `timeoutSeconds=450` | detail / versions / runtime 都必须恢复成 `timeout=1 + timeoutSeconds=450` | `agent-definition-response.dto.spec.ts`, `agent-execution.worker.spec.ts`, `workflow-agent-adapter.spec.ts` |
 | workspace list 默认过滤 execution archive | API 仍返回 `sourceKind`，但 `execution_archive` 被排除 | `workspace.service.spec.ts` |
 | `includeAutoArchived=false` query string | DTO 必须把 `'false'` 解析成 `false`，不能回退成 truthy | `list-workspaces-query.dto.spec.ts` |
@@ -145,9 +169,11 @@
 
 - `src/modules/agent-conversation/agent-conversation.service.spec.ts`
 - `src/modules/agent-definition/agent-definition.service.spec.ts`
+- `src/modules/agent-execution/__tests__/agent-execution.worker.spec.ts`
 - `src/modules/workspace/__tests__/workspace.service.spec.ts`
 - `src/modules/workspace/dto/list-workspaces-query.dto.spec.ts`
 - `src/modules/agent-conversation/agent-conversation.controller.spec.ts`
 - `src/modules/sandbox/__tests__/docker.service.spec.ts`
+- `src/modules/sandbox/__tests__/sandbox-lifecycle.producer.spec.ts`
 - `src/modules/sandbox/__tests__/sandbox.service.spec.ts`
 - `src/modules/sandbox/__tests__/sandbox-lifecycle.worker.spec.ts`

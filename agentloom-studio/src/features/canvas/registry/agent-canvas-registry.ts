@@ -325,6 +325,11 @@ export const AGENT_CANVAS_NODE_REGISTRY = new Map<string, AgentNodeTypeConfig>([
           cpuLimit: createConfigField('number', 'CPU 限制（核）', { default: 1 }),
           memoryLimitMb: createConfigField('number', '内存限制（MB）', { default: 512 }),
           timeoutSeconds: createConfigField('number', '超时时间（秒）', { default: 300 }),
+          conversationIdleAutoEndMinutes: createConfigField(
+            'number',
+            '对话空闲自动结束（分钟）',
+            { default: 10 },
+          ),
         },
         required: [],
       },

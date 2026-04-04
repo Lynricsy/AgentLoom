@@ -1,6 +1,7 @@
 import { memo, useState } from 'react'
 import { Container, MoreVertical, Square, Play, Trash2 } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
+import { normalizeSandboxConversationIdleAutoEndMinutes } from '@/shared/lib/sandboxConversationIdleAutoEnd'
 import { formatRelativeTime } from '@/features/canvas'
 import { useSandboxStats } from '../api/sandboxQueries'
 import { formatSandboxBytes, getSandboxDiskPercent } from '../lib/sandboxStats'
@@ -210,6 +211,10 @@ export const SandboxCard = memo(function SandboxCard({
         <span>{session.config.disk} GB</span>
         <span>&middot;</span>
         <span>{formatTimeoutLabel(session.config)}</span>
+        <span>&middot;</span>
+        <span>
+          空闲 {normalizeSandboxConversationIdleAutoEndMinutes(session.config.conversationIdleAutoEndMinutes)}m 自动结束
+        </span>
       </div>
 
       {/* Stats: real-time for running, disk-only for stopped */}

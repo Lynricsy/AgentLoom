@@ -42,6 +42,8 @@ export interface SandboxConfig {
   timeout: number;
   /** Agent runtime 会话级秒数超时；存在时优先于 timeout 小时字段 */
   timeoutSeconds?: number;
+  /** direct Agent 对话在无运行中任务且保持 idle 后，自动结束对话的分钟数 */
+  conversationIdleAutoEndMinutes?: number;
   /** 工作区快照 ID（可选，创建时恢复到容器） */
   restoreWorkspaceId?: string;
   /** 生命周期模式：session=对话结束时销毁，persistent=保持存活直到过期或手动销毁（默认 session） */

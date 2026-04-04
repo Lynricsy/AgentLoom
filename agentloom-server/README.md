@@ -6,7 +6,7 @@ AgentLoom Server 是基于 **NestJS 11 + Fastify 5** 的多租户后端服务，
 
 - **双重认证**：Bearer JWT 优先，`X-Api-Key` 回退；RBAC 角色为 `owner > admin > creator > operator > viewer`
 - **执行引擎**：`ExecutionService.runWorkflow()` 作为新执行权威入口，BullMQ 驱动 DAG 调度、断点恢复与人工介入
-- **Agent 双运行态**：Agent 创建时显式持久化 `runtimeMode = sandbox | no_sandbox`；顶层 `no_sandbox` Agent 与 workflow `agent` 节点走 `InProcessAgentAdapter -> PiAgentCoreAdapter -> pi-agent-core`，仍支持 Skill、知识库、Memory、HTTP MCP 与自进化；`sandbox` Agent 继续走容器化 `SandboxAgentAdapter`
+- **Agent 双运行态**：Agent 创建时显式持久化 `runtimeMode = sandbox | no_sandbox`；顶层 `no_sandbox` Agent 与 workflow `agent` 节点走 `InProcessAgentAdapter -> PiAgentCoreAdapter -> pi-agent-core`，仍支持 Skill、知识库、Memory、HTTP MCP 与自进化；`sandbox` Agent 继续走容器化 `SandboxAgentAdapter`，且 direct conversation sandbox 支持按 `conversationIdleAutoEndMinutes` 在空闲一段时间后自动 `end()` 对话
 - **资源治理**：`tenant_quotas` + `execution_governance_controls` typed store，覆盖 `maxConcurrentExecutions`、`dailyExecutionLimit`、`dailyApiCallLimit`、`storageQuotaMb`、`apiRateLimitPerMinute`、`maxSandboxCpuPercent`、`maxSandboxMemoryMb`
 - **租户级 API 治理**：`CustomThrottlerGuard` 对 JWT 与 API key 请求解析 tenant，分钟级 `apiRateLimitPerMinute` 返回 `429 + Retry-After + X-RateLimit-*`，日配额和其它治理阻断返回 `409 ResourceGovernanceDecisionBlockedException`
 - **治理操作链路**：支持 quota 更新、tenant/workflow governance pause、anomalous execution termination、正式 audit、治理事件与结构化通知
@@ -30,7 +30,7 @@ AgentLoom Server 是基于 **NestJS 11 + Fastify 5** 的多租户后端服务，
 | plugin | `src/modules/plugin/` | `.alp` 上传、签名校验、Extism WASM 沙箱、收益结算 |
 | optimization-suggestion | `src/modules/optimization-suggestion/` | 周期分析执行遥测并生成可应用建议 |
 | acp-gateway | `src/modules/acp-gateway/` | ACP stdio 协议适配、连接级 session registry、严格 initialize 版本协商、authenticate、`session/new` / `session/load` / `session/prompt` / `session/cancel`、真实 `fs/read_text_file` / `fs/write_text_file` client-proxy + server-sandbox surface、真实 `terminal/create` / `terminal/output` / `terminal/wait_for_exit` / `terminal/kill` / `terminal/release` server-sandbox surface、canonical `readTextFile` / `writeTextFile` 能力协商，以及仅在 client 同时启用 `terminal.create` 与 `terminal.output` 时暴露的粗粒度 `terminal: { create: true }` 总开关、写入前 `session/request_permission` bridge、基于 `sandbox_sessions` 的 ACP-local sandbox workspace 解析、`/workspace/` 边界 + `realpath` / symlink / traversal / oversize / binary guardrails、session-bound terminal registry + durable continuity metadata、默认 1MB ring buffer / 5 并发 / 300s timeout kill / denylist 审计、runtime 事件到 `session/update` / `stopReason` 的映射、ordered history replay 与 cold-recovery fail-closed，以及 JSON-RPC 2.0 错误映射 |
-| sandbox | `src/modules/sandbox/` | 沙箱生命周期与运行时装配；persistent sandbox 的显式 `stop` / timeout 只会停止容器并保留 `containerId`，后续 `startSandbox()` 会优先复用同一容器，只有 `deleteSandbox()` 才会 remove 容器并删除记录。当前默认通过 `SANDBOX_RUNTIME_DRIVER` token 绑定 `DockerService`，让 agent / workspace / ACP 等消费方先依赖抽象驱动，为后续扩展其他 runtime 预留切口 |
+| sandbox | `src/modules/sandbox/` | 沙箱生命周期与运行时装配；persistent sandbox 的显式 `stop` / timeout 只会停止容器并保留 `containerId`，后续 `startSandbox()` 会优先复用同一容器，只有 `deleteSandbox()` 才会 remove 容器并删除记录。direct conversation 的 sandbox config 还支持 `conversationIdleAutoEndMinutes`：当该 sandbox 下所有 active conversation 都无运行中 loop 且无未处理消息时，会由 delayed job 自动 `end()` conversation，再复用既有 ended 链路做 destroy/detach。当前默认通过 `SANDBOX_RUNTIME_DRIVER` token 绑定 `DockerService`，让 agent / workspace / ACP 等消费方先依赖抽象驱动，为后续扩展其他 runtime 预留切口 |
 
 ## 本地开发
 

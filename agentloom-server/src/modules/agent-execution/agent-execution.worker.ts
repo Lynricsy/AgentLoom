@@ -554,6 +554,17 @@ export class AgentExecutionWorker extends WorkerHost {
       runningState: terminalStatus === 'completed' ? 'idle' : terminalStatus,
     });
 
+    if (
+      conversationHasSandbox &&
+      conversationStatus === 'active' &&
+      terminalStatus !== 'cancelled'
+    ) {
+      await this.sandboxService.scheduleConversationIdleAutoEnd(
+        conversationId,
+        tenantId,
+      );
+    }
+
     if (conversationStatus !== 'active') {
       await this.cleanupConversationMemorySessions(
         tenantId,

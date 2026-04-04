@@ -9,6 +9,7 @@ import {
   deriveSandboxTimeoutHours,
   normalizeSandboxTimeoutSeconds,
 } from '../sandbox/sandbox-timeout.utils';
+import { resolveSandboxConversationIdleAutoEndMinutes } from '../sandbox/sandbox-conversation-idle.utils';
 
 type CanvasNodeLike = Pick<ReactFlowNode, 'id' | 'type' | 'data'>;
 type CanvasEdgeLike = Pick<
@@ -77,6 +78,8 @@ function extractSandboxConfig(
       : undefined;
   const fallbackTimeoutSeconds =
     normalizedTimeoutSeconds ?? DEFAULT_AGENT_SANDBOX_TIMEOUT_SECONDS;
+  const conversationIdleAutoEndMinutes =
+    resolveSandboxConversationIdleAutoEndMinutes(data);
 
   const cpu =
     typeof data.cpu === 'number'
@@ -108,6 +111,7 @@ function extractSandboxConfig(
     ...(typeof normalizedTimeoutSeconds === 'number'
       ? { timeoutSeconds: normalizedTimeoutSeconds }
       : {}),
+    conversationIdleAutoEndMinutes,
     ...(readString(data.lifecycleMode) === 'session' ||
     readString(data.lifecycleMode) === 'persistent'
       ? {

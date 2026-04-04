@@ -128,8 +128,39 @@ export class SandboxLifecycleProducer {
     );
   }
 
+  async addConversationIdleEndCheckTask(params: {
+    sessionId: string;
+    tenantId: string;
+    delayMs: number;
+  }): Promise<Job<SandboxLifecycleJobData>> {
+    await this.removeConversationIdleEndCheckTask(params.sessionId);
+
+    return this.queue.add(
+      'sandbox-conversation-idle-end-check',
+      {
+        sessionId: params.sessionId,
+        tenantId: params.tenantId,
+        jobType: 'conversation_idle_end_check',
+      },
+      {
+        attempts: 1,
+        delay: params.delayMs,
+        jobId: `sandbox-conversation-idle-end-${params.sessionId}`,
+      },
+    );
+  }
+
   async removeTimeoutCheckTask(sessionId: string): Promise<void> {
     const existingJob = await this.queue.getJob(`sandbox-timeout-${sessionId}`);
+    if (existingJob) {
+      await existingJob.remove();
+    }
+  }
+
+  async removeConversationIdleEndCheckTask(sessionId: string): Promise<void> {
+    const existingJob = await this.queue.getJob(
+      `sandbox-conversation-idle-end-${sessionId}`,
+    );
     if (existingJob) {
       await existingJob.remove();
     }

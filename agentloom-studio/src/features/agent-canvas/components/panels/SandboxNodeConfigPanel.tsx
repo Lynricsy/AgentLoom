@@ -2,6 +2,8 @@ import { memo, useCallback } from 'react'
 import { Container } from 'lucide-react'
 import { Slider } from '@/shared/ui/slider'
 import { Switch } from '@/shared/ui/switch'
+import { Input } from '@/shared/ui/input'
+import { normalizeSandboxConversationIdleAutoEndMinutes } from '@/shared/lib/sandboxConversationIdleAutoEnd'
 import type { AgentGlobalSandboxConfig } from '@/features/agent/types'
 
 interface SandboxNodeConfigPanelProps {
@@ -12,13 +14,28 @@ interface SandboxNodeConfigPanelProps {
 const CPU_LIMITS = { min: 0.5, max: 8, step: 0.5 } as const
 const MEMORY_LIMITS = { min: 128, max: 8192, step: 128 } as const
 const TIMEOUT_LIMITS = { min: 30, max: 3600, step: 30 } as const
+const IDLE_AUTO_END_LIMITS = { min: 1, max: 1440 } as const
 
-function parseSandboxConfig(raw: Record<string, unknown>): Required<Pick<AgentGlobalSandboxConfig, 'enabled' | 'cpuLimit' | 'memoryLimitMb' | 'timeoutSeconds'>> {
+function parseSandboxConfig(
+  raw: Record<string, unknown>,
+): Required<
+  Pick<
+    AgentGlobalSandboxConfig,
+    | 'enabled'
+    | 'cpuLimit'
+    | 'memoryLimitMb'
+    | 'timeoutSeconds'
+    | 'conversationIdleAutoEndMinutes'
+  >
+> {
   return {
     enabled: typeof raw.enabled === 'boolean' ? raw.enabled : true,
     cpuLimit: typeof raw.cpuLimit === 'number' ? raw.cpuLimit : 1,
     memoryLimitMb: typeof raw.memoryLimitMb === 'number' ? raw.memoryLimitMb : 512,
     timeoutSeconds: typeof raw.timeoutSeconds === 'number' ? raw.timeoutSeconds : 300,
+    conversationIdleAutoEndMinutes: normalizeSandboxConversationIdleAutoEndMinutes(
+      raw.conversationIdleAutoEndMinutes,
+    ),
   }
 }
 
@@ -115,9 +132,35 @@ export const SandboxNodeConfigPanel = memo(function SandboxNodeConfigPanel({
             onChange={(v) => patchField('timeoutSeconds', v)}
           />
 
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs text-neutral-400">对话空闲自动结束</span>
+              <span className="text-xs font-mono text-neutral-300">
+                {sandbox.conversationIdleAutoEndMinutes} min
+              </span>
+            </div>
+            <Input
+              type="number"
+              min={IDLE_AUTO_END_LIMITS.min}
+              max={IDLE_AUTO_END_LIMITS.max}
+              value={sandbox.conversationIdleAutoEndMinutes}
+              onChange={(event) =>
+                patchField(
+                  'conversationIdleAutoEndMinutes',
+                  normalizeSandboxConversationIdleAutoEndMinutes(
+                    Number(event.target.value),
+                  ),
+                )
+              }
+            />
+            <p className="text-xs leading-5 text-neutral-500">
+              沙箱内没有运行中的对话，且所有对话都空闲后，按这个分钟数自动结束对话。
+            </p>
+          </div>
+
           <div className="rounded border border-neutral-700 bg-neutral-800/50 px-2.5 py-2 text-xs text-neutral-400">
             <span className="text-neutral-300 font-medium">当前配置：</span>
-            {sandbox.cpuLimit} 核 · {sandbox.memoryLimitMb} MB · {sandbox.timeoutSeconds}s
+            {sandbox.cpuLimit} 核 · {sandbox.memoryLimitMb} MB · {sandbox.timeoutSeconds}s · 空闲 {sandbox.conversationIdleAutoEndMinutes} 分钟自动结束
           </div>
         </>
       )}

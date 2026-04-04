@@ -66,6 +66,7 @@ describe('deriveAgentSandboxConfigFromCanvas', () => {
       disk: 6,
       timeout: 1,
       timeoutSeconds: 450,
+      conversationIdleAutoEndMinutes: 10,
       restoreWorkspaceId: 'workspace-restore-1',
     });
   });
@@ -84,6 +85,7 @@ describe('deriveAgentSandboxConfigFromCanvas', () => {
       memory: 512,
       disk: 2,
       timeout: 24,
+      conversationIdleAutoEndMinutes: 10,
       lifecycleMode: 'persistent',
     });
   });

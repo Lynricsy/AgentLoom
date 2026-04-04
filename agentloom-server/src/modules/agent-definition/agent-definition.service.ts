@@ -36,6 +36,7 @@ import {
   deriveSandboxTimeoutHours,
   normalizeSandboxTimeoutSeconds,
 } from '../sandbox/sandbox-timeout.utils';
+import { resolveSandboxConversationIdleAutoEndMinutes } from '../sandbox/sandbox-conversation-idle.utils';
 import type {
   AgentCodeToolBinding,
   AgentHttpToolBinding,
@@ -1602,6 +1603,8 @@ export class AgentDefinitionService {
         : undefined;
     const fallbackTimeoutSeconds =
       timeoutSeconds ?? DEFAULT_AGENT_SANDBOX_TIMEOUT_SECONDS;
+    const conversationIdleAutoEndMinutes =
+      resolveSandboxConversationIdleAutoEndMinutes(data);
 
     return {
       cpu: data.cpu ?? data.cpuLimit ?? 1,
@@ -1612,6 +1615,7 @@ export class AgentDefinitionService {
           ? data.timeout
           : deriveSandboxTimeoutHours(fallbackTimeoutSeconds),
       ...(typeof timeoutSeconds === 'number' ? { timeoutSeconds } : {}),
+      conversationIdleAutoEndMinutes,
       lifecycleMode: data.lifecycleMode,
       persistencePath: data.persistencePath,
       restoreWorkspaceId: data.restoreWorkspaceId,

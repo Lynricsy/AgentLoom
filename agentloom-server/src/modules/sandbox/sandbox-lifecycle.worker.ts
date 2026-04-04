@@ -6,12 +6,14 @@ import { Job } from 'bullmq';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import { runInTenantTransaction } from '../../common/interceptors/tenant-transaction.context';
 import * as schema from '../../database/schema';
-import { and, eq, inArray, notInArray } from 'drizzle-orm';
+import { and, asc, eq, inArray, notInArray } from 'drizzle-orm';
 
 import { StorageService } from '../../infrastructure/storage/storage.service';
 import { SandboxService } from './sandbox.service';
 import { SandboxLifecycleProducer } from './sandbox-lifecycle.producer';
 import { WorkspaceService } from '../workspace/workspace.service';
+import { AgentConversationService } from '../agent-conversation/agent-conversation.service';
+import { AgentExecutionService } from '../agent-execution/agent-execution.service';
 import {
   SANDBOX_RUNTIME_DRIVER,
   type SandboxRuntimeDriver,
@@ -28,6 +30,7 @@ import {
   formatSandboxTimeoutLabel,
   resolveSandboxTimeoutDelayMs,
 } from './sandbox-timeout.utils';
+import { resolveSandboxConversationIdleAutoEndDelayMs } from './sandbox-conversation-idle.utils';
 const CONTAINER_WORKSPACE = '/workspace/';
 const ACTIVE_STEP_STATUSES = [
   'pending',
@@ -67,6 +70,8 @@ export class SandboxLifecycleWorker extends WorkerHost {
         return this.handleDestroy(job.data);
       case 'timeout_check':
         return this.handleTimeoutCheck(job.data);
+      case 'conversation_idle_end_check':
+        return this.handleConversationIdleEndCheck(job.data);
     }
   }
 
@@ -166,6 +171,14 @@ export class SandboxLifecycleWorker extends WorkerHost {
 
       await this.attachContainerLogs(sessionId, containerId, tenantId);
       await this.scheduleTimeoutCheck(sessionId, tenantId, config, binding);
+      await this.scheduleConversationIdleEndCheck(
+        sessionId,
+        tenantId,
+        config,
+        typeof binding.agentConversationId === 'string'
+          ? [binding.agentConversationId]
+          : [],
+      );
 
       this.logger.log(
         `Sandbox ${sessionId} created with container ${containerId}`,
@@ -279,6 +292,14 @@ export class SandboxLifecycleWorker extends WorkerHost {
 
       await this.attachContainerLogs(sessionId, containerId, tenantId);
       await this.scheduleTimeoutCheck(sessionId, tenantId, config, binding);
+      await this.scheduleConversationIdleEndCheck(
+        sessionId,
+        tenantId,
+        config,
+        typeof binding.agentConversationId === 'string'
+          ? [binding.agentConversationId]
+          : [],
+      );
 
       this.logger.log(
         `Sandbox ${sessionId} restarted with container ${containerId}`,
@@ -310,6 +331,7 @@ export class SandboxLifecycleWorker extends WorkerHost {
     const binding = this.resolveBinding(data);
 
     await this.lifecycleProducer.removeTimeoutCheckTask(sessionId);
+    await this.lifecycleProducer.removeConversationIdleEndCheckTask(sessionId);
 
     if (containerId) {
       if (persistencePath) {
@@ -359,6 +381,7 @@ export class SandboxLifecycleWorker extends WorkerHost {
     const binding = this.resolveBinding(data);
 
     await this.lifecycleProducer.removeTimeoutCheckTask(sessionId);
+    await this.lifecycleProducer.removeConversationIdleEndCheckTask(sessionId);
 
     if (containerId) {
       if (persistencePath) {
@@ -438,6 +461,7 @@ export class SandboxLifecycleWorker extends WorkerHost {
     data: SandboxLifecycleJobData,
   ): Promise<void> {
     const { sessionId, tenantId } = data;
+    await this.lifecycleProducer.removeConversationIdleEndCheckTask(sessionId);
     const session = await this.sandboxService
       .getSessionById(sessionId)
       .catch(() => null);
@@ -564,6 +588,106 @@ export class SandboxLifecycleWorker extends WorkerHost {
     }
   }
 
+  private async handleConversationIdleEndCheck(
+    data: SandboxLifecycleJobData,
+  ): Promise<void> {
+    const { sessionId, tenantId } = data;
+    const session = await this.sandboxService
+      .getSessionById(sessionId)
+      .catch(() => null);
+
+    if (
+      !session ||
+      session.status === 'stopping' ||
+      TERMINAL_SANDBOX_STATUSES.includes(
+        session.status as (typeof TERMINAL_SANDBOX_STATUSES)[number],
+      )
+    ) {
+      return;
+    }
+
+    const conversationIds = this.getBoundConversationIds(session);
+    if (conversationIds.length === 0) {
+      return;
+    }
+
+    const [activeConversations, latestUserMessageIdByConversation] =
+      await runInTenantTransaction(this.db, tenantId, async (tenantDb) => {
+        const conversations = await tenantDb
+          .select({
+            id: schema.agentConversations.id,
+            status: schema.agentConversations.status,
+            metadata: schema.agentConversations.metadata,
+          })
+          .from(schema.agentConversations)
+          .where(inArray(schema.agentConversations.id, conversationIds));
+
+        const activeConversationRows = conversations.filter(
+          (conversation) => conversation.status === 'active',
+        );
+
+        if (activeConversationRows.length === 0) {
+          return [[], new Map<string, string>()] as const;
+        }
+
+        const userMessages = await tenantDb
+          .select({
+            conversationId: schema.agentMessages.conversationId,
+            id: schema.agentMessages.id,
+            createdAt: schema.agentMessages.createdAt,
+          })
+          .from(schema.agentMessages)
+          .where(
+            and(
+              inArray(
+                schema.agentMessages.conversationId,
+                activeConversationRows.map((conversation) => conversation.id),
+              ),
+              eq(schema.agentMessages.role, 'user'),
+            ),
+          )
+          .orderBy(
+            asc(schema.agentMessages.createdAt),
+            asc(schema.agentMessages.id),
+          );
+
+        const latestUserMessageIds = new Map<string, string>();
+        for (const message of userMessages) {
+          latestUserMessageIds.set(message.conversationId, message.id);
+        }
+
+        return [activeConversationRows, latestUserMessageIds] as const;
+      });
+
+    if (activeConversations.length === 0) {
+      return;
+    }
+
+    const executionService = this.getAgentExecutionService();
+    const allConversationsIdle = activeConversations.every((conversation) =>
+      this.isConversationIdleForAutoEnd(
+        conversation,
+        latestUserMessageIdByConversation.get(conversation.id),
+        executionService,
+      ),
+    );
+
+    if (!allConversationsIdle) {
+      return;
+    }
+
+    const conversationService = this.getAgentConversationService();
+    if (!conversationService) {
+      throw new Error('AgentConversationService is unavailable');
+    }
+
+    for (const conversation of activeConversations) {
+      await runInTenantTransaction(this.db, tenantId, async () => {
+        await conversationService.end(conversation.id);
+      });
+    }
+  }
+
   private async insertLog(
     sessionId: string,
     level: string,
@@ -609,6 +733,27 @@ export class SandboxLifecycleWorker extends WorkerHost {
       tenantId,
       delayMs,
       ...binding,
+    });
+  }
+
+  private async scheduleConversationIdleEndCheck(
+    sessionId: string,
+    tenantId: string,
+    config: Pick<SandboxLifecycleJobData, 'config'>['config'],
+    conversationIds: string[] = [],
+  ): Promise<void> {
+    if (!config) {
+      return;
+    }
+
+    if (conversationIds.length === 0) {
+      return;
+    }
+
+    await this.lifecycleProducer.addConversationIdleEndCheckTask({
+      sessionId,
+      tenantId,
+      delayMs: resolveSandboxConversationIdleAutoEndDelayMs(config),
     });
   }
 
@@ -665,6 +810,112 @@ export class SandboxLifecycleWorker extends WorkerHost {
     }
 
     return 'standalone';
+  }
+
+  private getBoundConversationIds(
+    session: Pick<
+      schema.SandboxSession,
+      'agentConversationId' | 'config' | 'executionId' | 'sandboxNodeId'
+    >,
+  ): string[] {
+    const conversationIds = new Set<string>();
+
+    if (typeof session.agentConversationId === 'string') {
+      conversationIds.add(session.agentConversationId);
+    }
+
+    const activeBindings = Array.isArray(session.config.activeBindings)
+      ? session.config.activeBindings
+      : [];
+    for (const binding of activeBindings) {
+      if (typeof binding?.agentConversationId === 'string') {
+        conversationIds.add(binding.agentConversationId);
+      }
+    }
+
+    return [...conversationIds];
+  }
+
+  private isConversationIdleForAutoEnd(
+    conversation: {
+      id: string;
+      metadata: Record<string, unknown>;
+    },
+    latestUserMessageId: string | undefined,
+    executionService: AgentExecutionService | null,
+  ): boolean {
+    const executionMetadata = this.readConversationExecutionMetadata(
+      conversation.metadata,
+    );
+
+    if (
+      executionService?.getActiveRun(conversation.id) &&
+      !executionService.getActiveRun(conversation.id)?.abort.signal.aborted
+    ) {
+      return false;
+    }
+
+    if (executionMetadata.runningState === 'running') {
+      return false;
+    }
+
+    if (
+      typeof latestUserMessageId === 'string' &&
+      executionMetadata.lastProcessedMessageId !== latestUserMessageId
+    ) {
+      return false;
+    }
+
+    return true;
+  }
+
+  private readConversationExecutionMetadata(
+    metadata: Record<string, unknown>,
+  ): {
+    lastProcessedMessageId?: string;
+    runningState?: 'idle' | 'running' | 'failed' | 'cancelled';
+  } {
+    const execution =
+      metadata['execution'] &&
+      typeof metadata['execution'] === 'object' &&
+      !Array.isArray(metadata['execution'])
+        ? (metadata['execution'] as Record<string, unknown>)
+        : null;
+
+    if (!execution) {
+      return {};
+    }
+
+    return {
+      ...(typeof execution.lastProcessedMessageId === 'string'
+        ? { lastProcessedMessageId: execution.lastProcessedMessageId }
+        : {}),
+      ...(typeof execution.runningState === 'string'
+        ? {
+            runningState: execution.runningState as
+              | 'idle'
+              | 'running'
+              | 'failed'
+              | 'cancelled',
+          }
+        : {}),
+    };
+  }
+
+  private getAgentExecutionService(): AgentExecutionService | null {
+    try {
+      return this.moduleRef.get(AgentExecutionService, { strict: false });
+    } catch {
+      return null;
+    }
+  }
+
+  private getAgentConversationService(): AgentConversationService | null {
+    try {
+      return this.moduleRef.get(AgentConversationService, { strict: false });
+    } catch {
+      return null;
+    }
   }
 
   @OnWorkerEvent('failed')

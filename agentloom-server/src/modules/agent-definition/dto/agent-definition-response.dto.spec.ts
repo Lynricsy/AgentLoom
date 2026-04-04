@@ -162,6 +162,7 @@ describe('serializeAgentDefinitionDetail', () => {
       disk: 6,
       timeout: 1,
       timeoutSeconds: 450,
+      conversationIdleAutoEndMinutes: 10,
     });
     expect(result.sandboxLifecycle).toBeNull();
   });

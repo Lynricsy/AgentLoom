@@ -5,6 +5,7 @@ export interface SandboxSessionConfig {
   disk: number
   timeout: number
   timeoutSeconds?: number
+  conversationIdleAutoEndMinutes?: number
   lifecycleMode?: 'session' | 'persistent'
   restoreWorkspaceId?: string
 }
@@ -53,4 +54,5 @@ export interface CreateSandboxPayload {
   cpu: number
   memory: number
   disk: number
+  conversationIdleAutoEndMinutes: number
 }

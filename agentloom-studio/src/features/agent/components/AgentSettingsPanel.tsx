@@ -15,6 +15,7 @@ import {
 import { EntityIcon } from '@/shared/components/entity-icon'
 import { EmojiIconPicker } from '@/shared/components/emoji-icon-picker'
 import { cn } from '@/shared/lib/utils'
+import { normalizeSandboxConversationIdleAutoEndMinutes } from '@/shared/lib/sandboxConversationIdleAutoEnd'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import { Tabs, TabsList, TabsTrigger } from '@/shared/ui/tabs'
@@ -348,6 +349,15 @@ function SandboxSummaryTab({ sandboxConfig }: SandboxSummaryTabProps) {
             <span className="text-xs text-muted-foreground">超时时间</span>
             <span className="font-medium text-foreground">
               {sandboxConfig.timeoutSeconds ?? '默认'}s
+            </span>
+          </div>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-xs text-muted-foreground">空闲自动结束</span>
+            <span className="font-medium text-foreground">
+              {normalizeSandboxConversationIdleAutoEndMinutes(
+                sandboxConfig.conversationIdleAutoEndMinutes,
+              )}
+              min
             </span>
           </div>
           <div className="flex flex-col gap-0.5">

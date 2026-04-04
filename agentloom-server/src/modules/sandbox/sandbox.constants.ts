@@ -8,7 +8,8 @@ export type SandboxLifecycleJobType =
   | 'start'
   | 'stop'
   | 'destroy'
-  | 'timeout_check';
+  | 'timeout_check'
+  | 'conversation_idle_end_check';
 
 export interface SandboxLifecycleBinding {
   executionId?: string;

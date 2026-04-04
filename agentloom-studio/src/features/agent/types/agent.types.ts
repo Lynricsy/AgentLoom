@@ -13,6 +13,7 @@ export interface AgentGlobalSandboxConfig {
   disk?: number
   timeout?: number
   timeoutSeconds?: number
+  conversationIdleAutoEndMinutes?: number
   persistencePath?: string
   restoreWorkspaceId?: string
   lifecycleMode?: 'session' | 'persistent'

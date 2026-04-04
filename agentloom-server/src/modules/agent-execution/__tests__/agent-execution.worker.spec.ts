@@ -64,6 +64,7 @@ const {
   mockSandboxService: {
     findByConversationId: vi.fn(),
     createSandboxSession: vi.fn(),
+    scheduleConversationIdleAutoEnd: vi.fn(),
   },
   mockWorkspaceIntegrationService: {
     startFileWatcher: vi.fn(),
@@ -279,6 +280,9 @@ describe('AgentExecutionWorker', () => {
     mockSandboxService.createSandboxSession.mockReset().mockResolvedValue({
       id: 'sandbox-session-1',
     });
+    mockSandboxService.scheduleConversationIdleAutoEnd
+      .mockReset()
+      .mockResolvedValue(undefined);
     mockWorkspaceIntegrationService.startFileWatcher.mockReset();
     mockWorkspaceIntegrationService.captureConversationWorkspaceTreeSnapshot.mockReset();
     mockMemoryToolsService.createSessionToolProvider.mockReset();
@@ -1180,6 +1184,7 @@ describe('AgentExecutionWorker', () => {
               disk: 5,
               timeout: 901,
               timeoutSeconds: 300,
+              conversationIdleAutoEndMinutes: 10,
             },
           }),
         }),
@@ -1284,6 +1289,7 @@ describe('AgentExecutionWorker', () => {
               disk: 6,
               timeout: 1,
               timeoutSeconds: 450,
+              conversationIdleAutoEndMinutes: 10,
             },
           }),
         }),
@@ -2597,5 +2603,33 @@ describe('AgentExecutionWorker', () => {
       'conversation-1',
       expect.objectContaining({ status: 'cancelled' }),
     );
+  });
+
+  it('有沙箱且对话仍 active 时，完成收口后应调度 idle auto end', async () => {
+    setupLoopMocks(workerInternals);
+    workerInternals.loadConversationExecutionContext = vi
+      .fn()
+      .mockResolvedValue(makeActiveContext({ hasSandbox: true }));
+    mockExecutionService.waitForNotification.mockResolvedValue('timeout');
+
+    await worker.executeAgentLoop('conversation-1', 'tenant-1');
+
+    expect(mockSandboxService.scheduleConversationIdleAutoEnd).toHaveBeenCalledWith(
+      'conversation-1',
+      'tenant-1',
+    );
+  });
+
+  it('取消收口时不应调度 idle auto end', async () => {
+    setupLoopMocks(workerInternals, {
+      context: makeActiveContext({ hasSandbox: true }),
+    });
+    mockExecutionService.waitForNotification.mockResolvedValueOnce('aborted');
+
+    await worker.executeAgentLoop('conversation-1', 'tenant-1');
+
+    expect(
+      mockSandboxService.scheduleConversationIdleAutoEnd,
+    ).not.toHaveBeenCalled();
   });
 });

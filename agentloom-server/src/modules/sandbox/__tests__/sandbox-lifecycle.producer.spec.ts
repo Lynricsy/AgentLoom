@@ -189,6 +189,32 @@ describe('SandboxLifecycleProducer', () => {
     );
   });
 
+  it('addConversationIdleEndCheckTask 应使用 delay 选项入队并覆盖同 session 旧任务', async () => {
+    await producer.addConversationIdleEndCheckTask({
+      sessionId: 's-conv',
+      tenantId: 't1',
+      delayMs: 600_000,
+    });
+
+    expect(mockQueue.getJob).toHaveBeenCalledWith(
+      'sandbox-conversation-idle-end-s-conv',
+    );
+    expect(mockTimeoutJob.remove).toHaveBeenCalledTimes(1);
+    expect(mockQueue.add).toHaveBeenCalledWith(
+      'sandbox-conversation-idle-end-check',
+      {
+        sessionId: 's-conv',
+        tenantId: 't1',
+        jobType: 'conversation_idle_end_check',
+      },
+      {
+        attempts: 1,
+        delay: 600_000,
+        jobId: 'sandbox-conversation-idle-end-s-conv',
+      },
+    );
+  });
+
   it('removeTimeoutCheckTask 命中已有任务时应移除', async () => {
     await producer.removeTimeoutCheckTask('s1');
 
@@ -203,5 +229,14 @@ describe('SandboxLifecycleProducer', () => {
 
     expect(mockQueue.getJob).toHaveBeenCalledWith('sandbox-timeout-missing');
     expect(mockTimeoutJob.remove).not.toHaveBeenCalled();
+  });
+
+  it('removeConversationIdleEndCheckTask 命中已有任务时应移除', async () => {
+    await producer.removeConversationIdleEndCheckTask('s1');
+
+    expect(mockQueue.getJob).toHaveBeenCalledWith(
+      'sandbox-conversation-idle-end-s1',
+    );
+    expect(mockTimeoutJob.remove).toHaveBeenCalledTimes(1);
   });
 });

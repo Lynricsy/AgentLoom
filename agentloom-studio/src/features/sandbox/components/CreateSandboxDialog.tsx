@@ -5,6 +5,7 @@ import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import { useCreateSandbox } from '../api/sandboxMutations'
 import { useToast } from '@/shared/ui/toast'
+import { normalizeSandboxConversationIdleAutoEndMinutes } from '@/shared/lib/sandboxConversationIdleAutoEnd'
 import { SandboxPresetSelector } from './SandboxPresetSelector'
 import {
   useSandboxPresetStore,
@@ -31,6 +32,9 @@ export function CreateSandboxDialog({
   const [cpu, setCpu] = useState(1)
   const [memory, setMemory] = useState(512)
   const [disk, setDisk] = useState(2)
+  const [conversationIdleAutoEndMinutes, setConversationIdleAutoEndMinutes] = useState(
+    normalizeSandboxConversationIdleAutoEndMinutes(undefined),
+  )
   const [selectedPresetId, setSelectedPresetId] = useState<string | undefined>(undefined)
 
   const addPreset = useSandboxPresetStore((s) => s.addPreset)
@@ -56,6 +60,9 @@ export function CreateSandboxDialog({
     setCpu(1)
     setMemory(512)
     setDisk(2)
+    setConversationIdleAutoEndMinutes(
+      normalizeSandboxConversationIdleAutoEndMinutes(undefined),
+    )
     setSelectedPresetId(undefined)
   }
 
@@ -75,6 +82,7 @@ export function CreateSandboxDialog({
         cpu,
         memory,
         disk,
+        conversationIdleAutoEndMinutes,
       },
       {
         onSuccess: () => {
@@ -223,6 +231,32 @@ export function CreateSandboxDialog({
                 <span>1 GB</span>
                 <span>10 GB</span>
               </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <label
+                className="text-sm font-medium text-foreground"
+                htmlFor="sandbox-conversation-idle-auto-end-minutes"
+              >
+                对话空闲自动结束（分钟）
+              </label>
+              <Input
+                id="sandbox-conversation-idle-auto-end-minutes"
+                type="number"
+                min={1}
+                max={1440}
+                value={conversationIdleAutoEndMinutes}
+                onChange={(e) =>
+                  setConversationIdleAutoEndMinutes(
+                    normalizeSandboxConversationIdleAutoEndMinutes(
+                      Number(e.target.value),
+                    ),
+                  )
+                }
+              />
+              <p className="text-xs leading-5 text-muted-foreground">
+                沙箱里没有运行中的对话，且所有对话都空闲后，会按该分钟数自动结束对话。
+              </p>
             </div>
           </div>
 

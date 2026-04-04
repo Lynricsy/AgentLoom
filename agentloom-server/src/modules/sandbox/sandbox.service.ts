@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
+import { OnEvent } from '@nestjs/event-emitter';
 import { and, desc, eq, notInArray, asc, or, sql } from 'drizzle-orm';
 
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
@@ -28,6 +29,10 @@ import {
   type ContainerStats,
   type SandboxRuntimeDriver,
 } from './sandbox-runtime-driver.port';
+import {
+  resolveSandboxConversationIdleAutoEndDelayMs,
+  resolveSandboxConversationIdleAutoEndMinutes,
+} from './sandbox-conversation-idle.utils';
 
 const TERMINAL_STATUSES = ['stopped', 'failed'] as const;
 const NON_ACTIVE_SESSION_STATUSES = ['stopping', ...TERMINAL_STATUSES] as const;
@@ -69,6 +74,17 @@ export class SandboxService {
 
   private get tenantDb(): DrizzleDB {
     return getTenantDb(this.db);
+  }
+
+  @OnEvent('agent-conversation.message-sent')
+  async handleConversationMessageSent(payload: {
+    conversationId: string;
+    tenantId: string;
+  }): Promise<void> {
+    await this.cancelConversationIdleAutoEnd(
+      payload.conversationId,
+      payload.tenantId,
+    );
   }
 
   async createSandboxSession({
@@ -175,6 +191,57 @@ export class SandboxService {
     }
 
     return this.buildContainerStats(session);
+  }
+
+  async scheduleConversationIdleAutoEnd(
+    agentConversationId: string,
+    tenantId: string,
+  ): Promise<void> {
+    const session = await this.findActiveSession({
+      agentConversationId,
+      tenantId,
+    });
+
+    if (!session) {
+      return;
+    }
+
+    const conversationIds = this.getBoundConversationIds(session);
+    if (conversationIds.length === 0) {
+      return;
+    }
+
+    const delayMs = resolveSandboxConversationIdleAutoEndDelayMs(
+      session.config,
+    );
+
+    await this.enqueueLifecycleTask(async () => {
+      await this.lifecycleProducer.addConversationIdleEndCheckTask({
+        sessionId: session.id,
+        tenantId,
+        delayMs,
+      });
+    });
+  }
+
+  async cancelConversationIdleAutoEnd(
+    agentConversationId: string,
+    tenantId: string,
+  ): Promise<void> {
+    const session = await this.findActiveSession({
+      agentConversationId,
+      tenantId,
+    });
+
+    if (!session) {
+      return;
+    }
+
+    await this.enqueueLifecycleTask(async () => {
+      await this.lifecycleProducer.removeConversationIdleEndCheckTask(
+        session.id,
+      );
+    });
   }
 
   async updateSessionStatus(
@@ -337,6 +404,9 @@ export class SandboxService {
     }
 
     await this.enqueueLifecycleTask(async () => {
+      await this.lifecycleProducer.removeConversationIdleEndCheckTask(
+        session.id,
+      );
       await this.lifecycleProducer.addDestroyTask({
         sessionId: session.id,
         tenantId: params.tenantId,
@@ -758,6 +828,22 @@ export class SandboxService {
     return `conversation ${params.agentConversationId}`;
   }
 
+  private getBoundConversationIds(session: SandboxSession): string[] {
+    const conversationIds = new Set<string>();
+
+    if (typeof session.agentConversationId === 'string') {
+      conversationIds.add(session.agentConversationId);
+    }
+
+    for (const binding of this.getPersistentBindings(session)) {
+      if (typeof binding.agentConversationId === 'string') {
+        conversationIds.add(binding.agentConversationId);
+      }
+    }
+
+    return [...conversationIds];
+  }
+
   private async cleanupExecutionSession(
     session: SandboxSession,
     tenantId: string,
@@ -819,6 +905,12 @@ export class SandboxService {
           config: nextConfig,
         })
         .where(eq(schema.sandboxSessions.id, session.id));
+    });
+
+    await this.enqueueLifecycleTask(async () => {
+      await this.lifecycleProducer.removeConversationIdleEndCheckTask(
+        session.id,
+      );
     });
 
     this.logger.log(
@@ -1011,13 +1103,24 @@ export class SandboxService {
 
   async createPersistentSandbox(
     tenantId: string,
-    params: { name: string; cpu: number; memory: number; disk: number },
+    params: {
+      name: string;
+      cpu: number;
+      memory: number;
+      disk: number;
+      conversationIdleAutoEndMinutes?: number;
+    },
   ): Promise<SandboxSession> {
     const config: SandboxConfig = {
       cpu: params.cpu,
       memory: params.memory,
       disk: params.disk,
       timeout: DEFAULT_PERSISTENT_TIMEOUT,
+      conversationIdleAutoEndMinutes:
+        resolveSandboxConversationIdleAutoEndMinutes({
+          conversationIdleAutoEndMinutes:
+            params.conversationIdleAutoEndMinutes,
+        }),
       lifecycleMode: 'persistent',
       name: params.name,
     };
@@ -1112,6 +1215,9 @@ export class SandboxService {
     }
 
     await this.enqueueLifecycleTask(async () => {
+      await this.lifecycleProducer.removeConversationIdleEndCheckTask(
+        sessionId,
+      );
       if (lifecycleMode === 'persistent') {
         await this.lifecycleProducer.addStopTask({
           sessionId,
@@ -1185,6 +1291,9 @@ export class SandboxService {
       });
 
       await this.enqueueLifecycleTask(async () => {
+        await this.lifecycleProducer.removeConversationIdleEndCheckTask(
+          sessionId,
+        );
         await this.lifecycleProducer.addStartTask({
           sessionId,
           tenantId,
@@ -1232,6 +1341,9 @@ export class SandboxService {
     });
 
     await this.enqueueLifecycleTask(async () => {
+      await this.lifecycleProducer.removeConversationIdleEndCheckTask(
+        sessionId,
+      );
       await this.lifecycleProducer.addCreateTask({
         sessionId,
         tenantId,
@@ -1259,6 +1371,7 @@ export class SandboxService {
     }
 
     await this.lifecycleProducer.removeTimeoutCheckTask(sessionId);
+    await this.lifecycleProducer.removeConversationIdleEndCheckTask(sessionId);
 
     if (session.containerId) {
       try {

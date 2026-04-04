@@ -39,22 +39,47 @@ describe('sandbox node registry', () => {
   })
 
   it('has a volume input port for workspace mounting', () => {
-    expect(sandboxConfig.inputPorts).toHaveLength(1)
-    expect(sandboxConfig.inputPorts[0]).toMatchObject({
-      id: 'volume-in',
-      dataType: 'volume',
-      direction: 'input',
-    })
+    expect(sandboxConfig.inputPorts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'volume-in',
+          dataType: 'volume',
+          direction: 'input',
+        }),
+      ]),
+    )
   })
 
   it('has a sandbox output port with correct config', () => {
-    expect(sandboxConfig.outputPorts).toHaveLength(1)
-    const output = sandboxConfig.outputPorts[0]!
-    expect(output.id).toBe('sandbox-out')
-    expect(output.dataType).toBe('sandbox')
-    expect(output.direction).toBe('output')
-    expect(output.multiple).toBe(true)
-    expect(output.maxConnections).toBeNull()
+    const output = sandboxConfig.outputPorts.find((port) => port.id === 'sandbox-out')
+    expect(output).toMatchObject({
+      id: 'sandbox-out',
+      dataType: 'sandbox',
+      direction: 'output',
+      multiple: true,
+      maxConnections: null,
+    })
+  })
+
+  it('retains execution flow ports for workflow scheduling', () => {
+    expect(sandboxConfig.inputPorts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'exec-in',
+          dataType: 'exec',
+          direction: 'input',
+        }),
+      ]),
+    )
+    expect(sandboxConfig.outputPorts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'exec-out',
+          dataType: 'exec',
+          direction: 'output',
+        }),
+      ]),
+    )
   })
 })
 

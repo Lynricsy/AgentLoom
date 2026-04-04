@@ -1,15 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAgentCanvasStore } from './agent-canvas.store';
 
-const { getMock, putMock } = vi.hoisted(() => ({
+const { getMock, putMock, postMock } = vi.hoisted(() => ({
   getMock: vi.fn(),
   putMock: vi.fn(),
+  postMock: vi.fn(() => ({ json: vi.fn().mockResolvedValue({}) })),
 }));
 
 vi.mock('@/shared/api/client', () => ({
   apiClient: {
     get: getMock,
     put: putMock,
+    post: postMock,
   },
 }));
 
