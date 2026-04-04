@@ -23,6 +23,7 @@ abstract class SkillDto with _$SkillDto {
     String? updatedBy,
     required String createdAt,
     required String updatedAt,
+    @Default('manual') String sourceKind,
   }) = _SkillDto;
 
   factory SkillDto.fromJson(Map<String, dynamic> json) =>
@@ -41,6 +42,7 @@ Map<String, dynamic> _normalizeSkillJson(Map<String, dynamic> json) {
     'updatedBy': 'updated_by',
     'createdAt': 'created_at',
     'updatedAt': 'updated_at',
+    'sourceKind': 'source_kind',
   };
 
   for (final entry in aliases.entries) {

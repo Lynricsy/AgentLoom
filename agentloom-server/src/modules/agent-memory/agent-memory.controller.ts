@@ -20,7 +20,7 @@ import {
   ApiSecurity,
   ApiTags,
 } from '@nestjs/swagger';
-import { and, count, desc, eq, inArray, sql } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, not, sql } from 'drizzle-orm';
 
 import { CurrentTenant } from '../../common/decorators/current-tenant.decorator';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
@@ -36,6 +36,7 @@ import {
   memoryVersions,
 } from '../../database/schema';
 import { AuditLogService } from '../evidence/audit-log.service';
+import { ResourceSourceService } from '../resource-source/resource-source.service';
 import {
   CreateMemoryAliasDto,
   CreateMemoryEdgeDto,
@@ -84,6 +85,7 @@ export class AgentMemoryController {
     private readonly bootProtocolService: BootProtocolService,
     private readonly memoryFusionService: MemoryFusionService,
     private readonly auditLogService: AuditLogService,
+    private readonly resourceSourceService: ResourceSourceService,
   ) {}
 
   // ─── Memory Instance CRUD ────────────────────────────────────────────
@@ -113,7 +115,12 @@ export class AgentMemoryController {
       })
       .returning();
 
-    return { data: instance };
+    return {
+      data: {
+        ...instance,
+        sourceKind: 'manual' as const,
+      },
+    };
   }
 
   @Get()
@@ -138,6 +145,20 @@ export class AgentMemoryController {
     if (query.search) {
       conditions.push(
         sql`${agentMemoryInstances.name} ILIKE ${'%' + query.search + '%'}`,
+      );
+    }
+
+    if (query.sourceKind) {
+      const importedExistsCondition =
+        this.resourceSourceService.buildShareImportedExistsCondition({
+          resourceType: 'memory_instance',
+          resourceIdColumn: agentMemoryInstances.id,
+        });
+
+      conditions.push(
+        query.sourceKind === 'share_imported'
+          ? importedExistsCondition
+          : not(importedExistsCondition),
       );
     }
 
@@ -175,11 +196,16 @@ export class AgentMemoryController {
         nodeCounts.map((r) => [r.instanceId, r.total]),
       );
     }
+    const sourceKindMap = await this.resourceSourceService.mapCurrentKinds(
+      'memory_instance',
+      instanceIds,
+    );
 
     return {
       data: data.map((d) => ({
         ...d,
         nodeCount: nodeCountMap[d.id] ?? 0,
+        sourceKind: sourceKindMap.get(d.id) ?? 'manual',
       })),
       meta: {
         page,
@@ -227,10 +253,15 @@ export class AgentMemoryController {
           .from(memoryNodes)
           .where(eq(memoryNodes.instanceId, id)),
       ]);
+    const sourceKindMap = await this.resourceSourceService.mapCurrentKinds(
+      'memory_instance',
+      [id],
+    );
 
     return {
       data: {
         ...instance,
+        sourceKind: sourceKindMap.get(id) ?? 'manual',
         stats: {
           nodeCount: nodeCountRow?.total ?? 0,
           edgeCount: edgeCountRow?.total ?? 0,

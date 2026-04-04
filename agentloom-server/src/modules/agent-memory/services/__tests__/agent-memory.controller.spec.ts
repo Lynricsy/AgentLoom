@@ -45,6 +45,7 @@ import {
   memoryPaths,
   memoryVersions,
 } from '../../../../database/schema';
+import { ResourceSourceService } from '../../../resource-source/resource-source.service';
 import { AgentMemoryController } from '../../agent-memory.controller';
 import type {
   CreateMemoryAliasDto,
@@ -228,6 +229,15 @@ function createMockAuditLogService() {
   };
 }
 
+function createMockResourceSourceService() {
+  return {
+    mapCurrentKinds: vi.fn().mockResolvedValue(new Map()),
+    buildShareImportedExistsCondition: vi.fn(() => ({
+      type: 'share-imported',
+    })),
+  };
+}
+
 // ─── Fixture Factories ─────────────────────────────────────────────────
 
 function createInstance(overrides: Record<string, unknown> = {}) {
@@ -245,6 +255,7 @@ function createInstance(overrides: Record<string, unknown> = {}) {
     createdBy: USER_ID,
     createdAt: NOW,
     updatedAt: NOW,
+    sourceKind: 'manual',
     ...overrides,
   };
 }
@@ -332,6 +343,7 @@ describe('AgentMemoryController', () => {
   let mockBootService: ReturnType<typeof createMockBootProtocolService>;
   let mockFusionService: ReturnType<typeof createMockMemoryFusionService>;
   let mockAuditService: ReturnType<typeof createMockAuditLogService>;
+  let mockResourceSourceService: ReturnType<typeof createMockResourceSourceService>;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -349,6 +361,7 @@ describe('AgentMemoryController', () => {
     mockBootService = createMockBootProtocolService();
     mockFusionService = createMockMemoryFusionService();
     mockAuditService = createMockAuditLogService();
+    mockResourceSourceService = createMockResourceSourceService();
 
     controller = new AgentMemoryController(
       rawDb as unknown as DrizzleDB,
@@ -361,6 +374,7 @@ describe('AgentMemoryController', () => {
       mockBootService as never,
       mockFusionService as never,
       mockAuditService as never,
+      mockResourceSourceService as never,
     );
   });
 

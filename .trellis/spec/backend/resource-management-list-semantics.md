@@ -8,9 +8,11 @@
 
 - 触发条件：
   - 修改 `workspace` / `sandbox` 资源列表 API
-  - 修改 sandbox stats API 或对话沙箱 stats API
-  - 修改 Agent sandbox timeout 编译或 lifecycle worker 调度
-  - 修改 conversation 结束后 sandbox 回收链路
+- 修改 sandbox stats API 或对话沙箱 stats API
+- 修改 Agent sandbox timeout 编译或 lifecycle worker 调度
+- 修改 conversation 结束后 sandbox 回收链路
+- 修改 workflow / agent / knowledge / memory / mcp / skill 列表的分享来源语义
+- 修改 `src/modules/resource-source/` 中的来源记录与转正逻辑
 
 ---
 
@@ -138,6 +140,34 @@
 - conversation sandbox stats 必须通过 `SandboxService.findByConversationId()` 定位 active session，而不是让前端自行扫资源列表。
 - 前端看到缺失的 `diskUsage/diskTotal` 时，必须按“不可用/未知”处理，不能自行回退成 `0 B`。
 
+### 3.6 Share-imported resource source semantics
+
+- 共享来源记录统一保存在 `resource_source_records`，而不是散落到 workflow / agent / knowledge / memory / mcp / skill 各表。
+- `recordImportedResources()` 写入的 canonical 字段为：
+  - `originKind='share_imported'`
+  - `currentKind='share_imported'`
+  - `sourceShareType`
+  - `sourceShareId`
+  - `sourceShareToken`
+  - `sourceResourceType`
+  - `sourceResourceId`
+  - `sourceResourceTitle`
+- workflow / agent 列表与详情必须通过 `mapCurrentKinds()` 把当前来源映射为 `resourceSourceKind`。
+- knowledge base / memory instance / mcp server config / skill 列表与详情必须通过同一套来源记录映射 `sourceKind`。
+- `sourceKind=share_imported` 过滤必须在 service / SQL 层生效，不能先全量查出再在 controller 层内存过滤。
+- `convertToManual()` 只更新 `resource_source_records.currentKind='manual'`，不能删除 origin 记录，也不能修改资源本体。
+- `convertToManual()` 对不存在的来源记录必须返回幂等 manual 结果：
+  - `resourceType`
+  - `resourceId`
+  - `currentKind='manual'`
+- workflow 从分享导入时必须记录 `resourceType='workflow_definition'` 的来源记录；agent 分享导入时根 Agent 与深拷贝出的持久化资源必须分别记录：
+  - `agent_definition`
+  - `knowledge_base`
+  - `memory_instance`
+  - `mcp_server_config`
+  - `skill`
+- workspace 只允许记录“已清空”的导入报告，不写入新的 workspace 资源来源记录，因为 workspace 本体不随分享导入复制。
+
 ---
 
 ## 4. Validation Matrix
@@ -162,6 +192,11 @@
 | running sandbox stats 成功拿到 workspace usage | 返回 `diskUsage(bytes)`，service 补齐 `diskTotal(bytes)` | `docker.service.spec.ts`, `sandbox.service.spec.ts` |
 | workspace usage 统计失败 | 仍返回 CPU/内存，且不伪造 `diskUsage=0` | `docker.service.spec.ts` |
 | conversation sandbox stats 查询 | `GET /agent-conversations/:id/sandbox/stats` 返回与资源页一致的 `ContainerStats` | `agent-conversation.controller.spec.ts` |
+| workflow 分享导入成功 | 新 workflow 记录 `resourceSourceKind='share_imported'` | `workflow-version.service.spec.ts` |
+| agent 分享导入成功 | 根 Agent 与深拷贝持久化资源记录 share-import source | `agent-share-import.service.ts` tests |
+| workflow / agent / knowledge / memory / mcp / skill 列表使用 `sourceKind=share_imported` | 只返回 share-imported 项，不靠 controller 内存过滤 | 对应 service/controller specs |
+| `convertToManual()` 命中已有来源记录 | 只更新 `currentKind='manual'`，origin 仍保留 share-import 来源 | `resource-source.service.spec.ts` or manual QA |
+| `convertToManual()` 命中不存在来源记录 | 返回幂等 manual 结果 | `resource-source.service.spec.ts` or manual QA |
 
 ---
 
@@ -177,3 +212,8 @@
 - `src/modules/sandbox/__tests__/sandbox-lifecycle.producer.spec.ts`
 - `src/modules/sandbox/__tests__/sandbox.service.spec.ts`
 - `src/modules/sandbox/__tests__/sandbox-lifecycle.worker.spec.ts`
+- `src/modules/workflow-definition/__tests__/workflow-version.service.spec.ts`
+- `src/modules/agent-definition/agent-definition.service.spec.ts`
+- `src/modules/knowledge/__tests__/knowledge-base.service.spec.ts`
+- `src/modules/mcp/__tests__/mcp.service.spec.ts`
+- `src/modules/skill/skill.service.spec.ts`

@@ -3,6 +3,7 @@ import { Module, type OnModuleInit } from '@nestjs/common';
 import { SharedResourcesModule } from '../shared-resources/shared-resources.module';
 import { SharedResourceRegistry } from '../shared-resources/shared-resource-registry';
 import { EvidenceModule } from '../evidence/evidence.module';
+import { ResourceSourceModule } from '../resource-source/resource-source.module';
 import { MemoryNodeService } from './services/memory-node.service';
 import { MemoryEdgeService } from './services/memory-edge.service';
 import { MemoryVersionService } from './services/memory-version.service';
@@ -17,7 +18,7 @@ import { AgentMemoryController } from './agent-memory.controller';
 import { MemoryGateway } from './memory.gateway';
 
 @Module({
-  imports: [SharedResourcesModule, EvidenceModule],
+  imports: [SharedResourcesModule, EvidenceModule, ResourceSourceModule],
   controllers: [AgentMemoryController],
   providers: [
     // Core graph services

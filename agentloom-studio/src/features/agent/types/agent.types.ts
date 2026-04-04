@@ -1,5 +1,6 @@
 import type { Viewport } from '@xyflow/react'
 import type { CanvasEdge, CanvasNode } from '@/features/canvas/types'
+import type { ResourceSourceKind } from '@/shared/lib/resourceSource'
 import type { AgentRuntimeMode } from './agentRuntimeMode'
 
 export type AgentStatus = 'draft' | 'published' | 'archived'
@@ -139,6 +140,7 @@ export interface AgentDefinition {
   inputSchema?: Record<string, unknown> | null
   memoryInstanceIds?: string[] | null
   sandboxLifecycle?: 'session' | 'persistent' | null
+  resourceSourceKind?: ResourceSourceKind
   version: number
   status: AgentStatus
   publishedVersionId: string | null

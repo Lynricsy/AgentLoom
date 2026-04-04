@@ -14,12 +14,14 @@ import { cn } from '@/shared/lib/utils'
 import { useToast } from '@/shared/ui/toast'
 import { useShareList } from '../api/shareQueries'
 import { useCreateShare, useRevokeShare } from '../api/shareMutations'
-import type { ShareRecord } from '../types'
+import type { ShareRecord, ShareResourceType } from '../types'
 
 interface ShareManagementDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  workflowId: string
+  resourceId?: string
+  workflowId?: string
+  resourceType?: ShareResourceType
 }
 
 type ShareTypeOption = 'read_only' | 'copyable'
@@ -236,12 +238,19 @@ const ShareItem = memo(function ShareItem({
 export const ShareManagementDialog = memo(function ShareManagementDialog({
   open,
   onOpenChange,
+  resourceId,
   workflowId,
+  resourceType = 'workflow',
 }: ShareManagementDialogProps) {
   const { notify } = useToast()
-  const { data: shareList, isLoading } = useShareList(workflowId)
+  const resolvedResourceId = resourceId ?? workflowId ?? ''
+  const { data: shareList, isLoading } = useShareList({
+    resourceType,
+    resourceId: resolvedResourceId,
+  })
   const createShareMutation = useCreateShare()
-  const revokeShareMutation = useRevokeShare(workflowId)
+  const revokeShareMutation = useRevokeShare(resourceType, resolvedResourceId)
+  const resetCreateShareMutation = createShareMutation.reset
 
   const [shareType, setShareType] = useState<ShareTypeOption>('read_only')
   const [expiryPreset, setExpiryPreset] = useState<ShareExpiryPreset>('never')
@@ -250,15 +259,19 @@ export const ShareManagementDialog = memo(function ShareManagementDialog({
     if (open) {
       setShareType('read_only')
       setExpiryPreset('never')
-      createShareMutation.reset()
+      resetCreateShareMutation()
     }
-  }, [open, createShareMutation])
+  }, [open, resetCreateShareMutation])
+
+  const resourceLabel = resourceType === 'agent' ? 'Agent' : '工作流'
 
   const handleCreate = useCallback(async () => {
     try {
       const expiresAt = resolveShareExpiryPreset(expiryPreset)
       const result = await createShareMutation.mutateAsync({
-        workflowDefinitionId: workflowId,
+        ...(resourceType === 'agent'
+          ? { agentDefinitionId: resolvedResourceId }
+          : { workflowDefinitionId: resolvedResourceId }),
         shareType,
         ...(expiresAt ? { expiresAt } : {}),
       })
@@ -273,7 +286,7 @@ export const ShareManagementDialog = memo(function ShareManagementDialog({
     } catch {
       notify({ description: '创建分享链接失败', variant: 'error' })
     }
-  }, [workflowId, shareType, expiryPreset, createShareMutation, notify])
+  }, [resolvedResourceId, resourceType, shareType, expiryPreset, createShareMutation, notify])
 
   const handleRevoke = useCallback(
     async (shareId: string) => {
@@ -311,7 +324,7 @@ export const ShareManagementDialog = memo(function ShareManagementDialog({
               <div>
                 <Dialog.Title className="text-base font-medium">分享管理</Dialog.Title>
                 <Dialog.Description className="mt-0.5 text-xs text-muted-foreground">
-                  管理工作流的分享链接
+                  管理{resourceLabel}的分享链接
                 </Dialog.Description>
               </div>
             </div>
@@ -424,7 +437,7 @@ export const ShareManagementDialog = memo(function ShareManagementDialog({
                 ) : (
                   <>
                     <Plus className="h-4 w-4" />
-                    创建分享链接
+                    创建{resourceLabel}分享链接
                   </>
                 )}
               </button>

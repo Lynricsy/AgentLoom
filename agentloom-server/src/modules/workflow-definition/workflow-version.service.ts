@@ -1,5 +1,5 @@
 import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
-import { and, asc, desc, eq, ilike, max, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, max, not, or, sql } from 'drizzle-orm';
 
 import { RedisCacheService } from '../../common/redis/redis-cache.service';
 import { transactionStorage } from '../../common/interceptors/tenant-transaction.interceptor';
@@ -9,6 +9,7 @@ import { DRIZZLE } from '../../database/database.module';
 import type { DrizzleDB } from '../../database/database.module';
 import * as schema from '../../database/schema';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
+import { hasPostgresErrorCode } from '../../common/utils/postgres-error.utils';
 import type { WorkflowVersionSnapshot } from '../../database/schema/workflow-versions.schema';
 import type { WorkflowDefinition } from '../../database/schema/workflow-definitions.schema';
 import {
@@ -54,8 +55,12 @@ import {
   WorkflowVersionNotFoundException,
 } from './workflow-version.exceptions';
 import { MarketplaceListingNotFoundException } from '../marketplace/marketplace.exceptions';
-import { ShareService } from '../share/share.service';
+import {
+  ShareService,
+  type AccessibleWorkflowShareTokenRecord,
+} from '../share/share.service';
 import { validateImportFile } from './utils/validate-import.utils';
+import { ResourceSourceService } from '../resource-source/resource-source.service';
 
 /** 发布版本缓存 TTL（秒） */
 const PUBLISHED_VERSION_TTL = 300;
@@ -120,6 +125,7 @@ export class WorkflowVersionService {
     private readonly templateService: TemplateService,
     private readonly shareService: ShareService,
     private readonly organizationAutonomyPolicyService: OrganizationAutonomyPolicyService,
+    private readonly resourceSourceService: ResourceSourceService,
   ) {}
 
   private get tenantDb(): DrizzleDB {
@@ -155,21 +161,36 @@ export class WorkflowVersionService {
   ): Promise<WorkflowDefinitionListResponseDto> {
     const page = query.page ?? 1;
     const pageSize = query.pageSize ?? 20;
+    const { status, search, sourceKind, sort, order } = query;
     const offset = (page - 1) * pageSize;
 
     const conditions = [];
 
-    if (query.status) {
-      conditions.push(eq(schema.workflowDefinitions.status, query.status));
+    if (status) {
+      conditions.push(eq(schema.workflowDefinitions.status, status));
     }
 
-    if (query.search) {
-      const searchTerm = `%${query.search}%`;
+    if (search) {
+      const searchTerm = `%${search}%`;
       conditions.push(
         or(
           ilike(schema.workflowDefinitions.name, searchTerm),
           ilike(schema.workflowDefinitions.description, searchTerm),
         ),
+      );
+    }
+
+    if (sourceKind) {
+      const importedExistsCondition =
+        this.resourceSourceService.buildShareImportedExistsCondition({
+          resourceType: 'workflow_definition',
+          resourceIdColumn: schema.workflowDefinitions.id,
+        });
+
+      conditions.push(
+        sourceKind === 'share_imported'
+          ? importedExistsCondition
+          : not(importedExistsCondition),
       );
     }
 
@@ -180,8 +201,8 @@ export class WorkflowVersionService {
       createdAt: schema.workflowDefinitions.createdAt,
       name: schema.workflowDefinitions.name,
     } as const;
-    const sortColumn = sortColumnMap[query.sort ?? 'updatedAt'];
-    const orderFn = query.order === 'asc' ? asc : desc;
+    const sortColumn = sortColumnMap[sort ?? 'updatedAt'];
+    const orderFn = order === 'asc' ? asc : desc;
 
     const [data, countResult] = await Promise.all([
       this.tenantDb
@@ -209,16 +230,25 @@ export class WorkflowVersionService {
     ]);
 
     const total = countResult[0]?.count ?? 0;
+    const sourceKindMap = await this.resourceSourceService.mapCurrentKinds(
+      'workflow_definition',
+      data.map((row) => row.id),
+    );
 
     return {
       data: data.map(({ publishedSnapshot, publishedAt, ...workflow }) =>
-        serializeWorkflowDefinition({
-          ...workflow,
-          publishedReleaseNumber: this.extractReleaseNumber(
-            publishedSnapshot,
-            publishedAt ?? null,
-          ),
-        }),
+        serializeWorkflowDefinition(
+          {
+            ...workflow,
+            publishedReleaseNumber: this.extractReleaseNumber(
+              publishedSnapshot,
+              publishedAt ?? null,
+            ),
+          },
+          {
+            resourceSourceKind: sourceKindMap.get(workflow.id) ?? 'manual',
+          },
+        ),
       ),
       meta: {
         total,
@@ -245,11 +275,20 @@ export class WorkflowVersionService {
       workflowId,
       workflow.publishedVersionId,
     );
+    const sourceKindMap = await this.resourceSourceService.mapCurrentKinds(
+      'workflow_definition',
+      [workflowId],
+    );
 
-    return serializeWorkflowDefinition({
-      ...workflow,
-      publishedReleaseNumber,
-    });
+    return serializeWorkflowDefinition(
+      {
+        ...workflow,
+        publishedReleaseNumber,
+      },
+      {
+        resourceSourceKind: sourceKindMap.get(workflowId) ?? 'manual',
+      },
+    );
   }
 
   async findDefinitionDetailById(
@@ -260,11 +299,20 @@ export class WorkflowVersionService {
       workflowId,
       workflow.publishedVersionId,
     );
+    const sourceKindMap = await this.resourceSourceService.mapCurrentKinds(
+      'workflow_definition',
+      [workflowId],
+    );
 
-    return serializeWorkflowDefinitionDetail({
-      ...workflow,
-      publishedReleaseNumber,
-    });
+    return serializeWorkflowDefinitionDetail(
+      {
+        ...workflow,
+        publishedReleaseNumber,
+      },
+      {
+        resourceSourceKind: sourceKindMap.get(workflowId) ?? 'manual',
+      },
+    );
   }
 
   async getInputSchema(
@@ -372,6 +420,7 @@ export class WorkflowVersionService {
     };
     let inputSchema: WorkflowInputSchema | null = null;
     let metadata: Record<string, unknown> = {};
+    let shareImportRecord: AccessibleWorkflowShareTokenRecord | null = null;
 
     if (dto.template_slug) {
       const template = await this.templateService.findBySlug(dto.template_slug);
@@ -443,6 +492,7 @@ export class WorkflowVersionService {
       };
     } else if (dto.share_token) {
       const share = await this.shareService.getShareByToken(dto.share_token);
+      shareImportRecord = share;
 
       if (share.shareType !== 'copyable') {
         throw new DomainException({
@@ -483,26 +533,45 @@ export class WorkflowVersionService {
       attempt++
     ) {
       try {
-        const [created] = await this.tenantDb
-          .insert(schema.workflowDefinitions)
-          .values({
-            tenantId,
-            name: dto.name,
-            slug,
-            description: dto.description ?? null,
-            icon: dto.icon ?? null,
-            nodes,
-            edges,
-            viewport,
-            inputSchema,
-            metadata,
-            createdBy: userId,
-            updatedBy: userId,
-          })
-          .returning();
+        const created = await this.tenantDb.transaction(async (tx) => {
+          const [row] = await tx
+            .insert(schema.workflowDefinitions)
+            .values({
+              tenantId,
+              name: dto.name,
+              slug,
+              description: dto.description ?? null,
+              icon: dto.icon ?? null,
+              nodes,
+              edges,
+              viewport,
+              inputSchema,
+              metadata,
+              createdBy: userId,
+              updatedBy: userId,
+            })
+            .returning();
+
+          return row;
+        });
 
         if (dto.share_token) {
           await this.shareService.incrementCopyCount(dto.share_token);
+        }
+
+        if (shareImportRecord) {
+          await this.resourceSourceService.recordImportedResources(tenantId, userId, [
+            {
+              resourceType: 'workflow_definition',
+              resourceId: created.id,
+              sourceShareType: 'workflow',
+              sourceShareId: shareImportRecord.id,
+              sourceShareToken: shareImportRecord.shareToken,
+              sourceResourceType: 'workflow_definition',
+              sourceResourceId: shareImportRecord.workflowDefinitionId,
+              sourceResourceTitle: shareImportRecord.workflowName,
+            },
+          ]);
         }
 
         this.logger.log(
@@ -518,10 +587,7 @@ export class WorkflowVersionService {
 
         return created;
       } catch (error: unknown) {
-        const isUniqueViolation =
-          error instanceof Error &&
-          'code' in error &&
-          (error as Record<string, unknown>).code === '23505';
+        const isUniqueViolation = hasPostgresErrorCode(error, '23505');
 
         if (
           !isUniqueViolation ||
@@ -581,33 +647,37 @@ export class WorkflowVersionService {
       attempt++
     ) {
       try {
-        const [created] = await this.tenantDb
-          .insert(schema.workflowDefinitions)
-          .values({
-            tenantId,
-            name,
-            slug,
-            description: description ?? importedWorkflow.description,
-            nodes: clonedDefinition.nodes,
-            edges: clonedDefinition.edges,
-            viewport: clonedDefinition.viewport,
-            inputSchema: importedWorkflow.inputSchema,
-            metadata: {
-              imported_from: {
-                schemaVersion: file_content.schema_version,
-                originalName: importedWorkflow.name,
-                exportedAt: file_content.exported_at,
-                importedAt: new Date().toISOString(),
+        const created = await this.tenantDb.transaction(async (tx) => {
+          const [row] = await tx
+            .insert(schema.workflowDefinitions)
+            .values({
+              tenantId,
+              name,
+              slug,
+              description: description ?? importedWorkflow.description,
+              nodes: clonedDefinition.nodes,
+              edges: clonedDefinition.edges,
+              viewport: clonedDefinition.viewport,
+              inputSchema: importedWorkflow.inputSchema,
+              metadata: {
+                imported_from: {
+                  schemaVersion: file_content.schema_version,
+                  originalName: importedWorkflow.name,
+                  exportedAt: file_content.exported_at,
+                  importedAt: new Date().toISOString(),
+                },
               },
-            },
-            createdBy: userId,
-            updatedBy: userId,
-          })
-          .returning({
-            id: schema.workflowDefinitions.id,
-            name: schema.workflowDefinitions.name,
-            slug: schema.workflowDefinitions.slug,
-          });
+              createdBy: userId,
+              updatedBy: userId,
+            })
+            .returning({
+              id: schema.workflowDefinitions.id,
+              name: schema.workflowDefinitions.name,
+              slug: schema.workflowDefinitions.slug,
+            });
+
+          return row;
+        });
 
         this.logger.log(
           JSON.stringify({
@@ -620,10 +690,7 @@ export class WorkflowVersionService {
 
         return created;
       } catch (error: unknown) {
-        const isUniqueViolation =
-          error instanceof Error &&
-          'code' in error &&
-          (error as Record<string, unknown>).code === '23505';
+        const isUniqueViolation = hasPostgresErrorCode(error, '23505');
 
         if (
           !isUniqueViolation ||

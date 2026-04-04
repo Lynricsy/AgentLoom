@@ -13,6 +13,7 @@ import { DRIZZLE } from '../../../database/database.module';
 import { OrganizationAutonomyPolicyService } from '../../organization/organization-autonomy-policy.service';
 import { TemplateService } from '../../template/template.service';
 import { ShareService } from '../../share/share.service';
+import { ResourceSourceService } from '../../resource-source/resource-source.service';
 import { WorkflowNotPublishedException } from '../../execution/execution.exceptions';
 import { MarketplaceListingNotFoundException } from '../../marketplace/marketplace.exceptions';
 import { ListWorkflowDefinitionsQueryDto } from '../dto/list-workflow-definitions-query.dto';
@@ -234,6 +235,7 @@ function createListDefinitionsQuery(
     pageSize: number;
     status: 'draft' | 'published' | 'archived';
     search: string;
+    sourceKind: 'manual' | 'share_imported';
   }> = {},
 ): ListWorkflowDefinitionsQueryDto {
   return Object.assign(new ListWorkflowDefinitionsQueryDto(), overrides);
@@ -245,6 +247,11 @@ describe('WorkflowVersionService', () => {
   let redis: Record<string, ReturnType<typeof vi.fn>>;
   let templateService: Record<string, ReturnType<typeof vi.fn>>;
   let shareService: Record<string, ReturnType<typeof vi.fn>>;
+  let resourceSourceService: {
+    buildShareImportedExistsCondition: ReturnType<typeof vi.fn>;
+    mapCurrentKinds: ReturnType<typeof vi.fn>;
+    recordImportedResources: ReturnType<typeof vi.fn>;
+  };
   let organizationAutonomyPolicyService: {
     inspectWorkflowNodesAgainstPolicy: ReturnType<typeof vi.fn>;
   };
@@ -281,6 +288,12 @@ describe('WorkflowVersionService', () => {
       incrementCopyCount: vi.fn(),
     };
 
+    resourceSourceService = {
+      buildShareImportedExistsCondition: vi.fn(() => Symbol('share-imported')),
+      mapCurrentKinds: vi.fn().mockResolvedValue(new Map()),
+      recordImportedResources: vi.fn().mockResolvedValue(undefined),
+    };
+
     organizationAutonomyPolicyService = {
       inspectWorkflowNodesAgainstPolicy: vi.fn().mockResolvedValue({
         autonomyCap: 'LLM_SUGGEST',
@@ -295,6 +308,7 @@ describe('WorkflowVersionService', () => {
         { provide: RedisCacheService, useValue: redis },
         { provide: TemplateService, useValue: templateService },
         { provide: ShareService, useValue: shareService },
+        { provide: ResourceSourceService, useValue: resourceSourceService },
         {
           provide: OrganizationAutonomyPolicyService,
           useValue: organizationAutonomyPolicyService,
@@ -363,6 +377,7 @@ describe('WorkflowVersionService', () => {
             updatedBy: USER_ID,
             createdAt: NOW.toISOString(),
             updatedAt: NOW.toISOString(),
+            resourceSourceKind: 'manual',
           },
           {
             id: workflows[1].id,
@@ -380,6 +395,7 @@ describe('WorkflowVersionService', () => {
             updatedBy: USER_ID,
             createdAt: '2025-01-01T01:00:00.000Z',
             updatedAt: '2025-01-01T01:00:00.000Z',
+            resourceSourceKind: 'manual',
           },
         ],
         meta: {
@@ -445,6 +461,36 @@ describe('WorkflowVersionService', () => {
       expect(whereClause).toBeDefined();
       expect(selectCount.where).toHaveBeenCalledWith(whereClause);
       expect(result.data[0]?.status).toBe('published');
+    });
+
+    it('应当支持按来源筛选并返回来源分类', async () => {
+      const selectDefinitions = createSelectChainWithPagination([
+        createDraftWorkflow({
+          name: '分享导入工作流',
+          slug: 'shared-workflow',
+          updatedBy: USER_ID,
+        }),
+      ]);
+      const selectCount = createSelectChain([{ count: 1 }]);
+
+      db.select
+        .mockReturnValueOnce(selectDefinitions)
+        .mockReturnValueOnce(selectCount);
+      resourceSourceService.mapCurrentKinds.mockResolvedValueOnce(
+        new Map([[WORKFLOW_ID, 'share_imported']]),
+      );
+
+      const result = await service.findAllDefinitions(
+        createListDefinitionsQuery({ sourceKind: 'share_imported' }),
+      );
+
+      expect(
+        resourceSourceService.buildShareImportedExistsCondition,
+      ).toHaveBeenCalledWith({
+        resourceType: 'workflow_definition',
+        resourceIdColumn: expect.anything(),
+      });
+      expect(result.data[0]?.resourceSourceKind).toBe('share_imported');
     });
 
     it('应当支持按搜索词筛选', async () => {
@@ -556,6 +602,7 @@ describe('WorkflowVersionService', () => {
         updatedBy: USER_ID,
         createdAt: '2025-02-01T08:00:00.000Z',
         updatedAt: '2025-02-02T09:30:00.000Z',
+        resourceSourceKind: 'manual',
       });
       expect(result).not.toHaveProperty('nodes');
       expect(result).not.toHaveProperty('edges');
@@ -606,6 +653,7 @@ describe('WorkflowVersionService', () => {
         updatedBy: USER_ID,
         createdAt: '2025-02-01T08:00:00.000Z',
         updatedAt: '2025-02-02T09:30:00.000Z',
+        resourceSourceKind: 'manual',
       });
       expect(result).toHaveProperty('nodes');
       expect(result).toHaveProperty('edges');
@@ -781,6 +829,7 @@ describe('WorkflowVersionService', () => {
         updatedBy: USER_ID,
         createdAt: NOW.toISOString(),
         updatedAt: NOW.toISOString(),
+        resourceSourceKind: 'manual',
       });
       expect(result).toHaveProperty('nodes');
       expect(result).toHaveProperty('edges');
@@ -2121,7 +2170,10 @@ describe('WorkflowVersionService', () => {
 
     it('应从可复制分享克隆定义并递增 copy count', async () => {
       shareService.getShareByToken.mockResolvedValue({
+        id: '00000000-0000-0000-0000-000000000099',
         shareType: 'copyable',
+        shareToken: SHARE_TOKEN,
+        workflowDefinitionId: '00000000-0000-0000-0000-000000000088',
         workflowName: '公开分享工作流',
         snapshot: {
           nodes: [
@@ -2168,6 +2220,22 @@ describe('WorkflowVersionService', () => {
       expect(result).toEqual(mockResult);
       expect(shareService.getShareByToken).toHaveBeenCalledWith(SHARE_TOKEN);
       expect(shareService.incrementCopyCount).toHaveBeenCalledWith(SHARE_TOKEN);
+      expect(resourceSourceService.recordImportedResources).toHaveBeenCalledWith(
+        TENANT_ID,
+        USER_ID,
+        [
+          {
+            resourceType: 'workflow_definition',
+            resourceId: mockResult.id,
+            sourceShareType: 'workflow',
+            sourceShareId: '00000000-0000-0000-0000-000000000099',
+            sourceShareToken: SHARE_TOKEN,
+            sourceResourceType: 'workflow_definition',
+            sourceResourceId: '00000000-0000-0000-0000-000000000088',
+            sourceResourceTitle: '公开分享工作流',
+          },
+        ],
+      );
 
       const valuesArg = db.insert.mock.results[0].value.values.mock.calls[0][0];
       expect(valuesArg.nodes).toHaveLength(2);
@@ -2244,6 +2312,31 @@ describe('WorkflowVersionService', () => {
       ).rejects.toThrow('unique_violation');
 
       expect(db.insert).toHaveBeenCalledTimes(4); // MAX_SLUG_RETRIES + 1
+    });
+
+    it('应识别 Drizzle 包装后的唯一约束错误并继续重试', async () => {
+      const wrappedUniqueViolation = Object.assign(
+        new Error('query_failed'),
+        {
+          cause: Object.assign(new Error('unique_violation'), {
+            code: '23505',
+          }),
+        },
+      );
+      const mockResult = createDraftWorkflow({ name: '包装错误重试工作流' });
+
+      db.insert
+        .mockReturnValueOnce({
+          values: vi.fn().mockReturnValue({
+            returning: vi.fn().mockRejectedValue(wrappedUniqueViolation),
+          }),
+        })
+        .mockReturnValueOnce(createInsertReturning(mockResult));
+
+      const result = await service.create(TENANT_ID, USER_ID, MOCK_DTO_BLANK);
+
+      expect(result).toEqual(mockResult);
+      expect(db.insert).toHaveBeenCalledTimes(2);
     });
 
     it('应在非唯一约束错误时直接抛出', async () => {

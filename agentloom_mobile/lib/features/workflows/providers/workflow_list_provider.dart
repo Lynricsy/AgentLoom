@@ -11,6 +11,7 @@ class WorkflowListState {
   final List<WorkflowDefinitionDto> workflows;
   final PaginationMeta? meta;
   final String? statusFilter;
+  final String? sourceKindFilter;
   final String? searchQuery;
   final bool isLoadingMore;
 
@@ -18,6 +19,7 @@ class WorkflowListState {
     this.workflows = const [],
     this.meta,
     this.statusFilter,
+    this.sourceKindFilter,
     this.searchQuery,
     this.isLoadingMore = false,
   });
@@ -26,9 +28,11 @@ class WorkflowListState {
     List<WorkflowDefinitionDto>? workflows,
     PaginationMeta? meta,
     String? statusFilter,
+    String? sourceKindFilter,
     String? searchQuery,
     bool? isLoadingMore,
     bool clearStatusFilter = false,
+    bool clearSourceKindFilter = false,
     bool clearSearchQuery = false,
   }) {
     return WorkflowListState(
@@ -37,6 +41,9 @@ class WorkflowListState {
       statusFilter: clearStatusFilter
           ? null
           : (statusFilter ?? this.statusFilter),
+      sourceKindFilter: clearSourceKindFilter
+          ? null
+          : (sourceKindFilter ?? this.sourceKindFilter),
       searchQuery: clearSearchQuery ? null : (searchQuery ?? this.searchQuery),
       isLoadingMore: isLoadingMore ?? this.isLoadingMore,
     );
@@ -46,6 +53,7 @@ class WorkflowListState {
 /// 工作流列表 Notifier（手动 AsyncNotifier，不使用 riverpod_generator）
 class WorkflowListNotifier extends AsyncNotifier<WorkflowListState> {
   String? _statusFilter;
+  String? _sourceKindFilter;
   String? _searchQuery;
 
   @override
@@ -58,6 +66,7 @@ class WorkflowListNotifier extends AsyncNotifier<WorkflowListState> {
     final result = await api.listWorkflows(
       page: page,
       status: _statusFilter,
+      sourceKind: _sourceKindFilter,
       search: _searchQuery,
     );
 
@@ -65,6 +74,7 @@ class WorkflowListNotifier extends AsyncNotifier<WorkflowListState> {
       workflows: result.data,
       meta: result.meta,
       statusFilter: _statusFilter,
+      sourceKindFilter: _sourceKindFilter,
       searchQuery: _searchQuery,
     );
   }
@@ -72,6 +82,12 @@ class WorkflowListNotifier extends AsyncNotifier<WorkflowListState> {
   /// 设置状态过滤器并重新加载
   Future<void> setStatusFilter(String? status) async {
     _statusFilter = status;
+    state = const AsyncValue.loading();
+    state = await AsyncValue.guard(() => _fetchWorkflows());
+  }
+
+  Future<void> setSourceKindFilter(String? sourceKind) async {
+    _sourceKindFilter = sourceKind;
     state = const AsyncValue.loading();
     state = await AsyncValue.guard(() => _fetchWorkflows());
   }
@@ -104,6 +120,7 @@ class WorkflowListNotifier extends AsyncNotifier<WorkflowListState> {
       final result = await api.listWorkflows(
         page: meta.page + 1,
         status: _statusFilter,
+        sourceKind: _sourceKindFilter,
         search: _searchQuery,
       );
 
@@ -112,6 +129,7 @@ class WorkflowListNotifier extends AsyncNotifier<WorkflowListState> {
           workflows: [...currentState.workflows, ...result.data],
           meta: result.meta,
           statusFilter: _statusFilter,
+          sourceKindFilter: _sourceKindFilter,
           searchQuery: _searchQuery,
         ),
       );

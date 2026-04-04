@@ -6,6 +6,7 @@ import type {
 } from '../../../database/schema/workflow-definitions.schema';
 import type { SandboxConfig } from '../../../database/schema/sandbox-sessions.schema';
 import type { AgentRuntimeMode } from '../../../database/schema/agent-definitions.schema';
+import type { ResourceSourceKind } from '../../../database/schema';
 import { deriveAgentSandboxConfigFromCanvas } from '../agent-sandbox-config.utils';
 
 export interface AgentDefinitionResponseDto {
@@ -23,6 +24,7 @@ export interface AgentDefinitionResponseDto {
   updatedBy: string;
   createdAt: Date;
   updatedAt: Date;
+  resourceSourceKind: ResourceSourceKind;
 }
 
 export interface AgentDefinitionDetailResponseDto extends AgentDefinitionResponseDto {
@@ -112,6 +114,7 @@ function readDetailMetadata(
 
 export function serializeAgentDefinition(
   row: ListRow,
+  options?: { resourceSourceKind?: ResourceSourceKind },
 ): AgentDefinitionResponseDto {
   return {
     id: row.id,
@@ -128,11 +131,13 @@ export function serializeAgentDefinition(
     updatedBy: row.updatedBy,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
+    resourceSourceKind: options?.resourceSourceKind ?? 'manual',
   };
 }
 
 export function serializeAgentDefinitionDetail(
   row: DetailRow,
+  options?: { resourceSourceKind?: ResourceSourceKind },
 ): AgentDefinitionDetailResponseDto {
   const sandboxConfig =
     row.runtimeMode === 'sandbox'
@@ -145,7 +150,7 @@ export function serializeAgentDefinitionDetail(
   const metadata = readDetailMetadata(row.metadata, sandboxConfig);
 
   return {
-    ...serializeAgentDefinition(row),
+    ...serializeAgentDefinition(row, options),
     systemPrompt: row.systemPrompt ?? null,
     nodes: row.nodes,
     edges: row.edges,

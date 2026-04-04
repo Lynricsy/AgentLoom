@@ -341,7 +341,13 @@ describe('WorkflowAgentAdapter', () => {
     expect(mockSandboxService.createSandboxSession).toHaveBeenCalledWith({
       executionId: EXECUTION_ID,
       sandboxNodeId: 'workflow-agent-node',
-      config: { cpu: 2, memory: 1024, disk: 4, timeout: 5 },
+      config: {
+        cpu: 2,
+        memory: 1024,
+        disk: 4,
+        timeout: 5,
+        conversationIdleAutoEndMinutes: 10,
+      },
       tenantId: TENANT_ID,
     });
     expect(mockSandboxRuntime.createSession).toHaveBeenCalledWith(
@@ -442,6 +448,7 @@ describe('WorkflowAgentAdapter', () => {
         disk: 6,
         timeout: 1,
         timeoutSeconds: 450,
+        conversationIdleAutoEndMinutes: 10,
       },
       tenantId: TENANT_ID,
     });
@@ -702,7 +709,13 @@ describe('WorkflowAgentAdapter', () => {
     expect(mockSandboxService.createSandboxSession).toHaveBeenCalledWith({
       executionId: EXECUTION_ID,
       sandboxNodeId: 'workflow-agent-node',
-      config: { cpu: 1, memory: 512, disk: 2, timeout: 2 },
+      config: {
+        cpu: 1,
+        memory: 512,
+        disk: 2,
+        timeout: 2,
+        conversationIdleAutoEndMinutes: 10,
+      },
       tenantId: TENANT_ID,
     });
     expect(mockSandboxRuntime.createSession).toHaveBeenCalled();

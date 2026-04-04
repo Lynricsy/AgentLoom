@@ -97,6 +97,18 @@ function createHistoryResponse(messages: unknown[]) {
   };
 }
 
+function createConversationDetailResponse(
+  messages: unknown[],
+  metadata: Record<string, unknown> = {},
+) {
+  return {
+    data: {
+      metadata,
+      messages: createHistoryResponse(messages),
+    },
+  };
+}
+
 function createDeferred<T>() {
   let resolve: ((value: T) => void) | null = null;
   let reject: ((reason?: unknown) => void) | null = null;
@@ -125,7 +137,7 @@ describe("agentConversationStore", () => {
   });
 
   it("顶层 done 后会回拉历史消息并展示最终 assistant 正文", async () => {
-    const historyResponse = createHistoryResponse([
+    const detailResponse = createConversationDetailResponse([
       {
         id: "user-1",
         role: "user",
@@ -177,7 +189,7 @@ describe("agentConversationStore", () => {
       }
 
       return {
-        json: vi.fn().mockResolvedValue(historyResponse),
+        json: vi.fn().mockResolvedValue(detailResponse),
       };
     });
 
@@ -244,7 +256,7 @@ describe("agentConversationStore", () => {
 
     await vi.waitFor(() => {
       expect(getMock).toHaveBeenCalledWith(
-        "agent-conversations/conv-1/messages",
+        "agent-conversations/conv-1",
       );
       expect(getMock).toHaveBeenCalledWith(
         "agent-conversations/conv-1/workspace/tree",
@@ -286,7 +298,7 @@ describe("agentConversationStore", () => {
 
   it("loadHistory 应保留自进化工具结果中的结构化 restartSuggestion", async () => {
     const jsonMock = vi.fn().mockResolvedValue(
-      createHistoryResponse([
+      createConversationDetailResponse([
         {
           id: "assistant-1",
           role: "assistant",
@@ -357,6 +369,55 @@ describe("agentConversationStore", () => {
     ]);
   });
 
+  it("loadHistory 会从 detail metadata 同步失败态和错误摘要", async () => {
+    getMock.mockReturnValue({
+      json: vi.fn().mockResolvedValue(
+        createConversationDetailResponse(
+          [
+            {
+              id: "user-1",
+              role: "user",
+              content: "你好",
+              metadata: {},
+              toolCalls: null,
+              createdAt: "2026-04-04T09:17:38.000Z",
+            },
+          ],
+          {
+            execution: {
+              runningState: "failed",
+              errorMessage: "租户未配置默认 LLM 模型",
+            },
+          },
+        ),
+      ),
+    });
+
+    useAgentConversationStore.getState().actions.connect({
+      conversationId: "conv-1",
+      agentId: "agent-1",
+      agentName: "QA Agent",
+      runtimeMode: "no_sandbox",
+      authToken: "token-1",
+    });
+
+    await useAgentConversationStore.getState().actions.loadHistory("conv-1");
+
+    expect(useAgentConversationStore.getState()).toEqual(
+      expect.objectContaining({
+        status: "error",
+        sandboxStatus: "error",
+        executionError: "租户未配置默认 LLM 模型",
+        messages: [
+          expect.objectContaining({
+            id: "user-1",
+            content: "你好",
+          }),
+        ],
+      }),
+    );
+  });
+
   it("运行时 failed 状态会读取 errorMessage 并保留 executionError", () => {
     useAgentConversationStore.getState().actions.connect({
       conversationId: "conv-1",
@@ -383,8 +444,63 @@ describe("agentConversationStore", () => {
     );
   });
 
+  it("done 事件不会在 history 回拉前清掉已存在的失败态", async () => {
+    const deferred = createDeferred<
+      ReturnType<typeof createConversationDetailResponse>
+    >();
+
+    getMock.mockReturnValue({
+      json: vi.fn().mockImplementation(() => deferred.promise),
+    });
+
+    useAgentConversationStore.getState().actions.connect({
+      conversationId: "conv-1",
+      agentId: "agent-1",
+      agentName: "QA Agent",
+      runtimeMode: "no_sandbox",
+      authToken: "token-1",
+    });
+
+    emitSocketEvent("connect");
+    emitSocketEvent("conversation.status.changed", {
+      conversationId: "conv-1",
+      status: "failed",
+      errorMessage: "租户未配置默认 LLM 模型",
+    });
+    emitSocketEvent("conversation.agent.done", {
+      conversationId: "conv-1",
+      messageId: "stream-1",
+    });
+
+    expect(useAgentConversationStore.getState()).toEqual(
+      expect.objectContaining({
+        status: "error",
+        sandboxStatus: "error",
+        executionError: "租户未配置默认 LLM 模型",
+      }),
+    );
+
+    deferred.resolve(
+      createConversationDetailResponse(
+        [],
+        {
+          execution: {
+            runningState: "failed",
+            errorMessage: "租户未配置默认 LLM 模型",
+          },
+        },
+      ),
+    );
+
+    await vi.waitFor(() => {
+      expect(getMock).toHaveBeenCalledWith("agent-conversations/conv-1");
+    });
+  });
+
   it("loadHistory 的过期响应不会污染已切换或已重置的会话状态", async () => {
-    const deferred = createDeferred<ReturnType<typeof createHistoryResponse>>();
+    const deferred = createDeferred<
+      ReturnType<typeof createConversationDetailResponse>
+    >();
     const jsonMock = vi.fn().mockImplementation(() => deferred.promise);
 
     getMock.mockReturnValue({
@@ -406,7 +522,7 @@ describe("agentConversationStore", () => {
     useAgentConversationStore.getState().actions.reset();
 
     deferred.resolve(
-      createHistoryResponse([
+      createConversationDetailResponse([
         {
           id: "assistant-1",
           role: "assistant",
@@ -425,7 +541,9 @@ describe("agentConversationStore", () => {
   });
 
   it("历史回拉晚到时不会覆盖当前 live tail", async () => {
-    const deferred = createDeferred<ReturnType<typeof createHistoryResponse>>();
+    const deferred = createDeferred<
+      ReturnType<typeof createConversationDetailResponse>
+    >();
     const jsonMock = vi.fn().mockImplementation(() => deferred.promise);
 
     getMock.mockImplementation((url: string) => {
@@ -473,7 +591,7 @@ describe("agentConversationStore", () => {
     });
 
     deferred.resolve(
-      createHistoryResponse([
+      createConversationDetailResponse([
         {
           id: "user-1",
           role: "user",

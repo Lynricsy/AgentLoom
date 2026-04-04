@@ -10,6 +10,8 @@ import '../models/memory_version.dart';
 
 /// Memory 实例列表 Notifier
 class MemoryListNotifier extends AsyncNotifier<MemoryListState> {
+  String? _sourceKindFilter;
+
   @override
   Future<MemoryListState> build() async {
     return _fetchInstances();
@@ -17,13 +19,23 @@ class MemoryListNotifier extends AsyncNotifier<MemoryListState> {
 
   Future<MemoryListState> _fetchInstances({int page = 1}) async {
     final api = ref.read(memoryApiProvider);
-    final instances = await api.getMemoryInstances(page: page);
+    final instances = await api.getMemoryInstances(
+      page: page,
+      sourceKind: _sourceKindFilter,
+    );
     return MemoryListState(
       instances: instances,
       currentPage: page,
       // 简化分页：如果返回数量 < pageSize，说明没有更多
       hasMore: instances.length >= 20,
+      sourceKindFilter: _sourceKindFilter,
     );
+  }
+
+  Future<void> setSourceKindFilter(String? sourceKind) async {
+    _sourceKindFilter = sourceKind;
+    state = const AsyncValue.loading();
+    state = await AsyncValue.guard(() => _fetchInstances());
   }
 
   /// 刷新列表
@@ -43,7 +55,10 @@ class MemoryListNotifier extends AsyncNotifier<MemoryListState> {
     try {
       final api = ref.read(memoryApiProvider);
       final nextPage = currentState.currentPage + 1;
-      final moreInstances = await api.getMemoryInstances(page: nextPage);
+      final moreInstances = await api.getMemoryInstances(
+        page: nextPage,
+        sourceKind: _sourceKindFilter,
+      );
 
       if (!ref.mounted) return;
 
@@ -52,6 +67,7 @@ class MemoryListNotifier extends AsyncNotifier<MemoryListState> {
           instances: [...currentState.instances, ...moreInstances],
           currentPage: nextPage,
           hasMore: moreInstances.length >= 20,
+          sourceKindFilter: _sourceKindFilter,
         ),
       );
     } catch (e, st) {

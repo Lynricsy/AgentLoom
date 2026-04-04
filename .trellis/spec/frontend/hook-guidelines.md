@@ -252,6 +252,101 @@ export async function createLlmModel(config: CreateLlmModelInput) {
 | User clicks remove current key | Submit `clearApiKey=true` instead of stale `apiKeyId=null` compatibility hacks | form submit assertions |
 | `UpdateLlmProviderInput.baseUrl = null` | TypeScript accepts payload and API helper transmits `null` | `pnpm typecheck` |
 
+## Scenario: Discover / Public Share / Resource Source APIs
+
+### 1. Scope / Trigger
+
+- Trigger:
+  - 修改 `src/features/discover/`
+  - 修改 `src/features/share/api/`
+  - 修改 `src/shared/api/resourceSourceApi.ts`
+  - 修改 workflow / agent / knowledge / memory / mcp / skill 列表页中的来源筛选与转正 mutation
+
+### 2. Signatures
+
+- `DiscoverPage(): JSX.Element`
+- `MarketplaceBrowsePage({ mode }: { mode?: 'marketplace' | 'discover' })`
+- `createShare(payload: CreateSharePayload): Promise<ShareRecord>`
+- `listShares(params: ListSharesParams): Promise<ShareListResponse>`
+- `revokeShare(resourceType: ShareResourceType, shareId: string): Promise<void>`
+- `getPublicShare(token: string): Promise<PublicShareData>`
+- `importAgentShare(token: string): Promise<ImportAgentShareResponse>`
+- `convertResourceSourceToManual(resourceType, resourceId): Promise<ConvertResourceSourceResponse>`
+- workflow / agent / knowledge / memory / mcp / skill list queries:
+  - query param: `sourceKind=manual|share_imported`
+  - response field: workflow / agent 用 `resourceSourceKind`，其余资源用 `sourceKind`
+
+### 3. Contracts
+
+- `/discover` 不能发明第二套 browse API；`DiscoverPage` 必须继续通过 `MarketplaceBrowsePage mode="discover"` 复用 marketplace public browse / detail / install 链路。
+- 公开分享页 `getPublicShare(token)` 返回的 `PublicShareData` 必须保持按 `resourceType='workflow'|'agent'` 判别；页面逻辑不能靠字段缺失猜类型。
+- workflow 分享导入必须继续走 workflow create clone source（`share_token`），而不是调用 `importAgentShare()`。
+- `importAgentShare(token)` 只能用于 `resourceType='agent'`，并必须向 UI 暴露：
+  - `agentDefinitionId`
+  - `publishedVersionId`
+  - `summary { cloned, cleared, needsRebind, skippedEphemeral }`
+  - `report[]`
+- `createShare()` 与 `listShares()` 必须根据 payload / params 的资源类型在 `workflow-shares` 与 `agent-shares` 之间切换 base path；前端不能把两个资源硬编码到单一路径。
+- `convertResourceSourceToManual()` 必须放在 shared API 层，由 workflow / agent / knowledge / memory / mcp / skill 页面复用，不能在每个 feature 里重复造接口封装。
+- 来源筛选 query param 统一用 `sourceKind` 发送；UI 读取时要接受后端当前 contract：
+  - workflow / agent: `resourceSourceKind`
+  - knowledge / memory / mcp / skill: `sourceKind`
+- discover 与 marketplace 的区别只体现在页面语义 / copy / 默认入口，不体现在 API contract 上；公开分享 token 不能混进 discover 列表。
+
+### 4. Validation & Error Matrix
+
+| Condition | Expected Behavior | Verification Point |
+|-----------|-------------------|--------------------|
+| `DiscoverPage` 渲染 | 复用 `MarketplaceBrowsePage mode=\"discover\"`，而不是新请求 discover API | `DiscoverPage` test / code review |
+| `createShare()` 传入 workflow payload | 请求落到 `workflow-shares` | `ShareManagementDialog.test.tsx` |
+| `createShare()` 传入 agent payload | 请求落到 `agent-shares` | `ShareManagementDialog.test.tsx` |
+| workflow public share page 导入 | 走 workflow clone source，跳转 workflow 详情页 | `PublicSharePage.test.tsx` + browser QA |
+| agent public share page 导入 | 调用 `importAgentShare()` 并渲染导入报告 | `PublicSharePage.test.tsx` + browser QA |
+| 资源页筛选 `sourceKind=share_imported` | 列表只保留分享导入项 | 对应页面测试 + browser QA |
+| 点击“转为自己创建” | 调用 shared `convertResourceSourceToManual()`，成功后列表标签与过滤结果刷新 | 页面测试 + browser QA |
+| discover 详情对话框打开 | 必须有 `Dialog.Title` / `Dialog.Description`，控制台无 Radix a11y error | `MarketplaceDetailDialog.test.tsx` + browser QA |
+
+### 5. Good / Base / Bad Cases
+
+- Good: `/discover` 打开 listing 详情时复用 marketplace dialog，点击安装后跳到新 workflow；workflow / agent 分享页根据 `resourceType` 渲染不同 CTA；分享导入资源在列表上显示 `分享导入`，转正后立即变成 `自己创建`。
+- Base: 公开分享页只做 preview + import，不进入 discover；agent import 报告显示 `已复制 / 已清空 / 待重绑` 计数，workflow import 直接进入工作流编辑页。
+- Bad: discover 新建独立 API 层；或把 workflow / agent 分享导入都塞到同一个 mutation；或让每个资源页各自复制一份 `convert-to-manual` API helper。
+
+### 6. Tests Required
+
+- `src/features/marketplace/components/__tests__/MarketplaceDetailDialog.test.tsx`
+  - Assert discover / marketplace detail dialog 保持 a11y title + description。
+- `src/features/share/components/__tests__/PublicSharePage.test.tsx`
+  - Assert workflow vs agent 判别渲染、workflow clone CTA、agent import report。
+- `src/features/share/components/__tests__/ShareManagementDialog.test.tsx`
+  - Assert workflow / agent share path routing。
+- 各资源页页面测试 / store test:
+  - Assert `sourceKind` filter round-trip。
+  - Assert `convertResourceSourceToManual()` mutation refresh。
+- Browser/manual QA:
+  - discover 预览 / 导入 / 导入后运行
+  - workflow share 预览 / 导入
+  - agent share 预览 / 导入 / 错误透出
+  - 分享导入资源转为自己创建
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```ts
+export function DiscoverPage() {
+  return <CustomDiscoverPageThatCalls('/discover/listings') />
+}
+```
+
+#### Correct
+
+```ts
+export function DiscoverPage() {
+  return <MarketplaceBrowsePage mode="discover" />
+}
+```
+
 ### 5. Good / Base / Bad Cases
 
 - Good: user opens Provider panel, enters a new API key, saves, then immediately tests connection successfully.

@@ -18,6 +18,7 @@ export async function listWorkflows(params: ListWorkflowsParams = {}) {
   if (params.pageSize) searchParams.pageSize = String(params.pageSize)
   if (params.status) searchParams.status = params.status
   if (params.search) searchParams.search = params.search
+  if (params.sourceKind) searchParams.sourceKind = params.sourceKind
 
   return apiClient
     .get('workflow-definitions', { searchParams })

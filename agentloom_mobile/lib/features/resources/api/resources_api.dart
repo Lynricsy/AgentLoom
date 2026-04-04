@@ -151,10 +151,16 @@ class ResourcesApi {
   Future<PaginatedResponse<KnowledgeBaseDto>> listKnowledgeBases({
     int page = 1,
     int pageSize = 20,
+    String? sourceKind,
   }) async {
     final response = await _dio.get(
       '/api/v1/knowledge-bases',
-      queryParameters: {'page': page, 'page_size': pageSize},
+      queryParameters: {
+        'page': page,
+        'page_size': pageSize,
+        if (sourceKind != null && sourceKind.isNotEmpty)
+          'sourceKind': sourceKind,
+      },
     );
     return PaginatedResponse.fromJson(
       response.data as Map<String, dynamic>,
@@ -215,12 +221,22 @@ class ResourcesApi {
     await _dio.delete('/api/v1/knowledge-bases/$knowledgeBaseId');
   }
 
+  Future<void> convertKnowledgeBaseSourceToManual(
+    String knowledgeBaseId,
+  ) async {
+    await _dio.post(
+      '/api/v1/resource-sources/knowledge_base/$knowledgeBaseId/convert-to-manual',
+      data: _emptyJsonBody,
+    );
+  }
+
   Future<PaginatedResponse<McpServerConfigSummaryDto>> listMcpServerConfigs({
     int page = 1,
     int pageSize = 20,
     String? search,
     String? status,
     String? transportType,
+    String? sourceKind,
   }) async {
     final response = await _dio.get(
       '/api/v1/mcp/configs',
@@ -231,6 +247,8 @@ class ResourcesApi {
         if (status != null && status.isNotEmpty) 'status': status,
         if (transportType != null && transportType.isNotEmpty)
           'transportType': transportType,
+        if (sourceKind != null && sourceKind.isNotEmpty)
+          'sourceKind': sourceKind,
       },
     );
     return PaginatedResponse.fromJson(
@@ -356,6 +374,13 @@ class ResourcesApi {
 
   Future<void> deleteMcpServerConfig(String configId) async {
     await _dio.delete('/api/v1/mcp/configs/$configId');
+  }
+
+  Future<void> convertMcpServerConfigSourceToManual(String configId) async {
+    await _dio.post(
+      '/api/v1/resource-sources/mcp_server_config/$configId/convert-to-manual',
+      data: _emptyJsonBody,
+    );
   }
 
   Future<List<ApiKeyInfoDto>> listApiKeys() async {

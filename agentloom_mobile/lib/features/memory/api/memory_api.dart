@@ -17,10 +17,16 @@ class MemoryApi {
   Future<List<MemoryInstanceDto>> getMemoryInstances({
     int page = 1,
     int pageSize = 20,
+    String? sourceKind,
   }) async {
     final response = await _dio.get(
       '/api/v1/memory-instances',
-      queryParameters: {'page': page, 'page_size': pageSize},
+      queryParameters: {
+        'page': page,
+        'page_size': pageSize,
+        if (sourceKind != null && sourceKind.isNotEmpty)
+          'sourceKind': sourceKind,
+      },
     );
     final data = response.data;
     // 支持直接列表或分页包装
@@ -43,10 +49,9 @@ class MemoryApi {
     final response = await _dio.get('/api/v1/memory-instances/$id');
     final raw = response.data as Map<String, dynamic>;
     // 服务端返回 { data: { ...instance, stats: { nodeCount, edgeCount } } }
-    final data =
-        raw.containsKey('data')
-            ? raw['data'] as Map<String, dynamic>
-            : raw;
+    final data = raw.containsKey('data')
+        ? raw['data'] as Map<String, dynamic>
+        : raw;
     // 将嵌套的 stats 平铺到顶层以匹配 DTO 字段
     if (data.containsKey('stats') && data['stats'] is Map) {
       final stats = data['stats'] as Map<String, dynamic>;
@@ -54,6 +59,13 @@ class MemoryApi {
       data['edgeCount'] = stats['edgeCount'] ?? data['edgeCount'] ?? 0;
     }
     return MemoryInstanceDto.fromJson(data);
+  }
+
+  Future<void> convertSourceToManual(String id) async {
+    await _dio.post(
+      '/api/v1/resource-sources/memory_instance/$id/convert-to-manual',
+      data: const <String, dynamic>{},
+    );
   }
 
   /// 获取 Memory 实例的节点列表
@@ -81,10 +93,9 @@ class MemoryApi {
     );
     final raw = response.data as Map<String, dynamic>;
     // 服务端返回 { data: { ...node, versions, edges } }
-    final data =
-        raw.containsKey('data')
-            ? raw['data'] as Map<String, dynamic>
-            : raw;
+    final data = raw.containsKey('data')
+        ? raw['data'] as Map<String, dynamic>
+        : raw;
     return MemoryNodeDto.fromJson(data);
   }
 

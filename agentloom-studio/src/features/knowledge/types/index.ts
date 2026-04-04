@@ -1,3 +1,5 @@
+import type { ResourceSourceKind } from '@/shared/lib/resourceSource';
+
 export const KNOWLEDGE_BASE_VISIBILITIES = ['private', 'organization'] as const;
 export type KnowledgeBaseVisibility =
   (typeof KNOWLEDGE_BASE_VISIBILITIES)[number];
@@ -95,6 +97,7 @@ export interface KnowledgeBase {
   nodeCount: number;
   chunkCount: number;
   status: KnowledgeBaseStatus;
+  sourceKind?: ResourceSourceKind;
   createdAt: string;
   updatedAt: string;
 }
@@ -169,6 +172,12 @@ export interface DocumentListParams {
   page?: number;
   pageSize?: number;
   status?: DocumentStatus;
+}
+
+export interface KnowledgeBaseListParams {
+  page?: number;
+  pageSize?: number;
+  sourceKind?: ResourceSourceKind;
 }
 
 export function getDocumentStatusLabel(status: DocumentStatus): string {

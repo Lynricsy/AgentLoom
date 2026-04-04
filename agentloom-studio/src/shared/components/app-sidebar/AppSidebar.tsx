@@ -54,8 +54,8 @@ const NAV_ITEMS: NavItem[] = [
   {
     label: '发现',
     icon: Compass,
-    to: '/templates',
-    matchPrefix: '/templates',
+    to: '/discover',
+    matchPrefix: '/discover',
   },
   {
     label: '开发者',

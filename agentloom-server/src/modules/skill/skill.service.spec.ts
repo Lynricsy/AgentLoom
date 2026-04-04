@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { DrizzleDB } from '../../database/database.module';
 import { DRIZZLE } from '../../database/database.module';
+import { ResourceSourceService } from '../resource-source/resource-source.service';
 import { SkillService, type SkillUploadFile } from './skill.service';
 import { SkillStorageService } from './skill-storage.service';
 
@@ -103,6 +104,7 @@ function makeSkillRecord(overrides: Partial<Record<string, any>> = {}) {
     updatedBy: USER_ID,
     createdAt: NOW,
     updatedAt: NOW,
+    sourceKind: 'manual',
     ...overrides,
   };
 }
@@ -111,12 +113,22 @@ describe('SkillService', () => {
   let service: SkillService;
   let storageService: ReturnType<typeof mocks.createMockStorageService>;
   let db: Record<string, ReturnType<typeof vi.fn>>;
+  let resourceSourceService: {
+    mapCurrentKinds: ReturnType<typeof vi.fn>;
+    buildShareImportedExistsCondition: ReturnType<typeof vi.fn>;
+  };
 
   beforeEach(async () => {
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
 
     storageService = mocks.createMockStorageService();
+    resourceSourceService = {
+      mapCurrentKinds: vi.fn().mockResolvedValue(new Map()),
+      buildShareImportedExistsCondition: vi.fn(() => ({
+        type: 'share-imported',
+      })),
+    };
 
     db = {
       select: vi.fn(),
@@ -134,6 +146,7 @@ describe('SkillService', () => {
         SkillService,
         { provide: DRIZZLE, useValue: db },
         { provide: SkillStorageService, useValue: storageService },
+        { provide: ResourceSourceService, useValue: resourceSourceService },
       ],
     }).compile();
 

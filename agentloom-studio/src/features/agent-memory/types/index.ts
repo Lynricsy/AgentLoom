@@ -1,3 +1,5 @@
+import type { ResourceSourceKind } from '@/shared/lib/resourceSource';
+
 export const MEMORY_INSTANCE_STATUSES = [
   'active',
   'archived',
@@ -39,6 +41,7 @@ export interface MemoryInstance {
   systemPromptOverride: string | null;
   config: Record<string, unknown> | null;
   status: MemoryInstanceStatus;
+  sourceKind?: ResourceSourceKind;
   nodeCount?: number;
   createdAt: string;
   updatedAt: string;
@@ -70,4 +73,5 @@ export interface MemoryInstanceListParams {
   page?: number;
   pageSize?: number;
   search?: string;
+  sourceKind?: ResourceSourceKind;
 }

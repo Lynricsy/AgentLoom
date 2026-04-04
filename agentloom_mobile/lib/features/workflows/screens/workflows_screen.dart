@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../routes/route_names.dart';
 import '../../../shared/widgets/entity_grid_card.dart';
+import '../../../shared/widgets/resource_source_chip.dart';
 import '../providers/workflow_list_provider.dart';
 
 /// 工作流列表页面
@@ -56,10 +57,7 @@ class _WorkflowsScreenState extends ConsumerState<WorkflowsScreen> {
     }
   }
 
-  String _buildReleaseLabel(
-    String status,
-    int? publishedReleaseNumber,
-  ) {
+  String _buildReleaseLabel(String status, int? publishedReleaseNumber) {
     if (status == 'published') {
       return 'v${publishedReleaseNumber ?? 1}';
     }
@@ -151,6 +149,41 @@ class _WorkflowsScreenState extends ConsumerState<WorkflowsScreen> {
           ),
           const SizedBox(height: 8),
 
+          SizedBox(
+            height: 40,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              children: [
+                _FilterChip(
+                  label: '全部来源',
+                  selected: workflowState.value?.sourceKindFilter == null,
+                  onSelected: (_) => ref
+                      .read(workflowListProvider.notifier)
+                      .setSourceKindFilter(null),
+                ),
+                const SizedBox(width: 8),
+                _FilterChip(
+                  label: '自己创建',
+                  selected: workflowState.value?.sourceKindFilter == 'manual',
+                  onSelected: (_) => ref
+                      .read(workflowListProvider.notifier)
+                      .setSourceKindFilter('manual'),
+                ),
+                const SizedBox(width: 8),
+                _FilterChip(
+                  label: '分享导入',
+                  selected:
+                      workflowState.value?.sourceKindFilter == 'share_imported',
+                  onSelected: (_) => ref
+                      .read(workflowListProvider.notifier)
+                      .setSourceKindFilter('share_imported'),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+
           // 网格列表
           Expanded(
             child: workflowState.when(
@@ -208,8 +241,9 @@ class _WorkflowsScreenState extends ConsumerState<WorkflowsScreen> {
                       ref.read(workflowListProvider.notifier).refresh(),
                   child: LayoutBuilder(
                     builder: (context, constraints) {
-                      final crossAxisCount =
-                          _crossAxisCount(constraints.maxWidth);
+                      final crossAxisCount = _crossAxisCount(
+                        constraints.maxWidth,
+                      );
 
                       return NotificationListener<ScrollNotification>(
                         onNotification: (scrollInfo) {
@@ -229,41 +263,43 @@ class _WorkflowsScreenState extends ConsumerState<WorkflowsScreen> {
                               sliver: SliverGrid(
                                 gridDelegate:
                                     SliverGridDelegateWithFixedCrossAxisCount(
-                                  crossAxisCount: crossAxisCount,
-                                  mainAxisSpacing: 8,
-                                  crossAxisSpacing: 8,
-                                  childAspectRatio: 0.88,
-                                ),
-                                delegate: SliverChildBuilderDelegate(
-                                  (context, index) {
-                                    final workflow = state.workflows[index];
-                                    final versionLabel = _buildReleaseLabel(
-                                      workflow.status,
-                                      workflow.publishedReleaseNumber,
-                                    );
+                                      crossAxisCount: crossAxisCount,
+                                      mainAxisSpacing: 8,
+                                      crossAxisSpacing: 8,
+                                      childAspectRatio: 0.88,
+                                    ),
+                                delegate: SliverChildBuilderDelegate((
+                                  context,
+                                  index,
+                                ) {
+                                  final workflow = state.workflows[index];
+                                  final versionLabel = _buildReleaseLabel(
+                                    workflow.status,
+                                    workflow.publishedReleaseNumber,
+                                  );
 
-                                    return EntityGridCard(
-                                      icon: workflow.icon,
-                                      fallbackIcon:
-                                          Icons.account_tree_outlined,
-                                      name: workflow.name,
-                                      description: workflow.description,
-                                      status: workflow.status,
-                                      date:
-                                          _formatDate(workflow.updatedAt),
-                                      versionLabel: versionLabel.isNotEmpty
-                                          ? versionLabel
-                                          : null,
-                                      onTap: () => context.goNamed(
-                                        RouteNames.workflowDetail,
-                                        pathParameters: {
-                                          'workflowId': workflow.id,
-                                        },
-                                      ),
-                                    );
-                                  },
-                                  childCount: state.workflows.length,
-                                ),
+                                  return EntityGridCard(
+                                    icon: workflow.icon,
+                                    fallbackIcon: Icons.account_tree_outlined,
+                                    name: workflow.name,
+                                    description: workflow.description,
+                                    status: workflow.status,
+                                    date: _formatDate(workflow.updatedAt),
+                                    titleTrailing: ResourceSourceChip(
+                                      sourceKind: workflow.resourceSourceKind,
+                                      compact: true,
+                                    ),
+                                    versionLabel: versionLabel.isNotEmpty
+                                        ? versionLabel
+                                        : null,
+                                    onTap: () => context.goNamed(
+                                      RouteNames.workflowDetail,
+                                      pathParameters: {
+                                        'workflowId': workflow.id,
+                                      },
+                                    ),
+                                  );
+                                }, childCount: state.workflows.length),
                               ),
                             ),
                             // 加载更多指示器

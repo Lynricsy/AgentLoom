@@ -32,6 +32,7 @@ export interface ListAgentsParams {
   pageSize?: number
   status?: string
   search?: string
+  sourceKind?: 'manual' | 'share_imported'
 }
 
 export type AgentListResponse = PaginatedResponse<AgentDefinition>
@@ -43,6 +44,7 @@ export async function listAgents(params: ListAgentsParams = {}) {
   if (params.pageSize) searchParams.pageSize = String(params.pageSize)
   if (params.status) searchParams.status = params.status
   if (params.search) searchParams.search = params.search
+  if (params.sourceKind) searchParams.sourceKind = params.sourceKind
 
   return apiClient
     .get('agent-definitions', { searchParams })

@@ -109,6 +109,41 @@ class _SkillListScreenState extends ConsumerState<SkillListScreen> {
           ),
           const SizedBox(height: 4),
 
+          SizedBox(
+            height: 40,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              children: [
+                _FilterChip(
+                  label: '全部来源',
+                  selected: skillState.value?.sourceKindFilter == null,
+                  onSelected: (_) => ref
+                      .read(skillListProvider.notifier)
+                      .setSourceKindFilter(null),
+                ),
+                const SizedBox(width: 8),
+                _FilterChip(
+                  label: '自己创建',
+                  selected: skillState.value?.sourceKindFilter == 'manual',
+                  onSelected: (_) => ref
+                      .read(skillListProvider.notifier)
+                      .setSourceKindFilter('manual'),
+                ),
+                const SizedBox(width: 8),
+                _FilterChip(
+                  label: '分享导入',
+                  selected:
+                      skillState.value?.sourceKindFilter == 'share_imported',
+                  onSelected: (_) => ref
+                      .read(skillListProvider.notifier)
+                      .setSourceKindFilter('share_imported'),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 4),
+
           // 状态筛选 Chips (All / Active / Archived)
           SizedBox(
             height: 40,

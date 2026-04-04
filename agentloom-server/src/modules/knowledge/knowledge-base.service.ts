@@ -3,6 +3,7 @@ import { and, desc, eq, count, inArray, sql } from 'drizzle-orm';
 import { DRIZZLE } from '../../database/database.module';
 import type { DrizzleDB } from '../../database/database.module';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
+import type { ResourceSourceKind } from '../../database/schema';
 import {
   knowledgeBases,
   type KnowledgeBase,
@@ -10,6 +11,7 @@ import {
 } from '../../database/schema/knowledge-bases.schema';
 import { knowledgeNodes } from '../../database/schema/knowledge-nodes.schema';
 import { LlmService } from '../llm/llm.service';
+import { ResourceSourceService } from '../resource-source/resource-source.service';
 import { EMBEDDING_MODEL } from './knowledge.constants';
 import { CreateKnowledgeBaseDto, UpdateKnowledgeBaseSettingsDto } from './dto';
 import { KnowledgeBaseNotFoundException } from './knowledge.exceptions';
@@ -41,6 +43,7 @@ export interface KnowledgeBaseSummary extends KnowledgeBase {
   nodeCount: number;
   chunkCount: number;
   status: KnowledgeBaseStatus;
+  sourceKind: ResourceSourceKind;
 }
 
 const EMPTY_COUNTERS: KnowledgeBaseStatusCounters = {
@@ -56,6 +59,7 @@ export class KnowledgeBaseService {
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
     private readonly llmService: LlmService,
+    private readonly resourceSourceService: ResourceSourceService,
   ) {}
 
   async create(
@@ -95,6 +99,7 @@ export class KnowledgeBaseService {
       nodeCount: 0,
       chunkCount: 0,
       status: 'empty',
+      sourceKind: 'manual',
     };
   }
 
@@ -102,22 +107,40 @@ export class KnowledgeBaseService {
     tenantId: string,
     page: number,
     pageSize: number,
+    sourceKind?: ResourceSourceKind,
   ): Promise<{ data: KnowledgeBase[]; total: number }> {
     const db = getTenantDb(this.db);
     const offset = (page - 1) * pageSize;
+    const conditions = [eq(knowledgeBases.tenantId, tenantId)];
+
+    if (sourceKind) {
+      const importedExistsCondition =
+        this.resourceSourceService.buildShareImportedExistsCondition({
+          resourceType: 'knowledge_base',
+          resourceIdColumn: knowledgeBases.id,
+        });
+
+      conditions.push(
+        sourceKind === 'share_imported'
+          ? importedExistsCondition
+          : sql`not (${importedExistsCondition})`,
+      );
+    }
+
+    const predicate = and(...conditions);
 
     const [data, [{ total }]] = await Promise.all([
       db
         .select()
         .from(knowledgeBases)
-        .where(eq(knowledgeBases.tenantId, tenantId))
+        .where(predicate)
         .orderBy(desc(knowledgeBases.updatedAt))
         .limit(pageSize)
         .offset(offset),
       db
         .select({ total: count() })
         .from(knowledgeBases)
-        .where(eq(knowledgeBases.tenantId, tenantId)),
+        .where(predicate),
     ]);
 
     return { data, total };
@@ -127,11 +150,13 @@ export class KnowledgeBaseService {
     tenantId: string,
     page: number,
     pageSize: number,
+    sourceKind?: ResourceSourceKind,
   ): Promise<{ data: KnowledgeBaseSummary[]; total: number }> {
     const { data, total } = await this.findAllByTenant(
       tenantId,
       page,
       pageSize,
+      sourceKind,
     );
     return {
       data: await this.hydrateSummaries(data, tenantId),
@@ -277,6 +302,10 @@ export class KnowledgeBaseService {
     const chunkCountMap = new Map(
       chunkRows.map((row) => [row.knowledgeBaseId, row.nodeCount]),
     );
+    const sourceKindMap = await this.resourceSourceService.mapCurrentKinds(
+      'knowledge_base',
+      knowledgeBaseIds,
+    );
 
     return items.map((item) => {
       const counters = statusMap.get(item.id) ?? EMPTY_COUNTERS;
@@ -287,6 +316,7 @@ export class KnowledgeBaseService {
         nodeCount,
         chunkCount: nodeCount,
         status: this.getKnowledgeBaseStatus(counters),
+        sourceKind: sourceKindMap.get(item.id) ?? 'manual',
       };
     });
   }

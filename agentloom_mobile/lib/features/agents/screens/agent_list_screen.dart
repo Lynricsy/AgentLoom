@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../routes/route_names.dart';
 import '../../../shared/widgets/entity_grid_card.dart';
+import '../../../shared/widgets/resource_source_chip.dart';
 import '../api/agent_api.dart';
 import '../providers/agent_provider.dart';
 
@@ -142,6 +143,41 @@ class _AgentListScreenState extends ConsumerState<AgentListScreen> {
           ),
           const SizedBox(height: 8),
 
+          SizedBox(
+            height: 40,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              children: [
+                _FilterChip(
+                  label: '全部来源',
+                  selected: agentState.value?.sourceKindFilter == null,
+                  onSelected: (_) => ref
+                      .read(agentListProvider.notifier)
+                      .setSourceKindFilter(null),
+                ),
+                const SizedBox(width: 8),
+                _FilterChip(
+                  label: '自己创建',
+                  selected: agentState.value?.sourceKindFilter == 'manual',
+                  onSelected: (_) => ref
+                      .read(agentListProvider.notifier)
+                      .setSourceKindFilter('manual'),
+                ),
+                const SizedBox(width: 8),
+                _FilterChip(
+                  label: '分享导入',
+                  selected:
+                      agentState.value?.sourceKindFilter == 'share_imported',
+                  onSelected: (_) => ref
+                      .read(agentListProvider.notifier)
+                      .setSourceKindFilter('share_imported'),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+
           // 网格列表
           Expanded(
             child: agentState.when(
@@ -244,6 +280,10 @@ class _AgentListScreenState extends ConsumerState<AgentListScreen> {
                                     ].join(' · '),
                                     status: agent.status,
                                     date: _formatDate(agent.updatedAt),
+                                    titleTrailing: ResourceSourceChip(
+                                      sourceKind: agent.resourceSourceKind,
+                                      compact: true,
+                                    ),
                                     versionLabel: agent.version != null
                                         ? 'v${agent.version}'
                                         : null,

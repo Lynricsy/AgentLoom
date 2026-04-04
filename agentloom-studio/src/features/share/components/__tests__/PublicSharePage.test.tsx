@@ -5,7 +5,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { PublicShareData } from '../../types'
 
 // --- hoisted mocks ---
-const { publicShareMock, createWorkflowMock, navigateMock, notifyMock } =
+const {
+  publicShareMock,
+  createWorkflowMock,
+  importAgentShareMock,
+  navigateMock,
+  notifyMock,
+} =
   vi.hoisted(() => ({
     publicShareMock: {
       data: undefined as PublicShareData | undefined,
@@ -13,6 +19,10 @@ const { publicShareMock, createWorkflowMock, navigateMock, notifyMock } =
       error: null as unknown,
     },
     createWorkflowMock: {
+      mutate: vi.fn(),
+      isPending: false,
+    },
+    importAgentShareMock: {
       mutate: vi.fn(),
       isPending: false,
     },
@@ -31,6 +41,10 @@ vi.mock('../../api/shareQueries', () => ({
 
 vi.mock('@/features/workflow/api/workflowMutations', () => ({
   useCreateWorkflow: () => createWorkflowMock,
+}))
+
+vi.mock('../../api/shareMutations', () => ({
+  useImportAgentShare: () => importAgentShareMock,
 }))
 
 vi.mock('@/shared/ui/toast', () => ({
@@ -56,18 +70,29 @@ const { PublicSharePage } = await import('../PublicSharePage')
 
 // --- helpers ---
 function makePublicShareData(
-  overrides: Partial<PublicShareData> = {},
-): PublicShareData {
+  overrides: Partial<Extract<PublicShareData, { resourceType: 'workflow' }>> = {},
+): Extract<PublicShareData, { resourceType: 'workflow' }> {
   return {
     token: 'test-token',
-    shareType: 'read_only',
+    resourceType: 'workflow',
+    workflowDefinitionId: 'wf-1',
     workflowName: 'Test Workflow',
     workflowDescription: 'A test workflow description',
+    title: 'Test Workflow',
+    description: 'A test workflow description',
+    shareType: 'read_only',
+    author: {
+      displayName: '酒狐',
+      email: 'test@example.invalid',
+      avatarUrl: null,
+    },
     definition: {
       nodes: [{ id: 'n1', type: 'default', position: { x: 0, y: 0 }, data: {} }],
       edges: [{ id: 'e1', source: 'n1', target: 'n2' }],
       viewport: { x: 0, y: 0, zoom: 1 },
     },
+    nodeCount: 1,
+    edgeCount: 1,
     createdAt: '2026-03-10T08:00:00.000Z',
     expiresAt: null,
     ...overrides,
@@ -82,6 +107,8 @@ describe('PublicSharePage', () => {
     publicShareMock.error = null
     createWorkflowMock.mutate = vi.fn()
     createWorkflowMock.isPending = false
+    importAgentShareMock.mutate = vi.fn()
+    importAgentShareMock.isPending = false
   })
 
   it('shows loading state while data is loading', () => {
@@ -107,11 +134,11 @@ describe('PublicSharePage', () => {
     expect(screen.getByText('仅查看')).toBeInTheDocument()
   })
 
-  it('shows "可复制" badge + copy button for copyable shares', () => {
+  it('shows "可导入" badge + import button for copyable shares', () => {
     publicShareMock.data = makePublicShareData({ shareType: 'copyable' })
     render(<PublicSharePage />)
 
-    expect(screen.getByText('可复制')).toBeInTheDocument()
+    expect(screen.getByText('可导入')).toBeInTheDocument()
     expect(screen.getByTestId('btn-copy-to-workspace')).toBeInTheDocument()
   })
 
@@ -187,7 +214,7 @@ describe('PublicSharePage', () => {
       params: { workflowId: 'wf-copy-id' },
     })
     expect(notifyMock).toHaveBeenCalledWith({
-      description: '已复制到您的工作区',
+      description: '已导入到你的工作流列表',
       variant: 'success',
     })
   })

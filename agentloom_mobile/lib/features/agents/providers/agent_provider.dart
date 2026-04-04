@@ -8,6 +8,7 @@ import '../models/agent_definition_dto.dart';
 /// Agent 列表 Notifier（手动 AsyncNotifier，不使用 riverpod_generator）
 class AgentListNotifier extends AsyncNotifier<AgentListState> {
   String? _statusFilter;
+  String? _sourceKindFilter;
   String? _searchQuery;
 
   @override
@@ -20,6 +21,7 @@ class AgentListNotifier extends AsyncNotifier<AgentListState> {
     final result = await api.listAgents(
       page: page,
       status: _statusFilter,
+      sourceKind: _sourceKindFilter,
       search: _searchQuery,
     );
 
@@ -28,6 +30,7 @@ class AgentListNotifier extends AsyncNotifier<AgentListState> {
       currentPage: result.meta.page,
       hasMore: result.meta.page < result.meta.totalPages,
       statusFilter: _statusFilter,
+      sourceKindFilter: _sourceKindFilter,
       searchQuery: _searchQuery,
     );
   }
@@ -35,6 +38,12 @@ class AgentListNotifier extends AsyncNotifier<AgentListState> {
   /// 设置状态过滤器并重新加载
   Future<void> setStatusFilter(String? status) async {
     _statusFilter = status;
+    state = const AsyncValue.loading();
+    state = await AsyncValue.guard(() => _fetchAgents());
+  }
+
+  Future<void> setSourceKindFilter(String? sourceKind) async {
+    _sourceKindFilter = sourceKind;
     state = const AsyncValue.loading();
     state = await AsyncValue.guard(() => _fetchAgents());
   }
@@ -65,6 +74,7 @@ class AgentListNotifier extends AsyncNotifier<AgentListState> {
       final result = await api.listAgents(
         page: currentState.currentPage + 1,
         status: _statusFilter,
+        sourceKind: _sourceKindFilter,
         search: _searchQuery,
       );
 
@@ -76,6 +86,7 @@ class AgentListNotifier extends AsyncNotifier<AgentListState> {
           currentPage: result.meta.page,
           hasMore: result.meta.page < result.meta.totalPages,
           statusFilter: _statusFilter,
+          sourceKindFilter: _sourceKindFilter,
           searchQuery: _searchQuery,
         ),
       );

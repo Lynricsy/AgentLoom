@@ -8,12 +8,18 @@ import {
   Pencil,
   Trash2,
   RefreshCw,
+  FolderSync,
   Play,
   Loader2,
   Zap,
   Download,
 } from "lucide-react";
 import { formatRelativeTime } from "@/features/canvas/lib/formatRelativeTime";
+import { convertResourceSourceToManual } from "@/shared/api/resourceSourceApi";
+import {
+  getResourceSourceBadgeClass,
+  getResourceSourceLabel,
+} from "@/shared/lib/resourceSource";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { Select } from "@/shared/ui/select";
@@ -92,6 +98,7 @@ interface ServerCardActionsProps {
     event: MouseEvent<HTMLButtonElement>,
     server: McpServerConfigSummary,
   ) => void;
+  onConvertSource: (server: McpServerConfigSummary) => void;
 }
 
 function ServerCardActions({
@@ -100,6 +107,7 @@ function ServerCardActions({
   onDelete,
   onRediscover,
   onReimport,
+  onConvertSource,
 }: ServerCardActionsProps) {
   const [open, setOpen] = useState(false);
 
@@ -158,6 +166,19 @@ function ServerCardActions({
               <Pencil className="h-3.5 w-3.5" />
               编辑
             </button>
+            {server.sourceKind === "share_imported" ? (
+              <button
+                type="button"
+                className="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                onClick={() => {
+                  onConvertSource(server);
+                  setOpen(false);
+                }}
+              >
+                <FolderSync className="h-3.5 w-3.5" />
+                转为自己创建
+              </button>
+            ) : null}
             <button
               type="button"
               className="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-red-400 transition-colors hover:bg-red-500/10"
@@ -183,6 +204,7 @@ export function McpServerManagementPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [transportFilter, setTransportFilter] = useState<string>("all");
+  const [sourceKindFilter, setSourceKindFilter] = useState<string>("all");
 
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [importRestoreFocus, setImportRestoreFocus] =
@@ -210,8 +232,10 @@ export function McpServerManagementPage() {
       p.status = statusFilter as McpServerConfigSummary["status"];
     if (transportFilter !== "all")
       p.transportType = transportFilter as McpTransportType;
+    if (sourceKindFilter !== "all")
+      p.sourceKind = sourceKindFilter as "manual" | "share_imported";
     return p;
-  }, [page, search, statusFilter, transportFilter]);
+  }, [page, search, statusFilter, transportFilter, sourceKindFilter]);
 
   const { data, isLoading, isError, refetch } = useMcpServerConfigs(params);
   const servers = data?.data ?? [];
@@ -229,6 +253,11 @@ export function McpServerManagementPage() {
 
   const handleTransportChange = useCallback((value: string) => {
     setTransportFilter(value);
+    setPage(1);
+  }, []);
+
+  const handleSourceKindChange = useCallback((value: string) => {
+    setSourceKindFilter(value);
     setPage(1);
   }, []);
 
@@ -328,10 +357,23 @@ export function McpServerManagementPage() {
     [navigate],
   );
 
+  const handleConvertSource = useCallback(
+    async (server: McpServerConfigSummary) => {
+      try {
+        await convertResourceSourceToManual("mcp_server_config", server.id);
+        await refetch();
+      } catch {
+        // noop
+      }
+    },
+    [refetch],
+  );
+
   const hasFilters =
     search.trim() !== "" ||
     statusFilter !== "all" ||
-    transportFilter !== "all";
+    transportFilter !== "all" ||
+    sourceKindFilter !== "all";
 
   return (
     <div className="flex h-full flex-col gap-4 p-6">
@@ -386,6 +428,15 @@ export function McpServerManagementPage() {
           <option value="sse">SSE</option>
           <option value="streamable_http">HTTP</option>
         </Select>
+        <Select
+          value={sourceKindFilter}
+          onValueChange={handleSourceKindChange}
+          className="w-40"
+        >
+          <option value="all">全部来源</option>
+          <option value="manual">自己创建</option>
+          <option value="share_imported">分享导入</option>
+        </Select>
       </div>
 
       {/* 列表内容 */}
@@ -433,6 +484,13 @@ export function McpServerManagementPage() {
                       </h2>
                       <TransportBadge type={server.transportType} />
                       <StatusDot status={server.status} />
+                      <span
+                        className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${getResourceSourceBadgeClass(
+                          server.sourceKind ?? "manual",
+                        )}`}
+                      >
+                        {getResourceSourceLabel(server.sourceKind ?? "manual")}
+                      </span>
                     </div>
                     <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">
                       {server.description || "暂无描述"}
@@ -455,6 +513,7 @@ export function McpServerManagementPage() {
                       onDelete={handleDelete}
                       onRediscover={() => void handleRediscover(server)}
                       onReimport={handleReimport}
+                      onConvertSource={handleConvertSource}
                     />
                   </div>
                 </div>

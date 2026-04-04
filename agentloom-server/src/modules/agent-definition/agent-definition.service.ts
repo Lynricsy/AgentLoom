@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { and, asc, desc, eq, ilike, inArray, max, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, ilike, inArray, max, not, or, sql } from 'drizzle-orm';
 
 import { transactionStorage } from '../../common/interceptors/tenant-transaction.interceptor';
 import type { DrizzleDB } from '../../database/database.module';
@@ -10,6 +10,7 @@ import type {
   AgentVersionSnapshot,
 } from '../../database/schema/agent-definitions.schema';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
+import { hasPostgresErrorCode } from '../../common/utils/postgres-error.utils';
 import { generateSlug, appendSlugSuffix } from '../organization/slug.utils';
 import type { CreateAgentDefinitionDto } from './dto/create-agent-definition.dto';
 import type { UpdateAgentDefinitionDto } from './dto/update-agent-definition.dto';
@@ -31,6 +32,7 @@ import {
   AgentVersionConflictException,
   AgentPublishValidationException,
 } from './agent-definition.exceptions';
+import { ResourceSourceService } from '../resource-source/resource-source.service';
 import {
   DEFAULT_AGENT_SANDBOX_TIMEOUT_SECONDS,
   deriveSandboxTimeoutHours,
@@ -108,6 +110,7 @@ export class AgentDefinitionService {
   constructor(
     @Inject(DRIZZLE)
     private readonly db: DrizzleDB,
+    private readonly resourceSourceService: ResourceSourceService,
   ) {}
 
   private get tenantDb(): DrizzleDB {
@@ -150,33 +153,34 @@ export class AgentDefinitionService {
 
     for (let attempt = 0; attempt <= MAX_SLUG_RETRIES; attempt++) {
       try {
-        const [created] = await this.tenantDb
-          .insert(schema.agentDefinitions)
-          .values({
-            tenantId: sql<string>`current_setting('app.current_tenant')::uuid`,
-            name: dto.name,
-            slug,
-            description: dto.description ?? null,
-            icon: dto.icon ?? null,
-            runtimeMode: dto.runtimeMode,
-            sandboxConfig:
-              dto.runtimeMode === 'sandbox'
-                ? ((dto.globalSandboxConfig as any) ?? null)
-                : null,
-            createdBy: userId,
-            updatedBy: userId,
-          })
-          .returning();
+        const created = await this.tenantDb.transaction(async (tx) => {
+          const [row] = await tx
+            .insert(schema.agentDefinitions)
+            .values({
+              tenantId: sql<string>`current_setting('app.current_tenant')::uuid`,
+              name: dto.name,
+              slug,
+              description: dto.description ?? null,
+              icon: dto.icon ?? null,
+              runtimeMode: dto.runtimeMode,
+              sandboxConfig:
+                dto.runtimeMode === 'sandbox'
+                  ? ((dto.globalSandboxConfig as any) ?? null)
+                  : null,
+              createdBy: userId,
+              updatedBy: userId,
+            })
+            .returning();
+
+          return row;
+        });
 
         this.logger.log(
           `Agent definition created: ${created.id} (${created.slug})`,
         );
         return serializeAgentDefinitionDetail(created);
       } catch (error) {
-        const isUniqueViolation =
-          error instanceof Error &&
-          'code' in error &&
-          (error as any).code === '23505';
+        const isUniqueViolation = hasPostgresErrorCode(error, '23505');
 
         if (!isUniqueViolation || attempt === MAX_SLUG_RETRIES) {
           throw error;
@@ -193,7 +197,7 @@ export class AgentDefinitionService {
     data: AgentDefinitionResponseDto[];
     meta: { total: number; page: number; pageSize: number; totalPages: number };
   }> {
-    const { page, pageSize, status, search, sort, order } = query;
+    const { page, pageSize, status, search, sourceKind, sort, order } = query;
     const offset = (page - 1) * pageSize;
 
     const conditions = [];
@@ -206,6 +210,20 @@ export class AgentDefinitionService {
           ilike(schema.agentDefinitions.name, `%${search}%`),
           ilike(schema.agentDefinitions.description, `%${search}%`),
         ),
+      );
+    }
+
+    if (sourceKind) {
+      const importedExistsCondition =
+        this.resourceSourceService.buildShareImportedExistsCondition({
+          resourceType: 'agent_definition',
+          resourceIdColumn: schema.agentDefinitions.id,
+        });
+
+      conditions.push(
+        sourceKind === 'share_imported'
+          ? importedExistsCondition
+          : not(importedExistsCondition),
       );
     }
 
@@ -228,9 +246,17 @@ export class AgentDefinitionService {
     ]);
 
     const total = countResult[0]?.total ?? 0;
+    const sourceKindMap = await this.resourceSourceService.mapCurrentKinds(
+      'agent_definition',
+      rows.map((row) => row.id),
+    );
 
     return {
-      data: rows.map(serializeAgentDefinition),
+      data: rows.map((row) =>
+        serializeAgentDefinition(row, {
+          resourceSourceKind: sourceKindMap.get(row.id) ?? 'manual',
+        }),
+      ),
       meta: {
         total,
         page,
@@ -250,7 +276,14 @@ export class AgentDefinitionService {
       throw new AgentNotFoundException(agentId);
     }
 
-    return serializeAgentDefinition(row);
+    const sourceKindMap = await this.resourceSourceService.mapCurrentKinds(
+      'agent_definition',
+      [row.id],
+    );
+
+    return serializeAgentDefinition(row, {
+      resourceSourceKind: sourceKindMap.get(row.id) ?? 'manual',
+    });
   }
 
   async findDetailById(
@@ -265,7 +298,14 @@ export class AgentDefinitionService {
       throw new AgentNotFoundException(agentId);
     }
 
-    return serializeAgentDefinitionDetail(row);
+    const sourceKindMap = await this.resourceSourceService.mapCurrentKinds(
+      'agent_definition',
+      [row.id],
+    );
+
+    return serializeAgentDefinitionDetail(row, {
+      resourceSourceKind: sourceKindMap.get(row.id) ?? 'manual',
+    });
   }
 
   async update(

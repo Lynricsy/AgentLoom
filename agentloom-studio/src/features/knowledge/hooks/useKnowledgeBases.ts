@@ -17,23 +17,24 @@ import { knowledgeBaseKeys } from '../api/knowledgeBaseKeys';
 import type {
   CreateKnowledgeBaseInput,
   DocumentListParams,
+  KnowledgeBaseListParams,
   UpdateKnowledgeBaseSettingsInput,
 } from '../types';
 
-export function useKnowledgeBases(params?: {
-  page?: number;
-  pageSize?: number;
-}) {
+export function useKnowledgeBases(params?: KnowledgeBaseListParams) {
   return useQuery({
     queryKey: knowledgeBaseKeys.list(params ? { ...params } : undefined),
     queryFn: () => fetchKnowledgeBases(params),
   });
 }
 
-export function useAllKnowledgeBases(options?: { enabled?: boolean }) {
+export function useAllKnowledgeBases(options?: {
+  enabled?: boolean;
+  sourceKind?: KnowledgeBaseListParams['sourceKind'];
+}) {
   return useQuery({
-    queryKey: knowledgeBaseKeys.allOptions(),
-    queryFn: () => fetchAllKnowledgeBases(),
+    queryKey: knowledgeBaseKeys.allOptions(options?.sourceKind),
+    queryFn: () => fetchAllKnowledgeBases({ sourceKind: options?.sourceKind }),
     enabled: options?.enabled ?? true,
   });
 }

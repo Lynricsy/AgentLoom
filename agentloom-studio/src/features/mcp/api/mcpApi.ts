@@ -106,6 +106,7 @@ export async function fetchMcpServerConfigs(
   if (params?.search) searchParams.search = params.search;
   if (params?.status) searchParams.status = params.status;
   if (params?.transportType) searchParams.transportType = params.transportType;
+  if (params?.sourceKind) searchParams.sourceKind = params.sourceKind;
 
   const response = await apiClient
     .get("mcp/configs", { searchParams })

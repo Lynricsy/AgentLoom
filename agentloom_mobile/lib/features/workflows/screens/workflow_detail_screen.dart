@@ -4,8 +4,11 @@ import 'package:go_router/go_router.dart';
 
 import '../../../routes/route_names.dart';
 import '../../../shared/widgets/entity_icon.dart';
+import '../../../shared/widgets/resource_source_chip.dart';
+import '../api/workflow_api.dart';
 import '../models/workflow_definition_dto.dart';
 import '../providers/workflow_detail_provider.dart';
+import '../providers/workflow_list_provider.dart';
 import '../widgets/execution_summary_tile.dart';
 import '../widgets/workflow_status_chip.dart';
 
@@ -20,12 +23,24 @@ class WorkflowDetailScreen extends ConsumerWidget {
     final theme = Theme.of(context);
     final workflowAsync = ref.watch(workflowDetailProvider(workflowId));
     final executionsAsync = ref.watch(workflowExecutionsProvider(workflowId));
+    final currentWorkflow = workflowAsync.whenOrNull(
+      data: (workflow) => workflow,
+    );
 
     return Scaffold(
       appBar: AppBar(
         title:
             workflowAsync.whenOrNull(data: (wf) => Text(wf.name)) ??
             const Text('Workflow'),
+        actions: [
+          if (currentWorkflow?.isShareImported ?? false)
+            IconButton(
+              tooltip: '转为自己创建',
+              onPressed: () =>
+                  _convertWorkflowSourceToManual(context, ref, workflowId),
+              icon: const Icon(Icons.drive_file_rename_outline),
+            ),
+        ],
       ),
       // 优先检查 error 状态（包含 Riverpod 3.x 的 loading-with-error 中间状态）
       body: (workflowAsync.hasError && !workflowAsync.hasValue)
@@ -78,11 +93,10 @@ class WorkflowDetailScreen extends ConsumerWidget {
                                   child: Center(
                                     child: EntityIcon(
                                       icon: workflow.icon,
-                                      fallbackIcon:
-                                          Icons.account_tree_outlined,
+                                      fallbackIcon: Icons.account_tree_outlined,
                                       size: 28,
-                                      color: theme
-                                          .colorScheme.onPrimaryContainer,
+                                      color:
+                                          theme.colorScheme.onPrimaryContainer,
                                     ),
                                   ),
                                 ),
@@ -111,6 +125,13 @@ class WorkflowDetailScreen extends ConsumerWidget {
                             _MetadataRow(
                               label: 'Version',
                               value: _buildReleaseLabel(workflow),
+                            ),
+                            const SizedBox(height: 4),
+                            _MetadataRow(
+                              label: '来源',
+                              value: getResourceSourceLabel(
+                                workflow.resourceSourceKind,
+                              ),
                             ),
                             const SizedBox(height: 4),
                             _MetadataRow(label: 'Slug', value: workflow.slug),
@@ -247,6 +268,28 @@ class WorkflowDetailScreen extends ConsumerWidget {
     }
 
     return 'Unpublished';
+  }
+}
+
+Future<void> _convertWorkflowSourceToManual(
+  BuildContext context,
+  WidgetRef ref,
+  String workflowId,
+) async {
+  final messenger = ScaffoldMessenger.of(context);
+  try {
+    await ref.read(workflowApiProvider).convertSourceToManual(workflowId);
+    ref.invalidate(workflowDetailProvider(workflowId));
+    await ref.read(workflowListProvider.notifier).refresh();
+    if (!context.mounted) {
+      return;
+    }
+    messenger.showSnackBar(const SnackBar(content: Text('已转为自己创建')));
+  } catch (error) {
+    if (!context.mounted) {
+      return;
+    }
+    messenger.showSnackBar(SnackBar(content: Text('转换失败：$error')));
   }
 }
 

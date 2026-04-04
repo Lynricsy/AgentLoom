@@ -243,6 +243,22 @@ export {
   type NewWorkflowShare,
 } from './workflow-shares.schema';
 export {
+  agentShares,
+  type AgentShare,
+  type NewAgentShare,
+} from './agent-shares.schema';
+export {
+  resourceSourceKindEnum,
+  resourceSourceResourceTypeEnum,
+  resourceSourceShareTypeEnum,
+  resourceSourceRecords,
+  type ResourceSourceKind,
+  type ResourceSourceResourceType,
+  type ResourceSourceShareType,
+  type ResourceSourceRecord,
+  type NewResourceSourceRecord,
+} from './resource-source-records.schema';
+export {
   platformApiTokens,
   type PlatformApiToken,
   type NewPlatformApiToken,

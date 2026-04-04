@@ -266,19 +266,24 @@ export class LlmProviderService {
       const existing = existingBySlug.get(provider.slug);
 
       if (!existing) {
-        await this.tenantDb.insert(llmProviders).values({
-          orgId,
-          tenantId,
-          slug: provider.slug,
-          name: provider.name,
-          iconUrl: provider.iconUrl,
-          baseUrl: provider.baseUrl,
-          defaultBaseUrl: provider.defaultBaseUrl,
-          isBuiltin: true,
-          isEnabled: true,
-          apiProtocol: provider.apiProtocol,
-          sortOrder: provider.sortOrder,
-        });
+        await this.tenantDb
+          .insert(llmProviders)
+          .values({
+            orgId,
+            tenantId,
+            slug: provider.slug,
+            name: provider.name,
+            iconUrl: provider.iconUrl,
+            baseUrl: provider.baseUrl,
+            defaultBaseUrl: provider.defaultBaseUrl,
+            isBuiltin: true,
+            isEnabled: true,
+            apiProtocol: provider.apiProtocol,
+            sortOrder: provider.sortOrder,
+          })
+          .onConflictDoNothing({
+            target: [llmProviders.orgId, llmProviders.slug],
+          });
         insertedCount += 1;
         continue;
       }

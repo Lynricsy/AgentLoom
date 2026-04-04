@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../routes/route_names.dart';
+import '../../../shared/widgets/resource_source_chip.dart';
 import '../../../shared/widgets/entity_icon.dart';
 import '../api/agent_api.dart';
 import '../models/agent_main_config_view.dart';
@@ -20,12 +21,22 @@ class AgentDetailScreen extends ConsumerWidget {
     final theme = Theme.of(context);
     final agentAsync = ref.watch(agentDetailProvider(agentId));
     final conversationsAsync = ref.watch(agentConversationsProvider(agentId));
+    final currentAgent = agentAsync.whenOrNull(data: (agent) => agent);
 
     return Scaffold(
       appBar: AppBar(
         title:
             agentAsync.whenOrNull(data: (a) => Text(a.name)) ??
             const Text('Agent'),
+        actions: [
+          if (currentAgent?.isShareImported ?? false)
+            IconButton(
+              tooltip: '转为自己创建',
+              onPressed: () =>
+                  _convertAgentSourceToManual(context, ref, agentId),
+              icon: const Icon(Icons.drive_file_rename_outline),
+            ),
+        ],
       ),
       body: (agentAsync.hasError && !agentAsync.hasValue)
           ? Center(
@@ -123,6 +134,13 @@ class AgentDetailScreen extends ConsumerWidget {
                             _MetadataRow(
                               label: 'Runtime',
                               value: agent.runtimeModeLabel,
+                            ),
+                            const SizedBox(height: 4),
+                            _MetadataRow(
+                              label: '来源',
+                              value: getResourceSourceLabel(
+                                agent.resourceSourceKind,
+                              ),
                             ),
                             const SizedBox(height: 4),
                             if (agent.modelId != null) ...[
@@ -413,6 +431,28 @@ class AgentDetailScreen extends ConsumerWidget {
         SnackBar(content: Text('Failed to delete conversation: $e')),
       );
     }
+  }
+}
+
+Future<void> _convertAgentSourceToManual(
+  BuildContext context,
+  WidgetRef ref,
+  String agentId,
+) async {
+  final messenger = ScaffoldMessenger.of(context);
+  try {
+    await ref.read(agentApiProvider).convertSourceToManual(agentId);
+    ref.invalidate(agentDetailProvider(agentId));
+    await ref.read(agentListProvider.notifier).refresh();
+    if (!context.mounted) {
+      return;
+    }
+    messenger.showSnackBar(const SnackBar(content: Text('已转为自己创建')));
+  } catch (error) {
+    if (!context.mounted) {
+      return;
+    }
+    messenger.showSnackBar(SnackBar(content: Text('转换失败：$error')));
   }
 }
 

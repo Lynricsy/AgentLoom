@@ -93,6 +93,7 @@ import {
 } from '../../../database/schema';
 import { EncryptionService } from '../../api-key/encryption.service';
 import type { EncryptedData } from '../../api-key/encryption.service';
+import { ResourceSourceService } from '../../resource-source/resource-source.service';
 import {
   McpConnectionFailedException,
   McpConnectionTimeoutException,
@@ -302,6 +303,7 @@ function createMcpServerConfigRecord(overrides: Record<string, unknown> = {}) {
     ),
     createdAt: NOW,
     updatedAt: NOW,
+    sourceKind: 'manual',
     ...overrides,
   };
 }
@@ -347,6 +349,10 @@ describe('McpService', () => {
     decrypt: ReturnType<typeof vi.fn>;
   };
   let db: Record<string, ReturnType<typeof vi.fn>>;
+  let resourceSourceService: {
+    mapCurrentKinds: ReturnType<typeof vi.fn>;
+    buildShareImportedExistsCondition: ReturnType<typeof vi.fn>;
+  };
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -356,6 +362,12 @@ describe('McpService', () => {
     encryptionService = {
       encrypt: vi.fn().mockReturnValue(MOCK_ENCRYPTED),
       decrypt: vi.fn(),
+    };
+    resourceSourceService = {
+      mapCurrentKinds: vi.fn().mockResolvedValue(new Map()),
+      buildShareImportedExistsCondition: vi.fn(() => ({
+        type: 'share-imported',
+      })),
     };
 
     db = {
@@ -377,6 +389,7 @@ describe('McpService', () => {
         McpService,
         { provide: DRIZZLE, useValue: db },
         { provide: EncryptionService, useValue: encryptionService },
+        { provide: ResourceSourceService, useValue: resourceSourceService },
       ],
     }).compile();
 

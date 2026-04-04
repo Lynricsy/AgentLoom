@@ -7,6 +7,7 @@ interface WorkflowListFilters {
   pageSize: number
   status: string
   search: string
+  sourceKind: '' | 'manual' | 'share_imported'
 }
 
 interface WorkflowState {
@@ -28,6 +29,7 @@ const DEFAULT_FILTERS: WorkflowListFilters = {
   pageSize: 12,
   status: '',
   search: '',
+  sourceKind: '',
 }
 
 export const useWorkflowStore = create<WorkflowState & WorkflowActions>()(

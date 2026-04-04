@@ -12,6 +12,7 @@ class SkillListState {
   final PaginationMeta? meta;
   final String? statusFilter;
   final bool? isBuiltinFilter;
+  final String? sourceKindFilter;
   final String? searchQuery;
   final bool isLoadingMore;
 
@@ -20,6 +21,7 @@ class SkillListState {
     this.meta,
     this.statusFilter,
     this.isBuiltinFilter,
+    this.sourceKindFilter,
     this.searchQuery,
     this.isLoadingMore = false,
   });
@@ -29,6 +31,7 @@ class SkillListState {
     PaginationMeta? meta,
     String? statusFilter,
     bool? isBuiltinFilter,
+    String? sourceKindFilter,
     String? searchQuery,
     bool? isLoadingMore,
     bool clearStatusFilter = false,
@@ -44,6 +47,7 @@ class SkillListState {
       isBuiltinFilter: clearIsBuiltinFilter
           ? null
           : (isBuiltinFilter ?? this.isBuiltinFilter),
+      sourceKindFilter: sourceKindFilter ?? this.sourceKindFilter,
       searchQuery: clearSearchQuery ? null : (searchQuery ?? this.searchQuery),
       isLoadingMore: isLoadingMore ?? this.isLoadingMore,
     );
@@ -54,6 +58,7 @@ class SkillListState {
 class SkillListNotifier extends AsyncNotifier<SkillListState> {
   String? _statusFilter;
   bool? _isBuiltinFilter;
+  String? _sourceKindFilter;
   String? _searchQuery;
 
   @override
@@ -67,6 +72,7 @@ class SkillListNotifier extends AsyncNotifier<SkillListState> {
       page: page,
       status: _statusFilter,
       isBuiltin: _isBuiltinFilter,
+      sourceKind: _sourceKindFilter,
       search: _searchQuery,
     );
 
@@ -75,6 +81,7 @@ class SkillListNotifier extends AsyncNotifier<SkillListState> {
       meta: result.meta,
       statusFilter: _statusFilter,
       isBuiltinFilter: _isBuiltinFilter,
+      sourceKindFilter: _sourceKindFilter,
       searchQuery: _searchQuery,
     );
   }
@@ -89,6 +96,12 @@ class SkillListNotifier extends AsyncNotifier<SkillListState> {
   /// 设置内置/自定义过滤器并重新加载
   Future<void> setIsBuiltinFilter(bool? isBuiltin) async {
     _isBuiltinFilter = isBuiltin;
+    state = const AsyncValue.loading();
+    state = await AsyncValue.guard(() => _fetchSkills());
+  }
+
+  Future<void> setSourceKindFilter(String? sourceKind) async {
+    _sourceKindFilter = sourceKind;
     state = const AsyncValue.loading();
     state = await AsyncValue.guard(() => _fetchSkills());
   }
@@ -122,6 +135,7 @@ class SkillListNotifier extends AsyncNotifier<SkillListState> {
         page: meta.page + 1,
         status: _statusFilter,
         isBuiltin: _isBuiltinFilter,
+        sourceKind: _sourceKindFilter,
         search: _searchQuery,
       );
 
@@ -133,6 +147,7 @@ class SkillListNotifier extends AsyncNotifier<SkillListState> {
           meta: result.meta,
           statusFilter: _statusFilter,
           isBuiltinFilter: _isBuiltinFilter,
+          sourceKindFilter: _sourceKindFilter,
           searchQuery: _searchQuery,
         ),
       );

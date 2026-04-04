@@ -14,6 +14,7 @@ AgentLoom 让你像编织织布机上的经纬线一样，将多个 AI Agent 编
 - **🧪 编辑器调试运行** — Studio 编辑界面的 Run 使用当前草稿定义做一次性执行验证；编辑器外、移动端、API 与 Trigger 仍基于已发布版本运行
 - **🏷️ 发布版号语义** — 工作流草稿修订号与用户可见发布版本号分离：自动保存只推进内部 OCC 修订号，只有快照首次发布时才分配 `vN`
 - **🧭 Agent 双运行态** — Agent 创建时显式选择 `sandbox / no_sandbox`；顶层 `no_sandbox` Agent 与 workflow `agent` 节点走 in-process pi-agent-core runtime，仍支持 Skill、知识库、Memory、HTTP MCP 与自进化，而 `sandbox` Agent 继续走容器化 pi-coding-agent runtime
+- **🔗 发现与公开分享** — `/discover` 复用 Marketplace 已上架内容做可浏览发现页；workflow 与 Agent 都支持生成 `/s/:token` 公开分享链接，访问者可预览作者、标题、简介、画布/Agent 元数据，并导入到自己的租户
 - **🔌 插件生态系统** — 完整的 SDK + CLI + 市场，`.alp` 插件包 RSA-PSS 签名验证，Extism WASM 沙箱隔离执行
 - **🔐 端到端加密 (E2EE)** — RSA-4096 + AES-256-GCM 混合加密，LLM 输出和决策证据全链路加密
 - **📱 跨端体验** — Web Studio + Flutter 移动端，Socket.IO 实时推送 + FCM 通知
@@ -123,7 +124,8 @@ AgentLoom/
 | `notification` | REST + BullMQ + Socket.IO + FCM |
 | `evidence` | 证据记录 + SHA-256 完整性 + 溯源链 + 审计日志查询/归档基线 |
 | `marketplace` | 工作流/插件市场 CRUD |
-| `share` | 工作流分享短链 |
+| `share` | Workflow / Agent 分享短链与公开导入 |
+| `resource-source` | 分享导入资源来源记录与转为自己创建 |
 | `template` | 预置工作流模板 |
 | `tenant-key` | E2EE 公钥管理（RSA-4096） |
 | `platform-api-token` | 外部 API Token 管理 (`al_` 前缀) |
@@ -199,8 +201,10 @@ AgentLoom/
 |------|------|
 | `/workflows/$workflowId` | 工作流画布编辑器 |
 | `/executions/$executionId` | 执行调试视图（实时时间线） |
+| `/discover` | 发现页（复用 Marketplace 上架内容） |
 | `/templates` | 工作流模板库 |
 | `/marketplace` | 工作流/插件市场 |
+| `/s/$token` | Workflow / Agent 公开分享预览与导入 |
 | `/resources/knowledge-bases` | 知识库管理 |
 | `/settings/tool-library` | MCP 工具库 |
 | `/settings/skills` | Skill 管理（分类/搜索/启停/SKILL.md 编辑） |

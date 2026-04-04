@@ -22,6 +22,7 @@ mixin _$MemoryInstanceDto {
   int get edgeCount;
   String get createdAt;
   String get updatedAt;
+  String get sourceKind;
 
   /// Create a copy of MemoryInstanceDto
   /// with the given fields replaced by the non-null parameter values.
@@ -54,7 +55,9 @@ mixin _$MemoryInstanceDto {
             (identical(other.createdAt, createdAt) ||
                 other.createdAt == createdAt) &&
             (identical(other.updatedAt, updatedAt) ||
-                other.updatedAt == updatedAt));
+                other.updatedAt == updatedAt) &&
+            (identical(other.sourceKind, sourceKind) ||
+                other.sourceKind == sourceKind));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
@@ -70,11 +73,12 @@ mixin _$MemoryInstanceDto {
     edgeCount,
     createdAt,
     updatedAt,
+    sourceKind,
   );
 
   @override
   String toString() {
-    return 'MemoryInstanceDto(id: $id, name: $name, description: $description, config: $config, status: $status, nodeCount: $nodeCount, edgeCount: $edgeCount, createdAt: $createdAt, updatedAt: $updatedAt)';
+    return 'MemoryInstanceDto(id: $id, name: $name, description: $description, config: $config, status: $status, nodeCount: $nodeCount, edgeCount: $edgeCount, createdAt: $createdAt, updatedAt: $updatedAt, sourceKind: $sourceKind)';
   }
 }
 
@@ -95,6 +99,7 @@ abstract mixin class $MemoryInstanceDtoCopyWith<$Res> {
     int edgeCount,
     String createdAt,
     String updatedAt,
+    String sourceKind,
   });
 }
 
@@ -120,6 +125,7 @@ class _$MemoryInstanceDtoCopyWithImpl<$Res>
     Object? edgeCount = null,
     Object? createdAt = null,
     Object? updatedAt = null,
+    Object? sourceKind = null,
   }) {
     return _then(
       _self.copyWith(
@@ -158,6 +164,10 @@ class _$MemoryInstanceDtoCopyWithImpl<$Res>
         updatedAt: null == updatedAt
             ? _self.updatedAt
             : updatedAt // ignore: cast_nullable_to_non_nullable
+                  as String,
+        sourceKind: null == sourceKind
+            ? _self.sourceKind
+            : sourceKind // ignore: cast_nullable_to_non_nullable
                   as String,
       ),
     );
@@ -267,6 +277,7 @@ extension MemoryInstanceDtoPatterns on MemoryInstanceDto {
       int edgeCount,
       String createdAt,
       String updatedAt,
+      String sourceKind,
     )?
     $default, {
     required TResult orElse(),
@@ -284,6 +295,7 @@ extension MemoryInstanceDtoPatterns on MemoryInstanceDto {
           _that.edgeCount,
           _that.createdAt,
           _that.updatedAt,
+          _that.sourceKind,
         );
       case _:
         return orElse();
@@ -315,6 +327,7 @@ extension MemoryInstanceDtoPatterns on MemoryInstanceDto {
       int edgeCount,
       String createdAt,
       String updatedAt,
+      String sourceKind,
     )
     $default,
   ) {
@@ -331,6 +344,7 @@ extension MemoryInstanceDtoPatterns on MemoryInstanceDto {
           _that.edgeCount,
           _that.createdAt,
           _that.updatedAt,
+          _that.sourceKind,
         );
       case _:
         throw StateError('Unexpected subclass');
@@ -361,6 +375,7 @@ extension MemoryInstanceDtoPatterns on MemoryInstanceDto {
       int edgeCount,
       String createdAt,
       String updatedAt,
+      String sourceKind,
     )?
     $default,
   ) {
@@ -377,6 +392,7 @@ extension MemoryInstanceDtoPatterns on MemoryInstanceDto {
           _that.edgeCount,
           _that.createdAt,
           _that.updatedAt,
+          _that.sourceKind,
         );
       case _:
         return null;
@@ -397,6 +413,7 @@ class _MemoryInstanceDto implements MemoryInstanceDto {
     this.edgeCount = 0,
     required this.createdAt,
     required this.updatedAt,
+    this.sourceKind = 'manual',
   }) : _config = config;
   factory _MemoryInstanceDto.fromJson(Map<String, dynamic> json) =>
       _$MemoryInstanceDtoFromJson(json);
@@ -429,6 +446,9 @@ class _MemoryInstanceDto implements MemoryInstanceDto {
   final String createdAt;
   @override
   final String updatedAt;
+  @override
+  @JsonKey()
+  final String sourceKind;
 
   /// Create a copy of MemoryInstanceDto
   /// with the given fields replaced by the non-null parameter values.
@@ -461,7 +481,9 @@ class _MemoryInstanceDto implements MemoryInstanceDto {
             (identical(other.createdAt, createdAt) ||
                 other.createdAt == createdAt) &&
             (identical(other.updatedAt, updatedAt) ||
-                other.updatedAt == updatedAt));
+                other.updatedAt == updatedAt) &&
+            (identical(other.sourceKind, sourceKind) ||
+                other.sourceKind == sourceKind));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
@@ -477,11 +499,12 @@ class _MemoryInstanceDto implements MemoryInstanceDto {
     edgeCount,
     createdAt,
     updatedAt,
+    sourceKind,
   );
 
   @override
   String toString() {
-    return 'MemoryInstanceDto(id: $id, name: $name, description: $description, config: $config, status: $status, nodeCount: $nodeCount, edgeCount: $edgeCount, createdAt: $createdAt, updatedAt: $updatedAt)';
+    return 'MemoryInstanceDto(id: $id, name: $name, description: $description, config: $config, status: $status, nodeCount: $nodeCount, edgeCount: $edgeCount, createdAt: $createdAt, updatedAt: $updatedAt, sourceKind: $sourceKind)';
   }
 }
 
@@ -504,6 +527,7 @@ abstract mixin class _$MemoryInstanceDtoCopyWith<$Res>
     int edgeCount,
     String createdAt,
     String updatedAt,
+    String sourceKind,
   });
 }
 
@@ -529,6 +553,7 @@ class __$MemoryInstanceDtoCopyWithImpl<$Res>
     Object? edgeCount = null,
     Object? createdAt = null,
     Object? updatedAt = null,
+    Object? sourceKind = null,
   }) {
     return _then(
       _MemoryInstanceDto(
@@ -567,6 +592,10 @@ class __$MemoryInstanceDtoCopyWithImpl<$Res>
         updatedAt: null == updatedAt
             ? _self.updatedAt
             : updatedAt // ignore: cast_nullable_to_non_nullable
+                  as String,
+        sourceKind: null == sourceKind
+            ? _self.sourceKind
+            : sourceKind // ignore: cast_nullable_to_non_nullable
                   as String,
       ),
     );

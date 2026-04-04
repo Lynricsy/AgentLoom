@@ -189,4 +189,110 @@ describe('AgentExecutionWorker metadata persistence', () => {
       }),
     );
   });
+
+  it('updateExecutionMetadata 应支持写入并清空失败态元数据', async () => {
+    selectChain.limit
+      .mockResolvedValueOnce([
+        {
+          metadata: {
+            execution: {
+              sessionId: 'session-1',
+              runningState: 'running',
+            },
+            selfEvolution: {
+              rememberedPolicies: {
+                skill_resource_management: 'approve',
+              },
+            },
+          },
+        },
+      ])
+      .mockResolvedValueOnce([
+        {
+          metadata: {
+            execution: {
+              sessionId: 'session-1',
+              runningState: 'failed',
+              errorMessage: '租户未配置默认 LLM 模型',
+              failedPhase: 'queued',
+            },
+            selfEvolution: {
+              rememberedPolicies: {
+                skill_resource_management: 'approve',
+              },
+            },
+          },
+        },
+      ]);
+
+    const failedResult = await workerInternals.updateExecutionMetadata(
+      'tenant-1',
+      'conversation-1',
+      {
+        runningState: 'failed',
+        errorMessage: '租户未配置默认 LLM 模型',
+        failedPhase: 'queued',
+      },
+    );
+
+    expect(failedResult).toEqual({
+      sessionId: 'session-1',
+      runningState: 'failed',
+      errorMessage: '租户未配置默认 LLM 模型',
+      failedPhase: 'queued',
+    });
+
+    expect(updateChain.set).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        metadata: {
+          execution: {
+            sessionId: 'session-1',
+            runningState: 'failed',
+            errorMessage: '租户未配置默认 LLM 模型',
+            failedPhase: 'queued',
+          },
+          selfEvolution: {
+            rememberedPolicies: {
+              skill_resource_management: 'approve',
+            },
+          },
+        },
+        updatedAt: expect.any(Date),
+      }),
+    );
+
+    const clearedResult = await workerInternals.updateExecutionMetadata(
+      'tenant-1',
+      'conversation-1',
+      {
+        runningState: 'idle',
+        errorMessage: null,
+        failedPhase: null,
+      },
+    );
+
+    expect(clearedResult).toEqual({
+      sessionId: 'session-1',
+      runningState: 'idle',
+    });
+
+    expect(updateChain.set).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        metadata: {
+          execution: {
+            sessionId: 'session-1',
+            runningState: 'idle',
+          },
+          selfEvolution: {
+            rememberedPolicies: {
+              skill_resource_management: 'approve',
+            },
+          },
+        },
+        updatedAt: expect.any(Date),
+      }),
+    );
+  });
 });

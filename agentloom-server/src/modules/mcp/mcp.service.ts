@@ -5,16 +5,18 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import type { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
-import { and, desc, eq, ilike, inArray, or, sql } from 'drizzle-orm';
+import { and, desc, eq, ilike, inArray, not, or, sql } from 'drizzle-orm';
 import { DRIZZLE } from '../../database/database.module';
 import type { DrizzleDB } from '../../database/database.module';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
+import type { ResourceSourceKind } from '../../database/schema';
 import { EncryptionService } from '../api-key/encryption.service';
 import {
   mcpServerConfigs,
   organizations,
   toolDefinitions,
 } from '../../database/schema';
+import { ResourceSourceService } from '../resource-source/resource-source.service';
 import type { TestMcpConnectionResponse } from './dto/test-mcp-connection.dto';
 import type { DiscoverMcpToolsResponse } from './dto/discover-mcp-tools.dto';
 import type {
@@ -75,6 +77,7 @@ export class McpService {
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
     private readonly encryptionService: EncryptionService,
+    private readonly resourceSourceService: ResourceSourceService,
   ) {}
 
   private get tenantDb(): DrizzleDB {
@@ -292,10 +295,13 @@ export class McpService {
     tenantId: string,
     query: McpServerConfigQueryType,
   ): Promise<{
-    data: (SavedMcpConfig & { toolCount: number })[];
+    data: (SavedMcpConfig & {
+      toolCount: number;
+      sourceKind: ResourceSourceKind;
+    })[];
     meta: { total: number; page: number; pageSize: number; totalPages: number };
   }> {
-    const { page, pageSize, search, status, transportType } = query;
+    const { page, pageSize, search, status, transportType, sourceKind } = query;
     const offset = (page - 1) * pageSize;
 
     const conditions = [eq(mcpServerConfigs.tenantId, tenantId)];
@@ -313,6 +319,19 @@ export class McpService {
     }
     if (transportType) {
       conditions.push(eq(mcpServerConfigs.transportType, transportType));
+    }
+    if (sourceKind) {
+      const importedExistsCondition =
+        this.resourceSourceService.buildShareImportedExistsCondition({
+          resourceType: 'mcp_server_config',
+          resourceIdColumn: mcpServerConfigs.id,
+        });
+
+      conditions.push(
+        sourceKind === 'share_imported'
+          ? importedExistsCondition
+          : not(importedExistsCondition),
+      );
     }
 
     const whereClause = and(...conditions);
@@ -356,10 +375,15 @@ export class McpService {
         toolCounts.map((tc) => [tc.mcpServerConfigId!, tc.count]),
       );
     }
+    const sourceKindMap = await this.resourceSourceService.mapCurrentKinds(
+      'mcp_server_config',
+      configIds,
+    );
 
     const data = rows.map((row) => ({
       ...row,
       toolCount: toolCountMap.get(row.id) ?? 0,
+      sourceKind: sourceKindMap.get(row.id) ?? 'manual',
     }));
 
     return {
@@ -399,15 +423,24 @@ export class McpService {
       authTag: _at,
       ...safeConfig
     } = config;
+    const sourceKindMap = await this.resourceSourceService.mapCurrentKinds(
+      'mcp_server_config',
+      [configId],
+    );
 
-    return { ...safeConfig, tools, credentialKeys };
+    return {
+      ...safeConfig,
+      tools,
+      credentialKeys,
+      sourceKind: sourceKindMap.get(configId) ?? 'manual',
+    };
   }
 
   async updateConfig(
     tenantId: string,
     configId: string,
     data: UpdateMcpServerConfigType,
-  ): Promise<SavedMcpConfig> {
+  ): Promise<SavedMcpConfig & { sourceKind: ResourceSourceKind }> {
     await this.getSavedConfigOrThrow(configId, tenantId);
 
     const setClause: Record<string, unknown> = {
@@ -462,7 +495,15 @@ export class McpService {
       )
       .returning();
 
-    return updated;
+    const sourceKindMap = await this.resourceSourceService.mapCurrentKinds(
+      'mcp_server_config',
+      [configId],
+    );
+
+    return {
+      ...updated,
+      sourceKind: sourceKindMap.get(configId) ?? 'manual',
+    };
   }
 
   async deleteConfig(tenantId: string, configId: string): Promise<void> {

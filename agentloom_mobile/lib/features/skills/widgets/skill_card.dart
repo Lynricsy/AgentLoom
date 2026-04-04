@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../shared/widgets/resource_source_chip.dart';
 import '../models/skill_dto.dart';
 
 /// Skill 卡片（列表页用）
@@ -91,6 +92,11 @@ class SkillCard extends StatelessWidget {
                                     theme.colorScheme.onSecondaryContainer,
                               ),
                             ],
+                            const SizedBox(width: 6),
+                            ResourceSourceChip(
+                              sourceKind: skill.sourceKind,
+                              compact: true,
+                            ),
                           ],
                         ),
                       ],

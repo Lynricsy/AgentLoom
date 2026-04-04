@@ -13,9 +13,11 @@ React 19 + Vite 7 前端。Feature-Slice 架构，TanStack Router/Query，Zustan
 | `/`                                              | —                              | 重定向到 `/workflows/draft`                                                                                                                                                   |
 | `/workflows/$workflowId`                         | WorkflowCanvasPage             | ReactFlowProvider 包裹                                                                                                                                                        |
 | `/executions/$executionId`                       | ExecutionDebugView             | 只读执行调试视图，三栏布局                                                                                                                                                    |
+| `/discover`                                      | DiscoverPage                   | 发现页；复用 Marketplace browse/detail/install 链路，但以“发现”语义和入口呈现                                                                                                 |
 | `/developer-console/earnings`                    | DeveloperEarningsPage          | 开发者收益仪表盘：汇总卡片 + 月度趋势图 + 插件使用排名 + 结算历史                                                                                                             |
 | `/marketplace`                                   | MarketplaceBrowsePage          | 公开市场浏览：Tabs + 搜索 + 排序 + 详情/安装/评价对话框                                                                                                                       |
 | `/marketplace/my-listings`                       | MyMarketplaceListingsPage      | Marketplace 发布者自助管理页                                                                                                                                                  |
+| `/s/$token`                                      | PublicSharePage                | Workflow / Agent 公开分享页：预览作者/标题/简介/画布，workflow 可复制到工作流，agent 可导入并展示导入报告                                                                     |
 | `/settings/skills`                               | SkillBrowsePage                | Skill 管理页：分类 Tabs + 搜索 + 启用状态筛选 + 卡片网格 + 详情/启停对话框 + `CreateSkillDialog`（Monaco 编辑器懒加载 SKILL.md 内容编辑）                                     |
 | `/resources/knowledge-bases`                     | KnowledgeBasesPage             | 知识库列表页，展示文档数 / 知识节点数 / 策略摘要                                                                                                                              |
 | `/resources/knowledge-bases/$knowledgeBaseId`    | KnowledgeBaseDetailPage        | WebSocket 实时状态 + embedding 模型配置绑定 + 策略配置 + 测试检索 + 重建入口                                                                                                  |
@@ -55,13 +57,14 @@ src/
 │   ├── organization-autonomy-policy/ # 组织自治策略 settings 页（types/api/keys/hooks/permissions/components）
 │   ├── resource-governance/ # 资源治理 settings 页（types/api/keys/hooks/permissions/components），承载 quota/governance/termination 管理入口
 │   ├── monitoring/ # 组织级只读运行监控 settings 页（types/api/keys/hooks/components），承载执行趋势、当前队列快照摘要、alerts/hotspots/risk summary 与 drill-down 入口
+│   ├── discover/    # 发现页（`DiscoverPage` 仅包装 `MarketplaceBrowsePage mode="discover"`）
 │   ├── marketplace/ # Marketplace 发布侧 + 公共浏览侧（browse/detail/reviews/install）
 │   ├── developer-console/ # 开发者收益仪表盘（api/components/pages），recharts 月度趋势图
 │   ├── template/    # 工作流模板浏览 + 快速创建 (`TemplateBrowsePage` Tabs/搜索/网格, `TemplateCard`, `TemplateWizardDialog` ReactFlow 预览 + 表单 → `useCreateWorkflow()` → 跳转画布, `staleTime=gcTime=10min`, public API)
 │   ├── plugin/      # 插件 API 层（types/api/queries/keys），供画布 NodePalette 动态加载已安装插件
 │   ├── skill/       # Skill 管理功能（types/api/components/hooks）：`SkillBrowsePage`（`/settings/skills`）、`SkillCard`、`SkillDetailDialog`、`SkillBody`、`SkillPanel`、`SkillConfigPanel`、`CreateSkillDialog`（Monaco 编辑器懒加载）、`skill` 画布节点（工作流画布 + agent-canvas）
 │   ├── llm/          # LLM 模型配置（支持 `chat|embedding` 用途与 embedding 维度）
-│   ├── share/        # 工作流分享链接管理（types/api/hooks）
+│   ├── share/        # Workflow / Agent 分享管理与公开分享页（types/api/hooks/components）
 │   ├── trigger/      # 工作流触发器管理 cron/webhook/api_event（types/api/hooks/components）
 │   ├── tenant-key/   # 租户 E2EE 密钥管理（clientCrypto/keyStorage/hooks/components）
 │   ├── smart-routing/ # 智能路由 API 层（routingApi/routingKeys/routingQueries），无 UI 组件
@@ -71,7 +74,7 @@ src/
 │   ├── workflow-input-schema/ # 工作流输入参数 schema 编辑器（无 api/、无 index.ts，属于例外布局）
 │   ├── block-library/ # 可复用块库管理
 │   ├── agent/       # Agent CRUD 页面 (api/components/hooks/stores/types)：列表/创建/设置，query hooks 与 mutations
-│   ├── agent-canvas/ # Agent 配置编辑器画布 (components/hooks/stores)：CPU/memory/timeout/lifecycle 参数编���、`agent-main` 的 `nativeToolPolicy/selfEvolutionPolicy` 面板，使用 ReactFlow + AGENT_CANVAS_NODE_REGISTRY 子集，非执行 DAG
+│   ├── agent-canvas/ # Agent 配置编辑器画布 (components/hooks/stores)：CPU/memory/timeout/lifecycle 参数编辑、`agent-main` 的 `nativeToolPolicy/selfEvolutionPolicy` 面板，使用 ReactFlow + AGENT_CANVAS_NODE_REGISTRY 子集，非执行 DAG
 │   ├── agent-conversation/ # Agent 对话 UI (components/stores/types)：三列布局 (对话列表/消息流/上下文面板)，Socket.IO `/agent-conversation` namespace 实时消息推送，含可展开自进化审批卡片与“重启到新版本”系统卡片；`sandbox` 对话显示工作区/终端上下文，`no_sandbox` 仅保留消息流中的 Skill/Knowledge/Memory/MCP/自进化能力
 │   └── agent-memory/ # Agent 记忆管理 (35 files)：记忆图谱可视化 (d3-force + dagre + ReactFlow)、记忆检索/创建/编辑、审计日志集成
 ├── shared/           # 跨 feature 共享层

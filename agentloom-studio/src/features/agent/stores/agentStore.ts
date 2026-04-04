@@ -7,6 +7,7 @@ interface AgentListFilters {
   pageSize: number
   status: string
   search: string
+  sourceKind: '' | 'manual' | 'share_imported'
 }
 
 interface AgentState {
@@ -34,6 +35,7 @@ const DEFAULT_FILTERS: AgentListFilters = {
   pageSize: 12,
   status: '',
   search: '',
+  sourceKind: '',
 }
 
 export const useAgentStore = create<AgentState & AgentActions>()(

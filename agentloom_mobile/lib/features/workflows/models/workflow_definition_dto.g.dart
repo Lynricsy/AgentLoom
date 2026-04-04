@@ -22,6 +22,7 @@ _WorkflowDefinitionDto _$WorkflowDefinitionDtoFromJson(
   updatedBy: json['updatedBy'] as String?,
   createdAt: json['createdAt'] as String,
   updatedAt: json['updatedAt'] as String,
+  resourceSourceKind: json['resourceSourceKind'] as String? ?? 'manual',
 );
 
 Map<String, dynamic> _$WorkflowDefinitionDtoToJson(
@@ -40,4 +41,5 @@ Map<String, dynamic> _$WorkflowDefinitionDtoToJson(
   'updatedBy': instance.updatedBy,
   'createdAt': instance.createdAt,
   'updatedAt': instance.updatedAt,
+  'resourceSourceKind': instance.resourceSourceKind,
 };

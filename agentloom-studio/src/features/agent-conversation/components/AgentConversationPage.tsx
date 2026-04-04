@@ -53,6 +53,7 @@ interface AgentConversationPageProps {
 const MIN_LEFT_WIDTH = 360;
 const MIN_RIGHT_WIDTH = 280;
 const DEFAULT_LEFT_RATIO = 0.6;
+const EXECUTING_HISTORY_SYNC_INTERVAL_MS = 3_000;
 
 function buildSubAgentMessages(stream: SubAgentStream): ConversationMessage[] {
   const messages: ConversationMessage[] = [];
@@ -420,6 +421,24 @@ export function AgentConversationPage({
       a.disconnect();
     };
   }, [agentId, agentQuery.data, conversationId, hasSandbox, runtimeMode]);
+
+  useEffect(() => {
+    if (status !== "executing") {
+      return;
+    }
+
+    const intervalId = window.setInterval(() => {
+      const a = actionsRef.current;
+      void a.loadHistory(conversationId);
+      if (hasSandbox) {
+        void a.loadWorkspaceTree(conversationId);
+      }
+    }, EXECUTING_HISTORY_SYNC_INTERVAL_MS);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [conversationId, hasSandbox, status]);
 
   const initLeftWidth = useCallback(() => {
     if (leftWidth !== null) return leftWidth;

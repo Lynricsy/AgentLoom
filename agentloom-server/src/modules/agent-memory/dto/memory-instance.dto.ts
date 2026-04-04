@@ -94,12 +94,15 @@ export const ListMemoryInstancesQuerySchema = z
     page_size: PageSizeSchema,
     search: z.string().max(255).optional(),
     status: z.enum(['active', 'archived', 'deleted']).optional(),
+    sourceKind: z.enum(['manual', 'share_imported']).optional(),
+    source_kind: z.enum(['manual', 'share_imported']).optional(),
   })
   .transform((v) => ({
     page: v.page,
     pageSize: v.pageSize ?? v.page_size ?? 20,
     search: v.search,
     status: v.status,
+    sourceKind: v.sourceKind ?? v.source_kind,
   }));
 
 export class ListMemoryInstancesQueryDto extends createZodDto(

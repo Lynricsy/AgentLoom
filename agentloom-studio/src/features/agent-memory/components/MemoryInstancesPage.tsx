@@ -11,6 +11,11 @@ import {
   Trash2,
 } from 'lucide-react';
 import { Pagination } from '@/shared/components';
+import { convertResourceSourceToManual } from '@/shared/api/resourceSourceApi';
+import {
+  getResourceSourceBadgeClass,
+  getResourceSourceLabel,
+} from '@/shared/lib/resourceSource';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
 import { cn } from '@/shared/lib/utils';
@@ -29,6 +34,9 @@ export function MemoryInstancesPage() {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
   const [page, setPage] = useState(1);
+  const [sourceKindFilter, setSourceKindFilter] = useState<
+    '' | 'manual' | 'share_imported'
+  >('');
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<MemoryInstance | null>(null);
   const deleteRestoreFocusRef = useRef<HTMLButtonElement | null>(null);
@@ -38,9 +46,14 @@ export function MemoryInstancesPage() {
   // 搜索模式使用 allMemoryInstances 本地过滤，否则分页查询
   const isSearching = searchQuery.trim().length > 0;
   const paginatedQuery = useMemoryInstances(
-    isSearching ? undefined : { page, pageSize: PAGE_SIZE },
+    isSearching
+      ? undefined
+      : { page, pageSize: PAGE_SIZE, sourceKind: sourceKindFilter || undefined },
   );
-  const allQuery = useAllMemoryInstances({ enabled: isSearching });
+  const allQuery = useAllMemoryInstances({
+    enabled: isSearching,
+    sourceKind: sourceKindFilter || undefined,
+  });
 
   const filteredItems = useMemo(() => {
     if (!isSearching) return [];
@@ -87,6 +100,21 @@ export function MemoryInstancesPage() {
     [navigate],
   );
 
+  const handleConvertSource = useCallback(
+    async (instance: MemoryInstance) => {
+      try {
+        await convertResourceSourceToManual('memory_instance', instance.id);
+        await paginatedQuery.refetch();
+        if (isSearching) {
+          await allQuery.refetch();
+        }
+      } catch {
+        // noop
+      }
+    },
+    [allQuery, isSearching, paginatedQuery],
+  );
+
   const formatDate = (dateStr: string) => {
     return new Date(dateStr).toLocaleDateString('zh-CN', {
       year: 'numeric',
@@ -112,17 +140,33 @@ export function MemoryInstancesPage() {
       </div>
 
       {/* 搜索栏 */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          className="pl-9"
-          placeholder="搜索记忆实例..."
-          value={searchQuery}
+      <div className="flex gap-3">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            className="pl-9"
+            placeholder="搜索记忆实例..."
+            value={searchQuery}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setPage(1);
+            }}
+          />
+        </div>
+        <select
+          value={sourceKindFilter}
           onChange={(e) => {
-            setSearchQuery(e.target.value);
+            setSourceKindFilter(
+              e.target.value as '' | 'manual' | 'share_imported',
+            );
             setPage(1);
           }}
-        />
+          className="h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+        >
+          <option value="">全部来源</option>
+          <option value="manual">自己创建</option>
+          <option value="share_imported">分享导入</option>
+        </select>
       </div>
 
       {/* 内容区域 */}
@@ -163,6 +207,16 @@ export function MemoryInstancesPage() {
                       <h3 className="font-semibold line-clamp-1">
                         {instance.name}
                       </h3>
+                      <span
+                        className={cn(
+                          'rounded-full border px-2 py-0.5 text-[11px] font-medium',
+                          getResourceSourceBadgeClass(
+                            instance.sourceKind ?? 'manual',
+                          ),
+                        )}
+                      >
+                        {getResourceSourceLabel(instance.sourceKind ?? 'manual')}
+                      </span>
                     </div>
                     <span
                       className={cn(
@@ -222,6 +276,15 @@ export function MemoryInstancesPage() {
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
+                {instance.sourceKind === 'share_imported' ? (
+                  <button
+                    type="button"
+                    onClick={() => void handleConvertSource(instance)}
+                    className="absolute right-12 top-3 rounded-md border border-border px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  >
+                    转为自己创建
+                  </button>
+                ) : null}
 
                 {/* 删除确认弹出框 */}
                 {deleteTarget?.id === instance.id && (

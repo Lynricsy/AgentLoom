@@ -16,6 +16,7 @@ abstract class MemoryInstanceDto with _$MemoryInstanceDto {
     @Default(0) int edgeCount,
     required String createdAt,
     required String updatedAt,
+    @Default('manual') String sourceKind,
   }) = _MemoryInstanceDto;
 
   factory MemoryInstanceDto.fromJson(Map<String, dynamic> json) =>
@@ -27,12 +28,14 @@ class MemoryListState {
   final List<MemoryInstanceDto> instances;
   final int currentPage;
   final bool hasMore;
+  final String? sourceKindFilter;
   final bool isLoadingMore;
 
   const MemoryListState({
     this.instances = const [],
     this.currentPage = 1,
     this.hasMore = true,
+    this.sourceKindFilter,
     this.isLoadingMore = false,
   });
 
@@ -40,12 +43,14 @@ class MemoryListState {
     List<MemoryInstanceDto>? instances,
     int? currentPage,
     bool? hasMore,
+    String? sourceKindFilter,
     bool? isLoadingMore,
   }) {
     return MemoryListState(
       instances: instances ?? this.instances,
       currentPage: currentPage ?? this.currentPage,
       hasMore: hasMore ?? this.hasMore,
+      sourceKindFilter: sourceKindFilter ?? this.sourceKindFilter,
       isLoadingMore: isLoadingMore ?? this.isLoadingMore,
     );
   }

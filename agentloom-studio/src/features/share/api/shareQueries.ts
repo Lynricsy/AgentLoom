@@ -1,12 +1,16 @@
 import { useQuery } from '@tanstack/react-query';
 import { shareKeys } from './shareKeys';
 import { getPublicShare, listShares } from './shareApi';
-import type { PublicShareData, ShareListResponse } from '../types';
+import type {
+  ListSharesParams,
+  PublicShareData,
+  ShareListResponse,
+} from '../types';
 
-export function useShareList(workflowDefinitionId: string) {
+export function useShareList(params: ListSharesParams) {
   return useQuery<ShareListResponse>({
-    queryKey: shareKeys.list(workflowDefinitionId),
-    queryFn: () => listShares(workflowDefinitionId),
+    queryKey: shareKeys.list(params.resourceType, params.resourceId),
+    queryFn: () => listShares(params),
     staleTime: 30_000,
   });
 }

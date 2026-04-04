@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DRIZZLE } from '../../../database/database.module';
+import { llmProviders } from '../../../database/schema/llm-providers.schema';
 import { ApiKeyService } from '../../api-key/api-key.service';
 import { LlmProviderService } from '../llm-provider.service';
 
@@ -29,8 +30,9 @@ function createSelectChainWithLimit(result: unknown) {
 }
 
 function createInsertChain() {
-  const values = vi.fn().mockResolvedValue(undefined);
-  return { values };
+  const onConflictDoNothing = vi.fn().mockResolvedValue(undefined);
+  const values = vi.fn().mockReturnValue({ onConflictDoNothing });
+  return { values, onConflictDoNothing };
 }
 
 function createUpdateChain() {
@@ -166,6 +168,9 @@ describe('LlmProviderService', () => {
         isBuiltin: true,
       }),
     );
+    expect(insertChain.onConflictDoNothing).toHaveBeenCalledWith({
+      target: [llmProviders.orgId, llmProviders.slug],
+    });
 
     expect(updateChain.set).toHaveBeenCalledTimes(1);
     expect(updateChain.set).toHaveBeenCalledWith(

@@ -29,6 +29,7 @@ mixin _$SkillDto {
   String? get updatedBy;
   String get createdAt;
   String get updatedAt;
+  String get sourceKind;
 
   /// Create a copy of SkillDto
   /// with the given fields replaced by the non-null parameter values.
@@ -72,7 +73,9 @@ mixin _$SkillDto {
             (identical(other.createdAt, createdAt) ||
                 other.createdAt == createdAt) &&
             (identical(other.updatedAt, updatedAt) ||
-                other.updatedAt == updatedAt));
+                other.updatedAt == updatedAt) &&
+            (identical(other.sourceKind, sourceKind) ||
+                other.sourceKind == sourceKind));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
@@ -95,11 +98,12 @@ mixin _$SkillDto {
     updatedBy,
     createdAt,
     updatedAt,
+    sourceKind,
   );
 
   @override
   String toString() {
-    return 'SkillDto(id: $id, tenantId: $tenantId, name: $name, slug: $slug, description: $description, content: $content, frontmatter: $frontmatter, isBuiltin: $isBuiltin, status: $status, fileCount: $fileCount, totalSizeBytes: $totalSizeBytes, version: $version, createdBy: $createdBy, updatedBy: $updatedBy, createdAt: $createdAt, updatedAt: $updatedAt)';
+    return 'SkillDto(id: $id, tenantId: $tenantId, name: $name, slug: $slug, description: $description, content: $content, frontmatter: $frontmatter, isBuiltin: $isBuiltin, status: $status, fileCount: $fileCount, totalSizeBytes: $totalSizeBytes, version: $version, createdBy: $createdBy, updatedBy: $updatedBy, createdAt: $createdAt, updatedAt: $updatedAt, sourceKind: $sourceKind)';
   }
 }
 
@@ -125,6 +129,7 @@ abstract mixin class $SkillDtoCopyWith<$Res> {
     String? updatedBy,
     String createdAt,
     String updatedAt,
+    String sourceKind,
   });
 }
 
@@ -156,6 +161,7 @@ class _$SkillDtoCopyWithImpl<$Res> implements $SkillDtoCopyWith<$Res> {
     Object? updatedBy = freezed,
     Object? createdAt = null,
     Object? updatedAt = null,
+    Object? sourceKind = null,
   }) {
     return _then(
       _self.copyWith(
@@ -222,6 +228,10 @@ class _$SkillDtoCopyWithImpl<$Res> implements $SkillDtoCopyWith<$Res> {
         updatedAt: null == updatedAt
             ? _self.updatedAt
             : updatedAt // ignore: cast_nullable_to_non_nullable
+                  as String,
+        sourceKind: null == sourceKind
+            ? _self.sourceKind
+            : sourceKind // ignore: cast_nullable_to_non_nullable
                   as String,
       ),
     );
@@ -338,6 +348,7 @@ extension SkillDtoPatterns on SkillDto {
       String? updatedBy,
       String createdAt,
       String updatedAt,
+      String sourceKind,
     )?
     $default, {
     required TResult orElse(),
@@ -362,6 +373,7 @@ extension SkillDtoPatterns on SkillDto {
           _that.updatedBy,
           _that.createdAt,
           _that.updatedAt,
+          _that.sourceKind,
         );
       case _:
         return orElse();
@@ -400,6 +412,7 @@ extension SkillDtoPatterns on SkillDto {
       String? updatedBy,
       String createdAt,
       String updatedAt,
+      String sourceKind,
     )
     $default,
   ) {
@@ -423,6 +436,7 @@ extension SkillDtoPatterns on SkillDto {
           _that.updatedBy,
           _that.createdAt,
           _that.updatedAt,
+          _that.sourceKind,
         );
       case _:
         throw StateError('Unexpected subclass');
@@ -460,6 +474,7 @@ extension SkillDtoPatterns on SkillDto {
       String? updatedBy,
       String createdAt,
       String updatedAt,
+      String sourceKind,
     )?
     $default,
   ) {
@@ -483,6 +498,7 @@ extension SkillDtoPatterns on SkillDto {
           _that.updatedBy,
           _that.createdAt,
           _that.updatedAt,
+          _that.sourceKind,
         );
       case _:
         return null;
@@ -510,6 +526,7 @@ class _SkillDto implements SkillDto {
     this.updatedBy,
     required this.createdAt,
     required this.updatedAt,
+    this.sourceKind = 'manual',
   }) : _frontmatter = frontmatter;
   factory _SkillDto.fromJson(Map<String, dynamic> json) =>
       _$SkillDtoFromJson(json);
@@ -554,6 +571,9 @@ class _SkillDto implements SkillDto {
   final String createdAt;
   @override
   final String updatedAt;
+  @override
+  @JsonKey()
+  final String sourceKind;
 
   /// Create a copy of SkillDto
   /// with the given fields replaced by the non-null parameter values.
@@ -600,7 +620,9 @@ class _SkillDto implements SkillDto {
             (identical(other.createdAt, createdAt) ||
                 other.createdAt == createdAt) &&
             (identical(other.updatedAt, updatedAt) ||
-                other.updatedAt == updatedAt));
+                other.updatedAt == updatedAt) &&
+            (identical(other.sourceKind, sourceKind) ||
+                other.sourceKind == sourceKind));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
@@ -623,11 +645,12 @@ class _SkillDto implements SkillDto {
     updatedBy,
     createdAt,
     updatedAt,
+    sourceKind,
   );
 
   @override
   String toString() {
-    return 'SkillDto(id: $id, tenantId: $tenantId, name: $name, slug: $slug, description: $description, content: $content, frontmatter: $frontmatter, isBuiltin: $isBuiltin, status: $status, fileCount: $fileCount, totalSizeBytes: $totalSizeBytes, version: $version, createdBy: $createdBy, updatedBy: $updatedBy, createdAt: $createdAt, updatedAt: $updatedAt)';
+    return 'SkillDto(id: $id, tenantId: $tenantId, name: $name, slug: $slug, description: $description, content: $content, frontmatter: $frontmatter, isBuiltin: $isBuiltin, status: $status, fileCount: $fileCount, totalSizeBytes: $totalSizeBytes, version: $version, createdBy: $createdBy, updatedBy: $updatedBy, createdAt: $createdAt, updatedAt: $updatedAt, sourceKind: $sourceKind)';
   }
 }
 
@@ -655,6 +678,7 @@ abstract mixin class _$SkillDtoCopyWith<$Res>
     String? updatedBy,
     String createdAt,
     String updatedAt,
+    String sourceKind,
   });
 }
 
@@ -686,6 +710,7 @@ class __$SkillDtoCopyWithImpl<$Res> implements _$SkillDtoCopyWith<$Res> {
     Object? updatedBy = freezed,
     Object? createdAt = null,
     Object? updatedAt = null,
+    Object? sourceKind = null,
   }) {
     return _then(
       _SkillDto(
@@ -752,6 +777,10 @@ class __$SkillDtoCopyWithImpl<$Res> implements _$SkillDtoCopyWith<$Res> {
         updatedAt: null == updatedAt
             ? _self.updatedAt
             : updatedAt // ignore: cast_nullable_to_non_nullable
+                  as String,
+        sourceKind: null == sourceKind
+            ? _self.sourceKind
+            : sourceKind // ignore: cast_nullable_to_non_nullable
                   as String,
       ),
     );

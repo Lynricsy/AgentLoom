@@ -7,7 +7,7 @@ import {
 } from 'react'
 
 import { Link } from '@tanstack/react-router'
-import { Search, Store } from 'lucide-react'
+import { Compass, Search, Store } from 'lucide-react'
 
 import { Pagination } from '@/shared/components/Pagination'
 import { buttonVariants } from '@/shared/ui/button'
@@ -40,7 +40,11 @@ const CATEGORY_TABS: { value: BrowseCategory; label: string }[] = [
 const DEFAULT_SORT: MarketplaceSortOption = 'popular'
 const PAGE_SIZE = 12
 
-export function MarketplaceBrowsePage() {
+export function MarketplaceBrowsePage({
+  mode = 'marketplace',
+}: {
+  mode?: 'marketplace' | 'discover'
+}) {
   const [listingType, setListingType] = useState<MarketplaceListingTypeFilter>('all')
   const [category, setCategory] = useState<BrowseCategory>('all')
   const [sort, setSort] = useState<MarketplaceSortOption>(DEFAULT_SORT)
@@ -74,6 +78,7 @@ export function MarketplaceBrowsePage() {
   const listings = data?.data ?? []
   const total = data?.meta.total ?? 0
   const totalPages = data?.meta.totalPages ?? 0
+  const isDiscover = mode === 'discover'
 
   const handleCategoryChange = useCallback((nextCategory: string) => {
     setCategory(nextCategory as BrowseCategory)
@@ -112,20 +117,35 @@ export function MarketplaceBrowsePage() {
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div className="space-y-2">
           <div className="flex items-center gap-2">
-            <Store className="h-5 w-5 text-muted-foreground" />
-            <h1 className="text-2xl font-bold">市场</h1>
+            {isDiscover ? (
+              <Compass className="h-5 w-5 text-muted-foreground" />
+            ) : (
+              <Store className="h-5 w-5 text-muted-foreground" />
+            )}
+            <h1 className="text-2xl font-bold">{isDiscover ? '发现' : '市场'}</h1>
           </div>
           <p className="text-sm text-muted-foreground">
-            浏览社区共享的工作流与插件，并一键安装到你的工作区。
+            {isDiscover
+              ? '浏览真实可用的上架工作流与插件，把公开内容当成你的下一条起点。'
+              : '浏览社区共享的工作流与插件，并一键安装到你的工作区。'}
           </p>
         </div>
 
-        <Link
-          to="/marketplace/my-listings"
-          className={cn(buttonVariants({ variant: 'outline', size: 'default' }))}
-        >
-          我的发布
-        </Link>
+        {isDiscover ? (
+          <Link
+            to="/marketplace"
+            className={cn(buttonVariants({ variant: 'outline', size: 'default' }))}
+          >
+            打开 Marketplace
+          </Link>
+        ) : (
+          <Link
+            to="/marketplace/my-listings"
+            className={cn(buttonVariants({ variant: 'outline', size: 'default' }))}
+          >
+            我的发布
+          </Link>
+        )}
       </div>
 
       <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px]">

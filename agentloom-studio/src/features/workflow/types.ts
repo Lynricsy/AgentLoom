@@ -1,5 +1,6 @@
 import type { Viewport } from '@xyflow/react'
 import type { CanvasEdge, CanvasNode } from '@/features/canvas/types'
+import type { ResourceSourceKind } from '@/shared/lib/resourceSource'
 import type { PaginatedResponse } from '@/shared/types/api'
 
 export type WorkflowStatus = 'draft' | 'published' | 'archived'
@@ -64,6 +65,7 @@ export interface WorkflowDefinition {
   updatedBy: string
   createdAt: string
   updatedAt: string
+  resourceSourceKind?: ResourceSourceKind
 }
 
 export interface UpdateWorkflowPayload {
@@ -195,6 +197,7 @@ export interface ListWorkflowsParams {
   pageSize?: number
   status?: string
   search?: string
+  sourceKind?: ResourceSourceKind
 }
 
 export type WorkflowListResponse = PaginatedResponse<WorkflowDefinition>

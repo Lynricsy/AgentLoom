@@ -71,6 +71,7 @@ abstract class AgentDefinitionDto with _$AgentDefinitionDto {
     String? autonomyMode,
     int? maxIterations,
     int? timeoutSeconds,
+    @Default('manual') String resourceSourceKind,
   }) = _AgentDefinitionDto;
 
   factory AgentDefinitionDto.fromJson(Map<String, dynamic> json) =>
@@ -83,6 +84,8 @@ abstract class AgentDefinitionDto with _$AgentDefinitionDto {
   bool get hasSandboxRuntime => !isNoSandboxRuntime;
 
   String get runtimeModeLabel => isNoSandboxRuntime ? '无沙箱' : '有沙箱';
+
+  bool get isShareImported => resourceSourceKind == 'share_imported';
 }
 
 /// Agent 列表分页状态
@@ -92,6 +95,7 @@ class AgentListState {
     this.currentPage = 1,
     this.hasMore = true,
     this.statusFilter,
+    this.sourceKindFilter,
     this.searchQuery,
     this.isLoadingMore = false,
   });
@@ -100,6 +104,7 @@ class AgentListState {
   final int currentPage;
   final bool hasMore;
   final String? statusFilter;
+  final String? sourceKindFilter;
   final String? searchQuery;
   final bool isLoadingMore;
 
@@ -108,6 +113,7 @@ class AgentListState {
     int? currentPage,
     bool? hasMore,
     String? statusFilter,
+    String? sourceKindFilter,
     String? searchQuery,
     bool? isLoadingMore,
   }) {
@@ -116,6 +122,7 @@ class AgentListState {
       currentPage: currentPage ?? this.currentPage,
       hasMore: hasMore ?? this.hasMore,
       statusFilter: statusFilter ?? this.statusFilter,
+      sourceKindFilter: sourceKindFilter ?? this.sourceKindFilter,
       searchQuery: searchQuery ?? this.searchQuery,
       isLoadingMore: isLoadingMore ?? this.isLoadingMore,
     );

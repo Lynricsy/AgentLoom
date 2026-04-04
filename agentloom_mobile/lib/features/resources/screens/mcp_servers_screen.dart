@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../shared/models/paginated_response.dart';
+import '../../../shared/widgets/resource_source_chip.dart';
 import '../api/resources_api.dart';
 import '../models/resource_entities.dart';
 import '../widgets/resource_shared.dart';
@@ -19,6 +20,7 @@ class _McpServersScreenState extends ConsumerState<McpServersScreen> {
   final _searchController = TextEditingController();
   String? _statusFilter;
   String? _transportFilter;
+  String? _sourceKindFilter;
   late Future<PaginatedResponse<McpServerConfigSummaryDto>> _future;
 
   @override
@@ -42,6 +44,7 @@ class _McpServersScreenState extends ConsumerState<McpServersScreen> {
               : _searchController.text.trim(),
           status: _statusFilter,
           transportType: _transportFilter,
+          sourceKind: _sourceKindFilter,
         );
   }
 
@@ -177,6 +180,45 @@ class _McpServersScreenState extends ConsumerState<McpServersScreen> {
                       ),
                   ],
                 ),
+                const SizedBox(height: 12),
+                Text('来源', style: theme.textTheme.labelLarge),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _FilterChip(
+                      label: '全部',
+                      selected: _sourceKindFilter == null,
+                      onSelected: () {
+                        setState(() {
+                          _sourceKindFilter = null;
+                          _future = _load();
+                        });
+                      },
+                    ),
+                    _FilterChip(
+                      label: '自己创建',
+                      selected: _sourceKindFilter == 'manual',
+                      onSelected: () {
+                        setState(() {
+                          _sourceKindFilter = 'manual';
+                          _future = _load();
+                        });
+                      },
+                    ),
+                    _FilterChip(
+                      label: '分享导入',
+                      selected: _sourceKindFilter == 'share_imported',
+                      onSelected: () {
+                        setState(() {
+                          _sourceKindFilter = 'share_imported';
+                          _future = _load();
+                        });
+                      },
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
@@ -247,6 +289,10 @@ class _McpServersScreenState extends ConsumerState<McpServersScreen> {
                                   Chip(
                                     label: Text('${config.toolCount} 工具'),
                                     visualDensity: VisualDensity.compact,
+                                  ),
+                                  ResourceSourceChip(
+                                    sourceKind: config.sourceKind,
+                                    compact: true,
                                   ),
                                   if (config.lastTestedAt != null)
                                     Chip(
@@ -488,6 +534,10 @@ class _McpServerDetailSheetState extends ConsumerState<_McpServerDetailSheet> {
                     ? '未测试'
                     : formatDateTime(detail.lastTestedAt!),
               ),
+              ResourceMetadataRow(
+                label: '来源',
+                value: getResourceSourceLabel(detail.sourceKind),
+              ),
               const SizedBox(height: 16),
               JsonCodePanel(
                 label: '连接信息',
@@ -522,6 +572,26 @@ class _McpServerDetailSheetState extends ConsumerState<_McpServerDetailSheet> {
                     icon: const Icon(Icons.edit_outlined),
                     label: const Text('编辑'),
                   ),
+                  if (detail.sourceKind == 'share_imported')
+                    OutlinedButton.icon(
+                      onPressed: () async {
+                        final messenger = ScaffoldMessenger.of(context);
+                        final navigator = Navigator.of(context);
+                        await ref
+                            .read(resourcesApiProvider)
+                            .convertMcpServerConfigSourceToManual(detail.id);
+                        if (!mounted) {
+                          return;
+                        }
+                        navigator.pop(true);
+                        messenger.showSnackBar(
+                          const SnackBar(content: Text('已转为自己创建')),
+                        );
+                        await widget.onChanged();
+                      },
+                      icon: const Icon(Icons.drive_file_rename_outline),
+                      label: const Text('转为自己创建'),
+                    ),
                   OutlinedButton.icon(
                     onPressed: _confirmDelete,
                     icon: const Icon(Icons.delete_outline),

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:agentloom_mobile/config/env.dart';
 import 'package:agentloom_mobile/features/agents/api/agent_api.dart';
 import 'package:agentloom_mobile/features/agents/models/conversation_message_dto.dart';
@@ -76,6 +78,15 @@ void main() {
       (_) async => const PaginatedResponse<ConversationMessageDto>(
         data: <ConversationMessageDto>[],
         meta: PaginationMeta(page: 1, pageSize: 50, total: 0, totalPages: 0),
+      ),
+    );
+    when(() => mockApi.getConversationDetail(any())).thenAnswer(
+      (_) async => (
+        messages: const PaginatedResponse<ConversationMessageDto>(
+          data: <ConversationMessageDto>[],
+          meta: PaginationMeta(page: 1, pageSize: 50, total: 0, totalPages: 0),
+        ),
+        metadata: const <String, dynamic>{},
       ),
     );
     when(
@@ -157,6 +168,100 @@ void main() {
     expect(state.error, '上游模型流中断（MODEL_PROVIDER_ERROR: terminated）');
     expect(state.preparationPhase, isNull);
     expect(state.preparationFailedPhase, isNull);
+  });
+
+  test('done 事件不会在 detail 回拉前清掉已存在的失败态', () async {
+    final detailCompleter = Completer<AgentConversationDetailDto>();
+    when(
+      () => mockApi.getConversationDetail(any()),
+    ).thenAnswer((_) => detailCompleter.future);
+
+    container.listen(
+      agentConversationProvider(params),
+      (_, __) {},
+      fireImmediately: true,
+    );
+
+    await container.read(authProvider.future);
+    await container.read(agentConversationProvider(params).future);
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    listeners['conversation.status.changed']?.call({
+      'conversationId': 'conv-001',
+      'status': 'failed',
+      'errorMessage': '租户未配置默认 LLM 模型',
+    });
+    listeners['conversation.agent.done']?.call({
+      'conversationId': 'conv-001',
+      'messageId': 'assistant-1',
+    });
+
+    final state = container.read(agentConversationProvider(params)).value;
+    expect(state, isNotNull);
+    expect(state!.status, ConversationStatus.error);
+    expect(state.error, '租户未配置默认 LLM 模型');
+
+    detailCompleter.complete((
+      messages: const PaginatedResponse<ConversationMessageDto>(
+        data: <ConversationMessageDto>[],
+        meta: PaginationMeta(page: 1, pageSize: 50, total: 0, totalPages: 0),
+      ),
+      metadata: const {
+        'execution': {
+          'runningState': 'failed',
+          'errorMessage': '租户未配置默认 LLM 模型',
+        },
+      },
+    ));
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+  });
+
+  test('history detail metadata 应同步失败态和错误摘要', () async {
+    when(() => mockApi.getConversationDetail(any())).thenAnswer(
+      (_) async => (
+        messages: const PaginatedResponse<ConversationMessageDto>(
+          data: [
+            ConversationMessageDto(
+              id: 'user-1',
+              conversationId: 'conv-001',
+              role: MessageRole.user,
+              content: '你好',
+              metadata: <String, dynamic>{},
+              createdAt: '2026-04-04T09:17:38.000Z',
+            ),
+          ],
+          meta: PaginationMeta(page: 1, pageSize: 50, total: 1, totalPages: 1),
+        ),
+        metadata: const {
+          'execution': {
+            'runningState': 'failed',
+            'errorMessage': '租户未配置默认 LLM 模型',
+          },
+        },
+      ),
+    );
+
+    container.listen(
+      agentConversationProvider(params),
+      (_, __) {},
+      fireImmediately: true,
+    );
+
+    await container.read(authProvider.future);
+    await container.read(agentConversationProvider(params).future);
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    listeners['conversation.agent.done']?.call({
+      'conversationId': 'conv-001',
+      'messageId': 'assistant-1',
+    });
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    final state = container.read(agentConversationProvider(params)).value;
+    expect(state, isNotNull);
+    expect(state!.status, ConversationStatus.error);
+    expect(state.error, '租户未配置默认 LLM 模型');
+    expect(state.messages.single.content, '你好');
   });
 
   test('socket 连接配置应允许 polling 回退再升级 websocket', () async {

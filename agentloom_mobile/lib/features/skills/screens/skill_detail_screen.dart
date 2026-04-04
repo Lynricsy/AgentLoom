@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../routes/route_names.dart';
+import '../../../shared/widgets/resource_source_chip.dart';
 import '../api/skill_api.dart';
 import '../models/skill_dto.dart';
 import '../providers/skill_provider.dart';
@@ -48,6 +49,13 @@ class SkillDetailScreen extends ConsumerWidget {
           appBar: AppBar(
             title: Text(skill.name),
             actions: [
+              if (!skill.isBuiltin && skill.sourceKind == 'share_imported')
+                IconButton(
+                  tooltip: '转为自己创建',
+                  onPressed: () =>
+                      _convertSourceToManual(context, ref, skill.id),
+                  icon: const Icon(Icons.drive_file_rename_outline),
+                ),
               if (isCustom)
                 PopupMenuButton<String>(
                   onSelected: (action) =>
@@ -185,6 +193,28 @@ class SkillDetailScreen extends ConsumerWidget {
         _showArchiveDialog(context, ref, id);
       case 'delete':
         _showDeleteDialog(context, ref, id);
+    }
+  }
+
+  Future<void> _convertSourceToManual(
+    BuildContext context,
+    WidgetRef ref,
+    String id,
+  ) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await ref.read(skillApiProvider).convertSourceToManual(id);
+      ref.invalidate(skillDetailProvider(id));
+      await ref.read(skillListProvider.notifier).refresh();
+      if (!context.mounted) {
+        return;
+      }
+      messenger.showSnackBar(const SnackBar(content: Text('已转为自己创建')));
+    } catch (error) {
+      if (!context.mounted) {
+        return;
+      }
+      messenger.showSnackBar(SnackBar(content: Text('转换失败：$error')));
     }
   }
 
@@ -400,6 +430,12 @@ class _MetadataCard extends StatelessWidget {
                   : Icons.auto_awesome_outlined,
               label: 'Type',
               value: skill.isBuiltin ? 'Built-in' : 'Custom',
+            ),
+            const SizedBox(height: 12),
+            _MetadataRow(
+              icon: Icons.folder_shared_outlined,
+              label: '来源',
+              value: getResourceSourceLabel(skill.sourceKind),
             ),
           ],
         ),

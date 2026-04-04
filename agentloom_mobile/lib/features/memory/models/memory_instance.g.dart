@@ -17,6 +17,7 @@ _MemoryInstanceDto _$MemoryInstanceDtoFromJson(Map<String, dynamic> json) =>
       edgeCount: (json['edgeCount'] as num?)?.toInt() ?? 0,
       createdAt: json['createdAt'] as String,
       updatedAt: json['updatedAt'] as String,
+      sourceKind: json['sourceKind'] as String? ?? 'manual',
     );
 
 Map<String, dynamic> _$MemoryInstanceDtoToJson(_MemoryInstanceDto instance) =>
@@ -30,4 +31,5 @@ Map<String, dynamic> _$MemoryInstanceDtoToJson(_MemoryInstanceDto instance) =>
       'edgeCount': instance.edgeCount,
       'createdAt': instance.createdAt,
       'updatedAt': instance.updatedAt,
+      'sourceKind': instance.sourceKind,
     };

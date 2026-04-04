@@ -598,7 +598,11 @@ describe('AgentExecutionWorker', () => {
       expect(workerInternals.safeUpdateExecutionMetadata).toHaveBeenCalledWith(
         't-1',
         'c-1',
-        expect.objectContaining({ runningState: 'failed' }),
+        expect.objectContaining({
+          runningState: 'failed',
+          errorMessage: 'Runtime init failed',
+          failedPhase: 'queued',
+        }),
       );
       expect(mockEventBridge.emitExecutionStatusChanged).toHaveBeenCalledWith(
         't-1',

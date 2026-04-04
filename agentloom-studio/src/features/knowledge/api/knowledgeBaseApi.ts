@@ -4,6 +4,7 @@ import type {
   CreateKnowledgeBaseInput,
   DocumentListParams,
   KnowledgeBase,
+  KnowledgeBaseListParams,
   KnowledgeBaseDocument,
   KnowledgeTestSearchResponse,
   UpdateKnowledgeBaseSettingsInput,
@@ -11,13 +12,13 @@ import type {
 
 const BASE_PATH = 'knowledge-bases';
 
-export async function fetchKnowledgeBases(params?: {
-  page?: number;
-  pageSize?: number;
-}): Promise<PaginatedResponse<KnowledgeBase>> {
+export async function fetchKnowledgeBases(
+  params?: KnowledgeBaseListParams,
+): Promise<PaginatedResponse<KnowledgeBase>> {
   const searchParams: Record<string, string> = {};
   if (params?.page) searchParams.page = String(params.page);
   if (params?.pageSize) searchParams.page_size = String(params.pageSize);
+  if (params?.sourceKind) searchParams.source_kind = params.sourceKind;
 
   return apiClient
     .get(BASE_PATH, { searchParams })
@@ -25,14 +26,19 @@ export async function fetchKnowledgeBases(params?: {
 }
 
 export async function fetchAllKnowledgeBases(
-  pageSize = 100,
+  params?: Pick<KnowledgeBaseListParams, 'sourceKind'> & { pageSize?: number },
 ): Promise<KnowledgeBase[]> {
+  const pageSize = params?.pageSize ?? 100;
   const knowledgeBases: KnowledgeBase[] = [];
   let page = 1;
   let totalPages = 1;
 
   do {
-    const response = await fetchKnowledgeBases({ page, pageSize });
+    const response = await fetchKnowledgeBases({
+      page,
+      pageSize,
+      sourceKind: params?.sourceKind,
+    });
     knowledgeBases.push(...response.data);
     totalPages = response.meta.totalPages;
     page += 1;

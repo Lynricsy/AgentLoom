@@ -2,6 +2,7 @@ import type {
   BackendPortMappingMetadata,
   McpToolDefinition as CanvasMcpToolDefinition,
 } from "@/features/canvas/types/mcpToolMapping";
+import type { ResourceSourceKind } from "@/shared/lib/resourceSource";
 
 export type McpImportConflictStrategy = "skip" | "overwrite";
 
@@ -100,6 +101,7 @@ export interface McpServerConfigSummary {
   createdAt: string;
   updatedAt: string;
   toolCount: number;
+  sourceKind?: ResourceSourceKind;
 }
 
 export interface McpServerConfigDetail extends Omit<McpServerConfigSummary, 'toolCount'> {
@@ -116,6 +118,7 @@ export interface McpServerConfigQueryParams {
   search?: string;
   status?: 'active' | 'inactive' | 'error';
   transportType?: McpTransportType;
+  sourceKind?: ResourceSourceKind;
 }
 
 export interface UpdateMcpServerConfigPayload {

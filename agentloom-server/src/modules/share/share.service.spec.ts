@@ -53,6 +53,7 @@ function createShareRecord(
   return {
     id: SHARE_ID,
     workflowDefinitionId: WORKFLOW_ID,
+    tenantId: TENANT_ID,
     shareType: 'read_only',
     shareToken: SHARE_TOKEN,
     expiresAt: null,
@@ -60,6 +61,9 @@ function createShareRecord(
     viewCount: 0,
     copyCount: 0,
     createdAt: NOW,
+    createdBy: USER_ID,
+    title: '测试工作流',
+    description: '用于 ShareService 单测',
     ...overrides,
   };
 }
@@ -123,20 +127,23 @@ function createSelectChain(result: unknown) {
 }
 
 function createPaginatedSelectChain(result: unknown) {
-  const offset = vi.fn().mockResolvedValue(result);
-  const limit = vi.fn().mockReturnValue({ offset });
-  const orderBy = vi.fn().mockReturnValue({ limit });
-  const where = vi.fn().mockReturnValue({ orderBy });
-  const from = vi.fn().mockReturnValue({ where });
-  return { from, where, orderBy, limit, offset };
+  const chain: Record<string, any> = {};
+  chain.from = vi.fn().mockReturnValue(chain);
+  chain.innerJoin = vi.fn().mockReturnValue(chain);
+  chain.where = vi.fn().mockReturnValue(chain);
+  chain.orderBy = vi.fn().mockReturnValue(chain);
+  chain.limit = vi.fn().mockReturnValue(chain);
+  chain.offset = vi.fn().mockResolvedValue(result);
+  return chain;
 }
 
 function createSelectChainWithJoins(result: unknown) {
-  const where = vi.fn().mockResolvedValue(result);
-  const leftJoin = vi.fn().mockReturnValue({ where });
-  const innerJoin = vi.fn().mockReturnValue({ leftJoin });
-  const from = vi.fn().mockReturnValue({ innerJoin });
-  return { from, innerJoin, leftJoin, where };
+  const chain: Record<string, any> = {};
+  chain.from = vi.fn().mockReturnValue(chain);
+  chain.innerJoin = vi.fn().mockReturnValue(chain);
+  chain.leftJoin = vi.fn().mockReturnValue(chain);
+  chain.where = vi.fn().mockResolvedValue(result);
+  return chain;
 }
 
 function createInsertChain(result: unknown) {
@@ -156,6 +163,36 @@ function createUpdateWhereChain(result: unknown) {
   const where = vi.fn().mockResolvedValue(result);
   const set = vi.fn().mockReturnValue({ where });
   return { set, where };
+}
+
+function createWorkflowShareResponse(
+  share: Record<string, unknown>,
+  options: {
+    title?: string;
+    description?: string | null;
+    baseUrl?: string;
+  } = {},
+) {
+  const shareToken = (share.shareToken as string) ?? SHARE_TOKEN;
+  const workflowDefinitionId =
+    (share.workflowDefinitionId as string) ?? WORKFLOW_ID;
+  return {
+    id: share.id,
+    resourceType: 'workflow',
+    resourceId: workflowDefinitionId,
+    workflowDefinitionId,
+    shareType: share.shareType,
+    shareToken,
+    expiresAt: share.expiresAt ?? null,
+    isRevoked: share.isRevoked ?? false,
+    viewCount: share.viewCount ?? 0,
+    copyCount: share.copyCount ?? 0,
+    createdAt: share.createdAt,
+    createdBy: share.createdBy,
+    title: options.title ?? '测试工作流',
+    description: options.description ?? '用于 ShareService 单测',
+    shareUrl: `${options.baseUrl ?? 'https://studio.agentloom.dev'}/s/${shareToken}`,
+  };
 }
 
 describe('ShareService', () => {
@@ -203,7 +240,12 @@ describe('ShareService', () => {
   describe('createShare', () => {
     it('应校验工作流已发布、生成 token、插入 share 并构造分享 URL', async () => {
       const workflowSelectChain = createSelectChain([
-        { id: WORKFLOW_ID, publishedVersionId: VERSION_ID },
+        {
+          id: WORKFLOW_ID,
+          name: '测试工作流',
+          description: '用于 ShareService 单测',
+          publishedVersionId: VERSION_ID,
+        },
       ]);
       const createdShare = createShareRecord({
         shareType: 'copyable',
@@ -229,10 +271,7 @@ describe('ShareService', () => {
         createdBy: USER_ID,
         expiresAt: new Date('2025-02-01T00:00:00.000Z'),
       });
-      expect(result).toEqual({
-        ...createdShare,
-        shareUrl: `https://studio.agentloom.dev/s/${SHARE_TOKEN}`,
-      });
+      expect(result).toEqual(createWorkflowShareResponse(createdShare));
     });
 
     it('工作流不存在时应抛出 WorkflowNotFoundException', async () => {
@@ -305,16 +344,19 @@ describe('ShareService', () => {
         page: 2,
         pageSize: 2,
         total: 7,
+        totalPages: 4,
       });
       expect(result.data).toEqual([
-        {
-          ...shares[0],
-          shareUrl: `https://env.agentloom.dev/s/${shares[0].shareToken}`,
-        },
-        {
-          ...shares[1],
-          shareUrl: `https://env.agentloom.dev/s/${shares[1].shareToken}`,
-        },
+        createWorkflowShareResponse(shares[0], {
+          title: shares[0].title as string,
+          description: shares[0].description as string,
+          baseUrl: 'https://env.agentloom.dev',
+        }),
+        createWorkflowShareResponse(shares[1], {
+          title: shares[1].title as string,
+          description: shares[1].description as string,
+          baseUrl: 'https://env.agentloom.dev',
+        }),
       ]);
     });
 
@@ -334,6 +376,7 @@ describe('ShareService', () => {
           page: 1,
           pageSize: 20,
           total: 0,
+          totalPages: 0,
         },
       });
     });
@@ -386,20 +429,27 @@ describe('ShareService', () => {
       const result = await service.getPublicShare(SHARE_TOKEN);
 
       expect(selectChain.innerJoin).toHaveBeenCalledTimes(1);
-      expect(selectChain.leftJoin).toHaveBeenCalledTimes(1);
+      expect(selectChain.leftJoin).toHaveBeenCalledTimes(2);
       expect(updateChain.set).toHaveBeenCalledWith({
         viewCount: expect.any(Object),
         updatedAt: NOW,
       });
-      expect(result).toEqual({
+      expect(result).toMatchObject({
+        token: SHARE_TOKEN,
+        resourceType: 'workflow',
+        workflowDefinitionId: share.workflowDefinitionId,
         workflowName: share.workflowName,
         workflowDescription: share.workflowDescription,
+        title: share.workflowName,
+        description: share.workflowDescription,
         shareType: share.shareType,
         definition: {
           nodes: share.snapshot.nodes,
           edges: share.snapshot.edges,
           viewport: share.snapshot.viewport,
         },
+        nodeCount: share.snapshot.nodes.length,
+        edgeCount: share.snapshot.edges.length,
         createdAt: share.createdAt,
         expiresAt: share.expiresAt,
       });
@@ -423,7 +473,7 @@ describe('ShareService', () => {
     });
 
     it('分享链接不存在时应抛出 ShareNotFoundException', async () => {
-      db.select.mockReturnValueOnce(createSelectChainWithJoins([]));
+      db.select.mockReturnValue(createSelectChainWithJoins([]));
 
       await expect(service.getPublicShare(SHARE_TOKEN)).rejects.toBeInstanceOf(
         ShareNotFoundException,
@@ -494,10 +544,7 @@ describe('ShareService', () => {
 
       const result = await service.incrementCopyCount(SHARE_TOKEN);
 
-      expect(result).toEqual({
-        ...updatedShare,
-        shareUrl: `https://studio.agentloom.dev/s/${SHARE_TOKEN}`,
-      });
+      expect(result).toEqual(createWorkflowShareResponse(updatedShare));
     });
 
     it('更新无返回记录时应回退到已加载的 share 数据，并使用默认 localhost URL', async () => {
@@ -509,18 +556,13 @@ describe('ShareService', () => {
 
       const result = await service.incrementCopyCount(SHARE_TOKEN);
 
-      expect(result).toEqual({
-        id: share.id,
-        workflowDefinitionId: share.workflowDefinitionId,
-        shareType: share.shareType,
-        shareToken: share.shareToken,
-        expiresAt: share.expiresAt,
-        isRevoked: share.isRevoked,
-        viewCount: share.viewCount,
-        copyCount: share.copyCount,
-        createdAt: share.createdAt,
-        shareUrl: `http://localhost:5173/s/${SHARE_TOKEN}`,
-      });
+      expect(result).toEqual(
+        createWorkflowShareResponse(share, {
+          title: share.workflowName,
+          description: share.workflowDescription,
+          baseUrl: 'http://localhost:5173',
+        }),
+      );
     });
 
     it('只读分享链接不支持 copyCount 递增', async () => {
@@ -567,7 +609,7 @@ describe('ShareService', () => {
 
       expect(selectChain.from).toHaveBeenCalledTimes(1);
       expect(selectChain.innerJoin).toHaveBeenCalledTimes(1);
-      expect(selectChain.leftJoin).toHaveBeenCalledTimes(1);
+      expect(selectChain.leftJoin).toHaveBeenCalledTimes(2);
       expect(selectChain.where).toHaveBeenCalledTimes(1);
       expect(result).toEqual(share);
     });

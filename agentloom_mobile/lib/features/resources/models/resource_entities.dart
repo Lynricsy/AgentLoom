@@ -331,6 +331,7 @@ class KnowledgeBaseDto {
     required this.nodeCount,
     required this.chunkCount,
     required this.status,
+    required this.sourceKind,
     required this.createdAt,
     required this.updatedAt,
   });
@@ -350,6 +351,7 @@ class KnowledgeBaseDto {
       nodeCount: _asNullableInt(_readValue(json, 'nodeCount')) ?? 0,
       chunkCount: _asNullableInt(_readValue(json, 'chunkCount')) ?? 0,
       status: _readValue(json, 'status') as String? ?? 'empty',
+      sourceKind: _readValue(json, 'sourceKind') as String? ?? 'manual',
       createdAt: _readValue(json, 'createdAt') as String? ?? '',
       updatedAt: _readValue(json, 'updatedAt') as String? ?? '',
     );
@@ -367,6 +369,7 @@ class KnowledgeBaseDto {
   final int nodeCount;
   final int chunkCount;
   final String status;
+  final String sourceKind;
   final String createdAt;
   final String updatedAt;
 }
@@ -752,6 +755,7 @@ class McpServerConfigSummaryDto {
     required this.createdAt,
     required this.updatedAt,
     required this.toolCount,
+    required this.sourceKind,
   });
 
   factory McpServerConfigSummaryDto.fromJson(Map<String, dynamic> json) {
@@ -767,6 +771,7 @@ class McpServerConfigSummaryDto {
       createdAt: _readValue(json, 'createdAt') as String? ?? '',
       updatedAt: _readValue(json, 'updatedAt') as String? ?? '',
       toolCount: _asNullableInt(_readValue(json, 'toolCount')) ?? 0,
+      sourceKind: _readValue(json, 'sourceKind') as String? ?? 'manual',
     );
   }
 
@@ -781,6 +786,7 @@ class McpServerConfigSummaryDto {
   final String createdAt;
   final String updatedAt;
   final int toolCount;
+  final String sourceKind;
 }
 
 class McpServerConfigDetailDto {
@@ -798,6 +804,7 @@ class McpServerConfigDetailDto {
     required this.connection,
     required this.credentialKeys,
     required this.tools,
+    required this.sourceKind,
   });
 
   factory McpServerConfigDetailDto.fromJson(Map<String, dynamic> json) {
@@ -824,6 +831,7 @@ class McpServerConfigDetailDto {
       tools: _asList(_readValue(json, 'tools'))
           .map((item) => McpToolDefinitionDto.fromJson(_asMap(item)))
           .toList(growable: false),
+      sourceKind: _readValue(json, 'sourceKind') as String? ?? 'manual',
     );
   }
 
@@ -840,6 +848,7 @@ class McpServerConfigDetailDto {
   final McpConnectionConfigDto connection;
   final List<String> credentialKeys;
   final List<McpToolDefinitionDto> tools;
+  final String sourceKind;
 }
 
 class ApiKeyInfoDto {

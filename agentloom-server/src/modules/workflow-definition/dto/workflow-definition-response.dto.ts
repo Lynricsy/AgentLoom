@@ -4,6 +4,7 @@ import type {
   ReactFlowViewport,
   WorkflowDefinition,
 } from '../../../database/schema/workflow-definitions.schema';
+import type { ResourceSourceKind } from '../../../database/schema';
 import type { WorkflowInputSchema } from '../../workflow/dto/workflow-input-schema.dto';
 import { normalizeWorkflowNodesAndEdges } from '../utils/normalize-workflow-graph.utils';
 
@@ -26,6 +27,7 @@ export interface WorkflowDefinitionResponseDto {
   updatedBy: string;
   createdAt: string;
   updatedAt: string;
+  resourceSourceKind: ResourceSourceKind;
 }
 
 /**
@@ -74,6 +76,7 @@ export function serializeWorkflowDefinition(
   > & {
     publishedReleaseNumber?: number | null;
   },
+  options?: { resourceSourceKind?: ResourceSourceKind },
 ): WorkflowDefinitionResponseDto {
   return {
     id: row.id,
@@ -94,6 +97,7 @@ export function serializeWorkflowDefinition(
     updatedBy: row.updatedBy,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
+    resourceSourceKind: options?.resourceSourceKind ?? 'manual',
   };
 }
 
@@ -104,11 +108,12 @@ export function serializeWorkflowDefinitionDetail(
   row: WorkflowDefinition & {
     publishedReleaseNumber?: number | null;
   },
+  options?: { resourceSourceKind?: ResourceSourceKind },
 ): WorkflowDefinitionDetailResponseDto {
   const normalizedGraph = normalizeWorkflowNodesAndEdges(row.nodes, row.edges);
 
   return {
-    ...serializeWorkflowDefinition(row),
+    ...serializeWorkflowDefinition(row, options),
     nodes: normalizedGraph.nodes,
     edges: normalizedGraph.edges,
     viewport: row.viewport ?? null,

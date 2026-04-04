@@ -21,10 +21,13 @@ export function useMemoryInstances(params?: MemoryInstanceListParams) {
   });
 }
 
-export function useAllMemoryInstances(options?: { enabled?: boolean }) {
+export function useAllMemoryInstances(options?: {
+  enabled?: boolean;
+  sourceKind?: MemoryInstanceListParams['sourceKind'];
+}) {
   return useQuery({
-    queryKey: memoryInstanceKeys.allOptions(),
-    queryFn: fetchAllMemoryInstances,
+    queryKey: memoryInstanceKeys.allOptions(options?.sourceKind),
+    queryFn: () => fetchAllMemoryInstances({ sourceKind: options?.sourceKind }),
     enabled: options?.enabled,
   });
 }

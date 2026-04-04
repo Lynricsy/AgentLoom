@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../routes/route_names.dart';
+import '../../../shared/widgets/resource_source_chip.dart';
 import '../providers/memory_providers.dart';
 
 /// Memory 实例列表页面
@@ -21,95 +22,137 @@ class _MemoryListScreenState extends ConsumerState<MemoryListScreen> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('Memory')),
-      body: memoryState.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) => Center(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                Icons.error_outline,
-                size: 48,
-                color: theme.colorScheme.error,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Failed to load memory instances',
-                style: theme.textTheme.titleMedium,
-              ),
-              const SizedBox(height: 8),
-              TextButton(
-                onPressed: () =>
-                    ref.read(memoryListProvider.notifier).refresh(),
-                child: const Text('Retry'),
-              ),
-            ],
+      body: Column(
+        children: [
+          SizedBox(
+            height: 56,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              children: [
+                _FilterChip(
+                  label: '全部来源',
+                  selected: memoryState.value?.sourceKindFilter == null,
+                  onSelected: (_) => ref
+                      .read(memoryListProvider.notifier)
+                      .setSourceKindFilter(null),
+                ),
+                const SizedBox(width: 8),
+                _FilterChip(
+                  label: '自己创建',
+                  selected: memoryState.value?.sourceKindFilter == 'manual',
+                  onSelected: (_) => ref
+                      .read(memoryListProvider.notifier)
+                      .setSourceKindFilter('manual'),
+                ),
+                const SizedBox(width: 8),
+                _FilterChip(
+                  label: '分享导入',
+                  selected:
+                      memoryState.value?.sourceKindFilter == 'share_imported',
+                  onSelected: (_) => ref
+                      .read(memoryListProvider.notifier)
+                      .setSourceKindFilter('share_imported'),
+                ),
+              ],
+            ),
           ),
-        ),
-        data: (state) {
-          if (state.instances.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.memory_outlined,
-                    size: 64,
-                    color: theme.colorScheme.onSurfaceVariant.withValues(
-                      alpha: 0.5,
+          Expanded(
+            child: memoryState.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (error, _) => Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.error_outline,
+                      size: 48,
+                      color: theme.colorScheme.error,
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'No memory instances found',
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
+                    const SizedBox(height: 16),
+                    Text(
+                      'Failed to load memory instances',
+                      style: theme.textTheme.titleMedium,
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 8),
+                    TextButton(
+                      onPressed: () =>
+                          ref.read(memoryListProvider.notifier).refresh(),
+                      child: const Text('Retry'),
+                    ),
+                  ],
+                ),
               ),
-            );
-          }
-
-          return RefreshIndicator(
-            onRefresh: () => ref.read(memoryListProvider.notifier).refresh(),
-            child: NotificationListener<ScrollNotification>(
-              onNotification: (scrollInfo) {
-                if (scrollInfo.metrics.pixels >=
-                    scrollInfo.metrics.maxScrollExtent - 200) {
-                  ref.read(memoryListProvider.notifier).loadMore();
-                }
-                return false;
-              },
-              child: ListView.builder(
-                itemCount:
-                    state.instances.length + (state.isLoadingMore ? 1 : 0),
-                itemBuilder: (context, index) {
-                  if (index == state.instances.length) {
-                    return const Center(
-                      child: Padding(
-                        padding: EdgeInsets.all(16),
-                        child: CircularProgressIndicator(),
-                      ),
-                    );
-                  }
-
-                  final instance = state.instances[index];
-                  return _MemoryInstanceCard(
-                    name: instance.name,
-                    description: instance.description,
-                    status: instance.status,
-                    nodeCount: instance.nodeCount,
-                    onTap: () => context.pushNamed(
-                      RouteNames.memoryDetail,
-                      pathParameters: {'id': instance.id},
+              data: (state) {
+                if (state.instances.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.memory_outlined,
+                          size: 64,
+                          color: theme.colorScheme.onSurfaceVariant.withValues(
+                            alpha: 0.5,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Text(
+                          'No memory instances found',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
                     ),
                   );
-                },
-              ),
+                }
+
+                return RefreshIndicator(
+                  onRefresh: () =>
+                      ref.read(memoryListProvider.notifier).refresh(),
+                  child: NotificationListener<ScrollNotification>(
+                    onNotification: (scrollInfo) {
+                      if (scrollInfo.metrics.pixels >=
+                          scrollInfo.metrics.maxScrollExtent - 200) {
+                        ref.read(memoryListProvider.notifier).loadMore();
+                      }
+                      return false;
+                    },
+                    child: ListView.builder(
+                      itemCount:
+                          state.instances.length +
+                          (state.isLoadingMore ? 1 : 0),
+                      itemBuilder: (context, index) {
+                        if (index == state.instances.length) {
+                          return const Center(
+                            child: Padding(
+                              padding: EdgeInsets.all(16),
+                              child: CircularProgressIndicator(),
+                            ),
+                          );
+                        }
+
+                        final instance = state.instances[index];
+                        return _MemoryInstanceCard(
+                          name: instance.name,
+                          description: instance.description,
+                          status: instance.status,
+                          sourceKind: instance.sourceKind,
+                          nodeCount: instance.nodeCount,
+                          onTap: () => context.pushNamed(
+                            RouteNames.memoryDetail,
+                            pathParameters: {'id': instance.id},
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                );
+              },
             ),
-          );
-        },
+          ),
+        ],
       ),
     );
   }
@@ -119,6 +162,7 @@ class _MemoryInstanceCard extends StatelessWidget {
   final String name;
   final String? description;
   final String status;
+  final String sourceKind;
   final int nodeCount;
   final VoidCallback onTap;
 
@@ -126,6 +170,7 @@ class _MemoryInstanceCard extends StatelessWidget {
     required this.name,
     this.description,
     required this.status,
+    required this.sourceKind,
     required this.nodeCount,
     required this.onTap,
   });
@@ -170,6 +215,8 @@ class _MemoryInstanceCard extends StatelessWidget {
               children: [
                 _StatusChip(status: status),
                 const SizedBox(width: 8),
+                ResourceSourceChip(sourceKind: sourceKind, compact: true),
+                const SizedBox(width: 8),
                 Icon(
                   Icons.account_tree_outlined,
                   size: 14,
@@ -189,6 +236,28 @@ class _MemoryInstanceCard extends StatelessWidget {
         trailing: const Icon(Icons.chevron_right),
         onTap: onTap,
       ),
+    );
+  }
+}
+
+class _FilterChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final ValueChanged<bool> onSelected;
+
+  const _FilterChip({
+    required this.label,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return FilterChip(
+      label: Text(label),
+      selected: selected,
+      onSelected: onSelected,
+      showCheckmark: false,
     );
   }
 }

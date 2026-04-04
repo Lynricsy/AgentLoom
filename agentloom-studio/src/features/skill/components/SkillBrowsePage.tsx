@@ -9,9 +9,15 @@ import {
   Trash2,
   Eye,
   Loader2,
+  FolderSync,
   ShieldCheck,
   FileText,
 } from 'lucide-react';
+import { convertResourceSourceToManual } from '@/shared/api/resourceSourceApi';
+import {
+  getResourceSourceBadgeClass,
+  getResourceSourceLabel,
+} from '@/shared/lib/resourceSource';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
 import { Select } from '@/shared/ui/select';
@@ -78,6 +84,7 @@ interface SkillCardActionsProps {
   onEdit: (skill: Skill) => void;
   onArchive: (skill: Skill) => void;
   onDelete: (skill: Skill) => void;
+  onConvertSource: (skill: Skill) => void;
 }
 
 function SkillCardActions({
@@ -86,6 +93,7 @@ function SkillCardActions({
   onEdit,
   onArchive,
   onDelete,
+  onConvertSource,
 }: SkillCardActionsProps) {
   return (
     <DropdownMenu>
@@ -108,6 +116,12 @@ function SkillCardActions({
               <Pencil className="h-3.5 w-3.5" />
               编辑
             </DropdownMenuItem>
+            {skill.sourceKind === 'share_imported' && (
+              <DropdownMenuItem onClick={() => onConvertSource(skill)}>
+                <FolderSync className="h-3.5 w-3.5" />
+                转为自己创建
+              </DropdownMenuItem>
+            )}
             {skill.status === 'active' && (
               <DropdownMenuItem onClick={() => onArchive(skill)}>
                 <Archive className="h-3.5 w-3.5" />
@@ -131,6 +145,7 @@ export function SkillBrowsePage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [builtinFilter, setBuiltinFilter] = useState<string>('all');
+  const [sourceKindFilter, setSourceKindFilter] = useState<string>('all');
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editingSkill, setEditingSkill] = useState<Skill | null>(null);
   const [viewingSkill, setViewingSkill] = useState<Skill | null>(null);
@@ -144,8 +159,10 @@ export function SkillBrowsePage() {
     if (search.trim()) p.search = search.trim();
     if (statusFilter !== 'all') p.status = statusFilter as SkillStatus;
     if (builtinFilter !== 'all') p.isBuiltin = builtinFilter === 'builtin';
+    if (sourceKindFilter !== 'all')
+      p.sourceKind = sourceKindFilter as 'manual' | 'share_imported';
     return p;
-  }, [page, search, statusFilter, builtinFilter]);
+  }, [page, search, statusFilter, builtinFilter, sourceKindFilter]);
 
   const { data, isLoading, isError, refetch } = useSkillList(params);
   const skills = data?.data ?? [];
@@ -169,6 +186,11 @@ export function SkillBrowsePage() {
     setPage(1);
   }, []);
 
+  const handleSourceKindChange = useCallback((value: string) => {
+    setSourceKindFilter(value);
+    setPage(1);
+  }, []);
+
   const handleView = useCallback((skill: Skill) => {
     setViewingSkill(skill);
   }, []);
@@ -187,6 +209,18 @@ export function SkillBrowsePage() {
   const handleDelete = useCallback((skill: Skill) => {
     setConfirmDelete(skill);
   }, []);
+
+  const handleConvertSource = useCallback(
+    async (skill: Skill) => {
+      try {
+        await convertResourceSourceToManual('skill', skill.id);
+        await refetch();
+      } catch {
+        // noop
+      }
+    },
+    [refetch],
+  );
 
   const handleConfirmDelete = useCallback(() => {
     if (!confirmDelete) return;
@@ -241,6 +275,15 @@ export function SkillBrowsePage() {
           <option value="builtin">内置技能</option>
           <option value="custom">自定义技能</option>
         </Select>
+        <Select
+          value={sourceKindFilter}
+          onValueChange={handleSourceKindChange}
+          className="w-36"
+        >
+          <option value="all">全部来源</option>
+          <option value="manual">自己创建</option>
+          <option value="share_imported">分享导入</option>
+        </Select>
       </div>
 
       {/* 列表内容 */}
@@ -261,7 +304,10 @@ export function SkillBrowsePage() {
         <div className="flex flex-1 flex-col items-center justify-center gap-2 py-20">
           <Zap className="h-12 w-12 text-muted-foreground" />
           <p className="text-sm text-muted-foreground">
-            {search || statusFilter !== 'all' || builtinFilter !== 'all'
+            {search ||
+            statusFilter !== 'all' ||
+            builtinFilter !== 'all' ||
+            sourceKindFilter !== 'all'
               ? '没有匹配的技能'
               : '暂无技能，点击右上角新建'}
           </p>
@@ -288,6 +334,13 @@ export function SkillBrowsePage() {
                       >
                         {skill.name}
                       </button>
+                      <span
+                        className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${getResourceSourceBadgeClass(
+                          skill.sourceKind ?? 'manual',
+                        )}`}
+                      >
+                        {getResourceSourceLabel(skill.sourceKind ?? 'manual')}
+                      </span>
                       {skill.isBuiltin && <BuiltinBadge />}
                       <StatusBadge status={skill.status} />
                     </div>
@@ -301,6 +354,7 @@ export function SkillBrowsePage() {
                     onEdit={handleEdit}
                     onArchive={handleArchive}
                     onDelete={handleDelete}
+                    onConvertSource={handleConvertSource}
                   />
                 </div>
 

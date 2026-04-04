@@ -26,6 +26,7 @@ mixin _$WorkflowDefinitionDto {
   String? get updatedBy;
   String get createdAt;
   String get updatedAt;
+  String get resourceSourceKind;
 
   /// Create a copy of WorkflowDefinitionDto
   /// with the given fields replaced by the non-null parameter values.
@@ -63,7 +64,9 @@ mixin _$WorkflowDefinitionDto {
             (identical(other.createdAt, createdAt) ||
                 other.createdAt == createdAt) &&
             (identical(other.updatedAt, updatedAt) ||
-                other.updatedAt == updatedAt));
+                other.updatedAt == updatedAt) &&
+            (identical(other.resourceSourceKind, resourceSourceKind) ||
+                other.resourceSourceKind == resourceSourceKind));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
@@ -83,11 +86,12 @@ mixin _$WorkflowDefinitionDto {
     updatedBy,
     createdAt,
     updatedAt,
+    resourceSourceKind,
   );
 
   @override
   String toString() {
-    return 'WorkflowDefinitionDto(id: $id, name: $name, slug: $slug, description: $description, icon: $icon, status: $status, version: $version, publishedReleaseNumber: $publishedReleaseNumber, metadata: $metadata, createdBy: $createdBy, updatedBy: $updatedBy, createdAt: $createdAt, updatedAt: $updatedAt)';
+    return 'WorkflowDefinitionDto(id: $id, name: $name, slug: $slug, description: $description, icon: $icon, status: $status, version: $version, publishedReleaseNumber: $publishedReleaseNumber, metadata: $metadata, createdBy: $createdBy, updatedBy: $updatedBy, createdAt: $createdAt, updatedAt: $updatedAt, resourceSourceKind: $resourceSourceKind)';
   }
 }
 
@@ -112,6 +116,7 @@ abstract mixin class $WorkflowDefinitionDtoCopyWith<$Res> {
     String? updatedBy,
     String createdAt,
     String updatedAt,
+    String resourceSourceKind,
   });
 }
 
@@ -141,6 +146,7 @@ class _$WorkflowDefinitionDtoCopyWithImpl<$Res>
     Object? updatedBy = freezed,
     Object? createdAt = null,
     Object? updatedAt = null,
+    Object? resourceSourceKind = null,
   }) {
     return _then(
       _self.copyWith(
@@ -195,6 +201,10 @@ class _$WorkflowDefinitionDtoCopyWithImpl<$Res>
         updatedAt: null == updatedAt
             ? _self.updatedAt
             : updatedAt // ignore: cast_nullable_to_non_nullable
+                  as String,
+        resourceSourceKind: null == resourceSourceKind
+            ? _self.resourceSourceKind
+            : resourceSourceKind // ignore: cast_nullable_to_non_nullable
                   as String,
       ),
     );
@@ -308,6 +318,7 @@ extension WorkflowDefinitionDtoPatterns on WorkflowDefinitionDto {
       String? updatedBy,
       String createdAt,
       String updatedAt,
+      String resourceSourceKind,
     )?
     $default, {
     required TResult orElse(),
@@ -329,6 +340,7 @@ extension WorkflowDefinitionDtoPatterns on WorkflowDefinitionDto {
           _that.updatedBy,
           _that.createdAt,
           _that.updatedAt,
+          _that.resourceSourceKind,
         );
       case _:
         return orElse();
@@ -364,6 +376,7 @@ extension WorkflowDefinitionDtoPatterns on WorkflowDefinitionDto {
       String? updatedBy,
       String createdAt,
       String updatedAt,
+      String resourceSourceKind,
     )
     $default,
   ) {
@@ -384,6 +397,7 @@ extension WorkflowDefinitionDtoPatterns on WorkflowDefinitionDto {
           _that.updatedBy,
           _that.createdAt,
           _that.updatedAt,
+          _that.resourceSourceKind,
         );
       case _:
         throw StateError('Unexpected subclass');
@@ -418,6 +432,7 @@ extension WorkflowDefinitionDtoPatterns on WorkflowDefinitionDto {
       String? updatedBy,
       String createdAt,
       String updatedAt,
+      String resourceSourceKind,
     )?
     $default,
   ) {
@@ -438,6 +453,7 @@ extension WorkflowDefinitionDtoPatterns on WorkflowDefinitionDto {
           _that.updatedBy,
           _that.createdAt,
           _that.updatedAt,
+          _that.resourceSourceKind,
         );
       case _:
         return null;
@@ -447,7 +463,7 @@ extension WorkflowDefinitionDtoPatterns on WorkflowDefinitionDto {
 
 /// @nodoc
 @JsonSerializable()
-class _WorkflowDefinitionDto implements WorkflowDefinitionDto {
+class _WorkflowDefinitionDto extends WorkflowDefinitionDto {
   const _WorkflowDefinitionDto({
     required this.id,
     required this.name,
@@ -462,7 +478,9 @@ class _WorkflowDefinitionDto implements WorkflowDefinitionDto {
     this.updatedBy,
     required this.createdAt,
     required this.updatedAt,
-  }) : _metadata = metadata;
+    this.resourceSourceKind = 'manual',
+  }) : _metadata = metadata,
+       super._();
   factory _WorkflowDefinitionDto.fromJson(Map<String, dynamic> json) =>
       _$WorkflowDefinitionDtoFromJson(json);
 
@@ -500,6 +518,9 @@ class _WorkflowDefinitionDto implements WorkflowDefinitionDto {
   final String createdAt;
   @override
   final String updatedAt;
+  @override
+  @JsonKey()
+  final String resourceSourceKind;
 
   /// Create a copy of WorkflowDefinitionDto
   /// with the given fields replaced by the non-null parameter values.
@@ -540,7 +561,9 @@ class _WorkflowDefinitionDto implements WorkflowDefinitionDto {
             (identical(other.createdAt, createdAt) ||
                 other.createdAt == createdAt) &&
             (identical(other.updatedAt, updatedAt) ||
-                other.updatedAt == updatedAt));
+                other.updatedAt == updatedAt) &&
+            (identical(other.resourceSourceKind, resourceSourceKind) ||
+                other.resourceSourceKind == resourceSourceKind));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
@@ -560,11 +583,12 @@ class _WorkflowDefinitionDto implements WorkflowDefinitionDto {
     updatedBy,
     createdAt,
     updatedAt,
+    resourceSourceKind,
   );
 
   @override
   String toString() {
-    return 'WorkflowDefinitionDto(id: $id, name: $name, slug: $slug, description: $description, icon: $icon, status: $status, version: $version, publishedReleaseNumber: $publishedReleaseNumber, metadata: $metadata, createdBy: $createdBy, updatedBy: $updatedBy, createdAt: $createdAt, updatedAt: $updatedAt)';
+    return 'WorkflowDefinitionDto(id: $id, name: $name, slug: $slug, description: $description, icon: $icon, status: $status, version: $version, publishedReleaseNumber: $publishedReleaseNumber, metadata: $metadata, createdBy: $createdBy, updatedBy: $updatedBy, createdAt: $createdAt, updatedAt: $updatedAt, resourceSourceKind: $resourceSourceKind)';
   }
 }
 
@@ -591,6 +615,7 @@ abstract mixin class _$WorkflowDefinitionDtoCopyWith<$Res>
     String? updatedBy,
     String createdAt,
     String updatedAt,
+    String resourceSourceKind,
   });
 }
 
@@ -620,6 +645,7 @@ class __$WorkflowDefinitionDtoCopyWithImpl<$Res>
     Object? updatedBy = freezed,
     Object? createdAt = null,
     Object? updatedAt = null,
+    Object? resourceSourceKind = null,
   }) {
     return _then(
       _WorkflowDefinitionDto(
@@ -674,6 +700,10 @@ class __$WorkflowDefinitionDtoCopyWithImpl<$Res>
         updatedAt: null == updatedAt
             ? _self.updatedAt
             : updatedAt // ignore: cast_nullable_to_non_nullable
+                  as String,
+        resourceSourceKind: null == resourceSourceKind
+            ? _self.resourceSourceKind
+            : resourceSourceKind // ignore: cast_nullable_to_non_nullable
                   as String,
       ),
     );

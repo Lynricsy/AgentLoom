@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { getTenantDb } from '../../../common/providers/tenant-aware-db.provider';
 import { DRIZZLE } from '../../../database/database.module';
 import { LlmService } from '../../llm/llm.service';
+import { ResourceSourceService } from '../../resource-source/resource-source.service';
 import {
   createDefaultChunkingStrategy,
   createDefaultQueryOrchestration,
@@ -69,6 +70,10 @@ describe('KnowledgeBaseService', () => {
     findById: ReturnType<typeof vi.fn>;
     findDefaultByType: ReturnType<typeof vi.fn>;
   };
+  let resourceSourceService: {
+    mapCurrentKinds: ReturnType<typeof vi.fn>;
+    buildShareImportedExistsCondition: ReturnType<typeof vi.fn>;
+  };
 
   function createKnowledgeBaseRow(overrides: Record<string, unknown> = {}) {
     return {
@@ -86,6 +91,7 @@ describe('KnowledgeBaseService', () => {
       createdBy: USER_ID,
       createdAt: new Date(),
       updatedAt: new Date(),
+      sourceKind: 'manual',
       ...overrides,
     };
   }
@@ -103,6 +109,12 @@ describe('KnowledgeBaseService', () => {
       findById: vi.fn(),
       findDefaultByType: vi.fn().mockResolvedValue(null),
     };
+    resourceSourceService = {
+      mapCurrentKinds: vi.fn().mockResolvedValue(new Map()),
+      buildShareImportedExistsCondition: vi.fn(() => ({
+        type: 'share-imported',
+      })),
+    };
     vi.mocked(getTenantDb).mockReturnValue(db as never);
 
     const module = await Test.createTestingModule({
@@ -110,6 +122,7 @@ describe('KnowledgeBaseService', () => {
         KnowledgeBaseService,
         { provide: DRIZZLE, useValue: db },
         { provide: LlmService, useValue: llmService },
+        { provide: ResourceSourceService, useValue: resourceSourceService },
       ],
     }).compile();
 

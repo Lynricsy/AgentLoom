@@ -83,6 +83,7 @@ export class KnowledgeBaseController {
         tenantId,
         query.page,
         query.pageSize,
+        query.sourceKind,
       );
     return {
       data,

@@ -64,6 +64,12 @@ typedef _StatusPayload = ({
   String? errorMessage,
   bool? sandboxReused,
 });
+typedef _ConversationHistorySnapshot = ({
+  List<ConversationMessageDto> messages,
+  String? runningState,
+  String? errorMessage,
+  PreparationPhase? failedPhase,
+});
 
 String _resolveConversationSocketUrl(String apiBaseUrl) {
   final resolvedApiUrl = Uri.parse(apiBaseUrl);
@@ -768,6 +774,33 @@ _StatusPayload? _normalizeStatusPayload(Object? raw) {
   );
 }
 
+_ConversationHistorySnapshot _normalizeConversationHistorySnapshot(
+  AgentConversationDetailDto detail,
+) {
+  final execution = _asMap(detail.metadata['execution']);
+  final runningState = switch (_readString(execution['runningState'])) {
+    'idle' => 'idle',
+    'running' => 'running',
+    'failed' => 'failed',
+    'cancelled' => 'cancelled',
+    _ => null,
+  };
+  final errorMessage =
+      _readString(execution['errorMessage']) ??
+      _readString(execution['rawErrorMessage']) ??
+      _readString(execution['lastErrorMessage']);
+  final failedPhase = parsePreparationPhase(_readString(execution['failedPhase']));
+
+  return (
+    messages: detail.messages.data
+        .map(_normalizeHistoryMessage)
+        .toList(growable: false),
+    runningState: runningState,
+    errorMessage: errorMessage,
+    failedPhase: failedPhase,
+  );
+}
+
 String _nextLocalId(String prefix) {
   return '$prefix-${DateTime.now().microsecondsSinceEpoch}';
 }
@@ -999,20 +1032,66 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
   Future<void> _loadHistory({bool silent = false}) async {
     final requestVersion = ++_historyRequestVersion;
     try {
-      final messages = await _fetchHistory();
+      final snapshot = _normalizeConversationHistorySnapshot(
+        await ref.read(agentApiProvider).getConversationDetail(
+              params.conversationId,
+            ),
+      );
       if (!ref.mounted || requestVersion != _historyRequestVersion) {
         return;
       }
 
-      _updateState(
-        (current) => current.copyWith(
-          messages: messages,
-          status: current.isConnected
-              ? ConversationStatus.connected
-              : ConversationStatus.idle,
-          clearError: true,
-        ),
-      );
+      _updateState((current) {
+        if (snapshot.runningState == 'running') {
+          return current.copyWith(
+            messages: snapshot.messages,
+            status: ConversationStatus.executing,
+            clearError: true,
+          );
+        }
+
+        if (snapshot.runningState == 'failed') {
+          final runtimeError =
+              snapshot.errorMessage ?? '当前对话执行失败，请检查 Agent 配置后重试。';
+          if (snapshot.failedPhase != null) {
+            return current.copyWith(
+              messages: snapshot.messages,
+              status: ConversationStatus.error,
+              preparationFailedPhase: snapshot.failedPhase,
+              preparationError: runtimeError,
+              error: runtimeError,
+            );
+          }
+
+          return current.copyWith(
+            messages: snapshot.messages,
+            status: ConversationStatus.error,
+            error: runtimeError,
+            clearPreparationPhase: true,
+            clearPreparationStartTime: true,
+            clearPreparationError: true,
+            clearPreparationFailedPhase: true,
+          );
+        }
+
+        if (
+            snapshot.runningState == 'idle' ||
+            snapshot.runningState == 'cancelled') {
+          return current.copyWith(
+            messages: snapshot.messages,
+            status: current.isConnected
+                ? ConversationStatus.connected
+                : ConversationStatus.idle,
+            clearError: true,
+            clearPreparationPhase: true,
+            clearPreparationStartTime: true,
+            clearPreparationError: true,
+            clearPreparationFailedPhase: true,
+          );
+        }
+
+        return current.copyWith(messages: snapshot.messages);
+      });
     } catch (error) {
       if (!ref.mounted || silent) {
         return;
@@ -1189,7 +1268,7 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
             sessionId: payload.sessionId,
           ),
         ],
-        clearError: true,
+        clearError: current.status != ConversationStatus.error,
       ),
     );
   }
@@ -1235,7 +1314,7 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
         clearWorkspacePreviewUnavailableReason: true,
         selectedFileContent: selectedFileContent,
         clearSelectedFileContent: clearSelected,
-        clearError: true,
+        clearError: current.status != ConversationStatus.error,
       );
     });
   }
@@ -1248,20 +1327,28 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
     final hasSandboxRuntime = state.value?.hasSandboxRuntime ?? true;
 
     _updateState(
-      (current) => current.copyWith(
-        messages: _finishStreamingMessage(
+      (current) {
+        final messages = _finishStreamingMessage(
           current.messages,
           messageId: payload.messageId,
-        ),
-        status: current.isConnected
-            ? ConversationStatus.connected
-            : ConversationStatus.idle,
-        clearPreparationPhase: true,
-        clearPreparationStartTime: true,
-        clearPreparationError: true,
-        clearPreparationFailedPhase: true,
-        clearError: true,
-      ),
+        );
+
+        if (current.status == ConversationStatus.error) {
+          return current.copyWith(messages: messages);
+        }
+
+        return current.copyWith(
+          messages: messages,
+          status: current.isConnected
+              ? ConversationStatus.connected
+              : ConversationStatus.idle,
+          clearPreparationPhase: true,
+          clearPreparationStartTime: true,
+          clearPreparationError: true,
+          clearPreparationFailedPhase: true,
+          clearError: true,
+        );
+      },
     );
 
     unawaited(_loadHistory(silent: true));
@@ -1528,7 +1615,7 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
           clearSelectedFilePath: !keepSelected,
           clearSelectedFileContent:
               !keepSelected || current.selectedFileContent == null,
-          clearError: true,
+          clearError: current.status != ConversationStatus.error,
         );
       });
     } catch (error) {
@@ -1559,7 +1646,7 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
         (current) => current.copyWith(
           selectedFilePath: path,
           clearSelectedFileContent: true,
-          clearError: true,
+          clearError: current.status != ConversationStatus.error,
         ),
       );
       return;
@@ -1569,7 +1656,7 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
       (current) => current.copyWith(
         selectedFilePath: path,
         isLoadingWorkspace: true,
-        clearError: true,
+        clearError: current.status != ConversationStatus.error,
       ),
     );
 
@@ -1587,7 +1674,7 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
           workspaceTreeOnly: false,
           clearWorkspacePreviewUnavailableReason: true,
           isLoadingWorkspace: false,
-          clearError: true,
+          clearError: current.status != ConversationStatus.error,
         ),
       );
     } catch (error) {
@@ -1604,7 +1691,7 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
             workspacePreviewUnavailableReason: message,
             clearSelectedFileContent: true,
             isLoadingWorkspace: false,
-            clearError: true,
+            clearError: current.status != ConversationStatus.error,
           ),
         );
         return;

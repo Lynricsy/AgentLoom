@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type {
@@ -249,11 +249,22 @@ describe('MarketplaceDetailDialog', () => {
       />,
     )
 
-    expect(screen.getByTestId('marketplace-detail-dialog')).toBeInTheDocument()
-    expect(screen.getByText('Agent Workflow')).toBeInTheDocument()
+    const dialog = screen.getByTestId('marketplace-detail-dialog')
+
+    expect(dialog).toBeInTheDocument()
     expect(
-      screen.getByText('A detailed workflow summary for marketplace preview.'),
-    ).toBeInTheDocument()
+      within(dialog).getAllByText('Agent Workflow', {
+        selector: 'h2',
+      }),
+    ).toHaveLength(2)
+    expect(
+      within(dialog).getAllByText(
+        'A detailed workflow summary for marketplace preview.',
+        {
+          selector: 'p',
+        },
+      ),
+    ).toHaveLength(2)
     expect(screen.getByText('作者：酒狐')).toBeInTheDocument()
     expect(screen.getByText('42 次安装')).toBeInTheDocument()
     expect(screen.getByText('4.5')).toBeInTheDocument()
@@ -306,7 +317,13 @@ describe('MarketplaceDetailDialog', () => {
       />,
     )
 
-    expect(screen.getByText('Text Uppercase Plugin')).toBeInTheDocument()
+    const dialog = screen.getByTestId('marketplace-detail-dialog')
+
+    expect(
+      within(dialog).getAllByText('Text Uppercase Plugin', {
+        selector: 'h2',
+      }),
+    ).toHaveLength(2)
     expect(screen.queryByTestId('marketplace-preview')).not.toBeInTheDocument()
     expect(screen.queryByTestId('reactflow-preview')).not.toBeInTheDocument()
     expect(screen.getByText('插件信息')).toBeInTheDocument()

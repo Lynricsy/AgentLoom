@@ -2,6 +2,11 @@ import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Plus, Search, Database, Trash2 } from "lucide-react";
 import { Pagination } from "@/shared/components";
+import { convertResourceSourceToManual } from "@/shared/api/resourceSourceApi";
+import {
+  getResourceSourceBadgeClass,
+  getResourceSourceLabel,
+} from "@/shared/lib/resourceSource";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import {
@@ -42,6 +47,9 @@ export function KnowledgeBasesPage() {
   const pageSize = 20;
   const [searchQuery, setSearchQuery] = useState("");
   const [page, setPage] = useState(1);
+  const [sourceKindFilter, setSourceKindFilter] = useState<
+    "" | "manual" | "share_imported"
+  >("");
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [newKbName, setNewKbName] = useState("");
   const [newKbDescription, setNewKbDescription] = useState("");
@@ -55,12 +63,21 @@ export function KnowledgeBasesPage() {
     data,
     isLoading: isPageLoading,
     error: pageError,
-  } = useKnowledgeBases({ page, pageSize });
+    refetch: refetchPageKnowledgeBases,
+  } = useKnowledgeBases({
+    page,
+    pageSize,
+    sourceKind: sourceKindFilter || undefined,
+  });
   const {
     data: allKnowledgeBases,
     isLoading: isAllKnowledgeBasesLoading,
     error: allKnowledgeBasesError,
-  } = useAllKnowledgeBases({ enabled: isSearching });
+    refetch: refetchAllKnowledgeBases,
+  } = useAllKnowledgeBases({
+    enabled: isSearching,
+    sourceKind: sourceKindFilter || undefined,
+  });
   const createMutation = useCreateKnowledgeBase();
   const deleteMutation = useDeleteKnowledgeBase();
   const knowledgeBases = data?.data ?? EMPTY_KNOWLEDGE_BASES;
@@ -176,6 +193,21 @@ export function KnowledgeBasesPage() {
     [navigate],
   );
 
+  const handleConvertSource = useCallback(
+    async (kb: KnowledgeBase) => {
+      try {
+        await convertResourceSourceToManual("knowledge_base", kb.id);
+        await refetchPageKnowledgeBases();
+        if (isSearching) {
+          await refetchAllKnowledgeBases();
+        }
+      } catch {
+        // noop
+      }
+    },
+    [isSearching, refetchAllKnowledgeBases, refetchPageKnowledgeBases],
+  );
+
   if (error) {
     return (
       <div className="flex items-center justify-center h-full">
@@ -196,17 +228,33 @@ export function KnowledgeBasesPage() {
       </div>
 
       {/* 搜索 */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-        <Input
-          placeholder="搜索知识库..."
-          value={searchQuery}
+      <div className="flex gap-3">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            placeholder="搜索知识库..."
+            value={searchQuery}
+            onChange={(e) => {
+              setSearchQuery(e.target.value);
+              setPage(1);
+            }}
+            className="pl-9"
+          />
+        </div>
+        <select
+          value={sourceKindFilter}
           onChange={(e) => {
-            setSearchQuery(e.target.value);
+            setSourceKindFilter(
+              e.target.value as "" | "manual" | "share_imported",
+            );
             setPage(1);
           }}
-          className="pl-9"
-        />
+          className="h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+        >
+          <option value="">全部来源</option>
+          <option value="manual">自己创建</option>
+          <option value="share_imported">分享导入</option>
+        </select>
       </div>
 
       {/* 加载状态 */}
@@ -252,6 +300,13 @@ export function KnowledgeBasesPage() {
                       >
                         {getKnowledgeBaseStatusLabel(kb.status)}
                       </span>
+                      <span
+                        className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${getResourceSourceBadgeClass(
+                          kb.sourceKind ?? "manual",
+                        )}`}
+                      >
+                        {getResourceSourceLabel(kb.sourceKind ?? "manual")}
+                      </span>
                     </div>
                     {kb.description && (
                       <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
@@ -284,6 +339,15 @@ export function KnowledgeBasesPage() {
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>
+                {kb.sourceKind === "share_imported" ? (
+                  <button
+                    type="button"
+                    onClick={() => void handleConvertSource(kb)}
+                    className="absolute right-12 top-3 rounded-md border border-border px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                  >
+                    转为自己创建
+                  </button>
+                ) : null}
 
                 {deleteTarget?.id === kb.id && (
                   <div

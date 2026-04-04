@@ -23,6 +23,7 @@ _SkillDto _$SkillDtoFromJson(Map<String, dynamic> json) => _SkillDto(
   updatedBy: json['updatedBy'] as String?,
   createdAt: json['createdAt'] as String,
   updatedAt: json['updatedAt'] as String,
+  sourceKind: json['sourceKind'] as String? ?? 'manual',
 );
 
 Map<String, dynamic> _$SkillDtoToJson(_SkillDto instance) => <String, dynamic>{
@@ -42,4 +43,5 @@ Map<String, dynamic> _$SkillDtoToJson(_SkillDto instance) => <String, dynamic>{
   'updatedBy': instance.updatedBy,
   'createdAt': instance.createdAt,
   'updatedAt': instance.updatedAt,
+  'sourceKind': instance.sourceKind,
 };

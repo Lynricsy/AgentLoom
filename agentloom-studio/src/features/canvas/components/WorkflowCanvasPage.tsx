@@ -449,7 +449,8 @@ export function WorkflowCanvasPage() {
         <ShareManagementDialog
           open={isShareDialogOpen}
           onOpenChange={setIsShareDialogOpen}
-          workflowId={workflow.id}
+          resourceType="workflow"
+          resourceId={workflow.id}
         />
       )}
     </div>

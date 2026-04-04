@@ -22,10 +22,15 @@ abstract class WorkflowDefinitionDto with _$WorkflowDefinitionDto {
     String? updatedBy,
     required String createdAt,
     required String updatedAt,
+    @Default('manual') String resourceSourceKind,
   }) = _WorkflowDefinitionDto;
 
   factory WorkflowDefinitionDto.fromJson(Map<String, dynamic> json) =>
       _$WorkflowDefinitionDtoFromJson(_normalizeWorkflowDefinitionJson(json));
+
+  const WorkflowDefinitionDto._();
+
+  bool get isShareImported => resourceSourceKind == 'share_imported';
 }
 
 Map<String, dynamic> _normalizeWorkflowDefinitionJson(
@@ -39,6 +44,7 @@ Map<String, dynamic> _normalizeWorkflowDefinitionJson(
       'updatedBy': ['updated_by'],
       'createdAt': ['created_at'],
       'updatedAt': ['updated_at'],
+      'resourceSourceKind': ['resource_source_kind'],
     },
   );
 

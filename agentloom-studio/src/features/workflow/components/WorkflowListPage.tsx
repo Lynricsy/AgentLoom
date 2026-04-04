@@ -7,6 +7,7 @@ import {
   Clock,
   Download,
   Edit3,
+  FolderSync,
   LayoutGrid,
   List,
   MoreHorizontal,
@@ -16,6 +17,12 @@ import {
   X,
 } from 'lucide-react'
 import { EntityIcon } from '@/shared/components/entity-icon'
+import { convertResourceSourceToManual } from '@/shared/api/resourceSourceApi'
+import {
+  getResourceSourceBadgeClass,
+  getResourceSourceLabel,
+  RESOURCE_SOURCE_FILTER_OPTIONS,
+} from '@/shared/lib/resourceSource'
 import { cn } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
@@ -89,6 +96,7 @@ interface WorkflowCardProps {
   onEdit: (workflow: WorkflowDefinition) => void
   onExport: (workflow: WorkflowDefinition) => void
   onArchive: (workflow: WorkflowDefinition) => void
+  onConvertSource: (workflow: WorkflowDefinition) => void
 }
 
 const WorkflowCard = memo(function WorkflowCard({
@@ -100,7 +108,10 @@ const WorkflowCard = memo(function WorkflowCard({
   onEdit,
   onExport,
   onArchive,
+  onConvertSource,
 }: WorkflowCardProps) {
+  const sourceKind = workflow.resourceSourceKind ?? 'manual'
+
   return (
     <div
       className={cn(
@@ -155,6 +166,17 @@ const WorkflowCard = memo(function WorkflowCard({
               <Download className="h-4 w-4" />
               导出
             </DropdownMenuItem>
+            {sourceKind === 'share_imported' ? (
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onConvertSource(workflow)
+                }}
+              >
+                <FolderSync className="h-4 w-4" />
+                转为自己创建
+              </DropdownMenuItem>
+            ) : null}
             <DropdownMenuSeparator />
             <DropdownMenuItem
               destructive
@@ -190,7 +212,17 @@ const WorkflowCard = memo(function WorkflowCard({
         </div>
 
         <div className="flex flex-col gap-1">
-          <h3 className="truncate text-sm font-semibold text-foreground">{workflow.name}</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="truncate text-sm font-semibold text-foreground">{workflow.name}</h3>
+            <span
+              className={cn(
+                'rounded-full border px-2 py-0.5 text-[10px] font-medium',
+                getResourceSourceBadgeClass(sourceKind),
+              )}
+            >
+              {getResourceSourceLabel(sourceKind)}
+            </span>
+          </div>
           <p className="line-clamp-2 text-xs text-muted-foreground">
             {workflow.description || '暂无描述'}
           </p>
@@ -225,6 +257,7 @@ interface WorkflowListItemProps {
   onEdit: (workflow: WorkflowDefinition) => void
   onExport: (workflow: WorkflowDefinition) => void
   onArchive: (workflow: WorkflowDefinition) => void
+  onConvertSource: (workflow: WorkflowDefinition) => void
 }
 
 const WorkflowListItem = memo(function WorkflowListItem({
@@ -236,7 +269,10 @@ const WorkflowListItem = memo(function WorkflowListItem({
   onEdit,
   onExport,
   onArchive,
+  onConvertSource,
 }: WorkflowListItemProps) {
+  const sourceKind = workflow.resourceSourceKind ?? 'manual'
+
   return (
     <div
       className={cn(
@@ -269,6 +305,14 @@ const WorkflowListItem = memo(function WorkflowListItem({
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <h3 className="truncate text-sm font-semibold text-foreground">{workflow.name}</h3>
+            <span
+              className={cn(
+                'rounded-full border px-2 py-0.5 text-[10px] font-medium',
+                getResourceSourceBadgeClass(sourceKind),
+              )}
+            >
+              {getResourceSourceLabel(sourceKind)}
+            </span>
             {getWorkflowReleaseLabel(workflow) ? (
               <span className="inline-flex items-center rounded bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
                 {getWorkflowReleaseLabel(workflow)}
@@ -319,6 +363,12 @@ const WorkflowListItem = memo(function WorkflowListItem({
               <Download className="h-4 w-4" />
               导出
             </DropdownMenuItem>
+            {sourceKind === 'share_imported' ? (
+              <DropdownMenuItem onClick={() => onConvertSource(workflow)}>
+                <FolderSync className="h-4 w-4" />
+                转为自己创建
+              </DropdownMenuItem>
+            ) : null}
             <DropdownMenuSeparator />
             <DropdownMenuItem destructive onClick={() => onArchive(workflow)}>
               <Archive className="h-4 w-4" />
@@ -368,11 +418,12 @@ export function WorkflowListPage() {
 
   const exportWorkflow = useExportWorkflow()
 
-  const { data, isLoading } = useWorkflowList({
+  const { data, isLoading, refetch } = useWorkflowList({
     page: filters.page,
     pageSize: filters.pageSize,
     status: filters.status || undefined,
     search: filters.search || undefined,
+    sourceKind: filters.sourceKind || undefined,
   })
 
   const workflows = useMemo(() => data?.data ?? [], [data?.data])
@@ -391,6 +442,13 @@ export function WorkflowListPage() {
   const handleStatusFilter = useCallback(
     (event: React.ChangeEvent<HTMLSelectElement>) => {
       setFilters({ status: event.target.value })
+    },
+    [setFilters],
+  )
+
+  const handleSourceFilter = useCallback(
+    (event: React.ChangeEvent<HTMLSelectElement>) => {
+      setFilters({ sourceKind: event.target.value as '' | 'manual' | 'share_imported' })
     },
     [setFilters],
   )
@@ -425,6 +483,19 @@ export function WorkflowListPage() {
   const handleArchive = useCallback((workflow: WorkflowDefinition) => {
     setArchiveTarget(workflow)
   }, [])
+
+  const handleConvertSource = useCallback(
+    async (workflow: WorkflowDefinition) => {
+      try {
+        await convertResourceSourceToManual('workflow_definition', workflow.id)
+        await refetch()
+        notify({ description: '已转为自己创建', variant: 'success' })
+      } catch {
+        notify({ title: '转换失败', description: '请稍后重试', variant: 'error' })
+      }
+    },
+    [notify, refetch],
+  )
 
   const handleSelectAll = useCallback(() => {
     if (selectedWorkflowIds.size === workflows.length) {
@@ -478,6 +549,18 @@ export function WorkflowListPage() {
           >
             {STATUS_OPTIONS.map((option) => (
               <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+
+          <select
+            value={filters.sourceKind}
+            onChange={handleSourceFilter}
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+          >
+            {RESOURCE_SOURCE_FILTER_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value === 'all' ? '' : option.value}>
                 {option.label}
               </option>
             ))}
@@ -556,9 +639,11 @@ export function WorkflowListPage() {
               <Workflow className="h-8 w-8 text-muted-foreground/50" />
             </div>
             <p className="text-sm text-muted-foreground">
-              {filters.search || filters.status ? '没有找到匹配的工作流' : '还没有创建任何工作流'}
+              {filters.search || filters.status || filters.sourceKind
+                ? '没有找到匹配的工作流'
+                : '还没有创建任何工作流'}
             </p>
-            {!filters.search && !filters.status && (
+            {!filters.search && !filters.status && !filters.sourceKind && (
               <Button
                 variant="outline"
                 size="sm"
@@ -582,6 +667,7 @@ export function WorkflowListPage() {
                   onEdit={handleEdit}
                   onExport={handleExport}
                   onArchive={handleArchive}
+                  onConvertSource={handleConvertSource}
                 />
               </div>
             ))}
@@ -599,6 +685,7 @@ export function WorkflowListPage() {
                   onEdit={handleEdit}
                   onExport={handleExport}
                   onArchive={handleArchive}
+                  onConvertSource={handleConvertSource}
                 />
               </div>
             ))}

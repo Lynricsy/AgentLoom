@@ -1,11 +1,12 @@
 import { createRoute } from '@tanstack/react-router'
 import { Link } from '@tanstack/react-router'
 import { ReactFlowProvider } from '@xyflow/react'
-import { ChevronRight, Save } from 'lucide-react'
-import { useCallback } from 'react'
+import { ChevronRight, Save, Share2 } from 'lucide-react'
+import { useCallback, useState } from 'react'
 import { HTTPError } from 'ky'
 import { rootRoute } from '../__root'
 import { AgentCanvas, useAgentCanvasStore } from '@/features/agent-canvas'
+import { ShareManagementDialog } from '@/features/share/components/ShareManagementDialog'
 import {
   useAgentCanvasSaveStatus,
   useAgentCanvasActions,
@@ -31,7 +32,11 @@ async function resolveSaveErrorMessage(error: unknown): Promise<string> {
   }
 }
 
-function AgentBreadcrumb() {
+function AgentBreadcrumb({
+  onOpenShare,
+}: {
+  onOpenShare: () => void
+}) {
   const agentName = useAgentCanvasStore((s) => s.agentName)
   const { isDirty, isSaving } = useAgentCanvasSaveStatus()
   const { saveCanvas } = useAgentCanvasActions()
@@ -72,18 +77,34 @@ function AgentBreadcrumb() {
         <Save className="h-3 w-3" />
         {isSaving ? '保存中…' : '保存'}
       </Button>
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-6 gap-1 px-2 text-xs"
+        onClick={onOpenShare}
+      >
+        <Share2 className="h-3 w-3" />
+        分享
+      </Button>
     </nav>
   )
 }
 
 function AgentCanvasPage() {
   const { agentId } = agentDetailRoute.useParams()
+  const [isShareDialogOpen, setIsShareDialogOpen] = useState(false)
 
   return (
     <ReactFlowProvider>
       <div className="relative h-full w-full">
-        <AgentBreadcrumb />
+        <AgentBreadcrumb onOpenShare={() => setIsShareDialogOpen(true)} />
         <AgentCanvas agentId={agentId} />
+        <ShareManagementDialog
+          open={isShareDialogOpen}
+          onOpenChange={setIsShareDialogOpen}
+          resourceType="agent"
+          resourceId={agentId}
+        />
       </div>
     </ReactFlowProvider>
   )

@@ -463,6 +463,13 @@
       "when": 1775253600000,
       "tag": "0065_agent_runtime_mode",
       "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "7",
+      "when": 1775285410047,
+      "tag": "0066_agent_shares_and_resource_source_records",
+      "breakpoints": true
     }
   ]
 }

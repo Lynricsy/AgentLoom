@@ -1,14 +1,16 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 
-import { createWorkflow, validateImport } from './workflowApi'
+import { createWorkflow, listWorkflows, validateImport } from './workflowApi'
 
-const { postMock, toSnakeBodyMock } = vi.hoisted(() => ({
+const { getMock, postMock, toSnakeBodyMock } = vi.hoisted(() => ({
+  getMock: vi.fn(),
   postMock: vi.fn(),
   toSnakeBodyMock: vi.fn((body: unknown) => body),
 }))
 
 vi.mock('../../../shared/api/client', () => ({
   apiClient: {
+    get: getMock,
     post: postMock,
   },
   toSnakeBody: toSnakeBodyMock,
@@ -109,6 +111,40 @@ describe('validateImport', () => {
     expect(toSnakeBodyMock).toHaveBeenCalledWith(rawEnvelope)
     expect(postMock).toHaveBeenCalledWith('workflow-definitions/import/validate', {
       json: rawEnvelope,
+    })
+  })
+})
+
+describe('listWorkflows', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('应透传 sourceKind 查询参数', async () => {
+    const response = {
+      data: [
+        { id: 'wf-1', name: '分享导入工作流', slug: 'shared-workflow', resourceSourceKind: 'share_imported' },
+      ],
+      meta: { total: 1, page: 1, pageSize: 20, totalPages: 1 },
+    }
+    getMock.mockReturnValue({
+      json: vi.fn().mockResolvedValue(response),
+    })
+
+    await expect(
+      listWorkflows({
+        page: 1,
+        pageSize: 20,
+        sourceKind: 'share_imported',
+      }),
+    ).resolves.toEqual(response)
+
+    expect(getMock).toHaveBeenCalledWith('workflow-definitions', {
+      searchParams: {
+        page: '1',
+        pageSize: '20',
+        sourceKind: 'share_imported',
+      },
     })
   })
 })

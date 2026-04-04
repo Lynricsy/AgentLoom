@@ -40,6 +40,7 @@ _AgentDefinitionDto _$AgentDefinitionDtoFromJson(Map<String, dynamic> json) =>
       autonomyMode: json['autonomyMode'] as String?,
       maxIterations: (json['maxIterations'] as num?)?.toInt(),
       timeoutSeconds: (json['timeoutSeconds'] as num?)?.toInt(),
+      resourceSourceKind: json['resourceSourceKind'] as String? ?? 'manual',
     );
 
 Map<String, dynamic> _$AgentDefinitionDtoToJson(_AgentDefinitionDto instance) =>
@@ -72,4 +73,5 @@ Map<String, dynamic> _$AgentDefinitionDtoToJson(_AgentDefinitionDto instance) =>
       'autonomyMode': instance.autonomyMode,
       'maxIterations': instance.maxIterations,
       'timeoutSeconds': instance.timeoutSeconds,
+      'resourceSourceKind': instance.resourceSourceKind,
     };

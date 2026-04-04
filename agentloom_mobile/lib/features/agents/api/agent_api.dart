@@ -8,6 +8,11 @@ import '../models/agent_definition_dto.dart';
 import '../models/conversation_message_dto.dart';
 
 const _emptyJsonBody = <String, dynamic>{};
+typedef AgentConversationDetailDto =
+    ({
+      PaginatedResponse<ConversationMessageDto> messages,
+      Map<String, dynamic> metadata,
+    });
 
 Map<String, dynamic> _unwrapDataEnvelope(Response<dynamic> response) {
   final body = response.data as Map<String, dynamic>;
@@ -54,10 +59,14 @@ class AgentApi {
     int pageSize = 20,
     String? status,
     String? search,
+    String? sourceKind,
   }) async {
     final queryParams = <String, dynamic>{'page': page, 'page_size': pageSize};
     if (status != null) queryParams['status'] = status;
     if (search != null && search.isNotEmpty) queryParams['search'] = search;
+    if (sourceKind != null && sourceKind.isNotEmpty) {
+      queryParams['sourceKind'] = sourceKind;
+    }
 
     final response = await _dio.get(
       '/api/v1/agent-definitions',
@@ -137,6 +146,49 @@ class AgentApi {
     );
   }
 
+  Future<AgentConversationDetailDto> getConversationDetail(
+    String conversationId, {
+    int page = 1,
+    int pageSize = 50,
+  }) async {
+    final response = await _dio.get(
+      '/api/v1/agent-conversations/$conversationId',
+      queryParameters: {'page': page, 'limit': pageSize},
+    );
+    final data = _unwrapDataEnvelope(response);
+    final rawMessages = data['messages'];
+    final rawMetadata = data['metadata'];
+
+    final messagesJson = rawMessages is Map<String, dynamic>
+        ? rawMessages
+        : rawMessages is Map<Object?, Object?>
+        ? rawMessages.map((key, value) => MapEntry('$key', value))
+        : null;
+    final metadata = rawMetadata is Map<String, dynamic>
+        ? rawMetadata
+        : rawMetadata is Map<Object?, Object?>
+        ? rawMetadata.map((key, value) => MapEntry('$key', value))
+        : const <String, dynamic>{};
+
+    final messages = messagesJson == null
+        ? PaginatedResponse<ConversationMessageDto>(
+            data: const <ConversationMessageDto>[],
+            meta: PaginationMeta(
+              page: page,
+              pageSize: pageSize,
+              total: 0,
+              totalPages: 0,
+            ),
+          )
+        : PaginatedResponse.fromJson(
+            messagesJson,
+            (json) =>
+                ConversationMessageDto.fromJson(json! as Map<String, dynamic>),
+          );
+
+    return (messages: messages, metadata: metadata);
+  }
+
   /// 发送消息
   Future<ConversationMessageDto> sendMessage(
     String conversationId, {
@@ -163,6 +215,13 @@ class AgentApi {
   Future<void> cancelConversation(String conversationId) async {
     await _dio.post(
       '/api/v1/agent-conversations/$conversationId/cancel',
+      data: _emptyJsonBody,
+    );
+  }
+
+  Future<void> convertSourceToManual(String agentId) async {
+    await _dio.post(
+      '/api/v1/resource-sources/agent_definition/$agentId/convert-to-manual',
       data: _emptyJsonBody,
     );
   }

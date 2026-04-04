@@ -6,6 +6,7 @@ import {
   ChevronRight,
   Clock,
   Edit3,
+  FolderSync,
   LayoutGrid,
   List,
   Loader2,
@@ -35,6 +36,11 @@ import {
   AlertDialogDescription,
   AlertDialogTitle,
 } from '@/shared/ui/alert-dialog'
+import { convertResourceSourceToManual } from '@/shared/api/resourceSourceApi'
+import {
+  getResourceSourceBadgeClass,
+  getResourceSourceLabel,
+} from '@/shared/lib/resourceSource'
 import { useToast } from '@/shared/ui/toast'
 import { formatRelativeTime } from '@/features/canvas'
 import { useAgentList } from '../api/agentQueries'
@@ -82,6 +88,7 @@ interface AgentCardProps {
   onClick: (agent: AgentDefinition) => void
   onEdit: (agent: AgentDefinition) => void
   onDelete: (agent: AgentDefinition) => void
+  onConvertSource: (agent: AgentDefinition) => void
 }
 
 const AgentCard = memo(function AgentCard({
@@ -92,7 +99,10 @@ const AgentCard = memo(function AgentCard({
   onClick,
   onEdit,
   onDelete,
+  onConvertSource,
 }: AgentCardProps) {
+  const sourceKind = agent.resourceSourceKind ?? 'manual'
+
   return (
     <div
       className={cn(
@@ -138,6 +148,17 @@ const AgentCard = memo(function AgentCard({
               <Edit3 className="h-4 w-4" />
               编辑
             </DropdownMenuItem>
+            {sourceKind === 'share_imported' ? (
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onConvertSource(agent)
+                }}
+              >
+                <FolderSync className="h-4 w-4" />
+                转为自己创建
+              </DropdownMenuItem>
+            ) : null}
             <DropdownMenuSeparator />
             <DropdownMenuItem
               destructive
@@ -173,7 +194,17 @@ const AgentCard = memo(function AgentCard({
         </div>
 
         <div className="flex flex-col gap-1">
-          <h3 className="truncate text-sm font-semibold text-foreground">{agent.name}</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="truncate text-sm font-semibold text-foreground">{agent.name}</h3>
+            <span
+              className={cn(
+                'rounded-full border px-2 py-0.5 text-[10px] font-medium',
+                getResourceSourceBadgeClass(sourceKind),
+              )}
+            >
+              {getResourceSourceLabel(sourceKind)}
+            </span>
+          </div>
           <p className="line-clamp-2 text-xs text-muted-foreground">
             {agent.description || '暂无描述'}
           </p>
@@ -201,6 +232,7 @@ interface AgentListItemProps {
   onClick: (agent: AgentDefinition) => void
   onEdit: (agent: AgentDefinition) => void
   onDelete: (agent: AgentDefinition) => void
+  onConvertSource: (agent: AgentDefinition) => void
 }
 
 const AgentListItem = memo(function AgentListItem({
@@ -211,7 +243,10 @@ const AgentListItem = memo(function AgentListItem({
   onClick,
   onEdit,
   onDelete,
+  onConvertSource,
 }: AgentListItemProps) {
+  const sourceKind = agent.resourceSourceKind ?? 'manual'
+
   return (
     <div
       className={cn(
@@ -246,6 +281,14 @@ const AgentListItem = memo(function AgentListItem({
             <h3 className="truncate text-sm font-semibold text-foreground">{agent.name}</h3>
             <span className="inline-flex items-center rounded bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
               v{agent.version}
+            </span>
+            <span
+              className={cn(
+                'rounded-full border px-2 py-0.5 text-[10px] font-medium',
+                getResourceSourceBadgeClass(sourceKind),
+              )}
+            >
+              {getResourceSourceLabel(sourceKind)}
             </span>
           </div>
           <p className="mt-0.5 truncate text-xs text-muted-foreground">
@@ -284,6 +327,12 @@ const AgentListItem = memo(function AgentListItem({
               <Edit3 className="h-4 w-4" />
               编辑
             </DropdownMenuItem>
+            {sourceKind === 'share_imported' ? (
+              <DropdownMenuItem onClick={() => onConvertSource(agent)}>
+                <FolderSync className="h-4 w-4" />
+                转为自己创建
+              </DropdownMenuItem>
+            ) : null}
             <DropdownMenuSeparator />
             <DropdownMenuItem destructive onClick={() => onDelete(agent)}>
               <Trash2 className="h-4 w-4" />
@@ -333,11 +382,12 @@ export function AgentListPage() {
 
   const deleteAgent = useDeleteAgent()
 
-  const { data, isLoading } = useAgentList({
+  const { data, isLoading, refetch } = useAgentList({
     page: filters.page,
     pageSize: filters.pageSize,
     status: filters.status || undefined,
     search: filters.search || undefined,
+    sourceKind: filters.sourceKind || undefined,
   })
 
   const agents = useMemo(() => data?.data ?? [], [data?.data])
@@ -356,6 +406,15 @@ export function AgentListPage() {
   const handleStatusFilter = useCallback(
     (event: React.ChangeEvent<HTMLSelectElement>) => {
       setFilters({ status: event.target.value })
+    },
+    [setFilters],
+  )
+
+  const handleSourceFilter = useCallback(
+    (event: React.ChangeEvent<HTMLSelectElement>) => {
+      setFilters({
+        sourceKind: event.target.value as '' | 'manual' | 'share_imported',
+      })
     },
     [setFilters],
   )
@@ -380,6 +439,19 @@ export function AgentListPage() {
   const handleDelete = useCallback((agent: AgentDefinition) => {
     setDeleteTarget(agent)
   }, [])
+
+  const handleConvertSource = useCallback(
+    async (agent: AgentDefinition) => {
+      try {
+        await convertResourceSourceToManual('agent_definition', agent.id)
+        notify({ description: '已转为自己创建', variant: 'success' })
+        await refetch()
+      } catch {
+        notify({ title: '转换失败', description: '请稍后重试', variant: 'error' })
+      }
+    },
+    [notify, refetch],
+  )
 
   const handleConfirmDelete = useCallback(async () => {
     if (!deleteTarget) return
@@ -449,6 +521,16 @@ export function AgentListPage() {
                 {option.label}
               </option>
             ))}
+          </select>
+
+          <select
+            value={filters.sourceKind}
+            onChange={handleSourceFilter}
+            className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+          >
+            <option value="">全部来源</option>
+            <option value="manual">自己创建</option>
+            <option value="share_imported">分享导入</option>
           </select>
 
           <div className="flex items-center rounded-md border border-border p-0.5">
@@ -549,6 +631,7 @@ export function AgentListPage() {
                   onClick={handleAgentClick}
                   onEdit={handleEdit}
                   onDelete={handleDelete}
+                  onConvertSource={handleConvertSource}
                 />
               </div>
             ))}
@@ -565,6 +648,7 @@ export function AgentListPage() {
                   onClick={handleAgentClick}
                   onEdit={handleEdit}
                   onDelete={handleDelete}
+                  onConvertSource={handleConvertSource}
                 />
               </div>
             ))}

@@ -19,6 +19,7 @@ import {
 } from './knowledge.constants';
 import { ApiKeyModule } from '../api-key/api-key.module';
 import { LlmModule } from '../llm/llm.module';
+import { ResourceSourceModule } from '../resource-source/resource-source.module';
 import { qdrantClientProvider } from './qdrant.provider';
 import { QdrantVectorStoreService } from './services/qdrant-vector-store.service';
 import { EmbeddingService } from './services/embedding.service';
@@ -46,6 +47,7 @@ import { KnowledgeNodeFactoryService } from './services/knowledge-node-factory.s
     ),
     ApiKeyModule,
     LlmModule,
+    ResourceSourceModule,
   ],
   controllers: [KnowledgeBaseController],
   providers: [

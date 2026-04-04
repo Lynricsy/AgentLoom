@@ -1,5 +1,6 @@
 import { apiClient } from '@/shared/api/client';
 import type { PaginatedResponse } from '@/shared/types/api';
+import type { ResourceSourceKind } from '@/shared/lib/resourceSource';
 import type { Skill, SkillStatus } from '../types';
 
 const BASE_PATH = 'skills';
@@ -10,6 +11,7 @@ export interface ListSkillsParams {
   status?: SkillStatus;
   isBuiltin?: boolean;
   search?: string;
+  sourceKind?: ResourceSourceKind;
 }
 
 export interface CreateSkillPayload {
@@ -32,6 +34,7 @@ function buildSearchParams(params?: ListSkillsParams): Record<string, string> {
   if (params?.status) searchParams.status = params.status;
   if (params?.isBuiltin != null) searchParams.isBuiltin = String(params.isBuiltin);
   if (params?.search) searchParams.search = params.search;
+  if (params?.sourceKind) searchParams.sourceKind = params.sourceKind;
   return searchParams;
 }
 

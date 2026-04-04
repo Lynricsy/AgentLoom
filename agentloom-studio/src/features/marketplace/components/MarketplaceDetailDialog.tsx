@@ -285,6 +285,12 @@ export const MarketplaceDetailDialog = memo(function MarketplaceDetailDialog({
           className="fixed left-1/2 top-1/2 z-[60] flex max-h-[85vh] w-full max-w-4xl -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-lg border border-border bg-surface shadow-xl data-[state=open]:animate-in data-[state=open]:zoom-in-95 data-[state=open]:fade-in-0 data-[state=closed]:animate-out data-[state=closed]:zoom-out-95 data-[state=closed]:fade-out-0"
           data-testid="marketplace-detail-dialog"
         >
+          <Dialog.Title className="sr-only">
+            {listing?.title ?? '市场条目详情'}
+          </Dialog.Title>
+          <Dialog.Description className="sr-only">
+            {listing?.summary ?? '查看市场条目的详情、预览和安装入口。'}
+          </Dialog.Description>
           <Dialog.Close className="absolute right-3 top-3 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground">
             <X className="h-4 w-4" />
           </Dialog.Close>
@@ -319,13 +325,9 @@ export const MarketplaceDetailDialog = memo(function MarketplaceDetailDialog({
                     )}
                     {listingTypeLabel}
                   </span>
-                  <Dialog.Title className="text-xl font-semibold text-foreground">
-                    {listing.title}
-                  </Dialog.Title>
+                  <h2 className="text-xl font-semibold text-foreground">{listing.title}</h2>
                 </div>
-                <Dialog.Description className="mt-2 text-sm text-muted-foreground">
-                  {listing.summary}
-                </Dialog.Description>
+                <p className="mt-2 text-sm text-muted-foreground">{listing.summary}</p>
 
                 <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
                   <span>作者：{listing.author.displayName}</span>

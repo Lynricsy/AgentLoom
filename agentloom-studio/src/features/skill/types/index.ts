@@ -1,3 +1,5 @@
+import type { ResourceSourceKind } from '@/shared/lib/resourceSource';
+
 export type SkillStatus = 'active' | 'archived';
 
 export interface SkillFrontmatter {
@@ -23,6 +25,7 @@ export interface Skill {
   fileCount: number;
   totalSizeBytes: number;
   version: number;
+  sourceKind?: ResourceSourceKind;
   createdBy: string | null;
   updatedBy: string | null;
   createdAt: string;

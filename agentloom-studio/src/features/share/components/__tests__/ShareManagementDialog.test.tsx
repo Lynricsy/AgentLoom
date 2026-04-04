@@ -114,7 +114,11 @@ const { ShareManagementDialog } = await import('../ShareManagementDialog')
 function makeShare(overrides: Partial<ShareRecord> = {}): ShareRecord {
   return {
     id: 'share-1',
+    resourceType: 'workflow',
+    resourceId: 'test-wf-id',
     workflowDefinitionId: 'test-wf-id',
+    title: '测试工作流',
+    description: '测试描述',
     shareToken: 'tok-abc',
     shareType: 'read_only',
     shareUrl: 'https://app.example.com/s/tok-abc',

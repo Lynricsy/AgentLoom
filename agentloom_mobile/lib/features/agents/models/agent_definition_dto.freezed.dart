@@ -47,6 +47,7 @@ mixin _$AgentDefinitionDto {
   String? get autonomyMode;
   int? get maxIterations;
   int? get timeoutSeconds;
+  String get resourceSourceKind;
 
   /// Create a copy of AgentDefinitionDto
   /// with the given fields replaced by the non-null parameter values.
@@ -117,7 +118,9 @@ mixin _$AgentDefinitionDto {
             (identical(other.maxIterations, maxIterations) ||
                 other.maxIterations == maxIterations) &&
             (identical(other.timeoutSeconds, timeoutSeconds) ||
-                other.timeoutSeconds == timeoutSeconds));
+                other.timeoutSeconds == timeoutSeconds) &&
+            (identical(other.resourceSourceKind, resourceSourceKind) ||
+                other.resourceSourceKind == resourceSourceKind));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
@@ -152,11 +155,12 @@ mixin _$AgentDefinitionDto {
     autonomyMode,
     maxIterations,
     timeoutSeconds,
+    resourceSourceKind,
   ]);
 
   @override
   String toString() {
-    return 'AgentDefinitionDto(id: $id, name: $name, slug: $slug, description: $description, icon: $icon, status: $status, runtimeMode: $runtimeMode, version: $version, publishedVersionId: $publishedVersionId, tenantId: $tenantId, createdBy: $createdBy, updatedBy: $updatedBy, createdAt: $createdAt, updatedAt: $updatedAt, systemPrompt: $systemPrompt, nodes: $nodes, edges: $edges, viewport: $viewport, sandboxConfig: $sandboxConfig, workspaceSnapshotId: $workspaceSnapshotId, inputSchema: $inputSchema, memoryInstanceIds: $memoryInstanceIds, sandboxLifecycle: $sandboxLifecycle, organizationId: $organizationId, modelId: $modelId, autonomyMode: $autonomyMode, maxIterations: $maxIterations, timeoutSeconds: $timeoutSeconds)';
+    return 'AgentDefinitionDto(id: $id, name: $name, slug: $slug, description: $description, icon: $icon, status: $status, runtimeMode: $runtimeMode, version: $version, publishedVersionId: $publishedVersionId, tenantId: $tenantId, createdBy: $createdBy, updatedBy: $updatedBy, createdAt: $createdAt, updatedAt: $updatedAt, systemPrompt: $systemPrompt, nodes: $nodes, edges: $edges, viewport: $viewport, sandboxConfig: $sandboxConfig, workspaceSnapshotId: $workspaceSnapshotId, inputSchema: $inputSchema, memoryInstanceIds: $memoryInstanceIds, sandboxLifecycle: $sandboxLifecycle, organizationId: $organizationId, modelId: $modelId, autonomyMode: $autonomyMode, maxIterations: $maxIterations, timeoutSeconds: $timeoutSeconds, resourceSourceKind: $resourceSourceKind)';
   }
 }
 
@@ -198,6 +202,7 @@ abstract mixin class $AgentDefinitionDtoCopyWith<$Res> {
     String? autonomyMode,
     int? maxIterations,
     int? timeoutSeconds,
+    String resourceSourceKind,
   });
 }
 
@@ -242,6 +247,7 @@ class _$AgentDefinitionDtoCopyWithImpl<$Res>
     Object? autonomyMode = freezed,
     Object? maxIterations = freezed,
     Object? timeoutSeconds = freezed,
+    Object? resourceSourceKind = null,
   }) {
     return _then(
       _self.copyWith(
@@ -357,6 +363,10 @@ class _$AgentDefinitionDtoCopyWithImpl<$Res>
             ? _self.timeoutSeconds
             : timeoutSeconds // ignore: cast_nullable_to_non_nullable
                   as int?,
+        resourceSourceKind: null == resourceSourceKind
+            ? _self.resourceSourceKind
+            : resourceSourceKind // ignore: cast_nullable_to_non_nullable
+                  as String,
       ),
     );
   }
@@ -487,6 +497,7 @@ extension AgentDefinitionDtoPatterns on AgentDefinitionDto {
       String? autonomyMode,
       int? maxIterations,
       int? timeoutSeconds,
+      String resourceSourceKind,
     )?
     $default, {
     required TResult orElse(),
@@ -523,6 +534,7 @@ extension AgentDefinitionDtoPatterns on AgentDefinitionDto {
           _that.autonomyMode,
           _that.maxIterations,
           _that.timeoutSeconds,
+          _that.resourceSourceKind,
         );
       case _:
         return orElse();
@@ -576,6 +588,7 @@ extension AgentDefinitionDtoPatterns on AgentDefinitionDto {
       String? autonomyMode,
       int? maxIterations,
       int? timeoutSeconds,
+      String resourceSourceKind,
     )
     $default,
   ) {
@@ -611,6 +624,7 @@ extension AgentDefinitionDtoPatterns on AgentDefinitionDto {
           _that.autonomyMode,
           _that.maxIterations,
           _that.timeoutSeconds,
+          _that.resourceSourceKind,
         );
       case _:
         throw StateError('Unexpected subclass');
@@ -663,6 +677,7 @@ extension AgentDefinitionDtoPatterns on AgentDefinitionDto {
       String? autonomyMode,
       int? maxIterations,
       int? timeoutSeconds,
+      String resourceSourceKind,
     )?
     $default,
   ) {
@@ -698,6 +713,7 @@ extension AgentDefinitionDtoPatterns on AgentDefinitionDto {
           _that.autonomyMode,
           _that.maxIterations,
           _that.timeoutSeconds,
+          _that.resourceSourceKind,
         );
       case _:
         return null;
@@ -743,6 +759,7 @@ class _AgentDefinitionDto extends AgentDefinitionDto {
     this.autonomyMode,
     this.maxIterations,
     this.timeoutSeconds,
+    this.resourceSourceKind = 'manual',
   }) : _nodes = nodes,
        _edges = edges,
        _viewport = viewport,
@@ -861,6 +878,9 @@ class _AgentDefinitionDto extends AgentDefinitionDto {
   final int? maxIterations;
   @override
   final int? timeoutSeconds;
+  @override
+  @JsonKey()
+  final String resourceSourceKind;
 
   /// Create a copy of AgentDefinitionDto
   /// with the given fields replaced by the non-null parameter values.
@@ -931,7 +951,9 @@ class _AgentDefinitionDto extends AgentDefinitionDto {
             (identical(other.maxIterations, maxIterations) ||
                 other.maxIterations == maxIterations) &&
             (identical(other.timeoutSeconds, timeoutSeconds) ||
-                other.timeoutSeconds == timeoutSeconds));
+                other.timeoutSeconds == timeoutSeconds) &&
+            (identical(other.resourceSourceKind, resourceSourceKind) ||
+                other.resourceSourceKind == resourceSourceKind));
   }
 
   @JsonKey(includeFromJson: false, includeToJson: false)
@@ -966,11 +988,12 @@ class _AgentDefinitionDto extends AgentDefinitionDto {
     autonomyMode,
     maxIterations,
     timeoutSeconds,
+    resourceSourceKind,
   ]);
 
   @override
   String toString() {
-    return 'AgentDefinitionDto(id: $id, name: $name, slug: $slug, description: $description, icon: $icon, status: $status, runtimeMode: $runtimeMode, version: $version, publishedVersionId: $publishedVersionId, tenantId: $tenantId, createdBy: $createdBy, updatedBy: $updatedBy, createdAt: $createdAt, updatedAt: $updatedAt, systemPrompt: $systemPrompt, nodes: $nodes, edges: $edges, viewport: $viewport, sandboxConfig: $sandboxConfig, workspaceSnapshotId: $workspaceSnapshotId, inputSchema: $inputSchema, memoryInstanceIds: $memoryInstanceIds, sandboxLifecycle: $sandboxLifecycle, organizationId: $organizationId, modelId: $modelId, autonomyMode: $autonomyMode, maxIterations: $maxIterations, timeoutSeconds: $timeoutSeconds)';
+    return 'AgentDefinitionDto(id: $id, name: $name, slug: $slug, description: $description, icon: $icon, status: $status, runtimeMode: $runtimeMode, version: $version, publishedVersionId: $publishedVersionId, tenantId: $tenantId, createdBy: $createdBy, updatedBy: $updatedBy, createdAt: $createdAt, updatedAt: $updatedAt, systemPrompt: $systemPrompt, nodes: $nodes, edges: $edges, viewport: $viewport, sandboxConfig: $sandboxConfig, workspaceSnapshotId: $workspaceSnapshotId, inputSchema: $inputSchema, memoryInstanceIds: $memoryInstanceIds, sandboxLifecycle: $sandboxLifecycle, organizationId: $organizationId, modelId: $modelId, autonomyMode: $autonomyMode, maxIterations: $maxIterations, timeoutSeconds: $timeoutSeconds, resourceSourceKind: $resourceSourceKind)';
   }
 }
 
@@ -1014,6 +1037,7 @@ abstract mixin class _$AgentDefinitionDtoCopyWith<$Res>
     String? autonomyMode,
     int? maxIterations,
     int? timeoutSeconds,
+    String resourceSourceKind,
   });
 }
 
@@ -1058,6 +1082,7 @@ class __$AgentDefinitionDtoCopyWithImpl<$Res>
     Object? autonomyMode = freezed,
     Object? maxIterations = freezed,
     Object? timeoutSeconds = freezed,
+    Object? resourceSourceKind = null,
   }) {
     return _then(
       _AgentDefinitionDto(
@@ -1173,6 +1198,10 @@ class __$AgentDefinitionDtoCopyWithImpl<$Res>
             ? _self.timeoutSeconds
             : timeoutSeconds // ignore: cast_nullable_to_non_nullable
                   as int?,
+        resourceSourceKind: null == resourceSourceKind
+            ? _self.resourceSourceKind
+            : resourceSourceKind // ignore: cast_nullable_to_non_nullable
+                  as String,
       ),
     );
   }

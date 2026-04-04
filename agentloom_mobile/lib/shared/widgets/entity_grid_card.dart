@@ -19,6 +19,7 @@ class EntityGridCard extends StatelessWidget {
     this.onTap,
     this.onSecondaryAction,
     this.secondaryActionIcon,
+    this.titleTrailing,
   });
 
   /// 图标值，传给 [EntityIcon]
@@ -50,6 +51,9 @@ class EntityGridCard extends StatelessWidget {
 
   /// 次要操作图标
   final IconData? secondaryActionIcon;
+
+  /// 标题后的附加标记
+  final Widget? titleTrailing;
 
   @override
   Widget build(BuildContext context) {
@@ -105,13 +109,23 @@ class EntityGridCard extends StatelessWidget {
               const SizedBox(height: 10),
 
               // 名称（1 行截断）
-              Text(
-                name,
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      name,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  if (titleTrailing != null) ...[
+                    const SizedBox(width: 8),
+                    titleTrailing!,
+                  ],
+                ],
               ),
 
               const SizedBox(height: 4),

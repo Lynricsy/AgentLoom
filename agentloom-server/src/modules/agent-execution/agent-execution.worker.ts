@@ -98,6 +98,10 @@ type ConversationExecutionMetadata = {
   lastAssistantMessageId?: string;
   lastStopReason?: StopReason;
   runningState?: 'idle' | 'running' | 'failed' | 'cancelled';
+  errorMessage?: string | null;
+  errorCode?: string | null;
+  rawErrorMessage?: string | null;
+  failedPhase?: PreparationPhase | null;
 };
 
 type ConversationExecutionContext = {
@@ -362,6 +366,10 @@ export class AgentExecutionWorker extends WorkerHost {
           sessionId: session.id,
           ...(memorySessionIds.length ? { memorySessionIds } : {}),
           runningState: 'running',
+          errorMessage: null,
+          errorCode: null,
+          rawErrorMessage: null,
+          failedPhase: null,
         },
       );
       conversationMetadata = this.writeExecutionMetadata(
@@ -517,6 +525,18 @@ export class AgentExecutionWorker extends WorkerHost {
       await this.safeUpdateExecutionMetadata(tenantId, conversationId, {
         ...executionMetadata,
         runningState: terminalStatus,
+        errorMessage:
+          terminalStatus === 'failed' ? errorMessage : null,
+        errorCode:
+          terminalStatus === 'failed' ? (errorSummary.errorCode ?? null) : null,
+        rawErrorMessage:
+          terminalStatus === 'failed'
+            ? (errorSummary.rawErrorMessage ?? null)
+            : null,
+        failedPhase:
+          terminalStatus === 'failed' && currentPhase !== 'running'
+            ? currentPhase
+            : null,
       });
 
       if (terminalStatus === 'failed') {
@@ -552,6 +572,10 @@ export class AgentExecutionWorker extends WorkerHost {
     await this.safeUpdateExecutionMetadata(tenantId, conversationId, {
       ...executionMetadata,
       runningState: terminalStatus === 'completed' ? 'idle' : terminalStatus,
+      errorMessage: null,
+      errorCode: null,
+      rawErrorMessage: null,
+      failedPhase: null,
     });
 
     if (
@@ -1820,6 +1844,21 @@ export class AgentExecutionWorker extends WorkerHost {
               | 'cancelled',
           }
         : {}),
+      ...(typeof executionRecord.errorMessage === 'string'
+        ? { errorMessage: executionRecord.errorMessage }
+        : {}),
+      ...(typeof executionRecord.errorCode === 'string'
+        ? { errorCode: executionRecord.errorCode }
+        : {}),
+      ...(typeof executionRecord.rawErrorMessage === 'string'
+        ? { rawErrorMessage: executionRecord.rawErrorMessage }
+        : {}),
+      ...(typeof executionRecord.failedPhase === 'string'
+        ? {
+            failedPhase:
+              executionRecord.failedPhase as ConversationExecutionMetadata['failedPhase'],
+          }
+        : {}),
     };
   }
 
@@ -1828,7 +1867,7 @@ export class AgentExecutionWorker extends WorkerHost {
     patch: Partial<ConversationExecutionMetadata>,
   ): ConversationExecutionMetadata {
     const current = this.readExecutionMetadata(baseMetadata);
-    return {
+    const merged = {
       ...current,
       ...patch,
       ...(patch.lastProcessedMessageId === undefined
@@ -1840,6 +1879,56 @@ export class AgentExecutionWorker extends WorkerHost {
       ...(patch.memorySessionIds === undefined
         ? {}
         : { memorySessionIds: patch.memorySessionIds }),
+      ...(patch.errorMessage === undefined
+        ? {}
+        : { errorMessage: patch.errorMessage }),
+      ...(patch.errorCode === undefined ? {} : { errorCode: patch.errorCode }),
+      ...(patch.rawErrorMessage === undefined
+        ? {}
+        : { rawErrorMessage: patch.rawErrorMessage }),
+      ...(patch.failedPhase === undefined
+        ? {}
+        : { failedPhase: patch.failedPhase }),
+    };
+
+    return {
+      ...(typeof merged.sessionId === 'string'
+        ? { sessionId: merged.sessionId }
+        : {}),
+      ...(Array.isArray(merged.memorySessionIds)
+        ? {
+            memorySessionIds: merged.memorySessionIds.filter(
+              (value): value is string => typeof value === 'string',
+            ),
+          }
+        : {}),
+      ...(typeof merged.lastProcessedMessageId === 'string'
+        ? { lastProcessedMessageId: merged.lastProcessedMessageId }
+        : {}),
+      ...(typeof merged.lastAssistantMessageId === 'string'
+        ? { lastAssistantMessageId: merged.lastAssistantMessageId }
+        : {}),
+      ...(typeof merged.lastStopReason === 'string'
+        ? { lastStopReason: merged.lastStopReason as StopReason }
+        : {}),
+      ...(typeof merged.runningState === 'string'
+        ? { runningState: merged.runningState }
+        : {}),
+      ...(typeof merged.errorMessage === 'string'
+        ? { errorMessage: merged.errorMessage }
+        : {}),
+      ...(typeof merged.errorCode === 'string'
+        ? { errorCode: merged.errorCode }
+        : {}),
+      ...(typeof merged.rawErrorMessage === 'string'
+        ? { rawErrorMessage: merged.rawErrorMessage }
+        : {}),
+      ...(typeof merged.failedPhase === 'string'
+        ? {
+            failedPhase:
+              merged.failedPhase as ConversationExecutionMetadata['failedPhase'],
+          }
+        : {}),
     };
   }
 

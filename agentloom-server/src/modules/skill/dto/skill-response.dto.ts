@@ -26,6 +26,7 @@ export const SkillResponseSchema = z.object({
   fileCount: z.number().int(),
   totalSizeBytes: z.number().int(),
   version: z.number().int(),
+  sourceKind: z.enum(['manual', 'share_imported']),
   createdBy: z.string(),
   updatedBy: z.string(),
   createdAt: z.coerce.date(),

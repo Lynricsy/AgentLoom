@@ -3,6 +3,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../routes/route_names.dart';
+import '../../../shared/widgets/resource_source_chip.dart';
+import '../api/memory_api.dart';
 import '../providers/memory_providers.dart';
 
 /// Memory 实例详情页面
@@ -16,12 +18,24 @@ class MemoryDetailScreen extends ConsumerWidget {
     final theme = Theme.of(context);
     final instanceAsync = ref.watch(memoryInstanceProvider(instanceId));
     final nodesAsync = ref.watch(memoryNodesProvider(instanceId));
+    final currentInstance = instanceAsync.whenOrNull(
+      data: (instance) => instance,
+    );
 
     return Scaffold(
       appBar: AppBar(
         title:
             instanceAsync.whenOrNull(data: (inst) => Text(inst.name)) ??
             const Text('Memory'),
+        actions: [
+          if (currentInstance?.sourceKind == 'share_imported')
+            IconButton(
+              tooltip: '转为自己创建',
+              onPressed: () =>
+                  _convertMemorySourceToManual(context, ref, instanceId),
+              icon: const Icon(Icons.drive_file_rename_outline),
+            ),
+        ],
       ),
       body: (instanceAsync.hasError && !instanceAsync.hasValue)
           ? Center(
@@ -115,6 +129,13 @@ class MemoryDetailScreen extends ConsumerWidget {
                             _MetadataRow(
                               label: 'Edges',
                               value: '${instance.edgeCount}',
+                            ),
+                            const SizedBox(height: 4),
+                            _MetadataRow(
+                              label: '来源',
+                              value: getResourceSourceLabel(
+                                instance.sourceKind,
+                              ),
                             ),
                             const SizedBox(height: 4),
                             if (instance.config != null &&
@@ -248,6 +269,28 @@ class MemoryDetailScreen extends ConsumerWidget {
     } catch (_) {
       return isoDate;
     }
+  }
+}
+
+Future<void> _convertMemorySourceToManual(
+  BuildContext context,
+  WidgetRef ref,
+  String instanceId,
+) async {
+  final messenger = ScaffoldMessenger.of(context);
+  try {
+    await ref.read(memoryApiProvider).convertSourceToManual(instanceId);
+    ref.invalidate(memoryInstanceProvider(instanceId));
+    await ref.read(memoryListProvider.notifier).refresh();
+    if (!context.mounted) {
+      return;
+    }
+    messenger.showSnackBar(const SnackBar(content: Text('已转为自己创建')));
+  } catch (error) {
+    if (!context.mounted) {
+      return;
+    }
+    messenger.showSnackBar(SnackBar(content: Text('转换失败：$error')));
   }
 }
 

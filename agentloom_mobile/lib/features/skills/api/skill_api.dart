@@ -18,11 +18,15 @@ class SkillApi {
     String? status,
     bool? isBuiltin,
     String? search,
+    String? sourceKind,
   }) async {
     final queryParams = <String, dynamic>{'page': page, 'pageSize': pageSize};
     if (status != null) queryParams['status'] = status;
     if (isBuiltin != null) queryParams['isBuiltin'] = isBuiltin;
     if (search != null && search.isNotEmpty) queryParams['search'] = search;
+    if (sourceKind != null && sourceKind.isNotEmpty) {
+      queryParams['sourceKind'] = sourceKind;
+    }
 
     final response = await _dio.get(
       '/api/v1/skills',
@@ -40,10 +44,9 @@ class SkillApi {
     final response = await _dio.get('/api/v1/skills/$id');
     final body = response.data as Map<String, dynamic>;
     // 服务端 findById 返回裸对象（无 data 包装）
-    final json =
-        body.containsKey('data')
-            ? body['data'] as Map<String, dynamic>
-            : body;
+    final json = body.containsKey('data')
+        ? body['data'] as Map<String, dynamic>
+        : body;
     return SkillDto.fromJson(json);
   }
 
@@ -90,6 +93,13 @@ class SkillApi {
     final response = await _dio.patch('/api/v1/skills/$id/archive');
     final data = response.data as Map<String, dynamic>;
     return SkillDto.fromJson(data['data'] as Map<String, dynamic>);
+  }
+
+  Future<void> convertSourceToManual(String id) async {
+    await _dio.post(
+      '/api/v1/resource-sources/skill/$id/convert-to-manual',
+      data: const <String, dynamic>{},
+    );
   }
 }
 

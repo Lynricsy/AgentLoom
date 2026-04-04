@@ -8,7 +8,11 @@ import {
   AgentPublishValidationException,
 } from './agent-definition.exceptions';
 
-const { mockTenantDb, mockTransactionStorage } = vi.hoisted(() => {
+const {
+  mockTenantDb,
+  mockTransactionStorage,
+  mockResourceSourceService,
+} = vi.hoisted(() => {
   const selectResult: unknown[] = [];
   const insertResult: unknown[] = [];
   const updateResult: unknown[] = [];
@@ -68,6 +72,12 @@ const { mockTenantDb, mockTransactionStorage } = vi.hoisted(() => {
     mockTenantDb,
     mockTransactionStorage: {
       getStore: vi.fn(),
+    },
+    mockResourceSourceService: {
+      mapCurrentKinds: vi.fn().mockResolvedValue(new Map()),
+      buildShareImportedExistsCondition: vi.fn(() => ({
+        type: 'share-imported',
+      })),
     },
   };
 });
@@ -273,7 +283,10 @@ describe('AgentDefinitionService', () => {
       return chain;
     });
 
-    service = new AgentDefinitionService(mockTenantDb as never);
+    service = new AgentDefinitionService(
+      mockTenantDb as never,
+      mockResourceSourceService as never,
+    );
   });
 
   // ─── create ───────────────────────────────────────────────

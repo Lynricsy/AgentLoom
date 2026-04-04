@@ -24,20 +24,29 @@ export async function fetchMemoryInstances(
   if (params?.search) {
     searchParams.search = params.search;
   }
+  if (params?.sourceKind) {
+    searchParams.source_kind = params.sourceKind;
+  }
 
   return apiClient
     .get(BASE_PATH, { searchParams })
     .json<PaginatedResponse<MemoryInstance>>();
 }
 
-export async function fetchAllMemoryInstances(): Promise<MemoryInstance[]> {
+export async function fetchAllMemoryInstances(
+  params?: Pick<MemoryInstanceListParams, 'sourceKind'>,
+): Promise<MemoryInstance[]> {
   const allItems: MemoryInstance[] = [];
   let page = 1;
   const pageSize = 100;
 
   // eslint-disable-next-line no-constant-condition
   while (true) {
-    const response = await fetchMemoryInstances({ page, pageSize });
+    const response = await fetchMemoryInstances({
+      page,
+      pageSize,
+      sourceKind: params?.sourceKind,
+    });
     allItems.push(...response.data);
 
     if (page >= response.meta.totalPages) {

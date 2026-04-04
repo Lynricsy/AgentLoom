@@ -10,10 +10,12 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
+import { hasPostgresErrorCode } from '../../common/utils/postgres-error.utils';
 import type { DrizzleDB } from '../../database/database.module';
 import { DRIZZLE } from '../../database/database.module';
 import * as schema from '../../database/schema';
 import { appendSlugSuffix, generateSlug } from '../organization/slug.utils';
+import { ResourceSourceService } from '../resource-source/resource-source.service';
 import type { CreateSkillDtoType } from './dto/create-skill.dto';
 import type { SkillQueryDtoType } from './dto/skill-query.dto';
 import type { UpdateSkillDtoType } from './dto/update-skill.dto';
@@ -27,6 +29,9 @@ export interface SkillUploadFile {
 }
 
 const MAX_SLUG_RETRIES = 3;
+type SkillWithSourceKind = schema.SkillRecord & {
+  sourceKind: schema.ResourceSourceKind;
+};
 
 @Injectable()
 export class SkillService {
@@ -35,6 +40,7 @@ export class SkillService {
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
     private readonly skillStorageService: SkillStorageService,
+    private readonly resourceSourceService: ResourceSourceService,
   ) {}
 
   private get tenantDb(): DrizzleDB {
@@ -147,7 +153,7 @@ export class SkillService {
     userId: string,
     dto: CreateSkillDtoType,
     files?: SkillUploadFile[],
-  ): Promise<schema.SkillRecord> {
+  ): Promise<SkillWithSourceKind> {
     let content = dto.content ?? null;
     const skillMdFromFile = this.extractSkillMdContent(files);
     if (!content && skillMdFromFile) {
@@ -167,26 +173,27 @@ export class SkillService {
 
     for (let attempt = 0; attempt <= MAX_SLUG_RETRIES; attempt++) {
       try {
-        const [row] = await this.tenantDb
-          .insert(schema.skills)
-          .values({
-            tenantId,
-            name: dto.name,
-            slug,
-            description: dto.description,
-            content,
-            frontmatter,
-            createdBy: userId,
-            updatedBy: userId,
-          })
-          .returning();
+        const row = await this.tenantDb.transaction(async (tx) => {
+          const [createdRow] = await tx
+            .insert(schema.skills)
+            .values({
+              tenantId,
+              name: dto.name,
+              slug,
+              description: dto.description,
+              content,
+              frontmatter,
+              createdBy: userId,
+              updatedBy: userId,
+            })
+            .returning();
+
+          return createdRow;
+        });
         created = row;
         break;
       } catch (error) {
-        const isUniqueViolation =
-          error instanceof Error &&
-          'code' in error &&
-          (error as any).code === '23505';
+        const isUniqueViolation = hasPostgresErrorCode(error, '23505');
 
         if (!isUniqueViolation || attempt === MAX_SLUG_RETRIES) {
           throw error;
@@ -229,17 +236,23 @@ export class SkillService {
         .where(eq(schema.skills.id, created.id))
         .returning();
 
-      return updated;
+      return {
+        ...updated,
+        sourceKind: 'manual',
+      };
     }
 
-    return created;
+    return {
+      ...created,
+      sourceKind: 'manual',
+    };
   }
 
   async findAll(query: SkillQueryDtoType): Promise<{
-    data: schema.SkillRecord[];
+    data: SkillWithSourceKind[];
     meta: { total: number; page: number; pageSize: number; totalPages: number };
   }> {
-    const { page, pageSize, status, isBuiltin, search } = query;
+    const { page, pageSize, status, isBuiltin, search, sourceKind } = query;
     const offset = (page - 1) * pageSize;
 
     const conditions = [];
@@ -255,6 +268,19 @@ export class SkillService {
           ilike(schema.skills.name, `%${search}%`),
           ilike(schema.skills.description, `%${search}%`),
         ),
+      );
+    }
+    if (sourceKind) {
+      const importedExistsCondition =
+        this.resourceSourceService.buildShareImportedExistsCondition({
+          resourceType: 'skill',
+          resourceIdColumn: schema.skills.id,
+        });
+
+      conditions.push(
+        sourceKind === 'share_imported'
+          ? importedExistsCondition
+          : sql`not (${importedExistsCondition})`,
       );
     }
 
@@ -275,9 +301,16 @@ export class SkillService {
     ]);
 
     const total = countResult[0]?.total ?? 0;
+    const sourceKindMap = await this.resourceSourceService.mapCurrentKinds(
+      'skill',
+      rows.map((row) => row.id),
+    );
 
     return {
-      data: rows,
+      data: rows.map((row) => ({
+        ...row,
+        sourceKind: sourceKindMap.get(row.id) ?? 'manual',
+      })),
       meta: {
         total,
         page,
@@ -290,7 +323,7 @@ export class SkillService {
   async findById(
     tenantId: string,
     skillId: string,
-  ): Promise<schema.SkillRecord> {
+  ): Promise<SkillWithSourceKind> {
     const [row] = await this.tenantDb
       .select()
       .from(schema.skills)
@@ -300,7 +333,15 @@ export class SkillService {
       throw new NotFoundException(`Skill ${skillId} 不存在`);
     }
 
-    return row;
+    const sourceKindMap = await this.resourceSourceService.mapCurrentKinds(
+      'skill',
+      [skillId],
+    );
+
+    return {
+      ...row,
+      sourceKind: sourceKindMap.get(skillId) ?? 'manual',
+    };
   }
 
   async findByIds(
@@ -365,7 +406,7 @@ export class SkillService {
     skillId: string,
     dto: UpdateSkillDtoType,
     files?: SkillUploadFile[],
-  ): Promise<schema.SkillRecord> {
+  ): Promise<SkillWithSourceKind> {
     const setClause: Record<string, any> = {
       version: sql`${schema.skills.version} + 1`,
       updatedBy: userId,
@@ -433,10 +474,26 @@ export class SkillService {
         .where(eq(schema.skills.id, skillId))
         .returning();
 
-      return refreshed;
+      const sourceKindMap = await this.resourceSourceService.mapCurrentKinds(
+        'skill',
+        [skillId],
+      );
+
+      return {
+        ...refreshed,
+        sourceKind: sourceKindMap.get(skillId) ?? 'manual',
+      };
     }
 
-    return updateResult[0];
+    const sourceKindMap = await this.resourceSourceService.mapCurrentKinds(
+      'skill',
+      [skillId],
+    );
+
+    return {
+      ...updateResult[0],
+      sourceKind: sourceKindMap.get(skillId) ?? 'manual',
+    };
   }
 
   async delete(tenantId: string, skillId: string): Promise<void> {
@@ -462,7 +519,7 @@ export class SkillService {
     tenantId: string,
     userId: string,
     skillId: string,
-  ): Promise<schema.SkillRecord> {
+  ): Promise<SkillWithSourceKind> {
     const [skill] = await this.tenantDb
       .select()
       .from(schema.skills)
@@ -487,7 +544,15 @@ export class SkillService {
       .returning();
 
     this.logger.log(`Skill archived: ${skillId}`);
-    return updated;
+    const sourceKindMap = await this.resourceSourceService.mapCurrentKinds(
+      'skill',
+      [skillId],
+    );
+
+    return {
+      ...updated,
+      sourceKind: sourceKindMap.get(skillId) ?? 'manual',
+    };
   }
 
   /**

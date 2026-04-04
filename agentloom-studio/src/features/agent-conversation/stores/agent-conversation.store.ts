@@ -125,6 +125,13 @@ interface AgentConversationActions {
   };
 }
 
+interface ConversationDetailResponse {
+  data?: {
+    metadata?: Record<string, unknown>;
+    messages?: PaginatedResponse<unknown>;
+  };
+}
+
 function createInitialState(): AgentConversationState {
   return {
     conversationId: null,
@@ -910,6 +917,37 @@ function normalizeStatusChangedPayload(
   };
 }
 
+function normalizeConversationExecutionSnapshot(metadata: unknown): {
+  runningState?: "idle" | "running" | "failed" | "cancelled";
+  errorMessage?: string;
+  failedPhase?: PreparationPhase;
+} {
+  if (!isRecord(metadata)) {
+    return {};
+  }
+
+  const execution = isRecord(metadata.execution) ? metadata.execution : {};
+  const runningState = readString(execution.runningState);
+  const errorMessage =
+    readString(execution.errorMessage) ??
+    readString(execution.rawErrorMessage) ??
+    readString(execution.lastErrorMessage);
+  const failedPhase = readString(execution.failedPhase);
+
+  return {
+    ...(runningState === "idle" ||
+    runningState === "running" ||
+    runningState === "failed" ||
+    runningState === "cancelled"
+      ? { runningState }
+      : {}),
+    ...(errorMessage ? { errorMessage } : {}),
+    ...(failedPhase
+      ? { failedPhase: failedPhase as PreparationPhase }
+      : {}),
+  };
+}
+
 function ensureAssistantMessage(
   messages: ConversationMessage[],
   messageId: string,
@@ -1359,6 +1397,11 @@ export const useAgentConversationStore = create<
                   s.messages,
                   normalized.messageId,
                 );
+
+                if (s.status === "error") {
+                  return;
+                }
+
                 s.status = "connected";
                 s.sandboxStatus = "idle";
                 // Clear all preparation state on conversation done
@@ -1711,11 +1754,15 @@ export const useAgentConversationStore = create<
           loadHistory: async (conversationId) => {
             try {
               const response = await apiClient
-                .get(`agent-conversations/${conversationId}/messages`)
-                .json<PaginatedResponse<unknown>>();
+                .get(`agent-conversations/${conversationId}`)
+                .json<ConversationDetailResponse>();
 
-              const normalizedMessages = response.data.map((message) =>
+              const messageResponse = response.data?.messages;
+              const normalizedMessages = (messageResponse?.data ?? []).map((message) =>
                 normalizeConversationHistoryMessage(message),
+              );
+              const executionSnapshot = normalizeConversationExecutionSnapshot(
+                response.data?.metadata,
               );
 
               set((s) => {
@@ -1727,6 +1774,47 @@ export const useAgentConversationStore = create<
                   s.messages,
                   normalizedMessages,
                 );
+
+                if (executionSnapshot.runningState === "running") {
+                  s.status = "executing";
+                  s.executionError = null;
+                  return;
+                }
+
+                if (executionSnapshot.runningState === "failed") {
+                  s.status = "error";
+                  s.sandboxStatus = "error";
+                  s.executionError =
+                    executionSnapshot.errorMessage ??
+                    "当前对话执行失败，请检查 Agent 配置后重试。";
+                  if (executionSnapshot.failedPhase) {
+                    s.preparationFailedPhase = executionSnapshot.failedPhase;
+                    s.preparationError = s.executionError;
+                  } else {
+                    s.preparationPhase = null;
+                    s.preparationStartTime = null;
+                    s.sandboxReused = false;
+                    s.preparationError = null;
+                    s.preparationFailedPhase = null;
+                  }
+                  return;
+                }
+
+                if (
+                  executionSnapshot.runningState === "idle" ||
+                  executionSnapshot.runningState === "cancelled"
+                ) {
+                  if (s.status === "executing" || s.status === "error") {
+                    s.status = "connected";
+                    s.sandboxStatus = "idle";
+                    s.preparationPhase = null;
+                    s.preparationStartTime = null;
+                    s.sandboxReused = false;
+                    s.preparationError = null;
+                    s.preparationFailedPhase = null;
+                    s.executionError = null;
+                  }
+                }
               });
             } catch (error) {
               console.error(

@@ -1,44 +1,72 @@
-import { apiClient, toSnakeBody } from '@/shared/api/client';
-import type { ApiResponse } from '@/shared/types/api';
+import { apiClient, toSnakeBody } from '@/shared/api/client'
+import type { ApiResponse } from '@/shared/types/api'
 import type {
   CreateSharePayload,
+  ImportAgentShareResponse,
+  ListSharesParams,
   PublicShareData,
   ShareListResponse,
   ShareRecord,
-} from '../types';
+  ShareResourceType,
+} from '../types'
+
+function resolveShareBasePath(resourceType: ShareResourceType): string {
+  return resourceType === 'agent' ? 'agent-shares' : 'workflow-shares'
+}
 
 export async function createShare(
   payload: CreateSharePayload,
 ): Promise<ShareRecord> {
-  const response = await apiClient
-    .post('workflow-shares', { json: toSnakeBody(payload) })
-    .json<ApiResponse<ShareRecord>>();
+  const resourceType: ShareResourceType =
+    'agentDefinitionId' in payload ? 'agent' : 'workflow'
 
-  return response.data;
+  const response = await apiClient
+    .post(resolveShareBasePath(resourceType), {
+      json: toSnakeBody(payload),
+    })
+    .json<ApiResponse<ShareRecord>>()
+
+  return response.data
 }
 
 export async function listShares(
-  workflowDefinitionId: string,
-  page = 1,
-  pageSize = 20,
+  params: ListSharesParams,
 ): Promise<ShareListResponse> {
+  const definitionKey =
+    params.resourceType === 'agent'
+      ? 'agent_definition_id'
+      : 'workflow_definition_id'
+
   return apiClient
-    .get('workflow-shares', {
+    .get(resolveShareBasePath(params.resourceType), {
       searchParams: {
-        workflow_definition_id: workflowDefinitionId,
-        page,
-        page_size: pageSize,
+        [definitionKey]: params.resourceId,
+        page: params.page ?? 1,
+        page_size: params.pageSize ?? 20,
       },
     })
-    .json<ShareListResponse>();
+    .json<ShareListResponse>()
 }
 
-export async function revokeShare(shareId: string): Promise<void> {
-  await apiClient.delete(`workflow-shares/${shareId}`);
+export async function revokeShare(
+  resourceType: ShareResourceType,
+  shareId: string,
+): Promise<void> {
+  await apiClient.delete(`${resolveShareBasePath(resourceType)}/${shareId}`)
 }
 
 export async function getPublicShare(
   token: string,
 ): Promise<PublicShareData> {
-  return apiClient.get(`s/${token}`).json<PublicShareData>();
+  return apiClient.get(`s/${token}`).json<PublicShareData>()
+}
+
+export async function importAgentShare(
+  token: string,
+): Promise<ImportAgentShareResponse> {
+  const response = await apiClient
+    .post(`agent-shares/${token}/import`)
+    .json<ApiResponse<ImportAgentShareResponse>>()
+
+  return response.data
 }
