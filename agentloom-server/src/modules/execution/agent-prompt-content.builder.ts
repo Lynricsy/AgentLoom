@@ -72,11 +72,18 @@ function sanitizePromptInput(
   const sanitized: Record<string, unknown> = {};
 
   for (const [key, value] of Object.entries(input)) {
+    if (key === 'exec-in' || key === 'exec_in') {
+      continue;
+    }
+
     if (key === 'sandbox-in' || key === 'sandbox') {
       continue;
     }
 
-    if ((key === 'context-in' || key === 'context') && isRuntimeResourceReference(value)) {
+    if (
+      (key === 'context-in' || key === 'context') &&
+      isRuntimeResourceReference(value)
+    ) {
       continue;
     }
 

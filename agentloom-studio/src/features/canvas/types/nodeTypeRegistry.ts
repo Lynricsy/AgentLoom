@@ -1,73 +1,20 @@
 import type { NodeCategory } from '../types'
 import { assertNever } from './typeSchema'
-import type {
-  ObjectTypeSchema,
-  PortDataType,
-  ScalarTypeSchema,
-  TypeSchema,
-} from './typeSchema'
+import type { ObjectTypeSchema, PortDataType, ScalarTypeSchema, TypeSchema } from './typeSchema'
 import { AGENT_CANVAS_NODE_REGISTRY } from '../registry/agent-canvas-registry'
 import type { AgentRuntimeMode } from '@/features/agent/types/agentRuntimeMode'
 
-export const NODE_TYPES = [
-  'chat-agent',
-  'llm-model',
-  'http-tool',
-  'code-tool',
-  'mcp-tool',
-  'sandbox',
-  'manual-trigger',
-  'schedule-trigger',
-  'webhook-trigger',
-  'api-event-trigger',
-  'knowledge-base',
-  'text-output',
-  'json-output',
-  'condition',
-  'loop',
-  'iteration',
-  'loop-start',
-  'iteration-start',
-  'loop-state',
-  'result',
-  'break',
-  'continue',
-  'reusable-block',
-  'smart-routing',
-  'plugin',
-  'input-preprocessor',
-  'memory',
-  'agent',
-  'skill',
-  'workspace',
-  'merge',
-] as const
+export const NODE_TYPES = ['chat-agent', 'llm-model', 'http-tool', 'code-tool', 'mcp-tool', 'sandbox', 'manual-trigger', 'schedule-trigger', 'webhook-trigger', 'api-event-trigger', 'knowledge-base', 'text-output', 'json-output', 'condition', 'loop', 'iteration', 'loop-start', 'iteration-start', 'loop-state', 'result', 'break', 'continue', 'reusable-block', 'smart-routing', 'plugin', 'input-preprocessor', 'memory', 'agent', 'skill', 'workspace', 'merge'] as const
 
-export const DYNAMIC_ONLY_NODE_TYPES: ReadonlySet<NodeType> = new Set([
-  'reusable-block',
-  'plugin',
-  'merge',
-  'loop-start',
-  'iteration-start',
-  'loop-state',
-  'result',
-  'break',
-  'continue',
-])
+export const DYNAMIC_ONLY_NODE_TYPES: ReadonlySet<NodeType> = new Set(['reusable-block', 'plugin', 'merge', 'loop-start', 'iteration-start', 'loop-state', 'result', 'break', 'continue'])
+
+export const EXEC_PORT_NODE_TYPES: ReadonlySet<NodeType> = new Set(['chat-agent', 'llm-model', 'mcp-tool', 'sandbox', 'knowledge-base', 'smart-routing', 'memory', 'agent', 'skill', 'workspace', 'merge'])
 
 export type NodeType = (typeof NODE_TYPES)[number]
 
 export type PortDirection = 'input' | 'output'
 
-export type PortShape =
-  | 'circle'
-  | 'square'
-  | 'diamond'
-  | 'capsule'
-  | 'hexagon'
-  | 'triangle'
-  | 'book'
-  | 'arrow'
+export type PortShape = 'circle' | 'square' | 'diamond' | 'capsule' | 'hexagon' | 'triangle' | 'book' | 'arrow'
 
 export interface PortDefinition {
   id: string
@@ -118,20 +65,68 @@ export interface PortDataTypeMeta {
 }
 
 export const PORT_DATA_TYPE_META: Record<PortDataType, PortDataTypeMeta> = {
-  model: { label: 'Model', colorToken: 'var(--color-type-model)', shape: 'circle' },
-  text: { label: 'Text', colorToken: 'var(--color-type-text)', shape: 'circle' },
-  json: { label: 'JSON', colorToken: 'var(--color-type-json)', shape: 'square' },
-  array: { label: 'Array', colorToken: 'var(--color-type-json)', shape: 'square' },
-  image: { label: 'Image', colorToken: 'var(--color-type-image)', shape: 'diamond' },
-  audio: { label: 'Audio', colorToken: 'var(--color-type-audio)', shape: 'capsule' },
-  tool: { label: 'Tool', colorToken: 'var(--color-type-tool)', shape: 'hexagon' },
-  sandbox: { label: 'Sandbox', colorToken: 'var(--color-type-sandbox)', shape: 'triangle' },
-  knowledge: { label: 'Knowledge', colorToken: 'var(--color-type-knowledge)', shape: 'book' },
-  skill: { label: 'Skill', colorToken: 'var(--color-type-skill)', shape: 'diamond' },
+  model: {
+    label: 'Model',
+    colorToken: 'var(--color-type-model)',
+    shape: 'circle',
+  },
+  text: {
+    label: 'Text',
+    colorToken: 'var(--color-type-text)',
+    shape: 'circle',
+  },
+  json: {
+    label: 'JSON',
+    colorToken: 'var(--color-type-json)',
+    shape: 'square',
+  },
+  array: {
+    label: 'Array',
+    colorToken: 'var(--color-type-json)',
+    shape: 'square',
+  },
+  image: {
+    label: 'Image',
+    colorToken: 'var(--color-type-image)',
+    shape: 'diamond',
+  },
+  audio: {
+    label: 'Audio',
+    colorToken: 'var(--color-type-audio)',
+    shape: 'capsule',
+  },
+  tool: {
+    label: 'Tool',
+    colorToken: 'var(--color-type-tool)',
+    shape: 'hexagon',
+  },
+  sandbox: {
+    label: 'Sandbox',
+    colorToken: 'var(--color-type-sandbox)',
+    shape: 'triangle',
+  },
+  knowledge: {
+    label: 'Knowledge',
+    colorToken: 'var(--color-type-knowledge)',
+    shape: 'book',
+  },
+  skill: {
+    label: 'Skill',
+    colorToken: 'var(--color-type-skill)',
+    shape: 'diamond',
+  },
   agent: { label: 'Agent', colorToken: '#F97316', shape: 'circle' },
-  memory: { label: 'Memory', colorToken: 'var(--color-type-knowledge)', shape: 'book' },
+  memory: {
+    label: 'Memory',
+    colorToken: 'var(--color-type-knowledge)',
+    shape: 'book',
+  },
   exec: { label: 'Exec', colorToken: 'var(--color-type-exec)', shape: 'arrow' },
-  volume: { label: 'Volume', colorToken: 'var(--color-type-volume)', shape: 'square' },
+  volume: {
+    label: 'Volume',
+    colorToken: 'var(--color-type-volume)',
+    shape: 'square',
+  },
 }
 
 const CATEGORY_COLOR_TOKENS: Record<NodeCategory, string> = {
@@ -147,11 +142,7 @@ const CATEGORY_COLOR_TOKENS: Record<NodeCategory, string> = {
 
 type NonJsonPortDataType = Exclude<PortDataType, 'json'>
 
-function createScalarSchema(
-  kind: NonJsonPortDataType,
-  title: string,
-  description?: string,
-): ScalarTypeSchema {
+function createScalarSchema(kind: NonJsonPortDataType, title: string, description?: string): ScalarTypeSchema {
   return {
     kind,
     title,
@@ -189,19 +180,8 @@ export interface CreatePortOptions {
   schema?: TypeSchema
 }
 
-export function createPort(
-  id: string,
-  label: string,
-  direction: PortDirection,
-  dataType: PortDataType,
-  options?: CreatePortOptions,
-): PortDefinition {
-  const schema = options?.schema
-    ?? (dataType === 'json'
-      ? createJsonSchema(label)
-      : dataType === 'array'
-        ? createArraySchema(label)
-        : createScalarSchema(dataType, label))
+export function createPort(id: string, label: string, direction: PortDirection, dataType: PortDataType, options?: CreatePortOptions): PortDefinition {
+  const schema = options?.schema ?? (dataType === 'json' ? createJsonSchema(label) : dataType === 'array' ? createArraySchema(label) : createScalarSchema(dataType, label))
 
   return {
     id,
@@ -217,11 +197,19 @@ export function createPort(
   }
 }
 
-function createConfigField(
-  type: NodeConfigFieldSchema['type'],
-  title: string,
-  options: Omit<NodeConfigFieldSchema, 'type' | 'title'> = {},
-): NodeConfigFieldSchema {
+function createExecInPort(description: string): PortDefinition {
+  return createPort('exec-in', '', 'input', 'exec', {
+    description,
+  })
+}
+
+function createExecOutPort(description: string): PortDefinition {
+  return createPort('exec-out', '', 'output', 'exec', {
+    description,
+  })
+}
+
+function createConfigField(type: NodeConfigFieldSchema['type'], title: string, options: Omit<NodeConfigFieldSchema, 'type' | 'title'> = {}): NodeConfigFieldSchema {
   return {
     type,
     title,
@@ -244,6 +232,7 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     description: '对话型 Agent 节点',
     colorToken: CATEGORY_COLOR_TOKENS.agent,
     inputPorts: [
+      createExecInPort('执行流入口，前序节点完成后触发对话型 Agent'),
       createPort('messages-in', '消息', 'input', 'json', {
         description: '传入的对话消息列表，包含历史 user/assistant 消息用于多轮对话',
       }),
@@ -252,6 +241,7 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
       }),
     ],
     outputPorts: [
+      createExecOutPort('执行流出口，对话型 Agent 完成后触发下游节点'),
       createPort('reply-out', '回复', 'output', 'text', {
         description: 'Agent 生成的自然语言文本回复',
       }),
@@ -274,12 +264,15 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     icon: 'Brain',
     description: '配置 LLM provider 和模型参数，通过连线为 Agent 提供模型能力',
     colorToken: CATEGORY_COLOR_TOKENS.agent,
-    inputPorts: [],
-    outputPorts: [createPort('model-out', '模型', 'output', 'model', {
-      multiple: true,
-      maxConnections: 5,
-      description: '输出配置好的 LLM 模型实例，连接到 Agent 或智能路由节点使用',
-    })],
+    inputPorts: [createExecInPort('执行流入口，前序节点完成后激活模型配置节点')],
+    outputPorts: [
+      createExecOutPort('执行流出口，模型配置节点完成后触发下游节点'),
+      createPort('model-out', '模型', 'output', 'model', {
+        multiple: true,
+        maxConnections: 5,
+        description: '输出配置好的 LLM 模型实例，连接到 Agent 或智能路由节点使用',
+      }),
+    ],
     configSchema: EMPTY_CONFIG_SCHEMA,
   },
   'http-tool': {
@@ -372,10 +365,13 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     icon: 'Plug',
     description: 'MCP 工具节点',
     colorToken: CATEGORY_COLOR_TOKENS.tool,
-    inputPorts: [],
-    outputPorts: [createPort('tool-out', '工具', 'output', 'tool', {
-      description: '连接后该 MCP 工具将注册到 Agent，Agent 可在对话中按需调用',
-    })],
+    inputPorts: [createExecInPort('执行流入口，前序节点完成后暴露 MCP 工具描述符')],
+    outputPorts: [
+      createExecOutPort('执行流出口，MCP 工具节点完成后触发下游节点'),
+      createPort('tool-out', '工具', 'output', 'tool', {
+        description: '连接后该 MCP 工具将注册到 Agent，Agent 可在对话中按需调用',
+      }),
+    ],
     configSchema: EMPTY_CONFIG_SCHEMA,
   },
   sandbox: {
@@ -386,12 +382,14 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     description: '代码执行沙箱环境',
     colorToken: CATEGORY_COLOR_TOKENS.tool,
     inputPorts: [
+      createExecInPort('执行流入口，前序节点完成后创建或恢复沙箱会话'),
       createPort('volume-in', '工作区', 'input', 'volume', {
         required: false,
         description: '可选挂载持久化工作区，沙箱内的文件读写将保存到该工作区',
       }),
     ],
     outputPorts: [
+      createExecOutPort('执行流出口，沙箱会话准备完成后触发下游节点'),
       createPort('sandbox-out', '沙箱', 'output', 'sandbox', {
         multiple: true,
         maxConnections: null,
@@ -404,7 +402,9 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
         cpu: createConfigField('number', 'CPU', { default: 1 }),
         memory: createConfigField('number', 'Memory', { default: 512 }),
         disk: createConfigField('number', 'Disk', { default: 2 }),
-        persistencePath: createConfigField('string', 'Persistence Path', { default: '' }),
+        persistencePath: createConfigField('string', 'Persistence Path', {
+          default: '',
+        }),
         timeout: createConfigField('number', 'Timeout', { default: 2 }),
       },
       required: [],
@@ -514,10 +514,13 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     icon: 'Database',
     description: '知识库检索节点',
     colorToken: CATEGORY_COLOR_TOKENS.knowledge,
-    inputPorts: [],
-    outputPorts: [createPort('knowledge-out', '知识库', 'output', 'knowledge', {
-      description: '向量知识库，连接后 Agent 可检索其中的文档进行回答',
-    })],
+    inputPorts: [createExecInPort('执行流入口，前序节点完成后暴露知识库绑定')],
+    outputPorts: [
+      createExecOutPort('执行流出口，知识库节点完成后触发下游节点'),
+      createPort('knowledge-out', '知识库', 'output', 'knowledge', {
+        description: '向量知识库，连接后 Agent 可检索其中的文档进行回答',
+      }),
+    ],
     configSchema: {
       type: 'object',
       properties: {
@@ -647,7 +650,7 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     colorToken: CATEGORY_COLOR_TOKENS.control,
     inputPorts: [
       createPort('exec-in', '', 'input', 'exec', {
-        description: '执行流��口，前序节点完成后开始迭代',
+        description: '执行流入口，前序节点完成后开始迭代',
       }),
       createPort('items-in', '数组', 'input', 'array', {
         description: '待迭代的数组输入',
@@ -888,6 +891,7 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     description: '根据策略从多个 LLM 模型中选择最优模型',
     colorToken: CATEGORY_COLOR_TOKENS.agent,
     inputPorts: [
+      createExecInPort('执行流入口，前序节点完成后触发智能路由决策'),
       createPort('model-in-0', '模型 1', 'input', 'model', {
         required: true,
         description: '第一个候选模型，路由策略将从候选模型中选择最优项',
@@ -898,6 +902,7 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
       }),
     ],
     outputPorts: [
+      createExecOutPort('执行流出口，智能路由完成后触发下游节点'),
       createPort('model-out', '选定模型', 'output', 'model', {
         multiple: true,
         maxConnections: 5,
@@ -910,25 +915,14 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
         strategy: {
           type: 'string',
           title: '路由策略',
-          enum: [
-            'random',
-            'round_robin',
-            'rules',
-            'llm_as_router',
-            'fallback_chain',
-            'knn',
-            'mlp',
-            'elo',
-            'memory_bank',
-            'wasm_plugin',
-          ],
+          enum: ['random', 'round_robin', 'rules', 'llm_as_router', 'fallback_chain', 'knn', 'mlp', 'elo', 'memory_bank', 'wasm_plugin'],
           default: 'random',
         },
       },
       required: ['strategy'],
     },
   },
-  'plugin': {
+  plugin: {
     type: 'plugin',
     category: 'plugin',
     label: '插件节点',
@@ -985,15 +979,16 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
       required: ['transformType', 'expression'],
     },
   },
-  'memory': {
+  memory: {
     type: 'memory',
     category: 'memory',
     label: 'Memory',
     icon: 'BrainCircuit',
     description: '图谱记忆实例节点',
     colorToken: CATEGORY_COLOR_TOKENS.memory,
-    inputPorts: [],
+    inputPorts: [createExecInPort('执行流入口，前序节点完成后创建记忆会话')],
     outputPorts: [
+      createExecOutPort('执行流出口，记忆节点完成后触发下游节点'),
       createPort('memory-out', '记忆', 'output', 'memory', {
         description: 'Agent 的长期记忆存储，跨对话保留关键信息和用户偏好',
       }),
@@ -1014,7 +1009,7 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
       required: ['memoryInstanceId'],
     },
   },
-  'agent': {
+  agent: {
     type: 'agent',
     category: 'agent',
     label: 'Agent',
@@ -1022,6 +1017,7 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     description: '调用已发布的 Agent Definition 执行任务',
     colorToken: CATEGORY_COLOR_TOKENS.agent,
     inputPorts: [
+      createExecInPort('执行流入口，前序节点完成后触发 Agent 执行'),
       createPort('text-in', '文本', 'input', 'text', {
         required: true,
         description: '发送给 Agent 的输入文本，通常来自上游节点或触发数据',
@@ -1054,6 +1050,7 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
       }),
     ],
     outputPorts: [
+      createExecOutPort('执行流出口，Agent 完成后触发下游节点'),
       createPort('agent-out', '回复', 'output', 'text', {
         multiple: true,
         maxConnections: null,
@@ -1074,8 +1071,9 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     icon: 'BookOpenText',
     description: 'Agent prompt 增强指令',
     colorToken: 'var(--color-type-skill)',
-    inputPorts: [],
+    inputPorts: [createExecInPort('执行流入口，前序节点完成后解析 Skill 内容')],
     outputPorts: [
+      createExecOutPort('执行流出口，Skill 节点完成后触发下游节点'),
       createPort('skill-out', 'Skill', 'output', 'skill', {
         description: '预定义的能力模板，连接后 Agent 在对话中可按需激活使用',
       }),
@@ -1099,8 +1097,9 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     icon: 'FolderOpen',
     description: '持久化工作区卷',
     colorToken: CATEGORY_COLOR_TOKENS.tool,
-    inputPorts: [],
+    inputPorts: [createExecInPort('执行流入口，前序节点完成后暴露工作区卷')],
     outputPorts: [
+      createExecOutPort('执行流出口，工作区节点完成后触发下游节点'),
       createPort('volume-out', '工作区', 'output', 'volume', {
         description: '持久化存储卷，可跨多次执行保留文件，需连接到沙箱节点使用',
       }),
@@ -1122,6 +1121,7 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
     description: '合并多分支数据',
     colorToken: CATEGORY_COLOR_TOKENS.control,
     inputPorts: [
+      createExecInPort('执行流入口，前序节点完成后触发合并逻辑'),
       createPort('input-0', '输入 1', 'input', 'json', {
         description: '第 1 路输入，等待所有输入就绪后进行合并',
       }),
@@ -1129,9 +1129,12 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
         description: '第 2 路输入，等待所有输入就绪后进行合并',
       }),
     ],
-    outputPorts: [createPort('merged-out', '合并结果', 'output', 'json', {
-      description: '将所有输入路的数据合并为一个 JSON 对象后输出',
-    })],
+    outputPorts: [
+      createExecOutPort('执行流出口，合并完成后触发下游节点'),
+      createPort('merged-out', '合并结果', 'output', 'json', {
+        description: '将所有输入路的数据合并为一个 JSON 对象后输出',
+      }),
+    ],
     configSchema: {
       type: 'object',
       properties: {
@@ -1147,13 +1150,9 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
   },
 }
 
-export function getWorkflowAgentInputPorts(
-  runtimeMode: AgentRuntimeMode | null | undefined,
-): PortDefinition[] {
+export function getWorkflowAgentInputPorts(runtimeMode: AgentRuntimeMode | null | undefined): PortDefinition[] {
   const inputPorts = clonePortDefinitions(NODE_TYPE_REGISTRY.agent.inputPorts)
-  return runtimeMode === 'no_sandbox'
-    ? inputPorts.filter((port) => port.id !== 'sandbox-in')
-    : inputPorts
+  return runtimeMode === 'no_sandbox' ? inputPorts.filter((port) => port.id !== 'sandbox-in') : inputPorts
 }
 
 export function getNodeTypeConfig(type: NodeType): NodeTypeConfig {
@@ -1168,11 +1167,7 @@ export function getNodeTypeConfig(type: NodeType): NodeTypeConfig {
 }
 
 export function getNodeTypeConfigOrNull(type: string): NodeTypeConfig | null {
-  return (
-    NODE_TYPE_REGISTRY[type as NodeType] ??
-    (AGENT_CANVAS_NODE_REGISTRY.get(type) as unknown as NodeTypeConfig) ??
-    null
-  )
+  return NODE_TYPE_REGISTRY[type as NodeType] ?? (AGENT_CANVAS_NODE_REGISTRY.get(type) as unknown as NodeTypeConfig) ?? null
 }
 
 export function getAllNodeTypes(): NodeTypeConfig[] {
@@ -1185,9 +1180,7 @@ function cloneTypeSchema(schema: TypeSchema): TypeSchema {
       if (schema.shape === 'object') {
         return {
           ...schema,
-          properties: Object.fromEntries(
-            Object.entries(schema.properties).map(([key, value]) => [key, cloneTypeSchema(value)])
-          ),
+          properties: Object.fromEntries(Object.entries(schema.properties).map(([key, value]) => [key, cloneTypeSchema(value)])),
           required: schema.required ? [...schema.required] : undefined,
         }
       }

@@ -40,6 +40,22 @@ describe('buildAgentPromptContentBlocks', () => {
     ]);
   });
 
+  it('exec-in 作为控制流句柄时不应进入文本摘要', () => {
+    const blocks = buildAgentPromptContentBlocks({
+      input: {
+        'exec-in': { triggered: true },
+        'text-in': '继续执行',
+      },
+    });
+
+    expect(blocks).toEqual([
+      {
+        type: 'text',
+        text: '继续执行',
+      },
+    ]);
+  });
+
   it('应保��多模态 block，并把其在文本摘要中转成占位符', () => {
     const blocks = buildAgentPromptContentBlocks({
       input: {

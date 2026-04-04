@@ -1,55 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import { buildPaletteGroups } from '../components/nodeCategories'
 import { PORT_DATA_TYPES } from './typeSchema'
-import {
-  clonePortDefinitions,
-  DYNAMIC_ONLY_NODE_TYPES,
-  getWorkflowAgentInputPorts,
-  getAllNodeTypes,
-  getNodeTypeConfig,
-  getNodeTypeConfigOrNull,
-  NODE_TYPE_REGISTRY,
-  NODE_TYPES,
-  PORT_DATA_TYPE_META,
-  type NodeType,
-  type PortDefinition,
-} from './nodeTypeRegistry'
+import { clonePortDefinitions, DYNAMIC_ONLY_NODE_TYPES, EXEC_PORT_NODE_TYPES, getWorkflowAgentInputPorts, getAllNodeTypes, getNodeTypeConfig, getNodeTypeConfigOrNull, NODE_TYPE_REGISTRY, NODE_TYPES, PORT_DATA_TYPE_META, type NodeType, type PortDefinition } from './nodeTypeRegistry'
 
 describe('nodeTypeRegistry', () => {
   it('exports all supported node types in a stable order', () => {
-    expect(NODE_TYPES).toEqual([
-      'chat-agent',
-      'llm-model',
-      'http-tool',
-      'code-tool',
-      'mcp-tool',
-      'sandbox',
-      'manual-trigger',
-      'schedule-trigger',
-      'webhook-trigger',
-      'api-event-trigger',
-      'knowledge-base',
-      'text-output',
-      'json-output',
-      'condition',
-      'loop',
-      'iteration',
-      'loop-start',
-      'iteration-start',
-      'loop-state',
-      'result',
-      'break',
-      'continue',
-      'reusable-block',
-      'smart-routing',
-      'plugin',
-      'input-preprocessor',
-      'memory',
-      'agent',
-      'skill',
-      'workspace',
-      'merge',
-    ])
+    expect(NODE_TYPES).toEqual(['chat-agent', 'llm-model', 'http-tool', 'code-tool', 'mcp-tool', 'sandbox', 'manual-trigger', 'schedule-trigger', 'webhook-trigger', 'api-event-trigger', 'knowledge-base', 'text-output', 'json-output', 'condition', 'loop', 'iteration', 'loop-start', 'iteration-start', 'loop-state', 'result', 'break', 'continue', 'reusable-block', 'smart-routing', 'plugin', 'input-preprocessor', 'memory', 'agent', 'skill', 'workspace', 'merge'])
   })
 
   it('keeps port type metadata aligned with the supported data types', () => {
@@ -116,11 +72,11 @@ describe('nodeTypeRegistry', () => {
 
   it('defines llm-model as a single model-output node with multi-connect support', () => {
     const llmModelNode = getNodeTypeConfig('llm-model')
-    const [outputPort] = llmModelNode.outputPorts
+    const outputPort = llmModelNode.outputPorts.find((port) => port.id === 'model-out')
 
     expect(llmModelNode.category).toBe('agent')
-    expect(llmModelNode.inputPorts).toEqual([])
-    expect(llmModelNode.outputPorts).toHaveLength(1)
+    expect(llmModelNode.inputPorts.map((port) => port.id)).toEqual(['exec-in'])
+    expect(llmModelNode.outputPorts.map((port) => port.id)).toEqual(['exec-out', 'model-out'])
 
     expect(outputPort).toMatchObject({
       id: 'model-out',
@@ -135,10 +91,10 @@ describe('nodeTypeRegistry', () => {
 
   it('defines knowledge-base as an output-only knowledge source node', () => {
     const knowledgeBaseNode = getNodeTypeConfig('knowledge-base')
-    const [outputPort] = knowledgeBaseNode.outputPorts
+    const outputPort = knowledgeBaseNode.outputPorts.find((port) => port.id === 'knowledge-out')
 
-    expect(knowledgeBaseNode.inputPorts).toEqual([])
-    expect(knowledgeBaseNode.outputPorts).toHaveLength(1)
+    expect(knowledgeBaseNode.inputPorts.map((port) => port.id)).toEqual(['exec-in'])
+    expect(knowledgeBaseNode.outputPorts.map((port) => port.id)).toEqual(['exec-out', 'knowledge-out'])
     expect(outputPort).toMatchObject({
       id: 'knowledge-out',
       label: '知识库',
@@ -147,6 +103,15 @@ describe('nodeTypeRegistry', () => {
       required: false,
       multiple: false,
     })
+  })
+
+  it('目标 workflow 节点都会暴露 exec-in 与 exec-out', () => {
+    for (const type of EXEC_PORT_NODE_TYPES) {
+      const config = getNodeTypeConfig(type)
+
+      expect(config.inputPorts.some((port) => port.id === 'exec-in')).toBe(true)
+      expect(config.outputPorts.some((port) => port.id === 'exec-out')).toBe(true)
+    }
   })
 
   it('defines reusable-block as a control node with dynamic ports and no schema fields', () => {
@@ -168,23 +133,14 @@ describe('nodeTypeRegistry', () => {
 
     expect(DYNAMIC_ONLY_NODE_TYPES.has('smart-routing')).toBe(false)
     expect(smartRoutingNode.category).toBe('agent')
-    expect(smartRoutingNode.inputPorts.map((port) => port.id)).toEqual([
-      'model-in-0',
-      'model-in-1',
-    ])
-    expect(smartRoutingNode.outputPorts.map((port) => port.id)).toEqual([
-      'model-out',
-    ])
+    expect(smartRoutingNode.inputPorts.map((port) => port.id)).toEqual(['exec-in', 'model-in-0', 'model-in-1'])
+    expect(smartRoutingNode.outputPorts.map((port) => port.id)).toEqual(['exec-out', 'model-out'])
     expect(smartRoutingNode.configSchema.properties.strategy?.default).toBe('random')
   })
 
   it('workflow agent 输入端口会跟随 agent runtimeMode 移除 sandbox 句柄', () => {
-    expect(getWorkflowAgentInputPorts('sandbox').map((port) => port.id)).toContain(
-      'sandbox-in',
-    )
-    expect(
-      getWorkflowAgentInputPorts('no_sandbox').map((port) => port.id),
-    ).not.toContain('sandbox-in')
+    expect(getWorkflowAgentInputPorts('sandbox').map((port) => port.id)).toContain('sandbox-in')
+    expect(getWorkflowAgentInputPorts('no_sandbox').map((port) => port.id)).not.toContain('sandbox-in')
   })
 
   it('exposes every registry entry through ordered helpers and palette groups', () => {
@@ -193,30 +149,7 @@ describe('nodeTypeRegistry', () => {
     const staticTypes = NODE_TYPES.filter((t) => !DYNAMIC_ONLY_NODE_TYPES.has(t))
 
     expect(orderedTypes).toEqual([...NODE_TYPES])
-    expect(groupedTypes).toEqual([
-      'chat-agent',
-      'llm-model',
-      'smart-routing',
-      'agent',
-      'skill',
-      'http-tool',
-      'code-tool',
-      'mcp-tool',
-      'sandbox',
-      'input-preprocessor',
-      'workspace',
-      'manual-trigger',
-      'schedule-trigger',
-      'webhook-trigger',
-      'api-event-trigger',
-      'knowledge-base',
-      'memory',
-      'text-output',
-      'json-output',
-      'condition',
-      'loop',
-      'iteration',
-    ])
+    expect(groupedTypes).toEqual(['chat-agent', 'llm-model', 'smart-routing', 'agent', 'skill', 'http-tool', 'code-tool', 'mcp-tool', 'sandbox', 'input-preprocessor', 'workspace', 'manual-trigger', 'schedule-trigger', 'webhook-trigger', 'api-event-trigger', 'knowledge-base', 'memory', 'text-output', 'json-output', 'condition', 'loop', 'iteration'])
     expect(new Set(groupedTypes)).toEqual(new Set(staticTypes))
     expect(Object.keys(NODE_TYPE_REGISTRY).sort()).toEqual([...NODE_TYPES].sort())
   })
@@ -279,14 +212,7 @@ describe('nodeTypeRegistry', () => {
     const clonedItems = clonedSchema.properties.items
     const originalItems = originalSchema.properties.items
 
-    if (
-      !clonedItems ||
-      clonedItems.kind !== 'json' ||
-      clonedItems.shape !== 'array' ||
-      !originalItems ||
-      originalItems.kind !== 'json' ||
-      originalItems.shape !== 'array'
-    ) {
+    if (!clonedItems || clonedItems.kind !== 'json' || clonedItems.shape !== 'array' || !originalItems || originalItems.kind !== 'json' || originalItems.shape !== 'array') {
       throw new Error('Expected nested items schema to be a JSON array schema')
     }
 

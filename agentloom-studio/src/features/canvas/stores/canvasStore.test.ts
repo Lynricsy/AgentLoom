@@ -120,10 +120,43 @@ describe('canvasStore', () => {
     }
 
     expect(state.nodes).toHaveLength(1)
-    expect(node.data.inputPorts).toHaveLength(2)
-    expect(node.data.outputPorts).toHaveLength(2)
+    expect(node.data.inputPorts).toHaveLength(3)
+    expect(node.data.outputPorts).toHaveLength(3)
     expect(node.data.config).toEqual({})
     expect(state.isDirty).toBe(true)
+  })
+
+  it('applyServerSnapshot 会给缺少 exec 端口的静态节点补回执行句柄', () => {
+    const agentConfig = getNodeTypeConfig('agent')
+    const legacyAgentNode = createNode({
+      data: {
+        label: 'Legacy Agent',
+        nodeType: 'agent',
+        category: 'agent',
+        description: '旧快照里没有 exec 端口',
+        config: {},
+        inputPorts: clonePortDefinitions(agentConfig.inputPorts.filter((port) => port.id !== 'exec-in')),
+        outputPorts: clonePortDefinitions(agentConfig.outputPorts.filter((port) => port.id !== 'exec-out')),
+      },
+    })
+
+    useCanvasStore.getState().actions.applyServerSnapshot({
+      workflowId: 'workflow-1',
+      nodes: [legacyAgentNode],
+      edges: [],
+      viewport: undefined,
+      version: 1,
+    })
+
+    const hydratedNode = useCanvasStore.getState().nodes[0]
+    if (!hydratedNode) {
+      throw new Error('Expected hydrated node to exist')
+    }
+
+    expect(hydratedNode.data.inputPorts.map((port) => port.id)).toContain('exec-in')
+    expect(hydratedNode.data.outputPorts.map((port) => port.id)).toContain('exec-out')
+    expect(hydratedNode.data.inputPorts[0]?.id).toBe('exec-in')
+    expect(hydratedNode.data.outputPorts[0]?.id).toBe('exec-out')
   })
 
   it('stores reusable-block metadata when adding block nodes', () => {
@@ -514,8 +547,8 @@ describe('canvasStore', () => {
     }
 
     expect(hydratedNode.data.config).toEqual({})
-    expect(hydratedNode.data.inputPorts).toHaveLength(2)
-    expect(hydratedNode.data.outputPorts).toHaveLength(2)
+    expect(hydratedNode.data.inputPorts).toHaveLength(3)
+    expect(hydratedNode.data.outputPorts).toHaveLength(3)
     expect(hydratedNode.data.modelConfig).toEqual({
       connectedModelNodeId: null,
     })
@@ -565,8 +598,9 @@ describe('canvasStore', () => {
     }
 
     expect(hydratedNode.data.config).toEqual({ retries: 3 })
-    expect(hydratedNode.data.inputPorts).toEqual(customInputPorts)
-    expect(hydratedNode.data.outputPorts).toEqual([])
+    expect(hydratedNode.data.inputPorts.map((port) => port.id)).toEqual(['exec-in', 'custom-input'])
+    expect(hydratedNode.data.inputPorts[1]).toMatchObject(customInputPorts[0]!)
+    expect(hydratedNode.data.outputPorts.map((port) => port.id)).toEqual(['exec-out'])
     expect(hydratedNode.data.modelConfig).toEqual({
       connectedModelNodeId: 'model-node-1',
     })

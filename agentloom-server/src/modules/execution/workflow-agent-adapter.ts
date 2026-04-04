@@ -345,6 +345,7 @@ export class WorkflowAgentAdapter {
 
     const result: WorkflowAgentExecutionResult = {
       content: accumulatedContent,
+      'exec-out': { triggered: true },
       ...(stopReason !== 'end_turn' ? { stopReason } : {}),
       ...(decision ? { decision } : {}),
       ...(Object.keys(subAgentResults).length > 0
@@ -1243,7 +1244,10 @@ export class WorkflowAgentAdapter {
     definitionRuntimeMode: unknown,
     snapshotRuntimeMode: unknown,
   ): AgentRuntimeMode {
-    if (snapshotRuntimeMode === 'sandbox' || snapshotRuntimeMode === 'no_sandbox') {
+    if (
+      snapshotRuntimeMode === 'sandbox' ||
+      snapshotRuntimeMode === 'no_sandbox'
+    ) {
       return snapshotRuntimeMode;
     }
 

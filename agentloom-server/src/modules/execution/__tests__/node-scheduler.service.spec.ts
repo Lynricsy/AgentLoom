@@ -2633,6 +2633,19 @@ describe('NodeSchedulerService', () => {
                 portMapping: { input: 'tool-in-0', output: 'tool-out-0' },
               },
             ],
+            'tool-out': {
+              type: 'mcp-tool',
+              mcpServerConfigId: 'mcp-server-001',
+              toolName: 'get_weather',
+              portMapping: { input: 'tool-in-0', output: 'tool-out-0' },
+              tools: [
+                {
+                  toolName: 'get_weather',
+                  portMapping: { input: 'tool-in-0', output: 'tool-out-0' },
+                },
+              ],
+            },
+            'exec-out': { triggered: true },
           },
         },
       );
@@ -2749,6 +2762,30 @@ describe('NodeSchedulerService', () => {
                 },
               },
             ],
+            'tool-out': {
+              type: 'mcp-tool',
+              mcpServerConfigId: 'mcp-server-001',
+              toolName: 'fast_search',
+              enabledToolIds: ['tool-fast'],
+              mcpToolDefinitionId: 'tool-fast',
+              inputSchema: { type: 'object' },
+              portMapping: {
+                inputs: [{ name: 'query', dataType: 'text' }],
+                outputs: [{ name: 'result', dataType: 'json' }],
+              },
+              tools: [
+                {
+                  toolName: 'fast_search',
+                  mcpToolDefinitionId: 'tool-fast',
+                  inputSchema: { type: 'object' },
+                  portMapping: {
+                    inputs: [{ name: 'query', dataType: 'text' }],
+                    outputs: [{ name: 'result', dataType: 'json' }],
+                  },
+                },
+              ],
+            },
+            'exec-out': { triggered: true },
           },
         },
       );

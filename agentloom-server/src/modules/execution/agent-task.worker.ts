@@ -457,7 +457,10 @@ export class AgentTaskWorker extends WorkerHost {
         return;
       }
 
-      const result: Record<string, unknown> = { content: accumulatedContent };
+      const result: Record<string, unknown> = {
+        content: accumulatedContent,
+        'exec-out': { triggered: true },
+      };
       if (lastStopReason && lastStopReason !== 'end_turn') {
         result.stopReason = lastStopReason;
       }
@@ -898,6 +901,7 @@ export class AgentTaskWorker extends WorkerHost {
           ? { modifiedContent: intervention.modifiedContent }
           : {}),
       },
+      'exec-out': { triggered: true },
     };
 
     const stopReason = checkpointData.stopReason;

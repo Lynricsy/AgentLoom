@@ -781,7 +781,11 @@ describe('AgentTaskWorker', () => {
         STEP_ID,
         'completed',
         expect.objectContaining({
-          result: { content: '截断的内容', stopReason: 'max_tokens' },
+          result: expect.objectContaining({
+            content: '截断的内容',
+            stopReason: 'max_tokens',
+            'exec-out': { triggered: true },
+          }),
         }),
       );
       expect(mockNodeScheduler.onNodeCompleted).toHaveBeenCalledWith(
@@ -1502,6 +1506,7 @@ describe('AgentTaskWorker', () => {
             },
             stopReason: 'intervention_required',
             decision: { suggestedContent: '建议稿', confidence: 0.9 },
+            'exec-out': { triggered: true },
           },
           checkpointData: {
             sessionId: SESSION_ID,
@@ -2039,7 +2044,10 @@ describe('AgentTaskWorker', () => {
           STEP_ID,
           'completed',
           expect.objectContaining({
-            result: { content: 'previous content + next' },
+            result: expect.objectContaining({
+              content: 'previous content + next',
+              'exec-out': { triggered: true },
+            }),
           }),
         );
       });
@@ -2084,7 +2092,10 @@ describe('AgentTaskWorker', () => {
           STEP_ID,
           'completed',
           expect.objectContaining({
-            result: { content: 'fresh' },
+            result: expect.objectContaining({
+              content: 'fresh',
+              'exec-out': { triggered: true },
+            }),
           }),
         );
       });
@@ -2489,7 +2500,10 @@ describe('AgentTaskWorker', () => {
           STEP_ID,
           'completed',
           expect.objectContaining({
-            result: { content: '完成' },
+            result: expect.objectContaining({
+              content: '完成',
+              'exec-out': { triggered: true },
+            }),
           }),
         );
       });
@@ -2759,7 +2773,11 @@ describe('AgentTaskWorker', () => {
           STEP_ID,
           'completed',
           expect.objectContaining({
-            result: { content: '', stopReason: 'tool_use' },
+            result: expect.objectContaining({
+              content: '',
+              stopReason: 'tool_use',
+              'exec-out': { triggered: true },
+            }),
           }),
         );
         expect(mockNodeScheduler.onNodeCompleted).toHaveBeenCalledWith(

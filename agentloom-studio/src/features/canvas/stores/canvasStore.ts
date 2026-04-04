@@ -6,7 +6,7 @@ import { enableMapSet } from 'immer'
 import { applyNodeChanges, applyEdgeChanges, type NodeChange, type EdgeChange, type Connection, type Viewport } from '@xyflow/react'
 import type { CanvasNode, CanvasEdge, CanvasEdgeData, CanvasSnapshot, AddNodeInput, FieldMapping, AgentNodeData } from '../types'
 import { createDefaultEdgeData, createDefaultAgentNodeData } from '../types'
-import { clonePortDefinitions, getNodeTypeConfig, getNodeTypeConfigOrNull } from '../types/nodeTypeRegistry'
+import { clonePortDefinitions, EXEC_PORT_NODE_TYPES, getNodeTypeConfig, getNodeTypeConfigOrNull, type NodeTypeConfig, type PortDefinition } from '../types/nodeTypeRegistry'
 import { arePortDataTypesCompatible, evaluateConnection, mergeEdgeDataWithStoredMappings, resolveConnectionPorts } from '../lib/connectionCompatibility'
 import { getNodePortContractSignature } from '../lib/typeEngine/serialize'
 import { buildCompoundChildExtent, clampPositionToExtent, getCompoundInitialChildPosition, readCompoundNodeDimension, resolveCompoundContainerSize } from '../lib/compoundLayout'
@@ -27,6 +27,30 @@ function findLastIndex<T>(arr: readonly T[], predicate: (item: T) => boolean): n
     if (predicate(arr[i]!)) return i
   }
   return -1
+}
+
+function prependMissingPort(ports: PortDefinition[], defaultPorts: readonly PortDefinition[], portId: 'exec-in' | 'exec-out'): PortDefinition[] {
+  if (ports.some((port) => port.id === portId)) {
+    return ports
+  }
+
+  const defaultPort = defaultPorts.find((port) => port.id === portId)
+  if (!defaultPort) {
+    return ports
+  }
+
+  return [clonePortDefinitions([defaultPort])[0]!, ...ports]
+}
+
+function ensureExecPortsForHydration(nodeType: string, typeConfig: NodeTypeConfig | null, inputPorts: PortDefinition[], outputPorts: PortDefinition[]): { inputPorts: PortDefinition[]; outputPorts: PortDefinition[] } {
+  if (!typeConfig || !EXEC_PORT_NODE_TYPES.has(nodeType as NodeType)) {
+    return { inputPorts, outputPorts }
+  }
+
+  return {
+    inputPorts: prependMissingPort(inputPorts, typeConfig.inputPorts, 'exec-in'),
+    outputPorts: prependMissingPort(outputPorts, typeConfig.outputPorts, 'exec-out'),
+  }
 }
 
 const MAX_UNDO_STACK_SIZE = 10
@@ -848,6 +872,8 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
                           ...(n.data.config ?? {}),
                         } as ReturnType<typeof createDefaultIterationStartNodeConfig>)
                 }
+
+                ;({ inputPorts, outputPorts } = ensureExecPortsForHydration(n.data.nodeType, typeConfig, inputPorts, outputPorts))
 
                 return {
                   ...n,

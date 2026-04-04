@@ -136,7 +136,10 @@ function buildCompoundContextKey(
 @Injectable()
 export class NodeSchedulerService {
   private readonly logger = new Logger(NodeSchedulerService.name);
-  private readonly compoundContexts = new Map<string, CompoundExecutionContext>();
+  private readonly compoundContexts = new Map<
+    string,
+    CompoundExecutionContext
+  >();
 
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
@@ -194,13 +197,7 @@ export class NodeSchedulerService {
 
     await Promise.all(
       plan.layers[0].map((nodeId) =>
-            this.scheduleNode(
-              executionId,
-              nodeId,
-              tenantId,
-              topLevelGraph,
-              steps,
-            ),
+        this.scheduleNode(executionId, nodeId, tenantId, topLevelGraph, steps),
       ),
     );
   }
@@ -236,7 +233,11 @@ export class NodeSchedulerService {
         steps,
         tenantId,
       );
-      await this.checkpointService.saveCheckpoint(tenantId, executionId, stepId);
+      await this.checkpointService.saveCheckpoint(
+        tenantId,
+        executionId,
+        stepId,
+      );
       return;
     }
 
@@ -317,10 +318,10 @@ export class NodeSchedulerService {
 
     const resolvedSnapshot = options?.skipLatestState
       ? snapshot
-      : latestState?.snapshot ?? snapshot;
+      : (latestState?.snapshot ?? snapshot);
     const resolvedSteps = options?.skipLatestState
       ? steps
-      : latestState?.steps ?? steps;
+      : (latestState?.steps ?? steps);
     const step = resolvedSteps.find((s) => s.nodeId === nodeId);
     if (!step) return;
     if (step.status !== 'pending') return;
@@ -1497,12 +1498,17 @@ export class NodeSchedulerService {
 
       if (!skillId) {
         this.logger.warn(`Skill node ${step.nodeId} has no skillId configured`);
+        const skillOutput = { warning: 'No skillId configured', skills: [] };
         await this.stepStateMachine.updateStepStatus(
           tenantId,
           step.id,
           'completed',
           {
-            result: { warning: 'No skillId configured', skills: [] },
+            result: {
+              ...skillOutput,
+              'skill-out': skillOutput,
+              'exec-out': { triggered: true },
+            },
           },
         );
         await this.onNodeCompleted(executionId, step.id, tenantId);
@@ -1513,12 +1519,20 @@ export class NodeSchedulerService {
         this.logger.warn(
           `SkillResolverService unavailable for skill node ${step.nodeId}`,
         );
+        const skillOutput = {
+          warning: 'Skill resolver unavailable',
+          skills: [],
+        };
         await this.stepStateMachine.updateStepStatus(
           tenantId,
           step.id,
           'completed',
           {
-            result: { warning: 'Skill resolver unavailable', skills: [] },
+            result: {
+              ...skillOutput,
+              'skill-out': skillOutput,
+              'exec-out': { triggered: true },
+            },
           },
         );
         await this.onNodeCompleted(executionId, step.id, tenantId);
@@ -1534,14 +1548,19 @@ export class NodeSchedulerService {
         this.logger.warn(
           `Skill ${skillId} not found or not active for tenant ${tenantId}`,
         );
+        const skillOutput = {
+          warning: `Skill ${skillId} not found or inactive`,
+          skills: [],
+        };
         await this.stepStateMachine.updateStepStatus(
           tenantId,
           step.id,
           'completed',
           {
             result: {
-              warning: `Skill ${skillId} not found or inactive`,
-              skills: [],
+              ...skillOutput,
+              'skill-out': skillOutput,
+              'exec-out': { triggered: true },
             },
           },
         );
@@ -1555,13 +1574,18 @@ export class NodeSchedulerService {
         description: skill.description || '',
         content: skill.content,
       }));
+      const skillOutput = { skills: skillPayloads };
 
       await this.stepStateMachine.updateStepStatus(
         tenantId,
         step.id,
         'completed',
         {
-          result: { skills: skillPayloads },
+          result: {
+            ...skillOutput,
+            'skill-out': skillOutput,
+            'exec-out': { triggered: true },
+          },
         },
       );
       await this.onNodeCompleted(executionId, step.id, tenantId);
@@ -1625,14 +1649,19 @@ export class NodeSchedulerService {
         this.logger.warn(
           `MCP tool node ${step.nodeId} missing mcpServerConfigId or toolName`,
         );
+        const toolOutput = {
+          warning: 'MCP tool node missing mcpServerConfigId or toolName',
+          type: 'mcp-tool',
+        };
         await this.stepStateMachine.updateStepStatus(
           tenantId,
           step.id,
           'completed',
           {
             result: {
-              warning: 'MCP tool node missing mcpServerConfigId or toolName',
-              type: 'mcp-tool',
+              ...toolOutput,
+              'tool-out': toolOutput,
+              'exec-out': { triggered: true },
             },
           },
         );
@@ -1662,7 +1691,11 @@ export class NodeSchedulerService {
         step.id,
         'completed',
         {
-          result: descriptor,
+          result: {
+            ...descriptor,
+            'tool-out': descriptor,
+            'exec-out': { triggered: true },
+          },
         },
       );
       await this.onNodeCompleted(executionId, step.id, tenantId);
@@ -1941,10 +1974,7 @@ export class NodeSchedulerService {
         executionId,
       );
       context.nextStateProvided = true;
-      context.nextState = this.extractCompoundValueInput(
-        input,
-        'state-in',
-      );
+      context.nextState = this.extractCompoundValueInput(input, 'state-in');
 
       await this.stepStateMachine.updateStepStatus(
         tenantId,
@@ -2297,13 +2327,15 @@ export class NodeSchedulerService {
       parentInput: input,
       outputMode:
         this.readFirstString(nodeData.outputMode, nodeData.output_mode) ===
-          'none'
+        'none'
           ? 'none'
           : this.readFirstString(nodeData.outputMode, nodeData.output_mode) ===
-                'collect-array'
+              'collect-array'
             ? 'collect-array'
-            : this.readFirstString(nodeData.outputMode, nodeData.output_mode) ===
-                  'last'
+            : this.readFirstString(
+                  nodeData.outputMode,
+                  nodeData.output_mode,
+                ) === 'last'
               ? 'last'
               : parentNodeType === 'iteration'
                 ? 'collect-array'
@@ -2439,22 +2471,22 @@ export class NodeSchedulerService {
     steps: ExecutionStep[],
     tenantId: string,
   ): Promise<void> {
-    const internalNodeIds = new Set(context.internalNodes.map((node) => node.id));
-    const internalSteps = steps.filter((step) => internalNodeIds.has(step.nodeId));
+    const internalNodeIds = new Set(
+      context.internalNodes.map((node) => node.id),
+    );
+    const internalSteps = steps.filter((step) =>
+      internalNodeIds.has(step.nodeId),
+    );
     const now = new Date();
 
     for (const step of internalSteps) {
       if (step.status !== 'pending') {
-        this.eventBridge.emitStepStatusChanged(
-          tenantId,
-          context.executionId,
-          {
-            stepId: step.id,
-            nodeId: step.nodeId,
-            from: step.status,
-            to: 'pending',
-          },
-        );
+        this.eventBridge.emitStepStatusChanged(tenantId, context.executionId, {
+          stepId: step.id,
+          nodeId: step.nodeId,
+          from: step.status,
+          to: 'pending',
+        });
       }
     }
 
@@ -2493,8 +2525,12 @@ export class NodeSchedulerService {
     tenantId: string,
   ): Promise<void> {
     const { steps } = await this.loadExecutionContext(context.executionId);
-    const internalNodeIds = new Set(context.internalNodes.map((node) => node.id));
-    const internalSteps = steps.filter((step) => internalNodeIds.has(step.nodeId));
+    const internalNodeIds = new Set(
+      context.internalNodes.map((node) => node.id),
+    );
+    const internalSteps = steps.filter((step) =>
+      internalNodeIds.has(step.nodeId),
+    );
 
     const hasActiveStep = internalSteps.some(
       (step) =>
@@ -2534,7 +2570,9 @@ export class NodeSchedulerService {
     }
 
     for (const nodeId of context.orderedNodeIds) {
-      const step = internalSteps.find((candidate) => candidate.nodeId === nodeId);
+      const step = internalSteps.find(
+        (candidate) => candidate.nodeId === nodeId,
+      );
       if (!step || step.status !== 'pending') {
         continue;
       }
@@ -2586,7 +2624,11 @@ export class NodeSchedulerService {
         continue;
       }
 
-      await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'skipped');
+      await this.stepStateMachine.updateStepStatus(
+        tenantId,
+        step.id,
+        'skipped',
+      );
     }
   }
 
@@ -2619,7 +2661,11 @@ export class NodeSchedulerService {
       }
 
       if (context.loopRound >= context.maxIterations) {
-        await this.finalizeCompoundExecution(context, tenantId, 'max_iterations');
+        await this.finalizeCompoundExecution(
+          context,
+          tenantId,
+          'max_iterations',
+        );
         return;
       }
     }
@@ -2628,9 +2674,7 @@ export class NodeSchedulerService {
     await this.scheduleNextCompoundNode(context, tenantId);
   }
 
-  private mergeCompoundRoundOutputs(
-    context: CompoundExecutionContext,
-  ): void {
+  private mergeCompoundRoundOutputs(context: CompoundExecutionContext): void {
     if (context.outputMode === 'none') {
       return;
     }
@@ -2660,7 +2704,8 @@ export class NodeSchedulerService {
     const result: Record<string, unknown> = {
       'exec-out': {
         triggered: true,
-        stopReason: stopReason ?? (context.breakRequested ? 'break' : 'completed'),
+        stopReason:
+          stopReason ?? (context.breakRequested ? 'break' : 'completed'),
       },
       ...context.finalOutputs,
       compound: {
@@ -2836,6 +2881,10 @@ export class NodeSchedulerService {
         mode,
         inputCount,
         collectedCount: collectedInputs.length,
+        'exec-out': {
+          triggered: true,
+          collectedCount: collectedInputs.length,
+        },
       };
 
       await this.stepStateMachine.updateStepStatus(
@@ -3002,6 +3051,10 @@ export class NodeSchedulerService {
         'model-out': {
           selectedModelId: decision.selectedModelId,
           llmModelConfigId: decision.selectedModelId,
+        },
+        'exec-out': {
+          triggered: true,
+          selectedModelId: decision.selectedModelId,
         },
         strategy: rawStrategy,
         reasoning: decision.reasoning,
@@ -3755,10 +3808,9 @@ export class NodeSchedulerService {
       const workflowAgentRuntimeMode =
         this.getWorkflowAgentRuntimeMode(nodeData);
       const usesSandboxRuntime = workflowAgentRuntimeMode === 'sandbox';
-      const workflowSandboxNodeId =
-        usesSandboxRuntime
-          ? (workflowSandboxBinding?.sandboxNodeId ?? step.nodeId)
-          : undefined;
+      const workflowSandboxNodeId = usesSandboxRuntime
+        ? (workflowSandboxBinding?.sandboxNodeId ?? step.nodeId)
+        : undefined;
       const runningCheckpointData = this.buildWorkflowAgentCheckpointData(
         step.checkpointData,
         executionId,
@@ -4025,6 +4077,10 @@ export class NodeSchedulerService {
         config,
         tenantId,
       });
+      const sandboxOutput = {
+        sessionId: session.id,
+        status: session.status,
+      };
 
       await this.stepStateMachine.updateStepStatus(
         tenantId,
@@ -4032,9 +4088,10 @@ export class NodeSchedulerService {
         'completed',
         {
           result: {
-            sessionId: session.id,
-            status: session.status,
-            'sandbox-out': {
+            ...sandboxOutput,
+            'sandbox-out': sandboxOutput,
+            'exec-out': {
+              triggered: true,
               sessionId: session.id,
               status: session.status,
             },
@@ -4098,6 +4155,10 @@ export class NodeSchedulerService {
         nodeData.workspace_name,
         nodeData.label,
       );
+      const workspaceOutput = {
+        workspaceId,
+        ...(workspaceName ? { workspaceName } : {}),
+      };
 
       await this.stepStateMachine.updateStepStatus(
         tenantId,
@@ -4105,9 +4166,10 @@ export class NodeSchedulerService {
         'completed',
         {
           result: {
-            workspaceId,
-            ...(workspaceName ? { workspaceName } : {}),
-            'volume-out': {
+            ...workspaceOutput,
+            'volume-out': workspaceOutput,
+            'exec-out': {
+              triggered: true,
               workspaceId,
               ...(workspaceName ? { workspaceName } : {}),
             },
@@ -4180,6 +4242,11 @@ export class NodeSchedulerService {
           result: {
             ...result,
             'memory-out': result,
+            'exec-out': {
+              triggered: true,
+              sessionId: instance.sessionId,
+              instanceId: config.memoryInstanceId,
+            },
           },
         },
       );
@@ -4304,7 +4371,7 @@ export class NodeSchedulerService {
         throw new Error('LLM 模型节点缺少 llmModelConfigId');
       }
 
-      const result = {
+      const result: Record<string, unknown> = {
         llmModelConfigId,
         modelConfigId: llmModelConfigId,
         modelId: llmModelConfigId,
@@ -4315,7 +4382,24 @@ export class NodeSchedulerService {
         ...(this.readFirstString(nodeData.modelName)
           ? { modelName: nodeData.modelName }
           : {}),
+        'exec-out': {
+          triggered: true,
+          llmModelConfigId,
+        },
       };
+      const modelOutput = {
+        llmModelConfigId: result.llmModelConfigId,
+        modelConfigId: result.modelConfigId,
+        modelId: result.modelId,
+        ...(typeof result.provider === 'string'
+          ? { provider: result.provider }
+          : {}),
+        ...(typeof result.name === 'string' ? { name: result.name } : {}),
+        ...(typeof result.modelName === 'string'
+          ? { modelName: result.modelName }
+          : {}),
+      };
+      result['model-out'] = modelOutput;
 
       await this.stepStateMachine.updateStepStatus(
         tenantId,
@@ -4384,13 +4468,25 @@ export class NodeSchedulerService {
         throw new Error('Knowledge Base node requires knowledgeBaseId');
       }
 
-      const result = {
+      const result: Record<string, unknown> = {
+        type: 'knowledge-base',
+        knowledgeBaseId,
+        ...(knowledgeBaseName ? { knowledgeBaseName } : {}),
+        ...(topK !== undefined ? { topK } : {}),
+        ...(similarityThreshold !== undefined ? { similarityThreshold } : {}),
+        'exec-out': {
+          triggered: true,
+          knowledgeBaseId,
+        },
+      };
+      const knowledgeOutput = {
         type: 'knowledge-base',
         knowledgeBaseId,
         ...(knowledgeBaseName ? { knowledgeBaseName } : {}),
         ...(topK !== undefined ? { topK } : {}),
         ...(similarityThreshold !== undefined ? { similarityThreshold } : {}),
       };
+      result['knowledge-out'] = knowledgeOutput;
 
       await this.stepStateMachine.updateStepStatus(
         tenantId,
