@@ -91,7 +91,8 @@ sed -i "s|SUPABASE_JWT_SECRET=change-me-jwt-secret|SUPABASE_JWT_SECRET=${JWT_SEC
 sed -i "s|^APP_SUPABASE_URL=$|APP_SUPABASE_URL=http://supabase-kong:8000|" "$OUTPUT_FILE"
 sed -i "s|^APP_SUPABASE_ANON_KEY=$|APP_SUPABASE_ANON_KEY=${ANON_KEY}|" "$OUTPUT_FILE"
 sed -i "s|^APP_SUPABASE_SERVICE_KEY=$|APP_SUPABASE_SERVICE_KEY=${SERVICE_KEY}|" "$OUTPUT_FILE"
-sed -i "s|^VITE_SUPABASE_URL=$|VITE_SUPABASE_URL=http://localhost:8000|" "$OUTPUT_FILE"
+# Studio 侧默认留空，由前端在运行时回退到当前站点 origin，避免局域网/公网访问时把请求打到访问者 localhost。
+sed -i "s|^VITE_SUPABASE_URL=$|VITE_SUPABASE_URL=|" "$OUTPUT_FILE"
 sed -i "s|^VITE_SUPABASE_ANON_KEY=$|VITE_SUPABASE_ANON_KEY=${ANON_KEY}|" "$OUTPUT_FILE"
 
 chmod 600 "$OUTPUT_FILE"
