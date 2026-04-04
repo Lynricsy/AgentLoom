@@ -46,6 +46,7 @@ void main() {
       expect(find.text('邮箱'), findsOneWidget);
       expect(find.text('密码'), findsOneWidget);
       expect(find.text('登录'), findsOneWidget);
+      expect(find.text('立即注册'), findsOneWidget);
     });
 
     testWidgets('登录按钮初始状态为禁用', (tester) async {

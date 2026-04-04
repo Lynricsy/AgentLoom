@@ -64,13 +64,13 @@ AgentLoomAUTO/
 | 管理 Agent 执行引擎 | `agentloom-server/src/modules/agent-execution/` | 对话执行 worker + Socket.IO `/agent-conversation` gateway + workspace 文件集成、`WorkflowAgentAdapter` 桥接工作流 `agent` 节点 |
 | 管理 Agent Memory | `agentloom-server/src/modules/agent-memory/` + `agentloom-studio/src/features/agent-memory/` + `agentloom_mobile/lib/features/memory/` | Agent 记忆系统：图谱存储/检索/可视化，Socket.IO `/memory` namespace，Studio 图谱可视化（d3-force + dagre），Mobile 5 屏管理 |
 | 管理可复用块 | `agentloom-server/src/modules/reusable-block/` + `agentloom-studio/src/features/block-library/` | 可复用工作流块的 CRUD + 版本管理，画布 `reusable-block` 节点封装/展开 |
-| 管理 Agent 配置画布 | `agentloom-studio/src/features/agent-canvas/` | Agent 配��编辑器画布（CPU/memory/timeout/lifecycle 参数，`agent-main` 的 `nativeToolPolicy` / `selfEvolutionPolicy` 配置，非执行 DAG），使用 ReactFlow + `AGENT_CANVAS_NODE_REGISTRY` 子集 |
+| 管理 Agent 配置画布 | `agentloom-studio/src/features/agent-canvas/` | Agent 配置编辑器画布（CPU/memory/timeout/lifecycle 参数，`agent-main` 的 `nativeToolPolicy` / `selfEvolutionPolicy` 配置，非执行 DAG），使用 ReactFlow + `AGENT_CANVAS_NODE_REGISTRY` 子集 |
 | 管理 Agent CRUD 页面 | `agentloom-studio/src/features/agent/` | Agent 列表/创建/设置页面，query hooks，mutations |
 | 管理共享资源注册表 | `agentloom-server/src/modules/shared-resources/` | `SharedResourceRegistry` 通用 provider 接口（type/create/destroy/share），sandbox 为首个实现 |
 | 管理 Workspace 快照 | `agentloom-server/src/modules/workspace/` | Workspace 持久化服务，`workspace_snapshots` 表 |
 | 管理工作流分享链接 | `agentloom-server/src/modules/share/` | 管理端 `/workflow-shares`，公共短链 `/s/:token` |
 | 管理 Studio 认证与安全 | `agentloom-studio/src/features/auth/` | Supabase PKCE 认证、Zustand auth store、OAuth/MFA 组件、`/login` `/register` `/auth/callback` `/settings/security` 路由 |
-| 管理移动端认证与安全 | `agentloom_mobile/lib/features/auth/` + `agentloom_mobile/lib/features/settings/` | OAuth (Google/GitHub) + url_launcher、原生 MFA TOTP 屏幕、密码修改/会话管理/安全设置 |
+| 管理移动端认证与安全 | `agentloom_mobile/lib/features/auth/` + `agentloom_mobile/lib/features/settings/` | 邮箱密码登录/注册、Google/GitHub OAuth + `url_launcher`、注册后 Web-first onboarding fallback（`/login?returnUrl=/onboarding`）、原生 MFA TOTP 屏幕、密码修改/会话管理/安全设置 |
 | 添加前端路由 | `agentloom-studio/src/app/routes/` | TanStack Router，手动路由树 |
 | 添加前端 feature | `agentloom-studio/src/features/` | Feature-Slice 架构 |
 | 添加画布节点类型 | `agentloom-studio/src/features/canvas/` | 见 canvas 子 AGENTS.md |

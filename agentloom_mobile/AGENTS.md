@@ -9,10 +9,10 @@ AgentLoom Flutter 移动端应用：
 - `ShellScaffold` 根据宽度在 `NavigationBar` 与 `NavigationRail` 间切换，移动端优先但兼容大屏
 - Dio API Client Provider（含 AuthInterceptor 自动附加 Bearer + 401 刷新重试）
 - 运行时服务器地址配置：`EnvConfig` 以 `studioBaseUrl` 为真源，登录页与设置页都可进入 `ServerConfigScreen`，再派生 `apiBaseUrl`
-- 完整认证链路：LoginScreen → AuthApi → AuthNotifier → TokenStorage (`flutter_secure_storage`)
+- 完整认证链路：`LoginScreen` / `RegisterScreen` → `AuthApi` → `AuthNotifier` → `TokenStorage` (`flutter_secure_storage`)；邮箱密码注册成功后移动端不直接持久化首登 session，而是通过 Web-first fallback 引导到 Web Studio `/login?returnUrl=/onboarding` 完成首次组织初始化
 - OAuth 登录：Google / GitHub 按钮通过 `url_launcher` 打开浏览器认证，服务端 `?platform=mobile` 参数触发 `agentloom://auth/callback?access_token=...` 重定向，`AuthCallbackScreen` 接收 deep link 并完成 token 存储
 - MFA 支持：原生 TOTP 注册（`MfaEnrollScreen`）与验证（`MfaVerifyScreen`），通过 REST API 与服务端交互（非 Supabase 直连）
-- GoRouter redirect guard：未认证 → `/login`，已认证访问 `/login` → `/dashboard`
+- GoRouter redirect guard：未认证 → `/login`，允许公开访问 `/register`，已认证访问 `/login` 或 `/register` → `/dashboard`
 - Dashboard：快速访问工作流 + 最近执行聚合，点击最近执行跳转执行监控
 - 工作流：列表、筛选、详情、执行历史、参数输入启动链路
 - 执行监控：Socket.IO `/execution` 实时状态 + REST detail 轮询降级，状态头、告警横幅、步骤时间线、断连语义纠正
@@ -38,7 +38,7 @@ lib/
 ├── app/                 # AgentLoomApp / ShellScaffold
 ├── config/              # 环境、主题、常量
 ├── features/
-│   ├── auth/            # 登录、OAuth、TokenStorage、AuthNotifier、MFA
+│   ├── auth/            # 登录 / 注册、OAuth、TokenStorage、AuthNotifier、MFA
 │   ├── dashboard/       # Quick Access + recentWorkflows/recentExecutions
 │   ├── execution/       # Socket.IO 执行监控、timeline、banner、provider
 │   ├── notifications/   # FCM payload、设备注册 API、通知服务、push provider
@@ -83,7 +83,7 @@ flutter test --coverage
 
 ## 测试模式
 
-- **659 个测试** 覆盖 models / api / providers / widgets / screens / routes / auth / execution / dashboard / workflows / notifications / resources
+- 自动化测试覆盖 models / api / providers / widgets / screens / routes / auth / execution / dashboard / workflows / notifications / resources
 - Provider 错误测试使用 `container.listen()` + `Completer<void>` 模式避免 Riverpod 3.x dispose `StateError`
 - Widget / Screen 测试使用 `UncontrolledProviderScope` 配合 `ProviderContainer`
 - Mock 使用 `mocktail`，测试工厂函数集中在 `test/helpers/test_helpers.dart`
@@ -94,6 +94,7 @@ flutter test --coverage
 - `secureStorageProvider` 在 `main.dart` 中通过 `ProviderScope.overrides` 注入 `FlutterSecureStorage()` 实例
 - `url_launcher` 用于 OAuth 浏览器认证跳转，也用于需要跳 Web Studio 的场景
 - AuthApi 使用独立 `authDioProvider`（无 AuthInterceptor）避免循环依赖
+- `AuthNotifier.register()` 调用后端 `POST /api/v1/auth/register`，成功后保持 `unauthenticated` 状态，由注册页继续引导用户去 Web Studio 完成首次组织初始化，避免保留 `tenant_id=null` 的半初始化移动端会话
 - AuthInterceptor 处理 4 种 401 type：`token-expired`（刷新重试），`token-revoked` / `token-invalid` / `token-missing`（强制登出）
 - AuthInterceptor 继承 `QueuedInterceptorsWrapper`，序列化并发 401 请求，避免多个请求同时触发 refresh；含 stale-token 优化
 - GoRouter redirect guard 通过 `AuthRouteNotifier`（ChangeNotifier）桥接 Riverpod authProvider，并统一等待 `authProvider.future` 完成后再判断首屏路由

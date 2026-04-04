@@ -10,7 +10,9 @@ AgentLoom Flutter 客户端，当前定位为移动优先、全端兼容的使�
   - 由 Studio 地址自动派生 `apiBaseUrl`
 - 认证与安全：
   - 邮箱密码登录
+  - 邮箱密码注册
   - Google / GitHub OAuth
+  - 注册成功后的 Web-first onboarding fallback（打开 Web Studio `/login?returnUrl=/onboarding`）
   - MFA TOTP 注册与验证
   - 密码修改、会话管理
 - Dashboard：
@@ -93,7 +95,7 @@ lib/
 ├── app/                 # AgentLoomApp / ShellScaffold
 ├── config/              # 环境、主题、常量
 ├── features/
-│   ├── auth/            # 登录、OAuth、TokenStorage、MFA
+│   ├── auth/            # 登录 / 注册、OAuth、TokenStorage、MFA
 │   ├── dashboard/       # Quick Access + recentWorkflows/recentExecutions
 │   ├── execution/       # Socket.IO 执行监控、timeline、banner、provider
 │   ├── notifications/   # FCM payload、设备注册 API、通知服务、push provider
@@ -110,7 +112,7 @@ lib/
 ## 测试与验证
 
 - `flutter analyze`：静态检查通过
-- `flutter test`：当前全量测试为 `659/659` 通过
+- `flutter test`：移动端全量自动化测试通过
 - `dart run build_runner build --delete-conflicting-outputs`：更新 Freezed / JSON 生成物
 
 ## 环境文件

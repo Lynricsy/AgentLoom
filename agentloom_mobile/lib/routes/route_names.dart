@@ -17,6 +17,7 @@ class RouteNames {
   static const String agentConversation = 'agentConversation';
 
   static const String login = 'login';
+  static const String register = 'register';
 
   /// OAuth 回调深链路由 (agentloom://auth/callback)
   static const String authCallback = 'authCallback';

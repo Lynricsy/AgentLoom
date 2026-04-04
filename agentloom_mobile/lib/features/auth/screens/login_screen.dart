@@ -107,7 +107,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
                     OutlinedButton.icon(
-                      onPressed: () => context.pushNamed(RouteNames.serverConfig),
+                      onPressed: () =>
+                          context.pushNamed(RouteNames.serverConfig),
                       icon: const Icon(Icons.dns_rounded),
                       label: Text(env.displayHost),
                     ),
@@ -187,8 +188,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               ),
                               const SizedBox(height: 22),
                               FilledButton(
-                                onPressed:
-                                    (_isFormValid && !isLoading) ? _handleLogin : null,
+                                onPressed: (_isFormValid && !isLoading)
+                                    ? _handleLogin
+                                    : null,
                                 child: isLoading
                                     ? const SizedBox(
                                         height: 20,
@@ -245,6 +247,26 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                 foregroundColor: Colors.white,
                                 isLoading: isLoading,
                                 onPressed: () => _handleOAuthLogin('github'),
+                              ),
+                              const SizedBox(height: 20),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    '还没有账号？',
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      color: theme.colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                  TextButton(
+                                    onPressed: isLoading
+                                        ? null
+                                        : () => context.pushNamed(
+                                            RouteNames.register,
+                                          ),
+                                    child: const Text('立即注册'),
+                                  ),
+                                ],
                               ),
                             ],
                           ),

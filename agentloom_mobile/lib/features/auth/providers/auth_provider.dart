@@ -59,10 +59,48 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
           );
       }
     } on DioException catch (e) {
-      final message = _extractErrorMessage(e);
+      final message = _extractErrorMessage(e, fallbackMessage: '登录失败，请重试');
       state = AsyncValue.data(AuthState.unauthenticated(message: message));
     } catch (e) {
       state = AsyncValue.data(AuthState.unauthenticated(message: e.toString()));
+    }
+  }
+
+  /// 邮箱密码注册
+  ///
+  /// 移动端当前不承接首次组织初始化，因此注册成功后不直接持久化登录态，
+  /// 而是交由 UI 引导用户前往 Web Studio 完成 onboarding。
+  Future<AuthRegisterResponse?> register(
+    String email,
+    String password, {
+    String? displayName,
+  }) async {
+    state = const AsyncValue.loading();
+
+    try {
+      final normalizedDisplayName = switch (displayName?.trim()) {
+        final value? when value.isNotEmpty => value,
+        _ => null,
+      };
+      final response = await _authApi.register(
+        email,
+        password,
+        displayName: normalizedDisplayName,
+      );
+
+      if (!ref.mounted) {
+        return response;
+      }
+
+      state = const AsyncValue.data(AuthState.unauthenticated());
+      return response;
+    } on DioException catch (e) {
+      final message = _extractErrorMessage(e, fallbackMessage: '注册失败，请重试');
+      state = AsyncValue.data(AuthState.unauthenticated(message: message));
+      return null;
+    } catch (e) {
+      state = AsyncValue.data(AuthState.unauthenticated(message: '注册失败：$e'));
+      return null;
     }
   }
 
@@ -107,7 +145,10 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
       state = const AsyncValue.data(AuthState.unauthenticated());
     } on DioException catch (e) {
       if (!ref.mounted) return;
-      final message = _extractErrorMessage(e);
+      final message = _extractErrorMessage(
+        e,
+        fallbackMessage: 'OAuth 登录失败，请重试',
+      );
       state = AsyncValue.data(AuthState.unauthenticated(message: message));
     } catch (e) {
       if (!ref.mounted) return;
@@ -221,7 +262,10 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
   }
 
   /// 从 DioException 提取友好错误信息
-  String _extractErrorMessage(DioException e) {
+  String _extractErrorMessage(
+    DioException e, {
+    required String fallbackMessage,
+  }) {
     if (e.type == DioExceptionType.connectionTimeout ||
         e.type == DioExceptionType.receiveTimeout) {
       return '网络连接超时，请检查网络后重试';
@@ -239,7 +283,7 @@ class AuthNotifier extends AsyncNotifier<AuthState> {
       }
     }
 
-    return '登录失败，请重试';
+    return fallbackMessage;
   }
 
   LoginUser _restoreUserFromAccessToken(String accessToken) {

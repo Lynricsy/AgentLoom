@@ -13,6 +13,7 @@ import '../features/auth/screens/auth_callback_screen.dart';
 import '../features/auth/screens/login_screen.dart';
 import '../features/auth/screens/mfa_enroll_screen.dart';
 import '../features/auth/screens/mfa_verify_screen.dart';
+import '../features/auth/screens/register_screen.dart';
 import '../features/dashboard/screens/dashboard_screen.dart';
 import '../features/execution/screens/execution_monitor_screen.dart';
 import '../features/execution/screens/workflow_agent_viewer_screen.dart';
@@ -75,19 +76,21 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       final isAuthenticated = authState is AuthStateAuthenticated;
       final path = state.uri.path;
       final isLoginRoute = path == '/login';
+      final isRegisterRoute = path == '/register';
       final isAuthCallbackRoute = path == '/auth/callback';
       final isServerConfigRoute = path == '/server-config';
       final isMfaRoute = path == '/mfa-verify' || path == '/mfa-enroll';
 
       if (!isAuthenticated &&
           !isLoginRoute &&
+          !isRegisterRoute &&
           !isAuthCallbackRoute &&
           !isServerConfigRoute &&
           !isMfaRoute) {
         return '/login';
       }
 
-      if (isAuthenticated && isLoginRoute) {
+      if (isAuthenticated && (isLoginRoute || isRegisterRoute)) {
         return '/dashboard';
       }
 
@@ -98,6 +101,11 @@ final goRouterProvider = Provider<GoRouter>((ref) {
         path: '/login',
         name: RouteNames.login,
         builder: (context, state) => const LoginScreen(),
+      ),
+      GoRoute(
+        path: '/register',
+        name: RouteNames.register,
+        builder: (context, state) => const RegisterScreen(),
       ),
       GoRoute(
         path: '/server-config',

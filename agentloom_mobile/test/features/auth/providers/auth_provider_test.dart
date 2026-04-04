@@ -204,6 +204,93 @@ void main() {
     });
   });
 
+  group('AuthNotifier.register', () {
+    setUp(() {
+      when(() => mockTokenStorage.readTokens()).thenAnswer((_) async => null);
+    });
+
+    test('注册成功后返回结果，但不直接保存移动端会话', () async {
+      when(
+        () => mockAuthApi.register(
+          'fox@test.com',
+          'Password123',
+          displayName: '狐狸',
+        ),
+      ).thenAnswer(
+        (_) async =>
+            const AuthRegisterSuccess(user: testUser, tokens: testTokens),
+      );
+
+      await container.read(authProvider.future);
+
+      final result = await container
+          .read(authProvider.notifier)
+          .register('fox@test.com', 'Password123', displayName: '狐狸');
+
+      expect(result, isA<AuthRegisterSuccess>());
+      expect(
+        container.read(authProvider).value,
+        isA<AuthStateUnauthenticated>(),
+      );
+      verifyNever(() => mockTokenStorage.saveTokens(any()));
+    });
+
+    test('注册时会裁剪 displayName 并在邮箱确认场景保持未登录', () async {
+      when(
+        () => mockAuthApi.register(
+          'fox@test.com',
+          'Password123',
+          displayName: '狐狸',
+        ),
+      ).thenAnswer((_) async => const AuthRegisterEmailConfirmation());
+
+      await container.read(authProvider.future);
+
+      final result = await container
+          .read(authProvider.notifier)
+          .register('fox@test.com', 'Password123', displayName: '  狐狸  ');
+
+      expect(result, isA<AuthRegisterEmailConfirmation>());
+      expect(
+        container.read(authProvider).value,
+        isA<AuthStateUnauthenticated>(),
+      );
+      verify(
+        () => mockAuthApi.register(
+          'fox@test.com',
+          'Password123',
+          displayName: '狐狸',
+        ),
+      ).called(1);
+    });
+
+    test('注册返回服务端错误信息 → 提取 detail/message 字段', () async {
+      when(() => mockAuthApi.register('fox@test.com', 'Password123')).thenThrow(
+        DioException(
+          type: DioExceptionType.badResponse,
+          response: Response(
+            statusCode: 409,
+            data: {'detail': '该邮箱已被注册'},
+            requestOptions: RequestOptions(),
+          ),
+          requestOptions: RequestOptions(),
+        ),
+      );
+
+      await container.read(authProvider.future);
+
+      final result = await container
+          .read(authProvider.notifier)
+          .register('fox@test.com', 'Password123');
+
+      expect(result, isNull);
+      final state = container.read(authProvider).value;
+      expect(state, isA<AuthStateUnauthenticated>());
+      final unauth = state as AuthStateUnauthenticated;
+      expect(unauth.message, '该邮箱已被注册');
+    });
+  });
+
   group('AuthNotifier.logout', () {
     test('登出 → 清除 tokens + 返回 unauthenticated', () async {
       when(

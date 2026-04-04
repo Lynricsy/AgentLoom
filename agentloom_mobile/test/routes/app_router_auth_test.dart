@@ -4,6 +4,7 @@ import 'package:agentloom_mobile/features/auth/models/auth_tokens.dart';
 import 'package:agentloom_mobile/features/auth/providers/auth_provider.dart';
 import 'package:agentloom_mobile/features/auth/providers/token_storage_provider.dart';
 import 'package:agentloom_mobile/features/auth/screens/login_screen.dart';
+import 'package:agentloom_mobile/features/auth/screens/register_screen.dart';
 import 'package:agentloom_mobile/routes/app_router.dart';
 import 'package:agentloom_mobile/shared/providers/env_provider.dart';
 import 'package:flutter/material.dart';
@@ -81,6 +82,40 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(LoginScreen), findsNothing);
+      expect(find.widgetWithText(AppBar, 'Dashboard'), findsOneWidget);
+    });
+
+    testWidgets('未认证用户可以进入 /register 且不显示 NavigationBar', (tester) async {
+      final container = createContainer(
+        _ConfigurableTokenStorage(tokens: null),
+      );
+      addTearDown(container.dispose);
+
+      await tester.pumpWidget(createApp(container));
+      await tester.pumpAndSettle();
+
+      final router = container.read(goRouterProvider);
+      router.go('/register');
+      await tester.pumpAndSettle();
+
+      expect(find.byType(RegisterScreen), findsOneWidget);
+      expect(find.byType(NavigationBar), findsNothing);
+    });
+
+    testWidgets('已认证用户访问 /register 被重定向到 /dashboard', (tester) async {
+      final container = createContainer(
+        _ConfigurableTokenStorage(tokens: testTokens),
+      );
+      addTearDown(container.dispose);
+
+      await tester.pumpWidget(createApp(container));
+      await tester.pumpAndSettle();
+
+      final router = container.read(goRouterProvider);
+      router.go('/register');
+      await tester.pumpAndSettle();
+
+      expect(find.byType(RegisterScreen), findsNothing);
       expect(find.widgetWithText(AppBar, 'Dashboard'), findsOneWidget);
     });
 
