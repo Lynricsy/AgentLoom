@@ -41,6 +41,48 @@ export class SandboxLifecycleProducer {
     });
   }
 
+  async addStartTask(params: {
+    sessionId: string;
+    executionId?: string;
+    agentConversationId?: string;
+    sandboxNodeId?: string;
+    containerId: string;
+    config: SandboxConfig;
+    tenantId: string;
+  }): Promise<Job<SandboxLifecycleJobData>> {
+    return this.queue.add('sandbox-start', {
+      sessionId: params.sessionId,
+      tenantId: params.tenantId,
+      jobType: 'start',
+      containerId: params.containerId,
+      config: params.config,
+      ...this.buildBinding(params),
+    });
+  }
+
+  async addStopTask(params: {
+    sessionId: string;
+    executionId?: string;
+    agentConversationId?: string;
+    sandboxNodeId?: string;
+    containerId?: string;
+    persistencePath?: string;
+    config: SandboxConfig;
+    tenantId: string;
+  }): Promise<Job<SandboxLifecycleJobData>> {
+    return this.queue.add('sandbox-stop', {
+      sessionId: params.sessionId,
+      tenantId: params.tenantId,
+      jobType: 'stop',
+      config: params.config,
+      ...this.buildBinding(params),
+      ...(params.containerId ? { containerId: params.containerId } : {}),
+      ...(params.persistencePath
+        ? { persistencePath: params.persistencePath }
+        : {}),
+    });
+  }
+
   async addDestroyTask(params: {
     sessionId: string;
     executionId?: string;
@@ -84,6 +126,13 @@ export class SandboxLifecycleProducer {
         jobId: `sandbox-timeout-${params.sessionId}`,
       },
     );
+  }
+
+  async removeTimeoutCheckTask(sessionId: string): Promise<void> {
+    const existingJob = await this.queue.getJob(`sandbox-timeout-${sessionId}`);
+    if (existingJob) {
+      await existingJob.remove();
+    }
   }
 
   private buildBinding(

@@ -5,6 +5,7 @@ import type { SandboxConfig } from '../../../database/schema';
 
 const mockDockerService = {
   createContainer: vi.fn().mockResolvedValue({ containerId: 'c-123' }),
+  startContainer: vi.fn().mockResolvedValue(undefined),
   stopContainer: vi.fn().mockResolvedValue(undefined),
   removeContainer: vi.fn().mockResolvedValue(undefined),
   attachLogs: vi.fn().mockResolvedValue(undefined),
@@ -21,6 +22,7 @@ const mockSandboxService = {
 
 const mockLifecycleProducer = {
   addTimeoutCheckTask: vi.fn().mockResolvedValue({ id: 'timeout-job' }),
+  removeTimeoutCheckTask: vi.fn().mockResolvedValue(undefined),
 };
 
 const mockStorageService = {
@@ -531,6 +533,82 @@ describe('SandboxLifecycleWorker', () => {
     });
   });
 
+  describe('start job', () => {
+    it('应启动已有容器、更新状态为 ready 并重新设置超时检查', async () => {
+      await worker.process(
+        createJob({
+          jobType: 'start',
+          sessionId: 's1',
+          executionId: 'e1',
+          tenantId: 't1',
+          containerId: 'c-123',
+          config: DEFAULT_CONFIG,
+        }),
+      );
+
+      expect(mockDockerService.startContainer).toHaveBeenCalledWith('c-123');
+      expect(mockSet).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'ready',
+          stoppedAt: null,
+          workspacePath: '/workspace/',
+        }),
+      );
+      expect(mockLifecycleProducer.addTimeoutCheckTask).toHaveBeenCalledWith({
+        sessionId: 's1',
+        executionId: 'e1',
+        tenantId: 't1',
+        delayMs: 4 * 60 * 60 * 1000,
+      });
+      expect(mockInsert).toHaveBeenCalled();
+    });
+
+    it('缺少 containerId 时应抛出异常', async () => {
+      await expect(
+        worker.process(
+          createJob({
+            jobType: 'start',
+            sessionId: 's1',
+            executionId: 'e1',
+            tenantId: 't1',
+            config: DEFAULT_CONFIG,
+          }),
+        ),
+      ).rejects.toThrow(SandboxCreationException);
+    });
+  });
+
+  describe('stop job', () => {
+    it('persistent 模式应停止容器但不删除，并更新状态为 stopped', async () => {
+      await worker.process(
+        createJob({
+          jobType: 'stop',
+          sessionId: 's1',
+          executionId: 'e1',
+          tenantId: 't1',
+          containerId: 'c-123',
+          config: {
+            ...DEFAULT_CONFIG,
+            lifecycleMode: 'persistent',
+          },
+        }),
+      );
+
+      expect(mockLifecycleProducer.removeTimeoutCheckTask).toHaveBeenCalledWith(
+        's1',
+      );
+      expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
+      expect(mockDockerService.removeContainer).not.toHaveBeenCalled();
+      expect(mockSet).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'stopped',
+          stoppedAt: expect.any(Date),
+        }),
+      );
+      expect(mockInsert).toHaveBeenCalled();
+    });
+  });
+
   describe('timeout_check job', () => {
     it('session 模式会话仍活跃时应强制停止、删除记录并级联失败 workflow', async () => {
       mockSandboxService.getSessionById.mockResolvedValueOnce({
@@ -603,6 +681,8 @@ describe('SandboxLifecycleWorker', () => {
         ),
       ).rejects.toThrow(SandboxTimeoutException);
 
+      expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
+      expect(mockDockerService.removeContainer).not.toHaveBeenCalled();
       const updatePayloads = mockSet.mock.calls.map(([payload]) => payload);
       expect(updatePayloads).toContainEqual(
         expect.objectContaining({
@@ -641,7 +721,7 @@ describe('SandboxLifecycleWorker', () => {
       ).resolves.toBeUndefined();
 
       expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
-      expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123');
+      expect(mockDockerService.removeContainer).not.toHaveBeenCalled();
 
       const updatePayloads = mockSet.mock.calls.map(([payload]) => payload);
       expect(updatePayloads).toContainEqual(

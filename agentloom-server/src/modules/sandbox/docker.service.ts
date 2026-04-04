@@ -521,6 +521,25 @@ export class DockerService implements SandboxRuntimeDriver {
     }
   }
 
+  async startContainer(containerId: string): Promise<void> {
+    try {
+      const container = this.docker.getContainer(containerId);
+      await container.start();
+    } catch (error) {
+      if (this.isContainerAlreadyRunningError(error)) {
+        this.logger.warn(`Container ${containerId} already running`);
+        return;
+      }
+      this.logger.error(
+        `Failed to start container ${containerId}`,
+        error instanceof Error ? error.stack : error,
+      );
+      throw new SandboxCreationException(
+        `Container start failed: ${error instanceof Error ? error.message : 'unknown error'}`,
+      );
+    }
+  }
+
   async removeContainer(containerId: string): Promise<void> {
     try {
       const container = this.docker.getContainer(containerId);
@@ -766,6 +785,14 @@ export class DockerService implements SandboxRuntimeDriver {
       error instanceof Error &&
       (error.message.includes('is not running') ||
         error.message.includes('container already stopped'))
+    );
+  }
+
+  private isContainerAlreadyRunningError(error: unknown): boolean {
+    return (
+      error instanceof Error &&
+      (error.message.includes('is already running') ||
+        error.message.includes('container already running'))
     );
   }
 

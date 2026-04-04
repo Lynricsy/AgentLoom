@@ -90,9 +90,14 @@
 - `bindingType` 过滤必须在 SQL where 层生效，不能只在分页后内存过滤
 - persistent sandbox 命中 timeout/expiry 时，资源状态必须视为**自动停止**：
   - `sandbox_sessions.status = 'stopped'`
+  - 运行中的容器只执行 `stop`，**不能**自动 `remove`
+  - 已停止的 `containerId` / workspace 需要保留，供后续 `startSandbox()` 直接复用同一容器
   - 允许后续通过 `startSandbox()` 或 attach 恢复
   - 只有真实创建/运行失败才应保留 `failed`
   - 若 timeout 同时打断 workflow / agent 执行，失败语义只属于上层 execution / conversation，不应把资源沙箱本体标记成 `failed`
+- persistent sandbox 的显式 `stop` 语义与 timeout/expiry 一致：
+  - `stopSandbox()` 只停止容器并把状态置为 `stopped`
+  - `deleteSandbox()` 才是 remove 容器并删除 session/log 的唯一正式入口
 
 ### 3.5 Sandbox stats semantics
 
@@ -128,6 +133,8 @@
 | `includeAutoArchived=false` query string | DTO 必须把 `'false'` 解析成 `false`，不能回退成 truthy | `list-workspaces-query.dto.spec.ts` |
 | sandbox list `bindingType=resource` | SQL where 同时要求 `execution_id is null` + `agent_conversation_id is null` | `sandbox.service.spec.ts` |
 | persistent resource sandbox timeout | 资源状态应落为 `stopped`，而不是 `failed` | `sandbox-lifecycle.worker.spec.ts` |
+| persistent sandbox 手动 stop | 只应调用 `stopContainer`，不能调用 `removeContainer` | `sandbox-lifecycle.worker.spec.ts`, `sandbox.service.spec.ts` |
+| persistent sandbox 从 `stopped` 重启 | 应优先复用既有 `containerId` 走 start，而不是重新 create 新容器 | `sandbox.service.spec.ts`, `sandbox-lifecycle.worker.spec.ts` |
 | running sandbox stats 成功拿到 workspace usage | 返回 `diskUsage(bytes)`，service 补齐 `diskTotal(bytes)` | `docker.service.spec.ts`, `sandbox.service.spec.ts` |
 | workspace usage 统计失败 | 仍返回 CPU/内存，且不伪造 `diskUsage=0` | `docker.service.spec.ts` |
 | conversation sandbox stats 查询 | `GET /agent-conversations/:id/sandbox/stats` 返回与资源页一致的 `ContainerStats` | `agent-conversation.controller.spec.ts` |

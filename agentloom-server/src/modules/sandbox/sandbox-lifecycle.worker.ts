@@ -59,6 +59,10 @@ export class SandboxLifecycleWorker extends WorkerHost {
     switch (jobType) {
       case 'create':
         return this.handleCreate(job.data);
+      case 'start':
+        return this.handleStart(job.data);
+      case 'stop':
+        return this.handleStop(job.data);
       case 'destroy':
         return this.handleDestroy(job.data);
       case 'timeout_check':
@@ -160,22 +164,8 @@ export class SandboxLifecycleWorker extends WorkerHost {
         tenantId,
       );
 
-      await this.dockerService.attachLogs(containerId, (level, message) => {
-        this.insertLog(sessionId, level, message, tenantId).catch((err) => {
-          this.logger.error(
-            `Failed to insert log for session ${sessionId}`,
-            err,
-          );
-        });
-      });
-
-      const delayMs = resolveSandboxTimeoutDelayMs(config);
-      await this.lifecycleProducer.addTimeoutCheckTask({
-        sessionId,
-        tenantId,
-        delayMs,
-        ...binding,
-      });
+      await this.attachContainerLogs(sessionId, containerId, tenantId);
+      await this.scheduleTimeoutCheck(sessionId, tenantId, config, binding);
 
       this.logger.log(
         `Sandbox ${sessionId} created with container ${containerId}`,
@@ -223,9 +213,152 @@ export class SandboxLifecycleWorker extends WorkerHost {
     }
   }
 
+  private async handleStart(data: SandboxLifecycleJobData): Promise<void> {
+    const { sessionId, tenantId, config, containerId } = data;
+    const binding = this.resolveBinding(data);
+
+    if (!config) {
+      throw new SandboxCreationException('Missing config in start job data');
+    }
+
+    if (!containerId) {
+      throw new SandboxCreationException(
+        'Missing containerId in start job data',
+      );
+    }
+
+    try {
+      await this.dockerService.startContainer(containerId);
+
+      const [activatedSession] = await runInTenantTransaction(
+        this.db,
+        tenantId,
+        async (tenantDb) => {
+          return await tenantDb
+            .update(schema.sandboxSessions)
+            .set({
+              status: 'ready',
+              startedAt: new Date(),
+              stoppedAt: null,
+              workspacePath: CONTAINER_WORKSPACE,
+            })
+            .where(
+              and(
+                eq(schema.sandboxSessions.id, sessionId),
+                eq(schema.sandboxSessions.status, 'creating'),
+              ),
+            )
+            .returning({ id: schema.sandboxSessions.id });
+        },
+      );
+
+      if (!activatedSession) {
+        await this.dockerService.stopContainer(containerId).catch((error) => {
+          this.logger.warn(
+            `Failed to re-stop sandbox container ${containerId} after session ${sessionId} left creating state: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        });
+        await this.insertLog(
+          sessionId,
+          'system',
+          `Sandbox container ${containerId} re-stopped because session left creating state during restart`,
+          tenantId,
+        );
+        this.logger.warn(
+          `Sandbox ${sessionId} left creating state before container ${containerId} could be restarted`,
+        );
+        return;
+      }
+
+      await this.insertLog(
+        sessionId,
+        'system',
+        `Sandbox container ${containerId} started`,
+        tenantId,
+      );
+
+      await this.attachContainerLogs(sessionId, containerId, tenantId);
+      await this.scheduleTimeoutCheck(sessionId, tenantId, config, binding);
+
+      this.logger.log(
+        `Sandbox ${sessionId} restarted with container ${containerId}`,
+      );
+    } catch (error) {
+      await runInTenantTransaction(this.db, tenantId, async (tenantDb) => {
+        await tenantDb
+          .update(schema.sandboxSessions)
+          .set({
+            status: 'failed',
+            stoppedAt: new Date(),
+          })
+          .where(eq(schema.sandboxSessions.id, sessionId));
+      });
+
+      await this.insertLog(
+        sessionId,
+        'system',
+        `Sandbox start failed: ${error instanceof Error ? error.message : String(error)}`,
+        tenantId,
+      );
+
+      throw error;
+    }
+  }
+
+  private async handleStop(data: SandboxLifecycleJobData): Promise<void> {
+    const { sessionId, containerId, tenantId, persistencePath } = data;
+    const binding = this.resolveBinding(data);
+
+    await this.lifecycleProducer.removeTimeoutCheckTask(sessionId);
+
+    if (containerId) {
+      if (persistencePath) {
+        try {
+          const archiveStream = await this.dockerService.getArchive(
+            containerId,
+            CONTAINER_WORKSPACE,
+          );
+          const bindingId = this.getBindingId(binding);
+          const storageKey = this.resolvePersistenceStorageKey(
+            tenantId,
+            bindingId,
+            persistencePath,
+          );
+          await this.storageService.upload(
+            storageKey,
+            archiveStream,
+            undefined,
+            'application/x-tar',
+          );
+          this.logger.log(
+            `Workspace synced to MinIO before stopping session ${sessionId}: ${storageKey}`,
+          );
+        } catch (error) {
+          this.logger.warn(
+            `Failed to sync workspace before stopping session ${sessionId}: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }
+
+      await this.dockerService.stopContainer(containerId);
+    }
+
+    await runInTenantTransaction(this.db, tenantId, async (tenantDb) => {
+      await tenantDb
+        .update(schema.sandboxSessions)
+        .set({ status: 'stopped', stoppedAt: new Date() })
+        .where(eq(schema.sandboxSessions.id, sessionId));
+    });
+
+    await this.insertLog(sessionId, 'system', 'Sandbox stopped', tenantId);
+    this.logger.log(`Sandbox ${sessionId} stopped`);
+  }
+
   private async handleDestroy(data: SandboxLifecycleJobData): Promise<void> {
     const { sessionId, containerId, tenantId, persistencePath } = data;
     const binding = this.resolveBinding(data);
+
+    await this.lifecycleProducer.removeTimeoutCheckTask(sessionId);
 
     if (containerId) {
       if (persistencePath) {
@@ -323,6 +456,8 @@ export class SandboxLifecycleWorker extends WorkerHost {
       agentConversationId: session.agentConversationId ?? undefined,
       sandboxNodeId: session.sandboxNodeId ?? undefined,
     };
+    const isSessionMode =
+      (session.config.lifecycleMode ?? 'session') === 'session';
 
     this.logger.warn(`Sandbox ${sessionId} timed out, force stopping`);
 
@@ -356,11 +491,10 @@ export class SandboxLifecycleWorker extends WorkerHost {
       }
 
       await this.dockerService.stopContainer(session.containerId);
-      await this.dockerService.removeContainer(session.containerId);
+      if (isSessionMode) {
+        await this.dockerService.removeContainer(session.containerId);
+      }
     }
-
-    const isSessionMode =
-      (session.config.lifecycleMode ?? 'session') === 'session';
 
     await runInTenantTransaction(this.db, tenantId, async (tenantDb) => {
       if (isSessionMode) {
@@ -442,6 +576,39 @@ export class SandboxLifecycleWorker extends WorkerHost {
         level,
         message,
       });
+    });
+  }
+
+  private async attachContainerLogs(
+    sessionId: string,
+    containerId: string,
+    tenantId: string,
+  ): Promise<void> {
+    await this.dockerService.attachLogs(containerId, (level, message) => {
+      this.insertLog(sessionId, level, message, tenantId).catch((err) => {
+        this.logger.error(`Failed to insert log for session ${sessionId}`, err);
+      });
+    });
+  }
+
+  private async scheduleTimeoutCheck(
+    sessionId: string,
+    tenantId: string,
+    config: NonNullable<SandboxLifecycleJobData['config']>,
+    binding: {
+      executionId?: string;
+      agentConversationId?: string;
+      sandboxNodeId?: string;
+    },
+  ): Promise<void> {
+    const delayMs = resolveSandboxTimeoutDelayMs(config);
+
+    await this.lifecycleProducer.removeTimeoutCheckTask(sessionId);
+    await this.lifecycleProducer.addTimeoutCheckTask({
+      sessionId,
+      tenantId,
+      delayMs,
+      ...binding,
     });
   }
 

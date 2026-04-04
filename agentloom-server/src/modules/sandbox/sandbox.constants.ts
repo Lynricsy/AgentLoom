@@ -3,7 +3,12 @@ import type { PiConfigInput } from './pi-config-generator.service';
 
 export const SANDBOX_LIFECYCLE_QUEUE = 'sandbox-lifecycle';
 
-export type SandboxLifecycleJobType = 'create' | 'destroy' | 'timeout_check';
+export type SandboxLifecycleJobType =
+  | 'create'
+  | 'start'
+  | 'stop'
+  | 'destroy'
+  | 'timeout_check';
 
 export interface SandboxLifecycleBinding {
   executionId?: string;

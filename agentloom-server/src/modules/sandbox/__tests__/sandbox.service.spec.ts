@@ -164,7 +164,10 @@ describe('SandboxService', () => {
 
     mockLifecycleProducer = {
       addCreateTask: vi.fn().mockResolvedValue(undefined),
+      addStartTask: vi.fn().mockResolvedValue(undefined),
+      addStopTask: vi.fn().mockResolvedValue(undefined),
       addDestroyTask: vi.fn().mockResolvedValue(undefined),
+      removeTimeoutCheckTask: vi.fn().mockResolvedValue(undefined),
     };
 
     mockDockerService = {
@@ -775,6 +778,56 @@ describe('SandboxService', () => {
   });
 
   describe('startSandbox', () => {
+    it('stopped 持久沙箱应复用原容器并入队 start 任务', async () => {
+      const stoppedSession = buildSession({
+        status: 'stopped',
+        containerId: 'container-stopped',
+        workspacePath: '/workspace/',
+        startedAt: new Date('2025-01-01T00:00:00.000Z'),
+        stoppedAt: new Date('2025-01-02T00:00:00.000Z'),
+        config: {
+          ...TEST_CONFIG,
+          lifecycleMode: 'persistent',
+          name: 'Persistent Sandbox',
+        },
+      });
+      const creatingSession = buildSession({
+        status: 'creating',
+        containerId: 'container-stopped',
+        workspacePath: '/workspace/',
+        startedAt: null,
+        stoppedAt: null,
+        config: stoppedSession.config,
+      });
+      const updateChain = createUpdateChainReturning([{ id: TEST_SESSION_ID }]);
+
+      db.select
+        .mockReturnValueOnce(createSelectChainWithLimit([stoppedSession]))
+        .mockReturnValueOnce(createSelectChainWithLimit([creatingSession]));
+      db.update.mockReturnValueOnce(updateChain);
+
+      await expect(
+        service.startSandbox(TEST_SESSION_ID, TEST_TENANT_ID),
+      ).resolves.toEqual(creatingSession);
+
+      expect(mockDockerService.stopContainer).not.toHaveBeenCalled();
+      expect(mockDockerService.removeContainer).not.toHaveBeenCalled();
+      expect(updateChain.set).toHaveBeenCalledWith({
+        status: 'creating',
+        startedAt: null,
+        stoppedAt: null,
+      });
+      expect(mockLifecycleProducer.addStartTask).toHaveBeenCalledWith({
+        sessionId: TEST_SESSION_ID,
+        executionId: TEST_EXECUTION_ID,
+        sandboxNodeId: 'sandbox-1',
+        tenantId: TEST_TENANT_ID,
+        containerId: 'container-stopped',
+        config: stoppedSession.config,
+      });
+      expect(mockLifecycleProducer.addCreateTask).not.toHaveBeenCalled();
+    });
+
     it('failed 持久沙箱应清理旧容器并重新入队 create 任务', async () => {
       const failedSession = buildSession({
         status: 'failed',
@@ -827,6 +880,69 @@ describe('SandboxService', () => {
         tenantId: TEST_TENANT_ID,
         config: failedSession.config,
       });
+    });
+  });
+
+  describe('stopSandbox', () => {
+    it('persistent 沙箱应入队 stop task 而不是 destroy task', async () => {
+      const session = buildSession({
+        status: 'ready',
+        containerId: 'container-abc',
+        config: {
+          ...TEST_CONFIG,
+          lifecycleMode: 'persistent',
+          persistencePath: 'tenants/t1/sandboxes/e1',
+        },
+      });
+
+      db.select
+        .mockReturnValueOnce(createSelectChainWithLimit([session]))
+        .mockReturnValueOnce(createSelectChainWithLimit([session]));
+      db.update.mockReturnValueOnce(
+        createUpdateChainReturning([{ id: TEST_SESSION_ID }]),
+      );
+
+      await service.stopSandbox(TEST_SESSION_ID, TEST_TENANT_ID);
+
+      expect(mockLifecycleProducer.addStopTask).toHaveBeenCalledWith({
+        sessionId: TEST_SESSION_ID,
+        executionId: TEST_EXECUTION_ID,
+        sandboxNodeId: 'sandbox-1',
+        tenantId: TEST_TENANT_ID,
+        containerId: 'container-abc',
+        persistencePath: 'tenants/t1/sandboxes/e1',
+        config: session.config,
+      });
+      expect(mockLifecycleProducer.addDestroyTask).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('deleteSandbox', () => {
+    it('stopped 持久沙箱删除时也应 remove 已停止容器并清理 timeout job', async () => {
+      const session = buildSession({
+        status: 'stopped',
+        containerId: 'container-stopped',
+        config: {
+          ...TEST_CONFIG,
+          lifecycleMode: 'persistent',
+          name: 'Persistent Sandbox',
+        },
+      });
+      const deleteWhere = vi.fn().mockResolvedValue(undefined);
+
+      db.select.mockReturnValueOnce(createSelectChainWithLimit([session]));
+      db.delete.mockReturnValue({ where: deleteWhere });
+
+      await service.deleteSandbox(TEST_SESSION_ID, TEST_TENANT_ID);
+
+      expect(mockLifecycleProducer.removeTimeoutCheckTask).toHaveBeenCalledWith(
+        TEST_SESSION_ID,
+      );
+      expect(mockDockerService.stopContainer).not.toHaveBeenCalled();
+      expect(mockDockerService.removeContainer).toHaveBeenCalledWith(
+        'container-stopped',
+      );
+      expect(db.delete).toHaveBeenCalledTimes(2);
     });
   });
 

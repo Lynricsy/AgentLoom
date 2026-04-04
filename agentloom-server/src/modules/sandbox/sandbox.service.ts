@@ -1096,6 +1096,7 @@ export class SandboxService {
     tenantId: string,
   ): Promise<SandboxSession> {
     const session = await this.getSessionById(sessionId);
+    const lifecycleMode = session.config.lifecycleMode ?? 'session';
 
     const stoppableStatuses = ['ready', 'busy', 'creating'];
     if (!stoppableStatuses.includes(session.status)) {
@@ -1111,6 +1112,26 @@ export class SandboxService {
     }
 
     await this.enqueueLifecycleTask(async () => {
+      if (lifecycleMode === 'persistent') {
+        await this.lifecycleProducer.addStopTask({
+          sessionId,
+          tenantId,
+          config: session.config,
+          ...(session.executionId ? { executionId: session.executionId } : {}),
+          ...(session.agentConversationId
+            ? { agentConversationId: session.agentConversationId }
+            : {}),
+          ...(session.sandboxNodeId
+            ? { sandboxNodeId: session.sandboxNodeId }
+            : {}),
+          ...(session.containerId ? { containerId: session.containerId } : {}),
+          ...(session.config.persistencePath
+            ? { persistencePath: session.config.persistencePath }
+            : {}),
+        });
+        return;
+      }
+
       await this.lifecycleProducer.addDestroyTask({
         sessionId,
         tenantId,
@@ -1150,6 +1171,40 @@ export class SandboxService {
         session.status,
         'start',
       );
+    }
+
+    const canRestartStoppedContainer =
+      session.status === 'stopped' &&
+      typeof session.containerId === 'string' &&
+      session.containerId.length > 0;
+
+    if (canRestartStoppedContainer) {
+      await this.updateSessionStatus(sessionId, 'creating', {
+        startedAt: null,
+        stoppedAt: null,
+      });
+
+      await this.enqueueLifecycleTask(async () => {
+        await this.lifecycleProducer.addStartTask({
+          sessionId,
+          tenantId,
+          containerId: session.containerId!,
+          config: session.config,
+          ...(session.executionId ? { executionId: session.executionId } : {}),
+          ...(session.agentConversationId
+            ? { agentConversationId: session.agentConversationId }
+            : {}),
+          ...(session.sandboxNodeId
+            ? { sandboxNodeId: session.sandboxNodeId }
+            : {}),
+        });
+      });
+
+      this.logger.log(
+        `Enqueued restart for stopped persistent sandbox ${sessionId}`,
+      );
+
+      return this.getSessionById(sessionId);
     }
 
     if (session.containerId) {
@@ -1203,15 +1258,17 @@ export class SandboxService {
       throw new SandboxNotPersistentException(sessionId);
     }
 
-    // If sandbox is running, stop the container first
-    if (
-      session.containerId &&
-      !TERMINAL_STATUSES.includes(
-        session.status as (typeof TERMINAL_STATUSES)[number],
-      )
-    ) {
+    await this.lifecycleProducer.removeTimeoutCheckTask(sessionId);
+
+    if (session.containerId) {
       try {
-        await this.dockerService.stopContainer(session.containerId);
+        if (
+          !TERMINAL_STATUSES.includes(
+            session.status as (typeof TERMINAL_STATUSES)[number],
+          )
+        ) {
+          await this.dockerService.stopContainer(session.containerId);
+        }
         await this.dockerService.removeContainer(session.containerId);
       } catch (error) {
         this.logger.warn(

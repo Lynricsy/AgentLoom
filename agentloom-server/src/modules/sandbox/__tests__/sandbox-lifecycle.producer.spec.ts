@@ -2,8 +2,13 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 import type { SandboxConfig } from '../../../database/schema';
 
+const mockTimeoutJob = {
+  remove: vi.fn().mockResolvedValue(undefined),
+};
+
 const mockQueue = {
   add: vi.fn().mockResolvedValue({ id: 'job-1' }),
+  getJob: vi.fn().mockResolvedValue(mockTimeoutJob),
 };
 
 vi.mock('@nestjs/bullmq', () => ({
@@ -58,6 +63,44 @@ describe('SandboxLifecycleProducer', () => {
       agentConversationId: 'c1',
       tenantId: 't1',
       jobType: 'create',
+      config: DEFAULT_CONFIG,
+    });
+  });
+
+  it('addStartTask 应使用正确的 jobType 和 containerId 入队', async () => {
+    await producer.addStartTask({
+      sessionId: 's1',
+      executionId: 'e1',
+      containerId: 'c1',
+      config: DEFAULT_CONFIG,
+      tenantId: 't1',
+    });
+
+    expect(mockQueue.add).toHaveBeenCalledWith('sandbox-start', {
+      sessionId: 's1',
+      executionId: 'e1',
+      tenantId: 't1',
+      jobType: 'start',
+      containerId: 'c1',
+      config: DEFAULT_CONFIG,
+    });
+  });
+
+  it('addStopTask 应使用正确的 jobType 和 config 入队', async () => {
+    await producer.addStopTask({
+      sessionId: 's1',
+      executionId: 'e1',
+      containerId: 'c1',
+      config: DEFAULT_CONFIG,
+      tenantId: 't1',
+    });
+
+    expect(mockQueue.add).toHaveBeenCalledWith('sandbox-stop', {
+      sessionId: 's1',
+      executionId: 'e1',
+      tenantId: 't1',
+      jobType: 'stop',
+      containerId: 'c1',
       config: DEFAULT_CONFIG,
     });
   });
@@ -144,5 +187,21 @@ describe('SandboxLifecycleProducer', () => {
         jobId: 'sandbox-timeout-s-conv',
       },
     );
+  });
+
+  it('removeTimeoutCheckTask 命中已有任务时应移除', async () => {
+    await producer.removeTimeoutCheckTask('s1');
+
+    expect(mockQueue.getJob).toHaveBeenCalledWith('sandbox-timeout-s1');
+    expect(mockTimeoutJob.remove).toHaveBeenCalledTimes(1);
+  });
+
+  it('removeTimeoutCheckTask 未命中任务时应跳过', async () => {
+    mockQueue.getJob.mockResolvedValueOnce(null);
+
+    await producer.removeTimeoutCheckTask('missing');
+
+    expect(mockQueue.getJob).toHaveBeenCalledWith('sandbox-timeout-missing');
+    expect(mockTimeoutJob.remove).not.toHaveBeenCalled();
   });
 });

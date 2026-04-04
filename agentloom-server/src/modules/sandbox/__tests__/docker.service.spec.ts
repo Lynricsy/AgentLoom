@@ -305,6 +305,36 @@ describe('DockerService', () => {
     });
   });
 
+  describe('startContainer', () => {
+    it('应启动已停止容器', async () => {
+      mockContainer.start.mockResolvedValueOnce(undefined);
+      const startCallCount = mockContainer.start.mock.calls.length;
+
+      await service.startContainer('container-abc123');
+
+      expect(mockDocker.getContainer).toHaveBeenCalledWith('container-abc123');
+      expect(mockContainer.start.mock.calls.length).toBe(startCallCount + 1);
+    });
+
+    it('容器已运行时应优雅处理', async () => {
+      mockContainer.start.mockRejectedValueOnce(
+        new Error('container already running'),
+      );
+
+      await expect(
+        service.startContainer('container-abc123'),
+      ).resolves.toBeUndefined();
+    });
+
+    it('其他错误应抛出 SandboxCreationException', async () => {
+      mockContainer.start.mockRejectedValueOnce(new Error('permission denied'));
+
+      await expect(service.startContainer('container-abc123')).rejects.toThrow(
+        SandboxCreationException,
+      );
+    });
+  });
+
   describe('removeContainer', () => {
     it('应强制删除容器及卷', async () => {
       mockContainer.remove.mockResolvedValueOnce(undefined);

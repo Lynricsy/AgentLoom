@@ -41,6 +41,7 @@ export interface SandboxRuntimeDriver {
     config: SandboxConfig,
     piContext?: CreateContainerPiContext,
   ): Promise<{ containerId: string }>;
+  startContainer(containerId: string): Promise<void>;
   stopContainer(containerId: string): Promise<void>;
   removeContainer(containerId: string): Promise<void>;
   healthCheck(containerId: string): Promise<boolean>;
