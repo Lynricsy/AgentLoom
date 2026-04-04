@@ -225,4 +225,13 @@ describe('MemoryBrowser', () => {
 
     expect(screen.getByText('Versions:Root Node')).toBeInTheDocument()
   })
+
+  it('搜索切换按钮应提供可访问名称并在展开后更新名称', () => {
+    render(<MemoryBrowser />)
+
+    fireEvent.click(screen.getByRole('button', { name: '打开搜索' }))
+
+    expect(screen.getByPlaceholderText('搜索记忆节点...')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: '关闭搜索' })).toBeInTheDocument()
+  })
 })

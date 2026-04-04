@@ -21,20 +21,21 @@ class TokenStorage {
 
   /// 保存全部 tokens
   Future<void> saveTokens(AuthTokens tokens) async {
-    await Future.wait([
-      _storage.write(
-        key: TokenStorageKeys.accessToken,
-        value: tokens.accessToken,
-      ),
-      _storage.write(
-        key: TokenStorageKeys.refreshToken,
-        value: tokens.refreshToken,
-      ),
-      _storage.write(
-        key: TokenStorageKeys.tokenExpiresIn,
-        value: tokens.expiresIn.toString(),
-      ),
-    ]);
+    // Web 端 flutter_secure_storage 通过共享 publicKey 做加解密。
+    // 首次写入时如果并发触发多个 write，各调用可能各自生成不同密钥，
+    // 最终导致已写入 token 后续不可解密。这里必须串行写入。
+    await _storage.write(
+      key: TokenStorageKeys.accessToken,
+      value: tokens.accessToken,
+    );
+    await _storage.write(
+      key: TokenStorageKeys.refreshToken,
+      value: tokens.refreshToken,
+    );
+    await _storage.write(
+      key: TokenStorageKeys.tokenExpiresIn,
+      value: tokens.expiresIn.toString(),
+    );
   }
 
   /// 读取 tokens，任一缺失返回 null

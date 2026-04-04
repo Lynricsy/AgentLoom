@@ -1,11 +1,18 @@
 import { useCallback, type DragEvent } from 'react'
 import type { ReactFlowInstance } from '@xyflow/react'
+import {
+  fetchBlockById,
+  type BlockDefinition as ReusableBlockDefinition,
+  type BlockPort,
+} from '@/features/block-library'
+import { createPort, PORT_DATA_TYPE_META, type PortDefinition } from '../types/nodeTypeRegistry'
 import { DRAG_TRANSFER_TYPE } from '../components/NodePalette'
 import { useCanvasActions, useCanvasNodes } from '../stores/canvasStore'
 import { useToast } from '@/shared/ui/toast'
 import type { AddNodeInput, CanvasEdge, CanvasNode, PaletteNodeItem } from '../types'
 import { isCompoundContainerNodeType } from '../types/controlFlow.types'
 import { buildCompoundChildExtent, clampPositionToExtent, readCompoundNodeDimension, resolveCompoundContainerSize } from '../lib/compoundLayout'
+import type { PortDataType } from '../types/typeSchema'
 
 function generateNodeId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
@@ -13,6 +20,47 @@ function generateNodeId(): string {
   }
 
   return `node_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+}
+
+function normalizePortDataType(dataType: string): PortDataType {
+  if (dataType in PORT_DATA_TYPE_META) {
+    return dataType as PortDataType
+  }
+
+  if (dataType === 'number' || dataType === 'boolean') {
+    return 'json'
+  }
+
+  return 'json'
+}
+
+function buildBlockPorts(
+  ports: BlockPort[],
+  direction: 'input' | 'output',
+): PortDefinition[] {
+  return ports.map((port) =>
+    createPort(
+      port.id,
+      port.label,
+      direction,
+      normalizePortDataType(port.dataType),
+      {
+        description: `${direction === 'input' ? '块输入' : '块输出'}端口`,
+      },
+    ),
+  )
+}
+
+function toCanvasBlockDefinition(
+  definition: ReusableBlockDefinition,
+): NonNullable<AddNodeInput['blockDefinition']> {
+  return {
+    nodes: definition.nodes as CanvasNode[],
+    edges: definition.edges as CanvasEdge[],
+    inputPorts: definition.inputPorts,
+    outputPorts: definition.outputPorts,
+    ...(definition.viewport ? { viewport: definition.viewport } : {}),
+  }
 }
 
 export function useCanvasDrop(reactFlowInstance: ReactFlowInstance<CanvasNode, CanvasEdge>) {
@@ -135,6 +183,54 @@ export function useCanvasDrop(reactFlowInstance: ReactFlowInstance<CanvasNode, C
           : {}),
         label: item.label,
         description: item.description,
+        ...(item.inputPorts ? { inputPorts: item.inputPorts } : {}),
+        ...(item.outputPorts ? { outputPorts: item.outputPorts } : {}),
+        ...(item.pluginId ? { pluginId: item.pluginId } : {}),
+        ...(item.pluginName ? { pluginName: item.pluginName } : {}),
+        ...(item.pluginVersion ? { pluginVersion: item.pluginVersion } : {}),
+        ...(item.pluginNodeType ? { pluginNodeType: item.pluginNodeType } : {}),
+        ...(item.pluginConfigSchema
+          ? { pluginConfigSchema: item.pluginConfigSchema }
+          : {}),
+      }
+
+      if (item.type === 'reusable-block') {
+        if (!item.blockId) {
+          notify({
+            variant: 'error',
+            description: '可复用块缺少 blockId，无法实例化。',
+          })
+          return
+        }
+
+        void fetchBlockById(item.blockId)
+          .then((block) => {
+            addNode({
+              ...input,
+              label: block.name,
+              description: block.description ?? input.description,
+              blockId: block.id,
+              blockName: block.name,
+              blockDefinition: toCanvasBlockDefinition(block.definition),
+              inputPorts: buildBlockPorts(block.definition.inputPorts, 'input'),
+              outputPorts: buildBlockPorts(
+                block.definition.outputPorts,
+                'output',
+              ),
+              isExpanded: false,
+            })
+          })
+          .catch((error) => {
+            notify({
+              variant: 'error',
+              description:
+                error instanceof Error
+                  ? error.message
+                  : '加载可复用块详情失败。',
+            })
+          })
+
+        return
       }
 
       addNode(input)

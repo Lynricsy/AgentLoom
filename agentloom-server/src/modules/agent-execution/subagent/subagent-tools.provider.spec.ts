@@ -11,13 +11,35 @@ import {
   type SubAgentResult,
 } from './subagent-execution.types';
 
-const { mockAgentDefinitionService, mockEventBridge } = vi.hoisted(() => ({
+const {
+  mockAgentDefinitionService,
+  mockEventBridge,
+  mockDb,
+  mockRunInTenantTransaction,
+  mockTransactionExit,
+} = vi.hoisted(() => ({
   mockAgentDefinitionService: {
     findDetailById: vi.fn(),
     listVersions: vi.fn(),
   },
   mockEventBridge: {
     emitSubAgentConversationEvent: vi.fn(),
+  },
+  mockDb: {},
+  mockRunInTenantTransaction: vi.fn(
+    async (
+      db: unknown,
+      _tenantId: string,
+      operation: (tenantDb: unknown) => Promise<unknown>,
+    ) => operation(db),
+  ),
+  mockTransactionExit: vi.fn((callback: () => unknown) => callback()),
+}));
+
+vi.mock('../../../common/interceptors/tenant-transaction.context', () => ({
+  runInTenantTransaction: mockRunInTenantTransaction,
+  transactionStorage: {
+    exit: mockTransactionExit,
   },
 }));
 
@@ -89,6 +111,7 @@ function createDeferred<T>() {
 
 function createProvider() {
   return new SubAgentToolsProvider(
+    mockDb as never,
     mockAgentDefinitionService as never,
     mockEventBridge as never,
   );
@@ -190,8 +213,30 @@ describe('SubAgentToolsProvider', () => {
       status: SubAgentRunStatus.RUNNING,
     });
     expect((spawned as { handle: string }).handle).toMatch(/^sa_/);
+    expect(mockTransactionExit).toHaveBeenCalledTimes(1);
+    expect(mockRunInTenantTransaction).toHaveBeenCalledWith(
+      mockDb,
+      'tenant-1',
+      expect.any(Function),
+    );
 
     deferred.resolve({ content: 'done', stopReason: 'end_turn' });
+  });
+
+  it('call_subagent 直接沿用当前链路，不会额外脱离事务上下文', async () => {
+    const tools = await createTools(async () => ({
+      content: 'done',
+      stopReason: 'end_turn',
+    }));
+
+    const result = await tools.call_subagent.execute?.(
+      { alias: 'writer', task: '同步写作' },
+      createExecuteOptions('call-no-detach'),
+    );
+
+    expect(result).toContain('"content":"done"');
+    expect(mockTransactionExit).not.toHaveBeenCalled();
+    expect(mockRunInTenantTransaction).not.toHaveBeenCalled();
   });
 
   it('wait_for_subagents 会等待完成并返回结果快照', async () => {

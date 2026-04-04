@@ -17,7 +17,7 @@ import { Command } from 'commander';
 import type { PluginManifest } from '@agentloom/plugin-sdk';
 
 import { loadManifest } from '../utils/manifest';
-import { loadPlugin } from '../utils/plugin';
+import { loadPlugin, serializeNodes } from '../utils/plugin';
 
 export interface BuildPluginOptions {
   cwd?: string;
@@ -40,6 +40,7 @@ async function createArchive(
   cwd: string,
   outputPath: string,
   manifest: PluginManifest,
+  nodeDefinitions: Array<Record<string, unknown>>,
 ): Promise<void> {
   await new Promise<void>((resolveArchive, rejectArchive) => {
     const output = createWriteStream(outputPath);
@@ -51,6 +52,11 @@ async function createArchive(
 
     archive.pipe(output);
     archive.append(`${JSON.stringify(manifest, null, 2)}\n`, { name: 'manifest.json' });
+    if (nodeDefinitions.length > 0) {
+      archive.append(`${JSON.stringify(nodeDefinitions, null, 2)}\n`, {
+        name: 'node-definitions.json',
+      });
+    }
     archive.directory(resolve(cwd, 'dist'), 'dist');
     archive.file(resolve(cwd, 'package.json'), { name: 'package.json' });
 
@@ -83,26 +89,26 @@ export async function buildPluginArchive(
 
   mkdirSync(outputDir, { recursive: true });
 
-  const archiveManifest = options.wasm
+  let nodeDefinitions: Array<Record<string, unknown>> = [];
+  try {
+    nodeDefinitions = serializeNodes((await loadPlugin(cwd)).nodes);
+  } catch {
+    nodeDefinitions = [];
+  }
+
+  const resultManifest: PluginManifest = options.wasm
     ? { ...manifest, wasmEntry: 'dist/plugin.wasm' }
     : manifest;
 
   const archivePath = resolve(outputDir, `${manifest.id}-${manifest.version}.alp`);
-  await createArchive(cwd, archivePath, archiveManifest);
+  await createArchive(cwd, archivePath, resultManifest, nodeDefinitions);
 
   const sizeBytes = statSync(archivePath).size;
 
-  let nodeCount = 0;
-  try {
-    nodeCount = (await loadPlugin(cwd)).nodes.length;
-  } catch {
-    nodeCount = 0;
-  }
-
   return {
     archivePath,
-    manifest: archiveManifest,
-    nodeCount,
+    manifest: resultManifest,
+    nodeCount: nodeDefinitions.length,
     sizeBytes,
   };
 }

@@ -111,6 +111,24 @@ function listArchiveEntries(archivePath: string): string[] {
   return JSON.parse(output) as string[];
 }
 
+function readArchiveJson(
+  archivePath: string,
+  entryPath: string,
+): unknown {
+  const script = [
+    'import json, sys, zipfile',
+    'with zipfile.ZipFile(sys.argv[1]) as archive:',
+    '    print(archive.read(sys.argv[2]).decode("utf-8"))',
+  ].join('\n');
+
+  const output = childProcess.execFileSync(
+    'python3',
+    ['-c', script, archivePath, entryPath],
+    { encoding: 'utf8' },
+  );
+  return JSON.parse(output) as unknown;
+}
+
 afterEach(() => {
   while (tempDirs.length > 0) {
     const directory = tempDirs.pop();
@@ -168,16 +186,26 @@ describe('buildPluginArchive', () => {
     expect(result.archivePath).toContain(join(root, 'artifacts'));
   });
 
-  it('stores manifest.json at the archive root and includes package.json', async () => {
+  it('stores manifest.json、node-definitions.json at the archive root and includes package.json', async () => {
     const root = createTempRoot();
     createBuildFixture(root);
 
     const result = await buildPluginArchive({ cwd: root });
     const entries = listArchiveEntries(result.archivePath);
+    const nodeDefinitions = readArchiveJson(
+      result.archivePath,
+      'node-definitions.json',
+    );
 
     expect(entries).toContain('manifest.json');
+    expect(entries).toContain('node-definitions.json');
     expect(entries).toContain('package.json');
     expect(entries.some((entry) => entry.startsWith('dist/'))).toBe(true);
+    expect(nodeDefinitions).toEqual([
+      {
+        type: 'archive-node',
+      },
+    ]);
   });
 
   it('includes README.md when it exists', async () => {

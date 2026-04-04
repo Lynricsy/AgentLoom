@@ -14,6 +14,7 @@ import {
 } from './subagent-execution.types';
 
 const {
+  mockDb,
   mockRuntime,
   mockAdapterFactory,
   mockExecutionService,
@@ -22,7 +23,10 @@ const {
   mockWorkspaceIntegrationService,
   mockAgentDefinitionService,
   mockSubAgentToolsProvider,
+  mockRunInTenantTransaction,
+  mockTransactionExit,
 } = vi.hoisted(() => ({
+  mockDb: {},
   mockRuntime: {
     prompt: vi.fn(),
     cancel: vi.fn(),
@@ -53,6 +57,21 @@ const {
   },
   mockSubAgentToolsProvider: {
     createSessionToolProvider: vi.fn(),
+  },
+  mockRunInTenantTransaction: vi.fn(
+    async (
+      db: unknown,
+      _tenantId: string,
+      operation: (tenantDb: unknown) => Promise<unknown>,
+    ) => operation(db),
+  ),
+  mockTransactionExit: vi.fn((callback: () => unknown) => callback()),
+}));
+
+vi.mock('../../../common/interceptors/tenant-transaction.context', () => ({
+  runInTenantTransaction: mockRunInTenantTransaction,
+  transactionStorage: {
+    exit: mockTransactionExit,
   },
 }));
 
@@ -133,6 +152,7 @@ function createDeferred<T>() {
 
 function createRealProvider() {
   return new SubAgentToolsProvider(
+    mockDb as never,
     mockAgentDefinitionService as never,
     mockEventBridge as never,
   );

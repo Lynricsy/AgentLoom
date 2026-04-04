@@ -291,7 +291,10 @@ export const MarketplaceDetailDialog = memo(function MarketplaceDetailDialog({
           <Dialog.Description className="sr-only">
             {listing?.summary ?? '查看市场条目的详情、预览和安装入口。'}
           </Dialog.Description>
-          <Dialog.Close className="absolute right-3 top-3 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground">
+          <Dialog.Close
+            aria-label="关闭详情"
+            className="absolute right-3 top-3 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
             <X className="h-4 w-4" />
           </Dialog.Close>
 

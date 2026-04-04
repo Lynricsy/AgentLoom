@@ -6,7 +6,10 @@ import { PgDialect } from 'drizzle-orm/pg-core';
 import { DRIZZLE } from '../../../database/database.module';
 import { SandboxService } from '../sandbox.service';
 import { SandboxLifecycleProducer } from '../sandbox-lifecycle.producer';
-import { SandboxNotFoundException } from '../sandbox.exceptions';
+import {
+  SandboxNotFoundException,
+  SandboxStatsUnavailableException,
+} from '../sandbox.exceptions';
 import type { SandboxConfig, SandboxSession } from '../../../database/schema';
 import { SANDBOX_RUNTIME_DRIVER } from '../sandbox-runtime-driver.port';
 
@@ -173,6 +176,7 @@ describe('SandboxService', () => {
     };
 
     mockDockerService = {
+      healthCheck: vi.fn().mockResolvedValue(true),
       getContainerStats: vi.fn(),
       stopContainer: vi.fn().mockResolvedValue(undefined),
       removeContainer: vi.fn().mockResolvedValue(undefined),
@@ -455,6 +459,86 @@ describe('SandboxService', () => {
       );
       expect(mockLifecycleProducer.addCreateTask).not.toHaveBeenCalled();
     });
+
+    it('ready 持久沙箱若记录已陈旧但容器缺失，再次引用时应先收口再自动恢复', async () => {
+      const stalePersistentSession = buildSession({
+        status: 'ready',
+        containerId: 'container-missing',
+        sandboxNodeId: null,
+        startedAt: new Date('2025-01-02T00:00:00Z'),
+        config: {
+          ...TEST_CONFIG,
+          lifecycleMode: 'persistent',
+          name: 'Persistent Sandbox',
+          activeBindings: [
+            {
+              executionId: TEST_EXECUTION_ID,
+              sandboxNodeId: 'sandbox-1',
+            },
+          ],
+        },
+      });
+      const reconciledStoppedSession = buildSession({
+        ...stalePersistentSession,
+        status: 'stopped',
+        containerId: null,
+        workspacePath: null,
+        stoppedAt: new Date('2025-01-03T00:00:00Z'),
+      });
+      const attachedSession = buildSession({
+        status: 'creating',
+        containerId: null,
+        sandboxNodeId: null,
+        config: {
+          ...stalePersistentSession.config,
+          activeBindings: [
+            {
+              executionId: TEST_EXECUTION_ID,
+              sandboxNodeId: 'sandbox-1',
+            },
+            {
+              executionId: TEST_EXECUTION_ID,
+              sandboxNodeId: 'sandbox-2',
+            },
+          ],
+        },
+      });
+      const updateBindingChain = createUpdateChainNoReturn();
+      const reconcileUpdateChain = createUpdateChainReturning([
+        reconciledStoppedSession,
+      ]);
+      const startSandboxSpy = vi
+        .spyOn(service, 'startSandbox')
+        .mockResolvedValue(attachedSession);
+
+      db.select
+        .mockReturnValueOnce(createSelectChainWithLimit([]))
+        .mockReturnValueOnce(createSelectChainWithLimit([]))
+        .mockReturnValueOnce(createSelectChainWithLimit([stalePersistentSession]))
+        .mockReturnValueOnce(createSelectChainWithLimit([attachedSession]));
+      db.update
+        .mockReturnValueOnce(reconcileUpdateChain)
+        .mockReturnValueOnce(updateBindingChain);
+      mockDockerService.healthCheck.mockResolvedValueOnce(false);
+
+      const result = await service.createSandboxSession({
+        executionId: TEST_EXECUTION_ID,
+        sandboxNodeId: 'sandbox-2',
+        config: {
+          ...TEST_CONFIG,
+          lifecycleMode: 'persistent',
+          persistentSandboxId: TEST_SESSION_ID,
+        },
+        tenantId: TEST_TENANT_ID,
+      });
+
+      expect(result).toEqual(attachedSession);
+      expect(startSandboxSpy).toHaveBeenCalledWith(
+        TEST_SESSION_ID,
+        TEST_TENANT_ID,
+      );
+      expect(mockLifecycleProducer.addCreateTask).not.toHaveBeenCalled();
+    });
   });
 
   describe('getSandboxSession', () => {
@@ -584,6 +668,62 @@ describe('SandboxService', () => {
         diskUsage: 4096,
         diskTotal: 6 * 1024 * 1024 * 1024,
       });
+    });
+
+    it('应在 driver 读取容器统计失败时降级为统计不可用', async () => {
+      const session = buildSession({
+        containerId: 'container-missing',
+        status: 'ready',
+        startedAt: new Date('2025-01-02T00:00:00Z'),
+      });
+      db.select.mockReturnValueOnce(createSelectChainWithLimit([session]));
+      mockDockerService.healthCheck.mockResolvedValueOnce(true);
+      mockDockerService.getContainerStats.mockRejectedValueOnce(
+        new Error('No such container'),
+      );
+      const updateChain = createUpdateChainReturning([
+        buildSession({
+          status: 'stopped',
+          containerId: null,
+          workspacePath: null,
+          startedAt: session.startedAt,
+          stoppedAt: new Date('2025-01-03T00:00:00Z'),
+        }),
+      ]);
+      db.update.mockReturnValueOnce(updateChain);
+
+      await expect(service.getContainerStats(TEST_SESSION_ID)).rejects.toThrow(
+        SandboxStatsUnavailableException,
+      );
+
+      expect(mockDockerService.getContainerStats).toHaveBeenCalledWith(
+        'container-missing',
+      );
+    });
+
+    it('应在活跃沙箱记录已陈旧且容器缺失时先收口为 stopped', async () => {
+      const staleSession = buildSession({
+        containerId: 'container-gone',
+        status: 'ready',
+        startedAt: new Date('2025-01-02T00:00:00Z'),
+      });
+      const stoppedSession = buildSession({
+        status: 'stopped',
+        containerId: null,
+        workspacePath: null,
+        startedAt: staleSession.startedAt,
+        stoppedAt: new Date('2025-01-03T00:00:00Z'),
+      });
+      db.select.mockReturnValueOnce(createSelectChainWithLimit([staleSession]));
+      db.update.mockReturnValueOnce(createUpdateChainReturning([stoppedSession]));
+      mockDockerService.healthCheck.mockResolvedValueOnce(false);
+
+      await expect(service.getContainerStats(TEST_SESSION_ID)).rejects.toThrow(
+        SandboxStatsUnavailableException,
+      );
+
+      expect(mockDockerService.getContainerStats).not.toHaveBeenCalled();
+      expect(db.update).toHaveBeenCalledOnce();
     });
   });
 
@@ -1147,6 +1287,49 @@ describe('SandboxService', () => {
       expect(rendered).toContain(
         '"sandbox_sessions"."config"->>\'name\' ilike',
       );
+    });
+
+    it('应将已陈旧但容器缺失的活跃沙箱自动收口为 stopped 后返回', async () => {
+      const staleSession = buildSession({
+        status: 'ready',
+        executionId: null,
+        sandboxNodeId: null,
+        containerId: 'container-gone',
+        startedAt: new Date('2025-01-02T00:00:00Z'),
+        config: {
+          ...TEST_CONFIG,
+          lifecycleMode: 'persistent',
+          name: 'Stale Sandbox',
+        },
+      });
+      const stoppedSession = buildSession({
+        ...staleSession,
+        status: 'stopped',
+        containerId: null,
+        workspacePath: null,
+        stoppedAt: new Date('2025-01-03T00:00:00Z'),
+      });
+
+      db.select
+        .mockReturnValueOnce(createSelectChainForList([staleSession]))
+        .mockReturnValueOnce(createSelectChainForCount(1));
+      db.update.mockReturnValueOnce(createUpdateChainReturning([stoppedSession]));
+      mockDockerService.healthCheck.mockResolvedValueOnce(false);
+
+      const result = await service.listSandboxes(TEST_TENANT_ID, {
+        page: 1,
+        pageSize: 20,
+      });
+
+      expect(result).toEqual({
+        data: [{ ...stoppedSession, bindingType: 'resource' }],
+        meta: {
+          page: 1,
+          pageSize: 20,
+          total: 1,
+          totalPages: 1,
+        },
+      });
     });
   });
 

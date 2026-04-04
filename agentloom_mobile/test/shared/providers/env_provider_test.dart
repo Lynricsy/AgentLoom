@@ -1,4 +1,6 @@
+import 'package:agentloom_mobile/config/env.dart';
 import 'package:agentloom_mobile/shared/providers/env_provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:mocktail/mocktail.dart';
@@ -30,5 +32,45 @@ void main() {
     ).thenThrow(Exception('delete-failed'));
 
     await expectLater(runtimeEnvStorage.clearStudioBaseUrl(), completes);
+  });
+
+  test('envProvider 应区分默认地址与运行时覆盖，并允许恢复默认地址', () async {
+    when(
+      () => mockStorage.delete(key: RuntimeEnvStorageKeys.studioBaseUrl),
+    ).thenAnswer((_) async {});
+
+    final container = ProviderContainer(
+      overrides: [
+        baseEnvProvider.overrideWithValue(
+          const EnvConfig(
+            studioBaseUrl: 'https://agentloom.ling.plus',
+            appName: 'AgentLoom',
+            environment: AppEnvironment.prod,
+          ),
+        ),
+        runtimeStudioBaseUrlOverrideProvider.overrideWithValue(
+          'https://api.agentloom.com',
+        ),
+        runtimeEnvStorageProvider.overrideWithValue(RuntimeEnvStorage(mockStorage)),
+      ],
+    );
+    addTearDown(container.dispose);
+
+    expect(
+      container.read(envProvider).studioBaseUrl,
+      'https://api.agentloom.com',
+    );
+    expect(container.read(hasRuntimeEnvOverrideProvider), isTrue);
+
+    await container.read(envProvider.notifier).resetToDefault();
+
+    expect(
+      container.read(envProvider).studioBaseUrl,
+      'https://agentloom.ling.plus',
+    );
+    expect(container.read(hasRuntimeEnvOverrideProvider), isFalse);
+    verify(
+      () => mockStorage.delete(key: RuntimeEnvStorageKeys.studioBaseUrl),
+    ).called(1);
   });
 }

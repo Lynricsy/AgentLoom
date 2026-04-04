@@ -234,6 +234,12 @@ export interface AddNodeInput {
   inputPorts?: PortDefinition[]
   outputPorts?: PortDefinition[]
   mcpToolDefinitionId?: string
+  pluginId?: string
+  pluginName?: string
+  pluginVersion?: string
+  pluginNodeType?: string
+  pluginConfigSchema?: Record<string, unknown>
+  pluginConfig?: Record<string, unknown>
   blockId?: string
   blockName?: string
   blockDefinition?: BlockDefinition
@@ -250,7 +256,12 @@ export interface PaletteNodeItem {
   compoundOnly?: boolean
   compoundParentId?: string
   mcpToolDefinitionId?: string
+  blockId?: string
   pluginId?: string
+  pluginName?: string
+  pluginVersion?: string
+  pluginNodeType?: string
+  pluginConfigSchema?: Record<string, unknown>
   inputPorts?: PortDefinition[]
   outputPorts?: PortDefinition[]
   inputSchema?: Record<string, unknown>

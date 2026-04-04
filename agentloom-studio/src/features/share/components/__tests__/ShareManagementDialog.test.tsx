@@ -369,4 +369,30 @@ describe('ShareManagementDialog', () => {
       'https://app.example.com/s/test-tok',
     )
   })
+
+  it('创建分享失败时应优先展示后端错误信息', async () => {
+    const user = userEvent.setup()
+    shareListMock.data = { data: [] }
+    createShareMock.mutateAsync.mockRejectedValueOnce(
+      new Error('Agent 需要先发布后才能分享'),
+    )
+
+    render(
+      <ShareManagementDialog
+        open={true}
+        onOpenChange={vi.fn()}
+        resourceType="agent"
+        resourceId="agent-1"
+      />,
+    )
+
+    await user.click(screen.getByTestId('btn-create-share'))
+
+    expect(notifyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        description: 'Agent 需要先发布后才能分享',
+        variant: 'error',
+      }),
+    )
+  })
 })

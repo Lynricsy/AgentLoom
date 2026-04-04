@@ -34,9 +34,6 @@ void main() async {
   final bootstrapEnvConfig = EnvConfig.fromDotEnv(environment: environment);
   final runtimeEnvStorage = RuntimeEnvStorage(secureStorage);
   final savedStudioBaseUrl = await runtimeEnvStorage.readStudioBaseUrl();
-  final resolvedEnvConfig = savedStudioBaseUrl == null
-      ? bootstrapEnvConfig
-      : bootstrapEnvConfig.copyWith(studioBaseUrl: savedStudioBaseUrl);
   const pushPlatformSupport = PushPlatformSupport();
 
   if (pushPlatformSupport.isSupported) {
@@ -53,7 +50,10 @@ void main() async {
   runApp(
     ProviderScope(
       overrides: [
-        baseEnvProvider.overrideWithValue(resolvedEnvConfig),
+        baseEnvProvider.overrideWithValue(bootstrapEnvConfig),
+        runtimeStudioBaseUrlOverrideProvider.overrideWithValue(
+          savedStudioBaseUrl,
+        ),
         secureStorageProvider.overrideWithValue(secureStorage),
       ],
       child: const AgentLoomApp(),

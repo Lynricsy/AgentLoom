@@ -686,6 +686,11 @@ export function CreateSkillDialog({
               <Dialog.Title className="text-lg font-bold">
                 {isEditing ? '编辑技能' : '新建技能'}
               </Dialog.Title>
+              <Dialog.Description className="sr-only">
+                {isEditing
+                  ? '编辑技能的名称、描述、SKILL.md 内容与附件。'
+                  : '创建新技能，可填写名称、描述、SKILL.md 内容并上传附件。'}
+              </Dialog.Description>
               <Dialog.Close className="rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
                 <X className="h-4 w-4" />
                 <span className="sr-only">关闭</span>

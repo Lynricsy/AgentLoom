@@ -15,6 +15,7 @@ import {
 } from './dto/plugin-developer-key.dto';
 import { PluginDeveloperKeyController } from './plugin-developer-key.controller';
 import { PluginDeveloperKeyService } from './plugin-developer-key.service';
+import { PluginService } from './plugin.service';
 
 const mocks = vi.hoisted(() => ({
   createMockPluginDeveloperKeyService: () => ({
@@ -22,6 +23,9 @@ const mocks = vi.hoisted(() => ({
     listKeys: vi.fn(),
     findById: vi.fn(),
     revokeKey: vi.fn(),
+  }),
+  createMockPluginService: () => ({
+    resolveOrganizationId: vi.fn().mockResolvedValue(ORG_ID),
   }),
 }));
 
@@ -77,10 +81,22 @@ function createDeveloperKey(
 describe('PluginDeveloperKeyController', () => {
   let controller: PluginDeveloperKeyController;
   let service: ReturnType<typeof mocks.createMockPluginDeveloperKeyService>;
+  let pluginService: ReturnType<typeof mocks.createMockPluginService>;
+
+  const user = {
+    sub: USER_ID,
+    email: 'fox@ling.plus',
+    aud: 'authenticated' as const,
+    exp: 1_735_689_600,
+    iat: 1_735_603_200,
+    tenantId: TENANT_ID,
+    orgId: ORG_ID,
+  };
 
   beforeEach(async () => {
     vi.clearAllMocks();
     service = mocks.createMockPluginDeveloperKeyService();
+    pluginService = mocks.createMockPluginService();
 
     const module: TestingModule = await Test.createTestingModule({
       controllers: [PluginDeveloperKeyController],
@@ -88,6 +104,10 @@ describe('PluginDeveloperKeyController', () => {
         {
           provide: PluginDeveloperKeyService,
           useValue: service,
+        },
+        {
+          provide: PluginService,
+          useValue: pluginService,
         },
       ],
     }).compile();
@@ -104,12 +124,7 @@ describe('PluginDeveloperKeyController', () => {
       const record = createDeveloperKey();
       service.registerKey.mockResolvedValue(record);
 
-      const result = await controller.registerKey(
-        TENANT_ID,
-        ORG_ID,
-        USER_ID,
-        dto,
-      );
+      const result = await controller.registerKey(TENANT_ID, user, dto);
 
       expect(getRoles(controller, 'registerKey')).toEqual([
         'creator',
@@ -123,6 +138,37 @@ describe('PluginDeveloperKeyController', () => {
         USER_ID,
         PUBLIC_KEY,
         '主开发密钥',
+      );
+      expect(result).toEqual(record);
+      expect(pluginService.resolveOrganizationId).not.toHaveBeenCalled();
+    });
+
+    it('JWT 缺少 org claim 时应按 tenant 回查 organization', async () => {
+      const dto = Object.assign(new RegisterDeveloperKeyDto(), {
+        publicKey: PUBLIC_KEY,
+      });
+      const record = createDeveloperKey();
+      service.registerKey.mockResolvedValue(record);
+
+      const result = await controller.registerKey(
+        TENANT_ID,
+        {
+          ...user,
+          orgId: undefined,
+          org_id: undefined,
+        },
+        dto,
+      );
+
+      expect(pluginService.resolveOrganizationId).toHaveBeenCalledWith(
+        TENANT_ID,
+      );
+      expect(service.registerKey).toHaveBeenCalledWith(
+        TENANT_ID,
+        ORG_ID,
+        USER_ID,
+        PUBLIC_KEY,
+        undefined,
       );
       expect(result).toEqual(record);
     });
@@ -144,7 +190,7 @@ describe('PluginDeveloperKeyController', () => {
       };
       service.listKeys.mockResolvedValue(payload);
 
-      const result = await controller.listKeys(ORG_ID, query);
+      const result = await controller.listKeys(TENANT_ID, user, query);
 
       expect(getRoles(controller, 'listKeys')).toEqual([
         'creator',
@@ -161,7 +207,7 @@ describe('PluginDeveloperKeyController', () => {
       const record = createDeveloperKey();
       service.findById.mockResolvedValue(record);
 
-      const result = await controller.findById(ORG_ID, KEY_ID);
+      const result = await controller.findById(TENANT_ID, user, KEY_ID);
 
       expect(getRoles(controller, 'findById')).toEqual([
         'creator',
@@ -182,7 +228,7 @@ describe('PluginDeveloperKeyController', () => {
       });
       service.revokeKey.mockResolvedValue(revokedKey);
 
-      const result = await controller.revokeKey(ORG_ID, KEY_ID);
+      const result = await controller.revokeKey(TENANT_ID, user, KEY_ID);
 
       expect(getRoles(controller, 'revokeKey')).toEqual([
         'creator',

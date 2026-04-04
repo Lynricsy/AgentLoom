@@ -101,7 +101,10 @@ export class PluginController {
   @ApiResponse({ status: 422, description: '插件包校验失败' })
   async register(@Req() req: AuthenticatedRequest) {
     const tenantId = this.getTenantId(req);
-    const orgId = req.user.orgId ?? req.user.org_id;
+    const orgId =
+      req.user.orgId ??
+      req.user.org_id ??
+      (await this.pluginService.resolveOrganizationId(tenantId));
     const multipartFile = await this.readMultipartFile(req);
     this.ensureAlpFile(multipartFile);
 
@@ -114,10 +117,6 @@ export class PluginController {
     const version = (manifest.version as string) ?? '0.0.0';
 
     const signingMetadata = this.requireSigningMetadata(manifest, pluginId);
-
-    if (!orgId) {
-      throw new PluginSignatureInvalidException(pluginId);
-    }
 
     const developerKey =
       await this.developerKeyService.findActiveKeyByFingerprint(

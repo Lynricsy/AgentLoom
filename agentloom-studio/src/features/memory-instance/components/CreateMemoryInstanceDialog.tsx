@@ -160,6 +160,8 @@ export function CreateMemoryInstanceDialog({
             <Dialog.Close asChild>
               <button
                 type="button"
+                aria-label="关闭"
+                title="关闭"
                 className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               >
                 <X className="h-4 w-4" />

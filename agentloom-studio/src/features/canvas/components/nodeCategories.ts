@@ -1,5 +1,10 @@
 import type { NodeCategory, PaletteGroup, PaletteNodeItem } from '../types'
-import { DYNAMIC_ONLY_NODE_TYPES, NODE_TYPE_REGISTRY, type NodeTypeConfig } from '../types/nodeTypeRegistry'
+import {
+  DYNAMIC_ONLY_NODE_TYPES,
+  NODE_TYPE_REGISTRY,
+  type NodeType,
+  type NodeTypeConfig,
+} from '../types/nodeTypeRegistry'
 
 export const NODE_CATEGORIES: Record<NodeCategory, { label: string; icon: string; color: string }> = {
   agent: { label: 'Agent', icon: 'Bot', color: 'var(--color-type-model)' },
@@ -13,6 +18,9 @@ export const NODE_CATEGORIES: Record<NodeCategory, { label: string; icon: string
 }
 
 const CATEGORY_ORDER: NodeCategory[] = ['agent', 'tool', 'trigger', 'knowledge', 'memory', 'output', 'control', 'plugin']
+const PALETTE_VISIBLE_DYNAMIC_NODE_TYPES: ReadonlySet<NodeType> = new Set([
+  'merge',
+])
 
 export function buildPaletteGroups(
   registry: Record<string, NodeTypeConfig> = NODE_TYPE_REGISTRY,
@@ -20,7 +28,12 @@ export function buildPaletteGroups(
   const grouped = new Map<NodeCategory, PaletteNodeItem[]>()
 
   for (const config of Object.values(registry)) {
-    if (DYNAMIC_ONLY_NODE_TYPES.has(config.type)) continue
+    if (
+      DYNAMIC_ONLY_NODE_TYPES.has(config.type) &&
+      !PALETTE_VISIBLE_DYNAMIC_NODE_TYPES.has(config.type)
+    ) {
+      continue
+    }
     const items = grouped.get(config.category) ?? []
     items.push({
       type: config.type,

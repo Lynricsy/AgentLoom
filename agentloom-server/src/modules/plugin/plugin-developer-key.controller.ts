@@ -27,6 +27,8 @@ import {
   RegisterDeveloperKeyDto,
 } from './dto/plugin-developer-key.dto';
 import { PluginDeveloperKeyService } from './plugin-developer-key.service';
+import { PluginService } from './plugin.service';
+import type { JwtPayload } from '../../common/guards/auth.guard';
 
 @ApiTags('Plugin Developer Keys')
 @ApiBearerAuth()
@@ -35,7 +37,19 @@ import { PluginDeveloperKeyService } from './plugin-developer-key.service';
 export class PluginDeveloperKeyController {
   constructor(
     private readonly developerKeyService: PluginDeveloperKeyService,
+    private readonly pluginService: PluginService,
   ) {}
+
+  private async resolveOrgId(
+    tenantId: string,
+    user: Pick<JwtPayload, 'orgId' | 'org_id'>,
+  ): Promise<string> {
+    return (
+      user.orgId ??
+      user.org_id ??
+      this.pluginService.resolveOrganizationId(tenantId)
+    );
+  }
 
   @Post()
   @Roles('creator', 'admin', 'owner')
@@ -49,14 +63,14 @@ export class PluginDeveloperKeyController {
   @ApiResponse({ status: 400, description: '公钥无效或已注册。' })
   async registerKey(
     @CurrentTenant() tenantId: string,
-    @CurrentUser('org_id') orgId: string,
-    @CurrentUser('sub') userId: string,
+    @CurrentUser() user: JwtPayload,
     @Body() dto: RegisterDeveloperKeyDto,
   ) {
+    const orgId = await this.resolveOrgId(tenantId, user);
     return this.developerKeyService.registerKey(
       tenantId,
       orgId,
-      userId,
+      user.sub,
       dto.publicKey,
       dto.label,
     );
@@ -67,9 +81,11 @@ export class PluginDeveloperKeyController {
   @ApiOperation({ summary: '查询开发者密钥列表' })
   @ApiResponse({ status: 200, description: '密钥列表。' })
   async listKeys(
-    @CurrentUser('org_id') orgId: string,
+    @CurrentTenant() tenantId: string,
+    @CurrentUser() user: JwtPayload,
     @Query() query: QueryDeveloperKeysDto,
   ) {
+    const orgId = await this.resolveOrgId(tenantId, user);
     return this.developerKeyService.listKeys(orgId, query);
   }
 
@@ -83,9 +99,11 @@ export class PluginDeveloperKeyController {
   })
   @ApiResponse({ status: 404, description: '密钥不存在。' })
   async findById(
-    @CurrentUser('org_id') orgId: string,
+    @CurrentTenant() tenantId: string,
+    @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
+    const orgId = await this.resolveOrgId(tenantId, user);
     return this.developerKeyService.findById(orgId, id);
   }
 
@@ -101,9 +119,11 @@ export class PluginDeveloperKeyController {
   @ApiResponse({ status: 400, description: '密钥已撤销。' })
   @ApiResponse({ status: 404, description: '密钥不存在。' })
   async revokeKey(
-    @CurrentUser('org_id') orgId: string,
+    @CurrentTenant() tenantId: string,
+    @CurrentUser() user: JwtPayload,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
+    const orgId = await this.resolveOrgId(tenantId, user);
     return this.developerKeyService.revokeKey(orgId, id);
   }
 }

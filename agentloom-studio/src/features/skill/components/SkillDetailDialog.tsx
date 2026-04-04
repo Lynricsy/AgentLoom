@@ -79,6 +79,9 @@ export function SkillDetailDialog({
                 <Dialog.Title className="text-lg font-bold leading-tight">
                   {skill.name}
                 </Dialog.Title>
+                <Dialog.Description className="sr-only">
+                  {skill.description || '查看技能的内容、文件元数据与当前状态。'}
+                </Dialog.Description>
                 {skill.description && (
                   <p className="mt-1 text-sm text-muted-foreground">
                     {skill.description}

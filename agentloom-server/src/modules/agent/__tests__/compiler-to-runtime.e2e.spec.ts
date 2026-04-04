@@ -72,6 +72,7 @@ const hoisted = vi.hoisted(() => {
       converted: schema,
     })),
     getTenantDb: vi.fn((db: unknown) => db),
+    transactionStorageExit: vi.fn((callback: () => unknown) => callback()),
   };
 });
 
@@ -87,6 +88,9 @@ vi.mock('../../../common/interceptors/tenant-transaction.context', () => ({
       operation: (tenantDb: unknown) => Promise<unknown>,
     ) => operation(db),
   ),
+  transactionStorage: {
+    exit: hoisted.transactionStorageExit,
+  },
 }));
 
 vi.mock('../pi-imports', () => ({
@@ -293,10 +297,11 @@ describe('compiler → runtime tool injection E2E', () => {
     );
 
     subAgentToolsProvider = new SubAgentToolsProvider(
+      mockDb as unknown as ConstructorParameters<typeof SubAgentToolsProvider>[0],
       compiler,
       mockEventBridge as unknown as ConstructorParameters<
         typeof SubAgentToolsProvider
-      >[1],
+      >[2],
     );
 
     hoisted.MockPiAgent.script = async (agent) => {

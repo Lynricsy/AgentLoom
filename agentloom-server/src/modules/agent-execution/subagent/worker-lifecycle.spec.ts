@@ -294,4 +294,53 @@ describe('AgentExecutionWorker sub-agent lifecycle', () => {
       }),
     );
   });
+
+  it('executeSubAgent() 在 spawn 模式下不应等待完成通知注入结束后才返回', async () => {
+    const tracker = { abortControllers: new Map() };
+    let resolveInjectMessage!: () => void;
+    mockExecutionService.injectMessage.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveInjectMessage = resolve;
+        }),
+    );
+
+    const executePromise = (worker as any).executeSubAgent(
+      {
+        handle: subAgentHandle,
+        invocationMode: 'spawn',
+        alias: 'researcher',
+        task: '请总结结果',
+        parentContext: {
+          conversationId: 'conversation-1',
+          depth: 0,
+          tenantId: 'tenant-1',
+          parentUsesSandboxRuntime: false,
+          parentAbortSignal: new AbortController().signal,
+          visitedAgentIds: new Set(['agent-parent']),
+        },
+        parentToolCallId: 'tool-call-1',
+        depth: 1,
+        agentDefinition: makeAgentDefinition(),
+        versionSnapshot: null,
+        abortSignal: new AbortController().signal,
+      },
+      tracker,
+    );
+
+    await expect(
+      Promise.race([
+        executePromise,
+        new Promise<'timeout'>((resolve) =>
+          setTimeout(() => resolve('timeout'), 25),
+        ),
+      ]),
+    ).resolves.toEqual({
+      content: 'sub-agent summary',
+      stopReason: 'end_turn',
+    });
+
+    expect(mockExecutionService.injectMessage).toHaveBeenCalledOnce();
+    resolveInjectMessage();
+  });
 });

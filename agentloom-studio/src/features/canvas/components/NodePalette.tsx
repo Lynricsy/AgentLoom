@@ -1,18 +1,56 @@
 import { memo, useMemo, useState, useCallback, type DragEvent } from 'react'
 import { BlockLibraryPanel } from '@/features/block-library/components/BlockLibraryPanel'
-import { useActivePlugins } from '@/features/plugin'
+import { useActivePlugins, type PluginNodeDefinition } from '@/features/plugin'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs'
 import { cn } from '../../../shared/lib/utils'
 import { useCanvasStore, useSelectedNodeData } from '../stores/canvasStore'
 import { PALETTE_GROUPS, NODE_CATEGORIES } from './nodeCategories'
 import type { PaletteGroup, PaletteNodeItem } from '../types'
-import { getNodeTypeConfig } from '../types/nodeTypeRegistry'
+import {
+  createPort,
+  getNodeTypeConfig,
+  PORT_DATA_TYPE_META,
+  type PortDefinition,
+} from '../types/nodeTypeRegistry'
 import { isCompoundContainerNodeType } from '../types/controlFlow.types'
+import type { PortDataType } from '../types/typeSchema'
 
 export const DRAG_TRANSFER_TYPE = 'application/agentloom-node'
 
 function getGroupKey(group: Pick<PaletteGroup, 'category' | 'label'>): string {
   return `${group.category}:${group.label}`
+}
+
+type PluginPortDefinition = PluginNodeDefinition['inputPorts'][number]
+
+function normalizePluginPortDataType(dataType: string): PortDataType {
+  if (dataType in PORT_DATA_TYPE_META) {
+    return dataType as PortDataType
+  }
+
+  if (dataType === 'number' || dataType === 'boolean') {
+    return 'json'
+  }
+
+  return 'json'
+}
+
+function buildPluginPorts(
+  ports: PluginPortDefinition[] | undefined,
+  direction: 'input' | 'output',
+): PortDefinition[] {
+  return (ports ?? []).map((port) =>
+    createPort(
+      port.id,
+      port.label,
+      direction,
+      normalizePluginPortDataType(port.dataType),
+      {
+        required: port.required,
+        description: port.description,
+      },
+    ),
+  )
 }
 
 interface NodePaletteProps {
@@ -51,8 +89,21 @@ export const NodePalette = memo(function NodePalette({ className }: NodePaletteP
           category: 'plugin',
           icon: 'Puzzle',
           description: nodeDef.description,
-          searchText: [plugin.name, nodeDef.label, nodeDef.description].filter(Boolean).join(' '),
-          pluginId: `${plugin.id}:${nodeDef.type}`,
+          searchText: [
+            plugin.name,
+            plugin.pluginId,
+            nodeDef.label,
+            nodeDef.description,
+          ]
+            .filter(Boolean)
+            .join(' '),
+          pluginId: plugin.pluginId,
+          pluginName: plugin.name,
+          pluginVersion: plugin.version,
+          pluginNodeType: nodeDef.type,
+          pluginConfigSchema: nodeDef.configSchema,
+          inputPorts: buildPluginPorts(nodeDef.inputPorts, 'input'),
+          outputPorts: buildPluginPorts(nodeDef.outputPorts, 'output'),
         })
       }
     }
@@ -234,7 +285,11 @@ const PaletteGroupSection = memo(function PaletteGroupSection({
           {group.items.map((item) => (
             <button
               type="button"
-              key={item.pluginId ?? item.type}
+              key={
+                item.pluginId && item.pluginNodeType
+                  ? `${item.pluginId}:${item.pluginNodeType}`
+                  : item.pluginId ?? item.type
+              }
               draggable
               onDragStart={(e) => onDragStart(e, item)}
               className="flex w-full cursor-grab items-start gap-2 rounded-md px-2 py-1.5 text-left text-sm text-muted-foreground hover:bg-surface-elevated hover:text-foreground active:cursor-grabbing"

@@ -25,6 +25,9 @@ Rules:
 Conversation:
 `;
 
+const FALLBACK_TITLE_PREFIX = '💬 ';
+const FALLBACK_TITLE_SUMMARY_MAX_CHARS = 14;
+
 @Injectable()
 export class ConversationTitleService {
   private readonly logger = new Logger(ConversationTitleService.name);
@@ -68,6 +71,8 @@ export class ConversationTitleService {
         return null;
       }
 
+      const fallbackTitle = this.buildFallbackTitle(messages);
+
       // 构造 prompt
       const conversationSnippet = messages
         .map((m) => {
@@ -85,32 +90,36 @@ export class ConversationTitleService {
         this.logger.warn(
           `No model available for title generation (tenant=${tenantId})`,
         );
+        if (!fallbackTitle) {
+          return null;
+        }
+
+        await this.persistTitle(conversationId, tenantId, fallbackTitle);
+        return fallbackTitle;
+      }
+
+      let title = fallbackTitle;
+
+      try {
+        const result = await generateText({ model, prompt });
+        const generatedTitle = result.text.trim().slice(0, 255);
+
+        if (generatedTitle.length > 0) {
+          title = generatedTitle;
+        }
+      } catch (error) {
+        this.logger.warn(
+          `Failed to generate title with LLM for conversation ${conversationId}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+
+      if (!title) {
         return null;
       }
 
-      const result = await generateText({ model, prompt });
-      const title = result.text.trim().slice(0, 255);
-
-      if (title.length === 0) {
-        return null;
-      }
-
-      // 更新数据库
-      await this.tenantDb
-        .update(agentConversations)
-        .set({ title, updatedAt: new Date() })
-        .where(eq(agentConversations.id, conversationId));
-
-      // 推送 WebSocket 事件
-      this.eventEmitter.emit('conversation.title.updated', {
-        conversationId,
-        tenantId,
-        title,
-      });
-
-      this.logger.log(
-        `Generated title for conversation ${conversationId}: ${title}`,
-      );
+      await this.persistTitle(conversationId, tenantId, title);
 
       return title;
     } catch (error) {
@@ -121,6 +130,55 @@ export class ConversationTitleService {
       );
       return null;
     }
+  }
+
+  private buildFallbackTitle(
+    messages: Array<{ role: string; content: string }>,
+  ): string | null {
+    const primaryContent =
+      messages.find((message) => message.role === 'user' && message.content.trim())
+        ?.content ??
+      messages.find((message) => message.content.trim())?.content ??
+      '';
+    const normalized = primaryContent
+      .replace(/\s+/g, ' ')
+      .replace(/^[#>*\-\s]+/, '')
+      .trim();
+
+    if (!normalized) {
+      return null;
+    }
+
+    const chars = Array.from(normalized);
+    const summary =
+      chars.length > FALLBACK_TITLE_SUMMARY_MAX_CHARS
+        ? `${chars
+            .slice(0, FALLBACK_TITLE_SUMMARY_MAX_CHARS - 1)
+            .join('')}…`
+        : chars.join('');
+
+    return `${FALLBACK_TITLE_PREFIX}${summary}`.slice(0, 255);
+  }
+
+  private async persistTitle(
+    conversationId: string,
+    tenantId: string,
+    title: string,
+  ): Promise<void> {
+    await this.tenantDb
+      .update(agentConversations)
+      .set({ title, updatedAt: new Date() })
+      .where(eq(agentConversations.id, conversationId));
+
+    this.eventEmitter.emit('conversation.title.updated', {
+      conversationId,
+      tenantId,
+      title,
+    });
+
+    this.logger.log(
+      `Generated title for conversation ${conversationId}: ${title}`,
+    );
   }
 
   private async resolveUserId(conversationId: string): Promise<string> {

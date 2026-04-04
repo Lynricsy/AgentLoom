@@ -48,6 +48,19 @@ void main() {
       expect(config.environment, AppEnvironment.staging);
     });
 
+    test('fromDotEnv 优先使用 STUDIO_BASE_URL 作为生产入口', () {
+      dotenv.testLoad(
+        fileInput:
+            'STUDIO_BASE_URL=https://agentloom.ling.plus\nAPI_BASE_URL=https://api.agentloom.com/api/v1\nAPP_NAME=AgentLoom',
+      );
+
+      final config = EnvConfig.fromDotEnv(environment: AppEnvironment.prod);
+
+      expect(config.studioBaseUrl, 'https://agentloom.ling.plus');
+      expect(config.apiBaseUrl, 'https://agentloom.ling.plus');
+      expect(config.environment, AppEnvironment.prod);
+    });
+
     test('normalizeStudioBaseUrl accepts bare host and strips api suffix', () {
       expect(
         EnvConfig.normalizeStudioBaseUrl('agentloom.ling.plus/api/v1'),

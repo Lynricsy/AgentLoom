@@ -1,6 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { tool, type ToolSet } from 'ai';
 
+import {
+  runInTenantTransaction,
+  transactionStorage,
+} from '../../../common/interceptors/tenant-transaction.context';
+import { DRIZZLE, type DrizzleDB } from '../../../database/database.module';
 import type { AgentEvent } from '../../agent/types/agent-event.types';
 import type { SessionToolProvider } from '../../agent/ports/agent-runtime.port';
 import { AgentDefinitionService } from '../../agent-definition/agent-definition.service';
@@ -65,6 +70,7 @@ interface SubAgentStatusSnapshot {
 @Injectable()
 export class SubAgentToolsProvider {
   constructor(
+    @Inject(DRIZZLE) private readonly db: DrizzleDB,
     private readonly agentDefinitionService: AgentDefinitionService,
     private readonly eventBridge: EventBridgeService,
   ) {}
@@ -140,7 +146,7 @@ export class SubAgentToolsProvider {
               parentToolCallId: options.toolCallId,
             });
 
-            void this.runSubAgent({
+            this.startDetachedSubAgent({
               ref,
               record,
               task: input.task,
@@ -327,6 +333,26 @@ export class SubAgentToolsProvider {
       params.record.completedAt = Date.now();
       params.record.reject(new Error(message));
     }
+  }
+
+  private startDetachedSubAgent(params: {
+    ref: AgentSubAgentRef;
+    record: SubAgentRunRecord;
+    task: string;
+    context?: string;
+    parentContext: SubAgentParentContext;
+    executeSubAgent: ExecuteSubAgent;
+    invocationMode: 'call' | 'spawn';
+  }): void {
+    void transactionStorage.exit(() =>
+      runInTenantTransaction(
+        this.db,
+        params.parentContext.tenantId,
+        async () => {
+          await this.runSubAgent(params);
+        },
+      ),
+    );
   }
 
   private async waitForCompletion(

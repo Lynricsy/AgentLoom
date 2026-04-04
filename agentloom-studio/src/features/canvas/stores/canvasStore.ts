@@ -504,6 +504,17 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
                   inputPorts: clonePortDefinitions(nextInputPorts),
                   outputPorts: clonePortDefinitions(input.outputPorts ?? config.outputPorts),
                   ...(input.mcpToolDefinitionId ? { mcpToolDefinitionId: input.mcpToolDefinitionId } : {}),
+                  ...(input.nodeType === 'plugin'
+                    ? {
+                        pluginId: input.pluginId ?? '',
+                        pluginName:
+                          input.pluginName ?? input.label ?? config.label,
+                        pluginVersion: input.pluginVersion ?? '',
+                        pluginNodeType: input.pluginNodeType ?? '',
+                        pluginConfigSchema: input.pluginConfigSchema,
+                        pluginConfig: input.pluginConfig ?? {},
+                      }
+                    : {}),
                   ...(isAgentNodeType(input.nodeType) ? createDefaultAgentNodeData() : {}),
                   ...(input.blockId ? { blockId: input.blockId } : {}),
                   ...(input.blockName ? { blockName: input.blockName } : {}),

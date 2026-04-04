@@ -18,6 +18,8 @@ export function MemoryBreadcrumb({ items, onNavigate }: MemoryBreadcrumbProps) {
       <button
         type="button"
         onClick={() => onNavigate('')}
+        aria-label="返回根路径"
+        title="返回根路径"
         className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-primary"
       >
         <Home size={14} />

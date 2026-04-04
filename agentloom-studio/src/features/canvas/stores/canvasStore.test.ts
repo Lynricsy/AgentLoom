@@ -216,6 +216,55 @@ describe('canvasStore', () => {
     expect(node?.data.outputPorts[0]?.id).toBe('custom-output')
   })
 
+  it('stores plugin metadata when adding plugin nodes', () => {
+    useCanvasStore.getState().actions.addNode({
+      id: 'plugin-node-1',
+      nodeType: 'plugin',
+      category: 'plugin',
+      position: { x: 180, y: 220 },
+      label: 'Text to Uppercase QA',
+      description: '插件节点',
+      pluginId: 'com.example.uppercase',
+      pluginName: 'Uppercase Plugin',
+      pluginVersion: '1.0.1',
+      pluginNodeType: 'uppercase-node',
+      pluginConfigSchema: {
+        type: 'object',
+        properties: {
+          prefix: {
+            type: 'string',
+            title: '前缀',
+          },
+        },
+        required: [],
+      },
+      inputPorts: clonePortDefinitions(customInputPorts),
+      outputPorts: clonePortDefinitions(customOutputPorts),
+    })
+
+    const node = useCanvasStore.getState().nodes[0]
+
+    expect(node).toMatchObject({
+      id: 'plugin-node-1',
+      type: 'plugin',
+      data: {
+        label: 'Text to Uppercase QA',
+        nodeType: 'plugin',
+        category: 'plugin',
+        pluginId: 'com.example.uppercase',
+        pluginName: 'Uppercase Plugin',
+        pluginVersion: '1.0.1',
+        pluginNodeType: 'uppercase-node',
+        pluginConfigSchema: {
+          type: 'object',
+        },
+        pluginConfig: {},
+      },
+    })
+    expect(node?.data.inputPorts[0]?.id).toBe('custom-input')
+    expect(node?.data.outputPorts[0]?.id).toBe('custom-output')
+  })
+
   it('applyServerSnapshot 会把 compound 子节点重新夹回内框并补足父容器尺寸', () => {
     const loopConfig = getNodeTypeConfig('loop')
     const loopStartConfig = getNodeTypeConfig('loop-start')

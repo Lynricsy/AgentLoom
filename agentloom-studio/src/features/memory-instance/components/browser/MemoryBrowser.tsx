@@ -195,6 +195,8 @@ export function MemoryBrowser() {
           <button
             type="button"
             onClick={() => setShowSearch(!showSearch)}
+            aria-label={showSearch ? '关闭搜索' : '打开搜索'}
+            title={showSearch ? '关闭搜索' : '打开搜索'}
             className={cn(
               'rounded-md p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground',
               showSearch && 'bg-muted text-foreground',
@@ -318,6 +320,8 @@ export function MemoryBrowser() {
                           <button
                             type="button"
                             onClick={cancelEditing}
+                            aria-label="取消编辑"
+                            title="取消编辑"
                             className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-muted"
                           >
                             <X size={18} />

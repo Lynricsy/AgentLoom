@@ -283,8 +283,11 @@ export const ShareManagementDialog = memo(function ShareManagementDialog({
         // noop
       }
       setExpiryPreset('never')
-    } catch {
-      notify({ description: '创建分享链接失败', variant: 'error' })
+    } catch (error) {
+      notify({
+        description: error instanceof Error ? error.message : '创建分享链接失败',
+        variant: 'error',
+      })
     }
   }, [resolvedResourceId, resourceType, shareType, expiryPreset, createShareMutation, notify])
 

@@ -36,8 +36,10 @@ import {
 
 const TERMINAL_STATUSES = ['stopped', 'failed'] as const;
 const NON_ACTIVE_SESSION_STATUSES = ['stopping', ...TERMINAL_STATUSES] as const;
+const ACTIVE_RUNTIME_STATUSES = ['ready', 'busy'] as const;
 const DEFAULT_PERSISTENT_TIMEOUT = 24;
 const GB_TO_BYTES = 1024 * 1024 * 1024;
+const STALE_CONTAINER_GRACE_MS = 60_000;
 
 type CreateSandboxSessionParams = {
   executionId?: string;
@@ -925,7 +927,9 @@ export class SandboxService {
     persistentSandboxId: string;
     tenantId: string;
   }): Promise<SandboxSession> {
-    const session = await this.getSessionById(params.persistentSandboxId);
+    const session = await this.reconcileUnavailableRuntimeSession(
+      await this.getSessionById(params.persistentSandboxId),
+    );
 
     if ((session.config.lifecycleMode ?? 'session') !== 'persistent') {
       throw new SandboxNotPersistentException(params.persistentSandboxId);
@@ -1072,11 +1076,14 @@ export class SandboxService {
         .from(schema.sandboxSessions)
         .where(whereClause),
     ]);
+    const reconciledData = await Promise.all(
+      data.map((session) => this.reconcileUnavailableRuntimeSession(session)),
+    );
 
     const total_ = total ?? 0;
 
     return {
-      data: data.map((session) => ({
+      data: reconciledData.map((session) => ({
         ...session,
         bindingType: this.deriveBindingType(session),
       })),
@@ -1171,27 +1178,98 @@ export class SandboxService {
   }
 
   private async buildContainerStats(
-    session: Pick<SandboxSession, 'id' | 'status' | 'containerId' | 'config'>,
+    session: SandboxSession,
   ): Promise<ContainerStats> {
+    const runtimeSession =
+      await this.reconcileUnavailableRuntimeSession(session);
     if (
-      !session.containerId ||
+      !runtimeSession.containerId ||
       TERMINAL_STATUSES.includes(
-        session.status as (typeof TERMINAL_STATUSES)[number],
+        runtimeSession.status as (typeof TERMINAL_STATUSES)[number],
       )
     ) {
-      throw new SandboxStatsUnavailableException(session.id);
+      throw new SandboxStatsUnavailableException(runtimeSession.id);
     }
 
-    const stats = await this.dockerService.getContainerStats(
-      session.containerId,
-    );
+    let stats: ContainerStats;
+    try {
+      stats = await this.dockerService.getContainerStats(
+        runtimeSession.containerId,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Container stats unavailable for sandbox ${runtimeSession.id} (${runtimeSession.containerId}): ${error instanceof Error ? error.message : String(error)}`,
+      );
+      await this.reconcileUnavailableRuntimeSession(runtimeSession, {
+        force: true,
+      });
+      throw new SandboxStatsUnavailableException(runtimeSession.id);
+    }
 
     return {
       ...stats,
       ...(stats.diskUsage !== undefined
-        ? { diskTotal: session.config.disk * GB_TO_BYTES }
+        ? { diskTotal: runtimeSession.config.disk * GB_TO_BYTES }
         : {}),
     };
+  }
+
+  private async reconcileUnavailableRuntimeSession(
+    session: SandboxSession,
+    options?: { force?: boolean },
+  ): Promise<SandboxSession> {
+    const isActiveRuntimeStatus = ACTIVE_RUNTIME_STATUSES.includes(
+      session.status as (typeof ACTIVE_RUNTIME_STATUSES)[number],
+    );
+    if (!isActiveRuntimeStatus) {
+      return session;
+    }
+
+    const shouldForce = options?.force === true;
+    if (!shouldForce && !session.startedAt) {
+      return session;
+    }
+
+    const startedAtMs = session.startedAt?.getTime() ?? 0;
+    const isPastGraceWindow =
+      startedAtMs > 0 && Date.now() - startedAtMs >= STALE_CONTAINER_GRACE_MS;
+    if (!shouldForce && !isPastGraceWindow) {
+      return session;
+    }
+
+    let runtimeAvailable = false;
+    if (session.containerId) {
+      runtimeAvailable = await this.dockerService.healthCheck(session.containerId);
+    }
+
+    if (runtimeAvailable) {
+      return session;
+    }
+
+    const [updatedSession] = await this.tenantDb
+      .update(schema.sandboxSessions)
+      .set({
+        status: 'stopped',
+        containerId: null,
+        workspacePath: null,
+        stoppedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(schema.sandboxSessions.id, session.id),
+          eq(schema.sandboxSessions.status, session.status),
+        ),
+      )
+      .returning();
+
+    if (updatedSession) {
+      this.logger.warn(
+        `Sandbox ${session.id} was ${session.status} but runtime container ${session.containerId ?? 'n/a'} is unavailable; reconciled session to stopped`,
+      );
+      return updatedSession;
+    }
+
+    return this.getSessionById(session.id);
   }
 
   async stopSandbox(

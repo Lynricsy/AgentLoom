@@ -2959,7 +2959,7 @@ export class AgentExecutionWorker extends WorkerHost {
       );
 
       if (params.invocationMode === 'spawn') {
-        await this.injectSubAgentCompletionNotice(
+        void this.injectSubAgentCompletionNotice(
           params.parentContext.conversationId,
           params.agentDefinition.name,
           params.handle,
@@ -2972,7 +2972,7 @@ export class AgentExecutionWorker extends WorkerHost {
       return result;
     } catch (error) {
       if (params.invocationMode === 'spawn' && !linkedAbort.signal.aborted) {
-        await this.injectSubAgentCompletionNotice(
+        void this.injectSubAgentCompletionNotice(
           params.parentContext.conversationId,
           params.agentDefinition.name,
           params.handle,

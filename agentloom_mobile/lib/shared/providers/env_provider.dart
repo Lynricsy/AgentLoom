@@ -36,7 +36,7 @@ class RuntimeEnvStorage {
     try {
       await _storage.delete(key: RuntimeEnvStorageKeys.studioBaseUrl);
     } catch (_) {
-      // Web 端本地加密状态损坏时，清理失败不应阻断用户��退到默认地址。
+      // Web 端本地加密状态损坏时，清理失败不应阻断用户回退到默认地址。
     }
   }
 }
@@ -50,6 +50,9 @@ final baseEnvProvider = Provider<EnvConfig>((ref) {
   );
 });
 
+/// 启动阶段从持久化存储恢复的运行时覆盖地址
+final runtimeStudioBaseUrlOverrideProvider = Provider<String?>((ref) => null);
+
 /// 运行时连接配置存储 Provider
 final runtimeEnvStorageProvider = Provider<RuntimeEnvStorage>((ref) {
   return RuntimeEnvStorage(ref.watch(secureStorageProvider));
@@ -59,7 +62,14 @@ final runtimeEnvStorageProvider = Provider<RuntimeEnvStorage>((ref) {
 class EnvController extends Notifier<EnvConfig> {
   @override
   EnvConfig build() {
-    return ref.watch(baseEnvProvider);
+    final baseEnv = ref.watch(baseEnvProvider);
+    final runtimeOverride = ref.watch(runtimeStudioBaseUrlOverrideProvider);
+
+    if (runtimeOverride == null || runtimeOverride.isEmpty) {
+      return baseEnv;
+    }
+
+    return baseEnv.copyWith(studioBaseUrl: runtimeOverride);
   }
 
   Future<void> updateStudioBaseUrl(String studioBaseUrl) async {

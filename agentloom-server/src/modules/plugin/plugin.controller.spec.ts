@@ -27,6 +27,7 @@ const mocks = vi.hoisted(() => ({
     findById: vi.fn(),
     updateStatus: vi.fn(),
     remove: vi.fn(),
+    resolveOrganizationId: vi.fn().mockResolvedValue(ORG_ID),
   }),
   createMockStorageService: () => ({
     upload: vi.fn().mockResolvedValue(undefined),
@@ -158,6 +159,7 @@ async function createPluginArchiveBuffer(
 async function createRegisterRequest(options?: {
   status?: string;
   manifestOverrides?: Record<string, unknown>;
+  userOverrides?: Partial<JwtPayload>;
 }): Promise<AuthenticatedRequest> {
   const buffer = await createPluginArchiveBuffer(options?.manifestOverrides);
 
@@ -171,6 +173,7 @@ async function createRegisterRequest(options?: {
       sub: USER_ID,
       tenantId: TENANT_ID,
       orgId: ORG_ID,
+      ...options?.userOverrides,
     },
     file: vi.fn().mockResolvedValue({
       filename: 'review-plugin.alp',
@@ -308,6 +311,41 @@ describe('PluginController', () => {
         1,
       );
       expect(result).toEqual({ data: activePlugin });
+      expect(service.resolveOrganizationId).not.toHaveBeenCalled();
+    });
+
+    it('JWT 缺少 org claim 时应按 tenant 回查 organization 后继续验签', async () => {
+      const createdPlugin = createPluginResponse();
+      developerKeyService.findActiveKeyByFingerprint.mockResolvedValue({
+        id: 'key-1',
+        publicKey: 'public-key-pem',
+      });
+      signatureService.verifyArchiveSignature.mockResolvedValue({
+        valid: true,
+        contentHash: CONTENT_HASH,
+      });
+      service.register.mockResolvedValue(createdPlugin);
+
+      const result = await controller.register(
+        await createRegisterRequest({
+          status: 'registered',
+          manifestOverrides: {
+            signature: SIGNATURE,
+            contentHash: CONTENT_HASH,
+            developerKeyFingerprint: KEY_FINGERPRINT,
+          },
+          userOverrides: {
+            orgId: undefined,
+            org_id: undefined,
+          },
+        }),
+      );
+
+      expect(service.resolveOrganizationId).toHaveBeenCalledWith(TENANT_ID);
+      expect(
+        developerKeyService.findActiveKeyByFingerprint,
+      ).toHaveBeenCalledWith(ORG_ID, KEY_FINGERPRINT);
+      expect(result).toEqual({ data: createdPlugin });
     });
 
     it('未签名插件应抛出 PluginSignatureMissingException 并拒绝注册', async () => {
