@@ -234,6 +234,6 @@ react-hook-form + @hookform/resolvers + Zod v4
 
 - `VITE_API_BASE_URL` — API 地址
 - `VITE_AUTOSAVE_DEBOUNCE_MS` — 自动保存延迟
-- `VITE_SUPABASE_URL` — Supabase 项目 URL
+- `VITE_SUPABASE_URL` — Supabase Auth 基础地址；私有部署走反向代理时可留空，前端会回退到当前站点 origin 并请求 `/auth/*`
 - `VITE_SUPABASE_ANON_KEY` — Supabase 匿名公钥
 - Vite proxy: `/api` → `:3000`，`/socket.io` → `:3000` (ws)

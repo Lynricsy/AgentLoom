@@ -41,8 +41,10 @@ cp agentloom-deploy/.env.template agentloom-deploy/.env
 
 - shared：`APP_DEPLOYMENT_MODE`、`APP_DATABASE_URL`、`APP_REDIS_URL`、`APP_MINIO_*`、`APP_QDRANT_URL`
 - server：`APP_JWT_SECRET`、`APP_MASTER_ENCRYPTION_KEY`、`APP_SUPABASE_*`、`APP_FRONTEND_URL`、`APP_OAUTH_REDIRECT_URL`、`HOST_DOCKER_GID`
-- studio：`VITE_API_BASE_URL`、`VITE_AUTOSAVE_DEBOUNCE_MS`
+- studio：`VITE_API_BASE_URL`、`VITE_AUTOSAVE_DEBOUNCE_MS`、`VITE_SUPABASE_URL`、`VITE_SUPABASE_ANON_KEY`
 - 运维自动化：`POSTGRES_BACKUP_RETENTION_DAYS`、`MINIO_BACKUP_RETENTION_DAYS`
+
+其中 `VITE_SUPABASE_URL` 在私有部署里默认建议留空；Studio 会在运行时回退到当前站点 origin，并通过反向代理的 `/auth/*` 访问 Supabase Auth。这样公网或局域网访问不会把登录请求误打到访问者自己的 `localhost`。
 
 ### 2. 拆分模板
 
@@ -61,6 +63,7 @@ cp agentloom-deploy/.env.template agentloom-deploy/.env
 - `APP_DEPLOYMENT_MODE=private` 时，`APP_SUPABASE_URL` / `APP_SUPABASE_ANON_KEY` / `APP_SUPABASE_SERVICE_KEY` 可以**全部留空**
 - 但如果提供，就必须**三个一起提供**
 - 若三者全部留空，应用仍可启动；只是依赖 Supabase 的认证链路会在调用时返回不可用错误，而不是在启动阶段假装正常
+- 公网部署时，`APP_FRONTEND_URL`、`APP_OAUTH_REDIRECT_URL`、`SUPABASE_GOTRUE_EXTERNAL_URL` 与 `SUPABASE_SITE_URL` 必须改成实际对外域名；否则 OAuth / 邮件跳转仍可能落到 `localhost`
 
 ## Compose 拓扑
 
@@ -80,7 +83,7 @@ cp agentloom-deploy/.env.template agentloom-deploy/.env
 - 最小建议：4 vCPU / 8 GiB RAM / 100 GiB SSD；若要在同一主机上同时保留 7 天 PostgreSQL + MinIO 备份，建议预留额外 100 GiB 以上备份盘空间。
 - `reverse-proxy` 当前使用 Docker embedded DNS（`127.0.0.11`）做运行时上游解析，避免 `server` / `studio` / `docs` / `supabase-kong` 在 Compose 重建后换 IP 时，Nginx 继续把流量打到旧容器地址。
 - 对外只暴露 `NGINX_HTTP_PORT`（默认 `8080`）；MinIO Console（默认 `127.0.0.1:9001`）与 Qdrant HTTP（默认 `127.0.0.1:6333`）只绑定回环地址，供运维跳板机或 SSH 隧道使用。
-- 如需正式域名 / TLS，优先在外层 LB 或反向代理终止 TLS，并把 `APP_FRONTEND_URL`、`APP_OAUTH_REDIRECT_URL` 与 `PUBLIC_BASE_URL` 改成企业域名；若直接使用当前 `nginx.conf`，则应在进入生产前替换为带证书的企业反向代理配置。
+- 如需正式域名 / TLS，优先在外层 LB 或反向代理终止 TLS，并把 `APP_FRONTEND_URL`、`APP_OAUTH_REDIRECT_URL`、`SUPABASE_GOTRUE_EXTERNAL_URL` 与 `SUPABASE_SITE_URL` 改成企业域名；若直接使用当前 `nginx.conf`，则应在进入生产前替换为带证书的企业反向代理配置。
 
 ### 默认暴露端口
 

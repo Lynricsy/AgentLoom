@@ -107,4 +107,4 @@ printf '  Master Encryption:    %s...\n' "${MASTER_ENCRYPTION_KEY:0:10}"
 printf '  Supabase Anon Key:    %s...\n' "${ANON_KEY:0:20}"
 printf '  Supabase Service Key: %s...\n' "${SERVICE_KEY:0:20}"
 printf '\n⚠ 请妥善保管此文件，切勿提交到版本控制！\n'
-printf '⚠ 生产环境请修改 APP_FRONTEND_URL / APP_OAUTH_REDIRECT_URL / SUPABASE_SITE_URL 为实际域名\n'
+printf '⚠ 生产环境请修改 APP_FRONTEND_URL / APP_OAUTH_REDIRECT_URL / SUPABASE_GOTRUE_EXTERNAL_URL / SUPABASE_SITE_URL 为实际域名\n'

@@ -21,6 +21,7 @@ Guidelines for **agentloom-studio** — a React 19 + Vite 7 + TanStack Router fr
 | [Hook Guidelines](./hook-guidelines.md) | 4-file API layer, query key factory, ky client | Done |
 | [Realtime Execution Views](./realtime-execution-views.md) | Studio + Flutter realtime execution/viewer contracts, ordered segments, workspace preview | Done |
 | [Resource Management UI Semantics](./resource-management-ui-semantics.md) | Studio / Flutter 资源页默认筛选、标签和 timeout 展示约定 | Done |
+| [Runtime Environment Contracts](./runtime-environment-contracts.md) | Browser-facing env fallback and reverse-proxy auth routing contracts | Done |
 | [State Management](./state-management.md) | 3-tier: TanStack Query + Zustand + useState | Done |
 | [Quality Guidelines](./quality-guidelines.md) | ESLint 9, Vitest 4, Prettier+Tailwind, strict TS | Done |
 | [Type Safety](./type-safety.md) | Strict mode, Zod forms, string unions, null not undefined | Done |

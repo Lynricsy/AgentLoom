@@ -37,8 +37,22 @@ function setSupabaseEnv({
   }
 }
 
+function setWindowOrigin(origin: string | undefined) {
+  if (origin === undefined) {
+    vi.stubGlobal('window', undefined)
+    return
+  }
+
+  vi.stubGlobal('window', {
+    location: {
+      origin,
+    },
+  } as Window & typeof globalThis)
+}
+
 describe('supabase client bootstrap', () => {
   beforeEach(() => {
+    vi.clearAllMocks()
     setSupabaseEnv({
       url: 'https://test-project.supabase.co',
       anonKey: 'test-anon-key-value',
@@ -50,6 +64,7 @@ describe('supabase client bootstrap', () => {
       url: ORIGINAL_SUPABASE_URL,
       anonKey: ORIGINAL_SUPABASE_ANON_KEY,
     })
+    vi.unstubAllGlobals()
     vi.resetModules()
   })
 
@@ -78,8 +93,44 @@ describe('supabase client bootstrap', () => {
     )
   })
 
-  it('throws when VITE_SUPABASE_URL is missing', async () => {
+  it('falls back to current origin when VITE_SUPABASE_URL is missing in browser', async () => {
     vi.resetModules()
+    setWindowOrigin('https://agentloom.ling.plus')
+    setSupabaseEnv({ anonKey: 'test-anon-key-value' })
+    const { createClient } = await import('@supabase/supabase-js')
+    const createClientMock = vi.mocked(createClient)
+
+    await import('../supabase')
+
+    expect(createClientMock).toHaveBeenCalledWith(
+      'https://agentloom.ling.plus',
+      'test-anon-key-value',
+      expect.any(Object),
+    )
+  })
+
+  it('falls back to current origin when configured url is loopback but page origin is public', async () => {
+    vi.resetModules()
+    setWindowOrigin('https://agentloom.ling.plus')
+    setSupabaseEnv({
+      url: 'http://localhost:8080',
+      anonKey: 'test-anon-key-value',
+    })
+    const { createClient } = await import('@supabase/supabase-js')
+    const createClientMock = vi.mocked(createClient)
+
+    await import('../supabase')
+
+    expect(createClientMock).toHaveBeenCalledWith(
+      'https://agentloom.ling.plus',
+      'test-anon-key-value',
+      expect.any(Object),
+    )
+  })
+
+  it('throws when VITE_SUPABASE_URL is missing during server-side bootstrap', async () => {
+    vi.resetModules()
+    setWindowOrigin(undefined)
     setSupabaseEnv({ anonKey: 'test-anon-key-value' })
 
     await expect(() => import('../supabase')).rejects.toThrow(
