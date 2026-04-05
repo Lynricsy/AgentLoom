@@ -46,6 +46,9 @@ describe('ConversationTitleService', () => {
   let mockUserPreferenceService: {
     findByUser: ReturnType<typeof vi.fn>;
   };
+  let mockAgentDefinitionService: {
+    buildRuntimeConfigFromNodes: ReturnType<typeof vi.fn>;
+  };
   let mockEventEmitter: {
     emit: ReturnType<typeof vi.fn>;
   };
@@ -68,6 +71,9 @@ describe('ConversationTitleService', () => {
     mockUserPreferenceService = {
       findByUser: vi.fn(),
     };
+    mockAgentDefinitionService = {
+      buildRuntimeConfigFromNodes: vi.fn(),
+    };
     mockEventEmitter = {
       emit: vi.fn(),
     };
@@ -79,6 +85,7 @@ describe('ConversationTitleService', () => {
       mockLlmService as never,
       mockPiAiAdapter as never,
       mockUserPreferenceService as never,
+      mockAgentDefinitionService as never,
       mockEventEmitter as never,
     );
   });
@@ -88,8 +95,11 @@ describe('ConversationTitleService', () => {
       { role: 'user', content: '这是异步子代理链路验证' },
       { role: 'assistant', content: '已收到请求' },
     ]);
+    const conversationSelectChain = createSelectChain([]);
     const updateChain = createUpdateChain();
-    mockDb.select.mockReturnValue(selectChain);
+    mockDb.select
+      .mockReturnValueOnce(selectChain)
+      .mockReturnValueOnce(conversationSelectChain);
     mockDb.update.mockReturnValue(updateChain);
     mockUserPreferenceService.findByUser.mockResolvedValue(null);
     mockLlmService.findDefaultByType.mockResolvedValue({ id: 'model-1' });
@@ -119,13 +129,75 @@ describe('ConversationTitleService', () => {
     );
   });
 
+  it('标题偏好失效时应回退到会话所属 Agent 的运行模型', async () => {
+    const messageSelectChain = createSelectChain([
+      { role: 'user', content: '请帮我检查标题总结链路' },
+      { role: 'assistant', content: '我先排查模型解析路径' },
+    ]);
+    const conversationSelectChain = createSelectChain([
+      { agentDefinitionId: 'agent-1' },
+    ]);
+    const definitionSelectChain = createSelectChain([
+      {
+        id: 'agent-1',
+        publishedVersionId: null,
+        nodes: [{ id: 'llm-node-1' }],
+        edges: [],
+        runtimeMode: 'sandbox',
+      },
+    ]);
+    const updateChain = createUpdateChain();
+
+    mockDb.select
+      .mockReturnValueOnce(messageSelectChain)
+      .mockReturnValueOnce(conversationSelectChain)
+      .mockReturnValueOnce(definitionSelectChain);
+    mockDb.update.mockReturnValue(updateChain);
+    mockUserPreferenceService.findByUser.mockResolvedValue({
+      titleModelConfigId: 'pref-model',
+    });
+    mockAgentDefinitionService.buildRuntimeConfigFromNodes.mockReturnValue({
+      modelConfig: { modelId: 'agent-model' },
+    });
+    mockLlmService.findById
+      .mockRejectedValueOnce(new Error('标题模型不存在'))
+      .mockResolvedValueOnce({ id: 'agent-model' });
+    mockPiAiAdapter.getModel.mockResolvedValue({ provider: 'mock' });
+    mockGenerateText.mockResolvedValue({ text: '🦊 标题链路排查' });
+
+    const title = await service.generateTitle(
+      'conversation-1',
+      'tenant-1',
+      'user-1',
+    );
+
+    expect(title).toBe('🦊 标题链路排查');
+    expect(mockLlmService.findById).toHaveBeenNthCalledWith(
+      1,
+      'pref-model',
+      'tenant-1',
+    );
+    expect(mockLlmService.findById).toHaveBeenNthCalledWith(
+      2,
+      'agent-model',
+      'tenant-1',
+    );
+    expect(mockLlmService.findDefaultByType).not.toHaveBeenCalled();
+    expect(
+      mockAgentDefinitionService.buildRuntimeConfigFromNodes,
+    ).toHaveBeenCalledWith([{ id: 'llm-node-1' }], [], 'agent-1', 'sandbox');
+  });
+
   it('LLM 调用失败时回退到首条用户消息摘要标题', async () => {
-    const selectChain = createSelectChain([
+    const messageSelectChain = createSelectChain([
       { role: 'user', content: '0123456789abcdefghijk' },
       { role: 'assistant', content: '已收到请求' },
     ]);
+    const conversationSelectChain = createSelectChain([]);
     const updateChain = createUpdateChain();
-    mockDb.select.mockReturnValue(selectChain);
+    mockDb.select
+      .mockReturnValueOnce(messageSelectChain)
+      .mockReturnValueOnce(conversationSelectChain);
     mockDb.update.mockReturnValue(updateChain);
     mockUserPreferenceService.findByUser.mockResolvedValue(null);
     mockLlmService.findDefaultByType.mockResolvedValue({ id: 'model-1' });

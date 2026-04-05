@@ -14,7 +14,7 @@ AgentLoom 让你像编织织布机上的经纬线一样，将多个 AI Agent 编
 - **🧪 编辑器调试运行** — Studio 编辑界面的 Run 使用当前草稿定义做一次性执行验证；编辑器外、移动端、API 与 Trigger 仍基于已发布版本运行
 - **🏷️ 发布版号语义** — 工作流草稿修订号与用户可见发布版本号分离：自动保存只推进内部 OCC 修订号，只有快照首次发布时才分配 `vN`
 - **🧭 Agent 双运行态** — Agent 创建时显式选择 `sandbox / no_sandbox`；顶层 `no_sandbox` Agent 与 workflow `agent` 节点走 in-process pi-agent-core runtime，仍支持 Skill、知识库、Memory、HTTP MCP 与自进化，而 `sandbox` Agent 继续走容器化 pi-coding-agent runtime
-- **💬 Agent 对话体验** — 首轮 assistant 回复后会自动生成对话标题；当标题模型不可用或标题生成失败时，系统会回退为首条用户消息摘要，避免会话列表停留在“新对话”
+- **💬 Agent 对话体验** — 首轮 assistant 回复后会自动生成对话标题；标题模型解析顺序为“用户标题偏好 → 当前会话所属 Agent 运行模型 → 组织默认 chat 模型”；当这些模型都不可用或 LLM 标题生成失败时，系统会回退为首条用户消息摘要，避免会话列表停留在“新对话”
 - **🔗 发现与公开分享** — `/discover` 复用 Marketplace 已上架内容做可浏览发现页；workflow 与 Agent 都支持生成 `/s/:token` 公开分享链接，访问者可预览作者、标题、简介、画布/Agent 元数据，并导入到自己的租户
 - **🔌 插件生态系统** — 完整的 SDK + CLI + 市场，`.alp` 插件包 RSA-PSS 签名验证，Extism WASM 沙箱隔离执行
 - **🔐 端到端加密 (E2EE)** — RSA-4096 + AES-256-GCM 混合加密，LLM 输出和决策证据全链路加密

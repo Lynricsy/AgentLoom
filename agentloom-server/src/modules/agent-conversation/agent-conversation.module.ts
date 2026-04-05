@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { AgentModule } from '../agent/agent.module';
+import { AgentDefinitionModule } from '../agent-definition/agent-definition.module';
 import { WorkspaceIntegrationModule } from '../agent-execution/workspace-integration.module';
 import { LlmModule } from '../llm/llm.module';
 import { SandboxModule } from '../sandbox/sandbox.module';
@@ -13,6 +14,7 @@ import { ConversationTitleService } from './conversation-title.service';
 @Module({
   imports: [
     AgentModule,
+    AgentDefinitionModule,
     WorkspaceIntegrationModule,
     LlmModule,
     SandboxModule,
