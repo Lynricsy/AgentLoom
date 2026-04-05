@@ -1338,6 +1338,7 @@ export class NodeSchedulerService {
         statusText: response.statusText,
         url: response.url,
         response,
+        'response-out': response.body,
         'exec-out': {
           triggered: true,
           success: response.ok,

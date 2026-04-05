@@ -1,5 +1,16 @@
 import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
-import { and, asc, desc, eq, ilike, max, not, or, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  ilike,
+  inArray,
+  max,
+  not,
+  or,
+  sql,
+} from 'drizzle-orm';
 
 import { RedisCacheService } from '../../common/redis/redis-cache.service';
 import { transactionStorage } from '../../common/interceptors/tenant-transaction.interceptor';
@@ -964,6 +975,12 @@ export class WorkflowVersionService {
           normalizedGraph.nodes,
           normalizedGraph.edges,
         );
+        await this.assertNoSandboxWorkflowMcpConstraints(
+          dbClient,
+          workflow.tenantId,
+          normalizedGraph.nodes,
+          normalizedGraph.edges,
+        );
         const autonomyPolicyInspection =
           await this.organizationAutonomyPolicyService.inspectWorkflowNodesAgainstPolicy(
             {
@@ -1375,6 +1392,200 @@ export class WorkflowVersionService {
     }
 
     return warnings;
+  }
+
+  private async assertNoSandboxWorkflowMcpConstraints(
+    dbClient: WorkflowDbClient,
+    tenantId: string,
+    nodes: schema.ReactFlowNode[],
+    edges: schema.ReactFlowEdge[],
+  ): Promise<void> {
+    const nodeMap = new Map(nodes.map((node) => [node.id, node]));
+    const noSandboxAgentSources = new Map<
+      string,
+      { agentLabel: string; mcpServerConfigIds: Set<string> }
+    >();
+
+    for (const edge of edges) {
+      const targetHandle = this.readEdgeHandle(edge, 'target');
+      if (targetHandle !== 'tools-in' && targetHandle !== 'tools_in') {
+        continue;
+      }
+
+      const targetNode = nodeMap.get(edge.target);
+      if (
+        !targetNode ||
+        this.getWorkflowNodeType(targetNode) !== 'agent' ||
+        this.getWorkflowAgentRuntimeMode(targetNode) !== 'no_sandbox'
+      ) {
+        continue;
+      }
+
+      const sourceNode = nodeMap.get(edge.source);
+      if (!sourceNode || this.getWorkflowNodeType(sourceNode) !== 'mcp-tool') {
+        continue;
+      }
+
+      const mcpServerConfigIds = this.getMcpToolNodeConfigIds(sourceNode);
+      if (mcpServerConfigIds.length === 0) {
+        continue;
+      }
+
+      const current =
+        noSandboxAgentSources.get(targetNode.id) ??
+        ({
+          agentLabel: this.getWorkflowNodeLabel(targetNode) ?? targetNode.id,
+          mcpServerConfigIds: new Set<string>(),
+        } as const);
+
+      for (const mcpServerConfigId of mcpServerConfigIds) {
+        current.mcpServerConfigIds.add(mcpServerConfigId);
+      }
+
+      noSandboxAgentSources.set(targetNode.id, {
+        agentLabel: current.agentLabel,
+        mcpServerConfigIds: current.mcpServerConfigIds,
+      });
+    }
+
+    if (noSandboxAgentSources.size === 0) {
+      return;
+    }
+
+    const mcpServerConfigIds = Array.from(
+      new Set(
+        Array.from(noSandboxAgentSources.values()).flatMap((entry) =>
+          Array.from(entry.mcpServerConfigIds),
+        ),
+      ),
+    );
+
+    if (mcpServerConfigIds.length === 0) {
+      return;
+    }
+
+    const configs = await dbClient
+      .select({
+        id: schema.mcpServerConfigs.id,
+        name: schema.mcpServerConfigs.name,
+        transportType: schema.mcpServerConfigs.transportType,
+      })
+      .from(schema.mcpServerConfigs)
+      .where(
+        and(
+          eq(schema.mcpServerConfigs.tenantId, tenantId),
+          inArray(schema.mcpServerConfigs.id, mcpServerConfigIds),
+        ),
+      );
+
+    const stdioConfigMap = new Map(
+      configs
+        .filter((config) => config.transportType === 'stdio')
+        .map((config) => [config.id, config.name]),
+    );
+
+    if (stdioConfigMap.size === 0) {
+      return;
+    }
+
+    const errors = Array.from(noSandboxAgentSources.values())
+      .map((entry) => {
+        const serverNames = Array.from(entry.mcpServerConfigIds)
+          .map((id) => stdioConfigMap.get(id))
+          .filter((name): name is string => typeof name === 'string');
+
+        if (serverNames.length === 0) {
+          return null;
+        }
+
+        return `无 sandbox Agent 节点「${entry.agentLabel}」不能连接 stdio MCP server：${serverNames.join('、')}`;
+      })
+      .filter((message): message is string => message !== null);
+
+    if (errors.length > 0) {
+      throw new WorkflowPublishValidationException(errors);
+    }
+  }
+
+  private getWorkflowNodeType(node: schema.ReactFlowNode): string {
+    const runtimeNodeData = this.getRuntimeNodeData(node.data);
+
+    return (
+      this.readFirstString(
+        runtimeNodeData.nodeType,
+        runtimeNodeData.node_type,
+        node.type,
+      ) ?? ''
+    );
+  }
+
+  private getWorkflowNodeLabel(
+    node: schema.ReactFlowNode,
+  ): string | undefined {
+    const runtimeNodeData = this.getRuntimeNodeData(node.data);
+
+    return this.readFirstString(runtimeNodeData.label, runtimeNodeData.name);
+  }
+
+  private getWorkflowAgentRuntimeMode(
+    node: schema.ReactFlowNode,
+  ): 'sandbox' | 'no_sandbox' {
+    const runtimeNodeData = this.getRuntimeNodeData(node.data);
+    const runtimeMode = this.readFirstString(
+      runtimeNodeData.agentRuntimeMode,
+      runtimeNodeData.agent_runtime_mode,
+      runtimeNodeData.runtimeMode,
+      runtimeNodeData.runtime_mode,
+    );
+
+    return runtimeMode === 'no_sandbox' ? 'no_sandbox' : 'sandbox';
+  }
+
+  private getMcpToolNodeConfigIds(node: schema.ReactFlowNode): string[] {
+    const runtimeNodeData = this.getRuntimeNodeData(node.data);
+    const mcpServerConfigId = this.readFirstString(
+      runtimeNodeData.mcpServerConfigId,
+      runtimeNodeData.mcp_server_config_id,
+    );
+
+    return mcpServerConfigId ? [mcpServerConfigId] : [];
+  }
+
+  private getRuntimeNodeData(
+    nodeData: Record<string, unknown> | null | undefined,
+  ): Record<string, unknown> {
+    const safeNodeData =
+      nodeData && typeof nodeData === 'object' ? nodeData : {};
+    const config =
+      'config' in safeNodeData &&
+      safeNodeData.config &&
+      typeof safeNodeData.config === 'object'
+        ? (safeNodeData.config as Record<string, unknown>)
+        : {};
+
+    return { ...config, ...safeNodeData };
+  }
+
+  private readEdgeHandle(
+    edge: schema.ReactFlowEdge,
+    handleKind: 'source' | 'target',
+  ): string | undefined {
+    const rawEdge = edge as unknown as Record<string, unknown>;
+
+    return this.readFirstString(
+      handleKind === 'source' ? edge.sourceHandle : edge.targetHandle,
+      rawEdge[`${handleKind}_handle`],
+    );
+  }
+
+  private readFirstString(...values: unknown[]): string | undefined {
+    for (const value of values) {
+      if (typeof value === 'string' && value.trim().length > 0) {
+        return value.trim();
+      }
+    }
+
+    return undefined;
   }
 
   private normalizeOptionalText(value?: string): string | null {

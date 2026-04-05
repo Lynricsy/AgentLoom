@@ -142,10 +142,20 @@ describe('WorkflowAgentAdapter', () => {
   };
   let updateWhereMock: ReturnType<typeof vi.fn>;
   let updateSetMock: ReturnType<typeof vi.fn>;
+  let selectWhereMock: ReturnType<typeof vi.fn>;
+  let selectFromMock: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useRealTimers();
+
+    selectWhereMock = vi.fn().mockResolvedValue([{ triggerType: 'manual' }]);
+    selectFromMock = vi.fn().mockReturnValue({
+      where: selectWhereMock,
+    });
+    db.select.mockReturnValue({
+      from: selectFromMock,
+    });
 
     updateWhereMock = vi.fn().mockResolvedValue(undefined);
     updateSetMock = vi.fn().mockReturnValue({
@@ -915,6 +925,144 @@ describe('WorkflowAgentAdapter', () => {
 
     expect(mockSandboxRuntime.prompt).toHaveBeenCalledTimes(2);
     expect(result.content).toBe('准备调用工具...工具结果处理完毕');
+  });
+
+  it('system trigger 的 no_sandbox workflow agent 会从 execution 记录判定自动授权并传给 runtime session', async () => {
+    mockRuntimeAdapterFactory.selectAdapter.mockImplementation(
+      (hasSandbox: boolean) =>
+        hasSandbox ? mockSandboxRuntime : mockAgentRuntime,
+    );
+    selectWhereMock.mockResolvedValueOnce([{ triggerType: 'system' }]);
+    mockAgentDefinitionService.findDetailById.mockResolvedValue({
+      id: 'news-agent',
+      publishedVersionId: 'news-agent-version',
+      systemPrompt: '汇总新闻',
+      sandboxConfig: null,
+      runtimeMode: 'no_sandbox',
+    });
+    mockAgentDefinitionService.buildRuntimeConfigFromNodes.mockReturnValue({
+      modelConfig: { modelId: 'model-news' },
+      runtimeMode: 'no_sandbox',
+      subAgents: [],
+    });
+    mockAgentRuntime.createSession.mockResolvedValue({ id: 'session-news' });
+    mockAgentRuntime.prompt.mockReturnValue(
+      emit([
+        { type: 'message_chunk', content: '今日新闻简报' },
+        { type: 'done', stopReason: 'end_turn' },
+      ]),
+    );
+
+    const adapter = createAdapter(
+      {
+        db,
+        agentRuntime: mockAgentRuntime,
+        runtimeAdapterFactory: mockRuntimeAdapterFactory,
+        agentDefinitionService: mockAgentDefinitionService,
+        sandboxService: mockSandboxService,
+        eventBridge: mockEventBridge,
+      },
+      { agentDefinitionId: 'news-agent' },
+    );
+
+    const snapshot = {
+      ...makeSnapshot('news-agent-main'),
+      runtimeMode: 'no_sandbox',
+    } as AgentVersionSnapshot;
+
+    const result = await adapter.execute({
+      executionId: EXECUTION_ID,
+      step: makeStep(),
+      input: {
+        'exec-in': {
+          triggered: true,
+        },
+        'text-in': '请总结今天新闻',
+      },
+      tenantId: TENANT_ID,
+      versionSnapshot: snapshot,
+    });
+
+    expect(mockRuntimeAdapterFactory.selectAdapter).toHaveBeenCalledWith(false);
+    expect(mockAgentRuntime.createSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        agentId: 'news-agent',
+        mode: 'workflow',
+        context: expect.objectContaining({
+          autoApproveToolPermissions: true,
+          input: expect.objectContaining({
+            'text-in': '请总结今天新闻',
+          }),
+        }),
+      }),
+    );
+    expect(result.content).toBe('今日新闻简报');
+  });
+
+  it('execution 记录不是 system 时不应被 exec-in 的旧 triggerType 误放行', async () => {
+    mockRuntimeAdapterFactory.selectAdapter.mockImplementation(
+      (hasSandbox: boolean) =>
+        hasSandbox ? mockSandboxRuntime : mockAgentRuntime,
+    );
+    selectWhereMock.mockResolvedValueOnce([{ triggerType: 'manual' }]);
+    mockAgentDefinitionService.findDetailById.mockResolvedValue({
+      id: 'news-agent',
+      publishedVersionId: 'news-agent-version',
+      systemPrompt: '汇总新闻',
+      sandboxConfig: null,
+      runtimeMode: 'no_sandbox',
+    });
+    mockAgentDefinitionService.buildRuntimeConfigFromNodes.mockReturnValue({
+      modelConfig: { modelId: 'model-news' },
+      runtimeMode: 'no_sandbox',
+      subAgents: [],
+    });
+    mockAgentRuntime.createSession.mockResolvedValue({ id: 'session-news' });
+    mockAgentRuntime.prompt.mockReturnValue(
+      emit([
+        { type: 'message_chunk', content: '今日新闻简报' },
+        { type: 'done', stopReason: 'end_turn' },
+      ]),
+    );
+
+    const adapter = createAdapter(
+      {
+        db,
+        agentRuntime: mockAgentRuntime,
+        runtimeAdapterFactory: mockRuntimeAdapterFactory,
+        agentDefinitionService: mockAgentDefinitionService,
+        sandboxService: mockSandboxService,
+        eventBridge: mockEventBridge,
+      },
+      { agentDefinitionId: 'news-agent' },
+    );
+
+    const snapshot = {
+      ...makeSnapshot('news-agent-main'),
+      runtimeMode: 'no_sandbox',
+    } as AgentVersionSnapshot;
+
+    await adapter.execute({
+      executionId: EXECUTION_ID,
+      step: makeStep(),
+      input: {
+        'exec-in': {
+          triggerType: 'system',
+          triggered: true,
+        },
+        'text-in': '请总结今天新闻',
+      },
+      tenantId: TENANT_ID,
+      versionSnapshot: snapshot,
+    });
+
+    expect(mockAgentRuntime.createSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        context: expect.not.objectContaining({
+          autoApproveToolPermissions: true,
+        }),
+      }),
+    );
   });
 
   it('达到 MAX_TOOL_ROUNDS 上限时抛出异常', async () => {

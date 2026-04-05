@@ -964,6 +964,170 @@ describe('PiAgentCoreAdapter', () => {
   });
 
   describe('permission gate', () => {
+    it('LLM_SUGGEST workflow session 会自动放行工具调用，不进入 awaiting_permission', async () => {
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
+      const session = await adapter.createSession(
+        createParams({
+          mode: 'workflow',
+          autonomyMode: 'LLM_SUGGEST',
+          context: {
+            executionId: 'exec-001',
+            stepId: 'step-001',
+            nodeId: 'node-001',
+          },
+        }),
+      );
+
+      hoisted.MockPiAgent.script = async (agent) => {
+        const result = await agent.options.beforeToolCall?.(
+          {
+            toolCall: {
+              id: 'call-auto',
+              name: 'fast_search',
+              arguments: { query: 'AgentLoom' },
+            },
+            args: { query: 'AgentLoom' },
+          },
+          agent.abortController.signal,
+        );
+
+        if (!result?.block) {
+          agent.emit({
+            type: 'tool_execution_start',
+            toolCallId: 'call-auto',
+            toolName: 'fast_search',
+            args: { query: 'AgentLoom' },
+          });
+          agent.emit({
+            type: 'tool_execution_end',
+            toolCallId: 'call-auto',
+            toolName: 'fast_search',
+            result: { details: { summary: 'ok' } },
+            isError: false,
+          });
+        }
+
+        agent.emit({
+          type: 'agent_end',
+          messages: [{ role: 'assistant', stopReason: 'toolUse' }],
+        });
+      };
+
+      await expect(
+        collectEvents(
+          adapter.prompt(session.id, [{ type: 'text', text: 'search' }]),
+        ),
+      ).resolves.toEqual([
+        {
+          type: 'tool_call',
+          call: {
+            id: 'call-auto',
+            tool: 'fast_search',
+            args: { query: 'AgentLoom' },
+            status: 'in_progress',
+          },
+        },
+        {
+          type: 'tool_call',
+          call: {
+            id: 'call-auto',
+            tool: 'fast_search',
+            args: {},
+            status: 'completed',
+            result: { summary: 'ok' },
+          },
+        },
+        { type: 'done', stopReason: 'tool_use' },
+      ]);
+      expect(
+        mockToolPermissionSyncService.registerPendingResolution,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('workflowState.autoApproveToolPermissions=true 时会自动放行工具调用', async () => {
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
+      const session = await adapter.createSession(
+        createParams({
+          mode: 'workflow',
+          context: {
+            executionId: 'exec-002',
+            stepId: 'step-002',
+            nodeId: 'node-002',
+            autoApproveToolPermissions: true,
+          },
+        }),
+      );
+
+      hoisted.MockPiAgent.script = async (agent) => {
+        const result = await agent.options.beforeToolCall?.(
+          {
+            toolCall: {
+              id: 'call-system',
+              name: 'fast_search',
+              arguments: { query: 'daily news' },
+            },
+            args: { query: 'daily news' },
+          },
+          agent.abortController.signal,
+        );
+
+        if (!result?.block) {
+          agent.emit({
+            type: 'tool_execution_start',
+            toolCallId: 'call-system',
+            toolName: 'fast_search',
+            args: { query: 'daily news' },
+          });
+          agent.emit({
+            type: 'tool_execution_end',
+            toolCallId: 'call-system',
+            toolName: 'fast_search',
+            result: { details: { headlines: 3 } },
+            isError: false,
+          });
+        }
+
+        agent.emit({
+          type: 'agent_end',
+          messages: [{ role: 'assistant', stopReason: 'toolUse' }],
+        });
+      };
+
+      await expect(
+        collectEvents(
+          adapter.prompt(session.id, [{ type: 'text', text: 'summarize' }]),
+        ),
+      ).resolves.toEqual([
+        {
+          type: 'tool_call',
+          call: {
+            id: 'call-system',
+            tool: 'fast_search',
+            args: { query: 'daily news' },
+            status: 'in_progress',
+          },
+        },
+        {
+          type: 'tool_call',
+          call: {
+            id: 'call-system',
+            tool: 'fast_search',
+            args: {},
+            status: 'completed',
+            result: { headlines: 3 },
+          },
+        },
+        { type: 'done', stopReason: 'tool_use' },
+      ]);
+      expect(
+        mockToolPermissionSyncService.registerPendingResolution,
+      ).not.toHaveBeenCalled();
+    });
+
     it('approve 后会继续执行工具并输出 tool_call + done', async () => {
       mockDb.select.mockReturnValueOnce(
         createSelectChain([defaultModelConfig]),

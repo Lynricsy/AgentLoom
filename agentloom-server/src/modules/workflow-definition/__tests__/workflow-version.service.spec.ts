@@ -186,6 +186,42 @@ function createAutonomyWorkflow(
   });
 }
 
+function createNoSandboxWorkflowWithUpstreamMcp() {
+  return createDraftWorkflow({
+    nodes: [
+      {
+        id: 'mcp-1',
+        type: 'tool',
+        position: { x: 0, y: 0 },
+        data: {
+          label: 'WebSearch',
+          nodeType: 'mcp-tool',
+          mcpServerConfigId: 'mcp-config-1',
+        },
+      },
+      {
+        id: 'agent-1',
+        type: 'agent',
+        position: { x: 240, y: 0 },
+        data: {
+          label: 'NoSandbox News Agent',
+          nodeType: 'agent',
+          agentRuntimeMode: 'no_sandbox',
+        },
+      },
+    ],
+    edges: [
+      {
+        id: 'edge-mcp-agent',
+        source: 'mcp-1',
+        target: 'agent-1',
+        sourceHandle: 'tool-out',
+        targetHandle: 'tools-in',
+      },
+    ],
+  });
+}
+
 function createSelectChain(result: unknown) {
   const where = vi.fn().mockResolvedValue(result);
   const from = vi.fn().mockReturnValue({ where });
@@ -1408,6 +1444,29 @@ describe('WorkflowVersionService', () => {
       await expect(
         service.publish(WORKFLOW_ID, {}, USER_ID),
       ).rejects.toBeInstanceOf(WorkflowPublishValidationException);
+    });
+
+    it('no_sandbox workflow agent 连接 stdio MCP 节点时应阻止发布', async () => {
+      const selectWf = createSelectChain([
+        createNoSandboxWorkflowWithUpstreamMcp(),
+      ]);
+      const selectMcpConfigs = createSelectChain([
+        {
+          id: 'mcp-config-1',
+          name: 'WebSearch',
+          transportType: 'stdio',
+        },
+      ]);
+      db.select
+        .mockReturnValueOnce(selectWf)
+        .mockReturnValueOnce(selectMcpConfigs);
+
+      await expect(
+        service.publish(WORKFLOW_ID, {}, USER_ID),
+      ).rejects.toMatchObject({
+        detail:
+          '无 sandbox Agent 节点「NoSandbox News Agent」不能连接 stdio MCP server：WebSearch',
+      });
     });
 
     it('端口类型不兼容时应当返回发布 warnings', async () => {

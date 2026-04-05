@@ -447,6 +447,7 @@ if (context.breakRequested) {
 - `AgentConversationController.resolveToolPermission(id, toolCallId, dto, tenantId)`
 - `WorkflowAgentAdapter.execute(params): Promise<WorkflowAgentExecutionResult>`
 - `WorkflowAgentAdapter.buildReadOnlyNativeToolPolicy()`
+- `NodeSchedulerService.executeHttpToolNode(step, input, tenantId, executionId)`
 - `NodeSchedulerService.resolveSourceHandleValue(sourceStep, sourceHandle)`
 - `PiAgentCoreAdapter.assertMcpTransportAllowed(session, transportType)`
 - `SandboxAgentAdapter.assertMcpTransportAllowed(session, transportType)`
@@ -472,8 +473,13 @@ if (context.breakRequested) {
   - 内置 coding tools
   - stdio MCP
   - 独立 sandbox workspace / terminal 上下文
+- `PiAgentCoreAdapter.beforeToolCall()` 对 `no_sandbox` runtime 仍保留 tool permission gate，但以下场景必须直通，不得再次发出 `awaiting_permission`：
+  - session `autonomyMode === 'LLM_SUGGEST'`
+  - workflow session `context.workflowState.autoApproveToolPermissions === true`
+- workflow `agent` 节点必须优先依据 `workflow_executions.trigger_type === 'system'` 把 `autoApproveToolPermissions=true` 写入 workflow session context；`exec-in.triggerType` 只作为 execution 记录缺失时的兜底，确保定时/系统触发的 `no_sandbox` HTTP MCP、知识与 Memory 工具不会因为 runtime 内二次审批而卡死。
 - stdio MCP 必须双重 fail-closed：
   - 发布/创建版本时，若 runtime graph 中绑定了 stdio MCP，返回 `AgentPublishValidationException`
+  - workflow 发布时，若 `no_sandbox` workflow agent 通过 `tools-in` 连接了 transport=`stdio` 的 `mcp-tool` 节点，返回 `WorkflowPublishValidationException`
   - 运行时即使混入了 stdio MCP 连接，也必须在 adapter 调用前拒绝执行
 - workflow `agent` 节点必须跟随目标 Agent 的 `runtimeMode` 动态切端口：
   - `sandbox`：保留 `sandbox-in`
@@ -481,6 +487,7 @@ if (context.breakRequested) {
 - trigger 命名输出端口与 workflow input field id 必须同名直通：
   - `manual-trigger` / `schedule-trigger` / `webhook-trigger` / `api-event-trigger`
   - 若 source handle 为命名字段（例如 `text-in`），后端必须返回 `result.payload[sourceHandle]`
+- `http-tool` 节点必须把 `response-out` 写成 HTTP 响应体本身（`response.body`），这样下游 `input-preprocessor` / `agent` 才能通过端口直接消费正文，而不是只能读调试元数据。
 - sandbox 父 Agent 调用 `no_sandbox` 子 Agent 时：
   - child 不起独立 in-process runtime
   - child 并入父 sandbox runtime 配置
@@ -490,15 +497,19 @@ if (context.breakRequested) {
 
 ### 4. Validation & Error Matrix
 
-| 条件                                          | 预期行为                                                      | 断言点                                            |
-| --------------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------- |
-| 创建 `no_sandbox` Agent                       | `runtimeMode` 持久化为 `no_sandbox`                           | DTO / service 单测                                |
-| `no_sandbox` Agent 发布时绑定 stdio MCP       | 422 `agent-publish-validation`，错误文案点名 MCP server 名称  | API 手测 + service 单测                           |
-| `no_sandbox` conversation 收到工具权限审批    | resolve 必须使用 `sessionId` 命中 in-process runtime          | `agent-conversation.controller.spec.ts`           |
-| workflow `agent` 节点选择 `no_sandbox` Agent  | 输入端口不含 `sandbox-in`                                     | Studio 单测 + 浏览器手测                          |
-| `manual-trigger.text-in -> agent.text-in`     | Agent step.input 必须拿到 launch input 原值                   | `node-scheduler.service.spec.ts` + execution 手测 |
-| `sandbox` 父 Agent 调用 `no_sandbox` 子 Agent | 子 Agent 只能读父上下文可见资源，不能获得 write/edit/terminal | sub-agent 集成测试 + 浏览器手测                   |
-| `no_sandbox` 父 Agent 调用 `sandbox` 子 Agent | 明确报错“不支持调用有 sandbox 的子 Agent”                     | worker / adapter 单测                             |
+| 条件                                          | 预期行为                                                                      | 断言点                                            |
+| --------------------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------- |
+| 创建 `no_sandbox` Agent                       | `runtimeMode` 持久化为 `no_sandbox`                                           | DTO / service 单测                                |
+| `no_sandbox` Agent 发布时绑定 stdio MCP       | 422 `agent-publish-validation`，错误文案点名 MCP server 名称                  | API 手测 + service 单测                           |
+| `no_sandbox` workflow agent 接入 stdio MCP 节点 | 422 `workflow-publish-validation`，错误文案点名 agent 节点与 MCP server 名称 | API 手测 + `workflow-version.service.spec.ts`     |
+| `no_sandbox` conversation 收到工具权限审批    | resolve 必须使用 `sessionId` 命中 in-process runtime                          | `agent-conversation.controller.spec.ts`           |
+| `LLM_SUGGEST` no_sandbox session 调用工具     | runtime 直接进入 `tool_execution_start/end`，不得重复发 `awaiting_permission` | `pi-agent-core.adapter.spec.ts`                   |
+| `system` trigger 的 workflow `agent` 节点     | session context 写入 `autoApproveToolPermissions=true`                        | `workflow-agent-adapter.spec.ts`                  |
+| `http-tool.response-out -> input-preprocessor` | 下游拿到的必须是响应体正文，而不是缺失值或整个调试包                           | `node-scheduler.service.spec.ts`                  |
+| workflow `agent` 节点选择 `no_sandbox` Agent  | 输入端口不含 `sandbox-in`                                                     | Studio 单测 + 浏览器手测                          |
+| `manual-trigger.text-in -> agent.text-in`     | Agent step.input 必须拿到 launch input 原值                                   | `node-scheduler.service.spec.ts` + execution 手测 |
+| `sandbox` 父 Agent 调用 `no_sandbox` 子 Agent | 子 Agent 只能读父上下文可见资源，不能获得 write/edit/terminal                 | sub-agent 集成测试 + 浏览器手测                   |
+| `no_sandbox` 父 Agent 调用 `sandbox` 子 Agent | 明确报错“不支持调用有 sandbox 的子 Agent”                                     | worker / adapter 单测                             |
 
 ### 5. Good / Base / Bad Cases
 
@@ -512,10 +523,16 @@ if (context.breakRequested) {
   - 断言 `no_sandbox` 对话的工具权限 resolve 走 in-process runtime
 - `src/modules/agent/__tests__/pi-agent-core.adapter.spec.ts`
   - 断言 no_sandbox runtime 支持 Memory/Knowledge/HTTP MCP，并在 stdio MCP 上 fail-closed
+  - 断言 `LLM_SUGGEST` 与 `workflowState.autoApproveToolPermissions=true` 不会重复进入 `awaiting_permission`
 - `src/modules/agent/__tests__/mcp-tool-bridge.spec.ts`
   - 断言 MCP schema / descriptor 在 no_sandbox runtime 中可用
+- `src/modules/execution/__tests__/workflow-agent-adapter.spec.ts`
+  - 断言 `workflow_executions.trigger_type=system` 会把 `autoApproveToolPermissions=true` 写入 workflow session context
+- `src/modules/workflow-definition/__tests__/workflow-version.service.spec.ts`
+  - 断言 `no_sandbox` workflow agent 连接 `stdio` MCP 节点时发布直接阻断
 - `src/modules/execution/__tests__/node-scheduler.service.spec.ts`
   - 断言 trigger 命名输出端口会读取 `payload[sourceHandle]`
+  - 断言 `http-tool` 会把 `response-out` 写成响应体正文
 - `src/modules/agent-execution/subagent/subagent-integration.spec.ts`
   - 断言 `sandbox -> no_sandbox(read-only)` 子 Agent 语义
 - Manual/browser E2E

@@ -3097,6 +3097,7 @@ describe('NodeSchedulerService', () => {
               },
               body: { answer: 'ok' },
             },
+            'response-out': { answer: 'ok' },
             'exec-out': {
               triggered: true,
               success: true,

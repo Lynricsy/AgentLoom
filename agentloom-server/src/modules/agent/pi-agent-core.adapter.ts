@@ -994,7 +994,7 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
     const toolCallId = this.getToolCallId(context);
     const toolName = this.getToolName(context);
 
-    if (PERMISSION_EXEMPT_TOOLS.has(toolName)) {
+    if (this.shouldAutoApproveToolPermission(sessionId, toolName)) {
       return undefined;
     }
 
@@ -1053,6 +1053,32 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
       block: true,
       reason: 'Tool execution cancelled.',
     };
+  }
+
+  private shouldAutoApproveToolPermission(
+    sessionId: string,
+    toolName: string,
+  ): boolean {
+    if (PERMISSION_EXEMPT_TOOLS.has(toolName)) {
+      return true;
+    }
+
+    const runtimeSession = this.sessions.get(sessionId);
+    if (!runtimeSession) {
+      return false;
+    }
+
+    if (runtimeSession.session.autonomyMode === 'LLM_SUGGEST') {
+      return true;
+    }
+
+    const workflowState = this.isRecord(
+      runtimeSession.session.context.workflowState,
+    )
+      ? runtimeSession.session.context.workflowState
+      : null;
+
+    return workflowState?.autoApproveToolPermissions === true;
   }
 
   private waitForPermission(

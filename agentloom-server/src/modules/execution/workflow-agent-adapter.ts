@@ -10,6 +10,7 @@ import {
 import type { DrizzleDB } from '../../database/database.module';
 import {
   executionSteps,
+  workflowExecutions,
   type ExecutionStep,
   type SandboxConfig,
 } from '../../database/schema';
@@ -182,6 +183,12 @@ export class WorkflowAgentAdapter {
     );
     const runtime =
       this.dependencies.runtimeAdapterFactory.selectAdapter(usesSandboxRuntime);
+    const autoApproveToolPermissions =
+      await this.shouldAutoApproveToolPermissions({
+        executionId: params.executionId,
+        tenantId: params.tenantId,
+        input: params.input,
+      });
 
     const session = await runtime.createSession({
       agentId: this.config.agentDefinitionId,
@@ -197,6 +204,9 @@ export class WorkflowAgentAdapter {
         nodeId: params.step.nodeId,
         tenantId: params.tenantId,
         input: sanitizedInput,
+        ...(autoApproveToolPermissions
+          ? { autoApproveToolPermissions: true }
+          : {}),
         ...(sandboxBinding ? { serverSandbox: sandboxBinding } : {}),
       },
     });
@@ -1270,6 +1280,42 @@ export class WorkflowAgentAdapter {
       input,
       ...(Object.keys(subAgentResults).length > 0 ? { subAgentResults } : {}),
     });
+  }
+
+  private async shouldAutoApproveToolPermissions(params: {
+    executionId: string;
+    tenantId: string;
+    input: Record<string, unknown>;
+  }): Promise<boolean> {
+    const [execution] = await this.tenantDb
+      .select({
+        triggerType: workflowExecutions.triggerType,
+      })
+      .from(workflowExecutions)
+      .where(
+        and(
+          eq(workflowExecutions.id, params.executionId),
+          eq(workflowExecutions.tenantId, params.tenantId),
+        ),
+      );
+
+    if (execution) {
+      return execution.triggerType === 'system';
+    }
+
+    const execInput = this.isRecord(params.input['exec-in'])
+      ? params.input['exec-in']
+      : this.isRecord(params.input.exec_in)
+        ? params.input.exec_in
+        : null;
+
+    if (!execInput) {
+      return false;
+    }
+
+    return (
+      execInput.triggerType === 'system' || execInput.trigger_type === 'system'
+    );
   }
 
   private resolveAgentRuntimeMode(
