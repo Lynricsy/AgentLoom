@@ -1,5 +1,5 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
-import { useNavigate } from '@tanstack/react-router';
+import { useCallback, useMemo, useRef, useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import {
   Brain,
   Calendar,
@@ -9,34 +9,33 @@ import {
   Plus,
   Search,
   Trash2,
-} from 'lucide-react';
-import { Pagination } from '@/shared/components';
-import { convertResourceSourceToManual } from '@/shared/api/resourceSourceApi';
+} from "lucide-react";
+import { Pagination, ResourceSourceCategoryTabs } from "@/shared/components";
+import { convertResourceSourceToManual } from "@/shared/api/resourceSourceApi";
 import {
-  getResourceSourceBadgeClass,
   getResourceSourceLabel,
-} from '@/shared/lib/resourceSource';
-import { Button } from '@/shared/ui/button';
-import { Input } from '@/shared/ui/input';
-import { cn } from '@/shared/lib/utils';
+  type ResourceSourceKind,
+} from "@/shared/lib/resourceSource";
+import { Button } from "@/shared/ui/button";
+import { Input } from "@/shared/ui/input";
+import { cn } from "@/shared/lib/utils";
 import {
   useAllMemoryInstances,
   useDeleteMemoryInstance,
   useMemoryInstances,
-} from '../hooks/useMemoryInstances';
-import { getMemoryStatusLabel, getMemoryStatusVariant } from '../types';
-import type { MemoryInstance } from '../types';
-import { CreateMemoryDialog } from './CreateMemoryDialog';
+} from "../hooks/useMemoryInstances";
+import { getMemoryStatusLabel, getMemoryStatusVariant } from "../types";
+import type { MemoryInstance } from "../types";
+import { CreateMemoryDialog } from "./CreateMemoryDialog";
 
 const PAGE_SIZE = 12;
 
 export function MemoryInstancesPage() {
   const navigate = useNavigate();
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState("");
   const [page, setPage] = useState(1);
-  const [sourceKindFilter, setSourceKindFilter] = useState<
-    '' | 'manual' | 'share_imported'
-  >('');
+  const [sourceKindFilter, setSourceKindFilter] =
+    useState<ResourceSourceKind>("manual");
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<MemoryInstance | null>(null);
   const deleteRestoreFocusRef = useRef<HTMLButtonElement | null>(null);
@@ -48,11 +47,11 @@ export function MemoryInstancesPage() {
   const paginatedQuery = useMemoryInstances(
     isSearching
       ? undefined
-      : { page, pageSize: PAGE_SIZE, sourceKind: sourceKindFilter || undefined },
+      : { page, pageSize: PAGE_SIZE, sourceKind: sourceKindFilter },
   );
   const allQuery = useAllMemoryInstances({
     enabled: isSearching,
-    sourceKind: sourceKindFilter || undefined,
+    sourceKind: sourceKindFilter,
   });
 
   const filteredItems = useMemo(() => {
@@ -76,7 +75,7 @@ export function MemoryInstancesPage() {
 
   const handleCardClick = useCallback(
     (id: string) => {
-      void navigate({ to: '/memory/$id', params: { id } });
+      void navigate({ to: "/memory/$id", params: { id } });
     },
     [navigate],
   );
@@ -95,7 +94,7 @@ export function MemoryInstancesPage() {
 
   const handleCreateSuccess = useCallback(
     (id: string) => {
-      void navigate({ to: '/memory/$id', params: { id } });
+      void navigate({ to: "/memory/$id", params: { id } });
     },
     [navigate],
   );
@@ -103,7 +102,7 @@ export function MemoryInstancesPage() {
   const handleConvertSource = useCallback(
     async (instance: MemoryInstance) => {
       try {
-        await convertResourceSourceToManual('memory_instance', instance.id);
+        await convertResourceSourceToManual("memory_instance", instance.id);
         await paginatedQuery.refetch();
         if (isSearching) {
           await allQuery.refetch();
@@ -116,10 +115,10 @@ export function MemoryInstancesPage() {
   );
 
   const formatDate = (dateStr: string) => {
-    return new Date(dateStr).toLocaleDateString('zh-CN', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
+    return new Date(dateStr).toLocaleDateString("zh-CN", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
     });
   };
 
@@ -139,34 +138,26 @@ export function MemoryInstancesPage() {
         </Button>
       </div>
 
+      <ResourceSourceCategoryTabs
+        value={sourceKindFilter}
+        onChange={(nextValue) => {
+          setSourceKindFilter(nextValue);
+          setPage(1);
+        }}
+      />
+
       {/* 搜索栏 */}
-      <div className="flex gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            className="pl-9"
-            placeholder="搜索记忆实例..."
-            value={searchQuery}
-            onChange={(e) => {
-              setSearchQuery(e.target.value);
-              setPage(1);
-            }}
-          />
-        </div>
-        <select
-          value={sourceKindFilter}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          className="pl-9"
+          placeholder="搜索记忆实例..."
+          value={searchQuery}
           onChange={(e) => {
-            setSourceKindFilter(
-              e.target.value as '' | 'manual' | 'share_imported',
-            );
+            setSearchQuery(e.target.value);
             setPage(1);
           }}
-          className="h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-        >
-          <option value="">全部来源</option>
-          <option value="manual">自己创建</option>
-          <option value="share_imported">分享导入</option>
-        </select>
+        />
       </div>
 
       {/* 内容区域 */}
@@ -178,9 +169,11 @@ export function MemoryInstancesPage() {
         <div className="flex flex-1 flex-col items-center justify-center gap-2 text-muted-foreground">
           <Brain className="h-12 w-12" />
           <p className="text-lg font-medium">
-            {isSearching ? '没有找到匹配的记忆实例' : '还没有记忆实例'}
+            {isSearching
+              ? "没有找到匹配的记忆实例"
+              : `还没有${getResourceSourceLabel(sourceKindFilter)}的记忆实例`}
           </p>
-          {!isSearching && (
+          {!isSearching && sourceKindFilter === "manual" && (
             <p className="text-sm">
               点击「新建实例」创建你的第一个 Agent 记忆图谱
             </p>
@@ -207,30 +200,20 @@ export function MemoryInstancesPage() {
                       <h3 className="font-semibold line-clamp-1">
                         {instance.name}
                       </h3>
-                      <span
-                        className={cn(
-                          'rounded-full border px-2 py-0.5 text-[11px] font-medium',
-                          getResourceSourceBadgeClass(
-                            instance.sourceKind ?? 'manual',
-                          ),
-                        )}
-                      >
-                        {getResourceSourceLabel(instance.sourceKind ?? 'manual')}
-                      </span>
                     </div>
                     <span
                       className={cn(
-                        'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
+                        "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
                         {
-                          'bg-emerald-500/20 text-emerald-400':
+                          "bg-emerald-500/20 text-emerald-400":
                             getMemoryStatusVariant(instance.status) ===
-                            'default',
-                          'bg-muted text-muted-foreground':
+                            "default",
+                          "bg-muted text-muted-foreground":
                             getMemoryStatusVariant(instance.status) ===
-                            'secondary',
-                          'bg-destructive/20 text-destructive':
+                            "secondary",
+                          "bg-destructive/20 text-destructive":
                             getMemoryStatusVariant(instance.status) ===
-                            'destructive',
+                            "destructive",
                         },
                       )}
                     >
@@ -276,7 +259,7 @@ export function MemoryInstancesPage() {
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
-                {instance.sourceKind === 'share_imported' ? (
+                {instance.sourceKind === "share_imported" ? (
                   <button
                     type="button"
                     onClick={() => void handleConvertSource(instance)}

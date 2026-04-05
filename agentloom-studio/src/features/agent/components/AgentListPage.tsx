@@ -1,5 +1,5 @@
-import { memo, useCallback, useMemo, useState } from 'react'
-import { useNavigate } from '@tanstack/react-router'
+import { memo, useCallback, useMemo, useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import {
   Bot,
   ChevronLeft,
@@ -15,19 +15,20 @@ import {
   Search,
   Trash2,
   X,
-} from 'lucide-react'
-import { EntityIcon } from '@/shared/components/entity-icon'
-import { cn } from '@/shared/lib/utils'
-import { Button } from '@/shared/ui/button'
-import { Input } from '@/shared/ui/input'
-import { Checkbox } from '@/shared/ui/checkbox'
+} from "lucide-react";
+import { ResourceSourceCategoryTabs } from "@/shared/components";
+import { EntityIcon } from "@/shared/components/entity-icon";
+import { cn } from "@/shared/lib/utils";
+import { Button } from "@/shared/ui/button";
+import { Input } from "@/shared/ui/input";
+import { Checkbox } from "@/shared/ui/checkbox";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/shared/ui/dropdown-menu'
+} from "@/shared/ui/dropdown-menu";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -35,60 +36,60 @@ import {
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogTitle,
-} from '@/shared/ui/alert-dialog'
-import { convertResourceSourceToManual } from '@/shared/api/resourceSourceApi'
+} from "@/shared/ui/alert-dialog";
+import { convertResourceSourceToManual } from "@/shared/api/resourceSourceApi";
 import {
-  getResourceSourceBadgeClass,
   getResourceSourceLabel,
-} from '@/shared/lib/resourceSource'
-import { useToast } from '@/shared/ui/toast'
-import { formatRelativeTime } from '@/features/canvas'
-import { useAgentList } from '../api/agentQueries'
-import { useDeleteAgent } from '../api/agentMutations'
-import { useAgentStore } from '../stores/agentStore'
-import { CreateOrchestrationDialog } from './CreateOrchestrationDialog'
-import type { AgentDefinition, AgentStatus } from '../types'
+  type ResourceSourceKind,
+} from "@/shared/lib/resourceSource";
+import { useToast } from "@/shared/ui/toast";
+import { formatRelativeTime } from "@/features/canvas";
+import { useAgentList } from "../api/agentQueries";
+import { useDeleteAgent } from "../api/agentMutations";
+import { useAgentStore } from "../stores/agentStore";
+import { CreateOrchestrationDialog } from "./CreateOrchestrationDialog";
+import type { AgentDefinition, AgentStatus } from "../types";
 
-type ViewMode = 'grid' | 'list'
+type ViewMode = "grid" | "list";
 
 const STATUS_OPTIONS = [
-  { value: '', label: '全部状态' },
-  { value: 'draft', label: '草稿' },
-  { value: 'published', label: '已发布' },
-  { value: 'archived', label: '已归档' },
-] as const
+  { value: "", label: "全部状态" },
+  { value: "draft", label: "草稿" },
+  { value: "published", label: "已发布" },
+  { value: "archived", label: "已归档" },
+] as const;
 
 function getStatusBadgeClasses(status: AgentStatus): string {
   switch (status) {
-    case 'published':
-      return 'bg-emerald-500/10 text-emerald-500'
-    case 'archived':
-      return 'bg-gray-500/10 text-gray-400'
+    case "published":
+      return "bg-emerald-500/10 text-emerald-500";
+    case "archived":
+      return "bg-gray-500/10 text-gray-400";
     default:
-      return 'bg-amber-500/10 text-amber-500'
+      return "bg-amber-500/10 text-amber-500";
   }
 }
 
 function getStatusLabel(status: AgentStatus): string {
   switch (status) {
-    case 'published':
-      return '已发布'
-    case 'archived':
-      return '已归档'
+    case "published":
+      return "已发布";
+    case "archived":
+      return "已归档";
     default:
-      return '草稿'
+      return "草稿";
   }
 }
 
 interface AgentCardProps {
-  agent: AgentDefinition
-  selected: boolean
-  batchMode: boolean
-  onSelect: (id: string) => void
-  onClick: (agent: AgentDefinition) => void
-  onEdit: (agent: AgentDefinition) => void
-  onDelete: (agent: AgentDefinition) => void
-  onConvertSource: (agent: AgentDefinition) => void
+  agent: AgentDefinition;
+  selected: boolean;
+  batchMode: boolean;
+  onSelect: (id: string) => void;
+  onClick: (agent: AgentDefinition) => void;
+  onEdit: (agent: AgentDefinition) => void;
+  onDelete: (agent: AgentDefinition) => void;
+  onConvertSource: (agent: AgentDefinition) => void;
 }
 
 const AgentCard = memo(function AgentCard({
@@ -101,21 +102,21 @@ const AgentCard = memo(function AgentCard({
   onDelete,
   onConvertSource,
 }: AgentCardProps) {
-  const sourceKind = agent.resourceSourceKind ?? 'manual'
+  const sourceKind = agent.resourceSourceKind ?? "manual";
 
   return (
     <div
       className={cn(
-        'card-hover-lift group relative flex flex-col gap-3 rounded-xl border border-border/60 bg-card p-4 text-left',
-        'focus-within:ring-2 focus-within:ring-primary focus-within:ring-offset-2 focus-within:ring-offset-background',
-        selected && 'border-primary/60 bg-primary/5',
+        "card-hover-lift group relative flex flex-col gap-3 rounded-xl border border-border/60 bg-card p-4 text-left",
+        "focus-within:ring-2 focus-within:ring-primary focus-within:ring-offset-2 focus-within:ring-offset-background",
+        selected && "border-primary/60 bg-primary/5",
       )}
     >
       {/* 选择框 */}
       <div
         className={cn(
-          'absolute left-3 top-3 z-10 transition-opacity',
-          batchMode ? 'opacity-100' : 'opacity-0 group-hover:opacity-100',
+          "absolute left-3 top-3 z-10 transition-opacity",
+          batchMode ? "opacity-100" : "opacity-0 group-hover:opacity-100",
         )}
       >
         <Checkbox
@@ -141,18 +142,18 @@ const AgentCard = memo(function AgentCard({
           <DropdownMenuContent align="end">
             <DropdownMenuItem
               onClick={(e) => {
-                e.stopPropagation()
-                onEdit(agent)
+                e.stopPropagation();
+                onEdit(agent);
               }}
             >
               <Edit3 className="h-4 w-4" />
               编辑
             </DropdownMenuItem>
-            {sourceKind === 'share_imported' ? (
+            {sourceKind === "share_imported" ? (
               <DropdownMenuItem
                 onClick={(e) => {
-                  e.stopPropagation()
-                  onConvertSource(agent)
+                  e.stopPropagation();
+                  onConvertSource(agent);
                 }}
               >
                 <FolderSync className="h-4 w-4" />
@@ -163,8 +164,8 @@ const AgentCard = memo(function AgentCard({
             <DropdownMenuItem
               destructive
               onClick={(e) => {
-                e.stopPropagation()
-                onDelete(agent)
+                e.stopPropagation();
+                onDelete(agent);
               }}
             >
               <Trash2 className="h-4 w-4" />
@@ -185,7 +186,7 @@ const AgentCard = memo(function AgentCard({
           </div>
           <span
             className={cn(
-              'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
+              "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
               getStatusBadgeClasses(agent.status),
             )}
           >
@@ -195,18 +196,12 @@ const AgentCard = memo(function AgentCard({
 
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
-            <h3 className="truncate text-sm font-semibold text-foreground">{agent.name}</h3>
-            <span
-              className={cn(
-                'rounded-full border px-2 py-0.5 text-[10px] font-medium',
-                getResourceSourceBadgeClass(sourceKind),
-              )}
-            >
-              {getResourceSourceLabel(sourceKind)}
-            </span>
+            <h3 className="truncate text-sm font-semibold text-foreground">
+              {agent.name}
+            </h3>
           </div>
           <p className="line-clamp-2 text-xs text-muted-foreground">
-            {agent.description || '暂无描述'}
+            {agent.description || "暂无描述"}
           </p>
         </div>
 
@@ -221,18 +216,18 @@ const AgentCard = memo(function AgentCard({
         </div>
       </button>
     </div>
-  )
-})
+  );
+});
 
 interface AgentListItemProps {
-  agent: AgentDefinition
-  selected: boolean
-  batchMode: boolean
-  onSelect: (id: string) => void
-  onClick: (agent: AgentDefinition) => void
-  onEdit: (agent: AgentDefinition) => void
-  onDelete: (agent: AgentDefinition) => void
-  onConvertSource: (agent: AgentDefinition) => void
+  agent: AgentDefinition;
+  selected: boolean;
+  batchMode: boolean;
+  onSelect: (id: string) => void;
+  onClick: (agent: AgentDefinition) => void;
+  onEdit: (agent: AgentDefinition) => void;
+  onDelete: (agent: AgentDefinition) => void;
+  onConvertSource: (agent: AgentDefinition) => void;
 }
 
 const AgentListItem = memo(function AgentListItem({
@@ -245,19 +240,19 @@ const AgentListItem = memo(function AgentListItem({
   onDelete,
   onConvertSource,
 }: AgentListItemProps) {
-  const sourceKind = agent.resourceSourceKind ?? 'manual'
+  const sourceKind = agent.resourceSourceKind ?? "manual";
 
   return (
     <div
       className={cn(
-        'card-hover-lift group flex items-center gap-3 rounded-lg border border-border/60 bg-card px-4 py-3',
-        selected && 'border-primary/60 bg-primary/5',
+        "card-hover-lift group flex items-center gap-3 rounded-lg border border-border/60 bg-card px-4 py-3",
+        selected && "border-primary/60 bg-primary/5",
       )}
     >
       <div
         className={cn(
-          'shrink-0 transition-opacity',
-          batchMode ? 'opacity-100' : 'opacity-0 group-hover:opacity-100',
+          "shrink-0 transition-opacity",
+          batchMode ? "opacity-100" : "opacity-0 group-hover:opacity-100",
         )}
       >
         <Checkbox
@@ -278,28 +273,22 @@ const AgentListItem = memo(function AgentListItem({
 
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <h3 className="truncate text-sm font-semibold text-foreground">{agent.name}</h3>
+            <h3 className="truncate text-sm font-semibold text-foreground">
+              {agent.name}
+            </h3>
             <span className="inline-flex items-center rounded bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
               v{agent.version}
             </span>
-            <span
-              className={cn(
-                'rounded-full border px-2 py-0.5 text-[10px] font-medium',
-                getResourceSourceBadgeClass(sourceKind),
-              )}
-            >
-              {getResourceSourceLabel(sourceKind)}
-            </span>
           </div>
           <p className="mt-0.5 truncate text-xs text-muted-foreground">
-            {agent.description || '暂无描述'}
+            {agent.description || "暂无描述"}
           </p>
         </div>
 
         <div className="flex shrink-0 items-center gap-3">
           <span
             className={cn(
-              'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
+              "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
               getStatusBadgeClasses(agent.status),
             )}
           >
@@ -327,7 +316,7 @@ const AgentListItem = memo(function AgentListItem({
               <Edit3 className="h-4 w-4" />
               编辑
             </DropdownMenuItem>
-            {sourceKind === 'share_imported' ? (
+            {sourceKind === "share_imported" ? (
               <DropdownMenuItem onClick={() => onConvertSource(agent)}>
                 <FolderSync className="h-4 w-4" />
                 转为自己创建
@@ -342,8 +331,8 @@ const AgentListItem = memo(function AgentListItem({
         </DropdownMenu>
       </div>
     </div>
-  )
-})
+  );
+});
 
 function AgentCardSkeleton() {
   return (
@@ -361,128 +350,136 @@ function AgentCardSkeleton() {
         <div className="shimmer h-3 w-8" />
       </div>
     </div>
-  )
+  );
 }
 
 export function AgentListPage() {
-  const navigate = useNavigate()
-  const { notify } = useToast()
-  const filters = useAgentStore((s) => s.filters)
-  const setFilters = useAgentStore((s) => s.setFilters)
-  const setPage = useAgentStore((s) => s.setPage)
-  const selectedAgentIds = useAgentStore((s) => s.selectedAgentIds)
-  const toggleAgentSelection = useAgentStore((s) => s.toggleAgentSelection)
-  const selectAllAgents = useAgentStore((s) => s.selectAllAgents)
-  const clearAgentSelection = useAgentStore((s) => s.clearAgentSelection)
+  const navigate = useNavigate();
+  const { notify } = useToast();
+  const filters = useAgentStore((s) => s.filters);
+  const setFilters = useAgentStore((s) => s.setFilters);
+  const setPage = useAgentStore((s) => s.setPage);
+  const selectedAgentIds = useAgentStore((s) => s.selectedAgentIds);
+  const toggleAgentSelection = useAgentStore((s) => s.toggleAgentSelection);
+  const selectAllAgents = useAgentStore((s) => s.selectAllAgents);
+  const clearAgentSelection = useAgentStore((s) => s.clearAgentSelection);
 
-  const [viewMode, setViewMode] = useState<ViewMode>('grid')
-  const [searchInput, setSearchInput] = useState(filters.search)
-  const [createDialogOpen, setCreateDialogOpen] = useState(false)
-  const [deleteTarget, setDeleteTarget] = useState<AgentDefinition | null>(null)
+  const [viewMode, setViewMode] = useState<ViewMode>("grid");
+  const [searchInput, setSearchInput] = useState(filters.search);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<AgentDefinition | null>(
+    null,
+  );
 
-  const deleteAgent = useDeleteAgent()
+  const deleteAgent = useDeleteAgent();
 
   const { data, isLoading, refetch } = useAgentList({
     page: filters.page,
     pageSize: filters.pageSize,
     status: filters.status || undefined,
     search: filters.search || undefined,
-    sourceKind: filters.sourceKind || undefined,
-  })
+    sourceKind: filters.sourceKind,
+  });
 
-  const agents = useMemo(() => data?.data ?? [], [data?.data])
-  const meta = data?.meta
+  const agents = useMemo(() => data?.data ?? [], [data?.data]);
+  const meta = data?.meta;
 
-  const batchMode = selectedAgentIds.size > 0
+  const batchMode = selectedAgentIds.size > 0;
 
   const handleSearch = useCallback(
     (value: string) => {
-      setSearchInput(value)
-      setFilters({ search: value })
+      setSearchInput(value);
+      setFilters({ search: value });
     },
     [setFilters],
-  )
+  );
 
   const handleStatusFilter = useCallback(
     (event: React.ChangeEvent<HTMLSelectElement>) => {
-      setFilters({ status: event.target.value })
+      setFilters({ status: event.target.value });
     },
     [setFilters],
-  )
+  );
 
-  const handleSourceFilter = useCallback(
-    (event: React.ChangeEvent<HTMLSelectElement>) => {
-      setFilters({
-        sourceKind: event.target.value as '' | 'manual' | 'share_imported',
-      })
+  const handleSourceKindChange = useCallback(
+    (value: ResourceSourceKind) => {
+      setFilters({ sourceKind: value });
     },
     [setFilters],
-  )
+  );
 
   const handleAgentClick = useCallback(
     (agent: AgentDefinition) => {
       navigate({
-        to: '/agents/$agentId/conversations/new',
+        to: "/agents/$agentId/conversations/new",
         params: { agentId: agent.id },
-      })
+      });
     },
     [navigate],
-  )
+  );
 
   const handleEdit = useCallback(
     (agent: AgentDefinition) => {
-      navigate({ to: '/agents/$agentId', params: { agentId: agent.id } })
+      navigate({ to: "/agents/$agentId", params: { agentId: agent.id } });
     },
     [navigate],
-  )
+  );
 
   const handleDelete = useCallback((agent: AgentDefinition) => {
-    setDeleteTarget(agent)
-  }, [])
+    setDeleteTarget(agent);
+  }, []);
 
   const handleConvertSource = useCallback(
     async (agent: AgentDefinition) => {
       try {
-        await convertResourceSourceToManual('agent_definition', agent.id)
-        notify({ description: '已转为自己创建', variant: 'success' })
-        await refetch()
+        await convertResourceSourceToManual("agent_definition", agent.id);
+        notify({ description: "已转为自己创建", variant: "success" });
+        await refetch();
       } catch {
-        notify({ title: '转换失败', description: '请稍后重试', variant: 'error' })
+        notify({
+          title: "转换失败",
+          description: "请稍后重试",
+          variant: "error",
+        });
       }
     },
     [notify, refetch],
-  )
+  );
 
   const handleConfirmDelete = useCallback(async () => {
-    if (!deleteTarget) return
+    if (!deleteTarget) return;
     try {
-      await deleteAgent.mutateAsync(deleteTarget.id)
-      notify({ description: 'Agent 已删除', variant: 'success' })
-      setDeleteTarget(null)
+      await deleteAgent.mutateAsync(deleteTarget.id);
+      notify({ description: "Agent 已删除", variant: "success" });
+      setDeleteTarget(null);
     } catch {
-      notify({ title: '删除失败', description: '请稍后重试', variant: 'error' })
+      notify({
+        title: "删除失败",
+        description: "请稍后重试",
+        variant: "error",
+      });
     }
-  }, [deleteTarget, deleteAgent, notify])
+  }, [deleteTarget, deleteAgent, notify]);
 
   const handleSelectAll = useCallback(() => {
     if (selectedAgentIds.size === agents.length) {
-      clearAgentSelection()
+      clearAgentSelection();
     } else {
-      selectAllAgents(agents.map((a) => a.id))
+      selectAllAgents(agents.map((a) => a.id));
     }
-  }, [clearAgentSelection, selectAllAgents, selectedAgentIds.size, agents])
+  }, [clearAgentSelection, selectAllAgents, selectedAgentIds.size, agents]);
 
   const handlePrevPage = useCallback(() => {
     if (filters.page > 1) {
-      setPage(filters.page - 1)
+      setPage(filters.page - 1);
     }
-  }, [filters.page, setPage])
+  }, [filters.page, setPage]);
 
   const handleNextPage = useCallback(() => {
     if (meta && filters.page < meta.totalPages) {
-      setPage(filters.page + 1)
+      setPage(filters.page + 1);
     }
-  }, [filters.page, meta, setPage])
+  }, [filters.page, meta, setPage]);
 
   return (
     <div className="flex h-full flex-col">
@@ -498,6 +495,13 @@ export function AgentListPage() {
             <Plus className="mr-1.5 h-4 w-4" />
             新建
           </Button>
+        </div>
+
+        <div className="mt-4">
+          <ResourceSourceCategoryTabs
+            value={filters.sourceKind}
+            onChange={handleSourceKindChange}
+          />
         </div>
 
         <div className="mt-4 flex items-center gap-3">
@@ -523,26 +527,16 @@ export function AgentListPage() {
             ))}
           </select>
 
-          <select
-            value={filters.sourceKind}
-            onChange={handleSourceFilter}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-          >
-            <option value="">全部来源</option>
-            <option value="manual">自己创建</option>
-            <option value="share_imported">分享导入</option>
-          </select>
-
           <div className="flex items-center rounded-md border border-border p-0.5">
             <button
               type="button"
               className={cn(
-                'rounded p-1.5 transition-colors',
-                viewMode === 'grid'
-                  ? 'bg-muted text-foreground'
-                  : 'text-muted-foreground hover:text-foreground',
+                "rounded p-1.5 transition-colors",
+                viewMode === "grid"
+                  ? "bg-muted text-foreground"
+                  : "text-muted-foreground hover:text-foreground",
               )}
-              onClick={() => setViewMode('grid')}
+              onClick={() => setViewMode("grid")}
               aria-label="网格视图"
             >
               <LayoutGrid className="h-4 w-4" />
@@ -550,12 +544,12 @@ export function AgentListPage() {
             <button
               type="button"
               className={cn(
-                'rounded p-1.5 transition-colors',
-                viewMode === 'list'
-                  ? 'bg-muted text-foreground'
-                  : 'text-muted-foreground hover:text-foreground',
+                "rounded p-1.5 transition-colors",
+                viewMode === "list"
+                  ? "bg-muted text-foreground"
+                  : "text-muted-foreground hover:text-foreground",
               )}
-              onClick={() => setViewMode('list')}
+              onClick={() => setViewMode("list")}
               aria-label="列表视图"
             >
               <List className="h-4 w-4" />
@@ -571,7 +565,7 @@ export function AgentListPage() {
                 selectedAgentIds.size === agents.length
                   ? true
                   : selectedAgentIds.size > 0
-                    ? 'indeterminate'
+                    ? "indeterminate"
                     : false
               }
               onCheckedChange={handleSelectAll}
@@ -581,11 +575,7 @@ export function AgentListPage() {
               已选择 {selectedAgentIds.size} 项
             </span>
             <div className="flex-1" />
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={clearAgentSelection}
-            >
+            <Button variant="ghost" size="sm" onClick={clearAgentSelection}>
               <X className="mr-1 h-3.5 w-3.5" />
               取消选择
             </Button>
@@ -606,23 +596,31 @@ export function AgentListPage() {
               <Bot className="h-8 w-8 text-muted-foreground/50" />
             </div>
             <p className="text-sm text-muted-foreground">
-              {filters.search || filters.status ? '没有找到匹配的 Agent' : '还没有创建任何 Agent'}
+              {filters.search || filters.status
+                ? "没有找到匹配的 Agent"
+                : `还没有${getResourceSourceLabel(filters.sourceKind)}的 Agent`}
             </p>
-            {!filters.search && !filters.status && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setCreateDialogOpen(true)}
-              >
-                <Plus className="mr-1.5 h-3.5 w-3.5" />
-                创建第一个 Agent
-              </Button>
-            )}
+            {!filters.search &&
+              !filters.status &&
+              filters.sourceKind === "manual" && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCreateDialogOpen(true)}
+                >
+                  <Plus className="mr-1.5 h-3.5 w-3.5" />
+                  创建第一个 Agent
+                </Button>
+              )}
           </div>
-        ) : viewMode === 'grid' ? (
+        ) : viewMode === "grid" ? (
           <div className="grid grid-cols-[repeat(auto-fill,minmax(340px,1fr))] gap-3">
             {agents.map((agent, i) => (
-              <div key={agent.id} className="card-stagger-enter" style={{ animationDelay: `${i * 40}ms` }}>
+              <div
+                key={agent.id}
+                className="card-stagger-enter"
+                style={{ animationDelay: `${i * 40}ms` }}
+              >
                 <AgentCard
                   agent={agent}
                   selected={selectedAgentIds.has(agent.id)}
@@ -639,7 +637,11 @@ export function AgentListPage() {
         ) : (
           <div className="flex flex-col gap-2">
             {agents.map((agent, i) => (
-              <div key={agent.id} className="card-stagger-enter" style={{ animationDelay: `${i * 30}ms` }}>
+              <div
+                key={agent.id}
+                className="card-stagger-enter"
+                style={{ animationDelay: `${i * 30}ms` }}
+              >
                 <AgentListItem
                   agent={agent}
                   selected={selectedAgentIds.has(agent.id)}
@@ -693,13 +695,14 @@ export function AgentListPage() {
       <AlertDialog
         open={deleteTarget !== null}
         onOpenChange={(open) => {
-          if (!open) setDeleteTarget(null)
+          if (!open) setDeleteTarget(null);
         }}
       >
         <AlertDialogContent>
           <AlertDialogTitle>确认删除</AlertDialogTitle>
           <AlertDialogDescription>
-            确定要删除 Agent &ldquo;{deleteTarget?.name}&rdquo; 吗？此操作不可撤销，所有关联数据将被永久移除。
+            确定要删除 Agent &ldquo;{deleteTarget?.name}&rdquo;
+            吗？此操作不可撤销，所有关联数据将被永久移除。
           </AlertDialogDescription>
           <div className="mt-6 flex justify-end gap-2">
             <AlertDialogCancel>取消</AlertDialogCancel>
@@ -708,12 +711,14 @@ export function AgentListPage() {
               onClick={handleConfirmDelete}
               disabled={deleteAgent.isPending}
             >
-              {deleteAgent.isPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
+              {deleteAgent.isPending && (
+                <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+              )}
               删除
             </AlertDialogAction>
           </div>
         </AlertDialogContent>
       </AlertDialog>
     </div>
-  )
+  );
 }

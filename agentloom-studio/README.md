@@ -27,6 +27,8 @@ AgentLoom Studio 是基于 **React 19 + Vite 7** 的前端工作台，负责工�
 | `/settings/tool-library`             | ToolLibraryPage                | MCP 工具库                                                                                   |
 | `/marketplace`                       | MarketplaceBrowsePage          | 工作流 / 插件市场                                                                            |
 
+`WorkflowListPage`、`AgentListPage`、`KnowledgeBasesPage`、`MemoryInstancesPage`、`McpServerManagementPage` 与 `SkillBrowsePage` 当前统一采用顶部来源分类标签 `自己创建 / 分享导入` 切换列表，默认展示 `自己创建`，条目内部不再重复显示来源 badge；`share_imported` 项仍保留“转为自己创建”动作。
+
 ## Feature-Slice 结构
 
 ```text

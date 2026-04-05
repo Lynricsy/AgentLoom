@@ -1,22 +1,25 @@
-export const RESOURCE_SOURCE_KINDS = ['manual', 'share_imported'] as const
-export type ResourceSourceKind = (typeof RESOURCE_SOURCE_KINDS)[number]
-export type ResourceSourceFilter = ResourceSourceKind | 'all'
+export const RESOURCE_SOURCE_KINDS = ["manual", "share_imported"] as const;
+export type ResourceSourceKind = (typeof RESOURCE_SOURCE_KINDS)[number];
+export type ResourceSourceFilter = ResourceSourceKind | "all";
+
+export const RESOURCE_SOURCE_LABELS: Record<ResourceSourceKind, string> = {
+  manual: "自己创建",
+  share_imported: "分享导入",
+};
+
+export const RESOURCE_SOURCE_CATEGORY_OPTIONS: Array<{
+  value: ResourceSourceKind;
+  label: string;
+}> = RESOURCE_SOURCE_KINDS.map((value) => ({
+  value,
+  label: RESOURCE_SOURCE_LABELS[value],
+}));
 
 export const RESOURCE_SOURCE_FILTER_OPTIONS: Array<{
-  value: ResourceSourceFilter
-  label: string
-}> = [
-  { value: 'all', label: '全部来源' },
-  { value: 'manual', label: '自己创建' },
-  { value: 'share_imported', label: '分享导入' },
-]
+  value: ResourceSourceFilter;
+  label: string;
+}> = [{ value: "all", label: "全部来源" }, ...RESOURCE_SOURCE_CATEGORY_OPTIONS];
 
 export function getResourceSourceLabel(kind: ResourceSourceKind): string {
-  return kind === 'share_imported' ? '分享导入' : '自己创建'
-}
-
-export function getResourceSourceBadgeClass(kind: ResourceSourceKind): string {
-  return kind === 'share_imported'
-    ? 'bg-sky-500/10 text-sky-400 border-sky-500/20'
-    : 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20'
+  return RESOURCE_SOURCE_LABELS[kind];
 }

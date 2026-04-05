@@ -1,42 +1,43 @@
-import { create } from 'zustand'
-import { immer } from 'zustand/middleware/immer'
-import { devtools } from 'zustand/middleware'
+import { create } from "zustand";
+import { immer } from "zustand/middleware/immer";
+import { devtools } from "zustand/middleware";
+import type { ResourceSourceKind } from "@/shared/lib/resourceSource";
 
 interface AgentListFilters {
-  page: number
-  pageSize: number
-  status: string
-  search: string
-  sourceKind: '' | 'manual' | 'share_imported'
+  page: number;
+  pageSize: number;
+  status: string;
+  search: string;
+  sourceKind: ResourceSourceKind;
 }
 
 interface AgentState {
-  filters: AgentListFilters
-  selectedAgentId: string | null
-  settingsPanelOpen: boolean
-  selectedAgentIds: Set<string>
+  filters: AgentListFilters;
+  selectedAgentId: string | null;
+  settingsPanelOpen: boolean;
+  selectedAgentIds: Set<string>;
 }
 
 interface AgentActions {
-  setFilters: (filters: Partial<AgentListFilters>) => void
-  resetFilters: () => void
-  setPage: (page: number) => void
-  selectAgent: (agentId: string | null) => void
-  openSettingsPanel: () => void
-  closeSettingsPanel: () => void
-  toggleSettingsPanel: () => void
-  toggleAgentSelection: (id: string) => void
-  selectAllAgents: (ids: string[]) => void
-  clearAgentSelection: () => void
+  setFilters: (filters: Partial<AgentListFilters>) => void;
+  resetFilters: () => void;
+  setPage: (page: number) => void;
+  selectAgent: (agentId: string | null) => void;
+  openSettingsPanel: () => void;
+  closeSettingsPanel: () => void;
+  toggleSettingsPanel: () => void;
+  toggleAgentSelection: (id: string) => void;
+  selectAllAgents: (ids: string[]) => void;
+  clearAgentSelection: () => void;
 }
 
 const DEFAULT_FILTERS: AgentListFilters = {
   page: 1,
   pageSize: 12,
-  status: '',
-  search: '',
-  sourceKind: '',
-}
+  status: "",
+  search: "",
+  sourceKind: "manual",
+};
 
 export const useAgentStore = create<AgentState & AgentActions>()(
   devtools(
@@ -49,98 +50,98 @@ export const useAgentStore = create<AgentState & AgentActions>()(
       setFilters: (partial) =>
         set(
           (state) => {
-            Object.assign(state.filters, partial)
-            state.filters.page = 1
+            Object.assign(state.filters, partial);
+            state.filters.page = 1;
           },
           false,
-          'agent/setFilters',
+          "agent/setFilters",
         ),
 
       resetFilters: () =>
         set(
           (state) => {
-            state.filters = { ...DEFAULT_FILTERS }
+            state.filters = { ...DEFAULT_FILTERS };
           },
           false,
-          'agent/resetFilters',
+          "agent/resetFilters",
         ),
 
       setPage: (page) =>
         set(
           (state) => {
-            state.filters.page = page
+            state.filters.page = page;
           },
           false,
-          'agent/setPage',
+          "agent/setPage",
         ),
 
       selectAgent: (agentId) =>
         set(
           (state) => {
-            state.selectedAgentId = agentId
+            state.selectedAgentId = agentId;
           },
           false,
-          'agent/selectAgent',
+          "agent/selectAgent",
         ),
 
       openSettingsPanel: () =>
         set(
           (state) => {
-            state.settingsPanelOpen = true
+            state.settingsPanelOpen = true;
           },
           false,
-          'agent/openSettingsPanel',
+          "agent/openSettingsPanel",
         ),
 
       closeSettingsPanel: () =>
         set(
           (state) => {
-            state.settingsPanelOpen = false
+            state.settingsPanelOpen = false;
           },
           false,
-          'agent/closeSettingsPanel',
+          "agent/closeSettingsPanel",
         ),
 
       toggleSettingsPanel: () =>
         set(
           (state) => {
-            state.settingsPanelOpen = !state.settingsPanelOpen
+            state.settingsPanelOpen = !state.settingsPanelOpen;
           },
           false,
-          'agent/toggleSettingsPanel',
+          "agent/toggleSettingsPanel",
         ),
 
       toggleAgentSelection: (id) =>
         set(
           (state) => {
             if (state.selectedAgentIds.has(id)) {
-              state.selectedAgentIds.delete(id)
+              state.selectedAgentIds.delete(id);
             } else {
-              state.selectedAgentIds.add(id)
+              state.selectedAgentIds.add(id);
             }
           },
           false,
-          'agent/toggleAgentSelection',
+          "agent/toggleAgentSelection",
         ),
 
       selectAllAgents: (ids) =>
         set(
           (state) => {
-            state.selectedAgentIds = new Set(ids)
+            state.selectedAgentIds = new Set(ids);
           },
           false,
-          'agent/selectAllAgents',
+          "agent/selectAllAgents",
         ),
 
       clearAgentSelection: () =>
         set(
           (state) => {
-            state.selectedAgentIds = new Set()
+            state.selectedAgentIds = new Set();
           },
           false,
-          'agent/clearAgentSelection',
+          "agent/clearAgentSelection",
         ),
     })),
-    { name: 'AgentStore' },
+    { name: "AgentStore" },
   ),
-)
+);

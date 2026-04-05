@@ -1,5 +1,5 @@
-import { memo, useCallback, useMemo, useState } from 'react'
-import { useNavigate } from '@tanstack/react-router'
+import { memo, useCallback, useMemo, useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
 import {
   Archive,
   ChevronLeft,
@@ -15,88 +15,88 @@ import {
   Search,
   Workflow,
   X,
-} from 'lucide-react'
-import { EntityIcon } from '@/shared/components/entity-icon'
-import { convertResourceSourceToManual } from '@/shared/api/resourceSourceApi'
+} from "lucide-react";
+import { ResourceSourceCategoryTabs } from "@/shared/components";
+import { EntityIcon } from "@/shared/components/entity-icon";
+import { convertResourceSourceToManual } from "@/shared/api/resourceSourceApi";
 import {
-  getResourceSourceBadgeClass,
   getResourceSourceLabel,
-  RESOURCE_SOURCE_FILTER_OPTIONS,
-} from '@/shared/lib/resourceSource'
-import { cn } from '@/shared/lib/utils'
-import { Button } from '@/shared/ui/button'
-import { Input } from '@/shared/ui/input'
-import { Checkbox } from '@/shared/ui/checkbox'
+  type ResourceSourceKind,
+} from "@/shared/lib/resourceSource";
+import { cn } from "@/shared/lib/utils";
+import { Button } from "@/shared/ui/button";
+import { Input } from "@/shared/ui/input";
+import { Checkbox } from "@/shared/ui/checkbox";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from '@/shared/ui/dropdown-menu'
-import { useToast } from '@/shared/ui/toast'
-import { formatRelativeTime } from '@/features/canvas'
-import { useExportWorkflow } from '../api/workflowMutations'
-import { useWorkflowList } from '../api/workflowQueries'
-import { downloadWorkflowExport } from '../lib/workflowExportImport'
-import { useWorkflowStore } from '../stores/workflowStore'
-import { CreateWorkflowDialog } from './CreateWorkflowDialog'
-import { ArchiveDialog } from './ArchiveDialog'
-import type { WorkflowDefinition, WorkflowStatus } from '../types'
+} from "@/shared/ui/dropdown-menu";
+import { useToast } from "@/shared/ui/toast";
+import { formatRelativeTime } from "@/features/canvas";
+import { useExportWorkflow } from "../api/workflowMutations";
+import { useWorkflowList } from "../api/workflowQueries";
+import { downloadWorkflowExport } from "../lib/workflowExportImport";
+import { useWorkflowStore } from "../stores/workflowStore";
+import { CreateWorkflowDialog } from "./CreateWorkflowDialog";
+import { ArchiveDialog } from "./ArchiveDialog";
+import type { WorkflowDefinition, WorkflowStatus } from "../types";
 
-type ViewMode = 'grid' | 'list'
+type ViewMode = "grid" | "list";
 
 const STATUS_OPTIONS = [
-  { value: '', label: '全部状态' },
-  { value: 'draft', label: '草稿' },
-  { value: 'published', label: '已发布' },
-  { value: 'archived', label: '已归档' },
-] as const
+  { value: "", label: "全部状态" },
+  { value: "draft", label: "草稿" },
+  { value: "published", label: "已发布" },
+  { value: "archived", label: "已归档" },
+] as const;
 
 function getStatusBadgeClasses(status: WorkflowStatus): string {
   switch (status) {
-    case 'published':
-      return 'bg-emerald-500/10 text-emerald-500'
-    case 'archived':
-      return 'bg-gray-500/10 text-gray-400'
+    case "published":
+      return "bg-emerald-500/10 text-emerald-500";
+    case "archived":
+      return "bg-gray-500/10 text-gray-400";
     default:
-      return 'bg-amber-500/10 text-amber-500'
+      return "bg-amber-500/10 text-amber-500";
   }
 }
 
 function getStatusLabel(status: WorkflowStatus): string {
   switch (status) {
-    case 'published':
-      return '已发布'
-    case 'archived':
-      return '已归档'
+    case "published":
+      return "已发布";
+    case "archived":
+      return "已归档";
     default:
-      return '草稿'
+      return "草稿";
   }
 }
 
 function getWorkflowReleaseLabel(workflow: WorkflowDefinition): string | null {
-  if (workflow.status !== 'published') {
-    return null
+  if (workflow.status !== "published") {
+    return null;
   }
 
-  if (typeof workflow.publishedReleaseNumber === 'number') {
-    return `v${workflow.publishedReleaseNumber}`
+  if (typeof workflow.publishedReleaseNumber === "number") {
+    return `v${workflow.publishedReleaseNumber}`;
   }
 
-  return 'v1'
+  return "v1";
 }
 
 interface WorkflowCardProps {
-  workflow: WorkflowDefinition
-  selected: boolean
-  batchMode: boolean
-  onSelect: (id: string) => void
-  onClick: (workflow: WorkflowDefinition) => void
-  onEdit: (workflow: WorkflowDefinition) => void
-  onExport: (workflow: WorkflowDefinition) => void
-  onArchive: (workflow: WorkflowDefinition) => void
-  onConvertSource: (workflow: WorkflowDefinition) => void
+  workflow: WorkflowDefinition;
+  selected: boolean;
+  batchMode: boolean;
+  onSelect: (id: string) => void;
+  onClick: (workflow: WorkflowDefinition) => void;
+  onEdit: (workflow: WorkflowDefinition) => void;
+  onExport: (workflow: WorkflowDefinition) => void;
+  onArchive: (workflow: WorkflowDefinition) => void;
+  onConvertSource: (workflow: WorkflowDefinition) => void;
 }
 
 const WorkflowCard = memo(function WorkflowCard({
@@ -110,21 +110,21 @@ const WorkflowCard = memo(function WorkflowCard({
   onArchive,
   onConvertSource,
 }: WorkflowCardProps) {
-  const sourceKind = workflow.resourceSourceKind ?? 'manual'
+  const sourceKind = workflow.resourceSourceKind ?? "manual";
 
   return (
     <div
       className={cn(
-        'card-hover-lift group relative flex flex-col gap-3 rounded-xl border border-border/60 bg-card p-4 text-left',
-        'focus-within:ring-2 focus-within:ring-primary focus-within:ring-offset-2 focus-within:ring-offset-background',
-        selected && 'border-primary/60 bg-primary/5',
+        "card-hover-lift group relative flex flex-col gap-3 rounded-xl border border-border/60 bg-card p-4 text-left",
+        "focus-within:ring-2 focus-within:ring-primary focus-within:ring-offset-2 focus-within:ring-offset-background",
+        selected && "border-primary/60 bg-primary/5",
       )}
     >
       {/* 选择框 */}
       <div
         className={cn(
-          'absolute left-3 top-3 z-10 transition-opacity',
-          batchMode ? 'opacity-100' : 'opacity-0 group-hover:opacity-100',
+          "absolute left-3 top-3 z-10 transition-opacity",
+          batchMode ? "opacity-100" : "opacity-0 group-hover:opacity-100",
         )}
       >
         <Checkbox
@@ -150,8 +150,8 @@ const WorkflowCard = memo(function WorkflowCard({
           <DropdownMenuContent align="end">
             <DropdownMenuItem
               onClick={(e) => {
-                e.stopPropagation()
-                onEdit(workflow)
+                e.stopPropagation();
+                onEdit(workflow);
               }}
             >
               <Edit3 className="h-4 w-4" />
@@ -159,18 +159,18 @@ const WorkflowCard = memo(function WorkflowCard({
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={(e) => {
-                e.stopPropagation()
-                onExport(workflow)
+                e.stopPropagation();
+                onExport(workflow);
               }}
             >
               <Download className="h-4 w-4" />
               导出
             </DropdownMenuItem>
-            {sourceKind === 'share_imported' ? (
+            {sourceKind === "share_imported" ? (
               <DropdownMenuItem
                 onClick={(e) => {
-                  e.stopPropagation()
-                  onConvertSource(workflow)
+                  e.stopPropagation();
+                  onConvertSource(workflow);
                 }}
               >
                 <FolderSync className="h-4 w-4" />
@@ -181,8 +181,8 @@ const WorkflowCard = memo(function WorkflowCard({
             <DropdownMenuItem
               destructive
               onClick={(e) => {
-                e.stopPropagation()
-                onArchive(workflow)
+                e.stopPropagation();
+                onArchive(workflow);
               }}
             >
               <Archive className="h-4 w-4" />
@@ -203,7 +203,7 @@ const WorkflowCard = memo(function WorkflowCard({
           </div>
           <span
             className={cn(
-              'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
+              "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
               getStatusBadgeClasses(workflow.status),
             )}
           >
@@ -213,18 +213,12 @@ const WorkflowCard = memo(function WorkflowCard({
 
         <div className="flex flex-col gap-1">
           <div className="flex items-center gap-2">
-            <h3 className="truncate text-sm font-semibold text-foreground">{workflow.name}</h3>
-            <span
-              className={cn(
-                'rounded-full border px-2 py-0.5 text-[10px] font-medium',
-                getResourceSourceBadgeClass(sourceKind),
-              )}
-            >
-              {getResourceSourceLabel(sourceKind)}
-            </span>
+            <h3 className="truncate text-sm font-semibold text-foreground">
+              {workflow.name}
+            </h3>
           </div>
           <p className="line-clamp-2 text-xs text-muted-foreground">
-            {workflow.description || '暂无描述'}
+            {workflow.description || "暂无描述"}
           </p>
         </div>
 
@@ -245,19 +239,19 @@ const WorkflowCard = memo(function WorkflowCard({
         </div>
       </button>
     </div>
-  )
-})
+  );
+});
 
 interface WorkflowListItemProps {
-  workflow: WorkflowDefinition
-  selected: boolean
-  batchMode: boolean
-  onSelect: (id: string) => void
-  onClick: (workflow: WorkflowDefinition) => void
-  onEdit: (workflow: WorkflowDefinition) => void
-  onExport: (workflow: WorkflowDefinition) => void
-  onArchive: (workflow: WorkflowDefinition) => void
-  onConvertSource: (workflow: WorkflowDefinition) => void
+  workflow: WorkflowDefinition;
+  selected: boolean;
+  batchMode: boolean;
+  onSelect: (id: string) => void;
+  onClick: (workflow: WorkflowDefinition) => void;
+  onEdit: (workflow: WorkflowDefinition) => void;
+  onExport: (workflow: WorkflowDefinition) => void;
+  onArchive: (workflow: WorkflowDefinition) => void;
+  onConvertSource: (workflow: WorkflowDefinition) => void;
 }
 
 const WorkflowListItem = memo(function WorkflowListItem({
@@ -271,19 +265,19 @@ const WorkflowListItem = memo(function WorkflowListItem({
   onArchive,
   onConvertSource,
 }: WorkflowListItemProps) {
-  const sourceKind = workflow.resourceSourceKind ?? 'manual'
+  const sourceKind = workflow.resourceSourceKind ?? "manual";
 
   return (
     <div
       className={cn(
-        'card-hover-lift group flex items-center gap-3 rounded-lg border border-border/60 bg-card px-4 py-3',
-        selected && 'border-primary/60 bg-primary/5',
+        "card-hover-lift group flex items-center gap-3 rounded-lg border border-border/60 bg-card px-4 py-3",
+        selected && "border-primary/60 bg-primary/5",
       )}
     >
       <div
         className={cn(
-          'shrink-0 transition-opacity',
-          batchMode ? 'opacity-100' : 'opacity-0 group-hover:opacity-100',
+          "shrink-0 transition-opacity",
+          batchMode ? "opacity-100" : "opacity-0 group-hover:opacity-100",
         )}
       >
         <Checkbox
@@ -304,15 +298,9 @@ const WorkflowListItem = memo(function WorkflowListItem({
 
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <h3 className="truncate text-sm font-semibold text-foreground">{workflow.name}</h3>
-            <span
-              className={cn(
-                'rounded-full border px-2 py-0.5 text-[10px] font-medium',
-                getResourceSourceBadgeClass(sourceKind),
-              )}
-            >
-              {getResourceSourceLabel(sourceKind)}
-            </span>
+            <h3 className="truncate text-sm font-semibold text-foreground">
+              {workflow.name}
+            </h3>
             {getWorkflowReleaseLabel(workflow) ? (
               <span className="inline-flex items-center rounded bg-muted px-1.5 py-0.5 text-xs font-medium text-muted-foreground">
                 {getWorkflowReleaseLabel(workflow)}
@@ -324,14 +312,14 @@ const WorkflowListItem = memo(function WorkflowListItem({
             )}
           </div>
           <p className="mt-0.5 truncate text-xs text-muted-foreground">
-            {workflow.description || '暂无描述'}
+            {workflow.description || "暂无描述"}
           </p>
         </div>
 
         <div className="flex shrink-0 items-center gap-3">
           <span
             className={cn(
-              'inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium',
+              "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
               getStatusBadgeClasses(workflow.status),
             )}
           >
@@ -363,7 +351,7 @@ const WorkflowListItem = memo(function WorkflowListItem({
               <Download className="h-4 w-4" />
               导出
             </DropdownMenuItem>
-            {sourceKind === 'share_imported' ? (
+            {sourceKind === "share_imported" ? (
               <DropdownMenuItem onClick={() => onConvertSource(workflow)}>
                 <FolderSync className="h-4 w-4" />
                 转为自己创建
@@ -378,8 +366,8 @@ const WorkflowListItem = memo(function WorkflowListItem({
         </DropdownMenu>
       </div>
     </div>
-  )
-})
+  );
+});
 
 function WorkflowCardSkeleton() {
   return (
@@ -397,125 +385,141 @@ function WorkflowCardSkeleton() {
         <div className="shimmer h-3 w-8" />
       </div>
     </div>
-  )
+  );
 }
 
 export function WorkflowListPage() {
-  const navigate = useNavigate()
-  const { notify } = useToast()
-  const filters = useWorkflowStore((s) => s.filters)
-  const setFilters = useWorkflowStore((s) => s.setFilters)
-  const setPage = useWorkflowStore((s) => s.setPage)
-  const selectedWorkflowIds = useWorkflowStore((s) => s.selectedWorkflowIds)
-  const toggleSelection = useWorkflowStore((s) => s.toggleSelection)
-  const selectAll = useWorkflowStore((s) => s.selectAll)
-  const clearSelection = useWorkflowStore((s) => s.clearSelection)
+  const navigate = useNavigate();
+  const { notify } = useToast();
+  const filters = useWorkflowStore((s) => s.filters);
+  const setFilters = useWorkflowStore((s) => s.setFilters);
+  const setPage = useWorkflowStore((s) => s.setPage);
+  const selectedWorkflowIds = useWorkflowStore((s) => s.selectedWorkflowIds);
+  const toggleSelection = useWorkflowStore((s) => s.toggleSelection);
+  const selectAll = useWorkflowStore((s) => s.selectAll);
+  const clearSelection = useWorkflowStore((s) => s.clearSelection);
 
-  const [viewMode, setViewMode] = useState<ViewMode>('grid')
-  const [searchInput, setSearchInput] = useState(filters.search)
-  const [createDialogOpen, setCreateDialogOpen] = useState(false)
-  const [archiveTarget, setArchiveTarget] = useState<WorkflowDefinition | null>(null)
+  const [viewMode, setViewMode] = useState<ViewMode>("grid");
+  const [searchInput, setSearchInput] = useState(filters.search);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [archiveTarget, setArchiveTarget] = useState<WorkflowDefinition | null>(
+    null,
+  );
 
-  const exportWorkflow = useExportWorkflow()
+  const exportWorkflow = useExportWorkflow();
 
   const { data, isLoading, refetch } = useWorkflowList({
     page: filters.page,
     pageSize: filters.pageSize,
     status: filters.status || undefined,
     search: filters.search || undefined,
-    sourceKind: filters.sourceKind || undefined,
-  })
+    sourceKind: filters.sourceKind,
+  });
 
-  const workflows = useMemo(() => data?.data ?? [], [data?.data])
-  const meta = data?.meta
+  const workflows = useMemo(() => data?.data ?? [], [data?.data]);
+  const meta = data?.meta;
 
-  const batchMode = selectedWorkflowIds.size > 0
+  const batchMode = selectedWorkflowIds.size > 0;
 
   const handleSearch = useCallback(
     (value: string) => {
-      setSearchInput(value)
-      setFilters({ search: value })
+      setSearchInput(value);
+      setFilters({ search: value });
     },
     [setFilters],
-  )
+  );
 
   const handleStatusFilter = useCallback(
     (event: React.ChangeEvent<HTMLSelectElement>) => {
-      setFilters({ status: event.target.value })
+      setFilters({ status: event.target.value });
     },
     [setFilters],
-  )
+  );
 
-  const handleSourceFilter = useCallback(
-    (event: React.ChangeEvent<HTMLSelectElement>) => {
-      setFilters({ sourceKind: event.target.value as '' | 'manual' | 'share_imported' })
+  const handleSourceKindChange = useCallback(
+    (value: ResourceSourceKind) => {
+      setFilters({ sourceKind: value });
     },
     [setFilters],
-  )
+  );
 
   const handleWorkflowClick = useCallback(
     (workflow: WorkflowDefinition) => {
-      navigate({ to: '/workflows/$workflowId', params: { workflowId: workflow.id } })
+      navigate({
+        to: "/workflows/$workflowId",
+        params: { workflowId: workflow.id },
+      });
     },
     [navigate],
-  )
+  );
 
   const handleEdit = useCallback(
     (workflow: WorkflowDefinition) => {
-      navigate({ to: '/workflows/$workflowId', params: { workflowId: workflow.id } })
+      navigate({
+        to: "/workflows/$workflowId",
+        params: { workflowId: workflow.id },
+      });
     },
     [navigate],
-  )
+  );
 
   const handleExport = useCallback(
     async (workflow: WorkflowDefinition) => {
       try {
-        const data = await exportWorkflow.mutateAsync(workflow.id)
-        downloadWorkflowExport(data, workflow.slug)
-        notify({ description: '工作流导出成功', variant: 'success' })
+        const data = await exportWorkflow.mutateAsync(workflow.id);
+        downloadWorkflowExport(data, workflow.slug);
+        notify({ description: "工作流导出成功", variant: "success" });
       } catch {
-        notify({ title: '导出失败', description: '请稍后重试', variant: 'error' })
+        notify({
+          title: "导出失败",
+          description: "请稍后重试",
+          variant: "error",
+        });
       }
     },
     [exportWorkflow, notify],
-  )
+  );
 
   const handleArchive = useCallback((workflow: WorkflowDefinition) => {
-    setArchiveTarget(workflow)
-  }, [])
+    setArchiveTarget(workflow);
+  }, []);
 
   const handleConvertSource = useCallback(
     async (workflow: WorkflowDefinition) => {
       try {
-        await convertResourceSourceToManual('workflow_definition', workflow.id)
-        await refetch()
-        notify({ description: '已转为自己创建', variant: 'success' })
+        await convertResourceSourceToManual("workflow_definition", workflow.id);
+        await refetch();
+        notify({ description: "已转为自己创建", variant: "success" });
       } catch {
-        notify({ title: '转换失败', description: '请稍后重试', variant: 'error' })
+        notify({
+          title: "转换失败",
+          description: "请稍后重试",
+          variant: "error",
+        });
       }
     },
     [notify, refetch],
-  )
+  );
 
   const handleSelectAll = useCallback(() => {
     if (selectedWorkflowIds.size === workflows.length) {
-      clearSelection()
+      clearSelection();
     } else {
-      selectAll(workflows.map((w) => w.id))
+      selectAll(workflows.map((w) => w.id));
     }
-  }, [clearSelection, selectAll, selectedWorkflowIds.size, workflows])
+  }, [clearSelection, selectAll, selectedWorkflowIds.size, workflows]);
 
   const handlePrevPage = useCallback(() => {
     if (filters.page > 1) {
-      setPage(filters.page - 1)
+      setPage(filters.page - 1);
     }
-  }, [filters.page, setPage])
+  }, [filters.page, setPage]);
 
   const handleNextPage = useCallback(() => {
     if (meta && filters.page < meta.totalPages) {
-      setPage(filters.page + 1)
+      setPage(filters.page + 1);
     }
-  }, [filters.page, meta, setPage])
+  }, [filters.page, meta, setPage]);
 
   return (
     <div className="flex h-full flex-col">
@@ -523,12 +527,21 @@ export function WorkflowListPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-lg font-semibold text-foreground">工作流</h1>
-            <p className="text-sm text-muted-foreground">管理和配置你的工作流</p>
+            <p className="text-sm text-muted-foreground">
+              管理和配置你的工作流
+            </p>
           </div>
           <Button onClick={() => setCreateDialogOpen(true)}>
             <Plus className="mr-1.5 h-4 w-4" />
             新建
           </Button>
+        </div>
+
+        <div className="mt-4">
+          <ResourceSourceCategoryTabs
+            value={filters.sourceKind}
+            onChange={handleSourceKindChange}
+          />
         </div>
 
         <div className="mt-4 flex items-center gap-3">
@@ -554,28 +567,16 @@ export function WorkflowListPage() {
             ))}
           </select>
 
-          <select
-            value={filters.sourceKind}
-            onChange={handleSourceFilter}
-            className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-          >
-            {RESOURCE_SOURCE_FILTER_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value === 'all' ? '' : option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-
           <div className="flex items-center rounded-md border border-border p-0.5">
             <button
               type="button"
               className={cn(
-                'rounded p-1.5 transition-colors',
-                viewMode === 'grid'
-                  ? 'bg-muted text-foreground'
-                  : 'text-muted-foreground hover:text-foreground',
+                "rounded p-1.5 transition-colors",
+                viewMode === "grid"
+                  ? "bg-muted text-foreground"
+                  : "text-muted-foreground hover:text-foreground",
               )}
-              onClick={() => setViewMode('grid')}
+              onClick={() => setViewMode("grid")}
               aria-label="网格视图"
             >
               <LayoutGrid className="h-4 w-4" />
@@ -583,12 +584,12 @@ export function WorkflowListPage() {
             <button
               type="button"
               className={cn(
-                'rounded p-1.5 transition-colors',
-                viewMode === 'list'
-                  ? 'bg-muted text-foreground'
-                  : 'text-muted-foreground hover:text-foreground',
+                "rounded p-1.5 transition-colors",
+                viewMode === "list"
+                  ? "bg-muted text-foreground"
+                  : "text-muted-foreground hover:text-foreground",
               )}
-              onClick={() => setViewMode('list')}
+              onClick={() => setViewMode("list")}
               aria-label="列表视图"
             >
               <List className="h-4 w-4" />
@@ -604,7 +605,7 @@ export function WorkflowListPage() {
                 selectedWorkflowIds.size === workflows.length
                   ? true
                   : selectedWorkflowIds.size > 0
-                    ? 'indeterminate'
+                    ? "indeterminate"
                     : false
               }
               onCheckedChange={handleSelectAll}
@@ -614,11 +615,7 @@ export function WorkflowListPage() {
               已选择 {selectedWorkflowIds.size} 项
             </span>
             <div className="flex-1" />
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={clearSelection}
-            >
+            <Button variant="ghost" size="sm" onClick={clearSelection}>
               <X className="mr-1 h-3.5 w-3.5" />
               取消选择
             </Button>
@@ -639,25 +636,31 @@ export function WorkflowListPage() {
               <Workflow className="h-8 w-8 text-muted-foreground/50" />
             </div>
             <p className="text-sm text-muted-foreground">
-              {filters.search || filters.status || filters.sourceKind
-                ? '没有找到匹配的工作流'
-                : '还没有创建任何工作流'}
+              {filters.search || filters.status
+                ? "没有找到匹配的工作流"
+                : `还没有${getResourceSourceLabel(filters.sourceKind)}的工作流`}
             </p>
-            {!filters.search && !filters.status && !filters.sourceKind && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setCreateDialogOpen(true)}
-              >
-                <Plus className="mr-1.5 h-3.5 w-3.5" />
-                创建第一个工作流
-              </Button>
-            )}
+            {!filters.search &&
+              !filters.status &&
+              filters.sourceKind === "manual" && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setCreateDialogOpen(true)}
+                >
+                  <Plus className="mr-1.5 h-3.5 w-3.5" />
+                  创建第一个工作流
+                </Button>
+              )}
           </div>
-        ) : viewMode === 'grid' ? (
+        ) : viewMode === "grid" ? (
           <div className="grid grid-cols-[repeat(auto-fill,minmax(340px,1fr))] gap-3">
             {workflows.map((workflow, i) => (
-              <div key={workflow.id} className="card-stagger-enter" style={{ animationDelay: `${i * 40}ms` }}>
+              <div
+                key={workflow.id}
+                className="card-stagger-enter"
+                style={{ animationDelay: `${i * 40}ms` }}
+              >
                 <WorkflowCard
                   workflow={workflow}
                   selected={selectedWorkflowIds.has(workflow.id)}
@@ -675,7 +678,11 @@ export function WorkflowListPage() {
         ) : (
           <div className="flex flex-col gap-2">
             {workflows.map((workflow, i) => (
-              <div key={workflow.id} className="card-stagger-enter" style={{ animationDelay: `${i * 30}ms` }}>
+              <div
+                key={workflow.id}
+                className="card-stagger-enter"
+                style={{ animationDelay: `${i * 30}ms` }}
+              >
                 <WorkflowListItem
                   workflow={workflow}
                   selected={selectedWorkflowIds.has(workflow.id)}
@@ -731,10 +738,10 @@ export function WorkflowListPage() {
           open
           workflowId={archiveTarget.id}
           onOpenChange={(open) => {
-            if (!open) setArchiveTarget(null)
+            if (!open) setArchiveTarget(null);
           }}
         />
       )}
     </div>
-  )
+  );
 }

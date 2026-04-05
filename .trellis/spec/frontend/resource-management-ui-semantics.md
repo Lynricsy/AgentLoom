@@ -32,15 +32,21 @@
 ### Share-imported resource pages
 
 - `WorkflowListPage`
-  - 顶部必须提供来源筛选：`全部来源 / 自己创建 / 分享导入`
-  - 卡片 / 列表项必须显示来源标签
+  - 顶部必须提供来源分类标签：`自己创建 / 分享导入`
+  - Studio 默认落在 `自己创建`
+  - 卡片 / 列表项不再重复显示来源标签
   - `resourceSourceKind === 'share_imported'` 时必须暴露“转为自己创建”动作
 - `AgentListPage`
-  - 列表必须支持 `sourceKind` 筛选并显示来源标签
+  - 列表必须支持 `sourceKind` 筛选
+  - 顶部必须提供来源分类标签：`自己创建 / 分享导入`
+  - Studio 默认落在 `自己创建`
+  - 卡片 / 列表项不再重复显示来源标签
   - `resourceSourceKind === 'share_imported'` 时必须暴露“转为自己创建”动作
 - `KnowledgeBasesPage` / `MemoryInstancesPage` / `McpServerManagementPage` / `SkillBrowsePage`
   - 列表必须支持 `sourceKind=manual|share_imported`
-  - 条目必须展示来源标签
+  - 顶部必须提供来源分类标签：`自己创建 / 分享导入`
+  - Studio 默认落在 `自己创建`
+  - 条目不再重复展示来源标签
   - `share_imported` 项必须支持“转为自己创建”
 - “转为自己创建”只改变分类，不复制新资源、不跳新页；成功后当前列表必须刷新，且当筛选为 `分享导入` 时已转正项应立即消失。
 - workflow / agent 分享导入项在页面上读取 `resourceSourceKind`；knowledge / memory / mcp / skill 读取 `sourceKind`。UI 不能把这两个字段混用。
@@ -84,19 +90,19 @@
 
 ## 4. Validation Matrix
 
-| 场景 | 期望 | 验证点 |
-| --- | --- | --- |
-| Studio workspace API 调用 | 透传 `includeAutoArchived` | `workspaceApi.test.ts` |
-| Studio workspace 来源标签 | 卡片与详情页都显示 `手动工作区 / 沙箱快照 / 执行归档` | 组件测试或手动 QA |
-| Studio sandbox API 调用 | 透传 `bindingType` | `sandboxApi.test.ts` |
-| Studio sandbox stats 展示 | `diskUsage=0` 时显示 `0 B / ...`，不当成缺失 | `SandboxStatsDisplay.test.tsx` |
-| Studio workflow / agent 列表来源筛选 | 透传 `sourceKind` 并显示来源标签 | 对应页面测试 |
-| Studio 资源页点击“转为自己创建” | 调用 shared `convert-to-manual` 并刷新列表 | 对应页面测试 |
-| Flutter workspace DTO | 正确解析 `sourceKind/isAutoArchived` 并给出中文标签 | `resource_entities_test.dart` |
-| Flutter sandbox DTO | 正确解析 `bindingType/timeoutSeconds` 并给出中文标签 | `resource_entities_test.dart` |
-| Flutter sandbox stats DTO | 正确解析 `diskUsage/diskTotal`，并保留 `0` | `resource_entities_test.dart` |
-| Flutter workflow / agent / knowledge / memory / mcp / skill 列表来源筛选 | 正确透传 `sourceKind` 并刷新列表 | screens/provider tests |
-| Flutter 分享导入资源转正 | 调用 `resource-sources/:type/:id/convert-to-manual` 后标签刷新 | screens/provider tests |
+| 场景                                                                     | 期望                                                                        | 验证点                         |
+| ------------------------------------------------------------------------ | --------------------------------------------------------------------------- | ------------------------------ |
+| Studio workspace API 调用                                                | 透传 `includeAutoArchived`                                                  | `workspaceApi.test.ts`         |
+| Studio workspace 来源标签                                                | 卡片与详情页都显示 `手动工作区 / 沙箱快照 / 执行归档`                       | 组件测试或手动 QA              |
+| Studio sandbox API 调用                                                  | 透传 `bindingType`                                                          | `sandboxApi.test.ts`           |
+| Studio sandbox stats 展示                                                | `diskUsage=0` 时显示 `0 B / ...`，不当成缺失                                | `SandboxStatsDisplay.test.tsx` |
+| Studio workflow / agent 列表来源筛选                                     | 透传 `sourceKind`，通过顶部来源分类标签切换列表，且条目不重复显示来源 badge | 对应页面测试                   |
+| Studio 资源页点击“转为自己创建”                                          | 调用 shared `convert-to-manual` 并刷新列表                                  | 对应页面测试                   |
+| Flutter workspace DTO                                                    | 正确解析 `sourceKind/isAutoArchived` 并给出中文标签                         | `resource_entities_test.dart`  |
+| Flutter sandbox DTO                                                      | 正确解析 `bindingType/timeoutSeconds` 并给出中文标签                        | `resource_entities_test.dart`  |
+| Flutter sandbox stats DTO                                                | 正确解析 `diskUsage/diskTotal`，并保留 `0`                                  | `resource_entities_test.dart`  |
+| Flutter workflow / agent / knowledge / memory / mcp / skill 列表来源筛选 | 正确透传 `sourceKind` 并刷新列表                                            | screens/provider tests         |
+| Flutter 分享导入资源转正                                                 | 调用 `resource-sources/:type/:id/convert-to-manual` 后标签刷新              | screens/provider tests         |
 
 ---
 
@@ -106,5 +112,5 @@
 - Studio sandbox 页默认不应再把 conversation / execution session 当成“资源沙箱”展示
 - persistent 资源沙箱到期后，应显示 `已停止`，而不应被渲染成 `失败`
 - running sandbox 写入文件后，Studio 资源页应能看到磁盘占用真实变化；空工作区应显示 `0 B`，而不是空白或伪造值
-- Studio workflow / agent / knowledge / memory / mcp / skill 页要能按来源筛选，并在“转为自己创建”后立即反映到当前筛选结果
-- Flutter workflow / agent / knowledge / memory / mcp / skill 页要与 Studio 保持同一套来源标签、筛选与转正语义
+- Studio workflow / agent / knowledge / memory / mcp / skill 页要能通过顶部来源分类标签切换列表，并在“转为自己创建”后立即反映到当前筛选结果；条目内部不应再重复出现 `自己创建 / 分享导入` badge
+- Flutter workflow / agent / knowledge / memory / mcp / skill 页当前仍使用来源筛选与来源标签，但必须保持同一套 `sourceKind` / 转正语义

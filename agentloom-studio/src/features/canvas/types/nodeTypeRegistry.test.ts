@@ -1,221 +1,338 @@
-import { describe, expect, it } from 'vitest'
-import { buildPaletteGroups } from '../components/nodeCategories'
-import { PORT_DATA_TYPES } from './typeSchema'
-import { clonePortDefinitions, DYNAMIC_ONLY_NODE_TYPES, EXEC_PORT_NODE_TYPES, getWorkflowAgentInputPorts, getAllNodeTypes, getNodeTypeConfig, getNodeTypeConfigOrNull, NODE_TYPE_REGISTRY, NODE_TYPES, PORT_DATA_TYPE_META, type NodeType, type PortDefinition } from './nodeTypeRegistry'
+import { describe, expect, it } from "vitest";
+import { buildPaletteGroups } from "../components/nodeCategories";
+import { PORT_DATA_TYPES } from "./typeSchema";
+import {
+  clonePortDefinitions,
+  DYNAMIC_ONLY_NODE_TYPES,
+  EXEC_PORT_NODE_TYPES,
+  getWorkflowAgentInputPorts,
+  getAllNodeTypes,
+  getNodeTypeConfig,
+  getNodeTypeConfigOrNull,
+  NODE_TYPE_REGISTRY,
+  NODE_TYPES,
+  PORT_DATA_TYPE_META,
+  type NodeType,
+  type PortDefinition,
+} from "./nodeTypeRegistry";
 
-describe('nodeTypeRegistry', () => {
-  it('exports all supported node types in a stable order', () => {
-    expect(NODE_TYPES).toEqual(['chat-agent', 'llm-model', 'http-tool', 'code-tool', 'mcp-tool', 'sandbox', 'manual-trigger', 'schedule-trigger', 'webhook-trigger', 'api-event-trigger', 'knowledge-base', 'text-output', 'json-output', 'condition', 'loop', 'iteration', 'loop-start', 'iteration-start', 'loop-state', 'result', 'break', 'continue', 'reusable-block', 'smart-routing', 'plugin', 'input-preprocessor', 'memory', 'agent', 'skill', 'workspace', 'merge'])
-  })
+describe("nodeTypeRegistry", () => {
+  it("exports all supported node types in a stable order", () => {
+    expect(NODE_TYPES).toEqual([
+      "chat-agent",
+      "llm-model",
+      "http-tool",
+      "code-tool",
+      "mcp-tool",
+      "sandbox",
+      "manual-trigger",
+      "schedule-trigger",
+      "webhook-trigger",
+      "api-event-trigger",
+      "knowledge-base",
+      "text-output",
+      "json-output",
+      "condition",
+      "loop",
+      "iteration",
+      "loop-start",
+      "iteration-start",
+      "loop-state",
+      "result",
+      "break",
+      "continue",
+      "reusable-block",
+      "smart-routing",
+      "plugin",
+      "input-preprocessor",
+      "memory",
+      "agent",
+      "skill",
+      "workspace",
+      "merge",
+    ]);
+  });
 
-  it('keeps port type metadata aligned with the supported data types', () => {
-    expect(Object.keys(PORT_DATA_TYPE_META).sort()).toEqual([...PORT_DATA_TYPES].sort())
+  it("keeps port type metadata aligned with the supported data types", () => {
+    expect(Object.keys(PORT_DATA_TYPE_META).sort()).toEqual(
+      [...PORT_DATA_TYPES].sort(),
+    );
     expect(PORT_DATA_TYPE_META.model).toEqual({
-      label: 'Model',
-      colorToken: 'var(--color-type-model)',
-      shape: 'circle',
-    })
+      label: "Model",
+      colorToken: "var(--color-type-model)",
+      shape: "circle",
+    });
     expect(PORT_DATA_TYPE_META.text).toEqual({
-      label: 'Text',
-      colorToken: 'var(--color-type-text)',
-      shape: 'circle',
-    })
+      label: "Text",
+      colorToken: "var(--color-type-text)",
+      shape: "circle",
+    });
     expect(PORT_DATA_TYPE_META.json).toEqual({
-      label: 'JSON',
-      colorToken: 'var(--color-type-json)',
-      shape: 'square',
-    })
+      label: "JSON",
+      colorToken: "var(--color-type-json)",
+      shape: "square",
+    });
     expect(PORT_DATA_TYPE_META.image).toEqual({
-      label: 'Image',
-      colorToken: 'var(--color-type-image)',
-      shape: 'diamond',
-    })
+      label: "Image",
+      colorToken: "var(--color-type-image)",
+      shape: "diamond",
+    });
     expect(PORT_DATA_TYPE_META.audio).toEqual({
-      label: 'Audio',
-      colorToken: 'var(--color-type-audio)',
-      shape: 'capsule',
-    })
+      label: "Audio",
+      colorToken: "var(--color-type-audio)",
+      shape: "capsule",
+    });
     expect(PORT_DATA_TYPE_META.tool).toEqual({
-      label: 'Tool',
-      colorToken: 'var(--color-type-tool)',
-      shape: 'hexagon',
-    })
+      label: "Tool",
+      colorToken: "var(--color-type-tool)",
+      shape: "hexagon",
+    });
     expect(PORT_DATA_TYPE_META.sandbox).toEqual({
-      label: 'Sandbox',
-      colorToken: 'var(--color-type-sandbox)',
-      shape: 'triangle',
-    })
+      label: "Sandbox",
+      colorToken: "var(--color-type-sandbox)",
+      shape: "triangle",
+    });
     expect(PORT_DATA_TYPE_META.knowledge).toEqual({
-      label: 'Knowledge',
-      colorToken: 'var(--color-type-knowledge)',
-      shape: 'book',
-    })
-  })
+      label: "Knowledge",
+      colorToken: "var(--color-type-knowledge)",
+      shape: "book",
+    });
+  });
 
-  it('returns configs for known node types and throws for unknown types', () => {
-    const config = getNodeTypeConfig('chat-agent')
-    const systemPrompt = config.configSchema.properties.systemPrompt
+  it("returns configs for known node types and throws for unknown types", () => {
+    const config = getNodeTypeConfig("chat-agent");
+    const systemPrompt = config.configSchema.properties.systemPrompt;
 
     if (!systemPrompt) {
-      throw new Error('Expected chat-agent to expose a systemPrompt field')
+      throw new Error("Expected chat-agent to expose a systemPrompt field");
     }
 
-    expect(config.type).toBe('chat-agent')
-    expect(systemPrompt.title).toBe('System Prompt')
-    expect(() => getNodeTypeConfig('unknown-node' as NodeType)).toThrow('Unknown node type')
-  })
+    expect(config.type).toBe("chat-agent");
+    expect(systemPrompt.title).toBe("System Prompt");
+    expect(() => getNodeTypeConfig("unknown-node" as NodeType)).toThrow(
+      "Unknown node type",
+    );
+  });
 
-  it('returns null for unknown node types in safe lookups', () => {
-    expect(getNodeTypeConfigOrNull('chat-agent')?.label).toBe('Chat Agent')
-    expect(getNodeTypeConfigOrNull('not-real')).toBeNull()
-  })
+  it("returns null for unknown node types in safe lookups", () => {
+    expect(getNodeTypeConfigOrNull("chat-agent")?.label).toBe("Chat Agent");
+    expect(getNodeTypeConfigOrNull("not-real")).toBeNull();
+  });
 
-  it('defines llm-model as a single model-output node with multi-connect support', () => {
-    const llmModelNode = getNodeTypeConfig('llm-model')
-    const outputPort = llmModelNode.outputPorts.find((port) => port.id === 'model-out')
+  it("defines llm-model as a single model-output node with multi-connect support", () => {
+    const llmModelNode = getNodeTypeConfig("llm-model");
+    const outputPort = llmModelNode.outputPorts.find(
+      (port) => port.id === "model-out",
+    );
 
-    expect(llmModelNode.category).toBe('agent')
-    expect(llmModelNode.inputPorts.map((port) => port.id)).toEqual(['exec-in'])
-    expect(llmModelNode.outputPorts.map((port) => port.id)).toEqual(['exec-out', 'model-out'])
+    expect(llmModelNode.category).toBe("agent");
+    expect(llmModelNode.inputPorts.map((port) => port.id)).toEqual(["exec-in"]);
+    expect(llmModelNode.outputPorts.map((port) => port.id)).toEqual([
+      "exec-out",
+      "model-out",
+    ]);
 
     expect(outputPort).toMatchObject({
-      id: 'model-out',
-      label: '模型',
-      direction: 'output',
-      dataType: 'model',
+      id: "model-out",
+      label: "模型",
+      direction: "output",
+      dataType: "model",
       required: false,
       multiple: true,
       maxConnections: 5,
-    })
-  })
+    });
+  });
 
-  it('defines knowledge-base as an output-only knowledge source node', () => {
-    const knowledgeBaseNode = getNodeTypeConfig('knowledge-base')
-    const outputPort = knowledgeBaseNode.outputPorts.find((port) => port.id === 'knowledge-out')
+  it("defines knowledge-base as an output-only knowledge source node", () => {
+    const knowledgeBaseNode = getNodeTypeConfig("knowledge-base");
+    const outputPort = knowledgeBaseNode.outputPorts.find(
+      (port) => port.id === "knowledge-out",
+    );
 
-    expect(knowledgeBaseNode.inputPorts.map((port) => port.id)).toEqual(['exec-in'])
-    expect(knowledgeBaseNode.outputPorts.map((port) => port.id)).toEqual(['exec-out', 'knowledge-out'])
+    expect(knowledgeBaseNode.inputPorts.map((port) => port.id)).toEqual([
+      "exec-in",
+    ]);
+    expect(knowledgeBaseNode.outputPorts.map((port) => port.id)).toEqual([
+      "exec-out",
+      "knowledge-out",
+    ]);
     expect(outputPort).toMatchObject({
-      id: 'knowledge-out',
-      label: '知识库',
-      direction: 'output',
-      dataType: 'knowledge',
+      id: "knowledge-out",
+      label: "知识库",
+      direction: "output",
+      dataType: "knowledge",
       required: false,
       multiple: false,
-    })
-  })
+    });
+  });
 
-  it('目标 workflow 节点都会暴露 exec-in 与 exec-out', () => {
+  it("目标 workflow 节点都会暴露 exec-in 与 exec-out", () => {
     for (const type of EXEC_PORT_NODE_TYPES) {
-      const config = getNodeTypeConfig(type)
+      const config = getNodeTypeConfig(type);
 
-      expect(config.inputPorts.some((port) => port.id === 'exec-in')).toBe(true)
-      expect(config.outputPorts.some((port) => port.id === 'exec-out')).toBe(true)
+      expect(config.inputPorts.some((port) => port.id === "exec-in")).toBe(
+        true,
+      );
+      expect(config.outputPorts.some((port) => port.id === "exec-out")).toBe(
+        true,
+      );
     }
-  })
+  });
 
-  it('defines reusable-block as a control node with dynamic ports and no schema fields', () => {
-    const reusableBlockNode = getNodeTypeConfig('reusable-block')
+  it("defines reusable-block as a control node with dynamic ports and no schema fields", () => {
+    const reusableBlockNode = getNodeTypeConfig("reusable-block");
 
-    expect(reusableBlockNode.category).toBe('control')
-    expect(reusableBlockNode.icon).toBe('Package')
-    expect(reusableBlockNode.inputPorts).toEqual([])
-    expect(reusableBlockNode.outputPorts).toEqual([])
+    expect(reusableBlockNode.category).toBe("control");
+    expect(reusableBlockNode.icon).toBe("Package");
+    expect(reusableBlockNode.inputPorts).toEqual([]);
+    expect(reusableBlockNode.outputPorts).toEqual([]);
     expect(reusableBlockNode.configSchema).toEqual({
-      type: 'object',
+      type: "object",
       properties: {},
       required: [],
-    })
-  })
+    });
+  });
 
-  it('defines smart-routing as a palette-visible model selector with canonical ports', () => {
-    const smartRoutingNode = getNodeTypeConfig('smart-routing')
+  it("defines smart-routing as a palette-visible model selector with canonical ports", () => {
+    const smartRoutingNode = getNodeTypeConfig("smart-routing");
 
-    expect(DYNAMIC_ONLY_NODE_TYPES.has('smart-routing')).toBe(false)
-    expect(smartRoutingNode.category).toBe('agent')
-    expect(smartRoutingNode.inputPorts.map((port) => port.id)).toEqual(['exec-in', 'model-in-0', 'model-in-1'])
-    expect(smartRoutingNode.outputPorts.map((port) => port.id)).toEqual(['exec-out', 'model-out'])
-    expect(smartRoutingNode.configSchema.properties.strategy?.default).toBe('random')
-  })
+    expect(DYNAMIC_ONLY_NODE_TYPES.has("smart-routing")).toBe(false);
+    expect(smartRoutingNode.category).toBe("agent");
+    expect(smartRoutingNode.inputPorts.map((port) => port.id)).toEqual([
+      "exec-in",
+      "model-in-0",
+      "model-in-1",
+    ]);
+    expect(smartRoutingNode.outputPorts.map((port) => port.id)).toEqual([
+      "exec-out",
+      "model-out",
+    ]);
+    expect(smartRoutingNode.configSchema.properties.strategy?.default).toBe(
+      "random",
+    );
+  });
 
-  it('workflow agent 输入端口会跟随 agent runtimeMode 移除 sandbox 句柄', () => {
-    expect(getWorkflowAgentInputPorts('sandbox').map((port) => port.id)).toContain('sandbox-in')
-    expect(getWorkflowAgentInputPorts('no_sandbox').map((port) => port.id)).not.toContain('sandbox-in')
-  })
+  it("workflow agent 输入端口会跟随 agent runtimeMode 移除 sandbox 句柄", () => {
+    expect(
+      getWorkflowAgentInputPorts("sandbox").map((port) => port.id),
+    ).toContain("sandbox-in");
+    expect(
+      getWorkflowAgentInputPorts("no_sandbox").map((port) => port.id),
+    ).not.toContain("sandbox-in");
+  });
 
-  it('exposes every registry entry through ordered helpers and palette groups', () => {
-    const orderedTypes = getAllNodeTypes().map((config) => config.type)
-    const groupedTypes = buildPaletteGroups().flatMap((group) => group.items.map((item) => item.type))
-    const staticTypes = NODE_TYPES.filter((t) => !DYNAMIC_ONLY_NODE_TYPES.has(t))
+  it("exposes every registry entry through ordered helpers and palette groups", () => {
+    const orderedTypes = getAllNodeTypes().map((config) => config.type);
+    const groupedTypes = buildPaletteGroups().flatMap((group) =>
+      group.items.map((item) => item.type),
+    );
+    const paletteVisibleTypes = NODE_TYPES.filter(
+      (type) => !DYNAMIC_ONLY_NODE_TYPES.has(type) || type === "merge",
+    );
 
-    expect(orderedTypes).toEqual([...NODE_TYPES])
-    expect(groupedTypes).toEqual(['chat-agent', 'llm-model', 'smart-routing', 'agent', 'skill', 'http-tool', 'code-tool', 'mcp-tool', 'sandbox', 'input-preprocessor', 'workspace', 'manual-trigger', 'schedule-trigger', 'webhook-trigger', 'api-event-trigger', 'knowledge-base', 'memory', 'text-output', 'json-output', 'condition', 'loop', 'iteration'])
-    expect(new Set(groupedTypes)).toEqual(new Set(staticTypes))
-    expect(Object.keys(NODE_TYPE_REGISTRY).sort()).toEqual([...NODE_TYPES].sort())
-  })
+    expect(orderedTypes).toEqual([...NODE_TYPES]);
+    expect(groupedTypes).toEqual([
+      "chat-agent",
+      "llm-model",
+      "smart-routing",
+      "agent",
+      "skill",
+      "http-tool",
+      "code-tool",
+      "mcp-tool",
+      "sandbox",
+      "input-preprocessor",
+      "workspace",
+      "manual-trigger",
+      "schedule-trigger",
+      "webhook-trigger",
+      "api-event-trigger",
+      "knowledge-base",
+      "memory",
+      "text-output",
+      "json-output",
+      "condition",
+      "loop",
+      "iteration",
+      "merge",
+    ]);
+    expect(new Set(groupedTypes)).toEqual(new Set(paletteVisibleTypes));
+    expect(Object.keys(NODE_TYPE_REGISTRY).sort()).toEqual(
+      [...NODE_TYPES].sort(),
+    );
+  });
 
-  it('deep clones nested port schemas when duplicating definitions', () => {
+  it("deep clones nested port schemas when duplicating definitions", () => {
     const ports: PortDefinition[] = [
       {
-        id: 'payload',
-        label: 'Payload',
-        direction: 'input',
-        dataType: 'json',
+        id: "payload",
+        label: "Payload",
+        direction: "input",
+        dataType: "json",
         required: false,
         multiple: false,
         maxConnections: 1,
         schema: {
-          kind: 'json',
-          shape: 'object',
-          title: 'Payload',
+          kind: "json",
+          shape: "object",
+          title: "Payload",
           properties: {
             items: {
-              kind: 'json',
-              shape: 'array',
-              title: 'Items',
+              kind: "json",
+              shape: "array",
+              title: "Items",
               items: {
-                kind: 'text',
-                title: 'Item',
+                kind: "text",
+                title: "Item",
               },
             },
           },
           additionalProperties: false,
         },
       },
-    ]
+    ];
 
-    const cloned = clonePortDefinitions(ports)
-    const originalPort = ports[0]
-    const clonedPort = cloned[0]
+    const cloned = clonePortDefinitions(ports);
+    const originalPort = ports[0];
+    const clonedPort = cloned[0];
 
     if (!originalPort || !clonedPort) {
-      throw new Error('Expected cloned port definitions to contain one port')
+      throw new Error("Expected cloned port definitions to contain one port");
     }
 
-    expect(cloned).not.toBe(ports)
-    expect(clonedPort).not.toBe(originalPort)
-    expect(clonedPort.schema).not.toBe(originalPort.schema)
+    expect(cloned).not.toBe(ports);
+    expect(clonedPort).not.toBe(originalPort);
+    expect(clonedPort.schema).not.toBe(originalPort.schema);
 
-    const originalSchema = originalPort.schema
-    const clonedSchema = clonedPort.schema
+    const originalSchema = originalPort.schema;
+    const clonedSchema = clonedPort.schema;
 
-    if (originalSchema.kind !== 'json' || originalSchema.shape !== 'object') {
-      throw new Error('Expected original schema to be a JSON object schema')
+    if (originalSchema.kind !== "json" || originalSchema.shape !== "object") {
+      throw new Error("Expected original schema to be a JSON object schema");
     }
 
-    if (clonedSchema.kind !== 'json' || clonedSchema.shape !== 'object') {
-      throw new Error('Expected cloned schema to be a JSON object schema')
+    if (clonedSchema.kind !== "json" || clonedSchema.shape !== "object") {
+      throw new Error("Expected cloned schema to be a JSON object schema");
     }
 
-    expect(clonedSchema.properties.items).not.toBe(originalSchema.properties.items)
+    expect(clonedSchema.properties.items).not.toBe(
+      originalSchema.properties.items,
+    );
 
-    const clonedItems = clonedSchema.properties.items
-    const originalItems = originalSchema.properties.items
+    const clonedItems = clonedSchema.properties.items;
+    const originalItems = originalSchema.properties.items;
 
-    if (!clonedItems || clonedItems.kind !== 'json' || clonedItems.shape !== 'array' || !originalItems || originalItems.kind !== 'json' || originalItems.shape !== 'array') {
-      throw new Error('Expected nested items schema to be a JSON array schema')
+    if (
+      !clonedItems ||
+      clonedItems.kind !== "json" ||
+      clonedItems.shape !== "array" ||
+      !originalItems ||
+      originalItems.kind !== "json" ||
+      originalItems.shape !== "array"
+    ) {
+      throw new Error("Expected nested items schema to be a JSON array schema");
     }
 
-    expect(clonedItems.items).not.toBe(originalItems.items)
-  })
-})
+    expect(clonedItems.items).not.toBe(originalItems.items);
+  });
+});

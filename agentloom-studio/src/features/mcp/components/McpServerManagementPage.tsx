@@ -17,13 +17,13 @@ import {
 import { formatRelativeTime } from "@/features/canvas/lib/formatRelativeTime";
 import { convertResourceSourceToManual } from "@/shared/api/resourceSourceApi";
 import {
-  getResourceSourceBadgeClass,
   getResourceSourceLabel,
+  type ResourceSourceKind,
 } from "@/shared/lib/resourceSource";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { Select } from "@/shared/ui/select";
-import { Pagination } from "@/shared/components";
+import { Pagination, ResourceSourceCategoryTabs } from "@/shared/components";
 import { useToast } from "@/shared/ui/toast";
 import { useMcpServerConfigs } from "../api/mcpQueries";
 import {
@@ -126,7 +126,7 @@ function ServerCardActions({
             className="fixed inset-0 z-40"
             onClick={() => setOpen(false)}
             onKeyDown={(e) => {
-              if (e.key === 'Escape') setOpen(false);
+              if (e.key === "Escape") setOpen(false);
             }}
             role="button"
             tabIndex={-1}
@@ -204,7 +204,8 @@ export function McpServerManagementPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [transportFilter, setTransportFilter] = useState<string>("all");
-  const [sourceKindFilter, setSourceKindFilter] = useState<string>("all");
+  const [sourceKindFilter, setSourceKindFilter] =
+    useState<ResourceSourceKind>("manual");
 
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [importRestoreFocus, setImportRestoreFocus] =
@@ -232,8 +233,7 @@ export function McpServerManagementPage() {
       p.status = statusFilter as McpServerConfigSummary["status"];
     if (transportFilter !== "all")
       p.transportType = transportFilter as McpTransportType;
-    if (sourceKindFilter !== "all")
-      p.sourceKind = sourceKindFilter as "manual" | "share_imported";
+    p.sourceKind = sourceKindFilter;
     return p;
   }, [page, search, statusFilter, transportFilter, sourceKindFilter]);
 
@@ -256,7 +256,7 @@ export function McpServerManagementPage() {
     setPage(1);
   }, []);
 
-  const handleSourceKindChange = useCallback((value: string) => {
+  const handleSourceKindChange = useCallback((value: ResourceSourceKind) => {
     setSourceKindFilter(value);
     setPage(1);
   }, []);
@@ -283,8 +283,7 @@ export function McpServerManagementPage() {
       } catch (err) {
         notify({
           title: "连接测试失败",
-          description:
-            err instanceof Error ? err.message : "请稍后重试。",
+          description: err instanceof Error ? err.message : "请稍后重试。",
           variant: "error",
         });
       }
@@ -304,8 +303,7 @@ export function McpServerManagementPage() {
       } catch (err) {
         notify({
           title: "重新发现失败",
-          description:
-            err instanceof Error ? err.message : "请稍后重试。",
+          description: err instanceof Error ? err.message : "请稍后重试。",
           variant: "error",
         });
       }
@@ -350,7 +348,7 @@ export function McpServerManagementPage() {
   const handleCardClick = useCallback(
     (server: McpServerConfigSummary) => {
       void navigate({
-        to: '/resources/mcp-servers/$serverId',
+        to: "/resources/mcp-servers/$serverId",
         params: { serverId: server.id },
       });
     },
@@ -370,10 +368,7 @@ export function McpServerManagementPage() {
   );
 
   const hasFilters =
-    search.trim() !== "" ||
-    statusFilter !== "all" ||
-    transportFilter !== "all" ||
-    sourceKindFilter !== "all";
+    search.trim() !== "" || statusFilter !== "all" || transportFilter !== "all";
 
   return (
     <div className="flex h-full flex-col gap-4 p-6">
@@ -395,6 +390,11 @@ export function McpServerManagementPage() {
           导入新的
         </Button>
       </div>
+
+      <ResourceSourceCategoryTabs
+        value={sourceKindFilter}
+        onChange={handleSourceKindChange}
+      />
 
       {/* 筛选行 */}
       <div className="flex flex-wrap items-center gap-3">
@@ -428,15 +428,6 @@ export function McpServerManagementPage() {
           <option value="sse">SSE</option>
           <option value="streamable_http">HTTP</option>
         </Select>
-        <Select
-          value={sourceKindFilter}
-          onValueChange={handleSourceKindChange}
-          className="w-40"
-        >
-          <option value="all">全部来源</option>
-          <option value="manual">自己创建</option>
-          <option value="share_imported">分享导入</option>
-        </Select>
       </div>
 
       {/* 列表内容 */}
@@ -459,7 +450,9 @@ export function McpServerManagementPage() {
           <p className="text-sm text-muted-foreground">
             {hasFilters
               ? "没有匹配的服务器"
-              : "暂无 MCP 服务器，点击右上角导入"}
+              : sourceKindFilter === "manual"
+                ? "暂无自己创建的 MCP 服务器，点击右上角导入"
+                : `暂无${getResourceSourceLabel(sourceKindFilter)}的 MCP 服务器`}
           </p>
         </div>
       ) : (
@@ -484,19 +477,15 @@ export function McpServerManagementPage() {
                       </h2>
                       <TransportBadge type={server.transportType} />
                       <StatusDot status={server.status} />
-                      <span
-                        className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${getResourceSourceBadgeClass(
-                          server.sourceKind ?? "manual",
-                        )}`}
-                      >
-                        {getResourceSourceLabel(server.sourceKind ?? "manual")}
-                      </span>
                     </div>
                     <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">
                       {server.description || "暂无描述"}
                     </p>
                   </div>
-                  <div className="flex shrink-0 items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                  <div
+                    className="flex shrink-0 items-center gap-1"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     <Button
                       variant="outline"
                       size="sm"
@@ -586,7 +575,7 @@ export function McpServerManagementPage() {
             className="absolute inset-0 bg-black/60 backdrop-blur-sm"
             onClick={() => setConfirmDelete(null)}
             onKeyDown={(e) => {
-              if (e.key === 'Escape') setConfirmDelete(null);
+              if (e.key === "Escape") setConfirmDelete(null);
             }}
             role="button"
             tabIndex={-1}

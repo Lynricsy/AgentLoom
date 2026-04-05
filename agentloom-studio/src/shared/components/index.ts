@@ -1,1 +1,2 @@
-export { Pagination } from './Pagination'
+export { Pagination } from "./Pagination";
+export { ResourceSourceCategoryTabs } from "./resource-source";

@@ -1,11 +1,11 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { Plus, Search, Database, Trash2 } from "lucide-react";
-import { Pagination } from "@/shared/components";
+import { Pagination, ResourceSourceCategoryTabs } from "@/shared/components";
 import { convertResourceSourceToManual } from "@/shared/api/resourceSourceApi";
 import {
-  getResourceSourceBadgeClass,
   getResourceSourceLabel,
+  type ResourceSourceKind,
 } from "@/shared/lib/resourceSource";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
@@ -47,9 +47,8 @@ export function KnowledgeBasesPage() {
   const pageSize = 20;
   const [searchQuery, setSearchQuery] = useState("");
   const [page, setPage] = useState(1);
-  const [sourceKindFilter, setSourceKindFilter] = useState<
-    "" | "manual" | "share_imported"
-  >("");
+  const [sourceKindFilter, setSourceKindFilter] =
+    useState<ResourceSourceKind>("manual");
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [newKbName, setNewKbName] = useState("");
   const [newKbDescription, setNewKbDescription] = useState("");
@@ -67,7 +66,7 @@ export function KnowledgeBasesPage() {
   } = useKnowledgeBases({
     page,
     pageSize,
-    sourceKind: sourceKindFilter || undefined,
+    sourceKind: sourceKindFilter,
   });
   const {
     data: allKnowledgeBases,
@@ -76,7 +75,7 @@ export function KnowledgeBasesPage() {
     refetch: refetchAllKnowledgeBases,
   } = useAllKnowledgeBases({
     enabled: isSearching,
-    sourceKind: sourceKindFilter || undefined,
+    sourceKind: sourceKindFilter,
   });
   const createMutation = useCreateKnowledgeBase();
   const deleteMutation = useDeleteKnowledgeBase();
@@ -227,34 +226,26 @@ export function KnowledgeBasesPage() {
         </Button>
       </div>
 
+      <ResourceSourceCategoryTabs
+        value={sourceKindFilter}
+        onChange={(nextValue) => {
+          setSourceKindFilter(nextValue);
+          setPage(1);
+        }}
+      />
+
       {/* 搜索 */}
-      <div className="flex gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            placeholder="搜索知识库..."
-            value={searchQuery}
-            onChange={(e) => {
-              setSearchQuery(e.target.value);
-              setPage(1);
-            }}
-            className="pl-9"
-          />
-        </div>
-        <select
-          value={sourceKindFilter}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+        <Input
+          placeholder="搜索知识库..."
+          value={searchQuery}
           onChange={(e) => {
-            setSourceKindFilter(
-              e.target.value as "" | "manual" | "share_imported",
-            );
+            setSearchQuery(e.target.value);
             setPage(1);
           }}
-          className="h-10 rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-        >
-          <option value="">全部来源</option>
-          <option value="manual">自己创建</option>
-          <option value="share_imported">分享导入</option>
-        </select>
+          className="pl-9"
+        />
       </div>
 
       {/* 加载状态 */}
@@ -271,7 +262,7 @@ export function KnowledgeBasesPage() {
           <p className="text-muted-foreground">
             {searchQuery
               ? "没有匹配的知识库"
-              : "还没有知识库，点击上方按钮创建"}
+              : `还没有${getResourceSourceLabel(sourceKindFilter)}的知识库，点击上方按钮创建`}
           </p>
         </div>
       )}
@@ -299,13 +290,6 @@ export function KnowledgeBasesPage() {
                         )}`}
                       >
                         {getKnowledgeBaseStatusLabel(kb.status)}
-                      </span>
-                      <span
-                        className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${getResourceSourceBadgeClass(
-                          kb.sourceKind ?? "manual",
-                        )}`}
-                      >
-                        {getResourceSourceLabel(kb.sourceKind ?? "manual")}
                       </span>
                     </div>
                     {kb.description && (
