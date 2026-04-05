@@ -1,56 +1,49 @@
-import { memo, useState } from 'react'
-import { MoreVertical, Trash2, FolderOpen } from 'lucide-react'
-import { formatRelativeTime } from '@/features/canvas'
-import { cn } from '@/shared/lib/utils'
-import type { Workspace } from '../types'
+import { memo, useState } from "react";
+import { MoreVertical, Trash2, FolderOpen, Eye } from "lucide-react";
+import { Button } from "@/shared/ui/button";
+import { formatRelativeTime } from "@/features/canvas";
+import { cn } from "@/shared/lib/utils";
+import type { Workspace } from "../types";
+import { formatWorkspaceSize } from "../lib/formatSize";
 
 interface WorkspaceCardProps {
-  workspace: Workspace
-  onDelete: (workspace: Workspace) => void
+  workspace: Workspace;
+  onDelete: (workspace: Workspace) => void;
+  onOpen: (workspace: Workspace) => void;
 }
 
 const STATUS_BADGE: Record<string, string> = {
-  ready: 'bg-emerald-500/10 text-emerald-500',
-  creating: 'bg-amber-500/10 text-amber-500',
-  archived: 'bg-neutral-500/10 text-neutral-500',
-}
+  ready: "bg-emerald-500/10 text-emerald-500",
+  creating: "bg-amber-500/10 text-amber-500",
+  archived: "bg-neutral-500/10 text-neutral-500",
+};
 
 const STATUS_LABEL: Record<string, string> = {
-  ready: '就绪',
-  creating: '创建中',
-  archived: '已归档',
-}
+  ready: "就绪",
+  creating: "创建中",
+  archived: "已归档",
+};
 
-const SOURCE_BADGE: Record<NonNullable<Workspace['sourceKind']>, string> = {
-  manual: 'bg-slate-500/10 text-slate-300',
-  sandbox_snapshot: 'bg-blue-500/10 text-blue-400',
-  execution_archive: 'bg-amber-500/10 text-amber-400',
-}
+const SOURCE_BADGE: Record<NonNullable<Workspace["sourceKind"]>, string> = {
+  manual: "bg-slate-500/10 text-slate-300",
+  sandbox_snapshot: "bg-blue-500/10 text-blue-400",
+  execution_archive: "bg-amber-500/10 text-amber-400",
+};
 
-const SOURCE_LABEL: Record<NonNullable<Workspace['sourceKind']>, string> = {
-  manual: '常规',
-  sandbox_snapshot: '沙箱快照',
-  execution_archive: '执行归档',
-}
-
-function formatSize(bytes: number | null): string {
-  if (bytes === null) return '未知'
-  if (bytes === 0) return '0 B'
-  const units = ['B', 'KB', 'MB', 'GB']
-  const k = 1024
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  const size = bytes / Math.pow(k, i)
-  return `${size.toFixed(i === 0 ? 0 : 1)} ${units[i]}`
-}
+const SOURCE_LABEL: Record<NonNullable<Workspace["sourceKind"]>, string> = {
+  manual: "常规",
+  sandbox_snapshot: "沙箱快照",
+  execution_archive: "执行归档",
+};
 
 function CardActions({
   workspace,
   onDelete,
 }: {
-  workspace: Workspace
-  onDelete: (workspace: Workspace) => void
+  workspace: Workspace;
+  onDelete: (workspace: Workspace) => void;
 }) {
-  const [open, setOpen] = useState(false)
+  const [open, setOpen] = useState(false);
 
   return (
     <div className="relative">
@@ -67,7 +60,7 @@ function CardActions({
             className="fixed inset-0 z-40"
             onClick={() => setOpen(false)}
             onKeyDown={(e) => {
-              if (e.key === 'Escape') setOpen(false)
+              if (e.key === "Escape") setOpen(false);
             }}
             role="button"
             tabIndex={-1}
@@ -78,8 +71,8 @@ function CardActions({
               type="button"
               className="flex w-full cursor-pointer items-center gap-2 px-3 py-1.5 text-xs text-red-400 transition-colors hover:bg-red-500/10"
               onClick={() => {
-                onDelete(workspace)
-                setOpen(false)
+                onDelete(workspace);
+                setOpen(false);
               }}
             >
               <Trash2 className="h-3.5 w-3.5" />
@@ -89,15 +82,21 @@ function CardActions({
         </>
       )}
     </div>
-  )
+  );
 }
 
 export const WorkspaceCard = memo(function WorkspaceCard({
   workspace,
   onDelete,
+  onOpen,
 }: WorkspaceCardProps) {
-  const statusKey = workspace.status === 'creating' ? 'creating' : workspace.status === 'archived' ? 'archived' : 'ready'
-  const sourceKind = workspace.sourceKind ?? 'manual'
+  const statusKey =
+    workspace.status === "creating"
+      ? "creating"
+      : workspace.status === "archived"
+        ? "archived"
+        : "ready";
+  const sourceKind = workspace.sourceKind ?? "manual";
 
   return (
     <article className="group relative rounded-2xl border border-border bg-surface-elevated p-5 shadow-sm transition-shadow hover:shadow-md">
@@ -112,7 +111,7 @@ export const WorkspaceCard = memo(function WorkspaceCard({
           </h2>
           <span
             className={cn(
-              'inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[11px] font-medium',
+              "inline-flex shrink-0 items-center rounded-full px-2 py-0.5 text-[11px] font-medium",
               STATUS_BADGE[statusKey],
             )}
           >
@@ -132,7 +131,7 @@ export const WorkspaceCard = memo(function WorkspaceCard({
       <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
         <span
           className={cn(
-            'inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium',
+            "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium",
             SOURCE_BADGE[sourceKind],
           )}
         >
@@ -142,9 +141,16 @@ export const WorkspaceCard = memo(function WorkspaceCard({
 
       {/* Footer */}
       <div className="mt-4 flex items-center gap-4 text-xs text-muted-foreground">
-        <span>{formatSize(workspace.sizeBytes)}</span>
+        <span>{formatWorkspaceSize(workspace.sizeBytes)}</span>
         <span>创建于 {formatRelativeTime(new Date(workspace.createdAt))}</span>
       </div>
+
+      <div className="mt-4 flex items-center justify-end">
+        <Button variant="outline" size="sm" onClick={() => onOpen(workspace)}>
+          <Eye className="mr-1.5 h-3.5 w-3.5" />
+          预览
+        </Button>
+      </div>
     </article>
-  )
-})
+  );
+});

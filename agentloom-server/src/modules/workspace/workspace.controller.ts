@@ -10,8 +10,9 @@ import {
   Post,
   Query,
   Req,
+  Res,
 } from '@nestjs/common';
-import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { FastifyRequest } from 'fastify';
 
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -99,6 +100,70 @@ export class WorkspaceController {
         totalPages: Math.ceil(result.total / pageSize),
       },
     };
+  }
+
+  @Get(':id/tree')
+  @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
+  @ApiOperation({ summary: 'Get workspace file tree' })
+  @ApiResponse({ status: 200, description: 'Workspace file tree' })
+  @ApiResponse({ status: 404, description: 'Workspace snapshot not found' })
+  async getFileTree(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const data = await this.workspaceService.getFileTree(
+      this.getTenantId(req),
+      id,
+    );
+    return { data };
+  }
+
+  @Get(':id/preview/*')
+  @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
+  @ApiOperation({ summary: 'Get workspace file preview metadata' })
+  @ApiParam({ name: 'id', description: 'Workspace snapshot UUID' })
+  @ApiParam({ name: '*', description: 'Workspace file path' })
+  @ApiResponse({ status: 200, description: 'Workspace file preview' })
+  @ApiResponse({ status: 404, description: 'Workspace file not found' })
+  async getFilePreview(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('*') filePath: string,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    const data = await this.workspaceService.getFilePreview(
+      this.getTenantId(req),
+      id,
+      filePath,
+    );
+    return { data };
+  }
+
+  @Get(':id/raw/*')
+  @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
+  @ApiOperation({ summary: 'Get raw workspace file bytes' })
+  @ApiParam({ name: 'id', description: 'Workspace snapshot UUID' })
+  @ApiParam({ name: '*', description: 'Workspace file path' })
+  @ApiResponse({ status: 200, description: 'Workspace file stream' })
+  @ApiResponse({ status: 404, description: 'Workspace file not found' })
+  async getRawFile(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('*') filePath: string,
+    @Req() req: AuthenticatedRequest,
+    @Res({ passthrough: false }) reply: any,
+  ) {
+    const asset = await this.workspaceService.getFileAsset(
+      this.getTenantId(req),
+      id,
+      filePath,
+    );
+
+    reply.header(
+      'Content-Disposition',
+      `inline; filename="${encodeURIComponent(asset.fileName)}"`,
+    );
+    reply.header('Content-Length', String(asset.size));
+    reply.type(asset.mimeType);
+    return reply.send(asset.content);
   }
 
   @Get(':id')

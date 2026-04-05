@@ -22,6 +22,8 @@ AgentLoom Studio 是基于 **React 19 + Vite 7** 的前端工作台，负责工�
 | `/settings/resource-quotas`          | ResourceGovernancePage         | owner/admin 资源治理页：quota、tenant/workflow governance、异常 execution 终止               |
 | `/settings/monitoring`               | MonitoringDashboardPage        | owner/admin 组织级只读运行监控页：执行趋势、当前队列快照摘要、alerts、hotspots、risk summary |
 | `/resources/knowledge-bases`         | KnowledgeBasesPage             | 知识库管理（列表页展示文档数 / 知识节点数 / 策略摘要）                                       |
+| `/resources/workspaces`              | WorkspaceManagementPage        | 持久化 workspace 列表页；默认隐藏 execution 自动归档快照，并显示来源标签                     |
+| `/resources/workspaces/$workspaceId` | WorkspaceDetailPage            | 持久化 workspace 详情页；目录树 + 文本 / 图片 / PDF 预览，其他文件提供下载兜底               |
 | `/settings/tool-library`             | ToolLibraryPage                | MCP 工具库                                                                                   |
 | `/marketplace`                       | MarketplaceBrowsePage          | 工作流 / 插件市场                                                                            |
 

@@ -1,4 +1,3 @@
-import { Readable } from 'node:stream';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { ConflictException, NotFoundException } from '@nestjs/common';
 
@@ -8,7 +7,6 @@ const {
   mockDockerService,
   mockSandboxService,
   mockWorkspaceService,
-  mockStorageService,
   mockEventEmitter,
   mockSessionPersistence,
   mockDb,
@@ -26,10 +24,9 @@ const {
   mockWorkspaceService: {
     createFromSandbox: vi.fn(),
     findOne: vi.fn(),
+    getFileTree: vi.fn(),
+    getFilePreview: vi.fn(),
     resolveOrganizationId: vi.fn(),
-  },
-  mockStorageService: {
-    download: vi.fn(),
   },
   mockEventEmitter: {
     emit: vi.fn(),
@@ -53,8 +50,6 @@ const ORG_ID = 'org-001';
 const USER_ID = 'user-001';
 const SESSION_ID = 'session-001';
 const WORKSPACE_SNAPSHOT_ID = 'workspace-001';
-const WORKSPACE_STORAGE_KEY =
-  'tenants/tenant-001/workspaces/workspace-001/snapshot.tar';
 
 function mockSandboxSession(overrides: Record<string, unknown> = {}) {
   return {
@@ -104,81 +99,6 @@ function createUpdateChain() {
   const where = vi.fn().mockResolvedValue(undefined);
   const set = vi.fn().mockReturnValue({ where });
   return { set, where };
-}
-
-function writeTarString(
-  header: Buffer,
-  offset: number,
-  length: number,
-  value: string,
-) {
-  Buffer.from(value).copy(
-    header,
-    offset,
-    0,
-    Math.min(Buffer.byteLength(value), length),
-  );
-}
-
-function writeTarOctal(
-  header: Buffer,
-  offset: number,
-  length: number,
-  value: number,
-) {
-  const octal = value.toString(8).padStart(length - 1, '0');
-  header.write(`${octal}\0`, offset, length, 'ascii');
-}
-
-function createTarBuffer(
-  entries: Array<{
-    path: string;
-    type: 'file' | 'directory';
-    content?: string;
-  }>,
-): Buffer {
-  const chunks: Buffer[] = [];
-
-  for (const entry of entries) {
-    const content =
-      entry.type === 'file'
-        ? Buffer.from(entry.content ?? '', 'utf-8')
-        : Buffer.alloc(0);
-    const header = Buffer.alloc(512, 0);
-    const normalizedPath =
-      entry.type === 'directory' ? `${entry.path}/` : entry.path;
-
-    writeTarString(header, 0, 100, normalizedPath);
-    writeTarOctal(header, 100, 8, entry.type === 'directory' ? 0o755 : 0o644);
-    writeTarOctal(header, 108, 8, 0);
-    writeTarOctal(header, 116, 8, 0);
-    writeTarOctal(header, 124, 12, content.length);
-    writeTarOctal(header, 136, 12, 0);
-    header.fill(' ', 148, 156);
-    header[156] =
-      entry.type === 'directory' ? '5'.charCodeAt(0) : '0'.charCodeAt(0);
-    writeTarString(header, 257, 6, 'ustar');
-    writeTarString(header, 263, 2, '00');
-
-    let checksum = 0;
-    for (const byte of header.values()) {
-      checksum += byte;
-    }
-    const checksumField = checksum.toString(8).padStart(6, '0');
-    header.write(`${checksumField}\0 `, 148, 8, 'ascii');
-
-    chunks.push(header);
-    if (content.length > 0) {
-      chunks.push(content);
-      const remainder = content.length % 512;
-      if (remainder !== 0) {
-        chunks.push(Buffer.alloc(512 - remainder, 0));
-      }
-    }
-  }
-
-  chunks.push(Buffer.alloc(1024, 0));
-  return Buffer.concat(chunks);
 }
 
 /**
@@ -246,10 +166,11 @@ describe('WorkspaceIntegrationService', () => {
     mockSandboxService.findByExecutionId.mockReset();
     mockSandboxService.endConversationSandbox.mockReset();
     mockWorkspaceService.findOne.mockReset();
+    mockWorkspaceService.getFileTree.mockReset();
+    mockWorkspaceService.getFilePreview.mockReset();
     mockWorkspaceService.resolveOrganizationId
       .mockReset()
       .mockResolvedValue(ORG_ID);
-    mockStorageService.download.mockReset();
     mockSessionPersistence.loadFromCheckpoint
       .mockReset()
       .mockResolvedValue(null);
@@ -263,7 +184,6 @@ describe('WorkspaceIntegrationService', () => {
       mockWorkspaceService as never,
       mockEventEmitter as never,
       mockSessionPersistence as never,
-      mockStorageService as never,
     );
   });
 
@@ -310,9 +230,9 @@ describe('WorkspaceIntegrationService', () => {
         }),
       );
 
-      await expect(service.getFileTree(CONVERSATION_ID, TENANT_ID)).resolves.toEqual(
-        [],
-      );
+      await expect(
+        service.getFileTree(CONVERSATION_ID, TENANT_ID),
+      ).resolves.toEqual([]);
     });
 
     it('容器 ID 为空时应返回空目录树', async () => {
@@ -326,9 +246,9 @@ describe('WorkspaceIntegrationService', () => {
         }),
       );
 
-      await expect(service.getFileTree(CONVERSATION_ID, TENANT_ID)).resolves.toEqual(
-        [],
-      );
+      await expect(
+        service.getFileTree(CONVERSATION_ID, TENANT_ID),
+      ).resolves.toEqual([]);
     });
 
     it('空输出应返回空数组', async () => {
@@ -470,23 +390,21 @@ describe('WorkspaceIntegrationService', () => {
         mockWorkflowSession(),
       );
       mockSandboxService.findByExecutionId.mockResolvedValue(null);
-      mockWorkspaceService.findOne.mockResolvedValue({
-        id: WORKSPACE_SNAPSHOT_ID,
-        status: 'ready',
-        storageKey: WORKSPACE_STORAGE_KEY,
-      });
-      mockStorageService.download.mockResolvedValue(
-        Readable.from(
-          createTarBuffer([
-            { path: 'workspace/src', type: 'directory' },
+      mockWorkspaceService.getFileTree.mockResolvedValue([
+        {
+          name: 'src',
+          type: 'directory',
+          path: 'src',
+          children: [
             {
-              path: 'workspace/src/main.ts',
+              name: 'main.ts',
               type: 'file',
-              content: 'hello snapshot',
+              path: 'src/main.ts',
+              size: 14,
             },
-          ]),
-        ),
-      );
+          ],
+        },
+      ]);
 
       const result = await service.getExecutionStepFileTree(
         EXECUTION_ID,
@@ -497,7 +415,7 @@ describe('WorkspaceIntegrationService', () => {
       expect(result).toHaveLength(1);
       expect(result[0]?.path).toBe('src');
       expect(result[0]?.children?.[0]?.path).toBe('src/main.ts');
-      expect(mockWorkspaceService.findOne).toHaveBeenCalledWith(
+      expect(mockWorkspaceService.getFileTree).toHaveBeenCalledWith(
         TENANT_ID,
         WORKSPACE_SNAPSHOT_ID,
       );
@@ -746,23 +664,16 @@ describe('WorkspaceIntegrationService', () => {
         mockWorkflowSession(),
       );
       mockSandboxService.findByExecutionId.mockResolvedValue(null);
-      mockWorkspaceService.findOne.mockResolvedValue({
-        id: WORKSPACE_SNAPSHOT_ID,
-        status: 'ready',
-        storageKey: WORKSPACE_STORAGE_KEY,
+      mockWorkspaceService.getFilePreview.mockResolvedValue({
+        kind: 'text',
+        path: 'src/main.ts',
+        fileName: 'main.ts',
+        size: 14,
+        mimeType: 'text/typescript',
+        canDownload: true,
+        content: 'hello snapshot',
+        encoding: 'utf-8',
       });
-      mockStorageService.download.mockResolvedValue(
-        Readable.from(
-          createTarBuffer([
-            { path: 'workspace/src', type: 'directory' },
-            {
-              path: 'workspace/src/main.ts',
-              type: 'file',
-              content: 'hello snapshot',
-            },
-          ]),
-        ),
-      );
 
       const result = await service.getExecutionStepFileContent(
         EXECUTION_ID,
@@ -773,6 +684,11 @@ describe('WorkspaceIntegrationService', () => {
 
       expect(result.content).toBe('hello snapshot');
       expect(result.path).toBe('src/main.ts');
+      expect(mockWorkspaceService.getFilePreview).toHaveBeenCalledWith(
+        TENANT_ID,
+        WORKSPACE_SNAPSHOT_ID,
+        'src/main.ts',
+      );
     });
   });
 

@@ -118,6 +118,77 @@ function createReadableStream(): Readable {
   return Readable.from(Buffer.from('fake-tar-data'));
 }
 
+function createReadableStreamFromBuffer(buffer: Buffer): Readable {
+  return Readable.from(buffer);
+}
+
+function writeTarString(
+  buffer: Buffer,
+  offset: number,
+  length: number,
+  value: string,
+) {
+  const encoded = Buffer.from(value);
+  encoded.copy(buffer, offset, 0, Math.min(length, encoded.length));
+}
+
+function writeTarOctal(
+  buffer: Buffer,
+  offset: number,
+  length: number,
+  value: number,
+) {
+  const encoded = Buffer.from(
+    `${value.toString(8).padStart(length - 1, '0')}\0`,
+  );
+  encoded.copy(buffer, offset, 0, Math.min(length, encoded.length));
+}
+
+function createTarArchive(
+  entries: Array<{
+    path: string;
+    type: 'file' | 'directory';
+    content?: Buffer | string;
+  }>,
+): Buffer {
+  const blocks: Buffer[] = [];
+
+  for (const entry of entries) {
+    const content =
+      entry.type === 'file'
+        ? Buffer.isBuffer(entry.content)
+          ? entry.content
+          : Buffer.from(entry.content ?? '')
+        : Buffer.alloc(0);
+    const header = Buffer.alloc(512, 0);
+
+    writeTarString(header, 0, 100, entry.path);
+    writeTarOctal(header, 100, 8, entry.type === 'directory' ? 0o755 : 0o644);
+    writeTarOctal(header, 108, 8, 0);
+    writeTarOctal(header, 116, 8, 0);
+    writeTarOctal(header, 124, 12, content.length);
+    writeTarOctal(header, 136, 12, 0);
+    header.fill(0x20, 148, 156);
+    header[156] =
+      entry.type === 'directory' ? '5'.charCodeAt(0) : '0'.charCodeAt(0);
+    writeTarString(header, 257, 6, 'ustar');
+    writeTarString(header, 263, 2, '00');
+
+    const checksum = header.reduce((sum, value) => sum + value, 0);
+    writeTarOctal(header, 148, 8, checksum);
+
+    blocks.push(header, content);
+
+    const padding = (512 - (content.length % 512)) % 512;
+    if (padding > 0) {
+      blocks.push(Buffer.alloc(padding, 0));
+    }
+  }
+
+  blocks.push(Buffer.alloc(1024, 0));
+  return Buffer.concat(blocks);
+}
+
 // ─── Test suite ──────────────────────────────────────────────────────────────
 
 describe('WorkspaceService', () => {
@@ -625,6 +696,183 @@ describe('WorkspaceService', () => {
       await expect(
         service.findOne(TEST_TENANT_ID, TEST_WORKSPACE_ID),
       ).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  // ─── preview helpers ───────────────────────────────────────────────────
+
+  describe('preview', () => {
+    it('getFileTree 应当从带 workspace 根目录的归档构建文件树', async () => {
+      const snapshot = buildSnapshot({ sizeBytes: 2048 });
+      const archive = createTarArchive([
+        { path: 'workspace/docs', type: 'directory' },
+        {
+          path: 'workspace/docs/readme.md',
+          type: 'file',
+          content: '# hello',
+        },
+        {
+          path: 'workspace/cover.png',
+          type: 'file',
+          content: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x0d]),
+        },
+      ]);
+
+      db.select.mockReturnValueOnce(createSelectChainWithLimit([snapshot]));
+      mockStorageService.download.mockResolvedValueOnce(
+        createReadableStreamFromBuffer(archive),
+      );
+
+      const tree = await service.getFileTree(TEST_TENANT_ID, TEST_WORKSPACE_ID);
+
+      expect(tree).toEqual([
+        {
+          name: 'docs',
+          type: 'directory',
+          path: 'docs',
+          children: [
+            {
+              name: 'readme.md',
+              type: 'file',
+              path: 'docs/readme.md',
+              size: 7,
+            },
+          ],
+        },
+        {
+          name: 'cover.png',
+          type: 'file',
+          path: 'cover.png',
+          size: 6,
+        },
+      ]);
+    });
+
+    it('getFilePreview 应当返回文本文件预览', async () => {
+      const snapshot = buildSnapshot({ sizeBytes: 1024 });
+      const archive = createTarArchive([
+        {
+          path: 'workspace/readme.md',
+          type: 'file',
+          content: '# hello',
+        },
+      ]);
+
+      db.select.mockReturnValueOnce(createSelectChainWithLimit([snapshot]));
+      mockStorageService.download.mockResolvedValueOnce(
+        createReadableStreamFromBuffer(archive),
+      );
+
+      const preview = await service.getFilePreview(
+        TEST_TENANT_ID,
+        TEST_WORKSPACE_ID,
+        'readme.md',
+      );
+
+      expect(preview).toEqual({
+        kind: 'text',
+        path: 'readme.md',
+        fileName: 'readme.md',
+        size: 7,
+        mimeType: 'text/markdown',
+        canDownload: true,
+        content: '# hello',
+        encoding: 'utf-8',
+      });
+    });
+
+    it('getFilePreview 应当识别图片与 PDF 预览类型', async () => {
+      const snapshot = buildSnapshot({ sizeBytes: 2048 });
+      const archive = createTarArchive([
+        {
+          path: 'workspace/cover.png',
+          type: 'file',
+          content: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x0d]),
+        },
+        {
+          path: 'workspace/spec.pdf',
+          type: 'file',
+          content: Buffer.from('%PDF-1.4\n'),
+        },
+      ]);
+
+      db.select
+        .mockReturnValueOnce(createSelectChainWithLimit([snapshot]))
+        .mockReturnValueOnce(createSelectChainWithLimit([snapshot]));
+      mockStorageService.download
+        .mockResolvedValueOnce(createReadableStreamFromBuffer(archive))
+        .mockResolvedValueOnce(createReadableStreamFromBuffer(archive));
+
+      await expect(
+        service.getFilePreview(TEST_TENANT_ID, TEST_WORKSPACE_ID, 'cover.png'),
+      ).resolves.toMatchObject({
+        kind: 'image',
+        mimeType: 'image/png',
+        canDownload: true,
+      });
+
+      await expect(
+        service.getFilePreview(TEST_TENANT_ID, TEST_WORKSPACE_ID, 'spec.pdf'),
+      ).resolves.toMatchObject({
+        kind: 'pdf',
+        mimeType: 'application/pdf',
+        canDownload: true,
+      });
+    });
+
+    it('getFilePreview 对不支持内嵌预览的二进制文件应返回 unsupported', async () => {
+      const snapshot = buildSnapshot({ sizeBytes: 1024 });
+      const archive = createTarArchive([
+        {
+          path: 'workspace/archive.bin',
+          type: 'file',
+          content: Buffer.from([0xde, 0xad, 0x00, 0xbe, 0xef]),
+        },
+      ]);
+
+      db.select.mockReturnValueOnce(createSelectChainWithLimit([snapshot]));
+      mockStorageService.download.mockResolvedValueOnce(
+        createReadableStreamFromBuffer(archive),
+      );
+
+      await expect(
+        service.getFilePreview(
+          TEST_TENANT_ID,
+          TEST_WORKSPACE_ID,
+          'archive.bin',
+        ),
+      ).resolves.toMatchObject({
+        kind: 'unsupported',
+        mimeType: 'application/octet-stream',
+        canDownload: true,
+      });
+    });
+
+    it('getFileAsset 应当返回原始文件内容与 mimeType', async () => {
+      const snapshot = buildSnapshot({ sizeBytes: 1024 });
+      const pngBuffer = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x0d]);
+      const archive = createTarArchive([
+        {
+          path: 'workspace/cover.png',
+          type: 'file',
+          content: pngBuffer,
+        },
+      ]);
+
+      db.select.mockReturnValueOnce(createSelectChainWithLimit([snapshot]));
+      mockStorageService.download.mockResolvedValueOnce(
+        createReadableStreamFromBuffer(archive),
+      );
+
+      await expect(
+        service.getFileAsset(TEST_TENANT_ID, TEST_WORKSPACE_ID, 'cover.png'),
+      ).resolves.toEqual({
+        path: 'cover.png',
+        fileName: 'cover.png',
+        size: pngBuffer.length,
+        mimeType: 'image/png',
+        content: pngBuffer,
+      });
     });
   });
 });

@@ -35,7 +35,7 @@ React 19 + Vite 7 前端。Feature-Slice 架构，TanStack Router/Query，Zustan
 | `/agents`                                        | AgentListPage                  | Agent 列表/创建入口                                                                                                                                                           |
 | `/agents/$agentId`                               | AgentCanvasPage                | Agent 配置编辑器画布 (ReactFlow, CPU/memory/timeout/lifecycle 参数)                                                                                                           |
 | `/agents/$agentId/conversations/new`             | AgentConversationPage          | 创建新对话                                                                                                                                                                    |
-| `/agents/$agentId/conversations/$conversationId` | AgentConversationPage          | 三列对话 UI (对话列表/消息流/上下文面板)；按 Agent `runtimeMode` 显示 `有沙箱 / 无沙箱` 标记，`no_sandbox` 不渲染工作区/终端上下文面板                                       |
+| `/agents/$agentId/conversations/$conversationId` | AgentConversationPage          | 三列对话 UI (对话列表/消息流/上下文面板)；按 Agent `runtimeMode` 显示 `有沙箱 / 无沙箱` 标记，`no_sandbox` 不渲染工作区/终端上下文面板                                        |
 
 TanStack Router v1，手动路由树 (`src/app/routes/`)。`__root.tsx` 包含 auth guard：未认证用户重定向到 `/login`。
 
@@ -205,7 +205,7 @@ react-hook-form + @hookform/resolvers + Zod v4
 - **跨 feature 共享类型**: `canvas/autonomy.types.ts` 位于 feature 根目录，被 organization-autonomy-policy 和 optimization-suggestion 跨 feature 引用
 - **shared/ui 组件**: 仅含 8 个基础组件（button/input/label/select/slider/switch/tabs/toast）；其中 tabs 为自定义 Context-based 实现，非 Radix Tabs
 - **Query Key Factory 模式**: 各 feature 的 `[feature]Keys.ts` 遵循 `all → lists → list(filters) → details → detail(id)` 层级模式
-- **资源页默认语义**: `WorkspaceManagementPage` 默认请求 `includeAutoArchived=false` 并展示 `sourceKind` 标签；`SandboxManagementPage` 默认请求 `bindingType=resource` 并展示 binding / timeout 标签，避免把 execution archive 与会话沙箱误当成可复用资源。running sandbox 若 stats 返回 `diskUsage/diskTotal`，UI 必须显示真实磁盘占用；缺失时不能伪装成 `0 B`
+- **资源页默认语义**: `WorkspaceManagementPage` 默认请求 `includeAutoArchived=false` 并展示 `sourceKind` 标签；Workspace 资源现包含独立详情页 `/resources/workspaces/$workspaceId`，左侧复用 `WorkspaceFileTree`，右侧按 `text | image | pdf | unsupported` 做多态预览，并对 unsupported 文件提供下载兜底；`SandboxManagementPage` 默认请求 `bindingType=resource` 并展示 binding / timeout 标签，避免把 execution archive 与会话沙箱误当成可复用资源。running sandbox 若 stats 返回 `diskUsage/diskTotal`，UI 必须显示真实磁盘占用；缺失时不能伪装成 `0 B`
 - **Agent 画布浮层滚动**: `AgentNodeConfigPanel` 这类覆盖在 ReactFlow 之上的长表单浮层，除了 `flex flex-col + min-h-0 flex-1 overflow-y-auto` 的真实滚动布局外，还必须在滚动内容区显式阻断 `wheel` 继续传播给底层画布；因为 Agent/Workflow 画布默认开启 `panOnScroll/zoomOnScroll`，只靠 CSS `overscroll-contain` 不足以保证所有浏览器都能稳定滚动浮层
 
 ## 测试约定

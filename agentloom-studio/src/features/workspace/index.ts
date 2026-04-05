@@ -1,31 +1,40 @@
-export { WorkspaceManagementPage } from './components/WorkspaceManagementPage'
-export { WorkspaceCard } from './components/WorkspaceCard'
-export { CreateWorkspaceDialog } from './components/CreateWorkspaceDialog'
+export { WorkspaceManagementPage } from "./components/WorkspaceManagementPage";
+export { WorkspaceDetailPage } from "./components/WorkspaceDetailPage";
+export { WorkspaceCard } from "./components/WorkspaceCard";
+export { CreateWorkspaceDialog } from "./components/CreateWorkspaceDialog";
+export { WorkspaceFilePreviewPanel } from "./components/WorkspaceFilePreviewPanel";
 
 export {
   useWorkspaces,
   useWorkspaceDetail,
   useAllWorkspaces,
-} from './api/workspaceQueries'
+  useWorkspaceFileTree,
+  useWorkspaceFilePreview,
+} from "./api/workspaceQueries";
 
 export {
   useCreateWorkspace,
   useDeleteWorkspace,
-} from './api/workspaceMutations'
+} from "./api/workspaceMutations";
 
-export { workspaceKeys } from './api/workspaceKeys'
+export { workspaceKeys } from "./api/workspaceKeys";
 
 export {
   fetchWorkspaces,
   fetchWorkspaceDetail,
   fetchAllWorkspaces,
+  fetchWorkspaceFileTree,
+  fetchWorkspaceFilePreview,
+  fetchWorkspaceFileRaw,
   createWorkspace,
   deleteWorkspace,
-} from './api/workspaceApi'
+} from "./api/workspaceApi";
 
 export type {
   Workspace,
   WorkspaceListResponse,
   WorkspaceListParams,
   CreateWorkspacePayload,
-} from './types'
+  WorkspaceFileNode,
+  WorkspaceFilePreview,
+} from "./types";

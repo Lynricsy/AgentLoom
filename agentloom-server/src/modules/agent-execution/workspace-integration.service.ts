@@ -14,29 +14,24 @@ import {
 } from '../sandbox/sandbox-runtime-driver.port';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { WorkspaceService } from '../workspace/workspace.service';
+import {
+  MAX_WORKSPACE_TEXT_PREVIEW_BYTES,
+  type WorkspaceFileTreeNode,
+} from '../workspace/workspace-preview.utils';
 import type { AgentSession } from '../agent/types/agent-session.types';
 import { SessionPersistenceService } from '../execution/services/session-persistence.service';
-import { StorageService } from '../../infrastructure/storage/storage.service';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import * as schema from '../../database/schema';
 
 const CONTAINER_WORKSPACE = '/workspace';
-const MAX_TEXT_FILE_BYTES = 10 * 1024 * 1024;
-const MAX_WORKSPACE_ARCHIVE_BYTES = 50 * 1024 * 1024;
 const FILE_WATCH_POLL_INTERVAL_MS = 3000;
 const MARKER_FILE = '/tmp/.workspace_marker';
 const CONVERSATION_WORKSPACE_TREE_SNAPSHOT_KEY = 'workspaceTreeSnapshot';
 const CONVERSATION_WORKSPACE_TREE_ONLY_REASON =
   '此运行已结束，仅保留工作区目录结构，未保留文件内容预览';
 
-export interface FileTreeNode {
-  name: string;
-  type: 'file' | 'directory';
-  path: string;
-  size?: number;
-  children?: FileTreeNode[];
-}
+export type FileTreeNode = WorkspaceFileTreeNode;
 
 export interface FileContentResult {
   path: string;
@@ -101,13 +96,6 @@ type ResolvedConversationWorkspaceSource =
       snapshot: ConversationWorkspaceTreeSnapshot;
     };
 
-type ArchiveEntry = {
-  path: string;
-  type: 'file' | 'directory';
-  size: number;
-  content: Buffer;
-};
-
 @Injectable()
 export class WorkspaceIntegrationService {
   private readonly logger = new Logger(WorkspaceIntegrationService.name);
@@ -126,7 +114,6 @@ export class WorkspaceIntegrationService {
     private readonly workspaceService: WorkspaceService,
     private readonly eventEmitter: EventEmitter2,
     private readonly sessionPersistence: SessionPersistenceService,
-    private readonly storageService: StorageService,
   ) {}
 
   private get tenantDb(): DrizzleDB {
@@ -173,9 +160,9 @@ export class WorkspaceIntegrationService {
       return this.readFileTreeFromContainer(workspaceSource.containerId);
     }
 
-    return this.readFileTreeFromSnapshot(
-      workspaceSource.workspaceSnapshotId,
+    return this.workspaceService.getFileTree(
       tenantId,
+      workspaceSource.workspaceSnapshotId,
     );
   }
 
@@ -221,11 +208,24 @@ export class WorkspaceIntegrationService {
       );
     }
 
-    return this.readFileContentFromSnapshot(
-      workspaceSource.workspaceSnapshotId,
+    const preview = await this.workspaceService.getFilePreview(
       tenantId,
+      workspaceSource.workspaceSnapshotId,
       filePath,
     );
+
+    if (preview.kind !== 'text') {
+      throw new NotFoundException(
+        `文件 ${filePath} 为二进制文件，不支持文本读取`,
+      );
+    }
+
+    return {
+      path: preview.path,
+      content: preview.content,
+      size: preview.size,
+      encoding: preview.encoding,
+    };
   }
 
   async archiveExecutionStepWorkspace(
@@ -373,7 +373,10 @@ export class WorkspaceIntegrationService {
     _userId: string,
   ): Promise<void> {
     this.stopFileWatcher(conversationId);
-    await this.captureConversationWorkspaceTreeSnapshot(conversationId, tenantId);
+    await this.captureConversationWorkspaceTreeSnapshot(
+      conversationId,
+      tenantId,
+    );
   }
 
   async captureConversationWorkspaceTreeSnapshot(
@@ -834,18 +837,6 @@ export class WorkspaceIntegrationService {
     return this.parseFileTree(output);
   }
 
-  private async readFileTreeFromSnapshot(
-    workspaceSnapshotId: string,
-    tenantId: string,
-  ): Promise<FileTreeNode[]> {
-    const entries = await this.readWorkspaceSnapshotEntries(
-      workspaceSnapshotId,
-      tenantId,
-    );
-
-    return this.buildFileTreeFromEntries(entries);
-  }
-
   private async readFileContentFromContainer(
     containerId: string,
     filePath: string,
@@ -866,9 +857,9 @@ export class WorkspaceIntegrationService {
       throw new NotFoundException(`路径 ${filePath} 不是普通文件`);
     }
 
-    if (size > MAX_TEXT_FILE_BYTES) {
+    if (size > MAX_WORKSPACE_TEXT_PREVIEW_BYTES) {
       throw new NotFoundException(
-        `文件 ${filePath} 超过最大读取限制 (${MAX_TEXT_FILE_BYTES} 字节)`,
+        `文件 ${filePath} 超过最大读取限制 (${MAX_WORKSPACE_TEXT_PREVIEW_BYTES} 字节)`,
       );
     }
 
@@ -892,277 +883,6 @@ export class WorkspaceIntegrationService {
       size,
       encoding: 'utf-8',
     };
-  }
-
-  private async readFileContentFromSnapshot(
-    workspaceSnapshotId: string,
-    tenantId: string,
-    filePath: string,
-  ): Promise<FileContentResult> {
-    const normalizedPath = this.normalizePath(filePath);
-    const entries = await this.readWorkspaceSnapshotEntries(
-      workspaceSnapshotId,
-      tenantId,
-    );
-    const fileEntry = entries.find(
-      (entry) => entry.type === 'file' && entry.path === normalizedPath,
-    );
-
-    if (!fileEntry) {
-      throw new NotFoundException(`路径 ${filePath} 不是普通文件`);
-    }
-
-    if (fileEntry.size > MAX_TEXT_FILE_BYTES) {
-      throw new NotFoundException(
-        `文件 ${filePath} 超过最大读取限制 (${MAX_TEXT_FILE_BYTES} 字节)`,
-      );
-    }
-
-    if (this.isBinaryBuffer(fileEntry.content.subarray(0, 8192))) {
-      throw new NotFoundException(
-        `文件 ${filePath} 为二进制文件，不支持文本读取`,
-      );
-    }
-
-    return {
-      path: normalizedPath,
-      content: fileEntry.content.toString('utf-8'),
-      size: fileEntry.size,
-      encoding: 'utf-8',
-    };
-  }
-
-  private async readWorkspaceSnapshotEntries(
-    workspaceSnapshotId: string,
-    tenantId: string,
-  ): Promise<ArchiveEntry[]> {
-    const snapshot = await this.workspaceService.findOne(
-      tenantId,
-      workspaceSnapshotId,
-    );
-
-    if (snapshot.status !== 'ready') {
-      throw new NotFoundException(`工作区快照 ${workspaceSnapshotId} 尚未就绪`);
-    }
-
-    const archiveStream = await this.storageService.download(
-      snapshot.storageKey,
-    );
-    const archiveBuffer = await this.readStreamToBuffer(archiveStream);
-
-    if (archiveBuffer.length === 0) {
-      return [];
-    }
-
-    return this.parseArchiveEntries(archiveBuffer);
-  }
-
-  private async readStreamToBuffer(
-    stream: AsyncIterable<unknown>,
-  ): Promise<Buffer> {
-    const chunks: Buffer[] = [];
-    let totalBytes = 0;
-
-    for await (const chunk of stream) {
-      const buffer = Buffer.isBuffer(chunk)
-        ? chunk
-        : chunk instanceof Uint8Array
-          ? Buffer.from(chunk)
-          : Buffer.from(String(chunk));
-      totalBytes += buffer.length;
-
-      if (totalBytes > MAX_WORKSPACE_ARCHIVE_BYTES) {
-        throw new NotFoundException(
-          `工作区快照超过在线预览限制 (${MAX_WORKSPACE_ARCHIVE_BYTES} 字节)`,
-        );
-      }
-
-      chunks.push(buffer);
-    }
-
-    return Buffer.concat(chunks);
-  }
-
-  private parseArchiveEntries(archiveBuffer: Buffer): ArchiveEntry[] {
-    const rawEntries: ArchiveEntry[] = [];
-    let offset = 0;
-
-    while (offset + 512 <= archiveBuffer.length) {
-      const header = archiveBuffer.subarray(offset, offset + 512);
-      if (header.every((value) => value === 0)) {
-        break;
-      }
-
-      const name = this.readTarString(header.subarray(0, 100));
-      const prefix = this.readTarString(header.subarray(345, 500));
-      const fullPath = [prefix, name].filter(Boolean).join('/');
-      const size = this.readTarOctal(header.subarray(124, 136));
-      const typeFlagByte = header[156] ?? 0;
-      const typeFlag =
-        typeFlagByte === 0 ? '0' : String.fromCharCode(typeFlagByte);
-      const dataStart = offset + 512;
-      const dataEnd = dataStart + size;
-
-      if (dataEnd > archiveBuffer.length) {
-        throw new NotFoundException('工作区快照已损坏，无法解析');
-      }
-
-      const normalizedPath = this.normalizeArchivePath(fullPath);
-      if (normalizedPath) {
-        if (typeFlag === '5') {
-          rawEntries.push({
-            path: normalizedPath,
-            type: 'directory',
-            size: 0,
-            content: Buffer.alloc(0),
-          });
-        } else if (typeFlag === '0') {
-          rawEntries.push({
-            path: normalizedPath,
-            type: 'file',
-            size,
-            content: Buffer.from(archiveBuffer.subarray(dataStart, dataEnd)),
-          });
-        }
-      }
-
-      offset = dataStart + Math.ceil(size / 512) * 512;
-    }
-
-    return this.stripWorkspaceRootIfNeeded(rawEntries);
-  }
-
-  private stripWorkspaceRootIfNeeded(entries: ArchiveEntry[]): ArchiveEntry[] {
-    if (
-      entries.length === 0 ||
-      !entries.every(
-        (entry) =>
-          entry.path === 'workspace' || entry.path.startsWith('workspace/'),
-      )
-    ) {
-      return entries;
-    }
-
-    return entries
-      .map((entry) => {
-        if (entry.path === 'workspace') {
-          return null;
-        }
-
-        return {
-          ...entry,
-          path: entry.path.slice('workspace/'.length),
-        };
-      })
-      .filter((entry): entry is ArchiveEntry => entry !== null);
-  }
-
-  private normalizeArchivePath(rawPath: string): string | null {
-    let normalized = rawPath.replace(/\\/g, '/').replace(/^\/+/, '');
-    while (normalized.startsWith('./')) {
-      normalized = normalized.slice(2);
-    }
-    normalized = normalized.replace(/\/+/g, '/').replace(/\/+$/, '');
-
-    if (!normalized || normalized === '.') {
-      return null;
-    }
-
-    const segments = normalized.split('/').filter(Boolean);
-    if (segments.length === 0) {
-      return null;
-    }
-
-    if (
-      segments.some(
-        (segment) =>
-          segment === 'node_modules' ||
-          segment === '.git' ||
-          segment.startsWith('.'),
-      )
-    ) {
-      return null;
-    }
-
-    return segments.join('/');
-  }
-
-  private readTarString(buffer: Buffer): string {
-    return buffer.toString('utf-8').replace(/\0.*$/, '');
-  }
-
-  private readTarOctal(buffer: Buffer): number {
-    const raw = buffer.toString('utf-8').replace(/\0.*$/, '').trim();
-    if (!raw) {
-      return 0;
-    }
-
-    return Number.parseInt(raw, 8);
-  }
-
-  private buildFileTreeFromEntries(entries: ArchiveEntry[]): FileTreeNode[] {
-    const root: FileTreeNode[] = [];
-    const directoryMap = new Map<string, FileTreeNode>();
-    const fileSet = new Set<string>();
-
-    const ensureDirectory = (dirPath: string): FileTreeNode => {
-      const existing = directoryMap.get(dirPath);
-      if (existing) {
-        return existing;
-      }
-
-      const segments = dirPath.split('/');
-      const name = segments[segments.length - 1] ?? dirPath;
-      const parentPath = segments.slice(0, -1).join('/');
-      const node: FileTreeNode = {
-        name,
-        type: 'directory',
-        path: dirPath,
-        children: [],
-      };
-      directoryMap.set(dirPath, node);
-
-      if (parentPath) {
-        ensureDirectory(parentPath).children!.push(node);
-      } else {
-        root.push(node);
-      }
-
-      return node;
-    };
-
-    for (const entry of entries) {
-      const segments = entry.path.split('/');
-      const parentPath = segments.slice(0, -1).join('/');
-      if (parentPath) {
-        ensureDirectory(parentPath);
-      }
-
-      if (entry.type === 'directory') {
-        ensureDirectory(entry.path);
-        continue;
-      }
-
-      if (fileSet.has(entry.path)) {
-        continue;
-      }
-
-      const node: FileTreeNode = {
-        name: segments[segments.length - 1] ?? entry.path,
-        type: 'file',
-        path: entry.path,
-        size: entry.size,
-      };
-      fileSet.add(entry.path);
-
-      if (parentPath) {
-        ensureDirectory(parentPath).children!.push(node);
-      } else {
-        root.push(node);
-      }
-    }
-
-    return root;
   }
 
   private async execInContainer(

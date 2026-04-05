@@ -10,47 +10,48 @@ import { workflowCanvasRoute } from "./workflows/$workflowId";
 import { resourceKnowledgeBaseDetailRoute } from "./resources/knowledge-bases.$knowledgeBaseId";
 import { executionDebugRoute } from "./executions/$executionId";
 import { executionAgentViewerRoute } from "./executions/$executionId.steps.$stepId.agent";
-import { settingsIndexRoute } from './settings/index'
-import { mcpServerDetailRoute } from './resources/mcp-servers.$serverId'
-import { auditLogsRoute } from './settings/audit-logs'
+import { settingsIndexRoute } from "./settings/index";
+import { mcpServerDetailRoute } from "./resources/mcp-servers.$serverId";
+import { auditLogsRoute } from "./settings/audit-logs";
 import { templatesRoute } from "./templates";
 import { discoverRoute } from "./discover";
 import { marketplaceRoute } from "./marketplace";
-import { marketplaceMyListingsRoute } from './marketplace.my-listings';
-import { shareTokenRoute } from './share.$token';
-import { encryptionSettingsRoute } from './settings/encryption'
-import { developerEarningsRoute } from './developer-console/earnings';
-import { organizationAutonomyPolicyRoute } from './settings/security/autonomy-policy'
-import { resourceGovernanceRoute } from './settings/resource-quotas'
-import { monitoringRoute } from './settings/monitoring'
-import { privateDeploymentRoute } from './settings/private-deployment'
-import { userPreferencesRoute } from './settings/preferences'
-import { securitySettingsRoute } from './settings/security'
-import { authCallbackRoute } from './auth/callback'
-import { loginRoute } from './auth/login'
-import { registerRoute } from './auth/register'
-import { onboardingRoute } from './onboarding'
-import { workflowsIndexRoute } from './workflows/workflows.index'
-import { agentsIndexRoute } from './agents/agents.index'
-import { agentDetailRoute } from './agents/agents.$agentId'
-import { agentNewConversationRoute } from './agents/agents.$agentId.conversations.new'
-import { agentConversationRoute } from './agents/agents.$agentId.conversations.$conversationId'
-import { memoryRoute } from './memory'
-import { memoryDetailRoute } from './memory.$id'
-import { memorySettingsRoute } from './memory.$id.settings'
-import { memoryGraphRoute } from './memory.$id.graph'
-import { memoryAuditRoute } from './memory.$id.audit'
-import { skillsRoute } from './skills'
-import { mcpServersRoute } from './resources/mcp-servers'
-import { llmModelsRoute } from './resources/llm-models'
-import { resourceSkillsRoute } from './resources/skills'
-import { resourceKnowledgeBasesRoute } from './resources/knowledge-bases'
-import { memoryInstancesRoute } from './resources/memory-instances'
-import { workspacesRoute } from './resources/workspaces'
-import { sandboxesRoute } from './resources/sandboxes'
-import { memoryInstanceBrowseRoute } from './resources/memory-instances.$instanceId.browse'
+import { marketplaceMyListingsRoute } from "./marketplace.my-listings";
+import { shareTokenRoute } from "./share.$token";
+import { encryptionSettingsRoute } from "./settings/encryption";
+import { developerEarningsRoute } from "./developer-console/earnings";
+import { organizationAutonomyPolicyRoute } from "./settings/security/autonomy-policy";
+import { resourceGovernanceRoute } from "./settings/resource-quotas";
+import { monitoringRoute } from "./settings/monitoring";
+import { privateDeploymentRoute } from "./settings/private-deployment";
+import { userPreferencesRoute } from "./settings/preferences";
+import { securitySettingsRoute } from "./settings/security";
+import { authCallbackRoute } from "./auth/callback";
+import { loginRoute } from "./auth/login";
+import { registerRoute } from "./auth/register";
+import { onboardingRoute } from "./onboarding";
+import { workflowsIndexRoute } from "./workflows/workflows.index";
+import { agentsIndexRoute } from "./agents/agents.index";
+import { agentDetailRoute } from "./agents/agents.$agentId";
+import { agentNewConversationRoute } from "./agents/agents.$agentId.conversations.new";
+import { agentConversationRoute } from "./agents/agents.$agentId.conversations.$conversationId";
+import { memoryRoute } from "./memory";
+import { memoryDetailRoute } from "./memory.$id";
+import { memorySettingsRoute } from "./memory.$id.settings";
+import { memoryGraphRoute } from "./memory.$id.graph";
+import { memoryAuditRoute } from "./memory.$id.audit";
+import { skillsRoute } from "./skills";
+import { mcpServersRoute } from "./resources/mcp-servers";
+import { llmModelsRoute } from "./resources/llm-models";
+import { resourceSkillsRoute } from "./resources/skills";
+import { resourceKnowledgeBasesRoute } from "./resources/knowledge-bases";
+import { memoryInstancesRoute } from "./resources/memory-instances";
+import { workspacesRoute } from "./resources/workspaces";
+import { workspaceDetailRoute } from "./resources/workspaces.$workspaceId";
+import { sandboxesRoute } from "./resources/sandboxes";
+import { memoryInstanceBrowseRoute } from "./resources/memory-instances.$instanceId.browse";
 
-const PUBLIC_ROUTES = ['/login', '/register', '/auth/callback'];
+const PUBLIC_ROUTES = ["/login", "/register", "/auth/callback"];
 
 export function RootLayout() {
   const authToken = useAuthToken();
@@ -63,8 +64,8 @@ export function RootLayout() {
   const pathname = window.location.pathname;
   const isPublicRoute =
     PUBLIC_ROUTES.some((r) => pathname.startsWith(r)) ||
-    pathname.startsWith('/s/');
-  const isOnboardingRoute = pathname.startsWith('/onboarding');
+    pathname.startsWith("/s/");
+  const isOnboardingRoute = pathname.startsWith("/onboarding");
 
   if (isLoading && !isPublicRoute) {
     return (
@@ -81,13 +82,13 @@ export function RootLayout() {
 
   // 认证用户需要完成 onboarding → 重定向到 /onboarding
   if (isAuthenticated && needsOnboarding && !isOnboardingRoute) {
-    window.location.href = '/onboarding';
+    window.location.href = "/onboarding";
     return null;
   }
 
   // 已完成 onboarding 的用户不应停留在 /onboarding
   if (isAuthenticated && !needsOnboarding && isOnboardingRoute) {
-    window.location.href = '/';
+    window.location.href = "/";
     return null;
   }
 
@@ -95,7 +96,7 @@ export function RootLayout() {
     return <Outlet />;
   }
 
-  const isSettingsRoute = pathname.startsWith('/settings');
+  const isSettingsRoute = pathname.startsWith("/settings");
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-background text-foreground">
@@ -154,6 +155,7 @@ export const routeTree = rootRoute.addChildren([
   resourceKnowledgeBaseDetailRoute,
   memoryInstancesRoute,
   workspacesRoute,
+  workspaceDetailRoute,
   sandboxesRoute,
   memoryInstanceBrowseRoute,
 ]);
