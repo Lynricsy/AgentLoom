@@ -300,8 +300,9 @@ describe('PiAiAdapter', () => {
       });
       expect(callOptions?.fetch).toBeTypeOf('function');
 
-      // 验证 .chat() 被调用（openai_chat 协议）
-      expect(mockProviderFn.chat).toHaveBeenCalledWith('local-model');
+      // private_cloud 非 Claude 模型应与 runtime 对齐为 Responses API
+      expect(mockProviderFn.responses).toHaveBeenCalledWith('local-model');
+      expect(mockProviderFn.chat).not.toHaveBeenCalled();
 
       // 验证 fetch 代理确实剥离了 Authorization 头
       const rawFetch = vi
@@ -350,6 +351,7 @@ describe('PiAiAdapter', () => {
       });
       // 有认证时不应注入 auth-stripping fetch
       expect(callOptions).not.toHaveProperty('fetch');
+      expect(mockProviderFn.responses).toHaveBeenCalledWith('private-model');
     });
 
     it('应当在 openai_responses 协议无 apiKeyId 时同样剥离 Authorization', async () => {
@@ -376,6 +378,53 @@ describe('PiAiAdapter', () => {
       expect(callOptions.fetch).toBeTypeOf('function');
       // openai_responses 应走 .responses() 方法
       expect(mockProviderFn.responses).toHaveBeenCalledWith('local-model');
+    });
+
+    it('应当让 private_cloud 的 Claude 模型与 runtime 对齐为 Anthropic Messages API', async () => {
+      await adapter.getModel(
+        createConfig({
+          modelId: 'claude-opus-4-6',
+          providerOverrides: {
+            slug: 'private_cloud',
+            apiProtocol: 'openai_chat' as const,
+            baseUrl: 'https://private-cloud.example.com/v1',
+            apiKeyId: null,
+          },
+        }),
+      );
+
+      expect(mockCreateAnthropic).toHaveBeenCalledWith(
+        expect.objectContaining({
+          apiKey: '__agentloom_private_cloud_no_auth__',
+          baseURL: 'https://private-cloud.example.com',
+          fetch: expect.any(Function),
+        }),
+      );
+      expect(mockCreateOpenAI).not.toHaveBeenCalled();
+    });
+
+    it('应当在 provider baseUrl 缺失时回退到模型 parameters.baseUrl', async () => {
+      await adapter.getModel(
+        createConfig({
+          providerOverrides: {
+            slug: 'custom',
+            apiProtocol: 'openai_chat' as const,
+            baseUrl: null,
+            defaultBaseUrl: null,
+          },
+          parameters: {
+            baseUrl: 'https://model-level.example.com/v1',
+          },
+        }),
+        'sk-key',
+      );
+
+      expect(mockCreateOpenAI).toHaveBeenCalledWith(
+        expect.objectContaining({
+          apiKey: 'sk-key',
+          baseURL: 'https://model-level.example.com/v1',
+        }),
+      );
     });
   });
 
@@ -620,6 +669,28 @@ describe('PiAiAdapter', () => {
         api: 'openai-completions',
         provider: 'openai',
         baseUrl: 'https://api.openai.com/v1',
+      });
+    });
+
+    it('private_cloud 的 Claude 模型应生成 anthropic-messages runtime model', async () => {
+      const result = await adapter.getPiRuntimeModel(
+        createConfig({
+          modelId: 'claude-sonnet-4-6',
+          providerOverrides: {
+            slug: 'private_cloud',
+            apiProtocol: 'openai_chat' as const,
+            baseUrl: 'https://private-cloud.example.com/v1',
+            apiKeyId: null,
+          },
+        }),
+      );
+
+      expect(result.apiKey).toBe('__agentloom_private_cloud_no_auth__');
+      expect(result.model).toMatchObject({
+        api: 'anthropic-messages',
+        provider: 'private_cloud',
+        baseUrl: 'https://private-cloud.example.com',
+        headers: { Authorization: '' },
       });
     });
   });

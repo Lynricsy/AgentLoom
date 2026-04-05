@@ -33,6 +33,12 @@ interface LanguageModelProvider {
 
 type WrappableModel = Record<PropertyKey, unknown>;
 
+type ResolvedApiSettings = {
+  api: string;
+  baseUrl?: string;
+  rawProtocol?: string;
+};
+
 @Injectable()
 export class PiAiAdapter {
   private readonly logger = new Logger(PiAiAdapter.name);
@@ -52,11 +58,15 @@ export class PiAiAdapter {
       ? undefined
       : (apiKey ?? (await this.resolveApiKey(config)));
 
-    const sdkProvider = await this.resolveProvider(
+    const apiSettings = this.resolveApiSettings(config);
+    const sdkProvider = await this.resolveProvider({
       providerSlug,
-      resolvedApiKey,
-      config,
-    );
+      apiKey: resolvedApiKey,
+      requiresAuth: !!config.provider.apiKeyId,
+      rawProtocol: apiSettings.rawProtocol,
+      api: apiSettings.api,
+      baseUrl: apiSettings.baseUrl,
+    });
 
     const timeout = config.timeoutMs ?? TIMEOUT_MS;
 
@@ -72,42 +82,26 @@ export class PiAiAdapter {
     apiKey?: string,
   ): Promise<PiRuntimeResolvedModel> {
     const providerSlug = config.provider.slug;
-    const apiBaseUrl =
-      config.provider.baseUrl ?? config.provider.defaultBaseUrl ?? undefined;
     const resolvedApiKey = !config.provider.apiKeyId
       ? undefined
       : (apiKey ?? (await this.resolveApiKey(config)));
-
-    const api = resolvePiModelApi({
-      provider: providerSlug,
-      model: config.modelId,
-      apiProtocol: config.provider.apiProtocol,
-    });
-    const baseUrl =
-      resolvePiModelBaseUrl(
-        {
-          provider: providerSlug,
-          model: config.modelId,
-          apiBaseUrl,
-        },
-        api,
-      ) ?? '';
+    const apiSettings = this.resolveApiSettings(config);
 
     const compat = resolvePiProviderCompat(
       {
         provider: providerSlug,
         model: config.modelId,
-        apiBaseUrl,
+        apiBaseUrl: apiSettings.baseUrl,
       },
-      api,
+      apiSettings.api,
     );
 
     const model: PiModel<PiApi> = {
       id: config.modelId,
       name: config.name,
-      api: api as PiApi,
+      api: apiSettings.api as PiApi,
       provider: providerSlug,
-      baseUrl,
+      baseUrl: apiSettings.baseUrl ?? '',
       reasoning: true,
       input: ['text', 'image'],
       cost: {
@@ -134,67 +128,64 @@ export class PiAiAdapter {
     };
   }
 
-  private async resolveProvider(
-    providerSlug: string,
-    apiKey: string | undefined,
-    config: ResolvedModelConfig,
-  ): Promise<LanguageModelProvider> {
-    const baseUrl = config.provider.baseUrl ?? config.provider.defaultBaseUrl;
-    const protocol = config.provider.apiProtocol;
-    const requiresAuth = !!config.provider.apiKeyId;
-
-    switch (protocol) {
-      case 'openai_chat': {
+  private async resolveProvider(params: {
+    providerSlug: string;
+    apiKey: string | undefined;
+    requiresAuth: boolean;
+    api: string;
+    baseUrl?: string;
+    rawProtocol?: string;
+  }): Promise<LanguageModelProvider> {
+    switch (params.api) {
+      case 'openai-completions': {
         const { createOpenAI } = await import('@ai-sdk/openai');
         const provider = createOpenAI({
-          apiKey: apiKey ?? PRIVATE_CLOUD_NO_AUTH_PLACEHOLDER,
-          ...(baseUrl && { baseURL: baseUrl }),
-          ...(!requiresAuth && {
-            fetch: this.createAuthorizationStrippingFetch(),
+          apiKey: params.apiKey ?? PRIVATE_CLOUD_NO_AUTH_PLACEHOLDER,
+          ...(params.baseUrl && { baseURL: params.baseUrl }),
+          ...(!params.requiresAuth && {
+            fetch: this.createHeaderStrippingFetch(['authorization']),
           }),
         });
         // 使用 .chat() 强制走 Chat Completions API
         return (modelId: string) => provider.chat(modelId);
       }
-      case 'openai_responses': {
+      case 'openai-responses':
+      case 'azure-openai-responses': {
         const { createOpenAI } = await import('@ai-sdk/openai');
         const provider = createOpenAI({
-          apiKey: apiKey ?? PRIVATE_CLOUD_NO_AUTH_PLACEHOLDER,
-          ...(baseUrl && { baseURL: baseUrl }),
-          ...(!requiresAuth && {
-            fetch: this.createAuthorizationStrippingFetch(),
+          apiKey: params.apiKey ?? PRIVATE_CLOUD_NO_AUTH_PLACEHOLDER,
+          ...(params.baseUrl && { baseURL: params.baseUrl }),
+          ...(!params.requiresAuth && {
+            fetch: this.createHeaderStrippingFetch(['authorization']),
           }),
         });
         // 默认调用走 Responses API
         return (modelId: string) => provider.responses(modelId);
       }
-      case 'anthropic': {
+      case 'anthropic-messages': {
         const { createAnthropic } = await import('@ai-sdk/anthropic');
         return createAnthropic({
-          apiKey: apiKey!,
-          ...(baseUrl && { baseURL: baseUrl }),
+          apiKey: params.apiKey ?? PRIVATE_CLOUD_NO_AUTH_PLACEHOLDER,
+          ...(params.baseUrl && { baseURL: params.baseUrl }),
+          ...(!params.requiresAuth && {
+            fetch: this.createHeaderStrippingFetch([
+              'authorization',
+              'x-api-key',
+            ]),
+          }),
         });
       }
-      case 'google': {
+      case 'google-generative-ai': {
         const { createGoogleGenerativeAI } = await import('@ai-sdk/google');
         return createGoogleGenerativeAI({
-          apiKey: apiKey!,
-          ...(baseUrl && { baseURL: baseUrl }),
+          apiKey: params.apiKey!,
+          ...(params.baseUrl && { baseURL: params.baseUrl }),
         });
-      }
-      case 'cohere': {
-        // Cohere 支持 OpenAI 兼容端点，使用 createOpenAI + .chat() 走 Chat Completions
-        const { createOpenAI } = await import('@ai-sdk/openai');
-        const provider = createOpenAI({
-          apiKey: apiKey!,
-          ...(baseUrl && { baseURL: baseUrl }),
-        });
-        return (modelId: string) => provider.chat(modelId);
       }
       default:
         throw new LlmProviderException(
-          providerSlug,
-          `不支持的 API 协议: ${protocol}`,
+          params.providerSlug,
+          `不支持的 API 协议: ${params.rawProtocol ?? params.api}`,
         );
     }
   }
@@ -300,7 +291,7 @@ export class PiAiAdapter {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
-  private createAuthorizationStrippingFetch(): typeof fetch {
+  private createHeaderStrippingFetch(headersToStrip: string[]): typeof fetch {
     return async (input, init) => {
       const headers = new Headers(
         input instanceof Request
@@ -308,7 +299,9 @@ export class PiAiAdapter {
           : init?.headers,
       );
 
-      headers.delete('authorization');
+      for (const headerName of headersToStrip) {
+        headers.delete(headerName);
+      }
 
       return fetch(input, {
         ...init,
@@ -327,6 +320,67 @@ export class PiAiAdapter {
       },
       PiAiAdapter.name,
     );
+  }
+
+  private resolveApiSettings(config: ResolvedModelConfig): ResolvedApiSettings {
+    const apiBaseUrl = this.resolveConfiguredApiBaseUrl(config);
+    const rawProtocol =
+      typeof config.provider.apiProtocol === 'string'
+        ? config.provider.apiProtocol
+        : undefined;
+    const api = resolvePiModelApi({
+      provider: config.provider.slug,
+      model: config.modelId,
+      apiProtocol: rawProtocol,
+    });
+    const baseUrl = resolvePiModelBaseUrl(
+      {
+        provider: config.provider.slug,
+        model: config.modelId,
+        apiBaseUrl,
+      },
+      api,
+    );
+
+    return { api, baseUrl, rawProtocol };
+  }
+
+  private resolveConfiguredApiBaseUrl(
+    config: ResolvedModelConfig,
+  ): string | undefined {
+    const providerBaseUrl = this.normalizeOptionalString(
+      config.provider.baseUrl ?? config.provider.defaultBaseUrl,
+    );
+    if (providerBaseUrl) {
+      return providerBaseUrl;
+    }
+
+    const parameters =
+      config.parameters &&
+      typeof config.parameters === 'object' &&
+      !Array.isArray(config.parameters)
+        ? (config.parameters as Record<string, unknown>)
+        : {};
+
+    for (const candidate of [
+      parameters.baseUrl,
+      parameters.baseURL,
+      parameters.apiBaseUrl,
+      parameters.endpointUrl,
+    ]) {
+      const normalized = this.normalizeOptionalString(candidate);
+      if (normalized) {
+        return normalized;
+      }
+    }
+
+    return undefined;
+  }
+
+  private normalizeOptionalString(value: unknown): string | undefined {
+    return typeof value === 'string' && value.trim().length > 0
+      ? value.trim()
+      : undefined;
   }
 
   private wrapModelWithRetry(
