@@ -98,7 +98,20 @@ describe('normalizeWorkflowNodesAndEdges', () => {
       nodeType: 'manual-trigger',
       category: 'trigger',
       inputPorts: [],
-      outputPorts: [{ id: 'exec-out' }, { id: 'payload-out' }],
+      outputPorts: [
+        {
+          id: 'exec-out',
+          direction: 'output',
+          dataType: 'exec',
+          schema: { kind: 'exec' },
+        },
+        {
+          id: 'payload-out',
+          direction: 'output',
+          dataType: 'json',
+          schema: { kind: 'json' },
+        },
+      ],
     });
     expect(nodes[1]?.data).toMatchObject({
       nodeType: 'input-preprocessor',
@@ -112,6 +125,20 @@ describe('normalizeWorkflowNodesAndEdges', () => {
       selectedAgentId: 'agent-def-1',
       agentVersionId: 'agent-version-1',
     });
+    expect(nodes[2]?.data.inputPorts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'exec-in',
+          dataType: 'exec',
+          schema: expect.objectContaining({ kind: 'exec' }),
+        }),
+        expect.objectContaining({
+          id: 'text-in',
+          dataType: 'text',
+          schema: expect.objectContaining({ kind: 'text' }),
+        }),
+      ]),
+    );
 
     expect(edges).toEqual([
       {
@@ -138,7 +165,7 @@ describe('normalizeWorkflowNodesAndEdges', () => {
     ]);
   });
 
-  it('应保持已是 canonical 的 workflow graph 不变', () => {
+  it('应保持已是 canonical 的 workflow graph 语义稳定', () => {
     const canonicalNodes = [
       {
         id: 'node-1',
@@ -149,7 +176,37 @@ describe('normalizeWorkflowNodesAndEdges', () => {
           nodeType: 'manual-trigger',
           category: 'trigger',
           inputPorts: [],
-          outputPorts: [{ id: 'payload-out' }],
+          outputPorts: [
+            {
+              id: 'exec-out',
+              label: '',
+              direction: 'output',
+              dataType: 'exec',
+              required: false,
+              multiple: false,
+              maxConnections: 1,
+              schema: {
+                kind: 'exec',
+                title: '',
+              },
+            },
+            {
+              id: 'payload-out',
+              label: '触发数据',
+              direction: 'output',
+              dataType: 'json',
+              required: false,
+              multiple: false,
+              maxConnections: 1,
+              schema: {
+                kind: 'json',
+                shape: 'object',
+                title: '触发数据',
+                properties: {},
+                additionalProperties: true,
+              },
+            },
+          ],
         },
       },
     ];
@@ -170,5 +227,52 @@ describe('normalizeWorkflowNodesAndEdges', () => {
 
     expect(normalized.nodes).toEqual(canonicalNodes);
     expect(normalized.edges).toEqual(canonicalEdges);
+  });
+
+  it('应给版本快照里只有端口 id 的自定义端口补上默认 json schema', () => {
+    const { nodes } = normalizeWorkflowNodesAndEdges(
+      [
+        {
+          id: 'loop-a',
+          type: 'workflow-node',
+          position: { x: 0, y: 0 },
+          data: {
+            node_type: 'loop',
+            input_ports: [
+              { id: 'exec-in' },
+              { id: 'state-in' },
+              { id: 'input-0' },
+            ],
+            output_ports: [{ id: 'exec-out' }, { id: 'review_out' }],
+          },
+        },
+      ],
+      [],
+    );
+
+    expect(nodes[0]?.data.inputPorts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'exec-in',
+          dataType: 'exec',
+          schema: expect.objectContaining({ kind: 'exec' }),
+        }),
+        expect.objectContaining({
+          id: 'state-in',
+          dataType: 'json',
+          schema: expect.objectContaining({ kind: 'json' }),
+        }),
+      ]),
+    );
+    expect(nodes[0]?.data.outputPorts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'review_out',
+          direction: 'output',
+          dataType: 'json',
+          schema: expect.objectContaining({ kind: 'json' }),
+        }),
+      ]),
+    );
   });
 });

@@ -669,28 +669,40 @@ describe('WorkflowVersionService', () => {
 
       const result = await service.findDefinitionDetailById(WORKFLOW_ID);
 
-      expect(result).toEqual({
-        id: WORKFLOW_ID,
-        tenantId: TENANT_ID,
-        name: '测试工作流',
-        slug: 'test-workflow',
-        description: '详情描述',
-        icon: null,
-        status: 'draft',
-        version: 1,
-        publishedVersionId: null,
-        publishedReleaseNumber: null,
-        nodes: MOCK_NODES,
-        edges: MOCK_EDGES,
-        viewport: MOCK_VIEWPORT,
-        inputSchema: MOCK_INPUT_SCHEMA,
-        metadata: { category: 'analysis' },
-        createdBy: USER_ID,
-        updatedBy: USER_ID,
-        createdAt: '2025-02-01T08:00:00.000Z',
-        updatedAt: '2025-02-02T09:30:00.000Z',
-        resourceSourceKind: 'manual',
-      });
+      expect(result).toEqual(
+        expect.objectContaining({
+          id: WORKFLOW_ID,
+          tenantId: TENANT_ID,
+          name: '测试工作流',
+          slug: 'test-workflow',
+          description: '详情描述',
+          icon: null,
+          status: 'draft',
+          version: 1,
+          publishedVersionId: null,
+          publishedReleaseNumber: null,
+          edges: MOCK_EDGES,
+          viewport: MOCK_VIEWPORT,
+          inputSchema: MOCK_INPUT_SCHEMA,
+          metadata: { category: 'analysis' },
+          createdBy: USER_ID,
+          updatedBy: USER_ID,
+          createdAt: '2025-02-01T08:00:00.000Z',
+          updatedAt: '2025-02-02T09:30:00.000Z',
+          resourceSourceKind: 'manual',
+        }),
+      );
+      expect(result.nodes).toEqual([
+        expect.objectContaining({
+          id: 'node-1',
+          type: 'test',
+          position: { x: 0, y: 0 },
+          data: {
+            inputPorts: [],
+            outputPorts: [],
+          },
+        }),
+      ]);
       expect(result).toHaveProperty('nodes');
       expect(result).toHaveProperty('edges');
       expect(result).toHaveProperty('viewport');
@@ -845,28 +857,38 @@ describe('WorkflowVersionService', () => {
         name: '更新后的名称',
       });
 
-      expect(result).toEqual({
-        id: WORKFLOW_ID,
-        tenantId: TENANT_ID,
-        name: '更新后的名称',
-        slug: 'test-workflow',
-        description: null,
-        icon: null,
-        status: 'draft',
-        version: 4,
-        publishedVersionId: null,
-        publishedReleaseNumber: null,
-        nodes: MOCK_NODES,
-        edges: MOCK_EDGES,
-        viewport: MOCK_VIEWPORT,
-        inputSchema: null,
-        metadata: null,
-        createdBy: USER_ID,
-        updatedBy: USER_ID,
-        createdAt: NOW.toISOString(),
-        updatedAt: NOW.toISOString(),
-        resourceSourceKind: 'manual',
-      });
+      expect(result).toEqual(
+        expect.objectContaining({
+          id: WORKFLOW_ID,
+          tenantId: TENANT_ID,
+          name: '更新后的名称',
+          slug: 'test-workflow',
+          description: null,
+          icon: null,
+          status: 'draft',
+          version: 4,
+          publishedVersionId: null,
+          publishedReleaseNumber: null,
+          edges: MOCK_EDGES,
+          viewport: MOCK_VIEWPORT,
+          inputSchema: null,
+          metadata: null,
+          createdBy: USER_ID,
+          updatedBy: USER_ID,
+          createdAt: NOW.toISOString(),
+          updatedAt: NOW.toISOString(),
+          resourceSourceKind: 'manual',
+        }),
+      );
+      expect(result.nodes).toEqual([
+        expect.objectContaining({
+          id: 'node-1',
+          data: {
+            inputPorts: [],
+            outputPorts: [],
+          },
+        }),
+      ]);
       expect(result).toHaveProperty('nodes');
       expect(result).toHaveProperty('edges');
       expect(result).toHaveProperty('viewport');
@@ -926,15 +948,23 @@ describe('WorkflowVersionService', () => {
       });
 
       expect(result.nodes).toEqual([
-        {
+        expect.objectContaining({
           id: 'new-node',
           type: 'agent',
           position: { x: 100, y: 100 },
-          data: {
+          data: expect.objectContaining({
             nodeType: 'agent',
             category: 'agent',
-          },
-        },
+            inputPorts: expect.arrayContaining([
+              expect.objectContaining({ id: 'exec-in', dataType: 'exec' }),
+              expect.objectContaining({ id: 'text-in', dataType: 'text' }),
+            ]),
+            outputPorts: expect.arrayContaining([
+              expect.objectContaining({ id: 'exec-out', dataType: 'exec' }),
+              expect.objectContaining({ id: 'agent-out', dataType: 'text' }),
+            ]),
+          }),
+        }),
       ]);
       expect(result.edges).toEqual(newEdges);
       expect(result.viewport).toEqual(newViewport);
@@ -1025,7 +1055,38 @@ describe('WorkflowVersionService', () => {
 
       const updateSetClause =
         db.update.mock.results[0].value.set.mock.calls[0][0];
-      expect(updateSetClause.nodes).toEqual(updatedWorkflow.nodes);
+      expect(updateSetClause.nodes).toEqual([
+        expect.objectContaining({
+          id: 'trigger-a',
+          data: expect.objectContaining({
+            outputPorts: expect.arrayContaining([
+              expect.objectContaining({
+                id: 'exec-out',
+                dataType: 'exec',
+              }),
+              expect.objectContaining({
+                id: 'payload-out',
+                dataType: 'json',
+              }),
+            ]),
+          }),
+        }),
+        expect.objectContaining({
+          id: 'output-a',
+          data: expect.objectContaining({
+            inputPorts: expect.arrayContaining([
+              expect.objectContaining({
+                id: 'exec-in',
+                dataType: 'exec',
+              }),
+              expect.objectContaining({
+                id: 'content-in',
+                dataType: 'text',
+              }),
+            ]),
+          }),
+        }),
+      ]);
       expect(updateSetClause.edges).toEqual(updatedWorkflow.edges);
     });
 
@@ -1273,6 +1334,58 @@ describe('WorkflowVersionService', () => {
       await expect(
         service.listVersions(WORKFLOW_ID, { page: 1, pageSize: 20 }),
       ).rejects.toBeInstanceOf(WorkflowNotFoundException);
+    });
+
+    it('应当在版本列表响应中补齐 snapshot 端口定义，避免历史记录页面读取 schema.kind 崩溃', async () => {
+      const selectWf = createSelectChain([createDraftWorkflow()]);
+      const selectVersions = createSelectChainWithPagination([
+        createMockVersion({
+          snapshot: {
+            ...MOCK_SNAPSHOT,
+            nodes: [
+              {
+                id: 'manual-trigger',
+                type: 'workflow-node',
+                position: { x: 0, y: 0 },
+                data: {
+                  label: 'Manual Trigger',
+                  node_type: 'manual-trigger',
+                  input_ports: [],
+                  output_ports: [{ id: 'exec-out' }, { id: 'task' }],
+                },
+              },
+            ],
+            edges: [],
+          },
+        }),
+      ]);
+      const selectCount = createSelectChain([{ count: 1 }]);
+
+      db.select
+        .mockReturnValueOnce(selectWf)
+        .mockReturnValueOnce(selectVersions)
+        .mockReturnValueOnce(selectCount);
+
+      const result = await service.listVersions(WORKFLOW_ID, {
+        page: 1,
+        pageSize: 20,
+      });
+
+      const ports = result.data[0]?.snapshot.nodes[0]?.data?.outputPorts;
+      expect(ports).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: 'exec-out',
+            dataType: 'exec',
+            schema: expect.objectContaining({ kind: 'exec' }),
+          }),
+          expect.objectContaining({
+            id: 'task',
+            dataType: 'json',
+            schema: expect.objectContaining({ kind: 'json' }),
+          }),
+        ]),
+      );
     });
   });
 
@@ -1612,12 +1725,26 @@ describe('WorkflowVersionService', () => {
 
       expect(
         organizationAutonomyPolicyService.inspectWorkflowNodesAgainstPolicy,
-      ).toHaveBeenCalledWith({
-        tenantId: workflow.tenantId,
-        workflowId: workflow.id,
-        workflowName: workflow.name,
-        nodes: workflow.nodes,
-      });
+      ).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tenantId: workflow.tenantId,
+          workflowId: workflow.id,
+          workflowName: workflow.name,
+          nodes: [
+            expect.objectContaining({
+              id: 'agent-1',
+              data: expect.objectContaining({
+                label: 'Planner',
+                autonomyConfig: {
+                  mode: 'LLM_SUGGEST',
+                },
+                inputPorts: [],
+                outputPorts: [],
+              }),
+            }),
+          ],
+        }),
+      );
       expect(db.insert).not.toHaveBeenCalled();
       expect(db.update).not.toHaveBeenCalled();
     });
@@ -2279,22 +2406,20 @@ describe('WorkflowVersionService', () => {
       expect(result).toEqual(mockResult);
       expect(shareService.getShareByToken).toHaveBeenCalledWith(SHARE_TOKEN);
       expect(shareService.incrementCopyCount).toHaveBeenCalledWith(SHARE_TOKEN);
-      expect(resourceSourceService.recordImportedResources).toHaveBeenCalledWith(
-        TENANT_ID,
-        USER_ID,
-        [
-          {
-            resourceType: 'workflow_definition',
-            resourceId: mockResult.id,
-            sourceShareType: 'workflow',
-            sourceShareId: '00000000-0000-0000-0000-000000000099',
-            sourceShareToken: SHARE_TOKEN,
-            sourceResourceType: 'workflow_definition',
-            sourceResourceId: '00000000-0000-0000-0000-000000000088',
-            sourceResourceTitle: '公开分享工作流',
-          },
-        ],
-      );
+      expect(
+        resourceSourceService.recordImportedResources,
+      ).toHaveBeenCalledWith(TENANT_ID, USER_ID, [
+        {
+          resourceType: 'workflow_definition',
+          resourceId: mockResult.id,
+          sourceShareType: 'workflow',
+          sourceShareId: '00000000-0000-0000-0000-000000000099',
+          sourceShareToken: SHARE_TOKEN,
+          sourceResourceType: 'workflow_definition',
+          sourceResourceId: '00000000-0000-0000-0000-000000000088',
+          sourceResourceTitle: '公开分享工作流',
+        },
+      ]);
 
       const valuesArg = db.insert.mock.results[0].value.values.mock.calls[0][0];
       expect(valuesArg.nodes).toHaveLength(2);
@@ -2374,14 +2499,11 @@ describe('WorkflowVersionService', () => {
     });
 
     it('应识别 Drizzle 包装后的唯一约束错误并继续重试', async () => {
-      const wrappedUniqueViolation = Object.assign(
-        new Error('query_failed'),
-        {
-          cause: Object.assign(new Error('unique_violation'), {
-            code: '23505',
-          }),
-        },
-      );
+      const wrappedUniqueViolation = Object.assign(new Error('query_failed'), {
+        cause: Object.assign(new Error('unique_violation'), {
+          code: '23505',
+        }),
+      });
       const mockResult = createDraftWorkflow({ name: '包装错误重试工作流' });
 
       db.insert

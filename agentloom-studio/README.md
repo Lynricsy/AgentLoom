@@ -58,6 +58,8 @@ src/
 - 未知端口则按已有 `dataType / schema` 推导默认 schema
 - 目标是兼容历史快照、API 直改或导入数据里残留的半残 `PortDefinition`，避免页面在 UI / type-engine 读取 `port.schema.kind` 时直接崩溃
 
+`features/workflow/api/versionQueries.ts` 现在也会在消费版本列表 / 已发布版本接口时，对 `version.snapshot.nodes[*].data.inputPorts/outputPorts` 执行同类 hydration。这样即使服务端返回的是历史半残版本快照，版本历史侧边栏和任何后续消费 `snapshot` 的前端路径也不会再绕过主画布 store 直接命中 `schema.kind` 崩溃。
+
 ## 画布控制流容器事实
 
 `features/canvas/` 当前对 `loop / iteration` compound 容器采用以下前端契约：

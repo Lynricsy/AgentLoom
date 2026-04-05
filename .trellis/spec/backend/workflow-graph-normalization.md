@@ -51,6 +51,10 @@
   - `agent_name -> agentName`
   - `transform_type -> transformType`
   - `output_format -> outputFormat`
+- 端口定义本身也必须 canonicalize，不能只保留 `{ id }` 半残结构。
+  - 已知节点端口要补齐 `label/direction/dataType/required/multiple/maxConnections/schema`
+  - 未知或动态端口至少要补齐 `direction/dataType/schema`，保证 UI / type-engine 读取 `port.schema.kind` 时不会崩溃
+  - 端口字段也要收敛到 camelCase，例如 `data_type -> dataType`、`max_connections -> maxConnections`、`accepts_any_data_type -> acceptsAnyDataType`
 - edge handle 必须使用 canonical 端口 id，不能继续保存 legacy 简写别名。
   - `payload -> payload-out`
   - `json -> json-in`
@@ -59,7 +63,7 @@
   - `content -> content-in`
 - 规范化必须同时覆盖两个方向：
   - ingest: 保存草稿、回滚草稿、从 proposal/apply 生成新图时，先转 canonical 再落库。
-  - egress: 返回工作流详情、导出、发布快照、执行快照时，确保读取旧数据也会被修正。
+  - egress: 返回工作流详情、版本列表、已发布版本、导出、发布快照、执行快照时，确保读取旧数据也会被修正。
 - runtime 侧不得直接消费未规范化 graph。`execution.definitionSnapshot` 必须与 Studio 详情返回保持同一套 canonical 结构。
 
 ### 4. Validation & Error Matrix
@@ -69,6 +73,7 @@
 | 历史草稿中的 `node.type` 被写成 `workflow-node` | 详情接口返回时自动映射回正确壳类型，Studio 能显示真实节点卡片与端口 | `serializeWorkflowDefinitionDetail()` 单测 + 浏览器打开坏样本 |
 | 历史草稿中 `data.node_type/input_ports/output_ports` 为 snake_case | 返回前与再次保存前都转为 camelCase | detail/update 单测 |
 | 历史 edge 使用 `payload/json/text/agent/content` 简写 handle | 详情接口与 execution snapshot 都输出 canonical handle id | `workflow-version.service.spec.ts` + `execution.service.spec.ts` |
+| 历史 `workflow_versions.snapshot` 的端口只剩 `{id}` | 版本列表 / 已发布版本接口返回完整 canonical 端口定义，历史记录页不会因 `schema.kind` 崩溃 | `workflow-version.service.spec.ts` + browser 复现 |
 | 已发布版本 snapshot 仍是 legacy graph | `runWorkflow()` 执行前规范化，运行成功且端口数据能正确流转 | execution 回归测试 + 线上 manual QA |
 | 自进化 external editing 生成了 `workflow-node` 或 handle 简写 | Skill 文档明确禁止；服务端 ingest 仍做兜底规范化 | skill 文档审查 + 兼容单测 |
 | 未知 `node.data.nodeType` 无法归类 | 保留原 `node.type`，不要瞎映射到错误壳类型 | 规范化工具单测 |
@@ -92,6 +97,7 @@
 - `agentloom-server/src/modules/workflow-definition/__tests__/workflow-version.service.spec.ts`
   - `findDefinitionDetailById()` 返回归一化后的 graph。
   - `updateDefinition()` 在持久化前归一化 graph。
+  - `listVersions()` / `getPublishedVersion()` 返回的 `snapshot.nodes[*].data.inputPorts/outputPorts` 也要是完整 canonical 端口定义。
 - `agentloom-server/src/modules/execution/__tests__/execution.service.spec.ts`
   - `runWorkflow()` 对 legacy published snapshot 归一化后再写入 execution。
 - Manual/browser E2E:

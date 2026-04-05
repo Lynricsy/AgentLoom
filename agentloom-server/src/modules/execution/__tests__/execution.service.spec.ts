@@ -547,32 +547,54 @@ describe('ExecutionService', () => {
 
       const insertValues =
         db.insert.mock.results[0].value.values.mock.calls[0][0];
-      expect(insertValues.definitionSnapshot).toEqual({
-        nodes: [
-          {
-            id: 'draft-http-tool',
-            type: 'tool',
-            position: { x: 120, y: 80 },
-            data: {
-              nodeType: 'http-tool',
-              category: 'tool',
-              config: {
-                url: 'https://api.day.app/device/test',
-                method: 'POST',
-              },
-            },
+      expect(insertValues.definitionSnapshot).toEqual(
+        expect.objectContaining({
+          nodes: [
+            expect.objectContaining({
+              id: 'draft-http-tool',
+              type: 'tool',
+              position: { x: 120, y: 80 },
+              data: expect.objectContaining({
+                nodeType: 'http-tool',
+                category: 'tool',
+                config: {
+                  url: 'https://api.day.app/device/test',
+                  method: 'POST',
+                },
+                inputPorts: expect.arrayContaining([
+                  expect.objectContaining({
+                    id: 'exec-in',
+                    dataType: 'exec',
+                  }),
+                  expect.objectContaining({
+                    id: 'request-in',
+                    dataType: 'json',
+                  }),
+                ]),
+                outputPorts: expect.arrayContaining([
+                  expect.objectContaining({
+                    id: 'exec-out',
+                    dataType: 'exec',
+                  }),
+                  expect.objectContaining({
+                    id: 'response-out',
+                    dataType: 'json',
+                  }),
+                ]),
+              }),
+            }),
+          ],
+          edges: [],
+          viewport: draftSnapshotWorkflow.viewport,
+          inputSchema: CONDITIONAL_RUN_INPUT_SCHEMA,
+          metadata: {
+            nodeCount: 1,
+            edgeCount: 0,
+            createdFromVersion: 20,
+            releaseNotes: null,
           },
-        ],
-        edges: [],
-        viewport: draftSnapshotWorkflow.viewport,
-        inputSchema: CONDITIONAL_RUN_INPUT_SCHEMA,
-        metadata: {
-          nodeCount: 1,
-          edgeCount: 0,
-          createdFromVersion: 20,
-          releaseNotes: null,
-        },
-      });
+        }),
+      );
       expect(insertValues.workflowVersionId).toBe(VERSION_ID);
     });
 
@@ -641,6 +663,18 @@ describe('ExecutionService', () => {
           data: expect.objectContaining({
             nodeType: 'manual-trigger',
             category: 'trigger',
+            outputPorts: expect.arrayContaining([
+              expect.objectContaining({
+                id: 'exec-out',
+                dataType: 'exec',
+                schema: expect.objectContaining({ kind: 'exec' }),
+              }),
+              expect.objectContaining({
+                id: 'payload-out',
+                dataType: 'json',
+                schema: expect.objectContaining({ kind: 'json' }),
+              }),
+            ]),
           }),
         }),
         expect.objectContaining({
@@ -649,6 +683,18 @@ describe('ExecutionService', () => {
           data: expect.objectContaining({
             nodeType: 'text-output',
             category: 'output',
+            inputPorts: expect.arrayContaining([
+              expect.objectContaining({
+                id: 'exec-in',
+                dataType: 'exec',
+                schema: expect.objectContaining({ kind: 'exec' }),
+              }),
+              expect.objectContaining({
+                id: 'content-in',
+                dataType: 'text',
+                schema: expect.objectContaining({ kind: 'text' }),
+              }),
+            ]),
           }),
         }),
       ]);
