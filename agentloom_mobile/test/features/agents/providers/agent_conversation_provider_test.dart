@@ -445,6 +445,45 @@ void main() {
     expect(state.fileTree.single.path, 'seed.txt');
   });
 
+  test('sandbox restoreWorkspaceId 与 workspaceSnapshotId 冲突时应优先预载实际恢复工作区', () async {
+    when(() => mockApi.getAgent('agent-001')).thenAnswer(
+      (_) async => createTestAgent(
+        id: 'agent-001',
+        workspaceSnapshotId: 'preview-ws',
+        sandboxConfig: {'restoreWorkspaceId': 'restore-ws'},
+      ),
+    );
+    when(() => mockResourcesApi.getWorkspaceTree('restore-ws')).thenAnswer(
+      (_) async => const [
+        WorkspaceFileNode(
+          name: 'restore-note.md',
+          path: 'restore-note.md',
+          type: 'file',
+        ),
+      ],
+    );
+    when(() => mockApi.getWorkspaceTree(any())).thenAnswer((_) async => const []);
+
+    container.listen(
+      agentConversationProvider(params),
+      (_, __) {},
+      fireImmediately: true,
+    );
+
+    await container.read(authProvider.future);
+    await container.read(agentConversationProvider(params).future);
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    verify(() => mockResourcesApi.getWorkspaceTree('restore-ws')).called(1);
+    verifyNever(() => mockResourcesApi.getWorkspaceTree('preview-ws'));
+
+    final state = container.read(agentConversationProvider(params)).value;
+    expect(state, isNotNull);
+    expect(state!.workspaceSource, WorkspaceViewSource.snapshotPreview);
+    expect(state.fileTree, hasLength(1));
+    expect(state.fileTree.single.name, 'restore-note.md');
+  });
+
   test('持久化 workspace 预览模式点文件时不请求 live 文件内容', () async {
     when(() => mockApi.getAgent('agent-001')).thenAnswer(
       (_) async =>

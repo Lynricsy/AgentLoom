@@ -22,6 +22,7 @@ import { Button } from "@/shared/ui/button";
 import { useAuthToken } from "@/features/auth/hooks/useAuthToken";
 import { useAgent } from "@/features/agent/api/agentQueries";
 import { SubAgentNavContext } from "@/shared/components/tool-renderers/renderers/SubAgentRenderer";
+import { resolveConversationWorkspacePreviewId } from "../workspacePreview";
 import { MessageList } from "./MessageList";
 import { SandboxComputerPanel } from "./SandboxComputerPanel";
 import { WorkspaceFileTree } from "./WorkspaceFileTree";
@@ -383,7 +384,9 @@ export function AgentConversationPage({
   const connectionError = useConversationConnectionError();
   const workspaceSource = useWorkspaceSource();
   const runtimeMode = agentQuery.data?.runtimeMode;
-  const workspaceSnapshotId = agentQuery.data?.workspaceSnapshotId;
+  const workspacePreviewId = resolveConversationWorkspacePreviewId(
+    agentQuery.data,
+  );
   const hasSandbox = runtimeMode === "sandbox";
   const runtimeModeLabel =
     runtimeMode === "sandbox"
@@ -416,8 +419,8 @@ export function AgentConversationPage({
       authToken: token,
     });
     if (hasSandbox) {
-      if (workspaceSnapshotId) {
-        void a.loadWorkspacePreview(conversationId, workspaceSnapshotId);
+      if (workspacePreviewId) {
+        void a.loadWorkspacePreview(conversationId, workspacePreviewId);
       }
       void a.loadWorkspaceTree(conversationId);
     }
@@ -435,7 +438,7 @@ export function AgentConversationPage({
     agentQuery.data,
     conversationId,
     hasSandbox,
-    workspaceSnapshotId,
+    workspacePreviewId,
   ]);
 
   useEffect(() => {

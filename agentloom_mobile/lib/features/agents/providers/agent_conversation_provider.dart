@@ -13,6 +13,7 @@ import '../../execution/services/execution_socket_service.dart'
 import '../../resources/api/resources_api.dart';
 import '../api/agent_api.dart';
 import '../models/agent_conversation_dto.dart';
+import '../models/agent_definition_dto.dart';
 import '../models/conversation_message_dto.dart';
 import 'agent_provider.dart';
 
@@ -73,7 +74,7 @@ typedef _ConversationHistorySnapshot = ({
 });
 typedef _ConversationBootstrap = ({
   String runtimeMode,
-  String? workspaceSnapshotId,
+  String? workspacePreviewId,
 });
 
 String _resolveConversationSocketUrl(String apiBaseUrl) {
@@ -113,6 +114,14 @@ String? _readString(Object? value) {
     return value;
   }
   return null;
+}
+
+String? _resolveWorkspacePreviewId(AgentDefinitionDto agent) {
+  final sandboxConfig = _asNullableMap(agent.sandboxConfig);
+  final restoreWorkspaceId =
+      _readString(sandboxConfig?['restoreWorkspaceId']) ??
+      _readString(sandboxConfig?['restore_workspace_id']);
+  return restoreWorkspaceId ?? _readString(agent.workspaceSnapshotId);
 }
 
 String _describeConversationApiError(Object error) {
@@ -1014,7 +1023,7 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
   int _workspaceTreeRequestVersion = 0;
   bool _isCleaningUp = false;
   bool _hasHistoricalMessages = false;
-  String? _boundWorkspaceSnapshotId;
+  String? _boundWorkspacePreviewId;
 
   @override
   Future<ConversationState> build() async {
@@ -1025,14 +1034,14 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
     final messages = await messagesFuture;
     final bootstrap = await bootstrapFuture;
     _hasHistoricalMessages = messages.isNotEmpty;
-    _boundWorkspaceSnapshotId = bootstrap.workspaceSnapshotId;
+    _boundWorkspacePreviewId = bootstrap.workspacePreviewId;
     Future<void>.microtask(() {
       if (!ref.mounted) {
         return;
       }
       _connectSocket();
       if (bootstrap.runtimeMode == 'sandbox') {
-        if (_boundWorkspaceSnapshotId case final workspaceId?
+        if (_boundWorkspacePreviewId case final workspaceId?
             when workspaceId.isNotEmpty) {
           unawaited(_preloadWorkspaceSnapshot(workspaceId));
         }
@@ -1052,10 +1061,10 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
       final agent = await ref.read(agentDetailProvider(params.agentId).future);
       return (
         runtimeMode: agent.runtimeMode,
-        workspaceSnapshotId: agent.workspaceSnapshotId,
+        workspacePreviewId: _resolveWorkspacePreviewId(agent),
       );
     } catch (_) {
-      return (runtimeMode: 'sandbox', workspaceSnapshotId: null);
+      return (runtimeMode: 'sandbox', workspacePreviewId: null);
     }
   }
 

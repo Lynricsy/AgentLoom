@@ -18,6 +18,7 @@ AgentLoom Flutter 移动端应用：
 - 执行监控：Socket.IO `/execution` 实时状态 + REST detail 轮询降级，状态头、告警横幅、步骤时间线、断连语义纠正
 - Agent 管理：列表 / 详情 / 对话三屏；详情页会解析 `agent-main` 节点并展示 `nativeToolPolicy` / `selfEvolutionPolicy` 能力摘要
 - Agent 对话：`AgentConversationScreen` 为 Shell 外全屏路由，Socket.IO `/agent-conversation` 实时消息推送，按 `message_chunk / thinking / tool_call / tool_result / done / terminal_output / file_change / status.changed` 分段渲染，包含权限审批、终端输出、文件变更、工作区上下文面板，以及自进化升级后的“重启到新版本”提示卡片；页面会根据 Agent `runtimeMode` 显示 `有沙箱 / 无沙箱` 状态，`no_sandbox` 会话不展示工作区/终端上下文面板，只保留消息流中的 Skill/Knowledge/Memory/MCP/自进化能力
+- Agent 对话工作区预览优先级：standalone sandbox Agent 对话启动时，如果 Agent detail 同时存在顶层 `workspaceSnapshotId` 与 `sandboxConfig.restoreWorkspaceId`，Flutter 必须优先预载 `restoreWorkspaceId` 对应的目录树，以保证预览与 live sandbox 实际 restore 的工作区一致；没有 `restoreWorkspaceId` 时才回退到 `workspaceSnapshotId`
 - 资源域：`ResourcesHubScreen` 以无分类统一资源列表挂载 `Memory / Skills / Workspaces / Sandboxes / Knowledge Bases / MCP Servers / LLM Models`
 - 资源管理：
   - `Workspaces / Sandboxes / Knowledge Bases` 已接入真实 CRUD / 详情

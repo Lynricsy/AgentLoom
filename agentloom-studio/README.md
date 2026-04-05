@@ -24,10 +24,17 @@ AgentLoom Studio 是基于 **React 19 + Vite 7** 的前端工作台，负责工�
 | `/resources/knowledge-bases`         | KnowledgeBasesPage             | 知识库管理（列表页展示文档数 / 知识节点数 / 策略摘要）                                       |
 | `/resources/workspaces`              | WorkspaceManagementPage        | 持久化 workspace 列表页；默认隐藏 execution 自动归档快照，并显示来源标签                     |
 | `/resources/workspaces/$workspaceId` | WorkspaceDetailPage            | 持久化 workspace 详情页；目录树 + 文本 / 图片 / PDF 预览，其他文件提供下载兜底               |
+| `/agents/$agentId/conversations/$conversationId` | AgentConversationPage | 三列对话页；sandbox Agent 会在 live workspace 就绪前先显示持久化工作区目录预览 |
 | `/settings/tool-library`             | ToolLibraryPage                | MCP 工具库                                                                                   |
 | `/marketplace`                       | MarketplaceBrowsePage          | 工作流 / 插件市场                                                                            |
 
 `WorkflowListPage`、`AgentListPage`、`KnowledgeBasesPage`、`MemoryInstancesPage`、`McpServerManagementPage` 与 `SkillBrowsePage` 当前统一采用顶部来源分类标签 `自己创建 / 分享导入` 切换列表，默认展示 `自己创建`，条目内部不再重复显示来源 badge；`share_imported` 项仍保留“转为自己创建”动作。
+
+## Agent 对话工作区预览事实
+
+- `AgentConversationPage` 在 sandbox Agent 对话冷开时，会先尝试加载持久化工作区目录预览，再等待 live sandbox 的 authoritative tree 接管。
+- 若 Agent detail 同时包含顶层 `workspaceSnapshotId` 与 `sandboxConfig.restoreWorkspaceId`，前端必须优先使用 `restoreWorkspaceId` 作为 preview preload 来源；因为 live sandbox 真正恢复的就是该工作区。
+- 只有不存在 `restoreWorkspaceId` 时，才回退到顶层 `workspaceSnapshotId`。
 
 ## Feature-Slice 结构
 

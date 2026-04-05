@@ -119,6 +119,7 @@ src/
   - 已集成到 `WorkflowCanvasPage`，通过 `useExecutionId` 获取活跃执行 ID
 - **通知 Socket.IO**: `/notification` namespace，`useNotificationSocket` 复用 execution 的 `resolveSocketUrl + callbacksRef + 单 useEffect` 模式；根布局 `__root.tsx` 负责激活连接，并通过 `NotificationBell`/`NotificationDropdown` 暴露未读数与最近 20 条通知
 - **Agent 对话 Socket.IO**: `/agent-conversation` namespace，与 `/execution` 对称，复用 EventBridge 模式实现对话级实时事件推送，支持 JWT + MFA 认证；`useAgentConversationSocket` 管理连接与事件监听，桥接 `agentConversationStore` 更新消息流；`MessageList` 与共享 `ToolCallCard` 负责渲染自进化 diff/风险信息、四档审批按钮（允许一次 / 本会话同类始终允许 / 拒绝一次 / 本会话同类始终拒绝）以及“重启到新版本”卡片；`PreparationCard` / `AgentConversationPage` 会根据 `runtimeMode` 区分“沙箱启动中”与“无沙箱 Agent 无需准备沙箱”，并避免对 `no_sandbox` 会话误请求 sandbox stats
+- **Agent 对话工作区预览优先级**: standalone sandbox Agent 对话冷开时，若 Agent detail 同时带顶层 `workspaceSnapshotId` 与 `sandboxConfig.restoreWorkspaceId`，Studio 必须优先预载 `restoreWorkspaceId` 对应目录树，因为 live sandbox 真正 restore 的是该工作区；只有不存在 `restoreWorkspaceId` 时才回退到 `workspaceSnapshotId`
 - **执行 API 层** (`features/execution/api/`):
   - `executionKeys`: TanStack Query key factory (all/lists/details)
   - `executionApi`: `runWorkflow` (POST /workflow-definitions/:id/run), `listExecutions` (GET /workflow-definitions/:id/executions), `getExecution`, `cancelExecution`, `resolveIntervention` (POST /executions/:id/steps/:stepId/intervene)
