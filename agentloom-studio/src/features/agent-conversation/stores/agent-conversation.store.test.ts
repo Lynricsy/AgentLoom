@@ -255,9 +255,7 @@ describe("agentConversationStore", () => {
     });
 
     await vi.waitFor(() => {
-      expect(getMock).toHaveBeenCalledWith(
-        "agent-conversations/conv-1",
-      );
+      expect(getMock).toHaveBeenCalledWith("agent-conversations/conv-1");
       expect(getMock).toHaveBeenCalledWith(
         "agent-conversations/conv-1/workspace/tree",
       );
@@ -445,9 +443,8 @@ describe("agentConversationStore", () => {
   });
 
   it("done 事件不会在 history 回拉前清掉已存在的失败态", async () => {
-    const deferred = createDeferred<
-      ReturnType<typeof createConversationDetailResponse>
-    >();
+    const deferred =
+      createDeferred<ReturnType<typeof createConversationDetailResponse>>();
 
     getMock.mockReturnValue({
       json: vi.fn().mockImplementation(() => deferred.promise),
@@ -481,15 +478,12 @@ describe("agentConversationStore", () => {
     );
 
     deferred.resolve(
-      createConversationDetailResponse(
-        [],
-        {
-          execution: {
-            runningState: "failed",
-            errorMessage: "租户未配置默认 LLM 模型",
-          },
+      createConversationDetailResponse([], {
+        execution: {
+          runningState: "failed",
+          errorMessage: "租户未配置默认 LLM 模型",
         },
-      ),
+      }),
     );
 
     await vi.waitFor(() => {
@@ -498,9 +492,8 @@ describe("agentConversationStore", () => {
   });
 
   it("loadHistory 的过期响应不会污染已切换或已重置的会话状态", async () => {
-    const deferred = createDeferred<
-      ReturnType<typeof createConversationDetailResponse>
-    >();
+    const deferred =
+      createDeferred<ReturnType<typeof createConversationDetailResponse>>();
     const jsonMock = vi.fn().mockImplementation(() => deferred.promise);
 
     getMock.mockReturnValue({
@@ -541,9 +534,8 @@ describe("agentConversationStore", () => {
   });
 
   it("历史回拉晚到时不会覆盖当前 live tail", async () => {
-    const deferred = createDeferred<
-      ReturnType<typeof createConversationDetailResponse>
-    >();
+    const deferred =
+      createDeferred<ReturnType<typeof createConversationDetailResponse>>();
     const jsonMock = vi.fn().mockImplementation(() => deferred.promise);
 
     getMock.mockImplementation((url: string) => {
@@ -710,6 +702,209 @@ describe("agentConversationStore", () => {
       },
     ]);
     expect(useAgentConversationStore.getState().selectedFilePath).toBeNull();
+  });
+
+  it("持久化 workspace 预载应先展示快照树，再由实时工作区覆盖", async () => {
+    getMock.mockImplementation((url: string) => {
+      if (url === "workspaces/ws-1/tree") {
+        return {
+          json: vi.fn().mockResolvedValue({
+            data: [
+              {
+                name: "seed.txt",
+                path: "seed.txt",
+                type: "file",
+              },
+            ],
+          }),
+        };
+      }
+
+      if (url === "agent-conversations/conv-1/workspace/tree") {
+        return {
+          json: vi.fn().mockResolvedValue([
+            {
+              name: "live.txt",
+              path: "live.txt",
+              type: "file",
+            },
+          ]),
+        };
+      }
+
+      return {
+        json: vi.fn().mockResolvedValue(createConversationDetailResponse([])),
+      };
+    });
+
+    useAgentConversationStore.getState().actions.connect({
+      conversationId: "conv-1",
+      agentId: "agent-1",
+      agentName: "Workspace Agent",
+      runtimeMode: "sandbox",
+      authToken: "token-1",
+    });
+
+    await useAgentConversationStore
+      .getState()
+      .actions.loadWorkspacePreview("conv-1", "ws-1");
+
+    expect(useAgentConversationStore.getState()).toEqual(
+      expect.objectContaining({
+        workspaceSource: "snapshot_preview",
+        fileTree: [
+          expect.objectContaining({
+            name: "seed.txt",
+            path: "seed.txt",
+            type: "file",
+          }),
+        ],
+      }),
+    );
+
+    await useAgentConversationStore
+      .getState()
+      .actions.loadWorkspaceTree("conv-1");
+
+    expect(useAgentConversationStore.getState()).toEqual(
+      expect.objectContaining({
+        workspaceSource: "live",
+        fileTree: [
+          expect.objectContaining({
+            name: "live.txt",
+            path: "live.txt",
+            type: "file",
+          }),
+        ],
+      }),
+    );
+  });
+
+  it("空的实时树不应在新会话里覆盖持久化 workspace 预览", async () => {
+    getMock.mockImplementation((url: string) => {
+      if (url === "workspaces/ws-1/tree") {
+        return {
+          json: vi.fn().mockResolvedValue({
+            data: [
+              {
+                name: "seed.txt",
+                path: "seed.txt",
+                type: "file",
+              },
+            ],
+          }),
+        };
+      }
+
+      if (url === "agent-conversations/conv-1/workspace/tree") {
+        return {
+          json: vi.fn().mockResolvedValue([]),
+        };
+      }
+
+      return {
+        json: vi.fn().mockResolvedValue(createConversationDetailResponse([])),
+      };
+    });
+
+    useAgentConversationStore.getState().actions.connect({
+      conversationId: "conv-1",
+      agentId: "agent-1",
+      agentName: "Workspace Agent",
+      runtimeMode: "sandbox",
+      authToken: "token-1",
+    });
+
+    await useAgentConversationStore
+      .getState()
+      .actions.loadWorkspacePreview("conv-1", "ws-1");
+    await useAgentConversationStore
+      .getState()
+      .actions.loadWorkspaceTree("conv-1");
+
+    expect(useAgentConversationStore.getState()).toEqual(
+      expect.objectContaining({
+        workspaceSource: "snapshot_preview",
+        fileTree: [
+          expect.objectContaining({
+            name: "seed.txt",
+            path: "seed.txt",
+            type: "file",
+          }),
+        ],
+      }),
+    );
+  });
+
+  it("迟到的快照预载响应不会回盖已经进入 live 的工作区树", async () => {
+    const snapshotDeferred = createDeferred<{
+      data: Array<{ name: string; path: string; type: "file" }>;
+    }>();
+
+    getMock.mockImplementation((url: string) => {
+      if (url === "workspaces/ws-1/tree") {
+        return {
+          json: vi.fn().mockImplementation(() => snapshotDeferred.promise),
+        };
+      }
+
+      if (url === "agent-conversations/conv-1/workspace/tree") {
+        return {
+          json: vi.fn().mockResolvedValue([
+            {
+              name: "live.txt",
+              path: "live.txt",
+              type: "file",
+            },
+          ]),
+        };
+      }
+
+      return {
+        json: vi.fn().mockResolvedValue(createConversationDetailResponse([])),
+      };
+    });
+
+    useAgentConversationStore.getState().actions.connect({
+      conversationId: "conv-1",
+      agentId: "agent-1",
+      agentName: "Workspace Agent",
+      runtimeMode: "sandbox",
+      authToken: "token-1",
+    });
+
+    const pendingPreview = useAgentConversationStore
+      .getState()
+      .actions.loadWorkspacePreview("conv-1", "ws-1");
+
+    await useAgentConversationStore
+      .getState()
+      .actions.loadWorkspaceTree("conv-1");
+
+    snapshotDeferred.resolve({
+      data: [
+        {
+          name: "seed.txt",
+          path: "seed.txt",
+          type: "file",
+        },
+      ],
+    });
+
+    await pendingPreview;
+
+    expect(useAgentConversationStore.getState()).toEqual(
+      expect.objectContaining({
+        workspaceSource: "live",
+        fileTree: [
+          expect.objectContaining({
+            name: "live.txt",
+            path: "live.txt",
+            type: "file",
+          }),
+        ],
+      }),
+    );
   });
 
   it("loadWorkspaceTree 的过期响应不会污染已重置的会话状态", async () => {

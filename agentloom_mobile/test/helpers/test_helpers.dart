@@ -11,6 +11,7 @@ import 'package:agentloom_mobile/features/memory/models/memory_instance.dart';
 import 'package:agentloom_mobile/features/memory/models/memory_node.dart';
 import 'package:agentloom_mobile/features/memory/models/memory_audit_entry.dart';
 import 'package:agentloom_mobile/features/memory/models/memory_version.dart';
+import 'package:agentloom_mobile/features/resources/api/resources_api.dart';
 import 'package:agentloom_mobile/features/workflows/models/execution_step_dto.dart';
 import 'package:agentloom_mobile/features/workflows/models/conversation_plan.dart';
 import 'package:agentloom_mobile/features/workflows/models/input_field_definition.dart';
@@ -30,6 +31,9 @@ class MockMemoryApi extends Mock implements MemoryApi {}
 
 /// Mock WorkflowApi
 class MockWorkflowApi extends Mock implements WorkflowApi {}
+
+/// Mock ResourcesApi
+class MockResourcesApi extends Mock implements ResourcesApi {}
 
 /// Mock Dio
 class MockDio extends Mock implements Dio {}
@@ -352,6 +356,7 @@ AgentDefinitionDto createTestAgent({
   int? maxIterations = 10,
   int? timeoutSeconds = 300,
   int? version = 1,
+  String? workspaceSnapshotId,
   String createdAt = '2026-01-01T00:00:00.000Z',
   String updatedAt = '2026-01-01T00:00:00.000Z',
   List<Map<String, dynamic>> nodes = const [],
@@ -370,6 +375,7 @@ AgentDefinitionDto createTestAgent({
     maxIterations: maxIterations,
     timeoutSeconds: timeoutSeconds,
     version: version,
+    workspaceSnapshotId: workspaceSnapshotId,
     createdAt: createdAt,
     updatedAt: updatedAt,
     nodes: nodes,

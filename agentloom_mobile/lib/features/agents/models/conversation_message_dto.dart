@@ -175,6 +175,8 @@ extension ConversationToolStatusX on ConversationToolStatus {
 
 enum ConversationStatus { idle, connecting, connected, executing, error }
 
+enum WorkspaceViewSource { unavailable, snapshotPreview, live }
+
 /// 沙箱启动准备阶段
 enum PreparationPhase {
   queued,
@@ -454,6 +456,7 @@ class ConversationState {
     this.terminalEntries = const <TerminalEntry>[],
     this.fileTree = const <WorkspaceFileNode>[],
     this.hasLoadedWorkspaceTree = false,
+    this.workspaceSource = WorkspaceViewSource.unavailable,
     this.workspaceTreeOnly = false,
     this.workspacePreviewUnavailableReason,
     this.fileChanges = const <WorkspaceFileChange>[],
@@ -475,6 +478,7 @@ class ConversationState {
   final List<TerminalEntry> terminalEntries;
   final List<WorkspaceFileNode> fileTree;
   final bool hasLoadedWorkspaceTree;
+  final WorkspaceViewSource workspaceSource;
   final bool workspaceTreeOnly;
   final String? workspacePreviewUnavailableReason;
   final List<WorkspaceFileChange> fileChanges;
@@ -537,6 +541,7 @@ class ConversationState {
     List<TerminalEntry>? terminalEntries,
     List<WorkspaceFileNode>? fileTree,
     bool? hasLoadedWorkspaceTree,
+    WorkspaceViewSource? workspaceSource,
     bool? workspaceTreeOnly,
     String? workspacePreviewUnavailableReason,
     bool clearWorkspacePreviewUnavailableReason = false,
@@ -567,6 +572,7 @@ class ConversationState {
       fileTree: fileTree ?? this.fileTree,
       hasLoadedWorkspaceTree:
           hasLoadedWorkspaceTree ?? this.hasLoadedWorkspaceTree,
+      workspaceSource: workspaceSource ?? this.workspaceSource,
       workspaceTreeOnly: workspaceTreeOnly ?? this.workspaceTreeOnly,
       workspacePreviewUnavailableReason: clearWorkspacePreviewUnavailableReason
           ? null

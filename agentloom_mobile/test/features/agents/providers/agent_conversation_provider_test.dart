@@ -8,6 +8,7 @@ import 'package:agentloom_mobile/features/auth/models/auth_state.dart';
 import 'package:agentloom_mobile/features/auth/models/auth_tokens.dart';
 import 'package:agentloom_mobile/features/auth/models/login_user.dart';
 import 'package:agentloom_mobile/features/auth/providers/auth_provider.dart';
+import 'package:agentloom_mobile/features/resources/api/resources_api.dart';
 import 'package:agentloom_mobile/shared/models/paginated_response.dart';
 import 'package:agentloom_mobile/shared/providers/env_provider.dart';
 import 'package:dio/dio.dart';
@@ -22,6 +23,7 @@ void _noopHandler([dynamic _]) {}
 
 void main() {
   late MockAgentApi mockApi;
+  late MockResourcesApi mockResourcesApi;
   late MockSocket mockSocket;
   late ProviderContainer container;
   late Map<String, Function> listeners;
@@ -48,6 +50,7 @@ void main() {
     return ProviderContainer(
       overrides: [
         agentApiProvider.overrideWithValue(mockApi),
+        resourcesApiProvider.overrideWithValue(mockResourcesApi),
         baseEnvProvider.overrideWithValue(testEnv),
         authProvider.overrideWith(
           () => _FakeAuthNotifier(
@@ -67,6 +70,7 @@ void main() {
 
   setUp(() {
     mockApi = MockAgentApi();
+    mockResourcesApi = MockResourcesApi();
     mockSocket = MockSocket();
     listeners = <String, Function>{};
     capturedSocketOptions = null;
@@ -91,6 +95,9 @@ void main() {
     );
     when(
       () => mockApi.getWorkspaceTree(any()),
+    ).thenAnswer((_) async => const []);
+    when(
+      () => mockResourcesApi.getWorkspaceTree(any()),
     ).thenAnswer((_) async => const []);
     when(() => mockApi.getWorkspaceFile(any(), any())).thenThrow(
       DioException(
@@ -403,6 +410,112 @@ void main() {
         .value;
     expect(stateAfterSecondTap!.selectedFilePath, 'summary.txt');
     expect(stateAfterSecondTap.workspaceTreeOnly, isTrue);
+  });
+
+  test('绑定持久化 workspace 的对话页初始化时应先显示目录预览', () async {
+    when(() => mockApi.getAgent('agent-001')).thenAnswer(
+      (_) async =>
+          createTestAgent(id: 'agent-001', workspaceSnapshotId: 'ws-001'),
+    );
+    when(() => mockResourcesApi.getWorkspaceTree('ws-001')).thenAnswer(
+      (_) async => const [
+        WorkspaceFileNode(name: 'seed.txt', path: 'seed.txt', type: 'file'),
+      ],
+    );
+    when(
+      () => mockApi.getWorkspaceTree(any()),
+    ).thenAnswer((_) async => const []);
+
+    container.listen(
+      agentConversationProvider(params),
+      (_, __) {},
+      fireImmediately: true,
+    );
+
+    await container.read(authProvider.future);
+    await container.read(agentConversationProvider(params).future);
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    final state = container.read(agentConversationProvider(params)).value;
+    expect(state, isNotNull);
+    expect(state!.workspaceSource, WorkspaceViewSource.snapshotPreview);
+    expect(state.hasLoadedWorkspaceTree, isTrue);
+    expect(state.fileTree, hasLength(1));
+    expect(state.fileTree.single.name, 'seed.txt');
+    expect(state.fileTree.single.path, 'seed.txt');
+  });
+
+  test('持久化 workspace 预览模式点文件时不请求 live 文件内容', () async {
+    when(() => mockApi.getAgent('agent-001')).thenAnswer(
+      (_) async =>
+          createTestAgent(id: 'agent-001', workspaceSnapshotId: 'ws-001'),
+    );
+    when(() => mockResourcesApi.getWorkspaceTree('ws-001')).thenAnswer(
+      (_) async => const [
+        WorkspaceFileNode(name: 'seed.txt', path: 'seed.txt', type: 'file'),
+      ],
+    );
+    when(
+      () => mockApi.getWorkspaceTree(any()),
+    ).thenAnswer((_) async => const []);
+
+    container.listen(
+      agentConversationProvider(params),
+      (_, __) {},
+      fireImmediately: true,
+    );
+
+    await container.read(authProvider.future);
+    await container.read(agentConversationProvider(params).future);
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    final notifier = container.read(agentConversationProvider(params).notifier);
+    await notifier.openWorkspaceFile('seed.txt');
+
+    verifyNever(() => mockApi.getWorkspaceFile(any(), any()));
+    final state = container.read(agentConversationProvider(params)).value;
+    expect(state, isNotNull);
+    expect(state!.workspaceSource, WorkspaceViewSource.snapshotPreview);
+    expect(state.selectedFilePath, 'seed.txt');
+    expect(state.selectedFileContent, isNull);
+  });
+
+  test('迟到的持久化 workspace 预载不会覆盖已经进入 live 的工作区树', () async {
+    final snapshotCompleter = Completer<List<WorkspaceFileNode>>();
+    when(() => mockApi.getAgent('agent-001')).thenAnswer(
+      (_) async =>
+          createTestAgent(id: 'agent-001', workspaceSnapshotId: 'ws-001'),
+    );
+    when(
+      () => mockResourcesApi.getWorkspaceTree('ws-001'),
+    ).thenAnswer((_) => snapshotCompleter.future);
+    when(() => mockApi.getWorkspaceTree(any())).thenAnswer(
+      (_) async => const [
+        WorkspaceFileNode(name: 'live.txt', path: 'live.txt', type: 'file'),
+      ],
+    );
+
+    container.listen(
+      agentConversationProvider(params),
+      (_, __) {},
+      fireImmediately: true,
+    );
+
+    await container.read(authProvider.future);
+    await container.read(agentConversationProvider(params).future);
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    snapshotCompleter.complete(const [
+      WorkspaceFileNode(name: 'seed.txt', path: 'seed.txt', type: 'file'),
+    ]);
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    final state = container.read(agentConversationProvider(params)).value;
+    expect(state, isNotNull);
+    expect(state!.workspaceSource, WorkspaceViewSource.live);
+    expect(state.fileTree, hasLength(1));
+    expect(state.fileTree.single.name, 'live.txt');
+    expect(state.fileTree.single.path, 'live.txt');
   });
 
   test('无 sandbox agent 初始化时不请求工作区树', () async {

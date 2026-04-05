@@ -42,6 +42,7 @@ import {
   useSubAgentStreams,
   useExecutionError,
   useConversationConnectionError,
+  useWorkspaceSource,
 } from "../stores/agent-conversation.store";
 
 interface AgentConversationPageProps {
@@ -380,7 +381,9 @@ export function AgentConversationPage({
   const subAgentStreams = useSubAgentStreams();
   const executionError = useExecutionError();
   const connectionError = useConversationConnectionError();
+  const workspaceSource = useWorkspaceSource();
   const runtimeMode = agentQuery.data?.runtimeMode;
+  const workspaceSnapshotId = agentQuery.data?.workspaceSnapshotId;
   const hasSandbox = runtimeMode === "sandbox";
   const runtimeModeLabel =
     runtimeMode === "sandbox"
@@ -412,15 +415,28 @@ export function AgentConversationPage({
       runtimeMode: agentQuery.data.runtimeMode,
       authToken: token,
     });
-    a.loadHistory(conversationId);
     if (hasSandbox) {
+      if (workspaceSnapshotId) {
+        void a.loadWorkspacePreview(conversationId, workspaceSnapshotId);
+      }
       void a.loadWorkspaceTree(conversationId);
     }
+    void a.loadHistory(conversationId).finally(() => {
+      if (hasSandbox) {
+        void a.loadWorkspaceTree(conversationId);
+      }
+    });
 
     return () => {
       a.disconnect();
     };
-  }, [agentId, agentQuery.data, conversationId, hasSandbox, runtimeMode]);
+  }, [
+    agentId,
+    agentQuery.data,
+    conversationId,
+    hasSandbox,
+    workspaceSnapshotId,
+  ]);
 
   useEffect(() => {
     if (status !== "executing") {
@@ -439,6 +455,14 @@ export function AgentConversationPage({
       window.clearInterval(intervalId);
     };
   }, [conversationId, hasSandbox, status]);
+
+  useEffect(() => {
+    if (!hasSandbox || sandboxStatus !== "running") {
+      return;
+    }
+
+    void actionsRef.current.loadWorkspaceTree(conversationId);
+  }, [conversationId, hasSandbox, sandboxStatus]);
 
   const initLeftWidth = useCallback(() => {
     if (leftWidth !== null) return leftWidth;
@@ -614,7 +638,9 @@ export function AgentConversationPage({
               <MessageList
                 messages={displayMessages}
                 isExecuting={isExecuting && !isSubAgentView}
-                runtimeMode={runtimeMode === "no_sandbox" ? "no_sandbox" : "sandbox"}
+                runtimeMode={
+                  runtimeMode === "no_sandbox" ? "no_sandbox" : "sandbox"
+                }
                 onRestartConversation={handleRestartConversation}
               />
             </div>
@@ -660,12 +686,23 @@ export function AgentConversationPage({
                   direction="vertical"
                 />
 
-                <div className="flex-1 overflow-hidden">
-                  <WorkspaceFileTree
-                    tree={fileTree}
-                    selectedPath={selectedFilePath}
-                    onSelectFile={actions.selectFile}
-                  />
+                <div className="flex flex-1 flex-col gap-2 overflow-hidden p-2 pt-0">
+                  {workspaceSource === "snapshot_preview" ? (
+                    <div
+                      data-testid="workspace-snapshot-preview-hint"
+                      className="rounded-lg border border-info/30 bg-info/10 px-3 py-2 text-xs text-info"
+                    >
+                      当前显示的是持久化工作区目录预览；对话开始并恢复沙箱后，这里会切换为实时工作区。
+                    </div>
+                  ) : null}
+
+                  <div className="min-h-0 flex-1 overflow-hidden">
+                    <WorkspaceFileTree
+                      tree={fileTree}
+                      selectedPath={selectedFilePath}
+                      onSelectFile={actions.selectFile}
+                    />
+                  </div>
                 </div>
               </div>
             </>

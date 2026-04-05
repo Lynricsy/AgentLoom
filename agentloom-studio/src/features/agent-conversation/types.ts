@@ -1,4 +1,4 @@
-import type { AgentRuntimeMode } from '@/features/agent/types/agentRuntimeMode'
+import type { AgentRuntimeMode } from "@/features/agent/types/agentRuntimeMode";
 
 export type MessageRole = "user" | "assistant" | "system";
 
@@ -22,7 +22,7 @@ export interface ToolCallPermissionRequest {
   resourcePaths?: string[];
   domain?: string;
   category?: string;
-  riskLevel?: 'low' | 'medium' | 'high';
+  riskLevel?: "low" | "medium" | "high";
   sourceLabel?: string;
   targetType?: string;
   targetLabel?: string;
@@ -87,6 +87,8 @@ export interface FileChange {
   diff?: string;
   content?: string;
 }
+
+export type WorkspaceViewSource = "unavailable" | "snapshot_preview" | "live";
 
 export type ConversationStatus =
   | "idle"
@@ -255,4 +257,4 @@ export interface ConversationMessageMetadata {
   [key: string]: unknown;
 }
 
-export type { AgentRuntimeMode }
+export type { AgentRuntimeMode };

@@ -10,6 +10,7 @@ import '../../auth/models/auth_state.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../execution/services/execution_socket_service.dart'
     show buildSocketConnectionOptions, resolveExecutionSocketUrl;
+import '../../resources/api/resources_api.dart';
 import '../api/agent_api.dart';
 import '../models/agent_conversation_dto.dart';
 import '../models/conversation_message_dto.dart';
@@ -69,6 +70,10 @@ typedef _ConversationHistorySnapshot = ({
   String? runningState,
   String? errorMessage,
   PreparationPhase? failedPhase,
+});
+typedef _ConversationBootstrap = ({
+  String runtimeMode,
+  String? workspaceSnapshotId,
 });
 
 String _resolveConversationSocketUrl(String apiBaseUrl) {
@@ -789,7 +794,9 @@ _ConversationHistorySnapshot _normalizeConversationHistorySnapshot(
       _readString(execution['errorMessage']) ??
       _readString(execution['rawErrorMessage']) ??
       _readString(execution['lastErrorMessage']);
-  final failedPhase = parsePreparationPhase(_readString(execution['failedPhase']));
+  final failedPhase = parsePreparationPhase(
+    _readString(execution['failedPhase']),
+  );
 
   return (
     messages: detail.messages.data
@@ -817,6 +824,22 @@ bool _workspaceTreeContainsPath(List<WorkspaceFileNode> nodes, String path) {
   }
 
   return false;
+}
+
+bool _shouldTreatWorkspaceTreeAsLive(
+  ConversationState current,
+  List<WorkspaceFileNode> tree, {
+  required bool hasHistoricalMessages,
+}) {
+  if (tree.isNotEmpty) {
+    return true;
+  }
+
+  return current.workspaceSource == WorkspaceViewSource.live ||
+      current.fileChanges.isNotEmpty ||
+      current.terminalEntries.isNotEmpty ||
+      current.preparationPhase == PreparationPhase.running ||
+      hasHistoricalMessages;
 }
 
 ConversationMessageDto _seedAssistantMessage({
@@ -987,22 +1010,32 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
   final ConversationParams params;
   io.Socket? _socket;
   int _historyRequestVersion = 0;
+  int _workspacePreviewRequestVersion = 0;
+  int _workspaceTreeRequestVersion = 0;
   bool _isCleaningUp = false;
+  bool _hasHistoricalMessages = false;
+  String? _boundWorkspaceSnapshotId;
 
   @override
   Future<ConversationState> build() async {
     ref.onDispose(_cleanup);
 
     final messagesFuture = _fetchHistory();
-    final runtimeModeFuture = _resolveRuntimeMode();
+    final bootstrapFuture = _resolveConversationBootstrap();
     final messages = await messagesFuture;
-    final runtimeMode = await runtimeModeFuture;
+    final bootstrap = await bootstrapFuture;
+    _hasHistoricalMessages = messages.isNotEmpty;
+    _boundWorkspaceSnapshotId = bootstrap.workspaceSnapshotId;
     Future<void>.microtask(() {
       if (!ref.mounted) {
         return;
       }
       _connectSocket();
-      if (runtimeMode == 'sandbox') {
+      if (bootstrap.runtimeMode == 'sandbox') {
+        if (_boundWorkspaceSnapshotId case final workspaceId?
+            when workspaceId.isNotEmpty) {
+          unawaited(_preloadWorkspaceSnapshot(workspaceId));
+        }
         unawaited(_refreshWorkspaceTree(silent: true));
       }
     });
@@ -1010,16 +1043,19 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
     return ConversationState(
       messages: messages,
       status: ConversationStatus.connecting,
-      runtimeMode: runtimeMode,
+      runtimeMode: bootstrap.runtimeMode,
     );
   }
 
-  Future<String> _resolveRuntimeMode() async {
+  Future<_ConversationBootstrap> _resolveConversationBootstrap() async {
     try {
       final agent = await ref.read(agentDetailProvider(params.agentId).future);
-      return agent.runtimeMode;
+      return (
+        runtimeMode: agent.runtimeMode,
+        workspaceSnapshotId: agent.workspaceSnapshotId,
+      );
     } catch (_) {
-      return 'sandbox';
+      return (runtimeMode: 'sandbox', workspaceSnapshotId: null);
     }
   }
 
@@ -1033,13 +1069,15 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
     final requestVersion = ++_historyRequestVersion;
     try {
       final snapshot = _normalizeConversationHistorySnapshot(
-        await ref.read(agentApiProvider).getConversationDetail(
-              params.conversationId,
-            ),
+        await ref
+            .read(agentApiProvider)
+            .getConversationDetail(params.conversationId),
       );
       if (!ref.mounted || requestVersion != _historyRequestVersion) {
         return;
       }
+
+      _hasHistoricalMessages = snapshot.messages.isNotEmpty;
 
       _updateState((current) {
         if (snapshot.runningState == 'running') {
@@ -1074,8 +1112,7 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
           );
         }
 
-        if (
-            snapshot.runningState == 'idle' ||
+        if (snapshot.runningState == 'idle' ||
             snapshot.runningState == 'cancelled') {
           return current.copyWith(
             messages: snapshot.messages,
@@ -1310,6 +1347,7 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
           ),
         ],
         hasLoadedWorkspaceTree: true,
+        workspaceSource: WorkspaceViewSource.live,
         workspaceTreeOnly: false,
         clearWorkspacePreviewUnavailableReason: true,
         selectedFileContent: selectedFileContent,
@@ -1326,30 +1364,28 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
     }
     final hasSandboxRuntime = state.value?.hasSandboxRuntime ?? true;
 
-    _updateState(
-      (current) {
-        final messages = _finishStreamingMessage(
-          current.messages,
-          messageId: payload.messageId,
-        );
+    _updateState((current) {
+      final messages = _finishStreamingMessage(
+        current.messages,
+        messageId: payload.messageId,
+      );
 
-        if (current.status == ConversationStatus.error) {
-          return current.copyWith(messages: messages);
-        }
+      if (current.status == ConversationStatus.error) {
+        return current.copyWith(messages: messages);
+      }
 
-        return current.copyWith(
-          messages: messages,
-          status: current.isConnected
-              ? ConversationStatus.connected
-              : ConversationStatus.idle,
-          clearPreparationPhase: true,
-          clearPreparationStartTime: true,
-          clearPreparationError: true,
-          clearPreparationFailedPhase: true,
-          clearError: true,
-        );
-      },
-    );
+      return current.copyWith(
+        messages: messages,
+        status: current.isConnected
+            ? ConversationStatus.connected
+            : ConversationStatus.idle,
+        clearPreparationPhase: true,
+        clearPreparationStartTime: true,
+        clearPreparationError: true,
+        clearPreparationFailedPhase: true,
+        clearError: true,
+      );
+    });
 
     unawaited(_loadHistory(silent: true));
     if (hasSandboxRuntime) {
@@ -1429,6 +1465,14 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
         clearError: true,
       );
     });
+
+    final shouldRefreshWorkspace =
+        payload.status == 'running' ||
+        payload.status == 'executing' ||
+        phase == PreparationPhase.running;
+    if (shouldRefreshWorkspace) {
+      unawaited(_refreshWorkspaceTree(silent: true));
+    }
   }
 
   Future<void> sendMessage(String content) async {
@@ -1589,26 +1633,86 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
     return _refreshWorkspaceTree();
   }
 
-  Future<void> _refreshWorkspaceTree({bool silent = false}) async {
-    final currentState = state.value;
-    if (currentState != null && !currentState.hasSandboxRuntime) {
-      return;
-    }
-    _updateState((current) => current.copyWith(isLoadingWorkspace: true));
+  Future<void> _preloadWorkspaceSnapshot(String workspaceId) async {
+    final requestVersion = ++_workspacePreviewRequestVersion;
+
     try {
       final tree = await ref
-          .read(agentApiProvider)
-          .getWorkspaceTree(params.conversationId);
-      if (!ref.mounted) {
+          .read(resourcesApiProvider)
+          .getWorkspaceTree(workspaceId);
+      if (!ref.mounted || requestVersion != _workspacePreviewRequestVersion) {
         return;
       }
+
       _updateState((current) {
+        if (!current.hasSandboxRuntime ||
+            current.workspaceSource == WorkspaceViewSource.live) {
+          return current;
+        }
+
         final keepSelected =
             current.selectedFilePath != null &&
             _workspaceTreeContainsPath(tree, current.selectedFilePath!);
         return current.copyWith(
           fileTree: tree,
           hasLoadedWorkspaceTree: true,
+          workspaceSource: WorkspaceViewSource.snapshotPreview,
+          clearSelectedFilePath: !keepSelected,
+          clearSelectedFileContent: true,
+          clearError: current.status != ConversationStatus.error,
+        );
+      });
+    } catch (_) {
+      // 持久化工作区预载失败时继续走 live workspace 流程，不打断对话页加载。
+    }
+  }
+
+  Future<void> _refreshWorkspaceTree({bool silent = false}) async {
+    final currentState = state.value;
+    if (currentState != null && !currentState.hasSandboxRuntime) {
+      return;
+    }
+    final requestVersion = ++_workspaceTreeRequestVersion;
+    _updateState((current) => current.copyWith(isLoadingWorkspace: true));
+    try {
+      final tree = await ref
+          .read(agentApiProvider)
+          .getWorkspaceTree(params.conversationId);
+      if (!ref.mounted || requestVersion != _workspaceTreeRequestVersion) {
+        return;
+      }
+      _updateState((current) {
+        final keepSelected =
+            current.selectedFilePath != null &&
+            _workspaceTreeContainsPath(tree, current.selectedFilePath!);
+        if (!_shouldTreatWorkspaceTreeAsLive(
+          current,
+          tree,
+          hasHistoricalMessages: _hasHistoricalMessages,
+        )) {
+          if (current.workspaceSource == WorkspaceViewSource.snapshotPreview) {
+            return current.copyWith(
+              isLoadingWorkspace: false,
+              clearError: current.status != ConversationStatus.error,
+            );
+          }
+
+          return current.copyWith(
+            fileTree: tree,
+            hasLoadedWorkspaceTree: true,
+            workspaceSource: WorkspaceViewSource.unavailable,
+            isLoadingWorkspace: false,
+            clearSelectedFilePath: !keepSelected,
+            clearSelectedFileContent:
+                !keepSelected || current.selectedFileContent == null,
+            clearError: current.status != ConversationStatus.error,
+          );
+        }
+
+        return current.copyWith(
+          fileTree: tree,
+          hasLoadedWorkspaceTree: true,
+          workspaceSource: WorkspaceViewSource.live,
           workspaceTreeOnly: false,
           clearWorkspacePreviewUnavailableReason: true,
           isLoadingWorkspace: false,
@@ -1641,6 +1745,16 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
     if (currentState != null && !currentState.hasSandboxRuntime) {
       return;
     }
+    if (currentState?.workspaceSource == WorkspaceViewSource.snapshotPreview) {
+      _updateState(
+        (current) => current.copyWith(
+          selectedFilePath: path,
+          clearSelectedFileContent: true,
+          clearError: current.status != ConversationStatus.error,
+        ),
+      );
+      return;
+    }
     if (currentState?.workspaceTreeOnly == true) {
       _updateState(
         (current) => current.copyWith(
@@ -1671,6 +1785,7 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
         (current) => current.copyWith(
           selectedFilePath: path,
           selectedFileContent: file,
+          workspaceSource: WorkspaceViewSource.live,
           workspaceTreeOnly: false,
           clearWorkspacePreviewUnavailableReason: true,
           isLoadingWorkspace: false,
@@ -1687,6 +1802,7 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
           (current) => current.copyWith(
             selectedFilePath: path,
             hasLoadedWorkspaceTree: true,
+            workspaceSource: WorkspaceViewSource.live,
             workspaceTreeOnly: true,
             workspacePreviewUnavailableReason: message,
             clearSelectedFileContent: true,

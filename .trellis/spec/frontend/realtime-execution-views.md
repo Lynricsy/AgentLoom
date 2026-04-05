@@ -103,6 +103,7 @@ const segments = checkpointData.segments?.length
   - `agentloom_mobile/lib/features/agents/providers/agent_conversation_provider.dart`
   - `agentloom_mobile/lib/features/agents/widgets/conversation_context_panel.dart`
   - `agentloom_mobile/lib/features/agents/api/agent_api.dart`
+  - `agentloom_mobile/lib/features/resources/api/resources_api.dart`
 - 风险点：completed conversation 如果只读 live runtime，就会在刷新或冷开后退化成“工作区暂不可见”；如果前端继续尝试文件预览，又会把服务端 tree-only fallback 误报成加载失败。
 
 ### 2. Signatures
@@ -113,14 +114,22 @@ const segments = checkpointData.segments?.length
 - Flutter:
   - `AgentConversationNotifier.refreshWorkspaceTree()`
   - `AgentConversationNotifier.openWorkspaceFile(path)`
+  - `AgentConversationNotifier._preloadWorkspaceSnapshot(workspaceId)`
   - `ConversationContextPanel`
   - `ConversationState.hasLoadedWorkspaceTree`
+  - `ConversationState.workspaceSource`
   - `ConversationState.workspaceTreeOnly`
   - `ConversationState.workspacePreviewUnavailableReason`
 
 ### 3. Contracts
 - standalone conversation 页面在 mount / 冷开时，必须主动拉一次 `GET /agent-conversations/:id/workspace/tree`。
   - 不能只依赖 `conversation.sandbox.file_change` 增量事件，否则 completed 冷开后不会有任何树数据。
+- 如果 Agent 绑定了 `workspaceSnapshotId`，且 conversation workspace tree 还没有 authoritative 数据，Studio / Flutter 都必须先预载 `GET /workspaces/:id/tree` 作为目录预览。
+  - Studio / Flutter 都要把来源显式区分为 `snapshot_preview` / `live`，并在 snapshot 预载阶段向用户提示“当前显示的是持久化工作区目录预览”。
+  - 迟到的 snapshot 响应不得回盖已经进入 `live` 的工作区树。
+- 只要 conversation workspace tree 已经可判定为 authoritative（例如返回非空树、会话已进入 running、已有历史消息、已有终端输出或文件变更），前端就必须切换到 `live` 来源。
+- Flutter 在 `snapshot_preview` 阶段点击文件时，不得调用 conversation file preview API。
+  - 这时只能保留选中态，并在 preview 区域继续显示“等待实时工作区就绪”的提示。
 - completed conversation 的 workspace fallback 只保留目录树，不保留文件预览。
   - Studio standalone 侧：
     - 只需要恢复目录树。
@@ -135,13 +144,17 @@ const segments = checkpointData.segments?.length
 | 条件 | 预期行为 | 断言点 |
 |------|----------|--------|
 | completed conversation 冷开 | Studio / Flutter 都能拉到目录树 | `agent-conversation.store.test.ts` / Flutter 手动 QA |
+| 绑定了 `workspaceSnapshotId` 的新会话冷开 | 先显示持久化 workspace 目录预览 | `agent-conversation.store.test.ts` / `agent_conversation_provider_test.dart` |
+| snapshot 与 live 响应乱序返回 | UI 最终停留在 live，不允许被 snapshot 回盖 | `agent-conversation.store.test.ts` / `agent_conversation_provider_test.dart` |
 | tree API 成功但返回空数组 | Flutter 显示“没有文件树”，而不是“工作区暂不可见” | `conversation_context_panel_test.dart` |
 | Flutter 点击 completed conversation 文件 | 切到 `workspaceTreeOnly` 模式并显示 tree-only 提示 | `agent_conversation_provider_test.dart` |
+| Flutter 点击 snapshot preview 文件 | 不请求 live 文件预览接口，只保留选中态 | `agent_conversation_provider_test.dart` |
 | workspace tree 刷新后当前选中文件已失效 | 选中态被清空，不保留 stale 文件 | `agent-conversation.store.test.ts` |
 | workspace tree 请求响应晚到且会话已切换/重置 | 不得污染当前会话状态 | `agent-conversation.store.test.ts` |
 
 ### 5. Good / Base / Bad Cases
 - Good：completed conversation 刷新后仍能看到目录树；Flutter 点击文件时提示“未保留文件内容预览”，Studio 继续仅展示树。
+- Good：绑定了持久化 workspace 的新会话在真正开跑前先显示目录树预览，开跑后自动切到实时工作区。
 - Base：目录树为空时，Flutter 仍显示 workspace 面板，只是左侧为空树、右侧不给预览。
 - Bad：completed conversation 冷开后整个 workspace 面板看起来像没实现；或者 Flutter 把 tree-only 错误直接展示成“读取文件失败”。
 
@@ -149,12 +162,15 @@ const segments = checkpointData.segments?.length
 - `agentloom-studio/src/features/agent-conversation/stores/agent-conversation.store.test.ts`
   - 断言 `loadWorkspaceTree()` 会恢复目录树
   - 断言过期 workspace tree 响应不会污染已重置会话
+  - 断言 snapshot preview 会被 live tree 接管，且空 live tree 不会覆盖新会话里的 snapshot preview
 - `agentloom_mobile/test/features/agents/providers/agent_conversation_provider_test.dart`
   - 断言 tree-only 错误会切换 `workspaceTreeOnly`
   - 断言 tree-only 模式下再次点击文件不会继续发起文件预览请求
+  - 断言 snapshot preview 会先显示目录预览，且迟到 snapshot 不会覆盖 live tree
 - `agentloom_mobile/test/features/agents/widgets/conversation_context_panel_test.dart`
   - 断言空 tree 但已加载时显示“没有文件树”
   - 断言 tree-only 模式显示目录结构保留提示
+  - 断言 snapshot preview 模式显示持久化工作区预载提示
 
 ### 7. Wrong vs Correct
 

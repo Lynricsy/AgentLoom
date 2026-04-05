@@ -161,9 +161,21 @@ class _WorkspaceTab extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final vertical = constraints.maxWidth < 720;
+        final previewNotice =
+            state.workspaceSource == WorkspaceViewSource.snapshotPreview
+            ? const Padding(
+                padding: EdgeInsets.fromLTRB(12, 12, 12, 0),
+                child: _WorkspaceSourceNotice(
+                  title: '持久化工作区预览',
+                  description:
+                      '当前先显示绑定 workspace 的目录预览；对话开始并恢复沙箱后，这里会切换为实时工作区。',
+                ),
+              )
+            : null;
         if (vertical) {
           return Column(
             children: [
+              if (previewNotice != null) previewNotice,
               Expanded(
                 child: _WorkspaceTree(
                   nodes: state.fileTree,
@@ -174,6 +186,7 @@ class _WorkspaceTab extends StatelessWidget {
               const Divider(height: 1),
               Expanded(
                 child: _WorkspacePreview(
+                  workspaceSource: state.workspaceSource,
                   workspaceTreeOnly: state.workspaceTreeOnly,
                   workspacePreviewUnavailableReason:
                       state.workspacePreviewUnavailableReason,
@@ -189,15 +202,23 @@ class _WorkspaceTab extends StatelessWidget {
           children: [
             SizedBox(
               width: 300,
-              child: _WorkspaceTree(
-                nodes: state.fileTree,
-                selectedFilePath: state.selectedFilePath,
-                onOpenFile: onOpenFile,
+              child: Column(
+                children: [
+                  if (previewNotice != null) previewNotice,
+                  Expanded(
+                    child: _WorkspaceTree(
+                      nodes: state.fileTree,
+                      selectedFilePath: state.selectedFilePath,
+                      onOpenFile: onOpenFile,
+                    ),
+                  ),
+                ],
               ),
             ),
             const VerticalDivider(width: 1),
             Expanded(
               child: _WorkspacePreview(
+                workspaceSource: state.workspaceSource,
                 workspaceTreeOnly: state.workspaceTreeOnly,
                 workspacePreviewUnavailableReason:
                     state.workspacePreviewUnavailableReason,
@@ -300,12 +321,14 @@ class _WorkspaceTreeNode extends StatelessWidget {
 
 class _WorkspacePreview extends StatelessWidget {
   const _WorkspacePreview({
+    required this.workspaceSource,
     required this.workspaceTreeOnly,
     required this.workspacePreviewUnavailableReason,
     required this.selectedFilePath,
     required this.selectedFileContent,
   });
 
+  final WorkspaceViewSource workspaceSource;
   final bool workspaceTreeOnly;
   final String? workspacePreviewUnavailableReason;
   final String? selectedFilePath;
@@ -313,6 +336,14 @@ class _WorkspacePreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (workspaceSource == WorkspaceViewSource.snapshotPreview) {
+      return const _EmptyPanelState(
+        icon: Icons.folder_copy_outlined,
+        title: '持久化工作区预览',
+        description: '当前只展示目录结构；对话开始并恢复沙箱后，文件内容预览会自动切换到实时工作区。',
+      );
+    }
+
     if (workspaceTreeOnly) {
       return _EmptyPanelState(
         icon: Icons.inventory_2_outlined,
@@ -372,6 +403,51 @@ class _WorkspacePreview extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _WorkspaceSourceNotice extends StatelessWidget {
+  const _WorkspaceSourceNotice({
+    required this.title,
+    required this.description,
+  });
+
+  final String title;
+  final String description;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: colorScheme.primaryContainer.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: colorScheme.primary.withValues(alpha: 0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            title,
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+              fontWeight: FontWeight.w700,
+              color: colorScheme.onSurface,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            description,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+              height: 1.4,
+            ),
+          ),
+        ],
       ),
     );
   }

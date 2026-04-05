@@ -56,6 +56,34 @@ void main() {
     expect(find.textContaining('未保留文件内容预览'), findsOneWidget);
   });
 
+  testWidgets('持久化 workspace 预览态应显示目录预载提示', (tester) async {
+    await tester.pumpWidget(
+      _wrapWithMaterial(
+        ConversationContextPanel(
+          state: const ConversationState(
+            hasLoadedWorkspaceTree: true,
+            workspaceSource: WorkspaceViewSource.snapshotPreview,
+            fileTree: [
+              WorkspaceFileNode(
+                name: 'seed.txt',
+                path: 'seed.txt',
+                type: 'file',
+              ),
+            ],
+          ),
+          onRefreshWorkspace: () async {},
+          onOpenFile: (_) async {},
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('工作区'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('持久化工作区预览'), findsWidgets);
+    expect(find.textContaining('切换为实时工作区'), findsWidgets);
+  });
+
   testWidgets('无 sandbox 会话应显示降级说明而不是工作区标签页', (tester) async {
     await tester.pumpWidget(
       _wrapWithMaterial(

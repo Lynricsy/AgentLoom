@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../agents/models/conversation_message_dto.dart';
 import '../../../shared/models/paginated_response.dart';
 import '../../../shared/providers/api_client_provider.dart';
 import '../models/resource_entities.dart';
@@ -36,6 +37,25 @@ List<Map<String, dynamic>> _unwrapListEnvelope(Response<dynamic> response) {
         }
         return <String, dynamic>{};
       })
+      .toList(growable: false);
+}
+
+List<WorkspaceFileNode> _unwrapWorkspaceTreeEnvelope(
+  Response<dynamic> response,
+) {
+  final body = response.data;
+  final data = body is Map<String, dynamic> ? body['data'] : body;
+  if (data is! List) {
+    return const <WorkspaceFileNode>[];
+  }
+
+  return data
+      .whereType<Map<Object?, Object?>>()
+      .map(
+        (item) => WorkspaceFileNode.fromJson(
+          item.map((key, value) => MapEntry('$key', value)),
+        ),
+      )
       .toList(growable: false);
 }
 
@@ -82,6 +102,11 @@ class ResourcesApi {
 
   Future<void> deleteWorkspace(String workspaceId) async {
     await _dio.delete('/api/v1/workspaces/$workspaceId');
+  }
+
+  Future<List<WorkspaceFileNode>> getWorkspaceTree(String workspaceId) async {
+    final response = await _dio.get('/api/v1/workspaces/$workspaceId/tree');
+    return _unwrapWorkspaceTreeEnvelope(response);
   }
 
   Future<PaginatedResponse<SandboxSessionDto>> listSandboxes({

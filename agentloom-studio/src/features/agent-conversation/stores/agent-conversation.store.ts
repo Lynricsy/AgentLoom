@@ -5,6 +5,7 @@ import type { Socket } from "socket.io-client";
 import { io } from "socket.io-client";
 import { apiClient, toSnakeBody } from "@/shared/api/client";
 import { useAuthStore } from "@/features/auth/stores/auth.store";
+import { fetchWorkspaceFileTree } from "@/features/workspace/api/workspaceApi";
 import type { PaginatedResponse } from "@/shared/types/api";
 import type {
   ConversationMessage,
@@ -32,6 +33,7 @@ import type {
   ToolCallTransition,
   PreparationPhase,
   AgentRuntimeMode,
+  WorkspaceViewSource,
 } from "../types";
 
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL ?? "/api/v1").replace(
@@ -73,10 +75,12 @@ interface AgentConversationState {
   sandboxStatus: SandboxStatus;
   terminalEntries: TerminalEntry[];
   fileTree: FileTreeNode[];
+  workspaceSource: WorkspaceViewSource;
   fileChanges: FileChange[];
   selectedFilePath: string | null;
   subAgentStreams: Record<string, SubAgentStream>;
   agentViewStack: string[];
+  hasHistoricalMessages: boolean;
 
   /** Current preparation phase during sandbox startup (null when not preparing). */
   preparationPhase: PreparationPhase | null;
@@ -117,6 +121,10 @@ interface AgentConversationActions {
     restartToLatestVersion: () => Promise<string | null>;
     selectFile: (path: string | null) => void;
     loadHistory: (conversationId: string) => Promise<void>;
+    loadWorkspacePreview: (
+      conversationId: string,
+      workspaceId: string,
+    ) => Promise<void>;
     loadWorkspaceTree: (conversationId: string) => Promise<void>;
     pushAgentView: (handle: string) => void;
     popAgentView: () => void;
@@ -143,10 +151,12 @@ function createInitialState(): AgentConversationState {
     sandboxStatus: "idle",
     terminalEntries: [],
     fileTree: [],
+    workspaceSource: "unavailable",
     fileChanges: [],
     selectedFilePath: null,
     subAgentStreams: {},
     agentViewStack: [],
+    hasHistoricalMessages: false,
     preparationPhase: null,
     preparationStartTime: null,
     sandboxReused: false,
@@ -942,9 +952,7 @@ function normalizeConversationExecutionSnapshot(metadata: unknown): {
       ? { runningState }
       : {}),
     ...(errorMessage ? { errorMessage } : {}),
-    ...(failedPhase
-      ? { failedPhase: failedPhase as PreparationPhase }
-      : {}),
+    ...(failedPhase ? { failedPhase: failedPhase as PreparationPhase } : {}),
   };
 }
 
@@ -1139,6 +1147,24 @@ function normalizeFileTree(value: unknown): FileTreeNode[] {
     const node = normalizeFileTreeNode(item);
     return node ? [node] : [];
   });
+}
+
+function shouldTreatWorkspaceTreeAsLive(
+  state: AgentConversationState,
+  tree: FileTreeNode[],
+): boolean {
+  if (tree.length > 0) {
+    return true;
+  }
+
+  return (
+    state.workspaceSource === "live" ||
+    state.sandboxStatus === "running" ||
+    state.preparationPhase === "running" ||
+    state.fileChanges.length > 0 ||
+    state.terminalEntries.length > 0 ||
+    state.hasHistoricalMessages
+  );
 }
 
 export const useAgentConversationStore = create<
@@ -1477,6 +1503,7 @@ export const useAgentConversationStore = create<
                     normalized.path,
                     changeType,
                   );
+                  s.workspaceSource = "live";
                 });
               },
             );
@@ -1718,7 +1745,9 @@ export const useAgentConversationStore = create<
             }
 
             const response = await apiClient
-              .post(`agent-conversations/${conversationId}/restart-latest-version`)
+              .post(
+                `agent-conversations/${conversationId}/restart-latest-version`,
+              )
               .json<{ data?: { conversationId?: string } }>();
 
             const nextConversationId = response.data?.conversationId;
@@ -1758,8 +1787,8 @@ export const useAgentConversationStore = create<
                 .json<ConversationDetailResponse>();
 
               const messageResponse = response.data?.messages;
-              const normalizedMessages = (messageResponse?.data ?? []).map((message) =>
-                normalizeConversationHistoryMessage(message),
+              const normalizedMessages = (messageResponse?.data ?? []).map(
+                (message) => normalizeConversationHistoryMessage(message),
               );
               const executionSnapshot = normalizeConversationExecutionSnapshot(
                 response.data?.metadata,
@@ -1770,6 +1799,7 @@ export const useAgentConversationStore = create<
                   return;
                 }
 
+                s.hasHistoricalMessages = normalizedMessages.length > 0;
                 s.messages = mergeHistoryWithLiveTail(
                   s.messages,
                   normalizedMessages,
@@ -1824,17 +1854,53 @@ export const useAgentConversationStore = create<
             }
           },
 
+          loadWorkspacePreview: async (conversationId, workspaceId) => {
+            if (get().runtimeMode === "no_sandbox") {
+              return;
+            }
+
+            try {
+              const response = await fetchWorkspaceFileTree(workspaceId);
+              const normalizedTree = normalizeFileTree(response);
+
+              set((s) => {
+                if (
+                  s.conversationId !== conversationId ||
+                  s.runtimeMode === "no_sandbox" ||
+                  s.workspaceSource === "live"
+                ) {
+                  return;
+                }
+
+                s.fileTree = normalizedTree;
+                s.workspaceSource = "snapshot_preview";
+                if (
+                  s.selectedFilePath &&
+                  !fileExistsInTree(normalizedTree, s.selectedFilePath)
+                ) {
+                  s.selectedFilePath = null;
+                }
+              });
+            } catch (error) {
+              console.error(
+                "[AgentConversation] Failed to preload workspace snapshot tree:",
+                error,
+              );
+            }
+          },
+
           loadWorkspaceTree: async (conversationId) => {
             if (get().runtimeMode === "no_sandbox") {
               set((s) => {
                 if (s.conversationId !== conversationId) {
-                  return
+                  return;
                 }
 
-                s.fileTree = []
-                s.selectedFilePath = null
-              })
-              return
+                s.fileTree = [];
+                s.workspaceSource = "unavailable";
+                s.selectedFilePath = null;
+              });
+              return;
             }
             try {
               const response = await apiClient
@@ -1847,7 +1913,21 @@ export const useAgentConversationStore = create<
                   return;
                 }
 
+                if (!shouldTreatWorkspaceTreeAsLive(s, normalizedTree)) {
+                  if (s.workspaceSource === "unavailable") {
+                    s.fileTree = normalizedTree;
+                    if (
+                      s.selectedFilePath &&
+                      !fileExistsInTree(normalizedTree, s.selectedFilePath)
+                    ) {
+                      s.selectedFilePath = null;
+                    }
+                  }
+                  return;
+                }
+
                 s.fileTree = normalizedTree;
+                s.workspaceSource = "live";
                 if (
                   s.selectedFilePath &&
                   !fileExistsInTree(normalizedTree, s.selectedFilePath)
@@ -1943,6 +2023,9 @@ export const useTerminalEntries = () =>
   useAgentConversationStore((s) => s.terminalEntries);
 
 export const useFileTree = () => useAgentConversationStore((s) => s.fileTree);
+
+export const useWorkspaceSource = () =>
+  useAgentConversationStore((s) => s.workspaceSource);
 
 export const useFileChanges = () =>
   useAgentConversationStore((s) => s.fileChanges);
