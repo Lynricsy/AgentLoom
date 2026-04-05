@@ -36,10 +36,7 @@ export type {
   ScalarTypeSchema,
   TypeSchema,
 } from './types/typeSchema'
-export {
-  assertNever,
-  PORT_DATA_TYPES,
-} from './types/typeSchema'
+export { assertNever, PORT_DATA_TYPES } from './types/typeSchema'
 export {
   NODE_TYPES,
   NODE_TYPE_REGISTRY,
@@ -70,18 +67,40 @@ export { CanvasNodeShell } from './components/CanvasNode'
 export { SmartEdge } from './components/edges/SmartEdge'
 export { CanvasMiniMap } from './components/navigation/CanvasMiniMap'
 export { NodeInfoCard } from './components/overlays/NodeInfoCard'
-export { CompatibilityPreview, type CompatibilityPreviewProps } from './components/overlays/CompatibilityPreview'
-export { ConnectionStateOverlay, type OverlayHandleSnapshot } from './components/overlays/ConnectionStateOverlay'
-export { FieldMappingPanel, type FieldMappingPanelProps } from './components/panels/FieldMappingPanel'
+export {
+  CompatibilityPreview,
+  type CompatibilityPreviewProps,
+} from './components/overlays/CompatibilityPreview'
+export {
+  ConnectionStateOverlay,
+  type OverlayHandleSnapshot,
+} from './components/overlays/ConnectionStateOverlay'
+export {
+  FieldMappingPanel,
+  type FieldMappingPanelProps,
+} from './components/panels/FieldMappingPanel'
 export { NodeConfigPanel } from './components/panels/NodeConfigPanel'
 export { LlmModelNodeBody } from './components/nodes/LlmModelNodeBody'
 export { WorkflowStatusBar } from './components/status/WorkflowStatusBar'
 export { CanvasSearch } from './components/toolbar/CanvasSearch'
 export { WorkflowCanvas } from './components/WorkflowCanvas'
 export { WorkflowCanvasPage } from './components/WorkflowCanvasPage'
+export { WorkflowPreviewCanvas } from './components/WorkflowPreviewCanvas'
 export { useAutoSave } from './hooks/useAutoSave'
 export { useCanvasDrop } from './hooks/useCanvasDrop'
-export { useConnectionPreview, type UseConnectionPreviewOptions, type UseConnectionPreviewReturn } from './hooks/useConnectionPreview'
-export { useExecutionHighlight, type UseExecutionHighlightOptions } from './hooks/useExecutionHighlight'
-export { validateDag, type DagValidationResult, type DagValidationError, type DagValidationWarning } from './lib/dagValidator'
+export {
+  useConnectionPreview,
+  type UseConnectionPreviewOptions,
+  type UseConnectionPreviewReturn,
+} from './hooks/useConnectionPreview'
+export {
+  useExecutionHighlight,
+  type UseExecutionHighlightOptions,
+} from './hooks/useExecutionHighlight'
+export {
+  validateDag,
+  type DagValidationResult,
+  type DagValidationError,
+  type DagValidationWarning,
+} from './lib/dagValidator'
 export { formatRelativeTime } from './lib/formatRelativeTime'

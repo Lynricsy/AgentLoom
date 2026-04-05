@@ -1286,6 +1286,17 @@ body {
   background: hsl(from var(--color-muted) h s l / 0.2);
 }
 
+.workflow-preview-canvas .react-flow__node,
+.workflow-preview-canvas .react-flow__edge,
+.workflow-preview-canvas .react-flow__handle {
+  pointer-events: none;
+}
+
+.workflow-preview-canvas .react-flow__controls,
+.workflow-preview-canvas .react-flow__minimap {
+  pointer-events: auto;
+}
+
 /* ─── 无障碍 & reduced-motion ──────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   .smart-edge-particle--running { animation: none; opacity: 0; }

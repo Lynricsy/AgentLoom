@@ -11,24 +11,23 @@ const {
   importAgentShareMock,
   navigateMock,
   notifyMock,
-} =
-  vi.hoisted(() => ({
-    publicShareMock: {
-      data: undefined as PublicShareData | undefined,
-      isLoading: false,
-      error: null as unknown,
-    },
-    createWorkflowMock: {
-      mutate: vi.fn(),
-      isPending: false,
-    },
-    importAgentShareMock: {
-      mutate: vi.fn(),
-      isPending: false,
-    },
-    navigateMock: vi.fn(),
-    notifyMock: vi.fn(),
-  }))
+} = vi.hoisted(() => ({
+  publicShareMock: {
+    data: undefined as PublicShareData | undefined,
+    isLoading: false,
+    error: null as unknown,
+  },
+  createWorkflowMock: {
+    mutate: vi.fn(),
+    isPending: false,
+  },
+  importAgentShareMock: {
+    mutate: vi.fn(),
+    isPending: false,
+  },
+  navigateMock: vi.fn(),
+  notifyMock: vi.fn(),
+}))
 
 vi.mock('@tanstack/react-router', () => ({
   useParams: () => ({ token: 'test-token' }),
@@ -57,9 +56,31 @@ vi.mock('@/shared/lib/utils', () => ({
 
 vi.mock('@xyflow/react', () => ({
   ReactFlow: (props: Record<string, unknown>) => (
-    <div data-testid="reactflow-canvas" {...props} />
+    <div
+      data-testid={
+        (props['data-testid'] as string | undefined) ?? 'reactflow-canvas'
+      }
+      data-node-types={
+        Array.isArray(props.nodes)
+          ? props.nodes
+              .map((node) => (node as { type?: string }).type ?? '')
+              .join(',')
+          : ''
+      }
+      data-edge-types={
+        Array.isArray(props.edges)
+          ? props.edges
+              .map((edge) => (edge as { type?: string }).type ?? '')
+              .join(',')
+          : ''
+      }
+    />
+  ),
+  ReactFlowProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
   ),
   Background: () => <div data-testid="reactflow-background" />,
+  BackgroundVariant: { Dots: 'dots' },
   Controls: () => <div data-testid="reactflow-controls" />,
   MiniMap: () => <div data-testid="reactflow-minimap" />,
 }))
@@ -70,7 +91,9 @@ const { PublicSharePage } = await import('../PublicSharePage')
 
 // --- helpers ---
 function makePublicShareData(
-  overrides: Partial<Extract<PublicShareData, { resourceType: 'workflow' }>> = {},
+  overrides: Partial<
+    Extract<PublicShareData, { resourceType: 'workflow' }>
+  > = {},
 ): Extract<PublicShareData, { resourceType: 'workflow' }> {
   return {
     token: 'test-token',
@@ -87,11 +110,24 @@ function makePublicShareData(
       avatarUrl: null,
     },
     definition: {
-      nodes: [{ id: 'n1', type: 'default', position: { x: 0, y: 0 }, data: {} }],
+      nodes: [
+        {
+          id: 'n1',
+          type: 'workflow-node',
+          position: { x: 0, y: 0 },
+          data: { nodeType: 'chat-agent', label: 'Start' },
+        },
+        {
+          id: 'n2',
+          type: 'workflow-node',
+          position: { x: 280, y: 0 },
+          data: { nodeType: 'text-output', label: 'End' },
+        },
+      ],
       edges: [{ id: 'e1', source: 'n1', target: 'n2' }],
       viewport: { x: 0, y: 0, zoom: 1 },
     },
-    nodeCount: 1,
+    nodeCount: 2,
     edgeCount: 1,
     createdAt: '2026-03-10T08:00:00.000Z',
     expiresAt: null,
@@ -124,7 +160,15 @@ describe('PublicSharePage', () => {
 
     expect(screen.getByText('Test Workflow')).toBeInTheDocument()
     expect(screen.getByText('A test workflow description')).toBeInTheDocument()
-    expect(screen.getByTestId('reactflow-canvas')).toBeInTheDocument()
+    expect(screen.getByTestId('public-share-preview')).toBeInTheDocument()
+    expect(screen.getByTestId('public-share-preview')).toHaveAttribute(
+      'data-node-types',
+      'agent,output',
+    )
+    expect(screen.getByTestId('public-share-preview')).toHaveAttribute(
+      'data-edge-types',
+      'smart',
+    )
   })
 
   it('shows "仅查看" badge for read_only shares', () => {
@@ -146,7 +190,9 @@ describe('PublicSharePage', () => {
     publicShareMock.data = makePublicShareData({ shareType: 'read_only' })
     render(<PublicSharePage />)
 
-    expect(screen.queryByTestId('btn-copy-to-workspace')).not.toBeInTheDocument()
+    expect(
+      screen.queryByTestId('btn-copy-to-workspace'),
+    ).not.toBeInTheDocument()
   })
 
   it('shows expiry info when expiresAt is set', () => {

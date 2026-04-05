@@ -1,18 +1,10 @@
-import { memo, useCallback, useEffect, useMemo, useState } from 'react'
+import { memo, useCallback, useEffect, useState } from 'react'
 
 import * as Dialog from '@radix-ui/react-dialog'
-import {
-  Background,
-  BackgroundVariant,
-  ReactFlow,
-  ReactFlowProvider,
-  type Edge,
-  type Node,
-} from '@xyflow/react'
 import { Download, Loader2, Puzzle, Workflow, X } from 'lucide-react'
 
+import { WorkflowPreviewCanvas } from '@/features/canvas'
 import { cn } from '@/shared/lib/utils'
-import { useTheme } from '@/shared/hooks/use-theme'
 import {
   useListingReviews,
   usePublicListingDetail,
@@ -44,62 +36,6 @@ function parseRating(value: string | null): number | null {
   return Number.isFinite(parsed) ? parsed : null
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null
-}
-
-function toPreviewNodes(nodes: unknown[] | undefined): Node[] {
-  if (!nodes) {
-    return []
-  }
-
-  return nodes
-    .filter(isRecord)
-    .filter((node) => typeof node.id === 'string' && isRecord(node.position))
-    .map((node) => {
-      const position = isRecord(node.position) ? node.position : {}
-      const data = isRecord(node.data) ? node.data : {}
-
-      return {
-        id: node.id as string,
-        type: 'default',
-        position: {
-          x: typeof position.x === 'number' ? position.x : 0,
-          y: typeof position.y === 'number' ? position.y : 0,
-        },
-        data: {
-          label:
-            (typeof data.label === 'string' && data.label) ||
-            (typeof data.nodeType === 'string' && data.nodeType) ||
-            (typeof data.name === 'string' && data.name) ||
-            'Node',
-        },
-      } satisfies Node
-    })
-}
-
-function toPreviewEdges(edges: unknown[] | undefined): Edge[] {
-  if (!edges) {
-    return []
-  }
-
-  return edges
-    .filter(isRecord)
-    .filter(
-      (edge) =>
-        typeof edge.id === 'string' &&
-        typeof edge.source === 'string' &&
-        typeof edge.target === 'string',
-    )
-    .map((edge) => ({
-      id: edge.id as string,
-      source: edge.source as string,
-      target: edge.target as string,
-      sourceHandle: typeof edge.sourceHandle === 'string' ? edge.sourceHandle : undefined,
-      targetHandle: typeof edge.targetHandle === 'string' ? edge.targetHandle : undefined,
-    }))
-}
-
 function isWorkflowListing(
   listing: ListingDetailType,
 ): listing is ListingDetailType & { listingType: 'workflow' } {
@@ -113,16 +49,6 @@ function WorkflowPreviewSection({
   listing: ListingDetailType & { listingType: 'workflow' }
   onInstallClick: () => void
 }) {
-  const { resolvedTheme } = useTheme()
-  const previewNodes = useMemo(
-    () => toPreviewNodes(listing.definition.nodes),
-    [listing.definition.nodes],
-  )
-  const previewEdges = useMemo(
-    () => toPreviewEdges(listing.definition.edges),
-    [listing.definition.edges],
-  )
-
   return (
     <section className="space-y-4">
       <div className="flex items-center justify-between gap-3">
@@ -141,34 +67,16 @@ function WorkflowPreviewSection({
         </button>
       </div>
 
-      {previewNodes.length > 0 ? (
-        <div className="h-[320px] overflow-hidden rounded-lg border border-border" data-testid="marketplace-preview">
-          <ReactFlowProvider>
-            <ReactFlow
-              nodes={previewNodes}
-              edges={previewEdges}
-              fitView
-              nodesDraggable={false}
-              nodesConnectable={false}
-              elementsSelectable={false}
-              connectOnClick={false}
-              edgesReconnectable={false}
-              panOnDrag={false}
-              zoomOnScroll={false}
-              zoomOnDoubleClick={false}
-              deleteKeyCode={null}
-              proOptions={{ hideAttribution: true }}
-              colorMode={resolvedTheme}
-            >
-              <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
-            </ReactFlow>
-          </ReactFlowProvider>
-        </div>
-      ) : (
-        <div className="flex h-[320px] items-center justify-center rounded-lg border border-dashed border-border bg-card/40 text-sm text-muted-foreground">
-          暂无可预览的工作流结构。
-        </div>
-      )}
+      <WorkflowPreviewCanvas
+        className="h-[320px] overflow-hidden rounded-lg border border-border"
+        definition={listing.definition}
+        emptyFallback={
+          <div className="flex h-[320px] items-center justify-center rounded-lg border border-dashed border-border bg-card/40 text-sm text-muted-foreground">
+            暂无可预览的工作流结构。
+          </div>
+        }
+        testId="marketplace-preview"
+      />
     </section>
   )
 }
@@ -210,7 +118,9 @@ function PluginDetailSection({
       >
         <div className="flex items-center gap-2">
           <Puzzle className="h-5 w-5 text-violet-400" />
-          <span className="text-sm font-medium text-foreground">{plugin.name}</span>
+          <span className="text-sm font-medium text-foreground">
+            {plugin.name}
+          </span>
           <span className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
             v{plugin.version}
           </span>
@@ -218,7 +128,9 @@ function PluginDetailSection({
 
         <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
           <dt className="text-muted-foreground">插件 ID</dt>
-          <dd className="font-mono text-xs text-foreground">{plugin.pluginId}</dd>
+          <dd className="font-mono text-xs text-foreground">
+            {plugin.pluginId}
+          </dd>
 
           <dt className="text-muted-foreground">开发者</dt>
           <dd className="text-foreground">{plugin.author}</dd>
@@ -263,7 +175,8 @@ export const MarketplaceDetailDialog = memo(function MarketplaceDetailDialog({
 
   const listing = detailQuery.data
   const reviews = reviewsQuery.data?.data ?? listing?.reviews ?? []
-  const reviewsTotal = reviewsQuery.data?.meta.total ?? listing?.reviewCount ?? reviews.length
+  const reviewsTotal =
+    reviewsQuery.data?.meta.total ?? listing?.reviewCount ?? reviews.length
 
   useEffect(() => {
     if (!open) {
@@ -299,14 +212,26 @@ export const MarketplaceDetailDialog = memo(function MarketplaceDetailDialog({
           </Dialog.Close>
 
           {detailQuery.isLoading ? (
-            <div className="flex items-center justify-center gap-3 px-6 py-20" data-testid="marketplace-detail-loading">
+            <div
+              className="flex items-center justify-center gap-3 px-6 py-20"
+              data-testid="marketplace-detail-loading"
+            >
               <Loader2 className="h-5 w-5 animate-spin text-primary" />
-              <span className="text-sm text-muted-foreground">正在加载详情…</span>
+              <span className="text-sm text-muted-foreground">
+                正在加载详情…
+              </span>
             </div>
           ) : detailQuery.isError || !listing ? (
-            <div className="flex flex-col items-center justify-center gap-3 px-6 py-20 text-center" data-testid="marketplace-detail-error">
-              <p className="text-base font-medium text-foreground">无法加载详情</p>
-              <p className="text-sm text-muted-foreground">请稍后重试，或返回列表后重新打开。</p>
+            <div
+              className="flex flex-col items-center justify-center gap-3 px-6 py-20 text-center"
+              data-testid="marketplace-detail-error"
+            >
+              <p className="text-base font-medium text-foreground">
+                无法加载详情
+              </p>
+              <p className="text-sm text-muted-foreground">
+                请稍后重试，或返回列表后重新打开。
+              </p>
             </div>
           ) : (
             <>
@@ -328,9 +253,13 @@ export const MarketplaceDetailDialog = memo(function MarketplaceDetailDialog({
                     )}
                     {listingTypeLabel}
                   </span>
-                  <h2 className="text-xl font-semibold text-foreground">{listing.title}</h2>
+                  <h2 className="text-xl font-semibold text-foreground">
+                    {listing.title}
+                  </h2>
                 </div>
-                <p className="mt-2 text-sm text-muted-foreground">{listing.summary}</p>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  {listing.summary}
+                </p>
 
                 <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
                   <span>作者：{listing.author.displayName}</span>
@@ -343,7 +272,10 @@ export const MarketplaceDetailDialog = memo(function MarketplaceDetailDialog({
                     <Download className="h-3.5 w-3.5" />
                     <span>{listing.useCount} 次安装</span>
                   </span>
-                  <StarRating rating={parseRating(listing.avgRating)} count={listing.reviewCount} />
+                  <StarRating
+                    rating={parseRating(listing.avgRating)}
+                    count={listing.reviewCount}
+                  />
                 </div>
 
                 {listing.tags.length > 0 ? (
@@ -375,9 +307,13 @@ export const MarketplaceDetailDialog = memo(function MarketplaceDetailDialog({
 
                 <section className="space-y-4">
                   <div className="space-y-1">
-                    <h3 className="text-sm font-medium text-foreground">用户评价</h3>
+                    <h3 className="text-sm font-medium text-foreground">
+                      用户评价
+                    </h3>
                     <p className="text-xs text-muted-foreground">
-                      {reviewsQuery.isLoading ? '正在加载评价…' : `共 ${reviewsTotal} 条评价`}
+                      {reviewsQuery.isLoading
+                        ? '正在加载评价…'
+                        : `共 ${reviewsTotal} 条评价`}
                     </p>
                   </div>
                   <ReviewList reviews={reviews} />

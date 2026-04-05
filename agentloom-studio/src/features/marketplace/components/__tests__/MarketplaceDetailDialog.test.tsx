@@ -11,25 +11,44 @@ import type {
 vi.mock('@xyflow/react', () => ({
   ReactFlow: (props: Record<string, unknown>) => (
     <div
-      data-testid="reactflow-preview"
+      data-testid={
+        (props['data-testid'] as string | undefined) ?? 'reactflow-preview'
+      }
       data-fit-view={props.fitView}
       data-nodes-draggable={props.nodesDraggable}
       data-nodes-connectable={props.nodesConnectable}
       data-elements-selectable={props.elementsSelectable}
       data-pan-on-drag={props.panOnDrag}
       data-zoom-on-scroll={props.zoomOnScroll}
+      data-node-types={
+        Array.isArray(props.nodes)
+          ? props.nodes
+              .map((node) => (node as { type?: string }).type ?? '')
+              .join(',')
+          : ''
+      }
+      data-edge-types={
+        Array.isArray(props.edges)
+          ? props.edges
+              .map((edge) => (edge as { type?: string }).type ?? '')
+              .join(',')
+          : ''
+      }
     >
       {(props.children as React.ReactNode) ?? null}
     </div>
   ),
-  ReactFlowProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
+  ReactFlowProvider: ({ children }: { children: React.ReactNode }) => (
+    <>{children}</>
+  ),
   Background: () => <div data-testid="reactflow-background" />,
   BackgroundVariant: { Dots: 'dots' },
 }))
 
 vi.mock('@radix-ui/react-dialog', async () => {
   const React = await import('react')
-  const { Fragment, createContext, useContext, cloneElement, isValidElement } = React
+  const { Fragment, createContext, useContext, cloneElement, isValidElement } =
+    React
 
   const DialogContext = createContext<{
     onOpenChange?: (open: boolean) => void
@@ -141,7 +160,15 @@ vi.mock('../MarketplaceInstallDialog', () => ({
     open: boolean
     listingTitle: string
     listingType: string
-  }) => (open ? <div data-testid="marketplace-install-dialog" data-listing-type={listingType}>Install: {listingTitle}</div> : null),
+  }) =>
+    open ? (
+      <div
+        data-testid="marketplace-install-dialog"
+        data-listing-type={listingType}
+      >
+        Install: {listingTitle}
+      </div>
+    ) : null,
 }))
 
 function makeListingDetail(
@@ -167,8 +194,9 @@ function makeListingDetail(
       nodes: [
         {
           id: 'node-1',
+          type: 'workflow-node',
           position: { x: 0, y: 0 },
-          data: { label: 'Start' },
+          data: { nodeType: 'chat-agent', label: 'Start' },
         },
       ],
       edges: [],
@@ -269,13 +297,17 @@ describe('MarketplaceDetailDialog', () => {
     expect(screen.getByText('42 次安装')).toBeInTheDocument()
     expect(screen.getByText('4.5')).toBeInTheDocument()
     expect(screen.getByTestId('marketplace-preview')).toBeInTheDocument()
-    expect(screen.getByTestId('reactflow-preview')).toHaveAttribute(
+    expect(screen.getByTestId('marketplace-preview')).toHaveAttribute(
       'data-fit-view',
       'true',
     )
-    expect(screen.getByTestId('reactflow-preview')).toHaveAttribute(
+    expect(screen.getByTestId('marketplace-preview')).toHaveAttribute(
       'data-nodes-draggable',
       'false',
+    )
+    expect(screen.getByTestId('marketplace-preview')).toHaveAttribute(
+      'data-node-types',
+      'agent',
     )
     expect(screen.getByTestId('review-list')).toBeInTheDocument()
     expect(screen.getByText('Great workflow!')).toBeInTheDocument()

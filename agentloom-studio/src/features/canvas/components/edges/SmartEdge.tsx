@@ -7,7 +7,11 @@ import {
 } from '@xyflow/react'
 import { X } from 'lucide-react'
 import { useCanvasActions } from '../../stores/canvasStore'
-import { createDefaultEdgeData, type CanvasEdge, type VisualCompatibilityLevel } from '../../types'
+import {
+  createDefaultEdgeData,
+  type CanvasEdge,
+  type VisualCompatibilityLevel,
+} from '../../types'
 
 const LEVEL_LABELS: Record<VisualCompatibilityLevel, string> = {
   L0: 'L0 精确匹配',
@@ -16,8 +20,14 @@ const LEVEL_LABELS: Record<VisualCompatibilityLevel, string> = {
   error: '不兼容',
 }
 
-function resolveVisualLevel(data: CanvasEdge['data']): VisualCompatibilityLevel {
+function resolveVisualLevel(
+  data: CanvasEdge['data'],
+): VisualCompatibilityLevel {
   return data?.visualLevel ?? 'L0'
+}
+
+function isReadonlyPreview(data: CanvasEdge['data']): boolean {
+  return data?.readonlyPreview === true
 }
 
 function buildBadgeText(
@@ -59,6 +69,7 @@ export const SmartEdge = memo(function SmartEdge({
   const { onEdgesChange, openFieldMapping } = useCanvasActions()
   const edgeData = data ?? createDefaultEdgeData()
   const visualLevel = resolveVisualLevel(data)
+  const readonlyPreview = isReadonlyPreview(data)
   const cssLevel = visualLevel.toLowerCase()
   const [isHovered, setIsHovered] = useState(false)
 
@@ -75,7 +86,7 @@ export const SmartEdge = memo(function SmartEdge({
   const showParticles = visualLevel === 'L0' || visualLevel === 'L1'
   const badgeText = buildBadgeText(edgeData, visualLevel)
   const hasWarning = edgeData.mappingSummary.requiredUnmappedCount > 0
-  const badgeVisible = isHovered || !!selected
+  const badgeVisible = !readonlyPreview && (isHovered || !!selected)
   const badgeTabIndex = badgeVisible ? 0 : -1
 
   const handleDelete = useCallback(
@@ -83,7 +94,7 @@ export const SmartEdge = memo(function SmartEdge({
       e.stopPropagation()
       onEdgesChange([{ type: 'remove', id }])
     },
-    [id, onEdgesChange]
+    [id, onEdgesChange],
   )
 
   const handleBadgeClick = useCallback(
@@ -91,7 +102,7 @@ export const SmartEdge = memo(function SmartEdge({
       e.stopPropagation()
       openFieldMapping(id)
     },
-    [id, openFieldMapping]
+    [id, openFieldMapping],
   )
 
   const handleMouseEnter = () => {
@@ -147,57 +158,61 @@ export const SmartEdge = memo(function SmartEdge({
         </>
       )}
 
-      <EdgeLabelRenderer>
-        <div
-          className={`edge-badge nodrag nopan${badgeVisible ? ' edge-badge--visible' : ''}`}
-          style={{
-            position: 'absolute',
-            transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
-            pointerEvents: badgeVisible ? 'all' : 'none',
-          }}
-          data-testid={`edge-badge-${id}`}
-          aria-hidden={!badgeVisible}
-        >
-          <button
-            type="button"
-            className="edge-badge__summary"
-            data-testid={`edge-badge-action-${id}`}
-            onClick={handleBadgeClick}
-            onMouseEnter={handleMouseEnter}
-            onMouseLeave={handleMouseLeave}
-            onFocus={handleMouseEnter}
-            onBlur={handleMouseLeave}
-            aria-label="打开字段映射"
-            tabIndex={badgeTabIndex}
+      {!readonlyPreview ? (
+        <EdgeLabelRenderer>
+          <div
+            className={`edge-badge nodrag nopan${badgeVisible ? ' edge-badge--visible' : ''}`}
+            style={{
+              position: 'absolute',
+              transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
+              pointerEvents: badgeVisible ? 'all' : 'none',
+            }}
+            data-testid={`edge-badge-${id}`}
+            aria-hidden={!badgeVisible}
           >
-            <span className={`edge-badge__dot edge-badge__dot--${cssLevel}`} />
-            <span>{badgeText}</span>
-          </button>
-          {hasWarning && (
-            <span
-              className="edge-badge__warning"
-              data-testid={`edge-warning-${id}`}
-              title={`${edgeData.mappingSummary.requiredUnmappedCount} 个必填字段未映射`}
+            <button
+              type="button"
+              className="edge-badge__summary"
+              data-testid={`edge-badge-action-${id}`}
+              onClick={handleBadgeClick}
+              onMouseEnter={handleMouseEnter}
+              onMouseLeave={handleMouseLeave}
+              onFocus={handleMouseEnter}
+              onBlur={handleMouseLeave}
+              aria-label="打开字段映射"
+              tabIndex={badgeTabIndex}
             >
-              ⚠
-            </span>
-          )}
-          <button
-            type="button"
-            className="edge-badge__delete"
-            data-testid={`edge-delete-${id}`}
-            onClick={handleDelete}
-            onMouseEnter={handleMouseEnter}
-            onMouseLeave={handleMouseLeave}
-            onFocus={handleMouseEnter}
-            onBlur={handleMouseLeave}
-            aria-label="删除连接"
-            tabIndex={badgeTabIndex}
-          >
-            <X size={10} />
-          </button>
-        </div>
-      </EdgeLabelRenderer>
+              <span
+                className={`edge-badge__dot edge-badge__dot--${cssLevel}`}
+              />
+              <span>{badgeText}</span>
+            </button>
+            {hasWarning && (
+              <span
+                className="edge-badge__warning"
+                data-testid={`edge-warning-${id}`}
+                title={`${edgeData.mappingSummary.requiredUnmappedCount} 个必填字段未映射`}
+              >
+                ⚠
+              </span>
+            )}
+            <button
+              type="button"
+              className="edge-badge__delete"
+              data-testid={`edge-delete-${id}`}
+              onClick={handleDelete}
+              onMouseEnter={handleMouseEnter}
+              onMouseLeave={handleMouseLeave}
+              onFocus={handleMouseEnter}
+              onBlur={handleMouseLeave}
+              aria-label="删除连接"
+              tabIndex={badgeTabIndex}
+            >
+              <X size={10} />
+            </button>
+          </div>
+        </EdgeLabelRenderer>
+      ) : null}
     </>
   )
 })

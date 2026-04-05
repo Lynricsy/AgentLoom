@@ -6,8 +6,6 @@ import {
   ReactFlow,
   useReactFlow,
   type Connection,
-  type EdgeTypes,
-  type NodeTypes,
   type OnConnectStartParams,
   type Viewport,
 } from '@xyflow/react'
@@ -16,8 +14,6 @@ import { useTheme } from '@/shared/hooks/use-theme'
 import { useToast } from '@/shared/ui/toast'
 import type { WorkflowStatus } from '@/features/workflow/types'
 import { CanvasContextMenu } from './CanvasContextMenu'
-import { CanvasNodeShell } from './CanvasNode'
-import { SmartEdge } from './edges/SmartEdge'
 import { CanvasMiniMap } from './navigation/CanvasMiniMap'
 import { NodeInfoCard } from './overlays/NodeInfoCard'
 import {
@@ -29,6 +25,10 @@ import {
   type OverlayHandleSnapshot,
 } from './overlays/ConnectionStateOverlay'
 import { CanvasSearch } from './toolbar/CanvasSearch'
+import {
+  WORKFLOW_EDGE_TYPES,
+  WORKFLOW_NODE_TYPES,
+} from './workflowFlowRegistry'
 import { useCanvasDrop } from '../hooks/useCanvasDrop'
 import { useExecutionHighlight } from '../hooks/useExecutionHighlight'
 import {
@@ -79,20 +79,6 @@ type PreviewState = Pick<
   visible: boolean
 }
 
-const nodeTypes: NodeTypes = {
-  agent: CanvasNodeShell,
-  tool: CanvasNodeShell,
-  trigger: CanvasNodeShell,
-  knowledge: CanvasNodeShell,
-  memory: CanvasNodeShell,
-  output: CanvasNodeShell,
-  control: CanvasNodeShell,
-}
-
-const edgeTypes: EdgeTypes = {
-  smart: SmartEdge,
-}
-
 const HANDLE_SELECTOR = '[data-node-id][data-port-id][data-port-direction]'
 const SOURCE_CLASS = 'typed-port--connect-source'
 const COMPATIBLE_CLASS = 'typed-port--connect-compatible'
@@ -121,7 +107,9 @@ const COMPATIBILITY_REASON_LABELS: Record<string, string> = {
   scalar_schema_mismatch: '字段类型不兼容',
 }
 
-function toVisiblePreviewState(edgeData: Pick<CanvasEdgeData, 'visualLevel' | 'reasonKey' | 'metadata'>): PreviewState {
+function toVisiblePreviewState(
+  edgeData: Pick<CanvasEdgeData, 'visualLevel' | 'reasonKey' | 'metadata'>,
+): PreviewState {
   return {
     visible: true,
     visualLevel: edgeData.visualLevel,
@@ -169,8 +157,10 @@ function isDuplicateConnection(
     (edge) =>
       edge.source === connection.source &&
       edge.target === connection.target &&
-      normalizeHandle(edge.sourceHandle) === normalizeHandle(connection.sourceHandle) &&
-      normalizeHandle(edge.targetHandle) === normalizeHandle(connection.targetHandle),
+      normalizeHandle(edge.sourceHandle) ===
+        normalizeHandle(connection.sourceHandle) &&
+      normalizeHandle(edge.targetHandle) ===
+        normalizeHandle(connection.targetHandle),
   )
 }
 
@@ -191,7 +181,9 @@ function previewDagValidation(
 
   const validation = validateDag(nodes, [...edges, tentativeEdge])
   const blockingError =
-    validation.errors.find((error) => error.type === 'cycle') ?? validation.errors[0] ?? null
+    validation.errors.find((error) => error.type === 'cycle') ??
+    validation.errors[0] ??
+    null
 
   return {
     blockingError,
@@ -204,7 +196,8 @@ function isEditableTarget(target: EventTarget | null): target is HTMLElement {
   return (
     target instanceof HTMLElement &&
     (target.isContentEditable ||
-      target.closest('input, textarea, select, [contenteditable="true"]') !== null)
+      target.closest('input, textarea, select, [contenteditable="true"]') !==
+        null)
   )
 }
 
@@ -269,7 +262,10 @@ function readHandleSnapshot(
   }
 }
 
-function applyConnectionClasses(root: HTMLElement, state: ActiveConnectionState) {
+function applyConnectionClasses(
+  root: HTMLElement,
+  state: ActiveConnectionState,
+) {
   clearConnectionClasses(root)
 
   const sourceElement = getHandleElement(
@@ -281,15 +277,21 @@ function applyConnectionClasses(root: HTMLElement, state: ActiveConnectionState)
   sourceElement?.classList.add(SOURCE_CLASS)
 
   state.compatibleTargets.forEach((target) => {
-    getHandleElement(root, target.nodeId, target.portId, 'input')?.classList.add(
-      COMPATIBLE_CLASS,
-    )
+    getHandleElement(
+      root,
+      target.nodeId,
+      target.portId,
+      'input',
+    )?.classList.add(COMPATIBLE_CLASS)
   })
 
   state.incompatibleTargets.forEach((target) => {
-    getHandleElement(root, target.nodeId, target.portId, 'input')?.classList.add(
-      INCOMPATIBLE_CLASS,
-    )
+    getHandleElement(
+      root,
+      target.nodeId,
+      target.portId,
+      'input',
+    )?.classList.add(INCOMPATIBLE_CLASS)
   })
 }
 
@@ -344,7 +346,11 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
   const viewport = useCanvasStore((state) => state.viewport)
   const selectedNodeIds = useSelectedNodeIds()
   const selectedNodeCount = useCanvasStore((state) =>
-    state.selectedNodeIds.size > 0 ? state.selectedNodeIds.size : state.selectedNodeId ? 1 : 0,
+    state.selectedNodeIds.size > 0
+      ? state.selectedNodeIds.size
+      : state.selectedNodeId
+        ? 1
+        : 0,
   )
   const {
     clearSelection,
@@ -390,9 +396,12 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
     [edges, hiddenCompoundNodeIds],
   )
 
-  const [activeConnection, setActiveConnection] = useState<ActiveConnectionState | null>(null)
-  const [contextMenuState, setContextMenuState] = useState<CanvasContextMenuState | null>(null)
-  const [previewState, setPreviewState] = useState<PreviewState>(hiddenPreviewState)
+  const [activeConnection, setActiveConnection] =
+    useState<ActiveConnectionState | null>(null)
+  const [contextMenuState, setContextMenuState] =
+    useState<CanvasContextMenuState | null>(null)
+  const [previewState, setPreviewState] =
+    useState<PreviewState>(hiddenPreviewState)
 
   const containerRef = useRef<HTMLDivElement>(null)
   const previewRef = useRef<CompatibilityPreviewHandle>(null)
@@ -414,7 +423,8 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
   }, [])
 
   const handleDeleteSelection = useCallback(() => {
-    const { selectedNodeIds: currentSelectedNodeIds } = useCanvasStore.getState()
+    const { selectedNodeIds: currentSelectedNodeIds } =
+      useCanvasStore.getState()
     if (currentSelectedNodeIds.size > 1) {
       deleteSelectedNodes()
       return
@@ -494,7 +504,10 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
 
       frameRef.current = requestAnimationFrame(() => {
         frameRef.current = null
-        previewRef.current?.setPosition(pointerRef.current.x, pointerRef.current.y)
+        previewRef.current?.setPosition(
+          pointerRef.current.x,
+          pointerRef.current.y,
+        )
 
         const root = containerRef.current
         const currentConnection = activeConnectionRef.current
@@ -502,18 +515,23 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
           return
         }
 
-          const hoveredTarget = document
-            .elementFromPoint(pointerRef.current.x, pointerRef.current.y)
-            ?.closest<HTMLElement>(`${HANDLE_SELECTOR}[data-port-direction="input"]`)
-          if (!hoveredTarget) {
-            hoveredTargetKeyRef.current = null
+        const hoveredTarget = document
+          .elementFromPoint(pointerRef.current.x, pointerRef.current.y)
+          ?.closest<HTMLElement>(
+            `${HANDLE_SELECTOR}[data-port-direction="input"]`,
+          )
+        if (!hoveredTarget) {
+          hoveredTargetKeyRef.current = null
           root
             .querySelectorAll<HTMLElement>(
               `.${HOVER_COMPATIBLE_CLASS}, .${HOVER_INCOMPATIBLE_CLASS}`,
             )
-              .forEach((element) => {
-                element.classList.remove(HOVER_COMPATIBLE_CLASS, HOVER_INCOMPATIBLE_CLASS)
-              })
+            .forEach((element) => {
+              element.classList.remove(
+                HOVER_COMPATIBLE_CLASS,
+                HOVER_INCOMPATIBLE_CLASS,
+              )
+            })
           setPreviewState(checkingPreviewState)
           return
         }
@@ -531,7 +549,10 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
             `.${HOVER_COMPATIBLE_CLASS}, .${HOVER_INCOMPATIBLE_CLASS}`,
           )
           .forEach((element) => {
-            element.classList.remove(HOVER_COMPATIBLE_CLASS, HOVER_INCOMPATIBLE_CLASS)
+            element.classList.remove(
+              HOVER_COMPATIBLE_CLASS,
+              HOVER_INCOMPATIBLE_CLASS,
+            )
           })
 
         if (!nodeId || !portId) {
@@ -546,7 +567,11 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
           targetHandle: portId,
         }
 
-        const cachedEvaluation = getCachedConnectionEvaluation(nodes, connection, edges)
+        const cachedEvaluation = getCachedConnectionEvaluation(
+          nodes,
+          connection,
+          edges,
+        )
         if (cachedEvaluation) {
           hoveredTarget.classList.add(
             cachedEvaluation.compatible
@@ -564,9 +589,9 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
 
         void evaluateConnection(nodes, connection, edges).then((evaluated) => {
           if (
-            dragSessionIdRef.current !== sessionId
-            || hoverRequestIdRef.current !== requestId
-            || hoveredTargetKeyRef.current !== nextKey
+            dragSessionIdRef.current !== sessionId ||
+            hoverRequestIdRef.current !== requestId ||
+            hoveredTargetKeyRef.current !== nextKey
           ) {
             return
           }
@@ -581,12 +606,22 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
               `.${HOVER_COMPATIBLE_CLASS}, .${HOVER_INCOMPATIBLE_CLASS}`,
             )
             .forEach((element) => {
-              element.classList.remove(HOVER_COMPATIBLE_CLASS, HOVER_INCOMPATIBLE_CLASS)
+              element.classList.remove(
+                HOVER_COMPATIBLE_CLASS,
+                HOVER_INCOMPATIBLE_CLASS,
+              )
             })
 
-          const latestTarget = getHandleElement(latestRoot, nodeId, portId, 'input')
+          const latestTarget = getHandleElement(
+            latestRoot,
+            nodeId,
+            portId,
+            'input',
+          )
           latestTarget?.classList.add(
-            evaluated.compatible ? HOVER_COMPATIBLE_CLASS : HOVER_INCOMPATIBLE_CLASS,
+            evaluated.compatible
+              ? HOVER_COMPATIBLE_CLASS
+              : HOVER_INCOMPATIBLE_CLASS,
           )
 
           setPreviewState(toVisiblePreviewState(evaluated.edgeData))
@@ -610,7 +645,11 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
         return
       }
 
-      if (params.handleType !== 'source' || !params.nodeId || !params.handleId) {
+      if (
+        params.handleType !== 'source' ||
+        !params.nodeId ||
+        !params.handleId
+      ) {
         return
       }
 
@@ -641,7 +680,9 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
         return
       }
 
-      const sourcePortType = sourceElement.dataset.portType as PortDataType | undefined
+      const sourcePortType = sourceElement.dataset.portType as
+        | PortDataType
+        | undefined
 
       const compatibleTargets: OverlayHandleSnapshot[] = []
       const incompatibleTargets: OverlayHandleSnapshot[] = []
@@ -652,7 +693,9 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
       }> = []
 
       root
-        .querySelectorAll<HTMLElement>(`${HANDLE_SELECTOR}[data-port-direction="input"]`)
+        .querySelectorAll<HTMLElement>(
+          `${HANDLE_SELECTOR}[data-port-direction="input"]`,
+        )
         .forEach((element) => {
           const targetNodeId = element.dataset.nodeId
           const targetPortId = element.dataset.portId
@@ -665,20 +708,26 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
             return
           }
 
-          const cachedEvaluation = getCachedConnectionEvaluation(nodes, {
-            source: sourceNodeId,
-            sourceHandle: sourceHandleId,
-            target: targetNodeId,
-            targetHandle: targetPortId,
-          }, edges)
+          const cachedEvaluation = getCachedConnectionEvaluation(
+            nodes,
+            {
+              source: sourceNodeId,
+              sourceHandle: sourceHandleId,
+              target: targetNodeId,
+              targetHandle: targetPortId,
+            },
+            edges,
+          )
 
           if (!cachedEvaluation) {
             // 同步 dataType 预筛：不兼容的直接标记，无需等待 WASM
-            const targetPortType = element.dataset.portType as PortDataType | undefined
+            const targetPortType = element.dataset.portType as
+              | PortDataType
+              | undefined
             if (
-              sourcePortType
-              && targetPortType
-              && !arePortDataTypesCompatible(sourcePortType, targetPortType)
+              sourcePortType &&
+              targetPortType &&
+              !arePortDataTypesCompatible(sourcePortType, targetPortType)
             ) {
               incompatibleTargets.push(snapshot)
               return
@@ -721,12 +770,16 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
       void Promise.all(
         pendingTargets.map(async (target) => ({
           snapshot: target.snapshot,
-          evaluated: await evaluateConnection(nodes, {
-            source: sourceNodeId,
-            sourceHandle: sourceHandleId,
-            target: target.targetNodeId,
-            targetHandle: target.targetPortId,
-          }, edges),
+          evaluated: await evaluateConnection(
+            nodes,
+            {
+              source: sourceNodeId,
+              sourceHandle: sourceHandleId,
+              target: target.targetNodeId,
+              targetHandle: target.targetPortId,
+            },
+            edges,
+          ),
         })),
       ).then((results) => {
         if (dragSessionIdRef.current !== sessionId) {
@@ -794,11 +847,17 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
             connection,
             error: validationPreview.blockingError,
           })
-          notify({ description: '无法创建连接：检测到循环依赖', variant: 'error' })
+          notify({
+            description: '无法创建连接：检测到循环依赖',
+            variant: 'error',
+          })
           return
         }
 
-        notify({ description: validationPreview.blockingError.message, variant: 'error' })
+        notify({
+          description: validationPreview.blockingError.message,
+          variant: 'error',
+        })
         return
       }
 
@@ -817,7 +876,11 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
         return false
       }
 
-      const cachedEvaluation = getCachedConnectionEvaluation(nodes, connectionOrEdge, edges)
+      const cachedEvaluation = getCachedConnectionEvaluation(
+        nodes,
+        connectionOrEdge,
+        edges,
+      )
       if (cachedEvaluation && !cachedEvaluation.compatible) {
         return false
       }
@@ -826,8 +889,8 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
       if (!cachedEvaluation) {
         const resolved = resolveConnectionPorts(nodes, connectionOrEdge)
         if (
-          resolved
-          && !arePortDataTypesCompatible(
+          resolved &&
+          !arePortDataTypesCompatible(
             resolved.source.port.dataType,
             resolved.target.port.dataType,
           )
@@ -970,8 +1033,8 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
       <ReactFlow<CanvasNode, CanvasEdge>
         nodes={renderedNodes}
         edges={renderedEdges}
-        nodeTypes={nodeTypes}
-        edgeTypes={edgeTypes}
+        nodeTypes={WORKFLOW_NODE_TYPES}
+        edgeTypes={WORKFLOW_EDGE_TYPES}
         defaultEdgeOptions={{ type: 'smart' }}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}

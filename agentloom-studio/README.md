@@ -62,6 +62,15 @@ src/
 
 `features/workflow/api/versionQueries.ts` 现在也会在消费版本列表 / 已发布版本接口时，对 `version.snapshot.nodes[*].data.inputPorts/outputPorts` 执行同类 hydration。这样即使服务端返回的是历史半残版本快照，版本历史侧边栏和任何后续消费 `snapshot` 的前端路径也不会再绕过主画布 store 直接命中 `schema.kind` 崩溃。
 
+## 工作流预览渲染事实
+
+`features/canvas/WorkflowPreviewCanvas.tsx` 当前是 template / marketplace / public share 等非编辑场景的共享工作流预览层：
+
+- 复用 `CanvasNodeShell` 与 `SmartEdge`，因此预览外观与正式工作流画布保持一致，而不是退化成 React Flow 默认黑色方块
+- `lib/workflowPreview.ts` 会基于快照里的 `data.nodeType` 推导真实节点 category，并对 `inputPorts/outputPorts` 执行与正式画布一致的 hydration
+- 预览 edge 会统一映射为只读 `smart` edge，并通过 `.workflow-preview-canvas` 关闭节点/连线命中，避免在预览页误触编辑交互
+- 当快照中的 `nodeType` 完全无法识别时，预览才会回退到 React Flow 默认节点，作为坏数据兜底而不是常态路径
+
 ## 画布控制流容器事实
 
 `features/canvas/` 当前对 `loop / iteration` compound 容器采用以下前端契约：

@@ -1,19 +1,11 @@
-import { memo, useCallback, useMemo } from 'react'
+import { memo, useCallback } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { useNavigate } from '@tanstack/react-router'
-import {
-  ReactFlow,
-  ReactFlowProvider,
-  Background,
-  BackgroundVariant,
-  type Node,
-  type Edge,
-} from '@xyflow/react'
 import { Loader2, X } from 'lucide-react'
-import { useTheme } from '@/shared/hooks/use-theme'
+import { WorkflowPreviewCanvas } from '@/features/canvas'
 import { useToast } from '@/shared/ui/toast'
 import { useCreateWorkflow } from '@/features/workflow'
 import type { TemplateDetail } from '../types'
@@ -38,7 +30,6 @@ export const TemplateWizardDialog = memo(function TemplateWizardDialog({
 }: TemplateWizardDialogProps) {
   const navigate = useNavigate()
   const { notify } = useToast()
-  const { resolvedTheme } = useTheme()
   const createWorkflow = useCreateWorkflow()
 
   const {
@@ -86,50 +77,6 @@ export const TemplateWizardDialog = memo(function TemplateWizardDialog({
   const nodeCount = template?.metadata?.nodeCount ?? 0
   const edgeCount = template?.definition?.edges?.length ?? 0
 
-  const previewNodes = useMemo<Node[]>(() => {
-    if (!template?.definition?.nodes) return []
-    return template.definition.nodes
-      .filter(
-        (n: Record<string, unknown>) =>
-          n &&
-          typeof n === 'object' &&
-          typeof n.id === 'string' &&
-          n.position &&
-          typeof n.position === 'object',
-      )
-      .map((n: Record<string, unknown>) => ({
-        id: n.id as string,
-        type: 'default',
-        position: n.position as { x: number; y: number },
-        data: {
-          label:
-            (n.data as Record<string, unknown> | undefined)?.label ??
-            (n.data as Record<string, unknown> | undefined)?.nodeType ??
-            'Node',
-        },
-      }))
-  }, [template?.definition?.nodes])
-
-  const previewEdges = useMemo<Edge[]>(() => {
-    if (!template?.definition?.edges) return []
-    return template.definition.edges
-      .filter(
-        (e: Record<string, unknown>) =>
-          e &&
-          typeof e === 'object' &&
-          typeof e.id === 'string' &&
-          typeof e.source === 'string' &&
-          typeof e.target === 'string',
-      )
-      .map((e: Record<string, unknown>) => ({
-        id: e.id as string,
-        source: e.source as string,
-        target: e.target as string,
-        sourceHandle: (e.sourceHandle as string) ?? undefined,
-        targetHandle: (e.targetHandle as string) ?? undefined,
-      }))
-  }, [template?.definition?.edges])
-
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
@@ -165,37 +112,12 @@ export const TemplateWizardDialog = memo(function TemplateWizardDialog({
                   </>
                 )}
               </div>
-              {previewNodes.length > 0 && (
-                <div
-                  className="h-[200px] overflow-hidden rounded-md border border-border"
-                  data-testid="template-preview"
-                >
-                  <ReactFlowProvider>
-                    <ReactFlow
-                      nodes={previewNodes}
-                      edges={previewEdges}
-                      fitView
-                      nodesDraggable={false}
-                      nodesConnectable={false}
-                      elementsSelectable={false}
-                      connectOnClick={false}
-                      edgesReconnectable={false}
-                      panOnDrag={false}
-                      zoomOnScroll={false}
-                      zoomOnDoubleClick={false}
-                      deleteKeyCode={null}
-                      proOptions={{ hideAttribution: true }}
-                      colorMode={resolvedTheme}
-                    >
-                      <Background
-                        variant={BackgroundVariant.Dots}
-                        gap={16}
-                        size={1}
-                      />
-                    </ReactFlow>
-                  </ReactFlowProvider>
-                </div>
-              )}
+              <div
+                className="h-[200px] overflow-hidden rounded-md border border-border"
+                data-testid="template-preview"
+              >
+                <WorkflowPreviewCanvas definition={template.definition} />
+              </div>
             </div>
           )}
 
@@ -258,9 +180,7 @@ export const TemplateWizardDialog = memo(function TemplateWizardDialog({
                 disabled={isSubmitting}
                 className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
               >
-                {isSubmitting && (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                )}
+                {isSubmitting && <Loader2 className="h-4 w-4 animate-spin" />}
                 创建工作流
               </button>
             </div>
