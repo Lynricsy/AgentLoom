@@ -14,9 +14,9 @@ RUN corepack enable && corepack prepare pnpm@10.6.2 --activate
 
 WORKDIR /workspace
 
-COPY agentloom-docs ./agentloom-docs
+COPY agentloom-user-docs ./agentloom-user-docs
 
-WORKDIR /workspace/agentloom-docs
+WORKDIR /workspace/agentloom-user-docs
 RUN pnpm install --frozen-lockfile
 
 # git is installed but .git is excluded by .dockerignore — init a dummy repo
@@ -29,7 +29,7 @@ RUN pnpm build
 # ─────────────────────────────────────────────────────────────────────────────
 FROM nginx:1.27-alpine
 
-COPY --from=build /workspace/agentloom-docs/.vitepress/dist /usr/share/nginx/html/documentation
+COPY --from=build /workspace/agentloom-user-docs/.vitepress/dist /usr/share/nginx/html/documentation
 
 RUN rm -f /etc/nginx/conf.d/default.conf && printf '%s\n' \
   'server {' \
