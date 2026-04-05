@@ -1,0 +1,22 @@
+{
+  "name": "agentloom-user-docs",
+  "version": "1.0.0",
+  "description": "AgentLoom 用户文档站",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vitepress dev",
+    "build": "node scripts/sync-openapi.mjs && vitepress build",
+    "preview": "vitepress preview",
+    "prebuild": "node scripts/sync-openapi.mjs",
+    "lint:md": "markdownlint-cli2 'zh/**/*.md'"
+  },
+  "dependencies": {
+    "vitepress": "^2.0.0-alpha.17",
+    "vue": "^3.5.30",
+    "vitepress-openapi": "latest"
+  },
+  "devDependencies": {
+    "markdownlint-cli2": "latest"
+  }
+}
