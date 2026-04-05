@@ -69,6 +69,7 @@ src/
 - 子节点 `extent` 表示真实内框盒子本身，最终拖拽 clamp 才会按节点 `measured.width/height`（回退到内置默认尺寸）扣除尺寸；不要在 extent 上提前减一次，否则 React Flow 拖拽时会重复扣减，导致内部节点只能在很窄的范围移动
 - compound resize 后的边界同步必须优先读取 live `measured/width/height`，不能优先读取 `style.width/height`；因为 React Flow 的 `dimensions` 变化不会自动把新尺寸写回 `style`
 - compound 子节点保持 `expandParent = false`，父容器本身就是固定边界，不通过拖拽自动撑大
+- `loop-start / iteration-start` 的固定上下文输出（如 `round/state`、`item/index`）由运行时自动生成；额外透传端口与标签的真实事实源仍在父 `loop / iteration` 容器输入上，但 start 节点配置面板也允许直接编辑这些透传端口，并会同步回父容器与 start 节点输出，避免用户误以为缺少端口编辑能力
 
 ## LLM 模型管理前端事实
 

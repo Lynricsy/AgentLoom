@@ -109,6 +109,7 @@ WorkflowCanvasPage.tsx
 - SmartEdge 有粒子动画效果
 - `NodeConfigPanel` 会在节点状态为 `waiting_intervention` 时嵌入 `InterventionPanel`；所需数据由 executionStore 的实时事件和 snapshot 恢复共同驱动
 - `NodeConfigPanel` 配置分发规则：先命中自定义面板（llm-model/mcp-tool/knowledge-base/sandbox/llm-agent/http-tool/reusable-block），否则走 `DynamicConfigForm`，空 schema 显示“该节点无需额外配置”
+- `loop-start / iteration-start` 的配置面板不会把固定上下文端口做成任意增删；固定输出始终由运行时提供，额外透传端口与标签的真实单一事实源仍是父 `loop / iteration` 容器输入，但 start 面板现在也允许直接编辑这些透传端口，并会同步回父容器与当前 start 节点输出
 - `llm-model` 节点在 full LOD 下的展示层级固定为：header title 显示配置名称（`config.name`），subtitle 显示 Provider 名称，body 第一行显示模型 ID（`config.modelName`）与状态 badge；不要在 subtitle 或 body 再拼接 `provider:modelId` 这类重复文案
 - `knowledge-base` 节点不再直接向运行时展开成独立工具；连接到 Agent 的这些节点会汇总成统一 `search_knowledge` 工具的可选 `knowledgeBaseIds` 白名单，模型调用时必须显式选择知识库 ID
 - `DynamicConfigForm` 使用 react-hook-form + Zod；任一字段 blur 后会触发整表校验，以满足多必填字段同时报错
