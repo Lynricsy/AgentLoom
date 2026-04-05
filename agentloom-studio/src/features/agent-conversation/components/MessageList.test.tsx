@@ -92,14 +92,53 @@ describe("MessageList", () => {
     );
 
     expect(
-      screen.getByText((content) =>
-        content.includes("Agent 已升级到最新已发布版本") &&
-        content.includes("v7"),
+      screen.getByText(
+        (content) =>
+          content.includes("Agent 已升级到最新已发布版本") &&
+          content.includes("v7"),
       ),
     ).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "重启到新版本" }));
 
     expect(onRestartConversation).toHaveBeenCalledTimes(1);
+  });
+
+  it("应渲染用户图片附件预览", () => {
+    const message: ConversationMessage = {
+      id: "user-attachment-1",
+      role: "user",
+      content: "已上传图片 design.png",
+      contentType: "image",
+      toolCalls: [],
+      segments: [{ type: "text", content: "已上传图片 design.png" }],
+      isStreaming: false,
+      createdAt: Date.now(),
+      metadata: {
+        attachment: {
+          kind: "image",
+          fileName: "design.png",
+          mimeType: "image/png",
+          sizeBytes: 32,
+          dataBase64: "cG5n",
+        },
+      },
+    };
+
+    render(
+      <MessageList
+        messages={[message]}
+        isExecuting={false}
+        runtimeMode="sandbox"
+        onRestartConversation={async () => {}}
+      />,
+    );
+
+    const image = screen.getByRole("img", { name: "design.png" });
+    expect(image).toHaveAttribute(
+      "src",
+      expect.stringContaining("data:image/png;base64,cG5n"),
+    );
+    expect(screen.getByText("design.png")).toBeInTheDocument();
   });
 });

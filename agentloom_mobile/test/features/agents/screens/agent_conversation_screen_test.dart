@@ -89,6 +89,9 @@ void main() {
 
       // 应有文本输入框
       expect(find.byType(TextField), findsOneWidget);
+      // 应有附件入口
+      expect(find.byIcon(Icons.attach_file), findsOneWidget);
+      expect(find.byIcon(Icons.image_outlined), findsOneWidget);
       // 应有发送按钮
       expect(find.byIcon(Icons.send), findsOneWidget);
     });

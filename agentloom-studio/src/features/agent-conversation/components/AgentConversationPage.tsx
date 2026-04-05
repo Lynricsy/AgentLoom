@@ -4,6 +4,7 @@ import {
   useRef,
   useEffect,
   useMemo,
+  type ChangeEvent,
   type KeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
@@ -19,6 +20,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/shared/lib/utils";
 import { Button } from "@/shared/ui/button";
+import { useToast } from "@/shared/ui/toast";
 import { useAuthToken } from "@/features/auth/hooks/useAuthToken";
 import { useAgent } from "@/features/agent/api/agentQueries";
 import { SubAgentNavContext } from "@/shared/components/tool-renderers/renderers/SubAgentRenderer";
@@ -27,7 +29,12 @@ import { MessageList } from "./MessageList";
 import { SandboxComputerPanel } from "./SandboxComputerPanel";
 import { WorkspaceFileTree } from "./WorkspaceFileTree";
 import { AgentViewBreadcrumb } from "./AgentViewBreadcrumb";
-import type { ConversationMessage, SubAgentStream, ToolCall } from "../types";
+import type {
+  ConversationMessage,
+  OutgoingConversationMessage,
+  SubAgentStream,
+  ToolCall,
+} from "../types";
 import type { ToolCallData } from "@/shared/components/tool-renderers/types";
 import {
   useConversationMessages,
@@ -56,6 +63,171 @@ const MIN_LEFT_WIDTH = 360;
 const MIN_RIGHT_WIDTH = 280;
 const DEFAULT_LEFT_RATIO = 0.6;
 const EXECUTING_HISTORY_SYNC_INTERVAL_MS = 3_000;
+const MAX_CONVERSATION_ATTACHMENT_BYTES = 1_500_000;
+const MAX_CONVERSATION_TEXT_ATTACHMENT_BYTES = 200_000;
+const TEXT_ATTACHMENT_EXTENSIONS = new Set([
+  "txt",
+  "md",
+  "markdown",
+  "json",
+  "jsonl",
+  "yaml",
+  "yml",
+  "xml",
+  "csv",
+  "ts",
+  "tsx",
+  "js",
+  "jsx",
+  "mjs",
+  "cjs",
+  "py",
+  "rs",
+  "go",
+  "java",
+  "kt",
+  "swift",
+  "sql",
+  "html",
+  "css",
+  "scss",
+  "sh",
+  "bash",
+  "zsh",
+  "env",
+  "toml",
+  "ini",
+  "log",
+]);
+
+function describeAttachmentContent(
+  kind: "image" | "file",
+  fileName: string,
+): string {
+  return `已上传${kind === "image" ? "图片" : "文件"} ${fileName}`;
+}
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result !== "string") {
+        reject(new Error("文件读取结果无效"));
+        return;
+      }
+      resolve(reader.result);
+    };
+    reader.onerror = () => {
+      reject(reader.error ?? new Error("文件读取失败"));
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function extractBase64Payload(dataUrl: string): string {
+  const separatorIndex = dataUrl.indexOf(",");
+  return separatorIndex >= 0 ? dataUrl.slice(separatorIndex + 1) : dataUrl;
+}
+
+function isLikelyTextAttachment(file: File): boolean {
+  const mimeType = file.type.toLowerCase();
+  if (mimeType.startsWith("text/")) {
+    return true;
+  }
+
+  if (
+    mimeType === "application/json" ||
+    mimeType === "application/xml" ||
+    mimeType === "application/javascript" ||
+    mimeType === "application/typescript" ||
+    mimeType === "application/x-sh" ||
+    mimeType.endsWith("+json") ||
+    mimeType.endsWith("+xml")
+  ) {
+    return true;
+  }
+
+  const extension = file.name.split(".").pop()?.toLowerCase();
+  return extension ? TEXT_ATTACHMENT_EXTENSIONS.has(extension) : false;
+}
+
+async function buildImageConversationMessage(
+  file: File,
+  content?: string,
+): Promise<OutgoingConversationMessage> {
+  if (!file.type.startsWith("image/")) {
+    throw new Error("请选择有效的图片文件");
+  }
+
+  if (file.size > MAX_CONVERSATION_ATTACHMENT_BYTES) {
+    throw new Error("图片大小不能超过 1.5 MB");
+  }
+
+  const dataUrl = await readFileAsDataUrl(file);
+
+  return {
+    content: content?.trim() || describeAttachmentContent("image", file.name),
+    contentType: "image",
+    metadata: {
+      attachment: {
+        kind: "image",
+        fileName: file.name,
+        mimeType: file.type || "image/png",
+        sizeBytes: file.size,
+        dataBase64: extractBase64Payload(dataUrl),
+      },
+    },
+  };
+}
+
+async function buildFileConversationMessage(
+  file: File,
+  content?: string,
+): Promise<OutgoingConversationMessage> {
+  if (file.size > MAX_CONVERSATION_ATTACHMENT_BYTES) {
+    throw new Error("文件大小不能超过 1.5 MB");
+  }
+
+  const mimeType = file.type || "application/octet-stream";
+  const baseMessage = {
+    content: content?.trim() || describeAttachmentContent("file", file.name),
+    contentType: "file" as const,
+  };
+
+  if (isLikelyTextAttachment(file)) {
+    const textContent = await file.text();
+    const textBytes = new TextEncoder().encode(textContent).byteLength;
+
+    if (textBytes <= MAX_CONVERSATION_TEXT_ATTACHMENT_BYTES) {
+      return {
+        ...baseMessage,
+        metadata: {
+          attachment: {
+            kind: "file",
+            fileName: file.name,
+            mimeType,
+            sizeBytes: file.size,
+            textContent,
+          },
+        },
+      };
+    }
+  }
+
+  const dataUrl = await readFileAsDataUrl(file);
+  return {
+    ...baseMessage,
+    metadata: {
+      attachment: {
+        kind: "file",
+        fileName: file.name,
+        mimeType,
+        sizeBytes: file.size,
+        dataBase64: extractBase64Payload(dataUrl),
+      },
+    },
+  };
+}
 
 function buildSubAgentMessages(stream: SubAgentStream): ConversationMessage[] {
   const messages: ConversationMessage[] = [];
@@ -67,6 +239,7 @@ function buildSubAgentMessages(stream: SubAgentStream): ConversationMessage[] {
       id: crypto.randomUUID(),
       role: "assistant",
       content: "",
+      contentType: "text",
       toolCalls: [],
       segments: [],
       isStreaming: true,
@@ -236,12 +409,15 @@ function MessageInput({
   isExecuting,
   onCancel,
 }: {
-  onSend: (content: string) => void;
+  onSend: (message: string | OutgoingConversationMessage) => void;
   isExecuting: boolean;
   onCancel: () => void;
 }) {
   const [draft, setDraft] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const { notify } = useToast();
 
   const handleSend = useCallback(() => {
     const trimmed = draft.trim();
@@ -270,24 +446,105 @@ function MessageInput({
     el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
   }, []);
 
-  const handleFileClick = useCallback(() => undefined, []);
+  const clearDraftInput = useCallback(() => {
+    setDraft("");
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+    }
+  }, []);
+
+  const handleAttachmentSelected = useCallback(
+    async (file: File | null, kind: "file" | "image") => {
+      if (!file) {
+        return;
+      }
+
+      try {
+        const trimmed = draft.trim();
+        const outgoing =
+          kind === "image"
+            ? await buildImageConversationMessage(file, trimmed)
+            : await buildFileConversationMessage(file, trimmed);
+
+        onSend(outgoing);
+        if (trimmed) {
+          clearDraftInput();
+        }
+      } catch (error) {
+        notify({
+          title: "上传失败",
+          description:
+            error instanceof Error ? error.message : "文件读取失败，请重试",
+          variant: "error",
+        });
+      }
+    },
+    [clearDraftInput, draft, notify, onSend],
+  );
+
+  const handleFileChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0] ?? null;
+      void handleAttachmentSelected(file, "file");
+      event.target.value = "";
+    },
+    [handleAttachmentSelected],
+  );
+
+  const handleImageChange = useCallback(
+    (event: ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0] ?? null;
+      void handleAttachmentSelected(file, "image");
+      event.target.value = "";
+    },
+    [handleAttachmentSelected],
+  );
+
+  const handleFileClick = useCallback(() => {
+    if (!isExecuting) {
+      fileInputRef.current?.click();
+    }
+  }, [isExecuting]);
+
+  const handleImageClick = useCallback(() => {
+    if (!isExecuting) {
+      imageInputRef.current?.click();
+    }
+  }, [isExecuting]);
 
   return (
     <div className="border-t border-border bg-surface px-4 py-3">
       <div className="flex items-end gap-2">
+        <input
+          ref={fileInputRef}
+          type="file"
+          className="hidden"
+          data-testid="conversation-file-input"
+          onChange={handleFileChange}
+        />
+        <input
+          ref={imageInputRef}
+          type="file"
+          accept="image/*"
+          className="hidden"
+          data-testid="conversation-image-input"
+          onChange={handleImageChange}
+        />
         <div className="flex gap-1">
           <button
             type="button"
             onClick={handleFileClick}
-            className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-surface-elevated transition-colors"
+            disabled={isExecuting}
+            className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-surface-elevated transition-colors disabled:cursor-not-allowed disabled:opacity-50"
             title="上传文件"
           >
             <Paperclip className="h-4 w-4" />
           </button>
           <button
             type="button"
-            onClick={handleFileClick}
-            className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-surface-elevated transition-colors"
+            onClick={handleImageClick}
+            disabled={isExecuting}
+            className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-surface-elevated transition-colors disabled:cursor-not-allowed disabled:opacity-50"
             title="上传图片"
           >
             <ImagePlus className="h-4 w-4" />

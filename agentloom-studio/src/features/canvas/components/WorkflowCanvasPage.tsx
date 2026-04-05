@@ -41,6 +41,38 @@ import {
 } from "../stores/canvasStore";
 import { useToast } from "@/shared/ui/toast";
 
+function buildVersionHistoryRestoreKey(workflowId: string): string {
+  return `agentloom:workflow:${workflowId}:restore-version-history`;
+}
+
+function writeVersionHistoryRestoreFlag(
+  workflowId: string,
+  shouldRestore: boolean,
+) {
+  try {
+    const key = buildVersionHistoryRestoreKey(workflowId);
+    if (shouldRestore) {
+      globalThis.sessionStorage?.setItem(key, "1");
+    } else {
+      globalThis.sessionStorage?.removeItem(key);
+    }
+  } catch {
+    // 忽略浏览器存储不可用的环境，保留内存态兜底
+  }
+}
+
+function readVersionHistoryRestoreFlag(workflowId: string): boolean {
+  try {
+    return (
+      globalThis.sessionStorage?.getItem(
+        buildVersionHistoryRestoreKey(workflowId),
+      ) === "1"
+    );
+  } catch {
+    return false;
+  }
+}
+
 export function WorkflowCanvasPage() {
   const { workflowId } = useParams({ from: "/workflows/$workflowId" });
   const currentWorkflowId = useCanvasStore((state) => state.workflowId);
@@ -52,6 +84,7 @@ export function WorkflowCanvasPage() {
   const mappingPanelEdgeId = useMappingPanelEdgeId();
   const selectedNodeId = useCanvasStore((s) => s.selectedNodeId);
   const skippedSnapshotRef = useRef<string | null>(null);
+  const reopenVersionHistoryAfterPublishRef = useRef(false);
 
   const { data: workflow, isLoading, error } = useWorkflow(workflowId);
   const isWorkflowArchived = workflow?.status === "archived";
@@ -134,16 +167,32 @@ export function WorkflowCanvasPage() {
   const handleCloseExecutionHistory = useCallback(() => {
     setIsExecutionHistoryOpen(false);
   }, []);
-  const handleOpenPublishSheet = useCallback((versionId?: string) => {
-    setPublishVersionId(versionId ?? null);
-    setIsPublishSheetOpen(true);
-  }, []);
-  const handlePublishSheetOpenChange = useCallback((open: boolean) => {
-    setIsPublishSheetOpen(open);
-    if (!open) {
-      setPublishVersionId(null);
-    }
-  }, []);
+  const handleOpenPublishSheet = useCallback(
+    (versionId?: string) => {
+      reopenVersionHistoryAfterPublishRef.current = isVersionHistoryOpen;
+      writeVersionHistoryRestoreFlag(workflowId, isVersionHistoryOpen);
+      setPublishVersionId(versionId ?? null);
+      setIsPublishSheetOpen(true);
+    },
+    [isVersionHistoryOpen, workflowId],
+  );
+  const handlePublishSheetOpenChange = useCallback(
+    (open: boolean) => {
+      setIsPublishSheetOpen(open);
+      if (!open) {
+        const shouldRestore =
+          reopenVersionHistoryAfterPublishRef.current ||
+          readVersionHistoryRestoreFlag(workflowId);
+        setPublishVersionId(null);
+        if (shouldRestore) {
+          setIsVersionHistoryOpen(true);
+        }
+        reopenVersionHistoryAfterPublishRef.current = false;
+        writeVersionHistoryRestoreFlag(workflowId, false);
+      }
+    },
+    [workflowId],
+  );
   const handleOpenMarketplacePublish = useCallback(
     () => setIsMarketplacePublishOpen(true),
     [],
@@ -251,6 +300,17 @@ export function WorkflowCanvasPage() {
       setIsMarketplacePublishOpen(false);
     }
   }, [canPublishToMarketplace]);
+
+  useEffect(() => {
+    if (isPublishSheetOpen) {
+      return;
+    }
+
+    if (readVersionHistoryRestoreFlag(workflowId)) {
+      setIsVersionHistoryOpen(true);
+      writeVersionHistoryRestoreFlag(workflowId, false);
+    }
+  }, [isPublishSheetOpen, workflowId]);
 
   if (isLoading) {
     return (

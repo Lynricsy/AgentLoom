@@ -1,10 +1,144 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
 import '../models/conversation_message_dto.dart';
 import 'tool_call_card.dart';
+
+class _ConversationAttachment {
+  const _ConversationAttachment({
+    required this.kind,
+    required this.fileName,
+    required this.mimeType,
+    required this.sizeBytes,
+    this.dataBase64,
+    this.textContent,
+    this.sandboxPath,
+  });
+
+  final String kind;
+  final String fileName;
+  final String mimeType;
+  final int sizeBytes;
+  final String? dataBase64;
+  final String? textContent;
+  final String? sandboxPath;
+}
+
+Map<String, dynamic> _asMap(Object? value) {
+  if (value is Map<String, dynamic>) {
+    return value;
+  }
+  if (value is Map<Object?, Object?>) {
+    return value.map((key, item) => MapEntry('$key', item));
+  }
+  return <String, dynamic>{};
+}
+
+String? _readString(Object? value) {
+  if (value is String && value.trim().isNotEmpty) {
+    return value;
+  }
+  return null;
+}
+
+int? _readInt(Object? value) {
+  if (value is int) {
+    return value;
+  }
+  if (value is num) {
+    return value.toInt();
+  }
+  return null;
+}
+
+_ConversationAttachment? _extractAttachment(ConversationMessageDto message) {
+  final attachment = _asMap(message.metadata['attachment']);
+  final kind = _readString(attachment['kind']);
+  final fileName = _readString(attachment['fileName']);
+  final mimeType = _readString(attachment['mimeType']);
+  final sizeBytes = _readInt(attachment['sizeBytes']);
+
+  if (kind == null ||
+      fileName == null ||
+      mimeType == null ||
+      sizeBytes == null) {
+    return null;
+  }
+
+  return _ConversationAttachment(
+    kind: kind,
+    fileName: fileName,
+    mimeType: mimeType,
+    sizeBytes: sizeBytes,
+    dataBase64: _readString(attachment['dataBase64']),
+    textContent: _readString(attachment['textContent']),
+    sandboxPath: _readString(attachment['sandboxPath']),
+  );
+}
+
+bool _isAttachmentAutoSummary(
+  ConversationMessageDto message,
+  _ConversationAttachment attachment,
+) {
+  final expected =
+      '已上传${attachment.kind == 'image' ? '图片' : '文件'} ${attachment.fileName}';
+  return message.content.trim() == expected;
+}
+
+String _formatBytes(int bytes) {
+  if (bytes < 1024) {
+    return '$bytes B';
+  }
+  if (bytes < 1024 * 1024) {
+    return '${(bytes / 1024).toStringAsFixed(1)} KB';
+  }
+  return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+}
+
+String _truncateAttachmentText(String content) {
+  if (content.length <= 240) {
+    return content;
+  }
+  return '${content.substring(0, 240)}\n…';
+}
+
+String? _normalizeAttachmentBase64(String? value) {
+  if (value == null) {
+    return null;
+  }
+
+  final normalized = value.replaceAll(RegExp(r'\s+'), '');
+  if (normalized.isEmpty) {
+    return null;
+  }
+
+  return normalized;
+}
+
+Uint8List? _decodeAttachmentBytes(String? value) {
+  final normalized = _normalizeAttachmentBase64(value);
+  if (normalized == null) {
+    return null;
+  }
+
+  try {
+    return base64Decode(normalized);
+  } on FormatException {
+    return null;
+  }
+}
+
+String? _buildAttachmentDataUrl(_ConversationAttachment attachment) {
+  final normalized = _normalizeAttachmentBase64(attachment.dataBase64);
+  if (normalized == null) {
+    return null;
+  }
+
+  return 'data:${attachment.mimeType};base64,$normalized';
+}
 
 class MessageBubble extends StatelessWidget {
   const MessageBubble({
@@ -30,8 +164,14 @@ class MessageBubble extends StatelessWidget {
     final segments = _resolvedSegments(message);
     final incompleteError = _incompleteErrorMessage(message);
     final restartSuggestion = _extractRestartSuggestion(message);
+    final attachment = _extractAttachment(message);
 
     if (isUser) {
+      final shouldShowText =
+          message.content.trim().isNotEmpty &&
+          (attachment == null ||
+              !_isAttachmentAutoSummary(message, attachment));
+
       return Align(
         alignment: Alignment.centerRight,
         child: Container(
@@ -49,9 +189,18 @@ class MessageBubble extends StatelessWidget {
               bottomRight: Radius.circular(6),
             ),
           ),
-          child: _MessageMarkdown(
-            content: message.content,
-            color: theme.colorScheme.onPrimary,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (shouldShowText)
+                _MessageMarkdown(
+                  content: message.content,
+                  color: theme.colorScheme.onPrimary,
+                ),
+              if (attachment != null)
+                _UserAttachmentPreview(attachment: attachment),
+            ],
           ),
         ),
       );
@@ -158,13 +307,216 @@ class MessageBubble extends StatelessWidget {
             if (restartSuggestion != null && onRestartConversation != null) ...[
               const SizedBox(height: 10),
               _RestartConversationCard(
-                publishedVersionNumber: restartSuggestion.publishedVersionNumber,
+                publishedVersionNumber:
+                    restartSuggestion.publishedVersionNumber,
                 onRestartConversation: onRestartConversation!,
               ),
             ],
           ],
         ),
       ),
+    );
+  }
+}
+
+class _UserAttachmentPreview extends StatelessWidget {
+  const _UserAttachmentPreview({required this.attachment});
+
+  final _ConversationAttachment attachment;
+
+  Widget? _buildImagePreview() {
+    if (kIsWeb) {
+      final dataUrl = _buildAttachmentDataUrl(attachment);
+      if (dataUrl == null) {
+        return null;
+      }
+
+      return Image.network(
+        dataUrl,
+        fit: BoxFit.contain,
+        gaplessPlayback: true,
+        webHtmlElementStrategy: WebHtmlElementStrategy.prefer,
+        errorBuilder: (_, _, _) => const _AttachmentFallbackLabel(
+          icon: Icons.image_outlined,
+          text: '图片已随消息发送给 Agent。',
+        ),
+      );
+    }
+
+    final bytes = _decodeAttachmentBytes(attachment.dataBase64);
+    if (bytes == null) {
+      return null;
+    }
+
+    return Image.memory(
+      bytes,
+      fit: BoxFit.contain,
+      gaplessPlayback: true,
+      errorBuilder: (_, _, _) => const _AttachmentFallbackLabel(
+        icon: Icons.image_outlined,
+        text: '图片已随消息发送给 Agent。',
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    if (attachment.kind == 'image') {
+      final preview = _buildImagePreview();
+
+      return Padding(
+        padding: const EdgeInsets.only(top: 10),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: theme.colorScheme.surface.withValues(alpha: 0.22),
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(10),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (preview != null)
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: preview,
+                  )
+                else
+                  const _AttachmentFallbackLabel(
+                    icon: Icons.image_outlined,
+                    text: '图片已随消息发送给 Agent。',
+                  ),
+                const SizedBox(height: 8),
+                Text(
+                  attachment.fileName,
+                  style: theme.textTheme.labelLarge?.copyWith(
+                    color: theme.colorScheme.onPrimary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                Text(
+                  _formatBytes(attachment.sizeBytes),
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onPrimary.withValues(alpha: 0.78),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surface.withValues(alpha: 0.22),
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.insert_drive_file_outlined, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          attachment.fileName,
+                          style: theme.textTheme.labelLarge?.copyWith(
+                            color: theme.colorScheme.onPrimary,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          '${attachment.mimeType} · ${_formatBytes(attachment.sizeBytes)}',
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            color: theme.colorScheme.onPrimary.withValues(
+                              alpha: 0.78,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              if (attachment.textContent != null) ...[
+                const SizedBox(height: 10),
+                DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.surface.withValues(alpha: 0.28),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.all(10),
+                    child: SelectableText(
+                      _truncateAttachmentText(attachment.textContent!),
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onPrimary,
+                        height: 1.4,
+                      ),
+                    ),
+                  ),
+                ),
+              ] else ...[
+                const SizedBox(height: 10),
+                Text(
+                  '文件内容已随消息发送给 Agent。',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onPrimary.withValues(alpha: 0.86),
+                  ),
+                ),
+              ],
+              if (attachment.sandboxPath != null) ...[
+                const SizedBox(height: 8),
+                Text(
+                  '工作区路径：${attachment.sandboxPath}',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: theme.colorScheme.onPrimary.withValues(alpha: 0.78),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AttachmentFallbackLabel extends StatelessWidget {
+  const _AttachmentFallbackLabel({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      children: [
+        Icon(icon, size: 16, color: theme.colorScheme.onPrimary),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            text,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onPrimary,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

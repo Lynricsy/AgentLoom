@@ -69,6 +69,7 @@ const {
   mockWorkspaceIntegrationService: {
     startFileWatcher: vi.fn(),
     captureConversationWorkspaceTreeSnapshot: vi.fn(),
+    stageConversationAttachment: vi.fn(),
   },
   mockAgentDefinitionService: {
     compileCanvas: vi.fn(),
@@ -285,6 +286,7 @@ describe('AgentExecutionWorker', () => {
       .mockResolvedValue(undefined);
     mockWorkspaceIntegrationService.startFileWatcher.mockReset();
     mockWorkspaceIntegrationService.captureConversationWorkspaceTreeSnapshot.mockReset();
+    mockWorkspaceIntegrationService.stageConversationAttachment.mockReset();
     mockMemoryToolsService.createSessionToolProvider.mockReset();
     mockMemoryFusionService.bootAll.mockReset();
     mockMemoryResourceProvider.create.mockReset();
@@ -367,13 +369,16 @@ describe('AgentExecutionWorker', () => {
         },
       );
 
-      expect(blocks).toHaveLength(1);
+      expect(blocks).toHaveLength(2);
       expect(blocks[0]).toMatchObject({
         type: 'text',
       });
       expect(blocks[0]?.text).toContain('继承副本');
       expect(blocks[0]?.text).toContain('不要继续执行历史里未完成的编号任务');
-      expect(blocks[0]?.text).toContain(
+      expect(blocks[1]).toMatchObject({
+        type: 'text',
+      });
+      expect(blocks[1]?.text).toContain(
         '只读取 /workspace/qa-selfevo-bind-marker.txt',
       );
     });
@@ -2030,6 +2035,94 @@ describe('AgentExecutionWorker', () => {
           text: '预处理=hello',
         },
       ]);
+    });
+
+    it('有沙箱附件消息应先写入工作区，再把附件 block 传给 runtime', async () => {
+      const turnWorker = worker as unknown as {
+        runConversationTurn: (
+          runtime: typeof mockRuntime,
+          session: ReturnType<typeof makeSession>,
+          conversationId: string,
+          tenantId: string,
+          pendingMessages: Array<{
+            id: string;
+            content: string;
+            contentType: string;
+            metadata: Record<string, unknown>;
+            createdAt: Date;
+          }>,
+          hasPriorTurns: boolean,
+        ) => Promise<{
+          assistantText: string;
+          stopReason: string;
+        }>;
+      };
+
+      mockWorkspaceIntegrationService.stageConversationAttachment.mockResolvedValue(
+        '/workspace/uploads/design.png',
+      );
+      mockRuntime.prompt.mockReturnValueOnce(
+        createAsyncIterable([{ type: 'done', stopReason: 'end_turn' }]),
+      );
+
+      await turnWorker.runConversationTurn(
+        mockRuntime as never,
+        makeSession({
+          runtimeConfig: {
+            runtimeMode: 'sandbox',
+          },
+        }),
+        'conversation-1',
+        'tenant-1',
+        [
+          {
+            id: 'message-1',
+            content: '请分析这张图',
+            contentType: 'image',
+            metadata: {
+              attachment: {
+                kind: 'image',
+                fileName: 'design.png',
+                mimeType: 'image/png',
+                sizeBytes: 32,
+                dataBase64: 'cG5n',
+              },
+            },
+            createdAt: new Date(),
+          },
+        ],
+        false,
+      );
+
+      expect(
+        mockWorkspaceIntegrationService.stageConversationAttachment,
+      ).toHaveBeenCalledWith('conversation-1', 'tenant-1', {
+        attachment: {
+          kind: 'image',
+          fileName: 'design.png',
+          mimeType: 'image/png',
+          sizeBytes: 32,
+          dataBase64: 'cG5n',
+        },
+      });
+      expect(mockRuntime.prompt).toHaveBeenCalledWith(
+        'session-1',
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: 'text',
+            text: '请分析这张图',
+          }),
+          expect.objectContaining({
+            type: 'text',
+            text: '该附件已写入工作区：/workspace/uploads/design.png。如需查看原文件，请直接读取该路径。',
+          }),
+          expect.objectContaining({
+            type: 'image',
+            data: 'cG5n',
+            mimeType: 'image/png',
+          }),
+        ]),
+      );
     });
 
     it('后续事件缺失 toolName 时应保留先前的真实工具名', async () => {

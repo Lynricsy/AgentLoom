@@ -19,6 +19,10 @@ import {
 import type { CreateConversationDto } from './dto/create-conversation.dto';
 import type { SendMessageDto } from './dto/send-message.dto';
 import type { UpdateConversationDto } from './dto/update-conversation.dto';
+import {
+  normalizeIncomingConversationMetadata,
+  type ConversationMessageContentType,
+} from './conversation-attachment';
 import { serializeConversation } from './dto/conversation-response.dto';
 import { serializeMessage } from './dto/message-response.dto';
 
@@ -280,14 +284,22 @@ export class AgentConversationService {
       );
     }
 
+    const contentType =
+      (dto.contentType as ConversationMessageContentType | undefined) ?? 'text';
+    const metadata = normalizeIncomingConversationMetadata(
+      contentType,
+      dto.metadata ?? {},
+    );
+
     const [message] = await this.tenantDb
       .insert(agentMessages)
       .values({
         conversationId,
         tenantId,
         role: dto.role ?? 'user',
+        contentType,
         content: dto.content,
-        metadata: dto.metadata ?? {},
+        metadata,
       })
       .returning();
 

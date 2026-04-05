@@ -1,3 +1,7 @@
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { ConflictException } from '@nestjs/common';
 
@@ -15,6 +19,7 @@ const {
     createExec: vi.fn(),
     attachExecOutput: vi.fn(),
     waitForExecExit: vi.fn(),
+    putArchive: vi.fn(),
   },
   mockSandboxService: {
     findByConversationId: vi.fn(),
@@ -176,6 +181,7 @@ describe('WorkspaceIntegrationService', () => {
     mockSessionPersistence.loadFromCheckpoint
       .mockReset()
       .mockResolvedValue(null);
+    mockDockerService.putArchive.mockReset().mockResolvedValue(undefined);
     mockDb.select.mockReset();
     mockDb.update.mockReset();
 
@@ -691,6 +697,110 @@ describe('WorkspaceIntegrationService', () => {
         WORKSPACE_SNAPSHOT_ID,
         'src/main.ts',
       );
+    });
+  });
+
+  describe('stageConversationAttachment', () => {
+    it('应把附件写入对话沙箱工作区并返回最终路径', async () => {
+      const tempDir = await mkdtemp(
+        join(tmpdir(), 'agentloom-stage-attachment-'),
+      );
+      const archivePath = join(tempDir, 'attachment.tar');
+      await writeFile(archivePath, 'fake tar payload');
+
+      const cleanup = vi.fn(async () => {
+        await rm(tempDir, { recursive: true, force: true });
+      });
+
+      mockSandboxService.findByConversationId.mockResolvedValue(
+        mockSandboxSession(),
+      );
+
+      const resolvePathSpy = vi
+        .spyOn(
+          service as unknown as {
+            resolveAttachmentRelativePath: (
+              containerId: string,
+              fileName: string,
+            ) => Promise<string>;
+          },
+          'resolveAttachmentRelativePath',
+        )
+        .mockResolvedValue('uploads/design.png');
+      const createArchiveSpy = vi
+        .spyOn(
+          service as unknown as {
+            createConversationAttachmentArchive: (
+              attachment: Record<string, unknown>,
+              relativePath: string,
+            ) => Promise<{
+              archivePath: string;
+              cleanup: () => Promise<void>;
+            }>;
+          },
+          'createConversationAttachmentArchive',
+        )
+        .mockResolvedValue({
+          archivePath,
+          cleanup,
+        });
+
+      const result = await service.stageConversationAttachment(
+        CONVERSATION_ID,
+        TENANT_ID,
+        {
+          attachment: {
+            kind: 'image',
+            fileName: 'design.png',
+            mimeType: 'image/png',
+            sizeBytes: 32,
+            dataBase64: 'cG5n',
+          },
+        },
+      );
+
+      expect(result).toBe('/workspace/uploads/design.png');
+      expect(resolvePathSpy).toHaveBeenCalledWith(
+        CONTAINER_ID,
+        'design.png',
+      );
+      expect(createArchiveSpy).toHaveBeenCalledWith(
+        {
+          kind: 'image',
+          fileName: 'design.png',
+          mimeType: 'image/png',
+          sizeBytes: 32,
+          dataBase64: 'cG5n',
+        },
+        'uploads/design.png',
+      );
+      expect(mockDockerService.putArchive).toHaveBeenCalledWith(
+        CONTAINER_ID,
+        expect.any(Object),
+        '/workspace',
+      );
+      expect(cleanup).toHaveBeenCalled();
+    });
+
+    it('没有 live sandbox 时应返回 null', async () => {
+      mockSandboxService.findByConversationId.mockResolvedValue(null);
+
+      const result = await service.stageConversationAttachment(
+        CONVERSATION_ID,
+        TENANT_ID,
+        {
+          attachment: {
+            kind: 'file',
+            fileName: 'notes.txt',
+            mimeType: 'text/plain',
+            sizeBytes: 12,
+            textContent: 'hello world',
+          },
+        },
+      );
+
+      expect(result).toBeNull();
+      expect(mockDockerService.putArchive).not.toHaveBeenCalled();
     });
   });
 

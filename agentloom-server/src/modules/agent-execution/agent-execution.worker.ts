@@ -74,7 +74,17 @@ import {
   ensureToolCallConversationMessageSegment,
   type ConversationMessageSegmentRecord,
 } from '../agent-conversation/message-segments';
+import {
+  buildConversationPromptBlocks,
+  formatLatestPendingMessages,
+  type HistoryConversationPromptMessage,
+  type PendingConversationPromptMessage,
+} from './conversation-prompt-blocks';
 import { WorkspaceIntegrationService } from './workspace-integration.service';
+import {
+  resolveConversationMessageContentType,
+  withConversationAttachmentSandboxPath,
+} from '../agent-conversation/conversation-attachment';
 import {
   type ExecuteSubAgentParams,
   type SubAgentCompletionNotice,
@@ -124,6 +134,8 @@ type ConversationExecutionContext = {
 type PendingMessage = {
   id: string;
   content: string;
+  contentType: string;
+  metadata: Record<string, unknown>;
   createdAt: Date;
 };
 
@@ -131,6 +143,7 @@ type ConversationHistoryMessage = {
   id: string;
   role: 'user' | 'assistant' | 'system' | 'tool';
   content: string;
+  contentType: string;
   toolCalls: Record<string, unknown>[] | null;
   metadata: Record<string, unknown>;
   createdAt: Date;
@@ -794,8 +807,8 @@ export class AgentExecutionWorker extends WorkerHost {
       return params.candidateModelIds[0];
     }
 
-    const latestPrompt = this.formatLatestPendingMessages(
-      params.pendingMessages,
+    const latestPrompt = formatLatestPendingMessages(
+      params.pendingMessages as PendingConversationPromptMessage[],
     );
 
     try {
@@ -1066,6 +1079,8 @@ export class AgentExecutionWorker extends WorkerHost {
         .select({
           id: agentMessages.id,
           content: agentMessages.content,
+          contentType: agentMessages.contentType,
+          metadata: agentMessages.metadata,
           createdAt: agentMessages.createdAt,
         })
         .from(agentMessages)
@@ -1104,6 +1119,7 @@ export class AgentExecutionWorker extends WorkerHost {
           id: agentMessages.id,
           role: agentMessages.role,
           content: agentMessages.content,
+          contentType: agentMessages.contentType,
           toolCalls: agentMessages.toolCalls,
           metadata: agentMessages.metadata,
           createdAt: agentMessages.createdAt,
@@ -1140,17 +1156,28 @@ export class AgentExecutionWorker extends WorkerHost {
     let lastStopReason: StopReason = 'end_turn';
     let chunkIndex = 0;
     let segments: ConversationMessageSegmentRecord[] = [];
+    const runtimePendingMessages =
+      await this.materializePendingMessagesForRuntime(
+        pendingMessages,
+        conversationId,
+        tenantId,
+        session.runtimeConfig?.runtimeMode,
+      );
     const latestPromptText = await this.applyConversationInputPreprocessors(
-      this.formatLatestPendingMessages(pendingMessages),
+      formatLatestPendingMessages(
+        runtimePendingMessages as PendingConversationPromptMessage[],
+      ),
       session.runtimeConfig,
     );
-    let promptBlocks = this.buildPromptBlocks(
-      pendingMessages,
+    let promptBlocks = buildConversationPromptBlocks({
+      pendingMessages:
+        runtimePendingMessages as PendingConversationPromptMessage[],
       hasPriorTurns,
-      historyMessages,
-      latestPromptText,
+      historyMessages:
+        historyMessages as HistoryConversationPromptMessage[],
+      latestPromptOverride: latestPromptText,
       conversationMetadata,
-    );
+    });
 
     while (true) {
       try {
@@ -1604,6 +1631,60 @@ export class AgentExecutionWorker extends WorkerHost {
     return conversation?.metadata ?? {};
   }
 
+  private async materializePendingMessagesForRuntime(
+    pendingMessages: PendingMessage[],
+    conversationId: string,
+    tenantId: string,
+    runtimeMode: AgentRuntimeMode | undefined,
+  ): Promise<PendingMessage[]> {
+    if (runtimeMode !== 'sandbox' || pendingMessages.length === 0) {
+      return pendingMessages;
+    }
+
+    const nextMessages: PendingMessage[] = [];
+
+    for (const message of pendingMessages) {
+      const contentType = resolveConversationMessageContentType(
+        message.contentType,
+        message.metadata,
+      );
+
+      if (contentType === 'text') {
+        nextMessages.push(message);
+        continue;
+      }
+
+      try {
+        const sandboxPath =
+          await this.workspaceIntegrationService.stageConversationAttachment(
+            conversationId,
+            tenantId,
+            message.metadata,
+          );
+
+        if (!sandboxPath) {
+          nextMessages.push(message);
+          continue;
+        }
+
+        nextMessages.push({
+          ...message,
+          metadata: withConversationAttachmentSandboxPath(
+            message.metadata,
+            sandboxPath,
+          ),
+        });
+      } catch (error) {
+        this.logger.warn(
+          `Failed to materialize conversation attachment for ${conversationId}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+        nextMessages.push(message);
+      }
+    }
+
+    return nextMessages;
+  }
+
   private buildPromptBlocks(
     pendingMessages: PendingMessage[],
     hasPriorTurns: boolean,
@@ -1611,56 +1692,21 @@ export class AgentExecutionWorker extends WorkerHost {
     latestPromptOverride?: string,
     conversationMetadata: Record<string, unknown> = {},
   ): ContentBlock[] {
-    const latestPrompt =
-      latestPromptOverride ?? this.formatLatestPendingMessages(pendingMessages);
-
-    if (historyMessages.length > 0) {
-      const historyPreface = this.isRestartedInheritedHistoryConversation(
-        conversationMetadata,
-      )
-        ? '以下历史消息来自旧会话的继承副本，只能作为上下文参考。不要继续执行历史里未完成的编号任务、旧计划或旧命令；你现在只能响应并执行下方“用户最新消息”。如果历史与最新消息冲突，必须以最新用户消息为准。'
-        : '以下是该 conversation 已有的历史，请保持上下文连续：';
-
-      return [
-        {
-          type: 'text',
-          text:
-            `${historyPreface}\n` +
-            `${this.formatConversationHistory(historyMessages)}\n\n` +
-            `请继续回应用户最新消息：\n${latestPrompt}`,
-        } satisfies TextContentBlock,
-      ];
-    }
-
-    if (pendingMessages.length === 1) {
-      return [
-        {
-          type: 'text',
-          text: latestPrompt,
-        } satisfies TextContentBlock,
-      ];
-    }
-
-    const prefix = hasPriorTurns
-      ? '在你上一轮回复后，用户又发送了以下新消息，请结合上下文继续回应：'
-      : '用户连续发送了以下消息，请综合后统一回应：';
-
-    return [
-      {
-        type: 'text',
-        text: `${prefix}\n${latestPrompt}`,
-      } satisfies TextContentBlock,
-    ];
+    return buildConversationPromptBlocks({
+      pendingMessages: pendingMessages as PendingConversationPromptMessage[],
+      hasPriorTurns,
+      historyMessages: historyMessages as HistoryConversationPromptMessage[],
+      latestPromptOverride,
+      conversationMetadata,
+    });
   }
 
   private formatLatestPendingMessages(
     pendingMessages: PendingMessage[],
   ): string {
-    return pendingMessages.length === 1
-      ? pendingMessages[0].content
-      : pendingMessages
-          .map((message, index) => `${index + 1}. ${message.content}`)
-          .join('\n');
+    return formatLatestPendingMessages(
+      pendingMessages as PendingConversationPromptMessage[],
+    );
   }
 
   private async applyConversationInputPreprocessors(
@@ -1704,95 +1750,6 @@ export class AgentExecutionWorker extends WorkerHost {
     return typeof current === 'string'
       ? current
       : JSON.stringify(current, null, 2);
-  }
-
-  private formatConversationHistory(
-    historyMessages: ConversationHistoryMessage[],
-  ): string {
-    return historyMessages
-      .map((message, index) => {
-        const toolSummary = this.describeConversationHistoryToolCalls(
-          message.toolCalls,
-        );
-
-        return [
-          `${index + 1}. ${this.describeConversationRole(message.role)}: ${this.describeConversationHistoryMessage(message)}`,
-          ...(toolSummary ? [`   工具调用: ${toolSummary}`] : []),
-        ].join('\n');
-      })
-      .join('\n\n');
-  }
-
-  private describeConversationRole(
-    role: ConversationHistoryMessage['role'],
-  ): string {
-    switch (role) {
-      case 'assistant':
-        return '助手';
-      case 'system':
-        return '系统';
-      case 'tool':
-        return '工具';
-      default:
-        return '用户';
-    }
-  }
-
-  private describeConversationHistoryMessage(
-    message: ConversationHistoryMessage,
-  ): string {
-    const trimmed = message.content.trim();
-    if (trimmed.length > 0) {
-      return trimmed;
-    }
-
-    if (message.metadata['emptyTurn'] === true) {
-      return '（该轮未返回可展示文本）';
-    }
-
-    if (Array.isArray(message.toolCalls) && message.toolCalls.length > 0) {
-      return '（该轮主要执行了工具调用）';
-    }
-
-    return '（空消息）';
-  }
-
-  private describeConversationHistoryToolCalls(
-    toolCalls: ConversationHistoryMessage['toolCalls'],
-  ): string | null {
-    if (!Array.isArray(toolCalls) || toolCalls.length === 0) {
-      return null;
-    }
-
-    const items = toolCalls.flatMap((toolCall) => {
-      if (!this.isRecord(toolCall)) {
-        return [];
-      }
-
-      const tool =
-        this.readStringValue(toolCall.tool) ??
-        this.readStringValue(toolCall.name) ??
-        'unknown_tool';
-      const status = this.readStringValue(toolCall.status) ?? 'pending';
-
-      return [`${tool} [${status}]`];
-    });
-
-    return items.length > 0 ? items.join('；') : null;
-  }
-
-  private isRestartedInheritedHistoryConversation(
-    metadata: Record<string, unknown> | null | undefined,
-  ): boolean {
-    if (!this.isRecord(metadata)) {
-      return false;
-    }
-
-    return (
-      metadata.inheritedMessageHistory === true &&
-      typeof metadata.restartFromConversationId === 'string' &&
-      metadata.restartFromConversationId.length > 0
-    );
   }
 
   private isRecord(value: unknown): value is Record<string, unknown> {

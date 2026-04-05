@@ -1,6 +1,10 @@
 import { memo, useMemo, useState, useCallback, type DragEvent } from 'react'
 import { cn } from '../../../shared/lib/utils'
-import { NODE_CATEGORIES } from './nodeCategories'
+import {
+  buildPaletteSearchText,
+  matchesPaletteSearch,
+  NODE_CATEGORIES,
+} from './nodeCategories'
 import { DRAG_TRANSFER_TYPE } from './NodePalette'
 import {
   AGENT_CANVAS_NODE_REGISTRY,
@@ -39,6 +43,7 @@ function buildAgentPaletteItem(config: AgentNodeTypeConfig): AgentPaletteNodeIte
     category: config.category,
     icon: config.icon,
     description: config.description,
+    searchText: buildPaletteSearchText(config),
     isAutoCreated: AUTO_CREATED_NODE_TYPES.has(config.type),
   }
 }
@@ -141,16 +146,9 @@ export const AgentNodePalette = memo(function AgentNodePalette({
     })).filter((group) => group.items.length > 0)
 
     if (!searchQuery.trim()) return visibleGroups
-    const normalizedQuery = searchQuery.toLowerCase()
     return visibleGroups.map((group) => ({
       ...group,
-      items: group.items.filter((item) => {
-        const searchableText = [item.label, item.description, item.searchText]
-          .filter(Boolean)
-          .join(' ')
-          .toLowerCase()
-        return searchableText.includes(normalizedQuery)
-      }),
+      items: group.items.filter((item) => matchesPaletteSearch(item, searchQuery)),
     })).filter((group) => group.items.length > 0)
   }, [runtimeMode, searchQuery])
 

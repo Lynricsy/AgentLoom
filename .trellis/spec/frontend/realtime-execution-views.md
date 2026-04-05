@@ -204,6 +204,110 @@ if (state.workspaceTreeOnly) {
 
 ---
 
+## 场景：standalone Agent 对话中的图片/文件上传必须形成可回拉的用户消息
+
+### 1. Scope / Trigger
+- 触发条件：修改以下任一文件时，必须回看本节
+  - `agentloom-studio/src/features/agent-conversation/stores/agent-conversation.store.ts`
+  - `agentloom-studio/src/features/agent-conversation/components/AgentConversationPage.tsx`
+  - `agentloom-studio/src/features/agent-conversation/components/MessageList.tsx`
+  - `agentloom_mobile/lib/features/agents/providers/agent_conversation_provider.dart`
+  - `agentloom_mobile/lib/features/agents/screens/agent_conversation_screen.dart`
+  - `agentloom_mobile/lib/features/agents/widgets/message_bubble.dart`
+  - `agentloom_mobile/lib/features/agents/api/agent_api.dart`
+- 风险点：如果上传按钮只是占位或前端把附件压扁成普通文本，用户会看到“有上传入口但 Agent 实际收不到文件”；如果 optimistic message / history diff 不保留 `contentType + attachment`，刷新后附件预览会消失。
+
+### 2. Signatures
+- Studio:
+  - `agentConversationStore.actions.sendMessage(message: string | OutgoingConversationMessage): void`
+  - `normalizeOutgoingConversationMessage(message): OutgoingConversationMessage`
+  - `buildOptimisticUserMessage(conversationId, message): ConversationMessage`
+  - `MessageList`
+  - `AgentConversationPage`
+- Flutter:
+  - `AgentConversationNotifier.sendMessage(content, { contentType, metadata })`
+  - `AgentConversationScreen._sendAttachment({ required bool image })`
+  - `MessageBubble`
+  - `AgentApi.sendMessage(conversationId, { content, contentType, metadata })`
+
+### 3. Contracts
+- Studio 与 Flutter 的对话输入栏都必须提供真实可点击的图片/文件上传入口，不能是空实现按钮。
+- 附件消息必须以结构化消息发送，而不是把文件名直接拼成普通文本。
+  - `contentType` 只允许 `text | image | file`
+  - `metadata.attachment.kind` 必须与 `contentType` 保持一致
+- 图片上传必须发送 `attachment.dataBase64`。
+- 普通文件上传时：
+  - 文本文件且内联内容不超过 `200 KB` 时，优先发送 `attachment.textContent`
+  - 二进制文件或较大文件发送 `attachment.dataBase64`
+  - 总附件大小上限与服务端一致，为 `1.5 MB`
+- 如果用户输入框里已经有草稿文本，点击上传后必须把草稿与附件放在同一轮 user turn 发送，不能吞掉已有输入。
+- Studio 的 optimistic user message、socket emit payload 与 history normalize 都必须保留 `contentType + metadata.attachment`；用于比较 history/live tail 的 comparable key 也必须纳入这两个字段，避免附件消息被迟到 history 覆盖掉。
+- Flutter 的 `AgentConversationNotifier.sendMessage()` 与 `AgentApi.sendMessage()` 必须透传 `contentType + metadata`，不能在 API 层丢掉附件字段。
+- 用户消息渲染必须根据附件类型显示：
+  - 图片：图片预览
+  - 文件：文件卡片
+  - 文本文件：文本内容预览
+  - 若 metadata 已带 `sandboxPath`，UI 需展示该路径
+- 当消息正文只是“已上传图片 xxx / 已上传文件 xxx”这类摘要，且同一条消息已经渲染了附件卡片时，UI 必须避免把同一信息重复展示两次。
+- 刷新同一会话后，附件消息必须仍能通过历史回拉显示预览或文件卡片，不能退化成只有一行纯文本。
+
+### 4. Validation & Error Matrix
+
+| 条件 | 预期行为 | 断言点 |
+|------|----------|--------|
+| Studio 发送带附件的 user message | socket / optimistic / history 都保留 `contentType + attachment` | `agent-conversation.store.test.ts` |
+| Studio 渲染图片附件历史消息 | 显示图片预览，不只是一行文件名 | `MessageList.test.tsx` |
+| Flutter 输入栏渲染 | 存在文件与图片上传入口 | `agent_conversation_screen_test.dart` |
+| Flutter provider 发送附件消息 | API 层收到 `contentType + metadata` | `agent_conversation_provider_test.dart` |
+| Flutter 用户消息包含文件附件 | 消息气泡显示文件卡片与文本预览 | `message_bubble_test.dart` |
+| 浏览器真实刷新同一会话 | 附件卡片仍可见 | Studio 手动 QA / Flutter 手动 QA |
+
+### 5. Good / Base / Bad Cases
+- Good：用户上传文本文件后，Agent 能收到文件内容；刷新页面后，消息列表仍显示文件卡片与文本预览。
+- Good：用户上传图片后，消息气泡显示图片预览；若是 sandbox Agent，消息卡片还能展示工作区路径提示。
+- Base：较大的二进制文件不做全文内联，但仍能作为附件消息发送与展示。
+- Bad：上传按钮存在但点击无效果；或者消息发送成功后刷新页面只剩“已上传文件 xxx”一行文本，看不到附件本体。
+
+### 6. Tests Required
+- `agentloom-studio/src/features/agent-conversation/stores/agent-conversation.store.test.ts`
+  - 断言附件消息透传 `contentType + metadata.attachment`
+- `agentloom-studio/src/features/agent-conversation/components/MessageList.test.tsx`
+  - 断言图片附件预览渲染
+- `agentloom_mobile/test/features/agents/providers/agent_conversation_provider_test.dart`
+  - 断言 provider 发送附件消息时保留 `contentType + metadata`
+- `agentloom_mobile/test/features/agents/widgets/message_bubble_test.dart`
+  - 断言用户文件附件卡片与文本预览渲染
+- `agentloom_mobile/test/features/agents/screens/agent_conversation_screen_test.dart`
+  - 断言上传入口存在
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```ts
+sendMessage(`已上传文件 ${file.name}`)
+```
+
+#### Correct
+
+```ts
+sendMessage({
+  content: draftText || `已上传文件 ${file.name}`,
+  contentType: "file",
+  metadata: {
+    attachment: {
+      kind: "file",
+      fileName: file.name,
+      mimeType: file.type,
+      sizeBytes: file.size,
+      textContent,
+    },
+  },
+})
+```
+
+---
+
 ## 场景：standalone Agent “agent 的电脑”面板必须显示真实资源值
 
 ### 1. Scope / Trigger

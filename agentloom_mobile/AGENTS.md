@@ -17,7 +17,7 @@ AgentLoom Flutter 移动端应用：
 - 工作流：列表、筛选、详情、执行历史、参数输入启动链路
 - 执行监控：Socket.IO `/execution` 实时状态 + REST detail 轮询降级，状态头、告警横幅、步骤时间线、断连语义纠正
 - Agent 管理：列表 / 详情 / 对话三屏；详情页会解析 `agent-main` 节点并展示 `nativeToolPolicy` / `selfEvolutionPolicy` 能力摘要
-- Agent 对话：`AgentConversationScreen` 为 Shell 外全屏路由，Socket.IO `/agent-conversation` 实时消息推送，按 `message_chunk / thinking / tool_call / tool_result / done / terminal_output / file_change / status.changed` 分段渲染，包含权限审批、终端输出、文件变更、工作区上下文面板，以及自进化升级后的“重启到新版本”提示卡片；页面会根据 Agent `runtimeMode` 显示 `有沙箱 / 无沙箱` 状态，`no_sandbox` 会话不展示工作区/终端上下文面板，只保留消息流中的 Skill/Knowledge/Memory/MCP/自进化能力
+- Agent 对话：`AgentConversationScreen` 为 Shell 外全屏路由，Socket.IO `/agent-conversation` 实时消息推送，按 `message_chunk / thinking / tool_call / tool_result / done / terminal_output / file_change / status.changed` 分段渲染，包含权限审批、终端输出、文件变更、工作区上下文面板，以及自进化升级后的“重启到新版本”提示卡片；输入栏通过 `file_picker` 提供图片/文件上传入口，文本文件优先以内联文本进入上下文，二进制文件与图片以 base64 附件发送，用户消息气泡支持图片预览、文件卡片、文本文件内容预览与 `sandboxPath` 展示；Flutter Web 上图片附件也必须稳定显示真实图片预览，不能退化成只有文件名或“图片已随消息发送给 Agent”提示；页面会根据 Agent `runtimeMode` 显示 `有沙箱 / 无沙箱` 状态，`no_sandbox` 会话不展示工作区/终端上下文面板，只保留消息流中的 Skill/Knowledge/Memory/MCP/自进化能力
 - Agent 对话工作区预览优先级：standalone sandbox Agent 对话启动时，如果 Agent detail 同时存在顶层 `workspaceSnapshotId` 与 `sandboxConfig.restoreWorkspaceId`，Flutter 必须优先预载 `restoreWorkspaceId` 对应的目录树，以保证预览与 live sandbox 实际 restore 的工作区一致；没有 `restoreWorkspaceId` 时才回退到 `workspaceSnapshotId`
 - 资源域：`ResourcesHubScreen` 以无分类统一资源列表挂载 `Memory / Skills / Workspaces / Sandboxes / Knowledge Bases / MCP Servers / LLM Models`
 - 资源管理：
@@ -81,7 +81,7 @@ flutter test --coverage
 - **WorkflowApi**：`runWorkflow()` 发送 canonical camelCase `inputParams / launchSource`，`getInputSchema()` 对 `collectionMode / visibility / collectionHint` 做兼容归一化
 - **WorkflowInputSchema**：含可选 `conversationPlan { systemPrompt, maxTurns }`，非表单采集统一走 `ConversationModePrompt`
 - **Execution monitor**：REST detail 建立初始 snapshot；WS ACK / plain snapshot 通过 metadata merge 保留 `nodeName/nodeType/startedAt/completedAt`；断连后 5 秒 polling fallback
-- **AgentConversationNotifier**：维护对话消息流、Socket 连接、权限审批、终端输出、文件树与历史回拉；权限审批支持 `rememberScope=conversation_category`，并能消费服务端下发的升级重启建议
+- **AgentConversationNotifier**：维护对话消息流、Socket 连接、权限审批、终端输出、文件树与历史回拉；`sendMessage()` 支持 `contentType + metadata` 结构化附件消息，权限审批支持 `rememberScope=conversation_category`，并能消费服务端下发的升级重启建议
 
 ## 测试模式
 
@@ -103,6 +103,7 @@ flutter test --coverage
 - `TokenStorage.hasTokens()` 与 `readTokens()` 一致，要求 `access/refresh/expires_in` 三项完整
 - `.env.dev` / `.env.staging` / `.env.prod` 已提交到 git，并在 `pubspec.yaml` 声明为 Flutter assets
 - `ResourcesApi` 同时封装 `Workspaces / Sandboxes / Knowledge Bases / MCP / LLM / API Keys` 的 REST 读写；资源页错误文案统一走 `describeResourceError()`
+- Agent 对话附件发送与 Studio 保持同一阈值：总附件上限 `1.5 MB`，文本内联上限 `200 KB`
 - WorkflowDetailScreen 在 `.when()` 前检查 `hasError && !hasValue` 以兼容 Riverpod 3.x 的 `AsyncLoading(error: ...)` 中间状态
 - `WorkflowLaunchNotifier.submit()` 在异步成功 / 失败路径均使用 `ref.mounted` 守卫，防止 dispose 后写入状态
 

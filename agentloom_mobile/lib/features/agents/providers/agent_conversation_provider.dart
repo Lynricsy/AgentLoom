@@ -1484,7 +1484,11 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
     }
   }
 
-  Future<void> sendMessage(String content) async {
+  Future<void> sendMessage(
+    String content, {
+    String contentType = 'text',
+    Map<String, dynamic>? metadata,
+  }) async {
     final trimmed = content.trim();
     if (trimmed.isEmpty) {
       return;
@@ -1508,7 +1512,12 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
     try {
       final response = await ref
           .read(agentApiProvider)
-          .sendMessage(params.conversationId, content: trimmed);
+          .sendMessage(
+            params.conversationId,
+            content: trimmed,
+            contentType: contentType,
+            metadata: metadata,
+          );
       if (!ref.mounted) {
         return;
       }

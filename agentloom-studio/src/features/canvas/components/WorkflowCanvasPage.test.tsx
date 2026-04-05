@@ -203,6 +203,7 @@ vi.mock("./panels/NodeConfigPanel", () => ({
 
 vi.mock("./toolbar/VersionToolbar", () => ({
   VersionToolbar: (props: {
+    onOpenVersionHistory: () => void;
     onOpenPublish: (versionId?: string) => void;
     workflowStatus: WorkflowDefinition["status"];
     onRun?: () => void;
@@ -218,6 +219,13 @@ vi.mock("./toolbar/VersionToolbar", () => ({
           onClick={props.onExport}
         >
           Export workflow
+        </button>
+        <button
+          type="button"
+          data-testid="version-toolbar-open-history"
+          onClick={props.onOpenVersionHistory}
+        >
+          Open history
         </button>
         <button
           type="button"
@@ -243,18 +251,33 @@ vi.mock("./toolbar/VersionToolbar", () => ({
 
 vi.mock("@/features/workflow/components/VersionHistoryPanel", () => ({
   VersionHistoryPanel: (props: {
+    open: boolean;
     onPublish?: (versionId: string) => void;
+    onClose: () => void;
     workflowStatus: WorkflowDefinition["status"];
   }) => {
     versionHistoryPanelMock(props);
     return (
-      <button
-        type="button"
-        data-testid="version-history-open-publish"
-        onClick={() => props.onPublish?.("ver-003")}
+      <div
+        data-testid="version-history-panel-proxy"
+        data-open={String(props.open)}
+        data-status={props.workflowStatus}
       >
-        History publish
-      </button>
+        <button
+          type="button"
+          data-testid="version-history-open-publish"
+          onClick={() => props.onPublish?.("ver-003")}
+        >
+          History publish
+        </button>
+        <button
+          type="button"
+          data-testid="version-history-close"
+          onClick={props.onClose}
+        >
+          Close history
+        </button>
+      </div>
     );
   },
 }));
@@ -263,13 +286,22 @@ vi.mock("@/features/workflow/components/PublishSheet", () => ({
   PublishSheet: (props: {
     open: boolean;
     initialVersionId?: string | null;
+    onOpenChange: (open: boolean) => void;
   }) => {
     publishSheetMock(props);
     return props.open ? (
       <div
         data-testid="publish-sheet"
         data-version-id={props.initialVersionId ?? ""}
-      />
+      >
+        <button
+          type="button"
+          data-testid="publish-sheet-close"
+          onClick={() => props.onOpenChange(false)}
+        >
+          Close publish
+        </button>
+      </div>
     ) : null;
   },
 }));
@@ -334,6 +366,7 @@ describe("WorkflowCanvasPage", () => {
     vi.clearAllMocks();
     exportWorkflowMutateMock.mockReset();
     downloadWorkflowExportMock.mockReset();
+    window.sessionStorage.clear();
     useCanvasStore.getState().actions.reset();
   });
 
@@ -483,6 +516,83 @@ describe("WorkflowCanvasPage", () => {
     expect(screen.getByTestId("publish-sheet")).toHaveAttribute(
       "data-version-id",
       "ver-003",
+    );
+  });
+
+  it("发布面板关闭后应恢复之前已打开的历史面板", () => {
+    render(<WorkflowCanvasPage />);
+
+    expect(screen.getByTestId("version-history-panel-proxy")).toHaveAttribute(
+      "data-open",
+      "false",
+    );
+
+    fireEvent.click(screen.getByTestId("version-toolbar-open-history"));
+    expect(screen.getByTestId("version-history-panel-proxy")).toHaveAttribute(
+      "data-open",
+      "true",
+    );
+
+    fireEvent.click(screen.getByTestId("version-history-open-publish"));
+    expect(screen.getByTestId("publish-sheet")).toBeInTheDocument();
+
+    workflowResult = {
+      data: {
+        ...workflowOne,
+        status: "published",
+        publishedVersionId: "ver-003",
+      },
+      isLoading: false,
+      error: null,
+    };
+
+    fireEvent.click(screen.getByTestId("publish-sheet-close"));
+
+    expect(screen.queryByTestId("publish-sheet")).not.toBeInTheDocument();
+    expect(screen.getByTestId("version-history-panel-proxy")).toHaveAttribute(
+      "data-open",
+      "true",
+    );
+    expect(screen.getByTestId("version-history-panel-proxy")).toHaveAttribute(
+      "data-status",
+      "published",
+    );
+  });
+
+  it("页面 remount 后仍应恢复发布前已打开的历史面板", () => {
+    const { unmount } = render(<WorkflowCanvasPage />);
+
+    fireEvent.click(screen.getByTestId("version-toolbar-open-history"));
+    expect(screen.getByTestId("version-history-panel-proxy")).toHaveAttribute(
+      "data-open",
+      "true",
+    );
+
+    fireEvent.click(screen.getByTestId("version-history-open-publish"));
+    expect(screen.getByTestId("publish-sheet")).toBeInTheDocument();
+
+    unmount();
+
+    workflowResult = {
+      data: {
+        ...workflowOne,
+        status: "published",
+        publishedVersionId: "ver-003",
+      },
+      isLoading: false,
+      error: null,
+    };
+
+    render(<WorkflowCanvasPage />);
+
+    expect(screen.queryByTestId("publish-sheet")).not.toBeInTheDocument();
+    expect(screen.getByTestId("version-history-panel-proxy")).toHaveAttribute(
+      "data-open",
+      "true",
+    );
+    expect(screen.getByTestId("version-history-panel-proxy")).toHaveAttribute(
+      "data-status",
+      "published",
     );
   });
 

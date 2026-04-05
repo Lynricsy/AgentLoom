@@ -28,6 +28,7 @@ export interface MessageResponseDto {
   id: string;
   conversationId: string;
   role: string;
+  contentType: AgentMessage['contentType'];
   content: string;
   toolCalls: MessageToolCallDto[] | null;
   toolResults: MessageToolResultDto[] | null;
@@ -40,6 +41,7 @@ export function serializeMessage(row: AgentMessage): MessageResponseDto {
     id: row.id,
     conversationId: row.conversationId,
     role: row.role,
+    contentType: row.contentType,
     content: row.content,
     toolCalls: serializeToolCalls(row.toolCalls),
     toolResults: serializeToolResults(row.toolResults),

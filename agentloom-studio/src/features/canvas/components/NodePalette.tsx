@@ -4,7 +4,12 @@ import { useActivePlugins, type PluginNodeDefinition } from '@/features/plugin'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs'
 import { cn } from '../../../shared/lib/utils'
 import { useCanvasStore, useSelectedNodeData } from '../stores/canvasStore'
-import { PALETTE_GROUPS, NODE_CATEGORIES } from './nodeCategories'
+import {
+  buildPaletteSearchText,
+  matchesPaletteSearch,
+  PALETTE_GROUPS,
+  NODE_CATEGORIES,
+} from './nodeCategories'
 import type { PaletteGroup, PaletteNodeItem } from '../types'
 import {
   createPort,
@@ -89,14 +94,15 @@ export const NodePalette = memo(function NodePalette({ className }: NodePaletteP
           category: 'plugin',
           icon: 'Puzzle',
           description: nodeDef.description,
-          searchText: [
-            plugin.name,
-            plugin.pluginId,
-            nodeDef.label,
-            nodeDef.description,
-          ]
-            .filter(Boolean)
-            .join(' '),
+          searchText: buildPaletteSearchText(
+            {
+              type: 'plugin',
+              label: nodeDef.label,
+              category: 'plugin',
+              description: nodeDef.description,
+            },
+            [plugin.name, plugin.pluginId, nodeDef.type],
+          ),
           pluginId: plugin.pluginId,
           pluginName: plugin.name,
           pluginVersion: plugin.version,
@@ -138,6 +144,7 @@ export const NodePalette = memo(function NodePalette({ className }: NodePaletteP
           category: config.category,
           icon: config.icon,
           description: config.description,
+          searchText: buildPaletteSearchText(config, ['compound', '内部节点']),
           compoundOnly: true,
           compoundParentId: selectedCompoundNodeId,
         }
@@ -180,15 +187,7 @@ export const NodePalette = memo(function NodePalette({ className }: NodePaletteP
     ? allGroups.map((group) => ({
         ...group,
         items: group.items.filter(
-          (item) => {
-            const normalizedQuery = searchQuery.toLowerCase()
-            const searchableText = [item.label, item.description, item.searchText]
-              .filter(Boolean)
-              .join(' ')
-              .toLowerCase()
-
-            return searchableText.includes(normalizedQuery)
-          }
+          (item) => matchesPaletteSearch(item, searchQuery),
         ),
       })).filter((group) => group.items.length > 0)
     : allGroups

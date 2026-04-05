@@ -22,6 +22,71 @@ const PALETTE_VISIBLE_DYNAMIC_NODE_TYPES: ReadonlySet<NodeType> = new Set([
   'merge',
 ])
 
+interface SearchablePaletteNodeLike {
+  type: string
+  label: string
+  description: string
+  category: NodeCategory
+}
+
+function normalizeSearchValue(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/[-_]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function collapseSearchValue(value: string): string {
+  return normalizeSearchValue(value).replace(/\s+/g, '')
+}
+
+function buildSearchAliases(value: string | undefined): string[] {
+  if (!value) {
+    return []
+  }
+
+  const normalized = normalizeSearchValue(value)
+  const collapsed = collapseSearchValue(value)
+  return Array.from(new Set([value, normalized, collapsed].filter(Boolean)))
+}
+
+export function buildPaletteSearchText(
+  item: SearchablePaletteNodeLike,
+  extras: Array<string | undefined> = [],
+): string {
+  return [
+    ...buildSearchAliases(item.type),
+    item.label,
+    item.description,
+    NODE_CATEGORIES[item.category].label,
+    ...extras.flatMap((value) => buildSearchAliases(value)),
+  ]
+    .filter(Boolean)
+    .join(' ')
+}
+
+export function matchesPaletteSearch(
+  item: Pick<PaletteNodeItem, 'label' | 'description' | 'searchText'>,
+  query: string,
+): boolean {
+  const searchableText = [item.label, item.description, item.searchText]
+    .filter(Boolean)
+    .join(' ')
+
+  const normalizedQuery = normalizeSearchValue(query)
+  if (normalizedQuery.length === 0) {
+    return true
+  }
+
+  const normalizedSearchableText = normalizeSearchValue(searchableText)
+  if (normalizedSearchableText.includes(normalizedQuery)) {
+    return true
+  }
+
+  return collapseSearchValue(searchableText).includes(collapseSearchValue(query))
+}
+
 export function buildPaletteGroups(
   registry: Record<string, NodeTypeConfig> = NODE_TYPE_REGISTRY,
 ): PaletteGroup[] {
@@ -41,6 +106,7 @@ export function buildPaletteGroups(
       category: config.category,
       icon: config.icon,
       description: config.description,
+      searchText: buildPaletteSearchText(config),
     })
     grouped.set(config.category, items)
   }

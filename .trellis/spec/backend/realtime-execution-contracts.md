@@ -140,6 +140,112 @@ await db.insert(agentMessages).values({
 
 ---
 
+## 场景：standalone Agent 对话中的附件消息必须进入 runtime 上下文并在 sandbox 中可引用
+
+### 1. Scope / Trigger
+
+- 触发条件：修改以下任一文件时，必须回看本节
+  - `src/modules/agent-conversation/conversation-attachment.ts`
+  - `src/modules/agent-conversation/agent-conversation.service.ts`
+  - `src/modules/agent-conversation/dto/message-response.dto.ts`
+  - `src/modules/agent-execution/conversation-prompt-blocks.ts`
+  - `src/modules/agent-execution/agent-execution.worker.ts`
+  - `src/modules/agent-execution/workspace-integration.service.ts`
+- 风险点：如果服务端只把“已上传文件 xxx”当普通文本保存，UI 看起来像支持上传，runtime 实际却拿不到真实文件内容；如果 sandbox 附件不写入工作区，Agent 想按路径读取原文件时会直接失败。
+
+### 2. Signatures
+
+- `normalizeIncomingConversationMetadata(contentType, metadata): Record<string, unknown>`
+- `resolveConversationMessageContentType(contentType, metadata): ConversationMessageContentType`
+- `withConversationAttachmentSandboxPath(metadata, sandboxPath): Record<string, unknown>`
+- `buildConversationPromptBlocks(params): ContentBlock[]`
+- `WorkspaceIntegrationService.stageConversationAttachment(conversationId, tenantId, metadata): Promise<string | null>`
+- `POST /agent-conversations/:id/messages`
+- `GET /agent-conversations/:id/messages`
+
+### 3. Contracts
+
+- `POST /agent-conversations/:id/messages` 必须接受并持久化 `contentType`。
+  - 允许值仅 `text | image | file`
+  - `MessageResponseDto` / history serializer 也必须把 `contentType` 返回给前端
+- 非文本消息必须提供规范化后的 `metadata.attachment`：
+  - `attachment.kind` 必须与 `contentType` 一致
+  - `image` 必须提供 `dataBase64`
+  - `file` 至少提供 `textContent` 或 `dataBase64`
+- 尺寸限制必须由服务端统一校验：
+  - 总附件上限 `1_500_000` bytes
+  - 文本内联上限 `200_000` bytes
+- 纯文本消息不得残留旧附件字段。
+  - `contentType = 'text'` 时，`metadata.attachment` 与 `metadata.contentType` 必须被清理，避免旧 UI round-trip 脏数据把普通消息误判成附件消息。
+- runtime 构造 prompt blocks 时，附件不能退化成只有一行摘要文本：
+  - 图片附件 → `image` block
+  - 文本文件 → `resource` text block
+  - 二进制文件 → `resource` blob block
+  - 若只剩路径引用 → `resource_link` block
+- sandbox standalone conversation 在 prompt 前必须 best-effort 尝试把附件写入 `/workspace/uploads/...`。
+  - 目标路径冲突时必须生成唯一后缀，不能覆盖已有文件
+  - 写入成功后，runtime 侧的附件 metadata 需补上 `sandboxPath`
+  - prompt blocks 必须额外附一条文本提示，告诉 Agent 原文件已经位于该工作区路径
+- `stageConversationAttachment()` 失败或当前 conversation 没有 live container 时，不得让整个 turn 失败。
+  - runtime 仍应继续使用 inline attachment blocks 处理该消息
+  - 失败只记 warning，不回滚用户消息
+
+### 4. Validation & Error Matrix
+
+| 条件 | 预期行为 | 断言点 |
+|------|----------|--------|
+| `contentType='image'` 但缺少 `dataBase64` | `POST /messages` 返回 400 | `agent-conversation.service.spec.ts` |
+| `contentType='file'` 且缺少 `textContent/dataBase64` | `POST /messages` 返回 400 | `agent-conversation.service.spec.ts` |
+| 附件超出 `1.5 MB` 或文本内联超出 `200 KB` | `POST /messages` 返回 400 | `conversation-attachment.ts` 校验 + service spec |
+| sandbox conversation 有 live container | worker 会把附件写入 `/workspace/uploads/...` 并把路径注入 prompt | `agent-execution.worker.spec.ts` / `workspace-integration.service.spec.ts` |
+| sandbox conversation 无 live container | worker 不抛错，继续使用 inline attachment blocks | `agent-execution.worker.spec.ts` |
+| 历史消息回拉 | 返回 `contentType`，前端能重建附件卡片 | `message-response.dto.ts` 相关序列化断言 |
+
+### 5. Good / Base / Bad Cases
+
+- Good：用户上传文本文件后，Agent 既能直接读到内联文本，也能在 sandbox 模式下通过 `/workspace/uploads/...` 读取原文件。
+- Good：用户上传图片后，runtime 收到真实 image block，而不是只有“已上传图片 xxx”的一句摘要。
+- Base：当前 conversation 没有 live sandbox 时，附件仍以内联 block 进入 prompt，不阻断消息发送。
+- Bad：服务端把附件字段吞掉，只留下普通文本；或者 sandbox 路径固定覆盖旧文件，导致多次上传同名文件后内容错乱。
+
+### 6. Tests Required
+
+- `src/modules/agent-conversation/agent-conversation.service.spec.ts`
+  - 断言附件消息会持久化 `contentType + metadata.attachment`
+- `src/modules/agent-execution/__tests__/agent-execution.worker.spec.ts`
+  - 断言 worker 会为 sandbox conversation materialize 附件并构造 attachment prompt blocks
+- `src/modules/agent-execution/__tests__/workspace-integration.service.spec.ts`
+  - 断言 `stageConversationAttachment()` 会创建唯一工作区路径并调用 `putArchive`
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```ts
+await db.insert(agentMessages).values({
+  content: dto.content,
+  metadata: dto.metadata,
+})
+```
+
+#### Correct
+
+```ts
+const contentType = resolveConversationMessageContentType(
+  dto.contentType,
+  dto.metadata,
+)
+const metadata = normalizeIncomingConversationMetadata(contentType, dto.metadata)
+
+await db.insert(agentMessages).values({
+  content: dto.content,
+  contentType,
+  metadata,
+})
+```
+
+---
+
 ## 场景：standalone Agent 已完成会话的工作区目录树快照 fallback
 
 ### 1. Scope / Trigger

@@ -16,6 +16,7 @@ DAG 工作流的可视化编辑器，基于 `@xyflow/react` v12，支持 17 种�
 
 - 创建支持 3 种克隆源（`template_slug` / `share_token` / `marketplace_listing_id`，互斥）
 - 版本管理基于 `workflow_versions`，发布需设置 `publishedVersionId`
+- 若用户在历史记录抽屉打开时进入发布流程，发布完成后会保留该抽屉并立即显示最新发布记录
 - 导出使用 `agentloom-workflow-v1` 信封 + `sanitizeDefinition()` 递归剥离敏感信息
 - 导入含 Zod 校验 + `cloneDefinitionWithNewIds()` 生成新 ID
 
@@ -64,6 +65,8 @@ Agent 独立对话 UI，位于 `/agents/$agentId/conversations/$conversationId`�
 - **三列布局**：对话列表 / 消息流 / 上下文面板
 - `agentConversationStore`（Zustand）管理消息列表与流式状态
 - 通过 Socket.IO `/agent-conversation` namespace 实现实时消息推送与 mid-stream injection
+- 输入栏支持图片/文件上传；文本文件优先以内联文本资源进入上下文，图片与二进制文件以附件形式发送
+- 用户消息会回显图片预览、文件卡片与文本文件内容预览；sandbox Agent 的附件还会在上下文里附带工作区路径提示
 - sub-agent stream rendering（`SubAgentStreamView` 递归嵌套）
 - completion notice routing
 - 支持多轮对话与文件上下文
@@ -243,7 +246,7 @@ MCP（Model Context Protocol）工具管理，对应画布中的 `mcp-tool` 节�
 
 RSA-4096 公钥管理。`tenant_encryption_keys` 为 append-only 历史模型（`organization_id + key_fingerprint` 唯一 + 单 active partial unique index）。Studio 私钥以 PKCS8 二进制存入 IndexedDB。
 
-### private-deployment — 私��部署
+### private-deployment — 私有部署
 
 组织级私有部署配置（仅 `owner` / `admin`）：
 

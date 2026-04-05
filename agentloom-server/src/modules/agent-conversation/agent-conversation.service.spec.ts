@@ -64,6 +64,7 @@ function createMessageRecord(
     conversationId: CONVERSATION_ID,
     tenantId: TENANT_ID,
     role: 'user',
+    contentType: 'text',
     content: '你好',
     toolCalls: null,
     toolResults: null,
@@ -340,12 +341,14 @@ describe('AgentConversationService', () => {
         conversationId: CONVERSATION_ID,
         tenantId: TENANT_ID,
         role: 'user',
+        contentType: 'text',
         content: '你好',
         metadata: {},
       });
       expect(result.data).toMatchObject({
         id: MESSAGE_ID,
         content: '你好',
+        contentType: 'text',
         role: 'user',
       });
       expect(updateChain.set).toHaveBeenCalledWith({
@@ -397,8 +400,68 @@ describe('AgentConversationService', () => {
       } as any);
 
       expect(insertChain.values).toHaveBeenCalledWith(
-        expect.objectContaining({ role: 'system' }),
+        expect.objectContaining({ role: 'system', contentType: 'text' }),
       );
+    });
+
+    it('应持久化图片消息的 contentType 与 attachment 元数据', async () => {
+      const convChain = createSelectChain([
+        { id: CONVERSATION_ID, status: 'active' },
+      ]);
+      const message = createMessageRecord({
+        contentType: 'image',
+        content: '请看这张图',
+        metadata: {
+          contentType: 'image',
+          attachment: {
+            kind: 'image',
+            fileName: 'design.png',
+            mimeType: 'image/png',
+            sizeBytes: 32,
+            dataBase64: 'cG5n',
+          },
+        },
+      });
+      const insertChain = createInsertChain([message]);
+      const updateChain = createUpdateNoReturnChain();
+
+      db.select.mockReturnValueOnce(convChain);
+      db.insert.mockReturnValueOnce(insertChain);
+      db.update.mockReturnValueOnce(updateChain);
+
+      const result = await service.sendMessage(CONVERSATION_ID, TENANT_ID, {
+        content: '请看这张图',
+        contentType: 'image',
+        metadata: {
+          attachment: {
+            kind: 'image',
+            fileName: 'design.png',
+            mimeType: 'image/png',
+            sizeBytes: 32,
+            dataBase64: 'cG5n',
+          },
+        },
+      } as any);
+
+      expect(insertChain.values).toHaveBeenCalledWith(
+        expect.objectContaining({
+          contentType: 'image',
+          metadata: {
+            contentType: 'image',
+            attachment: {
+              kind: 'image',
+              fileName: 'design.png',
+              mimeType: 'image/png',
+              sizeBytes: 32,
+              dataBase64: 'cG5n',
+            },
+          },
+        }),
+      );
+      expect(result.data).toMatchObject({
+        id: MESSAGE_ID,
+        contentType: 'image',
+      });
     });
   });
 

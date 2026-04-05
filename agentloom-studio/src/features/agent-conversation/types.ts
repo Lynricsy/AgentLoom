@@ -1,6 +1,21 @@
 import type { AgentRuntimeMode } from "@/features/agent/types/agentRuntimeMode";
 
 export type MessageRole = "user" | "assistant" | "system";
+export type ConversationMessageContentType = "text" | "image" | "file";
+export type ConversationAttachmentKind = Exclude<
+  ConversationMessageContentType,
+  "text"
+>;
+
+export interface ConversationAttachment {
+  kind: ConversationAttachmentKind;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  dataBase64?: string;
+  textContent?: string;
+  sandboxPath?: string;
+}
 
 export type ToolCallStatus =
   | "pending"
@@ -55,12 +70,19 @@ export interface ConversationMessage {
   id: string;
   role: MessageRole;
   content: string;
+  contentType?: ConversationMessageContentType;
   thinking?: string;
   toolCalls: ToolCall[];
   /** 按时间顺序保留的消息段（瀑布流渲染用） */
   segments: MessageSegment[];
   isStreaming: boolean;
   createdAt: number;
+  metadata?: ConversationMessageMetadata;
+}
+
+export interface OutgoingConversationMessage {
+  content: string;
+  contentType?: ConversationMessageContentType;
   metadata?: ConversationMessageMetadata;
 }
 
@@ -240,6 +262,8 @@ export interface SubAgentStream {
 
 /** 带可选元数据的消息扩展（用于 subagent_completion_notice 等系统消息） */
 export interface ConversationMessageMetadata {
+  contentType?: ConversationMessageContentType;
+  attachment?: ConversationAttachment;
   type?: string;
   handle?: SubAgentHandle;
   alias?: string;

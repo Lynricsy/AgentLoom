@@ -136,6 +136,68 @@ describe("agentConversationStore", () => {
     useAgentConversationStore.getState().actions.reset();
   });
 
+  it("sendMessage 应透传附件消息的 contentType 与 metadata", () => {
+    useAgentConversationStore.getState().actions.connect({
+      conversationId: "conv-1",
+      agentId: "agent-1",
+      agentName: "Agent 1",
+      runtimeMode: "sandbox",
+      authToken: "token-1",
+    });
+
+    useAgentConversationStore.getState().actions.sendMessage({
+      content: "请查看 design.png",
+      contentType: "image",
+      metadata: {
+        attachment: {
+          kind: "image",
+          fileName: "design.png",
+          mimeType: "image/png",
+          sizeBytes: 32,
+          dataBase64: "cG5n",
+        },
+      },
+    });
+
+    expect(socketEmitMock).toHaveBeenCalledWith(
+      "conversation:message",
+      {
+        conversationId: "conv-1",
+        content: "请查看 design.png",
+        contentType: "image",
+        metadata: {
+          contentType: "image",
+          attachment: {
+            kind: "image",
+            fileName: "design.png",
+            mimeType: "image/png",
+            sizeBytes: 32,
+            dataBase64: "cG5n",
+          },
+        },
+      },
+      expect.any(Function),
+    );
+
+    expect(useAgentConversationStore.getState().messages).toEqual([
+      expect.objectContaining({
+        role: "user",
+        content: "请查看 design.png",
+        contentType: "image",
+        metadata: {
+          contentType: "image",
+          attachment: {
+            kind: "image",
+            fileName: "design.png",
+            mimeType: "image/png",
+            sizeBytes: 32,
+            dataBase64: "cG5n",
+          },
+        },
+      }),
+    ]);
+  });
+
   it("顶层 done 后会回拉历史消息并展示最终 assistant 正文", async () => {
     const detailResponse = createConversationDetailResponse([
       {

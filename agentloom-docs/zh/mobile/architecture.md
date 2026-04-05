@@ -212,8 +212,14 @@ Agent 列表/详情/配置查看与对话功能，通过 Socket.IO `/agent-conve
 **核心类:**
 
 - **AgentApi** — Agent 定义列表/详情、对话生命周期 CRUD、消息历史查询
-- **AgentConversationNotifier** — Riverpod AsyncNotifier，管理对话消息流与 Socket.IO 事件监听
-- **AgentConversationScreen** — 实时对话界面，消息气泡 + 流式输入
+- **AgentConversationNotifier** — Riverpod AsyncNotifier，管理对话消息流、Socket.IO 事件监听，以及 `contentType + metadata` 结构化附件消息发送
+- **AgentConversationScreen** — 实时对话界面，消息气泡 + 流式输入 + 图片/文件上传入口
+
+**附件能力:**
+
+- 通过 `file_picker` 提供图片与文件选择
+- 文本文件优先以内联文本进入 Agent 上下文，图片与二进制文件以 base64 附件发送
+- 用户消息气泡支持图片预览、文件卡片、文本文件内容预览，以及 sandbox `sandboxPath` 提示；Flutter Web 端也会稳定显示真实图片预览，不会退化成只有文件名
 
 **通信协议:** 与 `/execution` namespace 对称，复用 EventBridge 模式，支持 JWT + MFA 认证。
 

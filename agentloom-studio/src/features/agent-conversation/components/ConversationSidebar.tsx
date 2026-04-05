@@ -203,10 +203,10 @@ export const ConversationSidebar = memo(function ConversationSidebar({
               }
 
               return (
-                <li key={conv.id}>
+                <li key={conv.id} className="group relative">
                   <button
                     onClick={() => handleSelect(conv)}
-                    className={`group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors ${
+                    className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 pr-10 text-left transition-colors ${
                       isActive
                         ? 'bg-accent text-foreground'
                         : 'text-foreground/70 hover:bg-accent/50 hover:text-foreground'
@@ -221,13 +221,13 @@ export const ConversationSidebar = memo(function ConversationSidebar({
                         {formatTime(conv.updatedAt)}
                       </p>
                     </div>
-                    <button
-                      onClick={(e) => handleDelete(e, conv.id)}
-                      className="shrink-0 rounded p-1 opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
-                      title="Delete"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </button>
+                  </button>
+                  <button
+                    onClick={(e) => handleDelete(e, conv.id)}
+                    className="absolute right-2 top-1/2 shrink-0 -translate-y-1/2 rounded p-1 opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
+                    title="Delete"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
                   </button>
                 </li>
               );

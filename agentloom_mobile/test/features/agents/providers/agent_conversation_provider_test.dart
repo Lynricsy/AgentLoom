@@ -291,6 +291,90 @@ void main() {
     );
   });
 
+  test('sendMessage 应透传附件消息的 contentType 与 metadata', () async {
+    when(
+      () => mockApi.sendMessage(
+        any(),
+        content: any(named: 'content'),
+        role: any(named: 'role'),
+        contentType: any(named: 'contentType'),
+        metadata: any(named: 'metadata'),
+      ),
+    ).thenAnswer(
+      (_) async => const ConversationMessageDto(
+        id: 'user-attachment-1',
+        conversationId: 'conv-001',
+        role: MessageRole.user,
+        content: '请查看附件',
+        metadata: {
+          'attachment': {
+            'kind': 'file',
+            'fileName': 'notes.txt',
+            'mimeType': 'text/plain',
+            'sizeBytes': 18,
+            'textContent': 'ATTACH-QA-20260406',
+          },
+        },
+        createdAt: '2026-04-06T00:00:00.000Z',
+      ),
+    );
+
+    container.listen(
+      agentConversationProvider(params),
+      (_, __) {},
+      fireImmediately: true,
+    );
+
+    await container.read(authProvider.future);
+    await container.read(agentConversationProvider(params).future);
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    await container
+        .read(agentConversationProvider(params).notifier)
+        .sendMessage(
+          '请查看附件',
+          contentType: 'file',
+          metadata: const <String, dynamic>{
+            'attachment': {
+              'kind': 'file',
+              'fileName': 'notes.txt',
+              'mimeType': 'text/plain',
+              'sizeBytes': 18,
+              'textContent': 'ATTACH-QA-20260406',
+            },
+          },
+        );
+
+    verify(
+      () => mockApi.sendMessage(
+        'conv-001',
+        content: '请查看附件',
+        role: 'user',
+        contentType: 'file',
+        metadata: const <String, dynamic>{
+          'attachment': {
+            'kind': 'file',
+            'fileName': 'notes.txt',
+            'mimeType': 'text/plain',
+            'sizeBytes': 18,
+            'textContent': 'ATTACH-QA-20260406',
+          },
+        },
+      ),
+    ).called(1);
+
+    final state = container.read(agentConversationProvider(params)).value;
+    expect(state, isNotNull);
+    expect(state!.messages, hasLength(1));
+    expect(state.messages.single.content, '请查看附件');
+    expect(
+      (state.messages.single.metadata['attachment']
+              as Map<String, dynamic>)['fileName']
+          as String,
+      'notes.txt',
+    );
+  });
+
   test('历史消息中的 MCP 文本信封结果应保留结构化 restartSuggestion', () async {
     when(() => mockApi.getMessages(any())).thenAnswer(
       (_) async => const PaginatedResponse(
@@ -445,44 +529,49 @@ void main() {
     expect(state.fileTree.single.path, 'seed.txt');
   });
 
-  test('sandbox restoreWorkspaceId 与 workspaceSnapshotId 冲突时应优先预载实际恢复工作区', () async {
-    when(() => mockApi.getAgent('agent-001')).thenAnswer(
-      (_) async => createTestAgent(
-        id: 'agent-001',
-        workspaceSnapshotId: 'preview-ws',
-        sandboxConfig: {'restoreWorkspaceId': 'restore-ws'},
-      ),
-    );
-    when(() => mockResourcesApi.getWorkspaceTree('restore-ws')).thenAnswer(
-      (_) async => const [
-        WorkspaceFileNode(
-          name: 'restore-note.md',
-          path: 'restore-note.md',
-          type: 'file',
+  test(
+    'sandbox restoreWorkspaceId 与 workspaceSnapshotId 冲突时应优先预载实际恢复工作区',
+    () async {
+      when(() => mockApi.getAgent('agent-001')).thenAnswer(
+        (_) async => createTestAgent(
+          id: 'agent-001',
+          workspaceSnapshotId: 'preview-ws',
+          sandboxConfig: {'restoreWorkspaceId': 'restore-ws'},
         ),
-      ],
-    );
-    when(() => mockApi.getWorkspaceTree(any())).thenAnswer((_) async => const []);
+      );
+      when(() => mockResourcesApi.getWorkspaceTree('restore-ws')).thenAnswer(
+        (_) async => const [
+          WorkspaceFileNode(
+            name: 'restore-note.md',
+            path: 'restore-note.md',
+            type: 'file',
+          ),
+        ],
+      );
+      when(
+        () => mockApi.getWorkspaceTree(any()),
+      ).thenAnswer((_) async => const []);
 
-    container.listen(
-      agentConversationProvider(params),
-      (_, __) {},
-      fireImmediately: true,
-    );
+      container.listen(
+        agentConversationProvider(params),
+        (_, __) {},
+        fireImmediately: true,
+      );
 
-    await container.read(authProvider.future);
-    await container.read(agentConversationProvider(params).future);
-    await Future<void>.delayed(const Duration(milliseconds: 20));
+      await container.read(authProvider.future);
+      await container.read(agentConversationProvider(params).future);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
 
-    verify(() => mockResourcesApi.getWorkspaceTree('restore-ws')).called(1);
-    verifyNever(() => mockResourcesApi.getWorkspaceTree('preview-ws'));
+      verify(() => mockResourcesApi.getWorkspaceTree('restore-ws')).called(1);
+      verifyNever(() => mockResourcesApi.getWorkspaceTree('preview-ws'));
 
-    final state = container.read(agentConversationProvider(params)).value;
-    expect(state, isNotNull);
-    expect(state!.workspaceSource, WorkspaceViewSource.snapshotPreview);
-    expect(state.fileTree, hasLength(1));
-    expect(state.fileTree.single.name, 'restore-note.md');
-  });
+      final state = container.read(agentConversationProvider(params)).value;
+      expect(state, isNotNull);
+      expect(state!.workspaceSource, WorkspaceViewSource.snapshotPreview);
+      expect(state.fileTree, hasLength(1));
+      expect(state.fileTree.single.name, 'restore-note.md');
+    },
+  );
 
   test('持久化 workspace 预览模式点文件时不请求 live 文件内容', () async {
     when(() => mockApi.getAgent('agent-001')).thenAnswer(

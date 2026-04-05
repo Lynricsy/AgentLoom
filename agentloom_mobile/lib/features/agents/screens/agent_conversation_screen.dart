@@ -1,5 +1,8 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -11,6 +14,155 @@ import '../widgets/message_bubble.dart';
 import '../widgets/preparation_card.dart';
 import '../../../shared/utils/scrolling.dart';
 import '../../../routes/route_names.dart';
+
+const _maxConversationAttachmentBytes = 1500000;
+const _maxConversationTextAttachmentBytes = 200000;
+const _textAttachmentExtensions = <String>{
+  'txt',
+  'md',
+  'markdown',
+  'json',
+  'jsonl',
+  'yaml',
+  'yml',
+  'xml',
+  'csv',
+  'ts',
+  'tsx',
+  'js',
+  'jsx',
+  'mjs',
+  'cjs',
+  'py',
+  'rs',
+  'go',
+  'java',
+  'kt',
+  'swift',
+  'sql',
+  'html',
+  'css',
+  'scss',
+  'sh',
+  'bash',
+  'zsh',
+  'env',
+  'toml',
+  'ini',
+  'log',
+};
+
+String _describeAttachmentContent({required bool image, required String name}) {
+  return '已上传${image ? '图片' : '文件'} $name';
+}
+
+String _inferMimeType(PlatformFile file, {required bool image}) {
+  final extension = file.extension?.toLowerCase();
+  if (image) {
+    switch (extension) {
+      case 'jpg':
+      case 'jpeg':
+        return 'image/jpeg';
+      case 'gif':
+        return 'image/gif';
+      case 'webp':
+        return 'image/webp';
+      default:
+        return 'image/png';
+    }
+  }
+
+  switch (extension) {
+    case 'md':
+    case 'markdown':
+      return 'text/markdown';
+    case 'json':
+    case 'jsonl':
+      return 'application/json';
+    case 'xml':
+      return 'application/xml';
+    case 'csv':
+      return 'text/csv';
+    case 'html':
+      return 'text/html';
+    case 'css':
+      return 'text/css';
+    case 'txt':
+    case 'log':
+      return 'text/plain';
+    default:
+      return 'application/octet-stream';
+  }
+}
+
+bool _isLikelyTextAttachment(PlatformFile file) {
+  final extension = file.extension?.toLowerCase();
+  return extension != null && _textAttachmentExtensions.contains(extension);
+}
+
+({String content, String contentType, Map<String, dynamic> metadata})
+_buildAttachmentMessage({
+  required PlatformFile file,
+  required Uint8List bytes,
+  required bool image,
+  String? content,
+}) {
+  if (bytes.length > _maxConversationAttachmentBytes) {
+    throw Exception('文件大小不能超过 1.5 MB');
+  }
+
+  final mimeType = _inferMimeType(file, image: image);
+  final normalizedContent = (content != null && content.trim().isNotEmpty)
+      ? content.trim()
+      : _describeAttachmentContent(image: image, name: file.name);
+
+  if (image) {
+    return (
+      content: normalizedContent,
+      contentType: 'image',
+      metadata: <String, dynamic>{
+        'attachment': <String, dynamic>{
+          'kind': 'image',
+          'fileName': file.name,
+          'mimeType': mimeType,
+          'sizeBytes': bytes.length,
+          'dataBase64': base64Encode(bytes),
+        },
+      },
+    );
+  }
+
+  if (_isLikelyTextAttachment(file) &&
+      bytes.length <= _maxConversationTextAttachmentBytes) {
+    return (
+      content: normalizedContent,
+      contentType: 'file',
+      metadata: <String, dynamic>{
+        'attachment': <String, dynamic>{
+          'kind': 'file',
+          'fileName': file.name,
+          'mimeType': mimeType,
+          'sizeBytes': bytes.length,
+          'textContent': utf8.decode(bytes, allowMalformed: true),
+        },
+      },
+    );
+  }
+
+  return (
+    content: normalizedContent,
+    contentType: 'file',
+    metadata: <String, dynamic>{
+      'attachment': <String, dynamic>{
+        'kind': 'file',
+        'fileName': file.name,
+        'mimeType': mimeType,
+        'sizeBytes': bytes.length,
+        'dataBase64': base64Encode(bytes),
+      },
+    },
+  );
+}
 
 class AgentConversationScreen extends ConsumerStatefulWidget {
   const AgentConversationScreen({
@@ -110,6 +262,8 @@ class _AgentConversationScreenState
                 scrollController: _scrollController,
                 textController: _textController,
                 onSend: _sendMessage,
+                onPickFile: () => _sendAttachment(image: false),
+                onPickImage: () => _sendAttachment(image: true),
                 onCancel: () {
                   unawaited(
                     ref
@@ -246,6 +400,60 @@ class _AgentConversationScreenState
     _scrollToBottom();
   }
 
+  Future<void> _sendAttachment({required bool image}) async {
+    final result = await FilePicker.platform.pickFiles(
+      type: image ? FileType.image : FileType.any,
+      allowMultiple: false,
+      withData: true,
+    );
+
+    if (result == null || result.files.isEmpty) {
+      return;
+    }
+
+    final file = result.files.single;
+    final bytes = file.bytes;
+    if (bytes == null || bytes.isEmpty) {
+      _showSnackBar('无法读取所选文件，请重试。');
+      return;
+    }
+
+    try {
+      final draft = _textController.text.trim();
+      final payload = _buildAttachmentMessage(
+        file: file,
+        bytes: bytes,
+        image: image,
+        content: draft,
+      );
+
+      await ref
+          .read(agentConversationProvider(_params).notifier)
+          .sendMessage(
+            payload.content,
+            contentType: payload.contentType,
+            metadata: payload.metadata,
+          );
+
+      if (!mounted) {
+        return;
+      }
+
+      if (draft.isNotEmpty) {
+        _textController.clear();
+      }
+      _scrollToBottom();
+    } catch (error) {
+      if (!mounted) {
+        return;
+      }
+      final message = error is Exception
+          ? error.toString().replaceFirst('Exception: ', '')
+          : '上传失败，请稍后重试。';
+      _showSnackBar(message);
+    }
+  }
+
   void _openContextSheet(BuildContext context) {
     showModalBottomSheet<void>(
       context: context,
@@ -301,6 +509,12 @@ class _AgentConversationScreenState
             .refreshWorkspaceTree(),
       );
     });
+  }
+
+  void _showSnackBar(String message) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 
   String _scrollSignature(ConversationState state) {
@@ -402,6 +616,8 @@ class _ConversationPane extends StatelessWidget {
     required this.scrollController,
     required this.textController,
     required this.onSend,
+    required this.onPickFile,
+    required this.onPickImage,
     required this.onCancel,
     required this.onResolvePermission,
     required this.onRestartConversation,
@@ -412,6 +628,8 @@ class _ConversationPane extends StatelessWidget {
   final ScrollController scrollController;
   final TextEditingController textController;
   final VoidCallback onSend;
+  final VoidCallback onPickFile;
+  final VoidCallback onPickImage;
   final VoidCallback onCancel;
   final Future<void> Function(
     String toolCallId,
@@ -458,6 +676,8 @@ class _ConversationPane extends StatelessWidget {
         _InputBar(
           controller: textController,
           onSend: onSend,
+          onPickFile: onPickFile,
+          onPickImage: onPickImage,
           onCancel: onCancel,
           isBusy: state.isBusy,
         ),
@@ -570,12 +790,16 @@ class _InputBar extends StatelessWidget {
   const _InputBar({
     required this.controller,
     required this.onSend,
+    required this.onPickFile,
+    required this.onPickImage,
     required this.onCancel,
     required this.isBusy,
   });
 
   final TextEditingController controller;
   final VoidCallback onSend;
+  final VoidCallback onPickFile;
+  final VoidCallback onPickImage;
   final VoidCallback onCancel;
   final bool isBusy;
 
@@ -595,6 +819,16 @@ class _InputBar extends StatelessWidget {
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
+            IconButton(
+              tooltip: '上传文件',
+              onPressed: isBusy ? null : onPickFile,
+              icon: const Icon(Icons.attach_file),
+            ),
+            IconButton(
+              tooltip: '上传图片',
+              onPressed: isBusy ? null : onPickImage,
+              icon: const Icon(Icons.image_outlined),
+            ),
             Expanded(
               child: TextField(
                 controller: controller,

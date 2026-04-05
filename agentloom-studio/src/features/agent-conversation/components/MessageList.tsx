@@ -6,6 +6,8 @@ import {
   User,
   Brain,
   AlertTriangle,
+  FileText,
+  ImageIcon,
 } from "lucide-react";
 import { MarkdownRenderer } from "@/shared/components/markdown/MarkdownRenderer";
 import { ToolCallCard } from "@/shared/components/tool-renderers";
@@ -31,6 +33,113 @@ import {
 import { SubAgentCompletionNotice } from "./SubAgentStreamView";
 import { PreparationCard } from "./PreparationCard";
 
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) {
+    return "0 B";
+  }
+
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`;
+  }
+
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function isAttachmentAutoSummary(message: ConversationMessage): boolean {
+  const attachment = message.metadata?.attachment;
+  if (!attachment) {
+    return false;
+  }
+
+  const expected = `已上传${attachment.kind === "image" ? "图片" : "文件"} ${attachment.fileName}`;
+  return message.content.trim() === expected;
+}
+
+function truncateAttachmentText(content: string): string {
+  if (content.length <= 240) {
+    return content;
+  }
+
+  return `${content.slice(0, 240)}\n…`;
+}
+
+const AttachmentPreview = memo(function AttachmentPreview({
+  message,
+}: {
+  message: ConversationMessage;
+}) {
+  const attachment = message.metadata?.attachment;
+  if (!attachment) {
+    return null;
+  }
+
+  if (attachment.kind === "image") {
+    const imageSrc = attachment.dataBase64
+      ? `data:${attachment.mimeType};base64,${attachment.dataBase64}`
+      : null;
+
+    return (
+      <div className="mt-2 overflow-hidden rounded-xl border border-border/60 bg-background/70">
+        {imageSrc ? (
+          <img
+            src={imageSrc}
+            alt={attachment.fileName}
+            className="max-h-72 w-full bg-black/5 object-contain"
+          />
+        ) : (
+          <div className="flex items-center gap-2 px-3 py-3 text-xs text-muted-foreground">
+            <ImageIcon className="h-4 w-4 shrink-0" />
+            <span>图片已随消息发送给 Agent。</span>
+          </div>
+        )}
+        <div className="flex items-center justify-between gap-3 border-t border-border/60 px-3 py-2 text-[11px] text-muted-foreground">
+          <span className="truncate font-medium text-foreground">
+            {attachment.fileName}
+          </span>
+          <span className="shrink-0">{formatBytes(attachment.sizeBytes)}</span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-2 rounded-xl border border-border/60 bg-background/70 px-3 py-3">
+      <div className="flex items-start gap-2">
+        <div className="mt-0.5 rounded-md bg-foreground/5 p-2 text-muted-foreground">
+          <FileText className="h-4 w-4" />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium text-foreground">
+            {attachment.fileName}
+          </p>
+          <p className="mt-1 text-[11px] text-muted-foreground">
+            {attachment.mimeType} · {formatBytes(attachment.sizeBytes)}
+          </p>
+          {attachment.sandboxPath ? (
+            <p className="mt-1 break-all text-[11px] text-muted-foreground">
+              工作区路径：{attachment.sandboxPath}
+            </p>
+          ) : null}
+        </div>
+      </div>
+
+      {attachment.textContent ? (
+        <pre className="mt-3 overflow-x-auto rounded-lg bg-foreground/[0.04] px-3 py-2 text-[11px] leading-relaxed text-foreground whitespace-pre-wrap">
+          {truncateAttachmentText(attachment.textContent)}
+        </pre>
+      ) : (
+        <p className="mt-3 text-[11px] text-muted-foreground">
+          文件内容已随消息发送给 Agent。
+        </p>
+      )}
+    </div>
+  );
+});
+
 /** 将 conversation ToolCall 转为 ToolCallCard 所需的 ToolCallData */
 function toToolCallData(tc: ToolCall): ToolCallData {
   return {
@@ -55,9 +164,7 @@ function toToolCallData(tc: ToolCall): ToolCallData {
   };
 }
 
-function extractRestartSuggestion(
-  toolCall: ToolCall,
-): {
+function extractRestartSuggestion(toolCall: ToolCall): {
   publishedVersionId: string;
   publishedVersionNumber?: number;
 } | null {
@@ -227,6 +334,9 @@ const UserBubble = memo(function UserBubble({
 }: {
   message: ConversationMessage;
 }) {
+  const shouldShowText =
+    message.content.trim().length > 0 && !isAttachmentAutoSummary(message);
+
   return (
     <div className="flex gap-3 px-4 py-3 flex-row-reverse">
       <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-foreground/10 text-foreground">
@@ -234,7 +344,10 @@ const UserBubble = memo(function UserBubble({
       </div>
       <div className="flex max-w-[80%] flex-col gap-1 items-end">
         <div className="rounded-2xl rounded-br-md bg-foreground/10 text-foreground px-4 py-2.5 text-sm leading-relaxed">
-          <p className="whitespace-pre-wrap">{message.content}</p>
+          {shouldShowText ? (
+            <p className="whitespace-pre-wrap">{message.content}</p>
+          ) : null}
+          <AttachmentPreview message={message} />
         </div>
         <span className="px-1 text-[10px] text-muted-foreground/60">
           {formatTime(message.createdAt)}
@@ -352,14 +465,10 @@ const SegmentRenderer = memo(function SegmentRenderer({
     case "tool_call": {
       const tc = message.toolCalls.find((t) => t.id === segment.toolCallId);
       if (!tc) return null;
-      const isActive =
-        tc.status === "pending" ||
-        tc.status === "in_progress" ||
-        tc.status === "awaiting_permission";
       return (
         <ToolCallCard
           toolCall={toToolCallData(tc)}
-          defaultExpanded={isActive}
+          defaultExpanded={false}
           onResolvePermission={onResolvePermission}
         />
       );

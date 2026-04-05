@@ -8,7 +8,9 @@ import { useAuthStore } from "@/features/auth/stores/auth.store";
 import { fetchWorkspaceFileTree } from "@/features/workspace/api/workspaceApi";
 import type { PaginatedResponse } from "@/shared/types/api";
 import type {
+  ConversationAttachment,
   ConversationMessage,
+  ConversationMessageContentType,
   ConversationMessageMetadata,
   ConversationStatus,
   FileChange,
@@ -33,6 +35,7 @@ import type {
   ToolCallTransition,
   PreparationPhase,
   AgentRuntimeMode,
+  OutgoingConversationMessage,
   WorkspaceViewSource,
 } from "../types";
 
@@ -111,7 +114,7 @@ interface AgentConversationActions {
       authToken?: string;
     }) => void;
     disconnect: () => void;
-    sendMessage: (content: string) => void;
+    sendMessage: (message: string | OutgoingConversationMessage) => void;
     cancelExecution: () => void;
     resolveToolPermission: (
       toolCallId: string,
@@ -424,7 +427,113 @@ function normalizeMessageMetadata(
     return undefined;
   }
 
-  return value as ConversationMessageMetadata;
+  const attachment = normalizeConversationAttachment(value.attachment);
+  const contentType =
+    normalizeConversationMessageContentType(value.contentType) ??
+    attachment?.kind;
+
+  return {
+    ...value,
+    ...(attachment ? { attachment } : {}),
+    ...(contentType ? { contentType } : {}),
+  } as ConversationMessageMetadata;
+}
+
+function normalizeConversationMessageContentType(
+  value: unknown,
+): ConversationMessageContentType | undefined {
+  switch (value) {
+    case "text":
+    case "image":
+    case "file":
+      return value;
+    default:
+      return undefined;
+  }
+}
+
+function normalizeConversationAttachment(
+  value: unknown,
+): ConversationAttachment | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const kind = normalizeConversationMessageContentType(value.kind);
+  const fileName = readString(value.fileName);
+  const mimeType = readString(value.mimeType);
+  const sizeBytes =
+    typeof value.sizeBytes === "number" && Number.isFinite(value.sizeBytes)
+      ? value.sizeBytes
+      : undefined;
+
+  if (!kind || kind === "text" || !fileName || !mimeType || sizeBytes == null) {
+    return undefined;
+  }
+
+  return {
+    kind,
+    fileName,
+    mimeType,
+    sizeBytes,
+    ...(readString(value.dataBase64)
+      ? { dataBase64: readString(value.dataBase64) }
+      : {}),
+    ...(readString(value.textContent)
+      ? { textContent: readString(value.textContent) }
+      : {}),
+    ...(readString(value.sandboxPath)
+      ? { sandboxPath: readString(value.sandboxPath) }
+      : {}),
+  };
+}
+
+function normalizeOutgoingConversationMessage(
+  message: string | OutgoingConversationMessage,
+): OutgoingConversationMessage {
+  if (typeof message === "string") {
+    return { content: message, contentType: "text" };
+  }
+
+  const metadata = normalizeMessageMetadata(message.metadata);
+  const contentType =
+    message.contentType ??
+    metadata?.contentType ??
+    metadata?.attachment?.kind ??
+    "text";
+
+  return {
+    content: message.content,
+    contentType,
+    ...(metadata ? { metadata } : {}),
+  };
+}
+
+function buildOptimisticUserMessage(
+  messageId: string,
+  message: OutgoingConversationMessage,
+): ConversationMessage {
+  const metadata = normalizeMessageMetadata(message.metadata);
+  const contentType =
+    message.contentType ??
+    metadata?.contentType ??
+    metadata?.attachment?.kind ??
+    "text";
+
+  return {
+    id: messageId,
+    role: "user",
+    content: message.content,
+    contentType,
+    toolCalls: [],
+    segments:
+      message.content.trim().length > 0
+        ? [{ type: "text", content: message.content }]
+        : [],
+    isStreaming: false,
+    createdAt: Date.now(),
+    ...(metadata ? { metadata } : {}),
+  };
 }
 
 function normalizeConversationHistoryMessage(
@@ -432,6 +541,10 @@ function normalizeConversationHistoryMessage(
 ): ConversationMessage {
   const record = isRecord(raw) ? raw : {};
   const metadata = normalizeMessageMetadata(record.metadata);
+  const contentType =
+    normalizeConversationMessageContentType(record.contentType) ??
+    metadata?.contentType ??
+    "text";
   const content = readString(record.content) ?? "";
   const toolCalls = normalizeHistoryToolCalls(record.toolCalls);
   const segments = normalizeHistorySegments(metadata, content, toolCalls);
@@ -443,6 +556,7 @@ function normalizeConversationHistoryMessage(
     id: readString(record.id) ?? crypto.randomUUID(),
     role: normalizeMessageRole(record.role),
     content,
+    ...(contentType ? { contentType } : {}),
     thinking,
     toolCalls,
     segments,
@@ -456,7 +570,9 @@ function projectComparableMessage(message: ConversationMessage) {
   return {
     role: message.role,
     content: message.content,
+    contentType: message.contentType ?? null,
     thinking: message.thinking ?? null,
+    attachment: message.metadata?.attachment ?? null,
     toolCalls: message.toolCalls.map((toolCall) => ({
       id: toolCall.id,
       tool: toolCall.tool,
@@ -969,6 +1085,7 @@ function ensureAssistantMessage(
     id: messageId,
     role: "assistant",
     content: "",
+    contentType: "text",
     toolCalls: [],
     segments: [],
     isStreaming: true,
@@ -1655,21 +1772,16 @@ export const useAgentConversationStore = create<
             });
           },
 
-          sendMessage: (content) => {
+          sendMessage: (message) => {
             const { conversationId } = get();
             if (!socketInstance || !conversationId) return;
 
+            const outgoing = normalizeOutgoingConversationMessage(message);
             const userMessageId = crypto.randomUUID();
             set((s) => {
-              s.messages.push({
-                id: userMessageId,
-                role: "user",
-                content,
-                toolCalls: [],
-                segments: [{ type: "text", content }],
-                isStreaming: false,
-                createdAt: Date.now(),
-              });
+              s.messages.push(
+                buildOptimisticUserMessage(userMessageId, outgoing),
+              );
               s.status = "executing";
               // Reset preparation state for new message cycle
               s.preparationPhase = null;
@@ -1680,10 +1792,30 @@ export const useAgentConversationStore = create<
               s.executionError = null;
             });
 
-            socketInstance.emit("conversation:message", {
-              conversationId,
-              content,
-            });
+            socketInstance.emit(
+              "conversation:message",
+              {
+                conversationId,
+                content: outgoing.content,
+                ...(outgoing.contentType
+                  ? { contentType: outgoing.contentType }
+                  : {}),
+                ...(outgoing.metadata ? { metadata: outgoing.metadata } : {}),
+              },
+              (ack?: { status?: string; error?: string }) => {
+                if (ack?.status !== "error") {
+                  return;
+                }
+
+                set((s) => {
+                  s.messages = s.messages.filter(
+                    (item) => item.id !== userMessageId,
+                  );
+                  s.status = "connected";
+                  s.executionError = ack.error ?? "发送消息失败";
+                });
+              },
+            );
           },
 
           cancelExecution: () => {

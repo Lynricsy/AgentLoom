@@ -1,3 +1,10 @@
+import { spawn } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
+import { createReadStream } from 'node:fs';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { basename, extname, join } from 'node:path';
+
 import {
   ConflictException,
   Inject,
@@ -19,6 +26,10 @@ import {
   type WorkspaceFileTreeNode,
 } from '../workspace/workspace-preview.utils';
 import type { AgentSession } from '../agent/types/agent-session.types';
+import {
+  readConversationAttachmentMetadata,
+  type ConversationAttachmentMetadata,
+} from '../agent-conversation/conversation-attachment';
 import { SessionPersistenceService } from '../execution/services/session-persistence.service';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
@@ -187,6 +198,46 @@ export class WorkspaceIntegrationService {
     throw new ConflictException(
       workspaceSource.snapshot.previewUnavailableReason,
     );
+  }
+
+  async stageConversationAttachment(
+    conversationId: string,
+    tenantId: string,
+    metadata: Record<string, unknown> | undefined,
+  ): Promise<string | null> {
+    const attachment = readConversationAttachmentMetadata(metadata);
+    if (!attachment) {
+      return null;
+    }
+
+    const session = await this.sandboxService.findByConversationId(
+      conversationId,
+      tenantId,
+    );
+    if (!session?.containerId) {
+      return null;
+    }
+
+    const relativePath = await this.resolveAttachmentRelativePath(
+      session.containerId,
+      attachment.fileName,
+    );
+    const archive = await this.createConversationAttachmentArchive(
+      attachment,
+      relativePath,
+    );
+
+    try {
+      await this.dockerService.putArchive(
+        session.containerId,
+        createReadStream(archive.archivePath),
+        CONTAINER_WORKSPACE,
+      );
+
+      return `${CONTAINER_WORKSPACE}/${relativePath}`;
+    } finally {
+      await archive.cleanup();
+    }
   }
 
   async getExecutionStepFileContent(
@@ -902,6 +953,118 @@ export class WorkspaceIntegrationService {
       size,
       encoding: 'utf-8',
     };
+  }
+
+  private async resolveAttachmentRelativePath(
+    containerId: string,
+    fileName: string,
+  ): Promise<string> {
+    const sanitized = this.sanitizeAttachmentFileName(fileName);
+    const candidate = `uploads/${sanitized}`;
+
+    if (
+      !(await this.containerPathExists(
+        containerId,
+        `${CONTAINER_WORKSPACE}/${candidate}`,
+      ))
+    ) {
+      return candidate;
+    }
+
+    const extension = extname(sanitized);
+    const stem = extension ? sanitized.slice(0, -extension.length) : sanitized;
+    return `uploads/${stem}-${randomUUID().slice(0, 8)}${extension}`;
+  }
+
+  private async containerPathExists(
+    containerId: string,
+    fullPath: string,
+  ): Promise<boolean> {
+    try {
+      const output = await this.execInContainer(containerId, 'sh', [
+        '-lc',
+        `[ -e ${this.quoteShellPath(fullPath)} ] && printf exists || printf missing`,
+      ]);
+      return output.includes('exists');
+    } catch {
+      return false;
+    }
+  }
+
+  private sanitizeAttachmentFileName(fileName: string): string {
+    const normalized = basename(fileName)
+      .replace(/[\u0000-\u001f\u007f]/g, '')
+      .replace(/[\\/]/g, '_')
+      .trim();
+
+    return normalized.length > 0 ? normalized : 'attachment.bin';
+  }
+
+  private async createConversationAttachmentArchive(
+    attachment: ConversationAttachmentMetadata,
+    relativePath: string,
+  ): Promise<{ archivePath: string; cleanup: () => Promise<void> }> {
+    const tempDir = await mkdtemp(
+      join(tmpdir(), 'agentloom-conversation-attachment-'),
+    );
+    const archivePath = join(tempDir, 'attachment.tar');
+
+    try {
+      await mkdir(join(tempDir, 'uploads'), { recursive: true });
+
+      const payload =
+        attachment.textContent !== undefined
+          ? Buffer.from(attachment.textContent, 'utf8')
+          : Buffer.from(attachment.dataBase64 ?? '', 'base64');
+
+      await writeFile(join(tempDir, relativePath), payload);
+      await this.createTarArchive(tempDir, 'uploads', archivePath);
+
+      return {
+        archivePath,
+        cleanup: async () => {
+          await rm(tempDir, { recursive: true, force: true });
+        },
+      };
+    } catch (error) {
+      await rm(tempDir, { recursive: true, force: true });
+      throw error;
+    }
+  }
+
+  private async createTarArchive(
+    sourceDir: string,
+    rootEntry: string,
+    archivePath: string,
+  ): Promise<void> {
+    await new Promise<void>((resolve, reject) => {
+      const tar = spawn('tar', ['-cf', archivePath, '-C', sourceDir, rootEntry], {
+        stdio: ['ignore', 'ignore', 'pipe'],
+      });
+
+      let stderr = '';
+      tar.stderr.on('data', (chunk: Buffer | string) => {
+        stderr += chunk.toString();
+      });
+
+      tar.on('error', reject);
+      tar.on('close', (code) => {
+        if (code === 0) {
+          resolve();
+          return;
+        }
+
+        reject(
+          new Error(
+            `Failed to create attachment archive${stderr.trim() ? `: ${stderr.trim()}` : ''}`,
+          ),
+        );
+      });
+    });
+  }
+
+  private quoteShellPath(value: string): string {
+    return `'${value.replace(/'/g, `'\\''`)}'`;
   }
 
   private async execInContainer(

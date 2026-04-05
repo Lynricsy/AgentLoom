@@ -108,6 +108,16 @@ describe('NodePalette', () => {
     expect(screen.queryByText('Chat Agent')).not.toBeInTheDocument()
   })
 
+  it('matches built-in nodes by english slug aliases', async () => {
+    const user = userEvent.setup()
+    render(<NodePalette />)
+
+    await user.type(screen.getByPlaceholderText('搜索节点...'), 'smart routing')
+
+    expect(screen.getByText('智能路由')).toBeInTheDocument()
+    expect(screen.queryByText('Chat Agent')).not.toBeInTheDocument()
+  })
+
   it('collapses and expands groups', async () => {
     const user = userEvent.setup()
     render(<NodePalette />)

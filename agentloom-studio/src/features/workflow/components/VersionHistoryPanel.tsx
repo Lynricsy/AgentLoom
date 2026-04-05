@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useState } from 'react'
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import {
   History,
   X,
@@ -8,75 +8,78 @@ import {
   Tag,
   Loader2,
   Archive,
-} from 'lucide-react'
-import { cn } from '@/shared/lib/utils'
-import { formatRelativeTime } from '@/features/canvas/lib/formatRelativeTime'
-import type { WorkflowStatus, WorkflowVersion } from '../types'
-import { useWorkflowVersions } from '../api/versionQueries'
-import { useRollbackVersion } from '../api/versionMutations'
-import { useToast } from '@/shared/ui/toast'
+} from "lucide-react";
+import { cn } from "@/shared/lib/utils";
+import { formatRelativeTime } from "@/features/canvas/lib/formatRelativeTime";
+import type { WorkflowStatus, WorkflowVersion } from "../types";
+import { useWorkflowVersions } from "../api/versionQueries";
+import { useRollbackVersion } from "../api/versionMutations";
+import { useToast } from "@/shared/ui/toast";
 
 interface VersionHistoryPanelProps {
-  open: boolean
-  workflowId: string
-  workflowStatus: WorkflowStatus
-  onClose: () => void
-  onPublish?: (versionId: string) => void
+  open: boolean;
+  workflowId: string;
+  workflowStatus: WorkflowStatus;
+  onClose: () => void;
+  onPublish?: (versionId: string) => void;
 }
 
 function formatCreatorLabel(createdBy: string): string {
-  const trimmed = createdBy.trim()
-  return trimmed.length > 0 ? trimmed : '未知创建者'
+  const trimmed = createdBy.trim();
+  return trimmed.length > 0 ? trimmed : "未知创建者";
 }
 
 function formatCreatorInitial(createdBy: string): string {
-  return formatCreatorLabel(createdBy).slice(0, 1).toUpperCase()
+  return formatCreatorLabel(createdBy).slice(0, 1).toUpperCase();
 }
 
 function getReleaseNumber(version: WorkflowVersion): number | null {
-  if (typeof version.releaseNumber === 'number') {
-    return version.releaseNumber
+  if (typeof version.releaseNumber === "number") {
+    return version.releaseNumber;
   }
 
-  return version.publishedAt ? 1 : null
+  return version.publishedAt ? 1 : null;
 }
 
 function formatVersionRecordLabel(version: WorkflowVersion): string {
-  const releaseNumber = getReleaseNumber(version)
+  const releaseNumber = getReleaseNumber(version);
   if (releaseNumber !== null) {
-    return `v${releaseNumber}`
+    return `v${releaseNumber}`;
   }
 
-  return `快照 #${version.versionNumber}`
+  return `快照 #${version.versionNumber}`;
 }
 
 function formatHistoryRecordLabel(version: WorkflowVersion): string {
-  const releaseNumber = getReleaseNumber(version)
+  const releaseNumber = getReleaseNumber(version);
   if (releaseNumber !== null) {
-    return `版本 ${formatVersionRecordLabel(version)}`
+    return `版本 ${formatVersionRecordLabel(version)}`;
   }
 
-  return `快照 #${version.versionNumber}`
+  return `快照 #${version.versionNumber}`;
 }
 
 function VersionItemSkeleton() {
   return (
-    <div className="animate-pulse border-b border-border p-4" data-testid="version-item-skeleton">
+    <div
+      className="animate-pulse border-b border-border p-4"
+      data-testid="version-item-skeleton"
+    >
       <div className="flex items-center gap-2">
         <div className="h-5 w-10 rounded bg-muted" />
         <div className="h-4 w-32 rounded bg-muted" />
       </div>
       <div className="mt-2 h-3 w-24 rounded bg-muted" />
     </div>
-  )
+  );
 }
 
 interface VersionItemProps {
-  version: WorkflowVersion
-  workflowStatus: WorkflowStatus
-  onRollback: (version: WorkflowVersion) => void
-  onPublish?: (versionId: string) => void
-  isRollingBack: boolean
+  version: WorkflowVersion;
+  workflowStatus: WorkflowStatus;
+  onRollback: (version: WorkflowVersion) => void;
+  onPublish?: (versionId: string) => void;
+  isRollingBack: boolean;
 }
 
 const VersionItem = memo(function VersionItem({
@@ -86,14 +89,14 @@ const VersionItem = memo(function VersionItem({
   onPublish,
   isRollingBack,
 }: VersionItemProps) {
-  const isPublished = !!version.publishedAt
-  const isArchived = !!version.archivedAt
-  const isWorkflowArchived = workflowStatus === 'archived'
-  const creatorLabel = formatCreatorLabel(version.createdBy)
-  const releaseNotes = version.snapshot?.metadata?.releaseNotes?.trim() ?? ''
-  const releaseNumber = getReleaseNumber(version)
-  const isReleased = releaseNumber !== null
-  const publishActionLabel = isReleased ? '重新发布' : '发布'
+  const isPublished = !!version.publishedAt;
+  const isArchived = !!version.archivedAt;
+  const isWorkflowArchived = workflowStatus === "archived";
+  const creatorLabel = formatCreatorLabel(version.createdBy);
+  const releaseNotes = version.snapshot?.metadata?.releaseNotes?.trim() ?? "";
+  const releaseNumber = getReleaseNumber(version);
+  const isReleased = releaseNumber !== null;
+  const publishActionLabel = isReleased ? "重新发布" : "发布";
 
   return (
     <div
@@ -104,10 +107,10 @@ const VersionItem = memo(function VersionItem({
         <div className="flex items-center gap-2">
           <span
             className={cn(
-              'inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium',
+              "inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium",
               isReleased
-                ? 'bg-primary/10 text-primary'
-                : 'bg-muted text-muted-foreground',
+                ? "bg-primary/10 text-primary"
+                : "bg-muted text-muted-foreground",
             )}
           >
             {formatVersionRecordLabel(version)}
@@ -158,7 +161,8 @@ const VersionItem = memo(function VersionItem({
 
           {version.snapshot?.metadata && (
             <div className="text-xs text-muted-foreground">
-              {version.snapshot.metadata.nodeCount} 个节点 · {version.snapshot.metadata.edgeCount} 条连线
+              {version.snapshot.metadata.nodeCount} 个节点 ·{" "}
+              {version.snapshot.metadata.edgeCount} 条连线
             </div>
           )}
 
@@ -200,8 +204,8 @@ const VersionItem = memo(function VersionItem({
         )}
       </div>
     </div>
-  )
-})
+  );
+});
 
 export const VersionHistoryPanel = memo(function VersionHistoryPanel({
   open,
@@ -210,113 +214,135 @@ export const VersionHistoryPanel = memo(function VersionHistoryPanel({
   onClose,
   onPublish,
 }: VersionHistoryPanelProps) {
-  const [page, setPage] = useState(1)
-  const pageSize = 20
-  const [versions, setVersions] = useState<WorkflowVersion[]>([])
-  const [rollbackTarget, setRollbackTarget] = useState<WorkflowVersion | null>(null)
-  const [rollingBackId, setRollingBackId] = useState<string | null>(null)
+  const [page, setPage] = useState(1);
+  const pageSize = 20;
+  const [versions, setVersions] = useState<WorkflowVersion[]>([]);
+  const [rollbackTarget, setRollbackTarget] = useState<WorkflowVersion | null>(
+    null,
+  );
+  const [rollingBackId, setRollingBackId] = useState<string | null>(null);
 
-  const { data, isLoading, isFetching } = useWorkflowVersions(workflowId, { page, pageSize })
-  const rollbackMutation = useRollbackVersion(workflowId)
-  const { notify } = useToast()
+  const { data, isLoading, isFetching } = useWorkflowVersions(workflowId, {
+    page,
+    pageSize,
+  });
+  const rollbackMutation = useRollbackVersion(workflowId);
+  const { notify } = useToast();
 
   useEffect(() => {
     if (!open) {
-      return
+      return;
     }
 
-    setPage(1)
-    setVersions([])
-    setRollbackTarget(null)
-    setRollingBackId(null)
-  }, [open])
+    setPage(1);
+    setVersions([]);
+    setRollbackTarget(null);
+    setRollingBackId(null);
+  }, [open]);
 
   useEffect(() => {
     if (!open || !data || data.meta.page !== page) {
-      return
+      return;
     }
 
     setVersions((current) => {
       if (page === 1) {
-        return data.data
+        return data.data;
       }
 
-      const existingIds = new Set(current.map((version) => version.id))
-      return [...current, ...data.data.filter((version) => !existingIds.has(version.id))]
-    })
-  }, [data, open, page])
+      const existingIds = new Set(current.map((version) => version.id));
+      return [
+        ...current,
+        ...data.data.filter((version) => !existingIds.has(version.id)),
+      ];
+    });
+  }, [data, open, page]);
 
-  const meta = data?.meta
-  const total = meta?.total ?? versions.length
-  const hasMorePages = (meta?.totalPages ?? 1) > page
-  const isInitialLoading = isLoading && versions.length === 0
+  const displayVersions = (() => {
+    if (!open) {
+      return versions;
+    }
+
+    if (versions.length > 0) {
+      return versions;
+    }
+
+    if (page === 1 && data?.meta.page === 1) {
+      return data.data;
+    }
+
+    return versions;
+  })();
+
+  const meta = data?.meta;
+  const total = meta?.total ?? displayVersions.length;
+  const hasMorePages = (meta?.totalPages ?? 1) > page;
+  const isInitialLoading = isLoading && displayVersions.length === 0;
   const footerLabel = useMemo(() => {
-    if (versions.length === 0) {
-      return null
+    if (displayVersions.length === 0) {
+      return null;
     }
 
     if (hasMorePages) {
-      return '继续向下滚动加载更多'
+      return "继续向下滚动加载更多";
     }
 
-    return '已加载全部版本'
-  }, [hasMorePages, versions.length])
+    return "已加载全部版本";
+  }, [displayVersions.length, hasMorePages]);
 
-  const handleRollback = useCallback(
-    (version: WorkflowVersion) => {
-      setRollbackTarget(version)
-    },
-    [],
-  )
+  const handleRollback = useCallback((version: WorkflowVersion) => {
+    setRollbackTarget(version);
+  }, []);
 
   const confirmRollback = useCallback(async () => {
-    if (!rollbackTarget) return
+    if (!rollbackTarget) return;
 
-    setRollingBackId(rollbackTarget.id)
+    setRollingBackId(rollbackTarget.id);
     try {
-      await rollbackMutation.mutateAsync(rollbackTarget.id)
+      await rollbackMutation.mutateAsync(rollbackTarget.id);
       notify({
-        title: '回滚成功',
-        description: `已回滚到${formatHistoryRecordLabel(rollbackTarget)}${rollbackTarget.label ? `（${rollbackTarget.label}）` : ''}`,
-        variant: 'success',
-      })
-      setRollbackTarget(null)
+        title: "回滚成功",
+        description: `已回滚到${formatHistoryRecordLabel(rollbackTarget)}${rollbackTarget.label ? `（${rollbackTarget.label}）` : ""}`,
+        variant: "success",
+      });
+      setRollbackTarget(null);
     } catch {
       notify({
-        title: '回滚失败',
-        description: '请稍后重试',
-        variant: 'error',
-      })
+        title: "回滚失败",
+        description: "请稍后重试",
+        variant: "error",
+      });
     } finally {
-      setRollingBackId(null)
+      setRollingBackId(null);
     }
-  }, [rollbackTarget, rollbackMutation, notify])
+  }, [rollbackTarget, rollbackMutation, notify]);
 
   const cancelRollback = useCallback(() => {
-    setRollbackTarget(null)
-  }, [])
+    setRollbackTarget(null);
+  }, []);
 
   const handleListScroll = useCallback(
     (event: React.UIEvent<HTMLDivElement>) => {
       if (!hasMorePages || isFetching) {
-        return
+        return;
       }
 
-      const target = event.currentTarget
-      const remainingDistance = target.scrollHeight - target.scrollTop - target.clientHeight
+      const target = event.currentTarget;
+      const remainingDistance =
+        target.scrollHeight - target.scrollTop - target.clientHeight;
 
       if (remainingDistance <= 96) {
-        setPage((currentPage) => currentPage + 1)
+        setPage((currentPage) => currentPage + 1);
       }
     },
     [hasMorePages, isFetching],
-  )
+  );
 
   return (
     <aside
       className={cn(
-        'fixed right-0 top-0 z-40 flex h-full w-[400px] flex-col border-l border-border bg-surface shadow-xl transition-transform duration-300',
-        open ? 'translate-x-0' : 'translate-x-full',
+        "fixed right-0 top-0 z-40 flex h-full w-[400px] flex-col border-l border-border bg-surface shadow-xl transition-transform duration-300",
+        open ? "translate-x-0" : "translate-x-full",
       )}
       data-testid="version-history-panel"
       aria-label="历史记录"
@@ -343,10 +369,14 @@ export const VersionHistoryPanel = memo(function VersionHistoryPanel({
 
       {/* 回滚确认 */}
       {rollbackTarget && (
-        <div className="border-b border-amber-500/20 bg-amber-500/5 p-4" data-testid="rollback-confirm">
+        <div
+          className="border-b border-amber-500/20 bg-amber-500/5 p-4"
+          data-testid="rollback-confirm"
+        >
           <p className="text-sm text-amber-700">
             确定要回滚到{formatHistoryRecordLabel(rollbackTarget)}
-            {rollbackTarget.label ? `（${rollbackTarget.label}）` : ''}吗？当前未保存的更改将丢失。
+            {rollbackTarget.label ? `（${rollbackTarget.label}）` : ""}
+            吗？当前未保存的更改将丢失。
           </p>
           <div className="mt-3 flex gap-2">
             <button
@@ -356,7 +386,11 @@ export const VersionHistoryPanel = memo(function VersionHistoryPanel({
               disabled={!!rollingBackId}
               data-testid="confirm-rollback"
             >
-              {rollingBackId ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
+              {rollingBackId ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : (
+                <RotateCcw className="h-3 w-3" />
+              )}
               确认回滚
             </button>
             <button
@@ -379,15 +413,24 @@ export const VersionHistoryPanel = memo(function VersionHistoryPanel({
             <VersionItemSkeleton />
             <VersionItemSkeleton />
           </div>
-        ) : versions.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center gap-2 text-muted-foreground" data-testid="version-list-empty">
+        ) : displayVersions.length === 0 ? (
+          <div
+            className="flex h-full flex-col items-center justify-center gap-2 text-muted-foreground"
+            data-testid="version-list-empty"
+          >
             <History className="h-8 w-8 opacity-40" />
             <p className="text-sm">暂无发布记录或快照</p>
-            <p className="text-xs">保存快照或发布当前画布后，会在这里展示历史记录</p>
+            <p className="text-xs">
+              保存快照或发布当前画布后，会在这里展示历史记录
+            </p>
           </div>
         ) : (
-          <div data-testid="version-list" onScroll={handleListScroll} className="h-full overflow-y-auto">
-            {versions.map((version) => (
+          <div
+            data-testid="version-list"
+            onScroll={handleListScroll}
+            className="h-full overflow-y-auto"
+          >
+            {displayVersions.map((version) => (
               <VersionItem
                 key={version.id}
                 version={version}
@@ -398,7 +441,10 @@ export const VersionHistoryPanel = memo(function VersionHistoryPanel({
               />
             ))}
             {isFetching && hasMorePages && (
-              <div className="flex items-center justify-center py-4 text-xs text-muted-foreground" data-testid="version-list-loading-more">
+              <div
+                className="flex items-center justify-center py-4 text-xs text-muted-foreground"
+                data-testid="version-list-loading-more"
+              >
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 正在加载更多版本...
               </div>
@@ -409,10 +455,12 @@ export const VersionHistoryPanel = memo(function VersionHistoryPanel({
 
       {footerLabel && (
         <div className="flex items-center justify-between border-t border-border px-4 py-2">
-          <span className="text-xs text-muted-foreground">已加载 {versions.length}/{total} 条记录</span>
+          <span className="text-xs text-muted-foreground">
+            已加载 {displayVersions.length}/{total} 条记录
+          </span>
           <span className="text-xs text-muted-foreground">{footerLabel}</span>
         </div>
       )}
     </aside>
-  )
-})
+  );
+});
