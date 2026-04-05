@@ -3114,6 +3114,65 @@ describe('NodeSchedulerService', () => {
       expect(mockQueue.add).not.toHaveBeenCalled();
     });
 
+    it('http-tool 节点应兼容 snake_case query_params 配置', async () => {
+      const snapshot = makeSnapshot([makeNode('H', 'http-tool')], []);
+      const steps = [
+        makeStep({
+          id: 'step-h',
+          nodeId: 'H',
+          status: 'pending',
+          nodeType: 'http-tool',
+          nodeData: {
+            config: {
+              url: 'https://example.com/search',
+              method: 'GET',
+              query_params: [
+                { key: 'q', value: 'OpenAI news' },
+                { key: 'hl', value: 'en-US' },
+              ],
+            },
+          },
+        }),
+      ];
+
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        statusText: 'OK',
+        url: 'https://example.com/search?q=OpenAI+news&hl=en-US',
+        headers: {
+          entries: () =>
+            Object.entries({
+              'content-type': 'application/json',
+            })[Symbol.iterator](),
+          get: (key: string) =>
+            key === 'content-type' ? 'application/json' : null,
+        },
+        json: vi.fn().mockResolvedValue({ ok: true }),
+      } as unknown as Response);
+
+      db.update.mockReturnValueOnce(createUpdateChainVoid());
+      const onNodeCompleted = vi
+        .spyOn(service, 'onNodeCompleted')
+        .mockResolvedValue(undefined);
+
+      await service.scheduleNode(EXECUTION_ID, 'H', TENANT_ID, snapshot, [
+        ...steps,
+      ]);
+
+      expect(globalThis.fetch).toHaveBeenCalledWith(
+        new URL('https://example.com/search?q=OpenAI+news&hl=en-US'),
+        expect.objectContaining({
+          method: 'GET',
+        }),
+      );
+      expect(onNodeCompleted).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        'step-h',
+        TENANT_ID,
+      );
+    });
+
     it('code-tool 节点应同步执行代码并直接完成', async () => {
       const steps = [
         makeStep({

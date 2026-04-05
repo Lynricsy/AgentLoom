@@ -6,6 +6,7 @@ AgentLoom Server 是基于 **NestJS 11 + Fastify 5** 的多租户后端服务，
 
 - **双重认证**：Bearer JWT 优先，`X-Api-Key` 回退；RBAC 角色为 `owner > admin > creator > operator > viewer`
 - **执行引擎**：`ExecutionService.runWorkflow()` 作为新执行权威入口，BullMQ 驱动 DAG 调度、断点恢复与人工介入
+- **HTTP Tool 运行时兼容**：`NodeSchedulerService.buildHttpToolRequestInput()` 同时兼容 `queryParams` 与 `query_params` 静态查询参数字段，避免 workflow 快照在 snake_case / camelCase 序列化差异下丢失 query string
 - **Agent 双运行态**：Agent 创建时显式持久化 `runtimeMode = sandbox | no_sandbox`；顶层 `no_sandbox` Agent 与 workflow `agent` 节点走 `InProcessAgentAdapter -> PiAgentCoreAdapter -> pi-agent-core`，仍支持 Skill、知识库、Memory、HTTP MCP 与自进化；其中 `LLM_SUGGEST` 会话和 `workflow_executions.trigger_type = system` 的 workflow session 会携带 `workflowState.autoApproveToolPermissions=true`，因此不会在 runtime 内重复进入 `awaiting_permission`；`sandbox` Agent 继续走容器化 `SandboxAgentAdapter`，且 direct conversation sandbox 支持按 `conversationIdleAutoEndMinutes` 在空闲一段时间后自动 `end()` 对话
 - **资源治理**：`tenant_quotas` + `execution_governance_controls` typed store，覆盖 `maxConcurrentExecutions`、`dailyExecutionLimit`、`dailyApiCallLimit`、`storageQuotaMb`、`apiRateLimitPerMinute`、`maxSandboxCpuPercent`、`maxSandboxMemoryMb`
 - **租户级 API 治理**：`CustomThrottlerGuard` 对 JWT 与 API key 请求解析 tenant，分钟级 `apiRateLimitPerMinute` 返回 `429 + Retry-After + X-RateLimit-*`，日配额和其它治理阻断返回 `409 ResourceGovernanceDecisionBlockedException`

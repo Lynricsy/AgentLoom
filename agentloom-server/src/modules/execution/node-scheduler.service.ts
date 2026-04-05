@@ -4803,13 +4803,17 @@ export class NodeSchedulerService {
     input: Record<string, unknown>,
   ): Record<string, unknown> {
     const dynamicRequest = this.extractHttpToolDynamicRequest(input);
+    const staticQueryParams = this.readFirstDefined(
+      nodeData.queryParams,
+      nodeData.query_params,
+    );
     const headers = {
       ...this.keyValuePairsToRecord(nodeData.headers),
       ...this.buildHttpToolAuthHeaders(nodeData),
       ...this.extractHttpToolHeaders(dynamicRequest.headers),
     };
     const query = {
-      ...this.keyValuePairsToRecord(nodeData.queryParams, true),
+      ...this.keyValuePairsToRecord(staticQueryParams, true),
       ...this.buildHttpToolAuthQuery(nodeData),
       ...this.extractHttpToolQuery(dynamicRequest.query),
     };
