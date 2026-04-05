@@ -9,6 +9,7 @@ import { LlmProviderException, LlmTimeoutException } from './llm.exceptions';
 import {
   resolvePiModelApi,
   resolvePiModelBaseUrl,
+  resolvePiProviderApiKeyEnv,
   resolvePiProviderCompat,
 } from '../sandbox/pi-config-generator.service';
 
@@ -16,6 +17,11 @@ const TIMEOUT_MS = 120_000;
 const MAX_RETRIES = 2;
 const BASE_DELAY_MS = 1_000;
 const RETRYABLE_MODEL_METHODS = new Set(['doGenerate', 'doStream']);
+const ANONYMOUS_REQUEST_PROVIDER_SLUGS = new Set([
+  'private_cloud',
+  'custom',
+  'ollama',
+]);
 
 /**
  * 解析后的模型配置：模型配置 + 关联的提供商信息
@@ -53,10 +59,7 @@ export class PiAiAdapter {
   ): Promise<unknown> {
     const providerSlug = config.provider.slug;
 
-    // 仅在提供商配置了 apiKeyId 时解密 key
-    const resolvedApiKey = !config.provider.apiKeyId
-      ? undefined
-      : (apiKey ?? (await this.resolveApiKey(config)));
+    const resolvedApiKey = await this.resolveConfiguredApiKey(config, apiKey);
 
     const apiSettings = this.resolveApiSettings(config);
     const sdkProvider = await this.resolveProvider({
@@ -82,9 +85,7 @@ export class PiAiAdapter {
     apiKey?: string,
   ): Promise<PiRuntimeResolvedModel> {
     const providerSlug = config.provider.slug;
-    const resolvedApiKey = !config.provider.apiKeyId
-      ? undefined
-      : (apiKey ?? (await this.resolveApiKey(config)));
+    const resolvedApiKey = await this.resolveConfiguredApiKey(config, apiKey);
     const apiSettings = this.resolveApiSettings(config);
 
     const compat = resolvePiProviderCompat(
@@ -122,7 +123,11 @@ export class PiAiAdapter {
       model,
       ...(resolvedApiKey
         ? { apiKey: resolvedApiKey }
-        : !config.provider.apiKeyId && providerSlug === 'private_cloud'
+        : this.isAnonymousRequestMode({
+              providerSlug,
+              apiKey: resolvedApiKey,
+              requiresAuth: !!config.provider.apiKeyId,
+            })
           ? { apiKey: PRIVATE_CLOUD_NO_AUTH_PLACEHOLDER }
           : {}),
     };
@@ -136,13 +141,18 @@ export class PiAiAdapter {
     baseUrl?: string;
     rawProtocol?: string;
   }): Promise<LanguageModelProvider> {
+    const anonymousRequestMode = this.isAnonymousRequestMode(params);
+
     switch (params.api) {
       case 'openai-completions': {
         const { createOpenAI } = await import('@ai-sdk/openai');
         const provider = createOpenAI({
-          apiKey: params.apiKey ?? PRIVATE_CLOUD_NO_AUTH_PLACEHOLDER,
+          ...(params.apiKey ? { apiKey: params.apiKey } : {}),
+          ...(!params.apiKey && anonymousRequestMode
+            ? { apiKey: PRIVATE_CLOUD_NO_AUTH_PLACEHOLDER }
+            : {}),
           ...(params.baseUrl && { baseURL: params.baseUrl }),
-          ...(!params.requiresAuth && {
+          ...(anonymousRequestMode && {
             fetch: this.createHeaderStrippingFetch(['authorization']),
           }),
         });
@@ -153,9 +163,12 @@ export class PiAiAdapter {
       case 'azure-openai-responses': {
         const { createOpenAI } = await import('@ai-sdk/openai');
         const provider = createOpenAI({
-          apiKey: params.apiKey ?? PRIVATE_CLOUD_NO_AUTH_PLACEHOLDER,
+          ...(params.apiKey ? { apiKey: params.apiKey } : {}),
+          ...(!params.apiKey && anonymousRequestMode
+            ? { apiKey: PRIVATE_CLOUD_NO_AUTH_PLACEHOLDER }
+            : {}),
           ...(params.baseUrl && { baseURL: params.baseUrl }),
-          ...(!params.requiresAuth && {
+          ...(anonymousRequestMode && {
             fetch: this.createHeaderStrippingFetch(['authorization']),
           }),
         });
@@ -165,9 +178,12 @@ export class PiAiAdapter {
       case 'anthropic-messages': {
         const { createAnthropic } = await import('@ai-sdk/anthropic');
         return createAnthropic({
-          apiKey: params.apiKey ?? PRIVATE_CLOUD_NO_AUTH_PLACEHOLDER,
+          ...(params.apiKey ? { apiKey: params.apiKey } : {}),
+          ...(!params.apiKey && anonymousRequestMode
+            ? { apiKey: PRIVATE_CLOUD_NO_AUTH_PLACEHOLDER }
+            : {}),
           ...(params.baseUrl && { baseURL: params.baseUrl }),
-          ...(!params.requiresAuth && {
+          ...(anonymousRequestMode && {
             fetch: this.createHeaderStrippingFetch([
               'authorization',
               'x-api-key',
@@ -322,6 +338,30 @@ export class PiAiAdapter {
     );
   }
 
+  private async resolveConfiguredApiKey(
+    config: ResolvedModelConfig,
+    apiKey?: string,
+  ): Promise<string | undefined> {
+    if (apiKey) {
+      return apiKey;
+    }
+
+    if (config.provider.apiKeyId) {
+      return this.resolveApiKey(config);
+    }
+
+    return this.resolveEnvironmentApiKey(config.provider.slug);
+  }
+
+  private resolveEnvironmentApiKey(providerSlug: string): string | undefined {
+    const envName = resolvePiProviderApiKeyEnv({ provider: providerSlug });
+    if (!envName) {
+      return undefined;
+    }
+
+    return this.normalizeOptionalString(process.env[envName]);
+  }
+
   private resolveApiSettings(config: ResolvedModelConfig): ResolvedApiSettings {
     const apiBaseUrl = this.resolveConfiguredApiBaseUrl(config);
     const rawProtocol =
@@ -417,6 +457,18 @@ export class PiAiAdapter {
   private shouldWrapMethod(property: PropertyKey): boolean {
     return (
       typeof property === 'string' && RETRYABLE_MODEL_METHODS.has(property)
+    );
+  }
+
+  private isAnonymousRequestMode(params: {
+    providerSlug: string;
+    apiKey?: string;
+    requiresAuth: boolean;
+  }): boolean {
+    return (
+      !params.requiresAuth &&
+      !params.apiKey &&
+      ANONYMOUS_REQUEST_PROVIDER_SLUGS.has(params.providerSlug)
     );
   }
 }

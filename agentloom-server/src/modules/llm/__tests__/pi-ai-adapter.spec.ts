@@ -117,6 +117,7 @@ describe('PiAiAdapter', () => {
       'sleep',
     ).mockResolvedValue(undefined as never);
     vi.unstubAllGlobals();
+    delete process.env.ANTHROPIC_API_KEY;
   });
 
   describe('getModel - 按协议路由', () => {
@@ -401,6 +402,35 @@ describe('PiAiAdapter', () => {
         }),
       );
       expect(mockCreateOpenAI).not.toHaveBeenCalled();
+    });
+
+    it('应当在 anthropic 无 apiKeyId 时回退到 ANTHROPIC_API_KEY 环境变量', async () => {
+      process.env.ANTHROPIC_API_KEY = 'env-anthropic-key';
+
+      await adapter.getModel(
+        createConfig({
+          modelId: 'claude-3-opus',
+          providerOverrides: {
+            slug: 'anthropic',
+            apiProtocol: 'anthropic' as const,
+            apiKeyId: null,
+            baseUrl: null,
+            defaultBaseUrl: 'https://api.anthropic.com',
+          },
+        }),
+      );
+
+      expect(mockCreateAnthropic).toHaveBeenCalledWith(
+        expect.objectContaining({
+          apiKey: 'env-anthropic-key',
+          baseURL: 'https://api.anthropic.com',
+        }),
+      );
+      const callOptions = mockCreateAnthropic.mock.calls.at(-1)?.[0] as Record<
+        string,
+        unknown
+      >;
+      expect(callOptions).not.toHaveProperty('fetch');
     });
 
     it('应当在 provider baseUrl 缺失时回退到模型 parameters.baseUrl', async () => {
