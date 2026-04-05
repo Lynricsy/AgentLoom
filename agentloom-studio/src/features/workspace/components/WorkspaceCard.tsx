@@ -5,6 +5,10 @@ import { formatRelativeTime } from "@/features/canvas";
 import { cn } from "@/shared/lib/utils";
 import type { Workspace } from "../types";
 import { formatWorkspaceSize } from "../lib/formatSize";
+import {
+  WORKSPACE_SOURCE_BADGE,
+  WORKSPACE_SOURCE_LABEL,
+} from "../lib/workspacePresentation";
 
 interface WorkspaceCardProps {
   workspace: Workspace;
@@ -22,18 +26,6 @@ const STATUS_LABEL: Record<string, string> = {
   ready: "就绪",
   creating: "创建中",
   archived: "已归档",
-};
-
-const SOURCE_BADGE: Record<NonNullable<Workspace["sourceKind"]>, string> = {
-  manual: "bg-slate-500/10 text-slate-300",
-  sandbox_snapshot: "bg-blue-500/10 text-blue-400",
-  execution_archive: "bg-amber-500/10 text-amber-400",
-};
-
-const SOURCE_LABEL: Record<NonNullable<Workspace["sourceKind"]>, string> = {
-  manual: "常规",
-  sandbox_snapshot: "沙箱快照",
-  execution_archive: "执行归档",
 };
 
 function CardActions({
@@ -132,10 +124,10 @@ export const WorkspaceCard = memo(function WorkspaceCard({
         <span
           className={cn(
             "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium",
-            SOURCE_BADGE[sourceKind],
+            WORKSPACE_SOURCE_BADGE[sourceKind],
           )}
         >
-          {SOURCE_LABEL[sourceKind]}
+          {WORKSPACE_SOURCE_LABEL[sourceKind]}
         </span>
       </div>
 

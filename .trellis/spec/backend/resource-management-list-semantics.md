@@ -25,8 +25,10 @@
 - `resolveAgentRuntimeSandboxConfig(config?: SandboxConfig | null): SandboxConfig`
 - `resolveSandboxTimeoutDelayMs(config): number`
 - `resolveSandboxConversationIdleAutoEndDelayMs(config): number`
+- `WorkspaceService.syncFromSandboxContainer(workspaceId, containerId, tenantId)`
 - `WorkspaceService.findAll(tenantId, { page?, pageSize?, search?, includeAutoArchived? })`
 - `WorkspaceService.findOne(tenantId, workspaceId)`
+- `WorkspaceIntegrationService.archiveExecutionStepWorkspace(executionId, stepId, tenantId, sandboxNodeId?)`
 - `SandboxService.listSandboxes(tenantId, { page, pageSize, status?, lifecycleMode?, bindingType?, search? })`
 - `SandboxService.getContainerStats(sessionId)`
 - `SandboxService.getConversationSandboxStats(agentConversationId, tenantId)`
@@ -100,6 +102,16 @@
 - `includeAutoArchived=false` 时，API 必须过滤 `execution_archive`
 - Query DTO 不能使用裸 `z.coerce.boolean()` 解析布尔筛选，因为 query string `'false'` 会被错误地当成 `true`；必须显式把 `'true'/'false'` 规范化后再进入 `z.boolean()`
 - `create()` / `findOne()` / `findAll()` 都应返回 enrichment 后的 workspace 数据，避免前端列表与详情语义漂移
+- 若 sandbox config 带 `restoreWorkspaceId`，该 workspace 必须被视为“最新可恢复快照”：
+  - `SandboxLifecycleWorker.handleStop()` / `handleDestroy()` / `handleTimeoutCheck()` 在 stop/remove 容器前，必须调用 `WorkspaceService.syncFromSandboxContainer(restoreWorkspaceId, containerId, tenantId)`。
+  - 回写只能覆盖同一条 `workspace_snapshots` 记录与既有 `storageKey`，不能额外插入“旧版本” workspace 行。
+  - 回写失败只能记录 warning，不能阻断 stop / destroy / timeout 主流程。
+- `WorkspaceIntegrationService.archiveExecutionStepWorkspace()` 必须区分两类 workflow step：
+  - live sandbox `config.restoreWorkspaceId` 存在：同步回原 workspace，并返回同一个 `workspaceSnapshotId`
+  - live sandbox 未绑定现有 workspace：才允许 `createFromSandbox()` 新建 `execution-*-step-*-workspace`
+- workflow step 的 `checkpointData.workspaceSnapshotId` 必须始终指向“当前这一步结束后可回放的最新快照”：
+  - 绑定已有 workspace 时，它指向原 `restoreWorkspaceId`
+  - 未绑定已有 workspace 时，它指向新建的 `execution_archive`
 
 ### 3.4 Sandbox list semantics
 
@@ -185,6 +197,8 @@
 | 旧 published snapshot 只有 `sandboxConfig.timeout=450`，但节点仍有 `timeoutSeconds=450` | detail / versions / runtime 都必须恢复成 `timeout=1 + timeoutSeconds=450` | `agent-definition-response.dto.spec.ts`, `agent-execution.worker.spec.ts`, `workflow-agent-adapter.spec.ts` |
 | workspace list 默认过滤 execution archive | API 仍返回 `sourceKind`，但 `execution_archive` 被排除 | `workspace.service.spec.ts` |
 | `includeAutoArchived=false` query string | DTO 必须把 `'false'` 解析成 `false`，不能回退成 truthy | `list-workspaces-query.dto.spec.ts` |
+| sandbox stop/destroy/timeout 时带 `restoreWorkspaceId` | 必须先覆盖回写原 workspace，再继续 lifecycle 收口 | `sandbox-lifecycle.worker.spec.ts` |
+| workflow step 绑定已有 workspace 结束 | `archiveExecutionStepWorkspace()` 返回原 `restoreWorkspaceId`，且不创建 execution archive | `workspace-integration.service.spec.ts` |
 | sandbox list `bindingType=resource` | SQL where 同时要求 `execution_id is null` + `agent_conversation_id is null` | `sandbox.service.spec.ts` |
 | persistent resource sandbox timeout | 资源状态应落为 `stopped`，而不是 `failed` | `sandbox-lifecycle.worker.spec.ts` |
 | persistent sandbox 手动 stop | 只应调用 `stopContainer`，不能调用 `removeContainer` | `sandbox-lifecycle.worker.spec.ts`, `sandbox.service.spec.ts` |

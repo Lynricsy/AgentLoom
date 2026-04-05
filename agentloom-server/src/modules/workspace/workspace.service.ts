@@ -104,14 +104,9 @@ export class WorkspaceService {
     const storageKey = buildWorkspaceStorageKey(tenantId, snapshot.id);
 
     try {
-      const archiveStream = await this.dockerService.getArchive(
+      const stagedArchive = await this.stageContainerWorkspaceArchive(
         session.containerId,
-        CONTAINER_WORKSPACE,
-      );
-      const stagedArchive = await this.stageStreamToTempFile(
         `agentloom-workspace-snapshot-${snapshot.id}`,
-        'snapshot.tar',
-        archiveStream,
       );
 
       try {
@@ -159,6 +154,66 @@ export class WorkspaceService {
       );
 
       throw error;
+    }
+  }
+
+  async syncFromSandboxContainer(
+    workspaceId: string,
+    containerId: string,
+    _tenantId: string,
+  ): Promise<schema.WorkspaceSnapshot> {
+    const tenantDb = getTenantDb(this.db);
+    const [snapshot] = await tenantDb
+      .select()
+      .from(schema.workspaceSnapshots)
+      .where(
+        and(
+          eq(schema.workspaceSnapshots.id, workspaceId),
+          eq(schema.workspaceSnapshots.status, 'ready'),
+        ),
+      )
+      .limit(1);
+
+    if (!snapshot) {
+      throw new NotFoundException(
+        `Workspace snapshot ${workspaceId} not found or not ready`,
+      );
+    }
+
+    this.logger.log(
+      `Syncing workspace ${workspaceId} from container ${containerId}`,
+    );
+
+    const stagedArchive = await this.stageContainerWorkspaceArchive(
+      containerId,
+      `agentloom-workspace-sync-${workspaceId}`,
+    );
+
+    try {
+      await this.storageService.upload(
+        snapshot.storageKey,
+        createReadStream(stagedArchive.filePath),
+        stagedArchive.sizeBytes,
+        'application/x-tar',
+      );
+
+      const [updated] = await tenantDb
+        .update(schema.workspaceSnapshots)
+        .set({
+          sizeBytes: stagedArchive.sizeBytes,
+          status: 'ready',
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.workspaceSnapshots.id, workspaceId))
+        .returning();
+
+      this.logger.log(
+        `Workspace ${workspaceId} synced from container ${containerId}`,
+      );
+
+      return updated;
+    } finally {
+      await stagedArchive.cleanup();
     }
   }
 
@@ -269,6 +324,23 @@ export class WorkspaceService {
     }
 
     return outputChunks.join('');
+  }
+
+  private async stageContainerWorkspaceArchive(
+    containerId: string,
+    prefix: string,
+  ): Promise<{
+    tempDir: string;
+    filePath: string;
+    sizeBytes: number;
+    cleanup: () => Promise<void>;
+  }> {
+    const archiveStream = await this.dockerService.getArchive(
+      containerId,
+      CONTAINER_WORKSPACE,
+    );
+
+    return this.stageStreamToTempFile(prefix, 'snapshot.tar', archiveStream);
   }
 
   private async stageRestoreArchive(

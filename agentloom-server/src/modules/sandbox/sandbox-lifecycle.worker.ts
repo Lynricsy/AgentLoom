@@ -327,13 +327,21 @@ export class SandboxLifecycleWorker extends WorkerHost {
   }
 
   private async handleStop(data: SandboxLifecycleJobData): Promise<void> {
-    const { sessionId, containerId, tenantId, persistencePath } = data;
+    const { sessionId, containerId, tenantId, persistencePath, config } = data;
     const binding = this.resolveBinding(data);
 
     await this.lifecycleProducer.removeTimeoutCheckTask(sessionId);
     await this.lifecycleProducer.removeConversationIdleEndCheckTask(sessionId);
 
     if (containerId) {
+      await this.syncRestoredWorkspaceSnapshot({
+        sessionId,
+        tenantId,
+        containerId,
+        restoreWorkspaceId: this.readRestoreWorkspaceId(config),
+        phaseLabel: 'stop',
+      });
+
       if (persistencePath) {
         try {
           const archiveStream = await this.dockerService.getArchive(
@@ -379,11 +387,30 @@ export class SandboxLifecycleWorker extends WorkerHost {
   private async handleDestroy(data: SandboxLifecycleJobData): Promise<void> {
     const { sessionId, containerId, tenantId, persistencePath } = data;
     const binding = this.resolveBinding(data);
+    const [session] = await runInTenantTransaction(
+      this.db,
+      tenantId,
+      async (tenantDb) => {
+        return await tenantDb
+          .select({ config: schema.sandboxSessions.config })
+          .from(schema.sandboxSessions)
+          .where(eq(schema.sandboxSessions.id, sessionId))
+          .limit(1);
+      },
+    );
 
     await this.lifecycleProducer.removeTimeoutCheckTask(sessionId);
     await this.lifecycleProducer.removeConversationIdleEndCheckTask(sessionId);
 
     if (containerId) {
+      await this.syncRestoredWorkspaceSnapshot({
+        sessionId,
+        tenantId,
+        containerId,
+        restoreWorkspaceId: this.readRestoreWorkspaceId(session?.config),
+        phaseLabel: 'destroy',
+      });
+
       if (persistencePath) {
         try {
           const archiveStream = await this.dockerService.getArchive(
@@ -421,12 +448,6 @@ export class SandboxLifecycleWorker extends WorkerHost {
       this.db,
       tenantId,
       async (tenantDb) => {
-        const [session] = await tenantDb
-          .select({ config: schema.sandboxSessions.config })
-          .from(schema.sandboxSessions)
-          .where(eq(schema.sandboxSessions.id, sessionId))
-          .limit(1);
-
         const isSessionMode =
           (session?.config.lifecycleMode ?? 'session') === 'session';
 
@@ -486,6 +507,14 @@ export class SandboxLifecycleWorker extends WorkerHost {
     this.logger.warn(`Sandbox ${sessionId} timed out, force stopping`);
 
     if (session.containerId) {
+      await this.syncRestoredWorkspaceSnapshot({
+        sessionId,
+        tenantId,
+        containerId: session.containerId,
+        restoreWorkspaceId: this.readRestoreWorkspaceId(session.config),
+        phaseLabel: 'timeout',
+      });
+
       if (session.config.persistencePath) {
         try {
           const archiveStream = await this.dockerService.getArchive(
@@ -915,6 +944,66 @@ export class SandboxLifecycleWorker extends WorkerHost {
       return this.moduleRef.get(AgentConversationService, { strict: false });
     } catch {
       return null;
+    }
+  }
+
+  private getWorkspaceService(): WorkspaceService | null {
+    try {
+      return this.moduleRef.get(WorkspaceService, { strict: false });
+    } catch {
+      return null;
+    }
+  }
+
+  private readRestoreWorkspaceId(config: unknown): string | undefined {
+    if (!config || typeof config !== 'object' || Array.isArray(config)) {
+      return undefined;
+    }
+
+    const restoreWorkspaceId = (config as Record<string, unknown>)[
+      'restoreWorkspaceId'
+    ];
+    return typeof restoreWorkspaceId === 'string' &&
+      restoreWorkspaceId.trim().length > 0
+      ? restoreWorkspaceId.trim()
+      : undefined;
+  }
+
+  private async syncRestoredWorkspaceSnapshot(params: {
+    sessionId: string;
+    tenantId: string;
+    containerId: string;
+    restoreWorkspaceId?: string;
+    phaseLabel: 'stop' | 'destroy' | 'timeout';
+  }): Promise<void> {
+    const { sessionId, tenantId, containerId, restoreWorkspaceId, phaseLabel } =
+      params;
+
+    if (!restoreWorkspaceId) {
+      return;
+    }
+
+    const workspaceService = this.getWorkspaceService();
+    if (!workspaceService) {
+      this.logger.warn(
+        `WorkspaceService unavailable, skipping restored workspace sync for session ${sessionId}`,
+      );
+      return;
+    }
+
+    try {
+      await workspaceService.syncFromSandboxContainer(
+        restoreWorkspaceId,
+        containerId,
+        tenantId,
+      );
+      this.logger.log(
+        `Restored workspace ${restoreWorkspaceId} synced before ${phaseLabel} for session ${sessionId}`,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Failed to sync restored workspace ${restoreWorkspaceId} before ${phaseLabel} for session ${sessionId}: ${error instanceof Error ? error.message : String(error)}`,
+      );
     }
   }
 

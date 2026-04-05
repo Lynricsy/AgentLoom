@@ -18,11 +18,15 @@
 ### Workspace page
 
 - `WorkspaceManagementPage` 默认请求 `includeAutoArchived=false`
-- 页面必须明确提示：默认隐藏 workflow execution 自动归档快照
+- 页面必须明确提示：默认隐藏 workflow execution 自动归档快照，仅展示可复用的手动工作区与沙箱快照
+- workspace 列表筛选文案必须使用：
+  - `隐藏执行归档`
+  - `包含执行归档`
 - `WorkspaceCard` 必须显示来源标签：
-  - `常规`
+  - `手动工作区`
   - `沙箱快照`
   - `执行归档`
+- `WorkspaceDetailPage` 与 `WorkspaceCard` 必须复用同一套 `sourceKind -> label/badge` 映射，避免“列表一个叫常规、详情另一个叫手动工作区”的同层漂移
 - `sizeBytes === null` 时显示 `未知`，不能伪装成 `0 B`
 
 ### Share-imported resource pages
@@ -83,6 +87,7 @@
 | 场景 | 期望 | 验证点 |
 | --- | --- | --- |
 | Studio workspace API 调用 | 透传 `includeAutoArchived` | `workspaceApi.test.ts` |
+| Studio workspace 来源标签 | 卡片与详情页都显示 `手动工作区 / 沙箱快照 / 执行归档` | 组件测试或手动 QA |
 | Studio sandbox API 调用 | 透传 `bindingType` | `sandboxApi.test.ts` |
 | Studio sandbox stats 展示 | `diskUsage=0` 时显示 `0 B / ...`，不当成缺失 | `SandboxStatsDisplay.test.tsx` |
 | Studio workflow / agent 列表来源筛选 | 透传 `sourceKind` 并显示来源标签 | 对应页面测试 |
@@ -97,7 +102,7 @@
 
 ## 5. Manual QA Focus
 
-- Studio workspace 页默认不应再被 `execution-*-step-*-workspace` 大量占满
+- Studio workspace 页默认不应再被 `execution-*-step-*-workspace` 大量占满，筛选文案也不能再把“隐藏执行归档”误写成“常规工作区”
 - Studio sandbox 页默认不应再把 conversation / execution session 当成“资源沙箱”展示
 - persistent 资源沙箱到期后，应显示 `已停止`，而不应被渲染成 `失败`
 - running sandbox 写入文件后，Studio 资源页应能看到磁盘占用真实变化；空工作区应显示 `0 B`，而不是空白或伪造值

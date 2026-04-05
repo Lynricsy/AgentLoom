@@ -17,24 +17,16 @@ import {
   useWorkspaceFileTree,
 } from "../api/workspaceQueries";
 import { formatWorkspaceSize } from "../lib/formatSize";
+import {
+  WORKSPACE_SOURCE_BADGE,
+  WORKSPACE_SOURCE_LABEL,
+} from "../lib/workspacePresentation";
 import { WorkspaceFilePreviewPanel } from "./WorkspaceFilePreviewPanel";
 import type { WorkspaceFileNode } from "../types";
 
 interface WorkspaceDetailPageProps {
   workspaceId: string;
 }
-
-const SOURCE_LABEL: Record<string, string> = {
-  manual: "常规",
-  sandbox_snapshot: "沙箱快照",
-  execution_archive: "执行归档",
-};
-
-const SOURCE_BADGE: Record<string, string> = {
-  manual: "bg-slate-500/10 text-slate-300",
-  sandbox_snapshot: "bg-blue-500/10 text-blue-400",
-  execution_archive: "bg-amber-500/10 text-amber-400",
-};
 
 const STATUS_LABEL: Record<string, string> = {
   ready: "就绪",
@@ -80,7 +72,7 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
   const previewQuery = useWorkspaceFilePreview(workspaceId, selectedPath);
 
   const workspace = detailQuery.data;
-  const tree = treeQuery.data ?? [];
+  const tree = useMemo(() => treeQuery.data ?? [], [treeQuery.data]);
 
   useEffect(() => {
     setSelectedPath((current) => (hasPath(tree, current) ? current : null));
@@ -158,10 +150,10 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
               <span
                 className={cn(
                   "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium",
-                  SOURCE_BADGE[sourceKind],
+                  WORKSPACE_SOURCE_BADGE[sourceKind],
                 )}
               >
-                {SOURCE_LABEL[sourceKind]}
+                {WORKSPACE_SOURCE_LABEL[sourceKind]}
               </span>
             </div>
             {workspace.description && (

@@ -366,6 +366,54 @@ describe('WorkspaceService', () => {
     });
   });
 
+  // ─── syncFromSandboxContainer ───────────────────────────────────────────
+
+  describe('syncFromSandboxContainer', () => {
+    it('应当覆盖同步现有工作区快照到最新容器内容', async () => {
+      const snapshot = buildSnapshot({ status: 'ready' });
+      const updatedSnapshot = buildSnapshot({
+        status: 'ready',
+        sizeBytes: TEST_ARCHIVE_SIZE,
+        updatedAt: new Date('2026-04-05T00:00:00.000Z'),
+      });
+
+      db.select.mockReturnValueOnce(createSelectChainWithLimit([snapshot]));
+      db.update.mockReturnValueOnce(
+        createUpdateChainReturning([updatedSnapshot]),
+      );
+
+      const result = await service.syncFromSandboxContainer(
+        TEST_WORKSPACE_ID,
+        TEST_CONTAINER_ID,
+        TEST_TENANT_ID,
+      );
+
+      expect(mockDockerService.getArchive).toHaveBeenCalledWith(
+        TEST_CONTAINER_ID,
+        '/workspace/',
+      );
+      expect(mockStorageService.upload).toHaveBeenCalledWith(
+        snapshot.storageKey,
+        expect.any(Object),
+        TEST_ARCHIVE_SIZE,
+        'application/x-tar',
+      );
+      expect(result.sizeBytes).toBe(TEST_ARCHIVE_SIZE);
+    });
+
+    it('目标工作区不存在时应当抛出 NotFoundException', async () => {
+      db.select.mockReturnValueOnce(createSelectChainWithLimit([]));
+
+      await expect(
+        service.syncFromSandboxContainer(
+          TEST_WORKSPACE_ID,
+          TEST_CONTAINER_ID,
+          TEST_TENANT_ID,
+        ),
+      ).rejects.toThrow(NotFoundException);
+    });
+  });
+
   // ─── restoreToSandbox ──────────────────────────────────────────────────
 
   describe('restoreToSandbox', () => {

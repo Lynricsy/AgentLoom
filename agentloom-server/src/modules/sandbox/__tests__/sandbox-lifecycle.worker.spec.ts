@@ -484,6 +484,44 @@ describe('SandboxLifecycleWorker', () => {
       expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
     });
 
+    it('restoreWorkspaceId 存在时应先回写原工作区再销毁', async () => {
+      const mockWorkspaceService = {
+        syncFromSandboxContainer: vi.fn().mockResolvedValue(undefined),
+      };
+      const workerWithModuleRef = new SandboxLifecycleWorker(
+        {} as any,
+        { get: vi.fn().mockReturnValue(mockWorkspaceService) } as any,
+        mockDockerService as any,
+        mockSandboxService as any,
+        mockLifecycleProducer as any,
+        mockStorageService as any,
+      );
+      mockLimit.mockResolvedValueOnce([
+        {
+          config: {
+            ...DEFAULT_CONFIG,
+            restoreWorkspaceId: 'ws-1',
+          },
+        },
+      ]);
+
+      await workerWithModuleRef.process(
+        createJob({
+          jobType: 'destroy',
+          sessionId: 's1',
+          executionId: 'e1',
+          tenantId: 't1',
+          containerId: 'c-123',
+        }),
+      );
+
+      expect(
+        mockWorkspaceService.syncFromSandboxContainer,
+      ).toHaveBeenCalledWith('ws-1', 'c-123', 't1');
+      expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
+      expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123');
+    });
+
     it('workspace 同步失败时不应阻止销毁流程', async () => {
       mockDockerService.getArchive.mockRejectedValueOnce(
         new Error('archive failed'),
@@ -615,6 +653,40 @@ describe('SandboxLifecycleWorker', () => {
         }),
       );
       expect(mockInsert).toHaveBeenCalled();
+    });
+
+    it('restoreWorkspaceId 存在时应在停止前回写原工作区', async () => {
+      const mockWorkspaceService = {
+        syncFromSandboxContainer: vi.fn().mockResolvedValue(undefined),
+      };
+      const workerWithModuleRef = new SandboxLifecycleWorker(
+        {} as any,
+        { get: vi.fn().mockReturnValue(mockWorkspaceService) } as any,
+        mockDockerService as any,
+        mockSandboxService as any,
+        mockLifecycleProducer as any,
+        mockStorageService as any,
+      );
+
+      await workerWithModuleRef.process(
+        createJob({
+          jobType: 'stop',
+          sessionId: 's1',
+          executionId: 'e1',
+          tenantId: 't1',
+          containerId: 'c-123',
+          config: {
+            ...DEFAULT_CONFIG,
+            lifecycleMode: 'persistent',
+            restoreWorkspaceId: 'ws-1',
+          },
+        }),
+      );
+
+      expect(
+        mockWorkspaceService.syncFromSandboxContainer,
+      ).toHaveBeenCalledWith('ws-1', 'c-123', 't1');
+      expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
     });
   });
 
@@ -930,6 +1002,49 @@ describe('SandboxLifecycleWorker', () => {
 
       expect(mockDockerService.getArchive).not.toHaveBeenCalled();
       expect(mockStorageService.upload).not.toHaveBeenCalled();
+      expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
+    });
+
+    it('restoreWorkspaceId 存在时应在 timeout 前回写原工作区', async () => {
+      const mockWorkspaceService = {
+        syncFromSandboxContainer: vi.fn().mockResolvedValue(undefined),
+      };
+      const workerWithModuleRef = new SandboxLifecycleWorker(
+        {} as any,
+        { get: vi.fn().mockReturnValue(mockWorkspaceService) } as any,
+        mockDockerService as any,
+        mockSandboxService as any,
+        mockLifecycleProducer as any,
+        mockStorageService as any,
+      );
+      mockSandboxService.getSessionById.mockResolvedValueOnce({
+        id: 's1',
+        executionId: 'e1',
+        status: 'ready',
+        containerId: 'c-123',
+        config: {
+          cpu: 1,
+          memory: 512,
+          disk: 2,
+          timeout: 2,
+          restoreWorkspaceId: 'ws-1',
+        },
+      });
+
+      await expect(
+        workerWithModuleRef.process(
+          createJob({
+            jobType: 'timeout_check',
+            sessionId: 's1',
+            executionId: 'e1',
+            tenantId: 't1',
+          }),
+        ),
+      ).rejects.toThrow(SandboxTimeoutException);
+
+      expect(
+        mockWorkspaceService.syncFromSandboxContainer,
+      ).toHaveBeenCalledWith('ws-1', 'c-123', 't1');
       expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
     });
 

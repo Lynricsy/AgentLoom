@@ -1,5 +1,5 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
-import { ConflictException, NotFoundException } from '@nestjs/common';
+import { ConflictException } from '@nestjs/common';
 
 import { WorkspaceIntegrationService } from '../workspace-integration.service';
 
@@ -23,6 +23,7 @@ const {
   },
   mockWorkspaceService: {
     createFromSandbox: vi.fn(),
+    syncFromSandboxContainer: vi.fn(),
     findOne: vi.fn(),
     getFileTree: vi.fn(),
     getFilePreview: vi.fn(),
@@ -168,6 +169,7 @@ describe('WorkspaceIntegrationService', () => {
     mockWorkspaceService.findOne.mockReset();
     mockWorkspaceService.getFileTree.mockReset();
     mockWorkspaceService.getFilePreview.mockReset();
+    mockWorkspaceService.syncFromSandboxContainer.mockReset();
     mockWorkspaceService.resolveOrganizationId
       .mockReset()
       .mockResolvedValue(ORG_ID);
@@ -955,6 +957,71 @@ describe('WorkspaceIntegrationService', () => {
         `execution-${EXECUTION_ID}-step-${STEP_ID}-workspace`,
         expect.stringContaining('自动归档'),
       );
+    });
+
+    it('绑定了 restoreWorkspaceId 时应覆盖同步原工作区并返回同一 ID', async () => {
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain({
+          id: STEP_ID,
+          executionId: EXECUTION_ID,
+          checkpointData: {},
+        }),
+      );
+      mockSessionPersistence.loadFromCheckpoint.mockResolvedValue(
+        mockWorkflowSession(),
+      );
+      mockSandboxService.findByExecutionId.mockResolvedValue(
+        mockSandboxSession({
+          config: { restoreWorkspaceId: WORKSPACE_SNAPSHOT_ID },
+        }),
+      );
+      mockWorkspaceService.syncFromSandboxContainer.mockResolvedValue({
+        id: WORKSPACE_SNAPSHOT_ID,
+      });
+
+      const snapshotId = await service.archiveExecutionStepWorkspace(
+        EXECUTION_ID,
+        STEP_ID,
+        TENANT_ID,
+      );
+
+      expect(snapshotId).toBe(WORKSPACE_SNAPSHOT_ID);
+      expect(
+        mockWorkspaceService.syncFromSandboxContainer,
+      ).toHaveBeenCalledWith(WORKSPACE_SNAPSHOT_ID, CONTAINER_ID, TENANT_ID);
+      expect(mockWorkspaceService.createFromSandbox).not.toHaveBeenCalled();
+      expect(mockWorkspaceService.resolveOrganizationId).not.toHaveBeenCalled();
+    });
+
+    it('运行中容器不存在但 restoreWorkspaceId 存在时应回退到原工作区 ID', async () => {
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain({
+          id: STEP_ID,
+          executionId: EXECUTION_ID,
+          checkpointData: {},
+        }),
+      );
+      mockSessionPersistence.loadFromCheckpoint.mockResolvedValue(
+        mockWorkflowSession(),
+      );
+      mockSandboxService.findByExecutionId.mockResolvedValue(
+        mockSandboxSession({
+          containerId: null,
+          config: { restoreWorkspaceId: WORKSPACE_SNAPSHOT_ID },
+        }),
+      );
+
+      const snapshotId = await service.archiveExecutionStepWorkspace(
+        EXECUTION_ID,
+        STEP_ID,
+        TENANT_ID,
+      );
+
+      expect(snapshotId).toBe(WORKSPACE_SNAPSHOT_ID);
+      expect(
+        mockWorkspaceService.syncFromSandboxContainer,
+      ).not.toHaveBeenCalled();
+      expect(mockWorkspaceService.createFromSandbox).not.toHaveBeenCalled();
     });
 
     it('session checkpoint 缺失时应使用显式 sandboxNodeId 归档 workflow step', async () => {

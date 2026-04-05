@@ -25,6 +25,7 @@
 - `normalizeConversationMessageSegments(value): ConversationMessageSegmentRecord[]`
 - `WorkflowAgentAdapter.execute(params): Promise<WorkflowAgentExecutionResult>`
 - `AgentTaskWorker.process(job): Promise<void>`
+- `WorkspaceIntegrationService.archiveExecutionStepWorkspace(executionId, stepId, tenantId, sandboxNodeId?): Promise<string | null>`
 - `GET /executions/:executionId`
 - `GET /executions/:executionId/steps/:stepId/workspace/tree`
 - `GET /executions/:executionId/steps/:stepId/workspace/files/*`
@@ -69,6 +70,9 @@
 - workflow step 的工作区读取必须走 step 作用域 API，而不是 conversation 作用域 API：
   - `GET /executions/:executionId/steps/:stepId/workspace/tree`
   - `GET /executions/:executionId/steps/:stepId/workspace/files/*`
+- `archiveExecutionStepWorkspace()` 必须保证 `checkpointData.workspaceSnapshotId` 始终指向“这一步结束后仍可回放”的最新 workspace：
+  - sandbox `config.restoreWorkspaceId` 存在：同步回原 workspace 并返回同一个 `restoreWorkspaceId`
+  - sandbox 未绑定现有 workspace：才允许新建 `execution_archive`
 - `workspace.file_change` 若带 `executionId + stepId`，必须桥接成 workflow execution 的 `AgentEvent(type='file_change')`；若只带 `conversationId`，只能推送到 conversation namespace，不能串流。
 - execution viewer 冷开时，gateway 必须先发 `execution.state.snapshot`，再补发 active step buffered live events；不能反过来，否则客户端没有 step 映射时会丢实时事件。
 
@@ -80,6 +84,7 @@
 | conversation turn 运行中已产出 partial output，但最终 runtime error 失败 | worker 仍需持久化 partial assistant turn，刷新后不能丢失                           | `agent-execution.worker.spec.ts`                                         |
 | `segments` 缺失，但 `partialContent + toolCalls` 存在                    | 允许 fallback 恢复基础内容，但会丢交错顺序；这是临时兼容，不是目标形态             | `workflowAgentViewer.test.ts` / `workflow_agent_runtime_test.dart`       |
 | workflow-agent 冷开时 step 仍在运行                                      | snapshot 后必须能补到 active step buffered live events                             | `execution.gateway.spec.ts`                                              |
+| workflow step 绑定已有 workspace 完成/失败                               | `checkpointData.workspaceSnapshotId` 继续指向原 `restoreWorkspaceId`，不生成重复 archive | `workspace-integration.service.spec.ts` / `agent-task.worker.spec.ts` |
 | `file_change` 事件只带 `conversationId`                                  | 不得推送到 `/execution` namespace                                                  | `event-bridge.service.spec.ts`                                           |
 | `tool_call` segment 指向不存在的 tool call                               | `normalizeConversationMessageSegments()` / viewer normalization 必须丢弃该 segment | `workflowAgentViewer.test.ts`                                            |
 | step workspace 文件路径为空或越权                                        | API 返回明确失败，前端不应继续复用旧内容                                           | `execution.controller.spec.ts` / `workspace-integration.service.spec.ts` |
@@ -104,6 +109,7 @@
   - 断言 step workspace tree/file API 返回 step 作用域数据。
 - `src/modules/agent-execution/__tests__/workspace-integration.service.spec.ts`
   - 断言 step workspace 目录树 / 文件内容 / watcher 绑定正确。
+  - 断言绑定已有 workspace 时会回写原 snapshot 并返回同一 ID。
 - `src/modules/execution/__tests__/event-bridge.service.spec.ts`
   - 断言 `workspace.file_change` 正确桥接到 workflow execution。
 

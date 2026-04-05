@@ -118,13 +118,13 @@ export function WorkspaceManagementPage() {
           }}
           className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
         >
-          <option value="primary">常规工作区</option>
+          <option value="primary">隐藏执行归档</option>
           <option value="all">包含执行归档</option>
         </select>
       </div>
 
       <p className="text-xs text-muted-foreground">
-        默认隐藏工作流执行自动归档出来的快照，避免资源页被历史执行结果淹没。
+        默认隐藏工作流执行自动归档出来的快照，仅展示可复用的手动工作区与沙箱快照。
       </p>
 
       {/* Content */}

@@ -242,6 +242,7 @@ export class WorkspaceIntegrationService {
     const existingSnapshotId = this.readWorkspaceSnapshotId(
       stepRecord.checkpointData,
     );
+    let restoreWorkspaceId: string | undefined;
 
     try {
       const session = await this.sessionPersistence.loadFromCheckpoint(
@@ -261,9 +262,19 @@ export class WorkspaceIntegrationService {
         tenantId,
         sandboxBinding.sandboxNodeId,
       );
+      restoreWorkspaceId = this.readWorkspaceRestoreId(sandboxSession?.config);
 
       if (!sandboxSession?.containerId) {
-        return existingSnapshotId ?? null;
+        return existingSnapshotId ?? restoreWorkspaceId ?? null;
+      }
+
+      if (restoreWorkspaceId) {
+        await this.workspaceService.syncFromSandboxContainer(
+          restoreWorkspaceId,
+          sandboxSession.containerId,
+          tenantId,
+        );
+        return restoreWorkspaceId;
       }
 
       const [execution] = await this.tenantDb
@@ -298,7 +309,7 @@ export class WorkspaceIntegrationService {
         `归档 workflow step 工作区失败: execution=${executionId}, step=${stepId}`,
         error instanceof Error ? error.stack : String(error),
       );
-      return existingSnapshotId ?? null;
+      return existingSnapshotId ?? restoreWorkspaceId ?? null;
     }
   }
 
@@ -752,6 +763,14 @@ export class WorkspaceIntegrationService {
     return typeof snapshotId === 'string' && snapshotId.trim().length > 0
       ? snapshotId.trim()
       : undefined;
+  }
+
+  private readWorkspaceRestoreId(config: unknown): string | undefined {
+    if (!this.isRecord(config)) {
+      return undefined;
+    }
+
+    return this.readString(config.restoreWorkspaceId);
   }
 
   private readExecutionStepSandboxBinding(
