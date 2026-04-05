@@ -1710,7 +1710,7 @@ describe('NodeSchedulerService', () => {
       expect(context.orderedNodeIds).toEqual(['iter-start', 'iter-result']);
     });
 
-    it('break 命中后应将当前轮剩余 pending internal 节点标记为 skipped 再结束 compound', async () => {
+    it('break 命中且当前轮 result 已可调度时应优先执行 result 节点', async () => {
       const context = {
         executionId: EXECUTION_ID,
         tenantId: TENANT_ID,
@@ -1725,7 +1725,7 @@ describe('NodeSchedulerService', () => {
           makeNode('loop-agent', 'agent'),
           makeNode('loop-result', 'result'),
         ],
-        internalEdges: [],
+        internalEdges: [makeEdge('loop-start', 'loop-result')],
         orderedNodeIds: ['loop-start', 'break', 'loop-agent', 'loop-result'],
         extraInputPortIds: [],
         iterationItems: [],
@@ -1748,6 +1748,107 @@ describe('NodeSchedulerService', () => {
           nodeId: 'loop-start',
           nodeType: 'loop-start',
           status: 'completed',
+          result: { 'exec-out': { triggered: true } },
+        }),
+        makeStep({
+          id: 'step-break',
+          nodeId: 'break',
+          nodeType: 'break',
+          status: 'completed',
+        }),
+        makeStep({
+          id: 'step-loop-agent',
+          nodeId: 'loop-agent',
+          nodeType: 'agent',
+          status: 'pending',
+        }),
+        makeStep({
+          id: 'step-loop-result',
+          nodeId: 'loop-result',
+          nodeType: 'result',
+          status: 'pending',
+        }),
+      ];
+
+      vi.spyOn(service as any, 'loadExecutionContext').mockResolvedValue({
+        execution: makeExecution(makeSnapshot([], [])),
+        snapshot: makeSnapshot([], []),
+        steps: internalSteps,
+      });
+      const scheduleNode = vi
+        .spyOn(service, 'scheduleNode')
+        .mockResolvedValue(undefined);
+      const finalizeCompoundExecution = vi
+        .spyOn(service as any, 'finalizeCompoundExecution')
+        .mockResolvedValue(undefined);
+
+      await (service as any).scheduleNextCompoundNode(context, TENANT_ID);
+
+      expect(scheduleNode).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        'loop-result',
+        TENANT_ID,
+        {
+          nodes: context.internalNodes,
+          edges: context.internalEdges,
+        },
+        internalSteps,
+        { skipLatestState: true },
+      );
+      expect(mockStateMachine.updateStepStatus).not.toHaveBeenCalledWith(
+        TENANT_ID,
+        'step-loop-agent',
+        'skipped',
+      );
+      expect(mockStateMachine.updateStepStatus).not.toHaveBeenCalledWith(
+        TENANT_ID,
+        'step-loop-result',
+        'skipped',
+      );
+      expect(finalizeCompoundExecution).not.toHaveBeenCalled();
+    });
+
+    it('break 命中且当前轮 result 未就绪时应跳过剩余 pending 节点并收口当前轮输出', async () => {
+      const context = {
+        executionId: EXECUTION_ID,
+        tenantId: TENANT_ID,
+        parentNodeId: 'loop',
+        parentStepId: 'step-loop',
+        parentNodeType: 'loop' as const,
+        parentInput: {},
+        outputMode: 'last' as const,
+        internalNodes: [
+          makeNode('loop-start', 'loop-start'),
+          makeNode('break', 'break'),
+          makeNode('loop-agent', 'agent'),
+          makeNode('loop-result', 'result'),
+        ],
+        internalEdges: [makeEdge('loop-agent', 'loop-result')],
+        orderedNodeIds: ['loop-start', 'break', 'loop-agent', 'loop-result'],
+        extraInputPortIds: [],
+        iterationItems: [],
+        iterationIndex: 0,
+        completedRounds: 1,
+        loopState: { count: 1 },
+        loopRound: 1,
+        maxIterations: 5,
+        previousResult: null,
+        roundOutputs: {
+          'review-out': 'DEV_REVIEW_APPROVED_20260405',
+        },
+        finalOutputs: {},
+        breakRequested: true,
+        continueRequested: false,
+        nextStateProvided: false,
+        nextState: undefined,
+      };
+      const internalSteps = [
+        makeStep({
+          id: 'step-loop-start',
+          nodeId: 'loop-start',
+          nodeType: 'loop-start',
+          status: 'completed',
+          result: { 'exec-out': { triggered: true } },
         }),
         makeStep({
           id: 'step-break',
@@ -1790,6 +1891,12 @@ describe('NodeSchedulerService', () => {
         'step-loop-result',
         'skipped',
       );
+      expect(context.finalOutputs).toEqual({
+        'review-out': 'DEV_REVIEW_APPROVED_20260405',
+      });
+      expect(context.previousResult).toEqual({
+        'review-out': 'DEV_REVIEW_APPROVED_20260405',
+      });
       expect(finalizeCompoundExecution).toHaveBeenCalledWith(
         context,
         TENANT_ID,
@@ -2110,6 +2217,98 @@ describe('NodeSchedulerService', () => {
         TENANT_ID,
       );
       expect(mockQueue.add).not.toHaveBeenCalled();
+    });
+
+    it('compound 内部 workflow agent 会从 sandbox-in 输入回推共享 sandbox 绑定', async () => {
+      const snapshot = makeSnapshot(
+        [
+          makeNode('loop-start', 'loop-start'),
+          makeNode('A', 'agent', {
+            agentDefinitionId: 'agent-def-1',
+            agentVersionId: 'agent-version-1',
+          }),
+        ],
+        [makeEdge('loop-start', 'A', 'sandbox-in', 'sandbox-in')],
+      );
+      const steps = [
+        makeStep({
+          id: 'step-s',
+          nodeId: 'S',
+          status: 'completed',
+          nodeType: 'sandbox',
+          nodeData: {
+            config: { cpu: 4, memory: 2048, disk: 8, timeout: 6 },
+          },
+          result: { sessionId: 'sandbox-session-001', status: 'ready' },
+        }),
+        makeStep({
+          id: 'step-loop-start',
+          nodeId: 'loop-start',
+          status: 'completed',
+          nodeType: 'loop-start',
+          result: {
+            'sandbox-in': {
+              sessionId: 'sandbox-session-001',
+              status: 'ready',
+            },
+          },
+        }),
+        makeStep({
+          id: 'step-a',
+          nodeId: 'A',
+          status: 'pending',
+          nodeType: 'agent',
+          nodeData: {
+            agentDefinitionId: 'agent-def-1',
+            agentVersionId: 'agent-version-1',
+          },
+        }),
+      ];
+      const workflowAgentAdapter = {
+        execute: vi
+          .fn()
+          .mockResolvedValue({ content: 'workflow-agent-output' }),
+      };
+
+      db.update.mockReturnValueOnce(createUpdateChainVoid());
+      mockWorkflowAgentAdapterFactory.createFromAgentDefinition.mockReturnValue(
+        workflowAgentAdapter,
+      );
+      vi.spyOn(service, 'onNodeCompleted').mockResolvedValue(undefined);
+
+      await service.scheduleNode(EXECUTION_ID, 'A', TENANT_ID, snapshot, steps);
+
+      expect(
+        mockWorkflowAgentAdapterFactory.createFromAgentDefinition,
+      ).toHaveBeenCalledWith('agent-def-1', undefined);
+      expect(workflowAgentAdapter.execute).toHaveBeenCalledWith({
+        executionId: EXECUTION_ID,
+        step: steps[2],
+        input: {
+          'sandbox-in': {
+            sessionId: 'sandbox-session-001',
+            status: 'ready',
+          },
+        },
+        tenantId: TENANT_ID,
+        parentUsesSandboxRuntime: true,
+        sandboxBinding: {
+          executionId: EXECUTION_ID,
+          sandboxNodeId: 'S',
+        },
+        agentVersionId: 'agent-version-1',
+      });
+      expect(
+        mockWorkspaceIntegrationService.startExecutionStepFileWatcher,
+      ).toHaveBeenCalledWith({
+        executionId: EXECUTION_ID,
+        stepId: 'step-a',
+        tenantId: TENANT_ID,
+        sandboxNodeId: 'S',
+      });
+      expect(
+        mockWorkspaceIntegrationService.archiveExecutionStepWorkspace,
+      ).toHaveBeenCalledWith(EXECUTION_ID, 'step-a', TENANT_ID, 'S');
     });
 
     it('workflow-agent 运行时写入的 checkpointData 会在 completed 时保留下来', async () => {

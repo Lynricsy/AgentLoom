@@ -4,6 +4,7 @@ import type { AgentRuntimeMode } from '../../database/schema/agent-definitions.s
 export interface AgentModelConfig {
   modelId: string;
   provider?: string;
+  apiProtocol?: string | null;
   modelName?: string;
   apiKeyId?: string | null;
   endpointUrl?: string | null;

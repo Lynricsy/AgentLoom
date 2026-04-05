@@ -1,5 +1,16 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { and, asc, desc, eq, ilike, inArray, max, not, or, sql } from 'drizzle-orm';
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  ilike,
+  inArray,
+  max,
+  not,
+  or,
+  sql,
+} from 'drizzle-orm';
 
 import { transactionStorage } from '../../common/interceptors/tenant-transaction.interceptor';
 import type { DrizzleDB } from '../../database/database.module';
@@ -1104,6 +1115,9 @@ export class AgentDefinitionService {
     const endpointUrl = this.readNullableString(
       data.endpointUrl ?? data.endpoint_url,
     );
+    const apiProtocol = this.readNullableString(
+      data.apiProtocol ?? data.api_protocol,
+    );
     const authMethod = this.readNullableString(
       data.authMethod ?? data.auth_method,
     );
@@ -1123,6 +1137,7 @@ export class AgentDefinitionService {
       ...(typeof data.provider === 'string' && data.provider.length > 0
         ? { provider: data.provider }
         : {}),
+      ...(apiProtocol !== undefined ? { apiProtocol } : {}),
       ...(modelName ? { modelName } : {}),
       ...(apiKeyId !== undefined ? { apiKeyId } : {}),
       ...(endpointUrl !== undefined ? { endpointUrl } : {}),

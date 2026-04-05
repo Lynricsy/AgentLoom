@@ -81,6 +81,7 @@ export class PiAiAdapter {
     const api = resolvePiModelApi({
       provider: providerSlug,
       model: config.modelId,
+      apiProtocol: config.provider.apiProtocol,
     });
     const baseUrl =
       resolvePiModelBaseUrl(

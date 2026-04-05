@@ -103,13 +103,52 @@ describe('PiConfigGeneratorService', () => {
       );
     });
 
-    it('maps openai provider to openai-completions api', () => {
+    it('未显式提供 apiProtocol 时仍应将 openai provider 映射到 openai-completions api', () => {
       const cfg: PiModelConfig = { provider: 'openai', model: 'gpt-4o' };
       const parsed = JSON.parse(
         service.generateModelsJson({ modelConfig: cfg }),
       ) as { providers: Record<string, { api: string }> };
 
       expect(parsed.providers['openai'].api).toBe('openai-completions');
+    });
+
+    it('openai_responses 协议应映射到 openai-responses api', () => {
+      const cfg: PiModelConfig = {
+        provider: 'openai',
+        model: 'gpt-5.4',
+        apiProtocol: 'openai_responses',
+      };
+      const parsed = JSON.parse(
+        service.generateModelsJson({ modelConfig: cfg }),
+      ) as { providers: Record<string, { api: string }> };
+
+      expect(parsed.providers['openai'].api).toBe('openai-responses');
+    });
+
+    it('openai_chat 协议应映射到 openai-completions api', () => {
+      const cfg: PiModelConfig = {
+        provider: 'openai',
+        model: 'gpt-4.1',
+        apiProtocol: 'openai_chat',
+      };
+      const parsed = JSON.parse(
+        service.generateModelsJson({ modelConfig: cfg }),
+      ) as { providers: Record<string, { api: string }> };
+
+      expect(parsed.providers['openai'].api).toBe('openai-completions');
+    });
+
+    it('anthropic 协议应优先映射到 anthropic-messages api', () => {
+      const cfg: PiModelConfig = {
+        provider: 'custom-claude',
+        model: 'claude-sonnet-4-6',
+        apiProtocol: 'anthropic',
+      };
+      const parsed = JSON.parse(
+        service.generateModelsJson({ modelConfig: cfg }),
+      ) as { providers: Record<string, { api: string }> };
+
+      expect(parsed.providers['custom-claude'].api).toBe('anthropic-messages');
     });
 
     it('private_cloud 的 gpt 模型应映射到 openai-responses 并补齐 /v1 baseUrl', () => {

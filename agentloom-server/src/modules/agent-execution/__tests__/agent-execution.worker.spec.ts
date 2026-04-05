@@ -601,7 +601,7 @@ describe('AgentExecutionWorker', () => {
         expect.objectContaining({
           runningState: 'failed',
           errorMessage: 'Runtime init failed',
-          failedPhase: 'queued',
+          failedPhase: 'sandbox_creating',
         }),
       );
       expect(mockEventBridge.emitExecutionStatusChanged).toHaveBeenCalledWith(
@@ -1442,6 +1442,7 @@ describe('AgentExecutionWorker', () => {
             modelConfig: expect.objectContaining({
               provider: 'private_cloud',
               model: 'claude-opus-4-6',
+              apiProtocol: 'openai_chat',
               apiBaseUrl: 'https://models.example.test/v1',
               apiKeyId: 'api-key-1',
               organizationId: 'org-1',
@@ -1673,8 +1674,9 @@ describe('AgentExecutionWorker', () => {
             sandboxConfig: { image: 'agentloom/sandbox:latest' },
             modelConfig: {
               modelId: 'cfg-missing',
-              provider: 'private_cloud',
-              modelName: 'gpt-4o',
+              provider: 'openai',
+              apiProtocol: 'openai_responses',
+              modelName: 'gpt-5.4',
               apiKeyId: 'api-key-inline',
               endpointUrl: 'https://runtime.example.com/v1',
               authMethod: 'api_key',
@@ -1692,8 +1694,9 @@ describe('AgentExecutionWorker', () => {
         expect.objectContaining({
           piConfigInput: expect.objectContaining({
             modelConfig: expect.objectContaining({
-              provider: 'private_cloud',
-              model: 'gpt-4o',
+              provider: 'openai',
+              apiProtocol: 'openai_responses',
+              model: 'gpt-5.4',
               apiBaseUrl: 'https://runtime.example.com/v1',
               apiKeyId: 'api-key-inline',
               authMethod: 'api_key',
@@ -2618,10 +2621,9 @@ describe('AgentExecutionWorker', () => {
 
     await worker.executeAgentLoop('conversation-1', 'tenant-1');
 
-    expect(mockSandboxService.scheduleConversationIdleAutoEnd).toHaveBeenCalledWith(
-      'conversation-1',
-      'tenant-1',
-    );
+    expect(
+      mockSandboxService.scheduleConversationIdleAutoEnd,
+    ).toHaveBeenCalledWith('conversation-1', 'tenant-1');
   });
 
   it('取消收口时不应调度 idle auto end', async () => {

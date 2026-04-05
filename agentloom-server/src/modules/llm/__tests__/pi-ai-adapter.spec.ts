@@ -582,4 +582,45 @@ describe('PiAiAdapter', () => {
       expect(mockModel.doGenerate).toHaveBeenCalledTimes(1);
     });
   });
+
+  describe('getPiRuntimeModel - 按协议生成 pi runtime 配置', () => {
+    it('openai_responses 协议应生成 openai-responses runtime model', async () => {
+      const result = await adapter.getPiRuntimeModel(
+        createConfig({
+          providerOverrides: {
+            slug: 'openai',
+            apiProtocol: 'openai_responses' as const,
+            baseUrl: 'https://models.example.test',
+          },
+        }),
+        'sk-key',
+      );
+
+      expect(result.apiKey).toBe('sk-key');
+      expect(result.model).toMatchObject({
+        api: 'openai-responses',
+        provider: 'openai',
+        baseUrl: 'https://models.example.test/v1',
+      });
+    });
+
+    it('openai_chat 协议应生成 openai-completions runtime model', async () => {
+      const result = await adapter.getPiRuntimeModel(
+        createConfig({
+          providerOverrides: {
+            slug: 'openai',
+            apiProtocol: 'openai_chat' as const,
+            baseUrl: 'https://api.openai.com',
+          },
+        }),
+        'sk-key',
+      );
+
+      expect(result.model).toMatchObject({
+        api: 'openai-completions',
+        provider: 'openai',
+        baseUrl: 'https://api.openai.com/v1',
+      });
+    });
+  });
 });

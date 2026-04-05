@@ -8,79 +8,76 @@ import {
   AgentPublishValidationException,
 } from './agent-definition.exceptions';
 
-const {
-  mockTenantDb,
-  mockTransactionStorage,
-  mockResourceSourceService,
-} = vi.hoisted(() => {
-  const selectResult: unknown[] = [];
-  const insertResult: unknown[] = [];
-  const updateResult: unknown[] = [];
+const { mockTenantDb, mockTransactionStorage, mockResourceSourceService } =
+  vi.hoisted(() => {
+    const selectResult: unknown[] = [];
+    const insertResult: unknown[] = [];
+    const updateResult: unknown[] = [];
 
-  const createChain = (resultRef: { current: unknown[] }) => {
-    const chain: Record<string, any> = {};
-    chain.from = vi.fn().mockReturnValue(chain);
-    chain.where = vi.fn().mockReturnValue(chain);
-    chain.orderBy = vi.fn().mockReturnValue(chain);
-    chain.limit = vi.fn().mockReturnValue(chain);
-    chain.offset = vi.fn().mockImplementation(() => {
-      return resultRef.current;
+    const createChain = (resultRef: { current: unknown[] }) => {
+      const chain: Record<string, any> = {};
+      chain.from = vi.fn().mockReturnValue(chain);
+      chain.where = vi.fn().mockReturnValue(chain);
+      chain.orderBy = vi.fn().mockReturnValue(chain);
+      chain.limit = vi.fn().mockReturnValue(chain);
+      chain.offset = vi.fn().mockImplementation(() => {
+        return resultRef.current;
+      });
+      return chain;
+    };
+
+    const selectChain = createChain({
+      get current() {
+        return selectResult;
+      },
     });
-    return chain;
-  };
-
-  const selectChain = createChain({
-    get current() {
-      return selectResult;
-    },
-  });
-  // Make select chain resolve as a promise when accessed directly (no offset)
-  selectChain.limit = vi.fn().mockReturnValue(selectResult);
-  selectChain.where = vi.fn().mockReturnValue({
-    ...selectChain,
-    orderBy: vi.fn().mockReturnValue({
+    // Make select chain resolve as a promise when accessed directly (no offset)
+    selectChain.limit = vi.fn().mockReturnValue(selectResult);
+    selectChain.where = vi.fn().mockReturnValue({
       ...selectChain,
-      limit: vi.fn().mockReturnValue({
+      orderBy: vi.fn().mockReturnValue({
         ...selectChain,
-        offset: vi.fn().mockResolvedValue(selectResult),
+        limit: vi.fn().mockReturnValue({
+          ...selectChain,
+          offset: vi.fn().mockResolvedValue(selectResult),
+        }),
       }),
-    }),
-    limit: vi.fn().mockResolvedValue(selectResult),
+      limit: vi.fn().mockResolvedValue(selectResult),
+    });
+
+    const insertChain: Record<string, any> = {};
+    insertChain.values = vi.fn().mockReturnValue(insertChain);
+    insertChain.returning = vi.fn().mockImplementation(() => insertResult);
+
+    const updateChain: Record<string, any> = {};
+    updateChain.set = vi.fn().mockReturnValue(updateChain);
+    updateChain.where = vi.fn().mockReturnValue(updateChain);
+    updateChain.returning = vi.fn().mockImplementation(() => updateResult);
+
+    const mockTenantDb = {
+      select: vi.fn().mockReturnValue(selectChain),
+      insert: vi.fn().mockReturnValue(insertChain),
+      update: vi.fn().mockReturnValue(updateChain),
+      execute: vi.fn(),
+      transaction: vi.fn(),
+      _selectResult: selectResult,
+      _insertResult: insertResult,
+      _updateResult: updateResult,
+    };
+
+    return {
+      mockTenantDb,
+      mockTransactionStorage: {
+        getStore: vi.fn(),
+      },
+      mockResourceSourceService: {
+        mapCurrentKinds: vi.fn().mockResolvedValue(new Map()),
+        buildShareImportedExistsCondition: vi.fn(() => ({
+          type: 'share-imported',
+        })),
+      },
+    };
   });
-
-  const insertChain: Record<string, any> = {};
-  insertChain.values = vi.fn().mockReturnValue(insertChain);
-  insertChain.returning = vi.fn().mockImplementation(() => insertResult);
-
-  const updateChain: Record<string, any> = {};
-  updateChain.set = vi.fn().mockReturnValue(updateChain);
-  updateChain.where = vi.fn().mockReturnValue(updateChain);
-  updateChain.returning = vi.fn().mockImplementation(() => updateResult);
-
-  const mockTenantDb = {
-    select: vi.fn().mockReturnValue(selectChain),
-    insert: vi.fn().mockReturnValue(insertChain),
-    update: vi.fn().mockReturnValue(updateChain),
-    execute: vi.fn(),
-    transaction: vi.fn(),
-    _selectResult: selectResult,
-    _insertResult: insertResult,
-    _updateResult: updateResult,
-  };
-
-  return {
-    mockTenantDb,
-    mockTransactionStorage: {
-      getStore: vi.fn(),
-    },
-    mockResourceSourceService: {
-      mapCurrentKinds: vi.fn().mockResolvedValue(new Map()),
-      buildShareImportedExistsCondition: vi.fn(() => ({
-        type: 'share-imported',
-      })),
-    },
-  };
-});
 
 vi.mock('../../common/providers/tenant-aware-db.provider', () => ({
   getTenantDb: vi.fn(() => mockTenantDb),
@@ -293,11 +290,10 @@ describe('AgentDefinitionService', () => {
   describe('create', () => {
     it('应成功创建 Agent 并返回 detail', async () => {
       const created = makeAgent({ id: 'new-agent' });
-      // mock tenantDb.insert chain
       const insertChain: Record<string, any> = {};
       insertChain.values = vi.fn().mockReturnValue(insertChain);
       insertChain.returning = vi.fn().mockResolvedValue([created]);
-      mockTenantDb.insert.mockReturnValue(insertChain);
+      mockTxClient.insert.mockReturnValue(insertChain);
 
       const result = await service.create(
         { name: 'Test Agent', description: 'desc' },
@@ -306,7 +302,7 @@ describe('AgentDefinitionService', () => {
 
       expect(result).toBeDefined();
       expect(result.id).toBe('new-agent');
-      expect(mockTenantDb.insert).toHaveBeenCalledTimes(1);
+      expect(mockTxClient.insert).toHaveBeenCalledTimes(1);
     });
 
     it('slug 冲突时自动重试生成新 slug', async () => {
@@ -321,7 +317,7 @@ describe('AgentDefinitionService', () => {
         .fn()
         .mockRejectedValueOnce(uniqueViolation)
         .mockResolvedValueOnce([created]);
-      mockTenantDb.insert.mockReturnValue(insertChain);
+      mockTxClient.insert.mockReturnValue(insertChain);
 
       const result = await service.create({ name: 'Test Agent' }, 'user-1');
 
@@ -335,7 +331,7 @@ describe('AgentDefinitionService', () => {
       const insertChain: Record<string, any> = {};
       insertChain.values = vi.fn().mockReturnValue(insertChain);
       insertChain.returning = vi.fn().mockRejectedValue(otherError);
-      mockTenantDb.insert.mockReturnValue(insertChain);
+      mockTxClient.insert.mockReturnValue(insertChain);
 
       await expect(
         service.create({ name: 'Test Agent' }, 'user-1'),
@@ -349,7 +345,7 @@ describe('AgentDefinitionService', () => {
       const insertChain: Record<string, any> = {};
       insertChain.values = vi.fn().mockReturnValue(insertChain);
       insertChain.returning = vi.fn().mockRejectedValue(uniqueViolation);
-      mockTenantDb.insert.mockReturnValue(insertChain);
+      mockTxClient.insert.mockReturnValue(insertChain);
 
       await expect(
         service.create({ name: 'Test Agent' }, 'user-1'),
@@ -1238,7 +1234,8 @@ describe('AgentDefinitionService', () => {
             llmConfigId: 'cfg-1',
             modelId: 'gpt-4o',
             modelName: 'gpt-4o',
-            provider: 'private_cloud',
+            provider: 'openai',
+            api_protocol: 'openai_responses',
             apiKeyId: 'key-1',
             endpointUrl: 'https://vllm.example.com/v1',
             authMethod: 'api_key',
@@ -1251,7 +1248,8 @@ describe('AgentDefinitionService', () => {
       expect(config.modelConfig).toMatchObject({
         modelId: 'cfg-1',
         modelName: 'gpt-4o',
-        provider: 'private_cloud',
+        provider: 'openai',
+        apiProtocol: 'openai_responses',
         apiKeyId: 'key-1',
         endpointUrl: 'https://vllm.example.com/v1',
         authMethod: 'api_key',

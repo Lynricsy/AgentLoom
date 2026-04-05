@@ -548,10 +548,7 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     sessionId: string,
     callback: RemoteToolExecutionCallback,
     callbackToken?: string,
-  ): Promise<
-    | { result: unknown }
-    | SelfEvolutionRemoteToolOutcome
-  > {
+  ): Promise<{ result: unknown } | SelfEvolutionRemoteToolOutcome> {
     if (callback.sessionId !== sessionId) {
       throw new Error(
         `Remote tool callback sessionId mismatch: expected ${sessionId}, got ${callback.sessionId}`,
@@ -569,8 +566,7 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     const selfEvolutionService = this.selfEvolutionService;
     if (selfEvolutionService?.supportsTool(callback.toolName)) {
       return await runInTenantTransaction(this.db, tenantId, async () => {
-        const phase =
-          callback.phase === 'execute' ? 'execute' : 'preflight';
+        const phase = callback.phase === 'execute' ? 'execute' : 'preflight';
 
         if (phase === 'execute') {
           return selfEvolutionService.handleSessionToolExecute(
@@ -799,6 +795,27 @@ export class SandboxAgentAdapter implements IAgentRuntime {
       runtimeApiKeys,
     );
 
+    this.logger.log(
+      `Sandbox session pi config ${JSON.stringify({
+        sessionId: session.id,
+        tenantId: session.tenantId ?? null,
+        llmModelConfigId: session.llmModelConfigId ?? null,
+        provider: resolvedModelConfig.modelConfig.provider,
+        model: resolvedModelConfig.modelConfig.model,
+        usedStoredConfig: Boolean(resolvedModelConfig.sourceModelConfig),
+        defaultProvider:
+          this.normalizeOptionalString(settings['defaultProvider']) ?? null,
+        defaultModel:
+          this.normalizeOptionalString(settings['defaultModel']) ?? null,
+        modelProviders: Object.keys(this.asRecord(models['providers']) ?? {}),
+        runtimeApiKeyProviders: Object.keys(runtimeApiKeys ?? {}),
+        providerApiKeyField: this.readProviderApiKeyField(
+          models,
+          resolvedModelConfig.modelConfig.provider,
+        ),
+      })}`,
+    );
+
     return {
       settings,
       models,
@@ -992,11 +1009,35 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     }
   }
 
+  private readProviderApiKeyField(
+    models: Record<string, unknown>,
+    provider: string,
+  ): string | null {
+    const providers = this.asRecord(models['providers']);
+    if (!providers) {
+      return null;
+    }
+
+    const providerConfig = this.asRecord(providers[provider]);
+    if (!providerConfig) {
+      return null;
+    }
+
+    return this.normalizeOptionalString(providerConfig['apiKey']) ?? null;
+  }
+
   private ensureDynamicProviderApiKey(
     models: Record<string, unknown>,
     modelConfig: PiModelConfig,
     runtimeApiKeys?: Record<string, string>,
   ): void {
+    const runtimeApiKey = this.normalizeOptionalString(
+      runtimeApiKeys?.[modelConfig.provider],
+    );
+    if (!runtimeApiKey) {
+      return;
+    }
+
     const providers = this.asRecord(models['providers']);
     if (!providers) {
       return;
@@ -1012,16 +1053,9 @@ export class SandboxAgentAdapter implements IAgentRuntime {
       return;
     }
 
-    const providerApiKey = this.normalizeOptionalString(
-      providerConfig['apiKey'],
-    );
-    if (providerApiKey) {
-      return;
-    }
-
-    if (runtimeApiKeys?.[modelConfig.provider]) {
-      providerConfig['apiKey'] = '__runtime__';
-    }
+    // 共享 sandbox 的 session 级 runtimeApiKey 必须优先于静态 env 占位值，
+    // 否则 pi runtime 会继续尝试把 `ANTHROPIC_API_KEY` 之类的字面量当作真实密钥使用。
+    providerConfig['apiKey'] = '__runtime__';
   }
 
   private toPiModelConfig(
@@ -1033,6 +1067,7 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     return {
       provider: provider.slug,
       model: modelConfig.modelId,
+      apiProtocol: provider.apiProtocol,
       ...(baseUrl ? { apiBaseUrl: baseUrl } : {}),
       apiKeyId: provider.apiKeyId ?? null,
       organizationId: modelConfig.orgId,
@@ -1086,11 +1121,13 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     }
 
     const apiBaseUrl = this.resolvePiRuntimeModelBaseUrl(modelConfig);
+    const apiProtocol = this.normalizeOptionalString(modelConfig?.apiProtocol);
     const authMethod = this.normalizeOptionalString(modelConfig?.authMethod);
 
     return {
       provider,
       model,
+      ...(apiProtocol ? { apiProtocol } : {}),
       ...(apiBaseUrl ? { apiBaseUrl } : {}),
       ...(typeof modelConfig?.apiKeyId === 'string' ||
       modelConfig?.apiKeyId === null
@@ -2190,7 +2227,9 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     return {
       description: description ?? `允许工具 ${toolName} 执行`,
       ...(resourcePaths.length > 0 ? { resourcePaths } : {}),
-      ...(this.readString(data?.domain) ? { domain: this.readString(data?.domain) } : {}),
+      ...(this.readString(data?.domain)
+        ? { domain: this.readString(data?.domain) }
+        : {}),
       ...(this.readString(data?.category)
         ? { category: this.readString(data?.category) }
         : {}),

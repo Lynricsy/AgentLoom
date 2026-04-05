@@ -306,7 +306,7 @@ describe('SandboxAgentAdapter', () => {
       expect(session.status).toBe('active');
     });
 
-    it('共享 sandbox 会话初始化时应下发 session 级模型配置与运行时 API key', async () => {
+    it('共享 sandbox 会话初始化时应下发 session 级模型配置，并强制 provider 走 runtime API key', async () => {
       await adapter.createSession(defaultParams);
 
       const fetchCall = vi.mocked(globalThis.fetch).mock.calls[0];
@@ -332,12 +332,103 @@ describe('SandboxAgentAdapter', () => {
       );
       expect(payload).toHaveProperty(
         'models.providers.anthropic.apiKey',
-        'ANTHROPIC_API_KEY',
+        '__runtime__',
       );
       expect(mockDecryptionBoundaryService.decryptApiKey).toHaveBeenCalledWith(
         'api-key-001',
         'tenant-001',
         'SandboxAgentAdapter',
+      );
+    });
+
+    it('openai_responses 协议应在容器 session 初始化时下发 openai-responses api', async () => {
+      const openAiModelConfig = {
+        ...storedModelConfig,
+        name: 'GPT-5.4',
+        modelId: 'gpt-5.4',
+      };
+      const openAiProvider = {
+        ...storedProvider,
+        slug: 'openai',
+        name: 'OpenAI',
+        baseUrl: 'https://models.example.test',
+        defaultBaseUrl: null,
+        apiProtocol: 'openai_responses' as const,
+        apiKeyId: 'api-key-openai',
+      };
+
+      mockDb.select.mockReturnValueOnce({
+        from: vi.fn(() => ({
+          innerJoin: vi.fn(() => ({
+            where: vi.fn().mockResolvedValue([
+              {
+                config: openAiModelConfig,
+                provider: openAiProvider,
+              },
+            ]),
+          })),
+        })),
+      });
+      mockDecryptionBoundaryService.decryptApiKey.mockResolvedValueOnce(
+        'sk-openai-test',
+      );
+
+      await adapter.createSession(defaultParams);
+
+      const fetchCall = vi.mocked(globalThis.fetch).mock.calls[0];
+      const payload = JSON.parse(String(fetchCall?.[1]?.body)) as Record<
+        string,
+        unknown
+      >;
+
+      expect(payload).toMatchObject({
+        settings: {
+          defaultProvider: 'openai',
+          defaultModel: 'gpt-5.4',
+        },
+        runtimeApiKeys: {
+          openai: 'sk-openai-test',
+        },
+      });
+      expect(payload).toHaveProperty(
+        'models.providers.openai.api',
+        'openai-responses',
+      );
+      expect(payload).toHaveProperty(
+        'models.providers.openai.baseUrl',
+        'https://models.example.test/v1',
+      );
+      expect(payload).toHaveProperty(
+        'models.providers.openai.apiKey',
+        '__runtime__',
+      );
+    });
+
+    it('没有 runtime API key 时应保留 provider 的 env 占位值', async () => {
+      const adapterWithoutDecrypt = new SandboxAgentAdapter(
+        mockDb as never,
+        mockSandboxService as never,
+        mockDockerService as never,
+        mockMcpService as never,
+        mockRagService as never,
+        mockCodeExecutionService as never,
+        undefined,
+        piConfigGenerator,
+        mockSelfEvolutionService as never,
+      );
+
+      await adapterWithoutDecrypt.createSession(defaultParams);
+
+      const fetchCall = vi.mocked(globalThis.fetch).mock.calls[0];
+      const payload = JSON.parse(String(fetchCall?.[1]?.body)) as Record<
+        string,
+        unknown
+      >;
+
+      expect(payload).not.toHaveProperty('runtimeApiKeys');
+      expect(payload).toHaveProperty(
+        'models.providers.anthropic.apiKey',
+        'ANTHROPIC_API_KEY',
       );
     });
 
@@ -1128,9 +1219,10 @@ describe('SandboxAgentAdapter', () => {
           description: '主人授权后，Agent 将修改自身编排',
         },
       });
-      vi.spyOn(adapter as any, 'assertValidSessionToolCallbackToken').mockImplementation(
-        () => undefined,
-      );
+      vi.spyOn(
+        adapter as any,
+        'assertValidSessionToolCallbackToken',
+      ).mockImplementation(() => undefined);
       vi.spyOn(adapter as any, 'loadSession').mockResolvedValue({
         id: 'session-self-1',
         agentId: 'agent-001',
@@ -1142,15 +1234,20 @@ describe('SandboxAgentAdapter', () => {
         updatedAt: new Date(),
       });
 
-      const result = await adapter.executeSessionToolCallback('session-self-1', {
-        sessionId: 'session-self-1',
-        toolCallId: 'tool-call-self-1',
-        toolName: 'apply_change',
-        input: { proposal: { summary: '修改自身编排' } },
-        phase: 'preflight',
-      });
+      const result = await adapter.executeSessionToolCallback(
+        'session-self-1',
+        {
+          sessionId: 'session-self-1',
+          toolCallId: 'tool-call-self-1',
+          toolName: 'apply_change',
+          input: { proposal: { summary: '修改自身编排' } },
+          phase: 'preflight',
+        },
+      );
 
-      expect(mockSelfEvolutionService.handleSessionToolPreflight).toHaveBeenCalledWith(
+      expect(
+        mockSelfEvolutionService.handleSessionToolPreflight,
+      ).toHaveBeenCalledWith(
         expect.objectContaining({
           id: 'session-self-1',
         }),
@@ -1176,9 +1273,10 @@ describe('SandboxAgentAdapter', () => {
           },
         },
       });
-      vi.spyOn(adapter as any, 'assertValidSessionToolCallbackToken').mockImplementation(
-        () => undefined,
-      );
+      vi.spyOn(
+        adapter as any,
+        'assertValidSessionToolCallbackToken',
+      ).mockImplementation(() => undefined);
       vi.spyOn(adapter as any, 'loadSession').mockResolvedValue({
         id: 'session-self-2',
         agentId: 'agent-001',
@@ -1190,15 +1288,20 @@ describe('SandboxAgentAdapter', () => {
         updatedAt: new Date(),
       });
 
-      const result = await adapter.executeSessionToolCallback('session-self-2', {
-        sessionId: 'session-self-2',
-        toolCallId: 'tool-call-self-2',
-        toolName: 'apply_change',
-        input: { proposal: { summary: '修改自身编排' } },
-        phase: 'execute',
-      });
+      const result = await adapter.executeSessionToolCallback(
+        'session-self-2',
+        {
+          sessionId: 'session-self-2',
+          toolCallId: 'tool-call-self-2',
+          toolName: 'apply_change',
+          input: { proposal: { summary: '修改自身编排' } },
+          phase: 'execute',
+        },
+      );
 
-      expect(mockSelfEvolutionService.handleSessionToolExecute).toHaveBeenCalledWith(
+      expect(
+        mockSelfEvolutionService.handleSessionToolExecute,
+      ).toHaveBeenCalledWith(
         expect.objectContaining({
           id: 'session-self-2',
         }),

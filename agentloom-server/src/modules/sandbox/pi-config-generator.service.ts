@@ -7,6 +7,7 @@ export interface PiModelConfig {
   provider: string;
   model: string;
   thinkingLevel?: 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+  apiProtocol?: string | null;
   apiBaseUrl?: string;
   apiKeyId?: string | null;
   organizationId?: string;
@@ -43,6 +44,7 @@ const PROVIDER_API_MAP: Record<string, string> = {
   anthropic: 'anthropic-messages',
   openai: 'openai-completions',
   google: 'google-generative-ai',
+  cohere: 'openai-completions',
   deepseek: 'openai-completions',
   custom: 'openai-completions',
   'azure-openai': 'azure-openai-responses',
@@ -50,6 +52,14 @@ const PROVIDER_API_MAP: Record<string, string> = {
   groq: 'openai-completions',
   openrouter: 'openai-completions',
   bedrock: 'bedrock-converse-stream',
+};
+
+const API_PROTOCOL_TO_PI_API_MAP: Record<string, string> = {
+  openai_chat: 'openai-completions',
+  openai_responses: 'openai-responses',
+  anthropic: 'anthropic-messages',
+  google: 'google-generative-ai',
+  cohere: 'openai-completions',
 };
 
 /** Default base URLs for known providers (pi-ai will use built-in defaults if omitted) */
@@ -123,10 +133,21 @@ function resolvePrivateCloudApi(model: string): string {
 }
 
 export function resolvePiModelApi(
-  modelConfig: Pick<PiModelConfig, 'provider' | 'model'>,
+  modelConfig: Pick<PiModelConfig, 'provider' | 'model' | 'apiProtocol'>,
 ): string {
   if (modelConfig.provider === 'private_cloud') {
     return resolvePrivateCloudApi(modelConfig.model);
+  }
+
+  const apiProtocol =
+    typeof modelConfig.apiProtocol === 'string'
+      ? modelConfig.apiProtocol.trim().toLowerCase()
+      : undefined;
+  if (apiProtocol) {
+    const mappedApi = API_PROTOCOL_TO_PI_API_MAP[apiProtocol];
+    if (mappedApi) {
+      return mappedApi;
+    }
   }
 
   return (
@@ -276,7 +297,9 @@ export class PiConfigGeneratorService {
 
     const providerEntry: Record<string, unknown> = {
       api,
-      ...((apiKeyEnv ?? inlineApiKey) ? { apiKey: apiKeyEnv ?? inlineApiKey } : {}),
+      ...((apiKeyEnv ?? inlineApiKey)
+        ? { apiKey: apiKeyEnv ?? inlineApiKey }
+        : {}),
       ...(headers ? { headers } : {}),
       ...(baseUrl ? { baseUrl } : {}),
       ...(compat ? { compat } : {}),

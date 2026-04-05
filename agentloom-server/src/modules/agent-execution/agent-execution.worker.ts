@@ -525,8 +525,7 @@ export class AgentExecutionWorker extends WorkerHost {
       await this.safeUpdateExecutionMetadata(tenantId, conversationId, {
         ...executionMetadata,
         runningState: terminalStatus,
-        errorMessage:
-          terminalStatus === 'failed' ? errorMessage : null,
+        errorMessage: terminalStatus === 'failed' ? errorMessage : null,
         errorCode:
           terminalStatus === 'failed' ? (errorSummary.errorCode ?? null) : null,
         rawErrorMessage:
@@ -935,7 +934,10 @@ export class AgentExecutionWorker extends WorkerHost {
           subAgentTracker,
         });
         if (hasSandboxRuntime) {
-          await this.startConversationWorkspaceWatcher(conversationId, tenantId);
+          await this.startConversationWorkspaceWatcher(
+            conversationId,
+            tenantId,
+          );
         }
         return {
           runtime,
@@ -2142,6 +2144,7 @@ export class AgentExecutionWorker extends WorkerHost {
     return {
       provider: resolved.provider.slug,
       model: resolved.modelId,
+      apiProtocol: resolved.provider.apiProtocol,
       ...(baseUrl ? { apiBaseUrl: baseUrl } : {}),
       apiKeyId: resolved.provider.apiKeyId ?? null,
       organizationId: resolved.orgId,
@@ -2198,11 +2201,13 @@ export class AgentExecutionWorker extends WorkerHost {
 
     const baseUrl = this.resolvePiRuntimeModelBaseUrl(modelConfig);
     const apiKeyId = modelConfig?.apiKeyId;
+    const apiProtocol = this.normalizeOptionalString(modelConfig?.apiProtocol);
     const authMethod = this.normalizeOptionalString(modelConfig?.authMethod);
 
     return {
       provider,
       model,
+      ...(apiProtocol ? { apiProtocol } : {}),
       ...(baseUrl ? { apiBaseUrl: baseUrl } : {}),
       ...(typeof apiKeyId === 'string' || apiKeyId === null
         ? { apiKeyId }
@@ -2547,7 +2552,10 @@ export class AgentExecutionWorker extends WorkerHost {
     definitionRuntimeMode: unknown,
     snapshotRuntimeMode: unknown,
   ): AgentRuntimeMode {
-    if (snapshotRuntimeMode === 'sandbox' || snapshotRuntimeMode === 'no_sandbox') {
+    if (
+      snapshotRuntimeMode === 'sandbox' ||
+      snapshotRuntimeMode === 'no_sandbox'
+    ) {
       return snapshotRuntimeMode;
     }
 
@@ -2809,7 +2817,9 @@ export class AgentExecutionWorker extends WorkerHost {
           params.agentDefinition.sandboxConfig;
 
         if (!sandboxConfig) {
-          throw new AgentSandboxNotConnectedException(params.agentDefinition.id);
+          throw new AgentSandboxNotConnectedException(
+            params.agentDefinition.id,
+          );
         }
 
         runtimeConfig.sandboxConfig =

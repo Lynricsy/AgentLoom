@@ -1047,21 +1047,53 @@ export class WorkflowAgentAdapter {
       const nestedAdapter = this.createNestedAdapter(
         resolved.agentDefinition.id,
       );
-      const nestedResult = await nestedAdapter.execute({
-        executionId: params.executionId,
-        step: params.step,
-        input: params.input,
-        tenantId: params.tenantId,
-        agentVersionId: subAgent.agentVersionId,
-        versionSnapshot: resolved.versionSnapshot.snapshot,
-        currentDepth: params.currentDepth + 1,
-        visitedIds: nextVisited,
-        sandboxBinding: params.sandboxBinding,
-        parentUsesSandboxRuntime: params.parentUsesSandboxRuntime,
-        emitEvents: false,
-      });
+      const subAgentKey = this.getSubAgentKey(subAgent);
 
-      results[this.getSubAgentKey(subAgent)] = nestedResult;
+      this.logger.log(
+        `Workflow sub-agent start ${JSON.stringify({
+          parentAgentDefinitionId: this.config.agentDefinitionId,
+          subAgentKey,
+          subAgentDefinitionId: subAgent.agentDefinitionId,
+          subAgentVersionId: subAgent.agentVersionId ?? null,
+          parentUsesSandboxRuntime: params.parentUsesSandboxRuntime,
+          hasSandboxBinding: Boolean(params.sandboxBinding),
+          sandboxNodeId: params.sandboxBinding?.sandboxNodeId ?? null,
+          executionId: params.executionId,
+          stepId: params.step.id,
+        })}`,
+      );
+
+      let nestedResult: WorkflowAgentExecutionResult;
+      try {
+        nestedResult = await nestedAdapter.execute({
+          executionId: params.executionId,
+          step: params.step,
+          input: params.input,
+          tenantId: params.tenantId,
+          agentVersionId: subAgent.agentVersionId,
+          versionSnapshot: resolved.versionSnapshot.snapshot,
+          currentDepth: params.currentDepth + 1,
+          visitedIds: nextVisited,
+          sandboxBinding: params.sandboxBinding,
+          parentUsesSandboxRuntime: params.parentUsesSandboxRuntime,
+          emitEvents: false,
+        });
+      } catch (error) {
+        this.logger.error(
+          `Workflow sub-agent failed ${JSON.stringify({
+            parentAgentDefinitionId: this.config.agentDefinitionId,
+            subAgentKey,
+            subAgentDefinitionId: subAgent.agentDefinitionId,
+            executionId: params.executionId,
+            stepId: params.step.id,
+            sandboxNodeId: params.sandboxBinding?.sandboxNodeId ?? null,
+            error: error instanceof Error ? error.message : String(error),
+          })}`,
+        );
+        throw error;
+      }
+
+      results[subAgentKey] = nestedResult;
     }
 
     return results;

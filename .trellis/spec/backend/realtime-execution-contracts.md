@@ -5,6 +5,7 @@
 ## 场景：Agent 文本/工具交错瀑布流与 workflow-agent 实时 viewer
 
 ### 1. Scope / Trigger
+
 - 触发条件：修改以下任一链路时，必须回看本节
   - `src/modules/agent-execution/agent-execution.worker.ts`
   - `src/modules/execution/agent-task.worker.ts`
@@ -17,6 +18,7 @@
 - 风险点：一旦只保留最终 `content + toolCalls[]`，或者 viewer 冷开时拿不到 snapshot/replay/workspace，前端就会退化成“文本一坨、工具堆后面”的假瀑布流。
 
 ### 2. Signatures
+
 - `appendTextConversationMessageSegment(segments, content): ConversationMessageSegmentRecord[]`
 - `appendThinkingConversationMessageSegment(segments, content): ConversationMessageSegmentRecord[]`
 - `ensureToolCallConversationMessageSegment(segments, toolCallId): ConversationMessageSegmentRecord[]`
@@ -39,6 +41,7 @@
   - `execution.node.tool-permission-resolved`
 
 ### 3. Contracts
+
 - standalone Agent 会话必须把有序消息段持久化到 `agent_messages.metadata.segments`。
   - `message_chunk` 追加到 `text` segment。
   - `plan` / `decision` 追加到 `thinking` segment。
@@ -71,22 +74,24 @@
 
 ### 4. Validation & Error Matrix
 
-| 条件 | 预期行为 | 断言点 |
-|------|----------|--------|
-| `segments` 已持久化 | viewer 必须按 `text/thinking/tool_call` 的真实顺序恢复历史 | `agent-execution.worker.spec.ts` / `workflow-agent-adapter.spec.ts` |
-| conversation turn 运行中已产出 partial output，但最终 runtime error 失败 | worker 仍需持久化 partial assistant turn，刷新后不能丢失 | `agent-execution.worker.spec.ts` |
-| `segments` 缺失，但 `partialContent + toolCalls` 存在 | 允许 fallback 恢复基础内容，但会丢交错顺序；这是临时兼容，不是目标形态 | `workflowAgentViewer.test.ts` / `workflow_agent_runtime_test.dart` |
-| workflow-agent 冷开时 step 仍在运行 | snapshot 后必须能补到 active step buffered live events | `execution.gateway.spec.ts` |
-| `file_change` 事件只带 `conversationId` | 不得推送到 `/execution` namespace | `event-bridge.service.spec.ts` |
-| `tool_call` segment 指向不存在的 tool call | `normalizeConversationMessageSegments()` / viewer normalization 必须丢弃该 segment | `workflowAgentViewer.test.ts` |
-| step workspace 文件路径为空或越权 | API 返回明确失败，前端不应继续复用旧内容 | `execution.controller.spec.ts` / `workspace-integration.service.spec.ts` |
+| 条件                                                                     | 预期行为                                                                           | 断言点                                                                   |
+| ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `segments` 已持久化                                                      | viewer 必须按 `text/thinking/tool_call` 的真实顺序恢复历史                         | `agent-execution.worker.spec.ts` / `workflow-agent-adapter.spec.ts`      |
+| conversation turn 运行中已产出 partial output，但最终 runtime error 失败 | worker 仍需持久化 partial assistant turn，刷新后不能丢失                           | `agent-execution.worker.spec.ts`                                         |
+| `segments` 缺失，但 `partialContent + toolCalls` 存在                    | 允许 fallback 恢复基础内容，但会丢交错顺序；这是临时兼容，不是目标形态             | `workflowAgentViewer.test.ts` / `workflow_agent_runtime_test.dart`       |
+| workflow-agent 冷开时 step 仍在运行                                      | snapshot 后必须能补到 active step buffered live events                             | `execution.gateway.spec.ts`                                              |
+| `file_change` 事件只带 `conversationId`                                  | 不得推送到 `/execution` namespace                                                  | `event-bridge.service.spec.ts`                                           |
+| `tool_call` segment 指向不存在的 tool call                               | `normalizeConversationMessageSegments()` / viewer normalization 必须丢弃该 segment | `workflowAgentViewer.test.ts`                                            |
+| step workspace 文件路径为空或越权                                        | API 返回明确失败，前端不应继续复用旧内容                                           | `execution.controller.spec.ts` / `workspace-integration.service.spec.ts` |
 
 ### 5. Good / Base / Bad Cases
+
 - Good：workflow-agent 运行中途打开 viewer，立刻看到已产生的文本 chunk、工具卡片、workspace 树，并且后续事件继续追加。
 - Base：已完成 step 重新进入 viewer，至少能从 `checkpointData.segments + toolCalls + partialContent` 恢复出可读瀑布流。
 - Bad：worker 只持久化 `assistantText + toolCalls[]`，前端再按 `thinking -> text -> toolCalls` 重新拼装，导致历史顺序失真。
 
 ### 6. Tests Required
+
 - `src/modules/agent-execution/__tests__/agent-execution.worker.spec.ts`
   - 断言 `agent_messages.metadata.segments` 持久化。
 - `src/modules/execution/__tests__/agent-task.worker.spec.ts`
@@ -132,6 +137,7 @@ await db.insert(agentMessages).values({
 ## 场景：standalone Agent 已完成会话的工作区目录树快照 fallback
 
 ### 1. Scope / Trigger
+
 - 触发条件：修改以下任一文件时，必须回看本节
   - `src/modules/agent-execution/workspace-integration.service.ts`
   - `src/modules/agent-conversation/agent-conversation.controller.ts`
@@ -139,6 +145,7 @@ await db.insert(agentMessages).values({
 - 风险点：standalone conversation 的右侧 workspace 目前主要依赖 live sandbox；一旦 runtime 释放，前端就会退化成“工作区暂不可见”。如果为了 completed 态继续预览文件而强行保存整份 workspace 内容，存储成本会明显膨胀。
 
 ### 2. Signatures
+
 - `WorkspaceIntegrationService.onConversationEnd(conversationId, tenantId, organizationId, userId): Promise<void>`
 - `WorkspaceIntegrationService.getFileTree(conversationId, tenantId): Promise<FileTreeNode[]>`
 - `WorkspaceIntegrationService.getFileContent(conversationId, tenantId, filePath): Promise<FileContentResult>`
@@ -147,6 +154,7 @@ await db.insert(agentMessages).values({
 - `agent_conversations.metadata.workspaceTreeSnapshot`
 
 ### 3. Contracts
+
 - standalone conversation 结束时，服务端必须尝试从 live container 读取当前 `/workspace` 目录树，并把快照写入 `agent_conversations.metadata.workspaceTreeSnapshot`。
 - `agent-conversation.ended` 必须在 conversation 状态变更事务提交后再发出；不能在事务体内直接 fire-and-forget，否则异步 listener 里再注册 after-commit hook 时，会把 destroy job 丢掉。
 - `agent-conversation.ended` 事件链路必须在目录树快照尝试完成后，继续释放 conversation 关联的 live sandbox。
@@ -169,22 +177,24 @@ await db.insert(agentMessages).values({
 
 ### 4. Validation & Error Matrix
 
-| 条件 | 预期行为 | 断言点 |
-|------|----------|--------|
-| 对话结束时仍有 live container | 写入 `metadata.workspaceTreeSnapshot` | `workspace-integration.service.spec.ts` |
-| 对话在租户事务内被结束 | `agent-conversation.ended` 必须 after-commit 才触发 | `agent-conversation.service.spec.ts` |
-| 对话结束事件触发 | 目录树快照尝试完成后必须释放 live sandbox | `workspace-integration.service.spec.ts` |
-| 对话结束时无 `persistencePath` | 仍应保存目录树快照，不能跳过 | `workspace-integration.service.spec.ts` |
-| live container 已释放，但 metadata 有 `workspaceTreeSnapshot` | `GET /workspace/tree` 返回目录树快照 | `workspace-integration.service.spec.ts` |
-| live container 已释放，但 metadata 有 `workspaceTreeSnapshot` | `GET /workspace/files/*` 返回明确的 tree-only 错误 | `workspace-integration.service.spec.ts` |
-| live container 已释放，metadata 无快照 | 维持现有 `没有运行中的沙箱容器` 错误 | `workspace-integration.service.spec.ts` |
+| 条件                                                          | 预期行为                                            | 断言点                                  |
+| ------------------------------------------------------------- | --------------------------------------------------- | --------------------------------------- |
+| 对话结束时仍有 live container                                 | 写入 `metadata.workspaceTreeSnapshot`               | `workspace-integration.service.spec.ts` |
+| 对话在租户事务内被结束                                        | `agent-conversation.ended` 必须 after-commit 才触发 | `agent-conversation.service.spec.ts`    |
+| 对话结束事件触发                                              | 目录树快照尝试完成后必须释放 live sandbox           | `workspace-integration.service.spec.ts` |
+| 对话结束时无 `persistencePath`                                | 仍应保存目录树快照，不能跳过                        | `workspace-integration.service.spec.ts` |
+| live container 已释放，但 metadata 有 `workspaceTreeSnapshot` | `GET /workspace/tree` 返回目录树快照                | `workspace-integration.service.spec.ts` |
+| live container 已释放，但 metadata 有 `workspaceTreeSnapshot` | `GET /workspace/files/*` 返回明确的 tree-only 错误  | `workspace-integration.service.spec.ts` |
+| live container 已释放，metadata 无快照                        | 维持现有 `没有运行中的沙箱容器` 错误                | `workspace-integration.service.spec.ts` |
 
 ### 5. Good / Base / Bad Cases
+
 - Good：completed 的 standalone conversation 刷新后仍能看到工作区目录树；点击文件时明确提示“未保留文件内容预览”。
 - Base：若该轮没有产出文件，workspace tree API 返回空数组，前端显示“没有文件树”，而不是“工作区暂不可见”。
 - Bad：completed conversation 为了支持文件预览而继续保存整份 workspace tar，或者在 runtime 释放后直接让前端看起来像“工作区没实现”。
 
 ### 6. Tests Required
+
 - `src/modules/agent-execution/__tests__/workspace-integration.service.spec.ts`
   - 断言 conversation end 会写入 `metadata.workspaceTreeSnapshot`
   - 断言无 `persistencePath` 时仍保存目录树快照
@@ -207,11 +217,7 @@ await workspaceService.createFromSandbox(...);
 
 ```ts
 const tree = await readFileTreeFromContainer(session.containerId);
-await persistConversationWorkspaceTreeSnapshot(
-  conversationId,
-  tenantId,
-  tree,
-);
+await persistConversationWorkspaceTreeSnapshot(conversationId, tenantId, tree);
 ```
 
 ---
@@ -219,6 +225,7 @@ await persistConversationWorkspaceTreeSnapshot(
 ## 场景：Persistent Sandbox 在 workflow rerun 中的绑定复用
 
 ### 1. Scope / Trigger
+
 - 触发条件：修改以下任一文件时，必须回看本节
   - `src/modules/sandbox/sandbox.service.ts`
   - `src/modules/execution/node-scheduler.service.ts`
@@ -226,6 +233,7 @@ await persistConversationWorkspaceTreeSnapshot(
 - 风险点：旧 execution 的 binding 没清干净，新的 execution 会在 `session.status === 'ready'` 时仍被 `attachPersistentSandbox()` 拒绝。
 
 ### 2. Signatures
+
 - `SandboxService.createSandboxSession(params): Promise<SandboxSession>`
 - `SandboxService.attachPersistentSandbox(params): Promise<SandboxSession>`
 - `SandboxService.releaseExecutionSandbox(executionId, sandboxNodeId, tenantId): Promise<void>`
@@ -234,6 +242,7 @@ await persistConversationWorkspaceTreeSnapshot(
 - `NodeSchedulerService.cleanupSandboxIfTerminal(executionId, tenantId): Promise<void>`
 
 ### 3. Contracts
+
 - `config.activeBindings` 是 persistent sandbox 真实绑定源；`executionId / agentConversationId / sandboxNodeId` 只是查询加速字段，不能当唯一 truth source。
 - 同一 execution 内，多个 workflow 节点可以共享同一 persistent sandbox 资源；attach 时允许追加新的 `sandboxNodeId` binding。
 - 不同 execution 之间不得同时绑定同一 persistent sandbox。若旧 binding 仍存在，attach 必须抛 `SandboxInvalidStateException`。
@@ -249,20 +258,22 @@ await persistConversationWorkspaceTreeSnapshot(
 
 ### 4. Validation & Error Matrix
 
-| 条件 | 预期行为 | 断言点 |
-|------|----------|--------|
-| 同一 execution 的第二个 workflow 节点引用同一 persistent sandbox | 追加 binding，不得冲突失败 | `sandbox.service.spec.ts` |
-| 不同 execution 仍保留旧 binding 时 attach | 抛 `SandboxInvalidStateException` | `sandbox.service.ts` attach 分支 |
-| execution 终态清理 | 移除该 execution 的全部 bindings，而不是只清平铺字段 | `sandbox.service.spec.ts` |
-| `failed` persistent sandbox 被再次引用 | 自动走 `startSandbox()`，并清理旧容器元数据 | `sandbox.service.spec.ts` |
-| `startSandbox()` 作用于 `ready`/`creating` | 抛 `SandboxInvalidStateException` | `sandbox.service.ts` |
+| 条件                                                             | 预期行为                                             | 断言点                           |
+| ---------------------------------------------------------------- | ---------------------------------------------------- | -------------------------------- |
+| 同一 execution 的第二个 workflow 节点引用同一 persistent sandbox | 追加 binding，不得冲突失败                           | `sandbox.service.spec.ts`        |
+| 不同 execution 仍保留旧 binding 时 attach                        | 抛 `SandboxInvalidStateException`                    | `sandbox.service.ts` attach 分支 |
+| execution 终态清理                                               | 移除该 execution 的全部 bindings，而不是只清平铺字段 | `sandbox.service.spec.ts`        |
+| `failed` persistent sandbox 被再次引用                           | 自动走 `startSandbox()`，并清理旧容器元数据          | `sandbox.service.spec.ts`        |
+| `startSandbox()` 作用于 `ready`/`creating`                       | 抛 `SandboxInvalidStateException`                    | `sandbox.service.ts`             |
 
 ### 5. Good / Base / Bad Cases
+
 - Good：execution A 完成后 binding 被清空；execution B 重新 attach 同一 persistent sandbox 成功，两个 sandbox step 都能 completed。
 - Base：同一 execution 内 `sandbox-1` 与 `sandbox-2` 共享同一 persistent sandbox，会话的 `activeBindings` 追加两个 node binding。
 - Bad：execution 终态时只清 `session.executionId`，没有清 `config.activeBindings`，下一次 rerun 会在 `current status is ready` 时仍 attach 失败。
 
 ### 6. Tests Required
+
 - `src/modules/sandbox/__tests__/sandbox.service.spec.ts`
   - 同一 execution 第二个节点追加 binding。
   - `failed` persistent sandbox 自动恢复。
@@ -279,19 +290,19 @@ await persistConversationWorkspaceTreeSnapshot(
 #### Wrong
 
 ```ts
-if (session.status === 'failed' || session.status === 'stopping') {
-  throw new SandboxInvalidStateException(session.id, session.status, 'use');
+if (session.status === "failed" || session.status === "stopping") {
+  throw new SandboxInvalidStateException(session.id, session.status, "use");
 }
 ```
 
 #### Correct
 
 ```ts
-if (session.status === 'stopping') {
-  throw new SandboxInvalidStateException(session.id, session.status, 'use');
+if (session.status === "stopping") {
+  throw new SandboxInvalidStateException(session.id, session.status, "use");
 }
 
-if (session.status === 'stopped' || session.status === 'failed') {
+if (session.status === "stopped" || session.status === "failed") {
   await this.startSandbox(session.id, tenantId);
 }
 ```
@@ -301,15 +312,17 @@ if (session.status === 'stopped' || session.status === 'failed') {
 ## 场景：Workflow compound 节点的父子归属兼容与 jump 收口
 
 ### 1. Scope / Trigger
+
 - 触发条件：修改以下任一文件时，必须回看本节
   - `src/modules/execution/compound-runtime.util.ts`
   - `src/modules/execution/execution.service.ts`
   - `src/modules/execution/node-scheduler.service.ts`
 - 风险点：
-  - workflow snapshot 如果混用了 `parentId` 与 `parent_id`，compound 内部节点会被误��成顶层步骤；
+  - workflow snapshot 如果混用了 `parentId` 与 `parent_id`，compound 内部节点会被误判成顶层步骤；
   - `break / continue` 提前结束当前轮次时，未执行的内部节点若继续停在 `pending`，Studio 调试视图会错误显示“等待中”。
 
 ### 2. Signatures
+
 - `readCompoundParentNodeId(node): string | undefined`
 - `attachExecutionRuntimeMeta(node, nodesById): Record<string, unknown>`
 - `filterTopLevelExecutionGraph(snapshot): { nodes; edges }`
@@ -319,6 +332,7 @@ if (session.status === 'stopped' || session.status === 'failed') {
 - `NodeSchedulerService.skipPendingCompoundInternalSteps(steps, tenantId): Promise<void>`
 
 ### 3. Contracts
+
 - compound 内部节点父容器读取必须同时兼容：
   - `node.parentId`
   - `node.parent_id`
@@ -330,31 +344,41 @@ if (session.status === 'stopped' || session.status === 'failed') {
   - `totalSteps`
   - `completedSteps`
   - `StepStateMachine.updateExecutionStatus()` 的 tracked steps
-- `filterTopLevelExecutionGraph()` 必须把所有带父容器的 compound 内部节点��顶层 DAG 中排除；否则 `iteration-start / loop-start / result / break / continue / 普通内部 agent` 会被错误地直接调度。
+- `filterTopLevelExecutionGraph()` 必须把所有带父容器的 compound 内部节点从顶层 DAG 中排除；否则 `iteration-start / loop-start / result / break / continue / 普通内部 agent` 会被错误地直接调度。
 - `NodeSchedulerService.createCompoundContext()` 必须用同一套父节点读取规则收集内部子图；不能只认 `parentId`。
+- compound 内部 `agent` 若不是直接从 sandbox 节点连入，而是通过 `loop-start / iteration-start / result` 等中间节点把 `sandbox-in` 输入对象继续往下传：
+  - `NodeSchedulerService.scheduleNode()` 仍必须把全量 execution steps 传给 `getExecutionSandboxBinding()`；
+  - `getExecutionSandboxBinding()` 必须允许从 `input['sandbox-in']` / `sandbox` / `sandbox-out` / `sandbox-output` 中读取 `sessionId`，再回推到真实 sandbox step；
+  - `WorkflowAgentAdapter` 与 step workspace watcher 必须复用这个回推得到的 `shared-sandbox` 绑定，不能为 compound 内部 agent 再新建独立 sandbox。
 - `break / continue` 命中后：
   - 当前轮剩余 `pending` 的 compound 内部节点必须先显式转成 `skipped`；
+  - 若 `break` 命中时当前轮 `result` 节点已经 `schedule-ready`，必须先执行该 `result` 节点，把本轮最新输出写回 `roundOutputs / finalOutputs`，然后再 finalize compound；不能直接跳过它；
   - `break` 再结束当前 compound；
   - `continue` 再推进下一轮并重置内部步骤；
   - execution 完成后不得残留 compound 内部节点 `pending`。
 
 ### 4. Validation & Error Matrix
 
-| 条件 | 预期行为 | 断言点 |
-|------|----------|--------|
-| snapshot 子节点只有 `parent_id` | internal step 正确生成 `compoundParentId`，且不进入顶层 DAG | `compound-runtime.util.spec.ts` |
-| `initializeSteps()` 读到 `parent_id` 子节点 | tracked step 统计排除该内部节点 | `execution.service.spec.ts` |
-| `createCompoundContext()` 读到 `parent_id` 子节点 | 正确收集内部节点与内部 DAG 顺序 | `node-scheduler.service.spec.ts` |
-| `break` 命中且后面还有未执行内部节点 | 这些节点变成 `skipped`，不能残留 `pending` | `node-scheduler.service.spec.ts` + browser QA |
-| `continue` 命中且进入下一轮 | 本轮剩余节点先 `skipped`，随后下一轮 reset 回 `pending` 再继续调度 | browser QA + execution detail |
-| 内部节点缺少任何父容器标识 | 仍允许失败，但错误必须明确指向 compound 归属缺失 | runtime error / QA |
+| 条件                                                                     | 预期行为                                                                                    | 断言点                                        |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| snapshot 子节点只有 `parent_id`                                          | internal step 正确生成 `compoundParentId`，且不进入顶层 DAG                                 | `compound-runtime.util.spec.ts`               |
+| `initializeSteps()` 读到 `parent_id` 子节点                              | tracked step 统计排除该内部节点                                                             | `execution.service.spec.ts`                   |
+| `createCompoundContext()` 读到 `parent_id` 子节点                        | 正确收集内部节点与内部 DAG 顺序                                                             | `node-scheduler.service.spec.ts`              |
+| compound 内部 agent 只拿到 `sandbox-in.sessionId`，没有直接 sandbox 入边 | 仍能回推到真实 sandbox step，并把 `serverSandbox` 绑定传给 workflow agent / watcher         | `node-scheduler.service.spec.ts` + browser QA |
+| `break` 命中且后面还有未执行内部节点                                     | 这些节点变成 `skipped`，不能残留 `pending`                                                  | `node-scheduler.service.spec.ts` + browser QA |
+| `break` 命中且当前轮 `result` 已就绪                                     | 先执行 `result`，最终 `review-result / final-output` 必须拿到本轮最新输出，而不是上一轮旧值 | `node-scheduler.service.spec.ts` + browser QA |
+| `continue` 命中且进入下一轮                                              | 本轮剩余节点先 `skipped`，随后下一轮 reset 回 `pending` 再继续调度                          | browser QA + execution detail                 |
+| 内部节点缺少任何父容器标识                                               | 仍允许失败，但错误必须明确指向 compound 归属缺失                                            | runtime error / QA                            |
 
 ### 5. Good / Base / Bad Cases
+
 - Good：`iteration-start / continue / agent / result` 都挂在 `iteration` 下；运行时只调度顶层 `iteration`，内部节点由 compound context 驱动。
-- Base：`break` 在第 2 轮一开始命中，`loop-prompt / loop-agent / loop-state / result` 都显示 `skipped`，父 `loop` 以 `stopReason='break'` 完成。
-- Bad：`iter-agent` 因漏掉父节点字段被当成顶层 root；或者 `loop` 已 completed，但剩余内部节点还显示 `pending`。
+- Base：`break` 在第 2 轮一开始命中，且当前轮 `result` 仍未就绪，`loop-prompt / loop-agent / loop-state / result` 都显示 `skipped`，父 `loop` 以 `stopReason='break'` 完成。
+- Good：共享 sandbox 先连到 `loop` 容器，再经 `loop-start -> agent sandbox-in` 传入 compound 内部；developer/reviewer 及其 sub-agent 都复用同一个 `shared-sandbox` 容器。
+- Bad：`iter-agent` 因漏掉父节点字段被当成顶层 root；或者 `loop` 已 completed，但剩余内部节点还显示 `pending`；或者 reviewer 第二轮已通过，但 `review-result / final-output` 仍停留在第一轮驳回文本。
 
 ### 6. Tests Required
+
 - `src/modules/execution/__tests__/compound-runtime.util.spec.ts`
   - 断言 `parent_id` 兼容
   - 断言顶层 DAG 过滤会排除 compound 内部节点
@@ -363,9 +387,12 @@ if (session.status === 'stopped' || session.status === 'failed') {
 - `src/modules/execution/__tests__/node-scheduler.service.spec.ts`
   - 断言 `createCompoundContext()` 兼容 `parent_id`
   - 断言 `break` 命中后剩余 pending internal nodes 先转 `skipped`
+  - 断言 `break` 命中且 `result` 已就绪时，先执行 `result` 再 finalize
+  - 断言 compound 内部 workflow agent 可从 `sandbox-in.sessionId` 回推共享 sandbox 绑定
 - Manual QA
   - `QA Iteration Agent Sandbox 20260401`
   - `QA Loop Agent Sandbox 20260401`
+  - `QA DevReview Loop Workflow 20260405-C`
   - 确认 `continue` 丢弃当前轮结果，`break` 后剩余内部节点显示 `skipped`
 
 ### 7. Wrong vs Correct
@@ -398,6 +425,7 @@ if (context.breakRequested) {
 ## 场景：`sandbox / no_sandbox` Agent 双运行态与 workflow `agent` 节点契约
 
 ### 1. Scope / Trigger
+
 - 触发条件：修改以下任一文件时，必须回看本节
   - `src/modules/agent-definition/agent-definition.service.ts`
   - `src/modules/agent-definition/dto/create-agent-definition.dto.ts`
@@ -411,6 +439,7 @@ if (context.breakRequested) {
 - 风险点：如果 `runtimeMode`、workflow 端口、tool permission resolve、MCP transport 限制、sandbox→no_sandbox 子 Agent 的运行语义任一处漂移，就会出现“创建时可选、运行时失效”或“UI 看似 no_sandbox，底层仍起 sandbox”的伪支持。
 
 ### 2. Signatures
+
 - `CreateAgentDefinitionSchema`
 - `AgentDefinitionService.buildRuntimeConfigFromNodes(nodes, edges, agentDefinitionId?, runtimeMode?)`
 - `AgentExecutionWorker.resolveAgentRuntimeMode(definitionRuntimeMode, snapshotRuntimeMode): AgentRuntimeMode`
@@ -429,6 +458,7 @@ if (context.breakRequested) {
   - `POST /workflow-definitions/:id/run`
 
 ### 3. Contracts
+
 - Agent 创建时必须显式持久化 `runtimeMode = sandbox | no_sandbox`，创建后固定；后续保存画布、创建版本、发布和会话恢复都必须继续沿用该运行形态。
 - 顶层 `no_sandbox` standalone Agent 对话与 workflow `agent` 节点必须走 `InProcessAgentAdapter -> PiAgentCoreAdapter -> pi-agent-core`。
 - 顶层 `sandbox` Agent 继续走 `SandboxAgentAdapter` + 容器 runtime。
@@ -460,22 +490,24 @@ if (context.breakRequested) {
 
 ### 4. Validation & Error Matrix
 
-| 条件 | 预期行为 | 断言点 |
-|------|----------|--------|
-| 创建 `no_sandbox` Agent | `runtimeMode` 持久化为 `no_sandbox` | DTO / service 单测 |
-| `no_sandbox` Agent 发布时绑定 stdio MCP | 422 `agent-publish-validation`，错误文案点名 MCP server 名称 | API 手测 + service 单测 |
-| `no_sandbox` conversation 收到工具权限审批 | resolve 必须使用 `sessionId` 命中 in-process runtime | `agent-conversation.controller.spec.ts` |
-| workflow `agent` 节点选择 `no_sandbox` Agent | 输入端口不含 `sandbox-in` | Studio 单测 + 浏览器手测 |
-| `manual-trigger.text-in -> agent.text-in` | Agent step.input 必须拿到 launch input 原值 | `node-scheduler.service.spec.ts` + execution 手测 |
-| `sandbox` 父 Agent 调用 `no_sandbox` 子 Agent | 子 Agent 只能读父上下文可见资源，不能获得 write/edit/terminal | sub-agent 集成测试 + 浏览器手测 |
-| `no_sandbox` 父 Agent 调用 `sandbox` 子 Agent | 明确报错“不支持调用有 sandbox 的子 Agent” | worker / adapter 单测 |
+| 条件                                          | 预期行为                                                      | 断言点                                            |
+| --------------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------- |
+| 创建 `no_sandbox` Agent                       | `runtimeMode` 持久化为 `no_sandbox`                           | DTO / service 单测                                |
+| `no_sandbox` Agent 发布时绑定 stdio MCP       | 422 `agent-publish-validation`，错误文案点名 MCP server 名称  | API 手测 + service 单测                           |
+| `no_sandbox` conversation 收到工具权限审批    | resolve 必须使用 `sessionId` 命中 in-process runtime          | `agent-conversation.controller.spec.ts`           |
+| workflow `agent` 节点选择 `no_sandbox` Agent  | 输入端口不含 `sandbox-in`                                     | Studio 单测 + 浏览器手测                          |
+| `manual-trigger.text-in -> agent.text-in`     | Agent step.input 必须拿到 launch input 原值                   | `node-scheduler.service.spec.ts` + execution 手测 |
+| `sandbox` 父 Agent 调用 `no_sandbox` 子 Agent | 子 Agent 只能读父上下文可见资源，不能获得 write/edit/terminal | sub-agent 集成测试 + 浏览器手测                   |
+| `no_sandbox` 父 Agent 调用 `sandbox` 子 Agent | 明确报错“不支持调用有 sandbox 的子 Agent”                     | worker / adapter 单测                             |
 
 ### 5. Good / Base / Bad Cases
+
 - Good：顶层 `no_sandbox` Agent 在浏览器对话中能实际调用 Memory、Knowledge、HTTP MCP、自进化；workflow `agent` 节点没有 `sandbox-in`，运行后 step.input 正确收到 launch text。
 - Base：sandbox 父 Agent 调用 `no_sandbox` 子 Agent 时，子 Agent 能读取父工作区文件并完成任务，但不会暴露写权限或单独的 runtime session UI。
 - Bad：UI 选择了 `no_sandbox`，但运行时仍要求 sandbox 节点；或 workflow trigger 的命名端口看起来连上了，实际 step.input 仍为空。
 
 ### 6. Tests Required
+
 - `src/modules/agent-conversation/agent-conversation.controller.spec.ts`
   - 断言 `no_sandbox` 对话的工具权限 resolve 走 in-process runtime
 - `src/modules/agent/__tests__/pi-agent-core.adapter.spec.ts`
@@ -508,11 +540,10 @@ await this.sandboxAgentAdapter.resolveConversationToolPermission(
 #### Correct
 
 ```ts
-const target = await this.conversationService.getPermissionResolutionTarget(
-  conversationId,
-);
+const target =
+  await this.conversationService.getPermissionResolutionTarget(conversationId);
 
-if (target.runtimeMode === 'no_sandbox') {
+if (target.runtimeMode === "no_sandbox") {
   await this.inProcessAgentRuntime.resolveToolPermission?.(
     target.sessionId!,
     toolCallId,

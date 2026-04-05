@@ -374,6 +374,7 @@ export class NodeSchedulerService {
       executionId,
       resolvedSnapshot.edges,
       resolvedSteps,
+      input,
     );
     const memorySessionIds = this.getUpstreamMemorySessionIds(
       nodeId,
@@ -2543,8 +2544,40 @@ export class NodeSchedulerService {
     }
 
     if (context.breakRequested) {
+      const readyResultStep = internalSteps.find(
+        (step) =>
+          step.status === 'pending' &&
+          step.nodeType === 'result' &&
+          this.getSchedulingDecision(
+            step.nodeId,
+            context.internalEdges,
+            internalSteps,
+          ) === 'schedule',
+      );
+
+      if (readyResultStep) {
+        await this.scheduleNode(
+          context.executionId,
+          readyResultStep.nodeId,
+          tenantId,
+          {
+            nodes: context.internalNodes,
+            edges: context.internalEdges,
+          },
+          steps,
+          { skipLatestState: true },
+        );
+        return;
+      }
+
       await this.skipPendingCompoundInternalSteps(internalSteps, tenantId);
       context.completedRounds += 1;
+
+      if (Object.keys(context.roundOutputs).length > 0) {
+        this.mergeCompoundRoundOutputs(context);
+        context.previousResult = { ...context.roundOutputs };
+      }
+
       await this.finalizeCompoundExecution(context, tenantId);
       return;
     }
@@ -2602,7 +2635,7 @@ export class NodeSchedulerService {
             nodes: context.internalNodes,
             edges: context.internalEdges,
           },
-          internalSteps,
+          steps,
           { skipLatestState: true },
         );
         return;
@@ -3804,6 +3837,7 @@ export class NodeSchedulerService {
         executionId,
         edges,
         steps,
+        input,
       );
       const workflowAgentRuntimeMode =
         this.getWorkflowAgentRuntimeMode(nodeData);
@@ -3900,8 +3934,13 @@ export class NodeSchedulerService {
 
       const message = error instanceof Error ? error.message : String(error);
       const workflowSandboxNodeId =
-        this.getExecutionSandboxBinding(step.nodeId, executionId, edges, steps)
-          ?.sandboxNodeId ?? step.nodeId;
+        this.getExecutionSandboxBinding(
+          step.nodeId,
+          executionId,
+          edges,
+          steps,
+          input,
+        )?.sandboxNodeId ?? step.nodeId;
       const workspaceSnapshotId =
         await this.workspaceIntegrationService.archiveExecutionStepWorkspace(
           executionId,
@@ -4677,16 +4716,47 @@ export class NodeSchedulerService {
     executionId: string,
     edges: ReactFlowEdge[],
     steps: ExecutionStep[],
+    input?: Record<string, unknown>,
   ): { executionId: string; sandboxNodeId: string } | undefined {
     const sourceStep = this.getSandboxSourceStep(nodeId, edges, steps);
     if (!sourceStep) {
-      return undefined;
+      const sandboxSessionId = this.readSandboxSessionId(
+        input?.['sandbox-in'] ??
+          input?.sandbox ??
+          input?.['sandbox-out'] ??
+          input?.['sandbox-output'],
+      );
+      if (!sandboxSessionId) {
+        return undefined;
+      }
+
+      const matchedSandboxStep = steps.find(
+        (step) =>
+          step.nodeType === 'sandbox' &&
+          this.readSandboxSessionId(step.result) === sandboxSessionId,
+      );
+      if (!matchedSandboxStep) {
+        return undefined;
+      }
+
+      return {
+        executionId,
+        sandboxNodeId: matchedSandboxStep.nodeId,
+      };
     }
 
     return {
       executionId,
       sandboxNodeId: sourceStep.nodeId,
     };
+  }
+
+  private readSandboxSessionId(value: unknown): string | undefined {
+    if (!this.isRecord(value)) {
+      return undefined;
+    }
+
+    return this.readFirstString(value.sessionId, value.session_id);
   }
 
   private getSandboxRestoreWorkspaceId(
