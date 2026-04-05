@@ -1,4 +1,4 @@
-import { memo, type ReactNode, useMemo } from 'react'
+import { memo, type ReactNode, useMemo } from "react";
 import {
   Background,
   BackgroundVariant,
@@ -6,27 +6,28 @@ import {
   MiniMap,
   ReactFlow,
   ReactFlowProvider,
-} from '@xyflow/react'
-import { useTheme } from '@/shared/hooks/use-theme'
-import { cn } from '@/shared/lib/utils'
+} from "@xyflow/react";
+import { useTheme } from "@/shared/hooks/use-theme";
+import { cn } from "@/shared/lib/utils";
 import {
   buildWorkflowPreviewGraph,
   type WorkflowPreviewDefinition,
-} from '../lib/workflowPreview'
+} from "../lib/workflowPreview";
 import {
   WORKFLOW_EDGE_TYPES,
   WORKFLOW_NODE_TYPES,
-} from './workflowFlowRegistry'
+} from "./workflowFlowRegistry";
 
 interface WorkflowPreviewCanvasProps {
-  definition: WorkflowPreviewDefinition | null | undefined
-  className?: string
-  emptyFallback?: ReactNode
-  fitView?: boolean
-  showBackground?: boolean
-  showControls?: boolean
-  showMiniMap?: boolean
-  testId?: string
+  definition: WorkflowPreviewDefinition | null | undefined;
+  className?: string;
+  emptyFallback?: ReactNode;
+  fitView?: boolean;
+  interactive?: boolean;
+  showBackground?: boolean;
+  showControls?: boolean;
+  showMiniMap?: boolean;
+  testId?: string;
 }
 
 export const WorkflowPreviewCanvas = memo(function WorkflowPreviewCanvas({
@@ -34,25 +35,26 @@ export const WorkflowPreviewCanvas = memo(function WorkflowPreviewCanvas({
   className,
   emptyFallback = null,
   fitView = true,
+  interactive = true,
   showBackground = true,
   showControls = false,
   showMiniMap = false,
   testId,
 }: WorkflowPreviewCanvasProps) {
-  const { resolvedTheme } = useTheme()
+  const { resolvedTheme } = useTheme();
   const preview = useMemo(
     () => buildWorkflowPreviewGraph(definition),
     [definition],
-  )
+  );
 
   if (preview.nodes.length === 0) {
-    return <>{emptyFallback}</>
+    return <>{emptyFallback}</>;
   }
 
   return (
     <ReactFlowProvider>
       <ReactFlow
-        className={cn('workflow-preview-canvas', className)}
+        className={cn("workflow-preview-canvas", className)}
         data-testid={testId}
         nodes={preview.nodes}
         edges={preview.edges}
@@ -68,10 +70,10 @@ export const WorkflowPreviewCanvas = memo(function WorkflowPreviewCanvas({
         elementsSelectable={false}
         connectOnClick={false}
         edgesReconnectable={false}
-        panOnDrag={false}
-        zoomOnScroll={false}
-        zoomOnPinch={false}
-        zoomOnDoubleClick={false}
+        panOnDrag={interactive}
+        zoomOnScroll={interactive}
+        zoomOnPinch={interactive}
+        zoomOnDoubleClick={interactive}
         preventScrolling={false}
         deleteKeyCode={null}
         proOptions={{ hideAttribution: true }}
@@ -89,5 +91,5 @@ export const WorkflowPreviewCanvas = memo(function WorkflowPreviewCanvas({
         {showMiniMap ? <MiniMap /> : null}
       </ReactFlow>
     </ReactFlowProvider>
-  )
-})
+  );
+});

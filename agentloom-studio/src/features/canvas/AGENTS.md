@@ -89,6 +89,7 @@ WorkflowPreviewCanvas.tsx
 ## 注意事项
 
 - `WorkflowPreviewCanvas` / `lib/workflowPreview.ts` 是非编辑场景工作流预览的单一事实源：会根据 `data.nodeType` 还原真实节点 category、对端口定义做与正式画布一致的 hydration，并把预览 edge 统一映射为只读 `smart` edge；只有在 `nodeType` 无法识别时才会 fallback 为 React Flow 默认节点，避免 template / marketplace / share 预览普遍退化成黑色矩形
+- `WorkflowPreviewCanvas` 默认开启只读平移/缩放：允许拖动画布和滚轮/触控缩放，但节点、连线、handle 继续通过 `.workflow-preview-canvas` 关闭命中，保证“可浏览，不可编辑”
 - `connectionCompatibility.ts`：`isValidConnection()` 只读同步 guard/cache，不发起慢检查
 - `WorkflowCanvas` 在 `onConnectStart` / hover 采用 cache-first + async evaluate，必要时展示 `checking`
 - `onConnect` 必须先 await 最终兼容性再落边，`checking` 不得持久化进 `edge.data`；若 cache miss 后最终结果为 `INCOMPATIBLE`，仍需通过持久化错误反馈（当前为 toast）展示 canonical reason，不能只依赖瞬时 preview

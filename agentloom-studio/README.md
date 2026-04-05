@@ -69,6 +69,7 @@ src/
 - 复用 `CanvasNodeShell` 与 `SmartEdge`，因此预览外观与正式工作流画布保持一致，而不是退化成 React Flow 默认黑色方块
 - `lib/workflowPreview.ts` 会基于快照里的 `data.nodeType` 推导真实节点 category，并对 `inputPorts/outputPorts` 执行与正式画布一致的 hydration
 - 预览 edge 会统一映射为只读 `smart` edge，并通过 `.workflow-preview-canvas` 关闭节点/连线命中，避免在预览页误触编辑交互
+- 预览默认保留平移与缩放交互：拖动画布可浏览局部，滚轮 / 触控可缩放，但节点与连线仍保持只读
 - 当快照中的 `nodeType` 完全无法识别时，预览才会回退到 React Flow 默认节点，作为坏数据兜底而不是常态路径
 
 ## 画布控制流容器事实

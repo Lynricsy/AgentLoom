@@ -10,39 +10,39 @@
 
 @theme {
   /* 品牌色 */
-  --color-primary: #6366F1;
-  --color-primary-hover: #4F46E5;
-  --color-primary-glow: rgba(99,102,241,0.08);
-  --color-primary-foreground: #FFFFFF;
-  --color-brand: #6366F1;
-  --color-brand-foreground: #FFFFFF;
+  --color-primary: #6366f1;
+  --color-primary-hover: #4f46e5;
+  --color-primary-glow: rgba(99, 102, 241, 0.08);
+  --color-primary-foreground: #ffffff;
+  --color-brand: #6366f1;
+  --color-brand-foreground: #ffffff;
 
   /* 基础色 (light defaults — :root 和 .dark 各自覆盖) */
-  --color-background: #F5F3FF;
-  --color-foreground: #1E1B4B;
-  --color-surface: #FFFFFF;
-  --color-surface-elevated: #F8F7FF;
+  --color-background: #f5f3ff;
+  --color-foreground: #1e1b4b;
+  --color-surface: #ffffff;
+  --color-surface-elevated: #f8f7ff;
 
   /* 文字 */
-  --color-muted: #64748B;
-  --color-muted-foreground: #94A3B8;
+  --color-muted: #64748b;
+  --color-muted-foreground: #94a3b8;
 
   /* 边框与输入 */
-  --color-border: #E0E7FF;
-  --color-border-hover: #C7D2FE;
-  --color-input: #E0E7FF;
+  --color-border: #e0e7ff;
+  --color-border-hover: #c7d2fe;
+  --color-input: #e0e7ff;
 
   /* 卡片与弹出层 */
-  --color-card: #FFFFFF;
-  --color-card-foreground: #1E1B4B;
-  --color-popover: #F8F7FF;
-  --color-popover-foreground: #1E1B4B;
+  --color-card: #ffffff;
+  --color-card-foreground: #1e1b4b;
+  --color-popover: #f8f7ff;
+  --color-popover-foreground: #1e1b4b;
 
   /* 状态色 */
   --color-success: #059669;
-  --color-warning: #D97706;
-  --color-error: #DC2626;
-  --color-info: #2563EB;
+  --color-warning: #d97706;
+  --color-error: #dc2626;
+  --color-info: #2563eb;
 
   /* 数据类型色 (两主题共用) */
   --color-type-model: #a78bfa;
@@ -53,7 +53,7 @@
   --color-type-tool: #fbbf24;
   --color-type-sandbox: #a3e635;
   --color-type-knowledge: #34d399;
-  --color-type-skill: #A855F7;
+  --color-type-skill: #a855f7;
   --color-type-exec: #94a3b8;
   --color-type-volume: #22c55e;
 
@@ -80,59 +80,59 @@
 /* ─── Light theme (default) ──────────────────────────── */
 :root {
   color-scheme: light;
-  --color-primary: #6366F1;
-  --color-primary-hover: #4F46E5;
-  --color-primary-glow: rgba(99,102,241,0.08);
-  --color-primary-foreground: #FFFFFF;
-  --color-brand: #6366F1;
-  --color-brand-foreground: #FFFFFF;
-  --color-background: #F5F3FF;
-  --color-foreground: #1E1B4B;
-  --color-surface: #FFFFFF;
-  --color-surface-elevated: #F8F7FF;
-  --color-muted: #64748B;
-  --color-muted-foreground: #94A3B8;
-  --color-border: #E0E7FF;
-  --color-border-hover: #C7D2FE;
-  --color-input: #E0E7FF;
-  --color-card: #FFFFFF;
-  --color-card-foreground: #1E1B4B;
-  --color-popover: #F8F7FF;
-  --color-popover-foreground: #1E1B4B;
+  --color-primary: #6366f1;
+  --color-primary-hover: #4f46e5;
+  --color-primary-glow: rgba(99, 102, 241, 0.08);
+  --color-primary-foreground: #ffffff;
+  --color-brand: #6366f1;
+  --color-brand-foreground: #ffffff;
+  --color-background: #f5f3ff;
+  --color-foreground: #1e1b4b;
+  --color-surface: #ffffff;
+  --color-surface-elevated: #f8f7ff;
+  --color-muted: #64748b;
+  --color-muted-foreground: #94a3b8;
+  --color-border: #e0e7ff;
+  --color-border-hover: #c7d2fe;
+  --color-input: #e0e7ff;
+  --color-card: #ffffff;
+  --color-card-foreground: #1e1b4b;
+  --color-popover: #f8f7ff;
+  --color-popover-foreground: #1e1b4b;
   --color-success: #059669;
-  --color-error: #DC2626;
-  --color-warning: #D97706;
-  --color-info: #2563EB;
-  --color-brand-gradient: linear-gradient(135deg, #6366F1, #8B5CF6);
+  --color-error: #dc2626;
+  --color-warning: #d97706;
+  --color-info: #2563eb;
+  --color-brand-gradient: linear-gradient(135deg, #6366f1, #8b5cf6);
 }
 
 /* ─── Dark theme ─────────────────────────────────────── */
 :root.dark {
   color-scheme: dark;
-  --color-primary: #6366F1;
-  --color-primary-hover: #818CF8;
-  --color-primary-glow: rgba(99,102,241,0.2);
-  --color-primary-foreground: #FFFFFF;
-  --color-brand: #6366F1;
-  --color-brand-foreground: #FFFFFF;
+  --color-primary: #6366f1;
+  --color-primary-hover: #818cf8;
+  --color-primary-glow: rgba(99, 102, 241, 0.2);
+  --color-primary-foreground: #ffffff;
+  --color-brand: #6366f1;
+  --color-brand-foreground: #ffffff;
   --color-background: #050506;
-  --color-foreground: #EDEDEF;
+  --color-foreground: #ededef;
   --color-surface: #0a0a0c;
   --color-surface-elevated: #141418;
-  --color-muted: #8A8F98;
-  --color-muted-foreground: #5E6068;
-  --color-border: rgba(255,255,255,0.08);
-  --color-border-hover: rgba(255,255,255,0.15);
-  --color-input: rgba(255,255,255,0.08);
+  --color-muted: #8a8f98;
+  --color-muted-foreground: #5e6068;
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-border-hover: rgba(255, 255, 255, 0.15);
+  --color-input: rgba(255, 255, 255, 0.08);
   --color-card: #0a0a0c;
-  --color-card-foreground: #EDEDEF;
+  --color-card-foreground: #ededef;
   --color-popover: #141418;
-  --color-popover-foreground: #EDEDEF;
-  --color-success: #22C55E;
-  --color-error: #EF4444;
-  --color-warning: #EAB308;
-  --color-info: #3B82F6;
-  --color-brand-gradient: linear-gradient(135deg, #6366F1, #8B5CF6);
+  --color-popover-foreground: #ededef;
+  --color-success: #22c55e;
+  --color-error: #ef4444;
+  --color-warning: #eab308;
+  --color-info: #3b82f6;
+  --color-brand-gradient: linear-gradient(135deg, #6366f1, #8b5cf6);
 }
 
 body {
@@ -216,7 +216,7 @@ body {
   }
 
   /* 任务列表 */
-  & input[type='checkbox'] {
+  & input[type="checkbox"] {
     accent-color: var(--color-primary);
     margin-right: 0.5rem;
   }
@@ -246,66 +246,111 @@ body {
 /* ─── Node visual enhancements ──────────────────────── */
 .canvas-node-shell {
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--node-color, var(--color-border)) 12%, transparent) 0%, transparent 48%),
+    linear-gradient(
+      180deg,
+      color-mix(
+          in srgb,
+          var(--node-color, var(--color-border)) 12%,
+          transparent
+        )
+        0%,
+      transparent 48%
+    ),
     var(--color-card);
   /* 4-layer shadow: inset highlight + definition + ambient lift + accent ring */
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.08),
-    0 1px 3px rgba(0,0,0,0.24),
-    0 6px 16px -4px rgba(0,0,0,0.20),
-    0 0 0 1px color-mix(in srgb, var(--node-color, var(--color-border)) 18%, transparent);
-  transition: transform 200ms ease-out, box-shadow 200ms ease-out;
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 1px 3px rgba(0, 0, 0, 0.24),
+    0 6px 16px -4px rgba(0, 0, 0, 0.2),
+    0 0 0 1px
+      color-mix(
+        in srgb,
+        var(--node-color, var(--color-border)) 18%,
+        transparent
+      );
+  transition:
+    transform 200ms ease-out,
+    box-shadow 200ms ease-out;
 }
 
 /* Light theme: pronounced inset bevel + softer ambient */
 :root:not(.dark) .canvas-node-shell {
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.85),
-    0 1px 3px rgba(0,0,0,0.12),
-    0 6px 16px -4px rgba(0,0,0,0.10),
-    0 0 0 1px color-mix(in srgb, var(--node-color, var(--color-border)) 16%, transparent);
+    inset 0 1px 0 rgba(255, 255, 255, 0.85),
+    0 1px 3px rgba(0, 0, 0, 0.12),
+    0 6px 16px -4px rgba(0, 0, 0, 0.1),
+    0 0 0 1px
+      color-mix(
+        in srgb,
+        var(--node-color, var(--color-border)) 16%,
+        transparent
+      );
 }
 
 .canvas-node-shell:hover {
   transform: translateY(-3px);
   /* Hover: dramatic float with node-color glow */
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.12),
-    0 4px 8px rgba(0,0,0,0.28),
-    0 12px 28px -6px rgba(0,0,0,0.22),
-    0 0 16px -2px color-mix(in srgb, var(--node-color, var(--color-border)) 20%, transparent),
-    0 0 0 1px color-mix(in srgb, var(--node-color, var(--color-border)) 32%, transparent);
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 4px 8px rgba(0, 0, 0, 0.28),
+    0 12px 28px -6px rgba(0, 0, 0, 0.22),
+    0 0 16px -2px
+      color-mix(
+        in srgb,
+        var(--node-color, var(--color-border)) 20%,
+        transparent
+      ),
+    0 0 0 1px
+      color-mix(
+        in srgb,
+        var(--node-color, var(--color-border)) 32%,
+        transparent
+      );
 }
 
 :root:not(.dark) .canvas-node-shell:hover {
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.9),
-    0 4px 8px rgba(0,0,0,0.14),
-    0 12px 28px -6px rgba(0,0,0,0.12),
-    0 0 16px -2px color-mix(in srgb, var(--node-color, var(--color-border)) 14%, transparent),
-    0 0 0 1px color-mix(in srgb, var(--node-color, var(--color-border)) 32%, transparent);
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 4px 8px rgba(0, 0, 0, 0.14),
+    0 12px 28px -6px rgba(0, 0, 0, 0.12),
+    0 0 16px -2px
+      color-mix(
+        in srgb,
+        var(--node-color, var(--color-border)) 14%,
+        transparent
+      ),
+    0 0 0 1px
+      color-mix(
+        in srgb,
+        var(--node-color, var(--color-border)) 32%,
+        transparent
+      );
 }
 
 .canvas-node-shell[data-selected="true"] {
   /* Selected: vivid primary ring + wide glow aura */
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
     0 0 0 2.5px var(--color-primary),
     0 0 20px color-mix(in srgb, var(--color-primary) 28%, transparent),
     0 0 40px -4px color-mix(in srgb, var(--color-primary) 16%, transparent),
-    0 8px 24px rgba(0,0,0,0.30);
+    0 8px 24px rgba(0, 0, 0, 0.3);
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--color-primary) 14%, transparent) 0%, transparent 36%),
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--color-primary) 14%, transparent) 0%,
+      transparent 36%
+    ),
     var(--color-card);
 }
 
 :root:not(.dark) .canvas-node-shell[data-selected="true"] {
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.9),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
     0 0 0 2.5px var(--color-primary),
     0 0 20px color-mix(in srgb, var(--color-primary) 22%, transparent),
     0 0 40px -4px color-mix(in srgb, var(--color-primary) 12%, transparent),
-    0 8px 24px rgba(0,0,0,0.14);
+    0 8px 24px rgba(0, 0, 0, 0.14);
 }
 
 .canvas-node-shell[data-shell-status="running"] {
@@ -313,19 +358,20 @@ body {
 }
 
 @keyframes node-running-glow {
-  0%, 100% {
+  0%,
+  100% {
     box-shadow:
-      inset 0 1px 0 rgba(255,255,255,0.08),
+      inset 0 1px 0 rgba(255, 255, 255, 0.08),
       0 0 0 2px color-mix(in srgb, var(--color-primary) 40%, transparent),
       0 0 16px color-mix(in srgb, var(--color-primary) 16%, transparent),
-      0 6px 16px -4px rgba(0,0,0,0.20);
+      0 6px 16px -4px rgba(0, 0, 0, 0.2);
   }
   50% {
     box-shadow:
-      inset 0 1px 0 rgba(255,255,255,0.08),
+      inset 0 1px 0 rgba(255, 255, 255, 0.08),
       0 0 0 2px color-mix(in srgb, var(--color-primary) 60%, transparent),
       0 0 32px color-mix(in srgb, var(--color-primary) 28%, transparent),
-      0 6px 16px -4px rgba(0,0,0,0.20);
+      0 6px 16px -4px rgba(0, 0, 0, 0.2);
   }
 }
 
@@ -334,29 +380,43 @@ body {
 }
 
 @keyframes node-error-shake {
-  0%, 100% { transform: translateX(0); }
-  20% { transform: translateX(-2px); }
-  40% { transform: translateX(2px); }
-  60% { transform: translateX(-1px); }
-  80% { transform: translateX(1px); }
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-2px);
+  }
+  40% {
+    transform: translateX(2px);
+  }
+  60% {
+    transform: translateX(-1px);
+  }
+  80% {
+    transform: translateX(1px);
+  }
 }
 
 /* ─── Card hover effects ────────────────────────────── */
 .card-hover-lift {
-  transition: transform 200ms ease-out, box-shadow 200ms ease-out, border-color 200ms ease-out;
+  transition:
+    transform 200ms ease-out,
+    box-shadow 200ms ease-out,
+    border-color 200ms ease-out;
 }
 
 .card-hover-lift:hover {
   transform: translateY(-2px);
   box-shadow:
-    0 8px 24px rgba(0,0,0,0.12),
+    0 8px 24px rgba(0, 0, 0, 0.12),
     0 0 0 1px color-mix(in srgb, var(--color-primary) 20%, transparent);
   border-color: color-mix(in srgb, var(--color-primary) 40%, transparent);
 }
 
 :root.dark .card-hover-lift:hover {
   box-shadow:
-    0 8px 24px rgba(0,0,0,0.4),
+    0 8px 24px rgba(0, 0, 0, 0.4),
     0 0 0 1px color-mix(in srgb, var(--color-primary) 20%, transparent);
 }
 
@@ -377,26 +437,45 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .canvas-node-shell:hover { transform: none; }
-  .canvas-node-shell[data-shell-status="running"] { animation: none; }
-  .canvas-node-shell[data-shell-status="failed"] { animation: none; }
-  .card-hover-lift:hover { transform: none; }
-  .card-stagger-enter { animation: none; }
-  .shimmer { animation: none; }
-  .btn-interact { transition: none; }
+  .canvas-node-shell:hover {
+    transform: none;
+  }
+  .canvas-node-shell[data-shell-status="running"] {
+    animation: none;
+  }
+  .canvas-node-shell[data-shell-status="failed"] {
+    animation: none;
+  }
+  .card-hover-lift:hover {
+    transform: none;
+  }
+  .card-stagger-enter {
+    animation: none;
+  }
+  .shimmer {
+    animation: none;
+  }
+  .btn-interact {
+    transition: none;
+  }
 }
 
 /* ─── Shimmer skeleton ──────────────────────────────── */
 @keyframes shimmer-sweep {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
 }
 
 .shimmer {
   background: linear-gradient(
     90deg,
     var(--color-muted) 25%,
-    color-mix(in srgb, var(--color-muted) 60%, var(--color-surface-elevated)) 50%,
+    color-mix(in srgb, var(--color-muted) 60%, var(--color-surface-elevated))
+      50%,
     var(--color-muted) 75%
   );
   background-size: 200% 100%;
@@ -406,7 +485,9 @@ body {
 
 /* ─── Button micro-interactions ─────────────────────── */
 .btn-interact {
-  transition: transform 150ms ease-out, box-shadow 150ms ease-out;
+  transition:
+    transform 150ms ease-out,
+    box-shadow 150ms ease-out;
 }
 
 .btn-interact:hover {
@@ -446,38 +527,84 @@ body {
   height: 10px !important;
   border: 2px solid var(--port-color, var(--color-border)) !important;
   background: transparent !important;
-  transition: transform 0.15s ease, background-color 0.15s ease, border-color 0.15s ease;
+  transition:
+    transform 0.15s ease,
+    background-color 0.15s ease,
+    border-color 0.15s ease;
 }
 
-.typed-port-shape--circle { border-radius: 50% !important; }
-.typed-port-shape--square { border-radius: 2px !important; }
-.typed-port-shape--diamond { border-radius: 2px !important; transform: translateY(-50%) rotate(45deg) !important; width: 9px !important; height: 9px !important; }
-.typed-port-shape--hexagon { border-radius: 50% !important; width: 11px !important; height: 11px !important; }
-.typed-port-shape--triangle { border-radius: 50% 50% 2px 2px !important; width: 10px !important; height: 10px !important; }
-.typed-port-shape--book { border-radius: 2px 5px 5px 2px !important; width: 10px !important; height: 12px !important; }
-.typed-port-shape--capsule { border-radius: 9999px !important; width: 14px !important; height: 8px !important; }
-.typed-port-shape--arrow { width: 10px !important; height: 10px !important; border-radius: 2px 50% 50% 2px !important; }
+.typed-port-shape--circle {
+  border-radius: 50% !important;
+}
+.typed-port-shape--square {
+  border-radius: 2px !important;
+}
+.typed-port-shape--diamond {
+  border-radius: 2px !important;
+  transform: translateY(-50%) rotate(45deg) !important;
+  width: 9px !important;
+  height: 9px !important;
+}
+.typed-port-shape--hexagon {
+  border-radius: 50% !important;
+  width: 11px !important;
+  height: 11px !important;
+}
+.typed-port-shape--triangle {
+  border-radius: 50% 50% 2px 2px !important;
+  width: 10px !important;
+  height: 10px !important;
+}
+.typed-port-shape--book {
+  border-radius: 2px 5px 5px 2px !important;
+  width: 10px !important;
+  height: 12px !important;
+}
+.typed-port-shape--capsule {
+  border-radius: 9999px !important;
+  width: 14px !important;
+  height: 8px !important;
+}
+.typed-port-shape--arrow {
+  width: 10px !important;
+  height: 10px !important;
+  border-radius: 2px 50% 50% 2px !important;
+}
 
-.typed-port-state--idle { background: transparent !important; }
-.typed-port-state--hover { transform: translateY(-50%) scale(1.15) !important; }
-.typed-port-state--connected { background: var(--port-color) !important; }
-.typed-port-state--incompatible { border-color: var(--color-error) !important; }
+.typed-port-state--idle {
+  background: transparent !important;
+}
+.typed-port-state--hover {
+  transform: translateY(-50%) scale(1.15) !important;
+}
+.typed-port-state--connected {
+  background: var(--port-color) !important;
+}
+.typed-port-state--incompatible {
+  border-color: var(--color-error) !important;
+}
 
 .typed-port--connect-source,
 .typed-port--connect-compatible {
   background: color-mix(in srgb, var(--port-color) 55%, transparent) !important;
   transform: translateY(-50%) scale(1.5) !important;
-  box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-compat-l0) 24%, transparent);
+  box-shadow: 0 0 0 4px
+    color-mix(in srgb, var(--color-compat-l0) 24%, transparent);
 }
 
 .typed-port--connect-hover-compatible {
   transform: translateY(-50%) scale(1.65) !important;
-  box-shadow: 0 0 0 6px color-mix(in srgb, var(--color-compat-l0) 30%, transparent);
+  box-shadow: 0 0 0 6px
+    color-mix(in srgb, var(--color-compat-l0) 30%, transparent);
 }
 
 .typed-port--connect-hover-incompatible {
   border-color: var(--color-compat-l3) !important;
-  background: color-mix(in srgb, var(--color-compat-l3) 28%, transparent) !important;
+  background: color-mix(
+    in srgb,
+    var(--color-compat-l3) 28%,
+    transparent
+  ) !important;
 }
 
 /* ─── SmartEdge ────────────────────────────────────────── */
@@ -485,13 +612,25 @@ body {
   fill: none;
   stroke-width: 2;
   stroke-linecap: round;
-  transition: stroke 0.2s ease, stroke-width 0.2s ease, opacity 0.2s ease;
+  transition:
+    stroke 0.2s ease,
+    stroke-width 0.2s ease,
+    opacity 0.2s ease;
 }
 
-.smart-edge-path--l0 { stroke: var(--color-compat-l0); }
-.smart-edge-path--l1 { stroke: var(--color-compat-l1); }
-.smart-edge-path--checking { stroke: var(--color-info); stroke-dasharray: 6 4; }
-.smart-edge-path--error { stroke: var(--color-compat-l3); }
+.smart-edge-path--l0 {
+  stroke: var(--color-compat-l0);
+}
+.smart-edge-path--l1 {
+  stroke: var(--color-compat-l1);
+}
+.smart-edge-path--checking {
+  stroke: var(--color-info);
+  stroke-dasharray: 6 4;
+}
+.smart-edge-path--error {
+  stroke: var(--color-compat-l3);
+}
 
 .smart-edge-path--selected {
   stroke-width: 3;
@@ -517,8 +656,12 @@ body {
   pointer-events: none;
 }
 
-.smart-edge-particle--l0 { fill: var(--color-compat-l0); }
-.smart-edge-particle--l1 { fill: var(--color-compat-l1); }
+.smart-edge-particle--l0 {
+  fill: var(--color-compat-l0);
+}
+.smart-edge-particle--l1 {
+  fill: var(--color-compat-l1);
+}
 
 .smart-edge-particle--running {
   opacity: 0.8;
@@ -526,15 +669,27 @@ body {
 }
 
 @keyframes edge-particle-flow {
-  0%   { offset-distance: 0%; opacity: 0; }
-  10%  { opacity: 0.8; }
-  90%  { opacity: 0.8; }
-  100% { offset-distance: 100%; opacity: 0; }
+  0% {
+    offset-distance: 0%;
+    opacity: 0;
+  }
+  10% {
+    opacity: 0.8;
+  }
+  90% {
+    opacity: 0.8;
+  }
+  100% {
+    offset-distance: 100%;
+    opacity: 0;
+  }
 }
 
 /* checking 级别脉冲 */
 @keyframes edge-checking-dash {
-  to { stroke-dashoffset: -20; }
+  to {
+    stroke-dashoffset: -20;
+  }
 }
 
 .smart-edge-path--checking {
@@ -579,10 +734,18 @@ body {
   flex-shrink: 0;
 }
 
-.edge-badge__dot--l0 { background: var(--color-compat-l0); }
-.edge-badge__dot--l1 { background: var(--color-compat-l1); }
-.edge-badge__dot--checking { background: var(--color-info); }
-.edge-badge__dot--error { background: var(--color-compat-l3); }
+.edge-badge__dot--l0 {
+  background: var(--color-compat-l0);
+}
+.edge-badge__dot--l1 {
+  background: var(--color-compat-l1);
+}
+.edge-badge__dot--checking {
+  background: var(--color-info);
+}
+.edge-badge__dot--error {
+  background: var(--color-compat-l3);
+}
 
 .edge-badge__summary {
   display: flex;
@@ -609,7 +772,9 @@ body {
   color: var(--color-muted);
   cursor: pointer;
   padding: 0;
-  transition: color 0.15s ease, background 0.15s ease;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
 }
 
 .edge-badge__delete:hover {
@@ -648,10 +813,18 @@ body {
   vertical-align: middle;
 }
 
-.compatibility-preview__level--l0 { background: var(--color-compat-l0); }
-.compatibility-preview__level--l1 { background: var(--color-compat-l1); }
-.compatibility-preview__level--checking { background: var(--color-info); }
-.compatibility-preview__level--error { background: var(--color-compat-l3); }
+.compatibility-preview__level--l0 {
+  background: var(--color-compat-l0);
+}
+.compatibility-preview__level--l1 {
+  background: var(--color-compat-l1);
+}
+.compatibility-preview__level--checking {
+  background: var(--color-info);
+}
+.compatibility-preview__level--error {
+  background: var(--color-compat-l3);
+}
 
 /* ─── ConnectionStateOverlay（连接状态 SVG 叠加） ─────── */
 .connection-overlay {
@@ -686,8 +859,15 @@ body {
 }
 
 @keyframes halo-pulse {
-  0%, 100% { opacity: 0.4; stroke-width: 3; }
-  50% { opacity: 0.8; stroke-width: 5; }
+  0%,
+  100% {
+    opacity: 0.4;
+    stroke-width: 3;
+  }
+  50% {
+    opacity: 0.8;
+    stroke-width: 5;
+  }
 }
 
 .connection-overlay__label {
@@ -751,7 +931,9 @@ body {
   border: none;
   color: var(--color-muted);
   cursor: pointer;
-  transition: color 0.15s ease, background 0.15s ease;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease;
 }
 
 .mapping-panel__close:hover {
@@ -828,7 +1010,8 @@ body {
 
 .mapping-field--suggested {
   background: color-mix(in srgb, var(--color-compat-l1) 12%, transparent);
-  outline: 1px dashed color-mix(in srgb, var(--color-compat-l1) 45%, transparent);
+  outline: 1px dashed
+    color-mix(in srgb, var(--color-compat-l1) 45%, transparent);
 }
 
 .mapping-field--required::after {
@@ -864,8 +1047,15 @@ body {
 
 /* ─── 搜索高亮 ──────────────────────────────────────── */
 @keyframes search-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--color-primary) 40%, transparent); }
-  50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--color-primary) 20%, transparent); }
+  0%,
+  100% {
+    box-shadow: 0 0 0 0
+      color-mix(in srgb, var(--color-primary) 40%, transparent);
+  }
+  50% {
+    box-shadow: 0 0 0 4px
+      color-mix(in srgb, var(--color-primary) 20%, transparent);
+  }
 }
 
 .search-match {
@@ -931,10 +1121,10 @@ body {
 
 .canvas-node-shell:has(.exec-overlay--running) {
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
     0 0 0 2px hsl(from var(--color-primary) h s l / 0.4),
     0 0 16px color-mix(in srgb, var(--color-primary) 14%, transparent),
-    0 6px 16px -4px rgba(0,0,0,0.20);
+    0 6px 16px -4px rgba(0, 0, 0, 0.2);
 }
 
 .canvas-node-shell[data-shell-status="completed"] {
@@ -946,38 +1136,47 @@ body {
 }
 
 @keyframes exec-spin {
-  to { transform: rotate(360deg); }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 @keyframes exec-badge-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
 }
 
 /* ─── Execution dependency highlight ──────────────────── */
 /* running 节点的直接输入节点：明显的 primary 光晕（弱于 running 但清晰可见） */
 .canvas-node-shell--dep-active {
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
     0 0 0 1.5px color-mix(in srgb, var(--color-primary) 40%, transparent),
     0 0 14px -2px color-mix(in srgb, var(--color-primary) 22%, transparent),
-    0 6px 16px -4px rgba(0,0,0,0.20);
+    0 6px 16px -4px rgba(0, 0, 0, 0.2);
   border-color: color-mix(in srgb, var(--color-primary) 40%, transparent);
 }
 
 :root:not(.dark) .canvas-node-shell--dep-active {
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.85),
+    inset 0 1px 0 rgba(255, 255, 255, 0.85),
     0 0 0 1.5px color-mix(in srgb, var(--color-primary) 36%, transparent),
     0 0 14px -2px color-mix(in srgb, var(--color-primary) 16%, transparent),
-    0 6px 16px -4px rgba(0,0,0,0.10);
+    0 6px 16px -4px rgba(0, 0, 0, 0.1);
   border-color: color-mix(in srgb, var(--color-primary) 36%, transparent);
 }
 
 /* running 节点到其输入源的边：加粗 + primary 发光 */
 .react-flow__edge.dep-active path.smart-edge-path {
   stroke-width: 2.5;
-  filter: drop-shadow(0 0 4px color-mix(in srgb, var(--color-primary) 50%, transparent));
+  filter: drop-shadow(
+    0 0 4px color-mix(in srgb, var(--color-primary) 50%, transparent)
+  );
 }
 
 .react-flow__edge.dep-active path.smart-edge-path--l0 {
@@ -989,7 +1188,9 @@ body {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .canvas-node-shell--dep-active { animation: none; }
+  .canvas-node-shell--dep-active {
+    animation: none;
+  }
 }
 
 /* ─── 字段映射：禁止/确认/预览 ──────────────────────────── */
@@ -1297,19 +1498,44 @@ body {
   pointer-events: auto;
 }
 
+.workflow-preview-canvas .react-flow__pane {
+  cursor: grab;
+}
+
+.workflow-preview-canvas .react-flow__pane.dragging,
+.workflow-preview-canvas .react-flow__pane:active {
+  cursor: grabbing;
+}
+
 /* ─── 无障碍 & reduced-motion ──────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
-  .smart-edge-particle--running { animation: none; opacity: 0; }
-  .smart-edge-path--checking { animation: none; }
-  .connection-overlay__halo--compatible { animation: none; opacity: 0.6; }
-  .search-match { animation: none; }
-  .exec-overlay__spinner { animation: none; }
+  .smart-edge-particle--running {
+    animation: none;
+    opacity: 0;
+  }
+  .smart-edge-path--checking {
+    animation: none;
+  }
+  .connection-overlay__halo--compatible {
+    animation: none;
+    opacity: 0.6;
+  }
+  .search-match {
+    animation: none;
+  }
+  .exec-overlay__spinner {
+    animation: none;
+  }
   .exec-overlay--running,
-  .exec-overlay--waiting { animation: none; }
+  .exec-overlay--waiting {
+    animation: none;
+  }
   .edge-badge,
   .compatibility-preview,
   .mapping-panel,
   .smart-edge-path,
   .typed-port,
-  .search-dimmed { transition: none; }
+  .search-dimmed {
+    transition: none;
+  }
 }
