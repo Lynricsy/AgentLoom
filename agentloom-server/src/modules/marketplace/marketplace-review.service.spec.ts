@@ -485,6 +485,80 @@ describe('MarketplaceReviewService', () => {
     );
   });
 
+  it('引用已发布 Agent Definition/Version 的 workflow-agent 节点应通过检查', async () => {
+    db.select
+      .mockReturnValueOnce(createSelectChain([createVersionRecord()]))
+      .mockReturnValueOnce(
+        createSelectChain([
+          {
+            snapshot: createWorkflowSnapshot({
+              nodes: [
+                createNode({
+                  data: {
+                    selectedAgentId: 'agent-def-1',
+                    agentVersionId: 'agent-version-1',
+                    workflowId: WORKFLOW_ID,
+                  },
+                }),
+              ],
+            }),
+          },
+        ]),
+      )
+      .mockReturnValueOnce(
+        createExecutionSelectChain([createExecutionRecord()]),
+      );
+
+    const result = await service.review(
+      TENANT_ID,
+      VERSION_ID,
+      createMetadata(),
+    );
+
+    expect(result.outcome).toBe('passed');
+    expect(getCheck(result, 'WORKFLOW_CRITICAL_CONFIG_INCOMPLETE').status).toBe(
+      'passed',
+    );
+  });
+
+  it('应支持嵌套 config 中的 workflow-agent 引用字段', async () => {
+    db.select
+      .mockReturnValueOnce(createSelectChain([createVersionRecord()]))
+      .mockReturnValueOnce(
+        createSelectChain([
+          {
+            snapshot: createWorkflowSnapshot({
+              nodes: [
+                createNode({
+                  data: {
+                    config: {
+                      selected_agent_id: 'agent-def-2',
+                      agent_version_id: 'agent-version-2',
+                    },
+                    workflowId: WORKFLOW_ID,
+                  },
+                }),
+              ],
+            }),
+          },
+        ]),
+      )
+      .mockReturnValueOnce(
+        createExecutionSelectChain([createExecutionRecord()]),
+      );
+
+    const result = await service.review(
+      TENANT_ID,
+      VERSION_ID,
+      createMetadata(),
+    );
+
+    expect(result.outcome).toBe('passed');
+    expect(getCheck(result, 'WORKFLOW_CRITICAL_CONFIG_INCOMPLETE').status).toBe(
+      'passed',
+    );
+  });
+
   it('非 Agent 节点不需要 systemPrompt 和 llmModelId', async () => {
     db.select
       .mockReturnValueOnce(createSelectChain([createVersionRecord()]))

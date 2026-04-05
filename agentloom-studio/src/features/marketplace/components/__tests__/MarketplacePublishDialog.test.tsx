@@ -32,7 +32,13 @@ const mocks = vi.hoisted(() => {
     reset: vi.fn(),
   };
 
-  return { workflowMock, submitMock };
+  const buildSubmitMutation = () => ({
+    mutateAsync: submitMock.mutateAsync,
+    isPending: submitMock.isPending,
+    reset: submitMock.reset,
+  });
+
+  return { workflowMock, submitMock, buildSubmitMutation };
 });
 
 vi.mock('@/features/workflow', () => ({
@@ -40,7 +46,7 @@ vi.mock('@/features/workflow', () => ({
 }));
 
 vi.mock('../../api/marketplaceMutations', () => ({
-  useSubmitMarketplaceListing: () => mocks.submitMock,
+  useSubmitMarketplaceListing: () => mocks.buildSubmitMutation(),
 }));
 
 // ---------------------------------------------------------------------------
@@ -138,6 +144,14 @@ describe('MarketplacePublishDialog', () => {
     expect(
       screen.getByTestId('marketplace-submit-btn'),
     ).toBeInTheDocument();
+  });
+
+  it('只在首次打开时重置一次 mutation 状态', async () => {
+    renderDialog();
+
+    await waitFor(() => {
+      expect(mocks.submitMock.reset).toHaveBeenCalledTimes(1);
+    });
   });
 
   // ─── Test 2 ──────────────────────────────────────────────────────────────

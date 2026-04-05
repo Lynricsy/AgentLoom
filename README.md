@@ -28,7 +28,7 @@ AgentLoom 让你像编织织布机上的经纬线一样，将多个 AI Agent 编
 - **🛡️ 资源治理与异常执行处置** — `tenant_quotas` + `execution_governance_controls` typed store、`runWorkflow()` 准入阻断、tenant-aware API 分钟限流 / 日配额、治理通知与异常 execution 终止 contract
 - **🛠️ 配置优化建议闭环** — 周期分析执行遥测，生成可解释的模型/超时/工具/自主性建议，应用时复用 workflow OCC 保护，并在画布存在未保存修改时避免静默覆盖本地编辑
 - **🌐 MCP 集成** — Model Context Protocol 工具编排；`sandbox` Agent 可使用完整 MCP 形态，`no_sandbox` Agent 仅允许 HTTP MCP，stdio MCP 在发布校验与运行时调用两侧都会被拒绝
-- **🛒 工作流市场** — 模板浏览、安装、发布，支持工作流与插件双类型上架
+- **🛒 工作流市场** — 模板浏览、安装、发布，支持工作流与插件双类型上架；Marketplace 审核同时接受内联 Agent 配置与 workflow-agent 绑定已发布 Agent Definition/Version 的复杂工作流
 
 ---
 

@@ -1,4 +1,4 @@
-import { apiClient, toSnakeBody } from '@/shared/api/client';
+import { apiClient } from '@/shared/api/client';
 
 import type {
   MarketplaceListingListResponse,
@@ -17,7 +17,7 @@ export function submitMarketplaceListing(
 ): Promise<SubmitMarketplaceListingResponse> {
   return apiClient
     .post(MARKETPLACE_LISTINGS_PATH, {
-      json: toSnakeBody(request),
+      json: request,
     })
     .json<SubmitMarketplaceListingResponse>();
 }

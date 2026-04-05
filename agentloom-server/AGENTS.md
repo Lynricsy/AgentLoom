@@ -247,6 +247,7 @@ Schema 在 `src/database/schema/`，启用 RLS (`rls-policies.ts`，RLS 策略�
 - `MarketplaceService.findPublicById()` 只返回 `definition { nodes, edges, viewport }` 与 latest 20 reviews，不再暴露 `workflowVersionId`、`definition.inputSchema`、author id/avatar 等内部字段。
 - `GET /marketplace/browse/:id/reviews` 现使用 `QueryPublicReviewsDto`（`pageSize.max(50)`）并返回 `{ data, meta }`；`MarketplaceReviewUserService.submitReview()` 返回精简 `{ id, rating, content, createdAt }`，重复评论继续映射 409。
 - `POST /marketplace/listings/:id/install` 允许 `owner/admin/creator/operator` 安装公开 listing 到当前租户；内部仍通过 `WorkflowVersionService.create(..., { marketplace_listing_id })` 克隆 snapshot + inputSchema、写入 `metadata.cloned_from_marketplace`，并原子递增 `use_count`，但公开响应已收敛为 `{ workflowDefinitionId, name, message }`。
+- `MarketplaceReviewService.checkCanvasStructure()` 现在会先把 `node.data.config` 与顶层 `node.data` 合并成 runtime 视图；workflow `agent` 节点只要具备内联 `systemPrompt + llmModelId`，或具备 `agentDefinitionId / selectedAgentId / agentVersionId`（含 snake_case 镜像）中的任一已绑定 Agent 引用，就视为配置完整，不再错误拦截引用已发布 Agent Definition/Version 的多 Agent 工作流上架。
 
 ## WebSocket
 

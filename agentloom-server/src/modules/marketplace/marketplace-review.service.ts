@@ -22,6 +22,45 @@ export class MarketplaceReviewService {
     return getTenantDb(this.db);
   }
 
+  private isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+  }
+
+  private readNonEmptyString(...values: unknown[]): string | undefined {
+    for (const value of values) {
+      if (typeof value !== 'string') {
+        continue;
+      }
+
+      const trimmed = value.trim();
+      if (trimmed.length > 0) {
+        return trimmed;
+      }
+    }
+
+    return undefined;
+  }
+
+  private getRuntimeNodeData(
+    nodeData: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const config = this.isRecord(nodeData.config) ? nodeData.config : {};
+    return { ...config, ...nodeData };
+  }
+
+  private hasWorkflowAgentBinding(
+    runtimeNodeData: Record<string, unknown>,
+  ): boolean {
+    return !!this.readNonEmptyString(
+      runtimeNodeData.agentDefinitionId,
+      runtimeNodeData.agent_definition_id,
+      runtimeNodeData.selectedAgentId,
+      runtimeNodeData.selected_agent_id,
+      runtimeNodeData.agentVersionId,
+      runtimeNodeData.agent_version_id,
+    );
+  }
+
   async review(
     tenantId: string,
     workflowVersionId: string,
@@ -186,14 +225,29 @@ export class MarketplaceReviewService {
     }> = [];
 
     for (const node of agentNodes) {
-      const data = node.data ?? {};
+      const data = this.isRecord(node.data) ? node.data : {};
+      const runtimeNodeData = this.getRuntimeNodeData(data);
+      const hasWorkflowAgentBinding =
+        this.hasWorkflowAgentBinding(runtimeNodeData);
       const missing: string[] = [];
 
-      if (!data.systemPrompt && !data.system_prompt) {
+      if (
+        !this.readNonEmptyString(
+          runtimeNodeData.systemPrompt,
+          runtimeNodeData.system_prompt,
+        ) &&
+        !hasWorkflowAgentBinding
+      ) {
         missing.push('systemPrompt');
       }
 
-      if (!data.llmModelId && !data.llm_model_id) {
+      if (
+        !this.readNonEmptyString(
+          runtimeNodeData.llmModelId,
+          runtimeNodeData.llm_model_id,
+        ) &&
+        !hasWorkflowAgentBinding
+      ) {
         missing.push('llmModelId');
       }
 
@@ -212,7 +266,8 @@ export class MarketplaceReviewService {
           'WORKFLOW_CRITICAL_CONFIG_INCOMPLETE',
           `${misconfiguredNodes.length} 个 Agent 节点配置不完整`,
           {
-            fixHint: '确保每个 Agent 节点都配置了 System Prompt 和 LLM 模型',
+            fixHint:
+              '确保每个 Agent 节点都配置了 System Prompt 和 LLM 模型，或绑定已发布 Agent 版本',
             nodeId: misconfiguredNodes[0].nodeId,
             nodeType: misconfiguredNodes[0].nodeType,
             missingFields: misconfiguredNodes[0].missingFields,

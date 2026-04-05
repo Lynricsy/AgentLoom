@@ -8,10 +8,9 @@ import {
   unlistMarketplaceListing,
 } from './marketplaceApi';
 
-const { getMock, postMock, toSnakeBodyMock } = vi.hoisted(() => ({
+const { getMock, postMock } = vi.hoisted(() => ({
   getMock: vi.fn(),
   postMock: vi.fn(),
-  toSnakeBodyMock: vi.fn((value: unknown) => value),
 }));
 
 vi.mock('@/shared/api/client', () => ({
@@ -19,7 +18,6 @@ vi.mock('@/shared/api/client', () => ({
     get: getMock,
     post: postMock,
   },
-  toSnakeBody: (value: unknown) => toSnakeBodyMock(value),
 }));
 
 describe('marketplaceApi', () => {
@@ -27,7 +25,7 @@ describe('marketplaceApi', () => {
     vi.clearAllMocks();
   });
 
-  it('submits a marketplace listing with snake-cased body payload', async () => {
+  it('submits a marketplace listing with camelCase body payload', async () => {
     const request = {
       workflowVersionId: 'version-1',
       title: 'Agent 工作流模板',
@@ -45,7 +43,6 @@ describe('marketplaceApi', () => {
 
     const result = await submitMarketplaceListing(request);
 
-    expect(toSnakeBodyMock).toHaveBeenCalledWith(request);
     expect(postMock).toHaveBeenCalledWith('marketplace/listings', {
       json: request,
     });

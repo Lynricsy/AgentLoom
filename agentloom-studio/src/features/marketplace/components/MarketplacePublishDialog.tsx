@@ -87,6 +87,8 @@ export const MarketplacePublishDialog = memo(function MarketplacePublishDialog({
 }: MarketplacePublishDialogProps) {
   const { data: workflow } = useWorkflow(workflowId)
   const submitMutation = useSubmitMarketplaceListing()
+  const resetSubmitMutationRef = useRef(submitMutation.reset)
+  const wasOpenRef = useRef(false)
 
   const [tags, setTags] = useState<string[]>([])
   const [tagInput, setTagInput] = useState('')
@@ -106,22 +108,39 @@ export const MarketplacePublishDialog = memo(function MarketplacePublishDialog({
     defaultValues: { title: '', summary: '', coverImageUrl: '' },
   })
 
+  resetSubmitMutationRef.current = submitMutation.reset
+
   useEffect(() => {
-    if (open) {
-      resetForm({ title: '', summary: '', coverImageUrl: '' })
-      setTags([])
-      setTagInput('')
-      setTagError(null)
-      setDialogState({ kind: 'form' })
-      submitMutation.reset()
+    if (!open) {
+      wasOpenRef.current = false
+      if (successTimerRef.current) {
+        clearTimeout(successTimerRef.current)
+        successTimerRef.current = null
+      }
+      return
     }
+
+    if (wasOpenRef.current) {
+      return
+    }
+
+    wasOpenRef.current = true
+    resetForm({ title: '', summary: '', coverImageUrl: '' })
+    setTags([])
+    setTagInput('')
+    setTagError(null)
+    setDialogState({ kind: 'form' })
+    resetSubmitMutationRef.current()
+  }, [open, resetForm])
+
+  useEffect(() => {
     return () => {
       if (successTimerRef.current) {
         clearTimeout(successTimerRef.current)
         successTimerRef.current = null
       }
     }
-  }, [open, resetForm, submitMutation])
+  }, [])
 
   const addTagsFromInput = useCallback(
     (raw: string) => {
