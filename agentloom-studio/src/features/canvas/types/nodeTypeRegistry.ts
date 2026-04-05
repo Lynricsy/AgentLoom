@@ -1,5 +1,6 @@
 import type { NodeCategory } from '../types'
 import { assertNever } from './typeSchema'
+import { PORT_DATA_TYPES } from './typeSchema'
 import type { ObjectTypeSchema, PortDataType, ScalarTypeSchema, TypeSchema } from './typeSchema'
 import { AGENT_CANVAS_NODE_REGISTRY } from '../registry/agent-canvas-registry'
 import type { AgentRuntimeMode } from '@/features/agent/types/agentRuntimeMode'
@@ -28,6 +29,9 @@ export interface PortDefinition {
   maxConnections: number | null
   schema: TypeSchema
 }
+
+export type HydratablePortDefinition = Pick<PortDefinition, 'id'> &
+  Partial<Omit<PortDefinition, 'id'>>
 
 export interface NodeConfigFieldSchema {
   type: 'string' | 'number' | 'boolean' | 'object' | 'array'
@@ -129,6 +133,17 @@ export const PORT_DATA_TYPE_META: Record<PortDataType, PortDataTypeMeta> = {
   },
 }
 
+function isPortDataType(value: unknown): value is PortDataType {
+  return (
+    typeof value === 'string'
+    && (PORT_DATA_TYPES as readonly string[]).includes(value)
+  )
+}
+
+function isPortDirection(value: unknown): value is PortDirection {
+  return value === 'input' || value === 'output'
+}
+
 const CATEGORY_COLOR_TOKENS: Record<NodeCategory, string> = {
   agent: 'var(--color-type-model)',
   tool: 'var(--color-type-tool)',
@@ -171,6 +186,22 @@ function createArraySchema(title: string, description?: string): TypeSchema {
   }
 }
 
+function createDefaultSchemaForDataType(
+  dataType: PortDataType,
+  title: string,
+  description?: string,
+): TypeSchema {
+  if (dataType === 'json') {
+    return createJsonSchema(title, description)
+  }
+
+  if (dataType === 'array') {
+    return createArraySchema(title, description)
+  }
+
+  return createScalarSchema(dataType, title, description)
+}
+
 export interface CreatePortOptions {
   required?: boolean
   multiple?: boolean
@@ -181,7 +212,8 @@ export interface CreatePortOptions {
 }
 
 export function createPort(id: string, label: string, direction: PortDirection, dataType: PortDataType, options?: CreatePortOptions): PortDefinition {
-  const schema = options?.schema ?? (dataType === 'json' ? createJsonSchema(label) : dataType === 'array' ? createArraySchema(label) : createScalarSchema(dataType, label))
+  const schema =
+    options?.schema ?? createDefaultSchemaForDataType(dataType, label)
 
   return {
     id,
@@ -1174,6 +1206,48 @@ export function getAllNodeTypes(): NodeTypeConfig[] {
   return NODE_TYPES.map((type) => NODE_TYPE_REGISTRY[type])
 }
 
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function isValidTypeSchema(schema: unknown): schema is TypeSchema {
+  if (!isPlainRecord(schema) || !isPortDataType(schema.kind)) {
+    return false
+  }
+
+  if (schema.kind !== 'json') {
+    return true
+  }
+
+  if (schema.shape === 'object') {
+    if (!isPlainRecord(schema.properties)) {
+      return false
+    }
+
+    return Object.values(schema.properties).every((property) =>
+      isValidTypeSchema(property),
+    )
+  }
+
+  if (schema.shape === 'array') {
+    return isValidTypeSchema(schema.items)
+  }
+
+  return false
+}
+
+function inferDataTypeFromSchema(schema: unknown): PortDataType | null {
+  if (!isPlainRecord(schema) || !isPortDataType(schema.kind)) {
+    return null
+  }
+
+  if (schema.kind !== 'json') {
+    return schema.kind
+  }
+
+  return schema.shape === 'array' ? 'array' : schema.shape === 'object' ? 'json' : null
+}
+
 function cloneTypeSchema(schema: TypeSchema): TypeSchema {
   switch (schema.kind) {
     case 'json': {
@@ -1221,4 +1295,60 @@ export function clonePortDefinitions(ports: PortDefinition[]): PortDefinition[] 
     ...port,
     schema: cloneTypeSchema(port.schema),
   }))
+}
+
+export function hydratePortDefinitions(
+  ports: HydratablePortDefinition[],
+  defaultPorts: readonly PortDefinition[] = [],
+): PortDefinition[] {
+  const defaultPortsById = new Map(defaultPorts.map((port) => [port.id, port]))
+
+  return ports.map((port) => {
+    const defaultPort = defaultPortsById.get(port.id)
+    const label =
+      typeof port.label === 'string' && port.label.trim().length > 0
+        ? port.label
+        : defaultPort?.label ?? port.id
+    const description =
+      typeof port.description === 'string'
+        ? port.description
+        : defaultPort?.description
+    const dataType =
+      defaultPort?.dataType
+      ?? (isPortDataType(port.dataType)
+        ? port.dataType
+        : inferDataTypeFromSchema(port.schema) ?? 'json')
+    const direction =
+      defaultPort?.direction
+      ?? (isPortDirection(port.direction) ? port.direction : 'input')
+
+    return {
+      id: port.id,
+      label,
+      direction,
+      dataType,
+      acceptsAnyDataType:
+        typeof port.acceptsAnyDataType === 'boolean'
+          ? port.acceptsAnyDataType
+          : defaultPort?.acceptsAnyDataType,
+      description,
+      required:
+        typeof port.required === 'boolean'
+          ? port.required
+          : defaultPort?.required ?? false,
+      multiple:
+        typeof port.multiple === 'boolean'
+          ? port.multiple
+          : defaultPort?.multiple ?? false,
+      maxConnections:
+        port.maxConnections === null || typeof port.maxConnections === 'number'
+          ? port.maxConnections
+          : defaultPort?.maxConnections ?? 1,
+      schema: defaultPort
+        ? cloneTypeSchema(defaultPort.schema)
+        : isValidTypeSchema(port.schema)
+          ? cloneTypeSchema(port.schema)
+          : createDefaultSchemaForDataType(dataType, label, description),
+    }
+  })
 }

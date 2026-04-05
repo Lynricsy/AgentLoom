@@ -24,7 +24,10 @@ import type { CanvasNodeData, CanvasEdgeData } from '@/features/canvas/types';
 import type { AgentCanvasNodeType } from '@/features/canvas/registry/agent-canvas-registry';
 import { AGENT_CANVAS_NODE_REGISTRY } from '@/features/canvas/registry/agent-canvas-registry';
 import { arePortDataTypesCompatible } from '@/features/canvas/lib/connectionCompatibility';
-import { clonePortDefinitions } from '@/features/canvas/types/nodeTypeRegistry';
+import {
+  clonePortDefinitions,
+  hydratePortDefinitions,
+} from '@/features/canvas/types/nodeTypeRegistry';
 
 enableMapSet();
 
@@ -283,11 +286,11 @@ function normalizePersistedNode(node: AgentCanvasNode): AgentCanvasNode {
   const shouldPreserveStoredPorts = PORT_STATEFUL_AGENT_NODE_TYPES.has(nodeType);
   const nextInputPorts =
     shouldPreserveStoredPorts && node.data.inputPorts.length > 0
-      ? node.data.inputPorts
+      ? hydratePortDefinitions(node.data.inputPorts, config.inputPorts)
       : clonePortDefinitions(config.inputPorts);
   const nextOutputPorts =
     shouldPreserveStoredPorts && node.data.outputPorts.length > 0
-      ? node.data.outputPorts
+      ? hydratePortDefinitions(node.data.outputPorts, config.outputPorts)
       : clonePortDefinitions(config.outputPorts);
 
   return {

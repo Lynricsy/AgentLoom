@@ -50,6 +50,14 @@ src/
 └── test-setup.ts
 ```
 
+## 画布快照恢复事实
+
+`features/canvas/` 当前在 `canvasStore.applyServerSnapshot()` 落地服务端工作流快照前，会先修复不完整的端口定义：
+
+- 已知端口按节点注册表回填 `direction / dataType / schema / maxConnections` 等 canonical 字段
+- 未知端口则按已有 `dataType / schema` 推导默认 schema
+- 目标是兼容历史快照、API 直改或导入数据里残留的半残 `PortDefinition`，避免页面在 UI / type-engine 读取 `port.schema.kind` 时直接崩溃
+
 ## 画布控制流容器事实
 
 `features/canvas/` 当前对 `loop / iteration` compound 容器采用以下前端契约：

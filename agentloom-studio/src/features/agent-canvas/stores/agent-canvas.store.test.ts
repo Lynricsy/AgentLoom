@@ -178,4 +178,81 @@ describe('agentCanvasStore', () => {
       state.nodes[0]?.data.inputPorts.find((port) => port.id === 'memory-in')?.dataType,
     ).toBe('memory');
   });
+
+  it('rehydrates malformed stored smart-routing ports from registry defaults', async () => {
+    getMock.mockReturnValue({
+      json: vi.fn().mockResolvedValue({
+        data: {
+          id: 'agent-2',
+          tenantId: 'tenant-1',
+          name: 'Broken Router Agent',
+          slug: 'broken-router-agent',
+          description: null,
+          systemPrompt: null,
+          nodes: [
+            {
+              id: 'router-1',
+              type: 'agent',
+              position: { x: 0, y: 0 },
+              data: {
+                label: 'Legacy Router',
+                nodeType: 'smart-routing',
+                category: 'agent',
+                description: '端口只剩 id',
+                config: {
+                  strategy: 'FALLBACK_CHAIN',
+                },
+                inputPorts: [{ id: 'model-in-0' }, { id: 'model-in-1' }],
+                outputPorts: [{ id: 'model-out' }],
+              },
+            },
+          ],
+          edges: [],
+          viewport: null,
+          sandboxConfig: {},
+          workspaceSnapshotId: null,
+          inputSchema: null,
+          memoryInstanceIds: [],
+          sandboxLifecycle: 'session',
+          version: 1,
+          runtimeMode: 'sandbox',
+          status: 'draft',
+          publishedVersionId: null,
+          createdBy: 'user-1',
+          updatedBy: 'user-1',
+          createdAt: '2026-04-05T00:00:00.000Z',
+          updatedAt: '2026-04-05T00:00:00.000Z',
+        },
+      }),
+    });
+
+    await useAgentCanvasStore.getState().actions.loadAgent('agent-2');
+
+    const node = useAgentCanvasStore
+      .getState()
+      .nodes.find((item) => item.id === 'router-1');
+
+    expect(node?.data.inputPorts).toMatchObject([
+      {
+        id: 'model-in-0',
+        direction: 'input',
+        dataType: 'model',
+        schema: { kind: 'model' },
+      },
+      {
+        id: 'model-in-1',
+        direction: 'input',
+        dataType: 'model',
+        schema: { kind: 'model' },
+      },
+    ]);
+    expect(node?.data.outputPorts).toMatchObject([
+      {
+        id: 'model-out',
+        direction: 'output',
+        dataType: 'model',
+        schema: { kind: 'model' },
+      },
+    ]);
+  });
 });

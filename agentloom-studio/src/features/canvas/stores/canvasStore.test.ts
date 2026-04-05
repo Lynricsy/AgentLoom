@@ -159,6 +159,73 @@ describe('canvasStore', () => {
     expect(hydratedNode.data.outputPorts[0]?.id).toBe('exec-out')
   })
 
+  it('applyServerSnapshot 会修复只有端口 id 的脏快照端口定义', () => {
+    const brokenHttpNode = createNode({
+      type: 'tool',
+      data: {
+        label: 'Broken HTTP',
+        nodeType: 'http-tool',
+        category: 'tool',
+        description: '端口定义被外部 API 直改过',
+        config: {},
+        inputPorts: [{ id: 'exec-in' }, { id: 'request-in' }] as unknown as CanvasNode['data']['inputPorts'],
+        outputPorts: [{ id: 'exec-out' }, { id: 'response-out' }] as unknown as CanvasNode['data']['outputPorts'],
+      },
+    })
+
+    useCanvasStore.getState().actions.applyServerSnapshot({
+      workflowId: 'workflow-1',
+      nodes: [brokenHttpNode],
+      edges: [],
+      viewport: undefined,
+      version: 2,
+    })
+
+    const hydratedNode = useCanvasStore.getState().nodes[0]
+    if (!hydratedNode) {
+      throw new Error('Expected hydrated node to exist')
+    }
+
+    expect(hydratedNode.data.inputPorts).toMatchObject([
+      {
+        id: 'exec-in',
+        direction: 'input',
+        dataType: 'exec',
+        schema: {
+          kind: 'exec',
+        },
+      },
+      {
+        id: 'request-in',
+        direction: 'input',
+        dataType: 'json',
+        schema: {
+          kind: 'json',
+          shape: 'object',
+        },
+      },
+    ])
+    expect(hydratedNode.data.outputPorts).toMatchObject([
+      {
+        id: 'exec-out',
+        direction: 'output',
+        dataType: 'exec',
+        schema: {
+          kind: 'exec',
+        },
+      },
+      {
+        id: 'response-out',
+        direction: 'output',
+        dataType: 'json',
+        schema: {
+          kind: 'json',
+          shape: 'object',
+        },
+      },
+    ])
+  })
+
   it('stores reusable-block metadata when adding block nodes', () => {
     const blockDefinition = {
       nodes: [createNode({ id: 'inner-1' })],

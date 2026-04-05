@@ -6,7 +6,7 @@ import { enableMapSet } from 'immer'
 import { applyNodeChanges, applyEdgeChanges, type NodeChange, type EdgeChange, type Connection, type Viewport } from '@xyflow/react'
 import type { CanvasNode, CanvasEdge, CanvasEdgeData, CanvasSnapshot, AddNodeInput, FieldMapping, AgentNodeData } from '../types'
 import { createDefaultEdgeData, createDefaultAgentNodeData } from '../types'
-import { clonePortDefinitions, EXEC_PORT_NODE_TYPES, getNodeTypeConfig, getNodeTypeConfigOrNull, type NodeTypeConfig, type PortDefinition } from '../types/nodeTypeRegistry'
+import { clonePortDefinitions, EXEC_PORT_NODE_TYPES, getNodeTypeConfig, getNodeTypeConfigOrNull, hydratePortDefinitions, type NodeTypeConfig, type PortDefinition } from '../types/nodeTypeRegistry'
 import { arePortDataTypesCompatible, evaluateConnection, mergeEdgeDataWithStoredMappings, resolveConnectionPorts } from '../lib/connectionCompatibility'
 import { getNodePortContractSignature } from '../lib/typeEngine/serialize'
 import { buildCompoundChildExtent, clampPositionToExtent, getCompoundInitialChildPosition, readCompoundNodeDimension, resolveCompoundContainerSize } from '../lib/compoundLayout'
@@ -830,8 +830,16 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
                 const typeConfig = getNodeTypeConfigOrNull(n.data.nodeType)
                 const agentNodeDefaults = isAgentNodeType(n.data.nodeType) ? createDefaultAgentNodeData() : null
                 const agentNodeData = agentNodeDefaults ? (n.data as Partial<AgentNodeData>) : null
-                let inputPorts = Array.isArray(n.data.inputPorts) ? clonePortDefinitions(n.data.inputPorts) : typeConfig ? clonePortDefinitions(typeConfig.inputPorts) : []
-                let outputPorts = Array.isArray(n.data.outputPorts) ? clonePortDefinitions(n.data.outputPorts) : typeConfig ? clonePortDefinitions(typeConfig.outputPorts) : []
+                let inputPorts = Array.isArray(n.data.inputPorts)
+                  ? hydratePortDefinitions(n.data.inputPorts, typeConfig?.inputPorts ?? [])
+                  : typeConfig
+                    ? clonePortDefinitions(typeConfig.inputPorts)
+                    : []
+                let outputPorts = Array.isArray(n.data.outputPorts)
+                  ? hydratePortDefinitions(n.data.outputPorts, typeConfig?.outputPorts ?? [])
+                  : typeConfig
+                    ? clonePortDefinitions(typeConfig.outputPorts)
+                    : []
 
                 // 条件节点: 从 config.branches 推导输出端口（兼容旧格式迁移）
                 if (n.data.nodeType === 'condition') {

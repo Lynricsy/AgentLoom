@@ -97,6 +97,7 @@ WorkflowCanvasPage.tsx
 - `fieldSuggestionEngine.ts` 的 Levenshtein / token overlap 需支持 Unicode，类型兼容性需区分 `json:object` 与 `json:array`；`FieldMappingPanel` 对 coercible 映射必须先进入确认流、取消时回滚快照，不兼容目标需显示禁止态并 toast 拒绝；批量拖拽匹配顺序为“精确名称 → 归一化名称 → 顺序兜底”，apply-all 需过滤 incompatible 并展示确认摘要与撤销提示
 - `NestedFieldTree` 组件支持 `suggestedPaths`/`onFieldDragOver`/`onFieldDrop`/`renderFieldSuffix`/`disableLeafInteraction` 5 个可选 backward-compat props
 - `agentloom-studio/vite.config.ts` 通过 `server.fs.allow = [path.resolve(__dirname, '..')]` 放行 sibling `agentloom-type-engine/pkg` wasm，避免 Vite dev 下 `@fs/...agentloom_type_engine_bg.wasm` 被 403 拒绝
+- `canvasStore.applyServerSnapshot()` 会在落地服务端快照前修复不完整的 `PortDefinition`：对已知端口按注册表回填 `direction/dataType/schema` 等 canonical 字段，对未知端口则按现有 `dataType/schema` 推导默认 schema，避免历史快照或 API 直改留下的半残端口在 UI / type-engine 中触发 `port.schema.kind` 崩溃
 - `canvasStore` 自动清理：删除 edge 时同步清理 binding mapping
 - `canvasStore` 现在同时维护 `selectedNodeId`（向后兼容单选）与 `selectedNodeIds`（多选 Set）；涉及 `selectNode/selectEdge/openFieldMapping/onNodesChange(reset/applyServerSnapshot)` 时需保持两者同步
 - `canvasStore.nodeValidationErrors` 记录节点级表单校验状态；删除节点和 `onNodesChange(remove)` 都需要同步清理
