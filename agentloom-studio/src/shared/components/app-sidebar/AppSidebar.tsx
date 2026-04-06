@@ -23,6 +23,7 @@ import { UserMenu } from "./UserMenu";
 
 const STORAGE_KEY = "agentloom-sidebar-collapsed";
 const GROUP_EXPANDED_KEY = "agentloom-sidebar-group-expanded";
+const DEVELOPER_NAV_ENTRY_ENABLED = false;
 
 interface NavItem {
   label: string;
@@ -58,12 +59,16 @@ const NAV_ITEMS: NavItem[] = [
     to: "/discover",
     matchPrefix: "/discover",
   },
-  {
-    label: "开发者",
-    icon: Code,
-    to: "/developer-console/earnings",
-    matchPrefix: "/developer-console",
-  },
+  ...(DEVELOPER_NAV_ENTRY_ENABLED
+    ? [
+        {
+          label: "开发者",
+          icon: Code,
+          to: "/developer-console/earnings",
+          matchPrefix: "/developer-console",
+        },
+      ]
+    : []),
 ];
 
 const NAV_GROUPS: NavGroup[] = [

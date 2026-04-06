@@ -1,6 +1,6 @@
 # AgentLoom Studio
 
-AgentLoom Studio 是基于 **React 19 + Vite 7** 的前端工作台，负责工作流画布编辑、执行调试、审计查询、治理配置、模板与市场浏览等 Web 体验。当前 `/login` 页面仅展示邮箱密码登录，Google / GitHub OAuth 的底层实现仍保留，但入口暂时隐藏。
+AgentLoom Studio 是基于 **React 19 + Vite 7** 的前端工作台，负责工作流画布编辑、执行调试、审计查询、治理配置、模板与市场浏览等 Web 体验。当前 `/login` 页面仅展示邮箱密码登录，Google / GitHub OAuth 的底层实现仍保留，但入口暂时隐藏；`/developer-console/earnings` 路由仍然存在，但主侧边栏不再展示“开发者”入口。
 
 ## 技术栈
 
