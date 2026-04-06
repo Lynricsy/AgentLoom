@@ -143,7 +143,7 @@ class _AgentConversationScreenState
                     return;
                   }
 
-                  context.goNamed(
+                  context.pushReplacementNamed(
                     RouteNames.agentConversation,
                     pathParameters: {
                       'agentId': widget.agentId,
