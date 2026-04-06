@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 import '../models/execution_event.dart';
@@ -10,7 +11,8 @@ typedef SocketCallback = void Function();
 typedef SocketErrorCallback = void Function(dynamic error);
 typedef SocketDisconnectCallback = void Function(String reason);
 
-const List<String> _defaultSocketTransports = <String>['polling', 'websocket'];
+const List<String> _nativeSocketTransports = <String>['websocket'];
+const List<String> _webSocketTransports = <String>['polling', 'websocket'];
 
 String _stripApiSuffix(String path) {
   final normalizedPath = path.replaceFirst(RegExp(r'/$'), '');
@@ -41,14 +43,19 @@ String resolveExecutionSocketUrl(String apiBaseUrl) {
 }
 
 Map<String, dynamic> buildSocketConnectionOptions({required String authToken}) {
-  // Flutter Web 本地调试经由反向代理时，direct websocket 握手可能返回 502；
-  // 保留 polling -> websocket 升级链路，避免实时页直接白屏。
-  return io.OptionBuilder()
-      .setTransports(_defaultSocketTransports)
+  final builder = io.OptionBuilder()
+      .setTransports(kIsWeb ? _webSocketTransports : _nativeSocketTransports)
       .setAuth({'token': authToken})
       .disableAutoConnect()
-      .enableForceNew()
-      .build();
+      .enableForceNew();
+
+  if (!kIsWeb) {
+    builder.setExtraHeaders({'Authorization': 'Bearer $authToken'});
+  }
+
+  // Flutter Web 本地调试经由反向代理时，direct websocket 握手可能返回 502；
+  // 原生端则只使用 dart:io websocket，避免 polling/XHR 握手失败。
+  return builder.build();
 }
 
 Map<String, dynamic>? coerceSocketJsonMap(Object? value) {

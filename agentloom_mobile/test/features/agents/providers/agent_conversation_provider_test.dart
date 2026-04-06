@@ -12,6 +12,7 @@ import 'package:agentloom_mobile/features/resources/api/resources_api.dart';
 import 'package:agentloom_mobile/shared/models/paginated_response.dart';
 import 'package:agentloom_mobile/shared/providers/env_provider.dart';
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
@@ -28,6 +29,8 @@ void main() {
   late ProviderContainer container;
   late Map<String, Function> listeners;
   Map<String, dynamic>? capturedSocketOptions;
+  Map<String, dynamic>? capturedSubscribePayload;
+  Function? capturedSubscribeAck;
 
   const testTokens = AuthTokens(
     accessToken: 'test-access-token',
@@ -74,6 +77,8 @@ void main() {
     mockSocket = MockSocket();
     listeners = <String, Function>{};
     capturedSocketOptions = null;
+    capturedSubscribePayload = null;
+    capturedSubscribeAck = null;
 
     when(
       () => mockApi.getAgent(any()),
@@ -114,6 +119,22 @@ void main() {
     });
     when(() => mockSocket.connect()).thenReturn(mockSocket);
     when(() => mockSocket.emit(any(), any())).thenReturn(null);
+    when(
+      () => mockSocket.emitWithAck(any(), any(), ack: any(named: 'ack')),
+    ).thenAnswer((invocation) {
+      final event = invocation.positionalArguments[0] as String;
+      final data = invocation.positionalArguments[1];
+      if (event == 'conversation:subscribe') {
+        if (data is Map<String, dynamic>) {
+          capturedSubscribePayload = data;
+        } else if (data is Map<Object?, Object?>) {
+          capturedSubscribePayload = data.map(
+            (key, value) => MapEntry('$key', value),
+          );
+        }
+        capturedSubscribeAck = invocation.namedArguments[#ack] as Function?;
+      }
+    });
     when(() => mockSocket.clearListeners()).thenAnswer((_) {
       listeners.clear();
     });
@@ -271,7 +292,7 @@ void main() {
     expect(state.messages.single.content, '你好');
   });
 
-  test('socket 连接配置应允许 polling 回退再升级 websocket', () async {
+  test('socket 连接配置应按平台选择 transport 与鉴权头', () async {
     container.listen(
       agentConversationProvider(params),
       (_, __) {},
@@ -284,11 +305,68 @@ void main() {
 
     final transports = (capturedSocketOptions?['transports'] as List<Object?>?)
         ?.cast<String>();
-    expect(transports, equals(const <String>['polling', 'websocket']));
+    expect(
+      transports,
+      equals(
+        kIsWeb
+            ? const <String>['polling', 'websocket']
+            : const <String>['websocket'],
+      ),
+    );
     expect(
       capturedSocketOptions?['auth'],
       equals({'token': testTokens.accessToken}),
     );
+    if (!kIsWeb) {
+      expect(
+        capturedSocketOptions?['extraHeaders'],
+        equals({'Authorization': 'Bearer ${testTokens.accessToken}'}),
+      );
+    }
+  });
+
+  test('connect 后订阅应透传 tenantId', () async {
+    when(() => mockApi.getAgent('agent-001')).thenAnswer(
+      (_) async => createTestAgent(id: 'agent-001', tenantId: 'tenant-001'),
+    );
+
+    container.listen(
+      agentConversationProvider(params),
+      (_, __) {},
+      fireImmediately: true,
+    );
+
+    await container.read(authProvider.future);
+    await container.read(agentConversationProvider(params).future);
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    listeners['connect']?.call(null);
+
+    expect(capturedSubscribePayload, {
+      'conversationId': 'conv-001',
+      'tenantId': 'tenant-001',
+    });
+  });
+
+  test('订阅 ACK 返回 error 时应展示失败原因并标记未连接', () async {
+    container.listen(
+      agentConversationProvider(params),
+      (_, __) {},
+      fireImmediately: true,
+    );
+
+    await container.read(authProvider.future);
+    await container.read(agentConversationProvider(params).future);
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    listeners['connect']?.call(null);
+    capturedSubscribeAck?.call({'status': 'error', 'error': 'FORBIDDEN'});
+
+    final state = container.read(agentConversationProvider(params)).value;
+    expect(state, isNotNull);
+    expect(state!.isConnected, isFalse);
+    expect(state.status, ConversationStatus.error);
+    expect(state.error, '实时订阅失败：当前账号无权访问该对话');
   });
 
   test('sendMessage 应透传附件消息的 contentType 与 metadata', () async {

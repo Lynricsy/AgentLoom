@@ -345,6 +345,7 @@ PaginatedResponse<ExecutionSummaryDto> createTestExecutionList({
 AgentDefinitionDto createTestAgent({
   String id = 'agent-test-001',
   String organizationId = 'org-001',
+  String? tenantId,
   String name = 'Test Agent',
   String? slug,
   String? description = 'A test agent for unit tests',
@@ -365,6 +366,7 @@ AgentDefinitionDto createTestAgent({
   return AgentDefinitionDto(
     id: id,
     organizationId: organizationId,
+    tenantId: tenantId,
     name: name,
     slug: slug ?? name.toLowerCase().replaceAll(' ', '-'),
     description: description,

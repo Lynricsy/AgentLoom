@@ -10,6 +10,7 @@ import 'package:agentloom_mobile/features/execution/services/execution_socket_se
         coerceSocketJsonMap,
         executionSocketServiceProvider,
         resolveExecutionSocketUrl;
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -67,13 +68,23 @@ void main() {
       // 但 dispose() 已将 _socket 置为 null 所以不会触发
     });
 
-    test('buildSocketConnectionOptions 应保留 polling 到 websocket 升级链路', () {
+    test('buildSocketConnectionOptions 应按平台选择 transport 与鉴权头', () {
       final options = buildSocketConnectionOptions(authToken: 'test-token');
       expect(
         options['transports'],
-        equals(const <String>['polling', 'websocket']),
+        equals(
+          kIsWeb
+              ? const <String>['polling', 'websocket']
+              : const <String>['websocket'],
+        ),
       );
       expect(options['auth'], equals({'token': 'test-token'}));
+      if (!kIsWeb) {
+        expect(
+          options['extraHeaders'],
+          equals({'Authorization': 'Bearer test-token'}),
+        );
+      }
       expect(options['forceNew'], isTrue);
       expect(options['autoConnect'], isFalse);
     });

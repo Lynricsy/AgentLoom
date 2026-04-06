@@ -75,6 +75,7 @@ typedef _ConversationHistorySnapshot = ({
 typedef _ConversationBootstrap = ({
   String runtimeMode,
   String? workspacePreviewId,
+  String? tenantId,
 });
 
 String _resolveConversationSocketUrl(String apiBaseUrl) {
@@ -114,6 +115,19 @@ String? _readString(Object? value) {
     return value;
   }
   return null;
+}
+
+String _describeConversationSubscribeError(String? error) {
+  switch (error) {
+    case 'FORBIDDEN':
+      return '当前账号无权访问该对话';
+    case 'INVALID_PAYLOAD':
+      return '对话订阅参数无效';
+    case null:
+      return '订阅未成功';
+    default:
+      return error;
+  }
 }
 
 String? _resolveWorkspacePreviewId(AgentDefinitionDto agent) {
@@ -1024,6 +1038,7 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
   bool _isCleaningUp = false;
   bool _hasHistoricalMessages = false;
   String? _boundWorkspacePreviewId;
+  String? _boundTenantId;
 
   @override
   Future<ConversationState> build() async {
@@ -1035,6 +1050,7 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
     final bootstrap = await bootstrapFuture;
     _hasHistoricalMessages = messages.isNotEmpty;
     _boundWorkspacePreviewId = bootstrap.workspacePreviewId;
+    _boundTenantId = bootstrap.tenantId;
     Future<void>.microtask(() {
       if (!ref.mounted) {
         return;
@@ -1062,9 +1078,10 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
       return (
         runtimeMode: agent.runtimeMode,
         workspacePreviewId: _resolveWorkspacePreviewId(agent),
+        tenantId: agent.tenantId,
       );
     } catch (_) {
-      return (runtimeMode: 'sandbox', workspacePreviewId: null);
+      return (runtimeMode: 'sandbox', workspacePreviewId: null, tenantId: null);
     }
   }
 
@@ -1181,9 +1198,29 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
           clearError: true,
         ),
       );
-      socket.emit('conversation:subscribe', {
-        'conversationId': params.conversationId,
-      });
+      socket.emitWithAck(
+        'conversation:subscribe',
+        {
+          'conversationId': params.conversationId,
+          if (_boundTenantId case final tenantId? when tenantId.isNotEmpty)
+            'tenantId': tenantId,
+        },
+        ack: (response) {
+          final ack = _asMap(response);
+          if (_readString(ack['status']) != 'error') {
+            return;
+          }
+
+          _updateState(
+            (current) => current.copyWith(
+              isConnected: false,
+              status: ConversationStatus.error,
+              error:
+                  '实时订阅失败：${_describeConversationSubscribeError(_readString(ack['error']) ?? _readString(ack['message']))}',
+            ),
+          );
+        },
+      );
     });
 
     socket.onDisconnect((reason) {
