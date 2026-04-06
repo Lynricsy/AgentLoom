@@ -6,15 +6,18 @@ import {
   fetchWorkspaceFileRaw,
   fetchWorkspaceFileTree,
   fetchWorkspaces,
+  updateWorkspaceTextFile,
 } from "./workspaceApi";
 
 const mocks = vi.hoisted(() => {
   const jsonMock = vi.fn();
   const blobMock = vi.fn();
   const getMock = vi.fn(() => ({ json: jsonMock, blob: blobMock }));
+  const putMock = vi.fn(() => ({ json: jsonMock }));
 
   return {
     getMock,
+    putMock,
     jsonMock,
     blobMock,
   };
@@ -23,6 +26,7 @@ const mocks = vi.hoisted(() => {
 vi.mock("@/shared/api/client", () => ({
   apiClient: {
     get: mocks.getMock,
+    put: mocks.putMock,
   },
 }));
 
@@ -111,5 +115,38 @@ describe("workspaceApi", () => {
     await expect(fetchWorkspaceFileRaw("ws-1", "spec.pdf")).resolves.toBe(blob);
 
     expect(mocks.getMock).toHaveBeenCalledWith("workspaces/ws-1/raw/spec.pdf");
+  });
+
+  it("updateWorkspaceTextFile 应请求 files 更新接口", async () => {
+    mocks.jsonMock.mockResolvedValue({
+      data: {
+        kind: "text",
+        path: "docs/readme.md",
+        fileName: "readme.md",
+        size: 9,
+        mimeType: "text/markdown",
+        canDownload: true,
+        content: "# edited",
+        encoding: "utf-8",
+      },
+    });
+
+    await expect(
+      updateWorkspaceTextFile("ws-1", "docs/readme.md", {
+        content: "# edited",
+      }),
+    ).resolves.toMatchObject({
+      kind: "text",
+      content: "# edited",
+    });
+
+    expect(mocks.putMock).toHaveBeenCalledWith(
+      "workspaces/ws-1/files/docs/readme.md",
+      {
+        json: {
+          content: "# edited",
+        },
+      },
+    );
   });
 });

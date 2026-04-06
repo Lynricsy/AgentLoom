@@ -1,5 +1,5 @@
 import { Test } from '@nestjs/testing';
-import { Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Logger, NotFoundException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Readable } from 'node:stream';
 import { PgDialect } from 'drizzle-orm/pg-core';
@@ -9,6 +9,7 @@ import { WorkspaceService } from '../workspace.service';
 import { StorageService } from '../../../infrastructure/storage/storage.service';
 import type { WorkspaceSnapshot } from '../../../database/schema';
 import { SANDBOX_RUNTIME_DRIVER } from '../../sandbox/sandbox-runtime-driver.port';
+import { parseWorkspaceArchiveEntries } from '../workspace-preview.utils';
 
 // ─── Drizzle chain builders ─────────────────────────────────────────────────
 
@@ -120,6 +121,20 @@ function createReadableStream(): Readable {
 
 function createReadableStreamFromBuffer(buffer: Buffer): Readable {
   return Readable.from(buffer);
+}
+
+async function readStreamToBuffer(
+  stream: NodeJS.ReadableStream,
+): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+
+  for await (const chunk of stream as AsyncIterable<
+    Buffer | Uint8Array | string
+  >) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+
+  return Buffer.concat(chunks);
 }
 
 function createTarHeaderBuffer(
@@ -1117,6 +1132,94 @@ describe('WorkspaceService', () => {
         mimeType: 'image/png',
         content: pngBuffer,
       });
+    });
+
+    it('updateTextFile 应当覆盖文本文件并回写归档', async () => {
+      const snapshot = buildSnapshot({ sizeBytes: 2048 });
+      const archive = createTarArchive([
+        {
+          path: 'workspace/docs/readme.md',
+          type: 'file',
+          content: '# hello',
+        },
+      ]);
+      let uploadedArchive: Buffer | null = null;
+
+      db.select.mockReturnValueOnce(createSelectChainWithLimit([snapshot]));
+      db.update.mockReturnValueOnce(createUpdateChainNoReturning());
+      mockStorageService.download.mockResolvedValueOnce(
+        createReadableStreamFromBuffer(archive),
+      );
+      mockStorageService.upload.mockImplementationOnce(
+        async (
+          _storageKey: string,
+          stream: NodeJS.ReadableStream,
+          sizeBytes: number,
+          mimeType: string,
+        ) => {
+          uploadedArchive = await readStreamToBuffer(stream);
+          expect(sizeBytes).toBe(uploadedArchive.length);
+          expect(mimeType).toBe('application/x-tar');
+        },
+      );
+
+      await expect(
+        service.updateTextFile(
+          TEST_TENANT_ID,
+          TEST_WORKSPACE_ID,
+          'docs/readme.md',
+          '# updated',
+        ),
+      ).resolves.toEqual({
+        kind: 'text',
+        path: 'docs/readme.md',
+        fileName: 'readme.md',
+        size: 9,
+        mimeType: 'text/markdown',
+        canDownload: true,
+        content: '# updated',
+        encoding: 'utf-8',
+      });
+
+      expect(mockStorageService.upload).toHaveBeenCalledWith(
+        snapshot.storageKey,
+        expect.any(Object),
+        expect.any(Number),
+        'application/x-tar',
+      );
+
+      const updatedEntry = parseWorkspaceArchiveEntries(
+        uploadedArchive ?? Buffer.alloc(0),
+      ).find((entry) => entry.path === 'docs/readme.md');
+
+      expect(updatedEntry?.content.toString('utf-8')).toBe('# updated');
+    });
+
+    it('updateTextFile 编辑二进制文件时应抛出 BadRequestException', async () => {
+      const snapshot = buildSnapshot({ sizeBytes: 1024 });
+      const archive = createTarArchive([
+        {
+          path: 'workspace/archive.bin',
+          type: 'file',
+          content: Buffer.from([0xde, 0xad, 0x00, 0xbe]),
+        },
+      ]);
+
+      db.select.mockReturnValueOnce(createSelectChainWithLimit([snapshot]));
+      mockStorageService.download.mockResolvedValueOnce(
+        createReadableStreamFromBuffer(archive),
+      );
+
+      await expect(
+        service.updateTextFile(
+          TEST_TENANT_ID,
+          TEST_WORKSPACE_ID,
+          'archive.bin',
+          'text',
+        ),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(mockStorageService.upload).not.toHaveBeenCalled();
     });
   });
 });

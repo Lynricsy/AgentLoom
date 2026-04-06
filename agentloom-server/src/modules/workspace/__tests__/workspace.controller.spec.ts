@@ -118,6 +118,38 @@ describe('WorkspaceController', () => {
     );
   });
 
+  it('updateTextFile 应调用 workspaceService 并返回 data envelope', async () => {
+    const preview = {
+      kind: 'text',
+      path: 'docs/readme.md',
+      fileName: 'readme.md',
+      size: 14,
+      mimeType: 'text/markdown',
+      canDownload: true,
+      content: '# updated docs',
+      encoding: 'utf-8',
+    };
+    const workspaceService = {
+      updateTextFile: vi.fn().mockResolvedValue(preview),
+    } as unknown as WorkspaceService;
+    const controller = new WorkspaceController(workspaceService);
+
+    await expect(
+      controller.updateTextFile(
+        TEST_WORKSPACE_ID,
+        'docs/readme.md',
+        { content: '# updated docs' },
+        buildRequest(),
+      ),
+    ).resolves.toEqual({ data: preview });
+    expect(workspaceService.updateTextFile).toHaveBeenCalledWith(
+      TEST_TENANT_ID,
+      TEST_WORKSPACE_ID,
+      'docs/readme.md',
+      '# updated docs',
+    );
+  });
+
   it('getRawFile 应透传文件资产到 Fastify reply', async () => {
     const asset = {
       fileName: 'cover.png',

@@ -119,6 +119,11 @@
   - `GET /workspaces/:id/tree` 必须能够对大 workspace snapshot 做流式 tar 扫描并返回目录树，不能因为归档超过某个内存预览阈值就直接 404。
   - `GET /workspaces/:id/preview/*` 与 `GET /workspaces/:id/raw/*` 必须按目标路径流式定位单个 entry，而不是先把整个 tar 读入内存。
   - 文本内容的在线预览限制仍然只作用于“单个目标文件”，例如 `MAX_WORKSPACE_TEXT_PREVIEW_BYTES`；它不能反向把整个 workspace 的目录树预览一起打成空白。
+- workspace 文本文件保存语义：
+  - `PUT /workspaces/:id/files/*` 只允许更新 UTF-8 文本文件。
+  - 保存时必须保持同一条 `workspace_snapshots` 记录与既有 `storageKey`，不能额外创建新 workspace 版本。
+  - server 必须重新打包并覆盖上传最新 tar，同时更新 `sizeBytes/updatedAt`。
+  - 对二进制文件、超出文本预览限制或不可识别为文本的 entry，必须返回 400，而不是伪装成成功写回。
 
 ### 3.4 Sandbox list semantics
 

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   Delete,
@@ -8,6 +9,7 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Put,
   Query,
   Req,
   Res,
@@ -22,6 +24,8 @@ import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import type { CreateWorkspaceDto } from './dto/create-workspace.dto';
 import { CreateWorkspaceSchema } from './dto/create-workspace.dto';
 import { ListWorkspacesQueryDto } from './dto/list-workspaces-query.dto';
+import type { UpdateWorkspaceTextFileDto } from './dto/update-workspace-text-file.dto';
+import { UpdateWorkspaceTextFileSchema } from './dto/update-workspace-text-file.dto';
 import { WorkspaceService } from './workspace.service';
 import type { WorkspaceSnapshot } from '../../database/schema';
 import { enrichWorkspaceSnapshot } from './workspace-source.utils';
@@ -135,6 +139,34 @@ export class WorkspaceController {
       id,
       filePath,
     );
+    return { data };
+  }
+
+  @Put(':id/files/*')
+  @ApiOperation({ summary: 'Update workspace text file content' })
+  @ApiParam({ name: 'id', description: 'Workspace snapshot UUID' })
+  @ApiParam({ name: '*', description: 'Workspace file path' })
+  @ApiResponse({ status: 200, description: 'Workspace text file updated' })
+  @ApiResponse({ status: 400, description: 'Workspace file is not editable' })
+  @ApiResponse({ status: 404, description: 'Workspace file not found' })
+  async updateTextFile(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('*') filePath: string,
+    @Body(new ZodValidationPipe(UpdateWorkspaceTextFileSchema))
+    dto: UpdateWorkspaceTextFileDto,
+    @Req() req: AuthenticatedRequest,
+  ) {
+    if (!filePath) {
+      throw new BadRequestException('文件路径不能为空');
+    }
+
+    const data = await this.workspaceService.updateTextFile(
+      this.getTenantId(req),
+      id,
+      filePath,
+      dto.content,
+    );
+
     return { data };
   }
 

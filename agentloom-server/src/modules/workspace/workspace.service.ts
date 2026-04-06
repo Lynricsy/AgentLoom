@@ -1,8 +1,21 @@
-import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { eq, and, desc, ne, count, sql } from 'drizzle-orm';
 import { spawn } from 'node:child_process';
 import { createReadStream, createWriteStream } from 'node:fs';
-import { rm, mkdtemp, stat } from 'node:fs/promises';
+import {
+  mkdir,
+  readFile,
+  rm,
+  mkdtemp,
+  stat,
+  writeFile,
+} from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join } from 'node:path';
 import type { Readable } from 'node:stream';
@@ -377,6 +390,59 @@ export class WorkspaceService {
     };
   }
 
+  private async stageWorkspaceArchiveForEdit(
+    snapshot: schema.WorkspaceSnapshot,
+  ): Promise<{
+    tempDir: string;
+    extractRoot: string;
+    workspaceRoot: string;
+    archiveEntryName: string;
+    cleanup: () => Promise<void>;
+  }> {
+    const stagedArchive = await this.stageStreamToTempFile(
+      `agentloom-workspace-edit-${snapshot.id}`,
+      'snapshot.tar',
+      await this.storageService.download(snapshot.storageKey),
+    );
+    const extractRoot = join(stagedArchive.tempDir, 'workspace-extracted');
+    await mkdir(extractRoot, { recursive: true });
+
+    try {
+      await this.runTarCommand(
+        ['-xf', stagedArchive.filePath, '-C', extractRoot],
+        'Failed to extract workspace archive for editing',
+      );
+    } catch (error) {
+      await stagedArchive.cleanup();
+      throw error;
+    }
+
+    const workspaceDir = join(extractRoot, 'workspace');
+
+    try {
+      const directoryStats = await stat(workspaceDir);
+      if (directoryStats.isDirectory()) {
+        return {
+          tempDir: stagedArchive.tempDir,
+          extractRoot,
+          workspaceRoot: workspaceDir,
+          archiveEntryName: 'workspace',
+          cleanup: stagedArchive.cleanup,
+        };
+      }
+    } catch {
+      // Rootless archives fall back to extractRoot as the editable workspace root.
+    }
+
+    return {
+      tempDir: stagedArchive.tempDir,
+      extractRoot,
+      workspaceRoot: extractRoot,
+      archiveEntryName: '.',
+      cleanup: stagedArchive.cleanup,
+    };
+  }
+
   private async stageStreamToTempFile(
     prefix: string,
     fileName: string,
@@ -413,14 +479,20 @@ export class WorkspaceService {
     fileName: string,
     archivePath: string,
   ): Promise<void> {
+    await this.runTarCommand(
+      ['-cf', archivePath, '-C', sourceDir, fileName],
+      'Failed to prepare workspace archive',
+    );
+  }
+
+  private async runTarCommand(
+    args: string[],
+    errorPrefix: string,
+  ): Promise<void> {
     await new Promise<void>((resolve, reject) => {
-      const tar = spawn(
-        'tar',
-        ['-cf', archivePath, '-C', sourceDir, fileName],
-        {
-          stdio: ['ignore', 'ignore', 'pipe'],
-        },
-      );
+      const tar = spawn('tar', args, {
+        stdio: ['ignore', 'ignore', 'pipe'],
+      });
 
       let stderr = '';
 
@@ -437,7 +509,7 @@ export class WorkspaceService {
 
         reject(
           new Error(
-            `Failed to prepare workspace restore upload archive${stderr.trim() ? `: ${stderr.trim()}` : ''}`,
+            `${errorPrefix}${stderr.trim() ? `: ${stderr.trim()}` : ''}`,
           ),
         );
       });
@@ -611,6 +683,103 @@ export class WorkspaceService {
     };
   }
 
+  async updateTextFile(
+    tenantId: string,
+    workspaceId: string,
+    filePath: string,
+    content: string,
+  ): Promise<WorkspaceFilePreview> {
+    const snapshot = await this.findWorkspaceSnapshotRecord(
+      tenantId,
+      workspaceId,
+    );
+
+    if (snapshot.status !== 'ready') {
+      throw new NotFoundException(
+        `Workspace snapshot ${workspaceId} not found or not ready`,
+      );
+    }
+
+    if (snapshot.sizeBytes === 0) {
+      throw new NotFoundException(`路径 ${filePath} 不是普通文件`);
+    }
+
+    const normalizedPath = normalizeWorkspacePreviewPath(filePath);
+    const tenantDb = getTenantDb(this.db);
+    const stagedWorkspace = await this.stageWorkspaceArchiveForEdit(snapshot);
+
+    try {
+      const targetPath = join(stagedWorkspace.workspaceRoot, normalizedPath);
+      const currentStats = await this.readWorkspaceFileStats(
+        targetPath,
+        filePath,
+      );
+      const currentContent = await readFile(targetPath);
+      const currentPreview = buildWorkspaceFilePreview(normalizedPath, {
+        path: normalizedPath,
+        type: 'file',
+        size: currentStats.size,
+        content: currentContent,
+      });
+
+      if (currentPreview.kind !== 'text') {
+        throw new BadRequestException(
+          `路径 ${normalizedPath} 不是可编辑的文本文件`,
+        );
+      }
+
+      const nextContent = Buffer.from(content, 'utf-8');
+      const nextPreview = buildWorkspaceFilePreview(normalizedPath, {
+        path: normalizedPath,
+        type: 'file',
+        size: nextContent.length,
+        content: nextContent,
+      });
+
+      if (nextPreview.kind !== 'text') {
+        throw new BadRequestException(
+          nextPreview.kind === 'unsupported'
+            ? nextPreview.reason
+            : '仅支持保存 UTF-8 文本文件',
+        );
+      }
+
+      await writeFile(targetPath, nextContent);
+
+      const nextArchivePath = join(stagedWorkspace.tempDir, 'updated.tar');
+      await this.createUploadArchive(
+        stagedWorkspace.extractRoot,
+        stagedWorkspace.archiveEntryName,
+        nextArchivePath,
+      );
+      const nextArchiveStats = await stat(nextArchivePath);
+
+      await this.storageService.upload(
+        snapshot.storageKey,
+        createReadStream(nextArchivePath),
+        nextArchiveStats.size,
+        'application/x-tar',
+      );
+
+      await tenantDb
+        .update(schema.workspaceSnapshots)
+        .set({
+          sizeBytes: nextArchiveStats.size,
+          status: 'ready',
+          updatedAt: new Date(),
+        })
+        .where(eq(schema.workspaceSnapshots.id, workspaceId));
+
+      this.logger.log(
+        `Workspace ${workspaceId} text file ${normalizedPath} updated`,
+      );
+
+      return nextPreview;
+    } finally {
+      await stagedWorkspace.cleanup();
+    }
+  }
+
   private async findWorkspaceSnapshotRecord(
     tenantId: string,
     workspaceId: string,
@@ -689,5 +858,23 @@ export class WorkspaceService {
       archiveStream,
       normalizeWorkspacePreviewPath(filePath),
     );
+  }
+
+  private async readWorkspaceFileStats(
+    filePath: string,
+    rawInputPath: string,
+  ): Promise<{ size: number }> {
+    let fileStats;
+    try {
+      fileStats = await stat(filePath);
+    } catch {
+      throw new NotFoundException(`路径 ${rawInputPath} 不是普通文件`);
+    }
+
+    if (!fileStats.isFile()) {
+      throw new NotFoundException(`路径 ${rawInputPath} 不是普通文件`);
+    }
+
+    return { size: fileStats.size };
   }
 }

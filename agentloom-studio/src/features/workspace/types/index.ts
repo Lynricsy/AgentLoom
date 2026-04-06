@@ -30,6 +30,10 @@ export interface CreateWorkspacePayload {
   createEmpty?: boolean;
 }
 
+export interface UpdateWorkspaceTextFilePayload {
+  content: string;
+}
+
 export interface WorkspaceFileNode {
   name: string;
   type: "file" | "directory";

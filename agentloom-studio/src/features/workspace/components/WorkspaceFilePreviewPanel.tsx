@@ -1,4 +1,12 @@
-import { memo, useCallback, useEffect, useState } from "react";
+import {
+  lazy,
+  memo,
+  Suspense,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { Document, Page, pdfjs } from "react-pdf";
 import {
   Download,
@@ -6,19 +14,33 @@ import {
   FileWarning,
   Image as ImageIcon,
   Loader2,
+  PencilLine,
+  RotateCcw,
+  Save,
 } from "lucide-react";
+import { detectLanguage } from "@/shared/components/tool-renderers/primitives/codeLanguage";
 import { Button } from "@/shared/ui/button";
-import type { WorkspaceFilePreview } from "../types";
+import { useToast } from "@/shared/ui/toast";
+import type { WorkspaceFilePreview, WorkspaceTextFilePreview } from "../types";
 import { fetchWorkspaceFileRaw } from "../api/workspaceApi";
+import { useUpdateWorkspaceTextFile } from "../api/workspaceMutations";
 import { formatWorkspaceSize } from "../lib/formatSize";
 
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 
+const MonacoEditor = lazy(() => import("@monaco-editor/react"));
+
 pdfjs.GlobalWorkerOptions.workerSrc = new URL(
   "pdfjs-dist/build/pdf.worker.min.mjs",
   import.meta.url,
 ).toString();
+
+const HIGHLIGHT_TO_MONACO_LANGUAGE: Record<string, string> = {
+  bash: "shell",
+  shell: "shell",
+  plaintext: "plaintext",
+};
 
 interface WorkspaceFilePreviewPanelProps {
   workspaceId: string;
@@ -28,6 +50,82 @@ interface WorkspaceFilePreviewPanelProps {
   error: string | null;
 }
 
+interface TextEditorState {
+  path: string | null;
+  sourceContent: string;
+  draftContent: string;
+  isEditing: boolean;
+  saveError: string | null;
+}
+
+const INITIAL_TEXT_EDITOR_STATE: TextEditorState = {
+  path: null,
+  sourceContent: "",
+  draftContent: "",
+  isEditing: false,
+  saveError: null,
+};
+
+function resolveMonacoLanguage(filePath: string): string {
+  const detected = detectLanguage(filePath) ?? "plaintext";
+  return HIGHLIGHT_TO_MONACO_LANGUAGE[detected] ?? detected;
+}
+
+function TextEditorFallback() {
+  return (
+    <div
+      className="flex h-full flex-col gap-3 bg-[#111827] px-4 py-5"
+      data-testid="workspace-preview-text-loading"
+    >
+      <div className="h-4 w-40 animate-pulse rounded bg-white/10" />
+      <div className="h-3 w-full animate-pulse rounded bg-white/5" />
+      <div className="h-3 w-5/6 animate-pulse rounded bg-white/5" />
+      <div className="h-3 w-2/3 animate-pulse rounded bg-white/5" />
+      <div className="h-3 w-4/5 animate-pulse rounded bg-white/5" />
+    </div>
+  );
+}
+
+const WorkspaceTextEditor = memo(function WorkspaceTextEditor({
+  filePath,
+  value,
+  readOnly,
+  onChange,
+}: {
+  filePath: string;
+  value: string;
+  readOnly: boolean;
+  onChange: (value: string) => void;
+}) {
+  const language = useMemo(() => resolveMonacoLanguage(filePath), [filePath]);
+
+  return (
+    <Suspense fallback={<TextEditorFallback />}>
+      <div className="h-full bg-[#111827]" data-testid="workspace-preview-text">
+        <MonacoEditor
+          height="100%"
+          language={language}
+          value={value}
+          onChange={(nextValue) => onChange(nextValue ?? "")}
+          theme="vs-dark"
+          options={{
+            readOnly,
+            automaticLayout: true,
+            minimap: { enabled: false },
+            lineNumbers: "on",
+            fontSize: 13,
+            wordWrap: "on",
+            scrollBeyondLastLine: false,
+            renderWhitespace: "selection",
+            contextmenu: !readOnly,
+            padding: { top: 12, bottom: 12 },
+          }}
+        />
+      </div>
+    </Suspense>
+  );
+});
+
 export const WorkspaceFilePreviewPanel = memo(
   function WorkspaceFilePreviewPanel({
     workspaceId,
@@ -36,11 +134,22 @@ export const WorkspaceFilePreviewPanel = memo(
     isLoading,
     error,
   }: WorkspaceFilePreviewPanelProps) {
+    const { notify } = useToast();
     const [rawUrl, setRawUrl] = useState<string | null>(null);
     const [rawLoading, setRawLoading] = useState(false);
     const [rawError, setRawError] = useState<string | null>(null);
     const [downloading, setDownloading] = useState(false);
     const [pdfPageCount, setPdfPageCount] = useState(0);
+    const [textEditor, setTextEditor] = useState<TextEditorState>(
+      INITIAL_TEXT_EDITOR_STATE,
+    );
+
+    const textPreview: WorkspaceTextFilePreview | null =
+      preview?.kind === "text" ? preview : null;
+    const updateTextMutation = useUpdateWorkspaceTextFile(
+      workspaceId,
+      textPreview?.path ?? null,
+    );
 
     useEffect(() => {
       let active = true;
@@ -85,7 +194,40 @@ export const WorkspaceFilePreviewPanel = memo(
           URL.revokeObjectURL(nextUrl);
         }
       };
-    }, [preview?.kind, preview?.path, workspaceId]);
+    }, [preview, workspaceId]);
+
+    useEffect(() => {
+      if (!textPreview) {
+        setTextEditor(INITIAL_TEXT_EDITOR_STATE);
+        return;
+      }
+
+      setTextEditor((current) => {
+        if (current.path !== textPreview.path) {
+          return {
+            path: textPreview.path,
+            sourceContent: textPreview.content,
+            draftContent: textPreview.content,
+            isEditing: false,
+            saveError: null,
+          };
+        }
+
+        if (
+          !current.isEditing ||
+          current.draftContent === current.sourceContent
+        ) {
+          return {
+            ...current,
+            sourceContent: textPreview.content,
+            draftContent: textPreview.content,
+            saveError: null,
+          };
+        }
+
+        return current;
+      });
+    }, [textPreview]);
 
     const handleDownload = useCallback(async () => {
       if (!preview?.canDownload) return;
@@ -116,8 +258,80 @@ export const WorkspaceFilePreviewPanel = memo(
       }
     }, [preview, workspaceId]);
 
+    const handleStartEditing = useCallback(() => {
+      setTextEditor((current) => ({
+        ...current,
+        isEditing: true,
+        saveError: null,
+      }));
+    }, []);
+
+    const handleResetText = useCallback(() => {
+      setTextEditor((current) => ({
+        ...current,
+        draftContent: current.sourceContent,
+        isEditing: false,
+        saveError: null,
+      }));
+    }, []);
+
+    const handleTextChange = useCallback((value: string) => {
+      setTextEditor((current) => ({
+        ...current,
+        draftContent: value,
+        saveError: null,
+      }));
+    }, []);
+
+    const handleSaveText = useCallback(async () => {
+      if (!textPreview) {
+        return;
+      }
+
+      try {
+        const updatedPreview = await updateTextMutation.mutateAsync({
+          content: textEditor.draftContent,
+        });
+
+        if (updatedPreview.kind !== "text") {
+          throw new Error("保存后的文件不再支持文本预览");
+        }
+
+        setTextEditor({
+          path: updatedPreview.path,
+          sourceContent: updatedPreview.content,
+          draftContent: updatedPreview.content,
+          isEditing: false,
+          saveError: null,
+        });
+        notify({
+          title: "已保存",
+          description: `已更新 ${updatedPreview.fileName}`,
+          variant: "success",
+        });
+      } catch (saveError) {
+        const message =
+          saveError instanceof Error ? saveError.message : "文本文件保存失败";
+        setTextEditor((current) => ({
+          ...current,
+          saveError: message,
+        }));
+        notify({
+          title: "保存失败",
+          description: message,
+          variant: "error",
+        });
+      }
+    }, [notify, textEditor.draftContent, textPreview, updateTextMutation]);
+
     const fileName =
       preview?.fileName ?? selectedPath?.split("/").pop() ?? null;
+    const isDirty =
+      textPreview !== null &&
+      textEditor.path === textPreview.path &&
+      textEditor.draftContent !== textEditor.sourceContent;
+    const isTextReadOnly =
+      !textEditor.isEditing || updateTextMutation.isPending;
 
     return (
       <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-surface">
@@ -136,6 +350,42 @@ export const WorkspaceFilePreviewPanel = memo(
               {formatWorkspaceSize(preview.size)}
             </span>
           )}
+          {textPreview && isDirty && (
+            <span className="rounded-full bg-warning/10 px-2 py-0.5 text-[10px] font-medium text-warning">
+              未保存
+            </span>
+          )}
+          {textPreview &&
+            (textEditor.isEditing ? (
+              <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleResetText}
+                  disabled={updateTextMutation.isPending}
+                >
+                  <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
+                  撤销
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => void handleSaveText()}
+                  disabled={!isDirty || updateTextMutation.isPending}
+                >
+                  {updateTextMutation.isPending ? (
+                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Save className="mr-1.5 h-3.5 w-3.5" />
+                  )}
+                  保存
+                </Button>
+              </>
+            ) : (
+              <Button variant="ghost" size="sm" onClick={handleStartEditing}>
+                <PencilLine className="mr-1.5 h-3.5 w-3.5" />
+                编辑
+              </Button>
+            ))}
           {preview?.canDownload && (
             <Button
               variant="ghost"
@@ -175,13 +425,20 @@ export const WorkspaceFilePreviewPanel = memo(
               <p>当前文件暂时不可读取。</p>
             </div>
           ) : preview.kind === "text" ? (
-            <div className="h-full overflow-auto bg-background p-3">
-              <pre
-                data-testid="workspace-preview-text"
-                className="whitespace-pre-wrap break-all font-mono text-xs leading-relaxed text-foreground/90"
-              >
-                {preview.content}
-              </pre>
+            <div className="flex h-full min-h-0 flex-col bg-background">
+              {textEditor.saveError && (
+                <div className="border-b border-border bg-error/10 px-3 py-2 text-xs text-error">
+                  {textEditor.saveError}
+                </div>
+              )}
+              <div className="min-h-0 flex-1">
+                <WorkspaceTextEditor
+                  filePath={preview.path}
+                  value={textEditor.draftContent}
+                  readOnly={isTextReadOnly}
+                  onChange={handleTextChange}
+                />
+              </div>
             </div>
           ) : rawLoading ? (
             <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
@@ -258,6 +515,12 @@ export const WorkspaceFilePreviewPanel = memo(
                 <FileCode2 className="h-3.5 w-3.5" />
               )}
               <span>{preview.mimeType}</span>
+              {preview.kind === "text" && (
+                <span>
+                  {textEditor.isEditing ? "编辑模式" : "只读预览"} · UTF-8
+                </span>
+              )}
+              <span className="truncate">{preview.path}</span>
             </div>
           </div>
         )}

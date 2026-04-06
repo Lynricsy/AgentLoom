@@ -1,121 +1,66 @@
-import { memo, useCallback, useEffect, useMemo, useState } from 'react'
-import hljs from 'highlight.js/lib/core'
-import { Check, Copy } from 'lucide-react'
-import { cn } from '@/shared/lib/utils'
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
+import hljs from "highlight.js/lib/core";
+import { Check, Copy } from "lucide-react";
+import { cn } from "@/shared/lib/utils";
+import { detectLanguage } from "./codeLanguage";
 
-import 'highlight.js/styles/github-dark.css'
+import "highlight.js/styles/github-dark.css";
+
+// eslint-disable-next-line react-refresh/only-export-components
+export { detectLanguage };
 
 // Register common languages lazily
-const REGISTERED_LANGUAGES = new Set<string>()
+const REGISTERED_LANGUAGES = new Set<string>();
 const LANGUAGE_IMPORTS: Record<string, () => Promise<{ default: unknown }>> = {
-  javascript: () => import('highlight.js/lib/languages/javascript'),
-  typescript: () => import('highlight.js/lib/languages/typescript'),
-  python: () => import('highlight.js/lib/languages/python'),
-  json: () => import('highlight.js/lib/languages/json'),
-  bash: () => import('highlight.js/lib/languages/bash'),
-  shell: () => import('highlight.js/lib/languages/shell'),
-  css: () => import('highlight.js/lib/languages/css'),
-  xml: () => import('highlight.js/lib/languages/xml'),
-  markdown: () => import('highlight.js/lib/languages/markdown'),
-  yaml: () => import('highlight.js/lib/languages/yaml'),
-  sql: () => import('highlight.js/lib/languages/sql'),
-  rust: () => import('highlight.js/lib/languages/rust'),
-  go: () => import('highlight.js/lib/languages/go'),
-  java: () => import('highlight.js/lib/languages/java'),
-  cpp: () => import('highlight.js/lib/languages/cpp'),
-  c: () => import('highlight.js/lib/languages/c'),
-  ruby: () => import('highlight.js/lib/languages/ruby'),
-  php: () => import('highlight.js/lib/languages/php'),
-  swift: () => import('highlight.js/lib/languages/swift'),
-  kotlin: () => import('highlight.js/lib/languages/kotlin'),
-  dockerfile: () => import('highlight.js/lib/languages/dockerfile'),
-  diff: () => import('highlight.js/lib/languages/diff'),
-  ini: () => import('highlight.js/lib/languages/ini'),
-  plaintext: () => import('highlight.js/lib/languages/plaintext'),
-}
+  javascript: () => import("highlight.js/lib/languages/javascript"),
+  typescript: () => import("highlight.js/lib/languages/typescript"),
+  python: () => import("highlight.js/lib/languages/python"),
+  json: () => import("highlight.js/lib/languages/json"),
+  bash: () => import("highlight.js/lib/languages/bash"),
+  shell: () => import("highlight.js/lib/languages/shell"),
+  css: () => import("highlight.js/lib/languages/css"),
+  xml: () => import("highlight.js/lib/languages/xml"),
+  markdown: () => import("highlight.js/lib/languages/markdown"),
+  yaml: () => import("highlight.js/lib/languages/yaml"),
+  sql: () => import("highlight.js/lib/languages/sql"),
+  rust: () => import("highlight.js/lib/languages/rust"),
+  go: () => import("highlight.js/lib/languages/go"),
+  java: () => import("highlight.js/lib/languages/java"),
+  cpp: () => import("highlight.js/lib/languages/cpp"),
+  c: () => import("highlight.js/lib/languages/c"),
+  ruby: () => import("highlight.js/lib/languages/ruby"),
+  php: () => import("highlight.js/lib/languages/php"),
+  swift: () => import("highlight.js/lib/languages/swift"),
+  kotlin: () => import("highlight.js/lib/languages/kotlin"),
+  dockerfile: () => import("highlight.js/lib/languages/dockerfile"),
+  diff: () => import("highlight.js/lib/languages/diff"),
+  ini: () => import("highlight.js/lib/languages/ini"),
+  plaintext: () => import("highlight.js/lib/languages/plaintext"),
+};
 
 async function ensureLanguage(lang: string): Promise<boolean> {
-  if (REGISTERED_LANGUAGES.has(lang)) return true
+  if (REGISTERED_LANGUAGES.has(lang)) return true;
 
-  const importFn = LANGUAGE_IMPORTS[lang]
-  if (!importFn) return false
+  const importFn = LANGUAGE_IMPORTS[lang];
+  if (!importFn) return false;
 
   try {
-    const mod = await importFn()
-    hljs.registerLanguage(lang, mod.default as any)
-    REGISTERED_LANGUAGES.add(lang)
-    return true
+    const mod = await importFn();
+    hljs.registerLanguage(lang, mod.default as any);
+    REGISTERED_LANGUAGES.add(lang);
+    return true;
   } catch {
-    return false
+    return false;
   }
-}
-
-const EXTENSION_TO_LANGUAGE: Record<string, string> = {
-  js: 'javascript',
-  jsx: 'javascript',
-  ts: 'typescript',
-  tsx: 'typescript',
-  mjs: 'javascript',
-  cjs: 'javascript',
-  mts: 'typescript',
-  cts: 'typescript',
-  py: 'python',
-  rb: 'ruby',
-  rs: 'rust',
-  kt: 'kotlin',
-  kts: 'kotlin',
-  sh: 'bash',
-  zsh: 'bash',
-  bash: 'bash',
-  yml: 'yaml',
-  yaml: 'yaml',
-  md: 'markdown',
-  html: 'xml',
-  htm: 'xml',
-  svg: 'xml',
-  xml: 'xml',
-  json: 'json',
-  css: 'css',
-  sql: 'sql',
-  go: 'go',
-  java: 'java',
-  c: 'c',
-  h: 'c',
-  cpp: 'cpp',
-  cc: 'cpp',
-  cxx: 'cpp',
-  hpp: 'cpp',
-  swift: 'swift',
-  php: 'php',
-  Dockerfile: 'dockerfile',
-  toml: 'ini',
-  ini: 'ini',
-  diff: 'diff',
-  patch: 'diff',
-  txt: 'plaintext',
-}
-
-/**
- * Detect language from a file name based on extension.
- */
-export function detectLanguage(fileName: string): string | undefined {
-  const lastDot = fileName.lastIndexOf('.')
-  if (lastDot < 0) {
-    // Handle extensionless files like Dockerfile
-    const baseName = fileName.split('/').pop() ?? fileName
-    return EXTENSION_TO_LANGUAGE[baseName]
-  }
-  const ext = fileName.slice(lastDot + 1)
-  return EXTENSION_TO_LANGUAGE[ext]
 }
 
 export interface CodeViewerProps {
-  code: string
-  language?: string
-  fileName?: string
-  startLine?: number
-  maxHeight?: string
-  className?: string
+  code: string;
+  language?: string;
+  fileName?: string;
+  startLine?: number;
+  maxHeight?: string;
+  className?: string;
 }
 
 export const CodeViewer = memo(function CodeViewer({
@@ -123,70 +68,71 @@ export const CodeViewer = memo(function CodeViewer({
   language,
   fileName,
   startLine = 1,
-  maxHeight = '480px',
+  maxHeight = "480px",
   className,
 }: CodeViewerProps) {
-  const [copied, setCopied] = useState(false)
-  const [highlightedHtml, setHighlightedHtml] = useState<string | null>(null)
+  const [copied, setCopied] = useState(false);
+  const [highlightedHtml, setHighlightedHtml] = useState<string | null>(null);
 
-  const resolvedLanguage = language ?? (fileName ? detectLanguage(fileName) : undefined)
+  const resolvedLanguage =
+    language ?? (fileName ? detectLanguage(fileName) : undefined);
 
   // Highlight the code: sync when language is already registered,
   // async load otherwise via useEffect.
   useEffect(() => {
     if (!resolvedLanguage) {
-      setHighlightedHtml(null)
-      return
+      setHighlightedHtml(null);
+      return;
     }
 
     // If already registered, highlight synchronously
     if (REGISTERED_LANGUAGES.has(resolvedLanguage)) {
       try {
-        const result = hljs.highlight(code, { language: resolvedLanguage })
-        setHighlightedHtml(result.value)
+        const result = hljs.highlight(code, { language: resolvedLanguage });
+        setHighlightedHtml(result.value);
       } catch {
-        setHighlightedHtml(null)
+        setHighlightedHtml(null);
       }
-      return
+      return;
     }
 
     // Async language registration
-    let cancelled = false
+    let cancelled = false;
     void ensureLanguage(resolvedLanguage).then((ok) => {
-      if (cancelled) return
+      if (cancelled) return;
       if (ok) {
         try {
-          const result = hljs.highlight(code, { language: resolvedLanguage })
-          setHighlightedHtml(result.value)
+          const result = hljs.highlight(code, { language: resolvedLanguage });
+          setHighlightedHtml(result.value);
         } catch {
-          setHighlightedHtml(null)
+          setHighlightedHtml(null);
         }
       } else {
-        setHighlightedHtml(null)
+        setHighlightedHtml(null);
       }
-    })
+    });
 
     return () => {
-      cancelled = true
-    }
-  }, [code, resolvedLanguage])
+      cancelled = true;
+    };
+  }, [code, resolvedLanguage]);
 
-  const lines = useMemo(() => code.split('\n'), [code])
+  const lines = useMemo(() => code.split("\n"), [code]);
 
   const handleCopy = useCallback(async () => {
     try {
-      await navigator.clipboard.writeText(code)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
     } catch {
       // Clipboard API may fail in non-secure contexts
     }
-  }, [code])
+  }, [code]);
 
-  const lineNumberWidth = String(startLine + lines.length - 1).length
+  const lineNumberWidth = String(startLine + lines.length - 1).length;
 
   return (
-    <div className={cn('group relative rounded-lg bg-zinc-900', className)}>
+    <div className={cn("group relative rounded-lg bg-zinc-900", className)}>
       {/* Header with language label and copy button */}
       {(resolvedLanguage ?? fileName) && (
         <div className="flex items-center justify-between border-b border-zinc-700/50 px-3 py-1.5">
@@ -245,7 +191,7 @@ export const CodeViewer = memo(function CodeViewer({
                     />
                   ) : (
                     <span className="text-foreground/90">
-                      {line || '\u00A0'}
+                      {line || "\u00A0"}
                     </span>
                   )}
                 </td>
@@ -255,8 +201,8 @@ export const CodeViewer = memo(function CodeViewer({
         </table>
       </div>
     </div>
-  )
-})
+  );
+});
 
 /**
  * Extract a single line from already-highlighted HTML.
@@ -264,6 +210,6 @@ export const CodeViewer = memo(function CodeViewer({
  * while trying to preserve open tags across lines.
  */
 function getHighlightedLine(html: string, lineIndex: number): string {
-  const lines = html.split('\n')
-  return lines[lineIndex] ?? ''
+  const lines = html.split("\n");
+  return lines[lineIndex] ?? "";
 }

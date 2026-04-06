@@ -27,6 +27,11 @@
   - `沙箱快照`
   - `执行归档`
 - `WorkspaceDetailPage` 与 `WorkspaceCard` 必须复用同一套 `sourceKind -> label/badge` 映射，避免“列表一个叫常规、详情另一个叫手动工作区”的同层漂移
+- `WorkspaceDetailPage` 的文本文件预览必须使用 Monaco 只读/编辑器语义，而不是裸 `<pre>`：
+  - 默认进入只读预览
+  - 用户显式点击 `编辑` 后才进入可写状态
+  - `撤销` 必须回到当前已保存快照内容
+  - `保存` 成功后，右侧文本内容与 workspace 详情页元数据要与最新持久化快照保持一致
 - `sizeBytes === null` 时显示 `未知`，不能伪装成 `0 B`
 
 ### Share-imported resource pages

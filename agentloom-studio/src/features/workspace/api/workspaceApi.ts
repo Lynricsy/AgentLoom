@@ -4,6 +4,7 @@ import type {
   WorkspaceListResponse,
   WorkspaceListParams,
   CreateWorkspacePayload,
+  UpdateWorkspaceTextFilePayload,
   WorkspaceFileNode,
   WorkspaceFilePreview,
 } from "../types";
@@ -96,6 +97,19 @@ export async function fetchWorkspaceFileRaw(
   return apiClient
     .get(`${BASE_PATH}/${id}/raw/${encodeWorkspaceFilePath(filePath)}`)
     .blob();
+}
+
+export async function updateWorkspaceTextFile(
+  id: string,
+  filePath: string,
+  payload: UpdateWorkspaceTextFilePayload,
+): Promise<WorkspaceFilePreview> {
+  const response = await apiClient
+    .put(`${BASE_PATH}/${id}/files/${encodeWorkspaceFilePath(filePath)}`, {
+      json: payload,
+    })
+    .json<ApiEnvelope<WorkspaceFilePreview>>();
+  return response.data;
 }
 
 export async function createWorkspace(

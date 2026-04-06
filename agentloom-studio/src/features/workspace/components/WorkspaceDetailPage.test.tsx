@@ -12,8 +12,11 @@ const mocks = vi.hoisted(() => ({
   useWorkspaceDetail: vi.fn(),
   useWorkspaceFileTree: vi.fn(),
   useWorkspaceFilePreview: vi.fn(),
+  useUpdateWorkspaceTextFile: vi.fn(),
+  updateWorkspaceTextFile: vi.fn(),
   fetchWorkspaceFileRaw: vi.fn(),
   navigate: vi.fn(),
+  notify: vi.fn(),
 }));
 
 vi.mock("../api/workspaceQueries", () => ({
@@ -22,12 +25,41 @@ vi.mock("../api/workspaceQueries", () => ({
   useWorkspaceFilePreview: mocks.useWorkspaceFilePreview,
 }));
 
+vi.mock("../api/workspaceMutations", () => ({
+  useUpdateWorkspaceTextFile: mocks.useUpdateWorkspaceTextFile,
+}));
+
 vi.mock("../api/workspaceApi", () => ({
   fetchWorkspaceFileRaw: mocks.fetchWorkspaceFileRaw,
 }));
 
+vi.mock("@/shared/ui/toast", () => ({
+  useToast: () => ({ notify: mocks.notify }),
+}));
+
 vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => mocks.navigate,
+}));
+
+vi.mock("@monaco-editor/react", () => ({
+  default: ({
+    value,
+    defaultValue,
+    onChange,
+    options,
+  }: {
+    value?: string;
+    defaultValue?: string;
+    onChange?: (value: string) => void;
+    options?: { readOnly?: boolean };
+  }) => (
+    <textarea
+      data-testid="workspace-monaco-editor"
+      readOnly={options?.readOnly}
+      value={value ?? defaultValue ?? ""}
+      onChange={(event) => onChange?.(event.target.value)}
+    />
+  ),
 }));
 
 function createWorkspace(overrides: Partial<Workspace> = {}): Workspace {
@@ -106,6 +138,11 @@ function setupPage(options?: {
       error: null,
     }),
   );
+
+  mocks.useUpdateWorkspaceTextFile.mockReturnValue({
+    mutateAsync: mocks.updateWorkspaceTextFile,
+    isPending: false,
+  });
 }
 
 describe("WorkspaceDetailPage", () => {
@@ -122,7 +159,7 @@ describe("WorkspaceDetailPage", () => {
     });
   });
 
-  it("点击文本文件后应显示文本预览", async () => {
+  it("点击文本文件后应显示 Monaco 文本预览", async () => {
     setupPage({
       tree: [
         {
@@ -152,7 +189,66 @@ describe("WorkspaceDetailPage", () => {
 
     expect(
       await screen.findByTestId("workspace-preview-text"),
-    ).toHaveTextContent("# docs hello");
+    ).toBeInTheDocument();
+    expect(await screen.findByTestId("workspace-monaco-editor")).toHaveValue(
+      "# docs hello",
+    );
+    expect(screen.getByTestId("workspace-monaco-editor")).toHaveAttribute(
+      "readonly",
+    );
+  });
+
+  it("文本预览应支持进入编辑并保存", async () => {
+    setupPage({
+      tree: [createFileNode({ name: "readme.md", path: "readme.md" })],
+      previews: {
+        "readme.md": createTextPreview({
+          path: "readme.md",
+          fileName: "readme.md",
+          content: "# hello",
+        }),
+      },
+    });
+    mocks.updateWorkspaceTextFile.mockResolvedValue(
+      createTextPreview({
+        path: "readme.md",
+        fileName: "readme.md",
+        content: "# edited",
+        size: 8,
+      }),
+    );
+
+    render(<WorkspaceDetailPage workspaceId="ws-1" />);
+
+    await userEvent.click(screen.getByText("readme.md"));
+    const editor = await screen.findByTestId("workspace-monaco-editor");
+
+    await userEvent.click(screen.getByRole("button", { name: "编辑" }));
+    expect(editor).not.toHaveAttribute("readonly");
+
+    await userEvent.clear(editor);
+    await userEvent.type(editor, "# edited");
+    await userEvent.click(screen.getByRole("button", { name: "保存" }));
+
+    await waitFor(() => {
+      expect(mocks.updateWorkspaceTextFile).toHaveBeenCalledWith({
+        content: "# edited",
+      });
+    });
+    expect(mocks.notify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "已保存",
+        variant: "success",
+      }),
+    );
+    await waitFor(() => {
+      expect(screen.getByTestId("workspace-monaco-editor")).toHaveValue(
+        "# edited",
+      );
+      expect(screen.getByTestId("workspace-monaco-editor")).toHaveAttribute(
+        "readonly",
+      );
+    });
   });
 
   it("点击 PDF 文件后应加载 PDF 预览", async () => {

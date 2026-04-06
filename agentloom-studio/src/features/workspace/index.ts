@@ -15,6 +15,7 @@ export {
 export {
   useCreateWorkspace,
   useDeleteWorkspace,
+  useUpdateWorkspaceTextFile,
 } from "./api/workspaceMutations";
 
 export { workspaceKeys } from "./api/workspaceKeys";
@@ -26,6 +27,7 @@ export {
   fetchWorkspaceFileTree,
   fetchWorkspaceFilePreview,
   fetchWorkspaceFileRaw,
+  updateWorkspaceTextFile,
   createWorkspace,
   deleteWorkspace,
 } from "./api/workspaceApi";
@@ -35,6 +37,7 @@ export type {
   WorkspaceListResponse,
   WorkspaceListParams,
   CreateWorkspacePayload,
+  UpdateWorkspaceTextFilePayload,
   WorkspaceFileNode,
   WorkspaceFilePreview,
 } from "./types";
