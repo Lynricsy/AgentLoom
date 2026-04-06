@@ -17,7 +17,7 @@ AgentLoom 让你像编织织布机上的经纬线一样，将多个 AI Agent 编
 - **🏷️ 发布版号语义** — 工作流草稿修订号与用户可见发布版本号分离：自动保存只推进内部 OCC 修订号，只有快照首次发布时才分配 `vN`
 - **🧭 Agent 双运行态** — Agent 创建时显式选择 `sandbox / no_sandbox`；顶层 `no_sandbox` Agent 与 workflow `agent` 节点走 in-process pi-agent-core runtime，仍支持 Skill、知识库、Memory、HTTP MCP 与自进化，而 `sandbox` Agent 继续走容器化 pi-coding-agent runtime
 - **💬 Agent 对话体验** — 首轮 assistant 回复后会自动生成对话标题；标题模型解析顺序为“用户标题偏好 → 当前会话所属 Agent 运行模型 → 组织默认 chat 模型”。服务端标题生成会与 runtime 对齐模型协议选择，但会按 `@ai-sdk/*` SDK 语义单独归一 `baseURL`（例如 Anthropic 请求保留 `/v1`）；无论来自 HTTP 还是 worker 背景触发，标题生成都会在租户事务内完成读写。当这些模型都不可用或 LLM 标题生成失败时，系统会回退为首条用户消息摘要，避免会话列表停留在“新对话”。对于 sandbox Agent，新会话在 live sandbox 就绪前会先显示持久化工作区目录预览；右侧“Agent 的电脑”面板会以结构化进程监视器、文件变更与工具详情呈现当前运行上下文；若同时存在顶层 `workspaceSnapshotId` 与 `sandboxConfig.restoreWorkspaceId`，预览优先绑定后者，避免预览与实际恢复工作区漂移
-- **🔗 发现与公开分享** — `/discover` 复用 Marketplace 已上架内容做可浏览发现页；workflow 与 Agent 都支持生成 `/s/:token` 公开分享链接，访问者可预览作者、标题、简介、画布/Agent 元数据，并导入到自己的租户
+- **🔗 发现与公开分享** — `/discover` 复用 Marketplace 已上架内容做可浏览发现页；workflow 与 Agent 都支持生成 `/s/:token` 公开分享链接，访问者可预览作者、标题、简介、画布/Agent 元数据，并导入到自己的租户。Studio 中 Agent 画布现已提供独立的保存版本、历史记录、发布工具栏，且未发布 Agent 不再暴露分享入口
 - **🔌 插件生态系统** — 完整的 SDK + CLI + 市场，`.alp` 插件包 RSA-PSS 签名验证，Extism WASM 沙箱隔离执行
 - **🔐 端到端加密 (E2EE)** — RSA-4096 + AES-256-GCM 混合加密，LLM 输出和决策证据全链路加密
 - **📱 跨端体验** — Web Studio + Flutter 移动端，Socket.IO 实时推送 + FCM 通知

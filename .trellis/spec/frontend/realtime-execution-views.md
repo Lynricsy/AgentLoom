@@ -686,3 +686,102 @@ status = step.status === 'pending' ? 'waiting' : step.status
 // UI 直接消费 execution step 最终状态，允许 skipped 透传到调试与高亮层
 status = step.status
 ```
+
+---
+
+## 场景：Agent 画布顶部版本工具栏与分享 gating
+
+### 1. Scope / Trigger
+- 触发条件：修改以下任一文件时，必须回看本节
+  - `agentloom-studio/src/app/routes/agents/agents.$agentId.tsx`
+  - `agentloom-studio/src/features/agent/components/AgentVersionToolbar.tsx`
+  - `agentloom-studio/src/features/agent/components/AgentCreateVersionDialog.tsx`
+  - `agentloom-studio/src/features/agent/components/AgentVersionHistoryPanel.tsx`
+  - `agentloom-studio/src/features/agent/components/AgentPublishDialog.tsx`
+  - `agentloom-studio/src/features/agent/api/agentDefinitionApi.ts`
+  - `agentloom-studio/src/features/agent/api/agentMutations.ts`
+- 风险点：如果 Agent 顶部工具栏和底层版本/发布 API 不一致，用户会先看到错误入口，再在保存、发布、分享之间被后端拒绝或丢失上下文。
+
+### 2. Signatures
+- Route:
+  - `/agents/$agentId`
+- Components:
+  - `AgentVersionToolbar`
+  - `AgentCreateVersionDialog`
+  - `AgentVersionHistoryPanel`
+  - `AgentPublishDialog`
+- Hooks / API:
+  - `useAgent(agentId)`
+  - `useCreateAgentVersion(agentId)`
+  - `usePublishAgent(agentId)`
+  - `saveCanvas()`
+  - `publishAgent(agentId, { versionId?, label?, releaseNotes? })`
+
+### 3. Contracts
+- `/agents/$agentId` 顶部工具栏动作顺序固定为：
+  - 状态 badge
+  - 保存画布
+  - 保存版本
+  - 历史记录
+  - 发布
+  - 分享
+- `分享` 只能在 `agent.status === 'published' && agent.publishedVersionId !== null` 时出现；未发布 Agent 不得在 UI 上暴露分享入口。
+- 归档 Agent 继续显示状态 badge，但不得再暴露保存画布、保存版本、发布入口。
+- “保存版本”必须走独立 `AgentCreateVersionDialog`，当前 UI 只收集可选 `label`；提交前若画布 dirty，必须先调用 `saveCanvas()`，保存失败则对话框保持打开并中止 mutation。
+- “历史记录”必须走独立 `AgentVersionHistoryPanel`，不得退回复用 `AgentSettingsPanel` 的版本视图。
+- “发布”必须走独立 `AgentPublishDialog`，并支持两种来源：
+  - 发布当前编辑稿
+  - 选择已有历史版本发布
+- 从 `AgentVersionHistoryPanel` 发起发布时，关闭 `AgentPublishDialog` 后必须恢复历史面板，不能把用户丢回空白主画布。
+- `usePublishAgent()` 成功后必须把 agent detail cache 更新为最新响应，并刷新版本列表，这样 toolbar 的 badge/分享按钮会立即与发布态对齐。
+
+### 4. Validation & Error Matrix
+
+| 条件 | 预期行为 | 断言点 |
+| --- | --- | --- |
+| Agent 未发布 | 顶部不显示分享按钮 | `AgentVersionToolbar.test.tsx` |
+| Agent 已发布且有 `publishedVersionId` | 顶部显示分享按钮 | `AgentVersionToolbar.test.tsx` |
+| 点“保存版本”且画布 dirty | 先执行 `saveCanvas()`，成功后才创建版本 | `AgentCreateVersionDialog.test.tsx` |
+| 点“保存版本”但保存画布失败 | 中止创建版本并保留对话框上下文 | `AgentCreateVersionDialog.test.tsx` |
+| 发布弹层选择“当前编辑稿” | 调用 `publishAgent()` 时不传 `versionId` | `AgentPublishDialog.test.tsx` |
+| 发布弹层选择“已有版本” | 调用 `publishAgent()` 时带上 `versionId` | `AgentPublishDialog.test.tsx` |
+| 从历史面板进入发布弹层再关闭 | 历史面板重新打开 | `AgentVersionHistoryPanel.test.tsx` + route 组件测试/手测 |
+
+### 5. Good / Base / Bad Cases
+- Good：用户修改画布后点击“保存版本”，系统先保存草稿再创建快照；随后打开历史记录，从某个旧版本发起发布，发布成功后回到历史面板并看到最新 published 状态，顶部分享按钮同步出现。
+- Base：用户直接从顶部点“发布”，选择“当前编辑稿”并填写发布标签；成功后 toolbar badge 与版本列表同步刷新。
+- Bad：未发布 Agent 先显示分享按钮，点进去才收到后端报错；或者从历史面板点发布后，发布弹层关闭时把历史面板也关掉，用户看不到发布结果。
+
+### 6. Tests Required
+- `agentloom-studio/src/features/agent/components/AgentVersionToolbar.test.tsx`
+  - 断言分享按钮只在已发布时出现
+- `agentloom-studio/src/features/agent/components/AgentCreateVersionDialog.test.tsx`
+  - 断言前置 `saveCanvas()` 成功/失败分支
+- `agentloom-studio/src/features/agent/components/AgentPublishDialog.test.tsx`
+  - 断言当前编辑稿 vs 历史版本发布 payload
+- `agentloom-studio/src/features/agent/components/AgentVersionHistoryPanel.test.tsx`
+  - 断言历史项发布入口与面板状态
+- Manual QA
+  - 按“保存画布 → 保存版本 → 历史记录 → 发布 → 分享”完整走一遍
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```tsx
+<AgentVersionToolbar
+  onShare={() => setShareDialogOpen(true)}
+/>
+```
+
+#### Correct
+
+```tsx
+<AgentVersionToolbar
+  onShare={
+    agent?.status === "published" && agent.publishedVersionId
+      ? () => setShareDialogOpen(true)
+      : undefined
+  }
+/>
+```

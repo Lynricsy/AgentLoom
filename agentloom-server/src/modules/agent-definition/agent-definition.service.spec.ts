@@ -144,6 +144,7 @@ vi.mock('./dto/agent-definition-response.dto', () => ({
     slug: row.slug,
     status: row.status,
     version: row.version,
+    publishedVersionId: row.publishedVersionId ?? null,
     nodes: row.nodes ?? [],
     edges: row.edges ?? [],
     systemPrompt: row.systemPrompt ?? null,
@@ -2373,6 +2374,7 @@ describe('AgentDefinitionService', () => {
         versionNumber: 1,
         createdAt: new Date('2025-01-01'),
       });
+      let capturedValues: Record<string, any> | null = null;
 
       let selectCallCount = 0;
       mockTxClient.select.mockImplementation(() => {
@@ -2389,20 +2391,24 @@ describe('AgentDefinitionService', () => {
 
       mockTxClient.insert.mockImplementation(() => {
         const c: Record<string, any> = {};
-        c.values = vi.fn().mockReturnValue(c);
+        c.values = vi.fn().mockImplementation((v: Record<string, any>) => {
+          capturedValues = v;
+          return c;
+        });
         c.returning = vi.fn().mockResolvedValue([version]);
         return c;
       });
 
       const result = await service.createVersion(
         'agent-1',
-        { changelog: 'First version' },
+        { label: '首版快照' },
         'user-1',
       );
 
       expect(result).toBeDefined();
       expect(result.id).toBe('version-1');
       expect(result.versionNumber).toBe(1);
+      expect(capturedValues?.label).toBe('首版快照');
     });
 
     it('应将 canvas metadata fields 冻结到版本快照中', async () => {
@@ -2454,7 +2460,7 @@ describe('AgentDefinitionService', () => {
 
       await service.createVersion(
         'agent-1',
-        { changelog: 'Snapshot metadata' },
+        { releaseNotes: 'Snapshot metadata' },
         'user-1',
       );
 
@@ -2463,6 +2469,7 @@ describe('AgentDefinitionService', () => {
       )?.snapshot?.metadata;
 
       expect(snapshotMetadata).toMatchObject({
+        releaseNotes: 'Snapshot metadata',
         inputSchema: {
           type: 'object',
           properties: { question: { type: 'string' } },
@@ -2499,9 +2506,9 @@ describe('AgentDefinitionService', () => {
       ).rejects.toThrow(AgentArchivedException);
     });
 
-    it('changelog 超过 50 字符时 label 应截断', async () => {
+    it('releaseNotes 超过 50 字符时 label 应截断', async () => {
       const agent = makeAgent();
-      const longChangelog = 'A'.repeat(60);
+      const longReleaseNotes = 'A'.repeat(60);
       const version = makeVersion({
         label: `v1 - ${'A'.repeat(50)}`,
         createdAt: new Date('2025-01-01'),
@@ -2533,7 +2540,7 @@ describe('AgentDefinitionService', () => {
 
       await service.createVersion(
         'agent-1',
-        { changelog: longChangelog },
+        { releaseNotes: longReleaseNotes },
         'user-1',
       );
 
@@ -2630,17 +2637,116 @@ describe('AgentDefinitionService', () => {
         return c;
       });
 
+      let updateCallCount = 0;
       mockTxClient.update.mockImplementation(() => {
+        updateCallCount += 1;
         const c: Record<string, any> = {};
         c.set = vi.fn().mockReturnValue(c);
-        c.where = vi.fn().mockReturnValue(c);
+        c.where =
+          updateCallCount === 1
+            ? vi.fn().mockResolvedValue(undefined)
+            : vi.fn().mockReturnValue(c);
         c.returning = vi.fn().mockResolvedValue([updated]);
         return c;
       });
 
-      const result = await service.publish('agent-1', 'user-1');
+      const result = await service.publish('agent-1', {}, 'user-1');
 
       expect(result).toBeDefined();
+    });
+
+    it('指定 versionId 时应直接重新发布历史版本', async () => {
+      const agent = makeAgent({
+        nodes: [{ id: 'n1', type: 'llm-model', data: {} }],
+      });
+      const existingVersion = makeVersion({
+        id: 'version-2',
+        versionNumber: 2,
+        label: '历史快照',
+        snapshot: {
+          runtimeMode: 'sandbox',
+          nodes: [{ id: 'n1', type: 'llm-model', data: {} }],
+          edges: [],
+          viewport: null,
+          metadata: {
+            nodeCount: 1,
+            edgeCount: 0,
+            createdFromVersion: 2,
+            releaseNotes: '旧说明',
+          },
+        },
+      });
+      const republishedVersion = makeVersion({
+        id: 'version-2',
+        versionNumber: 2,
+        label: '重新发布版本',
+        publishedAt: new Date('2025-01-03'),
+        snapshot: {
+          ...existingVersion.snapshot,
+          metadata: {
+            ...existingVersion.snapshot.metadata,
+            releaseNotes: '新的发布说明',
+          },
+        },
+      });
+      const updated = makeAgent({
+        status: 'published',
+        publishedVersionId: 'version-2',
+      });
+
+      let selectCallCount = 0;
+      mockTxClient.select.mockImplementation(() => {
+        selectCallCount += 1;
+        const c: Record<string, any> = {};
+        c.from = vi.fn().mockReturnValue(c);
+        c.where = vi
+          .fn()
+          .mockResolvedValue(
+            selectCallCount === 1 ? [agent] : [existingVersion],
+          );
+        return c;
+      });
+
+      const updateValues: Record<string, any>[] = [];
+      let updateCallCount = 0;
+      mockTxClient.update.mockImplementation(() => {
+        updateCallCount += 1;
+        const c: Record<string, any> = {};
+        c.set = vi.fn().mockImplementation((value: Record<string, any>) => {
+          updateValues.push(value);
+          return c;
+        });
+        c.where =
+          updateCallCount === 1
+            ? vi.fn().mockResolvedValue(undefined)
+            : vi.fn().mockReturnValue(c);
+        c.returning = vi
+          .fn()
+          .mockResolvedValue(
+            updateCallCount === 2 ? [republishedVersion] : [updated],
+          );
+        return c;
+      });
+
+      const result = await service.publish(
+        'agent-1',
+        {
+          versionId: 'version-2',
+          label: '重新发布版本',
+          releaseNotes: '新的发布说明',
+        },
+        'user-1',
+      );
+
+      expect(result.publishedVersionId).toBe('version-2');
+      expect(updateValues[1]).toMatchObject({
+        label: '重新发布版本',
+        snapshot: {
+          metadata: expect.objectContaining({
+            releaseNotes: '新的发布说明',
+          }),
+        },
+      });
     });
 
     it('Agent 不存在时应抛出 AgentNotFoundException', async () => {
@@ -2651,9 +2757,9 @@ describe('AgentDefinitionService', () => {
         return c;
       });
 
-      await expect(service.publish('nonexistent', 'user-1')).rejects.toThrow(
-        AgentNotFoundException,
-      );
+      await expect(
+        service.publish('nonexistent', {}, 'user-1'),
+      ).rejects.toThrow(AgentNotFoundException);
     });
 
     it('Agent 已归档时应抛出 AgentArchivedException', async () => {
@@ -2665,7 +2771,7 @@ describe('AgentDefinitionService', () => {
         return c;
       });
 
-      await expect(service.publish('agent-1', 'user-1')).rejects.toThrow(
+      await expect(service.publish('agent-1', {}, 'user-1')).rejects.toThrow(
         AgentArchivedException,
       );
     });
@@ -2679,7 +2785,7 @@ describe('AgentDefinitionService', () => {
         return c;
       });
 
-      await expect(service.publish('agent-1', 'user-1')).rejects.toThrow(
+      await expect(service.publish('agent-1', {}, 'user-1')).rejects.toThrow(
         AgentPublishValidationException,
       );
     });
@@ -2693,7 +2799,7 @@ describe('AgentDefinitionService', () => {
         return c;
       });
 
-      await expect(service.publish('agent-1', 'user-1')).rejects.toThrow(
+      await expect(service.publish('agent-1', {}, 'user-1')).rejects.toThrow(
         AgentPublishValidationException,
       );
     });

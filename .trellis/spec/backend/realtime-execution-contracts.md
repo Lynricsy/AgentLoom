@@ -812,3 +812,107 @@ if (target.runtimeMode === "no_sandbox") {
   );
 }
 ```
+
+---
+
+## 场景：Agent 画布版本快照、历史发布与分享 gating 合同
+
+### 1. Scope / Trigger
+- 触发条件：修改以下任一文件时，必须回看本节
+  - `agentloom-server/src/modules/agent-definition/agent-definition.controller.ts`
+  - `agentloom-server/src/modules/agent-definition/agent-definition.service.ts`
+  - `agentloom-server/src/modules/agent-definition/dto/create-agent-version.dto.ts`
+  - `agentloom-server/src/modules/agent-definition/dto/publish-agent.dto.ts`
+  - `agentloom-server/src/modules/share/share.service.ts`
+  - `agentloom-studio/src/app/routes/agents/agents.$agentId.tsx`
+  - `agentloom-studio/src/features/agent/api/agentDefinitionApi.ts`
+  - `agentloom-studio/src/features/agent/components/AgentCreateVersionDialog.tsx`
+  - `agentloom-studio/src/features/agent/components/AgentVersionHistoryPanel.tsx`
+  - `agentloom-studio/src/features/agent/components/AgentPublishDialog.tsx`
+- 风险点：如果 Agent 画布顶部入口、版本 DTO 与发布服务的合同不同步，就会出现“前端可点分享但后端必然拒绝”或“历史面板选择了某个版本，发布却仍然偷偷发布当前草稿”的闭环断裂。
+
+### 2. Signatures
+- `PUT /agent-definitions/:id/canvas`
+- `POST /agent-definitions/:id/versions`
+- `POST /agent-definitions/:id/publish`
+- `POST /agent-shares`
+- `CreateAgentVersionSchema`
+- `PublishAgentSchema`
+- `AgentDefinitionService.createVersion(agentId, dto, userId)`
+- `AgentDefinitionService.publish(agentId, dto, userId)`
+- `ShareService.createAgentShare(tenantId, userId, dto)`
+
+### 3. Contracts
+- `PUT /agent-definitions/:id/canvas` 继续保存当前草稿定义；Studio 在“保存版本”与“发布当前编辑稿”前，若检测到本地画布 dirty，必须先调用该接口保存草稿，保存失败时中止后续动作。
+- `POST /agent-definitions/:id/versions` 请求体合同：
+  - `label?: string`
+  - `releaseNotes?: string`
+  - `release_notes?: string`
+  - `changelog?: string`
+  - 服务端必须把 `releaseNotes/release_notes/changelog` 归一成 `releaseNotes`
+- `createVersion()` 必须把版本说明写入 `agent_versions.snapshot.metadata.releaseNotes`，并在未显式传 `label` 时按 `vN` 或 `vN - <releaseNotes 前 50 字>` 生成默认标签。
+- `POST /agent-definitions/:id/publish` 请求体合同：
+  - `versionId?: string`
+  - `label?: string`
+  - `releaseNotes?: string`
+  - `release_notes?: string`
+  - `changelog?: string`
+- `publish()` 必须支持两条路径：
+  - 未传 `versionId`：基于当前草稿创建一个新的 published version
+  - 传入 `versionId`：直接把对应历史版本设为当前发布版本，并允许覆盖 `label` 与 `snapshot.metadata.releaseNotes`
+- 每次发布都必须先清空同一 Agent 其他版本的 `publishedAt`，再把 `agent_definitions.status` 置为 `published`，并把 `agent_definitions.published_version_id` 指向最新发布版本。
+- `POST /agent-definitions/:id/publish` 的成功响应必须返回更新后的 agent detail，而不是单独返回 `agent_version`，这样 Studio 才能立即按最新 `status/publishedVersionId` 重算工具栏与分享入口。
+- `POST /agent-shares` 仍必须要求目标 Agent 存在 `publishedVersionId`；分享能力不能替代发布。
+
+### 4. Validation & Error Matrix
+
+| 条件 | 预期行为 | 断言点 |
+| --- | --- | --- |
+| `POST /agent-definitions/:id/versions` 传 `release_notes` | DTO 归一为 `releaseNotes` | `create-agent-version.dto.spec.ts` |
+| `POST /agent-definitions/:id/versions` 传旧字段 `changelog` | DTO 继续兼容并归一为 `releaseNotes` | `create-agent-version.dto.spec.ts` |
+| `POST /agent-definitions/:id/publish` 传 `versionId` | 发布指定历史版本，`agent_definitions.publishedVersionId` 指向该版本 | `agent-definition.service.spec.ts` |
+| `POST /agent-definitions/:id/publish` 未传 `versionId` | 基于当前草稿创建新的 published version | `agent-definition.service.spec.ts` |
+| `POST /agent-definitions/:id/publish` 传不存在的 `versionId` | 返回 `AgentVersionNotFoundException` | `agent-definition.service.spec.ts` |
+| 未发布 Agent 调 `POST /agent-shares` | 服务端拒绝创建分享链接 | `share.service.spec.ts` |
+| 当前草稿没有任何节点就发布 | 返回 `AgentPublishValidationException` | `agent-definition.service.spec.ts` |
+
+### 5. Good / Base / Bad Cases
+- Good：用户先保存画布，再创建一个带标签的版本快照，随后从历史面板选择该版本发布；服务端把该历史版本设为唯一 published version，Studio 顶部立刻显示分享入口。
+- Base：老客户端仍发送 `changelog` 或 `release_notes`，服务端正常归一成 `releaseNotes`，不会因为字段名漂移丢掉版本说明。
+- Bad：前端从历史列表点“发布这个版本”，后端却无视 `versionId` 又基于当前草稿新建版本；或者 Agent 尚未发布却还能成功创建分享链接。
+
+### 6. Tests Required
+- `agentloom-server/src/modules/agent-definition/dto/create-agent-version.dto.spec.ts`
+  - 断言 `releaseNotes/release_notes/changelog` 归一行为
+- `agentloom-server/src/modules/agent-definition/dto/publish-agent.dto.spec.ts`
+  - 断言 `versionId/version_id` 与版本说明字段归一行为
+- `agentloom-server/src/modules/agent-definition/agent-definition.service.spec.ts`
+  - 断言“当前草稿发布”与“指定历史版本发布”两条路径
+  - 断言发布后 `publishedVersionId` 与唯一 `publishedAt` 收口
+- `agentloom-server/src/modules/share/share.service.spec.ts`
+  - 断言未发布 Agent 不能创建分享链接
+- Manual QA
+  - Studio 中按“保存画布 → 保存版本 → 历史记录 → 发布 → 分享”完整走通一次
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```ts
+// 历史版本入口最终仍然忽略用户选择，永远发布当前草稿
+await this.agentDefinitionService.publish(agentId, userId);
+```
+
+#### Correct
+
+```ts
+await this.agentDefinitionService.publish(
+  agentId,
+  {
+    versionId,
+    label,
+    releaseNotes,
+  },
+  userId,
+);
+```

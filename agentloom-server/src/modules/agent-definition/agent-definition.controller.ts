@@ -26,6 +26,8 @@ import {
   type SaveAgentCanvasDto,
   CreateAgentVersionSchema,
   type CreateAgentVersionDto,
+  PublishAgentSchema,
+  type PublishAgentDto,
   ListAgentDefinitionsQuerySchema,
   type ListAgentDefinitionsQueryDto,
 } from './dto';
@@ -181,9 +183,11 @@ export class AgentDefinitionController {
   @ApiResponse({ status: 422, description: '画布为空，无法发布' })
   async publish(
     @Param('id', ParseUUIDPipe) id: string,
+    @Body(new ZodValidationPipe(PublishAgentSchema))
+    dto: PublishAgentDto,
     @CurrentUser('sub') userId: string,
   ) {
-    const data = await this.agentDefinitionService.publish(id, userId);
+    const data = await this.agentDefinitionService.publish(id, dto, userId);
     return { data };
   }
 }

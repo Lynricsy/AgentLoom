@@ -33,7 +33,7 @@ React 19 + Vite 7 前端。Feature-Slice 架构，TanStack Router/Query，Zustan
 | `/settings/security`                             | SecuritySettingsPage           | 密码修改 / MFA 管理 / 会话列表                                                                                                                                                                                    |
 | `/templates`                                     | TemplateBrowsePage             | Tabs + 搜索 + 网格 + TemplateWizardDialog                                                                                                                                                                         |
 | `/agents`                                        | AgentListPage                  | Agent 列表/创建入口                                                                                                                                                                                               |
-| `/agents/$agentId`                               | AgentCanvasPage                | Agent 配置编辑器画布 (ReactFlow, CPU/memory/timeout/lifecycle 参数)                                                                                                                                               |
+| `/agents/$agentId`                               | AgentCanvasPage                | Agent 配置编辑器画布；顶部工具栏提供状态 badge、保存画布、保存版本、历史记录、发布与仅在已发布时可见的分享入口                                                                                                      |
 | `/agents/$agentId/conversations/new`             | NewConversationDraftPage       | 新对话草稿态页；首条消息发送成功后才创建真实 conversation 并跳转正式对话页                                                                                                                                        |
 | `/agents/$agentId/conversations/$conversationId` | AgentConversationPage          | 三列对话 UI (对话列表/消息流/上下文面板)；按 Agent `runtimeMode` 显示 `有沙箱 / 无沙箱` 标记，`no_sandbox` 不渲染工作区/进程上下文面板；输入栏支持图片/文件草稿队列，多附件与文本同发，用户消息可回显全部附件预览 |
 
@@ -73,7 +73,7 @@ src/
 │   ├── private-deployment/ # 私有部署设置页 `/settings/private-deployment`（types/api/hooks/components）
 │   ├── workflow-input-schema/ # 工作流输入参数 schema 编辑器（无 api/、无 index.ts，属于例外布局）
 │   ├── block-library/ # 可复用块库管理
-│   ├── agent/       # Agent CRUD 页面 (api/components/hooks/stores/types)：列表/创建/设置，query hooks 与 mutations
+│   ├── agent/       # Agent CRUD 与版本管理 (api/components/hooks/stores/types)：列表/创建/设置，含 `AgentVersionToolbar`、`AgentCreateVersionDialog`、`AgentVersionHistoryPanel`、`AgentPublishDialog`
 │   ├── agent-canvas/ # Agent 配置编辑器画布 (components/hooks/stores)：CPU/memory/timeout/lifecycle 参数编辑、`agent-main` 的 `nativeToolPolicy/selfEvolutionPolicy` 面板，使用 ReactFlow + AGENT_CANVAS_NODE_REGISTRY 子集，非执行 DAG
 │   ├── agent-conversation/ # Agent 对话 UI (components/stores/types)：三列布局 (对话列表/消息流/上下文面板)，`/agents/$agentId/conversations/new` 通过 `NewConversationDraftPage` + `ConversationComposer` 进入草稿态，首条消息调用 `POST /agent-definitions/:agentId/conversations/start` 创建真实会话；Socket.IO `/agent-conversation` namespace 实时消息推送，含可展开自进化审批卡片与“重启到新版本”系统卡片；输入栏支持图片/文件上传，`MessageList` 可渲染图片预览/文件卡片/文本文件预览；`sandbox` 对话显示工作区/进程上下文，`no_sandbox` 仅保留消息流中的 Skill/Knowledge/Memory/MCP/自进化能力
 │   └── agent-memory/ # Agent 记忆管理 (35 files)：记忆图谱可视化 (d3-force + dagre + ReactFlow)、记忆检索/创建/编辑、审计日志集成

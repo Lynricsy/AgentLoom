@@ -30,12 +30,15 @@ AgentLoom Studio 是基于 **React 19 + Vite 7** 的前端工作台，负责工�
 | `/resources/knowledge-bases`                     | KnowledgeBasesPage             | 知识库管理（列表页展示文档数 / 知识节点数 / 策略摘要）                                                                                                                                                                                    |
 | `/resources/workspaces`                          | WorkspaceManagementPage        | 持久化 workspace 列表页；默认隐藏 execution 自动归档快照，并显示来源标签                                                                                                                                                                  |
 | `/resources/workspaces/$workspaceId`             | WorkspaceDetailPage            | 持久化 workspace 详情页；目录树 + Monaco 文本预览/编辑 + 图片 / PDF 预览，其他文件提供下载兜底                                                                                                                                            |
+| `/agents/$agentId`                               | AgentCanvasPage                | Agent 画布编辑器；顶部工具栏提供状态、保存画布、保存版本、历史记录、发布，以及仅在已发布时才显示的分享入口                                                                                                                                |
 | `/agents/$agentId/conversations/new`             | NewConversationDraftPage       | 新对话草稿页；首条消息发送成功后才创建真实 conversation 并跳转正式会话                                                                                                                                                                    |
 | `/agents/$agentId/conversations/$conversationId` | AgentConversationPage          | 三列对话页；sandbox Agent 会在 live workspace 就绪前先显示持久化工作区目录预览，右侧电脑面板通过会话级 `sandbox/stats` + `sandbox/processes` 展示真实进程快照，并保留文件变更/工具运行上下文，支持图片/文件草稿队列、多附件同发与附件预览 |
 | `/settings/tool-library`                         | ToolLibraryPage                | MCP 工具库                                                                                                                                                                                                                                |
 | `/marketplace`                                   | MarketplaceBrowsePage          | 工作流 / 插件市场                                                                                                                                                                                                                         |
 
 `WorkflowListPage`、`AgentListPage`、`KnowledgeBasesPage`、`MemoryInstancesPage`、`McpServerManagementPage` 与 `SkillBrowsePage` 当前统一采用顶部来源分类标签 `自己创建 / 分享导入` 切换列表，默认展示 `自己创建`，条目内部不再重复显示来源 badge；`share_imported` 项仍保留“转为自己创建”动作。
+
+`AgentCanvasPage` 当前将版本管理主路径收敛到顶部工具栏：保存版本使用独立对话框，历史记录使用独立右侧面板，发布使用独立弹层；分享按钮只在 Agent 已发布时出现，避免把用户引到未发布必然失败的分享路径。
 
 ## Agent 对话工作区预览事实
 

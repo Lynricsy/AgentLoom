@@ -27,6 +27,7 @@ import type { CreateAgentDefinitionDto } from './dto/create-agent-definition.dto
 import type { UpdateAgentDefinitionDto } from './dto/update-agent-definition.dto';
 import type { SaveAgentCanvasDto } from './dto/save-agent-canvas.dto';
 import type { CreateAgentVersionDto } from './dto/create-agent-version.dto';
+import type { PublishAgentDto } from './dto/publish-agent.dto';
 import type { ListAgentDefinitionsQueryDto } from './dto/list-agent-definitions-query.dto';
 import {
   serializeAgentDefinition,
@@ -41,6 +42,7 @@ import {
   AgentNotFoundException,
   AgentArchivedException,
   AgentVersionConflictException,
+  AgentVersionNotFoundException,
   AgentPublishValidationException,
 } from './agent-definition.exceptions';
 import { ResourceSourceService } from '../resource-source/resource-source.service';
@@ -893,7 +895,13 @@ export class AgentDefinitionService {
       );
 
       const nextVersion = await this.getNextVersionNumber(dbClient, agentId);
-      const snapshot = this.buildSnapshot(agent, dto.changelog);
+      const normalizedLabel = this.readNullableString(dto.label) ?? null;
+      const normalizedReleaseNotes =
+        this.readNullableString(dto.releaseNotes) ?? null;
+      const snapshot = this.buildSnapshot(
+        agent,
+        normalizedReleaseNotes ?? undefined,
+      );
 
       const [version] = await dbClient
         .insert(schema.agentVersions)
@@ -901,9 +909,11 @@ export class AgentDefinitionService {
           agentDefinitionId: agentId,
           tenantId: agent.tenantId,
           versionNumber: nextVersion,
-          label: dto.changelog
-            ? `v${nextVersion} - ${dto.changelog.slice(0, 50)}`
-            : `v${nextVersion}`,
+          label:
+            normalizedLabel ??
+            (normalizedReleaseNotes
+              ? `v${nextVersion} - ${normalizedReleaseNotes.slice(0, 50)}`
+              : `v${nextVersion}`),
           snapshot,
           createdBy: userId,
         })
@@ -953,6 +963,7 @@ export class AgentDefinitionService {
 
   async publish(
     agentId: string,
+    dto: PublishAgentDto,
     userId: string,
   ): Promise<AgentDefinitionDetailResponseDto> {
     return this.withAgentWriteLock(agentId, async (dbClient) => {
@@ -969,34 +980,92 @@ export class AgentDefinitionService {
         throw new AgentArchivedException(agentId);
       }
 
-      if (!agent.nodes || agent.nodes.length === 0) {
-        throw new AgentPublishValidationException(
-          'Agent 画布不包含任何节点，无法发布',
+      const normalizedLabel = this.readNullableString(dto.label) ?? null;
+      const normalizedReleaseNotes =
+        this.readNullableString(dto.releaseNotes) ?? null;
+      const publishedAt = new Date();
+
+      await dbClient
+        .update(schema.agentVersions)
+        .set({ publishedAt: null })
+        .where(
+          and(
+            eq(schema.agentVersions.agentDefinitionId, agentId),
+            sql`${schema.agentVersions.publishedAt} IS NOT NULL`,
+          ),
         );
+
+      let version: typeof schema.agentVersions.$inferSelect;
+
+      if (dto.versionId) {
+        const existingVersion = await this.findVersionOrThrow(
+          dbClient,
+          dto.versionId,
+          agentId,
+        );
+
+        await this.assertRuntimeModeConstraints(
+          dbClient,
+          existingVersion.snapshot.runtimeMode ?? agent.runtimeMode,
+          existingVersion.snapshot.nodes ?? [],
+          existingVersion.snapshot.edges ?? [],
+        );
+
+        const [updatedVersion] = await dbClient
+          .update(schema.agentVersions)
+          .set({
+            publishedAt,
+            label: normalizedLabel ?? existingVersion.label,
+            snapshot: {
+              ...existingVersion.snapshot,
+              metadata: {
+                ...existingVersion.snapshot.metadata,
+                releaseNotes:
+                  normalizedReleaseNotes ??
+                  existingVersion.snapshot.metadata.releaseNotes ??
+                  null,
+              },
+            },
+          })
+          .where(eq(schema.agentVersions.id, dto.versionId))
+          .returning();
+
+        version = updatedVersion;
+      } else {
+        if (!agent.nodes || agent.nodes.length === 0) {
+          throw new AgentPublishValidationException(
+            'Agent 画布不包含任何节点，无法发布',
+          );
+        }
+
+        await this.assertRuntimeModeConstraints(
+          dbClient,
+          agent.runtimeMode,
+          agent.nodes ?? [],
+          agent.edges ?? [],
+        );
+
+        const nextVersion = await this.getNextVersionNumber(dbClient, agentId);
+        const snapshot = this.buildSnapshot(
+          agent,
+          normalizedReleaseNotes ?? undefined,
+        );
+
+        const [createdVersion] = await dbClient
+          .insert(schema.agentVersions)
+          .values({
+            agentDefinitionId: agentId,
+            tenantId: agent.tenantId,
+            versionNumber: nextVersion,
+            label: normalizedLabel ?? `v${nextVersion} (published)`,
+            snapshot,
+            publishedAt,
+            createdBy: userId,
+          })
+          .returning();
+
+        version = createdVersion;
       }
-
-      await this.assertRuntimeModeConstraints(
-        dbClient,
-        agent.runtimeMode,
-        agent.nodes ?? [],
-        agent.edges ?? [],
-      );
-
-      const nextVersion = await this.getNextVersionNumber(dbClient, agentId);
-      const snapshot = this.buildSnapshot(agent);
-
-      const [version] = await dbClient
-        .insert(schema.agentVersions)
-        .values({
-          agentDefinitionId: agentId,
-          tenantId: agent.tenantId,
-          versionNumber: nextVersion,
-          label: `v${nextVersion} (published)`,
-          snapshot,
-          publishedAt: new Date(),
-          createdBy: userId,
-        })
-        .returning();
 
       const [updated] = await dbClient
         .update(schema.agentDefinitions)
@@ -1004,7 +1073,7 @@ export class AgentDefinitionService {
           status: 'published',
           publishedVersionId: version.id,
           updatedBy: userId,
-          updatedAt: new Date(),
+          updatedAt: publishedAt,
         })
         .where(eq(schema.agentDefinitions.id, agentId))
         .returning();
@@ -1026,6 +1095,28 @@ export class AgentDefinitionService {
       .where(eq(schema.agentVersions.agentDefinitionId, agentId));
 
     return (result?.maxVersion ?? 0) + 1;
+  }
+
+  private async findVersionOrThrow(
+    dbClient: AgentDbClient,
+    versionId: string,
+    agentId: string,
+  ): Promise<typeof schema.agentVersions.$inferSelect> {
+    const [version] = await dbClient
+      .select()
+      .from(schema.agentVersions)
+      .where(
+        and(
+          eq(schema.agentVersions.id, versionId),
+          eq(schema.agentVersions.agentDefinitionId, agentId),
+        ),
+      );
+
+    if (!version) {
+      throw new AgentVersionNotFoundException(versionId);
+    }
+
+    return version;
   }
 
   private buildSnapshot(
