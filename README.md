@@ -14,7 +14,7 @@ AgentLoom 让你像编织织布机上的经纬线一样，将多个 AI Agent 编
 - **🧪 编辑器调试运行** — Studio 编辑界面的 Run 使用当前草稿定义做一次性执行验证；编辑器外、移动端、API 与 Trigger 仍基于已发布版本运行
 - **🏷️ 发布版号语义** — 工作流草稿修订号与用户可见发布版本号分离：自动保存只推进内部 OCC 修订号，只有快照首次发布时才分配 `vN`
 - **🧭 Agent 双运行态** — Agent 创建时显式选择 `sandbox / no_sandbox`；顶层 `no_sandbox` Agent 与 workflow `agent` 节点走 in-process pi-agent-core runtime，仍支持 Skill、知识库、Memory、HTTP MCP 与自进化，而 `sandbox` Agent 继续走容器化 pi-coding-agent runtime
-- **💬 Agent 对话体验** — 首轮 assistant 回复后会自动生成对话标题；标题模型解析顺序为“用户标题偏好 → 当前会话所属 Agent 运行模型 → 组织默认 chat 模型”，且服务端标题生成会对同一模型配置沿用 runtime 的 API/BaseURL 解析；当这些模型都不可用或 LLM 标题生成失败时，系统会回退为首条用户消息摘要，避免会话列表停留在“新对话”。对于 sandbox Agent，新会话在 live sandbox 就绪前会先显示持久化工作区目录预览；若同时存在顶层 `workspaceSnapshotId` 与 `sandboxConfig.restoreWorkspaceId`，预览优先绑定后者，避免预览与实际恢复工作区漂移
+- **💬 Agent 对话体验** — 首轮 assistant 回复后会自动生成对话标题；标题模型解析顺序为“用户标题偏好 → 当前会话所属 Agent 运行模型 → 组织默认 chat 模型”，且服务端标题生成会对同一模型配置沿用 runtime 的 API/BaseURL 解析；当这些模型都不可用或 LLM 标题生成失败时，系统会回退为首条用户消息摘要，避免会话列表停留在“新对话”。对于 sandbox Agent，新会话在 live sandbox 就绪前会先显示持久化工作区目录预览；右侧“Agent 的电脑”面板会以结构化进程监视器、文件变更与工具详情呈现当前运行上下文；若同时存在顶层 `workspaceSnapshotId` 与 `sandboxConfig.restoreWorkspaceId`，预览优先绑定后者，避免预览与实际恢复工作区漂移
 - **🔗 发现与公开分享** — `/discover` 复用 Marketplace 已上架内容做可浏览发现页；workflow 与 Agent 都支持生成 `/s/:token` 公开分享链接，访问者可预览作者、标题、简介、画布/Agent 元数据，并导入到自己的租户
 - **🔌 插件生态系统** — 完整的 SDK + CLI + 市场，`.alp` 插件包 RSA-PSS 签名验证，Extism WASM 沙箱隔离执行
 - **🔐 端到端加密 (E2EE)** — RSA-4096 + AES-256-GCM 混合加密，LLM 输出和决策证据全链路加密
@@ -88,48 +88,48 @@ AgentLoom/
 
 ### agentloom-server — 后端服务
 
-| 项目 | 技术 |
-|------|------|
-| 框架 | NestJS 11 + Fastify 5 |
-| ORM | Drizzle ORM + PostgreSQL (Supabase) |
-| 队列 | BullMQ + Redis |
-| 向量库 | Qdrant |
-| 对象存储 | MinIO |
-| AI SDK | Vercel AI SDK (@ai-sdk/openai, anthropic, google) |
+| 项目         | 技术                                                                |
+| ------------ | ------------------------------------------------------------------- |
+| 框架         | NestJS 11 + Fastify 5                                               |
+| ORM          | Drizzle ORM + PostgreSQL (Supabase)                                 |
+| 队列         | BullMQ + Redis                                                      |
+| 向量库       | Qdrant                                                              |
+| 对象存储     | MinIO                                                               |
+| AI SDK       | Vercel AI SDK (@ai-sdk/openai, anthropic, google)                   |
 | Agent 运行时 | pi-agent-core (Agent 生命周期) + pi-coding-agent (沙箱容器 AI 引擎) |
-| 实时通信 | Socket.IO (Redis Adapter) |
-| 推送通知 | Firebase Cloud Messaging |
-| 测试 | Vitest + SWC (80% 覆盖率阈值) |
+| 实时通信     | Socket.IO (Redis Adapter)                                           |
+| 推送通知     | Firebase Cloud Messaging                                            |
+| 测试         | Vitest + SWC (80% 覆盖率阈值)                                       |
 
 <details>
 <summary>📋 核心模块一览（15+ 模块）</summary>
 
-| 模块 | 职责 |
-|------|------|
-| `auth` | JWT 认证 + API Key 双重认证 |
-| `organization` | 组织管理与多租户 |
-| `workflow-definition` | 工作流定义 CRUD + 版本管理 |
-| `execution` | DAG 调度引擎 + 状态机 + 人工介入 |
-| `resource-governance` | 租户资源配额、治理暂停、异常 execution 终止、治理通知/审计 |
-| `agent` | AI Agent 六边形架构 (Ports/Adapters) |
-| `self-evolution` | Agent 自进化低层工具、分类审批记忆、已发布版本重启继承历史 |
-| `llm` | 多模型集成 + Provider 管理 |
-| `smart-routing` | 6 种智能路由策略 |
-| `knowledge` | LlamaIndex-first 知识库（知识节点索引 → 检索 → 重排 → 查询编排） |
-| `mcp` | Model Context Protocol 工具管理 |
-| `sandbox` | 隔离执行环境（session stop+remove；persistent stop/timeout 仅 stop 容器，delete 才 remove；direct Agent conversation 可按 `conversationIdleAutoEndMinutes` 在空闲后自动 end） |
-| `plugin` | `.alp` 上传 + WASM 沙箱 + 使用量/收益 |
-| `private-deployment` | 组织级私有部署设置 API、受管 secret 引用、许可证校验 |
-| `optimization-suggestion` | 基于执行记录的 Agent 配置优化建议、采纳率统计与工作流节点配置更新（含 workflow OCC 与 dirty-canvas 防覆盖保护） |
-| `trigger` | Cron / Webhook / API Event 触发器 |
-| `notification` | REST + BullMQ + Socket.IO + FCM |
-| `evidence` | 证据记录 + SHA-256 完整性 + 溯源链 + 审计日志查询/归档基线 |
-| `marketplace` | 工作流/插件市场 CRUD |
-| `share` | Workflow / Agent 分享短链与公开导入 |
-| `resource-source` | 分享导入资源来源记录与转为自己创建 |
-| `template` | 预置工作流模板 |
-| `tenant-key` | E2EE 公钥管理（RSA-4096） |
-| `platform-api-token` | 外部 API Token 管理 (`al_` 前缀) |
+| 模块                      | 职责                                                                                                                                                                          |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `auth`                    | JWT 认证 + API Key 双重认证                                                                                                                                                   |
+| `organization`            | 组织管理与多租户                                                                                                                                                              |
+| `workflow-definition`     | 工作流定义 CRUD + 版本管理                                                                                                                                                    |
+| `execution`               | DAG 调度引擎 + 状态机 + 人工介入                                                                                                                                              |
+| `resource-governance`     | 租户资源配额、治理暂停、异常 execution 终止、治理通知/审计                                                                                                                    |
+| `agent`                   | AI Agent 六边形架构 (Ports/Adapters)                                                                                                                                          |
+| `self-evolution`          | Agent 自进化低层工具、分类审批记忆、已发布版本重启继承历史                                                                                                                    |
+| `llm`                     | 多模型集成 + Provider 管理                                                                                                                                                    |
+| `smart-routing`           | 6 种智能路由策略                                                                                                                                                              |
+| `knowledge`               | LlamaIndex-first 知识库（知识节点索引 → 检索 → 重排 → 查询编排）                                                                                                              |
+| `mcp`                     | Model Context Protocol 工具管理                                                                                                                                               |
+| `sandbox`                 | 隔离执行环境（session stop+remove；persistent stop/timeout 仅 stop 容器，delete 才 remove；direct Agent conversation 可按 `conversationIdleAutoEndMinutes` 在空闲后自动 end） |
+| `plugin`                  | `.alp` 上传 + WASM 沙箱 + 使用量/收益                                                                                                                                         |
+| `private-deployment`      | 组织级私有部署设置 API、受管 secret 引用、许可证校验                                                                                                                          |
+| `optimization-suggestion` | 基于执行记录的 Agent 配置优化建议、采纳率统计与工作流节点配置更新（含 workflow OCC 与 dirty-canvas 防覆盖保护）                                                               |
+| `trigger`                 | Cron / Webhook / API Event 触发器                                                                                                                                             |
+| `notification`            | REST + BullMQ + Socket.IO + FCM                                                                                                                                               |
+| `evidence`                | 证据记录 + SHA-256 完整性 + 溯源链 + 审计日志查询/归档基线                                                                                                                    |
+| `marketplace`             | 工作流/插件市场 CRUD                                                                                                                                                          |
+| `share`                   | Workflow / Agent 分享短链与公开导入                                                                                                                                           |
+| `resource-source`         | 分享导入资源来源记录与转为自己创建                                                                                                                                            |
+| `template`                | 预置工作流模板                                                                                                                                                                |
+| `tenant-key`              | E2EE 公钥管理（RSA-4096）                                                                                                                                                     |
+| `platform-api-token`      | 外部 API Token 管理 (`al_` 前缀)                                                                                                                                              |
 
 </details>
 
@@ -152,28 +152,28 @@ AgentLoom/
 <details>
 <summary>📡 BullMQ 队列列表</summary>
 
-| 队列 | 用途 |
-|------|------|
-| `execution-queue` | 工作流执行调度 |
-| `agent-task-queue` | Agent 任务处理 |
-| `plugin-execution` | 插件 WASM 执行 |
-| `trigger-scheduler` | 触发器调度 |
-| `notification` | 通知推送 |
-| `sandbox-lifecycle` | 沙箱生命周期管理 |
-| `document-processing` | 文档解析处理 |
-| `document-indexing` | 文档向量索引 |
-| `earnings-settlement` | 插件收益结算 |
+| 队列                  | 用途             |
+| --------------------- | ---------------- |
+| `execution-queue`     | 工作流执行调度   |
+| `agent-task-queue`    | Agent 任务处理   |
+| `plugin-execution`    | 插件 WASM 执行   |
+| `trigger-scheduler`   | 触发器调度       |
+| `notification`        | 通知推送         |
+| `sandbox-lifecycle`   | 沙箱生命周期管理 |
+| `document-processing` | 文档解析处理     |
+| `document-indexing`   | 文档向量索引     |
+| `earnings-settlement` | 插件收益结算     |
 
 </details>
 
 <details>
 <summary>📡 Socket.IO 命名空间</summary>
 
-| 命名空间 | 协议特性 |
-|---------|----------|
-| `/execution` | 类型化 `ExecutionEvent<T>` 信封、单调递增 eventId、`lastEventId` 断线回放、背压队列 (500 cap, 100ms drain) |
-| `/notification` | 未读计数 + 实时新通知推送 |
-| `/knowledge` | 知识库处理状态 |
+| 命名空间        | 协议特性                                                                                                   |
+| --------------- | ---------------------------------------------------------------------------------------------------------- |
+| `/execution`    | 类型化 `ExecutionEvent<T>` 信封、单调递增 eventId、`lastEventId` 断线回放、背压队列 (500 cap, 100ms drain) |
+| `/notification` | 未读计数 + 实时新通知推送                                                                                  |
+| `/knowledge`    | 知识库处理状态                                                                                             |
 
 </details>
 
@@ -181,39 +181,39 @@ AgentLoom/
 
 ### agentloom-studio — 前端应用
 
-| 项目 | 技术 |
-|------|------|
-| 框架 | React 19 + TypeScript 5.9 |
-| 构建 | Vite 7 |
-| 样式 | Tailwind CSS v4 + Radix UI + CVA |
-| 路由 | TanStack Router v1 |
-| 数据 | TanStack Query + Zustand (immer) |
-| 画布 | @xyflow/react v12 |
-| HTTP | ky (自动 snake_case ↔ camelCase 转换) |
-| 编辑器 | Monaco Editor |
-| 图表 | Recharts |
+| 项目   | 技术                                  |
+| ------ | ------------------------------------- |
+| 框架   | React 19 + TypeScript 5.9             |
+| 构建   | Vite 7                                |
+| 样式   | Tailwind CSS v4 + Radix UI + CVA      |
+| 路由   | TanStack Router v1                    |
+| 数据   | TanStack Query + Zustand (immer)      |
+| 画布   | @xyflow/react v12                     |
+| HTTP   | ky (自动 snake_case ↔ camelCase 转换) |
+| 编辑器 | Monaco Editor                         |
+| 图表   | Recharts                              |
 
 **架构**: Feature-Slice Design — 按功能切片组织代码，每个 Feature 包含独立的 API、Store、Components 和 Hooks。
 
 <details>
 <summary>🗺️ 路由表</summary>
 
-| 路由 | 页面 |
-|------|------|
-| `/workflows/$workflowId` | 工作流画布编辑器 |
-| `/executions/$executionId` | 执行调试视图（实时时间线） |
-| `/discover` | 发现页（复用 Marketplace 上架内容） |
-| `/templates` | 工作流模板库 |
-| `/marketplace` | 工作流/插件市场 |
-| `/s/$token` | Workflow / Agent 公开分享预览与导入 |
-| `/resources/knowledge-bases` | 知识库管理 |
-| `/settings/tool-library` | MCP 工具库 |
-| `/settings/skills` | Skill 管理（分类/搜索/启停/SKILL.md 编辑） |
-| `/settings/private-deployment` | 私有部署配置页（owner/admin），与治理 / 监控 / 审计入口形成企业运维面板 |
-| `/settings/audit-logs` | 审计日志查询页 |
-| `/settings/resource-quotas` | 资源治理管理页（quota / tenant-workflow governance / 异常 execution 终止） |
-| `/settings/monitoring` | 组织级运行监控页（只读执行趋势 + 当前队列快照摘要 / alerts / hotspots） |
-| `/developer-console/earnings` | 开发者收益面板 |
+| 路由                           | 页面                                                                       |
+| ------------------------------ | -------------------------------------------------------------------------- |
+| `/workflows/$workflowId`       | 工作流画布编辑器                                                           |
+| `/executions/$executionId`     | 执行调试视图（实时时间线）                                                 |
+| `/discover`                    | 发现页（复用 Marketplace 上架内容）                                        |
+| `/templates`                   | 工作流模板库                                                               |
+| `/marketplace`                 | 工作流/插件市场                                                            |
+| `/s/$token`                    | Workflow / Agent 公开分享预览与导入                                        |
+| `/resources/knowledge-bases`   | 知识库管理                                                                 |
+| `/settings/tool-library`       | MCP 工具库                                                                 |
+| `/settings/skills`             | Skill 管理（分类/搜索/启停/SKILL.md 编辑）                                 |
+| `/settings/private-deployment` | 私有部署配置页（owner/admin），与治理 / 监控 / 审计入口形成企业运维面板    |
+| `/settings/audit-logs`         | 审计日志查询页                                                             |
+| `/settings/resource-quotas`    | 资源治理管理页（quota / tenant-workflow governance / 异常 execution 终止） |
+| `/settings/monitoring`         | 组织级运行监控页（只读执行趋势 + 当前队列快照摘要 / alerts / hotspots）    |
+| `/developer-console/earnings`  | 开发者收益面板                                                             |
 
 </details>
 
@@ -241,14 +241,15 @@ AgentLoom/
 
 **4 级兼容性结果**:
 
-| 等级 | 含义 | 示例 |
-|------|------|------|
-| `EXACT` | 完全匹配 | text → text |
-| `TRANSFORM` | 可自动转换 | text ↔ json |
-| `PARTIAL` | 部分兼容（需映射） | 结构相似的 JSON Schema |
-| `INCOMPATIBLE` | 不兼容 | image → model |
+| 等级           | 含义               | 示例                   |
+| -------------- | ------------------ | ---------------------- |
+| `EXACT`        | 完全匹配           | text → text            |
+| `TRANSFORM`    | 可自动转换         | text ↔ json            |
+| `PARTIAL`      | 部分兼容（需映射） | 结构相似的 JSON Schema |
+| `INCOMPATIBLE` | 不兼容             | image → model          |
 
 **WASM 导出** (3 个函数):
+
 - `checkCompatibility(source, target)` → 端口兼容性检查
 - `checkSchemaCompatibility(source, target)` → Schema 级兼容性
 - `validateSchema(input)` → Schema 合法性验证
@@ -265,12 +266,12 @@ AgentLoom/
 
 为插件生态提供类型定义、校验 Schema、辅助函数和加密签名工具。
 
-| 模块 | 内容 |
-|------|------|
-| `types` | `PluginManifest`, `AgentLoomPlugin`, `CustomNodeDefinition`, `NodeExecutionContext/Result` |
-| `validation` | Zod 3 Schema 校验（reverse-domain ID + semver 版本号） |
-| `helpers` | `defineInputPort()`, `defineOutputPort()`, `defineNode()`, 类型守卫 |
-| `signing` | RSA-PSS 签名/验签, SHA-256 内容哈希, 密钥指纹计算, canonical archive payload |
+| 模块         | 内容                                                                                       |
+| ------------ | ------------------------------------------------------------------------------------------ |
+| `types`      | `PluginManifest`, `AgentLoomPlugin`, `CustomNodeDefinition`, `NodeExecutionContext/Result` |
+| `validation` | Zod 3 Schema 校验（reverse-domain ID + semver 版本号）                                     |
+| `helpers`    | `defineInputPort()`, `defineOutputPort()`, `defineNode()`, 类型守卫                        |
+| `signing`    | RSA-PSS 签名/验签, SHA-256 内容哈希, 密钥指纹计算, canonical archive payload               |
 
 **输出格式**: tsup → ESM (`index.js`) + CJS (`index.cjs`) + 类型声明 (`.d.ts` / `.d.cts`)
 
@@ -295,13 +296,13 @@ create → dev → build → keys generate → publish
  脚手架  本地调试  打包.alp  生成RSA密钥对  签名发布
 ```
 
-| 命令 | 说明 |
-|------|------|
-| `create <name>` | 交互式创建插件项目（manifest + package.json + tsconfig + 源码 + 测试） |
-| `dev [-p port]` | 本地开发服务器（默认 :4400），chokidar 文件监听热重载 |
-| `build [-o dir] [--wasm]` | TypeScript 编译或 WASM 构建，打包为 `.alp` 归档 |
-| `keys generate [-b bits]` | 生成 RSA 密钥对（2048/3072/4096 位），输出指纹 |
-| `publish [-k keyPath]` | RSA-PSS 签名 → 注入 manifest → 自验证 → 覆写归档 |
+| 命令                      | 说明                                                                   |
+| ------------------------- | ---------------------------------------------------------------------- |
+| `create <name>`           | 交互式创建插件项目（manifest + package.json + tsconfig + 源码 + 测试） |
+| `dev [-p port]`           | 本地开发服务器（默认 :4400），chokidar 文件监听热重载                  |
+| `build [-o dir] [--wasm]` | TypeScript 编译或 WASM 构建，打包为 `.alp` 归档                        |
+| `keys generate [-b bits]` | 生成 RSA 密钥对（2048/3072/4096 位），输出指纹                         |
+| `publish [-k keyPath]`    | RSA-PSS 签名 → 注入 manifest → 自验证 → 覆写归档                       |
 
 ---
 
@@ -312,15 +313,15 @@ create → dev → build → keys generate → publish
 ```typescript
 // 定义节点：1 个 text 输入端口 → 1 个 text 输出端口
 const textToUppercaseNode: CustomNodeDefinition = {
-  type: 'text-to-uppercase',
-  category: 'transform',
-  inputPorts: [defineInputPort({ id: 'text-in', dataType: 'text' })],
-  outputPorts: [defineOutputPort({ id: 'text-out', dataType: 'text' })],
-  configSchema: { prefix: { type: 'string' }, suffix: { type: 'string' } },
+  type: "text-to-uppercase",
+  category: "transform",
+  inputPorts: [defineInputPort({ id: "text-in", dataType: "text" })],
+  outputPorts: [defineOutputPort({ id: "text-out", dataType: "text" })],
+  configSchema: { prefix: { type: "string" }, suffix: { type: "string" } },
   execute: async (context) => {
-    const input = context.inputs['text-in'];
+    const input = context.inputs["text-in"];
     const result = `${config.prefix}${input.toUpperCase()}${config.suffix}`;
-    return { outputs: { 'text-out': result } };
+    return { outputs: { "text-out": result } };
   },
 };
 ```
@@ -329,25 +330,25 @@ const textToUppercaseNode: CustomNodeDefinition = {
 
 ### agentloom_mobile — 移动端应用
 
-| 项目 | 技术 |
-|------|------|
-| 框架 | Flutter 3.41.2 (FVM) |
-| 状态管理 | Riverpod 3.x (手写 Provider) |
-| 路由 | GoRouter 17.x |
-| HTTP | Dio + AuthInterceptor (401 自动刷新重试) |
-| 模型 | Freezed 3.x + json_serializable |
-| 推送 | Firebase Cloud Messaging + flutter_local_notifications |
-| 测试 | 429 tests (mocktail) |
+| 项目     | 技术                                                   |
+| -------- | ------------------------------------------------------ |
+| 框架     | Flutter 3.41.2 (FVM)                                   |
+| 状态管理 | Riverpod 3.x (手写 Provider)                           |
+| 路由     | GoRouter 17.x                                          |
+| HTTP     | Dio + AuthInterceptor (401 自动刷新重试)               |
+| 模型     | Freezed 3.x + json_serializable                        |
+| 推送     | Firebase Cloud Messaging + flutter_local_notifications |
+| 测试     | 429 tests (mocktail)                                   |
 
 **功能模块**:
 
-| 模块 | 功能 |
-|------|------|
-| `auth` | 登录/登出/Token 刷新/强制登出 |
-| `dashboard` | 快速访问 + 最近执行记录 |
-| `workflows` | 列表搜索/详情/参数化启动 |
-| `execution` | Socket.IO 实时监控 + REST 5s 轮询降级 |
-| `notifications` | FCM 推送 + 本地通知 + 深链跳转 |
+| 模块            | 功能                                  |
+| --------------- | ------------------------------------- |
+| `auth`          | 登录/登出/Token 刷新/强制登出         |
+| `dashboard`     | 快速访问 + 最近执行记录               |
+| `workflows`     | 列表搜索/详情/参数化启动              |
+| `execution`     | Socket.IO 实时监控 + REST 5s 轮询降级 |
+| `notifications` | FCM 推送 + 本地通知 + 深链跳转        |
 
 ---
 
@@ -355,15 +356,15 @@ const textToUppercaseNode: CustomNodeDefinition = {
 
 ### 前置要求
 
-| 依赖 | 版本 | 用途 |
-|------|------|------|
-| Node.js | ≥ 18 | Server / Studio |
-| pnpm | ≥ 9 | 包管理器 |
+| 依赖             | 版本   | 用途                                      |
+| ---------------- | ------ | ----------------------------------------- |
+| Node.js          | ≥ 18   | Server / Studio                           |
+| pnpm             | ≥ 9    | 包管理器                                  |
 | Rust + wasm-pack | latest | Type Engine 构建（可选，已含预构建 WASM） |
-| Flutter (FVM) | 3.41.2 | 移动端开发 |
-| Docker | latest | Qdrant 向量数据库 |
-| PostgreSQL | 15+ | 主数据库（或使用 Supabase） |
-| Redis | 7+ | BullMQ 任务队列 |
+| Flutter (FVM)    | 3.41.2 | 移动端开发                                |
+| Docker           | latest | Qdrant 向量数据库                         |
+| PostgreSQL       | 15+    | 主数据库（或使用 Supabase）               |
+| Redis            | 7+     | BullMQ 任务队列                           |
 
 ### 1. 启动基础设施
 
@@ -496,29 +497,29 @@ dart run build_runner build   # Freezed 代码生成
 
 ### Server (`agentloom-server/.env`)
 
-| 变量 | 说明 |
-|------|------|
-| `APP_PORT` | 服务端口 |
-| `APP_DATABASE_URL` | PostgreSQL 连接字符串 |
-| `APP_DEPLOYMENT_MODE` | 部署模式：`saas` 或 `private` |
-| `APP_SUPABASE_URL` | Supabase 项目 URL |
-| `APP_SUPABASE_ANON_KEY` | Supabase 匿名 Key |
-| `APP_SUPABASE_SERVICE_KEY` | Supabase Service Key |
-| `APP_JWT_SECRET` | JWT 签名密钥 |
-| `APP_REDIS_URL` | Redis 连接地址 |
-| `APP_MASTER_ENCRYPTION_KEY` | 主加密密钥 (E2EE) |
-| `APP_MINIO_ENDPOINT` | MinIO 端点 |
-| `APP_MINIO_ACCESS_KEY` | MinIO 访问密钥 |
-| `APP_MINIO_SECRET_KEY` | MinIO 密钥 |
-| `APP_QDRANT_URL` | Qdrant 向量库地址 |
+| 变量                                        | 说明                                          |
+| ------------------------------------------- | --------------------------------------------- |
+| `APP_PORT`                                  | 服务端口                                      |
+| `APP_DATABASE_URL`                          | PostgreSQL 连接字符串                         |
+| `APP_DEPLOYMENT_MODE`                       | 部署模式：`saas` 或 `private`                 |
+| `APP_SUPABASE_URL`                          | Supabase 项目 URL                             |
+| `APP_SUPABASE_ANON_KEY`                     | Supabase 匿名 Key                             |
+| `APP_SUPABASE_SERVICE_KEY`                  | Supabase Service Key                          |
+| `APP_JWT_SECRET`                            | JWT 签名密钥                                  |
+| `APP_REDIS_URL`                             | Redis 连接地址                                |
+| `APP_MASTER_ENCRYPTION_KEY`                 | 主加密密钥 (E2EE)                             |
+| `APP_MINIO_ENDPOINT`                        | MinIO 端点                                    |
+| `APP_MINIO_ACCESS_KEY`                      | MinIO 访问密钥                                |
+| `APP_MINIO_SECRET_KEY`                      | MinIO 密钥                                    |
+| `APP_QDRANT_URL`                            | Qdrant 向量库地址                             |
 | `APP_PRIVATE_DEPLOYMENT_LICENSE_PUBLIC_KEY` | 私有部署 License 验签公钥（private 模式可选） |
-| `FIREBASE_SERVICE_ACCOUNT` | Firebase 服务账号 JSON |
+| `FIREBASE_SERVICE_ACCOUNT`                  | Firebase 服务账号 JSON                        |
 
 ### Studio (`agentloom-studio/.env`)
 
-| 变量 | 说明 |
-|------|------|
-| `VITE_API_BASE_URL` | 后端 API 地址 |
+| 变量                        | 说明                  |
+| --------------------------- | --------------------- |
+| `VITE_API_BASE_URL`         | 后端 API 地址         |
 | `VITE_AUTOSAVE_DEBOUNCE_MS` | 自动保存防抖时间 (ms) |
 
 ### Mobile
@@ -560,40 +561,40 @@ agentloom-plugin publish -k private.pem  # 签名 .alp 包
 
 ### 收益分成
 
-| 份额 | 比例 | 说明 |
-|------|------|------|
-| 开发者毛收入 | 70% | 总收入 × 0.70 |
-| 上架佣金 | 10.5% | 毛收入 × 0.15 |
+| 份额         | 比例   | 说明          |
+| ------------ | ------ | ------------- |
+| 开发者毛收入 | 70%    | 总收入 × 0.70 |
+| 上架佣金     | 10.5%  | 毛收入 × 0.15 |
 | 开发者净收入 | ≈59.5% | 毛收入 - 佣金 |
-| 平台份额 | 30% | 总收入 × 0.30 |
+| 平台份额     | 30%    | 总收入 × 0.30 |
 
 ---
 
 ## 🧪 测试
 
-| 包 | 框架 | 覆盖率要求 | 命令 |
-|----|------|-----------|------|
-| Server | Vitest + SWC + Testcontainers | **80%** | `pnpm test:cov` |
-| Studio | Vitest | 无阈值 | `pnpm test` |
-| Type Engine | Rust 内置 + Criterion | — | `cargo test` |
-| Plugin SDK | Vitest | — | `pnpm test` |
-| Plugin CLI | Vitest | — | `pnpm test` |
-| Mobile | Flutter Test + mocktail | — | `flutter test` |
+| 包          | 框架                          | 覆盖率要求 | 命令            |
+| ----------- | ----------------------------- | ---------- | --------------- |
+| Server      | Vitest + SWC + Testcontainers | **80%**    | `pnpm test:cov` |
+| Studio      | Vitest                        | 无阈值     | `pnpm test`     |
+| Type Engine | Rust 内置 + Criterion         | —          | `cargo test`    |
+| Plugin SDK  | Vitest                        | —          | `pnpm test`     |
+| Plugin CLI  | Vitest                        | —          | `pnpm test`     |
+| Mobile      | Flutter Test + mocktail       | —          | `flutter test`  |
 
 ---
 
 ## 🏛️ 技术选型
 
-| 领域 | 选择 | 备注 |
-|------|------|------|
-| HTTP 框架 | **Fastify** | 非 Express |
-| ORM | **Drizzle** | 非 TypeORM |
-| 校验 | **Zod** | Server Zod 4, SDK Zod 3 |
-| 测试 | **Vitest** | 非 Jest |
-| CSS | **Tailwind v4** | Design Token 体系 |
-| 状态管理 | **Zustand** (Web) / **Riverpod** (Mobile) | immer middleware |
-| Lint | **ESLint flat config** | + typescript-eslint + prettier |
-| 代码风格 | singleQuote, trailingComma: all | prettier 配置 |
+| 领域      | 选择                                      | 备注                           |
+| --------- | ----------------------------------------- | ------------------------------ |
+| HTTP 框架 | **Fastify**                               | 非 Express                     |
+| ORM       | **Drizzle**                               | 非 TypeORM                     |
+| 校验      | **Zod**                                   | Server Zod 4, SDK Zod 3        |
+| 测试      | **Vitest**                                | 非 Jest                        |
+| CSS       | **Tailwind v4**                           | Design Token 体系              |
+| 状态管理  | **Zustand** (Web) / **Riverpod** (Mobile) | immer middleware               |
+| Lint      | **ESLint flat config**                    | + typescript-eslint + prettier |
+| 代码风格  | singleQuote, trailingComma: all           | prettier 配置                  |
 
 ---
 

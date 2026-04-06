@@ -35,7 +35,7 @@ React 19 + Vite 7 前端。Feature-Slice 架构，TanStack Router/Query，Zustan
 | `/agents`                                        | AgentListPage                  | Agent 列表/创建入口                                                                                                                                                           |
 | `/agents/$agentId`                               | AgentCanvasPage                | Agent 配置编辑器画布 (ReactFlow, CPU/memory/timeout/lifecycle 参数)                                                                                                           |
 | `/agents/$agentId/conversations/new`             | NewConversationDraftPage       | 新对话草稿态页；首条消息发送成功后才创建真实 conversation 并跳转正式对话页                                                                                                   |
-| `/agents/$agentId/conversations/$conversationId` | AgentConversationPage          | 三列对话 UI (对话列表/消息流/上下文面板)；按 Agent `runtimeMode` 显示 `有沙箱 / 无沙箱` 标记，`no_sandbox` 不渲染工作区/终端上下文面板；输入栏支持图片/文件上传，用户消息可回显附件预览 |
+| `/agents/$agentId/conversations/$conversationId` | AgentConversationPage          | 三列对话 UI (对话列表/消息流/上下文面板)；按 Agent `runtimeMode` 显示 `有沙箱 / 无沙箱` 标记，`no_sandbox` 不渲染工作区/进程上下文面板；输入栏支持图片/文件上传，用户消息可回显附件预览 |
 
 TanStack Router v1，手动路由树 (`src/app/routes/`)。`__root.tsx` 包含 auth guard：未认证用户重定向到 `/login`。
 
@@ -75,7 +75,7 @@ src/
 │   ├── block-library/ # 可复用块库管理
 │   ├── agent/       # Agent CRUD 页面 (api/components/hooks/stores/types)：列表/创建/设置，query hooks 与 mutations
 │   ├── agent-canvas/ # Agent 配置编辑器画布 (components/hooks/stores)：CPU/memory/timeout/lifecycle 参数编辑、`agent-main` 的 `nativeToolPolicy/selfEvolutionPolicy` 面板，使用 ReactFlow + AGENT_CANVAS_NODE_REGISTRY 子集，非执行 DAG
-│   ├── agent-conversation/ # Agent 对话 UI (components/stores/types)：三列布局 (对话列表/消息流/上下文面板)，`/agents/$agentId/conversations/new` 通过 `NewConversationDraftPage` + `ConversationComposer` 进入草稿态，首条消息调用 `POST /agent-definitions/:agentId/conversations/start` 创建真实会话；Socket.IO `/agent-conversation` namespace 实时消息推送，含可展开自进化审批卡片与“重启到新版本”系统卡片；输入栏支持图片/文件上传，`MessageList` 可渲染图片预览/文件卡片/文本文件预览；`sandbox` 对话显示工作区/终端上下文，`no_sandbox` 仅保留消息流中的 Skill/Knowledge/Memory/MCP/自进化能力
+│   ├── agent-conversation/ # Agent 对话 UI (components/stores/types)：三列布局 (对话列表/消息流/上下文面板)，`/agents/$agentId/conversations/new` 通过 `NewConversationDraftPage` + `ConversationComposer` 进入草稿态，首条消息调用 `POST /agent-definitions/:agentId/conversations/start` 创建真实会话；Socket.IO `/agent-conversation` namespace 实时消息推送，含可展开自进化审批卡片与“重启到新版本”系统卡片；输入栏支持图片/文件上传，`MessageList` 可渲染图片预览/文件卡片/文本文件预览；`sandbox` 对话显示工作区/进程上下文，`no_sandbox` 仅保留消息流中的 Skill/Knowledge/Memory/MCP/自进化能力
 │   └── agent-memory/ # Agent 记忆管理 (35 files)：记忆图谱可视化 (d3-force + dagre + ReactFlow)、记忆检索/创建/编辑、审计日志集成
 ├── shared/           # 跨 feature 共享层
 │   ├── api/          # ky client + queryClient + query key factory

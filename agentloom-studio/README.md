@@ -13,21 +13,21 @@ AgentLoom Studio 是基于 **React 19 + Vite 7** 的前端工作台，负责工�
 
 ## 当前关键页面
 
-| 路由                                 | 页面                           | 说明                                                                                         |
-| ------------------------------------ | ------------------------------ | -------------------------------------------------------------------------------------------- |
-| `/workflows/$workflowId`             | WorkflowCanvasPage             | React Flow 画布编辑器、自动保存、节点配置                                                    |
-| `/executions/$executionId`           | ExecutionDebugView             | 只读执行调试视图与垂直时间线                                                                 |
-| `/settings/audit-logs`               | AuditLogPage                   | owner/admin 审计日志查询页                                                                   |
-| `/settings/security/autonomy-policy` | OrganizationAutonomyPolicyPage | owner-only 组织自治策略设置页                                                                |
-| `/settings/resource-quotas`          | ResourceGovernancePage         | owner/admin 资源治理页：quota、tenant/workflow governance、异常 execution 终止               |
-| `/settings/monitoring`               | MonitoringDashboardPage        | owner/admin 组织级只读运行监控页：执行趋势、当前队列快照摘要、alerts、hotspots、risk summary |
-| `/resources/knowledge-bases`         | KnowledgeBasesPage             | 知识库管理（列表页展示文档数 / 知识节点数 / 策略摘要）                                       |
-| `/resources/workspaces`              | WorkspaceManagementPage        | 持久化 workspace 列表页；默认隐藏 execution 自动归档快照，并显示来源标签                     |
-| `/resources/workspaces/$workspaceId` | WorkspaceDetailPage            | 持久化 workspace 详情页；目录树 + 文本 / 图片 / PDF 预览，其他文件提供下载兜底               |
-| `/agents/$agentId/conversations/new` | NewConversationDraftPage       | 新对话草稿页；首条消息发送成功后才创建真实 conversation 并跳转正式会话                       |
-| `/agents/$agentId/conversations/$conversationId` | AgentConversationPage | 三列对话页；sandbox Agent 会在 live workspace 就绪前先显示持久化工作区目录预览，并支持图片/文件上传与附件预览 |
-| `/settings/tool-library`             | ToolLibraryPage                | MCP 工具库                                                                                   |
-| `/marketplace`                       | MarketplaceBrowsePage          | 工作流 / 插件市场                                                                            |
+| 路由                                 | 页面                           | 说明                                                                                                             |
+| ------------------------------------ | ------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| `/workflows/$workflowId`             | WorkflowCanvasPage             | React Flow 画布编辑器、自动保存、节点配置                                                                        |
+| `/executions/$executionId`           | ExecutionDebugView             | 只读执行调试视图与垂直时间线                                                                                     |
+| `/settings/audit-logs`               | AuditLogPage                   | owner/admin 审计日志查询页                                                                                       |
+| `/settings/security/autonomy-policy` | OrganizationAutonomyPolicyPage | owner-only 组织自治策略设置页                                                                                    |
+| `/settings/resource-quotas`          | ResourceGovernancePage         | owner/admin 资源治理页：quota、tenant/workflow governance、异常 execution 终止                                   |
+| `/settings/monitoring`               | MonitoringDashboardPage        | owner/admin 组织级只读运行监控页：执行趋势、当前队列快照摘要、alerts、hotspots、risk summary                     |
+| `/resources/knowledge-bases`         | KnowledgeBasesPage             | 知识库管理（列表页展示文档数 / 知识节点数 / 策略摘要）                                                           |
+| `/resources/workspaces`              | WorkspaceManagementPage        | 持久化 workspace 列表页；默认隐藏 execution 自动归档快照，并显示来源标签                                         |
+| `/resources/workspaces/$workspaceId` | WorkspaceDetailPage            | 持久化 workspace 详情页；目录树 + 文本 / 图片 / PDF 预览，其他文件提供下载兜底                                   |
+| `/agents/$agentId/conversations/new` | NewConversationDraftPage       | 新对话草稿页；首条消息发送成功后才创建真实 conversation 并跳转正式会话                                           |
+| `/agents/$agentId/conversations/$conversationId` | AgentConversationPage | 三列对话页；sandbox Agent 会在 live workspace 就绪前先显示持久化工作区目录预览，右侧电脑面板提供进程/文件变更/工具运行上下文，并支持图片/文件上传与附件预览 |
+| `/settings/tool-library`             | ToolLibraryPage                | MCP 工具库                                                                                                       |
+| `/marketplace`                       | MarketplaceBrowsePage          | 工作流 / 插件市场                                                                                                |
 
 `WorkflowListPage`、`AgentListPage`、`KnowledgeBasesPage`、`MemoryInstancesPage`、`McpServerManagementPage` 与 `SkillBrowsePage` 当前统一采用顶部来源分类标签 `自己创建 / 分享导入` 切换列表，默认展示 `自己创建`，条目内部不再重复显示来源 badge；`share_imported` 项仍保留“转为自己创建”动作。
 
