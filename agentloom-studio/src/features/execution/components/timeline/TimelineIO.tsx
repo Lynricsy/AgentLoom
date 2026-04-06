@@ -1,6 +1,7 @@
 import { memo, useState } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 
+import { JsonTreeView } from '@/shared/components/json'
 import { cn } from '@/shared/lib/utils'
 
 import {
@@ -24,15 +25,6 @@ interface TimelineIOProps {
   nodeId?: string
   nodeName?: string
   className?: string
-}
-
-interface JsonValueTreeProps {
-  value: unknown
-  name?: string
-  depth?: number
-  executionId?: string
-  nodeId?: string
-  nodeName?: string
 }
 
 function TextWithRefs({
@@ -72,10 +64,6 @@ function TextWithRefs({
    )
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null
-}
-
 function formatJson(data: Record<string, unknown> | null): string {
   if (!data) return '无数据'
   try {
@@ -92,103 +80,6 @@ function buildPreview(data: Record<string, unknown> | null) {
   return singleLine.length > 120
     ? `${singleLine.slice(0, 117)}...`
     : singleLine
-}
-
-function JsonValueTree({
-  value,
-  name,
-  depth = 0,
-  executionId,
-  nodeId,
-  nodeName,
-}: JsonValueTreeProps) {
-  if (
-    value == null ||
-    typeof value === 'string' ||
-    typeof value === 'number' ||
-    typeof value === 'boolean'
-  ) {
-    const displayValue = typeof value === 'string'
-      ? (
-          <TextWithRefs
-            text={value}
-            executionId={executionId}
-            nodeId={nodeId}
-            nodeName={nodeName}
-          />
-        )
-      : String(value)
-
-    return (
-      <div className="flex gap-2 text-xs leading-6 text-foreground/85">
-        {name ? (
-          <span className="shrink-0 text-muted-foreground">{name}:</span>
-        ) : null}
-        <span className="break-all font-mono">{displayValue}</span>
-      </div>
-    )
-  }
-
-  if (Array.isArray(value)) {
-    return (
-      <details
-        open={depth < 1}
-        className="rounded-xl border border-border/60 bg-background/60 px-3 py-2"
-      >
-        <summary className="cursor-pointer text-xs font-medium text-foreground">
-          {name ?? 'Array'} [{value.length}]
-        </summary>
-        <div className="mt-2 space-y-2 pl-3">
-          {value.map((item, index) => (
-              <JsonValueTree
-                key={`${name ?? 'array'}-${index}`}
-                name={`${index}`}
-                value={item}
-                depth={depth + 1}
-                executionId={executionId}
-                nodeId={nodeId}
-                nodeName={nodeName}
-              />
-            ))}
-          </div>
-        </details>
-      )
-  }
-
-  if (isRecord(value)) {
-    const entries = Object.entries(value)
-
-    return (
-      <details
-        open={depth < 1}
-        className="rounded-xl border border-border/60 bg-background/60 px-3 py-2"
-      >
-        <summary className="cursor-pointer text-xs font-medium text-foreground">
-          {name ?? 'Object'} {'{'}{entries.length}{'}'}
-        </summary>
-        <div className="mt-2 space-y-2 pl-3">
-          {entries.map(([entryName, entryValue]) => (
-            <JsonValueTree
-              key={entryName}
-              name={entryName}
-              value={entryValue}
-              depth={depth + 1}
-              executionId={executionId}
-              nodeId={nodeId}
-              nodeName={nodeName}
-            />
-          ))}
-        </div>
-      </details>
-    )
-  }
-
-  return (
-    <div className="text-xs font-mono text-foreground/85">
-      {name ? `${name}: ` : ''}
-      {String(value)}
-    </div>
-  )
 }
 
 export const TimelineIO = memo(function TimelineIO({
@@ -247,11 +138,16 @@ export const TimelineIO = memo(function TimelineIO({
               输入
             </p>
             <div className="max-h-[300px] overflow-auto">
-              <JsonValueTree
+              <JsonTreeView
                 value={input}
-                executionId={executionId}
-                nodeId={nodeId}
-                nodeName={nodeName}
+                renderString={(text) => (
+                  <TextWithRefs
+                    text={text}
+                    executionId={executionId}
+                    nodeId={nodeId}
+                    nodeName={nodeName}
+                  />
+                )}
               />
             </div>
           </div>
@@ -260,11 +156,16 @@ export const TimelineIO = memo(function TimelineIO({
               输出
             </p>
             <div className="max-h-[300px] overflow-auto">
-              <JsonValueTree
+              <JsonTreeView
                 value={output}
-                executionId={executionId}
-                nodeId={nodeId}
-                nodeName={nodeName}
+                renderString={(text) => (
+                  <TextWithRefs
+                    text={text}
+                    executionId={executionId}
+                    nodeId={nodeId}
+                    nodeName={nodeName}
+                  />
+                )}
               />
             </div>
           </div>

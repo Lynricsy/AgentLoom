@@ -1,4 +1,5 @@
 import { memo, useMemo, type ReactNode } from 'react'
+import { JsonTreeView } from '@/shared/components/json'
 import type { ExecutionStep } from '../types'
 import {
   formatExecutionDateTime,
@@ -9,66 +10,6 @@ import { cn } from '@/shared/lib/utils'
 
 interface ExecutionNodeDetailProps {
   step: ExecutionStep | null
-}
-
-interface JsonTreeProps {
-  value: unknown
-  name?: string
-  depth?: number
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null
-}
-
-function JsonTree({ value, name, depth = 0 }: JsonTreeProps) {
-  if (value == null || typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-    return (
-      <div className="flex gap-2 text-xs leading-6 text-foreground/85">
-        {name ? <span className="shrink-0 text-muted-foreground">{name}:</span> : null}
-        <span className="break-all font-mono">{String(value)}</span>
-      </div>
-    )
-  }
-
-  if (Array.isArray(value)) {
-    return (
-      <details open={depth < 1} className="rounded-xl border border-border/60 bg-background/60 px-3 py-2">
-        <summary className="cursor-pointer text-xs font-medium text-foreground">
-          {name ?? 'Array'} [{value.length}]
-        </summary>
-        <div className="mt-2 space-y-2 pl-3">
-          {value.map((item, index) => (
-            <JsonTree key={`${name ?? 'array'}-${index}`} name={`${index}`} value={item} depth={depth + 1} />
-          ))}
-        </div>
-      </details>
-    )
-  }
-
-  if (isRecord(value)) {
-    const entries = Object.entries(value)
-
-    return (
-      <details open={depth < 1} className="rounded-xl border border-border/60 bg-background/60 px-3 py-2">
-        <summary className="cursor-pointer text-xs font-medium text-foreground">
-          {name ?? 'Object'} {'{'}{entries.length}{'}'}
-        </summary>
-        <div className="mt-2 space-y-2 pl-3">
-          {entries.map(([entryName, entryValue]) => (
-            <JsonTree key={entryName} name={entryName} value={entryValue} depth={depth + 1} />
-          ))}
-        </div>
-      </details>
-    )
-  }
-
-  return (
-    <div className="text-xs font-mono text-foreground/85">
-      {name ? `${name}: ` : ''}
-      {String(value)}
-    </div>
-  )
 }
 
 function DetailSection({
@@ -148,11 +89,19 @@ export const ExecutionNodeDetail = memo(function ExecutionNodeDetail({
         </DetailSection>
 
         <DetailSection title="Inputs">
-          {step.input ? <JsonTree value={step.input} /> : <p className="text-sm text-muted-foreground">无输入数据</p>}
+          {step.input ? (
+            <JsonTreeView value={step.input} />
+          ) : (
+            <p className="text-sm text-muted-foreground">无输入数据</p>
+          )}
         </DetailSection>
 
         <DetailSection title="Outputs">
-          {step.output ? <JsonTree value={step.output} /> : <p className="text-sm text-muted-foreground">无输出数据</p>}
+          {step.output ? (
+            <JsonTreeView value={step.output} />
+          ) : (
+            <p className="text-sm text-muted-foreground">无输出数据</p>
+          )}
         </DetailSection>
 
         {step.errorMessage ? (

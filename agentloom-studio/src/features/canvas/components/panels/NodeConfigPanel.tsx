@@ -11,11 +11,11 @@ import { cn } from '@/shared/lib/utils'
 import type { CanvasNode } from '../../types'
 import { getNodeTypeConfig } from '../../types/nodeTypeRegistry'
 import { useCanvasActions, useCanvasStore } from '../../stores/canvasStore'
-import {
-  CUSTOM_PANEL_REGISTRY,
-} from './customPanelRegistry'
+import { getOutputContentFormat } from '../../lib/outputContent'
+import { CUSTOM_PANEL_REGISTRY } from './customPanelRegistry'
 import { InterventionPanel } from './InterventionPanel'
 import { DynamicConfigForm } from './DynamicConfigForm'
+import { OutputContentRenderer } from '../output/OutputContentRenderer'
 
 interface NodeConfigPanelProps {
   className?: string
@@ -180,7 +180,7 @@ export const NodeConfigPanel = memo(function NodeConfigPanel({
           onValidationChange={handleValidationChange}
         />
 
-        <NodeExecutionSection nodeId={node.id} />
+        <NodeExecutionSection nodeId={node.id} nodeType={node.data.nodeType} />
       </div>
     </aside>
   )
@@ -242,10 +242,12 @@ const NodeConfigDispatch = memo(function NodeConfigDispatch({
 
 interface NodeExecutionSectionProps {
   nodeId: string
+  nodeType: CanvasNode['data']['nodeType']
 }
 
 const NodeExecutionSection = memo(function NodeExecutionSection({
   nodeId,
+  nodeType,
 }: NodeExecutionSectionProps) {
   const nodeState = useNodeExecutionState(nodeId)
   const isExecutionActive = useIsExecutionActive()
@@ -366,12 +368,13 @@ const NodeExecutionSection = memo(function NodeExecutionSection({
           )}
         </div>
 
-        <pre
-          className="min-h-40 whitespace-pre-wrap break-words rounded-xl border border-border/70 bg-surface px-3 py-3 font-mono text-xs leading-6 text-foreground"
-          data-testid="node-execution-output"
-        >
-          {nodeState?.output || outputPlaceholder}
-        </pre>
+        <OutputContentRenderer
+          format={getOutputContentFormat(nodeType)}
+          output={nodeState?.output}
+          isStreaming={nodeState?.isStreaming}
+          placeholder={outputPlaceholder}
+          dataTestId="node-execution-output"
+        />
       </div>
     </section>
   )

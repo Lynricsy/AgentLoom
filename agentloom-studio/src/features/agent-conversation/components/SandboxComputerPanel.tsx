@@ -843,7 +843,7 @@ export function SandboxComputerPanel({
         <ActiveToolView toolCall={activeToolCall} />
       ) : activeTab === "process" ? (
         <ProcessMonitorView
-          processes={sandboxProcesses}
+          processes={sandboxProcesses ?? null}
           isLoading={isProcessLoading}
           fallbackItems={fallbackItems}
           hasRealtimeSource={Boolean(conversationId)}

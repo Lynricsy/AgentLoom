@@ -161,7 +161,7 @@ src/
 - **垂直时间线** (`features/execution/components/timeline/`): 替代旧 `ExecutionTimeline`（Gantt 风格），包含：
   - `ExecutionTimelineVertical`: CSS grid 容器 + `@tanstack/react-virtual` 虚拟滚动 (>50条)，按 `stepOrder` 分组（并行节点并排）
   - `TimelineEntry`: 可展开条目（失败节点自动展开），折叠态也会显示 AutonomyBadge / InterventionTag，包含 `TimelineHeader`、`TimelineDuration`
-  - `TimelineIO`: 折叠摘要（输入预览/输出预览/耗时/重试次数）+ 展开结构化 JSON tree 与 timing meta
+  - `TimelineIO`: 折叠摘要（输入预览/输出预览/耗时/重试次数）+ 展开结构化 JSON tree 与 timing meta；与 `ExecutionNodeDetail` 共用 `shared/components/json/JsonTreeView`
   - `DecisionAnnotation`: agent 决策注解（AutonomyBadge FIXED/LLM_SUGGEST/LLM_DECIDE、通过 `react-markdown` + `skipHtml` 渲染的 ReasoningBlock、AlternativesList、InterventionTag 修改摘要）
   - `OutputLevelBadge`: L1-L4 输出格式等级徽章
   - `EvidenceChips`: 证据计数芯片（可点击，`openPanel(executionId, nodeId, nodeName)`）
@@ -173,7 +173,7 @@ src/
 - **WorkflowStatusBar**: 包含 ExecutionStatusIndicator，显示 6 种执行状态 + 进度 (completedSteps/totalSteps)
 - **发布警告展示**: `PublishSheet` 发布成功且返回 `warnings[]` 时，显示成功 toast 并在 Sheet 内渲染内联展开式警告列表（每条警告可点击展开查看源/目标端口类型详情），用户点击"完成"按钮关闭。不再使用 toast-per-warning 模式
 - **工作流发布上下文保持**: 若用户在打开 `VersionHistoryPanel` 的状态下进入 `PublishSheet`，无论是从 toolbar 还是历史面板内触发，`PublishSheet` 关闭后都必须恢复历史抽屉；最新发布记录要立刻出现在抽屉中，不能把用户丢回一个已关闭且看不到结果的上下文
-- **NodeConfigPanel**: 选中节点的侧边栏现在也消费 executionStore，展示实时状态、stepId、重试次数、错误信息与 output 文本流；配置区按“自定义面板优先 → DynamicConfigForm(schema fallback) → 空态文案”分发，并把字段级校验状态同步到 `canvasStore.nodeValidationErrors`
+- **NodeConfigPanel**: 选中节点的侧边栏现在也消费 executionStore，展示实时状态、stepId、重试次数、错误信息与 output 文本流；其中 `text-output` / `json-output` 会通过共享 `OutputContentRenderer` 渲染 Markdown / LaTeX / Mermaid / 代码块或结构化 JSON，其余节点保持文本兜底。配置区按“自定义面板优先 → DynamicConfigForm(schema fallback) → 空态文案”分发，并把字段级校验状态同步到 `canvasStore.nodeValidationErrors`
 - **DynamicConfigForm / LlmAgentConfigPanel / HttpToolConfigPanel**: 统一使用 react-hook-form + zodResolver + 300ms debounce `onApply`；`LlmAgentConfigPanel` 使用 lazy Monaco 编辑 `systemPrompt`，并要求在 mount 后仍能响应外部 config 更新。该面板现会通过 auth token 的组织 claim 查询 organization autonomy policy：显示组织自治上限、禁用超 cap 的新选项、阻止保存 stale over-cap 模式，并对 legacy raw mode 给出显式迁移提示，同时保留 hidden draft round-trip 行为。autonomy mode 的前端读取优先级与 server 对齐为 `autonomyMode -> autonomyConfig.mode -> settings.autonomyMode -> config.autonomyMode`，autosave 会同步写回 `autonomyMode`、`autonomyConfig.mode`、`config.autonomyMode`、`settings.autonomyMode` 四个 canonical mirrors。
 - **InterventionPanel** (`features/canvas/components/panels/InterventionPanel.tsx`): 人工介入操作面板，approve/modify/reject 三种操作。嵌入 NodeConfigPanel 的 NodeExecutionSection，仅在 `waiting_intervention` 状态显示。组件通过 `useExecutionActions().submitIntervention()` 提交动作，展示 AI 决策建议(confidence/rationale)、部分内容预览以及请求时间上下文，并会把结构化建议内容格式化为可读文本
 

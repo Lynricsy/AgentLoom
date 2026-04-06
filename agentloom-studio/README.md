@@ -15,7 +15,7 @@ AgentLoom Studio 是基于 **React 19 + Vite 7** 的前端工作台，负责工�
 
 | 路由                                 | 页面                           | 说明                                                                                                             |
 | ------------------------------------ | ------------------------------ | ---------------------------------------------------------------------------------------------------------------- |
-| `/workflows/$workflowId`             | WorkflowCanvasPage             | React Flow 画布编辑器、自动保存、节点配置                                                                        |
+| `/workflows/$workflowId`             | WorkflowCanvasPage             | React Flow 画布编辑器、自动保存、节点配置；`text-output` / `json-output` 卡片支持直接打开详情查看完整输出         |
 | `/executions/$executionId`           | ExecutionDebugView             | 只读执行调试视图与垂直时间线                                                                                     |
 | `/settings/audit-logs`               | AuditLogPage                   | owner/admin 审计日志查询页                                                                                       |
 | `/settings/security/autonomy-policy` | OrganizationAutonomyPolicyPage | owner-only 组织自治策略设置页                                                                                    |
@@ -85,6 +85,15 @@ src/
 - 目标是兼容历史快照、API 直改或导入数据里残留的半残 `PortDefinition`，避免页面在 UI / type-engine 读取 `port.schema.kind` 时直接崩溃
 
 `features/workflow/api/versionQueries.ts` 现在也会在消费版本列表 / 已发布版本接口时，对 `version.snapshot.nodes[*].data.inputPorts/outputPorts` 执行同类 hydration。这样即使服务端返回的是历史半残版本快照，版本历史侧边栏和任何后续消费 `snapshot` 的前端路径也不会再绕过主画布 store 直接命中 `schema.kind` 崩溃。
+
+## 输出节点查看事实
+
+`features/canvas/` 当前对 `text-output` / `json-output` 节点采用“卡片轻量预览 + 详情富渲染”的双层语义：
+
+- 节点 body 本身是可点击的预览卡；在手机端点击后会打开全屏详情弹层，在桌面端打开大尺寸对话框
+- `text-output` 详情复用共享 `MarkdownRenderer`，支持 Markdown、LaTeX、Mermaid 与代码块
+- `json-output` 详情优先使用结构化 JSON 树视图；如果输出尚未形成合法 JSON（例如流式中间态），则回退为原文代码视图
+- 右侧 `NodeConfigPanel` 的“输出流”区域与详情弹层共用 `OutputContentRenderer`，避免桌面 / 手机两套输出语义漂移
 
 ## 工作流预览渲染事实
 
