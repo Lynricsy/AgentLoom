@@ -127,13 +127,15 @@ describe('AgentCanvas', () => {
     mocks.reset.mockReset();
   });
 
-  it('registers a dedicated renderer for memory nodes and accepts memory connections', () => {
+  it('registers dedicated renderers for memory and output nodes and accepts memory connections', () => {
     render(<AgentCanvas agentId="agent-1" />);
 
     const isValidConnection = mocks.lastReactFlowProps?.isValidConnection;
 
     expect(mocks.loadAgent).toHaveBeenCalledWith('agent-1');
-    expect(Object.keys(mocks.lastReactFlowProps?.nodeTypes ?? {})).toContain('memory');
+    expect(Object.keys(mocks.lastReactFlowProps?.nodeTypes ?? {})).toEqual(
+      expect.arrayContaining(['memory', 'output']),
+    );
     expect(isValidConnection).toBeDefined();
     expect(
       isValidConnection?.({

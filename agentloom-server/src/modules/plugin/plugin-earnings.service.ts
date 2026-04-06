@@ -1,7 +1,6 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import {
   and,
-  asc,
   desc,
   eq,
   getTableColumns,
@@ -253,6 +252,7 @@ export class PluginEarningsService {
       this.buildPeriodConditions(parsedQuery),
     );
     const bucket = sql<string>`date_trunc(${parsedQuery.interval}, ${pluginEarnings.periodEnd})::text`;
+    const bucketOrdinal = sql.raw('1');
 
     const rows = await this.tenantDb
       .select({
@@ -265,8 +265,10 @@ export class PluginEarningsService {
       })
       .from(pluginEarnings)
       .where(whereClause)
-      .groupBy(bucket)
-      .orderBy(asc(bucket));
+      // 直接按第一列分组/排序，避免 Drizzle 为同一 `date_trunc(...)`
+      // 生成多组参数占位符，导致 Postgres 不再把它视为相同表达式。
+      .groupBy(bucketOrdinal)
+      .orderBy(bucketOrdinal);
 
     return rows.map((row) => ({
       bucket: row.bucket,

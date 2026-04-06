@@ -66,6 +66,38 @@ function createSelectChain<TResult>(result: TResult[]): SelectChain<TResult> {
   return chain;
 }
 
+function stringifySqlChunks(chunk: unknown): string {
+  if (!chunk || typeof chunk !== 'object' || !('queryChunks' in chunk)) {
+    return String(chunk);
+  }
+
+  const queryChunks = (chunk as { queryChunks: unknown[] }).queryChunks;
+
+  return queryChunks
+    .map((part) => {
+      if (part && typeof part === 'object') {
+        if (
+          'value' in part &&
+          Array.isArray((part as { value?: unknown[] }).value)
+        ) {
+          return (part as { value: unknown[] }).value.join('');
+        }
+        if (
+          'name' in part &&
+          typeof (part as { name?: unknown }).name === 'string'
+        ) {
+          return (part as { name: string }).name;
+        }
+        if ('queryChunks' in part) {
+          return stringifySqlChunks(part);
+        }
+      }
+
+      return String(part);
+    })
+    .join('');
+}
+
 function createInsertChain<TResult>(result: TResult[]) {
   const returning = vi.fn().mockResolvedValue(result);
   const onConflictDoNothing = vi.fn().mockReturnValue({ returning });
@@ -346,18 +378,17 @@ describe('PluginEarningsService', () => {
 
   describe('dashboard queries', () => {
     it('应返回收益趋势', async () => {
-      db.select.mockReturnValueOnce(
-        createSelectChain([
-          {
-            bucket: '2025-01-01 00:00:00+00',
-            totalRevenue: '10',
-            developerShare: '5.95',
-            platformShare: '3',
-            listingCommission: '1.05',
-            totalExecutions: 2,
-          },
-        ]),
-      );
+      const trendQuery = createSelectChain([
+        {
+          bucket: '2025-01-01 00:00:00+00',
+          totalRevenue: '10',
+          developerShare: '5.95',
+          platformShare: '3',
+          listingCommission: '1.05',
+          totalExecutions: 2,
+        },
+      ]);
+      db.select.mockReturnValueOnce(trendQuery);
 
       await expect(
         service.getDashboardTrends({
@@ -375,6 +406,13 @@ describe('PluginEarningsService', () => {
           totalExecutions: 2,
         },
       ]);
+
+      expect(
+        stringifySqlChunks(trendQuery.groupBy.mock.calls[0]?.[0]),
+      ).toContain('1');
+      expect(
+        stringifySqlChunks(trendQuery.orderBy.mock.calls[0]?.[0]),
+      ).toContain('1');
     });
 
     it('应返回收益排行', async () => {

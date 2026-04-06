@@ -37,6 +37,7 @@ const NODE_TYPES = {
   tool: CanvasNodeShell,
   knowledge: CanvasNodeShell,
   memory: CanvasNodeShell,
+  output: CanvasNodeShell,
   control: CanvasNodeShell,
 };
 
