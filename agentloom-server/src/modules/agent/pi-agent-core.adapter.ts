@@ -2,7 +2,6 @@ import { Injectable, Optional } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { jsonSchema, tool, type FlexibleSchema, type ToolSet } from 'ai';
 import { and, eq } from 'drizzle-orm';
-import { z } from 'zod';
 import * as schema from '../../database/schema';
 import { type DrizzleDB } from '../../database/database.module';
 import { runInTenantTransaction } from '../../common/interceptors/tenant-transaction.context';
@@ -44,6 +43,7 @@ import {
   AgentToolPermissionSyncService,
   type DistributedToolPermissionResolution,
 } from './agent-tool-permission-sync.service';
+import { isSelfEvolutionMutationToolName } from '../self-evolution/self-evolution.types';
 
 const PERMISSION_EXEMPT_TOOLS = new Set([
   'call_subagent',
@@ -994,7 +994,7 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
     const toolCallId = this.getToolCallId(context);
     const toolName = this.getToolName(context);
 
-    if (this.shouldAutoApproveToolPermission(sessionId, toolName)) {
+    if (this.shouldAutoApproveToolPermission(toolName)) {
       return undefined;
     }
 
@@ -1055,30 +1055,17 @@ export class PiAgentCoreAdapter implements IAgentRuntime {
     };
   }
 
-  private shouldAutoApproveToolPermission(
-    sessionId: string,
-    toolName: string,
-  ): boolean {
+  private shouldAutoApproveToolPermission(toolName: string): boolean {
     if (PERMISSION_EXEMPT_TOOLS.has(toolName)) {
       return true;
     }
 
-    const runtimeSession = this.sessions.get(sessionId);
-    if (!runtimeSession) {
-      return false;
-    }
-
-    if (runtimeSession.session.autonomyMode === 'LLM_SUGGEST') {
+    // 运行时默认无审批，仅保留自进化写操作的人工确认。
+    if (!isSelfEvolutionMutationToolName(toolName)) {
       return true;
     }
 
-    const workflowState = this.isRecord(
-      runtimeSession.session.context.workflowState,
-    )
-      ? runtimeSession.session.context.workflowState
-      : null;
-
-    return workflowState?.autoApproveToolPermissions === true;
+    return false;
   }
 
   private waitForPermission(

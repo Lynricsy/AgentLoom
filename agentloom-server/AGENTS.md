@@ -85,8 +85,8 @@ TenantMiddleware (extract tenantId from JWT no-verify; skip when X-Api-Key prese
 - Agent 对话历史中的零消息空会话会通过一次性 migration `src/database/migrations/0067_purge_empty_agent_conversations.sql` 清理；运行时不保留常驻自动清理任务，后续新增空记录依赖 `/conversations/start` 延迟创建语义本身避免。
 - `no_sandbox` Agent 仍支持 Skill、知识库、Memory、HTTP MCP 与自进化，但不暴露内置 coding tools，也不会生成 sandbox workspace / terminal / file-change 侧栏上下文。
 - `no_sandbox` Agent 只允许 HTTP MCP；stdio MCP 在 `createVersion()/publish()/applyCanvasSnapshot()` 的发布校验层与 runtime MCP 调用层都会被 fail-closed。
-- `PiAgentCoreAdapter.beforeToolCall()` 会对 `no_sandbox` runtime 保留工具权限闸门，但当 session `autonomyMode === 'LLM_SUGGEST'` 或 workflow session context 显式携带 `autoApproveToolPermissions=true` 时，工具调用会直接继续执行，不再重复发出 `awaiting_permission`。
-- workflow `agent` 节点会优先依据 `workflow_executions.trigger_type === 'system'` 把 `autoApproveToolPermissions=true` 写入 workflow session context；`exec-in.triggerType` 只作为 execution 记录缺失时的兜底，确保定时/系统触发的 `no_sandbox` HTTP MCP、知识与 Memory 工具不会被 runtime 内部二次审批卡住。
+- `PiAgentCoreAdapter.beforeToolCall()` 现已把普通运行时工具调用收口为默认自动继续：`no_sandbox` runtime 中只有自进化写操作（当前为 `apply_change` / `create_resource`）仍会进入人工审批，其余 Skill / 知识 / Memory / HTTP MCP / 普通 session tool 不再重复发出 `awaiting_permission`。
+- workflow `agent` 节点的 tool-level 人工确认也已收口为“仅自进化写工具保留审批”；普通工具即使在 `MANUAL_CONFIRM` / 被组织上限 clamp 后的 `RULE_BASED` 会话里，也会直接继续执行。`workflow_executions.trigger_type === 'system'` 写入的 `autoApproveToolPermissions=true` 仍保留为兼容上下文字段，但普通工具不再依赖它才能避免 runtime 二次审批。
 - `WorkflowVersionService.publish()` 会阻止 `no_sandbox` workflow agent 通过 `tools-in` 连接 `stdio` MCP 节点；这类无效编排在发布阶段直接返回 `WorkflowPublishValidationException`，不再等到执行时才失败。
 - workflow `agent` 节点会跟随目标 Agent 的 `runtimeMode` 动态切换输入端口：`sandbox` 保留 `sandbox-in`，`no_sandbox` 则移除该端口。
 - 当 `sandbox` Agent 调用 `no_sandbox` 子 Agent 时，child 不会起独立 in-process runtime，而是并入父 sandbox runtime 配置，并收敛为只开放内置 `read` 的只读 sub-agent profile。

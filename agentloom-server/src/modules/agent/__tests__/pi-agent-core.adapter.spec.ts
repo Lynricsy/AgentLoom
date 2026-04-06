@@ -964,6 +964,78 @@ describe('PiAgentCoreAdapter', () => {
   });
 
   describe('permission gate', () => {
+    it('普通 conversation 会自动放行非自进化工具调用', async () => {
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
+      const session = await adapter.createSession(createParams());
+
+      hoisted.MockPiAgent.script = async (agent) => {
+        const result = await agent.options.beforeToolCall?.(
+          {
+            toolCall: {
+              id: 'call-normal',
+              name: 'filesystem.read',
+              arguments: { path: '/tmp/demo.txt' },
+            },
+            args: { path: '/tmp/demo.txt' },
+          },
+          agent.abortController.signal,
+        );
+
+        if (!result?.block) {
+          agent.emit({
+            type: 'tool_execution_start',
+            toolCallId: 'call-normal',
+            toolName: 'filesystem.read',
+            args: { path: '/tmp/demo.txt' },
+          });
+          agent.emit({
+            type: 'tool_execution_end',
+            toolCallId: 'call-normal',
+            toolName: 'filesystem.read',
+            result: { details: { content: 'ok' } },
+            isError: false,
+          });
+        }
+
+        agent.emit({
+          type: 'agent_end',
+          messages: [{ role: 'assistant', stopReason: 'toolUse' }],
+        });
+      };
+
+      await expect(
+        collectEvents(
+          adapter.prompt(session.id, [{ type: 'text', text: 'read' }]),
+        ),
+      ).resolves.toEqual([
+        {
+          type: 'tool_call',
+          call: {
+            id: 'call-normal',
+            tool: 'filesystem.read',
+            args: { path: '/tmp/demo.txt' },
+            status: 'in_progress',
+          },
+        },
+        {
+          type: 'tool_call',
+          call: {
+            id: 'call-normal',
+            tool: 'filesystem.read',
+            args: {},
+            status: 'completed',
+            result: { content: 'ok' },
+          },
+        },
+        { type: 'done', stopReason: 'tool_use' },
+      ]);
+      expect(
+        mockToolPermissionSyncService.registerPendingResolution,
+      ).not.toHaveBeenCalled();
+    });
+
     it('LLM_SUGGEST workflow session 会自动放行工具调用，不进入 awaiting_permission', async () => {
       mockDb.select.mockReturnValueOnce(
         createSelectChain([defaultModelConfig]),
@@ -1139,10 +1211,10 @@ describe('PiAgentCoreAdapter', () => {
           {
             toolCall: {
               id: 'call-1',
-              name: 'filesystem.read',
-              arguments: { path: '/tmp/demo.txt' },
+              name: 'apply_change',
+              arguments: { proposal: { requiresConfirmation: true } },
             },
-            args: { path: '/tmp/demo.txt' },
+            args: { proposal: { requiresConfirmation: true } },
           },
           agent.abortController.signal,
         );
@@ -1151,13 +1223,13 @@ describe('PiAgentCoreAdapter', () => {
           agent.emit({
             type: 'tool_execution_start',
             toolCallId: 'call-1',
-            toolName: 'filesystem.read',
-            args: { path: '/tmp/demo.txt' },
+            toolName: 'apply_change',
+            args: { proposal: { requiresConfirmation: true } },
           });
           agent.emit({
             type: 'tool_execution_end',
             toolCallId: 'call-1',
-            toolName: 'filesystem.read',
+            toolName: 'apply_change',
             result: { details: { content: 'ok' } },
             isError: false,
           });
@@ -1178,12 +1250,11 @@ describe('PiAgentCoreAdapter', () => {
         type: 'tool_call',
         call: {
           id: 'call-1',
-          tool: 'filesystem.read',
-          args: { path: '/tmp/demo.txt' },
+          tool: 'apply_change',
+          args: { proposal: { requiresConfirmation: true } },
           status: 'awaiting_permission',
           permissionRequest: {
-            description: '工具 filesystem.read 需要主人授权后才能执行。',
-            resourcePaths: ['/tmp/demo.txt'],
+            description: '工具 apply_change 需要主人授权后才能执行。',
           },
         },
       });
@@ -1199,8 +1270,8 @@ describe('PiAgentCoreAdapter', () => {
           type: 'tool_call',
           call: {
             id: 'call-1',
-            tool: 'filesystem.read',
-            args: { path: '/tmp/demo.txt' },
+            tool: 'apply_change',
+            args: { proposal: { requiresConfirmation: true } },
             status: 'in_progress',
           },
         },
@@ -1208,7 +1279,7 @@ describe('PiAgentCoreAdapter', () => {
           type: 'tool_call',
           call: {
             id: 'call-1',
-            tool: 'filesystem.read',
+            tool: 'apply_change',
             args: {},
             status: 'completed',
             result: { content: 'ok' },
@@ -1232,10 +1303,10 @@ describe('PiAgentCoreAdapter', () => {
           {
             toolCall: {
               id: 'call-2',
-              name: 'filesystem.write',
-              arguments: { path: '/tmp/demo.txt' },
+              name: 'create_resource',
+              arguments: { kind: 'skill' },
             },
-            args: { path: '/tmp/demo.txt' },
+            args: { kind: 'skill' },
           },
           agent.abortController.signal,
         );
@@ -1272,12 +1343,11 @@ describe('PiAgentCoreAdapter', () => {
           type: 'tool_call',
           call: {
             id: 'call-2',
-            tool: 'filesystem.write',
-            args: { path: '/tmp/demo.txt' },
+            tool: 'create_resource',
+            args: { kind: 'skill' },
             status: 'denied',
             permissionRequest: {
-              description: '工具 filesystem.write 需要主人授权后才能执行。',
-              resourcePaths: ['/tmp/demo.txt'],
+              description: '工具 create_resource 需要主人授权后才能执行。',
             },
           },
         },
@@ -1296,10 +1366,10 @@ describe('PiAgentCoreAdapter', () => {
           {
             toolCall: {
               id: 'call-timeout',
-              name: 'filesystem.write',
-              arguments: { path: '/tmp/demo.txt' },
+              name: 'apply_change',
+              arguments: { proposal: { requiresConfirmation: true } },
             },
-            args: { path: '/tmp/demo.txt' },
+            args: { proposal: { requiresConfirmation: true } },
           },
           agent.abortController.signal,
         );
@@ -1328,12 +1398,11 @@ describe('PiAgentCoreAdapter', () => {
           type: 'tool_call',
           call: {
             id: 'call-timeout',
-            tool: 'filesystem.write',
-            args: { path: '/tmp/demo.txt' },
+            tool: 'apply_change',
+            args: { proposal: { requiresConfirmation: true } },
             status: 'denied',
             permissionRequest: {
-              description: '工具 filesystem.write 需要主人授权后才能执行。',
-              resourcePaths: ['/tmp/demo.txt'],
+              description: '工具 apply_change 需要主人授权后才能执行。',
             },
           },
         },
@@ -1823,8 +1892,8 @@ describe('PiAgentCoreAdapter', () => {
     });
   });
 
-  describe('extractResourcePaths branch coverage', () => {
-    it('从数组类型的参数中提取资源路径', async () => {
+  describe('普通工具免审批回归', () => {
+    it('携带 path/paths/cwd 的普通工具也不会进入 awaiting_permission', async () => {
       mockDb.select.mockReturnValueOnce(
         createSelectChain([defaultModelConfig]),
       );
@@ -1851,34 +1920,43 @@ describe('PiAgentCoreAdapter', () => {
 
         if (!result?.block) {
           agent.emit({
+            type: 'tool_execution_start',
+            toolCallId: 'call-paths',
+            toolName: 'multi_file',
+            args: {
+              paths: ['/tmp/a.txt', '/tmp/b.txt', '', 42],
+              cwd: '/workspace',
+            },
+          });
+          agent.emit({
             type: 'agent_end',
             messages: [{ role: 'assistant', stopReason: 'stop' }],
           });
         }
       };
 
-      const iterator = adapter
-        .prompt(session.id, [{ type: 'text', text: 'go' }])
-        [Symbol.asyncIterator]();
-      const first = await iterator.next();
-
-      expect(first.value).toMatchObject({
-        type: 'tool_call',
-        call: {
-          id: 'call-paths',
-          status: 'awaiting_permission',
-          permissionRequest: {
-            resourcePaths: expect.arrayContaining([
-              '/tmp/a.txt',
-              '/tmp/b.txt',
-              '/workspace',
-            ]),
+      await expect(
+        collectEvents(
+          adapter.prompt(session.id, [{ type: 'text', text: 'go' }]),
+        ),
+      ).resolves.toEqual([
+        {
+          type: 'tool_call',
+          call: {
+            id: 'call-paths',
+            tool: 'multi_file',
+            args: {
+              paths: ['/tmp/a.txt', '/tmp/b.txt', '', 42],
+              cwd: '/workspace',
+            },
+            status: 'in_progress',
           },
         },
-      });
-
-      await adapter.resolveToolPermission(session.id, 'call-paths', 'approve');
-      await collectIteratorRest(iterator);
+        { type: 'done', stopReason: 'end_turn' },
+      ]);
+      expect(
+        mockToolPermissionSyncService.registerPendingResolution,
+      ).not.toHaveBeenCalled();
     });
   });
 
@@ -1897,10 +1975,10 @@ describe('PiAgentCoreAdapter', () => {
           {
             toolCall: {
               id: 'call-aborted',
-              name: 'fs.read',
-              arguments: { path: '/test' },
+              name: 'apply_change',
+              arguments: { proposal: { requiresConfirmation: true } },
             },
-            args: { path: '/test' },
+            args: { proposal: { requiresConfirmation: true } },
           },
           agent.abortController.signal,
         );
@@ -1946,80 +2024,29 @@ describe('PiAgentCoreAdapter', () => {
   });
 
   describe('getToolCallId/getToolName fallback', () => {
-    it('从 toolCallId 别名提取 id', async () => {
-      mockDb.select.mockReturnValueOnce(
-        createSelectChain([defaultModelConfig]),
-      );
-      const session = await adapter.createSession(createParams());
-
-      hoisted.MockPiAgent.script = async (agent) => {
-        await agent.options.beforeToolCall?.(
-          {
-            toolCall: {
-              toolCallId: 'alt-id-123',
-              toolName: 'alt-tool',
-            },
-            args: {},
+    it('从 toolCallId 别名提取 id', () => {
+      expect(
+        (
+          adapter as unknown as {
+            getToolCallId: (context: unknown) => string;
+          }
+        ).getToolCallId({
+          toolCall: {
+            toolCallId: 'alt-id-123',
+            toolName: 'alt-tool',
           },
-          agent.abortController.signal,
-        );
-
-        agent.emit({
-          type: 'agent_end',
-          messages: [{ role: 'assistant', stopReason: 'stop' }],
-        });
-      };
-
-      const iterator = adapter
-        .prompt(session.id, [{ type: 'text', text: 'go' }])
-        [Symbol.asyncIterator]();
-      const first = await iterator.next();
-
-      expect(first.value).toMatchObject({
-        type: 'tool_call',
-        call: {
-          id: 'alt-id-123',
-          tool: 'alt-tool',
-          status: 'awaiting_permission',
-        },
-      });
-
-      await adapter.resolveToolPermission(session.id, 'alt-id-123', 'approve');
-      await collectIteratorRest(iterator);
+        }),
+      ).toBe('alt-id-123');
     });
 
-    it('id/name 均缺失时使用 fallback', async () => {
-      mockDb.select.mockReturnValueOnce(
-        createSelectChain([defaultModelConfig]),
-      );
-      const session = await adapter.createSession(createParams());
-
-      hoisted.MockPiAgent.script = async (agent) => {
-        await agent.options.beforeToolCall?.(
-          {
-            toolCall: {},
-            args: {},
-          },
-          agent.abortController.signal,
-        );
-
-        agent.emit({
-          type: 'agent_end',
-          messages: [{ role: 'assistant', stopReason: 'stop' }],
-        });
+    it('id/name 均缺失时使用 fallback', () => {
+      const helper = adapter as unknown as {
+        getToolCallId: (context: unknown) => string;
+        getToolName: (context: unknown) => string;
       };
 
-      const iterator = adapter
-        .prompt(session.id, [{ type: 'text', text: 'go' }])
-        [Symbol.asyncIterator]();
-      const first = await iterator.next();
-
-      const call = (first.value as { call: { id: string; tool: string } }).call;
-      expect(call.id).toHaveLength(36); // UUID
-      expect(call.tool).toBe('unknown_tool');
-
-      await adapter.resolveToolPermission(session.id, call.id, 'approve');
-      await collectIteratorRest(iterator);
+      expect(helper.getToolCallId({ toolCall: {} })).toHaveLength(36);
+      expect(helper.getToolName({ toolCall: {} })).toBe('unknown_tool');
     });
   });
 });

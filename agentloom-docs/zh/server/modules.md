@@ -24,7 +24,7 @@ AgentLoom 服务端包含 **37 个 NestJS 模块**，按职责划分为 8 个领
 - BullMQ `execution-queue` + `agent-task-queue` 双队列
 - `execution_steps.checkpointData.session` 持久化会话状态
 - 工具权限端点：`/executions/:id/steps/:stepId/tool-calls/:toolCallId/resolve`
-- `awaiting_permission` 是 tool-level 状态（step 保持 `running`）
+- `awaiting_permission` 是 tool-level 状态（step 保持 `running`），当前仅用于自进化写工具（`apply_change` / `create_resource`）
 
 ## AI 服务
 

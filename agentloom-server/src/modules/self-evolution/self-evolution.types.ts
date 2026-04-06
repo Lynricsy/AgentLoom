@@ -14,8 +14,25 @@ export const SELF_EVOLUTION_TOOL_NAMES = [
   'create_resource',
 ] as const;
 
-export type SelfEvolutionToolName =
-  (typeof SELF_EVOLUTION_TOOL_NAMES)[number];
+export const SELF_EVOLUTION_MUTATION_TOOL_NAMES = [
+  'apply_change',
+  'create_resource',
+] as const;
+
+export type SelfEvolutionToolName = (typeof SELF_EVOLUTION_TOOL_NAMES)[number];
+
+export type SelfEvolutionMutationToolName =
+  (typeof SELF_EVOLUTION_MUTATION_TOOL_NAMES)[number];
+
+const SELF_EVOLUTION_MUTATION_TOOL_NAME_SET = new Set<string>(
+  SELF_EVOLUTION_MUTATION_TOOL_NAMES,
+);
+
+export function isSelfEvolutionMutationToolName(
+  toolName: string,
+): toolName is SelfEvolutionMutationToolName {
+  return SELF_EVOLUTION_MUTATION_TOOL_NAME_SET.has(toolName);
+}
 
 export const SELF_EVOLUTION_CATEGORY_VALUES = [
   'agent_self_canvas_edit',

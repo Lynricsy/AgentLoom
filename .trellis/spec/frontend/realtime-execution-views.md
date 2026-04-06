@@ -43,6 +43,8 @@
 - standalone Agent 的 failed realtime status 必须同时兼容 `errorMessage` 与 `error`。
   - 连接错误与执行错误必须分开展示，不能把 runtime failed 误报成“连接失败”。
   - 如果历史 assistant message `metadata.incomplete === true` 且存在 `metadata.errorMessage`，消息列表必须直接渲染该 turn 的中断原因。
+- 工具审批 UI 只允许出现在真正的自进化写操作上。
+  - 普通运行时工具调用不应再进入 `awaiting_permission`，因此对话页 / workflow execution viewer 也不应再为它们展示审批按钮或“需要授权”状态。
 
 ### 4. Validation & Error Matrix
 
@@ -50,6 +52,7 @@
 |------|----------|--------|
 | step 有 `segments` | viewer 按真实顺序渲染文本/思考/工具 | `workflowAgentViewer.test.ts` |
 | standalone agent 的 history 晚于下一轮 live 流返回 | store 保留当前 live tail，不得覆盖新一轮消息 | `agent-conversation.store.test.ts` |
+| 普通工具调用 | 不得展示 `awaiting_permission` 审批卡 | 对话页 / execution viewer 组件测试 |
 | step 无 `segments`，但有 `partialContent + toolCalls` | viewer 退化成基础 fallback，不抛错 | `workflowAgentViewer.test.ts` |
 | 用户快速切换文件或刷新 workspace | 旧请求不得覆盖新文件内容 | `WorkflowAgentViewer.test.tsx` |
 | 运行中 `fileChanges` 增加 | viewer 触发 workspace 刷新 | `WorkflowAgentViewer.test.tsx` |

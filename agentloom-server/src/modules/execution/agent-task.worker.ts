@@ -79,6 +79,7 @@ import {
   type ConversationMessageSegmentRecord,
 } from '../agent-conversation/message-segments';
 import { WorkspaceIntegrationService } from '../agent-execution/workspace-integration.service';
+import { isSelfEvolutionMutationToolName } from '../self-evolution/self-evolution.types';
 
 const MAX_TOOL_CALL_ROUNDS = 10;
 
@@ -1663,7 +1664,6 @@ export class AgentTaskWorker extends WorkerHost {
     let lastStopReason: string | undefined;
     let toolCalls = [...params.existingToolCalls];
     let segments = [...params.existingSegments];
-    const autonomyMode = params.effectiveAutonomyMode;
 
     for (let round = params.startRound; round < MAX_TOOL_CALL_ROUNDS; round++) {
       const roundToolCallIds = new Set<string>();
@@ -1768,7 +1768,23 @@ export class AgentTaskWorker extends WorkerHost {
         break;
       }
 
-      if (autonomyMode === 'LLM_SUGGEST') {
+      const pendingRoundToolCallIds = [...roundToolCallIds].filter(
+        (toolCallId) => {
+          const currentToolCall = toolCalls.find((tc) => tc.id === toolCallId);
+          return currentToolCall?.status === 'pending';
+        },
+      );
+      const permissionRequiredToolCallIds = pendingRoundToolCallIds.filter(
+        (toolCallId) => {
+          const currentToolCall = toolCalls.find((tc) => tc.id === toolCallId);
+          return (
+            currentToolCall !== undefined &&
+            this.shouldRequireToolPermission(currentToolCall)
+          );
+        },
+      );
+
+      if (permissionRequiredToolCallIds.length === 0) {
         for (const toolCallId of roundToolCallIds) {
           const currentToolCall = toolCalls.find((tc) => tc.id === toolCallId);
           if (!currentToolCall || currentToolCall.status !== 'pending') {
@@ -1813,7 +1829,7 @@ export class AgentTaskWorker extends WorkerHost {
       } else {
         const requestedAt = new Date().toISOString();
 
-        for (const toolCallId of roundToolCallIds) {
+        for (const toolCallId of permissionRequiredToolCallIds) {
           const currentToolCall = toolCalls.find((tc) => tc.id === toolCallId);
           if (!currentToolCall || currentToolCall.status !== 'pending') {
             continue;
@@ -1906,6 +1922,10 @@ export class AgentTaskWorker extends WorkerHost {
       default:
         return undefined;
     }
+  }
+
+  private shouldRequireToolPermission(toolCall: ToolCallEvent): boolean {
+    return isSelfEvolutionMutationToolName(toolCall.tool);
   }
 
   private async resolveEffectiveAutonomyMode(

@@ -62,6 +62,9 @@
   - `decision`
   - `round`
   - `chunkIndex`
+- tool-level `awaiting_permission` 现在只保留给**自进化写操作**（当前为 `apply_change` / `create_resource`）。
+  - 普通运行时工具调用必须直接自动继续，不能再因为 autonomy mode / workflow trigger 类型不同而进入人工审批。
+  - `execution.node.tool-permission-required` / `tool-permission-resolved` 事件也只应在上述自进化写工具场景出现。
 - workflow 执行 viewer 不是 conversation API 的镜像。运行态来源必须是：
   - `execution.state.snapshot`
   - `/execution` live events

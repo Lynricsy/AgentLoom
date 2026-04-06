@@ -2508,7 +2508,91 @@ describe('AgentTaskWorker', () => {
         );
       });
 
-      it('MANUAL_CONFIRM: tool_call → awaiting_permission，checkpoint 直写并提前结束', async () => {
+      it('MANUAL_CONFIRM 下普通工具不会进入 awaiting_permission，会自动继续执行', async () => {
+        const step = makeStep({
+          nodeData: {
+            agentId: AGENT_ID,
+            systemPrompt: '你是一个助手',
+            autonomyMode: 'MANUAL_CONFIRM',
+          },
+        });
+        const updateChain = createUpdateChain();
+        mockDb.select.mockReturnValue(createSelectChain(step));
+        mockDb.update.mockReturnValue(updateChain);
+        mockAgentRuntime.createSession.mockResolvedValue(makeSession());
+        mockAgentRuntime.prompt
+          .mockReturnValueOnce(
+            createEventStream([
+              { type: 'message_chunk', content: '部分输出' },
+              {
+                type: 'tool_call',
+                call: {
+                  id: 'tc-1',
+                  tool: 'search',
+                  args: { q: 'test' },
+                  status: 'pending',
+                },
+              },
+              { type: 'done', stopReason: 'tool_use' },
+            ]),
+          )
+          .mockReturnValueOnce(
+            createEventStream([{ type: 'done', stopReason: 'end_turn' }]),
+          );
+
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date(REQUESTED_AT));
+
+        await worker.process(createMockJob());
+
+        vi.useRealTimers();
+
+        expect(mockAgentRuntime.prompt).toHaveBeenCalledTimes(2);
+        expect(mockToolCallStateMachine.transition).toHaveBeenCalledWith(
+          'pending',
+          'in_progress',
+        );
+        expect(
+          mockEventBridge.emitToolPermissionRequired,
+        ).not.toHaveBeenCalled();
+        expect(mockEventBridge.emitToolCallStatus).toHaveBeenCalledWith(
+          TENANT_ID,
+          EXECUTION_ID,
+          expect.objectContaining({
+            toolCallId: 'tc-1',
+            status: 'in_progress',
+          }),
+        );
+        expect(updateChain.set).toHaveBeenCalledWith({
+          checkpointData: expect.objectContaining({
+            session: {},
+            sessionId: SESSION_ID,
+            partialContent: '部分输出',
+            round: 1,
+            chunkIndex: 1,
+            toolCalls: [
+              expect.objectContaining({
+                id: 'tc-1',
+                tool: 'search',
+                status: 'in_progress',
+              }),
+            ],
+          }),
+        });
+        expect(mockNodeScheduler.onNodeCompleted).toHaveBeenCalledWith(
+          EXECUTION_ID,
+          STEP_ID,
+          TENANT_ID,
+        );
+        expect(mockStateMachine.updateStepStatus).not.toHaveBeenCalledWith(
+          TENANT_ID,
+          STEP_ID,
+          'waiting_intervention',
+          expect.anything(),
+        );
+      });
+
+      it('MANUAL_CONFIRM 下 self-evolution 写工具仍会进入 awaiting_permission', async () => {
         const step = makeStep({
           nodeData: {
             agentId: AGENT_ID,
@@ -2522,13 +2606,12 @@ describe('AgentTaskWorker', () => {
         mockAgentRuntime.createSession.mockResolvedValue(makeSession());
         mockAgentRuntime.prompt.mockReturnValue(
           createEventStream([
-            { type: 'message_chunk', content: '部分输出' },
             {
               type: 'tool_call',
               call: {
-                id: 'tc-1',
-                tool: 'search',
-                args: { q: 'test' },
+                id: 'tc-se-1',
+                tool: 'apply_change',
+                args: { proposal: { requiresConfirmation: true } },
                 status: 'pending',
               },
             },
@@ -2553,47 +2636,30 @@ describe('AgentTaskWorker', () => {
           {
             stepId: STEP_ID,
             nodeId: 'node-1',
-            toolCallId: 'tc-1',
-            tool: 'search',
-            args: { q: 'test' },
+            toolCallId: 'tc-se-1',
+            tool: 'apply_change',
+            args: { proposal: { requiresConfirmation: true } },
             requestedAt: REQUESTED_AT,
           },
-        );
-        expect(mockEventBridge.emitToolCallStatus).toHaveBeenCalledWith(
-          TENANT_ID,
-          EXECUTION_ID,
-          expect.objectContaining({
-            toolCallId: 'tc-1',
-            status: 'awaiting_permission',
-          }),
         );
         expect(updateChain.set).toHaveBeenLastCalledWith({
           checkpointData: expect.objectContaining({
             session: {},
             sessionId: SESSION_ID,
-            partialContent: '部分输出',
             round: 1,
-            chunkIndex: 1,
             toolCalls: [
               expect.objectContaining({
-                id: 'tc-1',
-                tool: 'search',
+                id: 'tc-se-1',
+                tool: 'apply_change',
                 status: 'awaiting_permission',
               }),
             ],
           }),
         });
-        expect(mockNodeScheduler.onNodeCompleted).not.toHaveBeenCalled();
-        expect(mockStateMachine.updateStepStatus).toHaveBeenCalledTimes(1);
-        expect(mockStateMachine.updateStepStatus).not.toHaveBeenCalledWith(
-          TENANT_ID,
-          STEP_ID,
-          'waiting_intervention',
-          expect.anything(),
-        );
+        expect(mockAgentRuntime.prompt).toHaveBeenCalledTimes(1);
       });
 
-      it('legacy FULL_AUTO 在低于自动档的组织上限下会被 clamp 为 awaiting_permission', async () => {
+      it('legacy FULL_AUTO 在低于自动档的组织上限下会被 clamp，但普通工具仍自动继续', async () => {
         const step = makeStep({
           nodeData: {
             agentId: AGENT_ID,
@@ -2608,20 +2674,24 @@ describe('AgentTaskWorker', () => {
         mockOrganizationAutonomyPolicyService.resolveAutonomyCapForTenant.mockResolvedValue(
           'RULE_BASED',
         );
-        mockAgentRuntime.prompt.mockReturnValue(
-          createEventStream([
-            {
-              type: 'tool_call',
-              call: {
-                id: 'tc-legacy-1',
-                tool: 'search',
-                args: { q: 'legacy' },
-                status: 'pending',
+        mockAgentRuntime.prompt
+          .mockReturnValueOnce(
+            createEventStream([
+              {
+                type: 'tool_call',
+                call: {
+                  id: 'tc-legacy-1',
+                  tool: 'search',
+                  args: { q: 'legacy' },
+                  status: 'pending',
+                },
               },
-            },
-            { type: 'done', stopReason: 'tool_use' },
-          ]),
-        );
+              { type: 'done', stopReason: 'tool_use' },
+            ]),
+          )
+          .mockReturnValueOnce(
+            createEventStream([{ type: 'done', stopReason: 'end_turn' }]),
+          );
 
         vi.useFakeTimers();
         vi.setSystemTime(new Date(REQUESTED_AT));
@@ -2638,28 +2708,19 @@ describe('AgentTaskWorker', () => {
             autonomyMode: 'RULE_BASED',
           }),
         );
-        expect(mockAgentRuntime.prompt).toHaveBeenCalledTimes(1);
+        expect(mockAgentRuntime.prompt).toHaveBeenCalledTimes(2);
         expect(mockToolCallStateMachine.transition).toHaveBeenCalledWith(
-          'pending',
-          'awaiting_permission',
-        );
-        expect(mockToolCallStateMachine.transition).not.toHaveBeenCalledWith(
           'pending',
           'in_progress',
         );
-        expect(mockEventBridge.emitToolPermissionRequired).toHaveBeenCalledWith(
-          TENANT_ID,
-          EXECUTION_ID,
-          {
-            stepId: STEP_ID,
-            nodeId: 'node-1',
-            toolCallId: 'tc-legacy-1',
-            tool: 'search',
-            args: { q: 'legacy' },
-            requestedAt: REQUESTED_AT,
-          },
+        expect(mockToolCallStateMachine.transition).not.toHaveBeenCalledWith(
+          'pending',
+          'awaiting_permission',
         );
-        expect(updateChain.set).toHaveBeenLastCalledWith({
+        expect(
+          mockEventBridge.emitToolPermissionRequired,
+        ).not.toHaveBeenCalled();
+        expect(updateChain.set).toHaveBeenCalledWith({
           checkpointData: expect.objectContaining({
             session: {},
             sessionId: SESSION_ID,
@@ -2667,12 +2728,16 @@ describe('AgentTaskWorker', () => {
             toolCalls: [
               expect.objectContaining({
                 id: 'tc-legacy-1',
-                status: 'awaiting_permission',
+                status: 'in_progress',
               }),
             ],
           }),
         });
-        expect(mockNodeScheduler.onNodeCompleted).not.toHaveBeenCalled();
+        expect(mockNodeScheduler.onNodeCompleted).toHaveBeenCalledWith(
+          EXECUTION_ID,
+          STEP_ID,
+          TENANT_ID,
+        );
       });
 
       it('单轮多个 tool_call: 会逐个 transition 并广播状态', async () => {
