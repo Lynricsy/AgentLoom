@@ -404,14 +404,22 @@ function ResizableDivider({
   );
 }
 
-function MessageInput({
+export function ConversationComposer({
   onSend,
-  isExecuting,
+  isBusy,
   onCancel,
+  idlePlaceholder,
+  busyPlaceholder,
+  busyActionLabel,
 }: {
-  onSend: (message: string | OutgoingConversationMessage) => void;
-  isExecuting: boolean;
-  onCancel: () => void;
+  onSend: (
+    message: string | OutgoingConversationMessage,
+  ) => void | Promise<void>;
+  isBusy: boolean;
+  onCancel?: () => void;
+  idlePlaceholder?: string;
+  busyPlaceholder?: string;
+  busyActionLabel?: string;
 }) {
   const [draft, setDraft] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -419,13 +427,17 @@ function MessageInput({
   const imageInputRef = useRef<HTMLInputElement>(null);
   const { notify } = useToast();
 
-  const handleSend = useCallback(() => {
+  const handleSend = useCallback(async () => {
     const trimmed = draft.trim();
     if (!trimmed) return;
-    onSend(trimmed);
-    setDraft("");
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto";
+    try {
+      await Promise.resolve(onSend(trimmed));
+      setDraft("");
+      if (textareaRef.current) {
+        textareaRef.current.style.height = "auto";
+      }
+    } catch {
+      // 父组件负责展示错误，composer 只保留输入内容。
     }
   }, [draft, onSend]);
 
@@ -433,7 +445,7 @@ function MessageInput({
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
       if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) {
         e.preventDefault();
-        handleSend();
+        void handleSend();
       }
     },
     [handleSend],
@@ -466,8 +478,8 @@ function MessageInput({
             ? await buildImageConversationMessage(file, trimmed)
             : await buildFileConversationMessage(file, trimmed);
 
-        onSend(outgoing);
-        if (trimmed) {
+        await Promise.resolve(onSend(outgoing));
+        if (trimmed.length > 0) {
           clearDraftInput();
         }
       } catch (error) {
@@ -501,16 +513,16 @@ function MessageInput({
   );
 
   const handleFileClick = useCallback(() => {
-    if (!isExecuting) {
+    if (!isBusy) {
       fileInputRef.current?.click();
     }
-  }, [isExecuting]);
+  }, [isBusy]);
 
   const handleImageClick = useCallback(() => {
-    if (!isExecuting) {
+    if (!isBusy) {
       imageInputRef.current?.click();
     }
-  }, [isExecuting]);
+  }, [isBusy]);
 
   return (
     <div className="border-t border-border bg-surface px-4 py-3">
@@ -534,7 +546,7 @@ function MessageInput({
           <button
             type="button"
             onClick={handleFileClick}
-            disabled={isExecuting}
+            disabled={isBusy}
             className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-surface-elevated transition-colors disabled:cursor-not-allowed disabled:opacity-50"
             title="上传文件"
           >
@@ -543,7 +555,7 @@ function MessageInput({
           <button
             type="button"
             onClick={handleImageClick}
-            disabled={isExecuting}
+            disabled={isBusy}
             className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-surface-elevated transition-colors disabled:cursor-not-allowed disabled:opacity-50"
             title="上传图片"
           >
@@ -559,9 +571,9 @@ function MessageInput({
             onKeyDown={handleKeyDown}
             onInput={handleInput}
             placeholder={
-              isExecuting
-                ? "Agent 正在思考中..."
-                : "输入消息，Enter 发送，Shift+Enter 换行"
+              isBusy
+                ? (busyPlaceholder ?? "Agent 正在思考中...")
+                : (idlePlaceholder ?? "输入消息，Enter 发送，Shift+Enter 换行")
             }
             className={cn(
               "w-full resize-none rounded-lg border border-border bg-background px-3 py-2.5",
@@ -570,11 +582,11 @@ function MessageInput({
               "min-h-[40px] max-h-[160px]",
             )}
             rows={1}
-            disabled={isExecuting}
+            disabled={isBusy}
           />
         </div>
 
-        {isExecuting ? (
+        {isBusy && onCancel ? (
           <Button
             variant="outline"
             size="sm"
@@ -584,10 +596,15 @@ function MessageInput({
             <Square className="h-3.5 w-3.5 mr-1.5" />
             停止
           </Button>
+        ) : isBusy ? (
+          <Button size="sm" disabled className="shrink-0">
+            <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+            {busyActionLabel ?? "发送中"}
+          </Button>
         ) : (
           <Button
             size="sm"
-            onClick={handleSend}
+            onClick={() => void handleSend()}
             disabled={!draft.trim()}
             className="shrink-0"
           >
@@ -905,9 +922,9 @@ export function AgentConversationPage({
               />
             </div>
             {!isSubAgentView && (
-              <MessageInput
+              <ConversationComposer
                 onSend={actions.sendMessage}
-                isExecuting={isExecuting}
+                isBusy={isExecuting}
                 onCancel={actions.cancelExecution}
               />
             )}

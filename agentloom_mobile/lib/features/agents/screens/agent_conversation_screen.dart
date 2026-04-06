@@ -1,6 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -9,160 +7,13 @@ import 'package:go_router/go_router.dart';
 
 import '../models/conversation_message_dto.dart';
 import '../providers/agent_conversation_provider.dart';
+import '../conversation_attachment_payload.dart';
 import '../widgets/conversation_context_panel.dart';
+import '../widgets/conversation_input_bar.dart';
 import '../widgets/message_bubble.dart';
 import '../widgets/preparation_card.dart';
 import '../../../shared/utils/scrolling.dart';
 import '../../../routes/route_names.dart';
-
-const _maxConversationAttachmentBytes = 1500000;
-const _maxConversationTextAttachmentBytes = 200000;
-const _textAttachmentExtensions = <String>{
-  'txt',
-  'md',
-  'markdown',
-  'json',
-  'jsonl',
-  'yaml',
-  'yml',
-  'xml',
-  'csv',
-  'ts',
-  'tsx',
-  'js',
-  'jsx',
-  'mjs',
-  'cjs',
-  'py',
-  'rs',
-  'go',
-  'java',
-  'kt',
-  'swift',
-  'sql',
-  'html',
-  'css',
-  'scss',
-  'sh',
-  'bash',
-  'zsh',
-  'env',
-  'toml',
-  'ini',
-  'log',
-};
-
-String _describeAttachmentContent({required bool image, required String name}) {
-  return '已上传${image ? '图片' : '文件'} $name';
-}
-
-String _inferMimeType(PlatformFile file, {required bool image}) {
-  final extension = file.extension?.toLowerCase();
-  if (image) {
-    switch (extension) {
-      case 'jpg':
-      case 'jpeg':
-        return 'image/jpeg';
-      case 'gif':
-        return 'image/gif';
-      case 'webp':
-        return 'image/webp';
-      default:
-        return 'image/png';
-    }
-  }
-
-  switch (extension) {
-    case 'md':
-    case 'markdown':
-      return 'text/markdown';
-    case 'json':
-    case 'jsonl':
-      return 'application/json';
-    case 'xml':
-      return 'application/xml';
-    case 'csv':
-      return 'text/csv';
-    case 'html':
-      return 'text/html';
-    case 'css':
-      return 'text/css';
-    case 'txt':
-    case 'log':
-      return 'text/plain';
-    default:
-      return 'application/octet-stream';
-  }
-}
-
-bool _isLikelyTextAttachment(PlatformFile file) {
-  final extension = file.extension?.toLowerCase();
-  return extension != null && _textAttachmentExtensions.contains(extension);
-}
-
-({String content, String contentType, Map<String, dynamic> metadata})
-_buildAttachmentMessage({
-  required PlatformFile file,
-  required Uint8List bytes,
-  required bool image,
-  String? content,
-}) {
-  if (bytes.length > _maxConversationAttachmentBytes) {
-    throw Exception('文件大小不能超过 1.5 MB');
-  }
-
-  final mimeType = _inferMimeType(file, image: image);
-  final normalizedContent = (content != null && content.trim().isNotEmpty)
-      ? content.trim()
-      : _describeAttachmentContent(image: image, name: file.name);
-
-  if (image) {
-    return (
-      content: normalizedContent,
-      contentType: 'image',
-      metadata: <String, dynamic>{
-        'attachment': <String, dynamic>{
-          'kind': 'image',
-          'fileName': file.name,
-          'mimeType': mimeType,
-          'sizeBytes': bytes.length,
-          'dataBase64': base64Encode(bytes),
-        },
-      },
-    );
-  }
-
-  if (_isLikelyTextAttachment(file) &&
-      bytes.length <= _maxConversationTextAttachmentBytes) {
-    return (
-      content: normalizedContent,
-      contentType: 'file',
-      metadata: <String, dynamic>{
-        'attachment': <String, dynamic>{
-          'kind': 'file',
-          'fileName': file.name,
-          'mimeType': mimeType,
-          'sizeBytes': bytes.length,
-          'textContent': utf8.decode(bytes, allowMalformed: true),
-        },
-      },
-    );
-  }
-
-  return (
-    content: normalizedContent,
-    contentType: 'file',
-    metadata: <String, dynamic>{
-      'attachment': <String, dynamic>{
-        'kind': 'file',
-        'fileName': file.name,
-        'mimeType': mimeType,
-        'sizeBytes': bytes.length,
-        'dataBase64': base64Encode(bytes),
-      },
-    },
-  );
-}
 
 class AgentConversationScreen extends ConsumerStatefulWidget {
   const AgentConversationScreen({
@@ -420,7 +271,7 @@ class _AgentConversationScreenState
 
     try {
       final draft = _textController.text.trim();
-      final payload = _buildAttachmentMessage(
+      final payload = buildConversationAttachmentMessage(
         file: file,
         bytes: bytes,
         image: image,
@@ -673,7 +524,7 @@ class _ConversationPane extends StatelessWidget {
         ),
         if (onOpenContext != null && _shouldShowDock(state))
           _ContextDock(state: state, onTap: onOpenContext!),
-        _InputBar(
+        ConversationInputBar(
           controller: textController,
           onSend: onSend,
           onPickFile: onPickFile,
@@ -780,94 +631,6 @@ class _ContextDock extends StatelessWidget {
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _InputBar extends StatelessWidget {
-  const _InputBar({
-    required this.controller,
-    required this.onSend,
-    required this.onPickFile,
-    required this.onPickImage,
-    required this.onCancel,
-    required this.isBusy,
-  });
-
-  final TextEditingController controller;
-  final VoidCallback onSend;
-  final VoidCallback onPickFile;
-  final VoidCallback onPickImage;
-  final VoidCallback onCancel;
-  final bool isBusy;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return SafeArea(
-      top: false,
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(12, 8, 8, 12),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surface,
-          border: Border(
-            top: BorderSide(color: theme.colorScheme.outlineVariant),
-          ),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            IconButton(
-              tooltip: '上传文件',
-              onPressed: isBusy ? null : onPickFile,
-              icon: const Icon(Icons.attach_file),
-            ),
-            IconButton(
-              tooltip: '上传图片',
-              onPressed: isBusy ? null : onPickImage,
-              icon: const Icon(Icons.image_outlined),
-            ),
-            Expanded(
-              child: TextField(
-                controller: controller,
-                minLines: 1,
-                maxLines: 6,
-                enabled: !isBusy,
-                textInputAction: TextInputAction.send,
-                onSubmitted: (_) => onSend(),
-                decoration: InputDecoration(
-                  hintText: isBusy ? 'Agent 正在处理中…' : '输入消息…',
-                  filled: true,
-                  fillColor: theme.colorScheme.surfaceContainerHighest,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(22),
-                    borderSide: BorderSide.none,
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            AnimatedSwitcher(
-              duration: const Duration(milliseconds: 180),
-              child: isBusy
-                  ? IconButton.filledTonal(
-                      key: const ValueKey('cancel-button'),
-                      onPressed: onCancel,
-                      icon: const Icon(Icons.stop),
-                    )
-                  : IconButton.filled(
-                      key: const ValueKey('send-button'),
-                      onPressed: onSend,
-                      icon: const Icon(Icons.send),
-                    ),
-            ),
-          ],
         ),
       ),
     );

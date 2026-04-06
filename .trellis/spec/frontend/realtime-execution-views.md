@@ -204,6 +204,101 @@ if (state.workspaceTreeOnly) {
 
 ---
 
+## 场景：standalone Agent 新对话页必须保持草稿态，首条消息发送后才创建真实 conversation
+
+### 1. Scope / Trigger
+- 触发条件：修改以下任一文件时，必须回看本节
+  - `agentloom-studio/src/app/routes/agents/agents.$agentId.conversations.new.tsx`
+  - `agentloom-studio/src/features/agent-conversation/components/NewConversationDraftPage.tsx`
+  - `agentloom-studio/src/features/agent-conversation/components/AgentConversationPage.tsx`
+  - `agentloom-studio/src/features/agent-conversation/components/ConversationSidebar.tsx`
+  - `agentloom-studio/src/features/agent-conversation/api/conversationApi.ts`
+  - `agentloom-studio/src/features/agent-conversation/api/conversationMutations.ts`
+  - `agentloom_mobile/lib/features/agents/screens/agent_new_conversation_screen.dart`
+  - `agentloom_mobile/lib/features/agents/screens/agent_detail_screen.dart`
+  - `agentloom_mobile/lib/features/agents/screens/agent_list_screen.dart`
+  - `agentloom_mobile/lib/features/agents/api/agent_api.dart`
+  - `agentloom_mobile/lib/routes/app_router.dart`
+- 风险点：如果 `/conversations/new` 在挂载或 `initState()` 里直接 `createConversation()`，用户只要打开页面就会制造空历史；如果首发消息不走统一 `startConversation()`，Web / Mobile 会再次出现创建语义漂移。
+
+### 2. Signatures
+- Studio:
+  - `/agents/$agentId/conversations/new`
+  - `NewConversationDraftPage`
+  - `ConversationComposer`
+  - `useStartConversation(agentId)`
+  - `startConversation(agentId, payload)`
+- Flutter:
+  - `/agents/:agentId/conversations/new`
+  - `RouteNames.agentNewConversation`
+  - `AgentNewConversationScreen`
+  - `AgentApi.startConversation(agentId, { title?, content, contentType, metadata })`
+
+### 3. Contracts
+- Studio 与 Flutter 的 `/conversations/new` 都必须是草稿态页面。
+  - 进入页面时不得调用 `createConversation()`。
+  - 直接离开页面时，历史列表不得新增空会话。
+- Agent 列表页 / 详情页中的 `New Chat` 必须统一导航到草稿态路由，而不是先创建 conversation 再跳转。
+- 首条消息发送必须调用 `POST /agent-definitions/:agentId/conversations/start`。
+  - 请求成功后，再导航到真实 `/conversations/$conversationId` 路由。
+  - 请求 pending 期间必须禁止重复提交，避免双重创建。
+- Studio 的 `ConversationSidebar` 在草稿态必须允许 `currentConversationId = null`。
+  - 草稿页不应强行高亮或伪造当前 conversation。
+- 草稿页输入区必须复用正式会话的发送语义，而不是再做一套独立协议。
+  - 同一首 user turn 里的 `contentType + metadata` 必须原样透传到 `startConversation()`。
+
+### 4. Validation & Error Matrix
+
+| 条件 | 预期行为 | 断言点 |
+|------|----------|--------|
+| Studio 挂载 `/agents/$agentId/conversations/new` | 不调用 `createConversation()` / `startConversation()` | `NewConversationDraftPage.test.tsx` |
+| Studio 首条消息发送 | 调用 `startConversation()` 并跳转真实会话页 | `NewConversationDraftPage.test.tsx` |
+| Studio 草稿态侧边栏 | 允许 `currentConversationId = null`，不崩溃 | `ConversationSidebar` 组件测试 / 手动 QA |
+| Mobile 点击 Agent 详情或列表的 `New Chat` | 导航到 `RouteNames.agentNewConversation`，不直接创建 conversation | `agent_detail_screen_test.dart` |
+| Mobile 进入 `/agents/:agentId/conversations/new` | 不调用 `createConversation()` | `agent_new_conversation_screen_test.dart` |
+| Mobile 首条消息发送 | 调用 `AgentApi.startConversation()` 并跳转正式会话页 | `agent_new_conversation_screen_test.dart` |
+
+### 5. Good / Base / Bad Cases
+- Good：用户点进新对话页又返回，历史列表没有新增记录；真正发送第一条消息后，才出现会话并自动进入正式对话页。
+- Base：草稿页输入首发消息时沿用正式对话的输入与附件语义，但会话 id 直到后端返回成功后才存在。
+- Bad：`/conversations/new` 页面 mount 就调用 `createConversation()`，或者 `New Chat` 先插入 conversation 再导航，导致“看看就留下空历史”。
+
+### 6. Tests Required
+- `agentloom-studio/src/features/agent-conversation/components/NewConversationDraftPage.test.tsx`
+  - 断言挂载时不自动创建 conversation
+  - 断言首条消息发送时调用 `startConversation()` 并跳转
+- `agentloom_mobile/test/features/agents/screens/agent_new_conversation_screen_test.dart`
+  - 断言进入草稿页不自动创建 conversation
+  - 断言首条消息发送时调用 `AgentApi.startConversation()`
+- `agentloom_mobile/test/features/agents/screens/agent_detail_screen_test.dart`
+  - 断言 `New Chat` 导航到草稿态路由而不是直接创建
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```tsx
+useEffect(() => {
+  createConversation(agentId).then((conversation) => {
+    navigate({ to: '/agents/$agentId/conversations/$conversationId', params: { agentId, conversationId: conversation.id } })
+  })
+}, [agentId, navigate])
+```
+
+#### Correct
+
+```tsx
+async function handleSendFirstMessage(message: OutgoingConversationMessage) {
+  const conversation = await startConversation.mutateAsync(message)
+  navigate({
+    to: '/agents/$agentId/conversations/$conversationId',
+    params: { agentId, conversationId: conversation.id },
+  })
+}
+```
+
+---
+
 ## 场景：standalone Agent 对话中的图片/文件上传必须形成可回拉的用户消息
 
 ### 1. Scope / Trigger

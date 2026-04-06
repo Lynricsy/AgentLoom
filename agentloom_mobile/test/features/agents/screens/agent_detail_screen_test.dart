@@ -1,8 +1,10 @@
 import 'package:agentloom_mobile/features/agents/api/agent_api.dart';
 import 'package:agentloom_mobile/features/agents/screens/agent_detail_screen.dart';
+import 'package:agentloom_mobile/routes/route_names.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:mocktail/mocktail.dart';
 
 import '../../../helpers/test_helpers.dart';
@@ -18,6 +20,30 @@ void main() {
     return ProviderScope(
       overrides: [agentApiProvider.overrideWithValue(mockApi)],
       child: const MaterialApp(home: AgentDetailScreen(agentId: 'agent-1')),
+    );
+  }
+
+  Widget createRouterWidget() {
+    final router = GoRouter(
+      initialLocation: '/agents/agent-1',
+      routes: [
+        GoRoute(
+          path: '/agents/:agentId',
+          builder: (context, state) =>
+              AgentDetailScreen(agentId: state.pathParameters['agentId']!),
+        ),
+        GoRoute(
+          path: '/agents/:agentId/conversations/new',
+          name: RouteNames.agentNewConversation,
+          builder: (context, state) =>
+              const Scaffold(body: Center(child: Text('draft-route'))),
+        ),
+      ],
+    );
+
+    return ProviderScope(
+      overrides: [agentApiProvider.overrideWithValue(mockApi)],
+      child: MaterialApp.router(routerConfig: router),
     );
   }
 
@@ -92,6 +118,34 @@ void main() {
       expect(find.textContaining('可使用 Skill、知识库、记忆、HTTP MCP'), findsOneWidget);
       expect(find.text('Read Off'), findsOneWidget);
       expect(find.text('Terminal Off'), findsOneWidget);
+    });
+
+    testWidgets('点击 New Chat 应进入草稿对话路由', (tester) async {
+      when(() => mockApi.getAgent('agent-1')).thenAnswer(
+        (_) async => createTestAgent(
+          id: 'agent-1',
+          name: 'Agent Alpha',
+          status: 'published',
+        ),
+      );
+      when(
+        () => mockApi.listConversations('agent-1'),
+      ).thenAnswer((_) async => []);
+
+      await tester.pumpWidget(createRouterWidget());
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('New Chat'));
+      await tester.pumpAndSettle();
+
+      verifyNever(
+        () => mockApi.createConversation(
+          any(),
+          title: any(named: 'title'),
+          metadata: any(named: 'metadata'),
+        ),
+      );
+      expect(find.text('draft-route'), findsOneWidget);
     });
   });
 }

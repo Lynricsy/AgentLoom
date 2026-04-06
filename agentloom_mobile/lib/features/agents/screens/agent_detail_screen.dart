@@ -293,20 +293,10 @@ class AgentDetailScreen extends ConsumerWidget {
   }
 
   Future<void> _startConversation(BuildContext context, WidgetRef ref) async {
-    try {
-      final api = ref.read(agentApiProvider);
-      final conversation = await api.createConversation(agentId);
-      if (!context.mounted) return;
-      context.pushNamed(
-        RouteNames.agentConversation,
-        pathParameters: {'agentId': agentId, 'conversationId': conversation.id},
-      );
-    } catch (e) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to create conversation: $e')),
-      );
-    }
+    context.pushNamed(
+      RouteNames.agentNewConversation,
+      pathParameters: {'agentId': agentId},
+    );
   }
 
   String _formatDate(String isoDate) {

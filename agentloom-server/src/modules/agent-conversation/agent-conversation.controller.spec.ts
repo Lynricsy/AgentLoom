@@ -14,6 +14,7 @@ import { SelfEvolutionService } from '../self-evolution/self-evolution.service';
 
 const mockService = {
   create: vi.fn(),
+  startConversation: vi.fn(),
   listByAgent: vi.fn(),
   getDetail: vi.fn(),
   getPermissionResolutionTarget: vi.fn(),
@@ -127,6 +128,29 @@ describe('AgentConversationController', () => {
       await expect(
         controller.create(AGENT_ID, TENANT_ID, USER_ID, {} as any),
       ).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('startConversation', () => {
+    it('应调用 service.startConversation 并返回结果', async () => {
+      const expected = { data: { id: CONVERSATION_ID } };
+      mockService.startConversation.mockResolvedValueOnce(expected);
+
+      const dto = { content: '你好，开始执行' } as any;
+      const result = await controller.startConversation(
+        AGENT_ID,
+        TENANT_ID,
+        USER_ID,
+        dto,
+      );
+
+      expect(mockService.startConversation).toHaveBeenCalledWith(
+        AGENT_ID,
+        TENANT_ID,
+        USER_ID,
+        dto,
+      );
+      expect(result).toEqual(expected);
     });
   });
 

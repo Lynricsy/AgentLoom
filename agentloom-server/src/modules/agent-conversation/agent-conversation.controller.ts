@@ -35,6 +35,7 @@ import { CreateConversationDto } from './dto/create-conversation.dto';
 import { ListConversationsQueryDto } from './dto/list-conversations-query.dto';
 import { ResolveConversationToolPermissionDto } from './dto/resolve-tool-permission.dto';
 import { SendMessageDto } from './dto/send-message.dto';
+import { StartConversationDto } from './dto/start-conversation.dto';
 import { ToolPermissionCallbackDto } from './dto/tool-permission-callback.dto';
 import { UpdateConversationDto } from './dto/update-conversation.dto';
 
@@ -65,6 +66,27 @@ export class AgentConversationController {
     @Body() dto: CreateConversationDto,
   ) {
     return this.conversationService.create(agentId, tenantId, userId, dto);
+  }
+
+  @Post('agent-definitions/:agentId/conversations/start')
+  @Roles('operator', 'creator', 'admin', 'owner')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({
+    summary: 'Create a new conversation and send the first message atomically',
+  })
+  @ApiResponse({ status: 201, description: 'Conversation started' })
+  async startConversation(
+    @Param('agentId', ParseUUIDPipe) agentId: string,
+    @CurrentTenant() tenantId: string,
+    @CurrentUser('sub') userId: string,
+    @Body() dto: StartConversationDto,
+  ) {
+    return this.conversationService.startConversation(
+      agentId,
+      tenantId,
+      userId,
+      dto,
+    );
   }
 
   @Get('agent-definitions/:agentId/conversations')

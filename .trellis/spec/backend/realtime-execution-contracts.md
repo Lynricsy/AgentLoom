@@ -246,6 +246,106 @@ await db.insert(agentMessages).values({
 
 ---
 
+## 场景：standalone Agent 新对话必须在首条 user message 时才创建真实 conversation
+
+### 1. Scope / Trigger
+
+- 触发条件：修改以下任一文件时，必须回看本节
+  - `src/modules/agent-conversation/agent-conversation.controller.ts`
+  - `src/modules/agent-conversation/agent-conversation.service.ts`
+  - `src/modules/agent-conversation/dto/start-conversation.dto.ts`
+  - `src/database/migrations/0067_purge_empty_agent_conversations.sql`
+  - `src/database/migrations/meta/_journal.json`
+- 风险点：如果 Web / Mobile 在 `/conversations/new` 挂载时直接 `POST /conversations`，或者 `startConversation()` 先插入 conversation 再非事务化写入首条消息，用户只要“打开一下”或首发失败，就会再次积累零消息空历史。
+
+### 2. Signatures
+
+- `POST /agent-definitions/:agentId/conversations`
+- `POST /agent-definitions/:agentId/conversations/start`
+- `StartConversationDto { title?: string; content: string; contentType: 'text' | 'image' | 'file'; metadata?: Record<string, unknown> }`
+- `AgentConversationService.startConversation(agentDefinitionId, tenantId, userId, dto)`
+- `0067_purge_empty_agent_conversations.sql`
+
+### 3. Contracts
+
+- `POST /agent-definitions/:agentId/conversations/start` 是 standalone Agent 新对话页的 canonical 首发接口。
+  - Web / Mobile 的 `/conversations/new` 草稿页在首条消息发送前不得调用 `POST /agent-definitions/:agentId/conversations`。
+- `AgentConversationService.startConversation()` 必须在单次数据库事务内完成以下步骤：
+  - 校验 `agentDefinitionId` 存在
+  - 插入 `agent_conversations`
+  - 插入首条 `agent_messages`（固定 `role='user'`）
+  - 回写 `agent_conversations.updated_at`
+- `agent-conversation.message-sent` 事件只能在事务成功提交后发出。
+  - 首条消息插入失败时，整个 `startConversation()` 请求必须失败，不能留下零消息 conversation。
+- `POST /agent-definitions/:agentId/conversations` 仍可保留为显式 metadata-only 创建接口，但不能再被 `/conversations/new` 默认使用。
+- `0067_purge_empty_agent_conversations.sql` 只负责一次性删除历史上 `agent_messages` 数量为 `0` 的 `agent_conversations`。
+  - 迁移只执行一次，不增加运行时自动清理、定时任务或离开页面自动删除逻辑。
+  - 任何已有消息的 conversation 都不得被这次迁移删除。
+
+### 4. Validation & Error Matrix
+
+| 条件 | 预期行为 | 断言点 |
+|------|----------|--------|
+| `POST /conversations/start` 的 `content` 为空 | 400，DTO 校验失败 | controller / e2e |
+| Agent 不存在 | 整个 start 请求失败，不插入 conversation | `agent-conversation.service.spec.ts` |
+| 首条消息插入失败 | 整个 start 请求失败，且不发出 `agent-conversation.message-sent` | `agent-conversation.service.spec.ts` |
+| 首条消息成功 | 返回新 conversation，历史中立即可见首条 user message | `agent-integration.e2e-spec.ts` |
+| 历史 conversation 没有任何 `agent_messages` | 迁移删除该 conversation | migration 手测 / SQL 验证 |
+| 历史 conversation 已有至少 1 条消息 | 迁移保留该 conversation | migration 手测 / SQL 验证 |
+
+### 5. Good / Base / Bad Cases
+
+- Good：用户进入 `/conversations/new` 后直接离开，历史列表没有新增记录；发送第一条消息后才出现真实 conversation，且历史里立刻带有首条 user turn。
+- Base：服务端仍允许显式调用 `POST /agent-definitions/:agentId/conversations` 创建 metadata-only conversation，但该能力不再绑定到默认新建对话 UI。
+- Bad：`startConversation()` 先插入 conversation 再调用 `sendMessage()`，首发失败后数据库里留下零消息空会话。
+
+### 6. Tests Required
+
+- `src/modules/agent-conversation/agent-conversation.controller.spec.ts`
+  - 断言 `/conversations/start` 会调用 `service.startConversation()`
+- `src/modules/agent-conversation/agent-conversation.service.spec.ts`
+  - 断言 `startConversation()` 通过数据库事务包裹创建与首发消息写入
+  - 断言首条消息失败时不会发出 `agent-conversation.message-sent`
+- `test/agent-integration.e2e-spec.ts`
+  - 断言 `POST /agent-definitions/:agentId/conversations/start` 创建后，`GET /agent-conversations/:id` 能回拉到首条 user message
+- 迁移验证
+  - 执行 `pnpm db:migrate`
+  - 用 SQL 断言不存在 `NOT EXISTS (SELECT 1 FROM agent_messages WHERE agent_messages.conversation_id = agent_conversations.id)` 的历史记录
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```ts
+const conversation = await this.create(agentDefinitionId, tenantId, userId, dto)
+await this.sendMessage(conversation.data.id, tenantId, {
+  content: dto.content,
+})
+return conversation
+```
+
+#### Correct
+
+```ts
+const { conversation, message } = await this.tenantDb.transaction(async (tx) => {
+  await this.ensureAgentExists(tx, agentDefinitionId)
+  const conversation = await this.insertConversationRecord(tx, ...)
+  const message = await this.insertMessageRecord(tx, conversation.id, tenantId, {
+    content: dto.content,
+    role: 'user',
+  })
+  return { conversation, message }
+})
+
+this.eventEmitter.emit('agent-conversation.message-sent', {
+  conversationId: conversation.id,
+  tenantId,
+  messageId: message.id,
+})
+```
+
+---
+
 ## 场景：standalone Agent 已完成会话的工作区目录树快照 fallback
 
 ### 1. Scope / Trigger

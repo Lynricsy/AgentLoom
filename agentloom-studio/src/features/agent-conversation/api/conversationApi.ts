@@ -1,12 +1,12 @@
-import { apiClient, toSnakeBody } from '@/shared/api/client';
-import type { PaginatedResponse } from '@/shared/types/api';
-import type { SandboxStats } from '@/features/sandbox/types';
+import { apiClient, toSnakeBody } from "@/shared/api/client";
+import type { PaginatedResponse } from "@/shared/types/api";
+import type { SandboxStats } from "@/features/sandbox/types";
 
 export interface ConversationListItem {
   id: string;
   agentDefinitionId: string;
   title: string | null;
-  status: 'active' | 'paused' | 'ended' | 'failed';
+  status: "active" | "paused" | "ended" | "failed";
   createdBy: string;
   createdAt: string;
   updatedAt: string;
@@ -16,6 +16,13 @@ export interface ListConversationsParams {
   page?: number;
   limit?: number;
   status?: string;
+}
+
+export interface StartConversationPayload {
+  title?: string;
+  content: string;
+  contentType?: "text" | "image" | "file";
+  metadata?: Record<string, unknown>;
 }
 
 export async function listConversations(
@@ -30,6 +37,19 @@ export async function listConversations(
   return apiClient
     .get(`agent-definitions/${agentId}/conversations`, { searchParams })
     .json<PaginatedResponse<ConversationListItem>>();
+}
+
+export async function startConversation(
+  agentId: string,
+  payload: StartConversationPayload,
+): Promise<ConversationListItem> {
+  const response = await apiClient
+    .post(`agent-definitions/${agentId}/conversations/start`, {
+      json: payload,
+    })
+    .json<{ data: ConversationListItem }>();
+
+  return response.data;
 }
 
 export async function generateConversationTitle(
@@ -63,5 +83,5 @@ export async function fetchConversationSandboxStats(
   return apiClient
     .get(`agent-conversations/${conversationId}/sandbox/stats`)
     .json<{ data: SandboxStats }>()
-    .then((response) => response.data)
+    .then((response) => response.data);
 }

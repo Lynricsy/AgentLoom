@@ -2,6 +2,10 @@ export {
   createConversationSchema,
   CreateConversationDto,
 } from './create-conversation.dto';
+export {
+  startConversationSchema,
+  StartConversationDto,
+} from './start-conversation.dto';
 export { sendMessageSchema, SendMessageDto } from './send-message.dto';
 export {
   listConversationsQuerySchema,

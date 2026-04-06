@@ -1,16 +1,18 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
-import { conversationKeys } from './conversationKeys';
+import { conversationKeys } from "./conversationKeys";
 import {
   generateConversationTitle,
   updateConversation,
   deleteConversation,
-} from './conversationApi';
+  startConversation,
+  type StartConversationPayload,
+} from "./conversationApi";
 
 export function useGenerateTitle() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationKey: ['conversation', 'generate-title'],
+    mutationKey: ["conversation", "generate-title"],
     mutationFn: (conversationId: string) =>
       generateConversationTitle(conversationId),
     onSuccess: () => {
@@ -22,10 +24,25 @@ export function useGenerateTitle() {
   });
 }
 
+export function useStartConversation(agentId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationKey: ["conversation", "start", agentId],
+    mutationFn: (payload: StartConversationPayload) =>
+      startConversation(agentId, payload),
+    onSuccess: () => {
+      queryClient.invalidateQueries({
+        queryKey: conversationKeys.list(agentId),
+      });
+    },
+    gcTime: 0,
+  });
+}
+
 export function useUpdateConversation() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationKey: ['conversation', 'update'],
+    mutationKey: ["conversation", "update"],
     mutationFn: ({
       conversationId,
       payload,
@@ -45,7 +62,7 @@ export function useUpdateConversation() {
 export function useDeleteConversation(agentId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationKey: ['conversation', 'delete'],
+    mutationKey: ["conversation", "delete"],
     mutationFn: (conversationId: string) => deleteConversation(conversationId),
     onSuccess: () => {
       queryClient.invalidateQueries({

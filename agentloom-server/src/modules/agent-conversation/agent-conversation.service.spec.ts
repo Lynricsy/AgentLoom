@@ -30,6 +30,7 @@ interface MockDb {
   select: MockFn;
   insert: MockFn;
   update: MockFn;
+  transaction: MockFn;
 }
 
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
@@ -132,6 +133,9 @@ describe('AgentConversationService', () => {
       select: vi.fn(),
       insert: vi.fn(),
       update: vi.fn(),
+      transaction: vi.fn(async (callback: (tx: MockDb) => unknown) =>
+        callback(db)
+      ),
     };
 
     mockEventEmitter = { emit: vi.fn() };
@@ -199,6 +203,88 @@ describe('AgentConversationService', () => {
 
       expect(result.data).toBeDefined();
       expect(db.insert).toHaveBeenCalled();
+    });
+  });
+
+  describe('startConversation', () => {
+    it('应在同一流程内创建对话并写入首条消息', async () => {
+      const agentSelectChain = createSelectChain([{ id: AGENT_ID }]);
+      const created = createConversationRecord({ title: null });
+      const conversationInsertChain = createInsertChain([created]);
+      const messageInsertChain = createInsertChain([
+        createMessageRecord({
+          content: '请开始处理',
+          contentType: 'text',
+        }),
+      ]);
+      const updatedAtChain = createUpdateNoReturnChain();
+
+      db.select
+        .mockReturnValueOnce(agentSelectChain);
+      db.insert
+        .mockReturnValueOnce(conversationInsertChain)
+        .mockReturnValueOnce(messageInsertChain);
+      db.update.mockReturnValueOnce(updatedAtChain);
+
+      const result = await service.startConversation(
+        AGENT_ID,
+        TENANT_ID,
+        USER_ID,
+        {
+          content: '请开始处理',
+        },
+      );
+
+      expect(result.data).toMatchObject({
+        id: CONVERSATION_ID,
+        agentDefinitionId: AGENT_ID,
+        status: 'active',
+      });
+      expect(db.transaction).toHaveBeenCalledTimes(1);
+      expect(messageInsertChain.values).toHaveBeenCalledWith({
+        conversationId: CONVERSATION_ID,
+        tenantId: TENANT_ID,
+        role: 'user',
+        content: '请开始处理',
+        contentType: 'text',
+        metadata: {},
+      });
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+        'agent-conversation.message-sent',
+        expect.objectContaining({
+          conversationId: CONVERSATION_ID,
+          tenantId: TENANT_ID,
+        }),
+      );
+    });
+
+    it('首条消息写入失败时应终止整次 start 流程且不发出消息事件', async () => {
+      const agentSelectChain = createSelectChain([{ id: AGENT_ID }]);
+      const created = createConversationRecord({ title: null });
+      const conversationInsertChain = createInsertChain([created]);
+      const messageInsertChain = createInsertChain([]);
+      const sendError = new Error('message insert failed');
+
+      messageInsertChain.values.mockReturnValueOnce({
+        returning: vi.fn().mockRejectedValueOnce(sendError),
+      });
+
+      db.select.mockReturnValueOnce(agentSelectChain);
+      db.insert
+        .mockReturnValueOnce(conversationInsertChain)
+        .mockReturnValueOnce(messageInsertChain);
+
+      await expect(
+        service.startConversation(AGENT_ID, TENANT_ID, USER_ID, {
+          content: '请开始处理',
+        }),
+      ).rejects.toThrow(sendError);
+
+      expect(db.transaction).toHaveBeenCalledTimes(1);
+      expect(mockEventEmitter.emit).not.toHaveBeenCalledWith(
+        'agent-conversation.message-sent',
+        expect.anything(),
+      );
     });
   });
 

@@ -24,6 +24,7 @@ AgentLoom Studio 是基于 **React 19 + Vite 7** 的前端工作台，负责工�
 | `/resources/knowledge-bases`         | KnowledgeBasesPage             | 知识库管理（列表页展示文档数 / 知识节点数 / 策略摘要）                                       |
 | `/resources/workspaces`              | WorkspaceManagementPage        | 持久化 workspace 列表页；默认隐藏 execution 自动归档快照，并显示来源标签                     |
 | `/resources/workspaces/$workspaceId` | WorkspaceDetailPage            | 持久化 workspace 详情页；目录树 + 文本 / 图片 / PDF 预览，其他文件提供下载兜底               |
+| `/agents/$agentId/conversations/new` | NewConversationDraftPage       | 新对话草稿页；首条消息发送成功后才创建真实 conversation 并跳转正式会话                       |
 | `/agents/$agentId/conversations/$conversationId` | AgentConversationPage | 三列对话页；sandbox Agent 会在 live workspace 就绪前先显示持久化工作区目录预览，并支持图片/文件上传与附件预览 |
 | `/settings/tool-library`             | ToolLibraryPage                | MCP 工具库                                                                                   |
 | `/marketplace`                       | MarketplaceBrowsePage          | 工作流 / 插件市场                                                                            |
@@ -41,6 +42,12 @@ AgentLoom Studio 是基于 **React 19 + Vite 7** 的前端工作台，负责工�
 - `AgentConversationPage` 输入栏支持图片与文件上传。
 - 文本文件优先以内联文本资源进入 Agent 上下文，图片与二进制文件以附件形式发送。
 - `MessageList` 会为用户消息渲染图片预览、文件卡片与文本文件内容预览；sandbox runtime 若给出工作区路径，消息卡片也会展示该路径。
+
+## Agent 新对话草稿事实
+
+- `/agents/$agentId/conversations/new` 当前渲染 `NewConversationDraftPage`，挂载时不会调用创建 conversation 的 API。
+- 草稿页复用 `ConversationComposer`，首条消息发送时调用 `POST /agent-definitions/:agentId/conversations/start`，成功后才导航到 `/agents/$agentId/conversations/$conversationId`。
+- 用户直接离开草稿页时，历史列表不会新增空会话；`ConversationSidebar` 在草稿态允许没有当前会话 id。
 
 ## Feature-Slice 结构
 

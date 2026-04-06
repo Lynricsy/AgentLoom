@@ -1,37 +1,36 @@
-import { memo, useCallback, useEffect, useState } from 'react';
-import { useNavigate } from '@tanstack/react-router';
-import { useQueryClient } from '@tanstack/react-query';
+import { memo, useCallback, useEffect, useState } from "react";
+import { useNavigate } from "@tanstack/react-router";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   ChevronLeft,
   ChevronRight,
   MessageSquarePlus,
   Loader2,
   Trash2,
-} from 'lucide-react';
+} from "lucide-react";
 
-import { useTitleUpdateCounter } from '../stores/agent-conversation.store';
-import { conversationKeys } from '../api/conversationKeys';
-import { useConversationList } from '../api/conversationQueries';
-import { useDeleteConversation } from '../api/conversationMutations';
-import type { ConversationListItem } from '../api/conversationApi';
+import { useTitleUpdateCounter } from "../stores/agent-conversation.store";
+import { conversationKeys } from "../api/conversationKeys";
+import { useConversationList } from "../api/conversationQueries";
+import { useDeleteConversation } from "../api/conversationMutations";
+import type { ConversationListItem } from "../api/conversationApi";
 
-const STORAGE_KEY = 'agentloom-conv-sidebar-collapsed';
+const STORAGE_KEY = "agentloom-conv-sidebar-collapsed";
 
 /** 从标题中提取首个 emoji，fallback 到默认 */
 function extractEmoji(title: string | null): string {
-  if (!title) return '💬';
-  const emojiMatch = title.match(
-    /^(\p{Emoji_Presentation}|\p{Emoji}\uFE0F)/u,
-  );
-  return emojiMatch ? emojiMatch[0] : '💬';
+  if (!title) return "💬";
+  const emojiMatch = title.match(/^(\p{Emoji_Presentation}|\p{Emoji}\uFE0F)/u);
+  return emojiMatch ? emojiMatch[0] : "💬";
 }
 
 /** 从标题中提取 emoji 之后的文本部分 */
 function extractText(title: string | null): string {
-  if (!title) return 'Untitled';
-  return title
-    .replace(/^(\p{Emoji_Presentation}|\p{Emoji}\uFE0F)\s*/u, '')
-    .trim() || 'Untitled';
+  if (!title) return "Untitled";
+  return (
+    title.replace(/^(\p{Emoji_Presentation}|\p{Emoji}\uFE0F)\s*/u, "").trim() ||
+    "Untitled"
+  );
 }
 
 function formatTime(dateStr: string): string {
@@ -40,7 +39,7 @@ function formatTime(dateStr: string): string {
   const diffMs = now.getTime() - d.getTime();
   const diffMin = Math.floor(diffMs / 60_000);
 
-  if (diffMin < 1) return 'just now';
+  if (diffMin < 1) return "just now";
   if (diffMin < 60) return `${diffMin}m`;
   const diffHrs = Math.floor(diffMin / 60);
   if (diffHrs < 24) return `${diffHrs}h`;
@@ -51,7 +50,7 @@ function formatTime(dateStr: string): string {
 
 interface ConversationSidebarProps {
   agentId: string;
-  currentConversationId: string;
+  currentConversationId?: string | null;
 }
 
 export const ConversationSidebar = memo(function ConversationSidebar({
@@ -60,7 +59,7 @@ export const ConversationSidebar = memo(function ConversationSidebar({
 }: ConversationSidebarProps) {
   const [collapsed, setCollapsed] = useState(() => {
     try {
-      return localStorage.getItem(STORAGE_KEY) === 'true';
+      return localStorage.getItem(STORAGE_KEY) === "true";
     } catch {
       return false;
     }
@@ -97,7 +96,7 @@ export const ConversationSidebar = memo(function ConversationSidebar({
 
   const handleNewConversation = useCallback(() => {
     navigate({
-      to: '/agents/$agentId/conversations/new',
+      to: "/agents/$agentId/conversations/new",
       params: { agentId },
     });
   }, [navigate, agentId]);
@@ -106,7 +105,7 @@ export const ConversationSidebar = memo(function ConversationSidebar({
     (conv: ConversationListItem) => {
       if (conv.id === currentConversationId) return;
       navigate({
-        to: '/agents/$agentId/conversations/$conversationId',
+        to: "/agents/$agentId/conversations/$conversationId",
         params: { agentId, conversationId: conv.id },
       });
     },
@@ -116,7 +115,7 @@ export const ConversationSidebar = memo(function ConversationSidebar({
   const handleDelete = useCallback(
     (e: React.MouseEvent, conversationId: string) => {
       e.stopPropagation();
-      if (confirm('Delete this conversation?')) {
+      if (confirm("Delete this conversation?")) {
         deleteMutation.mutate(conversationId, {
           onSuccess: () => {
             if (conversationId === currentConversationId) {
@@ -132,7 +131,7 @@ export const ConversationSidebar = memo(function ConversationSidebar({
   return (
     <aside
       className={`flex h-full shrink-0 flex-col border-r border-border bg-surface/80 backdrop-blur-xl transition-[width] duration-200 ${
-        collapsed ? 'w-14' : 'w-64'
+        collapsed ? "w-14" : "w-64"
       }`}
     >
       {/* Header */}
@@ -191,10 +190,10 @@ export const ConversationSidebar = memo(function ConversationSidebar({
                       onClick={() => handleSelect(conv)}
                       className={`flex w-full items-center justify-center rounded-md p-2 text-lg transition-colors ${
                         isActive
-                          ? 'bg-accent text-foreground'
-                          : 'text-foreground/60 hover:bg-accent/50 hover:text-foreground'
+                          ? "bg-accent text-foreground"
+                          : "text-foreground/60 hover:bg-accent/50 hover:text-foreground"
                       }`}
-                      title={conv.title ?? 'Untitled'}
+                      title={conv.title ?? "Untitled"}
                     >
                       {emoji}
                     </button>
@@ -208,8 +207,8 @@ export const ConversationSidebar = memo(function ConversationSidebar({
                     onClick={() => handleSelect(conv)}
                     className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 pr-10 text-left transition-colors ${
                       isActive
-                        ? 'bg-accent text-foreground'
-                        : 'text-foreground/70 hover:bg-accent/50 hover:text-foreground'
+                        ? "bg-accent text-foreground"
+                        : "text-foreground/70 hover:bg-accent/50 hover:text-foreground"
                     }`}
                   >
                     <span className="shrink-0 text-base">{emoji}</span>

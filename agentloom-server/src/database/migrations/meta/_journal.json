@@ -470,6 +470,13 @@
       "when": 1775285410047,
       "tag": "0066_agent_shares_and_resource_source_records",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "7",
+      "when": 1775340000000,
+      "tag": "0067_purge_empty_agent_conversations",
+      "breakpoints": true
     }
   ]
 }

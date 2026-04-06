@@ -14,6 +14,7 @@ class RouteNames {
   /// Agent 路由
   static const String agents = 'agents';
   static const String agentDetail = 'agentDetail';
+  static const String agentNewConversation = 'agentNewConversation';
   static const String agentConversation = 'agentConversation';
 
   static const String login = 'login';

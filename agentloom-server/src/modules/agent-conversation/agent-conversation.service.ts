@@ -17,6 +17,7 @@ import {
   type AgentRuntimeMode,
 } from '../../database/schema/agent-definitions.schema';
 import type { CreateConversationDto } from './dto/create-conversation.dto';
+import type { StartConversationDto } from './dto/start-conversation.dto';
 import type { SendMessageDto } from './dto/send-message.dto';
 import type { UpdateConversationDto } from './dto/update-conversation.dto';
 import {
@@ -25,6 +26,8 @@ import {
 } from './conversation-attachment';
 import { serializeConversation } from './dto/conversation-response.dto';
 import { serializeMessage } from './dto/message-response.dto';
+
+type ConversationDbClient = Pick<DrizzleDB, 'select' | 'insert' | 'update'>;
 
 @Injectable()
 export class AgentConversationService {
@@ -61,13 +64,11 @@ export class AgentConversationService {
     this.eventEmitter.emit('agent-conversation.ended', payload);
   }
 
-  async create(
+  private async ensureAgentExists(
+    dbClient: ConversationDbClient,
     agentDefinitionId: string,
-    tenantId: string,
-    userId: string,
-    dto: CreateConversationDto,
-  ) {
-    const [agent] = await this.tenantDb
+  ): Promise<void> {
+    const [agent] = await dbClient
       .select({ id: agentDefinitions.id })
       .from(agentDefinitions)
       .where(eq(agentDefinitions.id, agentDefinitionId))
@@ -78,8 +79,16 @@ export class AgentConversationService {
         `Agent definition ${agentDefinitionId} not found`,
       );
     }
+  }
 
-    const [conversation] = await this.tenantDb
+  private async insertConversationRecord(
+    dbClient: ConversationDbClient,
+    agentDefinitionId: string,
+    tenantId: string,
+    userId: string,
+    dto: CreateConversationDto,
+  ) {
+    const [conversation] = await dbClient
       .insert(agentConversations)
       .values({
         agentDefinitionId,
@@ -90,9 +99,144 @@ export class AgentConversationService {
       })
       .returning();
 
+    return conversation;
+  }
+
+  private async assertConversationIsActive(
+    dbClient: ConversationDbClient,
+    conversationId: string,
+  ): Promise<void> {
+    const [conversation] = await dbClient
+      .select({
+        id: agentConversations.id,
+        status: agentConversations.status,
+      })
+      .from(agentConversations)
+      .where(eq(agentConversations.id, conversationId))
+      .limit(1);
+
+    if (!conversation) {
+      throw new NotFoundException(`Conversation ${conversationId} not found`);
+    }
+
+    if (conversation.status !== 'active') {
+      throw new NotFoundException(
+        `Conversation ${conversationId} is not active (status: ${conversation.status})`,
+      );
+    }
+  }
+
+  private normalizeMessagePayload(dto: SendMessageDto) {
+    const contentType =
+      (dto.contentType as ConversationMessageContentType | undefined) ?? 'text';
+    const metadata = normalizeIncomingConversationMetadata(
+      contentType,
+      dto.metadata ?? {},
+    );
+
+    return {
+      contentType,
+      metadata,
+      role: dto.role ?? 'user',
+    };
+  }
+
+  private async insertMessageRecord(
+    dbClient: ConversationDbClient,
+    conversationId: string,
+    tenantId: string,
+    dto: SendMessageDto,
+  ) {
+    const { contentType, metadata, role } = this.normalizeMessagePayload(dto);
+
+    const [message] = await dbClient
+      .insert(agentMessages)
+      .values({
+        conversationId,
+        tenantId,
+        role,
+        contentType,
+        content: dto.content,
+        metadata,
+      })
+      .returning();
+
+    await dbClient
+      .update(agentConversations)
+      .set({ updatedAt: new Date() })
+      .where(eq(agentConversations.id, conversationId));
+
+    return message;
+  }
+
+  async create(
+    agentDefinitionId: string,
+    tenantId: string,
+    userId: string,
+    dto: CreateConversationDto,
+  ) {
+    await this.ensureAgentExists(this.tenantDb, agentDefinitionId);
+
+    const conversation = await this.insertConversationRecord(
+      this.tenantDb,
+      agentDefinitionId,
+      tenantId,
+      userId,
+      dto,
+    );
+
     this.logger.log(
       `Created conversation ${conversation.id} for agent ${agentDefinitionId}`,
     );
+
+    return { data: serializeConversation(conversation) };
+  }
+
+  async startConversation(
+    agentDefinitionId: string,
+    tenantId: string,
+    userId: string,
+    dto: StartConversationDto,
+  ) {
+    const { conversation, message } = await this.tenantDb.transaction(
+      async (tx) => {
+        await this.ensureAgentExists(tx, agentDefinitionId);
+
+        const conversation = await this.insertConversationRecord(
+          tx,
+          agentDefinitionId,
+          tenantId,
+          userId,
+          {
+            ...(dto.title ? { title: dto.title } : {}),
+          },
+        );
+
+        const message = await this.insertMessageRecord(
+          tx,
+          conversation.id,
+          tenantId,
+          {
+            content: dto.content,
+            role: 'user',
+            contentType: dto.contentType ?? 'text',
+            ...(dto.metadata ? { metadata: dto.metadata } : {}),
+          },
+        );
+
+        return { conversation, message };
+      },
+    );
+
+    this.logger.log(
+      `Started conversation ${conversation.id} for agent ${agentDefinitionId}`,
+    );
+
+    this.eventEmitter.emit('agent-conversation.message-sent', {
+      conversationId: conversation.id,
+      tenantId,
+      messageId: message.id,
+    });
 
     return { data: serializeConversation(conversation) };
   }
@@ -265,48 +409,14 @@ export class AgentConversationService {
     tenantId: string,
     dto: SendMessageDto,
   ) {
-    const [conversation] = await this.tenantDb
-      .select({
-        id: agentConversations.id,
-        status: agentConversations.status,
-      })
-      .from(agentConversations)
-      .where(eq(agentConversations.id, conversationId))
-      .limit(1);
+    await this.assertConversationIsActive(this.tenantDb, conversationId);
 
-    if (!conversation) {
-      throw new NotFoundException(`Conversation ${conversationId} not found`);
-    }
-
-    if (conversation.status !== 'active') {
-      throw new NotFoundException(
-        `Conversation ${conversationId} is not active (status: ${conversation.status})`,
-      );
-    }
-
-    const contentType =
-      (dto.contentType as ConversationMessageContentType | undefined) ?? 'text';
-    const metadata = normalizeIncomingConversationMetadata(
-      contentType,
-      dto.metadata ?? {},
+    const message = await this.insertMessageRecord(
+      this.tenantDb,
+      conversationId,
+      tenantId,
+      dto,
     );
-
-    const [message] = await this.tenantDb
-      .insert(agentMessages)
-      .values({
-        conversationId,
-        tenantId,
-        role: dto.role ?? 'user',
-        contentType,
-        content: dto.content,
-        metadata,
-      })
-      .returning();
-
-    await this.tenantDb
-      .update(agentConversations)
-      .set({ updatedAt: new Date() })
-      .where(eq(agentConversations.id, conversationId));
 
     this.logger.log(
       `Message ${message.id} sent to conversation ${conversationId}`,

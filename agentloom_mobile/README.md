@@ -30,6 +30,8 @@ AgentLoom Flutter 客户端，当前定位为移动优先、全端兼容的使�
   - Shell 外深链接 `/executions/:executionId`
 - Agents：
   - Agent 列表、详情、会话入口
+  - `New Chat` 统一进入 `/agents/:agentId/conversations/new` 草稿页，不会在进入页面时预创建 conversation
+  - 首条消息通过 `POST /api/v1/agent-definitions/:agentId/conversations/start` 创建真实 conversation 后，再跳转正式会话页
   - 详情页展示 `agent-main` 的 native tool 与 self-evolution 能力摘要
   - 对话页支持实时消息流、thinking 段、工具调用 / 工具结果瀑布流
   - 对话页支持图片/文件上传；文本文件优先以内联文本进入上下文，图片与二进制文件以附件形式发送

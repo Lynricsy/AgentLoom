@@ -134,6 +134,7 @@ final goRouterProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/agents/:agentId/conversations/new',
+        name: RouteNames.agentNewConversation,
         builder: (context, state) {
           final agentId = state.pathParameters['agentId']!;
           return AgentNewConversationScreen(agentId: agentId);

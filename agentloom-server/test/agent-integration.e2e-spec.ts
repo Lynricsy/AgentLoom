@@ -501,7 +501,7 @@ describe('Agent Integration E2E', () => {
     const createRes = await request(server)
       .post('/api/v1/agent-definitions')
       .set(headers)
-      .send({ name });
+      .send({ name, runtimeMode: 'sandbox' });
 
     expect(createRes.status).toBe(201);
     const agentId: string = createRes.body.data.id;
@@ -536,6 +536,7 @@ describe('Agent Integration E2E', () => {
         .send({
           name: 'Test Agent',
           description: 'An E2E test agent definition',
+          runtimeMode: 'sandbox',
         });
 
       expect(createRes.status).toBe(201);
@@ -660,6 +661,42 @@ describe('Agent Integration E2E', () => {
       expect(detailRes.status).toBe(200);
       expect(detailRes.body.data.id).toBe(conversationId);
       expect(detailRes.body.data.title).toBe('E2E Conversation');
+    });
+
+    it('should start conversation atomically with the first message', async () => {
+      const tenant = await seedTenant('agent-conv-start');
+      const server = app!.getHttpServer();
+
+      const { agentId } = await createAndPublishAgent(
+        server,
+        tenant.headers,
+        'Conversation Starter Agent',
+      );
+
+      const startRes = await request(server)
+        .post(`/api/v1/agent-definitions/${agentId}/conversations/start`)
+        .set(tenant.headers)
+        .send({ content: 'Hello from atomic start' });
+
+      expect(startRes.status).toBe(201);
+      expect(startRes.body.data).toBeDefined();
+      const conversationId: string = startRes.body.data.id;
+      expect(conversationId).toBeTruthy();
+
+      const detailRes = await request(server)
+        .get(`/api/v1/agent-conversations/${conversationId}`)
+        .set(tenant.headers);
+
+      expect(detailRes.status).toBe(200);
+      expect(detailRes.body.data.id).toBe(conversationId);
+      expect(detailRes.body.data.messages.data).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            role: 'user',
+            content: 'Hello from atomic start',
+          }),
+        ]),
+      );
     });
   });
 

@@ -7,7 +7,6 @@ import 'package:go_router/go_router.dart';
 import '../../../routes/route_names.dart';
 import '../../../shared/widgets/entity_grid_card.dart';
 import '../../../shared/widgets/resource_source_chip.dart';
-import '../api/agent_api.dart';
 import '../providers/agent_provider.dart';
 
 /// Agent 列表页面
@@ -331,20 +330,10 @@ class _AgentListScreenState extends ConsumerState<AgentListScreen> {
   }
 
   Future<void> _startConversation(BuildContext context, String agentId) async {
-    try {
-      final api = ref.read(agentApiProvider);
-      final conversation = await api.createConversation(agentId);
-      if (!context.mounted) return;
-      context.pushNamed(
-        RouteNames.agentConversation,
-        pathParameters: {'agentId': agentId, 'conversationId': conversation.id},
-      );
-    } catch (e) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to create conversation: $e')),
-      );
-    }
+    context.pushNamed(
+      RouteNames.agentNewConversation,
+      pathParameters: {'agentId': agentId},
+    );
   }
 }
 

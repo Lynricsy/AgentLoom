@@ -57,11 +57,48 @@ void main() {
     );
   }
 
-  testWidgets('进入 new 路由时应先创建对话再跳转', (tester) async {
+  testWidgets('进入 new 路由时不应自动创建对话', (tester) async {
     when(
-      () => mockApi.createConversation(
+      () => mockApi.getMessages(
+        any(),
+        page: any(named: 'page'),
+        pageSize: any(named: 'pageSize'),
+      ),
+    ).thenAnswer(
+      (_) async => const PaginatedResponse<ConversationMessageDto>(
+        data: <ConversationMessageDto>[],
+        meta: PaginationMeta(total: 0, page: 1, pageSize: 50, totalPages: 0),
+      ),
+    );
+    when(
+      () => mockApi.getWorkspaceTree(any()),
+    ).thenAnswer((_) async => const []);
+
+    await tester.pumpWidget(createTestWidget());
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump();
+
+    verifyNever(
+      () => mockApi.startConversation(
         any(),
         title: any(named: 'title'),
+        content: any(named: 'content'),
+        contentType: any(named: 'contentType'),
+        metadata: any(named: 'metadata'),
+      ),
+    );
+
+    expect(find.byType(TextField), findsOneWidget);
+  });
+
+  testWidgets('发送首条消息时应调用 startConversation 并跳转', (tester) async {
+    when(
+      () => mockApi.startConversation(
+        any(),
+        title: any(named: 'title'),
+        content: any(named: 'content'),
+        contentType: any(named: 'contentType'),
         metadata: any(named: 'metadata'),
       ),
     ).thenAnswer(
@@ -69,7 +106,7 @@ void main() {
         id: 'conv-002',
         agentDefinitionId: 'agent-001',
         status: 'active',
-        title: '新对话',
+        title: null,
         createdAt: '2026-04-03T00:00:00.000Z',
         updatedAt: '2026-04-03T00:00:00.000Z',
       ),
@@ -91,14 +128,19 @@ void main() {
     ).thenAnswer((_) async => const []);
 
     await tester.pumpWidget(createTestWidget());
+    await tester.pumpAndSettle();
+
+    await tester.enterText(find.byType(TextField), '请先读取项目结构');
+    await tester.tap(find.byKey(const ValueKey('send-button')));
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
     await tester.pumpAndSettle();
 
     verify(
-      () => mockApi.createConversation(
+      () => mockApi.startConversation(
         'agent-001',
-        title: '新对话',
+        title: any(named: 'title'),
+        content: '请先读取项目结构',
+        contentType: 'text',
         metadata: any(named: 'metadata'),
       ),
     ).called(1);
@@ -111,6 +153,5 @@ void main() {
     ).called(greaterThanOrEqualTo(1));
 
     expect(find.byType(AgentConversationScreen), findsOneWidget);
-    expect(find.byType(TextField), findsOneWidget);
   });
 }

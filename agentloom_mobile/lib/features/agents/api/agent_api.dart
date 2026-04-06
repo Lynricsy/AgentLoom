@@ -8,11 +8,10 @@ import '../models/agent_definition_dto.dart';
 import '../models/conversation_message_dto.dart';
 
 const _emptyJsonBody = <String, dynamic>{};
-typedef AgentConversationDetailDto =
-    ({
-      PaginatedResponse<ConversationMessageDto> messages,
-      Map<String, dynamic> metadata,
-    });
+typedef AgentConversationDetailDto = ({
+  PaginatedResponse<ConversationMessageDto> messages,
+  Map<String, dynamic> metadata,
+});
 
 Map<String, dynamic> _unwrapDataEnvelope(Response<dynamic> response) {
   final body = response.data as Map<String, dynamic>;
@@ -124,6 +123,32 @@ class AgentApi {
 
     final response = await _dio.post(
       '/api/v1/agent-definitions/$agentId/conversations',
+      data: body,
+    );
+    return AgentConversationDto.fromJson(_unwrapDataEnvelope(response));
+  }
+
+  /// 原子化创建对话并发送首条消息
+  Future<AgentConversationDto> startConversation(
+    String agentId, {
+    String? title,
+    required String content,
+    String contentType = 'text',
+    Map<String, dynamic>? metadata,
+  }) async {
+    final body = <String, dynamic>{
+      'content': content,
+      'contentType': contentType,
+    };
+    if (title != null && title.isNotEmpty) {
+      body['title'] = title;
+    }
+    if (metadata != null && metadata.isNotEmpty) {
+      body['metadata'] = metadata;
+    }
+
+    final response = await _dio.post(
+      '/api/v1/agent-definitions/$agentId/conversations/start',
       data: body,
     );
     return AgentConversationDto.fromJson(_unwrapDataEnvelope(response));
