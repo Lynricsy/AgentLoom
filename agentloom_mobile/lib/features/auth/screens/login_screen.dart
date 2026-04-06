@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../routes/route_names.dart';
 import '../../../shared/providers/env_provider.dart';
+import '../../../shared/widgets/brand_logo.dart';
 import '../models/auth_state.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/auth_text_field.dart';
@@ -130,23 +131,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              Container(
-                                width: 64,
-                                height: 64,
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    colors: [
-                                      theme.colorScheme.primary,
-                                      theme.colorScheme.secondary,
-                                    ],
-                                  ),
-                                  borderRadius: BorderRadius.circular(22),
-                                ),
-                                child: const Icon(
-                                  Icons.hub_rounded,
-                                  color: Colors.white,
-                                  size: 30,
-                                ),
+                              const BrandLogoMark(
+                                size: 72,
+                                padding: 12,
+                                borderRadius: 24,
                               ),
                               const SizedBox(height: 20),
                               Text(

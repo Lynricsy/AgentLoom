@@ -5,6 +5,9 @@ hero:
   name: AgentLoom
   text: 多智能体工作流编排平台
   tagline: 通过可视化画布将 AI Agent 组合为 DAG 工作流，像编织经纬线一样编排智能协作
+  image:
+    src: /brand/logo.png
+    alt: AgentLoom Logo
   actions:
     - theme: brand
       text: 快速开始

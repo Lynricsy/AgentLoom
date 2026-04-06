@@ -1,5 +1,5 @@
-import { useCallback, useState } from 'react'
-import { Link, useRouterState } from '@tanstack/react-router'
+import { useCallback, useState } from "react";
+import { Link, useRouterState } from "@tanstack/react-router";
 import {
   BookOpen,
   Bot,
@@ -16,177 +16,192 @@ import {
   Settings,
   Sparkles,
   Workflow,
-} from 'lucide-react'
-import { NotificationBell } from '@/features/notification'
-import { UserMenu } from './UserMenu'
+} from "lucide-react";
+import { NotificationBell } from "@/features/notification";
+import { BrandMark } from "@/shared/components/brand";
+import { UserMenu } from "./UserMenu";
 
-const STORAGE_KEY = 'agentloom-sidebar-collapsed'
-const GROUP_EXPANDED_KEY = 'agentloom-sidebar-group-expanded'
+const STORAGE_KEY = "agentloom-sidebar-collapsed";
+const GROUP_EXPANDED_KEY = "agentloom-sidebar-group-expanded";
 
 interface NavItem {
-  label: string
-  icon: typeof Workflow
-  to: string
-  params?: Record<string, string>
-  matchPrefix: string
+  label: string;
+  icon: typeof Workflow;
+  to: string;
+  params?: Record<string, string>;
+  matchPrefix: string;
 }
 
 interface NavGroup {
-  label: string
-  icon: typeof Workflow
-  matchPrefix: string
-  children: NavItem[]
+  label: string;
+  icon: typeof Workflow;
+  matchPrefix: string;
+  children: NavItem[];
 }
 
 const NAV_ITEMS: NavItem[] = [
   {
-    label: '工作流',
+    label: "工作流",
     icon: Workflow,
-    to: '/workflows',
-    matchPrefix: '/workflows',
+    to: "/workflows",
+    matchPrefix: "/workflows",
   },
   {
-    label: 'Agent',
+    label: "Agent",
     icon: Bot,
-    to: '/agents',
-    matchPrefix: '/agents',
+    to: "/agents",
+    matchPrefix: "/agents",
   },
   {
-    label: '发现',
+    label: "发现",
     icon: Compass,
-    to: '/discover',
-    matchPrefix: '/discover',
+    to: "/discover",
+    matchPrefix: "/discover",
   },
   {
-    label: '开发者',
+    label: "开发者",
     icon: Code,
-    to: '/developer-console/earnings',
-    matchPrefix: '/developer-console',
+    to: "/developer-console/earnings",
+    matchPrefix: "/developer-console",
   },
-]
+];
 
 const NAV_GROUPS: NavGroup[] = [
   {
-    label: '资源',
+    label: "资源",
     icon: Server,
-    matchPrefix: '/resources',
+    matchPrefix: "/resources",
     children: [
       {
-        label: 'MCP Servers',
+        label: "MCP Servers",
         icon: Server,
-        to: '/resources/mcp-servers',
-        matchPrefix: '/resources/mcp-servers',
+        to: "/resources/mcp-servers",
+        matchPrefix: "/resources/mcp-servers",
       },
       {
-        label: 'LLM Models',
+        label: "LLM Models",
         icon: Cpu,
-        to: '/resources/llm-models',
-        matchPrefix: '/resources/llm-models',
+        to: "/resources/llm-models",
+        matchPrefix: "/resources/llm-models",
       },
       {
-        label: 'Skills',
+        label: "Skills",
         icon: Sparkles,
-        to: '/resources/skills',
-        matchPrefix: '/resources/skills',
+        to: "/resources/skills",
+        matchPrefix: "/resources/skills",
       },
       {
-        label: 'Knowledge Bases',
+        label: "Knowledge Bases",
         icon: BookOpen,
-        to: '/resources/knowledge-bases',
-        matchPrefix: '/resources/knowledge-bases',
+        to: "/resources/knowledge-bases",
+        matchPrefix: "/resources/knowledge-bases",
       },
       {
-        label: 'Memory',
+        label: "Memory",
         icon: BrainCircuit,
-        to: '/resources/memory-instances',
-        matchPrefix: '/resources/memory-instances',
+        to: "/resources/memory-instances",
+        matchPrefix: "/resources/memory-instances",
       },
       {
-        label: 'Workspaces',
+        label: "Workspaces",
         icon: FolderOpen,
-        to: '/resources/workspaces',
-        matchPrefix: '/resources/workspaces',
+        to: "/resources/workspaces",
+        matchPrefix: "/resources/workspaces",
       },
       {
-        label: 'Sandboxes',
+        label: "Sandboxes",
         icon: Container,
-        to: '/resources/sandboxes',
-        matchPrefix: '/resources/sandboxes',
+        to: "/resources/sandboxes",
+        matchPrefix: "/resources/sandboxes",
       },
     ],
   },
-]
+];
 
 function getInitialCollapsed(): boolean {
   try {
-    return localStorage.getItem(STORAGE_KEY) === 'true'
+    return localStorage.getItem(STORAGE_KEY) === "true";
   } catch {
-    return false
+    return false;
   }
 }
 
 function getInitialGroupExpanded(): Record<string, boolean> {
   try {
-    const raw = localStorage.getItem(GROUP_EXPANDED_KEY)
-    if (raw) return JSON.parse(raw) as Record<string, boolean>
+    const raw = localStorage.getItem(GROUP_EXPANDED_KEY);
+    if (raw) return JSON.parse(raw) as Record<string, boolean>;
   } catch {
     /* noop */
   }
-  return {}
+  return {};
 }
 
 function persistGroupExpanded(state: Record<string, boolean>) {
   try {
-    localStorage.setItem(GROUP_EXPANDED_KEY, JSON.stringify(state))
+    localStorage.setItem(GROUP_EXPANDED_KEY, JSON.stringify(state));
   } catch {
     /* noop */
   }
 }
 
 export function AppSidebar() {
-  const [collapsed, setCollapsed] = useState(getInitialCollapsed)
-  const [groupExpanded, setGroupExpanded] = useState(getInitialGroupExpanded)
-  const location = useRouterState({ select: (s) => s.location })
-  const pathname = location.pathname
+  const [collapsed, setCollapsed] = useState(getInitialCollapsed);
+  const [groupExpanded, setGroupExpanded] = useState(getInitialGroupExpanded);
+  const location = useRouterState({ select: (s) => s.location });
+  const pathname = location.pathname;
 
   const toggle = useCallback(() => {
     setCollapsed((prev) => {
-      const next = !prev
-      localStorage.setItem(STORAGE_KEY, String(next))
-      return next
-    })
-  }, [])
+      const next = !prev;
+      localStorage.setItem(STORAGE_KEY, String(next));
+      return next;
+    });
+  }, []);
 
   const toggleGroup = useCallback((key: string) => {
     setGroupExpanded((prev) => {
-      const next = { ...prev, [key]: !prev[key] }
-      persistGroupExpanded(next)
-      return next
-    })
-  }, [])
+      const next = { ...prev, [key]: !prev[key] };
+      persistGroupExpanded(next);
+      return next;
+    });
+  }, []);
 
-  const isActive = (prefix: string) => pathname.startsWith(prefix)
+  const isActive = (prefix: string) => pathname.startsWith(prefix);
 
   return (
     <aside
       className="flex h-full shrink-0 flex-col border-r border-border bg-surface/80 backdrop-blur-xl"
       style={{
         width: collapsed ? 56 : 200,
-        transition: 'width 250ms cubic-bezier(0.16,1,0.3,1)',
+        transition: "width 250ms cubic-bezier(0.16,1,0.3,1)",
       }}
     >
       {/* Logo + collapse */}
-      <div className="flex h-14 items-center justify-between px-3">
+      <div className="flex h-16 items-center justify-between gap-2 px-3">
         {!collapsed && (
-          <span className="bg-gradient-to-r from-primary to-[#8B5CF6] bg-clip-text text-sm font-bold text-transparent">
-            AgentLoom
-          </span>
+          <Link
+            to="/"
+            className="flex min-w-0 items-center gap-3 rounded-xl px-1 py-1 transition-colors hover:bg-surface-elevated/70"
+          >
+            <BrandMark
+              size="sm"
+              className="bg-surface ring-border shadow-[0_14px_40px_rgba(2,6,23,0.3)]"
+            />
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-foreground">
+                AgentLoom
+              </p>
+              <p className="truncate text-[11px] uppercase tracking-[0.24em] text-muted">
+                Studio
+              </p>
+            </div>
+          </Link>
         )}
         <button
           type="button"
           onClick={toggle}
           className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-elevated hover:text-foreground"
-          title={collapsed ? '展开侧边栏' : '收起侧边栏'}
+          title={collapsed ? "展开侧边栏" : "收起侧边栏"}
         >
           {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
         </button>
@@ -196,8 +211,8 @@ export function AppSidebar() {
       <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-2 py-2">
         {/* Flat nav items */}
         {NAV_ITEMS.map((item) => {
-          const active = isActive(item.matchPrefix)
-          const Icon = item.icon
+          const active = isActive(item.matchPrefix);
+          const Icon = item.icon;
           return (
             <Link
               key={item.to}
@@ -205,8 +220,8 @@ export function AppSidebar() {
               params={item.params ?? {}}
               className={`group relative flex items-center gap-3 rounded-lg px-2 py-2 text-sm font-medium transition-colors ${
                 active
-                  ? 'bg-primary/10 text-primary'
-                  : 'text-muted hover:bg-surface-elevated hover:text-foreground'
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted hover:bg-surface-elevated hover:text-foreground"
               }`}
               title={collapsed ? item.label : undefined}
             >
@@ -217,28 +232,28 @@ export function AppSidebar() {
               <Icon size={18} className="shrink-0" />
               {!collapsed && <span>{item.label}</span>}
             </Link>
-          )
+          );
         })}
 
         {/* Nav groups */}
         {NAV_GROUPS.map((group) => {
-          const groupActive = isActive(group.matchPrefix)
-          const expanded = groupExpanded[group.matchPrefix] ?? groupActive
-          const GroupIcon = group.icon
+          const groupActive = isActive(group.matchPrefix);
+          const expanded = groupExpanded[group.matchPrefix] ?? groupActive;
+          const GroupIcon = group.icon;
 
           // When sidebar is collapsed, show children directly as icon-only items
           if (collapsed) {
             return group.children.map((child) => {
-              const childActive = isActive(child.matchPrefix)
-              const ChildIcon = child.icon
+              const childActive = isActive(child.matchPrefix);
+              const ChildIcon = child.icon;
               return (
                 <Link
                   key={child.to}
                   to={child.to}
                   className={`group relative flex items-center justify-center rounded-lg px-2 py-2 text-sm font-medium transition-colors ${
                     childActive
-                      ? 'bg-primary/10 text-primary'
-                      : 'text-muted hover:bg-surface-elevated hover:text-foreground'
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted hover:bg-surface-elevated hover:text-foreground"
                   }`}
                   title={child.label}
                 >
@@ -247,8 +262,8 @@ export function AppSidebar() {
                   )}
                   <ChildIcon size={18} className="shrink-0" />
                 </Link>
-              )
-            })
+              );
+            });
           }
 
           return (
@@ -259,8 +274,8 @@ export function AppSidebar() {
                 onClick={() => toggleGroup(group.matchPrefix)}
                 className={`flex w-full items-center gap-3 rounded-lg px-2 py-2 text-xs font-semibold uppercase tracking-wider transition-colors ${
                   groupActive
-                    ? 'text-primary/80'
-                    : 'text-muted-foreground/60 hover:text-muted-foreground'
+                    ? "text-primary/80"
+                    : "text-muted-foreground/60 hover:text-muted-foreground"
                 }`}
               >
                 <GroupIcon size={16} className="shrink-0" />
@@ -276,21 +291,23 @@ export function AppSidebar() {
               <div
                 className="overflow-hidden transition-all duration-200 ease-in-out"
                 style={{
-                  maxHeight: expanded ? `${group.children.length * 40}px` : '0px',
+                  maxHeight: expanded
+                    ? `${group.children.length * 40}px`
+                    : "0px",
                   opacity: expanded ? 1 : 0,
                 }}
               >
                 {group.children.map((child) => {
-                  const childActive = isActive(child.matchPrefix)
-                  const ChildIcon = child.icon
+                  const childActive = isActive(child.matchPrefix);
+                  const ChildIcon = child.icon;
                   return (
                     <Link
                       key={child.to}
                       to={child.to}
                       className={`group relative flex items-center gap-3 rounded-lg py-1.5 pl-5 pr-2 text-sm font-medium transition-colors ${
                         childActive
-                          ? 'bg-primary/10 text-primary'
-                          : 'text-muted hover:bg-surface-elevated hover:text-foreground'
+                          ? "bg-primary/10 text-primary"
+                          : "text-muted hover:bg-surface-elevated hover:text-foreground"
                       }`}
                     >
                       {childActive && (
@@ -299,11 +316,11 @@ export function AppSidebar() {
                       <ChildIcon size={16} className="shrink-0" />
                       <span className="truncate">{child.label}</span>
                     </Link>
-                  )
+                  );
                 })}
               </div>
             </div>
-          )
+          );
         })}
       </nav>
 
@@ -313,11 +330,11 @@ export function AppSidebar() {
         <Link
           to="/settings"
           className={`flex items-center gap-3 rounded-lg px-2 py-2 text-sm font-medium transition-colors ${
-            isActive('/settings')
-              ? 'bg-primary/10 text-primary'
-              : 'text-muted hover:bg-surface-elevated hover:text-foreground'
+            isActive("/settings")
+              ? "bg-primary/10 text-primary"
+              : "text-muted hover:bg-surface-elevated hover:text-foreground"
           }`}
-          title={collapsed ? '设置' : undefined}
+          title={collapsed ? "设置" : undefined}
         >
           <Settings size={18} className="shrink-0" />
           {!collapsed && <span>设置</span>}
@@ -325,8 +342,8 @@ export function AppSidebar() {
 
         {/* Notifications */}
         <div
-          className={`flex items-center ${collapsed ? 'justify-center' : 'px-2'}`}
-          title={collapsed ? '通知' : undefined}
+          className={`flex items-center ${collapsed ? "justify-center" : "px-2"}`}
+          title={collapsed ? "通知" : undefined}
         >
           <NotificationBell />
         </div>
@@ -335,5 +352,5 @@ export function AppSidebar() {
         <UserMenu collapsed={collapsed} />
       </div>
     </aside>
-  )
+  );
 }

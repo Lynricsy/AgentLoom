@@ -4,7 +4,7 @@ React 19 + Vite 7 前端。Feature-Slice 架构，TanStack Router/Query，Zustan
 
 ## 入口
 
-`index.html` → `main.tsx` → `AppProviders` (QueryClient → Toast → Router) → 路由树
+`index.html` → `main.tsx` → `AppProviders` (QueryClient → Toast → Router) → 路由树；`index.html` 当前通过 `public/brand/logo.png` 提供 favicon / apple-touch-icon
 
 ## 路由
 
@@ -79,7 +79,7 @@ src/
 │   └── agent-memory/ # Agent 记忆管理 (35 files)：记忆图谱可视化 (d3-force + dagre + ReactFlow)、记忆检索/创建/编辑、审计日志集成
 ├── shared/           # 跨 feature 共享层
 │   ├── api/          # ky client + queryClient + query key factory
-│   ├── components/   # Pagination 等通用组件
+│   ├── components/   # Pagination、brand/BrandMark 等通用组件；`brand/BrandMark` 供登录页与侧边栏复用项目 logo
 │   ├── ui/           # 8 个基础组件 (button/input/label/select/slider/switch/tabs/toast)
 │   ├── lib/          # cn() = clsx + tailwind-merge
 │   ├── types/        # ApiResponse<T>, ApiError, PaginatedResponse<T>

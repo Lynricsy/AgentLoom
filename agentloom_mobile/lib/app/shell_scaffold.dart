@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 
+import '../shared/widgets/brand_logo.dart';
+
 class _ShellDestination {
   const _ShellDestination({
     required this.label,
@@ -73,9 +75,13 @@ class ShellScaffold extends StatelessWidget {
                     padding: const EdgeInsets.fromLTRB(20, 20, 16, 20),
                     child: DecoratedBox(
                       decoration: BoxDecoration(
-                        color: theme.colorScheme.surface.withValues(alpha: 0.92),
+                        color: theme.colorScheme.surface.withValues(
+                          alpha: 0.92,
+                        ),
                         borderRadius: BorderRadius.circular(28),
-                        border: Border.all(color: theme.colorScheme.outlineVariant),
+                        border: Border.all(
+                          color: theme.colorScheme.outlineVariant,
+                        ),
                       ),
                       child: NavigationRail(
                         selectedIndex: navigationShell.currentIndex,
@@ -108,7 +114,9 @@ class ShellScaffold extends StatelessWidget {
                         borderRadius: BorderRadius.circular(32),
                         child: DecoratedBox(
                           decoration: BoxDecoration(
-                            color: theme.colorScheme.surface.withValues(alpha: 0.75),
+                            color: theme.colorScheme.surface.withValues(
+                              alpha: 0.75,
+                            ),
                           ),
                           child: navigationShell,
                         ),
@@ -150,36 +158,51 @@ class _ShellBrand extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: EdgeInsets.symmetric(
-        horizontal: compact ? 14 : 16,
-        vertical: compact ? 10 : 14,
+        horizontal: compact ? 12 : 14,
+        vertical: compact ? 10 : 12,
       ),
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(24),
         gradient: LinearGradient(
           colors: [
-            theme.colorScheme.primary,
-            theme.colorScheme.secondary,
+            theme.colorScheme.primary.withValues(alpha: 0.14),
+            theme.colorScheme.secondary.withValues(alpha: 0.18),
           ],
         ),
+        border: Border.all(color: theme.colorScheme.outlineVariant),
       ),
-      child: Column(
-        crossAxisAlignment:
-            compact ? CrossAxisAlignment.center : CrossAxisAlignment.start,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            'AgentLoom',
-            style: theme.textTheme.titleMedium?.copyWith(
-              color: Colors.white,
-              fontWeight: FontWeight.w800,
-            ),
+          BrandLogoMark(
+            size: compact ? 42 : 48,
+            padding: compact ? 7 : 8,
+            borderRadius: compact ? 14 : 16,
+            borderColor: theme.colorScheme.outline.withValues(alpha: 0.18),
+            shadowColor: theme.colorScheme.primary.withValues(alpha: 0.08),
           ),
-          const SizedBox(height: 4),
-          Text(
-            '移动工作台',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: Colors.white.withValues(alpha: 0.82),
+          if (!compact) ...[
+            const SizedBox(width: 12),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'AgentLoom',
+                  style: theme.textTheme.titleMedium?.copyWith(
+                    color: theme.colorScheme.onSurface,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '移动工作台',
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
             ),
-          ),
+          ],
         ],
       ),
     );

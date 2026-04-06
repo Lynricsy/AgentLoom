@@ -11,6 +11,12 @@ AgentLoom Studio 是基于 **React 19 + Vite 7** 的前端工作台，负责工�
 - Tailwind CSS v4 + Radix UI + CVA
 - ky（全局 snake_case ↔ camelCase 转换）
 
+## 品牌资产
+
+- 浏览器 favicon / apple-touch-icon 统一来自 `public/brand/logo.png`
+- 登录页与主侧边栏通过共享组件 `src/shared/components/brand/BrandMark.tsx` 复用同一套品牌图标展示
+- 根目录 `Logo/logo-transparent.png` 是当前跨端品牌源图，Studio 内的 `public/brand/logo.png` 为运行时派生副本
+
 ## 当前关键页面
 
 | 路由                                 | 页面                           | 说明                                                                                                             |

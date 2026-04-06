@@ -1,11 +1,11 @@
 {
-    "name": "agentloom_mobile",
-    "short_name": "agentloom_mobile",
+    "name": "AgentLoom Mobile",
+    "short_name": "AgentLoom",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "background_color": "#0B6BFF",
+    "theme_color": "#0B6BFF",
+    "description": "AgentLoom 移动工作台，支持资源管理、工作流执行与 Agent 对话。",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

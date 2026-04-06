@@ -7,6 +7,7 @@ AgentLoom Flutter 移动端应用：
 - Riverpod ProviderScope 启动入口
 - GoRouter + `StatefulShellRoute.indexedStack` 五标签导航（Dashboard / Workflows / Agents / Resources / Settings）
 - `ShellScaffold` 根据宽度在 `NavigationBar` 与 `NavigationRail` 间切换，移动端优先但兼容大屏
+- 品牌资产统一来自 `assets/branding/logo-transparent.png`；该文件是根目录 `Logo/logo-transparent.png` 在移动端的派生副本，`BrandLogoMark` 供登录页与 `ShellScaffold` 品牌区复用，`flutter_launcher_icons` 配置负责生成 Android / iOS / Web 图标
 - Dio API Client Provider（含 AuthInterceptor 自动附加 Bearer + 401 刷新重试）
 - 运行时服务器地址配置：`EnvConfig` 以 `studioBaseUrl` 为真源，登录页与设置页都可进入 `ServerConfigScreen`，再派生 `apiBaseUrl`
 - 完整认证链路：`LoginScreen` / `RegisterScreen` → `AuthApi` → `AuthNotifier` → `TokenStorage` (`flutter_secure_storage`)；邮箱密码注册成功后移动端不直接持久化首登 session，而是通过 Web-first fallback 引导到 Web Studio `/login?returnUrl=/onboarding` 完成首次组织初始化
@@ -66,6 +67,7 @@ lib/
 ```bash
 flutter pub get
 dart run build_runner build --delete-conflicting-outputs
+dart run flutter_launcher_icons
 flutter analyze
 flutter test
 flutter test --coverage
@@ -112,6 +114,7 @@ flutter test --coverage
 ## 平台配置
 
 - **Deep Link**：`agentloom://` URL scheme 已配置。Android `AndroidManifest.xml` 使用 `intent-filter` 声明 `agentloom` scheme；iOS `Info.plist` 使用 `CFBundleURLTypes` 注册 `agentloom` scheme
+- **品牌图标**：`pubspec.yaml` 内置 `flutter_launcher_icons` 配置，会基于 `assets/branding/logo-transparent.png` 生成 Android `mipmap*` / adaptive icon、iOS `AppIcon.appiconset` 与 Flutter Web `favicon.png` / `web/icons/*`
 - **iOS**：`AppDelegate` 实现 `FlutterImplicitEngineDelegate` + `FlutterAppDelegate`，支持 Firebase Messaging
 - **Android**：`AndroidManifest.xml` 声明 `POST_NOTIFICATIONS` 权限；`main.dart` 中后台消息 handler 使用 `@pragma('vm:entry-point')`
 - **Firebase 优雅降级**：应用在无 `google-services.json` / `GoogleService-Info.plist` 时仍可正常运行，推送功能自动跳过

@@ -18,9 +18,7 @@ export default withMermaid(
       },
     },
 
-    head: [
-      ['link', { rel: 'icon', type: 'image/svg+xml', href: '/logo.svg' }],
-    ],
+    head: [['link', { rel: 'icon', type: 'image/png', href: '/brand/logo.png' }]],
 
     locales: {
       zh: {
@@ -36,6 +34,10 @@ export default withMermaid(
     },
 
     themeConfig: {
+      logo: {
+        src: '/brand/logo.png',
+        alt: 'AgentLoom Logo',
+      },
       siteTitle: 'AgentLoom',
 
       nav: [

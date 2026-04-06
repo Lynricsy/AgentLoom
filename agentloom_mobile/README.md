@@ -2,6 +2,12 @@
 
 AgentLoom Flutter 客户端，当前定位为移动优先、全端兼容的使用端应用。它已经覆盖认证与安全、工作流启动与执行监控、Agent 对话、通知，以及资源域的完整入口，并支持在运行时切换 Studio 地址。
 
+## 品牌资产
+
+- 根目录 `Logo/logo-transparent.png` 是当前跨端品牌源图，移动端运行时派生副本位于 `assets/branding/logo-transparent.png`
+- 登录页与宽屏 `ShellScaffold` 品牌块统一复用 `lib/shared/widgets/brand_logo.dart` 中的 `BrandLogoMark`
+- `pubspec.yaml` 已配置 `flutter_launcher_icons`，可从同一张图生成 Android / iOS / Flutter Web 的 App 图标、favicon 与 manifest icons
+
 ## 已实现能力
 
 - Riverpod + GoRouter + Dio 的应用基础架构
@@ -92,6 +98,7 @@ AgentLoom Flutter 客户端，当前定位为移动优先、全端兼容的使�
 ```bash
 flutter pub get
 dart run build_runner build --delete-conflicting-outputs
+dart run flutter_launcher_icons
 flutter analyze
 flutter test
 flutter test --coverage

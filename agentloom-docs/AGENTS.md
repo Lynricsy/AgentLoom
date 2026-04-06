@@ -17,7 +17,7 @@ agentloom-docs/
 │   ├── config.mts           # VitePress 配置 (双语 locale: zh/en, 完整 nav/sidebar/socialLinks)
 │   └── theme/
 │       ├── index.ts         # 主题入口 (自定义品牌色 + vitepress-openapi + mermaid 注册)
-│       └── style.css        # 品牌色变量: #7c3aed (light) / #a78bfa (dark)
+│       └── custom.css       # 品牌色变量: #7c3aed (light) / #a78bfa (dark)
 ├── zh/                      # 中文文档 (36 个 Markdown 文件，内容完整)
 │   ├── api/                 # API 参考 (OpenAPI 渲染)
 │   ├── deployment/          # 部署指南
@@ -31,6 +31,7 @@ agentloom-docs/
 ├── en/                      # 英文文档
 │   └── index.md             # 英文首页
 ├── public/
+│   ├── brand/logo.png       # 文档站 favicon / 顶栏 logo / 首页 Hero 图使用的品牌图
 │   └── openapi.json         # OpenAPI 3.0 spec 静态文件 (由 prebuild 同步)
 ├── scripts/
 │   └── sync-openapi.mjs     # prebuild: 从 server 同步 OpenAPI spec 到 public/openapi.json
@@ -54,6 +55,7 @@ pnpm lint:md                 # Markdown lint (仅 zh/)
 - `lastUpdated: true` — 基于 git 的最后更新时间
 - 双语结构: `zh/` 和 `en/` 为平行目录
 - prebuild hook (`scripts/sync-openapi.mjs`): 构建前同步 OpenAPI spec 到 `public/openapi.json`
+- 文档站 favicon、VitePress 顶栏 logo 与中英文首页 Hero 图统一使用 `public/brand/logo.png`
 - Markdown lint 范围仅限 `zh/**/*.md`
 - 品牌色: `#7c3aed` (亮色模式) / `#a78bfa` (暗色模式)，紫罗兰/紫色主题
 - 本地搜索已启用 CJK（中日韩）分词支持

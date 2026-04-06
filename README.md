@@ -4,6 +4,8 @@
 
 AgentLoom 让你像编织织布机上的经纬线一样，将多个 AI Agent 编排为协作工作流。支持拖拽式画布编辑、实时执行监控、端到端加密、插件生态以及跨端体验。
 
+当前仓库的统一品牌源图位于 `Logo/logo-transparent.png`。Studio favicon / 品牌位、Docs favicon / 顶栏 / 首页 Hero，以及 Flutter Web / Android / iOS 图标都基于这张图派生。
+
 ---
 
 ## ✨ 核心特性

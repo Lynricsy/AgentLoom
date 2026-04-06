@@ -1,34 +1,38 @@
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { render, screen } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
 
-import { AuthLayout } from '../AuthLayout';
+import { AuthLayout } from "../AuthLayout";
 
-describe('AuthLayout', () => {
-  it('渲染 AgentLoom logo 和标语', () => {
+describe("AuthLayout", () => {
+  it("渲染 AgentLoom logo 和标语", () => {
     render(<AuthLayout>test content</AuthLayout>);
 
-    expect(screen.getByText('AL')).toBeInTheDocument();
-    expect(screen.getByText('AgentLoom')).toBeInTheDocument();
-    expect(screen.getByText('多智能体工作流编排平台')).toBeInTheDocument();
+    expect(
+      screen.getByRole("img", { name: "AgentLoom logo" }),
+    ).toBeInTheDocument();
+    expect(screen.getByText("AgentLoom")).toBeInTheDocument();
+    expect(screen.getByText("Studio")).toBeInTheDocument();
+    expect(screen.getByText("多智能体工作流编排平台")).toBeInTheDocument();
+    expect(screen.queryByText("AL")).not.toBeInTheDocument();
   });
 
-  it('渲染 children', () => {
+  it("渲染 children", () => {
     render(
       <AuthLayout>
         <div data-testid="child">child content</div>
       </AuthLayout>,
     );
 
-    expect(screen.getByTestId('child')).toBeInTheDocument();
-    expect(screen.getByText('child content')).toBeInTheDocument();
+    expect(screen.getByTestId("child")).toBeInTheDocument();
+    expect(screen.getByText("child content")).toBeInTheDocument();
   });
 
-  it('支持自定义 className', () => {
+  it("支持自定义 className", () => {
     const { container } = render(
       <AuthLayout className="custom-class">content</AuthLayout>,
     );
 
-    const wrapper = container.querySelector('.custom-class');
+    const wrapper = container.querySelector(".custom-class");
     expect(wrapper).toBeInTheDocument();
   });
 });
