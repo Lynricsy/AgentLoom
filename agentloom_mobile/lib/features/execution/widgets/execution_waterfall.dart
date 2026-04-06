@@ -1,4 +1,5 @@
 import 'package:agentloom_mobile/features/execution/lib/workflow_agent_runtime.dart';
+import 'package:agentloom_mobile/features/execution/lib/output_content.dart';
 import 'package:agentloom_mobile/features/execution/models/execution_runtime.dart';
 import 'package:agentloom_mobile/features/execution/models/execution_state.dart';
 import 'package:flutter/material.dart';
@@ -9,11 +10,13 @@ class ExecutionWaterfall extends StatelessWidget {
     required this.snapshot,
     required this.runtime,
     this.onOpenAgentStep,
+    this.onOpenOutputStep,
   });
 
   final ExecutionStateSnapshot snapshot;
   final ExecutionMonitorRuntimeData runtime;
   final void Function(StepSnapshot step)? onOpenAgentStep;
+  final void Function(StepSnapshot step)? onOpenOutputStep;
 
   @override
   Widget build(BuildContext context) {
@@ -38,14 +41,22 @@ class ExecutionWaterfall extends StatelessWidget {
         final step = visibleSteps[index];
         final runtimeStep = runtime.stepById(step.stepId);
         final isAgent = isWorkflowAgentNodeType(step.nodeType);
+        final isOutput = isWorkflowOutputNodeType(step.nodeType);
+        final onTap = switch ((isAgent, isOutput)) {
+          (true, _) when onOpenAgentStep != null => () => onOpenAgentStep!(
+            step,
+          ),
+          (_, true) when onOpenOutputStep != null => () => onOpenOutputStep!(
+            step,
+          ),
+          _ => null,
+        };
 
         return _ExecutionStepCard(
           step: step,
           runtime: runtimeStep,
           index: index + 1,
-          onTap: isAgent && onOpenAgentStep != null
-              ? () => onOpenAgentStep!(step)
-              : null,
+          onTap: onTap,
         );
       },
     );
@@ -127,6 +138,7 @@ class _ExecutionStepCard extends StatelessWidget {
     final theme = Theme.of(context);
     final status = _statusMeta(step.status, theme);
     final isAgent = isWorkflowAgentNodeType(step.nodeType);
+    final isOutput = isWorkflowOutputNodeType(step.nodeType);
     final summary = summarizeExecutionStep(step, runtime);
     final duration = _formatDuration(step.startedAt, step.completedAt);
 
@@ -191,7 +203,7 @@ class _ExecutionStepCard extends StatelessWidget {
                       ],
                     ),
                   ),
-                  if (isAgent)
+                  if (isAgent || isOutput)
                     Icon(
                       Icons.chevron_right_rounded,
                       color: theme.colorScheme.onSurfaceVariant,
@@ -246,6 +258,30 @@ class _ExecutionStepCard extends StatelessWidget {
                     Expanded(
                       child: Text(
                         '打开后可查看 Agent 文本流、工具瀑布流、终端与工作区。',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ] else if (isOutput) ...[
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Icon(
+                      isWorkflowJsonOutputNodeType(step.nodeType)
+                          ? Icons.data_object_rounded
+                          : Icons.article_outlined,
+                      size: 18,
+                      color: theme.colorScheme.primary,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        isWorkflowJsonOutputNodeType(step.nodeType)
+                            ? '打开后可查看结构化 JSON 与原文兜底。'
+                            : '打开后可查看 Markdown、LaTeX、Mermaid 与代码块。',
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: theme.colorScheme.onSurfaceVariant,
                         ),

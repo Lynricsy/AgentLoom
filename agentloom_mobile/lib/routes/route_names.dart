@@ -9,6 +9,7 @@ class RouteNames {
   static const String workflowDetail = 'workflowDetail';
   static const String executionMonitor = 'executionMonitor';
   static const String workflowAgentViewer = 'workflowAgentViewer';
+  static const String workflowOutputViewer = 'workflowOutputViewer';
   static const String workflowLaunch = 'workflowLaunch';
 
   /// Agent 路由

@@ -34,6 +34,9 @@ AgentLoom Flutter 客户端，当前定位为移动优先、全端兼容的使�
   - Flutter 原生端使用 `websocket` transport；Flutter Web 保留 `polling -> websocket` 升级链路
   - REST detail 首次加载 + polling 降级
   - 状态头、告警横幅、步骤时间线
+  - Agent 节点可进入独立运行视图；`text-output` / `json-output` 节点可点击打开输出详情
+  - `text-output` 详情支持 Markdown、LaTeX、Mermaid、代码块渲染
+  - `json-output` 详情优先展示结构化 JSON 树；流式中间态或非法 JSON 自动回退到原文代码视图
   - Shell 外深链接 `/executions/:executionId`
 - Agents：
   - Agent 列表、详情、会话入口

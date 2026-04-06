@@ -1,4 +1,5 @@
 import '../../agents/models/conversation_message_dto.dart';
+import 'output_content.dart';
 import '../models/execution_runtime.dart';
 import '../models/execution_state.dart';
 
@@ -11,26 +12,7 @@ bool isWorkflowAgentNodeType(String? nodeType) {
 }
 
 String extractRuntimeOutput(StepSnapshot step, ExecutionRuntimeStep? runtime) {
-  if (runtime != null && runtime.output.trim().isNotEmpty) {
-    return runtime.output;
-  }
-
-  final result = step.result;
-  if (result == null) {
-    return '';
-  }
-
-  final content = result['content'];
-  if (content is String) {
-    return content;
-  }
-
-  final output = result['output'];
-  if (output is String) {
-    return output;
-  }
-
-  return '';
+  return extractWorkflowOutputText(step, runtime);
 }
 
 ConversationState buildWorkflowAgentConversationState({
@@ -116,17 +98,26 @@ String summarizeExecutionStep(
     return '重试 ${runtime!.retryAttempt}/${runtime.retryMaxAttempts}';
   }
 
+  final format = getWorkflowOutputFormat(step.nodeType);
   final output = extractRuntimeOutput(step, runtime).trim();
-  if (output.isNotEmpty) {
-    final normalized = output.replaceAll('\n', ' ').trim();
-    return normalized.length > 120
-        ? '${normalized.substring(0, 120)}...'
-        : normalized;
+  final preview = buildOutputPreviewText(
+    format: format,
+    output: output,
+    jsonValue: extractWorkflowJsonValue(step, runtime),
+    isStreaming: runtime?.isStreaming ?? false,
+    maxChars: 120,
+  );
+  if (preview != null && preview.isNotEmpty) {
+    return preview.replaceAll('\n', ' ');
   }
 
   final result = step.result;
   if (result != null && result.isNotEmpty) {
     return '已产出 ${result.keys.join(' / ')}';
+  }
+
+  if (isWorkflowOutputNodeType(step.nodeType)) {
+    return '点击查看输出详情';
   }
 
   if (isWorkflowAgentNodeType(step.nodeType)) {

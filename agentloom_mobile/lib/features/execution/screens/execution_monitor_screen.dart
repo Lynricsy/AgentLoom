@@ -164,6 +164,15 @@ class _ExecutionMonitorScreenState
                 },
               );
             },
+            onOpenOutputStep: (step) {
+              context.pushNamed(
+                RouteNames.workflowOutputViewer,
+                pathParameters: {
+                  'executionId': widget.executionId,
+                  'stepId': step.stepId,
+                },
+              );
+            },
           ),
         ],
       ),
@@ -191,6 +200,15 @@ class _ExecutionMonitorScreenState
             onOpenAgentStep: (step) {
               context.pushNamed(
                 RouteNames.workflowAgentViewer,
+                pathParameters: {
+                  'executionId': widget.executionId,
+                  'stepId': step.stepId,
+                },
+              );
+            },
+            onOpenOutputStep: (step) {
+              context.pushNamed(
+                RouteNames.workflowOutputViewer,
                 pathParameters: {
                   'executionId': widget.executionId,
                   'stepId': step.stepId,

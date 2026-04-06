@@ -4,6 +4,7 @@ import 'package:agentloom_mobile/features/auth/models/auth_tokens.dart';
 import 'package:agentloom_mobile/features/auth/providers/token_storage_provider.dart';
 import 'package:agentloom_mobile/features/execution/screens/execution_monitor_screen.dart';
 import 'package:agentloom_mobile/features/execution/screens/workflow_agent_viewer_screen.dart';
+import 'package:agentloom_mobile/features/execution/screens/workflow_output_viewer_screen.dart';
 import 'package:agentloom_mobile/routes/app_router.dart';
 import 'package:agentloom_mobile/routes/route_names.dart';
 import 'package:agentloom_mobile/shared/providers/env_provider.dart';
@@ -207,6 +208,58 @@ void main() {
 
     testWidgets('RouteNames.workflowAgentViewer 常量正确', (tester) async {
       expect(RouteNames.workflowAgentViewer, 'workflowAgentViewer');
+    });
+
+    testWidgets('路由名 workflowOutputViewer 已注册', (tester) async {
+      final container = createTestContainer();
+      addTearDown(container.dispose);
+
+      final router = container.read(goRouterProvider);
+      router.goNamed(
+        RouteNames.workflowOutputViewer,
+        pathParameters: {
+          'executionId': 'test-exec-006',
+          'stepId': 'step-output-006',
+        },
+      );
+
+      expect(
+        router.routeInformationProvider.value.uri.path,
+        '/executions/test-exec-006/steps/step-output-006/output',
+      );
+    });
+
+    testWidgets('通过 pushNamed 导航到 workflow output viewer', (tester) async {
+      final container = createTestContainer();
+      addTearDown(container.dispose);
+
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: container,
+          child: const AgentLoomApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final router = container.read(goRouterProvider);
+      router.pushNamed(
+        RouteNames.workflowOutputViewer,
+        pathParameters: {
+          'executionId': 'test-exec-006',
+          'stepId': 'step-output-006',
+        },
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.byType(WorkflowOutputViewerScreen), findsOneWidget);
+      expect(
+        router.routeInformationProvider.value.uri.path,
+        '/executions/test-exec-006/steps/step-output-006/output',
+      );
+    });
+
+    testWidgets('RouteNames.workflowOutputViewer 常量正确', (tester) async {
+      expect(RouteNames.workflowOutputViewer, 'workflowOutputViewer');
     });
   });
 }
