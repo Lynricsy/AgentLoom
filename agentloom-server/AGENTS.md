@@ -93,6 +93,14 @@ TenantMiddleware (extract tenantId from JWT no-verify; skip when X-Api-Key prese
 - `terminal/output` 兑现 per-request `outputByteLimit` bounded retrieval；对 `exited` / `killed` terminal 会返回稳定 `terminal_output_unavailable` JSON-RPC 错误，而不是继续暴露残留 buffer。
 - `terminal/wait_for_exit` 同时支持 request-local `timeoutMs`（返回 `terminal_wait_timeout`，不主动 kill 进程）与 server lifetime timeout（返回 `terminal_timeout`）；manual `terminal/kill` 与 `session/cancel` / disconnect cleanup 触发的 kill 都会写 `acp.terminal.server_sandbox.killed` 审计。
 
+### Agent 对话附件事实
+
+- `POST /agent-conversations/:id/messages` 与 `POST /agent-definitions/:agentId/conversations/start` 现以 `metadata.attachments[]` 作为 canonical 多附件结构，并继续兼容 legacy `metadata.attachment`
+- 单条 user message 可同时携带文本、多个图片和多个文件；单附件上限 `1.5 MB`、单消息附件总量上限 `10 MB`、文本内联上限 `200 KB`
+- `conversation-attachment.ts` 负责统一规范化与总量校验；混合图片/文件的多附件消息会持久化为 `contentType='text'`，同时保留每个附件自己的 `kind`
+- `AgentExecutionWorker` 会为同一条消息中的每个附件分别 best-effort materialize 到 `/workspace/uploads/...`，并通过 `withConversationAttachmentSandboxPaths()` 把各自 `sandboxPath` 回填到 metadata
+- `buildConversationPromptBlocks()` 对最新用户消息只输出用户原文与附件 block，不额外注入“用户连续发送了以下消息”这类包装提示词
+
 ## 执行流 (核心业务)
 
 ### Plugin 模块补充

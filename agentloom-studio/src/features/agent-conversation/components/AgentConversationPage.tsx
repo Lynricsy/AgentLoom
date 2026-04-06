@@ -17,6 +17,9 @@ import {
   Loader2,
   AlertCircle,
   ImagePlus,
+  ImageIcon,
+  FileText,
+  X,
 } from "lucide-react";
 import { cn } from "@/shared/lib/utils";
 import { Button } from "@/shared/ui/button";
@@ -30,11 +33,21 @@ import { SandboxComputerPanel } from "./SandboxComputerPanel";
 import { WorkspaceFileTree } from "./WorkspaceFileTree";
 import { AgentViewBreadcrumb } from "./AgentViewBreadcrumb";
 import type {
+  ConversationAttachment,
   ConversationMessage,
   OutgoingConversationMessage,
   SubAgentStream,
   ToolCall,
 } from "../types";
+import {
+  describeConversationAttachmentsSummary,
+  inferConversationAttachmentContentType,
+  getConversationAttachmentTotalBytes,
+  MAX_CONVERSATION_ATTACHMENT_BYTES,
+  MAX_CONVERSATION_ATTACHMENT_TOTAL_BYTES,
+  MAX_CONVERSATION_TEXT_ATTACHMENT_BYTES,
+  TEXT_ATTACHMENT_EXTENSIONS,
+} from "../attachmentUtils";
 import type { ToolCallData } from "@/shared/components/tool-renderers/types";
 import {
   useConversationMessages,
@@ -63,49 +76,6 @@ const MIN_LEFT_WIDTH = 360;
 const MIN_RIGHT_WIDTH = 280;
 const DEFAULT_LEFT_RATIO = 0.6;
 const EXECUTING_HISTORY_SYNC_INTERVAL_MS = 3_000;
-const MAX_CONVERSATION_ATTACHMENT_BYTES = 1_500_000;
-const MAX_CONVERSATION_TEXT_ATTACHMENT_BYTES = 200_000;
-const TEXT_ATTACHMENT_EXTENSIONS = new Set([
-  "txt",
-  "md",
-  "markdown",
-  "json",
-  "jsonl",
-  "yaml",
-  "yml",
-  "xml",
-  "csv",
-  "ts",
-  "tsx",
-  "js",
-  "jsx",
-  "mjs",
-  "cjs",
-  "py",
-  "rs",
-  "go",
-  "java",
-  "kt",
-  "swift",
-  "sql",
-  "html",
-  "css",
-  "scss",
-  "sh",
-  "bash",
-  "zsh",
-  "env",
-  "toml",
-  "ini",
-  "log",
-]);
-
-function describeAttachmentContent(
-  kind: "image" | "file",
-  fileName: string,
-): string {
-  return `已上传${kind === "image" ? "图片" : "文件"} ${fileName}`;
-}
 
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -151,10 +121,9 @@ function isLikelyTextAttachment(file: File): boolean {
   return extension ? TEXT_ATTACHMENT_EXTENSIONS.has(extension) : false;
 }
 
-async function buildImageConversationMessage(
+async function buildImageConversationAttachment(
   file: File,
-  content?: string,
-): Promise<OutgoingConversationMessage> {
+): Promise<ConversationAttachment> {
   if (!file.type.startsWith("image/")) {
     throw new Error("请选择有效的图片文件");
   }
@@ -166,33 +135,22 @@ async function buildImageConversationMessage(
   const dataUrl = await readFileAsDataUrl(file);
 
   return {
-    content: content?.trim() || describeAttachmentContent("image", file.name),
-    contentType: "image",
-    metadata: {
-      attachment: {
-        kind: "image",
-        fileName: file.name,
-        mimeType: file.type || "image/png",
-        sizeBytes: file.size,
-        dataBase64: extractBase64Payload(dataUrl),
-      },
-    },
+    kind: "image",
+    fileName: file.name,
+    mimeType: file.type || "image/png",
+    sizeBytes: file.size,
+    dataBase64: extractBase64Payload(dataUrl),
   };
 }
 
-async function buildFileConversationMessage(
+async function buildFileConversationAttachment(
   file: File,
-  content?: string,
-): Promise<OutgoingConversationMessage> {
+): Promise<ConversationAttachment> {
   if (file.size > MAX_CONVERSATION_ATTACHMENT_BYTES) {
     throw new Error("文件大小不能超过 1.5 MB");
   }
 
   const mimeType = file.type || "application/octet-stream";
-  const baseMessage = {
-    content: content?.trim() || describeAttachmentContent("file", file.name),
-    contentType: "file" as const,
-  };
 
   if (isLikelyTextAttachment(file)) {
     const textContent = await file.text();
@@ -200,31 +158,38 @@ async function buildFileConversationMessage(
 
     if (textBytes <= MAX_CONVERSATION_TEXT_ATTACHMENT_BYTES) {
       return {
-        ...baseMessage,
-        metadata: {
-          attachment: {
-            kind: "file",
-            fileName: file.name,
-            mimeType,
-            sizeBytes: file.size,
-            textContent,
-          },
-        },
+        kind: "file",
+        fileName: file.name,
+        mimeType,
+        sizeBytes: file.size,
+        textContent,
       };
     }
   }
 
   const dataUrl = await readFileAsDataUrl(file);
   return {
-    ...baseMessage,
+    kind: "file",
+    fileName: file.name,
+    mimeType,
+    sizeBytes: file.size,
+    dataBase64: extractBase64Payload(dataUrl),
+  };
+}
+
+function buildAttachmentConversationMessage(
+  content: string,
+  attachments: ConversationAttachment[],
+): OutgoingConversationMessage {
+  const contentType = inferConversationAttachmentContentType(attachments);
+
+  return {
+    content,
+    contentType,
     metadata: {
-      attachment: {
-        kind: "file",
-        fileName: file.name,
-        mimeType,
-        sizeBytes: file.size,
-        dataBase64: extractBase64Payload(dataUrl),
-      },
+      contentType,
+      attachments,
+      ...(attachments.length === 1 ? { attachment: attachments[0] } : {}),
     },
   };
 }
@@ -422,6 +387,9 @@ export function ConversationComposer({
   busyActionLabel?: string;
 }) {
   const [draft, setDraft] = useState("");
+  const [pendingAttachments, setPendingAttachments] = useState<
+    ConversationAttachment[]
+  >([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -429,17 +397,26 @@ export function ConversationComposer({
 
   const handleSend = useCallback(async () => {
     const trimmed = draft.trim();
-    if (!trimmed) return;
+    if (trimmed.length === 0 && pendingAttachments.length === 0) return;
     try {
-      await Promise.resolve(onSend(trimmed));
+      if (pendingAttachments.length === 0) {
+        await Promise.resolve(onSend(trimmed));
+      } else {
+        const content =
+          trimmed || describeConversationAttachmentsSummary(pendingAttachments);
+        await Promise.resolve(
+          onSend(buildAttachmentConversationMessage(content, pendingAttachments)),
+        );
+      }
       setDraft("");
+      setPendingAttachments([]);
       if (textareaRef.current) {
         textareaRef.current.style.height = "auto";
       }
     } catch {
       // 父组件负责展示错误，composer 只保留输入内容。
     }
-  }, [draft, onSend]);
+  }, [draft, onSend, pendingAttachments]);
 
   const handleKeyDown = useCallback(
     (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -458,30 +435,32 @@ export function ConversationComposer({
     el.style.height = `${Math.min(el.scrollHeight, 160)}px`;
   }, []);
 
-  const clearDraftInput = useCallback(() => {
-    setDraft("");
-    if (textareaRef.current) {
-      textareaRef.current.style.height = "auto";
-    }
-  }, []);
-
   const handleAttachmentSelected = useCallback(
-    async (file: File | null, kind: "file" | "image") => {
-      if (!file) {
+    async (files: FileList | null, kind: "file" | "image") => {
+      if (!files || files.length === 0) {
         return;
       }
 
       try {
-        const trimmed = draft.trim();
-        const outgoing =
-          kind === "image"
-            ? await buildImageConversationMessage(file, trimmed)
-            : await buildFileConversationMessage(file, trimmed);
-
-        await Promise.resolve(onSend(outgoing));
-        if (trimmed.length > 0) {
-          clearDraftInput();
+        const nextAttachments = await Promise.all(
+          Array.from(files).map((file) =>
+            kind === "image"
+              ? buildImageConversationAttachment(file)
+              : buildFileConversationAttachment(file),
+          ),
+        );
+        const mergedAttachments = [
+          ...pendingAttachments,
+          ...nextAttachments,
+        ] satisfies ConversationAttachment[];
+        if (
+          getConversationAttachmentTotalBytes(mergedAttachments) >
+          MAX_CONVERSATION_ATTACHMENT_TOTAL_BYTES
+        ) {
+          throw new Error("单条消息附件总大小不能超过 10 MB");
         }
+
+        setPendingAttachments(mergedAttachments);
       } catch (error) {
         notify({
           title: "上传失败",
@@ -491,13 +470,12 @@ export function ConversationComposer({
         });
       }
     },
-    [clearDraftInput, draft, notify, onSend],
+    [notify, pendingAttachments],
   );
 
   const handleFileChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
-      const file = event.target.files?.[0] ?? null;
-      void handleAttachmentSelected(file, "file");
+      void handleAttachmentSelected(event.target.files, "file");
       event.target.value = "";
     },
     [handleAttachmentSelected],
@@ -505,12 +483,17 @@ export function ConversationComposer({
 
   const handleImageChange = useCallback(
     (event: ChangeEvent<HTMLInputElement>) => {
-      const file = event.target.files?.[0] ?? null;
-      void handleAttachmentSelected(file, "image");
+      void handleAttachmentSelected(event.target.files, "image");
       event.target.value = "";
     },
     [handleAttachmentSelected],
   );
+
+  const handleRemoveAttachment = useCallback((index: number) => {
+    setPendingAttachments((current) =>
+      current.filter((_, attachmentIndex) => attachmentIndex !== index),
+    );
+  }, []);
 
   const handleFileClick = useCallback(() => {
     if (!isBusy) {
@@ -526,10 +509,53 @@ export function ConversationComposer({
 
   return (
     <div className="border-t border-border bg-surface px-4 py-3">
+      {pendingAttachments.length > 0 ? (
+        <div
+          className="mb-3 flex flex-wrap gap-2"
+          data-testid="attachment-draft-list"
+        >
+          {pendingAttachments.map((attachment, index) => (
+            <div
+              key={`${attachment.fileName}-${attachment.sizeBytes}-${index}`}
+              className="flex min-w-0 max-w-full items-start gap-2 rounded-xl border border-border/70 bg-background/80 px-3 py-2"
+            >
+              <div className="mt-0.5 rounded-md bg-foreground/5 p-2 text-muted-foreground">
+                {attachment.kind === "image" ? (
+                  <ImageIcon className="h-4 w-4" />
+                ) : (
+                  <FileText className="h-4 w-4" />
+                )}
+              </div>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-medium text-foreground">
+                  {attachment.fileName}
+                </p>
+                <p className="text-[11px] text-muted-foreground">
+                  {attachment.mimeType} ·{" "}
+                  {attachment.sizeBytes < 1024 * 1024
+                    ? `${(attachment.sizeBytes / 1024).toFixed(1)} KB`
+                    : `${(attachment.sizeBytes / (1024 * 1024)).toFixed(1)} MB`}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleRemoveAttachment(index)}
+                disabled={isBusy}
+                className="ml-1 rounded-md p-1 text-muted-foreground transition-colors hover:bg-surface-elevated hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                aria-label={`移除附件 ${attachment.fileName}`}
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
       <div className="flex items-end gap-2">
         <input
           ref={fileInputRef}
           type="file"
+          multiple
           className="hidden"
           data-testid="conversation-file-input"
           onChange={handleFileChange}
@@ -538,6 +564,7 @@ export function ConversationComposer({
           ref={imageInputRef}
           type="file"
           accept="image/*"
+          multiple
           className="hidden"
           data-testid="conversation-image-input"
           onChange={handleImageChange}
@@ -605,7 +632,9 @@ export function ConversationComposer({
           <Button
             size="sm"
             onClick={() => void handleSend()}
-            disabled={!draft.trim()}
+            disabled={
+              draft.trim().length === 0 && pendingAttachments.length === 0
+            }
             className="shrink-0"
           >
             <Send className="h-3.5 w-3.5 mr-1.5" />

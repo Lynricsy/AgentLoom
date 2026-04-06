@@ -156,11 +156,13 @@ await db.insert(agentMessages).values({
 ### 2. Signatures
 
 - `normalizeIncomingConversationMetadata(contentType, metadata): Record<string, unknown>`
+- `readConversationAttachmentMetadataList(metadata): ConversationAttachmentMetadata[]`
 - `resolveConversationMessageContentType(contentType, metadata): ConversationMessageContentType`
-- `withConversationAttachmentSandboxPath(metadata, sandboxPath): Record<string, unknown>`
+- `withConversationAttachmentSandboxPaths(metadata, sandboxPaths): Record<string, unknown>`
 - `buildConversationPromptBlocks(params): ContentBlock[]`
 - `WorkspaceIntegrationService.stageConversationAttachment(conversationId, tenantId, metadata): Promise<string | null>`
 - `POST /agent-conversations/:id/messages`
+- `POST /agent-definitions/:agentId/conversations/start`
 - `GET /agent-conversations/:id/messages`
 
 ### 3. Contracts
@@ -168,24 +170,31 @@ await db.insert(agentMessages).values({
 - `POST /agent-conversations/:id/messages` 必须接受并持久化 `contentType`。
   - 允许值仅 `text | image | file`
   - `MessageResponseDto` / history serializer 也必须把 `contentType` 返回给前端
-- 非文本消息必须提供规范化后的 `metadata.attachment`：
-  - `attachment.kind` 必须与 `contentType` 一致
+- `POST /agent-conversations/:id/messages` 与 `POST /agent-definitions/:agentId/conversations/start` 都必须接受相同的附件合同。
+  - `metadata.attachments[]` 是 canonical 结构；读取历史时继续兼容 legacy `metadata.attachment`
+  - 单附件消息可额外镜像 `metadata.attachment`，多附件消息不得只保留 legacy 单附件字段
+- 带附件消息必须先经过服务端规范化：
+  - 每个附件项都必须包含 `kind + fileName + mimeType + sizeBytes`
   - `image` 必须提供 `dataBase64`
   - `file` 至少提供 `textContent` 或 `dataBase64`
+  - 当请求 `contentType !== 'text'` 时，所有附件的 `kind` 都必须与 `contentType` 一致
+  - 混合图片/文件的多附件消息必须以 `contentType = 'text'` 持久化，但 `attachments[]` 中每个附件的 `kind` 必须保留
 - 尺寸限制必须由服务端统一校验：
-  - 总附件上限 `1_500_000` bytes
+  - 单附件上限 `1_500_000` bytes
+  - 单消息附件总量上限 `10_000_000` bytes
   - 文本内联上限 `200_000` bytes
 - 纯文本消息不得残留旧附件字段。
-  - `contentType = 'text'` 时，`metadata.attachment` 与 `metadata.contentType` 必须被清理，避免旧 UI round-trip 脏数据把普通消息误判成附件消息。
+  - `contentType = 'text'` 且无附件时，`metadata.attachment`、`metadata.attachments` 与 `metadata.contentType` 必须被清理，避免旧 UI round-trip 脏数据把普通消息误判成附件消息。
 - runtime 构造 prompt blocks 时，附件不能退化成只有一行摘要文本：
+  - 对于最新用户消息，prompt builder 只应输出用户原文与附件 block，不得额外注入“用户连续发送了以下消息”之类的包装提示词
   - 图片附件 → `image` block
   - 文本文件 → `resource` text block
   - 二进制文件 → `resource` blob block
   - 若只剩路径引用 → `resource_link` block
 - sandbox standalone conversation 在 prompt 前必须 best-effort 尝试把附件写入 `/workspace/uploads/...`。
   - 目标路径冲突时必须生成唯一后缀，不能覆盖已有文件
-  - 写入成功后，runtime 侧的附件 metadata 需补上 `sandboxPath`
-  - prompt blocks 必须额外附一条文本提示，告诉 Agent 原文件已经位于该工作区路径
+  - 写入成功后，runtime 侧的每个附件 metadata 都需按顺序补上各自的 `sandboxPath`
+  - prompt blocks 必须为每个成功 materialize 的附件附一条文本提示，告诉 Agent 原文件已经位于该工作区路径
 - `stageConversationAttachment()` 失败或当前 conversation 没有 live container 时，不得让整个 turn 失败。
   - runtime 仍应继续使用 inline attachment blocks 处理该消息
   - 失败只记 warning，不回滚用户消息
@@ -196,24 +205,28 @@ await db.insert(agentMessages).values({
 |------|----------|--------|
 | `contentType='image'` 但缺少 `dataBase64` | `POST /messages` 返回 400 | `agent-conversation.service.spec.ts` |
 | `contentType='file'` 且缺少 `textContent/dataBase64` | `POST /messages` 返回 400 | `agent-conversation.service.spec.ts` |
-| 附件超出 `1.5 MB` 或文本内联超出 `200 KB` | `POST /messages` 返回 400 | `conversation-attachment.ts` 校验 + service spec |
+| 任一附件超出 `1.5 MB`、单消息总量超出 `10 MB` 或文本内联超出 `200 KB` | `POST /messages` / `POST /conversations/start` 返回 400 | `conversation-attachment.ts` 校验 + service spec |
+| 多附件混合图片/文件 | 持久化 `contentType='text'`，但保留完整 `metadata.attachments[]` | `agent-conversation.service.spec.ts` |
 | sandbox conversation 有 live container | worker 会把附件写入 `/workspace/uploads/...` 并把路径注入 prompt | `agent-execution.worker.spec.ts` / `workspace-integration.service.spec.ts` |
 | sandbox conversation 无 live container | worker 不抛错，继续使用 inline attachment blocks | `agent-execution.worker.spec.ts` |
 | 历史消息回拉 | 返回 `contentType`，前端能重建附件卡片 | `message-response.dto.ts` 相关序列化断言 |
 
 ### 5. Good / Base / Bad Cases
 
+- Good：用户一次发送多个附件时，服务端会保留完整 `metadata.attachments[]`，并按附件顺序把可 materialize 的文件写入 sandbox 工作区。
 - Good：用户上传文本文件后，Agent 既能直接读到内联文本，也能在 sandbox 模式下通过 `/workspace/uploads/...` 读取原文件。
 - Good：用户上传图片后，runtime 收到真实 image block，而不是只有“已上传图片 xxx”的一句摘要。
 - Base：当前 conversation 没有 live sandbox 时，附件仍以内联 block 进入 prompt，不阻断消息发送。
-- Bad：服务端把附件字段吞掉，只留下普通文本；或者 sandbox 路径固定覆盖旧文件，导致多次上传同名文件后内容错乱。
+- Bad：服务端只保留第一个附件，或把混合附件消息错误地存成 `contentType='image'/'file'`；或者 sandbox 路径固定覆盖旧文件，导致多次上传同名文件后内容错乱。
 
 ### 6. Tests Required
 
 - `src/modules/agent-conversation/agent-conversation.service.spec.ts`
-  - 断言附件消息会持久化 `contentType + metadata.attachment`
+  - 断言附件消息会持久化 `contentType + metadata.attachments[]`
+- `src/modules/agent-execution/conversation-prompt-blocks.spec.ts`
+  - 断言多附件 prompt blocks 不会注入额外包装提示词，并保留每个附件 block / sandboxPath 提示
 - `src/modules/agent-execution/__tests__/agent-execution.worker.spec.ts`
-  - 断言 worker 会为 sandbox conversation materialize 附件并构造 attachment prompt blocks
+  - 断言 worker 会为 sandbox conversation 的每个附件分别 materialize 并构造 attachment prompt blocks
 - `src/modules/agent-execution/__tests__/workspace-integration.service.spec.ts`
   - 断言 `stageConversationAttachment()` 会创建唯一工作区路径并调用 `putArchive`
 
@@ -231,11 +244,18 @@ await db.insert(agentMessages).values({
 #### Correct
 
 ```ts
-const contentType = resolveConversationMessageContentType(
-  dto.contentType,
+const requestedContentType = dto.contentType ?? "text"
+const metadata = normalizeIncomingConversationMetadata(
+  requestedContentType,
   dto.metadata,
 )
-const metadata = normalizeIncomingConversationMetadata(contentType, dto.metadata)
+const attachments = readConversationAttachmentMetadataList(metadata)
+const contentType =
+  attachments.length > 0 &&
+  requestedContentType !== "text" &&
+  attachments.every((attachment) => attachment.kind === requestedContentType)
+    ? requestedContentType
+    : "text"
 
 await db.insert(agentMessages).values({
   content: dto.content,

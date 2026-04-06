@@ -2125,6 +2125,120 @@ describe('AgentExecutionWorker', () => {
       );
     });
 
+    it('多附件消息应为每个附件分别写入工作区并传给 runtime', async () => {
+      const turnWorker = worker as unknown as {
+        runConversationTurn: (
+          runtime: typeof mockRuntime,
+          session: ReturnType<typeof makeSession>,
+          conversationId: string,
+          tenantId: string,
+          pendingMessages: Array<{
+            id: string;
+            content: string;
+            contentType: string;
+            metadata: Record<string, unknown>;
+            createdAt: Date;
+          }>,
+          hasPriorTurns: boolean,
+        ) => Promise<{
+          assistantText: string;
+          stopReason: string;
+        }>;
+      };
+
+      mockWorkspaceIntegrationService.stageConversationAttachment
+        .mockResolvedValueOnce('/workspace/uploads/design.png')
+        .mockResolvedValueOnce('/workspace/uploads/notes.txt');
+      mockRuntime.prompt.mockReturnValueOnce(
+        createAsyncIterable([{ type: 'done', stopReason: 'end_turn' }]),
+      );
+
+      await turnWorker.runConversationTurn(
+        mockRuntime as never,
+        makeSession({
+          runtimeConfig: {
+            runtimeMode: 'sandbox',
+          },
+        }),
+        'conversation-1',
+        'tenant-1',
+        [
+          {
+            id: 'message-2',
+            content: '请同时分析这两个附件',
+            contentType: 'text',
+            metadata: {
+              attachments: [
+                {
+                  kind: 'image',
+                  fileName: 'design.png',
+                  mimeType: 'image/png',
+                  sizeBytes: 32,
+                  dataBase64: 'cG5n',
+                },
+                {
+                  kind: 'file',
+                  fileName: 'notes.txt',
+                  mimeType: 'text/plain',
+                  sizeBytes: 24,
+                  textContent: 'ATTACH-QA-20260406',
+                },
+              ],
+            },
+            createdAt: new Date(),
+          },
+        ],
+        false,
+      );
+
+      expect(
+        mockWorkspaceIntegrationService.stageConversationAttachment,
+      ).toHaveBeenNthCalledWith(1, 'conversation-1', 'tenant-1', {
+        attachment: {
+          kind: 'image',
+          fileName: 'design.png',
+          mimeType: 'image/png',
+          sizeBytes: 32,
+          dataBase64: 'cG5n',
+        },
+      });
+      expect(
+        mockWorkspaceIntegrationService.stageConversationAttachment,
+      ).toHaveBeenNthCalledWith(2, 'conversation-1', 'tenant-1', {
+        attachment: {
+          kind: 'file',
+          fileName: 'notes.txt',
+          mimeType: 'text/plain',
+          sizeBytes: 24,
+          textContent: 'ATTACH-QA-20260406',
+        },
+      });
+      expect(mockRuntime.prompt).toHaveBeenCalledWith(
+        'session-1',
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: 'text',
+            text: '该附件已写入工作区：/workspace/uploads/design.png。如需查看原文件，请直接读取该路径。',
+          }),
+          expect.objectContaining({
+            type: 'text',
+            text: '该附件已写入工作区：/workspace/uploads/notes.txt。如需查看原文件，请直接读取该路径。',
+          }),
+          expect.objectContaining({
+            type: 'image',
+            data: 'cG5n',
+            mimeType: 'image/png',
+          }),
+          expect.objectContaining({
+            type: 'resource',
+            uri: 'file:///workspace/uploads/notes.txt',
+            text: 'ATTACH-QA-20260406',
+            mimeType: 'text/plain',
+          }),
+        ]),
+      );
+    });
+
     it('后续事件缺失 toolName 时应保留先前的真实工具名', async () => {
       const turnWorker = worker as unknown as {
         runConversationTurn: (

@@ -82,8 +82,9 @@ import {
 } from './conversation-prompt-blocks';
 import { WorkspaceIntegrationService } from './workspace-integration.service';
 import {
+  readConversationAttachmentMetadataList,
   resolveConversationMessageContentType,
-  withConversationAttachmentSandboxPath,
+  withConversationAttachmentSandboxPaths,
 } from '../agent-conversation/conversation-attachment';
 import {
   type ExecuteSubAgentParams,
@@ -1173,8 +1174,7 @@ export class AgentExecutionWorker extends WorkerHost {
       pendingMessages:
         runtimePendingMessages as PendingConversationPromptMessage[],
       hasPriorTurns,
-      historyMessages:
-        historyMessages as HistoryConversationPromptMessage[],
+      historyMessages: historyMessages as HistoryConversationPromptMessage[],
       latestPromptOverride: latestPromptText,
       conversationMetadata,
     });
@@ -1644,34 +1644,37 @@ export class AgentExecutionWorker extends WorkerHost {
     const nextMessages: PendingMessage[] = [];
 
     for (const message of pendingMessages) {
-      const contentType = resolveConversationMessageContentType(
-        message.contentType,
+      const attachments = readConversationAttachmentMetadataList(
         message.metadata,
       );
 
-      if (contentType === 'text') {
+      if (attachments.length === 0) {
         nextMessages.push(message);
         continue;
       }
 
       try {
-        const sandboxPath =
-          await this.workspaceIntegrationService.stageConversationAttachment(
-            conversationId,
-            tenantId,
-            message.metadata,
-          );
+        const sandboxPaths: Array<string | undefined> = [];
+        for (const attachment of attachments) {
+          const sandboxPath =
+            await this.workspaceIntegrationService.stageConversationAttachment(
+              conversationId,
+              tenantId,
+              { attachment },
+            );
+          sandboxPaths.push(sandboxPath ?? undefined);
+        }
 
-        if (!sandboxPath) {
+        if (sandboxPaths.every((sandboxPath) => !sandboxPath)) {
           nextMessages.push(message);
           continue;
         }
 
         nextMessages.push({
           ...message,
-          metadata: withConversationAttachmentSandboxPath(
+          metadata: withConversationAttachmentSandboxPaths(
             message.metadata,
-            sandboxPath,
+            sandboxPaths,
           ),
         });
       } catch (error) {
@@ -1693,7 +1696,13 @@ export class AgentExecutionWorker extends WorkerHost {
     conversationMetadata: Record<string, unknown> = {},
   ): ContentBlock[] {
     return buildConversationPromptBlocks({
-      pendingMessages: pendingMessages as PendingConversationPromptMessage[],
+      pendingMessages: pendingMessages.map((message) => ({
+        ...message,
+        contentType: resolveConversationMessageContentType(
+          message.contentType,
+          message.metadata,
+        ),
+      })) as PendingConversationPromptMessage[],
       hasPriorTurns,
       historyMessages: historyMessages as HistoryConversationPromptMessage[],
       latestPromptOverride,

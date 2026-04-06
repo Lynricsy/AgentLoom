@@ -6,7 +6,7 @@ import type {
 } from '../agent/types/content-block.types';
 import {
   readConversationAttachmentMetadata,
-  resolveConversationMessageContentType,
+  readConversationAttachmentMetadataList,
 } from '../agent-conversation/conversation-attachment';
 
 export interface PendingConversationPromptMessage {
@@ -17,8 +17,7 @@ export interface PendingConversationPromptMessage {
   createdAt: Date;
 }
 
-export interface HistoryConversationPromptMessage
-  extends PendingConversationPromptMessage {
+export interface HistoryConversationPromptMessage extends PendingConversationPromptMessage {
   role: 'user' | 'assistant' | 'system' | 'tool';
   toolCalls: Record<string, unknown>[] | null;
 }
@@ -32,7 +31,6 @@ export function buildConversationPromptBlocks(params: {
 }): ContentBlock[] {
   const {
     pendingMessages,
-    hasPriorTurns,
     historyMessages = [],
     latestPromptOverride,
     conversationMetadata = {},
@@ -60,26 +58,7 @@ export function buildConversationPromptBlocks(params: {
     ];
   }
 
-  if (pendingMessages.length === 1 && isPlainTextPendingMessage(pendingMessages[0])) {
-    return [
-      {
-        type: 'text',
-        text: latestPrompt,
-      } satisfies TextContentBlock,
-    ];
-  }
-
-  const prefix = hasPriorTurns
-    ? '在你上一轮回复后，用户又发送了以下新消息，请结合上下文继续回应：'
-    : '用户连续发送了以下消息，请综合后统一回应：';
-
-  return [
-    {
-      type: 'text',
-      text: prefix,
-    } satisfies TextContentBlock,
-    ...buildLatestPendingBlocks(pendingMessages, latestPrompt),
-  ];
+  return buildLatestPendingBlocks(pendingMessages, latestPrompt);
 }
 
 export function formatLatestPendingMessages(
@@ -104,7 +83,7 @@ function buildLatestPendingBlocks(
   }
 
   const attachmentBlocks = pendingMessages.flatMap((message, index) =>
-    readConversationAttachmentMetadata(message.metadata)
+    readConversationAttachmentMetadataList(message.metadata).length > 0
       ? buildPendingMessageBlocks(message, '', index + 1)
       : [],
   );
@@ -136,7 +115,7 @@ function buildPendingMessageBlocks(
   textOverride: string,
   index?: number,
 ): ContentBlock[] {
-  const attachment = readConversationAttachmentMetadata(message.metadata);
+  const attachments = readConversationAttachmentMetadataList(message.metadata);
   const prefix = index ? `用户消息 ${index}：` : '';
   const blocks: ContentBlock[] = [];
 
@@ -146,25 +125,27 @@ function buildPendingMessageBlocks(
       type: 'text',
       text: `${prefix}${primaryText}`,
     } satisfies TextContentBlock);
-  } else if (attachment) {
+  } else if (attachments.length > 0) {
     blocks.push({
       type: 'text',
-      text: `${prefix}${describeAttachment(attachment)}`,
+      text: `${prefix}${describeAttachments(attachments)}`,
     } satisfies TextContentBlock);
   }
 
-  if (!attachment) {
+  if (attachments.length === 0) {
     return blocks;
   }
 
-  if (attachment.sandboxPath) {
-    blocks.push({
-      type: 'text',
-      text: `该附件已写入工作区：${attachment.sandboxPath}。如需查看原文件，请直接读取该路径。`,
-    } satisfies TextContentBlock);
-  }
+  for (const attachment of attachments) {
+    if (attachment.sandboxPath) {
+      blocks.push({
+        type: 'text',
+        text: `该附件已写入工作区：${attachment.sandboxPath}。如需查看原文件，请直接读取该路径。`,
+      } satisfies TextContentBlock);
+    }
 
-  blocks.push(...buildAttachmentBlocks(attachment));
+    blocks.push(...buildAttachmentBlocks(attachment));
+  }
   return blocks;
 }
 
@@ -229,21 +210,6 @@ function buildAttachmentUri(
   return `attachment://${encodeURIComponent(attachment.fileName)}`;
 }
 
-function isPlainTextPendingMessage(
-  message: PendingConversationPromptMessage | undefined,
-): boolean {
-  if (!message) {
-    return false;
-  }
-
-  return (
-    resolveConversationMessageContentType(
-      message.contentType,
-      message.metadata,
-    ) === 'text' && !readConversationAttachmentMetadata(message.metadata)
-  );
-}
-
 function describePendingMessageText(
   message: PendingConversationPromptMessage | undefined,
 ): string {
@@ -256,8 +222,8 @@ function describePendingMessageText(
     return trimmed;
   }
 
-  const attachment = readConversationAttachmentMetadata(message.metadata);
-  return attachment ? describeAttachment(attachment) : '';
+  const attachments = readConversationAttachmentMetadataList(message.metadata);
+  return attachments.length > 0 ? describeAttachments(attachments) : '';
 }
 
 function formatConversationHistory(
@@ -265,7 +231,9 @@ function formatConversationHistory(
 ): string {
   return historyMessages
     .map((message, index) => {
-      const toolSummary = describeConversationHistoryToolCalls(message.toolCalls);
+      const toolSummary = describeConversationHistoryToolCalls(
+        message.toolCalls,
+      );
 
       return [
         `${index + 1}. ${describeConversationRole(message.role)}: ${describeConversationHistoryMessage(message)}`,
@@ -293,19 +261,19 @@ function describeConversationRole(
 function describeConversationHistoryMessage(
   message: HistoryConversationPromptMessage,
 ): string {
-  const attachment = readConversationAttachmentMetadata(message.metadata);
+  const attachments = readConversationAttachmentMetadataList(message.metadata);
   const trimmed = message.content.trim();
 
-  if (trimmed.length > 0 && attachment) {
-    return `${trimmed}（${describeAttachment(attachment)}）`;
+  if (trimmed.length > 0 && attachments.length > 0) {
+    return `${trimmed}（${describeAttachments(attachments)}）`;
   }
 
   if (trimmed.length > 0) {
     return trimmed;
   }
 
-  if (attachment) {
-    return describeAttachment(attachment);
+  if (attachments.length > 0) {
+    return describeAttachments(attachments);
   }
 
   if (message.metadata['emptyTurn'] === true) {
@@ -331,7 +299,8 @@ function describeConversationHistoryToolCalls(
       return [];
     }
 
-    const tool = readString(toolCall.tool) ?? readString(toolCall.name) ?? 'unknown_tool';
+    const tool =
+      readString(toolCall.tool) ?? readString(toolCall.name) ?? 'unknown_tool';
     const status = readString(toolCall.status);
     return [status ? `${tool} (${status})` : tool];
   });
@@ -346,6 +315,18 @@ function describeAttachment(
 ): string {
   const label = attachment.kind === 'image' ? '图片' : '文件';
   return `已上传${label} ${attachment.fileName}`;
+}
+
+function describeAttachments(
+  attachments: Array<
+    NonNullable<ReturnType<typeof readConversationAttachmentMetadata>>
+  >,
+): string {
+  if (attachments.length === 1) {
+    return describeAttachment(attachments[0]!);
+  }
+
+  return `已上传 ${attachments.length} 个附件`;
 }
 
 function isRestartedInheritedHistoryConversation(

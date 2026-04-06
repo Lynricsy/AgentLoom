@@ -15,12 +15,17 @@ import type { ToolCallData } from "@/shared/components/tool-renderers";
 import type { AgentRuntimeMode } from "@/features/agent/types";
 import { Button } from "@/shared/ui/button";
 import type {
+  ConversationAttachment,
   ConversationMessage,
   MessageSegment,
   SubAgentHandle,
   SubAgentRunStatus,
   ToolCall,
 } from "../types";
+import {
+  getConversationAttachments,
+  isConversationAttachmentAutoSummary,
+} from "../attachmentUtils";
 import {
   useConversationActions,
   useSubAgentStreams,
@@ -50,13 +55,10 @@ function formatBytes(bytes: number): string {
 }
 
 function isAttachmentAutoSummary(message: ConversationMessage): boolean {
-  const attachment = message.metadata?.attachment;
-  if (!attachment) {
-    return false;
-  }
-
-  const expected = `已上传${attachment.kind === "image" ? "图片" : "文件"} ${attachment.fileName}`;
-  return message.content.trim() === expected;
+  return isConversationAttachmentAutoSummary(
+    message.content,
+    getConversationAttachments(message.metadata),
+  );
 }
 
 function truncateAttachmentText(content: string): string {
@@ -67,15 +69,11 @@ function truncateAttachmentText(content: string): string {
   return `${content.slice(0, 240)}\n…`;
 }
 
-const AttachmentPreview = memo(function AttachmentPreview({
-  message,
+const AttachmentCard = memo(function AttachmentCard({
+  attachment,
 }: {
-  message: ConversationMessage;
+  attachment: ConversationAttachment;
 }) {
-  const attachment = message.metadata?.attachment;
-  if (!attachment) {
-    return null;
-  }
 
   if (attachment.kind === "image") {
     const imageSrc = attachment.dataBase64
@@ -83,7 +81,7 @@ const AttachmentPreview = memo(function AttachmentPreview({
       : null;
 
     return (
-      <div className="mt-2 overflow-hidden rounded-xl border border-border/60 bg-background/70">
+      <div className="overflow-hidden rounded-xl border border-border/60 bg-background/70">
         {imageSrc ? (
           <img
             src={imageSrc}
@@ -107,7 +105,7 @@ const AttachmentPreview = memo(function AttachmentPreview({
   }
 
   return (
-    <div className="mt-2 rounded-xl border border-border/60 bg-background/70 px-3 py-3">
+    <div className="rounded-xl border border-border/60 bg-background/70 px-3 py-3">
       <div className="flex items-start gap-2">
         <div className="mt-0.5 rounded-md bg-foreground/5 p-2 text-muted-foreground">
           <FileText className="h-4 w-4" />
@@ -136,6 +134,28 @@ const AttachmentPreview = memo(function AttachmentPreview({
           文件内容已随消息发送给 Agent。
         </p>
       )}
+    </div>
+  );
+});
+
+const AttachmentPreview = memo(function AttachmentPreview({
+  message,
+}: {
+  message: ConversationMessage;
+}) {
+  const attachments = getConversationAttachments(message.metadata);
+  if (attachments.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="mt-2 flex flex-col gap-2">
+      {attachments.map((attachment, index) => (
+        <AttachmentCard
+          key={`${attachment.fileName}-${attachment.sizeBytes}-${index}`}
+          attachment={attachment}
+        />
+      ))}
     </div>
   );
 });

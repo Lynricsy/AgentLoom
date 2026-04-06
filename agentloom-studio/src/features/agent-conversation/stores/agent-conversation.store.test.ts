@@ -174,6 +174,15 @@ describe("agentConversationStore", () => {
             sizeBytes: 32,
             dataBase64: "cG5n",
           },
+          attachments: [
+            {
+              kind: "image",
+              fileName: "design.png",
+              mimeType: "image/png",
+              sizeBytes: 32,
+              dataBase64: "cG5n",
+            },
+          ],
         },
       },
       expect.any(Function),
@@ -193,6 +202,105 @@ describe("agentConversationStore", () => {
             sizeBytes: 32,
             dataBase64: "cG5n",
           },
+          attachments: [
+            {
+              kind: "image",
+              fileName: "design.png",
+              mimeType: "image/png",
+              sizeBytes: 32,
+              dataBase64: "cG5n",
+            },
+          ],
+        },
+      }),
+    ]);
+  });
+
+  it("sendMessage 应透传多附件 metadata 并保留 attachments[]", () => {
+    useAgentConversationStore.getState().actions.connect({
+      conversationId: "conv-2",
+      agentId: "agent-1",
+      agentName: "Agent 1",
+      runtimeMode: "sandbox",
+      authToken: "token-1",
+    });
+
+    useAgentConversationStore.getState().actions.sendMessage({
+      content: "请同时处理这些附件",
+      contentType: "text",
+      metadata: {
+        contentType: "text",
+        attachments: [
+          {
+            kind: "image",
+            fileName: "design.png",
+            mimeType: "image/png",
+            sizeBytes: 32,
+            dataBase64: "cG5n",
+          },
+          {
+            kind: "file",
+            fileName: "notes.txt",
+            mimeType: "text/plain",
+            sizeBytes: 24,
+            textContent: "ATTACH-QA-20260406",
+          },
+        ],
+      },
+    });
+
+    expect(socketEmitMock).toHaveBeenCalledWith(
+      "conversation:message",
+      {
+        conversationId: "conv-2",
+        content: "请同时处理这些附件",
+        contentType: "text",
+        metadata: {
+          contentType: "text",
+          attachments: [
+            {
+              kind: "image",
+              fileName: "design.png",
+              mimeType: "image/png",
+              sizeBytes: 32,
+              dataBase64: "cG5n",
+            },
+            {
+              kind: "file",
+              fileName: "notes.txt",
+              mimeType: "text/plain",
+              sizeBytes: 24,
+              textContent: "ATTACH-QA-20260406",
+            },
+          ],
+        },
+      },
+      expect.any(Function),
+    );
+
+    expect(useAgentConversationStore.getState().messages).toEqual([
+      expect.objectContaining({
+        role: "user",
+        content: "请同时处理这些附件",
+        contentType: "text",
+        metadata: {
+          contentType: "text",
+          attachments: [
+            {
+              kind: "image",
+              fileName: "design.png",
+              mimeType: "image/png",
+              sizeBytes: 32,
+              dataBase64: "cG5n",
+            },
+            {
+              kind: "file",
+              fileName: "notes.txt",
+              mimeType: "text/plain",
+              sizeBytes: 24,
+              textContent: "ATTACH-QA-20260406",
+            },
+          ],
         },
       }),
     ]);

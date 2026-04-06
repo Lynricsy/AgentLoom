@@ -141,4 +141,50 @@ describe("MessageList", () => {
     );
     expect(screen.getByText("design.png")).toBeInTheDocument();
   });
+
+  it("应渲染同一条用户消息中的多个附件", () => {
+    const message: ConversationMessage = {
+      id: "user-attachment-2",
+      role: "user",
+      content: "已上传 2 个附件",
+      contentType: "text",
+      toolCalls: [],
+      segments: [{ type: "text", content: "已上传 2 个附件" }],
+      isStreaming: false,
+      createdAt: Date.now(),
+      metadata: {
+        contentType: "text",
+        attachments: [
+          {
+            kind: "image",
+            fileName: "design.png",
+            mimeType: "image/png",
+            sizeBytes: 32,
+            dataBase64: "cG5n",
+          },
+          {
+            kind: "file",
+            fileName: "notes.txt",
+            mimeType: "text/plain",
+            sizeBytes: 24,
+            textContent: "ATTACH-QA-20260406",
+          },
+        ],
+      },
+    };
+
+    render(
+      <MessageList
+        messages={[message]}
+        isExecuting={false}
+        runtimeMode="sandbox"
+        onRestartConversation={async () => {}}
+      />,
+    );
+
+    expect(screen.queryByText("已上传 2 个附件")).not.toBeInTheDocument();
+    expect(screen.getByRole("img", { name: "design.png" })).toBeInTheDocument();
+    expect(screen.getByText("notes.txt")).toBeInTheDocument();
+    expect(screen.getByText("ATTACH-QA-20260406")).toBeInTheDocument();
+  });
 });

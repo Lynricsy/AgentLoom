@@ -181,4 +181,45 @@ void main() {
     expect(find.text('broken.png'), findsOneWidget);
     expect(find.text('图片已随消息发送给 Agent。'), findsOneWidget);
   });
+
+  testWidgets('同一条用户消息中的多个附件应全部展示', (tester) async {
+    await tester.pumpWidget(
+      createTestWidget(
+        const MessageBubble(
+          message: ConversationMessageDto(
+            id: 'user-attachment-3',
+            conversationId: 'conv-001',
+            role: MessageRole.user,
+            content: '已上传 2 个附件',
+            metadata: {
+              'contentType': 'text',
+              'attachments': [
+                {
+                  'kind': 'image',
+                  'fileName': 'tiny.png',
+                  'mimeType': 'image/png',
+                  'sizeBytes': 68,
+                  'dataBase64': _tinyPngBase64,
+                },
+                {
+                  'kind': 'file',
+                  'fileName': 'notes.txt',
+                  'mimeType': 'text/plain',
+                  'sizeBytes': 18,
+                  'textContent': 'ATTACH-QA-20260406',
+                },
+              ],
+            },
+            createdAt: '2026-04-06T00:00:00.000Z',
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('已上传 2 个附件'), findsNothing);
+    expect(find.text('tiny.png'), findsOneWidget);
+    expect(find.text('notes.txt'), findsOneWidget);
+    expect(find.text('ATTACH-QA-20260406'), findsOneWidget);
+  });
 }

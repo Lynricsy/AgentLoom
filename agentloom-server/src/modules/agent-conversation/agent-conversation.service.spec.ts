@@ -1,4 +1,4 @@
-import { NotFoundException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -134,7 +134,7 @@ describe('AgentConversationService', () => {
       insert: vi.fn(),
       update: vi.fn(),
       transaction: vi.fn(async (callback: (tx: MockDb) => unknown) =>
-        callback(db)
+        callback(db),
       ),
     };
 
@@ -219,8 +219,7 @@ describe('AgentConversationService', () => {
       ]);
       const updatedAtChain = createUpdateNoReturnChain();
 
-      db.select
-        .mockReturnValueOnce(agentSelectChain);
+      db.select.mockReturnValueOnce(agentSelectChain);
       db.insert
         .mockReturnValueOnce(conversationInsertChain)
         .mockReturnValueOnce(messageInsertChain);
@@ -534,6 +533,15 @@ describe('AgentConversationService', () => {
           contentType: 'image',
           metadata: {
             contentType: 'image',
+            attachments: [
+              {
+                kind: 'image',
+                fileName: 'design.png',
+                mimeType: 'image/png',
+                sizeBytes: 32,
+                dataBase64: 'cG5n',
+              },
+            ],
             attachment: {
               kind: 'image',
               fileName: 'design.png',
@@ -548,6 +556,127 @@ describe('AgentConversationService', () => {
         id: MESSAGE_ID,
         contentType: 'image',
       });
+    });
+
+    it('应持久化多附件消息并保留 attachments 元数据', async () => {
+      const convChain = createSelectChain([
+        { id: CONVERSATION_ID, status: 'active' },
+      ]);
+      const message = createMessageRecord({
+        contentType: 'text',
+        content: '请同时查看这两个附件',
+        metadata: {
+          contentType: 'text',
+          attachments: [
+            {
+              kind: 'image',
+              fileName: 'design.png',
+              mimeType: 'image/png',
+              sizeBytes: 32,
+              dataBase64: 'cG5n',
+            },
+            {
+              kind: 'file',
+              fileName: 'notes.txt',
+              mimeType: 'text/plain',
+              sizeBytes: 24,
+              textContent: 'ATTACH-QA-20260406',
+            },
+          ],
+        },
+      });
+      const insertChain = createInsertChain([message]);
+      const updateChain = createUpdateNoReturnChain();
+
+      db.select.mockReturnValueOnce(convChain);
+      db.insert.mockReturnValueOnce(insertChain);
+      db.update.mockReturnValueOnce(updateChain);
+
+      const result = await service.sendMessage(CONVERSATION_ID, TENANT_ID, {
+        content: '请同时查看这两个附件',
+        contentType: 'text',
+        metadata: {
+          attachments: [
+            {
+              kind: 'image',
+              fileName: 'design.png',
+              mimeType: 'image/png',
+              sizeBytes: 32,
+              dataBase64: 'cG5n',
+            },
+            {
+              kind: 'file',
+              fileName: 'notes.txt',
+              mimeType: 'text/plain',
+              sizeBytes: 24,
+              textContent: 'ATTACH-QA-20260406',
+            },
+          ],
+        },
+      } as any);
+
+      expect(insertChain.values).toHaveBeenCalledWith(
+        expect.objectContaining({
+          contentType: 'text',
+          metadata: {
+            contentType: 'text',
+            attachments: [
+              {
+                kind: 'image',
+                fileName: 'design.png',
+                mimeType: 'image/png',
+                sizeBytes: 32,
+                dataBase64: 'cG5n',
+              },
+              {
+                kind: 'file',
+                fileName: 'notes.txt',
+                mimeType: 'text/plain',
+                sizeBytes: 24,
+                textContent: 'ATTACH-QA-20260406',
+              },
+            ],
+          },
+        }),
+      );
+      expect(result.data).toMatchObject({
+        id: MESSAGE_ID,
+        contentType: 'text',
+      });
+    });
+
+    it('多附件总量超过 10 MB 时应拒绝写入', async () => {
+      const convChain = createSelectChain([
+        { id: CONVERSATION_ID, status: 'active' },
+      ]);
+      db.select.mockReturnValueOnce(convChain);
+
+      await expect(
+        service.sendMessage(CONVERSATION_ID, TENANT_ID, {
+          content: '这是超限附件集合',
+          contentType: 'text',
+          metadata: {
+            attachments: [
+              {
+                kind: 'file',
+                fileName: 'a.bin',
+                mimeType: 'application/octet-stream',
+                sizeBytes: 6_000_000,
+                dataBase64: 'YQ==',
+              },
+              {
+                kind: 'file',
+                fileName: 'b.bin',
+                mimeType: 'application/octet-stream',
+                sizeBytes: 5_000_001,
+                dataBase64: 'Yg==',
+              },
+            ],
+          },
+        } as any),
+      ).rejects.toBeInstanceOf(BadRequestException);
+
+      expect(db.insert).not.toHaveBeenCalled();
     });
   });
 

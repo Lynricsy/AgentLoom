@@ -71,4 +71,55 @@ describe("NewConversationDraftPage", () => {
       });
     });
   });
+
+  it("选择附件后应先停留在草稿区，点击发送后再调用 startConversation", async () => {
+    mockMutateAsync.mockResolvedValueOnce({ id: "conv-10" });
+
+    renderPage();
+
+    const fileInput = screen.getByTestId("conversation-file-input");
+    const attachmentA = new File(["alpha"], "notes-a.txt", {
+      type: "text/plain",
+    });
+    const attachmentB = new File(["beta"], "notes-b.txt", {
+      type: "text/plain",
+    });
+
+    fireEvent.change(fileInput, {
+      target: { files: [attachmentA, attachmentB] },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-draft-list")).toBeInTheDocument();
+    });
+    expect(mockMutateAsync).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "发送" }));
+
+    await waitFor(() => {
+      expect(mockMutateAsync).toHaveBeenCalledWith({
+        content: "已上传 2 个附件",
+        contentType: "file",
+        metadata: {
+          contentType: "file",
+          attachments: [
+            {
+              kind: "file",
+              fileName: "notes-a.txt",
+              mimeType: "text/plain",
+              sizeBytes: 5,
+              textContent: "alpha",
+            },
+            {
+              kind: "file",
+              fileName: "notes-b.txt",
+              mimeType: "text/plain",
+              sizeBytes: 4,
+              textContent: "beta",
+            },
+          ],
+        },
+      });
+    });
+  });
 });

@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown_plus/flutter_markdown_plus.dart';
 
+import '../conversation_attachment_payload.dart';
 import '../models/conversation_message_dto.dart';
 import 'tool_call_card.dart';
 
@@ -54,8 +55,8 @@ int? _readInt(Object? value) {
   return null;
 }
 
-_ConversationAttachment? _extractAttachment(ConversationMessageDto message) {
-  final attachment = _asMap(message.metadata['attachment']);
+_ConversationAttachment? _extractSingleAttachment(Object? value) {
+  final attachment = _asMap(value);
   final kind = _readString(attachment['kind']);
   final fileName = _readString(attachment['fileName']);
   final mimeType = _readString(attachment['mimeType']);
@@ -79,13 +80,43 @@ _ConversationAttachment? _extractAttachment(ConversationMessageDto message) {
   );
 }
 
+List<_ConversationAttachment> _extractAttachments(ConversationMessageDto message) {
+  final attachmentsValue = message.metadata['attachments'];
+  if (attachmentsValue is List) {
+    final attachments = attachmentsValue
+        .map(_extractSingleAttachment)
+        .whereType<_ConversationAttachment>()
+        .toList(growable: false);
+    if (attachments.isNotEmpty) {
+      return attachments;
+    }
+  }
+
+  final attachment = _extractSingleAttachment(message.metadata['attachment']);
+  return attachment == null ? const <_ConversationAttachment>[] : [attachment];
+}
+
 bool _isAttachmentAutoSummary(
   ConversationMessageDto message,
-  _ConversationAttachment attachment,
+  List<_ConversationAttachment> attachments,
 ) {
-  final expected =
-      '已上传${attachment.kind == 'image' ? '图片' : '文件'} ${attachment.fileName}';
-  return message.content.trim() == expected;
+  if (attachments.isEmpty) {
+    return false;
+  }
+
+  final draftAttachments = attachments
+      .map(
+        (attachment) => ConversationDraftAttachment(
+          kind: attachment.kind,
+          fileName: attachment.fileName,
+          mimeType: attachment.mimeType,
+          sizeBytes: attachment.sizeBytes,
+          dataBase64: attachment.dataBase64,
+          textContent: attachment.textContent,
+        ),
+      )
+      .toList(growable: false);
+  return isConversationAttachmentAutoSummary(message.content, draftAttachments);
 }
 
 String _formatBytes(int bytes) {
@@ -164,13 +195,12 @@ class MessageBubble extends StatelessWidget {
     final segments = _resolvedSegments(message);
     final incompleteError = _incompleteErrorMessage(message);
     final restartSuggestion = _extractRestartSuggestion(message);
-    final attachment = _extractAttachment(message);
+    final attachments = _extractAttachments(message);
 
     if (isUser) {
       final shouldShowText =
           message.content.trim().isNotEmpty &&
-          (attachment == null ||
-              !_isAttachmentAutoSummary(message, attachment));
+          !_isAttachmentAutoSummary(message, attachments);
 
       return Align(
         alignment: Alignment.centerRight,
@@ -198,8 +228,8 @@ class MessageBubble extends StatelessWidget {
                   content: message.content,
                   color: theme.colorScheme.onPrimary,
                 ),
-              if (attachment != null)
-                _UserAttachmentPreview(attachment: attachment),
+              if (attachments.isNotEmpty)
+                _UserAttachmentPreviewList(attachments: attachments),
             ],
           ),
         ),
@@ -319,8 +349,24 @@ class MessageBubble extends StatelessWidget {
   }
 }
 
-class _UserAttachmentPreview extends StatelessWidget {
-  const _UserAttachmentPreview({required this.attachment});
+class _UserAttachmentPreviewList extends StatelessWidget {
+  const _UserAttachmentPreviewList({required this.attachments});
+
+  final List<_ConversationAttachment> attachments;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        for (final attachment in attachments)
+          _UserAttachmentPreviewCard(attachment: attachment),
+      ],
+    );
+  }
+}
+
+class _UserAttachmentPreviewCard extends StatelessWidget {
+  const _UserAttachmentPreviewCard({required this.attachment});
 
   final _ConversationAttachment attachment;
 

@@ -34,6 +34,8 @@ class _AgentConversationScreenState
     extends ConsumerState<AgentConversationScreen> {
   final _textController = TextEditingController();
   final _scrollController = ScrollController();
+  final List<ConversationDraftAttachment> _pendingAttachments =
+      <ConversationDraftAttachment>[];
   Timer? _workspaceRefreshDebounce;
   String? _lastScrollSignature;
   int _lastFileChangeCount = 0;
@@ -113,8 +115,10 @@ class _AgentConversationScreenState
                 scrollController: _scrollController,
                 textController: _textController,
                 onSend: _sendMessage,
-                onPickFile: () => _sendAttachment(image: false),
-                onPickImage: () => _sendAttachment(image: true),
+                pendingAttachments: _pendingAttachments,
+                onRemoveAttachment: _removeAttachment,
+                onPickFile: () => _pickAttachments(image: false),
+                onPickImage: () => _pickAttachments(image: true),
                 onCancel: () {
                   unawaited(
                     ref
@@ -240,21 +244,53 @@ class _AgentConversationScreenState
 
   void _sendMessage() {
     final text = _textController.text.trim();
-    if (text.isEmpty) {
+    if (text.isEmpty && _pendingAttachments.isEmpty) {
       return;
     }
 
-    unawaited(
-      ref.read(agentConversationProvider(_params).notifier).sendMessage(text),
+    if (_pendingAttachments.isEmpty) {
+      unawaited(
+        ref.read(agentConversationProvider(_params).notifier).sendMessage(text),
+      );
+      _textController.clear();
+      _scrollToBottom();
+      return;
+    }
+
+    final payload = buildConversationOutgoingMessage(
+      attachments: _pendingAttachments,
+      content: text,
     );
-    _textController.clear();
+
+    unawaited(_sendComposedPayload(payload));
+  }
+
+  Future<void> _sendComposedPayload(
+    ConversationAttachmentPayload payload,
+  ) async {
+    await ref
+        .read(agentConversationProvider(_params).notifier)
+        .sendMessage(
+          payload.content,
+          contentType: payload.contentType,
+          metadata: payload.metadata,
+        );
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _pendingAttachments.clear();
+      _textController.clear();
+    });
     _scrollToBottom();
   }
 
-  Future<void> _sendAttachment({required bool image}) async {
+  Future<void> _pickAttachments({required bool image}) async {
     final result = await FilePicker.platform.pickFiles(
       type: image ? FileType.image : FileType.any,
-      allowMultiple: false,
+      allowMultiple: true,
       withData: true,
     );
 
@@ -262,38 +298,36 @@ class _AgentConversationScreenState
       return;
     }
 
-    final file = result.files.single;
-    final bytes = file.bytes;
-    if (bytes == null || bytes.isEmpty) {
-      _showSnackBar('无法读取所选文件，请重试。');
-      return;
-    }
-
     try {
-      final draft = _textController.text.trim();
-      final payload = buildConversationAttachmentMessage(
-        file: file,
-        bytes: bytes,
-        image: image,
-        content: draft,
-      );
+      final nextAttachments = <ConversationDraftAttachment>[
+        ..._pendingAttachments,
+      ];
+      for (final file in result.files) {
+        final bytes = file.bytes;
+        if (bytes == null || bytes.isEmpty) {
+          throw Exception('无法读取所选文件，请重试。');
+        }
 
-      await ref
-          .read(agentConversationProvider(_params).notifier)
-          .sendMessage(
-            payload.content,
-            contentType: payload.contentType,
-            metadata: payload.metadata,
-          );
+        nextAttachments.add(
+          buildConversationDraftAttachment(
+            file: file,
+            bytes: bytes,
+            image: image,
+          ),
+        );
+      }
+
+      validateConversationAttachmentTotalBytes(nextAttachments);
 
       if (!mounted) {
         return;
       }
 
-      if (draft.isNotEmpty) {
-        _textController.clear();
-      }
-      _scrollToBottom();
+      setState(() {
+        _pendingAttachments
+          ..clear()
+          ..addAll(nextAttachments);
+      });
     } catch (error) {
       if (!mounted) {
         return;
@@ -303,6 +337,16 @@ class _AgentConversationScreenState
           : '上传失败，请稍后重试。';
       _showSnackBar(message);
     }
+  }
+
+  void _removeAttachment(int index) {
+    if (index < 0 || index >= _pendingAttachments.length) {
+      return;
+    }
+
+    setState(() {
+      _pendingAttachments.removeAt(index);
+    });
   }
 
   void _openContextSheet(BuildContext context) {
@@ -467,6 +511,8 @@ class _ConversationPane extends StatelessWidget {
     required this.scrollController,
     required this.textController,
     required this.onSend,
+    required this.pendingAttachments,
+    required this.onRemoveAttachment,
     required this.onPickFile,
     required this.onPickImage,
     required this.onCancel,
@@ -479,6 +525,8 @@ class _ConversationPane extends StatelessWidget {
   final ScrollController scrollController;
   final TextEditingController textController;
   final VoidCallback onSend;
+  final List<ConversationDraftAttachment> pendingAttachments;
+  final ValueChanged<int> onRemoveAttachment;
   final VoidCallback onPickFile;
   final VoidCallback onPickImage;
   final VoidCallback onCancel;
@@ -527,6 +575,8 @@ class _ConversationPane extends StatelessWidget {
         ConversationInputBar(
           controller: textController,
           onSend: onSend,
+          attachments: pendingAttachments,
+          onRemoveAttachment: onRemoveAttachment,
           onPickFile: onPickFile,
           onPickImage: onPickImage,
           onCancel: onCancel,

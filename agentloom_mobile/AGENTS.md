@@ -17,7 +17,7 @@ AgentLoom Flutter 移动端应用：
 - 工作流：列表、筛选、详情、执行历史、参数输入启动链路
 - 执行监控：Socket.IO `/execution` 实时状态 + REST detail 轮询降级，状态头、告警横幅、步骤时间线、断连语义纠正
 - Agent 管理：列表 / 详情 / 新对话草稿 / 正式对话四屏；详情页会解析 `agent-main` 节点并展示 `nativeToolPolicy` / `selfEvolutionPolicy` 能力摘要
-- Agent 对话：`/agents/:agentId/conversations/new` 先进入草稿态页面，挂载时不会创建 conversation；首条消息通过 `AgentApi.startConversation()` 调用 `POST /api/v1/agent-definitions/:agentId/conversations/start` 创建真实 conversation 后再跳转 `AgentConversationScreen`。正式会话仍为 Shell 外全屏路由，Socket.IO `/agent-conversation` 实时消息推送，按 `message_chunk / thinking / tool_call / tool_result / done / terminal_output / file_change / status.changed` 分段渲染，包含权限审批、终端输出、文件变更、工作区上下文面板，以及自进化升级后的“重启到新版本”提示卡片；输入栏通过 `file_picker` 提供图片/文件上传入口，文本文件优先以内联文本进入上下文，二进制文件与图片以 base64 附件发送，用户消息气泡支持图片预览、文件卡片、文本文件内容预览与 `sandboxPath` 展示；Flutter Web 上图片附件也必须稳定显示真实图片预览，不能退化成只有文件名或“图片已随消息发送给 Agent”提示；页面会根据 Agent `runtimeMode` 显示 `有沙箱 / 无沙箱` 状态，`no_sandbox` 会话不展示工作区/终端上下文面板，只保留消息流中的 Skill/Knowledge/Memory/MCP/自进化能力
+- Agent 对话：`/agents/:agentId/conversations/new` 先进入草稿态页面，挂载时不会创建 conversation；首条消息通过 `AgentApi.startConversation()` 调用 `POST /api/v1/agent-definitions/:agentId/conversations/start` 创建真实 conversation 后再跳转 `AgentConversationScreen`。正式会话仍为 Shell 外全屏路由，Socket.IO `/agent-conversation` 实时消息推送，按 `message_chunk / thinking / tool_call / tool_result / done / terminal_output / file_change / status.changed` 分段渲染，包含权限审批、终端输出、文件变更、工作区上下文面板，以及自进化升级后的“重启到新版本”提示卡片；输入栏通过 `file_picker` 提供图片/文件上传入口，选中的附件会先显示在输入栏上方草稿区，用户点击发送后才会以同一条 user message 发出；单条消息可同时携带文本、多个图片和多个文件，canonical payload 为 `metadata.attachments[]`（并兼容 legacy `metadata.attachment`），单附件上限 `1.5 MB`、单消息附件总量上限 `10 MB`、文本内联上限 `200 KB`；文本文件优先以内联文本进入上下文，二进制文件与图片以 base64 附件发送，用户消息气泡支持同一条消息中的全部图片预览、文件卡片、文本文件内容预览与 `sandboxPath` 展示；Flutter Web 上图片附件也必须稳定显示真实图片预览，不能退化成只有文件名或“图片已随消息发送给 Agent”提示；页面会根据 Agent `runtimeMode` 显示 `有沙箱 / 无沙箱` 状态，`no_sandbox` 会话不展示工作区/终端上下文面板，只保留消息流中的 Skill/Knowledge/Memory/MCP/自进化能力
 - Agent 对话工作区预览优先级：standalone sandbox Agent 对话启动时，如果 Agent detail 同时存在顶层 `workspaceSnapshotId` 与 `sandboxConfig.restoreWorkspaceId`，Flutter 必须优先预载 `restoreWorkspaceId` 对应的目录树，以保证预览与 live sandbox 实际 restore 的工作区一致；没有 `restoreWorkspaceId` 时才回退到 `workspaceSnapshotId`
 - 资源域：`ResourcesHubScreen` 以无分类统一资源列表挂载 `Memory / Skills / Workspaces / Sandboxes / Knowledge Bases / MCP Servers / LLM Models`
 - 资源管理：
@@ -103,8 +103,8 @@ flutter test --coverage
 - `TokenStorage.hasTokens()` 与 `readTokens()` 一致，要求 `access/refresh/expires_in` 三项完整
 - `.env.dev` / `.env.staging` / `.env.prod` 已提交到 git，并在 `pubspec.yaml` 声明为 Flutter assets
 - `ResourcesApi` 同时封装 `Workspaces / Sandboxes / Knowledge Bases / MCP / LLM / API Keys` 的 REST 读写；资源页错误文案统一走 `describeResourceError()`
-- Agent 对话附件发送与 Studio 保持同一阈值：总附件上限 `1.5 MB`，文本内联上限 `200 KB`
-- Agent 新对话草稿页与正式会话页共用 `conversation_input_bar.dart` 输入栏和 `conversation_attachment_payload.dart` 附件构造；`New Chat` 按钮统一导航到 `RouteNames.agentNewConversation`，不再先调用 `createConversation()`
+- Agent 对话附件发送与 Studio 保持同一阈值：单附件上限 `1.5 MB`，单消息附件总量上限 `10 MB`，文本内联上限 `200 KB`
+- Agent 新对话草稿页与正式会话页共用 `conversation_input_bar.dart` 输入栏和 `conversation_attachment_payload.dart` 附件构造；附件会先停留在草稿队列，点击发送后再统一作为同一条消息发出；`New Chat` 按钮统一导航到 `RouteNames.agentNewConversation`，不再先调用 `createConversation()`
 - WorkflowDetailScreen 在 `.when()` 前检查 `hasError && !hasValue` 以兼容 Riverpod 3.x 的 `AsyncLoading(error: ...)` 中间状态
 - `WorkflowLaunchNotifier.submit()` 在异步成功 / 失败路径均使用 `ref.mounted` 守卫，防止 dispose 后写入状态
 

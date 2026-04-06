@@ -25,7 +25,7 @@ AgentLoom Studio 是基于 **React 19 + Vite 7** 的前端工作台，负责工�
 | `/resources/workspaces`              | WorkspaceManagementPage        | 持久化 workspace 列表页；默认隐藏 execution 自动归档快照，并显示来源标签                                         |
 | `/resources/workspaces/$workspaceId` | WorkspaceDetailPage            | 持久化 workspace 详情页；目录树 + 文本 / 图片 / PDF 预览，其他文件提供下载兜底                                   |
 | `/agents/$agentId/conversations/new` | NewConversationDraftPage       | 新对话草稿页；首条消息发送成功后才创建真实 conversation 并跳转正式会话                                           |
-| `/agents/$agentId/conversations/$conversationId` | AgentConversationPage | 三列对话页；sandbox Agent 会在 live workspace 就绪前先显示持久化工作区目录预览，右侧电脑面板提供进程/文件变更/工具运行上下文，并支持图片/文件上传与附件预览 |
+| `/agents/$agentId/conversations/$conversationId` | AgentConversationPage | 三列对话页；sandbox Agent 会在 live workspace 就绪前先显示持久化工作区目录预览，右侧电脑面板提供进程/文件变更/工具运行上下文，并支持图片/文件草稿队列、多附件同发与附件预览 |
 | `/settings/tool-library`             | ToolLibraryPage                | MCP 工具库                                                                                                       |
 | `/marketplace`                       | MarketplaceBrowsePage          | 工作流 / 插件市场                                                                                                |
 
@@ -39,9 +39,11 @@ AgentLoom Studio 是基于 **React 19 + Vite 7** 的前端工作台，负责工�
 
 ## Agent 对话附件事实
 
-- `AgentConversationPage` 输入栏支持图片与文件上传。
+- `AgentConversationPage` 输入栏支持图片与文件上传；选中的附件会先显示在输入栏上方草稿区，点击发送后才会真正发出。
+- 同一条用户消息可同时携带文本、多个图片和多个文件；前端以 `metadata.attachments[]` 作为 canonical 结构，并兼容历史上的单附件 `metadata.attachment`。
+- 单附件上限 `1.5 MB`，单消息附件总量上限 `10 MB`，文本文件内联上限 `200 KB`。
 - 文本文件优先以内联文本资源进入 Agent 上下文，图片与二进制文件以附件形式发送。
-- `MessageList` 会为用户消息渲染图片预览、文件卡片与文本文件内容预览；sandbox runtime 若给出工作区路径，消息卡片也会展示该路径。
+- `MessageList` 会为同一条用户消息渲染全部附件的图片预览、文件卡片与文本文件内容预览；sandbox runtime 若给出工作区路径，消息卡片也会展示该路径。
 
 ## Agent 新对话草稿事实
 

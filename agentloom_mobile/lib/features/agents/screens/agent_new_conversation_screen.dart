@@ -25,6 +25,8 @@ class AgentNewConversationScreen extends ConsumerStatefulWidget {
 class _AgentNewConversationScreenState
     extends ConsumerState<AgentNewConversationScreen> {
   final _textController = TextEditingController();
+  final List<ConversationDraftAttachment> _pendingAttachments =
+      <ConversationDraftAttachment>[];
   String? _error;
   bool _submitting = false;
 
@@ -82,13 +84,33 @@ class _AgentNewConversationScreenState
   }
 
   void _sendMessage() {
-    unawaited(_startConversation(content: _textController.text));
+    final trimmed = _textController.text.trim();
+    if (trimmed.isEmpty && _pendingAttachments.isEmpty) {
+      return;
+    }
+
+    if (_pendingAttachments.isEmpty) {
+      unawaited(_startConversation(content: trimmed));
+      return;
+    }
+
+    final payload = buildConversationOutgoingMessage(
+      attachments: _pendingAttachments,
+      content: trimmed,
+    );
+    unawaited(
+      _startConversation(
+        content: payload.content,
+        contentType: payload.contentType,
+        metadata: payload.metadata,
+      ),
+    );
   }
 
-  Future<void> _sendAttachment({required bool image}) async {
+  Future<void> _pickAttachments({required bool image}) async {
     final result = await FilePicker.platform.pickFiles(
       type: image ? FileType.image : FileType.any,
-      allowMultiple: false,
+      allowMultiple: true,
       withData: true,
     );
 
@@ -96,26 +118,37 @@ class _AgentNewConversationScreenState
       return;
     }
 
-    final file = result.files.single;
-    final bytes = file.bytes;
-    if (bytes == null || bytes.isEmpty) {
-      _showSnackBar('无法读取所选文件，请重试。');
-      return;
-    }
-
     try {
-      final payload = buildConversationAttachmentMessage(
-        file: file,
-        bytes: bytes,
-        image: image,
-        content: _textController.text.trim(),
-      );
+      final nextAttachments = <ConversationDraftAttachment>[
+        ..._pendingAttachments,
+      ];
+      for (final file in result.files) {
+        final bytes = file.bytes;
+        if (bytes == null || bytes.isEmpty) {
+          throw Exception('无法读取所选文件，请重试。');
+        }
 
-      await _startConversation(
-        content: payload.content,
-        contentType: payload.contentType,
-        metadata: payload.metadata,
-      );
+        nextAttachments.add(
+          buildConversationDraftAttachment(
+            file: file,
+            bytes: bytes,
+            image: image,
+          ),
+        );
+      }
+
+      validateConversationAttachmentTotalBytes(nextAttachments);
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _pendingAttachments
+          ..clear()
+          ..addAll(nextAttachments);
+        _error = null;
+      });
     } catch (error) {
       if (!mounted) {
         return;
@@ -127,10 +160,14 @@ class _AgentNewConversationScreenState
     }
   }
 
-  void _showSnackBar(String message) {
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+  void _removeAttachment(int index) {
+    if (index < 0 || index >= _pendingAttachments.length) {
+      return;
+    }
+
+    setState(() {
+      _pendingAttachments.removeAt(index);
+    });
   }
 
   @override
@@ -194,13 +231,21 @@ class _AgentNewConversationScreenState
           ConversationInputBar(
             controller: _textController,
             onSend: _sendMessage,
-            onPickFile: () => _sendAttachment(image: false),
-            onPickImage: () => _sendAttachment(image: true),
+            onPickFile: () => _pickAttachments(image: false),
+            onPickImage: () => _pickAttachments(image: true),
+            onRemoveAttachment: _removeAttachment,
+            attachments: _pendingAttachments,
             isBusy: _submitting,
             hintText: _submitting ? '正在创建并发送…' : '输入消息…',
           ),
         ],
       ),
     );
+  }
+
+  void _showSnackBar(String message) {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
   }
 }

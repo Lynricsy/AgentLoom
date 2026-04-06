@@ -427,13 +427,15 @@ function normalizeMessageMetadata(
     return undefined;
   }
 
-  const attachment = normalizeConversationAttachment(value.attachment);
+  const attachments = normalizeConversationAttachments(value);
+  const attachment = attachments.length === 1 ? attachments[0] : undefined;
   const contentType =
     normalizeConversationMessageContentType(value.contentType) ??
-    attachment?.kind;
+    (attachments.length === 1 ? attachment?.kind : undefined);
 
   return {
     ...value,
+    ...(attachments.length > 0 ? { attachments } : {}),
     ...(attachment ? { attachment } : {}),
     ...(contentType ? { contentType } : {}),
   } as ConversationMessageMetadata;
@@ -488,6 +490,23 @@ function normalizeConversationAttachment(
   };
 }
 
+function normalizeConversationAttachments(
+  value: Record<string, unknown>,
+): ConversationAttachment[] {
+  if (Array.isArray(value.attachments)) {
+    const attachments = value.attachments.flatMap((attachment) => {
+      const normalized = normalizeConversationAttachment(attachment);
+      return normalized ? [normalized] : [];
+    });
+    if (attachments.length > 0) {
+      return attachments;
+    }
+  }
+
+  const attachment = normalizeConversationAttachment(value.attachment);
+  return attachment ? [attachment] : [];
+}
+
 function normalizeOutgoingConversationMessage(
   message: string | OutgoingConversationMessage,
 ): OutgoingConversationMessage {
@@ -499,6 +518,9 @@ function normalizeOutgoingConversationMessage(
   const contentType =
     message.contentType ??
     metadata?.contentType ??
+    (metadata?.attachments?.length === 1
+      ? metadata.attachments[0]?.kind
+      : undefined) ??
     metadata?.attachment?.kind ??
     "text";
 
@@ -517,6 +539,9 @@ function buildOptimisticUserMessage(
   const contentType =
     message.contentType ??
     metadata?.contentType ??
+    (metadata?.attachments?.length === 1
+      ? metadata.attachments[0]?.kind
+      : undefined) ??
     metadata?.attachment?.kind ??
     "text";
 
@@ -572,7 +597,9 @@ function projectComparableMessage(message: ConversationMessage) {
     content: message.content,
     contentType: message.contentType ?? null,
     thinking: message.thinking ?? null,
-    attachment: message.metadata?.attachment ?? null,
+    attachments:
+      message.metadata?.attachments ??
+      (message.metadata?.attachment ? [message.metadata.attachment] : null),
     toolCalls: message.toolCalls.map((toolCall) => ({
       id: toolCall.id,
       tool: toolCall.tool,

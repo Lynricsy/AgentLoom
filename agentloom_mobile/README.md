@@ -34,8 +34,10 @@ AgentLoom Flutter 客户端，当前定位为移动优先、全端兼容的使�
   - 首条消息通过 `POST /api/v1/agent-definitions/:agentId/conversations/start` 创建真实 conversation 后，再跳转正式会话页
   - 详情页展示 `agent-main` 的 native tool 与 self-evolution 能力摘要
   - 对话页支持实时消息流、thinking 段、工具调用 / 工具结果瀑布流
-  - 对话页支持图片/文件上传；文本文件优先以内联文本进入上下文，图片与二进制文件以附件形式发送
-  - 用户消息可显示图片预览、文件卡片、文本文件内容预览与 sandbox 路径提示
+  - 对话页支持图片/文件上传；选中的附件会先停留在输入栏上方草稿区，点击发送后才会作为同一条 user message 发出
+  - 同一条用户消息可混合文本、多个图片和多个文件；文本文件优先以内联文本进入上下文，图片与二进制文件以附件形式发送
+  - 单附件上限 `1.5 MB`，单消息附件总量上限 `10 MB`，文本内联上限 `200 KB`
+  - 用户消息可显示同一条消息中的全部图片预览、文件卡片、文本文件内容预览与 sandbox 路径提示
   - 权限审批、终端输出、文件变更、工作区上下文面板
   - sandbox Agent 对话冷开时会先显示持久化工作区目录预览；若同时存在 `workspaceSnapshotId` 与 `sandboxConfig.restoreWorkspaceId`，预览优先使用 `restoreWorkspaceId`
   - 自进化审批支持“允许一次 / 本会话同类始终允许 / 拒绝一次 / 本会话同类始终拒绝”

@@ -22,6 +22,7 @@ import type { SendMessageDto } from './dto/send-message.dto';
 import type { UpdateConversationDto } from './dto/update-conversation.dto';
 import {
   normalizeIncomingConversationMetadata,
+  readConversationAttachmentMetadataList,
   type ConversationMessageContentType,
 } from './conversation-attachment';
 import { serializeConversation } from './dto/conversation-response.dto';
@@ -127,12 +128,21 @@ export class AgentConversationService {
   }
 
   private normalizeMessagePayload(dto: SendMessageDto) {
-    const contentType =
+    const requestedContentType =
       (dto.contentType as ConversationMessageContentType | undefined) ?? 'text';
     const metadata = normalizeIncomingConversationMetadata(
-      contentType,
+      requestedContentType,
       dto.metadata ?? {},
     );
+    const attachments = readConversationAttachmentMetadataList(metadata);
+    const contentType: ConversationMessageContentType =
+      attachments.length > 0 &&
+      requestedContentType !== 'text' &&
+      attachments.every(
+        (attachment) => attachment.kind === requestedContentType,
+      )
+        ? requestedContentType
+        : 'text';
 
     return {
       contentType,

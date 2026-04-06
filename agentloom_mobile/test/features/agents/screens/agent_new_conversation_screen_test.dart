@@ -96,7 +96,6 @@ void main() {
     when(
       () => mockApi.startConversation(
         any(),
-        title: any(named: 'title'),
         content: any(named: 'content'),
         contentType: any(named: 'contentType'),
         metadata: any(named: 'metadata'),
@@ -131,6 +130,7 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextField), '请先读取项目结构');
+    await tester.pump();
     await tester.tap(find.byKey(const ValueKey('send-button')));
     await tester.pump();
     await tester.pumpAndSettle();
@@ -138,7 +138,6 @@ void main() {
     verify(
       () => mockApi.startConversation(
         'agent-001',
-        title: any(named: 'title'),
         content: '请先读取项目结构',
         contentType: 'text',
         metadata: any(named: 'metadata'),
