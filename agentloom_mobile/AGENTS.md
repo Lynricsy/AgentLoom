@@ -11,7 +11,7 @@ AgentLoom Flutter 移动端应用：
 - Dio API Client Provider（含 AuthInterceptor 自动附加 Bearer + 401 刷新重试）
 - 运行时服务器地址配置：`EnvConfig` 以 `studioBaseUrl` 为真源，登录页与设置页都可进入 `ServerConfigScreen`，再派生 `apiBaseUrl`
 - 完整认证链路：`LoginScreen` / `RegisterScreen` → `AuthApi` → `AuthNotifier` → `TokenStorage` (`flutter_secure_storage`)；邮箱密码注册成功后移动端不直接持久化首登 session，而是通过 Web-first fallback 引导到 Web Studio `/login?returnUrl=/onboarding` 完成首次组织初始化
-- OAuth 登录：Google / GitHub 按钮通过 `url_launcher` 打开浏览器认证，服务端 `?platform=mobile` 参数触发 `agentloom://auth/callback?access_token=...` 重定向，`AuthCallbackScreen` 接收 deep link 并完成 token 存储
+- OAuth 登录：底层 Google / GitHub OAuth 能力仍保留，但 `LoginScreen` 上的按钮入口当前暂时隐藏；恢复入口后仍通过 `url_launcher` 打开浏览器认证，服务端 `?platform=mobile` 参数触发 `agentloom://auth/callback?access_token=...` 重定向，`AuthCallbackScreen` 接收 deep link 并完成 token 存储
 - MFA 支持：原生 TOTP 注册（`MfaEnrollScreen`）与验证（`MfaVerifyScreen`），通过 REST API 与服务端交互（非 Supabase 直连）
 - GoRouter redirect guard：未认证 → `/login`，允许公开访问 `/register`，已认证访问 `/login` 或 `/register` → `/dashboard`
 - Dashboard：快速访问工作流 + 最近执行聚合，点击最近执行跳转执行监控

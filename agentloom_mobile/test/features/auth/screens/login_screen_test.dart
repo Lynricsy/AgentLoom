@@ -192,29 +192,29 @@ void main() {
     });
   });
 
-  group('LoginScreen OAuth 按钮', () {
-    testWidgets('渲染 Google 和 GitHub OAuth 按钮', (tester) async {
+  group('LoginScreen 社交登录入口', () {
+    testWidgets('默认不渲染 Google 和 GitHub OAuth 按钮', (tester) async {
       when(() => mockTokenStorage.readTokens()).thenAnswer((_) async => null);
 
       await tester.pumpWidget(buildTestWidget());
       await tester.pumpAndSettle();
 
-      expect(find.text('使用 Google 登录'), findsOneWidget);
-      expect(find.text('使用 GitHub 登录'), findsOneWidget);
-      expect(find.byType(OAuthButton), findsNWidgets(2));
+      expect(find.text('使用 Google 登录'), findsNothing);
+      expect(find.text('使用 GitHub 登录'), findsNothing);
+      expect(find.byType(OAuthButton), findsNothing);
     });
 
-    testWidgets('渲染"或"分隔线', (tester) async {
+    testWidgets('默认不渲染第三方登录分隔线', (tester) async {
       when(() => mockTokenStorage.readTokens()).thenAnswer((_) async => null);
 
       await tester.pumpWidget(buildTestWidget());
       await tester.pumpAndSettle();
 
-      expect(find.text('或使用第三方登录'), findsOneWidget);
-      expect(find.byType(Divider), findsNWidgets(2));
+      expect(find.text('或使用第三方登录'), findsNothing);
+      expect(find.byType(Divider), findsNothing);
     });
 
-    testWidgets('加载状态下 OAuth 按钮禁用', (tester) async {
+    testWidgets('加载状态下仍不渲染 OAuth 按钮', (tester) async {
       when(() => mockTokenStorage.readTokens()).thenAnswer((_) async => null);
 
       await tester.pumpWidget(
@@ -231,13 +231,9 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
 
-      // OAuth 按钮在加载状态下应该被禁用
-      final oauthButtons = tester.widgetList<ElevatedButton>(
-        find.byType(ElevatedButton),
-      );
-      for (final button in oauthButtons) {
-        expect(button.onPressed, isNull);
-      }
+      expect(find.byType(OAuthButton), findsNothing);
+      expect(find.text('使用 Google 登录'), findsNothing);
+      expect(find.text('使用 GitHub 登录'), findsNothing);
     });
   });
 }

@@ -24,6 +24,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _obscurePassword = true;
   bool _isFormValid = false;
 
+  // 临时隐藏第三方登录入口，保留底层 OAuth 能力便于后续恢复。
+  bool get _showSocialLoginEntry => false;
+
   @override
   void initState() {
     super.initState();
@@ -200,43 +203,45 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                                   ),
                                 ),
                               ],
-                              const SizedBox(height: 28),
-                              Row(
-                                children: [
-                                  const Expanded(child: Divider()),
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 16,
+                              SizedBox(height: _showSocialLoginEntry ? 28 : 20),
+                              if (_showSocialLoginEntry) ...[
+                                Row(
+                                  children: [
+                                    const Expanded(child: Divider()),
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 16,
+                                      ),
+                                      child: Text(
+                                        '或使用第三方登录',
+                                        style: theme.textTheme.bodySmall,
+                                      ),
                                     ),
-                                    child: Text(
-                                      '或使用第三方登录',
-                                      style: theme.textTheme.bodySmall,
-                                    ),
-                                  ),
-                                  const Expanded(child: Divider()),
-                                ],
-                              ),
-                              const SizedBox(height: 20),
-                              OAuthButton(
-                                provider: 'google',
-                                label: '使用 Google 登录',
-                                icon: Icons.g_mobiledata,
-                                backgroundColor: const Color(0xFF4285F4),
-                                foregroundColor: Colors.white,
-                                isLoading: isLoading,
-                                onPressed: () => _handleOAuthLogin('google'),
-                              ),
-                              const SizedBox(height: 12),
-                              OAuthButton(
-                                provider: 'github',
-                                label: '使用 GitHub 登录',
-                                icon: Icons.code,
-                                backgroundColor: const Color(0xFF24292E),
-                                foregroundColor: Colors.white,
-                                isLoading: isLoading,
-                                onPressed: () => _handleOAuthLogin('github'),
-                              ),
-                              const SizedBox(height: 20),
+                                    const Expanded(child: Divider()),
+                                  ],
+                                ),
+                                const SizedBox(height: 20),
+                                OAuthButton(
+                                  provider: 'google',
+                                  label: '使用 Google 登录',
+                                  icon: Icons.g_mobiledata,
+                                  backgroundColor: const Color(0xFF4285F4),
+                                  foregroundColor: Colors.white,
+                                  isLoading: isLoading,
+                                  onPressed: () => _handleOAuthLogin('google'),
+                                ),
+                                const SizedBox(height: 12),
+                                OAuthButton(
+                                  provider: 'github',
+                                  label: '使用 GitHub 登录',
+                                  icon: Icons.code,
+                                  backgroundColor: const Color(0xFF24292E),
+                                  foregroundColor: Colors.white,
+                                  isLoading: isLoading,
+                                  onPressed: () => _handleOAuthLogin('github'),
+                                ),
+                                const SizedBox(height: 20),
+                              ],
                               Row(
                                 mainAxisAlignment: MainAxisAlignment.center,
                                 children: [

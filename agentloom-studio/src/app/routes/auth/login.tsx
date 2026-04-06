@@ -1,30 +1,33 @@
-import { useState } from 'react';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { createRoute, Link, useNavigate } from '@tanstack/react-router';
-import { z } from 'zod';
+import { useState } from "react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { createRoute, Link, useNavigate } from "@tanstack/react-router";
+import { z } from "zod";
 
-import { AuthLayout } from '@/features/auth/components/AuthLayout';
-import { MfaVerifyDialog } from '@/features/auth/components/MfaVerifyDialog';
-import { OAuthButtons } from '@/features/auth/components/OAuthButtons';
-import { PasswordInput } from '@/features/auth/components/PasswordInput';
-import { supabase } from '@/shared/lib/supabase';
-import { Input } from '@/shared/ui/input';
-import { rootRoute } from '../__root';
+import { AuthLayout } from "@/features/auth/components/AuthLayout";
+import { MfaVerifyDialog } from "@/features/auth/components/MfaVerifyDialog";
+import { OAuthButtons } from "@/features/auth/components/OAuthButtons";
+import { PasswordInput } from "@/features/auth/components/PasswordInput";
+import { supabase } from "@/shared/lib/supabase";
+import { Input } from "@/shared/ui/input";
+import { rootRoute } from "../__root";
 
 const loginSchema = z.object({
-  email: z.string().email('请输入有效的邮箱地址'),
-  password: z.string().min(1, '请输入密码'),
+  email: z.string().email("请输入有效的邮箱地址"),
+  password: z.string().min(1, "请输入密码"),
 });
 
 type LoginFormValues = z.infer<typeof loginSchema>;
+
+// 临时隐藏第三方登录入口，保留底层 OAuth 实现便于后续恢复。
+const SOCIAL_LOGIN_ENTRY_ENABLED = false;
 
 export function LoginPage() {
   const navigate = useNavigate();
   const [serverError, setServerError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showMfaVerify, setShowMfaVerify] = useState(false);
-  const [mfaFactorId, setMfaFactorId] = useState('');
+  const [mfaFactorId, setMfaFactorId] = useState("");
 
   const {
     register,
@@ -32,15 +35,17 @@ export function LoginPage() {
     formState: { errors },
   } = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
-    defaultValues: { email: '', password: '' },
+    defaultValues: { email: "", password: "" },
   });
 
   const handleLoginSuccess = () => {
-    const returnUrl = new URLSearchParams(window.location.search).get('returnUrl');
+    const returnUrl = new URLSearchParams(window.location.search).get(
+      "returnUrl",
+    );
     if (returnUrl) {
       window.location.href = returnUrl;
     } else {
-      navigate({ to: '/' });
+      navigate({ to: "/" });
     }
   };
 
@@ -61,18 +66,18 @@ export function LoginPage() {
       if (
         result.session === null &&
         result.user &&
-        'factors' in result.user &&
+        "factors" in result.user &&
         Array.isArray(result.user.factors) &&
         result.user.factors.length > 0
       ) {
-        setMfaFactorId(result.user.factors[0]?.id ?? '');
+        setMfaFactorId(result.user.factors[0]?.id ?? "");
         setShowMfaVerify(true);
         return;
       }
 
       handleLoginSuccess();
     } catch {
-      setServerError('登录过程中发生未知错误，请稍后重试');
+      setServerError("登录过程中发生未知错误，请稍后重试");
     } finally {
       setIsSubmitting(false);
     }
@@ -83,18 +88,20 @@ export function LoginPage() {
       <div className="space-y-6">
         <div className="text-center">
           <h1 className="text-xl font-semibold text-foreground">登录</h1>
-          <p className="mt-1 text-sm text-muted">
-            登录您的 AgentLoom 账号
-          </p>
+          <p className="mt-1 text-sm text-muted">登录您的 AgentLoom 账号</p>
         </div>
 
-        <OAuthButtons disabled={isSubmitting} />
+        {SOCIAL_LOGIN_ENTRY_ENABLED ? (
+          <>
+            <OAuthButtons disabled={isSubmitting} />
 
-        <div className="flex items-center gap-3">
-          <div className="h-px flex-1 bg-border" />
-          <span className="text-xs text-muted">或</span>
-          <div className="h-px flex-1 bg-border" />
-        </div>
+            <div className="flex items-center gap-3">
+              <div className="h-px flex-1 bg-border" />
+              <span className="text-xs text-muted">或</span>
+              <div className="h-px flex-1 bg-border" />
+            </div>
+          </>
+        ) : null}
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
           {serverError && (
@@ -104,13 +111,18 @@ export function LoginPage() {
           )}
 
           <div className="space-y-1.5">
-            <label htmlFor="login-email" className="text-xs font-medium text-foreground">邮箱</label>
+            <label
+              htmlFor="login-email"
+              className="text-xs font-medium text-foreground"
+            >
+              邮箱
+            </label>
             <Input
               id="login-email"
               type="email"
               placeholder="your@email.com"
               autoComplete="email"
-              {...register('email')}
+              {...register("email")}
             />
             {errors.email && (
               <p className="text-xs text-error">{errors.email.message}</p>
@@ -118,13 +130,18 @@ export function LoginPage() {
           </div>
 
           <div className="space-y-1.5">
-            <label htmlFor="login-password" className="text-xs font-medium text-foreground">密码</label>
+            <label
+              htmlFor="login-password"
+              className="text-xs font-medium text-foreground"
+            >
+              密码
+            </label>
             <PasswordInput
               id="login-password"
               placeholder="输入密码"
               autoComplete="current-password"
               error={!!errors.password}
-              {...register('password')}
+              {...register("password")}
             />
             {errors.password && (
               <p className="text-xs text-error">{errors.password.message}</p>
@@ -136,12 +153,12 @@ export function LoginPage() {
             disabled={isSubmitting}
             className="flex h-10 w-full items-center justify-center rounded-lg bg-primary text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {isSubmitting ? '登录中...' : '登录'}
+            {isSubmitting ? "登录中..." : "登录"}
           </button>
         </form>
 
         <p className="text-center text-sm text-muted">
-          还没有账号？{' '}
+          还没有账号？{" "}
           <Link to="/register" className="text-primary hover:underline">
             立即注册
           </Link>
@@ -160,6 +177,6 @@ export function LoginPage() {
 
 export const loginRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: '/login',
+  path: "/login",
   component: LoginPage,
 });

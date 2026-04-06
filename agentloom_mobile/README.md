@@ -1,6 +1,6 @@
 # agentloom_mobile
 
-AgentLoom Flutter 客户端，当前定位为移动优先、全端兼容的使用端应用。它已经覆盖认证与安全、工作流启动与执行监控、Agent 对话、通知，以及资源域的完整入口，并支持在运行时切换 Studio 地址。
+AgentLoom Flutter 客户端，当前定位为移动优先、全端兼容的使用端应用。它已经覆盖认证与安全、工作流启动与执行监控、Agent 对话、通知，以及资源域的完整入口，并支持在运行时切换 Studio 地址。当前登录页仅展示邮箱密码入口，Google / GitHub OAuth 的底层实现仍保留，但按钮入口暂时隐藏。
 
 ## 品牌资产
 
@@ -17,7 +17,7 @@ AgentLoom Flutter 客户端，当前定位为移动优先、全端兼容的使�
 - 认证与安全：
   - 邮箱密码登录
   - 邮箱密码注册
-  - Google / GitHub OAuth
+  - Google / GitHub OAuth 底层能力保留，登录页入口暂时隐藏
   - 注册成功后的 Web-first onboarding fallback（打开 Web Studio `/login?returnUrl=/onboarding`）
   - MFA TOTP 注册与验证
   - 密码修改、会话管理
