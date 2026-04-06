@@ -93,6 +93,31 @@ export class ExecutionWorker extends WorkerHost {
 
 Key: Workers call `runInTenantTransaction()` explicitly since they run outside the HTTP interceptor chain.
 
+### Reusable Service Calls from Workers
+
+If a worker reuses a service method that internally reads/writes through `tenantDb`,
+do not assume that the service is still inside an HTTP request transaction.
+
+Use one of these patterns:
+
+```typescript
+// Pattern A: wrap at the worker call site
+await runInTenantTransaction(this.db, tenantId, async () => {
+  await this.someService.handleTenantScopedWork(id, tenantId);
+});
+
+// Pattern B: if the service is shared by HTTP + worker entry points,
+// let the service method self-wrap by tenantId.
+async handleTenantScopedWork(id: string, tenantId: string): Promise<void> {
+  await runInTenantTransaction(this.db, tenantId, async () => {
+    // tenantDb-based reads/writes
+  });
+}
+```
+
+Fire-and-forget worker side effects are not exempt. If they depend on `tenantDb`,
+they still need an active tenant transaction when they run.
+
 ---
 
 ## Scheduler Pattern (upsertJobScheduler)
@@ -129,10 +154,11 @@ Note: `@Dependencies(getQueueToken(...))` is used instead of `@InjectQueue()` fo
 ## Forbidden Patterns
 
 1. **Missing `runInTenantTransaction()`** in workers — workers are outside the HTTP interceptor chain
-2. **Hardcoded queue names/schedules** — always centralize in `*.constants.ts`
-3. **Untyped job data** — define `JobData` interface in the constants file
-4. **`db.transaction()` for tenant-scoped worker ops** — use `runInTenantTransaction(db, tenantId, ...)`
-5. **Missing `@OnWorkerEvent('failed')` handler** — always handle failures with logging
+2. **Calling tenantDb-based services from workers without a tenant transaction** — shared services do not magically inherit HTTP request context
+3. **Hardcoded queue names/schedules** — always centralize in `*.constants.ts`
+4. **Untyped job data** — define `JobData` interface in the constants file
+5. **`db.transaction()` for tenant-scoped worker ops** — use `runInTenantTransaction(db, tenantId, ...)`
+6. **Missing `@OnWorkerEvent('failed')` handler** — always handle failures with logging
 
 ---
 

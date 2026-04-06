@@ -41,7 +41,6 @@ type WrappableModel = Record<PropertyKey, unknown>;
 
 type ResolvedApiSettings = {
   api: string;
-  baseUrl?: string;
   rawProtocol?: string;
 };
 
@@ -68,7 +67,7 @@ export class PiAiAdapter {
       requiresAuth: !!config.provider.apiKeyId,
       rawProtocol: apiSettings.rawProtocol,
       api: apiSettings.api,
-      baseUrl: apiSettings.baseUrl,
+      baseUrl: this.resolveSdkBaseUrl(config, apiSettings.api),
     });
 
     const timeout = config.timeoutMs ?? TIMEOUT_MS;
@@ -87,12 +86,13 @@ export class PiAiAdapter {
     const providerSlug = config.provider.slug;
     const resolvedApiKey = await this.resolveConfiguredApiKey(config, apiKey);
     const apiSettings = this.resolveApiSettings(config);
+    const runtimeBaseUrl = this.resolveRuntimeBaseUrl(config, apiSettings.api);
 
     const compat = resolvePiProviderCompat(
       {
         provider: providerSlug,
         model: config.modelId,
-        apiBaseUrl: apiSettings.baseUrl,
+        apiBaseUrl: runtimeBaseUrl,
       },
       apiSettings.api,
     );
@@ -102,7 +102,7 @@ export class PiAiAdapter {
       name: config.name,
       api: apiSettings.api as PiApi,
       provider: providerSlug,
-      baseUrl: apiSettings.baseUrl ?? '',
+      baseUrl: runtimeBaseUrl ?? '',
       reasoning: true,
       input: ['text', 'image'],
       cost: {
@@ -363,7 +363,6 @@ export class PiAiAdapter {
   }
 
   private resolveApiSettings(config: ResolvedModelConfig): ResolvedApiSettings {
-    const apiBaseUrl = this.resolveConfiguredApiBaseUrl(config);
     const rawProtocol =
       typeof config.provider.apiProtocol === 'string'
         ? config.provider.apiProtocol
@@ -373,7 +372,16 @@ export class PiAiAdapter {
       model: config.modelId,
       apiProtocol: rawProtocol,
     });
-    const baseUrl = resolvePiModelBaseUrl(
+
+    return { api, rawProtocol };
+  }
+
+  private resolveRuntimeBaseUrl(
+    config: ResolvedModelConfig,
+    api: string,
+  ): string | undefined {
+    const apiBaseUrl = this.resolveConfiguredApiBaseUrl(config);
+    return resolvePiModelBaseUrl(
       {
         provider: config.provider.slug,
         model: config.modelId,
@@ -381,8 +389,25 @@ export class PiAiAdapter {
       },
       api,
     );
+  }
 
-    return { api, baseUrl, rawProtocol };
+  private resolveSdkBaseUrl(
+    config: ResolvedModelConfig,
+    api: string,
+  ): string | undefined {
+    const configuredBaseUrl = this.resolveConfiguredApiBaseUrl(config);
+    if (!configuredBaseUrl) {
+      return undefined;
+    }
+
+    switch (api) {
+      case 'anthropic-messages':
+        return this.appendTerminalPath(configuredBaseUrl, '/v1');
+      case 'google-generative-ai':
+        return this.appendTerminalPath(configuredBaseUrl, '/v1beta');
+      default:
+        return this.appendTerminalPath(configuredBaseUrl, '/v1');
+    }
   }
 
   private resolveConfiguredApiBaseUrl(
@@ -421,6 +446,20 @@ export class PiAiAdapter {
     return typeof value === 'string' && value.trim().length > 0
       ? value.trim()
       : undefined;
+  }
+
+  private appendTerminalPath(baseUrl: string, suffix: string): string {
+    const trimmedBaseUrl = this.trimTrailingSlashes(baseUrl);
+    const normalizedSuffix = this.trimTrailingSlashes(suffix).toLowerCase();
+    if (trimmedBaseUrl.toLowerCase().endsWith(normalizedSuffix)) {
+      return trimmedBaseUrl;
+    }
+
+    return `${trimmedBaseUrl}${suffix}`;
+  }
+
+  private trimTrailingSlashes(value: string): string {
+    return value.replace(/\/+$/, '');
   }
 
   private wrapModelWithRetry(

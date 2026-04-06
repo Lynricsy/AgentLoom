@@ -2,13 +2,25 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ConversationTitleService } from './conversation-title.service';
 
-const { mockGenerateText, mockGetTenantDb } = vi.hoisted(() => ({
-  mockGenerateText: vi.fn(),
-  mockGetTenantDb: vi.fn((db: unknown) => db),
-}));
+const { mockGenerateText, mockGetTenantDb, mockRunInTenantTransaction } =
+  vi.hoisted(() => ({
+    mockGenerateText: vi.fn(),
+    mockGetTenantDb: vi.fn((db: unknown) => db),
+    mockRunInTenantTransaction: vi.fn(
+      async (
+        db: unknown,
+        _tenantId: string,
+        operation: (dbClient: unknown) => Promise<unknown>,
+      ) => operation(db),
+    ),
+  }));
 
 vi.mock('ai', () => ({
   generateText: mockGenerateText,
+}));
+
+vi.mock('../../common/interceptors/tenant-transaction.context', () => ({
+  runInTenantTransaction: mockRunInTenantTransaction,
 }));
 
 vi.mock('../../common/providers/tenant-aware-db.provider', () => ({
@@ -78,6 +90,13 @@ describe('ConversationTitleService', () => {
       emit: vi.fn(),
     };
 
+    mockRunInTenantTransaction.mockImplementation(
+      async (
+        db: unknown,
+        _tenantId: string,
+        operation: (dbClient: unknown) => Promise<unknown>,
+      ) => operation(db),
+    );
     mockGetTenantDb.mockReturnValue(mockDb as never);
 
     service = new ConversationTitleService(
@@ -126,6 +145,11 @@ describe('ConversationTitleService', () => {
         tenantId: 'tenant-1',
         title: '🧪 异步子代理',
       },
+    );
+    expect(mockRunInTenantTransaction).toHaveBeenCalledWith(
+      mockDb,
+      'tenant-1',
+      expect.any(Function),
     );
   });
 

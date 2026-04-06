@@ -3,6 +3,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { and, eq } from 'drizzle-orm';
 import { generateText, type LanguageModel } from 'ai';
 
+import { runInTenantTransaction } from '../../common/interceptors/tenant-transaction.context';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import {
@@ -60,82 +61,84 @@ export class ConversationTitleService {
     userId?: string,
   ): Promise<string | null> {
     try {
-      // 如果没有 userId，从对话记录中获取
-      const resolvedUserId =
-        userId ?? (await this.resolveUserId(conversationId));
+      return await runInTenantTransaction(this.db, tenantId, async () => {
+        // 如果没有 userId，从对话记录中获取
+        const resolvedUserId =
+          userId ?? (await this.resolveUserId(conversationId));
 
-      // 获取对话的前几条消息用于生成标题
-      const messages = await this.tenantDb
-        .select({
-          role: agentMessages.role,
-          content: agentMessages.content,
-        })
-        .from(agentMessages)
-        .where(eq(agentMessages.conversationId, conversationId))
-        .orderBy(agentMessages.createdAt)
-        .limit(4);
+        // 获取对话的前几条消息用于生成标题
+        const messages = await this.tenantDb
+          .select({
+            role: agentMessages.role,
+            content: agentMessages.content,
+          })
+          .from(agentMessages)
+          .where(eq(agentMessages.conversationId, conversationId))
+          .orderBy(agentMessages.createdAt)
+          .limit(4);
 
-      if (messages.length === 0) {
-        return null;
-      }
-
-      const fallbackTitle = this.buildFallbackTitle(messages);
-
-      // 构造 prompt
-      const conversationSnippet = messages
-        .map((m) => {
-          const content =
-            m.content.length > 500
-              ? m.content.slice(0, 500) + '...'
-              : m.content;
-          return `${m.role === 'user' ? 'User' : 'Assistant'}: ${content}`;
-        })
-        .join('\n');
-
-      const prompt = TITLE_GENERATION_PROMPT + conversationSnippet;
-
-      // 解析用户偏好中的模型配置
-      const model = await this.resolveModel(
-        conversationId,
-        tenantId,
-        resolvedUserId,
-      );
-      if (!model) {
-        this.logger.warn(
-          `No model available for title generation (tenant=${tenantId})`,
-        );
-        if (!fallbackTitle) {
+        if (messages.length === 0) {
           return null;
         }
 
-        await this.persistTitle(conversationId, tenantId, fallbackTitle);
-        return fallbackTitle;
-      }
+        const fallbackTitle = this.buildFallbackTitle(messages);
 
-      let title = fallbackTitle;
+        // 构造 prompt
+        const conversationSnippet = messages
+          .map((m) => {
+            const content =
+              m.content.length > 500
+                ? m.content.slice(0, 500) + '...'
+                : m.content;
+            return `${m.role === 'user' ? 'User' : 'Assistant'}: ${content}`;
+          })
+          .join('\n');
 
-      try {
-        const result = await generateText({ model, prompt });
-        const generatedTitle = result.text.trim().slice(0, 255);
+        const prompt = TITLE_GENERATION_PROMPT + conversationSnippet;
 
-        if (generatedTitle.length > 0) {
-          title = generatedTitle;
-        }
-      } catch (error) {
-        this.logger.warn(
-          `Failed to generate title with LLM for conversation ${conversationId}: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
+        // 解析用户偏好中的模型配置
+        const model = await this.resolveModel(
+          conversationId,
+          tenantId,
+          resolvedUserId,
         );
-      }
+        if (!model) {
+          this.logger.warn(
+            `No model available for title generation (tenant=${tenantId})`,
+          );
+          if (!fallbackTitle) {
+            return null;
+          }
 
-      if (!title) {
-        return null;
-      }
+          await this.persistTitle(conversationId, tenantId, fallbackTitle);
+          return fallbackTitle;
+        }
 
-      await this.persistTitle(conversationId, tenantId, title);
+        let title = fallbackTitle;
 
-      return title;
+        try {
+          const result = await generateText({ model, prompt });
+          const generatedTitle = result.text.trim().slice(0, 255);
+
+          if (generatedTitle.length > 0) {
+            title = generatedTitle;
+          }
+        } catch (error) {
+          this.logger.warn(
+            `Failed to generate title with LLM for conversation ${conversationId}: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        }
+
+        if (!title) {
+          return null;
+        }
+
+        await this.persistTitle(conversationId, tenantId, title);
+
+        return title;
+      });
     } catch (error) {
       this.logger.warn(
         `Failed to generate title for conversation ${conversationId}: ${

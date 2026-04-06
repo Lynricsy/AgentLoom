@@ -397,7 +397,7 @@ describe('PiAiAdapter', () => {
       expect(mockCreateAnthropic).toHaveBeenCalledWith(
         expect.objectContaining({
           apiKey: '__agentloom_private_cloud_no_auth__',
-          baseURL: 'https://private-cloud.example.com',
+          baseURL: 'https://private-cloud.example.com/v1',
           fetch: expect.any(Function),
         }),
       );
@@ -423,7 +423,7 @@ describe('PiAiAdapter', () => {
       expect(mockCreateAnthropic).toHaveBeenCalledWith(
         expect.objectContaining({
           apiKey: 'env-anthropic-key',
-          baseURL: 'https://api.anthropic.com',
+          baseURL: 'https://api.anthropic.com/v1',
         }),
       );
       const callOptions = mockCreateAnthropic.mock.calls.at(-1)?.[0] as Record<
