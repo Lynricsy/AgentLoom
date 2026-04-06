@@ -244,6 +244,11 @@ if (state.workspaceTreeOnly) {
   - 请求 pending 期间必须禁止重复提交，避免双重创建。
 - Studio 的 `ConversationSidebar` 在草稿态必须允许 `currentConversationId = null`。
   - 草稿页不应强行高亮或伪造当前 conversation。
+- Studio 草稿态若 Agent 具备 sandbox，右侧上下文面板必须继续可见。
+  - 尚未创建真实 conversation 时，`SandboxComputerPanel` 允许以 idle/empty 状态展示。
+  - 若 Agent 可解析出 `restoreWorkspaceId` / `workspaceSnapshotId`，草稿页也必须先显示持久化工作区目录预览，不能把这块能力回退成“等对话开始后再说”。
+- 草稿页中间消息区不得插入居中的“首条消息发送后再创建对话”说明卡片。
+  - 用户进入页后应直接看到可开始输入的空白会话表面，而不是被一段实现解释占住主区域。
 - 草稿页输入区必须复用正式会话的发送语义，而不是再做一套独立协议。
   - 同一首 user turn 里的 `contentType + metadata` 必须原样透传到 `startConversation()`。
 
@@ -252,6 +257,8 @@ if (state.workspaceTreeOnly) {
 | 条件 | 预期行为 | 断言点 |
 |------|----------|--------|
 | Studio 挂载 `/agents/$agentId/conversations/new` | 不调用 `createConversation()` / `startConversation()` | `NewConversationDraftPage.test.tsx` |
+| Studio sandbox 草稿态 | 右侧上下文面板仍可见，并显示持久化工作区目录预览 | `NewConversationDraftPage.test.tsx` |
+| Studio 草稿态主区域 | 不显示“首条消息发送后再创建对话”之类居中说明卡片 | `NewConversationDraftPage.test.tsx` |
 | Studio 首条消息发送 | 调用 `startConversation()` 并跳转真实会话页 | `NewConversationDraftPage.test.tsx` |
 | Studio 草稿态侧边栏 | 允许 `currentConversationId = null`，不崩溃 | `ConversationSidebar` 组件测试 / 手动 QA |
 | Mobile 点击 Agent 详情或列表的 `New Chat` | 导航到 `RouteNames.agentNewConversation`，不直接创建 conversation | `agent_detail_screen_test.dart` |

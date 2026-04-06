@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mockNavigate = vi.fn();
 const mockMutateAsync = vi.fn();
 const mockUseAgent = vi.fn();
+const mockFetchWorkspaceFileTree = vi.fn();
 
 vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => mockNavigate,
@@ -13,10 +14,21 @@ vi.mock("@/features/agent/api/agentQueries", () => ({
   useAgent: (agentId: string) => mockUseAgent(agentId),
 }));
 
+vi.mock("@/features/workspace/api/workspaceApi", () => ({
+  fetchWorkspaceFileTree: (workspaceId: string) =>
+    mockFetchWorkspaceFileTree(workspaceId),
+}));
+
 vi.mock("../api/conversationMutations", () => ({
   useStartConversation: () => ({
     mutateAsync: mockMutateAsync,
     isPending: false,
+  }),
+}));
+
+vi.mock("../api/conversationQueries", () => ({
+  useConversationSandboxStats: () => ({
+    data: null,
   }),
 }));
 
@@ -26,9 +38,19 @@ import { NewConversationDraftPage } from "./NewConversationDraftPage";
 describe("NewConversationDraftPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockFetchWorkspaceFileTree.mockResolvedValue([
+      {
+        name: "README.md",
+        path: "/README.md",
+        type: "file",
+      },
+    ]);
     mockUseAgent.mockReturnValue({
       data: {
+        name: "Repo Agent",
         runtimeMode: "sandbox",
+        workspaceSnapshotId: "workspace-1",
+        sandboxConfig: null,
       },
     });
   });
@@ -41,10 +63,32 @@ describe("NewConversationDraftPage", () => {
     );
   }
 
-  it("挂载时不应自动创建 conversation", () => {
+  it("挂载时不应自动创建 conversation", async () => {
     renderPage();
 
+    await waitFor(() => {
+      expect(mockFetchWorkspaceFileTree).toHaveBeenCalledWith("workspace-1");
+    });
     expect(mockMutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("草稿态应保留右侧工作区预览，并且不显示延迟创建说明文案", async () => {
+    renderPage();
+
+    await waitFor(() => {
+      expect(mockFetchWorkspaceFileTree).toHaveBeenCalledWith("workspace-1");
+    });
+
+    expect(
+      screen.getByTestId("workspace-snapshot-preview-hint"),
+    ).toBeInTheDocument();
+    expect(screen.getByText("README.md")).toBeInTheDocument();
+    expect(
+      screen.queryByText("首条消息发送后再创建对话"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/这里是草稿态。输入文字或上传附件后/),
+    ).not.toBeInTheDocument();
   });
 
   it("发送首条消息时应调用 startConversation 并跳转到真实会话页", async () => {

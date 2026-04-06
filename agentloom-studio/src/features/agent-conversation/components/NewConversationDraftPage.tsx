@@ -1,11 +1,15 @@
-import { AlertCircle, ArrowLeft, Loader2 } from "lucide-react";
-import { useCallback, useState } from "react";
+import { AlertCircle, ArrowLeft, FolderTree, Loader2 } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 
 import { useAgent } from "@/features/agent/api/agentQueries";
+import { fetchWorkspaceFileTree } from "@/features/workspace/api/workspaceApi";
 import { useStartConversation } from "../api/conversationMutations";
-import type { OutgoingConversationMessage } from "../types";
+import type { FileTreeNode, OutgoingConversationMessage } from "../types";
+import { resolveConversationWorkspacePreviewId } from "../workspacePreview";
 import { ConversationComposer } from "./AgentConversationPage";
+import { SandboxComputerPanel } from "./SandboxComputerPanel";
+import { WorkspaceFileTree } from "./WorkspaceFileTree";
 
 interface NewConversationDraftPageProps {
   agentId: string;
@@ -18,6 +22,23 @@ function normalizeOutgoingMessage(
   return typeof message === "string" ? { content: message } : message;
 }
 
+function fileExistsInTree(
+  tree: readonly FileTreeNode[],
+  targetPath: string,
+): boolean {
+  for (const node of tree) {
+    if (node.path === targetPath) {
+      return true;
+    }
+
+    if (node.children && fileExistsInTree(node.children, targetPath)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 export function NewConversationDraftPage({
   agentId,
   onBack,
@@ -26,9 +47,72 @@ export function NewConversationDraftPage({
   const agentQuery = useAgent(agentId);
   const startConversation = useStartConversation(agentId);
   const [error, setError] = useState<string | null>(null);
+  const [previewTree, setPreviewTree] = useState<FileTreeNode[]>([]);
+  const [selectedPreviewPath, setSelectedPreviewPath] = useState<string | null>(
+    null,
+  );
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
 
-  const runtimeModeLabel =
-    agentQuery.data?.runtimeMode === "no_sandbox" ? "无沙箱" : "有沙箱";
+  const runtimeMode = agentQuery.data?.runtimeMode;
+  const hasSandbox = runtimeMode !== "no_sandbox";
+  const workspacePreviewId = resolveConversationWorkspacePreviewId(
+    agentQuery.data,
+  );
+  const agentName = agentQuery.data?.name?.trim() || "Agent";
+
+  const runtimeModeLabel = runtimeMode === "no_sandbox" ? "无沙箱" : "有沙箱";
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!hasSandbox || !workspacePreviewId) {
+      setPreviewTree([]);
+      setSelectedPreviewPath(null);
+      setIsPreviewLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setIsPreviewLoading(true);
+
+    void fetchWorkspaceFileTree(workspacePreviewId)
+      .then((tree) => {
+        if (cancelled) {
+          return;
+        }
+
+        setPreviewTree(tree);
+        setSelectedPreviewPath((current) => {
+          if (!current || fileExistsInTree(tree, current)) {
+            return current;
+          }
+
+          return null;
+        });
+      })
+      .catch((cause) => {
+        if (cancelled) {
+          return;
+        }
+
+        console.error(
+          "[AgentConversation] Failed to load draft workspace preview:",
+          cause,
+        );
+        setPreviewTree([]);
+        setSelectedPreviewPath(null);
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setIsPreviewLoading(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hasSandbox, workspacePreviewId]);
 
   const handleSend = useCallback(
     async (message: string | OutgoingConversationMessage) => {
@@ -99,28 +183,81 @@ export function NewConversationDraftPage({
         </div>
       ) : null}
 
-      <div className="flex min-h-0 flex-1 flex-col">
-        <div className="flex min-h-0 flex-1 items-center justify-center px-6">
-          <div className="max-w-md text-center">
-            <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-surface-elevated text-muted-foreground">
-              <Loader2 className="h-5 w-5" />
-            </div>
-            <h2 className="text-lg font-semibold text-foreground">
-              首条消息发送后再创建对话
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              这里是草稿态。输入文字或上传附件后，系统会创建真实 conversation，
-              然后立刻进入正式对话页继续执行。
-            </p>
-          </div>
+      <div className="flex min-h-0 flex-1 overflow-hidden">
+        <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
+          <div className="min-h-0 flex-1 bg-background" />
+
+          <ConversationComposer
+            onSend={handleSend}
+            isBusy={startConversation.isPending}
+            busyPlaceholder="正在创建并发送..."
+            busyActionLabel="发送中"
+          />
         </div>
 
-        <ConversationComposer
-          onSend={handleSend}
-          isBusy={startConversation.isPending}
-          busyPlaceholder="正在创建并发送..."
-          busyActionLabel="发送中"
-        />
+        {hasSandbox ? (
+          <div className="flex min-w-[320px] flex-1 flex-col gap-2 border-l border-border bg-surface p-2">
+            <div className="min-h-[220px] flex-[3] overflow-hidden">
+              <SandboxComputerPanel
+                conversationId={null}
+                agentName={agentName}
+                terminalEntries={[]}
+                fileChanges={[]}
+                sandboxStatus="idle"
+              />
+            </div>
+
+            <div className="min-h-0 flex-[2] overflow-hidden">
+              <div className="flex h-full flex-col gap-2 overflow-hidden">
+                {workspacePreviewId ? (
+                  <div
+                    data-testid="workspace-snapshot-preview-hint"
+                    className="rounded-lg border border-info/30 bg-info/10 px-3 py-2 text-xs text-info"
+                  >
+                    当前显示的是持久化工作区目录预览；对话开始并恢复沙箱后，这里会切换为实时工作区。
+                  </div>
+                ) : null}
+
+                <div className="min-h-0 flex-1 overflow-hidden">
+                  {isPreviewLoading ? (
+                    <div className="flex h-full flex-col overflow-hidden rounded-lg border border-border bg-surface">
+                      <div className="flex items-center gap-2 border-b border-border bg-surface-elevated/50 px-3 py-2">
+                        <FolderTree className="h-4 w-4 text-warning/80" />
+                        <span className="text-sm font-medium text-foreground">
+                          工作区
+                        </span>
+                      </div>
+                      <div className="flex flex-1 items-center justify-center gap-2 text-sm text-muted-foreground">
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <span>正在加载目录预览</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <WorkspaceFileTree
+                      tree={previewTree}
+                      selectedPath={selectedPreviewPath}
+                      onSelectFile={setSelectedPreviewPath}
+                    />
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : runtimeMode === "no_sandbox" ? (
+          <div className="flex min-w-0 flex-1 items-start justify-center border-l border-border bg-surface p-6">
+            <div className="max-w-sm rounded-lg border border-border bg-surface-elevated/50 px-4 py-3 text-sm text-muted-foreground">
+              无沙箱 Agent
+              不提供工作区、进程和文件变更面板；Skill、知识库、Memory、HTTP
+              MCP 与自进化能力仍会在对话消息流中展示。
+            </div>
+          </div>
+        ) : (
+          <div className="flex min-w-0 flex-1 items-start justify-center border-l border-border bg-surface p-6">
+            <div className="max-w-sm rounded-lg border border-border bg-surface-elevated/50 px-4 py-3 text-sm text-muted-foreground">
+              正在加载 Agent 运行模式...
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
