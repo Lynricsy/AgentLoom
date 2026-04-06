@@ -7,4 +7,6 @@ export const conversationKeys = {
   detail: (id: string) => [...conversationKeys.details(), id] as const,
   sandboxStats: (id: string) =>
     [...conversationKeys.all, 'sandbox-stats', id] as const,
+  sandboxProcesses: (id: string) =>
+    [...conversationKeys.all, 'sandbox-processes', id] as const,
 };

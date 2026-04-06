@@ -13,6 +13,16 @@ export interface ContainerStats {
   diskTotal?: number;
 }
 
+export interface ContainerProcess {
+  pid: number;
+  cpuPercent: number;
+  memoryPercent: number;
+  state: string;
+  elapsed: string;
+  executable: string;
+  command: string;
+}
+
 export interface DockerExecCreateOptions {
   command: string;
   args?: string[];
@@ -69,4 +79,5 @@ export interface SandboxRuntimeDriver {
   waitForExecExit(execId: string): Promise<DockerExecExitInfo>;
   killExec(execId: string, signal?: string): Promise<void>;
   getContainerStats(containerId: string): Promise<ContainerStats>;
+  listContainerProcesses(containerId: string): Promise<ContainerProcess[]>;
 }

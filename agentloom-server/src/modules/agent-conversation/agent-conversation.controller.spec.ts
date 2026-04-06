@@ -44,6 +44,7 @@ const mockInProcessAgentRuntime = {
 
 const mockSandboxService = {
   getConversationSandboxStats: vi.fn(),
+  getConversationSandboxProcesses: vi.fn(),
 };
 
 const mockSelfEvolutionPermissionService = {
@@ -293,6 +294,44 @@ describe('AgentConversationController', () => {
           diskUsage: 1024,
           diskTotal: 2147483648,
         },
+      });
+    });
+  });
+
+  describe('getSandboxProcesses', () => {
+    it('应调用 sandboxService 并返回对话沙箱进程列表', async () => {
+      mockSandboxService.getConversationSandboxProcesses.mockResolvedValueOnce([
+        {
+          pid: 1,
+          cpuPercent: 12.5,
+          memoryPercent: 5.2,
+          state: 'Ss',
+          elapsed: '01:23',
+          executable: 'node',
+          command: 'node dist/server.js',
+        },
+      ]);
+
+      const result = await controller.getSandboxProcesses(
+        CONVERSATION_ID,
+        TENANT_ID,
+      );
+
+      expect(
+        mockSandboxService.getConversationSandboxProcesses,
+      ).toHaveBeenCalledWith(CONVERSATION_ID, TENANT_ID);
+      expect(result).toEqual({
+        data: [
+          {
+            pid: 1,
+            cpuPercent: 12.5,
+            memoryPercent: 5.2,
+            state: 'Ss',
+            elapsed: '01:23',
+            executable: 'node',
+            command: 'node dist/server.js',
+          },
+        ],
       });
     });
   });

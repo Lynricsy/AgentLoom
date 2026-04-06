@@ -35,6 +35,16 @@ export interface SandboxStats {
   diskTotal?: number
 }
 
+export interface SandboxProcess {
+  pid: number
+  cpuPercent: number
+  memoryPercent: number
+  state: string
+  elapsed: string
+  executable: string
+  command: string
+}
+
 export interface SandboxListParams {
   page?: number
   pageSize?: number

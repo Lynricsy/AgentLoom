@@ -774,6 +774,64 @@ describe('DockerService', () => {
     });
   });
 
+  describe('listContainerProcesses', () => {
+    it('应读取并标准化容器内进程列表', async () => {
+      const createExecSpy = vi
+        .spyOn(service, 'createExec')
+        .mockResolvedValueOnce({ execId: 'exec-ps-1' });
+      const attachExecOutputSpy = vi
+        .spyOn(service, 'attachExecOutput')
+        .mockImplementationOnce(async (_execId, callback) => {
+          callback(
+            'stdout',
+            [
+              '1 18.4 6.2 Ss 12:34 node node dist/server.js',
+              '22 0.5 1.1 Sl 00:03 bash bash -lc pnpm test',
+            ].join('\n'),
+          );
+        });
+      const waitForExecExitSpy = vi
+        .spyOn(service, 'waitForExecExit')
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          pid: 4321,
+          running: false,
+        });
+
+      const result = await service.listContainerProcesses('container-abc123');
+
+      expect(result).toEqual([
+        {
+          pid: 1,
+          cpuPercent: 18.4,
+          memoryPercent: 6.2,
+          state: 'Ss',
+          elapsed: '12:34',
+          executable: 'node',
+          command: 'node dist/server.js',
+        },
+        {
+          pid: 22,
+          cpuPercent: 0.5,
+          memoryPercent: 1.1,
+          state: 'Sl',
+          elapsed: '00:03',
+          executable: 'bash',
+          command: 'bash -lc pnpm test',
+        },
+      ]);
+      expect(createExecSpy).toHaveBeenCalledWith('container-abc123', {
+        command: 'sh',
+        args: ['-lc', expect.stringContaining('ps -ewwo')],
+      });
+      expect(attachExecOutputSpy).toHaveBeenCalledWith(
+        'exec-ps-1',
+        expect.any(Function),
+      );
+      expect(waitForExecExitSpy).toHaveBeenCalledWith('exec-ps-1');
+    });
+  });
+
   describe('createContainer with pi-config', () => {
     const originalEnv = { ...process.env };
 

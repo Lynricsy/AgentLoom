@@ -20,12 +20,14 @@ import {
   SandboxInvalidStateException,
   SandboxNotFoundException,
   SandboxNotPersistentException,
+  SandboxProcessesUnavailableException,
   SandboxStatsUnavailableException,
 } from './sandbox.exceptions';
 import { SandboxLifecycleProducer } from './sandbox-lifecycle.producer';
 import type { PiConfigInput } from './pi-config-generator.service';
 import {
   SANDBOX_RUNTIME_DRIVER,
+  type ContainerProcess,
   type ContainerStats,
   type SandboxRuntimeDriver,
 } from './sandbox-runtime-driver.port';
@@ -193,6 +195,22 @@ export class SandboxService {
     }
 
     return this.buildContainerStats(session);
+  }
+
+  async getConversationSandboxProcesses(
+    agentConversationId: string,
+    tenantId: string,
+  ): Promise<ContainerProcess[]> {
+    const session = await this.findByConversationId(
+      agentConversationId,
+      tenantId,
+    );
+
+    if (!session) {
+      throw new SandboxProcessesUnavailableException(agentConversationId);
+    }
+
+    return this.buildContainerProcesses(session);
   }
 
   async scheduleConversationIdleAutoEnd(
@@ -1125,8 +1143,7 @@ export class SandboxService {
       timeout: DEFAULT_PERSISTENT_TIMEOUT,
       conversationIdleAutoEndMinutes:
         resolveSandboxConversationIdleAutoEndMinutes({
-          conversationIdleAutoEndMinutes:
-            params.conversationIdleAutoEndMinutes,
+          conversationIdleAutoEndMinutes: params.conversationIdleAutoEndMinutes,
         }),
       lifecycleMode: 'persistent',
       name: params.name,
@@ -1214,6 +1231,35 @@ export class SandboxService {
     };
   }
 
+  private async buildContainerProcesses(
+    session: SandboxSession,
+  ): Promise<ContainerProcess[]> {
+    const runtimeSession =
+      await this.reconcileUnavailableRuntimeSession(session);
+    if (
+      !runtimeSession.containerId ||
+      TERMINAL_STATUSES.includes(
+        runtimeSession.status as (typeof TERMINAL_STATUSES)[number],
+      )
+    ) {
+      throw new SandboxProcessesUnavailableException(runtimeSession.id);
+    }
+
+    try {
+      return await this.dockerService.listContainerProcesses(
+        runtimeSession.containerId,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Container process list unavailable for sandbox ${runtimeSession.id} (${runtimeSession.containerId}): ${error instanceof Error ? error.message : String(error)}`,
+      );
+      await this.reconcileUnavailableRuntimeSession(runtimeSession, {
+        force: true,
+      });
+      throw new SandboxProcessesUnavailableException(runtimeSession.id);
+    }
+  }
+
   private async reconcileUnavailableRuntimeSession(
     session: SandboxSession,
     options?: { force?: boolean },
@@ -1239,7 +1285,9 @@ export class SandboxService {
 
     let runtimeAvailable = false;
     if (session.containerId) {
-      runtimeAvailable = await this.dockerService.healthCheck(session.containerId);
+      runtimeAvailable = await this.dockerService.healthCheck(
+        session.containerId,
+      );
     }
 
     if (runtimeAvailable) {

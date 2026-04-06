@@ -8,6 +8,7 @@ import { SandboxService } from '../sandbox.service';
 import { SandboxLifecycleProducer } from '../sandbox-lifecycle.producer';
 import {
   SandboxNotFoundException,
+  SandboxProcessesUnavailableException,
   SandboxStatsUnavailableException,
 } from '../sandbox.exceptions';
 import type { SandboxConfig, SandboxSession } from '../../../database/schema';
@@ -178,6 +179,7 @@ describe('SandboxService', () => {
     mockDockerService = {
       healthCheck: vi.fn().mockResolvedValue(true),
       getContainerStats: vi.fn(),
+      listContainerProcesses: vi.fn(),
       stopContainer: vi.fn().mockResolvedValue(undefined),
       removeContainer: vi.fn().mockResolvedValue(undefined),
     };
@@ -514,7 +516,9 @@ describe('SandboxService', () => {
       db.select
         .mockReturnValueOnce(createSelectChainWithLimit([]))
         .mockReturnValueOnce(createSelectChainWithLimit([]))
-        .mockReturnValueOnce(createSelectChainWithLimit([stalePersistentSession]))
+        .mockReturnValueOnce(
+          createSelectChainWithLimit([stalePersistentSession]),
+        )
         .mockReturnValueOnce(createSelectChainWithLimit([attachedSession]));
       db.update
         .mockReturnValueOnce(reconcileUpdateChain)
@@ -715,7 +719,9 @@ describe('SandboxService', () => {
         stoppedAt: new Date('2025-01-03T00:00:00Z'),
       });
       db.select.mockReturnValueOnce(createSelectChainWithLimit([staleSession]));
-      db.update.mockReturnValueOnce(createUpdateChainReturning([stoppedSession]));
+      db.update.mockReturnValueOnce(
+        createUpdateChainReturning([stoppedSession]),
+      );
       mockDockerService.healthCheck.mockResolvedValueOnce(false);
 
       await expect(service.getContainerStats(TEST_SESSION_ID)).rejects.toThrow(
@@ -724,6 +730,80 @@ describe('SandboxService', () => {
 
       expect(mockDockerService.getContainerStats).not.toHaveBeenCalled();
       expect(db.update).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe('getConversationSandboxProcesses', () => {
+    it('应返回对话沙箱的标准化进程列表', async () => {
+      const session = buildSession({
+        executionId: null,
+        agentConversationId: TEST_CONVERSATION_ID,
+        containerId: 'container-abc123',
+        status: 'ready',
+      });
+      const processes = [
+        {
+          pid: 1,
+          cpuPercent: 18.4,
+          memoryPercent: 6.2,
+          state: 'Ss',
+          elapsed: '12:34',
+          executable: 'node',
+          command: 'node dist/server.js',
+        },
+      ];
+
+      db.select.mockReturnValueOnce(createSelectChainWithLimit([session]));
+      mockDockerService.listContainerProcesses.mockResolvedValueOnce(processes);
+
+      const result = await service.getConversationSandboxProcesses(
+        TEST_CONVERSATION_ID,
+        TEST_TENANT_ID,
+      );
+
+      expect(mockDockerService.listContainerProcesses).toHaveBeenCalledWith(
+        'container-abc123',
+      );
+      expect(result).toEqual(processes);
+    });
+
+    it('driver 读取进程列表失败时应降级为进程列表不可用', async () => {
+      const session = buildSession({
+        executionId: null,
+        agentConversationId: TEST_CONVERSATION_ID,
+        containerId: 'container-missing',
+        status: 'ready',
+        startedAt: new Date('2025-01-02T00:00:00Z'),
+      });
+      db.select.mockReturnValueOnce(createSelectChainWithLimit([session]));
+      mockDockerService.healthCheck.mockResolvedValueOnce(true);
+      mockDockerService.listContainerProcesses.mockRejectedValueOnce(
+        new Error('No such container'),
+      );
+      db.update.mockReturnValueOnce(
+        createUpdateChainReturning([
+          buildSession({
+            executionId: null,
+            agentConversationId: TEST_CONVERSATION_ID,
+            status: 'stopped',
+            containerId: null,
+            workspacePath: null,
+            startedAt: session.startedAt,
+            stoppedAt: new Date('2025-01-03T00:00:00Z'),
+          }),
+        ]),
+      );
+
+      await expect(
+        service.getConversationSandboxProcesses(
+          TEST_CONVERSATION_ID,
+          TEST_TENANT_ID,
+        ),
+      ).rejects.toThrow(SandboxProcessesUnavailableException);
+
+      expect(mockDockerService.listContainerProcesses).toHaveBeenCalledWith(
+        'container-missing',
+      );
     });
   });
 
@@ -1313,7 +1393,9 @@ describe('SandboxService', () => {
       db.select
         .mockReturnValueOnce(createSelectChainForList([staleSession]))
         .mockReturnValueOnce(createSelectChainForCount(1));
-      db.update.mockReturnValueOnce(createUpdateChainReturning([stoppedSession]));
+      db.update.mockReturnValueOnce(
+        createUpdateChainReturning([stoppedSession]),
+      );
       mockDockerService.healthCheck.mockResolvedValueOnce(false);
 
       const result = await service.listSandboxes(TEST_TENANT_ID, {

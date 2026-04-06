@@ -1,6 +1,6 @@
 import { apiClient, toSnakeBody } from "@/shared/api/client";
 import type { PaginatedResponse } from "@/shared/types/api";
-import type { SandboxStats } from "@/features/sandbox/types";
+import type { SandboxProcess, SandboxStats } from "@/features/sandbox/types";
 
 export interface ConversationListItem {
   id: string;
@@ -83,5 +83,14 @@ export async function fetchConversationSandboxStats(
   return apiClient
     .get(`agent-conversations/${conversationId}/sandbox/stats`)
     .json<{ data: SandboxStats }>()
+    .then((response) => response.data);
+}
+
+export async function fetchConversationSandboxProcesses(
+  conversationId: string,
+): Promise<SandboxProcess[]> {
+  return apiClient
+    .get(`agent-conversations/${conversationId}/sandbox/processes`)
+    .json<{ data: SandboxProcess[] }>()
     .then((response) => response.data);
 }

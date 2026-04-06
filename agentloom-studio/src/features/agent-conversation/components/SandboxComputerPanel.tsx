@@ -4,6 +4,7 @@ import {
   Terminal,
   Cpu,
   HardDrive,
+  Loader2,
   ChevronDown,
   ChevronRight,
   FileCode,
@@ -13,13 +14,17 @@ import {
   Wrench,
 } from "lucide-react";
 import { cn } from "@/shared/lib/utils";
-import { useConversationSandboxStats } from "../api/conversationQueries";
+import {
+  useConversationSandboxProcesses,
+  useConversationSandboxStats,
+} from "../api/conversationQueries";
 import {
   formatSandboxBytes,
   formatSandboxMegabytes,
   getSandboxDiskPercent,
   safeSandboxPercent,
 } from "@/features/sandbox/lib/sandboxStats";
+import type { SandboxProcess } from "@/features/sandbox/types";
 import { getToolRenderer } from "@/shared/components/tool-renderers/registry";
 import { defaultRendererDefinition } from "@/shared/components/tool-renderers/DefaultRenderer";
 import { deriveRenderState } from "@/shared/components/tool-renderers/ToolCallCard";
@@ -71,7 +76,7 @@ function StatusDot({ status }: { status: SandboxStatus }) {
 
 type ProcessStatusTone = "info" | "success" | "warning" | "muted" | "error";
 
-interface ProcessItem {
+interface ActivityItem {
   id: string;
   icon: typeof Cpu;
   title: string;
@@ -91,7 +96,26 @@ function clipText(value: string, limit: number): string {
 }
 
 function stripAnsi(value: string): string {
-  return value.replace(/\u001b\[[0-9;]*m/g, "");
+  let result = "";
+  let index = 0;
+
+  while (index < value.length) {
+    if (value.charCodeAt(index) === 27 && value[index + 1] === "[") {
+      index += 2;
+      while (index < value.length && value[index] !== "m") {
+        index += 1;
+      }
+      if (value[index] === "m") {
+        index += 1;
+      }
+      continue;
+    }
+
+    result += value[index];
+    index += 1;
+  }
+
+  return result;
 }
 
 function normalizeInlineText(value: string): string {
@@ -165,13 +189,13 @@ function getProcessStatusClasses(tone: ProcessStatusTone): string {
   }
 }
 
-function buildProcessItems(params: {
+function buildFallbackActivityItems(params: {
   terminalEntries: TerminalEntry[];
   sandboxStatus: SandboxStatus;
   activeToolCall?: ToolCallData;
-}): ProcessItem[] {
+}): ActivityItem[] {
   const { terminalEntries, sandboxStatus, activeToolCall } = params;
-  const items: ProcessItem[] = [];
+  const items: ActivityItem[] = [];
 
   if (activeToolCall) {
     const status = getToolProcessStatus(activeToolCall.status);
@@ -273,7 +297,11 @@ function buildProcessItems(params: {
   return items;
 }
 
-const ProcessCard = memo(function ProcessCard({ item }: { item: ProcessItem }) {
+const ActivityCard = memo(function ActivityCard({
+  item,
+}: {
+  item: ActivityItem;
+}) {
   const Icon = item.icon;
 
   return (
@@ -333,28 +361,179 @@ const ProcessCard = memo(function ProcessCard({ item }: { item: ProcessItem }) {
   );
 });
 
-function ProcessMonitorView({ items }: { items: ProcessItem[] }) {
-  if (items.length === 0) {
+function getProcessStateMeta(state: string): {
+  label: string;
+  tone: ProcessStatusTone;
+} {
+  const normalized = state.trim().charAt(0).toUpperCase();
+  switch (normalized) {
+    case "R":
+      return { label: "运行中", tone: "info" };
+    case "S":
+    case "I":
+    case "D":
+      return { label: "休眠", tone: "muted" };
+    case "T":
+      return { label: "暂停", tone: "warning" };
+    case "Z":
+    case "X":
+      return { label: "异常", tone: "error" };
+    default:
+      return { label: state || "未知", tone: "muted" };
+  }
+}
+
+function formatProcessPercent(value: number): string {
+  return `${safeSandboxPercent(value)}%`;
+}
+
+const ProcessTableRow = memo(function ProcessTableRow({
+  process,
+}: {
+  process: SandboxProcess;
+}) {
+  const stateMeta = getProcessStateMeta(process.state);
+  const commandPreview = clipText(process.command, 180);
+
+  return (
+    <tr
+      data-testid={`sandbox-process-row-${process.pid}`}
+      className="border-b border-border/30 align-top last:border-0"
+    >
+      <td className="px-3 py-2 font-mono text-[11px] text-foreground/85">
+        {process.pid}
+      </td>
+      <td className="px-3 py-2">
+        <div className="min-w-0">
+          <div className="truncate text-sm font-medium text-foreground">
+            {process.executable}
+          </div>
+          <div className="mt-1 break-all font-mono text-[11px] leading-relaxed text-muted-foreground">
+            {commandPreview}
+          </div>
+        </div>
+      </td>
+      <td className="px-3 py-2">
+        <div className="flex flex-col gap-1">
+          <span
+            className={cn(
+              "inline-flex w-fit rounded-full border px-2 py-0.5 text-[10px] font-medium",
+              getProcessStatusClasses(stateMeta.tone),
+            )}
+          >
+            {stateMeta.label}
+          </span>
+          <span className="font-mono text-[10px] text-muted-foreground">
+            {process.state}
+          </span>
+        </div>
+      </td>
+      <td className="px-3 py-2 font-mono text-[11px] text-foreground/85">
+        {formatProcessPercent(process.cpuPercent)}
+      </td>
+      <td className="px-3 py-2 font-mono text-[11px] text-foreground/85">
+        {formatProcessPercent(process.memoryPercent)}
+      </td>
+      <td className="px-3 py-2 font-mono text-[11px] text-muted-foreground">
+        {process.elapsed}
+      </td>
+    </tr>
+  );
+});
+
+function ProcessMonitorView({
+  processes,
+  isLoading,
+  fallbackItems,
+  hasRealtimeSource,
+}: {
+  processes: SandboxProcess[] | null;
+  isLoading: boolean;
+  fallbackItems: ActivityItem[];
+  hasRealtimeSource: boolean;
+}) {
+  if (isLoading && (!processes || processes.length === 0)) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center px-6 text-center text-muted-foreground">
-        <Cpu className="mb-3 h-5 w-5 opacity-50" />
-        <div className="text-sm">暂无可观测进程</div>
+        <Loader2 className="mb-3 h-5 w-5 animate-spin" />
+        <div className="text-sm">正在读取容器进程快照…</div>
         <div className="mt-1 text-xs leading-relaxed">
-          当 Agent 触发工具调用或产生终端活动时，这里会显示结构化运行卡片。
+          {hasRealtimeSource
+            ? "进程数据每 5 秒自动刷新一次。"
+            : "当前视图还没有连接到实时进程数据源。"}
+        </div>
+      </div>
+    );
+  }
+
+  if (processes && processes.length > 0) {
+    return (
+      <div className="flex h-full flex-1 flex-col overflow-hidden">
+        <div className="border-b border-border/30 bg-surface-elevated/20 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
+          <div className="font-medium text-foreground/90">实时进程快照</div>
+          <div className="mt-0.5">
+            按 CPU / 内存占用排序展示当前沙箱进程，效果更接近任务管理器而不是终端日志。
+          </div>
+        </div>
+        <div className="flex-1 overflow-auto">
+          <table
+            data-testid="sandbox-process-table"
+            className="min-w-full border-collapse"
+          >
+            <thead className="sticky top-0 z-10 bg-surface text-left">
+              <tr className="border-b border-border/40 text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+                <th className="px-3 py-2 font-medium">PID</th>
+                <th className="px-3 py-2 font-medium">命令</th>
+                <th className="px-3 py-2 font-medium">状态</th>
+                <th className="px-3 py-2 font-medium">CPU</th>
+                <th className="px-3 py-2 font-medium">MEM</th>
+                <th className="px-3 py-2 font-medium">运行时长</th>
+              </tr>
+            </thead>
+            <tbody>
+              {processes.map((process) => (
+                <ProcessTableRow key={process.pid} process={process} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
+
+  if (fallbackItems.length > 0) {
+    return (
+      <div
+        data-testid="sandbox-process-fallback"
+        className="flex-1 overflow-y-auto p-3"
+      >
+        <div className="mb-3 rounded-md border border-warning/20 bg-warning/5 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
+          {hasRealtimeSource
+            ? "当前还没有拿到真实进程快照，先退回展示最近活动摘要。"
+            : "当前视图尚未接入真实进程采样，下面展示最近活动摘要。"}
+        </div>
+        <div className="space-y-3">
+          {fallbackItems.map((item) => (
+            <ActivityCard key={item.id} item={item} />
+          ))}
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex-1 overflow-y-auto p-3">
-      <div className="mb-3 rounded-md border border-info/20 bg-info/5 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
-        这里只重组当前会话里的运行活动；更详细的工具结果仍在“工具”标签页查看。
+    <div
+      data-testid="sandbox-process-empty"
+      className="flex flex-1 flex-col items-center justify-center px-6 text-center text-muted-foreground"
+    >
+      <Cpu className="mb-3 h-5 w-5 opacity-50" />
+      <div className="text-sm">
+        {hasRealtimeSource ? "暂无可展示的进程快照" : "当前视图未接入进程快照"}
       </div>
-      <div className="space-y-3">
-        {items.map((item) => (
-          <ProcessCard key={item.id} item={item} />
-        ))}
+      <div className="mt-1 text-xs leading-relaxed">
+        {hasRealtimeSource
+          ? "当沙箱启动并产生活动后，这里会显示真实的进程表。"
+          : "这里保留给会话沙箱的实时进程监视器使用。"}
       </div>
     </div>
   );
@@ -478,7 +657,7 @@ function DiffHighlight({ diff }: { diff: string }) {
 function FileChangesView({ changes }: { changes: FileChange[] }) {
   if (changes.length === 0) {
     return (
-      <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
+      <div className="flex flex-1 flex-col items-center justify-center px-6 text-center text-muted-foreground">
         <FileCode className="h-4 w-4 mr-2 opacity-50" />
         <span>暂无文件变更</span>
       </div>
@@ -546,15 +725,23 @@ export function SandboxComputerPanel({
     conversationId,
     sandboxStatus,
   );
-  const processItems = useMemo(
+  const {
+    data: sandboxProcesses,
+    isLoading: isProcessLoading,
+  } = useConversationSandboxProcesses(conversationId, sandboxStatus);
+  const fallbackItems = useMemo(
     () =>
-      buildProcessItems({
+      buildFallbackActivityItems({
         terminalEntries,
         sandboxStatus,
         activeToolCall,
       }),
     [terminalEntries, sandboxStatus, activeToolCall],
   );
+  const visibleProcessCount =
+    sandboxProcesses && sandboxProcesses.length > 0
+      ? sandboxProcesses.length
+      : fallbackItems.length;
   const diskPercent = sandboxStats ? getSandboxDiskPercent(sandboxStats) : null;
   const cpuLabel = sandboxStats
     ? `${safeSandboxPercent(sandboxStats.cpuPercent)}%`
@@ -611,9 +798,9 @@ export function SandboxComputerPanel({
         >
           <Cpu className="h-3 w-3" />
           进程
-          {processItems.length > 0 && (
+          {visibleProcessCount > 0 && (
             <span className="text-[10px] bg-surface-elevated px-1 rounded">
-              {processItems.length}
+              {visibleProcessCount}
             </span>
           )}
         </button>
@@ -655,7 +842,12 @@ export function SandboxComputerPanel({
       {activeTab === "tool" && activeToolCall ? (
         <ActiveToolView toolCall={activeToolCall} />
       ) : activeTab === "process" ? (
-        <ProcessMonitorView items={processItems} />
+        <ProcessMonitorView
+          processes={sandboxProcesses}
+          isLoading={isProcessLoading}
+          fallbackItems={fallbackItems}
+          hasRealtimeSource={Boolean(conversationId)}
+        />
       ) : (
         <FileChangesView changes={fileChanges} />
       )}

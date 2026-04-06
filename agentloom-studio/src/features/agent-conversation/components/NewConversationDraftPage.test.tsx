@@ -30,6 +30,10 @@ vi.mock("../api/conversationQueries", () => ({
   useConversationSandboxStats: () => ({
     data: null,
   }),
+  useConversationSandboxProcesses: () => ({
+    data: null,
+    isLoading: false,
+  }),
 }));
 
 import { ToastProvider } from "@/shared/ui/toast";

@@ -25,7 +25,7 @@ AgentLoom Studio 是基于 **React 19 + Vite 7** 的前端工作台，负责工�
 | `/resources/workspaces`              | WorkspaceManagementPage        | 持久化 workspace 列表页；默认隐藏 execution 自动归档快照，并显示来源标签                                         |
 | `/resources/workspaces/$workspaceId` | WorkspaceDetailPage            | 持久化 workspace 详情页；目录树 + Monaco 文本预览/编辑 + 图片 / PDF 预览，其他文件提供下载兜底                  |
 | `/agents/$agentId/conversations/new` | NewConversationDraftPage       | 新对话草稿页；首条消息发送成功后才创建真实 conversation 并跳转正式会话                                           |
-| `/agents/$agentId/conversations/$conversationId` | AgentConversationPage | 三列对话页；sandbox Agent 会在 live workspace 就绪前先显示持久化工作区目录预览，右侧电脑面板提供进程/文件变更/工具运行上下文，并支持图片/文件草稿队列、多附件同发与附件预览 |
+| `/agents/$agentId/conversations/$conversationId` | AgentConversationPage | 三列对话页；sandbox Agent 会在 live workspace 就绪前先显示持久化工作区目录预览，右侧电脑面板通过会话级 `sandbox/stats` + `sandbox/processes` 展示真实进程快照，并保留文件变更/工具运行上下文，支持图片/文件草稿队列、多附件同发与附件预览 |
 | `/settings/tool-library`             | ToolLibraryPage                | MCP 工具库                                                                                                       |
 | `/marketplace`                       | MarketplaceBrowsePage          | 工作流 / 插件市场                                                                                                |
 

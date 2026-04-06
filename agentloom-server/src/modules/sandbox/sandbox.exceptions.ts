@@ -89,3 +89,14 @@ export class SandboxStatsUnavailableException extends DomainException {
     });
   }
 }
+
+export class SandboxProcessesUnavailableException extends DomainException {
+  constructor(sessionId: string) {
+    super({
+      type: 'https://agentloom.dev/errors/sandbox-processes-unavailable',
+      title: '沙箱进程列表不可用',
+      status: HttpStatus.CONFLICT,
+      detail: `Container process list unavailable for sandbox ${sessionId}: container is not running`,
+    });
+  }
+}

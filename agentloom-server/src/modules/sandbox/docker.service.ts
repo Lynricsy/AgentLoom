@@ -26,6 +26,7 @@ import {
   SandboxDestroyException,
 } from './sandbox.exceptions';
 import type {
+  ContainerProcess,
   ContainerStats,
   CreateContainerPiContext,
   DockerExecCreateOptions,
@@ -35,6 +36,7 @@ import type {
 } from './sandbox-runtime-driver.port';
 
 export type {
+  ContainerProcess,
   ContainerStats,
   CreateContainerPiContext,
   DockerExecCreateOptions,
@@ -63,6 +65,8 @@ const WORKSPACE_DISK_USAGE_COMMAND = [
   "find /workspace -mindepth 1 \\( -type f -o -type l \\) -printf '%s\\n'",
   "awk 'BEGIN { sum = 0 } { sum += $1 } END { print sum + 0 }'",
 ].join(' | ');
+const PROCESS_LIST_COMMAND =
+  'ps -ewwo pid=,%cpu=,%mem=,stat=,etime=,comm=,args=';
 const HEALTHCHECK_INTERVAL_NS = 30 * 1_000_000_000;
 const HEALTHCHECK_START_PERIOD_NS = 5 * 1_000_000_000;
 const HEALTHCHECK_TIMEOUT_NS = 5 * 1_000_000_000;
@@ -637,6 +641,29 @@ export class DockerService implements SandboxRuntimeDriver {
     };
   }
 
+  async listContainerProcesses(
+    containerId: string,
+  ): Promise<ContainerProcess[]> {
+    const handle = await this.createExec(containerId, {
+      command: 'sh',
+      args: ['-lc', PROCESS_LIST_COMMAND],
+    });
+    const outputChunks: string[] = [];
+
+    await this.attachExecOutput(handle.execId, (_level, message) => {
+      outputChunks.push(message);
+    });
+
+    const exitInfo = await this.waitForExecExit(handle.execId);
+    if (exitInfo.exitCode !== 0) {
+      throw new Error(
+        `process list command failed (exit=${exitInfo.exitCode})`,
+      );
+    }
+
+    return this.parseContainerProcesses(outputChunks.join(''));
+  }
+
   private async getWorkspaceDiskUsageBytes(
     containerId: string,
   ): Promise<number> {
@@ -665,6 +692,72 @@ export class DockerService implements SandboxRuntimeDriver {
     }
 
     return parsed;
+  }
+
+  private parseContainerProcesses(output: string): ContainerProcess[] {
+    const processes = output
+      .split('\n')
+      .flatMap((rawLine) => {
+        const line = rawLine.trim();
+        if (line.length === 0) {
+          return [];
+        }
+
+        const match = line.match(
+          /^(\d+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(\S+)\s+(.+)$/,
+        );
+        if (!match) {
+          this.logger.warn(
+            `Skipping unparsable sandbox process row: ${rawLine}`,
+          );
+          return [];
+        }
+
+        const pid = Number.parseInt(match[1], 10);
+        const cpuPercent = this.parseProcessPercent(match[2]);
+        const memoryPercent = this.parseProcessPercent(match[3]);
+        const state = match[4];
+        const elapsed = match[5];
+        const executable = match[6];
+        const command = match[7].trim();
+
+        if (!Number.isFinite(pid) || pid <= 0 || !command || !executable) {
+          this.logger.warn(`Skipping invalid sandbox process row: ${rawLine}`);
+          return [];
+        }
+
+        return [
+          {
+            pid,
+            cpuPercent,
+            memoryPercent,
+            state,
+            elapsed,
+            executable,
+            command,
+          } satisfies ContainerProcess,
+        ];
+      })
+      .sort((left, right) => {
+        if (right.cpuPercent !== left.cpuPercent) {
+          return right.cpuPercent - left.cpuPercent;
+        }
+        if (right.memoryPercent !== left.memoryPercent) {
+          return right.memoryPercent - left.memoryPercent;
+        }
+        return left.pid - right.pid;
+      });
+
+    return processes;
+  }
+
+  private parseProcessPercent(rawValue: string): number {
+    const parsed = Number.parseFloat(rawValue);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      return 0;
+    }
+
+    return Math.round(parsed * 100) / 100;
   }
 
   private trackExecStream(execId: string, stream: NodeJS.ReadableStream): void {

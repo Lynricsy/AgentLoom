@@ -309,6 +309,21 @@ export class AgentConversationController {
     return { data };
   }
 
+  @Get('agent-conversations/:id/sandbox/processes')
+  @Roles('viewer', 'operator', 'creator', 'admin', 'owner')
+  @ApiOperation({ summary: 'Get process list for a conversation sandbox' })
+  @ApiResponse({ status: 200, description: 'Conversation sandbox processes' })
+  async getSandboxProcesses(
+    @Param('id', ParseUUIDPipe) id: string,
+    @CurrentTenant() tenantId: string,
+  ) {
+    const data = await this.sandboxService.getConversationSandboxProcesses(
+      id,
+      tenantId,
+    );
+    return { data };
+  }
+
   @Get('agent-conversations/:id/workspace/files/*')
   @Roles('viewer', 'operator', 'creator', 'admin', 'owner')
   @ApiOperation({ summary: 'Get workspace file content by path' })
