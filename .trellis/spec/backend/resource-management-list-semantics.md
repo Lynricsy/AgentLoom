@@ -28,6 +28,9 @@
 - `WorkspaceService.syncFromSandboxContainer(workspaceId, containerId, tenantId)`
 - `WorkspaceService.findAll(tenantId, { page?, pageSize?, search?, includeAutoArchived? })`
 - `WorkspaceService.findOne(tenantId, workspaceId)`
+- `WorkspaceService.getFileTree(tenantId, workspaceId)`
+- `WorkspaceService.getFilePreview(tenantId, workspaceId, filePath)`
+- `WorkspaceService.getFileAsset(tenantId, workspaceId, filePath)`
 - `WorkspaceIntegrationService.archiveExecutionStepWorkspace(executionId, stepId, tenantId, sandboxNodeId?)`
 - `SandboxService.listSandboxes(tenantId, { page, pageSize, status?, lifecycleMode?, bindingType?, search? })`
 - `SandboxService.getContainerStats(sessionId)`
@@ -112,6 +115,10 @@
 - workflow step 的 `checkpointData.workspaceSnapshotId` 必须始终指向“当前这一步结束后可回放的最新快照”：
   - 绑定已有 workspace 时，它指向原 `restoreWorkspaceId`
   - 未绑定已有 workspace 时，它指向新建的 `execution_archive`
+- workspace 详情页的 `tree / preview / raw` 读取不得再把“整包 tar 体积”当成统一拦截条件：
+  - `GET /workspaces/:id/tree` 必须能够对大 workspace snapshot 做流式 tar 扫描并返回目录树，不能因为归档超过某个内存预览阈值就直接 404。
+  - `GET /workspaces/:id/preview/*` 与 `GET /workspaces/:id/raw/*` 必须按目标路径流式定位单个 entry，而不是先把整个 tar 读入内存。
+  - 文本内容的在线预览限制仍然只作用于“单个目标文件”，例如 `MAX_WORKSPACE_TEXT_PREVIEW_BYTES`；它不能反向把整个 workspace 的目录树预览一起打成空白。
 
 ### 3.4 Sandbox list semantics
 
@@ -197,6 +204,8 @@
 | 旧 published snapshot 只有 `sandboxConfig.timeout=450`，但节点仍有 `timeoutSeconds=450` | detail / versions / runtime 都必须恢复成 `timeout=1 + timeoutSeconds=450` | `agent-definition-response.dto.spec.ts`, `agent-execution.worker.spec.ts`, `workflow-agent-adapter.spec.ts` |
 | workspace list 默认过滤 execution archive | API 仍返回 `sourceKind`，但 `execution_archive` 被排除 | `workspace.service.spec.ts` |
 | `includeAutoArchived=false` query string | DTO 必须把 `'false'` 解析成 `false`，不能回退成 truthy | `list-workspaces-query.dto.spec.ts` |
+| workspace snapshot tar 很大，但只读取目录树 | `GET /workspaces/:id/tree` 仍返回完整目录树，不因整包大小 404 | `workspace.service.spec.ts` |
+| workspace snapshot tar 很大，但只读取单个小文件 | `preview/raw` 应能流式定位目标文件，不因整包大小失败 | `workspace.service.spec.ts` |
 | sandbox stop/destroy/timeout 时带 `restoreWorkspaceId` | 必须先覆盖回写原 workspace，再继续 lifecycle 收口 | `sandbox-lifecycle.worker.spec.ts` |
 | workflow step 绑定已有 workspace 结束 | `archiveExecutionStepWorkspace()` 返回原 `restoreWorkspaceId`，且不创建 execution archive | `workspace-integration.service.spec.ts` |
 | sandbox list `bindingType=resource` | SQL where 同时要求 `execution_id is null` + `agent_conversation_id is null` | `sandbox.service.spec.ts` |

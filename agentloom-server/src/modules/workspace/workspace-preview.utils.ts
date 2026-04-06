@@ -2,7 +2,6 @@ import { NotFoundException } from '@nestjs/common';
 import { basename, extname } from 'node:path';
 
 export const MAX_WORKSPACE_TEXT_PREVIEW_BYTES = 10 * 1024 * 1024;
-export const MAX_WORKSPACE_ARCHIVE_PREVIEW_BYTES = 50 * 1024 * 1024;
 
 const IMAGE_MIME_BY_EXTENSION: Record<string, string> = {
   '.png': 'image/png',
@@ -204,6 +203,184 @@ export function parseWorkspaceArchiveEntries(
   return stripWorkspaceRootIfNeeded(rawEntries);
 }
 
+class WorkspaceArchiveStreamReader {
+  private readonly iterator: AsyncIterator<unknown>;
+  private readonly chunks: Buffer[] = [];
+  private headOffset = 0;
+  private availableBytes = 0;
+  private done = false;
+
+  constructor(stream: AsyncIterable<unknown>) {
+    this.iterator = stream[Symbol.asyncIterator]();
+  }
+
+  async read(size: number): Promise<Buffer | null> {
+    if (size === 0) {
+      return Buffer.alloc(0);
+    }
+
+    const result = Buffer.allocUnsafe(size);
+    let written = 0;
+
+    while (written < size) {
+      const hasData = await this.ensureData();
+      if (!hasData) {
+        if (written === 0) {
+          return null;
+        }
+        throw new NotFoundException('工作区快照已损坏，无法解析');
+      }
+
+      const head = this.chunks[0];
+      if (!head) {
+        throw new NotFoundException('工作区快照已损坏，无法解析');
+      }
+
+      const availableInHead = head.length - this.headOffset;
+      const consume = Math.min(size - written, availableInHead);
+      head.copy(result, written, this.headOffset, this.headOffset + consume);
+      written += consume;
+      this.consume(consume);
+    }
+
+    return result;
+  }
+
+  async skip(size: number): Promise<void> {
+    let remaining = size;
+    while (remaining > 0) {
+      const hasData = await this.ensureData();
+      if (!hasData) {
+        throw new NotFoundException('工作区快照已损坏，无法解析');
+      }
+
+      const head = this.chunks[0];
+      if (!head) {
+        throw new NotFoundException('工作区快照已损坏，无法解析');
+      }
+
+      const availableInHead = head.length - this.headOffset;
+      const consume = Math.min(remaining, availableInHead);
+      remaining -= consume;
+      this.consume(consume);
+    }
+  }
+
+  private async ensureData(): Promise<boolean> {
+    while (this.availableBytes === 0 && !this.done) {
+      const { value, done } = await this.iterator.next();
+      if (done) {
+        this.done = true;
+        break;
+      }
+
+      const buffer = toWorkspaceArchiveBuffer(value);
+      if (buffer.length === 0) {
+        continue;
+      }
+
+      this.chunks.push(buffer);
+      this.availableBytes += buffer.length;
+    }
+
+    return this.availableBytes > 0;
+  }
+
+  private consume(size: number): void {
+    this.availableBytes -= size;
+    this.headOffset += size;
+
+    const head = this.chunks[0];
+    if (head && this.headOffset >= head.length) {
+      this.chunks.shift();
+      this.headOffset = 0;
+    }
+  }
+}
+
+export async function parseWorkspaceArchiveEntriesFromStream(
+  stream: AsyncIterable<unknown>,
+): Promise<WorkspaceArchiveEntry[]> {
+  const reader = new WorkspaceArchiveStreamReader(stream);
+  const entries: WorkspaceArchiveEntry[] = [];
+
+  while (true) {
+    const header = await reader.read(512);
+    if (!header) {
+      break;
+    }
+
+    if (header.every((value) => value === 0)) {
+      break;
+    }
+
+    const entryHeader = parseWorkspaceArchiveHeader(header);
+    if (entryHeader.type === 'directory' && entryHeader.path) {
+      entries.push({
+        path: entryHeader.path,
+        type: 'directory',
+        size: 0,
+        content: Buffer.alloc(0),
+      });
+    } else if (entryHeader.type === 'file' && entryHeader.path) {
+      entries.push({
+        path: entryHeader.path,
+        type: 'file',
+        size: entryHeader.size,
+        content: Buffer.alloc(0),
+      });
+    }
+
+    await reader.skip(entryHeader.size + computeTarPadding(entryHeader.size));
+  }
+
+  return stripWorkspaceRootIfNeeded(entries);
+}
+
+export async function findWorkspaceArchiveFileEntryFromStream(
+  stream: AsyncIterable<unknown>,
+  filePath: string,
+): Promise<{ normalizedPath: string; entry: WorkspaceArchiveEntry }> {
+  const normalizedPath = normalizeWorkspacePreviewPath(filePath);
+  const candidatePaths = buildWorkspaceArchivePathAliases(normalizedPath);
+  const reader = new WorkspaceArchiveStreamReader(stream);
+
+  while (true) {
+    const header = await reader.read(512);
+    if (!header) {
+      break;
+    }
+
+    if (header.every((value) => value === 0)) {
+      break;
+    }
+
+    const entryHeader = parseWorkspaceArchiveHeader(header);
+    const shouldReadContent =
+      entryHeader.type === 'file' &&
+      entryHeader.path !== null &&
+      candidatePaths.has(entryHeader.path);
+
+    if (shouldReadContent) {
+      const content = (await reader.read(entryHeader.size)) ?? Buffer.alloc(0);
+      await reader.skip(computeTarPadding(entryHeader.size));
+      return {
+        normalizedPath,
+        entry: {
+          path: entryHeader.path!,
+          type: 'file',
+          size: entryHeader.size,
+          content,
+        },
+      };
+    }
+
+    await reader.skip(entryHeader.size + computeTarPadding(entryHeader.size));
+  }
+
+  throw new NotFoundException(`路径 ${filePath} 不是普通文件`);
+}
+
 export function buildWorkspaceFileTree(
   entries: WorkspaceArchiveEntry[],
 ): WorkspaceFileTreeNode[] {
@@ -357,6 +534,52 @@ function detectWorkspacePreviewKind(
   }
 
   return 'unsupported';
+}
+
+function parseWorkspaceArchiveHeader(header: Buffer): {
+  path: string | null;
+  size: number;
+  type: 'file' | 'directory' | 'other';
+} {
+  const name = readTarString(header.subarray(0, 100));
+  const prefix = readTarString(header.subarray(345, 500));
+  const fullPath = [prefix, name].filter(Boolean).join('/');
+  const typeFlagByte = header[156] ?? 0;
+  const typeFlag = typeFlagByte === 0 ? '0' : String.fromCharCode(typeFlagByte);
+
+  return {
+    path: normalizeArchivePath(fullPath),
+    size: readTarOctal(header.subarray(124, 136)),
+    type: typeFlag === '5' ? 'directory' : typeFlag === '0' ? 'file' : 'other',
+  };
+}
+
+function computeTarPadding(size: number): number {
+  return (512 - (size % 512)) % 512;
+}
+
+function buildWorkspaceArchivePathAliases(normalizedPath: string): Set<string> {
+  const candidates = new Set<string>([normalizedPath]);
+
+  if (normalizedPath.startsWith('workspace/')) {
+    candidates.add(normalizedPath.slice('workspace/'.length));
+  } else {
+    candidates.add(`workspace/${normalizedPath}`);
+  }
+
+  return candidates;
+}
+
+function toWorkspaceArchiveBuffer(chunk: unknown): Buffer {
+  if (Buffer.isBuffer(chunk)) {
+    return chunk;
+  }
+
+  if (chunk instanceof Uint8Array) {
+    return Buffer.from(chunk);
+  }
+
+  return Buffer.from(String(chunk));
 }
 
 function stripWorkspaceRootIfNeeded(

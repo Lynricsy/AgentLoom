@@ -122,6 +122,35 @@ function createReadableStreamFromBuffer(buffer: Buffer): Readable {
   return Readable.from(buffer);
 }
 
+function createTarHeaderBuffer(
+  path: string,
+  type: 'file' | 'directory',
+  size: number,
+): Buffer {
+  const header = Buffer.alloc(512, 0);
+
+  writeTarString(header, 0, 100, path);
+  writeTarOctal(header, 100, 8, type === 'directory' ? 0o755 : 0o644);
+  writeTarOctal(header, 108, 8, 0);
+  writeTarOctal(header, 116, 8, 0);
+  writeTarOctal(header, 124, 12, size);
+  writeTarOctal(header, 136, 12, 0);
+  header.fill(0x20, 148, 156);
+  header[156] = type === 'directory' ? '5'.charCodeAt(0) : '0'.charCodeAt(0);
+  writeTarString(header, 257, 6, 'ustar');
+  writeTarString(header, 263, 2, '00');
+
+  const checksum = header.reduce((sum, value) => sum + value, 0);
+  writeTarOctal(header, 148, 8, checksum);
+
+  return header;
+}
+
+function createTarPaddingBuffer(size: number): Buffer | null {
+  const padding = (512 - (size % 512)) % 512;
+  return padding > 0 ? Buffer.alloc(padding, 0) : null;
+}
+
 function writeTarString(
   buffer: Buffer,
   offset: number,
@@ -160,33 +189,81 @@ function createTarArchive(
           ? entry.content
           : Buffer.from(entry.content ?? '')
         : Buffer.alloc(0);
-    const header = Buffer.alloc(512, 0);
+    blocks.push(
+      createTarHeaderBuffer(entry.path, entry.type, content.length),
+      content,
+    );
 
-    writeTarString(header, 0, 100, entry.path);
-    writeTarOctal(header, 100, 8, entry.type === 'directory' ? 0o755 : 0o644);
-    writeTarOctal(header, 108, 8, 0);
-    writeTarOctal(header, 116, 8, 0);
-    writeTarOctal(header, 124, 12, content.length);
-    writeTarOctal(header, 136, 12, 0);
-    header.fill(0x20, 148, 156);
-    header[156] =
-      entry.type === 'directory' ? '5'.charCodeAt(0) : '0'.charCodeAt(0);
-    writeTarString(header, 257, 6, 'ustar');
-    writeTarString(header, 263, 2, '00');
-
-    const checksum = header.reduce((sum, value) => sum + value, 0);
-    writeTarOctal(header, 148, 8, checksum);
-
-    blocks.push(header, content);
-
-    const padding = (512 - (content.length % 512)) % 512;
-    if (padding > 0) {
-      blocks.push(Buffer.alloc(padding, 0));
+    const padding = createTarPaddingBuffer(content.length);
+    if (padding) {
+      blocks.push(padding);
     }
   }
 
   blocks.push(Buffer.alloc(1024, 0));
   return Buffer.concat(blocks);
+}
+
+function createStreamingTarArchive(
+  entries: Array<
+    | {
+        path: string;
+        type: 'directory';
+      }
+    | {
+        path: string;
+        type: 'file';
+        content?: Buffer | string;
+        size?: number;
+        fillByte?: number;
+        chunkSize?: number;
+      }
+  >,
+): Readable {
+  return Readable.from(
+    (async function* () {
+      for (const entry of entries) {
+        if (entry.type === 'directory') {
+          yield createTarHeaderBuffer(entry.path, entry.type, 0);
+          continue;
+        }
+
+        const literalContent =
+          entry.content === undefined
+            ? null
+            : Buffer.isBuffer(entry.content)
+              ? entry.content
+              : Buffer.from(entry.content);
+        const size = literalContent?.length ?? entry.size ?? 0;
+
+        yield createTarHeaderBuffer(entry.path, entry.type, size);
+
+        if (literalContent) {
+          yield literalContent;
+        } else if (size > 0) {
+          const chunk = Buffer.alloc(
+            entry.chunkSize ?? 1024 * 1024,
+            entry.fillByte ?? 0x61,
+          );
+          let remaining = size;
+          while (remaining > 0) {
+            const currentSize = Math.min(remaining, chunk.length);
+            yield currentSize === chunk.length
+              ? chunk
+              : chunk.subarray(0, currentSize);
+            remaining -= currentSize;
+          }
+        }
+
+        const padding = createTarPaddingBuffer(size);
+        if (padding) {
+          yield padding;
+        }
+      }
+
+      yield Buffer.alloc(1024, 0);
+    })(),
+  );
 }
 
 // ─── Test suite ──────────────────────────────────────────────────────────────
@@ -796,6 +873,53 @@ describe('WorkspaceService', () => {
       ]);
     });
 
+    it('getFileTree 应当支持超过旧整包预览上限的大归档', async () => {
+      const largeSize = 60 * 1024 * 1024;
+      const snapshot = buildSnapshot({ sizeBytes: largeSize + 4096 });
+
+      db.select.mockReturnValueOnce(createSelectChainWithLimit([snapshot]));
+      mockStorageService.download.mockResolvedValueOnce(
+        createStreamingTarArchive([
+          {
+            path: 'workspace/huge.bin',
+            type: 'file',
+            size: largeSize,
+            fillByte: 0x42,
+          },
+          { path: 'workspace/docs', type: 'directory' },
+          {
+            path: 'workspace/docs/readme.md',
+            type: 'file',
+            content: '# hello',
+          },
+        ]),
+      );
+
+      await expect(
+        service.getFileTree(TEST_TENANT_ID, TEST_WORKSPACE_ID),
+      ).resolves.toEqual([
+        {
+          name: 'huge.bin',
+          type: 'file',
+          path: 'huge.bin',
+          size: largeSize,
+        },
+        {
+          name: 'docs',
+          type: 'directory',
+          path: 'docs',
+          children: [
+            {
+              name: 'readme.md',
+              type: 'file',
+              path: 'docs/readme.md',
+              size: 7,
+            },
+          ],
+        },
+      ]);
+    });
+
     it('getFilePreview 应当返回文本文件预览', async () => {
       const snapshot = buildSnapshot({ sizeBytes: 1024 });
       const archive = createTarArchive([
@@ -896,6 +1020,45 @@ describe('WorkspaceService', () => {
       });
     });
 
+    it('getFilePreview 应当能在大归档中定位目标文件', async () => {
+      const largeSize = 60 * 1024 * 1024;
+      const snapshot = buildSnapshot({ sizeBytes: largeSize + 4096 });
+
+      db.select.mockReturnValueOnce(createSelectChainWithLimit([snapshot]));
+      mockStorageService.download.mockResolvedValueOnce(
+        createStreamingTarArchive([
+          {
+            path: 'workspace/huge.bin',
+            type: 'file',
+            size: largeSize,
+            fillByte: 0x99,
+          },
+          {
+            path: 'workspace/docs/readme.md',
+            type: 'file',
+            content: '# streamed',
+          },
+        ]),
+      );
+
+      await expect(
+        service.getFilePreview(
+          TEST_TENANT_ID,
+          TEST_WORKSPACE_ID,
+          'docs/readme.md',
+        ),
+      ).resolves.toEqual({
+        kind: 'text',
+        path: 'docs/readme.md',
+        fileName: 'readme.md',
+        size: 10,
+        mimeType: 'text/markdown',
+        canDownload: true,
+        content: '# streamed',
+        encoding: 'utf-8',
+      });
+    });
+
     it('getFileAsset 应当返回原始文件内容与 mimeType', async () => {
       const snapshot = buildSnapshot({ sizeBytes: 1024 });
       const pngBuffer = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x0d]);
@@ -910,6 +1073,39 @@ describe('WorkspaceService', () => {
       db.select.mockReturnValueOnce(createSelectChainWithLimit([snapshot]));
       mockStorageService.download.mockResolvedValueOnce(
         createReadableStreamFromBuffer(archive),
+      );
+
+      await expect(
+        service.getFileAsset(TEST_TENANT_ID, TEST_WORKSPACE_ID, 'cover.png'),
+      ).resolves.toEqual({
+        path: 'cover.png',
+        fileName: 'cover.png',
+        size: pngBuffer.length,
+        mimeType: 'image/png',
+        content: pngBuffer,
+      });
+    });
+
+    it('getFileAsset 应当能在大归档中返回目标文件原始内容', async () => {
+      const largeSize = 60 * 1024 * 1024;
+      const snapshot = buildSnapshot({ sizeBytes: largeSize + 4096 });
+      const pngBuffer = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00, 0x0d]);
+
+      db.select.mockReturnValueOnce(createSelectChainWithLimit([snapshot]));
+      mockStorageService.download.mockResolvedValueOnce(
+        createStreamingTarArchive([
+          {
+            path: 'workspace/huge.bin',
+            type: 'file',
+            size: largeSize,
+            fillByte: 0xaa,
+          },
+          {
+            path: 'workspace/cover.png',
+            type: 'file',
+            content: pngBuffer,
+          },
+        ]),
       );
 
       await expect(

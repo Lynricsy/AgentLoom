@@ -22,12 +22,12 @@ import {
   type WorkspaceListItem,
 } from './workspace-source.utils';
 import {
-  MAX_WORKSPACE_ARCHIVE_PREVIEW_BYTES,
   buildWorkspaceFilePreview,
   buildWorkspaceFileTree,
   detectWorkspaceMimeType,
+  findWorkspaceArchiveFileEntryFromStream,
   normalizeWorkspacePreviewPath,
-  parseWorkspaceArchiveEntries,
+  parseWorkspaceArchiveEntriesFromStream,
   type WorkspaceArchiveEntry,
   type WorkspaceFileAsset,
   type WorkspaceFilePreview,
@@ -571,7 +571,7 @@ export class WorkspaceService {
     tenantId: string,
     workspaceId: string,
   ): Promise<WorkspaceFileTreeNode[]> {
-    const entries = await this.readWorkspaceSnapshotEntries(
+    const entries = await this.readWorkspaceSnapshotTreeEntries(
       tenantId,
       workspaceId,
     );
@@ -637,7 +637,7 @@ export class WorkspaceService {
     return snapshot;
   }
 
-  private async readWorkspaceSnapshotEntries(
+  private async readWorkspaceSnapshotTreeEntries(
     tenantId: string,
     workspaceId: string,
   ): Promise<WorkspaceArchiveEntry[]> {
@@ -659,13 +659,7 @@ export class WorkspaceService {
     const archiveStream = await this.storageService.download(
       snapshot.storageKey,
     );
-    const archiveBuffer = await this.readStreamToBuffer(archiveStream);
-
-    if (archiveBuffer.length === 0) {
-      return [];
-    }
-
-    return parseWorkspaceArchiveEntries(archiveBuffer);
+    return parseWorkspaceArchiveEntriesFromStream(archiveStream);
   }
 
   private async readWorkspaceFileEntry(
@@ -673,46 +667,27 @@ export class WorkspaceService {
     workspaceId: string,
     filePath: string,
   ): Promise<{ normalizedPath: string; entry: WorkspaceArchiveEntry }> {
-    const normalizedPath = normalizeWorkspacePreviewPath(filePath);
-    const entries = await this.readWorkspaceSnapshotEntries(
+    const snapshot = await this.findWorkspaceSnapshotRecord(
       tenantId,
       workspaceId,
     );
-    const entry = entries.find(
-      (candidate) =>
-        candidate.type === 'file' && candidate.path === normalizedPath,
-    );
 
-    if (!entry) {
+    if (snapshot.status !== 'ready') {
+      throw new NotFoundException(
+        `Workspace snapshot ${workspaceId} not found or not ready`,
+      );
+    }
+
+    if (snapshot.sizeBytes === 0) {
       throw new NotFoundException(`路径 ${filePath} 不是普通文件`);
     }
 
-    return { normalizedPath, entry };
-  }
-
-  private async readStreamToBuffer(
-    stream: AsyncIterable<unknown>,
-  ): Promise<Buffer> {
-    const chunks: Buffer[] = [];
-    let totalBytes = 0;
-
-    for await (const chunk of stream) {
-      const buffer = Buffer.isBuffer(chunk)
-        ? chunk
-        : chunk instanceof Uint8Array
-          ? Buffer.from(chunk)
-          : Buffer.from(String(chunk));
-      totalBytes += buffer.length;
-
-      if (totalBytes > MAX_WORKSPACE_ARCHIVE_PREVIEW_BYTES) {
-        throw new NotFoundException(
-          `工作区快照超过在线预览限制 (${MAX_WORKSPACE_ARCHIVE_PREVIEW_BYTES} 字节)`,
-        );
-      }
-
-      chunks.push(buffer);
-    }
-
-    return Buffer.concat(chunks);
+    const archiveStream = await this.storageService.download(
+      snapshot.storageKey,
+    );
+    return findWorkspaceArchiveFileEntryFromStream(
+      archiveStream,
+      normalizeWorkspacePreviewPath(filePath),
+    );
   }
 }
