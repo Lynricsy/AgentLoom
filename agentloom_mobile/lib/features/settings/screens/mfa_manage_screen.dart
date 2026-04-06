@@ -124,7 +124,7 @@ class MfaManageScreen extends ConsumerWidget {
             )
           else
             FilledButton.icon(
-              onPressed: () => context.goNamed(RouteNames.mfaEnroll),
+              onPressed: () => context.pushNamed(RouteNames.mfaEnroll),
               icon: const Icon(Icons.security),
               label: const Text('启用双因素认证'),
             ),

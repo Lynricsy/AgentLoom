@@ -3,9 +3,11 @@ import 'dart:async';
 import 'package:agentloom_mobile/features/settings/api/settings_api.dart';
 import 'package:agentloom_mobile/features/settings/providers/settings_provider.dart';
 import 'package:agentloom_mobile/features/settings/screens/mfa_manage_screen.dart';
+import 'package:agentloom_mobile/routes/route_names.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 
 void main() {
   Widget buildTestWidget({
@@ -17,6 +19,19 @@ void main() {
           securityInfoProvider.overrideWith(securityInfoOverride),
       ],
       child: const MaterialApp(home: MfaManageScreen()),
+    );
+  }
+
+  Widget buildRouterTestWidget({
+    required GoRouter router,
+    SecurityInfoNotifier Function()? securityInfoOverride,
+  }) {
+    return ProviderScope(
+      overrides: [
+        if (securityInfoOverride != null)
+          securityInfoProvider.overrideWith(securityInfoOverride),
+      ],
+      child: MaterialApp.router(routerConfig: router),
     );
   }
 
@@ -68,6 +83,52 @@ void main() {
 
       expect(find.text('启用双因素认证'), findsOneWidget);
       expect(find.byType(FilledButton), findsOneWidget);
+    });
+
+    testWidgets('进入启用页后返回应回到 MFA 管理页', (tester) async {
+      GoRouter.optionURLReflectsImperativeAPIs = true;
+      final router = GoRouter(
+        initialLocation: '/settings/mfa',
+        routes: [
+          ShellRoute(
+            builder: (context, state, child) => child,
+            routes: [
+              GoRoute(
+                path: '/settings/mfa',
+                builder: (context, state) => const MfaManageScreen(),
+              ),
+            ],
+          ),
+          GoRoute(
+            path: '/mfa-enroll',
+            name: RouteNames.mfaEnroll,
+            builder: (context, state) =>
+                const Scaffold(body: Center(child: Text('MFA Enroll'))),
+          ),
+        ],
+      );
+      addTearDown(router.dispose);
+
+      await tester.pumpWidget(
+        buildRouterTestWidget(
+          router: router,
+          securityInfoOverride: () =>
+              _DataSecurityInfoNotifier(const SecurityInfo(mfaEnabled: false)),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('启用双因素认证'));
+      await tester.pumpAndSettle();
+
+      expect(router.routeInformationProvider.value.uri.path, '/mfa-enroll');
+      expect(find.text('MFA Enroll'), findsOneWidget);
+
+      router.pop();
+      await tester.pumpAndSettle();
+
+      expect(router.routeInformationProvider.value.uri.path, '/settings/mfa');
+      expect(find.text('双因素认证'), findsOneWidget);
     });
 
     testWidgets('未启用时不显示禁用按钮', (tester) async {
