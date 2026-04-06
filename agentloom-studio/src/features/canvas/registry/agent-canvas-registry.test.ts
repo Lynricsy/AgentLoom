@@ -5,6 +5,28 @@ import {
 } from './agent-canvas-registry'
 
 describe('agent-canvas-registry', () => {
+  it('registers text as an agent-canvas source node for system prompts', () => {
+    expect(AGENT_CANVAS_NODE_TYPES).toContain('text')
+
+    const textNode = getAgentNodeTypeConfig('text')
+
+    expect(textNode).toMatchObject({
+      type: 'text',
+      category: 'output',
+      label: 'Text',
+    })
+    expect(textNode?.inputPorts).toEqual([])
+    expect(textNode?.outputPorts).toMatchObject([
+      {
+        id: 'text-out',
+        dataType: 'text',
+        direction: 'output',
+        multiple: true,
+        maxConnections: null,
+      },
+    ])
+  })
+
   it('registers memory as a first-class agent canvas node', () => {
     expect(AGENT_CANVAS_NODE_TYPES).toContain('memory')
 
@@ -36,5 +58,30 @@ describe('agent-canvas-registry', () => {
       multiple: true,
       maxConnections: null,
     })
+  })
+
+  it('defines sub-agent with override and extension ports instead of legacy text/json inputs', () => {
+    const subAgentNode = getAgentNodeTypeConfig('sub-agent')
+    const inputPortIds = subAgentNode?.inputPorts.map((port) => port.id)
+
+    expect(inputPortIds).toEqual([
+      'system-prompt-in',
+      'model-in',
+      'schema-in',
+      'tools-in',
+      'skills-in',
+      'sub-agents-in',
+      'knowledge-in',
+      'memory-in',
+    ])
+    expect(inputPortIds).not.toContain('text-in')
+    expect(inputPortIds).not.toContain('json-in')
+    expect(subAgentNode?.outputPorts).toMatchObject([
+      {
+        id: 'agent-out',
+        dataType: 'agent',
+        direction: 'output',
+      },
+    ])
   })
 })

@@ -21,7 +21,7 @@ AgentLoom Studio 是基于 **React 19 + Vite 7** 的前端工作台，负责工�
 
 | 路由                                             | 页面                           | 说明                                                                                                                                                                                                                                      |
 | ------------------------------------------------ | ------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `/workflows/$workflowId`                         | WorkflowCanvasPage             | React Flow 画布编辑器、自动保存、节点配置；`text-output` / `json-output` 卡片支持直接打开详情查看完整输出                                                                                                                                 |
+| `/workflows/$workflowId`                         | WorkflowCanvasPage             | React Flow 画布编辑器、自动保存、节点配置；workflow `agent` 可通过显式 `text` 常量节点连接 `system-prompt-in`，`text-output` / `json-output` 卡片支持直接打开详情查看完整输出                                                               |
 | `/executions/$executionId`                       | ExecutionDebugView             | 只读执行调试视图与垂直时间线                                                                                                                                                                                                              |
 | `/settings/audit-logs`                           | AuditLogPage                   | owner/admin 审计日志查询页                                                                                                                                                                                                                |
 | `/settings/security/autonomy-policy`             | OrganizationAutonomyPolicyPage | owner-only 组织自治策略设置页                                                                                                                                                                                                             |
@@ -94,6 +94,16 @@ src/
 - 目标是兼容历史快照、API 直改或导入数据里残留的半残 `PortDefinition`，避免页面在 UI / type-engine 读取 `port.schema.kind` 时直接崩溃
 
 `features/workflow/api/versionQueries.ts` 现在也会在消费版本列表 / 已发布版本接口时，对 `version.snapshot.nodes[*].data.inputPorts/outputPorts` 执行同类 hydration。这样即使服务端返回的是历史半残版本快照，版本历史侧边栏和任何后续消费 `snapshot` 的前端路径也不会再绕过主画布 store 直接命中 `schema.kind` 崩溃。
+
+## 画布输入节点事实
+
+`features/canvas/` 与 `features/agent-canvas/` 当前共享同一套“显式提示词节点”心智模型：
+
+- `text` 节点是文本常量 source node，配置面板使用 `TextConfigPanel`，节点 body 使用 `TextNodeBody` 做摘要预览
+- `text-output` / `json-output` 仍然只是执行结果收口节点，不承担系统提示词配置
+- workflow `agent`、Agent `agent-main` 与 Agent `sub-agent` 的系统提示词输入统一是 `system-prompt-in`
+- `sub-agent` 端口语义分为 override 与 extension 两类：`system-prompt-in` / `model-in` / `schema-in` 属于覆盖，`tools-in` / `skills-in` / `sub-agents-in` / `knowledge-in` / `memory-in` 属于扩展
+- `sub-agent` 不提供 `sandbox-in`；沙箱始终继承主 Agent 的运行时
 
 ## 输出节点查看事实
 

@@ -1240,6 +1240,143 @@ describe('WorkflowAgentAdapter', () => {
     expect(result.stopReason).toBe('cancelled');
   });
 
+  it('system-prompt-in 应覆盖已发布 Agent 的系统提示词，并从 prompt 输入摘要中剔除', async () => {
+    mockAgentDefinitionService.buildRuntimeConfigFromNodes.mockReturnValue({
+      modelConfig: { modelId: 'model-parent' },
+      sandboxConfig: { cpu: 2, memory: 1024, disk: 4, timeout: 5 },
+      subAgents: [],
+    });
+    mockSandboxRuntime.createSession.mockResolvedValue({
+      id: 'parent-session',
+    });
+    mockSandboxRuntime.prompt.mockImplementation(
+      (_sessionId: string, content: ContentBlock[]) => {
+        const summary = JSON.parse(
+          (content[0] as { text: string }).text,
+        ) as Record<string, unknown>;
+
+        expect(summary).toEqual({ prompt: 'hello' });
+
+        return emit([
+          { type: 'message_chunk', content: 'parent-output' },
+          { type: 'done', stopReason: 'end_turn' },
+        ]);
+      },
+    );
+
+    const adapter = createAdapter({
+      db,
+      agentRuntime: mockAgentRuntime,
+      runtimeAdapterFactory: mockRuntimeAdapterFactory,
+      agentDefinitionService: mockAgentDefinitionService,
+      sandboxService: mockSandboxService,
+      eventBridge: mockEventBridge,
+    });
+
+    await adapter.execute({
+      executionId: EXECUTION_ID,
+      step: makeStep(),
+      input: {
+        prompt: 'hello',
+        'system-prompt-in': '只返回三条重点',
+      },
+      tenantId: TENANT_ID,
+      versionSnapshot: parentSnapshot,
+    });
+
+    expect(mockSandboxRuntime.createSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        systemPrompt: '只返回三条重点',
+      }),
+    );
+  });
+
+  it('嵌套 subAgentRef 应把局部 override/extension 合并到子 Agent 运行时', async () => {
+    mockAgentDefinitionService.buildRuntimeConfigFromNodes.mockImplementation(
+      (nodes: Array<{ id?: string }>) => {
+        if (nodes[0]?.id === 'parent-node') {
+          return {
+            modelConfig: { modelId: 'model-parent' },
+            sandboxConfig: { cpu: 2, memory: 1024, disk: 4, timeout: 5 },
+            subAgents: [
+              {
+                agentDefinitionId: 'child-agent',
+                alias: 'writer',
+                overrides: {
+                  systemPrompt: '子代理覆盖提示词',
+                  outputSchema: {
+                    type: 'object',
+                    properties: {
+                      summary: { type: 'string' },
+                    },
+                  },
+                },
+                extensions: {
+                  skillIds: ['skill-child'],
+                },
+              },
+            ],
+          };
+        }
+
+        return {
+          modelConfig: { modelId: 'model-child' },
+          subAgents: [],
+        };
+      },
+    );
+    mockSandboxRuntime.createSession
+      .mockResolvedValueOnce({ id: 'child-session' })
+      .mockResolvedValueOnce({ id: 'parent-session' });
+    mockSandboxRuntime.prompt
+      .mockReturnValueOnce(
+        emit([
+          { type: 'message_chunk', content: 'child-result' },
+          { type: 'done', stopReason: 'end_turn' },
+        ]),
+      )
+      .mockReturnValueOnce(
+        emit([
+          { type: 'message_chunk', content: 'parent-result' },
+          { type: 'done', stopReason: 'end_turn' },
+        ]),
+      );
+
+    const adapter = createAdapter({
+      db,
+      agentRuntime: mockAgentRuntime,
+      runtimeAdapterFactory: mockRuntimeAdapterFactory,
+      agentDefinitionService: mockAgentDefinitionService,
+      sandboxService: mockSandboxService,
+      eventBridge: mockEventBridge,
+    });
+
+    await adapter.execute({
+      executionId: EXECUTION_ID,
+      step: makeStep(),
+      input: { prompt: 'test' },
+      tenantId: TENANT_ID,
+      versionSnapshot: parentSnapshot,
+      sandboxBinding: { executionId: EXECUTION_ID },
+    });
+
+    expect(mockSandboxRuntime.createSession).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({
+        systemPrompt: expect.stringContaining('子代理覆盖提示词'),
+        runtimeConfig: expect.objectContaining({
+          outputSchema: {
+            type: 'object',
+            properties: {
+              summary: { type: 'string' },
+            },
+          },
+          skillIds: ['skill-child'],
+        }),
+      }),
+    );
+  });
+
   it('子 Agent 无 alias 时使用 agentDefinitionId 作为 key', async () => {
     mockAgentDefinitionService.findDetailById.mockImplementation(
       async (agentDefinitionId: string) => ({

@@ -992,9 +992,12 @@ export class WorkspaceIntegrationService {
   }
 
   private sanitizeAttachmentFileName(fileName: string): string {
-    const normalized = basename(fileName)
-      .replace(/[\u0000-\u001f\u007f]/g, '')
-      .replace(/[\\/]/g, '_')
+    const normalized = Array.from(basename(fileName).replace(/[\\/]/g, '_'))
+      .filter((char) => {
+        const code = char.charCodeAt(0);
+        return code >= 0x20 && code !== 0x7f;
+      })
+      .join('')
       .trim();
 
     return normalized.length > 0 ? normalized : 'attachment.bin';
@@ -1038,9 +1041,13 @@ export class WorkspaceIntegrationService {
     archivePath: string,
   ): Promise<void> {
     await new Promise<void>((resolve, reject) => {
-      const tar = spawn('tar', ['-cf', archivePath, '-C', sourceDir, rootEntry], {
-        stdio: ['ignore', 'ignore', 'pipe'],
-      });
+      const tar = spawn(
+        'tar',
+        ['-cf', archivePath, '-C', sourceDir, rootEntry],
+        {
+          stdio: ['ignore', 'ignore', 'pipe'],
+        },
+      );
 
       let stderr = '';
       tar.stderr.on('data', (chunk: Buffer | string) => {

@@ -8,6 +8,7 @@ AgentLoom Server 是基于 **NestJS 11 + Fastify 5** 的多租户后端服务，
 - **执行引擎**：`ExecutionService.runWorkflow()` 作为新执行权威入口，BullMQ 驱动 DAG 调度、断点恢复与人工介入
 - **HTTP Tool 运行时兼容**：`NodeSchedulerService.buildHttpToolRequestInput()` 同时兼容 `queryParams` 与 `query_params` 静态查询参数字段，避免 workflow 快照在 snake_case / camelCase 序列化差异下丢失 query string
 - **Agent 双运行态**：Agent 创建时显式持久化 `runtimeMode = sandbox | no_sandbox`；顶层 `no_sandbox` Agent 与 workflow `agent` 节点走 `InProcessAgentAdapter -> PiAgentCoreAdapter -> pi-agent-core`，仍支持 Skill、知识库、Memory、HTTP MCP 与自进化；普通运行时工具调用默认自动继续，不再进入人工审批，只有自进化写操作（当前为 `apply_change` / `create_resource`）仍会进入 `awaiting_permission`；`sandbox` Agent 继续走容器化 `SandboxAgentAdapter`，且 direct conversation sandbox 支持按 `conversationIdleAutoEndMinutes` 在空闲一段时间后自动 `end()` 对话
+- **Agent / Workflow 输入节点规范化**：Agent 画布与 workflow `agent` 的系统提示词以 `text -> system-prompt-in` 为 canonical 来源；`sub-agent` 编译结果收敛为 `overrides { systemPrompt, modelConfig, routingConfig, outputSchema } + extensions { tools, knowledgeBindings, subAgents, memoryInstanceIds, skillIds }`，且不允许覆盖 sandbox。分享导入与 `db:migrate:agent-input-nodes` 预迁移脚本会把旧 `systemPrompt` 字段与 legacy `text/json` 句柄收敛到新结构
 - **Agent 首发消息创建**：`POST /agent-definitions/:agentId/conversations/start` 是 Web / Mobile 新对话页的 canonical 首发接口；服务端会在单次数据库事务内完成 Agent 校验、conversation 插入、首条 user message 插入与 `updatedAt` 更新时间，避免首发失败时残留零消息空会话
 - **Agent 对话附件**：`POST /agent-conversations/:id/messages` 与 `POST /agent-definitions/:agentId/conversations/start` 现以 `metadata.attachments[]` 作为 canonical 多附件负载，并继续兼容 legacy `metadata.attachment`；单条 user message 可同时携带文本、多个图片和多个文件，单附件上限 `1.5 MB`、单消息附件总量上限 `10 MB`、文本内联上限 `200 KB`；文本文件优先以内联 `resource` block 进入 runtime，图片使用 `image` block，sandbox conversation 会 best-effort 为每个附件写入 `/workspace/uploads/...` 并把工作区路径提示补入 prompt；为避免 base64 图片在 transport 层先被 `413` 拦截，Fastify `bodyLimit` 与 Socket.IO `maxHttpBufferSize` 均已提升到覆盖附件实际传输体积的上限
 - **历史空会话清理**：`src/database/migrations/0067_purge_empty_agent_conversations.sql` 会一次性删除没有任何 `agent_messages` 的历史 `agent_conversations`；运行时不保留自动清理任务，后续依赖延迟创建语义本身避免新增脏数据
@@ -58,6 +59,7 @@ pnpm start:acp:stdio              # ACP stdio 独立入口
 pnpm test:e2e -- resource-governance
 pnpm test:e2e -- monitoring
 pnpm test:cov                     # 覆盖率（80% 阈值）
+pnpm db:migrate:agent-input-nodes # 预迁移 Agent / Workflow 输入节点到新图结构
 pnpm db:generate                  # 生成 Drizzle migration
 pnpm db:migrate                   # 执行 migration
 pnpm db:seed                      # 导入种子数据

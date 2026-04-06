@@ -77,4 +77,28 @@ describe('buildWorkflowPreviewGraph', () => {
       },
     })
   })
+
+  it('为 workflow agent 预览补齐新的 system-prompt-in 端口并保留 no_sandbox 过滤', () => {
+    const preview = buildWorkflowPreviewGraph({
+      nodes: [
+        {
+          id: 'agent-1',
+          type: 'workflow-node',
+          position: { x: 32, y: 48 },
+          data: {
+            nodeType: 'agent',
+            label: '审查 Agent',
+            agentRuntimeMode: 'no_sandbox',
+          },
+        },
+      ],
+      edges: [],
+    })
+
+    const inputPorts = (preview.nodes[0]?.data as { inputPorts?: Array<{ id: string }> }).inputPorts ?? []
+    const inputPortIds = inputPorts.map((port) => port.id)
+
+    expect(inputPortIds).toContain('system-prompt-in')
+    expect(inputPortIds).not.toContain('sandbox-in')
+  })
 })

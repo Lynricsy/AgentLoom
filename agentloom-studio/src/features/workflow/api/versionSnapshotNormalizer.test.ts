@@ -52,6 +52,7 @@ describe("normalizeWorkflowVersionSnapshot", () => {
     expect(agentNode?.data.inputPorts.map((port) => port.id)).toEqual([
       "exec-in",
       "text-in",
+      "system-prompt-in",
       "context-in",
       "skills-in",
       "tools-in",

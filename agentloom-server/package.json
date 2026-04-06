@@ -22,6 +22,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
+    "db:migrate:agent-input-nodes": "tsx scripts/migrate-agent-input-nodes.ts",
     "db:backfill:workflow-ports": "tsx scripts/backfill-workflow-port-definitions.ts",
     "db:seed": "tsx drizzle/seed/templates.ts",
     "openapi:export": "pnpm build && node scripts/export-openapi-spec.mjs",

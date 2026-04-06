@@ -17,6 +17,7 @@ import type {
 import { SkillService } from '../skill/skill.service';
 import { SkillStorageService } from '../skill/skill-storage.service';
 import { appendSlugSuffix, generateSlug } from '../organization/slug.utils';
+import { migrateAgentCanvasGraph } from '../agent-definition/agent-input-node-migration.util';
 import { cloneDefinitionWithNewIds } from '../workflow-definition/utils/clone-template.utils';
 import {
   ResourceSourceService,
@@ -34,14 +35,6 @@ import {
 
 const DEFAULT_VIEWPORT: schema.ReactFlowViewport = { x: 0, y: 0, zoom: 1 };
 const MAX_SLUG_RETRIES = 3;
-
-type AgentImportableResourceType =
-  | 'agent_definition'
-  | 'knowledge_base'
-  | 'memory_instance'
-  | 'mcp_server_config'
-  | 'skill'
-  | 'workspace';
 
 interface SourceAgentShareRecord {
   shareId: string;
@@ -109,10 +102,14 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 }
 
 function readString(value: unknown): string | null {
-  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null;
+  return typeof value === 'string' && value.trim().length > 0
+    ? value.trim()
+    : null;
 }
 
-function resolveNodeType(node: schema.ReactFlowNode | null | undefined): string {
+function resolveNodeType(
+  node: schema.ReactFlowNode | null | undefined,
+): string {
   const data = asRecord(node?.data);
   const nodeType = readString(data?.nodeType);
   if (nodeType) {
@@ -204,9 +201,8 @@ export class AgentShareImportService {
       sourceVersionId: share.publishedVersionId,
     });
 
-    const targetOrganizationId = await this.resolveTargetOrganizationId(
-      targetTenantId,
-    );
+    const targetOrganizationId =
+      await this.resolveTargetOrganizationId(targetTenantId);
     const context: ImportSessionContext = {
       targetTenantId,
       targetUserId,
@@ -436,18 +432,14 @@ export class AgentShareImportService {
     }
 
     if (context.activeAgentCloneStack.has(source.agentDefinitionId)) {
-      this.pushReport(
-        context,
-        `agent-cycle:${source.agentDefinitionId}`,
-        {
-          resourceType: 'agent_definition',
-          sourceResourceId: source.agentDefinitionId,
-          targetResourceId: null,
-          title: source.name,
-          outcome: 'needs_rebind',
-          message: '检测到子 Agent 循环引用，已清空该引用并等待重新绑定',
-        },
-      );
+      this.pushReport(context, `agent-cycle:${source.agentDefinitionId}`, {
+        resourceType: 'agent_definition',
+        sourceResourceId: source.agentDefinitionId,
+        targetResourceId: null,
+        title: source.name,
+        outcome: 'needs_rebind',
+        message: '检测到子 Agent 循环引用，已清空该引用并等待重新绑定',
+      });
       return null;
     }
 
@@ -489,7 +481,11 @@ export class AgentShareImportService {
             );
 
             if (clonedKnowledgeBaseId) {
-              setNodeConfigField(node, 'knowledgeBaseId', clonedKnowledgeBaseId);
+              setNodeConfigField(
+                node,
+                'knowledgeBaseId',
+                clonedKnowledgeBaseId,
+              );
               clearNodeConfigField(node, 'knowledge_base_id');
             } else {
               clearNodeConfigField(node, 'knowledgeBaseId');
@@ -514,7 +510,11 @@ export class AgentShareImportService {
 
             if (clonedMemoryInstanceId) {
               clonedMemoryIds.add(clonedMemoryInstanceId);
-              setNodeConfigField(node, 'memoryInstanceId', clonedMemoryInstanceId);
+              setNodeConfigField(
+                node,
+                'memoryInstanceId',
+                clonedMemoryInstanceId,
+              );
               clearNodeConfigField(node, 'memory_instance_id');
             } else {
               clearNodeConfigField(node, 'memoryInstanceId');
@@ -542,7 +542,11 @@ export class AgentShareImportService {
             );
 
             if (clonedMcpConfig) {
-              setNodeConfigField(node, 'mcpServerConfigId', clonedMcpConfig.configId);
+              setNodeConfigField(
+                node,
+                'mcpServerConfigId',
+                clonedMcpConfig.configId,
+              );
               clearNodeConfigField(node, 'mcp_server_config_id');
 
               if (
@@ -558,14 +562,21 @@ export class AgentShareImportService {
               } else if (sourceMcpToolDefinitionId) {
                 clearNodeConfigField(node, 'mcpToolDefinitionId');
                 clearNodeConfigField(node, 'mcp_tool_definition_id');
-                this.pushReport(context, `mcp-tool-rebind:${sourceMcpToolDefinitionId}`, {
-                  resourceType: 'mcp_server_config',
-                  sourceResourceId: sourceMcpToolDefinitionId,
-                  targetResourceId: clonedMcpConfig.configId,
-                  title: readString(nodeData.toolName ?? nodeData.tool_name) ?? 'MCP 工具',
-                  outcome: 'needs_rebind',
-                  message: 'MCP 工具绑定未能完整迁移，需要在导入后重新选择工具',
-                });
+                this.pushReport(
+                  context,
+                  `mcp-tool-rebind:${sourceMcpToolDefinitionId}`,
+                  {
+                    resourceType: 'mcp_server_config',
+                    sourceResourceId: sourceMcpToolDefinitionId,
+                    targetResourceId: clonedMcpConfig.configId,
+                    title:
+                      readString(nodeData.toolName ?? nodeData.tool_name) ??
+                      'MCP 工具',
+                    outcome: 'needs_rebind',
+                    message:
+                      'MCP 工具绑定未能完整迁移，需要在导入后重新选择工具',
+                  },
+                );
               }
             } else {
               clearNodeConfigField(node, 'mcpServerConfigId');
@@ -598,8 +609,16 @@ export class AgentShareImportService {
             );
 
             if (clonedSubAgent) {
-              setNodeConfigField(node, 'agentDefinitionId', clonedSubAgent.agentDefinitionId);
-              setNodeConfigField(node, 'agentVersionId', clonedSubAgent.publishedVersionId);
+              setNodeConfigField(
+                node,
+                'agentDefinitionId',
+                clonedSubAgent.agentDefinitionId,
+              );
+              setNodeConfigField(
+                node,
+                'agentVersionId',
+                clonedSubAgent.publishedVersionId,
+              );
               clearNodeConfigField(node, 'agent_definition_id');
               clearNodeConfigField(node, 'agent_version_id');
             } else {
@@ -657,7 +676,9 @@ export class AgentShareImportService {
           }
 
           case 'skill': {
-            const sourceSkillId = readString(nodeData.skillId ?? nodeData.skill_id);
+            const sourceSkillId = readString(
+              nodeData.skillId ?? nodeData.skill_id,
+            );
             if (!sourceSkillId) {
               continue;
             }
@@ -710,25 +731,33 @@ export class AgentShareImportService {
       };
 
       if (clearedWorkspaceRef) {
-        this.pushReport(context, `workspace-cleared:${source.agentDefinitionId}`, {
-          resourceType: 'workspace',
-          sourceResourceId: source.snapshot.workspaceSnapshotId ?? null,
-          targetResourceId: null,
-          title: `${source.name} 工作区`,
-          outcome: 'cleared',
-          message: '工作区资源不会随分享导入复制，相关工作区绑定已清空',
-        });
+        this.pushReport(
+          context,
+          `workspace-cleared:${source.agentDefinitionId}`,
+          {
+            resourceType: 'workspace',
+            sourceResourceId: source.snapshot.workspaceSnapshotId ?? null,
+            targetResourceId: null,
+            title: `${source.name} 工作区`,
+            outcome: 'cleared',
+            message: '工作区资源不会随分享导入复制，相关工作区绑定已清空',
+          },
+        );
       }
 
       if (modelRebindMessages.length > 0) {
-        this.pushReport(context, `agent-model-rebind:${source.agentDefinitionId}`, {
-          resourceType: 'agent_definition',
-          sourceResourceId: source.agentDefinitionId,
-          targetResourceId: null,
-          title: source.name,
-          outcome: 'needs_rebind',
-          message: Array.from(new Set(modelRebindMessages)).join('；'),
-        });
+        this.pushReport(
+          context,
+          `agent-model-rebind:${source.agentDefinitionId}`,
+          {
+            resourceType: 'agent_definition',
+            sourceResourceId: source.agentDefinitionId,
+            targetResourceId: null,
+            title: source.name,
+            outcome: 'needs_rebind',
+            message: Array.from(new Set(modelRebindMessages)).join('；'),
+          },
+        );
       }
 
       const importedName =
@@ -819,12 +848,17 @@ export class AgentShareImportService {
     context: ImportSessionContext,
   ): Promise<ClonedAgentRecord> {
     let slug = generateSlug(input.name);
+    const migratedCanvas = migrateAgentCanvasGraph({
+      nodes: input.nodes,
+      edges: input.edges,
+      systemPrompt: input.systemPrompt,
+    });
     const rawInputSchema = input.metadata['inputSchema'];
     const rawMemoryInstanceIds = input.metadata['memoryInstanceIds'];
     const rawSandboxLifecycle = input.metadata['sandboxLifecycle'];
     const snapshotMetadata: schema.AgentVersionSnapshot['metadata'] = {
-      nodeCount: input.nodes.length,
-      edgeCount: input.edges.length,
+      nodeCount: migratedCanvas.nodes.length,
+      edgeCount: migratedCanvas.edges.length,
       createdFromVersion: 1,
       releaseNotes: '由分享链接导入',
       ...(asRecord(rawInputSchema)
@@ -855,9 +889,9 @@ export class AgentShareImportService {
               description: input.description,
               icon: input.icon,
               runtimeMode: input.runtimeMode,
-              systemPrompt: input.systemPrompt,
-              nodes: input.nodes,
-              edges: input.edges,
+              systemPrompt: migratedCanvas.systemPrompt ?? null,
+              nodes: migratedCanvas.nodes,
+              edges: migratedCanvas.edges,
               viewport: input.viewport,
               metadata: input.metadata,
               sandboxConfig:
@@ -879,10 +913,10 @@ export class AgentShareImportService {
               label: 'v1 (imported)',
               snapshot: {
                 runtimeMode: input.runtimeMode,
-                nodes: cloneJson(input.nodes),
-                edges: cloneJson(input.edges),
+                nodes: cloneJson(migratedCanvas.nodes),
+                edges: cloneJson(migratedCanvas.edges),
                 viewport: cloneJson(input.viewport),
-                systemPrompt: input.systemPrompt,
+                systemPrompt: migratedCanvas.systemPrompt ?? null,
                 sandboxConfig:
                   input.runtimeMode === 'sandbox' ? input.sandboxConfig : null,
                 workspaceSnapshotId: null,
@@ -990,7 +1024,10 @@ export class AgentShareImportService {
           embeddingModelConfigId: sanitizedKnowledgeBase.embeddingModelConfigId,
           createdBy: context.targetUserId,
         })
-        .returning({ id: schema.knowledgeBases.id, name: schema.knowledgeBases.name });
+        .returning({
+          id: schema.knowledgeBases.id,
+          name: schema.knowledgeBases.name,
+        });
 
       const sourceDocuments = await this.db
         .select()
@@ -1033,7 +1070,10 @@ export class AgentShareImportService {
         });
       }
 
-      context.clonedKnowledgeBases.set(sourceKnowledgeBaseId, createdKnowledgeBase.id);
+      context.clonedKnowledgeBases.set(
+        sourceKnowledgeBaseId,
+        createdKnowledgeBase.id,
+      );
       context.rebuildingKnowledgeBaseIds.add(createdKnowledgeBase.id);
       context.sourceRecords.push({
         resourceType: 'knowledge_base',
@@ -1124,7 +1164,10 @@ export class AgentShareImportService {
           status: sourceInstance.status,
           createdBy: context.targetUserId,
         })
-        .returning({ id: schema.agentMemoryInstances.id, name: schema.agentMemoryInstances.name });
+        .returning({
+          id: schema.agentMemoryInstances.id,
+          name: schema.agentMemoryInstances.name,
+        });
 
       const sourceNodes = await this.db
         .select()
@@ -1247,7 +1290,10 @@ export class AgentShareImportService {
             .from(schema.memoryGlossaryKeywords)
             .where(
               and(
-                eq(schema.memoryGlossaryKeywords.instanceId, sourceMemoryInstanceId),
+                eq(
+                  schema.memoryGlossaryKeywords.instanceId,
+                  sourceMemoryInstanceId,
+                ),
                 eq(schema.memoryGlossaryKeywords.tenantId, sourceTenantId),
               ),
             )
@@ -1265,7 +1311,10 @@ export class AgentShareImportService {
         );
       }
 
-      context.clonedMemoryInstances.set(sourceMemoryInstanceId, createdInstance.id);
+      context.clonedMemoryInstances.set(
+        sourceMemoryInstanceId,
+        createdInstance.id,
+      );
       context.sourceRecords.push({
         resourceType: 'memory_instance',
         resourceId: createdInstance.id,
@@ -1291,14 +1340,18 @@ export class AgentShareImportService {
         `记忆实例复制失败 ${sourceMemoryInstanceId}: ${error instanceof Error ? error.message : String(error)}`,
       );
       context.clonedMemoryInstances.set(sourceMemoryInstanceId, null);
-      this.pushReport(context, `memory-needs-rebind:${sourceMemoryInstanceId}`, {
-        resourceType: 'memory_instance',
-        sourceResourceId: sourceMemoryInstanceId,
-        targetResourceId: null,
-        title: '记忆实例',
-        outcome: 'needs_rebind',
-        message: '记忆实例复制失败，导入后的 Agent 需要重新绑定该记忆实例',
-      });
+      this.pushReport(
+        context,
+        `memory-needs-rebind:${sourceMemoryInstanceId}`,
+        {
+          resourceType: 'memory_instance',
+          sourceResourceId: sourceMemoryInstanceId,
+          targetResourceId: null,
+          title: '记忆实例',
+          outcome: 'needs_rebind',
+          message: '记忆实例复制失败，导入后的 Agent 需要重新绑定该记忆实例',
+        },
+      );
       return null;
     }
   }
@@ -1348,7 +1401,10 @@ export class AgentShareImportService {
           status: sourceConfig.status,
           lastTestedAt: sourceConfig.lastTestedAt,
         })
-        .returning({ id: schema.mcpServerConfigs.id, name: schema.mcpServerConfigs.name });
+        .returning({
+          id: schema.mcpServerConfigs.id,
+          name: schema.mcpServerConfigs.name,
+        });
 
       const sourceTools = await this.db
         .select()
@@ -1376,7 +1432,10 @@ export class AgentShareImportService {
               importedAt: tool.importedAt ?? new Date(),
             })),
           )
-          .returning({ id: schema.toolDefinitions.id, name: schema.toolDefinitions.name });
+          .returning({
+            id: schema.toolDefinitions.id,
+            name: schema.toolDefinitions.name,
+          });
 
         for (let index = 0; index < sourceTools.length; index += 1) {
           toolIdMap.set(sourceTools[index].id, insertedTools[index].id);
@@ -1419,7 +1478,8 @@ export class AgentShareImportService {
         targetResourceId: null,
         title: 'MCP 服务器',
         outcome: 'needs_rebind',
-        message: 'MCP 服务器配置��制失败，导入后的 Agent 需要重新绑定该 MCP 配置',
+        message:
+          'MCP 服务器配置��制失败，导入后的 Agent 需要重新绑定该 MCP 配置',
       });
       return null;
     }

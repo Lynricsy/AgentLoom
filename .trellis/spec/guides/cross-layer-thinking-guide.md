@@ -84,6 +84,7 @@ After implementation:
 - [ ] Verified error handling at each boundary
 - [ ] Checked data survives round-trip
 - [ ] Checked compatibility adapters do not drop nested metadata required by later save flows
+- [ ] If a graph / node schema changed, checked all five surfaces: frontend registry & palette, preview hydration, backend normalization / compile, runtime consumption, and migration / import scripts
 
 ---
 

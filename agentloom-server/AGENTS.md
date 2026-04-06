@@ -91,6 +91,15 @@ TenantMiddleware (extract tenantId from JWT no-verify; skip when X-Api-Key prese
 - workflow `agent` 节点会跟随目标 Agent 的 `runtimeMode` 动态切换输入端口：`sandbox` 保留 `sandbox-in`，`no_sandbox` 则移除该端口。
 - 当 `sandbox` Agent 调用 `no_sandbox` 子 Agent 时，child 不会起独立 in-process runtime，而是并入父 sandbox runtime 配置，并收敛为只开放内置 `read` 的只读 sub-agent profile。
 
+### Agent 画布编译补充事实
+
+- Agent 画布与 workflow `agent` 的系统提示词当前都以显式 `text` 节点连接 `system-prompt-in` 作为单一事实源；持久化 `systemPrompt` 字段仅保留兼容导入 / 迁移兜底，不再是权威配置来源。
+- `AgentDefinitionService.resolveSystemPromptFromNodes()` 会解析 `text -> system-prompt-in` 连线；`buildRuntimeConfigFromNodes()` 与 workflow `WorkflowAgentAdapter` / `AgentExecutionWorker` 都优先消费图上的 system prompt，再回退 legacy 字段。
+- `sub-agent` 编译结果固定分为两类：`overrides { systemPrompt, modelConfig, routingConfig, outputSchema }` 与 `extensions { tools, knowledgeBindings, subAgents, memoryInstanceIds, skillIds }`。`modelConfig` override 生效时会清空继承来的 routing，避免 concrete model 与 routing 同时成为权威来源。
+- `sub-agent` 不提供 `sandbox-in`，也不会覆盖父 Agent 的 sandbox/runtimeMode；child 始终继承父 Agent 的沙箱边界。
+- `schema-in` 会编译到 `runtimeConfig.outputSchema`，执行前再通过 `appendOutputSchemaToSystemPrompt()` 追加到最终 system prompt 中。
+- `scripts/migrate-agent-input-nodes.ts` 会预迁移 `agent_definitions`、`agent_versions.snapshot`、`workflow_definitions`、`workflow_versions.snapshot`；分享导入链路也会复用相同 migration util，确保新导入数据直接落到 canonical 结构。
+
 ### ACP terminal 补充事实
 
 - `AcpTerminalProxyService` 在 spawn 前会同时做命令 basename 归一化 denylist 校验、危险 shell/pattern 拒绝、`cwd` `/workspace` 边界校验，以及赋值式 flag 路径参数（如 `--directory=../../..`）的 fail-closed 检查；拒绝路径统一写 `acp.terminal.server_sandbox.rejected` 正式审计。

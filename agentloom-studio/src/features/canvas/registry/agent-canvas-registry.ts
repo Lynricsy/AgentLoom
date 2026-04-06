@@ -54,6 +54,7 @@ export const AGENT_CANVAS_NODE_TYPES = [
   'mcp-tool',
   'knowledge-base',
   'memory',
+  'text',
   'sub-agent',
   'input-preprocessor',
   'skill',
@@ -200,20 +201,79 @@ export const AGENT_CANVAS_NODE_REGISTRY = new Map<string, AgentNodeTypeConfig>([
     },
   ],
   [
+    'text',
+    {
+      type: 'text',
+      category: 'output',
+      label: 'Text',
+      icon: 'FileText',
+      description: '提供可复用的文本常量，可连接到系统提示词或任意文本输入端口',
+      colorToken: AGENT_CATEGORY_COLOR_TOKENS.output,
+      inputPorts: [],
+      outputPorts: [
+        createPort('text-out', '文本', 'output', 'text', {
+          multiple: true,
+          maxConnections: null,
+          description: '输出文本常量，可复用到多个下游节点',
+        }),
+      ],
+      configSchema: {
+        type: 'object',
+        properties: {
+          text: createConfigField('string', '文本内容', {
+            default: '',
+          }),
+        },
+        required: [],
+      },
+    },
+  ],
+  [
     'sub-agent',
     {
       type: 'sub-agent',
       category: 'agent',
       label: '子 Agent',
       icon: 'Bot',
-      description: '调用另一个 Agent 执行特定子任务',
+      description: '声明一个可委派的子 Agent，并通过连线为它注入局部覆盖与扩展能力',
       colorToken: AGENT_CATEGORY_COLOR_TOKENS.agent,
       inputPorts: [
-        createPort('text-in', '文本', 'input', 'text', {
-          description: '传入文本作为子 Agent 的默认输入',
+        createPort('system-prompt-in', '系统提示词', 'input', 'text', {
+          maxConnections: 1,
+          description: '覆盖该子 Agent 实例的系统提示词，仅作用于当前挂载位置',
         }),
-        createPort('json-in', 'JSON', 'input', 'json', {
-          description: '传入 JSON 数据作为子 Agent 的结构化配置',
+        createPort('model-in', '模型', 'input', 'model', {
+          maxConnections: 1,
+          description: '覆盖该子 Agent 实例的模型配置',
+        }),
+        createPort('schema-in', 'Schema', 'input', 'json', {
+          maxConnections: 1,
+          description: '覆盖该子 Agent 实例的结构化输出 Schema',
+        }),
+        createPort('tools-in', '扩展工具', 'input', 'tool', {
+          multiple: true,
+          maxConnections: null,
+          description: '为该子 Agent 实例额外挂载工具',
+        }),
+        createPort('skills-in', 'Skills', 'input', 'skill', {
+          multiple: true,
+          maxConnections: null,
+          description: '为该子 Agent 实例追加 Skills',
+        }),
+        createPort('sub-agents-in', '子 Agent', 'input', 'agent', {
+          multiple: true,
+          maxConnections: null,
+          description: '为该子 Agent 实例追加可继续委派的下级 Agent',
+        }),
+        createPort('knowledge-in', '知识库', 'input', 'knowledge', {
+          multiple: true,
+          maxConnections: null,
+          description: '为该子 Agent 实例追加知识库上下文',
+        }),
+        createPort('memory-in', '记忆', 'input', 'memory', {
+          multiple: true,
+          maxConnections: null,
+          description: '为该子 Agent 实例追加记忆上下文',
         }),
       ],
       outputPorts: [

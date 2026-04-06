@@ -30,6 +30,7 @@ describe("nodeTypeRegistry", () => {
       "webhook-trigger",
       "api-event-trigger",
       "knowledge-base",
+      "text",
       "text-output",
       "json-output",
       "condition",
@@ -166,6 +167,24 @@ describe("nodeTypeRegistry", () => {
     });
   });
 
+  it("defines text as a reusable text source node", () => {
+    const textNode = getNodeTypeConfig("text");
+    const outputPort = textNode.outputPorts.find((port) => port.id === "text-out");
+
+    expect(textNode.category).toBe("output");
+    expect(textNode.inputPorts).toEqual([]);
+    expect(textNode.outputPorts.map((port) => port.id)).toEqual(["text-out"]);
+    expect(outputPort).toMatchObject({
+      id: "text-out",
+      label: "文本",
+      direction: "output",
+      dataType: "text",
+      multiple: true,
+      maxConnections: null,
+    });
+    expect(textNode.configSchema.properties.text?.title).toBe("文本内容");
+  });
+
   it("目标 workflow 节点都会暴露 exec-in 与 exec-out", () => {
     for (const type of EXEC_PORT_NODE_TYPES) {
       const config = getNodeTypeConfig(type);
@@ -217,8 +236,14 @@ describe("nodeTypeRegistry", () => {
       getWorkflowAgentInputPorts("sandbox").map((port) => port.id),
     ).toContain("sandbox-in");
     expect(
+      getWorkflowAgentInputPorts("sandbox").map((port) => port.id),
+    ).toContain("system-prompt-in");
+    expect(
       getWorkflowAgentInputPorts("no_sandbox").map((port) => port.id),
     ).not.toContain("sandbox-in");
+    expect(
+      getWorkflowAgentInputPorts("no_sandbox").map((port) => port.id),
+    ).toContain("system-prompt-in");
   });
 
   it("exposes every registry entry through ordered helpers and palette groups", () => {
@@ -249,6 +274,7 @@ describe("nodeTypeRegistry", () => {
       "api-event-trigger",
       "knowledge-base",
       "memory",
+      "text",
       "text-output",
       "json-output",
       "condition",

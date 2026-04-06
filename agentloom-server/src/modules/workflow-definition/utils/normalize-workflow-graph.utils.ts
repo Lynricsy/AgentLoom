@@ -97,6 +97,7 @@ const WORKFLOW_NODE_CATEGORY_BY_NODE_TYPE: Record<
   'webhook-trigger': 'trigger',
   'api-event-trigger': 'trigger',
   'knowledge-base': 'knowledge',
+  text: 'output',
   'text-output': 'output',
   'json-output': 'output',
   condition: 'control',
@@ -662,6 +663,15 @@ const DEFAULT_PORT_TEMPLATES_BY_NODE_TYPE: Record<
       createPortTemplate('knowledge-out', '知识库', 'output', 'knowledge'),
     ],
   },
+  text: {
+    input: [],
+    output: [
+      createPortTemplate('text-out', '文本', 'output', 'text', {
+        multiple: true,
+        maxConnections: null,
+      }),
+    ],
+  },
   'text-output': {
     input: [
       createExecInPortTemplate(),
@@ -799,6 +809,9 @@ const DEFAULT_PORT_TEMPLATES_BY_NODE_TYPE: Record<
       createPortTemplate('text-in', '文本', 'input', 'text', {
         required: true,
       }),
+      createPortTemplate('system-prompt-in', '系统提示词', 'input', 'text', {
+        maxConnections: 1,
+      }),
       createPortTemplate('sandbox-in', '沙箱', 'input', 'sandbox', {
         maxConnections: 1,
       }),
@@ -882,6 +895,7 @@ function inferPortDataTypeFromId(portId: string): PortDataType {
     portId === 'agent-out' ||
     portId === 'stdout-out' ||
     portId === 'content-in' ||
+    portId === 'system-prompt-in' ||
     portId.startsWith('text-')
   ) {
     return 'text';

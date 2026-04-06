@@ -34,6 +34,7 @@ export interface ExecuteSubAgentParams {
   handle: SubAgentHandle;
   invocationMode: 'call' | 'spawn';
   alias: string;
+  subAgentRef: AgentSubAgentRef;
   task: string;
   context?: string;
   parentContext: SubAgentParentContext;
@@ -286,6 +287,7 @@ export class SubAgentToolsProvider {
           handle: params.record.handle,
           invocationMode: params.invocationMode,
           alias: params.record.alias,
+          subAgentRef: params.ref,
           task: params.task,
           context: params.context,
           parentContext: params.parentContext,

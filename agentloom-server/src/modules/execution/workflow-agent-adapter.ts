@@ -32,6 +32,13 @@ import type {
   AgentSubAgentRef,
 } from '../agent-definition/agent-runtime-config.interface';
 import {
+  appendOutputSchemaToSystemPrompt,
+  cloneAgentRuntimeConfig,
+  coerceAgentOutputSchema,
+  mergeRuntimeConfigWithSubAgentRef,
+  resolveSubAgentSystemPrompt,
+} from '../agent-definition/agent-runtime-config.utils';
+import {
   deriveAgentSandboxConfigFromCanvas,
   mergeSandboxConfigCandidates,
 } from '../agent-definition/agent-sandbox-config.utils';
@@ -82,6 +89,7 @@ export interface WorkflowAgentExecutionParams {
   readonly sandboxBinding?: ServerSandboxBinding;
   readonly parentUsesSandboxRuntime?: boolean;
   readonly emitEvents?: boolean;
+  readonly subAgentRef?: AgentSubAgentRef;
 }
 
 export interface WorkflowAgentExecutionResult extends Record<string, unknown> {
@@ -116,12 +124,15 @@ export class WorkflowAgentAdapter {
     const visitedIds = new Set(params.visitedIds ?? []);
     visitedIds.add(this.config.agentDefinitionId);
 
-    const compiledDefinition = await this.loadCompiledDefinition({
-      agentDefinitionId: this.config.agentDefinitionId,
-      tenantId: params.tenantId,
-      agentVersionId: params.agentVersionId,
-      versionSnapshot: params.versionSnapshot,
-    });
+    const compiledDefinition = this.applySubAgentRefToCompiledDefinition(
+      await this.loadCompiledDefinition({
+        agentDefinitionId: this.config.agentDefinitionId,
+        tenantId: params.tenantId,
+        agentVersionId: params.agentVersionId,
+        versionSnapshot: params.versionSnapshot,
+      }),
+      params.subAgentRef,
+    );
     const {
       runtimeConfig: runtimeConfigWithExtensions,
       systemPrompt,
@@ -395,10 +406,25 @@ export class WorkflowAgentAdapter {
       );
     }
 
+    const definitionSystemPrompt =
+      this.dependencies.agentDefinitionService.resolveSystemPromptFromNodes?.(
+        definition.nodes ?? [],
+        definition.edges ?? [],
+      ) ??
+      definition.systemPrompt ??
+      undefined;
+    const snapshotSystemPrompt =
+      this.dependencies.agentDefinitionService.resolveSystemPromptFromNodes?.(
+        snapshot.nodes,
+        snapshot.edges,
+      ) ??
+      snapshot.systemPrompt ??
+      undefined;
+
     const normalizedDefinitionSandboxConfig =
       deriveAgentSandboxConfigFromCanvas(
-        definition.nodes,
-        definition.edges,
+        definition.nodes ?? [],
+        definition.edges ?? [],
         definition.sandboxConfig,
       );
     const normalizedSnapshotSandboxConfig = deriveAgentSandboxConfigFromCanvas(
@@ -440,8 +466,28 @@ export class WorkflowAgentAdapter {
     return {
       runtimeMode,
       runtimeConfig,
-      systemPrompt:
-        snapshot.systemPrompt ?? definition.systemPrompt ?? undefined,
+      systemPrompt: snapshotSystemPrompt ?? definitionSystemPrompt,
+    };
+  }
+
+  private applySubAgentRefToCompiledDefinition(
+    compiledDefinition: CompiledWorkflowAgentDefinition,
+    subAgentRef?: AgentSubAgentRef,
+  ): CompiledWorkflowAgentDefinition {
+    if (!subAgentRef) {
+      return compiledDefinition;
+    }
+
+    return {
+      ...compiledDefinition,
+      runtimeConfig: mergeRuntimeConfigWithSubAgentRef(
+        compiledDefinition.runtimeConfig,
+        subAgentRef,
+      ),
+      systemPrompt: resolveSubAgentSystemPrompt(
+        compiledDefinition.systemPrompt,
+        subAgentRef,
+      ),
     };
   }
 
@@ -458,9 +504,14 @@ export class WorkflowAgentAdapter {
       params.compiledDefinition.runtimeConfig,
       params.input,
     );
+    const baseSystemPrompt = appendOutputSchemaToSystemPrompt(
+      this.extractUpstreamSystemPrompt(params.input) ??
+        params.compiledDefinition.systemPrompt,
+      runtimeConfig.outputSchema,
+    );
     const systemPrompt = await this.resolveSkillAugmentedPrompt({
       tenantId: params.tenantId,
-      baseSystemPrompt: params.compiledDefinition.systemPrompt,
+      baseSystemPrompt,
       runtimeConfig,
       input: params.input,
     });
@@ -477,25 +528,7 @@ export class WorkflowAgentAdapter {
     runtimeConfig: AgentRuntimeConfig,
     input: Record<string, unknown>,
   ): AgentRuntimeConfig {
-    const merged: AgentRuntimeConfig = {
-      ...runtimeConfig,
-      ...(runtimeConfig.tools ? { tools: [...runtimeConfig.tools] } : {}),
-      ...(runtimeConfig.knowledgeBindings
-        ? { knowledgeBindings: [...runtimeConfig.knowledgeBindings] }
-        : {}),
-      ...(runtimeConfig.subAgents
-        ? { subAgents: [...runtimeConfig.subAgents] }
-        : {}),
-      ...(runtimeConfig.inputPreprocessors
-        ? { inputPreprocessors: [...runtimeConfig.inputPreprocessors] }
-        : {}),
-      ...(runtimeConfig.memoryInstanceIds
-        ? { memoryInstanceIds: [...runtimeConfig.memoryInstanceIds] }
-        : {}),
-      ...(runtimeConfig.skillIds
-        ? { skillIds: [...runtimeConfig.skillIds] }
-        : {}),
-    };
+    const merged = cloneAgentRuntimeConfig(runtimeConfig);
 
     const upstreamTools = this.extractUpstreamMcpToolBindings(input);
     if (upstreamTools.length > 0) {
@@ -508,6 +541,11 @@ export class WorkflowAgentAdapter {
         merged.knowledgeBindings ?? [],
         upstreamKnowledge,
       );
+    }
+
+    const upstreamOutputSchema = this.extractUpstreamOutputSchema(input);
+    if (upstreamOutputSchema) {
+      merged.outputSchema = upstreamOutputSchema;
     }
 
     return merged;
@@ -834,6 +872,54 @@ export class WorkflowAgentAdapter {
     return bindings;
   }
 
+  private extractUpstreamSystemPrompt(
+    input: Record<string, unknown>,
+  ): string | undefined {
+    const rawValue =
+      input['system-prompt-in'] ??
+      input.system_prompt_in ??
+      input.systemPromptIn;
+
+    return this.readTextValue(rawValue);
+  }
+
+  private extractUpstreamOutputSchema(
+    input: Record<string, unknown>,
+  ): Record<string, unknown> | undefined {
+    const rawValue =
+      input['schema-in'] ??
+      input.schema_in ??
+      input.schemaIn ??
+      input.outputSchema;
+
+    return coerceAgentOutputSchema(rawValue);
+  }
+
+  private readTextValue(value: unknown): string | undefined {
+    if (typeof value === 'string') {
+      const normalized = value.trim();
+      return normalized.length > 0 ? normalized : undefined;
+    }
+
+    if (!this.isRecord(value)) {
+      return undefined;
+    }
+
+    const candidates = [value.text, value.value, value.content];
+    for (const candidate of candidates) {
+      if (typeof candidate !== 'string') {
+        continue;
+      }
+
+      const normalized = candidate.trim();
+      if (normalized.length > 0) {
+        return normalized;
+      }
+    }
+
+    return undefined;
+  }
+
   private sanitizePromptInput(
     input: Record<string, unknown>,
   ): Record<string, unknown> {
@@ -843,7 +929,13 @@ export class WorkflowAgentAdapter {
           key === 'skills-in' ||
           key === 'skills' ||
           key === 'tools-in' ||
-          key === 'sub-agents-in'
+          key === 'sub-agents-in' ||
+          key === 'system-prompt-in' ||
+          key === 'schema-in' ||
+          key === 'systemPromptIn' ||
+          key === 'system_prompt_in' ||
+          key === 'schemaIn' ||
+          key === 'schema_in'
         ) {
           return null;
         }
@@ -890,6 +982,7 @@ export class WorkflowAgentAdapter {
     return (
       record.type === 'knowledge-base' ||
       record.type === 'mcp-tool' ||
+      record.type === 'memory' ||
       Array.isArray(record.skills)
     );
   }
@@ -1087,6 +1180,7 @@ export class WorkflowAgentAdapter {
           sandboxBinding: params.sandboxBinding,
           parentUsesSandboxRuntime: params.parentUsesSandboxRuntime,
           emitEvents: false,
+          subAgentRef: subAgent,
         });
       } catch (error) {
         this.logger.error(

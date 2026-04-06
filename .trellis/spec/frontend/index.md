@@ -17,6 +17,7 @@ Guidelines for **agentloom-studio** — a React 19 + Vite 7 + TanStack Router fr
 | Guide | Description | Status |
 |-------|-------------|--------|
 | [Directory Structure](./directory-structure.md) | Feature-Slice architecture, 31 feature modules, barrel imports | Done |
+| [Canvas Node Composition](./canvas-node-composition.md) | Workflow/Agent 画布节点注册、显式 text 提示词节点与共享面板契约 | Done |
 | [Component Guidelines](./component-guidelines.md) | forwardRef+CVA primitives, memo pattern, Radix composition | Done |
 | [Hook Guidelines](./hook-guidelines.md) | 4-file API layer, query key factory, ky client | Done |
 | [Realtime Execution Views](./realtime-execution-views.md) | Studio + Flutter realtime execution/viewer contracts, ordered segments, workspace preview | Done |

@@ -41,6 +41,7 @@ import { WebhookTriggerConfigPanel } from './WebhookTriggerConfigPanel'
 import { ApiEventTriggerConfigPanel } from './ApiEventTriggerConfigPanel'
 import { SkillPanel } from '../../../agent-canvas/components/panels/SkillPanel'
 import { SubAgentConfigPanel } from '../../../agent-canvas/components/panels/SubAgentConfigPanel'
+import { TextConfigPanel } from './TextConfigPanel'
 
 export interface CustomPanelRendererProps {
   node: CanvasNode
@@ -136,6 +137,14 @@ export const CUSTOM_PANEL_REGISTRY: Partial<Record<string, CustomPanelEntry>> = 
         node={node}
         config={node.data.config}
         onApply={onConfigChange}
+      />
+    ),
+  },
+  'text': {
+    render: ({ node, onConfigChange }) => (
+      <TextConfigPanel
+        config={node.data.config}
+        onApply={(config) => onConfigChange({ config })}
       />
     ),
   },

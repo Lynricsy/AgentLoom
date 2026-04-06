@@ -86,6 +86,7 @@ describe('NodePalette', () => {
       'api-event-trigger',
       'knowledge-base',
       'memory',
+      'text',
       'text-output',
       'json-output',
       'condition',

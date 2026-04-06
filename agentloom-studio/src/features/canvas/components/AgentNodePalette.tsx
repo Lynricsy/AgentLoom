@@ -81,6 +81,12 @@ const AGENT_PALETTE_GROUPS: AgentPaletteGroup[] = [
     items: resolveNodes(['knowledge-base']),
   },
   {
+    label: '提示',
+    icon: NODE_CATEGORIES.output.icon,
+    color: NODE_CATEGORIES.output.color,
+    items: resolveNodes(['text']),
+  },
+  {
     label: '记忆',
     icon: NODE_CATEGORIES.memory.icon,
     color: NODE_CATEGORIES.memory.color,

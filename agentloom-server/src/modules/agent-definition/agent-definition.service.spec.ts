@@ -1176,6 +1176,200 @@ describe('AgentDefinitionService', () => {
       });
     });
 
+    it('应从 text -> system-prompt-in 解析显式系统提示词', () => {
+      const nodes = [
+        { id: 'main', type: 'agent', data: { nodeType: 'agent-main' } },
+        {
+          id: 'prompt-node',
+          type: 'output',
+          data: {
+            nodeType: 'text',
+            config: {
+              text: '你是一个严谨的代码审查助手',
+            },
+          },
+        },
+      ];
+
+      const prompt = service.resolveSystemPromptFromNodes(nodes as any[], [
+        {
+          source: 'prompt-node',
+          target: 'main',
+          targetHandle: 'system-prompt-in',
+        },
+      ]);
+
+      expect(prompt).toBe('你是一个严谨的代码审查助手');
+    });
+
+    it('sub-agent 应编译局部 override 与 extension 端口', () => {
+      const nodes = [
+        { id: 'main', type: 'agent', data: { nodeType: 'agent-main' } },
+        {
+          id: 'sub-main',
+          type: 'agent',
+          data: {
+            nodeType: 'sub-agent',
+            config: { agentDefinitionId: 'child-agent', alias: 'writer' },
+          },
+        },
+        {
+          id: 'prompt-node',
+          type: 'output',
+          data: {
+            nodeType: 'text',
+            config: { text: '你只输出结构化审查结论' },
+          },
+        },
+        {
+          id: 'schema-node',
+          type: 'output',
+          data: {
+            nodeType: 'text',
+            config: {
+              text: '{"type":"object","properties":{"ok":{"type":"boolean"}}}',
+            },
+          },
+        },
+        {
+          id: 'model-node',
+          type: 'agent',
+          data: {
+            nodeType: 'llm-model',
+            config: { modelId: 'gpt-4.1-mini', temperature: 0.1 },
+          },
+        },
+        {
+          id: 'tool-node',
+          type: 'tool',
+          data: {
+            nodeType: 'mcp-tool',
+            config: { toolId: 'search-news', name: 'search_news' },
+          },
+        },
+        {
+          id: 'kb-node',
+          type: 'knowledge',
+          data: {
+            nodeType: 'knowledge-base',
+            config: { knowledgeBaseId: 'kb-1', topK: 3 },
+          },
+        },
+        {
+          id: 'skill-node',
+          type: 'knowledge',
+          data: {
+            nodeType: 'skill',
+            config: { skillId: 'skill-review' },
+          },
+        },
+        {
+          id: 'memory-node',
+          type: 'memory',
+          data: {
+            nodeType: 'memory',
+            config: { memoryInstanceId: 'memory-1' },
+          },
+        },
+        {
+          id: 'nested-sub',
+          type: 'agent',
+          data: {
+            nodeType: 'sub-agent',
+            config: { agentDefinitionId: 'critic-agent', alias: 'critic' },
+          },
+        },
+      ];
+
+      const edges = [
+        {
+          source: 'sub-main',
+          target: 'main',
+          targetHandle: 'sub-agents-in',
+        },
+        {
+          source: 'prompt-node',
+          target: 'sub-main',
+          targetHandle: 'system-prompt-in',
+        },
+        {
+          source: 'schema-node',
+          target: 'sub-main',
+          targetHandle: 'schema-in',
+        },
+        {
+          source: 'model-node',
+          target: 'sub-main',
+          targetHandle: 'model-in',
+        },
+        {
+          source: 'tool-node',
+          target: 'sub-main',
+          targetHandle: 'tools-in',
+        },
+        {
+          source: 'kb-node',
+          target: 'sub-main',
+          targetHandle: 'knowledge-in',
+        },
+        {
+          source: 'skill-node',
+          target: 'sub-main',
+          targetHandle: 'skills-in',
+        },
+        {
+          source: 'memory-node',
+          target: 'sub-main',
+          targetHandle: 'memory-in',
+        },
+        {
+          source: 'nested-sub',
+          target: 'sub-main',
+          targetHandle: 'sub-agents-in',
+        },
+      ];
+
+      const config = service.buildRuntimeConfigFromNodes(
+        nodes as any[],
+        edges,
+        'current-agent',
+      );
+
+      expect(config.subAgents).toEqual([
+        expect.objectContaining({
+          agentDefinitionId: 'child-agent',
+          alias: 'writer',
+          overrides: {
+            systemPrompt: '你只输出结构化审查结论',
+            modelConfig: expect.objectContaining({
+              modelId: 'gpt-4.1-mini',
+              temperature: 0.1,
+            }),
+            outputSchema: {
+              type: 'object',
+              properties: {
+                ok: { type: 'boolean' },
+              },
+            },
+          },
+          extensions: {
+            tools: [expect.objectContaining({ name: 'search_news' })],
+            knowledgeBindings: [
+              expect.objectContaining({ knowledgeBaseId: 'kb-1', topK: 3 }),
+            ],
+            subAgents: [
+              expect.objectContaining({
+                agentDefinitionId: 'critic-agent',
+                alias: 'critic',
+              }),
+            ],
+            memoryInstanceIds: ['memory-1'],
+            skillIds: ['skill-review'],
+          },
+        }),
+      ]);
+    });
+
     it('旧画布缺少 agent-main 时应回退为全量节点编译', () => {
       const nodes = [
         {

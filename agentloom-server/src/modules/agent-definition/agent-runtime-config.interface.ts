@@ -75,6 +75,21 @@ export interface AgentKnowledgeBinding {
   enabled: boolean;
 }
 
+export interface AgentSubAgentOverrides {
+  systemPrompt?: string;
+  modelConfig?: AgentModelConfig;
+  routingConfig?: AgentRoutingConfig;
+  outputSchema?: Record<string, unknown>;
+}
+
+export interface AgentSubAgentExtensions {
+  tools?: AgentToolBinding[];
+  knowledgeBindings?: AgentKnowledgeBinding[];
+  subAgents?: AgentSubAgentRef[];
+  memoryInstanceIds?: string[];
+  skillIds?: string[];
+}
+
 export interface AgentSubAgentRef {
   agentDefinitionId: string;
   agentVersionId?: string;
@@ -84,6 +99,10 @@ export interface AgentSubAgentRef {
   maxTimeoutMs?: number;
   /** 子代理描述，用于工具 description 生成 */
   description?: string;
+  /** 当前挂载点对被引用子代理的局部覆盖 */
+  overrides?: AgentSubAgentOverrides;
+  /** 当前挂载点对被引用子代理的局部扩展 */
+  extensions?: AgentSubAgentExtensions;
 }
 
 export interface AgentInputPreprocessor {
@@ -122,6 +141,7 @@ export interface AgentRuntimeConfig {
   routingConfig?: AgentRoutingConfig;
   memoryInstanceIds?: string[];
   skillIds?: string[];
+  outputSchema?: Record<string, unknown>;
   nativeToolPolicy?: AgentNativeToolPolicy;
   selfEvolutionPolicy?: AgentSelfEvolutionPolicy;
 }

@@ -229,6 +229,77 @@ describe('normalizeWorkflowNodesAndEdges', () => {
     expect(normalized.edges).toEqual(canonicalEdges);
   });
 
+  it('应为 text source node 与 workflow agent 的 system-prompt-in 端口补齐 canonical 元数据', () => {
+    const { nodes, edges } = normalizeWorkflowNodesAndEdges(
+      [
+        {
+          id: 'text-node',
+          type: 'workflow-node',
+          position: { x: 0, y: 0 },
+          data: {
+            node_type: 'text',
+            input_ports: [],
+            output_ports: [{ id: 'text-out' }],
+          },
+        },
+        {
+          id: 'agent-node',
+          type: 'workflow-node',
+          position: { x: 240, y: 0 },
+          data: {
+            node_type: 'agent',
+            input_ports: [
+              { id: 'exec-in' },
+              { id: 'text-in' },
+              { id: 'system-prompt-in' },
+            ],
+            output_ports: [{ id: 'agent-out' }, { id: 'structured-out' }],
+          },
+        },
+      ],
+      [
+        {
+          id: 'edge-text-agent',
+          source: 'text-node',
+          target: 'agent-node',
+          source_handle: 'text',
+          target_handle: 'system_prompt',
+        } as unknown as never,
+      ],
+    );
+
+    expect(nodes[0]?.type).toBe('output');
+    expect(nodes[0]?.data).toMatchObject({
+      nodeType: 'text',
+      category: 'output',
+      outputPorts: [
+        expect.objectContaining({
+          id: 'text-out',
+          dataType: 'text',
+          direction: 'output',
+        }),
+      ],
+    });
+    expect(nodes[1]?.data.inputPorts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'system-prompt-in',
+          dataType: 'text',
+          direction: 'input',
+        }),
+      ]),
+    );
+    expect(edges).toEqual([
+      {
+        id: 'edge-text-agent',
+        source: 'text-node',
+        target: 'agent-node',
+        sourceHandle: 'text-out',
+        targetHandle: 'system-prompt-in',
+      },
+    ]);
+  });
+
   it('应给版本快照里只有端口 id 的自定义端口补上默认 json schema', () => {
     const { nodes } = normalizeWorkflowNodesAndEdges(
       [

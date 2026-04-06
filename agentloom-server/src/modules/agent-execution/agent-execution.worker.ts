@@ -38,6 +38,11 @@ import { AgentDefinitionService } from '../agent-definition/agent-definition.ser
 import type { AgentRuntimeConfig } from '../agent-definition/agent-runtime-config.interface';
 import { AgentSandboxNotConnectedException } from '../agent-definition/agent-definition.exceptions';
 import {
+  appendOutputSchemaToSystemPrompt,
+  mergeRuntimeConfigWithSubAgentRef,
+  resolveSubAgentSystemPrompt,
+} from '../agent-definition/agent-runtime-config.utils';
+import {
   deriveAgentSandboxConfigFromCanvas,
   mergeSandboxConfigCandidates,
 } from '../agent-definition/agent-sandbox-config.utils';
@@ -657,7 +662,14 @@ export class AgentExecutionWorker extends WorkerHost {
       }
 
       let runtimeConfig: AgentRuntimeConfig;
-      let systemPrompt = definition.systemPrompt ?? undefined;
+      const definitionSystemPrompt =
+        this.agentDefinitionService.resolveSystemPromptFromNodes?.(
+          definition.nodes ?? [],
+          definition.edges ?? [],
+        ) ??
+        definition.systemPrompt ??
+        undefined;
+      let systemPrompt = definitionSystemPrompt;
       let snapshot: AgentVersionSnapshot | null = null;
       let resolvedSandboxConfig: AgentRuntimeConfig['sandboxConfig'] | null;
       const normalizedDefinitionSandboxConfig =
@@ -705,7 +717,12 @@ export class AgentExecutionWorker extends WorkerHost {
             normalizedSnapshotSandboxConfig,
           ) ?? normalizedDefinitionSandboxConfig;
         systemPrompt =
-          snapshot.systemPrompt ?? definition.systemPrompt ?? undefined;
+          this.agentDefinitionService.resolveSystemPromptFromNodes?.(
+            snapshot.nodes,
+            snapshot.edges,
+          ) ??
+          snapshot.systemPrompt ??
+          definitionSystemPrompt;
       } else {
         runtimeConfig = await this.agentDefinitionService.compileCanvas(
           definition.id,
@@ -971,9 +988,12 @@ export class AgentExecutionWorker extends WorkerHost {
     // For sandbox path, skills are passed as independent files via piConfigInput
     // so the system prompt should not include skill content.
     // For non-sandbox path, embed skills into the system prompt as before.
-    const baseSystemPrompt = hasSandboxRuntime
-      ? context.systemPrompt
-      : await this.resolveConversationSkillPrompt(context);
+    const baseSystemPrompt = appendOutputSchemaToSystemPrompt(
+      hasSandboxRuntime
+        ? context.systemPrompt
+        : await this.resolveConversationSkillPrompt(context),
+      context.runtimeConfig.outputSchema,
+    );
 
     const systemPrompt = await this.resolveConversationSystemPrompt(
       memorySessionIds,
@@ -2750,7 +2770,15 @@ export class AgentExecutionWorker extends WorkerHost {
             versionSnapshot.sandboxConfig ?? null,
           )
         : null;
-      const runtimeConfig = versionSnapshot
+      const graphSystemPrompt =
+        this.agentDefinitionService.resolveSystemPromptFromNodes?.(
+          versionSnapshot?.nodes ?? params.agentDefinition.nodes,
+          versionSnapshot?.edges ?? params.agentDefinition.edges,
+        ) ??
+        versionSnapshot?.systemPrompt ??
+        params.agentDefinition.systemPrompt ??
+        undefined;
+      const compiledRuntimeConfig = versionSnapshot
         ? this.agentDefinitionService.buildRuntimeConfigFromNodes(
             versionSnapshot.nodes,
             versionSnapshot.edges,
@@ -2760,6 +2788,10 @@ export class AgentExecutionWorker extends WorkerHost {
         : await this.agentDefinitionService.compileCanvas(
             params.agentDefinition.id,
           );
+      const runtimeConfig = mergeRuntimeConfigWithSubAgentRef(
+        compiledRuntimeConfig,
+        params.subAgentRef,
+      );
       runtimeConfig.runtimeMode ??= runtimeMode;
       const usesSandboxRuntime =
         runtimeConfig.runtimeMode === 'sandbox' ||
@@ -2817,10 +2849,10 @@ export class AgentExecutionWorker extends WorkerHost {
         const piConfigInput = await this.buildPiConfigInput({
           tenantId: params.parentContext.tenantId,
           runtimeConfig,
-          systemPrompt:
-            versionSnapshot?.systemPrompt ??
-            params.agentDefinition.systemPrompt ??
-            undefined,
+          systemPrompt: appendOutputSchemaToSystemPrompt(
+            resolveSubAgentSystemPrompt(graphSystemPrompt, params.subAgentRef),
+            runtimeConfig.outputSchema,
+          ),
           skillPayloads,
         });
         await this.sandboxService.createSandboxSession({
@@ -2838,10 +2870,10 @@ export class AgentExecutionWorker extends WorkerHost {
         skillIds: runtimeConfig.skillIds,
         nodes: versionSnapshot?.nodes ?? params.agentDefinition.nodes,
         edges: versionSnapshot?.edges ?? params.agentDefinition.edges,
-        baseSystemPrompt:
-          versionSnapshot?.systemPrompt ??
-          params.agentDefinition.systemPrompt ??
-          undefined,
+        baseSystemPrompt: appendOutputSchemaToSystemPrompt(
+          resolveSubAgentSystemPrompt(graphSystemPrompt, params.subAgentRef),
+          runtimeConfig.outputSchema,
+        ),
       });
       const systemPrompt = await this.resolveConversationSystemPrompt(
         memorySessionIds,

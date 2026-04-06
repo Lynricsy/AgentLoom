@@ -5,7 +5,7 @@ import type { ObjectTypeSchema, PortDataType, ScalarTypeSchema, TypeSchema } fro
 import { AGENT_CANVAS_NODE_REGISTRY } from '../registry/agent-canvas-registry'
 import type { AgentRuntimeMode } from '@/features/agent/types/agentRuntimeMode'
 
-export const NODE_TYPES = ['chat-agent', 'llm-model', 'http-tool', 'code-tool', 'mcp-tool', 'sandbox', 'manual-trigger', 'schedule-trigger', 'webhook-trigger', 'api-event-trigger', 'knowledge-base', 'text-output', 'json-output', 'condition', 'loop', 'iteration', 'loop-start', 'iteration-start', 'loop-state', 'result', 'break', 'continue', 'reusable-block', 'smart-routing', 'plugin', 'input-preprocessor', 'memory', 'agent', 'skill', 'workspace', 'merge'] as const
+export const NODE_TYPES = ['chat-agent', 'llm-model', 'http-tool', 'code-tool', 'mcp-tool', 'sandbox', 'manual-trigger', 'schedule-trigger', 'webhook-trigger', 'api-event-trigger', 'knowledge-base', 'text', 'text-output', 'json-output', 'condition', 'loop', 'iteration', 'loop-start', 'iteration-start', 'loop-state', 'result', 'break', 'continue', 'reusable-block', 'smart-routing', 'plugin', 'input-preprocessor', 'memory', 'agent', 'skill', 'workspace', 'merge'] as const
 
 export const DYNAMIC_ONLY_NODE_TYPES: ReadonlySet<NodeType> = new Set(['reusable-block', 'plugin', 'merge', 'loop-start', 'iteration-start', 'loop-state', 'result', 'break', 'continue'])
 
@@ -561,6 +561,31 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
       required: ['knowledgeBaseId'],
     },
   },
+  text: {
+    type: 'text',
+    category: 'output',
+    label: 'Text',
+    icon: 'FileText',
+    description: '提供可复用的文本常量，可连接到系统提示词或任意文本输入端口',
+    colorToken: CATEGORY_COLOR_TOKENS.output,
+    inputPorts: [],
+    outputPorts: [
+      createPort('text-out', '文本', 'output', 'text', {
+        multiple: true,
+        maxConnections: null,
+        description: '输出文本常量，可复用到多个下游节点',
+      }),
+    ],
+    configSchema: {
+      type: 'object',
+      properties: {
+        text: createConfigField('string', '文本内容', {
+          default: '',
+        }),
+      },
+      required: [],
+    },
+  },
   'text-output': {
     type: 'text-output',
     category: 'output',
@@ -1053,6 +1078,10 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
       createPort('text-in', '文本', 'input', 'text', {
         required: true,
         description: '发送给 Agent 的输入文本，通常来自上游节点或触发数据',
+      }),
+      createPort('system-prompt-in', '系统提示词', 'input', 'text', {
+        maxConnections: 1,
+        description: '覆盖被调用 Agent 的系统提示词，用于为本次工作流调用注入局部角色约束',
       }),
       createPort('sandbox-in', '沙箱', 'input', 'sandbox', {
         maxConnections: 1,

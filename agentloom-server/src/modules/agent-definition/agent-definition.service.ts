@@ -65,6 +65,7 @@ import type {
   AgentNativeToolPolicy,
   AgentSelfEvolutionPolicy,
 } from './agent-runtime-config.interface';
+import { coerceAgentOutputSchema } from './agent-runtime-config.utils';
 
 type AgentDbClient = Pick<
   DrizzleDB,
@@ -737,7 +738,7 @@ export class AgentDefinitionService {
 
         case 'sub-agent': {
           if (!agentMainNode || targetHandle === 'sub-agents-in') {
-            const ref = this.extractSubAgentRef(data);
+            const ref = this.extractSubAgentRef(nodeId, data, nodesById, edges);
             if (ref) subAgents.push(ref);
           }
           break;
@@ -838,6 +839,51 @@ export class AgentDefinitionService {
     return config;
   }
 
+  resolveSystemPromptFromNodes(
+    nodes: any[],
+    edges: any[],
+    targetNodeId?: string,
+  ): string | undefined {
+    const resolvedTargetNodeId =
+      targetNodeId ??
+      (() => {
+        const agentMainNode = nodes.find(
+          (node) => this.resolveNodeType(node) === 'agent-main',
+        );
+        return typeof agentMainNode?.id === 'string'
+          ? agentMainNode.id
+          : undefined;
+      })();
+
+    if (!resolvedTargetNodeId) {
+      return undefined;
+    }
+
+    const nodesById = new Map(
+      nodes
+        .filter((node) => typeof node?.id === 'string')
+        .map((node) => [node.id as string, node]),
+    );
+    const promptEdge = edges.find(
+      (edge) =>
+        edge &&
+        edge.target === resolvedTargetNodeId &&
+        edge.targetHandle === 'system-prompt-in' &&
+        typeof edge.source === 'string',
+    );
+
+    if (!promptEdge) {
+      return undefined;
+    }
+
+    const sourceNode = nodesById.get(promptEdge.source);
+    if (!sourceNode || this.resolveNodeType(sourceNode) !== 'text') {
+      return undefined;
+    }
+
+    return this.extractTextContent(this.resolveNodeData(sourceNode));
+  }
+
   private validateSubAgentRefs(
     refs: AgentSubAgentRef[],
     currentAgentId: string,
@@ -862,6 +908,15 @@ export class AgentDefinitionService {
     for (const ref of refs) {
       if (ref.agentDefinitionId === currentAgentId) {
         throw new Error('不能将自身作为子代理引用');
+      }
+    }
+
+    for (const ref of refs) {
+      if (ref.extensions?.subAgents?.length) {
+        this.validateSubAgentRefs(
+          ref.extensions.subAgents,
+          ref.agentDefinitionId,
+        );
       }
     }
 
@@ -1364,19 +1419,218 @@ export class AgentDefinitionService {
     };
   }
 
-  private extractSubAgentRef(
+  private extractTextContent(data: Record<string, any>): string | undefined {
+    return this.readFirstString(data.text, data.value, data.content);
+  }
+
+  private extractSkillIdFromData(
     data: Record<string, any>,
+  ): string | undefined {
+    return this.readFirstString(data.skillId, data.skill_id);
+  }
+
+  private extractMemoryInstanceId(
+    data: Record<string, any>,
+  ): string | undefined {
+    return this.readFirstString(data.memoryInstanceId, data.memory_instance_id);
+  }
+
+  private extractOutputSchema(
+    data: Record<string, any>,
+  ): Record<string, unknown> | undefined {
+    const candidates = [
+      data.outputSchema,
+      data.output_schema,
+      data.schema,
+      data.value,
+      data.content,
+      data.result,
+      data.json,
+      data.text,
+    ];
+
+    for (const candidate of candidates) {
+      const schema = coerceAgentOutputSchema(candidate);
+      if (schema) {
+        return schema;
+      }
+    }
+
+    return undefined;
+  }
+
+  private extractSubAgentRef(
+    nodeId: string | undefined,
+    data: Record<string, any>,
+    nodesById?: Map<string, any>,
+    edges?: any[],
+    visitedNodeIds: Set<string> = new Set(),
   ): AgentSubAgentRef | null {
     const defId = data.agentDefinitionId ?? data.agent_definition_id;
     if (!defId) return null;
 
-    return {
+    const ref: AgentSubAgentRef = {
       agentDefinitionId: defId,
       agentVersionId: data.agentVersionId ?? data.agent_version_id,
       alias: data.alias || (defId as string).slice(0, 8),
       maxTimeoutMs: data.maxTimeoutMs ?? data.max_timeout_ms,
       description: data.description,
     };
+
+    if (!nodeId || !nodesById || !Array.isArray(edges)) {
+      return ref;
+    }
+
+    if (visitedNodeIds.has(nodeId)) {
+      return ref;
+    }
+
+    const nextVisitedNodeIds = new Set(visitedNodeIds);
+    nextVisitedNodeIds.add(nodeId);
+    const overrides: NonNullable<AgentSubAgentRef['overrides']> = {};
+    const tools: AgentToolBinding[] = [];
+    const knowledgeBindings: AgentKnowledgeBinding[] = [];
+    const subAgents: AgentSubAgentRef[] = [];
+    const memoryInstanceIds: string[] = [];
+    const skillIds: string[] = [];
+
+    for (const edge of edges) {
+      if (
+        !edge ||
+        edge.target !== nodeId ||
+        typeof edge.source !== 'string' ||
+        typeof edge.targetHandle !== 'string'
+      ) {
+        continue;
+      }
+
+      const sourceNode = nodesById.get(edge.source);
+      if (!sourceNode) {
+        continue;
+      }
+
+      const sourceNodeId =
+        typeof sourceNode?.id === 'string' ? sourceNode.id : undefined;
+      const sourceType = this.resolveNodeType(sourceNode);
+      const sourceData = this.resolveNodeData(sourceNode);
+
+      switch (edge.targetHandle) {
+        case 'system-prompt-in': {
+          const systemPrompt = this.extractTextContent(sourceData);
+          if (systemPrompt) {
+            overrides.systemPrompt = systemPrompt;
+          }
+          break;
+        }
+        case 'model-in': {
+          if (sourceType === 'llm-model') {
+            overrides.modelConfig = this.extractModelConfig(sourceData);
+          } else if (sourceType === 'smart-routing') {
+            overrides.routingConfig = this.extractRoutingConfig(sourceData, {
+              routingNodeId: sourceNodeId,
+              nodesById,
+              edges,
+            });
+          }
+          break;
+        }
+        case 'schema-in': {
+          const outputSchema = this.extractOutputSchema(sourceData);
+          if (outputSchema) {
+            overrides.outputSchema = outputSchema;
+          }
+          break;
+        }
+        case 'tools-in': {
+          if (
+            sourceType === 'http-tool' ||
+            sourceType === 'code-tool' ||
+            sourceType === 'mcp-tool'
+          ) {
+            const tool = this.extractToolBinding(
+              sourceNodeId ?? sourceType,
+              sourceData,
+              sourceType,
+            );
+            if (tool) {
+              tools.push(tool);
+            }
+          }
+          break;
+        }
+        case 'knowledge-in': {
+          if (sourceType === 'knowledge-base') {
+            const binding = this.extractKnowledgeBinding(sourceData);
+            if (binding) {
+              knowledgeBindings.push(binding);
+            }
+          }
+          break;
+        }
+        case 'skills-in': {
+          if (sourceType === 'skill') {
+            const skillId = this.extractSkillIdFromData(sourceData);
+            if (skillId) {
+              skillIds.push(skillId);
+            }
+          }
+          break;
+        }
+        case 'memory-in': {
+          if (sourceType === 'memory') {
+            const memoryInstanceId = this.extractMemoryInstanceId(sourceData);
+            if (memoryInstanceId) {
+              memoryInstanceIds.push(memoryInstanceId);
+            }
+          }
+          break;
+        }
+        case 'sub-agents-in': {
+          if (sourceType === 'sub-agent') {
+            const nestedRef = this.extractSubAgentRef(
+              sourceNodeId,
+              sourceData,
+              nodesById,
+              edges,
+              nextVisitedNodeIds,
+            );
+            if (nestedRef) {
+              subAgents.push(nestedRef);
+            }
+          }
+          break;
+        }
+        default:
+          break;
+      }
+    }
+
+    if (Object.keys(overrides).length > 0) {
+      ref.overrides = overrides;
+    }
+
+    const extensions: NonNullable<AgentSubAgentRef['extensions']> = {};
+    if (tools.length > 0) {
+      extensions.tools = tools;
+    }
+    if (knowledgeBindings.length > 0) {
+      extensions.knowledgeBindings = knowledgeBindings;
+    }
+    if (subAgents.length > 0) {
+      extensions.subAgents = subAgents;
+    }
+    if (memoryInstanceIds.length > 0) {
+      extensions.memoryInstanceIds = Array.from(new Set(memoryInstanceIds));
+    }
+    if (skillIds.length > 0) {
+      extensions.skillIds = Array.from(new Set(skillIds));
+    }
+
+    if (Object.keys(extensions).length > 0) {
+      ref.extensions = extensions;
+    }
+
+    return ref;
   }
 
   private extractInputPreprocessor(

@@ -92,6 +92,7 @@ import { ManualTriggerNodeBody } from "./nodes/ManualTriggerNodeBody";
 import { ScheduleTriggerNodeBody } from "./nodes/ScheduleTriggerNodeBody";
 import { WebhookTriggerNodeBody } from "./nodes/WebhookTriggerNodeBody";
 import { ApiEventTriggerNodeBody } from "./nodes/ApiEventTriggerNodeBody";
+import { TextNodeBody } from "./nodes/TextNodeBody";
 import { TextOutputNodeBody } from "./nodes/TextOutputNodeBody";
 import { JsonOutputNodeBody } from "./nodes/JsonOutputNodeBody";
 import { SkillBody } from "../../agent-canvas/components/nodes/SkillBody";
@@ -866,6 +867,8 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
             <WebhookTriggerNodeBody config={data.config} />
           ) : data.nodeType === "api-event-trigger" ? (
             <ApiEventTriggerNodeBody config={data.config} />
+          ) : data.nodeType === "text" ? (
+            <TextNodeBody config={data.config} />
           ) : data.nodeType === "text-output" ? (
             <TextOutputNodeBody nodeId={id} />
           ) : data.nodeType === "json-output" ? (

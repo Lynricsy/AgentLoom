@@ -4,6 +4,15 @@ import { describe, expect, it } from 'vitest'
 import { AgentNodePalette } from './AgentNodePalette'
 
 describe('AgentNodePalette', () => {
+  it('shows text nodes for prompt composition', () => {
+    render(<AgentNodePalette />)
+
+    expect(screen.getByText('提示')).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', { name: /Text提供可复用的文本常量/i }),
+    ).toBeInTheDocument()
+  })
+
   it('shows memory nodes in the palette', () => {
     render(<AgentNodePalette />)
 

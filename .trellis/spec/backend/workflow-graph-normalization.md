@@ -36,7 +36,7 @@
   - `agent` / `chat-agent` / `llm-model` / `smart-routing` / `skill` → `agent`
   - `http-tool` / `code-tool` / `mcp-tool` / `sandbox` / `input-preprocessor` / `workspace` → `tool`
   - `knowledge-base` → `knowledge`
-  - `text-output` / `json-output` → `output`
+  - `text` / `text-output` / `json-output` → `output`
   - `condition` / `loop` / `iteration` / `loop-start` / `iteration-start` / `loop-state` / `result` / `break` / `continue` / `reusable-block` / `merge` → `control`
   - `plugin` → `plugin`
   - `memory` → `memory`
@@ -61,6 +61,9 @@
   - `text -> text-in` 或 `text-out`（按方向判定）
   - `agent -> agent-out`
   - `content -> content-in`
+- workflow `agent` 节点的系统提示词 canonical 结构是显式 `text` 节点连接 `system-prompt-in`。
+  - legacy `node.data.systemPrompt` / `node.data.config.systemPrompt` 只能作为迁移输入，不再是持久化后的权威来源
+  - 规范化或预迁移后，`workflow agent` 的 `inputPorts` 必须包含 `system-prompt-in`
 - 规范化必须同时覆盖两个方向：
   - ingest: 保存草稿、回滚草稿、从 proposal/apply 生成新图时，先转 canonical 再落库。
   - egress: 返回工作流详情、版本列表、已发布版本、导出、发布快照、执行快照时，确保读取旧数据也会被修正。
@@ -74,6 +77,7 @@
 | 历史草稿中 `data.node_type/input_ports/output_ports` 为 snake_case | 返回前与再次保存前都转为 camelCase | detail/update 单测 |
 | 历史 edge 使用 `payload/json/text/agent/content` 简写 handle | 详情接口与 execution snapshot 都输出 canonical handle id | `workflow-version.service.spec.ts` + `execution.service.spec.ts` |
 | 历史 `workflow_versions.snapshot` 的端口只剩 `{id}` | 版本列表 / 已发布版本接口返回完整 canonical 端口定义，历史记录页不会因 `schema.kind` 崩溃 | `workflow-version.service.spec.ts` + browser 复现 |
+| 历史 workflow `agent` 把 `systemPrompt` 直接写在节点 config 上 | 预迁移或规范化后自动 materialize 成 `text` 节点 + `system-prompt-in` 连线，节点 config 不再保留权威提示词正文 | migration util 单测 + browser 打开旧草稿 |
 | 已发布版本 snapshot 仍是 legacy graph | `runWorkflow()` 执行前规范化，运行成功且端口数据能正确流转 | execution 回归测试 + 线上 manual QA |
 | 自进化 external editing 生成了 `workflow-node` 或 handle 简写 | Skill 文档明确禁止；服务端 ingest 仍做兜底规范化 | skill 文档审查 + 兼容单测 |
 | 未知 `node.data.nodeType` 无法归类 | 保留原 `node.type`，不要瞎映射到错误壳类型 | 规范化工具单测 |
@@ -82,6 +86,7 @@
 
 - Good:
   - 存量 legacy workflow 详情页打开后显示正确节点、端口、连线。
+  - legacy workflow `agent.config.systemPrompt` 打开后被展示为独立 `text` 节点，并连接到 `system-prompt-in`。
   - 点击运行后，`manual-trigger -> input-preprocessor -> agent -> text-output` 四步全部完成，`text-output.result.content` 为预期文本。
 - Base:
   - 已经是 canonical 的 graph 经过规范化后不发生语义变化，也不应被重复改坏。
@@ -93,6 +98,7 @@
 
 - `agentloom-server/src/modules/workflow-definition/utils/normalize-workflow-graph.utils.spec.ts`
   - 断言 legacy `workflow-node + snake_case + 简写 handle` 会被完整归一化。
+  - 断言 `text` 节点与 `workflow agent.system-prompt-in` 会被补齐 canonical category / 端口语义。
   - 断言 canonical graph 不被误改。
 - `agentloom-server/src/modules/workflow-definition/__tests__/workflow-version.service.spec.ts`
   - `findDefinitionDetailById()` 返回归一化后的 graph。
@@ -126,12 +132,15 @@
 
 ```ts
 {
+  id: 'agent__system-prompt',
   type: 'output',
-  data: { nodeType: 'text-output' }
+  data: { nodeType: 'text' }
 }
 
 {
-  sourceHandle: 'agent-out',
-  targetHandle: 'content-in'
+  source: 'agent__system-prompt',
+  sourceHandle: 'text-out',
+  target: 'agent',
+  targetHandle: 'system-prompt-in'
 }
 ```
