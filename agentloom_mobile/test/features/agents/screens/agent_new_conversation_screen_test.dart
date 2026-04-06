@@ -23,9 +23,12 @@ void main() {
     ).thenAnswer((_) async => createTestAgent(id: 'agent-001'));
   });
 
-  GoRouter createRouter() {
+  GoRouter createRouter({
+    String initialLocation = '/agents/agent-001/conversations/new',
+  }) {
+    GoRouter.optionURLReflectsImperativeAPIs = true;
     return GoRouter(
-      initialLocation: '/agents/agent-001/conversations/new',
+      initialLocation: initialLocation,
       routes: [
         GoRoute(
           path: '/agents/:agentId/conversations/new',
@@ -46,14 +49,33 @@ void main() {
             );
           },
         ),
+        ShellRoute(
+          builder: (context, state, child) => child,
+          routes: [
+            GoRoute(
+              path: '/agents/:agentId',
+              builder: (context, state) {
+                final agentId = state.pathParameters['agentId']!;
+                return Scaffold(
+                  appBar: AppBar(title: Text('Agent $agentId')),
+                  body: Center(child: Text('Agent $agentId')),
+                );
+              },
+            ),
+          ],
+        ),
       ],
     );
   }
 
-  Widget createTestWidget() {
+  Widget createTestWidget({
+    String initialLocation = '/agents/agent-001/conversations/new',
+  }) {
     return ProviderScope(
       overrides: [agentApiProvider.overrideWithValue(mockApi)],
-      child: MaterialApp.router(routerConfig: createRouter()),
+      child: MaterialApp.router(
+        routerConfig: createRouter(initialLocation: initialLocation),
+      ),
     );
   }
 

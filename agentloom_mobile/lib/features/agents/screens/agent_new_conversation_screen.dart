@@ -64,7 +64,7 @@ class _AgentNewConversationScreenState
       }
 
       ref.invalidate(agentConversationsProvider(widget.agentId));
-      context.goNamed(
+      context.pushReplacementNamed(
         RouteNames.agentConversation,
         pathParameters: {
           'agentId': widget.agentId,

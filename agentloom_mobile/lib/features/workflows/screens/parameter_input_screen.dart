@@ -46,7 +46,7 @@ class _ParameterInputScreenState extends ConsumerState<ParameterInputScreen> {
     ref.listen(workflowLaunchProvider(widget.workflowId), (prev, next) {
       final value = next.value;
       if (value is WorkflowLaunchSuccess && context.mounted) {
-        context.goNamed(
+        context.pushReplacementNamed(
           RouteNames.executionMonitor,
           pathParameters: {'executionId': value.executionId},
         );

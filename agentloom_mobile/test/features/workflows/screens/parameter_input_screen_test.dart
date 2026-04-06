@@ -19,10 +19,18 @@ void main() {
     mockApi = MockWorkflowApi();
   });
 
-  GoRouter createRouter() {
+  GoRouter createRouter({String initialLocation = '/launch'}) {
+    GoRouter.optionURLReflectsImperativeAPIs = true;
     return GoRouter(
-      initialLocation: '/launch',
+      initialLocation: initialLocation,
       routes: [
+        GoRoute(
+          path: '/workflows/wf-1',
+          builder: (context, state) => Scaffold(
+            appBar: AppBar(title: const Text('Workflow wf-1')),
+            body: const Center(child: Text('Workflow wf-1')),
+          ),
+        ),
         GoRoute(
           path: '/launch',
           builder: (context, state) => ProviderScope(
@@ -36,8 +44,12 @@ void main() {
         GoRoute(
           path: '/executions/:executionId',
           name: RouteNames.executionMonitor,
-          builder: (context, state) =>
-              Text('Execution ${state.pathParameters['executionId']}'),
+          builder: (context, state) => Scaffold(
+            appBar: AppBar(title: const Text('Execution')),
+            body: Center(
+              child: Text('Execution ${state.pathParameters['executionId']}'),
+            ),
+          ),
         ),
       ],
     );
@@ -48,6 +60,7 @@ void main() {
     required String collectionMode,
     required List<dynamic> fields,
     int version = 1,
+    String initialLocation = '/launch',
   }) async {
     when(() => mockApi.getInputSchema('wf-1')).thenAnswer(
       (_) async => createTestWorkflowInputSchema(
@@ -57,7 +70,7 @@ void main() {
       ),
     );
 
-    final router = createRouter();
+    final router = createRouter(initialLocation: initialLocation);
     addTearDown(router.dispose);
 
     await tester.pumpWidget(MaterialApp.router(routerConfig: router));
@@ -109,7 +122,11 @@ void main() {
         },
       );
 
-      await pumpScreen(tester, collectionMode: 'form', fields: const []);
+      final router = await pumpScreen(
+        tester,
+        collectionMode: 'form',
+        fields: const [],
+      );
 
       expect(find.byType(NoParamsConfirmation), findsOneWidget);
 
@@ -124,6 +141,10 @@ void main() {
           launchSource: 'mobile',
         ),
       ).called(1);
+      expect(
+        router.routeInformationProvider.value.uri.path,
+        '/executions/exec-123',
+      );
       expect(find.text('Execution exec-123'), findsOneWidget);
     });
 
@@ -182,7 +203,7 @@ void main() {
         },
       );
 
-      await pumpScreen(
+      final router = await pumpScreen(
         tester,
         collectionMode: 'form',
         fields: [
@@ -208,7 +229,58 @@ void main() {
           launchSource: 'mobile',
         ),
       ).called(1);
+      expect(
+        router.routeInformationProvider.value.uri.path,
+        '/executions/exec-456',
+      );
       expect(find.text('Execution exec-456'), findsOneWidget);
+    });
+
+    testWidgets('启动成功后返回应回到工作流详情页而不是退出栈', (tester) async {
+      when(
+        () => mockApi.runWorkflow(
+          'wf-1',
+          inputParams: {'title': 'hello'},
+          schemaVersion: 2,
+          launchSource: 'mobile',
+        ),
+      ).thenAnswer(
+        (_) async => {
+          'data': {'id': 'exec-back-001'},
+        },
+      );
+
+      final router = await pumpScreen(
+        tester,
+        collectionMode: 'form',
+        fields: [
+          createTestInputFieldDefinition(
+            id: 'title',
+            type: 'text',
+            label: '标题',
+            required: true,
+          ),
+        ],
+        version: 2,
+        initialLocation: '/workflows/wf-1',
+      );
+
+      router.push('/launch');
+      await tester.pumpAndSettle();
+
+      await tester.enterText(find.byType(TextFormField), 'hello');
+      await tester.tap(find.text('启动运行'));
+      await tester.pumpAndSettle();
+
+      expect(
+        router.routeInformationProvider.value.uri.path,
+        '/executions/exec-back-001',
+      );
+      expect(find.text('Execution exec-back-001'), findsOneWidget);
+      router.pop();
+      await tester.pumpAndSettle();
+
+      expect(find.text('Workflow wf-1'), findsWidgets);
     });
 
     testWidgets('提交失败时显示错误 snackbar', (tester) async {
