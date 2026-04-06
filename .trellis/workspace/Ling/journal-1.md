@@ -1054,3 +1054,36 @@ studio 前端大量页面无法滚轮滚动、没有滚动条。
 ### Next Steps
 
 - None - task complete
+
+
+## Session 21: 临时隐藏 Studio 与 Flutter 的 Google/GitHub 登录入口
+
+**Date**: 2026-04-06
+**Task**: 临时隐藏 Studio 与 Flutter 的 Google/GitHub 登录入口
+**Branch**: `main`
+
+### Summary
+
+隐藏 Studio 与 Flutter 登录页上的 Google/GitHub 入口，保留底层 OAuth 能力，并同步更新测试与文档。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `78faaeb3` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
