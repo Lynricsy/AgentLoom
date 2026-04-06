@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { Logger } from '@nestjs/common';
+import { MAX_CONVERSATION_TRANSPORT_PAYLOAD_BYTES } from '../../../modules/agent-conversation/conversation-attachment';
 
 const {
   mockConnect,
@@ -92,6 +93,37 @@ describe('RedisIoAdapter', () => {
   });
 
   describe('createIOServer()', () => {
+    it('应把 Socket.IO buffer 上限提升到覆盖附件 transport 负载', () => {
+      const mockServer = { adapter: vi.fn() };
+      mockSuperCreateIOServer.mockReturnValue(mockServer);
+
+      adapter.createIOServer(3000, { cors: { origin: '*' } });
+
+      expect(mockSuperCreateIOServer).toHaveBeenCalledWith(
+        3000,
+        expect.objectContaining({
+          cors: { origin: '*' },
+          maxHttpBufferSize: MAX_CONVERSATION_TRANSPORT_PAYLOAD_BYTES,
+        }),
+      );
+    });
+
+    it('应保留比默认值更大的显式 maxHttpBufferSize', () => {
+      const mockServer = { adapter: vi.fn() };
+      mockSuperCreateIOServer.mockReturnValue(mockServer);
+
+      adapter.createIOServer(3000, {
+        maxHttpBufferSize: MAX_CONVERSATION_TRANSPORT_PAYLOAD_BYTES + 1024,
+      });
+
+      expect(mockSuperCreateIOServer).toHaveBeenCalledWith(
+        3000,
+        expect.objectContaining({
+          maxHttpBufferSize: MAX_CONVERSATION_TRANSPORT_PAYLOAD_BYTES + 1024,
+        }),
+      );
+    });
+
     it('连接后应附加 Redis adapter', async () => {
       const mockServer = { adapter: vi.fn() };
       mockSuperCreateIOServer.mockReturnValue(mockServer);

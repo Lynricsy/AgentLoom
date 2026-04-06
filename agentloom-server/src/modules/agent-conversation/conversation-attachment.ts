@@ -4,6 +4,10 @@ import { z } from 'zod';
 export const MAX_CONVERSATION_ATTACHMENT_BYTES = 1_500_000;
 export const MAX_CONVERSATION_TEXT_ATTACHMENT_BYTES = 200_000;
 export const MAX_CONVERSATION_ATTACHMENT_TOTAL_BYTES = 10_000_000;
+const CONVERSATION_TRANSPORT_OVERHEAD_BYTES = 2 * 1024 * 1024;
+export const MAX_CONVERSATION_TRANSPORT_PAYLOAD_BYTES =
+  Math.ceil((MAX_CONVERSATION_ATTACHMENT_TOTAL_BYTES * 4) / 3) +
+  CONVERSATION_TRANSPORT_OVERHEAD_BYTES;
 
 export type ConversationMessageContentType = 'text' | 'image' | 'file';
 export type ConversationAttachmentKind = Exclude<

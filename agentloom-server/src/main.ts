@@ -1,8 +1,5 @@
 import { NestFactory } from '@nestjs/core';
-import {
-  FastifyAdapter,
-  NestFastifyApplication,
-} from '@nestjs/platform-fastify';
+import { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import multipart from '@fastify/multipart';
@@ -20,13 +17,14 @@ import {
   SWAGGER_DOCUMENT_PATH,
   SWAGGER_JSON_DOCUMENT_URL,
 } from './openapi/swagger-document';
+import { createAppFastifyAdapter } from './common/http/fastify-adapter.factory';
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
 
   const app = await NestFactory.create<NestFastifyApplication>(
     AppModule,
-    new FastifyAdapter({ logger: true }),
+    createAppFastifyAdapter(),
     { rawBody: true },
   );
 

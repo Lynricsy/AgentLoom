@@ -147,6 +147,8 @@ await db.insert(agentMessages).values({
 - 触发条件：修改以下任一文件时，必须回看本节
   - `src/modules/agent-conversation/conversation-attachment.ts`
   - `src/modules/agent-conversation/agent-conversation.service.ts`
+  - `src/common/http/fastify-adapter.factory.ts`
+  - `src/common/adapters/redis-io.adapter.ts`
   - `src/modules/agent-conversation/dto/message-response.dto.ts`
   - `src/modules/agent-execution/conversation-prompt-blocks.ts`
   - `src/modules/agent-execution/agent-execution.worker.ts`
@@ -158,6 +160,8 @@ await db.insert(agentMessages).values({
 - `normalizeIncomingConversationMetadata(contentType, metadata): Record<string, unknown>`
 - `readConversationAttachmentMetadataList(metadata): ConversationAttachmentMetadata[]`
 - `resolveConversationMessageContentType(contentType, metadata): ConversationMessageContentType`
+- `MAX_CONVERSATION_TRANSPORT_PAYLOAD_BYTES`
+- `createAppFastifyAdapter(): FastifyAdapter`
 - `withConversationAttachmentSandboxPaths(metadata, sandboxPaths): Record<string, unknown>`
 - `buildConversationPromptBlocks(params): ContentBlock[]`
 - `WorkspaceIntegrationService.stageConversationAttachment(conversationId, tenantId, metadata): Promise<string | null>`
@@ -183,6 +187,9 @@ await db.insert(agentMessages).values({
   - 单附件上限 `1_500_000` bytes
   - 单消息附件总量上限 `10_000_000` bytes
   - 文本内联上限 `200_000` bytes
+- transport ceiling 必须高于业务附件上限，避免请求在进入 DTO / service 校验前就被 413 拦截。
+  - `FastifyAdapter.bodyLimit` 与 Socket.IO `maxHttpBufferSize` 都必须至少覆盖 `MAX_CONVERSATION_TRANSPORT_PAYLOAD_BYTES`
+  - 该 transport ceiling 需要考虑 base64 放大和 JSON / Socket envelope 开销，而不只是原始附件字节数
 - 纯文本消息不得残留旧附件字段。
   - `contentType = 'text'` 且无附件时，`metadata.attachment`、`metadata.attachments` 与 `metadata.contentType` 必须被清理，避免旧 UI round-trip 脏数据把普通消息误判成附件消息。
 - runtime 构造 prompt blocks 时，附件不能退化成只有一行摘要文本：
@@ -206,6 +213,7 @@ await db.insert(agentMessages).values({
 | `contentType='image'` 但缺少 `dataBase64` | `POST /messages` 返回 400 | `agent-conversation.service.spec.ts` |
 | `contentType='file'` 且缺少 `textContent/dataBase64` | `POST /messages` 返回 400 | `agent-conversation.service.spec.ts` |
 | 任一附件超出 `1.5 MB`、单消息总量超出 `10 MB` 或文本内联超出 `200 KB` | `POST /messages` / `POST /conversations/start` 返回 400 | `conversation-attachment.ts` 校验 + service spec |
+| 合法图片消息在 `POST /conversations/start` 或正式会话发送时被 transport 413 拦截 | 不允许；Fastify `bodyLimit` 与 Socket `maxHttpBufferSize` 必须高于 base64/JSON 放大后的 payload | `fastify-adapter.factory.spec.ts` / `redis-io.adapter.spec.ts` |
 | 多附件混合图片/文件 | 持久化 `contentType='text'`，但保留完整 `metadata.attachments[]` | `agent-conversation.service.spec.ts` |
 | sandbox conversation 有 live container | worker 会把附件写入 `/workspace/uploads/...` 并把路径注入 prompt | `agent-execution.worker.spec.ts` / `workspace-integration.service.spec.ts` |
 | sandbox conversation 无 live container | worker 不抛错，继续使用 inline attachment blocks | `agent-execution.worker.spec.ts` |
@@ -223,6 +231,10 @@ await db.insert(agentMessages).values({
 
 - `src/modules/agent-conversation/agent-conversation.service.spec.ts`
   - 断言附件消息会持久化 `contentType + metadata.attachments[]`
+- `src/common/http/__tests__/fastify-adapter.factory.spec.ts`
+  - 断言 Fastify `bodyLimit` 覆盖附件 transport 负载上限
+- `src/common/adapters/__tests__/redis-io.adapter.spec.ts`
+  - 断言 Socket.IO `maxHttpBufferSize` 覆盖附件 transport 负载上限
 - `src/modules/agent-execution/conversation-prompt-blocks.spec.ts`
   - 断言多附件 prompt blocks 不会注入额外包装提示词，并保留每个附件 block / sandboxPath 提示
 - `src/modules/agent-execution/__tests__/agent-execution.worker.spec.ts`

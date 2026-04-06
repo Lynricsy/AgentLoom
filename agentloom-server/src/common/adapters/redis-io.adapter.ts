@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { createAdapter } from '@socket.io/redis-adapter';
 import { Server, type ServerOptions } from 'socket.io';
 import Redis from 'ioredis';
+import { MAX_CONVERSATION_TRANSPORT_PAYLOAD_BYTES } from '../../modules/agent-conversation/conversation-attachment';
 
 /**
  * 基于 Redis 的 Socket.IO 适配器
@@ -66,7 +67,14 @@ export class RedisIoAdapter extends IoAdapter {
   }
 
   createIOServer(port: number, options?: Partial<ServerOptions>): Server {
-    const server = super.createIOServer(port, options) as Server;
+    const server = super.createIOServer(port, {
+      ...options,
+      // 正式会话消息仍会走 Socket.IO，buffer ceiling 需要覆盖多附件 base64 负载。
+      maxHttpBufferSize: Math.max(
+        options?.maxHttpBufferSize ?? 0,
+        MAX_CONVERSATION_TRANSPORT_PAYLOAD_BYTES,
+      ),
+    }) as Server;
 
     if (this.isConnected) {
       server.adapter(createAdapter(this.pubClient, this.subClient));

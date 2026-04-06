@@ -98,6 +98,7 @@ TenantMiddleware (extract tenantId from JWT no-verify; skip when X-Api-Key prese
 - `POST /agent-conversations/:id/messages` 与 `POST /agent-definitions/:agentId/conversations/start` 现以 `metadata.attachments[]` 作为 canonical 多附件结构，并继续兼容 legacy `metadata.attachment`
 - 单条 user message 可同时携带文本、多个图片和多个文件；单附件上限 `1.5 MB`、单消息附件总量上限 `10 MB`、文本内联上限 `200 KB`
 - `conversation-attachment.ts` 负责统一规范化与总量校验；混合图片/文件的多附件消息会持久化为 `contentType='text'`，同时保留每个附件自己的 `kind`
+- `FastifyAdapter.bodyLimit` 与 Socket.IO `maxHttpBufferSize` 都必须高于 `MAX_CONVERSATION_TRANSPORT_PAYLOAD_BYTES`，否则 base64 图片会在进入业务校验前直接触发 `413`
 - `AgentExecutionWorker` 会为同一条消息中的每个附件分别 best-effort materialize 到 `/workspace/uploads/...`，并通过 `withConversationAttachmentSandboxPaths()` 把各自 `sandboxPath` 回填到 metadata
 - `buildConversationPromptBlocks()` 对最新用户消息只输出用户原文与附件 block，不额外注入“用户连续发送了以下消息”这类包装提示词
 
