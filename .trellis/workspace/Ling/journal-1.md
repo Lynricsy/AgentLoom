@@ -1087,3 +1087,36 @@ studio 前端大量页面无法滚轮滚动、没有滚动条。
 ### Next Steps
 
 - None - task complete
+
+
+## Session 22: 隐藏 Studio 开发者导航入口
+
+**Date**: 2026-04-06
+**Task**: 隐藏 Studio 开发者导航入口
+**Branch**: `main`
+
+### Summary
+
+隐藏 Studio 主侧边栏中的开发者入口，保留开发者收益页路由，并补充 AppSidebar 回归测试与文档事实。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `dd7f8293` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
