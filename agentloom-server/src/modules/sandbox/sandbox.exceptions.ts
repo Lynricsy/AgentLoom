@@ -13,6 +13,12 @@ export class SandboxCreationException extends DomainException {
   }
 }
 
+export class SandboxContainerNotFoundException extends SandboxCreationException {
+  constructor(containerId: string) {
+    super(`Container ${containerId} not found`);
+  }
+}
+
 export class SandboxTimeoutException extends DomainException {
   constructor(timeoutLabel: string) {
     super({

@@ -24,6 +24,7 @@ import {
 } from './sandbox.constants';
 import {
   SandboxCreationException,
+  SandboxContainerNotFoundException,
   SandboxTimeoutException,
 } from './sandbox.exceptions';
 import {
@@ -230,7 +231,30 @@ export class SandboxLifecycleWorker extends WorkerHost {
     }
 
     try {
-      await this.dockerService.startContainer(containerId);
+      let activeContainerId = containerId;
+      let recreatedMissingContainer = false;
+
+      try {
+        await this.dockerService.startContainer(containerId);
+      } catch (error) {
+        if (!(error instanceof SandboxContainerNotFoundException)) {
+          throw error;
+        }
+
+        this.logger.warn(
+          `Sandbox ${sessionId} referenced missing container ${containerId}, recreating a fresh container`,
+        );
+        const recreatedContainer = await this.dockerService.createContainer(
+          sessionId,
+          config,
+          {
+            piConfigInput: data.piConfigInput,
+            conversationId: data.agentConversationId,
+          },
+        );
+        activeContainerId = recreatedContainer.containerId;
+        recreatedMissingContainer = true;
+      }
 
       const [activatedSession] = await runInTenantTransaction(
         this.db,
@@ -239,6 +263,9 @@ export class SandboxLifecycleWorker extends WorkerHost {
           return await tenantDb
             .update(schema.sandboxSessions)
             .set({
+              ...(recreatedMissingContainer
+                ? { containerId: activeContainerId }
+                : {}),
               status: 'ready',
               startedAt: new Date(),
               stoppedAt: null,
@@ -255,19 +282,24 @@ export class SandboxLifecycleWorker extends WorkerHost {
       );
 
       if (!activatedSession) {
-        await this.dockerService.stopContainer(containerId).catch((error) => {
+        const cleanupPromise = recreatedMissingContainer
+          ? this.dockerService.removeContainer(activeContainerId)
+          : this.dockerService.stopContainer(activeContainerId);
+        await cleanupPromise.catch((error) => {
           this.logger.warn(
-            `Failed to re-stop sandbox container ${containerId} after session ${sessionId} left creating state: ${error instanceof Error ? error.message : String(error)}`,
+            `Failed to clean up sandbox container ${activeContainerId} after session ${sessionId} left creating state: ${error instanceof Error ? error.message : String(error)}`,
           );
         });
         await this.insertLog(
           sessionId,
           'system',
-          `Sandbox container ${containerId} re-stopped because session left creating state during restart`,
+          recreatedMissingContainer
+            ? `Sandbox container ${activeContainerId} recreated from missing container ${containerId} and removed because session left creating state during restart`
+            : `Sandbox container ${activeContainerId} re-stopped because session left creating state during restart`,
           tenantId,
         );
         this.logger.warn(
-          `Sandbox ${sessionId} left creating state before container ${containerId} could be restarted`,
+          `Sandbox ${sessionId} left creating state before container ${activeContainerId} could be activated`,
         );
         return;
       }
@@ -275,11 +307,13 @@ export class SandboxLifecycleWorker extends WorkerHost {
       await this.insertLog(
         sessionId,
         'system',
-        `Sandbox container ${containerId} started`,
+        recreatedMissingContainer
+          ? `Sandbox missing container ${containerId}; recreated as ${activeContainerId}`
+          : `Sandbox container ${activeContainerId} started`,
         tenantId,
       );
 
-      await this.attachContainerLogs(sessionId, containerId, tenantId);
+      await this.attachContainerLogs(sessionId, activeContainerId, tenantId);
       await this.scheduleTimeoutCheck(sessionId, tenantId, config, binding);
       await this.scheduleConversationIdleEndCheck(
         sessionId,
@@ -291,7 +325,9 @@ export class SandboxLifecycleWorker extends WorkerHost {
       );
 
       this.logger.log(
-        `Sandbox ${sessionId} restarted with container ${containerId}`,
+        recreatedMissingContainer
+          ? `Sandbox ${sessionId} recreated with container ${activeContainerId} after missing container ${containerId}`
+          : `Sandbox ${sessionId} restarted with container ${activeContainerId}`,
       );
     } catch (error) {
       await runInTenantTransaction(this.db, tenantId, async (tenantDb) => {

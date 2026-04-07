@@ -23,6 +23,7 @@ import {
 } from './pi-config-generator.service';
 import {
   SandboxCreationException,
+  SandboxContainerNotFoundException,
   SandboxDestroyException,
 } from './sandbox.exceptions';
 import type {
@@ -540,6 +541,10 @@ export class DockerService implements SandboxRuntimeDriver {
         this.logger.warn(`Container ${containerId} already running`);
         return;
       }
+      if (this.isContainerNotFoundError(error)) {
+        this.logger.warn(`Container ${containerId} not found during start`);
+        throw new SandboxContainerNotFoundException(containerId);
+      }
       this.logger.error(
         `Failed to start container ${containerId}`,
         error instanceof Error ? error.stack : error,
@@ -896,10 +901,14 @@ export class DockerService implements SandboxRuntimeDriver {
   }
 
   private isContainerNotFoundError(error: unknown): boolean {
+    if (!(error instanceof Error)) {
+      return false;
+    }
+
+    const message = error.message.toLowerCase();
     return (
-      error instanceof Error &&
-      (error.message.includes('no such container') ||
-        error.message.includes('is not found'))
+      message.includes('no such container') ||
+      message.includes('is not found')
     );
   }
 

@@ -100,6 +100,7 @@ vi.mock('@nestjs/common', async (importOriginal) => {
 import { SandboxLifecycleWorker } from '../sandbox-lifecycle.worker';
 import {
   SandboxCreationException,
+  SandboxContainerNotFoundException,
   SandboxTimeoutException,
 } from '../sandbox.exceptions';
 
@@ -611,6 +612,46 @@ describe('SandboxLifecycleWorker', () => {
         delayMs: 4 * 60 * 60 * 1000,
       });
       expect(mockInsert).toHaveBeenCalled();
+    });
+
+    it('旧 containerId 缺失时应自动重建容器并更新 session.containerId', async () => {
+      mockDockerService.startContainer.mockRejectedValueOnce(
+        new SandboxContainerNotFoundException('c-missing'),
+      );
+      mockDockerService.createContainer.mockResolvedValueOnce({
+        containerId: 'c-recreated',
+      });
+
+      await worker.process(
+        createJob({
+          jobType: 'start',
+          sessionId: 's1',
+          agentConversationId: 'conv-1',
+          tenantId: 't1',
+          containerId: 'c-missing',
+          config: DEFAULT_CONFIG,
+        }),
+      );
+
+      expect(mockDockerService.startContainer).toHaveBeenCalledWith('c-missing');
+      expect(mockDockerService.createContainer).toHaveBeenCalledWith(
+        's1',
+        DEFAULT_CONFIG,
+        { piConfigInput: undefined, conversationId: 'conv-1' },
+      );
+      expect(mockSet).toHaveBeenCalledWith(
+        expect.objectContaining({
+          containerId: 'c-recreated',
+          status: 'ready',
+          stoppedAt: null,
+          workspacePath: '/workspace/',
+        }),
+      );
+      expect(mockDockerService.attachLogs).toHaveBeenCalledWith(
+        'c-recreated',
+        expect.any(Function),
+      );
+      expect(mockLifecycleProducer.addConversationIdleEndCheckTask).toHaveBeenCalled();
     });
 
     it('缺少 containerId 时应抛出异常', async () => {

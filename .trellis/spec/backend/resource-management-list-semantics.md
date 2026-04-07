@@ -148,6 +148,10 @@
 - persistent sandbox 的显式 `stop` 语义与 timeout/expiry 一致：
   - `stopSandbox()` 只停止容器并把状态置为 `stopped`
   - `deleteSandbox()` 才是 remove 容器并删除 session/log 的唯一正式入口
+- 若 persistent sandbox 处于 `stopped` 且数据库仍保留 `containerId`，但 lifecycle `start` 实际命中 `No such container`：
+  - worker 必须回退为“按同一 `sessionId` 重建新容器”，而不是把整个 sandbox 直接打成 `failed`
+  - 重建成功后必须回写新的 `containerId`，并继续走 `ready + attachLogs + timeout/idle-end 调度` 正常收口
+  - 这样外部误删旧容器时，persistent sandbox 仍能依赖既有 workspace volume 自愈重启
 
 ### 3.5 Sandbox stats semantics
 
@@ -221,6 +225,7 @@
 | persistent resource sandbox timeout | 资源状态应落为 `stopped`，而不是 `failed` | `sandbox-lifecycle.worker.spec.ts` |
 | persistent sandbox 手动 stop | 只应调用 `stopContainer`，不能调用 `removeContainer` | `sandbox-lifecycle.worker.spec.ts`, `sandbox.service.spec.ts` |
 | persistent sandbox 从 `stopped` 重启 | 应优先复用既有 `containerId` 走 start，而不是重新 create 新容器 | `sandbox.service.spec.ts`, `sandbox-lifecycle.worker.spec.ts` |
+| persistent sandbox 从 `stopped` 重启时旧 `containerId` 已不存在 | worker 应自动重建同 session 容器、回写新 `containerId`，而不是把 session 标成 `failed` | `sandbox-lifecycle.worker.spec.ts`, `docker.service.spec.ts` |
 | running sandbox stats 成功拿到 workspace usage | 返回 `diskUsage(bytes)`，service 补齐 `diskTotal(bytes)` | `docker.service.spec.ts`, `sandbox.service.spec.ts` |
 | workspace usage 统计失败 | 仍返回 CPU/内存，且不伪造 `diskUsage=0` | `docker.service.spec.ts` |
 | conversation sandbox stats 查询 | `GET /agent-conversations/:id/sandbox/stats` 返回与资源页一致的 `ContainerStats` | `agent-conversation.controller.spec.ts` |

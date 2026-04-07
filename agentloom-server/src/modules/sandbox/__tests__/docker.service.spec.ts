@@ -9,6 +9,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 
 import {
   SandboxCreationException,
+  SandboxContainerNotFoundException,
   SandboxDestroyException,
 } from '../sandbox.exceptions';
 import type { DecryptionBoundaryService } from '../../api-key/decryption-boundary.service';
@@ -324,6 +325,14 @@ describe('DockerService', () => {
       await expect(
         service.startContainer('container-abc123'),
       ).resolves.toBeUndefined();
+    });
+
+    it('容器不存在时应抛出 SandboxContainerNotFoundException', async () => {
+      mockContainer.start.mockRejectedValueOnce(new Error('No such container'));
+
+      await expect(service.startContainer('container-abc123')).rejects.toThrow(
+        SandboxContainerNotFoundException,
+      );
     });
 
     it('其他错误应抛出 SandboxCreationException', async () => {
