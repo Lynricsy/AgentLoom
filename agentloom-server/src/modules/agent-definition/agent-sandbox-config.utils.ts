@@ -41,8 +41,8 @@ function resolveNodeData(
       : {};
 
   return {
-    ...config,
     ...data,
+    ...config,
   };
 }
 

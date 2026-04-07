@@ -2130,6 +2130,56 @@ describe('AgentDefinitionService', () => {
       expect(config.modelConfig!.modelId).toBe('inner-model');
     });
 
+    it('sandbox 节点应优先使用 data.config 中的持久化生命周期配置', () => {
+      const nodes = [
+        {
+          id: 'main',
+          type: 'agent',
+          data: {
+            nodeType: 'agent-main',
+          },
+        },
+        {
+          id: 'sandbox-1',
+          type: 'tool',
+          data: {
+            nodeType: 'sandbox',
+            lifecycleMode: 'session',
+            timeoutSeconds: 600,
+            memoryLimitMb: 1024,
+            config: {
+              cpu: 1,
+              memory: 512,
+              disk: 2,
+              timeout: 2,
+              lifecycleMode: 'persistent',
+              persistentSandboxId: 'persistent-sandbox-1',
+            },
+          },
+        },
+      ];
+      const edges = [
+        {
+          source: 'sandbox-1',
+          target: 'main',
+          targetHandle: 'sandbox-in',
+        },
+      ];
+
+      const config = service.buildRuntimeConfigFromNodes(nodes, edges);
+
+      expect(config.sandboxConfig).toEqual({
+        cpu: 1,
+        memory: 512,
+        disk: 2,
+        timeout: 1,
+        timeoutSeconds: 600,
+        conversationIdleAutoEndMinutes: 10,
+        lifecycleMode: 'persistent',
+        persistentSandboxId: 'persistent-sandbox-1',
+      });
+    });
+
     it('data.nodeType 优先于 node.type 作为节点类型', () => {
       const nodes = [
         {

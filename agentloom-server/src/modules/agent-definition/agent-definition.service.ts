@@ -1918,8 +1918,8 @@ export class AgentDefinitionService {
         : {};
 
     return {
-      ...config,
       ...data,
+      ...config,
     };
   }
 

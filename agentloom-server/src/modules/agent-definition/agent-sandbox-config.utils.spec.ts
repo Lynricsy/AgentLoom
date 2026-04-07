@@ -125,4 +125,58 @@ describe('deriveAgentSandboxConfigFromCanvas', () => {
 
     expect(sandboxConfig).toBeNull();
   });
+
+  it('sandbox 节点存在过期顶层镜像字段时应优先采用 data.config 的生命周期配置', () => {
+    const sandboxConfig = deriveAgentSandboxConfigFromCanvas(
+      [
+        {
+          id: 'agent-main',
+          type: 'agent',
+          data: {
+            nodeType: 'agent-main',
+          },
+          position: { x: 0, y: 0 },
+        },
+        {
+          id: 'sandbox-1',
+          type: 'tool',
+          data: {
+            nodeType: 'sandbox',
+            lifecycleMode: 'session',
+            timeoutSeconds: 600,
+            memoryLimitMb: 1024,
+            config: {
+              cpu: 1,
+              memory: 512,
+              disk: 2,
+              timeout: 2,
+              lifecycleMode: 'persistent',
+              persistentSandboxId: 'persistent-sandbox-1',
+            },
+          },
+          position: { x: 100, y: 0 },
+        },
+      ] as never,
+      [
+        {
+          id: 'edge-sandbox-main',
+          source: 'sandbox-1',
+          target: 'agent-main',
+          sourceHandle: 'sandbox-out',
+          targetHandle: 'sandbox-in',
+        },
+      ] as never,
+    );
+
+    expect(sandboxConfig).toEqual({
+      cpu: 1,
+      memory: 512,
+      disk: 2,
+      timeout: 1,
+      timeoutSeconds: 600,
+      conversationIdleAutoEndMinutes: 10,
+      lifecycleMode: 'persistent',
+      persistentSandboxId: 'persistent-sandbox-1',
+    });
+  });
 });
