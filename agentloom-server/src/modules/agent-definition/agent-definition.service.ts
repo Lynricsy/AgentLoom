@@ -432,8 +432,8 @@ export class AgentDefinitionService {
       }
 
       const migratedCanvas = migrateAgentCanvasGraph({
-        nodes: dto.canvasNodes,
-        edges: dto.canvasEdges,
+        nodes: dto.canvasNodes as unknown as schema.ReactFlowNode[],
+        edges: dto.canvasEdges as unknown as schema.ReactFlowEdge[],
       });
 
       const setClause: Record<string, any> = {
@@ -522,8 +522,8 @@ export class AgentDefinitionService {
       }
 
       const migratedCanvas = migrateAgentCanvasGraph({
-        nodes: options.canvasNodes,
-        edges: options.canvasEdges,
+        nodes: options.canvasNodes as unknown as schema.ReactFlowNode[],
+        edges: options.canvasEdges as unknown as schema.ReactFlowEdge[],
       });
 
       await this.assertRuntimeModeConstraints(

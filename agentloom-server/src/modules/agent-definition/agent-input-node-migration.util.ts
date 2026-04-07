@@ -397,7 +397,7 @@ export function migrateAgentCanvasGraph(
   const originalSignature = JSON.stringify(input);
   const nodes = cloneJson(input.nodes ?? []);
   const rawEdges = cloneJson(input.edges ?? []);
-  const nextNodes = nodes.map((node) => {
+  const nextNodes: ReactFlowNode[] = nodes.map((node): ReactFlowNode => {
     const data = toRecord(node.data);
     const canonicalNodeType = getNodeType(node);
 

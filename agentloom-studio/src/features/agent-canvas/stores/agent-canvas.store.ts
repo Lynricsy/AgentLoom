@@ -380,7 +380,7 @@ function normalizePersistedNode(node: AgentCanvasNode): AgentCanvasNode {
     type: config.category,
     data: {
       ...node.data,
-      nodeType,
+      nodeType: nodeType as AgentCanvasNode["data"]["nodeType"],
       label: node.data.label || config.label,
       category: config.category,
       description: node.data.description || config.description,
