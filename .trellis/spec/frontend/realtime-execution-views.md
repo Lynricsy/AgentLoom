@@ -156,6 +156,9 @@ const segments = checkpointData.segments?.length
 - 如果 Agent detail 同时存在顶层 `workspaceSnapshotId` 与 `sandboxConfig.restoreWorkspaceId`，Studio / Flutter 的 preview preload 必须优先使用 `sandboxConfig.restoreWorkspaceId`。
   - 原因：live sandbox 真正 restore 的是 `restoreWorkspaceId`；若 preview 继续读取顶层 `workspaceSnapshotId`，用户会先看到 A 工作区，再在 live 切换后突然变成 B 工作区，形成误导性的“假预览”。
 - 只要 conversation workspace tree 已经可判定为 authoritative（例如返回非空树、会话已进入 running、已有历史消息、已有终端输出或文件变更），前端就必须切换到 `live` 来源。
+- 前端不得额外隐藏普通 dot 路径，也不能把缺失父目录的子节点直接当成根节点渲染。
+  - `.claude`、`.env`、`.github` 这类普通隐藏目录/文件应按 API 返回的真实层级展示���
+  - 当前若后端继续排除 `.git` / `node_modules`，前端按返回结果照实渲染即可，不自行再做第二套过滤。
 - Flutter 在 `snapshot_preview` 阶段点击文件时，不得调用 conversation file preview API。
   - 这时只能保留选中态，并在 preview 区域继续显示“等待实时工作区就绪”的提示。
 - completed conversation 的 workspace fallback 只保留目录树，不保留文件预览。
@@ -175,6 +178,7 @@ const segments = checkpointData.segments?.length
 | 绑定了 `workspaceSnapshotId` 的新会话冷开                                       | 先显示持久化 workspace 目录预览                              | `agent-conversation.store.test.ts` / `agent_conversation_provider_test.dart` |
 | Agent detail 同时带 `workspaceSnapshotId` 与 `sandboxConfig.restoreWorkspaceId` | preview preload 必须优先展示 `restoreWorkspaceId` 对应目录树 | Studio 单测 / `agent_conversation_provider_test.dart`                        |
 | snapshot 与 live 响应乱序返回                                                   | UI 最终停留在 live，不允许被 snapshot 回盖                   | `agent-conversation.store.test.ts` / `agent_conversation_provider_test.dart` |
+| workspace tree 含普通隐藏目录/文件                                               | UI 按真实层级展示，不额外隐藏或错误抬升子节点               | Studio / Flutter 手动 QA                                                     |
 | tree API 成功但返回空数组                                                       | Flutter 显示“没有文件树”，而不是“工作区暂不可见”             | `conversation_context_panel_test.dart`                                       |
 | Flutter 点击 completed conversation 文件                                        | 切到 `workspaceTreeOnly` 模式并显示 tree-only 提示           | `agent_conversation_provider_test.dart`                                      |
 | Flutter 点击 snapshot preview 文件                                              | 不请求 live 文件预览接口，只保留选中态                       | `agent_conversation_provider_test.dart`                                      |

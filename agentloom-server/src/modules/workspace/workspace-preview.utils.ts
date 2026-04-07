@@ -122,6 +122,36 @@ export function normalizeWorkspacePreviewPath(filePath: string): string {
   return normalized;
 }
 
+/**
+ * 统一 workspace 目录树的路径可见性语义。
+ * 普通隐藏目录/文件（如 `.claude`、`.env`）应正常显示，
+ * 但仍跳过 `.git` 与 `node_modules` 这类基础设施目录。
+ */
+export function normalizeWorkspaceTreePath(rawPath: string): string | null {
+  let normalized = rawPath.replace(/\\/g, '/').replace(/^\/+/, '');
+  while (normalized.startsWith('./')) {
+    normalized = normalized.slice(2);
+  }
+  normalized = normalized.replace(/\/+/g, '/').replace(/\/+$/, '');
+
+  if (!normalized || normalized === '.') {
+    return null;
+  }
+
+  const segments = normalized.split('/').filter(Boolean);
+  if (segments.length === 0) {
+    return null;
+  }
+
+  if (
+    segments.some((segment) => segment === 'node_modules' || segment === '.git')
+  ) {
+    return null;
+  }
+
+  return segments.join('/');
+}
+
 export function isBinaryWorkspaceFile(buffer: Buffer): boolean {
   return buffer.includes(0);
 }
@@ -610,33 +640,7 @@ function stripWorkspaceRootIfNeeded(
 }
 
 function normalizeArchivePath(rawPath: string): string | null {
-  let normalized = rawPath.replace(/\\/g, '/').replace(/^\/+/, '');
-  while (normalized.startsWith('./')) {
-    normalized = normalized.slice(2);
-  }
-  normalized = normalized.replace(/\/+/g, '/').replace(/\/+$/, '');
-
-  if (!normalized || normalized === '.') {
-    return null;
-  }
-
-  const segments = normalized.split('/').filter(Boolean);
-  if (segments.length === 0) {
-    return null;
-  }
-
-  if (
-    segments.some(
-      (segment) =>
-        segment === 'node_modules' ||
-        segment === '.git' ||
-        segment.startsWith('.'),
-    )
-  ) {
-    return null;
-  }
-
-  return segments.join('/');
+  return normalizeWorkspaceTreePath(rawPath);
 }
 
 function readTarString(buffer: Buffer): string {

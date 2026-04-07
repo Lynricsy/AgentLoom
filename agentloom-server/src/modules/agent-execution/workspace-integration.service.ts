@@ -23,6 +23,7 @@ import { SandboxService } from '../sandbox/sandbox.service';
 import { WorkspaceService } from '../workspace/workspace.service';
 import {
   MAX_WORKSPACE_TEXT_PREVIEW_BYTES,
+  normalizeWorkspaceTreePath,
   type WorkspaceFileTreeNode,
 } from '../workspace/workspace-preview.utils';
 import type { AgentSession } from '../agent/types/agent-session.types';
@@ -897,9 +898,6 @@ export class WorkspaceIntegrationService {
       '-not',
       '-path',
       '*/.git/*',
-      '-not',
-      '-name',
-      '.*',
       '-printf',
       '%y|%s|%P\\n',
     ]);
@@ -1170,40 +1168,71 @@ export class WorkspaceIntegrationService {
     const lines = findOutput.trim().split('\n').filter(Boolean);
     const root: FileTreeNode[] = [];
     const dirMap = new Map<string, FileTreeNode>();
+    const fileSet = new Set<string>();
+
+    const ensureDirectory = (dirPath: string): FileTreeNode => {
+      const existing = dirMap.get(dirPath);
+      if (existing) {
+        return existing;
+      }
+
+      const pathSegments = dirPath.split('/');
+      const name = pathSegments[pathSegments.length - 1] ?? dirPath;
+      const parentPath = pathSegments.slice(0, -1).join('/');
+      const node: FileTreeNode = {
+        name,
+        type: 'directory',
+        path: dirPath,
+        children: [],
+      };
+
+      dirMap.set(dirPath, node);
+
+      if (parentPath) {
+        ensureDirectory(parentPath).children!.push(node);
+      } else {
+        root.push(node);
+      }
+
+      return node;
+    };
 
     for (const line of lines) {
       const parts = line.split('|');
       if (parts.length < 3) continue;
 
-      const [type, sizeStr, relativePath] = parts;
+      const [type, sizeStr, rawRelativePath] = parts;
+      const relativePath = normalizeWorkspaceTreePath(rawRelativePath);
 
-      if (!relativePath) continue;
+      if (!relativePath) {
+        continue;
+      }
 
-      const isDir = type === 'd';
+      if (type === 'd') {
+        ensureDirectory(relativePath);
+        continue;
+      }
+
+      if (fileSet.has(relativePath)) {
+        continue;
+      }
+
       const pathSegments = relativePath.split('/');
-      const name = pathSegments[pathSegments.length - 1];
+      const name = pathSegments[pathSegments.length - 1] ?? relativePath;
       const parentPath = pathSegments.slice(0, -1).join('/');
-
       const node: FileTreeNode = {
         name,
-        type: isDir ? 'directory' : 'file',
+        type: 'file',
         path: relativePath,
-        ...(isDir ? { children: [] } : { size: parseInt(sizeStr, 10) }),
+        size: parseInt(sizeStr, 10),
       };
 
-      if (isDir) {
-        dirMap.set(relativePath, node);
-      }
+      fileSet.add(relativePath);
 
       if (!parentPath) {
         root.push(node);
       } else {
-        const parent = dirMap.get(parentPath);
-        if (parent?.children) {
-          parent.children.push(node);
-        } else {
-          root.push(node);
-        }
+        ensureDirectory(parentPath).children!.push(node);
       }
     }
 
@@ -1287,7 +1316,11 @@ export class WorkspaceIntegrationService {
       '%P\\n',
     ]);
 
-    const changedFiles = output.trim().split('\n').filter(Boolean);
+    const changedFiles = output
+      .trim()
+      .split('\n')
+      .map((path) => normalizeWorkspaceTreePath(path))
+      .filter((path): path is string => Boolean(path));
 
     if (changedFiles.length > 0) {
       await this.execInContainer(containerId, 'touch', [MARKER_FILE]);

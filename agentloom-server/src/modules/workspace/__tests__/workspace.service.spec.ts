@@ -951,6 +951,52 @@ describe('WorkspaceService', () => {
       ]);
     });
 
+    it('getFileTree 应保留普通隐藏目录与隐藏文件', async () => {
+      const snapshot = buildSnapshot({ sizeBytes: 2048 });
+      const archive = createTarArchive([
+        { path: 'workspace/.claude', type: 'directory' },
+        {
+          path: 'workspace/.claude/settings.json',
+          type: 'file',
+          content: '{}',
+        },
+        {
+          path: 'workspace/.env',
+          type: 'file',
+          content: 'A=1',
+        },
+      ]);
+
+      db.select.mockReturnValueOnce(createSelectChainWithLimit([snapshot]));
+      mockStorageService.download.mockResolvedValueOnce(
+        createReadableStreamFromBuffer(archive),
+      );
+
+      const tree = await service.getFileTree(TEST_TENANT_ID, TEST_WORKSPACE_ID);
+
+      expect(tree).toEqual([
+        {
+          name: '.claude',
+          type: 'directory',
+          path: '.claude',
+          children: [
+            {
+              name: 'settings.json',
+              type: 'file',
+              path: '.claude/settings.json',
+              size: 2,
+            },
+          ],
+        },
+        {
+          name: '.env',
+          type: 'file',
+          path: '.env',
+          size: 3,
+        },
+      ]);
+    });
+
     it('getFileTree 应当支持超过旧整包预览上限的大归档', async () => {
       const largeSize = 60 * 1024 * 1024;
       const snapshot = buildSnapshot({ sizeBytes: largeSize + 4096 });

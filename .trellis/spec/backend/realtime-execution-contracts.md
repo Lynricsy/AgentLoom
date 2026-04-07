@@ -83,6 +83,10 @@
 - workflow step 的工作区读取必须走 step 作用域 API，而不是 conversation 作用域 API：
   - `GET /executions/:executionId/steps/:stepId/workspace/tree`
   - `GET /executions/:executionId/steps/:stepId/workspace/files/*`
+- live `workspace/tree`、conversation fallback tree 与持久化 workspace preview tree 必须对普通隐藏目录/文件保持一致的可见性语义。
+  - `.claude`、`.env`、`.github` 这类普通 dot 路径要按真实层级保留，不能因为父目录缺失把子节点抬到根层。
+  - `workspace.file_change` 事件也必须沿用同一套路径可见性语义，避免前端实时树与完整树口径漂移。
+  - 当前允许继续排除 `.git` 与 `node_modules` 这类��础设施目录。
 - `archiveExecutionStepWorkspace()` 必须保证 `checkpointData.workspaceSnapshotId` 始终指向“这一步结束后仍可回放”的最新 workspace：
   - sandbox `config.restoreWorkspaceId` 存在：同步回原 workspace 并返回同一个 `restoreWorkspaceId`
   - sandbox 未绑定现有 workspace：才允许新建 `execution_archive`
@@ -99,6 +103,7 @@
 | `segments` 缺失，但 `partialContent + toolCalls` 存在                    | 允许 fallback 恢复基础内容，但会丢交错顺序；这是临时兼容，不是目标形态                   | `workflowAgentViewer.test.ts` / `workflow_agent_runtime_test.dart`                                   |
 | workflow-agent 冷开时 step 仍在运行                                      | snapshot 后必须能补到 active step buffered live events                                   | `execution.gateway.spec.ts`                                                                          |
 | workflow step 绑定已有 workspace 完成/失败                               | `checkpointData.workspaceSnapshotId` 继续指向原 `restoreWorkspaceId`，不生成重复 archive | `workspace-integration.service.spec.ts` / `agent-task.worker.spec.ts`                                |
+| workspace 含普通隐藏目录/文件                                            | tree / preview / file_change 都保留真实层级，不得把子节点抬到根层                        | `workspace-integration.service.spec.ts` / `workspace.service.spec.ts`                                |
 | `file_change` 事件只带 `conversationId`                                  | 不得推送到 `/execution` namespace                                                        | `event-bridge.service.spec.ts`                                                                       |
 | `tool_call` segment 指向不存在的 tool call                               | `normalizeConversationMessageSegments()` / viewer normalization 必须丢弃该 segment       | `workflowAgentViewer.test.ts`                                                                        |
 | step workspace 文件路径为空或越权                                        | API 返回明确失败，前端不应继续复用旧内容                                                 | `execution.controller.spec.ts` / `workspace-integration.service.spec.ts`                             |
@@ -124,6 +129,8 @@
   - 断言 step workspace tree/file API 返回 step 作用域数据。
 - `src/modules/agent-execution/__tests__/workspace-integration.service.spec.ts`
   - 断言 step workspace 目录树 / 文件内容 / watcher 绑定正确。
+  - 断言普通隐藏目录按真实层级保留，且父目录缺失时不会把子节点抬到根层。
+  - 断言隐藏目录内的 `workspace.file_change` 仍会透出。
   - 断言绑定已有 workspace 时会回写原 snapshot 并返回同一 ID。
 - `src/modules/execution/__tests__/event-bridge.service.spec.ts`
   - 断言 `workspace.file_change` 正确桥接到 workflow execution。
@@ -422,6 +429,9 @@ this.eventEmitter.emit('agent-conversation.message-sent', {
 ### 3. Contracts
 
 - standalone conversation 结束时，服务端必须尝试从 live container 读取当前 `/workspace` 目录树，并把快照写入 `agent_conversations.metadata.workspaceTreeSnapshot`。
+- 这份 conversation tree snapshot 与 live `GET /agent-conversations/:id/workspace/tree` 必须保持同一套目录可见性语��。
+  - 普通隐藏目录/文件要保留在树里，且层级必须与真实路径一致。
+  - 当前允许继续排除 `.git` 与 `node_modules`。
 - `agent-conversation.ended` 必须在 conversation 状态变更事务提交后再发出；不能在事务体内直接 fire-and-forget，否则异步 listener 里再注册 after-commit hook 时，会把 destroy job 丢掉。
 - `agent-conversation.ended` 事件链路必须在目录树快照尝试完成后，继续释放 conversation 关联的 live sandbox。
   - 顺序要求：先 best-effort snapshot，再 `endConversationSandbox()`。

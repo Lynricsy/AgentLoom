@@ -760,10 +760,7 @@ describe('WorkspaceIntegrationService', () => {
       );
 
       expect(result).toBe('/workspace/uploads/design.png');
-      expect(resolvePathSpy).toHaveBeenCalledWith(
-        CONTAINER_ID,
-        'design.png',
-      );
+      expect(resolvePathSpy).toHaveBeenCalledWith(CONTAINER_ID, 'design.png');
       expect(createArchiveSpy).toHaveBeenCalledWith(
         {
           kind: 'image',
@@ -849,6 +846,26 @@ describe('WorkspaceIntegrationService', () => {
       expect(mockEventEmitter.emit).not.toHaveBeenCalledWith(
         'workspace.file_change',
         expect.anything(),
+      );
+    });
+
+    it('隐藏目录中的文件变更应继续透出', async () => {
+      setupExecWithOutput('');
+
+      service.startFileWatcher(CONVERSATION_ID, TENANT_ID, CONTAINER_ID);
+
+      await vi.advanceTimersByTimeAsync(0);
+
+      setupExecWithOutput('.claude/settings.json\nsrc/main.ts');
+      await vi.advanceTimersByTimeAsync(3000);
+
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+        'workspace.file_change',
+        expect.objectContaining({
+          conversationId: CONVERSATION_ID,
+          tenantId: TENANT_ID,
+          changedFiles: ['.claude/settings.json', 'src/main.ts'],
+        }),
       );
     });
   });
@@ -1296,6 +1313,87 @@ describe('WorkspaceIntegrationService', () => {
       const result = await service.getFileTree(CONVERSATION_ID, TENANT_ID);
       expect(result).toHaveLength(1);
       expect(result[0].name).toBe('valid.txt');
+    });
+
+    it('隐藏目录应按原层级保留', async () => {
+      const findOutput = [
+        'd|0|.claude',
+        'd|0|.claude/agents',
+        'f|100|.claude/agents/config.json',
+        'f|200|src/main.ts',
+      ].join('\n');
+      setupExecWithOutput(findOutput);
+
+      const result = await service.getFileTree(CONVERSATION_ID, TENANT_ID);
+
+      expect(result).toEqual([
+        {
+          name: '.claude',
+          type: 'directory',
+          path: '.claude',
+          children: [
+            {
+              name: 'agents',
+              type: 'directory',
+              path: '.claude/agents',
+              children: [
+                {
+                  name: 'config.json',
+                  type: 'file',
+                  path: '.claude/agents/config.json',
+                  size: 100,
+                },
+              ],
+            },
+          ],
+        },
+        {
+          name: 'src',
+          type: 'directory',
+          path: 'src',
+          children: [
+            {
+              name: 'main.ts',
+              type: 'file',
+              path: 'src/main.ts',
+              size: 200,
+            },
+          ],
+        },
+      ]);
+    });
+
+    it('父目录行缺失时也不应把子节点抬到根层', async () => {
+      const findOutput = [
+        'd|0|.claude/agents',
+        'f|100|.claude/agents/config.json',
+      ].join('\n');
+      setupExecWithOutput(findOutput);
+
+      const result = await service.getFileTree(CONVERSATION_ID, TENANT_ID);
+
+      expect(result).toEqual([
+        {
+          name: '.claude',
+          type: 'directory',
+          path: '.claude',
+          children: [
+            {
+              name: 'agents',
+              type: 'directory',
+              path: '.claude/agents',
+              children: [
+                {
+                  name: 'config.json',
+                  type: 'file',
+                  path: '.claude/agents/config.json',
+                  size: 100,
+                },
+              ],
+            },
+          ],
+        },
+      ]);
     });
   });
 
