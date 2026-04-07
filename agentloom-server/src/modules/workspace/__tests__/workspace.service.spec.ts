@@ -10,6 +10,10 @@ import { StorageService } from '../../../infrastructure/storage/storage.service'
 import type { WorkspaceSnapshot } from '../../../database/schema';
 import { SANDBOX_RUNTIME_DRIVER } from '../../sandbox/sandbox-runtime-driver.port';
 import { parseWorkspaceArchiveEntries } from '../workspace-preview.utils';
+import {
+  buildLegacyEmptyWorkspaceStorageKey,
+  buildWorkspaceStorageKey,
+} from '../workspace.constants';
 
 // ─── Drizzle chain builders ─────────────────────────────────────────────────
 
@@ -493,6 +497,37 @@ describe('WorkspaceService', () => {
       expect(result.sizeBytes).toBe(TEST_ARCHIVE_SIZE);
     });
 
+    it('legacy shared-empty workspace 回写时应改写到独立 storageKey', async () => {
+      const snapshot = buildSnapshot({
+        status: 'ready',
+        storageKey: buildLegacyEmptyWorkspaceStorageKey(TEST_TENANT_ID),
+      });
+      const updatedSnapshot = buildSnapshot({
+        status: 'ready',
+        sizeBytes: TEST_ARCHIVE_SIZE,
+        storageKey: buildWorkspaceStorageKey(TEST_TENANT_ID, TEST_WORKSPACE_ID),
+      });
+
+      db.select.mockReturnValueOnce(createSelectChainWithLimit([snapshot]));
+      db.update.mockReturnValueOnce(
+        createUpdateChainReturning([updatedSnapshot]),
+      );
+
+      const result = await service.syncFromSandboxContainer(
+        TEST_WORKSPACE_ID,
+        TEST_CONTAINER_ID,
+        TEST_TENANT_ID,
+      );
+
+      expect(mockStorageService.upload).toHaveBeenCalledWith(
+        updatedSnapshot.storageKey,
+        expect.any(Object),
+        TEST_ARCHIVE_SIZE,
+        'application/x-tar',
+      );
+      expect(result.storageKey).toBe(updatedSnapshot.storageKey);
+    });
+
     it('目标工作区不存在时应当抛出 NotFoundException', async () => {
       db.select.mockReturnValueOnce(createSelectChainWithLimit([]));
 
@@ -654,13 +689,26 @@ describe('WorkspaceService', () => {
   // ─── createEmpty ────────────────────────────────────────────────────────
 
   describe('createEmpty', () => {
-    it('应当创建空的工作区快照记录', async () => {
+    it('应当创建空的工作区快照记录并分配独立 storageKey', async () => {
+      const insertedSnapshot = buildSnapshot({
+        sizeBytes: 0,
+        status: 'ready',
+        storageKey: 'pending',
+      });
+      const canonicalStorageKey = buildWorkspaceStorageKey(
+        TEST_TENANT_ID,
+        TEST_WORKSPACE_ID,
+      );
       const emptySnapshot = buildSnapshot({
         sizeBytes: 0,
         status: 'ready',
+        storageKey: canonicalStorageKey,
       });
       db.insert.mockReturnValueOnce(
-        createInsertChainReturning([emptySnapshot]),
+        createInsertChainReturning([insertedSnapshot]),
+      );
+      db.update.mockReturnValueOnce(
+        createUpdateChainReturning([emptySnapshot]),
       );
 
       const result = await service.createEmpty(
@@ -673,7 +721,9 @@ describe('WorkspaceService', () => {
 
       expect(result.status).toBe('ready');
       expect(result.sizeBytes).toBe(0);
+      expect(result.storageKey).toBe(canonicalStorageKey);
       expect(db.insert).toHaveBeenCalledOnce();
+      expect(db.update).toHaveBeenCalledOnce();
     });
   });
 
@@ -690,6 +740,19 @@ describe('WorkspaceService', () => {
       expect(mockStorageService.delete).toHaveBeenCalledWith(
         snapshot.storageKey,
       );
+      expect(db.update).toHaveBeenCalled();
+    });
+
+    it('legacy shared-empty workspace 删除时不应删除共享对象', async () => {
+      const snapshot = buildSnapshot({
+        storageKey: buildLegacyEmptyWorkspaceStorageKey(TEST_TENANT_ID),
+      });
+      db.select.mockReturnValueOnce(createSelectChainWithLimit([snapshot]));
+      db.update.mockReturnValueOnce(createUpdateChainNoReturning());
+
+      await service.delete(TEST_TENANT_ID, TEST_WORKSPACE_ID);
+
+      expect(mockStorageService.delete).not.toHaveBeenCalled();
       expect(db.update).toHaveBeenCalled();
     });
 
@@ -933,6 +996,60 @@ describe('WorkspaceService', () => {
           ],
         },
       ]);
+    });
+
+    it('getFileTree 读取 legacy shared-empty workspace 时应先迁移到独立 storageKey', async () => {
+      const sharedSnapshot = buildSnapshot({
+        sizeBytes: 1024,
+        storageKey: buildLegacyEmptyWorkspaceStorageKey(TEST_TENANT_ID),
+      });
+      const rehomedSnapshot = buildSnapshot({
+        sizeBytes: 1024,
+        storageKey: buildWorkspaceStorageKey(TEST_TENANT_ID, TEST_WORKSPACE_ID),
+      });
+      const archive = createTarArchive([
+        { path: 'workspace/docs', type: 'directory' },
+        {
+          path: 'workspace/docs/readme.md',
+          type: 'file',
+          content: '# hello',
+        },
+      ]);
+
+      db.select.mockReturnValueOnce(
+        createSelectChainWithLimit([sharedSnapshot]),
+      );
+      db.update.mockReturnValueOnce(
+        createUpdateChainReturning([rehomedSnapshot]),
+      );
+      mockStorageService.download
+        .mockResolvedValueOnce(createReadableStreamFromBuffer(archive))
+        .mockResolvedValueOnce(createReadableStreamFromBuffer(archive));
+
+      await expect(
+        service.getFileTree(TEST_TENANT_ID, TEST_WORKSPACE_ID),
+      ).resolves.toEqual([
+        {
+          name: 'docs',
+          type: 'directory',
+          path: 'docs',
+          children: [
+            {
+              name: 'readme.md',
+              type: 'file',
+              path: 'docs/readme.md',
+              size: 7,
+            },
+          ],
+        },
+      ]);
+
+      expect(mockStorageService.upload).toHaveBeenCalledWith(
+        rehomedSnapshot.storageKey,
+        expect.any(Object),
+        archive.length,
+        'application/x-tar',
+      );
     });
 
     it('getFilePreview 应当返回文本文件预览', async () => {

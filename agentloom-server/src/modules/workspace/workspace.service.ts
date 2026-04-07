@@ -29,7 +29,11 @@ import {
   SANDBOX_RUNTIME_DRIVER,
   type SandboxRuntimeDriver,
 } from '../sandbox/sandbox-runtime-driver.port';
-import { buildWorkspaceStorageKey } from './workspace.constants';
+import {
+  buildWorkspaceStorageKey,
+  isLegacyEmptyWorkspaceStorageKey,
+  WORKSPACE_SNAPSHOT_FILENAME,
+} from './workspace.constants';
 import {
   enrichWorkspaceSnapshot,
   type WorkspaceListItem,
@@ -173,7 +177,7 @@ export class WorkspaceService {
   async syncFromSandboxContainer(
     workspaceId: string,
     containerId: string,
-    _tenantId: string,
+    tenantId: string,
   ): Promise<schema.WorkspaceSnapshot> {
     const tenantDb = getTenantDb(this.db);
     const [snapshot] = await tenantDb
@@ -182,6 +186,7 @@ export class WorkspaceService {
       .where(
         and(
           eq(schema.workspaceSnapshots.id, workspaceId),
+          eq(schema.workspaceSnapshots.tenantId, tenantId),
           eq(schema.workspaceSnapshots.status, 'ready'),
         ),
       )
@@ -201,10 +206,11 @@ export class WorkspaceService {
       containerId,
       `agentloom-workspace-sync-${workspaceId}`,
     );
+    const targetStorageKey = this.buildCanonicalWorkspaceStorageKey(snapshot);
 
     try {
       await this.storageService.upload(
-        snapshot.storageKey,
+        targetStorageKey,
         createReadStream(stagedArchive.filePath),
         stagedArchive.sizeBytes,
         'application/x-tar',
@@ -213,11 +219,17 @@ export class WorkspaceService {
       const [updated] = await tenantDb
         .update(schema.workspaceSnapshots)
         .set({
+          storageKey: targetStorageKey,
           sizeBytes: stagedArchive.sizeBytes,
           status: 'ready',
           updatedAt: new Date(),
         })
-        .where(eq(schema.workspaceSnapshots.id, workspaceId))
+        .where(
+          and(
+            eq(schema.workspaceSnapshots.id, workspaceId),
+            eq(schema.workspaceSnapshots.tenantId, tenantId),
+          ),
+        )
         .returning();
 
       this.logger.log(
@@ -233,21 +245,17 @@ export class WorkspaceService {
   async restoreToSandbox(
     workspaceId: string,
     containerId: string,
-    _tenantId: string,
+    tenantId: string,
   ): Promise<void> {
-    const tenantDb = getTenantDb(this.db);
-    const [snapshot] = await tenantDb
-      .select()
-      .from(schema.workspaceSnapshots)
-      .where(
-        and(
-          eq(schema.workspaceSnapshots.id, workspaceId),
-          eq(schema.workspaceSnapshots.status, 'ready'),
-        ),
-      )
-      .limit(1);
+    const snapshot = await this.findWorkspaceSnapshotRecord(
+      tenantId,
+      workspaceId,
+      {
+        repairLegacySharedEmptyStorageKey: true,
+      },
+    );
 
-    if (!snapshot) {
+    if (snapshot.status !== 'ready') {
       throw new NotFoundException(
         `Workspace snapshot ${workspaceId} not found or not ready`,
       );
@@ -536,16 +544,30 @@ export class WorkspaceService {
         tenantId,
         name,
         description: description ?? null,
-        storageKey: buildWorkspaceStorageKey(tenantId, 'empty'),
+        storageKey: 'pending',
         status: 'ready',
         sizeBytes: 0,
         createdById: userId,
       })
       .returning();
+    const targetStorageKey = this.buildCanonicalWorkspaceStorageKey(snapshot);
+    const [updated] = await tenantDb
+      .update(schema.workspaceSnapshots)
+      .set({
+        storageKey: targetStorageKey,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(schema.workspaceSnapshots.id, snapshot.id),
+          eq(schema.workspaceSnapshots.tenantId, tenantId),
+        ),
+      )
+      .returning();
 
     this.logger.log(`Empty workspace snapshot ${snapshot.id} created`);
 
-    return snapshot;
+    return updated ?? snapshot;
   }
 
   async delete(tenantId: string, workspaceId: string): Promise<void> {
@@ -553,7 +575,12 @@ export class WorkspaceService {
     const [snapshot] = await tenantDb
       .select()
       .from(schema.workspaceSnapshots)
-      .where(eq(schema.workspaceSnapshots.id, workspaceId))
+      .where(
+        and(
+          eq(schema.workspaceSnapshots.id, workspaceId),
+          eq(schema.workspaceSnapshots.tenantId, tenantId),
+        ),
+      )
       .limit(1);
 
     if (!snapshot) {
@@ -562,12 +589,20 @@ export class WorkspaceService {
       );
     }
 
-    try {
-      await this.storageService.delete(snapshot.storageKey);
-    } catch (error) {
+    if (
+      isLegacyEmptyWorkspaceStorageKey(snapshot.tenantId, snapshot.storageKey)
+    ) {
       this.logger.warn(
-        `Failed to delete MinIO object for workspace ${workspaceId}: ${error instanceof Error ? error.message : String(error)}`,
+        `Skipping object deletion for legacy shared-empty workspace ${workspaceId}`,
       );
+    } else {
+      try {
+        await this.storageService.delete(snapshot.storageKey);
+      } catch (error) {
+        this.logger.warn(
+          `Failed to delete MinIO object for workspace ${workspaceId}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
     }
 
     await tenantDb
@@ -635,6 +670,7 @@ export class WorkspaceService {
     const snapshot = await this.findWorkspaceSnapshotRecord(
       tenantId,
       workspaceId,
+      { repairLegacySharedEmptyStorageKey: true },
     );
     return enrichWorkspaceSnapshot(snapshot);
   }
@@ -692,6 +728,7 @@ export class WorkspaceService {
     const snapshot = await this.findWorkspaceSnapshotRecord(
       tenantId,
       workspaceId,
+      { repairLegacySharedEmptyStorageKey: true },
     );
 
     if (snapshot.status !== 'ready') {
@@ -707,6 +744,7 @@ export class WorkspaceService {
     const normalizedPath = normalizeWorkspacePreviewPath(filePath);
     const tenantDb = getTenantDb(this.db);
     const stagedWorkspace = await this.stageWorkspaceArchiveForEdit(snapshot);
+    const targetStorageKey = this.buildCanonicalWorkspaceStorageKey(snapshot);
 
     try {
       const targetPath = join(stagedWorkspace.workspaceRoot, normalizedPath);
@@ -755,7 +793,7 @@ export class WorkspaceService {
       const nextArchiveStats = await stat(nextArchivePath);
 
       await this.storageService.upload(
-        snapshot.storageKey,
+        targetStorageKey,
         createReadStream(nextArchivePath),
         nextArchiveStats.size,
         'application/x-tar',
@@ -764,11 +802,17 @@ export class WorkspaceService {
       await tenantDb
         .update(schema.workspaceSnapshots)
         .set({
+          storageKey: targetStorageKey,
           sizeBytes: nextArchiveStats.size,
           status: 'ready',
           updatedAt: new Date(),
         })
-        .where(eq(schema.workspaceSnapshots.id, workspaceId));
+        .where(
+          and(
+            eq(schema.workspaceSnapshots.id, workspaceId),
+            eq(schema.workspaceSnapshots.tenantId, tenantId),
+          ),
+        );
 
       this.logger.log(
         `Workspace ${workspaceId} text file ${normalizedPath} updated`,
@@ -783,6 +827,9 @@ export class WorkspaceService {
   private async findWorkspaceSnapshotRecord(
     tenantId: string,
     workspaceId: string,
+    options?: {
+      repairLegacySharedEmptyStorageKey?: boolean;
+    },
   ): Promise<schema.WorkspaceSnapshot> {
     const tenantDb = getTenantDb(this.db);
     const [snapshot] = await tenantDb
@@ -803,6 +850,10 @@ export class WorkspaceService {
       );
     }
 
+    if (options?.repairLegacySharedEmptyStorageKey) {
+      return this.maybeRepairLegacySharedEmptyStorageKey(snapshot);
+    }
+
     return snapshot;
   }
 
@@ -813,6 +864,7 @@ export class WorkspaceService {
     const snapshot = await this.findWorkspaceSnapshotRecord(
       tenantId,
       workspaceId,
+      { repairLegacySharedEmptyStorageKey: true },
     );
 
     if (snapshot.status !== 'ready') {
@@ -839,6 +891,7 @@ export class WorkspaceService {
     const snapshot = await this.findWorkspaceSnapshotRecord(
       tenantId,
       workspaceId,
+      { repairLegacySharedEmptyStorageKey: true },
     );
 
     if (snapshot.status !== 'ready') {
@@ -876,5 +929,80 @@ export class WorkspaceService {
     }
 
     return { size: fileStats.size };
+  }
+
+  private buildCanonicalWorkspaceStorageKey(
+    snapshot: Pick<schema.WorkspaceSnapshot, 'tenantId' | 'id'>,
+  ): string {
+    return buildWorkspaceStorageKey(snapshot.tenantId, snapshot.id);
+  }
+
+  private async maybeRepairLegacySharedEmptyStorageKey(
+    snapshot: schema.WorkspaceSnapshot,
+  ): Promise<schema.WorkspaceSnapshot> {
+    if (
+      !isLegacyEmptyWorkspaceStorageKey(snapshot.tenantId, snapshot.storageKey)
+    ) {
+      return snapshot;
+    }
+
+    const tenantDb = getTenantDb(this.db);
+    const targetStorageKey = this.buildCanonicalWorkspaceStorageKey(snapshot);
+    let nextSizeBytes = snapshot.sizeBytes ?? 0;
+
+    try {
+      if (snapshot.sizeBytes !== 0) {
+        const stagedArchive = await this.stageStreamToTempFile(
+          `agentloom-workspace-rehome-${snapshot.id}`,
+          WORKSPACE_SNAPSHOT_FILENAME,
+          await this.storageService.download(snapshot.storageKey),
+        );
+
+        try {
+          await this.storageService.upload(
+            targetStorageKey,
+            createReadStream(stagedArchive.filePath),
+            stagedArchive.sizeBytes,
+            'application/x-tar',
+          );
+          nextSizeBytes = stagedArchive.sizeBytes;
+        } finally {
+          await stagedArchive.cleanup();
+        }
+      }
+
+      const [updated] = await tenantDb
+        .update(schema.workspaceSnapshots)
+        .set({
+          storageKey: targetStorageKey,
+          sizeBytes: nextSizeBytes,
+          updatedAt: new Date(),
+        })
+        .where(
+          and(
+            eq(schema.workspaceSnapshots.id, snapshot.id),
+            eq(schema.workspaceSnapshots.tenantId, snapshot.tenantId),
+          ),
+        )
+        .returning();
+
+      if (!updated) {
+        return snapshot;
+      }
+
+      this.logger.warn(
+        `Legacy shared-empty workspace ${snapshot.id} re-homed to ${targetStorageKey}`,
+      );
+
+      return updated;
+    } catch (error) {
+      this.logger.warn(
+        `Failed to re-home legacy shared-empty workspace ${snapshot.id}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+
+      return snapshot;
+    }
   }
 }

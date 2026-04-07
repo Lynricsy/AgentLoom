@@ -105,6 +105,10 @@
 - `includeAutoArchived=false` 时，API 必须过滤 `execution_archive`
 - Query DTO 不能使用裸 `z.coerce.boolean()` 解析布尔筛选，因为 query string `'false'` 会被错误地当成 `true`；必须显式把 `'true'/'false'` 规范化后再进入 `z.boolean()`
 - `create()` / `findOne()` / `findAll()` 都应返回 enrichment 后的 workspace 数据，避免前端列表与详情语义漂移
+- 空 workspace 也必须预留该 `workspaceId` 自己的 canonical `storageKey = .../workspaces/<workspaceId>/snapshot.tar`：
+  - 禁止继续创建共享 `.../workspaces/empty/snapshot.tar` 这类跨 workspace 复用对象路径
+  - 若历史记录仍指向 legacy shared-empty key，后续 `findOne/tree/preview/raw/files` 读取或写回路径必须先把记录 re-home 到自身 canonical key，再继续处理
+  - 对仍未 re-home 的 legacy shared-empty 记录，删除 workspace 时不能直接删除共享对象，避免误伤其他历史记录
 - 若 sandbox config 带 `restoreWorkspaceId`，该 workspace 必须被视为“最新可恢复快照”：
   - `SandboxLifecycleWorker.handleStop()` / `handleDestroy()` / `handleTimeoutCheck()` 在 stop/remove 容器前，必须调用 `WorkspaceService.syncFromSandboxContainer(restoreWorkspaceId, containerId, tenantId)`。
   - 回写只能覆盖同一条 `workspace_snapshots` 记录与既有 `storageKey`，不能额外插入“旧版本” workspace 行。
