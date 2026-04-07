@@ -68,6 +68,7 @@ const {
   mockSandboxService: {
     findByConversationId: vi.fn(),
     createSandboxSession: vi.fn(),
+    endConversationSandbox: vi.fn(),
     scheduleConversationIdleAutoEnd: vi.fn(),
   },
   mockWorkspaceIntegrationService: {
@@ -628,6 +629,31 @@ describe('AgentExecutionWorker', () => {
           status: 'failed',
           errorMessage: 'Runtime init failed',
         }),
+      );
+    });
+
+    it('sandbox_creating 阶段失败时应释放会话沙箱绑定，避免 persistent sandbox 被旧失败对话卡死', async () => {
+      mockExecutionService.registerActiveRun.mockImplementation(
+        (_id: string, abort: AbortController) => ({ abort, notify: vi.fn() }),
+      );
+
+      workerInternals.loadConversationExecutionContext = vi
+        .fn()
+        .mockResolvedValue(makeActiveContext({ hasSandbox: true }));
+      workerInternals.prepareRuntimeSession = vi
+        .fn()
+        .mockRejectedValue(new Error('Sandbox boot failed'));
+      workerInternals.safeUpdateExecutionMetadata = vi
+        .fn()
+        .mockResolvedValue({});
+
+      await expect(worker.executeAgentLoop('c-1', 't-1')).rejects.toThrow(
+        'Sandbox boot failed',
+      );
+
+      expect(mockSandboxService.endConversationSandbox).toHaveBeenCalledWith(
+        'c-1',
+        't-1',
       );
     });
 

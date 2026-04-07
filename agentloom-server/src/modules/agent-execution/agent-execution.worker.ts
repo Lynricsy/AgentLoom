@@ -564,6 +564,23 @@ export class AgentExecutionWorker extends WorkerHost {
           tenantId,
           executionMetadata.memorySessionIds ?? memorySessionIds,
         );
+
+        if (conversationHasSandbox && currentPhase === 'sandbox_creating') {
+          try {
+            await this.sandboxService.endConversationSandbox(
+              conversationId,
+              tenantId,
+            );
+          } catch (sandboxCleanupError) {
+            this.logger.warn(
+              `Failed to release sandbox binding after sandbox creation failure for ${conversationId}: ${
+                sandboxCleanupError instanceof Error
+                  ? sandboxCleanupError.message
+                  : String(sandboxCleanupError)
+              }`,
+            );
+          }
+        }
       }
 
       this.eventBridge.emitExecutionStatusChanged(tenantId, conversationId, {

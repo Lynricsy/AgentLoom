@@ -74,6 +74,10 @@
 - idle-end check 自动结束 conversation 后，后续 sandbox 清理仍沿用现有 ended 链路：
   - session lifecycle → destroy conversation sandbox
   - persistent lifecycle → detach conversation binding，资源回到 `ready/idle`
+- 若 Agent conversation 在 `sandbox_creating` 阶段就失败（例如持久 sandbox attach/start 失败）：
+  - `AgentExecutionWorker` 必须主动调用 `endConversationSandbox(conversationId, tenantId)`
+  - session sandbox 应按既有 destroy 语义收口
+  - persistent sandbox 应立即 detach 失败对话的 binding，避免 `activeBindings` 把后续新对话卡成 `SandboxInvalidStateException`
 
 ### 3.2 Agent sandbox timeout
 
@@ -214,6 +218,7 @@
 | sandbox conversation 一轮执行完成 | 会调度 delayed idle-end check | `agent-execution.worker.spec.ts`, `sandbox.service.spec.ts` |
 | sandbox conversation 有新消息进入 | 会取消 delayed idle-end check | `sandbox.service.spec.ts` |
 | idle-end check 命中时 conversation 仍无运行中任务且无未处理消息 | worker 应自动调用 `end()` | `sandbox-lifecycle.worker.spec.ts` |
+| Agent conversation 在 `sandbox_creating` 阶段失败 | worker 应主动释放 conversation sandbox / persistent binding，避免旧失败对话残留占用 | `agent-execution.worker.spec.ts`, `sandbox.service.spec.ts` |
 | 旧 published snapshot 只有 `sandboxConfig.timeout=450`，但节点仍有 `timeoutSeconds=450` | detail / versions / runtime 都必须恢复成 `timeout=1 + timeoutSeconds=450` | `agent-definition-response.dto.spec.ts`, `agent-execution.worker.spec.ts`, `workflow-agent-adapter.spec.ts` |
 | workspace list 默认过滤 execution archive | API 仍返回 `sourceKind`，但 `execution_archive` 被排除 | `workspace.service.spec.ts` |
 | `includeAutoArchived=false` query string | DTO 必须把 `'false'` 解析成 `false`，不能回退成 truthy | `list-workspaces-query.dto.spec.ts` |
