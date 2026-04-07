@@ -37,9 +37,10 @@ class _WorkflowsScreenState extends ConsumerState<WorkflowsScreen> {
 
   /// 根据宽度计算列数
   int _crossAxisCount(double width) {
-    if (width >= 900) return 4;
-    if (width >= 600) return 3;
-    return 2;
+    if (width >= 1200) return 4;
+    if (width >= 800) return 3;
+    if (width >= 500) return 2;
+    return 1;
   }
 
   String _formatDate(String isoDate) {
@@ -244,6 +245,8 @@ class _WorkflowsScreenState extends ConsumerState<WorkflowsScreen> {
                       final crossAxisCount = _crossAxisCount(
                         constraints.maxWidth,
                       );
+                      final childAspectRatio =
+                          crossAxisCount == 1 ? 2.0 : 0.88;
 
                       return NotificationListener<ScrollNotification>(
                         onNotification: (scrollInfo) {
@@ -266,7 +269,7 @@ class _WorkflowsScreenState extends ConsumerState<WorkflowsScreen> {
                                       crossAxisCount: crossAxisCount,
                                       mainAxisSpacing: 8,
                                       crossAxisSpacing: 8,
-                                      childAspectRatio: 0.88,
+                                      childAspectRatio: childAspectRatio,
                                     ),
                                 delegate: SliverChildBuilderDelegate((
                                   context,

@@ -44,7 +44,7 @@ class RuntimeEnvStorage {
 /// 启动阶段注入的默认环境配置
 final baseEnvProvider = Provider<EnvConfig>((ref) {
   return const EnvConfig(
-    studioBaseUrl: 'http://localhost:3000',
+    studioBaseUrl: 'https://agentloom.ling.plus',
     appName: 'AgentLoom Dev',
     environment: AppEnvironment.dev,
   );

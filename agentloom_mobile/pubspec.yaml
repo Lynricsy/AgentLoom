@@ -49,13 +49,13 @@ flutter_launcher_icons:
   ios: true
   image_path: assets/branding/logo-transparent.png
   min_sdk_android: 21
-  adaptive_icon_background: '#0B6BFF'
+  adaptive_icon_background: '#FFFFFF'
   adaptive_icon_foreground: assets/branding/logo-transparent.png
   adaptive_icon_foreground_inset: 16
   remove_alpha_ios: true
-  background_color_ios: '#0B6BFF'
+  background_color_ios: '#FFFFFF'
   web:
     generate: true
     image_path: assets/branding/logo-transparent.png
-    background_color: '#0B6BFF'
-    theme_color: '#0B6BFF'
+    background_color: '#FFFFFF'
+    theme_color: '#FFFFFF'
