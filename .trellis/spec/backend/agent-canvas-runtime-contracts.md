@@ -59,6 +59,11 @@
   - `nodeType='mcp'` → `mcp-tool`
   - `sourceHandle='tools-out'` → `tool-out`
   - 运行时 tools 编译必须把 legacy alias 与 canonical 节点都视为同一类 MCP tool binding
+- Agent / Workflow / self-evolution 共享同一套 MCP 节点 payload 契约：
+  - canonical server 字段是 `mcpServerConfigId`；LLM 或历史快照写出的 `mcpServerId` 必须在 migration / self-evolution apply 中被收敛为 `mcpServerConfigId`
+  - Studio MCP 面板保存的 `config.enabledToolIds + config.tools[]` 必须被 direct Agent runtime 与 workflow runtime 一致展开为逐个 MCP tool binding，不能只在 workflow 路径生效
+  - `query_resource_pool(resourceType='mcp_tool')` 必须返回足以写回 `tools[]` 的 tool metadata（至少 `id/name/mcpServerConfigId`，推荐附带 `inputSchema/portMappingMetadata`）
+  - self-evolution 给编排新增 `mcp-tool` 节点时，若只提供 server 级信息或遗漏 tool 选择，apply/propose 阶段必须按租户内 active MCP tools 自动补全 `enabledToolIds + tools[]`，默认选择全部 active tools
 - Agent 画布在 legacy alias 归一化之后，若仍出现未知或缺失的 `nodeType`，必须在写路径与运行时 fail-closed，而不是静默落库或忽略：
   - `saveCanvas()`
   - `applyCanvasSnapshot()`
@@ -78,6 +83,8 @@
 | `sub-agent` 只覆盖 `modelConfig`，未提供新 routing | 继承 routing 被移除，child 使用 concrete model | `agent-runtime-config.utils.spec.ts` |
 | nested sub-agent 扩展里重复 alias / tool / knowledge / memory / skill | 合并结果去重，避免 runtime 工具与资源重复挂载 | `agent-runtime-config.utils.spec.ts` |
 | 已发布 Agent 快照仍含 `nodeType='mcp'` / `sourceHandle='tools-out'` | detail/version response 与 runtime 编译都应恢复为 `mcp-tool` / `tool-out` | `agent-input-node-migration.util.spec.ts`, `agent-definition-response.dto.spec.ts`, `agent-definition.service.spec.ts` |
+| Agent MCP 节点保存的是 `config.enabledToolIds + config.tools[]` | `buildRuntimeConfigFromNodes()` 必须展开成逐个 MCP binding，与 workflow agent runtime 行为一致 | `mcp-tool-descriptor.utils.spec.ts`, `agent-definition.service.spec.ts` |
+| self-evolution 新增的 MCP 节点只写了 `mcpServerId` / 未写 `tools[]` | `proposeChange()` / `applyChange()` 必须把字段归一化为 `mcpServerConfigId`，并回填 active tools 到 `enabledToolIds + tools[]` | `self-evolution.service.spec.ts` |
 | Agent graph 在 migration 后仍含 `legacy-node` 或缺失 `nodeType` | save/apply/share import/buildSnapshot/runtime compile 必须抛 `AgentCanvasUnknownNodeTypeException`，不能静默忽略 | `agent-definition.service.spec.ts` + import path 回归 |
 
 ### 5. Good / Base / Bad Cases
@@ -103,11 +110,17 @@
   - 断言 `outputSchema` 会被追加到最终 system prompt
 - `agentloom-server/src/modules/agent-definition/agent-input-node-migration.util.spec.ts`
   - 断言 legacy `mcp` 节点与 `tools-out` 句柄会迁移为 canonical `mcp-tool/tool-out`
+- `agentloom-server/src/modules/agent-definition/mcp-tool-descriptor.utils.spec.ts`
+  - 断言 `enabledToolIds + tools[]` 与 `mcpServerId` alias 会被正确解析
 - `agentloom-server/src/modules/agent-definition/agent-definition.service.spec.ts`
   - 断言未知 `nodeType` 会在 `saveCanvas()` 与 `buildRuntimeConfigFromNodes()` 阶段 fail-closed
+  - 断言 direct Agent runtime 会把 Studio MCP payload 展开为逐个 MCP binding
 - `agentloom-server/src/modules/execution/__tests__/workflow-agent-adapter.spec.ts`
   - 断言 workflow `agent` 的 `system-prompt-in` / `schema-in` override
   - 断言 nested `subAgentRef` merge
+- `agentloom-server/src/modules/self-evolution/self-evolution.service.spec.ts`
+  - 断言 `query_resource_pool(resourceType='mcp_tool')` 返回可直接写回节点的 MCP tool metadata
+  - 断言 `applyChange()` 会把半残 MCP 节点补全为 canonical payload
 - `agentloom-server/src/modules/agent-definition/agent-input-node-migration.util.spec.ts`
   - 断言 draft Agent、published Agent snapshot、workflow graph 的预迁移结果
 - Manual / browser QA:
@@ -124,6 +137,11 @@
 }
 
 {
+  nodeType: 'mcp-tool',
+  mcpServerId: 'cfg-websearch'
+}
+
+{
   nodeType: 'sub-agent',
   inputPorts: [{ id: 'text-in' }, { id: 'json-in' }]
 }
@@ -137,6 +155,18 @@
   sourceHandle: 'text-out',
   target: 'main',
   targetHandle: 'system-prompt-in'
+}
+
+{
+  type: 'tool',
+  data: {
+    nodeType: 'mcp-tool',
+    config: {
+      mcpServerConfigId: 'cfg-websearch',
+      enabledToolIds: ['tool-fast'],
+      tools: [{ id: 'tool-fast', name: 'fast_search', mcpServerConfigId: 'cfg-websearch' }]
+    }
+  }
 }
 
 {

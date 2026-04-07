@@ -132,6 +132,7 @@ describe('SelfEvolutionService', () => {
   };
   let mockMcpService: {
     importTools: ReturnType<typeof vi.fn>;
+    listTools: ReturnType<typeof vi.fn>;
   };
   let mockWorkspaceService: {
     resolveOrganizationId: ReturnType<typeof vi.fn>;
@@ -178,6 +179,7 @@ describe('SelfEvolutionService', () => {
     };
     mockMcpService = {
       importTools: vi.fn(),
+      listTools: vi.fn().mockResolvedValue([]),
     };
     mockWorkspaceService = {
       resolveOrganizationId: vi.fn(),
@@ -367,6 +369,65 @@ describe('SelfEvolutionService', () => {
     });
   });
 
+  it('queryResourcePool 的 mcp_tool 结果应返回可直接绑定节点的工具元数据', async () => {
+    mockMcpService.listTools.mockResolvedValueOnce([
+      {
+        id: 'tool-fast',
+        name: 'fast_search',
+        title: 'Fast Search',
+        description: '快速搜索',
+        mcpServerConfigId: 'cfg-websearch',
+        isActive: true,
+        inputSchema: { type: 'object' },
+        outputSchema: null,
+        portMappingMetadata: {
+          inputs: [{ name: 'query', dataType: 'text' }],
+          outputs: [{ name: 'result', dataType: 'json' }],
+        },
+        source: 'mcp',
+        annotations: { category: 'search' },
+      },
+      {
+        id: 'tool-disabled',
+        name: 'disabled_search',
+        title: 'Disabled Search',
+        description: '已停用',
+        mcpServerConfigId: 'cfg-websearch',
+        isActive: false,
+        inputSchema: null,
+        outputSchema: null,
+        portMappingMetadata: null,
+        source: 'mcp',
+        annotations: null,
+      },
+    ]);
+
+    const result = await (service as any).queryResourcePool(makeContext(), {
+      resourceType: 'mcp_tool',
+    });
+
+    expect(result).toEqual({
+      mcpTools: [
+        {
+          id: 'tool-fast',
+          name: 'fast_search',
+          title: 'Fast Search',
+          description: '快速搜索',
+          mcpServerConfigId: 'cfg-websearch',
+          isActive: true,
+          inputSchema: { type: 'object' },
+          outputSchema: null,
+          portMappingMetadata: {
+            inputs: [{ name: 'query', dataType: 'text' }],
+            outputs: [{ name: 'result', dataType: 'json' }],
+          },
+          source: 'mcp',
+          annotations: { category: 'search' },
+        },
+      ],
+    });
+  });
+
   it('高风险 create_resource preflight 应进入 awaiting_permission，并注册待审批请求', async () => {
     vi.spyOn(service as any, 'buildSessionContext').mockResolvedValue(
       makeContext(),
@@ -443,6 +504,123 @@ describe('SelfEvolutionService', () => {
         category: 'workspace_resource_management',
       }),
     });
+  });
+
+  it('applyChange 应把半残的 mcp-tool 节点补全为 canonical MCP 配置', async () => {
+    vi.spyOn(service as any, 'loadGraphTarget').mockResolvedValueOnce({
+      kind: 'agent',
+      id: 'agent-1',
+      label: '当前 Agent',
+      version: 12,
+      publishedVersionId: null,
+      nodes: [],
+      edges: [],
+      viewport: null,
+    });
+    mockMcpService.listTools.mockResolvedValueOnce([
+      {
+        id: 'tool-fast',
+        name: 'fast_search',
+        title: 'Fast Search',
+        description: '快速搜索',
+        mcpServerConfigId: 'cfg-websearch',
+        isActive: true,
+        inputSchema: { type: 'object' },
+        outputSchema: null,
+        portMappingMetadata: null,
+        source: 'mcp',
+        annotations: null,
+      },
+      {
+        id: 'tool-deep',
+        name: 'deep_search',
+        title: 'Deep Search',
+        description: '深度搜索',
+        mcpServerConfigId: 'cfg-websearch',
+        isActive: true,
+        inputSchema: { type: 'object' },
+        outputSchema: null,
+        portMappingMetadata: null,
+        source: 'mcp',
+        annotations: null,
+      },
+    ]);
+    mockAgentDefinitionService.applyCanvasSnapshot.mockResolvedValueOnce({
+      detail: { summary: '已保存', version: 13 },
+    });
+
+    await (service as any).applyChange(makeContext(), {
+      proposal: {
+        domain: 'self_evolution',
+        targetKind: 'self',
+        targetId: 'agent-1',
+        targetLabel: '当前 Agent',
+        baseVersion: 12,
+        publishTarget: false,
+        nodeOperations: [
+          {
+            op: 'add',
+            node: {
+              id: 'main-mcp-websearch',
+              type: 'tool',
+              data: {
+                label: 'WebSearch',
+                nodeType: 'mcp',
+                category: 'tool',
+                mcpServerId: 'cfg-websearch',
+                mcpServerName: 'WebSearch',
+                config: {
+                  mcpServerId: 'cfg-websearch',
+                  mcpServerName: 'WebSearch',
+                },
+              },
+            },
+          },
+        ],
+        edgeOperations: [],
+        summary: '新增 WebSearch MCP 节点',
+        category: 'agent_self_canvas_edit',
+        riskLevel: 'low',
+        requiresConfirmation: false,
+        diffPreview: {
+          summary: '新增 WebSearch MCP 节点',
+        },
+      },
+    });
+
+    expect(mockAgentDefinitionService.applyCanvasSnapshot).toHaveBeenCalledWith(
+      'agent-1',
+      expect.objectContaining({
+        canvasNodes: [
+          expect.objectContaining({
+            type: 'tool',
+            data: expect.objectContaining({
+              nodeType: 'mcp-tool',
+              category: 'tool',
+              mcpServerConfigId: 'cfg-websearch',
+              config: expect.objectContaining({
+                mcpServerConfigId: 'cfg-websearch',
+                mcpServerName: 'WebSearch',
+                enabledToolIds: ['tool-fast', 'tool-deep'],
+                tools: [
+                  expect.objectContaining({
+                    id: 'tool-fast',
+                    name: 'fast_search',
+                    mcpServerConfigId: 'cfg-websearch',
+                  }),
+                  expect.objectContaining({
+                    id: 'tool-deep',
+                    name: 'deep_search',
+                    mcpServerConfigId: 'cfg-websearch',
+                  }),
+                ],
+              }),
+            }),
+          }),
+        ],
+      }),
+      'user-1',
+    );
   });
 
   it('applyChange 在 publishedVersionId 未变化时不应返回 restartSuggestion', async () => {

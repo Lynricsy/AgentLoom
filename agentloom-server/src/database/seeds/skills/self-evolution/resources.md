@@ -33,6 +33,26 @@
 - `toolNames`
 - `conflictStrategy`
 
+## 绑定现有 MCP 到编排
+
+如果目标是把**已有** MCP server 绑定到 Agent / Workflow，而不是新建资源：
+
+1. 先 `query_resource_pool(resourceType="mcp_server")` 确认 `mcpServerConfigId`
+2. 再 `query_resource_pool(resourceType="mcp_tool")` 找到该 server 下的具体工具定义
+3. 新增节点时必须写成：
+   - `node.type = "tool"`
+   - `node.data.nodeType = "mcp-tool"`
+   - `node.data.config.mcpServerConfigId = "<config-id>"`
+   - `node.data.config.enabledToolIds = ["<tool-definition-id>", ...]`
+   - `node.data.config.tools = [{ id, name, description, mcpServerConfigId, ... }]`
+4. 连线必须使用 `tool-out -> tools-in`
+
+注意：
+
+- 不要把字段写成 `mcpServerId`
+- 不要只写 server id 而漏掉 `enabledToolIds` / `tools[]`
+- 默认应该选择至少一个具体工具；如果要全部启用，就把该 server 的 active tools 全部写入 `enabledToolIds`
+
 ## Model
 
 两种方式：

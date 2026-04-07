@@ -23,7 +23,7 @@ AgentLoom 让你像编织织布机上的经纬线一样，将多个 AI Agent 编
 - **🔌 插件生态系统** — 完整的 SDK + CLI + 市场，`.alp` 插件包 RSA-PSS 签名验证，Extism WASM 沙箱隔离执行
 - **🔐 端到端加密 (E2EE)** — RSA-4096 + AES-256-GCM 混合加密，LLM 输出和决策证据全链路加密
 - **📱 跨端体验** — Web Studio + Flutter 移动端，Socket.IO 实时推送 + FCM 通知
-- **🧬 Agent 自进化** — `agent-main` 可配置 read/write/edit/terminal 与自进化策略；内置 `self-evolution` Skill 通过低层工具在审批边界内修改自身编排、创建资源、编辑外部 Agent/Workflow，并在发布后提示“重启到新版本”以继承消息历史与会话级授权策略
+- **🧬 Agent 自进化** — `agent-main` 可配置 read/write/edit/terminal 与自进化策略；内置 `self-evolution` Skill 通过低层工具在审批边界内修改自身编排、创建资源、编辑外部 Agent/Workflow，并在发布后提示“重启到新版本”以继承消息历史与会话级授权策略。对已有 MCP server 的绑定会读取 `mcp_tool` 资源池并自动补全 canonical `enabledToolIds + tools[]`
 - **🧠 知识库 RAG** — 基于 LlamaIndex.TS 的文档解析、知识节点索引、重排与查询编排，支持知识增强的 Agent 推理
 - **📖 Skill 管理** — SKILL.md 格式 Agent 行为指导文件，支持多文件 Skill 注入到 sandbox / no_sandbox Agent 运行时；`SkillResolverService` 将 `<available_skills>` XML 注入 Agent 对话与工作流执行系统提示，Monaco 编辑器 Web 编辑，6 个内置 Skill（含 `self-evolution`）
 - **🏢 多租户架构** — AsyncLocalStorage 租户事务隔离，RBAC 五级权限（Owner → Viewer）
@@ -31,7 +31,7 @@ AgentLoom 让你像编织织布机上的经纬线一样，将多个 AI Agent 编
 - **🧾 审计日志与保留归档** — evidence 域统一采集管理/执行关键事件，提供 owner/admin 审计查询页、资源级事件序列与 hot/archive 回查
 - **🛡️ 资源治理与异常执行处置** — `tenant_quotas` + `execution_governance_controls` typed store、`runWorkflow()` 准入阻断、tenant-aware API 分钟限流 / 日配额、治理通知与异常 execution 终止 contract
 - **🛠️ 配置优化建议闭环** — 周期分析执行遥测，生成可解释的模型/超时/工具/自主性建议，应用时复用 workflow OCC 保护，并在画布存在未保存修改时避免静默覆盖本地编辑
-- **🌐 MCP 集成** — Model Context Protocol 工具编排；`sandbox` Agent 可使用完整 MCP 形态，`no_sandbox` Agent 仅允许 HTTP MCP，stdio MCP 在发布校验与运行时调用两侧都会被拒绝
+- **🌐 MCP 集成** — Model Context Protocol 工具编排；`sandbox` Agent 可使用完整 MCP 形态，`no_sandbox` Agent 仅允许 HTTP MCP，stdio MCP 在发布校验与运行时调用两侧都会被拒绝。Agent 画布 `mcp-tool` 节点会按 Studio 的 `enabledToolIds + tools[]` 结构编译，direct Agent runtime 与 workflow runtime 保持一致
 - **🛒 工作流市场** — 模板浏览、安装、发布，支持工作流与插件双类型上架；Marketplace 审核同时接受内联 Agent 配置与 workflow-agent 绑定已发布 Agent Definition/Version 的复杂工作流
 - **🧵 子代理历史瀑布** — standalone Agent 的 child 输出会跟随父 assistant message 持久化到 `metadata.subAgentStreams`；Studio drill-in 会优先用这份 durable stream 恢复与主 Agent 一致的文本/思考/工具瀑布，只有旧历史缺少该字段时才回退摘要视图
 

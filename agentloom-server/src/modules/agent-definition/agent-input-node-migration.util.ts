@@ -432,6 +432,7 @@ export function migrateAgentCanvasGraph(
   const rawEdges = cloneJson(input.edges ?? []);
   const nextNodes: ReactFlowNode[] = nodes.map((node): ReactFlowNode => {
     const data = toRecord(node.data);
+    const config = toRecord(data.config);
     const canonicalNodeType = getNodeType(node);
 
     if (canonicalNodeType === SUB_AGENT_NODE_TYPE) {
@@ -454,6 +455,19 @@ export function migrateAgentCanvasGraph(
       canonicalNodeType === MCP_TOOL_NODE_TYPE
         ? 'tool'
         : (readNonEmptyString(data.category) ?? data.category);
+    const mcpServerConfigId =
+      canonicalNodeType === MCP_TOOL_NODE_TYPE
+        ? readNonEmptyString(
+            config.mcpServerConfigId,
+            config.mcp_server_config_id,
+            config.mcpServerId,
+            config.mcp_server_id,
+            data.mcpServerConfigId,
+            data.mcp_server_config_id,
+            data.mcpServerId,
+            data.mcp_server_id,
+          )
+        : undefined;
 
     return {
       ...node,
@@ -462,6 +476,15 @@ export function migrateAgentCanvasGraph(
         ...data,
         ...(canonicalNodeType ? { nodeType: canonicalNodeType } : {}),
         ...(nextCategory ? { category: nextCategory } : {}),
+        ...(mcpServerConfigId ? { mcpServerConfigId } : {}),
+        ...(isRecord(data.config)
+          ? {
+              config: {
+                ...config,
+                ...(mcpServerConfigId ? { mcpServerConfigId } : {}),
+              },
+            }
+          : {}),
         inputPorts: normalizePortIds(
           data.inputPorts,
           'input',

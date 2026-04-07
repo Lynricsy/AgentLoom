@@ -32,3 +32,5 @@
 - 新 proposal 必须基于最新 `query_state`
 - 不要伪造不存在的 nodeId / edgeId
 - 如果要替换资源，优先更新现有节点配置或替换目标连线，而不是盲目重复新增
+- 新增 MCP 节点时，`node.type` 必须是 `tool`，`node.data.nodeType` 必须是 `mcp-tool`，并且要把 `mcpServerConfigId + enabledToolIds + tools[]` 一起写完整
+- MCP 节点接到 Agent 时，连线句柄必须是 `sourceHandle="tool-out"`、`targetHandle="tools-in"`，不要自造别名

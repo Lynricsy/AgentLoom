@@ -28,9 +28,11 @@ import { AgentDefinitionService } from '../agent-definition/agent-definition.ser
 import type {
   AgentKnowledgeBinding,
   AgentRuntimeConfig,
+  AgentMcpToolBinding,
   AgentToolBinding,
   AgentSubAgentRef,
 } from '../agent-definition/agent-runtime-config.interface';
+import { extractMcpToolDescriptors } from '../agent-definition/mcp-tool-descriptor.utils';
 import {
   appendOutputSchemaToSystemPrompt,
   cloneAgentRuntimeConfig,
@@ -714,7 +716,7 @@ export class WorkflowAgentAdapter {
       }
 
       for (const descriptor of this.extractMcpToolDescriptors(record)) {
-        bindings.push({
+        const binding: AgentMcpToolBinding = {
           toolType: 'mcp',
           toolId:
             descriptor.mcpToolDefinitionId ??
@@ -733,7 +735,8 @@ export class WorkflowAgentAdapter {
           ...(descriptor.portMapping
             ? { portMapping: descriptor.portMapping }
             : {}),
-        });
+        };
+        bindings.push(binding);
       }
     });
 
@@ -747,102 +750,7 @@ export class WorkflowAgentAdapter {
     inputSchema?: Record<string, unknown>;
     portMapping?: Record<string, unknown>;
   }> {
-    const topLevelPortMapping = this.resolveMcpPortMapping(record);
-    const topLevelInputSchema = this.isRecord(record.inputSchema)
-      ? record.inputSchema
-      : undefined;
-    const topLevelConfigId =
-      typeof record.mcpServerConfigId === 'string'
-        ? record.mcpServerConfigId
-        : undefined;
-    const enabledToolIds = this.readStringArray(
-      record.enabledToolIds,
-      record.enabled_tool_ids,
-    );
-    const tools = Array.isArray(record.tools) ? record.tools : [];
-    const descriptors: Array<{
-      mcpServerConfigId: string;
-      toolName: string;
-      mcpToolDefinitionId?: string;
-      inputSchema?: Record<string, unknown>;
-      portMapping?: Record<string, unknown>;
-    }> = [];
-
-    for (const tool of tools) {
-      const toolRecord = this.isRecord(tool) ? tool : null;
-      if (!toolRecord) {
-        continue;
-      }
-      const toolId =
-        typeof toolRecord.id === 'string'
-          ? toolRecord.id
-          : typeof toolRecord.mcpToolDefinitionId === 'string'
-            ? toolRecord.mcpToolDefinitionId
-            : undefined;
-
-      if (
-        enabledToolIds.length > 0 &&
-        (!toolId || !enabledToolIds.includes(toolId))
-      ) {
-        continue;
-      }
-
-      const mcpServerConfigId =
-        typeof toolRecord.mcpServerConfigId === 'string'
-          ? toolRecord.mcpServerConfigId
-          : topLevelConfigId;
-      const toolName =
-        typeof toolRecord.toolName === 'string'
-          ? toolRecord.toolName
-          : typeof toolRecord.name === 'string'
-            ? toolRecord.name
-            : typeof toolRecord.title === 'string'
-              ? toolRecord.title
-              : undefined;
-
-      if (!mcpServerConfigId || !toolName) {
-        continue;
-      }
-
-      descriptors.push({
-        mcpServerConfigId,
-        toolName,
-        ...(toolId ? { mcpToolDefinitionId: toolId } : {}),
-        ...(this.isRecord(toolRecord.inputSchema)
-          ? { inputSchema: toolRecord.inputSchema }
-          : topLevelInputSchema
-            ? { inputSchema: topLevelInputSchema }
-            : {}),
-        ...(this.resolveMcpPortMapping(toolRecord)
-          ? { portMapping: this.resolveMcpPortMapping(toolRecord) }
-          : topLevelPortMapping
-            ? { portMapping: topLevelPortMapping }
-            : {}),
-      });
-    }
-
-    if (descriptors.length > 0) {
-      return descriptors;
-    }
-
-    if (
-      typeof topLevelConfigId === 'string' &&
-      typeof record.toolName === 'string'
-    ) {
-      return [
-        {
-          mcpServerConfigId: topLevelConfigId,
-          toolName: record.toolName,
-          ...(typeof record.mcpToolDefinitionId === 'string'
-            ? { mcpToolDefinitionId: record.mcpToolDefinitionId }
-            : {}),
-          ...(topLevelInputSchema ? { inputSchema: topLevelInputSchema } : {}),
-          ...(topLevelPortMapping ? { portMapping: topLevelPortMapping } : {}),
-        },
-      ];
-    }
-
-    return [];
+    return extractMcpToolDescriptors(record);
   }
 
   private extractUpstreamKnowledgeBindings(

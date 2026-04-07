@@ -61,6 +61,7 @@ import {
 import type {
   AgentCodeToolBinding,
   AgentHttpToolBinding,
+  AgentMcpToolBinding,
   AgentRuntimeConfig,
   AgentToolBinding,
   AgentKnowledgeBinding,
@@ -72,6 +73,11 @@ import type {
   AgentSelfEvolutionPolicy,
 } from './agent-runtime-config.interface';
 import { coerceAgentOutputSchema } from './agent-runtime-config.utils';
+import {
+  extractMcpToolDescriptors,
+  resolveMcpPortMapping,
+  resolveMcpServerConfigId,
+} from './mcp-tool-descriptor.utils';
 
 type AgentDbClient = Pick<
   DrizzleDB,
@@ -738,12 +744,12 @@ export class AgentDefinitionService {
         case 'code-tool':
         case 'mcp-tool': {
           if (!agentMainNode || targetHandle === 'tools-in') {
-            const tool = this.extractToolBinding(
+            const extractedTools = this.extractToolBindings(
               nodeId ?? nodeType,
               data,
               nodeType,
             );
-            if (tool) tools.push(tool);
+            tools.push(...extractedTools);
           }
           break;
         }
@@ -1319,11 +1325,11 @@ export class AgentDefinitionService {
     };
   }
 
-  private extractToolBinding(
+  private extractToolBindings(
     nodeId: string,
     data: Record<string, any>,
     nodeType: string,
-  ): AgentToolBinding | null {
+  ): AgentToolBinding[] {
     const toolId = data.toolId ?? data.tool_id ?? nodeId;
     const baseBinding = {
       toolId,
@@ -1331,13 +1337,39 @@ export class AgentDefinitionService {
       description: data.description,
       parameterOverrides: data.parameterOverrides ?? data.parameter_overrides,
       enabled: data.enabled !== false,
-    } satisfies AgentToolBinding;
+    } satisfies Omit<AgentToolBinding, 'toolType'>;
 
     if (nodeType === 'mcp-tool') {
+      const descriptors = extractMcpToolDescriptors(data);
+      if (descriptors.length > 0) {
+        return descriptors.map((descriptor, index) => {
+          const binding: AgentMcpToolBinding = {
+            ...baseBinding,
+            toolId:
+              descriptor.mcpToolDefinitionId ??
+              `${nodeId}:${descriptor.mcpServerConfigId}:${descriptor.toolName}:${index}`,
+            name: descriptor.toolName,
+            toolType: 'mcp',
+            mcpServerConfigId: descriptor.mcpServerConfigId,
+            toolName: descriptor.toolName,
+            ...(descriptor.mcpToolDefinitionId
+              ? { mcpToolDefinitionId: descriptor.mcpToolDefinitionId }
+              : {}),
+            ...(descriptor.inputSchema
+              ? { inputSchema: descriptor.inputSchema }
+              : {}),
+            ...(descriptor.portMapping
+              ? { portMapping: descriptor.portMapping }
+              : {}),
+          };
+
+          return binding;
+        });
+      }
+
       const mcpToolDefinitionId =
         data.mcpToolDefinitionId ?? data.mcp_tool_definition_id;
-      const mcpServerConfigId =
-        data.mcpServerConfigId ?? data.mcp_server_config_id;
+      const mcpServerConfigId = resolveMcpServerConfigId(data);
       const toolName = data.toolName ?? data.tool_name;
       const inputSchema =
         data.inputSchema &&
@@ -1345,56 +1377,61 @@ export class AgentDefinitionService {
         !Array.isArray(data.inputSchema)
           ? data.inputSchema
           : undefined;
-      const portMapping =
-        data.portMapping &&
-        typeof data.portMapping === 'object' &&
-        !Array.isArray(data.portMapping)
-          ? data.portMapping
-          : undefined;
+      const portMapping = resolveMcpPortMapping(data);
 
       if (mcpToolDefinitionId || (mcpServerConfigId && toolName)) {
-        return {
+        return [
+          {
+            ...baseBinding,
+            toolType: 'mcp',
+            ...(mcpToolDefinitionId === undefined
+              ? {}
+              : { mcpToolDefinitionId }),
+            ...(mcpServerConfigId === undefined ? {} : { mcpServerConfigId }),
+            ...(toolName === undefined ? {} : { toolName }),
+            ...(inputSchema === undefined ? {} : { inputSchema }),
+            ...(portMapping === undefined ? {} : { portMapping }),
+          },
+        ];
+      }
+
+      return [
+        {
           ...baseBinding,
-          toolType: 'mcp',
           ...(mcpToolDefinitionId === undefined ? {} : { mcpToolDefinitionId }),
           ...(mcpServerConfigId === undefined ? {} : { mcpServerConfigId }),
           ...(toolName === undefined ? {} : { toolName }),
           ...(inputSchema === undefined ? {} : { inputSchema }),
           ...(portMapping === undefined ? {} : { portMapping }),
-        };
-      }
-
-      return {
-        ...baseBinding,
-        ...(mcpToolDefinitionId === undefined ? {} : { mcpToolDefinitionId }),
-        ...(mcpServerConfigId === undefined ? {} : { mcpServerConfigId }),
-        ...(toolName === undefined ? {} : { toolName }),
-        ...(inputSchema === undefined ? {} : { inputSchema }),
-        ...(portMapping === undefined ? {} : { portMapping }),
-      };
+        },
+      ];
     }
 
     if (nodeType === 'http-tool') {
       const url = data.url;
       const method = data.method;
       if (typeof url === 'string' && url.length > 0) {
-        return {
+        return [
+          {
+            ...baseBinding,
+            toolType: 'http',
+            url,
+            ...(typeof method === 'string' && method.length > 0
+              ? { method: method as AgentHttpToolBinding['method'] }
+              : {}),
+          },
+        ];
+      }
+
+      return [
+        {
           ...baseBinding,
-          toolType: 'http',
-          url,
+          ...(typeof url === 'string' && url.length > 0 ? { url } : {}),
           ...(typeof method === 'string' && method.length > 0
             ? { method: method as AgentHttpToolBinding['method'] }
             : {}),
-        };
-      }
-
-      return {
-        ...baseBinding,
-        ...(typeof url === 'string' && url.length > 0 ? { url } : {}),
-        ...(typeof method === 'string' && method.length > 0
-          ? { method: method as AgentHttpToolBinding['method'] }
-          : {}),
-      };
+        },
+      ];
     }
 
     if (nodeType === 'code-tool') {
@@ -1403,26 +1440,30 @@ export class AgentDefinitionService {
       const timeout =
         typeof data.timeout === 'number' ? data.timeout : undefined;
       if (typeof language === 'string' && language.length > 0) {
-        return {
-          ...baseBinding,
-          toolType: 'code',
-          language: language as AgentCodeToolBinding['language'],
-          ...(typeof code === 'string' ? { code } : {}),
-          ...(timeout !== undefined ? { timeout } : {}),
-        };
+        return [
+          {
+            ...baseBinding,
+            toolType: 'code',
+            language: language as AgentCodeToolBinding['language'],
+            ...(typeof code === 'string' ? { code } : {}),
+            ...(timeout !== undefined ? { timeout } : {}),
+          },
+        ];
       }
 
-      return {
-        ...baseBinding,
-        ...(typeof language === 'string' && language.length > 0
-          ? { language: language as AgentCodeToolBinding['language'] }
-          : {}),
-        ...(typeof code === 'string' ? { code } : {}),
-        ...(timeout !== undefined ? { timeout } : {}),
-      };
+      return [
+        {
+          ...baseBinding,
+          ...(typeof language === 'string' && language.length > 0
+            ? { language: language as AgentCodeToolBinding['language'] }
+            : {}),
+          ...(typeof code === 'string' ? { code } : {}),
+          ...(timeout !== undefined ? { timeout } : {}),
+        },
+      ];
     }
 
-    return baseBinding;
+    return [baseBinding];
   }
 
   private extractKnowledgeBinding(
@@ -1568,14 +1609,12 @@ export class AgentDefinitionService {
             sourceType === 'code-tool' ||
             sourceType === 'mcp-tool'
           ) {
-            const tool = this.extractToolBinding(
+            const extractedTools = this.extractToolBindings(
               sourceNodeId ?? sourceType,
               sourceData,
               sourceType,
             );
-            if (tool) {
-              tools.push(tool);
-            }
+            tools.push(...extractedTools);
           }
           break;
         }

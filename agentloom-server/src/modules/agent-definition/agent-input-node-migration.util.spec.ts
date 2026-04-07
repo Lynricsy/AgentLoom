@@ -116,6 +116,10 @@ describe('agent-input-node-migration.util', () => {
           data: {
             nodeType: 'mcp',
             category: 'tool',
+            mcpServerId: 'cfg-websearch',
+            config: {
+              mcpServerId: 'cfg-websearch',
+            },
             outputPorts: [{ id: 'tools-out', label: '工具' }],
           },
         },
@@ -139,6 +143,10 @@ describe('agent-input-node-migration.util', () => {
         data: expect.objectContaining({
           nodeType: 'mcp-tool',
           category: 'tool',
+          mcpServerConfigId: 'cfg-websearch',
+          config: expect.objectContaining({
+            mcpServerConfigId: 'cfg-websearch',
+          }),
           outputPorts: [expect.objectContaining({ id: 'tool-out' })],
         }),
       }),

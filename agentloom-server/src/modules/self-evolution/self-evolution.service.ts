@@ -18,6 +18,7 @@ import {
   AgentDefinitionService,
   type ApplyAgentCanvasSnapshotOptions,
 } from '../agent-definition/agent-definition.service';
+import { resolveMcpServerConfigId } from '../agent-definition/mcp-tool-descriptor.utils';
 import { LlmProviderService } from '../llm/llm-provider.service';
 import { LlmService } from '../llm/llm.service';
 import { McpService } from '../mcp/mcp.service';
@@ -432,10 +433,11 @@ export class SelfEvolutionService {
     );
 
     try {
-      const sourceSandboxSession = await this.sandboxService.findByConversationId(
-        conversationId,
-        tenantId,
-      );
+      const sourceSandboxSession =
+        await this.sandboxService.findByConversationId(
+          conversationId,
+          tenantId,
+        );
       if (
         sourceSandboxSession &&
         (sourceSandboxSession.config.lifecycleMode ?? 'session') ===
@@ -746,14 +748,27 @@ export class SelfEvolutionService {
     if (shouldInclude('mcp_tool')) {
       const tools = await this.mcpService.listTools(context.tenantId, 'mcp');
       result.mcpTools = tools
-        .filter((tool) => !search || tool.name.includes(search))
+        .filter(
+          (tool) =>
+            tool.isActive &&
+            (!search ||
+              tool.name.includes(search) ||
+              (tool.title ?? '').includes(search) ||
+              (tool.description ?? '').includes(search)),
+        )
         .slice(0, limit)
         .map((tool) => ({
           id: tool.id,
           name: tool.name,
+          title: tool.title,
           description: tool.description,
           mcpServerConfigId: tool.mcpServerConfigId,
           isActive: tool.isActive,
+          inputSchema: tool.inputSchema,
+          outputSchema: tool.outputSchema,
+          portMappingMetadata: tool.portMappingMetadata,
+          source: tool.source,
+          annotations: tool.annotations,
         }));
     }
 
@@ -838,7 +853,10 @@ export class SelfEvolutionService {
     const viewport = this.readRecord(input.viewport);
     const metadataPatch = this.readRecord(input.metadataPatch);
 
-    const nextNodes = this.applyNodeOperations(target.nodes, nodeOperations);
+    const nextNodes = await this.normalizeMcpToolNodes(
+      context.tenantId,
+      this.applyNodeOperations(target.nodes, nodeOperations),
+    );
     const nextEdges = this.applyEdgeOperations(target.edges, edgeOperations);
     const nextViewport = viewport ?? target.viewport ?? null;
 
@@ -926,9 +944,9 @@ export class SelfEvolutionService {
         proposal.targetId,
       );
 
-      const nextNodes = this.applyNodeOperations(
-        target.nodes,
-        proposal.nodeOperations ?? [],
+      const nextNodes = await this.normalizeMcpToolNodes(
+        context.tenantId,
+        this.applyNodeOperations(target.nodes, proposal.nodeOperations ?? []),
       );
       const nextEdges = this.applyEdgeOperations(
         target.edges,
@@ -1829,6 +1847,151 @@ export class SelfEvolutionService {
     }
 
     return nextEdges;
+  }
+
+  private async normalizeMcpToolNodes(
+    tenantId: string,
+    nodes: GenericRecord[],
+  ): Promise<GenericRecord[]> {
+    const hasMcpToolNode = nodes.some((node) => {
+      const data = this.readRecord(node.data);
+      const nodeType = this.readString(data?.nodeType);
+      return nodeType === 'mcp-tool' || nodeType === 'mcp';
+    });
+    if (!hasMcpToolNode) {
+      return nodes;
+    }
+
+    const activeToolsByConfigId = new Map<string, GenericRecord[]>();
+    const tools = await this.mcpService.listTools(tenantId, 'mcp');
+    for (const tool of tools) {
+      if (!tool.isActive || typeof tool.mcpServerConfigId !== 'string') {
+        continue;
+      }
+
+      const normalizedTool = {
+        id: tool.id,
+        name: tool.name,
+        title: tool.title ?? null,
+        description: tool.description ?? null,
+        inputSchema: tool.inputSchema ?? null,
+        outputSchema: tool.outputSchema ?? null,
+        portMappingMetadata: tool.portMappingMetadata ?? null,
+        source: tool.source,
+        mcpServerConfigId: tool.mcpServerConfigId,
+        isActive: tool.isActive,
+        annotations: tool.annotations ?? null,
+      } satisfies GenericRecord;
+
+      const bucket = activeToolsByConfigId.get(tool.mcpServerConfigId) ?? [];
+      bucket.push(normalizedTool);
+      activeToolsByConfigId.set(tool.mcpServerConfigId, bucket);
+    }
+
+    return nodes.map((node) =>
+      this.normalizeMcpToolNode(node, activeToolsByConfigId),
+    );
+  }
+
+  private normalizeMcpToolNode(
+    node: GenericRecord,
+    activeToolsByConfigId: Map<string, GenericRecord[]>,
+  ): GenericRecord {
+    const data = this.readRecord(node.data);
+    if (!data) {
+      return node;
+    }
+
+    const nodeType = this.readString(data.nodeType);
+    if (nodeType !== 'mcp-tool' && nodeType !== 'mcp') {
+      return node;
+    }
+
+    const config = this.readRecord(data.config) ?? {};
+    const merged = { ...config, ...data };
+    const mcpServerConfigId = resolveMcpServerConfigId(merged);
+    if (!mcpServerConfigId) {
+      return node;
+    }
+
+    const activeTools = activeToolsByConfigId.get(mcpServerConfigId) ?? [];
+    const availableToolIds = new Set(
+      activeTools
+        .map((tool) => this.readString(tool.id))
+        .filter((value): value is string => Boolean(value)),
+    );
+    const configuredToolIds = [
+      ...this.readStringArray(config.enabledToolIds),
+      ...this.readStringArray(config.enabled_tool_ids),
+      ...this.readStringArray(data.enabledToolIds),
+      ...this.readStringArray(data.enabled_tool_ids),
+    ].filter((toolId, index, array) => array.indexOf(toolId) === index);
+    const normalizedEnabledToolIds = configuredToolIds.filter((toolId) =>
+      availableToolIds.has(toolId),
+    );
+    const enabledToolIds =
+      normalizedEnabledToolIds.length > 0
+        ? normalizedEnabledToolIds
+        : [...availableToolIds];
+    const mcpServerName =
+      this.readString(config.mcpServerName) ??
+      this.readString(data.mcpServerName) ??
+      this.readString(data.label);
+    const {
+      mcpServerId: _configServerId,
+      mcp_server_id: _configServerIdSnake,
+      mcpServerConfigId: _existingConfigId,
+      mcp_server_config_id: _existingConfigIdSnake,
+      enabled_tool_ids: _configEnabledToolIdsSnake,
+      ...configRest
+    } = config;
+    const {
+      mcpServerId: _dataServerId,
+      mcp_server_id: _dataServerIdSnake,
+      mcpServerConfigId: _existingDataConfigId,
+      mcp_server_config_id: _existingDataConfigIdSnake,
+      enabledToolIds: _existingDataEnabledToolIds,
+      enabled_tool_ids: _existingDataEnabledToolIdsSnake,
+      mcpServerName: _existingDataServerName,
+      ...dataRest
+    } = data;
+
+    return {
+      ...node,
+      type: 'tool',
+      data: {
+        ...dataRest,
+        nodeType: 'mcp-tool',
+        category: 'tool',
+        ...(mcpServerConfigId ? { mcpServerConfigId } : {}),
+        ...(mcpServerName ? { mcpServerName } : {}),
+        config: {
+          ...configRest,
+          ...(mcpServerConfigId ? { mcpServerConfigId } : {}),
+          ...(mcpServerName ? { mcpServerName } : {}),
+          enabledToolIds,
+          tools: activeTools.map((tool) => this.cloneJsonRecord(tool)),
+        },
+        inputPorts: Array.isArray(data.inputPorts)
+          ? this.cloneJsonValue(data.inputPorts)
+          : [],
+        outputPorts:
+          Array.isArray(data.outputPorts) && data.outputPorts.length > 0
+            ? this.cloneJsonValue(data.outputPorts)
+            : [
+                {
+                  id: 'tool-out',
+                  label: '工具',
+                  direction: 'output',
+                  dataType: 'tool',
+                  required: false,
+                  multiple: true,
+                  maxConnections: null,
+                  schema: { kind: 'tool', title: '工具' },
+                },
+              ],
+      },
+    };
   }
 
   private toFailureResult(error: unknown): SelfEvolutionToolResult {

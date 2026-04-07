@@ -1967,6 +1967,53 @@ describe('AgentDefinitionService', () => {
       expect(tool.toolName).toBe('execute');
     });
 
+    it('应把 Studio 的 enabledToolIds + tools[] 展开为可执行的 MCP tool bindings', () => {
+      const nodes = [
+        {
+          id: 'mcp-studio',
+          type: 'mcp-tool',
+          data: {
+            label: 'WebSearch',
+            config: {
+              mcpServerConfigId: 'cfg-websearch',
+              enabledToolIds: ['tool-fast'],
+              tools: [
+                {
+                  id: 'tool-fast',
+                  name: 'fast_search',
+                  mcpServerConfigId: 'cfg-websearch',
+                  inputSchema: { type: 'object' },
+                  portMappingMetadata: {
+                    inputs: [{ name: 'query', dataType: 'text' }],
+                    outputs: [{ name: 'result', dataType: 'json' }],
+                  },
+                },
+                {
+                  id: 'tool-deep',
+                  name: 'deep_search',
+                  mcpServerConfigId: 'cfg-websearch',
+                },
+              ],
+            },
+          },
+        },
+      ];
+
+      const config = service.buildRuntimeConfigFromNodes(nodes, []);
+
+      expect(config.tools).toHaveLength(1);
+      const tool = config.tools![0] as any;
+      expect(tool.toolType).toBe('mcp');
+      expect(tool.mcpToolDefinitionId).toBe('tool-fast');
+      expect(tool.mcpServerConfigId).toBe('cfg-websearch');
+      expect(tool.toolName).toBe('fast_search');
+      expect(tool.inputSchema).toEqual({ type: 'object' });
+      expect(tool.portMapping).toEqual({
+        inputs: [{ name: 'query', dataType: 'text' }],
+        outputs: [{ name: 'result', dataType: 'json' }],
+      });
+    });
+
     it('MCP 工具缺少关键字段时不应设置 toolType（退化为基础 binding）', () => {
       const nodes = [
         {

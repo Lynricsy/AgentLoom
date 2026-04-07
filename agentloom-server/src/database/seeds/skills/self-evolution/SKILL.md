@@ -16,12 +16,13 @@ description: Allow an Agent to inspect and evolve its own orchestration, manage 
 ## 操作前必须遵守
 
 1. 先调用 `query_state` 读取当前 Agent / 目标编排状态。
-2. 先调用 `query_resource_pool` 确认现有资源，再决定是���需要新建资源。
-3. 修改编排前必须先调用 `propose_change`，拿到 `proposal` 和 diff。
-4. 真正落地编排修改时必须调用 `apply_change`，并直接传入 `proposal`。
-5. 创建资源时必须调用 `create_resource`，不要假设任何资源已经存在。
-6. 如果 `apply_change` 或 `create_resource` 触发审批，等待主人决定，不要重复发起相同请求。
-7. 被拒绝时，向主人说明没有执行变更，并给出更安全的替代方案。
+2. 先调用 `query_resource_pool` 确认现有资源，再决定是否需要新建资源。
+3. 给编排新增 `mcp-tool` 节点时，不能只写 server id；必须使用 canonical 结构：`node.type="tool"`、`data.nodeType="mcp-tool"`、`data.config.mcpServerConfigId`、`data.config.enabledToolIds`、`data.config.tools[]`，并使用 `sourceHandle="tool-out"` 连到 Agent 的 `targetHandle="tools-in"`。
+4. 修改编排前必须先调用 `propose_change`，拿到 `proposal` 和 diff。
+5. 真正落地编排修改时必须调用 `apply_change`，并直接传入 `proposal`。
+6. 创建资源时必须调用 `create_resource`，不要假设任何资源已经存在。
+7. 如果 `apply_change` 或 `create_resource` 触发审批，等待主人决定，不要重复发起相同请求。
+8. 被拒绝时，向主人说明没有执行变更，并给出更安全的替代方案。
 
 ## 可用低层工具
 
