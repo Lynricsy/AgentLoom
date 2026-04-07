@@ -59,6 +59,13 @@
   - `nodeType='mcp'` → `mcp-tool`
   - `sourceHandle='tools-out'` → `tool-out`
   - 运行时 tools 编译必须把 legacy alias 与 canonical 节点都视为同一类 MCP tool binding
+- Agent 画布在 legacy alias 归一化之后，若仍出现未知或缺失的 `nodeType`，必须在写路径与运行时 fail-closed，而不是静默落库或忽略：
+  - `saveCanvas()`
+  - `applyCanvasSnapshot()`
+  - `buildSnapshot()`（版本创建 / 发布）
+  - `buildRuntimeConfigFromNodes()`（direct conversation / workflow-agent runtime）
+  - share import
+  - 错误统一为 `AgentCanvasUnknownNodeTypeException`
 
 ### 4. Validation & Error Matrix
 
@@ -71,6 +78,7 @@
 | `sub-agent` 只覆盖 `modelConfig`，未提供新 routing | 继承 routing 被移除，child 使用 concrete model | `agent-runtime-config.utils.spec.ts` |
 | nested sub-agent 扩展里重复 alias / tool / knowledge / memory / skill | 合并结果去重，避免 runtime 工具与资源重复挂载 | `agent-runtime-config.utils.spec.ts` |
 | 已发布 Agent 快照仍含 `nodeType='mcp'` / `sourceHandle='tools-out'` | detail/version response 与 runtime 编译都应恢复为 `mcp-tool` / `tool-out` | `agent-input-node-migration.util.spec.ts`, `agent-definition-response.dto.spec.ts`, `agent-definition.service.spec.ts` |
+| Agent graph 在 migration 后仍含 `legacy-node` 或缺失 `nodeType` | save/apply/share import/buildSnapshot/runtime compile 必须抛 `AgentCanvasUnknownNodeTypeException`，不能静默忽略 | `agent-definition.service.spec.ts` + import path 回归 |
 
 ### 5. Good / Base / Bad Cases
 
@@ -95,6 +103,8 @@
   - 断言 `outputSchema` 会被追加到最终 system prompt
 - `agentloom-server/src/modules/agent-definition/agent-input-node-migration.util.spec.ts`
   - 断言 legacy `mcp` 节点与 `tools-out` 句柄会迁移为 canonical `mcp-tool/tool-out`
+- `agentloom-server/src/modules/agent-definition/agent-definition.service.spec.ts`
+  - 断言未知 `nodeType` 会在 `saveCanvas()` 与 `buildRuntimeConfigFromNodes()` 阶段 fail-closed
 - `agentloom-server/src/modules/execution/__tests__/workflow-agent-adapter.spec.ts`
   - 断言 workflow `agent` 的 `system-prompt-in` / `schema-in` override
   - 断言 nested `subAgentRef` merge

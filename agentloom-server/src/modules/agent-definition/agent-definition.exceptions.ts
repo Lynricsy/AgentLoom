@@ -1,5 +1,6 @@
 import { HttpStatus } from '@nestjs/common';
 import { DomainException } from '../../common/exceptions/domain.exception';
+import type { UnsupportedAgentCanvasNodeType } from './agent-input-node-migration.util';
 
 export class AgentNotFoundException extends DomainException {
   constructor(agentId: string) {
@@ -78,6 +79,28 @@ export class AgentSandboxNotConnectedException extends DomainException {
       title: '当前 Agent 未连接任何沙箱，无法启动对话',
       status: HttpStatus.CONFLICT,
       detail: `Agent ${agentId} 未将任何 sandbox 节点连接到 agent-main 的 sandbox-in 端口，请先连线后再运行`,
+    });
+  }
+}
+
+export class AgentCanvasUnknownNodeTypeException extends DomainException {
+  constructor(nodes: UnsupportedAgentCanvasNodeType[]) {
+    const firstNode = nodes[0];
+
+    super({
+      type: 'https://agentloom.dev/errors/agent-canvas-unknown-node-type',
+      title: 'Agent 画布包含未知节点类型',
+      status: HttpStatus.UNPROCESSABLE_ENTITY,
+      detail: firstNode
+        ? `节点 ${firstNode.nodeId} 使用了当前版本不支持的 nodeType：${firstNode.nodeType}`
+        : 'Agent 画布包含当前版本不支持的节点类型',
+      errors: nodes.map((node) => ({
+        field: 'canvasNodes',
+        message: `节点 ${node.nodeId} 的 nodeType「${node.nodeType}」当前不受支持，请升级系统或移除该节点后重试`,
+      })),
+      extensions: {
+        nodes,
+      },
     });
   }
 }

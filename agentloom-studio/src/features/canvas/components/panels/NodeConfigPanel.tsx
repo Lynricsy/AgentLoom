@@ -9,7 +9,7 @@ import { ToolCallList } from '@/features/execution/components/ToolCallList'
 import type { StepStatus } from '@/features/execution/types'
 import { cn } from '@/shared/lib/utils'
 import type { CanvasNode } from '../../types'
-import { getNodeTypeConfig } from '../../types/nodeTypeRegistry'
+import { getResolvedNodeTypeConfig } from '../../types/nodeTypeRegistry'
 import { useCanvasActions, useCanvasStore } from '../../stores/canvasStore'
 import { getOutputContentFormat } from '../../lib/outputContent'
 import { CUSTOM_PANEL_REGISTRY } from './customPanelRegistry'
@@ -146,7 +146,15 @@ export const NodeConfigPanel = memo(function NodeConfigPanel({
   if (!node) return null
 
   const nodeType = node.data.nodeType
-  const nodeConfig = getNodeTypeConfig(nodeType)
+  const nodeConfig = getResolvedNodeTypeConfig(nodeType, {
+    category: node.data.category,
+    inputPorts: Array.isArray(node.data.inputPorts)
+      ? node.data.inputPorts
+      : undefined,
+    outputPorts: Array.isArray(node.data.outputPorts)
+      ? node.data.outputPorts
+      : undefined,
+  })
 
   return (
     <aside
@@ -160,7 +168,9 @@ export const NodeConfigPanel = memo(function NodeConfigPanel({
         <div className="min-w-0">
           <h2 className="truncate text-sm font-semibold">{node.data.label}</h2>
           <p className="truncate text-xs text-muted-foreground">
-            {nodeConfig.label} 配置
+            {nodeConfig.isKnownType
+              ? `${nodeConfig.label} 配置`
+              : `未知节点类型（${nodeConfig.type}）`}
           </p>
         </div>
         <button
@@ -199,11 +209,25 @@ const NodeConfigDispatch = memo(function NodeConfigDispatch({
 }: NodeConfigDispatchProps) {
   const nodeType = node.data.nodeType
 
-  const nodeConfig = getNodeTypeConfig(nodeType)
+  const nodeConfig = getResolvedNodeTypeConfig(nodeType, {
+    category: node.data.category,
+    inputPorts: Array.isArray(node.data.inputPorts)
+      ? node.data.inputPorts
+      : undefined,
+    outputPorts: Array.isArray(node.data.outputPorts)
+      ? node.data.outputPorts
+      : undefined,
+  })
   const customPanel = CUSTOM_PANEL_REGISTRY[nodeType]
-  const hasDynamicConfigFields = Object.keys(nodeConfig.configSchema.properties).length > 0
+  const hasDynamicConfigFields =
+    Object.keys(nodeConfig.configSchema.properties).length > 0
 
   useEffect(() => {
+    if (!nodeConfig.isKnownType) {
+      onValidationChange(false)
+      return
+    }
+
     if ((!customPanel || !customPanel.handlesValidation) && !hasDynamicConfigFields) {
       onValidationChange(false)
       return
@@ -212,7 +236,19 @@ const NodeConfigDispatch = memo(function NodeConfigDispatch({
     if (customPanel && !customPanel.handlesValidation) {
       onValidationChange(false)
     }
-  }, [customPanel, hasDynamicConfigFields, onValidationChange])
+  }, [customPanel, hasDynamicConfigFields, nodeConfig.isKnownType, onValidationChange])
+
+  if (!nodeConfig.isKnownType) {
+    return (
+      <div className="space-y-2 px-4 py-6 text-sm text-muted-foreground">
+        <p className="font-medium text-foreground">当前节点类型暂不受支持</p>
+        <p>
+          已检测到未知节点类型 <code>{nodeConfig.type}</code>。为避免整页崩溃，Studio
+          会保留原始配置和端口数据，但不会尝试渲染专用配置面板。
+        </p>
+      </div>
+    )
+  }
 
   if (customPanel) {
     return customPanel.render({

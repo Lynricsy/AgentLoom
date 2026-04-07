@@ -53,6 +53,11 @@
 - `TextConfigPanel` 必须使用 300ms debounce autosave，并在 blur 时立即提交，保证和其它节点表单一致。
 - `TextNodeBody` 在空值时显示占位提示，在有值时显示摘要预览；full / compact / minimal LOD 都不能让 `text` 节点退化成无法理解的空卡片。
 - 不要在 `NodeConfigPanel` 或 `AgentNodeConfigPanel` 中手写 `switch` 特判 `text`；仍然通过 `CUSTOM_PANEL_REGISTRY` 分发。
+- 共享画布壳 `CanvasNode`、悬浮信息卡 `NodeInfoCard` 与右侧配置面板 `NodeConfigPanel` 对持久化 graph 的 `nodeType` 必须走 safe lookup：
+  - 已知类型走注册表
+  - legacy alias 先 canonicalize
+  - 未知类型降级为“未知节点类型”通用展示，保留原始端口与配置数据
+  - 禁止因单个坏节点直接抛 `Unknown node type` 导致整页崩溃
 
 ### 4. Validation & Error Matrix
 
@@ -64,6 +69,7 @@
 | `CUSTOM_PANEL_REGISTRY` 未注册 `text` | 右侧面板无法编辑文本内容 | 面板交互测试 + 手测 |
 | workflow preview 未识别 `text` | 模板 / share / marketplace 预览与正式画布语义分叉 | `workflowPreview.test.ts` |
 | `sub-agent` 继续暴露 `text-in/json-in` | 用户仍会沿用旧传参心智模型 | `agent-canvas-registry.test.ts` |
+| 持久化快照中出现未知 `nodeType` | 共享节点壳/悬浮信息卡/配置面板必须降级渲染，而不是整页崩溃 | `CanvasNode.test.tsx`, `NodeInfoCard.test.tsx`, `NodeConfigPanel.test.tsx`, `nodeTypeRegistry.test.ts` |
 
 ### 5. Good / Base / Bad Cases
 
@@ -93,6 +99,12 @@
   - 断言空态占位与文本预览
 - `agentloom-studio/src/features/canvas/lib/workflowPreview.test.ts`
   - 断言 preview 能正确 hydrate/render `text`
+- `agentloom-studio/src/features/canvas/components/CanvasNode.test.tsx`
+  - 断言未知 `nodeType` 使用通用节点壳降级渲染
+- `agentloom-studio/src/features/canvas/components/overlays/NodeInfoCard.test.tsx`
+  - 断言未知 `nodeType` 不会让 hover 卡片崩溃
+- `agentloom-studio/src/features/canvas/components/panels/NodeConfigPanel.test.tsx`
+  - 断言未知 `nodeType` 显示只读告警说明，不尝试渲染专用面板
 
 ### 7. Wrong vs Correct
 

@@ -5,6 +5,7 @@ import {
   clonePortDefinitions,
   DYNAMIC_ONLY_NODE_TYPES,
   EXEC_PORT_NODE_TYPES,
+  getResolvedNodeTypeConfig,
   getWorkflowAgentInputPorts,
   getAllNodeTypes,
   getNodeTypeConfig,
@@ -123,6 +124,31 @@ describe("nodeTypeRegistry", () => {
   it("maps legacy mcp alias lookups to the canonical mcp-tool config", () => {
     expect(getNodeTypeConfig("mcp" as NodeType).type).toBe("mcp-tool");
     expect(getNodeTypeConfigOrNull("mcp")?.type).toBe("mcp-tool");
+  });
+
+  it("returns a fallback presentation config for unknown node types", () => {
+    const config = getResolvedNodeTypeConfig("mystery-node", {
+      category: "tool",
+      inputPorts: [
+        {
+          id: "input-1",
+          label: "输入",
+          direction: "input",
+          dataType: "json",
+          required: false,
+          multiple: false,
+          maxConnections: 1,
+          schema: { kind: "json", shape: "object", title: "输入", properties: {} },
+        },
+      ],
+    });
+
+    expect(config.isKnownType).toBe(false);
+    expect(config.label).toBe("未知节点类型");
+    expect(config.type).toBe("mystery-node");
+    expect(config.category).toBe("tool");
+    expect(config.description).toContain("mystery-node");
+    expect(config.inputPorts).toHaveLength(1);
   });
 
   it("defines llm-model as a single model-output node with multi-connect support", () => {

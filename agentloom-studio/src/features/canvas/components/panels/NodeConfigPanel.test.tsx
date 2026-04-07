@@ -167,6 +167,23 @@ function createNode(
   }
 }
 
+function createUnknownNode(): CanvasNode {
+  return {
+    id: 'node-legacy',
+    type: 'tool',
+    position: { x: 0, y: 0 },
+    data: {
+      label: 'Legacy Node',
+      nodeType: 'legacy-node' as CanvasNode['data']['nodeType'],
+      category: 'tool',
+      description: '历史节点',
+      config: {},
+      inputPorts: [],
+      outputPorts: [],
+    },
+  }
+}
+
 describe('NodeConfigPanel', () => {
   beforeEach(() => {
     mocks.selectedNodeId = 'node-1'
@@ -186,6 +203,23 @@ describe('NodeConfigPanel', () => {
     expect(screen.getByTestId('node-execution-status')).toHaveTextContent('空闲')
     expect(screen.getByTestId('node-execution-output')).toHaveTextContent(
       '选择节点后，这里会显示最近一次执行输出。',
+    )
+  })
+
+  it('未知节点类型时应展示降级提示而不是抛错', () => {
+    mocks.node = createUnknownNode()
+    mocks.selectedNodeId = 'node-legacy'
+
+    render(<NodeConfigPanel />)
+
+    expect(screen.getByText('Legacy Node')).toBeInTheDocument()
+    expect(screen.getByText('当前节点类型暂不受支持')).toBeInTheDocument()
+    expect(
+      screen.getByText(/已检测到未知节点类型/, { exact: false }),
+    ).toBeInTheDocument()
+    expect(mocks.setNodeValidationError).toHaveBeenCalledWith(
+      'node-legacy',
+      false,
     )
   })
 

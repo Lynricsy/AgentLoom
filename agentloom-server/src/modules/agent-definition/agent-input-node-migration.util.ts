@@ -28,6 +28,11 @@ interface AgentCanvasMigrationResult extends GraphMigrationResult {
   systemPrompt: string | null | undefined;
 }
 
+export interface UnsupportedAgentCanvasNodeType {
+  nodeId: string;
+  nodeType: string;
+}
+
 const TEXT_NODE_LABEL = 'System Prompt';
 const TEXT_NODE_DESCRIPTION =
   '提供可复用的文本常量，可连接到系统提示词或任意文本输入端口';
@@ -37,8 +42,34 @@ const SUB_AGENT_NODE_TYPE = 'sub-agent';
 const AGENT_MAIN_NODE_TYPE = 'agent-main';
 const WORKFLOW_AGENT_NODE_TYPE = 'agent';
 const MCP_TOOL_NODE_TYPE = 'mcp-tool';
+const HTTP_TOOL_NODE_TYPE = 'http-tool';
+const CODE_TOOL_NODE_TYPE = 'code-tool';
+const SMART_ROUTING_NODE_TYPE = 'smart-routing';
+const KNOWLEDGE_BASE_NODE_TYPE = 'knowledge-base';
+const MEMORY_NODE_TYPE = 'memory';
+const INPUT_PREPROCESSOR_NODE_TYPE = 'input-preprocessor';
+const SKILL_NODE_TYPE = 'skill';
+const SANDBOX_NODE_TYPE = 'sandbox';
+const WORKSPACE_NODE_TYPE = 'workspace';
 const SYSTEM_PROMPT_HANDLE = 'system-prompt-in';
 const SCHEMA_HANDLE = 'schema-in';
+
+const SUPPORTED_AGENT_CANVAS_NODE_TYPES = new Set<string>([
+  AGENT_MAIN_NODE_TYPE,
+  'llm-model',
+  SMART_ROUTING_NODE_TYPE,
+  HTTP_TOOL_NODE_TYPE,
+  CODE_TOOL_NODE_TYPE,
+  MCP_TOOL_NODE_TYPE,
+  KNOWLEDGE_BASE_NODE_TYPE,
+  MEMORY_NODE_TYPE,
+  TEXT_NODE_TYPE,
+  SUB_AGENT_NODE_TYPE,
+  INPUT_PREPROCESSOR_NODE_TYPE,
+  SKILL_NODE_TYPE,
+  SANDBOX_NODE_TYPE,
+  WORKSPACE_NODE_TYPE,
+]);
 
 const LEGACY_AGENT_NODE_TYPE_ALIASES: Record<string, string> = {
   mcp: MCP_TOOL_NODE_TYPE,
@@ -334,7 +365,9 @@ function normalizeSourceHandleAlias(
   }
 
   const aliases =
-    LEGACY_OUTPUT_HANDLE_ALIASES[canonicalizeAgentNodeType(sourceNodeType) ?? ''];
+    LEGACY_OUTPUT_HANDLE_ALIASES[
+      canonicalizeAgentNodeType(sourceNodeType) ?? ''
+    ];
   const canonicalHandle = aliases?.[normalizedHandle];
   return canonicalHandle ?? handle;
 }
@@ -420,7 +453,7 @@ export function migrateAgentCanvasGraph(
     const nextCategory =
       canonicalNodeType === MCP_TOOL_NODE_TYPE
         ? 'tool'
-        : readNonEmptyString(data.category) ?? data.category;
+        : (readNonEmptyString(data.category) ?? data.category);
 
     return {
       ...node,
@@ -572,6 +605,38 @@ export function migrateAgentVersionSnapshot(snapshot: AgentVersionSnapshot): {
     },
     changed: migrated.changed,
   };
+}
+
+export function collectUnsupportedAgentCanvasNodeTypes(
+  nodes: ReactFlowNode[],
+): UnsupportedAgentCanvasNodeType[] {
+  return nodes.flatMap((node) => {
+    const nodeType = getNodeType(node);
+    const nodeId =
+      typeof node.id === 'string' && node.id.trim().length > 0
+        ? node.id
+        : '(missing-id)';
+
+    if (!nodeType) {
+      return [
+        {
+          nodeId,
+          nodeType: '(missing nodeType)',
+        },
+      ];
+    }
+
+    if (SUPPORTED_AGENT_CANVAS_NODE_TYPES.has(nodeType)) {
+      return [];
+    }
+
+    return [
+      {
+        nodeId,
+        nodeType,
+      },
+    ];
+  });
 }
 
 export function migrateWorkflowGraph(

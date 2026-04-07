@@ -108,6 +108,18 @@ function createMockNodeData(
   };
 }
 
+function createUnknownNodeData(): CanvasNodeData {
+  return {
+    label: "Legacy Node",
+    nodeType: "legacy-node" as CanvasNodeData["nodeType"],
+    category: "tool",
+    description: "历史节点描述",
+    config: {},
+    inputPorts: [],
+    outputPorts: [],
+  };
+}
+
 function renderNode(
   data: CanvasNodeData,
   overrides: Partial<NodeProps<CanvasNode>> = {},
@@ -195,6 +207,20 @@ describe("CanvasNodeShell", () => {
 
     expect(screen.getByText("执行多步推理")).toBeInTheDocument();
     expect(screen.getByText("chat-agent")).toBeInTheDocument();
+  });
+
+  it("degrades unknown node types instead of throwing", () => {
+    renderNode(createUnknownNodeData(), { id: "legacy-node-1" });
+
+    const node = screen.getByTestId("canvas-node-legacy-node-1");
+    expect(node).toBeInTheDocument();
+    expect(within(node).getByText("Legacy Node")).toBeInTheDocument();
+    expect(
+      within(node).getAllByText(
+        "当前版本暂不识别节点类型 legacy-node，已保留原始端口与配置数据。",
+      ),
+    ).toHaveLength(2);
+    expect(within(node).getByText("legacy-node")).toBeInTheDocument();
   });
 
   it("renders mcp-tool nodes with MCP badge and server info", () => {

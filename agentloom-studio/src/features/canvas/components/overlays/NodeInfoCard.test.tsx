@@ -35,6 +35,24 @@ function createNode(): CanvasNode {
   };
 }
 
+function createUnknownNode(): CanvasNode {
+  return {
+    id: "node-legacy",
+    type: "tool",
+    position: { x: 10, y: 10 },
+    measured: { width: 120, height: 60 },
+    data: {
+      label: "Legacy Node",
+      nodeType: "legacy-node" as CanvasNode["data"]["nodeType"],
+      category: "tool",
+      description: "历史节点",
+      config: {},
+      inputPorts: [],
+      outputPorts: [],
+    },
+  };
+}
+
 describe("NodeInfoCard", () => {
   beforeEach(() => {
     useCanvasStore.getState().actions.reset();
@@ -60,5 +78,16 @@ describe("NodeInfoCard", () => {
     expect(screen.getByText("Chat Agent")).toBeInTheDocument();
     expect(screen.getByText("3 输入, 3 输出")).toBeInTheDocument();
     expect(screen.getByText("空闲")).toBeInTheDocument();
+  });
+
+  it("未知节点类型时应降级显示而不是抛错", () => {
+    useCanvasStore.getState().actions.setHoveredNodeId("node-legacy");
+    getNodeMock.mockReturnValue(createUnknownNode());
+
+    render(<NodeInfoCard />);
+
+    expect(screen.getByText("Legacy Node")).toBeInTheDocument();
+    expect(screen.getByText("未知节点类型")).toBeInTheDocument();
+    expect(screen.getByText("0 输入, 0 输出")).toBeInTheDocument();
   });
 });

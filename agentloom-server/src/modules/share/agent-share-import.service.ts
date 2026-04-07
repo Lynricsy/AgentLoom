@@ -17,7 +17,11 @@ import type {
 import { SkillService } from '../skill/skill.service';
 import { SkillStorageService } from '../skill/skill-storage.service';
 import { appendSlugSuffix, generateSlug } from '../organization/slug.utils';
-import { migrateAgentCanvasGraph } from '../agent-definition/agent-input-node-migration.util';
+import { AgentCanvasUnknownNodeTypeException } from '../agent-definition/agent-definition.exceptions';
+import {
+  collectUnsupportedAgentCanvasNodeTypes,
+  migrateAgentCanvasGraph,
+} from '../agent-definition/agent-input-node-migration.util';
 import { cloneDefinitionWithNewIds } from '../workflow-definition/utils/clone-template.utils';
 import {
   ResourceSourceService,
@@ -853,6 +857,12 @@ export class AgentShareImportService {
       edges: input.edges,
       systemPrompt: input.systemPrompt,
     });
+    const unsupportedNodes = collectUnsupportedAgentCanvasNodeTypes(
+      migratedCanvas.nodes,
+    );
+    if (unsupportedNodes.length > 0) {
+      throw new AgentCanvasUnknownNodeTypeException(unsupportedNodes);
+    }
     const rawInputSchema = input.metadata['inputSchema'];
     const rawMemoryInstanceIds = input.metadata['memoryInstanceIds'];
     const rawSandboxLifecycle = input.metadata['sandboxLifecycle'];

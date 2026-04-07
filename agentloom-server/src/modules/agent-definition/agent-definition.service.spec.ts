@@ -4,6 +4,7 @@ import { AgentDefinitionService } from './agent-definition.service';
 import {
   AgentNotFoundException,
   AgentArchivedException,
+  AgentCanvasUnknownNodeTypeException,
   AgentVersionConflictException,
   AgentPublishValidationException,
 } from './agent-definition.exceptions';
@@ -877,6 +878,35 @@ describe('AgentDefinitionService', () => {
         ),
       ).rejects.toThrow(AgentArchivedException);
     });
+
+    it('包含未知 nodeType 时应拒绝保存画布', async () => {
+      const agent = makeAgent();
+
+      mockTxClient.select.mockImplementation(() => {
+        const c: Record<string, any> = {};
+        c.from = vi.fn().mockReturnValue(c);
+        c.where = vi.fn().mockResolvedValue([agent]);
+        return c;
+      });
+
+      await expect(
+        service.saveCanvas(
+          'agent-1',
+          {
+            canvasNodes: [
+              {
+                id: 'legacy-node',
+                type: 'tool',
+                position: { x: 0, y: 0 },
+                data: { nodeType: 'legacy-node' },
+              },
+            ] as never,
+            canvasEdges: [],
+          },
+          'user-1',
+        ),
+      ).rejects.toThrow(AgentCanvasUnknownNodeTypeException);
+    });
   });
 
   // ─── buildRuntimeConfigFromNodes ──────────────────────────
@@ -919,7 +949,6 @@ describe('AgentDefinitionService', () => {
           type: 'smart-routing',
           data: { strategy: 'COST_OPTIMIZED' },
         },
-        { id: 'n9', type: 'unknown-type', data: {} }, // 未知类型应被忽略
       ];
 
       const config = service.buildRuntimeConfigFromNodes(nodes, []);
@@ -945,6 +974,22 @@ describe('AgentDefinitionService', () => {
 
       expect(config.routingConfig).toBeDefined();
       expect(config.routingConfig!.strategy).toBe('COST_OPTIMIZED');
+    });
+
+    it('未知节点类型应在编译前 fail-closed', () => {
+      expect(() =>
+        service.buildRuntimeConfigFromNodes(
+          [
+            {
+              id: 'legacy-node',
+              type: 'tool',
+              position: { x: 0, y: 0 },
+              data: { nodeType: 'legacy-node' },
+            },
+          ] as never,
+          [],
+        ),
+      ).toThrow(AgentCanvasUnknownNodeTypeException);
     });
 
     it('空节点数组返回空配置', () => {

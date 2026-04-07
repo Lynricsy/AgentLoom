@@ -62,6 +62,13 @@ export interface NodeTypeConfig {
   configSchema: NodeConfigSchema
 }
 
+export interface ResolvedNodeTypeConfig
+  extends Omit<NodeTypeConfig, 'type' | 'category'> {
+  type: string
+  category: NodeCategory
+  isKnownType: boolean
+}
+
 export interface PortDataTypeMeta {
   label: string
   colorToken: string
@@ -131,6 +138,23 @@ export const PORT_DATA_TYPE_META: Record<PortDataType, PortDataTypeMeta> = {
     colorToken: 'var(--color-type-volume)',
     shape: 'square',
   },
+}
+
+const NODE_CATEGORY_VALUES: ReadonlySet<NodeCategory> = new Set([
+  'agent',
+  'tool',
+  'trigger',
+  'knowledge',
+  'output',
+  'control',
+  'plugin',
+  'memory',
+])
+
+const EMPTY_NODE_CONFIG_SCHEMA: NodeConfigSchema = {
+  type: 'object',
+  properties: {},
+  required: [],
 }
 
 function isPortDataType(value: unknown): value is PortDataType {
@@ -1235,6 +1259,47 @@ export function getNodeTypeConfig(type: NodeType): NodeTypeConfig {
 export function getNodeTypeConfigOrNull(type: string): NodeTypeConfig | null {
   const resolvedType = resolveLegacyNodeTypeAlias(type)
   return NODE_TYPE_REGISTRY[resolvedType as NodeType] ?? (AGENT_CANVAS_NODE_REGISTRY.get(resolvedType) as unknown as NodeTypeConfig) ?? null
+}
+
+function resolveNodeCategory(category: unknown): NodeCategory {
+  return typeof category === 'string' && NODE_CATEGORY_VALUES.has(category as NodeCategory)
+    ? (category as NodeCategory)
+    : 'control'
+}
+
+export function getResolvedNodeTypeConfig(
+  type: string | null | undefined,
+  options: {
+    category?: unknown
+    inputPorts?: PortDefinition[] | null | undefined
+    outputPorts?: PortDefinition[] | null | undefined
+  } = {},
+): ResolvedNodeTypeConfig {
+  const normalizedType =
+    typeof type === 'string' && type.trim().length > 0
+      ? type.trim()
+      : 'unknown-node'
+  const config = getNodeTypeConfigOrNull(normalizedType)
+
+  if (config) {
+    return {
+      ...config,
+      isKnownType: true,
+    }
+  }
+
+  return {
+    type: normalizedType,
+    category: resolveNodeCategory(options.category),
+    label: '未知节点类型',
+    icon: 'Bot',
+    description: `当前版本暂不识别节点类型 ${normalizedType}，已保留原始端口与配置数据。`,
+    colorToken: 'var(--color-muted)',
+    inputPorts: Array.isArray(options.inputPorts) ? options.inputPorts : [],
+    outputPorts: Array.isArray(options.outputPorts) ? options.outputPorts : [],
+    configSchema: EMPTY_NODE_CONFIG_SCHEMA,
+    isKnownType: false,
+  }
 }
 
 export function getAllNodeTypes(): NodeTypeConfig[] {

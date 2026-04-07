@@ -42,6 +42,7 @@ import {
   AgentNotFoundException,
   AgentArchivedException,
   AgentVersionConflictException,
+  AgentCanvasUnknownNodeTypeException,
   AgentVersionNotFoundException,
   AgentPublishValidationException,
 } from './agent-definition.exceptions';
@@ -53,6 +54,7 @@ import {
 } from '../sandbox/sandbox-timeout.utils';
 import { resolveSandboxConversationIdleAutoEndMinutes } from '../sandbox/sandbox-conversation-idle.utils';
 import {
+  collectUnsupportedAgentCanvasNodeTypes,
   migrateAgentCanvasGraph,
   migrateAgentVersionSnapshot,
 } from './agent-input-node-migration.util';
@@ -435,6 +437,7 @@ export class AgentDefinitionService {
         nodes: dto.canvasNodes as unknown as schema.ReactFlowNode[],
         edges: dto.canvasEdges as unknown as schema.ReactFlowEdge[],
       });
+      this.assertSupportedCanvasNodeTypes(migratedCanvas.nodes);
 
       const setClause: Record<string, any> = {
         nodes: migratedCanvas.nodes,
@@ -525,6 +528,7 @@ export class AgentDefinitionService {
         nodes: options.canvasNodes as unknown as schema.ReactFlowNode[],
         edges: options.canvasEdges as unknown as schema.ReactFlowEdge[],
       });
+      this.assertSupportedCanvasNodeTypes(migratedCanvas.nodes);
 
       await this.assertRuntimeModeConstraints(
         dbClient,
@@ -661,6 +665,8 @@ export class AgentDefinitionService {
     agentDefinitionId?: string,
     runtimeMode: AgentRuntimeMode = 'sandbox',
   ): AgentRuntimeConfig {
+    this.assertSupportedCanvasNodeTypes(nodes as schema.ReactFlowNode[]);
+
     const config: AgentRuntimeConfig = { runtimeMode };
 
     const tools: AgentToolBinding[] = [];
@@ -1192,6 +1198,7 @@ export class AgentDefinitionService {
     agent: typeof schema.agentDefinitions.$inferSelect,
     releaseNotes?: string,
   ): AgentVersionSnapshot {
+    this.assertSupportedCanvasNodeTypes(agent.nodes ?? []);
     const canvasMetadata = this.extractCanvasMetadata(agent.metadata);
 
     return {
@@ -1923,6 +1930,15 @@ export class AgentDefinitionService {
     return '';
   }
 
+  private assertSupportedCanvasNodeTypes(nodes: schema.ReactFlowNode[]): void {
+    const unsupportedNodes = collectUnsupportedAgentCanvasNodeTypes(
+      nodes ?? [],
+    );
+    if (unsupportedNodes.length > 0) {
+      throw new AgentCanvasUnknownNodeTypeException(unsupportedNodes);
+    }
+  }
+
   private resolveNodeData(node: any): Record<string, any> {
     const data =
       node?.data && typeof node.data === 'object' && !Array.isArray(node.data)
@@ -2174,7 +2190,9 @@ export interface AgentVersionResponseDto {
 function toVersionResponseDto(
   version: typeof schema.agentVersions.$inferSelect,
 ): AgentVersionResponseDto {
-  const migratedSnapshot = migrateAgentVersionSnapshot(version.snapshot).snapshot;
+  const migratedSnapshot = migrateAgentVersionSnapshot(
+    version.snapshot,
+  ).snapshot;
   const sandboxConfig =
     migratedSnapshot.runtimeMode === 'no_sandbox'
       ? null

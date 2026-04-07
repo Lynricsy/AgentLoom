@@ -60,7 +60,7 @@ import type {
   SmartRoutingNodeData,
 } from "../types";
 import type { AgentNodeData as WorkflowAgentNodeData } from "@/features/agent/types";
-import { getNodeTypeConfig } from "../types/nodeTypeRegistry";
+import { getResolvedNodeTypeConfig } from "../types/nodeTypeRegistry";
 import { useLevelOfDetail } from "../hooks/useLevelOfDetail";
 import {
   useCanvasActions,
@@ -285,8 +285,12 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
   selected,
   isConnectable = true,
 }: NodeProps<CanvasNode>) {
-  const config = getNodeTypeConfig(data.nodeType);
-  const categoryMeta = NODE_CATEGORIES[data.category];
+  const config = getResolvedNodeTypeConfig(data.nodeType, {
+    category: data.category,
+    inputPorts: Array.isArray(data.inputPorts) ? data.inputPorts : undefined,
+    outputPorts: Array.isArray(data.outputPorts) ? data.outputPorts : undefined,
+  });
+  const categoryMeta = NODE_CATEGORIES[config.category] ?? NODE_CATEGORIES.control;
   const NodeTypeIcon = NODE_TYPE_ICONS[config.icon] ?? Bot;
   const { data: activeApiKeys = [] } = useLlmApiKeys();
   const nodeExecutionState = useNodeExecutionState(id);
@@ -398,7 +402,9 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
       ? llmConfig
         ? (providerInfo?.name ?? llmConfig.provider)
         : "点击配置模型"
-      : (data.description ?? data.nodeType);
+      : config.isKnownType
+        ? (data.description ?? data.nodeType)
+        : config.description;
   const title = data.nodeType === "llm-model" ? llmDisplayTitle : data.label;
   const compactStatusMeta =
     COMPACT_STATUS_META[nodeExecutionState?.status ?? "idle"];

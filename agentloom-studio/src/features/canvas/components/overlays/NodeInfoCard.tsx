@@ -17,7 +17,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
 import { useHoveredNodeId } from '../../stores/canvasStore'
-import { getNodeTypeConfig } from '../../types/nodeTypeRegistry'
+import { getResolvedNodeTypeConfig } from '../../types/nodeTypeRegistry'
 import { NODE_CATEGORIES } from '../nodeCategories'
 import type { CanvasNode } from '../../types'
 
@@ -50,9 +50,15 @@ export const NodeInfoCard = memo(function NodeInfoCard() {
 
   const { data } = node
   const nodeWidth = node.measured?.width ?? 200
-  const typeConfig = getNodeTypeConfig(data.nodeType)
-  const categoryInfo = NODE_CATEGORIES[data.category]
+  const typeConfig = getResolvedNodeTypeConfig(data.nodeType, {
+    category: data.category,
+    inputPorts: Array.isArray(data.inputPorts) ? data.inputPorts : undefined,
+    outputPorts: Array.isArray(data.outputPorts) ? data.outputPorts : undefined,
+  })
+  const categoryInfo = NODE_CATEGORIES[typeConfig.category]
   const NodeIcon = NODE_TYPE_ICONS[typeConfig.icon] ?? Bot
+  const inputPortCount = Array.isArray(data.inputPorts) ? data.inputPorts.length : 0
+  const outputPortCount = Array.isArray(data.outputPorts) ? data.outputPorts.length : 0
 
   const left = node.position.x * viewport.zoom + viewport.x + nodeWidth * viewport.zoom + 12
   const top = node.position.y * viewport.zoom + viewport.y - 8
@@ -81,7 +87,7 @@ export const NodeInfoCard = memo(function NodeInfoCard() {
       </div>
       <p className="mt-2 text-xs text-muted-foreground">{typeConfig?.label ?? data.nodeType}</p>
       <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-        <span>{data.inputPorts.length} 输入, {data.outputPorts.length} 输出</span>
+        <span>{inputPortCount} 输入, {outputPortCount} 输出</span>
         <span className="text-border">|</span>
         <span>空闲</span>
       </div>

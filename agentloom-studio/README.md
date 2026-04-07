@@ -98,6 +98,7 @@ src/
 - 已知端口按节点注册表回填 `direction / dataType / schema / maxConnections` 等 canonical 字段
 - 未知端口则按已有 `dataType / schema` 推导默认 schema
 - 目标是兼容历史快照、API 直改或导入数据里残留的半残 `PortDefinition`，避免页面在 UI / type-engine 读取 `port.schema.kind` 时直接崩溃
+- `CanvasNodeShell`、`NodeInfoCard` 与 `NodeConfigPanel` 对未知 `nodeType` 也会走通用降级展示：保留原始端口/配置数据并显示“未知节点类型”，而不是因单个坏节点让整个画布进入 error boundary
 
 `features/workflow/api/versionQueries.ts` 现在也会在消费版本列表 / 已发布版本接口时，对 `version.snapshot.nodes[*].data.inputPorts/outputPorts` 执行同类 hydration。这样即使服务端返回的是历史半残版本快照，版本历史侧边栏和任何后续消费 `snapshot` 的前端路径也不会再绕过主画布 store 直接命中 `schema.kind` 崩溃。
 
