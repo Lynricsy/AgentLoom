@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
+import { ModuleRef } from '@nestjs/core';
 import { and, desc, eq, notInArray, asc, or, sql } from 'drizzle-orm';
 
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
@@ -35,6 +36,7 @@ import {
   resolveSandboxConversationIdleAutoEndDelayMs,
   resolveSandboxConversationIdleAutoEndMinutes,
 } from './sandbox-conversation-idle.utils';
+import { WorkspaceService } from '../workspace/workspace.service';
 
 const TERMINAL_STATUSES = ['stopped', 'failed'] as const;
 const NON_ACTIVE_SESSION_STATUSES = ['stopping', ...TERMINAL_STATUSES] as const;
@@ -74,6 +76,7 @@ export class SandboxService {
     private readonly lifecycleProducer: SandboxLifecycleProducer,
     @Inject(SANDBOX_RUNTIME_DRIVER)
     private readonly dockerService: SandboxRuntimeDriver,
+    private readonly moduleRef: ModuleRef,
   ) {}
 
   private get tenantDb(): DrizzleDB {
@@ -1021,6 +1024,12 @@ export class SandboxService {
       remainingBindings,
     );
 
+    await this.syncRestoredWorkspaceOnPersistentDetach(
+      session,
+      tenantId,
+      remainingBindings,
+    );
+
     await runInTenantTransaction(this.db, tenantId, async () => {
       const tenantDb = getTenantDb(this.db);
       await tenantDb
@@ -1043,6 +1052,54 @@ export class SandboxService {
     this.logger.log(
       `Persistent sandbox ${session.id} disconnected from ${this.describeBinding(binding)}`,
     );
+  }
+
+  private async syncRestoredWorkspaceOnPersistentDetach(
+    session: SandboxSession,
+    tenantId: string,
+    remainingBindings: SandboxBindingRef[],
+  ): Promise<void> {
+    if (remainingBindings.length > 0 || !session.containerId) {
+      return;
+    }
+
+    const restoreWorkspaceId = this.readRestoreWorkspaceId(session.config);
+    if (!restoreWorkspaceId) {
+      return;
+    }
+
+    const workspaceService = this.moduleRef.get(WorkspaceService, {
+      strict: false,
+    });
+
+    if (!workspaceService) {
+      this.logger.warn(
+        `WorkspaceService unavailable while detaching persistent sandbox ${session.id}, skipping workspace sync`,
+      );
+      return;
+    }
+
+    try {
+      await workspaceService.syncFromSandboxContainer(
+        restoreWorkspaceId,
+        session.containerId,
+        tenantId,
+      );
+      this.logger.log(
+        `Synced restored workspace ${restoreWorkspaceId} before detaching persistent sandbox ${session.id}`,
+      );
+    } catch (error) {
+      this.logger.warn(
+        `Failed to sync restored workspace ${restoreWorkspaceId} before detaching persistent sandbox ${session.id}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  private readRestoreWorkspaceId(config: SandboxConfig): string | null {
+    return typeof config.restoreWorkspaceId === 'string' &&
+      config.restoreWorkspaceId.trim().length > 0
+      ? config.restoreWorkspaceId.trim()
+      : null;
   }
 
   private async attachPersistentSandbox(params: {

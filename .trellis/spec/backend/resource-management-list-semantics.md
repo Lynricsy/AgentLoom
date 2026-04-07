@@ -119,8 +119,9 @@
   - 对仍未 re-home 的 legacy shared-empty 记录，删除 workspace 时不能直接删除共享对象，避免误伤其他历史记录
 - 若 sandbox config 带 `restoreWorkspaceId`，该 workspace 必须被视为“最新可恢复快照”：
   - `SandboxLifecycleWorker.handleStop()` / `handleDestroy()` / `handleTimeoutCheck()` 在 stop/remove 容器前，必须调用 `WorkspaceService.syncFromSandboxContainer(restoreWorkspaceId, containerId, tenantId)`。
+  - `SandboxService.detachPersistentSession()` 在 persistent sandbox 的**最后一个** active binding 释放、资源回到 `resource` 态前，也必须 best-effort 调用同一同步逻辑，避免 conversation/workflow 刚结束时 preview 仍读取到旧 workspace 快照。
   - 回写只能覆盖同一条 `workspace_snapshots` 记录与既有 `storageKey`，不能额外插入“旧版本” workspace 行。
-  - 回写失败只能记录 warning，不能阻断 stop / destroy / timeout 主流程。
+  - 回写失败只能记录 warning，不能阻断 stop / destroy / timeout / detach 主流程。
 - `WorkspaceIntegrationService.archiveExecutionStepWorkspace()` 必须区分两类 workflow step：
   - live sandbox `config.restoreWorkspaceId` 存在：同步回原 workspace，并返回同一个 `workspaceSnapshotId`
   - live sandbox 未绑定现有 workspace：才允许 `createFromSandbox()` 新建 `execution-*-step-*-workspace`

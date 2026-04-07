@@ -13,6 +13,7 @@ import {
 } from '../sandbox.exceptions';
 import type { SandboxConfig, SandboxSession } from '../../../database/schema';
 import { SANDBOX_RUNTIME_DRIVER } from '../sandbox-runtime-driver.port';
+import { WorkspaceService } from '../../workspace/workspace.service';
 
 const tenantTransactionMocks = vi.hoisted(() => ({
   runInTenantTransaction: vi.fn(
@@ -151,6 +152,7 @@ describe('SandboxService', () => {
   let db: Record<string, ReturnType<typeof vi.fn>>;
   let mockLifecycleProducer: Record<string, ReturnType<typeof vi.fn>>;
   let mockDockerService: Record<string, ReturnType<typeof vi.fn>>;
+  let mockWorkspaceService: Record<string, ReturnType<typeof vi.fn>>;
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -184,6 +186,10 @@ describe('SandboxService', () => {
       removeContainer: vi.fn().mockResolvedValue(undefined),
     };
 
+    mockWorkspaceService = {
+      syncFromSandboxContainer: vi.fn().mockResolvedValue(undefined),
+    };
+
     vi.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
     vi.spyOn(Logger.prototype, 'debug').mockImplementation(() => {});
     vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => {});
@@ -200,6 +206,10 @@ describe('SandboxService', () => {
         {
           provide: SANDBOX_RUNTIME_DRIVER,
           useValue: mockDockerService,
+        },
+        {
+          provide: WorkspaceService,
+          useValue: mockWorkspaceService,
         },
       ],
     }).compile();
@@ -1255,10 +1265,12 @@ describe('SandboxService', () => {
     it('共享同一持久沙箱资源的多个节点中，一个节点结束时只应移除自己的绑定', async () => {
       const sharedPersistentSession = buildSession({
         status: 'ready',
+        containerId: 'container-shared',
         sandboxNodeId: null,
         config: {
           ...TEST_CONFIG,
           lifecycleMode: 'persistent',
+          restoreWorkspaceId: 'workspace-shared',
           activeBindings: [
             {
               executionId: TEST_EXECUTION_ID,
@@ -1300,6 +1312,46 @@ describe('SandboxService', () => {
           ],
         }),
       });
+      expect(
+        mockWorkspaceService.syncFromSandboxContainer,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('最后一个 persistent execution binding 释放时应先同步 restoreWorkspaceId 再解绑', async () => {
+      const persistentSession = buildSession({
+        status: 'ready',
+        containerId: 'container-shared',
+        sandboxNodeId: 'sandbox-1',
+        config: {
+          ...TEST_CONFIG,
+          lifecycleMode: 'persistent',
+          restoreWorkspaceId: 'workspace-shared',
+        },
+      });
+      const updateChain = createUpdateChainNoReturn();
+
+      db.select
+        .mockReturnValueOnce(createSelectChainWithLimit([]))
+        .mockReturnValueOnce(createSelectChainWithLimit([persistentSession]));
+      db.update.mockReturnValueOnce(updateChain);
+
+      await service.releaseExecutionSandbox(
+        TEST_EXECUTION_ID,
+        'sandbox-1',
+        TEST_TENANT_ID,
+      );
+
+      expect(
+        mockWorkspaceService.syncFromSandboxContainer,
+      ).toHaveBeenCalledWith(
+        'workspace-shared',
+        'container-shared',
+        TEST_TENANT_ID,
+      );
+      expect(
+        mockWorkspaceService.syncFromSandboxContainer.mock
+          .invocationCallOrder[0],
+      ).toBeLessThan(updateChain.set.mock.invocationCallOrder[0]);
     });
   });
 
@@ -1480,12 +1532,14 @@ describe('SandboxService', () => {
         config: {
           ...TEST_CONFIG,
           lifecycleMode: 'persistent' as const,
+          restoreWorkspaceId: 'workspace-conv',
           persistenceExpiryHours: 48,
         },
       });
 
       db.select.mockReturnValueOnce(createSelectChainWithLimit([session]));
-      db.update.mockReturnValueOnce(createUpdateChainNoReturn());
+      const updateChain = createUpdateChainNoReturn();
+      db.update.mockReturnValueOnce(updateChain);
 
       await service.endConversationSandbox(
         TEST_CONVERSATION_ID,
@@ -1494,6 +1548,17 @@ describe('SandboxService', () => {
 
       expect(mockLifecycleProducer.addDestroyTask).not.toHaveBeenCalled();
       expect(db.update).toHaveBeenCalledOnce();
+      expect(
+        mockWorkspaceService.syncFromSandboxContainer,
+      ).toHaveBeenCalledWith(
+        'workspace-conv',
+        'container-conv',
+        TEST_TENANT_ID,
+      );
+      expect(
+        mockWorkspaceService.syncFromSandboxContainer.mock
+          .invocationCallOrder[0],
+      ).toBeLessThan(updateChain.set.mock.invocationCallOrder[0]);
     });
 
     it('アクティブセッション未発見時にスキップ', async () => {
