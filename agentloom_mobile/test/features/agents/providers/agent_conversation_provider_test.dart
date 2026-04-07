@@ -292,6 +292,99 @@ void main() {
     expect(state.messages.single.content, '你好');
   });
 
+  test('迟到的 history detail 不会覆盖当前 live tail', () async {
+    final detailCompleter = Completer<AgentConversationDetailDto>();
+    when(() => mockApi.getMessages(any())).thenAnswer(
+      (_) async => const PaginatedResponse(
+        data: [
+          ConversationMessageDto(
+            id: 'user-1',
+            conversationId: 'conv-001',
+            role: MessageRole.user,
+            content: '上一轮问题',
+            metadata: <String, dynamic>{},
+            createdAt: '2026-04-06T00:00:00.000Z',
+          ),
+        ],
+        meta: PaginationMeta(page: 1, pageSize: 50, total: 1, totalPages: 1),
+      ),
+    );
+    when(
+      () => mockApi.getConversationDetail(any()),
+    ).thenAnswer((_) => detailCompleter.future);
+    when(
+      () => mockApi.sendMessage(
+        any(),
+        content: any(named: 'content'),
+        role: any(named: 'role'),
+        contentType: any(named: 'contentType'),
+        metadata: any(named: 'metadata'),
+      ),
+    ).thenAnswer(
+      (_) async => const ConversationMessageDto(
+        id: 'user-2',
+        conversationId: 'conv-001',
+        role: MessageRole.user,
+        content: '第二轮提问',
+        metadata: <String, dynamic>{},
+        createdAt: '2026-04-06T00:01:00.000Z',
+      ),
+    );
+
+    container.listen(
+      agentConversationProvider(params),
+      (_, __) {},
+      fireImmediately: true,
+    );
+
+    await container.read(authProvider.future);
+    await container.read(agentConversationProvider(params).future);
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    listeners['conversation.agent.done']?.call({
+      'conversationId': 'conv-001',
+      'messageId': 'assistant-1',
+    });
+
+    final notifier = container.read(agentConversationProvider(params).notifier);
+    await notifier.sendMessage('第二轮提问');
+    listeners['conversation.agent.message_chunk']?.call({
+      'conversationId': 'conv-001',
+      'messageId': 'assistant-2',
+      'chunk': '第二轮回答',
+    });
+
+    detailCompleter.complete((
+      messages: const PaginatedResponse<ConversationMessageDto>(
+        data: [
+          ConversationMessageDto(
+            id: 'user-1',
+            conversationId: 'conv-001',
+            role: MessageRole.user,
+            content: '上一轮问题',
+            metadata: <String, dynamic>{},
+            createdAt: '2026-04-06T00:00:00.000Z',
+          ),
+        ],
+        meta: PaginationMeta(page: 1, pageSize: 50, total: 1, totalPages: 1),
+      ),
+      metadata: const {
+        'execution': {'runningState': 'idle'},
+      },
+    ));
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+
+    final state = container.read(agentConversationProvider(params)).value;
+    expect(state, isNotNull);
+    expect(state!.status, ConversationStatus.executing);
+    expect(state.messages.map((message) => message.content).toList(), [
+      '上一轮问题',
+      '第二轮提问',
+      '第二轮回答',
+    ]);
+    expect(state.messages.last.isStreaming, isTrue);
+  });
+
   test('socket 连接配置应按平台选择 transport 与鉴权头', () async {
     container.listen(
       agentConversationProvider(params),

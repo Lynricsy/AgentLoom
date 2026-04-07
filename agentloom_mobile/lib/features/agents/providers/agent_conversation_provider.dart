@@ -1027,6 +1027,143 @@ List<ConversationMessageDto> _upsertMessage(
   return next;
 }
 
+Object? _normalizeComparableValue(Object? value) {
+  if (value is Map) {
+    return {
+      for (final entry in value.entries)
+        '${entry.key}': _normalizeComparableValue(entry.value),
+    };
+  }
+
+  if (value is List) {
+    return value.map(_normalizeComparableValue).toList(growable: false);
+  }
+
+  return value;
+}
+
+bool _deepEquals(Object? left, Object? right) {
+  if (identical(left, right)) {
+    return true;
+  }
+
+  if (left is List && right is List) {
+    if (left.length != right.length) {
+      return false;
+    }
+
+    for (var index = 0; index < left.length; index += 1) {
+      if (!_deepEquals(left[index], right[index])) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  if (left is Map && right is Map) {
+    if (left.length != right.length) {
+      return false;
+    }
+
+    final normalizedRight = {
+      for (final entry in right.entries) '${entry.key}': entry.value,
+    };
+
+    for (final entry in left.entries) {
+      final key = '${entry.key}';
+      if (!normalizedRight.containsKey(key) ||
+          !_deepEquals(entry.value, normalizedRight[key])) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  return left == right;
+}
+
+Map<String, Object?> _projectComparableMessage(ConversationMessageDto message) {
+  final attachments = switch (message.metadata['attachments']) {
+    final List<dynamic> values =>
+      values.map(_normalizeComparableValue).toList(growable: false),
+    _ when message.metadata['attachment'] != null => [
+      _normalizeComparableValue(message.metadata['attachment']),
+    ],
+    _ => null,
+  };
+
+  return <String, Object?>{
+    'role': message.role,
+    'content': message.content,
+    'thinking': message.thinking,
+    'attachments': attachments,
+    'toolCalls': message.toolCalls
+        .map(
+          (toolCall) => <String, Object?>{
+            'id': toolCall.id,
+            'tool': toolCall.tool,
+            'status': toolCall.status,
+            'args': _normalizeComparableValue(toolCall.args),
+            'result': _normalizeComparableValue(toolCall.result),
+            'error': toolCall.error,
+          },
+        )
+        .toList(growable: false),
+    'segments': message.segments
+        .map(
+          (segment) => segment.kind == MessageSegmentKind.toolCall
+              ? <String, Object?>{
+                  'kind': segment.kind,
+                  'toolCallId': segment.toolCallId,
+                }
+              : <String, Object?>{
+                  'kind': segment.kind,
+                  'content': segment.content,
+                },
+        )
+        .toList(growable: false),
+  };
+}
+
+bool _areMessagesEquivalent(
+  ConversationMessageDto current,
+  ConversationMessageDto canonical,
+) {
+  return _deepEquals(
+    _projectComparableMessage(current),
+    _projectComparableMessage(canonical),
+  );
+}
+
+List<ConversationMessageDto> _mergeHistoryWithLiveTail(
+  List<ConversationMessageDto> currentMessages,
+  List<ConversationMessageDto> canonicalMessages,
+) {
+  if (currentMessages.length < canonicalMessages.length) {
+    return canonicalMessages;
+  }
+
+  var isCanonicalPrefix = true;
+  for (var index = 0; index < canonicalMessages.length; index += 1) {
+    final message = canonicalMessages[index];
+    final current = currentMessages[index];
+    if (!_areMessagesEquivalent(current, message)) {
+      isCanonicalPrefix = false;
+      break;
+    }
+  }
+
+  if (!isCanonicalPrefix) {
+    return canonicalMessages;
+  }
+
+  return [
+    ...canonicalMessages,
+    ...currentMessages.skip(canonicalMessages.length),
+  ];
+}
+
 class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
   AgentConversationNotifier(this.params);
 
@@ -1106,9 +1243,19 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
       _hasHistoricalMessages = snapshot.messages.isNotEmpty;
 
       _updateState((current) {
+        final mergedMessages = _mergeHistoryWithLiveTail(
+          current.messages,
+          snapshot.messages,
+        );
+        final preservedLiveTail =
+            mergedMessages.length > snapshot.messages.length;
+        if (preservedLiveTail) {
+          return current.copyWith(messages: mergedMessages);
+        }
+
         if (snapshot.runningState == 'running') {
           return current.copyWith(
-            messages: snapshot.messages,
+            messages: mergedMessages,
             status: ConversationStatus.executing,
             clearError: true,
           );
@@ -1119,7 +1266,7 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
               snapshot.errorMessage ?? '当前对话执行失败，请检查 Agent 配置后重试。';
           if (snapshot.failedPhase != null) {
             return current.copyWith(
-              messages: snapshot.messages,
+              messages: mergedMessages,
               status: ConversationStatus.error,
               preparationFailedPhase: snapshot.failedPhase,
               preparationError: runtimeError,
@@ -1128,7 +1275,7 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
           }
 
           return current.copyWith(
-            messages: snapshot.messages,
+            messages: mergedMessages,
             status: ConversationStatus.error,
             error: runtimeError,
             clearPreparationPhase: true,
@@ -1141,7 +1288,7 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
         if (snapshot.runningState == 'idle' ||
             snapshot.runningState == 'cancelled') {
           return current.copyWith(
-            messages: snapshot.messages,
+            messages: mergedMessages,
             status: current.isConnected
                 ? ConversationStatus.connected
                 : ConversationStatus.idle,
@@ -1153,7 +1300,7 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
           );
         }
 
-        return current.copyWith(messages: snapshot.messages);
+        return current.copyWith(messages: mergedMessages);
       });
     } catch (error) {
       if (!ref.mounted || silent) {
