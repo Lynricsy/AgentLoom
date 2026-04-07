@@ -249,6 +249,55 @@ describe('StepStateMachineService', () => {
         }),
       );
     });
+
+    it('转换到 completed 时会把 result 和 checkpointData 透传到实时事件', async () => {
+      const step = makeStep({ status: 'running' });
+      const resultPayload = {
+        content: '最终输出',
+        'exec-out': { triggered: true },
+      };
+      const checkpointData = {
+        partialContent: '最终输出',
+        round: 2,
+      };
+      const updatedStep = makeStep({
+        status: 'completed',
+        result: resultPayload,
+        checkpointData,
+        completedAt: NOW,
+        updatedAt: NOW,
+      });
+
+      db.select.mockReturnValueOnce(createSelectChain([step]));
+      const updateChain = createUpdateChainReturning([updatedStep]);
+      db.update.mockReturnValueOnce(updateChain);
+
+      await service.updateStepStatus(TENANT_ID, STEP_ID, 'completed', {
+        result: resultPayload,
+        checkpointData,
+      });
+
+      expect(updateChain.set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'completed',
+          result: resultPayload,
+          checkpointData,
+          completedAt: NOW,
+        }),
+      );
+      expect(mockEventBridge.emitStepStatusChanged).toHaveBeenCalledWith(
+        TENANT_ID,
+        EXECUTION_ID,
+        {
+          stepId: STEP_ID,
+          nodeId: NODE_ID,
+          from: 'running',
+          to: 'completed',
+          result: resultPayload,
+          checkpointData,
+        },
+      );
+    });
   });
 
   describe('updateExecutionStatus', () => {

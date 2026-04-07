@@ -82,6 +82,8 @@ export interface StepStatusChangedPayload {
   readonly to: string;
   readonly executionType?: ExecutionResourceType;
   readonly errorDetail?: StructuredErrorDetail;
+  readonly result?: Record<string, unknown> | null;
+  readonly checkpointData?: Record<string, unknown> | null;
 }
 
 export interface StepAgentEventPayload {

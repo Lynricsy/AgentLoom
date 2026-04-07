@@ -187,6 +187,29 @@ describe('executionStore', () => {
         },
       })
     })
+
+    it('merges result and checkpointData from status change event', () => {
+      const { actions } = useExecutionStore.getState()
+      const result = { content: '一次性完成输出', stopReason: 'end_turn' }
+      const checkpointData = {
+        partialContent: '一次性完成输出',
+        round: 1,
+      }
+
+      actions.updateNodeStatus(
+        makeStepStatusEvent({
+          from: 'running',
+          to: 'completed',
+          result,
+          checkpointData,
+        }),
+      )
+
+      const node = getNode('node-1')
+      expect(node.output).toBe('一次性完成输出')
+      expect(node.result).toEqual(result)
+      expect(node.checkpointData).toEqual(checkpointData)
+    })
   })
 
   describe('appendNodeOutput', () => {
@@ -404,6 +427,34 @@ describe('executionStore', () => {
 
       expect(getNode('node-content-object').output).toBe(
         JSON.stringify(content, null, 2),
+      )
+    })
+
+    it('restores output from step.result.json as formatted JSON', () => {
+      const { actions } = useExecutionStore.getState()
+      const json = { summary: 'JSON 输出', score: 0.77 }
+      const snapshot: ExecutionStateSnapshot = {
+        executionId: 'exec-snap-json-output',
+        status: 'completed',
+        completedSteps: 1,
+        totalSteps: 1,
+        snapshotAt: new Date().toISOString(),
+        steps: [
+          {
+            stepId: 'step-json-output',
+            nodeId: 'node-json-output',
+            status: 'completed',
+            startedAt: '2025-01-01T00:00:00Z',
+            completedAt: '2025-01-01T00:01:00Z',
+            result: { json },
+          },
+        ],
+      }
+
+      actions.applySnapshot(snapshot)
+
+      expect(getNode('node-json-output').output).toBe(
+        JSON.stringify(json, null, 2),
       )
     })
 

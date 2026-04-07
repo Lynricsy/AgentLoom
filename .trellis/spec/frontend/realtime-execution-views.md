@@ -41,6 +41,9 @@
 - workflow-agent viewer 必须是只读视图：
   - 允许查看消息流、工具、终端、文件变更、workspace 树、文件预览。
   - 不允许像普通 Agent 对话页一样继续发送新消息。
+- `execution.node.status-changed` 若携带 `result` / `checkpointData`，前端必须立即合并到 live node state。
+  - 不能等待用户刷新后重新依赖 snapshot 恢复最终结果。
+  - `text-output` / `json-output` 这类“一次性完成产出结果”的节点不会发送 `output_chunk`，因此 completed 事件本身就是最终输出同步点。
 - workspace 面板必须使用 execution step 作用域 API，而不是 conversation API。
 - workspace 刷新后，如果当前选中文件已不存在，必须清空选中态和旧预览，不能继续显示 stale 内容。
 - standalone Agent 的 `loadHistory()` 不能无条件整包替换当前 `messages`。
@@ -65,6 +68,7 @@
 | history message 带 `metadata.subAgentStreams`         | child drill-in 复用主消息瀑布渲染，不得退回摘要    | `subAgentView.test.ts`             |
 | 普通工具调用                                          | 不得展示 `awaiting_permission` 审批卡              | 对话页 / execution viewer 组件测试 |
 | step 无 `segments`，但有 `partialContent + toolCalls` | viewer 退化成基础 fallback，不抛错                 | `workflowAgentViewer.test.ts`      |
+| `text-output/json-output` 只在 completed 事件中返回 `result` | 画布节点与 `NodeConfigPanel` 无需刷新即可显示最终输出 | `executionStore.test.ts`           |
 | 用户快速切换文件或刷新 workspace                      | 旧请求不得覆盖新文件内容                           | `WorkflowAgentViewer.test.tsx`     |
 | 运行中 `fileChanges` 增加                             | viewer 触发 workspace 刷新                         | `WorkflowAgentViewer.test.tsx`     |
 | step 不是 agent 节点                                  | viewer 路由必须走 guard / 错误态，不得渲染假消息流 | 组件测试 + 手动 QA                 |
@@ -86,6 +90,8 @@
   - 断言旧历史缺少 durable stream 时才回退摘要。
 - `agentloom-studio/src/features/execution/lib/workflowAgentViewer.test.ts`
   - 断言 ordered segments、live output merge、tool/file/terminal normalization。
+- `agentloom-studio/src/features/execution/stores/executionStore.test.ts`
+  - 断言 `execution.node.status-changed` 的 `result/checkpointData` 会立即合并到 executionStore，并恢复 one-shot output 节点内容。
 - `agentloom-studio/src/features/execution/components/WorkflowAgentViewer.test.tsx`
   - 断言 workspace tree/file preview/refresh 行为。
 - `agentloom-studio/src/features/execution/api/executionApi.test.ts`

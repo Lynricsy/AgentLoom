@@ -80,6 +80,8 @@
   - `/execution` live events
   - step-scoped workspace REST API
 - `execution.node.output-chunk` 对 workflow-agent 是必需事件，不能只依赖 `execution.node.agent-event(type='message_chunk')`。
+- `execution.node.status-changed` 对只在终态一次性写入 `result` 的 workflow 节点（例如 `text-output` / `json-output`）必须同时携带最新 `result`；若这次状态转换也写入了 runtime checkpoint，则同一事件还必须携带 `checkpointData`。
+  - 否则前端只能依赖刷新后的 snapshot 才能恢复最终输出，one-shot result 节点会表现成“执行完成��界面空白”。
 - workflow step 的工作区读取必须走 step 作用域 API，而不是 conversation 作用域 API：
   - `GET /executions/:executionId/steps/:stepId/workspace/tree`
   - `GET /executions/:executionId/steps/:stepId/workspace/files/*`
@@ -100,6 +102,7 @@
 | `segments` 已持久化                                                      | viewer 必须按 `text/thinking/tool_call` 的真实顺序恢复历史                               | `agent-execution.worker.spec.ts` / `workflow-agent-adapter.spec.ts`                                  |
 | `subAgentStreams` 已持久化                                               | Studio drill-in 必须按 child `message/thinking/tool_result` 顺序恢复历史瀑布流           | `event-bridge.service.spec.ts` / `subagent-event-routing.spec.ts` / `agent-execution.worker.spec.ts` |
 | conversation turn 运行中已产出 partial output，但最终 runtime error 失败 | worker 仍需持久化 partial assistant turn，刷新后不能丢失                                 | `agent-execution.worker.spec.ts`                                                                     |
+| `text-output/json-output` 等 one-shot 节点只在 completed 时生成 `result` | `execution.node.status-changed` 必须携带该 `result/checkpointData`，避免前端必须刷新 snapshot | `step-state-machine.service.spec.ts`                                                                 |
 | `segments` 缺失，但 `partialContent + toolCalls` 存在                    | 允许 fallback 恢复基础内容，但会丢交错顺序；这是临时兼容，不是目标形态                   | `workflowAgentViewer.test.ts` / `workflow_agent_runtime_test.dart`                                   |
 | workflow-agent 冷开时 step 仍在运行                                      | snapshot 后必须能补到 active step buffered live events                                   | `execution.gateway.spec.ts`                                                                          |
 | workflow step 绑定已有 workspace 完成/失败                               | `checkpointData.workspaceSnapshotId` 继续指向原 `restoreWorkspaceId`，不生成重复 archive | `workspace-integration.service.spec.ts` / `agent-task.worker.spec.ts`                                |
@@ -123,6 +126,8 @@
   - 断言 workflow agent 的 `checkpointData.segments`、`partialContent`、`toolCalls` 持续更新。
 - `src/modules/execution/__tests__/workflow-agent-adapter.spec.ts`
   - 断言 workflow-agent 的运行中 checkpoint 包含 ordered segments。
+- `src/modules/execution/__tests__/step-state-machine.service.spec.ts`
+  - 断言 completed `updateStepStatus()` 会把 `result/checkpointData` 透传到 `execution.node.status-changed`。
 - `src/modules/execution/__tests__/execution.gateway.spec.ts`
   - 断言订阅时先发 snapshot，再补发 active step buffered live events。
 - `src/modules/execution/__tests__/execution.controller.spec.ts`

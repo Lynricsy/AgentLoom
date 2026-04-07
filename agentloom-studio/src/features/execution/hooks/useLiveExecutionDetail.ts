@@ -74,18 +74,25 @@ function mergeStepWithLiveState(
   }
 
   const liveToolCalls = Object.values(liveNode.toolCalls)
-  const checkpointData = step.checkpointData
-    ? { ...step.checkpointData }
-    : null
+  const checkpointData =
+    liveNode.checkpointData !== undefined
+      ? (liveNode.checkpointData
+          ? { ...liveNode.checkpointData }
+          : null)
+      : step.checkpointData
+        ? { ...step.checkpointData }
+        : null
 
   if (checkpointData && liveToolCalls.length > 0) {
     checkpointData.toolCalls = liveToolCalls
   }
 
   const output =
-    liveNode.output.length > 0
-      ? { ...(step.output ?? {}), content: liveNode.output }
-      : step.output
+    liveNode.result !== undefined
+      ? liveNode.result
+      : liveNode.output.length > 0
+        ? { ...(step.output ?? {}), content: liveNode.output }
+        : step.output
 
   return {
     ...step,

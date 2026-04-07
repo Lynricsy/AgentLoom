@@ -284,7 +284,7 @@ Schema 在 `src/database/schema/`，启用 RLS (`rls-policies.ts`，RLS 策略�
   - 订阅时验证 JWT blacklist + MFA，tenant 归属校验 (DB lookup)
   - 状态回放 tenant-scoped: `StateReplayService.getExecutionSnapshot(execId, tenantId)`
   - 事件协议: typed `ExecutionEvent<T>` 信封 (含 monotonic eventId)
-  - 事件名称: `execution.node.status-changed`, `execution.node.agent-event`, `execution.node.retrying`, `execution.node.output-chunk`, `execution.node.intervention-required`, `execution.node.intervention-resolved`, `execution.status.changed`
+  - 事件名称: `execution.node.status-changed`, `execution.node.agent-event`, `execution.node.retrying`, `execution.node.output-chunk`, `execution.node.intervention-required`, `execution.node.intervention-resolved`, `execution.status.changed`；其中 `execution.node.status-changed` 会在状态转换同时写入 `result/checkpointData` 时一并透传，供 Studio 立即恢复 one-shot 节点的最终输出
   - 断线续传: 客户端发送 `lastEventId`，服务端从该点回放状态快照
   - 执行终态清理: `EventBridgeService` 先排空 Gateway backpressure queue，再 `forceFlush()` merge-window 内残留 `output_chunk`，随后立即广播终态事件；`ThrottleService` / `ExecutionGateway` 运行态状态即时释放，replay ring buffer 保留 30s 后清理
   - AC-1 认证失败: `createAuthError()` 返回 `err.data = { code: 4001, reason }` close frame

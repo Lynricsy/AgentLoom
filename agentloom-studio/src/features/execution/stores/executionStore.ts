@@ -45,6 +45,8 @@ export interface NodeExecutionState {
   nodeId: string
   status: StepStatus
   output: string
+  result?: Record<string, unknown> | null
+  checkpointData?: Record<string, unknown> | null
   errorMessage?: string
   errorDetail?: StructuredErrorDetail | null
   isStreaming: boolean
@@ -178,6 +180,10 @@ function restoreOutput(result: Record<string, unknown> | null | undefined): stri
     return formatDisplayValue(result.content)
   }
 
+  if ('json' in result) {
+    return formatDisplayValue(result.json)
+  }
+
   if (typeof result.output === 'string') {
     return result.output
   }
@@ -300,6 +306,21 @@ export const useExecutionStore = create<
                   node.errorMessage
               }
 
+              if (event.data.result !== undefined) {
+                node.result =
+                  event.data.result == null
+                    ? event.data.result
+                    : castDraft(event.data.result)
+                node.output = restoreOutput(event.data.result)
+              }
+
+              if (event.data.checkpointData !== undefined) {
+                node.checkpointData =
+                  event.data.checkpointData == null
+                    ? event.data.checkpointData
+                    : castDraft(event.data.checkpointData)
+              }
+
               // 流式状态：running 时开启，终态时关闭
               if (event.data.to === 'running') {
                 node.isStreaming = true
@@ -325,6 +346,10 @@ export const useExecutionStore = create<
               if (existingNode) {
                 existingNode.output += event.data.chunk
                 existingNode.isStreaming = true
+                existingNode.result = {
+                  ...(existingNode.result ?? {}),
+                  content: existingNode.output,
+                }
               }
               pushEvent(state, event)
             })
@@ -531,6 +556,10 @@ export const useExecutionStore = create<
                   nodeId: step.nodeId,
                   status: step.status,
                   output: restoreOutput(step.result),
+                  ...(step.result !== undefined ? { result: step.result } : {}),
+                  ...(step.checkpointData !== undefined
+                    ? { checkpointData: step.checkpointData }
+                    : {}),
                   isStreaming: false,
                   errorMessage:
                     step.errorMessage ??

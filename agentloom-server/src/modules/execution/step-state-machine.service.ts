@@ -117,6 +117,17 @@ export class StepStateMachineService {
       nodeId: step.nodeId,
       from: step.status,
       to: newStatus,
+      ...(extra?.result !== undefined
+        ? {
+            result: extra.result as StepStatusChangedPayload['result'],
+          }
+        : {}),
+      ...(extra?.checkpointData !== undefined
+        ? {
+            checkpointData:
+              extra.checkpointData as StepStatusChangedPayload['checkpointData'],
+          }
+        : {}),
       ...(newStatus === 'failed' && extra?.errorMessage
         ? {
             errorDetail:

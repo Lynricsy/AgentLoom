@@ -120,6 +120,7 @@ src/
 - `text-output` 详情复用共享 `MarkdownRenderer`，支持 Markdown、LaTeX、Mermaid 与代码块
 - `json-output` 详情优先使用结构化 JSON 树视图；如果输出尚未形成合法 JSON（例如流式中间态），则回退为原文代码视图
 - 右侧 `NodeConfigPanel` 的“输出流”区域与详情弹层共用 `OutputContentRenderer`，避免桌面 / 手机两套输出语义漂移
+- `execution.node.status-changed` 若带 `result/checkpointData`，Studio 会直接合并到 executionStore，因此 `text-output` / `json-output` 这类 one-shot 节点在 completed 后无需刷新页面即可显示最终结果
 
 ## 工作流预览渲染事实
 

@@ -75,6 +75,8 @@ export interface StepStatusChangedPayload {
   from: StepStatus
   to: StepStatus
   errorDetail?: StructuredErrorDetail
+  result?: Record<string, unknown> | null
+  checkpointData?: Record<string, unknown> | null
 }
 
 export interface StepAgentEventPayload {
