@@ -1,15 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { Injectable } from '@nestjs/common';
-import {
-  AGENT_RUNTIME,
-  type IAgentRuntime,
-} from '../../agent/ports/agent-runtime.port';
+import type { IAgentRuntime } from '../../agent/ports/agent-runtime.port';
 import type {
   AgentEvent,
   StopReason,
 } from '../../agent/types/agent-event.types';
-import { InProcessAgentAdapter } from '../../agent/in-process-agent.adapter';
 import type { SessionToolProvider } from '../../agent/ports/agent-runtime.port';
 import type { ReplayableAgentEvent } from '../../agent/types/conversation-history.types';
 import type {
@@ -18,6 +14,7 @@ import type {
 } from '../../agent/types/agent-session.types';
 import type { ContentBlock } from '../../agent/types/content-block.types';
 import { SessionPersistenceService } from '../../execution/services/session-persistence.service';
+import { ACP_AGENT_RUNTIME_OVERRIDE } from '../acp-runtime.tokens';
 
 @Injectable()
 export class AcpTestRuntime implements IAgentRuntime {
@@ -594,16 +591,8 @@ export class AcpTestRuntime implements IAgentRuntime {
 }
 
 export const ACP_TEST_RUNTIME_PROVIDER = {
-  provide: AGENT_RUNTIME,
-  inject: [InProcessAgentAdapter, SessionPersistenceService],
-  useFactory: (
-    inProcessAgentAdapter: InProcessAgentAdapter,
-    sessionPersistence: SessionPersistenceService,
-  ): IAgentRuntime => {
-    if (process.env.ACP_TEST_FAKE_RUNTIME === '1') {
-      return new AcpTestRuntime(sessionPersistence);
-    }
-
-    return inProcessAgentAdapter;
-  },
+  provide: ACP_AGENT_RUNTIME_OVERRIDE,
+  inject: [SessionPersistenceService],
+  useFactory: (sessionPersistence: SessionPersistenceService): IAgentRuntime =>
+    new AcpTestRuntime(sessionPersistence),
 };

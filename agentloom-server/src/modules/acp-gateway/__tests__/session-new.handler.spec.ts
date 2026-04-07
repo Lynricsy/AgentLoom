@@ -5,6 +5,19 @@ import { SessionNewHandler } from '../handlers/session-new.handler';
 import type { AcpConnectionState } from '../acp-types';
 
 describe('SessionNewHandler', () => {
+  function createMockDb() {
+    return {
+      transaction: vi.fn(
+        async (
+          callback: (tx: { execute: ReturnType<typeof vi.fn> }) => unknown,
+        ) =>
+          callback({
+            execute: vi.fn().mockResolvedValue(undefined),
+          }),
+      ),
+    };
+  }
+
   function createMcpSessionService() {
     return {
       bootstrapSessionTools: vi.fn().mockResolvedValue(undefined),
@@ -27,6 +40,7 @@ describe('SessionNewHandler', () => {
       get: vi.fn().mockReturnValue(runtime),
     } as unknown as ModuleRef;
     const handler = new SessionNewHandler(
+      createMockDb() as never,
       moduleRef,
       mcpSessionService as never,
     );
@@ -110,6 +124,7 @@ describe('SessionNewHandler', () => {
   it('未声明 mcpServers 时不应触发 ACP MCP bootstrap', async () => {
     const mcpSessionService = createMcpSessionService();
     const handler = new SessionNewHandler(
+      createMockDb() as never,
       {
         get: vi.fn().mockReturnValue({
           createSession: vi.fn().mockResolvedValue({
@@ -152,6 +167,7 @@ describe('SessionNewHandler', () => {
       agentId: 'agent-001',
     });
     const handler = new SessionNewHandler(
+      createMockDb() as never,
       {
         get: vi.fn().mockReturnValue({
           createSession,
@@ -209,6 +225,7 @@ describe('SessionNewHandler', () => {
       cleanupSessionTools: vi.fn().mockResolvedValue(undefined),
     };
     const handler = new SessionNewHandler(
+      createMockDb() as never,
       {
         get: vi.fn().mockReturnValue(runtime),
       } as unknown as ModuleRef,
@@ -260,6 +277,7 @@ describe('SessionNewHandler', () => {
 
   it('应拒绝同时缺少 executionId 与 agentConversationId 的 serverSandbox 绑定', async () => {
     const handler = new SessionNewHandler(
+      createMockDb() as never,
       {
         get: vi.fn(),
       } as unknown as ModuleRef,
@@ -293,6 +311,7 @@ describe('SessionNewHandler', () => {
 
   it('应拒绝非绝对路径 cwd', async () => {
     const handler = new SessionNewHandler(
+      createMockDb() as never,
       {
         get: vi.fn(),
       } as unknown as ModuleRef,

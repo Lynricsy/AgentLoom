@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { BullModule } from '@nestjs/bullmq';
 
+import { StorageModule } from '../../infrastructure/storage';
 import { ApiKeyModule } from '../api-key/api-key.module';
 import { SandboxService } from './sandbox.service';
 import { DockerService } from './docker.service';
@@ -13,6 +14,7 @@ import { SANDBOX_RUNTIME_DRIVER } from './sandbox-runtime-driver.port';
 
 @Module({
   imports: [
+    StorageModule,
     ApiKeyModule,
     BullModule.registerQueue({
       name: SANDBOX_LIFECYCLE_QUEUE,

@@ -402,6 +402,7 @@ describe('Auth E2E (testcontainers)', () => {
 
   describe('POST /api/v1/auth/logout', () => {
     it('認証済みでログアウト → 204', async () => {
+      await seedAppUser();
       supabaseService.signOut.mockResolvedValue(undefined);
       const token = createMockAccessToken();
 
@@ -426,6 +427,7 @@ describe('Auth E2E (testcontainers)', () => {
     });
 
     it('ログアウト後のトークン無効化 → 401 token-revoked', async () => {
+      await seedAppUser();
       supabaseService.signOut.mockResolvedValue(undefined);
       const token = createMockAccessToken();
 

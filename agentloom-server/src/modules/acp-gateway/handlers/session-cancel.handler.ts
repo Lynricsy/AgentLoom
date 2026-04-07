@@ -1,9 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
-import {
-  AGENT_RUNTIME,
-  type IAgentRuntime,
-} from '../../agent/ports/agent-runtime.port';
+import type { IAgentRuntime } from '../../agent/ports/agent-runtime.port';
 import { AcpJsonRpcError } from '../acp-jsonrpc';
 import type {
   AcpConnectionState,
@@ -11,6 +8,7 @@ import type {
   AcpSessionRequestPermissionResult,
   AcpTrackedSession,
 } from '../acp-types';
+import { resolveAcpAgentRuntime } from '../resolve-acp-agent-runtime';
 import { AcpSessionMcpRegistryService } from '../services/acp-session-mcp-registry.service';
 import { AcpTerminalProxyService } from '../services/acp-terminal-proxy.service';
 
@@ -114,9 +112,7 @@ export class SessionCancelHandler {
 
   private getAgentRuntime(): IAgentRuntime {
     if (!this.agentRuntime) {
-      this.agentRuntime = this.moduleRef.get<IAgentRuntime>(AGENT_RUNTIME, {
-        strict: false,
-      });
+      this.agentRuntime = resolveAcpAgentRuntime(this.moduleRef);
     }
 
     return this.agentRuntime;

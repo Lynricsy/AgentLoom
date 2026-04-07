@@ -521,7 +521,9 @@ describe('Agent Integration E2E', () => {
 
     return {
       agentId,
-      publishedVersionId: getRes.body.data.published_version_id,
+      publishedVersionId:
+        getRes.body.data.publishedVersionId ??
+        getRes.body.data.published_version_id,
     };
   }
 
@@ -567,6 +569,26 @@ describe('Agent Integration E2E', () => {
       expect(updateRes.status).toBe(200);
       expect(updateRes.body.data.name).toBe('Updated Agent');
 
+      const saveCanvasRes = await request(server)
+        .put(`/api/v1/agent-definitions/${agentId}/canvas`)
+        .set(tenant.headers)
+        .send({
+          canvasNodes: [
+            {
+              id: 'agent-main-node',
+              type: 'agent-main',
+              position: { x: 0, y: 0 },
+              data: {
+                label: 'Agent Main',
+              },
+            },
+          ],
+          canvasEdges: [],
+          canvasViewport: { x: 0, y: 0, zoom: 1 },
+        });
+
+      expect(saveCanvasRes.status).toBe(200);
+
       const versionRes = await request(server)
         .post(`/api/v1/agent-definitions/${agentId}/versions`)
         .set(tenant.headers)
@@ -574,13 +596,17 @@ describe('Agent Integration E2E', () => {
 
       expect(versionRes.status).toBe(201);
       expect(versionRes.body.data).toBeDefined();
-      expect(versionRes.body.data.version_number).toBeDefined();
+      expect(
+        versionRes.body.data.versionNumber ??
+          versionRes.body.data.version_number,
+      ).toBeDefined();
 
       const publishRes = await request(server)
         .post(`/api/v1/agent-definitions/${agentId}/publish`)
-        .set(tenant.headers);
+        .set(tenant.headers)
+        .send({ versionId: versionRes.body.data.id });
 
-      expect(publishRes.status).toBe(200);
+      expect(publishRes.status).toBe(201);
 
       const afterPublishRes = await request(server)
         .get(`/api/v1/agent-definitions/${agentId}`)
@@ -588,7 +614,10 @@ describe('Agent Integration E2E', () => {
 
       expect(afterPublishRes.status).toBe(200);
       expect(afterPublishRes.body.data.status).toBe('published');
-      expect(afterPublishRes.body.data.published_version_id).toBeTruthy();
+      expect(
+        afterPublishRes.body.data.publishedVersionId ??
+          afterPublishRes.body.data.published_version_id,
+      ).toBeTruthy();
 
       const listPublishedRes = await request(server)
         .get('/api/v1/agent-definitions')

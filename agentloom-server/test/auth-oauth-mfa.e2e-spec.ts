@@ -207,6 +207,17 @@ describe('Auth OAuth/MFA E2E (testcontainers)', () => {
     await sql`INSERT INTO auth.users (id) VALUES (${supabaseId}::uuid)`;
   }
 
+  async function seedAppUser(
+    supabaseId = MOCK_SUPABASE_UUID,
+    email = MOCK_EMAIL,
+  ) {
+    await seedAuthUser(supabaseId);
+    await sql`
+      INSERT INTO "users" (id, supabase_user_id, email)
+      VALUES (${crypto.randomUUID()}::uuid, ${supabaseId}::uuid, ${email})
+    `;
+  }
+
   it('GET /api/v1/auth/oauth/callback 在已启用 MFA 时重定向到 mfa_required 回调', async () => {
     await seedAuthUser();
     supabaseService.exchangeCodeForSession.mockResolvedValue({
@@ -289,6 +300,7 @@ describe('Auth OAuth/MFA E2E (testcontainers)', () => {
   });
 
   it('DELETE /api/v1/auth/mfa 在当前会话不是 AAL2 时返回 403 aal2-required', async () => {
+    await seedAppUser();
     supabaseService.getAuthenticatorAssuranceLevel.mockResolvedValue({
       currentLevel: 'aal1',
       nextLevel: 'aal2',

@@ -32,6 +32,7 @@ import { TenantGuard } from '../src/common/guards/tenant.guard';
 import { TenantMiddleware } from '../src/common/middleware/tenant.middleware';
 import { RbacCacheService } from '../src/common/services/rbac-cache.service';
 import { TokenBlacklistService } from '../src/common/services/token-blacklist.service';
+import { UserIdentityResolverService } from '../src/common/services/user-identity-resolver.service';
 import { TenantTransactionInterceptor } from '../src/common/interceptors/tenant-transaction.interceptor';
 import { DRIZZLE } from '../src/database/database.module';
 import { PlatformApiTokenService } from '../src/modules/platform-api-token/platform-api-token.service';
@@ -155,6 +156,16 @@ const mockTxExecute = vi.fn().mockResolvedValue(undefined);
       },
     },
     {
+      provide: UserIdentityResolverService,
+      useValue: {
+        resolveAppUserId: vi
+          .fn()
+          .mockImplementation((supabaseUserId: string) =>
+            Promise.resolve(supabaseUserId),
+          ),
+      },
+    },
+    {
       provide: APP_GUARD,
       useClass: AuthGuard,
     },
@@ -185,6 +196,9 @@ describe('Guard chain E2E', () => {
     transaction: ReturnType<typeof vi.fn>;
   };
   let rbacCacheService: { getUserRole: ReturnType<typeof vi.fn> };
+  let userIdentityResolver: {
+    resolveAppUserId: ReturnType<typeof vi.fn>;
+  };
 
   beforeAll(async () => {
     const moduleRef = await Test.createTestingModule({
@@ -200,6 +214,7 @@ describe('Guard chain E2E', () => {
 
     db = moduleRef.get(DRIZZLE);
     rbacCacheService = moduleRef.get(RbacCacheService);
+    userIdentityResolver = moduleRef.get(UserIdentityResolverService);
   });
 
   beforeEach(() => {
@@ -207,6 +222,9 @@ describe('Guard chain E2E', () => {
     db.execute.mockResolvedValue(undefined);
     mockTxExecute.mockResolvedValue(undefined);
     rbacCacheService.getUserRole.mockResolvedValue('owner');
+    userIdentityResolver.resolveAppUserId.mockImplementation((id: string) =>
+      Promise.resolve(id),
+    );
   });
 
   afterAll(async () => {

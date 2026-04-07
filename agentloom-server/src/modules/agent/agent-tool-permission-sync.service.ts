@@ -33,17 +33,36 @@ export class AgentToolPermissionSyncService
   implements OnModuleInit, OnModuleDestroy
 {
   private readonly logger = new Logger(AgentToolPermissionSyncService.name);
-  private readonly subscriber: Redis;
+  private readonly subscriber: Redis | null;
+  private readonly ownsSubscriber: boolean;
   private readonly pendingResolutions = new Map<
     string,
     Map<string, PendingResolutionCallback>
   >();
 
   constructor(@Inject(REDIS_CLIENT) private readonly publisher: Redis) {
-    this.subscriber = this.publisher.duplicate();
+    const duplicate = (this.publisher as Redis & {
+      duplicate?: (() => Redis) | undefined;
+    }).duplicate;
+
+    if (typeof duplicate === 'function') {
+      this.subscriber = duplicate.call(this.publisher);
+      this.ownsSubscriber = true;
+      return;
+    }
+
+    this.subscriber = null;
+    this.ownsSubscriber = false;
+    this.logger.warn(
+      'Redis publisher 未提供 duplicate()，跳过工具权限分布式订阅。',
+    );
   }
 
   async onModuleInit(): Promise<void> {
+    if (!this.subscriber) {
+      return;
+    }
+
     await this.subscriber.subscribe(AGENT_TOOL_PERMISSION_SYNC_CHANNEL);
 
     this.subscriber.on('message', (channel, rawMessage) => {
@@ -107,6 +126,10 @@ export class AgentToolPermissionSyncService
   }
 
   async onModuleDestroy(): Promise<void> {
+    if (!this.subscriber || !this.ownsSubscriber) {
+      return;
+    }
+
     await safeUnsubscribeRedis(
       this.subscriber,
       AGENT_TOOL_PERMISSION_SYNC_CHANNEL,

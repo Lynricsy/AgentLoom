@@ -1,0 +1,3 @@
+export const ACP_AGENT_RUNTIME_OVERRIDE = Symbol(
+  'ACP_AGENT_RUNTIME_OVERRIDE',
+);

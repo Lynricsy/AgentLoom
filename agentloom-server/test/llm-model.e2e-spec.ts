@@ -24,7 +24,6 @@ import { REDIS_CLIENT } from '../src/common/redis/redis.constants';
 import { RedisPubSubService } from '../src/common/redis/redis-pubsub.service';
 import { DRIZZLE, type DrizzleDB } from '../src/database/database.module';
 import { SupabaseService } from '../src/modules/auth/supabase/supabase.service';
-import { LLM_PROVIDER_CATALOG } from '../src/modules/llm/llm-provider-catalog';
 import {
   createRlsTestContext,
   seedAppUser,
@@ -136,12 +135,25 @@ function createTestUser(prefix: string): TestUser {
 function createModelPayload(overrides?: Record<string, unknown>) {
   return {
     name: `model-${crypto.randomUUID().slice(0, 8)}`,
-    provider: 'openai',
-    modelName: 'gpt-4o-mini',
+    providerId: crypto.randomUUID(),
+    modelId: `model-${crypto.randomUUID().slice(0, 8)}`,
     parameters: {
       temperature: 0.4,
     },
     isDefault: false,
+    modelType: 'chat',
+    ...overrides,
+  };
+}
+
+function createProviderPayload(overrides?: Record<string, unknown>) {
+  const suffix = crypto.randomUUID().slice(0, 8);
+  return {
+    name: `Provider ${suffix}`,
+    slug: `provider-${suffix}`,
+    baseUrl: `https://provider-${suffix}.example.com/v1`,
+    apiProtocol: 'openai_chat',
+    isEnabled: true,
     ...overrides,
   };
 }
@@ -241,24 +253,56 @@ describe('LLM Model E2E', () => {
     headers: Record<string, string>,
     overrides?: Record<string, unknown>,
   ) {
+    const provider =
+      overrides?.providerId && typeof overrides.providerId === 'string'
+        ? ({ id: overrides.providerId } as const)
+        : await createProvider(headers);
     const response = await request(app.getHttpServer())
       .post('/api/v1/llm-models')
       .set(headers)
-      .send(createModelPayload(overrides));
+      .send(
+        createModelPayload({
+          ...overrides,
+          providerId: provider.id,
+        }),
+      );
 
     expect(response.status).toBe(201);
     return response.body.data as {
       id: string;
       name: string;
-      provider: string;
-      modelName: string;
+      providerId: string;
+      modelId: string;
       parameters: Record<string, unknown>;
       isDefault: boolean;
     };
   }
 
+  async function createProvider(
+    headers: Record<string, string>,
+    overrides?: Record<string, unknown>,
+  ) {
+    const response = await request(app.getHttpServer())
+      .post('/api/v1/llm-providers')
+      .set(headers)
+      .send(createProviderPayload(overrides));
+
+    expect(response.status).toBe(201);
+    return response.body.data as {
+      id: string;
+      slug: string;
+      name: string;
+      baseUrl: string;
+      isBuiltin: boolean;
+    };
+  }
+
   it('应当创建模型配置并返回 UUIDv7 与 data 包装', async () => {
     const owner = await seedTenant('llm-create-owner');
+    const provider = await createProvider(owner.headers, {
+      name: 'Primary OpenAI Proxy',
+      slug: 'primary-openai-proxy',
+    });
 
     const response = await request(app.getHttpServer())
       .post('/api/v1/llm-models')
@@ -266,6 +310,8 @@ describe('LLM Model E2E', () => {
       .send(
         createModelPayload({
           name: 'primary-openai',
+          providerId: provider.id,
+          modelId: 'gpt-4o-mini-proxy',
           parameters: { temperature: 0.2, topP: 0.9 },
           isDefault: true,
         }),
@@ -274,10 +320,11 @@ describe('LLM Model E2E', () => {
     expect(response.status).toBe(201);
     expect(response.body.data).toMatchObject({
       name: 'primary-openai',
-      provider: 'openai',
-      modelName: 'gpt-4o-mini',
+      providerId: provider.id,
+      modelId: 'gpt-4o-mini-proxy',
       parameters: { temperature: 0.2, topP: 0.9 },
       isDefault: true,
+      modelType: 'chat',
     });
     expect(response.body.data.id).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
@@ -286,7 +333,15 @@ describe('LLM Model E2E', () => {
 
   it('应当拒绝同组织内重复的模型配置名称', async () => {
     const owner = await seedTenant('llm-conflict-owner');
-    const payload = createModelPayload({ name: 'duplicate-name' });
+    const provider = await createProvider(owner.headers, {
+      name: 'Conflict Provider',
+      slug: 'conflict-provider',
+    });
+    const payload = createModelPayload({
+      name: 'duplicate-name',
+      providerId: provider.id,
+      modelId: 'conflict-model',
+    });
 
     await request(app.getHttpServer())
       .post('/api/v1/llm-models')
@@ -312,8 +367,12 @@ describe('LLM Model E2E', () => {
 
     const ownerModel = await createModel(owner.headers, {
       name: 'owner-model',
+      modelId: 'owner-model-v1',
     });
-    await createModel(otherTenantOwner.headers, { name: 'other-tenant-model' });
+    const otherTenantModel = await createModel(otherTenantOwner.headers, {
+      name: 'other-tenant-model',
+      modelId: 'other-tenant-model-v1',
+    });
 
     const ownerResponse = await request(app.getHttpServer())
       .get('/api/v1/llm-models')
@@ -324,6 +383,10 @@ describe('LLM Model E2E', () => {
     expect(ownerResponse.body.data[0]).toMatchObject({
       id: ownerModel.id,
       name: 'owner-model',
+      modelId: 'owner-model-v1',
+      provider: expect.objectContaining({
+        id: ownerModel.providerId,
+      }),
     });
 
     const otherTenantResponse = await request(app.getHttpServer())
@@ -333,7 +396,12 @@ describe('LLM Model E2E', () => {
     expect(otherTenantResponse.status).toBe(200);
     expect(otherTenantResponse.body.data).toHaveLength(1);
     expect(otherTenantResponse.body.data[0]).toMatchObject({
+      id: otherTenantModel.id,
       name: 'other-tenant-model',
+      modelId: 'other-tenant-model-v1',
+      provider: expect.objectContaining({
+        id: otherTenantModel.providerId,
+      }),
     });
   });
 
@@ -342,6 +410,7 @@ describe('LLM Model E2E', () => {
     const otherTenant = await seedTenant('llm-find-other', 'viewer');
     const model = await createModel(owner.headers, {
       name: 'owner-find-model',
+      modelId: 'owner-find-model-v1',
     });
 
     const response = await request(app.getHttpServer())
@@ -352,6 +421,10 @@ describe('LLM Model E2E', () => {
     expect(response.body.data).toMatchObject({
       id: model.id,
       name: 'owner-find-model',
+      modelId: 'owner-find-model-v1',
+      provider: expect.objectContaining({
+        id: model.providerId,
+      }),
     });
 
     const crossTenantResponse = await request(app.getHttpServer())
@@ -387,7 +460,12 @@ describe('LLM Model E2E', () => {
     const owner = await seedTenant('llm-update-owner');
     const model = await createModel(owner.headers, {
       name: 'before-update',
+      modelId: 'before-update-v1',
       parameters: { temperature: 0.1 },
+    });
+    const updatedProvider = await createProvider(owner.headers, {
+      name: 'Anthropic Proxy',
+      slug: 'anthropic-proxy',
     });
 
     const response = await request(app.getHttpServer())
@@ -395,8 +473,8 @@ describe('LLM Model E2E', () => {
       .set(owner.headers)
       .send({
         name: 'after-update',
-        provider: 'anthropic',
-        modelName: 'claude-3-5-haiku-20241022',
+        providerId: updatedProvider.id,
+        modelId: 'claude-3-5-haiku-proxy',
         parameters: { temperature: 0.8 },
         isDefault: true,
       });
@@ -405,8 +483,8 @@ describe('LLM Model E2E', () => {
     expect(response.body.data).toMatchObject({
       id: model.id,
       name: 'after-update',
-      provider: 'anthropic',
-      modelName: 'claude-3-5-haiku-20241022',
+      providerId: updatedProvider.id,
+      modelId: 'claude-3-5-haiku-proxy',
       parameters: { temperature: 0.8 },
       isDefault: true,
     });
@@ -438,8 +516,8 @@ describe('LLM Model E2E', () => {
       .set(owner.headers)
       .send({
         name: '',
-        provider: 'unsupported-provider',
-        modelName: '',
+        providerId: 'unsupported-provider',
+        modelId: '',
       });
 
     expect(response.status).toBe(422);
@@ -451,20 +529,35 @@ describe('LLM Model E2E', () => {
     expect(response.body.errors).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ field: 'name' }),
-        expect.objectContaining({ field: 'provider' }),
-        expect.objectContaining({ field: 'modelName' }),
+        expect.objectContaining({ field: 'providerId' }),
+        expect.objectContaining({ field: 'modelId' }),
       ]),
     );
   });
 
-  it('应当返回 LLM provider catalog', async () => {
+  it('应当返回组织范围内的 LLM provider 列表', async () => {
     const owner = await seedTenant('llm-provider-owner');
+    const customProvider = await createProvider(owner.headers, {
+      name: 'Tenant Custom Provider',
+      slug: 'tenant-custom-provider',
+      baseUrl: 'https://tenant-custom-provider.example.com/v1',
+    });
 
     const response = await request(app.getHttpServer())
       .get('/api/v1/llm-providers')
       .set(owner.headers);
 
     expect(response.status).toBe(200);
-    expect(response.body).toEqual({ data: LLM_PROVIDER_CATALOG });
+    expect(response.body.data).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: customProvider.id,
+          slug: 'tenant-custom-provider',
+          name: 'Tenant Custom Provider',
+          baseUrl: 'https://tenant-custom-provider.example.com/v1',
+          isBuiltin: false,
+        }),
+      ]),
+    );
   });
 });

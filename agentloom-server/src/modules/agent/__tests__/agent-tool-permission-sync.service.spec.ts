@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AgentToolPermissionSyncService } from '../agent-tool-permission-sync.service';
 
-function createMockRedisClient() {
+function createMockRedisClient(options?: { withDuplicate?: boolean }) {
   let messageListener: ((channel: string, payload: string) => void) | undefined;
 
   const client = {
@@ -25,7 +25,12 @@ function createMockRedisClient() {
     },
   };
 
-  client.duplicate.mockReturnValue(client);
+  if (options?.withDuplicate !== false) {
+    client.duplicate.mockReturnValue(client);
+  } else {
+    client.duplicate = undefined;
+  }
+
   return client;
 }
 
@@ -83,5 +88,31 @@ describe('AgentToolPermissionSyncService', () => {
     );
 
     expect(resolve).not.toHaveBeenCalled();
+  });
+
+  it('publisher 缺少 duplicate 时应降级跳过订阅但仍可广播消息', async () => {
+    const redisClientWithoutDuplicate = createMockRedisClient({
+      withDuplicate: false,
+    });
+    const fallbackService = new AgentToolPermissionSyncService(
+      redisClientWithoutDuplicate as never,
+    );
+
+    await expect(fallbackService.onModuleInit()).resolves.toBeUndefined();
+    await expect(
+      fallbackService.publishResolution('session-4', 'tool-4', 'approve'),
+    ).resolves.toBeUndefined();
+
+    expect(redisClientWithoutDuplicate.subscribe).not.toHaveBeenCalled();
+    expect(redisClientWithoutDuplicate.publish).toHaveBeenCalledWith(
+      '__agent_tool_permission_resolution__',
+      JSON.stringify({
+        sessionId: 'session-4',
+        toolCallId: 'tool-4',
+        action: 'approve',
+      }),
+    );
+
+    await expect(fallbackService.onModuleDestroy()).resolves.toBeUndefined();
   });
 });

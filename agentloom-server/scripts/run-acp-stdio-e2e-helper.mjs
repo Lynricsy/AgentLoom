@@ -99,7 +99,7 @@ function createAcpChildEnv(databaseUrl) {
   const env = {
     NODE_ENV: 'test',
     ACP_TEST_FAKE_RUNTIME: '1',
-    ACP_TEST_TERMINAL_TIMEOUT_MS: '200',
+    ACP_TEST_TERMINAL_TIMEOUT_MS: '500',
     APP_DEPLOYMENT_MODE: 'private',
     APP_DATABASE_URL: databaseUrl,
     APP_JWT_SECRET: TEST_JWT_SECRET,
@@ -747,7 +747,19 @@ async function runScenario() {
           },
         }),
       );
-      const sessionNewResponse = await stdout.nextJson(10_000);
+      const { response: sessionNewResponse } = await collectUntilResponse(
+        child,
+        stdout,
+        6,
+        {
+          timeoutMs: 10_000,
+        },
+      );
+      if (typeof sessionNewResponse?.result?.sessionId !== 'string') {
+        throw new Error(
+          `Unexpected session/new response for request 6: ${JSON.stringify(sessionNewResponse)}`,
+        );
+      }
       const sessionId = sessionNewResponse.result.sessionId;
 
       await writeJsonRpc(
@@ -760,7 +772,10 @@ async function runScenario() {
           },
         }),
       );
-      const terminalSessionNewResponse = await stdout.nextJson(10_000);
+      const { response: terminalSessionNewResponse } =
+        await collectUntilResponse(child, stdout, 74, {
+          timeoutMs: 10_000,
+        });
       const terminalSessionId = terminalSessionNewResponse.result.sessionId;
 
       await writeJsonRpc(
@@ -814,6 +829,11 @@ async function runScenario() {
         }),
       );
       const terminalWaitForExitResponse = await stdout.nextJson(10_000);
+      if (terminalWaitForExitResponse?.id === 78 && !terminalWaitForExitResponse?.result) {
+        throw new Error(
+          `Unexpected terminal/wait_for_exit response for request 78: ${JSON.stringify(terminalWaitForExitResponse)}`,
+        );
+      }
 
       await writeJsonRpc(
         child,
@@ -928,7 +948,10 @@ async function runScenario() {
           },
         }),
       );
-      const terminalCancelSessionNewResponse = await stdout.nextJson(10_000);
+      const { response: terminalCancelSessionNewResponse } =
+        await collectUntilResponse(child, stdout, 89, {
+          timeoutMs: 10_000,
+        });
       const terminalCancelSessionId = terminalCancelSessionNewResponse.result.sessionId;
 
       await writeJsonRpc(
@@ -979,7 +1002,10 @@ async function runScenario() {
           },
         }),
       );
-      const terminalLoadSessionNewResponse = await stdout.nextJson(10_000);
+      const { response: terminalLoadSessionNewResponse } =
+        await collectUntilResponse(child, stdout, 92, {
+          timeoutMs: 10_000,
+        });
       const terminalLoadSessionId = terminalLoadSessionNewResponse.result.sessionId;
 
       await writeJsonRpc(
@@ -1185,7 +1211,10 @@ async function runScenario() {
           cwd: SANDBOX_SESSION_CWD,
         }),
       );
-      const fsCancelSessionNewResponse = await stdout.nextJson(10_000);
+      const { response: fsCancelSessionNewResponse } =
+        await collectUntilResponse(child, stdout, 63, {
+          timeoutMs: 10_000,
+        });
       const fsCancelSessionId = fsCancelSessionNewResponse.result.sessionId;
 
       await writeJsonRpc(
@@ -1248,7 +1277,14 @@ async function runScenario() {
           mcpServers: createMcpServersConfig(),
         }),
       );
-      const mcpSessionNewResponse = await stdout.nextJson(10_000);
+      const { response: mcpSessionNewResponse } = await collectUntilResponse(
+        child,
+        stdout,
+        16,
+        {
+          timeoutMs: 10_000,
+        },
+      );
       const mcpSessionId = mcpSessionNewResponse.result.sessionId;
 
       await writeJsonRpc(
@@ -1275,7 +1311,10 @@ async function runScenario() {
           mcpServers: createMcpServersConfig(),
         }),
       );
-      const mcpCancelSessionNewResponse = await stdout.nextJson(10_000);
+      const { response: mcpCancelSessionNewResponse } =
+        await collectUntilResponse(child, stdout, 18, {
+          timeoutMs: 10_000,
+        });
       const mcpCancelSessionId = mcpCancelSessionNewResponse.result.sessionId;
 
       await writeJsonRpc(
@@ -1315,7 +1354,10 @@ async function runScenario() {
           cwd: SANDBOX_SESSION_CWD,
         }),
       );
-      const cancelSessionNewResponse = await stdout.nextJson(10_000);
+      const { response: cancelSessionNewResponse } =
+        await collectUntilResponse(child, stdout, 8, {
+          timeoutMs: 10_000,
+        });
       const cancelSessionId = cancelSessionNewResponse.result.sessionId;
 
       await writeJsonRpc(

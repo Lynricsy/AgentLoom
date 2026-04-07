@@ -655,8 +655,8 @@ describe('Trigger E2E', () => {
     expect(listResponse.body.data[0].config).not.toHaveProperty('secret');
   });
 
-  it('应拒绝创建仅预览的 API Event 触发器', async () => {
-    const owner = await seedTenant('trigger-api-event-preview-owner');
+  it('应允许创建 API Event 触发器并持久化事件配置', async () => {
+    const owner = await seedTenant('trigger-api-event-owner');
     const workflowId = await seedPublishedWorkflow({
       tenantId: owner.tenantId,
       organizationId: owner.organizationId,
@@ -667,29 +667,49 @@ describe('Trigger E2E', () => {
       .post(`/api/v1/workflow-definitions/${workflowId}/triggers`)
       .set(owner.headers)
       .send({
-        name: 'Preview API Event',
+        name: 'GitHub Pull Request Trigger',
         type: 'api_event',
         config: {
           eventSource: 'github',
           eventType: 'pull_request',
+          filterExpression: 'payload.action == "opened"',
         },
         isEnabled: true,
       });
 
-    expect(response.status).toBe(409);
-    expect(response.body.title).toBe('触发器类型仅预览');
-    expect(response.body.detail).toContain('api_event');
+    expect(response.status).toBe(201);
+    expect(response.body.data).toMatchObject({
+      workflowDefinitionId: workflowId,
+      name: 'GitHub Pull Request Trigger',
+      type: 'api_event',
+      isEnabled: true,
+      config: {
+        eventSource: 'github',
+        eventType: 'pull_request',
+        filterExpression: 'payload.action == "opened"',
+      },
+    });
 
     const rows = await drizzleDb
       .select()
       .from(schema.workflowTriggers)
       .where(eq(schema.workflowTriggers.workflowDefinitionId, workflowId));
 
-    expect(rows).toHaveLength(0);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      type: 'api_event',
+      name: 'GitHub Pull Request Trigger',
+      isEnabled: true,
+      config: {
+        eventSource: 'github',
+        eventType: 'pull_request',
+        filterExpression: 'payload.action == "opened"',
+      },
+    });
   });
 
-  it('应拒绝修改和启停仅预览的 API Event 触发器', async () => {
-    const owner = await seedTenant('trigger-api-event-preview-edit-owner');
+  it('应允许修改和启停 API Event 触发器', async () => {
+    const owner = await seedTenant('trigger-api-event-edit-owner');
     const workflowId = await seedPublishedWorkflow({
       tenantId: owner.tenantId,
       organizationId: owner.organizationId,
@@ -708,11 +728,25 @@ describe('Trigger E2E', () => {
       )
       .set(owner.headers)
       .send({
-        name: 'Blocked Preview Update',
+        name: 'Updated API Event Trigger',
+        config: {
+          eventSource: 'github',
+          eventType: 'issues',
+          filterExpression: 'payload.action == "opened"',
+        },
       });
 
-    expect(updateResponse.status).toBe(409);
-    expect(updateResponse.body.title).toBe('触发器类型仅预览');
+    expect(updateResponse.status).toBe(200);
+    expect(updateResponse.body.data).toMatchObject({
+      id: trigger.id,
+      name: 'Updated API Event Trigger',
+      type: 'api_event',
+      config: {
+        eventSource: 'github',
+        eventType: 'issues',
+        filterExpression: 'payload.action == "opened"',
+      },
+    });
 
     const toggleResponse = await request(app.getHttpServer())
       .patch(
@@ -721,16 +755,21 @@ describe('Trigger E2E', () => {
       .set(owner.headers)
       .send();
 
-    expect(toggleResponse.status).toBe(409);
-    expect(toggleResponse.body.title).toBe('触发器类型仅预览');
+    expect(toggleResponse.status).toBe(200);
+    expect(toggleResponse.body.data.isEnabled).toBe(false);
 
     const [storedTrigger] = await drizzleDb
       .select()
       .from(schema.workflowTriggers)
       .where(eq(schema.workflowTriggers.id, trigger.id));
 
-    expect(storedTrigger?.name).toBe(trigger.name);
-    expect(storedTrigger?.isEnabled).toBe(true);
+    expect(storedTrigger?.name).toBe('Updated API Event Trigger');
+    expect(storedTrigger?.isEnabled).toBe(false);
+    expect(storedTrigger?.config).toMatchObject({
+      eventSource: 'github',
+      eventType: 'issues',
+      filterExpression: 'payload.action == "opened"',
+    });
   });
 
   it('应当在 cron 启停时持久化并清空 nextFireAt', async () => {
@@ -836,7 +875,10 @@ describe('Trigger E2E', () => {
       .send({
         name: 'Public Webhook',
         type: 'webhook',
-        config: { ipWhitelist: [] },
+        config: {
+          authMode: 'signed',
+          ipWhitelist: [],
+        },
         isEnabled: true,
       });
 
@@ -917,7 +959,10 @@ describe('Trigger E2E', () => {
       .send({
         name: 'Bad Signature Webhook',
         type: 'webhook',
-        config: { ipWhitelist: [] },
+        config: {
+          authMode: 'signed',
+          ipWhitelist: [],
+        },
         isEnabled: true,
       });
 

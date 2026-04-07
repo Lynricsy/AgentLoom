@@ -455,14 +455,16 @@ describe('EvidenceExport E2E', () => {
     expiresAt?: Date;
   }) {
     const exportId = crypto.randomUUID();
-    const requestedAt = new Date('2026-03-17T00:00:00.000Z');
-    const completedAt = new Date('2026-03-17T00:05:00.000Z');
+    const requestedAt = new Date(Date.now() - 10 * 60 * 1000);
+    const completedAt = new Date(Date.now() - 5 * 60 * 1000);
     const status = options.status ?? 'completed';
     const storageKey =
       options.storageKey === undefined
         ? buildEvidenceExportStorageKey(options.tenantId, exportId)
         : options.storageKey;
-    const expiresAt = options.expiresAt ?? new Date('2026-03-20T00:00:00.000Z');
+    const expiresAt =
+      options.expiresAt ??
+      new Date(completedAt.getTime() + 3 * 24 * 60 * 60 * 1000);
     const fileName = buildEvidenceExportArchiveFileName(exportId);
 
     await ctx.adminSql`

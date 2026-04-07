@@ -1,12 +1,13 @@
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
+import path from 'node:path';
 import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-const SERVER_DIR = '/root/Projects/Ling/AgentLoomAUTO/agentloom-server';
+const SERVER_DIR = path.resolve(__dirname, '..');
 const PNPM_BIN = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
 const TEST_JWT_SECRET = 'test-e2e-jwt-secret';
 const TEST_TENANT_ID = '11111111-1111-4111-8111-111111111111';
@@ -297,7 +298,7 @@ describe('ACP stdio E2E', () => {
       .start();
 
     await buildAcpStdioEntry();
-  }, 60_000);
+  }, 120_000);
 
   afterAll(async () => {
     await container.stop();

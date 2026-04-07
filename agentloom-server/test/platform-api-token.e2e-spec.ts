@@ -747,7 +747,7 @@ describe('PlatformApiToken E2E', () => {
       }
     });
 
-    it('同一 API key 超过 100 次请求时应返回 429，并带 Retry-After 与限流头', async () => {
+    it('同租户 API 请求超过 100 次后应共享分钟限流桶并返回 429', async () => {
       const primaryToken = await createToken({
         name: 'Primary Rate Limit Token',
       });
@@ -780,7 +780,13 @@ describe('PlatformApiToken E2E', () => {
         apiKeyHeaders(secondaryToken.token),
       );
 
-      expect(secondaryRes.status).toBe(200);
+      expect(secondaryRes.status).toBe(429);
+      expect(String(secondaryRes.headers['retry-after'] ?? '')).toMatch(
+        /^\d+$/,
+      );
+      expect(String(secondaryRes.headers['x-ratelimit-limit'] ?? '')).toBe(
+        '100',
+      );
     });
   });
 

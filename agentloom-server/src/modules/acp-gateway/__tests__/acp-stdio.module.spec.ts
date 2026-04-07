@@ -1,10 +1,9 @@
 import { MODULE_METADATA } from '@nestjs/common/constants';
 import { describe, expect, it } from 'vitest';
-import { InProcessAgentAdapter } from '../../agent/in-process-agent.adapter';
-import { AGENT_RUNTIME } from '../../agent/ports/agent-runtime.port';
-import { AgentSessionFactory } from '../../execution/services/agent-session-factory.service';
+import { AgentModule } from '../../agent/agent.module';
 import { SessionPersistenceService } from '../../execution/services/session-persistence.service';
 import { LlmModule } from '../../llm/llm.module';
+import { ACP_AGENT_RUNTIME_OVERRIDE } from '../acp-runtime.tokens';
 import { ACP_TEST_RUNTIME_PROVIDER } from '../testing/acp-test-runtime';
 
 const ACP_STDIO_TEST_ENV = {
@@ -41,15 +40,14 @@ describe('AcpStdioModule', () => {
         AcpStdioModule,
       ) as Array<unknown> | undefined;
 
-      expect(imports).toEqual(expect.arrayContaining([LlmModule]));
+      expect(imports).toEqual(
+        expect.arrayContaining([LlmModule, AgentModule]),
+      );
       expect(providers).toEqual(
         expect.arrayContaining([
-          AgentSessionFactory,
-          SessionPersistenceService,
-          InProcessAgentAdapter,
           expect.objectContaining({
-            provide: AGENT_RUNTIME,
-            inject: [InProcessAgentAdapter, SessionPersistenceService],
+            provide: ACP_AGENT_RUNTIME_OVERRIDE,
+            inject: [SessionPersistenceService],
             useFactory: ACP_TEST_RUNTIME_PROVIDER.useFactory,
           }),
         ]),

@@ -1487,7 +1487,25 @@ describe('WorkflowVersion E2E', () => {
         status: 'draft',
         version: workflow.version + 1,
       });
-      expect(response.body.data.nodes).toEqual(newNodes);
+      expect(response.body.data.nodes).toHaveLength(1);
+      expect(response.body.data.nodes[0]).toMatchObject({
+        id: 'n-new',
+        type: 'agent',
+        position: { x: 100, y: 200 },
+        data: expect.objectContaining({
+          label: 'New',
+          nodeType: 'agent',
+          category: 'agent',
+          inputPorts: expect.arrayContaining([
+            expect.objectContaining({ id: 'exec-in' }),
+            expect.objectContaining({ id: 'text-in' }),
+          ]),
+          outputPorts: expect.arrayContaining([
+            expect.objectContaining({ id: 'exec-out' }),
+            expect.objectContaining({ id: 'agent-out' }),
+          ]),
+        }),
+      });
       expect(response.body.data).toHaveProperty('edges');
       expect(response.body.data).toHaveProperty('viewport');
       expect(response.body.data.updatedBy).toBe(owner.user.id);

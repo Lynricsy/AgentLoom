@@ -8,7 +8,14 @@ export const qdrantClientProvider = {
   provide: QDRANT_CLIENT,
   useFactory: (config: ConfigService<EnvConfig, true>) => {
     const url = config.get('APP_QDRANT_URL', { infer: true });
-    return new QdrantClient({ url });
+    return new QdrantClient({
+      url,
+      checkCompatibility:
+        process.env.NODE_ENV === 'test' &&
+        process.env.ACP_TEST_FAKE_RUNTIME === '1'
+          ? false
+          : true,
+    });
   },
   inject: [ConfigService],
 };

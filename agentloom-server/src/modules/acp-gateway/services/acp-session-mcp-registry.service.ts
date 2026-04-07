@@ -2,7 +2,6 @@ import { Injectable, Logger } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { jsonSchema, tool, type ToolSet } from 'ai';
 import {
-  AGENT_RUNTIME,
   type IAgentRuntime,
   type SessionToolProvider,
 } from '../../agent/ports/agent-runtime.port';
@@ -13,6 +12,7 @@ import {
   type McpRuntimeDiscoveredTool,
 } from '../../mcp/mcp.service';
 import type { AcpTrackedSession } from '../acp-types';
+import { resolveAcpAgentRuntime } from '../resolve-acp-agent-runtime';
 
 type SessionMcpServers = Readonly<Record<string, McpServerConfig>>;
 
@@ -111,9 +111,7 @@ export class AcpSessionMcpRegistryService {
 
   private getAgentRuntime(): IAgentRuntime {
     if (!this.agentRuntime) {
-      this.agentRuntime = this.moduleRef.get<IAgentRuntime>(AGENT_RUNTIME, {
-        strict: false,
-      });
+      this.agentRuntime = resolveAcpAgentRuntime(this.moduleRef);
     }
 
     return this.agentRuntime;

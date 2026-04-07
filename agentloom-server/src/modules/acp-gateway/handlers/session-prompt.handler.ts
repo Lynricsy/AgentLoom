@@ -4,10 +4,7 @@ import type {
   StopReason,
   ToolCallAgentEvent,
 } from '../../agent/types/agent-event.types';
-import {
-  AGENT_RUNTIME,
-  type IAgentRuntime,
-} from '../../agent/ports/agent-runtime.port';
+import type { IAgentRuntime } from '../../agent/ports/agent-runtime.port';
 import {
   ContentBlockArraySchema,
   type ContentBlock,
@@ -26,6 +23,7 @@ import type {
   AcpSessionUpdate,
   AcpTrackedSession,
 } from '../acp-types';
+import { resolveAcpAgentRuntime } from '../resolve-acp-agent-runtime';
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -127,9 +125,7 @@ export class SessionPromptHandler {
 
   private getAgentRuntime(): IAgentRuntime {
     if (!this.agentRuntime) {
-      this.agentRuntime = this.moduleRef.get<IAgentRuntime>(AGENT_RUNTIME, {
-        strict: false,
-      });
+      this.agentRuntime = resolveAcpAgentRuntime(this.moduleRef);
     }
 
     return this.agentRuntime;

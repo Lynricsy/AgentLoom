@@ -1,11 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
-import {
-  AGENT_RUNTIME,
-  type IAgentRuntime,
-} from '../agent/ports/agent-runtime.port';
+import type { IAgentRuntime } from '../agent/ports/agent-runtime.port';
 import { AcpMessageRouter } from './acp-message-router';
 import type { AcpConnectionState } from './acp-types';
+import { resolveAcpAgentRuntime } from './resolve-acp-agent-runtime';
 
 @Injectable()
 export class AcpGatewayService {
@@ -18,9 +16,7 @@ export class AcpGatewayService {
 
   private getAgentRuntime(): IAgentRuntime {
     if (!this.agentRuntime) {
-      this.agentRuntime = this.moduleRef.get<IAgentRuntime>(AGENT_RUNTIME, {
-        strict: false,
-      });
+      this.agentRuntime = resolveAcpAgentRuntime(this.moduleRef);
     }
 
     return this.agentRuntime;

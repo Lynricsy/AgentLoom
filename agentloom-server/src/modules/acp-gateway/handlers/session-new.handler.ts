@@ -1,10 +1,10 @@
 import { isAbsolute } from 'node:path';
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
-import {
-  AGENT_RUNTIME,
-  type IAgentRuntime,
-} from '../../agent/ports/agent-runtime.port';
+import type { IAgentRuntime } from '../../agent/ports/agent-runtime.port';
+import { runInTenantTransaction } from '../../../common/interceptors/tenant-transaction.context';
+import { DRIZZLE, type DrizzleDB } from '../../../database/database.module';
+import { resolveAcpAgentRuntime } from '../resolve-acp-agent-runtime';
 import type {
   McpServerConfig,
   ServerSandboxBinding,
@@ -27,6 +27,7 @@ export class SessionNewHandler {
   private agentRuntime?: IAgentRuntime;
 
   constructor(
+    @Inject(DRIZZLE) private readonly db: DrizzleDB,
     private readonly moduleRef: ModuleRef,
     private readonly mcpSessionService: AcpSessionMcpRegistryService,
   ) {}
@@ -41,68 +42,78 @@ export class SessionNewHandler {
     }
 
     const normalizedParams = this.readParams(params);
-    const session = await this.getAgentRuntime().createSession({
-      agentId: normalizedParams.agentId,
-      mode: 'conversation',
-      tenantId,
-      ...(normalizedParams.cwd === undefined
-        ? {}
-        : { cwd: normalizedParams.cwd }),
-      ...(normalizedParams.mcpServers === undefined
-        ? {}
-        : { mcpServers: normalizedParams.mcpServers }),
-      ...(normalizedParams.serverSandbox === undefined
-        ? {}
-        : { serverSandbox: normalizedParams.serverSandbox }),
-    });
+    try {
+      return await runInTenantTransaction(this.db, tenantId, async () => {
+        const session = await this.getAgentRuntime().createSession({
+          agentId: normalizedParams.agentId,
+          mode: 'conversation',
+          tenantId,
+          ...(normalizedParams.cwd === undefined
+            ? {}
+            : { cwd: normalizedParams.cwd }),
+          ...(normalizedParams.mcpServers === undefined
+            ? {}
+            : { mcpServers: normalizedParams.mcpServers }),
+          ...(normalizedParams.serverSandbox === undefined
+            ? {}
+            : { serverSandbox: normalizedParams.serverSandbox }),
+        });
 
-    const trackedSession: AcpTrackedSession = {
-      sessionId: session.id,
-      runtimeSessionId: session.id,
-      agentId: session.agentId,
-      tenantId,
-      ...(normalizedParams.cwd === undefined
-        ? {}
-        : { cwd: normalizedParams.cwd }),
-      ...(normalizedParams.serverSandbox === undefined
-        ? {}
-        : { serverSandbox: normalizedParams.serverSandbox }),
-    };
+        const trackedSession: AcpTrackedSession = {
+          sessionId: session.id,
+          runtimeSessionId: session.id,
+          agentId: session.agentId,
+          tenantId,
+          ...(normalizedParams.cwd === undefined
+            ? {}
+            : { cwd: normalizedParams.cwd }),
+          ...(normalizedParams.serverSandbox === undefined
+            ? {}
+            : { serverSandbox: normalizedParams.serverSandbox }),
+        };
 
-    if (normalizedParams.mcpServers !== undefined) {
-      try {
-        await this.mcpSessionService.bootstrapSessionTools(
-          trackedSession,
-          normalizedParams.mcpServers,
-        );
-      } catch (error) {
-        await this.safeCleanupSessionTools(trackedSession);
-        await this.safeCancelRuntimeSession(session.id);
-        throw new AcpJsonRpcError(
-          -32603,
-          'Failed to initialize ACP MCP forwarding',
-          {
-            sessionId: session.id,
-            reason: this.getErrorMessage(error),
-          },
-        );
+        if (normalizedParams.mcpServers !== undefined) {
+          try {
+            await this.mcpSessionService.bootstrapSessionTools(
+              trackedSession,
+              normalizedParams.mcpServers,
+            );
+          } catch (error) {
+            await this.safeCleanupSessionTools(trackedSession);
+            await this.safeCancelRuntimeSession(session.id);
+            throw new AcpJsonRpcError(
+              -32603,
+              'Failed to initialize ACP MCP forwarding',
+              {
+                sessionId: session.id,
+                reason: this.getErrorMessage(error),
+              },
+            );
+          }
+        }
+
+        const sessions = state.sessions ?? new Map<string, AcpTrackedSession>();
+        state.sessions = sessions;
+        sessions.set(session.id, trackedSession);
+
+        return {
+          sessionId: session.id,
+        };
+      });
+    } catch (error) {
+      if (error instanceof AcpJsonRpcError) {
+        throw error;
       }
+
+      throw new AcpJsonRpcError(-32603, 'Failed to create ACP session', {
+        reason: this.getErrorMessage(error),
+      });
     }
-
-    const sessions = state.sessions ?? new Map<string, AcpTrackedSession>();
-    state.sessions = sessions;
-    sessions.set(session.id, trackedSession);
-
-    return {
-      sessionId: session.id,
-    };
   }
 
   private getAgentRuntime(): IAgentRuntime {
     if (!this.agentRuntime) {
-      this.agentRuntime = this.moduleRef.get<IAgentRuntime>(AGENT_RUNTIME, {
-        strict: false,
-      });
+      this.agentRuntime = resolveAcpAgentRuntime(this.moduleRef);
     }
 
     return this.agentRuntime;

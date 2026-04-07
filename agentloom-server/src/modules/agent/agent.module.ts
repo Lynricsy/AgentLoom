@@ -52,6 +52,7 @@ import { SessionPersistenceService } from '../execution/services/session-persist
     OutputFormatService,
     AgentSessionFactory,
     SessionPersistenceService,
+    InProcessAgentAdapter,
     SandboxAgentAdapter,
     AGENT_RUNTIME,
     AGENT_RUNTIME_FACTORY,
