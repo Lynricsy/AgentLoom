@@ -73,7 +73,7 @@ graph TD
 | **postgres**      | `postgres:16-alpine`    | 主数据库                           |
 | **redis**         | `redis:7-alpine`        | 缓存与消息队列 (BullMQ)            |
 | **minio**         | `minio/minio:latest`    | S3 兼容对象存储                    |
-| **qdrant**        | `qdrant/qdrant:v1.14.0` | 向量数据库（知识库 RAG）           |
+| **qdrant**        | `qdrant/qdrant:v1.17.0` | 向量数据库（知识库 RAG）           |
 | **sandbox**       | `agentloom/sandbox:latest` | 沙箱容器：archlinux + pi-coding-agent + Fastify HTTP，Agent 隔离执行环境 |
 
 ::: info Server 与 Worker 的关系

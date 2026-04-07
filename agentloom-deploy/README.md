@@ -76,7 +76,7 @@ cp agentloom-deploy/.env.template agentloom-deploy/.env
 - `postgres`
 - `redis`
 - `minio`
-- `qdrant`
+- `qdrant`：向量数据库，默认镜像 `qdrant/qdrant:v1.17.0`，与服务端当前使用的 Qdrant JS client 1.17.x 保持兼容
 
 ### 单机部署资源与网络基线
 

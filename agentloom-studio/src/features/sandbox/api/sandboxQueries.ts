@@ -1,4 +1,4 @@
-import { useQuery, keepPreviousData } from '@tanstack/react-query'
+import { useQuery, keepPreviousData, useQueryClient } from '@tanstack/react-query'
 import { HTTPError } from 'ky'
 import {
   fetchSandboxes,
@@ -44,6 +44,7 @@ export function useSandboxStats(
   sessionId: string,
   status?: SandboxStatus,
 ) {
+  const queryClient = useQueryClient()
   const isRunning = status ? RUNNING_STATUSES.has(status) : false
 
   return useQuery({
@@ -56,6 +57,10 @@ export function useSandboxStats(
           error instanceof HTTPError &&
           (error.response.status === 404 || error.response.status === 409)
         ) {
+          await Promise.all([
+            queryClient.invalidateQueries({ queryKey: sandboxKeys.lists() }),
+            queryClient.invalidateQueries({ queryKey: sandboxKeys.persistent() }),
+          ])
           return null
         }
 
@@ -63,7 +68,14 @@ export function useSandboxStats(
       }
     },
     enabled: Boolean(sessionId) && isRunning,
-    refetchInterval: isRunning ? 5_000 : false,
+    refetchInterval: (query) => {
+      if (!isRunning) {
+        return false
+      }
+
+      const data = query.state.data as SandboxStats | null | undefined
+      return data === null ? false : 5_000
+    },
     staleTime: 4_000,
     retry: false,
   })

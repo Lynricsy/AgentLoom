@@ -71,6 +71,10 @@
   - 必须显示真实字节值
   - `diskUsage=0` 时必须显示 `0 B`
   - 缺失字段时必须视为“未知/不可用”，不能渲染成 `0 B`
+- 若单个 sandbox card 的 stats 请求返回 `404/409`：
+  - 必须把这次结果收口为 `null`
+  - 必须停止该 card 的后续 stats 轮询，避免对不存在或已失活 session 持续打日志噪音
+  - 必须触发 sandbox 列表与 persistent 列表刷新一次，让 UI 尽快收敛到服务端真实状态
 
 ---
 
@@ -101,6 +105,7 @@
 | Studio workspace 来源标签                                                | 卡片与详情页都显示 `手动工作区 / 沙箱快照 / 执行归档`                       | 组件测试或手动 QA              |
 | Studio sandbox API 调用                                                  | 透传 `bindingType`                                                          | `sandboxApi.test.ts`           |
 | Studio sandbox stats 展示                                                | `diskUsage=0` 时显示 `0 B / ...`，不当成缺失                                | `SandboxStatsDisplay.test.tsx` |
+| Studio sandbox stats 返回 `404/409`                                      | 当前 card 停止继续轮询，并触发列表刷新收敛删除/状态漂移                     | `sandboxQueries.test.tsx`      |
 | Studio workflow / agent 列表来源筛选                                     | 透传 `sourceKind`，通过顶部来源分类标签切换列表，且条目不重复显示来源 badge | 对应页面测试                   |
 | Studio 资源页点击“转为自己创建”                                          | 调用 shared `convert-to-manual` 并刷新列表                                  | 对应页面测试                   |
 | Flutter workspace DTO                                                    | 正确解析 `sourceKind/isAutoArchived` 并给出中文标签                         | `resource_entities_test.dart`  |

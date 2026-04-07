@@ -52,7 +52,7 @@ agentloom-deploy/
 | `postgres` | postgres:16-alpine | 持久卷 `postgres_data` |
 | `redis` | redis:7-alpine | AOF 持久化，requirepass |
 | `minio` | minio/minio:latest | 回环绑定 Console `:9001` |
-| `qdrant` | qdrant/qdrant:v1.14.0 | 回环绑定 HTTP `:6333` |
+| `qdrant` | qdrant/qdrant:v1.17.0 | 回环绑定 HTTP `:6333` |
 
 Server 与 Worker 使用同一 Docker 镜像、同一启动命令。Worker 不暴露到外网，仅作水平扩展用途。MinIO Console 和 Qdrant HTTP 只绑定 `127.0.0.1`，需 SSH 隧道访问。`reverse-proxy` 的 `nginx.conf` 现通过 Docker embedded DNS（`127.0.0.11`）做运行时上游解析，避免 Compose 重建 `server/studio/docs/supabase-kong` 后因容器换 IP 出现 stale upstream。
 

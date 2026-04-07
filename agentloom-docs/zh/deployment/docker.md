@@ -49,7 +49,7 @@ graph LR
         PG[(postgres<br/>16-alpine)]
         RD[(redis<br/>7-alpine)]
         MN[(minio<br/>latest)]
-        QD[(qdrant<br/>v1.14.0)]
+        QD[(qdrant<br/>v1.17.0)]
     end
 
     C --> NX
@@ -124,7 +124,7 @@ Worker 使用**与 Server 完全相同的镜像和启动命令**。两者通过 
 | **postgres** | `postgres:16-alpine`    | `postgres_data` | 主数据库，含初始化脚本              |
 | **redis**    | `redis:7-alpine`        | `redis_data`    | 开启 AOF 持久化，需配置密码         |
 | **minio**    | `minio/minio:latest`    | `minio_data`    | 控制台绑定 `127.0.0.1:9001`         |
-| **qdrant**   | `qdrant/qdrant:v1.14.0` | `qdrant_data`   | 绑定 `127.0.0.1:6333`，仅内网可访问 |
+| **qdrant**   | `qdrant/qdrant:v1.17.0` | `qdrant_data`   | 绑定 `127.0.0.1:6333`，仅内网可访问 |
 
 ### 沙箱容器 (sandbox)
 
