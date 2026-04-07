@@ -4,6 +4,7 @@ import { AgentDefinitionService } from './agent-definition.service';
 import {
   AgentNotFoundException,
   AgentArchivedException,
+  AgentCanvasInvalidMcpToolBindingException,
   AgentCanvasUnknownNodeTypeException,
   AgentVersionConflictException,
   AgentPublishValidationException,
@@ -906,6 +907,40 @@ describe('AgentDefinitionService', () => {
           'user-1',
         ),
       ).rejects.toThrow(AgentCanvasUnknownNodeTypeException);
+    });
+
+    it('mcp-tool 已选择 server 但未选择具体工具时应拒绝保存画布', async () => {
+      const agent = makeAgent();
+
+      mockTxClient.select.mockImplementation(() => {
+        const c: Record<string, any> = {};
+        c.from = vi.fn().mockReturnValue(c);
+        c.where = vi.fn().mockResolvedValue([agent]);
+        return c;
+      });
+
+      await expect(
+        service.saveCanvas(
+          'agent-1',
+          {
+            canvasNodes: [
+              {
+                id: 'mcp-bad',
+                type: 'tool',
+                position: { x: 0, y: 0 },
+                data: {
+                  nodeType: 'mcp-tool',
+                  config: {
+                    mcpServerConfigId: 'cfg-websearch',
+                  },
+                },
+              },
+            ] as never,
+            canvasEdges: [],
+          },
+          'user-1',
+        ),
+      ).rejects.toThrow(AgentCanvasInvalidMcpToolBindingException);
     });
   });
 
@@ -2014,7 +2049,7 @@ describe('AgentDefinitionService', () => {
       });
     });
 
-    it('MCP 工具缺少关键字段时不应设置 toolType（退化为基础 binding）', () => {
+    it('MCP 工具已选择 server 但未选择具体工具时应直接拒绝编译', () => {
       const nodes = [
         {
           id: 'mcp-3',
@@ -2023,12 +2058,9 @@ describe('AgentDefinitionService', () => {
         },
       ];
 
-      const config = service.buildRuntimeConfigFromNodes(nodes, []);
-
-      expect(config.tools).toHaveLength(1);
-      const tool = config.tools![0] as any;
-      expect(tool.toolType).toBeUndefined();
-      expect(tool.mcpServerConfigId).toBe('cfg-only');
+      expect(() => service.buildRuntimeConfigFromNodes(nodes, [])).toThrow(
+        AgentCanvasInvalidMcpToolBindingException,
+      );
     });
 
     it('HTTP 工具提供 url + method 时应生成 toolType: http 判别联合', () => {
@@ -2186,6 +2218,8 @@ describe('AgentDefinitionService', () => {
           id: 'mcp-pm',
           type: 'mcp-tool',
           data: {
+            mcpServerConfigId: 'cfg-websearch',
+            toolName: 'fast_search',
             mcpToolDefinitionId: 'def-pm',
             portMapping: { input: 'text', output: 'json' },
           },
@@ -2206,6 +2240,8 @@ describe('AgentDefinitionService', () => {
           id: 'mcp-arr',
           type: 'mcp-tool',
           data: {
+            mcpServerConfigId: 'cfg-websearch',
+            toolName: 'fast_search',
             mcpToolDefinitionId: 'def-arr',
             portMapping: ['not', 'valid'],
           },
@@ -2226,6 +2262,8 @@ describe('AgentDefinitionService', () => {
           id: 'mcp-is',
           type: 'mcp-tool',
           data: {
+            mcpServerConfigId: 'cfg-websearch',
+            toolName: 'fast_search',
             mcpToolDefinitionId: 'def-is',
             inputSchema: [1, 2, 3],
           },
@@ -2395,6 +2433,44 @@ describe('AgentDefinitionService', () => {
         }),
       });
       expect(mockTxClient.insert).not.toHaveBeenCalled();
+    });
+
+    it('mcp-tool 已选择 server 但未选择具体工具时应拒绝 applyCanvasSnapshot', async () => {
+      const agent = makeAgent({
+        version: 4,
+        publishedVersionId: null,
+      });
+
+      mockTxClient.select.mockImplementation(() => {
+        const c: Record<string, any> = {};
+        c.from = vi.fn().mockReturnValue(c);
+        c.where = vi.fn().mockResolvedValue([agent]);
+        return c;
+      });
+
+      await expect(
+        service.applyCanvasSnapshot(
+          'agent-1',
+          {
+            canvasNodes: [
+              {
+                id: 'mcp-bad',
+                type: 'tool',
+                position: { x: 0, y: 0 },
+                data: {
+                  nodeType: 'mcp-tool',
+                  config: {
+                    mcpServerConfigId: 'cfg-websearch',
+                  },
+                },
+              },
+            ] as never,
+            canvasEdges: [],
+            expectedVersion: 4,
+          },
+          'user-1',
+        ),
+      ).rejects.toThrow(AgentCanvasInvalidMcpToolBindingException);
     });
 
     it('已发布 Agent 且 publishIfCurrentlyPublished=true 时应原子生成新发布版本', async () => {

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { SelfEvolutionService } from './self-evolution.service';
+import { AgentCanvasInvalidMcpToolBindingException } from '../agent-definition/agent-definition.exceptions';
 import type { AgentSession } from '../agent/types/agent-session.types';
 import type { SelfEvolutionSessionContext } from './self-evolution.types';
 
@@ -621,6 +622,81 @@ describe('SelfEvolutionService', () => {
       }),
       'user-1',
     );
+  });
+
+  it('applyChange 遇到 Agent 画布 MCP 校验失败时应返回结构化 Problem Details', async () => {
+    vi.spyOn(service as any, 'loadGraphTarget').mockResolvedValueOnce({
+      kind: 'agent',
+      id: 'agent-1',
+      label: '当前 Agent',
+      version: 12,
+      publishedVersionId: 'version-12',
+      nodes: [],
+      edges: [],
+      viewport: null,
+    });
+    mockAgentDefinitionService.applyCanvasSnapshot.mockRejectedValueOnce(
+      new AgentCanvasInvalidMcpToolBindingException([
+        {
+          nodeId: 'main-mcp-websearch',
+          mcpServerConfigId: 'cfg-websearch',
+          enabledToolIds: [],
+          issues: ['未选择具体工具'],
+        },
+      ]),
+    );
+
+    const result = await (service as any).applyChange(makeContext(), {
+      proposal: {
+        domain: 'self_evolution',
+        targetKind: 'self',
+        targetId: 'agent-1',
+        targetLabel: '当前 Agent',
+        baseVersion: 12,
+        publishTarget: false,
+        nodeOperations: [],
+        edgeOperations: [],
+        summary: '新增 WebSearch MCP 节点',
+        category: 'agent_self_canvas_edit',
+        riskLevel: 'low',
+        requiresConfirmation: false,
+        diffPreview: {
+          summary: '新增 WebSearch MCP 节点',
+        },
+      },
+    });
+
+    expect(result).toEqual({
+      success: false,
+      error: '节点 main-mcp-websearch 的 MCP 配置不完整：未选择具体工具',
+      data: {
+        problemDetails: {
+          type: 'https://agentloom.dev/errors/agent-canvas-invalid-mcp-tool-binding',
+          title: 'Agent MCP 节点配置不完整',
+          status: 422,
+          detail: '节点 main-mcp-websearch 的 MCP 配置不完整：未选择具体工具',
+          errors: [
+            {
+              field: 'canvasNodes',
+              message:
+                '节点 main-mcp-websearch 的 mcp-tool 配置不完整（未选择具体工具）。请把 node.data.config.mcpServerConfigId、enabledToolIds 和 tools[] 一起写完整，并至少选择一个具体工具。',
+            },
+          ],
+          extensions: expect.objectContaining({
+            fixHint:
+              '请在 node.data.config 中显式写入 mcpServerConfigId、enabledToolIds 与 tools[]；enabledToolIds 里的每个 tool id 都必须在 tools[] 中有对应的 id/name/mcpServerConfigId 元数据。',
+            nodes: [
+              {
+                nodeId: 'main-mcp-websearch',
+                mcpServerConfigId: 'cfg-websearch',
+                enabledToolIds: [],
+                issues: ['未选择具体工具'],
+              },
+            ],
+          }),
+        },
+      },
+    });
   });
 
   it('applyChange 在 publishedVersionId 未变化时不应返回 restartSuggestion', async () => {

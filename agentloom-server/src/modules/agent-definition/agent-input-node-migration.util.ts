@@ -4,6 +4,7 @@ import type {
   ReactFlowNode,
 } from '../../database/schema/workflow-definitions.schema';
 import { normalizeWorkflowNodesAndEdges } from '../workflow-definition/utils/normalize-workflow-graph.utils';
+import { validateMcpToolBinding } from './mcp-tool-descriptor.utils';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -31,6 +32,14 @@ interface AgentCanvasMigrationResult extends GraphMigrationResult {
 export interface UnsupportedAgentCanvasNodeType {
   nodeId: string;
   nodeType: string;
+}
+
+export interface InvalidAgentCanvasMcpToolNode {
+  nodeId: string;
+  mcpServerConfigId?: string;
+  enabledToolIds: string[];
+  issues: string[];
+  missingToolIds?: string[];
 }
 
 const TEXT_NODE_LABEL = 'System Prompt';
@@ -657,6 +666,39 @@ export function collectUnsupportedAgentCanvasNodeTypes(
       {
         nodeId,
         nodeType,
+      },
+    ];
+  });
+}
+
+export function collectInvalidAgentCanvasMcpToolNodes(
+  nodes: ReactFlowNode[],
+): InvalidAgentCanvasMcpToolNode[] {
+  return nodes.flatMap((node) => {
+    if (getNodeType(node) !== MCP_TOOL_NODE_TYPE) {
+      return [];
+    }
+
+    const data = toRecord(node.data);
+    const config = toRecord(data.config);
+    const validationIssue = validateMcpToolBinding({
+      ...data,
+      ...config,
+    });
+
+    if (!validationIssue) {
+      return [];
+    }
+
+    const nodeId =
+      typeof node.id === 'string' && node.id.trim().length > 0
+        ? node.id
+        : '(missing-id)';
+
+    return [
+      {
+        nodeId,
+        ...validationIssue,
       },
     ];
   });

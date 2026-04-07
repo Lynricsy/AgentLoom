@@ -41,6 +41,7 @@ import { deriveAgentSandboxConfigFromCanvas } from './agent-sandbox-config.utils
 import {
   AgentNotFoundException,
   AgentArchivedException,
+  AgentCanvasInvalidMcpToolBindingException,
   AgentVersionConflictException,
   AgentCanvasUnknownNodeTypeException,
   AgentVersionNotFoundException,
@@ -54,6 +55,7 @@ import {
 } from '../sandbox/sandbox-timeout.utils';
 import { resolveSandboxConversationIdleAutoEndMinutes } from '../sandbox/sandbox-conversation-idle.utils';
 import {
+  collectInvalidAgentCanvasMcpToolNodes,
   collectUnsupportedAgentCanvasNodeTypes,
   migrateAgentCanvasGraph,
   migrateAgentVersionSnapshot,
@@ -444,6 +446,7 @@ export class AgentDefinitionService {
         edges: dto.canvasEdges as unknown as schema.ReactFlowEdge[],
       });
       this.assertSupportedCanvasNodeTypes(migratedCanvas.nodes);
+      this.assertExecutableMcpToolNodes(migratedCanvas.nodes);
 
       const setClause: Record<string, any> = {
         nodes: migratedCanvas.nodes,
@@ -535,6 +538,7 @@ export class AgentDefinitionService {
         edges: options.canvasEdges as unknown as schema.ReactFlowEdge[],
       });
       this.assertSupportedCanvasNodeTypes(migratedCanvas.nodes);
+      this.assertExecutableMcpToolNodes(migratedCanvas.nodes);
 
       await this.assertRuntimeModeConstraints(
         dbClient,
@@ -672,6 +676,7 @@ export class AgentDefinitionService {
     runtimeMode: AgentRuntimeMode = 'sandbox',
   ): AgentRuntimeConfig {
     this.assertSupportedCanvasNodeTypes(nodes as schema.ReactFlowNode[]);
+    this.assertExecutableMcpToolNodes(nodes as schema.ReactFlowNode[]);
 
     const config: AgentRuntimeConfig = { runtimeMode };
 
@@ -1205,6 +1210,7 @@ export class AgentDefinitionService {
     releaseNotes?: string,
   ): AgentVersionSnapshot {
     this.assertSupportedCanvasNodeTypes(agent.nodes ?? []);
+    this.assertExecutableMcpToolNodes(agent.nodes ?? []);
     const canvasMetadata = this.extractCanvasMetadata(agent.metadata);
 
     return {
@@ -1975,6 +1981,13 @@ export class AgentDefinitionService {
     );
     if (unsupportedNodes.length > 0) {
       throw new AgentCanvasUnknownNodeTypeException(unsupportedNodes);
+    }
+  }
+
+  private assertExecutableMcpToolNodes(nodes: schema.ReactFlowNode[]): void {
+    const invalidNodes = collectInvalidAgentCanvasMcpToolNodes(nodes ?? []);
+    if (invalidNodes.length > 0) {
+      throw new AgentCanvasInvalidMcpToolBindingException(invalidNodes);
     }
   }
 

@@ -8,6 +8,13 @@ export interface McpToolDescriptor {
   portMapping?: Record<string, unknown>;
 }
 
+export interface McpToolBindingValidationIssue {
+  mcpServerConfigId?: string;
+  enabledToolIds: string[];
+  issues: string[];
+  missingToolIds?: string[];
+}
+
 function isRecord(value: unknown): value is GenericRecord {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
@@ -160,4 +167,121 @@ export function extractMcpToolDescriptors(
       ...(topLevelPortMapping ? { portMapping: topLevelPortMapping } : {}),
     },
   ];
+}
+
+export function validateMcpToolBinding(
+  record: GenericRecord,
+): McpToolBindingValidationIssue | null {
+  const mcpServerConfigId = resolveMcpServerConfigId(record);
+  const enabledToolIds = readStringArray(
+    record.enabledToolIds,
+    record.enabled_tool_ids,
+  );
+  const tools = Array.isArray(record.tools)
+    ? record.tools.filter((tool): tool is GenericRecord => isRecord(tool))
+    : [];
+  const explicitFallbackSelection = readFirstString(
+    record.toolName,
+    record.tool_name,
+    record.mcpToolDefinitionId,
+    record.mcp_tool_definition_id,
+  );
+  const hasAnyMcpBindingConfig =
+    Boolean(mcpServerConfigId) ||
+    enabledToolIds.length > 0 ||
+    tools.length > 0 ||
+    Boolean(explicitFallbackSelection);
+
+  if (!hasAnyMcpBindingConfig) {
+    return null;
+  }
+
+  if (enabledToolIds.length > 0 || tools.length > 0) {
+    const issues: string[] = [];
+    if (!mcpServerConfigId) {
+      issues.push('缺少 mcpServerConfigId');
+    }
+    if (enabledToolIds.length === 0) {
+      issues.push('enabledToolIds 为空，未显式选择具体工具');
+    }
+    if (tools.length === 0) {
+      issues.push('tools[] 为空，缺少已选工具元数据');
+    }
+
+    const toolsById = new Map<string, GenericRecord>();
+    for (const tool of tools) {
+      const toolId = readFirstString(
+        tool.id,
+        tool.mcpToolDefinitionId,
+        tool.mcp_tool_definition_id,
+      );
+      if (toolId) {
+        toolsById.set(toolId, tool);
+      }
+    }
+
+    const missingToolIds = enabledToolIds.filter((toolId) => {
+      return !toolsById.has(toolId);
+    });
+    if (missingToolIds.length > 0) {
+      issues.push(
+        `enabledToolIds 中的 ${missingToolIds.join(
+          '、',
+        )} 未在 tools[] 中提供元数据`,
+      );
+    }
+
+    const incompleteToolIds: string[] = [];
+    for (const toolId of enabledToolIds) {
+      const tool = toolsById.get(toolId);
+      if (!tool) {
+        continue;
+      }
+
+      const toolName = readFirstString(
+        tool.toolName,
+        tool.tool_name,
+        tool.name,
+        tool.title,
+      );
+      const toolServerConfigId = resolveMcpServerConfigId(tool);
+      if (!toolName || !toolServerConfigId) {
+        incompleteToolIds.push(toolId);
+      }
+    }
+
+    if (incompleteToolIds.length > 0) {
+      issues.push(
+        `tools[] 中已选工具 ${incompleteToolIds.join(
+          '、',
+        )} 缺少 name/toolName 或 mcpServerConfigId`,
+      );
+    }
+
+    if (issues.length === 0) {
+      return null;
+    }
+
+    return {
+      ...(mcpServerConfigId ? { mcpServerConfigId } : {}),
+      enabledToolIds,
+      issues,
+      ...(missingToolIds.length > 0 ? { missingToolIds } : {}),
+    };
+  }
+
+  if (mcpServerConfigId && explicitFallbackSelection) {
+    return null;
+  }
+
+  const issues = [
+    ...(mcpServerConfigId ? [] : ['缺少 mcpServerConfigId']),
+    '未选择具体工具',
+  ];
+
+  return {
+    ...(mcpServerConfigId ? { mcpServerConfigId } : {}),
+    enabledToolIds,
+    issues,
+  };
 }

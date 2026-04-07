@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   extractMcpToolDescriptors,
   resolveMcpServerConfigId,
+  validateMcpToolBinding,
 } from './mcp-tool-descriptor.utils';
 
 describe('mcp-tool-descriptor utils', () => {
@@ -65,5 +66,45 @@ describe('mcp-tool-descriptor utils', () => {
         inputSchema: { type: 'object' },
       },
     ]);
+  });
+
+  it('enabledToolIds 为空但 tools[] 已填写时应判定为缺少显式工具选择', () => {
+    expect(
+      validateMcpToolBinding({
+        mcpServerConfigId: 'cfg-websearch',
+        tools: [
+          {
+            id: 'tool-fast',
+            name: 'fast_search',
+            mcpServerConfigId: 'cfg-websearch',
+          },
+        ],
+      }),
+    ).toEqual({
+      mcpServerConfigId: 'cfg-websearch',
+      enabledToolIds: [],
+      issues: ['enabledToolIds 为空，未显式选择具体工具'],
+    });
+  });
+
+  it('enabledToolIds 与 tools[] 不一致时应返回缺失元数据的工具 id', () => {
+    expect(
+      validateMcpToolBinding({
+        mcpServerConfigId: 'cfg-websearch',
+        enabledToolIds: ['tool-fast', 'tool-deep'],
+        tools: [
+          {
+            id: 'tool-fast',
+            name: 'fast_search',
+            mcpServerConfigId: 'cfg-websearch',
+          },
+        ],
+      }),
+    ).toEqual({
+      mcpServerConfigId: 'cfg-websearch',
+      enabledToolIds: ['tool-fast', 'tool-deep'],
+      issues: ['enabledToolIds 中的 tool-deep 未在 tools[] 中提供元数据'],
+      missingToolIds: ['tool-deep'],
+    });
   });
 });

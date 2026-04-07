@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { jsonSchema, tool, type ToolSet } from 'ai';
 import { eq } from 'drizzle-orm';
 
+import { DomainException } from '../../common/exceptions/domain.exception';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import {
@@ -1995,6 +1996,23 @@ export class SelfEvolutionService {
   }
 
   private toFailureResult(error: unknown): SelfEvolutionToolResult {
+    if (error instanceof DomainException) {
+      return {
+        success: false,
+        data: {
+          problemDetails: {
+            type: error.type,
+            title: error.message,
+            status: error.getStatus(),
+            detail: error.detail,
+            ...(error.errors ? { errors: error.errors } : {}),
+            ...(error.extensions ? { extensions: error.extensions } : {}),
+          },
+        },
+        error: error.detail,
+      };
+    }
+
     return {
       success: false,
       data: null,

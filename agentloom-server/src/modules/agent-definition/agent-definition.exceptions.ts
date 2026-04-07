@@ -1,6 +1,9 @@
 import { HttpStatus } from '@nestjs/common';
 import { DomainException } from '../../common/exceptions/domain.exception';
-import type { UnsupportedAgentCanvasNodeType } from './agent-input-node-migration.util';
+import type {
+  InvalidAgentCanvasMcpToolNode,
+  UnsupportedAgentCanvasNodeType,
+} from './agent-input-node-migration.util';
 
 export class AgentNotFoundException extends DomainException {
   constructor(agentId: string) {
@@ -100,6 +103,52 @@ export class AgentCanvasUnknownNodeTypeException extends DomainException {
       })),
       extensions: {
         nodes,
+      },
+    });
+  }
+}
+
+export class AgentCanvasInvalidMcpToolBindingException extends DomainException {
+  constructor(nodes: InvalidAgentCanvasMcpToolNode[]) {
+    const firstNode = nodes[0];
+    const firstIssue = firstNode?.issues[0];
+
+    super({
+      type: 'https://agentloom.dev/errors/agent-canvas-invalid-mcp-tool-binding',
+      title: 'Agent MCP 节点配置不完整',
+      status: HttpStatus.UNPROCESSABLE_ENTITY,
+      detail:
+        firstNode && firstIssue
+          ? `节点 ${firstNode.nodeId} 的 MCP 配置不完整：${firstIssue}`
+          : 'Agent 画布中的 MCP 节点配置不完整',
+      errors: nodes.map((node) => ({
+        field: 'canvasNodes',
+        message: `节点 ${node.nodeId} 的 mcp-tool 配置不完整（${node.issues.join(
+          '；',
+        )}）。请把 node.data.config.mcpServerConfigId、enabledToolIds 和 tools[] 一起写完整，并至少选择一个具体工具。`,
+      })),
+      extensions: {
+        nodes,
+        expectedShape: {
+          type: 'tool',
+          data: {
+            nodeType: 'mcp-tool',
+            config: {
+              mcpServerConfigId: '<server-id>',
+              enabledToolIds: ['<tool-id>'],
+              tools: [
+                {
+                  id: '<tool-id>',
+                  name: '<tool-name>',
+                  mcpServerConfigId: '<server-id>',
+                },
+              ],
+            },
+            outputPorts: [{ id: 'tool-out' }],
+          },
+        },
+        fixHint:
+          '请在 node.data.config 中显式写入 mcpServerConfigId、enabledToolIds 与 tools[]；enabledToolIds 里的每个 tool id 都必须在 tools[] 中有对应的 id/name/mcpServerConfigId 元数据。',
       },
     });
   }

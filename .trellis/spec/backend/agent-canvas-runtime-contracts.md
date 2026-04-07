@@ -64,6 +64,7 @@
   - Studio MCP 面板保存的 `config.enabledToolIds + config.tools[]` 必须被 direct Agent runtime 与 workflow runtime 一致展开为逐个 MCP tool binding，不能只在 workflow 路径生效
   - `query_resource_pool(resourceType='mcp_tool')` 必须返回足以写回 `tools[]` 的 tool metadata（至少 `id/name/mcpServerConfigId`，推荐附带 `inputSchema/portMappingMetadata`）
   - self-evolution 给编排新增 `mcp-tool` 节点时，若只提供 server 级信息或遗漏 tool 选择，apply/propose 阶段必须按租户内 active MCP tools 自动补全 `enabledToolIds + tools[]`，默认选择全部 active tools
+  - 一旦 `mcp-tool` 节点已经带有 `mcpServerConfigId`、`enabledToolIds`、`tools[]` 等 MCP 绑定字段，就必须形成明确且可执行的工具选择；只写 server、不写 `enabledToolIds`、`enabledToolIds` 与 `tools[]` 不一致、或已选工具缺少 `id/name/mcpServerConfigId` 元数据，都必须 fail-closed 为 `AgentCanvasInvalidMcpToolBindingException`
 - Agent 画布在 legacy alias 归一化之后，若仍出现未知或缺失的 `nodeType`，必须在写路径与运行时 fail-closed，而不是静默落库或忽略：
   - `saveCanvas()`
   - `applyCanvasSnapshot()`
@@ -71,6 +72,7 @@
   - `buildRuntimeConfigFromNodes()`（direct conversation / workflow-agent runtime）
   - share import
   - 错误统一为 `AgentCanvasUnknownNodeTypeException`
+- self-evolution 在保存/发布失败时，不能只向模型返回异常标题；`DomainException.detail/errors/extensions` 必须作为结构化 `problemDetails` 原样回传，供模型据此修正节点 payload。
 
 ### 4. Validation & Error Matrix
 
@@ -85,6 +87,8 @@
 | 已发布 Agent 快照仍含 `nodeType='mcp'` / `sourceHandle='tools-out'` | detail/version response 与 runtime 编译都应恢复为 `mcp-tool` / `tool-out` | `agent-input-node-migration.util.spec.ts`, `agent-definition-response.dto.spec.ts`, `agent-definition.service.spec.ts` |
 | Agent MCP 节点保存的是 `config.enabledToolIds + config.tools[]` | `buildRuntimeConfigFromNodes()` 必须展开成逐个 MCP binding，与 workflow agent runtime 行为一致 | `mcp-tool-descriptor.utils.spec.ts`, `agent-definition.service.spec.ts` |
 | self-evolution 新增的 MCP 节点只写了 `mcpServerId` / 未写 `tools[]` | `proposeChange()` / `applyChange()` 必须把字段归一化为 `mcpServerConfigId`，并回填 active tools 到 `enabledToolIds + tools[]` | `self-evolution.service.spec.ts` |
+| Agent MCP 节点只写了 `mcpServerConfigId` 或 `enabledToolIds/tools[]` 不完整 | `saveCanvas()/applyCanvasSnapshot()/buildSnapshot()/buildRuntimeConfigFromNodes()` 必须抛 `AgentCanvasInvalidMcpToolBindingException`，并返回 canonical 修复形状 | `mcp-tool-descriptor.utils.spec.ts`, `agent-definition.service.spec.ts` |
+| self-evolution 遇到 Agent MCP 校验失败 | 工具结果必须返回 `problemDetails { detail/errors/extensions }`，不能只剩异常标题 | `self-evolution.service.spec.ts` |
 | Agent graph 在 migration 后仍含 `legacy-node` 或缺失 `nodeType` | save/apply/share import/buildSnapshot/runtime compile 必须抛 `AgentCanvasUnknownNodeTypeException`，不能静默忽略 | `agent-definition.service.spec.ts` + import path 回归 |
 
 ### 5. Good / Base / Bad Cases
@@ -112,8 +116,10 @@
   - 断言 legacy `mcp` 节点与 `tools-out` 句柄会迁移为 canonical `mcp-tool/tool-out`
 - `agentloom-server/src/modules/agent-definition/mcp-tool-descriptor.utils.spec.ts`
   - 断言 `enabledToolIds + tools[]` 与 `mcpServerId` alias 会被正确解析
+  - 断言不完整的 MCP 绑定会返回明确的 issues / missingToolIds
 - `agentloom-server/src/modules/agent-definition/agent-definition.service.spec.ts`
   - 断言未知 `nodeType` 会在 `saveCanvas()` 与 `buildRuntimeConfigFromNodes()` 阶段 fail-closed
+  - 断言仅填写 server 或不完整 `enabledToolIds/tools[]` 的 `mcp-tool` 节点会在 `saveCanvas()/applyCanvasSnapshot()/buildRuntimeConfigFromNodes()` 阶段 fail-closed
   - 断言 direct Agent runtime 会把 Studio MCP payload 展开为逐个 MCP binding
 - `agentloom-server/src/modules/execution/__tests__/workflow-agent-adapter.spec.ts`
   - 断言 workflow `agent` 的 `system-prompt-in` / `schema-in` override
@@ -121,6 +127,7 @@
 - `agentloom-server/src/modules/self-evolution/self-evolution.service.spec.ts`
   - 断言 `query_resource_pool(resourceType='mcp_tool')` 返回可直接写回节点的 MCP tool metadata
   - 断言 `applyChange()` 会把半残 MCP 节点补全为 canonical payload
+  - 断言 `applyChange()` 遇到 `DomainException` 时会把 `problemDetails.detail/errors/extensions` 原样回传
 - `agentloom-server/src/modules/agent-definition/agent-input-node-migration.util.spec.ts`
   - 断言 draft Agent、published Agent snapshot、workflow graph 的预迁移结果
 - Manual / browser QA:
