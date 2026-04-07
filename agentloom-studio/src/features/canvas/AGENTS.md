@@ -92,6 +92,7 @@ WorkflowPreviewCanvas.tsx
 - `WorkflowPreviewCanvas` 默认开启只读平移/缩放：允许拖动画布和滚轮/触控缩放，但节点、连线、handle 继续通过 `.workflow-preview-canvas` 关闭命中，保证“可浏览，不可编辑”
 - `text` 是 workflow / agent 双画布共享的文本常量 source node；系统提示词统一通过 `text -> system-prompt-in` 表达，`text-output` / `json-output` 只承担执行结果收口，不要继续拿来承载提示词常量
 - workflow `agent`、`agent-main` 与 `sub-agent` 都暴露 `system-prompt-in`；其中 `sub-agent` 额外固定 `model-in` / `schema-in` 作为 override，以及 `tools-in` / `skills-in` / `sub-agents-in` / `knowledge-in` / `memory-in` 作为 extension，不提供 `sandbox-in`
+- Agent Canvas 中 React Flow 的 `node.type` 只是渲染类别（`agent/tool/knowledge/...`），真正的业务节点类型必须读 `node.data.nodeType`；凡是 `agent-main` / `sandbox` / `workspace` 这类单例节点的 hydrate、补齐、去重与运行时模式裁剪，都不能拿 `node.type` 当判定依据，否则会把已有主节点误判成缺失并重复补节点
 - `connectionCompatibility.ts`：`isValidConnection()` 只读同步 guard/cache，不发起慢检查
 - `WorkflowCanvas` 在 `onConnectStart` / hover 采用 cache-first + async evaluate，必要时展示 `checking`
 - `onConnect` 必须先 await 最终兼容性再落边，`checking` 不得持久化进 `edge.data`；若 cache miss 后最终结果为 `INCOMPATIBLE`，仍需通过持久化错误反馈（当前为 toast）展示 canonical reason，不能只依赖瞬时 preview

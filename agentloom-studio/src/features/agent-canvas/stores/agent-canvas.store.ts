@@ -1,4 +1,4 @@
-import { enableMapSet } from 'immer';
+import { enableMapSet } from "immer";
 import type {
   Edge,
   Node,
@@ -6,28 +6,28 @@ import type {
   EdgeChange,
   Viewport,
   Connection,
-} from '@xyflow/react';
-import { applyNodeChanges, applyEdgeChanges, addEdge } from '@xyflow/react';
-import { create } from 'zustand';
-import { useShallow } from 'zustand/react/shallow';
-import { devtools, subscribeWithSelector } from 'zustand/middleware';
-import { immer } from 'zustand/middleware/immer';
-import { apiClient } from '@/shared/api/client';
-import type { ApiResponse } from '@/shared/types/api';
-import { DEFAULT_SANDBOX_CONVERSATION_IDLE_AUTO_END_MINUTES } from '@/shared/lib/sandboxConversationIdleAutoEnd';
+} from "@xyflow/react";
+import { applyNodeChanges, applyEdgeChanges, addEdge } from "@xyflow/react";
+import { create } from "zustand";
+import { useShallow } from "zustand/react/shallow";
+import { devtools, subscribeWithSelector } from "zustand/middleware";
+import { immer } from "zustand/middleware/immer";
+import { apiClient } from "@/shared/api/client";
+import type { ApiResponse } from "@/shared/types/api";
+import { DEFAULT_SANDBOX_CONVERSATION_IDLE_AUTO_END_MINUTES } from "@/shared/lib/sandboxConversationIdleAutoEnd";
 import type {
   AgentGlobalSandboxConfig,
   AgentDefinition,
-} from '@/features/agent/types';
-import type { AgentRuntimeMode } from '@/features/agent/types';
-import type { CanvasNodeData, CanvasEdgeData } from '@/features/canvas/types';
-import type { AgentCanvasNodeType } from '@/features/canvas/registry/agent-canvas-registry';
-import { AGENT_CANVAS_NODE_REGISTRY } from '@/features/canvas/registry/agent-canvas-registry';
-import { arePortDataTypesCompatible } from '@/features/canvas/lib/connectionCompatibility';
+} from "@/features/agent/types";
+import type { AgentRuntimeMode } from "@/features/agent/types";
+import type { CanvasNodeData, CanvasEdgeData } from "@/features/canvas/types";
+import type { AgentCanvasNodeType } from "@/features/canvas/registry/agent-canvas-registry";
+import { AGENT_CANVAS_NODE_REGISTRY } from "@/features/canvas/registry/agent-canvas-registry";
+import { arePortDataTypesCompatible } from "@/features/canvas/lib/connectionCompatibility";
 import {
   clonePortDefinitions,
   hydratePortDefinitions,
-} from '@/features/canvas/types/nodeTypeRegistry';
+} from "@/features/canvas/types/nodeTypeRegistry";
 
 enableMapSet();
 
@@ -35,7 +35,7 @@ type AgentCanvasNode = Node<CanvasNodeData>;
 type AgentCanvasEdge = Edge<CanvasEdgeData>;
 
 export interface AgentInputSchema {
-  type: 'object';
+  type: "object";
   properties: Record<
     string,
     {
@@ -62,7 +62,7 @@ interface AgentCanvasState {
   globalSandboxConfig: AgentGlobalSandboxConfig;
   inputSchema: AgentInputSchema;
   workspaceId: string | null;
-  sandboxLifecycle: 'session' | 'persistent';
+  sandboxLifecycle: "session" | "persistent";
   memoryInstanceIds: string[];
 
   isDirty: boolean;
@@ -83,17 +83,28 @@ interface AgentCanvasActions {
     updateNodeData: (nodeId: string, data: Partial<CanvasNodeData>) => void;
     setViewport: (viewport: Viewport) => void;
 
-    setGlobalSandboxConfig: (
-      config: Partial<AgentGlobalSandboxConfig>,
-    ) => void;
-    setSandboxLifecycle: (lifecycle: 'session' | 'persistent') => void;
+    setGlobalSandboxConfig: (config: Partial<AgentGlobalSandboxConfig>) => void;
+    setSandboxLifecycle: (lifecycle: "session" | "persistent") => void;
     setInputSchema: (schema: AgentInputSchema) => void;
     setWorkspaceId: (workspaceId: string | null) => void;
     setMemoryInstanceIds: (ids: string[]) => void;
 
     loadAgent: (agentId: string) => Promise<void>;
     applyServerSnapshot: (
-      data: Pick<AgentDefinition, 'nodes' | 'edges' | 'viewport' | 'sandboxConfig' | 'workspaceSnapshotId' | 'inputSchema' | 'memoryInstanceIds' | 'sandboxLifecycle' | 'version' | 'name' | 'runtimeMode'>,
+      data: Pick<
+        AgentDefinition,
+        | "nodes"
+        | "edges"
+        | "viewport"
+        | "sandboxConfig"
+        | "workspaceSnapshotId"
+        | "inputSchema"
+        | "memoryInstanceIds"
+        | "sandboxLifecycle"
+        | "version"
+        | "name"
+        | "runtimeMode"
+      >,
     ) => void;
     saveCanvas: () => Promise<void>;
     compileConfig: () => Promise<void>;
@@ -109,11 +120,11 @@ const DEFAULT_SANDBOX_CONFIG: AgentGlobalSandboxConfig = {
   timeoutSeconds: 300,
   conversationIdleAutoEndMinutes:
     DEFAULT_SANDBOX_CONVERSATION_IDLE_AUTO_END_MINUTES,
-  lifecycleMode: 'session',
+  lifecycleMode: "session",
 };
 
 const DEFAULT_INPUT_SCHEMA: AgentInputSchema = {
-  type: 'object',
+  type: "object",
   properties: {},
   required: [],
 };
@@ -122,11 +133,11 @@ const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function normalizeInputSchema(
-  inputSchema: AgentDefinition['inputSchema'],
+  inputSchema: AgentDefinition["inputSchema"],
 ): AgentInputSchema {
   if (
     !inputSchema ||
-    typeof inputSchema !== 'object' ||
+    typeof inputSchema !== "object" ||
     Array.isArray(inputSchema)
   ) {
     return { ...DEFAULT_INPUT_SCHEMA };
@@ -134,17 +145,17 @@ function normalizeInputSchema(
 
   const properties =
     inputSchema.properties &&
-    typeof inputSchema.properties === 'object' &&
+    typeof inputSchema.properties === "object" &&
     !Array.isArray(inputSchema.properties)
       ? inputSchema.properties
       : {};
 
   return {
-    type: inputSchema.type === 'object' ? 'object' : 'object',
-    properties: properties as AgentInputSchema['properties'],
+    type: inputSchema.type === "object" ? "object" : "object",
+    properties: properties as AgentInputSchema["properties"],
     required: Array.isArray(inputSchema.required)
       ? inputSchema.required.filter(
-          (value): value is string => typeof value === 'string',
+          (value): value is string => typeof value === "string",
         )
       : [],
   };
@@ -163,9 +174,9 @@ function normalizeWorkspaceSnapshotId(
 function createInitialState(): AgentCanvasState {
   return {
     agentId: null,
-    agentName: '',
+    agentName: "",
     version: 0,
-    runtimeMode: 'sandbox',
+    runtimeMode: "sandbox",
     nodes: [],
     edges: [],
     viewport: { x: 0, y: 0, zoom: 1 },
@@ -174,7 +185,7 @@ function createInitialState(): AgentCanvasState {
     globalSandboxConfig: { ...DEFAULT_SANDBOX_CONFIG },
     inputSchema: { ...DEFAULT_INPUT_SCHEMA },
     workspaceId: null,
-    sandboxLifecycle: 'session',
+    sandboxLifecycle: "session",
     memoryInstanceIds: [],
     isDirty: false,
     isSaving: false,
@@ -184,11 +195,17 @@ function createInitialState(): AgentCanvasState {
 }
 
 function createEdgeId(): string {
-  return crypto?.randomUUID?.() ?? `edge-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  return (
+    crypto?.randomUUID?.() ??
+    `edge-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+  );
 }
 
 function generateNodeId(): string {
-  return crypto?.randomUUID?.() ?? `node-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+  return (
+    crypto?.randomUUID?.() ??
+    `node-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+  );
 }
 
 function createRequiredNode(
@@ -203,7 +220,7 @@ function createRequiredNode(
     position,
     data: {
       label: config.label,
-      nodeType: nodeType as CanvasNodeData['nodeType'],
+      nodeType: nodeType as CanvasNodeData["nodeType"],
       category: config.category,
       description: config.description,
       config: {},
@@ -215,17 +232,29 @@ function createRequiredNode(
 
 const AGENT_MAIN_DEFAULT_POSITION = { x: 400, y: 300 };
 const SANDBOX_DEFAULT_POSITION = { x: 600, y: 300 };
-const PORT_STATEFUL_AGENT_NODE_TYPES = new Set<AgentCanvasNodeType>(['smart-routing']);
-const NO_SANDBOX_NODE_TYPES = new Set<AgentCanvasNodeType>(['sandbox', 'workspace']);
+const PORT_STATEFUL_AGENT_NODE_TYPES = new Set<AgentCanvasNodeType>([
+  "smart-routing",
+]);
+const NO_SANDBOX_NODE_TYPES = new Set<AgentCanvasNodeType>([
+  "sandbox",
+  "workspace",
+]);
 
-function buildAgentMainInputPorts(
-  runtimeMode: AgentRuntimeMode,
-) {
-  const config = AGENT_CANVAS_NODE_REGISTRY.get('agent-main')
-  const inputPorts = config ? clonePortDefinitions(config.inputPorts) : []
-  return runtimeMode === 'no_sandbox'
-    ? inputPorts.filter((port) => port.id !== 'sandbox-in')
-    : inputPorts
+function getAgentCanvasNodeType(
+  node: Pick<AgentCanvasNode, "data"> | null | undefined,
+): AgentCanvasNodeType | null {
+  const nodeType = node?.data?.nodeType;
+  return typeof nodeType === "string"
+    ? (nodeType as AgentCanvasNodeType)
+    : null;
+}
+
+function buildAgentMainInputPorts(runtimeMode: AgentRuntimeMode) {
+  const config = AGENT_CANVAS_NODE_REGISTRY.get("agent-main");
+  const inputPorts = config ? clonePortDefinitions(config.inputPorts) : [];
+  return runtimeMode === "no_sandbox"
+    ? inputPorts.filter((port) => port.id !== "sandbox-in")
+    : inputPorts;
 }
 
 function sanitizeNodesForRuntimeMode(
@@ -234,14 +263,14 @@ function sanitizeNodesForRuntimeMode(
 ): AgentCanvasNode[] {
   return nodes
     .filter((node) => {
-      const nodeType = node.data?.nodeType as AgentCanvasNodeType | undefined
-      return runtimeMode === 'sandbox'
+      const nodeType = node.data?.nodeType as AgentCanvasNodeType | undefined;
+      return runtimeMode === "sandbox"
         ? true
-        : !nodeType || !NO_SANDBOX_NODE_TYPES.has(nodeType)
+        : !nodeType || !NO_SANDBOX_NODE_TYPES.has(nodeType);
     })
     .map((node) => {
-      if (node.type !== 'agent-main') {
-        return node
+      if (getAgentCanvasNodeType(node) !== "agent-main") {
+        return node;
       }
 
       return {
@@ -250,8 +279,8 @@ function sanitizeNodesForRuntimeMode(
           ...node.data,
           inputPorts: buildAgentMainInputPorts(runtimeMode),
         },
-      }
-    })
+      };
+    });
 }
 
 function sanitizeEdgesForRuntimeMode(
@@ -259,17 +288,16 @@ function sanitizeEdgesForRuntimeMode(
   edges: AgentCanvasEdge[],
   runtimeMode: AgentRuntimeMode,
 ): AgentCanvasEdge[] {
-  const nodeIds = new Set(nodes.map((node) => node.id))
+  const nodeIds = new Set(nodes.map((node) => node.id));
   return edges.filter((edge) => {
     if (!nodeIds.has(edge.source) || !nodeIds.has(edge.target)) {
-      return false
+      return false;
     }
 
     return !(
-      runtimeMode === 'no_sandbox'
-      && edge.targetHandle === 'sandbox-in'
-    )
-  })
+      runtimeMode === "no_sandbox" && edge.targetHandle === "sandbox-in"
+    );
+  });
 }
 
 function normalizePersistedNode(node: AgentCanvasNode): AgentCanvasNode {
@@ -283,7 +311,8 @@ function normalizePersistedNode(node: AgentCanvasNode): AgentCanvasNode {
     return node;
   }
 
-  const shouldPreserveStoredPorts = PORT_STATEFUL_AGENT_NODE_TYPES.has(nodeType);
+  const shouldPreserveStoredPorts =
+    PORT_STATEFUL_AGENT_NODE_TYPES.has(nodeType);
   const nextInputPorts =
     shouldPreserveStoredPorts && node.data.inputPorts.length > 0
       ? hydratePortDefinitions(node.data.inputPorts, config.inputPorts)
@@ -307,30 +336,138 @@ function normalizePersistedNode(node: AgentCanvasNode): AgentCanvasNode {
   };
 }
 
-function normalizePersistedNodes(nodes: AgentCanvasNode[]): AgentCanvasNode[] {
-  return nodes.map(normalizePersistedNode);
+function readConfigEntryCount(config: unknown): number {
+  if (!config || typeof config !== "object" || Array.isArray(config)) {
+    return 0;
+  }
+
+  return Object.keys(config).length;
+}
+
+function countNodeConnections(
+  nodeId: string,
+  edges: AgentCanvasEdge[],
+): number {
+  return edges.reduce((count, edge) => {
+    return (
+      count +
+      (edge.source === nodeId ? 1 : 0) +
+      (edge.target === nodeId ? 1 : 0)
+    );
+  }, 0);
+}
+
+function enforceNodeInstanceLimits(
+  nodes: AgentCanvasNode[],
+  edges: AgentCanvasEdge[],
+): AgentCanvasNode[] {
+  const limitedNodesByType = new Map<
+    AgentCanvasNodeType,
+    {
+      maxInstances: number;
+      entries: Array<{ node: AgentCanvasNode; index: number }>;
+    }
+  >();
+
+  nodes.forEach((node, index) => {
+    const nodeType = getAgentCanvasNodeType(node);
+    if (!nodeType) {
+      return;
+    }
+
+    const maxInstances = AGENT_CANVAS_NODE_REGISTRY.get(nodeType)?.maxInstances;
+    if (!maxInstances || maxInstances < 1) {
+      return;
+    }
+
+    const existing = limitedNodesByType.get(nodeType);
+    if (existing) {
+      existing.entries.push({ node, index });
+      return;
+    }
+
+    limitedNodesByType.set(nodeType, {
+      maxInstances,
+      entries: [{ node, index }],
+    });
+  });
+
+  const keptNodeIds = new Set<string>();
+
+  limitedNodesByType.forEach(({ maxInstances, entries }) => {
+    if (entries.length <= maxInstances) {
+      entries.forEach(({ node }) => {
+        keptNodeIds.add(node.id);
+      });
+      return;
+    }
+
+    const rankedEntries = [...entries].sort((left, right) => {
+      const connectionDelta =
+        countNodeConnections(right.node.id, edges) -
+        countNodeConnections(left.node.id, edges);
+      if (connectionDelta !== 0) {
+        return connectionDelta;
+      }
+
+      const configDelta =
+        readConfigEntryCount(right.node.data.config) -
+        readConfigEntryCount(left.node.data.config);
+      if (configDelta !== 0) {
+        return configDelta;
+      }
+
+      return left.index - right.index;
+    });
+
+    rankedEntries.slice(0, maxInstances).forEach(({ node }) => {
+      keptNodeIds.add(node.id);
+    });
+  });
+
+  return nodes.filter((node) => {
+    const nodeType = getAgentCanvasNodeType(node);
+    const maxInstances = nodeType
+      ? AGENT_CANVAS_NODE_REGISTRY.get(nodeType)?.maxInstances
+      : undefined;
+    return !maxInstances || keptNodeIds.has(node.id);
+  });
+}
+
+function normalizePersistedNodes(
+  nodes: AgentCanvasNode[],
+  edges: AgentCanvasEdge[],
+): AgentCanvasNode[] {
+  // React Flow 的 node.type 是渲染类别，业务节点类型必须看 data.nodeType。
+  return enforceNodeInstanceLimits(nodes.map(normalizePersistedNode), edges);
 }
 
 function ensureRequiredNodes(
   nodes: AgentCanvasNode[],
   runtimeMode: AgentRuntimeMode,
 ): AgentCanvasNode[] {
-  const hasAgentMain = nodes.some((node) => node.type === 'agent-main')
+  const hasAgentMain = nodes.some(
+    (node) => getAgentCanvasNodeType(node) === "agent-main",
+  );
   if (hasAgentMain) return nodes;
 
-  const agentMainNode = createRequiredNode('agent-main', AGENT_MAIN_DEFAULT_POSITION);
+  const agentMainNode = createRequiredNode(
+    "agent-main",
+    AGENT_MAIN_DEFAULT_POSITION,
+  );
   if (!agentMainNode) return nodes;
   return sanitizeNodesForRuntimeMode([...nodes, agentMainNode], runtimeMode);
 }
 
-function createInitialNodes(
-  runtimeMode: AgentRuntimeMode,
-): AgentCanvasNode[] {
+function createInitialNodes(runtimeMode: AgentRuntimeMode): AgentCanvasNode[] {
   const result: AgentCanvasNode[] = [];
-  const agentMain = createRequiredNode('agent-main', AGENT_MAIN_DEFAULT_POSITION);
+  const agentMain = createRequiredNode(
+    "agent-main",
+    AGENT_MAIN_DEFAULT_POSITION,
+  );
   if (agentMain) result.push(agentMain);
-  if (runtimeMode === 'sandbox') {
-    const sandbox = createRequiredNode('sandbox', SANDBOX_DEFAULT_POSITION);
+  if (runtimeMode === "sandbox") {
+    const sandbox = createRequiredNode("sandbox", SANDBOX_DEFAULT_POSITION);
     if (sandbox) result.push(sandbox);
   }
   return sanitizeNodesForRuntimeMode(result, runtimeMode);
@@ -348,7 +485,9 @@ export function canAddNodeType(
   return count < config.maxInstances;
 }
 
-export const useAgentCanvasStore = create<AgentCanvasState & AgentCanvasActions>()(
+export const useAgentCanvasStore = create<
+  AgentCanvasState & AgentCanvasActions
+>()(
   devtools(
     subscribeWithSelector(
       immer((set, get) => ({
@@ -361,9 +500,9 @@ export const useAgentCanvasStore = create<AgentCanvasState & AgentCanvasActions>
               // 仅对实质修改标脏：新增/删除/拖拽结束，排除 dimension/select 等内部事件
               const isDirtyChange = changes.some(
                 (c) =>
-                  c.type === 'remove' ||
-                  c.type === 'add' ||
-                  (c.type === 'position' && c.dragging === false),
+                  c.type === "remove" ||
+                  c.type === "add" ||
+                  (c.type === "position" && c.dragging === false),
               );
               if (isDirtyChange) {
                 state.isDirty = true;
@@ -375,10 +514,14 @@ export const useAgentCanvasStore = create<AgentCanvasState & AgentCanvasActions>
             set((state) => {
               // 拦截不兼容端口类型的 add 变更
               const filteredChanges = changes.filter((c) => {
-                if (c.type !== 'add') return true;
+                if (c.type !== "add") return true;
                 const edge = c.item;
-                const sourceNode = state.nodes.find((n) => n.id === edge.source);
-                const targetNode = state.nodes.find((n) => n.id === edge.target);
+                const sourceNode = state.nodes.find(
+                  (n) => n.id === edge.source,
+                );
+                const targetNode = state.nodes.find(
+                  (n) => n.id === edge.target,
+                );
                 if (!sourceNode || !targetNode) return true;
                 const sourcePort = sourceNode.data.outputPorts.find(
                   (p) => p.id === edge.sourceHandle,
@@ -387,12 +530,15 @@ export const useAgentCanvasStore = create<AgentCanvasState & AgentCanvasActions>
                   (p) => p.id === edge.targetHandle,
                 );
                 if (!sourcePort || !targetPort) return true;
-                return arePortDataTypesCompatible(sourcePort.dataType, targetPort.dataType);
+                return arePortDataTypesCompatible(
+                  sourcePort.dataType,
+                  targetPort.dataType,
+                );
               });
 
               state.edges = applyEdgeChanges(filteredChanges, state.edges);
               const isDirtyChange = filteredChanges.some(
-                (c) => c.type === 'remove' || c.type === 'add',
+                (c) => c.type === "remove" || c.type === "add",
               );
               if (isDirtyChange) {
                 state.isDirty = true;
@@ -402,8 +548,12 @@ export const useAgentCanvasStore = create<AgentCanvasState & AgentCanvasActions>
 
           createConnection: (connection) => {
             const currentState = get();
-            const sourceNode = currentState.nodes.find((n) => n.id === connection.source);
-            const targetNode = currentState.nodes.find((n) => n.id === connection.target);
+            const sourceNode = currentState.nodes.find(
+              (n) => n.id === connection.source,
+            );
+            const targetNode = currentState.nodes.find(
+              (n) => n.id === connection.target,
+            );
 
             // 端口类型兼容性检查
             if (sourceNode && targetNode) {
@@ -414,25 +564,36 @@ export const useAgentCanvasStore = create<AgentCanvasState & AgentCanvasActions>
                 (p) => p.id === connection.targetHandle,
               );
               if (
-                sourcePort
-                && targetPort
-                && !arePortDataTypesCompatible(sourcePort.dataType, targetPort.dataType)
+                sourcePort &&
+                targetPort &&
+                !arePortDataTypesCompatible(
+                  sourcePort.dataType,
+                  targetPort.dataType,
+                )
               ) {
                 return;
               }
             }
 
-            const sourceNodeType = sourceNode?.data?.nodeType as string | undefined;
-            const targetNodeType = targetNode?.data?.nodeType as string | undefined;
+            const sourceNodeType = sourceNode?.data?.nodeType as
+              | string
+              | undefined;
+            const targetNodeType = targetNode?.data?.nodeType as
+              | string
+              | undefined;
 
             if (
-              sourceNodeType === 'sub-agent' &&
-              targetNodeType === 'agent-main' &&
+              sourceNodeType === "sub-agent" &&
+              targetNodeType === "agent-main" &&
               currentState.agentId
             ) {
-              const subAgentDefId = (sourceNode?.data?.config as Record<string, unknown> | undefined)?.agentDefinitionId;
+              const subAgentDefId = (
+                sourceNode?.data?.config as Record<string, unknown> | undefined
+              )?.agentDefinitionId;
               if (subAgentDefId && subAgentDefId === currentState.agentId) {
-                console.warn('[AgentCanvasStore] 阻止循环引用: sub-agent 引用了当前 Agent 自身');
+                console.warn(
+                  "[AgentCanvasStore] 阻止循环引用: sub-agent 引用了当前 Agent 自身",
+                );
                 return;
               }
             }
@@ -441,7 +602,7 @@ export const useAgentCanvasStore = create<AgentCanvasState & AgentCanvasActions>
               const newEdge: AgentCanvasEdge = {
                 ...connection,
                 id: createEdgeId(),
-                type: 'smart',
+                type: "smart",
                 source: connection.source,
                 target: connection.target,
                 sourceHandle: connection.sourceHandle ?? undefined,
@@ -565,7 +726,7 @@ export const useAgentCanvasStore = create<AgentCanvasState & AgentCanvasActions>
                 state.agentId = agentId;
               });
             } catch (error) {
-              console.error('[AgentCanvasStore] 加载 Agent 失败:', error);
+              console.error("[AgentCanvasStore] 加载 Agent 失败:", error);
               throw error;
             }
           },
@@ -573,10 +734,11 @@ export const useAgentCanvasStore = create<AgentCanvasState & AgentCanvasActions>
           applyServerSnapshot: (data) => {
             set((state) => {
               const rawNodes = (data.nodes as AgentCanvasNode[]) ?? [];
+              const rawEdges = (data.edges as AgentCanvasEdge[]) ?? [];
               const isNewCanvas = rawNodes.length === 0;
-              const runtimeMode = data.runtimeMode ?? 'sandbox';
+              const runtimeMode = data.runtimeMode ?? "sandbox";
               const normalizedNodes = sanitizeNodesForRuntimeMode(
-                normalizePersistedNodes(rawNodes),
+                normalizePersistedNodes(rawNodes, rawEdges),
                 runtimeMode,
               );
               const ensuredNodes = isNewCanvas
@@ -587,7 +749,7 @@ export const useAgentCanvasStore = create<AgentCanvasState & AgentCanvasActions>
                 : ensuredNodes;
               state.edges = sanitizeEdgesForRuntimeMode(
                 state.nodes,
-                (data.edges as AgentCanvasEdge[]) ?? [],
+                rawEdges,
                 runtimeMode,
               );
               state.viewport = data.viewport ?? { x: 0, y: 0, zoom: 1 };
@@ -597,20 +759,21 @@ export const useAgentCanvasStore = create<AgentCanvasState & AgentCanvasActions>
               };
               state.inputSchema = normalizeInputSchema(data.inputSchema);
               state.workspaceId =
-                runtimeMode === 'sandbox' ? (data.workspaceSnapshotId ?? null) : null;
+                runtimeMode === "sandbox"
+                  ? (data.workspaceSnapshotId ?? null)
+                  : null;
               state.memoryInstanceIds = data.memoryInstanceIds ?? [];
               state.sandboxLifecycle =
-                runtimeMode === 'sandbox'
-                  ? (
-                      data.sandboxLifecycle ??
-                      data.sandboxConfig?.lifecycleMode ??
-                      'session'
-                    )
-                  : 'session';
+                runtimeMode === "sandbox"
+                  ? (data.sandboxLifecycle ??
+                    data.sandboxConfig?.lifecycleMode ??
+                    "session")
+                  : "session";
               state.version = data.version ?? 0;
-              state.agentName = data.name ?? '';
+              state.agentName = data.name ?? "";
               state.runtimeMode = runtimeMode;
-              state.isDirty = isNewCanvas || rawNodes.length !== state.nodes.length;
+              state.isDirty =
+                isNewCanvas || rawNodes.length !== state.nodes.length;
               state.lastSavedAt = Date.now();
             });
           },
@@ -630,7 +793,8 @@ export const useAgentCanvasStore = create<AgentCanvasState & AgentCanvasActions>
             } = get();
             if (!agentId) return;
 
-            const workspaceSnapshotId = normalizeWorkspaceSnapshotId(workspaceId);
+            const workspaceSnapshotId =
+              normalizeWorkspaceSnapshotId(workspaceId);
 
             set((state) => {
               state.isSaving = true;
@@ -645,7 +809,7 @@ export const useAgentCanvasStore = create<AgentCanvasState & AgentCanvasActions>
                     canvasViewport: viewport,
                     inputSchema,
                     memoryInstanceIds,
-                    ...(runtimeMode === 'sandbox'
+                    ...(runtimeMode === "sandbox"
                       ? {
                           globalSandboxConfig,
                           sandboxLifecycle,
@@ -656,7 +820,7 @@ export const useAgentCanvasStore = create<AgentCanvasState & AgentCanvasActions>
                       : { workspaceSnapshotId: null }),
                   },
                 })
-                .json<ApiResponse<Pick<AgentDefinition, 'version'>>>();
+                .json<ApiResponse<Pick<AgentDefinition, "version">>>();
 
               set((state) => {
                 state.version = response.data.version;
@@ -666,14 +830,19 @@ export const useAgentCanvasStore = create<AgentCanvasState & AgentCanvasActions>
               });
 
               // 保存成功后自动编译（不阻塞保存流程）
-              get().actions.compileConfig().catch((compileError) => {
-                console.warn('[AgentCanvasStore] 自动编译失败（保存已成功）:', compileError);
-              });
+              get()
+                .actions.compileConfig()
+                .catch((compileError) => {
+                  console.warn(
+                    "[AgentCanvasStore] 自动编译失败（保存已成功）:",
+                    compileError,
+                  );
+                });
             } catch (error) {
               set((state) => {
                 state.isSaving = false;
               });
-              console.error('[AgentCanvasStore] 保存画布失败:', error);
+              console.error("[AgentCanvasStore] 保存画布失败:", error);
               throw error;
             }
           },
@@ -698,7 +867,7 @@ export const useAgentCanvasStore = create<AgentCanvasState & AgentCanvasActions>
               set((state) => {
                 state.isCompiling = false;
               });
-              console.error('[AgentCanvasStore] 编译配置失败:', error);
+              console.error("[AgentCanvasStore] 编译配置失败:", error);
               throw error;
             }
           },
@@ -718,15 +887,13 @@ export const useAgentCanvasStore = create<AgentCanvasState & AgentCanvasActions>
         },
       })),
     ),
-    { name: 'AgentCanvasStore' },
+    { name: "AgentCanvasStore" },
   ),
 );
 
-export const useAgentCanvasNodes = () =>
-  useAgentCanvasStore((s) => s.nodes);
+export const useAgentCanvasNodes = () => useAgentCanvasStore((s) => s.nodes);
 
-export const useAgentCanvasEdges = () =>
-  useAgentCanvasStore((s) => s.edges);
+export const useAgentCanvasEdges = () => useAgentCanvasStore((s) => s.edges);
 
 export const useAgentCanvasActions = () =>
   useAgentCanvasStore((s) => s.actions);
