@@ -95,6 +95,7 @@ WorkflowPreviewCanvas.tsx
 - Agent Canvas 中 React Flow 的 `node.type` 只是渲染类别（`agent/tool/knowledge/...`），真正的业务节点类型必须读 `node.data.nodeType`；凡是 `agent-main` / `sandbox` / `workspace` 这类单例节点的 hydrate、补齐、去重与运行时模式裁剪，都不能拿 `node.type` 当判定依据，否则会把已有主节点误判成缺失并重复补节点
 - Agent / workflow 历史快照里若仍带有 legacy MCP 别名 `nodeType='mcp'` 或旧输出句柄 `sourceHandle='tools-out'`，hydrate / safe lookup / 持久化前都必须先 canonicalize 成 `mcp-tool` / `tool-out`；不能把坏快照直接交给 `getNodeTypeConfig()` 或 ReactFlow 渲染
 - `CanvasNode` / `NodeInfoCard` / `NodeConfigPanel` 现在必须通过 `getResolvedNodeTypeConfig()` 读取持久化 graph 的节点类型；未知 `nodeType` 统一降级为“未知节点类型”通用展示，保留原始端口与配置数据，禁止单个坏节点触发整页 `Unknown node type` 崩溃
+- `agentCanvasStore` / `canvasStore` 在 hydrate 自进化或历史快照时，若节点缺少 `inputPorts/outputPorts`，必须先收敛为 `[]` 再按注册表补齐；`text` 节点若仍带 legacy root-level `text/value/content`，要先回填到 `config.text`，否则 `TextNodeBody` / `TextConfigPanel` 和整页画布都可能被坏快照拖垮
 - `connectionCompatibility.ts`：`isValidConnection()` 只读同步 guard/cache，不发起慢检查
 - `WorkflowCanvas` 在 `onConnectStart` / hover 采用 cache-first + async evaluate，必要时展示 `checking`
 - `onConnect` 必须先 await 最终兼容性再落边，`checking` 不得持久化进 `edge.data`；若 cache miss 后最终结果为 `INCOMPATIBLE`，仍需通过持久化错误反馈（当前为 toast）展示 canonical reason，不能只依赖瞬时 preview

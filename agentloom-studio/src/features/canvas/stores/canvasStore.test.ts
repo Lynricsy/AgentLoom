@@ -226,6 +226,38 @@ describe('canvasStore', () => {
     ])
   })
 
+  it('applyServerSnapshot 会把 root-level text 节点内容回填到 config.text', () => {
+    const textNode = createNode({
+      type: 'output',
+      data: {
+        label: 'SelfEvo Text',
+        nodeType: 'text',
+        category: 'output',
+        description: '由自进化直接写入的 text 节点',
+        text: 'SELF_TEXT_OK_20260408',
+        inputPorts: [],
+        outputPorts: [{ id: 'text-out' }] as unknown as CanvasNode['data']['outputPorts'],
+      } as unknown as CanvasNode['data'],
+    })
+
+    useCanvasStore.getState().actions.applyServerSnapshot({
+      workflowId: 'workflow-1',
+      nodes: [textNode],
+      edges: [],
+      viewport: undefined,
+      version: 3,
+    })
+
+    const hydratedNode = useCanvasStore.getState().nodes[0]
+    if (!hydratedNode) {
+      throw new Error('Expected hydrated text node to exist')
+    }
+
+    expect(hydratedNode.data.config).toEqual({
+      text: 'SELF_TEXT_OK_20260408',
+    })
+  })
+
   it('stores reusable-block metadata when adding block nodes', () => {
     const blockDefinition = {
       nodes: [createNode({ id: 'inner-1' })],

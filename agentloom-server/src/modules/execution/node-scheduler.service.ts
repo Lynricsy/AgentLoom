@@ -506,6 +506,10 @@ export class NodeSchedulerService {
         await this.executeMerge(step, input, tenantId, executionId);
         break;
 
+      case 'text':
+        await this.executeTextNode(step, tenantId, executionId);
+        break;
+
       case 'text-output':
       case 'json-output':
         await this.executeOutputNode(step, input, tenantId, executionId);
@@ -3774,6 +3778,27 @@ export class NodeSchedulerService {
     return { ...config, ...nodeData };
   }
 
+  private resolveTextNodeContent(nodeData: Record<string, unknown>): string {
+    const config = this.isRecord(nodeData.config) ? nodeData.config : undefined;
+
+    const candidates = [
+      config?.text,
+      config?.value,
+      config?.content,
+      nodeData.text,
+      nodeData.value,
+      nodeData.content,
+    ];
+
+    for (const candidate of candidates) {
+      if (typeof candidate === 'string') {
+        return candidate;
+      }
+    }
+
+    return '';
+  }
+
   private readEdgeHandle(
     edge: ReactFlowEdge,
     handleKind: 'source' | 'target',
@@ -4527,6 +4552,62 @@ export class NodeSchedulerService {
         ...(similarityThreshold !== undefined ? { similarityThreshold } : {}),
       };
       result['knowledge-out'] = knowledgeOutput;
+
+      await this.stepStateMachine.updateStepStatus(
+        tenantId,
+        step.id,
+        'completed',
+        { result },
+      );
+
+      await this.onNodeCompleted(executionId, step.id, tenantId);
+    } catch (error) {
+      if (
+        error instanceof Error &&
+        error.constructor.name === 'InvalidStepTransitionException'
+      ) {
+        throw error;
+      }
+
+      const message = error instanceof Error ? error.message : String(error);
+      await this.stepStateMachine.updateStepStatus(
+        tenantId,
+        step.id,
+        'failed',
+        {
+          errorMessage: {
+            message,
+            ...(error instanceof Error ? { stack: error.stack } : {}),
+            ...(error instanceof DomainException
+              ? {
+                  type: error.type,
+                  title: error.message,
+                  detail: error.detail,
+                }
+              : {}),
+            nodeId: step.nodeId,
+          },
+        },
+      );
+      await this.onNodeFailed(executionId, step.id, tenantId);
+    }
+  }
+
+  async executeTextNode(
+    step: ExecutionStep,
+    tenantId: string,
+    executionId: string,
+  ): Promise<void> {
+    await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'running');
+
+    try {
+      const nodeData = this.isRecord(step.nodeData) ? step.nodeData : {};
+      const content = this.resolveTextNodeContent(nodeData);
+      const result = {
+        content,
+        text: content,
+        'text-out': content,
+      };
 
       await this.stepStateMachine.updateStepStatus(
         tenantId,

@@ -30,6 +30,12 @@
   - 文件: `agentloom-studio/src/features/canvas/components/panels/TextConfigPanel.tsx`
 - `workflowPreview.ts`
   - 文件: `agentloom-studio/src/features/canvas/lib/workflowPreview.ts`
+- `normalizeTextNodeConfig(nodeData)`
+  - 文件: `agentloom-studio/src/features/canvas/lib/textNodeConfig.ts`
+- `canvasStore.applyServerSnapshot()`
+  - 文件: `agentloom-studio/src/features/canvas/stores/canvasStore.ts`
+- `agentCanvasStore` snapshot hydrate
+  - 文件: `agentloom-studio/src/features/agent-canvas/stores/agent-canvas.store.ts`
 
 ### 3. Contracts
 
@@ -52,6 +58,13 @@
   - workflow preview hydration
 - `TextConfigPanel` 必须使用 300ms debounce autosave，并在 blur 时立即提交，保证和其它节点表单一致。
 - `TextNodeBody` 在空值时显示占位提示，在有值时显示摘要预览；full / compact / minimal LOD 都不能让 `text` 节点退化成无法理解的空卡片。
+- 从服务端或自进化恢复持久化快照时，`text` 节点要先经过 `normalizeTextNodeConfig()`：
+  - canonical 来源仍是 `config.text`
+  - 若历史/self-evolution 快照只写了 root-level `text/value/content`，必须先回填到 `config.text`
+  - 如果 `config.text` 显式为空字符串，不得用 legacy root-level 值覆盖
+- `canvasStore` 与 `agentCanvasStore` hydrate 持久化节点时，若 `inputPorts/outputPorts` 缺失或不是数组，必须先收敛为 `[]` 再按注册表补齐。
+  - Agent Canvas 读取节点类型时优先走 `AGENT_CANVAS_NODE_REGISTRY`
+  - 只有 workflow/agent 共享节点（如 `http-tool` / `code-tool`）才允许回退到通用 registry
 - 不要在 `NodeConfigPanel` 或 `AgentNodeConfigPanel` 中手写 `switch` 特判 `text`；仍然通过 `CUSTOM_PANEL_REGISTRY` 分发。
 - 共享画布壳 `CanvasNode`、悬浮信息卡 `NodeInfoCard` 与右侧配置面板 `NodeConfigPanel` 对持久化 graph 的 `nodeType` 必须走 safe lookup：
   - 已知类型走注册表
@@ -69,6 +82,8 @@
 | `CUSTOM_PANEL_REGISTRY` 未注册 `text` | 右侧面板无法编辑文本内容 | 面板交互测试 + 手测 |
 | workflow preview 未识别 `text` | 模板 / share / marketplace 预览与正式画布语义分叉 | `workflowPreview.test.ts` |
 | `sub-agent` 继续暴露 `text-in/json-in` | 用户仍会沿用旧传参心智模型 | `agent-canvas-registry.test.ts` |
+| 自进化写入的 `text` 节点只包含 root-level `text/value/content` | hydrate 后必须显示正常文本摘要与配置面板，不能因 `config` 缺失导致空白或崩溃 | `canvasStore.test.ts`, `agentCanvasStore.test.ts` |
+| 自进化/历史快照缺失 `inputPorts/outputPorts` | hydrate 必须先回退为 `[]` 再补齐 canonical 端口，不能因读取 `.length` 或 `schema.kind` 崩溃 | `canvasStore.test.ts`, `agentCanvasStore.test.ts` |
 | 持久化快照中出现未知 `nodeType` | 共享节点壳/悬浮信息卡/配置面板必须降级渲染，而不是整页崩溃 | `CanvasNode.test.tsx`, `NodeInfoCard.test.tsx`, `NodeConfigPanel.test.tsx`, `nodeTypeRegistry.test.ts` |
 
 ### 5. Good / Base / Bad Cases
@@ -97,6 +112,12 @@
   - 断言 agent palette 展示 `text`
 - `agentloom-studio/src/features/canvas/components/nodes/TextNodeBody.test.tsx`
   - 断言空态占位与文本预览
+- `agentloom-studio/src/features/canvas/stores/canvasStore.test.ts`
+  - 断言 root-level `text/value/content` 会被回填到 `config.text`
+  - 断言缺失端口数组的持久化快照仍可被 hydrate
+- `agentloom-studio/src/features/agent-canvas/stores/agent-canvas.store.test.ts`
+  - 断言自进化 Agent 快照的 `text` 节点会被正常归一化
+  - 断言缺失 `inputPorts/outputPorts` 的节点不会导致 Agent Canvas 白屏
 - `agentloom-studio/src/features/canvas/lib/workflowPreview.test.ts`
   - 断言 preview 能正确 hydrate/render `text`
 - `agentloom-studio/src/features/canvas/components/CanvasNode.test.tsx`

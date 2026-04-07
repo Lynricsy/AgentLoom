@@ -26,6 +26,9 @@
 - `WorkflowVersionService.toResponseDto()`
 - `ExecutionService.buildDraftExecutionSnapshot()`
 - `ExecutionService.runWorkflow()`
+- `NodeSchedulerService.scheduleNode()`
+- `NodeSchedulerService.executeTextNode()`
+  - 文件: `agentloom-server/src/modules/execution/node-scheduler.service.ts`
 - 自进化 Skill 约束文档:
   - `agentloom-server/src/database/seeds/skills/self-evolution/external-editing.md`
 
@@ -64,6 +67,11 @@
 - workflow `agent` 节点的系统提示词 canonical 结构是显式 `text` 节点连接 `system-prompt-in`。
   - legacy `node.data.systemPrompt` / `node.data.config.systemPrompt` 只能作为迁移输入，不再是持久化后的权威来源
   - 规范化或预迁移后，`workflow agent` 的 `inputPorts` 必须包含 `system-prompt-in`
+- workflow `text` 节点在运行时是同步文本常量 source node，不允许落到“未知节点按 agent 处理”的默认分支。
+  - `scheduleNode()` 必须显式分发到 `executeTextNode()`
+  - `executeTextNode()` 产出固定结果 `{ content, text, 'text-out' }`
+  - 文本解析优先级：`config.text` -> `config.value` / `config.content` -> root-level `text/value/content`
+  - 显式空字符串是合法配置，不能因为 fallback 逻辑把旧 root-level 文本“复活”
 - 规范化必须同时覆盖两个方向：
   - ingest: 保存草稿、回滚草稿、从 proposal/apply 生成新图时，先转 canonical 再落库。
   - egress: 返回工作流详情、版本列表、已发布版本、导出、发布快照、执行快照时，确保读取旧数据也会被修正。
@@ -79,6 +87,7 @@
 | 历史 `workflow_versions.snapshot` 的端口只剩 `{id}` | 版本列表 / 已发布版本接口返回完整 canonical 端口定义，历史记录页不会因 `schema.kind` 崩溃 | `workflow-version.service.spec.ts` + browser 复现 |
 | 历史 workflow `agent` 把 `systemPrompt` 直接写在节点 config 上 | 预迁移或规范化后自动 materialize 成 `text` 节点 + `system-prompt-in` 连线，节点 config 不再保留权威提示词正文 | migration util 单测 + browser 打开旧草稿 |
 | 已发布版本 snapshot 仍是 legacy graph | `runWorkflow()` 执行前规范化，运行成功且端口数据能正确流转 | execution 回归测试 + 线上 manual QA |
+| runnable workflow 使用 `text -> agent/text-output`，但调度器没有 `text` 节点执行分支 | runtime 必须同步完成 `text` 节点并把 `'text-out'` 传给下游，而不是把它误当成 agent 节点 | `node-scheduler.service.spec.ts` + live QA 复现 |
 | 自进化 external editing 生成了 `workflow-node` 或 handle 简写 | Skill 文档明确禁止；服务端 ingest 仍做兜底规范化 | skill 文档审查 + 兼容单测 |
 | 未知 `node.data.nodeType` 无法归类 | 保留原 `node.type`，不要瞎映射到错误壳类型 | 规范化工具单测 |
 
@@ -106,6 +115,10 @@
   - `listVersions()` / `getPublishedVersion()` 返回的 `snapshot.nodes[*].data.inputPorts/outputPorts` 也要是完整 canonical 端口定义。
 - `agentloom-server/src/modules/execution/__tests__/execution.service.spec.ts`
   - `runWorkflow()` 对 legacy published snapshot 归一化后再写入 execution。
+- `agentloom-server/src/modules/execution/__tests__/node-scheduler.service.spec.ts`
+  - 断言 `text` 节点会经由 `executeTextNode()` 同步完成，不进入 `agent-task` 队列。
+  - 断言 `text-out` 能把文本常量传给下游。
+  - 断言显式空字符串配置不会被 legacy root-level 文本覆盖。
 - Manual/browser E2E:
   - 打开真实 legacy workflow 页面，确认节点不是黑色默认块，端口和连线可见。
   - 从页面直接运行该 workflow。

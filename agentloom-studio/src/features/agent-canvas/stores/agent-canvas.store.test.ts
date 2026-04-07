@@ -336,6 +336,144 @@ describe("agentCanvasStore", () => {
     ]);
   });
 
+  it("hydrates legacy self-evolution text nodes by backfilling config.text from root data", async () => {
+    getMock.mockReturnValue({
+      json: vi.fn().mockResolvedValue({
+        data: createDetailResponse({
+          id: "agent-text",
+          nodes: [
+            {
+              id: "text-1",
+              type: "output",
+              position: { x: 80, y: 120 },
+              data: {
+                label: "QA Self Text",
+                nodeType: "text",
+                category: "output",
+                description: "self-evolution created node",
+                text: "SELF_TEXT_OK_20260408",
+                inputPorts: [],
+                outputPorts: [{ id: "text-out" }],
+              },
+            },
+          ],
+        }),
+      }),
+    });
+
+    await useAgentCanvasStore.getState().actions.loadAgent("agent-text");
+
+    const node = useAgentCanvasStore
+      .getState()
+      .nodes.find((item) => item.id === "text-1");
+
+    expect(node?.data.config).toEqual({
+      text: "SELF_TEXT_OK_20260408",
+    });
+    expect(node?.data.outputPorts).toMatchObject([
+      {
+        id: "text-out",
+        direction: "output",
+        dataType: "text",
+        schema: { kind: "text" },
+      },
+    ]);
+  });
+
+  it("hydrates self-evolution agent snapshots even when stored nodes omit port arrays", async () => {
+    getMock.mockReturnValue({
+      json: vi.fn().mockResolvedValue({
+        data: createDetailResponse({
+          id: "agent-self-evo",
+          nodes: [
+            {
+              id: "router-1",
+              type: "agent",
+              position: { x: 0, y: 0 },
+              data: {
+                label: "Smart Routing QA",
+                nodeType: "smart-routing",
+                category: "agent",
+                strategy: "FALLBACK_CHAIN",
+                config: { strategy: "FALLBACK_CHAIN" },
+              },
+            },
+            {
+              id: "http-1",
+              type: "tool",
+              position: { x: 200, y: 0 },
+              data: {
+                label: "HTTP QA Tool",
+                nodeType: "http-tool",
+                category: "tool",
+                name: "http_fetch_qa",
+                method: "GET",
+                url: "https://httpbin.org/get?qa=agent-self-evo",
+                config: {
+                  name: "http_fetch_qa",
+                  method: "GET",
+                  url: "https://httpbin.org/get?qa=agent-self-evo",
+                },
+              },
+            },
+          ],
+        }),
+      }),
+    });
+
+    await expect(
+      useAgentCanvasStore.getState().actions.loadAgent("agent-self-evo"),
+    ).resolves.toBeUndefined();
+
+    const state = useAgentCanvasStore.getState();
+    const routingNode = state.nodes.find((item) => item.id === "router-1");
+    const httpNode = state.nodes.find((item) => item.id === "http-1");
+
+    expect(routingNode?.data.inputPorts).toMatchObject([
+      {
+        id: "model-in-0",
+        direction: "input",
+        dataType: "model",
+      },
+      {
+        id: "model-in-1",
+        direction: "input",
+        dataType: "model",
+      },
+    ]);
+    expect(routingNode?.data.outputPorts).toMatchObject([
+      {
+        id: "model-out",
+        direction: "output",
+        dataType: "model",
+      },
+    ]);
+    expect(httpNode?.data.inputPorts).toMatchObject([
+      {
+        id: "exec-in",
+        direction: "input",
+        dataType: "exec",
+      },
+      {
+        id: "request-in",
+        direction: "input",
+        dataType: "json",
+      },
+    ]);
+    expect(httpNode?.data.outputPorts).toMatchObject([
+      {
+        id: "exec-out",
+        direction: "output",
+        dataType: "exec",
+      },
+      {
+        id: "response-out",
+        direction: "output",
+        dataType: "json",
+      },
+    ]);
+  });
+
   it("does not append a second agent-main when the stored snapshot already has one", async () => {
     getMock.mockReturnValue({
       json: vi.fn().mockResolvedValue({

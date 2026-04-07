@@ -495,6 +495,28 @@ describe('NodeSchedulerService', () => {
       });
     });
 
+    it('text 节点的 text-out 端口应把文本常量传给下游', () => {
+      const edges = [
+        makeEdge('node-text', 'node-agent', 'text-out', 'text-in'),
+      ];
+      const steps = [
+        makeStep({
+          nodeId: 'node-text',
+          nodeType: 'text',
+          status: 'completed',
+          result: {
+            content: 'SELF_EVO_TEXT_PAYLOAD_20260408',
+            text: 'SELF_EVO_TEXT_PAYLOAD_20260408',
+            'text-out': 'SELF_EVO_TEXT_PAYLOAD_20260408',
+          },
+        }),
+      ];
+
+      expect(service.resolveNodeInput('node-agent', edges, steps)).toEqual({
+        'text-in': 'SELF_EVO_TEXT_PAYLOAD_20260408',
+      });
+    });
+
     it('condition 分支输出应为下游解包单一 input payload', () => {
       const edges = [
         makeEdge(
@@ -824,6 +846,82 @@ describe('NodeSchedulerService', () => {
         steps[0],
         TENANT_ID,
         EXECUTION_ID,
+      );
+      expect(mockQueue.add).not.toHaveBeenCalled();
+    });
+
+    it('text 节点会内联输出 root-level 文本常量，不进入 agent-task 队列', async () => {
+      const snapshot = makeSnapshot([makeNode('T', 'text')], []);
+      const steps = [
+        makeStep({
+          id: 'step-t',
+          nodeId: 'T',
+          status: 'pending',
+          nodeType: 'text',
+          nodeData: {
+            content: 'WORKFLOW_TEXT_NODE_OK_20260408',
+          },
+        }),
+      ];
+
+      db.update.mockReturnValueOnce(createUpdateChainVoid());
+      vi.spyOn(service, 'onNodeCompleted').mockResolvedValue(undefined);
+
+      await service.scheduleNode(EXECUTION_ID, 'T', TENANT_ID, snapshot, steps);
+
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID,
+        'step-t',
+        'running',
+      );
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID,
+        'step-t',
+        'completed',
+        {
+          result: {
+            content: 'WORKFLOW_TEXT_NODE_OK_20260408',
+            text: 'WORKFLOW_TEXT_NODE_OK_20260408',
+            'text-out': 'WORKFLOW_TEXT_NODE_OK_20260408',
+          },
+        },
+      );
+      expect(mockQueue.add).not.toHaveBeenCalled();
+    });
+
+    it('text 节点会保留显式空字符串配置，不回退 legacy root-level 文本', async () => {
+      const snapshot = makeSnapshot([makeNode('T', 'text')], []);
+      const steps = [
+        makeStep({
+          id: 'step-t',
+          nodeId: 'T',
+          status: 'pending',
+          nodeType: 'text',
+          nodeData: {
+            text: 'LEGACY_TEXT_SHOULD_NOT_RESURRECT',
+            config: {
+              text: '',
+            },
+          },
+        }),
+      ];
+
+      db.update.mockReturnValueOnce(createUpdateChainVoid());
+      vi.spyOn(service, 'onNodeCompleted').mockResolvedValue(undefined);
+
+      await service.scheduleNode(EXECUTION_ID, 'T', TENANT_ID, snapshot, steps);
+
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID,
+        'step-t',
+        'completed',
+        {
+          result: {
+            content: '',
+            text: '',
+            'text-out': '',
+          },
+        },
       );
       expect(mockQueue.add).not.toHaveBeenCalled();
     });
@@ -2011,7 +2109,7 @@ describe('NodeSchedulerService', () => {
       );
     });
 
-    it('plugin 节点会校验插件激活态��投递到 plugin queue', async () => {
+    it('plugin 节点会校验插件激活态后投递到 plugin queue', async () => {
       const snapshot = makeSnapshot([makeNode('P', 'plugin')], []);
       const steps = [
         makeStep({

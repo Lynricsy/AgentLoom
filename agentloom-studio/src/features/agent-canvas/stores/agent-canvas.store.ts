@@ -24,8 +24,10 @@ import type { CanvasNodeData, CanvasEdgeData } from "@/features/canvas/types";
 import type { AgentCanvasNodeType } from "@/features/canvas/registry/agent-canvas-registry";
 import { AGENT_CANVAS_NODE_REGISTRY } from "@/features/canvas/registry/agent-canvas-registry";
 import { arePortDataTypesCompatible } from "@/features/canvas/lib/connectionCompatibility";
+import { normalizeTextNodeConfig } from "@/features/canvas/lib/textNodeConfig";
 import {
   clonePortDefinitions,
+  getNodeTypeConfigOrNull,
   hydratePortDefinitions,
 } from "@/features/canvas/types/nodeTypeRegistry";
 
@@ -359,21 +361,34 @@ function normalizePersistedNode(node: AgentCanvasNode): AgentCanvasNode {
     return node;
   }
 
-  const config = AGENT_CANVAS_NODE_REGISTRY.get(nodeType);
+  const config =
+    AGENT_CANVAS_NODE_REGISTRY.get(nodeType) ?? getNodeTypeConfigOrNull(nodeType);
   if (!config) {
     return node;
   }
 
   const shouldPreserveStoredPorts =
     PORT_STATEFUL_AGENT_NODE_TYPES.has(nodeType);
+  const storedInputPorts = Array.isArray(node.data.inputPorts)
+    ? node.data.inputPorts
+    : [];
+  const storedOutputPorts = Array.isArray(node.data.outputPorts)
+    ? node.data.outputPorts
+    : [];
   const nextInputPorts =
-    shouldPreserveStoredPorts && node.data.inputPorts.length > 0
-      ? hydratePortDefinitions(node.data.inputPorts, config.inputPorts)
+    shouldPreserveStoredPorts && storedInputPorts.length > 0
+      ? hydratePortDefinitions(storedInputPorts, config.inputPorts)
       : clonePortDefinitions(config.inputPorts);
   const nextOutputPorts =
-    shouldPreserveStoredPorts && node.data.outputPorts.length > 0
-      ? hydratePortDefinitions(node.data.outputPorts, config.outputPorts)
+    shouldPreserveStoredPorts && storedOutputPorts.length > 0
+      ? hydratePortDefinitions(storedOutputPorts, config.outputPorts)
       : clonePortDefinitions(config.outputPorts);
+  const nextConfig =
+    nodeType === "text"
+      ? normalizeTextNodeConfig(node.data)
+      : node.data.config && typeof node.data.config === "object"
+        ? { ...node.data.config }
+        : {};
 
   return {
     ...node,
@@ -384,6 +399,7 @@ function normalizePersistedNode(node: AgentCanvasNode): AgentCanvasNode {
       label: node.data.label || config.label,
       category: config.category,
       description: node.data.description || config.description,
+      config: nextConfig,
       inputPorts: nextInputPorts,
       outputPorts: nextOutputPorts,
     },

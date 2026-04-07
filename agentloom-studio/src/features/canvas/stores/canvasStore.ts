@@ -70,6 +70,7 @@ import {
   inputSchemaFieldsToOutputFields,
   parseManualTriggerConfig,
 } from "../types/trigger.types";
+import { normalizeTextNodeConfig } from "../lib/textNodeConfig";
 
 enableMapSet();
 
@@ -1325,7 +1326,12 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
                   data: {
                     ...(agentNodeDefaults ?? {}),
                     ...n.data,
-                    config: n.data.config ?? {},
+                    config:
+                      n.data.nodeType === "text"
+                        ? normalizeTextNodeConfig(
+                            n.data as Record<string, unknown>,
+                          )
+                        : n.data.config ?? {},
                     inputPorts,
                     outputPorts,
                     ...(agentNodeDefaults && agentNodeData
