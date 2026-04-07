@@ -265,6 +265,7 @@ export interface ConversationMessageMetadata {
   contentType?: ConversationMessageContentType;
   attachment?: ConversationAttachment;
   attachments?: ConversationAttachment[];
+  subAgentStreams?: Record<SubAgentHandle, SubAgentStream>;
   type?: string;
   handle?: SubAgentHandle;
   alias?: string;

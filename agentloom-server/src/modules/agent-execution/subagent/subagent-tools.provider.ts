@@ -6,14 +6,16 @@ import {
   transactionStorage,
 } from '../../../common/interceptors/tenant-transaction.context';
 import { DRIZZLE, type DrizzleDB } from '../../../database/database.module';
-import type { AgentEvent } from '../../agent/types/agent-event.types';
 import type { SessionToolProvider } from '../../agent/ports/agent-runtime.port';
 import { AgentDefinitionService } from '../../agent-definition/agent-definition.service';
 import type { AgentSubAgentRef } from '../../agent-definition/agent-runtime-config.interface';
 import { MAX_SUB_AGENT_DEPTH } from '../../execution/node-handlers/sub-agent.handler';
 import { EventBridgeService } from '../../execution/services/event-bridge.service';
 import { resolveSubAgent } from './resolve-subagent';
-import { createSubAgentEventProxy } from './subagent-event-proxy';
+import {
+  createSubAgentEventProxy,
+  type SubAgentEventProxy,
+} from './subagent-event-proxy';
 import {
   CallSubAgentInputSchema,
   createAliasEnum,
@@ -47,9 +49,7 @@ export interface ExecuteSubAgentParams {
     ReturnType<typeof resolveSubAgent>
   >['versionSnapshot'];
   abortSignal: AbortSignal;
-  eventProxy?: {
-    emitEvent(event: AgentEvent): void;
-  };
+  eventProxy?: SubAgentEventProxy;
 }
 
 export type ExecuteSubAgent = (
@@ -259,6 +259,8 @@ export class SubAgentToolsProvider {
     executeSubAgent: ExecuteSubAgent;
     invocationMode: 'call' | 'spawn';
   }): Promise<void> {
+    let eventProxy: SubAgentEventProxy | undefined;
+
     try {
       const resolved = await resolveSubAgent({
         agentDefinitionId: params.ref.agentDefinitionId,
@@ -283,6 +285,18 @@ export class SubAgentToolsProvider {
       ]);
 
       try {
+        eventProxy = createSubAgentEventProxy({
+          conversationId: params.parentContext.conversationId,
+          tenantId: params.parentContext.tenantId,
+          envelope: {
+            handle: params.record.handle,
+            alias: params.record.alias,
+            depth: params.record.depth,
+            parentToolCallId: params.record.parentToolCallId,
+          },
+          eventBridge: this.eventBridge,
+        });
+
         const result = await params.executeSubAgent({
           handle: params.record.handle,
           invocationMode: params.invocationMode,
@@ -296,22 +310,13 @@ export class SubAgentToolsProvider {
           agentDefinition: resolved.agentDefinition,
           versionSnapshot: resolved.versionSnapshot,
           abortSignal: signal,
-          eventProxy: createSubAgentEventProxy({
-            conversationId: params.parentContext.conversationId,
-            tenantId: params.parentContext.tenantId,
-            envelope: {
-              handle: params.record.handle,
-              alias: params.record.alias,
-              depth: params.record.depth,
-              parentToolCallId: params.record.parentToolCallId,
-            },
-            eventBridge: this.eventBridge,
-          }),
+          eventProxy,
         });
 
         params.record.status = SubAgentRunStatus.COMPLETED;
         params.record.result = result;
         params.record.completedAt = Date.now();
+        eventProxy.complete(SubAgentRunStatus.COMPLETED);
         params.record.resolve(result);
       } catch (error) {
         const status = this.resolveFailureStatus(
@@ -324,6 +329,7 @@ export class SubAgentToolsProvider {
         params.record.status = status;
         params.record.error = message;
         params.record.completedAt = Date.now();
+        eventProxy?.complete(status, message);
         params.record.reject(new Error(message));
       } finally {
         cleanup();

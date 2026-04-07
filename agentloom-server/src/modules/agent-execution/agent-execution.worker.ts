@@ -95,6 +95,7 @@ import {
   type ExecuteSubAgentParams,
   type SubAgentCompletionNotice,
   type SubAgentHandle,
+  type PersistedSubAgentStreamRecord,
   type SubAgentResult,
   SubAgentRunStatus,
   SubAgentToolsProvider,
@@ -182,6 +183,7 @@ type ConversationTurnResult = {
   toolCalls: ToolCallEvent[];
   toolResults: Array<Record<string, unknown>>;
   segments: ConversationMessageSegmentRecord[];
+  subAgentStreams: Record<string, PersistedSubAgentStreamRecord>;
 };
 
 class ConversationTurnFailedError extends Error {
@@ -1172,130 +1174,147 @@ export class AgentExecutionWorker extends WorkerHost {
     conversationMetadata: Record<string, unknown> = {},
   ): Promise<ConversationTurnResult> {
     const toolCalls = new Map<string, ToolCallEvent>();
+    const subAgentCaptureToken =
+      this.eventBridge.beginSubAgentConversationCapture(conversationId);
     let assistantText = '';
     let decision: DecisionEvent | undefined;
     let lastStopReason: StopReason = 'end_turn';
     let chunkIndex = 0;
     let segments: ConversationMessageSegmentRecord[] = [];
-    const runtimePendingMessages =
-      await this.materializePendingMessagesForRuntime(
-        pendingMessages,
-        conversationId,
-        tenantId,
-        session.runtimeConfig?.runtimeMode,
-      );
-    const latestPromptText = await this.applyConversationInputPreprocessors(
-      formatLatestPendingMessages(
-        runtimePendingMessages as PendingConversationPromptMessage[],
-      ),
-      session.runtimeConfig,
-    );
-    let promptBlocks = buildConversationPromptBlocks({
-      pendingMessages:
-        runtimePendingMessages as PendingConversationPromptMessage[],
-      hasPriorTurns,
-      historyMessages: historyMessages as HistoryConversationPromptMessage[],
-      latestPromptOverride: latestPromptText,
-      conversationMetadata,
-    });
-
-    while (true) {
-      try {
-        for await (const event of runtime.prompt(session.id, promptBlocks)) {
-          if (event.type === 'message_chunk') {
-            assistantText += event.content;
-            segments = appendTextConversationMessageSegment(
-              segments,
-              event.content,
-            );
-            this.eventBridge.emitOutputChunk(tenantId, conversationId, {
-              stepId: conversationId,
-              chunk: event.content,
-              index: chunkIndex,
-              executionType: 'conversation',
-            });
-            chunkIndex += 1;
-            continue;
-          }
-
-          const thinkingContent = this.extractThinkingEventContent(event);
-          if (thinkingContent) {
-            segments = appendThinkingConversationMessageSegment(
-              segments,
-              thinkingContent,
-            );
-          }
-
-          this.eventBridge.emitStepAgentEvent(tenantId, conversationId, {
-            stepId: conversationId,
-            executionType: 'conversation',
-            event,
-          });
-
-          if (event.type === 'tool_call') {
-            const nextCall = this.mergeToolCallEvent(
-              toolCalls.get(event.call.id),
-              event.call,
-            );
-            toolCalls.set(nextCall.id, nextCall);
-            segments = ensureToolCallConversationMessageSegment(
-              segments,
-              nextCall.id,
-            );
-            this.eventBridge.emitToolCallStatus(tenantId, conversationId, {
-              stepId: conversationId,
-              nodeId: conversationId,
-              toolCallId: nextCall.id,
-              tool: nextCall.tool,
-              executionType: 'conversation',
-              status: nextCall.status,
-              args: nextCall.args,
-              result: nextCall.result,
-              error: nextCall.error,
-              permissionRequest: nextCall.permissionRequest,
-              transitions: nextCall.transitions
-                ? [...nextCall.transitions]
-                : undefined,
-            });
-            continue;
-          }
-
-          if (event.type === 'decision') {
-            decision = event;
-            continue;
-          }
-
-          if (event.type === 'done') {
-            lastStopReason = event.stopReason;
-          }
-        }
-      } catch (error) {
-        throw new ConversationTurnFailedError(
-          error,
-          this.buildConversationTurnResult(
-            assistantText,
-            decision,
-            lastStopReason,
-            toolCalls,
-            segments,
-          ),
+    try {
+      const runtimePendingMessages =
+        await this.materializePendingMessagesForRuntime(
+          pendingMessages,
+          conversationId,
+          tenantId,
+          session.runtimeConfig?.runtimeMode,
         );
+      const latestPromptText = await this.applyConversationInputPreprocessors(
+        formatLatestPendingMessages(
+          runtimePendingMessages as PendingConversationPromptMessage[],
+        ),
+        session.runtimeConfig,
+      );
+      let promptBlocks = buildConversationPromptBlocks({
+        pendingMessages:
+          runtimePendingMessages as PendingConversationPromptMessage[],
+        hasPriorTurns,
+        historyMessages: historyMessages as HistoryConversationPromptMessage[],
+        latestPromptOverride: latestPromptText,
+        conversationMetadata,
+      });
+
+      while (true) {
+        try {
+          for await (const event of runtime.prompt(session.id, promptBlocks)) {
+            if (event.type === 'message_chunk') {
+              assistantText += event.content;
+              segments = appendTextConversationMessageSegment(
+                segments,
+                event.content,
+              );
+              this.eventBridge.emitOutputChunk(tenantId, conversationId, {
+                stepId: conversationId,
+                chunk: event.content,
+                index: chunkIndex,
+                executionType: 'conversation',
+              });
+              chunkIndex += 1;
+              continue;
+            }
+
+            const thinkingContent = this.extractThinkingEventContent(event);
+            if (thinkingContent) {
+              segments = appendThinkingConversationMessageSegment(
+                segments,
+                thinkingContent,
+              );
+            }
+
+            this.eventBridge.emitStepAgentEvent(tenantId, conversationId, {
+              stepId: conversationId,
+              executionType: 'conversation',
+              event,
+            });
+
+            if (event.type === 'tool_call') {
+              const nextCall = this.mergeToolCallEvent(
+                toolCalls.get(event.call.id),
+                event.call,
+              );
+              toolCalls.set(nextCall.id, nextCall);
+              segments = ensureToolCallConversationMessageSegment(
+                segments,
+                nextCall.id,
+              );
+              this.eventBridge.emitToolCallStatus(tenantId, conversationId, {
+                stepId: conversationId,
+                nodeId: conversationId,
+                toolCallId: nextCall.id,
+                tool: nextCall.tool,
+                executionType: 'conversation',
+                status: nextCall.status,
+                args: nextCall.args,
+                result: nextCall.result,
+                error: nextCall.error,
+                permissionRequest: nextCall.permissionRequest,
+                transitions: nextCall.transitions
+                  ? [...nextCall.transitions]
+                  : undefined,
+              });
+              continue;
+            }
+
+            if (event.type === 'decision') {
+              decision = event;
+              continue;
+            }
+
+            if (event.type === 'done') {
+              lastStopReason = event.stopReason;
+            }
+          }
+        } catch (error) {
+          throw new ConversationTurnFailedError(
+            error,
+            this.buildConversationTurnResult(
+              assistantText,
+              decision,
+              lastStopReason,
+              toolCalls,
+              segments,
+              this.eventBridge.consumeSubAgentConversationCapture(
+                conversationId,
+                subAgentCaptureToken,
+              ),
+            ),
+          );
+        }
+
+        if (lastStopReason !== 'tool_use') {
+          break;
+        }
+
+        promptBlocks = [];
       }
 
-      if (lastStopReason !== 'tool_use') {
-        break;
-      }
-
-      promptBlocks = [];
+      return this.buildConversationTurnResult(
+        assistantText,
+        decision,
+        lastStopReason,
+        toolCalls,
+        segments,
+        this.eventBridge.consumeSubAgentConversationCapture(
+          conversationId,
+          subAgentCaptureToken,
+        ),
+      );
+    } finally {
+      this.eventBridge.clearSubAgentConversationCapture(
+        conversationId,
+        subAgentCaptureToken,
+      );
     }
-
-    return this.buildConversationTurnResult(
-      assistantText,
-      decision,
-      lastStopReason,
-      toolCalls,
-      segments,
-    );
   }
 
   private buildConversationTurnResult(
@@ -1304,6 +1323,7 @@ export class AgentExecutionWorker extends WorkerHost {
     stopReason: StopReason,
     toolCalls: Map<string, ToolCallEvent>,
     segments: ConversationMessageSegmentRecord[],
+    subAgentStreams: Record<string, PersistedSubAgentStreamRecord>,
   ): ConversationTurnResult {
     const toolCallList = [...toolCalls.values()];
     const toolResults = toolCallList
@@ -1323,6 +1343,7 @@ export class AgentExecutionWorker extends WorkerHost {
       toolCalls: toolCallList,
       toolResults,
       segments,
+      subAgentStreams,
     };
   }
 
@@ -1334,6 +1355,7 @@ export class AgentExecutionWorker extends WorkerHost {
       turnResult.toolCalls.length > 0 ||
       turnResult.toolResults.length > 0 ||
       turnResult.segments.length > 0 ||
+      Object.keys(turnResult.subAgentStreams).length > 0 ||
       Boolean(turnResult.decision)
     );
   }
@@ -1533,6 +1555,9 @@ export class AgentExecutionWorker extends WorkerHost {
               stopReason: turnResult.stopReason,
               ...(turnResult.segments.length > 0
                 ? { segments: turnResult.segments }
+                : {}),
+              ...(Object.keys(turnResult.subAgentStreams).length > 0
+                ? { subAgentStreams: turnResult.subAgentStreams }
                 : {}),
               ...(isEmptyTurn ? { emptyTurn: true } : {}),
               ...(options?.incomplete ? { incomplete: true } : {}),

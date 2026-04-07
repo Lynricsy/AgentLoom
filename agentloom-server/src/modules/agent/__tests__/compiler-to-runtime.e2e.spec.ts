@@ -297,7 +297,9 @@ describe('compiler → runtime tool injection E2E', () => {
     );
 
     subAgentToolsProvider = new SubAgentToolsProvider(
-      mockDb as unknown as ConstructorParameters<typeof SubAgentToolsProvider>[0],
+      mockDb as unknown as ConstructorParameters<
+        typeof SubAgentToolsProvider
+      >[0],
       compiler,
       mockEventBridge as unknown as ConstructorParameters<
         typeof SubAgentToolsProvider
@@ -343,6 +345,7 @@ describe('compiler → runtime tool injection E2E', () => {
             conversationId: 'conversation-001',
             tenantId: 'tenant-001',
             depth: 0,
+            parentUsesSandboxRuntime: false,
             parentAbortSignal: new AbortController().signal,
             visitedAgentIds: new Set(['agent-parent']),
           },

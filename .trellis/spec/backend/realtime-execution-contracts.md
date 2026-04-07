@@ -23,6 +23,8 @@
 - `appendThinkingConversationMessageSegment(segments, content): ConversationMessageSegmentRecord[]`
 - `ensureToolCallConversationMessageSegment(segments, toolCallId): ConversationMessageSegmentRecord[]`
 - `normalizeConversationMessageSegments(value): ConversationMessageSegmentRecord[]`
+- `beginSubAgentConversationCapture(conversationId): string`
+- `consumeSubAgentConversationCapture(conversationId, token): Record<string, PersistedSubAgentStreamRecord>`
 - `WorkflowAgentAdapter.execute(params): Promise<WorkflowAgentExecutionResult>`
 - `AgentTaskWorker.process(job): Promise<void>`
 - `WorkspaceIntegrationService.archiveExecutionStepWorkspace(executionId, stepId, tenantId, sandboxNodeId?): Promise<string | null>`
@@ -47,6 +49,14 @@
   - `message_chunk` 追加到 `text` segment。
   - `plan` / `decision` 追加到 `thinking` segment。
   - `tool_call` 只按 `toolCallId` 插入一次 `tool_call` segment。
+- standalone Agent 的子 agent 历史回放必须把 child waterfall 持久化到父 assistant message 的 `agent_messages.metadata.subAgentStreams[handle]`。
+  - capture 作用域是 **单个 conversation turn**，不能把上一轮或 turn 结束后的异步 child 输出串到下一条 assistant message。
+  - `message_chunk` 持久化为 child `message_chunk` 事件。
+  - `plan` / `decision` 持久化为 child `thinking` 事件。
+  - `tool_call(status=pending|awaiting_permission|in_progress)` 持久化为 child `tool_call` 事件。
+  - `tool_call(status=completed|failed)` 持久化为 child `tool_result` 事件，避免历史回放丢失工具终态。
+  - `done` 与最终 `status_changed` 必须能让前端判断 child 已 completed/failed/timeout/cancelled。
+  - `conversation.subagent.status` 是 child 终态的 live 广播；即使 child 没有新的文本 chunk，也要能把最终状态同步给前端。
 - 如果 standalone Agent 的单轮 prompt 在运行中已产出 `message_chunk` / `tool_call`，但最终以 runtime error 失败（例如 sandbox 返回 `terminated`）：
   - worker 仍必须把当前轮已积累的 `assistantText`、`toolCalls`、`segments` 作为 partial turn 落库。
   - 该 assistant message 的 `metadata` 需要带 `incomplete=true`，并保留 `errorMessage`，避免刷新或回拉 history 后整轮消息蒸发。
@@ -81,22 +91,24 @@
 
 ### 4. Validation & Error Matrix
 
-| 条件                                                                     | 预期行为                                                                           | 断言点                                                                   |
-| ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| `segments` 已持久化                                                      | viewer 必须按 `text/thinking/tool_call` 的真实顺序恢复历史                         | `agent-execution.worker.spec.ts` / `workflow-agent-adapter.spec.ts`      |
-| conversation turn 运行中已产出 partial output，但最终 runtime error 失败 | worker 仍需持久化 partial assistant turn，刷新后不能丢失                           | `agent-execution.worker.spec.ts`                                         |
-| `segments` 缺失，但 `partialContent + toolCalls` 存在                    | 允许 fallback 恢复基础内容，但会丢交错顺序；这是临时兼容，不是目标形态             | `workflowAgentViewer.test.ts` / `workflow_agent_runtime_test.dart`       |
-| workflow-agent 冷开时 step 仍在运行                                      | snapshot 后必须能补到 active step buffered live events                             | `execution.gateway.spec.ts`                                              |
-| workflow step 绑定已有 workspace 完成/失败                               | `checkpointData.workspaceSnapshotId` 继续指向原 `restoreWorkspaceId`，不生成重复 archive | `workspace-integration.service.spec.ts` / `agent-task.worker.spec.ts` |
-| `file_change` 事件只带 `conversationId`                                  | 不得推送到 `/execution` namespace                                                  | `event-bridge.service.spec.ts`                                           |
-| `tool_call` segment 指向不存在的 tool call                               | `normalizeConversationMessageSegments()` / viewer normalization 必须丢弃该 segment | `workflowAgentViewer.test.ts`                                            |
-| step workspace 文件路径为空或越权                                        | API 返回明确失败，前端不应继续复用旧内容                                           | `execution.controller.spec.ts` / `workspace-integration.service.spec.ts` |
+| 条件                                                                     | 预期行为                                                                                 | 断言点                                                                                               |
+| ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `segments` 已持久化                                                      | viewer 必须按 `text/thinking/tool_call` 的真实顺序恢复历史                               | `agent-execution.worker.spec.ts` / `workflow-agent-adapter.spec.ts`                                  |
+| `subAgentStreams` 已持久化                                               | Studio drill-in 必须按 child `message/thinking/tool_result` 顺序恢复历史瀑布流           | `event-bridge.service.spec.ts` / `subagent-event-routing.spec.ts` / `agent-execution.worker.spec.ts` |
+| conversation turn 运行中已产出 partial output，但最终 runtime error 失败 | worker 仍需持久化 partial assistant turn，刷新后不能丢失                                 | `agent-execution.worker.spec.ts`                                                                     |
+| `segments` 缺失，但 `partialContent + toolCalls` 存在                    | 允许 fallback 恢复基础内容，但会丢交错顺序；这是临时兼容，不是目标形态                   | `workflowAgentViewer.test.ts` / `workflow_agent_runtime_test.dart`                                   |
+| workflow-agent 冷开时 step 仍在运行                                      | snapshot 后必须能补到 active step buffered live events                                   | `execution.gateway.spec.ts`                                                                          |
+| workflow step 绑定已有 workspace 完成/失败                               | `checkpointData.workspaceSnapshotId` 继续指向原 `restoreWorkspaceId`，不生成重复 archive | `workspace-integration.service.spec.ts` / `agent-task.worker.spec.ts`                                |
+| `file_change` 事件只带 `conversationId`                                  | 不得推送到 `/execution` namespace                                                        | `event-bridge.service.spec.ts`                                                                       |
+| `tool_call` segment 指向不存在的 tool call                               | `normalizeConversationMessageSegments()` / viewer normalization 必须丢弃该 segment       | `workflowAgentViewer.test.ts`                                                                        |
+| step workspace 文件路径为空或越权                                        | API 返回明确失败，前端不应继续复用旧内容                                                 | `execution.controller.spec.ts` / `workspace-integration.service.spec.ts`                             |
 
 ### 5. Good / Base / Bad Cases
 
 - Good：workflow-agent 运行中途打开 viewer，立刻看到已产生的文本 chunk、工具卡片、workspace 树，并且后续事件继续追加。
+- Good：standalone Agent 的 child 在刷新后重新 drill-in，仍能看到与实时一致的子 agent 文本/思考/工具瀑布，而不是只剩最终摘要。
 - Base：已完成 step 重新进入 viewer，至少能从 `checkpointData.segments + toolCalls + partialContent` 恢复出可读瀑布流。
-- Bad：worker 只持久化 `assistantText + toolCalls[]`，前端再按 `thinking -> text -> toolCalls` 重新拼装，导致历史顺序失真。
+- Bad：worker 只持久化 `assistantText + toolCalls[]`，或 child 只留下 `wait_for_subagents` 摘要，前端再按 `thinking -> text -> toolCalls` 重新拼装，导致主/子历史顺序一起失真。
 
 ### 6. Tests Required
 
@@ -115,6 +127,8 @@
   - 断言绑定已有 workspace 时会回写原 snapshot 并返回同一 ID。
 - `src/modules/execution/__tests__/event-bridge.service.spec.ts`
   - 断言 `workspace.file_change` 正确桥接到 workflow execution。
+- `src/modules/agent-execution/__tests__/subagent-event-routing.spec.ts`
+  - 断言 child completed/failed tool call 会走 `conversation.agent.tool_result`，并广播 `conversation.subagent.status`。
 
 ### 7. Wrong vs Correct
 
@@ -211,16 +225,16 @@ await db.insert(agentMessages).values({
 
 ### 4. Validation & Error Matrix
 
-| 条件 | 预期行为 | 断言点 |
-|------|----------|--------|
-| `contentType='image'` 但缺少 `dataBase64` | `POST /messages` 返回 400 | `agent-conversation.service.spec.ts` |
-| `contentType='file'` 且缺少 `textContent/dataBase64` | `POST /messages` 返回 400 | `agent-conversation.service.spec.ts` |
-| 任一附件超出 `1.5 MB`、单消息总量超出 `10 MB` 或文本内联超出 `200 KB` | `POST /messages` / `POST /conversations/start` 返回 400 | `conversation-attachment.ts` 校验 + service spec |
-| 合法图片消息在 `POST /conversations/start` 或正式会话发送时被 transport 413 拦截 | 不允许；Fastify `bodyLimit` 与 Socket `maxHttpBufferSize` 必须高于 base64/JSON 放大后的 payload | `fastify-adapter.factory.spec.ts` / `redis-io.adapter.spec.ts` |
-| 多附件混合图片/文件 | 持久化 `contentType='text'`，但保留完整 `metadata.attachments[]` | `agent-conversation.service.spec.ts` |
-| sandbox conversation 有 live container | worker 会把附件写入 `/workspace/uploads/...` 并把路径注入 prompt | `agent-execution.worker.spec.ts` / `workspace-integration.service.spec.ts` |
-| sandbox conversation 无 live container | worker 不抛错，继续使用 inline attachment blocks | `agent-execution.worker.spec.ts` |
-| 历史消息回拉 | 返回 `contentType`，前端能重建附件卡片 | `message-response.dto.ts` 相关序列化断言 |
+| 条件                                                                             | 预期行为                                                                                        | 断言点                                                                     |
+| -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `contentType='image'` 但缺少 `dataBase64`                                        | `POST /messages` 返回 400                                                                       | `agent-conversation.service.spec.ts`                                       |
+| `contentType='file'` 且缺少 `textContent/dataBase64`                             | `POST /messages` 返回 400                                                                       | `agent-conversation.service.spec.ts`                                       |
+| 任一附件超出 `1.5 MB`、单消息总量超出 `10 MB` 或文本内联超出 `200 KB`            | `POST /messages` / `POST /conversations/start` 返回 400                                         | `conversation-attachment.ts` 校验 + service spec                           |
+| 合法图片消息在 `POST /conversations/start` 或正式会话发送时被 transport 413 拦截 | 不允许；Fastify `bodyLimit` 与 Socket `maxHttpBufferSize` 必须高于 base64/JSON 放大后的 payload | `fastify-adapter.factory.spec.ts` / `redis-io.adapter.spec.ts`             |
+| 多附件混合图片/文件                                                              | 持久化 `contentType='text'`，但保留完整 `metadata.attachments[]`                                | `agent-conversation.service.spec.ts`                                       |
+| sandbox conversation 有 live container                                           | worker 会把附件写入 `/workspace/uploads/...` 并把路径注入 prompt                                | `agent-execution.worker.spec.ts` / `workspace-integration.service.spec.ts` |
+| sandbox conversation 无 live container                                           | worker 不抛错，继续使用 inline attachment blocks                                                | `agent-execution.worker.spec.ts`                                           |
+| 历史消息回拉                                                                     | 返回 `contentType`，前端能重建附件卡片                                                          | `message-response.dto.ts` 相关序列化断言                                   |
 
 ### 5. Good / Base / Bad Cases
 
@@ -253,30 +267,30 @@ await db.insert(agentMessages).values({
 await db.insert(agentMessages).values({
   content: dto.content,
   metadata: dto.metadata,
-})
+});
 ```
 
 #### Correct
 
 ```ts
-const requestedContentType = dto.contentType ?? "text"
+const requestedContentType = dto.contentType ?? "text";
 const metadata = normalizeIncomingConversationMetadata(
   requestedContentType,
   dto.metadata,
-)
-const attachments = readConversationAttachmentMetadataList(metadata)
+);
+const attachments = readConversationAttachmentMetadataList(metadata);
 const contentType =
   attachments.length > 0 &&
   requestedContentType !== "text" &&
   attachments.every((attachment) => attachment.kind === requestedContentType)
     ? requestedContentType
-    : "text"
+    : "text";
 
 await db.insert(agentMessages).values({
   content: dto.content,
   contentType,
   metadata,
-})
+});
 ```
 
 ---
@@ -319,14 +333,14 @@ await db.insert(agentMessages).values({
 
 ### 4. Validation & Error Matrix
 
-| 条件 | 预期行为 | 断言点 |
-|------|----------|--------|
-| `POST /conversations/start` 的 `content` 为空 | 400，DTO 校验失败 | controller / e2e |
-| Agent 不存在 | 整个 start 请求失败，不插入 conversation | `agent-conversation.service.spec.ts` |
-| 首条消息插入失败 | 整个 start 请求失败，且不发出 `agent-conversation.message-sent` | `agent-conversation.service.spec.ts` |
-| 首条消息成功 | 返回新 conversation，历史中立即可见首条 user message | `agent-integration.e2e-spec.ts` |
-| 历史 conversation 没有任何 `agent_messages` | 迁移删除该 conversation | migration 手测 / SQL 验证 |
-| 历史 conversation 已有至少 1 条消息 | 迁移保留该 conversation | migration 手测 / SQL 验证 |
+| 条件                                          | 预期行为                                                        | 断言点                               |
+| --------------------------------------------- | --------------------------------------------------------------- | ------------------------------------ |
+| `POST /conversations/start` 的 `content` 为空 | 400，DTO 校验失败                                               | controller / e2e                     |
+| Agent 不存在                                  | 整个 start 请求失败，不插入 conversation                        | `agent-conversation.service.spec.ts` |
+| 首条消息插入失败                              | 整个 start 请求失败，且不发出 `agent-conversation.message-sent` | `agent-conversation.service.spec.ts` |
+| 首条消息成功                                  | 返回新 conversation，历史中立即可见首条 user message            | `agent-integration.e2e-spec.ts`      |
+| 历史 conversation 没有任何 `agent_messages`   | 迁移删除该 conversation                                         | migration 手测 / SQL 验证            |
+| 历史 conversation 已有至少 1 条消息           | 迁移保留该 conversation                                         | migration 手测 / SQL 验证            |
 
 ### 5. Good / Base / Bad Cases
 
@@ -352,11 +366,16 @@ await db.insert(agentMessages).values({
 #### Wrong
 
 ```ts
-const conversation = await this.create(agentDefinitionId, tenantId, userId, dto)
+const conversation = await this.create(
+  agentDefinitionId,
+  tenantId,
+  userId,
+  dto,
+);
 await this.sendMessage(conversation.data.id, tenantId, {
   content: dto.content,
-})
-return conversation
+});
+return conversation;
 ```
 
 #### Correct
@@ -744,19 +763,19 @@ if (context.breakRequested) {
 
 ### 4. Validation & Error Matrix
 
-| 条件                                          | 预期行为                                                                      | 断言点                                            |
-| --------------------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------- |
-| 创建 `no_sandbox` Agent                       | `runtimeMode` 持久化为 `no_sandbox`                                           | DTO / service 单测                                |
-| `no_sandbox` Agent 发布时绑定 stdio MCP       | 422 `agent-publish-validation`，错误文案点名 MCP server 名称                  | API 手测 + service 单测                           |
-| `no_sandbox` workflow agent 接入 stdio MCP 节点 | 422 `workflow-publish-validation`，错误文案点名 agent 节点与 MCP server 名称 | API 手测 + `workflow-version.service.spec.ts`     |
-| `no_sandbox` conversation 收到工具权限审批    | resolve 必须使用 `sessionId` 命中 in-process runtime                          | `agent-conversation.controller.spec.ts`           |
-| `LLM_SUGGEST` no_sandbox session 调用工具     | runtime 直接进入 `tool_execution_start/end`，不得重复发 `awaiting_permission` | `pi-agent-core.adapter.spec.ts`                   |
-| `system` trigger 的 workflow `agent` 节点     | session context 写入 `autoApproveToolPermissions=true`                        | `workflow-agent-adapter.spec.ts`                  |
-| `http-tool.response-out -> input-preprocessor` | 下游拿到的必须是响应体正文，而不是缺失值或整个调试包                           | `node-scheduler.service.spec.ts`                  |
-| workflow `agent` 节点选择 `no_sandbox` Agent  | 输入端口不含 `sandbox-in`                                                     | Studio 单测 + 浏览器手测                          |
-| `manual-trigger.text-in -> agent.text-in`     | Agent step.input 必须拿到 launch input 原值                                   | `node-scheduler.service.spec.ts` + execution 手测 |
-| `sandbox` 父 Agent 调用 `no_sandbox` 子 Agent | 子 Agent 只能读父上下文可见资源，不能获得 write/edit/terminal                 | sub-agent 集成测试 + 浏览器手测                   |
-| `no_sandbox` 父 Agent 调用 `sandbox` 子 Agent | 明确报错“不支持调用有 sandbox 的子 Agent”                                     | worker / adapter 单测                             |
+| 条件                                            | 预期行为                                                                      | 断言点                                            |
+| ----------------------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------------------- |
+| 创建 `no_sandbox` Agent                         | `runtimeMode` 持久化为 `no_sandbox`                                           | DTO / service 单测                                |
+| `no_sandbox` Agent 发布时绑定 stdio MCP         | 422 `agent-publish-validation`，错误文案点名 MCP server 名称                  | API 手测 + service 单测                           |
+| `no_sandbox` workflow agent 接入 stdio MCP 节点 | 422 `workflow-publish-validation`，错误文案点名 agent 节点与 MCP server 名称  | API 手测 + `workflow-version.service.spec.ts`     |
+| `no_sandbox` conversation 收到工具权限审批      | resolve 必须使用 `sessionId` 命中 in-process runtime                          | `agent-conversation.controller.spec.ts`           |
+| `LLM_SUGGEST` no_sandbox session 调用工具       | runtime 直接进入 `tool_execution_start/end`，不得重复发 `awaiting_permission` | `pi-agent-core.adapter.spec.ts`                   |
+| `system` trigger 的 workflow `agent` 节点       | session context 写入 `autoApproveToolPermissions=true`                        | `workflow-agent-adapter.spec.ts`                  |
+| `http-tool.response-out -> input-preprocessor`  | 下游拿到的必须是响应体正文，而不是缺失值或整个调试包                          | `node-scheduler.service.spec.ts`                  |
+| workflow `agent` 节点选择 `no_sandbox` Agent    | 输入端口不含 `sandbox-in`                                                     | Studio 单测 + 浏览器手测                          |
+| `manual-trigger.text-in -> agent.text-in`       | Agent step.input 必须拿到 launch input 原值                                   | `node-scheduler.service.spec.ts` + execution 手测 |
+| `sandbox` 父 Agent 调用 `no_sandbox` 子 Agent   | 子 Agent 只能读父上下文可见资源，不能获得 write/edit/terminal                 | sub-agent 集成测试 + 浏览器手测                   |
+| `no_sandbox` 父 Agent 调用 `sandbox` 子 Agent   | 明确报错“不支持调用有 sandbox 的子 Agent”                                     | worker / adapter 单测                             |
 
 ### 5. Good / Base / Bad Cases
 
@@ -821,6 +840,7 @@ if (target.runtimeMode === "no_sandbox") {
 ## 场景：Agent 画布版本快照、历史发布与分享 gating 合同
 
 ### 1. Scope / Trigger
+
 - 触发条件：修改以下任一文件时，必须回看本节
   - `agentloom-server/src/modules/agent-definition/agent-definition.controller.ts`
   - `agentloom-server/src/modules/agent-definition/agent-definition.service.ts`
@@ -835,6 +855,7 @@ if (target.runtimeMode === "no_sandbox") {
 - 风险点：如果 Agent 画布顶部入口、版本 DTO 与发布服务的合同不同步，就会出现“前端可点分享但后端必然拒绝”或“历史面板选择了某个版本，发布却仍然偷偷发布当前草稿”的闭环断裂。
 
 ### 2. Signatures
+
 - `PUT /agent-definitions/:id/canvas`
 - `POST /agent-definitions/:id/versions`
 - `POST /agent-definitions/:id/publish`
@@ -846,6 +867,7 @@ if (target.runtimeMode === "no_sandbox") {
 - `ShareService.createAgentShare(tenantId, userId, dto)`
 
 ### 3. Contracts
+
 - `PUT /agent-definitions/:id/canvas` 继续保存当前草稿定义；Studio 在“保存版本”与“发布当前编辑稿”前，若检测到本地画布 dirty，必须先调用该接口保存草稿，保存失败时中止后续动作。
 - `POST /agent-definitions/:id/versions` 请求体合同：
   - `label?: string`
@@ -869,22 +891,24 @@ if (target.runtimeMode === "no_sandbox") {
 
 ### 4. Validation & Error Matrix
 
-| 条件 | 预期行为 | 断言点 |
-| --- | --- | --- |
-| `POST /agent-definitions/:id/versions` 传 `release_notes` | DTO 归一为 `releaseNotes` | `create-agent-version.dto.spec.ts` |
-| `POST /agent-definitions/:id/versions` 传旧字段 `changelog` | DTO 继续兼容并归一为 `releaseNotes` | `create-agent-version.dto.spec.ts` |
-| `POST /agent-definitions/:id/publish` 传 `versionId` | 发布指定历史版本，`agent_definitions.publishedVersionId` 指向该版本 | `agent-definition.service.spec.ts` |
-| `POST /agent-definitions/:id/publish` 未传 `versionId` | 基于当前草稿创建新的 published version | `agent-definition.service.spec.ts` |
-| `POST /agent-definitions/:id/publish` 传不存在的 `versionId` | 返回 `AgentVersionNotFoundException` | `agent-definition.service.spec.ts` |
-| 未发布 Agent 调 `POST /agent-shares` | 服务端拒绝创建分享链接 | `share.service.spec.ts` |
-| 当前草稿没有任何节点就发布 | 返回 `AgentPublishValidationException` | `agent-definition.service.spec.ts` |
+| 条件                                                         | 预期行为                                                            | 断言点                             |
+| ------------------------------------------------------------ | ------------------------------------------------------------------- | ---------------------------------- |
+| `POST /agent-definitions/:id/versions` 传 `release_notes`    | DTO 归一为 `releaseNotes`                                           | `create-agent-version.dto.spec.ts` |
+| `POST /agent-definitions/:id/versions` 传旧字段 `changelog`  | DTO 继续兼容并归一为 `releaseNotes`                                 | `create-agent-version.dto.spec.ts` |
+| `POST /agent-definitions/:id/publish` 传 `versionId`         | 发布指定历史版本，`agent_definitions.publishedVersionId` 指向该版本 | `agent-definition.service.spec.ts` |
+| `POST /agent-definitions/:id/publish` 未传 `versionId`       | 基于当前草稿创建新的 published version                              | `agent-definition.service.spec.ts` |
+| `POST /agent-definitions/:id/publish` 传不存在的 `versionId` | 返回 `AgentVersionNotFoundException`                                | `agent-definition.service.spec.ts` |
+| 未发布 Agent 调 `POST /agent-shares`                         | 服务端拒绝创建分享链接                                              | `share.service.spec.ts`            |
+| 当前草稿没有任何节点就发布                                   | 返回 `AgentPublishValidationException`                              | `agent-definition.service.spec.ts` |
 
 ### 5. Good / Base / Bad Cases
+
 - Good：用户先保存画布，再创建一个带标签的版本快照，随后从历史面板选择该版本发布；服务端把该历史版本设为唯一 published version，Studio 顶部立刻显示分享入口。
 - Base：老客户端仍发送 `changelog` 或 `release_notes`，服务端正常归一成 `releaseNotes`，不会因为字段名漂移丢掉版本说明。
 - Bad：前端从历史列表点“发布这个版本”，后端却无视 `versionId` 又基于当前草稿新建版本；或者 Agent 尚未发布却还能成功创建分享链接。
 
 ### 6. Tests Required
+
 - `agentloom-server/src/modules/agent-definition/dto/create-agent-version.dto.spec.ts`
   - 断言 `releaseNotes/release_notes/changelog` 归一行为
 - `agentloom-server/src/modules/agent-definition/dto/publish-agent.dto.spec.ts`

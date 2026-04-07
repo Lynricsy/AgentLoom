@@ -7,7 +7,10 @@ import {
   type SubAgentEventProxy,
 } from '../subagent/subagent-event-proxy';
 import type { AgentEvent } from '../../agent/types/agent-event.types';
-import type { SubAgentEventEnvelope } from '../subagent/subagent-execution.types';
+import {
+  SubAgentRunStatus,
+  type SubAgentEventEnvelope,
+} from '../subagent/subagent-execution.types';
 
 const mockConfigService = {
   get: vi.fn().mockReturnValue('test-jwt-secret'),
@@ -24,6 +27,7 @@ const mockEventBridgeService = {
   getEventsSince: vi.fn().mockReturnValue([]),
   createEnvelope: vi.fn(),
   emitSubAgentConversationEvent: vi.fn(),
+  completeSubAgentConversationStream: vi.fn(),
 };
 
 const mockTokenBlacklistService = {
@@ -101,6 +105,7 @@ describe('SubAgent Event Routing', () => {
     it('should create proxy that delegates to eventBridge', () => {
       const mockBridge = {
         emitSubAgentConversationEvent: vi.fn(),
+        completeSubAgentConversationStream: vi.fn(),
       };
 
       const envelope = makeEnvelope();
@@ -130,6 +135,7 @@ describe('SubAgent Event Routing', () => {
     it('should pass through all envelope fields', () => {
       const mockBridge = {
         emitSubAgentConversationEvent: vi.fn(),
+        completeSubAgentConversationStream: vi.fn(),
       };
 
       const envelope: SubAgentEventEnvelope = {
@@ -162,6 +168,7 @@ describe('SubAgent Event Routing', () => {
     it('should emit multiple events through same proxy', () => {
       const mockBridge = {
         emitSubAgentConversationEvent: vi.fn(),
+        completeSubAgentConversationStream: vi.fn(),
       };
 
       const proxy = createSubAgentEventProxy({
@@ -176,6 +183,33 @@ describe('SubAgent Event Routing', () => {
       proxy.emitEvent({ type: 'done', stopReason: 'end_turn' });
 
       expect(mockBridge.emitSubAgentConversationEvent).toHaveBeenCalledTimes(3);
+    });
+
+    it('should proxy completion status through eventBridge', () => {
+      const mockBridge = {
+        emitSubAgentConversationEvent: vi.fn(),
+        completeSubAgentConversationStream: vi.fn(),
+      };
+
+      const envelope = makeEnvelope();
+      const proxy = createSubAgentEventProxy({
+        conversationId: 'conv-1',
+        tenantId: 'tenant-1',
+        envelope,
+        eventBridge: mockBridge,
+      });
+
+      proxy.complete(SubAgentRunStatus.FAILED, 'sub-agent failed');
+
+      expect(
+        mockBridge.completeSubAgentConversationStream,
+      ).toHaveBeenCalledWith(
+        'conv-1',
+        'tenant-1',
+        envelope,
+        SubAgentRunStatus.FAILED,
+        'sub-agent failed',
+      );
     });
   });
 
@@ -262,6 +296,31 @@ describe('SubAgent Event Routing', () => {
         .value.emit;
       expect(emitFn).toHaveBeenCalledWith(
         ConversationEventName.AGENT_TOOL_CALL,
+        expect.any(Object),
+      );
+    });
+
+    it('should route completed tool_call sub-agent event to AGENT_TOOL_RESULT', () => {
+      gateway.handleSubAgentEvent({
+        conversationId: 'conv-1',
+        tenantId: 'tenant-1',
+        event: {
+          type: 'tool_call',
+          call: {
+            id: 'tc-2',
+            tool: 'search',
+            args: {},
+            status: 'completed',
+            result: { ok: true },
+          },
+        },
+        subagent: makeEnvelope(),
+      });
+
+      const emitFn = (server.to as ReturnType<typeof vi.fn>).mock.results[0]
+        .value.emit;
+      expect(emitFn).toHaveBeenCalledWith(
+        ConversationEventName.AGENT_TOOL_RESULT,
         expect.any(Object),
       );
     });
@@ -361,6 +420,28 @@ describe('SubAgent Event Routing', () => {
       expect((gateway as any).eventQueue.get(queueKey)).toBeDefined();
       expect((gateway as any).eventQueue.get(queueKey).length).toBeGreaterThan(
         0,
+      );
+    });
+
+    it('should broadcast sub-agent status updates', () => {
+      gateway.handleSubAgentStatus({
+        conversationId: 'conv-1',
+        tenantId: 'tenant-1',
+        subagent: makeEnvelope(),
+        handle: 'sa_abc123def456',
+        status: 'failed',
+        error: 'sub-agent failed',
+      });
+
+      const emitFn = (server.to as ReturnType<typeof vi.fn>).mock.results[0]
+        .value.emit;
+      expect(emitFn).toHaveBeenCalledWith(
+        ConversationEventName.SUBAGENT_STATUS,
+        expect.objectContaining({
+          handle: 'sa_abc123def456',
+          status: 'failed',
+          error: 'sub-agent failed',
+        }),
       );
     });
   });

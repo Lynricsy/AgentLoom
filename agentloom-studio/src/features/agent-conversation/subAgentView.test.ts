@@ -94,6 +94,108 @@ describe("subAgentView", () => {
     );
   });
 
+  it("历史 metadata.subAgentStreams 应恢复与主 agent 一样的瀑布流", () => {
+    const messages: ConversationMessage[] = [
+      makeMessage({
+        id: "assistant-main",
+        metadata: {
+          subAgentStreams: {
+            sa_hist_stream: {
+              handle: "sa_hist_stream",
+              alias: "researcher",
+              depth: 1,
+              parentToolCallId: "tool-parent",
+              status: "completed",
+              startedAt: 1_700_000_000_000,
+              completedAt: 1_700_000_001_000,
+              events: [
+                {
+                  id: "evt-1",
+                  type: "thinking",
+                  payload: { content: "先规划检索路径。" },
+                  timestamp: 1_700_000_000_050,
+                },
+                {
+                  id: "evt-2",
+                  type: "message_chunk",
+                  payload: { chunk: "开始整理背景。" },
+                  timestamp: 1_700_000_000_100,
+                },
+                {
+                  id: "evt-3",
+                  type: "tool_call",
+                  payload: {
+                    toolCallId: "tool-1",
+                    tool: "search_knowledge",
+                    status: "in_progress",
+                    args: { query: "AgentLoom 子代理历史瀑布流" },
+                  },
+                  timestamp: 1_700_000_000_200,
+                },
+                {
+                  id: "evt-4",
+                  type: "message_chunk",
+                  payload: { chunk: "已经定位关键链路。" },
+                  timestamp: 1_700_000_000_300,
+                },
+                {
+                  id: "evt-5",
+                  type: "tool_result",
+                  payload: {
+                    toolCallId: "tool-1",
+                    tool: "search_knowledge",
+                    status: "completed",
+                    result: { hits: 2 },
+                  },
+                  timestamp: 1_700_000_000_400,
+                },
+                {
+                  id: "evt-6",
+                  type: "done",
+                  payload: { stopReason: "end_turn" },
+                  timestamp: 1_700_000_001_000,
+                },
+              ],
+            },
+          },
+        },
+      }),
+    ];
+
+    const view = resolveSubAgentView("sa_hist_stream", null, messages);
+
+    expect(view).toEqual(
+      expect.objectContaining({
+        alias: "researcher",
+        source: "history",
+      }),
+    );
+    expect(view?.messages).toHaveLength(1);
+    expect(view?.messages[0]?.metadata?.type).toBeUndefined();
+    expect(view?.messages[0]).toEqual(
+      expect.objectContaining({
+        role: "assistant",
+        content: "开始整理背景。已经定位关键链路。",
+        thinking: "先规划检索路径。",
+        isStreaming: false,
+        toolCalls: [
+          expect.objectContaining({
+            id: "tool-1",
+            tool: "search_knowledge",
+            status: "completed",
+            result: { hits: 2 },
+          }),
+        ],
+        segments: [
+          { type: "thinking", content: "先规划检索路径。" },
+          { type: "text", content: "开始整理背景。" },
+          { type: "tool_call", toolCallId: "tool-1" },
+          { type: "text", content: "已经定位关键链路。" },
+        ],
+      }),
+    );
+  });
+
   it("无 live stream 时应从 wait 结果与 completion notice 合成历史子视图", () => {
     const messages: ConversationMessage[] = [
       makeMessage({

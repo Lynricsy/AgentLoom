@@ -32,6 +32,7 @@ AgentLoom 让你像编织织布机上的经纬线一样，将多个 AI Agent 编
 - **🛠️ 配置优化建议闭环** — 周期分析执行遥测，生成可解释的模型/超时/工具/自主性建议，应用时复用 workflow OCC 保护，并在画布存在未保存修改时避免静默覆盖本地编辑
 - **🌐 MCP 集成** — Model Context Protocol 工具编排；`sandbox` Agent 可使用完整 MCP 形态，`no_sandbox` Agent 仅允许 HTTP MCP，stdio MCP 在发布校验与运行时调用两侧都会被拒绝
 - **🛒 工作流市场** — 模板浏览、安装、发布，支持工作流与插件双类型上架；Marketplace 审核同时接受内联 Agent 配置与 workflow-agent 绑定已发布 Agent Definition/Version 的复杂工作流
+- **🧵 子代理历史瀑布** — standalone Agent 的 child 输出会跟随父 assistant message 持久化到 `metadata.subAgentStreams`；Studio drill-in 会优先用这份 durable stream 恢复与主 Agent 一致的文本/思考/工具瀑布，只有旧历史缺少该字段时才回退摘要视图
 
 ---
 

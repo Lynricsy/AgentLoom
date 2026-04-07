@@ -64,6 +64,35 @@ export interface SubAgentEventEnvelope {
   parentToolCallId: string;
 }
 
+/** 持久化到 assistant message metadata 的子代理事件记录 */
+export type PersistedSubAgentEventType =
+  | 'message_chunk'
+  | 'thinking'
+  | 'tool_call'
+  | 'tool_result'
+  | 'done'
+  | 'status_changed';
+
+export interface PersistedSubAgentEventRecord {
+  id: string;
+  type: PersistedSubAgentEventType;
+  payload: Record<string, unknown>;
+  timestamp: number;
+}
+
+/** 历史回放用子代理流；结构与前端 SubAgentStream 对齐 */
+export interface PersistedSubAgentStreamRecord {
+  handle: SubAgentHandle;
+  alias: string;
+  depth: number;
+  parentToolCallId: string;
+  status: SubAgentRunStatus;
+  events: PersistedSubAgentEventRecord[];
+  startedAt: number;
+  completedAt?: number;
+  error?: string;
+}
+
 /** 父代理执行上下文 — 传递给 SubAgentToolsProvider */
 export interface SubAgentParentContext {
   /** 父对话 ID */

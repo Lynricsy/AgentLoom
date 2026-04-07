@@ -6,6 +6,7 @@ import { EventBridgeService } from '../services/event-bridge.service';
 import { ExecutionGateway } from '../execution.gateway';
 import { ThrottleService } from '../services/throttle.service';
 import { ExecutionEventName } from '../types/execution-event.types';
+import { SubAgentRunStatus } from '../../agent-execution/subagent';
 import type {
   StepStatusChangedPayload,
   ExecutionStatusChangedPayload,
@@ -478,6 +479,87 @@ describe('EventBridgeService', () => {
           tenantId: TENANT,
           executionId: EXEC,
           toolCallId: payload.toolCallId,
+        }),
+      );
+    });
+  });
+
+  describe('sub-agent capture', () => {
+    it('应收集子代理事件流并在完成时产出可持久化历史', () => {
+      const token = service.beginSubAgentConversationCapture('conv-1');
+      const subagent = {
+        handle: 'sa_hist_1',
+        alias: 'researcher',
+        depth: 1,
+        parentToolCallId: 'tool-parent',
+      } as const;
+
+      service.emitSubAgentConversationEvent(
+        'conv-1',
+        TENANT,
+        { type: 'message_chunk', content: 'hello child' },
+        subagent,
+      );
+      service.emitSubAgentConversationEvent(
+        'conv-1',
+        TENANT,
+        {
+          type: 'tool_call',
+          call: {
+            id: 'tool-1',
+            tool: 'search',
+            args: { q: 'history' },
+            status: 'completed',
+            result: { ok: true },
+          },
+        },
+        subagent,
+      );
+      service.completeSubAgentConversationStream(
+        'conv-1',
+        TENANT,
+        subagent,
+        SubAgentRunStatus.COMPLETED,
+      );
+
+      const streams = service.consumeSubAgentConversationCapture(
+        'conv-1',
+        token,
+      );
+
+      expect(streams).toEqual({
+        sa_hist_1: expect.objectContaining({
+          handle: 'sa_hist_1',
+          alias: 'researcher',
+          status: 'completed',
+          events: [
+            expect.objectContaining({
+              type: 'message_chunk',
+              payload: { chunk: 'hello child' },
+            }),
+            expect.objectContaining({
+              type: 'tool_result',
+              payload: expect.objectContaining({
+                toolCallId: 'tool-1',
+                tool: 'search',
+                status: 'completed',
+                result: { ok: true },
+              }),
+            }),
+            expect.objectContaining({
+              type: 'status_changed',
+              payload: { status: 'completed' },
+            }),
+          ],
+        }),
+      });
+      expect(eventEmitter.emit).toHaveBeenCalledWith(
+        'conversation.subagent.status',
+        expect.objectContaining({
+          conversationId: 'conv-1',
+          tenantId: TENANT,
+          handle: 'sa_hist_1',
+          status: 'completed',
         }),
       );
     });

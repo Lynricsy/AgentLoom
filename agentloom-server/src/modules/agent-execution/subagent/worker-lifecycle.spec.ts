@@ -29,6 +29,7 @@ const {
   },
   mockEventBridge: {
     emitSubAgentConversationEvent: vi.fn(),
+    completeSubAgentConversationStream: vi.fn(),
   },
   mockSandboxService: {
     createSandboxSession: vi.fn(),

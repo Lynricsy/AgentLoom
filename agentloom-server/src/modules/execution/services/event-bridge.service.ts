@@ -6,6 +6,7 @@ import {
   forwardRef,
   type OnModuleDestroy,
 } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ExecutionGateway } from '../execution.gateway';
 import { ThrottleService } from './throttle.service';
@@ -27,7 +28,13 @@ import {
   LEGACY_EVENT_MAP,
 } from '../types/execution-event.types';
 import type { AgentEvent } from '../../agent/types/agent-event.types';
-import type { SubAgentEventEnvelope } from '../../agent-execution/subagent';
+import type { ToolCallEvent } from '../../agent/types/tool-call-event.types';
+import {
+  PersistedSubAgentEventRecord,
+  PersistedSubAgentStreamRecord,
+  SubAgentEventEnvelope,
+  SubAgentRunStatus,
+} from '../../agent-execution/subagent/subagent-execution.types';
 
 const EVENT_BUFFER_CAPACITY = 500;
 const TERMINAL_EVENT_RETENTION_MS = 30_000;
@@ -36,6 +43,17 @@ const TERMINAL_EXECUTION_STATUSES = new Set([
   'failed',
   'cancelled',
 ]);
+const TERMINAL_SUBAGENT_STATUSES = new Set<SubAgentRunStatus>([
+  SubAgentRunStatus.COMPLETED,
+  SubAgentRunStatus.FAILED,
+  SubAgentRunStatus.TIMEOUT,
+  SubAgentRunStatus.CANCELLED,
+]);
+
+interface SubAgentConversationCapture {
+  token: string;
+  streams: Map<string, PersistedSubAgentStreamRecord>;
+}
 
 /**
  * 事件桥接服务。
@@ -56,6 +74,11 @@ export class EventBridgeService implements OnModuleDestroy {
   private readonly cleanupTimers = new Map<
     string,
     ReturnType<typeof setTimeout>
+  >();
+
+  private readonly subAgentConversationCaptures = new Map<
+    string,
+    SubAgentConversationCapture
   >();
 
   constructor(
@@ -295,17 +318,117 @@ export class EventBridgeService implements OnModuleDestroy {
     return envelope;
   }
 
+  beginSubAgentConversationCapture(conversationId: string): string {
+    const current = this.subAgentConversationCaptures.get(conversationId);
+    if (current) {
+      this.logger.warn(
+        `对子代理历史回放开启重复 capture，覆盖旧 capture: conversation=${conversationId}`,
+      );
+    }
+
+    const token = randomUUID();
+    this.subAgentConversationCaptures.set(conversationId, {
+      token,
+      streams: new Map(),
+    });
+    return token;
+  }
+
+  consumeSubAgentConversationCapture(
+    conversationId: string,
+    token: string,
+  ): Record<string, PersistedSubAgentStreamRecord> {
+    const capture = this.subAgentConversationCaptures.get(conversationId);
+    if (!capture || capture.token !== token) {
+      return {};
+    }
+
+    this.subAgentConversationCaptures.delete(conversationId);
+    return Object.fromEntries(
+      Array.from(capture.streams.entries()).map(([handle, stream]) => [
+        handle,
+        this.clonePersistedSubAgentStream(stream),
+      ]),
+    );
+  }
+
+  clearSubAgentConversationCapture(
+    conversationId: string,
+    token?: string,
+  ): void {
+    const capture = this.subAgentConversationCaptures.get(conversationId);
+    if (!capture) {
+      return;
+    }
+
+    if (token && capture.token !== token) {
+      return;
+    }
+
+    this.subAgentConversationCaptures.delete(conversationId);
+  }
+
   emitSubAgentConversationEvent(
     conversationId: string,
     tenantId: string,
     event: AgentEvent,
     envelope: SubAgentEventEnvelope,
   ): void {
+    this.recordSubAgentConversationEvent(conversationId, event, envelope);
     this.eventEmitter?.emit('conversation.subagent.event', {
       conversationId,
       tenantId,
       event,
       subagent: envelope,
+    });
+  }
+
+  completeSubAgentConversationStream(
+    conversationId: string,
+    tenantId: string,
+    envelope: SubAgentEventEnvelope,
+    status: SubAgentRunStatus,
+    error?: string,
+  ): void {
+    const capture = this.subAgentConversationCaptures.get(conversationId);
+    if (capture) {
+      const stream = this.ensureSubAgentConversationStream(
+        capture.streams,
+        envelope,
+      );
+      const timestamp = Date.now();
+      stream.status = status;
+      if (error) {
+        stream.error = error;
+      }
+
+      if (TERMINAL_SUBAGENT_STATUSES.has(status)) {
+        stream.completedAt ??= timestamp;
+      }
+
+      const hasTerminalDoneEvent = stream.events.some(
+        (event) => event.type === 'done',
+      );
+      if (status !== SubAgentRunStatus.COMPLETED || !hasTerminalDoneEvent) {
+        stream.events.push({
+          id: randomUUID(),
+          type: 'status_changed',
+          payload: {
+            status,
+            ...(error ? { error } : {}),
+          },
+          timestamp,
+        });
+      }
+    }
+
+    this.eventEmitter?.emit('conversation.subagent.status', {
+      conversationId,
+      tenantId,
+      subagent: envelope,
+      handle: envelope.handle,
+      status,
+      ...(error ? { error } : {}),
     });
   }
 
@@ -324,6 +447,7 @@ export class EventBridgeService implements OnModuleDestroy {
     this.cancelCleanup(executionId);
     this.eventCounters.delete(executionId);
     this.eventBuffers.delete(executionId);
+    this.subAgentConversationCaptures.delete(executionId);
   }
 
   onModuleDestroy(): void {
@@ -333,6 +457,7 @@ export class EventBridgeService implements OnModuleDestroy {
     this.cleanupTimers.clear();
     this.eventCounters.clear();
     this.eventBuffers.clear();
+    this.subAgentConversationCaptures.clear();
   }
 
   /**
@@ -359,6 +484,151 @@ export class EventBridgeService implements OnModuleDestroy {
   getBufferedEvents(executionId: string): ExecutionEvent[] {
     const buffer = this.eventBuffers.get(executionId);
     return buffer ? [...buffer] : [];
+  }
+
+  private recordSubAgentConversationEvent(
+    conversationId: string,
+    event: AgentEvent,
+    envelope: SubAgentEventEnvelope,
+  ): void {
+    const capture = this.subAgentConversationCaptures.get(conversationId);
+    if (!capture) {
+      return;
+    }
+
+    const persistedEvent = this.normalizeSubAgentConversationEvent(event);
+    if (!persistedEvent) {
+      return;
+    }
+
+    const stream = this.ensureSubAgentConversationStream(
+      capture.streams,
+      envelope,
+    );
+    stream.events.push(persistedEvent);
+
+    if (
+      persistedEvent.type === 'done' &&
+      stream.status === SubAgentRunStatus.RUNNING
+    ) {
+      stream.status = SubAgentRunStatus.COMPLETED;
+      stream.completedAt ??= persistedEvent.timestamp;
+    }
+  }
+
+  private normalizeSubAgentConversationEvent(
+    event: AgentEvent,
+  ): PersistedSubAgentEventRecord | null {
+    const timestamp = Date.now();
+
+    switch (event.type) {
+      case 'message_chunk':
+        return {
+          id: randomUUID(),
+          type: 'message_chunk',
+          payload: { chunk: event.content },
+          timestamp,
+        };
+      case 'plan':
+        return {
+          id: randomUUID(),
+          type: 'thinking',
+          payload: { content: event.content },
+          timestamp,
+        };
+      case 'decision': {
+        const content = this.extractSubAgentThinkingContent(event);
+        if (!content) {
+          return null;
+        }
+
+        return {
+          id: randomUUID(),
+          type: 'thinking',
+          payload: { content },
+          timestamp,
+        };
+      }
+      case 'tool_call':
+        return {
+          id: randomUUID(),
+          type:
+            event.call.status === 'completed' || event.call.status === 'failed'
+              ? 'tool_result'
+              : 'tool_call',
+          payload: this.buildSubAgentToolPayload(event.call),
+          timestamp,
+        };
+      case 'done':
+        return {
+          id: randomUUID(),
+          type: 'done',
+          payload: { stopReason: event.stopReason },
+          timestamp,
+        };
+      default:
+        return null;
+    }
+  }
+
+  private buildSubAgentToolPayload(
+    call: ToolCallEvent,
+  ): Record<string, unknown> {
+    return {
+      toolCallId: call.id,
+      tool: call.tool,
+      args: call.args,
+      status: call.status,
+      ...(call.result !== undefined ? { result: call.result } : {}),
+      ...(call.error !== undefined ? { error: call.error } : {}),
+      ...(call.transitions ? { transitions: [...call.transitions] } : {}),
+      ...(call.permissionRequest
+        ? { permissionRequest: call.permissionRequest }
+        : {}),
+    };
+  }
+
+  private extractSubAgentThinkingContent(
+    event: Extract<AgentEvent, { type: 'decision' }>,
+  ): string | undefined {
+    const parts = [event.rationale, event.suggestedContent].filter(
+      (value): value is string => typeof value === 'string' && value.length > 0,
+    );
+    return parts.length > 0 ? parts.join('\n\n') : undefined;
+  }
+
+  private ensureSubAgentConversationStream(
+    streams: Map<string, PersistedSubAgentStreamRecord>,
+    envelope: SubAgentEventEnvelope,
+  ): PersistedSubAgentStreamRecord {
+    const existing = streams.get(envelope.handle);
+    if (existing) {
+      return existing;
+    }
+
+    const stream: PersistedSubAgentStreamRecord = {
+      handle: envelope.handle,
+      alias: envelope.alias,
+      depth: envelope.depth,
+      parentToolCallId: envelope.parentToolCallId,
+      status: SubAgentRunStatus.RUNNING,
+      events: [],
+      startedAt: Date.now(),
+    };
+    streams.set(envelope.handle, stream);
+    return stream;
+  }
+
+  private clonePersistedSubAgentStream(
+    stream: PersistedSubAgentStreamRecord,
+  ): PersistedSubAgentStreamRecord {
+    return {
+      ...stream,
+      events: stream.events.map((event) => ({
+        ...event,
+        payload: { ...event.payload },
+      })),
+    };
   }
 
   private nextEventId(executionId: string): number {

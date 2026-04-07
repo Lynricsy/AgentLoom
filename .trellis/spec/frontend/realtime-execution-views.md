@@ -5,16 +5,21 @@
 ## 场景：Studio 的 standalone agent / workflow-agent viewer 必须保留真实消息顺序
 
 ### 1. Scope / Trigger
+
 - 触发条件：修改以下任一文件时，必须回看本节
   - `agentloom-studio/src/features/agent-conversation/stores/agent-conversation.store.ts`
+  - `agentloom-studio/src/features/agent-conversation/subAgentView.ts`
   - `agentloom-studio/src/features/execution/lib/workflowAgentViewer.ts`
   - `agentloom-studio/src/features/execution/components/WorkflowAgentViewer.tsx`
   - `agentloom-studio/src/features/execution/api/executionApi.ts`
 - 风险点：一旦前端重新按 `thinking -> text -> toolCalls` 拼历史，真实交错顺序会丢失；一旦 viewer 不读 step workspace API，workspace 面板就会退化成空壳。
 
 ### 2. Signatures
+
 - `buildWorkflowAgentViewerState(step, nodeState): WorkflowAgentViewerState`
 - `normalizeStoredSegments(checkpointData, toolCalls): MessageSegment[]`
+- `resolveSubAgentView(handle, liveStream, messages): ResolvedSubAgentView | null`
+- `buildSubAgentMessages(stream): ConversationMessage[]`
 - `runWorkflow(workflowId, payload?: RunWorkflowRequest)`
 - `getExecution(executionId)`
 - `getExecutionStepWorkspaceTree(executionId, stepId)`
@@ -24,6 +29,7 @@
   - `/executions/$executionId/steps/$stepId/agent`
 
 ### 3. Contracts
+
 - `buildWorkflowAgentViewerState()` 必须优先消费 ordered `segments`，而不是重新根据 `content + toolCalls` 拼顺序。
 - 如果 `checkpointData.segments` 存在：
   - `text` / `thinking` 原样保留。
@@ -40,6 +46,10 @@
 - standalone Agent 的 `loadHistory()` 不能无条件整包替换当前 `messages`。
   - 如果 history 响应只是当前消息流的 canonical 前缀，必须保留尚未落库的 live tail。
   - 否则上一轮 `done` 触发的迟到 history 响应，会把下一轮已在 streaming 的 user / assistant 消息覆盖掉。
+- standalone Agent 的 child drill-in 历史路径必须优先消费 `assistant.metadata.subAgentStreams`，并复用与 live child 相同的 waterfall 构造逻辑。
+  - 只要 `metadata.subAgentStreams[handle]` 存在，就必须按 `message_chunk / thinking / tool_call|tool_result / done|status_changed` 回放。
+  - `wait_for_subagents` / `get_subagent_status` / `subagent_completion_notice` 只能作为旧历史兼容 fallback，不能压过 durable stream。
+  - 当 live stream 与 persisted stream 同时存在时，前端必须优先展示更完整的那份（通常是已 completed 的 persisted stream），不能因为内存里残留一份较短 live copy 就退化。
 - standalone Agent 的 failed realtime status 必须同时兼容 `errorMessage` 与 `error`。
   - 连接错误与执行错误必须分开展示，不能把 runtime failed 误报成“连接失败”。
   - 如果历史 assistant message `metadata.incomplete === true` 且存在 `metadata.errorMessage`，消息列表必须直接渲染该 turn 的中断原因。
@@ -48,25 +58,32 @@
 
 ### 4. Validation & Error Matrix
 
-| 条件 | 预期行为 | 断言点 |
-|------|----------|--------|
-| step 有 `segments` | viewer 按真实顺序渲染文本/思考/工具 | `workflowAgentViewer.test.ts` |
-| standalone agent 的 history 晚于下一轮 live 流返回 | store 保留当前 live tail，不得覆盖新一轮消息 | `agent-conversation.store.test.ts` |
-| 普通工具调用 | 不得展示 `awaiting_permission` 审批卡 | 对话页 / execution viewer 组件测试 |
-| step 无 `segments`，但有 `partialContent + toolCalls` | viewer 退化成基础 fallback，不抛错 | `workflowAgentViewer.test.ts` |
-| 用户快速切换文件或刷新 workspace | 旧请求不得覆盖新文件内容 | `WorkflowAgentViewer.test.tsx` |
-| 运行中 `fileChanges` 增加 | viewer 触发 workspace 刷新 | `WorkflowAgentViewer.test.tsx` |
-| step 不是 agent 节点 | viewer 路由必须走 guard / 错误态，不得渲染假消息流 | 组件测试 + 手动 QA |
+| 条件                                                  | 预期行为                                           | 断言点                             |
+| ----------------------------------------------------- | -------------------------------------------------- | ---------------------------------- |
+| step 有 `segments`                                    | viewer 按真实顺序渲染文本/思考/工具                | `workflowAgentViewer.test.ts`      |
+| standalone agent 的 history 晚于下一轮 live 流返回    | store 保留当前 live tail，不得覆盖新一轮消息       | `agent-conversation.store.test.ts` |
+| history message 带 `metadata.subAgentStreams`         | child drill-in 复用主消息瀑布渲染，不得退回摘要    | `subAgentView.test.ts`             |
+| 普通工具调用                                          | 不得展示 `awaiting_permission` 审批卡              | 对话页 / execution viewer 组件测试 |
+| step 无 `segments`，但有 `partialContent + toolCalls` | viewer 退化成基础 fallback，不抛错                 | `workflowAgentViewer.test.ts`      |
+| 用户快速切换文件或刷新 workspace                      | 旧请求不得覆盖新文件内容                           | `WorkflowAgentViewer.test.tsx`     |
+| 运行中 `fileChanges` 增加                             | viewer 触发 workspace 刷新                         | `WorkflowAgentViewer.test.tsx`     |
+| step 不是 agent 节点                                  | viewer 路由必须走 guard / 错误态，不得渲染假消息流 | 组件测试 + 手动 QA                 |
 
 ### 5. Good / Base / Bad Cases
+
 - Good：运行中或运行后进入 `/executions/$executionId/steps/$stepId/agent`，消息流与工具按真实顺序交错，workspace 文件树和文件预览都能查看。
+- Good：刷新 standalone Agent 后重新进入某个 child，仍能看到与主 agent 一样的文本/思考/工具瀑布；只有旧历史没有 durable child stream 时才退回摘要。
 - Base：没有新的 live event 时，viewer 仍可从 checkpoint 恢复出可读历史。
 - Bad：`done` 后重新拉 history，再把所有 thinking 放前面、所有工具堆在后面。
 
 ### 6. Tests Required
+
 - `agentloom-studio/src/features/agent-conversation/stores/agent-conversation.store.test.ts`
   - 断言 standalone agent history 使用 stored segments。
   - 断言 history 晚到时不会覆盖当前 live tail。
+- `agentloom-studio/src/features/agent-conversation/subAgentView.test.ts`
+  - 断言 `metadata.subAgentStreams` 会恢复 child waterfall。
+  - 断言旧历史缺少 durable stream 时才回退摘要。
 - `agentloom-studio/src/features/execution/lib/workflowAgentViewer.test.ts`
   - 断言 ordered segments、live output merge、tool/file/terminal normalization。
 - `agentloom-studio/src/features/execution/components/WorkflowAgentViewer.test.tsx`
@@ -80,10 +97,13 @@
 
 ```ts
 const segments = [
-  ...(thinking ? [{ type: 'thinking', content: thinking }] : []),
-  ...(content ? [{ type: 'text', content }] : []),
-  ...toolCalls.map((toolCall) => ({ type: 'tool_call', toolCallId: toolCall.id })),
-]
+  ...(thinking ? [{ type: "thinking", content: thinking }] : []),
+  ...(content ? [{ type: "text", content }] : []),
+  ...toolCalls.map((toolCall) => ({
+    type: "tool_call",
+    toolCallId: toolCall.id,
+  })),
+];
 ```
 
 #### Correct
@@ -91,7 +111,7 @@ const segments = [
 ```ts
 const segments = checkpointData.segments?.length
   ? normalizeStoredSegments(checkpointData, toolCalls)
-  : fallbackSegments
+  : fallbackSegments;
 ```
 
 ---
@@ -99,6 +119,7 @@ const segments = checkpointData.segments?.length
 ## 场景：standalone Agent 已完成会话的工作区目录树 fallback
 
 ### 1. Scope / Trigger
+
 - 触发条件：修改以下任一文件时，必须回看本节
   - `agentloom-studio/src/features/agent-conversation/stores/agent-conversation.store.ts`
   - `agentloom-studio/src/features/agent-conversation/components/AgentConversationPage.tsx`
@@ -110,6 +131,7 @@ const segments = checkpointData.segments?.length
 - 风险点：completed conversation 如果只读 live runtime，就会在刷新或冷开后退化成“工作区暂不可见”；如果前端继续尝试文件预览，又会把服务端 tree-only fallback 误报成加载失败。
 
 ### 2. Signatures
+
 - Studio:
   - `loadWorkspaceTree(conversationId): Promise<void>`
   - `AgentConversationPage`
@@ -125,6 +147,7 @@ const segments = checkpointData.segments?.length
   - `ConversationState.workspacePreviewUnavailableReason`
 
 ### 3. Contracts
+
 - standalone conversation 页面在 mount / 冷开时，必须主动拉一次 `GET /agent-conversations/:id/workspace/tree`。
   - 不能只依赖 `conversation.sandbox.file_change` 增量事件，否则 completed 冷开后不会有任何树数据。
 - 如果 Agent 绑定了 `workspaceSnapshotId`，且 conversation workspace tree 还没有 authoritative 数据，Studio / Flutter 都必须先预载 `GET /workspaces/:id/tree` 作为目录预览。
@@ -146,19 +169,20 @@ const segments = checkpointData.segments?.length
 
 ### 4. Validation & Error Matrix
 
-| 条件 | 预期行为 | 断言点 |
-|------|----------|--------|
-| completed conversation 冷开 | Studio / Flutter 都能拉到目录树 | `agent-conversation.store.test.ts` / Flutter 手动 QA |
-| 绑定了 `workspaceSnapshotId` 的新会话冷开 | 先显示持久化 workspace 目录预览 | `agent-conversation.store.test.ts` / `agent_conversation_provider_test.dart` |
-| Agent detail 同时带 `workspaceSnapshotId` 与 `sandboxConfig.restoreWorkspaceId` | preview preload 必须优先展示 `restoreWorkspaceId` 对应目录树 | Studio 单测 / `agent_conversation_provider_test.dart` |
-| snapshot 与 live 响应乱序返回 | UI 最终停留在 live，不允许被 snapshot 回盖 | `agent-conversation.store.test.ts` / `agent_conversation_provider_test.dart` |
-| tree API 成功但返回空数组 | Flutter 显示“没有文件树”，而不是“工作区暂不可见” | `conversation_context_panel_test.dart` |
-| Flutter 点击 completed conversation 文件 | 切到 `workspaceTreeOnly` 模式并显示 tree-only 提示 | `agent_conversation_provider_test.dart` |
-| Flutter 点击 snapshot preview 文件 | 不请求 live 文件预览接口，只保留选中态 | `agent_conversation_provider_test.dart` |
-| workspace tree 刷新后当前选中文件已失效 | 选中态被清空，不保留 stale 文件 | `agent-conversation.store.test.ts` |
-| workspace tree 请求响应晚到且会话已切换/重置 | 不得污染当前会话状态 | `agent-conversation.store.test.ts` |
+| 条件                                                                            | 预期行为                                                     | 断言点                                                                       |
+| ------------------------------------------------------------------------------- | ------------------------------------------------------------ | ---------------------------------------------------------------------------- |
+| completed conversation 冷开                                                     | Studio / Flutter 都能拉到目录树                              | `agent-conversation.store.test.ts` / Flutter 手动 QA                         |
+| 绑定了 `workspaceSnapshotId` 的新会话冷开                                       | 先显示持久化 workspace 目录预览                              | `agent-conversation.store.test.ts` / `agent_conversation_provider_test.dart` |
+| Agent detail 同时带 `workspaceSnapshotId` 与 `sandboxConfig.restoreWorkspaceId` | preview preload 必须优先展示 `restoreWorkspaceId` 对应目录树 | Studio 单测 / `agent_conversation_provider_test.dart`                        |
+| snapshot 与 live 响应乱序返回                                                   | UI 最终停留在 live，不允许被 snapshot 回盖                   | `agent-conversation.store.test.ts` / `agent_conversation_provider_test.dart` |
+| tree API 成功但返回空数组                                                       | Flutter 显示“没有文件树”，而不是“工作区暂不可见”             | `conversation_context_panel_test.dart`                                       |
+| Flutter 点击 completed conversation 文件                                        | 切到 `workspaceTreeOnly` 模式并显示 tree-only 提示           | `agent_conversation_provider_test.dart`                                      |
+| Flutter 点击 snapshot preview 文件                                              | 不请求 live 文件预览接口，只保留选中态                       | `agent_conversation_provider_test.dart`                                      |
+| workspace tree 刷新后当前选中文件已失效                                         | 选中态被清空，不保留 stale 文件                              | `agent-conversation.store.test.ts`                                           |
+| workspace tree 请求响应晚到且会话已切换/重置                                    | 不得污染当前会话状态                                         | `agent-conversation.store.test.ts`                                           |
 
 ### 5. Good / Base / Bad Cases
+
 - Good：completed conversation 刷新后仍能看到目录树；Flutter 点击文件时提示“未保留文件内容预览”，Studio 继续仅展示树。
 - Good：绑定了持久化 workspace 的新会话在真正开跑前先显示目录树预览，开跑后自动切到实时工作区。
 - Good：若 Agent detail 同时带 `workspaceSnapshotId=A` 与 `restoreWorkspaceId=B`，preview 直接展示 B，对话开跑后 live 也继续落在 B，不会先看到 A 再跳成 B。
@@ -167,6 +191,7 @@ const segments = checkpointData.segments?.length
 - Bad：preview 先展示 `workspaceSnapshotId` 的目录树，但 live sandbox 实际 restore 的却是另一个 `restoreWorkspaceId`，导致用户看到错误文件集。
 
 ### 6. Tests Required
+
 - `agentloom-studio/src/features/agent-conversation/stores/agent-conversation.store.test.ts`
   - 断言 `loadWorkspaceTree()` 会恢复目录树
   - 断言过期 workspace tree 响应不会污染已重置会话
@@ -210,6 +235,7 @@ if (state.workspaceTreeOnly) {
 ## 场景：standalone Agent 新对话页必须保持草稿态，首条消息发送后才创建真实 conversation
 
 ### 1. Scope / Trigger
+
 - 触发条件：修改以下任一文件时，必须回看本节
   - `agentloom-studio/src/app/routes/agents/agents.$agentId.conversations.new.tsx`
   - `agentloom-studio/src/features/agent-conversation/components/NewConversationDraftPage.tsx`
@@ -225,6 +251,7 @@ if (state.workspaceTreeOnly) {
 - 风险点：如果 `/conversations/new` 在挂载或 `initState()` 里直接 `createConversation()`，用户只要打开页面就会制造空历史；如果首发消息不走统一 `startConversation()`，Web / Mobile 会再次出现创建语义漂移。
 
 ### 2. Signatures
+
 - Studio:
   - `/agents/$agentId/conversations/new`
   - `NewConversationDraftPage`
@@ -238,6 +265,7 @@ if (state.workspaceTreeOnly) {
   - `AgentApi.startConversation(agentId, { title?, content, contentType, metadata })`
 
 ### 3. Contracts
+
 - Studio 与 Flutter 的 `/conversations/new` 都必须是草稿态页面。
   - 进入页面时不得调用 `createConversation()`。
   - 直接离开页面时，历史列表不得新增空会话。
@@ -257,23 +285,25 @@ if (state.workspaceTreeOnly) {
 
 ### 4. Validation & Error Matrix
 
-| 条件 | 预期行为 | 断言点 |
-|------|----------|--------|
-| Studio 挂载 `/agents/$agentId/conversations/new` | 不调用 `createConversation()` / `startConversation()` | `NewConversationDraftPage.test.tsx` |
-| Studio sandbox 草稿态 | 右侧上下文面板仍可见，并显示持久化工作区目录预览 | `NewConversationDraftPage.test.tsx` |
-| Studio 草稿态主区域 | 不显示“首条消息发送后再创建对话”之类居中说明卡片 | `NewConversationDraftPage.test.tsx` |
-| Studio 首条消息发送 | 调用 `startConversation()` 并跳转真实会话页 | `NewConversationDraftPage.test.tsx` |
-| Studio 草稿态侧边栏 | 允许 `currentConversationId = null`，不崩溃 | `ConversationSidebar` 组件测试 / 手动 QA |
-| Mobile 点击 Agent 详情或列表的 `New Chat` | 导航到 `RouteNames.agentNewConversation`，不直接创建 conversation | `agent_detail_screen_test.dart` |
-| Mobile 进入 `/agents/:agentId/conversations/new` | 不调用 `createConversation()` | `agent_new_conversation_screen_test.dart` |
-| Mobile 首条消息发送 | 调用 `AgentApi.startConversation()` 并跳转正式会话页 | `agent_new_conversation_screen_test.dart` |
+| 条件                                             | 预期行为                                                          | 断言点                                    |
+| ------------------------------------------------ | ----------------------------------------------------------------- | ----------------------------------------- |
+| Studio 挂载 `/agents/$agentId/conversations/new` | 不调用 `createConversation()` / `startConversation()`             | `NewConversationDraftPage.test.tsx`       |
+| Studio sandbox 草稿态                            | 右侧上下文面板仍可见，并显示持久化工作区目录预览                  | `NewConversationDraftPage.test.tsx`       |
+| Studio 草稿态主区域                              | 不显示“首条消息发送后再创建对话”之类居中说明卡片                  | `NewConversationDraftPage.test.tsx`       |
+| Studio 首条消息发送                              | 调用 `startConversation()` 并跳转真实会话页                       | `NewConversationDraftPage.test.tsx`       |
+| Studio 草稿态侧边栏                              | 允许 `currentConversationId = null`，不崩溃                       | `ConversationSidebar` 组件测试 / 手动 QA  |
+| Mobile 点击 Agent 详情或列表的 `New Chat`        | 导航到 `RouteNames.agentNewConversation`，不直接创建 conversation | `agent_detail_screen_test.dart`           |
+| Mobile 进入 `/agents/:agentId/conversations/new` | 不调用 `createConversation()`                                     | `agent_new_conversation_screen_test.dart` |
+| Mobile 首条消息发送                              | 调用 `AgentApi.startConversation()` 并跳转正式会话页              | `agent_new_conversation_screen_test.dart` |
 
 ### 5. Good / Base / Bad Cases
+
 - Good：用户点进新对话页又返回，历史列表没有新增记录；真正发送第一条消息后，才出现会话并自动进入正式对话页。
 - Base：草稿页输入首发消息时沿用正式对话的输入与附件语义，但会话 id 直到后端返回成功后才存在。
 - Bad：`/conversations/new` 页面 mount 就调用 `createConversation()`，或者 `New Chat` 先插入 conversation 再导航，导致“看看就留下空历史”。
 
 ### 6. Tests Required
+
 - `agentloom-studio/src/features/agent-conversation/components/NewConversationDraftPage.test.tsx`
   - 断言挂载时不自动创建 conversation
   - 断言首条消息发送时调用 `startConversation()` 并跳转
@@ -290,20 +320,23 @@ if (state.workspaceTreeOnly) {
 ```tsx
 useEffect(() => {
   createConversation(agentId).then((conversation) => {
-    navigate({ to: '/agents/$agentId/conversations/$conversationId', params: { agentId, conversationId: conversation.id } })
-  })
-}, [agentId, navigate])
+    navigate({
+      to: "/agents/$agentId/conversations/$conversationId",
+      params: { agentId, conversationId: conversation.id },
+    });
+  });
+}, [agentId, navigate]);
 ```
 
 #### Correct
 
 ```tsx
 async function handleSendFirstMessage(message: OutgoingConversationMessage) {
-  const conversation = await startConversation.mutateAsync(message)
+  const conversation = await startConversation.mutateAsync(message);
   navigate({
-    to: '/agents/$agentId/conversations/$conversationId',
+    to: "/agents/$agentId/conversations/$conversationId",
     params: { agentId, conversationId: conversation.id },
-  })
+  });
 }
 ```
 
@@ -312,6 +345,7 @@ async function handleSendFirstMessage(message: OutgoingConversationMessage) {
 ## 场景：standalone Agent 对话中的图片/文件上传必须形成可回拉的用户消息
 
 ### 1. Scope / Trigger
+
 - 触发条件：修改以下任一文件时，必须回看本节
   - `agentloom-studio/src/features/agent-conversation/stores/agent-conversation.store.ts`
   - `agentloom-studio/src/features/agent-conversation/components/AgentConversationPage.tsx`
@@ -323,6 +357,7 @@ async function handleSendFirstMessage(message: OutgoingConversationMessage) {
 - 风险点：如果选择附件后被立即发送，用户就无法把草稿文本与多个附件合并成同一条消息；如果 optimistic message / history diff 不保留 `contentType + attachments`，刷新后附件预览会消失。
 
 ### 2. Signatures
+
 - Studio:
   - `agentConversationStore.actions.sendMessage(message: string | OutgoingConversationMessage): void`
   - `normalizeOutgoingConversationMessage(message): OutgoingConversationMessage`
@@ -337,6 +372,7 @@ async function handleSendFirstMessage(message: OutgoingConversationMessage) {
   - `AgentApi.sendMessage(conversationId, { content, contentType, metadata })`
 
 ### 3. Contracts
+
 - Studio 与 Flutter 的对话输入栏都必须提供真实可点击的图片/文件上传入口，且选中的附件必须先停留在输入栏上方草稿区，不能在选择后立即发送。
 - 一次发送必须支持三种形态：纯文本、纯多附件、文本 + 多附件。
 - 附件消息必须以结构化消息发送，而不是把文件名直接拼成普通文本。
@@ -363,17 +399,18 @@ async function handleSendFirstMessage(message: OutgoingConversationMessage) {
 
 ### 4. Validation & Error Matrix
 
-| 条件 | 预期行为 | 断言点 |
-|------|----------|--------|
-| Studio 选择附件 | 附件先显示在输入栏上方草稿区，不立即发送 | `NewConversationDraftPage.test.tsx` |
-| Studio 发送带附件的 user message | socket / optimistic / history 都保留 `contentType + attachments[]` | `agent-conversation.store.test.ts` |
-| Studio 渲染多附件历史消息 | 同一条消息中的全部附件都显示，不只是一行文件名 | `MessageList.test.tsx` |
-| Flutter 输入栏渲染 | 存在文件与图片上传入口 | `agent_conversation_screen_test.dart` |
-| Flutter provider 发送附件消息 | API 层收到 `contentType + metadata` | `agent_conversation_provider_test.dart` |
-| Flutter 用户消息包含多附件 | 消息气泡显示同一条消息中的全部附件卡片与文本预览 | `message_bubble_test.dart` |
-| 浏览器真实刷新同一会话 | 附件卡片仍可见 | Studio 手动 QA / Flutter 手动 QA |
+| 条件                             | 预期行为                                                           | 断言点                                  |
+| -------------------------------- | ------------------------------------------------------------------ | --------------------------------------- |
+| Studio 选择附件                  | 附件先显示在输入栏上方草稿区，不立即发送                           | `NewConversationDraftPage.test.tsx`     |
+| Studio 发送带附件的 user message | socket / optimistic / history 都保留 `contentType + attachments[]` | `agent-conversation.store.test.ts`      |
+| Studio 渲染多附件历史消息        | 同一条消息中的全部附件都显示，不只是一行文件名                     | `MessageList.test.tsx`                  |
+| Flutter 输入栏渲染               | 存在文件与图片上传入口                                             | `agent_conversation_screen_test.dart`   |
+| Flutter provider 发送附件消息    | API 层收到 `contentType + metadata`                                | `agent_conversation_provider_test.dart` |
+| Flutter 用户消息包含多附件       | 消息气泡显示同一条消息中的全部附件卡片与文本预览                   | `message_bubble_test.dart`              |
+| 浏览器真实刷新同一会话           | 附件卡片仍可见                                                     | Studio 手动 QA / Flutter 手动 QA        |
 
 ### 5. Good / Base / Bad Cases
+
 - Good：用户选中多个附件后，它们先停留在草稿区；点击发送时，文本和多个附件会作为同一条 user turn 发出。
 - Good：用户上传文本文件后，Agent 能收到文件内容；刷新页面后，消息列表仍显示文件卡片与文本预览。
 - Good：用户上传图片后，消息气泡显示图片预览；若是 sandbox Agent，消息卡片还能展示工作区路径提示。
@@ -381,6 +418,7 @@ async function handleSendFirstMessage(message: OutgoingConversationMessage) {
 - Bad：选择附件后立刻自动发送，导致用户无法再补正文；或者消息发送成功后刷新页面只剩“已上传文件 xxx”一行文本，看不到附件本体。
 
 ### 6. Tests Required
+
 - `agentloom-studio/src/features/agent-conversation/stores/agent-conversation.store.test.ts`
   - 断言附件消息透传 `contentType + metadata.attachments[]`
 - `agentloom-studio/src/features/agent-conversation/components/MessageList.test.tsx`
@@ -399,7 +437,7 @@ async function handleSendFirstMessage(message: OutgoingConversationMessage) {
 #### Wrong
 
 ```ts
-sendMessage(`已上传文件 ${file.name}`)
+sendMessage(`已上传文件 ${file.name}`);
 ```
 
 #### Correct
@@ -426,7 +464,7 @@ sendMessage({
       },
     ],
   },
-})
+});
 ```
 
 ---
@@ -434,6 +472,7 @@ sendMessage({
 ## 场景：standalone Agent “agent 的电脑”面板必须显示真实资源值
 
 ### 1. Scope / Trigger
+
 - 触发条件：修改以下任一文件时，必须回看本节
   - `agentloom-studio/src/features/agent-conversation/components/SandboxComputerPanel.tsx`
   - `agentloom-studio/src/features/agent-conversation/api/conversationApi.ts`
@@ -443,6 +482,7 @@ sendMessage({
 - 风险点：如果面板只显示静态 `CPU/MEM` 标签，用户会误以为“Agent 的电脑”有资源监控但实际是空壳；如果把缺失的 disk stats 回退成 `0 B`，又会把“未知”伪装成“空工作区”。
 
 ### 2. Signatures
+
 - `GET /api/v1/agent-conversations/:id/sandbox/stats`
 - `fetchConversationSandboxStats(conversationId): Promise<SandboxStats>`
 - `useConversationSandboxStats(conversationId, sandboxStatus)`
@@ -450,6 +490,7 @@ sendMessage({
 - `ContainerStats`
 
 ### 3. Contracts
+
 - `SandboxComputerPanel` 右上角必须显示**实际值**，不能只保留标签：
   - `CPU <percent>`
   - `MEM <usage / limit>`
@@ -462,19 +503,21 @@ sendMessage({
 
 ### 4. Validation & Error Matrix
 
-| 条件 | 预期行为 | 断言点 |
-|------|----------|--------|
-| conversation 有活跃 sandbox 且 stats 可用 | 面板显示真实 CPU/MEM/DISK 值 | `SandboxComputerPanel.test.tsx` |
-| `diskUsage=0` | 面板显示 `0 B / ...` | `SandboxComputerPanel.test.tsx` |
-| `GET /agent-conversations/:id/sandbox/stats` 返回 404/409 | hook 返回 `null`，面板显示占位值，不抛全局错误 | query hook 测试或手动 QA |
-| sandbox 进入 `running -> idle` | 停止轮询，但保留最近一次成功数据 | 手动 QA |
+| 条件                                                      | 预期行为                                       | 断言点                          |
+| --------------------------------------------------------- | ---------------------------------------------- | ------------------------------- |
+| conversation 有活跃 sandbox 且 stats 可用                 | 面板显示真实 CPU/MEM/DISK 值                   | `SandboxComputerPanel.test.tsx` |
+| `diskUsage=0`                                             | 面板显示 `0 B / ...`                           | `SandboxComputerPanel.test.tsx` |
+| `GET /agent-conversations/:id/sandbox/stats` 返回 404/409 | hook 返回 `null`，面板显示占位值，不抛全局错误 | query hook 测试或手动 QA        |
+| sandbox 进入 `running -> idle`                            | 停止轮询，但保留最近一次成功数据               | 手动 QA                         |
 
 ### 5. Good / Base / Bad Cases
+
 - Good：Agent 真正写入文件后，`agent 的电脑` 面板里的 `DISK` 会变大；空工作区显示 `0 B / 2.0 GB`。
 - Base：当前会话还没拿到 active sandbox stats 时，面板显示 `CPU -- / MEM -- / DISK --`。
 - Bad：右上角永远只有 `CPU / MEM` 字样，不显示任何值；或者 disk stats 缺失时直接渲染成 `0 B`。
 
 ### 6. Tests Required
+
 - `agentloom-studio/src/features/agent-conversation/components/SandboxComputerPanel.test.tsx`
 - `agentloom-server/src/modules/agent-conversation/agent-conversation.controller.spec.ts`
 - 手动 QA：
@@ -501,6 +544,7 @@ sendMessage({
 ## 场景：Flutter execution 页面与 workflow-agent viewer 的终态收敛
 
 ### 1. Scope / Trigger
+
 - 触发条件：修改以下任一文件时，必须回看本节
   - `agentloom_mobile/lib/main.dart`
   - `agentloom_mobile/lib/config/theme.dart`
@@ -517,6 +561,7 @@ sendMessage({
 - 风险点：只靠 WebSocket 不够，终态事件或 ACK 偶发丢失时，Flutter Web 会长期停在 `running`；workspace 面板如果不跟随 `fileChanges` 刷新，也会看起来像“实时没实现”；如果 Flutter Web 在 `runApp()` 前强依赖 Firebase Web SDK 或远端 CJK 字体，真实 QA 会直接落成白屏或中文方块。
 
 ### 2. Signatures
+
 - `PushPlatformSupport.isSupported`
 - `PushPlatformSupport.registrationPlatform`
 - `NotificationService.initialize()`
@@ -535,6 +580,7 @@ sendMessage({
   - `/executions/:executionId/steps/:stepId/agent`
 
 ### 3. Contracts
+
 - Flutter Web 启动链不能依赖 Firebase Push 可用。
   - `main.dart` 只允许在原生移动端执行 `Firebase.initializeApp()` 与 `FirebaseMessaging.onBackgroundMessage(...)`。
   - Web 平台上的 push 初始化必须显式 no-op，不能在 build/login 恢复路径里再次触发 Firebase Web SDK 动态加载。
@@ -560,23 +606,25 @@ sendMessage({
 
 ### 4. Validation & Error Matrix
 
-| 条件 | 预期行为 | 断言点 |
-|------|----------|--------|
-| Flutter Web 冷开且 `gstatic/firebasejs` 不可达 | 登录页/执行页仍能启动，不得在 `runApp()` 前白屏 | `theme_test.dart` + 手动 QA |
-| Flutter Web 冷开且远端 CJK 字体不可达 | 中文正文继续可读，不得退化成方块 | `theme_test.dart` + 手动 QA |
-| `PushPlatformSupport.isSupported == false` | push provider / service 走 no-op，不发起 Firebase Push 初始化 | `push_notification_provider_test.dart` / `notification_service_test.dart` |
-| 终态 `execution.status.changed` 先到，step 状态事件后到或丢失 | provider 通过最终 REST detail 收口到 completed/failed | `execution_monitor_provider_test.dart` |
-| WebSocket 连接正常但终态事件漏到前端状态机 | polling 最终把状态收敛到终态 | `execution_monitor_provider_test.dart` |
-| Socket ACK / event 为 `Map<Object?, Object?>` | parser 正常归一化，不吞事件 | `execution_socket_service_test.dart` |
-| workflow-agent viewer 收到新的 `fileChanges` | workspace 自动刷新 | 组件测试 + 手动 QA |
-| Flutter Web 从 execution 点击 agent 卡片 | URL 变为 `/executions/:executionId/steps/:stepId/agent` | `execution_monitor_navigation_test.dart` |
+| 条件                                                          | 预期行为                                                      | 断言点                                                                    |
+| ------------------------------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------------------------------- |
+| Flutter Web 冷开且 `gstatic/firebasejs` 不可达                | 登录页/执行页仍能启动，不得在 `runApp()` 前白屏               | `theme_test.dart` + 手动 QA                                               |
+| Flutter Web 冷开且远端 CJK 字体不可达                         | 中文正文继续可读，不得退化成方块                              | `theme_test.dart` + 手动 QA                                               |
+| `PushPlatformSupport.isSupported == false`                    | push provider / service 走 no-op，不发起 Firebase Push 初始化 | `push_notification_provider_test.dart` / `notification_service_test.dart` |
+| 终态 `execution.status.changed` 先到，step 状态事件后到或丢失 | provider 通过最终 REST detail 收口到 completed/failed         | `execution_monitor_provider_test.dart`                                    |
+| WebSocket 连接正常但终态事件漏到前端状态机                    | polling 最终把状态收敛到终态                                  | `execution_monitor_provider_test.dart`                                    |
+| Socket ACK / event 为 `Map<Object?, Object?>`                 | parser 正常归一化，不吞事件                                   | `execution_socket_service_test.dart`                                      |
+| workflow-agent viewer 收到新的 `fileChanges`                  | workspace 自动刷新                                            | 组件测试 + 手动 QA                                                        |
+| Flutter Web 从 execution 点击 agent 卡片                      | URL 变为 `/executions/:executionId/steps/:stepId/agent`       | `execution_monitor_navigation_test.dart`                                  |
 
 ### 5. Good / Base / Bad Cases
+
 - Good：fresh 登录后打开 execution，点击 agent 卡片进入 viewer；运行中能看到文本/工具瀑布流，完成后状态头翻到 `completed`，workspace 文件预览仍可读取。
 - Base：viewer 冷开时已完成，仍能从 snapshot + runtime 恢复消息流和文件树。
 - Bad：运行时文本和工具能看见，但 `done` 后又被历史重组覆盖；或者 execution API 已 completed，Flutter 头部仍长期显示 `running`。
 
 ### 6. Tests Required
+
 - `agentloom_mobile/test/config/theme_test.dart`
   - 断言主题为标题/正文文本提供本地 CJK fallback。
 - `agentloom_mobile/test/features/notifications/platform/push_platform_support_test.dart`
@@ -627,6 +675,7 @@ if (payload.status.isTerminal) {
 ## 场景：Studio workflow 运行页与调试页中的 compound 节点状态收敛
 
 ### 1. Scope / Trigger
+
 - 触发条件：修改以下任一文件时，必须回看本节
   - `agentloom-studio/src/features/canvas/components/WorkflowCanvas.tsx`
   - `agentloom-studio/src/features/execution/components/ReadonlyCanvas.tsx`
@@ -635,6 +684,7 @@ if (payload.status.isTerminal) {
 - 风险点：compound runtime 如果没有把内部节点终态收敛好，Studio 在 workflow 运行页和 execution 调试页里会把 `break / continue` 后未执行的节点错误展示成“等待中”，用户会误判为流程没跑完。
 
 ### 2. Signatures
+
 - `WorkflowCanvasPage`
 - `ReadonlyCanvas`
 - `ExecutionDebugView`
@@ -642,6 +692,7 @@ if (payload.status.isTerminal) {
 - `/executions/$executionId`
 
 ### 3. Contracts
+
 - workflow 运行页在 execution 进行中必须持续展示节点状态高亮：
   - 已完成的顶层节点显示 `已完成`
   - 当前活跃 compound 容器显示 `运行中`
@@ -654,20 +705,22 @@ if (payload.status.isTerminal) {
 
 ### 4. Validation & Error Matrix
 
-| 条件 | 预期行为 | 断言点 |
-|------|----------|--------|
-| `iteration` 运行中 | workflow 页能看到顶层资源节点完成、compound 容器运行中、内部节点等待本轮执行 | browser QA |
-| `iteration` 完成 | 调试页显示 `Iteration Agent` 已完成，`Result` 已完成 | browser QA |
-| `condition` 未命中 fail 分支 | 调试页显示 `Condition Agent Fail` 为 `已跳过` | browser QA |
-| `loop` 被 `break` 提前结束 | 调试页把当前轮未执行内部节点显示成 `已跳过` | browser QA |
-| execution 已 completed | 调试页 banner 与时间线状态一致，不得一个显示完成一个显示等待 | browser QA |
+| 条件                         | 预期行为                                                                     | 断言点     |
+| ---------------------------- | ---------------------------------------------------------------------------- | ---------- |
+| `iteration` 运行中           | workflow 页能看到顶层资源节点完成、compound 容器运行中、内部节点等待本轮执行 | browser QA |
+| `iteration` 完成             | 调试页显示 `Iteration Agent` 已完成，`Result` 已完成                         | browser QA |
+| `condition` 未命中 fail 分支 | 调试页显示 `Condition Agent Fail` 为 `已跳过`                                | browser QA |
+| `loop` 被 `break` 提前结束   | 调试页把当前轮未执行内部节点显示成 `已跳过`                                  | browser QA |
+| execution 已 completed       | 调试页 banner 与时间线状态一致，不得一个显示完成一个显示等待                 | browser QA |
 
 ### 5. Good / Base / Bad Cases
+
 - Good：`loop` 在第 2 轮命中 `break` 后，调试页中剩余内部节点统一显示 `已跳过`，父 `loop` 显示 `已完成`。
 - Base：`iteration` 中 `continue` 命中后，最终聚合结果只保留未被丢弃轮次的输出。
 - Bad：workflow 页显示 `loop` 已完成，但调试页里 `loop-agent / result` 还显示 `等待中`。
 
 ### 6. Tests Required
+
 - Manual QA
   - `QA Condition 端口表达式 20260401`
   - `QA Iteration Agent Sandbox 20260401`
@@ -680,14 +733,14 @@ if (payload.status.isTerminal) {
 
 ```ts
 // UI 把 compound 未执行节点继续展示成 waiting
-status = step.status === 'pending' ? 'waiting' : step.status
+status = step.status === "pending" ? "waiting" : step.status;
 ```
 
 #### Correct
 
 ```ts
 // UI 直接消费 execution step 最终状态，允许 skipped 透传到调试与高亮层
-status = step.status
+status = step.status;
 ```
 
 ---
@@ -695,6 +748,7 @@ status = step.status
 ## 场景：Agent 画布顶部版本工具栏与分享 gating
 
 ### 1. Scope / Trigger
+
 - 触发条件：修改以下任一文件时，必须回看本节
   - `agentloom-studio/src/app/routes/agents/agents.$agentId.tsx`
   - `agentloom-studio/src/features/agent/components/AgentVersionToolbar.tsx`
@@ -706,6 +760,7 @@ status = step.status
 - 风险点：如果 Agent 顶部工具栏和底层版本/发布 API 不一致，用户会先看到错误入口，再在保存、发布、分享之间被后端拒绝或丢失上下文。
 
 ### 2. Signatures
+
 - Route:
   - `/agents/$agentId`
 - Components:
@@ -721,6 +776,7 @@ status = step.status
   - `publishAgent(agentId, { versionId?, label?, releaseNotes? })`
 
 ### 3. Contracts
+
 - `/agents/$agentId` 顶部工具栏动作顺序固定为：
   - 状态 badge
   - 保存画布
@@ -740,22 +796,24 @@ status = step.status
 
 ### 4. Validation & Error Matrix
 
-| 条件 | 预期行为 | 断言点 |
-| --- | --- | --- |
-| Agent 未发布 | 顶部不显示分享按钮 | `AgentVersionToolbar.test.tsx` |
-| Agent 已发布且有 `publishedVersionId` | 顶部显示分享按钮 | `AgentVersionToolbar.test.tsx` |
-| 点“保存版本”且画布 dirty | 先执行 `saveCanvas()`，成功后才创建版本 | `AgentCreateVersionDialog.test.tsx` |
-| 点“保存版本”但保存画布失败 | 中止创建版本并保留对话框上下文 | `AgentCreateVersionDialog.test.tsx` |
-| 发布弹层选择“当前编辑稿” | 调用 `publishAgent()` 时不传 `versionId` | `AgentPublishDialog.test.tsx` |
-| 发布弹层选择“已有版本” | 调用 `publishAgent()` 时带上 `versionId` | `AgentPublishDialog.test.tsx` |
-| 从历史面板进入发布弹层再关闭 | 历史面板重新打开 | `AgentVersionHistoryPanel.test.tsx` + route 组件测试/手测 |
+| 条件                                  | 预期行为                                 | 断言点                                                    |
+| ------------------------------------- | ---------------------------------------- | --------------------------------------------------------- |
+| Agent 未发布                          | 顶部不显示分享按钮                       | `AgentVersionToolbar.test.tsx`                            |
+| Agent 已发布且有 `publishedVersionId` | 顶部显示分享按钮                         | `AgentVersionToolbar.test.tsx`                            |
+| 点“保存版本”且画布 dirty              | 先执行 `saveCanvas()`，成功后才创建版本  | `AgentCreateVersionDialog.test.tsx`                       |
+| 点“保存版本”但保存画布失败            | 中止创建版本并保留对话框上下文           | `AgentCreateVersionDialog.test.tsx`                       |
+| 发布弹层选择“当前编辑稿”              | 调用 `publishAgent()` 时不传 `versionId` | `AgentPublishDialog.test.tsx`                             |
+| 发布弹层选择“已有版本”                | 调用 `publishAgent()` 时带上 `versionId` | `AgentPublishDialog.test.tsx`                             |
+| 从历史面板进入发布弹层再关闭          | 历史面板重新打开                         | `AgentVersionHistoryPanel.test.tsx` + route 组件测试/手测 |
 
 ### 5. Good / Base / Bad Cases
+
 - Good：用户修改画布后点击“保存版本”，系统先保存草稿再创建快照；随后打开历史记录，从某个旧版本发起发布，发布成功后回到历史面板并看到最新 published 状态，顶部分享按钮同步出现。
 - Base：用户直接从顶部点“发布”，选择“当前编辑稿”并填写发布标签；成功后 toolbar badge 与版本列表同步刷新。
 - Bad：未发布 Agent 先显示分享按钮，点进去才收到后端报错；或者从历史面板点发布后，发布弹层关闭时把历史面板也关掉，用户看不到发布结果。
 
 ### 6. Tests Required
+
 - `agentloom-studio/src/features/agent/components/AgentVersionToolbar.test.tsx`
   - 断言分享按钮只在已发布时出现
 - `agentloom-studio/src/features/agent/components/AgentCreateVersionDialog.test.tsx`
@@ -772,9 +830,7 @@ status = step.status
 #### Wrong
 
 ```tsx
-<AgentVersionToolbar
-  onShare={() => setShareDialogOpen(true)}
-/>
+<AgentVersionToolbar onShare={() => setShareDialogOpen(true)} />
 ```
 
 #### Correct

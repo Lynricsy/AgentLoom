@@ -24,6 +24,7 @@ const {
   },
   mockEventBridge: {
     emitSubAgentConversationEvent: vi.fn(),
+    completeSubAgentConversationStream: vi.fn(),
   },
   mockDb: {},
   mockRunInTenantTransaction: vi.fn(
@@ -57,6 +58,7 @@ const DEFAULT_PARENT_CONTEXT = {
   conversationId: 'conversation-1',
   depth: 0,
   tenantId: 'tenant-1',
+  parentUsesSandboxRuntime: false,
   visitedAgentIds: new Set<string>(['parent-agent']),
 };
 
@@ -196,6 +198,15 @@ describe('SubAgentToolsProvider', () => {
       'tenant-1',
       { type: 'message_chunk', content: 'child-chunk' },
       expect.objectContaining({ alias: 'writer', parentToolCallId: 'call-1' }),
+    );
+    expect(
+      mockEventBridge.completeSubAgentConversationStream,
+    ).toHaveBeenCalledWith(
+      'conversation-1',
+      'tenant-1',
+      expect.objectContaining({ alias: 'writer', parentToolCallId: 'call-1' }),
+      SubAgentRunStatus.COMPLETED,
+      undefined,
     );
   });
 

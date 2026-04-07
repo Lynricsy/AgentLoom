@@ -60,6 +60,10 @@ const {
     emitStepAgentEvent: vi.fn(),
     emitOutputChunk: vi.fn(),
     emitToolCallStatus: vi.fn(),
+    beginSubAgentConversationCapture: vi.fn(),
+    consumeSubAgentConversationCapture: vi.fn(),
+    clearSubAgentConversationCapture: vi.fn(),
+    completeSubAgentConversationStream: vi.fn(),
   },
   mockSandboxService: {
     findByConversationId: vi.fn(),
@@ -287,6 +291,14 @@ describe('AgentExecutionWorker', () => {
     mockWorkspaceIntegrationService.startFileWatcher.mockReset();
     mockWorkspaceIntegrationService.captureConversationWorkspaceTreeSnapshot.mockReset();
     mockWorkspaceIntegrationService.stageConversationAttachment.mockReset();
+    mockEventBridge.beginSubAgentConversationCapture
+      .mockReset()
+      .mockReturnValue('capture-1');
+    mockEventBridge.consumeSubAgentConversationCapture
+      .mockReset()
+      .mockReturnValue({});
+    mockEventBridge.clearSubAgentConversationCapture.mockReset();
+    mockEventBridge.completeSubAgentConversationStream.mockReset();
     mockMemoryToolsService.createSessionToolProvider.mockReset();
     mockMemoryFusionService.bootAll.mockReset();
     mockMemoryResourceProvider.create.mockReset();
@@ -2323,6 +2335,82 @@ describe('AgentExecutionWorker', () => {
       );
     });
 
+    it('应把本轮子代理实时流打包进 turnResult，供历史瀑布回放', async () => {
+      const turnWorker = worker as unknown as {
+        runConversationTurn: (
+          runtime: typeof mockRuntime,
+          session: ReturnType<typeof makeSession>,
+          conversationId: string,
+          tenantId: string,
+          pendingMessages: Array<{
+            id: string;
+            content: string;
+            createdAt: Date;
+          }>,
+          hasPriorTurns: boolean,
+        ) => Promise<{
+          assistantText: string;
+          stopReason: string;
+          subAgentStreams: Record<string, unknown>;
+        }>;
+      };
+
+      mockEventBridge.beginSubAgentConversationCapture.mockReturnValueOnce(
+        'capture-subagent-1',
+      );
+      mockEventBridge.consumeSubAgentConversationCapture.mockReturnValueOnce({
+        sa_hist_1: {
+          handle: 'sa_hist_1',
+          alias: 'researcher',
+          depth: 1,
+          parentToolCallId: 'tool-parent',
+          status: 'completed',
+          startedAt: 1_700_000_000_000,
+          completedAt: 1_700_000_001_000,
+          events: [
+            {
+              id: 'evt-1',
+              type: 'message_chunk',
+              payload: { chunk: '历史子代理输出' },
+              timestamp: 1_700_000_000_100,
+            },
+          ],
+        },
+      });
+      mockRuntime.prompt.mockReturnValueOnce(
+        createAsyncIterable([
+          { type: 'message_chunk', content: '主 agent 正文' },
+          { type: 'done', stopReason: 'end_turn' },
+        ]),
+      );
+
+      const result = await turnWorker.runConversationTurn(
+        mockRuntime as never,
+        makeSession(),
+        'conversation-1',
+        'tenant-1',
+        [{ id: 'message-1', content: '继续分析', createdAt: new Date() }],
+        true,
+      );
+
+      expect(
+        mockEventBridge.beginSubAgentConversationCapture,
+      ).toHaveBeenCalledWith('conversation-1');
+      expect(
+        mockEventBridge.consumeSubAgentConversationCapture,
+      ).toHaveBeenCalledWith('conversation-1', 'capture-subagent-1');
+      expect(
+        mockEventBridge.clearSubAgentConversationCapture,
+      ).toHaveBeenCalledWith('conversation-1', 'capture-subagent-1');
+      expect(result.subAgentStreams).toEqual({
+        sa_hist_1: expect.objectContaining({
+          handle: 'sa_hist_1',
+          alias: 'researcher',
+          status: 'completed',
+        }),
+      });
+    });
+
     it('runtime.prompt 中途 terminated 时会把已流出的 partial turn 挂到错误对象上', async () => {
       const turnWorker = worker as unknown as {
         runConversationTurn: (
@@ -2346,6 +2434,29 @@ describe('AgentExecutionWorker', () => {
         }>;
       };
 
+      mockEventBridge.beginSubAgentConversationCapture.mockReturnValueOnce(
+        'capture-subagent-error',
+      );
+      mockEventBridge.consumeSubAgentConversationCapture.mockReturnValueOnce({
+        sa_failed_1: {
+          handle: 'sa_failed_1',
+          alias: 'writer',
+          depth: 1,
+          parentToolCallId: 'tool-parent',
+          status: 'failed',
+          startedAt: 1_700_000_000_000,
+          completedAt: 1_700_000_001_000,
+          error: 'terminated',
+          events: [
+            {
+              id: 'evt-1',
+              type: 'status_changed',
+              payload: { status: 'failed', error: 'terminated' },
+              timestamp: 1_700_000_001_000,
+            },
+          ],
+        },
+      });
       mockRuntime.prompt.mockReturnValueOnce(
         createFailingAsyncIterable(
           [
@@ -2390,8 +2501,17 @@ describe('AgentExecutionWorker', () => {
             { type: 'text', content: '已经抓到第一批线索。' },
             { type: 'tool_call', toolCallId: 'tool-1' },
           ],
+          subAgentStreams: {
+            sa_failed_1: expect.objectContaining({
+              handle: 'sa_failed_1',
+              status: 'failed',
+            }),
+          },
         },
       });
+      expect(
+        mockEventBridge.clearSubAgentConversationCapture,
+      ).toHaveBeenCalledWith('conversation-1', 'capture-subagent-error');
     });
   });
 

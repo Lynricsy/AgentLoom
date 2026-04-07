@@ -43,6 +43,7 @@ export const ConversationEventName = {
   AGENT_TOOL_CALL: 'conversation.agent.tool_call',
   AGENT_TOOL_RESULT: 'conversation.agent.tool_result',
   AGENT_DONE: 'conversation.agent.done',
+  SUBAGENT_STATUS: 'conversation.subagent.status',
   SANDBOX_TERMINAL_OUTPUT: 'conversation.sandbox.terminal_output',
   SANDBOX_FILE_CHANGE: 'conversation.sandbox.file_change',
   STATUS_CHANGED: 'conversation.status.changed',
@@ -606,9 +607,15 @@ export class AgentConversationGateway
       case 'message_chunk':
         conversationEvent = ConversationEventName.AGENT_MESSAGE_CHUNK;
         break;
-      case 'tool_call':
-        conversationEvent = ConversationEventName.AGENT_TOOL_CALL;
+      case 'tool_call': {
+        const toolStatus =
+          'call' in payload.event ? payload.event.call.status : undefined;
+        conversationEvent =
+          toolStatus === 'completed' || toolStatus === 'failed'
+            ? ConversationEventName.AGENT_TOOL_RESULT
+            : ConversationEventName.AGENT_TOOL_CALL;
         break;
+      }
       case 'decision':
         conversationEvent = ConversationEventName.AGENT_THINKING;
         break;
@@ -632,6 +639,28 @@ export class AgentConversationGateway
       payload.tenantId,
       payload.conversationId,
       conversationEvent,
+      envelope,
+    );
+  }
+
+  @OnEvent('conversation.subagent.status')
+  handleSubAgentStatus(payload: {
+    conversationId: string;
+    tenantId: string;
+    subagent: SubAgentEventEnvelope;
+    handle: string;
+    status: string;
+    error?: string;
+  }): void {
+    const envelope = this.buildEventPayload(
+      payload.conversationId,
+      payload.tenantId,
+      payload as unknown as Record<string, unknown>,
+    );
+    this.broadcastConversationEvent(
+      payload.tenantId,
+      payload.conversationId,
+      ConversationEventName.SUBAGENT_STATUS,
       envelope,
     );
   }
