@@ -27,6 +27,7 @@ import { useToast } from "@/shared/ui/toast";
 import { useAuthToken } from "@/features/auth/hooks/useAuthToken";
 import { useAgent } from "@/features/agent/api/agentQueries";
 import { SubAgentNavContext } from "@/shared/components/tool-renderers/renderers/SubAgentRenderer";
+import { resolveSubAgentView } from "../subAgentView";
 import { resolveConversationWorkspacePreviewId } from "../workspacePreview";
 import { MessageList } from "./MessageList";
 import { SandboxComputerPanel } from "./SandboxComputerPanel";
@@ -34,10 +35,7 @@ import { WorkspaceFileTree } from "./WorkspaceFileTree";
 import { AgentViewBreadcrumb } from "./AgentViewBreadcrumb";
 import type {
   ConversationAttachment,
-  ConversationMessage,
   OutgoingConversationMessage,
-  SubAgentStream,
-  ToolCall,
 } from "../types";
 import {
   describeConversationAttachmentsSummary,
@@ -194,127 +192,6 @@ function buildAttachmentConversationMessage(
   };
 }
 
-function buildSubAgentMessages(stream: SubAgentStream): ConversationMessage[] {
-  const messages: ConversationMessage[] = [];
-  let assistantIdx = -1;
-
-  function ensureAssistant(): ConversationMessage {
-    if (assistantIdx >= 0) return messages[assistantIdx]!;
-    const msg: ConversationMessage = {
-      id: crypto.randomUUID(),
-      role: "assistant",
-      content: "",
-      contentType: "text",
-      toolCalls: [],
-      segments: [],
-      isStreaming: true,
-      createdAt: Date.now(),
-    };
-    messages.push(msg);
-    assistantIdx = messages.length - 1;
-    return msg;
-  }
-
-  for (const event of stream.events) {
-    switch (event.type) {
-      case "message_chunk": {
-        const msg = ensureAssistant();
-        const payload = event.payload as { chunk?: string };
-        const chunk = payload.chunk ?? "";
-        msg.content += chunk;
-        // 维护 segments
-        const lastSeg = msg.segments[msg.segments.length - 1];
-        if (lastSeg && lastSeg.type === "text") {
-          lastSeg.content += chunk;
-        } else {
-          msg.segments.push({ type: "text", content: chunk });
-        }
-        break;
-      }
-      case "thinking": {
-        const msg = ensureAssistant();
-        const payload = event.payload as { content?: string };
-        const content = payload.content ?? "";
-        msg.thinking = (msg.thinking ?? "") + content;
-        const lastSeg = msg.segments[msg.segments.length - 1];
-        if (lastSeg && lastSeg.type === "thinking") {
-          lastSeg.content += content;
-        } else {
-          msg.segments.push({ type: "thinking", content });
-        }
-        break;
-      }
-      case "tool_call": {
-        const msg = ensureAssistant();
-        const p = event.payload as {
-          toolCallId?: string;
-          tool?: string;
-          toolName?: string;
-          name?: string;
-          args?: unknown;
-          status?: string;
-        };
-        const toolCallId = p.toolCallId ?? event.id;
-        if (!msg.toolCalls.some((tc) => tc.id === toolCallId)) {
-          msg.toolCalls.push({
-            id: toolCallId,
-            tool: p.tool ?? p.toolName ?? p.name ?? "unknown",
-            args: p.args,
-            status: (p.status as ToolCall["status"]) ?? "pending",
-            startedAt: event.timestamp,
-            updatedAt: event.timestamp,
-          });
-          msg.segments.push({ type: "tool_call", toolCallId });
-        }
-        break;
-      }
-      case "tool_result": {
-        const msg = ensureAssistant();
-        const p = event.payload as {
-          toolCallId?: string;
-          tool?: string;
-          toolName?: string;
-          name?: string;
-          args?: unknown;
-          result?: unknown;
-          error?: string;
-          status?: string;
-        };
-        const toolCallId = p.toolCallId ?? event.id;
-        const existing = msg.toolCalls.find((tc) => tc.id === toolCallId);
-        if (existing) {
-          if (p.result !== undefined) existing.result = p.result;
-          if (p.error) existing.error = p.error;
-          existing.status = (p.status as ToolCall["status"]) ?? "completed";
-          existing.updatedAt = event.timestamp;
-        } else {
-          msg.toolCalls.push({
-            id: toolCallId,
-            tool: p.tool ?? p.toolName ?? p.name ?? "unknown",
-            args: p.args,
-            result: p.result,
-            error: p.error,
-            status: (p.status as ToolCall["status"]) ?? "completed",
-            startedAt: event.timestamp,
-            updatedAt: event.timestamp,
-          });
-          msg.segments.push({ type: "tool_call", toolCallId });
-        }
-        break;
-      }
-      case "done": {
-        if (assistantIdx >= 0) {
-          messages[assistantIdx]!.isStreaming = false;
-          assistantIdx = -1;
-        }
-        break;
-      }
-    }
-  }
-
-  return messages;
-}
-
 function ResizableDivider({
   onResize,
   direction,
@@ -405,7 +282,9 @@ export function ConversationComposer({
         const content =
           trimmed || describeConversationAttachmentsSummary(pendingAttachments);
         await Promise.resolve(
-          onSend(buildAttachmentConversationMessage(content, pendingAttachments)),
+          onSend(
+            buildAttachmentConversationMessage(content, pendingAttachments),
+          ),
         );
       }
       setDraft("");
@@ -669,6 +548,7 @@ export function AgentConversationPage({
   conversationId,
   onBack,
 }: AgentConversationPageProps) {
+  const { notify } = useToast();
   const navigate = useNavigate();
   const agentQuery = useAgent(agentId);
   const messages = useConversationMessages();
@@ -814,15 +694,62 @@ export function AgentConversationPage({
   const currentHandle = isSubAgentView
     ? agentViewStack[agentViewStack.length - 1]
     : null;
-  const currentStream = currentHandle ? subAgentStreams[currentHandle] : null;
+  const currentSubAgentView = useMemo(
+    () =>
+      currentHandle
+        ? resolveSubAgentView(
+            currentHandle,
+            subAgentStreams[currentHandle] ?? null,
+            messages,
+          )
+        : null,
+    [currentHandle, messages, subAgentStreams],
+  );
+  const breadcrumbLabels = useMemo(() => {
+    const labels: Record<string, string> = {};
+    for (const handle of agentViewStack) {
+      const resolvedView = resolveSubAgentView(
+        handle,
+        subAgentStreams[handle] ?? null,
+        messages,
+      );
+      labels[handle] = resolvedView?.alias ?? handle;
+    }
+    return labels;
+  }, [agentViewStack, messages, subAgentStreams]);
   const displayMessages = useMemo(
-    () => (currentStream ? buildSubAgentMessages(currentStream) : messages),
-    [currentStream, messages],
+    () => currentSubAgentView?.messages ?? messages,
+    [currentSubAgentView, messages],
+  );
+
+  const handleDrillIn = useCallback(
+    (handle: string) => {
+      if (currentHandle === handle) {
+        return;
+      }
+
+      const nextView = resolveSubAgentView(
+        handle,
+        subAgentStreams[handle] ?? null,
+        messages,
+      );
+      if (!nextView) {
+        notify({
+          description:
+            "当前没有可恢复的子代理视图数据。完整子代理瀑布仅在实时执行期间可见。",
+          variant: "warning",
+        });
+        return;
+      }
+
+      actions.pushAgentView(handle);
+    },
+    [actions, currentHandle, messages, notify, subAgentStreams],
   );
 
   const subAgentNavValue = useMemo(
-    () => ({ onDrillIn: actions.pushAgentView }),
-    [actions.pushAgentView],
+    () => ({ onDrillIn: handleDrillIn }),
+    [handleDrillIn],
   );
 
   const handleRestartConversation = useCallback(async () => {
@@ -924,7 +851,7 @@ export function AgentConversationPage({
           <AgentViewBreadcrumb
             agentName={agentName || "Agent"}
             viewStack={agentViewStack}
-            subAgentStreams={subAgentStreams}
+            labelsByHandle={breadcrumbLabels}
             onNavigate={actions.navigateToAgentView}
           />
         )}

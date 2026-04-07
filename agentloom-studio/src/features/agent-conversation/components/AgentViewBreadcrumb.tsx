@@ -1,32 +1,31 @@
-import { memo, useCallback } from 'react'
-import { ArrowLeft, Bot, ChevronRight } from 'lucide-react'
-import { cn } from '@/shared/lib/utils'
-import type { SubAgentStream } from '../types'
+import { memo, useCallback } from "react";
+import { ArrowLeft, Bot, ChevronRight } from "lucide-react";
+import { cn } from "@/shared/lib/utils";
 
 interface AgentViewBreadcrumbProps {
-  agentName: string
-  viewStack: string[]
-  subAgentStreams: Record<string, SubAgentStream>
-  onNavigate: (index: number) => void
+  agentName: string;
+  viewStack: string[];
+  labelsByHandle: Record<string, string>;
+  onNavigate: (index: number) => void;
 }
 
 export const AgentViewBreadcrumb = memo(function AgentViewBreadcrumb({
   agentName,
   viewStack,
-  subAgentStreams,
+  labelsByHandle,
   onNavigate,
 }: AgentViewBreadcrumbProps) {
   const handleBack = useCallback(() => {
-    onNavigate(viewStack.length - 1)
-  }, [onNavigate, viewStack.length])
+    onNavigate(viewStack.length - 1);
+  }, [onNavigate, viewStack.length]);
 
   const segments = [
     { label: agentName, index: 0 },
     ...viewStack.map((handle, i) => ({
-      label: subAgentStreams[handle]?.alias ?? handle,
+      label: labelsByHandle[handle] ?? handle,
       index: i + 1,
     })),
-  ]
+  ];
 
   return (
     <div className="flex items-center gap-2 border-b border-border bg-surface px-4 py-1.5">
@@ -41,8 +40,8 @@ export const AgentViewBreadcrumb = memo(function AgentViewBreadcrumb({
 
       <div className="flex items-center gap-1 overflow-hidden">
         {segments.map((seg, i) => {
-          const isLast = i === segments.length - 1
-          const isFirst = i === 0
+          const isLast = i === segments.length - 1;
+          const isFirst = i === 0;
           return (
             <div key={seg.index} className="flex items-center gap-1 min-w-0">
               {i > 0 && (
@@ -58,17 +57,17 @@ export const AgentViewBreadcrumb = memo(function AgentViewBreadcrumb({
                   type="button"
                   onClick={() => onNavigate(seg.index)}
                   className={cn(
-                    'truncate text-xs text-muted-foreground transition-colors hover:text-foreground',
-                    'cursor-pointer',
+                    "truncate text-xs text-muted-foreground transition-colors hover:text-foreground",
+                    "cursor-pointer",
                   )}
                 >
                   {seg.label}
                 </button>
               )}
             </div>
-          )
+          );
         })}
       </div>
     </div>
-  )
-})
+  );
+});

@@ -32,7 +32,7 @@ AgentLoom Studio 是基于 **React 19 + Vite 7** 的前端工作台，负责工�
 | `/resources/workspaces/$workspaceId`             | WorkspaceDetailPage            | 持久化 workspace 详情页；目录树 + Monaco 文本预览/编辑 + 图片 / PDF 预览，其他文件提供下载兜底                                                                                                                                            |
 | `/agents/$agentId`                               | AgentCanvasPage                | Agent 画布编辑器；顶部工具栏提供状态、保存画布、保存版本、历史记录、发布，以及仅在已发布时才显示的分享入口                                                                                                                                |
 | `/agents/$agentId/conversations/new`             | NewConversationDraftPage       | 新对话草稿页；首条消息发送成功后才创建真实 conversation 并跳转正式会话                                                                                                                                                                    |
-| `/agents/$agentId/conversations/$conversationId` | AgentConversationPage          | 三列对话页；sandbox Agent 会在 live workspace 就绪前先显示持久化工作区目录预览，右侧电脑面板通过会话级 `sandbox/stats` + `sandbox/processes` 展示真实进程快照，并保留文件变更/工具运行上下文，支持图片/文件草稿队列、多附件同发与附件预览 |
+| `/agents/$agentId/conversations/$conversationId` | AgentConversationPage          | 三列对话页；sandbox Agent 会在 live workspace 就绪前先显示持久化工作区目录预览，右侧电脑面板通过会话级 `sandbox/stats` + `sandbox/processes` 展示真实进程快照，并保留文件变更/工具运行上下文；子代理 drill-in 视图优先显示 live 瀑布，缺少实时流时回退到历史摘要视图；支持图片/文件草稿队列、多附件同发与附件预览 |
 | `/settings/tool-library`                         | ToolLibraryPage                | MCP 工具库                                                                                                                                                                                                                                |
 | `/marketplace`                                   | MarketplaceBrowsePage          | 工作流 / 插件市场                                                                                                                                                                                                                         |
 
@@ -45,6 +45,12 @@ AgentLoom Studio 是基于 **React 19 + Vite 7** 的前端工作台，负责工�
 - `AgentConversationPage` 在 sandbox Agent 对话冷开时，会先尝试加载持久化工作区目录预览，再等待 live sandbox 的 authoritative tree 接管。
 - 若 Agent detail 同时包含顶层 `workspaceSnapshotId` 与 `sandboxConfig.restoreWorkspaceId`，前端必须优先使用 `restoreWorkspaceId` 作为 preview preload 来源；因为 live sandbox 真正恢复的就是该工作区。
 - 只有不存在 `restoreWorkspaceId` 时，才回退到顶层 `workspaceSnapshotId`。
+
+## Agent 子代理视图事实
+
+- `AgentConversationPage` 的子代理 drill-in 视图优先消费 live `subAgentStreams`，因此实时执行中的 child 可以继续按消息瀑布与工具调用展开。
+- 当页面只拿到历史消息而没有 live subagent stream 时，前端会从 `wait_for_subagents` / `get_subagent_status` 的结果和 `subagent_completion_notice` 合成一个历史摘要视图，至少保留状态与结果摘要。
+- 若 live 与历史都没有该 handle 的可展示数据，点击“进入子代理视图”不会再制造只改变 breadcrumb 的假切换。
 
 ## Agent 对话附件事实
 
