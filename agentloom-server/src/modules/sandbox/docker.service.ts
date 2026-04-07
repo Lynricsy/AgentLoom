@@ -122,18 +122,24 @@ export class DockerService implements SandboxRuntimeDriver {
       }
 
       const hostConfig: Docker.ContainerCreateOptions['HostConfig'] = {
-        PortBindings: {
-          [SANDBOX_AGENT_PORT]: [{ HostPort: '0' }],
-        },
         NanoCpus: config.cpu * CPU_CORE_TO_NANO,
         Memory: config.memory * MB_TO_BYTES,
         Binds: [`sandbox-${sessionId}-workspace:/workspace`],
+        ...(!sandboxNetwork
+          ? {
+              PortBindings: {
+                [SANDBOX_AGENT_PORT]: [{ HostPort: '0' }],
+              },
+            }
+          : {}),
         ...(sandboxNetwork ? { NetworkMode: sandboxNetwork } : {}),
       };
 
       const createOptions: Docker.ContainerCreateOptions = {
         Image: SANDBOX_IMAGE,
-        ExposedPorts: { [SANDBOX_AGENT_PORT]: {} },
+        ...(!sandboxNetwork
+          ? { ExposedPorts: { [SANDBOX_AGENT_PORT]: {} } }
+          : {}),
         Healthcheck: {
           Test: ['CMD-SHELL', 'test -d /workspace || exit 1'],
           Interval: HEALTHCHECK_INTERVAL_NS,

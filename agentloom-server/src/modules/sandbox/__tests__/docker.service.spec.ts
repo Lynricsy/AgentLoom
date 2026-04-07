@@ -260,20 +260,20 @@ describe('DockerService', () => {
       ).rejects.toThrow(SandboxCreationException);
     });
 
-    it('配置 APP_DOCKER_SANDBOX_NETWORK 时应将 sandbox 加入指定网络', async () => {
+    it('配置 APP_DOCKER_SANDBOX_NETWORK 时应只加入指定网络且不再发布宿主端口', async () => {
       const previous = process.env.APP_DOCKER_SANDBOX_NETWORK;
       process.env.APP_DOCKER_SANDBOX_NETWORK = 'agentloom-app';
 
       try {
         await service.createContainer('session-networked', DEFAULT_CONFIG);
 
-        expect(mockDocker.createContainer).toHaveBeenCalledWith(
-          expect.objectContaining({
-            HostConfig: expect.objectContaining({
-              NetworkMode: 'agentloom-app',
-            }),
-          }),
-        );
+        const createCall = mockDocker.createContainer.mock.calls.at(-1)?.[0];
+        expect(createCall).toBeDefined();
+        expect(createCall.HostConfig).toMatchObject({
+          NetworkMode: 'agentloom-app',
+        });
+        expect(createCall.HostConfig.PortBindings).toBeUndefined();
+        expect(createCall.ExposedPorts).toBeUndefined();
       } finally {
         if (previous === undefined) {
           delete process.env.APP_DOCKER_SANDBOX_NETWORK;
