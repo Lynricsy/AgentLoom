@@ -122,7 +122,10 @@ skills-lock.json
 .trellis/tasks/*/debug.jsonl
 .trellis/tasks/*/implement.jsonl
 .playwright-mcp/
+playwright-*.json
+playwright-*.txt
 version-history-panel-*.png
+temp/
 
 # Firebase (contains API keys)
 agentloom_mobile/android/app/google-services.json
