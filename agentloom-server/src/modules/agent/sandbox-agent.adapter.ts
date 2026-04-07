@@ -2005,7 +2005,7 @@ export class SandboxAgentAdapter implements IAgentRuntime {
           events: [
             {
               type: 'tool_call',
-              call: this.buildToolCallEvent(data, 'awaiting_permission'),
+              call: this.buildToolCallEvent(data, 'in_progress'),
             },
           ],
         };

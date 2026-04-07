@@ -807,6 +807,39 @@ describe('SandboxAgentAdapter', () => {
       ]);
     });
 
+    it('普通 tool_call_update 在缺少审批语义时应保持 in_progress', async () => {
+      const session = await adapter.createSession(defaultParams);
+      mockDockerService.getPromptUrl.mockResolvedValue(
+        'http://127.0.0.1:49123/v1/prompt',
+      );
+
+      globalThis.fetch = vi
+        .fn()
+        .mockResolvedValue(
+          createSseResponse([
+            'data: {"jsonrpc":"2.0","method":"event","params":{"type":"tool_call_update","data":{"toolCallId":"tool-2","toolName":"bash","input":{"command":"pwd"},"content":"running..."}}}\n\n',
+            'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
+          ]),
+        );
+
+      const events = await collectEvents(
+        adapter.prompt(session.id, [{ type: 'text', text: 'hello' }]),
+      );
+
+      expect(events).toEqual([
+        {
+          type: 'tool_call',
+          call: {
+            id: 'tool-2',
+            tool: 'bash',
+            args: { command: 'pwd' },
+            status: 'in_progress',
+          },
+        },
+        { type: 'done', stopReason: 'end_turn' },
+      ]);
+    });
+
     it('容器 error 事件应抛给上层', async () => {
       const session = await adapter.createSession(defaultParams);
       mockDockerService.getPromptUrl.mockResolvedValue(
