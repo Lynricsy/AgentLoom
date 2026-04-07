@@ -245,7 +245,7 @@ describe('SandboxLifecycleWorker', () => {
       expect(mockInsert).toHaveBeenCalled();
     });
 
-    it('session 模式容器创建失败时应删除 session 记录', async () => {
+    it('session 模式容器创建失败时应保留 failed 状态并记录日志', async () => {
       mockDockerService.createContainer.mockRejectedValueOnce(
         new Error('image not found'),
       );
@@ -262,8 +262,11 @@ describe('SandboxLifecycleWorker', () => {
         ),
       ).rejects.toThrow('image not found');
 
-      expect(mockDeleteWhere).toHaveBeenCalled();
-      expect(mockInsert).not.toHaveBeenCalled();
+      expect(mockDeleteWhere).not.toHaveBeenCalled();
+      expect(mockSet).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'failed' }),
+      );
+      expect(mockInsert).toHaveBeenCalled();
     });
 
     it('persistent 模式容器创建失败时应标记为 failed 并记录日志', async () => {

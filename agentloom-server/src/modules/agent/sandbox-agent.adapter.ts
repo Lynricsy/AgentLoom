@@ -15,8 +15,6 @@ import {
 import { and, eq } from 'drizzle-orm';
 import { existsSync } from 'node:fs';
 import { randomUUID, timingSafeEqual } from 'node:crypto';
-import { z } from 'zod';
-
 import { runInTenantTransaction } from '../../common/interceptors/tenant-transaction.context';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
@@ -631,6 +629,32 @@ export class SandboxAgentAdapter implements IAgentRuntime {
           : null;
 
       if (!sandboxSession) {
+        const latestSession = sandboxBinding.executionId
+          ? await this.sandboxService.findLatestByExecutionId(
+              sandboxBinding.executionId,
+              tenantId,
+              sandboxBinding.sandboxNodeId,
+            )
+          : sandboxBinding.agentConversationId
+            ? await this.sandboxService.findLatestByConversationId(
+                sandboxBinding.agentConversationId,
+                tenantId,
+              )
+            : null;
+
+        if (
+          latestSession &&
+          (latestSession.status === 'failed' ||
+            latestSession.status === 'stopped')
+        ) {
+          throw new Error(
+            await this.describeUnavailableSandboxSession(
+              latestSession,
+              bindingLabel,
+            ),
+          );
+        }
+
         throw new Error(`Sandbox session not found for ${bindingLabel}`);
       }
 
@@ -658,6 +682,36 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     }
 
     throw new Error(`Sandbox session is not ready for ${bindingLabel}`);
+  }
+
+  private async describeUnavailableSandboxSession(
+    session: SandboxSession,
+    bindingLabel: string,
+  ): Promise<string> {
+    if (session.status === 'failed') {
+      try {
+        const logs = await this.sandboxService.getSandboxLogs(session.id);
+        const latestFailureLog = [...logs]
+          .reverse()
+          .find(
+            (log) =>
+              log.level === 'system' &&
+              log.message.startsWith('Sandbox creation failed:'),
+          );
+
+        if (latestFailureLog) {
+          return latestFailureLog.message;
+        }
+      } catch (error) {
+        this.logger.warn(
+          `Failed to load sandbox logs for ${session.id}: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        );
+      }
+    }
+
+    return `Sandbox session ${session.id} is ${session.status} for ${bindingLabel}`;
   }
 
   private readSandboxBinding(

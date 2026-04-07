@@ -31,6 +31,9 @@ describe('SandboxAgentAdapter', () => {
   let mockSandboxService: {
     getSandboxSession: ReturnType<typeof vi.fn>;
     findByConversationId: ReturnType<typeof vi.fn>;
+    findLatestByExecutionId: ReturnType<typeof vi.fn>;
+    findLatestByConversationId: ReturnType<typeof vi.fn>;
+    getSandboxLogs: ReturnType<typeof vi.fn>;
   };
   let mockDockerService: {
     getPromptUrl: ReturnType<typeof vi.fn>;
@@ -144,6 +147,9 @@ describe('SandboxAgentAdapter', () => {
         status: 'ready',
         containerId: 'abc123def456',
       }),
+      findLatestByExecutionId: vi.fn().mockResolvedValue(null),
+      findLatestByConversationId: vi.fn().mockResolvedValue(null),
+      getSandboxLogs: vi.fn().mockResolvedValue([]),
     };
     mockDockerService = {
       getPromptUrl: vi.fn(),
@@ -547,6 +553,39 @@ describe('SandboxAgentAdapter', () => {
         'abc123def456',
       );
       expect(session.status).toBe('active');
+    });
+
+    it('conversation sandbox 创建失败后应优先抛出最近失败日志', async () => {
+      mockSandboxService.findByConversationId.mockResolvedValueOnce(null);
+      mockSandboxService.findLatestByConversationId.mockResolvedValueOnce({
+        id: 'sandbox-failed',
+        status: 'failed',
+        containerId: null,
+      });
+      mockSandboxService.getSandboxLogs.mockResolvedValueOnce([
+        {
+          id: 'log-1',
+          sessionId: 'sandbox-failed',
+          level: 'system',
+          message: 'Sandbox creation failed: image not found',
+          createdAt: new Date('2026-04-07T10:00:00Z'),
+        },
+      ]);
+
+      await expect(
+        adapter.createSession({
+          ...defaultParams,
+          context: { agentConversationId: 'conv-001' },
+        }),
+      ).rejects.toThrow('Sandbox creation failed: image not found');
+
+      expect(
+        mockSandboxService.findLatestByConversationId,
+      ).toHaveBeenCalledWith('conv-001', 'tenant-001');
+      expect(mockSandboxService.getSandboxLogs).toHaveBeenCalledWith(
+        'sandbox-failed',
+      );
+      expect(mockDockerService.getSessionUrl).not.toHaveBeenCalled();
     });
 
     it('容器 session 初始化失败时应设置会话状态为 error 并抛出', async () => {

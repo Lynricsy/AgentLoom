@@ -194,33 +194,22 @@ export class SandboxLifecycleWorker extends WorkerHost {
           });
       }
 
-      const isSessionMode = (config?.lifecycleMode ?? 'session') === 'session';
-
       await runInTenantTransaction(this.db, tenantId, async (tenantDb) => {
-        if (isSessionMode) {
-          // Session-mode: hard-delete row (FK cascade removes logs)
-          await tenantDb
-            .delete(schema.sandboxSessions)
-            .where(eq(schema.sandboxSessions.id, sessionId));
-        } else {
-          await tenantDb
-            .update(schema.sandboxSessions)
-            .set({
-              status: 'failed',
-              stoppedAt: new Date(),
-            })
-            .where(eq(schema.sandboxSessions.id, sessionId));
-        }
+        await tenantDb
+          .update(schema.sandboxSessions)
+          .set({
+            status: 'failed',
+            stoppedAt: new Date(),
+          })
+          .where(eq(schema.sandboxSessions.id, sessionId));
       });
 
-      if (!isSessionMode) {
-        await this.insertLog(
-          sessionId,
-          'system',
-          `Sandbox creation failed: ${error instanceof Error ? error.message : String(error)}`,
-          tenantId,
-        );
-      }
+      await this.insertLog(
+        sessionId,
+        'system',
+        `Sandbox creation failed: ${error instanceof Error ? error.message : String(error)}`,
+        tenantId,
+      );
 
       throw error;
     }

@@ -166,6 +166,14 @@ export class SandboxService {
     return this.findActiveSession({ executionId, tenantId, sandboxNodeId });
   }
 
+  async findLatestByExecutionId(
+    executionId: string,
+    tenantId: string,
+    sandboxNodeId?: string | null,
+  ): Promise<SandboxSession | null> {
+    return this.findLatestSession({ executionId, tenantId, sandboxNodeId });
+  }
+
   async getSandboxSession(
     executionId: string,
     tenantId: string,
@@ -179,6 +187,13 @@ export class SandboxService {
     tenantId: string,
   ): Promise<SandboxSession | null> {
     return this.findActiveSession({ agentConversationId, tenantId });
+  }
+
+  async findLatestByConversationId(
+    agentConversationId: string,
+    tenantId: string,
+  ): Promise<SandboxSession | null> {
+    return this.findLatestSession({ agentConversationId, tenantId });
   }
 
   async getConversationSandboxStats(
@@ -535,6 +550,46 @@ export class SandboxService {
     });
   }
 
+  private async findLatestSession(
+    params: ActiveSandboxLookupParams,
+  ): Promise<SandboxSession | null> {
+    const { executionId, agentConversationId, tenantId, sandboxNodeId } =
+      params;
+    this.ensureBinding({ executionId, agentConversationId });
+
+    const [session] = await this.tenantDb
+      .select()
+      .from(schema.sandboxSessions)
+      .where(
+        this.buildSessionWhere(
+          {
+            executionId,
+            agentConversationId,
+            sandboxNodeId,
+            tenantId,
+          },
+          { includeNonActive: true },
+        ),
+      )
+      .orderBy(desc(schema.sandboxSessions.createdAt))
+      .limit(1);
+
+    if (session) {
+      return session;
+    }
+
+    if (typeof sandboxNodeId !== 'string') {
+      return null;
+    }
+
+    return this.findLatestPersistentSessionByBinding({
+      executionId,
+      agentConversationId,
+      sandboxNodeId,
+      tenantId,
+    });
+  }
+
   private async findActiveSessions(
     params: ActiveSandboxLookupParams,
   ): Promise<SandboxSession[]> {
@@ -569,12 +624,27 @@ export class SandboxService {
   }
 
   private buildActiveSessionWhere(params: ActiveSandboxLookupParams) {
+    return this.buildSessionWhere(params, { includeNonActive: false });
+  }
+
+  private buildSessionWhere(
+    params: ActiveSandboxLookupParams,
+    options: { includeNonActive: boolean },
+  ) {
     const { executionId, agentConversationId, tenantId, sandboxNodeId } =
       params;
+    const { includeNonActive } = options;
     const sandboxNodeCondition =
       typeof sandboxNodeId === 'string'
         ? eq(schema.sandboxSessions.sandboxNodeId, sandboxNodeId)
         : undefined;
+    const activeStatusCondition = includeNonActive
+      ? []
+      : [
+          notInArray(schema.sandboxSessions.status, [
+            ...NON_ACTIVE_SESSION_STATUSES,
+          ]),
+        ];
 
     if (executionId && agentConversationId) {
       return and(
@@ -582,9 +652,7 @@ export class SandboxService {
         eq(schema.sandboxSessions.agentConversationId, agentConversationId),
         ...(sandboxNodeCondition ? [sandboxNodeCondition] : []),
         eq(schema.sandboxSessions.tenantId, tenantId),
-        notInArray(schema.sandboxSessions.status, [
-          ...NON_ACTIVE_SESSION_STATUSES,
-        ]),
+        ...activeStatusCondition,
       );
     }
 
@@ -593,9 +661,7 @@ export class SandboxService {
         eq(schema.sandboxSessions.executionId, executionId),
         ...(sandboxNodeCondition ? [sandboxNodeCondition] : []),
         eq(schema.sandboxSessions.tenantId, tenantId),
-        notInArray(schema.sandboxSessions.status, [
-          ...NON_ACTIVE_SESSION_STATUSES,
-        ]),
+        ...activeStatusCondition,
       );
     }
 
@@ -603,9 +669,7 @@ export class SandboxService {
       return and(
         eq(schema.sandboxSessions.agentConversationId, agentConversationId),
         eq(schema.sandboxSessions.tenantId, tenantId),
-        notInArray(schema.sandboxSessions.status, [
-          ...NON_ACTIVE_SESSION_STATUSES,
-        ]),
+        ...activeStatusCondition,
       );
     }
 
@@ -642,6 +706,49 @@ export class SandboxService {
           sql`${schema.sandboxSessions.config}->>'lifecycleMode' = 'persistent'`,
         ),
       )
+      .limit(20);
+
+    return (
+      candidates.find((candidate) =>
+        this.getPersistentBindings(candidate).some((binding) =>
+          this.bindingsEqual(binding, targetBinding),
+        ),
+      ) ?? null
+    );
+  }
+
+  private async findLatestPersistentSessionByBinding(
+    params: ActiveSandboxLookupParams,
+  ): Promise<SandboxSession | null> {
+    const targetBinding = this.normalizeBinding({
+      executionId: params.executionId,
+      agentConversationId: params.agentConversationId,
+      sandboxNodeId: params.sandboxNodeId,
+    });
+
+    if (
+      !this.hasBindingIdentity(targetBinding) ||
+      typeof targetBinding.sandboxNodeId !== 'string'
+    ) {
+      return null;
+    }
+
+    const candidates = await this.tenantDb
+      .select()
+      .from(schema.sandboxSessions)
+      .where(
+        and(
+          this.buildSessionWhere(
+            {
+              ...params,
+              sandboxNodeId: undefined,
+            },
+            { includeNonActive: true },
+          ),
+          sql`${schema.sandboxSessions.config}->>'lifecycleMode' = 'persistent'`,
+        ),
+      )
+      .orderBy(desc(schema.sandboxSessions.createdAt))
       .limit(20);
 
     return (
