@@ -58,12 +58,18 @@ export async function createSandbox(
   return response.data
 }
 
-export async function stopSandbox(sessionId: string): Promise<void> {
-  await apiClient.post(`${BASE_PATH}/${sessionId}/stop`)
+export async function stopSandbox(sessionId: string): Promise<SandboxSession> {
+  const response = await apiClient
+    .post(`${BASE_PATH}/${sessionId}/stop`)
+    .json<ApiEnvelope<SandboxSession>>()
+  return response.data
 }
 
-export async function startSandbox(sessionId: string): Promise<void> {
-  await apiClient.post(`${BASE_PATH}/${sessionId}/start`)
+export async function startSandbox(sessionId: string): Promise<SandboxSession> {
+  const response = await apiClient
+    .post(`${BASE_PATH}/${sessionId}/start`)
+    .json<ApiEnvelope<SandboxSession>>()
+  return response.data
 }
 
 export async function deleteSandbox(sessionId: string): Promise<void> {

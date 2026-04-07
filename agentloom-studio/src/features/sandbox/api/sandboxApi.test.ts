@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { createSandbox, fetchPersistentSandboxes, fetchSandboxes } from './sandboxApi'
+import {
+  createSandbox,
+  fetchPersistentSandboxes,
+  fetchSandboxes,
+  startSandbox,
+  stopSandbox,
+} from './sandboxApi'
 
 const mocks = vi.hoisted(() => {
   const jsonMock = vi.fn()
@@ -139,5 +145,73 @@ describe('createSandbox', () => {
         conversationIdleAutoEndMinutes: 15,
       },
     })
+  })
+})
+
+describe('startSandbox', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('应返回后端回传的最新 session，用于立即更新资源页缓存', async () => {
+    const session = {
+      id: 'sandbox-1',
+      status: 'creating',
+      config: {
+        name: 'Persistent Sandbox',
+        cpu: 1,
+        memory: 512,
+        disk: 2,
+        timeout: 24,
+        lifecycleMode: 'persistent',
+      },
+      executionId: null,
+      agentConversationId: null,
+      sandboxNodeId: null,
+      containerId: null,
+      workspacePath: '/workspace',
+      startedAt: null,
+      stoppedAt: null,
+      createdAt: '2026-04-07T00:00:00.000Z',
+    }
+
+    mocks.jsonMock.mockResolvedValue({ data: session })
+
+    await expect(startSandbox('sandbox-1')).resolves.toEqual(session)
+    expect(mocks.postMock).toHaveBeenCalledWith('sandboxes/sandbox-1/start')
+  })
+})
+
+describe('stopSandbox', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('应返回后端回传的最新 session，用于立即更新资源页缓存', async () => {
+    const session = {
+      id: 'sandbox-1',
+      status: 'stopping',
+      config: {
+        name: 'Persistent Sandbox',
+        cpu: 1,
+        memory: 512,
+        disk: 2,
+        timeout: 24,
+        lifecycleMode: 'persistent',
+      },
+      executionId: null,
+      agentConversationId: null,
+      sandboxNodeId: null,
+      containerId: 'ctr-1',
+      workspacePath: '/workspace',
+      startedAt: '2026-04-07T00:00:00.000Z',
+      stoppedAt: null,
+      createdAt: '2026-04-06T00:00:00.000Z',
+    }
+
+    mocks.jsonMock.mockResolvedValue({ data: session })
+
+    await expect(stopSandbox('sandbox-1')).resolves.toEqual(session)
+    expect(mocks.postMock).toHaveBeenCalledWith('sandboxes/sandbox-1/stop')
   })
 })

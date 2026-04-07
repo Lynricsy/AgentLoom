@@ -9,7 +9,8 @@ import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { sandboxKeys } from './sandboxKeys'
-import { useSandboxStats } from './sandboxQueries'
+import { useSandboxStats, useSandboxes } from './sandboxQueries'
+import type { SandboxListResponse, SandboxSession } from '../types'
 
 const {
   fetchSandboxStatsMock,
@@ -37,6 +38,16 @@ type StatsQueryWithRefetchInterval = StatsQuery & {
   }
 }
 
+type SandboxesQuery = Query<unknown, Error, unknown, readonly unknown[]>
+type SandboxesQueryWithRefetchInterval = SandboxesQuery & {
+  options: SandboxesQuery['options'] & {
+    refetchInterval?:
+      | ((query: SandboxesQuery) => false | number)
+      | false
+      | number
+  }
+}
+
 function createWrapper() {
   const queryClient = new QueryClient({
     defaultOptions: {
@@ -56,6 +67,33 @@ function createWrapper() {
   }
 }
 
+function makeSession(
+  overrides: Partial<SandboxSession> = {},
+): SandboxSession {
+  return {
+    id: 'session-1',
+    executionId: null,
+    agentConversationId: null,
+    sandboxNodeId: null,
+    containerId: 'container-1',
+    status: 'ready',
+    config: {
+      name: 'Persistent Sandbox',
+      cpu: 2,
+      memory: 2048,
+      disk: 20,
+      timeout: 24,
+      lifecycleMode: 'persistent',
+    },
+    bindingType: 'resource',
+    workspacePath: '/workspace/',
+    startedAt: '2025-01-01T00:00:00.000Z',
+    stoppedAt: null,
+    createdAt: '2025-01-01T00:00:00.000Z',
+    ...overrides,
+  }
+}
+
 function makeHttpError(status: number, statusText = 'Not Found') {
   const response = new Response(null, { status, statusText })
   const request = new Request(
@@ -65,6 +103,68 @@ function makeHttpError(status: number, statusText = 'Not Found') {
 
   return new HTTPError(response, request, {} as never)
 }
+
+describe('useSandboxes', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('存在 creating/stopping 沙箱时应持续轮询列表', async () => {
+    const params = { bindingType: 'resource' as const }
+    fetchSandboxesMock.mockResolvedValue({
+      data: [makeSession({ status: 'creating' })],
+      meta: { page: 1, pageSize: 20, total: 1, totalPages: 1 },
+    } satisfies SandboxListResponse)
+
+    const { Wrapper, queryClient } = createWrapper()
+    renderHook(() => useSandboxes(params), { wrapper: Wrapper })
+
+    await waitFor(() => {
+      expect(fetchSandboxesMock).toHaveBeenCalledWith(params)
+    })
+
+    const query = queryClient.getQueryCache().find({
+      queryKey: sandboxKeys.list(params),
+    })
+    const typedQuery = query as SandboxesQueryWithRefetchInterval | undefined
+
+    expect(typeof typedQuery?.options.refetchInterval).toBe('function')
+
+    if (!typedQuery || typeof typedQuery.options.refetchInterval !== 'function') {
+      throw new Error('expected sandboxes query refetchInterval function')
+    }
+
+    expect(typedQuery.options.refetchInterval(typedQuery)).toBe(3_000)
+  })
+
+  it('状态稳定后应停止列表轮询', async () => {
+    const params = { bindingType: 'resource' as const }
+    fetchSandboxesMock.mockResolvedValue({
+      data: [makeSession({ status: 'stopped' })],
+      meta: { page: 1, pageSize: 20, total: 1, totalPages: 1 },
+    } satisfies SandboxListResponse)
+
+    const { Wrapper, queryClient } = createWrapper()
+    renderHook(() => useSandboxes(params), { wrapper: Wrapper })
+
+    await waitFor(() => {
+      expect(fetchSandboxesMock).toHaveBeenCalledWith(params)
+    })
+
+    const query = queryClient.getQueryCache().find({
+      queryKey: sandboxKeys.list(params),
+    })
+    const typedQuery = query as SandboxesQueryWithRefetchInterval | undefined
+
+    expect(typeof typedQuery?.options.refetchInterval).toBe('function')
+
+    if (!typedQuery || typeof typedQuery.options.refetchInterval !== 'function') {
+      throw new Error('expected sandboxes query refetchInterval function')
+    }
+
+    expect(typedQuery.options.refetchInterval(typedQuery)).toBe(false)
+  })
+})
 
 describe('useSandboxStats', () => {
   beforeEach(() => {

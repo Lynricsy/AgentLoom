@@ -80,6 +80,18 @@ function patchPersistentSandboxes(
   )
 }
 
+function syncSandboxSession(
+  queryClient: ReturnType<typeof useQueryClient>,
+  nextSession: SandboxSession,
+) {
+  patchSandboxLists(queryClient, (session) =>
+    session.id === nextSession.id ? nextSession : session,
+  )
+  patchPersistentSandboxes(queryClient, (session) =>
+    session.id === nextSession.id ? nextSession : session,
+  )
+}
+
 function restoreSandboxCaches(
   queryClient: ReturnType<typeof useQueryClient>,
   context: SandboxMutationContext | undefined,
@@ -93,7 +105,7 @@ function restoreSandboxCaches(
   queryClient.setQueryData(sandboxKeys.persistent(), context.previousPersistent)
 }
 
-async function invalidateSandboxQueries(
+async function refreshSandboxQueries(
   queryClient: ReturnType<typeof useQueryClient>,
   sessionId?: string,
 ) {
@@ -102,6 +114,23 @@ async function invalidateSandboxQueries(
     queryClient.invalidateQueries({ queryKey: sandboxKeys.persistent() }),
     sessionId
       ? queryClient.invalidateQueries({ queryKey: sandboxKeys.stats(sessionId) })
+      : Promise.resolve(),
+  ])
+
+  await Promise.all([
+    queryClient.refetchQueries({
+      queryKey: sandboxKeys.lists(),
+      type: 'active',
+    }),
+    queryClient.refetchQueries({
+      queryKey: sandboxKeys.persistent(),
+      type: 'active',
+    }),
+    sessionId
+      ? queryClient.refetchQueries({
+          queryKey: sandboxKeys.stats(sessionId),
+          type: 'active',
+        })
       : Promise.resolve(),
   ])
 }
@@ -114,7 +143,7 @@ export function useCreateSandbox() {
     gcTime: 0,
     mutationFn: (payload: CreateSandboxPayload) => createSandbox(payload),
     onSuccess: async () => {
-      await invalidateSandboxQueries(queryClient)
+      await refreshSandboxQueries(queryClient)
     },
   })
 }
@@ -155,11 +184,14 @@ export function useStopSandbox() {
 
       return context
     },
+    onSuccess: (session) => {
+      syncSandboxSession(queryClient, session)
+    },
     onError: (_error, _sessionId, context) => {
       restoreSandboxCaches(queryClient, context)
     },
     onSettled: async (_data, _error, sessionId) => {
-      await invalidateSandboxQueries(queryClient, sessionId)
+      await refreshSandboxQueries(queryClient, sessionId)
     },
   })
 }
@@ -200,11 +232,14 @@ export function useStartSandbox() {
 
       return context
     },
+    onSuccess: (session) => {
+      syncSandboxSession(queryClient, session)
+    },
     onError: (_error, _sessionId, context) => {
       restoreSandboxCaches(queryClient, context)
     },
     onSettled: async (_data, _error, sessionId) => {
-      await invalidateSandboxQueries(queryClient, sessionId)
+      await refreshSandboxQueries(queryClient, sessionId)
     },
   })
 }
@@ -246,7 +281,7 @@ export function useDeleteSandbox() {
       restoreSandboxCaches(queryClient, context)
     },
     onSettled: async (_data, _error, sessionId) => {
-      await invalidateSandboxQueries(queryClient, sessionId)
+      await refreshSandboxQueries(queryClient, sessionId)
     },
   })
 }

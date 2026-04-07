@@ -61,6 +61,9 @@
 - `SandboxManagementPage` 默认请求 `bindingType='resource'`
 - 页面必须明确提示：默认只展示真正可复用的资源型沙箱
 - persistent sandbox 因 timeout / expiry 被系统回收时，资源页必须显示为 `已停止`，不能显示为 `失败`
+- `SandboxManagementPage` 的 start/stop/delete mutation 不能只依赖被动 `invalidateQueries()`。
+  - 资源页必须先做 optimistic 状态切换，再把 mutation 成功返回的最新 session 写回缓存，并显式 refetch active sandbox list。
+  - 否则 `stopped -> creating/ready` 这类生命周期切换会出现“必须手动刷新页面才看到新状态”的漂移。
 - `SandboxCard` 必须显示：
   - lifecycle 标签（持久 / 临时）
   - binding 标签（资源 / 对话 / 执行）
@@ -106,6 +109,7 @@
 | Studio sandbox API 调用                                                  | 透传 `bindingType`                                                          | `sandboxApi.test.ts`           |
 | Studio sandbox stats 展示                                                | `diskUsage=0` 时显示 `0 B / ...`，不当成缺失                                | `SandboxStatsDisplay.test.tsx` |
 | Studio sandbox stats 返回 `404/409`                                      | 当前 card 停止继续轮询，并触发列表刷新收敛删除/状态漂移                     | `sandboxQueries.test.tsx`      |
+| Studio 资源页启动 stopped persistent sandbox                             | 卡片先 optimistic 切到 `creating`，随后显式刷新 active list，无需手动刷新页面 | `sandboxMutations.test.tsx`    |
 | Studio workflow / agent 列表来源筛选                                     | 透传 `sourceKind`，通过顶部来源分类标签切换列表，且条目不重复显示来源 badge | 对应页面测试                   |
 | Studio 资源页点击“转为自己创建”                                          | 调用 shared `convert-to-manual` 并刷新列表                                  | 对应页面测试                   |
 | Flutter workspace DTO                                                    | 正确解析 `sourceKind/isAutoArchived` 并给出中文标签                         | `resource_entities_test.dart`  |
