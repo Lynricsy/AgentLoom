@@ -283,6 +283,18 @@ describe('DockerService', () => {
         }
       }
     });
+
+    it('restoreWorkspaceId 存在时应绑定 workspace 级共享卷', async () => {
+      await service.createContainer('session-shared', {
+        ...DEFAULT_CONFIG,
+        restoreWorkspaceId: 'workspace-hapi',
+      });
+
+      const createCall = mockDocker.createContainer.mock.calls.at(-1)?.[0];
+      expect(createCall?.HostConfig?.Binds).toEqual([
+        'workspace-workspace-hapi-volume:/workspace',
+      ]);
+    });
   });
 
   describe('stopContainer', () => {
@@ -352,6 +364,19 @@ describe('DockerService', () => {
 
       expect(mockContainer.remove).toHaveBeenCalledWith({
         v: true,
+        force: true,
+      });
+    });
+
+    it('指定 removeVolumes=false 时应保留关联卷', async () => {
+      mockContainer.remove.mockResolvedValueOnce(undefined);
+
+      await service.removeContainer('container-abc123', {
+        removeVolumes: false,
+      });
+
+      expect(mockContainer.remove).toHaveBeenCalledWith({
+        v: false,
         force: true,
       });
     });

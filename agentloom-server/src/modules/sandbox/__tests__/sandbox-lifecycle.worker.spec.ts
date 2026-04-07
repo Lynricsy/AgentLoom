@@ -56,6 +56,7 @@ const mockTenantDb = {
   insert: mockInsert,
   delete: mockDelete,
   select: mockSelect,
+  execute: vi.fn().mockResolvedValue({ rows: [] }),
 };
 mockUpdate.mockReturnValue({ set: mockSet });
 mockSet.mockReturnValue({ where: mockWhere });
@@ -133,6 +134,7 @@ describe('SandboxLifecycleWorker', () => {
     mockLimit.mockResolvedValue([
       { config: { cpu: 1, memory: 512, disk: 2, timeout: 2 } },
     ]);
+    mockTenantDb.execute.mockResolvedValue({ rows: [] });
     mockModuleRef.get.mockReset();
     mockModuleRef.get.mockReturnValue(undefined);
 
@@ -240,7 +242,9 @@ describe('SandboxLifecycleWorker', () => {
       );
 
       expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
-      expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123');
+      expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123', {
+        removeVolumes: true,
+      });
       expect(mockDockerService.attachLogs).not.toHaveBeenCalled();
       expect(mockLifecycleProducer.addTimeoutCheckTask).not.toHaveBeenCalled();
       expect(mockInsert).toHaveBeenCalled();
@@ -346,6 +350,37 @@ describe('SandboxLifecycleWorker', () => {
       );
     });
 
+    it('workspace 已被其他活跃沙箱挂载��不应重复恢复', async () => {
+      const mockWorkspaceService = {
+        restoreToSandbox: vi.fn().mockResolvedValue(undefined),
+      };
+      const mockModuleRef = {
+        get: vi.fn().mockReturnValue(mockWorkspaceService),
+      };
+
+      const workerWithModuleRef = new SandboxLifecycleWorker(
+        {} as any,
+        mockModuleRef as any,
+        mockDockerService as any,
+        mockSandboxService as any,
+        mockLifecycleProducer as any,
+        mockStorageService as any,
+      );
+      mockTenantDb.execute.mockResolvedValueOnce({ rows: [{ count: 1 }] });
+
+      await workerWithModuleRef.process(
+        createJob({
+          jobType: 'create',
+          sessionId: 's1',
+          executionId: 'e1',
+          tenantId: 't1',
+          config: { ...DEFAULT_CONFIG, restoreWorkspaceId: 'ws-1' },
+        }),
+      );
+
+      expect(mockWorkspaceService.restoreToSandbox).not.toHaveBeenCalled();
+    });
+
     it('工作区恢复失败时不阻塞沙箱创建', async () => {
       const mockWorkspaceService = {
         restoreToSandbox: vi
@@ -394,7 +429,9 @@ describe('SandboxLifecycleWorker', () => {
       );
 
       expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
-      expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123');
+      expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123', {
+        removeVolumes: true,
+      });
       expect(mockSelect).toHaveBeenCalled();
       expect(mockDeleteWhere).toHaveBeenCalled();
       expect(mockInsert).not.toHaveBeenCalled();
@@ -424,7 +461,9 @@ describe('SandboxLifecycleWorker', () => {
       );
 
       expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
-      expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123');
+      expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123', {
+        removeVolumes: true,
+      });
       expect(mockSet).toHaveBeenCalledWith(
         expect.objectContaining({ status: 'stopped' }),
       );
@@ -469,7 +508,9 @@ describe('SandboxLifecycleWorker', () => {
         'application/x-tar',
       );
       expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
-      expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123');
+      expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123', {
+        removeVolumes: true,
+      });
     });
 
     it('无 persistencePath 时不应同步 workspace', async () => {
@@ -523,7 +564,47 @@ describe('SandboxLifecycleWorker', () => {
         mockWorkspaceService.syncFromSandboxContainer,
       ).toHaveBeenCalledWith('ws-1', 'c-123', 't1');
       expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
-      expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123');
+      expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123', {
+        removeVolumes: false,
+      });
+    });
+
+    it('workspace 仍被其他活跃沙箱挂载时销毁不应提前回写 snapshot', async () => {
+      const mockWorkspaceService = {
+        syncFromSandboxContainer: vi.fn().mockResolvedValue(undefined),
+      };
+      const workerWithModuleRef = new SandboxLifecycleWorker(
+        {} as any,
+        { get: vi.fn().mockReturnValue(mockWorkspaceService) } as any,
+        mockDockerService as any,
+        mockSandboxService as any,
+        mockLifecycleProducer as any,
+        mockStorageService as any,
+      );
+      mockLimit.mockResolvedValueOnce([
+        {
+          config: {
+            ...DEFAULT_CONFIG,
+            restoreWorkspaceId: 'ws-1',
+          },
+        },
+      ]);
+      mockTenantDb.execute.mockResolvedValueOnce({ rows: [{ count: 1 }] });
+
+      await workerWithModuleRef.process(
+        createJob({
+          jobType: 'destroy',
+          sessionId: 's1',
+          executionId: 'e1',
+          tenantId: 't1',
+          containerId: 'c-123',
+        }),
+      );
+
+      expect(mockWorkspaceService.syncFromSandboxContainer).not.toHaveBeenCalled();
+      expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123', {
+        removeVolumes: false,
+      });
     });
 
     it('workspace 同步失败时不应阻止销毁流程', async () => {
@@ -543,7 +624,9 @@ describe('SandboxLifecycleWorker', () => {
       );
 
       expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
-      expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123');
+      expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123', {
+        removeVolumes: true,
+      });
       expect(mockDeleteWhere).toHaveBeenCalled();
     });
 
@@ -579,7 +662,9 @@ describe('SandboxLifecycleWorker', () => {
       );
 
       expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
-      expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123');
+      expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123', {
+        removeVolumes: true,
+      });
       expect(mockDeleteWhere).toHaveBeenCalled();
     });
   });
@@ -633,7 +718,9 @@ describe('SandboxLifecycleWorker', () => {
         }),
       );
 
-      expect(mockDockerService.startContainer).toHaveBeenCalledWith('c-missing');
+      expect(mockDockerService.startContainer).toHaveBeenCalledWith(
+        'c-missing',
+      );
       expect(mockDockerService.createContainer).toHaveBeenCalledWith(
         's1',
         DEFAULT_CONFIG,
@@ -651,7 +738,9 @@ describe('SandboxLifecycleWorker', () => {
         'c-recreated',
         expect.any(Function),
       );
-      expect(mockLifecycleProducer.addConversationIdleEndCheckTask).toHaveBeenCalled();
+      expect(
+        mockLifecycleProducer.addConversationIdleEndCheckTask,
+      ).toHaveBeenCalled();
     });
 
     it('缺少 containerId 时应抛出异常', async () => {
@@ -757,7 +846,9 @@ describe('SandboxLifecycleWorker', () => {
 
       expect(mockSandboxService.getSessionById).toHaveBeenCalledWith('s1');
       expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
-      expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123');
+      expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123', {
+        removeVolumes: true,
+      });
       // Session-mode: sandbox row is deleted, not updated
       expect(mockDeleteWhere).toHaveBeenCalled();
       // Execution steps and workflow are still updated to failed
@@ -923,7 +1014,9 @@ describe('SandboxLifecycleWorker', () => {
 
       expect(mockSandboxService.getSessionById).toHaveBeenCalledWith('s-conv');
       expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
-      expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123');
+      expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123', {
+        removeVolumes: true,
+      });
       const updatePayloads = mockSet.mock.calls.map(([payload]) => payload);
       expect(
         updatePayloads.some(
@@ -982,7 +1075,9 @@ describe('SandboxLifecycleWorker', () => {
         'application/x-tar',
       );
       expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
-      expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123');
+      expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123', {
+        removeVolumes: true,
+      });
     });
 
     it('timeout 归档失败时应警告但仍然销毁沙箱', async () => {
@@ -1021,7 +1116,9 @@ describe('SandboxLifecycleWorker', () => {
       );
       expect(mockStorageService.upload).not.toHaveBeenCalled();
       expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
-      expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123');
+      expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123', {
+        removeVolumes: true,
+      });
     });
 
     it('timeout 时无 persistencePath 不应尝试归档', async () => {
@@ -1090,6 +1187,9 @@ describe('SandboxLifecycleWorker', () => {
         mockWorkspaceService.syncFromSandboxContainer,
       ).toHaveBeenCalledWith('ws-1', 'c-123', 't1');
       expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
+      expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123', {
+        removeVolumes: false,
+      });
     });
 
     it('conversation timeout 时有 persistencePath 应归档 workspace', async () => {

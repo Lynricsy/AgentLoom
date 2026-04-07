@@ -164,7 +164,7 @@ describe('SandboxService', () => {
       insert: vi.fn(),
       update: vi.fn(),
       delete: vi.fn(),
-      execute: vi.fn(),
+      execute: vi.fn().mockResolvedValue({ rows: [] }),
       transaction: vi.fn(),
     };
 
@@ -188,6 +188,7 @@ describe('SandboxService', () => {
 
     mockWorkspaceService = {
       syncFromSandboxContainer: vi.fn().mockResolvedValue(undefined),
+      restoreToSandbox: vi.fn().mockResolvedValue(undefined),
     };
 
     vi.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
@@ -402,6 +403,133 @@ describe('SandboxService', () => {
           ],
         }),
       });
+      expect(mockWorkspaceService.restoreToSandbox).not.toHaveBeenCalled();
+    });
+
+    it('resource 态 ready persistent sandbox attach 时应写入 restoreWorkspaceId 并立即恢复工作区', async () => {
+      const persistentSession = buildSession({
+        executionId: null,
+        sandboxNodeId: null,
+        status: 'ready',
+        containerId: 'container-persistent',
+        config: {
+          ...TEST_CONFIG,
+          lifecycleMode: 'persistent',
+          name: 'Persistent Sandbox',
+        },
+      });
+      const attachedSession = buildSession({
+        executionId: null,
+        agentConversationId: TEST_CONVERSATION_ID,
+        sandboxNodeId: null,
+        status: 'ready',
+        containerId: 'container-persistent',
+        config: {
+          ...TEST_CONFIG,
+          lifecycleMode: 'persistent',
+          name: 'Persistent Sandbox',
+          restoreWorkspaceId: 'workspace-hapi',
+          activeBindings: [
+            {
+              agentConversationId: TEST_CONVERSATION_ID,
+            },
+          ],
+        },
+      });
+      const updateChain = createUpdateChainNoReturn();
+
+      db.select
+        .mockReturnValueOnce(createSelectChainWithLimit([]))
+        .mockReturnValueOnce(createSelectChainWithLimit([persistentSession]))
+        .mockReturnValueOnce(createSelectChainWithLimit([attachedSession]));
+      db.update.mockReturnValueOnce(updateChain);
+
+      const result = await service.createSandboxSession({
+        sandboxNodeId: null,
+        config: {
+          ...TEST_CONFIG,
+          lifecycleMode: 'persistent',
+          persistentSandboxId: TEST_SESSION_ID,
+          restoreWorkspaceId: 'workspace-hapi',
+        },
+        tenantId: TEST_TENANT_ID,
+        agentConversationId: TEST_CONVERSATION_ID,
+      });
+
+      expect(result).toEqual(attachedSession);
+      const [setPayload] = updateChain.set.mock.calls[0] ?? [];
+      expect(setPayload).toMatchObject({
+        executionId: null,
+        agentConversationId: TEST_CONVERSATION_ID,
+        sandboxNodeId: null,
+        config: expect.objectContaining({
+          restoreWorkspaceId: 'workspace-hapi',
+          activeBindings: [
+            {
+              agentConversationId: TEST_CONVERSATION_ID,
+            },
+          ],
+        }),
+      });
+      expect(mockWorkspaceService.restoreToSandbox).toHaveBeenCalledWith(
+        'workspace-hapi',
+        'container-persistent',
+        TEST_TENANT_ID,
+      );
+    });
+
+    it('resource 态 ready persistent sandbox attach 时若 workspace 已被其他沙箱挂载则不应重复恢复', async () => {
+      const persistentSession = buildSession({
+        executionId: null,
+        sandboxNodeId: null,
+        status: 'ready',
+        containerId: 'container-persistent',
+        config: {
+          ...TEST_CONFIG,
+          lifecycleMode: 'persistent',
+          name: 'Persistent Sandbox',
+        },
+      });
+      const attachedSession = buildSession({
+        executionId: null,
+        agentConversationId: TEST_CONVERSATION_ID,
+        sandboxNodeId: null,
+        status: 'ready',
+        containerId: 'container-persistent',
+        config: {
+          ...TEST_CONFIG,
+          lifecycleMode: 'persistent',
+          name: 'Persistent Sandbox',
+          restoreWorkspaceId: 'workspace-hapi',
+          activeBindings: [
+            {
+              agentConversationId: TEST_CONVERSATION_ID,
+            },
+          ],
+        },
+      });
+      const updateChain = createUpdateChainNoReturn();
+
+      db.select
+        .mockReturnValueOnce(createSelectChainWithLimit([]))
+        .mockReturnValueOnce(createSelectChainWithLimit([persistentSession]))
+        .mockReturnValueOnce(createSelectChainWithLimit([attachedSession]));
+      db.execute.mockResolvedValueOnce({ rows: [{ count: 1 }] });
+      db.update.mockReturnValueOnce(updateChain);
+
+      await service.createSandboxSession({
+        sandboxNodeId: null,
+        config: {
+          ...TEST_CONFIG,
+          lifecycleMode: 'persistent',
+          persistentSandboxId: TEST_SESSION_ID,
+          restoreWorkspaceId: 'workspace-hapi',
+        },
+        tenantId: TEST_TENANT_ID,
+        agentConversationId: TEST_CONVERSATION_ID,
+      });
+
+      expect(mockWorkspaceService.restoreToSandbox).not.toHaveBeenCalled();
     });
 
     it('failed 持久沙箱被 workflow 节点再次引用时应自动恢复并继续绑定', async () => {
@@ -1145,6 +1273,9 @@ describe('SandboxService', () => {
       );
       expect(mockDockerService.removeContainer).toHaveBeenCalledWith(
         'container-old',
+        {
+          removeVolumes: true,
+        },
       );
       expect(updateChain.set).toHaveBeenCalledWith({
         status: 'creating',
@@ -1221,6 +1352,9 @@ describe('SandboxService', () => {
       expect(mockDockerService.stopContainer).not.toHaveBeenCalled();
       expect(mockDockerService.removeContainer).toHaveBeenCalledWith(
         'container-stopped',
+        {
+          removeVolumes: true,
+        },
       );
       expect(db.delete).toHaveBeenCalledTimes(2);
     });
@@ -1352,6 +1486,35 @@ describe('SandboxService', () => {
         mockWorkspaceService.syncFromSandboxContainer.mock
           .invocationCallOrder[0],
       ).toBeLessThan(updateChain.set.mock.invocationCallOrder[0]);
+    });
+
+    it('最后一个 binding 释放时若 workspace 仍被其他活跃沙箱挂载则不应提前同步', async () => {
+      const persistentSession = buildSession({
+        status: 'ready',
+        containerId: 'container-shared',
+        sandboxNodeId: 'sandbox-1',
+        config: {
+          ...TEST_CONFIG,
+          lifecycleMode: 'persistent',
+          restoreWorkspaceId: 'workspace-shared',
+        },
+      });
+      const updateChain = createUpdateChainNoReturn();
+
+      db.select
+        .mockReturnValueOnce(createSelectChainWithLimit([]))
+        .mockReturnValueOnce(createSelectChainWithLimit([persistentSession]));
+      db.execute.mockResolvedValueOnce({ rows: [{ count: 1 }] });
+      db.update.mockReturnValueOnce(updateChain);
+
+      await service.releaseExecutionSandbox(
+        TEST_EXECUTION_ID,
+        'sandbox-1',
+        TEST_TENANT_ID,
+      );
+
+      expect(mockWorkspaceService.syncFromSandboxContainer).not.toHaveBeenCalled();
+      expect(updateChain.set).toHaveBeenCalledOnce();
     });
   });
 

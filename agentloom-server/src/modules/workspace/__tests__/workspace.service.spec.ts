@@ -301,6 +301,7 @@ describe('WorkspaceService', () => {
       insert: vi.fn(),
       update: vi.fn(),
       delete: vi.fn(),
+      execute: vi.fn().mockResolvedValue({ rows: [] }),
     };
 
     mockStorageService = {
@@ -951,6 +952,47 @@ describe('WorkspaceService', () => {
       ]);
     });
 
+    it('getFileTree 在 workspace 被活跃沙箱挂载时应直接读取 live 容器', async () => {
+      const archive = createTarArchive([
+        { path: 'workspace/hapi', type: 'directory' },
+        {
+          path: 'workspace/hapi/package.json',
+          type: 'file',
+          content: '{"name":"hapi"}',
+        },
+      ]);
+
+      db.execute.mockResolvedValueOnce({
+        rows: [{ containerId: TEST_CONTAINER_ID }],
+      });
+      mockDockerService.getArchive.mockResolvedValueOnce(
+        createReadableStreamFromBuffer(archive),
+      );
+
+      const tree = await service.getFileTree(TEST_TENANT_ID, TEST_WORKSPACE_ID);
+
+      expect(tree).toEqual([
+        {
+          name: 'hapi',
+          type: 'directory',
+          path: 'hapi',
+          children: [
+            {
+              name: 'package.json',
+              type: 'file',
+              path: 'hapi/package.json',
+              size: 15,
+            },
+          ],
+        },
+      ]);
+      expect(mockDockerService.getArchive).toHaveBeenCalledWith(
+        TEST_CONTAINER_ID,
+        '/workspace/',
+      );
+      expect(mockStorageService.download).not.toHaveBeenCalled();
+    });
+
     it('getFileTree 应保留普通隐藏目录与隐藏文件', async () => {
       const snapshot = buildSnapshot({ sizeBytes: 2048 });
       const archive = createTarArchive([
@@ -1129,6 +1171,44 @@ describe('WorkspaceService', () => {
         content: '# hello',
         encoding: 'utf-8',
       });
+    });
+
+    it('getFilePreview 在 workspace 被活跃��箱挂载时应直接读取 live 容器', async () => {
+      db.execute.mockResolvedValueOnce({
+        rows: [{ containerId: TEST_CONTAINER_ID }],
+      });
+      db.select.mockReturnValueOnce(createSelectChainWithLimit([buildSnapshot()]));
+      mockDockerService.getArchive.mockResolvedValueOnce(
+        createStreamingTarArchive([
+          {
+            path: 'workspace/lobe-chat',
+            type: 'directory',
+          },
+          {
+            path: 'workspace/lobe-chat/README.md',
+            type: 'file',
+            content: '# live',
+          },
+        ]),
+      );
+
+      const preview = await service.getFilePreview(
+        TEST_TENANT_ID,
+        TEST_WORKSPACE_ID,
+        'lobe-chat/README.md',
+      );
+
+      expect(preview).toEqual({
+        kind: 'text',
+        path: 'lobe-chat/README.md',
+        fileName: 'README.md',
+        size: 6,
+        mimeType: 'text/markdown',
+        canDownload: true,
+        content: '# live',
+        encoding: 'utf-8',
+      });
+      expect(mockStorageService.download).not.toHaveBeenCalled();
     });
 
     it('getFilePreview 应当识别图片与 PDF 预览类型', async () => {

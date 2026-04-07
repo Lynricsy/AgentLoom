@@ -128,6 +128,7 @@ export class SandboxService {
         agentConversationId,
         sandboxNodeId,
         persistentSandboxId: config.persistentSandboxId.trim(),
+        restoreWorkspaceId: this.readRestoreWorkspaceId(config),
         tenantId,
       });
     }
@@ -1068,6 +1069,19 @@ export class SandboxService {
       return;
     }
 
+    if (
+      await this.hasOtherActiveWorkspaceMount({
+        tenantId,
+        restoreWorkspaceId,
+        excludeSessionId: session.id,
+      })
+    ) {
+      this.logger.debug(
+        `Skipping workspace sync for persistent sandbox ${session.id} because workspace ${restoreWorkspaceId} is still mounted by another active sandbox`,
+      );
+      return;
+    }
+
     const workspaceService = this.moduleRef.get(WorkspaceService, {
       strict: false,
     });
@@ -1107,6 +1121,7 @@ export class SandboxService {
     agentConversationId?: string;
     sandboxNodeId: string | null;
     persistentSandboxId: string;
+    restoreWorkspaceId?: string | null;
     tenantId: string;
   }): Promise<SandboxSession> {
     const session = await this.reconcileUnavailableRuntimeSession(
@@ -1123,6 +1138,11 @@ export class SandboxService {
       agentConversationId: params.agentConversationId,
       sandboxNodeId: params.sandboxNodeId,
     });
+    const incomingRestoreWorkspaceId =
+      typeof params.restoreWorkspaceId === 'string' &&
+      params.restoreWorkspaceId.trim().length > 0
+        ? params.restoreWorkspaceId.trim()
+        : null;
 
     const isAlreadyBoundToTarget = existingBindings.some((binding) =>
       this.bindingsEqual(binding, targetBinding),
@@ -1143,13 +1163,36 @@ export class SandboxService {
       throw new SandboxInvalidStateException(session.id, session.status, 'use');
     }
 
-    if (!isAlreadyBoundToTarget) {
-      const nextBindings = [...existingBindings, targetBinding];
-      const projectedBinding = this.projectPersistentBindingState(nextBindings);
-      const nextConfig = this.buildPersistentConfig(
-        session.config,
-        nextBindings,
-      );
+    const nextBindings = isAlreadyBoundToTarget
+      ? existingBindings
+      : [...existingBindings, targetBinding];
+    const projectedBinding = this.projectPersistentBindingState(nextBindings);
+    let nextConfig = this.buildPersistentConfig(session.config, nextBindings);
+    const currentRestoreWorkspaceId = this.readRestoreWorkspaceId(nextConfig);
+    const shouldPersistRestoreWorkspaceId =
+      incomingRestoreWorkspaceId !== null &&
+      currentRestoreWorkspaceId !== incomingRestoreWorkspaceId;
+
+    if (shouldPersistRestoreWorkspaceId) {
+      nextConfig = {
+        ...nextConfig,
+        restoreWorkspaceId: incomingRestoreWorkspaceId,
+      };
+    }
+
+    if (!isAlreadyBoundToTarget || shouldPersistRestoreWorkspaceId) {
+      const shouldRestoreReadySandboxCandidate =
+        existingBindings.length === 0 &&
+        session.status === 'ready' &&
+        typeof session.containerId === 'string' &&
+        incomingRestoreWorkspaceId !== null;
+      const shouldRestoreReadySandbox =
+        shouldRestoreReadySandboxCandidate &&
+        !(await this.hasOtherActiveWorkspaceMount({
+          tenantId: params.tenantId,
+          restoreWorkspaceId: incomingRestoreWorkspaceId!,
+          excludeSessionId: session.id,
+        }));
 
       await runInTenantTransaction(this.db, params.tenantId, async () => {
         const tenantDb = getTenantDb(this.db);
@@ -1163,6 +1206,33 @@ export class SandboxService {
           })
           .where(eq(schema.sandboxSessions.id, session.id));
       });
+
+      if (shouldRestoreReadySandbox) {
+        const workspaceService = this.moduleRef.get(WorkspaceService, {
+          strict: false,
+        });
+
+        if (!workspaceService) {
+          this.logger.warn(
+            `WorkspaceService unavailable while restoring workspace for attached persistent sandbox ${session.id}`,
+          );
+        } else {
+          try {
+            await workspaceService.restoreToSandbox(
+              incomingRestoreWorkspaceId,
+              session.containerId!,
+              params.tenantId,
+            );
+            this.logger.log(
+              `Restored workspace ${incomingRestoreWorkspaceId} into attached persistent sandbox ${session.id}`,
+            );
+          } catch (error) {
+            this.logger.warn(
+              `Failed to restore workspace ${incomingRestoreWorkspaceId} into attached persistent sandbox ${session.id}: ${error instanceof Error ? error.message : String(error)}`,
+            );
+          }
+        }
+      }
     }
 
     if (session.status === 'stopped' || session.status === 'failed') {
@@ -1615,7 +1685,9 @@ export class SandboxService {
           );
         });
       await this.dockerService
-        .removeContainer(session.containerId)
+        .removeContainer(session.containerId, {
+          removeVolumes: this.shouldRemoveContainerVolumes(session.config),
+        })
         .catch((error) => {
           this.logger.warn(
             `Failed to remove stale container ${session.containerId} before restarting sandbox ${sessionId}: ${error instanceof Error ? error.message : String(error)}`,
@@ -1672,7 +1744,9 @@ export class SandboxService {
         ) {
           await this.dockerService.stopContainer(session.containerId);
         }
-        await this.dockerService.removeContainer(session.containerId);
+        await this.dockerService.removeContainer(session.containerId, {
+          removeVolumes: this.shouldRemoveContainerVolumes(session.config),
+        });
       } catch (error) {
         this.logger.warn(
           `Failed to cleanup container for sandbox ${sessionId}: ${error instanceof Error ? error.message : String(error)}`,
@@ -1695,5 +1769,62 @@ export class SandboxService {
     });
 
     this.logger.log(`Deleted persistent sandbox ${sessionId}`);
+  }
+
+  private shouldRemoveContainerVolumes(config: SandboxConfig): boolean {
+    return this.readRestoreWorkspaceId(config) === null;
+  }
+
+  private async hasOtherActiveWorkspaceMount(params: {
+    tenantId: string;
+    restoreWorkspaceId: string;
+    excludeSessionId: string;
+  }): Promise<boolean> {
+    const result = await this.tenantDb.execute(sql`
+      select count(*)::int as count
+      from sandbox_sessions
+      where tenant_id = ${params.tenantId}
+        and id <> ${params.excludeSessionId}
+        and container_id is not null
+        and status not in ('stopping', 'stopped', 'failed')
+        and config->>'restoreWorkspaceId' = ${params.restoreWorkspaceId}
+    `);
+
+    return this.readExecuteCount(result) > 0;
+  }
+
+  private readExecuteCount(result: unknown): number {
+    const [row] = this.readExecuteRows<{ count?: number | string }>(result);
+    const rawCount = row?.count;
+
+    if (typeof rawCount === 'number' && Number.isFinite(rawCount)) {
+      return rawCount;
+    }
+
+    if (typeof rawCount === 'string') {
+      const parsed = Number.parseInt(rawCount, 10);
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+
+    return 0;
+  }
+
+  private readExecuteRows<T extends Record<string, unknown>>(
+    result: unknown,
+  ): T[] {
+    if (Array.isArray(result)) {
+      return result as T[];
+    }
+
+    if (
+      result &&
+      typeof result === 'object' &&
+      'rows' in result &&
+      Array.isArray((result as { rows?: unknown[] }).rows)
+    ) {
+      return (result as { rows: T[] }).rows;
+    }
+
+    return [];
   }
 }

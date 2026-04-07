@@ -45,6 +45,10 @@ export interface CreateContainerPiContext {
   conversationId?: string;
 }
 
+export interface RemoveContainerOptions {
+  removeVolumes?: boolean;
+}
+
 export interface SandboxRuntimeDriver {
   createContainer(
     sessionId: string,
@@ -53,7 +57,10 @@ export interface SandboxRuntimeDriver {
   ): Promise<{ containerId: string }>;
   startContainer(containerId: string): Promise<void>;
   stopContainer(containerId: string): Promise<void>;
-  removeContainer(containerId: string): Promise<void>;
+  removeContainer(
+    containerId: string,
+    options?: RemoveContainerOptions,
+  ): Promise<void>;
   healthCheck(containerId: string): Promise<boolean>;
   getPromptUrl(containerId: string): Promise<string>;
   getSessionUrl(containerId: string): Promise<string>;

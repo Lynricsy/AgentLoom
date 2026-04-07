@@ -6,7 +6,7 @@ import { Job } from 'bullmq';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import { runInTenantTransaction } from '../../common/interceptors/tenant-transaction.context';
 import * as schema from '../../database/schema';
-import { and, asc, eq, inArray, notInArray } from 'drizzle-orm';
+import { and, asc, eq, inArray, notInArray, sql } from 'drizzle-orm';
 
 import { StorageService } from '../../infrastructure/storage/storage.service';
 import { SandboxService } from './sandbox.service';
@@ -125,11 +125,15 @@ export class SandboxLifecycleWorker extends WorkerHost {
             `Failed to stop sandbox container ${containerId} after session ${sessionId} left creating state: ${error instanceof Error ? error.message : String(error)}`,
           );
         });
-        await this.dockerService.removeContainer(containerId).catch((error) => {
-          this.logger.warn(
-            `Failed to cleanup sandbox container ${containerId} after session ${sessionId} left creating state: ${error instanceof Error ? error.message : String(error)}`,
-          );
-        });
+        await this.dockerService
+          .removeContainer(containerId, {
+            removeVolumes: this.shouldRemoveContainerVolumes(config),
+          })
+          .catch((error) => {
+            this.logger.warn(
+              `Failed to cleanup sandbox container ${containerId} after session ${sessionId} left creating state: ${error instanceof Error ? error.message : String(error)}`,
+            );
+          });
         await this.insertLog(
           sessionId,
           'system',
@@ -142,26 +146,13 @@ export class SandboxLifecycleWorker extends WorkerHost {
         return;
       }
 
-      if (config.restoreWorkspaceId && containerId) {
-        try {
-          const workspaceService = this.moduleRef.get(WorkspaceService, {
-            strict: false,
-          });
-          await workspaceService.restoreToSandbox(
-            config.restoreWorkspaceId,
-            containerId,
-            tenantId,
-          );
-          this.logger.log(
-            `Restored workspace ${config.restoreWorkspaceId} to sandbox ${sessionId}`,
-          );
-        } catch (restoreError) {
-          this.logger.warn(
-            `Failed to restore workspace ${config.restoreWorkspaceId} to sandbox ${sessionId}: ${restoreError instanceof Error ? restoreError.message : String(restoreError)}`,
-          );
-          // 恢复失败不阻塞沙箱创建，容器仍然可用（只是没有预加载的工作区）
-        }
-      }
+      await this.restoreWorkspaceIfNeeded({
+        sessionId,
+        tenantId,
+        containerId,
+        restoreWorkspaceId: this.readRestoreWorkspaceId(config),
+        phaseLabel: 'create',
+      });
 
       await this.insertLog(
         sessionId,
@@ -187,7 +178,9 @@ export class SandboxLifecycleWorker extends WorkerHost {
     } catch (error) {
       if (containerId) {
         await this.dockerService
-          .removeContainer(containerId)
+          .removeContainer(containerId, {
+            removeVolumes: this.shouldRemoveContainerVolumes(config),
+          })
           .catch((cleanupError) => {
             this.logger.warn(
               `Failed to cleanup container ${containerId} after sandbox creation error: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`,
@@ -283,7 +276,9 @@ export class SandboxLifecycleWorker extends WorkerHost {
 
       if (!activatedSession) {
         const cleanupPromise = recreatedMissingContainer
-          ? this.dockerService.removeContainer(activeContainerId)
+          ? this.dockerService.removeContainer(activeContainerId, {
+              removeVolumes: this.shouldRemoveContainerVolumes(config),
+            })
           : this.dockerService.stopContainer(activeContainerId);
         await cleanupPromise.catch((error) => {
           this.logger.warn(
@@ -312,6 +307,16 @@ export class SandboxLifecycleWorker extends WorkerHost {
           : `Sandbox container ${activeContainerId} started`,
         tenantId,
       );
+
+      if (recreatedMissingContainer) {
+        await this.restoreWorkspaceIfNeeded({
+          sessionId,
+          tenantId,
+          containerId: activeContainerId,
+          restoreWorkspaceId: this.readRestoreWorkspaceId(config),
+          phaseLabel: 'start',
+        });
+      }
 
       await this.attachContainerLogs(sessionId, activeContainerId, tenantId);
       await this.scheduleTimeoutCheck(sessionId, tenantId, config, binding);
@@ -466,7 +471,9 @@ export class SandboxLifecycleWorker extends WorkerHost {
       }
 
       await this.dockerService.stopContainer(containerId);
-      await this.dockerService.removeContainer(containerId);
+      await this.dockerService.removeContainer(containerId, {
+        removeVolumes: this.shouldRemoveContainerVolumes(session?.config),
+      });
     }
 
     const purged = await runInTenantTransaction(
@@ -570,7 +577,9 @@ export class SandboxLifecycleWorker extends WorkerHost {
 
       await this.dockerService.stopContainer(session.containerId);
       if (isSessionMode) {
-        await this.dockerService.removeContainer(session.containerId);
+        await this.dockerService.removeContainer(session.containerId, {
+          removeVolumes: this.shouldRemoveContainerVolumes(session.config),
+        });
       }
     }
 
@@ -994,6 +1003,62 @@ export class SandboxLifecycleWorker extends WorkerHost {
       : undefined;
   }
 
+  private shouldRemoveContainerVolumes(config: unknown): boolean {
+    return this.readRestoreWorkspaceId(config) === undefined;
+  }
+
+  private async restoreWorkspaceIfNeeded(params: {
+    sessionId: string;
+    tenantId: string;
+    containerId: string;
+    restoreWorkspaceId?: string;
+    phaseLabel: 'create' | 'start';
+  }): Promise<void> {
+    const { sessionId, tenantId, containerId, restoreWorkspaceId, phaseLabel } =
+      params;
+
+    if (!restoreWorkspaceId) {
+      return;
+    }
+
+    if (
+      await this.hasOtherActiveWorkspaceMount({
+        tenantId,
+        restoreWorkspaceId,
+        excludeSessionId: sessionId,
+      })
+    ) {
+      this.logger.log(
+        `Skipping workspace restore during ${phaseLabel} for session ${sessionId} because workspace ${restoreWorkspaceId} is already mounted by another active sandbox`,
+      );
+      return;
+    }
+
+    const workspaceService = this.getWorkspaceService();
+    if (!workspaceService) {
+      this.logger.warn(
+        `WorkspaceService unavailable, skipping restored workspace ${restoreWorkspaceId} during ${phaseLabel} for session ${sessionId}`,
+      );
+      return;
+    }
+
+    try {
+      await workspaceService.restoreToSandbox(
+        restoreWorkspaceId,
+        containerId,
+        tenantId,
+      );
+      this.logger.log(
+        `Restored workspace ${restoreWorkspaceId} to sandbox ${sessionId}`,
+      );
+    } catch (restoreError) {
+      this.logger.warn(
+        `Failed to restore workspace ${restoreWorkspaceId} to sandbox ${sessionId}: ${restoreError instanceof Error ? restoreError.message : String(restoreError)}`,
+      );
+      // 恢复失败不阻塞沙箱创建或重建启动，容器仍然可用（只是没有预加载的工作区）
+    }
+  }
+
   private async syncRestoredWorkspaceSnapshot(params: {
     sessionId: string;
     tenantId: string;
@@ -1005,6 +1070,19 @@ export class SandboxLifecycleWorker extends WorkerHost {
       params;
 
     if (!restoreWorkspaceId) {
+      return;
+    }
+
+    if (
+      await this.hasOtherActiveWorkspaceMount({
+        tenantId,
+        restoreWorkspaceId,
+        excludeSessionId: sessionId,
+      })
+    ) {
+      this.logger.log(
+        `Skipping restored workspace sync before ${phaseLabel} for session ${sessionId} because workspace ${restoreWorkspaceId} is still mounted by another active sandbox`,
+      );
       return;
     }
 
@@ -1030,6 +1108,65 @@ export class SandboxLifecycleWorker extends WorkerHost {
         `Failed to sync restored workspace ${restoreWorkspaceId} before ${phaseLabel} for session ${sessionId}: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
+  }
+
+  private async hasOtherActiveWorkspaceMount(params: {
+    tenantId: string;
+    restoreWorkspaceId: string;
+    excludeSessionId: string;
+  }): Promise<boolean> {
+    const result = await runInTenantTransaction(
+      this.db,
+      params.tenantId,
+      async (tenantDb) => {
+        return tenantDb.execute(sql`
+          select count(*)::int as count
+          from sandbox_sessions
+          where tenant_id = ${params.tenantId}
+            and id <> ${params.excludeSessionId}
+            and container_id is not null
+            and status not in ('stopping', 'stopped', 'failed')
+            and config->>'restoreWorkspaceId' = ${params.restoreWorkspaceId}
+        `);
+      },
+    );
+
+    return this.readExecuteCount(result) > 0;
+  }
+
+  private readExecuteCount(result: unknown): number {
+    const [row] = this.readExecuteRows<{ count?: number | string }>(result);
+    const rawCount = row?.count;
+
+    if (typeof rawCount === 'number' && Number.isFinite(rawCount)) {
+      return rawCount;
+    }
+
+    if (typeof rawCount === 'string') {
+      const parsed = Number.parseInt(rawCount, 10);
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+
+    return 0;
+  }
+
+  private readExecuteRows<T extends Record<string, unknown>>(
+    result: unknown,
+  ): T[] {
+    if (Array.isArray(result)) {
+      return result as T[];
+    }
+
+    if (
+      result &&
+      typeof result === 'object' &&
+      'rows' in result &&
+      Array.isArray((result as { rows?: unknown[] }).rows)
+    ) {
+      return (result as { rows: T[] }).rows;
+    }
+
+    return [];
   }
 
   @OnWorkerEvent('failed')

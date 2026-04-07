@@ -37,6 +37,8 @@
 - `SandboxService.getConversationSandboxStats(agentConversationId, tenantId)`
 - `SandboxService.scheduleConversationIdleAutoEnd(agentConversationId, tenantId)`
 - `SandboxService.cancelConversationIdleAutoEnd(agentConversationId, tenantId)`
+- `DockerService.createContainer(sessionId, config, piContext?)`
+- `DockerService.removeContainer(containerId, { removeVolumes? })`
 - `DockerService.getContainerStats(containerId)`
 - `GET /api/v1/sandboxes/:sessionId/stats`
 - `GET /api/v1/agent-conversations/:id/sandbox/stats`
@@ -118,10 +120,14 @@
   - 若历史记录仍指向 legacy shared-empty key，后续 `findOne/tree/preview/raw/files` 读取或写回路径必须先把记录 re-home 到自身 canonical key，再继续处理
   - 对仍未 re-home 的 legacy shared-empty 记录，删除 workspace 时不能直接删除共享对象，避免误伤其他历史记录
 - 若 sandbox config 带 `restoreWorkspaceId`，该 workspace 必须被视为“最新可恢复快照”：
-  - `SandboxLifecycleWorker.handleStop()` / `handleDestroy()` / `handleTimeoutCheck()` 在 stop/remove 容器前，必须调用 `WorkspaceService.syncFromSandboxContainer(restoreWorkspaceId, containerId, tenantId)`。
-  - `SandboxService.detachPersistentSession()` 在 persistent sandbox 的**最后一个** active binding 释放、资源回到 `resource` 态前，也必须 best-effort 调用同一同步逻辑，避免 conversation/workflow 刚结束时 preview 仍读取到旧 workspace 快照。
+  - `DockerService.createContainer()` 必须把 `/workspace` 绑定到 workspace 级 named volume，而不是 session 级私有卷；只有没有 `restoreWorkspaceId` 的 sandbox 才继续使用 `sandbox-${sessionId}-workspace` 私有卷。
+  - 同一个 `restoreWorkspaceId` 若已经被其他 active sandbox 挂载，新容器必须直接复用同一个 workspace volume，而不是重新 untar snapshot 覆盖现有 live 内容。
+  - `SandboxLifecycleWorker.handleCreate()` 与发生缺失容器重建的 `handleStart()` 只有在当前 session 是该 workspace 的**首个 active 挂载者**时，才允许调用 `WorkspaceService.restoreToSandbox()` 从 snapshot 恢复卷内容；如果 workspace 已被其他 active sandbox 挂载，则必须跳过 restore。
+  - `SandboxLifecycleWorker.handleStop()` / `handleDestroy()` / `handleTimeoutCheck()` 只有在当前 session 是该 workspace 的**最后一个 active 挂载者**时，才允许在 stop/remove 前调用 `WorkspaceService.syncFromSandboxContainer(restoreWorkspaceId, containerId, tenantId)`；如果同一 workspace 仍被其他 active sandbox 挂载，则必须跳过同步。
+  - `SandboxService.detachPersistentSession()` 在 persistent sandbox 的最后一个 active binding 释放、资源回到 `resource` 态前，也必须按“当前 session 是否为该 workspace 的最后一个 active 挂载者”判断是否 best-effort 调用同一同步逻辑，不能只按单个 persistent 资源自己的 binding 数量决定。
   - 回写只能覆盖同一条 `workspace_snapshots` 记录与既有 `storageKey`，不能额外插入“旧版本” workspace 行。
   - 回写失败只能记录 warning，不能阻断 stop / destroy / timeout / detach 主流程。
+  - `DockerService.removeContainer()` / lifecycle cleanup / `deleteSandbox()` 在 `restoreWorkspaceId` 存在时必须保留 workspace volume（`removeVolumes=false`），避免 destroy/delete 把共享 workspace 卷一起删掉。
 - `WorkspaceIntegrationService.archiveExecutionStepWorkspace()` 必须区分两类 workflow step：
   - live sandbox `config.restoreWorkspaceId` 存在：同步回原 workspace，并返回同一个 `workspaceSnapshotId`
   - live sandbox 未绑定现有 workspace：才允许 `createFromSandbox()` 新建 `execution-*-step-*-workspace`
@@ -129,6 +135,7 @@
   - 绑定已有 workspace 时，它指向原 `restoreWorkspaceId`
   - 未绑定已有 workspace 时，它指向新建的 `execution_archive`
 - workspace 详情页的 `tree / preview / raw` 读取不得再把“整包 tar 体积”当成统一拦截条件：
+  - 若某个 workspace 当前仍被 active sandbox 挂载，`WorkspaceService.getFileTree()` / `getFilePreview()` / `getFileAsset()` 必须优先直接读取 live 容器中的 workspace volume，而不是盲读 snapshot；只有在没有 active mount 或 live 读取失败时，才允许回退到 snapshot。
   - `GET /workspaces/:id/tree` 必须能够对大 workspace snapshot 做流式 tar 扫描并返回目录树，不能因为归档超过某个内存预览阈值就直接 404。
   - `GET /workspaces/:id/preview/*` 与 `GET /workspaces/:id/raw/*` 必须按目标路径流式定位单个 entry，而不是先把整个 tar 读入内存。
   - 文本内容的在线预览限制仍然只作用于“单个目标文件”，例如 `MAX_WORKSPACE_TEXT_PREVIEW_BYTES`；它不能反向把整个 workspace 的目录树预览一起打成空白。
@@ -230,7 +237,10 @@
 | `includeAutoArchived=false` query string | DTO 必须把 `'false'` 解析成 `false`，不能回退成 truthy | `list-workspaces-query.dto.spec.ts` |
 | workspace snapshot tar 很大，但只读取目录树 | `GET /workspaces/:id/tree` 仍返回完整目录树，不因整包大小 404 | `workspace.service.spec.ts` |
 | workspace snapshot tar 很大，但只读取单个小文件 | `preview/raw` 应能流式定位目标文件，不因整包大小失败 | `workspace.service.spec.ts` |
-| sandbox stop/destroy/timeout 时带 `restoreWorkspaceId` | 必须先覆盖回写原 workspace，再继续 lifecycle 收口 | `sandbox-lifecycle.worker.spec.ts` |
+| workspace 当前被活跃 sandbox 挂载 | `tree/preview/raw` 必须优先读 live workspace，而不是旧 snapshot | `workspace.service.spec.ts` |
+| create/start 时 `restoreWorkspaceId` 已被其他活跃 sandbox 挂载 | 必须跳过 restore，直接复用同一 workspace volume | `sandbox-lifecycle.worker.spec.ts`, `sandbox.service.spec.ts` |
+| sandbox stop/destroy/timeout 时带 `restoreWorkspaceId` 且已是最后一个挂载者 | 必须先覆盖回写原 workspace，再继续 lifecycle 收口 | `sandbox-lifecycle.worker.spec.ts` |
+| sandbox stop/destroy/timeout 时带 `restoreWorkspaceId` 但仍有其他活跃挂载者 | 必须跳过同步，避免把中间态错误归档 | `sandbox-lifecycle.worker.spec.ts`, `sandbox.service.spec.ts` |
 | workflow step 绑定已有 workspace 结束 | `archiveExecutionStepWorkspace()` 返回原 `restoreWorkspaceId`，且不创建 execution archive | `workspace-integration.service.spec.ts` |
 | sandbox list `bindingType=resource` | SQL where 同时要求 `execution_id is null` + `agent_conversation_id is null` | `sandbox.service.spec.ts` |
 | persistent resource sandbox timeout | 资源状态应落为 `stopped`，而不是 `failed` | `sandbox-lifecycle.worker.spec.ts` |

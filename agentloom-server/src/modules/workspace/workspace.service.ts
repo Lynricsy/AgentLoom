@@ -42,6 +42,7 @@ import {
   buildWorkspaceFilePreview,
   buildWorkspaceFileTree,
   detectWorkspaceMimeType,
+  parseWorkspaceArchiveEntries,
   findWorkspaceArchiveFileEntryFromStream,
   normalizeWorkspacePreviewPath,
   parseWorkspaceArchiveEntriesFromStream,
@@ -679,6 +680,23 @@ export class WorkspaceService {
     tenantId: string,
     workspaceId: string,
   ): Promise<WorkspaceFileTreeNode[]> {
+    const activeContainerId = await this.findActiveWorkspaceContainerId(
+      tenantId,
+      workspaceId,
+    );
+
+    if (activeContainerId) {
+      try {
+        const entries =
+          await this.readLiveWorkspaceSnapshotTreeEntries(activeContainerId);
+        return buildWorkspaceFileTree(entries);
+      } catch (error) {
+        this.logger.warn(
+          `Failed to read live workspace tree for ${workspaceId} from container ${activeContainerId}, falling back to snapshot: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+
     const entries = await this.readWorkspaceSnapshotTreeEntries(
       tenantId,
       workspaceId,
@@ -691,6 +709,25 @@ export class WorkspaceService {
     workspaceId: string,
     filePath: string,
   ): Promise<WorkspaceFilePreview> {
+    const activeContainerId = await this.findActiveWorkspaceContainerId(
+      tenantId,
+      workspaceId,
+    );
+
+    if (activeContainerId) {
+      try {
+        const { normalizedPath, entry } = await this.readLiveWorkspaceFileEntry(
+          activeContainerId,
+          filePath,
+        );
+        return buildWorkspaceFilePreview(normalizedPath, entry);
+      } catch (error) {
+        this.logger.warn(
+          `Failed to read live workspace preview for ${workspaceId}/${filePath} from container ${activeContainerId}, falling back to snapshot: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+
     const { normalizedPath, entry } = await this.readWorkspaceFileEntry(
       tenantId,
       workspaceId,
@@ -704,6 +741,31 @@ export class WorkspaceService {
     workspaceId: string,
     filePath: string,
   ): Promise<WorkspaceFileAsset> {
+    const activeContainerId = await this.findActiveWorkspaceContainerId(
+      tenantId,
+      workspaceId,
+    );
+
+    if (activeContainerId) {
+      try {
+        const { normalizedPath, entry } = await this.readLiveWorkspaceFileEntry(
+          activeContainerId,
+          filePath,
+        );
+        return {
+          path: normalizedPath,
+          fileName: basename(normalizedPath),
+          size: entry.size,
+          mimeType: detectWorkspaceMimeType(normalizedPath, entry.content),
+          content: Buffer.from(entry.content),
+        };
+      } catch (error) {
+        this.logger.warn(
+          `Failed to read live workspace asset for ${workspaceId}/${filePath} from container ${activeContainerId}, falling back to snapshot: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    }
+
     const { normalizedPath, entry } = await this.readWorkspaceFileEntry(
       tenantId,
       workspaceId,
@@ -883,6 +945,16 @@ export class WorkspaceService {
     return parseWorkspaceArchiveEntriesFromStream(archiveStream);
   }
 
+  private async readLiveWorkspaceSnapshotTreeEntries(
+    containerId: string,
+  ): Promise<WorkspaceArchiveEntry[]> {
+    const archiveStream = await this.dockerService.getArchive(
+      containerId,
+      CONTAINER_WORKSPACE,
+    );
+    return parseWorkspaceArchiveEntriesFromStream(archiveStream);
+  }
+
   private async readWorkspaceFileEntry(
     tenantId: string,
     workspaceId: string,
@@ -913,6 +985,35 @@ export class WorkspaceService {
     );
   }
 
+  private async readLiveWorkspaceFileEntry(
+    containerId: string,
+    filePath: string,
+  ): Promise<{ normalizedPath: string; entry: WorkspaceArchiveEntry }> {
+    const normalizedPath = normalizeWorkspacePreviewPath(filePath);
+    const archiveStream = await this.dockerService.getArchive(
+      containerId,
+      `${CONTAINER_WORKSPACE}${normalizedPath}`,
+    );
+    const entries = parseWorkspaceArchiveEntries(
+      await this.readReadableToBuffer(archiveStream),
+    );
+    const fileEntries = entries.filter(
+      (candidate) => candidate.type === 'file',
+    );
+    const entry =
+      fileEntries.find((candidate) => candidate.path === normalizedPath) ??
+      (fileEntries.length === 1 ? fileEntries[0] : undefined);
+
+    if (!entry) {
+      throw new NotFoundException(`路径 ${filePath} 不是普通文件`);
+    }
+
+    return {
+      normalizedPath,
+      entry,
+    };
+  }
+
   private async readWorkspaceFileStats(
     filePath: string,
     rawInputPath: string,
@@ -935,6 +1036,67 @@ export class WorkspaceService {
     snapshot: Pick<schema.WorkspaceSnapshot, 'tenantId' | 'id'>,
   ): string {
     return buildWorkspaceStorageKey(snapshot.tenantId, snapshot.id);
+  }
+
+  private async findActiveWorkspaceContainerId(
+    tenantId: string,
+    workspaceId: string,
+  ): Promise<string | null> {
+    const tenantDb = getTenantDb(this.db);
+    const result = await tenantDb.execute(sql`
+      select container_id as "containerId"
+      from sandbox_sessions
+      where tenant_id = ${tenantId}
+        and container_id is not null
+        and status not in ('stopping', 'stopped', 'failed')
+        and config->>'restoreWorkspaceId' = ${workspaceId}
+      limit 1
+    `);
+    const [row] = this.readExecuteRows<{ containerId?: string }>(result);
+
+    return typeof row?.containerId === 'string' &&
+      row.containerId.trim().length > 0
+      ? row.containerId
+      : null;
+  }
+
+  private readExecuteRows<T extends Record<string, unknown>>(
+    result: unknown,
+  ): T[] {
+    if (Array.isArray(result)) {
+      return result as T[];
+    }
+
+    if (
+      result &&
+      typeof result === 'object' &&
+      'rows' in result &&
+      Array.isArray((result as { rows?: unknown[] }).rows)
+    ) {
+      return (result as { rows: T[] }).rows;
+    }
+
+    return [];
+  }
+
+  private async readReadableToBuffer(stream: Readable): Promise<Buffer> {
+    const chunks: Buffer[] = [];
+
+    for await (const chunk of stream) {
+      if (Buffer.isBuffer(chunk)) {
+        chunks.push(chunk);
+        continue;
+      }
+
+      if (chunk instanceof Uint8Array) {
+        chunks.push(Buffer.from(chunk));
+        continue;
+      }
+
+      chunks.push(Buffer.from(String(chunk)));
+    }
+
+    return Buffer.concat(chunks);
   }
 
   private async maybeRepairLegacySharedEmptyStorageKey(

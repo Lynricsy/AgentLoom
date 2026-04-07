@@ -33,6 +33,7 @@ import type {
   DockerExecCreateOptions,
   DockerExecExitInfo,
   DockerExecHandle,
+  RemoveContainerOptions,
   SandboxRuntimeDriver,
 } from './sandbox-runtime-driver.port';
 
@@ -125,7 +126,7 @@ export class DockerService implements SandboxRuntimeDriver {
       const hostConfig: Docker.ContainerCreateOptions['HostConfig'] = {
         NanoCpus: config.cpu * CPU_CORE_TO_NANO,
         Memory: config.memory * MB_TO_BYTES,
-        Binds: [`sandbox-${sessionId}-workspace:/workspace`],
+        Binds: [this.resolveWorkspaceBind(sessionId, config)],
         ...(!sandboxNetwork
           ? {
               PortBindings: {
@@ -555,10 +556,16 @@ export class DockerService implements SandboxRuntimeDriver {
     }
   }
 
-  async removeContainer(containerId: string): Promise<void> {
+  async removeContainer(
+    containerId: string,
+    options?: RemoveContainerOptions,
+  ): Promise<void> {
     try {
       const container = this.docker.getContainer(containerId);
-      await container.remove({ v: true, force: true });
+      await container.remove({
+        v: options?.removeVolumes ?? true,
+        force: true,
+      });
     } catch (error) {
       if (this.isContainerNotFoundError(error)) {
         this.logger.warn(`Container ${containerId} not found, skipping remove`);
@@ -572,6 +579,30 @@ export class DockerService implements SandboxRuntimeDriver {
         `Container removal failed: ${error instanceof Error ? error.message : 'unknown error'}`,
       );
     }
+  }
+
+  private resolveWorkspaceBind(
+    sessionId: string,
+    config: SandboxConfig,
+  ): string {
+    return `${this.resolveWorkspaceVolumeName(sessionId, config)}:/workspace`;
+  }
+
+  private resolveWorkspaceVolumeName(
+    sessionId: string,
+    config: SandboxConfig,
+  ): string {
+    const restoreWorkspaceId = this.readRestoreWorkspaceId(config);
+    return restoreWorkspaceId
+      ? `workspace-${restoreWorkspaceId}-volume`
+      : `sandbox-${sessionId}-workspace`;
+  }
+
+  private readRestoreWorkspaceId(config: SandboxConfig): string | null {
+    return typeof config.restoreWorkspaceId === 'string' &&
+      config.restoreWorkspaceId.trim().length > 0
+      ? config.restoreWorkspaceId.trim()
+      : null;
   }
 
   async attachLogs(
@@ -907,8 +938,7 @@ export class DockerService implements SandboxRuntimeDriver {
 
     const message = error.message.toLowerCase();
     return (
-      message.includes('no such container') ||
-      message.includes('is not found')
+      message.includes('no such container') || message.includes('is not found')
     );
   }
 
