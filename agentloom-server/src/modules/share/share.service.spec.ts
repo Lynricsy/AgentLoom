@@ -120,6 +120,51 @@ function createAccessibleShareTokenRecord(
   return createShareTokenRecord(overrides) as AccessibleShareTokenRecord;
 }
 
+function createAccessibleAgentShareTokenRecord(
+  overrides: Partial<AccessibleShareTokenRecord> = {},
+): AccessibleShareTokenRecord {
+  return {
+    id: SHARE_ID,
+    agentDefinitionId: '66666666-6666-4666-8666-666666666666',
+    tenantId: TENANT_ID,
+    shareToken: SHARE_TOKEN,
+    shareType: 'read_only',
+    createdBy: USER_ID,
+    expiresAt: null,
+    isRevoked: false,
+    viewCount: 0,
+    copyCount: 0,
+    createdAt: NOW,
+    updatedAt: NOW,
+    agentName: '测试 Agent',
+    agentDescription: '用于公开 Agent Share 单测',
+    agentRuntimeMode: 'sandbox',
+    publishedVersionId: VERSION_ID,
+    snapshot: {
+      runtimeMode: 'sandbox',
+      nodes: [],
+      edges: [],
+      viewport: { x: 1, y: 2, zoom: 1.5 },
+      systemPrompt: null,
+      sandboxConfig: {
+        cpu: 1,
+        memory: 512,
+        disk: 1,
+        timeout: 24,
+        lifecycleMode: 'persistent',
+      },
+      workspaceSnapshotId: null,
+      metadata: {
+        sandboxLifecycle: 'session',
+      },
+    },
+    authorDisplayName: 'Wine Fox',
+    authorEmail: 'fox@ling.plus',
+    authorAvatarUrl: null,
+    ...overrides,
+  } as AccessibleShareTokenRecord;
+}
+
 function createSelectChain(result: unknown) {
   const where = vi.fn().mockResolvedValue(result);
   const from = vi.fn().mockReturnValue({ where });
@@ -470,6 +515,31 @@ describe('ShareService', () => {
       const result = await service.getPublicShare(SHARE_TOKEN);
 
       expect(result.definition.viewport).toEqual({ x: 0, y: 0, zoom: 1 });
+    });
+
+    it('公开 Agent 分享在 metadata 与 sandboxConfig lifecycle 冲突时应以 sandboxConfig 为准', async () => {
+      const share = createAccessibleAgentShareTokenRecord();
+
+      db.select.mockReturnValueOnce(createSelectChainWithJoins([]));
+      db.select.mockReturnValueOnce(createSelectChainWithJoins([share]));
+      db.update.mockReturnValueOnce(createUpdateWhereChain(undefined));
+
+      const result = await service.getPublicShare(SHARE_TOKEN);
+
+      expect(result).toMatchObject({
+        token: SHARE_TOKEN,
+        resourceType: 'agent',
+        agentDefinitionId: share.agentDefinitionId,
+        agentName: share.agentName,
+        agentDescription: share.agentDescription,
+        runtimeMode: share.agentRuntimeMode,
+        sandboxLifecycle: 'persistent',
+        definition: {
+          nodes: share.snapshot.nodes,
+          edges: share.snapshot.edges,
+          viewport: share.snapshot.viewport,
+        },
+      });
     });
 
     it('分享链接不存在时应抛出 ShareNotFoundException', async () => {

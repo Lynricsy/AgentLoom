@@ -54,6 +54,7 @@
 - nested `sub-agent` 必须递归编译、递归校验，不能只校验第一层 `agentDefinitionId/versionId`。
 - sub-agent 永远继承父 Agent 的 sandbox 与 runtimeMode；child 不能通过节点图局部覆盖沙箱边界。
 - share import 与预迁移脚本必须复用同一 migration util，避免数据库、导入结果与运行时接受不同图语义。
+- Agent detail / public share response 返回 `sandboxLifecycle` 时，必须优先使用由 canvas / `sandboxConfig` 推导出的真实 lifecycle；只有当 `sandboxConfig` 缺失时，才允许回退到 `metadata.sandboxLifecycle`。历史 metadata 可能残留旧值，不能反向覆盖当前画布语义。
 - workflow `agent` 在执行时会把 `system-prompt-in` / `schema-in` 从普通 prompt 输入字典里剥离，避免把结构化 override 错当作用户消息内容。
 - legacy Agent canvas MCP 节点别名必须在保存草稿、应用 self-evolution 快照、detail/version 响应与 runtime 编译链路里统一 canonicalize：
   - `nodeType='mcp'` → `mcp-tool`
@@ -83,6 +84,7 @@
 | workflow `agent` 上游传入 `system-prompt-in` | `WorkflowAgentAdapter` 使用上游文本覆盖基础 system prompt | `workflow-agent-adapter.spec.ts` |
 | workflow / sub-agent 上游传入非法 JSON 字符串到 `schema-in` | `coerceAgentOutputSchema()` 返回 `undefined`，忽略 schema 追加，不阻断执行 | util 单测 + adapter 单测 |
 | `sub-agent` 只覆盖 `modelConfig`，未提供新 routing | 继承 routing 被移除，child 使用 concrete model | `agent-runtime-config.utils.spec.ts` |
+| Agent detail response 的 `metadata.sandboxLifecycle` 与 `sandboxConfig.lifecycleMode` 冲突 | 必须以 `sandboxConfig.lifecycleMode` 为准，避免 Studio 读到过期 lifecycle | `agent-definition-response.dto.spec.ts` |
 | nested sub-agent 扩展里重复 alias / tool / knowledge / memory / skill | 合并结果去重，避免 runtime 工具与资源重复挂载 | `agent-runtime-config.utils.spec.ts` |
 | 已发布 Agent 快照仍含 `nodeType='mcp'` / `sourceHandle='tools-out'` | detail/version response 与 runtime 编译都应恢复为 `mcp-tool` / `tool-out` | `agent-input-node-migration.util.spec.ts`, `agent-definition-response.dto.spec.ts`, `agent-definition.service.spec.ts` |
 | Agent MCP 节点保存的是 `config.enabledToolIds + config.tools[]` | `buildRuntimeConfigFromNodes()` 必须展开成逐个 MCP binding，与 workflow agent runtime 行为一致 | `mcp-tool-descriptor.utils.spec.ts`, `agent-definition.service.spec.ts` |

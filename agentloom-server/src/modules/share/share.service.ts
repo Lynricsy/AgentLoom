@@ -46,6 +46,29 @@ function asRecord(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+function resolveSharedAgentSandboxLifecycle(
+  metadata: Record<string, unknown>,
+  sandboxConfig:
+    | schema.AgentVersionSnapshot['sandboxConfig']
+    | null
+    | undefined,
+): 'session' | 'persistent' | null {
+  const configLifecycle =
+    sandboxConfig?.lifecycleMode === 'session' ||
+    sandboxConfig?.lifecycleMode === 'persistent'
+      ? sandboxConfig.lifecycleMode
+      : null;
+
+  if (configLifecycle) {
+    return configLifecycle;
+  }
+
+  const metadataLifecycle = metadata.sandboxLifecycle;
+  return metadataLifecycle === 'session' || metadataLifecycle === 'persistent'
+    ? metadataLifecycle
+    : null;
+}
+
 type WorkflowShareRecord = Pick<
   schema.WorkflowShare,
   | 'id'
@@ -762,15 +785,10 @@ export class ShareService {
   ): PublicAgentShareResponse {
     const metadata = asRecord(share.snapshot.metadata) ?? {};
     const inputSchema = asRecord(metadata.inputSchema);
-    const metadataSandboxLifecycle = metadata.sandboxLifecycle;
-    const sandboxLifecycle =
-      metadataSandboxLifecycle === 'session' ||
-      metadataSandboxLifecycle === 'persistent'
-        ? metadataSandboxLifecycle
-        : share.snapshot.sandboxConfig?.lifecycleMode === 'session' ||
-            share.snapshot.sandboxConfig?.lifecycleMode === 'persistent'
-          ? share.snapshot.sandboxConfig.lifecycleMode
-          : null;
+    const sandboxLifecycle = resolveSharedAgentSandboxLifecycle(
+      metadata,
+      share.snapshot.sandboxConfig,
+    );
 
     return {
       token,

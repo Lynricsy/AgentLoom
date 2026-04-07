@@ -96,6 +96,45 @@ describe('serializeAgentDefinitionDetail', () => {
     expect(result.sandboxLifecycle).toBe('session');
   });
 
+  it('metadata 与 sandboxConfig.lifecycleMode 冲突时应以 sandboxConfig 为准', () => {
+    const createdAt = new Date('2026-04-07T00:00:00.000Z');
+    const updatedAt = new Date('2026-04-07T01:00:00.000Z');
+
+    const result = serializeAgentDefinitionDetail({
+      id: 'agent-1',
+      tenantId: 'tenant-1',
+      name: 'Agent',
+      slug: 'agent',
+      description: null,
+      icon: null,
+      runtimeMode: 'sandbox',
+      status: 'published',
+      version: 9,
+      publishedVersionId: 'version-9',
+      createdBy: 'user-1',
+      updatedBy: 'user-1',
+      createdAt,
+      updatedAt,
+      systemPrompt: null,
+      nodes: [],
+      edges: [],
+      viewport: null,
+      sandboxConfig: {
+        cpu: 1,
+        memory: 512,
+        disk: 1,
+        timeout: 24,
+        lifecycleMode: 'persistent',
+      },
+      workspaceSnapshotId: null,
+      metadata: {
+        sandboxLifecycle: 'session',
+      },
+    });
+
+    expect(result.sandboxLifecycle).toBe('persistent');
+  });
+
   it('应从画布节点恢复旧 sandboxConfig 丢失的 timeoutSeconds', () => {
     const createdAt = new Date('2026-04-03T00:00:00.000Z');
     const updatedAt = new Date('2026-04-03T00:30:00.000Z');

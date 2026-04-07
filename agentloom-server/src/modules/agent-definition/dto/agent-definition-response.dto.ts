@@ -88,6 +88,26 @@ function asStringArray(value: unknown): string[] | null {
     : null;
 }
 
+function resolveSandboxLifecycle(
+  metadata: Record<string, unknown> | null,
+  sandboxConfig: SandboxConfig | null | undefined,
+): 'session' | 'persistent' | null {
+  const configLifecycle =
+    sandboxConfig?.lifecycleMode === 'session' ||
+    sandboxConfig?.lifecycleMode === 'persistent'
+      ? sandboxConfig.lifecycleMode
+      : null;
+
+  if (configLifecycle) {
+    return configLifecycle;
+  }
+
+  const metadataLifecycle = metadata?.sandboxLifecycle;
+  return metadataLifecycle === 'session' || metadataLifecycle === 'persistent'
+    ? metadataLifecycle
+    : null;
+}
+
 function readDetailMetadata(
   metadata: Record<string, unknown> | null | undefined,
   sandboxConfig: SandboxConfig | null | undefined,
@@ -97,14 +117,10 @@ function readDetailMetadata(
   const memoryInstanceIds = asStringArray(
     normalizedMetadata?.memoryInstanceIds,
   );
-  const metadataLifecycle = normalizedMetadata?.sandboxLifecycle;
-  const sandboxLifecycle =
-    metadataLifecycle === 'session' || metadataLifecycle === 'persistent'
-      ? metadataLifecycle
-      : sandboxConfig?.lifecycleMode === 'session' ||
-          sandboxConfig?.lifecycleMode === 'persistent'
-        ? sandboxConfig.lifecycleMode
-        : null;
+  const sandboxLifecycle = resolveSandboxLifecycle(
+    normalizedMetadata,
+    sandboxConfig,
+  );
 
   return {
     inputSchema,
