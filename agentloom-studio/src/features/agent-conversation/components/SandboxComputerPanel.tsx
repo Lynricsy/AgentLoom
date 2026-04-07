@@ -37,7 +37,8 @@ interface SandboxComputerPanelProps {
   terminalEntries: TerminalEntry[];
   fileChanges: FileChange[];
   sandboxStatus: SandboxStatus;
-  /** 当前活跃的工具调用（正在执行的），传入后自动切到工具详情 tab */
+  isExecuting: boolean;
+  /** 当前活跃的工具调用（正在执行的），用于实时更新工具详情 tab */
   activeToolCall?: ToolCallData;
 }
 
@@ -472,7 +473,8 @@ function ProcessMonitorView({
         <div className="border-b border-border/30 bg-surface-elevated/20 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
           <div className="font-medium text-foreground/90">实时进程快照</div>
           <div className="mt-0.5">
-            按 CPU / 内存占用排序展示当前沙箱进程，效果更接近任务管理器而不是终端日志。
+            按 CPU /
+            内存占用排序展示当前沙箱进程，效果更接近任务管理器而不是终端日志。
           </div>
         </div>
         <div className="flex-1 overflow-auto">
@@ -709,6 +711,22 @@ function ActiveToolView({ toolCall }: { toolCall: ToolCallData }) {
   );
 }
 
+function ToolIdleView() {
+  return (
+    <div
+      data-testid="sandbox-tool-empty"
+      className="flex flex-1 flex-col items-center justify-center px-6 text-center text-muted-foreground"
+    >
+      <Wrench className="mb-3 h-5 w-5 opacity-50" />
+      <div className="text-sm">本轮执行已开始，等待工具调用</div>
+      <div className="mt-1 text-xs leading-relaxed">
+        如果 Agent
+        正在思考或只输出文本，这里会暂时保持空态；一旦调用工具，详情会实时更新。
+      </div>
+    </div>
+  );
+}
+
 type PanelTab = "process" | "changes" | "tool";
 
 export function SandboxComputerPanel({
@@ -717,18 +735,19 @@ export function SandboxComputerPanel({
   terminalEntries,
   fileChanges,
   sandboxStatus,
+  isExecuting,
   activeToolCall,
 }: SandboxComputerPanelProps) {
-  const [activeTab, setActiveTab] = useState<PanelTab>("process");
-  const prevToolRef = useRef<string | undefined>(undefined);
+  const [activeTab, setActiveTab] = useState<PanelTab>(() =>
+    isExecuting ? "tool" : "process",
+  );
+  const prevExecutingRef = useRef(isExecuting);
   const { data: sandboxStats } = useConversationSandboxStats(
     conversationId,
     sandboxStatus,
   );
-  const {
-    data: sandboxProcesses,
-    isLoading: isProcessLoading,
-  } = useConversationSandboxProcesses(conversationId, sandboxStatus);
+  const { data: sandboxProcesses, isLoading: isProcessLoading } =
+    useConversationSandboxProcesses(conversationId, sandboxStatus);
   const fallbackItems = useMemo(
     () =>
       buildFallbackActivityItems({
@@ -756,16 +775,22 @@ export function SandboxComputerPanel({
     diskPercent !== null
       ? `${formatSandboxBytes(sandboxStats.diskUsage)} / ${formatSandboxBytes(sandboxStats.diskTotal)}`
       : "--";
+  const showToolTab = isExecuting || Boolean(activeToolCall);
+  const visibleActiveTab =
+    activeTab === "tool" && !showToolTab ? "process" : activeTab;
 
-  // 当有新的活跃工具调用时自动切到 tool tab
   useEffect(() => {
-    if (activeToolCall && activeToolCall.id !== prevToolRef.current) {
-      prevToolRef.current = activeToolCall.id;
+    if (isExecuting && !prevExecutingRef.current) {
       setActiveTab("tool");
-    } else if (!activeToolCall && activeTab === "tool") {
+    }
+    prevExecutingRef.current = isExecuting;
+  }, [isExecuting]);
+
+  useEffect(() => {
+    if (!showToolTab && activeTab === "tool") {
       setActiveTab("process");
     }
-  }, [activeToolCall, activeTab]);
+  }, [activeTab, showToolTab]);
 
   return (
     <div className="flex flex-col h-full bg-surface rounded-lg border border-border overflow-hidden">
@@ -791,7 +816,7 @@ export function SandboxComputerPanel({
           onClick={() => setActiveTab("process")}
           className={cn(
             "flex items-center gap-1.5 px-3 py-1.5 text-xs transition-colors",
-            activeTab === "process"
+            visibleActiveTab === "process"
               ? "text-foreground border-b-2 border-info"
               : "text-muted-foreground hover:text-foreground",
           )}
@@ -809,7 +834,7 @@ export function SandboxComputerPanel({
           onClick={() => setActiveTab("changes")}
           className={cn(
             "flex items-center gap-1.5 px-3 py-1.5 text-xs transition-colors",
-            activeTab === "changes"
+            visibleActiveTab === "changes"
               ? "text-foreground border-b-2 border-info"
               : "text-muted-foreground hover:text-foreground",
           )}
@@ -822,13 +847,13 @@ export function SandboxComputerPanel({
             </span>
           )}
         </button>
-        {activeToolCall && (
+        {showToolTab && (
           <button
             type="button"
             onClick={() => setActiveTab("tool")}
             className={cn(
               "flex items-center gap-1.5 px-3 py-1.5 text-xs transition-colors",
-              activeTab === "tool"
+              visibleActiveTab === "tool"
                 ? "text-foreground border-b-2 border-info"
                 : "text-muted-foreground hover:text-foreground",
             )}
@@ -839,9 +864,13 @@ export function SandboxComputerPanel({
         )}
       </div>
 
-      {activeTab === "tool" && activeToolCall ? (
-        <ActiveToolView toolCall={activeToolCall} />
-      ) : activeTab === "process" ? (
+      {visibleActiveTab === "tool" ? (
+        activeToolCall ? (
+          <ActiveToolView toolCall={activeToolCall} />
+        ) : (
+          <ToolIdleView />
+        )
+      ) : visibleActiveTab === "process" ? (
         <ProcessMonitorView
           processes={sandboxProcesses ?? null}
           isLoading={isProcessLoading}

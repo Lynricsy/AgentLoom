@@ -204,6 +204,7 @@ export function NewConversationDraftPage({
                 terminalEntries={[]}
                 fileChanges={[]}
                 sandboxStatus="idle"
+                isExecuting={false}
               />
             </div>
 
@@ -247,8 +248,8 @@ export function NewConversationDraftPage({
           <div className="flex min-w-0 flex-1 items-start justify-center border-l border-border bg-surface p-6">
             <div className="max-w-sm rounded-lg border border-border bg-surface-elevated/50 px-4 py-3 text-sm text-muted-foreground">
               无沙箱 Agent
-              不提供工作区、进程和文件变更面板；Skill、知识库、Memory、HTTP
-              MCP 与自进化能力仍会在对话消息流中展示。
+              不提供工作区、进程和文件变更面板；Skill、知识库、Memory、HTTP MCP
+              与自进化能力仍会在对话消息流中展示。
             </div>
           </div>
         ) : (

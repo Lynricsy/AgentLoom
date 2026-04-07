@@ -910,6 +910,7 @@ export function AgentConversationPage({
                     terminalEntries={terminalEntries}
                     fileChanges={fileChanges}
                     sandboxStatus={sandboxStatus}
+                    isExecuting={isExecuting}
                     activeToolCall={activeToolCall}
                   />
                 </div>

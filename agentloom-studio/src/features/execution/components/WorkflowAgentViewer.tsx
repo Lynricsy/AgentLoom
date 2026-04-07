@@ -423,6 +423,7 @@ export const WorkflowAgentViewer = memo(function WorkflowAgentViewer({
               terminalEntries={viewerState.terminalEntries}
               fileChanges={viewerState.fileChanges}
               sandboxStatus={viewerState.sandboxStatus}
+              isExecuting={step.status === "running"}
               activeToolCall={viewerState.activeToolCall}
             />
           </div>
@@ -484,6 +485,7 @@ export const WorkflowAgentViewer = memo(function WorkflowAgentViewer({
           terminalEntries={viewerState.terminalEntries}
           fileChanges={viewerState.fileChanges}
           sandboxStatus={viewerState.sandboxStatus}
+          isExecuting={step.status === "running"}
           activeToolCall={viewerState.activeToolCall}
         />
         <div className="space-y-2">

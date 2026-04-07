@@ -1,16 +1,14 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { ToolCallData } from "@/shared/components/tool-renderers/types";
 import { SandboxComputerPanel } from "./SandboxComputerPanel";
 
-const {
-  useConversationSandboxProcessesMock,
-  useConversationSandboxStatsMock,
-} = vi.hoisted(() => ({
-  useConversationSandboxProcessesMock: vi.fn(),
-  useConversationSandboxStatsMock: vi.fn(),
-}));
+const { useConversationSandboxProcessesMock, useConversationSandboxStatsMock } =
+  vi.hoisted(() => ({
+    useConversationSandboxProcessesMock: vi.fn(),
+    useConversationSandboxStatsMock: vi.fn(),
+  }));
 
 vi.mock("../api/conversationQueries", () => ({
   useConversationSandboxProcesses: (...args: unknown[]) =>
@@ -64,6 +62,7 @@ describe("SandboxComputerPanel", () => {
         terminalEntries={[]}
         fileChanges={[]}
         sandboxStatus="running"
+        isExecuting={false}
       />,
     );
 
@@ -99,6 +98,7 @@ describe("SandboxComputerPanel", () => {
         ]}
         fileChanges={[]}
         sandboxStatus="running"
+        isExecuting={false}
       />,
     );
 
@@ -109,33 +109,78 @@ describe("SandboxComputerPanel", () => {
     expect(screen.getByText("server listening on 3000")).toBeInTheDocument();
   });
 
-  it("有活跃工具调用时应自动切到工具标签", () => {
-    const activeToolCall: ToolCallData = {
-      id: "tool-1",
-      tool: "bash",
-      status: "awaiting_permission",
-      error: "",
-    };
-
+  it("agent 开始运行时应默认显示工具标签空态", () => {
     render(
       <SandboxComputerPanel
         conversationId="conv-1"
         agentName="测试 Agent"
         terminalEntries={[]}
-        fileChanges={[
-          {
-            path: "workspace/a.txt",
-            changeType: "created",
-          },
-        ]}
+        fileChanges={[]}
         sandboxStatus="running"
-        activeToolCall={activeToolCall}
+        isExecuting
+      />,
+    );
+
+    expect(screen.getByText("工具")).toBeInTheDocument();
+    expect(screen.getByTestId("sandbox-tool-empty")).toBeInTheDocument();
+    expect(
+      screen.getByText("本轮执行已开始，等待工具调用"),
+    ).toBeInTheDocument();
+  });
+
+  it("手动切到其他标签后，后续工具调用不应再自动跳回工具标签", async () => {
+    const user = userEvent.setup();
+    const fileChanges = [
+      {
+        path: "workspace/a.txt",
+        changeType: "created" as const,
+      },
+    ];
+    const { rerender } = render(
+      <SandboxComputerPanel
+        conversationId="conv-1"
+        agentName="测试 Agent"
+        terminalEntries={[]}
+        fileChanges={fileChanges}
+        sandboxStatus="running"
+        isExecuting
+        activeToolCall={{
+          id: "tool-1",
+          tool: "bash",
+          status: "awaiting_permission",
+          error: "",
+        }}
       />,
     );
 
     expect(screen.getByText("bash")).toBeInTheDocument();
     expect(screen.getByText("执行中")).toBeInTheDocument();
-    expect(screen.getByText("文件变更")).toBeInTheDocument();
-    expect(screen.getByText("工具")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /文件变更/i }));
+
+    expect(screen.getByText("a.txt")).toBeInTheDocument();
+    expect(screen.getByText("新建")).toBeInTheDocument();
+    expect(screen.queryByText("bash")).not.toBeInTheDocument();
+
+    rerender(
+      <SandboxComputerPanel
+        conversationId="conv-1"
+        agentName="测试 Agent"
+        terminalEntries={[]}
+        fileChanges={fileChanges}
+        sandboxStatus="running"
+        isExecuting
+        activeToolCall={{
+          id: "tool-2",
+          tool: "python",
+          status: "in_progress",
+          error: "",
+        }}
+      />,
+    );
+
+    expect(screen.getByText("a.txt")).toBeInTheDocument();
+    expect(screen.getByText("新建")).toBeInTheDocument();
+    expect(screen.queryByText("python")).not.toBeInTheDocument();
   });
 });
