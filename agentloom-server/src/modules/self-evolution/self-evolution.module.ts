@@ -4,6 +4,7 @@ import { DatabaseModule } from '../../database/database.module';
 import { AgentDefinitionModule } from '../agent-definition/agent-definition.module';
 import { LlmModule } from '../llm/llm.module';
 import { McpModule } from '../mcp/mcp.module';
+import { SandboxModule } from '../sandbox/sandbox.module';
 import { SkillModule } from '../skill/skill.module';
 import { WorkflowDefinitionModule } from '../workflow-definition/workflow-definition.module';
 import { WorkspaceModule } from '../workspace/workspace.module';
@@ -18,6 +19,7 @@ import { SelfEvolutionToolsProvider } from './self-evolution-tools.provider';
     SkillModule,
     LlmModule,
     McpModule,
+    SandboxModule,
     WorkspaceModule,
     WorkflowDefinitionModule,
   ],

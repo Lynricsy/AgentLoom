@@ -120,6 +120,11 @@ describe("nodeTypeRegistry", () => {
     expect(getNodeTypeConfigOrNull("not-real")).toBeNull();
   });
 
+  it("maps legacy mcp alias lookups to the canonical mcp-tool config", () => {
+    expect(getNodeTypeConfig("mcp" as NodeType).type).toBe("mcp-tool");
+    expect(getNodeTypeConfigOrNull("mcp")?.type).toBe("mcp-tool");
+  });
+
   it("defines llm-model as a single model-output node with multi-connect support", () => {
     const llmModelNode = getNodeTypeConfig("llm-model");
     const outputPort = llmModelNode.outputPorts.find(

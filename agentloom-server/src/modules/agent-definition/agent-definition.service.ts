@@ -52,6 +52,10 @@ import {
   normalizeSandboxTimeoutSeconds,
 } from '../sandbox/sandbox-timeout.utils';
 import { resolveSandboxConversationIdleAutoEndMinutes } from '../sandbox/sandbox-conversation-idle.utils';
+import {
+  migrateAgentCanvasGraph,
+  migrateAgentVersionSnapshot,
+} from './agent-input-node-migration.util';
 import type {
   AgentCodeToolBinding,
   AgentHttpToolBinding,
@@ -427,12 +431,17 @@ export class AgentDefinitionService {
         throw new AgentArchivedException(agentId);
       }
 
-      const setClause: Record<string, any> = {
+      const migratedCanvas = migrateAgentCanvasGraph({
         nodes: dto.canvasNodes,
         edges: dto.canvasEdges,
+      });
+
+      const setClause: Record<string, any> = {
+        nodes: migratedCanvas.nodes,
+        edges: migratedCanvas.edges,
         sandboxConfig: this.derivePersistedSandboxConfig(
-          dto.canvasNodes,
-          dto.canvasEdges,
+          migratedCanvas.nodes,
+          migratedCanvas.edges,
           dto.globalSandboxConfig,
           agent.runtimeMode,
         ),
@@ -512,19 +521,24 @@ export class AgentDefinitionService {
         throw new AgentVersionConflictException(agentId, agent.version);
       }
 
+      const migratedCanvas = migrateAgentCanvasGraph({
+        nodes: options.canvasNodes,
+        edges: options.canvasEdges,
+      });
+
       await this.assertRuntimeModeConstraints(
         dbClient,
         agent.runtimeMode,
-        options.canvasNodes,
-        options.canvasEdges,
+        migratedCanvas.nodes,
+        migratedCanvas.edges,
       );
 
       const setClause: Record<string, any> = {
-        nodes: options.canvasNodes,
-        edges: options.canvasEdges,
+        nodes: migratedCanvas.nodes,
+        edges: migratedCanvas.edges,
         sandboxConfig: this.derivePersistedSandboxConfig(
-          options.canvasNodes,
-          options.canvasEdges,
+          migratedCanvas.nodes,
+          migratedCanvas.edges,
           options.globalSandboxConfig,
           agent.runtimeMode,
         ),
@@ -1899,10 +1913,14 @@ export class AgentDefinitionService {
   private resolveNodeType(node: any): string {
     const nodeType = node?.data?.nodeType;
     if (typeof nodeType === 'string' && nodeType.length > 0) {
-      return nodeType;
+      return nodeType === 'mcp' ? 'mcp-tool' : nodeType;
     }
 
-    return typeof node?.type === 'string' ? node.type : '';
+    if (typeof node?.type === 'string') {
+      return node.type === 'mcp' ? 'mcp-tool' : node.type;
+    }
+
+    return '';
   }
 
   private resolveNodeData(node: any): Record<string, any> {
@@ -2156,13 +2174,14 @@ export interface AgentVersionResponseDto {
 function toVersionResponseDto(
   version: typeof schema.agentVersions.$inferSelect,
 ): AgentVersionResponseDto {
+  const migratedSnapshot = migrateAgentVersionSnapshot(version.snapshot).snapshot;
   const sandboxConfig =
-    version.snapshot.runtimeMode === 'no_sandbox'
+    migratedSnapshot.runtimeMode === 'no_sandbox'
       ? null
       : deriveAgentSandboxConfigFromCanvas(
-          version.snapshot.nodes,
-          version.snapshot.edges,
-          version.snapshot.sandboxConfig ?? null,
+          migratedSnapshot.nodes,
+          migratedSnapshot.edges,
+          migratedSnapshot.sandboxConfig ?? null,
         );
 
   return {
@@ -2171,8 +2190,8 @@ function toVersionResponseDto(
     versionNumber: version.versionNumber,
     label: version.label,
     snapshot: {
-      ...version.snapshot,
-      runtimeMode: version.snapshot.runtimeMode ?? 'sandbox',
+      ...migratedSnapshot,
+      runtimeMode: migratedSnapshot.runtimeMode ?? 'sandbox',
       ...(sandboxConfig ? { sandboxConfig } : {}),
     },
     publishedAt: version.publishedAt?.toISOString() ?? null,

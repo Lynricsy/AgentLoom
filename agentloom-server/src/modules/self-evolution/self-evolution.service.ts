@@ -21,6 +21,7 @@ import {
 import { LlmProviderService } from '../llm/llm-provider.service';
 import { LlmService } from '../llm/llm.service';
 import { McpService } from '../mcp/mcp.service';
+import { SandboxService } from '../sandbox/sandbox.service';
 import { SkillService, type SkillUploadFile } from '../skill/skill.service';
 import { WorkflowVersionService } from '../workflow-definition/workflow-version.service';
 import { WorkspaceService } from '../workspace/workspace.service';
@@ -215,6 +216,7 @@ export class SelfEvolutionService {
     private readonly workspaceService: WorkspaceService,
     private readonly workflowVersionService: WorkflowVersionService,
     private readonly permissionService: SelfEvolutionPermissionService,
+    private readonly sandboxService: SandboxService,
   ) {}
 
   private get tenantDb(): DrizzleDB {
@@ -428,6 +430,29 @@ export class SelfEvolutionService {
       conversationId,
       newConversation.id,
     );
+
+    try {
+      const sourceSandboxSession = await this.sandboxService.findByConversationId(
+        conversationId,
+        tenantId,
+      );
+      if (
+        sourceSandboxSession &&
+        (sourceSandboxSession.config.lifecycleMode ?? 'session') ===
+          'persistent'
+      ) {
+        await this.sandboxService.endConversationSandbox(
+          conversationId,
+          tenantId,
+        );
+      }
+    } catch (error) {
+      this.logger.warn(
+        `Failed to release persistent sandbox binding when restarting conversation ${conversationId} to latest version: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
 
     return {
       data: {

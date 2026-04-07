@@ -78,6 +78,10 @@
   - `AgentExecutionWorker` 必须主动调用 `endConversationSandbox(conversationId, tenantId)`
   - session sandbox 应按既有 destroy 语义收口
   - persistent sandbox 应立即 detach 失败对话的 binding，避免 `activeBindings` 把后续新对话卡成 `SandboxInvalidStateException`
+- 若对话通过 `restart-latest-version` 创建新 conversation，且源 conversation 当前绑定的是 persistent sandbox：
+  - restart 服务必须在返回新 conversationId 前释放源 conversation 的 persistent binding
+  - 这样新 conversation 后续首次执行才能重新 attach 同一 persistent sandbox，而不会被旧 conversation 的 active binding 卡成 `SandboxInvalidStateException`
+  - session sandbox 不做自动转移，继续沿用既有 destroy/create 语义
 
 ### 3.2 Agent sandbox timeout
 
@@ -219,6 +223,7 @@
 | sandbox conversation 有新消息进入 | 会取消 delayed idle-end check | `sandbox.service.spec.ts` |
 | idle-end check 命中时 conversation 仍无运行中任务且无未处理消息 | worker 应自动调用 `end()` | `sandbox-lifecycle.worker.spec.ts` |
 | Agent conversation 在 `sandbox_creating` 阶段失败 | worker 应主动释放 conversation sandbox / persistent binding，避免旧失败对话残留占用 | `agent-execution.worker.spec.ts`, `sandbox.service.spec.ts` |
+| conversation 通过 `restart-latest-version` 重启到新会话且源会话仍绑定 persistent sandbox | restart 服务应先释放旧会话 binding，避免新会话首次执行 attach 同一资源时冲突失败 | `self-evolution.service.spec.ts` |
 | 旧 published snapshot 只有 `sandboxConfig.timeout=450`，但节点仍有 `timeoutSeconds=450` | detail / versions / runtime 都必须恢复成 `timeout=1 + timeoutSeconds=450` | `agent-definition-response.dto.spec.ts`, `agent-execution.worker.spec.ts`, `workflow-agent-adapter.spec.ts` |
 | workspace list 默认过滤 execution archive | API 仍返回 `sourceKind`，但 `execution_archive` 被排除 | `workspace.service.spec.ts` |
 | `includeAutoArchived=false` query string | DTO 必须把 `'false'` 解析成 `false`，不能回退成 truthy | `list-workspaces-query.dto.spec.ts` |

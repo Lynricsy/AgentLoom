@@ -137,6 +137,10 @@ describe('SelfEvolutionService', () => {
     resolveOrganizationId: ReturnType<typeof vi.fn>;
     createEmpty: ReturnType<typeof vi.fn>;
   };
+  let mockSandboxService: {
+    findByConversationId: ReturnType<typeof vi.fn>;
+    endConversationSandbox: ReturnType<typeof vi.fn>;
+  };
   let mockWorkflowVersionService: {
     updateDefinition: ReturnType<typeof vi.fn>;
     publish: ReturnType<typeof vi.fn>;
@@ -179,6 +183,10 @@ describe('SelfEvolutionService', () => {
       resolveOrganizationId: vi.fn(),
       createEmpty: vi.fn(),
     };
+    mockSandboxService = {
+      findByConversationId: vi.fn().mockResolvedValue(null),
+      endConversationSandbox: vi.fn().mockResolvedValue(undefined),
+    };
     mockWorkflowVersionService = {
       updateDefinition: vi.fn(),
       publish: vi.fn(),
@@ -201,6 +209,7 @@ describe('SelfEvolutionService', () => {
       mockWorkspaceService as never,
       mockWorkflowVersionService as never,
       mockPermissionService as never,
+      mockSandboxService as never,
     );
   });
 
@@ -705,6 +714,41 @@ describe('SelfEvolutionService', () => {
     expect(mockPermissionService.cloneRememberedPolicies).toHaveBeenCalledWith(
       'conversation-1',
       'conversation-2',
+    );
+  });
+
+  it('restartConversationToLatestVersion 遇到 persistent sandbox 时应释放旧会话绑定', async () => {
+    mockAgentDefinitionService.findDetailById.mockResolvedValueOnce({
+      id: 'agent-1',
+      name: '当前 Agent',
+      publishedVersionId: 'published-version-2',
+    });
+
+    enqueueSelectResult([
+      {
+        id: 'conversation-1',
+        agentDefinitionId: 'agent-1',
+        title: '旧会话',
+      },
+    ]);
+    enqueueSelectResult([]);
+    enqueueInsertResult([{ id: 'conversation-2' }]);
+    mockSandboxService.findByConversationId.mockResolvedValueOnce({
+      id: 'sandbox-1',
+      config: {
+        lifecycleMode: 'persistent',
+      },
+    });
+
+    await service.restartConversationToLatestVersion(
+      'conversation-1',
+      'tenant-1',
+      'user-2',
+    );
+
+    expect(mockSandboxService.endConversationSandbox).toHaveBeenCalledWith(
+      'conversation-1',
+      'tenant-1',
     );
   });
 });

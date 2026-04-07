@@ -201,6 +201,73 @@ describe("agentCanvasStore", () => {
     ).toBe("memory");
   });
 
+  it("normalizes legacy mcp node aliases from the detail response", async () => {
+    getMock.mockReturnValue({
+      json: vi.fn().mockResolvedValue({
+        data: createDetailResponse({
+          nodes: [
+            {
+              id: "agent-main",
+              type: "agent",
+              position: { x: 0, y: 0 },
+              data: {
+                label: "Agent Main",
+                nodeType: "agent-main",
+                category: "agent",
+                description: "主节点",
+                config: {},
+                inputPorts: [],
+                outputPorts: [],
+              },
+            },
+            {
+              id: "mcp-1",
+              type: "tool",
+              position: { x: 120, y: 0 },
+              data: {
+                label: "WebSearch",
+                nodeType: "mcp",
+                category: "tool",
+                description: "legacy mcp",
+                config: {},
+                inputPorts: [],
+                outputPorts: [
+                  {
+                    id: "tools-out",
+                    label: "工具",
+                    direction: "output",
+                    dataType: "tool",
+                  },
+                ],
+              },
+            },
+          ],
+          edges: [
+            {
+              id: "edge-mcp",
+              source: "mcp-1",
+              target: "agent-main",
+              sourceHandle: "tools-out",
+              targetHandle: "tools-in",
+            },
+          ],
+        }),
+      }),
+    });
+
+    await useAgentCanvasStore.getState().actions.loadAgent("agent-1");
+
+    const state = useAgentCanvasStore.getState();
+    const mcpNode = state.nodes.find((node) => node.id === "mcp-1");
+    const mcpEdge = state.edges.find((edge) => edge.id === "edge-mcp");
+
+    expect(mcpNode?.data.nodeType).toBe("mcp-tool");
+    expect(mcpNode?.data.outputPorts.map((port) => port.id)).toEqual([
+      "tool-out",
+    ]);
+    expect(mcpEdge?.sourceHandle).toBe("tool-out");
+  });
+
   it("rehydrates malformed stored smart-routing ports from registry defaults", async () => {
     getMock.mockReturnValue({
       json: vi.fn().mockResolvedValue({

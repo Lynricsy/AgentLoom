@@ -239,14 +239,55 @@ const NO_SANDBOX_NODE_TYPES = new Set<AgentCanvasNodeType>([
   "sandbox",
   "workspace",
 ]);
+const LEGACY_AGENT_CANVAS_NODE_TYPE_ALIASES: Record<string, AgentCanvasNodeType> =
+  {
+    mcp: "mcp-tool",
+  };
+const LEGACY_OUTPUT_HANDLE_ALIASES: Partial<
+  Record<AgentCanvasNodeType, Record<string, string>>
+> = {
+  "llm-model": {
+    "model-output": "model-out",
+  },
+  workspace: {
+    "volume-output": "volume-out",
+  },
+  memory: {
+    "memory-out-0": "memory-out",
+  },
+  "sub-agent": {
+    "agent-output": "agent-out",
+  },
+  "mcp-tool": {
+    "tools-out": "tool-out",
+  },
+};
 
 function getAgentCanvasNodeType(
   node: Pick<AgentCanvasNode, "data"> | null | undefined,
 ): AgentCanvasNodeType | null {
   const nodeType = node?.data?.nodeType;
-  return typeof nodeType === "string"
-    ? (nodeType as AgentCanvasNodeType)
-    : null;
+  if (typeof nodeType !== "string") {
+    return null;
+  }
+
+  return LEGACY_AGENT_CANVAS_NODE_TYPE_ALIASES[nodeType] ??
+    (nodeType as AgentCanvasNodeType);
+}
+
+function normalizeLegacyOutputHandle(
+  nodeType: AgentCanvasNodeType | null,
+  handle: string | null | undefined,
+): string | null | undefined {
+  if (!nodeType || typeof handle !== "string") {
+    return handle;
+  }
+
+  const normalizedHandle = handle.trim().toLowerCase().replaceAll("_", "-");
+  const canonicalHandle = LEGACY_OUTPUT_HANDLE_ALIASES[nodeType]?.[
+    normalizedHandle
+  ];
+  return canonicalHandle ?? handle;
 }
 
 function buildAgentMainInputPorts(runtimeMode: AgentRuntimeMode) {
@@ -289,7 +330,19 @@ function sanitizeEdgesForRuntimeMode(
   runtimeMode: AgentRuntimeMode,
 ): AgentCanvasEdge[] {
   const nodeIds = new Set(nodes.map((node) => node.id));
-  return edges.filter((edge) => {
+  const nodesById = new Map(nodes.map((node) => [node.id, node]));
+  return edges
+    .map((edge) => {
+      const sourceNode = nodesById.get(edge.source);
+      return {
+        ...edge,
+        sourceHandle: normalizeLegacyOutputHandle(
+          sourceNode ? getAgentCanvasNodeType(sourceNode) : null,
+          edge.sourceHandle,
+        ),
+      };
+    })
+    .filter((edge) => {
     if (!nodeIds.has(edge.source) || !nodeIds.has(edge.target)) {
       return false;
     }
@@ -297,11 +350,11 @@ function sanitizeEdgesForRuntimeMode(
     return !(
       runtimeMode === "no_sandbox" && edge.targetHandle === "sandbox-in"
     );
-  });
+    });
 }
 
 function normalizePersistedNode(node: AgentCanvasNode): AgentCanvasNode {
-  const nodeType = node.data?.nodeType as AgentCanvasNodeType | undefined;
+  const nodeType = getAgentCanvasNodeType(node);
   if (!nodeType) {
     return node;
   }
@@ -327,6 +380,7 @@ function normalizePersistedNode(node: AgentCanvasNode): AgentCanvasNode {
     type: config.category,
     data: {
       ...node.data,
+      nodeType,
       label: node.data.label || config.label,
       category: config.category,
       description: node.data.description || config.description,

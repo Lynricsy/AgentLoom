@@ -106,6 +106,51 @@ describe('agent-input-node-migration.util', () => {
     ]);
   });
 
+  it('应把 Agent 画布中的 legacy mcp 节点类型与输出句柄迁移为 mcp-tool', () => {
+    const migrated = migrateAgentCanvasGraph({
+      nodes: [
+        {
+          id: 'mcp-1',
+          type: 'tool',
+          position: { x: 0, y: 0 },
+          data: {
+            nodeType: 'mcp',
+            category: 'tool',
+            outputPorts: [{ id: 'tools-out', label: '工具' }],
+          },
+        },
+      ],
+      edges: [
+        {
+          id: 'edge-mcp',
+          source: 'mcp-1',
+          target: 'agent-main',
+          sourceHandle: 'tools-out',
+          targetHandle: 'tools-in',
+        },
+      ],
+      systemPrompt: null,
+    });
+
+    expect(migrated.changed).toBe(true);
+    expect(migrated.nodes[0]).toEqual(
+      expect.objectContaining({
+        type: 'tool',
+        data: expect.objectContaining({
+          nodeType: 'mcp-tool',
+          category: 'tool',
+          outputPorts: [expect.objectContaining({ id: 'tool-out' })],
+        }),
+      }),
+    );
+    expect(migrated.edges).toEqual([
+      expect.objectContaining({
+        sourceHandle: 'tool-out',
+        targetHandle: 'tools-in',
+      }),
+    ]);
+  });
+
   it('将 workflow agent 节点上的 legacy systemPrompt 字段迁移为 text 节点', () => {
     const migrated = migrateWorkflowGraph({
       nodes: [

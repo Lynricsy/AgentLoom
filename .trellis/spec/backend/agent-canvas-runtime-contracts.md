@@ -55,6 +55,10 @@
 - sub-agent 永远继承父 Agent 的 sandbox 与 runtimeMode；child 不能通过节点图局部覆盖沙箱边界。
 - share import 与预迁移脚本必须复用同一 migration util，避免数据库、导入结果与运行时接受不同图语义。
 - workflow `agent` 在执行时会把 `system-prompt-in` / `schema-in` 从普通 prompt 输入字典里剥离，避免把结构化 override 错当作用户消息内容。
+- legacy Agent canvas MCP 节点别名必须在保存草稿、应用 self-evolution 快照、detail/version 响应与 runtime 编译链路里统一 canonicalize：
+  - `nodeType='mcp'` → `mcp-tool`
+  - `sourceHandle='tools-out'` → `tool-out`
+  - 运行时 tools 编译必须把 legacy alias 与 canonical 节点都视为同一类 MCP tool binding
 
 ### 4. Validation & Error Matrix
 
@@ -66,6 +70,7 @@
 | workflow / sub-agent 上游传入非法 JSON 字符串到 `schema-in` | `coerceAgentOutputSchema()` 返回 `undefined`，忽略 schema 追加，不阻断执行 | util 单测 + adapter 单测 |
 | `sub-agent` 只覆盖 `modelConfig`，未提供新 routing | 继承 routing 被移除，child 使用 concrete model | `agent-runtime-config.utils.spec.ts` |
 | nested sub-agent 扩展里重复 alias / tool / knowledge / memory / skill | 合并结果去重，避免 runtime 工具与资源重复挂载 | `agent-runtime-config.utils.spec.ts` |
+| 已发布 Agent 快照仍含 `nodeType='mcp'` / `sourceHandle='tools-out'` | detail/version response 与 runtime 编译都应恢复为 `mcp-tool` / `tool-out` | `agent-input-node-migration.util.spec.ts`, `agent-definition-response.dto.spec.ts`, `agent-definition.service.spec.ts` |
 
 ### 5. Good / Base / Bad Cases
 
@@ -88,6 +93,8 @@
 - `agentloom-server/src/modules/agent-definition/agent-runtime-config.utils.spec.ts`
   - 断言 sub-agent merge 去重行为
   - 断言 `outputSchema` 会被追加到最终 system prompt
+- `agentloom-server/src/modules/agent-definition/agent-input-node-migration.util.spec.ts`
+  - 断言 legacy `mcp` 节点与 `tools-out` 句柄会迁移为 canonical `mcp-tool/tool-out`
 - `agentloom-server/src/modules/execution/__tests__/workflow-agent-adapter.spec.ts`
   - 断言 workflow `agent` 的 `system-prompt-in` / `schema-in` override
   - 断言 nested `subAgentRef` merge

@@ -8,6 +8,7 @@ import type { SandboxConfig } from '../../../database/schema/sandbox-sessions.sc
 import type { AgentRuntimeMode } from '../../../database/schema/agent-definitions.schema';
 import type { ResourceSourceKind } from '../../../database/schema';
 import { deriveAgentSandboxConfigFromCanvas } from '../agent-sandbox-config.utils';
+import { migrateAgentCanvasGraph } from '../agent-input-node-migration.util';
 
 export interface AgentDefinitionResponseDto {
   id: string;
@@ -139,11 +140,16 @@ export function serializeAgentDefinitionDetail(
   row: DetailRow,
   options?: { resourceSourceKind?: ResourceSourceKind },
 ): AgentDefinitionDetailResponseDto {
+  const migratedCanvas = migrateAgentCanvasGraph({
+    nodes: row.nodes,
+    edges: row.edges,
+    systemPrompt: row.systemPrompt ?? null,
+  });
   const sandboxConfig =
     row.runtimeMode === 'sandbox'
       ? deriveAgentSandboxConfigFromCanvas(
-          row.nodes,
-          row.edges,
+          migratedCanvas.nodes,
+          migratedCanvas.edges,
           row.sandboxConfig ?? null,
         )
       : null;
@@ -151,9 +157,9 @@ export function serializeAgentDefinitionDetail(
 
   return {
     ...serializeAgentDefinition(row, options),
-    systemPrompt: row.systemPrompt ?? null,
-    nodes: row.nodes,
-    edges: row.edges,
+    systemPrompt: migratedCanvas.systemPrompt ?? null,
+    nodes: migratedCanvas.nodes,
+    edges: migratedCanvas.edges,
     viewport: row.viewport ?? null,
     sandboxConfig,
     workspaceSnapshotId: row.workspaceSnapshotId ?? null,

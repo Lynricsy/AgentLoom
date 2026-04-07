@@ -1216,10 +1216,15 @@ export function getWorkflowAgentInputPorts(runtimeMode: AgentRuntimeMode | null 
   return runtimeMode === 'no_sandbox' ? inputPorts.filter((port) => port.id !== 'sandbox-in') : inputPorts
 }
 
+function resolveLegacyNodeTypeAlias(type: string): string {
+  return type === 'mcp' ? 'mcp-tool' : type
+}
+
 export function getNodeTypeConfig(type: NodeType): NodeTypeConfig {
-  const config = NODE_TYPE_REGISTRY[type]
+  const resolvedType = resolveLegacyNodeTypeAlias(type as string)
+  const config = NODE_TYPE_REGISTRY[resolvedType as NodeType]
   if (!config) {
-    const agentConfig = AGENT_CANVAS_NODE_REGISTRY.get(type as string)
+    const agentConfig = AGENT_CANVAS_NODE_REGISTRY.get(resolvedType)
     if (agentConfig) return agentConfig as unknown as NodeTypeConfig
     throw new Error(`Unknown node type: ${type}`)
   }
@@ -1228,7 +1233,8 @@ export function getNodeTypeConfig(type: NodeType): NodeTypeConfig {
 }
 
 export function getNodeTypeConfigOrNull(type: string): NodeTypeConfig | null {
-  return NODE_TYPE_REGISTRY[type as NodeType] ?? (AGENT_CANVAS_NODE_REGISTRY.get(type) as unknown as NodeTypeConfig) ?? null
+  const resolvedType = resolveLegacyNodeTypeAlias(type)
+  return NODE_TYPE_REGISTRY[resolvedType as NodeType] ?? (AGENT_CANVAS_NODE_REGISTRY.get(resolvedType) as unknown as NodeTypeConfig) ?? null
 }
 
 export function getAllNodeTypes(): NodeTypeConfig[] {

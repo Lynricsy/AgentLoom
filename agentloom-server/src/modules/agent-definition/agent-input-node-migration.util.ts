@@ -36,8 +36,31 @@ const TEXT_NODE_CATEGORY = 'output';
 const SUB_AGENT_NODE_TYPE = 'sub-agent';
 const AGENT_MAIN_NODE_TYPE = 'agent-main';
 const WORKFLOW_AGENT_NODE_TYPE = 'agent';
+const MCP_TOOL_NODE_TYPE = 'mcp-tool';
 const SYSTEM_PROMPT_HANDLE = 'system-prompt-in';
 const SCHEMA_HANDLE = 'schema-in';
+
+const LEGACY_AGENT_NODE_TYPE_ALIASES: Record<string, string> = {
+  mcp: MCP_TOOL_NODE_TYPE,
+};
+
+const LEGACY_OUTPUT_HANDLE_ALIASES: Record<string, Record<string, string>> = {
+  'llm-model': {
+    'model-output': 'model-out',
+  },
+  workspace: {
+    'volume-output': 'volume-out',
+  },
+  memory: {
+    'memory-out-0': 'memory-out',
+  },
+  'sub-agent': {
+    'agent-output': 'agent-out',
+  },
+  [MCP_TOOL_NODE_TYPE]: {
+    'tools-out': 'tool-out',
+  },
+};
 
 function cloneJson<T>(value: T): T {
   return structuredClone(value);
@@ -242,9 +265,78 @@ function createSubAgentOutputPorts(): Array<Record<string, unknown>> {
   return [createPort('agent-out', 'Agent', 'output', 'agent')];
 }
 
+function canonicalizeAgentNodeType(
+  nodeType: string | undefined,
+): string | undefined {
+  if (!nodeType) {
+    return undefined;
+  }
+
+  return LEGACY_AGENT_NODE_TYPE_ALIASES[nodeType] ?? nodeType;
+}
+
 function getNodeType(node: ReactFlowNode): string | undefined {
   const data = toRecord(node.data);
-  return readNonEmptyString(data.nodeType, data.node_type, node.type);
+  return canonicalizeAgentNodeType(
+    readNonEmptyString(data.nodeType, data.node_type, node.type),
+  );
+}
+
+function normalizePortIds(
+  ports: unknown,
+  direction: 'input' | 'output',
+  nodeType: string | undefined,
+): unknown {
+  if (!Array.isArray(ports)) {
+    return ports;
+  }
+
+  const canonicalNodeType = canonicalizeAgentNodeType(nodeType);
+  if (!canonicalNodeType) {
+    return ports;
+  }
+
+  const aliases =
+    direction === 'output'
+      ? LEGACY_OUTPUT_HANDLE_ALIASES[canonicalNodeType]
+      : undefined;
+
+  if (!aliases) {
+    return ports;
+  }
+
+  return ports.map((port) => {
+    const record = toRecord(port);
+    const portId = readNonEmptyString(record.id);
+    if (!portId) {
+      return port;
+    }
+
+    const normalizedId = aliases[normalizeHandleId(portId) ?? portId];
+    if (!normalizedId || normalizedId === portId) {
+      return port;
+    }
+
+    return {
+      ...record,
+      id: normalizedId,
+    };
+  });
+}
+
+function normalizeSourceHandleAlias(
+  sourceNodeType: string | undefined,
+  handle: string | null | undefined,
+): string | null | undefined {
+  const normalizedHandle = normalizeHandleId(handle);
+  if (!normalizedHandle) {
+    return handle;
+  }
+
+  const aliases =
+    LEGACY_OUTPUT_HANDLE_ALIASES[canonicalizeAgentNodeType(sourceNodeType) ?? ''];
+  const canonicalHandle = aliases?.[normalizedHandle];
+  return canonicalHandle ?? handle;
 }
 
 function findAgentMainNode(nodes: ReactFlowNode[]): ReactFlowNode | undefined {
@@ -306,28 +398,64 @@ export function migrateAgentCanvasGraph(
   const nodes = cloneJson(input.nodes ?? []);
   const rawEdges = cloneJson(input.edges ?? []);
   const nextNodes = nodes.map((node) => {
-    if (getNodeType(node) !== SUB_AGENT_NODE_TYPE) {
-      return node;
+    const data = toRecord(node.data);
+    const canonicalNodeType = getNodeType(node);
+
+    if (canonicalNodeType === SUB_AGENT_NODE_TYPE) {
+      return {
+        ...node,
+        type: 'agent',
+        data: {
+          ...data,
+          nodeType: SUB_AGENT_NODE_TYPE,
+          category: 'agent',
+          inputPorts: createSubAgentInputPorts(),
+          outputPorts: createSubAgentOutputPorts(),
+        },
+      };
     }
 
-    const data = toRecord(node.data);
+    const nextType =
+      canonicalNodeType === MCP_TOOL_NODE_TYPE ? 'tool' : node.type;
+    const nextCategory =
+      canonicalNodeType === MCP_TOOL_NODE_TYPE
+        ? 'tool'
+        : readNonEmptyString(data.category) ?? data.category;
+
     return {
       ...node,
-      type: 'agent',
+      ...(typeof nextType === 'string' ? { type: nextType } : {}),
       data: {
         ...data,
-        category: 'agent',
-        inputPorts: createSubAgentInputPorts(),
-        outputPorts: createSubAgentOutputPorts(),
+        ...(canonicalNodeType ? { nodeType: canonicalNodeType } : {}),
+        ...(nextCategory ? { category: nextCategory } : {}),
+        inputPorts: normalizePortIds(
+          data.inputPorts,
+          'input',
+          canonicalNodeType,
+        ) as JsonRecord[],
+        outputPorts: normalizePortIds(
+          data.outputPorts,
+          'output',
+          canonicalNodeType,
+        ) as JsonRecord[],
       },
     };
   });
+  const nextNodesById = new Map(nextNodes.map((node) => [node.id, node]));
 
   const transformedEdges: ReactFlowEdge[] = [];
   for (const edge of rawEdges) {
-    const targetNode = nextNodes.find((node) => node.id === edge.target);
+    const targetNode = nextNodesById.get(edge.target);
+    const sourceNode = nextNodesById.get(edge.source);
     if (!targetNode || getNodeType(targetNode) !== SUB_AGENT_NODE_TYPE) {
-      transformedEdges.push(edge);
+      transformedEdges.push({
+        ...edge,
+        sourceHandle: normalizeSourceHandleAlias(
+          sourceNode ? getNodeType(sourceNode) : undefined,
+          edge.sourceHandle,
+        ),
+      });
       continue;
     }
 
@@ -338,6 +466,10 @@ export function migrateAgentCanvasGraph(
 
       transformedEdges.push({
         ...edge,
+        sourceHandle: normalizeSourceHandleAlias(
+          sourceNode ? getNodeType(sourceNode) : undefined,
+          edge.sourceHandle,
+        ),
         targetHandle: SYSTEM_PROMPT_HANDLE,
       });
       continue;
@@ -356,12 +488,22 @@ export function migrateAgentCanvasGraph(
 
       transformedEdges.push({
         ...edge,
+        sourceHandle: normalizeSourceHandleAlias(
+          sourceNode ? getNodeType(sourceNode) : undefined,
+          edge.sourceHandle,
+        ),
         targetHandle: SCHEMA_HANDLE,
       });
       continue;
     }
 
-    transformedEdges.push(edge);
+    transformedEdges.push({
+      ...edge,
+      sourceHandle: normalizeSourceHandleAlias(
+        sourceNode ? getNodeType(sourceNode) : undefined,
+        edge.sourceHandle,
+      ),
+    });
   }
 
   let nextSystemPrompt = input.systemPrompt;

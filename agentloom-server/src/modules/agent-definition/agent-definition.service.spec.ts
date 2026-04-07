@@ -1868,6 +1868,42 @@ describe('AgentDefinitionService', () => {
       expect(tool.inputSchema).toEqual({ type: 'object', properties: {} });
     });
 
+    it('legacy mcp 节点别名也应按 mcp-tool 编译为 MCP tool binding', () => {
+      const nodes = [
+        {
+          id: 'main-agent',
+          type: 'agent',
+          data: { nodeType: 'agent-main' },
+        },
+        {
+          id: 'mcp-legacy',
+          type: 'tool',
+          data: {
+            nodeType: 'mcp',
+            mcpServerConfigId: 'cfg-legacy',
+            toolName: 'web_search',
+          },
+        },
+      ];
+      const edges = [
+        {
+          id: 'edge-mcp-legacy',
+          source: 'mcp-legacy',
+          target: 'main-agent',
+          sourceHandle: 'tools-out',
+          targetHandle: 'tools-in',
+        },
+      ];
+
+      const config = service.buildRuntimeConfigFromNodes(nodes, edges);
+
+      expect(config.tools).toHaveLength(1);
+      const tool = config.tools![0] as any;
+      expect(tool.toolType).toBe('mcp');
+      expect(tool.mcpServerConfigId).toBe('cfg-legacy');
+      expect(tool.toolName).toBe('web_search');
+    });
+
     it('MCP 工具仅提供 mcpServerConfigId + toolName 也应生成 toolType: mcp', () => {
       const nodes = [
         {

@@ -225,4 +225,73 @@ describe('serializeAgentDefinitionDetail', () => {
     expect(result.sandboxConfig).toBeNull();
     expect(result.sandboxLifecycle).toBeNull();
   });
+
+  it('应在 detail response 中把 legacy mcp 节点别名与输出句柄归一化', () => {
+    const createdAt = new Date('2026-04-07T00:00:00.000Z');
+    const updatedAt = new Date('2026-04-07T00:30:00.000Z');
+
+    const result = serializeAgentDefinitionDetail({
+      id: 'agent-1',
+      tenantId: 'tenant-1',
+      name: 'Agent',
+      slug: 'agent',
+      description: null,
+      icon: null,
+      runtimeMode: 'sandbox',
+      status: 'published',
+      version: 15,
+      publishedVersionId: 'version-15',
+      createdBy: 'user-1',
+      updatedBy: 'user-1',
+      createdAt,
+      updatedAt,
+      systemPrompt: null,
+      nodes: [
+        {
+          id: 'main-agent',
+          type: 'agent',
+          position: { x: 0, y: 0 },
+          data: { nodeType: 'agent-main' },
+        },
+        {
+          id: 'mcp-1',
+          type: 'tool',
+          position: { x: 120, y: 0 },
+          data: {
+            nodeType: 'mcp',
+            category: 'tool',
+            outputPorts: [{ id: 'tools-out', label: '工具' }],
+          },
+        },
+      ] as never,
+      edges: [
+        {
+          id: 'edge-mcp',
+          source: 'mcp-1',
+          target: 'main-agent',
+          sourceHandle: 'tools-out',
+          targetHandle: 'tools-in',
+        },
+      ] as never,
+      viewport: null,
+      sandboxConfig: null,
+      workspaceSnapshotId: null,
+      metadata: {},
+    });
+
+    expect(result.nodes[1]).toEqual(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          nodeType: 'mcp-tool',
+          outputPorts: [expect.objectContaining({ id: 'tool-out' })],
+        }),
+      }),
+    );
+    expect(result.edges).toEqual([
+      expect.objectContaining({
+        sourceHandle: 'tool-out',
+        targetHandle: 'tools-in',
+      }),
+    ]);
+  });
 });
