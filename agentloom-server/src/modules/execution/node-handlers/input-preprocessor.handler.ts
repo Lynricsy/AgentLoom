@@ -21,9 +21,7 @@ function readStringAlias(value: unknown): string | undefined {
 function normalizeTransformType(
   value: unknown,
 ): InputPreprocessorTransformType {
-  return value === 'jsonata' ||
-    value === 'template' ||
-    value === 'script'
+  return value === 'jsonata' || value === 'template' || value === 'script'
     ? value
     : 'jmespath';
 }
@@ -35,8 +33,7 @@ export function normalizeInputPreprocessorConfig(
   const expression =
     readStringAlias(value.expression) ?? readStringAlias(value.template) ?? '';
   const outputFormat =
-    readStringAlias(value.outputFormat) ??
-    readStringAlias(value.output_format);
+    readStringAlias(value.outputFormat) ?? readStringAlias(value.output_format);
 
   return {
     transformType: normalizeTransformType(

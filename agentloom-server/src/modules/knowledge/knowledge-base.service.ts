@@ -137,10 +137,7 @@ export class KnowledgeBaseService {
         .orderBy(desc(knowledgeBases.updatedAt))
         .limit(pageSize)
         .offset(offset),
-      db
-        .select({ total: count() })
-        .from(knowledgeBases)
-        .where(predicate),
+      db.select({ total: count() }).from(knowledgeBases).where(predicate),
     ]);
 
     return { data, total };

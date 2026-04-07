@@ -41,9 +41,11 @@ export class AgentToolPermissionSyncService
   >();
 
   constructor(@Inject(REDIS_CLIENT) private readonly publisher: Redis) {
-    const duplicate = (this.publisher as Redis & {
-      duplicate?: (() => Redis) | undefined;
-    }).duplicate;
+    const duplicate = (
+      this.publisher as Redis & {
+        duplicate?: (() => Redis) | undefined;
+      }
+    ).duplicate;
 
     if (typeof duplicate === 'function') {
       this.subscriber = duplicate.call(this.publisher);

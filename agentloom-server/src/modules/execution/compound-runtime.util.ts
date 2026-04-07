@@ -41,7 +41,9 @@ export function readCompoundParentNodeId(node: {
   parentId?: unknown;
   parent_id?: unknown;
 }): string | undefined {
-  return readNonEmptyString(node.parentId) ?? readNonEmptyString(node.parent_id);
+  return (
+    readNonEmptyString(node.parentId) ?? readNonEmptyString(node.parent_id)
+  );
 }
 
 export function attachExecutionRuntimeMeta(
@@ -51,7 +53,9 @@ export function attachExecutionRuntimeMeta(
   const rawData = isRecord(node.data) ? node.data : {};
   const parentNodeId = readCompoundParentNodeId(node);
   const parentNode = parentNodeId ? nodesById.get(parentNodeId) : undefined;
-  const isCompoundInternal = Boolean(parentNode && isCompoundContainerNode(parentNode));
+  const isCompoundInternal = Boolean(
+    parentNode && isCompoundContainerNode(parentNode),
+  );
   const isCompoundContainer = isCompoundContainerNode(node);
 
   return {
@@ -64,9 +68,7 @@ export function attachExecutionRuntimeMeta(
   };
 }
 
-export function readExecutionRuntimeMeta(
-  value: unknown,
-): ExecutionRuntimeMeta {
+export function readExecutionRuntimeMeta(value: unknown): ExecutionRuntimeMeta {
   if (!isRecord(value) || !isRecord(value.__execution)) {
     return {};
   }
@@ -94,7 +96,10 @@ export function isTrackedExecutionStep(step: {
 }
 
 export function filterTopLevelExecutionGraph(
-  snapshot: Pick<schema.WorkflowExecution['definitionSnapshot'], 'nodes' | 'edges'>,
+  snapshot: Pick<
+    schema.WorkflowExecution['definitionSnapshot'],
+    'nodes' | 'edges'
+  >,
 ): {
   nodes: schema.ReactFlowNode[];
   edges: schema.ReactFlowEdge[];
@@ -104,7 +109,8 @@ export function filterTopLevelExecutionGraph(
   );
   const topLevelNodeIds = new Set(topLevelNodes.map((node) => node.id));
   const topLevelEdges = snapshot.edges.filter(
-    (edge) => topLevelNodeIds.has(edge.source) && topLevelNodeIds.has(edge.target),
+    (edge) =>
+      topLevelNodeIds.has(edge.source) && topLevelNodeIds.has(edge.target),
   );
 
   return {

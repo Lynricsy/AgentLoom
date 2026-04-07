@@ -251,7 +251,10 @@ describe('SelfEvolutionPermissionService', () => {
       },
     ]);
 
-    await service.cloneRememberedPolicies('conversation-source', 'conversation-target');
+    await service.cloneRememberedPolicies(
+      'conversation-source',
+      'conversation-target',
+    );
 
     expect(mockTenantDb.update).toHaveBeenCalledTimes(1);
     expect(updateSetCalls[0]).toMatchObject({

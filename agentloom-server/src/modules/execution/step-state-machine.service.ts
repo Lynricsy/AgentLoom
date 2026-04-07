@@ -283,8 +283,8 @@ export class StepStateMachineService {
     this.eventBridge.emitExecutionStatusChanged(tenantId, executionId, {
       executionId,
       status: 'failed',
-        completedSteps: completedCount,
-        totalSteps: trackedSteps.length,
+      completedSteps: completedCount,
+      totalSteps: trackedSteps.length,
       ...(errorMessage ? { errorMessage: errorMessage.message } : {}),
     });
   }

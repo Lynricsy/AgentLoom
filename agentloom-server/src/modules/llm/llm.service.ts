@@ -130,7 +130,10 @@ export class LlmService {
       return [];
     }
 
-    await this.llmProviderService.syncBuiltinProviders(orgResult[0].id, tenantId);
+    await this.llmProviderService.syncBuiltinProviders(
+      orgResult[0].id,
+      tenantId,
+    );
 
     const rows = await this.tenantDb
       .select({

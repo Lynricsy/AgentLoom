@@ -11,7 +11,7 @@ export const resolveToolPermissionSchema = z
   })
   .transform((value) => ({
     action: value.action,
-    ...(value.rememberScope ?? value.remember_scope
+    ...((value.rememberScope ?? value.remember_scope)
       ? { rememberScope: value.rememberScope ?? value.remember_scope }
       : {}),
   }));

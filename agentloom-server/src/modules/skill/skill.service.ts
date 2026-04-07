@@ -128,10 +128,13 @@ export class SkillService {
     }
 
     const files = this.collectBuiltinSkillFiles(skillDir);
-    const entries = files.map((filePath) => [
-      relative(skillDir, filePath).replace(/\\/g, '/'),
-      readFileSync(filePath, 'utf-8'),
-    ] as const);
+    const entries = files.map(
+      (filePath) =>
+        [
+          relative(skillDir, filePath).replace(/\\/g, '/'),
+          readFileSync(filePath, 'utf-8'),
+        ] as const,
+    );
     const result = Object.fromEntries(entries);
 
     if (

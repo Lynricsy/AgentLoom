@@ -195,7 +195,9 @@ function serializePermissionRequest(
   const targetLabel = readString(value.targetLabel);
   const approveEffect = readString(value.approveEffect);
   const denyEffect = readString(value.denyEffect);
-  const diffPreview = isRecord(value.diffPreview) ? value.diffPreview : undefined;
+  const diffPreview = isRecord(value.diffPreview)
+    ? value.diffPreview
+    : undefined;
   const rememberable =
     typeof value.rememberable === 'boolean' ? value.rememberable : undefined;
 

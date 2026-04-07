@@ -86,7 +86,8 @@ export class SelfEvolutionPermissionService {
     toolName: string;
     permissionRequest: SelfEvolutionPermissionRequest;
   }): Promise<void> {
-    const sessionResolvers = this.pendingBySession.get(params.sessionId) ?? new Map();
+    const sessionResolvers =
+      this.pendingBySession.get(params.sessionId) ?? new Map();
     const conversationResolvers =
       this.pendingByConversation.get(params.conversationId) ?? new Map();
 
@@ -141,7 +142,10 @@ export class SelfEvolutionPermissionService {
     sessionResolvers.set(params.toolCallId, pending);
     conversationResolvers.set(params.toolCallId, pending);
     this.pendingBySession.set(params.sessionId, sessionResolvers);
-    this.pendingByConversation.set(params.conversationId, conversationResolvers);
+    this.pendingByConversation.set(
+      params.conversationId,
+      conversationResolvers,
+    );
 
     await this.redisCacheService.set(
       this.buildPendingConversationKey(
@@ -360,9 +364,7 @@ export class SelfEvolutionPermissionService {
     selfEvolution: SelfEvolutionMetadataShape,
   ): Record<string, unknown> {
     return {
-      ...((metadata &&
-        typeof metadata === 'object' &&
-        !Array.isArray(metadata)
+      ...((metadata && typeof metadata === 'object' && !Array.isArray(metadata)
         ? metadata
         : {}) as Record<string, unknown>),
       selfEvolution: {
@@ -425,7 +427,9 @@ export class SelfEvolutionPermissionService {
     }
 
     try {
-      const parsed = JSON.parse(raw) as Partial<SharedPendingSelfEvolutionPermission>;
+      const parsed = JSON.parse(
+        raw,
+      ) as Partial<SharedPendingSelfEvolutionPermission>;
       if (
         typeof parsed.sessionId !== 'string' ||
         typeof parsed.conversationId !== 'string' ||

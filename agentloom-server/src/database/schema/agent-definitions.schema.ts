@@ -32,8 +32,7 @@ export const agentRuntimeModeEnum = pgEnum('agent_runtime_mode_enum', [
   'no_sandbox',
 ]);
 
-export type AgentRuntimeMode =
-  (typeof agentRuntimeModeEnum.enumValues)[number];
+export type AgentRuntimeMode = (typeof agentRuntimeModeEnum.enumValues)[number];
 
 export const agentDefinitions = pgTable(
   'agent_definitions',

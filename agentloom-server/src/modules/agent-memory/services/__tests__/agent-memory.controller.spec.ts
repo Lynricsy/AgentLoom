@@ -343,7 +343,9 @@ describe('AgentMemoryController', () => {
   let mockBootService: ReturnType<typeof createMockBootProtocolService>;
   let mockFusionService: ReturnType<typeof createMockMemoryFusionService>;
   let mockAuditService: ReturnType<typeof createMockAuditLogService>;
-  let mockResourceSourceService: ReturnType<typeof createMockResourceSourceService>;
+  let mockResourceSourceService: ReturnType<
+    typeof createMockResourceSourceService
+  >;
 
   beforeEach(() => {
     vi.clearAllMocks();

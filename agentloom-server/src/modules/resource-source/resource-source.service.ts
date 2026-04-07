@@ -118,15 +118,14 @@ export class ResourceSourceService {
         set: {
           originKind: sql<ResourceSourceKind>`excluded.origin_kind`,
           currentKind: sql<ResourceSourceKind>`excluded.current_kind`,
-          sourceShareType:
-            sql<ResourceSourceShareType | null>`excluded.source_share_type`,
+          sourceShareType: sql<ResourceSourceShareType | null>`excluded.source_share_type`,
           sourceShareId: sql<string | null>`excluded.source_share_id`,
           sourceShareToken: sql<string | null>`excluded.source_share_token`,
-          sourceResourceType:
-            sql<ResourceSourceResourceType | null>`excluded.source_resource_type`,
+          sourceResourceType: sql<ResourceSourceResourceType | null>`excluded.source_resource_type`,
           sourceResourceId: sql<string | null>`excluded.source_resource_id`,
-          sourceResourceTitle:
-            sql<string | null>`excluded.source_resource_title`,
+          sourceResourceTitle: sql<
+            string | null
+          >`excluded.source_resource_title`,
           updatedAt: new Date(),
         },
       });

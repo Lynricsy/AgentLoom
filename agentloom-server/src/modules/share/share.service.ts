@@ -95,14 +95,18 @@ interface AgentShareTokenRecord extends schema.AgentShare {
   authorAvatarUrl: string | null;
 }
 
-export interface AccessibleWorkflowShareTokenRecord
-  extends Omit<WorkflowShareTokenRecord, 'publishedVersionId' | 'snapshot'> {
+export interface AccessibleWorkflowShareTokenRecord extends Omit<
+  WorkflowShareTokenRecord,
+  'publishedVersionId' | 'snapshot'
+> {
   publishedVersionId: string;
   snapshot: schema.WorkflowVersionSnapshot;
 }
 
-export interface AccessibleAgentShareTokenRecord
-  extends Omit<AgentShareTokenRecord, 'publishedVersionId' | 'snapshot'> {
+export interface AccessibleAgentShareTokenRecord extends Omit<
+  AgentShareTokenRecord,
+  'publishedVersionId' | 'snapshot'
+> {
   publishedVersionId: string;
   snapshot: schema.AgentVersionSnapshot;
 }
@@ -175,7 +179,11 @@ export class ShareService {
         createdBy: schema.workflowShares.createdBy,
       });
 
-    return this.toWorkflowShareResponse(createdShare, workflow.name, workflow.description);
+    return this.toWorkflowShareResponse(
+      createdShare,
+      workflow.name,
+      workflow.description,
+    );
   }
 
   async createAgentShare(
@@ -238,7 +246,11 @@ export class ShareService {
         createdBy: schema.agentShares.createdBy,
       });
 
-    return this.toAgentShareResponse(createdShare, agent.name, agent.description);
+    return this.toAgentShareResponse(
+      createdShare,
+      agent.name,
+      agent.description,
+    );
   }
 
   async findSharesByWorkflow(
@@ -542,8 +554,7 @@ export class ShareService {
         workflowDescription: schema.workflowDefinitions.description,
         publishedVersionId: schema.workflowDefinitions.publishedVersionId,
         snapshot: schema.workflowVersions.snapshot,
-        authorDisplayName:
-          sql<string>`coalesce(${schema.users.displayName}, ${schema.users.email})`,
+        authorDisplayName: sql<string>`coalesce(${schema.users.displayName}, ${schema.users.email})`,
         authorEmail: schema.users.email,
         authorAvatarUrl: schema.users.avatarUrl,
       })
@@ -562,7 +573,10 @@ export class ShareService {
           schema.workflowVersions.id,
         ),
       )
-      .leftJoin(schema.users, eq(schema.workflowShares.createdBy, schema.users.id))
+      .leftJoin(
+        schema.users,
+        eq(schema.workflowShares.createdBy, schema.users.id),
+      )
       .where(eq(schema.workflowShares.shareToken, token));
 
     return share ?? null;
@@ -590,8 +604,7 @@ export class ShareService {
         agentRuntimeMode: schema.agentDefinitions.runtimeMode,
         publishedVersionId: schema.agentDefinitions.publishedVersionId,
         snapshot: schema.agentVersions.snapshot,
-        authorDisplayName:
-          sql<string>`coalesce(${schema.users.displayName}, ${schema.users.email})`,
+        authorDisplayName: sql<string>`coalesce(${schema.users.displayName}, ${schema.users.email})`,
         authorEmail: schema.users.email,
         authorAvatarUrl: schema.users.avatarUrl,
       })
@@ -798,7 +811,9 @@ export class ShareService {
     return baseUrl.replace(/\/+$/, '');
   }
 
-  private ensureTenantId(tenantId: string | undefined): asserts tenantId is string {
+  private ensureTenantId(
+    tenantId: string | undefined,
+  ): asserts tenantId is string {
     if (!tenantId) {
       throw new TenantRequiredException();
     }

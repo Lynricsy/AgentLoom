@@ -23,7 +23,9 @@ const {
     from: vi.fn().mockReturnThis(),
     where: vi.fn().mockReturnThis(),
     limit: vi.fn().mockImplementation(async () => selectResults.shift() ?? []),
-    orderBy: vi.fn().mockImplementation(async () => selectResults.shift() ?? []),
+    orderBy: vi
+      .fn()
+      .mockImplementation(async () => selectResults.shift() ?? []),
   };
 
   const insertChain = {
@@ -31,7 +33,9 @@ const {
       insertValuesCalls.push(value);
       return insertChain;
     }),
-    returning: vi.fn().mockImplementation(async () => insertResults.shift() ?? []),
+    returning: vi
+      .fn()
+      .mockImplementation(async () => insertResults.shift() ?? []),
   };
 
   const updateChain = {

@@ -26,7 +26,5 @@ export function resolveSandboxConversationIdleAutoEndMinutes(
 export function resolveSandboxConversationIdleAutoEndDelayMs(
   config: Partial<Pick<SandboxConfig, 'conversationIdleAutoEndMinutes'>>,
 ): number {
-  return (
-    resolveSandboxConversationIdleAutoEndMinutes(config) * MINUTES_TO_MS
-  );
+  return resolveSandboxConversationIdleAutoEndMinutes(config) * MINUTES_TO_MS;
 }

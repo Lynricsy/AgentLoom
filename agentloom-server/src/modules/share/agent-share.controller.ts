@@ -44,7 +44,8 @@ export class AgentShareController {
   @ApiOperation({ summary: '创建 Agent 分享链接' })
   @ApiResponse({ status: 201, description: '分享链接创建成功' })
   async create(
-    @Body(new ZodValidationPipe(CreateAgentShareSchema)) dto: CreateAgentShareDto,
+    @Body(new ZodValidationPipe(CreateAgentShareSchema))
+    dto: CreateAgentShareDto,
     @Req() req: AuthenticatedRequest,
   ) {
     const data = await this.shareService.createAgentShare(
@@ -61,7 +62,8 @@ export class AgentShareController {
   @ApiOperation({ summary: '分页查询租户下的 Agent 分享链接' })
   @ApiResponse({ status: 200, description: '分享链接列表' })
   async list(
-    @Query(new ZodValidationPipe(QueryAgentShareSchema)) query: QueryAgentShareDto,
+    @Query(new ZodValidationPipe(QueryAgentShareSchema))
+    query: QueryAgentShareDto,
     @Req() req: AuthenticatedRequest,
   ) {
     return this.shareService.findSharesByAgent(this.getTenantId(req), query);

@@ -28,10 +28,7 @@ export {
   CreateAgentVersionDto,
 } from './create-agent-version.dto';
 
-export {
-  PublishAgentSchema,
-  PublishAgentDto,
-} from './publish-agent.dto';
+export { PublishAgentSchema, PublishAgentDto } from './publish-agent.dto';
 
 export {
   ListAgentDefinitionsQuerySchema,

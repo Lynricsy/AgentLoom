@@ -81,10 +81,11 @@ export const resourceSourceRecords = pgTable(
   ],
 );
 
-export type ResourceSourceKind = typeof resourceSourceKindEnum.enumValues[number];
+export type ResourceSourceKind =
+  (typeof resourceSourceKindEnum.enumValues)[number];
 export type ResourceSourceResourceType =
-  typeof resourceSourceResourceTypeEnum.enumValues[number];
+  (typeof resourceSourceResourceTypeEnum.enumValues)[number];
 export type ResourceSourceShareType =
-  typeof resourceSourceShareTypeEnum.enumValues[number];
+  (typeof resourceSourceShareTypeEnum.enumValues)[number];
 export type ResourceSourceRecord = typeof resourceSourceRecords.$inferSelect;
 export type NewResourceSourceRecord = typeof resourceSourceRecords.$inferInsert;

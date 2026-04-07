@@ -324,7 +324,8 @@ export class RagService {
           this.embeddingService,
           embeddingConfig,
         );
-        const queryEmbeddings = await embedModel.getTextEmbeddings(queryVariants);
+        const queryEmbeddings =
+          await embedModel.getTextEmbeddings(queryVariants);
         const queryResults = await Promise.all(
           queryEmbeddings.map((vector) =>
             this.vectorStoreService.search({
@@ -469,7 +470,9 @@ export class RagService {
 
   private extractLexicalTokens(query: string): string[] {
     const normalized = query.toLowerCase();
-    const tokens = normalized.match(/[a-z0-9][a-z0-9._-]{1,}|\p{Script=Han}{2,}/gu);
+    const tokens = normalized.match(
+      /[a-z0-9][a-z0-9._-]{1,}|\p{Script=Han}{2,}/gu,
+    );
     if (!tokens) {
       return [];
     }

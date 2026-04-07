@@ -40,9 +40,7 @@ describe('AcpStdioModule', () => {
         AcpStdioModule,
       ) as Array<unknown> | undefined;
 
-      expect(imports).toEqual(
-        expect.arrayContaining([LlmModule, AgentModule]),
-      );
+      expect(imports).toEqual(expect.arrayContaining([LlmModule, AgentModule]));
       expect(providers).toEqual(
         expect.arrayContaining([
           expect.objectContaining({

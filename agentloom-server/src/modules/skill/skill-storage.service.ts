@@ -125,7 +125,11 @@ export class SkillStorageService {
 
     const entries = await Promise.all(
       files.map(async (file) => {
-        const stream = await this.downloadSkillFile(tenantId, skillId, file.name);
+        const stream = await this.downloadSkillFile(
+          tenantId,
+          skillId,
+          file.name,
+        );
         const chunks: Buffer[] = [];
 
         for await (const chunk of stream) {

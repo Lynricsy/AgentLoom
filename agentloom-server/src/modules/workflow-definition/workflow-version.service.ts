@@ -571,18 +571,22 @@ export class WorkflowVersionService {
         }
 
         if (shareImportRecord) {
-          await this.resourceSourceService.recordImportedResources(tenantId, userId, [
-            {
-              resourceType: 'workflow_definition',
-              resourceId: created.id,
-              sourceShareType: 'workflow',
-              sourceShareId: shareImportRecord.id,
-              sourceShareToken: shareImportRecord.shareToken,
-              sourceResourceType: 'workflow_definition',
-              sourceResourceId: shareImportRecord.workflowDefinitionId,
-              sourceResourceTitle: shareImportRecord.workflowName,
-            },
-          ]);
+          await this.resourceSourceService.recordImportedResources(
+            tenantId,
+            userId,
+            [
+              {
+                resourceType: 'workflow_definition',
+                resourceId: created.id,
+                sourceShareType: 'workflow',
+                sourceShareId: shareImportRecord.id,
+                sourceShareToken: shareImportRecord.shareToken,
+                sourceResourceType: 'workflow_definition',
+                sourceResourceId: shareImportRecord.workflowDefinitionId,
+                sourceResourceTitle: shareImportRecord.workflowName,
+              },
+            ],
+          );
         }
 
         this.logger.log(
@@ -1519,9 +1523,7 @@ export class WorkflowVersionService {
     );
   }
 
-  private getWorkflowNodeLabel(
-    node: schema.ReactFlowNode,
-  ): string | undefined {
+  private getWorkflowNodeLabel(node: schema.ReactFlowNode): string | undefined {
     const runtimeNodeData = this.getRuntimeNodeData(node.data);
 
     return this.readFirstString(runtimeNodeData.label, runtimeNodeData.name);

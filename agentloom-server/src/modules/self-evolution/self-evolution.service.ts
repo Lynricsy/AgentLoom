@@ -65,7 +65,15 @@ const QUERY_RESOURCE_POOL_SCHEMA = {
   properties: {
     resourceType: {
       type: 'string',
-      enum: ['skill', 'mcp_server', 'mcp_tool', 'model', 'agent', 'workflow', 'workspace'],
+      enum: [
+        'skill',
+        'mcp_server',
+        'mcp_tool',
+        'model',
+        'agent',
+        'workflow',
+        'workspace',
+      ],
       description: '限定查询的资源类型；省略时返回所有资源分组。',
     },
     search: {
@@ -460,7 +468,10 @@ export class SelfEvolutionService {
   }
 
   private async executeMutationDirect(
-    toolName: Extract<SelfEvolutionToolName, 'apply_change' | 'create_resource'>,
+    toolName: Extract<
+      SelfEvolutionToolName,
+      'apply_change' | 'create_resource'
+    >,
     context: SelfEvolutionSessionContext,
     input: GenericRecord,
   ): Promise<SelfEvolutionToolResult> {
@@ -540,7 +551,10 @@ export class SelfEvolutionService {
     );
 
     if (action !== 'approve') {
-      return this.toDeniedOutcome(permissionRequest, '用户拒绝了本次自进化变更');
+      return this.toDeniedOutcome(
+        permissionRequest,
+        '用户拒绝了本次自进化变更',
+      );
     }
 
     return {
@@ -651,9 +665,8 @@ export class SelfEvolutionService {
     if (scope === 'workflow') {
       return {
         scope,
-        target: await this.workflowVersionService.findDefinitionDetailById(
-          targetId,
-        ),
+        target:
+          await this.workflowVersionService.findDefinitionDetailById(targetId),
       };
     }
 
@@ -818,7 +831,8 @@ export class SelfEvolutionService {
     const publishTarget =
       typeof input.publishTarget === 'boolean'
         ? input.publishTarget
-        : target.kind === 'agent' && target.id === context.currentAgentDefinitionId
+        : target.kind === 'agent' &&
+            target.id === context.currentAgentDefinitionId
           ? Boolean(target.publishedVersionId)
           : false;
 
@@ -835,7 +849,8 @@ export class SelfEvolutionService {
     const proposal: SelfEvolutionGraphProposal = {
       domain: SELF_EVOLUTION_DOMAIN,
       targetKind:
-        target.kind === 'agent' && target.id === context.currentAgentDefinitionId
+        target.kind === 'agent' &&
+        target.id === context.currentAgentDefinitionId
           ? 'self'
           : target.kind,
       targetId: target.id,
@@ -933,15 +948,13 @@ export class SelfEvolutionService {
                 ? {
                     publishedVersionNumber: result.publishedVersionNumber,
                     userVisibleVersionNumber: result.publishedVersionNumber,
-                    note:
-                      'publishedVersionNumber 才是用户可见的发布版号；detail.version 是当前草稿修订号，可能比发布版号更大。',
+                    note: 'publishedVersionNumber 才是用户可见的发布版号；detail.version 是当前草稿修订号，可能比发布版号更大。',
                   }
                 : detailVersion === undefined
                   ? {}
                   : {
                       userVisibleVersionNumber: detailVersion,
-                      note:
-                        '当前操作未生成新的发布版号；如需对外展示版本，请优先使用 publishedVersionNumber，缺失时再回退到 detail.version。',
+                      note: '当前操作未生成新的发布版号；如需对外展示版本，请优先使用 publishedVersionNumber，缺失时再回退到 detail.version。',
                     }),
             },
             restartSuggestion:
@@ -1032,9 +1045,8 @@ export class SelfEvolutionService {
         }
         case 'workspace': {
           this.ensureResourceManagementEnabled(context);
-          const organizationId = await this.workspaceService.resolveOrganizationId(
-            context.tenantId,
-          );
+          const organizationId =
+            await this.workspaceService.resolveOrganizationId(context.tenantId);
           const workspace = await this.workspaceService.createEmpty(
             context.tenantId,
             organizationId,
@@ -1081,12 +1093,21 @@ export class SelfEvolutionService {
           this.ensureResourceManagementEnabled(context);
           const mcp = await this.mcpService.importTools(
             {
-              serverName: this.readRequiredString(spec.serverName, 'spec.serverName'),
+              serverName: this.readRequiredString(
+                spec.serverName,
+                'spec.serverName',
+              ),
               ...(this.readString(spec.serverDescription)
                 ? { serverDescription: this.readString(spec.serverDescription) }
                 : {}),
-              connection: this.readRequiredRecord(spec.connection, 'spec.connection'),
-              toolNames: this.readRequiredStringArray(spec.toolNames, 'spec.toolNames'),
+              connection: this.readRequiredRecord(
+                spec.connection,
+                'spec.connection',
+              ),
+              toolNames: this.readRequiredStringArray(
+                spec.toolNames,
+                'spec.toolNames',
+              ),
               conflictStrategy:
                 this.readString(spec.conflictStrategy) === 'overwrite'
                   ? 'overwrite'
@@ -1104,7 +1125,10 @@ export class SelfEvolutionService {
           if (!providerId && providerSpec) {
             const provider = await this.llmProviderService.create(
               {
-                name: this.readRequiredString(providerSpec.name, 'spec.provider.name'),
+                name: this.readRequiredString(
+                  providerSpec.name,
+                  'spec.provider.name',
+                ),
                 baseUrl: this.readRequiredString(
                   providerSpec.baseUrl,
                   'spec.provider.baseUrl',
@@ -1182,8 +1206,7 @@ export class SelfEvolutionService {
       this.readString(
         (session.context.workflowState as GenericRecord | undefined)
           ?.agentConversationId,
-      ) ??
-      this.readString(session.context.serverSandbox?.agentConversationId);
+      ) ?? this.readString(session.context.serverSandbox?.agentConversationId);
 
     if (!conversationId) {
       throw new Error('当前会话不绑定 conversation，无法执行自进化操作');
@@ -1306,8 +1329,18 @@ export class SelfEvolutionService {
     };
     currentNodes: GenericRecord[];
     currentEdges: GenericRecord[];
-    nodeOperations: Array<{ op: string; nodeId?: string; node?: GenericRecord; patch?: GenericRecord }>;
-    edgeOperations: Array<{ op: string; edgeId?: string; edge?: GenericRecord; patch?: GenericRecord }>;
+    nodeOperations: Array<{
+      op: string;
+      nodeId?: string;
+      node?: GenericRecord;
+      patch?: GenericRecord;
+    }>;
+    edgeOperations: Array<{
+      op: string;
+      edgeId?: string;
+      edge?: GenericRecord;
+      patch?: GenericRecord;
+    }>;
     nextNodes: GenericRecord[];
     nextEdges: GenericRecord[];
   }): {
@@ -1362,7 +1395,8 @@ export class SelfEvolutionService {
         return false;
       }
       return (
-        this.readString((edge as GenericRecord).sourceHandle) === 'volume-out' ||
+        this.readString((edge as GenericRecord).sourceHandle) ===
+          'volume-out' ||
         this.readString((edge as GenericRecord).targetHandle) === 'volume-in'
       );
     });
@@ -1441,7 +1475,10 @@ export class SelfEvolutionService {
             riskLevel: 'high',
             sourceLabel,
             targetType: 'mcp',
-            targetLabel: this.readRequiredString(spec.serverName, 'spec.serverName'),
+            targetLabel: this.readRequiredString(
+              spec.serverName,
+              'spec.serverName',
+            ),
             approveEffect: '创建 MCP 配置并导入选定工具。',
             denyEffect: '不会连接或导入新的 MCP 资源。',
             diffPreview: {
@@ -1468,7 +1505,8 @@ export class SelfEvolutionService {
               this.readString(spec.name) ??
               this.readString(this.readRecord(spec.provider)?.name) ??
               '新模型',
-            approveEffect: '创建 Provider（如有）与 Model Config，并返回新模型 ID。',
+            approveEffect:
+              '创建 Provider（如有）与 Model Config，并返回新模型 ID。',
             denyEffect: '不会创建新的模型相关资源。',
             diffPreview: {
               resourceType,
@@ -1564,10 +1602,7 @@ export class SelfEvolutionService {
       category: proposal.category,
       riskLevel: proposal.riskLevel,
       sourceLabel: context.currentAgentName,
-      targetType:
-        proposal.targetKind === 'workflow'
-          ? 'workflow'
-          : 'agent',
+      targetType: proposal.targetKind === 'workflow' ? 'workflow' : 'agent',
       targetLabel: proposal.targetLabel,
       approveEffect: proposal.publishTarget
         ? '应用变更并立即让目标编排切换到最新发布版本。'
@@ -1583,8 +1618,18 @@ export class SelfEvolutionService {
 
   private buildDiffPreview(params: {
     targetLabel: string;
-    nodeOperations: Array<{ op: string; nodeId?: string; node?: GenericRecord; patch?: GenericRecord }>;
-    edgeOperations: Array<{ op: string; edgeId?: string; edge?: GenericRecord; patch?: GenericRecord }>;
+    nodeOperations: Array<{
+      op: string;
+      nodeId?: string;
+      node?: GenericRecord;
+      patch?: GenericRecord;
+    }>;
+    edgeOperations: Array<{
+      op: string;
+      edgeId?: string;
+      edge?: GenericRecord;
+      patch?: GenericRecord;
+    }>;
     nextNodes: GenericRecord[];
     nextEdges: GenericRecord[];
     nextViewport?: GenericRecord | null;
@@ -1643,7 +1688,12 @@ export class SelfEvolutionService {
 
   private applyNodeOperations(
     nodes: GenericRecord[],
-    operations: Array<{ op: string; nodeId?: string; node?: GenericRecord; patch?: GenericRecord }>,
+    operations: Array<{
+      op: string;
+      nodeId?: string;
+      node?: GenericRecord;
+      patch?: GenericRecord;
+    }>,
   ): GenericRecord[] {
     let nextNodes = this.cloneJsonArray(nodes);
 
@@ -1672,7 +1722,10 @@ export class SelfEvolutionService {
           if (index < 0) {
             throw new Error(`待更新节点不存在: ${nodeId}`);
           }
-          nextNodes[index] = this.mergeRecords(nextNodes[index], operation.patch);
+          nextNodes[index] = this.mergeRecords(
+            nextNodes[index],
+            operation.patch,
+          );
           break;
         }
         case 'remove': {
@@ -1695,7 +1748,12 @@ export class SelfEvolutionService {
 
   private applyEdgeOperations(
     edges: GenericRecord[],
-    operations: Array<{ op: string; edgeId?: string; edge?: GenericRecord; patch?: GenericRecord }>,
+    operations: Array<{
+      op: string;
+      edgeId?: string;
+      edge?: GenericRecord;
+      patch?: GenericRecord;
+    }>,
   ): GenericRecord[] {
     let nextEdges = this.cloneJsonArray(edges);
 
@@ -1724,7 +1782,10 @@ export class SelfEvolutionService {
           if (index < 0) {
             throw new Error(`待更新连线不存在: ${edgeId}`);
           }
-          nextEdges[index] = this.mergeRecords(nextEdges[index], operation.patch);
+          nextEdges[index] = this.mergeRecords(
+            nextEdges[index],
+            operation.patch,
+          );
           break;
         }
         case 'remove': {
@@ -1820,11 +1881,17 @@ export class SelfEvolutionService {
         record.targetLabel,
         'proposal.targetLabel',
       ),
-      baseVersion: this.readPositiveInt(record.baseVersion, 1, Number.MAX_SAFE_INTEGER),
+      baseVersion: this.readPositiveInt(
+        record.baseVersion,
+        1,
+        Number.MAX_SAFE_INTEGER,
+      ),
       publishTarget: Boolean(record.publishTarget),
       nodeOperations: this.readNodeOperations(record.nodeOperations),
       edgeOperations: this.readEdgeOperations(record.edgeOperations),
-      ...(this.readRecord(record.viewport) ? { viewport: this.readRecord(record.viewport)! } : {}),
+      ...(this.readRecord(record.viewport)
+        ? { viewport: this.readRecord(record.viewport)! }
+        : {}),
       ...(this.readRecord(record.metadataPatch)
         ? { metadataPatch: this.readRecord(record.metadataPatch)! }
         : {}),
@@ -1837,12 +1904,15 @@ export class SelfEvolutionService {
           ? record.riskLevel
           : 'medium',
       requiresConfirmation: Boolean(record.requiresConfirmation),
-      diffPreview:
-        this.readRecord(record.diffPreview) ?? { summary: 'No diff preview' },
+      diffPreview: this.readRecord(record.diffPreview) ?? {
+        summary: 'No diff preview',
+      },
     };
   }
 
-  private readNodeOperations(value: unknown): import('./self-evolution.types').GraphNodeOperation[] {
+  private readNodeOperations(
+    value: unknown,
+  ): import('./self-evolution.types').GraphNodeOperation[] {
     if (!Array.isArray(value)) {
       return [];
     }
@@ -1865,7 +1935,9 @@ export class SelfEvolutionService {
     });
   }
 
-  private readEdgeOperations(value: unknown): import('./self-evolution.types').GraphEdgeOperation[] {
+  private readEdgeOperations(
+    value: unknown,
+  ): import('./self-evolution.types').GraphEdgeOperation[] {
     if (!Array.isArray(value)) {
       return [];
     }

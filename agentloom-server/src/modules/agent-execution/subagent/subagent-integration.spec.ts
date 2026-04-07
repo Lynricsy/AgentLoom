@@ -127,10 +127,10 @@ const VERSION_RESPONSE = {
   agentDefinitionId: 'agent-writer',
   versionNumber: 1,
   label: 'v1',
-    snapshot: {
-      runtimeMode: 'no_sandbox' as const,
-      nodes: [],
-      edges: [],
+  snapshot: {
+    runtimeMode: 'no_sandbox' as const,
+    nodes: [],
+    edges: [],
     viewport: null,
     metadata: { nodeCount: 0, edgeCount: 0, createdFromVersion: 1 },
   },
