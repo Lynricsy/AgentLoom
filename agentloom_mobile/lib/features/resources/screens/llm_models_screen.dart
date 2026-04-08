@@ -865,22 +865,22 @@ class _ProviderDetailScreenState extends ConsumerState<_ProviderDetailScreen> {
                         ),
                         if (model.capabilities.vision)
                           const Chip(
-                            label: Text('Vision'),
+                            label: Text('视觉'),
                             visualDensity: VisualDensity.compact,
                           ),
                         if (model.capabilities.functionCalling)
                           const Chip(
-                            label: Text('Tool Call'),
+                            label: Text('工具调用'),
                             visualDensity: VisualDensity.compact,
                           ),
                         if (model.capabilities.reasoning)
                           const Chip(
-                            label: Text('Reasoning'),
+                            label: Text('推理'),
                             visualDensity: VisualDensity.compact,
                           ),
                         if (model.capabilities.structuredOutput)
                           const Chip(
-                            label: Text('Structured'),
+                            label: Text('结构化输出'),
                             visualDensity: VisualDensity.compact,
                           ),
                         if (model.pricing != null)
@@ -1602,22 +1602,22 @@ class _ModelEditorSheetState extends ConsumerState<_ModelEditorSheet> {
             runSpacing: 0,
             children: [
               FilterChip(
-                label: const Text('Vision'),
+                label: const Text('视觉'),
                 selected: _vision,
                 onSelected: (v) => setState(() => _vision = v),
               ),
               FilterChip(
-                label: const Text('Function Calling'),
+                label: const Text('函数调用'),
                 selected: _functionCalling,
                 onSelected: (v) => setState(() => _functionCalling = v),
               ),
               FilterChip(
-                label: const Text('Reasoning'),
+                label: const Text('推理'),
                 selected: _reasoning,
                 onSelected: (v) => setState(() => _reasoning = v),
               ),
               FilterChip(
-                label: const Text('Structured Output'),
+                label: const Text('结构化输出'),
                 selected: _structuredOutput,
                 onSelected: (v) => setState(() => _structuredOutput = v),
               ),

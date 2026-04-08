@@ -31,7 +31,7 @@ class WorkflowDetailScreen extends ConsumerWidget {
       appBar: AppBar(
         title:
             workflowAsync.whenOrNull(data: (wf) => Text(wf.name)) ??
-            const Text('Workflow'),
+            const Text('工作流'),
         actions: [
           if (currentWorkflow?.isShareImported ?? false)
             IconButton(
@@ -55,14 +55,14 @@ class WorkflowDetailScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    'Failed to load workflow',
+                    '加载工作流失败',
                     style: theme.textTheme.titleMedium,
                   ),
                   const SizedBox(height: 8),
                   TextButton(
                     onPressed: () =>
                         ref.invalidate(workflowDetailProvider(workflowId)),
-                    child: const Text('Retry'),
+                    child: const Text('重试'),
                   ),
                 ],
               ),
@@ -246,7 +246,7 @@ class WorkflowDetailScreen extends ConsumerWidget {
                   );
                 },
                 icon: const Icon(Icons.play_arrow),
-                label: const Text('Run'),
+                label: const Text('运行'),
               )
             : null,
       ),

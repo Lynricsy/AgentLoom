@@ -49,9 +49,9 @@ class _AgentListScreenState extends ConsumerState<AgentListScreen> {
       final now = DateTime.now();
       final diff = now.difference(date);
 
-      if (diff.inDays == 0) return 'Today';
-      if (diff.inDays == 1) return 'Yesterday';
-      if (diff.inDays < 7) return '${diff.inDays}d ago';
+      if (diff.inDays == 0) return '今天';
+      if (diff.inDays == 1) return '昨天';
+      if (diff.inDays < 7) return '${diff.inDays}天前';
       return '${date.month}/${date.day}/${date.year}';
     } catch (_) {
       return isoDate;
@@ -74,7 +74,7 @@ class _AgentListScreenState extends ConsumerState<AgentListScreen> {
               color: theme.colorScheme.onSurface,
             ),
             const SizedBox(width: 8),
-            const Text('Agents'),
+            const Text('智能体'),
           ],
         ),
       ),
@@ -87,7 +87,7 @@ class _AgentListScreenState extends ConsumerState<AgentListScreen> {
               controller: _searchController,
               onChanged: _onSearchChanged,
               decoration: InputDecoration(
-                hintText: 'Search agents...',
+                hintText: '搜索智能体...',
                 prefixIcon: const Icon(Icons.search),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -108,7 +108,7 @@ class _AgentListScreenState extends ConsumerState<AgentListScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               children: [
                 _FilterChip(
-                  label: 'All',
+                  label: '全部',
                   selected: agentState.value?.statusFilter == null,
                   onSelected: (_) => ref
                       .read(agentListProvider.notifier)
@@ -116,7 +116,7 @@ class _AgentListScreenState extends ConsumerState<AgentListScreen> {
                 ),
                 const SizedBox(width: 8),
                 _FilterChip(
-                  label: 'Draft',
+                  label: '草稿',
                   selected: agentState.value?.statusFilter == 'draft',
                   onSelected: (_) => ref
                       .read(agentListProvider.notifier)
@@ -124,7 +124,7 @@ class _AgentListScreenState extends ConsumerState<AgentListScreen> {
                 ),
                 const SizedBox(width: 8),
                 _FilterChip(
-                  label: 'Published',
+                  label: '已发布',
                   selected: agentState.value?.statusFilter == 'published',
                   onSelected: (_) => ref
                       .read(agentListProvider.notifier)
@@ -132,7 +132,7 @@ class _AgentListScreenState extends ConsumerState<AgentListScreen> {
                 ),
                 const SizedBox(width: 8),
                 _FilterChip(
-                  label: 'Archived',
+                  label: '已归档',
                   selected: agentState.value?.statusFilter == 'archived',
                   onSelected: (_) => ref
                       .read(agentListProvider.notifier)
@@ -193,14 +193,14 @@ class _AgentListScreenState extends ConsumerState<AgentListScreen> {
                     ),
                     const SizedBox(height: 16),
                     Text(
-                      'Failed to load agents',
+                      '加载智能体失败',
                       style: theme.textTheme.titleMedium,
                     ),
                     const SizedBox(height: 8),
                     TextButton(
                       onPressed: () =>
                           ref.read(agentListProvider.notifier).refresh(),
-                      child: const Text('Retry'),
+                      child: const Text('重试'),
                     ),
                   ],
                 ),
@@ -220,7 +220,7 @@ class _AgentListScreenState extends ConsumerState<AgentListScreen> {
                         ),
                         const SizedBox(height: 16),
                         Text(
-                          'No agents found',
+                          '未找到智能体',
                           style: theme.textTheme.titleMedium?.copyWith(
                             color: theme.colorScheme.onSurfaceVariant,
                           ),

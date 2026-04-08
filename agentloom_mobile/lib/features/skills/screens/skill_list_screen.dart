@@ -40,7 +40,7 @@ class _SkillListScreenState extends ConsumerState<SkillListScreen> {
     final skillState = ref.watch(skillListProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Skills')),
+      appBar: AppBar(title: const Text('技能')),
       body: Column(
         children: [
           // 搜索栏
@@ -50,7 +50,7 @@ class _SkillListScreenState extends ConsumerState<SkillListScreen> {
               controller: _searchController,
               onChanged: _onSearchChanged,
               decoration: InputDecoration(
-                hintText: 'Search skills...',
+                hintText: '搜索技能...',
                 prefixIcon: const Icon(Icons.search),
                 suffixIcon: _searchController.text.isNotEmpty
                     ? IconButton(
@@ -152,7 +152,7 @@ class _SkillListScreenState extends ConsumerState<SkillListScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               children: [
                 _FilterChip(
-                  label: 'All',
+                  label: '全部',
                   selected: skillState.value?.statusFilter == null,
                   onSelected: (_) => ref
                       .read(skillListProvider.notifier)
@@ -160,7 +160,7 @@ class _SkillListScreenState extends ConsumerState<SkillListScreen> {
                 ),
                 const SizedBox(width: 8),
                 _FilterChip(
-                  label: 'Active',
+                  label: '活跃',
                   selected: skillState.value?.statusFilter == 'active',
                   onSelected: (_) => ref
                       .read(skillListProvider.notifier)
@@ -168,7 +168,7 @@ class _SkillListScreenState extends ConsumerState<SkillListScreen> {
                 ),
                 const SizedBox(width: 8),
                 _FilterChip(
-                  label: 'Archived',
+                  label: '已归档',
                   selected: skillState.value?.statusFilter == 'archived',
                   onSelected: (_) => ref
                       .read(skillListProvider.notifier)
@@ -276,9 +276,9 @@ class _ErrorView extends StatelessWidget {
         children: [
           Icon(Icons.error_outline, size: 48, color: theme.colorScheme.error),
           const SizedBox(height: 16),
-          Text('Failed to load skills', style: theme.textTheme.titleMedium),
+          Text('加载技能失败', style: theme.textTheme.titleMedium),
           const SizedBox(height: 8),
-          FilledButton.tonal(onPressed: onRetry, child: const Text('Retry')),
+          FilledButton.tonal(onPressed: onRetry, child: const Text('重试')),
         ],
       ),
     );
@@ -303,14 +303,14 @@ class _EmptyView extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           Text(
-            'No skills found',
+            '未找到技能',
             style: theme.textTheme.titleMedium?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
           const SizedBox(height: 4),
           Text(
-            'Try adjusting your search or filters',
+            '尝试调整搜索条件或筛选',
             style: theme.textTheme.bodyMedium?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),

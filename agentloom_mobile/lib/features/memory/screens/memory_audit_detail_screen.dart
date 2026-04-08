@@ -26,7 +26,7 @@ class MemoryAuditDetailScreen extends ConsumerWidget {
         entry!.targetNodeId == null ||
         entry!.targetVersionId == null) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Audit Detail')),
+        appBar: AppBar(title: const Text('审计详情')),
         body: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -40,7 +40,7 @@ class MemoryAuditDetailScreen extends ConsumerWidget {
               ),
               const SizedBox(height: 16),
               Text(
-                'No version content available',
+                '暂无版本内容',
                 style: theme.textTheme.titleMedium?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
@@ -76,7 +76,7 @@ class MemoryAuditDetailScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    'Failed to load version detail',
+                    '加载版本详情失败',
                     style: theme.textTheme.titleMedium,
                   ),
                   const SizedBox(height: 8),
@@ -84,7 +84,7 @@ class MemoryAuditDetailScreen extends ConsumerWidget {
                     onPressed: () => ref.invalidate(
                       memoryVersionDetailProvider(versionParams),
                     ),
-                    child: const Text('Retry'),
+                    child: const Text('重试'),
                   ),
                 ],
               ),
@@ -127,7 +127,7 @@ class MemoryAuditDetailScreen extends ConsumerWidget {
                             ),
                             const SizedBox(height: 4),
                             _MetadataRow(
-                              label: 'Version',
+                              label: '版本',
                               value: 'v${version.versionNumber}',
                               theme: theme,
                             ),
@@ -198,13 +198,13 @@ class _AuditInfoCard extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             _MetadataRow(
-              label: 'Action',
+              label: '操作',
               value: _actionLabel(entry.action),
               theme: theme,
             ),
             const SizedBox(height: 4),
             _MetadataRow(
-              label: 'User',
+              label: '用户',
               value: entry.userId.length > 12
                   ? '${entry.userId.substring(0, 12)}...'
                   : entry.userId,
@@ -212,14 +212,14 @@ class _AuditInfoCard extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             _MetadataRow(
-              label: 'Time',
+              label: '时间',
               value: _formatDateTime(entry.createdAt),
               theme: theme,
             ),
             if (entry.targetNodeId != null) ...[
               const SizedBox(height: 4),
               _MetadataRow(
-                label: 'Node',
+                label: '节点',
                 value:
                     entry.metadata?['nodeName'] as String? ??
                     entry.targetNodeId!.substring(0, 8),

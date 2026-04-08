@@ -564,7 +564,7 @@ class _FileChangeCard extends StatelessWidget {
             ),
             if (change.diff != null && change.diff!.isNotEmpty) ...[
               const SizedBox(height: 10),
-              _MonospacePanel(label: 'Diff', content: change.diff!),
+              _MonospacePanel(label: '差异', content: change.diff!),
             ],
             if (change.content != null && change.content!.isNotEmpty) ...[
               const SizedBox(height: 10),

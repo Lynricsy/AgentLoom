@@ -54,7 +54,7 @@ class _SandboxesScreenState extends ConsumerState<SandboxesScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Sandboxes'),
+        title: const Text('Sandbox'),
         actions: [
           IconButton(
             onPressed: () => unawaited(_reload()),

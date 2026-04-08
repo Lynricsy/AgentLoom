@@ -54,7 +54,7 @@ class _WorkspacesScreenState extends ConsumerState<WorkspacesScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Workspaces'),
+        title: const Text('工作区'),
         actions: [
           IconButton(
             onPressed: () => unawaited(_reload()),

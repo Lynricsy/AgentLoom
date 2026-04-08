@@ -34,7 +34,7 @@ class _ExecutionMonitorScreenState
     );
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Execution')),
+      appBar: AppBar(title: const Text('执行监控')),
       body: _buildBody(context, monitorAsync),
     );
   }
@@ -99,7 +99,7 @@ class _ExecutionMonitorScreenState
               onPressed: () =>
                   ref.invalidate(executionMonitorProvider(widget.executionId)),
               icon: const Icon(Icons.refresh),
-              label: const Text('Retry'),
+              label: const Text('重试'),
             ),
           ],
         ),
@@ -113,7 +113,7 @@ class _ExecutionMonitorScreenState
     ExecutionMonitorRuntimeData runtime,
   ) {
     if (lastSnapshot == null) {
-      return _buildErrorView('Execution ended');
+      return _buildErrorView('执行已结束');
     }
 
     final executionStatus = lastSnapshot.executionStatus;

@@ -22,7 +22,7 @@ class MemoryNodeScreen extends ConsumerWidget {
     final versionsAsync = ref.watch(memoryVersionsProvider(params));
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Memory Node')),
+      appBar: AppBar(title: const Text('记忆节点')),
       body: (nodeAsync.hasError && !nodeAsync.hasValue)
           ? Center(
               child: Column(
@@ -35,13 +35,13 @@ class MemoryNodeScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    'Failed to load node',
+                    '加载节点失败',
                     style: theme.textTheme.titleMedium,
                   ),
                   const SizedBox(height: 8),
                   TextButton(
                     onPressed: () => ref.invalidate(memoryNodeProvider(params)),
-                    child: const Text('Retry'),
+                    child: const Text('重试'),
                   ),
                 ],
               ),
@@ -78,17 +78,17 @@ class MemoryNodeScreen extends ConsumerWidget {
                             ),
                             const SizedBox(height: 12),
                             _InfoRow(
-                              label: 'Type',
+                              label: '类型',
                               value: node.contentType,
                             ),
                             const SizedBox(height: 4),
                             _InfoRow(
-                              label: 'Disclosure',
+                              label: '可见性',
                               value: '${node.disclosureLevel}',
                             ),
                             const SizedBox(height: 4),
                             _InfoRow(
-                              label: 'Created',
+                              label: '创建时间',
                               value: _formatDate(node.createdAt),
                             ),
                           ],
@@ -163,7 +163,7 @@ class MemoryNodeScreen extends ConsumerWidget {
                       child: Padding(
                         padding: const EdgeInsets.all(16),
                         child: Text(
-                          'Failed to load versions',
+                          '加载版本失败',
                           style: theme.textTheme.bodyMedium?.copyWith(
                             color: theme.colorScheme.error,
                           ),
@@ -177,7 +177,7 @@ class MemoryNodeScreen extends ConsumerWidget {
                             padding: const EdgeInsets.all(24),
                             child: Center(
                               child: Text(
-                                'No version history',
+                                '暂无版本历史',
                                 style: theme.textTheme.bodyMedium?.copyWith(
                                   color: theme.colorScheme.onSurfaceVariant,
                                 ),

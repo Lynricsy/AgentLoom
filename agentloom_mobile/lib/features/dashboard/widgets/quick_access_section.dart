@@ -38,7 +38,7 @@ class QuickAccessSection extends StatelessWidget {
               ),
               TextButton(
                 onPressed: () => context.go('/workflows'),
-                child: const Text('View All'),
+                child: const Text('查看全部'),
               ),
             ],
           ),

@@ -35,12 +35,12 @@ enum ExecutionStatus {
 
   /// 状态的本地化显示文本
   String get label => switch (this) {
-    ExecutionStatus.pending => 'Pending',
-    ExecutionStatus.running => 'Running',
-    ExecutionStatus.paused => 'Paused',
-    ExecutionStatus.completed => 'Completed',
-    ExecutionStatus.failed => 'Failed',
-    ExecutionStatus.cancelled => 'Cancelled',
+    ExecutionStatus.pending => '等待中',
+    ExecutionStatus.running => '运行中',
+    ExecutionStatus.paused => '已暂停',
+    ExecutionStatus.completed => '已完成',
+    ExecutionStatus.failed => '失败',
+    ExecutionStatus.cancelled => '已取消',
   };
 
   /// 状态对应的图标
@@ -101,14 +101,14 @@ enum StepStatus {
 
   /// 步骤状态的显示文本
   String get label => switch (this) {
-    StepStatus.pending => 'Pending',
-    StepStatus.queued => 'Queued',
-    StepStatus.running => 'Running',
-    StepStatus.waitingIntervention => 'Waiting',
-    StepStatus.completed => 'Completed',
-    StepStatus.failed => 'Failed',
-    StepStatus.skipped => 'Skipped',
-    StepStatus.cancelled => 'Cancelled',
+    StepStatus.pending => '等待中',
+    StepStatus.queued => '队列中',
+    StepStatus.running => '运行中',
+    StepStatus.waitingIntervention => '等待介入',
+    StepStatus.completed => '已完成',
+    StepStatus.failed => '失败',
+    StepStatus.skipped => '已跳过',
+    StepStatus.cancelled => '已取消',
   };
 
   /// 步骤状态对应的图标

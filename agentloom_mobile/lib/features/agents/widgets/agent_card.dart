@@ -117,8 +117,8 @@ class AgentCard extends StatelessWidget {
       final now = DateTime.now();
       final diff = now.difference(date);
 
-      if (diff.inDays == 0) return 'Today';
-      if (diff.inDays == 1) return 'Yesterday';
+      if (diff.inDays == 0) return '今天';
+      if (diff.inDays == 1) return '昨天';
       if (diff.inDays < 7) return '${diff.inDays}d ago';
       return '${date.month}/${date.day}/${date.year}';
     } catch (_) {

@@ -63,7 +63,7 @@ class _SkillEditScreenState extends ConsumerState<SkillEditScreen> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(const SnackBar(content: Text('Skill updated')));
+        ).showSnackBar(const SnackBar(content: Text('技能已更新')));
         context.pop();
       }
     } catch (e) {
@@ -71,7 +71,7 @@ class _SkillEditScreenState extends ConsumerState<SkillEditScreen> {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Failed to update: $e')));
+        ).showSnackBar(SnackBar(content: Text('更新失败: $e')));
       }
     }
   }
@@ -84,7 +84,7 @@ class _SkillEditScreenState extends ConsumerState<SkillEditScreen> {
     // 兼容 Riverpod 3.x AsyncLoading(error:...) 中间状态
     if (detailAsync.hasError && !detailAsync.hasValue) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Edit Skill')),
+        appBar: AppBar(title: const Text('编辑技能')),
         body: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -95,12 +95,12 @@ class _SkillEditScreenState extends ConsumerState<SkillEditScreen> {
                 color: theme.colorScheme.error,
               ),
               const SizedBox(height: 16),
-              Text('Failed to load skill', style: theme.textTheme.titleMedium),
+              Text('加载技能失败', style: theme.textTheme.titleMedium),
               const SizedBox(height: 8),
               FilledButton.tonal(
                 onPressed: () =>
                     ref.invalidate(skillDetailProvider(widget.skillId)),
-                child: const Text('Retry'),
+                child: const Text('重试'),
               ),
             ],
           ),
@@ -110,11 +110,11 @@ class _SkillEditScreenState extends ConsumerState<SkillEditScreen> {
 
     return detailAsync.when(
       loading: () => Scaffold(
-        appBar: AppBar(title: const Text('Edit Skill')),
+        appBar: AppBar(title: const Text('编辑技能')),
         body: const Center(child: CircularProgressIndicator()),
       ),
       error: (error, _) => Scaffold(
-        appBar: AppBar(title: const Text('Edit Skill')),
+        appBar: AppBar(title: const Text('编辑技能')),
         body: Center(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -125,12 +125,12 @@ class _SkillEditScreenState extends ConsumerState<SkillEditScreen> {
                 color: theme.colorScheme.error,
               ),
               const SizedBox(height: 16),
-              Text('Failed to load skill', style: theme.textTheme.titleMedium),
+              Text('加载技能失败', style: theme.textTheme.titleMedium),
               const SizedBox(height: 8),
               FilledButton.tonal(
                 onPressed: () =>
                     ref.invalidate(skillDetailProvider(widget.skillId)),
-                child: const Text('Retry'),
+                child: const Text('重试'),
               ),
             ],
           ),
@@ -141,7 +141,7 @@ class _SkillEditScreenState extends ConsumerState<SkillEditScreen> {
 
         return Scaffold(
           appBar: AppBar(
-            title: const Text('Edit Skill'),
+            title: const Text('编辑技能'),
             actions: [
               TextButton(
                 onPressed: _isLoading ? null : _submit,
@@ -151,7 +151,7 @@ class _SkillEditScreenState extends ConsumerState<SkillEditScreen> {
                         height: 20,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Text('Save'),
+                    : const Text('保存'),
               ),
             ],
           ),
@@ -194,7 +194,7 @@ class _SkillEditScreenState extends ConsumerState<SkillEditScreen> {
                   enabled: !skill.isBuiltin && !_isLoading,
                   decoration: const InputDecoration(
                     labelText: 'Name',
-                    hintText: 'Enter skill name',
+                    hintText: '输入技能名称',
                     border: OutlineInputBorder(),
                   ),
                   validator: (value) {
@@ -216,7 +216,7 @@ class _SkillEditScreenState extends ConsumerState<SkillEditScreen> {
                   maxLines: 4,
                   decoration: const InputDecoration(
                     labelText: 'Description',
-                    hintText: 'Enter skill description',
+                    hintText: '输入技能描述',
                     border: OutlineInputBorder(),
                     alignLabelWithHint: true,
                   ),
@@ -239,17 +239,17 @@ class _SkillEditScreenState extends ConsumerState<SkillEditScreen> {
                         _InfoRow(label: 'Slug', value: skill.slug),
                         const Divider(height: 16),
                         _InfoRow(
-                          label: 'Status',
+                          label: '状态',
                           value:
                               skill.status[0].toUpperCase() +
                               skill.status.substring(1),
                         ),
                         const Divider(height: 16),
-                        _InfoRow(label: 'Version', value: '${skill.version}'),
+                        _InfoRow(label: '版本', value: '${skill.version}'),
                         const Divider(height: 16),
                         _InfoRow(
-                          label: 'Type',
-                          value: skill.isBuiltin ? 'Built-in' : 'Custom',
+                          label: '类型',
+                          value: skill.isBuiltin ? '内置' : '自定义',
                         ),
                       ],
                     ),

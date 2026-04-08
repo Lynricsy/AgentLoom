@@ -66,7 +66,7 @@ class RecentExecutionsSection extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'No recent executions',
+                    '暂无最近执行记录',
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
                     ),

@@ -44,7 +44,7 @@ class _KnowledgeBasesScreenState extends ConsumerState<KnowledgeBasesScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Knowledge Bases'),
+        title: const Text('知识库'),
         actions: [
           IconButton(
             onPressed: () => unawaited(_reload()),

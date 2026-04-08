@@ -24,7 +24,7 @@ class ExecutionAlertBanner extends StatelessWidget {
     final isFailed = executionStatus == ExecutionStatus.failed;
     final color = isFailed ? Colors.red : Colors.orange;
     final icon = isFailed ? Icons.error : Icons.cancel;
-    final message = isFailed ? _failedMessage() : 'Execution was cancelled';
+    final message = isFailed ? _failedMessage() : '执行已取消';
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),

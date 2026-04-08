@@ -26,7 +26,7 @@ class MemoryDetailScreen extends ConsumerWidget {
       appBar: AppBar(
         title:
             instanceAsync.whenOrNull(data: (inst) => Text(inst.name)) ??
-            const Text('Memory'),
+            const Text('记忆'),
         actions: [
           if (currentInstance?.sourceKind == 'share_imported')
             IconButton(
@@ -49,14 +49,14 @@ class MemoryDetailScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    'Failed to load memory instance',
+                    '加载记忆实例失败',
                     style: theme.textTheme.titleMedium,
                   ),
                   const SizedBox(height: 8),
                   TextButton(
                     onPressed: () =>
                         ref.invalidate(memoryInstanceProvider(instanceId)),
-                    child: const Text('Retry'),
+                    child: const Text('重试'),
                   ),
                 ],
               ),
@@ -122,12 +122,12 @@ class MemoryDetailScreen extends ConsumerWidget {
                             ],
                             const SizedBox(height: 16),
                             _MetadataRow(
-                              label: 'Nodes',
+                              label: '节点数',
                               value: '${instance.nodeCount}',
                             ),
                             const SizedBox(height: 4),
                             _MetadataRow(
-                              label: 'Edges',
+                              label: '边数',
                               value: '${instance.edgeCount}',
                             ),
                             const SizedBox(height: 4),
@@ -141,7 +141,7 @@ class MemoryDetailScreen extends ConsumerWidget {
                             if (instance.config != null &&
                                 instance.config!.isNotEmpty) ...[
                               _MetadataRow(
-                                label: 'Config',
+                                label: '配置',
                                 value:
                                     instance.config!.keys.take(3).join(', ') +
                                     (instance.config!.length > 3 ? '...' : ''),
@@ -149,12 +149,12 @@ class MemoryDetailScreen extends ConsumerWidget {
                               const SizedBox(height: 4),
                             ],
                             _MetadataRow(
-                              label: 'Updated',
+                              label: '更新时间',
                               value: _formatDate(instance.updatedAt),
                             ),
                             const SizedBox(height: 4),
                             _MetadataRow(
-                              label: 'Created',
+                              label: '创建时间',
                               value: _formatDate(instance.createdAt),
                             ),
                           ],
@@ -193,7 +193,7 @@ class MemoryDetailScreen extends ConsumerWidget {
                       child: Padding(
                         padding: const EdgeInsets.all(16),
                         child: Text(
-                          'Failed to load nodes',
+                          '加载节点失败',
                           style: theme.textTheme.bodyMedium?.copyWith(
                             color: theme.colorScheme.error,
                           ),
@@ -216,7 +216,7 @@ class MemoryDetailScreen extends ConsumerWidget {
                                   ),
                                   const SizedBox(height: 8),
                                   Text(
-                                    'No nodes yet',
+                                    '暂无节点',
                                     style: theme.textTheme.bodyMedium?.copyWith(
                                       color: theme.colorScheme.onSurfaceVariant,
                                     ),

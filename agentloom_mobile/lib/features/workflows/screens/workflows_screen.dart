@@ -49,9 +49,9 @@ class _WorkflowsScreenState extends ConsumerState<WorkflowsScreen> {
       final now = DateTime.now();
       final diff = now.difference(date);
 
-      if (diff.inDays == 0) return 'Today';
-      if (diff.inDays == 1) return 'Yesterday';
-      if (diff.inDays < 7) return '${diff.inDays}d ago';
+      if (diff.inDays == 0) return '今天';
+      if (diff.inDays == 1) return '昨天';
+      if (diff.inDays < 7) return '${diff.inDays}天前';
       return '${date.month}/${date.day}/${date.year}';
     } catch (_) {
       return isoDate;
@@ -81,7 +81,7 @@ class _WorkflowsScreenState extends ConsumerState<WorkflowsScreen> {
               color: theme.colorScheme.onSurface,
             ),
             const SizedBox(width: 8),
-            const Text('Workflows'),
+            const Text('工作流'),
           ],
         ),
       ),
@@ -94,7 +94,7 @@ class _WorkflowsScreenState extends ConsumerState<WorkflowsScreen> {
               controller: _searchController,
               onChanged: _onSearchChanged,
               decoration: InputDecoration(
-                hintText: 'Search workflows...',
+                hintText: '搜索工作流...',
                 prefixIcon: const Icon(Icons.search),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
@@ -115,7 +115,7 @@ class _WorkflowsScreenState extends ConsumerState<WorkflowsScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               children: [
                 _FilterChip(
-                  label: 'All',
+                  label: '全部',
                   selected: workflowState.value?.statusFilter == null,
                   onSelected: (_) => ref
                       .read(workflowListProvider.notifier)
@@ -123,7 +123,7 @@ class _WorkflowsScreenState extends ConsumerState<WorkflowsScreen> {
                 ),
                 const SizedBox(width: 8),
                 _FilterChip(
-                  label: 'Draft',
+                  label: '草稿',
                   selected: workflowState.value?.statusFilter == 'draft',
                   onSelected: (_) => ref
                       .read(workflowListProvider.notifier)
@@ -131,7 +131,7 @@ class _WorkflowsScreenState extends ConsumerState<WorkflowsScreen> {
                 ),
                 const SizedBox(width: 8),
                 _FilterChip(
-                  label: 'Published',
+                  label: '已发布',
                   selected: workflowState.value?.statusFilter == 'published',
                   onSelected: (_) => ref
                       .read(workflowListProvider.notifier)
@@ -139,7 +139,7 @@ class _WorkflowsScreenState extends ConsumerState<WorkflowsScreen> {
                 ),
                 const SizedBox(width: 8),
                 _FilterChip(
-                  label: 'Archived',
+                  label: '已归档',
                   selected: workflowState.value?.statusFilter == 'archived',
                   onSelected: (_) => ref
                       .read(workflowListProvider.notifier)
@@ -200,14 +200,14 @@ class _WorkflowsScreenState extends ConsumerState<WorkflowsScreen> {
                     ),
                     const SizedBox(height: 16),
                     Text(
-                      'Failed to load workflows',
+                      '加载工作流失败',
                       style: theme.textTheme.titleMedium,
                     ),
                     const SizedBox(height: 8),
                     TextButton(
                       onPressed: () =>
                           ref.read(workflowListProvider.notifier).refresh(),
-                      child: const Text('Retry'),
+                      child: const Text('重试'),
                     ),
                   ],
                 ),
@@ -227,7 +227,7 @@ class _WorkflowsScreenState extends ConsumerState<WorkflowsScreen> {
                         ),
                         const SizedBox(height: 16),
                         Text(
-                          'No workflows found',
+                          '未找到工作流',
                           style: theme.textTheme.titleMedium?.copyWith(
                             color: theme.colorScheme.onSurfaceVariant,
                           ),

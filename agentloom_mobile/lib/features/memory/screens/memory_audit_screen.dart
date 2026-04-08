@@ -23,7 +23,7 @@ class _MemoryAuditScreenState extends ConsumerState<MemoryAuditScreen> {
     final auditState = ref.watch(memoryAuditProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Audit Log')),
+      appBar: AppBar(title: const Text('审计日志')),
       body: auditState.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (error, _) => Center(
@@ -37,14 +37,14 @@ class _MemoryAuditScreenState extends ConsumerState<MemoryAuditScreen> {
               ),
               const SizedBox(height: 16),
               Text(
-                'Failed to load audit log',
+                '加载审计日志失败',
                 style: theme.textTheme.titleMedium,
               ),
               const SizedBox(height: 8),
               TextButton(
                 onPressed: () =>
                     ref.read(memoryAuditProvider.notifier).refresh(),
-                child: const Text('Retry'),
+                child: const Text('重试'),
               ),
             ],
           ),
@@ -64,7 +64,7 @@ class _MemoryAuditScreenState extends ConsumerState<MemoryAuditScreen> {
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    'No audit entries found',
+                    '未找到审计记录',
                     style: theme.textTheme.titleMedium?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
                     ),

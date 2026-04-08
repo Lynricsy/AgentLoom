@@ -26,7 +26,7 @@ class SettingsScreen extends ConsumerWidget {
               color: theme.colorScheme.onSurface,
             ),
             const SizedBox(width: 8),
-            const Text('Settings'),
+            const Text('设置'),
           ],
         ),
       ),

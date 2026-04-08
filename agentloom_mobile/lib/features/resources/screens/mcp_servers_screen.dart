@@ -103,7 +103,7 @@ class _McpServersScreenState extends ConsumerState<McpServersScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('MCP Servers'),
+        title: const Text('MCP 服务'),
         actions: [
           IconButton(
             onPressed: () => unawaited(_reload()),

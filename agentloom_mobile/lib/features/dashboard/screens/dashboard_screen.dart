@@ -27,7 +27,7 @@ class DashboardScreen extends ConsumerWidget {
               color: Theme.of(context).colorScheme.onSurface,
             ),
             const SizedBox(width: 8),
-            const Text('Dashboard'),
+            const Text('仪表盘'),
           ],
         ),
       ),

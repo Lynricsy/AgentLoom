@@ -21,7 +21,7 @@ class _MemoryListScreenState extends ConsumerState<MemoryListScreen> {
     final memoryState = ref.watch(memoryListProvider);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Memory')),
+      appBar: AppBar(title: const Text('记忆')),
       body: Column(
         children: [
           SizedBox(
@@ -71,14 +71,14 @@ class _MemoryListScreenState extends ConsumerState<MemoryListScreen> {
                     ),
                     const SizedBox(height: 16),
                     Text(
-                      'Failed to load memory instances',
+                      '加载记忆实例失败',
                       style: theme.textTheme.titleMedium,
                     ),
                     const SizedBox(height: 8),
                     TextButton(
                       onPressed: () =>
                           ref.read(memoryListProvider.notifier).refresh(),
-                      child: const Text('Retry'),
+                      child: const Text('重试'),
                     ),
                   ],
                 ),
@@ -98,7 +98,7 @@ class _MemoryListScreenState extends ConsumerState<MemoryListScreen> {
                         ),
                         const SizedBox(height: 16),
                         Text(
-                          'No memory instances found',
+                          '未找到记忆实例',
                           style: theme.textTheme.titleMedium?.copyWith(
                             color: theme.colorScheme.onSurfaceVariant,
                           ),

@@ -27,7 +27,7 @@ class AgentDetailScreen extends ConsumerWidget {
       appBar: AppBar(
         title:
             agentAsync.whenOrNull(data: (a) => Text(a.name)) ??
-            const Text('Agent'),
+            const Text('智能体'),
         actions: [
           if (currentAgent?.isShareImported ?? false)
             IconButton(
@@ -50,14 +50,14 @@ class AgentDetailScreen extends ConsumerWidget {
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    'Failed to load agent',
+                    '加载智能体失败',
                     style: theme.textTheme.titleMedium,
                   ),
                   const SizedBox(height: 8),
                   TextButton(
                     onPressed: () =>
                         ref.invalidate(agentDetailProvider(agentId)),
-                    child: const Text('Retry'),
+                    child: const Text('重试'),
                   ),
                 ],
               ),
@@ -127,12 +127,12 @@ class AgentDetailScreen extends ConsumerWidget {
                             ],
                             const SizedBox(height: 16),
                             _MetadataRow(
-                              label: 'Version',
+                              label: '版本',
                               value: 'v${agent.version}',
                             ),
                             const SizedBox(height: 4),
                             _MetadataRow(
-                              label: 'Runtime',
+                              label: '运行时',
                               value: agent.runtimeModeLabel,
                             ),
                             const SizedBox(height: 4),
@@ -145,25 +145,25 @@ class AgentDetailScreen extends ConsumerWidget {
                             const SizedBox(height: 4),
                             if (agent.modelId != null) ...[
                               _MetadataRow(
-                                label: 'Model',
+                                label: '模型',
                                 value: agent.modelId!,
                               ),
                               const SizedBox(height: 4),
                             ],
                             if (agent.autonomyMode != null) ...[
                               _MetadataRow(
-                                label: 'Autonomy',
+                                label: '自主性',
                                 value: agent.autonomyMode!,
                               ),
                               const SizedBox(height: 4),
                             ],
                             _MetadataRow(
-                              label: 'Updated',
+                              label: '更新时间',
                               value: _formatDate(agent.updatedAt),
                             ),
                             const SizedBox(height: 4),
                             _MetadataRow(
-                              label: 'Created',
+                              label: '创建时间',
                               value: _formatDate(agent.createdAt),
                             ),
                           ],
@@ -187,7 +187,7 @@ class AgentDetailScreen extends ConsumerWidget {
                         vertical: 8,
                       ),
                       child: Text(
-                        'Recent Conversations',
+                        '最近对话',
                         style: theme.textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w600,
                         ),
@@ -209,7 +209,7 @@ class AgentDetailScreen extends ConsumerWidget {
                       child: Padding(
                         padding: const EdgeInsets.all(16),
                         child: Text(
-                          'Failed to load conversations',
+                          '加载对话失败',
                           style: theme.textTheme.bodyMedium?.copyWith(
                             color: theme.colorScheme.error,
                           ),
@@ -232,7 +232,7 @@ class AgentDetailScreen extends ConsumerWidget {
                                   ),
                                   const SizedBox(height: 8),
                                   Text(
-                                    'No conversations yet',
+                                    '暂无对话',
                                     style: theme.textTheme.bodyMedium?.copyWith(
                                       color: theme.colorScheme.onSurfaceVariant,
                                     ),
@@ -250,7 +250,7 @@ class AgentDetailScreen extends ConsumerWidget {
                           return ListTile(
                             leading: const Icon(Icons.chat),
                             title: Text(
-                              conv.title ?? 'Conversation ${index + 1}',
+                              conv.title ?? '对话 ${index + 1}',
                             ),
                             subtitle: Text(
                               _formatDate(conv.createdAt),
@@ -285,7 +285,7 @@ class AgentDetailScreen extends ConsumerWidget {
             ? FloatingActionButton.extended(
                 onPressed: () => _startConversation(context, ref),
                 icon: const Icon(Icons.chat),
-                label: const Text('New Chat'),
+                label: const Text('新对话'),
               )
             : null,
       ),
@@ -322,7 +322,7 @@ class AgentDetailScreen extends ConsumerWidget {
           children: [
             ListTile(
               leading: const Icon(Icons.auto_awesome),
-              title: const Text('Regenerate Title'),
+              title: const Text('重新生成标题'),
               onTap: () => Navigator.pop(ctx, 'regenerate'),
             ),
             ListTile(
@@ -331,7 +331,7 @@ class AgentDetailScreen extends ConsumerWidget {
                 color: Theme.of(ctx).colorScheme.error,
               ),
               title: Text(
-                'Delete Conversation',
+                '删除对话',
                 style: TextStyle(color: Theme.of(ctx).colorScheme.error),
               ),
               onTap: () => Navigator.pop(ctx, 'delete'),
@@ -366,8 +366,8 @@ class AgentDetailScreen extends ConsumerWidget {
         SnackBar(
           content: Text(
             title != null
-                ? 'Title updated: $title'
-                : 'Could not generate title',
+                ? '标题已更新: $title'
+                : '无法生成标题',
           ),
         ),
       );
@@ -375,7 +375,7 @@ class AgentDetailScreen extends ConsumerWidget {
       if (!context.mounted) return;
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Failed to regenerate title: $e')));
+      ).showSnackBar(SnackBar(content: Text('重新生成标题失败: $e')));
     }
   }
 
@@ -387,19 +387,19 @@ class AgentDetailScreen extends ConsumerWidget {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete Conversation'),
-        content: const Text('This action cannot be undone.'),
+        title: const Text('删除对话'),
+        content: const Text('此操作不可撤销。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
+            child: const Text('取消'),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: TextButton.styleFrom(
               foregroundColor: Theme.of(ctx).colorScheme.error,
             ),
-            child: const Text('Delete'),
+            child: const Text('删除'),
           ),
         ],
       ),
@@ -414,11 +414,11 @@ class AgentDetailScreen extends ConsumerWidget {
       ref.invalidate(agentConversationsProvider(agentId));
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(const SnackBar(content: Text('Conversation deleted')));
+      ).showSnackBar(const SnackBar(content: Text('对话已删除')));
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to delete conversation: $e')),
+        SnackBar(content: Text('删除对话失败: $e')),
       );
     }
   }
@@ -523,10 +523,10 @@ class _AgentCapabilityCard extends StatelessWidget {
         ? '无 sandbox Agent 不提供内置 read/write/edit/terminal 工具'
         : config.nativeToolPolicy.isConfigured
         ? 'Configured on agent-main'
-        : 'Using agent default policy';
+        : '使用默认策略';
     final capabilityDescription = isNoSandboxRuntime
         ? '当前 Agent 以无沙箱形态运行：可使用 Skill、知识库、记忆、HTTP MCP 和自进化；不会提供终端或工作区工具。'
-        : 'Mobile only shows the current capability policy. Editing remains in Studio.';
+        : '移动端仅显示当前能力策略，编辑请前往 Studio。';
 
     return Card(
       margin: const EdgeInsets.fromLTRB(16, 0, 16, 0),
@@ -536,7 +536,7 @@ class _AgentCapabilityCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Runtime Capabilities',
+              '运行时能力',
               style: theme.textTheme.titleMedium?.copyWith(
                 fontWeight: FontWeight.w600,
               ),
@@ -550,29 +550,29 @@ class _AgentCapabilityCard extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             _CapabilitySection(
-              title: 'Native Tools',
+              title: '原生工具',
               subtitle: nativeToolsSubtitle,
               chips: [
                 _CapabilityChip(
-                  label: 'Read',
+                  label: '读取',
                   enabled: isNoSandboxRuntime
                       ? false
                       : config.nativeToolPolicy.readEnabled,
                 ),
                 _CapabilityChip(
-                  label: 'Write',
+                  label: '写入',
                   enabled: isNoSandboxRuntime
                       ? false
                       : config.nativeToolPolicy.writeEnabled,
                 ),
                 _CapabilityChip(
-                  label: 'Edit',
+                  label: '编辑',
                   enabled: isNoSandboxRuntime
                       ? false
                       : config.nativeToolPolicy.editEnabled,
                 ),
                 _CapabilityChip(
-                  label: 'Terminal',
+                  label: '终端',
                   enabled: isNoSandboxRuntime
                       ? false
                       : config.nativeToolPolicy.terminalEnabled,
@@ -581,27 +581,27 @@ class _AgentCapabilityCard extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             _CapabilitySection(
-              title: 'Self Evolution',
+              title: '自我进化',
               subtitle: config.selfEvolutionPolicy.enabled
-                  ? 'Self evolution is enabled for this agent'
+                  ? '此智能体已启用自我进化'
                   : config.selfEvolutionPolicy.isConfigured
-                  ? 'Configured but currently disabled'
-                  : 'Disabled until enabled in Studio',
+                  ? '已配置但当前未启用'
+                  : '未启用，需在 Studio 中开启',
               chips: [
                 _CapabilityChip(
-                  label: 'Enabled',
+                  label: '已启用',
                   enabled: config.selfEvolutionPolicy.enabled,
                 ),
                 _CapabilityChip(
-                  label: 'Resource Mgmt',
+                  label: '资源管理',
                   enabled: config.selfEvolutionPolicy.resourceManagement,
                 ),
                 _CapabilityChip(
-                  label: 'External Edit',
+                  label: '外部编辑',
                   enabled: config.selfEvolutionPolicy.externalEditing,
                 ),
                 _CapabilityChip(
-                  label: 'Sandbox Mgmt',
+                  label: 'Sandbox 管理',
                   enabled: config.selfEvolutionPolicy.sandboxManagement,
                 ),
               ],
@@ -683,7 +683,7 @@ class _CapabilityChip extends StatelessWidget {
           ),
           const SizedBox(width: 6),
           Text(
-            '$label ${enabled ? 'On' : 'Off'}',
+            '$label ${enabled ? '开' : '关'}',
             style: theme.textTheme.labelMedium?.copyWith(
               color: foregroundColor,
               fontWeight: FontWeight.w600,

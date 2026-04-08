@@ -16,9 +16,9 @@ class SkillCard extends StatelessWidget {
       final now = DateTime.now();
       final diff = now.difference(date);
 
-      if (diff.inDays == 0) return 'Today';
-      if (diff.inDays == 1) return 'Yesterday';
-      if (diff.inDays < 7) return '${diff.inDays}d ago';
+      if (diff.inDays == 0) return '今天';
+      if (diff.inDays == 1) return '昨天';
+      if (diff.inDays < 7) return '${diff.inDays}天前';
       return '${date.month}/${date.day}/${date.year}';
     } catch (_) {
       return isoDate;
@@ -86,7 +86,7 @@ class SkillCard extends StatelessWidget {
                             if (skill.isBuiltin) ...[
                               const SizedBox(width: 6),
                               _StatusBadge(
-                                label: 'Built-in',
+                                label: '内置',
                                 color: theme.colorScheme.secondaryContainer,
                                 textColor:
                                     theme.colorScheme.onSecondaryContainer,
@@ -153,7 +153,7 @@ class SkillCard extends StatelessWidget {
                     ),
                     const SizedBox(width: 4),
                     Text(
-                      '${skill.fileCount} files',
+                      '${skill.fileCount} 个文件',
                       style: theme.textTheme.labelSmall?.copyWith(
                         color: theme.colorScheme.onSurfaceVariant.withValues(
                           alpha: 0.6,

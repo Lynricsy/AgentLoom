@@ -22,7 +22,7 @@ class SkillDetailScreen extends ConsumerWidget {
     // 兼容 Riverpod 3.x AsyncLoading(error:...) 中间状态
     if (detailAsync.hasError && !detailAsync.hasValue) {
       return Scaffold(
-        appBar: AppBar(title: const Text('Skill Detail')),
+        appBar: AppBar(title: const Text('技能详情')),
         body: _ErrorView(
           theme: theme,
           onRetry: () => ref.invalidate(skillDetailProvider(skillId)),
@@ -32,11 +32,11 @@ class SkillDetailScreen extends ConsumerWidget {
 
     return detailAsync.when(
       loading: () => Scaffold(
-        appBar: AppBar(title: const Text('Skill Detail')),
+        appBar: AppBar(title: const Text('技能详情')),
         body: const Center(child: CircularProgressIndicator()),
       ),
       error: (error, _) => Scaffold(
-        appBar: AppBar(title: const Text('Skill Detail')),
+        appBar: AppBar(title: const Text('技能详情')),
         body: _ErrorView(
           theme: theme,
           onRetry: () => ref.invalidate(skillDetailProvider(skillId)),
@@ -65,7 +65,7 @@ class SkillDetailScreen extends ConsumerWidget {
                       value: 'edit',
                       child: ListTile(
                         leading: Icon(Icons.edit_outlined),
-                        title: Text('Edit'),
+                        title: Text('编辑'),
                         contentPadding: EdgeInsets.zero,
                         dense: true,
                       ),
@@ -75,7 +75,7 @@ class SkillDetailScreen extends ConsumerWidget {
                         value: 'archive',
                         child: ListTile(
                           leading: Icon(Icons.archive_outlined),
-                          title: Text('Archive'),
+                          title: Text('归档'),
                           contentPadding: EdgeInsets.zero,
                           dense: true,
                         ),
@@ -88,7 +88,7 @@ class SkillDetailScreen extends ConsumerWidget {
                           color: Colors.redAccent,
                         ),
                         title: Text(
-                          'Delete',
+                          '删除',
                           style: TextStyle(color: Colors.redAccent),
                         ),
                         contentPadding: EdgeInsets.zero,
@@ -118,7 +118,7 @@ class SkillDetailScreen extends ConsumerWidget {
                       // 描述
                       if (skill.description != null &&
                           skill.description!.isNotEmpty) ...[
-                        _SectionTitle(title: 'Description', theme: theme),
+                        _SectionTitle(title: '描述', theme: theme),
                         const SizedBox(height: 8),
                         Text(
                           skill.description!,
@@ -132,7 +132,7 @@ class SkillDetailScreen extends ConsumerWidget {
                       // SKILL.md 内容 (纯文本回退，移动端不编辑)
                       if (skill.content != null &&
                           skill.content!.isNotEmpty) ...[
-                        _SectionTitle(title: 'Skill Content', theme: theme),
+                        _SectionTitle(title: '技能内容', theme: theme),
                         const SizedBox(height: 8),
                         _ContentSection(content: skill.content!, theme: theme),
                         const SizedBox(height: 16),
@@ -140,7 +140,7 @@ class SkillDetailScreen extends ConsumerWidget {
 
                       // 文件列表
                       _SectionTitle(
-                        title: 'Files',
+                        title: '文件',
                         theme: theme,
                         trailing: Text(
                           '${skill.fileCount} file${skill.fileCount == 1 ? '' : 's'}',
@@ -222,19 +222,19 @@ class SkillDetailScreen extends ConsumerWidget {
     showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Archive Skill'),
+        title: const Text('归档技能'),
         content: const Text(
-          'Are you sure you want to archive this skill? '
-          'It can be restored later.',
+          '确定要归档此技能吗？'
+          '之后可以恢复。',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
+            child: const Text('取消'),
           ),
           FilledButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Archive'),
+            child: const Text('归档'),
           ),
         ],
       ),
@@ -247,13 +247,13 @@ class SkillDetailScreen extends ConsumerWidget {
         if (context.mounted) {
           ScaffoldMessenger.of(
             context,
-          ).showSnackBar(const SnackBar(content: Text('Skill archived')));
+          ).showSnackBar(const SnackBar(content: Text('技能已归档')));
         }
       } catch (e) {
         if (context.mounted) {
           ScaffoldMessenger.of(
             context,
-          ).showSnackBar(SnackBar(content: Text('Failed to archive: $e')));
+          ).showSnackBar(SnackBar(content: Text('归档失败: $e')));
         }
       }
     });
@@ -263,22 +263,22 @@ class SkillDetailScreen extends ConsumerWidget {
     showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete Skill'),
+        title: const Text('删除技能'),
         content: const Text(
-          'This action cannot be undone. '
-          'Are you sure you want to delete this skill?',
+          '此操作不可撤销。'
+          '确定要删除此技能吗？',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Cancel'),
+            child: const Text('取消'),
           ),
           FilledButton(
             style: FilledButton.styleFrom(
               backgroundColor: Theme.of(ctx).colorScheme.error,
             ),
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('Delete'),
+            child: const Text('删除'),
           ),
         ],
       ),
@@ -290,14 +290,14 @@ class SkillDetailScreen extends ConsumerWidget {
         if (context.mounted) {
           ScaffoldMessenger.of(
             context,
-          ).showSnackBar(const SnackBar(content: Text('Skill deleted')));
+          ).showSnackBar(const SnackBar(content: Text('技能已删除')));
           context.pop();
         }
       } catch (e) {
         if (context.mounted) {
           ScaffoldMessenger.of(
             context,
-          ).showSnackBar(SnackBar(content: Text('Failed to delete: $e')));
+          ).showSnackBar(SnackBar(content: Text('删除失败: $e')));
         }
       }
     });
@@ -366,7 +366,7 @@ class _HeaderSection extends StatelessWidget {
                         borderRadius: BorderRadius.circular(4),
                       ),
                       child: Text(
-                        'Built-in',
+                        '内置',
                         style: theme.textTheme.labelSmall?.copyWith(
                           color: theme.colorScheme.onPrimaryContainer,
                         ),
@@ -401,26 +401,26 @@ class _MetadataCard extends StatelessWidget {
               iconColor: skill.status == 'active'
                   ? Colors.green
                   : theme.colorScheme.onSurfaceVariant,
-              label: 'Status',
+              label: '状态',
               value:
                   skill.status[0].toUpperCase() + (skill.status).substring(1),
             ),
             const SizedBox(height: 12),
             _MetadataRow(
               icon: Icons.folder_outlined,
-              label: 'Files',
+              label: '文件',
               value: '${skill.fileCount}',
             ),
             const SizedBox(height: 12),
             _MetadataRow(
               icon: Icons.storage_outlined,
-              label: 'Size',
+              label: '大小',
               value: _formatSize(skill.totalSizeBytes),
             ),
             const SizedBox(height: 12),
             _MetadataRow(
               icon: Icons.tag,
-              label: 'Version',
+              label: '版本',
               value: '${skill.version}',
             ),
             const SizedBox(height: 12),
@@ -428,8 +428,8 @@ class _MetadataCard extends StatelessWidget {
               icon: skill.isBuiltin
                   ? Icons.verified_outlined
                   : Icons.auto_awesome_outlined,
-              label: 'Type',
-              value: skill.isBuiltin ? 'Built-in' : 'Custom',
+              label: '类型',
+              value: skill.isBuiltin ? '内置' : '自定义',
             ),
             const SizedBox(height: 12),
             _MetadataRow(
@@ -525,7 +525,7 @@ class _FileInfoCard extends StatelessWidget {
               ),
               const SizedBox(width: 12),
               Text(
-                'No files attached',
+                '暂无附件',
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 ),
@@ -580,13 +580,13 @@ class _TimestampSection extends StatelessWidget {
     return Column(
       children: [
         _TimestampRow(
-          label: 'Created',
+          label: '创建时间',
           value: _formatDateTime(skill.createdAt),
           theme: theme,
         ),
         const SizedBox(height: 4),
         _TimestampRow(
-          label: 'Updated',
+          label: '更新时间',
           value: _formatDateTime(skill.updatedAt),
           theme: theme,
         ),
@@ -600,10 +600,10 @@ class _TimestampSection extends StatelessWidget {
       final now = DateTime.now();
       final diff = now.difference(date);
 
-      if (diff.inMinutes < 1) return 'Just now';
-      if (diff.inHours < 1) return '${diff.inMinutes}m ago';
-      if (diff.inDays < 1) return '${diff.inHours}h ago';
-      if (diff.inDays < 7) return '${diff.inDays}d ago';
+      if (diff.inMinutes < 1) return '刚刚';
+      if (diff.inHours < 1) return '${diff.inMinutes}分钟前';
+      if (diff.inDays < 1) return '${diff.inHours}小时前';
+      if (diff.inDays < 7) return '${diff.inDays}天前';
 
       return '${date.month}/${date.day}/${date.year}';
     } catch (_) {
@@ -701,9 +701,9 @@ class _ErrorView extends StatelessWidget {
         children: [
           Icon(Icons.error_outline, size: 48, color: theme.colorScheme.error),
           const SizedBox(height: 16),
-          Text('Failed to load skill', style: theme.textTheme.titleMedium),
+          Text('加载技能失败', style: theme.textTheme.titleMedium),
           const SizedBox(height: 8),
-          FilledButton.tonal(onPressed: onRetry, child: const Text('Retry')),
+          FilledButton.tonal(onPressed: onRetry, child: const Text('重试')),
         ],
       ),
     );
