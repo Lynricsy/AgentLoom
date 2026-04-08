@@ -191,12 +191,12 @@ export const JumpConfigPanel = memo(function JumpConfigPanel({
     nodeType === 'break'
       ? {
           icon: CircleOff,
-          title: 'Break',
+          title: '跳出',
           description: '命中后立即结束整个 compound，当前轮半成品会被丢弃。',
         }
       : {
           icon: FastForward,
-          title: 'Continue',
+          title: '继续',
           description: '命中后立即跳过当前轮，进入下一轮并丢弃当前轮半成品。',
         }
 

@@ -89,8 +89,8 @@ interface KeyValueListProps {
 const KeyValueList = memo(function KeyValueList({
   label,
   items,
-  keyPlaceholder = 'Key',
-  valuePlaceholder = 'Value',
+  keyPlaceholder = '键',
+  valuePlaceholder = '值',
   onChange,
 }: KeyValueListProps) {
   const handleAdd = useCallback(() => {
@@ -289,7 +289,7 @@ export const HttpToolConfigPanel = memo(function HttpToolConfigPanel({
 
       {/* Headers */}
       <KeyValueList
-        label="Headers"
+        label="请求头"
         items={parsed.headers}
         keyPlaceholder="Header 名"
         valuePlaceholder="值"
@@ -457,7 +457,7 @@ export const HttpToolConfigPanel = memo(function HttpToolConfigPanel({
                 onChange={(e) => handleAuthField('location', e.target.value)}
                 className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
               >
-                <option value="header">Header</option>
+                <option value="header">请求头</option>
                 <option value="query">Query 参数</option>
               </select>
             </div>

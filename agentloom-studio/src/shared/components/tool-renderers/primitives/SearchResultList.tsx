@@ -132,7 +132,7 @@ export const SearchResultList = memo(function SearchResultList({
         )}
       >
         <Search className="size-5 opacity-40" />
-        <span className="text-xs">No matches found</span>
+        <span className="text-xs">未找到匹配项</span>
       </div>
     )
   }
@@ -151,7 +151,7 @@ export const SearchResultList = memo(function SearchResultList({
               {filePath}
             </span>
             <span className="ml-auto shrink-0 text-[10px] text-muted-foreground/50">
-              {fileResults.length} match{fileResults.length > 1 ? 'es' : ''}
+              {fileResults.length} 项匹配
             </span>
           </div>
 

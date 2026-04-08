@@ -84,7 +84,7 @@ export function CanvasContextMenu({
     <div
       ref={menuRef}
       role="menu"
-      aria-label="Canvas context menu"
+      aria-label="画布上下文菜单"
       data-testid="canvas-context-menu"
       className="z-[1000] min-w-48 overflow-hidden rounded-xl border border-border bg-surface-elevated/95 p-1 shadow-2xl backdrop-blur"
       style={{
@@ -104,7 +104,7 @@ export function CanvasContextMenu({
         onClick={handleDelete}
         disabled={!canDelete}
       >
-        <span>Delete</span>
+        <span>删除</span>
       </button>
 
       {selectedNodeCount >= 2 ? (
@@ -115,7 +115,7 @@ export function CanvasContextMenu({
           className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted focus:bg-muted"
           onClick={handleEncapsulate}
         >
-          <span>Encapsulate as Block</span>
+          <span>封装为可复用块</span>
         </button>
       ) : null}
     </div>,

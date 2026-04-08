@@ -225,7 +225,7 @@ function SubAgentEventList({ events }: { events: SubAgentEvent[] }) {
     <div className="space-y-1">
       {thinkingText && (
         <SubAgentCollapsible
-          title="Thinking"
+          title="思考中"
           icon={<Brain className="size-3" />}
         >
           <p className="text-xs leading-relaxed text-muted-foreground whitespace-pre-wrap">
@@ -236,7 +236,7 @@ function SubAgentEventList({ events }: { events: SubAgentEvent[] }) {
 
       {toolCalls.length > 0 && (
         <SubAgentCollapsible
-          title={`Tool calls (${toolCalls.filter((t) => t.status !== 'running' && t.status !== 'pending' && t.status !== 'awaiting_permission' && t.status !== 'in_progress').length}/${toolCalls.length})`}
+          title={`工具调用 (${toolCalls.filter((t) => t.status !== 'running' && t.status !== 'pending' && t.status !== 'awaiting_permission' && t.status !== 'in_progress').length}/${toolCalls.length})`}
           icon={<Wrench className="size-3" />}
           defaultOpen={toolCalls.some((t) => t.status === 'running' || t.status === 'pending' || t.status === 'in_progress')}
         >

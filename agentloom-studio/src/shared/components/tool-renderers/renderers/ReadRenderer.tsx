@@ -39,7 +39,7 @@ const ReadSummary = memo(function ReadSummary({ toolCall }: ToolSummaryProps) {
 
   return (
     <span className="truncate font-mono text-xs text-foreground">
-      Read {args.path || 'file'}{lineRange}
+      Read {args.path || '文件'}{lineRange}
     </span>
   )
 })
@@ -52,7 +52,7 @@ const ReadDetail = memo(function ReadDetail({ toolCall, state }: ToolRendererPro
     return (
       <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
         <span className="size-1.5 animate-pulse rounded-full bg-primary" />
-        Reading file...
+        正在读取文件...
       </div>
     )
   }

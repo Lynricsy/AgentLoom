@@ -114,7 +114,7 @@ export const ConsoleBlock = memo(function ConsoleBlock({
         {/* Exit code */}
         {exitCode !== undefined && exitCode !== 0 && (
           <div className="mt-2 border-t border-zinc-700/50 pt-2 text-xs text-red-400">
-            Exit code: {exitCode}
+            退出代码: {exitCode}
           </div>
         )}
       </div>

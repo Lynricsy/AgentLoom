@@ -74,7 +74,7 @@ const KnowledgeDetail = memo(function KnowledgeDetail({ toolCall, state }: ToolR
     return (
       <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
         <span className="size-1.5 animate-pulse rounded-full bg-primary" />
-        Searching knowledge...
+        正在搜索知识库...
       </div>
     )
   }
@@ -91,7 +91,7 @@ const KnowledgeDetail = memo(function KnowledgeDetail({ toolCall, state }: ToolR
     return (
       <div className="flex flex-col items-center justify-center gap-2 rounded-lg bg-zinc-900 p-8 text-muted-foreground">
         <BookOpen className="size-5 opacity-40" />
-        <span className="text-xs">No results found</span>
+        <span className="text-xs">未找到结果</span>
       </div>
     )
   }

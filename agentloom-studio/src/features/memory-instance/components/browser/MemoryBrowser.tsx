@@ -150,7 +150,7 @@ export function MemoryBrowser() {
           <div className="mb-1 flex items-center gap-2 text-primary">
             <Cpu size={18} />
             <h1 className="text-sm font-bold tracking-tight text-foreground">
-              {instance?.name ?? 'Memory Browser'}
+              {instance?.name ?? '记忆浏览器'}
             </h1>
           </div>
           <button
@@ -270,7 +270,7 @@ export function MemoryBrowser() {
                       {node.disclosure && !editing && (
                         <div className="inline-flex max-w-full items-center gap-2 rounded-lg border border-amber-900/30 bg-amber-950/20 px-3 py-1.5 text-xs text-amber-500/80">
                           <AlertTriangle size={14} className="shrink-0" />
-                          <span className="mr-1 font-medium">Disclosure:</span>
+                          <span className="mr-1 font-medium">披露条件:</span>
                           <span className="truncate italic">{node.disclosure}</span>
                         </div>
                       )}
@@ -280,7 +280,7 @@ export function MemoryBrowser() {
                           <Link2 size={13} className="mt-0.5 shrink-0 text-muted-foreground/60" />
                           <div className="flex flex-wrap gap-1.5">
                             <span className="font-medium text-muted-foreground/60">
-                              Also reachable via:
+                              亦可通过以下路径访问:
                             </span>
                             {node.aliases.map((alias) => (
                               <code
@@ -354,9 +354,9 @@ export function MemoryBrowser() {
                       <div className="space-y-1.5">
                         <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                           <Star size={12} />
-                          Priority
+                          优先级
                           <span className="font-normal text-muted-foreground/60">
-                            (lower = higher priority)
+                            (值越小优先级越高)
                           </span>
                         </label>
                         <input
@@ -370,16 +370,16 @@ export function MemoryBrowser() {
                       <div className="space-y-1.5">
                         <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                           <AlertTriangle size={12} />
-                          Disclosure
+                          披露条件
                           <span className="font-normal text-muted-foreground/60">
-                            (when to recall)
+                            (何时召回)
                           </span>
                         </label>
                         <input
                           type="text"
                           value={editDisclosure}
                           onChange={(e) => setEditDisclosure(e.target.value)}
-                          placeholder="e.g. When I need to remember..."
+                          placeholder="例如：当我需要记住..."
                           className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary/50 focus:outline-none"
                         />
                       </div>

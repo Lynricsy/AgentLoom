@@ -18,11 +18,11 @@ interface WebhookTriggerConfigLocal {
 
 const AUTH_MODE_META: Record<AuthMode, { label: string; description: string }> = {
   simple: {
-    label: 'Simple',
+    label: '简单模式',
     description: '仅使用 URL Token 鉴权，适合简单集成',
   },
   signed: {
-    label: 'Signed',
+    label: '签名验证',
     description: '需要 HMAC-SHA256 签名，适合高安全场景',
   },
 }
@@ -206,7 +206,7 @@ function DeployedWebhookInfo({ token, secret, authMode, isEnabled }: DeployedWeb
         <>
           <CredentialRow
             icon={<KeyRound className="h-3 w-3" />}
-            label="Secret"
+            label="密钥"
             value={secret}
             masked
             copied={copiedField === 'secret'}

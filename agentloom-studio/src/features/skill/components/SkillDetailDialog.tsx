@@ -124,7 +124,7 @@ export function SkillDetailDialog({
 
             {skill.frontmatter && Object.keys(skill.frontmatter).length > 0 && (
               <div className="space-y-2">
-                <h3 className="text-sm font-semibold">Frontmatter</h3>
+                <h3 className="text-sm font-semibold">前言元数据</h3>
                 <pre className="max-h-40 overflow-y-auto whitespace-pre-wrap rounded-lg border border-border bg-muted/30 p-3 font-mono text-xs text-muted-foreground">
                   {JSON.stringify(skill.frontmatter, null, 2)}
                 </pre>

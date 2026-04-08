@@ -228,7 +228,7 @@ export const SandboxCard = memo(function SandboxCard({
         <div className="mt-3">
           <div className="text-xs text-muted-foreground">
             <div className="mb-1 flex items-center justify-between">
-              <span>Disk</span>
+              <span>磁盘</span>
               <span className="font-medium text-foreground">
                 {formatSandboxBytes(stats.diskUsage)} / {formatSandboxBytes(stats.diskTotal)}
               </span>

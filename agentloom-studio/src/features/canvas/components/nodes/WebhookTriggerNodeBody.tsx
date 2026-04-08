@@ -29,7 +29,7 @@ export const WebhookTriggerNodeBody = memo(function WebhookTriggerNodeBody({
               : 'bg-muted text-muted-foreground'
           }`}
         >
-          {authMode === 'signed' ? 'Signed' : 'Simple'}
+          {authMode === 'signed' ? '签名验证' : '简单模式'}
         </span>
       </div>
       {ipCount > 0 && (

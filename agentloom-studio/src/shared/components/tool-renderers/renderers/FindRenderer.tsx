@@ -61,7 +61,7 @@ const FindDetail = memo(function FindDetail({ toolCall, state }: ToolRendererPro
     return (
       <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
         <span className="size-1.5 animate-pulse rounded-full bg-primary" />
-        Finding files...
+        正在查找文件...
       </div>
     )
   }
@@ -78,7 +78,7 @@ const FindDetail = memo(function FindDetail({ toolCall, state }: ToolRendererPro
     return (
       <div className="flex items-center justify-center gap-2 rounded-lg bg-zinc-900 p-6 text-xs text-muted-foreground">
         <FolderSearch className="size-4 opacity-40" />
-        No files found
+        未找到文件
       </div>
     )
   }

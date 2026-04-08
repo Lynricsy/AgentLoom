@@ -104,9 +104,9 @@ function ServerStatusDot({
     error: "bg-red-400",
   };
   const labels: Record<McpServerConfigDetail["status"], string> = {
-    active: "Active",
-    inactive: "Inactive",
-    error: "Error",
+    active: "活跃",
+    inactive: "未激活",
+    error: "错误",
   };
 
   return (

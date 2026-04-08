@@ -400,7 +400,7 @@ describe('canvasStore', () => {
           extent: 'parent',
           position: { x: 0, y: 0 },
           data: {
-            label: 'Loop Start',
+            label: '循环起点',
             nodeType: 'loop-start',
             category: 'control',
             description: '循环子图入口节点',

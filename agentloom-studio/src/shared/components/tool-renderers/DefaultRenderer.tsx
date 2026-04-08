@@ -49,7 +49,7 @@ function CopyButton({ text }: { text: string }) {
       type="button"
       onClick={() => void handleCopy()}
       className="shrink-0 rounded p-1 text-muted-foreground transition-colors hover:bg-zinc-700 hover:text-foreground"
-      title="Copy"
+      title="复制"
     >
       {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
     </button>
@@ -94,16 +94,16 @@ export const DefaultDetail = memo(function DefaultDetail({
 
   return (
     <div className="space-y-3">
-      {hasArgs && <JsonBlock label="Input" value={toolCall.args} />}
+      {hasArgs && <JsonBlock label="输入" value={toolCall.args} />}
 
       {state === 'completed' && hasResult && (
-        <JsonBlock label="Output" value={toolCall.result} />
+        <JsonBlock label="输出" value={toolCall.result} />
       )}
 
       {(state === 'failed' || hasError) && toolCall.error && (
         <div>
           <span className="mb-1 block text-[10px] font-medium uppercase tracking-wider text-error">
-            Error
+            错误
           </span>
           <pre
             className={cn(
@@ -118,7 +118,7 @@ export const DefaultDetail = memo(function DefaultDetail({
       {state === 'pending' && !hasArgs && (
         <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
           <span className="size-1.5 animate-pulse rounded-full bg-primary" />
-          Waiting for tool execution...
+          等待工具执行...
         </div>
       )}
     </div>

@@ -297,7 +297,7 @@ export const CompoundStartConfigPanel = memo(function CompoundStartConfigPanel({
       <div className="flex items-center gap-2">
         <Play className="h-4 w-4 text-muted-foreground" />
         <span className="text-xs font-medium text-foreground">
-          {nodeType === "loop-start" ? "Loop Start" : "Iteration Start"}
+          {nodeType === "loop-start" ? "循环起点" : "迭代起点"}
         </span>
       </div>
 

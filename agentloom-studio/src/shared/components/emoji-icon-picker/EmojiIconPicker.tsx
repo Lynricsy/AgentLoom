@@ -40,14 +40,14 @@ type TabType = 'emoji' | 'icon'
 
 // Emoji 分类名称映射
 const CATEGORY_NAMES: Record<string, string> = {
-  people: 'Smileys',
-  nature: 'Nature',
-  foods: 'Food',
-  activity: 'Activity',
-  places: 'Travel',
-  objects: 'Objects',
-  symbols: 'Symbols',
-  flags: 'Flags',
+  people: '笑脸',
+  nature: '自然',
+  foods: '食物',
+  activity: '活动',
+  places: '旅行',
+  objects: '物品',
+  symbols: '符号',
+  flags: '旗帜',
 }
 
 // 分类 emoji 标识（用于 tab 展示）
@@ -155,7 +155,7 @@ export const EmojiIconPicker = memo(function EmojiIconPicker({
           <button
             type="button"
             className="flex items-center justify-center rounded-md p-1.5 transition-colors hover:bg-muted/50"
-            aria-label="Choose icon"
+            aria-label="选择图标"
           >
             <EntityIcon icon={value} fallback={fallbackIcon} size={20} />
           </button>
@@ -199,10 +199,10 @@ const PickerContent = memo(function PickerContent({
       {/* Tab 栏 */}
       <div className="flex border-b border-border">
         <TabButton active={tab === 'emoji'} onClick={() => setTab('emoji')}>
-          Emoji
+          表情
         </TabButton>
         <TabButton active={tab === 'icon'} onClick={() => setTab('icon')}>
-          Icon
+          图标
         </TabButton>
       </div>
 
@@ -224,7 +224,7 @@ const PickerContent = memo(function PickerContent({
             onClick={() => onChange(null)}
           >
             <Trash2 size={14} />
-            <span>Remove icon</span>
+            <span>删除图标</span>
           </button>
         </div>
       )}
@@ -318,7 +318,7 @@ const EmojiTab = memo(function EmojiTab({
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        Loading...
+        加载中...
       </div>
     )
   }
@@ -331,7 +331,7 @@ const EmojiTab = memo(function EmojiTab({
           <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <input
             type="text"
-            placeholder="Search emoji..."
+            placeholder="搜索表情..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="h-8 w-full rounded-md border border-input bg-background pl-8 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
@@ -395,7 +395,7 @@ const EmojiGrid = memo(function EmojiGrid({
   if (emojis.length === 0) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        No emoji found
+        未找到表情
       </div>
     )
   }
@@ -527,7 +527,7 @@ const IconTab = memo(function IconTab({
           <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <input
             type="text"
-            placeholder="Search icon..."
+            placeholder="搜索图标..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="h-8 w-full rounded-md border border-input bg-background pl-8 pr-3 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
@@ -572,7 +572,7 @@ const LucideIconGrid = memo(function LucideIconGrid({
   if (iconNames.length === 0) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        No icon found
+        未找到图标
       </div>
     )
   }

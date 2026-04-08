@@ -66,7 +66,7 @@ export const MemoryNodeBody = memo(function MemoryNodeBody({
           className="max-w-[100px] truncate text-[11px] leading-tight text-muted-foreground"
           data-testid="memory-instance-name"
         >
-          {configured ? instanceName : 'Not configured'}
+          {configured ? instanceName : '未配置'}
         </span>
       )}
 
@@ -77,7 +77,7 @@ export const MemoryNodeBody = memo(function MemoryNodeBody({
             className="max-w-[120px] truncate leading-tight text-foreground"
             data-testid="memory-instance-name"
           >
-            {configured ? instanceName : 'Not configured'}
+            {configured ? instanceName : '未配置'}
           </span>
 
           {configured && (

@@ -68,10 +68,10 @@ describe('CanvasContextMenu', () => {
       />,
     )
 
-    expect(screen.getByTestId('canvas-context-menu-delete')).toHaveTextContent('Delete')
+    expect(screen.getByTestId('canvas-context-menu-delete')).toHaveTextContent('删除')
   })
 
-  it('shows Encapsulate as Block when multiple nodes are selected', () => {
+  it('shows 封装为可复用块 when multiple nodes are selected', () => {
     render(
       <CanvasContextMenu
         state={{ x: 40, y: 80 }}
@@ -82,11 +82,11 @@ describe('CanvasContextMenu', () => {
     )
 
     expect(screen.getByTestId('canvas-context-menu-encapsulate')).toHaveTextContent(
-      'Encapsulate as Block',
+      '封装为可复用块',
     )
   })
 
-  it('hides Encapsulate as Block when fewer than two nodes are selected', () => {
+  it('hides 封装为可复用块 when fewer than two nodes are selected', () => {
     render(
       <CanvasContextMenu
         state={{ x: 40, y: 80 }}

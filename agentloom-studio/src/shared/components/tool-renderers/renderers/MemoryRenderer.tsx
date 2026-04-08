@@ -134,7 +134,7 @@ const MemorySummary = memo(function MemorySummary({ toolCall }: ToolSummaryProps
 const ReadMemoryDetail = memo(function ReadMemoryDetail({ toolCall, state }: ToolRendererProps) {
   const content = safeString(toolCall.result)
 
-  if (state === 'pending') return <PendingState message="Reading memory..." />
+  if (state === 'pending') return <PendingState message="正在读取记忆..." />
   if (state === 'failed' && toolCall.error) return <ErrorState error={toolCall.error} />
 
   if (!content) return null
@@ -144,20 +144,20 @@ const ReadMemoryDetail = memo(function ReadMemoryDetail({ toolCall, state }: Too
 const CreateMemoryDetail = memo(function CreateMemoryDetail({ toolCall, state }: ToolRendererProps) {
   const args = safeParse<CreateMemoryArgs>(toolCall.args, { uri: '', content: '' })
 
-  if (state === 'pending') return <PendingState message="Creating memory..." />
+  if (state === 'pending') return <PendingState message="正在创建记忆..." />
   if (state === 'failed' && toolCall.error) return <ErrorState error={toolCall.error} />
 
   return (
     <div className="space-y-2">
       <div className="rounded-lg bg-zinc-900 p-3 space-y-0.5">
         <KeyValue label="URI" value={args.uri} />
-        {args.contentType && <KeyValue label="Type" value={args.contentType} />}
-        {args.disclosureLevel != null && <KeyValue label="Disclosure" value={args.disclosureLevel} />}
+        {args.contentType && <KeyValue label="类型" value={args.contentType} />}
+        {args.disclosureLevel != null && <KeyValue label="可见性" value={args.disclosureLevel} />}
       </div>
       {args.content && (
         <div>
           <div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-            Content
+            内容
           </div>
           <ContentPreview content={truncate(args.content, 500)} maxHeight="200px" />
         </div>
@@ -169,14 +169,14 @@ const CreateMemoryDetail = memo(function CreateMemoryDetail({ toolCall, state }:
 const UpdateMemoryDetail = memo(function UpdateMemoryDetail({ toolCall, state }: ToolRendererProps) {
   const args = safeParse<UpdateMemoryArgs>(toolCall.args, { uri: '', mode: 'append' })
 
-  if (state === 'pending') return <PendingState message="Updating memory..." />
+  if (state === 'pending') return <PendingState message="正在更新记忆..." />
   if (state === 'failed' && toolCall.error) return <ErrorState error={toolCall.error} />
 
   if (args.mode === 'append' && args.appendContent) {
     return (
       <div>
         <div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-          Appended content
+          追加的内容
         </div>
         <ContentPreview content={args.appendContent} maxHeight="200px" />
       </div>
@@ -188,7 +188,7 @@ const UpdateMemoryDetail = memo(function UpdateMemoryDetail({ toolCall, state }:
       <div className="grid grid-cols-2 gap-2">
         <div>
           <div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-            Original
+            原始内容
           </div>
           <pre className="overflow-auto rounded-md bg-red-950/20 p-2 font-mono text-xs text-red-400 leading-relaxed whitespace-pre-wrap break-all max-h-[200px]">
             {args.oldString || '\u00A0'}
@@ -196,7 +196,7 @@ const UpdateMemoryDetail = memo(function UpdateMemoryDetail({ toolCall, state }:
         </div>
         <div>
           <div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-            Modified
+            修改后
           </div>
           <pre className="overflow-auto rounded-md bg-emerald-950/20 p-2 font-mono text-xs text-emerald-400 leading-relaxed whitespace-pre-wrap break-all max-h-[200px]">
             {args.newString || '\u00A0'}
@@ -214,12 +214,12 @@ const UpdateMemoryDetail = memo(function UpdateMemoryDetail({ toolCall, state }:
 const DeleteMemoryDetail = memo(function DeleteMemoryDetail({ toolCall, state }: ToolRendererProps) {
   const args = safeParse<DeleteMemoryArgs>(toolCall.args, { uri: '' })
 
-  if (state === 'pending') return <PendingState message="Deleting memory..." />
+  if (state === 'pending') return <PendingState message="正在删除记忆..." />
   if (state === 'failed' && toolCall.error) return <ErrorState error={toolCall.error} />
 
   return (
     <div className="rounded-lg bg-zinc-900 p-3 text-xs text-foreground/90">
-      <span className="text-red-400">Deleted:</span>{' '}
+      <span className="text-red-400">已删除:</span>{' '}
       <span className="font-mono">{args.uri}</span>
     </div>
   )
@@ -228,13 +228,13 @@ const DeleteMemoryDetail = memo(function DeleteMemoryDetail({ toolCall, state }:
 const AddAliasDetail = memo(function AddAliasDetail({ toolCall, state }: ToolRendererProps) {
   const args = safeParse<AddAliasArgs>(toolCall.args, { uri: '', aliasUri: '' })
 
-  if (state === 'pending') return <PendingState message="Adding alias..." />
+  if (state === 'pending') return <PendingState message="正在添加别名..." />
   if (state === 'failed' && toolCall.error) return <ErrorState error={toolCall.error} />
 
   return (
     <div className="rounded-lg bg-zinc-900 p-3 space-y-0.5">
-      <KeyValue label="Target" value={args.uri} />
-      <KeyValue label="Alias" value={args.aliasUri} />
+      <KeyValue label="目标" value={args.uri} />
+      <KeyValue label="别名" value={args.aliasUri} />
     </div>
   )
 })
@@ -242,13 +242,13 @@ const AddAliasDetail = memo(function AddAliasDetail({ toolCall, state }: ToolRen
 const ManageTriggersDetail = memo(function ManageTriggersDetail({ toolCall, state }: ToolRendererProps) {
   const args = safeParse<ManageTriggersArgs>(toolCall.args, { action: 'add', keyword: '', uri: '' })
 
-  if (state === 'pending') return <PendingState message="Managing triggers..." />
+  if (state === 'pending') return <PendingState message="正在管理触发器..." />
   if (state === 'failed' && toolCall.error) return <ErrorState error={toolCall.error} />
 
   return (
     <div className="rounded-lg bg-zinc-900 p-3 space-y-0.5">
-      <KeyValue label="Action" value={args.action} />
-      <KeyValue label="Keyword" value={args.keyword} />
+      <KeyValue label="操作" value={args.action} />
+      <KeyValue label="关键词" value={args.keyword} />
       <KeyValue label="URI" value={args.uri} />
     </div>
   )
@@ -266,14 +266,14 @@ const SearchMemoryDetail = memo(function SearchMemoryDetail({ toolCall, state }:
   const results = safeParse<SearchResultEntry[]>(toolCall.result, [])
   const list = Array.isArray(results) ? results : []
 
-  if (state === 'pending') return <PendingState message="Searching memory..." />
+  if (state === 'pending') return <PendingState message="正在搜索记忆..." />
   if (state === 'failed' && toolCall.error) return <ErrorState error={toolCall.error} />
 
   if (list.length === 0) {
     return (
       <div className="flex items-center justify-center gap-2 rounded-lg bg-zinc-900 p-6 text-xs text-muted-foreground">
         <Brain className="size-4 opacity-40" />
-        No results found
+        未找到结果
       </div>
     )
   }

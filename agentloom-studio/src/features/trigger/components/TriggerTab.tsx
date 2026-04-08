@@ -88,7 +88,7 @@ export function TriggerTab({ workflowId, isPublished }: TriggerTabProps) {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
           <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
-            Event-driven Triggers
+            事件驱动触发器
           </p>
           <h2 className="text-lg font-semibold text-foreground">触发器管理</h2>
           <p className="text-sm text-muted-foreground">
@@ -103,7 +103,7 @@ export function TriggerTab({ workflowId, isPublished }: TriggerTabProps) {
           onClick={() => setIsCreateOpen(true)}
         >
           <Plus className="h-4 w-4" />
-          Add Trigger
+          添加触发器
         </Button>
       </div>
 

@@ -759,7 +759,7 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
   'loop-start': {
     type: 'loop-start',
     category: 'control',
-    label: 'Loop Start',
+    label: '循环起点',
     icon: 'Play',
     description: '循环子图入口节点',
     colorToken: CATEGORY_COLOR_TOKENS.control,
@@ -800,7 +800,7 @@ export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
   'iteration-start': {
     type: 'iteration-start',
     category: 'control',
-    label: 'Iteration Start',
+    label: '迭代起点',
     icon: 'Play',
     description: '迭代子图入口节点',
     colorToken: CATEGORY_COLOR_TOKENS.control,

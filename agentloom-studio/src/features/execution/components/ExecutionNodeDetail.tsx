@@ -47,7 +47,7 @@ export const ExecutionNodeDetail = memo(function ExecutionNodeDetail({
     return (
       <section className="flex h-full min-h-[320px] items-center justify-center rounded-3xl border border-border/70 bg-background/80 text-center" data-testid="execution-node-detail-empty">
         <div>
-          <p className="text-sm font-medium text-foreground">Select a node to view details</p>
+          <p className="text-sm font-medium text-foreground">选择节点查看详情</p>
           <p className="mt-2 text-xs text-muted-foreground">点击画布节点或时间线条目后，这里会展示完整输入、输出与执行结果。</p>
         </div>
       </section>
@@ -75,20 +75,20 @@ export const ExecutionNodeDetail = memo(function ExecutionNodeDetail({
       </div>
 
       <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
-        <DetailSection title="Node Info">
+        <DetailSection title="节点信息">
           <dl className="grid gap-3 text-sm sm:grid-cols-2">
             <div>
-              <dt className="text-xs text-muted-foreground">Node ID</dt>
+              <dt className="text-xs text-muted-foreground">节点 ID</dt>
               <dd className="mt-1 font-mono text-foreground/90">{step.nodeId}</dd>
             </div>
             <div>
-              <dt className="text-xs text-muted-foreground">Step ID</dt>
+              <dt className="text-xs text-muted-foreground">步骤 ID</dt>
               <dd className="mt-1 font-mono text-foreground/90">{step.id}</dd>
             </div>
           </dl>
         </DetailSection>
 
-        <DetailSection title="Inputs">
+        <DetailSection title="输入">
           {step.input ? (
             <JsonTreeView value={step.input} />
           ) : (
@@ -96,7 +96,7 @@ export const ExecutionNodeDetail = memo(function ExecutionNodeDetail({
           )}
         </DetailSection>
 
-        <DetailSection title="Outputs">
+        <DetailSection title="输出">
           {step.output ? (
             <JsonTreeView value={step.output} />
           ) : (
@@ -105,14 +105,14 @@ export const ExecutionNodeDetail = memo(function ExecutionNodeDetail({
         </DetailSection>
 
         {step.errorMessage ? (
-          <DetailSection title="Error">
+          <DetailSection title="错误">
             <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 px-3 py-3 text-sm text-rose-200">
               {step.errorMessage}
             </div>
           </DetailSection>
         ) : null}
 
-        <DetailSection title="Timing">
+        <DetailSection title="耗时">
           <dl className="grid gap-3 text-sm sm:grid-cols-2">
             {timingRows.map((row) => (
               <div key={row.label}>
@@ -124,11 +124,11 @@ export const ExecutionNodeDetail = memo(function ExecutionNodeDetail({
         </DetailSection>
 
         {step.retryHistory && step.retryHistory.length > 0 ? (
-          <DetailSection title="Retry History">
+          <DetailSection title="重试历史">
             <div className="space-y-2">
               {step.retryHistory.map((attempt) => (
                 <div key={`${attempt.attempt}-${attempt.timestamp}`} className="rounded-2xl border border-border/60 bg-background/60 px-3 py-3">
-                  <p className="text-sm font-medium text-foreground">Attempt #{attempt.attempt}</p>
+                  <p className="text-sm font-medium text-foreground">第 {attempt.attempt} 次尝试</p>
                   <p className="mt-1 text-xs text-muted-foreground">{formatExecutionDateTime(attempt.timestamp)}</p>
                   <p className="mt-2 text-sm text-foreground/90">{attempt.error}</p>
                 </div>

@@ -19,9 +19,9 @@ export function PreferencesStep({ onComplete, onSkip }: PreferencesStepProps) {
 
   return (
     <div className="flex flex-col">
-      <h2 className="text-xl font-bold text-foreground">Preferences</h2>
+      <h2 className="text-xl font-bold text-foreground">偏好设置</h2>
       <p className="mt-1 text-sm text-muted-foreground">
-        Customize your experience. You can change these later in settings.
+        自定义使用体验，之后可在设置中修改。
       </p>
 
       <div className="mt-6 space-y-5">
@@ -30,7 +30,7 @@ export function PreferencesStep({ onComplete, onSkip }: PreferencesStepProps) {
             htmlFor="language-select"
             className="text-xs font-medium text-foreground"
           >
-            Language
+            语言
           </label>
           <Select
             id="language-select"
@@ -45,10 +45,10 @@ export function PreferencesStep({ onComplete, onSkip }: PreferencesStepProps) {
         <div className="flex items-center justify-between">
           <div>
             <span className="text-sm font-medium text-foreground">
-              Notifications
+              通知
             </span>
             <p className="text-xs text-muted-foreground">
-              Receive updates about workflow executions
+              接收工作流执行的更新通知
             </p>
           </div>
           <Switch checked={notifications} onCheckedChange={setNotifications} />
@@ -57,10 +57,10 @@ export function PreferencesStep({ onComplete, onSkip }: PreferencesStepProps) {
 
       <div className="mt-8 flex gap-3">
         <Button variant="ghost" onClick={onSkip}>
-          Skip
+          跳过
         </Button>
         <Button className="flex-1" onClick={handleComplete}>
-          Complete Setup
+          完成设置
         </Button>
       </div>
     </div>

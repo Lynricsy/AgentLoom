@@ -84,7 +84,7 @@ export const SandboxStatsDisplay = memo(function SandboxStatsDisplay({
       {/* Memory */}
       <div>
         <div className="mb-1 flex items-center justify-between text-xs">
-            <span className="text-muted-foreground">Memory</span>
+            <span className="text-muted-foreground">内存</span>
             <span className="font-medium text-foreground">
             {formatSandboxMegabytes(stats.memoryUsageMb)} / {formatSandboxMegabytes(stats.memoryLimitMb)}
             <span className="ml-1 text-muted-foreground">({memPercent}%)</span>
@@ -97,7 +97,7 @@ export const SandboxStatsDisplay = memo(function SandboxStatsDisplay({
       {stats.diskUsage != null && stats.diskTotal != null && diskPercent !== null && (
         <div>
           <div className="mb-1 flex items-center justify-between text-xs">
-            <span className="text-muted-foreground">Disk</span>
+            <span className="text-muted-foreground">磁盘</span>
             <span className="font-medium text-foreground">
               {formatSandboxBytes(stats.diskUsage)} / {formatSandboxBytes(stats.diskTotal)}
               <span className="ml-1 text-muted-foreground">({diskPercent}%)</span>

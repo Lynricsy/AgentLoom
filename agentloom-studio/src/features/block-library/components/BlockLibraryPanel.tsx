@@ -78,7 +78,7 @@ export function BlockLibraryPanel({ className }: BlockLibraryPanelProps) {
           </div>
 
           <Button onClick={() => setIsImportOpen(true)} size="sm">
-            Import
+            导入
           </Button>
         </div>
 

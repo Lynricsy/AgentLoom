@@ -58,7 +58,7 @@ export function NodeGridCard({ node, currentDomain, onClick }: NodeGridCardProps
             {node.contentSnippet}
           </p>
         ) : (
-          <p className="text-xs italic text-muted-foreground/50">No preview available</p>
+          <p className="text-xs italic text-muted-foreground/50">暂无预览</p>
         )}
       </div>
 

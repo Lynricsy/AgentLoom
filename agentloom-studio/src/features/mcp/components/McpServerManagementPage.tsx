@@ -69,9 +69,9 @@ function StatusDot({ status }: { status: McpServerConfigSummary["status"] }) {
     error: "bg-red-400",
   };
   const labels: Record<McpServerConfigSummary["status"], string> = {
-    active: "Active",
-    inactive: "Inactive",
-    error: "Error",
+    active: "活跃",
+    inactive: "未激活",
+    error: "错误",
   };
 
   return (
@@ -414,9 +414,9 @@ export function McpServerManagementPage() {
           className="w-32"
         >
           <option value="all">全部状态</option>
-          <option value="active">Active</option>
-          <option value="inactive">Inactive</option>
-          <option value="error">Error</option>
+          <option value="active">活跃</option>
+          <option value="inactive">未激活</option>
+          <option value="error">错误</option>
         </Select>
         <Select
           value={transportFilter}
@@ -494,7 +494,7 @@ export function McpServerManagementPage() {
                       title="测试连接"
                     >
                       <Play className="mr-1 h-3.5 w-3.5" />
-                      Test
+                      测试
                     </Button>
                     <ServerCardActions
                       server={server}

@@ -26,10 +26,10 @@ function extractEmoji(title: string | null): string {
 
 /** 从标题中提取 emoji 之后的文本部分 */
 function extractText(title: string | null): string {
-  if (!title) return "Untitled";
+  if (!title) return "未命名";
   return (
     title.replace(/^(\p{Emoji_Presentation}|\p{Emoji}\uFE0F)\s*/u, "").trim() ||
-    "Untitled"
+    "未命名"
   );
 }
 
@@ -39,7 +39,7 @@ function formatTime(dateStr: string): string {
   const diffMs = now.getTime() - d.getTime();
   const diffMin = Math.floor(diffMs / 60_000);
 
-  if (diffMin < 1) return "just now";
+  if (diffMin < 1) return "刚刚";
   if (diffMin < 60) return `${diffMin}m`;
   const diffHrs = Math.floor(diffMin / 60);
   if (diffHrs < 24) return `${diffHrs}h`;
@@ -115,7 +115,7 @@ export const ConversationSidebar = memo(function ConversationSidebar({
   const handleDelete = useCallback(
     (e: React.MouseEvent, conversationId: string) => {
       e.stopPropagation();
-      if (confirm("Delete this conversation?")) {
+      if (confirm("确认删除此对话？")) {
         deleteMutation.mutate(conversationId, {
           onSuccess: () => {
             if (conversationId === currentConversationId) {
@@ -142,14 +142,14 @@ export const ConversationSidebar = memo(function ConversationSidebar({
             className="flex items-center gap-1.5 rounded-md px-2 py-1.5 text-sm font-medium text-foreground/80 hover:bg-accent hover:text-foreground"
           >
             <MessageSquarePlus className="h-4 w-4" />
-            New
+            新建
           </button>
         )}
         {collapsed && (
           <button
             onClick={handleNewConversation}
             className="mx-auto flex items-center justify-center rounded-md p-1.5 text-foreground/80 hover:bg-accent hover:text-foreground"
-            title="New conversation"
+            title="新建对话"
           >
             <MessageSquarePlus className="h-4 w-4" />
           </button>
@@ -158,7 +158,7 @@ export const ConversationSidebar = memo(function ConversationSidebar({
           <button
             onClick={toggleCollapsed}
             className="rounded-md p-1.5 text-foreground/60 hover:bg-accent hover:text-foreground"
-            title="Collapse sidebar"
+            title="收起侧边栏"
           >
             <ChevronLeft className="h-4 w-4" />
           </button>
@@ -174,7 +174,7 @@ export const ConversationSidebar = memo(function ConversationSidebar({
         ) : conversations.length === 0 ? (
           !collapsed && (
             <p className="p-4 text-center text-xs text-foreground/40">
-              No conversations yet
+              暂无对话
             </p>
           )
         ) : (
@@ -193,7 +193,7 @@ export const ConversationSidebar = memo(function ConversationSidebar({
                           ? "bg-accent text-foreground"
                           : "text-foreground/60 hover:bg-accent/50 hover:text-foreground"
                       }`}
-                      title={conv.title ?? "Untitled"}
+                      title={conv.title ?? "未命名"}
                     >
                       {emoji}
                     </button>
@@ -224,7 +224,7 @@ export const ConversationSidebar = memo(function ConversationSidebar({
                   <button
                     onClick={(e) => handleDelete(e, conv.id)}
                     className="absolute right-2 top-1/2 shrink-0 -translate-y-1/2 rounded p-1 opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
-                    title="Delete"
+                    title="删除"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </button>
@@ -241,7 +241,7 @@ export const ConversationSidebar = memo(function ConversationSidebar({
           <button
             onClick={toggleCollapsed}
             className="mx-auto flex items-center justify-center rounded-md p-1.5 text-foreground/60 hover:bg-accent hover:text-foreground"
-            title="Expand sidebar"
+            title="展开侧边栏"
           >
             <ChevronRight className="h-4 w-4" />
           </button>

@@ -142,7 +142,7 @@ const CallDetail = memo(function CallDetail({
   const output = safeString(toolCall.result);
 
   if (state === "pending")
-    return <PendingState message={`Calling ${alias}...`} />;
+    return <PendingState message={`正在调用 ${alias}...`} />;
   if (state === "failed" && toolCall.error)
     return <ErrorState error={toolCall.error} />;
 
@@ -170,10 +170,10 @@ const CallDetail = memo(function CallDetail({
             )}
           >
             {state === "completed"
-              ? "completed"
+              ? "已完成"
               : state === "failed"
-                ? "failed"
-                : "running"}
+                ? "失败"
+                : "运行中"}
           </span>
         </div>
       </div>
@@ -181,7 +181,7 @@ const CallDetail = memo(function CallDetail({
       {state === "completed" && output && (
         <div>
           <div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-            Output
+            输出
           </div>
           <pre className="max-h-[200px] overflow-auto rounded-md bg-zinc-900 p-3 font-mono text-xs leading-relaxed text-foreground/80 whitespace-pre-wrap break-all">
             {truncate(output, 500)}
@@ -203,7 +203,7 @@ const WaitDetail = memo(function WaitDetail({
   const resultStr = safeString(toolCall.result);
 
   if (state === "pending")
-    return <PendingState message="Waiting for subagents..." />;
+    return <PendingState message="正在等待子代理..." />;
   if (state === "failed" && toolCall.error)
     return <ErrorState error={toolCall.error} />;
 
@@ -237,7 +237,7 @@ const StatusDetail = memo(function StatusDetail({
   const args = safeParse<StatusArgs>(toolCall.args, {});
   const resultStr = safeString(toolCall.result);
 
-  if (state === "pending") return <PendingState message="Querying status..." />;
+  if (state === "pending") return <PendingState message="正在查询状态..." />;
   if (state === "failed" && toolCall.error)
     return <ErrorState error={toolCall.error} />;
 

@@ -126,7 +126,7 @@ export const CoercionConfigPopover = memo(function CoercionConfigPopover({
           type="button"
           data-testid="coercion-config-trigger"
           className={`coercion-trigger${value ? ' coercion-trigger--active' : ''}`}
-          aria-label="Configure type coercion"
+          aria-label="配置类型转换"
         >
           <Settings2 size={14} />
         </button>
@@ -146,7 +146,7 @@ export const CoercionConfigPopover = memo(function CoercionConfigPopover({
             </span>
           </div>
 
-          <div className="coercion-strategy-list" role="listbox" aria-label="Coercion strategies">
+          <div className="coercion-strategy-list" role="listbox" aria-label="转换策略">
             {strategies.map((strategy) => (
               <button
                 key={strategy}

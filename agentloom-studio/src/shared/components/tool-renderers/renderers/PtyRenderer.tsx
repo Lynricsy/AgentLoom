@@ -187,19 +187,19 @@ const PtySpawnDetail = memo(function PtySpawnDetail({ toolCall, state }: ToolRen
   const args = safeParse<PtySpawnArgs>(toolCall.args, { command: '' })
   const result = safeParse<PtySpawnResult>(toolCall.result, {})
 
-  if (state === 'pending') return <PendingState message="Spawning PTY..." />
+  if (state === 'pending') return <PendingState message="正在启动 PTY..." />
   if (state === 'failed' && toolCall.error) return <ErrorState error={toolCall.error} />
 
   return (
     <div className="space-y-0.5 rounded-lg bg-zinc-900 p-3">
       <KeyValue label="ID" value={result.id} />
-      <KeyValue label="Command" value={[args.command, ...(args.args ?? [])].join(' ')} />
+      <KeyValue label="命令" value={[args.command, ...(args.args ?? [])].join(' ')} />
       <KeyValue label="CWD" value={result.cwd ?? args.cwd} />
       <KeyValue label="PID" value={result.pid} />
-      <KeyValue label="Status" value={result.status} />
+      <KeyValue label="状态" value={result.status} />
       <KeyValue label="Size" value={result.cols && result.rows ? `${result.cols}x${result.rows}` : undefined} />
       <KeyValue label="Title" value={result.title ?? args.title} />
-      <KeyValue label="Lines" value={result.lineCount} />
+      <KeyValue label="行数" value={result.lineCount} />
     </div>
   )
 })
@@ -207,7 +207,7 @@ const PtySpawnDetail = memo(function PtySpawnDetail({ toolCall, state }: ToolRen
 const PtyReadDetail = memo(function PtyReadDetail({ toolCall, state }: ToolRendererProps) {
   const result = safeParse<PtyReadResult>(toolCall.result, {})
 
-  if (state === 'pending') return <PendingState message="Reading PTY output..." />
+  if (state === 'pending') return <PendingState message="正在读取 PTY 输出..." />
   if (state === 'failed' && toolCall.error) return <ErrorState error={toolCall.error} />
 
   const output = Array.isArray(result.lines) ? result.lines.join('\n') : safeString(toolCall.result)
@@ -215,7 +215,7 @@ const PtyReadDetail = memo(function PtyReadDetail({ toolCall, state }: ToolRende
   if (!output) {
     return (
       <div className="flex items-center justify-center rounded-lg bg-zinc-900 p-6 text-xs text-muted-foreground">
-        No output
+        无输出
       </div>
     )
   }
@@ -226,7 +226,7 @@ const PtyReadDetail = memo(function PtyReadDetail({ toolCall, state }: ToolRende
       {result.totalLines != null && (
         <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
           <span>Total: {result.totalLines} lines</span>
-          {result.hasMore && <span className="text-amber-400">More available</span>}
+          {result.hasMore && <span className="text-amber-400">还有更多</span>}
         </div>
       )}
     </div>
@@ -236,13 +236,13 @@ const PtyReadDetail = memo(function PtyReadDetail({ toolCall, state }: ToolRende
 const PtyWriteDetail = memo(function PtyWriteDetail({ toolCall, state }: ToolRendererProps) {
   const args = safeParse<PtyWriteArgs>(toolCall.args, { id: '', data: '' })
 
-  if (state === 'pending') return <PendingState message="Writing to PTY..." />
+  if (state === 'pending') return <PendingState message="正在写入 PTY..." />
   if (state === 'failed' && toolCall.error) return <ErrorState error={toolCall.error} />
 
   return (
     <div className="rounded-lg bg-zinc-900 p-3">
       <div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-        Input data
+        输入数据
       </div>
       <div className="font-mono text-xs text-foreground/90">
         {visualizeEscapes(args.data)}
@@ -257,7 +257,7 @@ const PtyWriteDetail = memo(function PtyWriteDetail({ toolCall, state }: ToolRen
 const PtyListDetail = memo(function PtyListDetail({ toolCall, state }: ToolRendererProps) {
   const sessions = safeParse<PtySessionInfo[]>(toolCall.result, [])
 
-  if (state === 'pending') return <PendingState message="Listing PTY sessions..." />
+  if (state === 'pending') return <PendingState message="正在列出 PTY 会话..." />
   if (state === 'failed' && toolCall.error) return <ErrorState error={toolCall.error} />
 
   const list = Array.isArray(sessions) ? sessions : []
@@ -265,7 +265,7 @@ const PtyListDetail = memo(function PtyListDetail({ toolCall, state }: ToolRende
   if (list.length === 0) {
     return (
       <div className="flex items-center justify-center rounded-lg bg-zinc-900 p-6 text-xs text-muted-foreground">
-        No active PTY sessions
+        无活跃的 PTY 会话
       </div>
     )
   }
@@ -275,11 +275,11 @@ const PtyListDetail = memo(function PtyListDetail({ toolCall, state }: ToolRende
       <table className="w-full text-xs">
         <thead>
           <tr className="border-b border-zinc-700/50 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-            <th className="px-3 py-1.5 text-left">Status</th>
+            <th className="px-3 py-1.5 text-left">状态</th>
             <th className="px-3 py-1.5 text-left">ID</th>
-            <th className="px-3 py-1.5 text-left">Command</th>
+            <th className="px-3 py-1.5 text-left">命令</th>
             <th className="px-3 py-1.5 text-right">PID</th>
-            <th className="px-3 py-1.5 text-right">Lines</th>
+            <th className="px-3 py-1.5 text-right">行数</th>
           </tr>
         </thead>
         <tbody>
@@ -309,13 +309,13 @@ const PtyListDetail = memo(function PtyListDetail({ toolCall, state }: ToolRende
 const PtyKillDetail = memo(function PtyKillDetail({ toolCall, state }: ToolRendererProps) {
   const args = safeParse<PtyKillArgs>(toolCall.args, { id: '' })
 
-  if (state === 'pending') return <PendingState message="Killing PTY session..." />
+  if (state === 'pending') return <PendingState message="正在终止 PTY 会话..." />
   if (state === 'failed' && toolCall.error) return <ErrorState error={toolCall.error} />
 
   return (
     <div className="rounded-lg bg-zinc-900 p-3">
       <div className="flex items-center gap-2 text-xs text-foreground/90">
-        <span className="text-red-400">Terminated</span>
+        <span className="text-red-400">已终止</span>
         <span className="font-mono">{args.id}</span>
         <span className="text-muted-foreground">signal: {args.signal ?? 'SIGTERM'}</span>
       </div>

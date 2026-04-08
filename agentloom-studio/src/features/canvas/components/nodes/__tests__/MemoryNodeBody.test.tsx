@@ -104,7 +104,7 @@ describe('MemoryNodeBody', () => {
   });
 
   describe('unconfigured state', () => {
-    it('renders "Not configured" at high zoom when no memoryInstanceId', () => {
+    it('renders "未配置" at high zoom when no memoryInstanceId', () => {
       render(
         <MemoryNodeBody
           config={{ role: 'primary', fusionPriority: 1 }}
@@ -113,7 +113,7 @@ describe('MemoryNodeBody', () => {
 
       expect(screen.getByTestId('memory-node-body')).toBeInTheDocument();
       expect(screen.getByTestId('memory-instance-name')).toHaveTextContent(
-        'Not configured',
+        '未配置',
       );
     });
 

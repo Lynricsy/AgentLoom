@@ -21,9 +21,9 @@ export function OrgSetupStep({
 
   function validate(value: string): string {
     const trimmed = value.trim();
-    if (!trimmed) return 'Organization name is required';
+    if (!trimmed) return '请输入组织名称';
     if (trimmed.length > MAX_ORG_NAME_LENGTH)
-      return `Organization name must be ${MAX_ORG_NAME_LENGTH} characters or less`;
+      return `组织名称不能超过 ${MAX_ORG_NAME_LENGTH} 个字符`;
     return '';
   }
 
@@ -39,10 +39,10 @@ export function OrgSetupStep({
   return (
     <div className="flex flex-col">
       <h2 className="text-xl font-bold text-foreground">
-        Create your organization
+        创建组织
       </h2>
       <p className="mt-1 text-sm text-muted-foreground">
-        This is the workspace where your team will build and run AI workflows.
+        这是您的团队构建和运行 AI 工作流的工作空间。
       </p>
 
       <div className="mt-6 space-y-2">
@@ -50,11 +50,11 @@ export function OrgSetupStep({
           htmlFor="org-name"
           className="text-xs font-medium text-foreground"
         >
-          Organization name
+          组织名称
         </label>
         <Input
           id="org-name"
-          placeholder="e.g. Acme Corp"
+          placeholder="例如：Acme Corp"
           value={orgName}
           disabled={isSubmitting}
           maxLength={MAX_ORG_NAME_LENGTH}
@@ -77,14 +77,14 @@ export function OrgSetupStep({
           disabled={isSubmitting}
           onClick={onBack}
         >
-          Back
+          返回
         </Button>
         <Button
           className="flex-1"
           disabled={isSubmitting}
           onClick={handleSubmit}
         >
-          {isSubmitting ? 'Creating...' : 'Create Organization'}
+          {isSubmitting ? '创建中...' : '创建组织'}
         </Button>
       </div>
     </div>

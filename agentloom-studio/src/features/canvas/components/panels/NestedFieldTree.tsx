@@ -115,7 +115,7 @@ const FieldRow = memo(function FieldRow({
           data-testid={`toggle-nested-field-${node.path}`}
           className="nested-field-chevron"
           onClick={handleToggle}
-          aria-label={isExpanded ? `Collapse ${node.leafKey}` : `Expand ${node.leafKey}`}
+          aria-label={isExpanded ? `收起 ${node.leafKey}` : `展开 ${node.leafKey}`}
         >
           <ChevronRight
             size={14}
@@ -137,12 +137,12 @@ const FieldRow = memo(function FieldRow({
           data-testid={`mapped-indicator-${node.path}`}
           className="nested-field-mapped-dot"
           role="img"
-          aria-label="Mapped"
+          aria-label="已映射"
         />
       )}
 
       {atDepthCap && !node.isLeaf && (
-        <span className="nested-field-depth-cap" role="img" aria-label="Depth limit reached">…</span>
+        <span className="nested-field-depth-cap" role="img" aria-label="已达到深度限制">…</span>
       )}
     </>
   )

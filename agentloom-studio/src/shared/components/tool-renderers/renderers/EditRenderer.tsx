@@ -62,7 +62,7 @@ function TextDiffFallback({ oldText, newText }: { oldText: string; newText: stri
     <div className="grid grid-cols-2 gap-2 font-mono text-xs">
       <div>
         <div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-          Original
+          原始内容
         </div>
         <pre className="overflow-auto rounded-md bg-red-950/20 p-2 text-red-400 leading-relaxed whitespace-pre-wrap break-all">
           {oldText || '\u00A0'}
@@ -70,7 +70,7 @@ function TextDiffFallback({ oldText, newText }: { oldText: string; newText: stri
       </div>
       <div>
         <div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-          Modified
+          修改后
         </div>
         <pre className="overflow-auto rounded-md bg-emerald-950/20 p-2 text-emerald-400 leading-relaxed whitespace-pre-wrap break-all">
           {newText || '\u00A0'}
@@ -83,7 +83,7 @@ function TextDiffFallback({ oldText, newText }: { oldText: string; newText: stri
 function DiffEditorFallback() {
   return (
     <div className="flex items-center justify-center rounded-md bg-zinc-900 p-8">
-      <span className="text-xs text-muted-foreground">Loading diff editor...</span>
+      <span className="text-xs text-muted-foreground">正在加载对比编辑器...</span>
     </div>
   )
 }
@@ -134,7 +134,7 @@ const EditSummary = memo(function EditSummary({ toolCall }: ToolSummaryProps) {
 
   return (
     <span className="truncate font-mono text-xs text-foreground">
-      Edit {args.path || 'file'} ({editCount} edit{editCount !== 1 ? 's' : ''})
+      Edit {args.path || '文件'} ({editCount} 项更改)
     </span>
   )
 })
@@ -160,7 +160,7 @@ const EditDetail = memo(function EditDetail({ toolCall, state }: ToolRendererPro
     return (
       <div className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
         <span className="size-1.5 animate-pulse rounded-full bg-primary" />
-        Editing file...
+        正在编辑文件...
       </div>
     )
   }
@@ -187,7 +187,7 @@ const EditDetail = memo(function EditDetail({ toolCall, state }: ToolRendererPro
       {args.edits.length > 1 && (
         <div className="flex items-center justify-between">
           <span className="text-[10px] font-medium text-muted-foreground">
-            Edit {currentIndex + 1} of {args.edits.length}
+            第 {currentIndex + 1} / {args.edits.length} 项
           </span>
           <div className="flex items-center gap-1">
             <button

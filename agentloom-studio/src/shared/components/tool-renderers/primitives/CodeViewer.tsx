@@ -147,12 +147,12 @@ export const CodeViewer = memo(function CodeViewer({
             {copied ? (
               <>
                 <Check className="size-3" />
-                Copied
+                已复制
               </>
             ) : (
               <>
                 <Copy className="size-3" />
-                Copy
+                复制
               </>
             )}
           </button>
