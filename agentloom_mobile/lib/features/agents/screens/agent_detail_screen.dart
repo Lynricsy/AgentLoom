@@ -272,7 +272,10 @@ class AgentDetailScreen extends ConsumerWidget {
                                       ListTile(
                                         leading: iconWidget,
                                         title: Text(
-                                          conv.title ?? '对话 ${index + 1}',
+                                          extractTextAfterEmoji(
+                                            conv.title,
+                                            fallback: '对话 ${index + 1}',
+                                          ),
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
                                         ),
