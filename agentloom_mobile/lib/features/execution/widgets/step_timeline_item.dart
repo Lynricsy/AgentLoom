@@ -118,7 +118,7 @@ class StepTimelineItem extends StatelessWidget {
     final hour = startedAt.hour.toString().padLeft(2, '0');
     final minute = startedAt.minute.toString().padLeft(2, '0');
     final second = startedAt.second.toString().padLeft(2, '0');
-    return 'Started at $hour:$minute:$second';
+    return '开始于 $hour:$minute:$second';
   }
 }
 

@@ -55,7 +55,7 @@ class ExecutionStatusHeader extends StatelessWidget {
             const SizedBox(height: 8),
             // 步骤统计
             Text(
-              '$completedSteps / $totalSteps steps',
+              '$completedSteps / $totalSteps 步',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
@@ -83,12 +83,12 @@ class ExecutionStatusHeader extends StatelessWidget {
           final hour = dt.hour.toString().padLeft(2, '0');
           final minute = dt.minute.toString().padLeft(2, '0');
           final second = dt.second.toString().padLeft(2, '0');
-          return 'Started at $hour:$minute:$second';
+          return '开始于 $hour:$minute:$second';
         }
-        return 'Started at ${step.startedAt}';
+        return '开始于 ${step.startedAt}';
       }
     }
-    return 'Not started';
+    return '未开始';
   }
 }
 

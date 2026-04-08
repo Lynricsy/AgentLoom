@@ -63,7 +63,7 @@ class MemoryAuditDetailScreen extends ConsumerWidget {
     final versionAsync = ref.watch(memoryVersionDetailProvider(versionParams));
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Audit Detail')),
+      appBar: AppBar(title: const Text('审计详情')),
       body: (versionAsync.hasError && !versionAsync.hasValue)
           ? Center(
               child: Column(
@@ -118,7 +118,7 @@ class MemoryAuditDetailScreen extends ConsumerWidget {
                                 ),
                                 const SizedBox(width: 8),
                                 Text(
-                                  'Version Content',
+                                  '版本内容',
                                   style: theme.textTheme.titleMedium?.copyWith(
                                     fontWeight: FontWeight.w600,
                                   ),
@@ -143,7 +143,7 @@ class MemoryAuditDetailScreen extends ConsumerWidget {
                                   borderRadius: BorderRadius.circular(6),
                                 ),
                                 child: Text(
-                                  'Deprecated',
+                                  '已弃用',
                                   style: theme.textTheme.labelSmall?.copyWith(
                                     color: theme.colorScheme.onErrorContainer,
                                   ),
@@ -189,7 +189,7 @@ class _AuditInfoCard extends StatelessWidget {
                 Icon(Icons.history, size: 20, color: theme.colorScheme.primary),
                 const SizedBox(width: 8),
                 Text(
-                  'Audit Entry',
+                  '审计条目',
                   style: theme.textTheme.titleMedium?.copyWith(
                     fontWeight: FontWeight.w600,
                   ),
@@ -234,12 +234,12 @@ class _AuditInfoCard extends StatelessWidget {
 
   static String _actionLabel(String action) {
     return switch (action) {
-      'create_node' => 'Node Created',
-      'update_version' => 'Version Updated',
-      'delete_path' => 'Path Deleted',
-      'review_approved' => 'Review Approved',
-      'review_rejected' => 'Review Rejected',
-      'rollback' => 'Rollback',
+      'create_node' => '节点已创建',
+      'update_version' => '版本已更新',
+      'delete_path' => '路径已删除',
+      'review_approved' => '评审已批准',
+      'review_rejected' => '评审已拒绝',
+      'rollback' => '回滚',
       _ =>
         action
             .replaceAll('_', ' ')

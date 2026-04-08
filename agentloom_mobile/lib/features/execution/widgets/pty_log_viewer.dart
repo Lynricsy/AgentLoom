@@ -128,7 +128,7 @@ class _SessionSelector extends StatelessWidget {
       child: DropdownButtonFormField<String>(
         initialValue: activeSessionId,
         decoration: InputDecoration(
-          labelText: 'Terminal Session',
+          labelText: '终端会话',
           isDense: true,
           border: const OutlineInputBorder(),
           contentPadding: const EdgeInsets.symmetric(
@@ -220,7 +220,7 @@ class _SessionInfoBar extends StatelessWidget {
           const Spacer(),
           // 行数
           Text(
-            '${info.lineCount} lines',
+            '${info.lineCount} 行',
             style: theme.textTheme.labelSmall?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
@@ -259,7 +259,7 @@ class _TerminalOutput extends StatelessWidget {
       child: lines.isEmpty
           ? const Center(
               child: Text(
-                'Waiting for output...',
+                '等待输出...',
                 style: TextStyle(
                   color: Color(0xFF808080),
                   fontFamily: 'monospace',

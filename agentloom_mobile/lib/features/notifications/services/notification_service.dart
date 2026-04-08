@@ -93,8 +93,8 @@ class NotificationService {
             ?.createNotificationChannel(
               const AndroidNotificationChannel(
                 'agentloom_executions',
-                'Workflow Executions',
-                description: 'Workflow execution status notifications',
+                '工作流执行',
+                description: '工作流执行状态通知',
                 importance: Importance.high,
               ),
             );
@@ -192,8 +192,8 @@ class NotificationService {
         const NotificationDetails(
           android: AndroidNotificationDetails(
             'agentloom_executions',
-            'Workflow Executions',
-            channelDescription: 'Workflow execution status notifications',
+            '工作流执行',
+            channelDescription: '工作流执行状态通知',
             importance: Importance.high,
             priority: Priority.high,
           ),

@@ -199,12 +199,12 @@ class _AuditEntryTile extends StatelessWidget {
   /// 操作类型 → 可读标签
   static String _actionLabel(String action) {
     return switch (action) {
-      'create_node' => 'Node Created',
-      'update_version' => 'Version Updated',
-      'delete_path' => 'Path Deleted',
-      'review_approved' => 'Review Approved',
-      'review_rejected' => 'Review Rejected',
-      'rollback' => 'Rollback',
+      'create_node' => '节点已创建',
+      'update_version' => '版本已更新',
+      'delete_path' => '路径已删除',
+      'review_approved' => '评审已批准',
+      'review_rejected' => '评审已拒绝',
+      'rollback' => '回滚',
       _ =>
         action
             .replaceAll('_', ' ')
@@ -232,11 +232,11 @@ class _AuditEntryTile extends StatelessWidget {
     final now = DateTime.now();
     final diff = now.difference(dateTime);
 
-    if (diff.inSeconds < 60) return 'Just now';
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-    if (diff.inHours < 24) return '${diff.inHours}h ago';
-    if (diff.inDays < 7) return '${diff.inDays}d ago';
-    if (diff.inDays < 30) return '${(diff.inDays / 7).floor()}w ago';
+    if (diff.inSeconds < 60) return '刚刚';
+    if (diff.inMinutes < 60) return '${diff.inMinutes} 分钟前';
+    if (diff.inHours < 24) return '${diff.inHours} 小时前';
+    if (diff.inDays < 7) return '${diff.inDays} 天前';
+    if (diff.inDays < 30) return '${(diff.inDays / 7).floor()} 周前';
     return '${dateTime.year}-${dateTime.month.toString().padLeft(2, '0')}-${dateTime.day.toString().padLeft(2, '0')}';
   }
 }

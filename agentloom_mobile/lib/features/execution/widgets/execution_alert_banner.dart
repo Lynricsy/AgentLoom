@@ -62,15 +62,15 @@ class ExecutionAlertBanner extends StatelessWidget {
     );
 
     if (failedStep == null) {
-      return 'Execution failed';
+      return '执行失败';
     }
 
     final nodeName = failedStep.nodeName ?? failedStep.nodeId;
     final summary = failedStep.errorMessage;
     if (summary == null || summary.isEmpty) {
-      return '$nodeName failed';
+      return '$nodeName 失败';
     }
 
-    return '$nodeName failed: $summary';
+    return '$nodeName 失败: $summary';
   }
 }

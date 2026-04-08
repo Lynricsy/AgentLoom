@@ -259,11 +259,11 @@ class _KnowledgeBasesScreenState extends ConsumerState<KnowledgeBasesScreen> {
                       items: const [
                         DropdownMenuItem(
                           value: 'private',
-                          child: Text('private'),
+                          child: Text('私密'),
                         ),
                         DropdownMenuItem(
                           value: 'organization',
-                          child: Text('organization'),
+                          child: Text('组织'),
                         ),
                       ],
                       onChanged: (value) {

@@ -154,7 +154,7 @@ class _McpServersScreenState extends ConsumerState<McpServersScreen> {
                     ),
                     for (final status in const ['active', 'inactive', 'error'])
                       _FilterChip(
-                        label: status,
+                        label: _mcpStatusLabel(status),
                         selected: _statusFilter == status,
                         onSelected: () => _applyStatusFilter(status),
                       ),
@@ -1144,8 +1144,8 @@ class _McpDiscoverySheetState extends ConsumerState<_McpDiscoverySheet> {
               initialValue: _conflictStrategy,
               decoration: const InputDecoration(labelText: '冲突策略'),
               items: const [
-                DropdownMenuItem(value: 'skip', child: Text('skip')),
-                DropdownMenuItem(value: 'overwrite', child: Text('overwrite')),
+                DropdownMenuItem(value: 'skip', child: Text('跳过')),
+                DropdownMenuItem(value: 'overwrite', child: Text('覆盖')),
               ],
               onChanged: (value) {
                 setState(() {
@@ -1389,8 +1389,8 @@ class _McpEditSheetState extends ConsumerState<_McpEditSheet> {
             initialValue: _status,
             decoration: const InputDecoration(labelText: '状态'),
             items: const [
-              DropdownMenuItem(value: 'active', child: Text('active')),
-              DropdownMenuItem(value: 'inactive', child: Text('inactive')),
+              DropdownMenuItem(value: 'active', child: Text('活跃')),
+              DropdownMenuItem(value: 'inactive', child: Text('未激活')),
             ],
             onChanged: (value) {
               setState(() {
@@ -1565,6 +1565,15 @@ Map<String, String> _parseKeyValueLines(String raw) {
   }
 
   return result;
+}
+
+String _mcpStatusLabel(String status) {
+  return switch (status) {
+    'active' => '活跃',
+    'inactive' => '未激活',
+    'error' => '异常',
+    _ => status,
+  };
 }
 
 IconData _transportIcon(String transportType) {

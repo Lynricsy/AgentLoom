@@ -178,7 +178,7 @@ class _SkillEditScreenState extends ConsumerState<SkillEditScreen> {
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            'Built-in skills cannot be edited',
+                            '内置技能不可编辑',
                             style: theme.textTheme.bodyMedium?.copyWith(
                               color: theme.colorScheme.onErrorContainer,
                             ),
@@ -193,16 +193,16 @@ class _SkillEditScreenState extends ConsumerState<SkillEditScreen> {
                   controller: _nameController,
                   enabled: !skill.isBuiltin && !_isLoading,
                   decoration: const InputDecoration(
-                    labelText: 'Name',
+                    labelText: '名称',
                     hintText: '输入技能名称',
                     border: OutlineInputBorder(),
                   ),
                   validator: (value) {
                     if (value == null || value.trim().isEmpty) {
-                      return 'Name is required';
+                      return '名称为必填项';
                     }
                     if (value.trim().length < 2) {
-                      return 'Name must be at least 2 characters';
+                      return '名称至少需要2个字符';
                     }
                     return null;
                   },
@@ -215,7 +215,7 @@ class _SkillEditScreenState extends ConsumerState<SkillEditScreen> {
                   enabled: !skill.isBuiltin && !_isLoading,
                   maxLines: 4,
                   decoration: const InputDecoration(
-                    labelText: 'Description',
+                    labelText: '描述',
                     hintText: '输入技能描述',
                     border: OutlineInputBorder(),
                     alignLabelWithHint: true,
@@ -225,7 +225,7 @@ class _SkillEditScreenState extends ConsumerState<SkillEditScreen> {
 
                 // 元数据信息 (只读)
                 Text(
-                  'Metadata',
+                  '元数据',
                   style: theme.textTheme.titleSmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
@@ -258,7 +258,7 @@ class _SkillEditScreenState extends ConsumerState<SkillEditScreen> {
 
                 const SizedBox(height: 16),
                 Text(
-                  'Note: SKILL.md content and file uploads can only be managed on desktop.',
+                  'SKILL.md 内容与文件上传仅可在桌面端管理。',
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                     fontStyle: FontStyle.italic,

@@ -264,7 +264,7 @@ class ExecutionJsonTreeView extends StatelessWidget {
       );
     }
 
-    return _JsonLeafRow(label: 'value', value: value);
+    return _JsonLeafRow(label: '值', value: value);
   }
 }
 
