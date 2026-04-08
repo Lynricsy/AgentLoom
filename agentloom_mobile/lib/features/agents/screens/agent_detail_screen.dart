@@ -451,6 +451,13 @@ class _StatusChip extends StatelessWidget {
 
   const _StatusChip({required this.status});
 
+  static String _statusLabel(String status) => switch (status) {
+    'published' => '已发布',
+    'draft' => '草稿',
+    'archived' => '已归档',
+    _ => status,
+  };
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -476,7 +483,7 @@ class _StatusChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
-        status[0].toUpperCase() + status.substring(1),
+        _statusLabel(status),
         style: theme.textTheme.labelSmall?.copyWith(color: fg),
       ),
     );
@@ -520,9 +527,9 @@ class _AgentCapabilityCard extends StatelessWidget {
     final theme = Theme.of(context);
     final isNoSandboxRuntime = runtimeMode == 'no_sandbox';
     final nativeToolsSubtitle = isNoSandboxRuntime
-        ? '无 sandbox Agent 不提供内置 read/write/edit/terminal 工具'
+        ? '无沙箱 Agent 不提供内置读写/编辑/终端工具'
         : config.nativeToolPolicy.isConfigured
-        ? 'Configured on agent-main'
+        ? 'Agent 主配置已自定义'
         : '使用默认策略';
     final capabilityDescription = isNoSandboxRuntime
         ? '当前 Agent 以无沙箱形态运行：可使用 Skill、知识库、记忆、HTTP MCP 和自进化；不会提供终端或工作区工具。'
@@ -601,7 +608,7 @@ class _AgentCapabilityCard extends StatelessWidget {
                   enabled: config.selfEvolutionPolicy.externalEditing,
                 ),
                 _CapabilityChip(
-                  label: 'Sandbox 管理',
+                  label: '沙箱管理',
                   enabled: config.selfEvolutionPolicy.sandboxManagement,
                 ),
               ],

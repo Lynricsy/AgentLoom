@@ -64,7 +64,7 @@ class AgentCard extends StatelessWidget {
                         Icons.chat_bubble_outline,
                         color: theme.colorScheme.primary,
                       ),
-                      tooltip: 'Chat',
+                      tooltip: '对话',
                     ),
                 ],
               ),
@@ -119,7 +119,7 @@ class AgentCard extends StatelessWidget {
 
       if (diff.inDays == 0) return '今天';
       if (diff.inDays == 1) return '昨天';
-      if (diff.inDays < 7) return '${diff.inDays}d ago';
+      if (diff.inDays < 7) return '${diff.inDays}天前';
       return '${date.month}/${date.day}/${date.year}';
     } catch (_) {
       return isoDate;
@@ -131,6 +131,13 @@ class _AgentStatusChip extends StatelessWidget {
   final String status;
 
   const _AgentStatusChip({required this.status});
+
+  static String _statusLabel(String status) => switch (status) {
+    'published' => '已发布',
+    'draft' => '草稿',
+    'archived' => '已归档',
+    _ => status,
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -161,7 +168,7 @@ class _AgentStatusChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(8),
       ),
       child: Text(
-        status[0].toUpperCase() + status.substring(1),
+        _statusLabel(status),
         style: theme.textTheme.labelSmall?.copyWith(color: fg),
       ),
     );
