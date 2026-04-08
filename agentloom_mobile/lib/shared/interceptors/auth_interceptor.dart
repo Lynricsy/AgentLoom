@@ -1,6 +1,7 @@
 import 'package:dio/dio.dart';
 
 import '../../features/auth/api/auth_api.dart';
+import '../../features/auth/models/auth_tokens.dart';
 import '../../features/auth/providers/token_storage_provider.dart';
 
 /// Dio 认证拦截器 — 自动附加 Bearer + 401 刷新重试
@@ -12,12 +13,14 @@ class AuthInterceptor extends QueuedInterceptorsWrapper {
     required this.tokenStorage,
     required this.authApi,
     required this.onForceLogout,
+    required this.onTokensRefreshed,
     required this.retryRequest,
   });
 
   final TokenStorage tokenStorage;
   final AuthApi authApi;
   final Future<void> Function() onForceLogout;
+  final Future<void> Function(AuthTokens tokens) onTokensRefreshed;
   final Future<Response<dynamic>> Function(RequestOptions options) retryRequest;
 
   @override
@@ -82,7 +85,7 @@ class AuthInterceptor extends QueuedInterceptorsWrapper {
       }
 
       final newTokens = await authApi.refresh(tokens.refreshToken);
-      await tokenStorage.saveTokens(newTokens);
+      await onTokensRefreshed(newTokens);
 
       final response = await _retryWithAccessToken(
         err.requestOptions,

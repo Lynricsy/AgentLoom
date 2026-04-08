@@ -34,6 +34,11 @@ final apiClientProvider = Provider<Dio>((ref) {
       onForceLogout: () async {
         await ref.read(authProvider.notifier).forceLogout();
       },
+      onTokensRefreshed: (tokens) async {
+        // AuthProvider 里的 access token 也会被 WebSocket / MFA 链路直接消费。
+        // refresh 成功后必须同步内存态，避免这些链路继续使用旧 token。
+        await ref.read(authProvider.notifier).updateTokens(tokens);
+      },
       retryRequest: (options) => dio.fetch<dynamic>(options),
     ),
   );

@@ -350,6 +350,11 @@ void main() {
           .refreshTokens();
 
       expect(result, isTrue);
+      final state = container.read(authProvider).value;
+      expect(state, isA<AuthStateAuthenticated>());
+      final authenticated = state as AuthStateAuthenticated;
+      expect(authenticated.tokens.accessToken, 'new-at');
+      expect(authenticated.tokens.refreshToken, 'new-rt');
       verify(() => mockTokenStorage.saveTokens(newTokens)).called(1);
     });
 
@@ -391,6 +396,34 @@ void main() {
 
       expect(result, isFalse);
       verify(() => mockTokenStorage.clearTokens()).called(1);
+    });
+  });
+
+  group('AuthNotifier.updateTokens', () {
+    test('已认证时同步保存并更新内存态 tokens', () async {
+      const newTokens = AuthTokens(
+        accessToken: 'new-at',
+        refreshToken: 'new-rt',
+        expiresIn: 7200,
+      );
+
+      when(
+        () => mockTokenStorage.readTokens(),
+      ).thenAnswer((_) async => testTokens);
+      when(
+        () => mockTokenStorage.saveTokens(newTokens),
+      ).thenAnswer((_) async {});
+
+      await container.read(authProvider.future);
+
+      await container.read(authProvider.notifier).updateTokens(newTokens);
+
+      final state = container.read(authProvider).value;
+      expect(state, isA<AuthStateAuthenticated>());
+      final authenticated = state as AuthStateAuthenticated;
+      expect(authenticated.tokens.accessToken, 'new-at');
+      expect(authenticated.tokens.refreshToken, 'new-rt');
+      verify(() => mockTokenStorage.saveTokens(newTokens)).called(1);
     });
   });
 

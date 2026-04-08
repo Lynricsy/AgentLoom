@@ -71,6 +71,7 @@ void main() {
   late MockAuthApi mockAuthApi;
   late AuthInterceptor interceptor;
   late bool forceLogoutCalled;
+  late AuthTokens? refreshedTokens;
   late RequestOptions? retriedOptions;
   late Future<Response<dynamic>> Function(RequestOptions options) retryRequest;
 
@@ -94,10 +95,10 @@ void main() {
     mockTokenStorage = MockTokenStorage();
     mockAuthApi = MockAuthApi();
     forceLogoutCalled = false;
+    refreshedTokens = null;
     retriedOptions = null;
 
     when(() => mockTokenStorage.clearTokens()).thenAnswer((_) async {});
-    when(() => mockTokenStorage.saveTokens(any())).thenAnswer((_) async {});
 
     retryRequest = (options) async {
       retriedOptions = options;
@@ -113,6 +114,9 @@ void main() {
       authApi: mockAuthApi,
       onForceLogout: () async {
         forceLogoutCalled = true;
+      },
+      onTokensRefreshed: (tokens) async {
+        refreshedTokens = tokens;
       },
       retryRequest: (options) => retryRequest(options),
     );
@@ -241,7 +245,7 @@ void main() {
       final handler = await callOnErrorAndWait(err);
 
       verify(() => mockAuthApi.refresh('rt')).called(1);
-      verify(() => mockTokenStorage.saveTokens(newTokens)).called(1);
+      expect(refreshedTokens, newTokens);
       expect(retriedOptions?.headers['Authorization'], 'Bearer new-at');
       expect(handler.resolvedResponse?.statusCode, 200);
     });
@@ -271,6 +275,7 @@ void main() {
       final handler = await callOnErrorAndWait(err);
 
       verifyNever(() => mockAuthApi.refresh(any()));
+      expect(refreshedTokens, isNull);
       expect(retriedOptions?.headers['Authorization'], 'Bearer new-at');
       expect(handler.resolvedResponse?.statusCode, 200);
     });
@@ -291,6 +296,7 @@ void main() {
 
       expect(forceLogoutCalled, isTrue);
       verifyNever(() => mockAuthApi.refresh(any()));
+      expect(refreshedTokens, isNull);
       verify(() => mockTokenStorage.clearTokens()).called(1);
       expect(handler.nextError, same(err));
     });
@@ -315,6 +321,7 @@ void main() {
       final handler = await callOnErrorAndWait(err);
 
       verify(() => mockTokenStorage.clearTokens()).called(1);
+      expect(refreshedTokens, isNull);
       expect(forceLogoutCalled, isTrue);
       expect(handler.nextError, same(err));
     });
@@ -346,6 +353,7 @@ void main() {
       final handler = await callOnErrorAndWait(err);
 
       verify(() => mockAuthApi.refresh('rt')).called(1);
+      expect(refreshedTokens, newTokens);
       expect(handler.resolvedResponse?.statusCode, 200);
     });
 
@@ -373,6 +381,7 @@ void main() {
       final handler = await callOnErrorAndWait(err);
 
       verify(() => mockAuthApi.refresh('rt')).called(1);
+      expect(refreshedTokens, newTokens);
       expect(handler.resolvedResponse?.statusCode, 200);
     });
   });

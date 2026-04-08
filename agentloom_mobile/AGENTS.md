@@ -8,7 +8,7 @@ AgentLoom Flutter 移动端应用：
 - GoRouter + `StatefulShellRoute.indexedStack` 五标签导航（Dashboard / Workflows / Agents / Resources / Settings）
 - `ShellScaffold` 根据宽度在 `NavigationBar` 与 `NavigationRail` 间切换，移动端优先但兼容大屏
 - 品牌资产统一来自 `assets/branding/logo-transparent.png`；该文件是根目录 `Logo/logo-transparent.png` 在移动端的派生副本，`BrandLogoMark` 供登录页与 `ShellScaffold` 品牌区复用，`flutter_launcher_icons` 配置负责生成 Android / iOS / Web 图标
-- Dio API Client Provider（含 AuthInterceptor 自动附加 Bearer + 401 刷新重试）
+- Dio API Client Provider（含 AuthInterceptor 自动附加 Bearer + 401 刷新重试；refresh 成功后会同步更新 `TokenStorage` 与 `authProvider` 内存态，避免 REST 与实时链路使用不同版本的 token）
 - 运行时服务器地址配置：`EnvConfig` 以 `studioBaseUrl` 为真源，登录页与设置页都可进入 `ServerConfigScreen`，再派生 `apiBaseUrl`
 - 完整认证链路：`LoginScreen` / `RegisterScreen` → `AuthApi` → `AuthNotifier` → `TokenStorage` (`flutter_secure_storage`)；邮箱密码注册成功后移动端不直接持久化首登 session，而是通过 Web-first fallback 引导到 Web Studio `/login?returnUrl=/onboarding` 完成首次组织初始化
 - OAuth 登录：底层 Google / GitHub OAuth 能力仍保留，但 `LoginScreen` 上的按钮入口当前暂时隐藏；恢复入口后仍通过 `url_launcher` 打开浏览器认证，服务端 `?platform=mobile` 参数触发 `agentloom://auth/callback?access_token=...` 重定向，`AuthCallbackScreen` 接收 deep link 并完成 token 存储
@@ -100,7 +100,7 @@ flutter test --coverage
 - `url_launcher` 用于 OAuth 浏览器认证跳转，也用于需要跳 Web Studio 的场景
 - AuthApi 使用独立 `authDioProvider`（无 AuthInterceptor）避免循环依赖
 - `AuthNotifier.register()` 调用后端 `POST /api/v1/auth/register`，成功后保持 `unauthenticated` 状态，由注册页继续引导用户去 Web Studio 完成首次组织初始化，避免保留 `tenant_id=null` 的半初始化移动端会话
-- AuthInterceptor 处理 4 种 401 type：`token-expired`（刷新重试），`token-revoked` / `token-invalid` / `token-missing`（强制登出）
+- AuthInterceptor 处理 4 种 401 type：`token-expired`（刷新重试，并同步更新 `authProvider` 中的 tokens），`token-revoked` / `token-invalid` / `token-missing`（强制登出）
 - AuthInterceptor 继承 `QueuedInterceptorsWrapper`，序列化并发 401 请求，避免多个请求同时触发 refresh；含 stale-token 优化
 - GoRouter redirect guard 通过 `AuthRouteNotifier`（ChangeNotifier）桥接 Riverpod authProvider，并统一等待 `authProvider.future` 完成后再判断首屏路由
 - `TokenStorage.hasTokens()` 与 `readTokens()` 一致，要求 `access/refresh/expires_in` 三项完整

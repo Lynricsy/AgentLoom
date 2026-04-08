@@ -163,7 +163,7 @@ const segments = checkpointData.segments?.length
   - 原因：live sandbox 真正 restore 的是 `restoreWorkspaceId`；若 preview 继续读取顶层 `workspaceSnapshotId`，用户会先看到 A 工作区，再在 live 切换后突然变成 B 工作区，形成误导性的“假预览”。
 - 只要 conversation workspace tree 已经可判定为 authoritative（例如返回非空树、会话已进入 running、已有历史消息、已有终端输出或文件变更），前端就必须切换到 `live` 来源。
 - 前端不得额外隐藏普通 dot 路径，也不能把缺失父目录的子节点直接当成根节点渲染。
-  - `.claude`、`.env`、`.github` 这类普通隐藏目录/文件应按 API 返回的真实层级展示���
+  - `.claude`、`.env`、`.github` 这类普通隐藏目录/文件应按 API 返回的真实层级展示。
   - 当前若后端继续排除 `.git` / `node_modules`，前端按返回结果照实渲染即可，不自行再做第二套过滤。
 - Flutter 在 `snapshot_preview` 阶段点击文件时，不得调用 conversation file preview API。
   - 这时只能保留选中态，并在 preview 区域继续显示“等待实时工作区就绪”的提示。
@@ -238,6 +238,86 @@ if (!state.hasLoadedWorkspaceTree && state.selectedFileContent == null) {
 if (state.workspaceTreeOnly) {
   return TreeOnlyPreviewHint(reason: state.workspacePreviewUnavailableReason);
 }
+```
+
+---
+
+## 场景：Flutter token refresh 后必须同步更新内存态，保证实时链路继续可鉴权
+
+### 1. Scope / Trigger
+
+- 触发条件：修改以下任一文件时，必须回看本节
+  - `agentloom_mobile/lib/shared/interceptors/auth_interceptor.dart`
+  - `agentloom_mobile/lib/shared/providers/api_client_provider.dart`
+  - `agentloom_mobile/lib/features/auth/providers/auth_provider.dart`
+  - `agentloom_mobile/lib/features/auth/providers/mfa_provider.dart`
+  - `agentloom_mobile/lib/features/execution/providers/execution_monitor_provider.dart`
+  - `agentloom_mobile/lib/features/agents/providers/agent_conversation_provider.dart`
+- 风险点：如果 `AuthInterceptor` refresh 成功后只更新 `TokenStorage`，而不更新 `authProvider`，REST 请求会恢复正常，但直接读取 `authProvider.tokens.accessToken` 的 MFA / execution realtime / agent conversation realtime 仍会继续使用旧 token，表现为“用一阵子后才 401”。
+
+### 2. Signatures
+
+- `AuthInterceptor.onError(err, handler)`
+- `AuthNotifier.updateTokens(tokens)`
+- `executionMonitorProvider(executionId)`
+- `AgentConversationNotifier._connectSocket()`
+- `MfaNotifier.enrollTotp()`
+- `MfaNotifier.disableMfa()`
+
+### 3. Contracts
+
+- Flutter 端 token 存在两份消费者：
+  - 持久化层：`TokenStorage`
+  - 内存态：`authProvider`
+- `AuthInterceptor` 在 `token-expired` 刷新成功后，必须同步更新这两处真源。
+  - 不能只写 `TokenStorage`。
+  - 推荐通过 `AuthNotifier.updateTokens()` 完成“持久化 + 内存态同步”。
+- 任何直接读取 `authProvider.tokens.accessToken` 的链路，都默认依赖这条契约成立。
+  - 当前至少包括：MFA API、execution WebSocket、agent conversation WebSocket。
+- `AuthInterceptor` 的 stale-token 复用分支也必须建立在“前一次 refresh 已经同步过 `authProvider`”的前提上；否则下一次 socket 重连仍会拿到旧 token。
+- 如果 refresh 最终失败，仍按现有契约清理 token 并强制登出，不得让 `TokenStorage` 与 `authProvider` 留下半失效状态。
+
+### 4. Validation & Error Matrix
+
+| 条件 | 预期行为 | 断言点 |
+| --- | --- | --- |
+| REST 请求触发 `token-expired`，refresh 成功 | `TokenStorage` 与 `authProvider` 同步拿到新 tokens | `auth_interceptor_test.dart` + `auth_provider_test.dart` |
+| execution 页面在 refresh 后重新建立 WebSocket | 使用新 access token 建连，不应继续拿旧 token | `execution_monitor_provider_test.dart` / 手动 QA |
+| agent conversation 在 refresh 后重连 | 使用新 access token 订阅，不应因旧 token 被拒 | `agent_conversation_provider_test.dart` / 手动 QA |
+| MFA enroll / disable 发生在 refresh 之后 | API 继续携带最新 access token | `mfa_provider_test.dart` / 手动 QA |
+| refresh 失败 | 清理持久化 token，并切回未登录 | `auth_interceptor_test.dart` + `auth_provider_test.dart` |
+
+### 5. Good / Base / Bad Cases
+
+- Good：登录一段时间后 access token 过期，某个 REST 请求先触发 refresh；随后 execution 页面或 Agent 对话页重新建连时仍能直接成功。
+- Base：用户一直停留在单纯 REST 页面，本次契约退化为“refresh 后请求继续可用”。
+- Bad：Dashboard 列表还能正常打开，但一进入 execution / Agent 对话 / MFA 就因为继续拿旧 token 而报 401 或订阅失败。
+
+### 6. Tests Required
+
+- `agentloom_mobile/test/shared/interceptors/auth_interceptor_test.dart`
+  - 断言 refresh 成功时会触发 tokens 同步回调
+- `agentloom_mobile/test/features/auth/providers/auth_provider_test.dart`
+  - 断言 `updateTokens()` / `refreshTokens()` 会更新内存态 tokens
+- Manual QA
+  - fresh 登录后保持会话直到 access token 过期
+  - 先访问普通 REST 页面触发 refresh
+  - 再进入 execution / Agent 对话 / MFA，确认仍可正常鉴权
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```dart
+final newTokens = await authApi.refresh(tokens.refreshToken);
+await tokenStorage.saveTokens(newTokens);
+```
+
+#### Correct
+
+```dart
+final newTokens = await authApi.refresh(tokens.refreshToken);
+await ref.read(authProvider.notifier).updateTokens(newTokens);
 ```
 
 ---

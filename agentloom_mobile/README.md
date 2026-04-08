@@ -21,6 +21,7 @@ AgentLoom Flutter 客户端，当前定位为移动优先、全端兼容的使�
   - 注册成功后的 Web-first onboarding fallback（打开 Web Studio `/login?returnUrl=/onboarding`）
   - MFA TOTP 注册与验证
   - 密码修改、会话管理
+  - `AuthInterceptor` 在 401 refresh 成功后会同步更新 secure storage 与 `authProvider` 内存态，保证 REST、MFA、执行监控和 Agent 对话实时链路共用最新 access token
 - Dashboard：
   - 最近工作流
   - 最近执行聚合
