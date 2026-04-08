@@ -31,7 +31,7 @@ class QuickAccessSection extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Quick Access',
+                '快速访问',
                 style: theme.textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.w600,
                 ),
@@ -75,7 +75,7 @@ class QuickAccessSection extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'No published workflows',
+                    '暂无已发布的工作流',
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
