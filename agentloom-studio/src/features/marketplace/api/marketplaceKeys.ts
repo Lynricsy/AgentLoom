@@ -17,4 +17,6 @@ export const publicMarketplaceKeys = {
   details: () => [...publicMarketplaceKeys.all, 'detail'] as const,
   detail: (id: string) => [...publicMarketplaceKeys.details(), id] as const,
   reviews: (id: string) => [...publicMarketplaceKeys.all, 'reviews', id] as const,
+  installPreflight: (id: string) =>
+    [...publicMarketplaceKeys.all, 'install-preflight', id] as const,
 };

@@ -1,5 +1,6 @@
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
+import { WorkflowInstallBindingsSchema } from './workflow-install-bindings.dto';
 
 export const CreateWorkflowDefinitionSchema = z
   .object({
@@ -28,7 +29,13 @@ export const CreateWorkflowDefinitionSchema = z
       .min(1, { message: '分享 token 不能为空' })
       .max(128, { message: '分享 token 不能超过 128 个字符' })
       .optional(),
+    installBindings: WorkflowInstallBindingsSchema.optional(),
+    install_bindings: WorkflowInstallBindingsSchema.optional(),
   })
+  .transform((value) => ({
+    ...value,
+    installBindings: value.installBindings ?? value.install_bindings,
+  }))
   .refine(
     (value) => {
       const sources = [

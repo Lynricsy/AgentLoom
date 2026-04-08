@@ -21,6 +21,7 @@ import type { DrizzleDB } from '../../database/database.module';
 import * as schema from '../../database/schema';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import { hasPostgresErrorCode } from '../../common/utils/postgres-error.utils';
+import type { AgentRuntimeMode } from '../../database/schema/agent-definitions.schema';
 import type { WorkflowVersionSnapshot } from '../../database/schema/workflow-versions.schema';
 import type { WorkflowDefinition } from '../../database/schema/workflow-definitions.schema';
 import {
@@ -35,6 +36,7 @@ import { cloneDefinitionWithNewIds } from './utils/clone-template.utils';
 import { normalizeWorkflowNodesAndEdges } from './utils/normalize-workflow-graph.utils';
 import { sanitizeDefinition } from './utils/sanitize-export.utils';
 import type { CreateWorkflowDefinitionDto } from './dto/create-workflow-definition.dto';
+import type { WorkflowInstallBindings } from './dto/workflow-install-bindings.dto';
 import type { CreateVersionDto } from './dto/create-version.dto';
 import type { ImportWorkflowDto } from './dto/workflow-import.dto';
 import type { ListVersionsQueryDto } from './dto/list-versions-query.dto';
@@ -94,6 +96,154 @@ interface VersionListResult {
     total: number;
     totalPages: number;
   };
+}
+
+interface ImportedWorkflowAgentCloneResult {
+  agentDefinitionId: string;
+  publishedVersionId: string;
+  name: string;
+  runtimeMode: AgentRuntimeMode;
+}
+
+interface ImportedWorkflowAgentSourceRecord {
+  agentDefinitionId: string;
+  sourceTenantId: string;
+  sourceVersionId: string;
+  name: string;
+  description: string | null;
+  icon: string | null;
+  runtimeMode: AgentRuntimeMode;
+  sandboxConfig: schema.SandboxConfig | null;
+  workspaceSnapshotId: string | null;
+  snapshot: schema.AgentVersionSnapshot;
+}
+
+interface ImportedWorkflowModelRecord {
+  config: schema.LlmModelConfig;
+  provider: schema.LlmProvider;
+}
+
+interface ImportedWorkflowModelCacheContext {
+  sourceModels: Map<string, ImportedWorkflowModelRecord | null>;
+  targetModels: ImportedWorkflowModelRecord[] | null;
+}
+
+interface ImportedWorkflowAgentCloneContext
+  extends ImportedWorkflowModelCacheContext {
+  importSource: 'marketplace' | 'share';
+  importReference: string;
+  targetTenantId: string;
+  targetUserId: string;
+  clonedAgents: Map<string, ImportedWorkflowAgentCloneResult>;
+  activeAgentCloneStack: Set<string>;
+  installBindings: WorkflowInstallBindings;
+}
+
+interface WorkflowInstallLlmDependency {
+  dependencyId: string;
+  nodeId: string;
+  nodeType: 'llm-model';
+  nodeLabel: string | null;
+  location: string;
+  provider: string;
+  modelId: string;
+  modelName: string;
+  modelType: schema.LlmModelConfig['modelType'];
+  baseUrl: string | null;
+  defaultModelConfigId: string | null;
+}
+
+interface WorkflowInstallWorkspaceDependency {
+  dependencyId: string;
+  nodeId: string;
+  nodeType: 'workspace';
+  nodeLabel: string | null;
+  location: string;
+}
+
+interface WorkflowInstallSandboxDependency {
+  dependencyId: string;
+  nodeId: string;
+  nodeType: 'sandbox';
+  nodeLabel: string | null;
+  location: string;
+  linkedWorkspaceDependencyId: string | null;
+  required: boolean;
+}
+
+interface WorkflowInstallBlocker {
+  code: string;
+  location: string;
+  message: string;
+}
+
+interface WorkflowImportPreflightResult {
+  llmModels: WorkflowInstallLlmDependency[];
+  workspaces: WorkflowInstallWorkspaceDependency[];
+  sandboxes: WorkflowInstallSandboxDependency[];
+  blockers: WorkflowInstallBlocker[];
+}
+
+interface WorkflowImportDependencyContext
+  extends ImportedWorkflowModelCacheContext {
+  sourceTenantId: string;
+  targetTenantId: string;
+  visitedAgents: Set<string>;
+  activeAgentStack: Set<string>;
+}
+
+interface ImportedWorkflowModelDescriptor {
+  sourceModel: ImportedWorkflowModelRecord | null;
+  providerSlug: string | null;
+  providerName: string | null;
+  providerApiProtocol: string | null;
+  modelId: string | null;
+  modelName: string | null;
+  modelType: schema.LlmModelConfig['modelType'];
+  baseUrl: string | null;
+}
+
+interface ImportedWorkflowSourceDefinition {
+  nodes: schema.ReactFlowNode[];
+  edges: schema.ReactFlowEdge[];
+  viewport: schema.ReactFlowViewport;
+}
+
+function cloneJson<T>(value: T): T {
+  return structuredClone(value);
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function setNodeConfigField(
+  node: schema.ReactFlowNode,
+  key: string,
+  value: unknown,
+): void {
+  const nodeData = (asRecord(node.data) ?? {}) as Record<string, unknown>;
+  const config = (asRecord(nodeData.config) ?? {}) as Record<string, unknown>;
+
+  nodeData[key] = value;
+  config[key] = value;
+  nodeData.config = config;
+  node.data = nodeData;
+}
+
+function clearNodeConfigField(
+  node: schema.ReactFlowNode,
+  key: string,
+): void {
+  const nodeData = (asRecord(node.data) ?? {}) as Record<string, unknown>;
+  const config = (asRecord(nodeData.config) ?? {}) as Record<string, unknown>;
+
+  delete nodeData[key];
+  delete config[key];
+  nodeData.config = config;
+  node.data = nodeData;
 }
 
 function createDefaultWorkflowInputSchema(): WorkflowInputSchema {
@@ -432,6 +582,10 @@ export class WorkflowVersionService {
     let inputSchema: WorkflowInputSchema | null = null;
     let metadata: Record<string, unknown> = {};
     let shareImportRecord: AccessibleWorkflowShareTokenRecord | null = null;
+    let importedSourceDefinition: ImportedWorkflowSourceDefinition | null = null;
+    let importSourceTenantId: string | null = null;
+    let importSourceType: 'marketplace' | 'share' | null = null;
+    let importSourceReference: string | null = null;
 
     if (dto.template_slug) {
       const template = await this.templateService.findBySlug(dto.template_slug);
@@ -458,6 +612,7 @@ export class WorkflowVersionService {
         .select({
           id: schema.marketplaceListings.id,
           title: schema.marketplaceListings.title,
+          sourceTenantId: schema.workflowDefinitions.tenantId,
           snapshot: schema.workflowVersions.snapshot,
         })
         .from(schema.marketplaceListings)
@@ -466,6 +621,13 @@ export class WorkflowVersionService {
           eq(
             schema.marketplaceListings.workflowVersionId,
             schema.workflowVersions.id,
+          ),
+        )
+        .innerJoin(
+          schema.workflowDefinitions,
+          eq(
+            schema.workflowVersions.workflowDefinitionId,
+            schema.workflowDefinitions.id,
           ),
         )
         .where(
@@ -482,15 +644,14 @@ export class WorkflowVersionService {
       }
 
       const snapshot = listing.snapshot;
-      const cloned = cloneDefinitionWithNewIds({
-        nodes: snapshot.nodes,
-        edges: snapshot.edges,
-        viewport: snapshot.viewport ?? DEFAULT_VIEWPORT,
-      });
-
-      nodes = cloned.nodes;
-      edges = cloned.edges;
-      viewport = cloned.viewport;
+      importedSourceDefinition = {
+        nodes: cloneJson(snapshot.nodes),
+        edges: cloneJson(snapshot.edges),
+        viewport: cloneJson(snapshot.viewport ?? DEFAULT_VIEWPORT),
+      };
+      importSourceTenantId = listing.sourceTenantId;
+      importSourceType = 'marketplace';
+      importSourceReference = listing.id;
       inputSchema = snapshot.inputSchema
         ? workflowInputSchemaSchema.parse(snapshot.inputSchema)
         : null;
@@ -515,15 +676,14 @@ export class WorkflowVersionService {
       }
 
       const snapshot = share.snapshot;
-      const cloned = cloneDefinitionWithNewIds({
-        nodes: snapshot.nodes,
-        edges: snapshot.edges,
-        viewport: snapshot.viewport ?? DEFAULT_VIEWPORT,
-      });
-
-      nodes = cloned.nodes;
-      edges = cloned.edges;
-      viewport = cloned.viewport;
+      importedSourceDefinition = {
+        nodes: cloneJson(snapshot.nodes),
+        edges: cloneJson(snapshot.edges),
+        viewport: cloneJson(snapshot.viewport ?? DEFAULT_VIEWPORT),
+      };
+      importSourceTenantId = share.tenantId;
+      importSourceType = 'share';
+      importSourceReference = share.shareToken;
       inputSchema = snapshot.inputSchema
         ? workflowInputSchemaSchema.parse(snapshot.inputSchema)
         : null;
@@ -545,6 +705,35 @@ export class WorkflowVersionService {
     ) {
       try {
         const created = await this.tenantDb.transaction(async (tx) => {
+          let nextNodes = nodes;
+          let nextEdges = edges;
+          let nextViewport = viewport;
+
+          if (
+            importedSourceDefinition &&
+            importSourceTenantId &&
+            importSourceType &&
+            importSourceReference
+          ) {
+            const prepared =
+              await this.prepareImportedWorkflowDefinitionForCreate({
+                sourceDefinition: importedSourceDefinition,
+                sourceTenantId: importSourceTenantId,
+                targetTenantId: tenantId,
+                targetUserId: userId,
+                importSource: importSourceType,
+                importReference: importSourceReference,
+                installBindings: this.normalizeInstallBindings(
+                  dto.installBindings,
+                ),
+                dbClient: tx,
+              });
+
+            nextNodes = prepared.nodes;
+            nextEdges = prepared.edges;
+            nextViewport = prepared.viewport;
+          }
+
           const [row] = await tx
             .insert(schema.workflowDefinitions)
             .values({
@@ -553,9 +742,9 @@ export class WorkflowVersionService {
               slug,
               description: dto.description ?? null,
               icon: dto.icon ?? null,
-              nodes,
-              edges,
-              viewport,
+              nodes: nextNodes,
+              edges: nextEdges,
+              viewport: nextViewport,
               inputSchema,
               metadata,
               createdBy: userId,
@@ -616,6 +805,1347 @@ export class WorkflowVersionService {
     }
 
     throw new Error('Unreachable: slug retry loop exhausted');
+  }
+
+  async buildImportPreflight(params: {
+    sourceDefinition: ImportedWorkflowSourceDefinition;
+    sourceTenantId: string;
+    targetTenantId: string;
+  }): Promise<WorkflowImportPreflightResult> {
+    const result: WorkflowImportPreflightResult = {
+      llmModels: [],
+      workspaces: [],
+      sandboxes: [],
+      blockers: [],
+    };
+    const context: WorkflowImportDependencyContext = {
+      sourceTenantId: params.sourceTenantId,
+      targetTenantId: params.targetTenantId,
+      sourceModels: new Map(),
+      targetModels: null,
+      visitedAgents: new Set(),
+      activeAgentStack: new Set(),
+    };
+    const sourceNodes = cloneJson(params.sourceDefinition.nodes);
+    const workspaceDependencyIdsBySourceWorkspaceId =
+      this.collectWorkflowWorkspacePreflightDependencies(sourceNodes, result);
+    const linkedWorkspaceDependencyIdsBySandboxNodeId =
+      this.buildWorkflowSandboxLinkedWorkspaceDependencyMap(
+        sourceNodes,
+        params.sourceDefinition.edges,
+      );
+
+    for (const node of sourceNodes) {
+      const nodeType = this.getWorkflowNodeType(node);
+      const location = this.buildWorkflowNodeLocation(node);
+
+      switch (nodeType) {
+        case 'llm-model': {
+          try {
+            const dependency = await this.buildWorkflowModelInstallDependency({
+              node,
+              dependencyId: this.buildWorkflowModelDependencyId(node.id),
+              location,
+              sourceTenantId: params.sourceTenantId,
+              targetTenantId: params.targetTenantId,
+              context,
+              dbClient: this.db,
+            });
+            if (dependency) {
+              result.llmModels.push(dependency);
+            }
+          } catch (error) {
+            if (error instanceof DomainException) {
+              result.blockers.push({
+                code: 'WORKFLOW_IMPORT_MODEL_UNRESOLVABLE',
+                location,
+                message: error.detail,
+              });
+              break;
+            }
+
+            throw error;
+          }
+          break;
+        }
+
+        case 'sandbox':
+          this.collectWorkflowSandboxPreflightDependency(
+            node,
+            workspaceDependencyIdsBySourceWorkspaceId,
+            linkedWorkspaceDependencyIdsBySandboxNodeId,
+            result,
+          );
+          break;
+
+        case 'agent': {
+          const runtimeNodeData = this.getRuntimeNodeData(node.data);
+          const sourceAgentDefinitionId = this.readFirstString(
+            runtimeNodeData.agentDefinitionId,
+            runtimeNodeData.agent_definition_id,
+            runtimeNodeData.selectedAgentId,
+            runtimeNodeData.selected_agent_id,
+          );
+          if (!sourceAgentDefinitionId) {
+            result.blockers.push({
+              code: 'WORKFLOW_AGENT_BINDING_MISSING',
+              location,
+              message: `节点「${this.getNodeDisplayName(node)}」缺少已发布 Agent 绑定，当前无法直接安装。`,
+            });
+            break;
+          }
+
+          await this.collectImportedWorkflowAgentDependencies({
+            sourceTenantId: params.sourceTenantId,
+            sourceAgentDefinitionId,
+            sourceAgentVersionId: this.readFirstString(
+              runtimeNodeData.agentVersionId,
+              runtimeNodeData.agent_version_id,
+            ),
+            agentPath: [this.getNodeDisplayName(node)],
+            result,
+            context,
+          });
+          break;
+        }
+
+        default:
+          break;
+      }
+    }
+
+    return result;
+  }
+
+  private normalizeInstallBindings(
+    bindings?: WorkflowInstallBindings | null,
+  ): WorkflowInstallBindings {
+    return {
+      llmModels: bindings?.llmModels ?? {},
+      workspaces: bindings?.workspaces ?? {},
+      sandboxes: bindings?.sandboxes ?? {},
+    };
+  }
+
+  private buildWorkflowModelDependencyId(nodeId: string): string {
+    return `workflow:llm:${nodeId}`;
+  }
+
+  private buildWorkflowWorkspaceDependencyId(nodeId: string): string {
+    return `workflow:workspace:${nodeId}`;
+  }
+
+  private buildWorkflowRestoreWorkspaceDependencyId(
+    sourceWorkspaceId: string,
+  ): string {
+    return `workflow:workspace-restore:${sourceWorkspaceId}`;
+  }
+
+  private buildWorkflowSandboxDependencyId(nodeId: string): string {
+    return `workflow:sandbox:${nodeId}`;
+  }
+
+  private buildImportedAgentModelDependencyId(
+    agentDefinitionId: string,
+    sourceVersionId: string,
+    nodeId: string,
+  ): string {
+    return `agent:${agentDefinitionId}:${sourceVersionId}:llm:${nodeId}`;
+  }
+
+  private getNodeDisplayName(node: schema.ReactFlowNode): string {
+    return this.getWorkflowNodeLabel(node) ?? this.getWorkflowNodeType(node) ?? node.id;
+  }
+
+  private buildWorkflowNodeLocation(node: schema.ReactFlowNode): string {
+    return `工作流 / ${this.getNodeDisplayName(node)}`;
+  }
+
+  private buildImportedAgentNodeLocation(
+    agentPath: string[],
+    node: schema.ReactFlowNode,
+  ): string {
+    return ['工作流', ...agentPath, this.getNodeDisplayName(node)].join(' / ');
+  }
+
+  private setNodeLabel(node: schema.ReactFlowNode, label: string): void {
+    const nodeData = (asRecord(node.data) ?? {}) as Record<string, unknown>;
+    nodeData.label = label;
+    node.data = nodeData;
+  }
+
+  private collectWorkflowWorkspacePreflightDependencies(
+    nodes: schema.ReactFlowNode[],
+    result: WorkflowImportPreflightResult,
+  ): Map<string, string> {
+    const workspaceDependencyIdsBySourceWorkspaceId = new Map<string, string>();
+
+    for (const node of nodes) {
+      if (this.getWorkflowNodeType(node) !== 'workspace') {
+        continue;
+      }
+
+      const dependencyId = this.buildWorkflowWorkspaceDependencyId(node.id);
+      result.workspaces.push({
+        dependencyId,
+        nodeId: node.id,
+        nodeType: 'workspace',
+        nodeLabel: this.getWorkflowNodeLabel(node) ?? null,
+        location: this.buildWorkflowNodeLocation(node),
+      });
+
+      const runtimeNodeData = this.getRuntimeNodeData(node.data);
+      const sourceWorkspaceId = this.readFirstString(
+        runtimeNodeData.workspaceId,
+        runtimeNodeData.workspace_id,
+      );
+      if (sourceWorkspaceId) {
+        workspaceDependencyIdsBySourceWorkspaceId.set(
+          sourceWorkspaceId,
+          dependencyId,
+        );
+      }
+    }
+
+    return workspaceDependencyIdsBySourceWorkspaceId;
+  }
+
+  private collectWorkflowSandboxPreflightDependency(
+    node: schema.ReactFlowNode,
+    workspaceDependencyIdsBySourceWorkspaceId: Map<string, string>,
+    linkedWorkspaceDependencyIdsBySandboxNodeId: Map<string, string>,
+    result: WorkflowImportPreflightResult,
+  ): void {
+    const runtimeNodeData = this.getRuntimeNodeData(node.data);
+    const lifecycleMode = this.readFirstString(
+      runtimeNodeData.lifecycleMode,
+      runtimeNodeData.lifecycle_mode,
+    );
+    const persistentSandboxId = this.readFirstString(
+      runtimeNodeData.persistentSandboxId,
+      runtimeNodeData.persistent_sandbox_id,
+    );
+    const requiresPersistentBinding =
+      lifecycleMode === 'persistent' || Boolean(persistentSandboxId);
+
+    const restoreWorkspaceId = this.readFirstString(
+      runtimeNodeData.restoreWorkspaceId,
+      runtimeNodeData.restore_workspace_id,
+    );
+    let linkedWorkspaceDependencyId =
+      linkedWorkspaceDependencyIdsBySandboxNodeId.get(node.id) ?? null;
+
+    if (restoreWorkspaceId) {
+      linkedWorkspaceDependencyId =
+        linkedWorkspaceDependencyId ??
+        workspaceDependencyIdsBySourceWorkspaceId.get(restoreWorkspaceId) ??
+        this.buildWorkflowRestoreWorkspaceDependencyId(restoreWorkspaceId);
+
+      if (
+        !result.workspaces.some(
+          (dependency) =>
+            dependency.dependencyId === linkedWorkspaceDependencyId,
+        )
+      ) {
+        result.workspaces.push({
+          dependencyId: linkedWorkspaceDependencyId,
+          nodeId: node.id,
+          nodeType: 'workspace',
+          nodeLabel: this.getWorkflowNodeLabel(node) ?? null,
+          location: `${this.buildWorkflowNodeLocation(node)} / 恢复工作区`,
+        });
+      }
+    }
+
+    if (!requiresPersistentBinding && !linkedWorkspaceDependencyId) {
+      return;
+    }
+
+    result.sandboxes.push({
+      dependencyId: this.buildWorkflowSandboxDependencyId(node.id),
+      nodeId: node.id,
+      nodeType: 'sandbox',
+      nodeLabel: this.getWorkflowNodeLabel(node) ?? null,
+      location: this.buildWorkflowNodeLocation(node),
+      linkedWorkspaceDependencyId,
+      required: requiresPersistentBinding,
+    });
+  }
+
+  private buildWorkflowWorkspaceDependencyMap(
+    nodes: schema.ReactFlowNode[],
+  ): Map<string, string> {
+    const workspaceDependencyIdsBySourceWorkspaceId = new Map<string, string>();
+
+    for (const node of nodes) {
+      if (this.getWorkflowNodeType(node) !== 'workspace') {
+        continue;
+      }
+
+      const runtimeNodeData = this.getRuntimeNodeData(node.data);
+      const sourceWorkspaceId = this.readFirstString(
+        runtimeNodeData.workspaceId,
+        runtimeNodeData.workspace_id,
+      );
+
+      if (sourceWorkspaceId) {
+        workspaceDependencyIdsBySourceWorkspaceId.set(
+          sourceWorkspaceId,
+          this.buildWorkflowWorkspaceDependencyId(node.id),
+        );
+      }
+    }
+
+    return workspaceDependencyIdsBySourceWorkspaceId;
+  }
+
+  private buildWorkflowSandboxLinkedWorkspaceDependencyMap(
+    nodes: schema.ReactFlowNode[],
+    edges: schema.ReactFlowEdge[],
+  ): Map<string, string> {
+    const nodeMap = new Map(nodes.map((node) => [node.id, node]));
+    const linkedWorkspaceDependencyIdsBySandboxNodeId = new Map<string, string>();
+
+    for (const edge of edges) {
+      const sourceNode = nodeMap.get(edge.source);
+      const targetNode = nodeMap.get(edge.target);
+
+      if (!sourceNode || !targetNode) {
+        continue;
+      }
+
+      if (
+        this.getWorkflowNodeType(sourceNode) !== 'workspace' ||
+        this.getWorkflowNodeType(targetNode) !== 'sandbox'
+      ) {
+        continue;
+      }
+
+      if (!linkedWorkspaceDependencyIdsBySandboxNodeId.has(targetNode.id)) {
+        linkedWorkspaceDependencyIdsBySandboxNodeId.set(
+          targetNode.id,
+          this.buildWorkflowWorkspaceDependencyId(sourceNode.id),
+        );
+      }
+    }
+
+    return linkedWorkspaceDependencyIdsBySandboxNodeId;
+  }
+
+  private async loadSelectedWorkspaceBindings(params: {
+    targetTenantId: string;
+    installBindings: WorkflowInstallBindings;
+    dbClient: WorkflowDbClient;
+  }): Promise<Map<string, Pick<schema.WorkspaceSnapshot, 'id' | 'name'>>> {
+    const workspaceIds = Array.from(
+      new Set(
+        Object.values(params.installBindings.workspaces).filter(
+          (value): value is string => value.trim().length > 0,
+        ),
+      ),
+    );
+
+    if (workspaceIds.length === 0) {
+      return new Map();
+    }
+
+    const rows = await params.dbClient
+      .select({
+        id: schema.workspaceSnapshots.id,
+        name: schema.workspaceSnapshots.name,
+        status: schema.workspaceSnapshots.status,
+      })
+      .from(schema.workspaceSnapshots)
+      .where(
+        and(
+          eq(schema.workspaceSnapshots.tenantId, params.targetTenantId),
+          inArray(schema.workspaceSnapshots.id, workspaceIds),
+        ),
+      );
+
+    const workspaceMap = new Map(
+      rows.map((row) => [row.id, { id: row.id, name: row.name }]),
+    );
+
+    for (const row of rows) {
+      if (row.status !== 'ready') {
+        throw new DomainException({
+          type: 'https://agentloom.dev/errors/workflow-install-workspace-invalid',
+          title: '工作区不可用',
+          status: HttpStatus.CONFLICT,
+          detail: `工作区「${row.name}」当前状态为 ${row.status}，无法作为安装绑定使用`,
+        });
+      }
+    }
+
+    for (const workspaceId of workspaceIds) {
+      if (!workspaceMap.has(workspaceId)) {
+        throw new DomainException({
+          type: 'https://agentloom.dev/errors/workflow-install-workspace-not-found',
+          title: '工作区不存在',
+          status: HttpStatus.NOT_FOUND,
+          detail: `未找到工作区 ${workspaceId}`,
+        });
+      }
+    }
+
+    return workspaceMap;
+  }
+
+  private async loadSelectedSandboxBindings(params: {
+    targetTenantId: string;
+    installBindings: WorkflowInstallBindings;
+    dbClient: WorkflowDbClient;
+  }): Promise<
+    Map<string, Pick<schema.SandboxSession, 'id' | 'status' | 'config'>>
+  > {
+    const sandboxIds = Array.from(
+      new Set(
+        Object.values(params.installBindings.sandboxes).filter(
+          (value): value is string => value.trim().length > 0,
+        ),
+      ),
+    );
+
+    if (sandboxIds.length === 0) {
+      return new Map();
+    }
+
+    const rows = await params.dbClient
+      .select({
+        id: schema.sandboxSessions.id,
+        status: schema.sandboxSessions.status,
+        config: schema.sandboxSessions.config,
+      })
+      .from(schema.sandboxSessions)
+      .where(
+        and(
+          eq(schema.sandboxSessions.tenantId, params.targetTenantId),
+          inArray(schema.sandboxSessions.id, sandboxIds),
+        ),
+      );
+
+    const sandboxMap = new Map(
+      rows.map((row) => [row.id, { id: row.id, status: row.status, config: row.config }]),
+    );
+    const allowedStatuses = new Set(['ready', 'busy', 'stopped']);
+
+    for (const row of rows) {
+      if (row.config.lifecycleMode !== 'persistent') {
+        throw new DomainException({
+          type: 'https://agentloom.dev/errors/workflow-install-sandbox-invalid',
+          title: '沙箱不是持久化资源',
+          status: HttpStatus.CONFLICT,
+          detail: `沙箱 ${row.id} 不是持久化沙箱，无法作为安装绑定使用`,
+        });
+      }
+
+      if (!allowedStatuses.has(row.status)) {
+        throw new DomainException({
+          type: 'https://agentloom.dev/errors/workflow-install-sandbox-status-invalid',
+          title: '沙箱不可用',
+          status: HttpStatus.CONFLICT,
+          detail: `沙箱 ${row.id} 当前状态为 ${row.status}，无法作为安装绑定使用`,
+        });
+      }
+    }
+
+    for (const sandboxId of sandboxIds) {
+      if (!sandboxMap.has(sandboxId)) {
+        throw new DomainException({
+          type: 'https://agentloom.dev/errors/workflow-install-sandbox-not-found',
+          title: '持久沙箱不存在',
+          status: HttpStatus.NOT_FOUND,
+          detail: `未找到持久沙箱 ${sandboxId}`,
+        });
+      }
+    }
+
+    return sandboxMap;
+  }
+
+  private async prepareImportedWorkflowDefinitionForCreate(params: {
+    sourceDefinition: ImportedWorkflowSourceDefinition;
+    sourceTenantId: string;
+    targetTenantId: string;
+    targetUserId: string;
+    importSource: 'marketplace' | 'share';
+    importReference: string;
+    installBindings: WorkflowInstallBindings;
+    dbClient: WorkflowDbClient;
+  }): Promise<ImportedWorkflowSourceDefinition> {
+    const nodes = cloneJson(params.sourceDefinition.nodes);
+    const edges = cloneJson(params.sourceDefinition.edges);
+    const viewport = cloneJson(params.sourceDefinition.viewport);
+    const installBindings = this.normalizeInstallBindings(params.installBindings);
+    const workspaceDependencyIdsBySourceWorkspaceId =
+      this.buildWorkflowWorkspaceDependencyMap(nodes);
+    const linkedWorkspaceDependencyIdsBySandboxNodeId =
+      this.buildWorkflowSandboxLinkedWorkspaceDependencyMap(nodes, edges);
+    const workspaceBindings = await this.loadSelectedWorkspaceBindings({
+      targetTenantId: params.targetTenantId,
+      installBindings,
+      dbClient: params.dbClient,
+    });
+    const sandboxBindings = await this.loadSelectedSandboxBindings({
+      targetTenantId: params.targetTenantId,
+      installBindings,
+      dbClient: params.dbClient,
+    });
+    const cloneContext: ImportedWorkflowAgentCloneContext = {
+      importSource: params.importSource,
+      importReference: params.importReference,
+      targetTenantId: params.targetTenantId,
+      targetUserId: params.targetUserId,
+      clonedAgents: new Map(),
+      sourceModels: new Map(),
+      targetModels: null,
+      activeAgentCloneStack: new Set(),
+      installBindings,
+    };
+
+    for (const node of nodes) {
+      switch (this.getWorkflowNodeType(node)) {
+        case 'workspace':
+          this.applyInstalledWorkflowWorkspaceBinding(
+            node,
+            installBindings,
+            workspaceBindings,
+          );
+          break;
+
+        case 'sandbox':
+          this.applyInstalledWorkflowSandboxBinding(
+            node,
+            installBindings,
+            sandboxBindings,
+            workspaceDependencyIdsBySourceWorkspaceId,
+            linkedWorkspaceDependencyIdsBySandboxNodeId,
+          );
+          break;
+
+        case 'llm-model':
+          await this.remapImportedWorkflowModelNode({
+            node,
+            dependencyId: this.buildWorkflowModelDependencyId(node.id),
+            runtimeNodeData: this.getRuntimeNodeData(node.data),
+            sourceTenantId: params.sourceTenantId,
+            targetTenantId: params.targetTenantId,
+            context: cloneContext,
+            dbClient: params.dbClient,
+            location: this.buildWorkflowNodeLocation(node),
+          });
+          break;
+
+        default:
+          break;
+      }
+    }
+
+    await this.cloneImportedWorkflowAgentDependencies({
+      nodes,
+      sourceTenantId: params.sourceTenantId,
+      context: cloneContext,
+      dbClient: params.dbClient,
+    });
+
+    const cloned = cloneDefinitionWithNewIds({ nodes, edges, viewport });
+    return {
+      nodes: cloned.nodes,
+      edges: cloned.edges,
+      viewport: cloned.viewport,
+    };
+  }
+
+  private applyInstalledWorkflowWorkspaceBinding(
+    node: schema.ReactFlowNode,
+    installBindings: WorkflowInstallBindings,
+    workspaceBindings: Map<string, Pick<schema.WorkspaceSnapshot, 'id' | 'name'>>,
+  ): void {
+    const dependencyId = this.buildWorkflowWorkspaceDependencyId(node.id);
+    const workspaceId = installBindings.workspaces[dependencyId];
+
+    if (!workspaceId) {
+      throw new DomainException({
+        type: 'https://agentloom.dev/errors/workflow-install-workspace-missing',
+        title: '安装配置缺少工作区绑定',
+        status: HttpStatus.CONFLICT,
+        detail: `节点「${this.getNodeDisplayName(node)}」需要绑定工作区后才能安装`,
+      });
+    }
+
+    const workspace = workspaceBindings.get(workspaceId);
+    if (!workspace) {
+      throw new DomainException({
+        type: 'https://agentloom.dev/errors/workflow-install-workspace-not-found',
+        title: '工作区不存在',
+        status: HttpStatus.NOT_FOUND,
+        detail: `未找到工作区 ${workspaceId}`,
+      });
+    }
+
+    clearNodeConfigField(node, 'workspaceId');
+    clearNodeConfigField(node, 'workspace_id');
+    clearNodeConfigField(node, 'workspaceName');
+    clearNodeConfigField(node, 'workspace_name');
+    setNodeConfigField(node, 'workspaceId', workspace.id);
+    setNodeConfigField(node, 'workspaceName', workspace.name);
+    this.setNodeLabel(node, workspace.name);
+  }
+
+  private applyInstalledWorkflowSandboxBinding(
+    node: schema.ReactFlowNode,
+    installBindings: WorkflowInstallBindings,
+    sandboxBindings: Map<
+      string,
+      Pick<schema.SandboxSession, 'id' | 'status' | 'config'>
+    >,
+    workspaceDependencyIdsBySourceWorkspaceId: Map<string, string>,
+    linkedWorkspaceDependencyIdsBySandboxNodeId: Map<string, string>,
+  ): void {
+    const runtimeNodeData = this.getRuntimeNodeData(node.data);
+    const lifecycleMode = this.readFirstString(
+      runtimeNodeData.lifecycleMode,
+      runtimeNodeData.lifecycle_mode,
+    );
+    const sourcePersistentSandboxId = this.readFirstString(
+      runtimeNodeData.persistentSandboxId,
+      runtimeNodeData.persistent_sandbox_id,
+    );
+    const requiresPersistentBinding =
+      lifecycleMode === 'persistent' || Boolean(sourcePersistentSandboxId);
+
+    const dependencyId = this.buildWorkflowSandboxDependencyId(node.id);
+    const selectedSandboxId = installBindings.sandboxes[dependencyId];
+    if (!selectedSandboxId) {
+      if (!requiresPersistentBinding) {
+        return;
+      }
+
+      throw new DomainException({
+        type: 'https://agentloom.dev/errors/workflow-install-sandbox-missing',
+        title: '安装配置缺少持久沙箱绑定',
+        status: HttpStatus.CONFLICT,
+        detail: `节点「${this.getNodeDisplayName(node)}」需要绑定持久沙箱后才能安装`,
+      });
+    }
+
+    const sandbox = sandboxBindings.get(selectedSandboxId);
+    if (!sandbox) {
+      throw new DomainException({
+        type: 'https://agentloom.dev/errors/workflow-install-sandbox-not-found',
+        title: '持久沙箱不存在',
+        status: HttpStatus.NOT_FOUND,
+        detail: `未找到持久沙箱 ${selectedSandboxId}`,
+      });
+    }
+
+    const restoreWorkspaceSourceId = this.readFirstString(
+      runtimeNodeData.restoreWorkspaceId,
+      runtimeNodeData.restore_workspace_id,
+    );
+    const linkedWorkspaceDependencyId =
+      linkedWorkspaceDependencyIdsBySandboxNodeId.get(node.id) ??
+      (restoreWorkspaceSourceId
+        ? workspaceDependencyIdsBySourceWorkspaceId.get(restoreWorkspaceSourceId) ??
+          this.buildWorkflowRestoreWorkspaceDependencyId(
+            restoreWorkspaceSourceId,
+          )
+        : null);
+    if (linkedWorkspaceDependencyId) {
+      const selectedWorkspaceId =
+        installBindings.workspaces[linkedWorkspaceDependencyId];
+      if (!selectedWorkspaceId) {
+        throw new DomainException({
+          type: 'https://agentloom.dev/errors/workflow-install-restore-workspace-missing',
+          title: '安装配置缺少恢复工作区绑定',
+          status: HttpStatus.CONFLICT,
+          detail: `节点「${this.getNodeDisplayName(node)}」需要绑定恢复工作区后才能安装`,
+        });
+      }
+
+      clearNodeConfigField(node, 'restoreWorkspaceId');
+      clearNodeConfigField(node, 'restore_workspace_id');
+      setNodeConfigField(node, 'restoreWorkspaceId', selectedWorkspaceId);
+    } else {
+      clearNodeConfigField(node, 'restoreWorkspaceId');
+      clearNodeConfigField(node, 'restore_workspace_id');
+    }
+
+    clearNodeConfigField(node, 'persistentSandboxId');
+    clearNodeConfigField(node, 'persistent_sandbox_id');
+    clearNodeConfigField(node, 'persistentSandboxName');
+    clearNodeConfigField(node, 'persistent_sandbox_name');
+    setNodeConfigField(node, 'lifecycleMode', 'persistent');
+    setNodeConfigField(node, 'persistentSandboxId', sandbox.id);
+    setNodeConfigField(
+      node,
+      'persistentSandboxName',
+      sandbox.config.name ?? sandbox.id,
+    );
+  }
+
+  private async collectImportedWorkflowAgentDependencies(params: {
+    sourceTenantId: string;
+    sourceAgentDefinitionId: string;
+    sourceAgentVersionId?: string;
+    agentPath: string[];
+    result: WorkflowImportPreflightResult;
+    context: WorkflowImportDependencyContext;
+  }): Promise<void> {
+    const cacheKey = `${params.sourceAgentDefinitionId}:${params.sourceAgentVersionId ?? 'published'}`;
+
+    if (params.context.visitedAgents.has(cacheKey)) {
+      return;
+    }
+
+    if (params.context.activeAgentStack.has(cacheKey)) {
+      params.result.blockers.push({
+        code: 'WORKFLOW_IMPORT_AGENT_CYCLE',
+        location: ['工作流', ...params.agentPath].join(' / '),
+        message: `Agent ${params.sourceAgentDefinitionId} 在导入依赖中出现循环引用，当前无法自动安装。`,
+      });
+      return;
+    }
+
+    params.context.activeAgentStack.add(cacheKey);
+
+    try {
+      const source = await this.loadImportedWorkflowAgentSource({
+        sourceTenantId: params.sourceTenantId,
+        sourceAgentDefinitionId: params.sourceAgentDefinitionId,
+        sourceAgentVersionId: params.sourceAgentVersionId,
+      });
+      params.context.visitedAgents.add(cacheKey);
+
+      if (source.workspaceSnapshotId || source.snapshot.workspaceSnapshotId) {
+        params.result.blockers.push({
+          code: 'WORKFLOW_IMPORT_AGENT_WORKSPACE_UNSUPPORTED',
+          location: ['工作流', ...params.agentPath].join(' / '),
+          message: `依赖 Agent「${source.name}」绑定了工作区快照，当前安装流程还不能自动迁移。`,
+        });
+        return;
+      }
+
+      try {
+        this.sanitizeImportedAgentSandboxConfig(
+          source.sandboxConfig ?? source.snapshot.sandboxConfig ?? null,
+          source.name,
+        );
+      } catch (error) {
+        if (error instanceof DomainException) {
+          params.result.blockers.push({
+            code: 'WORKFLOW_IMPORT_AGENT_SANDBOX_UNSUPPORTED',
+            location: ['工作流', ...params.agentPath].join(' / '),
+            message: error.detail,
+          });
+          return;
+        }
+        throw error;
+      }
+
+      for (const node of source.snapshot.nodes) {
+        const nodeType = this.getImportedAgentNodeType(node);
+        const runtimeNodeData = this.getRuntimeNodeData(node.data);
+        const location = this.buildImportedAgentNodeLocation(
+          params.agentPath,
+          node,
+        );
+
+        switch (nodeType) {
+          case 'sub-agent': {
+            const sourceSubAgentDefinitionId = this.readFirstString(
+              runtimeNodeData.agentDefinitionId,
+              runtimeNodeData.agent_definition_id,
+            );
+            if (!sourceSubAgentDefinitionId) {
+              params.result.blockers.push({
+                code: 'WORKFLOW_IMPORT_SUB_AGENT_BINDING_MISSING',
+                location,
+                message: `子 Agent 节点「${this.getNodeDisplayName(node)}」缺少绑定，当前无法直接安装。`,
+              });
+              break;
+            }
+
+            await this.collectImportedWorkflowAgentDependencies({
+              sourceTenantId: params.sourceTenantId,
+              sourceAgentDefinitionId: sourceSubAgentDefinitionId,
+              sourceAgentVersionId: this.readFirstString(
+                runtimeNodeData.agentVersionId,
+                runtimeNodeData.agent_version_id,
+              ),
+              agentPath: [...params.agentPath, this.getNodeDisplayName(node)],
+              result: params.result,
+              context: params.context,
+            });
+            break;
+          }
+
+          case 'llm-model': {
+            const dependencyId = this.buildImportedAgentModelDependencyId(
+              source.agentDefinitionId,
+              source.sourceVersionId,
+              node.id,
+            );
+            if (
+              params.result.llmModels.some(
+                (dependency) => dependency.dependencyId === dependencyId,
+              )
+            ) {
+              break;
+            }
+
+            try {
+              const dependency = await this.buildWorkflowModelInstallDependency({
+                node,
+                dependencyId,
+                location,
+                sourceTenantId: params.sourceTenantId,
+                targetTenantId: params.context.targetTenantId,
+                context: params.context,
+                dbClient: this.db,
+              });
+              if (dependency) {
+                params.result.llmModels.push(dependency);
+              }
+            } catch (error) {
+              if (error instanceof DomainException) {
+                params.result.blockers.push({
+                  code: 'WORKFLOW_IMPORT_MODEL_UNRESOLVABLE',
+                  location,
+                  message: error.detail,
+                });
+                break;
+              }
+              throw error;
+            }
+            break;
+          }
+
+          case 'knowledge-base': {
+            if (
+              this.readFirstString(
+                runtimeNodeData.knowledgeBaseId,
+                runtimeNodeData.knowledge_base_id,
+              )
+            ) {
+              params.result.blockers.push({
+                code: 'WORKFLOW_IMPORT_AGENT_KNOWLEDGE_UNSUPPORTED',
+                location,
+                message: `依赖 Agent「${source.name}」包含知识库节点，当前安装流程还不能自动迁移。`,
+              });
+            }
+            break;
+          }
+
+          case 'memory': {
+            if (
+              this.readFirstString(
+                runtimeNodeData.memoryInstanceId,
+                runtimeNodeData.memory_instance_id,
+              )
+            ) {
+              params.result.blockers.push({
+                code: 'WORKFLOW_IMPORT_AGENT_MEMORY_UNSUPPORTED',
+                location,
+                message: `依赖 Agent「${source.name}」包含记忆节点，当前安装流程还不能自动迁移。`,
+              });
+            }
+            break;
+          }
+
+          case 'mcp-tool': {
+            if (
+              this.readFirstString(
+                runtimeNodeData.mcpServerConfigId,
+                runtimeNodeData.mcp_server_config_id,
+              )
+            ) {
+              params.result.blockers.push({
+                code: 'WORKFLOW_IMPORT_AGENT_MCP_UNSUPPORTED',
+                location,
+                message: `依赖 Agent「${source.name}」包含 MCP 绑定，当前安装流程还不能自动迁移。`,
+              });
+            }
+            break;
+          }
+
+          case 'skill': {
+            if (
+              this.readFirstString(
+                runtimeNodeData.skillId,
+                runtimeNodeData.skill_id,
+              )
+            ) {
+              params.result.blockers.push({
+                code: 'WORKFLOW_IMPORT_AGENT_SKILL_UNSUPPORTED',
+                location,
+                message: `依赖 Agent「${source.name}」包含 Skill 绑定，当前安装流程还不能自动迁移。`,
+              });
+            }
+            break;
+          }
+
+          default:
+            break;
+        }
+      }
+    } catch (error) {
+      if (error instanceof DomainException) {
+        params.result.blockers.push({
+          code: 'WORKFLOW_IMPORT_AGENT_LOAD_FAILED',
+          location: ['工作流', ...params.agentPath].join(' / '),
+          message: error.detail,
+        });
+        return;
+      }
+
+      throw error;
+    } finally {
+      params.context.activeAgentStack.delete(cacheKey);
+    }
+  }
+
+  private async buildWorkflowModelInstallDependency(params: {
+    node: schema.ReactFlowNode;
+    dependencyId: string;
+    location: string;
+    sourceTenantId: string;
+    targetTenantId: string;
+    context: ImportedWorkflowModelCacheContext;
+    dbClient: WorkflowDbClient;
+  }): Promise<WorkflowInstallLlmDependency | null> {
+    const sourceModel = await this.describeImportedWorkflowModelSource({
+      runtimeNodeData: this.getRuntimeNodeData(params.node.data),
+      sourceTenantId: params.sourceTenantId,
+      context: params.context,
+    });
+
+    if (!sourceModel.providerSlug || !sourceModel.modelId) {
+      throw new DomainException({
+        type: 'https://agentloom.dev/errors/workflow-install-source-model-incomplete',
+        title: '源模型配置不完整',
+        status: HttpStatus.CONFLICT,
+        detail: `节点「${this.getNodeDisplayName(params.node)}」缺少 provider 或 modelId，当前无法在安装时自动配置。`,
+      });
+    }
+
+    const defaultTargetModel = await this.resolveImportedWorkflowTargetModel({
+      sourceModel,
+      targetTenantId: params.targetTenantId,
+      context: params.context,
+      dbClient: params.dbClient,
+    });
+
+    return {
+      dependencyId: params.dependencyId,
+      nodeId: params.node.id,
+      nodeType: 'llm-model',
+      nodeLabel: this.getWorkflowNodeLabel(params.node) ?? null,
+      location: params.location,
+      provider: sourceModel.providerSlug,
+      modelId: sourceModel.modelId,
+      modelName: sourceModel.modelName ?? sourceModel.modelId,
+      modelType: sourceModel.modelType,
+      baseUrl: sourceModel.baseUrl,
+      defaultModelConfigId: defaultTargetModel?.config.id ?? null,
+    };
+  }
+
+  private async describeImportedWorkflowModelSource(params: {
+    runtimeNodeData: Record<string, unknown>;
+    sourceTenantId: string;
+    context: Pick<ImportedWorkflowModelCacheContext, 'sourceModels'>;
+  }): Promise<ImportedWorkflowModelDescriptor> {
+    const sourceModelBindingId = this.readFirstString(
+      params.runtimeNodeData.llmConfigId,
+      params.runtimeNodeData.llm_config_id,
+      params.runtimeNodeData.modelConfigId,
+      params.runtimeNodeData.model_config_id,
+    );
+    const sourceModel = sourceModelBindingId
+      ? await this.loadImportedWorkflowSourceModel({
+          sourceTenantId: params.sourceTenantId,
+          sourceModelBindingId,
+          context: params.context,
+        })
+      : null;
+    const modelType = this.readFirstString(
+      sourceModel?.config.modelType,
+      params.runtimeNodeData.modelType,
+      params.runtimeNodeData.model_type,
+    );
+
+    return {
+      sourceModel,
+      providerSlug:
+        sourceModel?.provider.slug ??
+        this.readFirstString(params.runtimeNodeData.provider) ??
+        null,
+      providerName:
+        sourceModel?.provider.name ??
+        this.readFirstString(
+          params.runtimeNodeData.providerName,
+          params.runtimeNodeData.provider_name,
+        ) ??
+        null,
+      providerApiProtocol:
+        sourceModel?.provider.apiProtocol ??
+        this.readFirstString(
+          params.runtimeNodeData.apiProtocol,
+          params.runtimeNodeData.api_protocol,
+        ) ??
+        null,
+      modelId:
+        sourceModel?.config.modelId ??
+        this.readFirstString(
+          params.runtimeNodeData.modelId,
+          params.runtimeNodeData.model_id,
+          params.runtimeNodeData.modelName,
+          params.runtimeNodeData.model_name,
+        ) ??
+        null,
+      modelName:
+        sourceModel?.config.name ??
+        this.readFirstString(
+          params.runtimeNodeData.name,
+          params.runtimeNodeData.label,
+          params.runtimeNodeData.modelName,
+          params.runtimeNodeData.model_name,
+        ) ??
+        null,
+      modelType: modelType === 'embedding' ? 'embedding' : 'chat',
+      baseUrl: this.normalizeOptionalText(
+        sourceModel?.provider.baseUrl ??
+          sourceModel?.provider.defaultBaseUrl ??
+          this.readFirstString(
+            params.runtimeNodeData.endpointUrl,
+            params.runtimeNodeData.endpoint_url,
+          ) ??
+          undefined,
+      ),
+    };
+  }
+
+  private async remapImportedWorkflowModelNode(params: {
+    node: schema.ReactFlowNode;
+    dependencyId: string;
+    runtimeNodeData: Record<string, unknown>;
+    sourceTenantId: string;
+    targetTenantId: string;
+    context: ImportedWorkflowAgentCloneContext;
+    dbClient: WorkflowDbClient;
+    location: string;
+  }): Promise<void> {
+    const selectedModelConfigId =
+      params.context.installBindings.llmModels[params.dependencyId];
+    const sourceModel = await this.describeImportedWorkflowModelSource({
+      runtimeNodeData: params.runtimeNodeData,
+      sourceTenantId: params.sourceTenantId,
+      context: params.context,
+    });
+    const targetModel = selectedModelConfigId
+      ? await this.findImportedWorkflowTargetModelByBindingId({
+          modelConfigId: selectedModelConfigId,
+          targetTenantId: params.targetTenantId,
+          context: params.context,
+          dbClient: params.dbClient,
+        })
+      : await this.resolveImportedWorkflowTargetModel({
+          sourceModel,
+          targetTenantId: params.targetTenantId,
+          context: params.context,
+          dbClient: params.dbClient,
+        });
+
+    if (!targetModel) {
+      const providerLabel = sourceModel.providerSlug ?? 'unknown';
+      const modelLabel = sourceModel.modelId ?? 'unknown';
+      const baseUrl = sourceModel.baseUrl;
+
+      throw new DomainException({
+        type: 'https://agentloom.dev/errors/workflow-import-model-not-found',
+        title: '目标租户缺少所需模型配置',
+        status: HttpStatus.CONFLICT,
+        detail: `${params.location} 需要模型 ${modelLabel}（provider=${providerLabel}${baseUrl ? `, baseUrl=${baseUrl}` : ''}），请先在当前账号配置或在安装界面手动选择对应模型。`,
+      });
+    }
+
+    this.applyImportedWorkflowTargetModelToNode(params.node, targetModel);
+  }
+
+  private async loadImportedWorkflowSourceModel(params: {
+    sourceTenantId: string;
+    sourceModelBindingId: string;
+    context: Pick<ImportedWorkflowModelCacheContext, 'sourceModels'>;
+  }): Promise<ImportedWorkflowModelRecord> {
+    const cached = params.context.sourceModels.get(params.sourceModelBindingId);
+    if (cached) {
+      return cached;
+    }
+
+    const [row] = await this.db
+      .select({
+        config: schema.llmModelConfigs,
+        provider: schema.llmProviders,
+      })
+      .from(schema.llmModelConfigs)
+      .innerJoin(
+        schema.llmProviders,
+        eq(schema.llmModelConfigs.providerId, schema.llmProviders.id),
+      )
+      .where(
+        and(
+          eq(schema.llmModelConfigs.id, params.sourceModelBindingId),
+          eq(schema.llmModelConfigs.tenantId, params.sourceTenantId),
+        ),
+      );
+
+    if (!row) {
+      throw new DomainException({
+        type: 'https://agentloom.dev/errors/workflow-import-source-model-not-found',
+        title: '依赖模型配置不存在',
+        status: HttpStatus.NOT_FOUND,
+        detail: `未找到源租户模型配置 ${params.sourceModelBindingId}`,
+      });
+    }
+
+    params.context.sourceModels.set(params.sourceModelBindingId, row);
+    return row;
+  }
+
+  private async ensureImportedWorkflowTargetModels(params: {
+    targetTenantId: string;
+    context: ImportedWorkflowModelCacheContext;
+    dbClient: WorkflowDbClient;
+  }): Promise<ImportedWorkflowModelRecord[]> {
+    if (params.context.targetModels === null) {
+      params.context.targetModels = await params.dbClient
+        .select({
+          config: schema.llmModelConfigs,
+          provider: schema.llmProviders,
+        })
+        .from(schema.llmModelConfigs)
+        .innerJoin(
+          schema.llmProviders,
+          eq(schema.llmModelConfigs.providerId, schema.llmProviders.id),
+        )
+        .where(
+          and(
+            eq(schema.llmModelConfigs.tenantId, params.targetTenantId),
+            eq(schema.llmModelConfigs.isEnabled, true),
+          ),
+        );
+    }
+
+    return params.context.targetModels;
+  }
+
+  private async findImportedWorkflowTargetModelByBindingId(params: {
+    modelConfigId: string;
+    targetTenantId: string;
+    context: ImportedWorkflowModelCacheContext;
+    dbClient: WorkflowDbClient;
+  }): Promise<ImportedWorkflowModelRecord> {
+    const targetModels = await this.ensureImportedWorkflowTargetModels(params);
+    const targetModel = targetModels.find(
+      (candidate) => candidate.config.id === params.modelConfigId,
+    );
+
+    if (!targetModel) {
+      throw new DomainException({
+        type: 'https://agentloom.dev/errors/workflow-install-target-model-not-found',
+        title: '安装选择的模型不存在',
+        status: HttpStatus.NOT_FOUND,
+        detail: `未找到已选择的模型配置 ${params.modelConfigId}`,
+      });
+    }
+
+    return targetModel;
+  }
+
+  private async resolveImportedWorkflowTargetModel(params: {
+    sourceModel: ImportedWorkflowModelDescriptor;
+    targetTenantId: string;
+    context: ImportedWorkflowModelCacheContext;
+    dbClient: WorkflowDbClient;
+  }): Promise<ImportedWorkflowModelRecord | null> {
+    if (!params.sourceModel.providerSlug || !params.sourceModel.modelId) {
+      return null;
+    }
+
+    const targetModels = await this.ensureImportedWorkflowTargetModels(params);
+    const exactMatches = targetModels.filter((candidate) => {
+      if (
+        !this.isImportedWorkflowProviderCompatible(
+          candidate.provider,
+          params.sourceModel,
+        ) ||
+        candidate.config.modelId !== params.sourceModel.modelId ||
+        candidate.config.modelType !== params.sourceModel.modelType
+      ) {
+        return false;
+      }
+
+      const candidateBaseUrl = this.normalizeOptionalText(
+        candidate.provider.baseUrl ??
+          candidate.provider.defaultBaseUrl ??
+          undefined,
+      );
+      return candidateBaseUrl === params.sourceModel.baseUrl;
+    });
+
+    if (exactMatches.length > 0) {
+      return this.pickImportedWorkflowTargetModel(
+        exactMatches,
+        params.sourceModel.modelName,
+      );
+    }
+
+    const looseMatches = targetModels.filter(
+      (candidate) =>
+        this.isImportedWorkflowProviderCompatible(
+          candidate.provider,
+          params.sourceModel,
+        ) &&
+        candidate.config.modelId === params.sourceModel.modelId &&
+        candidate.config.modelType === params.sourceModel.modelType,
+    );
+
+    if (looseMatches.length > 0) {
+      return this.pickImportedWorkflowTargetModel(
+        looseMatches,
+        params.sourceModel.modelName,
+      );
+    }
+
+    return null;
+  }
+
+  private pickImportedWorkflowTargetModel(
+    candidates: ImportedWorkflowModelRecord[],
+    sourceModelName: string | null,
+  ): ImportedWorkflowModelRecord {
+    const byName = sourceModelName
+      ? candidates.find((candidate) => candidate.config.name === sourceModelName)
+      : null;
+    if (byName) {
+      return byName;
+    }
+
+    const byDefault = candidates.find((candidate) => candidate.config.isDefault);
+    return byDefault ?? candidates[0];
+  }
+
+  private isImportedWorkflowProviderCompatible(
+    candidateProvider: schema.LlmProvider,
+    sourceModel: ImportedWorkflowModelDescriptor,
+  ): boolean {
+    const candidateTokens = this.buildImportedWorkflowProviderIdentityTokens({
+      slug: candidateProvider.slug,
+      name: candidateProvider.name,
+      apiProtocol: candidateProvider.apiProtocol,
+    });
+    const sourceTokens = this.buildImportedWorkflowProviderIdentityTokens({
+      slug: sourceModel.providerSlug,
+      name: sourceModel.providerName,
+      apiProtocol: sourceModel.providerApiProtocol,
+    });
+
+    if (candidateTokens.size === 0 || sourceTokens.size === 0) {
+      return false;
+    }
+
+    for (const token of candidateTokens) {
+      if (sourceTokens.has(token)) {
+        return true;
+      }
+    }
+
+    return false;
+  }
+
+  private buildImportedWorkflowProviderIdentityTokens(params: {
+    slug: string | null | undefined;
+    name: string | null | undefined;
+    apiProtocol: string | null | undefined;
+  }): Set<string> {
+    const tokens = new Set<string>();
+
+    const add = (value: string | null | undefined) => {
+      const normalized = this.normalizeImportedWorkflowProviderIdentity(value);
+      if (normalized) {
+        tokens.add(normalized);
+      }
+    };
+
+    add(params.slug);
+    add(params.name);
+    add(params.apiProtocol);
+
+    return tokens;
+  }
+
+  private normalizeImportedWorkflowProviderIdentity(
+    value: string | null | undefined,
+  ): string | null {
+    const normalized = this.normalizeOptionalText(value ?? undefined)?.toLowerCase();
+    if (!normalized) {
+      return null;
+    }
+
+    if (normalized.startsWith('openai_') || normalized.includes('openai')) {
+      return 'openai';
+    }
+
+    if (normalized.includes('anthropic')) {
+      return 'anthropic';
+    }
+
+    if (normalized.includes('google') || normalized.includes('gemini')) {
+      return 'google';
+    }
+
+    if (normalized.includes('cohere')) {
+      return 'cohere';
+    }
+
+    return normalized;
+  }
+
+  private applyImportedWorkflowTargetModelToNode(
+    node: schema.ReactFlowNode,
+    targetModel: ImportedWorkflowModelRecord,
+  ): void {
+    clearNodeConfigField(node, 'llmConfigId');
+    clearNodeConfigField(node, 'llm_config_id');
+    clearNodeConfigField(node, 'modelConfigId');
+    clearNodeConfigField(node, 'model_config_id');
+    clearNodeConfigField(node, 'apiKeyId');
+    clearNodeConfigField(node, 'api_key_id');
+    clearNodeConfigField(node, 'endpointUrl');
+    clearNodeConfigField(node, 'endpoint_url');
+    setNodeConfigField(node, 'llmConfigId', targetModel.config.id);
+    setNodeConfigField(node, 'modelConfigId', targetModel.config.id);
+    setNodeConfigField(node, 'provider', targetModel.provider.slug);
+    setNodeConfigField(node, 'name', targetModel.config.name);
+    setNodeConfigField(node, 'modelName', targetModel.config.modelId);
+    setNodeConfigField(node, 'modelId', targetModel.config.modelId);
+    setNodeConfigField(node, 'modelType', targetModel.config.modelType);
+    if (targetModel.provider.apiKeyId) {
+      setNodeConfigField(node, 'apiKeyId', targetModel.provider.apiKeyId);
+    }
+
+    const endpointUrl = this.normalizeOptionalText(
+      targetModel.provider.baseUrl ??
+        targetModel.provider.defaultBaseUrl ??
+        undefined,
+    );
+    if (endpointUrl) {
+      setNodeConfigField(node, 'endpointUrl', endpointUrl);
+    }
+
+    this.setNodeLabel(node, targetModel.config.modelId);
   }
 
   async importWorkflow(
@@ -1509,6 +3039,503 @@ export class WorkflowVersionService {
     if (errors.length > 0) {
       throw new WorkflowPublishValidationException(errors);
     }
+  }
+
+  private async cloneImportedWorkflowAgentDependencies(params: {
+    nodes: schema.ReactFlowNode[];
+    sourceTenantId: string;
+    context: ImportedWorkflowAgentCloneContext;
+    dbClient: WorkflowDbClient;
+  }): Promise<void> {
+    for (const node of params.nodes) {
+      if (this.getWorkflowNodeType(node) !== 'agent') {
+        continue;
+      }
+
+      const runtimeNodeData = this.getRuntimeNodeData(node.data);
+      const sourceAgentDefinitionId = this.readFirstString(
+        runtimeNodeData.agentDefinitionId,
+        runtimeNodeData.agent_definition_id,
+        runtimeNodeData.selectedAgentId,
+        runtimeNodeData.selected_agent_id,
+      );
+
+      if (!sourceAgentDefinitionId) {
+        continue;
+      }
+
+      const sourceAgentVersionId = this.readFirstString(
+        runtimeNodeData.agentVersionId,
+        runtimeNodeData.agent_version_id,
+      );
+      const clonedAgent = await this.cloneImportedWorkflowAgent({
+        sourceTenantId: params.sourceTenantId,
+        sourceAgentDefinitionId,
+        sourceAgentVersionId,
+        context: params.context,
+        dbClient: params.dbClient,
+      });
+
+      clearNodeConfigField(node, 'selectedAgentId');
+      clearNodeConfigField(node, 'selected_agent_id');
+      clearNodeConfigField(node, 'agentDefinitionId');
+      clearNodeConfigField(node, 'agent_definition_id');
+      clearNodeConfigField(node, 'agentVersionId');
+      clearNodeConfigField(node, 'agent_version_id');
+      clearNodeConfigField(node, 'agentName');
+      clearNodeConfigField(node, 'agent_name');
+      clearNodeConfigField(node, 'versionLabel');
+      clearNodeConfigField(node, 'version_label');
+      clearNodeConfigField(node, 'agentRuntimeMode');
+      clearNodeConfigField(node, 'agent_runtime_mode');
+      setNodeConfigField(node, 'selectedAgentId', clonedAgent.agentDefinitionId);
+      setNodeConfigField(node, 'agentDefinitionId', clonedAgent.agentDefinitionId);
+      setNodeConfigField(node, 'agentVersionId', clonedAgent.publishedVersionId);
+      setNodeConfigField(node, 'agentName', clonedAgent.name);
+      setNodeConfigField(node, 'versionLabel', 'published');
+      setNodeConfigField(node, 'agentRuntimeMode', clonedAgent.runtimeMode);
+    }
+  }
+
+  private async cloneImportedWorkflowAgent(params: {
+    sourceTenantId: string;
+    sourceAgentDefinitionId: string;
+    sourceAgentVersionId?: string;
+    context: ImportedWorkflowAgentCloneContext;
+    dbClient: WorkflowDbClient;
+  }): Promise<ImportedWorkflowAgentCloneResult> {
+    const cacheKey = `${params.sourceAgentDefinitionId}:${params.sourceAgentVersionId ?? 'published'}`;
+    const cached = params.context.clonedAgents.get(cacheKey);
+
+    if (cached) {
+      return cached;
+    }
+
+    if (params.context.activeAgentCloneStack.has(cacheKey)) {
+      throw new DomainException({
+        type: 'https://agentloom.dev/errors/workflow-import-agent-cycle',
+        title: '工作流依赖 Agent 存在循环引用',
+        status: HttpStatus.CONFLICT,
+        detail: `Agent ${params.sourceAgentDefinitionId} 在导入链路中出现循环引用，当前无法自动克隆`,
+      });
+    }
+
+    params.context.activeAgentCloneStack.add(cacheKey);
+
+    try {
+      const source = await this.loadImportedWorkflowAgentSource({
+        sourceTenantId: params.sourceTenantId,
+        sourceAgentDefinitionId: params.sourceAgentDefinitionId,
+        sourceAgentVersionId: params.sourceAgentVersionId,
+      });
+
+      if (source.workspaceSnapshotId || source.snapshot.workspaceSnapshotId) {
+        throw new DomainException({
+          type: 'https://agentloom.dev/errors/workflow-import-agent-workspace-unsupported',
+          title: '工作流依赖 Agent 包含工作区绑定',
+          status: HttpStatus.CONFLICT,
+          detail: `依赖 Agent「${source.name}」包含工作区快照绑定，当前无法随工作流安装自动迁移`,
+        });
+      }
+
+      const sandboxConfig = this.sanitizeImportedAgentSandboxConfig(
+        source.sandboxConfig ?? source.snapshot.sandboxConfig ?? null,
+        source.name,
+      );
+      const preparedNodes = cloneJson(source.snapshot.nodes);
+      const preparedEdges = cloneJson(source.snapshot.edges);
+      const preparedViewport = cloneJson(
+        source.snapshot.viewport ?? DEFAULT_VIEWPORT,
+      );
+
+      for (const node of preparedNodes) {
+        const nodeType = this.getImportedAgentNodeType(node);
+        const runtimeNodeData = this.getRuntimeNodeData(node.data);
+
+        switch (nodeType) {
+          case 'sub-agent': {
+            const sourceSubAgentDefinitionId = this.readFirstString(
+              runtimeNodeData.agentDefinitionId,
+              runtimeNodeData.agent_definition_id,
+            );
+            if (!sourceSubAgentDefinitionId) {
+              continue;
+            }
+
+            const sourceSubAgentVersionId = this.readFirstString(
+              runtimeNodeData.agentVersionId,
+              runtimeNodeData.agent_version_id,
+            );
+            const clonedSubAgent = await this.cloneImportedWorkflowAgent({
+              sourceTenantId: params.sourceTenantId,
+              sourceAgentDefinitionId: sourceSubAgentDefinitionId,
+              sourceAgentVersionId: sourceSubAgentVersionId,
+              context: params.context,
+              dbClient: params.dbClient,
+            });
+
+            clearNodeConfigField(node, 'agentDefinitionId');
+            clearNodeConfigField(node, 'agent_definition_id');
+            clearNodeConfigField(node, 'agentVersionId');
+            clearNodeConfigField(node, 'agent_version_id');
+            setNodeConfigField(
+              node,
+              'agentDefinitionId',
+              clonedSubAgent.agentDefinitionId,
+            );
+            setNodeConfigField(
+              node,
+              'agentVersionId',
+              clonedSubAgent.publishedVersionId,
+            );
+            break;
+          }
+
+          case 'llm-model':
+            await this.remapImportedWorkflowModelNode({
+              node,
+              dependencyId: this.buildImportedAgentModelDependencyId(
+                source.agentDefinitionId,
+                source.sourceVersionId,
+                node.id,
+              ),
+              runtimeNodeData,
+              sourceTenantId: params.sourceTenantId,
+              targetTenantId: params.context.targetTenantId,
+              context: params.context,
+              dbClient: params.dbClient,
+              location: `依赖 Agent「${source.name}」/ ${this.getNodeDisplayName(node)}`,
+            });
+            break;
+
+          case 'knowledge-base':
+            if (
+              this.readFirstString(
+                runtimeNodeData.knowledgeBaseId,
+                runtimeNodeData.knowledge_base_id,
+              )
+            ) {
+              throw new DomainException({
+                type: 'https://agentloom.dev/errors/workflow-import-agent-knowledge-unsupported',
+                title: '工作流依赖 Agent 包含知识库绑定',
+                status: HttpStatus.CONFLICT,
+                detail: `依赖 Agent「${source.name}」包含知识库节点，当前无法随工作流安装自动迁移`,
+              });
+            }
+            break;
+
+          case 'memory':
+            if (
+              this.readFirstString(
+                runtimeNodeData.memoryInstanceId,
+                runtimeNodeData.memory_instance_id,
+              )
+            ) {
+              throw new DomainException({
+                type: 'https://agentloom.dev/errors/workflow-import-agent-memory-unsupported',
+                title: '工作流依赖 Agent 包含记忆绑定',
+                status: HttpStatus.CONFLICT,
+                detail: `依赖 Agent「${source.name}」包含记忆节点，当前无法随工作流安装自动迁移`,
+              });
+            }
+            break;
+
+          case 'mcp-tool':
+            if (
+              this.readFirstString(
+                runtimeNodeData.mcpServerConfigId,
+                runtimeNodeData.mcp_server_config_id,
+              )
+            ) {
+              throw new DomainException({
+                type: 'https://agentloom.dev/errors/workflow-import-agent-mcp-unsupported',
+                title: '工作流依赖 Agent 包含 MCP 绑定',
+                status: HttpStatus.CONFLICT,
+                detail: `依赖 Agent「${source.name}」包含 MCP 工具节点，当前无法随工作流安装自动迁移`,
+              });
+            }
+            break;
+
+          case 'skill':
+            if (
+              this.readFirstString(
+                runtimeNodeData.skillId,
+                runtimeNodeData.skill_id,
+              )
+            ) {
+              throw new DomainException({
+                type: 'https://agentloom.dev/errors/workflow-import-agent-skill-unsupported',
+                title: '工作流依赖 Agent 包含 Skill 绑定',
+                status: HttpStatus.CONFLICT,
+                detail: `依赖 Agent「${source.name}」包含 Skill 节点，当前无法随工作流安装自动迁移`,
+              });
+            }
+            break;
+
+          default:
+            break;
+        }
+      }
+
+      const clonedCanvas = cloneDefinitionWithNewIds({
+        nodes: preparedNodes,
+        edges: preparedEdges,
+        viewport: preparedViewport,
+      });
+      const importedAt = new Date().toISOString();
+      const created = await this.insertImportedWorkflowAgentDefinition(
+        {
+          name: `${source.name} 副本`,
+          description: source.description,
+          icon: source.icon,
+          runtimeMode: source.runtimeMode,
+          nodes: clonedCanvas.nodes,
+          edges: clonedCanvas.edges,
+          viewport: clonedCanvas.viewport,
+          systemPrompt: source.snapshot.systemPrompt ?? null,
+          sandboxConfig,
+          metadata: {
+            importedFromWorkflow: {
+              sourceType: params.context.importSource,
+              sourceReference: params.context.importReference,
+              importedAt,
+              sourceAgentDefinitionId: source.agentDefinitionId,
+              sourceVersionId: source.sourceVersionId,
+            },
+          },
+        },
+        params.context,
+        params.dbClient,
+      );
+
+      params.context.clonedAgents.set(cacheKey, created);
+      return created;
+    } finally {
+      params.context.activeAgentCloneStack.delete(cacheKey);
+    }
+  }
+
+  private async loadImportedWorkflowAgentSource(params: {
+    sourceTenantId: string;
+    sourceAgentDefinitionId: string;
+    sourceAgentVersionId?: string;
+  }): Promise<ImportedWorkflowAgentSourceRecord> {
+    const [definition] = await this.db
+      .select({
+        id: schema.agentDefinitions.id,
+        tenantId: schema.agentDefinitions.tenantId,
+        name: schema.agentDefinitions.name,
+        description: schema.agentDefinitions.description,
+        icon: schema.agentDefinitions.icon,
+        runtimeMode: schema.agentDefinitions.runtimeMode,
+        sandboxConfig: schema.agentDefinitions.sandboxConfig,
+        workspaceSnapshotId: schema.agentDefinitions.workspaceSnapshotId,
+        publishedVersionId: schema.agentDefinitions.publishedVersionId,
+      })
+      .from(schema.agentDefinitions)
+      .where(
+        and(
+          eq(schema.agentDefinitions.id, params.sourceAgentDefinitionId),
+          eq(schema.agentDefinitions.tenantId, params.sourceTenantId),
+        ),
+      );
+
+    if (!definition) {
+      throw new DomainException({
+        type: 'https://agentloom.dev/errors/workflow-import-agent-not-found',
+        title: '工作流依赖 Agent 不存在',
+        status: HttpStatus.NOT_FOUND,
+        detail: `未找到依赖 Agent ${params.sourceAgentDefinitionId}`,
+      });
+    }
+
+    const versionId =
+      params.sourceAgentVersionId ?? definition.publishedVersionId ?? undefined;
+    if (!versionId) {
+      throw new DomainException({
+        type: 'https://agentloom.dev/errors/workflow-import-agent-not-published',
+        title: '工作流依赖 Agent 尚未发布',
+        status: HttpStatus.CONFLICT,
+        detail: `依赖 Agent「${definition.name}」没有可执行的发布版本`,
+      });
+    }
+
+    const [version] = await this.db
+      .select({
+        id: schema.agentVersions.id,
+        snapshot: schema.agentVersions.snapshot,
+      })
+      .from(schema.agentVersions)
+      .where(
+        and(
+          eq(schema.agentVersions.id, versionId),
+          eq(schema.agentVersions.agentDefinitionId, definition.id),
+          eq(schema.agentVersions.tenantId, params.sourceTenantId),
+        ),
+      );
+
+    if (!version) {
+      throw new DomainException({
+        type: 'https://agentloom.dev/errors/workflow-import-agent-version-not-found',
+        title: '工作流依赖 Agent 版本不存在',
+        status: HttpStatus.NOT_FOUND,
+        detail: `依赖 Agent「${definition.name}」的版本 ${versionId} 不存在`,
+      });
+    }
+
+    return {
+      agentDefinitionId: definition.id,
+      sourceTenantId: definition.tenantId,
+      sourceVersionId: version.id,
+      name: definition.name,
+      description: definition.description ?? null,
+      icon: definition.icon ?? null,
+      runtimeMode: definition.runtimeMode,
+      sandboxConfig: definition.sandboxConfig ?? null,
+      workspaceSnapshotId: definition.workspaceSnapshotId ?? null,
+      snapshot: version.snapshot,
+    };
+  }
+
+  private sanitizeImportedAgentSandboxConfig(
+    sandboxConfig: schema.SandboxConfig | null,
+    agentName: string,
+  ): schema.SandboxConfig | null {
+    if (!sandboxConfig) {
+      return null;
+    }
+
+    if (sandboxConfig.restoreWorkspaceId || sandboxConfig.persistentSandboxId) {
+      throw new DomainException({
+        type: 'https://agentloom.dev/errors/workflow-import-agent-sandbox-binding-unsupported',
+        title: '工作流依赖 Agent 包含持久化沙箱绑定',
+        status: HttpStatus.CONFLICT,
+        detail: `依赖 Agent「${agentName}」包含工作区或持久化沙箱绑定，当前无法随工作流安装自动迁移`,
+      });
+    }
+
+    return cloneJson(sandboxConfig);
+  }
+
+  private async insertImportedWorkflowAgentDefinition(
+    input: {
+      name: string;
+      description: string | null;
+      icon: string | null;
+      runtimeMode: AgentRuntimeMode;
+      nodes: schema.ReactFlowNode[];
+      edges: schema.ReactFlowEdge[];
+      viewport: schema.ReactFlowViewport | null;
+      systemPrompt: string | null;
+      sandboxConfig: schema.SandboxConfig | null;
+      metadata: Record<string, unknown>;
+    },
+    context: ImportedWorkflowAgentCloneContext,
+    dbClient: WorkflowDbClient,
+  ): Promise<ImportedWorkflowAgentCloneResult> {
+    let slug = generateSlug(input.name);
+
+    for (
+      let attempt = 0;
+      attempt <= WorkflowVersionService.MAX_SLUG_RETRIES;
+      attempt += 1
+    ) {
+      try {
+        const [createdAgent] = await dbClient
+          .insert(schema.agentDefinitions)
+          .values({
+            tenantId: context.targetTenantId,
+            name: input.name,
+            slug,
+            description: input.description,
+            icon: input.icon,
+            runtimeMode: input.runtimeMode,
+            systemPrompt: input.systemPrompt,
+            nodes: cloneJson(input.nodes),
+            edges: cloneJson(input.edges),
+            viewport: cloneJson(input.viewport),
+            metadata: cloneJson(input.metadata),
+            sandboxConfig:
+              input.runtimeMode === 'sandbox' ? input.sandboxConfig : null,
+            workspaceSnapshotId: null,
+            version: 1,
+            status: 'draft',
+            createdBy: context.targetUserId,
+            updatedBy: context.targetUserId,
+          })
+          .returning();
+
+        const [createdVersion] = await dbClient
+          .insert(schema.agentVersions)
+          .values({
+            agentDefinitionId: createdAgent.id,
+            tenantId: context.targetTenantId,
+            versionNumber: 1,
+            label: 'v1 (workflow import)',
+            snapshot: {
+              runtimeMode: input.runtimeMode,
+              nodes: cloneJson(input.nodes),
+              edges: cloneJson(input.edges),
+              viewport: cloneJson(input.viewport),
+              systemPrompt: input.systemPrompt,
+              sandboxConfig:
+                input.runtimeMode === 'sandbox' ? input.sandboxConfig : null,
+              workspaceSnapshotId: null,
+              metadata: {
+                nodeCount: input.nodes.length,
+                edgeCount: input.edges.length,
+                createdFromVersion: 1,
+                releaseNotes: '由工作流安装自动导入',
+              },
+            },
+            publishedAt: new Date(),
+            createdBy: context.targetUserId,
+          })
+          .returning();
+
+        await dbClient
+          .update(schema.agentDefinitions)
+          .set({
+            status: 'published',
+            publishedVersionId: createdVersion.id,
+            updatedBy: context.targetUserId,
+            updatedAt: new Date(),
+          })
+          .where(eq(schema.agentDefinitions.id, createdAgent.id));
+
+        return {
+          agentDefinitionId: createdAgent.id,
+          publishedVersionId: createdVersion.id,
+          name: createdAgent.name,
+          runtimeMode: createdAgent.runtimeMode,
+        };
+      } catch (error: unknown) {
+        const isUniqueViolation = hasPostgresErrorCode(error, '23505');
+
+        if (
+          !isUniqueViolation ||
+          attempt === WorkflowVersionService.MAX_SLUG_RETRIES
+        ) {
+          throw error;
+        }
+
+        slug = appendSlugSuffix(slug);
+      }
+    }
+
+    throw new Error('Unreachable: agent slug retry loop exhausted');
+  }
+
+  private getImportedAgentNodeType(node: schema.ReactFlowNode): string {
+    const runtimeNodeData = this.getRuntimeNodeData(node.data);
+
+    return (
+      this.readFirstString(
+        runtimeNodeData.nodeType,
+        runtimeNodeData.node_type,
+        node.type,
+      ) ?? ''
+    );
   }
 
   private getWorkflowNodeType(node: schema.ReactFlowNode): string {

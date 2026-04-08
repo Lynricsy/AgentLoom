@@ -22,6 +22,8 @@ import { StarRating } from './StarRating'
 
 interface MarketplaceDetailDialogProps {
   listingId: string | null
+  sourcePage: 'discover' | 'marketplace'
+  autoOpenInstall?: boolean
   open: boolean
   onOpenChange: (open: boolean) => void
 }
@@ -165,6 +167,8 @@ function PluginDetailSection({
 
 export const MarketplaceDetailDialog = memo(function MarketplaceDetailDialog({
   listingId,
+  sourcePage,
+  autoOpenInstall = false,
   open,
   onOpenChange,
 }: MarketplaceDetailDialogProps) {
@@ -183,6 +187,12 @@ export const MarketplaceDetailDialog = memo(function MarketplaceDetailDialog({
       setInstallOpen(false)
     }
   }, [open])
+
+  useEffect(() => {
+    if (open && autoOpenInstall) {
+      setInstallOpen(true)
+    }
+  }, [autoOpenInstall, open])
 
   const handleInstallOpenChange = useCallback((nextOpen: boolean) => {
     setInstallOpen(nextOpen)
@@ -327,13 +337,14 @@ export const MarketplaceDetailDialog = memo(function MarketplaceDetailDialog({
               </div>
 
               <MarketplaceInstallDialog
-                listingId={listing.id}
-                listingTitle={listing.title}
-                listingSummary={listing.summary}
-                listingType={listing.listingType}
-                open={installOpen}
-                onOpenChange={handleInstallOpenChange}
-              />
+              listingId={listing.id}
+              listingTitle={listing.title}
+              listingSummary={listing.summary}
+              listingType={listing.listingType}
+              sourcePage={sourcePage}
+              open={installOpen}
+              onOpenChange={handleInstallOpenChange}
+            />
             </>
           )}
         </Dialog.Content>

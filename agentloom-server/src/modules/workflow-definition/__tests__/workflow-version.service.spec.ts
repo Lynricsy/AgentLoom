@@ -240,7 +240,14 @@ function createSelectChainWithPagination(result: unknown) {
 
 function createSelectChainWithInnerJoin(result: unknown) {
   const where = vi.fn().mockResolvedValue(result);
-  const innerJoin = vi.fn().mockReturnValue({ where });
+  const chain = {
+    where,
+  } as {
+    innerJoin?: ReturnType<typeof vi.fn>;
+    where: typeof where;
+  };
+  const innerJoin = vi.fn().mockReturnValue(chain);
+  chain.innerJoin = innerJoin;
   const from = vi.fn().mockReturnValue({ innerJoin });
   return { from, innerJoin, where };
 }
@@ -2141,6 +2148,275 @@ describe('WorkflowVersionService', () => {
     });
   });
 
+  describe('buildImportPreflight', () => {
+    it('应识别连接工作区的 sandbox 为可选持久沙箱绑定', async () => {
+      const result = await service.buildImportPreflight({
+        sourceTenantId: TENANT_ID,
+        targetTenantId: TENANT_ID,
+        sourceDefinition: {
+          nodes: [
+            {
+              id: 'shared-workspace',
+              type: 'tool',
+              position: { x: 0, y: 0 },
+              data: {
+                label: 'Shared Workspace',
+                nodeType: 'workspace',
+                workspaceId: 'source-workspace-id',
+                config: {
+                  workspaceId: 'source-workspace-id',
+                },
+              },
+            },
+            {
+              id: 'shared-sandbox',
+              type: 'tool',
+              position: { x: 240, y: 0 },
+              data: {
+                label: 'Shared Sandbox',
+                nodeType: 'sandbox',
+                config: {
+                  cpu: 1,
+                  memory: 1024,
+                },
+              },
+            },
+          ],
+          edges: [
+            {
+              id: 'workspace-sandbox-exec',
+              source: 'shared-workspace',
+              target: 'shared-sandbox',
+              sourceHandle: 'exec-out',
+              targetHandle: 'exec-in',
+            },
+            {
+              id: 'workspace-sandbox-volume',
+              source: 'shared-workspace',
+              target: 'shared-sandbox',
+              sourceHandle: 'volume-out',
+              targetHandle: 'volume-in',
+            },
+          ],
+          viewport: MOCK_VIEWPORT,
+        },
+      });
+
+      expect(result.blockers).toEqual([]);
+      expect(result.workspaces).toEqual([
+        {
+          dependencyId: 'workflow:workspace:shared-workspace',
+          nodeId: 'shared-workspace',
+          nodeType: 'workspace',
+          nodeLabel: 'Shared Workspace',
+          location: '工作流 / Shared Workspace',
+        },
+      ]);
+      expect(result.sandboxes).toEqual([
+        {
+          dependencyId: 'workflow:sandbox:shared-sandbox',
+          nodeId: 'shared-sandbox',
+          nodeType: 'sandbox',
+          nodeLabel: 'Shared Sandbox',
+          location: '工作流 / Shared Sandbox',
+          linkedWorkspaceDependencyId: 'workflow:workspace:shared-workspace',
+          required: false,
+        },
+      ]);
+    });
+
+    it('应为自定义 Provider slug 但协议与 baseUrl 匹配的模型预填默认绑定', async () => {
+      const sourceAnthropicProviderId = '10000000-0000-0000-0000-000000000011';
+      const sourceOpenAiProviderId = '10000000-0000-0000-0000-000000000012';
+      const sourceAnthropicModelId = '10000000-0000-0000-0000-000000000021';
+      const sourceOpenAiModelId = '10000000-0000-0000-0000-000000000022';
+      const targetAnthropicProviderId = '20000000-0000-0000-0000-000000000011';
+      const targetOpenAiProviderId = '20000000-0000-0000-0000-000000000012';
+      const targetAnthropicModelId = '20000000-0000-0000-0000-000000000021';
+      const targetOpenAiModelId = '20000000-0000-0000-0000-000000000022';
+
+      const sourceAnthropicRow = {
+        config: {
+          id: sourceAnthropicModelId,
+          orgId: '10000000-0000-0000-0000-000000000010',
+          tenantId: TENANT_ID,
+          providerId: sourceAnthropicProviderId,
+          name: 'Claude Sonnet 4.6',
+          modelId: 'claude-sonnet-4-6',
+          modelType: 'chat' as const,
+          isEnabled: true,
+          isDefault: true,
+          capabilities: {},
+          contextWindow: null,
+          maxOutputTokens: null,
+          pricing: null,
+          parameters: {},
+          metadataSource: 'manual' as const,
+          embeddingDimensions: null,
+          timeoutMs: null,
+          createdAt: NOW,
+          updatedAt: NOW,
+        },
+        provider: {
+          id: sourceAnthropicProviderId,
+          orgId: '10000000-0000-0000-0000-000000000010',
+          tenantId: TENANT_ID,
+          slug: 'anthropic',
+          name: 'Anthropic',
+          iconUrl: null,
+          baseUrl: 'https://models.example.test/',
+          defaultBaseUrl: 'https://models.example.test/',
+          isBuiltin: true,
+          isEnabled: true,
+          apiProtocol: 'anthropic' as const,
+          apiKeyId: '10000000-0000-0000-0000-000000000099',
+          sortOrder: 0,
+          createdAt: NOW,
+          updatedAt: NOW,
+        },
+      };
+      const sourceOpenAiRow = {
+        config: {
+          id: sourceOpenAiModelId,
+          orgId: '10000000-0000-0000-0000-000000000010',
+          tenantId: TENANT_ID,
+          providerId: sourceOpenAiProviderId,
+          name: 'GPT-5.4',
+          modelId: 'gpt-5.4',
+          modelType: 'chat' as const,
+          isEnabled: true,
+          isDefault: false,
+          capabilities: {},
+          contextWindow: null,
+          maxOutputTokens: null,
+          pricing: null,
+          parameters: {},
+          metadataSource: 'manual' as const,
+          embeddingDimensions: null,
+          timeoutMs: null,
+          createdAt: NOW,
+          updatedAt: NOW,
+        },
+        provider: {
+          id: sourceOpenAiProviderId,
+          orgId: '10000000-0000-0000-0000-000000000010',
+          tenantId: TENANT_ID,
+          slug: 'openai',
+          name: 'OpenAI',
+          iconUrl: null,
+          baseUrl: 'https://models.example.test/',
+          defaultBaseUrl: 'https://models.example.test/',
+          isBuiltin: true,
+          isEnabled: true,
+          apiProtocol: 'openai_responses' as const,
+          apiKeyId: '10000000-0000-0000-0000-000000000199',
+          sortOrder: 0,
+          createdAt: NOW,
+          updatedAt: NOW,
+        },
+      };
+      const targetAnthropicRow = {
+        config: {
+          ...sourceAnthropicRow.config,
+          id: targetAnthropicModelId,
+          providerId: targetAnthropicProviderId,
+        },
+        provider: {
+          ...sourceAnthropicRow.provider,
+          id: targetAnthropicProviderId,
+          slug: 'anthropic-codehub-qa-20260409-04',
+          tenantId: TENANT_ID,
+          isBuiltin: false,
+        },
+      };
+      const targetOpenAiRow = {
+        config: {
+          ...sourceOpenAiRow.config,
+          id: targetOpenAiModelId,
+          providerId: targetOpenAiProviderId,
+        },
+        provider: {
+          ...sourceOpenAiRow.provider,
+          id: targetOpenAiProviderId,
+          slug: 'openai-codehub-qa-20260409-04',
+          tenantId: TENANT_ID,
+          isBuiltin: false,
+        },
+      };
+
+      db.select
+        .mockReturnValueOnce(createSelectChainWithInnerJoin([sourceAnthropicRow]))
+        .mockReturnValueOnce(
+          createSelectChainWithInnerJoin([
+            targetAnthropicRow,
+            targetOpenAiRow,
+          ]),
+        )
+        .mockReturnValueOnce(createSelectChainWithInnerJoin([sourceOpenAiRow]));
+
+      const result = await service.buildImportPreflight({
+        sourceTenantId: TENANT_ID,
+        targetTenantId: TENANT_ID,
+        sourceDefinition: {
+          nodes: [
+            {
+              id: 'anthropic-model',
+              type: 'tool',
+              position: { x: 0, y: 0 },
+              data: {
+                label: 'claude-sonnet-4-6',
+                nodeType: 'llm-model',
+                llmConfigId: sourceAnthropicModelId,
+                config: {
+                  llmConfigId: sourceAnthropicModelId,
+                  provider: 'anthropic',
+                  modelId: 'claude-sonnet-4-6',
+                  modelType: 'chat',
+                },
+              },
+            },
+            {
+              id: 'openai-model',
+              type: 'tool',
+              position: { x: 240, y: 0 },
+              data: {
+                label: 'gpt-5.4',
+                nodeType: 'llm-model',
+                llmConfigId: sourceOpenAiModelId,
+                config: {
+                  llmConfigId: sourceOpenAiModelId,
+                  provider: 'openai',
+                  modelId: 'gpt-5.4',
+                  modelType: 'chat',
+                },
+              },
+            },
+          ],
+          edges: [],
+          viewport: MOCK_VIEWPORT,
+        },
+      });
+
+      expect(result.blockers).toEqual([]);
+      expect(result.llmModels).toEqual([
+        expect.objectContaining({
+          dependencyId: 'workflow:llm:anthropic-model',
+          provider: 'anthropic',
+          modelId: 'claude-sonnet-4-6',
+          baseUrl: 'https://models.example.test/',
+          defaultModelConfigId: targetAnthropicModelId,
+        }),
+        expect.objectContaining({
+          dependencyId: 'workflow:llm:openai-model',
+          provider: 'openai',
+          modelId: 'gpt-5.4',
+          baseUrl: 'https://models.example.test/',
+          defaultModelConfigId: targetOpenAiModelId,
+        }),
+      ]);
+    });
+  });
+
   describe('create', () => {
     const MOCK_DTO_BLANK = { name: '测试工作流' };
     const MOCK_DTO_WITH_TEMPLATE = {
@@ -2308,6 +2584,7 @@ describe('WorkflowVersionService', () => {
         {
           id: MARKETPLACE_LISTING_ID,
           title: 'Marketplace 热门工作流',
+          sourceTenantId: TENANT_ID,
           snapshot: marketplaceSnapshot,
         },
       ]);
@@ -2344,6 +2621,149 @@ describe('WorkflowVersionService', () => {
       expect(valuesArg.metadata.cloned_from_marketplace.clonedAt).toBeDefined();
     });
 
+    it('应在 marketplace 安装时允许把共享工作区 sandbox 绑定为持久沙箱', async () => {
+      const marketplaceSnapshot = {
+        nodes: [
+          {
+            id: 'shared-workspace',
+            type: 'tool',
+            position: { x: 0, y: 0 },
+            data: {
+              label: 'Shared Workspace',
+              nodeType: 'workspace',
+              workspaceId: 'source-workspace-id',
+              config: {
+                workspaceId: 'source-workspace-id',
+              },
+            },
+          },
+          {
+            id: 'shared-sandbox',
+            type: 'tool',
+            position: { x: 240, y: 0 },
+            data: {
+              label: 'Shared Sandbox',
+              nodeType: 'sandbox',
+              config: {
+                cpu: 1,
+                disk: 2,
+                memory: 1024,
+                timeout: 2,
+              },
+            },
+          },
+        ],
+        edges: [
+          {
+            id: 'workspace-sandbox-exec',
+            source: 'shared-workspace',
+            target: 'shared-sandbox',
+            sourceHandle: 'exec-out',
+            targetHandle: 'exec-in',
+          },
+          {
+            id: 'workspace-sandbox-volume',
+            source: 'shared-workspace',
+            target: 'shared-sandbox',
+            sourceHandle: 'volume-out',
+            targetHandle: 'volume-in',
+          },
+        ],
+        viewport: MOCK_VIEWPORT,
+        inputSchema: null,
+        metadata: { nodeCount: 2, edgeCount: 2, createdFromVersion: 1 },
+      };
+      const selectedWorkspaceId = 'workspace-target-1';
+      const selectedSandboxId = 'sandbox-target-1';
+      const createdWorkflow = createDraftWorkflow({
+        name: 'Marketplace 副本',
+        slug: 'marketplace-fu-ben',
+        description: '从 marketplace 安装',
+      });
+
+      db.select
+        .mockReturnValueOnce(
+          createSelectChainWithInnerJoin([
+            {
+              id: MARKETPLACE_LISTING_ID,
+              title: 'Marketplace 热门工作流',
+              sourceTenantId: TENANT_ID,
+              snapshot: marketplaceSnapshot,
+            },
+          ]),
+        )
+        .mockReturnValueOnce(
+          createSelectChain([
+            {
+              id: selectedWorkspaceId,
+              name: 'QA Workspace',
+              status: 'ready',
+            },
+          ]),
+        )
+        .mockReturnValueOnce(
+          createSelectChain([
+            {
+              id: selectedSandboxId,
+              status: 'ready',
+              config: {
+                lifecycleMode: 'persistent',
+                name: 'QA Persistent Sandbox',
+              },
+            },
+          ]),
+        );
+      db.insert.mockReturnValueOnce(createInsertReturning(createdWorkflow));
+
+      const result = await service.create(TENANT_ID, USER_ID, {
+        ...MOCK_DTO_WITH_MARKETPLACE,
+        installBindings: {
+          workspaces: {
+            'workflow:workspace:shared-workspace': selectedWorkspaceId,
+          },
+          sandboxes: {
+            'workflow:sandbox:shared-sandbox': selectedSandboxId,
+          },
+        },
+      });
+
+      expect(result).toEqual(createdWorkflow);
+      const workflowInsertValues =
+        db.insert.mock.results[0].value.values.mock.calls[0][0];
+      const importedWorkspaceNode = workflowInsertValues.nodes.find(
+        (node: Record<string, unknown>) =>
+          (node.data as Record<string, unknown>)?.nodeType === 'workspace',
+      ) as Record<string, unknown>;
+      const importedWorkspaceData =
+        importedWorkspaceNode.data as Record<string, unknown>;
+      const importedWorkspaceConfig =
+        importedWorkspaceData.config as Record<string, unknown>;
+      expect(importedWorkspaceData.workspaceId).toBe(selectedWorkspaceId);
+      expect(importedWorkspaceConfig.workspaceId).toBe(selectedWorkspaceId);
+      expect(importedWorkspaceData.workspaceName).toBe('QA Workspace');
+
+      const importedSandboxNode = workflowInsertValues.nodes.find(
+        (node: Record<string, unknown>) =>
+          (node.data as Record<string, unknown>)?.nodeType === 'sandbox',
+      ) as Record<string, unknown>;
+      const importedSandboxData =
+        importedSandboxNode.data as Record<string, unknown>;
+      const importedSandboxConfig =
+        importedSandboxData.config as Record<string, unknown>;
+      expect(importedSandboxData.lifecycleMode).toBe('persistent');
+      expect(importedSandboxConfig.lifecycleMode).toBe('persistent');
+      expect(importedSandboxData.persistentSandboxId).toBe(selectedSandboxId);
+      expect(importedSandboxConfig.persistentSandboxId).toBe(selectedSandboxId);
+      expect(importedSandboxData.persistentSandboxName).toBe(
+        'QA Persistent Sandbox',
+      );
+      expect(importedSandboxConfig.persistentSandboxName).toBe(
+        'QA Persistent Sandbox',
+      );
+      expect(importedSandboxData.restoreWorkspaceId).toBe(selectedWorkspaceId);
+      expect(importedSandboxConfig.restoreWorkspaceId).toBe(selectedWorkspaceId);
+    });
+
     it('marketplace listing 不存在时应抛出 MarketplaceListingNotFoundException', async () => {
       db.select.mockReturnValueOnce(createSelectChainWithInnerJoin([]));
 
@@ -2354,9 +2774,261 @@ describe('WorkflowVersionService', () => {
       expect(db.insert).not.toHaveBeenCalled();
     });
 
+    it('应在 marketplace 安装时深拷贝 workflow-agent 依赖并重绑目标租户模型', async () => {
+      const sourceAgentDefinitionId = '10000000-0000-0000-0000-000000000001';
+      const sourceAgentVersionId = '10000000-0000-0000-0000-000000000002';
+      const sourceModelConfigId = '10000000-0000-0000-0000-000000000003';
+      const targetModelConfigId = '20000000-0000-0000-0000-000000000003';
+      const clonedAgentDefinitionId = '30000000-0000-0000-0000-000000000001';
+      const clonedAgentVersionId = '30000000-0000-0000-0000-000000000002';
+      const sourceProviderId = '10000000-0000-0000-0000-000000000004';
+      const targetProviderId = '20000000-0000-0000-0000-000000000004';
+      const marketplaceSnapshot = {
+        nodes: [
+          {
+            id: 'market-agent-node',
+            type: 'agent',
+            position: { x: 0, y: 0 },
+            data: {
+              label: 'News Agent',
+              nodeType: 'agent',
+              selectedAgentId: sourceAgentDefinitionId,
+              agentVersionId: sourceAgentVersionId,
+              config: {
+                selected_agent_id: sourceAgentDefinitionId,
+                agent_version_id: sourceAgentVersionId,
+              },
+            },
+          },
+        ],
+        edges: [],
+        viewport: MOCK_VIEWPORT,
+        inputSchema: null,
+        metadata: { nodeCount: 1, edgeCount: 0, createdFromVersion: 1 },
+      };
+      const sourceAgentDefinition = {
+        id: sourceAgentDefinitionId,
+        tenantId: TENANT_ID,
+        name: 'Source News Agent',
+        description: 'source agent',
+        icon: null,
+        runtimeMode: 'no_sandbox' as const,
+        sandboxConfig: null,
+        workspaceSnapshotId: null,
+        publishedVersionId: sourceAgentVersionId,
+      };
+      const sourceAgentVersion = {
+        id: sourceAgentVersionId,
+        snapshot: {
+          runtimeMode: 'no_sandbox' as const,
+          nodes: [
+            {
+              id: 'agent-main',
+              type: 'agent',
+              position: { x: 320, y: 0 },
+              data: {
+                nodeType: 'agent-main',
+                label: 'Agent Main',
+              },
+            },
+            {
+              id: 'agent-model',
+              type: 'agent',
+              position: { x: 0, y: 0 },
+              data: {
+                nodeType: 'llm-model',
+                label: 'claude-sonnet-4-6',
+                llmConfigId: sourceModelConfigId,
+                modelId: 'claude-sonnet-4-6',
+                modelName: 'claude-sonnet-4-6',
+                provider: 'anthropic',
+                config: {
+                  llmConfigId: sourceModelConfigId,
+                  modelId: 'claude-sonnet-4-6',
+                  modelName: 'claude-sonnet-4-6',
+                  provider: 'anthropic',
+                },
+              },
+            },
+          ],
+          edges: [
+            {
+              id: 'agent-model-edge',
+              source: 'agent-model',
+              target: 'agent-main',
+              sourceHandle: 'model-out',
+              targetHandle: 'model-in',
+            },
+          ],
+          viewport: MOCK_VIEWPORT,
+          systemPrompt: null,
+          metadata: { nodeCount: 2, edgeCount: 1, createdFromVersion: 1 },
+        },
+      };
+      const sourceModelRow = {
+        config: {
+          id: sourceModelConfigId,
+          orgId: '10000000-0000-0000-0000-000000000010',
+          tenantId: TENANT_ID,
+          providerId: sourceProviderId,
+          name: 'Claude Sonnet 4.6',
+          modelId: 'claude-sonnet-4-6',
+          modelType: 'chat' as const,
+          isEnabled: true,
+          isDefault: true,
+          capabilities: {},
+          contextWindow: null,
+          maxOutputTokens: null,
+          pricing: null,
+          parameters: {},
+          metadataSource: 'manual' as const,
+          embeddingDimensions: null,
+          timeoutMs: null,
+          createdAt: NOW,
+          updatedAt: NOW,
+        },
+        provider: {
+          id: sourceProviderId,
+          orgId: '10000000-0000-0000-0000-000000000010',
+          tenantId: TENANT_ID,
+          slug: 'anthropic',
+          name: 'Anthropic',
+          iconUrl: null,
+          baseUrl: 'https://models.example.test/',
+          defaultBaseUrl: 'https://models.example.test/',
+          isBuiltin: true,
+          isEnabled: true,
+          apiProtocol: 'anthropic' as const,
+          apiKeyId: '10000000-0000-0000-0000-000000000099',
+          sortOrder: 0,
+          createdAt: NOW,
+          updatedAt: NOW,
+        },
+      };
+      const targetModelRow = {
+        config: {
+          ...sourceModelRow.config,
+          id: targetModelConfigId,
+          tenantId: TENANT_ID,
+          providerId: targetProviderId,
+        },
+        provider: {
+          ...sourceModelRow.provider,
+          id: targetProviderId,
+          tenantId: TENANT_ID,
+          apiKeyId: '20000000-0000-0000-0000-000000000099',
+        },
+      };
+      const createdAgentDefinition = {
+        id: clonedAgentDefinitionId,
+        tenantId: TENANT_ID,
+        name: 'Source News Agent 副本',
+        slug: 'source-news-agent-fu-ben',
+        description: 'source agent',
+        icon: null,
+        runtimeMode: 'no_sandbox' as const,
+        systemPrompt: null,
+        nodes: [],
+        edges: [],
+        viewport: MOCK_VIEWPORT,
+        metadata: {},
+        sandboxConfig: null,
+        workspaceSnapshotId: null,
+        version: 1,
+        status: 'draft' as const,
+        publishedVersionId: null,
+        createdBy: USER_ID,
+        updatedBy: USER_ID,
+        createdAt: NOW,
+        updatedAt: NOW,
+      };
+      const createdAgentVersion = {
+        id: clonedAgentVersionId,
+        agentDefinitionId: clonedAgentDefinitionId,
+        tenantId: TENANT_ID,
+        versionNumber: 1,
+        label: 'v1 (workflow import)',
+        snapshot: sourceAgentVersion.snapshot,
+        publishedAt: NOW,
+        archivedAt: null,
+        createdBy: USER_ID,
+        createdAt: NOW,
+      };
+      const createdWorkflow = createDraftWorkflow({
+        name: 'Marketplace 副本',
+        slug: 'marketplace-fu-ben',
+        description: '从 marketplace 安装',
+      });
+
+      db.select
+        .mockReturnValueOnce(
+          createSelectChainWithInnerJoin([
+            {
+              id: MARKETPLACE_LISTING_ID,
+              title: 'Marketplace 热门工作流',
+              sourceTenantId: TENANT_ID,
+              snapshot: marketplaceSnapshot,
+            },
+          ]),
+        )
+        .mockReturnValueOnce(createSelectChain([sourceAgentDefinition]))
+        .mockReturnValueOnce(createSelectChain([sourceAgentVersion]))
+        .mockReturnValueOnce(createSelectChainWithInnerJoin([sourceModelRow]))
+        .mockReturnValueOnce(createSelectChainWithInnerJoin([targetModelRow]));
+      db.insert
+        .mockReturnValueOnce(createInsertReturning(createdAgentDefinition))
+        .mockReturnValueOnce(createInsertReturning(createdAgentVersion))
+        .mockReturnValueOnce(createInsertReturning(createdWorkflow));
+      db.update.mockReturnValueOnce(createUpdateChainVoid());
+
+      const result = await service.create(
+        TENANT_ID,
+        USER_ID,
+        MOCK_DTO_WITH_MARKETPLACE,
+      );
+
+      expect(result).toEqual(createdWorkflow);
+      expect(db.insert).toHaveBeenCalledTimes(3);
+
+      const importedAgentValues =
+        db.insert.mock.results[0].value.values.mock.calls[0][0];
+      const importedModelNode = importedAgentValues.nodes.find(
+        (node: Record<string, unknown>) =>
+          (node.data as Record<string, unknown>).nodeType === 'llm-model',
+      ) as Record<string, unknown>;
+      const importedModelData = importedModelNode.data as Record<string, unknown>;
+      const importedModelConfig = importedModelData.config as Record<string, unknown>;
+      expect(importedAgentValues.runtimeMode).toBe('no_sandbox');
+      expect(importedModelData.llmConfigId).toBe(targetModelConfigId);
+      expect(importedModelData.modelConfigId).toBe(targetModelConfigId);
+      expect(importedModelData.apiKeyId).toBe(targetModelRow.provider.apiKeyId);
+      expect(importedModelConfig.llmConfigId).toBe(targetModelConfigId);
+      expect(importedModelConfig.modelConfigId).toBe(targetModelConfigId);
+
+      const workflowInsertValues =
+        db.insert.mock.results[2].value.values.mock.calls[0][0];
+      const importedWorkflowNode = workflowInsertValues.nodes[0];
+      expect(importedWorkflowNode.data.selectedAgentId).toBe(
+        clonedAgentDefinitionId,
+      );
+      expect(importedWorkflowNode.data.agentDefinitionId).toBe(
+        clonedAgentDefinitionId,
+      );
+      expect(importedWorkflowNode.data.agentVersionId).toBe(
+        clonedAgentVersionId,
+      );
+      expect(importedWorkflowNode.data.config.selectedAgentId).toBe(
+        clonedAgentDefinitionId,
+      );
+      expect(importedWorkflowNode.data.config.agentVersionId).toBe(
+        clonedAgentVersionId,
+      );
+    });
+
     it('应从可复制分享克隆定义并递增 copy count', async () => {
       shareService.getShareByToken.mockResolvedValue({
         id: '00000000-0000-0000-0000-000000000099',
+        tenantId: TENANT_ID,
         shareType: 'copyable',
         shareToken: SHARE_TOKEN,
         workflowDefinitionId: '00000000-0000-0000-0000-000000000088',

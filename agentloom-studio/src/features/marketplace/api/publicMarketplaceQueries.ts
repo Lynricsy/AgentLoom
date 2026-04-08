@@ -4,6 +4,7 @@ import {
   fetchListingReviews,
   fetchPublicListingDetail,
   fetchPublicListings,
+  preflightMarketplaceListingInstall,
 } from './publicMarketplaceApi'
 import { publicMarketplaceKeys } from './marketplaceKeys'
 import type { PublicListingsFilters } from '../types'
@@ -35,5 +36,13 @@ export function useListingReviews(id: string | null) {
     queryFn: () => fetchListingReviews(id!),
     enabled: !!id,
     staleTime: PUBLIC_MARKETPLACE_REVIEWS_STALE_TIME,
+  })
+}
+
+export function useInstallListingPreflight(id: string | null) {
+  return useQuery({
+    queryKey: publicMarketplaceKeys.installPreflight(id ?? ''),
+    queryFn: () => preflightMarketplaceListingInstall(id!),
+    enabled: !!id,
   })
 }

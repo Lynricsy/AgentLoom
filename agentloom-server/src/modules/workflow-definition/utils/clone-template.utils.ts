@@ -23,6 +23,22 @@ function remapHandle(handle: string, idMap: Map<string, string>): string {
   return result;
 }
 
+function readNodeParentId(
+  node: ReactFlowNode,
+): string | undefined {
+  const rawNode = node as ReactFlowNode & Record<string, unknown>;
+  const rawParentId =
+    typeof rawNode.parentId === 'string'
+      ? rawNode.parentId
+      : typeof rawNode.parent_id === 'string'
+        ? rawNode.parent_id
+        : undefined;
+
+  return rawParentId && rawParentId.trim().length > 0
+    ? rawParentId.trim()
+    : undefined;
+}
+
 /**
  * 克隆模板定义，为所有节点分配新 UUIDv7。
  * 同步更新 edge 中的 source / target / sourceHandle / targetHandle 引用。
@@ -42,10 +58,22 @@ export function cloneDefinitionWithNewIds(
   }
 
   // 克隆节点并替换 ID
-  const nodes: ReactFlowNode[] = definition.nodes.map((node) => ({
-    ...node,
-    id: idMap.get(node.id)!,
-  }));
+  const nodes: ReactFlowNode[] = definition.nodes.map((node) => {
+    const clonedNode = {
+      ...node,
+      id: idMap.get(node.id)!,
+    } as ReactFlowNode & Record<string, unknown>;
+    const parentId = readNodeParentId(node);
+
+    if (parentId) {
+      clonedNode.parentId = idMap.get(parentId) ?? parentId;
+      if ('parent_id' in clonedNode) {
+        delete clonedNode.parent_id;
+      }
+    }
+
+    return clonedNode;
+  });
 
   // 克隆边并替换所有 ID 引用
   const edges: ReactFlowEdge[] = definition.edges.map((edge) => {

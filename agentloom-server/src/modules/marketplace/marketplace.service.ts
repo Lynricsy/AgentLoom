@@ -120,6 +120,68 @@ export type InstalledMarketplaceListingResult =
   | InstalledMarketplaceWorkflowResult
   | InstalledMarketplacePluginResult;
 
+export interface WorkflowInstallDependencySet {
+  llmModels: Array<{
+    dependencyId: string;
+    nodeId: string;
+    nodeType: 'llm-model';
+    nodeLabel: string | null;
+    location: string;
+    provider: string;
+    modelId: string;
+    modelName: string;
+    modelType: 'chat' | 'embedding';
+    baseUrl: string | null;
+    defaultModelConfigId: string | null;
+  }>;
+  workspaces: Array<{
+    dependencyId: string;
+    nodeId: string;
+    nodeType: 'workspace';
+    nodeLabel: string | null;
+    location: string;
+  }>;
+  sandboxes: Array<{
+    dependencyId: string;
+    nodeId: string;
+    nodeType: 'sandbox';
+    nodeLabel: string | null;
+    location: string;
+    linkedWorkspaceDependencyId: string | null;
+    required: boolean;
+  }>;
+}
+
+export interface WorkflowInstallBlockerItem {
+  code: string;
+  location: string;
+  message: string;
+}
+
+export interface MarketplaceWorkflowInstallPreflightResult {
+  listingType: 'workflow';
+  installDefaults: {
+    name: string;
+    description: string | null;
+  };
+  dependencies: WorkflowInstallDependencySet;
+  blockers: WorkflowInstallBlockerItem[];
+}
+
+export interface MarketplacePluginInstallPreflightResult {
+  listingType: 'plugin';
+  installDefaults: {
+    name: string;
+    description: string | null;
+  };
+  dependencies: WorkflowInstallDependencySet;
+  blockers: [];
+}
+
+export type MarketplaceInstallPreflightResult =
+  | MarketplaceWorkflowInstallPreflightResult
+  | MarketplacePluginInstallPreflightResult;
+
 function buildMarketplaceAuthor(params: {
   displayName: string | null;
 }): MarketplacePublicAuthor {
@@ -678,6 +740,57 @@ export class MarketplaceService {
     };
   }
 
+  async preflightInstallListing(
+    tenantId: string,
+    listingId: string,
+  ): Promise<MarketplaceInstallPreflightResult> {
+    const listing = await this.findPublicListingOrThrow(listingId);
+
+    if (listing.listingType === 'plugin') {
+      return {
+        listingType: 'plugin',
+        installDefaults: {
+          name: listing.title,
+          description: listing.summary,
+        },
+        dependencies: {
+          llmModels: [],
+          workspaces: [],
+          sandboxes: [],
+        },
+        blockers: [],
+      };
+    }
+
+    if (!listing.snapshot || !listing.sourceTenantId) {
+      throw new MarketplaceListingNotFoundException(listingId);
+    }
+
+    const dependencies = await this.workflowVersionService.buildImportPreflight({
+      sourceDefinition: {
+        nodes: listing.snapshot.nodes,
+        edges: listing.snapshot.edges,
+        viewport: normalizeViewport(listing.snapshot.viewport),
+      },
+      sourceTenantId: listing.sourceTenantId,
+      targetTenantId: tenantId,
+    });
+
+    return {
+      listingType: 'workflow',
+      installDefaults: {
+        name: listing.title,
+        description: listing.summary,
+      },
+      dependencies: {
+        llmModels: dependencies.llmModels,
+        workspaces: dependencies.workspaces,
+        sandboxes: dependencies.sandboxes,
+      },
+      blockers: dependencies.blockers,
+    };
+  }
+
   async installListing(
     tenantId: string,
     userId: string,
@@ -725,6 +838,7 @@ export class MarketplaceService {
         name: parsedDto.name ?? listing.title,
         description: parsedDto.description ?? listing.summary,
         marketplace_listing_id: listingId,
+        installBindings: parsedDto.bindings,
       },
     );
 
@@ -963,6 +1077,7 @@ export class MarketplaceService {
         authorDisplayName: sql<
           string | null
         >`coalesce(${schema.users.displayName}, ${schema.users.email})`,
+        sourceTenantId: schema.workflowDefinitions.tenantId,
         snapshot: schema.workflowVersions.snapshot,
       })
       .from(schema.marketplaceListings)
@@ -971,6 +1086,13 @@ export class MarketplaceService {
         eq(
           schema.marketplaceListings.workflowVersionId,
           schema.workflowVersions.id,
+        ),
+      )
+      .leftJoin(
+        schema.workflowDefinitions,
+        eq(
+          schema.workflowVersions.workflowDefinitionId,
+          schema.workflowDefinitions.id,
         ),
       )
       .leftJoin(

@@ -247,7 +247,8 @@ function createSelectChainWithTripleLeftJoinPagination(result: unknown) {
 
 function createSelectChainWithTripleLeftJoinWhere(result: unknown) {
   const where = vi.fn().mockResolvedValue(result);
-  const leftJoinThird = vi.fn().mockReturnValue({ where });
+  const leftJoinFourth = vi.fn().mockReturnValue({ where });
+  const leftJoinThird = vi.fn().mockReturnValue({ leftJoin: leftJoinFourth });
   const leftJoinSecond = vi.fn().mockReturnValue({ leftJoin: leftJoinThird });
   const leftJoinFirst = vi.fn().mockReturnValue({ leftJoin: leftJoinSecond });
   const from = vi.fn().mockReturnValue({ leftJoin: leftJoinFirst });
@@ -256,6 +257,7 @@ function createSelectChainWithTripleLeftJoinWhere(result: unknown) {
     leftJoinFirst,
     leftJoinSecond,
     leftJoinThird,
+    leftJoinFourth,
     where,
   };
 }
@@ -299,7 +301,10 @@ function createUpdateWhereChain(result: unknown) {
 describe('MarketplaceService', () => {
   let service: MarketplaceService;
   let reviewService: { review: ReturnType<typeof vi.fn> };
-  let workflowVersionService: { create: ReturnType<typeof vi.fn> };
+  let workflowVersionService: {
+    create: ReturnType<typeof vi.fn>;
+    buildImportPreflight: ReturnType<typeof vi.fn>;
+  };
   let pluginService: { cloneMarketplacePlugin: ReturnType<typeof vi.fn> };
   let db: Record<string, ReturnType<typeof vi.fn>>;
 
@@ -314,6 +319,7 @@ describe('MarketplaceService', () => {
 
     workflowVersionService = {
       create: vi.fn(),
+      buildImportPreflight: vi.fn(),
     };
 
     pluginService = {
@@ -776,6 +782,93 @@ describe('MarketplaceService', () => {
   });
 
   describe('installListing', () => {
+    it('workflow listing 预检应返回安装默认值与依赖清单', async () => {
+      const workflowRow = createPublicWorkflowListingRow({
+        sourceTenantId: TENANT_ID,
+      });
+      const preflight = {
+        llmModels: [
+          {
+            dependencyId: 'agent:model:1',
+            nodeId: 'node-model-1',
+            nodeType: 'llm-model' as const,
+            nodeLabel: 'News Model',
+            location: '工作流 / News Agent / News Model',
+            provider: 'anthropic',
+            modelId: 'claude-sonnet-4-6',
+            modelName: 'claude-sonnet-4-6',
+            modelType: 'chat' as const,
+            baseUrl: 'https://models.example.test/',
+            defaultModelConfigId: 'model-target-1',
+          },
+        ],
+        workspaces: [],
+        sandboxes: [],
+        blockers: [],
+      };
+
+      db.select.mockReturnValueOnce(
+        createSelectChainWithTripleLeftJoinWhere([workflowRow]),
+      );
+      workflowVersionService.buildImportPreflight.mockResolvedValue(preflight);
+
+      const result = await service.preflightInstallListing(
+        TENANT_ID,
+        WORKFLOW_LISTING_ID,
+      );
+
+      expect(workflowVersionService.buildImportPreflight).toHaveBeenCalledWith({
+        sourceDefinition: {
+          nodes: workflowRow.snapshot.nodes,
+          edges: workflowRow.snapshot.edges,
+          viewport: { x: 0, y: 0, zoom: 1 },
+        },
+        sourceTenantId: TENANT_ID,
+        targetTenantId: TENANT_ID,
+      });
+      expect(result).toEqual({
+        listingType: 'workflow',
+        installDefaults: {
+          name: workflowRow.title,
+          description: workflowRow.summary,
+        },
+        dependencies: {
+          llmModels: preflight.llmModels,
+          workspaces: [],
+          sandboxes: [],
+        },
+        blockers: [],
+      });
+    });
+
+    it('plugin listing 预检应返回空依赖集合', async () => {
+      const pluginRow = createPublicPluginListingRow();
+
+      db.select.mockReturnValueOnce(
+        createSelectChainWithTripleLeftJoinWhere([pluginRow]),
+      );
+
+      const result = await service.preflightInstallListing(
+        TENANT_ID,
+        PLUGIN_LISTING_ID,
+      );
+
+      expect(workflowVersionService.buildImportPreflight).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        listingType: 'plugin',
+        installDefaults: {
+          name: pluginRow.title,
+          description: pluginRow.summary,
+        },
+        dependencies: {
+          llmModels: [],
+          workspaces: [],
+          sandboxes: [],
+        },
+        blockers: [],
+      });
+    });
+
     it('workflow listing 应创建工作流副本并递增 useCount', async () => {
       const workflowRow = createPublicWorkflowListingRow();
       const createdWorkflow = {
@@ -806,6 +899,7 @@ describe('MarketplaceService', () => {
           name: workflowRow.title,
           description: workflowRow.summary,
           marketplace_listing_id: WORKFLOW_LISTING_ID,
+          installBindings: undefined,
         },
       );
       expect(pluginService.cloneMarketplacePlugin).not.toHaveBeenCalled();

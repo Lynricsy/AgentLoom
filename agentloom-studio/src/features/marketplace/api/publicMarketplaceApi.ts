@@ -1,6 +1,7 @@
 import { apiClient, toSnakeBody } from '@/shared/api/client'
 
 import type {
+  MarketplaceInstallPreflightResponse,
   InstallMarketplaceListingRequest,
   InstallMarketplaceListingResponse,
   PublicListingsFilters,
@@ -61,6 +62,14 @@ export async function installMarketplaceListing(
       json: body ? toSnakeBody(body) : {},
     })
     .json<InstallMarketplaceListingResponse>()
+}
+
+export async function preflightMarketplaceListingInstall(
+  id: string,
+): Promise<MarketplaceInstallPreflightResponse> {
+  return apiClient
+    .post(`${MARKETPLACE_LISTINGS_PATH}/${id}/install-preflight`)
+    .json<MarketplaceInstallPreflightResponse>()
 }
 
 export async function submitMarketplaceReview(

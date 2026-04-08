@@ -229,9 +229,16 @@ export interface PublicListingsResponse {
   meta: MarketplacePaginationMeta;
 }
 
+export interface WorkflowInstallBindings {
+  llmModels?: Record<string, string>;
+  workspaces?: Record<string, string>;
+  sandboxes?: Record<string, string>;
+}
+
 export interface InstallMarketplaceListingRequest {
   name?: string;
   description?: string;
+  bindings?: WorkflowInstallBindings;
 }
 
 export interface InstallWorkflowListingResponse {
@@ -250,6 +257,76 @@ export interface InstallPluginListingResponse {
 export type InstallMarketplaceListingResponse =
   | InstallWorkflowListingResponse
   | InstallPluginListingResponse;
+
+export interface WorkflowInstallLlmDependency {
+  dependencyId: string;
+  nodeId: string;
+  nodeType: 'llm-model';
+  nodeLabel: string | null;
+  location: string;
+  provider: string;
+  modelId: string;
+  modelName: string;
+  modelType: 'chat' | 'embedding';
+  baseUrl: string | null;
+  defaultModelConfigId: string | null;
+}
+
+export interface WorkflowInstallWorkspaceDependency {
+  dependencyId: string;
+  nodeId: string;
+  nodeType: 'workspace';
+  nodeLabel: string | null;
+  location: string;
+}
+
+export interface WorkflowInstallSandboxDependency {
+  dependencyId: string;
+  nodeId: string;
+  nodeType: 'sandbox';
+  nodeLabel: string | null;
+  location: string;
+  linkedWorkspaceDependencyId: string | null;
+  required: boolean;
+}
+
+export interface WorkflowInstallBlockerItem {
+  code: string;
+  location: string;
+  message: string;
+}
+
+export interface MarketplaceWorkflowInstallPreflightResponse {
+  listingType: 'workflow';
+  installDefaults: {
+    name: string;
+    description: string | null;
+  };
+  dependencies: {
+    llmModels: WorkflowInstallLlmDependency[];
+    workspaces: WorkflowInstallWorkspaceDependency[];
+    sandboxes: WorkflowInstallSandboxDependency[];
+  };
+  blockers: WorkflowInstallBlockerItem[];
+}
+
+export interface MarketplacePluginInstallPreflightResponse {
+  listingType: 'plugin';
+  installDefaults: {
+    name: string;
+    description: string | null;
+  };
+  dependencies: {
+    llmModels: [];
+    workspaces: [];
+    sandboxes: [];
+  };
+  blockers: [];
+}
+
+export type MarketplaceInstallPreflightResponse =
+  | MarketplaceWorkflowInstallPreflightResponse
+  | MarketplacePluginInstallPreflightResponse;
 
 export interface SubmitReviewRequest {
   rating: number;

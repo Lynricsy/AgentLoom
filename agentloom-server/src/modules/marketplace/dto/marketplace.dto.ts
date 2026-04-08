@@ -5,6 +5,7 @@ import {
   MARKETPLACE_REVIEW_LIMITS,
   marketplaceCategoryEnum,
 } from '../../../database/schema';
+import { WorkflowInstallBindingsSchema } from '../../workflow-definition/dto/workflow-install-bindings.dto';
 
 const MarketplaceCategorySchema = z.enum(marketplaceCategoryEnum.enumValues);
 
@@ -88,6 +89,7 @@ export class QueryPublicReviewsDto extends createZodDto(
 export const InstallMarketplaceListingSchema = z.object({
   name: z.string().trim().min(1).max(255).optional(),
   description: z.string().trim().max(2000).optional(),
+  bindings: WorkflowInstallBindingsSchema.optional(),
 });
 
 export class InstallMarketplaceListingDto extends createZodDto(

@@ -5,15 +5,18 @@ import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import { useCreateWorkspace } from '../api/workspaceMutations'
 import { useToast } from '@/shared/ui/toast'
+import type { Workspace } from '../types'
 
 interface CreateWorkspaceDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  onCreated?: (workspace: Workspace) => void
 }
 
 export function CreateWorkspaceDialog({
   open,
   onOpenChange,
+  onCreated,
 }: CreateWorkspaceDialogProps) {
   const { notify } = useToast()
   const createMutation = useCreateWorkspace()
@@ -46,7 +49,8 @@ export function CreateWorkspaceDialog({
         createEmpty: true,
       },
       {
-        onSuccess: () => {
+        onSuccess: (workspace) => {
+          onCreated?.(workspace)
           notify({
             title: '已创建',
             description: `工作区「${trimmedName}」已成功创建。`,
@@ -70,8 +74,8 @@ export function CreateWorkspaceDialog({
   return (
     <Dialog.Root open={open} onOpenChange={handleOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 flex w-[min(30rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 flex-col rounded-2xl border border-border bg-surface-elevated shadow-2xl">
+        <Dialog.Overlay className="fixed inset-0 z-[90] bg-black/70 backdrop-blur-sm" />
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-[100] flex w-[min(30rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 flex-col rounded-2xl border border-border bg-surface-elevated shadow-2xl">
           {/* Header */}
           <div className="flex items-center justify-between px-6 pt-5 pb-4">
             <Dialog.Title className="text-lg font-semibold text-foreground">

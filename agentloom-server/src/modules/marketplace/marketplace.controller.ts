@@ -112,6 +112,19 @@ export class MarketplaceController {
     return { data: listing };
   }
 
+  @Post('listings/:id/install-preflight')
+  @Roles('owner', 'admin', 'creator', 'operator')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '预检 Marketplace listing 安装所需依赖' })
+  @ApiResponse({ status: 200, description: '预检成功' })
+  @ApiResponse({ status: 404, description: 'Listing 不存在' })
+  async preflightInstall(
+    @CurrentTenant() tenantId: string,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.marketplaceService.preflightInstallListing(tenantId, id);
+  }
+
   @Post('listings/:id/install')
   @Roles('owner', 'admin', 'creator', 'operator')
   @HttpCode(HttpStatus.CREATED)

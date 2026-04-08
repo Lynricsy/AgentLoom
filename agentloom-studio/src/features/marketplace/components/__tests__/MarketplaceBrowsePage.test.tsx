@@ -37,6 +37,11 @@ vi.mock('../../api/publicMarketplaceQueries', () => ({
   usePublicListings: (filters: PublicListingsFilters) => usePublicListingsMock(filters),
 }))
 
+vi.mock('../../stores/marketplaceInstallStore', () => ({
+  useMarketplaceInstallStore: (selector: (state: { draft: null }) => unknown) =>
+    selector({ draft: null }),
+}))
+
 vi.mock('../MarketplaceListingCard', () => ({
   MarketplaceListingCard: ({
     listing,
@@ -58,6 +63,8 @@ vi.mock('../MarketplaceDetailDialog', () => ({
   }: {
     listingId: string | null
     open: boolean
+    sourcePage: 'discover' | 'marketplace'
+    autoOpenInstall?: boolean
   }) => (open ? <div data-testid="marketplace-detail-dialog">{listingId}</div> : null),
 }))
 

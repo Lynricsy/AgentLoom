@@ -21,6 +21,7 @@ describe('MarketplaceController', () => {
     relist: vi.fn(),
     findMyListings: vi.fn(),
     findById: vi.fn(),
+    preflightInstallListing: vi.fn(),
     installListing: vi.fn(),
   };
   const reviewUserService = {
@@ -44,6 +45,33 @@ describe('MarketplaceController', () => {
   });
 
   describe('install', () => {
+    it('应调用 marketplaceService.preflightInstallListing 并直接返回预检结果', async () => {
+      const mockPreflight = {
+        listingType: 'workflow',
+        installDefaults: {
+          name: 'Marketplace 副本',
+          description: '测试摘要',
+        },
+        dependencies: {
+          llmModels: [],
+          workspaces: [],
+          sandboxes: [],
+        },
+        blockers: [],
+      };
+      marketplaceService.preflightInstallListing.mockResolvedValue(
+        mockPreflight,
+      );
+
+      const result = await controller.preflightInstall(TENANT_ID, LISTING_ID);
+
+      expect(marketplaceService.preflightInstallListing).toHaveBeenCalledWith(
+        TENANT_ID,
+        LISTING_ID,
+      );
+      expect(result).toEqual(mockPreflight);
+    });
+
     it('应调用 marketplaceService.installListing 并直接返回安装结果', async () => {
       const dto = { name: 'Marketplace 副本' };
       const mockWorkflow = {

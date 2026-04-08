@@ -20,6 +20,7 @@ import {
   MARKETPLACE_LISTING_TYPE_TABS,
   type MarketplaceListingTypeFilter,
 } from '../lib/display'
+import { useMarketplaceInstallStore } from '../stores/marketplaceInstallStore'
 import {
   MARKETPLACE_CATEGORIES,
   MARKETPLACE_SORT_OPTIONS,
@@ -52,6 +53,7 @@ export function MarketplaceBrowsePage({
   const [searchInput, setSearchInput] = useState('')
   const [debouncedSearch, setDebouncedSearch] = useState('')
   const [selectedListingId, setSelectedListingId] = useState<string | null>(null)
+  const draft = useMarketplaceInstallStore((state) => state.draft)
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -79,6 +81,8 @@ export function MarketplaceBrowsePage({
   const total = data?.meta.total ?? 0
   const totalPages = data?.meta.totalPages ?? 0
   const isDiscover = mode === 'discover'
+  const shouldResumeInstall =
+    draft?.sourcePage === mode && draft.listingId === selectedListingId
 
   const handleCategoryChange = useCallback((nextCategory: string) => {
     setCategory(nextCategory as BrowseCategory)
@@ -108,6 +112,12 @@ export function MarketplaceBrowsePage({
       setSelectedListingId(null)
     }
   }, [])
+
+  useEffect(() => {
+    if (!selectedListingId && draft?.sourcePage === mode) {
+      setSelectedListingId(draft.listingId)
+    }
+  }, [draft, mode, selectedListingId])
 
   return (
     <div
@@ -271,6 +281,8 @@ export function MarketplaceBrowsePage({
 
       <MarketplaceDetailDialog
         listingId={selectedListingId}
+        sourcePage={mode}
+        autoOpenInstall={shouldResumeInstall}
         open={selectedListingId !== null}
         onOpenChange={handleDetailOpenChange}
       />

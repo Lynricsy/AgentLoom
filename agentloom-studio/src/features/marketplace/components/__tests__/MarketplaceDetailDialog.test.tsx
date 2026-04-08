@@ -272,6 +272,7 @@ describe("MarketplaceDetailDialog", () => {
     render(
       <MarketplaceDetailDialog
         listingId="listing-1"
+        sourcePage="discover"
         open={true}
         onOpenChange={vi.fn()}
       />,
@@ -326,6 +327,7 @@ describe("MarketplaceDetailDialog", () => {
     render(
       <MarketplaceDetailDialog
         listingId="listing-1"
+        sourcePage="discover"
         open={true}
         onOpenChange={vi.fn()}
       />,
@@ -354,6 +356,7 @@ describe("MarketplaceDetailDialog", () => {
     render(
       <MarketplaceDetailDialog
         listingId="listing-plugin-1"
+        sourcePage="discover"
         open={true}
         onOpenChange={vi.fn()}
       />,
@@ -385,6 +388,7 @@ describe("MarketplaceDetailDialog", () => {
     render(
       <MarketplaceDetailDialog
         listingId="listing-plugin-1"
+        sourcePage="discover"
         open={true}
         onOpenChange={vi.fn()}
       />,

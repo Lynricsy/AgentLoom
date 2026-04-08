@@ -9,6 +9,7 @@ import {
   fetchPublicListingDetail,
   fetchPublicListings,
   installMarketplaceListing,
+  preflightMarketplaceListingInstall,
   submitMarketplaceReview,
 } from '../publicMarketplaceApi'
 import { publicMarketplaceKeys } from '../marketplaceKeys'
@@ -16,6 +17,7 @@ import {
   PUBLIC_MARKETPLACE_DETAIL_STALE_TIME,
   PUBLIC_MARKETPLACE_LIST_STALE_TIME,
   PUBLIC_MARKETPLACE_REVIEWS_STALE_TIME,
+  useInstallListingPreflight,
   useListingReviews,
   usePublicListingDetail,
   usePublicListings,
@@ -213,6 +215,14 @@ describe('publicMarketplaceApi', () => {
     const request = {
       name: 'Agent Workflow 副本',
       description: 'Install this workflow into my workspace.',
+      bindings: {
+        llmModels: {
+          'agent:model:1': 'model-target-1',
+        },
+        workspaces: {
+          'workflow:workspace:1': 'workspace-target-1',
+        },
+      },
     }
     const response = {
       workflowDefinitionId: 'workflow-1',
@@ -229,6 +239,32 @@ describe('publicMarketplaceApi', () => {
     expect(postMock).toHaveBeenCalledWith('marketplace/listings/listing-1/install', {
       json: request,
     })
+    expect(result).toEqual(response)
+  })
+
+  it('preflights a marketplace workflow install', async () => {
+    const response = {
+      listingType: 'workflow' as const,
+      installDefaults: {
+        name: 'Agent Workflow',
+        description: 'Install this workflow into my workspace.',
+      },
+      dependencies: {
+        llmModels: [],
+        workspaces: [],
+        sandboxes: [],
+      },
+      blockers: [],
+    }
+    postMock.mockReturnValue({
+      json: vi.fn().mockResolvedValue(response),
+    })
+
+    const result = await preflightMarketplaceListingInstall('listing-1')
+
+    expect(postMock).toHaveBeenCalledWith(
+      'marketplace/listings/listing-1/install-preflight',
+    )
     expect(result).toEqual(response)
   })
 
@@ -369,6 +405,42 @@ describe('publicMarketplace query hooks', () => {
     expect(query?.options).toMatchObject({
       staleTime: PUBLIC_MARKETPLACE_REVIEWS_STALE_TIME,
     })
+  })
+
+  it('returns install preflight data when id exists', async () => {
+    const response = {
+      listingType: 'workflow' as const,
+      installDefaults: {
+        name: 'Agent Workflow',
+        description: 'Install this workflow into my workspace.',
+      },
+      dependencies: {
+        llmModels: [],
+        workspaces: [],
+        sandboxes: [],
+      },
+      blockers: [],
+    }
+    postMock.mockReturnValue({
+      json: vi.fn().mockResolvedValue(response),
+    })
+
+    const { queryClient, wrapper } = createWrapper()
+    const { result } = renderHook(() => useInstallListingPreflight('listing-1'), {
+      wrapper,
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+
+    expect(result.current.data).toEqual(response)
+    expect(postMock).toHaveBeenCalledWith(
+      'marketplace/listings/listing-1/install-preflight',
+    )
+
+    const query = queryClient.getQueryCache().find({
+      queryKey: publicMarketplaceKeys.installPreflight('listing-1'),
+    })
+    expect(query).toBeTruthy()
   })
 })
 

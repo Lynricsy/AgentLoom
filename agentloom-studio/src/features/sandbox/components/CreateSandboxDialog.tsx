@@ -11,10 +11,12 @@ import {
   useSandboxPresetStore,
   type SandboxPreset,
 } from '../stores/sandboxPresetStore'
+import type { SandboxSession } from '../types'
 
 interface CreateSandboxDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  onCreated?: (sandbox: SandboxSession) => void
 }
 
 function clamp(value: number, min: number, max: number): number {
@@ -24,6 +26,7 @@ function clamp(value: number, min: number, max: number): number {
 export function CreateSandboxDialog({
   open,
   onOpenChange,
+  onCreated,
 }: CreateSandboxDialogProps) {
   const { notify } = useToast()
   const createMutation = useCreateSandbox()
@@ -85,7 +88,8 @@ export function CreateSandboxDialog({
         conversationIdleAutoEndMinutes,
       },
       {
-        onSuccess: () => {
+        onSuccess: (sandbox) => {
+          onCreated?.(sandbox)
           notify({
             title: '已创建',
             description: `沙箱「${name.trim()}」已成功创建。`,
@@ -109,8 +113,8 @@ export function CreateSandboxDialog({
   return (
     <Dialog.Root open={open} onOpenChange={handleOpenChange}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 flex w-[min(30rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 flex-col rounded-2xl border border-border bg-surface-elevated shadow-2xl">
+        <Dialog.Overlay className="fixed inset-0 z-[90] bg-black/70 backdrop-blur-sm" />
+        <Dialog.Content className="fixed left-1/2 top-1/2 z-[100] flex w-[min(30rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 flex-col rounded-2xl border border-border bg-surface-elevated shadow-2xl">
           {/* Header */}
           <div className="flex items-center justify-between px-6 pt-5 pb-4">
             <Dialog.Title className="text-lg font-semibold text-foreground">
