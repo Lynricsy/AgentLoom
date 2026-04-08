@@ -51,6 +51,7 @@ import {
   useConversationMessages,
   useConversationStatus,
   useConversationActions,
+  useLoadedPublishedVersionId,
   useTerminalEntries,
   useFileTree,
   useFileChanges,
@@ -554,6 +555,7 @@ export function AgentConversationPage({
   const messages = useConversationMessages();
   const status = useConversationStatus();
   const actions = useConversationActions();
+  const loadedPublishedVersionId = useLoadedPublishedVersionId();
   const terminalEntries = useTerminalEntries();
   const fileTree = useFileTree();
   const fileChanges = useFileChanges();
@@ -763,42 +765,54 @@ export function AgentConversationPage({
     }
 
     setIsRestartingConversation(true);
-    let shouldResetRestarting = true;
 
     try {
       const nextConversationId = await actions.restartToLatestVersion();
       if (!nextConversationId) {
         notify({
-          title: "重启失败",
-          description: "服务端没有返回新的会话 ID，请稍后重试。",
+          title: "刷新失败",
+          description: "服务端没有返回会话 ID，请稍后重试。",
           variant: "error",
         });
         return;
       }
 
-      shouldResetRestarting = false;
-      navigate({
-        to: "/agents/$agentId/conversations/$conversationId",
-        params: {
-          agentId,
-          conversationId: nextConversationId,
-        },
+      if (nextConversationId !== conversationId) {
+        navigate({
+          to: "/agents/$agentId/conversations/$conversationId",
+          params: {
+            agentId,
+            conversationId: nextConversationId,
+          },
+        });
+        return;
+      }
+
+      await actions.loadHistory(conversationId);
+      if (hasSandbox) {
+        await actions.loadWorkspaceTree(conversationId);
+      }
+
+      notify({
+        title: "已刷新当前对话",
+        description: "后续继续对话会使用当前已发布的 Agent 配置。",
+        variant: "success",
       });
     } catch (error) {
       notify({
-        title: "重启失败",
+        title: "刷新失败",
         description:
-          error instanceof Error ? error.message : "重启会话失败，请稍后重试。",
+          error instanceof Error ? error.message : "刷新当前对话失败，请稍后重试。",
         variant: "error",
       });
     } finally {
-      if (shouldResetRestarting) {
-        setIsRestartingConversation(false);
-      }
+      setIsRestartingConversation(false);
     }
   }, [
     actions,
     agentId,
+    conversationId,
+    hasSandbox,
     isRestartingConversation,
     navigate,
     notify,
@@ -911,6 +925,7 @@ export function AgentConversationPage({
                 runtimeMode={
                   runtimeMode === "no_sandbox" ? "no_sandbox" : "sandbox"
                 }
+                loadedPublishedVersionId={loadedPublishedVersionId}
                 onRestartConversation={handleRestartConversation}
               />
             </div>

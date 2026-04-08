@@ -6,6 +6,8 @@ import 'package:flutter_test/flutter_test.dart';
 const _tinyPngBase64 =
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO0p1xQAAAAASUVORK5CYII=';
 
+Future<void> _noopRestart() async {}
+
 void main() {
   Widget createTestWidget(Widget child) {
     return MaterialApp(home: Scaffold(body: child));
@@ -31,6 +33,7 @@ void main() {
                   'data': {
                     'restartSuggestion': {
                       'available': true,
+                      'publishedVersionId': 'pub-1',
                       'publishedVersionNumber': 7,
                     },
                   },
@@ -53,9 +56,9 @@ void main() {
     );
 
     expect(find.text('Agent 已升级到 v7'), findsOneWidget);
-    expect(find.text('重启到新版本'), findsOneWidget);
+    expect(find.text('刷新当前对话'), findsOneWidget);
 
-    await tester.tap(find.text('重启到新版本'));
+    await tester.tap(find.text('刷新当前对话'));
     await tester.pumpAndSettle();
 
     expect(restartCount, 1);
@@ -93,7 +96,51 @@ void main() {
     );
 
     expect(find.text('Agent 已升级到 v8'), findsOneWidget);
-    expect(find.text('重启到新版本'), findsOneWidget);
+    expect(find.text('刷新当前对话'), findsOneWidget);
+  });
+
+  testWidgets('当前对话已加载相同 publishedVersionId 时不应展示刷新卡片', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      createTestWidget(
+        const MessageBubble(
+          message: ConversationMessageDto(
+            id: 'assistant-3',
+            conversationId: 'conv-001',
+            role: MessageRole.assistant,
+            content: '已完成自进化发布',
+            toolCalls: [
+              ConversationToolCallDto(
+                id: 'tool-1',
+                tool: 'apply_change',
+                status: ConversationToolStatus.completed,
+                result: {
+                  'data': {
+                    'restartSuggestion': {
+                      'available': true,
+                      'publishedVersionId': 'pub-1',
+                      'publishedVersionNumber': 9,
+                    },
+                  },
+                },
+              ),
+            ],
+            metadata: {
+              'segments': [
+                {'type': 'text', 'content': '已完成自进化发布'},
+                {'type': 'tool_call', 'toolCallId': 'tool-1'},
+              ],
+            },
+            createdAt: '2026-04-02T00:00:00.000Z',
+          ),
+          loadedPublishedVersionId: 'pub-1',
+          onRestartConversation: _noopRestart,
+        ),
+      ),
+    );
+
+    expect(find.text('刷新当前对话'), findsNothing);
   });
 
   testWidgets('用户文件附件应展示文件卡片与文本预览', (tester) async {

@@ -227,9 +227,9 @@ export class AgentConversationController {
   @Roles('operator', 'creator', 'admin', 'owner')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({
-    summary: '重启当前会话到 Agent 最新已发布版本并继承历史消息',
+    summary: '在当前会话内刷新到 Agent 最新已发布版本',
   })
-  @ApiResponse({ status: 201, description: '新会话已创建' })
+  @ApiResponse({ status: 201, description: '当前会话已刷新到最新已发布版本' })
   async restartLatestVersion(
     @Param('id', ParseUUIDPipe) id: string,
     @CurrentTenant() tenantId: string,

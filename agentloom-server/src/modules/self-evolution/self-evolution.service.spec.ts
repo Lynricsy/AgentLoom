@@ -73,10 +73,6 @@ function enqueueSelectResult(result: unknown[]) {
   selectResults.push(result);
 }
 
-function enqueueInsertResult(result: unknown[]) {
-  insertResults.push(result);
-}
-
 function makeContext(
   overrides: Partial<SelfEvolutionSessionContext> = {},
 ): SelfEvolutionSessionContext {
@@ -877,7 +873,7 @@ describe('SelfEvolutionService', () => {
     });
   });
 
-  it('restartConversationToLatestVersion 应复制完整消息历史并继承 remembered policies', async () => {
+  it('restartConversationToLatestVersion 应在当前会话刷新 execution metadata 并保留 remembered policies', async () => {
     mockAgentDefinitionService.findDetailById.mockResolvedValueOnce({
       id: 'agent-1',
       name: '当前 Agent',
@@ -889,6 +885,17 @@ describe('SelfEvolutionService', () => {
         id: 'conversation-1',
         agentDefinitionId: 'agent-1',
         title: '旧会话',
+        metadata: {
+          selfEvolution: {
+            rememberedPolicies: {
+              workflow_edit: 'approve',
+            },
+          },
+          execution: {
+            sessionId: 'session-1',
+            memorySessionIds: ['memory-1'],
+          },
+        },
       },
     ]);
     enqueueSelectResult([
@@ -915,9 +922,6 @@ describe('SelfEvolutionService', () => {
         createdAt: new Date('2025-01-01T00:00:01.000Z'),
       },
     ]);
-    enqueueInsertResult([{ id: 'conversation-2' }]);
-    enqueueInsertResult([{ id: 'message-copy-1' }]);
-    enqueueInsertResult([{ id: 'message-copy-2' }]);
 
     const result = await service.restartConversationToLatestVersion(
       'conversation-1',
@@ -927,51 +931,32 @@ describe('SelfEvolutionService', () => {
 
     expect(result).toEqual({
       data: {
-        conversationId: 'conversation-2',
+        conversationId: 'conversation-1',
       },
     });
-    expect(insertValuesCalls[0]).toMatchObject({
-      agentDefinitionId: 'agent-1',
-      tenantId: 'tenant-1',
-      title: '旧会话',
-      createdBy: 'user-2',
-      metadata: {
-        restartFromConversationId: 'conversation-1',
-        inheritedMessageHistory: true,
-      },
-    });
-    expect(insertValuesCalls[1]).toMatchObject({
-      conversationId: 'conversation-2',
-      role: 'user',
-      content: '你好',
-      parentMessageId: null,
-    });
-    expect(insertValuesCalls[2]).toMatchObject({
-      conversationId: 'conversation-2',
-      role: 'assistant',
-      content: '你好，主人',
-      parentMessageId: 'message-copy-1',
-    });
+    expect(insertValuesCalls).toHaveLength(0);
     expect(updateSetCalls[0]).toMatchObject({
       metadata: {
-        restartFromConversationId: 'conversation-1',
-        inheritedMessageHistory: true,
-        restartTargetPublishedVersionId: 'published-version-2',
+        selfEvolution: {
+          rememberedPolicies: {
+            workflow_edit: 'approve',
+          },
+        },
         execution: {
-          lastProcessedMessageId: 'message-copy-1',
-          lastAssistantMessageId: 'message-copy-2',
+          loadedPublishedVersionId: 'published-version-2',
+          lastProcessedMessageId: 'message-1',
+          lastAssistantMessageId: 'message-2',
           lastStopReason: 'end_turn',
           runningState: 'idle',
         },
       },
     });
-    expect(mockPermissionService.cloneRememberedPolicies).toHaveBeenCalledWith(
-      'conversation-1',
-      'conversation-2',
-    );
+    expect(
+      mockPermissionService.cloneRememberedPolicies,
+    ).not.toHaveBeenCalled();
   });
 
-  it('restartConversationToLatestVersion 遇到 persistent sandbox 时应释放旧会话绑定', async () => {
+  it('restartConversationToLatestVersion 不应释放当前会话的沙箱绑定', async () => {
     mockAgentDefinitionService.findDetailById.mockResolvedValueOnce({
       id: 'agent-1',
       name: '当前 Agent',
@@ -986,13 +971,6 @@ describe('SelfEvolutionService', () => {
       },
     ]);
     enqueueSelectResult([]);
-    enqueueInsertResult([{ id: 'conversation-2' }]);
-    mockSandboxService.findByConversationId.mockResolvedValueOnce({
-      id: 'sandbox-1',
-      config: {
-        lifecycleMode: 'persistent',
-      },
-    });
 
     await service.restartConversationToLatestVersion(
       'conversation-1',
@@ -1000,9 +978,6 @@ describe('SelfEvolutionService', () => {
       'user-2',
     );
 
-    expect(mockSandboxService.endConversationSandbox).toHaveBeenCalledWith(
-      'conversation-1',
-      'tenant-1',
-    );
+    expect(mockSandboxService.endConversationSandbox).not.toHaveBeenCalled();
   });
 });

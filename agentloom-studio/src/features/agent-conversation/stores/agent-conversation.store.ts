@@ -110,6 +110,7 @@ interface AgentConversationState {
   subAgentStreams: Record<string, SubAgentStream>;
   agentViewStack: string[];
   hasHistoricalMessages: boolean;
+  loadedPublishedVersionId: string | null;
 
   /** Current preparation phase during sandbox startup (null when not preparing). */
   preparationPhase: PreparationPhase | null;
@@ -186,6 +187,7 @@ function createInitialState(): AgentConversationState {
     subAgentStreams: {},
     agentViewStack: [],
     hasHistoricalMessages: false,
+    loadedPublishedVersionId: null,
     preparationPhase: null,
     preparationStartTime: null,
     sandboxReused: false,
@@ -1100,6 +1102,7 @@ function normalizeConversationExecutionSnapshot(metadata: unknown): {
   runningState?: "idle" | "running" | "failed" | "cancelled";
   errorMessage?: string;
   failedPhase?: PreparationPhase;
+  loadedPublishedVersionId?: string;
 } {
   if (!isRecord(metadata)) {
     return {};
@@ -1112,6 +1115,7 @@ function normalizeConversationExecutionSnapshot(metadata: unknown): {
     readString(execution.rawErrorMessage) ??
     readString(execution.lastErrorMessage);
   const failedPhase = readString(execution.failedPhase);
+  const loadedPublishedVersionId = readString(execution.loadedPublishedVersionId);
 
   return {
     ...(runningState === "idle" ||
@@ -1122,6 +1126,7 @@ function normalizeConversationExecutionSnapshot(metadata: unknown): {
       : {}),
     ...(errorMessage ? { errorMessage } : {}),
     ...(failedPhase ? { failedPhase: failedPhase as PreparationPhase } : {}),
+    ...(loadedPublishedVersionId ? { loadedPublishedVersionId } : {}),
   };
 }
 
@@ -1989,6 +1994,8 @@ export const useAgentConversationStore = create<
                     }
 
                     s.hasHistoricalMessages = normalizedMessages.length > 0;
+                    s.loadedPublishedVersionId =
+                      executionSnapshot.loadedPublishedVersionId ?? null;
                     s.messages = mergeHistoryWithLiveTail(
                       s.messages,
                       normalizedMessages,
@@ -2216,6 +2223,9 @@ export const useConversationActions = () =>
 
 export const useConversationId = () =>
   useAgentConversationStore((s) => s.conversationId);
+
+export const useLoadedPublishedVersionId = () =>
+  useAgentConversationStore((s) => s.loadedPublishedVersionId);
 
 export const useTerminalEntries = () =>
   useAgentConversationStore((s) => s.terminalEntries);

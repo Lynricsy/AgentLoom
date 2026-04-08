@@ -170,6 +170,104 @@ await db.insert(agentMessages).values({
 
 ---
 
+## 场景：历史对话继续执行时必须切到当前 published version，而不是恢复旧 runtime session
+
+### 1. Scope / Trigger
+
+- 触发条件：修改以下任一文件时，必须回看本节
+  - `src/modules/agent-execution/agent-execution.worker.ts`
+  - `src/modules/self-evolution/self-evolution.service.ts`
+  - `src/modules/agent-conversation/agent-conversation.controller.ts`
+- 风险点：如果 standalone Agent conversation 继续执行时仍盲目 `loadSession(oldSessionId)`，即使 Agent 已经发布了新版本，旧 session 里的工具链 / prompt / memory bindings 仍停留在旧配置，表现为“画布已变更，但历史对话继续还是老能力”。
+
+### 2. Signatures
+
+- `POST /agent-conversations/:id/restart-latest-version`
+- `SelfEvolutionService.restartConversationToLatestVersion(conversationId, tenantId, userId): Promise<{ data: { conversationId: string } }>`
+- `AgentExecutionWorker.loadConversationExecutionContext(conversationId, tenantId): Promise<ConversationExecutionContext | null>`
+- `AgentExecutionWorker.prepareRuntimeSession(...)`
+- `agent_conversations.metadata.execution.loadedPublishedVersionId?: string`
+
+### 3. Contracts
+
+- standalone Agent conversation 的 `metadata.execution` 必须持久化 `loadedPublishedVersionId`，表示**当前 conversation 最近一次实际加载到 runtime 的 published version**。
+- `AgentExecutionWorker` 在历史对话继续执行时，必须比较：
+  - `execution.loadedPublishedVersionId`
+  - 当前 `agent_definitions.published_version_id`
+- 若两者不一致：
+  - 不得继续恢复旧 `sessionId`
+  - 必须在**当前 conversation 内**丢弃旧 runtime state，并按最新 published version 重建 runtime session
+  - 至少清理：
+    - `execution.sessionId`
+    - `execution.memorySessionIds`
+  - 同时保留：
+    - 当前 conversation 的消息历史
+    - 当前 conversation 的 remembered self-evolution policies
+    - 已落库的 `lastProcessedMessageId / lastAssistantMessageId`
+- `POST /agent-conversations/:id/restart-latest-version` 现在是**当前 conversation 内的 refresh**，不是 clone/fork。
+  - 返回值仍为 `{ data: { conversationId } }`
+  - 返回的 `conversationId` 必须是当前会话 ID，而不是新建 ID
+  - 不得复制 `agent_messages`
+  - 不得复制 remembered policies，因为同一条 conversation metadata 会原地保留
+- 当前配置不再使用 sandbox 时，refresh 路径应 best-effort 释放旧的 conversation sandbox binding，避免后续继续保留无效沙箱绑定。
+- 当前配置仍使用 sandbox 时，refresh 路径默认保留当前 conversation 的 sandbox binding，只刷新 runtime session，避免无谓丢失工作区上下文。
+
+### 4. Validation & Error Matrix
+
+| 条件 | 预期行为 | 断言点 |
+| --- | --- | --- |
+| `execution.loadedPublishedVersionId` 与当前 published version 一致 | 可以继续恢复现有 `sessionId` | `agent-execution.worker.spec.ts` |
+| `execution.loadedPublishedVersionId` 缺失，但当前已有 `sessionId` 且 Agent 已发布 | 视为 legacy stale session，必须刷新当前 conversation runtime | `agent-execution.worker.spec.ts` |
+| 当前 published version 已变化 | 清理旧 `sessionId/memorySessionIds`，写回新的 `loadedPublishedVersionId`，并在当前 conversation 内继续执行 | `agent-execution.worker.spec.ts` |
+| 手动调用 `restart-latest-version` | 返回当前 conversationId，且只更新当前 conversation metadata.execution | `self-evolution.service.spec.ts` |
+| 当前配置是 `no_sandbox`，但 conversation 之前已有 sandbox binding | refresh 时 best-effort 释放旧 conversation sandbox | `agent-execution.worker.spec.ts` |
+
+### 5. Good / Base / Bad Cases
+
+- Good：Agent 自进化发布了新的 MCP 工具后，历史 conversation 下一条消息直接使用新工具，无需另开新会话。
+- Good：用户点击“刷新当前对话”后，返回的仍是同一个 conversationId，消息历史完全不变，只是后续继续对话会吃最新配置。
+- Base：当前 Agent 没有 published version 时，不强制触发 published-version drift refresh，继续沿用现有 runtime 路径。
+- Bad：`restart-latest-version` 仍复制消息并返回新 conversationId，或者 worker 看到 drift 后依旧恢复旧 `sessionId`。
+
+### 6. Tests Required
+
+- `src/modules/agent-execution/__tests__/agent-execution.worker.spec.ts`
+  - 断言 published-version drift 会触发当前 conversation runtime refresh。
+  - 断言 refresh 后传给 `prepareRuntimeSession()` 的 `executionMetadata` 已不再携带旧 `sessionId/memorySessionIds`。
+- `src/modules/self-evolution/self-evolution.service.spec.ts`
+  - 断言 `restartConversationToLatestVersion()` 返回当前 conversationId。
+  - 断言不会插入新 conversation / 新 message。
+  - 断言 remembered policies 保留在原 conversation metadata 中。
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```ts
+// 旧语义：复制消息并新建 conversation
+const [nextConversation] = await db.insert(agentConversations).values(...).returning();
+return { data: { conversationId: nextConversation.id } };
+```
+
+#### Correct
+
+```ts
+// 新语义：原地清理当前 conversation 的旧 runtime state
+await db.update(agentConversations).set({
+  metadata: {
+    ...baseMetadata,
+    execution: {
+      loadedPublishedVersionId: latestPublishedVersionId,
+      runningState: 'idle',
+      lastStopReason: 'end_turn',
+    },
+  },
+});
+return { data: { conversationId } };
+```
+
+---
+
 ## 场景：standalone Agent 对话中的附件消息必须进入 runtime 上下文并在 sandbox 中可引用
 
 ### 1. Scope / Trigger

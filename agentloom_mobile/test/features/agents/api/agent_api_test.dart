@@ -61,7 +61,7 @@ void main() {
     });
 
     test(
-      'restartConversationToLatestVersion 应发送空 JSON body 并返回新会话 id',
+      'restartConversationToLatestVersion 应发送空 JSON body 并返回会话 id',
       () async {
         when(() => mockDio.post(any(), data: any(named: 'data'))).thenAnswer(
           (_) async => okResponse({

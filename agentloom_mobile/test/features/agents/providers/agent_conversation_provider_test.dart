@@ -908,7 +908,7 @@ void main() {
     expect(toolCall.transitions.last.to, ConversationToolStatus.inProgress);
   });
 
-  test('restartConversationToLatestVersion 应返回新会话 id', () async {
+  test('restartConversationToLatestVersion 应返回会话 id', () async {
     when(
       () => mockApi.restartConversationToLatestVersion(any()),
     ).thenAnswer((_) async => 'conv-002');

@@ -71,6 +71,7 @@ typedef _ConversationHistorySnapshot = ({
   String? runningState,
   String? errorMessage,
   PreparationPhase? failedPhase,
+  String? loadedPublishedVersionId,
 });
 typedef _ConversationBootstrap = ({
   String runtimeMode,
@@ -820,6 +821,9 @@ _ConversationHistorySnapshot _normalizeConversationHistorySnapshot(
   final failedPhase = parsePreparationPhase(
     _readString(execution['failedPhase']),
   );
+  final loadedPublishedVersionId = _readString(
+    execution['loadedPublishedVersionId'],
+  );
 
   return (
     messages: detail.messages.data
@@ -828,6 +832,7 @@ _ConversationHistorySnapshot _normalizeConversationHistorySnapshot(
     runningState: runningState,
     errorMessage: errorMessage,
     failedPhase: failedPhase,
+    loadedPublishedVersionId: loadedPublishedVersionId,
   );
 }
 
@@ -1250,13 +1255,17 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
         final preservedLiveTail =
             mergedMessages.length > snapshot.messages.length;
         if (preservedLiveTail) {
-          return current.copyWith(messages: mergedMessages);
+          return current.copyWith(
+            messages: mergedMessages,
+            loadedPublishedVersionId: snapshot.loadedPublishedVersionId,
+          );
         }
 
         if (snapshot.runningState == 'running') {
           return current.copyWith(
             messages: mergedMessages,
             status: ConversationStatus.executing,
+            loadedPublishedVersionId: snapshot.loadedPublishedVersionId,
             clearError: true,
           );
         }
@@ -1271,6 +1280,7 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
               preparationFailedPhase: snapshot.failedPhase,
               preparationError: runtimeError,
               error: runtimeError,
+              loadedPublishedVersionId: snapshot.loadedPublishedVersionId,
             );
           }
 
@@ -1278,6 +1288,7 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
             messages: mergedMessages,
             status: ConversationStatus.error,
             error: runtimeError,
+            loadedPublishedVersionId: snapshot.loadedPublishedVersionId,
             clearPreparationPhase: true,
             clearPreparationStartTime: true,
             clearPreparationError: true,
@@ -1292,6 +1303,7 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
             status: current.isConnected
                 ? ConversationStatus.connected
                 : ConversationStatus.idle,
+            loadedPublishedVersionId: snapshot.loadedPublishedVersionId,
             clearError: true,
             clearPreparationPhase: true,
             clearPreparationStartTime: true,
@@ -1300,7 +1312,10 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
           );
         }
 
-        return current.copyWith(messages: mergedMessages);
+        return current.copyWith(
+          messages: mergedMessages,
+          loadedPublishedVersionId: snapshot.loadedPublishedVersionId,
+        );
       });
     } catch (error) {
       if (!ref.mounted || silent) {
@@ -1819,9 +1834,22 @@ class AgentConversationNotifier extends AsyncNotifier<ConversationState> {
 
   Future<String?> restartConversationToLatestVersion() async {
     try {
-      return await ref
+      final nextConversationId = await ref
           .read(agentApiProvider)
           .restartConversationToLatestVersion(params.conversationId);
+      if (!ref.mounted || nextConversationId == null) {
+        return nextConversationId;
+      }
+
+      if (nextConversationId == params.conversationId) {
+        await _loadHistory();
+        final currentState = state.value;
+        if (currentState != null && currentState.hasSandboxRuntime) {
+          await _refreshWorkspaceTree(silent: true);
+        }
+      }
+
+      return nextConversationId;
     } catch (error) {
       if (!ref.mounted) {
         return null;

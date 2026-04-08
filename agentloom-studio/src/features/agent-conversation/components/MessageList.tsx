@@ -288,7 +288,7 @@ function RestartToLatestVersionCard({
               : ""}
           </div>
           <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-            当前会话继续保留旧运行态。点击下方按钮后，会新建会话并继承完整消息历史与已记住的自进化授权策略。
+            当前对话后续继续时会自动使用最新已发布配置。点击下方按钮可立即刷新当前运行态，不会新建会话。
           </p>
           <div className="mt-3">
             <Button
@@ -296,7 +296,7 @@ function RestartToLatestVersionCard({
               onClick={() => void handleRestart()}
               disabled={submitting}
             >
-              {submitting ? "重启中…" : "重启到新版本"}
+              {submitting ? "刷新中…" : "刷新当前对话"}
             </Button>
           </div>
         </div>
@@ -380,9 +380,11 @@ const UserBubble = memo(function UserBubble({
 /** 助手消息 - 按 segments 瀑布流渲染 */
 const AssistantMessage = memo(function AssistantMessage({
   message,
+  loadedPublishedVersionId,
   onRestartConversation,
 }: {
   message: ConversationMessage;
+  loadedPublishedVersionId?: string | null;
   onRestartConversation: () => Promise<void>;
 }) {
   const { resolveToolPermission } = useConversationActions();
@@ -400,6 +402,11 @@ const AssistantMessage = memo(function AssistantMessage({
   const restartSuggestion = message.toolCalls
     .map((toolCall) => extractRestartSuggestion(toolCall))
     .find((suggestion) => suggestion !== null);
+  const activeRestartSuggestion =
+    restartSuggestion &&
+    restartSuggestion.publishedVersionId !== loadedPublishedVersionId
+      ? restartSuggestion
+      : null;
 
   const segments = message.segments;
   const showEmptyTurnPlaceholder =
@@ -448,9 +455,9 @@ const AssistantMessage = memo(function AssistantMessage({
           </div>
         )}
 
-        {restartSuggestion && (
+        {activeRestartSuggestion && (
           <RestartToLatestVersionCard
-            publishedVersionNumber={restartSuggestion.publishedVersionNumber}
+            publishedVersionNumber={activeRestartSuggestion.publishedVersionNumber}
             onRestart={onRestartConversation}
           />
         )}
@@ -517,6 +524,7 @@ export interface MessageListProps {
   messages: ConversationMessage[];
   isExecuting: boolean;
   runtimeMode: AgentRuntimeMode;
+  loadedPublishedVersionId?: string | null;
   onRestartConversation: () => Promise<void>;
 }
 
@@ -524,6 +532,7 @@ export function MessageList({
   messages,
   isExecuting,
   runtimeMode,
+  loadedPublishedVersionId,
   onRestartConversation,
 }: MessageListProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -606,6 +615,7 @@ export function MessageList({
               <AssistantMessage
                 key={msg.id}
                 message={msg}
+                loadedPublishedVersionId={loadedPublishedVersionId}
                 onRestartConversation={onRestartConversation}
               />
             ),

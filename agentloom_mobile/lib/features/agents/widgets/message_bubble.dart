@@ -175,11 +175,13 @@ class MessageBubble extends StatelessWidget {
   const MessageBubble({
     super.key,
     required this.message,
+    this.loadedPublishedVersionId,
     this.onResolvePermission,
     this.onRestartConversation,
   });
 
   final ConversationMessageDto message;
+  final String? loadedPublishedVersionId;
   final Future<void> Function(
     String toolCallId,
     String action, {
@@ -195,6 +197,9 @@ class MessageBubble extends StatelessWidget {
     final segments = _resolvedSegments(message);
     final incompleteError = _incompleteErrorMessage(message);
     final restartSuggestion = _extractRestartSuggestion(message);
+    final activeRestartSuggestion =
+        restartSuggestion != null &&
+        restartSuggestion.publishedVersionId != loadedPublishedVersionId;
     final attachments = _extractAttachments(message);
 
     if (isUser) {
@@ -334,7 +339,8 @@ class MessageBubble extends StatelessWidget {
                 ),
               ),
             ],
-            if (restartSuggestion != null && onRestartConversation != null) ...[
+            if (activeRestartSuggestion &&
+                onRestartConversation != null) ...[
               const SizedBox(height: 10),
               _RestartConversationCard(
                 publishedVersionNumber:
@@ -740,7 +746,7 @@ class _RestartConversationCardState extends State<_RestartConversationCard> {
             ),
             const SizedBox(height: 8),
             Text(
-              '重启后会新建会话，并继承完整消息历史与已记住的自进化授权策略。',
+              '当前对话后续继续时会自动使用最新已发布配置。点击下方按钮可立即刷新当前运行态，不会新建会话。',
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onPrimaryContainer,
               ),
@@ -766,7 +772,7 @@ class _RestartConversationCardState extends State<_RestartConversationCard> {
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
                   : const Icon(Icons.refresh),
-              label: Text(_submitting ? '重启中…' : '重启到新版本'),
+              label: Text(_submitting ? '刷新中…' : '刷新当前对话'),
             ),
           ],
         ),
@@ -841,7 +847,8 @@ String? _incompleteErrorMessage(ConversationMessageDto message) {
   return null;
 }
 
-({int? publishedVersionNumber})? _extractRestartSuggestion(
+({String? publishedVersionId, int? publishedVersionNumber})?
+_extractRestartSuggestion(
   ConversationMessageDto message,
 ) {
   for (final toolCall in message.toolCalls) {
@@ -853,6 +860,10 @@ String? _incompleteErrorMessage(ConversationMessageDto message) {
     }
 
     return (
+      publishedVersionId:
+          suggestion['publishedVersionId'] is String
+              ? suggestion['publishedVersionId'] as String
+              : null,
       publishedVersionNumber: suggestion['publishedVersionNumber'] is int
           ? suggestion['publishedVersionNumber'] as int
           : null,

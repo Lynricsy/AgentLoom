@@ -143,6 +143,15 @@ class _AgentConversationScreenState
                     return;
                   }
 
+                  if (nextConversationId == widget.conversationId) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('当前对话已刷新到最新配置'),
+                      ),
+                    );
+                    return;
+                  }
+
                   context.pushReplacementNamed(
                     RouteNames.agentConversation,
                     pathParameters: {
@@ -482,6 +491,7 @@ class _MessageListView extends StatelessWidget {
         if (index < state.messages.length) {
           return MessageBubble(
             message: state.messages[index],
+            loadedPublishedVersionId: state.loadedPublishedVersionId,
             onResolvePermission: onResolvePermission,
             onRestartConversation: onRestartConversation,
           );

@@ -99,9 +99,58 @@ describe("MessageList", () => {
       ),
     ).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "重启到新版本" }));
+    expect(
+      screen.getByText(/当前对话后续继续时会自动使用最新已发布配置/),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "刷新当前对话" }));
 
     expect(onRestartConversation).toHaveBeenCalledTimes(1);
+  });
+
+  it("当前对话已加载相同 publishedVersionId 时不应重复展示刷新卡片", () => {
+    const message: ConversationMessage = {
+      id: "assistant-3",
+      role: "assistant",
+      content: "已完成自进化发布",
+      toolCalls: [
+        {
+          id: "tool-1",
+          tool: "apply_change",
+          status: "completed",
+          result: {
+            data: {
+              restartSuggestion: {
+                available: true,
+                publishedVersionId: "pub-1",
+                publishedVersionNumber: 8,
+              },
+            },
+          },
+          startedAt: Date.now(),
+          updatedAt: Date.now(),
+        },
+      ],
+      segments: [
+        { type: "text", content: "已完成自进化发布" },
+        { type: "tool_call", toolCallId: "tool-1" },
+      ],
+      isStreaming: false,
+      createdAt: Date.now(),
+      metadata: {},
+    };
+
+    render(
+      <MessageList
+        messages={[message]}
+        isExecuting={false}
+        runtimeMode="sandbox"
+        loadedPublishedVersionId="pub-1"
+        onRestartConversation={async () => {}}
+      />,
+    );
+
+    expect(screen.queryByText(/刷新当前对话/)).not.toBeInTheDocument();
   });
 
   it("应渲染用户图片附件预览", () => {

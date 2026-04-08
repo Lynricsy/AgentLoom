@@ -122,6 +122,106 @@ const segments = checkpointData.segments?.length
 
 ---
 
+## 场景：Agent 对话升级卡片必须刷新当前 conversation，而不是跳到新会话
+
+### 1. Scope / Trigger
+
+- 触发条件：修改以下任一文件时，必须回看本节
+  - `agentloom-studio/src/features/agent-conversation/stores/agent-conversation.store.ts`
+  - `agentloom-studio/src/features/agent-conversation/components/AgentConversationPage.tsx`
+  - `agentloom-studio/src/features/agent-conversation/components/MessageList.tsx`
+  - `agentloom_mobile/lib/features/agents/providers/agent_conversation_provider.dart`
+  - `agentloom_mobile/lib/features/agents/screens/agent_conversation_screen.dart`
+  - `agentloom_mobile/lib/features/agents/widgets/message_bubble.dart`
+- 风险点：如果前端仍把升级卡片实现成“跳新 conversation”，会和后端当前 contract 冲突；如果前端不知道 `loadedPublishedVersionId`，就会在已经刷新成功的当前对话里反复展示陈旧升级卡片。
+
+### 2. Signatures
+
+- Studio:
+  - `agentConversationStore.actions.restartToLatestVersion(): Promise<string | null>`
+  - `normalizeConversationExecutionSnapshot(metadata): { loadedPublishedVersionId?: string }`
+  - `MessageList({ loadedPublishedVersionId, onRestartConversation, ... })`
+- Flutter:
+  - `AgentConversationNotifier.restartConversationToLatestVersion(): Future<String?>`
+  - `_normalizeConversationHistorySnapshot(detail)`
+  - `ConversationState.loadedPublishedVersionId`
+  - `MessageBubble(loadedPublishedVersionId: ...)`
+- API:
+  - `POST /api/v1/agent-conversations/:id/restart-latest-version`
+
+### 3. Contracts
+
+- 升级卡片的用户语义必须是：
+  - “刷新当前对话”
+  - 不是“新建会话并继承历史”
+- Studio / Flutter 在 history/detail 回拉时，都必须从 `metadata.execution.loadedPublishedVersionId` 恢复当前 conversation 最近一次已加载的 published version。
+- 当工具结果中的 `restartSuggestion.publishedVersionId` 与当前 `loadedPublishedVersionId` 一致时：
+  - 不得继续展示升级卡片
+  - 说明当前 conversation 已经收敛到该发布版
+- 手动点击升级卡片时：
+  - 必须暂停/抑制当前 conversation 的后台轮询，避免 restart 请求与 history/workspace/sandbox 轮询互相打架
+  - 若接口返回的 `conversationId` 与当前会话相同，则必须停留在当前页并刷新 history（以及有沙箱时的 workspace）
+  - 只有在兼容 legacy server、接口真的返回不同 `conversationId` 时，才允许 fallback 导航到新会话
+- 移动端与 Studio 必须保持同一语义：
+  - 相同 conversationId -> 当前页提示“已刷新当前对话”
+  - 不得无条件 `pushReplacement` 到另一条会话
+
+### 4. Validation & Error Matrix
+
+| 条件 | 预期行为 | 断言点 |
+| --- | --- | --- |
+| `restartSuggestion.publishedVersionId != loadedPublishedVersionId` | 展示“刷新当前对话”卡片 | `MessageList.test.tsx` / `message_bubble_test.dart` |
+| `restartSuggestion.publishedVersionId == loadedPublishedVersionId` | 隐藏升级卡片 | `MessageList.test.tsx` / `message_bubble_test.dart` |
+| 手动刷新接口返回当前 conversationId | 页面停留当前路由，刷新 history/workspace，不导航 | Studio 组件测试 / Flutter provider+screen 测试 |
+| 手动刷新接口返回 legacy 新 conversationId | 允许 fallback 导航，保证兼容旧 server | 手动 QA |
+| 历史对话在后端自动 refresh 后重新回拉 detail | 前端应根据 `loadedPublishedVersionId` 自动收口升级卡片 | store/provider 测试 |
+
+### 5. Good / Base / Bad Cases
+
+- Good：用户点击升级卡片后仍留在当前 conversation，看到成功反馈，下一条消息直接使用当前发布版配置。
+- Good：用户不手动点卡片，只是继续历史对话；后端自动 refresh 后，前端下一次回拉会自动收起升级卡片。
+- Base：兼容旧 server 时，如果接口还返回不同 conversationId，前端仍能 fallback 导航，不至于直接坏掉。
+- Bad：点击后跳到新 conversation，或者明明当前会话已经刷新成功，卡片还一直显示“升级到最新版本”。
+
+### 6. Tests Required
+
+- `agentloom-studio/src/features/agent-conversation/stores/agent-conversation.store.test.ts`
+  - 断言 `loadHistory()` 会同步 `loadedPublishedVersionId`
+  - 断言 `restartToLatestVersion()` 仍使用无默认超时
+- `agentloom-studio/src/features/agent-conversation/components/MessageList.test.tsx`
+  - 断言卡片文案为“刷新当前对话”
+  - 断言 `loadedPublishedVersionId` 相同时卡片隐藏
+- `agentloom_mobile/test/features/agents/providers/agent_conversation_provider_test.dart`
+  - 断言 restart 仍返回会话 ID，并可在当前会话内刷新
+- `agentloom_mobile/test/features/agents/widgets/message_bubble_test.dart`
+  - 断言卡片文案为“刷新当前对话”
+  - 断言 `loadedPublishedVersionId` 相同时卡片隐藏
+
+### 7. Wrong vs Correct
+
+#### Wrong
+
+```ts
+const nextConversationId = await actions.restartToLatestVersion();
+navigate({
+  to: "/agents/$agentId/conversations/$conversationId",
+  params: { agentId, conversationId: nextConversationId! },
+});
+```
+
+#### Correct
+
+```ts
+const nextConversationId = await actions.restartToLatestVersion();
+if (nextConversationId && nextConversationId !== conversationId) {
+  navigate(...); // only legacy fallback
+  return;
+}
+await actions.loadHistory(conversationId);
+```
+
+---
+
 ## 场景：standalone Agent 已完成会话的工作区目录树 fallback
 
 ### 1. Scope / Trigger

@@ -53,7 +53,7 @@ AgentLoom Flutter 客户端，当前定位为移动优先、全端兼容的使�
   - 权限审批、终端输出、文件变更、工作区上下文面板
   - sandbox Agent 对话冷开时会先显示持久化工作区目录预览；若同时存在 `workspaceSnapshotId` 与 `sandboxConfig.restoreWorkspaceId`，预览优先使用 `restoreWorkspaceId`
   - 自进化审批支持“允许一次 / 本会话同类始终允许 / 拒绝一次 / 本会话同类始终拒绝”
-  - 已发布 Agent 完成自进化升级后，可在消息流内直接“重启到新版本”
+  - 已发布 Agent 完成自进化升级后，可在消息流内直接“刷新当前对话”；历史 conversation 继续执行时也会自动使用当前已发布配置
 - Resources：
   - ResourcesHub 以无分类统一列表呈现资源入口
   - Memory

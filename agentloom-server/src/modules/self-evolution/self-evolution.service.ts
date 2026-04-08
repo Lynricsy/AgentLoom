@@ -337,8 +337,8 @@ export class SelfEvolutionService {
 
   async restartConversationToLatestVersion(
     conversationId: string,
-    tenantId: string,
-    userId: string,
+    _tenantId: string,
+    _userId: string,
   ): Promise<{ data: { conversationId: string } }> {
     const [sourceConversation] = await this.tenantDb
       .select()
@@ -362,58 +362,21 @@ export class SelfEvolutionService {
       .from(agentMessages)
       .where(eq(agentMessages.conversationId, conversationId))
       .orderBy(agentMessages.createdAt, agentMessages.id);
-
-    const [newConversation] = await this.tenantDb
-      .insert(agentConversations)
-      .values({
-        agentDefinitionId: sourceConversation.agentDefinitionId,
-        tenantId,
-        title: sourceConversation.title,
-        metadata: {
-          restartFromConversationId: conversationId,
-          inheritedMessageHistory: true,
-        },
-        createdBy: userId,
-      })
-      .returning();
-
-    const messageIdMap = new Map<string, string>();
     let lastProcessedMessageId: string | undefined;
     let lastAssistantMessageId: string | undefined;
     for (const sourceMessage of sourceMessages) {
-      const [insertedMessage] = await this.tenantDb
-        .insert(agentMessages)
-        .values({
-          conversationId: newConversation.id,
-          tenantId,
-          role: sourceMessage.role,
-          contentType: sourceMessage.contentType,
-          content: sourceMessage.content,
-          toolCalls: sourceMessage.toolCalls,
-          toolResults: sourceMessage.toolResults,
-          metadata: sourceMessage.metadata,
-          parentMessageId: sourceMessage.parentMessageId
-            ? (messageIdMap.get(sourceMessage.parentMessageId) ?? null)
-            : null,
-          createdAt: sourceMessage.createdAt,
-        })
-        .returning({ id: agentMessages.id });
-
-      messageIdMap.set(sourceMessage.id, insertedMessage.id);
-
       if (sourceMessage.role === 'user') {
-        lastProcessedMessageId = insertedMessage.id;
+        lastProcessedMessageId = sourceMessage.id;
       }
 
       if (sourceMessage.role === 'assistant') {
-        lastAssistantMessageId = insertedMessage.id;
+        lastAssistantMessageId = sourceMessage.id;
       }
     }
 
     const restartMetadata = this.buildRestartConversationMetadata(
-      this.readRecord(newConversation.metadata) ?? {},
+      this.readRecord(sourceConversation.metadata) ?? {},
       {
-        restartFromConversationId: conversationId,
         targetPublishedVersionId: agentDetail.publishedVersionId,
         lastProcessedMessageId,
         lastAssistantMessageId,
@@ -426,40 +389,11 @@ export class SelfEvolutionService {
         metadata: restartMetadata,
         updatedAt: new Date(),
       })
-      .where(eq(agentConversations.id, newConversation.id));
-
-    await this.permissionService.cloneRememberedPolicies(
-      conversationId,
-      newConversation.id,
-    );
-
-    try {
-      const sourceSandboxSession =
-        await this.sandboxService.findByConversationId(
-          conversationId,
-          tenantId,
-        );
-      if (
-        sourceSandboxSession &&
-        (sourceSandboxSession.config.lifecycleMode ?? 'session') ===
-          'persistent'
-      ) {
-        await this.sandboxService.endConversationSandbox(
-          conversationId,
-          tenantId,
-        );
-      }
-    } catch (error) {
-      this.logger.warn(
-        `Failed to release persistent sandbox binding when restarting conversation ${conversationId} to latest version: ${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
-    }
+      .where(eq(agentConversations.id, conversationId));
 
     return {
       data: {
-        conversationId: newConversation.id,
+        conversationId,
       },
     };
   }
@@ -2337,7 +2271,6 @@ export class SelfEvolutionService {
   private buildRestartConversationMetadata(
     baseMetadata: Record<string, unknown>,
     params: {
-      restartFromConversationId: string;
       targetPublishedVersionId: string;
       lastProcessedMessageId?: string;
       lastAssistantMessageId?: string;
@@ -2346,6 +2279,7 @@ export class SelfEvolutionService {
     const executionMetadata: Record<string, unknown> = {
       runningState: 'idle',
       lastStopReason: 'end_turn',
+      loadedPublishedVersionId: params.targetPublishedVersionId,
       ...(params.lastProcessedMessageId
         ? { lastProcessedMessageId: params.lastProcessedMessageId }
         : {}),
@@ -2356,9 +2290,6 @@ export class SelfEvolutionService {
 
     return {
       ...baseMetadata,
-      restartFromConversationId: params.restartFromConversationId,
-      inheritedMessageHistory: true,
-      restartTargetPublishedVersionId: params.targetPublishedVersionId,
       execution: executionMetadata,
     };
   }

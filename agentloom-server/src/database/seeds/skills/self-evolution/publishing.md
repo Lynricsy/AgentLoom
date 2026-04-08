@@ -7,14 +7,15 @@
 - `apply_change` 落到自己的编排时，会直接生成新的 published version
 - `publishedVersionNumber` 才是用户可见的发布版号；`detail.version` 只是草稿修订号，可能比发布版号更大
 - 当前会话不会被强制切换
-- 主人可以手动重启到新版本
+- 主人可以手动在当前对话里刷新到新版本
+- 历史对话如果继续，也应使用当前已发布的 Agent 配置
 
 ## 重启后的语义
 
-- 继承完整消息历史
-- 继承已经记住的自进化审批策略
-- 不继承旧 sandbox session / memory session 运行态
-- 继承的历史消息只用于上下文参考；重启后的新会话只能执行最新用户消息，不应继续执行历史里的旧计划或编号任务
+- 不新建会话，直接刷新当前 conversation 的 runtime
+- 保留现有消息历史与已经记住的自进化审批策略
+- 丢弃旧 runtime session / memory session 运行态，并按当前 published version 重新创建
+- 历史消息仍只用于上下文参考；刷新后只能响应并执行最新用户消息，不应继续执行历史里的旧计划或编号任务
 
 ## 对外部目标
 

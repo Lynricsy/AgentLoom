@@ -469,6 +469,7 @@ class ConversationState {
     this.sandboxReused = false,
     this.preparationError,
     this.preparationFailedPhase,
+    this.loadedPublishedVersionId,
   });
 
   final List<ConversationMessageDto> messages;
@@ -501,6 +502,9 @@ class ConversationState {
 
   /// 失败时标记哪一步出了问题
   final PreparationPhase? preparationFailedPhase;
+
+  /// 当前对话最近一次实际加载到 runtime 的发布版 ID
+  final String? loadedPublishedVersionId;
 
   bool get isBusy =>
       status == ConversationStatus.connecting ||
@@ -562,6 +566,8 @@ class ConversationState {
     bool clearPreparationError = false,
     PreparationPhase? preparationFailedPhase,
     bool clearPreparationFailedPhase = false,
+    String? loadedPublishedVersionId,
+    bool clearLoadedPublishedVersionId = false,
   }) {
     return ConversationState(
       messages: messages ?? this.messages,
@@ -600,6 +606,9 @@ class ConversationState {
       preparationFailedPhase: clearPreparationFailedPhase
           ? null
           : preparationFailedPhase ?? this.preparationFailedPhase,
+      loadedPublishedVersionId: clearLoadedPublishedVersionId
+          ? null
+          : loadedPublishedVersionId ?? this.loadedPublishedVersionId,
     );
   }
 }

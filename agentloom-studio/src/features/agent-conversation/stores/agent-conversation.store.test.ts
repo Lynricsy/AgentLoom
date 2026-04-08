@@ -537,7 +537,7 @@ describe("agentConversationStore", () => {
     ]);
   });
 
-  it("restartToLatestVersion 应禁用默认超时并返回新会话 ID", async () => {
+  it("restartToLatestVersion 应禁用默认超时并返回会话 ID", async () => {
     const jsonMock = vi.fn().mockResolvedValue({
       data: {
         conversationId: "conv-2",
@@ -564,6 +564,33 @@ describe("agentConversationStore", () => {
       { timeout: false },
     );
     expect(nextConversationId).toBe("conv-2");
+  });
+
+  it("loadHistory 应同步 execution.loadedPublishedVersionId", async () => {
+    getMock.mockReturnValue({
+      json: vi.fn().mockResolvedValue(
+        createConversationDetailResponse([], {
+          execution: {
+            runningState: "idle",
+            loadedPublishedVersionId: "pub-9",
+          },
+        }),
+      ),
+    });
+
+    useAgentConversationStore.getState().actions.connect({
+      conversationId: "conv-1",
+      agentId: "agent-1",
+      agentName: "QA SelfEvo Agent",
+      runtimeMode: "sandbox",
+      authToken: "token-1",
+    });
+
+    await useAgentConversationStore.getState().actions.loadHistory("conv-1");
+
+    expect(useAgentConversationStore.getState().loadedPublishedVersionId).toBe(
+      "pub-9",
+    );
   });
 
   it("loadHistory 会从 detail metadata 同步失败态和错误摘要", async () => {

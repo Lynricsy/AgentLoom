@@ -111,6 +111,7 @@ import {
 type ConversationExecutionMetadata = {
   sessionId?: string;
   memorySessionIds?: string[];
+  loadedPublishedVersionId?: string;
   lastProcessedMessageId?: string;
   lastAssistantMessageId?: string;
   lastStopReason?: StopReason;
@@ -135,6 +136,7 @@ type ConversationExecutionContext = {
   canvasEdges: AgentVersionSnapshot['edges'];
   hasSandbox: boolean;
   memoryInstanceIds: string[];
+  publishedVersionId?: string;
   executionMetadata: ConversationExecutionMetadata;
 };
 
@@ -318,6 +320,51 @@ export class AgentExecutionWorker extends WorkerHost {
         return;
       }
 
+      if (
+        this.shouldRefreshConversationRuntimeForPublishedVersion(
+          executionMetadata,
+          context.publishedVersionId,
+        )
+      ) {
+        this.logger.debug(
+          `Conversation ${conversationId} detected published version drift, recreating runtime session with latest published config`,
+        );
+
+        await this.cleanupConversationMemorySessions(
+          tenantId,
+          executionMetadata.memorySessionIds,
+        );
+
+        if (!context.hasSandbox) {
+          try {
+            await this.sandboxService.endConversationSandbox(
+              conversationId,
+              tenantId,
+            );
+          } catch (error) {
+            this.logger.warn(
+              `Failed to release conversation sandbox while refreshing published version for ${conversationId}: ${
+                error instanceof Error ? error.message : String(error)
+              }`,
+            );
+          }
+        }
+
+        executionMetadata = await this.safeUpdateExecutionMetadata(
+          tenantId,
+          conversationId,
+          this.buildExecutionMetadataForPublishedVersionRefresh(
+            executionMetadata,
+            context.publishedVersionId,
+          ),
+        );
+        context.executionMetadata = executionMetadata;
+        conversationMetadata = this.writeExecutionMetadata(
+          conversationMetadata,
+          executionMetadata,
+        );
+      }
+
       let seededPendingMessages: PendingMessage[] = [];
       if (
         !executionMetadata.sessionId &&
@@ -386,6 +433,9 @@ export class AgentExecutionWorker extends WorkerHost {
         {
           sessionId: session.id,
           ...(memorySessionIds.length ? { memorySessionIds } : {}),
+          ...(context.publishedVersionId
+            ? { loadedPublishedVersionId: context.publishedVersionId }
+            : {}),
           runningState: 'running',
           errorMessage: null,
           errorCode: null,
@@ -784,6 +834,9 @@ export class AgentExecutionWorker extends WorkerHost {
         canvasEdges: snapshot?.edges ?? definition.edges ?? [],
         hasSandbox: runtimeConfig.runtimeMode === 'sandbox',
         memoryInstanceIds,
+        publishedVersionId: this.normalizeOptionalString(
+          definition.publishedVersionId,
+        ),
         executionMetadata: this.readExecutionMetadata(conversation.metadata),
       };
     });
@@ -1856,6 +1909,11 @@ export class AgentExecutionWorker extends WorkerHost {
             ),
           }
         : {}),
+      ...(typeof executionRecord.loadedPublishedVersionId === 'string'
+        ? {
+            loadedPublishedVersionId: executionRecord.loadedPublishedVersionId,
+          }
+        : {}),
       ...(typeof executionRecord.lastProcessedMessageId === 'string'
         ? { lastProcessedMessageId: executionRecord.lastProcessedMessageId }
         : {}),
@@ -1909,6 +1967,9 @@ export class AgentExecutionWorker extends WorkerHost {
       ...(patch.memorySessionIds === undefined
         ? {}
         : { memorySessionIds: patch.memorySessionIds }),
+      ...(patch.loadedPublishedVersionId === undefined
+        ? {}
+        : { loadedPublishedVersionId: patch.loadedPublishedVersionId }),
       ...(patch.errorMessage === undefined
         ? {}
         : { errorMessage: patch.errorMessage }),
@@ -1931,6 +1992,9 @@ export class AgentExecutionWorker extends WorkerHost {
               (value): value is string => typeof value === 'string',
             ),
           }
+        : {}),
+      ...(typeof merged.loadedPublishedVersionId === 'string'
+        ? { loadedPublishedVersionId: merged.loadedPublishedVersionId }
         : {}),
       ...(typeof merged.lastProcessedMessageId === 'string'
         ? { lastProcessedMessageId: merged.lastProcessedMessageId }
@@ -1975,6 +2039,47 @@ export class AgentExecutionWorker extends WorkerHost {
     }
 
     return this.extractStringArray(definitionMetadata['memoryInstanceIds']);
+  }
+
+  private shouldRefreshConversationRuntimeForPublishedVersion(
+    executionMetadata: ConversationExecutionMetadata,
+    currentPublishedVersionId?: string,
+  ): boolean {
+    if (!currentPublishedVersionId) {
+      return false;
+    }
+
+    const hasRuntimeState =
+      typeof executionMetadata.sessionId === 'string' ||
+      (executionMetadata.memorySessionIds?.length ?? 0) > 0;
+    if (!hasRuntimeState) {
+      return false;
+    }
+
+    return (
+      this.normalizeOptionalString(
+        executionMetadata.loadedPublishedVersionId,
+      ) !== currentPublishedVersionId
+    );
+  }
+
+  private buildExecutionMetadataForPublishedVersionRefresh(
+    executionMetadata: ConversationExecutionMetadata,
+    currentPublishedVersionId?: string,
+  ): ConversationExecutionMetadata {
+    return {
+      ...(executionMetadata.lastProcessedMessageId
+        ? { lastProcessedMessageId: executionMetadata.lastProcessedMessageId }
+        : {}),
+      ...(executionMetadata.lastAssistantMessageId
+        ? { lastAssistantMessageId: executionMetadata.lastAssistantMessageId }
+        : {}),
+      lastStopReason: 'end_turn',
+      runningState: 'idle',
+      ...(currentPublishedVersionId
+        ? { loadedPublishedVersionId: currentPublishedVersionId }
+        : {}),
+    };
   }
 
   private extractStringArray(value: unknown): string[] {

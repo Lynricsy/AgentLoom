@@ -874,6 +874,65 @@ describe('AgentExecutionWorker', () => {
       );
     });
 
+    it('已加载 session 对应的 publishedVersionId 过期时应刷新当前对话 runtime', async () => {
+      mockExecutionService.registerActiveRun.mockImplementation(
+        (_id: string, abort: AbortController) => ({ abort, notify: vi.fn() }),
+      );
+      mockExecutionService.waitForNotification.mockResolvedValue('timeout');
+
+      const staleContext = makeActiveContext({
+        hasSandbox: false,
+        publishedVersionId: 'version-2',
+        executionMetadata: {
+          sessionId: 'existing-session',
+          memorySessionIds: ['memory-1'],
+          loadedPublishedVersionId: 'version-1',
+          lastProcessedMessageId: 'message-1',
+        },
+      });
+
+      setupLoopMocks(workerInternals, {
+        context: staleContext,
+        pendingMessages: [[]],
+      });
+      workerInternals.safeUpdateExecutionMetadata = vi.fn().mockResolvedValue({
+        loadedPublishedVersionId: 'version-2',
+        lastProcessedMessageId: 'message-1',
+        lastStopReason: 'end_turn',
+        runningState: 'idle',
+      });
+
+      await worker.executeAgentLoop('c-1', 't-1');
+
+      expect(mockSandboxService.endConversationSandbox).toHaveBeenCalledWith(
+        'c-1',
+        't-1',
+      );
+      expect(workerInternals.safeUpdateExecutionMetadata).toHaveBeenCalledWith(
+        't-1',
+        'c-1',
+        {
+          loadedPublishedVersionId: 'version-2',
+          lastProcessedMessageId: 'message-1',
+          lastStopReason: 'end_turn',
+          runningState: 'idle',
+        },
+      );
+
+      const prepareContext = workerInternals.prepareRuntimeSession.mock
+        .calls[0]?.[0] as {
+        executionMetadata: Record<string, unknown>;
+      };
+      expect(prepareContext.executionMetadata).toMatchObject({
+        loadedPublishedVersionId: 'version-2',
+        lastProcessedMessageId: 'message-1',
+        lastStopReason: 'end_turn',
+        runningState: 'idle',
+      });
+      expect(prepareContext.executionMetadata.sessionId).toBeUndefined();
+      expect(prepareContext.executionMetadata.memorySessionIds).toBeUndefined();
+    });
+
     it('session 未恢复时会在首轮重建历史消息上下文', async () => {
       mockExecutionService.registerActiveRun.mockImplementation(
         (_id: string, abort: AbortController) => ({ abort, notify: vi.fn() }),
