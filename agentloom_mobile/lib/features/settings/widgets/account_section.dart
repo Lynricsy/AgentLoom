@@ -40,76 +40,99 @@ class AccountSection extends ConsumerWidget {
           ),
         ),
 
-        // 邮箱信息
-        if (email != null && email.isNotEmpty)
-          ListTile(
-            leading: const Icon(Icons.email_outlined),
-            title: const Text('邮箱'),
-            subtitle: Text(
-              email,
-              style: TextStyle(
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-              ),
-            ),
-          ),
-
-        // 已关联的 OAuth 提供商
-        securityInfoAsync.when(
-          data: (info) {
-            if (info.linkedProviders.isEmpty) return const SizedBox.shrink();
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
-                  child: Text(
-                    '关联账号',
-                    style: theme.textTheme.labelMedium?.copyWith(
-                      color: theme.colorScheme.onSurface.withValues(alpha: 0.5),
+        Card(
+          clipBehavior: Clip.antiAlias,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              // 邮箱信息
+              if (email != null && email.isNotEmpty) ...[
+                ListTile(
+                  leading: const Icon(Icons.email_outlined),
+                  title: const Text('邮箱'),
+                  subtitle: Text(
+                    email,
+                    style: TextStyle(
+                      color:
+                          theme.colorScheme.onSurface.withValues(alpha: 0.6),
                     ),
                   ),
                 ),
-                ...info.linkedProviders.map(
-                  (p) => ListTile(
-                    leading: const Icon(Icons.link_outlined),
-                    title: Text(_providerDisplayName(p)),
-                    dense: true,
-                  ),
-                ),
+                const Divider(height: 1),
               ],
-            );
-          },
-          loading: () => const SizedBox.shrink(),
-          error: (_, __) => const SizedBox.shrink(),
-        ),
 
-        // 退出登录
-        ListTile(
-          leading: Icon(Icons.logout, color: theme.colorScheme.error),
-          title: Text('退出登录', style: TextStyle(color: theme.colorScheme.error)),
-          onTap: () => _showLogoutConfirmDialog(context, ref),
-        ),
+              // 已关联的 OAuth 提供商
+              securityInfoAsync.when(
+                data: (info) {
+                  if (info.linkedProviders.isEmpty) {
+                    return const SizedBox.shrink();
+                  }
+                  return Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                        child: Text(
+                          '关联账号',
+                          style: theme.textTheme.labelMedium?.copyWith(
+                            color: theme.colorScheme.onSurface
+                                .withValues(alpha: 0.5),
+                          ),
+                        ),
+                      ),
+                      ...info.linkedProviders.map(
+                        (p) => ListTile(
+                          leading: const Icon(Icons.link_outlined),
+                          title: Text(_providerDisplayName(p)),
+                          dense: true,
+                        ),
+                      ),
+                      const Divider(height: 1),
+                    ],
+                  );
+                },
+                loading: () => const SizedBox.shrink(),
+                error: (_, __) => const SizedBox.shrink(),
+              ),
 
-        // 退出所有设备
-        ListTile(
-          leading: revokeAllState is RevokeAllSessionsLoading
-              ? SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: theme.colorScheme.error,
-                  ),
-                )
-              : Icon(Icons.devices_outlined, color: theme.colorScheme.error),
-          title: Text(
-            '退出所有设备',
-            style: TextStyle(color: theme.colorScheme.error),
+              // 退出登录
+              ListTile(
+                leading: Icon(Icons.logout, color: theme.colorScheme.error),
+                title: Text(
+                  '退出登录',
+                  style: TextStyle(color: theme.colorScheme.error),
+                ),
+                onTap: () => _showLogoutConfirmDialog(context, ref),
+              ),
+              const Divider(height: 1),
+
+              // 退出所有设备
+              ListTile(
+                leading: revokeAllState is RevokeAllSessionsLoading
+                    ? SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: theme.colorScheme.error,
+                        ),
+                      )
+                    : Icon(
+                        Icons.devices_outlined,
+                        color: theme.colorScheme.error,
+                      ),
+                title: Text(
+                  '退出所有设备',
+                  style: TextStyle(color: theme.colorScheme.error),
+                ),
+                subtitle: const Text('在所有已登录设备上退出'),
+                onTap: revokeAllState is RevokeAllSessionsLoading
+                    ? null
+                    : () => _showRevokeAllConfirmDialog(context, ref),
+              ),
+            ],
           ),
-          subtitle: const Text('在所有已登录设备上退出'),
-          onTap: revokeAllState is RevokeAllSessionsLoading
-              ? null
-              : () => _showRevokeAllConfirmDialog(context, ref),
         ),
       ],
     );

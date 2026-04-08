@@ -123,7 +123,7 @@ class WorkflowDetailScreen extends ConsumerWidget {
                             ],
                             const SizedBox(height: 16),
                             _MetadataRow(
-                              label: 'Version',
+                              label: '版本',
                               value: _buildReleaseLabel(workflow),
                             ),
                             const SizedBox(height: 4),
@@ -137,12 +137,12 @@ class WorkflowDetailScreen extends ConsumerWidget {
                             _MetadataRow(label: 'Slug', value: workflow.slug),
                             const SizedBox(height: 4),
                             _MetadataRow(
-                              label: 'Updated',
+                              label: '更新时间',
                               value: _formatDate(workflow.updatedAt),
                             ),
                             const SizedBox(height: 4),
                             _MetadataRow(
-                              label: 'Created',
+                              label: '创建时间',
                               value: _formatDate(workflow.createdAt),
                             ),
                           ],
@@ -159,7 +159,7 @@ class WorkflowDetailScreen extends ConsumerWidget {
                         vertical: 8,
                       ),
                       child: Text(
-                        'Recent Executions',
+                        '最近执行',
                         style: theme.textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w600,
                         ),
@@ -181,7 +181,7 @@ class WorkflowDetailScreen extends ConsumerWidget {
                       child: Padding(
                         padding: const EdgeInsets.all(16),
                         child: Text(
-                          'Failed to load executions',
+                          '加载执行记录失败',
                           style: theme.textTheme.bodyMedium?.copyWith(
                             color: theme.colorScheme.error,
                           ),
@@ -204,7 +204,7 @@ class WorkflowDetailScreen extends ConsumerWidget {
                                   ),
                                   const SizedBox(height: 8),
                                   Text(
-                                    'No executions yet',
+                                    '暂无执行记录',
                                     style: theme.textTheme.bodyMedium?.copyWith(
                                       color: theme.colorScheme.onSurfaceVariant,
                                     ),
@@ -216,18 +216,35 @@ class WorkflowDetailScreen extends ConsumerWidget {
                         );
                       }
 
-                      return SliverList(
-                        delegate: SliverChildBuilderDelegate(
-                          (context, index) => ExecutionSummaryTile(
-                            execution: response.data[index],
-                            onTap: () => context.pushNamed(
-                              RouteNames.executionMonitor,
-                              pathParameters: {
-                                'executionId': response.data[index].id,
-                              },
+                      return SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: Card(
+                            clipBehavior: Clip.antiAlias,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: List.generate(
+                                response.data.length,
+                                (index) => Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    ExecutionSummaryTile(
+                                      execution: response.data[index],
+                                      onTap: () => context.pushNamed(
+                                        RouteNames.executionMonitor,
+                                        pathParameters: {
+                                          'executionId':
+                                              response.data[index].id,
+                                        },
+                                      ),
+                                    ),
+                                    if (index < response.data.length - 1)
+                                      const Divider(height: 1),
+                                  ],
+                                ),
+                              ),
                             ),
                           ),
-                          childCount: response.data.length,
                         ),
                       );
                     },
@@ -267,7 +284,7 @@ class WorkflowDetailScreen extends ConsumerWidget {
       return 'v${workflow.publishedReleaseNumber ?? 1}';
     }
 
-    return 'Unpublished';
+    return '未发布';
   }
 }
 

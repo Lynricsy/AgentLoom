@@ -21,7 +21,7 @@ class ExecutionSummaryTile extends StatelessWidget {
         child: Icon(icon, color: color, size: 20),
       ),
       title: Text(
-        'Run #${execution.id.length >= 8 ? execution.id.substring(0, 8) : execution.id}',
+        '运行 #${execution.id.length >= 8 ? execution.id.substring(0, 8) : execution.id}',
         style: theme.textTheme.bodyMedium?.copyWith(
           fontWeight: FontWeight.w500,
         ),
@@ -67,10 +67,10 @@ class ExecutionSummaryTile extends StatelessWidget {
       final now = DateTime.now();
       final diff = now.difference(date);
 
-      if (diff.inMinutes < 1) return 'Just now';
-      if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-      if (diff.inHours < 24) return '${diff.inHours}h ago';
-      if (diff.inDays < 7) return '${diff.inDays}d ago';
+      if (diff.inMinutes < 1) return '刚刚';
+      if (diff.inMinutes < 60) return '${diff.inMinutes}分钟前';
+      if (diff.inHours < 24) return '${diff.inHours}小时前';
+      if (diff.inDays < 7) return '${diff.inDays}天前';
       return '${date.month}/${date.day}/${date.year}';
     } catch (_) {
       return isoDate;
