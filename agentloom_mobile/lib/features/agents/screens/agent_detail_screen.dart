@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../routes/route_names.dart';
+import '../../../shared/utils/emoji_utils.dart';
 import '../../../shared/widgets/resource_source_chip.dart';
 import '../../../shared/widgets/entity_icon.dart';
 import '../api/agent_api.dart';
@@ -244,36 +245,71 @@ class AgentDetailScreen extends ConsumerWidget {
                         );
                       }
 
-                      return SliverList(
-                        delegate: SliverChildBuilderDelegate((context, index) {
-                          final conv = conversations[index];
-                          return ListTile(
-                            leading: const Icon(Icons.chat),
-                            title: Text(
-                              conv.title ?? '对话 ${index + 1}',
-                            ),
-                            subtitle: Text(
-                              _formatDate(conv.createdAt),
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant,
+                      return SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: Card(
+                            clipBehavior: Clip.antiAlias,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: List.generate(
+                                conversations.length,
+                                (index) {
+                                  final conv = conversations[index];
+                                  final emoji =
+                                      extractLeadingEmoji(conv.title);
+                                  final iconWidget = emoji != null
+                                      ? EntityIcon(
+                                          icon: emojiToCodepoint(emoji),
+                                          fallbackIcon:
+                                              Icons.chat_bubble_outline,
+                                          size: 24,
+                                        )
+                                      : const Icon(Icons.chat_bubble_outline);
+                                  return Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      ListTile(
+                                        leading: iconWidget,
+                                        title: Text(
+                                          conv.title ?? '对话 ${index + 1}',
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        subtitle: Text(
+                                          _formatDate(conv.createdAt),
+                                          style: theme.textTheme.bodySmall
+                                              ?.copyWith(
+                                            color: theme
+                                                .colorScheme.onSurfaceVariant,
+                                          ),
+                                        ),
+                                        trailing:
+                                            const Icon(Icons.chevron_right),
+                                        onTap: () => context.pushNamed(
+                                          RouteNames.agentConversation,
+                                          pathParameters: {
+                                            'agentId': agentId,
+                                            'conversationId': conv.id,
+                                          },
+                                        ),
+                                        onLongPress: () =>
+                                            _showConversationMenu(
+                                          context,
+                                          ref,
+                                          conv.id,
+                                          conv.title,
+                                        ),
+                                      ),
+                                      if (index < conversations.length - 1)
+                                        const Divider(height: 1),
+                                    ],
+                                  );
+                                },
                               ),
                             ),
-                            trailing: const Icon(Icons.chevron_right),
-                            onTap: () => context.pushNamed(
-                              RouteNames.agentConversation,
-                              pathParameters: {
-                                'agentId': agentId,
-                                'conversationId': conv.id,
-                              },
-                            ),
-                            onLongPress: () => _showConversationMenu(
-                              context,
-                              ref,
-                              conv.id,
-                              conv.title,
-                            ),
-                          );
-                        }, childCount: conversations.length),
+                          ),
+                        ),
                       );
                     },
                   ),

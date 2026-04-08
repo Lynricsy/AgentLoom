@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../shared/widgets/entity_icon.dart';
 import '../models/agent_definition_dto.dart';
 
 /// Agent 卡片（列表页用）
@@ -33,10 +34,13 @@ class AgentCard extends StatelessWidget {
                       color: theme.colorScheme.primaryContainer,
                       borderRadius: BorderRadius.circular(10),
                     ),
-                    child: Icon(
-                      Icons.smart_toy,
-                      color: theme.colorScheme.onPrimaryContainer,
-                      size: 22,
+                    child: Center(
+                      child: EntityIcon(
+                        icon: agent.icon,
+                        fallbackIcon: Icons.smart_toy,
+                        size: 22,
+                        color: theme.colorScheme.onPrimaryContainer,
+                      ),
                     ),
                   ),
                   const SizedBox(width: 12),
