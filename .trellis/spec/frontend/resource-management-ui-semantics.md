@@ -92,6 +92,7 @@
   - 提供 `资源 / 全部 / 对话 / 执行` 绑定筛选
   - 列表与详情均展示 `bindingLabel`
   - timeout 展示遵循与 Studio 相同的秒/小时规则
+  - 详情 sheet 只在 `ready|busy` 时请求 `/sandboxes/:id/stats`；`stopped/creating/failed` 详情只展示静态配置与日志，不得主动打出 `409 stats unavailable`
   - 详情 stats 如果拿到 `diskUsage/diskTotal`，必须显示真实磁盘占用；`diskUsage=0` 时继续显示 `0 B`
 - `WorkflowsScreen` / `AgentListScreen` / `KnowledgeBasesScreen` / `MemoryListScreen` / `McpServersScreen` / `SkillListScreen`
   - 必须支持 `全部 / 自己创建 / 分享导入` 来源筛选
@@ -115,6 +116,7 @@
 | Flutter workspace DTO                                                    | 正确解析 `sourceKind/isAutoArchived` 并给出中文标签                         | `resource_entities_test.dart`  |
 | Flutter sandbox DTO                                                      | 正确解析 `bindingType/timeoutSeconds` 并给出中文标签                        | `resource_entities_test.dart`  |
 | Flutter sandbox stats DTO                                                | 正确解析 `diskUsage/diskTotal`，并保留 `0`                                  | `resource_entities_test.dart`  |
+| Flutter stopped sandbox 详情                                             | 不请求 `/stats`，改为展示“实时资源统计仅在运行中的沙箱可用”                | `sandboxes_screen_test.dart`   |
 | Flutter workflow / agent / knowledge / memory / mcp / skill 列表来源筛选 | 正确透传 `sourceKind` 并刷新列表                                            | screens/provider tests         |
 | Flutter 分享导入资源转正                                                 | 调用 `resource-sources/:type/:id/convert-to-manual` 后标签刷新              | screens/provider tests         |
 
@@ -128,3 +130,4 @@
 - running sandbox 写入文件后，Studio 资源页应能看到磁盘占用真实变化；空工作区应显示 `0 B`，而不是空白或伪造值
 - Studio workflow / agent / knowledge / memory / mcp / skill 页要能通过顶部来源分类标签切换列表，并在“转为自己创建”后立即反映到当前筛选结果；条目内部不应再重复出现 `自己创建 / 分享导入` badge
 - Flutter workflow / agent / knowledge / memory / mcp / skill 页当前仍使用来源筛选与来源标签，但必须保持同一套 `sourceKind` / 转正语义
+- Flutter sandbox 详情查看已停止资源时，不应再因为无意义的 `/stats` 请求制造 409 控制台噪音

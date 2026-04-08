@@ -34,7 +34,7 @@ void main() {
       await tester.pumpWidget(createTestWidget());
       await tester.pumpAndSettle();
 
-      expect(find.text('Resources'), findsOneWidget);
+      expect(find.text('资源'), findsOneWidget);
       expect(find.text('已接入'), findsNothing);
       expect(find.text('迁移中'), findsNothing);
       expect(find.text('资源域会逐步成为移动端的统一入口，替代当前分散在多个单独路由里的旧结构。'), findsNothing);
@@ -70,43 +70,43 @@ void main() {
 
 const _resourceDestinations = [
   _ResourceDestination(
-    cardTitle: 'Memory',
+    cardTitle: '记忆',
     destinationTitle: 'Memory Destination',
     routeName: RouteNames.memoryList,
     path: '/memory',
   ),
   _ResourceDestination(
-    cardTitle: 'Skills',
+    cardTitle: '技能',
     destinationTitle: 'Skills Destination',
     routeName: RouteNames.skills,
     path: '/skills',
   ),
   _ResourceDestination(
-    cardTitle: 'Workspaces',
+    cardTitle: '工作区',
     destinationTitle: 'Workspaces Destination',
     routeName: RouteNames.workspaces,
     path: '/workspaces',
   ),
   _ResourceDestination(
-    cardTitle: 'Sandboxes',
+    cardTitle: 'Sandbox',
     destinationTitle: 'Sandboxes Destination',
     routeName: RouteNames.sandboxes,
     path: '/sandboxes',
   ),
   _ResourceDestination(
-    cardTitle: 'Knowledge Bases',
+    cardTitle: '知识库',
     destinationTitle: 'Knowledge Bases Destination',
     routeName: RouteNames.knowledgeBases,
     path: '/knowledge-bases',
   ),
   _ResourceDestination(
-    cardTitle: 'MCP Servers',
+    cardTitle: 'MCP 服务',
     destinationTitle: 'MCP Servers Destination',
     routeName: RouteNames.mcpServers,
     path: '/mcp-servers',
   ),
   _ResourceDestination(
-    cardTitle: 'LLM Models',
+    cardTitle: 'LLM 模型',
     destinationTitle: 'LLM Models Destination',
     routeName: RouteNames.llmModels,
     path: '/llm-models',

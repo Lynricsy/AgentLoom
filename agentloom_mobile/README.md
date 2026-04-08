@@ -60,6 +60,7 @@ AgentLoom Flutter 客户端，当前定位为移动优先、全端兼容的使�
   - Skills
   - Workspaces
   - Sandboxes
+    - 详情页仅在运行中的沙箱请求实时 stats；已停止/创建中/失败的详情只展示静态配置与日志，避免无意义的 `/stats` 409 噪音
   - Knowledge Bases
   - MCP Servers
   - LLM Models

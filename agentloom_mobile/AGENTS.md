@@ -25,7 +25,7 @@ AgentLoom Flutter 移动端应用：
 - 资源管理：
   - `Workspaces / Sandboxes / Knowledge Bases` 已接入真实 CRUD / 详情
   - `WorkspacesScreen` 默认隐藏 execution auto-archive 快照，通过 `include_auto_archived` 开关切换；DTO 会解析 `sourceKind/isAutoArchived` 并展示中文来源标签
-  - `SandboxesScreen` 默认只看 `bindingType=resource` 的可复用沙箱，可切换到全部/对话/执行视图；DTO 会解析 `bindingType` 与 `timeoutSeconds`，timeout 文案按 `秒优先、否则小时` 展示
+  - `SandboxesScreen` 默认只看 `bindingType=resource` 的可复用沙箱，可切换到全部/对话/执行视图；DTO 会解析 `bindingType` 与 `timeoutSeconds`，timeout 文案按 `秒优先、否则小时` 展示；详情 sheet 仅在 `ready/busy` 时请求 live stats，`stopped/creating/failed` 只展示静态配置与日志，避免对非运行容器打 `/stats` 409
   - `Workflows / Agents / Knowledge Bases / Memory / MCP Servers / Skills` 列表均支持 `全部 / 自己创建 / 分享导入` 来源筛选；分享导入项展示统一来源标签，并可调用 `resource-sources/:type/:id/convert-to-manual` 转为自己创建
   - `MCP Servers` 支持发现、导入、重导入、测试、编辑、删除与工具停用
   - `LLM Models` 支持 Provider / Model 二级管理、列表、详情、创建、编辑、删除、缓存读/写与 token 阶梯定价展示、私有云测试与远端模型探测；Provider 新建/编辑 sheet 直接输入明文 API Key，由服务端加密托管，不再依赖先创建独立 key 资源；`LlmProviderIcon` 会将 managed Lobe icon URL 归一到 `@lobehub/icons-static-png` 的 theme-aware PNG 资源，并对 `anthropic -> claude-color`、`google -> gemini-color`、`siliconflow -> siliconcloud-color` 等 slug 做产品级彩色资产映射

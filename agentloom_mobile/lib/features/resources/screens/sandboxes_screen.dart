@@ -8,6 +8,8 @@ import '../api/resources_api.dart';
 import '../models/resource_entities.dart';
 import '../widgets/resource_shared.dart';
 
+const _liveSandboxStatuses = {'ready', 'busy'};
+
 class SandboxesScreen extends ConsumerStatefulWidget {
   const SandboxesScreen({super.key});
 
@@ -251,8 +253,9 @@ class _SandboxesScreenState extends ConsumerState<SandboxesScreen> {
                                           value: 'start',
                                           child: Text('启动'),
                                         ),
-                                      if (sandbox.status == 'ready' ||
-                                          sandbox.status == 'busy')
+                                      if (_liveSandboxStatuses.contains(
+                                        sandbox.status,
+                                      ))
                                         const PopupMenuItem(
                                           value: 'stop',
                                           child: Text('停止'),
@@ -397,10 +400,15 @@ class _SandboxesScreenState extends ConsumerState<SandboxesScreen> {
       isScrollControlled: true,
       useSafeArea: true,
       builder: (context) {
-        return FutureBuilder<(SandboxStatsDto, List<SandboxLogDto>)>(
+        return FutureBuilder<(SandboxStatsDto?, List<SandboxLogDto>)>(
           future: () async {
             final api = ref.read(resourcesApiProvider);
-            final stats = await api.getSandboxStats(sandbox.id);
+            final shouldLoadStats = _liveSandboxStatuses.contains(
+              sandbox.status,
+            );
+            final stats = shouldLoadStats
+                ? await api.getSandboxStats(sandbox.id)
+                : null;
             final logs = await api.getSandboxLogs(sandbox.id);
             return (stats, logs);
           }(),
@@ -435,8 +443,16 @@ class _SandboxesScreenState extends ConsumerState<SandboxesScreen> {
                       child: Center(child: CircularProgressIndicator()),
                     )
                   else if (snapshot.hasData) ...[
-                    const SizedBox(height: 16),
-                    _MetricChipRow(stats: snapshot.data!.$1),
+                    if (snapshot.data!.$1 != null) ...[
+                      const SizedBox(height: 16),
+                      _MetricChipRow(stats: snapshot.data!.$1!),
+                    ] else ...[
+                      const SizedBox(height: 16),
+                      Text(
+                        '实时资源统计仅在运行中的沙箱可用。',
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
                     const SizedBox(height: 16),
                     JsonCodePanel(
                       label: '沙箱配置',
