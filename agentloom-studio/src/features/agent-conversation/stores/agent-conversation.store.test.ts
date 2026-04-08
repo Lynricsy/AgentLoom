@@ -537,6 +537,35 @@ describe("agentConversationStore", () => {
     ]);
   });
 
+  it("restartToLatestVersion 应禁用默认超时并返回新会话 ID", async () => {
+    const jsonMock = vi.fn().mockResolvedValue({
+      data: {
+        conversationId: "conv-2",
+      },
+    });
+
+    postMock.mockReturnValue({
+      json: jsonMock,
+    });
+
+    useAgentConversationStore.getState().actions.connect({
+      conversationId: "conv-1",
+      agentId: "agent-1",
+      agentName: "QA SelfEvo Agent",
+      runtimeMode: "sandbox",
+      authToken: "token-1",
+    });
+
+    const nextConversationId =
+      await useAgentConversationStore.getState().actions.restartToLatestVersion();
+
+    expect(postMock).toHaveBeenCalledWith(
+      "agent-conversations/conv-1/restart-latest-version",
+      { timeout: false },
+    );
+    expect(nextConversationId).toBe("conv-2");
+  });
+
   it("loadHistory 会从 detail metadata 同步失败态和错误摘要", async () => {
     getMock.mockReturnValue({
       json: vi.fn().mockResolvedValue(
@@ -701,6 +730,37 @@ describe("agentConversationStore", () => {
 
     expect(useAgentConversationStore.getState().conversationId).toBeNull();
     expect(useAgentConversationStore.getState().messages).toEqual([]);
+  });
+
+  it("loadHistory 在前一次请求未结束时不应重复发起同会话请求", async () => {
+    const deferred =
+      createDeferred<ReturnType<typeof createConversationDetailResponse>>();
+    const jsonMock = vi.fn().mockImplementation(() => deferred.promise);
+
+    getMock.mockReturnValue({
+      json: jsonMock,
+    });
+
+    useAgentConversationStore.getState().actions.connect({
+      conversationId: "conv-1",
+      agentId: "agent-1",
+      agentName: "Agent 1",
+      runtimeMode: "sandbox",
+      authToken: "token-1",
+    });
+
+    const firstLoad = useAgentConversationStore
+      .getState()
+      .actions.loadHistory("conv-1");
+    const secondLoad = useAgentConversationStore
+      .getState()
+      .actions.loadHistory("conv-1");
+
+    expect(getMock).toHaveBeenCalledTimes(1);
+
+    deferred.resolve(createConversationDetailResponse([]));
+
+    await Promise.all([firstLoad, secondLoad]);
   });
 
   it("历史回拉晚到时不会覆盖当前 live tail", async () => {
@@ -1117,6 +1177,48 @@ describe("agentConversationStore", () => {
 
     expect(useAgentConversationStore.getState().conversationId).toBeNull();
     expect(useAgentConversationStore.getState().fileTree).toEqual([]);
+  });
+
+  it("loadWorkspaceTree 在前一次请求未结束时不应重复发起同会话请求", async () => {
+    const deferred = createDeferred<
+      Array<{
+        name: string;
+        path: string;
+        type: "file";
+      }>
+    >();
+    const jsonMock = vi.fn().mockImplementation(() => deferred.promise);
+
+    getMock.mockReturnValue({
+      json: jsonMock,
+    });
+
+    useAgentConversationStore.getState().actions.connect({
+      conversationId: "conv-1",
+      agentId: "agent-1",
+      agentName: "Agent 1",
+      runtimeMode: "sandbox",
+      authToken: "token-1",
+    });
+
+    const firstLoad = useAgentConversationStore
+      .getState()
+      .actions.loadWorkspaceTree("conv-1");
+    const secondLoad = useAgentConversationStore
+      .getState()
+      .actions.loadWorkspaceTree("conv-1");
+
+    expect(getMock).toHaveBeenCalledTimes(1);
+
+    deferred.resolve([
+      {
+        name: "summary.txt",
+        path: "summary.txt",
+        type: "file",
+      },
+    ]);
+
+    await Promise.all([firstLoad, secondLoad]);
   });
 
   it("切换 conversation 时会清空上一条会话残留的运行上下文", () => {

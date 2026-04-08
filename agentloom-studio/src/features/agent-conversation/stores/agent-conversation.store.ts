@@ -48,6 +48,32 @@ const RECONNECT_DELAY_MS = 5_000;
 const RECONNECT_DELAY_MAX_MS = 30_000;
 const TERMINAL_ENTRY_LIMIT = 200;
 const FILE_CHANGE_LIMIT = 50;
+const inFlightHistoryLoads = new Map<string, Promise<void>>();
+const inFlightWorkspaceTreeLoads = new Map<string, Promise<void>>();
+
+function trackConversationRequest(
+  requests: Map<string, Promise<void>>,
+  conversationId: string,
+  factory: () => Promise<void>,
+): Promise<void> {
+  const pending = requests.get(conversationId);
+  if (pending) {
+    return pending;
+  }
+
+  const next = factory().finally(() => {
+    if (requests.get(conversationId) === next) {
+      requests.delete(conversationId);
+    }
+  });
+  requests.set(conversationId, next);
+  return next;
+}
+
+function clearTrackedConversationRequests() {
+  inFlightHistoryLoads.clear();
+  inFlightWorkspaceTreeLoads.clear();
+}
 
 function resolveConversationSocketUrl(): string {
   const origin =
@@ -1904,9 +1930,9 @@ export const useAgentConversationStore = create<
             }
 
             const response = await apiClient
-              .post(
-                `agent-conversations/${conversationId}/restart-latest-version`,
-              )
+              .post(`agent-conversations/${conversationId}/restart-latest-version`, {
+                timeout: false,
+              })
               .json<{ data?: { conversationId?: string } }>();
 
             const nextConversationId = response.data?.conversationId;
@@ -1940,77 +1966,83 @@ export const useAgentConversationStore = create<
           },
 
           loadHistory: async (conversationId) => {
-            try {
-              const response = await apiClient
-                .get(`agent-conversations/${conversationId}`)
-                .json<ConversationDetailResponse>();
+            return trackConversationRequest(
+              inFlightHistoryLoads,
+              conversationId,
+              async () => {
+                try {
+                  const response = await apiClient
+                    .get(`agent-conversations/${conversationId}`)
+                    .json<ConversationDetailResponse>();
 
-              const messageResponse = response.data?.messages;
-              const normalizedMessages = (messageResponse?.data ?? []).map(
-                (message) => normalizeConversationHistoryMessage(message),
-              );
-              const executionSnapshot = normalizeConversationExecutionSnapshot(
-                response.data?.metadata,
-              );
+                  const messageResponse = response.data?.messages;
+                  const normalizedMessages = (messageResponse?.data ?? []).map(
+                    (message) => normalizeConversationHistoryMessage(message),
+                  );
+                  const executionSnapshot = normalizeConversationExecutionSnapshot(
+                    response.data?.metadata,
+                  );
 
-              set((s) => {
-                if (s.conversationId !== conversationId) {
-                  return;
+                  set((s) => {
+                    if (s.conversationId !== conversationId) {
+                      return;
+                    }
+
+                    s.hasHistoricalMessages = normalizedMessages.length > 0;
+                    s.messages = mergeHistoryWithLiveTail(
+                      s.messages,
+                      normalizedMessages,
+                    );
+
+                    if (executionSnapshot.runningState === "running") {
+                      s.status = "executing";
+                      s.executionError = null;
+                      return;
+                    }
+
+                    if (executionSnapshot.runningState === "failed") {
+                      s.status = "error";
+                      s.sandboxStatus = "error";
+                      s.executionError =
+                        executionSnapshot.errorMessage ??
+                        "当前对话执行失败，请检查 Agent 配置后重试。";
+                      if (executionSnapshot.failedPhase) {
+                        s.preparationFailedPhase = executionSnapshot.failedPhase;
+                        s.preparationError = s.executionError;
+                      } else {
+                        s.preparationPhase = null;
+                        s.preparationStartTime = null;
+                        s.sandboxReused = false;
+                        s.preparationError = null;
+                        s.preparationFailedPhase = null;
+                      }
+                      return;
+                    }
+
+                    if (
+                      executionSnapshot.runningState === "idle" ||
+                      executionSnapshot.runningState === "cancelled"
+                    ) {
+                      if (s.status === "executing" || s.status === "error") {
+                        s.status = "connected";
+                        s.sandboxStatus = "idle";
+                        s.preparationPhase = null;
+                        s.preparationStartTime = null;
+                        s.sandboxReused = false;
+                        s.preparationError = null;
+                        s.preparationFailedPhase = null;
+                        s.executionError = null;
+                      }
+                    }
+                  });
+                } catch (error) {
+                  console.error(
+                    "[AgentConversation] Failed to load history:",
+                    error,
+                  );
                 }
-
-                s.hasHistoricalMessages = normalizedMessages.length > 0;
-                s.messages = mergeHistoryWithLiveTail(
-                  s.messages,
-                  normalizedMessages,
-                );
-
-                if (executionSnapshot.runningState === "running") {
-                  s.status = "executing";
-                  s.executionError = null;
-                  return;
-                }
-
-                if (executionSnapshot.runningState === "failed") {
-                  s.status = "error";
-                  s.sandboxStatus = "error";
-                  s.executionError =
-                    executionSnapshot.errorMessage ??
-                    "当前对话执行失败，请检查 Agent 配置后重试。";
-                  if (executionSnapshot.failedPhase) {
-                    s.preparationFailedPhase = executionSnapshot.failedPhase;
-                    s.preparationError = s.executionError;
-                  } else {
-                    s.preparationPhase = null;
-                    s.preparationStartTime = null;
-                    s.sandboxReused = false;
-                    s.preparationError = null;
-                    s.preparationFailedPhase = null;
-                  }
-                  return;
-                }
-
-                if (
-                  executionSnapshot.runningState === "idle" ||
-                  executionSnapshot.runningState === "cancelled"
-                ) {
-                  if (s.status === "executing" || s.status === "error") {
-                    s.status = "connected";
-                    s.sandboxStatus = "idle";
-                    s.preparationPhase = null;
-                    s.preparationStartTime = null;
-                    s.sandboxReused = false;
-                    s.preparationError = null;
-                    s.preparationFailedPhase = null;
-                    s.executionError = null;
-                  }
-                }
-              });
-            } catch (error) {
-              console.error(
-                "[AgentConversation] Failed to load history:",
-                error,
-              );
-            }
+              },
+            );
           },
 
           loadWorkspacePreview: async (conversationId, workspaceId) => {
@@ -2061,49 +2093,56 @@ export const useAgentConversationStore = create<
               });
               return;
             }
-            try {
-              const response = await apiClient
-                .get(`agent-conversations/${conversationId}/workspace/tree`)
-                .json<unknown>();
-              const normalizedTree = normalizeFileTree(response);
+            return trackConversationRequest(
+              inFlightWorkspaceTreeLoads,
+              conversationId,
+              async () => {
+                try {
+                  const response = await apiClient
+                    .get(`agent-conversations/${conversationId}/workspace/tree`)
+                    .json<unknown>();
+                  const normalizedTree = normalizeFileTree(response);
 
-              set((s) => {
-                if (s.conversationId !== conversationId) {
-                  return;
-                }
+                  set((s) => {
+                    if (s.conversationId !== conversationId) {
+                      return;
+                    }
 
-                if (!shouldTreatWorkspaceTreeAsLive(s, normalizedTree)) {
-                  if (s.workspaceSource === "unavailable") {
+                    if (!shouldTreatWorkspaceTreeAsLive(s, normalizedTree)) {
+                      if (s.workspaceSource === "unavailable") {
+                        s.fileTree = normalizedTree;
+                        if (
+                          s.selectedFilePath &&
+                          !fileExistsInTree(normalizedTree, s.selectedFilePath)
+                        ) {
+                          s.selectedFilePath = null;
+                        }
+                      }
+                      return;
+                    }
+
                     s.fileTree = normalizedTree;
+                    s.workspaceSource = "live";
                     if (
                       s.selectedFilePath &&
                       !fileExistsInTree(normalizedTree, s.selectedFilePath)
                     ) {
                       s.selectedFilePath = null;
                     }
-                  }
-                  return;
+                  });
+                } catch (error) {
+                  console.error(
+                    "[AgentConversation] Failed to load workspace tree:",
+                    error,
+                  );
                 }
-
-                s.fileTree = normalizedTree;
-                s.workspaceSource = "live";
-                if (
-                  s.selectedFilePath &&
-                  !fileExistsInTree(normalizedTree, s.selectedFilePath)
-                ) {
-                  s.selectedFilePath = null;
-                }
-              });
-            } catch (error) {
-              console.error(
-                "[AgentConversation] Failed to load workspace tree:",
-                error,
-              );
-            }
+              },
+            );
           },
 
           reset: () => {
             get().actions.disconnect();
+            clearTrackedConversationRequests();
             set(createInitialState());
           },
         },

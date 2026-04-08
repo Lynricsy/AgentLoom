@@ -128,6 +128,29 @@ describe("SandboxComputerPanel", () => {
     ).toBeInTheDocument();
   });
 
+  it("重启会话时应暂停沙箱 stats/processes 轮询", () => {
+    render(
+      <SandboxComputerPanel
+        conversationId="conv-1"
+        agentName="测试 Agent"
+        terminalEntries={[]}
+        fileChanges={[]}
+        sandboxStatus="running"
+        isExecuting
+        suspendPolling
+      />,
+    );
+
+    expect(useConversationSandboxStatsMock).toHaveBeenCalledWith(
+      "conv-1",
+      "idle",
+    );
+    expect(useConversationSandboxProcessesMock).toHaveBeenCalledWith(
+      "conv-1",
+      "idle",
+    );
+  });
+
   it("手动切到其他标签后，后续工具调用不应再自动跳回工具标签", async () => {
     const user = userEvent.setup();
     const fileChanges = [

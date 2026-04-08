@@ -581,6 +581,7 @@ export function AgentConversationPage({
   const containerRef = useRef<HTMLDivElement>(null);
   const [leftWidth, setLeftWidth] = useState<number | null>(null);
   const [rightTopHeight, setRightTopHeight] = useState<number | null>(null);
+  const [isRestartingConversation, setIsRestartingConversation] = useState(false);
 
   const actionsRef = useRef(actions);
   actionsRef.current = actions;
@@ -625,7 +626,7 @@ export function AgentConversationPage({
   ]);
 
   useEffect(() => {
-    if (status !== "executing") {
+    if (status !== "executing" || isRestartingConversation) {
       return;
     }
 
@@ -640,15 +641,19 @@ export function AgentConversationPage({
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [conversationId, hasSandbox, status]);
+  }, [conversationId, hasSandbox, isRestartingConversation, status]);
 
   useEffect(() => {
-    if (!hasSandbox || sandboxStatus !== "running") {
+    if (
+      !hasSandbox ||
+      sandboxStatus !== "running" ||
+      isRestartingConversation
+    ) {
       return;
     }
 
     void actionsRef.current.loadWorkspaceTree(conversationId);
-  }, [conversationId, hasSandbox, sandboxStatus]);
+  }, [conversationId, hasSandbox, isRestartingConversation, sandboxStatus]);
 
   const initLeftWidth = useCallback(() => {
     if (leftWidth !== null) return leftWidth;
@@ -753,19 +758,51 @@ export function AgentConversationPage({
   );
 
   const handleRestartConversation = useCallback(async () => {
-    const nextConversationId = await actions.restartToLatestVersion();
-    if (!nextConversationId) {
+    if (isRestartingConversation) {
       return;
     }
 
-    navigate({
-      to: "/agents/$agentId/conversations/$conversationId",
-      params: {
-        agentId,
-        conversationId: nextConversationId,
-      },
-    });
-  }, [actions, agentId, navigate]);
+    setIsRestartingConversation(true);
+    let shouldResetRestarting = true;
+
+    try {
+      const nextConversationId = await actions.restartToLatestVersion();
+      if (!nextConversationId) {
+        notify({
+          title: "重启失败",
+          description: "服务端没有返回新的会话 ID，请稍后重试。",
+          variant: "error",
+        });
+        return;
+      }
+
+      shouldResetRestarting = false;
+      navigate({
+        to: "/agents/$agentId/conversations/$conversationId",
+        params: {
+          agentId,
+          conversationId: nextConversationId,
+        },
+      });
+    } catch (error) {
+      notify({
+        title: "重启失败",
+        description:
+          error instanceof Error ? error.message : "重启会话失败，请稍后重试。",
+        variant: "error",
+      });
+    } finally {
+      if (shouldResetRestarting) {
+        setIsRestartingConversation(false);
+      }
+    }
+  }, [
+    actions,
+    agentId,
+    isRestartingConversation,
+    navigate,
+    notify,
+  ]);
 
   // 从最新的 assistant 消息中提取当前活跃的工具调用（用于 Computer 面板联动）
   const activeToolCall = useMemo<ToolCallData | undefined>(() => {
@@ -911,6 +948,7 @@ export function AgentConversationPage({
                     fileChanges={fileChanges}
                     sandboxStatus={sandboxStatus}
                     isExecuting={isExecuting}
+                    suspendPolling={isRestartingConversation}
                     activeToolCall={activeToolCall}
                   />
                 </div>

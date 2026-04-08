@@ -38,6 +38,7 @@ interface SandboxComputerPanelProps {
   fileChanges: FileChange[];
   sandboxStatus: SandboxStatus;
   isExecuting: boolean;
+  suspendPolling?: boolean;
   /** 当前活跃的工具调用（正在执行的），用于实时更新工具详情 tab */
   activeToolCall?: ToolCallData;
 }
@@ -736,18 +737,20 @@ export function SandboxComputerPanel({
   fileChanges,
   sandboxStatus,
   isExecuting,
+  suspendPolling = false,
   activeToolCall,
 }: SandboxComputerPanelProps) {
+  const polledSandboxStatus = suspendPolling ? "idle" : sandboxStatus;
   const [activeTab, setActiveTab] = useState<PanelTab>(() =>
     isExecuting ? "tool" : "process",
   );
   const prevExecutingRef = useRef(isExecuting);
   const { data: sandboxStats } = useConversationSandboxStats(
     conversationId,
-    sandboxStatus,
+    polledSandboxStatus,
   );
   const { data: sandboxProcesses, isLoading: isProcessLoading } =
-    useConversationSandboxProcesses(conversationId, sandboxStatus);
+    useConversationSandboxProcesses(conversationId, polledSandboxStatus);
   const fallbackItems = useMemo(
     () =>
       buildFallbackActivityItems({
