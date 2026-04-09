@@ -347,14 +347,26 @@ export async function createSandboxServer(options: SandboxServerOptions) {
       'X-Accel-Buffering': 'no',
     });
 
+    let promptSettled = false;
+    let responseEnded = false;
+    let terminalEventSent = false;
+
+    const endResponse = () => {
+      if (responseEnded || reply.raw.writableEnded || reply.raw.destroyed) {
+        return;
+      }
+      responseEnded = true;
+      reply.raw.end();
+    };
+
     const cleanup = streamSessionEvents({
       session: entry.session,
       sessionId,
       permissionCallbackUrl,
       write: (chunk) => reply.raw.write(chunk),
       end: () => {
-        adapter.markStreaming(sessionId, false);
-        reply.raw.end();
+        terminalEventSent = true;
+        endResponse();
       },
     });
 
@@ -362,19 +374,28 @@ export async function createSandboxServer(options: SandboxServerOptions) {
     // 必须绑定到 response/socket 生命周期，避免在真正的流式事件开始前就提前 cleanup。
     reply.raw.on('close', () => {
       cleanup();
-      adapter.markStreaming(sessionId, false);
+      if (!promptSettled && !terminalEventSent) {
+        void entry.session.abort().catch(() => undefined);
+      }
     });
 
-    entry.session.prompt(text).catch((err: unknown) => {
-      const message = err instanceof Error ? err.message : 'Unknown prompt error';
-      reply.raw.write(`data: ${JSON.stringify({
-        jsonrpc: '2.0',
-        method: 'event',
-        params: { type: 'error', message },
-      })}\n\n`);
-      adapter.markStreaming(sessionId, false);
-      reply.raw.end();
-    });
+    void entry.session
+      .prompt(text)
+      .catch((err: unknown) => {
+        const message = err instanceof Error ? err.message : 'Unknown prompt error';
+        if (!responseEnded && !reply.raw.destroyed) {
+          reply.raw.write(`data: ${JSON.stringify({
+            jsonrpc: '2.0',
+            method: 'event',
+            params: { type: 'error', message },
+          })}\n\n`);
+        }
+        endResponse();
+      })
+      .finally(() => {
+        promptSettled = true;
+        adapter.markStreaming(sessionId, false);
+      });
   });
 
   app.post<{ Body: AbortRequest }>('/v1/abort', async (request, reply) => {

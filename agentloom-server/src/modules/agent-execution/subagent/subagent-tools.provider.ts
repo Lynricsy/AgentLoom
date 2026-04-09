@@ -68,6 +68,13 @@ interface SubAgentStatusSnapshot {
   error?: string;
 }
 
+interface SessionToolProviderOptions {
+  createEventProxy?: (params: {
+    record: SubAgentRunRecord;
+    parentContext: SubAgentParentContext;
+  }) => SubAgentEventProxy | undefined;
+}
+
 @Injectable()
 export class SubAgentToolsProvider {
   constructor(
@@ -80,13 +87,18 @@ export class SubAgentToolsProvider {
     subAgentRefs: AgentSubAgentRef[],
     parentContext: SubAgentParentContext,
     executeSubAgent: ExecuteSubAgent,
+    providerOptions?: SessionToolProviderOptions,
   ): SessionToolProvider {
     if (subAgentRefs.length === 0) {
       return () => ({});
     }
 
-    const aliases = subAgentRefs.map((ref) => ref.alias);
-    const refsByAlias = new Map(subAgentRefs.map((ref) => [ref.alias, ref]));
+    const normalizedRefs = subAgentRefs.map((ref) => ({
+      ...ref,
+      alias: normalizeSubAgentAlias(ref),
+    }));
+    const aliases = normalizedRefs.map((ref) => ref.alias);
+    const refsByAlias = new Map(normalizedRefs.map((ref) => [ref.alias, ref]));
     const runRecords = new Map<SubAgentHandle, SubAgentRunRecord>();
     const callSubAgentInputSchema = CallSubAgentInputSchema.extend({
       alias: createAliasEnum(aliases),
@@ -97,7 +109,7 @@ export class SubAgentToolsProvider {
 
     return (): ToolSet => ({
       call_subagent: tool({
-        description: buildCallDescription(subAgentRefs),
+        description: buildCallDescription(normalizedRefs),
         inputSchema: callSubAgentInputSchema,
         execute: async (input, options) => {
           const ref = refsByAlias.get(input.alias);
@@ -121,6 +133,7 @@ export class SubAgentToolsProvider {
               parentContext,
               executeSubAgent,
               invocationMode: 'call',
+              providerOptions,
             });
 
             const result = await record.completionPromise;
@@ -131,7 +144,7 @@ export class SubAgentToolsProvider {
         },
       }),
       spawn_subagent: tool({
-        description: buildSpawnDescription(subAgentRefs),
+        description: buildSpawnDescription(normalizedRefs),
         inputSchema: spawnSubAgentInputSchema,
         execute: async (input, options) => {
           const ref = refsByAlias.get(input.alias);
@@ -155,6 +168,7 @@ export class SubAgentToolsProvider {
               parentContext,
               executeSubAgent,
               invocationMode: 'spawn',
+              providerOptions,
             });
 
             return {
@@ -258,6 +272,7 @@ export class SubAgentToolsProvider {
     parentContext: SubAgentParentContext;
     executeSubAgent: ExecuteSubAgent;
     invocationMode: 'call' | 'spawn';
+    providerOptions?: SessionToolProviderOptions;
   }): Promise<void> {
     let eventProxy: SubAgentEventProxy | undefined;
 
@@ -285,17 +300,24 @@ export class SubAgentToolsProvider {
       ]);
 
       try {
-        eventProxy = createSubAgentEventProxy({
-          conversationId: params.parentContext.conversationId,
-          tenantId: params.parentContext.tenantId,
-          envelope: {
-            handle: params.record.handle,
-            alias: params.record.alias,
-            depth: params.record.depth,
-            parentToolCallId: params.record.parentToolCallId,
-          },
-          eventBridge: this.eventBridge,
+        eventProxy = params.providerOptions?.createEventProxy?.({
+          record: params.record,
+          parentContext: params.parentContext,
         });
+
+        if (!eventProxy && params.parentContext.conversationId) {
+          eventProxy = createSubAgentEventProxy({
+            conversationId: params.parentContext.conversationId,
+            tenantId: params.parentContext.tenantId,
+            envelope: {
+              handle: params.record.handle,
+              alias: params.record.alias,
+              depth: params.record.depth,
+              parentToolCallId: params.record.parentToolCallId,
+            },
+            eventBridge: this.eventBridge,
+          });
+        }
 
         const result = await params.executeSubAgent({
           handle: params.record.handle,
@@ -316,7 +338,7 @@ export class SubAgentToolsProvider {
         params.record.status = SubAgentRunStatus.COMPLETED;
         params.record.result = result;
         params.record.completedAt = Date.now();
-        eventProxy.complete(SubAgentRunStatus.COMPLETED);
+        eventProxy?.complete(SubAgentRunStatus.COMPLETED);
         params.record.resolve(result);
       } catch (error) {
         const status = this.resolveFailureStatus(
@@ -351,6 +373,7 @@ export class SubAgentToolsProvider {
     parentContext: SubAgentParentContext;
     executeSubAgent: ExecuteSubAgent;
     invocationMode: 'call' | 'spawn';
+    providerOptions?: SessionToolProviderOptions;
   }): void {
     void transactionStorage.exit(() =>
       runInTenantTransaction(
@@ -446,6 +469,15 @@ function getTimeoutMs(
   alias: string,
 ): number | undefined {
   return refsByAlias.get(alias)?.maxTimeoutMs;
+}
+
+function normalizeSubAgentAlias(ref: AgentSubAgentRef): string {
+  const alias = ref.alias?.trim();
+  if (alias) {
+    return alias;
+  }
+
+  return ref.agentDefinitionId;
 }
 
 function isRunningStatus(status: SubAgentRunStatus): boolean {

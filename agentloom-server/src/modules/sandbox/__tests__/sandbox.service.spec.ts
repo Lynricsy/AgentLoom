@@ -1513,7 +1513,9 @@ describe('SandboxService', () => {
         TEST_TENANT_ID,
       );
 
-      expect(mockWorkspaceService.syncFromSandboxContainer).not.toHaveBeenCalled();
+      expect(
+        mockWorkspaceService.syncFromSandboxContainer,
+      ).not.toHaveBeenCalled();
       expect(updateChain.set).toHaveBeenCalledOnce();
     });
   });

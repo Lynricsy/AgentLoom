@@ -7,6 +7,7 @@ import {
   ilike,
   inArray,
   max,
+  ne,
   not,
   or,
   sql,
@@ -73,6 +74,7 @@ import {
 } from '../share/share.service';
 import { validateImportFile } from './utils/validate-import.utils';
 import { ResourceSourceService } from '../resource-source/resource-source.service';
+import { buildWorkspaceStorageKey } from '../workspace/workspace.constants';
 
 /** 发布版本缓存 TTL（秒） */
 const PUBLISHED_VERSION_TTL = 300;
@@ -131,6 +133,11 @@ interface ImportedWorkflowAgentCloneContext {
   sourceModels: Map<string, ImportedWorkflowModelRecord | null>;
   targetModels: ImportedWorkflowModelRecord[] | null;
   activeAgentCloneStack: Set<string>;
+}
+
+interface ImportedWorkflowWorkspaceCloneResult {
+  workspaceId: string;
+  name: string;
 }
 
 function cloneJson<T>(value: T): T {
@@ -641,14 +648,23 @@ export class WorkflowVersionService {
           if (
             importSourceTenantId &&
             importSourceType &&
-            importSourceReference &&
-            this.hasImportedWorkflowAgentDependencies(importedNodes)
+            importSourceReference
           ) {
-            await this.cloneImportedWorkflowAgentDependencies({
+            if (this.hasImportedWorkflowAgentDependencies(importedNodes)) {
+              await this.cloneImportedWorkflowAgentDependencies({
+                nodes: importedNodes,
+                sourceTenantId: importSourceTenantId,
+                importSource: importSourceType,
+                importReference: importSourceReference,
+                targetTenantId: tenantId,
+                targetUserId: userId,
+                dbClient: tx,
+              });
+            }
+
+            await this.localizeImportedWorkflowSharedResources({
               nodes: importedNodes,
               sourceTenantId: importSourceTenantId,
-              importSource: importSourceType,
-              importReference: importSourceReference,
               targetTenantId: tenantId,
               targetUserId: userId,
               dbClient: tx,
@@ -1778,6 +1794,230 @@ export class WorkflowVersionService {
     }
   }
 
+  private async localizeImportedWorkflowSharedResources(params: {
+    nodes: schema.ReactFlowNode[];
+    sourceTenantId: string;
+    targetTenantId: string;
+    targetUserId: string;
+    dbClient: WorkflowDbClient;
+  }): Promise<void> {
+    const hasBindings = params.nodes.some((node) => {
+      const nodeType = this.getWorkflowNodeType(node);
+      const runtimeNodeData = this.getRuntimeNodeData(node.data);
+
+      if (nodeType === 'workspace') {
+        return Boolean(
+          this.readFirstString(
+            runtimeNodeData.workspaceId,
+            runtimeNodeData.workspace_id,
+          ),
+        );
+      }
+
+      if (nodeType !== 'sandbox') {
+        return false;
+      }
+
+      return Boolean(
+        this.readFirstString(
+          runtimeNodeData.restoreWorkspaceId,
+          runtimeNodeData.restore_workspace_id,
+          runtimeNodeData.persistentSandboxId,
+          runtimeNodeData.persistent_sandbox_id,
+        ),
+      );
+    });
+
+    if (!hasBindings) {
+      return;
+    }
+
+    const targetOrganizationId =
+      await this.resolveImportedWorkflowTargetOrganizationId(
+        params.targetTenantId,
+        params.dbClient,
+      );
+    const clonedWorkspaces = new Map<
+      string,
+      ImportedWorkflowWorkspaceCloneResult
+    >();
+
+    for (const node of params.nodes) {
+      const nodeType = this.getWorkflowNodeType(node);
+      const runtimeNodeData = this.getRuntimeNodeData(node.data);
+
+      if (nodeType === 'workspace') {
+        const sourceWorkspaceId = this.readFirstString(
+          runtimeNodeData.workspaceId,
+          runtimeNodeData.workspace_id,
+        );
+        if (!sourceWorkspaceId) {
+          continue;
+        }
+
+        const clonedWorkspace = await this.cloneImportedWorkflowWorkspace({
+          sourceTenantId: params.sourceTenantId,
+          sourceWorkspaceId,
+          fallbackName:
+            this.readFirstString(
+              runtimeNodeData.workspaceName,
+              runtimeNodeData.workspace_name,
+            ) ??
+            this.getWorkflowNodeLabel(node) ??
+            '项目工作区',
+          targetTenantId: params.targetTenantId,
+          targetOrganizationId,
+          targetUserId: params.targetUserId,
+          dbClient: params.dbClient,
+          clonedWorkspaces,
+        });
+
+        clearNodeConfigField(node, 'workspace_id');
+        clearNodeConfigField(node, 'workspace_name');
+        setNodeConfigField(node, 'workspaceId', clonedWorkspace.workspaceId);
+        setNodeConfigField(node, 'workspaceName', clonedWorkspace.name);
+        continue;
+      }
+
+      if (nodeType !== 'sandbox') {
+        continue;
+      }
+
+      const sourceRestoreWorkspaceId = this.readFirstString(
+        runtimeNodeData.restoreWorkspaceId,
+        runtimeNodeData.restore_workspace_id,
+      );
+      if (sourceRestoreWorkspaceId) {
+        const clonedWorkspace = await this.cloneImportedWorkflowWorkspace({
+          sourceTenantId: params.sourceTenantId,
+          sourceWorkspaceId: sourceRestoreWorkspaceId,
+          fallbackName: '导入工作区',
+          targetTenantId: params.targetTenantId,
+          targetOrganizationId,
+          targetUserId: params.targetUserId,
+          dbClient: params.dbClient,
+          clonedWorkspaces,
+        });
+
+        clearNodeConfigField(node, 'restore_workspace_id');
+        setNodeConfigField(
+          node,
+          'restoreWorkspaceId',
+          clonedWorkspace.workspaceId,
+        );
+      }
+
+      clearNodeConfigField(node, 'persistentSandboxId');
+      clearNodeConfigField(node, 'persistent_sandbox_id');
+    }
+  }
+
+  private async cloneImportedWorkflowWorkspace(params: {
+    sourceTenantId: string;
+    sourceWorkspaceId: string;
+    fallbackName: string;
+    targetTenantId: string;
+    targetOrganizationId: string;
+    targetUserId: string;
+    dbClient: WorkflowDbClient;
+    clonedWorkspaces: Map<string, ImportedWorkflowWorkspaceCloneResult>;
+  }): Promise<ImportedWorkflowWorkspaceCloneResult> {
+    const cached = params.clonedWorkspaces.get(params.sourceWorkspaceId);
+    if (cached) {
+      return cached;
+    }
+
+    const [sourceSnapshot] = await params.dbClient
+      .select({
+        name: schema.workspaceSnapshots.name,
+        description: schema.workspaceSnapshots.description,
+      })
+      .from(schema.workspaceSnapshots)
+      .where(
+        and(
+          eq(schema.workspaceSnapshots.id, params.sourceWorkspaceId),
+          eq(schema.workspaceSnapshots.tenantId, params.sourceTenantId),
+          ne(schema.workspaceSnapshots.status, 'deleted'),
+        ),
+      )
+      .limit(1);
+
+    const name =
+      this.normalizeOptionalText(sourceSnapshot?.name ?? undefined) ??
+      this.normalizeOptionalText(params.fallbackName) ??
+      '项目工作区';
+    const description =
+      this.normalizeOptionalText(sourceSnapshot?.description ?? undefined) ??
+      '从 Marketplace/分享导入的工作流已重置为本地空工作区。';
+
+    const [snapshot] = await params.dbClient
+      .insert(schema.workspaceSnapshots)
+      .values({
+        organizationId: params.targetOrganizationId,
+        tenantId: params.targetTenantId,
+        name,
+        description,
+        storageKey: 'pending',
+        status: 'ready',
+        sizeBytes: 0,
+        createdById: params.targetUserId,
+        config: {
+          importedFromWorkflow: {
+            sourceTenantId: params.sourceTenantId,
+            sourceWorkspaceId: params.sourceWorkspaceId,
+            importedAt: new Date().toISOString(),
+          },
+        },
+      })
+      .returning();
+
+    const [updated] = await params.dbClient
+      .update(schema.workspaceSnapshots)
+      .set({
+        storageKey: buildWorkspaceStorageKey(
+          params.targetTenantId,
+          snapshot.id,
+        ),
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(schema.workspaceSnapshots.id, snapshot.id),
+          eq(schema.workspaceSnapshots.tenantId, params.targetTenantId),
+        ),
+      )
+      .returning();
+
+    const created = {
+      workspaceId: (updated ?? snapshot).id,
+      name: (updated ?? snapshot).name,
+    };
+    params.clonedWorkspaces.set(params.sourceWorkspaceId, created);
+    return created;
+  }
+
+  private async resolveImportedWorkflowTargetOrganizationId(
+    tenantId: string,
+    dbClient: WorkflowDbClient,
+  ): Promise<string> {
+    const [organization] = await dbClient
+      .select({ id: schema.organizations.id })
+      .from(schema.organizations)
+      .where(eq(schema.organizations.tenantId, tenantId))
+      .limit(1);
+
+    if (!organization) {
+      throw new DomainException({
+        type: 'https://agentloom.dev/errors/workflow-import-organization-not-found',
+        title: '导入目标组织不存在',
+        status: HttpStatus.NOT_FOUND,
+        detail: `未找到租户 ${tenantId} 对应的组织，无法导入共享资源`,
+      });
+    }
+
+    return organization.id;
+  }
+
   private async cloneImportedWorkflowAgent(params: {
     sourceTenantId: string;
     sourceAgentDefinitionId: string;
@@ -1958,7 +2198,10 @@ export class WorkflowVersionService {
       const importedAt = new Date().toISOString();
       const created = await this.insertImportedWorkflowAgentDefinition(
         {
-          name: `${source.name} 副本`,
+          name:
+            params.context.importSource === 'marketplace'
+              ? source.name
+              : `${source.name} 副本`,
           description: source.description,
           icon: source.icon,
           runtimeMode: source.runtimeMode,

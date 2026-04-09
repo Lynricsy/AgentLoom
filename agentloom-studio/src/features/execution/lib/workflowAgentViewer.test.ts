@@ -82,6 +82,7 @@ function createNodeState(
         content: "alpha",
       },
     ],
+    subAgentStreams: {},
     ...overrides,
   };
 }

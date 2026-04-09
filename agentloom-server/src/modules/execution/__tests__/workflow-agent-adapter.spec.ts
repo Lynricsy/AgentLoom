@@ -4,6 +4,8 @@ import type { AgentVersionSnapshot } from '../../../database/schema/agent-defini
 import type { ExecutionStep } from '../../../database/schema';
 import type { AgentEvent } from '../../agent/types/agent-event.types';
 import type { ContentBlock } from '../../agent/types/content-block.types';
+import type { SessionToolProvider } from '../../agent/ports/agent-runtime.port';
+import { SubAgentToolsProvider } from '../../agent-execution/subagent';
 import { WorkflowAgentAdapter } from '../workflow-agent-adapter';
 
 const { mockResolveSubAgent } = vi.hoisted(() => ({
@@ -14,6 +16,17 @@ vi.mock('../node-handlers/sub-agent.handler', async () => {
   const actual = await vi.importActual<
     typeof import('../node-handlers/sub-agent.handler')
   >('../node-handlers/sub-agent.handler');
+
+  return {
+    ...actual,
+    resolveSubAgent: mockResolveSubAgent,
+  };
+});
+
+vi.mock('../../agent-execution/subagent/resolve-subagent', async () => {
+  const actual = await vi.importActual<
+    typeof import('../../agent-execution/subagent/resolve-subagent')
+  >('../../agent-execution/subagent/resolve-subagent');
 
   return {
     ...actual,
@@ -87,6 +100,9 @@ function createAdapter(
   if (deps.skillResolverService) {
     adapterDeps.skillResolverService = deps.skillResolverService;
   }
+  if (deps.subAgentToolsProvider) {
+    adapterDeps.subAgentToolsProvider = deps.subAgentToolsProvider;
+  }
 
   return new WorkflowAgentAdapter(adapterDeps as never, config as never);
 }
@@ -119,6 +135,8 @@ describe('WorkflowAgentAdapter', () => {
     loadSession: vi.fn(),
     prompt: vi.fn(),
     cancel: vi.fn(),
+    registerSessionToolProvider: vi.fn(),
+    unregisterSessionToolProvider: vi.fn(),
   };
   const mockRuntimeAdapterFactory = {
     selectAdapter: vi.fn(),
@@ -144,10 +162,15 @@ describe('WorkflowAgentAdapter', () => {
   let updateSetMock: ReturnType<typeof vi.fn>;
   let selectWhereMock: ReturnType<typeof vi.fn>;
   let selectFromMock: ReturnType<typeof vi.fn>;
+  let sessionProviders: Map<string, SessionToolProvider>;
+  let sessionAgentIds: Map<string, string>;
+  let realSubAgentToolsProvider: SubAgentToolsProvider;
 
   beforeEach(() => {
     vi.clearAllMocks();
     vi.useRealTimers();
+    sessionProviders = new Map();
+    sessionAgentIds = new Map();
 
     selectWhereMock = vi.fn().mockResolvedValue([{ triggerType: 'manual' }]);
     selectFromMock = vi.fn().mockReturnValue({
@@ -166,6 +189,23 @@ describe('WorkflowAgentAdapter', () => {
     });
 
     mockRuntimeAdapterFactory.selectAdapter.mockReturnValue(mockSandboxRuntime);
+    mockSandboxRuntime.registerSessionToolProvider.mockImplementation(
+      (sessionId: string, provider: SessionToolProvider) => {
+        sessionProviders.set(sessionId, provider);
+      },
+    );
+    mockSandboxRuntime.unregisterSessionToolProvider.mockImplementation(
+      (sessionId: string) => {
+        sessionProviders.delete(sessionId);
+      },
+    );
+    mockSandboxRuntime.createSession.mockImplementation(
+      async (params: { sessionId?: string; agentId: string }) => {
+        const id = params.sessionId ?? `${params.agentId}-session`;
+        sessionAgentIds.set(id, params.agentId);
+        return { id };
+      },
+    );
     mockAgentDefinitionService.findDetailById.mockImplementation(
       async (agentDefinitionId: string) => ({
         id: agentDefinitionId,
@@ -205,34 +245,37 @@ describe('WorkflowAgentAdapter', () => {
       (baseSystemPrompt: string, skills: Array<{ name: string }>) =>
         `${baseSystemPrompt}\n\n${skills.map((skill) => skill.name).join(',')}`,
     );
+    realSubAgentToolsProvider = new SubAgentToolsProvider(
+      db as never,
+      mockAgentDefinitionService as never,
+      mockEventBridge as never,
+    );
   });
 
   it('工作流已有 sandbox 绑定时不会新建沙箱，且子 Agent 共享父级绑定', async () => {
-    mockSandboxRuntime.createSession
-      .mockResolvedValueOnce({ id: 'child-session' })
-      .mockResolvedValueOnce({ id: 'parent-session' });
     mockSandboxRuntime.prompt.mockImplementation(
-      (sessionId: string, content: ContentBlock[]) => {
-        if (sessionId === 'child-session') {
+      async function* (sessionId: string, content: ContentBlock[]) {
+        if (sessionAgentIds.get(sessionId) === 'child-agent') {
           expect(content[0]).toMatchObject({ type: 'text' });
-          return emit([
-            { type: 'message_chunk', content: 'child-output' },
-            { type: 'done', stopReason: 'end_turn' },
-          ]);
+          yield { type: 'message_chunk', content: 'child-output' };
+          yield { type: 'done', stopReason: 'end_turn' };
+          return;
         }
 
-        const summary = JSON.parse((content[0] as { text: string }).text) as {
-          input: { prompt: string };
-          subAgents: { writer: { content: string } };
-        };
+        expect((content[0] as { text: string }).text).toContain('hello');
+        const provider = sessionProviders.get(sessionId);
+        expect(provider).toBeTypeOf('function');
+        const tools = await provider?.();
+        const childResult = await tools?.call_subagent.execute?.(
+          { alias: 'writer', task: '整理 hello' },
+          { toolCallId: 'tool-call-subagent-1' } as never,
+        );
+        expect(JSON.parse(childResult as string)).toMatchObject({
+          content: 'child-output',
+        });
 
-        expect(summary.input.prompt).toBe('hello');
-        expect(summary.subAgents.writer.content).toBe('child-output');
-
-        return emit([
-          { type: 'message_chunk', content: 'parent-output' },
-          { type: 'done', stopReason: 'end_turn' },
-        ]);
+        yield { type: 'message_chunk', content: 'parent-output' };
+        yield { type: 'done', stopReason: 'end_turn' };
       },
     );
 
@@ -244,6 +287,7 @@ describe('WorkflowAgentAdapter', () => {
         agentDefinitionService: mockAgentDefinitionService as never,
         sandboxService: mockSandboxService as never,
         eventBridge: mockEventBridge as never,
+        subAgentToolsProvider: realSubAgentToolsProvider as never,
       },
       {
         agentDefinitionId: 'parent-agent',
@@ -265,7 +309,8 @@ describe('WorkflowAgentAdapter', () => {
     expect(mockSandboxRuntime.createSession).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
-        agentId: 'child-agent',
+        agentId: 'parent-agent',
+        llmModelConfigId: 'model-parent',
         serverSandbox: { executionId: EXECUTION_ID },
         context: expect.objectContaining({
           serverSandbox: { executionId: EXECUTION_ID },
@@ -275,22 +320,19 @@ describe('WorkflowAgentAdapter', () => {
     expect(mockSandboxRuntime.createSession).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({
-        agentId: 'parent-agent',
+        agentId: 'child-agent',
+        llmModelConfigId: 'model-child',
         serverSandbox: { executionId: EXECUTION_ID },
         context: expect.objectContaining({
           serverSandbox: { executionId: EXECUTION_ID },
         }),
       }),
     );
+    expect(
+      mockSandboxRuntime.createSession.mock.calls[0]?.[0]?.sessionId,
+    ).not.toBe(mockSandboxRuntime.createSession.mock.calls[1]?.[0]?.sessionId);
     expect(mockEventBridge.emitOutputChunk).toHaveBeenCalledTimes(1);
-    expect(result).toMatchObject({
-      content: 'parent-output',
-      subAgents: {
-        writer: {
-          content: 'child-output',
-        },
-      },
-    });
+    expect(result).toMatchObject({ content: 'parent-output' });
   });
 
   it('没有工作流 sandbox 时会按 Agent 全局 sandboxConfig 新建执行级沙箱，并保留多模态输入块', async () => {
@@ -773,7 +815,7 @@ describe('WorkflowAgentAdapter', () => {
     expect(result).toMatchObject({ content: '第一段第二段' });
     expect(db.update.mock.calls.length).toBeGreaterThan(1);
     expect(step.checkpointData).toMatchObject({
-      sessionId: 'session-1',
+      sessionId: expect.any(String),
       partialContent: '第一段第二段',
       segments: [
         { type: 'text', content: '第一段第二段' },
@@ -1325,22 +1367,23 @@ describe('WorkflowAgentAdapter', () => {
         };
       },
     );
-    mockSandboxRuntime.createSession
-      .mockResolvedValueOnce({ id: 'child-session' })
-      .mockResolvedValueOnce({ id: 'parent-session' });
     mockSandboxRuntime.prompt
-      .mockReturnValueOnce(
-        emit([
-          { type: 'message_chunk', content: 'child-result' },
-          { type: 'done', stopReason: 'end_turn' },
-        ]),
-      )
-      .mockReturnValueOnce(
-        emit([
-          { type: 'message_chunk', content: 'parent-result' },
-          { type: 'done', stopReason: 'end_turn' },
-        ]),
-      );
+      .mockImplementation(async function* (sessionId: string) {
+        if (sessionAgentIds.get(sessionId) === 'child-agent') {
+          yield { type: 'message_chunk', content: 'child-result' };
+          yield { type: 'done', stopReason: 'end_turn' };
+          return;
+        }
+
+        const provider = sessionProviders.get(sessionId);
+        const tools = await provider?.();
+        await tools?.call_subagent.execute?.(
+          { alias: 'writer', task: '写总结' },
+          { toolCallId: 'tool-call-subagent-2' } as never,
+        );
+        yield { type: 'message_chunk', content: 'parent-result' };
+        yield { type: 'done', stopReason: 'end_turn' };
+      });
 
     const adapter = createAdapter({
       db,
@@ -1349,6 +1392,7 @@ describe('WorkflowAgentAdapter', () => {
       agentDefinitionService: mockAgentDefinitionService,
       sandboxService: mockSandboxService,
       eventBridge: mockEventBridge,
+      subAgentToolsProvider: realSubAgentToolsProvider,
     });
 
     await adapter.execute({
@@ -1361,7 +1405,7 @@ describe('WorkflowAgentAdapter', () => {
     });
 
     expect(mockSandboxRuntime.createSession).toHaveBeenNthCalledWith(
-      1,
+      2,
       expect.objectContaining({
         systemPrompt: expect.stringContaining('子代理覆盖提示词'),
         runtimeConfig: expect.objectContaining({
@@ -1402,22 +1446,26 @@ describe('WorkflowAgentAdapter', () => {
       },
     );
 
-    mockSandboxRuntime.createSession
-      .mockResolvedValueOnce({ id: 'child-session' })
-      .mockResolvedValueOnce({ id: 'parent-session' });
     mockSandboxRuntime.prompt
-      .mockReturnValueOnce(
-        emit([
-          { type: 'message_chunk', content: 'child-result' },
-          { type: 'done', stopReason: 'end_turn' },
-        ]),
-      )
-      .mockReturnValueOnce(
-        emit([
-          { type: 'message_chunk', content: 'parent-result' },
-          { type: 'done', stopReason: 'end_turn' },
-        ]),
-      );
+      .mockImplementation(async function* (sessionId: string) {
+        if (sessionAgentIds.get(sessionId) === 'child-agent') {
+          yield { type: 'message_chunk', content: 'child-result' };
+          yield { type: 'done', stopReason: 'end_turn' };
+          return;
+        }
+
+        const provider = sessionProviders.get(sessionId);
+        const tools = await provider?.();
+        const result = await tools?.call_subagent.execute?.(
+          { alias: 'child-agent', task: '写输出' },
+          { toolCallId: 'tool-call-subagent-3' } as never,
+        );
+        expect(JSON.parse(result as string)).toMatchObject({
+          content: 'child-result',
+        });
+        yield { type: 'message_chunk', content: 'parent-result' };
+        yield { type: 'done', stopReason: 'end_turn' };
+      });
 
     const adapter = createAdapter({
       db,
@@ -1426,6 +1474,7 @@ describe('WorkflowAgentAdapter', () => {
       agentDefinitionService: mockAgentDefinitionService,
       sandboxService: mockSandboxService,
       eventBridge: mockEventBridge,
+      subAgentToolsProvider: realSubAgentToolsProvider,
     });
 
     const result = await adapter.execute({
@@ -1436,10 +1485,8 @@ describe('WorkflowAgentAdapter', () => {
       versionSnapshot: makeSnapshot('parent-node'),
     });
 
-    expect(result.subAgents).toHaveProperty('child-agent');
-    expect(result.subAgents?.['child-agent']).toMatchObject({
-      content: 'child-result',
-    });
+    expect(result.content).toBe('parent-result');
+    expect(mockSandboxRuntime.createSession).toHaveBeenCalledTimes(2);
   });
 
   it('子 Agent 无可执行版本快照时抛出异常', async () => {
@@ -1454,6 +1501,22 @@ describe('WorkflowAgentAdapter', () => {
       subAgents: [{ agentDefinitionId: 'child-agent', alias: 'writer' }],
     });
 
+    mockSandboxRuntime.prompt.mockImplementation(async function* (
+      sessionId: string,
+    ) {
+      const provider = sessionProviders.get(sessionId);
+      const tools = await provider?.();
+      const result = await tools?.call_subagent.execute?.(
+        { alias: 'writer', task: '写输出' },
+        { toolCallId: 'tool-call-subagent-4' } as never,
+      );
+      expect(result).toBe(
+        'Sub-agent "child-agent" has no executable version snapshot',
+      );
+      yield { type: 'message_chunk', content: 'child-result' };
+      yield { type: 'done', stopReason: 'end_turn' };
+    });
+
     const adapter = createAdapter({
       db,
       agentRuntime: mockAgentRuntime,
@@ -1461,17 +1524,18 @@ describe('WorkflowAgentAdapter', () => {
       agentDefinitionService: mockAgentDefinitionService,
       sandboxService: mockSandboxService,
       eventBridge: mockEventBridge,
+      subAgentToolsProvider: realSubAgentToolsProvider,
     });
 
-    await expect(
-      adapter.execute({
-        executionId: EXECUTION_ID,
-        step: makeStep(),
-        input: { prompt: 'test' },
-        tenantId: TENANT_ID,
-        versionSnapshot: parentSnapshot,
-        sandboxBinding: { executionId: EXECUTION_ID },
-      }),
-    ).rejects.toThrow('no executable version snapshot');
+    const result = await adapter.execute({
+      executionId: EXECUTION_ID,
+      step: makeStep(),
+      input: { prompt: 'test' },
+      tenantId: TENANT_ID,
+      versionSnapshot: parentSnapshot,
+      sandboxBinding: { executionId: EXECUTION_ID },
+    });
+
+    expect(result.content).toBe('child-result');
   });
 });

@@ -11,6 +11,7 @@
 - Trigger: 修改 `agent-definition` 的图编译、runtime config 组装、Agent 发布快照或 share import 链路。
 - Trigger: 修改 `agent-execution`、`workflow-agent-adapter` 或 nested sub-agent 的运行时合并逻辑。
 - Trigger: 修改 Agent / Workflow 的系统提示词建模方式，或新增/调整 `sub-agent` 可覆盖与可扩展的输入端口。
+- Trigger: 修改 sandbox runtime 的 session factory、session-local tool provider 注册，或同一 sandbox 下多 Agent 共享执行语义。
 - Trigger: 发布前需要一次性预迁移旧的 `systemPrompt` 字段与 legacy `text/json` 句柄。
 
 ### 2. Signatures
@@ -30,6 +31,10 @@
   - 文件: `agentloom-server/src/modules/execution/workflow-agent-adapter.ts`
 - `AgentExecutionWorker.executeSubAgent(...)`
   - 文件: `agentloom-server/src/modules/agent-execution/agent-execution.worker.ts`
+- `SubAgentToolsProvider.createSessionToolProvider(subAgentRefs, parentContext, executeSubAgent, providerOptions?)`
+  - 文件: `agentloom-server/src/modules/agent-execution/subagent/subagent-tools.provider.ts`
+- `createPiSessionFactory(piAgent, setPtyManager?)`
+  - 文件: `agentloom-deploy/sandbox/src/server.ts`
 - `scripts/migrate-agent-input-nodes.ts`
 
 ### 3. Contracts
@@ -53,6 +58,20 @@
 - `schema-in` 与其它输出 schema 输入会编译到 `runtimeConfig.outputSchema`；执行前必须通过 `appendOutputSchemaToSystemPrompt()` 把 JSON Schema 约束附加到最终 system prompt。
 - nested `sub-agent` 必须递归编译、递归校验，不能只校验第一层 `agentDefinitionId/versionId`。
 - sub-agent 永远继承父 Agent 的 sandbox 与 runtimeMode；child 不能通过节点图局部覆盖沙箱边界。
+- standalone Agent conversation 与 workflow `agent` 必须共享同一套 nested sub-agent 调度语义：
+  - 先创建父 runtime session，再由父 session 暴露 `call_subagent` / `spawn_subagent` 工具按需触发 child。
+  - workflow shell 不得在父 session 创建前 eager 预执行 `plan_agent` / `repo_explorer` 一类子 Agent，否则会让模型记录、checkpoint 与真实调用顺序分叉。
+- 同一 `serverSandbox` 绑定下的多个 runtime session 只能共享工作区边界，不能共享 session-local 配置：
+  - `SettingsManager`
+  - `AuthStorage`
+  - `ModelRegistry`
+  - `ResourceLoader`
+  - session tool provider
+  - `runtimeApiKeys` / `models` / `systemPrompt`
+  - 任一项都不能从上一个 Agent session 泄漏到下一个 Agent session。
+- `registerSessionToolProvider(sessionId, provider)` / `unregisterSessionToolProvider(sessionId)` 必须按 runtime session 粒度成对管理：
+  - provider 必须在 `createSession(sessionId=...)` 前注册完成，保证父 session 首轮 prompt 就能调用 child tools。
+  - `createSession()` 失败、worker 提前退出或运行结束时都必须释放对应 sessionId 的 provider，避免旧 child tool 集残留到后续共享沙箱会话。
 - share import 与预迁移脚本必须复用同一 migration util，避免数据库、导入结果与运行时接受不同图语义。
 - Agent detail / public share response 返回 `sandboxLifecycle` 时，必须优先使用由 canvas / `sandboxConfig` 推导出的真实 lifecycle；只有当 `sandboxConfig` 缺失时，才允许回退到 `metadata.sandboxLifecycle`。历史 metadata 可能残留旧值，不能反向覆盖当前画布语义。
 - workflow `agent` 在执行时会把 `system-prompt-in` / `schema-in` 从普通 prompt 输入字典里剥离，避免把结构化 override 错当作用户消息内容。
@@ -86,6 +105,8 @@
 | `sub-agent` 只覆盖 `modelConfig`，未提供新 routing | 继承 routing 被移除，child 使用 concrete model | `agent-runtime-config.utils.spec.ts` |
 | Agent detail response 的 `metadata.sandboxLifecycle` 与 `sandboxConfig.lifecycleMode` 冲突 | 必须以 `sandboxConfig.lifecycleMode` 为准，避免 Studio 读到过期 lifecycle | `agent-definition-response.dto.spec.ts` |
 | nested sub-agent 扩展里重复 alias / tool / knowledge / memory / skill | 合并结果去重，避免 runtime 工具与资源重复挂载 | `agent-runtime-config.utils.spec.ts` |
+| workflow 父 Agent 配置 Claude，review child 配置 GPT，二者共享同一个 sandbox binding | 父 session 仍先按 Claude 创建；只有真正调用 review child 时，才创建独立 GPT child session | `workflow-agent-adapter.spec.ts` + browser QA |
+| 同一 sandbox 连续创建两个 session，第二个 session 覆盖了不同 `systemPrompt/models/runtimeApiKeys` | 第二个 session 只能看到自己的设置；第一个 session 的 tool provider 与 provider auth 不得串入 | `server-session-factory.spec.ts` |
 | 已发布 Agent 快照仍含 `nodeType='mcp'` / `sourceHandle='tools-out'` | detail/version response 与 runtime 编译都应恢复为 `mcp-tool` / `tool-out` | `agent-input-node-migration.util.spec.ts`, `agent-definition-response.dto.spec.ts`, `agent-definition.service.spec.ts` |
 | Agent MCP 节点保存的是 `config.enabledToolIds + config.tools[]` | `buildRuntimeConfigFromNodes()` 必须展开成逐个 MCP binding，与 workflow agent runtime 行为一致 | `mcp-tool-descriptor.utils.spec.ts`, `agent-definition.service.spec.ts` |
 | self-evolution 新增的 MCP 节点只写了 `mcpServerId` / 未写 `tools[]` | `proposeChange()` / `applyChange()` 必须把字段归一化为 `mcpServerConfigId`，并回填 active tools 到 `enabledToolIds + tools[]` | `self-evolution.service.spec.ts` |
@@ -126,6 +147,10 @@
 - `agentloom-server/src/modules/execution/__tests__/workflow-agent-adapter.spec.ts`
   - 断言 workflow `agent` 的 `system-prompt-in` / `schema-in` override
   - 断言 nested `subAgentRef` merge
+- `agentloom-server/src/modules/agent-execution/subagent/subagent-integration.spec.ts`
+  - 断言 workflow / conversation 共享同一套 `call_subagent` / `spawn_subagent` 注册契约
+- `agentloom-deploy/sandbox/test/server-session-factory.spec.ts`
+  - 断言共享 sandbox 下的 session-local settings/auth/model registry 隔离
 - `agentloom-server/src/modules/self-evolution/self-evolution.service.spec.ts`
   - 断言 `query_resource_pool(resourceType='mcp_tool')` 返回可直接写回节点的 MCP tool metadata
   - 断言 `applyChange()` 会把半残 MCP 节点补全为 canonical payload
@@ -135,6 +160,7 @@
 - Manual / browser QA:
   - 打开历史 Agent / Workflow，确认 prompt 被展示为独立 `text` 节点
   - 执行带 nested sub-agent 的案例，确认 child 使用局部 prompt / model / schema，且未出现 sandbox override
+  - 在共享同一个 persistent sandbox 的 workflow 开发循环里，确认父 Agent / child Agent 模型与系统提示词不串台
 
 ### 7. Wrong vs Correct
 

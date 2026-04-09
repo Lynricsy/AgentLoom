@@ -23,6 +23,7 @@ export {
   useSubAgentStreams,
   useExecutionError,
   useConversationConnectionError,
+  useWorkspaceTreeLoading,
 } from "./stores/agent-conversation.store";
 
 export type {

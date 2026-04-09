@@ -46,7 +46,7 @@ export const AgentDecisionSchema = z.object({
 });
 
 export const ToolOutputSchema = z.object({
-  toolCallId: z.string().uuid().optional(),
+  toolCallId: z.string().min(1).optional(),
   toolName: z.string(),
   toolInput: z.unknown(),
   toolOutput: z.unknown(),

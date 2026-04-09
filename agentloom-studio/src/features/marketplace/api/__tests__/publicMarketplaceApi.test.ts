@@ -211,12 +211,12 @@ describe('publicMarketplaceApi', () => {
 
   it('installs a marketplace listing with snake-cased body payload', async () => {
     const request = {
-      name: 'Agent Workflow 副本',
+      name: 'Agent Workflow',
       description: 'Install this workflow into my workspace.',
     }
     const response = {
       workflowDefinitionId: 'workflow-1',
-      name: 'Agent Workflow 副本',
+      name: 'Agent Workflow',
       message: 'Workflow installed successfully',
     }
     postMock.mockReturnValue({
@@ -234,12 +234,12 @@ describe('publicMarketplaceApi', () => {
 
   it('installs a plugin listing and returns plugin install response', async () => {
     const request = {
-      name: 'Text Uppercase Plugin 副本',
+      name: 'Text Uppercase Plugin',
     }
     const response = {
       pluginDbId: 'plugin-db-1',
       pluginId: 'text-uppercase',
-      name: 'Text Uppercase Plugin 副本',
+      name: 'Text Uppercase Plugin',
       message: 'Plugin installed successfully',
     }
     postMock.mockReturnValue({
@@ -380,7 +380,7 @@ describe('publicMarketplace mutation hooks', () => {
   it('install mutation invalidates public marketplace caches', async () => {
     const response = {
       workflowDefinitionId: 'workflow-1',
-      name: 'Agent Workflow 副本',
+      name: 'Agent Workflow',
       message: 'Workflow installed successfully',
     }
     postMock.mockReturnValue({
@@ -394,12 +394,12 @@ describe('publicMarketplace mutation hooks', () => {
     await act(async () => {
       await result.current.mutateAsync({
         id: 'listing-1',
-        body: { name: 'Agent Workflow 副本' },
+        body: { name: 'Agent Workflow' },
       })
     })
 
     expect(postMock).toHaveBeenCalledWith('marketplace/listings/listing-1/install', {
-      json: { name: 'Agent Workflow 副本' },
+      json: { name: 'Agent Workflow' },
     })
     await waitFor(() => {
       expect(invalidateSpy).toHaveBeenCalledWith({

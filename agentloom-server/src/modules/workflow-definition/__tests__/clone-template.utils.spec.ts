@@ -213,6 +213,44 @@ describe('cloneDefinitionWithNewIds', () => {
     expect(result.edges[0].target).toBe('orphan-node');
   });
 
+  it('应当同步 remap compound 子节点的 parentId', () => {
+    const definition: CloneableDefinition = {
+      nodes: [
+        createNode({ id: 'loop-root' }),
+        createNode({ id: 'loop-child', parentId: 'loop-root' }),
+      ],
+      edges: [],
+      viewport: DEFAULT_VIEWPORT,
+    };
+
+    const result = cloneDefinitionWithNewIds(definition);
+
+    expect(result.nodes[0].id).toBe(MOCK_UUIDS[0]);
+    expect(result.nodes[1].id).toBe(MOCK_UUIDS[1]);
+    expect(result.nodes[1].parentId).toBe(MOCK_UUIDS[0]);
+    expect(definition.nodes[1].parentId).toBe('loop-root');
+  });
+
+  it('应当兼容 legacy parent_id 并写回 canonical parentId', () => {
+    const legacyChildNode = createNode({
+      id: 'loop-child',
+    }) as ReactFlowNode & Record<string, unknown>;
+    legacyChildNode.parent_id = 'loop-root';
+
+    const definition: CloneableDefinition = {
+      nodes: [createNode({ id: 'loop-root' }), legacyChildNode],
+      edges: [],
+      viewport: DEFAULT_VIEWPORT,
+    };
+
+    const result = cloneDefinitionWithNewIds(definition);
+    const clonedChild = result.nodes[1] as ReactFlowNode & Record<string, unknown>;
+
+    expect(clonedChild.parentId).toBe(MOCK_UUIDS[0]);
+    expect(clonedChild.parent_id).toBeUndefined();
+    expect(legacyChildNode.parent_id).toBe('loop-root');
+  });
+
   it('应当保持 viewport 不变（深拷贝）', () => {
     const viewport: ReactFlowViewport = { x: 100, y: -50, zoom: 1.5 };
     const definition: CloneableDefinition = {

@@ -2888,6 +2888,11 @@ export class AgentExecutionWorker extends WorkerHost {
   ): Promise<SubAgentResult> {
     const trackedAbort = new AbortController();
     subAgentTracker.abortControllers.set(params.handle, trackedAbort);
+    const conversationId = params.parentContext.conversationId;
+
+    if (!conversationId) {
+      throw new Error('对话子代理执行缺少 conversationId');
+    }
 
     const linkedAbort = this.combineAbortSignals([
       params.abortSignal,
@@ -2978,7 +2983,7 @@ export class AgentExecutionWorker extends WorkerHost {
       const memoryInstanceIds = runtimeConfig.memoryInstanceIds ?? [];
       const memorySessionIds = await this.ensureAttachedMemorySessions(
         memoryInstanceIds,
-        params.parentContext.conversationId,
+        conversationId,
         params.parentContext.tenantId,
       );
 
@@ -3005,7 +3010,7 @@ export class AgentExecutionWorker extends WorkerHost {
           sandboxNodeId: null,
           config: runtimeConfig.sandboxConfig!,
           tenantId: params.parentContext.tenantId,
-          agentConversationId: params.parentContext.conversationId,
+          agentConversationId: conversationId,
           piConfigInput,
         });
       }
@@ -3036,7 +3041,7 @@ export class AgentExecutionWorker extends WorkerHost {
         runtime,
         sessionId: nextSessionId,
         runtimeConfig,
-        conversationId: params.parentContext.conversationId,
+        conversationId,
         tenantId: params.parentContext.tenantId,
         currentAgentDefinitionId: params.agentDefinition.id,
       });
@@ -3044,7 +3049,7 @@ export class AgentExecutionWorker extends WorkerHost {
         runtime,
         sessionId: nextSessionId,
         runtimeConfig,
-        conversationId: params.parentContext.conversationId,
+        conversationId,
         tenantId: params.parentContext.tenantId,
         parentAbortSignal: linkedAbort.signal,
         currentAgentDefinitionId: params.agentDefinition.id,
@@ -3066,17 +3071,17 @@ export class AgentExecutionWorker extends WorkerHost {
           ...(usesSandboxRuntime
             ? {
                 serverSandbox: {
-                  agentConversationId: params.parentContext.conversationId,
+                  agentConversationId: conversationId,
                 },
               }
             : {}),
           context: {
             tenantId: params.parentContext.tenantId,
-            agentConversationId: params.parentContext.conversationId,
+            agentConversationId: conversationId,
             ...(usesSandboxRuntime
               ? {
                   serverSandbox: {
-                    agentConversationId: params.parentContext.conversationId,
+                    agentConversationId: conversationId,
                   },
                 }
               : {}),
@@ -3114,7 +3119,7 @@ export class AgentExecutionWorker extends WorkerHost {
 
       if (params.invocationMode === 'spawn') {
         void this.injectSubAgentCompletionNotice(
-          params.parentContext.conversationId,
+          conversationId,
           params.agentDefinition.name,
           params.handle,
           params.alias,
@@ -3127,7 +3132,7 @@ export class AgentExecutionWorker extends WorkerHost {
     } catch (error) {
       if (params.invocationMode === 'spawn' && !linkedAbort.signal.aborted) {
         void this.injectSubAgentCompletionNotice(
-          params.parentContext.conversationId,
+          conversationId,
           params.agentDefinition.name,
           params.handle,
           params.alias,

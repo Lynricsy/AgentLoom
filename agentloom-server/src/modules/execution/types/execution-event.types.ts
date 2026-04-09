@@ -1,5 +1,6 @@
 import type { AgentEvent } from '../../agent/types/agent-event.types';
 import type { ToolCallStatus } from '../../agent/types/tool-call-event.types';
+import type { SubAgentEventEnvelope } from '../../agent-execution/subagent/subagent-execution.types';
 
 export const ExecutionEventName = {
   EXECUTION_STATUS_CHANGED: 'execution.status.changed',
@@ -90,6 +91,7 @@ export interface StepAgentEventPayload {
   readonly stepId: string;
   readonly executionType?: ExecutionResourceType;
   readonly event: AgentEvent;
+  readonly subagent?: SubAgentEventEnvelope;
 }
 
 export interface StepRetryingPayload {

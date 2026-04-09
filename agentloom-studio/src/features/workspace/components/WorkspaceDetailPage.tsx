@@ -189,13 +189,8 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
             tree={tree}
             selectedPath={selectedPath}
             onSelectFile={setSelectedPath}
+            isLoading={treeQuery.isLoading}
           />
-          {treeQuery.isLoading && (
-            <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              <span>正在加载文件树…</span>
-            </div>
-          )}
           {treeError && (
             <p className="mt-2 text-xs text-muted-foreground">{treeError}</p>
           )}

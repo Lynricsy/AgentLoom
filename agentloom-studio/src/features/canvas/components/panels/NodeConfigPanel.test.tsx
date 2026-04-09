@@ -245,6 +245,7 @@ describe('NodeConfigPanel', () => {
       startedAt: '2026-03-10T10:00:00.000Z',
       toolCalls: {},
       agentEvents: [],
+      subAgentStreams: {},
     }
 
     render(<NodeConfigPanel />)
@@ -270,6 +271,7 @@ describe('NodeConfigPanel', () => {
       completedAt: '2026-03-10T10:05:00.000Z',
       toolCalls: {},
       agentEvents: [],
+      subAgentStreams: {},
     }
 
     render(<NodeConfigPanel />)

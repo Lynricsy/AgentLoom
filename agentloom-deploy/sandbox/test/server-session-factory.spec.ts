@@ -283,4 +283,185 @@ describe('createPiSessionFactory', () => {
       }),
     );
   });
+
+  it('同一工厂连续创建多个会话时应保持 session 级配置隔离', async () => {
+    const createSessionArgs: Array<Record<string, unknown>> = [];
+    const settingsManagers: Array<Record<string, unknown>> = [];
+    const authStorages: Array<{
+      id: string;
+      setRuntimeApiKey: ReturnType<typeof vi.fn>;
+    }> = [];
+    const modelRegistries: Array<{
+      id: string;
+      registerProvider: ReturnType<typeof vi.fn>;
+    }> = [];
+    const resourceLoaders: Array<Record<string, unknown>> = [];
+
+    const piAgent = {
+      createAgentSession: vi.fn().mockImplementation(async (args) => {
+        createSessionArgs.push(args as Record<string, unknown>);
+        return {
+          session: {
+            prompt: vi.fn(),
+            abort: vi.fn(),
+            subscribe: vi.fn(),
+            dispose: vi.fn(),
+          },
+        };
+      }),
+      DefaultResourceLoader: vi.fn().mockImplementation((args) => {
+        const resourceLoader = {
+          id: `resource-loader-${resourceLoaders.length + 1}`,
+          reload: vi.fn().mockResolvedValue(undefined),
+        };
+        resourceLoaders.push({ ...resourceLoader, args });
+        return resourceLoader;
+      }),
+      SessionManager: {
+        inMemory: vi.fn().mockImplementation(() => ({
+          id: `session-manager-${createSessionArgs.length + 1}`,
+        })),
+      },
+      SettingsManager: {
+        inMemory: vi.fn().mockImplementation((settings) => {
+          const manager = {
+            id: `settings-manager-${settingsManagers.length + 1}`,
+            settings,
+          };
+          settingsManagers.push(manager);
+          return manager;
+        }),
+      },
+      AuthStorage: {
+        inMemory: vi.fn().mockImplementation(() => {
+          const authStorage = {
+            id: `auth-storage-${authStorages.length + 1}`,
+            setRuntimeApiKey: vi.fn(),
+          };
+          authStorages.push(authStorage);
+          return authStorage;
+        }),
+      },
+      ModelRegistry: vi.fn().mockImplementation(() => {
+        const modelRegistry = {
+          id: `model-registry-${modelRegistries.length + 1}`,
+          registerProvider: vi.fn(),
+        };
+        modelRegistries.push(modelRegistry);
+        return modelRegistry;
+      }),
+    };
+
+    const factory = createPiSessionFactory(piAgent);
+    const staticConfig = {
+      settings: {
+        compaction: { enabled: true },
+      },
+      systemPrompt: '静态提示词',
+    };
+
+    await factory('/workspace/project', staticConfig, {
+      settings: {
+        defaultProvider: 'openai',
+        defaultModel: 'gpt-4.1',
+      },
+      systemPrompt: '会话 A 提示词',
+      runtimeApiKeys: {
+        openai: 'sk-openai-a',
+      },
+      models: {
+        providers: {
+          openai: {
+            api: 'openai-completions',
+            apiKey: 'OPENAI_API_KEY',
+            models: [{ id: 'gpt-4.1', name: 'GPT-4.1' }],
+          },
+        },
+      },
+    });
+
+    await factory('/workspace/project', staticConfig, {
+      settings: {
+        defaultProvider: 'anthropic',
+        defaultModel: 'claude-sonnet-4-6',
+      },
+      systemPrompt: '会话 B 提示词',
+      runtimeApiKeys: {
+        anthropic: 'ak-anthropic-b',
+      },
+      models: {
+        providers: {
+          anthropic: {
+            api: 'anthropic',
+            apiKey: 'ANTHROPIC_API_KEY',
+            models: [
+              {
+                id: 'claude-sonnet-4-6',
+                name: 'Claude Sonnet 4.6',
+              },
+            ],
+          },
+        },
+      },
+    });
+
+    expect(settingsManagers).toHaveLength(2);
+    expect(settingsManagers[0]?.settings).toEqual({
+      compaction: { enabled: true },
+      defaultProvider: 'openai',
+      defaultModel: 'gpt-4.1',
+    });
+    expect(settingsManagers[1]?.settings).toEqual({
+      compaction: { enabled: true },
+      defaultProvider: 'anthropic',
+      defaultModel: 'claude-sonnet-4-6',
+    });
+
+    expect(authStorages).toHaveLength(2);
+    expect(authStorages[0]?.setRuntimeApiKey).toHaveBeenCalledWith(
+      'openai',
+      'sk-openai-a',
+    );
+    expect(authStorages[1]?.setRuntimeApiKey).toHaveBeenCalledWith(
+      'anthropic',
+      'ak-anthropic-b',
+    );
+
+    expect(modelRegistries).toHaveLength(2);
+    expect(modelRegistries[0]?.registerProvider).toHaveBeenCalledWith(
+      'openai',
+      expect.objectContaining({
+        api: 'openai-completions',
+      }),
+    );
+    expect(modelRegistries[1]?.registerProvider).toHaveBeenCalledWith(
+      'anthropic',
+      expect.objectContaining({
+        api: 'anthropic',
+      }),
+    );
+
+    expect(resourceLoaders).toHaveLength(2);
+    expect(
+      resourceLoaders[0]?.args as { systemPrompt?: string } | undefined,
+    ).toMatchObject({
+      systemPrompt: '会话 A 提示词',
+    });
+    expect(
+      resourceLoaders[1]?.args as { systemPrompt?: string } | undefined,
+    ).toMatchObject({
+      systemPrompt: '会话 B 提示词',
+    });
+
+    expect(createSessionArgs).toHaveLength(2);
+    expect(createSessionArgs[0]?.settingsManager).toBe(settingsManagers[0]);
+    expect(createSessionArgs[1]?.settingsManager).toBe(settingsManagers[1]);
+    expect(createSessionArgs[0]?.authStorage).toBe(authStorages[0]);
+    expect(createSessionArgs[1]?.authStorage).toBe(authStorages[1]);
+    expect(createSessionArgs[0]?.modelRegistry).toBe(modelRegistries[0]);
+    expect(createSessionArgs[1]?.modelRegistry).toBe(modelRegistries[1]);
+    expect(createSessionArgs[0]?.resourceLoader).not.toBe(
+      createSessionArgs[1]?.resourceLoader,
+    );
+  });
 });

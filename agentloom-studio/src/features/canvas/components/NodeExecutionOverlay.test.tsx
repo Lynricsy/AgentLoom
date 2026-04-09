@@ -24,6 +24,7 @@ function makeNodeState(
     isStreaming: false,
     toolCalls: {},
     agentEvents: [],
+    subAgentStreams: {},
     ...overrides,
   }
 }

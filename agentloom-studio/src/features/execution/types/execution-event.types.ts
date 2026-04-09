@@ -6,6 +6,7 @@ import type {
   ToolPermissionRequiredPayload,
   ToolPermissionResolvedPayload,
 } from './agentEvent.types'
+import type { SubAgentEventEnvelope } from '@/features/agent-conversation'
 import type { TypeMismatchInfo } from './index'
 
 export const ExecutionEventName = {
@@ -82,6 +83,7 @@ export interface StepStatusChangedPayload {
 export interface StepAgentEventPayload {
   stepId: string
   event: AgentEvent
+  subagent?: SubAgentEventEnvelope
 }
 
 export interface StepRetryingPayload {

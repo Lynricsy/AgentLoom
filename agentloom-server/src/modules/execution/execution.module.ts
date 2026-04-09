@@ -20,6 +20,7 @@ import { SharedResourcesModule } from '../shared-resources/shared-resources.modu
 import { SkillModule } from '../skill/skill.module';
 import { SkillResolverService } from '../skill/skill-resolver.service';
 import { McpModule } from '../mcp/mcp.module';
+import { SubAgentToolsProvider } from '../agent-execution/subagent';
 import { WorkspaceIntegrationModule } from '../agent-execution/workspace-integration.module';
 import { RbacCacheService } from '../../common/services/rbac-cache.service';
 import { ExecutionController } from './execution.controller';
@@ -101,10 +102,11 @@ import {
           agentRuntime,
           runtimeAdapterFactory,
           agentDefinitionService,
-          sandboxService,
-          eventBridge,
-          skillResolverService,
-        ),
+        sandboxService,
+        eventBridge,
+        new SubAgentToolsProvider(db, agentDefinitionService, eventBridge),
+        skillResolverService,
+      ),
       inject: [
         DRIZZLE,
         AGENT_RUNTIME,

@@ -63,6 +63,7 @@ import {
   useExecutionError,
   useConversationConnectionError,
   useWorkspaceSource,
+  useWorkspaceTreeLoading,
 } from "../stores/agent-conversation.store";
 
 interface AgentConversationPageProps {
@@ -568,6 +569,7 @@ export function AgentConversationPage({
   const executionError = useExecutionError();
   const connectionError = useConversationConnectionError();
   const workspaceSource = useWorkspaceSource();
+  const workspaceTreeLoading = useWorkspaceTreeLoading();
   const runtimeMode = agentQuery.data?.runtimeMode;
   const workspacePreviewId = resolveConversationWorkspacePreviewId(
     agentQuery.data,
@@ -999,6 +1001,7 @@ export function AgentConversationPage({
                       tree={fileTree}
                       selectedPath={selectedFilePath}
                       onSelectFile={actions.selectFile}
+                      isLoading={workspaceTreeLoading}
                     />
                   </div>
                 </div>

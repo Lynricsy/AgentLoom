@@ -3,7 +3,12 @@ import { Bot, Brain, ChevronDown, ChevronRight, User } from 'lucide-react'
 import { MarkdownRenderer } from '@/shared/components/markdown/MarkdownRenderer'
 import { ToolCallCard } from '@/shared/components/tool-renderers'
 import type { ToolCallData } from '@/shared/components/tool-renderers/types'
-import type { ConversationMessage, MessageSegment } from '@/features/agent-conversation'
+import {
+  SubAgentStreamView,
+  type ConversationMessage,
+  type MessageSegment,
+  type SubAgentStream,
+} from '@/features/agent-conversation'
 
 function toToolCallData(toolCall: ConversationMessage['toolCalls'][number]): ToolCallData {
   return {
@@ -177,6 +182,7 @@ const AssistantMessage = memo(function AssistantMessage({
 
 export interface ExecutionAgentMessageListProps {
   messages: ConversationMessage[]
+  subAgentStreams?: Record<string, SubAgentStream>
   isExecuting: boolean
   emptyTitle?: string
   emptyDescription?: string
@@ -184,6 +190,7 @@ export interface ExecutionAgentMessageListProps {
 
 export const ExecutionAgentMessageList = memo(function ExecutionAgentMessageList({
   messages,
+  subAgentStreams = {},
   isExecuting,
   emptyTitle = 'Agent 运行尚未开始',
   emptyDescription = '当该节点开始产出文本、工具或思考事件后，这里会显示完整瀑布流。',
@@ -212,13 +219,21 @@ export const ExecutionAgentMessageList = memo(function ExecutionAgentMessageList
     setAutoScroll(atBottom)
   }, [])
 
+  const childStreams = Object.values(subAgentStreams).sort((a, b) => {
+    if (a.depth !== b.depth) {
+      return a.depth - b.depth
+    }
+
+    return a.startedAt - b.startedAt
+  })
+
   return (
     <div
       ref={containerRef}
       className="h-full overflow-y-auto"
       onScroll={handleScroll}
     >
-      {messages.length === 0 ? (
+      {messages.length === 0 && childStreams.length === 0 ? (
         <div className="flex h-full items-center justify-center">
           <div className="text-center">
             <Bot className="mx-auto size-12 text-muted-foreground/30" />
@@ -241,6 +256,16 @@ export const ExecutionAgentMessageList = memo(function ExecutionAgentMessageList
             ) : (
               <AssistantMessage key={message.id} message={message} />
             ),
+          )}
+          {childStreams.length > 0 && (
+            <div className="space-y-3 px-4 py-2">
+              <div className="px-1 text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+                子 Agent 瀑布流
+              </div>
+              {childStreams.map((stream) => (
+                <SubAgentStreamView key={stream.handle} stream={stream} />
+              ))}
+            </div>
           )}
           {isExecuting &&
             !messages.some(

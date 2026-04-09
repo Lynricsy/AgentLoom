@@ -15,6 +15,7 @@
   - `src/modules/execution/execution.controller.ts`
   - `src/modules/agent-conversation/message-segments.ts`
   - `src/modules/agent-execution/workspace-integration.service.ts`
+  - `agentloom-deploy/sandbox/src/server.ts`
 - 风险点：一旦只保留最终 `content + toolCalls[]`，或者 viewer 冷开时拿不到 snapshot/replay/workspace，前端就会退化成“文本一坨、工具堆后面”的假瀑布流。
 
 ### 2. Signatures
@@ -28,6 +29,7 @@
 - `WorkflowAgentAdapter.execute(params): Promise<WorkflowAgentExecutionResult>`
 - `AgentTaskWorker.process(job): Promise<void>`
 - `WorkspaceIntegrationService.archiveExecutionStepWorkspace(executionId, stepId, tenantId, sandboxNodeId?): Promise<string | null>`
+- `POST /v1/prompt`
 - `GET /executions/:executionId`
 - `GET /executions/:executionId/steps/:stepId/workspace/tree`
 - `GET /executions/:executionId/steps/:stepId/workspace/files/*`
@@ -72,6 +74,21 @@
   - `decision`
   - `round`
   - `chunkIndex`
+- workflow-agent 的 nested child waterfall 必须持久化到父 step 的 `execution_steps.checkpointData.subAgentStreams[handle]`，并与 conversation child stream 共享同一事件语义：
+  - `message_chunk`
+  - `thinking`
+  - `tool_call`
+  - `tool_result`
+  - `done`
+  - `status_changed`
+  - 不允许 workflow 另起一套“只留摘要”的 child 历史格式。
+- `execution.node.agent-event` 若携带 `subagent` envelope，表示该事件属于 child stream：
+  - 事件必须路由到对应 `subAgentStreams[handle]`
+  - 不得再混入父 step 顶层 `agentEvents/messages`，否则会把 child 输出伪装成父 Agent 输出
+- workflow `agent` 与 standalone Agent 必须共享同一套 prompt loop / child dispatch 顺序：
+  - 父 session 先创建
+  - child 只在父 session 实际触发 `call_subagent` / `spawn_subagent` 后才创建
+  - workflow shell 不得在主 session 之前单独跑 child prompt
 - tool-level `awaiting_permission` 现在只保留给**自进化写操作**（当前为 `apply_change` / `create_resource`）。
   - 普通运行时工具调用必须直接自动继续，不能再因为 autonomy mode / workflow trigger 类型不同而进入人工审批。
   - sandbox / container SSE 适配层在翻译 `tool_call_update` 时，若事件没有显式 `status='awaiting_permission'` 且没有 `permissionRequest`，默认状态必须保持 `in_progress`；不能仅因为事件类型是 `update` 就回退成 `awaiting_permission`。
@@ -82,17 +99,21 @@
   - step-scoped workspace REST API
 - `execution.node.output-chunk` 对 workflow-agent 是必需事件，不能只依赖 `execution.node.agent-event(type='message_chunk')`。
 - `execution.node.status-changed` 对只在终态一次性写入 `result` 的 workflow 节点（例如 `text-output` / `json-output`）必须同时携带最新 `result`；若这次状态转换也写入了 runtime checkpoint，则同一事件还必须携带 `checkpointData`。
-  - 否则前端只能依赖刷新后的 snapshot 才能恢复最终输出，one-shot result 节点会表现成“执行完成��界面空白”。
+  - 否则前端只能依赖刷新后的 snapshot 才能恢复最终输出，one-shot result 节点会表现成“执行完成后界面空白”。
 - workflow step 的工作区读取必须走 step 作用域 API，而不是 conversation 作用域 API：
   - `GET /executions/:executionId/steps/:stepId/workspace/tree`
   - `GET /executions/:executionId/steps/:stepId/workspace/files/*`
 - live `workspace/tree`、conversation fallback tree 与持久化 workspace preview tree 必须对普通隐藏目录/文件保持一致的可见性语义。
   - `.claude`、`.env`、`.github` 这类普通 dot 路径要按真实层级保留，不能因为父目录缺失把子节点抬到根层。
   - `workspace.file_change` 事件也必须沿用同一套路径可见性语义，避免前端实时树与完整树口径漂移。
-  - 当前允许继续排除 `.git` 与 `node_modules` 这类��础设施目录。
+  - 当前允许继续排除 `.git` 与 `node_modules` 这类基础设施目录。
 - `archiveExecutionStepWorkspace()` 必须保证 `checkpointData.workspaceSnapshotId` 始终指向“这一步结束后仍可回放”的最新 workspace：
   - sandbox `config.restoreWorkspaceId` 存在：同步回原 workspace 并返回同一个 `restoreWorkspaceId`
   - sandbox 未绑定现有 workspace：才允许新建 `execution_archive`
+- sandbox `/v1/prompt` 的 session busy/streaming 锁必须以底层 `session.prompt()` promise 是否 settle 为准，而不是仅以 SSE terminal event 为准：
+  - `done/error` 事件可以结束 HTTP response
+  - 但只有在 `session.prompt()` settle 后，才允许 `markStreaming(sessionId, false)` 并接受下一轮 prompt
+  - 若 response/socket 在 settle 前提前关闭，且尚未发出 terminal event，server 必须 best-effort `abort()` 该 session，避免挂起 prompt 占住共享沙箱
 - `workspace.file_change` 若带 `executionId + stepId`，必须桥接成 workflow execution 的 `AgentEvent(type='file_change')`；若只带 `conversationId`，只能推送到 conversation namespace，不能串流。
 - execution viewer 冷开时，gateway 必须先发 `execution.state.snapshot`，再补发 active step buffered live events；不能反过来，否则客户端没有 step 映射时会丢实时事件。
 
@@ -102,13 +123,16 @@
 | ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | `segments` 已持久化                                                      | viewer 必须按 `text/thinking/tool_call` 的真实顺序恢复历史                               | `agent-execution.worker.spec.ts` / `workflow-agent-adapter.spec.ts`                                  |
 | `subAgentStreams` 已持久化                                               | Studio drill-in 必须按 child `message/thinking/tool_result` 顺序恢复历史瀑布流           | `event-bridge.service.spec.ts` / `subagent-event-routing.spec.ts` / `agent-execution.worker.spec.ts` |
+| workflow `checkpointData.subAgentStreams` 已持久化                       | workflow Agent viewer 刷新后仍能恢复 child waterfall，而不是只剩工具摘要                 | `workflow-agent-adapter.spec.ts` / `workflowAgentViewer.test.ts`                                      |
 | conversation turn 运行中已产出 partial output，但最终 runtime error 失败 | worker 仍需持久化 partial assistant turn，刷新后不能丢失                                 | `agent-execution.worker.spec.ts`                                                                     |
+| `execution.node.agent-event` 带 `subagent` envelope                      | 事件只更新对应 child stream，不进入父 step 顶层消息流                                     | `executionStore.test.ts` / `WorkflowAgentViewer.test.tsx`                                             |
 | `text-output/json-output` 等 one-shot 节点只在 completed 时生成 `result` | `execution.node.status-changed` 必须携带该 `result/checkpointData`，避免前端必须刷新 snapshot | `step-state-machine.service.spec.ts`                                                                 |
 | `segments` 缺失，但 `partialContent + toolCalls` 存在                    | 允许 fallback 恢复基础内容，但会丢交错顺序；这是临时兼容，不是目标形态                   | `workflowAgentViewer.test.ts` / `workflow_agent_runtime_test.dart`                                   |
 | workflow-agent 冷开时 step 仍在运行                                      | snapshot 后必须能补到 active step buffered live events                                   | `execution.gateway.spec.ts`                                                                          |
 | workflow step 绑定已有 workspace 完成/失败                               | `checkpointData.workspaceSnapshotId` 继续指向原 `restoreWorkspaceId`，不生成重复 archive | `workspace-integration.service.spec.ts` / `agent-task.worker.spec.ts`                                |
 | workspace 含普通隐藏目录/文件                                            | tree / preview / file_change 都保留真实层级，不得把子节点抬到根层                        | `workspace-integration.service.spec.ts` / `workspace.service.spec.ts`                                |
 | `file_change` 事件只带 `conversationId`                                  | 不得推送到 `/execution` namespace                                                        | `event-bridge.service.spec.ts`                                                                       |
+| sandbox `/v1/prompt` 的 SSE 先结束，但底层 `session.prompt()` 仍未 settle | session 必须继续保持 busy，直到 prompt settle；若 socket 已关闭则 best-effort abort       | `server-prompt-stream.spec.ts` / `sandbox-container.e2e-spec.ts`                                     |
 | `tool_call` segment 指向不存在的 tool call                               | `normalizeConversationMessageSegments()` / viewer normalization 必须丢弃该 segment       | `workflowAgentViewer.test.ts`                                                                        |
 | step workspace 文件路径为空或越权                                        | API 返回明确失败，前端不应继续复用旧内容                                                 | `execution.controller.spec.ts` / `workspace-integration.service.spec.ts`                             |
 
@@ -127,6 +151,7 @@
   - 断言 workflow agent 的 `checkpointData.segments`、`partialContent`、`toolCalls` 持续更新。
 - `src/modules/execution/__tests__/workflow-agent-adapter.spec.ts`
   - 断言 workflow-agent 的运行中 checkpoint 包含 ordered segments。
+  - 断言 workflow child stream 会持久化到 `checkpointData.subAgentStreams`。
 - `src/modules/execution/__tests__/step-state-machine.service.spec.ts`
   - 断言 completed `updateStepStatus()` 会把 `result/checkpointData` 透传到 `execution.node.status-changed`。
 - `src/modules/execution/__tests__/execution.gateway.spec.ts`
@@ -142,6 +167,10 @@
   - 断言 `workspace.file_change` 正确桥接到 workflow execution。
 - `src/modules/agent-execution/__tests__/subagent-event-routing.spec.ts`
   - 断言 child completed/failed tool call 会走 `conversation.agent.tool_result`，并广播 `conversation.subagent.status`。
+- `agentloom-deploy/sandbox/test/server-prompt-stream.spec.ts`
+  - 断言 `/v1/prompt` 只有在底层 prompt settle 后才释放 busy 锁，socket 提前关闭时会 abort。
+- `agentloom-server/test/sandbox-container.e2e-spec.ts`
+  - 断言 sandbox `/v1/prompt` 不会因为 SSE terminal event 提前释放 streaming 状态。
 
 ### 7. Wrong vs Correct
 
@@ -533,7 +562,7 @@ this.eventEmitter.emit('agent-conversation.message-sent', {
 ### 3. Contracts
 
 - standalone conversation 结束时，服务端必须尝试从 live container 读取当前 `/workspace` 目录树，并把快照写入 `agent_conversations.metadata.workspaceTreeSnapshot`。
-- 这份 conversation tree snapshot 与 live `GET /agent-conversations/:id/workspace/tree` 必须保持同一套目录可见性语��。
+- 这份 conversation tree snapshot 与 live `GET /agent-conversations/:id/workspace/tree` 必须保持同一套目录可见性语义。
   - 普通隐藏目录/文件要保留在树里，且层级必须与真实路径一致。
   - 当前允许继续排除 `.git` 与 `node_modules`。
 - `agent-conversation.ended` 必须在 conversation 状态变更事务提交后再发出；不能在事务体内直接 fire-and-forget，否则异步 listener 里再注册 after-commit hook 时，会把 destroy job 丢掉。

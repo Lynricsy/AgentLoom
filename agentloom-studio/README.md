@@ -54,6 +54,12 @@ AgentLoom Studio 是基于 **React 19 + Vite 7** 的前端工作台，负责工�
 - `AgentConversationPage` 的子代理 drill-in 视图优先消费 live `subAgentStreams`，因此实时执行中的 child 可以继续按消息瀑布与工具调用展开。
 - 当页面只有历史消息时，前端会优先读取 `assistant.metadata.subAgentStreams` 恢复 child waterfall；只有旧历史缺少 durable stream 时，才会从 `wait_for_subagents` / `get_subagent_status` 结果和 `subagent_completion_notice` 合成摘要视图。
 - 若 live 与历史都没有该 handle 的可展示数据，点击“进入子代理视图”不会再制造只改变 breadcrumb 的假切换。
+- workflow Agent viewer 也会把 `step.checkpointData.subAgentStreams` 与 live `nodeState.subAgentStreams` 合并后展示；刷新执行页后，已完成 child 仍能按文本/思考/工具瀑布恢复，而不是退化成摘要。
+
+## Discover 安装事实
+
+- `MarketplaceInstallDialog` 在 discover / marketplace 安装 workflow 时，名称输入框默认直接使用 listing 标题，不再自动追加“副本”。
+- discover 安装成功后的 workflow 会只引用当前租户新建的 workspace / sandbox 资源；前端不再继续回显来源模板里的 workspace 或 persistent sandbox 标识。
 
 ## Agent 对话附件事实
 

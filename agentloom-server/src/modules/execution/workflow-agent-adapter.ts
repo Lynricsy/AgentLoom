@@ -1,4 +1,5 @@
 import { Logger } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import { and, eq } from 'drizzle-orm';
 
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
@@ -16,7 +17,10 @@ import {
 } from '../../database/schema';
 import type { IAgentAdapterFactory as RuntimeAdapterFactory } from '../agent/agent-adapter.factory';
 import type { IAgentRuntime } from '../agent/ports/agent-runtime.port';
-import type { ServerSandboxBinding } from '../agent/types/agent-session.types';
+import type {
+  AgentSession,
+  ServerSandboxBinding,
+} from '../agent/types/agent-session.types';
 import type {
   DecisionEvent,
   StopReason,
@@ -50,6 +54,21 @@ import {
 } from './node-handlers/sub-agent.handler';
 import { buildAgentPromptContentBlocks } from './agent-prompt-content.builder';
 import { EventBridgeService } from './services/event-bridge.service';
+import {
+  createPersistedSubAgentStream,
+  clonePersistedSubAgentStream,
+  completePersistedSubAgentStream,
+  normalizeSubAgentEventForPersistence,
+  pushPersistedSubAgentEvent,
+} from '../agent-execution/subagent/persisted-subagent-stream.utils';
+import {
+  type ExecuteSubAgentParams,
+  type PersistedSubAgentStreamRecord,
+  type SubAgentEventEnvelope,
+  type SubAgentResult,
+  SubAgentRunStatus,
+  SubAgentToolsProvider,
+} from '../agent-execution/subagent';
 import { resolveAgentRuntimeSandboxConfig } from '../sandbox/agent-runtime-sandbox-config';
 import { SandboxService } from '../sandbox/sandbox.service';
 import { SkillResolverService } from '../skill/skill-resolver.service';
@@ -71,6 +90,7 @@ interface WorkflowAgentAdapterDependencies {
   readonly agentDefinitionService: AgentDefinitionService;
   readonly sandboxService: SandboxService;
   readonly eventBridge: EventBridgeService;
+  readonly subAgentToolsProvider?: SubAgentToolsProvider;
   readonly skillResolverService?: SkillResolverService;
 }
 
@@ -92,6 +112,13 @@ export interface WorkflowAgentExecutionParams {
   readonly parentUsesSandboxRuntime?: boolean;
   readonly emitEvents?: boolean;
   readonly subAgentRef?: AgentSubAgentRef;
+  readonly subAgentInvocation?: {
+    handle: string;
+    alias: string;
+    parentToolCallId: string;
+    task: string;
+    context?: string;
+  };
 }
 
 export interface WorkflowAgentExecutionResult extends Record<string, unknown> {
@@ -126,6 +153,14 @@ export class WorkflowAgentAdapter {
     const visitedIds = new Set(params.visitedIds ?? []);
     visitedIds.add(this.config.agentDefinitionId);
 
+    const baseInput = params.subAgentInvocation
+      ? {
+          'text-in': this.buildSubAgentPrompt(
+            params.subAgentInvocation.task,
+            params.subAgentInvocation.context,
+          ),
+        }
+      : params.input;
     const compiledDefinition = this.applySubAgentRefToCompiledDefinition(
       await this.loadCompiledDefinition({
         agentDefinitionId: this.config.agentDefinitionId,
@@ -142,7 +177,7 @@ export class WorkflowAgentAdapter {
     } = await this.resolveWorkflowExtensions({
       tenantId: params.tenantId,
       compiledDefinition,
-      input: params.input,
+      input: baseInput,
     });
     if (
       params.parentUsesSandboxRuntime === false &&
@@ -178,51 +213,65 @@ export class WorkflowAgentAdapter {
       throw new Error('当前子 Agent 缺少可复用的 sandbox 绑定');
     }
 
-    const subAgentResults = await this.executeSubAgents({
-      executionId: params.executionId,
-      step: params.step,
-      tenantId: params.tenantId,
-      input: sanitizedInput,
-      runtimeConfig: effectiveRuntimeConfig,
-      currentDepth,
-      visitedIds,
-      sandboxBinding,
-      parentUsesSandboxRuntime: usesSandboxRuntime,
-    });
-
-    const promptBlocks = this.buildContentBlocks(
-      sanitizedInput,
-      subAgentResults,
-    );
+    const promptBlocks = this.buildContentBlocks(sanitizedInput);
     const runtime =
       this.dependencies.runtimeAdapterFactory.selectAdapter(usesSandboxRuntime);
     const autoApproveToolPermissions =
       await this.shouldAutoApproveToolPermissions({
         executionId: params.executionId,
         tenantId: params.tenantId,
-        input: params.input,
+        input: baseInput,
       });
-
-    const session = await runtime.createSession({
-      agentId: this.config.agentDefinitionId,
-      mode: 'workflow',
-      tenantId: params.tenantId,
-      llmModelConfigId: effectiveRuntimeConfig.modelConfig?.modelId,
-      systemPrompt,
+    const nextSessionId = randomUUID();
+    this.registerSubAgentToolsProvider({
+      runtime,
+      sessionId: nextSessionId,
       runtimeConfig: effectiveRuntimeConfig,
-      ...(sandboxBinding ? { serverSandbox: sandboxBinding } : {}),
-      context: {
-        executionId: params.executionId,
-        stepId: params.step.id,
-        nodeId: params.step.nodeId,
-        tenantId: params.tenantId,
-        input: sanitizedInput,
-        ...(autoApproveToolPermissions
-          ? { autoApproveToolPermissions: true }
-          : {}),
-        ...(sandboxBinding ? { serverSandbox: sandboxBinding } : {}),
-      },
+      executionId: params.executionId,
+      tenantId: params.tenantId,
+      step: params.step,
+      currentDepth,
+      currentAgentDefinitionId: this.config.agentDefinitionId,
+      parentUsesSandboxRuntime: usesSandboxRuntime,
+      sandboxBinding,
+      emitEvents,
+      visitedIds,
     });
+
+    const subAgentEnvelope = params.subAgentInvocation
+      ? this.createSubAgentEnvelope(params.subAgentInvocation, currentDepth)
+      : undefined;
+    let subAgentStream = subAgentEnvelope
+      ? this.createSubAgentStream(subAgentEnvelope)
+      : undefined;
+
+    let session: AgentSession;
+    try {
+      session = await runtime.createSession({
+        sessionId: nextSessionId,
+        agentId: this.config.agentDefinitionId,
+        mode: 'workflow',
+        tenantId: params.tenantId,
+        llmModelConfigId: effectiveRuntimeConfig.modelConfig?.modelId,
+        systemPrompt,
+        runtimeConfig: effectiveRuntimeConfig,
+        ...(sandboxBinding ? { serverSandbox: sandboxBinding } : {}),
+        context: {
+          executionId: params.executionId,
+          stepId: params.step.id,
+          nodeId: params.step.nodeId,
+          tenantId: params.tenantId,
+          input: sanitizedInput,
+          ...(autoApproveToolPermissions
+            ? { autoApproveToolPermissions: true }
+            : {}),
+          ...(sandboxBinding ? { serverSandbox: sandboxBinding } : {}),
+        },
+      });
+    } catch (error) {
+      runtime.unregisterSessionToolProvider?.(nextSessionId);
+      throw error;
+    }
 
     let accumulatedContent = '';
     let decision: Record<string, unknown> | undefined;
@@ -248,17 +297,29 @@ export class WorkflowAgentAdapter {
       }
 
       try {
-        await this.saveProgressCheckpoint({
-          tenantId: params.tenantId,
-          step: params.step,
-          sessionId: session.id,
-          partialContent: accumulatedContent,
-          toolCalls,
-          segments,
-          round,
-          chunkIndex,
-          decision,
-        });
+        if (subAgentStream && subAgentEnvelope) {
+          subAgentStream = this.syncSubAgentStreamRecord(
+            subAgentStream,
+            subAgentEnvelope,
+          );
+          await this.saveSubAgentProgressCheckpoint({
+            tenantId: params.tenantId,
+            step: params.step,
+            stream: subAgentStream,
+          });
+        } else {
+          await this.saveProgressCheckpoint({
+            tenantId: params.tenantId,
+            step: params.step,
+            sessionId: session.id,
+            partialContent: accumulatedContent,
+            toolCalls,
+            segments,
+            round,
+            chunkIndex,
+            decision,
+          });
+        }
         checkpointDirty = false;
         lastCheckpointAt = now;
       } catch (error) {
@@ -270,100 +331,146 @@ export class WorkflowAgentAdapter {
       }
     };
 
-    for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
-      stopReason = 'end_turn';
+    try {
+      for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
+        stopReason = 'end_turn';
 
-      for await (const event of runtime.prompt(session.id, turnInput)) {
-        if (event.type === 'message_chunk') {
-          accumulatedContent += event.content;
-          segments = appendTextConversationMessageSegment(
-            segments,
-            event.content,
-          );
-          if (emitEvents) {
-            this.dependencies.eventBridge.emitOutputChunk(
+        for await (const event of runtime.prompt(session.id, turnInput)) {
+          if (subAgentEnvelope && subAgentStream) {
+            const persistedEvent = normalizeSubAgentEventForPersistence(event);
+            if (persistedEvent) {
+              pushPersistedSubAgentEvent(subAgentStream, persistedEvent);
+              checkpointDirty = true;
+            }
+
+            if (emitEvents) {
+              this.dependencies.eventBridge.emitStepAgentEvent(
+                params.tenantId,
+                params.executionId,
+                {
+                  stepId: params.step.id,
+                  executionType: 'workflow',
+                  event,
+                  subagent: subAgentEnvelope,
+                },
+              );
+            }
+          }
+
+          if (event.type === 'message_chunk') {
+            accumulatedContent += event.content;
+            segments = appendTextConversationMessageSegment(
+              segments,
+              event.content,
+            );
+            if (!subAgentEnvelope && emitEvents) {
+              this.dependencies.eventBridge.emitOutputChunk(
+                params.tenantId,
+                params.executionId,
+                {
+                  stepId: params.step.id,
+                  chunk: event.content,
+                  index: chunkIndex,
+                  executionType: 'workflow',
+                },
+              );
+            }
+            chunkIndex += 1;
+            checkpointDirty = true;
+            await flushProgressCheckpoint(round, false);
+            continue;
+          }
+
+          if (!subAgentEnvelope && emitEvents) {
+            this.dependencies.eventBridge.emitStepAgentEvent(
               params.tenantId,
               params.executionId,
               {
                 stepId: params.step.id,
-                chunk: event.content,
-                index: chunkIndex,
                 executionType: 'workflow',
+                event,
               },
             );
           }
-          chunkIndex += 1;
-          checkpointDirty = true;
-          await flushProgressCheckpoint(round, false);
-          continue;
-        }
 
-        if (emitEvents) {
-          this.dependencies.eventBridge.emitStepAgentEvent(
-            params.tenantId,
-            params.executionId,
-            {
-              stepId: params.step.id,
-              event,
-            },
-          );
-        }
-
-        const thinkingContent = this.extractThinkingEventContent(event);
-        if (thinkingContent) {
-          segments = appendThinkingConversationMessageSegment(
-            segments,
-            thinkingContent,
-          );
-          checkpointDirty = true;
-        }
-
-        if (event.type === 'tool_call') {
-          toolCalls = this.mergeToolCall(toolCalls, event.call);
-          segments = ensureToolCallConversationMessageSegment(
-            segments,
-            event.call.id,
-          );
-          checkpointDirty = true;
-
-          if (emitEvents) {
-            this.emitToolCallStatus({
-              tenantId: params.tenantId,
-              executionId: params.executionId,
-              step: params.step,
-              toolCall: event.call,
-            });
+          const thinkingContent = this.extractThinkingEventContent(event);
+          if (thinkingContent) {
+            segments = appendThinkingConversationMessageSegment(
+              segments,
+              thinkingContent,
+            );
+            checkpointDirty = true;
           }
 
-          await flushProgressCheckpoint(round, true);
-          continue;
+          if (event.type === 'tool_call') {
+            toolCalls = this.mergeToolCall(toolCalls, event.call);
+            segments = ensureToolCallConversationMessageSegment(
+              segments,
+              event.call.id,
+            );
+            checkpointDirty = true;
+
+            if (!subAgentEnvelope && emitEvents) {
+              this.emitToolCallStatus({
+                tenantId: params.tenantId,
+                executionId: params.executionId,
+                step: params.step,
+                toolCall: event.call,
+              });
+            }
+
+            await flushProgressCheckpoint(round, true);
+            continue;
+          }
+
+          if (event.type === 'decision') {
+            decision = this.toDecisionPayload(event);
+            checkpointDirty = true;
+            await flushProgressCheckpoint(round, false);
+            continue;
+          }
+
+          if (event.type === 'done') {
+            stopReason = event.stopReason;
+          }
         }
 
-        if (event.type === 'decision') {
-          decision = this.toDecisionPayload(event);
-          checkpointDirty = true;
-          await flushProgressCheckpoint(round, false);
-          continue;
+        await flushProgressCheckpoint(round + 1, true);
+
+        if (stopReason !== 'tool_use') {
+          break;
         }
 
-        if (event.type === 'done') {
-          stopReason = event.stopReason;
+        turnInput = [];
+
+        if (round === MAX_TOOL_ROUNDS - 1) {
+          throw new Error(
+            `Workflow agent ${this.config.agentDefinitionId} exceeded the maximum tool rounds (${MAX_TOOL_ROUNDS})`,
+          );
         }
       }
 
-      await flushProgressCheckpoint(round + 1, true);
-
-      if (stopReason !== 'tool_use') {
-        break;
-      }
-
-      turnInput = [];
-
-      if (round === MAX_TOOL_ROUNDS - 1) {
-        throw new Error(
-          `Workflow agent ${this.config.agentDefinitionId} exceeded the maximum tool rounds (${MAX_TOOL_ROUNDS})`,
+      if (subAgentStream) {
+        completePersistedSubAgentStream(
+          subAgentStream,
+          stopReason === 'cancelled'
+            ? SubAgentRunStatus.CANCELLED
+            : SubAgentRunStatus.COMPLETED,
         );
+        checkpointDirty = true;
+        await flushProgressCheckpoint(MAX_TOOL_ROUNDS, true);
       }
+    } catch (error) {
+      if (subAgentStream) {
+        completePersistedSubAgentStream(
+          subAgentStream,
+          SubAgentRunStatus.FAILED,
+          error instanceof Error ? error.message : String(error),
+        );
+        checkpointDirty = true;
+        await flushProgressCheckpoint(MAX_TOOL_ROUNDS, true);
+      }
+      throw error;
     }
 
     const result: WorkflowAgentExecutionResult = {
@@ -371,9 +478,6 @@ export class WorkflowAgentAdapter {
       'exec-out': { triggered: true },
       ...(stopReason !== 'end_turn' ? { stopReason } : {}),
       ...(decision ? { decision } : {}),
-      ...(Object.keys(subAgentResults).length > 0
-        ? { subAgents: subAgentResults }
-        : {}),
     };
 
     this.logger.debug(
@@ -1011,6 +1115,110 @@ export class WorkflowAgentAdapter {
     };
   }
 
+  private registerSubAgentToolsProvider(params: {
+    runtime: IAgentRuntime;
+    sessionId: string;
+    runtimeConfig: AgentRuntimeConfig;
+    executionId: string;
+    tenantId: string;
+    step: ExecutionStep;
+    currentDepth: number;
+    currentAgentDefinitionId: string;
+    parentUsesSandboxRuntime: boolean;
+    sandboxBinding?: ServerSandboxBinding;
+    emitEvents: boolean;
+    visitedIds: Set<string>;
+  }): void {
+    if (
+      !params.runtimeConfig.subAgents?.length ||
+      !this.dependencies.subAgentToolsProvider ||
+      !params.runtime.registerSessionToolProvider
+    ) {
+      return;
+    }
+
+    params.runtime.registerSessionToolProvider(
+      params.sessionId,
+      this.dependencies.subAgentToolsProvider.createSessionToolProvider(
+        params.runtimeConfig.subAgents,
+        {
+          executionId: params.executionId,
+          stepId: params.step.id,
+          nodeId: params.step.nodeId,
+          depth: params.currentDepth,
+          tenantId: params.tenantId,
+          parentUsesSandboxRuntime: params.parentUsesSandboxRuntime,
+          visitedAgentIds: new Set([
+            ...params.visitedIds,
+            params.currentAgentDefinitionId,
+          ]),
+        },
+        (subAgentParams) =>
+          this.executeWorkflowSubAgent(subAgentParams, {
+            executionId: params.executionId,
+            tenantId: params.tenantId,
+            step: params.step,
+            sandboxBinding: params.sandboxBinding,
+            parentUsesSandboxRuntime: params.parentUsesSandboxRuntime,
+            emitEvents: params.emitEvents,
+          }),
+        {
+          createEventProxy: () => undefined,
+        },
+      ),
+    );
+  }
+
+  private async executeWorkflowSubAgent(
+    params: ExecuteSubAgentParams,
+    context: {
+      executionId: string;
+      tenantId: string;
+      step: ExecutionStep;
+      sandboxBinding?: ServerSandboxBinding;
+      parentUsesSandboxRuntime: boolean;
+      emitEvents: boolean;
+    },
+  ): Promise<SubAgentResult> {
+    if (!params.versionSnapshot?.snapshot) {
+      throw new Error(
+        `Sub-agent "${params.subAgentRef.agentDefinitionId}" has no executable version snapshot`,
+      );
+    }
+
+    const nestedAdapter = this.createNestedAdapter(params.agentDefinition.id);
+    const result = await nestedAdapter.execute({
+      executionId: context.executionId,
+      step: context.step,
+      input: {},
+      tenantId: context.tenantId,
+      agentVersionId: params.subAgentRef.agentVersionId,
+      versionSnapshot: params.versionSnapshot.snapshot,
+      currentDepth: params.depth,
+      visitedIds: new Set([
+        ...params.parentContext.visitedAgentIds,
+        params.agentDefinition.id,
+      ]),
+      sandboxBinding: context.sandboxBinding,
+      parentUsesSandboxRuntime: context.parentUsesSandboxRuntime,
+      emitEvents: context.emitEvents,
+      subAgentRef: params.subAgentRef,
+      subAgentInvocation: {
+        handle: params.handle,
+        alias: params.alias,
+        parentToolCallId: params.parentToolCallId,
+        task: params.task,
+        ...(params.context ? { context: params.context } : {}),
+      },
+    });
+
+    return {
+      content: result.content,
+      stopReason: result.stopReason ?? 'end_turn',
+      ...(result.decision ? { decision: result.decision } : {}),
+    };
+  }
+
   private async executeSubAgents(params: {
     executionId: string;
     step: ExecutionStep;
@@ -1115,6 +1323,36 @@ export class WorkflowAgentAdapter {
     return new WorkflowAgentAdapter(this.dependencies, { agentDefinitionId });
   }
 
+  private createSubAgentEnvelope(
+    params: NonNullable<WorkflowAgentExecutionParams['subAgentInvocation']>,
+    depth: number,
+  ): SubAgentEventEnvelope {
+    return {
+      handle: params.handle as SubAgentEventEnvelope['handle'],
+      alias: params.alias,
+      depth,
+      parentToolCallId: params.parentToolCallId,
+    };
+  }
+
+  private createSubAgentStream(
+    envelope: SubAgentEventEnvelope,
+  ): PersistedSubAgentStreamRecord {
+    return createPersistedSubAgentStream(envelope);
+  }
+
+  private syncSubAgentStreamRecord(
+    stream: PersistedSubAgentStreamRecord,
+    envelope: SubAgentEventEnvelope,
+  ): PersistedSubAgentStreamRecord {
+    return {
+      ...clonePersistedSubAgentStream(stream),
+      alias: envelope.alias,
+      depth: envelope.depth,
+      parentToolCallId: envelope.parentToolCallId,
+    };
+  }
+
   private getSubAgentKey(subAgent: AgentSubAgentRef): string {
     return subAgent.alias?.trim() || subAgent.agentDefinitionId;
   }
@@ -1203,6 +1441,21 @@ export class WorkflowAgentAdapter {
     });
   }
 
+  private async saveSubAgentProgressCheckpoint(params: {
+    tenantId: string;
+    step: ExecutionStep;
+    stream: PersistedSubAgentStreamRecord;
+  }): Promise<Record<string, unknown>> {
+    const existingStreams = this.readSubAgentStreams(params.step);
+    existingStreams[params.stream.handle] = clonePersistedSubAgentStream(
+      params.stream,
+    );
+
+    return this.mergeCheckpointData(params.tenantId, params.step, {
+      subAgentStreams: existingStreams,
+    });
+  }
+
   private async mergeCheckpointData(
     _tenantId: string,
     step: ExecutionStep,
@@ -1224,6 +1477,23 @@ export class WorkflowAgentAdapter {
 
   private getCheckpointData(step: ExecutionStep): Record<string, unknown> {
     return step.checkpointData ?? {};
+  }
+
+  private readSubAgentStreams(
+    step: ExecutionStep,
+  ): Record<string, PersistedSubAgentStreamRecord> {
+    const rawStreams = this.getCheckpointData(step).subAgentStreams;
+    if (!this.isRecord(rawStreams)) {
+      return {};
+    }
+
+    return Object.fromEntries(
+      Object.entries(rawStreams).flatMap(([handle, stream]) =>
+        this.isPersistedSubAgentStreamRecord(stream)
+          ? [[handle, clonePersistedSubAgentStream(stream)]]
+          : [],
+      ),
+    );
   }
 
   private emitToolCallStatus(params: {
@@ -1276,12 +1546,18 @@ export class WorkflowAgentAdapter {
 
   private buildContentBlocks(
     input: Record<string, unknown>,
-    subAgentResults: Record<string, WorkflowAgentExecutionResult>,
   ): ContentBlock[] {
-    return buildAgentPromptContentBlocks({
-      input,
-      ...(Object.keys(subAgentResults).length > 0 ? { subAgentResults } : {}),
-    });
+    return buildAgentPromptContentBlocks({ input });
+  }
+
+  private buildSubAgentPrompt(task: string, context?: string): string {
+    if (!context?.trim()) {
+      return task.trim();
+    }
+
+    return ['任务：', task.trim(), '', '额外上下文：', context.trim()].join(
+      '\n',
+    );
   }
 
   private async shouldAutoApproveToolPermissions(params: {
@@ -1345,5 +1621,22 @@ export class WorkflowAgentAdapter {
 
   private isRecord(value: unknown): value is Record<string, unknown> {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
+  }
+
+  private isPersistedSubAgentStreamRecord(
+    value: unknown,
+  ): value is PersistedSubAgentStreamRecord {
+    if (!this.isRecord(value)) {
+      return false;
+    }
+
+    return (
+      typeof value.handle === 'string' &&
+      typeof value.alias === 'string' &&
+      typeof value.parentToolCallId === 'string' &&
+      typeof value.depth === 'number' &&
+      Array.isArray(value.events) &&
+      typeof value.startedAt === 'number'
+    );
   }
 }

@@ -35,6 +35,13 @@ import {
   SubAgentEventEnvelope,
   SubAgentRunStatus,
 } from '../../agent-execution/subagent/subagent-execution.types';
+import {
+  clonePersistedSubAgentStream,
+  completePersistedSubAgentStream,
+  createPersistedSubAgentStream,
+  normalizeSubAgentEventForPersistence,
+  pushPersistedSubAgentEvent,
+} from '../../agent-execution/subagent/persisted-subagent-stream.utils';
 
 const EVENT_BUFFER_CAPACITY = 500;
 const TERMINAL_EVENT_RETENTION_MS = 30_000;
@@ -396,30 +403,7 @@ export class EventBridgeService implements OnModuleDestroy {
         capture.streams,
         envelope,
       );
-      const timestamp = Date.now();
-      stream.status = status;
-      if (error) {
-        stream.error = error;
-      }
-
-      if (TERMINAL_SUBAGENT_STATUSES.has(status)) {
-        stream.completedAt ??= timestamp;
-      }
-
-      const hasTerminalDoneEvent = stream.events.some(
-        (event) => event.type === 'done',
-      );
-      if (status !== SubAgentRunStatus.COMPLETED || !hasTerminalDoneEvent) {
-        stream.events.push({
-          id: randomUUID(),
-          type: 'status_changed',
-          payload: {
-            status,
-            ...(error ? { error } : {}),
-          },
-          timestamp,
-        });
-      }
+      completePersistedSubAgentStream(stream, status, error);
     }
 
     this.eventEmitter?.emit('conversation.subagent.status', {
@@ -505,96 +489,13 @@ export class EventBridgeService implements OnModuleDestroy {
       capture.streams,
       envelope,
     );
-    stream.events.push(persistedEvent);
-
-    if (
-      persistedEvent.type === 'done' &&
-      stream.status === SubAgentRunStatus.RUNNING
-    ) {
-      stream.status = SubAgentRunStatus.COMPLETED;
-      stream.completedAt ??= persistedEvent.timestamp;
-    }
+    pushPersistedSubAgentEvent(stream, persistedEvent);
   }
 
   private normalizeSubAgentConversationEvent(
     event: AgentEvent,
   ): PersistedSubAgentEventRecord | null {
-    const timestamp = Date.now();
-
-    switch (event.type) {
-      case 'message_chunk':
-        return {
-          id: randomUUID(),
-          type: 'message_chunk',
-          payload: { chunk: event.content },
-          timestamp,
-        };
-      case 'plan':
-        return {
-          id: randomUUID(),
-          type: 'thinking',
-          payload: { content: event.content },
-          timestamp,
-        };
-      case 'decision': {
-        const content = this.extractSubAgentThinkingContent(event);
-        if (!content) {
-          return null;
-        }
-
-        return {
-          id: randomUUID(),
-          type: 'thinking',
-          payload: { content },
-          timestamp,
-        };
-      }
-      case 'tool_call':
-        return {
-          id: randomUUID(),
-          type:
-            event.call.status === 'completed' || event.call.status === 'failed'
-              ? 'tool_result'
-              : 'tool_call',
-          payload: this.buildSubAgentToolPayload(event.call),
-          timestamp,
-        };
-      case 'done':
-        return {
-          id: randomUUID(),
-          type: 'done',
-          payload: { stopReason: event.stopReason },
-          timestamp,
-        };
-      default:
-        return null;
-    }
-  }
-
-  private buildSubAgentToolPayload(
-    call: ToolCallEvent,
-  ): Record<string, unknown> {
-    return {
-      toolCallId: call.id,
-      tool: call.tool,
-      args: call.args,
-      status: call.status,
-      ...(call.result !== undefined ? { result: call.result } : {}),
-      ...(call.error !== undefined ? { error: call.error } : {}),
-      ...(call.transitions ? { transitions: [...call.transitions] } : {}),
-      ...(call.permissionRequest
-        ? { permissionRequest: call.permissionRequest }
-        : {}),
-    };
-  }
-
-  private extractSubAgentThinkingContent(
-    event: Extract<AgentEvent, { type: 'decision' }>,
-  ): string | undefined {
-    const parts = [event.rationale, event.suggestedContent].filter(
-      (value): value is string => typeof value === 'string' && value.length > 0,
-    );
-    return parts.length > 0 ? parts.join('\n\n') : undefined;
+    return normalizeSubAgentEventForPersistence(event);
   }
 
   private ensureSubAgentConversationStream(
@@ -606,15 +507,7 @@ export class EventBridgeService implements OnModuleDestroy {
       return existing;
     }
 
-    const stream: PersistedSubAgentStreamRecord = {
-      handle: envelope.handle,
-      alias: envelope.alias,
-      depth: envelope.depth,
-      parentToolCallId: envelope.parentToolCallId,
-      status: SubAgentRunStatus.RUNNING,
-      events: [],
-      startedAt: Date.now(),
-    };
+    const stream = createPersistedSubAgentStream(envelope);
     streams.set(envelope.handle, stream);
     return stream;
   }
@@ -622,13 +515,7 @@ export class EventBridgeService implements OnModuleDestroy {
   private clonePersistedSubAgentStream(
     stream: PersistedSubAgentStreamRecord,
   ): PersistedSubAgentStreamRecord {
-    return {
-      ...stream,
-      events: stream.events.map((event) => ({
-        ...event,
-        payload: { ...event.payload },
-      })),
-    };
+    return clonePersistedSubAgentStream(stream);
   }
 
   private nextEventId(executionId: string): number {

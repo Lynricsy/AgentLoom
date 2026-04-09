@@ -292,6 +292,8 @@ export async function createLlmModel(config: CreateLlmModelInput) {
   - workflow / agent: `resourceSourceKind`
   - knowledge / memory / mcp / skill: `sourceKind`
 - discover 与 marketplace 的区别只体现在页面语义 / copy / 默认入口，不体现在 API contract 上；公开分享 token 不能混进 discover 列表。
+- discover / marketplace 安装 workflow 时，安装对话框的默认名称必须直接使用 listing 标题（trim 后），不能再自动追加“副本”。
+- discover 安装成功后的工作流详情应体现“已导入到当前租户的新资源”语义，而不是沿用来源租户的 workspace / persistent sandbox 标识；前端只展示目标资源，不缓存或回显来源资源 ID。
 
 ### 4. Validation & Error Matrix
 
@@ -305,10 +307,12 @@ export async function createLlmModel(config: CreateLlmModelInput) {
 | 资源页筛选 `sourceKind=share_imported` | 列表只保留分享导入项 | 对应页面测试 + browser QA |
 | 点击“转为自己创建” | 调用 shared `convertResourceSourceToManual()`，成功后列表标签与过滤结果刷新 | 页面测试 + browser QA |
 | discover 详情对话框打开 | 必须有 `Dialog.Title` / `Dialog.Description`，控制台无 Radix a11y error | `MarketplaceDetailDialog.test.tsx` + browser QA |
+| discover 安装对话框首次打开 | 名称输入框默认值等于 listing 标题，不带“副本” | `MarketplaceInstallDialog.test.tsx` |
 
 ### 5. Good / Base / Bad Cases
 
 - Good: `/discover` 打开 listing 详情时复用 marketplace dialog，点击安装后跳到新 workflow；workflow / agent 分享页根据 `resourceType` 渲染不同 CTA；分享导入资源在列表上显示 `分享导入`，转正后立即变成 `自己创建`。
+- Good: discover 安装模板 workflow 时，名称默认即模板原名；安装后 workflow 首次运行使用的是当前租户新建 workspace，而不是来源模板里的资源 ID。
 - Base: 公开分享页只做 preview + import，不进入 discover；agent import 报告显示 `已复制 / 已清空 / 待重绑` 计数，workflow import 直接进入工作流编辑页。
 - Bad: discover 新建独立 API 层；或把 workflow / agent 分享导入都塞到同一个 mutation；或让每个资源页各自复制一份 `convert-to-manual` API helper。
 
@@ -316,6 +320,8 @@ export async function createLlmModel(config: CreateLlmModelInput) {
 
 - `src/features/marketplace/components/__tests__/MarketplaceDetailDialog.test.tsx`
   - Assert discover / marketplace detail dialog 保持 a11y title + description。
+- `src/features/marketplace/components/__tests__/MarketplaceInstallDialog.test.tsx`
+  - Assert 安装默认名称不带“副本”。
 - `src/features/share/components/__tests__/PublicSharePage.test.tsx`
   - Assert workflow vs agent 判别渲染、workflow clone CTA、agent import report。
 - `src/features/share/components/__tests__/ShareManagementDialog.test.tsx`

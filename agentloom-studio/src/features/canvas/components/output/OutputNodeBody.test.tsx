@@ -23,6 +23,7 @@ describe('OutputNodeBody', () => {
       isStreaming: false,
       toolCalls: {},
       agentEvents: [],
+      subAgentStreams: {},
     }
   })
 

@@ -1177,7 +1177,9 @@ describe('WorkspaceService', () => {
       db.execute.mockResolvedValueOnce({
         rows: [{ containerId: TEST_CONTAINER_ID }],
       });
-      db.select.mockReturnValueOnce(createSelectChainWithLimit([buildSnapshot()]));
+      db.select.mockReturnValueOnce(
+        createSelectChainWithLimit([buildSnapshot()]),
+      );
       mockDockerService.getArchive.mockResolvedValueOnce(
         createStreamingTarArchive([
           {

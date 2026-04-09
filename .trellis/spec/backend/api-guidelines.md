@@ -233,6 +233,11 @@ Key conventions:
   - `createdAt`
   - `expiresAt`
 - workflow 分享导入必须继续复用 `POST /api/v1/workflow-definitions` 的 `share_token` 克隆源，而不是新增第二套 workflow import API。
+- `POST /api/v1/workflow-definitions` 使用 `marketplace_listing_id` 安装 discover / marketplace workflow 时，必须遵循以下导入语义：
+  - 默认名称保持来源 listing / workflow 原名；前端默认值与服务端 clone fallback 都不得再自动追加“副本”后缀。
+  - 若快照中存在 `workspace` 节点或 sandbox `restoreWorkspaceId` 绑定，导入时必须在目标租户创建新的空 workspace，并重写 graph 中的 `workspaceId/workspaceName/restoreWorkspaceId`。
+  - graph 中的 `persistentSandboxId` / `persistent_sandbox_id` 必须在导入时清空，禁止把来源租户的持久沙箱资源直接带到目标租户。
+  - workflow 内深拷贝出来的 Agent 名称默认也保持原名，避免 discover 模板安装后自带“QA xxx 副本”之类测试性尾缀。
 - agent 分享导入必须走 `POST /api/v1/agent-shares/:token/import`，响应为：
   - `agentDefinitionId`
   - `name`
@@ -260,6 +265,8 @@ Key conventions:
 | share token 已过期 | public access 失败，不返回过期前快照 | `share.service.spec.ts` |
 | agent import 成功 | 返回 summary 计数与逐资源 report，且 `copyCount` 原子递增 | `share.service.spec.ts`, `agent-share-import.service.ts` tests |
 | workflow create 请求同时带 `share_token` 与 `marketplace_listing_id` | clone source 校验失败 | `workflow-version.service.spec.ts` |
+| marketplace workflow 导入快照含 `workspaceId/restoreWorkspaceId/persistentSandboxId` | 目标 workflow 只引用目标租户新建 workspace，且 `persistentSandboxId` 被清空 | `workflow-version.service.spec.ts` |
+| discover 安装不显式改名 | 导入后的 workflow / cloned agents 默认保留原名，不自动追加“副本” | `workflow-version.service.spec.ts` + browser QA |
 | `convert-to-manual` 命中分享导入资源 | 返回 `currentKind='manual'` 且资源本体不变 | `resource-source.service.spec.ts` or controller/manual QA |
 | `convert-to-manual` 命中不存在来源记录的资源 | 仍返回 `currentKind='manual'`，接口保持幂等 | `resource-source.service.spec.ts` or controller/manual QA |
 | `sourceKind=share_imported` 列表过滤 workflow / agent / knowledge / memory / mcp / skill | SQL / service 层只返回带 share-import record 的资源 | 对应 service/controller specs |
@@ -281,6 +288,8 @@ Key conventions:
 - `src/modules/workflow-definition/__tests__/workflow-version.service.spec.ts`
   - Assert `share_token` clone source 仍与 `template_slug/marketplace_listing_id` 互斥。
 - `src/modules/workflow-definition/__tests__/workflow-version.service.spec.ts`
+  - Assert marketplace install 会本地化 workspace 绑定、清空 `persistentSandboxId`，并保留 discover 安装默认名称。
+- `src/modules/workflow-definition/__tests__/workflow-version.service.spec.ts`
   - Assert workflow list/detail `resourceSourceKind` round-trip。
 - `src/modules/agent-definition/agent-definition.service.spec.ts`
   - Assert agent list/detail `resourceSourceKind` round-trip。
@@ -292,6 +301,7 @@ Key conventions:
   - Assert `sourceKind` filter and response field。
 - Browser/manual QA:
   - `/discover` 预览 -> 导入 -> 发布运行
+  - 确认 discover 安装对话框默认名称不带“副本”，安装后的 workflow / child agents 名称保持原名
   - `/s/:token` workflow 预览 / 导入
   - `/s/:token` agent 预览 / 导入 / 导入报告
   - 导入资源转为自己创建

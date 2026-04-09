@@ -470,6 +470,62 @@ describe('Sandbox HTTP Contract (in-process)', () => {
       await firstPromptPromise;
     });
 
+    it('done 事件已发送但 prompt 尚未 settle 时仍应返回 409', async () => {
+      const createRes = await app.inject({
+        method: 'POST',
+        url: '/v1/session',
+        payload: {},
+      });
+      const { sessionId } = createRes.json();
+
+      let resolvePrompt: (() => void) | null = null;
+      mockSession.prompt = vi.fn().mockImplementation(async () => {
+        mockSession._emit({
+          type: 'message_update',
+          assistantMessageEvent: {
+            type: 'text_delta',
+            delta: 'settle later',
+          },
+        });
+        mockSession._emit({ type: 'agent_end' });
+        await new Promise<void>((resolve) => {
+          resolvePrompt = resolve;
+        });
+      });
+
+      const firstPromptResponse = await app.inject({
+        method: 'POST',
+        url: '/v1/prompt',
+        payload: { sessionId, text: 'first' },
+      });
+
+      expect(firstPromptResponse.statusCode).toBe(200);
+      expect(firstPromptResponse.body).toContain('done');
+
+      const secondPromptResponse = await app.inject({
+        method: 'POST',
+        url: '/v1/prompt',
+        payload: { sessionId, text: 'second' },
+      });
+
+      expect(secondPromptResponse.statusCode).toBe(409);
+      expect(secondPromptResponse.json().error).toContain(
+        'already streaming',
+      );
+
+      resolvePrompt?.();
+
+      await vi.waitFor(async () => {
+        const thirdPromptResponse = await app.inject({
+          method: 'POST',
+          url: '/v1/prompt',
+          payload: { sessionId, text: 'third' },
+        });
+
+        expect(thirdPromptResponse.statusCode).toBe(200);
+      });
+    });
+
     it('prompt 错误应以 SSE 错误事件返回', async () => {
       const createRes = await app.inject({
         method: 'POST',

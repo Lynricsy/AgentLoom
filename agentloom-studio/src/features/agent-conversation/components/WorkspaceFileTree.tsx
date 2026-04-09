@@ -14,6 +14,40 @@ interface WorkspaceFileTreeProps {
   tree: FileTreeNode[];
   selectedPath: string | null;
   onSelectFile: (path: string) => void;
+  isLoading?: boolean;
+}
+
+/**
+ * 文件树骨架屏 — 模拟树形结构的加载占位。
+ * 可复用于任何需要展示树形加载态的场景。
+ */
+function FileTreeSkeleton() {
+  const rows = [
+    { depth: 0, width: 'w-24' },
+    { depth: 1, width: 'w-20' },
+    { depth: 1, width: 'w-28' },
+    { depth: 2, width: 'w-16' },
+    { depth: 2, width: 'w-24' },
+    { depth: 1, width: 'w-20' },
+    { depth: 0, width: 'w-32' },
+    { depth: 1, width: 'w-20' },
+  ];
+
+  return (
+    <div className="flex-1 space-y-1 py-2">
+      {rows.map((row, i) => (
+        <div
+          key={i}
+          className="flex items-center gap-1.5 px-2 py-1"
+          style={{ paddingLeft: `${row.depth * 16 + 8}px` }}
+        >
+          <div className="h-3 w-3 shrink-0 animate-pulse rounded bg-muted-foreground/15" />
+          <div className="h-3.5 w-3.5 shrink-0 animate-pulse rounded bg-muted-foreground/10" />
+          <div className={cn('h-3 animate-pulse rounded bg-muted-foreground/15', row.width)} />
+        </div>
+      ))}
+    </div>
+  );
 }
 
 interface TreeNodeProps {
@@ -102,7 +136,20 @@ export function WorkspaceFileTree({
   tree,
   selectedPath,
   onSelectFile,
+  isLoading,
 }: WorkspaceFileTreeProps) {
+  if (isLoading && tree.length === 0) {
+    return (
+      <div className="flex flex-col h-full bg-surface rounded-lg border border-border overflow-hidden">
+        <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-surface-elevated/50">
+          <FolderTree className="h-4 w-4 text-warning/80" />
+          <span className="text-sm font-medium text-foreground">工作区</span>
+        </div>
+        <FileTreeSkeleton />
+      </div>
+    );
+  }
+
   if (tree.length === 0) {
     return (
       <div className="flex flex-col h-full bg-surface rounded-lg border border-border overflow-hidden">

@@ -400,6 +400,7 @@ export const WorkflowAgentViewer = memo(function WorkflowAgentViewer({
         >
           <ExecutionAgentMessageList
             messages={viewerState.messages}
+            subAgentStreams={viewerState.subAgentStreams}
             isExecuting={step.status === "running"}
           />
         </div>
@@ -478,6 +479,7 @@ export const WorkflowAgentViewer = memo(function WorkflowAgentViewer({
       <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4 lg:hidden">
         <ExecutionAgentMessageList
           messages={viewerState.messages}
+          subAgentStreams={viewerState.subAgentStreams}
           isExecuting={step.status === "running"}
         />
         <SandboxComputerPanel

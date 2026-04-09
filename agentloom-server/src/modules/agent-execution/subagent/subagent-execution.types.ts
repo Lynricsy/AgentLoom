@@ -95,8 +95,14 @@ export interface PersistedSubAgentStreamRecord {
 
 /** 父代理执行上下文 — 传递给 SubAgentToolsProvider */
 export interface SubAgentParentContext {
-  /** 父对话 ID */
-  conversationId: string;
+  /** 父对话 ID（conversation 场景） */
+  conversationId?: string;
+  /** 父执行 ID（workflow 场景） */
+  executionId?: string;
+  /** 父 step ID（workflow 场景） */
+  stepId?: string;
+  /** 父节点 ID（workflow 场景） */
+  nodeId?: string;
   /** 当前嵌套深度 (主 agent 为 0) */
   depth: number;
   /** 租户 ID */

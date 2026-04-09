@@ -34,7 +34,7 @@ interface MarketplaceInstallDialogProps {
 }
 
 function getDefaultName(listingTitle: string) {
-  return listingTitle ? `${listingTitle} 副本` : ''
+  return listingTitle.trim()
 }
 
 export const MarketplaceInstallDialog = memo(function MarketplaceInstallDialog({

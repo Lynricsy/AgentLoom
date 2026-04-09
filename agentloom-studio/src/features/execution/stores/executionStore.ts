@@ -3,6 +3,11 @@ import { create } from 'zustand'
 import { devtools, subscribeWithSelector } from 'zustand/middleware'
 import { immer } from 'zustand/middleware/immer'
 import { useShallow } from 'zustand/react/shallow'
+import type {
+  SubAgentEventEnvelope,
+  SubAgentRunStatus,
+  SubAgentStream,
+} from '@/features/agent-conversation'
 import {
   resolveIntervention,
   resolveToolPermission,
@@ -27,6 +32,10 @@ import type {
   ToolPermissionRequiredPayload,
   ToolPermissionResolvedPayload,
 } from '../types'
+import {
+  mergeSubAgentStreamMaps,
+  normalizePersistedSubAgentStreams,
+} from '../lib/subAgentStreams'
 
 export interface InterventionState {
   nodeName?: string
@@ -57,6 +66,7 @@ export interface NodeExecutionState {
   intervention?: InterventionState
   toolCalls: Record<string, ToolCallEventData>
   agentEvents: AgentEvent[]
+  subAgentStreams: Record<string, SubAgentStream>
 }
 
 export interface ExecutionStoreState {
@@ -100,7 +110,11 @@ export interface ExecutionStoreActions {
     resolveToolPermissionEvent: (
       event: ExecutionEvent<ToolPermissionResolvedPayload>,
     ) => void
-    addAgentEvent: (nodeId: string, agentEvent: AgentEvent) => void
+    addAgentEvent: (
+      nodeId: string,
+      agentEvent: AgentEvent,
+      subagent?: SubAgentEventEnvelope,
+    ) => void
     clearToolCalls: (nodeId: string) => void
     submitToolPermission: (
       executionId: string,
@@ -150,9 +164,127 @@ function ensureNode(
       isStreaming: false,
       toolCalls: {},
       agentEvents: [],
+      subAgentStreams: {},
     }
   }
   return state.nodes[nodeId]
+}
+
+function ensureSubAgentStream(
+  streams: Record<string, SubAgentStream>,
+  envelope: SubAgentEventEnvelope,
+): SubAgentStream {
+  const existing = streams[envelope.handle]
+  if (existing) {
+    return existing
+  }
+
+  const stream: SubAgentStream = {
+    handle: envelope.handle,
+    alias: envelope.alias,
+    depth: envelope.depth,
+    parentToolCallId: envelope.parentToolCallId,
+    status: 'running',
+    events: [],
+    startedAt: Date.now(),
+  }
+  streams[envelope.handle] = stream
+  return stream
+}
+
+function pushSubAgentEvent(
+  streams: Record<string, SubAgentStream>,
+  envelope: SubAgentEventEnvelope,
+  eventType: SubAgentStream['events'][number]['type'],
+  payload: unknown,
+): void {
+  const stream = ensureSubAgentStream(streams, envelope)
+  stream.events.push({
+    id: crypto.randomUUID(),
+    type: eventType,
+    payload,
+    timestamp: Date.now(),
+  })
+
+  if (eventType === 'done' && stream.status === 'running') {
+    stream.status = 'completed'
+    stream.completedAt = Date.now()
+  }
+}
+
+function setSubAgentStatus(
+  streams: Record<string, SubAgentStream>,
+  envelope: SubAgentEventEnvelope,
+  status: SubAgentRunStatus,
+  error?: string,
+): void {
+  const stream = ensureSubAgentStream(streams, envelope)
+  stream.status = status
+  stream.completedAt ??= Date.now()
+  if (error) {
+    stream.error = error
+  }
+}
+
+function routeSubAgentAgentEvent(
+  streams: Record<string, SubAgentStream>,
+  envelope: SubAgentEventEnvelope,
+  agentEvent: AgentEvent,
+): void {
+  switch (agentEvent.type) {
+    case 'message_chunk':
+      pushSubAgentEvent(streams, envelope, 'message_chunk', {
+        chunk: agentEvent.content,
+      })
+      return
+    case 'plan':
+      pushSubAgentEvent(streams, envelope, 'thinking', {
+        content: agentEvent.content || agentEvent.title,
+      })
+      return
+    case 'decision': {
+      const content = [agentEvent.rationale, agentEvent.suggestedContent]
+        .filter((value): value is string => typeof value === 'string' && value.length > 0)
+        .join('\n\n')
+      if (content.length > 0) {
+        pushSubAgentEvent(streams, envelope, 'thinking', { content })
+      }
+      return
+    }
+    case 'tool_call':
+      pushSubAgentEvent(
+        streams,
+        envelope,
+        agentEvent.call.status === 'completed' || agentEvent.call.status === 'failed'
+          ? 'tool_result'
+          : 'tool_call',
+        {
+          toolCallId: agentEvent.call.id,
+          tool: agentEvent.call.tool,
+          args: agentEvent.call.args,
+          status: agentEvent.call.status,
+          ...(agentEvent.call.result !== undefined
+            ? { result: agentEvent.call.result }
+            : {}),
+          ...(agentEvent.call.error !== undefined
+            ? { error: agentEvent.call.error }
+            : {}),
+        },
+      )
+      return
+    case 'done':
+      pushSubAgentEvent(streams, envelope, 'done', {
+        stopReason: agentEvent.stopReason,
+      })
+      setSubAgentStatus(
+        streams,
+        envelope,
+        agentEvent.stopReason === 'cancelled' ? 'cancelled' : 'completed',
+      )
+      return
+    default:
+      return
+  }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -319,6 +451,12 @@ export const useExecutionStore = create<
                   event.data.checkpointData == null
                     ? event.data.checkpointData
                     : castDraft(event.data.checkpointData)
+                node.subAgentStreams = mergeSubAgentStreamMaps({
+                  persisted: normalizePersistedSubAgentStreams(
+                    event.data.checkpointData?.subAgentStreams,
+                  ),
+                  live: node.subAgentStreams,
+                })
               }
 
               // 流式状态：running 时开启，终态时关闭
@@ -499,10 +637,23 @@ export const useExecutionStore = create<
             })
           },
 
-          addAgentEvent: (nodeId: string, agentEvent: AgentEvent) => {
+          addAgentEvent: (
+            nodeId: string,
+            agentEvent: AgentEvent,
+            subagent?: SubAgentEventEnvelope,
+          ) => {
             set((state) => {
               const node = state.nodes[nodeId]
               if (node) {
+                if (subagent) {
+                  routeSubAgentAgentEvent(
+                    node.subAgentStreams,
+                    subagent,
+                    agentEvent,
+                  )
+                  return
+                }
+
                 node.agentEvents.push(agentEvent)
               }
             })
@@ -577,6 +728,9 @@ export const useExecutionStore = create<
                       : undefined,
                   toolCalls,
                   agentEvents: [],
+                  subAgentStreams: normalizePersistedSubAgentStreams(
+                    step.checkpointData?.subAgentStreams,
+                  ),
                 }
               }
             })

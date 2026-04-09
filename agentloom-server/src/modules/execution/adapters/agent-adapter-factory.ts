@@ -3,6 +3,7 @@ import type { SandboxConfig } from '../../../database/schema';
 import type { IAgentRuntime } from '../../agent/ports/agent-runtime.port';
 import type { IAgentAdapterFactory as RuntimeAdapterFactory } from '../../agent/agent-adapter.factory';
 import { AgentDefinitionService } from '../../agent-definition/agent-definition.service';
+import { SubAgentToolsProvider } from '../../agent-execution/subagent';
 import { SandboxService } from '../../sandbox/sandbox.service';
 import { SkillResolverService } from '../../skill/skill-resolver.service';
 import { WorkflowAgentAdapter } from '../workflow-agent-adapter';
@@ -16,6 +17,7 @@ export class AgentAdapterFactory {
     private readonly agentDefinitionService: AgentDefinitionService,
     private readonly sandboxService: SandboxService,
     private readonly eventBridge: EventBridgeService,
+    private readonly subAgentToolsProvider?: SubAgentToolsProvider,
     private readonly skillResolverService?: SkillResolverService,
   ) {}
 
@@ -31,6 +33,7 @@ export class AgentAdapterFactory {
         agentDefinitionService: this.agentDefinitionService,
         sandboxService: this.sandboxService,
         eventBridge: this.eventBridge,
+        subAgentToolsProvider: this.subAgentToolsProvider,
         skillResolverService: this.skillResolverService,
       },
       {

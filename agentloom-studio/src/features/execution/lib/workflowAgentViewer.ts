@@ -3,6 +3,7 @@ import type {
   FileChange,
   MessageSegment,
   SandboxStatus,
+  SubAgentStream,
   TerminalEntry,
   ToolCall,
   ToolCallStatus,
@@ -10,6 +11,10 @@ import type {
 import type { ToolCallData } from '@/shared/components/tool-renderers/types'
 import type { ExecutionStep, AgentEvent } from '../types'
 import type { NodeExecutionState } from '../stores/executionStore'
+import {
+  mergeSubAgentStreamMaps,
+  normalizePersistedSubAgentStreams,
+} from './subAgentStreams'
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
@@ -455,6 +460,7 @@ function toSandboxStatus(
 
 export interface WorkflowAgentViewerState {
   messages: ConversationMessage[]
+  subAgentStreams: Record<string, SubAgentStream>
   terminalEntries: TerminalEntry[]
   fileChanges: FileChange[]
   activeToolCall?: ToolCallData
@@ -468,6 +474,10 @@ export function buildWorkflowAgentViewerState(
   const toolCalls = mergeToolCalls(step, nodeState)
   const segments = buildSegments(step, nodeState, toolCalls)
   const content = extractDisplayedOutput(step, nodeState)
+  const subAgentStreams = mergeSubAgentStreamMaps({
+    persisted: normalizePersistedSubAgentStreams(step.checkpointData?.subAgentStreams),
+    live: nodeState?.subAgentStreams ?? {},
+  })
   const message: ConversationMessage | null =
     segments.length > 0 || toolCalls.length > 0 || content.length > 0
       ? {
@@ -493,6 +503,7 @@ export function buildWorkflowAgentViewerState(
 
   return {
     messages: message ? [message] : [],
+    subAgentStreams,
     terminalEntries: toTerminalEntries(nodeState?.agentEvents ?? []),
     fileChanges: toFileChanges(nodeState?.agentEvents ?? []),
     ...(activeToolCall

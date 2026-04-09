@@ -64,7 +64,7 @@ export function useExecutionMonitor(
         return
       }
 
-      addAgentEvent(node.nodeId, event.data.event)
+      addAgentEvent(node.nodeId, event.data.event, event.data.subagent)
     },
     onError,
   })

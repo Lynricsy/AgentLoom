@@ -20,6 +20,7 @@
 - `normalizeStoredSegments(checkpointData, toolCalls): MessageSegment[]`
 - `resolveSubAgentView(handle, liveStream, messages): ResolvedSubAgentView | null`
 - `buildSubAgentMessages(stream): ConversationMessage[]`
+- `mergeSubAgentStreamMaps({ persisted, live })`
 - `runWorkflow(workflowId, payload?: RunWorkflowRequest)`
 - `getExecution(executionId)`
 - `getExecutionStepWorkspaceTree(executionId, stepId)`
@@ -41,6 +42,11 @@
 - workflow-agent viewer 必须是只读视图：
   - 允许查看消息流、工具、终端、文件变更、workspace 树、文件预览。
   - 不允许像普通 Agent 对话页一样继续发送新消息。
+- workflow-agent viewer 必须同时支持 child waterfall：
+  - 先读 `step.checkpointData.subAgentStreams`
+  - 再与 live `nodeState.subAgentStreams` 合并
+  - 当 persisted 与 live 同时存在时，必须优先展示更完整的一份，不能因为内存里残留较短 live copy 而把已完成 child 历史回退成半截流。
+- `execution.node.agent-event` 若携带 `subagent` envelope，前端必须把该事件路由到 child stream，而不是追加到父 step 顶层 `agentEvents/messages`。
 - `execution.node.status-changed` 若携带 `result` / `checkpointData`，前端必须立即合并到 live node state。
   - 不能等待用户刷新后重新依赖 snapshot 恢复最终结果。
   - `text-output` / `json-output` 这类“一次性完成产出结果”的节点不会发送 `output_chunk`，因此 completed 事件本身就是最终输出同步点。
@@ -67,6 +73,8 @@
 | standalone agent 的 history 晚于下一轮 live 流返回    | store 保留当前 live tail，不得覆盖新一轮消息       | `agent-conversation.store.test.ts` |
 | history message 带 `metadata.subAgentStreams`         | child drill-in 复用主消息瀑布渲染，不得退回摘要    | `subAgentView.test.ts`             |
 | 普通工具调用                                          | 不得展示 `awaiting_permission` 审批卡              | 对话页 / execution viewer 组件测试 |
+| step 带 `checkpointData.subAgentStreams`              | workflow viewer 刷新后仍能展示 child waterfall    | `workflowAgentViewer.test.ts` / `WorkflowAgentViewer.test.tsx` |
+| `execution.node.agent-event` 带 `subagent` envelope   | 只更新 child stream，不污染父消息流               | `executionStore.test.ts` / `WorkflowAgentViewer.test.tsx` |
 | step 无 `segments`，但有 `partialContent + toolCalls` | viewer 退化成基础 fallback，不抛错                 | `workflowAgentViewer.test.ts`      |
 | `text-output/json-output` 只在 completed 事件中返回 `result` | 画布节点与 `NodeConfigPanel` 无需刷新即可显示最终输出 | `executionStore.test.ts`           |
 | 用户快速切换文件或刷新 workspace                      | 旧请求不得覆盖新文件内容                           | `WorkflowAgentViewer.test.tsx`     |
@@ -76,6 +84,7 @@
 ### 5. Good / Base / Bad Cases
 
 - Good：运行中或运行后进入 `/executions/$executionId/steps/$stepId/agent`，消息流与工具按真实顺序交错，workspace 文件树和文件预览都能查看。
+- Good：workflow step 刷新后重新进入 agent viewer，仍能展开 child waterfall，而不是只看到父 Agent 最终摘要。
 - Good：刷新 standalone Agent 后重新进入某个 child，仍能看到与主 agent 一样的文本/思考/工具瀑布；只有旧历史没有 durable child stream 时才退回摘要。
 - Base：没有新的 live event 时，viewer 仍可从 checkpoint 恢复出可读历史。
 - Bad：`done` 后重新拉 history，再把所有 thinking 放前面、所有工具堆在后面。
@@ -90,8 +99,11 @@
   - 断言旧历史缺少 durable stream 时才回退摘要。
 - `agentloom-studio/src/features/execution/lib/workflowAgentViewer.test.ts`
   - 断言 ordered segments、live output merge、tool/file/terminal normalization。
+- `agentloom-studio/src/features/execution/components/WorkflowAgentViewer.test.tsx`
+  - 断言 workflow child stream 在刷新与 live merge 后仍可展示。
 - `agentloom-studio/src/features/execution/stores/executionStore.test.ts`
   - 断言 `execution.node.status-changed` 的 `result/checkpointData` 会立即合并到 executionStore，并恢复 one-shot output 节点内容。
+  - 断言带 `subagent` envelope 的 agent event 只会更新 `subAgentStreams`。
 - `agentloom-studio/src/features/execution/components/WorkflowAgentViewer.test.tsx`
   - 断言 workspace tree/file preview/refresh 行为。
 - `agentloom-studio/src/features/execution/api/executionApi.test.ts`

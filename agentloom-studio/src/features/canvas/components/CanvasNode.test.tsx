@@ -88,6 +88,7 @@ function createExecutionState(
     isStreaming: false,
     toolCalls: {},
     agentEvents: [],
+    subAgentStreams: {},
     ...overrides,
   };
 }

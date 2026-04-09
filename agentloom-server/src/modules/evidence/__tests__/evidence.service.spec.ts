@@ -863,7 +863,7 @@ describe('EvidenceService', () => {
         executionId: EXECUTION_ID,
         stepId: STEP_ID,
         nodeId: NODE_ID,
-        toolCallId: '00000000-0000-4000-8000-000000000099',
+        toolCallId: 'toolu_bdrk_01D7Uy4PhXptSmrJ56XSCQcL',
         tool: 'web-search',
         status: 'completed',
         args: { query: 'evidence' },
@@ -881,7 +881,7 @@ describe('EvidenceService', () => {
       expect((inserted.packet as Record<string, unknown>).toolOutput).toEqual(
         expect.objectContaining({
           toolName: 'web-search',
-          toolCallId: '00000000-0000-4000-8000-000000000099',
+          toolCallId: 'toolu_bdrk_01D7Uy4PhXptSmrJ56XSCQcL',
           transitions: [
             {
               to: 'completed',

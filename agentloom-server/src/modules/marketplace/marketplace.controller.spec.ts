@@ -45,10 +45,10 @@ describe('MarketplaceController', () => {
 
   describe('install', () => {
     it('应调用 marketplaceService.installListing 并直接返回安装结果', async () => {
-      const dto = { name: 'Marketplace 副本' };
+      const dto = { name: 'Marketplace Workflow' };
       const mockWorkflow = {
         workflowDefinitionId: 'wf-1',
-        name: 'Marketplace 副本',
+        name: 'Marketplace Workflow',
         message: 'Workflow installed successfully',
       };
       marketplaceService.installListing.mockResolvedValue(mockWorkflow);

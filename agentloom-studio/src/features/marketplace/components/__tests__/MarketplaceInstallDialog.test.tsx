@@ -126,7 +126,7 @@ describe('MarketplaceInstallDialog', () => {
       />,
     )
 
-    expect(screen.getByLabelText('工作流名称')).toHaveValue('Agent Workflow 副本')
+    expect(screen.getByLabelText('工作流名称')).toHaveValue('Agent Workflow')
     expect(screen.getByLabelText(/描述/)).toHaveValue(
       'Install this workflow into your workspace.',
     )
@@ -137,7 +137,7 @@ describe('MarketplaceInstallDialog', () => {
     const onOpenChange = vi.fn()
     installListingMock.mutateAsync.mockResolvedValue({
       workflowDefinitionId: 'workflow-1',
-      name: 'Agent Workflow 副本',
+      name: 'Agent Workflow',
       message: 'Workflow installed successfully',
     })
 
@@ -158,7 +158,7 @@ describe('MarketplaceInstallDialog', () => {
         expect(installListingMock.mutateAsync).toHaveBeenCalledWith({
           id: 'listing-1',
           body: {
-            name: 'Agent Workflow 副本',
+            name: 'Agent Workflow',
             description: 'Install this workflow into your workspace.',
           },
         })
@@ -183,7 +183,7 @@ describe('MarketplaceInstallDialog', () => {
     installListingMock.mutateAsync.mockResolvedValue({
       pluginDbId: 'plugin-db-1',
       pluginId: 'text-uppercase',
-      name: 'Text Uppercase 副本',
+      name: 'Text Uppercase',
       message: 'Plugin installed successfully',
     })
 
@@ -199,7 +199,7 @@ describe('MarketplaceInstallDialog', () => {
     )
 
     expect(screen.getByText('安装 Marketplace 插件')).toBeInTheDocument()
-    expect(screen.getByLabelText('插件名称')).toHaveValue('Text Uppercase 副本')
+    expect(screen.getByLabelText('插件名称')).toHaveValue('Text Uppercase')
 
     await user.click(screen.getByRole('button', { name: '确认安装' }))
 
@@ -207,7 +207,7 @@ describe('MarketplaceInstallDialog', () => {
       expect(installListingMock.mutateAsync).toHaveBeenCalledWith({
         id: 'listing-plugin-1',
         body: {
-          name: 'Text Uppercase 副本',
+          name: 'Text Uppercase',
           description: 'Converts text to uppercase.',
         },
       })

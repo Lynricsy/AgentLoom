@@ -105,6 +105,7 @@ interface AgentConversationState {
   terminalEntries: TerminalEntry[];
   fileTree: FileTreeNode[];
   workspaceSource: WorkspaceViewSource;
+  workspaceTreeLoading: boolean;
   fileChanges: FileChange[];
   selectedFilePath: string | null;
   subAgentStreams: Record<string, SubAgentStream>;
@@ -182,6 +183,7 @@ function createInitialState(): AgentConversationState {
     terminalEntries: [],
     fileTree: [],
     workspaceSource: "unavailable",
+    workspaceTreeLoading: false,
     fileChanges: [],
     selectedFilePath: null,
     subAgentStreams: {},
@@ -2057,11 +2059,17 @@ export const useAgentConversationStore = create<
               return;
             }
 
+            set((s) => {
+              s.workspaceTreeLoading = true;
+            });
+
             try {
               const response = await fetchWorkspaceFileTree(workspaceId);
               const normalizedTree = normalizeFileTree(response);
 
               set((s) => {
+                s.workspaceTreeLoading = false;
+
                 if (
                   s.conversationId !== conversationId ||
                   s.runtimeMode === "no_sandbox" ||
@@ -2080,6 +2088,9 @@ export const useAgentConversationStore = create<
                 }
               });
             } catch (error) {
+              set((s) => {
+                s.workspaceTreeLoading = false;
+              });
               console.error(
                 "[AgentConversation] Failed to preload workspace snapshot tree:",
                 error,
@@ -2096,10 +2107,16 @@ export const useAgentConversationStore = create<
 
                 s.fileTree = [];
                 s.workspaceSource = "unavailable";
+                s.workspaceTreeLoading = false;
                 s.selectedFilePath = null;
               });
               return;
             }
+
+            set((s) => {
+              s.workspaceTreeLoading = true;
+            });
+
             return trackConversationRequest(
               inFlightWorkspaceTreeLoads,
               conversationId,
@@ -2111,6 +2128,8 @@ export const useAgentConversationStore = create<
                   const normalizedTree = normalizeFileTree(response);
 
                   set((s) => {
+                    s.workspaceTreeLoading = false;
+
                     if (s.conversationId !== conversationId) {
                       return;
                     }
@@ -2138,6 +2157,9 @@ export const useAgentConversationStore = create<
                     }
                   });
                 } catch (error) {
+                  set((s) => {
+                    s.workspaceTreeLoading = false;
+                  });
                   console.error(
                     "[AgentConversation] Failed to load workspace tree:",
                     error,
@@ -2231,6 +2253,9 @@ export const useTerminalEntries = () =>
   useAgentConversationStore((s) => s.terminalEntries);
 
 export const useFileTree = () => useAgentConversationStore((s) => s.fileTree);
+
+export const useWorkspaceTreeLoading = () =>
+  useAgentConversationStore((s) => s.workspaceTreeLoading);
 
 export const useWorkspaceSource = () =>
   useAgentConversationStore((s) => s.workspaceSource);

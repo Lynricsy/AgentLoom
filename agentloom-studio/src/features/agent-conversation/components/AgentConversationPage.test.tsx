@@ -49,6 +49,7 @@ const {
       executionError: null,
       connectionError: null,
       workspaceSource: "unavailable",
+      workspaceTreeLoading: false,
     },
   };
 });
@@ -97,6 +98,7 @@ vi.mock("../stores/agent-conversation.store", () => ({
   useExecutionError: () => mockConversationState.executionError,
   useConversationConnectionError: () => mockConversationState.connectionError,
   useWorkspaceSource: () => mockConversationState.workspaceSource,
+  useWorkspaceTreeLoading: () => mockConversationState.workspaceTreeLoading,
 }));
 
 vi.mock("./MessageList", () => ({
@@ -137,6 +139,7 @@ describe("AgentConversationPage", () => {
     mockConversationState.executionError = null;
     mockConversationState.connectionError = null;
     mockConversationState.workspaceSource = "unavailable";
+    mockConversationState.workspaceTreeLoading = false;
 
     mockUseAgent.mockReturnValue({
       data: {

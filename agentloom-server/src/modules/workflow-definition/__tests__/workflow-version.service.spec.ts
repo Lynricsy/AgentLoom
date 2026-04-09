@@ -228,6 +228,13 @@ function createSelectChain(result: unknown) {
   return { from, where };
 }
 
+function createSelectChainWithLimit(result: unknown) {
+  const limit = vi.fn().mockResolvedValue(result);
+  const where = vi.fn().mockReturnValue({ limit });
+  const from = vi.fn().mockReturnValue({ where });
+  return { from, where, limit };
+}
+
 function createSelectChainWithPagination(result: unknown) {
   const offset = vi.fn().mockResolvedValue(result);
   const limit = vi.fn().mockReturnValue({ offset });
@@ -2369,6 +2376,171 @@ describe('WorkflowVersionService', () => {
       expect(valuesArg.metadata.cloned_from_marketplace.clonedAt).toBeDefined();
     });
 
+    it('应在 marketplace 安装时为 workflow 级 workspace 绑定创建目标租户空工作区', async () => {
+      const sourceWorkspaceId = '10000000-0000-0000-0000-000000000111';
+      const targetWorkspaceId = '20000000-0000-0000-0000-000000000111';
+      const organizationId = '30000000-0000-0000-0000-000000000111';
+      const marketplaceSnapshot = {
+        nodes: [
+          {
+            id: 'market-workspace-node',
+            type: 'tool',
+            position: { x: 0, y: 0 },
+            data: {
+              label: '项目工作区',
+              nodeType: 'workspace',
+              workspaceId: sourceWorkspaceId,
+              config: {
+                workspace_id: sourceWorkspaceId,
+                workspace_name: '项目工作区',
+              },
+            },
+          },
+          {
+            id: 'market-sandbox-node',
+            type: 'tool',
+            position: { x: 240, y: 0 },
+            data: {
+              label: '共享开发沙箱',
+              nodeType: 'sandbox',
+              restoreWorkspaceId: sourceWorkspaceId,
+              persistentSandboxId:
+                '40000000-0000-0000-0000-000000000111',
+              config: {
+                restore_workspace_id: sourceWorkspaceId,
+                persistent_sandbox_id:
+                  '40000000-0000-0000-0000-000000000111',
+              },
+            },
+          },
+        ],
+        edges: [],
+        viewport: null,
+        inputSchema: MOCK_INPUT_SCHEMA,
+        metadata: { nodeCount: 2, edgeCount: 0, createdFromVersion: 3 },
+      };
+      const selectListing = createSelectChainWithInnerJoin([
+        {
+          id: MARKETPLACE_LISTING_ID,
+          title: 'Marketplace 热门工作流',
+          sourceTenantId: TENANT_ID,
+          snapshot: marketplaceSnapshot,
+        },
+      ]);
+      const selectOrganization = createSelectChainWithLimit([
+        { id: organizationId },
+      ]);
+      const selectSourceWorkspace = createSelectChainWithLimit([
+        {
+          name: '项目工作区',
+          description: '源模板工作区',
+        },
+      ]);
+      const createdWorkspaceSnapshot = {
+        id: targetWorkspaceId,
+        organizationId,
+        tenantId: TENANT_ID,
+        name: '项目工作区',
+        description: '源模板工作区',
+        storageKey: 'pending',
+        sizeBytes: 0,
+        status: 'ready',
+        createdById: USER_ID,
+        config: null,
+        createdAt: NOW,
+        updatedAt: NOW,
+      };
+      const updatedWorkspaceSnapshot = {
+        ...createdWorkspaceSnapshot,
+        storageKey: `tenants/${TENANT_ID}/workspaces/${targetWorkspaceId}/snapshot.tar`,
+      };
+      const mockResult = createDraftWorkflow({
+        name: 'Marketplace 副本',
+        slug: 'marketplace-fu-ben',
+        description: '从 marketplace 安装',
+      });
+      const publishedResult = {
+        ...mockResult,
+        status: 'published' as const,
+        publishedVersionId: VERSION_ID,
+      };
+      const mockVersion = createMockVersion({ publishedAt: NOW });
+
+      db.select
+        .mockReturnValueOnce(selectListing)
+        .mockReturnValueOnce(selectOrganization)
+        .mockReturnValueOnce(selectSourceWorkspace);
+      db.insert
+        .mockReturnValueOnce(createInsertReturning(createdWorkspaceSnapshot))
+        .mockReturnValueOnce(createInsertReturning(mockResult))
+        .mockReturnValueOnce(createInsertReturning(mockVersion));
+      db.update
+        .mockReturnValueOnce(createUpdateChain([updatedWorkspaceSnapshot]))
+        .mockReturnValueOnce(createUpdateChain([publishedResult]));
+
+      const result = await service.create(
+        TENANT_ID,
+        USER_ID,
+        MOCK_DTO_WITH_MARKETPLACE,
+      );
+
+      expect(result).toEqual(publishedResult);
+
+      const workspaceInsertValues = db.insert.mock.results[0].value.values.mock
+        .calls[0][0];
+      expect(workspaceInsertValues).toMatchObject({
+        organizationId,
+        tenantId: TENANT_ID,
+        name: '项目工作区',
+        description: '源模板工作区',
+        status: 'ready',
+        sizeBytes: 0,
+        createdById: USER_ID,
+      });
+
+      const workflowInsertValues = db.insert.mock.results[1].value.values.mock
+        .calls[0][0];
+      expect(workflowInsertValues.nodes).toHaveLength(2);
+      const clonedWorkspaceNode = workflowInsertValues.nodes.find(
+        (node: Record<string, unknown>) =>
+          (node.data as Record<string, unknown>)?.nodeType === 'workspace',
+      ) as Record<string, unknown>;
+      const clonedSandboxNode = workflowInsertValues.nodes.find(
+        (node: Record<string, unknown>) =>
+          (node.data as Record<string, unknown>)?.nodeType === 'sandbox',
+      ) as Record<string, unknown>;
+      expect(clonedWorkspaceNode).toBeDefined();
+      expect(clonedSandboxNode).toBeDefined();
+      expect(
+        (clonedWorkspaceNode.data as Record<string, unknown>).workspaceId,
+      ).toBe(targetWorkspaceId);
+      expect(
+        ((clonedWorkspaceNode.data as Record<string, unknown>)
+          .config as Record<string, unknown>).workspaceId,
+      ).toBe(targetWorkspaceId);
+      expect(
+        (clonedWorkspaceNode.data as Record<string, unknown>).workspace_id,
+      ).toBeUndefined();
+      expect(
+        (clonedWorkspaceNode.data as Record<string, unknown>).workspaceName,
+      ).toBe('项目工作区');
+      expect(
+        (clonedSandboxNode.data as Record<string, unknown>).restoreWorkspaceId,
+      ).toBe(targetWorkspaceId);
+      expect(
+        ((clonedSandboxNode.data as Record<string, unknown>)
+          .config as Record<string, unknown>).restoreWorkspaceId,
+      ).toBe(targetWorkspaceId);
+      expect(
+        (clonedSandboxNode.data as Record<string, unknown>)
+          .persistentSandboxId,
+      ).toBeUndefined();
+      expect(
+        ((clonedSandboxNode.data as Record<string, unknown>)
+          .config as Record<string, unknown>).persistentSandboxId,
+      ).toBeUndefined();
+    });
+
     it('marketplace listing 不存在时应抛出 MarketplaceListingNotFoundException', async () => {
       db.select.mockReturnValueOnce(createSelectChainWithInnerJoin([]));
 
@@ -2527,7 +2699,7 @@ describe('WorkflowVersionService', () => {
       const createdAgentDefinition = {
         id: clonedAgentDefinitionId,
         tenantId: TENANT_ID,
-        name: 'Source News Agent 副本',
+        name: 'Source News Agent',
         slug: 'source-news-agent-fu-ben',
         description: 'source agent',
         icon: null,
