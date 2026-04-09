@@ -240,7 +240,9 @@ function createSelectChainWithPagination(result: unknown) {
 
 function createSelectChainWithInnerJoin(result: unknown) {
   const where = vi.fn().mockResolvedValue(result);
-  const innerJoin = vi.fn().mockReturnValue({ where });
+  const chain = { where } as { innerJoin?: ReturnType<typeof vi.fn>; where: typeof where };
+  const innerJoin = vi.fn().mockReturnValue(chain);
+  chain.innerJoin = innerJoin;
   const from = vi.fn().mockReturnValue({ innerJoin });
   return { from, innerJoin, where };
 }
@@ -2240,7 +2242,16 @@ describe('WorkflowVersionService', () => {
         slug: 'mo-ban-fu-ben',
         description: '从模板创建',
       });
-      db.insert.mockReturnValue(createInsertReturning(mockResult));
+      const publishedResult = {
+        ...mockResult,
+        status: 'published' as const,
+        publishedVersionId: VERSION_ID,
+      };
+      const mockVersion = createMockVersion({ publishedAt: NOW });
+      db.insert
+        .mockReturnValueOnce(createInsertReturning(mockResult))
+        .mockReturnValueOnce(createInsertReturning(mockVersion));
+      db.update.mockReturnValueOnce(createUpdateChain([publishedResult]));
 
       const result = await service.create(
         TENANT_ID,
@@ -2248,7 +2259,9 @@ describe('WorkflowVersionService', () => {
         MOCK_DTO_WITH_TEMPLATE,
       );
 
-      expect(result).toEqual(mockResult);
+      expect(result).toEqual(publishedResult);
+      expect(result.status).toBe('published');
+      expect(result.publishedVersionId).toBe(VERSION_ID);
       expect(templateService.findBySlug).toHaveBeenCalledWith(
         'code-review-assistant',
       );
@@ -2308,6 +2321,7 @@ describe('WorkflowVersionService', () => {
         {
           id: MARKETPLACE_LISTING_ID,
           title: 'Marketplace 热门工作流',
+          sourceTenantId: TENANT_ID,
           snapshot: marketplaceSnapshot,
         },
       ]);
@@ -2316,9 +2330,18 @@ describe('WorkflowVersionService', () => {
         slug: 'marketplace-fu-ben',
         description: '从 marketplace 安装',
       });
+      const publishedResult = {
+        ...mockResult,
+        status: 'published' as const,
+        publishedVersionId: VERSION_ID,
+      };
+      const mockVersion = createMockVersion({ publishedAt: NOW });
 
       db.select.mockReturnValueOnce(selectListing);
-      db.insert.mockReturnValue(createInsertReturning(mockResult));
+      db.insert
+        .mockReturnValueOnce(createInsertReturning(mockResult))
+        .mockReturnValueOnce(createInsertReturning(mockVersion));
+      db.update.mockReturnValueOnce(createUpdateChain([publishedResult]));
 
       const result = await service.create(
         TENANT_ID,
@@ -2326,7 +2349,9 @@ describe('WorkflowVersionService', () => {
         MOCK_DTO_WITH_MARKETPLACE,
       );
 
-      expect(result).toEqual(mockResult);
+      expect(result).toEqual(publishedResult);
+      expect(result.status).toBe('published');
+      expect(result.publishedVersionId).toBe(VERSION_ID);
       const valuesArg = db.insert.mock.results[0].value.values.mock.calls[0][0];
       expect(valuesArg.nodes).toHaveLength(2);
       expect(valuesArg.nodes[0].id).not.toBe('market-node-1');
@@ -2352,6 +2377,266 @@ describe('WorkflowVersionService', () => {
       ).rejects.toBeInstanceOf(MarketplaceListingNotFoundException);
 
       expect(db.insert).not.toHaveBeenCalled();
+    });
+
+    it('应在 marketplace 安装时深拷贝 workflow-agent 依赖并重绑目标租户模型', async () => {
+      const sourceAgentDefinitionId = '10000000-0000-0000-0000-000000000001';
+      const sourceAgentVersionId = '10000000-0000-0000-0000-000000000002';
+      const sourceModelConfigId = '10000000-0000-0000-0000-000000000003';
+      const targetModelConfigId = '20000000-0000-0000-0000-000000000003';
+      const clonedAgentDefinitionId = '30000000-0000-0000-0000-000000000001';
+      const clonedAgentVersionId = '30000000-0000-0000-0000-000000000002';
+      const sourceProviderId = '10000000-0000-0000-0000-000000000004';
+      const targetProviderId = '20000000-0000-0000-0000-000000000004';
+      const marketplaceSnapshot = {
+        nodes: [
+          {
+            id: 'market-agent-node',
+            type: 'agent',
+            position: { x: 0, y: 0 },
+            data: {
+              label: 'News Agent',
+              nodeType: 'agent',
+              selectedAgentId: sourceAgentDefinitionId,
+              agentVersionId: sourceAgentVersionId,
+              config: {
+                selected_agent_id: sourceAgentDefinitionId,
+                agent_version_id: sourceAgentVersionId,
+              },
+            },
+          },
+        ],
+        edges: [],
+        viewport: MOCK_VIEWPORT,
+        inputSchema: null,
+        metadata: { nodeCount: 1, edgeCount: 0, createdFromVersion: 1 },
+      };
+      const sourceAgentDefinition = {
+        id: sourceAgentDefinitionId,
+        tenantId: TENANT_ID,
+        name: 'Source News Agent',
+        description: 'source agent',
+        icon: null,
+        runtimeMode: 'no_sandbox' as const,
+        sandboxConfig: null,
+        workspaceSnapshotId: null,
+        publishedVersionId: sourceAgentVersionId,
+      };
+      const sourceAgentVersion = {
+        id: sourceAgentVersionId,
+        snapshot: {
+          runtimeMode: 'no_sandbox' as const,
+          nodes: [
+            {
+              id: 'agent-main',
+              type: 'agent',
+              position: { x: 320, y: 0 },
+              data: {
+                nodeType: 'agent-main',
+                label: 'Agent Main',
+              },
+            },
+            {
+              id: 'agent-model',
+              type: 'agent',
+              position: { x: 0, y: 0 },
+              data: {
+                nodeType: 'llm-model',
+                label: 'claude-sonnet-4-6',
+                llmConfigId: sourceModelConfigId,
+                modelId: 'claude-sonnet-4-6',
+                modelName: 'claude-sonnet-4-6',
+                provider: 'anthropic',
+                config: {
+                  llmConfigId: sourceModelConfigId,
+                  modelId: 'claude-sonnet-4-6',
+                  modelName: 'claude-sonnet-4-6',
+                  provider: 'anthropic',
+                },
+              },
+            },
+          ],
+          edges: [
+            {
+              id: 'agent-model-edge',
+              source: 'agent-model',
+              target: 'agent-main',
+              sourceHandle: 'model-out',
+              targetHandle: 'model-in',
+            },
+          ],
+          viewport: MOCK_VIEWPORT,
+          systemPrompt: null,
+          metadata: { nodeCount: 2, edgeCount: 1, createdFromVersion: 1 },
+        },
+      };
+      const sourceModelRow = {
+        config: {
+          id: sourceModelConfigId,
+          orgId: '10000000-0000-0000-0000-000000000010',
+          tenantId: TENANT_ID,
+          providerId: sourceProviderId,
+          name: 'Claude Sonnet 4.6',
+          modelId: 'claude-sonnet-4-6',
+          modelType: 'chat' as const,
+          isEnabled: true,
+          isDefault: true,
+          capabilities: {},
+          contextWindow: null,
+          maxOutputTokens: null,
+          pricing: null,
+          parameters: {},
+          metadataSource: 'manual' as const,
+          embeddingDimensions: null,
+          timeoutMs: null,
+          createdAt: NOW,
+          updatedAt: NOW,
+        },
+        provider: {
+          id: sourceProviderId,
+          orgId: '10000000-0000-0000-0000-000000000010',
+          tenantId: TENANT_ID,
+          slug: 'anthropic',
+          name: 'Anthropic',
+          iconUrl: null,
+          baseUrl: 'https://models.example.test/',
+          defaultBaseUrl: 'https://models.example.test/',
+          isBuiltin: true,
+          isEnabled: true,
+          apiProtocol: 'anthropic' as const,
+          apiKeyId: '10000000-0000-0000-0000-000000000099',
+          sortOrder: 0,
+          createdAt: NOW,
+          updatedAt: NOW,
+        },
+      };
+      const targetModelRow = {
+        config: {
+          ...sourceModelRow.config,
+          id: targetModelConfigId,
+          tenantId: TENANT_ID,
+          providerId: targetProviderId,
+        },
+        provider: {
+          ...sourceModelRow.provider,
+          id: targetProviderId,
+          tenantId: TENANT_ID,
+          apiKeyId: '20000000-0000-0000-0000-000000000099',
+        },
+      };
+      const createdAgentDefinition = {
+        id: clonedAgentDefinitionId,
+        tenantId: TENANT_ID,
+        name: 'Source News Agent 副本',
+        slug: 'source-news-agent-fu-ben',
+        description: 'source agent',
+        icon: null,
+        runtimeMode: 'no_sandbox' as const,
+        systemPrompt: null,
+        nodes: [],
+        edges: [],
+        viewport: MOCK_VIEWPORT,
+        metadata: {},
+        sandboxConfig: null,
+        workspaceSnapshotId: null,
+        version: 1,
+        status: 'draft' as const,
+        publishedVersionId: null,
+        createdBy: USER_ID,
+        updatedBy: USER_ID,
+        createdAt: NOW,
+        updatedAt: NOW,
+      };
+      const createdAgentVersion = {
+        id: clonedAgentVersionId,
+        agentDefinitionId: clonedAgentDefinitionId,
+        tenantId: TENANT_ID,
+        versionNumber: 1,
+        label: 'v1 (workflow import)',
+        snapshot: sourceAgentVersion.snapshot,
+        publishedAt: NOW,
+        archivedAt: null,
+        createdBy: USER_ID,
+        createdAt: NOW,
+      };
+      const createdWorkflow = createDraftWorkflow({
+        name: 'Marketplace 副本',
+        slug: 'marketplace-fu-ben',
+        description: '从 marketplace 安装',
+      });
+      const publishedWorkflow = {
+        ...createdWorkflow,
+        status: 'published' as const,
+        publishedVersionId: VERSION_ID,
+      };
+      const workflowVersion = createMockVersion({ publishedAt: NOW });
+
+      db.select
+        .mockReturnValueOnce(
+          createSelectChainWithInnerJoin([
+            {
+              id: MARKETPLACE_LISTING_ID,
+              title: 'Marketplace 热门工作流',
+              sourceTenantId: TENANT_ID,
+              snapshot: marketplaceSnapshot,
+            },
+          ]),
+        )
+        .mockReturnValueOnce(createSelectChain([sourceAgentDefinition]))
+        .mockReturnValueOnce(createSelectChain([sourceAgentVersion]))
+        .mockReturnValueOnce(createSelectChainWithInnerJoin([sourceModelRow]))
+        .mockReturnValueOnce(createSelectChainWithInnerJoin([targetModelRow]));
+      db.insert
+        .mockReturnValueOnce(createInsertReturning(createdAgentDefinition))
+        .mockReturnValueOnce(createInsertReturning(createdAgentVersion))
+        .mockReturnValueOnce(createInsertReturning(createdWorkflow))
+        .mockReturnValueOnce(createInsertReturning(workflowVersion));
+      db.update
+        .mockReturnValueOnce(createUpdateChainVoid())
+        .mockReturnValueOnce(createUpdateChain([publishedWorkflow]));
+
+      const result = await service.create(
+        TENANT_ID,
+        USER_ID,
+        MOCK_DTO_WITH_MARKETPLACE,
+      );
+
+      expect(result).toEqual(publishedWorkflow);
+      expect(result.status).toBe('published');
+      expect(db.insert).toHaveBeenCalledTimes(4);
+
+      const importedAgentValues = db.insert.mock.results[0].value.values.mock.calls[0][0];
+      const importedModelNode = importedAgentValues.nodes.find(
+        (node: Record<string, unknown>) =>
+          (node.data as Record<string, unknown>).nodeType === 'llm-model',
+      ) as Record<string, unknown>;
+      const importedModelData = importedModelNode.data as Record<string, unknown>;
+      const importedModelConfig = importedModelData.config as Record<string, unknown>;
+      expect(importedAgentValues.runtimeMode).toBe('no_sandbox');
+      expect(importedModelData.llmConfigId).toBe(targetModelConfigId);
+      expect(importedModelData.modelConfigId).toBe(targetModelConfigId);
+      expect(importedModelData.apiKeyId).toBe(targetModelRow.provider.apiKeyId);
+      expect(importedModelConfig.llmConfigId).toBe(targetModelConfigId);
+      expect(importedModelConfig.modelConfigId).toBe(targetModelConfigId);
+
+      const workflowInsertValues =
+        db.insert.mock.results[2].value.values.mock.calls[0][0];
+      const importedWorkflowNode = workflowInsertValues.nodes[0];
+      expect(importedWorkflowNode.data.selectedAgentId).toBe(
+        clonedAgentDefinitionId,
+      );
+      expect(importedWorkflowNode.data.agentDefinitionId).toBe(
+        clonedAgentDefinitionId,
+      );
+      expect(importedWorkflowNode.data.agentVersionId).toBe(
+        clonedAgentVersionId,
+      );
+      expect(importedWorkflowNode.data.config.selectedAgentId).toBe(
+        clonedAgentDefinitionId,
+      );
+      expect(importedWorkflowNode.data.config.agentVersionId).toBe(
+        clonedAgentVersionId,
+      );
     });
 
     it('应从可复制分享克隆定义并递增 copy count', async () => {
@@ -2395,7 +2680,16 @@ describe('WorkflowVersionService', () => {
         slug: 'fen-xiang-fu-ben',
         description: '从分享复制',
       });
-      db.insert.mockReturnValue(createInsertReturning(mockResult));
+      const publishedResult = {
+        ...mockResult,
+        status: 'published' as const,
+        publishedVersionId: VERSION_ID,
+      };
+      const mockVersion = createMockVersion({ publishedAt: NOW });
+      db.insert
+        .mockReturnValueOnce(createInsertReturning(mockResult))
+        .mockReturnValueOnce(createInsertReturning(mockVersion));
+      db.update.mockReturnValueOnce(createUpdateChain([publishedResult]));
 
       const result = await service.create(
         TENANT_ID,
@@ -2403,7 +2697,9 @@ describe('WorkflowVersionService', () => {
         MOCK_DTO_WITH_SHARE,
       );
 
-      expect(result).toEqual(mockResult);
+      expect(result).toEqual(publishedResult);
+      expect(result.status).toBe('published');
+      expect(result.publishedVersionId).toBe(VERSION_ID);
       expect(shareService.getShareByToken).toHaveBeenCalledWith(SHARE_TOKEN);
       expect(shareService.incrementCopyCount).toHaveBeenCalledWith(SHARE_TOKEN);
       expect(
