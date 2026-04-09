@@ -233,6 +233,42 @@ describe('SandboxAgentAdapter', () => {
     } as unknown as Response;
   }
 
+  function createHangingSseResponse(chunks: string[]): {
+    response: Response;
+    read: ReturnType<typeof vi.fn>;
+    cancel: ReturnType<typeof vi.fn>;
+  } {
+    const encoder = new TextEncoder();
+    const read = vi.fn(async () => {
+      if (chunks.length > 0) {
+        return {
+          done: false,
+          value: encoder.encode(chunks.shift()!),
+        };
+      }
+
+      return new Promise<ReadableStreamReadResult<Uint8Array>>(() => {
+        // 模拟容器端已经发出 done，但底层连接迟迟不主动关闭。
+      });
+    });
+    const cancel = vi.fn().mockResolvedValue(undefined);
+
+    return {
+      response: {
+        ok: true,
+        status: 200,
+        body: {
+          getReader: () => ({
+            read,
+            cancel,
+          }),
+        },
+      } as unknown as Response,
+      read,
+      cancel,
+    };
+  }
+
   it('应保留 RagService 与 CodeExecutionService 的 Nest 注入元数据', () => {
     const paramTypes = Reflect.getMetadata(
       'design:paramtypes',
@@ -725,7 +761,7 @@ describe('SandboxAgentAdapter', () => {
       globalThis.fetch = originalFetch;
     });
 
-    it('prompt 请求应使用 15 分钟默认超时，避免长响应被 5 分钟硬截断', async () => {
+    it('prompt 请求应使用 1 小时默认超时，避免长响应被短时硬截断', async () => {
       const session = await adapter.createSession(defaultParams);
       mockSandboxService.getSandboxSession.mockResolvedValue({
         id: 'sandbox-001',
@@ -751,7 +787,7 @@ describe('SandboxAgentAdapter', () => {
         adapter.prompt(session.id, [{ type: 'text', text: 'hello' }]),
       );
 
-      expect(timeoutSpy).toHaveBeenCalledWith(900_000);
+      expect(timeoutSpy).toHaveBeenCalledWith(3_600_000);
 
       timeoutSpy.mockRestore();
       globalThis.fetch = originalFetch;
@@ -805,6 +841,37 @@ describe('SandboxAgentAdapter', () => {
         },
         { type: 'done', stopReason: 'tool_use' },
       ]);
+    });
+
+    it('收到 done 事件后应立即结束，不等待 SSE 连接自己关闭', async () => {
+      const session = await adapter.createSession(defaultParams);
+      mockDockerService.getPromptUrl.mockResolvedValue(
+        'http://127.0.0.1:49123/v1/prompt',
+      );
+
+      const { response, read, cancel } = createHangingSseResponse([
+        'data: {"jsonrpc":"2.0","method":"event","params":{"type":"text_delta","data":{"delta":"hello"}}}\n\n' +
+          'data: {"jsonrpc":"2.0","method":"event","params":{"type":"done","data":{"stopReason":"end_turn"}}}\n\n',
+      ]);
+
+      globalThis.fetch = vi.fn().mockResolvedValue(response);
+
+      const eventsPromise = collectEvents(
+        adapter.prompt(session.id, [{ type: 'text', text: 'hello' }]),
+      );
+      const timed = Promise.race([
+        eventsPromise,
+        new Promise<AgentEvent[]>((_, reject) => {
+          setTimeout(() => reject(new Error('prompt did not finish')), 50);
+        }),
+      ]);
+
+      await expect(timed).resolves.toEqual([
+        { type: 'message_chunk', content: 'hello' },
+        { type: 'done', stopReason: 'end_turn' },
+      ]);
+      expect(read).toHaveBeenCalledTimes(1);
+      expect(cancel).toHaveBeenCalledTimes(1);
     });
 
     it('普通 tool_call_update 在缺少审批语义时应保持 in_progress', async () => {

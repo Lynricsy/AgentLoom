@@ -19,6 +19,7 @@ import {
   AGENT_RUNTIME,
   type IAgentRuntime,
 } from '../agent/ports/agent-runtime.port';
+import { isRecoverableAgentRuntimeError } from '../agent/agent-runtime-error.utils';
 import {
   AGENT_RUNTIME_FACTORY,
   type IAgentAdapterFactory,
@@ -52,6 +53,8 @@ import type {
 import {
   AGENT_TASK_QUEUE,
   MAX_ESCALATION_ATTEMPTS,
+  MAX_RECOVERABLE_RUNTIME_FAILURE_ATTEMPTS,
+  RECOVERABLE_RUNTIME_FAILURE_REQUEUE_DELAY_MS,
   SYSTEM_TIMEOUT_INTERVENTION_USER_ID,
   type AgentTaskJobData,
   type InterventionResolution,
@@ -751,6 +754,70 @@ export class AgentTaskWorker extends WorkerHost {
           { attempts: 1 },
         );
 
+        return;
+      }
+
+      if (
+        this.isRecoverableRuntimeFailure(err) &&
+        allAttempts.length < MAX_RECOVERABLE_RUNTIME_FAILURE_ATTEMPTS
+      ) {
+        const recoveryMessage = '检测到运行时链路中断，系统将自动恢复执行。';
+
+        await this.withTenantContext(tenantId, async () => {
+          await this.tenantDb
+            .update(schema.executionSteps)
+            .set({ attemptCount: allAttempts.length })
+            .where(eq(schema.executionSteps.id, stepId));
+
+          await this.stepStateMachine.updateStepStatus(
+            tenantId,
+            stepId,
+            'pending',
+            {
+              errorMessage: {
+                message: err.message,
+                stack: err.stack,
+                ...(err instanceof DomainException
+                  ? {
+                      type: err.type,
+                      title: err.message,
+                      detail: err.detail,
+                      errors: err.errors,
+                    }
+                  : {}),
+                nodeId: step.nodeId,
+              },
+              checkpointData,
+            },
+          );
+        });
+
+        this.logger.warn(
+          `Recoverable runtime failure detected, requeueing agent task: ${JSON.stringify({ executionId, stepId, tenantId, attempt: allAttempts.length, maxAttempts: MAX_RECOVERABLE_RUNTIME_FAILURE_ATTEMPTS, error: err.message })}`,
+        );
+        this.stepStateMachine.broadcastStepRetry(
+          tenantId,
+          executionId,
+          stepId,
+          {
+            attempt: allAttempts.length,
+            maxAttempts: MAX_RECOVERABLE_RUNTIME_FAILURE_ATTEMPTS,
+            errorMessage: `${err.message}；${recoveryMessage}`,
+          },
+        );
+        await this.agentTaskQueue.add(
+          'agent-task',
+          {
+            ...job.data,
+            input,
+            nodeData,
+            workflowContext: job.data.workflowContext,
+            ...(hasSandbox ? { hasSandbox: true } : {}),
+          },
+          {
+            delay: RECOVERABLE_RUNTIME_FAILURE_REQUEUE_DELAY_MS,
+          },
+        );
         return;
       }
 
@@ -2405,6 +2472,10 @@ export class AgentTaskWorker extends WorkerHost {
     return typeof job.opts.attempts === 'number' && job.opts.attempts > 0
       ? job.opts.attempts
       : 1;
+  }
+
+  private isRecoverableRuntimeFailure(error: unknown): boolean {
+    return isRecoverableAgentRuntimeError(error);
   }
 
   private async resolveOrgId(tenantId: string): Promise<string | null> {

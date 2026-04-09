@@ -228,6 +228,32 @@ describe('SandboxLifecycleWorker', () => {
       });
     });
 
+    it('timeout<=0 时不应调度超时检查', async () => {
+      await worker.process(
+        createJob({
+          jobType: 'create',
+          sessionId: 's-no-timeout',
+          agentConversationId: 'conv-no-timeout',
+          tenantId: 't1',
+          config: {
+            ...DEFAULT_CONFIG,
+            timeout: 0,
+          },
+        }),
+      );
+
+      expect(mockLifecycleProducer.removeTimeoutCheckTask).toHaveBeenCalledWith(
+        's-no-timeout',
+      );
+      expect(
+        mockLifecycleProducer.addTimeoutCheckTask,
+      ).not.toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionId: 's-no-timeout',
+        }),
+      );
+    });
+
     it('session 已离开 creating 状态时应回收新建容器且不覆盖为 ready', async () => {
       mockReturning.mockResolvedValueOnce([]);
 
@@ -601,7 +627,9 @@ describe('SandboxLifecycleWorker', () => {
         }),
       );
 
-      expect(mockWorkspaceService.syncFromSandboxContainer).not.toHaveBeenCalled();
+      expect(
+        mockWorkspaceService.syncFromSandboxContainer,
+      ).not.toHaveBeenCalled();
       expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123', {
         removeVolumes: false,
       });

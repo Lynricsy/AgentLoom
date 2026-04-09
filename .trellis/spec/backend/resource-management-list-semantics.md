@@ -93,11 +93,12 @@
   - 若显式提供 `timeoutSeconds`，编译结果必须写入：
     - `timeoutSeconds`
     - `timeout = ceil(timeoutSeconds / 3600)`，仅作为兼容回填
-  - 若未提供 `timeoutSeconds`，但也没有 legacy `timeout`，默认视为 Agent session 秒级 timeout：
-    - `timeoutSeconds = 300`
-    - `timeout = 1`
+  - 若 `timeoutSeconds <= 0`，或未提供 `timeoutSeconds` 且也没有 legacy `timeout`，默认视为**不超时**：
+    - `timeout = 0`
+    - 不写入 `timeoutSeconds`
   - 只有显式 legacy `timeout(hours)` 且不存在 `timeoutSeconds` 时，才继续沿用小时语义
-- `SandboxLifecycleWorker` 调度 timeout check 时，必须优先使用 `timeoutSeconds`；不存在时才回退到 `timeout(hours)`
+- `SandboxLifecycleWorker` 调度 timeout check 时，必须优先使用 `timeoutSeconds`；不存在时才回退到 `timeout(hours)`。
+  - 若 `timeoutSeconds <= 0` 或 `timeout <= 0`，则视为禁用 timeout check，不得入队 delayed timeout job
 - `agent_definitions.sandbox_config` 与 `agent_versions.snapshot.sandboxConfig` 属于 persisted mirror，不应被视为绝对真源；当旧记录缺失 `timeoutSeconds` 时，detail response、version response 和 runtime 启动链都必须优先根据 canvas / snapshot 的 `nodes + edges` 重新推导 canonical sandboxConfig，再只把 persisted mirror 作为 fallback
 - `SandboxConfig.conversationIdleAutoEndMinutes` 也必须遵循相同约定：
   - Agent 画布来源与 persistent sandbox 资源创建来源都允许配置该字段
@@ -220,41 +221,42 @@
 
 ## 4. Validation Matrix
 
-| 场景 | 期望 | 验证点 |
-| --- | --- | --- |
-| conversation 走 `cancel()` | 事务提交后仍会触发 `agent-conversation.ended` | `agent-conversation.service.spec.ts` |
-| Agent sandbox `timeoutSeconds=901` | 编译后 `timeoutSeconds=901` 且兼容回填 `timeout=1` | `agent-definition.service.spec.ts` |
-| Agent sandbox 未显式配置 timeout | 默认得到 `timeoutSeconds=300` + `timeout=1` | `agent-definition.service.spec.ts` |
-| Agent sandbox 未显式配置 `conversationIdleAutoEndMinutes` | runtime / detail response 回退到默认值 `10` | `agent-definition.service.spec.ts`, `agent-definition-response.dto.spec.ts` |
-| lifecycle create job 含 `timeoutSeconds=300` | timeout check delay = `300_000ms` | `sandbox-lifecycle.worker.spec.ts` |
-| sandbox conversation 一轮执行完成 | 会调度 delayed idle-end check | `agent-execution.worker.spec.ts`, `sandbox.service.spec.ts` |
-| sandbox conversation 有新消息进入 | 会取消 delayed idle-end check | `sandbox.service.spec.ts` |
-| idle-end check 命中时 conversation 仍无运行中任务且无未处理消息 | worker 应自动调用 `end()` | `sandbox-lifecycle.worker.spec.ts` |
-| Agent conversation 在 `sandbox_creating` 阶段失败 | worker 应主动释放 conversation sandbox / persistent binding，避免旧失败对话残留占用 | `agent-execution.worker.spec.ts`, `sandbox.service.spec.ts` |
-| conversation 通过 `restart-latest-version` 重启到新会话且源会话仍绑定 persistent sandbox | restart 服务应先释放旧会话 binding，避免新会话首次执行 attach 同一资源时冲突失败 | `self-evolution.service.spec.ts` |
-| 旧 published snapshot 只有 `sandboxConfig.timeout=450`，但节点仍有 `timeoutSeconds=450` | detail / versions / runtime 都必须恢复成 `timeout=1 + timeoutSeconds=450` | `agent-definition-response.dto.spec.ts`, `agent-execution.worker.spec.ts`, `workflow-agent-adapter.spec.ts` |
-| workspace list 默认过滤 execution archive | API 仍返回 `sourceKind`，但 `execution_archive` 被排除 | `workspace.service.spec.ts` |
-| `includeAutoArchived=false` query string | DTO 必须把 `'false'` 解析成 `false`，不能回退成 truthy | `list-workspaces-query.dto.spec.ts` |
-| workspace snapshot tar 很大，但只读取目录树 | `GET /workspaces/:id/tree` 仍返回完整目录树，不因整包大小 404 | `workspace.service.spec.ts` |
-| workspace snapshot tar 很大，但只读取单个小文件 | `preview/raw` 应能流式定位目标文件，不因整包大小失败 | `workspace.service.spec.ts` |
-| workspace 当前被活跃 sandbox 挂载 | `tree/preview/raw` 必须优先读 live workspace，而不是旧 snapshot | `workspace.service.spec.ts` |
-| create/start 时 `restoreWorkspaceId` 已被其他活跃 sandbox 挂载 | 必须跳过 restore，直接复用同一 workspace volume | `sandbox-lifecycle.worker.spec.ts`, `sandbox.service.spec.ts` |
-| sandbox stop/destroy/timeout 时带 `restoreWorkspaceId` 且已是最后一个挂载者 | 必须先覆盖回写原 workspace，再继续 lifecycle 收口 | `sandbox-lifecycle.worker.spec.ts` |
-| sandbox stop/destroy/timeout 时带 `restoreWorkspaceId` 但仍有其他活跃挂载者 | 必须跳过同步，避免把中间态错误归档 | `sandbox-lifecycle.worker.spec.ts`, `sandbox.service.spec.ts` |
-| workflow step 绑定已有 workspace 结束 | `archiveExecutionStepWorkspace()` 返回原 `restoreWorkspaceId`，且不创建 execution archive | `workspace-integration.service.spec.ts` |
-| sandbox list `bindingType=resource` | SQL where 同时要求 `execution_id is null` + `agent_conversation_id is null` | `sandbox.service.spec.ts` |
-| persistent resource sandbox timeout | 资源状态应落为 `stopped`，而不是 `failed` | `sandbox-lifecycle.worker.spec.ts` |
-| persistent sandbox 手动 stop | 只应调用 `stopContainer`，不能调用 `removeContainer` | `sandbox-lifecycle.worker.spec.ts`, `sandbox.service.spec.ts` |
-| persistent sandbox 从 `stopped` 重启 | 应优先复用既有 `containerId` 走 start，而不是重新 create 新容器 | `sandbox.service.spec.ts`, `sandbox-lifecycle.worker.spec.ts` |
-| persistent sandbox 从 `stopped` 重启时旧 `containerId` 已不存在 | worker 应自动重建同 session 容器、回写新 `containerId`，而不是把 session 标成 `failed` | `sandbox-lifecycle.worker.spec.ts`, `docker.service.spec.ts` |
-| running sandbox stats 成功拿到 workspace usage | 返回 `diskUsage(bytes)`，service 补齐 `diskTotal(bytes)` | `docker.service.spec.ts`, `sandbox.service.spec.ts` |
-| workspace usage 统计失败 | 仍返回 CPU/内存，且不伪造 `diskUsage=0` | `docker.service.spec.ts` |
-| conversation sandbox stats 查询 | `GET /agent-conversations/:id/sandbox/stats` 返回与资源页一致的 `ContainerStats` | `agent-conversation.controller.spec.ts` |
-| workflow 分享导入成功 | 新 workflow 记录 `resourceSourceKind='share_imported'` | `workflow-version.service.spec.ts` |
-| agent 分享导入成功 | 根 Agent 与深拷贝持久化资源记录 share-import source | `agent-share-import.service.ts` tests |
-| workflow / agent / knowledge / memory / mcp / skill 列表使用 `sourceKind=share_imported` | 只返回 share-imported 项，不靠 controller 内存过滤 | 对应 service/controller specs |
-| `convertToManual()` 命中已有来源记录 | 只更新 `currentKind='manual'`，origin 仍保留 share-import 来源 | `resource-source.service.spec.ts` or manual QA |
-| `convertToManual()` 命中不存在来源记录 | 返回幂等 manual 结果 | `resource-source.service.spec.ts` or manual QA |
+| 场景                                                                                     | 期望                                                                                      | 验证点                                                                                                      |
+| ---------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| conversation 走 `cancel()`                                                               | 事务提交后仍会触发 `agent-conversation.ended`                                             | `agent-conversation.service.spec.ts`                                                                        |
+| Agent sandbox `timeoutSeconds=901`                                                       | 编译后 `timeoutSeconds=901` 且兼容回填 `timeout=1`                                        | `agent-definition.service.spec.ts`                                                                          |
+| Agent sandbox 未显式配置 timeout                                                         | 默认得到 `timeout=0`，且不写入 `timeoutSeconds`                                           | `agent-definition.service.spec.ts`                                                                          |
+| Agent / workflow sandbox 显式把 timeout 设为 `0`                                         | lifecycle worker 不应入队 delayed timeout check                                           | `sandbox-lifecycle.worker.spec.ts`                                                                          |
+| Agent sandbox 未显式配置 `conversationIdleAutoEndMinutes`                                | runtime / detail response 回退到默认值 `10`                                               | `agent-definition.service.spec.ts`, `agent-definition-response.dto.spec.ts`                                 |
+| lifecycle create job 含 `timeoutSeconds=300`                                             | timeout check delay = `300_000ms`                                                         | `sandbox-lifecycle.worker.spec.ts`                                                                          |
+| sandbox conversation 一轮执行完成                                                        | 会调度 delayed idle-end check                                                             | `agent-execution.worker.spec.ts`, `sandbox.service.spec.ts`                                                 |
+| sandbox conversation 有新消息进入                                                        | 会取消 delayed idle-end check                                                             | `sandbox.service.spec.ts`                                                                                   |
+| idle-end check 命中时 conversation 仍无运行中任务且无未处理消息                          | worker 应自动调用 `end()`                                                                 | `sandbox-lifecycle.worker.spec.ts`                                                                          |
+| Agent conversation 在 `sandbox_creating` 阶段失败                                        | worker 应主动释放 conversation sandbox / persistent binding，避免旧失败对话残留占用       | `agent-execution.worker.spec.ts`, `sandbox.service.spec.ts`                                                 |
+| conversation 通过 `restart-latest-version` 重启到新会话且源会话仍绑定 persistent sandbox | restart 服务应先释放旧会话 binding，避免新会话首次执行 attach 同一资源时冲突失败          | `self-evolution.service.spec.ts`                                                                            |
+| 旧 published snapshot 只有 `sandboxConfig.timeout=450`，但节点仍有 `timeoutSeconds=450`  | detail / versions / runtime 都必须恢复成 `timeout=1 + timeoutSeconds=450`                 | `agent-definition-response.dto.spec.ts`, `agent-execution.worker.spec.ts`, `workflow-agent-adapter.spec.ts` |
+| workspace list 默认过滤 execution archive                                                | API 仍返回 `sourceKind`，但 `execution_archive` 被排除                                    | `workspace.service.spec.ts`                                                                                 |
+| `includeAutoArchived=false` query string                                                 | DTO 必须把 `'false'` 解析成 `false`，不能回退成 truthy                                    | `list-workspaces-query.dto.spec.ts`                                                                         |
+| workspace snapshot tar 很大，但只读取目录树                                              | `GET /workspaces/:id/tree` 仍返回完整目录树，不因整包大小 404                             | `workspace.service.spec.ts`                                                                                 |
+| workspace snapshot tar 很大，但只读取单个小文件                                          | `preview/raw` 应能流式定位目标文件，不因整包大小失败                                      | `workspace.service.spec.ts`                                                                                 |
+| workspace 当前被活跃 sandbox 挂载                                                        | `tree/preview/raw` 必须优先读 live workspace，而不是旧 snapshot                           | `workspace.service.spec.ts`                                                                                 |
+| create/start 时 `restoreWorkspaceId` 已被其他活跃 sandbox 挂载                           | 必须跳过 restore，直接复用同一 workspace volume                                           | `sandbox-lifecycle.worker.spec.ts`, `sandbox.service.spec.ts`                                               |
+| sandbox stop/destroy/timeout 时带 `restoreWorkspaceId` 且已是最后一个挂载者              | 必须先覆盖回写原 workspace，再继续 lifecycle 收口                                         | `sandbox-lifecycle.worker.spec.ts`                                                                          |
+| sandbox stop/destroy/timeout 时带 `restoreWorkspaceId` 但仍有其他活跃挂载者              | 必须跳过同步，避免把中间态错误归档                                                        | `sandbox-lifecycle.worker.spec.ts`, `sandbox.service.spec.ts`                                               |
+| workflow step 绑定已有 workspace 结束                                                    | `archiveExecutionStepWorkspace()` 返回原 `restoreWorkspaceId`，且不创建 execution archive | `workspace-integration.service.spec.ts`                                                                     |
+| sandbox list `bindingType=resource`                                                      | SQL where 同时要求 `execution_id is null` + `agent_conversation_id is null`               | `sandbox.service.spec.ts`                                                                                   |
+| persistent resource sandbox timeout                                                      | 资源状态应落为 `stopped`，而不是 `failed`                                                 | `sandbox-lifecycle.worker.spec.ts`                                                                          |
+| persistent sandbox 手动 stop                                                             | 只应调用 `stopContainer`，不能调用 `removeContainer`                                      | `sandbox-lifecycle.worker.spec.ts`, `sandbox.service.spec.ts`                                               |
+| persistent sandbox 从 `stopped` 重启                                                     | 应优先复用既有 `containerId` 走 start，而不是重新 create 新容器                           | `sandbox.service.spec.ts`, `sandbox-lifecycle.worker.spec.ts`                                               |
+| persistent sandbox 从 `stopped` 重启时旧 `containerId` 已不存在                          | worker 应自动重建同 session 容器、回写新 `containerId`，而不是把 session 标成 `failed`    | `sandbox-lifecycle.worker.spec.ts`, `docker.service.spec.ts`                                                |
+| running sandbox stats 成功拿到 workspace usage                                           | 返回 `diskUsage(bytes)`，service 补齐 `diskTotal(bytes)`                                  | `docker.service.spec.ts`, `sandbox.service.spec.ts`                                                         |
+| workspace usage 统计失败                                                                 | 仍返回 CPU/内存，且不伪造 `diskUsage=0`                                                   | `docker.service.spec.ts`                                                                                    |
+| conversation sandbox stats 查询                                                          | `GET /agent-conversations/:id/sandbox/stats` 返回与资源页一致的 `ContainerStats`          | `agent-conversation.controller.spec.ts`                                                                     |
+| workflow 分享导入成功                                                                    | 新 workflow 记录 `resourceSourceKind='share_imported'`                                    | `workflow-version.service.spec.ts`                                                                          |
+| agent 分享导入成功                                                                       | 根 Agent 与深拷贝持久化资源记录 share-import source                                       | `agent-share-import.service.ts` tests                                                                       |
+| workflow / agent / knowledge / memory / mcp / skill 列表使用 `sourceKind=share_imported` | 只返回 share-imported 项，不靠 controller 内存过滤                                        | 对应 service/controller specs                                                                               |
+| `convertToManual()` 命中已有来源记录                                                     | 只更新 `currentKind='manual'`，origin 仍保留 share-import 来源                            | `resource-source.service.spec.ts` or manual QA                                                              |
+| `convertToManual()` 命中不存在来源记录                                                   | 返回幂等 manual 结果                                                                      | `resource-source.service.spec.ts` or manual QA                                                              |
 
 ---
 

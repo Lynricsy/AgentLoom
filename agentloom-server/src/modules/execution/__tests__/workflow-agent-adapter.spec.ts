@@ -723,7 +723,7 @@ describe('WorkflowAgentAdapter', () => {
         cpu: 1,
         memory: 512,
         disk: 2,
-        timeout: 2,
+        timeout: 0,
         conversationIdleAutoEndMinutes: 10,
       },
       tenantId: TENANT_ID,

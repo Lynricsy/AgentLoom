@@ -383,7 +383,11 @@ function SandboxSummaryTab({ sandboxConfig }: SandboxSummaryTabProps) {
           <div className="flex flex-col gap-0.5">
             <span className="text-xs text-muted-foreground">超时时间</span>
             <span className="font-medium text-foreground">
-              {sandboxConfig.timeoutSeconds ?? "默认"}s
+              {typeof sandboxConfig.timeoutSeconds === "number"
+                ? sandboxConfig.timeoutSeconds > 0
+                  ? `${sandboxConfig.timeoutSeconds}s`
+                  : "不超时"
+                : "不超时"}
             </span>
           </div>
           <div className="flex flex-col gap-0.5">

@@ -791,6 +791,9 @@ export class SandboxLifecycleWorker extends WorkerHost {
     const delayMs = resolveSandboxTimeoutDelayMs(config);
 
     await this.lifecycleProducer.removeTimeoutCheckTask(sessionId);
+    if (delayMs === null) {
+      return;
+    }
     await this.lifecycleProducer.addTimeoutCheckTask({
       sessionId,
       tenantId,

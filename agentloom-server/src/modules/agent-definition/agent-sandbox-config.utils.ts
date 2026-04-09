@@ -5,7 +5,6 @@ import type {
 import type { SandboxConfig } from '../../database/schema/sandbox-sessions.schema';
 import { resolveAgentRuntimeSandboxConfig } from '../sandbox/agent-runtime-sandbox-config';
 import {
-  DEFAULT_AGENT_SANDBOX_TIMEOUT_SECONDS,
   deriveSandboxTimeoutHours,
   normalizeSandboxTimeoutSeconds,
 } from '../sandbox/sandbox-timeout.utils';
@@ -70,14 +69,7 @@ function extractSandboxConfig(
   const hasTimeoutSeconds =
     typeof timeoutSecondsValue === 'number' && timeoutSecondsValue > 0;
   const normalizedTimeoutSeconds =
-    hasTimeoutSeconds || !hasTimeoutHours
-      ? normalizeSandboxTimeoutSeconds(
-          timeoutSecondsValue,
-          DEFAULT_AGENT_SANDBOX_TIMEOUT_SECONDS,
-        )
-      : undefined;
-  const fallbackTimeoutSeconds =
-    normalizedTimeoutSeconds ?? DEFAULT_AGENT_SANDBOX_TIMEOUT_SECONDS;
+    normalizeSandboxTimeoutSeconds(timeoutSecondsValue);
   const conversationIdleAutoEndMinutes =
     resolveSandboxConversationIdleAutoEndMinutes(data);
 
@@ -107,7 +99,9 @@ function extractSandboxConfig(
     timeout:
       hasTimeoutHours && !hasTimeoutSeconds
         ? timeoutValue!
-        : deriveSandboxTimeoutHours(fallbackTimeoutSeconds),
+        : typeof normalizedTimeoutSeconds === 'number'
+          ? deriveSandboxTimeoutHours(normalizedTimeoutSeconds)
+          : 0,
     ...(typeof normalizedTimeoutSeconds === 'number'
       ? { timeoutSeconds: normalizedTimeoutSeconds }
       : {}),

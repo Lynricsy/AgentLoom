@@ -5,7 +5,7 @@ const DEFAULT_AGENT_RUNTIME_SANDBOX_CONFIG = {
   cpu: 1,
   memory: 512,
   disk: 2,
-  timeout: 2,
+  timeout: 0,
 } satisfies Pick<SandboxConfig, 'cpu' | 'memory' | 'disk' | 'timeout'>;
 
 export function resolveAgentRuntimeSandboxConfig(

@@ -26,6 +26,8 @@ import {
 } from '../execution.exceptions';
 import {
   AGENT_TASK_QUEUE,
+  MAX_RECOVERABLE_RUNTIME_FAILURE_ATTEMPTS,
+  RECOVERABLE_RUNTIME_FAILURE_REQUEUE_DELAY_MS,
   SYSTEM_TIMEOUT_INTERVENTION_USER_ID,
   type AgentTaskJobData,
   type InterventionResolution,
@@ -952,6 +954,102 @@ describe('AgentTaskWorker', () => {
         STEP_ID,
         TENANT_ID,
       );
+    });
+
+    it('attempts 用尽后若属于可恢复运行时中断，应重新入队而不是直接失败', async () => {
+      mockDb.select.mockReturnValue(
+        createSelectChain(
+          makeStep({
+            checkpointData: {
+              attempts: [
+                {
+                  attempt: 1,
+                  error: 'terminated',
+                  timestamp: '2025-01-01T00:00:00.000Z',
+                },
+                {
+                  attempt: 2,
+                  error: 'terminated',
+                  timestamp: '2025-01-01T00:01:00.000Z',
+                },
+                {
+                  attempt: 3,
+                  error: 'terminated',
+                  timestamp: '2025-01-01T00:02:00.000Z',
+                },
+              ],
+            },
+          }),
+        ),
+      );
+      const mockSetChain = { where: vi.fn().mockResolvedValue(undefined) };
+      mockDb.update.mockReturnValue({
+        set: vi.fn().mockReturnValue(mockSetChain),
+      });
+      mockAgentRuntime.createSession.mockResolvedValue(makeSession());
+      mockAgentRuntime.prompt.mockReturnValue(
+        (async function* () {
+          yield {
+            type: 'message_chunk',
+            content: '已产出一部分结果',
+          } as AgentEvent;
+          throw new Error('terminated');
+        })(),
+      );
+
+      await expect(
+        worker.process(
+          createMockJob({
+            attemptsMade: 3,
+            opts: { attempts: 4 },
+          }),
+        ),
+      ).resolves.toBeUndefined();
+
+      expect(mockStateMachine.updateStepStatus).toHaveBeenLastCalledWith(
+        TENANT_ID,
+        STEP_ID,
+        'pending',
+        {
+          errorMessage: expect.objectContaining({
+            message: 'terminated',
+          }),
+          checkpointData: expect.objectContaining({
+            partialContent: '已产出一部分结果',
+            sessionId: SESSION_ID,
+            session: {},
+            attempts: expect.arrayContaining([
+              expect.objectContaining({
+                attempt: 4,
+                error: 'terminated',
+              }),
+            ]),
+          }),
+        },
+      );
+      expect(mockStateMachine.broadcastStepRetry).toHaveBeenCalledWith(
+        TENANT_ID,
+        EXECUTION_ID,
+        STEP_ID,
+        {
+          attempt: 4,
+          maxAttempts: MAX_RECOVERABLE_RUNTIME_FAILURE_ATTEMPTS,
+          errorMessage:
+            'terminated；检测到运行时链路中断，系统将自动恢复执行。',
+        },
+      );
+      expect(mockAgentTaskQueue.add).toHaveBeenCalledWith(
+        'agent-task',
+        expect.objectContaining({
+          executionId: EXECUTION_ID,
+          stepId: STEP_ID,
+          tenantId: TENANT_ID,
+        }),
+        expect.objectContaining({
+          delay: RECOVERABLE_RUNTIME_FAILURE_REQUEUE_DELAY_MS,
+        }),
+      );
+      expect(mockNodeScheduler.onNodeFailed).not.toHaveBeenCalled();
     });
 
     it('FALLBACK_CHAIN 在非认证失败且仍有候选模型时会切换到下一个模型重新排队', async () => {

@@ -2168,8 +2168,8 @@ describe('AgentDefinitionService', () => {
       expect(config.sandboxConfig!.cpu).toBe(1);
       expect(config.sandboxConfig!.memory).toBe(512);
       expect(config.sandboxConfig!.disk).toBe(1);
-      expect(config.sandboxConfig!.timeout).toBe(1);
-      expect(config.sandboxConfig!.timeoutSeconds).toBe(300);
+      expect(config.sandboxConfig!.timeout).toBe(0);
+      expect(config.sandboxConfig!.timeoutSeconds).toBeUndefined();
     });
 
     it('skill 节点通过 skills-in 连接到 agent-main 时应被编译', () => {

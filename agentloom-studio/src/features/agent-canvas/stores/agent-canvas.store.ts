@@ -119,7 +119,7 @@ const DEFAULT_SANDBOX_CONFIG: AgentGlobalSandboxConfig = {
   enabled: true,
   cpuLimit: 1,
   memoryLimitMb: 512,
-  timeoutSeconds: 300,
+  timeoutSeconds: 0,
   conversationIdleAutoEndMinutes:
     DEFAULT_SANDBOX_CONVERSATION_IDLE_AUTO_END_MINUTES,
   lifecycleMode: "session",
@@ -241,10 +241,12 @@ const NO_SANDBOX_NODE_TYPES = new Set<AgentCanvasNodeType>([
   "sandbox",
   "workspace",
 ]);
-const LEGACY_AGENT_CANVAS_NODE_TYPE_ALIASES: Record<string, AgentCanvasNodeType> =
-  {
-    mcp: "mcp-tool",
-  };
+const LEGACY_AGENT_CANVAS_NODE_TYPE_ALIASES: Record<
+  string,
+  AgentCanvasNodeType
+> = {
+  mcp: "mcp-tool",
+};
 const LEGACY_OUTPUT_HANDLE_ALIASES: Partial<
   Record<AgentCanvasNodeType, Record<string, string>>
 > = {
@@ -273,8 +275,10 @@ function getAgentCanvasNodeType(
     return null;
   }
 
-  return LEGACY_AGENT_CANVAS_NODE_TYPE_ALIASES[nodeType] ??
-    (nodeType as AgentCanvasNodeType);
+  return (
+    LEGACY_AGENT_CANVAS_NODE_TYPE_ALIASES[nodeType] ??
+    (nodeType as AgentCanvasNodeType)
+  );
 }
 
 function normalizeLegacyOutputHandle(
@@ -286,9 +290,8 @@ function normalizeLegacyOutputHandle(
   }
 
   const normalizedHandle = handle.trim().toLowerCase().replaceAll("_", "-");
-  const canonicalHandle = LEGACY_OUTPUT_HANDLE_ALIASES[nodeType]?.[
-    normalizedHandle
-  ];
+  const canonicalHandle =
+    LEGACY_OUTPUT_HANDLE_ALIASES[nodeType]?.[normalizedHandle];
   return canonicalHandle ?? handle;
 }
 
@@ -345,13 +348,13 @@ function sanitizeEdgesForRuntimeMode(
       };
     })
     .filter((edge) => {
-    if (!nodeIds.has(edge.source) || !nodeIds.has(edge.target)) {
-      return false;
-    }
+      if (!nodeIds.has(edge.source) || !nodeIds.has(edge.target)) {
+        return false;
+      }
 
-    return !(
-      runtimeMode === "no_sandbox" && edge.targetHandle === "sandbox-in"
-    );
+      return !(
+        runtimeMode === "no_sandbox" && edge.targetHandle === "sandbox-in"
+      );
     });
 }
 
@@ -362,7 +365,8 @@ function normalizePersistedNode(node: AgentCanvasNode): AgentCanvasNode {
   }
 
   const config =
-    AGENT_CANVAS_NODE_REGISTRY.get(nodeType) ?? getNodeTypeConfigOrNull(nodeType);
+    AGENT_CANVAS_NODE_REGISTRY.get(nodeType) ??
+    getNodeTypeConfigOrNull(nodeType);
   if (!config) {
     return node;
   }

@@ -16,6 +16,7 @@ import {
   type AgentRuntimeMode,
   type AgentVersionSnapshot,
 } from '../../database/schema/agent-definitions.schema';
+import { isRecoverableAgentRuntimeErrorMessage } from '../agent/agent-runtime-error.utils';
 import type { ResolvedModelConfig } from '../llm/pi-ai-adapter';
 import {
   mcpServerConfigs,
@@ -1484,9 +1485,7 @@ export class AgentExecutionWorker extends WorkerHost {
   }
 
   private isUpstreamModelStreamAbort(message: string): boolean {
-    return /terminated|STREAM_UPSTREAM_ABORTED|upstream.?aborted|other side closed|fetch failed|upstream.?connect|reset before headers|socket hang up|timed? out|timeout/i.test(
-      message,
-    );
+    return isRecoverableAgentRuntimeErrorMessage(message);
   }
 
   private readErrorCode(error: Error): string | undefined {

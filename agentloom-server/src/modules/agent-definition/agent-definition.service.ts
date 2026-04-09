@@ -49,7 +49,6 @@ import {
 } from './agent-definition.exceptions';
 import { ResourceSourceService } from '../resource-source/resource-source.service';
 import {
-  DEFAULT_AGENT_SANDBOX_TIMEOUT_SECONDS,
   deriveSandboxTimeoutHours,
   normalizeSandboxTimeoutSeconds,
 } from '../sandbox/sandbox-timeout.utils';
@@ -2080,15 +2079,7 @@ export class AgentDefinitionService {
       typeof data.timeoutSeconds === 'number' &&
       Number.isFinite(data.timeoutSeconds) &&
       data.timeoutSeconds > 0;
-    const timeoutSeconds =
-      hasTimeoutSeconds || !hasTimeoutHours
-        ? normalizeSandboxTimeoutSeconds(
-            data.timeoutSeconds,
-            DEFAULT_AGENT_SANDBOX_TIMEOUT_SECONDS,
-          )
-        : undefined;
-    const fallbackTimeoutSeconds =
-      timeoutSeconds ?? DEFAULT_AGENT_SANDBOX_TIMEOUT_SECONDS;
+    const timeoutSeconds = normalizeSandboxTimeoutSeconds(data.timeoutSeconds);
     const conversationIdleAutoEndMinutes =
       resolveSandboxConversationIdleAutoEndMinutes(data);
 
@@ -2099,7 +2090,9 @@ export class AgentDefinitionService {
       timeout:
         hasTimeoutHours && !hasTimeoutSeconds
           ? data.timeout
-          : deriveSandboxTimeoutHours(fallbackTimeoutSeconds),
+          : typeof timeoutSeconds === 'number'
+            ? deriveSandboxTimeoutHours(timeoutSeconds)
+            : 0,
       ...(typeof timeoutSeconds === 'number' ? { timeoutSeconds } : {}),
       conversationIdleAutoEndMinutes,
       lifecycleMode: data.lifecycleMode,

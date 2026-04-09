@@ -77,7 +77,7 @@ import type {
 import type { SelfEvolutionRemoteToolOutcome } from '../self-evolution/self-evolution.types';
 
 const CONTAINER_WORKSPACE = '/workspace/';
-const REQUEST_TIMEOUT_MS = 900_000;
+const REQUEST_TIMEOUT_MS = 3_600_000;
 const SESSION_INIT_REQUEST_TIMEOUT_MS = 5_000;
 const SESSION_INIT_REQUEST_TIMEOUT_WITH_MCP_MS = 90_000;
 const ABORT_REQUEST_TIMEOUT_MS = 5_000;
@@ -433,6 +433,10 @@ export class SandboxAgentAdapter implements IAgentRuntime {
           }
           for (const event of parsed.events) {
             yield event;
+            if (event.type === 'done') {
+              await this.cancelReaderSafely(reader);
+              return;
+            }
           }
         }
 
@@ -443,6 +447,10 @@ export class SandboxAgentAdapter implements IAgentRuntime {
           }
           for (const event of finalEvent.events) {
             yield event;
+            if (event.type === 'done') {
+              await this.cancelReaderSafely(reader);
+              return;
+            }
           }
           break;
         }
@@ -2112,6 +2120,16 @@ export class SandboxAgentAdapter implements IAgentRuntime {
 
       default:
         return { events: [] };
+    }
+  }
+
+  private async cancelReaderSafely(
+    reader: ReadableStreamDefaultReader<Uint8Array>,
+  ): Promise<void> {
+    try {
+      await reader.cancel();
+    } catch {
+      // 忽略 transport 关闭阶段的取消异常；terminal 事件已是上层唯一真相。
     }
   }
 

@@ -206,6 +206,7 @@ docker compose down -v         # 停止并移除容器+卷（完全重置数据�
 - **镜像**: `agentloom/sandbox:latest`，基于 archlinux，内嵌 `pi-coding-agent` 运行时 + Fastify v5 HTTP 适配层
 - **构建**: `bash sandbox/build.sh` 执行 Docker build
 - **端点**: `POST /v1/session`（创建会话）、`POST /v1/prompt`（SSE 流式应答）、`POST /v1/abort`（取消）、`GET /health`（健康检查）
+- **SSE keepalive**: `/v1/prompt` 在等待真实 agent 事件期间会每 15 秒输出一次 `: ping\n\n` heartbeat comment，直到 `done/error` 终态或连接关闭，避免 server <-> sandbox 长静默链路被中间层按 idle timeout 提前掐断
 - **配置挂载**: Server 通过 `PiConfigGeneratorService` 生成 `settings.json`、`models.json`、`system-prompt.md`，bind-mount 到容器 `/config/`
 - **LLM API Key**: 通过容器环境变量注入（ANTHROPIC_API_KEY、OPENAI_API_KEY 等）
 - **工具权限**: 仅当 `/v1/prompt` 显式传入 `permissionCallbackUrl` 时，容器才会回调 AgentLoom 请求工具权限，30s 超时默认拒绝；当前普通 Agent 对话主路径默认不启用该链路

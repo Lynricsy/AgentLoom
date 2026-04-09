@@ -1289,7 +1289,6 @@ describe('AgentExecutionWorker', () => {
               memory: 1536,
               disk: 5,
               timeout: 901,
-              timeoutSeconds: 300,
               conversationIdleAutoEndMinutes: 10,
             },
           }),

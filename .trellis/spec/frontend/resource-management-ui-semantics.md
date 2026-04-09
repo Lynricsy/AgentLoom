@@ -68,7 +68,8 @@
   - lifecycle 标签（持久 / 临时）
   - binding 标签（资源 / 对话 / 执行）
   - timeout 文案：
-    - 有 `timeoutSeconds` → `${timeoutSeconds}s`
+    - `timeoutSeconds > 0` → `${timeoutSeconds}s`
+    - `timeoutSeconds <= 0` 或 `timeout <= 0` → `不超时`
     - 否则 → `${timeout}h`
 - running sandbox 若拿到 `diskUsage/diskTotal`：
   - 必须显示真实字节值
@@ -103,22 +104,22 @@
 
 ## 4. Validation Matrix
 
-| 场景                                                                     | 期望                                                                        | 验证点                         |
-| ------------------------------------------------------------------------ | --------------------------------------------------------------------------- | ------------------------------ |
-| Studio workspace API 调用                                                | 透传 `includeAutoArchived`                                                  | `workspaceApi.test.ts`         |
-| Studio workspace 来源标签                                                | 卡片与详情页都显示 `手动工作区 / 沙箱快照 / 执行归档`                       | 组件测试或手动 QA              |
-| Studio sandbox API 调用                                                  | 透传 `bindingType`                                                          | `sandboxApi.test.ts`           |
-| Studio sandbox stats 展示                                                | `diskUsage=0` 时显示 `0 B / ...`，不当成缺失                                | `SandboxStatsDisplay.test.tsx` |
-| Studio sandbox stats 返回 `404/409`                                      | 当前 card 停止继续轮询，并触发列表刷新收敛删除/状态漂移                     | `sandboxQueries.test.tsx`      |
+| 场景                                                                     | 期望                                                                          | 验证点                         |
+| ------------------------------------------------------------------------ | ----------------------------------------------------------------------------- | ------------------------------ |
+| Studio workspace API 调用                                                | 透传 `includeAutoArchived`                                                    | `workspaceApi.test.ts`         |
+| Studio workspace 来源标签                                                | 卡片与详情页都显示 `手动工作区 / 沙箱快照 / 执行归档`                         | 组件测试或手动 QA              |
+| Studio sandbox API 调用                                                  | 透传 `bindingType`                                                            | `sandboxApi.test.ts`           |
+| Studio sandbox stats 展示                                                | `diskUsage=0` 时显示 `0 B / ...`，不当成缺失                                  | `SandboxStatsDisplay.test.tsx` |
+| Studio sandbox stats 返回 `404/409`                                      | 当前 card 停止继续轮询，并触发列表刷新收敛删除/状态漂移                       | `sandboxQueries.test.tsx`      |
 | Studio 资源页启动 stopped persistent sandbox                             | 卡片先 optimistic 切到 `creating`，随后显式刷新 active list，无需手动刷新页面 | `sandboxMutations.test.tsx`    |
-| Studio workflow / agent 列表来源筛选                                     | 透传 `sourceKind`，通过顶部来源分类标签切换列表，且条目不重复显示来源 badge | 对应页面测试                   |
-| Studio 资源页点击“转为自己创建”                                          | 调用 shared `convert-to-manual` 并刷新列表                                  | 对应页面测试                   |
-| Flutter workspace DTO                                                    | 正确解析 `sourceKind/isAutoArchived` 并给出中文标签                         | `resource_entities_test.dart`  |
-| Flutter sandbox DTO                                                      | 正确解析 `bindingType/timeoutSeconds` 并给出中文标签                        | `resource_entities_test.dart`  |
-| Flutter sandbox stats DTO                                                | 正确解析 `diskUsage/diskTotal`，并保留 `0`                                  | `resource_entities_test.dart`  |
-| Flutter stopped sandbox 详情                                             | 不请求 `/stats`，改为展示“实时资源统计仅在运行中的沙箱可用”                | `sandboxes_screen_test.dart`   |
-| Flutter workflow / agent / knowledge / memory / mcp / skill 列表来源筛选 | 正确透传 `sourceKind` 并刷新列表                                            | screens/provider tests         |
-| Flutter 分享导入资源转正                                                 | 调用 `resource-sources/:type/:id/convert-to-manual` 后标签刷新              | screens/provider tests         |
+| Studio workflow / agent 列表来源筛选                                     | 透传 `sourceKind`，通过顶部来源分类标签切换列表，且条目不重复显示来源 badge   | 对应页面测试                   |
+| Studio 资源页点击“转为自己创建”                                          | 调用 shared `convert-to-manual` 并刷新列表                                    | 对应页面测试                   |
+| Flutter workspace DTO                                                    | 正确解析 `sourceKind/isAutoArchived` 并给出中文标签                           | `resource_entities_test.dart`  |
+| Flutter sandbox DTO                                                      | 正确解析 `bindingType/timeoutSeconds` 并给出中文标签                          | `resource_entities_test.dart`  |
+| Flutter sandbox stats DTO                                                | 正确解析 `diskUsage/diskTotal`，并保留 `0`                                    | `resource_entities_test.dart`  |
+| Flutter stopped sandbox 详情                                             | 不请求 `/stats`，改为展示“实时资源统计仅在运行中的沙箱可用”                   | `sandboxes_screen_test.dart`   |
+| Flutter workflow / agent / knowledge / memory / mcp / skill 列表来源筛选 | 正确透传 `sourceKind` 并刷新列表                                              | screens/provider tests         |
+| Flutter 分享导入资源转正                                                 | 调用 `resource-sources/:type/:id/convert-to-manual` 后标签刷新                | screens/provider tests         |
 
 ---
 
@@ -127,6 +128,7 @@
 - Studio workspace 页默认不应再被 `execution-*-step-*-workspace` 大量占满，筛选文案也不能再把“隐藏执行归档”误写成“常规工作区”
 - Studio sandbox 页默认不应再把 conversation / execution session 当成“资源沙箱”展示
 - persistent 资源沙箱到期后，应显示 `已停止`，而不应被渲染成 `失败`
+- Agent / workflow 画布里的 sandbox timeout 默认值应为 `0`，并在 UI 上明确展示为“`不超时`”，而不是偷偷回填成 `300s` / `2h`
 - running sandbox 写入文件后，Studio 资源页应能看到磁盘占用真实变化；空工作区应显示 `0 B`，而不是空白或伪造值
 - Studio workflow / agent / knowledge / memory / mcp / skill 页要能通过顶部来源分类标签切换列表，并在“转为自己创建”后立即反映到当前筛选结果；条目内部不应再重复出现 `自己创建 / 分享导入` badge
 - Flutter workflow / agent / knowledge / memory / mcp / skill 页当前仍使用来源筛选与来源标签，但必须保持同一套 `sourceKind` / 转正语义

@@ -4097,7 +4097,7 @@ export class NodeSchedulerService {
       cpu: this.readNumber(sandboxConfigSource.cpu, 1),
       memory: this.readNumber(sandboxConfigSource.memory, 512),
       disk: this.readNumber(sandboxConfigSource.disk, 2),
-      timeout: this.readNumber(sandboxConfigSource.timeout, 2),
+      timeout: this.readNumber(sandboxConfigSource.timeout, 0),
       ...(persistencePath ? { persistencePath } : {}),
       ...(restoreWorkspaceId ? { restoreWorkspaceId } : {}),
       ...(lifecycleMode ? { lifecycleMode } : {}),
