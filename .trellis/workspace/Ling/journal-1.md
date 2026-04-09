@@ -1120,3 +1120,36 @@ studio 前端大量页面无法滚轮滚动、没有滚动条。
 ### Next Steps
 
 - None - task complete
+
+
+## Session 23: SubmitDocs 子问题依赖图文字偏移修复
+
+**Date**: 2026-04-09
+**Task**: SubmitDocs 子问题依赖图文字偏移修复
+**Branch**: `main`
+
+### Summary
+
+修复技术研究报告 Mermaid 子问题依赖图节点文字下沉问题，补充图源 CSS 偏移与 README 资产说明，并同步重新导出 PNG。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `182a1350` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete

@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 22
-- **Last Active**: 2026-04-06
+- **Total Sessions**: 23
+- **Last Active**: 2026-04-09
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~1122 | Active |
+| `journal-1.md` | ~1155 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 23 | 2026-04-09 | SubmitDocs 子问题依赖图文字偏移修复 | `182a1350` | `main` |
 | 22 | 2026-04-06 | 隐藏 Studio 开发者导航入口 | `dd7f8293` | `main` |
 | 21 | 2026-04-06 | 临时隐藏 Studio 与 Flutter 的 Google/GitHub 登录入口 | `78faaeb3` | `main` |
 | 20 | 2026-04-03 | compound resize 边界同步修复 | `439f062` | `main` |
