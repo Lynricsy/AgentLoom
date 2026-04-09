@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -438,13 +439,15 @@ class _AgentConversationScreenState
 
 /// 是否应该展示准备卡片
 ///
-/// 展示条件：
+/// 无沙箱 Agent 不显示准备卡片，直接使用通用加载指示器。
+/// 展示条件（仅沙箱模式）：
 /// - 有活跃的准备阶段（正在准备中）
 /// - 准备阶段刚清除但有 preparationStartTime（刚完成，展示收缩摘要）
 /// - 有失败的准备阶段
 /// 不展示条件：
 /// - 历史加载时（没有活跃准备信息）
 bool _showPreparationCard(ConversationState state) {
+  if (state.isNoSandboxRuntime) return false;
   if (state.preparationPhase != null) {
     return true;
   }
@@ -481,7 +484,12 @@ class _MessageListView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final showCard = _showPreparationCard(state);
-    final itemCount = state.messages.length + (showCard ? 1 : 0);
+    // 通用加载指示器：无准备卡片、正在执行、且没有流式消息时显示
+    final showTypingIndicator = state.isBusy &&
+        !showCard &&
+        !state.messages.any((m) => m.role == MessageRole.assistant && m.isStreaming);
+    final extraItems = (showCard ? 1 : 0) + (showTypingIndicator ? 1 : 0);
+    final itemCount = state.messages.length + extraItems;
 
     return ListView.builder(
       controller: scrollController,
@@ -497,19 +505,26 @@ class _MessageListView extends StatelessWidget {
           );
         }
 
-        // 最后一项：准备卡片
-        final isCollapsed =
-            state.preparationPhase == null &&
-            state.preparationFailedPhase == null;
-        return PreparationCard(
-          phase: state.preparationPhase,
-          showSandboxPhase: state.hasSandboxRuntime,
-          sandboxReused: state.sandboxReused,
-          failedPhase: state.preparationFailedPhase,
-          error: state.preparationError,
-          preparationStartTime: state.preparationStartTime,
-          collapsed: isCollapsed,
-        );
+        final extraIndex = index - state.messages.length;
+
+        // 准备卡片（仅沙箱模式）
+        if (showCard && extraIndex == 0) {
+          final isCollapsed =
+              state.preparationPhase == null &&
+              state.preparationFailedPhase == null;
+          return PreparationCard(
+            phase: state.preparationPhase,
+            showSandboxPhase: state.hasSandboxRuntime,
+            sandboxReused: state.sandboxReused,
+            failedPhase: state.preparationFailedPhase,
+            error: state.preparationError,
+            preparationStartTime: state.preparationStartTime,
+            collapsed: isCollapsed,
+          );
+        }
+
+        // 通用加载指示器（无沙箱模式下从发送消息持续到流式输出开始）
+        return const _TypingIndicator();
       },
     );
   }
@@ -727,6 +742,92 @@ class _LoadErrorState extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// 通用加载指示器：三个跳动圆点，对齐 Studio 端的 TypingIndicator 风格
+class _TypingIndicator extends StatefulWidget {
+  const _TypingIndicator();
+
+  @override
+  State<_TypingIndicator> createState() => _TypingIndicatorState();
+}
+
+class _TypingIndicatorState extends State<_TypingIndicator>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          CircleAvatar(
+            radius: 16,
+            backgroundColor: theme.colorScheme.primaryContainer,
+            child: Icon(
+              Icons.smart_toy_outlined,
+              size: 16,
+              color: theme.colorScheme.onPrimaryContainer,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: List.generate(3, (i) {
+                return AnimatedBuilder(
+                  animation: _controller,
+                  builder: (context, child) {
+                    // 每个圆点错开 0.15 的相位
+                    final t = (_controller.value - i * 0.15) % 1.0;
+                    // 在 0~0.4 区间做弹跳，其余时间静止
+                    final bounce = t < 0.4
+                        ? math.sin(t / 0.4 * math.pi) * 4.0
+                        : 0.0;
+                    return Container(
+                      margin: const EdgeInsets.symmetric(horizontal: 2),
+                      child: Transform.translate(
+                        offset: Offset(0, -bounce),
+                        child: child,
+                      ),
+                    );
+                  },
+                  child: Container(
+                    width: 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: theme.colorScheme.onSurfaceVariant
+                          .withValues(alpha: 0.5),
+                    ),
+                  ),
+                );
+              }),
+            ),
+          ),
+        ],
       ),
     );
   }

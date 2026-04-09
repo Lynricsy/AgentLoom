@@ -547,9 +547,10 @@ export function MessageList({
   const preparationError = usePreparationError();
   const preparationFailedPhase = usePreparationFailedPhase();
 
-  // Show the preparation card when actively preparing or just collapsed (phase went null but startTime exists)
+  // Show the preparation card only for sandbox agents (no-sandbox agents skip straight to the generic typing indicator)
   const showPreparationCard =
-    preparationPhase !== null || preparationStartTime !== null;
+    runtimeMode === "sandbox" &&
+    (preparationPhase !== null || preparationStartTime !== null);
 
   if (messages.length !== prevMessageCount.current) {
     prevMessageCount.current = messages.length;
