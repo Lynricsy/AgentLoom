@@ -54,13 +54,18 @@ export function NewConversationDraftPage({
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
 
   const runtimeMode = agentQuery.data?.runtimeMode;
-  const hasSandbox = runtimeMode !== "no_sandbox";
+  const hasSandbox = runtimeMode === "sandbox";
   const workspacePreviewId = resolveConversationWorkspacePreviewId(
     agentQuery.data,
   );
   const agentName = agentQuery.data?.name?.trim() || "Agent";
 
-  const runtimeModeLabel = runtimeMode === "no_sandbox" ? "无沙箱" : "有沙箱";
+  const runtimeModeLabel =
+    runtimeMode === "sandbox"
+      ? "有沙箱"
+      : runtimeMode === "no_sandbox"
+        ? "无沙箱"
+        : "加载中";
 
   useEffect(() => {
     let cancelled = false;
@@ -196,7 +201,10 @@ export function NewConversationDraftPage({
         </div>
 
         {hasSandbox ? (
-          <div className="flex min-w-[320px] flex-1 flex-col gap-2 border-l border-border bg-surface p-2">
+          <div
+            data-testid="draft-conversation-context-pane"
+            className="flex min-w-[320px] flex-1 flex-col gap-2 border-l border-border bg-surface p-2"
+          >
             <div className="min-h-[220px] flex-[3] overflow-hidden">
               <SandboxComputerPanel
                 conversationId={null}
@@ -244,21 +252,7 @@ export function NewConversationDraftPage({
               </div>
             </div>
           </div>
-        ) : runtimeMode === "no_sandbox" ? (
-          <div className="flex min-w-0 flex-1 items-start justify-center border-l border-border bg-surface p-6">
-            <div className="max-w-sm rounded-lg border border-border bg-surface-elevated/50 px-4 py-3 text-sm text-muted-foreground">
-              无沙箱 Agent
-              不提供工作区、进程和文件变更面板；Skill、知识库、Memory、HTTP MCP
-              与自进化能力仍会在对话消息流中展示。
-            </div>
-          </div>
-        ) : (
-          <div className="flex min-w-0 flex-1 items-start justify-center border-l border-border bg-surface p-6">
-            <div className="max-w-sm rounded-lg border border-border bg-surface-elevated/50 px-4 py-3 text-sm text-muted-foreground">
-              正在加载 Agent 运行模式...
-            </div>
-          </div>
-        )}
+        ) : null}
       </div>
     </div>
   );

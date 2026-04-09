@@ -583,7 +583,8 @@ export function AgentConversationPage({
   const containerRef = useRef<HTMLDivElement>(null);
   const [leftWidth, setLeftWidth] = useState<number | null>(null);
   const [rightTopHeight, setRightTopHeight] = useState<number | null>(null);
-  const [isRestartingConversation, setIsRestartingConversation] = useState(false);
+  const [isRestartingConversation, setIsRestartingConversation] =
+    useState(false);
 
   const actionsRef = useRef(actions);
   actionsRef.current = actions;
@@ -802,7 +803,9 @@ export function AgentConversationPage({
       notify({
         title: "刷新失败",
         description:
-          error instanceof Error ? error.message : "刷新当前对话失败，请稍后重试。",
+          error instanceof Error
+            ? error.message
+            : "刷新当前对话失败，请稍后重试。",
         variant: "error",
       });
     } finally {
@@ -915,8 +918,15 @@ export function AgentConversationPage({
 
         <div ref={containerRef} className="flex flex-1 overflow-hidden">
           <div
-            className="flex flex-col shrink-0 overflow-hidden"
-            style={{ width: `${currentLeftWidth}px`, minWidth: MIN_LEFT_WIDTH }}
+            className={cn(
+              "flex min-w-0 flex-col overflow-hidden",
+              hasSandbox ? "shrink-0" : "flex-1",
+            )}
+            style={
+              hasSandbox
+                ? { width: `${currentLeftWidth}px`, minWidth: MIN_LEFT_WIDTH }
+                : undefined
+            }
           >
             <div className="flex-1 min-h-0 overflow-hidden">
               <MessageList
@@ -947,6 +957,7 @@ export function AgentConversationPage({
 
               <div
                 data-right-column
+                data-testid="agent-conversation-context-pane"
                 className="flex flex-col flex-1 overflow-hidden"
                 style={{ minWidth: MIN_RIGHT_WIDTH }}
               >
@@ -993,21 +1004,7 @@ export function AgentConversationPage({
                 </div>
               </div>
             </>
-          ) : runtimeMode === "no_sandbox" ? (
-            <div className="flex min-w-0 flex-1 items-start justify-center border-l border-border bg-surface p-6">
-              <div className="max-w-sm rounded-lg border border-border bg-surface-elevated/50 px-4 py-3 text-sm text-muted-foreground">
-                无沙箱 Agent
-                不提供工作区、进程和文件变更面板；Skill、知识库、Memory、HTTP
-                MCP 与自进化能力仍会在对话消息流中展示。
-              </div>
-            </div>
-          ) : (
-            <div className="flex min-w-0 flex-1 items-start justify-center border-l border-border bg-surface p-6">
-              <div className="max-w-sm rounded-lg border border-border bg-surface-elevated/50 px-4 py-3 text-sm text-muted-foreground">
-                正在加载 Agent 运行模式...
-              </div>
-            </div>
-          )}
+          ) : null}
         </div>
       </div>
     </SubAgentNavContext.Provider>

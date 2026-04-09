@@ -120,6 +120,25 @@ describe("NewConversationDraftPage", () => {
     });
   });
 
+  it("无沙箱草稿态不应预留右侧上下文面板", () => {
+    mockUseAgent.mockReturnValue({
+      data: {
+        name: "Repo Agent",
+        runtimeMode: "no_sandbox",
+        workspaceSnapshotId: null,
+        sandboxConfig: null,
+      },
+    });
+
+    renderPage();
+
+    expect(screen.getByText("无沙箱")).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("draft-conversation-context-pane"),
+    ).not.toBeInTheDocument();
+    expect(mockFetchWorkspaceFileTree).not.toHaveBeenCalled();
+  });
+
   it("选择附件后应先停留在草稿区，点击发送后再调用 startConversation", async () => {
     mockMutateAsync.mockResolvedValueOnce({ id: "conv-10" });
 
