@@ -431,3 +431,18 @@ export {
   type UserPreference,
   type NewUserPreference,
 } from './user-preferences.schema';
+export {
+  generatedAppStatusEnum,
+  generatedApps,
+  type GeneratedApp,
+  type NewGeneratedApp,
+  type GeneratedAppStatus,
+  type GeneratedAppReadinessState,
+  type GeneratedAppGateStatus,
+  type GeneratedAppAcceptanceScenario,
+  type GeneratedAppSpec,
+  type GeneratedAppGateEvidence,
+  type GeneratedAppGateResult,
+  type GeneratedAppReadiness,
+  type GeneratedAppPreview,
+} from './generated-apps.schema';

@@ -54,6 +54,7 @@ import { WorkspaceModule } from './modules/workspace/workspace.module';
 import { AgentMemoryModule } from './modules/agent-memory/agent-memory.module';
 import { SkillModule } from './modules/skill/skill.module';
 import { UserPreferenceModule } from './modules/user-preference/user-preference.module';
+import { GeneratedAppModule } from './modules/generated-app/generated-app.module';
 import { AuthGuard } from './common/guards/auth.guard';
 import { TenantGuard } from './common/guards/tenant.guard';
 import { RolesGuard } from './common/guards/roles.guard';
@@ -138,6 +139,7 @@ function createThrottlerOptions(configService: ConfigService) {
     AgentMemoryModule,
     SkillModule,
     UserPreferenceModule,
+    GeneratedAppModule,
   ],
   providers: [
     RbacCacheService,
@@ -172,6 +174,8 @@ export class AppModule implements NestModule, OnModuleDestroy {
         { path: 'templates/{*splat}', method: RequestMethod.ALL },
         { path: 'marketplace/browse', method: RequestMethod.ALL },
         { path: 'marketplace/browse/{*splat}', method: RequestMethod.ALL },
+        { path: 'generated-apps/public', method: RequestMethod.ALL },
+        { path: 'generated-apps/public/{*splat}', method: RequestMethod.ALL },
         { path: 's', method: RequestMethod.ALL },
         { path: 's/{*splat}', method: RequestMethod.ALL },
         { path: 'webhooks', method: RequestMethod.ALL },

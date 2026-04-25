@@ -477,6 +477,13 @@
       "when": 1775340000000,
       "tag": "0067_purge_empty_agent_conversations",
       "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "7",
+      "when": 1777105293000,
+      "tag": "0068_generated_apps",
+      "breakpoints": true
     }
   ]
 }
