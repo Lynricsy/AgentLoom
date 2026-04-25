@@ -60,7 +60,7 @@ const workflow: WorkflowDefinition = {
       id: 'node-agent-1',
       type: 'agent',
       position: { x: 100, y: 120 },
-      data: createNodeData('chat-agent'),
+      data: createNodeData('agent'),
     },
     {
       id: 'node-tool-1',

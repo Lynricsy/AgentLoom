@@ -81,7 +81,7 @@ void main() {
       expect(parsed.ok, isFalse);
       expect(isWorkflowOutputNodeType('json-output'), isTrue);
       expect(isWorkflowOutputNodeType('text-output'), isTrue);
-      expect(isWorkflowOutputNodeType('chat-agent'), isFalse);
+      expect(isWorkflowOutputNodeType('agent'), isFalse);
     });
   });
 }

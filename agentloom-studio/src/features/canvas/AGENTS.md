@@ -8,7 +8,7 @@
 
 | 分类          | 节点类型                                | 说明                                                                        |
 | ------------- | --------------------------------------- | --------------------------------------------------------------------------- |
-| Agent         | llm-agent, chat-agent, llm-model, agent | AI 智能体（`agent` 为独立 Agent 定义节点）                                  |
+| Agent         | llm-model, agent                        | AI 智能体（`agent` 为独立 Agent 定义节点）                                  |
 | Tool          | http-tool, code-tool, mcp-tool, sandbox | 工具节点                                                                    |
 | Trigger       | manual-trigger, schedule-trigger        | 触发器                                                                      |
 | Knowledge     | knowledge-base                          | 知识库资源节点；每个节点代表一个具体知识库，连接到 Agent 后形成可访问白名单 |

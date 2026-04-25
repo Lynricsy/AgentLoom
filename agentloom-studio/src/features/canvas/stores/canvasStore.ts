@@ -74,7 +74,7 @@ import { normalizeTextNodeConfig } from "../lib/textNodeConfig";
 
 enableMapSet();
 
-const AGENT_NODE_TYPES: ReadonlySet<NodeType> = new Set(["chat-agent"]);
+const AGENT_NODE_TYPES: ReadonlySet<NodeType> = new Set(["agent"]);
 function isAgentNodeType(nodeType: string): boolean {
   return AGENT_NODE_TYPES.has(nodeType as NodeType);
 }

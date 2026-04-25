@@ -64,7 +64,7 @@ function createSelectedAgentNode(
   config: Record<string, unknown> = {},
   dataOverride: Partial<CanvasNode['data']> = {},
 ): CanvasNode {
-  const llmAgentType = getNodeTypeConfig('chat-agent')
+  const llmAgentType = getNodeTypeConfig('agent')
   const defaultAgentData = createDefaultAgentNodeData()
   const baseData: CanvasNode['data'] = {
     label: llmAgentType.label,

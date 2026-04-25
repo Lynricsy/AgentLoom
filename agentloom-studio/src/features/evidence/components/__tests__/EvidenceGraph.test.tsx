@@ -219,7 +219,7 @@ function createGraphData(
         id: 'graph-node-1',
         nodeId: 'node-1',
         nodeName: '起始节点',
-        nodeType: 'chat-agent',
+        nodeType: 'agent',
         executionStatus: 'completed',
         evidenceCount: 2,
         firstEvidenceAt: null,
@@ -261,7 +261,7 @@ function createFlowNode(
       id: 'graph-node-1',
       nodeId: 'node-1',
       nodeName: '起始节点',
-      nodeType: 'chat-agent',
+      nodeType: 'agent',
       executionStatus: 'completed',
       evidenceCount: 2,
       firstEvidenceAt: null,
@@ -301,7 +301,7 @@ function renderNode(data: Partial<AgentGraphNodeFlowData>, selected = false) {
       id: 'g-1',
       nodeId: 'n-1',
       nodeName: 'Test Node',
-      nodeType: 'chat-agent',
+      nodeType: 'agent',
       executionStatus: 'completed',
       evidenceCount: 3,
       firstEvidenceAt: null,
@@ -416,11 +416,11 @@ describe('EvidenceGraph components', () => {
 
   describe('AgentGraphNode', () => {
     it('渲染节点名称、类型、证据徽章与句柄', () => {
-      renderNode({ nodeName: '规划节点', nodeType: 'chat-agent', evidenceCount: 3 })
+      renderNode({ nodeName: '规划节点', nodeType: 'agent', evidenceCount: 3 })
 
       expect(screen.getByTestId('agent-graph-node-n-1')).toBeInTheDocument()
       expect(screen.getByText('规划节点')).toBeInTheDocument()
-      expect(screen.getByText('chat-agent')).toBeInTheDocument()
+      expect(screen.getByText('agent')).toBeInTheDocument()
       expect(screen.getByTestId('evidence-badge')).toHaveTextContent('3')
       expect(screen.getByTestId('handle-target')).toBeInTheDocument()
       expect(screen.getByTestId('handle-source')).toBeInTheDocument()

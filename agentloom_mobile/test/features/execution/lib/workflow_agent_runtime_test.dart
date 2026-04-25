@@ -11,7 +11,7 @@ void main() {
         stepId: 'step-agent-1',
         nodeId: 'node-agent-1',
         nodeName: '研究 Agent',
-        nodeType: 'chat-agent',
+        nodeType: 'agent',
         status: 'running',
         startedAt: '2026-03-31T12:00:00.000Z',
       );
@@ -19,7 +19,7 @@ void main() {
         stepId: 'step-agent-1',
         nodeId: 'node-agent-1',
         nodeName: '研究 Agent',
-        nodeType: 'chat-agent',
+        nodeType: 'agent',
         status: 'running',
         output: '先整理线索\n\nKB-ALPHA-20260331',
         thinking: '先判断资料可信度',
@@ -77,7 +77,7 @@ void main() {
         stepId: 'step-agent-1',
         nodeId: 'node-agent-1',
         nodeName: '研究 Agent',
-        nodeType: 'chat-agent',
+        nodeType: 'agent',
         status: 'running',
       );
       const runtime = ExecutionRuntimeStep(

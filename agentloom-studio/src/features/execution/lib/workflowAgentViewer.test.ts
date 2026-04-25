@@ -9,7 +9,7 @@ function createStep(overrides: Partial<ExecutionStep> = {}): ExecutionStep {
     executionId: "exec-1",
     nodeId: "node-agent-1",
     nodeName: "研究 Agent",
-    nodeType: "chat-agent",
+    nodeType: "agent",
     status: "running",
     input: null,
     output: { content: "先查结果如下" },

@@ -272,7 +272,7 @@ void main() {
               'nodes': [
                 {
                   'id': 'node-agent-1',
-                  'type': 'chat-agent',
+                  'type': 'agent',
                   'data': {'label': 'Agent Node', 'nodeType': 'agent'},
                 },
               ],
@@ -282,7 +282,7 @@ void main() {
                 id: 'step-agent-1',
                 executionId: 'exec-1',
                 nodeId: 'node-agent-1',
-                nodeType: 'chat-agent',
+                nodeType: 'agent',
                 nodeData: {'label': 'Agent Node', 'nodeType': 'agent'},
                 status: 'completed',
                 checkpointData: {
@@ -1436,7 +1436,7 @@ void main() {
             'nodes': [
               {
                 'id': 'node-1',
-                'type': 'chat-agent',
+                'type': 'agent',
                 'data': {'label': 'Agent Node', 'nodeType': 'agent'},
               },
             ],
@@ -1446,7 +1446,7 @@ void main() {
               id: 'step-1',
               executionId: 'exec-1',
               nodeId: 'node-1',
-              nodeType: 'chat-agent',
+              nodeType: 'agent',
               nodeData: {'label': 'Agent Node', 'nodeType': 'agent'},
               status: 'running',
               completedAt: null,

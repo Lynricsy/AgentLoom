@@ -565,18 +565,6 @@ const DEFAULT_PORT_TEMPLATES_BY_NODE_TYPE: Record<
   string,
   { input: PortTemplate[]; output: PortTemplate[] }
 > = {
-  'chat-agent': {
-    input: [
-      createExecInPortTemplate(),
-      createPortTemplate('messages-in', '消息', 'input', 'json'),
-      createPortTemplate('model-in', '模型', 'input', 'model'),
-    ],
-    output: [
-      createExecOutPortTemplate(),
-      createPortTemplate('reply-out', '回复', 'output', 'text'),
-      createPortTemplate('structured-out', '结构化', 'output', 'json'),
-    ],
-  },
   'llm-model': {
     input: [createExecInPortTemplate()],
     output: [

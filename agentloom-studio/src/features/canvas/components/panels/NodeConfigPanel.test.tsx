@@ -112,6 +112,13 @@ vi.mock('./ReusableBlockPanel', () => ({
   ReusableBlockPanel: () => <div>Reusable Block Panel</div>,
 }))
 
+vi.mock('./customPanelRegistry', async (importOriginal) => {
+  const mod = await importOriginal<typeof import('./customPanelRegistry')>()
+  const filtered = { ...mod.CUSTOM_PANEL_REGISTRY }
+  delete (filtered as Record<string, unknown>)['loop']
+  return { ...mod, CUSTOM_PANEL_REGISTRY: filtered }
+})
+
 vi.mock('@/features/optimization-suggestion', () => ({
   OptimizationSuggestionsPanel: ({
     workflowDefinitionId,
@@ -312,11 +319,11 @@ describe('NodeConfigPanel', () => {
   })
 
   it('falls back to the schema-driven dynamic form when no custom panel is registered', () => {
-    mocks.node = createNode('chat-agent')
+    mocks.node = createNode('loop')
 
     render(<NodeConfigPanel />)
 
-    expect(screen.getByText('Dynamic Form: systemPrompt')).toBeInTheDocument()
+    expect(screen.getByText('Dynamic Form: defaultState, outputMode, isCollapsed')).toBeInTheDocument()
   })
 
   it('shows the empty state when a node has no additional config schema', () => {
@@ -349,7 +356,7 @@ describe('NodeConfigPanel', () => {
 
   it('forwards validation state changes from dynamic config forms to the canvas store', async () => {
     const user = userEvent.setup()
-    mocks.node = createNode('chat-agent')
+    mocks.node = createNode('loop')
 
     render(<NodeConfigPanel />)
     await user.click(screen.getByRole('button', { name: '触发动态表单校验' }))

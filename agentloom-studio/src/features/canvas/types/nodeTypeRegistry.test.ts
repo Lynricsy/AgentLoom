@@ -20,7 +20,6 @@ import {
 describe("nodeTypeRegistry", () => {
   it("exports all supported node types in a stable order", () => {
     expect(NODE_TYPES).toEqual([
-      "chat-agent",
       "llm-model",
       "http-tool",
       "code-tool",
@@ -102,22 +101,21 @@ describe("nodeTypeRegistry", () => {
   });
 
   it("returns configs for known node types and throws for unknown types", () => {
-    const config = getNodeTypeConfig("chat-agent");
-    const systemPrompt = config.configSchema.properties.systemPrompt;
+    const config = getNodeTypeConfig("agent");
 
-    if (!systemPrompt) {
-      throw new Error("Expected chat-agent to expose a systemPrompt field");
-    }
-
-    expect(config.type).toBe("chat-agent");
-    expect(systemPrompt.title).toBe("System Prompt");
+    expect(config.type).toBe("agent");
+    expect(config.configSchema).toEqual({
+      type: "object",
+      properties: {},
+      required: [],
+    });
     expect(() => getNodeTypeConfig("unknown-node" as NodeType)).toThrow(
       "Unknown node type",
     );
   });
 
   it("returns null for unknown node types in safe lookups", () => {
-    expect(getNodeTypeConfigOrNull("chat-agent")?.label).toBe("Chat Agent");
+    expect(getNodeTypeConfigOrNull("agent")?.label).toBe("Agent");
     expect(getNodeTypeConfigOrNull("not-real")).toBeNull();
   });
 
@@ -288,7 +286,6 @@ describe("nodeTypeRegistry", () => {
 
     expect(orderedTypes).toEqual([...NODE_TYPES]);
     expect(groupedTypes).toEqual([
-      "chat-agent",
       "llm-model",
       "smart-routing",
       "agent",

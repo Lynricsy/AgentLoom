@@ -1,10 +1,10 @@
 # 画布编辑器
 
-画布编辑器是 Studio 的核心，用户在此构建 DAG 工作流。基于 `@xyflow/react` v12 实现，支持 23 种节点类型、12 种端口数据类型、3 级 LOD 缩放和实时兼容性检查。
+画布编辑器是 Studio 的核心，用户在此构建 DAG 工作流。基于 `@xyflow/react` v12 实现，支持 22 种节点类型、12 种端口数据类型、3 级 LOD 缩放和实时兼容性检查。
 
 ## 节点类型体系
 
-画布定义了 **8 大类别、23 种节点类型**：
+画布定义了 **8 大类别、22 种节点类型**：
 
 ```mermaid
 graph TD
@@ -18,7 +18,6 @@ graph TD
     Root --> Plugin[🧩 Plugin 插件]
     Root --> Memory[🧠 Memory 记忆]
 
-    Agent --> chat-agent[chat-agent<br/>对话智能体]
     Agent --> llm-model[llm-model<br/>模型节点]
     Agent --> agent-node[agent<br/>Agent 节点]
     Agent --> smart-routing-node[smart-routing<br/>智能路由]
@@ -54,8 +53,7 @@ graph TD
 
 | 类别          | 节点               | 输入端口                     | 输出端口      | 说明                               |
 | ------------- | ------------------ | ---------------------------- | ------------- | ---------------------------------- |
-| **Agent**     | `chat-agent`       | text, model, tool, knowledge | text, json    | 对话式 Agent，支持工具调用与 RAG   |
-|               | `llm-model`        | —                            | model         | 模型配置节点，输出 model 端口      |
+| **Agent**     | `llm-model`        | —                            | model         | 模型配置节点，输出 model 端口      |
 |               | `agent`            | text, model, tool, knowledge, sandbox | text, json | 独立 Agent 定义节点                |
 |               | `smart-routing`    | model (多个)                 | model         | 智能路由，6 种策略选择最优模型     |
 |               | `skill`            | skill                        | skill         | Skill 行为注入节点                 |
@@ -84,15 +82,15 @@ graph TD
 
 | 类型        | 说明         | 典型场景               |
 | ----------- | ------------ | ---------------------- |
-| `model`     | LLM 模型配置 | llm-model → chat-agent |
+| `model`     | LLM 模型配置 | llm-model → agent |
 | `text`      | 纯文本       | 触发器 → Agent → 输出  |
 | `json`      | 结构化 JSON  | 工具输入/输出          |
 | `image`     | 图像数据     | 多模态 Agent 输入      |
 | `audio`     | 音频数据     | 语音相关处理           |
-| `tool`      | 工具引用     | mcp-tool → chat-agent  |
+| `tool`      | 工具引用     | mcp-tool → agent   |
 | `sandbox`   | 沙箱会话     | sandbox → Agent        |
 | `knowledge` | 知识库引用   | knowledge-base → Agent |
-| `skill`     | Skill 行为注入 | skill → chat-agent     |
+| `skill`     | Skill 行为注入 | skill → agent     |
 | `agent`     | Agent 引用   | agent → 工作流节点     |
 | `exec`      | 执行控制流   | 节点执行依赖控制       |
 | `volume`    | 工作区存储卷 | workspace → sandbox    |

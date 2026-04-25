@@ -10,7 +10,7 @@ describe('buildWorkflowPreviewGraph', () => {
           type: 'workflow-node',
           position: { x: 24, y: 48 },
           data: {
-            nodeType: 'chat-agent',
+            nodeType: 'agent',
             label: '聊天 Agent',
           },
         },
@@ -33,7 +33,7 @@ describe('buildWorkflowPreviewGraph', () => {
       type: 'agent',
       position: { x: 24, y: 48 },
       data: {
-        nodeType: 'chat-agent',
+        nodeType: 'agent',
         category: 'agent',
         label: '聊天 Agent',
       },

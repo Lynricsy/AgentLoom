@@ -11,7 +11,6 @@ import { AGENT_CANVAS_NODE_REGISTRY } from "../registry/agent-canvas-registry";
 import type { AgentRuntimeMode } from "@/features/agent/types/agentRuntimeMode";
 
 export const NODE_TYPES = [
-  "chat-agent",
   "llm-model",
   "http-tool",
   "code-tool",
@@ -58,7 +57,6 @@ export const DYNAMIC_ONLY_NODE_TYPES: ReadonlySet<NodeType> = new Set([
 ]);
 
 export const EXEC_PORT_NODE_TYPES: ReadonlySet<NodeType> = new Set([
-  "chat-agent",
   "llm-model",
   "mcp-tool",
   "sandbox",
@@ -368,40 +366,6 @@ const EMPTY_CONFIG_SCHEMA: NodeConfigSchema = {
 };
 
 export const NODE_TYPE_REGISTRY: Record<NodeType, NodeTypeConfig> = {
-  "chat-agent": {
-    type: "chat-agent",
-    category: "agent",
-    label: "Chat Agent",
-    icon: "MessageSquare",
-    description: "对话型 Agent 节点",
-    colorToken: CATEGORY_COLOR_TOKENS.agent,
-    inputPorts: [
-      createExecInPort("执行流入口，前序节点完成后触发对话型 Agent"),
-      createPort("messages-in", "消息", "input", "json", {
-        description:
-          "传入的对话消息列表，包含历史 user/assistant 消息用于多轮对话",
-      }),
-      createPort("model-in", "模型", "input", "model", {
-        description: "指定对话使用的 LLM 模型，决定推理能力和成本",
-      }),
-    ],
-    outputPorts: [
-      createExecOutPort("执行流出口，对话型 Agent 完成后触发下游节点"),
-      createPort("reply-out", "回复", "output", "text", {
-        description: "Agent 生成的自然语言文本回复",
-      }),
-      createPort("structured-out", "结构化", "output", "json", {
-        description: "Agent 按 Schema 约束输出的结构化 JSON 数据",
-      }),
-    ],
-    configSchema: {
-      type: "object",
-      properties: {
-        systemPrompt: createConfigField("string", "System Prompt"),
-      },
-      required: [],
-    },
-  },
   "llm-model": {
     type: "llm-model",
     category: "agent",

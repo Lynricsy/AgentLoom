@@ -74,7 +74,7 @@ const compatibleNodes: CanvasNode[] = [
     position: { x: 0, y: 0 },
     data: {
       label: 'Source',
-      nodeType: 'chat-agent',
+      nodeType: 'agent',
       category: 'agent',
       config: {},
       inputPorts: [],
@@ -127,7 +127,7 @@ const mixedTargetNodes: CanvasNode[] = [
     position: { x: 320, y: 180 },
     data: {
       label: 'Model Target',
-      nodeType: 'chat-agent',
+      nodeType: 'agent',
       category: 'agent',
       config: {},
       inputPorts: [

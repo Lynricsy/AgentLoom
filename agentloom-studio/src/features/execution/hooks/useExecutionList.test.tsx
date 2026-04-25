@@ -48,7 +48,7 @@ function createExecutionResponse() {
           id: 'node-1',
           type: 'agent',
           position: { x: 0, y: 0 },
-          data: { label: 'Agent Node', nodeType: 'chat-agent' },
+          data: { label: 'Agent Node', nodeType: 'agent' },
         },
       ],
       edges: [],
@@ -58,7 +58,7 @@ function createExecutionResponse() {
         id: 'step-1',
         executionId: 'exec-001',
         nodeId: 'node-1',
-        nodeType: 'chat-agent',
+        nodeType: 'agent',
         nodeData: { prompt: 'hello' },
         result: { text: 'world' },
         checkpointData: {
@@ -128,7 +128,7 @@ describe('useExecutionList', () => {
     expect(result.current.data?.steps[0]).toEqual(
       expect.objectContaining({
         nodeName: 'Agent Node',
-        nodeType: 'chat-agent',
+        nodeType: 'agent',
         status: 'waiting_for_intervention',
         retryCount: 1,
       }),
@@ -163,7 +163,7 @@ describe('useExecutionList', () => {
     expect(result.current.data?.steps[0]).toEqual(
       expect.objectContaining({
         nodeName: 'Agent Node',
-        nodeType: 'chat-agent',
+        nodeType: 'agent',
         status: 'waiting_for_intervention',
       }),
     )

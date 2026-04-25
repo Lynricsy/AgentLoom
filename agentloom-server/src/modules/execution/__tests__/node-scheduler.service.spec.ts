@@ -926,9 +926,9 @@ describe('NodeSchedulerService', () => {
       expect(mockQueue.add).not.toHaveBeenCalled();
     });
 
-    it('chat-agent 节点会从上游 llm-model 输入解析模型并注入合成 agentId', async () => {
+    it('agent 节点会从上游 llm-model 输入解析模型并注入合成 agentId', async () => {
       const snapshot = makeSnapshot(
-        [makeNode('M', 'llm-model'), makeNode('C', 'chat-agent')],
+        [makeNode('M', 'llm-model'), makeNode('C', 'agent')],
         [makeEdge('M', 'C', 'model-out', 'model')],
       );
       const steps = [
@@ -946,7 +946,7 @@ describe('NodeSchedulerService', () => {
           id: 'step-c',
           nodeId: 'C',
           status: 'pending',
-          nodeType: 'chat-agent',
+          nodeType: 'agent',
           nodeData: {
             config: {
               systemPrompt: '你是一个测试助手',

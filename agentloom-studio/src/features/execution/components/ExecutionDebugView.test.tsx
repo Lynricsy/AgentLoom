@@ -88,7 +88,7 @@ function createExecutionDetail(): ExecutionDetail {
         executionId: 'exec-001',
         nodeId: 'node-1',
         nodeName: 'Node One',
-        nodeType: 'chat-agent',
+        nodeType: 'agent',
         status: 'completed',
         input: null,
         output: null,

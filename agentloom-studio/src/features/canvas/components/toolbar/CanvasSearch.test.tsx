@@ -43,7 +43,7 @@ describe('CanvasSearch', () => {
   it('打开时聚焦输入框并自动定位到第一个搜索结果', () => {
     useCanvasStore.setState((state) => ({
       ...state,
-      nodes: [createNode('a', 'chat-agent'), createNode('b', 'chat-agent')],
+      nodes: [createNode('a', 'agent'), createNode('b', 'agent')],
       isSearchOpen: true,
       searchQuery: 'agent',
       searchMatchIds: ['a', 'b'],
@@ -65,7 +65,7 @@ describe('CanvasSearch', () => {
     useCanvasStore.setState((state) => ({
       ...state,
       isSearchOpen: true,
-      nodes: [createNode('a', 'chat-agent'), createNode('b', 'chat-agent')],
+      nodes: [createNode('a', 'agent'), createNode('b', 'agent')],
       searchQuery: 'agent',
       searchMatchIds: ['a', 'b'],
       currentSearchIndex: 0,

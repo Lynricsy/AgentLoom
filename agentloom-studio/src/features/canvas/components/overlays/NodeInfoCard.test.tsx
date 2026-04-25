@@ -16,7 +16,7 @@ vi.mock("@xyflow/react", () => ({
 }));
 
 function createNode(): CanvasNode {
-  const config = getNodeTypeConfig("chat-agent");
+  const config = getNodeTypeConfig("agent");
 
   return {
     id: "node-1",
@@ -75,8 +75,8 @@ describe("NodeInfoCard", () => {
     expect(card.getAttribute("style")).toContain("translate(402px, 37px)");
     expect(screen.getByTestId("node-info-card-icon")).toBeInTheDocument();
     expect(screen.getByText("分析 Agent")).toBeInTheDocument();
-    expect(screen.getByText("Chat Agent")).toBeInTheDocument();
-    expect(screen.getByText("3 输入, 3 输出")).toBeInTheDocument();
+    expect(screen.getAllByText("Agent")).toHaveLength(2);
+    expect(screen.getByText("9 输入, 3 输出")).toBeInTheDocument();
     expect(screen.getByText("空闲")).toBeInTheDocument();
   });
 

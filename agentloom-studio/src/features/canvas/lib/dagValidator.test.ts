@@ -9,7 +9,7 @@ function createNode(id: string, label = `Node ${id}`, category: NodeCategory = '
     position: { x: 0, y: 0 },
     data: {
       label,
-      nodeType: 'chat-agent',
+      nodeType: 'agent',
       category,
       config: {},
       inputPorts: [

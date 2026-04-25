@@ -92,7 +92,7 @@ function makeNode(
     position: { x: 0, y: 0 },
     data: {
       label: `Node ${id}`,
-      nodeType: 'chat-agent',
+      nodeType: 'agent',
       category: 'agent',
       description: undefined,
       config: {},

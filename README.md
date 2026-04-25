@@ -225,7 +225,7 @@ AgentLoom/
 <details>
 <summary>🎨 画布节点类型（含显式 text 常量节点）</summary>
 
-`chat-agent` · `llm-model` · `smart-routing` · `agent` · `skill` · `http-tool` · `code-tool` · `mcp-tool` · `sandbox` · `input-preprocessor` · `workspace` · `manual-trigger` · `schedule-trigger` · `webhook-trigger` · `api-event-trigger` · `knowledge-base` · `memory` · `text` · `text-output` · `json-output` · `condition` · `loop`
+`llm-model` · `smart-routing` · `agent` · `skill` · `http-tool` · `code-tool` · `mcp-tool` · `sandbox` · `input-preprocessor` · `workspace` · `manual-trigger` · `schedule-trigger` · `webhook-trigger` · `api-event-trigger` · `knowledge-base` · `memory` · `text` · `text-output` · `json-output` · `condition` · `loop`
 
 </details>
 

@@ -82,9 +82,9 @@ const nodeResolvedPolicy = {
 }
 
 const nodes = [
-  createNode('chat-agent', 'node-agent-1', '智能体一号'),
+  createNode('agent', 'node-agent-1', '智能体一号'),
   createNode('http-tool', 'node-tool-1', 'HTTP 工具'),
-  createNode('chat-agent', 'node-agent-2', '聊天智能体'),
+  createNode('agent', 'node-agent-2', '聊天智能体'),
 ]
 
 describe('InterventionPolicyTab', () => {

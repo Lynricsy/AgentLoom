@@ -554,7 +554,6 @@ export class OrganizationAutonomyPolicyService {
     return (
       node.type === 'agent' ||
       node.type === 'llm-agent' ||
-      node.type === 'chat-agent' ||
       this.readString(nodeData.category) === 'agent'
     );
   }

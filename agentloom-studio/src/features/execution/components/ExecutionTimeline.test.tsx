@@ -9,7 +9,7 @@ function createStep(overrides: Partial<ExecutionStep>): ExecutionStep {
     executionId: 'exec-1',
     nodeId: 'node-1',
     nodeName: 'Node One',
-    nodeType: 'chat-agent',
+    nodeType: 'agent',
     status: 'completed',
     input: null,
     output: null,

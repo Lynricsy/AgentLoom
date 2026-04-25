@@ -21,7 +21,7 @@
 - 永远先以 `query_state` 返回的现有节点/连线为准，不要凭空发明一套新的节点壳结构。
 - Workflow 节点的外层 `node.type` 必须是画布壳分类，而不是真实节点种类：
   - `manual-trigger / schedule-trigger / webhook-trigger / api-event-trigger` → `trigger`
-  - `agent / chat-agent / llm-model / smart-routing / skill` → `agent`
+  - `agent / llm-model / smart-routing / skill` → `agent`
   - `http-tool / code-tool / mcp-tool / sandbox / input-preprocessor / workspace` → `tool`
   - `knowledge-base` → `knowledge`
   - `text-output / json-output` → `output`

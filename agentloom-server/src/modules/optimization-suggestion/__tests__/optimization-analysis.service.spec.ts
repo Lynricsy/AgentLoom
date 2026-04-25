@@ -425,7 +425,7 @@ describe('OptimizationAnalysisService', () => {
         },
         {
           id: 'node-1',
-          type: 'chat-agent',
+          type: 'agent',
           data: {
             settings: { timeoutMs: 45_000 },
             toolBindings: ['search', 'browser'],

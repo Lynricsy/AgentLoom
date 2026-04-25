@@ -296,7 +296,6 @@ export class OptimizationAnalysisService {
     return (
       node.type === 'agent' ||
       node.type === 'llm-agent' ||
-      node.type === 'chat-agent' ||
       this.readString(node.data?.category) === 'agent'
     );
   }

@@ -36,7 +36,7 @@
 
 - `node.type` 必须是 ReactFlow 壳类型，不是业务节点种类本身。
   - `manual-trigger` / `schedule-trigger` / `webhook-trigger` / `api-event-trigger` → `trigger`
-  - `agent` / `chat-agent` / `llm-model` / `smart-routing` / `skill` → `agent`
+  - `agent` / `llm-model` / `smart-routing` / `skill` → `agent`
   - `http-tool` / `code-tool` / `mcp-tool` / `sandbox` / `input-preprocessor` / `workspace` → `tool`
   - `knowledge-base` → `knowledge`
   - `text` / `text-output` / `json-output` → `output`

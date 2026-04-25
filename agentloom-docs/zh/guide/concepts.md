@@ -84,12 +84,11 @@ flowchart LR
 
 ## 节点类型
 
-AgentLoom 提供 **23 种节点类型**，按功能归为 **8 大类别**：
+AgentLoom 提供 **22 种节点类型**，按功能归为 **8 大类别**：
 
 ```mermaid
 flowchart TB
     subgraph AgentCat["Agent"]
-        ChatAgent["chat-agent<br/>LLM 对话代理"]
         LLMModel["llm-model<br/>模型配置"]
         SmartRouting2["smart-routing<br/>智能路由"]
         AgentNode["agent<br/>独立 Agent 节点"]
@@ -140,9 +139,8 @@ flowchart TB
 
 | 节点                   | 说明                                                                      |
 | ---------------------- | ------------------------------------------------------------------------- |
-| **chat-agent**         | 核心 AI 节点，封装 LLM 调用 + 工具使用 + 自主决策循环                     |
 | **smart-routing**      | 根据 6 种策略智能选择最优模型（成本 / 质量 / 延迟 / 历史最优 / Fallback） |
-| **agent**              | 独立 Agent 节点，通过 `WorkflowAgentAdapter` 桥接 Agent 体系              |
+| **agent**              | 核心 AI 节点，封装 LLM 调用 + 工具使用 + 自主决策循环，通过 `WorkflowAgentAdapter` 桥接 Agent 体系 |
 | **mcp-tool**           | 调用 MCP（Model Context Protocol）兼容的外部工具                          |
 | **workspace**          | 工作区存储卷，提供 `volume` 端口输出供沙箱和 Agent 挂载                   |
 | **webhook-trigger**    | 外部系统通过 HTTP 回调触发工作流，含签名验证                              |
@@ -178,16 +176,16 @@ flowchart LR
 
 | 类型        | 描述                                  | 典型场景                        |
 | ----------- | ------------------------------------- | ------------------------------- |
-| `model`     | LLM 模型配置（提供商、模型 ID、参数） | smart-routing → chat-agent      |
-| `text`      | 纯文本内容                            | input → chat-agent → output     |
+| `model`     | LLM 模型配置（提供商、模型 ID、参数） | smart-routing → agent           |
+| `text`      | 纯文本内容                            | input → agent → output          |
 | `json`      | 结构化 JSON 数据                      | code-tool → http-tool           |
 | `image`     | 图像数据（URL 或 Base64）             | 多模态 Agent 输入               |
 | `audio`     | 音频数据                              | 语音场景                        |
-| `tool`      | MCP 工具定义                          | mcp-tool → chat-agent           |
-| `sandbox`   | 沙箱会话引用                          | sandbox → chat-agent            |
-| `knowledge` | 知识库引用或检索结果                  | knowledge-base → chat-agent     |
-| `skill`     | Skill 行为指导注入                    | skill → chat-agent              |
-| `agent`     | Agent 定义引用                        | agent → chat-agent（子代理桥接）|
+| `tool`      | MCP 工具定义                          | mcp-tool → agent                |
+| `sandbox`   | 沙箱会话引用                          | sandbox → agent                 |
+| `knowledge` | 知识库引用或检索结果                  | knowledge-base → agent          |
+| `skill`     | Skill 行为指导注入                    | skill → agent                   |
+| `agent`     | Agent 定义引用                        | agent → 工作流节点（子代理桥接）|
 
 ::: info Studio 扩展类型
 Studio 前端额外扩展了 `exec`（执行控制流）和 `volume`（工作区存储卷）两种 UI-only 类型，用于画布内的视觉连线，不参与 Type Engine 的兼容性检查。
@@ -225,7 +223,7 @@ Studio 的 `mcpToolMapping` 兼容 legacy `number` / `boolean` 类型，自动�
 
 ## Agent 运行时
 
-AgentLoom 中的 `chat-agent` 节点采用**六角架构**（Hexagonal Architecture / Ports & Adapters）设计，将核心决策循环与外部依赖解耦：
+AgentLoom 中的 `agent` 节点采用**六角架构**（Hexagonal Architecture / Ports & Adapters）设计，将核心决策循环与外部依赖解耦：
 
 ```mermaid
 flowchart TB

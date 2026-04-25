@@ -115,7 +115,7 @@ function createExecutionDetail(): ExecutionDetail {
         executionId: "exec-001",
         nodeId: "node-agent-1",
         nodeName: "Workflow Agent",
-        nodeType: "chat-agent",
+        nodeType: "agent",
         status: "running",
         input: null,
         output: null,

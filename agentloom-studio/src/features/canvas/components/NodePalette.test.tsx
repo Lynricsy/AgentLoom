@@ -69,7 +69,6 @@ describe('NodePalette', () => {
       .map((config) => config.type)
 
     expect(paletteTypes).toEqual([
-      'chat-agent',
       'llm-model',
       'smart-routing',
       'agent',
@@ -106,7 +105,7 @@ describe('NodePalette', () => {
     await user.type(screen.getByPlaceholderText('搜索节点...'), 'schedule')
 
     expect(screen.getByText('Schedule')).toBeInTheDocument()
-    expect(screen.queryByText('Chat Agent')).not.toBeInTheDocument()
+    expect(screen.queryByText('LLM 模型')).not.toBeInTheDocument()
   })
 
   it('matches built-in nodes by english slug aliases', async () => {
@@ -116,7 +115,7 @@ describe('NodePalette', () => {
     await user.type(screen.getByPlaceholderText('搜索节点...'), 'smart routing')
 
     expect(screen.getByText('智能路由')).toBeInTheDocument()
-    expect(screen.queryByText('Chat Agent')).not.toBeInTheDocument()
+    expect(screen.queryByText('LLM 模型')).not.toBeInTheDocument()
   })
 
   it('collapses and expands groups', async () => {
@@ -132,17 +131,17 @@ describe('NodePalette', () => {
     }
 
     await user.click(agentHeader)
-    expect(screen.queryByText('Chat Agent')).not.toBeInTheDocument()
+    expect(screen.queryByText('LLM 模型')).not.toBeInTheDocument()
 
     await user.click(agentHeader)
-    expect(screen.getByText('Chat Agent')).toBeInTheDocument()
+    expect(screen.getByText('LLM 模型')).toBeInTheDocument()
   })
 
   it('writes drag payloads using the expected transfer type', async () => {
     render(<NodePalette />)
 
     const setData = vi.fn()
-    const dragTarget = screen.getByText('Chat Agent').closest('button')
+    const dragTarget = screen.getByText('LLM 模型').closest('button')
 
     if (!dragTarget) {
       throw new Error('Expected draggable palette item to exist')
@@ -155,7 +154,7 @@ describe('NodePalette', () => {
       } as unknown as DataTransfer,
     })
 
-    expect(setData).toHaveBeenCalledWith(DRAG_TRANSFER_TYPE, expect.stringContaining('chat-agent'))
+    expect(setData).toHaveBeenCalledWith(DRAG_TRANSFER_TYPE, expect.stringContaining('llm-model'))
   })
 
   it('renders plugin palette items from active plugins and writes plugin metadata into drag payloads', () => {

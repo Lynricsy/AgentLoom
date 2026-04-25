@@ -94,7 +94,7 @@ function createExecutionState(
 }
 
 function createMockNodeData(
-  nodeType: Parameters<typeof getNodeTypeConfig>[0] = "chat-agent",
+  nodeType: Parameters<typeof getNodeTypeConfig>[0] = "agent",
 ): CanvasNodeData {
   const config = getNodeTypeConfig(nodeType);
 
@@ -163,11 +163,10 @@ describe("CanvasNodeShell", () => {
     const node = screen.getByTestId("canvas-node-node-1");
 
     expect(node).toHaveAttribute("data-selected", "false");
-    expect(within(node).getByText("Chat Agent")).toBeInTheDocument();
-    expect(within(node).getByText("Agent")).toBeInTheDocument();
-    expect(within(node).getByText("chat-agent")).toBeInTheDocument();
+    expect(within(node).getByRole("heading", { name: "Agent" })).toBeInTheDocument();
+    expect(within(node).getByText("agent")).toBeInTheDocument();
     expect(within(node).getByText("执行多步推理")).toBeInTheDocument();
-    expect(within(node).getByText("对话型 Agent 节点")).toBeInTheDocument();
+    expect(within(node).getByText("未选择 Agent")).toBeInTheDocument();
     expect(node.querySelector('[data-slot="header"]')).not.toBeNull();
     expect(node.querySelector('[data-slot="inputs"]')).not.toBeNull();
     expect(node.querySelector('[data-slot="body"]')).not.toBeNull();
@@ -204,10 +203,10 @@ describe("CanvasNodeShell", () => {
   });
 
   it("prefers the provided description as a friendly subtitle", () => {
-    renderNode(createMockNodeData("chat-agent"), { id: "node-4" });
+    renderNode(createMockNodeData("agent"), { id: "node-4" });
 
     expect(screen.getByText("执行多步推理")).toBeInTheDocument();
-    expect(screen.getByText("chat-agent")).toBeInTheDocument();
+    expect(screen.getByText("agent")).toBeInTheDocument();
   });
 
   it("degrades unknown node types instead of throwing", () => {
@@ -578,13 +577,13 @@ describe("CanvasNodeShell", () => {
     expect(node.querySelector('[data-slot="body"]')).toBeNull();
     expect(node.querySelectorAll(".port-row")).toHaveLength(0);
     expect(
-      screen.getByTestId("port-node-minimal-messages-in-input"),
+      screen.getByTestId("port-node-minimal-text-in-input"),
     ).toBeInTheDocument();
     expect(
-      screen.getByTestId("port-node-minimal-model-in-input"),
+      screen.getByTestId("port-node-minimal-sandbox-in-input"),
     ).toBeInTheDocument();
     expect(
-      screen.getByTestId("port-node-minimal-reply-out-output"),
+      screen.getByTestId("port-node-minimal-agent-out-output"),
     ).toBeInTheDocument();
     expect(
       screen.getByTestId("port-node-minimal-structured-out-output"),

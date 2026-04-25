@@ -42,7 +42,7 @@ function createDeferred<T>() {
 
 const mockAddNodeInput: AddNodeInput = {
   id: 'node-1',
-  nodeType: 'chat-agent',
+  nodeType: 'agent',
   category: 'agent',
   position: { x: 100, y: 200 },
   label: 'Test Agent',
@@ -90,7 +90,7 @@ function createNode(overrides: Partial<CanvasNode> = {}): CanvasNode {
     position: { x: 0, y: 0 },
     data: {
       label: 'Server Node',
-      nodeType: 'chat-agent',
+      nodeType: 'agent',
       category: 'agent',
       description: '来自服务端',
       config: {},
@@ -120,7 +120,7 @@ describe('canvasStore', () => {
     }
 
     expect(state.nodes).toHaveLength(1)
-    expect(node.data.inputPorts).toHaveLength(3)
+    expect(node.data.inputPorts).toHaveLength(9)
     expect(node.data.outputPorts).toHaveLength(3)
     expect(node.data.config).toEqual({})
     expect(state.isDirty).toBe(true)
@@ -367,7 +367,7 @@ describe('canvasStore', () => {
   it('applyServerSnapshot 会把 compound 子节点重新夹回内框并补足父容器尺寸', () => {
     const loopConfig = getNodeTypeConfig('loop')
     const loopStartConfig = getNodeTypeConfig('loop-start')
-    const chatAgentConfig = getNodeTypeConfig('chat-agent')
+    const agentConfig = getNodeTypeConfig('agent')
 
     useCanvasStore.getState().actions.applyServerSnapshot({
       workflowId: 'wf-1',
@@ -416,13 +416,13 @@ describe('canvasStore', () => {
           extent: 'parent',
           position: { x: 0, y: 0 },
           data: {
-            label: 'Chat Agent',
-            nodeType: 'chat-agent',
+            label: 'Agent',
+            nodeType: 'agent',
             category: 'agent',
             description: '对话型 Agent 节点',
             config: {},
-            inputPorts: clonePortDefinitions(chatAgentConfig.inputPorts),
-            outputPorts: clonePortDefinitions(chatAgentConfig.outputPorts),
+            inputPorts: clonePortDefinitions(agentConfig.inputPorts),
+            outputPorts: clonePortDefinitions(agentConfig.outputPorts),
             ...createDefaultAgentNodeData(),
           },
         },
@@ -453,7 +453,7 @@ describe('canvasStore', () => {
 
   it('拖拽 compound 子节点到右下角时不会把节点尺寸重复扣减两次', () => {
     const loopConfig = getNodeTypeConfig('loop')
-    const chatAgentConfig = getNodeTypeConfig('chat-agent')
+    const agentConfig = getNodeTypeConfig('agent')
 
     useCanvasStore.getState().actions.applyServerSnapshot({
       workflowId: 'wf-1',
@@ -487,13 +487,13 @@ describe('canvasStore', () => {
           width: 260,
           height: 160,
           data: {
-            label: 'Chat Agent',
-            nodeType: 'chat-agent',
+            label: 'Agent',
+            nodeType: 'agent',
             category: 'agent',
             description: '对话型 Agent 节点',
             config: {},
-            inputPorts: clonePortDefinitions(chatAgentConfig.inputPorts),
-            outputPorts: clonePortDefinitions(chatAgentConfig.outputPorts),
+            inputPorts: clonePortDefinitions(agentConfig.inputPorts),
+            outputPorts: clonePortDefinitions(agentConfig.outputPorts),
             ...createDefaultAgentNodeData(),
           },
         },
@@ -527,7 +527,7 @@ describe('canvasStore', () => {
 
   it('compound 在 resize 进行中也会按最新 live 尺寸同步子节点 extent', () => {
     const loopConfig = getNodeTypeConfig('loop')
-    const chatAgentConfig = getNodeTypeConfig('chat-agent')
+    const agentConfig = getNodeTypeConfig('agent')
 
     useCanvasStore.getState().actions.applyServerSnapshot({
       workflowId: 'wf-1',
@@ -561,13 +561,13 @@ describe('canvasStore', () => {
           width: 260,
           height: 160,
           data: {
-            label: 'Chat Agent',
-            nodeType: 'chat-agent',
+            label: 'Agent',
+            nodeType: 'agent',
             category: 'agent',
             description: '对话型 Agent 节点',
             config: {},
-            inputPorts: clonePortDefinitions(chatAgentConfig.inputPorts),
-            outputPorts: clonePortDefinitions(chatAgentConfig.outputPorts),
+            inputPorts: clonePortDefinitions(agentConfig.inputPorts),
+            outputPorts: clonePortDefinitions(agentConfig.outputPorts),
             ...createDefaultAgentNodeData(),
           },
         },
@@ -674,7 +674,7 @@ describe('canvasStore', () => {
       ...createNode(),
       data: {
         label: 'Hydrated Node',
-        nodeType: 'chat-agent',
+        nodeType: 'agent',
         category: 'agent',
         description: 'Hydrated',
       },
@@ -695,7 +695,7 @@ describe('canvasStore', () => {
     }
 
     expect(hydratedNode.data.config).toEqual({})
-    expect(hydratedNode.data.inputPorts).toHaveLength(3)
+    expect(hydratedNode.data.inputPorts).toHaveLength(9)
     expect(hydratedNode.data.outputPorts).toHaveLength(3)
     expect(hydratedNode.data.modelConfig).toEqual({
       connectedModelNodeId: null,
@@ -713,7 +713,7 @@ describe('canvasStore', () => {
     const snapshotNode = createNode({
       data: {
         label: 'Existing Ports',
-        nodeType: 'chat-agent',
+        nodeType: 'agent',
         category: 'agent',
         description: 'Keep my ports',
         config: { retries: 3 },
@@ -929,7 +929,7 @@ describe('canvasStore', () => {
     const node = createNode({
       data: {
         label: 'Dirty Node',
-        nodeType: 'chat-agent',
+        nodeType: 'agent',
         category: 'agent',
         description: 'Dirty',
         config: {},

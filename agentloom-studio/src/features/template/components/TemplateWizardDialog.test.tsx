@@ -164,7 +164,7 @@ function makeTemplateDetail(
           id: "n1",
           type: "workflow-node",
           position: { x: 0, y: 0 },
-          data: { nodeType: "chat-agent", label: "Start" },
+          data: { nodeType: "agent", label: "Start" },
         },
         {
           id: "n2",

@@ -36,7 +36,7 @@ function createTimelineData(
       executionId: 'exec-1',
       nodeId,
       nodeName: name,
-      nodeType: 'chat-agent',
+      nodeType: 'agent',
       status: 'completed',
       input: null,
       output: null,

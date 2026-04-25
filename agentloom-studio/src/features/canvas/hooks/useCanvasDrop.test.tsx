@@ -21,7 +21,7 @@ vi.mock('@/features/block-library', () => ({
 }))
 
 const mockPaletteNode: PaletteNodeItem = {
-  type: 'chat-agent',
+  type: 'agent',
   label: 'LLM Agent',
   category: 'agent',
   icon: 'Bot',
@@ -129,7 +129,7 @@ describe('useCanvasDrop', () => {
     const state = useCanvasStore.getState()
     expect(state.nodes).toHaveLength(1)
     expect(state.nodes[0]?.type).toBe('agent')
-    expect(state.nodes[0]?.data.nodeType).toBe('chat-agent')
+    expect(state.nodes[0]?.data.nodeType).toBe('agent')
     expect(state.nodes[0]?.data.inputPorts.length).toBeGreaterThan(0)
     expect(state.nodes[0]?.data.outputPorts.length).toBeGreaterThan(0)
     expect(state.nodes[0]?.data.config).toBeDefined()
@@ -307,7 +307,7 @@ describe('useCanvasDrop', () => {
       } as unknown as React.DragEvent)
     })
 
-    const childNode = useCanvasStore.getState().nodes.find((node) => node.parentId === 'loop-1' && node.data.nodeType === 'chat-agent')
+    const childNode = useCanvasStore.getState().nodes.find((node) => node.parentId === 'loop-1' && node.data.nodeType === 'agent')
 
     expect(childNode).toBeDefined()
     expect(Array.isArray(childNode?.extent)).toBe(true)
@@ -373,7 +373,7 @@ describe('useCanvasDrop', () => {
       } as unknown as React.DragEvent)
     })
 
-    const childNode = useCanvasStore.getState().nodes.find((node) => node.parentId === 'loop-1' && node.data.nodeType === 'chat-agent')
+    const childNode = useCanvasStore.getState().nodes.find((node) => node.parentId === 'loop-1' && node.data.nodeType === 'agent')
 
     expect(childNode).toBeDefined()
     expect(childNode?.parentId).toBe('loop-1')

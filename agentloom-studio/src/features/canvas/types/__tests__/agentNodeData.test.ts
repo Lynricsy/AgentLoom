@@ -87,11 +87,11 @@ describe("createDefaultAgentNodeData", () => {
   });
 });
 
-describe("chat-agent 端口定义", () => {
-  const agentType = getNodeTypeConfig("chat-agent");
+describe("agent 端口定义", () => {
+  const agentType = getNodeTypeConfig("agent");
 
-  it("包含 3 个输入端口和 3 个输出端口", () => {
-    expect(agentType.inputPorts).toHaveLength(3);
+  it("包含 9 个输入端口和 3 个输出端口", () => {
+    expect(agentType.inputPorts).toHaveLength(9);
     expect(agentType.outputPorts).toHaveLength(3);
   });
 
@@ -104,17 +104,65 @@ describe("chat-agent 端口定义", () => {
       expect(port.required).toBe(false);
     });
 
-    it("messages-in 端口: json 类型, 单连接", () => {
-      const port = findPort(agentType.inputPorts, "messages-in");
+    it("text-in 端口: text 类型, 单连接", () => {
+      const port = findPort(agentType.inputPorts, "text-in");
+      expect(port.dataType).toBe("text");
+      expect(port.multiple).toBe(false);
+      expect(port.maxConnections).toBe(1);
+      expect(port.required).toBe(true);
+    });
+
+    it("system-prompt-in 端口: text 类型, 单连接", () => {
+      const port = findPort(agentType.inputPorts, "system-prompt-in");
+      expect(port.dataType).toBe("text");
+      expect(port.multiple).toBe(false);
+      expect(port.maxConnections).toBe(1);
+      expect(port.required).toBe(false);
+    });
+
+    it("sandbox-in 端口: sandbox 类型, 单连接", () => {
+      const port = findPort(agentType.inputPorts, "sandbox-in");
+      expect(port.dataType).toBe("sandbox");
+      expect(port.multiple).toBe(false);
+      expect(port.maxConnections).toBe(1);
+      expect(port.required).toBe(false);
+    });
+
+    it("context-in 端口: json 类型, 单连接", () => {
+      const port = findPort(agentType.inputPorts, "context-in");
       expect(port.dataType).toBe("json");
       expect(port.multiple).toBe(false);
       expect(port.maxConnections).toBe(1);
       expect(port.required).toBe(false);
     });
 
-    it("model-in 端口: model 类型, 单连接", () => {
-      const port = findPort(agentType.inputPorts, "model-in");
-      expect(port.dataType).toBe("model");
+    it("skills-in 端口: skill 类型, 多连接", () => {
+      const port = findPort(agentType.inputPorts, "skills-in");
+      expect(port.dataType).toBe("skill");
+      expect(port.multiple).toBe(true);
+      expect(port.maxConnections).toBeNull();
+      expect(port.required).toBe(false);
+    });
+
+    it("tools-in 端口: tool 类型, 多连接", () => {
+      const port = findPort(agentType.inputPorts, "tools-in");
+      expect(port.dataType).toBe("tool");
+      expect(port.multiple).toBe(true);
+      expect(port.maxConnections).toBeNull();
+      expect(port.required).toBe(false);
+    });
+
+    it("sub-agents-in 端口: agent 类型, 多连接", () => {
+      const port = findPort(agentType.inputPorts, "sub-agents-in");
+      expect(port.dataType).toBe("agent");
+      expect(port.multiple).toBe(true);
+      expect(port.maxConnections).toBeNull();
+      expect(port.required).toBe(false);
+    });
+
+    it("schema-in 端口: json 类型, 单连接", () => {
+      const port = findPort(agentType.inputPorts, "schema-in");
+      expect(port.dataType).toBe("json");
       expect(port.multiple).toBe(false);
       expect(port.maxConnections).toBe(1);
       expect(port.required).toBe(false);
@@ -129,18 +177,18 @@ describe("chat-agent 端口定义", () => {
       expect(port.maxConnections).toBe(1);
     });
 
-    it("reply-out 端口: text 类型, 单连接", () => {
-      const port = findPort(agentType.outputPorts, "reply-out");
+    it("agent-out 端口: text 类型, 多连接", () => {
+      const port = findPort(agentType.outputPorts, "agent-out");
       expect(port.dataType).toBe("text");
-      expect(port.multiple).toBe(false);
-      expect(port.maxConnections).toBe(1);
+      expect(port.multiple).toBe(true);
+      expect(port.maxConnections).toBeNull();
     });
 
-    it("structured-out 端口: json 类型, 单连接", () => {
+    it("structured-out 端口: json 类型, 多连接", () => {
       const port = findPort(agentType.outputPorts, "structured-out");
       expect(port.dataType).toBe("json");
-      expect(port.multiple).toBe(false);
-      expect(port.maxConnections).toBe(1);
+      expect(port.multiple).toBe(true);
+      expect(port.maxConnections).toBeNull();
     });
   });
 

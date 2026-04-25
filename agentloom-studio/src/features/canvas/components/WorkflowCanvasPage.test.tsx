@@ -318,7 +318,7 @@ const workflowOne: WorkflowDefinition = {
       id: "node-1",
       type: "agent",
       position: { x: 100, y: 120 },
-      data: createNodeData("chat-agent"),
+      data: createNodeData("agent"),
     },
   ],
   edges: [],

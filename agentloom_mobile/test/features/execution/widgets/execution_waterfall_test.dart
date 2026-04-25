@@ -24,7 +24,7 @@ void main() {
             stepId: 'step-2',
             nodeId: 'node-2',
             nodeName: '研究 Agent',
-            nodeType: 'chat-agent',
+            nodeType: 'agent',
             status: 'running',
           ),
           StepSnapshot(
