@@ -127,6 +127,9 @@ playwright-*.txt
 version-history-panel-*.png
 temp/
 
+# 根目录测试截图/证据 (Root-level test screenshots)
+/*.png
+
 # Firebase (contains API keys)
 agentloom_mobile/android/app/google-services.json
 
