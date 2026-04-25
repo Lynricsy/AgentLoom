@@ -508,6 +508,19 @@ body {
   --xy-controls-button-color: var(--color-foreground);
 }
 
+/* 覆盖 ReactFlow 内置 output/input/default 节点的默认白色背景，
+   这些类型名恰好与 workflowFlowRegistry / AgentCanvas 中注册的 category key 冲突。
+   使用 .react-flow 祖先 + 双类选择器确保优先级高于 @xyflow/react/dist/style.css */
+.react-flow .react-flow__node-output,
+.react-flow .react-flow__node-input,
+.react-flow .react-flow__node-default {
+  background: transparent;
+  border: none;
+  padding: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
 .canvas-node-shell {
   border-color: var(--node-color, var(--color-border));
 }

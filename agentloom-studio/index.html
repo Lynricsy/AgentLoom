@@ -10,7 +10,7 @@
     <script>
       // Prevent flash of wrong theme before React hydrates
       (function () {
-        var theme = localStorage.getItem("agentloom-theme") || "system";
+        var theme = localStorage.getItem("agentloom-theme") || "dark";
         var resolved = theme;
         if (theme === "system") {
           resolved = window.matchMedia("(prefers-color-scheme: dark)").matches
