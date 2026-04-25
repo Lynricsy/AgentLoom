@@ -20,6 +20,7 @@ Guidelines for **agentloom-studio** — a React 19 + Vite 7 + TanStack Router fr
 | [Canvas Node Composition](./canvas-node-composition.md) | Workflow/Agent 画布节点注册、显式 text 提示词节点与共享面板契约 | Done |
 | [Component Guidelines](./component-guidelines.md) | forwardRef+CVA primitives, memo pattern, Radix composition | Done |
 | [Hook Guidelines](./hook-guidelines.md) | 4-file API layer, query key factory, ky client | Done |
+| [Generated App Studio Contracts](./generated-app-studio.md) | Studio Generated App workbench routes, API hooks, readiness-gated public share UI | Done |
 | [Realtime Execution Views](./realtime-execution-views.md) | Studio + Flutter realtime execution/viewer contracts, ordered segments, workspace preview | Done |
 | [Resource Management UI Semantics](./resource-management-ui-semantics.md) | Studio / Flutter 资源页默认筛选、标签和 timeout 展示约定 | Done |
 | [Runtime Environment Contracts](./runtime-environment-contracts.md) | Browser-facing env fallback and reverse-proxy auth routing contracts | Done |

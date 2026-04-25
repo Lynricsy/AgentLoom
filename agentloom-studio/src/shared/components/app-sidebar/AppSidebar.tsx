@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
 import {
+  AppWindow,
   BookOpen,
   Bot,
   BrainCircuit,
@@ -52,6 +53,12 @@ const NAV_ITEMS: NavItem[] = [
     icon: Bot,
     to: "/agents",
     matchPrefix: "/agents",
+  },
+  {
+    label: "生成应用",
+    icon: AppWindow,
+    to: "/generated-apps",
+    matchPrefix: "/generated-apps",
   },
   {
     label: "发现",
