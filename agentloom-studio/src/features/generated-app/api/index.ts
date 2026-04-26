@@ -6,6 +6,9 @@ export {
   disableGeneratedAppPublicShare,
   enableGeneratedAppPublicShare,
   getGeneratedApp,
+  listGeneratedAppGateRuns,
+  listGeneratedAppGenerationRuns,
+  listGeneratedAppRepairAttempts,
   getGeneratedAppPublicSubmission,
   getGeneratedAppSubmission,
   getGeneratedAppPublicRuntime,
@@ -17,6 +20,9 @@ export {
 export { generatedAppKeys } from './generatedAppKeys'
 export {
   useGeneratedApp,
+  useGeneratedAppGateRuns,
+  useGeneratedAppGenerationRuns,
+  useGeneratedAppRepairAttempts,
   useGeneratedAppSubmission,
   useGeneratedAppSubmissions,
   useGeneratedAppPublicRuntime,

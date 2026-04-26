@@ -12,6 +12,7 @@ import {
 import { cn } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
 import { useGeneratedApp } from '../api'
+import { GeneratedAppGenerationEvidencePanel } from './GeneratedAppGenerationEvidencePanel'
 import { GeneratedAppPublicSharePanel } from './GeneratedAppPublicSharePanel'
 import { GeneratedAppSubmissionsPanel } from './GeneratedAppSubmissionsPanel'
 import {
@@ -512,6 +513,13 @@ export function GeneratedAppDetailPage({ appId }: GeneratedAppDetailPageProps) {
           description="创建者侧查看公开应用提交列表、单次详情、运行状态、最终输出、报告和错误状态。"
         >
           <GeneratedAppSubmissionsPanel appId={app.id} />
+        </DetailSection>
+
+        <DetailSection
+          title="生成证据/运行记录"
+          description="创建者侧查看 generation runs、repair attempts 与 Gate run 证据摘要。"
+        >
+          <GeneratedAppGenerationEvidencePanel appId={app.id} />
         </DetailSection>
 
         <AppSpecSection app={app} />

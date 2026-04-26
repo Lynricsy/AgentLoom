@@ -15,7 +15,10 @@ const {
   deleteSubmissionMutation,
   deleteSubmissionsMutation,
   enableShareMutation,
+  gateRunsQuery,
   generatedAppQuery,
+  generationRunsQuery,
+  repairAttemptsQuery,
   regenerateShareMutation,
   submissionDetailQuery,
   submissionsQuery,
@@ -37,9 +40,39 @@ const {
     mutateAsync: vi.fn(),
     isPending: false,
   },
+  gateRunsQuery: {
+    data: {
+      data: [],
+      meta: { page: 1, pageSize: 8, total: 0, totalPages: 1 },
+    } as unknown,
+    isError: false,
+    isFetching: false,
+    isLoading: false,
+    refetch: vi.fn(),
+  },
   generatedAppQuery: {
     data: undefined as unknown,
     isError: false,
+    isLoading: false,
+    refetch: vi.fn(),
+  },
+  generationRunsQuery: {
+    data: {
+      data: [],
+      meta: { page: 1, pageSize: 8, total: 0, totalPages: 1 },
+    } as unknown,
+    isError: false,
+    isFetching: false,
+    isLoading: false,
+    refetch: vi.fn(),
+  },
+  repairAttemptsQuery: {
+    data: {
+      data: [],
+      meta: { page: 1, pageSize: 8, total: 0, totalPages: 1 },
+    } as unknown,
+    isError: false,
+    isFetching: false,
     isLoading: false,
     refetch: vi.fn(),
   },
@@ -79,6 +112,9 @@ vi.mock('../../api', () => ({
     useGeneratedAppMock(`detail:${appId ?? ''}`)
     return generatedAppQuery
   },
+  useGeneratedAppGateRuns: () => gateRunsQuery,
+  useGeneratedAppGenerationRuns: () => generationRunsQuery,
+  useGeneratedAppRepairAttempts: () => repairAttemptsQuery,
   useRegenerateGeneratedAppPublicShare: (appId: string) => {
     useGeneratedAppMock(`regenerate:${appId}`)
     return regenerateShareMutation
@@ -242,6 +278,27 @@ describe('GeneratedAppDetailPage', () => {
     deleteSubmissionMutation.isPending = false
     deleteSubmissionsMutation.mutateAsync = vi.fn()
     deleteSubmissionsMutation.isPending = false
+    generationRunsQuery.data = {
+      data: [],
+      meta: { page: 1, pageSize: 8, total: 0, totalPages: 1 },
+    }
+    generationRunsQuery.isError = false
+    generationRunsQuery.isFetching = false
+    generationRunsQuery.isLoading = false
+    repairAttemptsQuery.data = {
+      data: [],
+      meta: { page: 1, pageSize: 8, total: 0, totalPages: 1 },
+    }
+    repairAttemptsQuery.isError = false
+    repairAttemptsQuery.isFetching = false
+    repairAttemptsQuery.isLoading = false
+    gateRunsQuery.data = {
+      data: [],
+      meta: { page: 1, pageSize: 8, total: 0, totalPages: 1 },
+    }
+    gateRunsQuery.isError = false
+    gateRunsQuery.isFetching = false
+    gateRunsQuery.isLoading = false
     submissionDetailQuery.data = undefined
     submissionDetailQuery.isError = false
     submissionDetailQuery.isFetching = false

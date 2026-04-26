@@ -3,11 +3,17 @@ import {
   getGeneratedApp,
   getGeneratedAppSubmission,
   getGeneratedAppPublicRuntime,
+  listGeneratedAppGateRuns,
+  listGeneratedAppGenerationRuns,
+  listGeneratedAppRepairAttempts,
   listGeneratedAppSubmissions,
   listGeneratedApps,
 } from './generatedAppApi'
 import { generatedAppKeys } from './generatedAppKeys'
 import type {
+  ListGeneratedAppGateRunsParams,
+  ListGeneratedAppGenerationRunsParams,
+  ListGeneratedAppRepairAttemptsParams,
   ListGeneratedAppSubmissionsParams,
   ListGeneratedAppsParams,
 } from '../types'
@@ -28,6 +34,55 @@ export function useGeneratedApp(appId: string | undefined) {
     queryKey: generatedAppKeys.detail(appId ?? ''),
     queryFn: () => getGeneratedApp(appId ?? ''),
     enabled: !!appId,
+    staleTime: GENERATED_APP_STALE_TIME,
+  })
+}
+
+export function useGeneratedAppGenerationRuns(
+  appId: string | undefined,
+  params: ListGeneratedAppGenerationRunsParams = {},
+) {
+  return useQuery({
+    queryKey: generatedAppKeys.generationRunList(appId ?? '', params),
+    queryFn: () => listGeneratedAppGenerationRuns(appId ?? '', params),
+    enabled: !!appId,
+    placeholderData: keepPreviousData,
+    staleTime: GENERATED_APP_STALE_TIME,
+  })
+}
+
+export function useGeneratedAppRepairAttempts(
+  appId: string | undefined,
+  generationRunId: string | undefined,
+  params: ListGeneratedAppRepairAttemptsParams = {},
+) {
+  return useQuery({
+    queryKey: generatedAppKeys.repairAttemptList(
+      appId ?? '',
+      generationRunId ?? '',
+      params,
+    ),
+    queryFn: () =>
+      listGeneratedAppRepairAttempts(
+        appId ?? '',
+        generationRunId ?? '',
+        params,
+      ),
+    enabled: !!appId && !!generationRunId,
+    placeholderData: keepPreviousData,
+    staleTime: GENERATED_APP_STALE_TIME,
+  })
+}
+
+export function useGeneratedAppGateRuns(
+  appId: string | undefined,
+  params: ListGeneratedAppGateRunsParams = {},
+) {
+  return useQuery({
+    queryKey: generatedAppKeys.gateRunList(appId ?? '', params),
+    queryFn: () => listGeneratedAppGateRuns(appId ?? '', params),
+    enabled: !!appId,
+    placeholderData: keepPreviousData,
     staleTime: GENERATED_APP_STALE_TIME,
   })
 }

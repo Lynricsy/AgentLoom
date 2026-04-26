@@ -5,11 +5,17 @@ import type {
   CreateGeneratedAppPayload,
   DeleteGeneratedAppSubmissionsResponse,
   GeneratedApp,
+  GeneratedAppGateRunListResponse,
+  GeneratedAppGenerationRunListResponse,
   GeneratedAppListResponse,
   GeneratedAppPublicSubmission,
   GeneratedAppPublicRuntime,
+  GeneratedAppRepairAttemptListResponse,
   GeneratedAppSubmission,
   GeneratedAppSubmissionListResponse,
+  ListGeneratedAppGateRunsParams,
+  ListGeneratedAppGenerationRunsParams,
+  ListGeneratedAppRepairAttemptsParams,
   ListGeneratedAppSubmissionsParams,
   ListGeneratedAppsParams,
   RecordGeneratedAppGateResultsPayload,
@@ -17,42 +23,72 @@ import type {
 
 const GENERATED_APPS_PATH = 'generated-apps'
 
-function buildGeneratedAppSearchParams(params: ListGeneratedAppsParams) {
+type GeneratedAppSearchParamValue = number | string | null | undefined
+
+function buildSearchParams(
+  params: Record<string, GeneratedAppSearchParamValue>,
+) {
   const searchParams: Record<string, string> = {}
 
-  if (params.page !== undefined) {
-    searchParams.page = String(params.page)
-  }
-
-  if (params.pageSize !== undefined) {
-    searchParams.pageSize = String(params.pageSize)
-  }
-
-  if (params.status) {
-    searchParams.status = params.status
-  }
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') {
+      searchParams[key] = String(value)
+    }
+  })
 
   return searchParams
+}
+
+function buildGeneratedAppSearchParams(params: ListGeneratedAppsParams) {
+  return buildSearchParams({
+    page: params.page,
+    pageSize: params.pageSize,
+    status: params.status,
+  })
 }
 
 function buildGeneratedAppSubmissionSearchParams(
   params: ListGeneratedAppSubmissionsParams,
 ) {
-  const searchParams: Record<string, string> = {}
+  return buildSearchParams({
+    page: params.page,
+    pageSize: params.pageSize,
+    status: params.status,
+  })
+}
 
-  if (params.page !== undefined) {
-    searchParams.page = String(params.page)
-  }
+function buildGeneratedAppGenerationRunSearchParams(
+  params: ListGeneratedAppGenerationRunsParams,
+) {
+  return buildSearchParams({
+    page: params.page,
+    pageSize: params.pageSize,
+    status: params.status,
+  })
+}
 
-  if (params.pageSize !== undefined) {
-    searchParams.pageSize = String(params.pageSize)
-  }
+function buildGeneratedAppRepairAttemptSearchParams(
+  params: ListGeneratedAppRepairAttemptsParams,
+) {
+  return buildSearchParams({
+    page: params.page,
+    pageSize: params.pageSize,
+    status: params.status,
+    targetGateId: params.targetGateId,
+  })
+}
 
-  if (params.status) {
-    searchParams.status = params.status
-  }
-
-  return searchParams
+function buildGeneratedAppGateRunSearchParams(
+  params: ListGeneratedAppGateRunsParams,
+) {
+  return buildSearchParams({
+    page: params.page,
+    pageSize: params.pageSize,
+    gateId: params.gateId,
+    status: params.status,
+    generationRunId: params.generationRunId,
+    repairAttemptId: params.repairAttemptId,
+  })
 }
 
 function toPublicRuntime(
@@ -110,6 +146,43 @@ export async function getGeneratedApp(appId: string): Promise<GeneratedApp> {
     .json<ApiResponse<GeneratedApp>>()
 
   return response.data
+}
+
+export async function listGeneratedAppGenerationRuns(
+  appId: string,
+  params: ListGeneratedAppGenerationRunsParams = {},
+): Promise<GeneratedAppGenerationRunListResponse> {
+  return apiClient
+    .get(`${GENERATED_APPS_PATH}/${appId}/generation-runs`, {
+      searchParams: buildGeneratedAppGenerationRunSearchParams(params),
+    })
+    .json<GeneratedAppGenerationRunListResponse>()
+}
+
+export async function listGeneratedAppRepairAttempts(
+  appId: string,
+  generationRunId: string,
+  params: ListGeneratedAppRepairAttemptsParams = {},
+): Promise<GeneratedAppRepairAttemptListResponse> {
+  return apiClient
+    .get(
+      `${GENERATED_APPS_PATH}/${appId}/generation-runs/${generationRunId}/repair-attempts`,
+      {
+        searchParams: buildGeneratedAppRepairAttemptSearchParams(params),
+      },
+    )
+    .json<GeneratedAppRepairAttemptListResponse>()
+}
+
+export async function listGeneratedAppGateRuns(
+  appId: string,
+  params: ListGeneratedAppGateRunsParams = {},
+): Promise<GeneratedAppGateRunListResponse> {
+  return apiClient
+    .get(`${GENERATED_APPS_PATH}/${appId}/gate-runs`, {
+      searchParams: buildGeneratedAppGateRunSearchParams(params),
+    })
+    .json<GeneratedAppGateRunListResponse>()
 }
 
 export async function listGeneratedAppSubmissions(

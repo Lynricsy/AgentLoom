@@ -26,6 +26,9 @@
   - `createGeneratedAppPublicSubmission(token, payload)`
   - `getGeneratedAppPublicSubmission(token, submissionId)`
   - `recordGeneratedAppGateResults(appId, payload)`
+  - `listGeneratedAppGenerationRuns(appId, { page?, pageSize?, status? })`
+  - `listGeneratedAppRepairAttempts(appId, generationRunId, { page?, pageSize?, status?, targetGateId? })`
+  - `listGeneratedAppGateRuns(appId, { page?, pageSize?, gateId?, status?, generationRunId?, repairAttemptId? })`
   - `enableGeneratedAppPublicShare(appId)`
   - `regenerateGeneratedAppPublicShare(appId)`
   - `disableGeneratedAppPublicShare(appId)`
@@ -34,6 +37,12 @@
   - `generatedAppKeys.lists()`
   - `generatedAppKeys.list(params)`
   - `generatedAppKeys.detail(appId)`
+  - `generatedAppKeys.generationRunLists(appId)`
+  - `generatedAppKeys.generationRunList(appId, params)`
+  - `generatedAppKeys.repairAttemptLists(appId, generationRunId)`
+  - `generatedAppKeys.repairAttemptList(appId, generationRunId, params)`
+  - `generatedAppKeys.gateRunLists(appId)`
+  - `generatedAppKeys.gateRunList(appId, params)`
   - `generatedAppKeys.submissionLists(appId)`
   - `generatedAppKeys.submissionList(appId, params)`
   - `generatedAppKeys.submissionDetails(appId)`
@@ -71,6 +80,15 @@ app.readiness.state === 'publish_candidate' &&
   - Delete actions must require explicit confirmation, call the creator delete APIs, show toast feedback, and invalidate submission list/detail query keys.
   - Batch delete may be exposed through selection checkboxes and must call `POST /generated-apps/:appId/submissions/delete` with `{ ids }`.
   - Creator responses may contain `publicShareToken` for audit, but the Studio submissions UI must not render token values in list or detail by default.
+- Creator generation evidence UI:
+  - `/generated-apps/$appId` contains a creator-only generation evidence section backed by generation run, repair attempt, and gate run list APIs.
+  - Generation runs are listed with run number, status, trigger source, repair/runtime budget, summary, failure reason, started time, and completed time.
+  - Until a generation run is selected, repair attempt and Gate run queries stay disabled and the panel shows a selection prompt instead of app-wide evidence.
+  - Selecting a generation run scopes repair attempts to that run and scopes gate runs by `generationRunId`.
+  - Selecting a repair attempt further scopes gate runs by `repairAttemptId`; clearing the repair selection falls back to the selected run scope.
+  - Repair attempts surface target gate id, attempt number, status, failure summary, change summary, and verification summary.
+  - Gate runs surface canonical gate snapshot, status, attempt number, blocking flag, summary, failure/repair text, evidence count, and compact evidence summaries.
+  - The evidence section must not render public share token values, creator submission `publicShareToken`, or evidence URLs by default; use evidence labels/kinds/summaries for the first creator-side view.
 - Public submissions API boundary:
   - Public submission functions may exist in the generated-app API layer for future custom generated frontends.
   - The built-in `GeneratedAppPublicRuntimePage` must not grow a fixed form/template submission UI. End-user submission UX belongs to generated/custom runtime surfaces, not a hardcoded Studio public page.
@@ -102,6 +120,11 @@ app.readiness.state === 'publish_candidate' &&
 | Creator selects a submission | Fetch detail by `appId + submissionId` and render read-only `input/result/report/errorMessage` |
 | Creator deletes one submission | Confirm first, call single delete, clear selected detail if needed, invalidate submissions list/detail, and toast success/failure |
 | Creator deletes selected submissions | Confirm first, call bulk delete with `{ ids }`, clear selection/detail if needed, invalidate submissions list/detail, and toast success/failure |
+| Generation run list is empty | Show an empty state, not a blank table |
+| No generation run is selected | Do not fetch repair attempt or Gate run evidence lists; show a selection prompt |
+| Creator selects a generation run | Fetch repair attempts by `appId + generationRunId` and gate runs with `generationRunId` |
+| Creator selects a repair attempt | Fetch gate runs with both `generationRunId` and `repairAttemptId` |
+| Generation evidence list fetch fails | Show an error state and retry action; do not fabricate run or gate data |
 | `/generated-apps/public/:token` lookup fails | Show an inaccessible/closed public state; do not redirect to login |
 | `/login-required-private` or another same-prefix private route is visited unauthenticated | Treat as private and redirect to login |
 
@@ -111,6 +134,7 @@ app.readiness.state === 'publish_candidate' &&
 - Good: a publish candidate row enables the public-share action and mutation invalidates list queries.
 - Good: a public runtime page shows data-use notice, public AppSpec summary, and a runtime preview link without rendering Studio navigation or the token value.
 - Good: creator detail page shows submission rows and detail JSON panels without rendering `publicShareToken`.
+- Good: creator detail page shows generation runs, repair attempts, and Gate run evidence summaries, while filtering Gate runs by the selected generation run and optional repair attempt.
 - Good: creator deletion uses single or batch delete API after confirmation and refreshes submission caches.
 - Base: a generated app has warning-only readiness; Studio displays trial/warning summary and keeps public share unavailable.
 - Base: a generated app has no public submissions; Studio shows an empty state and keeps the rest of the workbench usable.
@@ -120,6 +144,7 @@ app.readiness.state === 'publish_candidate' &&
 - Bad: Studio exposes internal test/source/plugin permission details on an end-user public runtime page.
 - Bad: Studio treats `/login-required-private` as public because `/login` was checked with `startsWith`.
 - Bad: Studio renders public share token values as a default column in the submissions table.
+- Bad: Studio renders evidence URLs or public token snapshots as default columns in the generation evidence panel.
 - Bad: the built-in public runtime page grows a fixed generated-app form that bypasses the custom generated frontend/runtime surface.
 
 ### 6. Tests Required
@@ -127,6 +152,7 @@ app.readiness.state === 'publish_candidate' &&
 - API tests:
   - paths for create/list/detail/gate update/share enable/share regenerate/share disable.
   - paths for creator submission list/detail/single delete/bulk delete.
+  - paths for generation run list, repair attempt list, and gate run list filters.
   - public submission create/detail helper paths if those helpers exist.
   - Generated App payload casing remains camelCase unless backend changes.
 - Query/mutation tests:
@@ -141,6 +167,7 @@ app.readiness.state === 'publish_candidate' &&
   - public runtime API mapping drops creator-only fields and nested source/test/plugin artifacts.
   - public runtime page renders data-use notice, limited AppSpec, optional preview link, and does not render tokens or internal fields.
   - creator submissions panel renders list rows, detail selection, status filter, pagination, delete confirmation, empty state, and error state.
+  - creator generation evidence panel renders generation runs, loads repair/gate data after run selection, filters gate data after repair selection, shows failure/evidence summaries, and shows empty/error states.
   - detail page tests either mock the submissions hooks or assert the submissions section renders with an empty state.
 - Route/navigation smoke:
   - `/generated-apps` route is registered in the route tree.

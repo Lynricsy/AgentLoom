@@ -22,6 +22,44 @@ export type GeneratedAppGateStatus =
   | 'warning'
   | 'skipped'
 
+export type GeneratedAppCanonicalGateId =
+  | 'gate-0'
+  | 'gate-1'
+  | 'gate-2'
+  | 'gate-3'
+  | 'gate-4'
+  | 'gate-5'
+  | 'gate-6'
+  | 'gate-7'
+
+export type GeneratedAppGateRunStatus =
+  | 'running'
+  | 'passed'
+  | 'failed'
+  | 'warning'
+  | 'skipped'
+
+export type GeneratedAppGenerationRunStatus =
+  | 'queued'
+  | 'running'
+  | 'repairing'
+  | 'passed'
+  | 'failed'
+  | 'cancelled'
+
+export type GeneratedAppGenerationRunTrigger =
+  | 'initial'
+  | 'manual'
+  | 'retry'
+  | 'system'
+
+export type GeneratedAppRepairAttemptStatus =
+  | 'planned'
+  | 'running'
+  | 'completed'
+  | 'failed'
+  | 'skipped'
+
 export type GeneratedAppSubmissionStatus =
   | 'received'
   | 'running'
@@ -146,6 +184,71 @@ export interface GeneratedApp {
   updatedAt: string
 }
 
+export interface GeneratedAppGenerationRun {
+  id: string
+  tenantId: string
+  appId: string
+  runNumber: number
+  status: GeneratedAppGenerationRunStatus
+  triggerSource: GeneratedAppGenerationRunTrigger
+  maxRepairAttempts: number
+  maxRuntimeSeconds: number
+  summary: string
+  failureReason: string | null
+  startedAt: string
+  completedAt: string | null
+  createdBy: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface GeneratedAppRepairAttempt {
+  id: string
+  tenantId: string
+  appId: string
+  generationRunId: string
+  attemptNumber: number
+  targetGateId: GeneratedAppCanonicalGateId
+  status: GeneratedAppRepairAttemptStatus
+  failureSummary: string
+  changeSummary: string | null
+  verificationSummary: string | null
+  startedAt: string
+  completedAt: string | null
+  createdBy: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface GeneratedAppGateRunFailure {
+  code?: string
+  message: string
+  details?: unknown
+}
+
+export interface GeneratedAppGateRun {
+  id: string
+  tenantId: string
+  appId: string
+  generationRunId: string | null
+  repairAttemptId: string | null
+  gateId: GeneratedAppCanonicalGateId
+  gateOrder: number
+  gateName: string
+  blocking: boolean
+  attemptNumber: number
+  status: GeneratedAppGateRunStatus
+  summary: string
+  evidence: GeneratedAppGateEvidence[]
+  failure: GeneratedAppGateRunFailure | null
+  repairInstructions: string | null
+  startedAt: string
+  completedAt: string | null
+  createdBy: string | null
+  createdAt: string
+  updatedAt: string
+}
+
 export interface GeneratedAppSubmission {
   id: string
   tenantId: string
@@ -193,6 +296,28 @@ export interface ListGeneratedAppSubmissionsParams {
   status?: GeneratedAppSubmissionStatus
 }
 
+export interface ListGeneratedAppGenerationRunsParams {
+  page?: number
+  pageSize?: number
+  status?: GeneratedAppGenerationRunStatus
+}
+
+export interface ListGeneratedAppRepairAttemptsParams {
+  page?: number
+  pageSize?: number
+  status?: GeneratedAppRepairAttemptStatus
+  targetGateId?: GeneratedAppCanonicalGateId
+}
+
+export interface ListGeneratedAppGateRunsParams {
+  page?: number
+  pageSize?: number
+  gateId?: GeneratedAppCanonicalGateId
+  status?: GeneratedAppGateRunStatus
+  generationRunId?: string
+  repairAttemptId?: string
+}
+
 export interface CreateGeneratedAppPublicSubmissionPayload {
   anonymousSessionId?: string
   input?: Record<string, unknown>
@@ -206,6 +331,12 @@ export interface RecordGeneratedAppGateResultsPayload {
 }
 
 export type GeneratedAppListResponse = PaginatedResponse<GeneratedApp>
+export type GeneratedAppGenerationRunListResponse =
+  PaginatedResponse<GeneratedAppGenerationRun>
+export type GeneratedAppRepairAttemptListResponse =
+  PaginatedResponse<GeneratedAppRepairAttempt>
+export type GeneratedAppGateRunListResponse =
+  PaginatedResponse<GeneratedAppGateRun>
 export type GeneratedAppSubmissionListResponse =
   PaginatedResponse<GeneratedAppSubmission>
 
