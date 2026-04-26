@@ -46,6 +46,9 @@ vi.mock('../executions/$executionId.steps.$stepId.agent', () => ({ executionAgen
 vi.mock('../settings/tool-library', () => ({ toolLibraryRoute: {} }));
 vi.mock('../settings/audit-logs', () => ({ auditLogsRoute: {} }));
 vi.mock('../templates', () => ({ templatesRoute: {} }));
+vi.mock('../generated-apps.public.$token', () => ({
+  generatedAppPublicRuntimeRoute: {},
+}));
 vi.mock('../marketplace', () => ({ marketplaceRoute: {} }));
 vi.mock('../marketplace.my-listings', () => ({ marketplaceMyListingsRoute: {} }));
 vi.mock('../share.$token', () => ({ shareTokenRoute: {} }));
@@ -67,6 +70,7 @@ describe('RootLayout auth guard', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockUseAuthToken.mockReturnValue(undefined);
     Object.defineProperty(window, 'location', {
       writable: true,
       value: { pathname: '/', search: '', href: '' },
@@ -142,6 +146,36 @@ describe('RootLayout auth guard', () => {
 
     expect(screen.getByTestId('outlet')).toBeInTheDocument();
     expect(window.location.href).not.toContain('/login');
+  });
+
+  it('未认证也可以访问/generated-apps/public/:token公开应用且不渲染壳层', () => {
+    mockUseAuthLoading.mockReturnValue(false);
+    mockUseIsAuthenticated.mockReturnValue(false);
+    mockUseAuthToken.mockReturnValue('existing-auth-token');
+    window.location.pathname = '/generated-apps/public/abc123token';
+
+    render(<RootLayout />);
+
+    expect(screen.getByTestId('outlet')).toBeInTheDocument();
+    expect(screen.queryByText('工作流')).not.toBeInTheDocument();
+    expect(screen.queryByTestId('notification-bell')).not.toBeInTheDocument();
+    expect(window.location.href).not.toContain('/login');
+    expect(mockUseNotificationSocket).toHaveBeenCalledWith({
+      authToken: undefined,
+    });
+  });
+
+  it('未认证访问仅同/login前缀的私有路由时不会被当作公开路由', () => {
+    mockUseAuthLoading.mockReturnValue(false);
+    mockUseIsAuthenticated.mockReturnValue(false);
+    window.location.pathname = '/login-required-private';
+
+    render(<RootLayout />);
+
+    expect(window.location.href).toBe(
+      '/login?returnUrl=%2Flogin-required-private',
+    );
+    expect(screen.queryByTestId('outlet')).not.toBeInTheDocument();
   });
 
   it('認証済みユーザーはnavバー付きのフルレイアウトを取得', () => {

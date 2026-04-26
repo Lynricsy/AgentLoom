@@ -16,6 +16,7 @@ import { auditLogsRoute } from "./settings/audit-logs";
 import { templatesRoute } from "./templates";
 import { generatedAppsRoute } from "./generated-apps";
 import { generatedAppDetailRoute } from "./generated-apps.$appId";
+import { generatedAppPublicRuntimeRoute } from "./generated-apps.public.$token";
 import { discoverRoute } from "./discover";
 import { marketplaceRoute } from "./marketplace";
 import { marketplaceMyListingsRoute } from "./marketplace.my-listings";
@@ -54,6 +55,7 @@ import { sandboxesRoute } from "./resources/sandboxes";
 import { memoryInstanceBrowseRoute } from "./resources/memory-instances.$instanceId.browse";
 
 const PUBLIC_ROUTES = ["/login", "/register", "/auth/callback"];
+const PUBLIC_ROUTE_PREFIXES = ["/s/", "/generated-apps/public/"];
 
 export function RootLayout() {
   const authToken = useAuthToken();
@@ -61,13 +63,13 @@ export function RootLayout() {
   const isLoading = useAuthLoading();
   const needsOnboarding = useAuthStore((state) => state.needsOnboarding);
 
-  useNotificationSocket({ authToken });
-
   const pathname = window.location.pathname;
   const isPublicRoute =
-    PUBLIC_ROUTES.some((r) => pathname.startsWith(r)) ||
-    pathname.startsWith("/s/");
+    PUBLIC_ROUTES.includes(pathname) ||
+    PUBLIC_ROUTE_PREFIXES.some((r) => pathname.startsWith(r));
   const isOnboardingRoute = pathname.startsWith("/onboarding");
+
+  useNotificationSocket({ authToken: isPublicRoute ? undefined : authToken });
 
   if (isLoading && !isPublicRoute) {
     return (
@@ -125,6 +127,7 @@ export const routeTree = rootRoute.addChildren([
   templatesRoute,
   generatedAppsRoute,
   generatedAppDetailRoute,
+  generatedAppPublicRuntimeRoute,
   discoverRoute,
   marketplaceRoute,
   marketplaceMyListingsRoute,

@@ -8,6 +8,8 @@ export type {
   GeneratedAppGateStatus,
   GeneratedAppListResponse,
   GeneratedAppPreview,
+  GeneratedAppPublicRuntime,
+  GeneratedAppPublicRuntimeSpec,
   GeneratedAppReadiness,
   GeneratedAppReadinessState,
   GeneratedAppSpec,

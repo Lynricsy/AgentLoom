@@ -1,6 +1,7 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import {
   getGeneratedApp,
+  getGeneratedAppPublicRuntime,
   listGeneratedApps,
 } from './generatedAppApi'
 import { generatedAppKeys } from './generatedAppKeys'
@@ -23,5 +24,15 @@ export function useGeneratedApp(appId: string | undefined) {
     queryFn: () => getGeneratedApp(appId ?? ''),
     enabled: !!appId,
     staleTime: GENERATED_APP_STALE_TIME,
+  })
+}
+
+export function useGeneratedAppPublicRuntime(token: string | undefined) {
+  return useQuery({
+    queryKey: generatedAppKeys.publicRuntime(token ?? ''),
+    queryFn: () => getGeneratedAppPublicRuntime(token ?? ''),
+    enabled: !!token,
+    retry: false,
+    staleTime: 5 * 60_000,
   })
 }

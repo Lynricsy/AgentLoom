@@ -9,4 +9,6 @@ export const generatedAppKeys = {
   detail: (appId: string) => [...generatedAppKeys.details(), appId] as const,
   publicShare: (appId: string) =>
     [...generatedAppKeys.detail(appId), 'public-share'] as const,
+  publicRuntime: (token: string) =>
+    [...generatedAppKeys.all, 'public-runtime', token] as const,
 }

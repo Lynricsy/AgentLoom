@@ -1,11 +1,13 @@
 export { GeneratedAppListPage } from './components/GeneratedAppListPage'
 export { GeneratedAppDetailPage } from './components/GeneratedAppDetailPage'
+export { GeneratedAppPublicRuntimePage } from './components/GeneratedAppPublicRuntimePage'
 export {
   createGeneratedApp,
   disableGeneratedAppPublicShare,
   enableGeneratedAppPublicShare,
   generatedAppKeys,
   getGeneratedApp,
+  getGeneratedAppPublicRuntime,
   listGeneratedApps,
   recordGeneratedAppGateResults,
   regenerateGeneratedAppPublicShare,
@@ -13,6 +15,7 @@ export {
   useDisableGeneratedAppPublicShare,
   useEnableGeneratedAppPublicShare,
   useGeneratedApp,
+  useGeneratedAppPublicRuntime,
   useGeneratedApps,
   useRecordGeneratedAppGateResults,
   useRegenerateGeneratedAppPublicShare,
@@ -27,6 +30,8 @@ export type {
   GeneratedAppGateStatus,
   GeneratedAppListResponse,
   GeneratedAppPreview,
+  GeneratedAppPublicRuntime,
+  GeneratedAppPublicRuntimeSpec,
   GeneratedAppReadiness,
   GeneratedAppReadinessState,
   GeneratedAppSpec,

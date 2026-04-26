@@ -3,6 +3,7 @@ export {
   disableGeneratedAppPublicShare,
   enableGeneratedAppPublicShare,
   getGeneratedApp,
+  getGeneratedAppPublicRuntime,
   listGeneratedApps,
   recordGeneratedAppGateResults,
   regenerateGeneratedAppPublicShare,
@@ -10,6 +11,7 @@ export {
 export { generatedAppKeys } from './generatedAppKeys'
 export {
   useGeneratedApp,
+  useGeneratedAppPublicRuntime,
   useGeneratedApps,
 } from './generatedAppQueries'
 export {

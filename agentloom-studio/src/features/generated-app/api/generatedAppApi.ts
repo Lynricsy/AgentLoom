@@ -4,6 +4,7 @@ import type {
   CreateGeneratedAppPayload,
   GeneratedApp,
   GeneratedAppListResponse,
+  GeneratedAppPublicRuntime,
   ListGeneratedAppsParams,
   RecordGeneratedAppGateResultsPayload,
 } from '../types'
@@ -26,6 +27,35 @@ function buildGeneratedAppSearchParams(params: ListGeneratedAppsParams) {
   }
 
   return searchParams
+}
+
+function toPublicRuntime(
+  value: GeneratedAppPublicRuntime,
+): GeneratedAppPublicRuntime {
+  return {
+    token: value.token,
+    appId: value.appId,
+    title: value.title,
+    description: value.description,
+    dataUseNotice: value.dataUseNotice,
+    appSpec: {
+      version: value.appSpec.version,
+      appName: value.appSpec.appName,
+      summary: value.appSpec.summary,
+      userGoal: value.appSpec.userGoal,
+      actors: value.appSpec.actors,
+      pages: value.appSpec.pages.map((page) => ({
+        id: page.id,
+        name: page.name,
+        purpose: page.purpose,
+      })),
+    },
+    runtimeSurface: {
+      kind: value.runtimeSurface.kind,
+      previewUrl: value.runtimeSurface.previewUrl,
+    },
+    createdAt: value.createdAt,
+  }
 }
 
 export async function createGeneratedApp(
@@ -54,6 +84,16 @@ export async function getGeneratedApp(appId: string): Promise<GeneratedApp> {
     .json<ApiResponse<GeneratedApp>>()
 
   return response.data
+}
+
+export async function getGeneratedAppPublicRuntime(
+  token: string,
+): Promise<GeneratedAppPublicRuntime> {
+  const response = await apiClient
+    .get(`${GENERATED_APPS_PATH}/public/${encodeURIComponent(token)}`)
+    .json<ApiResponse<GeneratedAppPublicRuntime>>()
+
+  return toPublicRuntime(response.data)
 }
 
 export async function recordGeneratedAppGateResults(

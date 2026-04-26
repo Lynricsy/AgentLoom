@@ -5,6 +5,7 @@ import {
   disableGeneratedAppPublicShare,
   enableGeneratedAppPublicShare,
   getGeneratedApp,
+  getGeneratedAppPublicRuntime,
   listGeneratedApps,
   recordGeneratedAppGateResults,
   regenerateGeneratedAppPublicShare,
@@ -165,6 +166,85 @@ describe('generatedAppApi', () => {
 
     expect(getMock).toHaveBeenCalledWith('generated-apps/app-detail')
     expect(result).toEqual(app)
+  })
+
+  it('fetches public runtime surface without returning creator-only fields', async () => {
+    const publicResponse = {
+      token: 'public-token',
+      appId: 'app-public',
+      title: '自动化中医问诊系统',
+      description: '逐步问诊并生成分析报告。',
+      dataUseNotice: '提交内容会被保存并提供给应用创建者查看。',
+      appSpec: {
+        version: 1,
+        appName: '自动化中医问诊系统',
+        summary: '按患者回答动态提问。',
+        userGoal: '完成问诊并查看分析报告。',
+        actors: ['终端用户'],
+        pages: [
+          {
+            id: 'page-public-runtime',
+            name: '问诊运行页',
+            purpose: '让终端用户回答问诊问题。',
+            sourceArtifactUrl: 'https://internal.example.test/source.zip',
+          },
+        ],
+        coreRequirements: [{ id: 'req-private', text: '内部需求' }],
+      },
+      runtimeSurface: {
+        kind: 'generated-app',
+        previewUrl: 'https://preview.example.test/apps/1',
+        sourceArtifactUrl: 'https://internal.example.test/source.zip',
+      },
+      createdAt: '2026-04-25T00:00:00.000Z',
+      gateResults: [makeGateResult()],
+      readiness: makeGeneratedApp().readiness,
+      generationPlan: { steps: ['内部计划'] },
+      sourceArtifactUrl: 'https://internal.example.test/source.zip',
+      testReportUrl: 'https://internal.example.test/report.json',
+      pluginIds: ['plugin-private'],
+      publicShareToken: 'public-token',
+    }
+    getMock.mockReturnValue(mockKyJson({ data: publicResponse }))
+
+    const result = await getGeneratedAppPublicRuntime('public-token')
+
+    expect(getMock).toHaveBeenCalledWith('generated-apps/public/public-token')
+    expect(result).toEqual({
+      token: 'public-token',
+      appId: 'app-public',
+      title: '自动化中医问诊系统',
+      description: '逐步问诊并生成分析报告。',
+      dataUseNotice: '提交内容会被保存并提供给应用创建者查看。',
+      appSpec: {
+        version: 1,
+        appName: '自动化中医问诊系统',
+        summary: '按患者回答动态提问。',
+        userGoal: '完成问诊并查看分析报告。',
+        actors: ['终端用户'],
+        pages: [
+          {
+            id: 'page-public-runtime',
+            name: '问诊运行页',
+            purpose: '让终端用户回答问诊问题。',
+          },
+        ],
+      },
+      runtimeSurface: {
+        kind: 'generated-app',
+        previewUrl: 'https://preview.example.test/apps/1',
+      },
+      createdAt: '2026-04-25T00:00:00.000Z',
+    })
+    expect(result).not.toHaveProperty('gateResults')
+    expect(result).not.toHaveProperty('readiness')
+    expect(result).not.toHaveProperty('generationPlan')
+    expect(result).not.toHaveProperty('sourceArtifactUrl')
+    expect(result).not.toHaveProperty('testReportUrl')
+    expect(result).not.toHaveProperty('pluginIds')
+    expect(result).not.toHaveProperty('publicShareToken')
+    expect(result.appSpec).not.toHaveProperty('coreRequirements')
+    expect(result.runtimeSurface).not.toHaveProperty('sourceArtifactUrl')
   })
 
   it('records gate results without snake-casing the backend camelCase contract', async () => {

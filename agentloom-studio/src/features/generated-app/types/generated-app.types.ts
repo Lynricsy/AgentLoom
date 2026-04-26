@@ -157,3 +157,30 @@ export interface RecordGeneratedAppGateResultsPayload {
 }
 
 export type GeneratedAppListResponse = PaginatedResponse<GeneratedApp>
+
+export interface GeneratedAppPublicRuntimeSpec {
+  version: 1
+  appName: string
+  summary: string
+  userGoal: string
+  actors: string[]
+  pages: Array<{
+    id: string
+    name: string
+    purpose: string
+  }>
+}
+
+export interface GeneratedAppPublicRuntime {
+  token: string
+  appId: string
+  title: string
+  description: string
+  dataUseNotice: string
+  appSpec: GeneratedAppPublicRuntimeSpec
+  runtimeSurface: {
+    kind: 'generated-app'
+    previewUrl: string | null
+  }
+  createdAt: string
+}
