@@ -3,11 +3,13 @@ import { z } from 'zod';
 
 import type {
   GeneratedApp,
+  GeneratedAppGenerationRun,
   GeneratedAppGateRun,
   GeneratedAppGateRunFailure,
   GeneratedAppGateResult,
   GeneratedAppPreview,
   GeneratedAppReadiness,
+  GeneratedAppRepairAttempt,
   GeneratedAppSpec,
   GeneratedAppSubmission,
 } from '../../../database/schema';
@@ -44,6 +46,30 @@ export const GeneratedAppGateRunStatusSchema = z.enum([
   'passed',
   'failed',
   'warning',
+  'skipped',
+]);
+
+export const GeneratedAppGenerationRunStatusSchema = z.enum([
+  'queued',
+  'running',
+  'repairing',
+  'passed',
+  'failed',
+  'cancelled',
+]);
+
+export const GeneratedAppGenerationRunTriggerSchema = z.enum([
+  'initial',
+  'manual',
+  'retry',
+  'system',
+]);
+
+export const GeneratedAppRepairAttemptStatusSchema = z.enum([
+  'planned',
+  'running',
+  'completed',
+  'failed',
   'skipped',
 ]);
 
@@ -193,6 +219,8 @@ export const GeneratedAppGateRunFailureSchema = z.object({
 
 export const CreateGeneratedAppGateRunSchema = z.object({
   gateId: GeneratedAppCanonicalGateIdSchema,
+  generationRunId: z.string().uuid().nullable().optional(),
+  repairAttemptId: z.string().uuid().nullable().optional(),
   attemptNumber: z.number().int().min(1).max(100).default(1),
   status: GeneratedAppGateRunStatusSchema,
   summary: z.string().trim().min(1, '门禁运行摘要不能为空').max(4000),
@@ -216,6 +244,8 @@ export const QueryGeneratedAppGateRunsSchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).default(20),
   gateId: GeneratedAppCanonicalGateIdSchema.optional(),
   status: GeneratedAppGateRunStatusSchema.optional(),
+  generationRunId: z.string().uuid().optional(),
+  repairAttemptId: z.string().uuid().optional(),
 });
 
 export class QueryGeneratedAppGateRunsDto extends createZodDto(
@@ -224,6 +254,107 @@ export class QueryGeneratedAppGateRunsDto extends createZodDto(
 
 export type QueryGeneratedAppGateRunsDtoType = z.infer<
   typeof QueryGeneratedAppGateRunsSchema
+>;
+
+export const CreateGeneratedAppGenerationRunSchema = z.object({
+  runNumber: z.number().int().min(1).max(1000).default(1),
+  status: GeneratedAppGenerationRunStatusSchema.default('running'),
+  triggerSource: GeneratedAppGenerationRunTriggerSchema.default('manual'),
+  maxRepairAttempts: z.number().int().min(0).max(20).default(3),
+  maxRuntimeSeconds: z.number().int().min(1).max(86400).default(1800),
+  summary: z.string().trim().min(1, '生成运行摘要不能为空').max(4000),
+  failureReason: z.string().trim().min(1).max(4000).nullable().optional(),
+  startedAt: z.string().datetime().optional(),
+  completedAt: z.string().datetime().nullable().optional(),
+});
+
+export class CreateGeneratedAppGenerationRunDto extends createZodDto(
+  CreateGeneratedAppGenerationRunSchema,
+) {}
+
+export type CreateGeneratedAppGenerationRunDtoType = z.infer<
+  typeof CreateGeneratedAppGenerationRunSchema
+>;
+
+export const UpdateGeneratedAppGenerationRunSchema = z.object({
+  status: GeneratedAppGenerationRunStatusSchema.optional(),
+  summary: z.string().trim().min(1).max(4000).optional(),
+  failureReason: z.string().trim().min(1).max(4000).nullable().optional(),
+  startedAt: z.string().datetime().optional(),
+  completedAt: z.string().datetime().nullable().optional(),
+});
+
+export class UpdateGeneratedAppGenerationRunDto extends createZodDto(
+  UpdateGeneratedAppGenerationRunSchema,
+) {}
+
+export type UpdateGeneratedAppGenerationRunDtoType = z.infer<
+  typeof UpdateGeneratedAppGenerationRunSchema
+>;
+
+export const QueryGeneratedAppGenerationRunsSchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+  status: GeneratedAppGenerationRunStatusSchema.optional(),
+});
+
+export class QueryGeneratedAppGenerationRunsDto extends createZodDto(
+  QueryGeneratedAppGenerationRunsSchema,
+) {}
+
+export type QueryGeneratedAppGenerationRunsDtoType = z.infer<
+  typeof QueryGeneratedAppGenerationRunsSchema
+>;
+
+export const CreateGeneratedAppRepairAttemptSchema = z.object({
+  attemptNumber: z.number().int().min(1).max(100).default(1),
+  targetGateId: GeneratedAppCanonicalGateIdSchema,
+  status: GeneratedAppRepairAttemptStatusSchema.default('running'),
+  failureSummary: z.string().trim().min(1, '修复目标不能为空').max(4000),
+  changeSummary: z.string().trim().min(1).max(4000).nullable().optional(),
+  verificationSummary: z.string().trim().min(1).max(4000).nullable().optional(),
+  startedAt: z.string().datetime().optional(),
+  completedAt: z.string().datetime().nullable().optional(),
+});
+
+export class CreateGeneratedAppRepairAttemptDto extends createZodDto(
+  CreateGeneratedAppRepairAttemptSchema,
+) {}
+
+export type CreateGeneratedAppRepairAttemptDtoType = z.infer<
+  typeof CreateGeneratedAppRepairAttemptSchema
+>;
+
+export const UpdateGeneratedAppRepairAttemptSchema = z.object({
+  status: GeneratedAppRepairAttemptStatusSchema.optional(),
+  failureSummary: z.string().trim().min(1).max(4000).optional(),
+  changeSummary: z.string().trim().min(1).max(4000).nullable().optional(),
+  verificationSummary: z.string().trim().min(1).max(4000).nullable().optional(),
+  startedAt: z.string().datetime().optional(),
+  completedAt: z.string().datetime().nullable().optional(),
+});
+
+export class UpdateGeneratedAppRepairAttemptDto extends createZodDto(
+  UpdateGeneratedAppRepairAttemptSchema,
+) {}
+
+export type UpdateGeneratedAppRepairAttemptDtoType = z.infer<
+  typeof UpdateGeneratedAppRepairAttemptSchema
+>;
+
+export const QueryGeneratedAppRepairAttemptsSchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+  status: GeneratedAppRepairAttemptStatusSchema.optional(),
+  targetGateId: GeneratedAppCanonicalGateIdSchema.optional(),
+});
+
+export class QueryGeneratedAppRepairAttemptsDto extends createZodDto(
+  QueryGeneratedAppRepairAttemptsSchema,
+) {}
+
+export type QueryGeneratedAppRepairAttemptsDtoType = z.infer<
+  typeof QueryGeneratedAppRepairAttemptsSchema
 >;
 
 export interface GeneratedAppResponseDto {
@@ -255,6 +386,8 @@ export interface GeneratedAppGateRunResponseDto {
   id: string;
   tenantId: string;
   appId: string;
+  generationRunId: string | null;
+  repairAttemptId: string | null;
   gateId: string;
   gateOrder: number;
   gateName: string;
@@ -275,6 +408,42 @@ export interface GeneratedAppGateRunResponseDto {
 export interface RecordGeneratedAppGateRunResponseDto {
   gateRun: GeneratedAppGateRunResponseDto;
   app: GeneratedAppResponseDto;
+}
+
+export interface GeneratedAppGenerationRunResponseDto {
+  id: string;
+  tenantId: string;
+  appId: string;
+  runNumber: number;
+  status: GeneratedAppGenerationRun['status'];
+  triggerSource: GeneratedAppGenerationRun['triggerSource'];
+  maxRepairAttempts: number;
+  maxRuntimeSeconds: number;
+  summary: string;
+  failureReason: string | null;
+  startedAt: Date;
+  completedAt: Date | null;
+  createdBy: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface GeneratedAppRepairAttemptResponseDto {
+  id: string;
+  tenantId: string;
+  appId: string;
+  generationRunId: string;
+  attemptNumber: number;
+  targetGateId: string;
+  status: GeneratedAppRepairAttempt['status'];
+  failureSummary: string;
+  changeSummary: string | null;
+  verificationSummary: string | null;
+  startedAt: Date;
+  completedAt: Date | null;
+  createdBy: string | null;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface PublicGeneratedAppResponseDto {

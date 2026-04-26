@@ -19,22 +19,34 @@ import { Public } from '../../common/decorators/public.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import {
+  CreateGeneratedAppGenerationRunDto,
+  CreateGeneratedAppGenerationRunSchema,
   CreateGeneratedAppGateRunDto,
   CreateGeneratedAppGateRunSchema,
+  CreateGeneratedAppRepairAttemptDto,
+  CreateGeneratedAppRepairAttemptSchema,
   CreateGeneratedAppSubmissionDto,
   CreateGeneratedAppSubmissionSchema,
   CreateGeneratedAppDto,
   CreateGeneratedAppSchema,
   DeleteGeneratedAppSubmissionsDto,
   DeleteGeneratedAppSubmissionsSchema,
+  QueryGeneratedAppGenerationRunsDto,
+  QueryGeneratedAppGenerationRunsSchema,
   QueryGeneratedAppGateRunsDto,
   QueryGeneratedAppGateRunsSchema,
+  QueryGeneratedAppRepairAttemptsDto,
+  QueryGeneratedAppRepairAttemptsSchema,
   QueryGeneratedAppSubmissionsDto,
   QueryGeneratedAppSubmissionsSchema,
   QueryGeneratedAppsDto,
   QueryGeneratedAppsSchema,
   RecordGeneratedAppGateResultsDto,
   RecordGeneratedAppGateResultsSchema,
+  UpdateGeneratedAppGenerationRunDto,
+  UpdateGeneratedAppGenerationRunSchema,
+  UpdateGeneratedAppRepairAttemptDto,
+  UpdateGeneratedAppRepairAttemptSchema,
 } from './dto';
 import { GeneratedAppService } from './generated-app.service';
 
@@ -70,6 +82,136 @@ export class GeneratedAppController {
     @CurrentTenant() tenantId: string,
   ) {
     return this.generatedAppService.list(tenantId, query);
+  }
+
+  @Get(':appId/generation-runs')
+  @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '分页查询生成应用自动开发运行台账' })
+  @ApiResponse({ status: 200, description: '生成应用运行台账列表' })
+  async listGenerationRuns(
+    @Param('appId', ParseUUIDPipe) appId: string,
+    @Query(new ZodValidationPipe(QueryGeneratedAppGenerationRunsSchema))
+    query: QueryGeneratedAppGenerationRunsDto,
+    @CurrentTenant() tenantId: string,
+  ) {
+    return this.generatedAppService.listGenerationRuns(tenantId, appId, query);
+  }
+
+  @Post(':appId/generation-runs')
+  @Roles('owner', 'admin', 'creator')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: '创建一次生成应用自动开发运行台账' })
+  @ApiResponse({ status: 201, description: '生成应用运行台账已创建' })
+  @ApiResponse({ status: 404, description: '生成应用任务不存在' })
+  async createGenerationRun(
+    @Param('appId', ParseUUIDPipe) appId: string,
+    @Body(new ZodValidationPipe(CreateGeneratedAppGenerationRunSchema))
+    dto: CreateGeneratedAppGenerationRunDto,
+    @CurrentTenant() tenantId: string,
+    @CurrentUser('sub') userId: string,
+  ) {
+    const data = await this.generatedAppService.createGenerationRun(
+      tenantId,
+      userId,
+      appId,
+      dto,
+    );
+
+    return { data };
+  }
+
+  @Patch(':appId/generation-runs/:runId')
+  @Roles('owner', 'admin', 'creator')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '更新生成应用自动开发运行台账状态' })
+  @ApiResponse({ status: 200, description: '生成应用运行台账已更新' })
+  @ApiResponse({ status: 404, description: '生成应用任务或运行台账不存在' })
+  async updateGenerationRun(
+    @Param('appId', ParseUUIDPipe) appId: string,
+    @Param('runId', ParseUUIDPipe) runId: string,
+    @Body(new ZodValidationPipe(UpdateGeneratedAppGenerationRunSchema))
+    dto: UpdateGeneratedAppGenerationRunDto,
+    @CurrentTenant() tenantId: string,
+  ) {
+    const data = await this.generatedAppService.updateGenerationRun(
+      tenantId,
+      appId,
+      runId,
+      dto,
+    );
+
+    return { data };
+  }
+
+  @Get(':appId/generation-runs/:runId/repair-attempts')
+  @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '分页查询生成应用修复尝试台账' })
+  @ApiResponse({ status: 200, description: '生成应用修复尝试列表' })
+  async listRepairAttempts(
+    @Param('appId', ParseUUIDPipe) appId: string,
+    @Param('runId', ParseUUIDPipe) runId: string,
+    @Query(new ZodValidationPipe(QueryGeneratedAppRepairAttemptsSchema))
+    query: QueryGeneratedAppRepairAttemptsDto,
+    @CurrentTenant() tenantId: string,
+  ) {
+    return this.generatedAppService.listRepairAttempts(
+      tenantId,
+      appId,
+      runId,
+      query,
+    );
+  }
+
+  @Post(':appId/generation-runs/:runId/repair-attempts')
+  @Roles('owner', 'admin', 'creator')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: '创建一次生成应用修复尝试台账' })
+  @ApiResponse({ status: 201, description: '生成应用修复尝试已创建' })
+  @ApiResponse({ status: 404, description: '生成应用任务或运行台账不存在' })
+  async createRepairAttempt(
+    @Param('appId', ParseUUIDPipe) appId: string,
+    @Param('runId', ParseUUIDPipe) runId: string,
+    @Body(new ZodValidationPipe(CreateGeneratedAppRepairAttemptSchema))
+    dto: CreateGeneratedAppRepairAttemptDto,
+    @CurrentTenant() tenantId: string,
+    @CurrentUser('sub') userId: string,
+  ) {
+    const data = await this.generatedAppService.createRepairAttempt(
+      tenantId,
+      userId,
+      appId,
+      runId,
+      dto,
+    );
+
+    return { data };
+  }
+
+  @Patch(':appId/generation-runs/:runId/repair-attempts/:repairAttemptId')
+  @Roles('owner', 'admin', 'creator')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '更新生成应用修复尝试台账状态' })
+  @ApiResponse({ status: 200, description: '生成应用修复尝试已更新' })
+  @ApiResponse({ status: 404, description: '修复尝试不存在' })
+  async updateRepairAttempt(
+    @Param('appId', ParseUUIDPipe) appId: string,
+    @Param('runId', ParseUUIDPipe) runId: string,
+    @Param('repairAttemptId', ParseUUIDPipe) repairAttemptId: string,
+    @Body(new ZodValidationPipe(UpdateGeneratedAppRepairAttemptSchema))
+    dto: UpdateGeneratedAppRepairAttemptDto,
+    @CurrentTenant() tenantId: string,
+  ) {
+    const data = await this.generatedAppService.updateRepairAttempt(
+      tenantId,
+      appId,
+      runId,
+      repairAttemptId,
+      dto,
+    );
+
+    return { data };
   }
 
   @Get(':appId/gate-runs')

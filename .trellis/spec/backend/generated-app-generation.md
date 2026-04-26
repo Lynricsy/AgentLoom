@@ -40,6 +40,7 @@
   - `id uuid primary key default uuid_generate_v7()`
   - `tenant_id uuid not null`
   - `generated_app_id uuid not null references generated_apps(id) on delete cascade`
+  - optional run links: `generation_run_id`, `repair_attempt_id`
   - canonical gate snapshot: `gate_id`, `gate_order`, `gate_name`, `blocking`
   - `attempt_number integer not null default 1`
   - `status generated_app_gate_run_status not null`
@@ -48,6 +49,28 @@
   - nullable repair fields: `failure`, `repair_instructions`
   - lifecycle/audit columns: `started_at`, `completed_at`, `created_by`, `created_at`, `updated_at`
   - direct tenant RLS via `tenant_id`; creator endpoints must use tenant-aware DB access.
+- DB table: `generated_app_generation_runs`
+  - `id uuid primary key default uuid_generate_v7()`
+  - `tenant_id uuid not null`
+  - `generated_app_id uuid not null references generated_apps(id) on delete cascade`
+  - `run_number integer not null default 1`
+  - `status generated_app_generation_run_status not null default 'running'`
+  - `trigger_source generated_app_generation_run_trigger not null default 'manual'`
+  - budget columns: `max_repair_attempts`, `max_runtime_seconds`
+  - result columns: `summary`, `failure_reason`
+  - lifecycle/audit columns: `started_at`, `completed_at`, `created_by`, `created_at`, `updated_at`
+  - direct tenant RLS via `tenant_id`; this table is the parent ledger for a full prompt-to-app generation loop.
+- DB table: `generated_app_repair_attempts`
+  - `id uuid primary key default uuid_generate_v7()`
+  - `tenant_id uuid not null`
+  - `generated_app_id uuid not null references generated_apps(id) on delete cascade`
+  - `generation_run_id uuid not null references generated_app_generation_runs(id) on delete cascade`
+  - `attempt_number integer not null default 1`
+  - `target_gate_id varchar(64) not null`
+  - `status generated_app_repair_attempt_status not null default 'running'`
+  - repair narrative fields: `failure_summary`, `change_summary`, `verification_summary`
+  - lifecycle/audit columns: `started_at`, `completed_at`, `created_by`, `created_at`, `updated_at`
+  - direct tenant RLS via `tenant_id`; each repair attempt belongs to one generation run and one generated app.
 - Status enum:
   - `app_spec_ready`
   - `preview_ready`
@@ -66,11 +89,35 @@
   - `failed`
   - `warning`
   - `skipped`
+- Generation run status enum:
+  - `queued`
+  - `running`
+  - `repairing`
+  - `passed`
+  - `failed`
+  - `cancelled`
+- Generation run trigger enum:
+  - `initial`
+  - `manual`
+  - `retry`
+  - `system`
+- Repair attempt status enum:
+  - `planned`
+  - `running`
+  - `completed`
+  - `failed`
+  - `skipped`
 - Authenticated API:
   - `POST /generated-apps`
   - `GET /generated-apps`
   - `GET /generated-apps/:appId`
   - `PATCH /generated-apps/:appId/gates`
+  - `GET /generated-apps/:appId/generation-runs?page=&pageSize=&status=`
+  - `POST /generated-apps/:appId/generation-runs`
+  - `PATCH /generated-apps/:appId/generation-runs/:runId`
+  - `GET /generated-apps/:appId/generation-runs/:runId/repair-attempts?page=&pageSize=&status=&targetGateId=`
+  - `POST /generated-apps/:appId/generation-runs/:runId/repair-attempts`
+  - `PATCH /generated-apps/:appId/generation-runs/:runId/repair-attempts/:repairAttemptId`
   - `GET /generated-apps/:appId/gate-runs?page=&pageSize=&gateId=&status=`
   - `POST /generated-apps/:appId/gate-runs`
   - `POST /generated-apps/:appId/public-share`
@@ -97,6 +144,8 @@
   - `preview`: optional object with nullable `previewUrl`, `sourceArtifactUrl`, `testReportUrl`.
 - `CreateGeneratedAppGateRunDto`
   - `gateId`: one of canonical Gate 0-7 ids (`gate-0` through `gate-7`).
+  - `generationRunId`: optional UUID linking this gate evidence to one generation run.
+  - `repairAttemptId`: optional UUID linking this gate evidence to one repair attempt.
   - `attemptNumber`: integer 1-100, default 1.
   - `status`: `running | passed | failed | warning | skipped`.
   - `summary`: required human-readable result summary.
@@ -104,6 +153,27 @@
   - `failure`: optional `{ code?, message, details? }` object for failed or degraded runs.
   - `repairInstructions`: optional human-readable next repair instruction.
   - `startedAt` / `completedAt`: optional ISO timestamps; non-running runs default `completedAt` to server time when omitted.
+- `CreateGeneratedAppGenerationRunDto`
+  - `runNumber`: integer 1-1000, default 1.
+  - `status`: `queued | running | repairing | passed | failed | cancelled`, default `running`.
+  - `triggerSource`: `initial | manual | retry | system`, default `manual`.
+  - `maxRepairAttempts`: integer 0-20, default 3.
+  - `maxRuntimeSeconds`: integer 1-86400, default 1800.
+  - `summary`: required human-readable generation loop summary.
+  - `failureReason`: optional nullable failure reason.
+  - `startedAt` / `completedAt`: optional ISO timestamps.
+- `UpdateGeneratedAppGenerationRunDto`
+  - Allows patching `status`, `summary`, `failureReason`, `startedAt`, and `completedAt`.
+- `CreateGeneratedAppRepairAttemptDto`
+  - `attemptNumber`: integer 1-100, default 1.
+  - `targetGateId`: one of canonical Gate 0-7 ids.
+  - `status`: `planned | running | completed | failed | skipped`, default `running`.
+  - `failureSummary`: required summary of the gate failure being repaired.
+  - `changeSummary`: optional nullable summary of source / graph / plugin changes.
+  - `verificationSummary`: optional nullable summary of post-repair verification.
+  - `startedAt` / `completedAt`: optional ISO timestamps.
+- `UpdateGeneratedAppRepairAttemptDto`
+  - Allows patching `status`, `failureSummary`, `changeSummary`, `verificationSummary`, `startedAt`, and `completedAt`.
 - Canonical gates:
   - `gate-0` requirement spec
   - `gate-1` architecture plan
@@ -121,14 +191,27 @@
 - Gate run recording:
   - `POST /generated-apps/:appId/gate-runs` must first resolve the generated app in tenant scope.
   - Each gate run stores an immutable attempt row in `generated_app_gate_runs` with the canonical gate definition snapshot and the supplied evidence/failure/repair data.
+  - If `generationRunId` is supplied, it must belong to the same tenant and generated app.
+  - If `repairAttemptId` is supplied, it must belong to the same tenant and generated app; when `generationRunId` is also supplied, the repair attempt must belong to that generation run.
   - The same request must update `generated_apps.gate_results`, replacing the current summary for that canonical gate while preserving other gates through canonical normalization.
   - The request must recompute `generated_apps.readiness` and `generated_apps.status` from the full normalized gate result set.
   - If the new readiness cannot create a public share, the request must set `public_share_enabled=false`, clear `public_share_token`, and set `public_share_disabled_at`.
   - The response returns `{ gateRun, app }`, where `gateRun` is the persisted run attempt and `app` is the updated creator-side generated app response.
 - Gate run listing:
   - `GET /generated-apps/:appId/gate-runs` returns the standard paginated `{ data, meta }` envelope ordered by `created_at desc`.
-  - Filters must include `tenant_id + generated_app_id`; optional `gateId` and `status` filters narrow the list.
+  - Filters must include `tenant_id + generated_app_id`; optional `gateId`, `status`, `generationRunId`, and `repairAttemptId` filters narrow the list.
   - Creator response may include tenant and creator audit fields because the endpoint is authenticated and tenant-scoped.
+- Generation run ledger:
+  - `generated_app_generation_runs` is the high-level ledger for one automatic development/test loop, not a background worker by itself.
+  - Create/update/list endpoints must use tenant-aware DB access and filter by `tenant_id + generated_app_id`.
+  - List is ordered by `created_at desc` and uses the standard paginated `{ data, meta }` envelope.
+  - Update is scoped by `tenant_id + generated_app_id + run_id`; missing rows return `GeneratedAppGenerationRunNotFoundException`.
+- Repair attempt ledger:
+  - Repair attempts are nested under one generation run and must be scoped by `tenant_id + generated_app_id + generation_run_id`.
+  - Create must first resolve the generation run in the same tenant/app scope before inserting.
+  - List is ordered by `created_at desc` and supports optional `status` and `targetGateId` filters.
+  - Update is scoped by `tenant_id + generated_app_id + generation_run_id + repair_attempt_id`; missing rows return `GeneratedAppRepairAttemptNotFoundException`.
+  - Gate run records may link back to repair attempts to prove which verification run closed or re-failed a repair.
 - Public response must expose only end-user runtime surface:
   - `token`, `appId`, `title`, `description`, `dataUseNotice`, limited `appSpec`, `runtimeSurface`, `createdAt`.
   - Do not expose `gateResults`, `readiness`, `generationPlan`, `sourceArtifactUrl`, `testReportUrl`, `pluginIds`, `publicShareToken`, or creator-only pages.
@@ -169,6 +252,10 @@
 | Gate run records `failed` for a blocking gate | Insert run evidence, update current gate result to `failed`, recompute readiness to `blocked`, and clear public share token |
 | Gate run records `running`, `skipped`, or `warning` for a blocking gate | Insert run evidence, recompute readiness to non-publishable state, and clear public share token |
 | Gate run records `passed` but other blocking gates are still not passed | Keep readiness in `preview` and keep public share disabled |
+| Gate run references another app's generation run or repair attempt | Return not found for the referenced ledger row and do not insert gate evidence |
+| Generation run update misses tenant/app scope | Return `GeneratedAppGenerationRunNotFoundException` |
+| Repair attempt create references a missing generation run | Return `GeneratedAppGenerationRunNotFoundException` and do not insert repair attempt |
+| Repair attempt update misses tenant/app/run scope | Return `GeneratedAppRepairAttemptNotFoundException` |
 | Creator disables public share | Disable link and clear old token; old URL must immediately stop working |
 | Creator regenerates public share | Replace token; old URL must immediately stop working |
 | Public token is missing, disabled, or not `published` | Public endpoint returns not found |
@@ -217,7 +304,10 @@
   - gate run recording inserts immutable attempt evidence with canonical gate snapshot fields
   - gate run recording updates current `gateResults`, `readiness`, and `status` in the owning generated app
   - failed or non-publishable gate runs clear any active public share token
-  - gate run listing filters by tenant id, app id, gate id, and status and returns paginated results
+  - gate run listing filters by tenant id, app id, gate id, status, generation run id, and repair attempt id and returns paginated results
+  - generation run create/list/update preserve run number, status, trigger source, repair budget, runtime budget, summary, failure reason, and timestamps
+  - repair attempt create/list/update preserve parent generation run, target gate, attempt number, failure summary, change summary, verification summary, and timestamps
+  - gate run recording can link to a generation run and repair attempt in the same tenant/app scope
 - Run scoped lint, `tsconfig.build.json` typecheck, and targeted tests for any generated-app change.
 
 ### 7. Wrong vs Correct

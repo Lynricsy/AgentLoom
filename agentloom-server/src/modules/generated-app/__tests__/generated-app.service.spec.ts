@@ -4,8 +4,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DrizzleDB } from '../../../database/database.module';
 import type {
   GeneratedApp,
+  GeneratedAppGenerationRun,
   GeneratedAppGateRun,
   GeneratedAppReadiness,
+  GeneratedAppRepairAttempt,
   GeneratedAppSubmission,
 } from '../../../database/schema';
 import {
@@ -32,7 +34,9 @@ const TENANT_ID = '11111111-1111-4111-8111-111111111111';
 const USER_ID = '22222222-2222-4222-8222-222222222222';
 const APP_ID = '33333333-3333-4333-8333-333333333333';
 const SUBMISSION_ID = '44444444-4444-4444-8444-444444444444';
+const GENERATION_RUN_ID = '55555555-5555-4555-8555-555555555555';
 const GATE_RUN_ID = '66666666-6666-4666-8666-666666666666';
+const REPAIR_ATTEMPT_ID = '77777777-7777-4777-8777-777777777777';
 const NOW = new Date('2026-04-25T00:00:00.000Z');
 
 function createSelectChain<T>(result: T[]) {
@@ -145,6 +149,8 @@ function createGeneratedAppGateRun(
     id: GATE_RUN_ID,
     tenantId: TENANT_ID,
     generatedAppId: APP_ID,
+    generationRunId: null,
+    repairAttemptId: null,
     gateId: 'gate-1',
     gateOrder: 1,
     gateName: '架构计划门禁',
@@ -165,6 +171,52 @@ function createGeneratedAppGateRun(
     repairInstructions: null,
     startedAt: NOW,
     completedAt: NOW,
+    createdBy: USER_ID,
+    createdAt: NOW,
+    updatedAt: NOW,
+    ...overrides,
+  };
+}
+
+function createGeneratedAppGenerationRun(
+  overrides: Partial<GeneratedAppGenerationRun> = {},
+): GeneratedAppGenerationRun {
+  return {
+    id: GENERATION_RUN_ID,
+    tenantId: TENANT_ID,
+    generatedAppId: APP_ID,
+    runNumber: 1,
+    status: 'running',
+    triggerSource: 'manual',
+    maxRepairAttempts: 3,
+    maxRuntimeSeconds: 1800,
+    summary: '开始自动开发测试循环。',
+    failureReason: null,
+    startedAt: NOW,
+    completedAt: null,
+    createdBy: USER_ID,
+    createdAt: NOW,
+    updatedAt: NOW,
+    ...overrides,
+  };
+}
+
+function createGeneratedAppRepairAttempt(
+  overrides: Partial<GeneratedAppRepairAttempt> = {},
+): GeneratedAppRepairAttempt {
+  return {
+    id: REPAIR_ATTEMPT_ID,
+    tenantId: TENANT_ID,
+    generatedAppId: APP_ID,
+    generationRunId: GENERATION_RUN_ID,
+    attemptNumber: 1,
+    targetGateId: 'gate-2',
+    status: 'running',
+    failureSummary: '静态合约检查失败。',
+    changeSummary: null,
+    verificationSummary: null,
+    startedAt: NOW,
+    completedAt: null,
     createdBy: USER_ID,
     createdAt: NOW,
     updatedAt: NOW,
@@ -468,9 +520,201 @@ describe('GeneratedAppService', () => {
     );
   });
 
+  it('创建和更新生成运行台账时应保留预算、状态和失败原因', async () => {
+    const app = createGeneratedApp();
+    const run = createGeneratedAppGenerationRun();
+    const completedRun = createGeneratedAppGenerationRun({
+      status: 'failed',
+      failureReason: 'gate-2 多次修复后仍失败。',
+      completedAt: NOW,
+    });
+    const insertChain = createInsertReturningChain([run]);
+    const updateChain = createUpdateReturningChain([completedRun]);
+    mockTenantDb.select.mockReturnValueOnce(createSelectChain([app]));
+    mockTenantDb.insert.mockReturnValueOnce(insertChain);
+    mockTenantDb.update.mockReturnValueOnce(updateChain);
+
+    const created = await service.createGenerationRun(
+      TENANT_ID,
+      USER_ID,
+      APP_ID,
+      {
+        runNumber: 1,
+        status: 'running',
+        triggerSource: 'manual',
+        maxRepairAttempts: 3,
+        maxRuntimeSeconds: 1800,
+        summary: '开始自动开发测试循环。',
+        startedAt: NOW.toISOString(),
+      },
+    );
+    const updated = await service.updateGenerationRun(
+      TENANT_ID,
+      APP_ID,
+      GENERATION_RUN_ID,
+      {
+        status: 'failed',
+        failureReason: 'gate-2 多次修复后仍失败。',
+        completedAt: NOW.toISOString(),
+      },
+    );
+
+    expect(insertChain.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: TENANT_ID,
+        generatedAppId: APP_ID,
+        runNumber: 1,
+        status: 'running',
+        triggerSource: 'manual',
+        maxRepairAttempts: 3,
+        maxRuntimeSeconds: 1800,
+        createdBy: USER_ID,
+      }),
+    );
+    expect(updateChain.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'failed',
+        failureReason: 'gate-2 多次修复后仍失败。',
+        completedAt: NOW,
+        updatedAt: expect.any(Date),
+      }),
+    );
+    expect(created).toEqual(
+      expect.objectContaining({
+        id: GENERATION_RUN_ID,
+        status: 'running',
+      }),
+    );
+    expect(updated).toEqual(
+      expect.objectContaining({
+        id: GENERATION_RUN_ID,
+        status: 'failed',
+        failureReason: 'gate-2 多次修复后仍失败。',
+      }),
+    );
+  });
+
+  it('创建和更新修复尝试台账时应绑定生成运行', async () => {
+    const generationRun = createGeneratedAppGenerationRun();
+    const repairAttempt = createGeneratedAppRepairAttempt();
+    const completedAttempt = createGeneratedAppRepairAttempt({
+      status: 'completed',
+      changeSummary: '修复 TypeScript 类型错误。',
+      verificationSummary: 'gate-2 重新运行通过。',
+      completedAt: NOW,
+    });
+    const insertChain = createInsertReturningChain([repairAttempt]);
+    const updateChain = createUpdateReturningChain([completedAttempt]);
+    mockTenantDb.select.mockReturnValueOnce(createSelectChain([generationRun]));
+    mockTenantDb.insert.mockReturnValueOnce(insertChain);
+    mockTenantDb.update.mockReturnValueOnce(updateChain);
+
+    const created = await service.createRepairAttempt(
+      TENANT_ID,
+      USER_ID,
+      APP_ID,
+      GENERATION_RUN_ID,
+      {
+        attemptNumber: 1,
+        targetGateId: 'gate-2',
+        status: 'running',
+        failureSummary: '静态合约检查失败。',
+        startedAt: NOW.toISOString(),
+      },
+    );
+    const updated = await service.updateRepairAttempt(
+      TENANT_ID,
+      APP_ID,
+      GENERATION_RUN_ID,
+      REPAIR_ATTEMPT_ID,
+      {
+        status: 'completed',
+        changeSummary: '修复 TypeScript 类型错误。',
+        verificationSummary: 'gate-2 重新运行通过。',
+        completedAt: NOW.toISOString(),
+      },
+    );
+
+    expect(insertChain.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: TENANT_ID,
+        generatedAppId: APP_ID,
+        generationRunId: GENERATION_RUN_ID,
+        attemptNumber: 1,
+        targetGateId: 'gate-2',
+        status: 'running',
+        createdBy: USER_ID,
+      }),
+    );
+    expect(updateChain.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'completed',
+        changeSummary: '修复 TypeScript 类型错误。',
+        verificationSummary: 'gate-2 重新运行通过。',
+        completedAt: NOW,
+      }),
+    );
+    expect(created.generationRunId).toBe(GENERATION_RUN_ID);
+    expect(updated.status).toBe('completed');
+  });
+
+  it('创建者可以分页筛选生成运行和修复尝试台账', async () => {
+    const generationRun = createGeneratedAppGenerationRun();
+    const repairAttempt = createGeneratedAppRepairAttempt({
+      status: 'failed',
+      targetGateId: 'gate-2',
+    });
+    const runListChain = createSelectPageChain([generationRun]);
+    const runCountChain = createCountChain(1);
+    const repairListChain = createSelectPageChain([repairAttempt]);
+    const repairCountChain = createCountChain(1);
+    mockTenantDb.select
+      .mockReturnValueOnce(runListChain)
+      .mockReturnValueOnce(runCountChain)
+      .mockReturnValueOnce(repairListChain)
+      .mockReturnValueOnce(repairCountChain);
+
+    const runs = await service.listGenerationRuns(TENANT_ID, APP_ID, {
+      page: 1,
+      pageSize: 20,
+      status: 'running',
+    });
+    const repairs = await service.listRepairAttempts(
+      TENANT_ID,
+      APP_ID,
+      GENERATION_RUN_ID,
+      {
+        page: 1,
+        pageSize: 20,
+        status: 'failed',
+        targetGateId: 'gate-2',
+      },
+    );
+
+    expect(runListChain.where).toHaveBeenCalledTimes(1);
+    expect(repairListChain.where).toHaveBeenCalledTimes(1);
+    expect(runs.data).toEqual([
+      expect.objectContaining({
+        id: GENERATION_RUN_ID,
+        appId: APP_ID,
+        status: 'running',
+      }),
+    ]);
+    expect(repairs.data).toEqual([
+      expect.objectContaining({
+        id: REPAIR_ATTEMPT_ID,
+        generationRunId: GENERATION_RUN_ID,
+        targetGateId: 'gate-2',
+      }),
+    ]);
+  });
+
   it('记录单次门禁运行时应写入证据并同步当前 gateResults/readiness', async () => {
     const app = createGeneratedApp();
-    const gateRun = createGeneratedAppGateRun();
+    const gateRun = createGeneratedAppGateRun({
+      generationRunId: GENERATION_RUN_ID,
+      repairAttemptId: REPAIR_ATTEMPT_ID,
+    });
     const insertChain = createInsertReturningChain([gateRun]);
     const updateChain = createUpdateReturningChain([
       createGeneratedApp({
@@ -488,12 +732,21 @@ describe('GeneratedAppService', () => {
         ),
       }),
     ]);
-    mockTenantDb.select.mockReturnValueOnce(createSelectChain([app]));
+    mockTenantDb.select
+      .mockReturnValueOnce(createSelectChain([app]))
+      .mockReturnValueOnce(
+        createSelectChain([createGeneratedAppGenerationRun()]),
+      )
+      .mockReturnValueOnce(
+        createSelectChain([createGeneratedAppRepairAttempt()]),
+      );
     mockTenantDb.insert.mockReturnValueOnce(insertChain);
     mockTenantDb.update.mockReturnValueOnce(updateChain);
 
     const response = await service.recordGateRun(TENANT_ID, USER_ID, APP_ID, {
       gateId: 'gate-1',
+      generationRunId: GENERATION_RUN_ID,
+      repairAttemptId: REPAIR_ATTEMPT_ID,
       attemptNumber: 1,
       status: 'passed',
       summary: gateRun.summary,
@@ -506,6 +759,8 @@ describe('GeneratedAppService', () => {
       expect.objectContaining({
         tenantId: TENANT_ID,
         generatedAppId: APP_ID,
+        generationRunId: GENERATION_RUN_ID,
+        repairAttemptId: REPAIR_ATTEMPT_ID,
         gateId: 'gate-1',
         gateOrder: 1,
         gateName: '架构计划门禁',

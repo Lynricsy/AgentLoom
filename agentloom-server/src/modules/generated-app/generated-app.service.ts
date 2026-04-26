@@ -9,32 +9,46 @@ import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import * as schema from '../../database/schema';
 import type {
   GeneratedApp,
+  GeneratedAppGenerationRun,
   GeneratedAppGateRun,
   GeneratedAppSpec,
   GeneratedAppGateResult,
   GeneratedAppPreview,
   GeneratedAppReadiness,
+  GeneratedAppRepairAttempt,
   GeneratedAppStatus,
   GeneratedAppSubmission,
 } from '../../database/schema';
 import {
+  CreateGeneratedAppGenerationRunSchema,
+  type CreateGeneratedAppGenerationRunDtoType,
   CreateGeneratedAppGateRunSchema,
   type CreateGeneratedAppGateRunDtoType,
+  CreateGeneratedAppRepairAttemptSchema,
+  type CreateGeneratedAppRepairAttemptDtoType,
   type CreateGeneratedAppSubmissionDtoType,
   type CreateGeneratedAppDtoType,
   type DeleteGeneratedAppSubmissionsResponseDto,
   type DeleteGeneratedAppSubmissionsDtoType,
+  type GeneratedAppGenerationRunResponseDto,
   type GeneratedAppGateRunResponseDto,
+  type GeneratedAppRepairAttemptResponseDto,
   type GeneratedAppResponseDto,
   type GeneratedAppSubmissionResponseDto,
   type PublicGeneratedAppSubmissionResponseDto,
   type PublicGeneratedAppResponseDto,
+  type QueryGeneratedAppGenerationRunsDtoType,
   type QueryGeneratedAppGateRunsDtoType,
+  type QueryGeneratedAppRepairAttemptsDtoType,
   type QueryGeneratedAppSubmissionsDtoType,
   type QueryGeneratedAppsDtoType,
   RecordGeneratedAppGateResultsSchema,
   type RecordGeneratedAppGateRunResponseDto,
   type RecordGeneratedAppGateResultsDtoType,
+  UpdateGeneratedAppGenerationRunSchema,
+  type UpdateGeneratedAppGenerationRunDtoType,
+  UpdateGeneratedAppRepairAttemptSchema,
+  type UpdateGeneratedAppRepairAttemptDtoType,
 } from './dto';
 import {
   createInitialGeneratedAppGateResults,
@@ -45,8 +59,10 @@ import {
 } from './generated-app.gates';
 import {
   GeneratedAppGateDefinitionNotFoundException,
+  GeneratedAppGenerationRunNotFoundException,
   GeneratedAppNotFoundException,
   GeneratedAppPublicShareNotReadyException,
+  GeneratedAppRepairAttemptNotFoundException,
   GeneratedAppSubmissionNotFoundException,
 } from './generated-app.exceptions';
 
@@ -196,6 +212,311 @@ export class GeneratedAppService {
     return this.toResponseDto(updated);
   }
 
+  async listGenerationRuns(
+    tenantId: string,
+    appId: string,
+    query: QueryGeneratedAppGenerationRunsDtoType,
+  ): Promise<{
+    data: GeneratedAppGenerationRunResponseDto[];
+    meta: {
+      total: number;
+      page: number;
+      pageSize: number;
+      totalPages: number;
+    };
+  }> {
+    const page = query.page;
+    const pageSize = query.pageSize;
+    const offset = (page - 1) * pageSize;
+    const baseFilters = [
+      eq(schema.generatedAppGenerationRuns.tenantId, tenantId),
+      eq(schema.generatedAppGenerationRuns.generatedAppId, appId),
+    ];
+
+    if (query.status) {
+      baseFilters.push(
+        eq(schema.generatedAppGenerationRuns.status, query.status),
+      );
+    }
+
+    const filters = and(...baseFilters);
+    const [runs, countRows] = await Promise.all([
+      this.tenantDb
+        .select()
+        .from(schema.generatedAppGenerationRuns)
+        .where(filters)
+        .orderBy(desc(schema.generatedAppGenerationRuns.createdAt))
+        .limit(pageSize)
+        .offset(offset),
+      this.tenantDb
+        .select({ count: sql<number>`count(*)::int` })
+        .from(schema.generatedAppGenerationRuns)
+        .where(filters),
+    ]);
+
+    const total = countRows[0]?.count ?? 0;
+
+    return {
+      data: runs.map((run) => this.toGenerationRunResponseDto(run)),
+      meta: {
+        total,
+        page,
+        pageSize,
+        totalPages: Math.ceil(total / pageSize),
+      },
+    };
+  }
+
+  async createGenerationRun(
+    tenantId: string,
+    userId: string,
+    appId: string,
+    dto: CreateGeneratedAppGenerationRunDtoType,
+  ): Promise<GeneratedAppGenerationRunResponseDto> {
+    await this.findGeneratedAppRecord(tenantId, appId);
+    const parsed = CreateGeneratedAppGenerationRunSchema.parse(dto);
+    const startedAt = parsed.startedAt
+      ? new Date(parsed.startedAt)
+      : new Date();
+    const completedAt =
+      parsed.completedAt === undefined
+        ? null
+        : parsed.completedAt === null
+          ? null
+          : new Date(parsed.completedAt);
+
+    const [run] = await this.tenantDb
+      .insert(schema.generatedAppGenerationRuns)
+      .values({
+        tenantId,
+        generatedAppId: appId,
+        runNumber: parsed.runNumber,
+        status: parsed.status,
+        triggerSource: parsed.triggerSource,
+        maxRepairAttempts: parsed.maxRepairAttempts,
+        maxRuntimeSeconds: parsed.maxRuntimeSeconds,
+        summary: parsed.summary,
+        failureReason: parsed.failureReason ?? null,
+        startedAt,
+        completedAt,
+        createdBy: userId,
+      })
+      .returning();
+
+    return this.toGenerationRunResponseDto(run);
+  }
+
+  async updateGenerationRun(
+    tenantId: string,
+    appId: string,
+    runId: string,
+    dto: UpdateGeneratedAppGenerationRunDtoType,
+  ): Promise<GeneratedAppGenerationRunResponseDto> {
+    const parsed = UpdateGeneratedAppGenerationRunSchema.parse(dto);
+    const updatePayload: Partial<schema.NewGeneratedAppGenerationRun> = {
+      updatedAt: new Date(),
+    };
+
+    if (parsed.status !== undefined) {
+      updatePayload.status = parsed.status;
+    }
+
+    if (parsed.summary !== undefined) {
+      updatePayload.summary = parsed.summary;
+    }
+
+    if (parsed.failureReason !== undefined) {
+      updatePayload.failureReason = parsed.failureReason;
+    }
+
+    if (parsed.startedAt !== undefined) {
+      updatePayload.startedAt = new Date(parsed.startedAt);
+    }
+
+    if (parsed.completedAt !== undefined) {
+      updatePayload.completedAt =
+        parsed.completedAt === null ? null : new Date(parsed.completedAt);
+    }
+
+    const [updated] = await this.tenantDb
+      .update(schema.generatedAppGenerationRuns)
+      .set(updatePayload)
+      .where(
+        and(
+          eq(schema.generatedAppGenerationRuns.id, runId),
+          eq(schema.generatedAppGenerationRuns.tenantId, tenantId),
+          eq(schema.generatedAppGenerationRuns.generatedAppId, appId),
+        ),
+      )
+      .returning();
+
+    if (!updated) {
+      throw new GeneratedAppGenerationRunNotFoundException(runId);
+    }
+
+    return this.toGenerationRunResponseDto(updated);
+  }
+
+  async listRepairAttempts(
+    tenantId: string,
+    appId: string,
+    runId: string,
+    query: QueryGeneratedAppRepairAttemptsDtoType,
+  ): Promise<{
+    data: GeneratedAppRepairAttemptResponseDto[];
+    meta: {
+      total: number;
+      page: number;
+      pageSize: number;
+      totalPages: number;
+    };
+  }> {
+    const page = query.page;
+    const pageSize = query.pageSize;
+    const offset = (page - 1) * pageSize;
+    const baseFilters = [
+      eq(schema.generatedAppRepairAttempts.tenantId, tenantId),
+      eq(schema.generatedAppRepairAttempts.generatedAppId, appId),
+      eq(schema.generatedAppRepairAttempts.generationRunId, runId),
+    ];
+
+    if (query.status) {
+      baseFilters.push(
+        eq(schema.generatedAppRepairAttempts.status, query.status),
+      );
+    }
+
+    if (query.targetGateId) {
+      baseFilters.push(
+        eq(schema.generatedAppRepairAttempts.targetGateId, query.targetGateId),
+      );
+    }
+
+    const filters = and(...baseFilters);
+    const [attempts, countRows] = await Promise.all([
+      this.tenantDb
+        .select()
+        .from(schema.generatedAppRepairAttempts)
+        .where(filters)
+        .orderBy(desc(schema.generatedAppRepairAttempts.createdAt))
+        .limit(pageSize)
+        .offset(offset),
+      this.tenantDb
+        .select({ count: sql<number>`count(*)::int` })
+        .from(schema.generatedAppRepairAttempts)
+        .where(filters),
+    ]);
+
+    const total = countRows[0]?.count ?? 0;
+
+    return {
+      data: attempts.map((attempt) => this.toRepairAttemptResponseDto(attempt)),
+      meta: {
+        total,
+        page,
+        pageSize,
+        totalPages: Math.ceil(total / pageSize),
+      },
+    };
+  }
+
+  async createRepairAttempt(
+    tenantId: string,
+    userId: string,
+    appId: string,
+    runId: string,
+    dto: CreateGeneratedAppRepairAttemptDtoType,
+  ): Promise<GeneratedAppRepairAttemptResponseDto> {
+    await this.findGenerationRunRecord(tenantId, appId, runId);
+    const parsed = CreateGeneratedAppRepairAttemptSchema.parse(dto);
+    const startedAt = parsed.startedAt
+      ? new Date(parsed.startedAt)
+      : new Date();
+    const completedAt =
+      parsed.completedAt === undefined
+        ? null
+        : parsed.completedAt === null
+          ? null
+          : new Date(parsed.completedAt);
+
+    const [attempt] = await this.tenantDb
+      .insert(schema.generatedAppRepairAttempts)
+      .values({
+        tenantId,
+        generatedAppId: appId,
+        generationRunId: runId,
+        attemptNumber: parsed.attemptNumber,
+        targetGateId: parsed.targetGateId,
+        status: parsed.status,
+        failureSummary: parsed.failureSummary,
+        changeSummary: parsed.changeSummary ?? null,
+        verificationSummary: parsed.verificationSummary ?? null,
+        startedAt,
+        completedAt,
+        createdBy: userId,
+      })
+      .returning();
+
+    return this.toRepairAttemptResponseDto(attempt);
+  }
+
+  async updateRepairAttempt(
+    tenantId: string,
+    appId: string,
+    runId: string,
+    repairAttemptId: string,
+    dto: UpdateGeneratedAppRepairAttemptDtoType,
+  ): Promise<GeneratedAppRepairAttemptResponseDto> {
+    const parsed = UpdateGeneratedAppRepairAttemptSchema.parse(dto);
+    const updatePayload: Partial<schema.NewGeneratedAppRepairAttempt> = {
+      updatedAt: new Date(),
+    };
+
+    if (parsed.status !== undefined) {
+      updatePayload.status = parsed.status;
+    }
+
+    if (parsed.failureSummary !== undefined) {
+      updatePayload.failureSummary = parsed.failureSummary;
+    }
+
+    if (parsed.changeSummary !== undefined) {
+      updatePayload.changeSummary = parsed.changeSummary;
+    }
+
+    if (parsed.verificationSummary !== undefined) {
+      updatePayload.verificationSummary = parsed.verificationSummary;
+    }
+
+    if (parsed.startedAt !== undefined) {
+      updatePayload.startedAt = new Date(parsed.startedAt);
+    }
+
+    if (parsed.completedAt !== undefined) {
+      updatePayload.completedAt =
+        parsed.completedAt === null ? null : new Date(parsed.completedAt);
+    }
+
+    const [updated] = await this.tenantDb
+      .update(schema.generatedAppRepairAttempts)
+      .set(updatePayload)
+      .where(
+        and(
+          eq(schema.generatedAppRepairAttempts.id, repairAttemptId),
+          eq(schema.generatedAppRepairAttempts.tenantId, tenantId),
+          eq(schema.generatedAppRepairAttempts.generatedAppId, appId),
+          eq(schema.generatedAppRepairAttempts.generationRunId, runId),
+        ),
+      )
+      .returning();
+
+    if (!updated) {
+      throw new GeneratedAppRepairAttemptNotFoundException(repairAttemptId);
+    }
+
+    return this.toRepairAttemptResponseDto(updated);
+  }
+
   async listGateRuns(
     tenantId: string,
     appId: string,
@@ -223,6 +544,18 @@ export class GeneratedAppService {
 
     if (query.status) {
       baseFilters.push(eq(schema.generatedAppGateRuns.status, query.status));
+    }
+
+    if (query.generationRunId) {
+      baseFilters.push(
+        eq(schema.generatedAppGateRuns.generationRunId, query.generationRunId),
+      );
+    }
+
+    if (query.repairAttemptId) {
+      baseFilters.push(
+        eq(schema.generatedAppGateRuns.repairAttemptId, query.repairAttemptId),
+      );
     }
 
     const filters = and(...baseFilters);
@@ -267,6 +600,31 @@ export class GeneratedAppService {
       throw new GeneratedAppGateDefinitionNotFoundException(parsed.gateId);
     }
 
+    if (parsed.generationRunId) {
+      await this.findGenerationRunRecord(
+        tenantId,
+        appId,
+        parsed.generationRunId,
+      );
+    }
+
+    if (parsed.repairAttemptId) {
+      const repairAttempt = await this.findRepairAttemptRecord(
+        tenantId,
+        appId,
+        parsed.repairAttemptId,
+      );
+
+      if (
+        parsed.generationRunId &&
+        repairAttempt.generationRunId !== parsed.generationRunId
+      ) {
+        throw new GeneratedAppRepairAttemptNotFoundException(
+          parsed.repairAttemptId,
+        );
+      }
+    }
+
     const now = new Date();
     const startedAt = parsed.startedAt ? new Date(parsed.startedAt) : now;
     const completedAt =
@@ -283,6 +641,8 @@ export class GeneratedAppService {
       .values({
         tenantId,
         generatedAppId: appId,
+        generationRunId: parsed.generationRunId ?? null,
+        repairAttemptId: parsed.repairAttemptId ?? null,
         gateId: gateDefinition.gateId,
         gateOrder: gateDefinition.order,
         gateName: gateDefinition.name,
@@ -719,6 +1079,54 @@ export class GeneratedAppService {
     return app;
   }
 
+  private async findGenerationRunRecord(
+    tenantId: string,
+    appId: string,
+    runId: string,
+  ): Promise<GeneratedAppGenerationRun> {
+    const [run] = await this.tenantDb
+      .select()
+      .from(schema.generatedAppGenerationRuns)
+      .where(
+        and(
+          eq(schema.generatedAppGenerationRuns.id, runId),
+          eq(schema.generatedAppGenerationRuns.tenantId, tenantId),
+          eq(schema.generatedAppGenerationRuns.generatedAppId, appId),
+        ),
+      )
+      .limit(1);
+
+    if (!run) {
+      throw new GeneratedAppGenerationRunNotFoundException(runId);
+    }
+
+    return run;
+  }
+
+  private async findRepairAttemptRecord(
+    tenantId: string,
+    appId: string,
+    repairAttemptId: string,
+  ): Promise<GeneratedAppRepairAttempt> {
+    const [attempt] = await this.tenantDb
+      .select()
+      .from(schema.generatedAppRepairAttempts)
+      .where(
+        and(
+          eq(schema.generatedAppRepairAttempts.id, repairAttemptId),
+          eq(schema.generatedAppRepairAttempts.tenantId, tenantId),
+          eq(schema.generatedAppRepairAttempts.generatedAppId, appId),
+        ),
+      )
+      .limit(1);
+
+    if (!attempt) {
+      throw new GeneratedAppRepairAttemptNotFoundException(repairAttemptId);
+    }
+
+    return attempt;
+  }
+
   private async findPublicGeneratedAppRecord(
     token: string,
   ): Promise<GeneratedApp> {
@@ -846,6 +1254,8 @@ export class GeneratedAppService {
       id: gateRun.id,
       tenantId: gateRun.tenantId,
       appId: gateRun.generatedAppId,
+      generationRunId: gateRun.generationRunId,
+      repairAttemptId: gateRun.repairAttemptId,
       gateId: gateRun.gateId,
       gateOrder: gateRun.gateOrder,
       gateName: gateRun.gateName,
@@ -861,6 +1271,50 @@ export class GeneratedAppService {
       createdBy: gateRun.createdBy,
       createdAt: gateRun.createdAt,
       updatedAt: gateRun.updatedAt,
+    };
+  }
+
+  private toGenerationRunResponseDto(
+    run: GeneratedAppGenerationRun,
+  ): GeneratedAppGenerationRunResponseDto {
+    return {
+      id: run.id,
+      tenantId: run.tenantId,
+      appId: run.generatedAppId,
+      runNumber: run.runNumber,
+      status: run.status,
+      triggerSource: run.triggerSource,
+      maxRepairAttempts: run.maxRepairAttempts,
+      maxRuntimeSeconds: run.maxRuntimeSeconds,
+      summary: run.summary,
+      failureReason: run.failureReason,
+      startedAt: run.startedAt,
+      completedAt: run.completedAt,
+      createdBy: run.createdBy,
+      createdAt: run.createdAt,
+      updatedAt: run.updatedAt,
+    };
+  }
+
+  private toRepairAttemptResponseDto(
+    attempt: GeneratedAppRepairAttempt,
+  ): GeneratedAppRepairAttemptResponseDto {
+    return {
+      id: attempt.id,
+      tenantId: attempt.tenantId,
+      appId: attempt.generatedAppId,
+      generationRunId: attempt.generationRunId,
+      attemptNumber: attempt.attemptNumber,
+      targetGateId: attempt.targetGateId,
+      status: attempt.status,
+      failureSummary: attempt.failureSummary,
+      changeSummary: attempt.changeSummary,
+      verificationSummary: attempt.verificationSummary,
+      startedAt: attempt.startedAt,
+      completedAt: attempt.completedAt,
+      createdBy: attempt.createdBy,
+      createdAt: attempt.createdAt,
+      updatedAt: attempt.updatedAt,
     };
   }
 

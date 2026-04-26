@@ -46,6 +46,30 @@ export const generatedAppGateRunStatusEnum = pgEnum(
 export type GeneratedAppGateRunStatus =
   (typeof generatedAppGateRunStatusEnum.enumValues)[number];
 
+export const generatedAppGenerationRunStatusEnum = pgEnum(
+  'generated_app_generation_run_status',
+  ['queued', 'running', 'repairing', 'passed', 'failed', 'cancelled'],
+);
+
+export type GeneratedAppGenerationRunStatus =
+  (typeof generatedAppGenerationRunStatusEnum.enumValues)[number];
+
+export const generatedAppGenerationRunTriggerEnum = pgEnum(
+  'generated_app_generation_run_trigger',
+  ['initial', 'manual', 'retry', 'system'],
+);
+
+export type GeneratedAppGenerationRunTrigger =
+  (typeof generatedAppGenerationRunTriggerEnum.enumValues)[number];
+
+export const generatedAppRepairAttemptStatusEnum = pgEnum(
+  'generated_app_repair_attempt_status',
+  ['planned', 'running', 'completed', 'failed', 'skipped'],
+);
+
+export type GeneratedAppRepairAttemptStatus =
+  (typeof generatedAppRepairAttemptStatusEnum.enumValues)[number];
+
 export type GeneratedAppReadinessState =
   | 'preview'
   | 'trial'
@@ -320,6 +344,154 @@ export type GeneratedAppSubmission =
 export type NewGeneratedAppSubmission =
   typeof generatedAppSubmissions.$inferInsert;
 
+export const generatedAppGenerationRuns = pgTable(
+  'generated_app_generation_runs',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`uuid_generate_v7()`),
+
+    tenantId: uuid('tenant_id').notNull(),
+
+    generatedAppId: uuid('generated_app_id')
+      .notNull()
+      .references(() => generatedApps.id, { onDelete: 'cascade' }),
+
+    runNumber: integer('run_number').notNull().default(1),
+
+    status: generatedAppGenerationRunStatusEnum('status')
+      .notNull()
+      .default('running'),
+
+    triggerSource: generatedAppGenerationRunTriggerEnum('trigger_source')
+      .notNull()
+      .default('manual'),
+
+    maxRepairAttempts: integer('max_repair_attempts').notNull().default(3),
+
+    maxRuntimeSeconds: integer('max_runtime_seconds').notNull().default(1800),
+
+    summary: text('summary').notNull(),
+
+    failureReason: text('failure_reason'),
+
+    startedAt: timestamp('started_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+
+    createdBy: uuid('created_by').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index('idx_generated_app_generation_runs_tenant_app_created').on(
+      table.tenantId,
+      table.generatedAppId,
+      table.createdAt,
+    ),
+    index('idx_generated_app_generation_runs_tenant_app_status').on(
+      table.tenantId,
+      table.generatedAppId,
+      table.status,
+    ),
+    index('idx_generated_app_generation_runs_tenant_app_run_number').on(
+      table.tenantId,
+      table.generatedAppId,
+      table.runNumber,
+    ),
+    ...createDirectTenantPolicies('generated_app_generation_runs'),
+  ],
+);
+
+export type GeneratedAppGenerationRun =
+  typeof generatedAppGenerationRuns.$inferSelect;
+export type NewGeneratedAppGenerationRun =
+  typeof generatedAppGenerationRuns.$inferInsert;
+
+export const generatedAppRepairAttempts = pgTable(
+  'generated_app_repair_attempts',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`uuid_generate_v7()`),
+
+    tenantId: uuid('tenant_id').notNull(),
+
+    generatedAppId: uuid('generated_app_id')
+      .notNull()
+      .references(() => generatedApps.id, { onDelete: 'cascade' }),
+
+    generationRunId: uuid('generation_run_id')
+      .notNull()
+      .references(() => generatedAppGenerationRuns.id, { onDelete: 'cascade' }),
+
+    attemptNumber: integer('attempt_number').notNull().default(1),
+
+    targetGateId: varchar('target_gate_id', { length: 64 }).notNull(),
+
+    status: generatedAppRepairAttemptStatusEnum('status')
+      .notNull()
+      .default('running'),
+
+    failureSummary: text('failure_summary').notNull(),
+
+    changeSummary: text('change_summary'),
+
+    verificationSummary: text('verification_summary'),
+
+    startedAt: timestamp('started_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+
+    createdBy: uuid('created_by').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index('idx_generated_app_repair_attempts_tenant_app_run').on(
+      table.tenantId,
+      table.generatedAppId,
+      table.generationRunId,
+    ),
+    index('idx_generated_app_repair_attempts_tenant_app_gate').on(
+      table.tenantId,
+      table.generatedAppId,
+      table.targetGateId,
+    ),
+    index('idx_generated_app_repair_attempts_tenant_app_status').on(
+      table.tenantId,
+      table.generatedAppId,
+      table.status,
+    ),
+    ...createDirectTenantPolicies('generated_app_repair_attempts'),
+  ],
+);
+
+export type GeneratedAppRepairAttempt =
+  typeof generatedAppRepairAttempts.$inferSelect;
+export type NewGeneratedAppRepairAttempt =
+  typeof generatedAppRepairAttempts.$inferInsert;
+
 export const generatedAppGateRuns = pgTable(
   'generated_app_gate_runs',
   {
@@ -332,6 +504,16 @@ export const generatedAppGateRuns = pgTable(
     generatedAppId: uuid('generated_app_id')
       .notNull()
       .references(() => generatedApps.id, { onDelete: 'cascade' }),
+
+    generationRunId: uuid('generation_run_id').references(
+      () => generatedAppGenerationRuns.id,
+      { onDelete: 'set null' },
+    ),
+
+    repairAttemptId: uuid('repair_attempt_id').references(
+      () => generatedAppRepairAttempts.id,
+      { onDelete: 'set null' },
+    ),
 
     gateId: varchar('gate_id', { length: 64 }).notNull(),
 
@@ -379,6 +561,14 @@ export const generatedAppGateRuns = pgTable(
       table.tenantId,
       table.generatedAppId,
       table.createdAt,
+    ),
+    index('idx_generated_app_gate_runs_generation_run').on(
+      table.tenantId,
+      table.generationRunId,
+    ),
+    index('idx_generated_app_gate_runs_repair_attempt').on(
+      table.tenantId,
+      table.repairAttemptId,
     ),
     index('idx_generated_app_gate_runs_tenant_app_gate').on(
       table.tenantId,

@@ -35,6 +35,28 @@ export class GeneratedAppGateDefinitionNotFoundException extends DomainException
   }
 }
 
+export class GeneratedAppGenerationRunNotFoundException extends DomainException {
+  constructor(id: string) {
+    super({
+      type: 'https://agentloom.dev/errors/generated-app-generation-run-not-found',
+      title: '生成应用运行台账不存在',
+      status: HttpStatus.NOT_FOUND,
+      detail: `生成应用运行台账 ${id} 不存在或无权访问`,
+    });
+  }
+}
+
+export class GeneratedAppRepairAttemptNotFoundException extends DomainException {
+  constructor(id: string) {
+    super({
+      type: 'https://agentloom.dev/errors/generated-app-repair-attempt-not-found',
+      title: '生成应用修复尝试不存在',
+      status: HttpStatus.NOT_FOUND,
+      detail: `生成应用修复尝试 ${id} 不存在或无权访问`,
+    });
+  }
+}
+
 export class GeneratedAppSubmissionNotFoundException extends DomainException {
   constructor(id: string) {
     super({
