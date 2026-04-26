@@ -19,6 +19,12 @@
   - `listGeneratedApps({ page?, pageSize?, status? })`
   - `getGeneratedApp(appId)`
   - `getGeneratedAppPublicRuntime(token)`
+  - `listGeneratedAppSubmissions(appId, { page?, pageSize?, status? })`
+  - `getGeneratedAppSubmission(appId, submissionId)`
+  - `deleteGeneratedAppSubmission(appId, submissionId)`
+  - `deleteGeneratedAppSubmissions(appId, ids)`
+  - `createGeneratedAppPublicSubmission(token, payload)`
+  - `getGeneratedAppPublicSubmission(token, submissionId)`
   - `recordGeneratedAppGateResults(appId, payload)`
   - `enableGeneratedAppPublicShare(appId)`
   - `regenerateGeneratedAppPublicShare(appId)`
@@ -28,7 +34,12 @@
   - `generatedAppKeys.lists()`
   - `generatedAppKeys.list(params)`
   - `generatedAppKeys.detail(appId)`
+  - `generatedAppKeys.submissionLists(appId)`
+  - `generatedAppKeys.submissionList(appId, params)`
+  - `generatedAppKeys.submissionDetails(appId)`
+  - `generatedAppKeys.submissionDetail(appId, submissionId)`
   - `generatedAppKeys.publicRuntime(token)`
+  - `generatedAppKeys.publicSubmission(token, submissionId)`
 
 ### 3. Contracts
 
@@ -52,6 +63,18 @@ app.readiness.state === 'publish_candidate' &&
   - Public runtime pages must not show `gateResults`, `readiness`, source artifact URLs, test report URLs, plugin permission details, public share tokens, or creator-only pages.
   - `getGeneratedAppPublicRuntime(token)` must map the response through a public whitelist before returning data to components. Allowed fields are `token`, `appId`, `title`, `description`, `dataUseNotice`, limited `appSpec` (`version`, `appName`, `summary`, `userGoal`, `actors`, `pages[].id/name/purpose`), `runtimeSurface.kind`, `runtimeSurface.previewUrl`, and `createdAt`.
   - Even though the API client may keep `token` for cache identity/debugging, public runtime components must not render token values or a derived access identifier.
+- Creator submissions UI:
+  - `/generated-apps/$appId` contains a creator-only submissions section backed by `GET /generated-apps/:appId/submissions`.
+  - The submissions list supports pagination and optional `status` filter using the backend submission status union: `received | running | completed | failed`.
+  - Each row surfaces status, anonymous session id, creation time, and compact summaries for `input`, `result`, `report`, and `errorMessage`.
+  - Selecting a row reads `GET /generated-apps/:appId/submissions/:submissionId` and shows read-only JSON panels for `input`, `result`, and `report`, plus an error text panel.
+  - Delete actions must require explicit confirmation, call the creator delete APIs, show toast feedback, and invalidate submission list/detail query keys.
+  - Batch delete may be exposed through selection checkboxes and must call `POST /generated-apps/:appId/submissions/delete` with `{ ids }`.
+  - Creator responses may contain `publicShareToken` for audit, but the Studio submissions UI must not render token values in list or detail by default.
+- Public submissions API boundary:
+  - Public submission functions may exist in the generated-app API layer for future custom generated frontends.
+  - The built-in `GeneratedAppPublicRuntimePage` must not grow a fixed form/template submission UI. End-user submission UX belongs to generated/custom runtime surfaces, not a hardcoded Studio public page.
+  - Public submission responses must stay separate from creator submission responses and must not expose tenant id, public token, readiness, gate evidence, source/test artifacts, or plugin/internal fields.
 - Public route shell:
   - Static public routes (`/login`, `/register`, `/auth/callback`) must be exact matches.
   - Token-style public routes may use explicit prefixes only (`/s/`, `/generated-apps/public/`).
@@ -74,6 +97,11 @@ app.readiness.state === 'publish_candidate' &&
 | `readiness.state='publish_candidate'` and `canCreatePublicShare=true` | Allow enable/regenerate share mutations |
 | `publicShareEnabled=true` but readiness is not eligible | Treat as stale; do not show old URL or regenerate/open actions |
 | Share mutation succeeds | Update detail cache and invalidate list queries |
+| Creator submission list fetch fails | Show an error state and retry action; do not fabricate submissions |
+| Creator submission list is empty | Show an empty state, not a blank table |
+| Creator selects a submission | Fetch detail by `appId + submissionId` and render read-only `input/result/report/errorMessage` |
+| Creator deletes one submission | Confirm first, call single delete, clear selected detail if needed, invalidate submissions list/detail, and toast success/failure |
+| Creator deletes selected submissions | Confirm first, call bulk delete with `{ ids }`, clear selection/detail if needed, invalidate submissions list/detail, and toast success/failure |
 | `/generated-apps/public/:token` lookup fails | Show an inaccessible/closed public state; do not redirect to login |
 | `/login-required-private` or another same-prefix private route is visited unauthenticated | Treat as private and redirect to login |
 
@@ -82,21 +110,29 @@ app.readiness.state === 'publish_candidate' &&
 - Good: a newly created app appears in the list as preview-only, with Gate readiness summary visible and public share disabled.
 - Good: a publish candidate row enables the public-share action and mutation invalidates list queries.
 - Good: a public runtime page shows data-use notice, public AppSpec summary, and a runtime preview link without rendering Studio navigation or the token value.
+- Good: creator detail page shows submission rows and detail JSON panels without rendering `publicShareToken`.
+- Good: creator deletion uses single or batch delete API after confirmation and refreshes submission caches.
 - Base: a generated app has warning-only readiness; Studio displays trial/warning summary and keeps public share unavailable.
+- Base: a generated app has no public submissions; Studio shows an empty state and keeps the rest of the workbench usable.
 - Bad: Studio enables share because `status === 'publish_candidate'` while `readiness.canCreatePublicShare` is false.
 - Bad: Studio shows an old `publicShareUrl` because `publicShareEnabled=true` even though readiness has fallen back to `blocked`, `trial`, or unsafe `publish_candidate`.
 - Bad: Studio hides backend readiness summary and replaces it with a generic "not ready" message only.
 - Bad: Studio exposes internal test/source/plugin permission details on an end-user public runtime page.
 - Bad: Studio treats `/login-required-private` as public because `/login` was checked with `startsWith`.
+- Bad: Studio renders public share token values as a default column in the submissions table.
+- Bad: the built-in public runtime page grows a fixed generated-app form that bypasses the custom generated frontend/runtime surface.
 
 ### 6. Tests Required
 
 - API tests:
   - paths for create/list/detail/gate update/share enable/share regenerate/share disable.
+  - paths for creator submission list/detail/single delete/bulk delete.
+  - public submission create/detail helper paths if those helpers exist.
   - Generated App payload casing remains camelCase unless backend changes.
 - Query/mutation tests:
   - share enable writes the detail cache and invalidates list queries.
   - create invalidates list queries.
+  - creator submission delete mutations invalidate submission list/detail keys and clear removed detail caches.
 - Component tests:
   - `preview`, `trial`, and `blocked` disable public share and show `readiness.summary`.
   - `publish_candidate + canCreatePublicShare=false` disables public share.
@@ -104,6 +140,8 @@ app.readiness.state === 'publish_candidate' &&
   - stale enabled share (`publicShareEnabled=true` + ineligible readiness) hides old public URL and regenerate/open actions.
   - public runtime API mapping drops creator-only fields and nested source/test/plugin artifacts.
   - public runtime page renders data-use notice, limited AppSpec, optional preview link, and does not render tokens or internal fields.
+  - creator submissions panel renders list rows, detail selection, status filter, pagination, delete confirmation, empty state, and error state.
+  - detail page tests either mock the submissions hooks or assert the submissions section renders with an empty state.
 - Route/navigation smoke:
   - `/generated-apps` route is registered in the route tree.
   - `/generated-apps/public/$token` route is registered and bypasses auth shell without opening authenticated notification socket.

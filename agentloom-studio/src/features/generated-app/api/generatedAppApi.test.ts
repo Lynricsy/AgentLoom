@@ -1,16 +1,26 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
+  createGeneratedAppPublicSubmission,
   createGeneratedApp,
+  deleteGeneratedAppSubmission,
+  deleteGeneratedAppSubmissions,
   disableGeneratedAppPublicShare,
   enableGeneratedAppPublicShare,
   getGeneratedApp,
+  getGeneratedAppPublicSubmission,
+  getGeneratedAppSubmission,
   getGeneratedAppPublicRuntime,
+  listGeneratedAppSubmissions,
   listGeneratedApps,
   recordGeneratedAppGateResults,
   regenerateGeneratedAppPublicShare,
 } from './generatedAppApi'
-import type { GeneratedApp, GeneratedAppGateResult } from '../types'
+import type {
+  GeneratedApp,
+  GeneratedAppGateResult,
+  GeneratedAppSubmission,
+} from '../types'
 
 const { deleteMock, getMock, patchMock, postMock } = vi.hoisted(() => ({
   deleteMock: vi.fn(),
@@ -118,6 +128,28 @@ function makeGateResult(
   }
 }
 
+function makeSubmission(
+  overrides: Partial<GeneratedAppSubmission> = {},
+): GeneratedAppSubmission {
+  return {
+    id: 'submission-1',
+    tenantId: 'tenant-1',
+    appId: 'app-1',
+    appSpecVersion: 1,
+    publicShareToken: 'token-snapshot',
+    anonymousSessionId: 'anon-1',
+    status: 'received',
+    input: { name: '张三' },
+    result: null,
+    report: null,
+    errorMessage: null,
+    createdAt: '2026-04-25T02:00:00.000Z',
+    updatedAt: '2026-04-25T02:00:00.000Z',
+    deletedAt: null,
+    ...overrides,
+  }
+}
+
 describe('generatedAppApi', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -166,6 +198,68 @@ describe('generatedAppApi', () => {
 
     expect(getMock).toHaveBeenCalledWith('generated-apps/app-detail')
     expect(result).toEqual(app)
+  })
+
+  it('lists generated app submissions with camelCase query params', async () => {
+    const response = {
+      data: [makeSubmission({ status: 'failed' })],
+      meta: { page: 2, pageSize: 5, total: 11, totalPages: 3 },
+    }
+    getMock.mockReturnValue(mockKyJson(response))
+
+    const result = await listGeneratedAppSubmissions('app-1', {
+      page: 2,
+      pageSize: 5,
+      status: 'failed',
+    })
+
+    expect(getMock).toHaveBeenCalledWith('generated-apps/app-1/submissions', {
+      searchParams: {
+        page: '2',
+        pageSize: '5',
+        status: 'failed',
+      },
+    })
+    expect(result).toEqual(response)
+  })
+
+  it('fetches and deletes creator submission details through scoped app paths', async () => {
+    const submission = makeSubmission({ id: 'submission-detail' })
+    getMock.mockReturnValue(mockKyJson({ data: submission }))
+    deleteMock.mockReturnValue(mockKyJson({ data: { deletedCount: 1 } }))
+
+    const detail = await getGeneratedAppSubmission(
+      'app-1',
+      'submission-detail',
+    )
+    const deleted = await deleteGeneratedAppSubmission(
+      'app-1',
+      'submission-detail',
+    )
+
+    expect(getMock).toHaveBeenCalledWith(
+      'generated-apps/app-1/submissions/submission-detail',
+    )
+    expect(deleteMock).toHaveBeenCalledWith(
+      'generated-apps/app-1/submissions/submission-detail',
+    )
+    expect(detail).toEqual(submission)
+    expect(deleted).toEqual({ deletedCount: 1 })
+  })
+
+  it('bulk deletes creator submissions with the backend ids payload', async () => {
+    postMock.mockReturnValue(mockKyJson({ data: { deletedCount: 2 } }))
+
+    const result = await deleteGeneratedAppSubmissions('app-1', [
+      'submission-1',
+      'submission-2',
+    ])
+
+    expect(postMock).toHaveBeenCalledWith(
+      'generated-apps/app-1/submissions/delete',
+      { json: { ids: ['submission-1', 'submission-2'] } },
+    )
+    expect(result).toEqual({ deletedCount: 2 })
   })
 
   it('fetches public runtime surface without returning creator-only fields', async () => {
@@ -245,6 +339,50 @@ describe('generatedAppApi', () => {
     expect(result).not.toHaveProperty('publicShareToken')
     expect(result.appSpec).not.toHaveProperty('coreRequirements')
     expect(result.runtimeSurface).not.toHaveProperty('sourceArtifactUrl')
+  })
+
+  it('creates and reads public submissions without using Studio creator paths', async () => {
+    const publicSubmission = {
+      id: 'submission-public',
+      appId: 'app-public',
+      appSpecVersion: 1,
+      anonymousSessionId: 'anon-public',
+      status: 'received',
+      input: { answer: '头痛' },
+      result: null,
+      report: null,
+      errorMessage: null,
+      createdAt: '2026-04-25T02:00:00.000Z',
+      updatedAt: '2026-04-25T02:00:00.000Z',
+    }
+    postMock.mockReturnValue(mockKyJson({ data: publicSubmission }))
+    getMock.mockReturnValue(mockKyJson({ data: publicSubmission }))
+
+    const created = await createGeneratedAppPublicSubmission('token/value', {
+      anonymousSessionId: 'anon-public',
+      input: { answer: '头痛' },
+      clientContext: { viewport: 'desktop' },
+    })
+    const detail = await getGeneratedAppPublicSubmission(
+      'token/value',
+      'submission-public',
+    )
+
+    expect(postMock).toHaveBeenCalledWith(
+      'generated-apps/public/token%2Fvalue/submissions',
+      {
+        json: {
+          anonymousSessionId: 'anon-public',
+          input: { answer: '头痛' },
+          clientContext: { viewport: 'desktop' },
+        },
+      },
+    )
+    expect(getMock).toHaveBeenCalledWith(
+      'generated-apps/public/token%2Fvalue/submissions/submission-public',
+    )
+    expect(created).toEqual(publicSubmission)
+    expect(detail).toEqual(publicSubmission)
   })
 
   it('records gate results without snake-casing the backend camelCase contract', async () => {

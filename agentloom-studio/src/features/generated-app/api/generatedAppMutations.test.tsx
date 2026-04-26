@@ -5,6 +5,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   useCreateGeneratedApp,
+  useDeleteGeneratedAppSubmission,
+  useDeleteGeneratedAppSubmissions,
   useDisableGeneratedAppPublicShare,
   useEnableGeneratedAppPublicShare,
   useRegenerateGeneratedAppPublicShare,
@@ -14,12 +16,16 @@ import type { GeneratedApp } from '../types'
 
 const {
   createGeneratedAppMock,
+  deleteGeneratedAppSubmissionMock,
+  deleteGeneratedAppSubmissionsMock,
   disableGeneratedAppPublicShareMock,
   enableGeneratedAppPublicShareMock,
   recordGeneratedAppGateResultsMock,
   regenerateGeneratedAppPublicShareMock,
 } = vi.hoisted(() => ({
   createGeneratedAppMock: vi.fn(),
+  deleteGeneratedAppSubmissionMock: vi.fn(),
+  deleteGeneratedAppSubmissionsMock: vi.fn(),
   disableGeneratedAppPublicShareMock: vi.fn(),
   enableGeneratedAppPublicShareMock: vi.fn(),
   recordGeneratedAppGateResultsMock: vi.fn(),
@@ -28,6 +34,8 @@ const {
 
 vi.mock('./generatedAppApi', () => ({
   createGeneratedApp: createGeneratedAppMock,
+  deleteGeneratedAppSubmission: deleteGeneratedAppSubmissionMock,
+  deleteGeneratedAppSubmissions: deleteGeneratedAppSubmissionsMock,
   disableGeneratedAppPublicShare: disableGeneratedAppPublicShareMock,
   enableGeneratedAppPublicShare: enableGeneratedAppPublicShareMock,
   recordGeneratedAppGateResults: recordGeneratedAppGateResultsMock,
@@ -230,6 +238,80 @@ describe('generatedAppMutations', () => {
     ).toStrictEqual(disabledApp)
     expect(invalidateSpy).toHaveBeenCalledWith({
       queryKey: generatedAppKeys.lists(),
+    })
+  })
+
+  it('invalidates submission list and detail caches after single delete', async () => {
+    deleteGeneratedAppSubmissionMock.mockResolvedValue({ deletedCount: 1 })
+
+    const { queryClient, Wrapper } = createWrapper()
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+    const removeSpy = vi.spyOn(queryClient, 'removeQueries')
+    queryClient.setQueryData(
+      generatedAppKeys.submissionDetail('app-share', 'submission-1'),
+      { id: 'submission-1' },
+    )
+
+    const { result } = renderHook(
+      () => useDeleteGeneratedAppSubmission('app-share'),
+      { wrapper: Wrapper },
+    )
+
+    await act(async () => {
+      const data = await result.current.mutateAsync('submission-1')
+      expect(data).toEqual({ deletedCount: 1 })
+    })
+
+    expect(deleteGeneratedAppSubmissionMock).toHaveBeenCalledWith(
+      'app-share',
+      'submission-1',
+    )
+    expect(removeSpy).toHaveBeenCalledWith({
+      queryKey: generatedAppKeys.submissionDetail('app-share', 'submission-1'),
+    })
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: generatedAppKeys.submissionLists('app-share'),
+    })
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: generatedAppKeys.submissionDetails('app-share'),
+    })
+  })
+
+  it('invalidates submission caches after bulk delete', async () => {
+    deleteGeneratedAppSubmissionsMock.mockResolvedValue({ deletedCount: 2 })
+
+    const { queryClient, Wrapper } = createWrapper()
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+    const removeSpy = vi.spyOn(queryClient, 'removeQueries')
+
+    const { result } = renderHook(
+      () => useDeleteGeneratedAppSubmissions('app-share'),
+      { wrapper: Wrapper },
+    )
+
+    await act(async () => {
+      const data = await result.current.mutateAsync([
+        'submission-1',
+        'submission-2',
+      ])
+      expect(data).toEqual({ deletedCount: 2 })
+    })
+
+    expect(deleteGeneratedAppSubmissionsMock).toHaveBeenCalledWith(
+      'app-share',
+      ['submission-1', 'submission-2'],
+    )
+    expect(removeSpy).toHaveBeenCalledWith({
+      queryKey: generatedAppKeys.submissionDetail('app-share', 'submission-1'),
+    })
+    expect(removeSpy).toHaveBeenCalledWith({
+      queryKey: generatedAppKeys.submissionDetail('app-share', 'submission-2'),
+    })
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: generatedAppKeys.submissionLists('app-share'),
+    })
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: generatedAppKeys.submissionDetails('app-share'),
     })
   })
 })

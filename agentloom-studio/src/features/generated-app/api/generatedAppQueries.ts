@@ -1,11 +1,16 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import {
   getGeneratedApp,
+  getGeneratedAppSubmission,
   getGeneratedAppPublicRuntime,
+  listGeneratedAppSubmissions,
   listGeneratedApps,
 } from './generatedAppApi'
 import { generatedAppKeys } from './generatedAppKeys'
-import type { ListGeneratedAppsParams } from '../types'
+import type {
+  ListGeneratedAppSubmissionsParams,
+  ListGeneratedAppsParams,
+} from '../types'
 
 const GENERATED_APP_STALE_TIME = 30_000
 
@@ -23,6 +28,34 @@ export function useGeneratedApp(appId: string | undefined) {
     queryKey: generatedAppKeys.detail(appId ?? ''),
     queryFn: () => getGeneratedApp(appId ?? ''),
     enabled: !!appId,
+    staleTime: GENERATED_APP_STALE_TIME,
+  })
+}
+
+export function useGeneratedAppSubmissions(
+  appId: string | undefined,
+  params: ListGeneratedAppSubmissionsParams = {},
+) {
+  return useQuery({
+    queryKey: generatedAppKeys.submissionList(appId ?? '', params),
+    queryFn: () => listGeneratedAppSubmissions(appId ?? '', params),
+    enabled: !!appId,
+    placeholderData: keepPreviousData,
+    staleTime: GENERATED_APP_STALE_TIME,
+  })
+}
+
+export function useGeneratedAppSubmission(
+  appId: string | undefined,
+  submissionId: string | undefined,
+) {
+  return useQuery({
+    queryKey: generatedAppKeys.submissionDetail(
+      appId ?? '',
+      submissionId ?? '',
+    ),
+    queryFn: () => getGeneratedAppSubmission(appId ?? '', submissionId ?? ''),
+    enabled: !!appId && !!submissionId,
     staleTime: GENERATED_APP_STALE_TIME,
   })
 }

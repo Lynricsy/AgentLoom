@@ -3,6 +3,7 @@ import type {
   GeneratedAppReadiness,
   GeneratedAppReadinessState,
   GeneratedAppStatus,
+  GeneratedAppSubmissionStatus,
 } from '../types'
 
 export const GENERATED_APP_STATUS_LABELS: Record<GeneratedAppStatus, string> = {
@@ -34,6 +35,16 @@ export const GENERATED_APP_GATE_STATUS_LABELS: Record<
   failed: '失败',
   warning: 'Warning',
   skipped: '已跳过',
+}
+
+export const GENERATED_APP_SUBMISSION_STATUS_LABELS: Record<
+  GeneratedAppSubmissionStatus,
+  string
+> = {
+  received: '已接收',
+  running: '运行中',
+  completed: '已完成',
+  failed: '失败',
 }
 
 export function getGeneratedAppReadinessBadgeClass(
@@ -83,6 +94,21 @@ export function getGeneratedAppGateStatusBadgeClass(
       return 'border-violet-500/30 bg-violet-500/10 text-violet-300'
     case 'skipped':
       return 'border-border bg-muted/60 text-muted-foreground'
+    default:
+      return 'border-sky-500/30 bg-sky-500/10 text-sky-300'
+  }
+}
+
+export function getGeneratedAppSubmissionStatusBadgeClass(
+  status: GeneratedAppSubmissionStatus,
+): string {
+  switch (status) {
+    case 'completed':
+      return 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+    case 'failed':
+      return 'border-rose-500/30 bg-rose-500/10 text-rose-300'
+    case 'running':
+      return 'border-violet-500/30 bg-violet-500/10 text-violet-300'
     default:
       return 'border-sky-500/30 bg-sky-500/10 text-sky-300'
   }

@@ -22,6 +22,12 @@ export type GeneratedAppGateStatus =
   | 'warning'
   | 'skipped'
 
+export type GeneratedAppSubmissionStatus =
+  | 'received'
+  | 'running'
+  | 'completed'
+  | 'failed'
+
 export type GeneratedAppGateEvidenceKind =
   | 'app_spec'
   | 'plan'
@@ -140,6 +146,37 @@ export interface GeneratedApp {
   updatedAt: string
 }
 
+export interface GeneratedAppSubmission {
+  id: string
+  tenantId: string
+  appId: string
+  appSpecVersion: number
+  publicShareToken: string
+  anonymousSessionId: string
+  status: GeneratedAppSubmissionStatus
+  input: Record<string, unknown>
+  result: Record<string, unknown> | null
+  report: Record<string, unknown> | null
+  errorMessage: string | null
+  createdAt: string
+  updatedAt: string
+  deletedAt: string | null
+}
+
+export interface GeneratedAppPublicSubmission {
+  id: string
+  appId: string
+  appSpecVersion: number
+  status: GeneratedAppSubmissionStatus
+  anonymousSessionId: string
+  input: Record<string, unknown>
+  result: Record<string, unknown> | null
+  report: Record<string, unknown> | null
+  errorMessage: string | null
+  createdAt: string
+  updatedAt: string
+}
+
 export interface CreateGeneratedAppPayload {
   prompt: string
 }
@@ -150,6 +187,18 @@ export interface ListGeneratedAppsParams {
   status?: GeneratedAppStatus
 }
 
+export interface ListGeneratedAppSubmissionsParams {
+  page?: number
+  pageSize?: number
+  status?: GeneratedAppSubmissionStatus
+}
+
+export interface CreateGeneratedAppPublicSubmissionPayload {
+  anonymousSessionId?: string
+  input?: Record<string, unknown>
+  clientContext?: Record<string, unknown>
+}
+
 export interface RecordGeneratedAppGateResultsPayload {
   gateResults: GeneratedAppGateResult[]
   generationPlan?: Record<string, unknown> | null
@@ -157,6 +206,12 @@ export interface RecordGeneratedAppGateResultsPayload {
 }
 
 export type GeneratedAppListResponse = PaginatedResponse<GeneratedApp>
+export type GeneratedAppSubmissionListResponse =
+  PaginatedResponse<GeneratedAppSubmission>
+
+export interface DeleteGeneratedAppSubmissionsResponse {
+  deletedCount: number
+}
 
 export interface GeneratedAppPublicRuntimeSpec {
   version: 1

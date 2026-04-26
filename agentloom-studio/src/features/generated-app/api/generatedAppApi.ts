@@ -1,10 +1,16 @@
 import { apiClient } from '@/shared/api/client'
 import type { ApiResponse } from '@/shared/types/api'
 import type {
+  CreateGeneratedAppPublicSubmissionPayload,
   CreateGeneratedAppPayload,
+  DeleteGeneratedAppSubmissionsResponse,
   GeneratedApp,
   GeneratedAppListResponse,
+  GeneratedAppPublicSubmission,
   GeneratedAppPublicRuntime,
+  GeneratedAppSubmission,
+  GeneratedAppSubmissionListResponse,
+  ListGeneratedAppSubmissionsParams,
   ListGeneratedAppsParams,
   RecordGeneratedAppGateResultsPayload,
 } from '../types'
@@ -12,6 +18,26 @@ import type {
 const GENERATED_APPS_PATH = 'generated-apps'
 
 function buildGeneratedAppSearchParams(params: ListGeneratedAppsParams) {
+  const searchParams: Record<string, string> = {}
+
+  if (params.page !== undefined) {
+    searchParams.page = String(params.page)
+  }
+
+  if (params.pageSize !== undefined) {
+    searchParams.pageSize = String(params.pageSize)
+  }
+
+  if (params.status) {
+    searchParams.status = params.status
+  }
+
+  return searchParams
+}
+
+function buildGeneratedAppSubmissionSearchParams(
+  params: ListGeneratedAppSubmissionsParams,
+) {
   const searchParams: Record<string, string> = {}
 
   if (params.page !== undefined) {
@@ -86,6 +112,52 @@ export async function getGeneratedApp(appId: string): Promise<GeneratedApp> {
   return response.data
 }
 
+export async function listGeneratedAppSubmissions(
+  appId: string,
+  params: ListGeneratedAppSubmissionsParams = {},
+): Promise<GeneratedAppSubmissionListResponse> {
+  return apiClient
+    .get(`${GENERATED_APPS_PATH}/${appId}/submissions`, {
+      searchParams: buildGeneratedAppSubmissionSearchParams(params),
+    })
+    .json<GeneratedAppSubmissionListResponse>()
+}
+
+export async function getGeneratedAppSubmission(
+  appId: string,
+  submissionId: string,
+): Promise<GeneratedAppSubmission> {
+  const response = await apiClient
+    .get(`${GENERATED_APPS_PATH}/${appId}/submissions/${submissionId}`)
+    .json<ApiResponse<GeneratedAppSubmission>>()
+
+  return response.data
+}
+
+export async function deleteGeneratedAppSubmission(
+  appId: string,
+  submissionId: string,
+): Promise<DeleteGeneratedAppSubmissionsResponse> {
+  const response = await apiClient
+    .delete(`${GENERATED_APPS_PATH}/${appId}/submissions/${submissionId}`)
+    .json<ApiResponse<DeleteGeneratedAppSubmissionsResponse>>()
+
+  return response.data
+}
+
+export async function deleteGeneratedAppSubmissions(
+  appId: string,
+  ids: string[],
+): Promise<DeleteGeneratedAppSubmissionsResponse> {
+  const response = await apiClient
+    .post(`${GENERATED_APPS_PATH}/${appId}/submissions/delete`, {
+      json: { ids },
+    })
+    .json<ApiResponse<DeleteGeneratedAppSubmissionsResponse>>()
+
+  return response.data
+}
+
 export async function getGeneratedAppPublicRuntime(
   token: string,
 ): Promise<GeneratedAppPublicRuntime> {
@@ -94,6 +166,35 @@ export async function getGeneratedAppPublicRuntime(
     .json<ApiResponse<GeneratedAppPublicRuntime>>()
 
   return toPublicRuntime(response.data)
+}
+
+export async function createGeneratedAppPublicSubmission(
+  token: string,
+  payload: CreateGeneratedAppPublicSubmissionPayload = {},
+): Promise<GeneratedAppPublicSubmission> {
+  const response = await apiClient
+    .post(
+      `${GENERATED_APPS_PATH}/public/${encodeURIComponent(token)}/submissions`,
+      { json: payload },
+    )
+    .json<ApiResponse<GeneratedAppPublicSubmission>>()
+
+  return response.data
+}
+
+export async function getGeneratedAppPublicSubmission(
+  token: string,
+  submissionId: string,
+): Promise<GeneratedAppPublicSubmission> {
+  const response = await apiClient
+    .get(
+      `${GENERATED_APPS_PATH}/public/${encodeURIComponent(
+        token,
+      )}/submissions/${submissionId}`,
+    )
+    .json<ApiResponse<GeneratedAppPublicSubmission>>()
+
+  return response.data
 }
 
 export async function recordGeneratedAppGateResults(

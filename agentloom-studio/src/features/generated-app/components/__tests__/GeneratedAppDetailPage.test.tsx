@@ -12,12 +12,24 @@ import type { GeneratedApp, GeneratedAppReadinessState } from '../../types'
 
 const {
   disableShareMutation,
+  deleteSubmissionMutation,
+  deleteSubmissionsMutation,
   enableShareMutation,
   generatedAppQuery,
   regenerateShareMutation,
+  submissionDetailQuery,
+  submissionsQuery,
   useGeneratedAppMock,
 } = vi.hoisted(() => ({
   disableShareMutation: {
+    mutateAsync: vi.fn(),
+    isPending: false,
+  },
+  deleteSubmissionMutation: {
+    mutateAsync: vi.fn(),
+    isPending: false,
+  },
+  deleteSubmissionsMutation: {
     mutateAsync: vi.fn(),
     isPending: false,
   },
@@ -35,10 +47,29 @@ const {
     mutateAsync: vi.fn(),
     isPending: false,
   },
+  submissionDetailQuery: {
+    data: undefined as unknown,
+    isError: false,
+    isFetching: false,
+    isLoading: false,
+    refetch: vi.fn(),
+  },
+  submissionsQuery: {
+    data: {
+      data: [],
+      meta: { page: 1, pageSize: 10, total: 0, totalPages: 1 },
+    } as unknown,
+    isError: false,
+    isFetching: false,
+    isLoading: false,
+    refetch: vi.fn(),
+  },
   useGeneratedAppMock: vi.fn(),
 }))
 
 vi.mock('../../api', () => ({
+  useDeleteGeneratedAppSubmission: () => deleteSubmissionMutation,
+  useDeleteGeneratedAppSubmissions: () => deleteSubmissionsMutation,
   useDisableGeneratedAppPublicShare: () => disableShareMutation,
   useEnableGeneratedAppPublicShare: (appId: string) => {
     useGeneratedAppMock(`enable:${appId}`)
@@ -52,6 +83,8 @@ vi.mock('../../api', () => ({
     useGeneratedAppMock(`regenerate:${appId}`)
     return regenerateShareMutation
   },
+  useGeneratedAppSubmission: () => submissionDetailQuery,
+  useGeneratedAppSubmissions: () => submissionsQuery,
 }))
 
 vi.mock('@/shared/ui/toast', () => ({
@@ -205,6 +238,21 @@ describe('GeneratedAppDetailPage', () => {
     regenerateShareMutation.isPending = false
     disableShareMutation.mutateAsync = vi.fn()
     disableShareMutation.isPending = false
+    deleteSubmissionMutation.mutateAsync = vi.fn()
+    deleteSubmissionMutation.isPending = false
+    deleteSubmissionsMutation.mutateAsync = vi.fn()
+    deleteSubmissionsMutation.isPending = false
+    submissionDetailQuery.data = undefined
+    submissionDetailQuery.isError = false
+    submissionDetailQuery.isFetching = false
+    submissionDetailQuery.isLoading = false
+    submissionsQuery.data = {
+      data: [],
+      meta: { page: 1, pageSize: 10, total: 0, totalPages: 1 },
+    }
+    submissionsQuery.isError = false
+    submissionsQuery.isFetching = false
+    submissionsQuery.isLoading = false
   })
 
   it.each([
