@@ -20,7 +20,7 @@ export const GENERATED_APP_READINESS_LABELS: Record<
 > = {
   preview: '预览态',
   trial: '试用态',
-  publish_candidate: '可发布',
+  publish_candidate: '发布候选',
   blocked: '已阻断',
 }
 
@@ -34,6 +34,58 @@ export const GENERATED_APP_GATE_STATUS_LABELS: Record<
   failed: '失败',
   warning: 'Warning',
   skipped: '已跳过',
+}
+
+export function getGeneratedAppReadinessBadgeClass(
+  readiness: GeneratedAppReadiness,
+): string {
+  switch (readiness.state) {
+    case 'publish_candidate':
+      return readiness.canCreatePublicShare
+        ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+        : 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+    case 'trial':
+      return 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+    case 'blocked':
+      return 'border-rose-500/30 bg-rose-500/10 text-rose-300'
+    default:
+      return 'border-sky-500/30 bg-sky-500/10 text-sky-300'
+  }
+}
+
+export function getGeneratedAppStatusBadgeClass(
+  status: GeneratedAppStatus,
+): string {
+  switch (status) {
+    case 'published':
+    case 'publish_candidate':
+      return 'bg-emerald-500/10 text-emerald-300'
+    case 'failed':
+      return 'bg-rose-500/10 text-rose-300'
+    case 'trial_ready':
+      return 'bg-amber-500/10 text-amber-300'
+    default:
+      return 'bg-sky-500/10 text-sky-300'
+  }
+}
+
+export function getGeneratedAppGateStatusBadgeClass(
+  status: GeneratedAppGateStatus,
+): string {
+  switch (status) {
+    case 'passed':
+      return 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+    case 'failed':
+      return 'border-rose-500/30 bg-rose-500/10 text-rose-300'
+    case 'warning':
+      return 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+    case 'running':
+      return 'border-violet-500/30 bg-violet-500/10 text-violet-300'
+    case 'skipped':
+      return 'border-border bg-muted/60 text-muted-foreground'
+    default:
+      return 'border-sky-500/30 bg-sky-500/10 text-sky-300'
+  }
 }
 
 export function formatGeneratedAppDateTime(value?: string | null): string {
@@ -52,8 +104,7 @@ export function isGeneratedAppPublicShareEligible(
   readiness: GeneratedAppReadiness,
 ): boolean {
   return (
-    readiness.state === 'publish_candidate' &&
-    readiness.canCreatePublicShare
+    readiness.state === 'publish_candidate' && readiness.canCreatePublicShare
   )
 }
 

@@ -1,15 +1,11 @@
 import { useCallback, useState } from 'react'
+import { Link } from '@tanstack/react-router'
 import {
   AlertTriangle,
+  ArrowRight,
   AppWindow,
-  CheckCircle2,
   Clock,
-  Copy,
-  ExternalLink,
   Loader2,
-  RefreshCw,
-  Share2,
-  ShieldAlert,
   WandSparkles,
 } from 'lucide-react'
 
@@ -18,232 +14,18 @@ import { cn } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import { useToast } from '@/shared/ui/toast'
-import {
-  useCreateGeneratedApp,
-  useDisableGeneratedAppPublicShare,
-  useEnableGeneratedAppPublicShare,
-  useGeneratedApps,
-  useRegenerateGeneratedAppPublicShare,
-} from '../api'
+import { useCreateGeneratedApp, useGeneratedApps } from '../api'
+import { GeneratedAppPublicSharePanel } from './GeneratedAppPublicSharePanel'
 import {
   GENERATED_APP_READINESS_LABELS,
   GENERATED_APP_STATUS_LABELS,
   formatGeneratedAppDateTime,
-  getGeneratedAppPublicShareUnavailableReason,
-  isGeneratedAppPublicShareEligible,
+  getGeneratedAppReadinessBadgeClass,
+  getGeneratedAppStatusBadgeClass,
 } from '../lib/generatedAppDisplay'
 import type { GeneratedApp } from '../types'
 
 const PAGE_SIZE = 12
-
-function getReadinessBadgeClass(readiness: GeneratedApp['readiness']) {
-  switch (readiness.state) {
-    case 'publish_candidate':
-      return 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
-    case 'trial':
-      return 'border-amber-500/30 bg-amber-500/10 text-amber-300'
-    case 'blocked':
-      return 'border-rose-500/30 bg-rose-500/10 text-rose-300'
-    default:
-      return 'border-sky-500/30 bg-sky-500/10 text-sky-300'
-  }
-}
-
-function getStatusBadgeClass(status: GeneratedApp['status']) {
-  switch (status) {
-    case 'published':
-    case 'publish_candidate':
-      return 'bg-emerald-500/10 text-emerald-300'
-    case 'failed':
-      return 'bg-rose-500/10 text-rose-300'
-    case 'trial_ready':
-      return 'bg-amber-500/10 text-amber-300'
-    default:
-      return 'bg-sky-500/10 text-sky-300'
-  }
-}
-
-function GeneratedAppShareActions({ app }: { app: GeneratedApp }) {
-  const { notify } = useToast()
-  const enableShareMutation = useEnableGeneratedAppPublicShare(app.id)
-  const regenerateShareMutation = useRegenerateGeneratedAppPublicShare(app.id)
-  const disableShareMutation = useDisableGeneratedAppPublicShare(app.id)
-
-  const canCreatePublicShare = isGeneratedAppPublicShareEligible(app.readiness)
-  const isMutating =
-    enableShareMutation.isPending ||
-    regenerateShareMutation.isPending ||
-    disableShareMutation.isPending
-
-  const handleEnableShare = useCallback(async () => {
-    try {
-      await enableShareMutation.mutateAsync()
-      notify({
-        title: '公开分享已启用',
-        description: '生成应用已通过发布门禁，可分发给终端用户。',
-        variant: 'success',
-      })
-    } catch (error) {
-      notify({
-        title: '公开分享启用失败',
-        description: error instanceof Error ? error.message : app.readiness.summary,
-        variant: 'error',
-      })
-    }
-  }, [app.readiness.summary, enableShareMutation, notify])
-
-  const handleRegenerateShare = useCallback(async () => {
-    try {
-      await regenerateShareMutation.mutateAsync()
-      notify({
-        title: '公开链接已重新生成',
-        description: '旧链接会立即失效，请使用新的公开链接。',
-        variant: 'success',
-      })
-    } catch (error) {
-      notify({
-        title: '重新生成失败',
-        description: error instanceof Error ? error.message : app.readiness.summary,
-        variant: 'error',
-      })
-    }
-  }, [app.readiness.summary, notify, regenerateShareMutation])
-
-  const handleDisableShare = useCallback(async () => {
-    try {
-      await disableShareMutation.mutateAsync()
-      notify({
-        title: '公开分享已关闭',
-        description: '旧公开链接会立即失效。',
-        variant: 'success',
-      })
-    } catch (error) {
-      notify({
-        title: '关闭公开分享失败',
-        description: error instanceof Error ? error.message : '请稍后重试。',
-        variant: 'error',
-      })
-    }
-  }, [disableShareMutation, notify])
-
-  const handleCopyPublicUrl = useCallback(async () => {
-    if (!app.publicShareUrl) return
-
-    try {
-      await navigator.clipboard.writeText(app.publicShareUrl)
-      notify({ description: '公开链接已复制到剪贴板', variant: 'success' })
-    } catch {
-      notify({ description: '复制失败，请手动复制链接。', variant: 'error' })
-    }
-  }, [app.publicShareUrl, notify])
-
-  if (!canCreatePublicShare) {
-    return (
-      <div className="space-y-2 border-l border-border pl-3">
-        <p className="break-words text-xs text-muted-foreground">
-          {app.readiness.summary}
-        </p>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled
-          className="w-full justify-center whitespace-normal text-center sm:w-auto"
-          title={getGeneratedAppPublicShareUnavailableReason(app.readiness)}
-        >
-          <ShieldAlert className="mr-2 h-3.5 w-3.5" />
-          公开分享不可用
-        </Button>
-      </div>
-    )
-  }
-
-  if (app.publicShareEnabled) {
-    return (
-      <div className="space-y-3 border-l border-emerald-500/40 pl-3">
-        <div className="flex flex-wrap items-center gap-2 text-xs text-emerald-200">
-          <CheckCircle2 className="h-3.5 w-3.5" />
-          <span>公开分享已启用</span>
-          <span className="text-muted-foreground">
-            浏览 {app.publicViewCount} 次
-          </span>
-        </div>
-
-        {app.publicShareUrl ? (
-          <div className="flex min-w-0 items-center gap-2">
-            <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-              {app.publicShareUrl}
-            </span>
-            <button
-              type="button"
-              className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-              onClick={handleCopyPublicUrl}
-              aria-label={`复制 ${app.appName} 公开链接`}
-            >
-              <Copy className="h-3.5 w-3.5" />
-            </button>
-            <a
-              href={app.publicShareUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-              aria-label={`打开 ${app.appName} 公开链接`}
-            >
-              <ExternalLink className="h-3.5 w-3.5" />
-            </a>
-          </div>
-        ) : null}
-
-        <div className="flex flex-wrap gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={handleRegenerateShare}
-            disabled={isMutating}
-          >
-            {regenerateShareMutation.isPending ? (
-              <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <RefreshCw className="mr-2 h-3.5 w-3.5" />
-            )}
-            重新生成
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={handleDisableShare}
-            disabled={isMutating}
-          >
-            {disableShareMutation.isPending ? (
-              <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-            ) : null}
-            关闭分享
-          </Button>
-        </div>
-      </div>
-    )
-  }
-
-  return (
-    <div className="space-y-2 border-l border-primary/40 pl-3">
-      <p className="break-words text-xs text-muted-foreground">
-        {app.readiness.summary}
-      </p>
-      <Button
-        size="sm"
-        onClick={handleEnableShare}
-        disabled={isMutating}
-        data-testid={`generated-app-enable-share-${app.id}`}
-      >
-        {enableShareMutation.isPending ? (
-          <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-        ) : (
-          <Share2 className="mr-2 h-3.5 w-3.5" />
-        )}
-        启用公开分享
-      </Button>
-    </div>
-  )
-}
 
 function GeneratedAppCard({ app }: { app: GeneratedApp }) {
   return (
@@ -257,7 +39,7 @@ function GeneratedAppCard({ app }: { app: GeneratedApp }) {
             <span
               className={cn(
                 'inline-flex rounded-full px-2 py-0.5 text-xs font-medium',
-                getStatusBadgeClass(app.status),
+                getGeneratedAppStatusBadgeClass(app.status),
               )}
             >
               {GENERATED_APP_STATUS_LABELS[app.status]}
@@ -265,20 +47,30 @@ function GeneratedAppCard({ app }: { app: GeneratedApp }) {
             <span
               className={cn(
                 'inline-flex rounded-full border px-2 py-0.5 text-xs font-medium',
-                getReadinessBadgeClass(app.readiness),
+                getGeneratedAppReadinessBadgeClass(app.readiness),
               )}
             >
               {GENERATED_APP_READINESS_LABELS[app.readiness.state]}
             </span>
           </div>
 
-          <div className="space-y-1">
-            <h2 className="truncate text-base font-semibold text-foreground">
-              {app.appName}
-            </h2>
-            <p className="line-clamp-2 text-sm text-muted-foreground">
-              {app.description}
-            </p>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0 space-y-1">
+              <h2 className="break-words text-base font-semibold text-foreground">
+                {app.appName}
+              </h2>
+              <p className="line-clamp-2 break-words text-sm text-muted-foreground">
+                {app.description}
+              </p>
+            </div>
+            <Link
+              to="/generated-apps/$appId"
+              params={{ appId: app.id }}
+              className="inline-flex shrink-0 items-center gap-1 text-sm font-medium text-primary hover:text-primary/80"
+            >
+              查看详情
+              <ArrowRight className="h-3.5 w-3.5" />
+            </Link>
           </div>
 
           <dl className="grid gap-3 border-y border-border/70 py-3 text-xs text-muted-foreground sm:grid-cols-3">
@@ -307,7 +99,7 @@ function GeneratedAppCard({ app }: { app: GeneratedApp }) {
         </div>
 
         <div className="w-full shrink-0 lg:w-80">
-          <GeneratedAppShareActions app={app} />
+          <GeneratedAppPublicSharePanel app={app} />
         </div>
       </div>
     </article>
@@ -367,9 +159,7 @@ export function GeneratedAppListPage() {
         <header className="space-y-2">
           <div className="flex items-center gap-2">
             <AppWindow className="h-5 w-5 text-muted-foreground" />
-            <h1 className="text-2xl font-semibold text-foreground">
-              生成应用
-            </h1>
+            <h1 className="text-2xl font-semibold text-foreground">生成应用</h1>
           </div>
           <p className="max-w-4xl text-sm text-muted-foreground">
             用一句话创建面向终端用户的定制业务应用。公开分享只有在阻断门禁全绿、且后端
@@ -432,7 +222,11 @@ export function GeneratedAppListPage() {
                     请稍后重试，或刷新页面后重新查看。
                   </p>
                 </div>
-                <Button variant="outline" size="sm" onClick={() => void refetch()}>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void refetch()}
+                >
                   重新加载
                 </Button>
               </div>

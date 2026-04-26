@@ -1,4 +1,5 @@
 export { GeneratedAppListPage } from './components/GeneratedAppListPage'
+export { GeneratedAppDetailPage } from './components/GeneratedAppDetailPage'
 export {
   createGeneratedApp,
   disableGeneratedAppPublicShare,

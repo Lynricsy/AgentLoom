@@ -15,6 +15,7 @@ import { mcpServerDetailRoute } from "./resources/mcp-servers.$serverId";
 import { auditLogsRoute } from "./settings/audit-logs";
 import { templatesRoute } from "./templates";
 import { generatedAppsRoute } from "./generated-apps";
+import { generatedAppDetailRoute } from "./generated-apps.$appId";
 import { discoverRoute } from "./discover";
 import { marketplaceRoute } from "./marketplace";
 import { marketplaceMyListingsRoute } from "./marketplace.my-listings";
@@ -123,6 +124,7 @@ export const routeTree = rootRoute.addChildren([
   auditLogsRoute,
   templatesRoute,
   generatedAppsRoute,
+  generatedAppDetailRoute,
   discoverRoute,
   marketplaceRoute,
   marketplaceMyListingsRoute,

@@ -3,7 +3,12 @@ import { act, renderHook, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { useEnableGeneratedAppPublicShare } from './generatedAppMutations'
+import {
+  useCreateGeneratedApp,
+  useDisableGeneratedAppPublicShare,
+  useEnableGeneratedAppPublicShare,
+  useRegenerateGeneratedAppPublicShare,
+} from './generatedAppMutations'
 import { generatedAppKeys } from './generatedAppKeys'
 import type { GeneratedApp } from '../types'
 
@@ -113,6 +118,38 @@ describe('generatedAppMutations', () => {
     vi.clearAllMocks()
   })
 
+  it('writes created apps into detail cache and invalidates generated app lists', async () => {
+    const app = makeGeneratedApp({ id: 'app-created' })
+    createGeneratedAppMock.mockResolvedValue(app)
+
+    const { queryClient, Wrapper } = createWrapper()
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    const { result } = renderHook(() => useCreateGeneratedApp(), {
+      wrapper: Wrapper,
+    })
+
+    await act(async () => {
+      const data = await result.current.mutateAsync({
+        prompt: '自动化中医问诊系统',
+      })
+      expect(data).toEqual(app)
+    })
+
+    expect(createGeneratedAppMock.mock.calls[0]?.[0]).toEqual({
+      prompt: '自动化中医问诊系统',
+    })
+
+    await waitFor(() => {
+      expect(
+        queryClient.getQueryData(generatedAppKeys.detail('app-created')),
+      ).toBe(app)
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: generatedAppKeys.lists(),
+      })
+    })
+  })
+
   it('writes the enabled public share app into detail cache and invalidates generated app lists', async () => {
     const app = makeGeneratedApp({ id: 'app-share' })
     enableGeneratedAppPublicShareMock.mockResolvedValue(app)
@@ -141,6 +178,58 @@ describe('generatedAppMutations', () => {
       expect(invalidateSpy).toHaveBeenCalledWith({
         queryKey: generatedAppKeys.lists(),
       })
+    })
+  })
+
+  it('syncs regenerated and disabled public share responses into generated app caches', async () => {
+    const regeneratedApp = makeGeneratedApp({
+      id: 'app-share',
+      publicShareToken: 'token-2',
+      publicShareUrl: 'https://example.com/generated-apps/public/token-2',
+    })
+    const disabledApp = makeGeneratedApp({
+      id: 'app-share',
+      publicShareEnabled: false,
+      publicShareToken: null,
+      publicShareUrl: null,
+    })
+    regenerateGeneratedAppPublicShareMock.mockResolvedValue(regeneratedApp)
+    disableGeneratedAppPublicShareMock.mockResolvedValue(disabledApp)
+
+    const { queryClient, Wrapper } = createWrapper()
+    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
+
+    const regenerate = renderHook(
+      () => useRegenerateGeneratedAppPublicShare('app-share'),
+      { wrapper: Wrapper },
+    )
+
+    await act(async () => {
+      await regenerate.result.current.mutateAsync()
+    })
+
+    expect(regenerateGeneratedAppPublicShareMock).toHaveBeenCalledWith(
+      'app-share',
+    )
+    expect(
+      queryClient.getQueryData(generatedAppKeys.detail('app-share')),
+    ).toStrictEqual(regeneratedApp)
+
+    const disable = renderHook(
+      () => useDisableGeneratedAppPublicShare('app-share'),
+      { wrapper: Wrapper },
+    )
+
+    await act(async () => {
+      await disable.result.current.mutateAsync()
+    })
+
+    expect(disableGeneratedAppPublicShareMock).toHaveBeenCalledWith('app-share')
+    expect(
+      queryClient.getQueryData(generatedAppKeys.detail('app-share')),
+    ).toStrictEqual(disabledApp)
+    expect(invalidateSpy).toHaveBeenCalledWith({
+      queryKey: generatedAppKeys.lists(),
     })
   })
 })

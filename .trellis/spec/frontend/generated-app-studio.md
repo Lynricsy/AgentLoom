@@ -45,6 +45,7 @@ app.readiness.state === 'publish_candidate' &&
   - The disabled UI must show backend `readiness.summary` so the creator sees the same reason the API enforces.
 - Public share UI:
   - Creator workbench may show `publicShareUrl`, gate summaries, preview/source/test artifact links, and readiness details.
+  - If `publicShareEnabled === true` but readiness is no longer eligible, treat the link as stale and unsafe: hide the old URL, hide regenerate/open actions, show `readiness.summary`, and only present disabled share controls.
   - Public runtime pages must not show `gateResults`, `readiness`, source artifact URLs, test report URLs, plugin permission details, or creator-only pages.
 - Navigation:
   - `/generated-apps` is a top-level Studio workbench entry.
@@ -62,6 +63,7 @@ app.readiness.state === 'publish_candidate' &&
 | `readiness.state='trial'` | Disable public share, show `readiness.summary`; do not label it publishable |
 | `readiness.state='publish_candidate'` but `canCreatePublicShare=false` | Disable public share; treat it as backend-inconsistent and unsafe |
 | `readiness.state='publish_candidate'` and `canCreatePublicShare=true` | Allow enable/regenerate share mutations |
+| `publicShareEnabled=true` but readiness is not eligible | Treat as stale; do not show old URL or regenerate/open actions |
 | Share mutation succeeds | Update detail cache and invalidate list queries |
 
 ### 5. Good / Base / Bad Cases
@@ -70,6 +72,7 @@ app.readiness.state === 'publish_candidate' &&
 - Good: a publish candidate row enables the public-share action and mutation invalidates list queries.
 - Base: a generated app has warning-only readiness; Studio displays trial/warning summary and keeps public share unavailable.
 - Bad: Studio enables share because `status === 'publish_candidate'` while `readiness.canCreatePublicShare` is false.
+- Bad: Studio shows an old `publicShareUrl` because `publicShareEnabled=true` even though readiness has fallen back to `blocked`, `trial`, or unsafe `publish_candidate`.
 - Bad: Studio hides backend readiness summary and replaces it with a generic "not ready" message only.
 - Bad: Studio exposes internal test/source/plugin permission details on an end-user public runtime page.
 
@@ -85,6 +88,7 @@ app.readiness.state === 'publish_candidate' &&
   - `preview`, `trial`, and `blocked` disable public share and show `readiness.summary`.
   - `publish_candidate + canCreatePublicShare=false` disables public share.
   - `publish_candidate + canCreatePublicShare=true` triggers the share mutation.
+  - stale enabled share (`publicShareEnabled=true` + ineligible readiness) hides old public URL and regenerate/open actions.
 - Route/navigation smoke:
   - `/generated-apps` route is registered in the route tree.
   - App sidebar contains a Generated App workbench entry.

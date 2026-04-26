@@ -56,6 +56,23 @@ vi.mock('@/shared/ui/toast', () => ({
   useToast: () => ({ notify: notifyMock }),
 }))
 
+vi.mock('@tanstack/react-router', () => ({
+  Link: ({
+    to,
+    params,
+    children,
+    ...rest
+  }: {
+    to: string
+    params?: { appId?: string }
+    children: React.ReactNode
+  }) => (
+    <a href={to.replace('$appId', params?.appId ?? '')} {...rest}>
+      {children}
+    </a>
+  ),
+}))
+
 function renderWithProviders(ui: React.ReactElement) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -66,9 +83,7 @@ function renderWithProviders(ui: React.ReactElement) {
   )
 }
 
-function makeGeneratedApp(
-  overrides: Partial<GeneratedApp> = {},
-): GeneratedApp {
+function makeGeneratedApp(overrides: Partial<GeneratedApp> = {}): GeneratedApp {
   const state = overrides.readiness?.state ?? 'preview'
 
   return {
@@ -77,7 +92,8 @@ function makeGeneratedApp(
     prompt: '自动化中医问诊系统',
     appName: '自动化中医问诊系统',
     description: '围绕需求生成的 AppSpec 初稿。',
-    status: state === 'publish_candidate' ? 'publish_candidate' : 'preview_ready',
+    status:
+      state === 'publish_candidate' ? 'publish_candidate' : 'preview_ready',
     appSpec: {
       version: 1,
       appName: '自动化中医问诊系统',
@@ -220,11 +236,15 @@ describe('GeneratedAppListPage', () => {
     renderWithProviders(<GeneratedAppListPage />)
 
     expect(screen.getByText('预览态：Gate 1-7 仍在等待。')).toBeInTheDocument()
-    expect(screen.getByText('试用态：仍存在非阻断 warning。')).toBeInTheDocument()
+    expect(
+      screen.getByText('试用态：仍存在非阻断 warning。'),
+    ).toBeInTheDocument()
     expect(
       screen.getByText('发布候选态：后端仍未允许创建公开分享。'),
     ).toBeInTheDocument()
-    expect(screen.getByText('阻断态：Gate 5 浏览器验收失败。')).toBeInTheDocument()
+    expect(
+      screen.getByText('阻断态：Gate 5 浏览器验收失败。'),
+    ).toBeInTheDocument()
 
     const disabledShareButtons = screen.getAllByRole('button', {
       name: '公开分享不可用',
@@ -269,6 +289,11 @@ describe('GeneratedAppListPage', () => {
     }
 
     renderWithProviders(<GeneratedAppListPage />)
+
+    expect(screen.getByRole('link', { name: /查看详情/ })).toHaveAttribute(
+      'href',
+      '/generated-apps/publish-app',
+    )
 
     const enableButton = screen.getByRole('button', { name: '启用公开分享' })
     expect(enableButton).toBeEnabled()
