@@ -30,6 +30,14 @@ export const generatedAppStatusEnum = pgEnum('generated_app_status', [
 export type GeneratedAppStatus =
   (typeof generatedAppStatusEnum.enumValues)[number];
 
+export const generatedAppSubmissionStatusEnum = pgEnum(
+  'generated_app_submission_status',
+  ['received', 'running', 'completed', 'failed'],
+);
+
+export type GeneratedAppSubmissionStatus =
+  (typeof generatedAppSubmissionStatusEnum.enumValues)[number];
+
 export type GeneratedAppReadinessState =
   | 'preview'
   | 'trial'
@@ -229,3 +237,71 @@ export const generatedApps = pgTable(
 
 export type GeneratedApp = typeof generatedApps.$inferSelect;
 export type NewGeneratedApp = typeof generatedApps.$inferInsert;
+
+export const generatedAppSubmissions = pgTable(
+  'generated_app_submissions',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`uuid_generate_v7()`),
+
+    tenantId: uuid('tenant_id').notNull(),
+
+    generatedAppId: uuid('generated_app_id')
+      .notNull()
+      .references(() => generatedApps.id, { onDelete: 'cascade' }),
+
+    appSpecVersion: integer('app_spec_version').notNull(),
+
+    publicShareToken: text('public_share_token').notNull(),
+
+    anonymousSessionId: varchar('anonymous_session_id', {
+      length: 128,
+    }).notNull(),
+
+    status: generatedAppSubmissionStatusEnum('status')
+      .notNull()
+      .default('received'),
+
+    input: jsonb('input')
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default(sql`'{}'::jsonb`),
+
+    result: jsonb('result').$type<Record<string, unknown> | null>(),
+
+    report: jsonb('report').$type<Record<string, unknown> | null>(),
+
+    errorMessage: text('error_message'),
+
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
+  },
+  (table) => [
+    index('idx_generated_app_submissions_tenant_app_created').on(
+      table.tenantId,
+      table.generatedAppId,
+      table.createdAt,
+    ),
+    index('idx_generated_app_submissions_app_deleted').on(
+      table.generatedAppId,
+      table.deletedAt,
+    ),
+    index('idx_generated_app_submissions_anonymous_session').on(
+      table.anonymousSessionId,
+    ),
+    ...createDirectTenantPolicies('generated_app_submissions'),
+  ],
+);
+
+export type GeneratedAppSubmission =
+  typeof generatedAppSubmissions.$inferSelect;
+export type NewGeneratedAppSubmission =
+  typeof generatedAppSubmissions.$inferInsert;

@@ -484,6 +484,13 @@
       "when": 1777105293000,
       "tag": "0068_generated_apps",
       "breakpoints": true
+    },
+    {
+      "idx": 69,
+      "version": "7",
+      "when": 1777190400000,
+      "tag": "0069_generated_app_submissions",
+      "breakpoints": true
     }
   ]
 }

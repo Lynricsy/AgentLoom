@@ -7,6 +7,7 @@ import type {
   GeneratedAppPreview,
   GeneratedAppReadiness,
   GeneratedAppSpec,
+  GeneratedAppSubmission,
 } from '../../../database/schema';
 
 export const GeneratedAppStatusSchema = z.enum([
@@ -15,6 +16,13 @@ export const GeneratedAppStatusSchema = z.enum([
   'trial_ready',
   'publish_candidate',
   'published',
+  'failed',
+]);
+
+export const GeneratedAppSubmissionStatusSchema = z.enum([
+  'received',
+  'running',
+  'completed',
   'failed',
 ]);
 
@@ -46,6 +54,56 @@ export class QueryGeneratedAppsDto extends createZodDto(
 
 export type QueryGeneratedAppsDtoType = z.infer<
   typeof QueryGeneratedAppsSchema
+>;
+
+const JsonObjectSchema = z.record(z.string(), z.unknown());
+
+export const CreateGeneratedAppSubmissionSchema = z.object({
+  anonymousSessionId: z
+    .string()
+    .trim()
+    .min(1, '匿名会话 ID 不能为空')
+    .max(128, '匿名会话 ID 不能超过 128 个字符')
+    .optional(),
+  input: JsonObjectSchema.optional().default({}),
+  clientContext: JsonObjectSchema.optional(),
+});
+
+export class CreateGeneratedAppSubmissionDto extends createZodDto(
+  CreateGeneratedAppSubmissionSchema,
+) {}
+
+export type CreateGeneratedAppSubmissionDtoType = z.infer<
+  typeof CreateGeneratedAppSubmissionSchema
+>;
+
+export const QueryGeneratedAppSubmissionsSchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+  status: GeneratedAppSubmissionStatusSchema.optional(),
+});
+
+export class QueryGeneratedAppSubmissionsDto extends createZodDto(
+  QueryGeneratedAppSubmissionsSchema,
+) {}
+
+export type QueryGeneratedAppSubmissionsDtoType = z.infer<
+  typeof QueryGeneratedAppSubmissionsSchema
+>;
+
+export const DeleteGeneratedAppSubmissionsSchema = z.object({
+  ids: z
+    .array(z.string().uuid('提交记录 ID 必须是合法 UUID'))
+    .min(1, '至少需要选择一条提交记录')
+    .max(100, '单次最多批量删除 100 条提交记录'),
+});
+
+export class DeleteGeneratedAppSubmissionsDto extends createZodDto(
+  DeleteGeneratedAppSubmissionsSchema,
+) {}
+
+export type DeleteGeneratedAppSubmissionsDtoType = z.infer<
+  typeof DeleteGeneratedAppSubmissionsSchema
 >;
 
 export const GeneratedAppGateEvidenceSchema = z.object({
@@ -146,4 +204,39 @@ export interface PublicGeneratedAppResponseDto {
     previewUrl: string | null;
   };
   createdAt: Date;
+}
+
+export interface GeneratedAppSubmissionResponseDto {
+  id: string;
+  tenantId: string;
+  appId: string;
+  appSpecVersion: number;
+  publicShareToken: string;
+  anonymousSessionId: string;
+  status: GeneratedAppSubmission['status'];
+  input: Record<string, unknown>;
+  result: Record<string, unknown> | null;
+  report: Record<string, unknown> | null;
+  errorMessage: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+  deletedAt: Date | null;
+}
+
+export interface PublicGeneratedAppSubmissionResponseDto {
+  id: string;
+  appId: string;
+  appSpecVersion: number;
+  status: GeneratedAppSubmission['status'];
+  anonymousSessionId: string;
+  input: Record<string, unknown>;
+  result: Record<string, unknown> | null;
+  report: Record<string, unknown> | null;
+  errorMessage: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface DeleteGeneratedAppSubmissionsResponseDto {
+  deletedCount: number;
 }

@@ -23,3 +23,14 @@ export class GeneratedAppPublicShareNotReadyException extends DomainException {
     });
   }
 }
+
+export class GeneratedAppSubmissionNotFoundException extends DomainException {
+  constructor(id: string) {
+    super({
+      type: 'https://agentloom.dev/errors/generated-app-submission-not-found',
+      title: '生成应用提交记录不存在',
+      status: HttpStatus.NOT_FOUND,
+      detail: `生成应用提交记录 ${id} 不存在、已删除或无权访问`,
+    });
+  }
+}

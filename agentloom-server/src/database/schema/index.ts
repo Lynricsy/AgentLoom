@@ -433,10 +433,15 @@ export {
 } from './user-preferences.schema';
 export {
   generatedAppStatusEnum,
+  generatedAppSubmissionStatusEnum,
   generatedApps,
+  generatedAppSubmissions,
   type GeneratedApp,
   type NewGeneratedApp,
+  type GeneratedAppSubmission,
+  type NewGeneratedAppSubmission,
   type GeneratedAppStatus,
+  type GeneratedAppSubmissionStatus,
   type GeneratedAppReadinessState,
   type GeneratedAppGateStatus,
   type GeneratedAppAcceptanceScenario,

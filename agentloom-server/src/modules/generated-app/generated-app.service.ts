@@ -2,7 +2,7 @@ import * as crypto from 'crypto';
 
 import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
@@ -14,11 +14,18 @@ import type {
   GeneratedAppPreview,
   GeneratedAppReadiness,
   GeneratedAppStatus,
+  GeneratedAppSubmission,
 } from '../../database/schema';
 import {
+  type CreateGeneratedAppSubmissionDtoType,
   type CreateGeneratedAppDtoType,
+  type DeleteGeneratedAppSubmissionsResponseDto,
+  type DeleteGeneratedAppSubmissionsDtoType,
   type GeneratedAppResponseDto,
+  type GeneratedAppSubmissionResponseDto,
+  type PublicGeneratedAppSubmissionResponseDto,
   type PublicGeneratedAppResponseDto,
+  type QueryGeneratedAppSubmissionsDtoType,
   type QueryGeneratedAppsDtoType,
   RecordGeneratedAppGateResultsSchema,
   type RecordGeneratedAppGateResultsDtoType,
@@ -32,6 +39,7 @@ import {
 import {
   GeneratedAppNotFoundException,
   GeneratedAppPublicShareNotReadyException,
+  GeneratedAppSubmissionNotFoundException,
 } from './generated-app.exceptions';
 
 const DEFAULT_PREVIEW: GeneratedAppPreview = {
@@ -252,23 +260,7 @@ export class GeneratedAppService {
   }
 
   async getPublicApp(token: string): Promise<PublicGeneratedAppResponseDto> {
-    const [app] = await this.db
-      .select()
-      .from(schema.generatedApps)
-      .where(
-        and(
-          eq(schema.generatedApps.publicShareToken, token),
-          eq(schema.generatedApps.publicShareEnabled, true),
-          eq(schema.generatedApps.status, 'published'),
-        ),
-      )
-      .limit(1);
-
-    if (!app) {
-      throw new GeneratedAppNotFoundException(token);
-    }
-
-    this.assertCanEnablePublicShare(app);
+    const app = await this.findPublicGeneratedAppRecord(token);
 
     await this.db
       .update(schema.generatedApps)
@@ -299,6 +291,182 @@ export class GeneratedAppService {
       },
       createdAt: app.createdAt,
     };
+  }
+
+  async createPublicSubmission(
+    token: string,
+    dto: CreateGeneratedAppSubmissionDtoType,
+  ): Promise<PublicGeneratedAppSubmissionResponseDto> {
+    const app = await this.findPublicGeneratedAppRecord(token);
+    const anonymousSessionId =
+      dto.anonymousSessionId?.trim() || crypto.randomUUID();
+
+    const [submission] = await this.db
+      .insert(schema.generatedAppSubmissions)
+      .values({
+        tenantId: app.tenantId,
+        generatedAppId: app.id,
+        appSpecVersion: app.appSpec.version,
+        publicShareToken: token,
+        anonymousSessionId,
+        status: 'received',
+        input: dto.input ?? {},
+        result: null,
+        report: null,
+        errorMessage: null,
+      })
+      .returning();
+
+    return this.toPublicSubmissionResponseDto(submission);
+  }
+
+  async getPublicSubmission(
+    token: string,
+    submissionId: string,
+  ): Promise<PublicGeneratedAppSubmissionResponseDto> {
+    const app = await this.findPublicGeneratedAppRecord(token);
+    const [submission] = await this.db
+      .select()
+      .from(schema.generatedAppSubmissions)
+      .where(
+        and(
+          eq(schema.generatedAppSubmissions.id, submissionId),
+          eq(schema.generatedAppSubmissions.generatedAppId, app.id),
+          eq(schema.generatedAppSubmissions.publicShareToken, token),
+          isNull(schema.generatedAppSubmissions.deletedAt),
+        ),
+      )
+      .limit(1);
+
+    if (!submission) {
+      throw new GeneratedAppSubmissionNotFoundException(submissionId);
+    }
+
+    return this.toPublicSubmissionResponseDto(submission);
+  }
+
+  async listSubmissions(
+    tenantId: string,
+    appId: string,
+    query: QueryGeneratedAppSubmissionsDtoType,
+  ): Promise<{
+    data: GeneratedAppSubmissionResponseDto[];
+    meta: {
+      total: number;
+      page: number;
+      pageSize: number;
+      totalPages: number;
+    };
+  }> {
+    const page = query.page;
+    const pageSize = query.pageSize;
+    const offset = (page - 1) * pageSize;
+    const baseFilters = [
+      eq(schema.generatedAppSubmissions.tenantId, tenantId),
+      eq(schema.generatedAppSubmissions.generatedAppId, appId),
+      isNull(schema.generatedAppSubmissions.deletedAt),
+    ];
+    const filters = query.status
+      ? and(
+          ...baseFilters,
+          eq(schema.generatedAppSubmissions.status, query.status),
+        )
+      : and(...baseFilters);
+
+    const [submissions, countRows] = await Promise.all([
+      this.tenantDb
+        .select()
+        .from(schema.generatedAppSubmissions)
+        .where(filters)
+        .orderBy(desc(schema.generatedAppSubmissions.createdAt))
+        .limit(pageSize)
+        .offset(offset),
+      this.tenantDb
+        .select({ count: sql<number>`count(*)::int` })
+        .from(schema.generatedAppSubmissions)
+        .where(filters),
+    ]);
+
+    const total = countRows[0]?.count ?? 0;
+
+    return {
+      data: submissions.map((submission) =>
+        this.toSubmissionResponseDto(submission),
+      ),
+      meta: {
+        total,
+        page,
+        pageSize,
+        totalPages: Math.ceil(total / pageSize),
+      },
+    };
+  }
+
+  async findSubmission(
+    tenantId: string,
+    appId: string,
+    submissionId: string,
+  ): Promise<GeneratedAppSubmissionResponseDto> {
+    const submission = await this.findSubmissionRecord(
+      tenantId,
+      appId,
+      submissionId,
+    );
+
+    return this.toSubmissionResponseDto(submission);
+  }
+
+  async deleteSubmission(
+    tenantId: string,
+    appId: string,
+    submissionId: string,
+  ): Promise<DeleteGeneratedAppSubmissionsResponseDto> {
+    const [deleted] = await this.tenantDb
+      .update(schema.generatedAppSubmissions)
+      .set({
+        deletedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(schema.generatedAppSubmissions.id, submissionId),
+          eq(schema.generatedAppSubmissions.tenantId, tenantId),
+          eq(schema.generatedAppSubmissions.generatedAppId, appId),
+          isNull(schema.generatedAppSubmissions.deletedAt),
+        ),
+      )
+      .returning({ id: schema.generatedAppSubmissions.id });
+
+    if (!deleted) {
+      throw new GeneratedAppSubmissionNotFoundException(submissionId);
+    }
+
+    return { deletedCount: 1 };
+  }
+
+  async deleteSubmissions(
+    tenantId: string,
+    appId: string,
+    dto: DeleteGeneratedAppSubmissionsDtoType,
+  ): Promise<DeleteGeneratedAppSubmissionsResponseDto> {
+    const ids = [...new Set(dto.ids)];
+    const deleted = await this.tenantDb
+      .update(schema.generatedAppSubmissions)
+      .set({
+        deletedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(schema.generatedAppSubmissions.tenantId, tenantId),
+          eq(schema.generatedAppSubmissions.generatedAppId, appId),
+          inArray(schema.generatedAppSubmissions.id, ids),
+          isNull(schema.generatedAppSubmissions.deletedAt),
+        ),
+      )
+      .returning({ id: schema.generatedAppSubmissions.id });
+
+    return { deletedCount: deleted.length };
   }
 
   assertCanEnablePublicShare(app: Pick<GeneratedApp, 'id' | 'readiness'>) {
@@ -381,6 +549,55 @@ export class GeneratedAppService {
     return app;
   }
 
+  private async findPublicGeneratedAppRecord(
+    token: string,
+  ): Promise<GeneratedApp> {
+    const [app] = await this.db
+      .select()
+      .from(schema.generatedApps)
+      .where(
+        and(
+          eq(schema.generatedApps.publicShareToken, token),
+          eq(schema.generatedApps.publicShareEnabled, true),
+          eq(schema.generatedApps.status, 'published'),
+        ),
+      )
+      .limit(1);
+
+    if (!app) {
+      throw new GeneratedAppNotFoundException(token);
+    }
+
+    this.assertCanEnablePublicShare(app);
+
+    return app;
+  }
+
+  private async findSubmissionRecord(
+    tenantId: string,
+    appId: string,
+    submissionId: string,
+  ): Promise<GeneratedAppSubmission> {
+    const [submission] = await this.tenantDb
+      .select()
+      .from(schema.generatedAppSubmissions)
+      .where(
+        and(
+          eq(schema.generatedAppSubmissions.id, submissionId),
+          eq(schema.generatedAppSubmissions.tenantId, tenantId),
+          eq(schema.generatedAppSubmissions.generatedAppId, appId),
+          isNull(schema.generatedAppSubmissions.deletedAt),
+        ),
+      )
+      .limit(1);
+
+    if (!submission) {
+      throw new GeneratedAppSubmissionNotFoundException(submissionId);
+    }
+
+    return submission;
+  }
+
   private toResponseDto(app: GeneratedApp): GeneratedAppResponseDto {
     const publicShareUrl =
       app.publicShareEnabled && app.publicShareToken
@@ -410,6 +627,45 @@ export class GeneratedAppService {
       publicViewCount: app.publicViewCount,
       createdAt: app.createdAt,
       updatedAt: app.updatedAt,
+    };
+  }
+
+  private toSubmissionResponseDto(
+    submission: GeneratedAppSubmission,
+  ): GeneratedAppSubmissionResponseDto {
+    return {
+      id: submission.id,
+      tenantId: submission.tenantId,
+      appId: submission.generatedAppId,
+      appSpecVersion: submission.appSpecVersion,
+      publicShareToken: submission.publicShareToken,
+      anonymousSessionId: submission.anonymousSessionId,
+      status: submission.status,
+      input: submission.input,
+      result: submission.result,
+      report: submission.report,
+      errorMessage: submission.errorMessage,
+      createdAt: submission.createdAt,
+      updatedAt: submission.updatedAt,
+      deletedAt: submission.deletedAt,
+    };
+  }
+
+  private toPublicSubmissionResponseDto(
+    submission: GeneratedAppSubmission,
+  ): PublicGeneratedAppSubmissionResponseDto {
+    return {
+      id: submission.id,
+      appId: submission.generatedAppId,
+      appSpecVersion: submission.appSpecVersion,
+      status: submission.status,
+      anonymousSessionId: submission.anonymousSessionId,
+      input: submission.input,
+      result: submission.result,
+      report: submission.report,
+      errorMessage: submission.errorMessage,
+      createdAt: submission.createdAt,
+      updatedAt: submission.updatedAt,
     };
   }
 

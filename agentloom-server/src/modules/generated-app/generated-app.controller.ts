@@ -19,8 +19,14 @@ import { Public } from '../../common/decorators/public.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import {
+  CreateGeneratedAppSubmissionDto,
+  CreateGeneratedAppSubmissionSchema,
   CreateGeneratedAppDto,
   CreateGeneratedAppSchema,
+  DeleteGeneratedAppSubmissionsDto,
+  DeleteGeneratedAppSubmissionsSchema,
+  QueryGeneratedAppSubmissionsDto,
+  QueryGeneratedAppSubmissionsSchema,
   QueryGeneratedAppsDto,
   QueryGeneratedAppsSchema,
   RecordGeneratedAppGateResultsDto,
@@ -60,6 +66,80 @@ export class GeneratedAppController {
     @CurrentTenant() tenantId: string,
   ) {
     return this.generatedAppService.list(tenantId, query);
+  }
+
+  @Get(':appId/submissions')
+  @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '分页查询生成应用公开提交记录' })
+  @ApiResponse({ status: 200, description: '生成应用提交记录列表' })
+  async listSubmissions(
+    @Param('appId', ParseUUIDPipe) appId: string,
+    @Query(new ZodValidationPipe(QueryGeneratedAppSubmissionsSchema))
+    query: QueryGeneratedAppSubmissionsDto,
+    @CurrentTenant() tenantId: string,
+  ) {
+    return this.generatedAppService.listSubmissions(tenantId, appId, query);
+  }
+
+  @Get(':appId/submissions/:submissionId')
+  @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '获取生成应用公开提交记录详情' })
+  @ApiResponse({ status: 200, description: '生成应用提交记录详情' })
+  @ApiResponse({ status: 404, description: '提交记录不存在或已删除' })
+  async findSubmission(
+    @Param('appId', ParseUUIDPipe) appId: string,
+    @Param('submissionId', ParseUUIDPipe) submissionId: string,
+    @CurrentTenant() tenantId: string,
+  ) {
+    const data = await this.generatedAppService.findSubmission(
+      tenantId,
+      appId,
+      submissionId,
+    );
+
+    return { data };
+  }
+
+  @Delete(':appId/submissions/:submissionId')
+  @Roles('owner', 'admin', 'creator')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '软删除单条生成应用公开提交记录' })
+  @ApiResponse({ status: 200, description: '提交记录已删除' })
+  @ApiResponse({ status: 404, description: '提交记录不存在或已删除' })
+  async deleteSubmission(
+    @Param('appId', ParseUUIDPipe) appId: string,
+    @Param('submissionId', ParseUUIDPipe) submissionId: string,
+    @CurrentTenant() tenantId: string,
+  ) {
+    const data = await this.generatedAppService.deleteSubmission(
+      tenantId,
+      appId,
+      submissionId,
+    );
+
+    return { data };
+  }
+
+  @Post(':appId/submissions/delete')
+  @Roles('owner', 'admin', 'creator')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '批量软删除生成应用公开提交记录' })
+  @ApiResponse({ status: 200, description: '提交记录批量删除结果' })
+  async deleteSubmissions(
+    @Param('appId', ParseUUIDPipe) appId: string,
+    @Body(new ZodValidationPipe(DeleteGeneratedAppSubmissionsSchema))
+    dto: DeleteGeneratedAppSubmissionsDto,
+    @CurrentTenant() tenantId: string,
+  ) {
+    const data = await this.generatedAppService.deleteSubmissions(
+      tenantId,
+      appId,
+      dto,
+    );
+
+    return { data };
   }
 
   @Get(':appId')
@@ -164,6 +244,43 @@ export class GeneratedAppController {
 @Controller('generated-apps/public')
 export class GeneratedAppPublicController {
   constructor(private readonly generatedAppService: GeneratedAppService) {}
+
+  @Post(':token/submissions')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: '公开生成应用提交终端用户输入' })
+  @ApiResponse({ status: 201, description: '公开提交记录已创建' })
+  @ApiResponse({ status: 404, description: '公开链接不存在或已关闭' })
+  @ApiResponse({ status: 409, description: '生成应用不再满足发布门槛' })
+  async createPublicSubmission(
+    @Param('token') token: string,
+    @Body(new ZodValidationPipe(CreateGeneratedAppSubmissionSchema))
+    dto: CreateGeneratedAppSubmissionDto,
+  ) {
+    const data = await this.generatedAppService.createPublicSubmission(
+      token,
+      dto,
+    );
+
+    return { data };
+  }
+
+  @Get(':token/submissions/:submissionId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '公开读取生成应用提交结果详情' })
+  @ApiResponse({ status: 200, description: '公开提交记录详情' })
+  @ApiResponse({ status: 404, description: '公开链接或提交记录不存在' })
+  @ApiResponse({ status: 409, description: '生成应用不再满足发布门槛' })
+  async getPublicSubmission(
+    @Param('token') token: string,
+    @Param('submissionId', ParseUUIDPipe) submissionId: string,
+  ) {
+    const data = await this.generatedAppService.getPublicSubmission(
+      token,
+      submissionId,
+    );
+
+    return { data };
+  }
 
   @Get(':token')
   @HttpCode(HttpStatus.OK)

@@ -5,8 +5,13 @@ import type { DrizzleDB } from '../../../database/database.module';
 import type {
   GeneratedApp,
   GeneratedAppReadiness,
+  GeneratedAppSubmission,
 } from '../../../database/schema';
-import { GeneratedAppPublicShareNotReadyException } from '../generated-app.exceptions';
+import {
+  GeneratedAppNotFoundException,
+  GeneratedAppPublicShareNotReadyException,
+  GeneratedAppSubmissionNotFoundException,
+} from '../generated-app.exceptions';
 import { createInitialGeneratedAppGateResults } from '../generated-app.gates';
 import { GeneratedAppService } from '../generated-app.service';
 
@@ -25,9 +30,10 @@ vi.mock('../../../common/providers/tenant-aware-db.provider', () => ({
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
 const USER_ID = '22222222-2222-4222-8222-222222222222';
 const APP_ID = '33333333-3333-4333-8333-333333333333';
+const SUBMISSION_ID = '44444444-4444-4444-8444-444444444444';
 const NOW = new Date('2026-04-25T00:00:00.000Z');
 
-function createSelectChain(result: GeneratedApp[]) {
+function createSelectChain<T>(result: T[]) {
   return {
     from: vi.fn().mockReturnThis(),
     where: vi.fn().mockReturnThis(),
@@ -35,7 +41,31 @@ function createSelectChain(result: GeneratedApp[]) {
   };
 }
 
-function createUpdateReturningChain(result: GeneratedApp[]) {
+function createSelectPageChain<T>(result: T[]) {
+  return {
+    from: vi.fn().mockReturnThis(),
+    where: vi.fn().mockReturnThis(),
+    orderBy: vi.fn().mockReturnThis(),
+    limit: vi.fn().mockReturnThis(),
+    offset: vi.fn().mockResolvedValue(result),
+  };
+}
+
+function createCountChain(total: number) {
+  return {
+    from: vi.fn().mockReturnThis(),
+    where: vi.fn().mockResolvedValue([{ count: total }]),
+  };
+}
+
+function createInsertReturningChain<T>(result: T[]) {
+  return {
+    values: vi.fn().mockReturnThis(),
+    returning: vi.fn().mockResolvedValue(result),
+  };
+}
+
+function createUpdateReturningChain<T>(result: T[]) {
   return {
     set: vi.fn().mockReturnThis(),
     where: vi.fn().mockReturnThis(),
@@ -80,6 +110,28 @@ function createReadiness(
       },
     ],
     warnings: [],
+    ...overrides,
+  };
+}
+
+function createGeneratedAppSubmission(
+  overrides: Partial<GeneratedAppSubmission> = {},
+): GeneratedAppSubmission {
+  return {
+    id: SUBMISSION_ID,
+    tenantId: TENANT_ID,
+    generatedAppId: APP_ID,
+    appSpecVersion: 1,
+    publicShareToken: '1'.repeat(64),
+    anonymousSessionId: 'anonymous-session-1',
+    status: 'received',
+    input: { chiefComplaint: '头痛' },
+    result: null,
+    report: null,
+    errorMessage: null,
+    createdAt: NOW,
+    updatedAt: NOW,
+    deletedAt: null,
     ...overrides,
   };
 }
@@ -440,5 +492,221 @@ describe('GeneratedAppService', () => {
       GeneratedAppPublicShareNotReadyException,
     );
     expect(mockTenantDb.update).not.toHaveBeenCalled();
+  });
+
+  it('公开提交应写入创建者租户、快照当前 token、缺省生成匿名会话并保持 received 状态', async () => {
+    const token = '3'.repeat(64);
+    const app = createGeneratedApp({
+      status: 'published',
+      readiness: createPublishCandidateReadiness(),
+      publicShareEnabled: true,
+      publicShareToken: token,
+    });
+    const submission = createGeneratedAppSubmission({
+      publicShareToken: token,
+    });
+    const insertChain = createInsertReturningChain([submission]);
+    mockTenantDb.select.mockReturnValueOnce(createSelectChain([app]));
+    mockTenantDb.insert.mockReturnValueOnce(insertChain);
+
+    const response = await service.createPublicSubmission(token, {
+      input: { chiefComplaint: '头痛' },
+    });
+
+    const insertPayload = insertChain.values.mock.calls[0]?.[0] as {
+      tenantId: string;
+      generatedAppId: string;
+      publicShareToken: string;
+      anonymousSessionId: string;
+      status: string;
+      input: Record<string, unknown>;
+      result: null;
+      report: null;
+      errorMessage: null;
+    };
+    expect(insertPayload.tenantId).toBe(TENANT_ID);
+    expect(insertPayload.generatedAppId).toBe(APP_ID);
+    expect(insertPayload.publicShareToken).toBe(token);
+    expect(insertPayload.anonymousSessionId).toMatch(/^[0-9a-f-]{36}$/i);
+    expect(insertPayload.status).toBe('received');
+    expect(insertPayload.input).toEqual({ chiefComplaint: '头痛' });
+    expect(insertPayload.result).toBeNull();
+    expect(insertPayload.report).toBeNull();
+    expect(insertPayload.errorMessage).toBeNull();
+    expect(response.status).toBe('received');
+  });
+
+  it('公开提交遇到过期或未满足 readiness 的公开应用时应拒绝', async () => {
+    const staleToken = '4'.repeat(64);
+    mockTenantDb.select.mockReturnValueOnce(createSelectChain([]));
+
+    await expect(
+      service.createPublicSubmission(staleToken, { input: {} }),
+    ).rejects.toBeInstanceOf(GeneratedAppNotFoundException);
+
+    vi.clearAllMocks();
+
+    const notReadyToken = '5'.repeat(64);
+    const notReadyApp = createGeneratedApp({
+      status: 'published',
+      readiness: createReadiness({
+        state: 'blocked',
+        canCreatePublicShare: false,
+      }),
+      publicShareEnabled: true,
+      publicShareToken: notReadyToken,
+    });
+    mockTenantDb.select.mockReturnValueOnce(createSelectChain([notReadyApp]));
+
+    await expect(
+      service.createPublicSubmission(notReadyToken, { input: {} }),
+    ).rejects.toBeInstanceOf(GeneratedAppPublicShareNotReadyException);
+    expect(mockTenantDb.insert).not.toHaveBeenCalled();
+  });
+
+  it('公开提交响应不应暴露租户、token、readiness、gate 或内部 artifact 字段', async () => {
+    const token = '6'.repeat(64);
+    const app = createGeneratedApp({
+      status: 'published',
+      readiness: createPublishCandidateReadiness(),
+      publicShareEnabled: true,
+      publicShareToken: token,
+      preview: {
+        previewUrl: 'https://preview.example.test/apps/1',
+        sourceArtifactUrl: 'https://internal.example.test/source.zip',
+        testReportUrl: 'https://internal.example.test/report.json',
+      },
+      pluginIds: ['plugin-private'],
+    });
+    mockTenantDb.select.mockReturnValueOnce(createSelectChain([app]));
+    mockTenantDb.insert.mockReturnValueOnce(
+      createInsertReturningChain([
+        createGeneratedAppSubmission({ publicShareToken: token }),
+      ]),
+    );
+
+    const response = await service.createPublicSubmission(token, {
+      anonymousSessionId: 'browser-session-1',
+      input: { name: '访客' },
+      clientContext: { userAgent: 'test-browser' },
+    });
+
+    expect(response).not.toHaveProperty('tenantId');
+    expect(response).not.toHaveProperty('publicShareToken');
+    expect(response).not.toHaveProperty('readiness');
+    expect(response).not.toHaveProperty('gateResults');
+    expect(response).not.toHaveProperty('preview');
+    expect(response).not.toHaveProperty('pluginIds');
+    expect(response).not.toHaveProperty('sourceArtifactUrl');
+    expect(response).not.toHaveProperty('testReportUrl');
+  });
+
+  it('创建者提交列表和详情只返回当前租户、应用且未删除的记录', async () => {
+    const submission = createGeneratedAppSubmission();
+    const listChain = createSelectPageChain([submission]);
+    const countChain = createCountChain(1);
+    mockTenantDb.select
+      .mockReturnValueOnce(listChain)
+      .mockReturnValueOnce(countChain)
+      .mockReturnValueOnce(createSelectChain([submission]));
+
+    const list = await service.listSubmissions(TENANT_ID, APP_ID, {
+      page: 1,
+      pageSize: 20,
+      status: 'received',
+    });
+    const detail = await service.findSubmission(
+      TENANT_ID,
+      APP_ID,
+      SUBMISSION_ID,
+    );
+
+    expect(listChain.where).toHaveBeenCalledTimes(1);
+    expect(countChain.where).toHaveBeenCalledTimes(1);
+    expect(list.data).toEqual([
+      expect.objectContaining({
+        id: SUBMISSION_ID,
+        tenantId: TENANT_ID,
+        appId: APP_ID,
+        deletedAt: null,
+      }),
+    ]);
+    expect(list.meta).toEqual({
+      total: 1,
+      page: 1,
+      pageSize: 20,
+      totalPages: 1,
+    });
+    expect(detail).toEqual(
+      expect.objectContaining({
+        id: SUBMISSION_ID,
+        tenantId: TENANT_ID,
+        appId: APP_ID,
+        publicShareToken: submission.publicShareToken,
+      }),
+    );
+  });
+
+  it('创建者单条和批量删除提交记录时应只做软删除', async () => {
+    const singleDeleteChain = createUpdateReturningChain([
+      { id: SUBMISSION_ID },
+    ]);
+    const batchDeleteChain = createUpdateReturningChain([
+      { id: SUBMISSION_ID },
+      { id: '55555555-5555-4555-8555-555555555555' },
+    ]);
+    mockTenantDb.update
+      .mockReturnValueOnce(singleDeleteChain)
+      .mockReturnValueOnce(batchDeleteChain);
+
+    const single = await service.deleteSubmission(
+      TENANT_ID,
+      APP_ID,
+      SUBMISSION_ID,
+    );
+    const batch = await service.deleteSubmissions(TENANT_ID, APP_ID, {
+      ids: [SUBMISSION_ID, '55555555-5555-4555-8555-555555555555'],
+    });
+
+    expect(singleDeleteChain.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        deletedAt: expect.any(Date),
+        updatedAt: expect.any(Date),
+      }),
+    );
+    expect(batchDeleteChain.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        deletedAt: expect.any(Date),
+        updatedAt: expect.any(Date),
+      }),
+    );
+    expect(single).toEqual({ deletedCount: 1 });
+    expect(batch).toEqual({ deletedCount: 2 });
+  });
+
+  it('公开详情不能读取已删除提交，也不能在 token 轮换后用旧 token 读取', async () => {
+    const token = '7'.repeat(64);
+    const app = createGeneratedApp({
+      status: 'published',
+      readiness: createPublishCandidateReadiness(),
+      publicShareEnabled: true,
+      publicShareToken: token,
+    });
+    mockTenantDb.select
+      .mockReturnValueOnce(createSelectChain([app]))
+      .mockReturnValueOnce(createSelectChain([]));
+
+    await expect(
+      service.getPublicSubmission(token, SUBMISSION_ID),
+    ).rejects.toBeInstanceOf(GeneratedAppSubmissionNotFoundException);
+
+    vi.clearAllMocks();
+
+    const oldToken = '8'.repeat(64);
+    mockTenantDb.select.mockReturnValueOnce(createSelectChain([]));
+
+    await expect(
+      service.getPublicSubmission(oldToken, SUBMISSION_ID),
+    ).rejects.toBeInstanceOf(GeneratedAppNotFoundException);
   });
 });
