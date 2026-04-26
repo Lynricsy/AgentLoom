@@ -19,12 +19,16 @@ import { Public } from '../../common/decorators/public.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { ZodValidationPipe } from '../../common/pipes/zod-validation.pipe';
 import {
+  CreateGeneratedAppGateRunDto,
+  CreateGeneratedAppGateRunSchema,
   CreateGeneratedAppSubmissionDto,
   CreateGeneratedAppSubmissionSchema,
   CreateGeneratedAppDto,
   CreateGeneratedAppSchema,
   DeleteGeneratedAppSubmissionsDto,
   DeleteGeneratedAppSubmissionsSchema,
+  QueryGeneratedAppGateRunsDto,
+  QueryGeneratedAppGateRunsSchema,
   QueryGeneratedAppSubmissionsDto,
   QueryGeneratedAppSubmissionsSchema,
   QueryGeneratedAppsDto,
@@ -66,6 +70,43 @@ export class GeneratedAppController {
     @CurrentTenant() tenantId: string,
   ) {
     return this.generatedAppService.list(tenantId, query);
+  }
+
+  @Get(':appId/gate-runs')
+  @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '分页查询生成应用门禁运行证据记录' })
+  @ApiResponse({ status: 200, description: '生成应用门禁运行记录列表' })
+  async listGateRuns(
+    @Param('appId', ParseUUIDPipe) appId: string,
+    @Query(new ZodValidationPipe(QueryGeneratedAppGateRunsSchema))
+    query: QueryGeneratedAppGateRunsDto,
+    @CurrentTenant() tenantId: string,
+  ) {
+    return this.generatedAppService.listGateRuns(tenantId, appId, query);
+  }
+
+  @Post(':appId/gate-runs')
+  @Roles('owner', 'admin', 'creator')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: '记录一次生成应用门禁运行并同步 readiness' })
+  @ApiResponse({ status: 201, description: '生成应用门禁运行记录已创建' })
+  @ApiResponse({ status: 404, description: '生成应用任务不存在' })
+  async recordGateRun(
+    @Param('appId', ParseUUIDPipe) appId: string,
+    @Body(new ZodValidationPipe(CreateGeneratedAppGateRunSchema))
+    dto: CreateGeneratedAppGateRunDto,
+    @CurrentTenant() tenantId: string,
+    @CurrentUser('sub') userId: string,
+  ) {
+    const data = await this.generatedAppService.recordGateRun(
+      tenantId,
+      userId,
+      appId,
+      dto,
+    );
+
+    return { data };
   }
 
   @Get(':appId/submissions')

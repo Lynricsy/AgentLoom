@@ -80,6 +80,12 @@ export const GENERATED_APP_GATE_DEFINITIONS = [
 const CANONICAL_GATES: ReadonlyMap<string, GeneratedAppGateDefinition> =
   new Map(GENERATED_APP_GATE_DEFINITIONS.map((gate) => [gate.gateId, gate]));
 
+export function getGeneratedAppGateDefinition(
+  gateId: string,
+): GeneratedAppGateDefinition | undefined {
+  return CANONICAL_GATES.get(gateId);
+}
+
 export function createInitialGeneratedAppGateResults(
   nowIso = new Date().toISOString(),
 ): GeneratedAppGateResult[] {

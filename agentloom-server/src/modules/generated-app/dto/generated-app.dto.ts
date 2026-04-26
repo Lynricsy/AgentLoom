@@ -3,6 +3,8 @@ import { z } from 'zod';
 
 import type {
   GeneratedApp,
+  GeneratedAppGateRun,
+  GeneratedAppGateRunFailure,
   GeneratedAppGateResult,
   GeneratedAppPreview,
   GeneratedAppReadiness,
@@ -24,6 +26,25 @@ export const GeneratedAppSubmissionStatusSchema = z.enum([
   'running',
   'completed',
   'failed',
+]);
+
+export const GeneratedAppCanonicalGateIdSchema = z.enum([
+  'gate-0',
+  'gate-1',
+  'gate-2',
+  'gate-3',
+  'gate-4',
+  'gate-5',
+  'gate-6',
+  'gate-7',
+]);
+
+export const GeneratedAppGateRunStatusSchema = z.enum([
+  'running',
+  'passed',
+  'failed',
+  'warning',
+  'skipped',
 ]);
 
 export const CreateGeneratedAppSchema = z.object({
@@ -164,6 +185,47 @@ export type RecordGeneratedAppGateResultsDtoType = z.infer<
   typeof RecordGeneratedAppGateResultsSchema
 >;
 
+export const GeneratedAppGateRunFailureSchema = z.object({
+  code: z.string().trim().min(1).max(128).optional(),
+  message: z.string().trim().min(1, '失败原因不能为空').max(4000),
+  details: z.unknown().optional(),
+});
+
+export const CreateGeneratedAppGateRunSchema = z.object({
+  gateId: GeneratedAppCanonicalGateIdSchema,
+  attemptNumber: z.number().int().min(1).max(100).default(1),
+  status: GeneratedAppGateRunStatusSchema,
+  summary: z.string().trim().min(1, '门禁运行摘要不能为空').max(4000),
+  evidence: z.array(GeneratedAppGateEvidenceSchema).max(64).default([]),
+  failure: GeneratedAppGateRunFailureSchema.nullable().optional(),
+  repairInstructions: z.string().trim().min(1).max(4000).nullable().optional(),
+  startedAt: z.string().datetime().optional(),
+  completedAt: z.string().datetime().nullable().optional(),
+});
+
+export class CreateGeneratedAppGateRunDto extends createZodDto(
+  CreateGeneratedAppGateRunSchema,
+) {}
+
+export type CreateGeneratedAppGateRunDtoType = z.infer<
+  typeof CreateGeneratedAppGateRunSchema
+>;
+
+export const QueryGeneratedAppGateRunsSchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  pageSize: z.coerce.number().int().min(1).max(100).default(20),
+  gateId: GeneratedAppCanonicalGateIdSchema.optional(),
+  status: GeneratedAppGateRunStatusSchema.optional(),
+});
+
+export class QueryGeneratedAppGateRunsDto extends createZodDto(
+  QueryGeneratedAppGateRunsSchema,
+) {}
+
+export type QueryGeneratedAppGateRunsDtoType = z.infer<
+  typeof QueryGeneratedAppGateRunsSchema
+>;
+
 export interface GeneratedAppResponseDto {
   id: string;
   tenantId: string;
@@ -187,6 +249,32 @@ export interface GeneratedAppResponseDto {
   publicViewCount: number;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface GeneratedAppGateRunResponseDto {
+  id: string;
+  tenantId: string;
+  appId: string;
+  gateId: string;
+  gateOrder: number;
+  gateName: string;
+  blocking: boolean;
+  attemptNumber: number;
+  status: GeneratedAppGateRun['status'];
+  summary: string;
+  evidence: GeneratedAppGateResult['evidence'];
+  failure: GeneratedAppGateRunFailure | null;
+  repairInstructions: string | null;
+  startedAt: Date;
+  completedAt: Date | null;
+  createdBy: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface RecordGeneratedAppGateRunResponseDto {
+  gateRun: GeneratedAppGateRunResponseDto;
+  app: GeneratedAppResponseDto;
 }
 
 export interface PublicGeneratedAppResponseDto {

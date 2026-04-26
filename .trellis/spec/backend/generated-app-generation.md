@@ -36,6 +36,18 @@
   - nullable runtime outputs: `result`, `report`, `error_message`
   - lifecycle columns: `created_at`, `updated_at`, `deleted_at`
   - direct tenant RLS via `tenant_id`; public endpoints must write through the raw/global DB only after resolving a currently valid public app by token.
+- DB table: `generated_app_gate_runs`
+  - `id uuid primary key default uuid_generate_v7()`
+  - `tenant_id uuid not null`
+  - `generated_app_id uuid not null references generated_apps(id) on delete cascade`
+  - canonical gate snapshot: `gate_id`, `gate_order`, `gate_name`, `blocking`
+  - `attempt_number integer not null default 1`
+  - `status generated_app_gate_run_status not null`
+  - `summary text not null`
+  - `evidence jsonb not null default '[]'::jsonb`
+  - nullable repair fields: `failure`, `repair_instructions`
+  - lifecycle/audit columns: `started_at`, `completed_at`, `created_by`, `created_at`, `updated_at`
+  - direct tenant RLS via `tenant_id`; creator endpoints must use tenant-aware DB access.
 - Status enum:
   - `app_spec_ready`
   - `preview_ready`
@@ -48,11 +60,19 @@
   - `running`
   - `completed`
   - `failed`
+- Gate run status enum:
+  - `running`
+  - `passed`
+  - `failed`
+  - `warning`
+  - `skipped`
 - Authenticated API:
   - `POST /generated-apps`
   - `GET /generated-apps`
   - `GET /generated-apps/:appId`
   - `PATCH /generated-apps/:appId/gates`
+  - `GET /generated-apps/:appId/gate-runs?page=&pageSize=&gateId=&status=`
+  - `POST /generated-apps/:appId/gate-runs`
   - `POST /generated-apps/:appId/public-share`
   - `POST /generated-apps/:appId/public-share/regenerate`
   - `DELETE /generated-apps/:appId/public-share`
@@ -75,6 +95,15 @@
   - `gateResults`: 1-32 gate result objects.
   - `generationPlan`: optional object or null.
   - `preview`: optional object with nullable `previewUrl`, `sourceArtifactUrl`, `testReportUrl`.
+- `CreateGeneratedAppGateRunDto`
+  - `gateId`: one of canonical Gate 0-7 ids (`gate-0` through `gate-7`).
+  - `attemptNumber`: integer 1-100, default 1.
+  - `status`: `running | passed | failed | warning | skipped`.
+  - `summary`: required human-readable result summary.
+  - `evidence`: optional array of gate evidence objects; defaults to `[]`.
+  - `failure`: optional `{ code?, message, details? }` object for failed or degraded runs.
+  - `repairInstructions`: optional human-readable next repair instruction.
+  - `startedAt` / `completedAt`: optional ISO timestamps; non-running runs default `completedAt` to server time when omitted.
 - Canonical gates:
   - `gate-0` requirement spec
   - `gate-1` architecture plan
@@ -89,6 +118,17 @@
   - Any blocking gate failed -> `blocked`, `canCreatePublicShare=false`.
   - All blocking gates passed but any non-blocking warning exists -> `trial`, `canCreatePublicShare=false`.
   - All blocking gates passed and no warning exists -> `publish_candidate`, `canCreatePublicShare=true`.
+- Gate run recording:
+  - `POST /generated-apps/:appId/gate-runs` must first resolve the generated app in tenant scope.
+  - Each gate run stores an immutable attempt row in `generated_app_gate_runs` with the canonical gate definition snapshot and the supplied evidence/failure/repair data.
+  - The same request must update `generated_apps.gate_results`, replacing the current summary for that canonical gate while preserving other gates through canonical normalization.
+  - The request must recompute `generated_apps.readiness` and `generated_apps.status` from the full normalized gate result set.
+  - If the new readiness cannot create a public share, the request must set `public_share_enabled=false`, clear `public_share_token`, and set `public_share_disabled_at`.
+  - The response returns `{ gateRun, app }`, where `gateRun` is the persisted run attempt and `app` is the updated creator-side generated app response.
+- Gate run listing:
+  - `GET /generated-apps/:appId/gate-runs` returns the standard paginated `{ data, meta }` envelope ordered by `created_at desc`.
+  - Filters must include `tenant_id + generated_app_id`; optional `gateId` and `status` filters narrow the list.
+  - Creator response may include tenant and creator audit fields because the endpoint is authenticated and tenant-scoped.
 - Public response must expose only end-user runtime surface:
   - `token`, `appId`, `title`, `description`, `dataUseNotice`, limited `appSpec`, `runtimeSurface`, `createdAt`.
   - Do not expose `gateResults`, `readiness`, `generationPlan`, `sourceArtifactUrl`, `testReportUrl`, `pluginIds`, `publicShareToken`, or creator-only pages.
@@ -124,6 +164,11 @@
 | Non-blocking warning remains | Readiness is `trial`; public share enable/regenerate returns 409 |
 | All blocking gates pass and no warning remains | Readiness is `publish_candidate`; public share can be enabled |
 | Gate update downgrades readiness below publish candidate | Disable public link and clear old token |
+| Gate run uses a non-canonical gate id | Reject DTO validation or domain validation before insert |
+| Gate run is recorded for a missing app | Return `GeneratedAppNotFoundException` and do not insert evidence |
+| Gate run records `failed` for a blocking gate | Insert run evidence, update current gate result to `failed`, recompute readiness to `blocked`, and clear public share token |
+| Gate run records `running`, `skipped`, or `warning` for a blocking gate | Insert run evidence, recompute readiness to non-publishable state, and clear public share token |
+| Gate run records `passed` but other blocking gates are still not passed | Keep readiness in `preview` and keep public share disabled |
 | Creator disables public share | Disable link and clear old token; old URL must immediately stop working |
 | Creator regenerates public share | Replace token; old URL must immediately stop working |
 | Public token is missing, disabled, or not `published` | Public endpoint returns not found |
@@ -169,6 +214,10 @@
   - creator submission list/detail filter by tenant id, app id, and `deleted_at is null`
   - single and batch delete set `deleted_at`/`updated_at` and return correct delete counts
   - public submission detail cannot read a soft-deleted submission and cannot read old-token submissions after token rotation
+  - gate run recording inserts immutable attempt evidence with canonical gate snapshot fields
+  - gate run recording updates current `gateResults`, `readiness`, and `status` in the owning generated app
+  - failed or non-publishable gate runs clear any active public share token
+  - gate run listing filters by tenant id, app id, gate id, and status and returns paginated results
 - Run scoped lint, `tsconfig.build.json` typecheck, and targeted tests for any generated-app change.
 
 ### 7. Wrong vs Correct

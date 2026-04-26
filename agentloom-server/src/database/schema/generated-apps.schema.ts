@@ -38,6 +38,14 @@ export const generatedAppSubmissionStatusEnum = pgEnum(
 export type GeneratedAppSubmissionStatus =
   (typeof generatedAppSubmissionStatusEnum.enumValues)[number];
 
+export const generatedAppGateRunStatusEnum = pgEnum(
+  'generated_app_gate_run_status',
+  ['running', 'passed', 'failed', 'warning', 'skipped'],
+);
+
+export type GeneratedAppGateRunStatus =
+  (typeof generatedAppGateRunStatusEnum.enumValues)[number];
+
 export type GeneratedAppReadinessState =
   | 'preview'
   | 'trial'
@@ -115,6 +123,12 @@ export interface GeneratedAppGateResult {
   summary: string;
   evidence: GeneratedAppGateEvidence[];
   updatedAt: string;
+}
+
+export interface GeneratedAppGateRunFailure {
+  code?: string;
+  message: string;
+  details?: unknown;
 }
 
 export interface GeneratedAppReadiness {
@@ -305,3 +319,80 @@ export type GeneratedAppSubmission =
   typeof generatedAppSubmissions.$inferSelect;
 export type NewGeneratedAppSubmission =
   typeof generatedAppSubmissions.$inferInsert;
+
+export const generatedAppGateRuns = pgTable(
+  'generated_app_gate_runs',
+  {
+    id: uuid('id')
+      .primaryKey()
+      .default(sql`uuid_generate_v7()`),
+
+    tenantId: uuid('tenant_id').notNull(),
+
+    generatedAppId: uuid('generated_app_id')
+      .notNull()
+      .references(() => generatedApps.id, { onDelete: 'cascade' }),
+
+    gateId: varchar('gate_id', { length: 64 }).notNull(),
+
+    gateOrder: integer('gate_order').notNull(),
+
+    gateName: varchar('gate_name', { length: 255 }).notNull(),
+
+    blocking: boolean('blocking').notNull(),
+
+    attemptNumber: integer('attempt_number').notNull().default(1),
+
+    status: generatedAppGateRunStatusEnum('status').notNull(),
+
+    summary: text('summary').notNull(),
+
+    evidence: jsonb('evidence')
+      .$type<GeneratedAppGateEvidence[]>()
+      .notNull()
+      .default(sql`'[]'::jsonb`),
+
+    failure: jsonb('failure').$type<GeneratedAppGateRunFailure | null>(),
+
+    repairInstructions: text('repair_instructions'),
+
+    startedAt: timestamp('started_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+
+    createdBy: uuid('created_by').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index('idx_generated_app_gate_runs_tenant_app_created').on(
+      table.tenantId,
+      table.generatedAppId,
+      table.createdAt,
+    ),
+    index('idx_generated_app_gate_runs_tenant_app_gate').on(
+      table.tenantId,
+      table.generatedAppId,
+      table.gateId,
+    ),
+    index('idx_generated_app_gate_runs_tenant_app_status').on(
+      table.tenantId,
+      table.generatedAppId,
+      table.status,
+    ),
+    ...createDirectTenantPolicies('generated_app_gate_runs'),
+  ],
+);
+
+export type GeneratedAppGateRun = typeof generatedAppGateRuns.$inferSelect;
+export type NewGeneratedAppGateRun = typeof generatedAppGateRuns.$inferInsert;

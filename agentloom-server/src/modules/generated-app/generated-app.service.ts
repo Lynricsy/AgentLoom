@@ -9,6 +9,7 @@ import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import * as schema from '../../database/schema';
 import type {
   GeneratedApp,
+  GeneratedAppGateRun,
   GeneratedAppSpec,
   GeneratedAppGateResult,
   GeneratedAppPreview,
@@ -17,26 +18,33 @@ import type {
   GeneratedAppSubmission,
 } from '../../database/schema';
 import {
+  CreateGeneratedAppGateRunSchema,
+  type CreateGeneratedAppGateRunDtoType,
   type CreateGeneratedAppSubmissionDtoType,
   type CreateGeneratedAppDtoType,
   type DeleteGeneratedAppSubmissionsResponseDto,
   type DeleteGeneratedAppSubmissionsDtoType,
+  type GeneratedAppGateRunResponseDto,
   type GeneratedAppResponseDto,
   type GeneratedAppSubmissionResponseDto,
   type PublicGeneratedAppSubmissionResponseDto,
   type PublicGeneratedAppResponseDto,
+  type QueryGeneratedAppGateRunsDtoType,
   type QueryGeneratedAppSubmissionsDtoType,
   type QueryGeneratedAppsDtoType,
   RecordGeneratedAppGateResultsSchema,
+  type RecordGeneratedAppGateRunResponseDto,
   type RecordGeneratedAppGateResultsDtoType,
 } from './dto';
 import {
   createInitialGeneratedAppGateResults,
   evaluateGeneratedAppReadiness,
+  getGeneratedAppGateDefinition,
   getGeneratedAppStatusForReadiness,
   normalizeGeneratedAppGateResults,
 } from './generated-app.gates';
 import {
+  GeneratedAppGateDefinitionNotFoundException,
   GeneratedAppNotFoundException,
   GeneratedAppPublicShareNotReadyException,
   GeneratedAppSubmissionNotFoundException,
@@ -161,30 +169,14 @@ export class GeneratedAppService {
     const gateResults = normalizeGeneratedAppGateResults(
       parsed.gateResults as GeneratedAppGateResult[],
     );
-    const readiness = evaluateGeneratedAppReadiness(gateResults);
-    const status = getGeneratedAppStatusForReadiness(readiness);
-    const shouldDisablePublicShare = !readiness.canCreatePublicShare;
-    const updatePayload: Partial<schema.NewGeneratedApp> = {
+    const updatePayload = this.buildGateResultsUpdatePayload(
+      userId,
       gateResults,
-      readiness,
-      status,
-      updatedBy: userId,
-      updatedAt: new Date(),
-    };
-
-    if (parsed.generationPlan !== undefined) {
-      updatePayload.generationPlan = parsed.generationPlan;
-    }
-
-    if (parsed.preview !== undefined) {
-      updatePayload.preview = parsed.preview;
-    }
-
-    if (shouldDisablePublicShare) {
-      updatePayload.publicShareToken = null;
-      updatePayload.publicShareEnabled = false;
-      updatePayload.publicShareDisabledAt = new Date();
-    }
+      {
+        generationPlan: parsed.generationPlan,
+        preview: parsed.preview,
+      },
+    );
 
     const [updated] = await this.tenantDb
       .update(schema.generatedApps)
@@ -202,6 +194,149 @@ export class GeneratedAppService {
     }
 
     return this.toResponseDto(updated);
+  }
+
+  async listGateRuns(
+    tenantId: string,
+    appId: string,
+    query: QueryGeneratedAppGateRunsDtoType,
+  ): Promise<{
+    data: GeneratedAppGateRunResponseDto[];
+    meta: {
+      total: number;
+      page: number;
+      pageSize: number;
+      totalPages: number;
+    };
+  }> {
+    const page = query.page;
+    const pageSize = query.pageSize;
+    const offset = (page - 1) * pageSize;
+    const baseFilters = [
+      eq(schema.generatedAppGateRuns.tenantId, tenantId),
+      eq(schema.generatedAppGateRuns.generatedAppId, appId),
+    ];
+
+    if (query.gateId) {
+      baseFilters.push(eq(schema.generatedAppGateRuns.gateId, query.gateId));
+    }
+
+    if (query.status) {
+      baseFilters.push(eq(schema.generatedAppGateRuns.status, query.status));
+    }
+
+    const filters = and(...baseFilters);
+    const [gateRuns, countRows] = await Promise.all([
+      this.tenantDb
+        .select()
+        .from(schema.generatedAppGateRuns)
+        .where(filters)
+        .orderBy(desc(schema.generatedAppGateRuns.createdAt))
+        .limit(pageSize)
+        .offset(offset),
+      this.tenantDb
+        .select({ count: sql<number>`count(*)::int` })
+        .from(schema.generatedAppGateRuns)
+        .where(filters),
+    ]);
+
+    const total = countRows[0]?.count ?? 0;
+
+    return {
+      data: gateRuns.map((gateRun) => this.toGateRunResponseDto(gateRun)),
+      meta: {
+        total,
+        page,
+        pageSize,
+        totalPages: Math.ceil(total / pageSize),
+      },
+    };
+  }
+
+  async recordGateRun(
+    tenantId: string,
+    userId: string,
+    appId: string,
+    dto: CreateGeneratedAppGateRunDtoType,
+  ): Promise<RecordGeneratedAppGateRunResponseDto> {
+    const app = await this.findGeneratedAppRecord(tenantId, appId);
+    const parsed = CreateGeneratedAppGateRunSchema.parse(dto);
+    const gateDefinition = getGeneratedAppGateDefinition(parsed.gateId);
+
+    if (!gateDefinition) {
+      throw new GeneratedAppGateDefinitionNotFoundException(parsed.gateId);
+    }
+
+    const now = new Date();
+    const startedAt = parsed.startedAt ? new Date(parsed.startedAt) : now;
+    const completedAt =
+      parsed.completedAt !== undefined
+        ? parsed.completedAt === null
+          ? null
+          : new Date(parsed.completedAt)
+        : parsed.status === 'running'
+          ? null
+          : now;
+
+    const [gateRun] = await this.tenantDb
+      .insert(schema.generatedAppGateRuns)
+      .values({
+        tenantId,
+        generatedAppId: appId,
+        gateId: gateDefinition.gateId,
+        gateOrder: gateDefinition.order,
+        gateName: gateDefinition.name,
+        blocking: gateDefinition.blocking,
+        attemptNumber: parsed.attemptNumber,
+        status: parsed.status,
+        summary: parsed.summary,
+        evidence: parsed.evidence,
+        failure: parsed.failure ?? null,
+        repairInstructions: parsed.repairInstructions ?? null,
+        startedAt,
+        completedAt,
+        createdBy: userId,
+      })
+      .returning();
+
+    const gateResult: GeneratedAppGateResult = {
+      gateId: gateDefinition.gateId,
+      order: gateDefinition.order,
+      name: gateDefinition.name,
+      blocking: gateDefinition.blocking,
+      status: parsed.status,
+      summary: parsed.summary,
+      evidence: parsed.evidence,
+      updatedAt: (completedAt ?? now).toISOString(),
+    };
+    const gateResults = normalizeGeneratedAppGateResults([
+      ...app.gateResults.filter((gate) => gate.gateId !== gateResult.gateId),
+      gateResult,
+    ]);
+    const updatePayload = this.buildGateResultsUpdatePayload(
+      userId,
+      gateResults,
+    );
+
+    const [updated] = await this.tenantDb
+      .update(schema.generatedApps)
+      .set(updatePayload)
+      .where(
+        and(
+          eq(schema.generatedApps.id, appId),
+          eq(schema.generatedApps.tenantId, tenantId),
+        ),
+      )
+      .returning();
+
+    if (!updated) {
+      throw new GeneratedAppNotFoundException(appId);
+    }
+
+    return {
+      gateRun: this.toGateRunResponseDto(gateRun),
+      app: this.toResponseDto(updated),
+    };
   }
 
   async enablePublicShare(
@@ -481,6 +616,41 @@ export class GeneratedAppService {
     }
   }
 
+  private buildGateResultsUpdatePayload(
+    userId: string,
+    gateResults: GeneratedAppGateResult[],
+    options: {
+      generationPlan?: Record<string, unknown> | null;
+      preview?: GeneratedAppPreview;
+    } = {},
+  ): Partial<schema.NewGeneratedApp> {
+    const readiness = evaluateGeneratedAppReadiness(gateResults);
+    const status = getGeneratedAppStatusForReadiness(readiness);
+    const updatePayload: Partial<schema.NewGeneratedApp> = {
+      gateResults,
+      readiness,
+      status,
+      updatedBy: userId,
+      updatedAt: new Date(),
+    };
+
+    if (options.generationPlan !== undefined) {
+      updatePayload.generationPlan = options.generationPlan;
+    }
+
+    if (options.preview !== undefined) {
+      updatePayload.preview = options.preview;
+    }
+
+    if (!readiness.canCreatePublicShare) {
+      updatePayload.publicShareToken = null;
+      updatePayload.publicShareEnabled = false;
+      updatePayload.publicShareDisabledAt = new Date();
+    }
+
+    return updatePayload;
+  }
+
   private async activatePublicShare(
     tenantId: string,
     userId: string,
@@ -666,6 +836,31 @@ export class GeneratedAppService {
       errorMessage: submission.errorMessage,
       createdAt: submission.createdAt,
       updatedAt: submission.updatedAt,
+    };
+  }
+
+  private toGateRunResponseDto(
+    gateRun: GeneratedAppGateRun,
+  ): GeneratedAppGateRunResponseDto {
+    return {
+      id: gateRun.id,
+      tenantId: gateRun.tenantId,
+      appId: gateRun.generatedAppId,
+      gateId: gateRun.gateId,
+      gateOrder: gateRun.gateOrder,
+      gateName: gateRun.gateName,
+      blocking: gateRun.blocking,
+      attemptNumber: gateRun.attemptNumber,
+      status: gateRun.status,
+      summary: gateRun.summary,
+      evidence: gateRun.evidence,
+      failure: gateRun.failure,
+      repairInstructions: gateRun.repairInstructions,
+      startedAt: gateRun.startedAt,
+      completedAt: gateRun.completedAt,
+      createdBy: gateRun.createdBy,
+      createdAt: gateRun.createdAt,
+      updatedAt: gateRun.updatedAt,
     };
   }
 

@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DrizzleDB } from '../../../database/database.module';
 import type {
   GeneratedApp,
+  GeneratedAppGateRun,
   GeneratedAppReadiness,
   GeneratedAppSubmission,
 } from '../../../database/schema';
@@ -31,6 +32,7 @@ const TENANT_ID = '11111111-1111-4111-8111-111111111111';
 const USER_ID = '22222222-2222-4222-8222-222222222222';
 const APP_ID = '33333333-3333-4333-8333-333333333333';
 const SUBMISSION_ID = '44444444-4444-4444-8444-444444444444';
+const GATE_RUN_ID = '66666666-6666-4666-8666-666666666666';
 const NOW = new Date('2026-04-25T00:00:00.000Z');
 
 function createSelectChain<T>(result: T[]) {
@@ -132,6 +134,40 @@ function createGeneratedAppSubmission(
     createdAt: NOW,
     updatedAt: NOW,
     deletedAt: null,
+    ...overrides,
+  };
+}
+
+function createGeneratedAppGateRun(
+  overrides: Partial<GeneratedAppGateRun> = {},
+): GeneratedAppGateRun {
+  return {
+    id: GATE_RUN_ID,
+    tenantId: TENANT_ID,
+    generatedAppId: APP_ID,
+    gateId: 'gate-1',
+    gateOrder: 1,
+    gateName: '架构计划门禁',
+    blocking: true,
+    attemptNumber: 1,
+    status: 'passed',
+    summary: '实现计划覆盖 AppSpec、页面、编排、插件和测试计划。',
+    evidence: [
+      {
+        id: 'plan-review-1',
+        label: '计划审查',
+        kind: 'plan',
+        url: null,
+        summary: '计划已覆盖核心需求。',
+      },
+    ],
+    failure: null,
+    repairInstructions: null,
+    startedAt: NOW,
+    completedAt: NOW,
+    createdBy: USER_ID,
+    createdAt: NOW,
+    updatedAt: NOW,
     ...overrides,
   };
 }
@@ -430,6 +466,199 @@ describe('GeneratedAppService', () => {
         publicShareEnabled: false,
       }),
     );
+  });
+
+  it('记录单次门禁运行时应写入证据并同步当前 gateResults/readiness', async () => {
+    const app = createGeneratedApp();
+    const gateRun = createGeneratedAppGateRun();
+    const insertChain = createInsertReturningChain([gateRun]);
+    const updateChain = createUpdateReturningChain([
+      createGeneratedApp({
+        ...app,
+        gateResults: app.gateResults.map((gate) =>
+          gate.gateId === 'gate-1'
+            ? {
+                ...gate,
+                status: 'passed',
+                summary: gateRun.summary,
+                evidence: gateRun.evidence,
+                updatedAt: NOW.toISOString(),
+              }
+            : gate,
+        ),
+      }),
+    ]);
+    mockTenantDb.select.mockReturnValueOnce(createSelectChain([app]));
+    mockTenantDb.insert.mockReturnValueOnce(insertChain);
+    mockTenantDb.update.mockReturnValueOnce(updateChain);
+
+    const response = await service.recordGateRun(TENANT_ID, USER_ID, APP_ID, {
+      gateId: 'gate-1',
+      attemptNumber: 1,
+      status: 'passed',
+      summary: gateRun.summary,
+      evidence: gateRun.evidence,
+      startedAt: NOW.toISOString(),
+      completedAt: NOW.toISOString(),
+    });
+
+    expect(insertChain.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: TENANT_ID,
+        generatedAppId: APP_ID,
+        gateId: 'gate-1',
+        gateOrder: 1,
+        gateName: '架构计划门禁',
+        blocking: true,
+        attemptNumber: 1,
+        status: 'passed',
+        evidence: gateRun.evidence,
+        createdBy: USER_ID,
+      }),
+    );
+    expect(updateChain.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'preview_ready',
+        publicShareToken: null,
+        publicShareEnabled: false,
+        gateResults: expect.arrayContaining([
+          expect.objectContaining({
+            gateId: 'gate-1',
+            status: 'passed',
+            evidence: gateRun.evidence,
+          }),
+        ]),
+      }),
+    );
+    expect(response.gateRun).toEqual(
+      expect.objectContaining({
+        id: GATE_RUN_ID,
+        gateId: 'gate-1',
+        status: 'passed',
+      }),
+    );
+    expect(response.app.id).toBe(APP_ID);
+  });
+
+  it('记录失败门禁运行时应关闭已启用的公开链接并写入修复建议', async () => {
+    const app = createGeneratedApp({
+      status: 'published',
+      readiness: createPublishCandidateReadiness(),
+      publicShareEnabled: true,
+      publicShareToken: '9'.repeat(64),
+      publicShareCreatedAt: NOW,
+    });
+    const gateRun = createGeneratedAppGateRun({
+      gateId: 'gate-2',
+      gateOrder: 2,
+      gateName: '静态合约门禁',
+      status: 'failed',
+      summary: 'TypeScript 类型检查失败。',
+      failure: {
+        code: 'tsc-failed',
+        message: '存在类型错误。',
+      },
+      repairInstructions: '修复类型错误后重新运行 gate-2。',
+    });
+    const insertChain = createInsertReturningChain([gateRun]);
+    const updateChain = createUpdateReturningChain([
+      createGeneratedApp({
+        ...app,
+        status: 'failed',
+        publicShareEnabled: false,
+        publicShareToken: null,
+        publicShareDisabledAt: NOW,
+      }),
+    ]);
+    mockTenantDb.select.mockReturnValueOnce(createSelectChain([app]));
+    mockTenantDb.insert.mockReturnValueOnce(insertChain);
+    mockTenantDb.update.mockReturnValueOnce(updateChain);
+
+    const response = await service.recordGateRun(TENANT_ID, USER_ID, APP_ID, {
+      gateId: 'gate-2',
+      attemptNumber: 2,
+      status: 'failed',
+      summary: 'TypeScript 类型检查失败。',
+      evidence: [],
+      failure: {
+        code: 'tsc-failed',
+        message: '存在类型错误。',
+      },
+      repairInstructions: '修复类型错误后重新运行 gate-2。',
+    });
+
+    expect(insertChain.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        gateId: 'gate-2',
+        attemptNumber: 2,
+        status: 'failed',
+        failure: {
+          code: 'tsc-failed',
+          message: '存在类型错误。',
+        },
+        repairInstructions: '修复类型错误后重新运行 gate-2。',
+      }),
+    );
+    expect(updateChain.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'failed',
+        publicShareToken: null,
+        publicShareEnabled: false,
+        publicShareDisabledAt: expect.any(Date),
+      }),
+    );
+    expect(response.gateRun.failure).toEqual({
+      code: 'tsc-failed',
+      message: '存在类型错误。',
+    });
+    expect(response.gateRun.repairInstructions).toBe(
+      '修复类型错误后重新运行 gate-2。',
+    );
+  });
+
+  it('创建者可以分页筛选门禁运行证据记录', async () => {
+    const gateRun = createGeneratedAppGateRun({
+      gateId: 'gate-2',
+      gateOrder: 2,
+      gateName: '静态合约门禁',
+      status: 'failed',
+      failure: {
+        message: '类型检查失败。',
+      },
+    });
+    const listChain = createSelectPageChain([gateRun]);
+    const countChain = createCountChain(1);
+    mockTenantDb.select
+      .mockReturnValueOnce(listChain)
+      .mockReturnValueOnce(countChain);
+
+    const response = await service.listGateRuns(TENANT_ID, APP_ID, {
+      page: 1,
+      pageSize: 20,
+      gateId: 'gate-2',
+      status: 'failed',
+    });
+
+    expect(listChain.where).toHaveBeenCalledTimes(1);
+    expect(countChain.where).toHaveBeenCalledTimes(1);
+    expect(response.data).toEqual([
+      expect.objectContaining({
+        id: GATE_RUN_ID,
+        tenantId: TENANT_ID,
+        appId: APP_ID,
+        gateId: 'gate-2',
+        status: 'failed',
+        failure: {
+          message: '类型检查失败。',
+        },
+      }),
+    ]);
+    expect(response.meta).toEqual({
+      total: 1,
+      page: 1,
+      pageSize: 20,
+      totalPages: 1,
+    });
   });
 
   it('公开 endpoint 只返回 end-user runtime surface', async () => {

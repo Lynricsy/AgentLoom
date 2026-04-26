@@ -24,6 +24,17 @@ export class GeneratedAppPublicShareNotReadyException extends DomainException {
   }
 }
 
+export class GeneratedAppGateDefinitionNotFoundException extends DomainException {
+  constructor(gateId: string) {
+    super({
+      type: 'https://agentloom.dev/errors/generated-app-gate-definition-not-found',
+      title: '生成应用门禁定义不存在',
+      status: HttpStatus.BAD_REQUEST,
+      detail: `生成应用门禁 ${gateId} 不是当前支持的 Gate 0-7 门禁`,
+    });
+  }
+}
+
 export class GeneratedAppSubmissionNotFoundException extends DomainException {
   constructor(id: string) {
     super({
