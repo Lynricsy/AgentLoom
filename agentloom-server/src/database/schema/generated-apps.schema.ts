@@ -211,6 +211,94 @@ export interface GeneratedAppGenerationPlan {
     orchestrationStepIds: string[];
     planEvidenceIds: string[];
   }>;
+  staticContracts?: GeneratedAppStaticContracts;
+}
+
+export interface GeneratedAppStaticContracts {
+  contractVersion: 1;
+  appSpecVersion: number;
+  generationPlanVersion: number;
+  publicRuntime: {
+    input: {
+      source: 'public-runtime-submission';
+      requiredFields: string[];
+      scenarioIds: string[];
+      dataUseNoticeRequired: boolean;
+      anonymousSessionRequired: boolean;
+      endUserLoginRequired: boolean;
+    };
+    output: {
+      destinations: string[];
+      reportRequired: boolean;
+      errorStateRequired: boolean;
+    };
+  };
+  frontendRoutes: Array<{
+    pageId: string;
+    name: string;
+    route: string;
+    requirementIds: string[];
+    scenarioIds: string[];
+  }>;
+  orchestration: {
+    target: 'workflow';
+    strategy: 'generated-workflow-with-agent-capability';
+    inputContract: GeneratedAppGenerationPlan['orchestration']['inputContract'];
+    outputContract: GeneratedAppGenerationPlan['orchestration']['outputContract'];
+    nodes: Array<{
+      nodeId: string;
+      stepId: string;
+      label: string;
+      requirementIds: string[];
+      scenarioIds: string[];
+      inputHandle: string;
+      outputHandle: string;
+    }>;
+    edges: Array<{
+      fromNodeId: string;
+      toNodeId: string;
+    }>;
+  };
+  pluginToolPermissions: {
+    tools: Array<{
+      toolId: string;
+      purpose: string;
+      requirementIds: string[];
+      permissions: string[];
+      manifestRequired: boolean;
+      sandboxSmokeTestRequired: boolean;
+    }>;
+    emptyReason: string | null;
+    permissionPolicy: string[];
+    implicitPermissionsAllowed: false;
+  };
+  submissionPersistence: {
+    publicSubmissionsPersisted: boolean;
+    creatorCanDeleteSubmissions: boolean;
+    endUserLoginRequired: boolean;
+    tenantScoped: boolean;
+    tokenSnapshotRequired: boolean;
+    softDeleteRequired: boolean;
+    fields: string[];
+  };
+  testEntry: {
+    staticCheckCommand: string;
+    buildGateCommand: string;
+    unitGateCommand: string;
+    integrationGateCommand: string;
+    browserGateCommand: string;
+    verifierGateCommand: string;
+    publishCandidateGateCommand: string;
+    acceptanceScenarioIds: string[];
+    blockingGateIds: string[];
+  };
+  traceability: Array<{
+    requirementId: string;
+    scenarioIds: string[];
+    pageIds: string[];
+    orchestrationNodeIds: string[];
+    staticContractIds: string[];
+  }>;
 }
 
 export interface GeneratedAppGateResult {

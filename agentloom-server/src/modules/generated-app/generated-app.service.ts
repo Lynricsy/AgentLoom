@@ -15,6 +15,7 @@ import type {
   GeneratedAppGateRunFailure,
   GeneratedAppGateRun,
   GeneratedAppSpec,
+  GeneratedAppStaticContracts,
   GeneratedAppGateResult,
   GeneratedAppPreview,
   GeneratedAppReadiness,
@@ -78,8 +79,18 @@ const DEFAULT_PREVIEW: GeneratedAppPreview = {
   testReportUrl: null,
 };
 
-const GATE_2_7_RUNNER_INCOMPLETE_FAILURE_REASON =
-  'Gate 2-7 runner 尚未接入/未执行，不能形成 publish candidate。';
+const GATE_3_7_RUNNER_INCOMPLETE_FAILURE_REASON =
+  'Gate 3-7 runner 尚未接入/未执行，不能形成 publish candidate。';
+
+const GATE_2_STATIC_CONTRACT_IDS = [
+  'gate-2-public-runtime-contract',
+  'gate-2-frontend-route-contract',
+  'gate-2-orchestration-contract',
+  'gate-2-plugin-permission-contract',
+  'gate-2-submission-persistence-contract',
+  'gate-2-test-entry-contract',
+  'gate-2-traceability-contract',
+] as const;
 
 interface Gate0Check {
   id: string;
@@ -106,6 +117,22 @@ interface Gate1Check {
 }
 
 interface Gate1Evaluation {
+  status: 'passed' | 'failed';
+  summary: string;
+  evidence: GeneratedAppGateEvidence[];
+  failure: GeneratedAppGateRunFailure | null;
+  repairInstructions: string | null;
+}
+
+interface Gate2Check {
+  id: string;
+  label: string;
+  passed: boolean;
+  summary: string;
+  issues: string[];
+}
+
+interface Gate2Evaluation {
   status: 'passed' | 'failed';
   summary: string;
   evidence: GeneratedAppGateEvidence[];
@@ -467,9 +494,75 @@ export class GeneratedAppService {
         completedSummary =
           '门禁运行器骨架完成 Gate 0，但 Gate 1 架构计划门禁失败；当前应用保持不可发布。';
       } else {
-        finalFailureReason = GATE_2_7_RUNNER_INCOMPLETE_FAILURE_REASON;
-        completedSummary =
-          '门禁运行器骨架完成 Gate 0 AppSpec 完整性检查和 Gate 1 架构计划门禁；Gate 2-7 runner 尚未接入/未执行，当前应用不能形成 publish candidate，保持不可发布。';
+        const staticContracts = this.buildStaticContracts(
+          app.appSpec,
+          generationPlan,
+        );
+        const generationPlanWithStaticContracts: GeneratedAppGenerationPlan = {
+          ...generationPlan,
+          staticContracts,
+        };
+        const gate2Evaluation = this.evaluateGate2StaticContracts(
+          app.appSpec,
+          generationPlan,
+          staticContracts,
+        );
+        const gate1Result = latestApp.gateResults.find(
+          (gate) => gate.gateId === 'gate-1',
+        );
+        const gate2StartedAt = new Date();
+        const gate2CompletedAt = new Date();
+        const gate2AppSnapshot: GeneratedApp = {
+          ...app,
+          gateResults: latestApp.gateResults,
+          generationPlan: latestApp.generationPlan,
+        };
+        const gate2RunResult = await this.createGateRunAndUpdateApp(
+          tenantId,
+          userId,
+          gate2AppSnapshot,
+          {
+            gateId: 'gate-2',
+            generationRunId: run.id,
+            attemptNumber: 1,
+            status: gate2Evaluation.status,
+            summary: gate2Evaluation.summary,
+            evidence: gate2Evaluation.evidence,
+            failure: gate2Evaluation.failure,
+            repairInstructions: gate2Evaluation.repairInstructions,
+            startedAt: gate2StartedAt.toISOString(),
+            completedAt: gate2CompletedAt.toISOString(),
+          },
+          {
+            generationPlan: generationPlanWithStaticContracts,
+            buildGateResults: (gate2Result, nowIso) =>
+              this.buildRunnerGateResults(
+                app,
+                [
+                  ...(gate0Result ? [gate0Result] : []),
+                  ...(gate1Result ? [gate1Result] : []),
+                  gate2Result,
+                ],
+                nowIso,
+              ),
+          },
+        );
+
+        producedGateRuns.push(gate2RunResult.gateRun);
+        latestApp = gate2RunResult.app;
+        completedAt = gate2CompletedAt;
+
+        if (gate2Evaluation.status === 'failed') {
+          finalFailureReason =
+            gate2Evaluation.failure?.message ??
+            'Gate 2 静态合约门禁失败，不能继续执行 Gate 3-7。';
+          completedSummary =
+            '门禁运行器骨架完成 Gate 0 和 Gate 1，但 Gate 2 静态合约门禁失败；当前应用保持不可发布。';
+        } else {
+          finalFailureReason = GATE_3_7_RUNNER_INCOMPLETE_FAILURE_REASON;
+          completedSummary =
+            '门禁运行器骨架完成 Gate 0 AppSpec 完整性检查、Gate 1 架构计划门禁和 Gate 2 静态合约门禁；Gate 3-7 runner 尚未接入/未执行，当前应用不能形成 publish candidate，保持不可发布。';
+        }
       }
     }
 
@@ -1393,6 +1486,777 @@ export class GeneratedAppService {
     };
   }
 
+  private buildStaticContracts(
+    appSpec: GeneratedAppSpec,
+    generationPlan: GeneratedAppGenerationPlan,
+  ): GeneratedAppStaticContracts {
+    const orchestrationNodes = generationPlan.orchestration.steps.map(
+      (step) => ({
+        nodeId: `node-${this.buildPlanSegment(step.stepId)}`,
+        stepId: step.stepId,
+        label: step.label,
+        requirementIds: step.requirementIds,
+        scenarioIds: step.scenarioIds,
+        inputHandle: 'input',
+        outputHandle: 'output',
+      }),
+    );
+
+    return {
+      contractVersion: 1,
+      appSpecVersion: appSpec.version,
+      generationPlanVersion: generationPlan.planVersion,
+      publicRuntime: {
+        input: {
+          source: generationPlan.orchestration.inputContract.source,
+          requiredFields:
+            generationPlan.orchestration.inputContract.requiredFields,
+          scenarioIds: generationPlan.orchestration.inputContract.scenarioIds,
+          dataUseNoticeRequired:
+            generationPlan.frontend.runtimeSurface.dataUseNoticeRequired,
+          anonymousSessionRequired: true,
+          endUserLoginRequired: appSpec.dataPolicy.endUserLoginRequired,
+        },
+        output: {
+          destinations:
+            generationPlan.orchestration.outputContract.destinations,
+          reportRequired:
+            generationPlan.orchestration.outputContract.reportRequired,
+          errorStateRequired: true,
+        },
+      },
+      frontendRoutes: generationPlan.frontend.pages.map((page) => ({
+        pageId: page.pageId,
+        name: page.name,
+        route: page.route,
+        requirementIds: page.requirementIds,
+        scenarioIds: page.scenarioIds,
+      })),
+      orchestration: {
+        target: generationPlan.orchestration.target,
+        strategy: generationPlan.orchestration.strategy,
+        inputContract: generationPlan.orchestration.inputContract,
+        outputContract: generationPlan.orchestration.outputContract,
+        nodes: orchestrationNodes,
+        edges: orchestrationNodes.slice(1).map((node, index) => ({
+          fromNodeId: orchestrationNodes[index]?.nodeId ?? node.nodeId,
+          toNodeId: node.nodeId,
+        })),
+      },
+      pluginToolPermissions: {
+        tools: generationPlan.pluginTools.tools.map((tool) => ({
+          toolId: tool.toolId,
+          purpose: tool.purpose,
+          requirementIds: tool.requirementIds,
+          permissions: tool.permissionNotes,
+          manifestRequired: true,
+          sandboxSmokeTestRequired: true,
+        })),
+        emptyReason: generationPlan.pluginTools.emptyReason,
+        permissionPolicy: generationPlan.pluginTools.permissionPolicy,
+        implicitPermissionsAllowed: false,
+      },
+      submissionPersistence: {
+        ...generationPlan.dataPersistence,
+        fields: [
+          'input',
+          'result',
+          'report',
+          'errorMessage',
+          'anonymousSessionId',
+          'publicShareToken',
+        ],
+      },
+      testEntry: {
+        staticCheckCommand:
+          'agentloom generated-app gate-2 static-contracts --deterministic',
+        buildGateCommand: 'agentloom generated-app gate-3 build-and-unit',
+        unitGateCommand: 'agentloom generated-app gate-3 unit-tests',
+        integrationGateCommand: 'agentloom generated-app gate-4 integration',
+        browserGateCommand: 'agentloom generated-app gate-5 browser-acceptance',
+        verifierGateCommand:
+          'agentloom generated-app gate-6 independent-verifier',
+        publishCandidateGateCommand:
+          'agentloom generated-app gate-7 publish-candidate',
+        acceptanceScenarioIds: generationPlan.testGates.acceptanceScenarioIds,
+        blockingGateIds: ['gate-3', 'gate-4', 'gate-5', 'gate-6', 'gate-7'],
+      },
+      traceability: generationPlan.traceability.map((entry) => ({
+        requirementId: entry.requirementId,
+        scenarioIds: entry.scenarioIds,
+        pageIds: entry.pageIds,
+        orchestrationNodeIds: entry.orchestrationStepIds.map(
+          (stepId) => `node-${this.buildPlanSegment(stepId)}`,
+        ),
+        staticContractIds: [...GATE_2_STATIC_CONTRACT_IDS],
+      })),
+    };
+  }
+
+  private evaluateGate2StaticContracts(
+    appSpec: GeneratedAppSpec,
+    generationPlan: GeneratedAppGenerationPlan,
+    staticContracts: unknown,
+  ): Gate2Evaluation {
+    const checks = this.buildGate2Checks(
+      appSpec,
+      generationPlan,
+      staticContracts,
+    );
+    const failedChecks = checks.filter((check) => !check.passed);
+    const evidence = checks.map((check) => ({
+      id: `gate-2-${check.id}`,
+      label: check.label,
+      kind: 'static_check' as const,
+      url: null,
+      summary:
+        check.issues.length === 0
+          ? check.summary
+          : `${check.summary} 缺口：${check.issues.join('；')}`,
+    }));
+
+    if (failedChecks.length > 0) {
+      const failure: GeneratedAppGateRunFailure = {
+        code: 'static-contracts-incomplete',
+        message: `StaticContracts 静态合约检查失败：${failedChecks
+          .map((check) => check.label)
+          .join('、')}。`,
+        details: {
+          checks: checks.map((check) => ({
+            id: check.id,
+            label: check.label,
+            passed: check.passed,
+            issues: check.issues,
+          })),
+        },
+      };
+
+      return {
+        status: 'failed',
+        summary:
+          'Gate 2 失败：staticContracts 未完整覆盖公开运行、前端路由、编排、插件权限、提交持久化、测试入口或 traceability。',
+        evidence,
+        failure,
+        repairInstructions:
+          '修复 generationPlan.staticContracts，使其覆盖 public runtime 输入输出、frontend route/page、Workflow/Agent 编排、插件/工具权限、submission persistence、Gate 3-7 测试入口和每条核心需求 traceability。',
+      };
+    }
+
+    return {
+      status: 'passed',
+      summary:
+        'Gate 2 通过：staticContracts 已覆盖公开运行输入输出、前端路由、Workflow/Agent 编排、插件权限、提交持久化、测试入口和需求 traceability。',
+      evidence,
+      failure: null,
+      repairInstructions: null,
+    };
+  }
+
+  private buildGate2Checks(
+    appSpec: GeneratedAppSpec,
+    generationPlan: GeneratedAppGenerationPlan,
+    staticContracts: unknown,
+  ): Gate2Check[] {
+    if (!this.isRecord(staticContracts)) {
+      return [
+        {
+          id: 'static-contracts-object',
+          label: 'StaticContracts JSON 对象',
+          passed: false,
+          summary:
+            '检查 generationPlan.staticContracts 是否为结构化 JSON 对象。',
+          issues: ['staticContracts 不是对象'],
+        },
+      ];
+    }
+
+    const requirementIds = appSpec.coreRequirements.map(
+      (requirement) => requirement.id,
+    );
+    const pageIds = appSpec.pages.map((page) => page.id);
+    const scenarioIds = appSpec.acceptanceScenarios.map(
+      (scenario) => scenario.id,
+    );
+    const knownRequirementIds = new Set(requirementIds);
+    const knownPageIds = new Set(pageIds);
+    const knownScenarioIds = new Set(scenarioIds);
+    const plannedPageIds = new Set(
+      generationPlan.frontend.pages.map((page) => page.pageId),
+    );
+    const plannedPageById = new Map(
+      generationPlan.frontend.pages.map((page) => [page.pageId, page]),
+    );
+    const plannedStepIds = new Set(
+      generationPlan.orchestration.steps.map((step) => step.stepId),
+    );
+    const plannedStepById = new Map(
+      generationPlan.orchestration.steps.map((step) => [step.stepId, step]),
+    );
+    const plannedToolIds = new Set(
+      generationPlan.pluginTools.tools.map((tool) => tool.toolId),
+    );
+    const plannedToolById = new Map(
+      generationPlan.pluginTools.tools.map((tool) => [tool.toolId, tool]),
+    );
+    const requiredFutureGateIds = [
+      'gate-3',
+      'gate-4',
+      'gate-5',
+      'gate-6',
+      'gate-7',
+    ];
+    const knownStaticContractIds = new Set<string>([
+      ...GATE_2_STATIC_CONTRACT_IDS,
+    ]);
+
+    const publicRuntime = this.getRecord(staticContracts.publicRuntime);
+    const publicRuntimeInput = this.getRecord(publicRuntime?.input);
+    const publicRuntimeOutput = this.getRecord(publicRuntime?.output);
+    const frontendRoutes = this.getRecordArray(staticContracts.frontendRoutes);
+    const orchestration = this.getRecord(staticContracts.orchestration);
+    const orchestrationNodes = this.getRecordArray(orchestration?.nodes);
+    const orchestrationEdges = this.getRecordArray(orchestration?.edges);
+    const pluginToolPermissions = this.getRecord(
+      staticContracts.pluginToolPermissions,
+    );
+    const pluginTools = this.getRecordArray(pluginToolPermissions?.tools);
+    const submissionPersistence = this.getRecord(
+      staticContracts.submissionPersistence,
+    );
+    const testEntry = this.getRecord(staticContracts.testEntry);
+    const traceability = this.getRecordArray(staticContracts.traceability);
+
+    const routePageIds = new Set(
+      frontendRoutes
+        .map((route) => this.getNonEmptyString(route.pageId))
+        .filter((pageId): pageId is string => pageId !== null),
+    );
+    const nodeIds = orchestrationNodes
+      .map((node) => this.getNonEmptyString(node.nodeId))
+      .filter((nodeId): nodeId is string => nodeId !== null);
+    const nodeIdsSet = new Set(nodeIds);
+    const stepIdsInNodes = new Set(
+      orchestrationNodes
+        .map((node) => this.getNonEmptyString(node.stepId))
+        .filter((stepId): stepId is string => stepId !== null),
+    );
+    const graphEdges = orchestrationEdges.map((edge) => ({
+      fromNodeId: this.getNonEmptyString(edge.fromNodeId),
+      toNodeId: this.getNonEmptyString(edge.toNodeId),
+    }));
+    const traceabilityByRequirementId = new Map(
+      traceability
+        .map((entry) => {
+          const requirementId = this.getNonEmptyString(entry.requirementId);
+          return requirementId ? ([requirementId, entry] as const) : null;
+        })
+        .filter(
+          (entry): entry is readonly [string, Record<string, unknown>] =>
+            entry !== null,
+        ),
+    );
+
+    const versionIssues = [
+      ...(staticContracts.contractVersion === 1
+        ? []
+        : ['contractVersion 必须为 1']),
+      ...(staticContracts.appSpecVersion === appSpec.version
+        ? []
+        : [
+            `appSpecVersion=${String(
+              staticContracts.appSpecVersion,
+            )} 与 AppSpec version=${appSpec.version} 不一致`,
+          ]),
+      ...(staticContracts.generationPlanVersion === generationPlan.planVersion
+        ? []
+        : [
+            `generationPlanVersion=${String(
+              staticContracts.generationPlanVersion,
+            )} 与 generationPlan.planVersion=${generationPlan.planVersion} 不一致`,
+          ]),
+    ];
+    const publicRuntimeIssues = [
+      ...this.requireRecord(publicRuntime, 'publicRuntime'),
+      ...this.requireRecord(publicRuntimeInput, 'publicRuntime.input'),
+      ...this.requireRecord(publicRuntimeOutput, 'publicRuntime.output'),
+      ...(publicRuntimeInput?.source ===
+      generationPlan.orchestration.inputContract.source
+        ? []
+        : ['publicRuntime.input.source 与 orchestration inputContract 不一致']),
+      ...this.buildMissingItemsIssues(
+        'publicRuntime.input.requiredFields',
+        this.getStringArray(publicRuntimeInput?.requiredFields),
+        generationPlan.orchestration.inputContract.requiredFields,
+      ),
+      ...(this.getStringArray(publicRuntimeInput?.requiredFields).length > 0
+        ? []
+        : ['publicRuntime.input.requiredFields 不能为空']),
+      ...this.buildMissingItemsIssues(
+        'publicRuntime.input.scenarioIds',
+        this.getStringArray(publicRuntimeInput?.scenarioIds),
+        generationPlan.orchestration.inputContract.scenarioIds,
+      ),
+      ...this.buildUnknownReferenceIssues(
+        'publicRuntime.input.scenarioIds',
+        this.getStringArray(publicRuntimeInput?.scenarioIds),
+        knownScenarioIds,
+      ),
+      ...(publicRuntimeInput?.dataUseNoticeRequired ===
+      appSpec.dataPolicy.publicSubmissionsPersisted
+        ? []
+        : [
+            'publicRuntime.input.dataUseNoticeRequired 与 AppSpec 数据保存策略不一致',
+          ]),
+      ...(publicRuntimeInput?.anonymousSessionRequired === true
+        ? []
+        : ['publicRuntime.input.anonymousSessionRequired 必须为 true']),
+      ...(publicRuntimeInput?.endUserLoginRequired ===
+      appSpec.dataPolicy.endUserLoginRequired
+        ? []
+        : [
+            'publicRuntime.input.endUserLoginRequired 与 AppSpec 登录策略不一致',
+          ]),
+      ...this.buildMissingItemsIssues(
+        'publicRuntime.output.destinations',
+        this.getStringArray(publicRuntimeOutput?.destinations),
+        generationPlan.orchestration.outputContract.destinations,
+      ),
+      ...(this.getStringArray(publicRuntimeOutput?.destinations).length > 0
+        ? []
+        : ['publicRuntime.output.destinations 不能为空']),
+      ...(publicRuntimeOutput?.reportRequired ===
+      generationPlan.orchestration.outputContract.reportRequired
+        ? []
+        : [
+            'publicRuntime.output.reportRequired 与 orchestration outputContract 不一致',
+          ]),
+      ...(publicRuntimeOutput?.errorStateRequired === true
+        ? []
+        : ['publicRuntime.output.errorStateRequired 必须为 true']),
+    ];
+    const frontendRouteIssues = [
+      ...(frontendRoutes.length === 0 ? ['frontendRoutes 不能为空'] : []),
+      ...generationPlan.frontend.pages
+        .filter((page) => !routePageIds.has(page.pageId))
+        .map((page) => `页面 ${page.pageId} 缺少 frontend route contract`),
+      ...frontendRoutes.flatMap((route, index) => {
+        const issues: string[] = [];
+        const pageId = this.getNonEmptyString(route.pageId);
+        const routePath = this.getNonEmptyString(route.route);
+        const plannedPage = pageId ? plannedPageById.get(pageId) : null;
+
+        if (!pageId) {
+          issues.push(`frontendRoutes[${index}].pageId 缺失`);
+        } else if (!plannedPageIds.has(pageId) || !knownPageIds.has(pageId)) {
+          issues.push(
+            `frontendRoutes[${index}].pageId 引用了未知页面 ${this.formatIssueValue(
+              pageId,
+            )}`,
+          );
+        }
+
+        if (!routePath) {
+          issues.push(`frontendRoutes[${index}].route 缺失`);
+        }
+
+        issues.push(
+          ...this.buildUnknownReferenceIssues(
+            `frontendRoutes[${index}].requirementIds`,
+            this.getStringArray(route.requirementIds),
+            knownRequirementIds,
+          ),
+          ...this.buildUnknownReferenceIssues(
+            `frontendRoutes[${index}].scenarioIds`,
+            this.getStringArray(route.scenarioIds),
+            knownScenarioIds,
+          ),
+          ...(plannedPage
+            ? [
+                ...this.buildMissingItemsIssues(
+                  `frontendRoutes[${index}].requirementIds`,
+                  this.getStringArray(route.requirementIds),
+                  plannedPage.requirementIds,
+                ),
+                ...this.buildMissingItemsIssues(
+                  `frontendRoutes[${index}].scenarioIds`,
+                  this.getStringArray(route.scenarioIds),
+                  plannedPage.scenarioIds,
+                ),
+              ]
+            : []),
+        );
+
+        return issues;
+      }),
+    ];
+    const orchestrationIssues = [
+      ...this.requireRecord(orchestration, 'orchestration'),
+      ...(orchestration?.target === generationPlan.orchestration.target
+        ? []
+        : ['orchestration.target 与 generationPlan 不一致']),
+      ...(orchestration?.strategy === generationPlan.orchestration.strategy
+        ? []
+        : ['orchestration.strategy 与 generationPlan 不一致']),
+      ...(orchestrationNodes.length === 0
+        ? ['orchestration.nodes 不能为空']
+        : []),
+      ...generationPlan.orchestration.steps
+        .filter((step) => !stepIdsInNodes.has(step.stepId))
+        .map((step) => `编排步骤 ${step.stepId} 缺少 orchestration node`),
+      ...orchestrationNodes.flatMap((node, index) => [
+        ...(!this.getNonEmptyString(node.nodeId)
+          ? [`orchestration.nodes[${index}].nodeId 缺失`]
+          : []),
+        ...(!this.getNonEmptyString(node.stepId)
+          ? [`orchestration.nodes[${index}].stepId 缺失`]
+          : []),
+        ...(this.getNonEmptyString(node.stepId) &&
+        !plannedStepIds.has(this.getNonEmptyString(node.stepId) ?? '')
+          ? [
+              `orchestration.nodes[${index}].stepId 引用了未知编排步骤 ${this.formatIssueValue(
+                this.getNonEmptyString(node.stepId) ?? '',
+              )}`,
+            ]
+          : []),
+        ...(!this.getNonEmptyString(node.inputHandle)
+          ? [`orchestration.nodes[${index}].inputHandle 缺失`]
+          : []),
+        ...(!this.getNonEmptyString(node.outputHandle)
+          ? [`orchestration.nodes[${index}].outputHandle 缺失`]
+          : []),
+        ...this.buildUnknownReferenceIssues(
+          `orchestration.nodes[${index}].requirementIds`,
+          this.getStringArray(node.requirementIds),
+          knownRequirementIds,
+        ),
+        ...this.buildUnknownReferenceIssues(
+          `orchestration.nodes[${index}].scenarioIds`,
+          this.getStringArray(node.scenarioIds),
+          knownScenarioIds,
+        ),
+        ...(this.getNonEmptyString(node.stepId) &&
+        plannedStepById.has(this.getNonEmptyString(node.stepId) ?? '')
+          ? [
+              ...this.buildMissingItemsIssues(
+                `orchestration.nodes[${index}].requirementIds`,
+                this.getStringArray(node.requirementIds),
+                plannedStepById.get(this.getNonEmptyString(node.stepId) ?? '')
+                  ?.requirementIds ?? [],
+              ),
+              ...this.buildMissingItemsIssues(
+                `orchestration.nodes[${index}].scenarioIds`,
+                this.getStringArray(node.scenarioIds),
+                plannedStepById.get(this.getNonEmptyString(node.stepId) ?? '')
+                  ?.scenarioIds ?? [],
+              ),
+            ]
+          : []),
+      ]),
+      ...this.buildDuplicateItemIssues('orchestration.nodes.nodeId', nodeIds),
+      ...graphEdges.flatMap((edge, index) => [
+        ...(!edge.fromNodeId || !nodeIdsSet.has(edge.fromNodeId)
+          ? [`orchestration.edges[${index}].fromNodeId 引用了未知节点`]
+          : []),
+        ...(!edge.toNodeId || !nodeIdsSet.has(edge.toNodeId)
+          ? [`orchestration.edges[${index}].toNodeId 引用了未知节点`]
+          : []),
+      ]),
+      ...(this.isAcyclicGraph(nodeIds, graphEdges)
+        ? []
+        : ['orchestration.edges 必须形成 DAG，不能存在环']),
+    ];
+    const pluginPermissionIssues = [
+      ...this.requireRecord(pluginToolPermissions, 'pluginToolPermissions'),
+      ...(pluginToolPermissions?.implicitPermissionsAllowed === false
+        ? []
+        : ['implicitPermissionsAllowed 必须为 false']),
+      ...(this.getStringArray(pluginToolPermissions?.permissionPolicy).length >
+      0
+        ? []
+        : ['permissionPolicy 不能为空']),
+      ...(generationPlan.pluginTools.tools.length === 0 &&
+      !this.getNonEmptyString(pluginToolPermissions?.emptyReason)
+        ? ['插件/工具为空时必须保留 emptyReason']
+        : []),
+      ...generationPlan.pluginTools.tools
+        .filter(
+          (plannedTool) =>
+            !pluginTools.some(
+              (tool) =>
+                this.getNonEmptyString(tool.toolId) === plannedTool.toolId,
+            ),
+        )
+        .map(
+          (plannedTool) =>
+            `插件/工具 ${this.formatIssueValue(
+              plannedTool.toolId,
+            )} 缺少权限合约`,
+        ),
+      ...pluginTools.flatMap((tool, index) => {
+        const toolId = this.getNonEmptyString(tool.toolId);
+        const plannedTool = toolId ? plannedToolById.get(toolId) : null;
+
+        return [
+          ...(!toolId
+            ? [`pluginToolPermissions.tools[${index}].toolId 缺失`]
+            : []),
+          ...(toolId && !plannedToolIds.has(toolId)
+            ? [
+                `pluginToolPermissions.tools[${index}].toolId 引用了未知插件/工具 ${this.formatIssueValue(
+                  toolId,
+                )}`,
+              ]
+            : []),
+          ...(!this.getNonEmptyString(tool.purpose)
+            ? [`pluginToolPermissions.tools[${index}].purpose 缺失`]
+            : []),
+          ...(this.getStringArray(tool.permissions).length === 0
+            ? [`pluginToolPermissions.tools[${index}].permissions 不能为空`]
+            : []),
+          ...(tool.manifestRequired === true
+            ? []
+            : [
+                `pluginToolPermissions.tools[${index}].manifestRequired 必须为 true`,
+              ]),
+          ...(tool.sandboxSmokeTestRequired === true
+            ? []
+            : [
+                `pluginToolPermissions.tools[${index}].sandboxSmokeTestRequired 必须为 true`,
+              ]),
+          ...this.buildUnknownReferenceIssues(
+            `pluginToolPermissions.tools[${index}].requirementIds`,
+            this.getStringArray(tool.requirementIds),
+            knownRequirementIds,
+          ),
+          ...(plannedTool
+            ? [
+                ...this.buildMissingItemsIssues(
+                  `pluginToolPermissions.tools[${index}].requirementIds`,
+                  this.getStringArray(tool.requirementIds),
+                  plannedTool.requirementIds,
+                ),
+                ...this.buildMissingItemsIssues(
+                  `pluginToolPermissions.tools[${index}].permissions`,
+                  this.getStringArray(tool.permissions),
+                  plannedTool.permissionNotes,
+                ),
+              ]
+            : []),
+        ];
+      }),
+    ];
+    const submissionPersistenceIssues = [
+      ...this.requireRecord(submissionPersistence, 'submissionPersistence'),
+      ...this.buildBooleanMirrorIssue(
+        submissionPersistence,
+        'publicSubmissionsPersisted',
+        generationPlan.dataPersistence.publicSubmissionsPersisted,
+      ),
+      ...this.buildBooleanMirrorIssue(
+        submissionPersistence,
+        'creatorCanDeleteSubmissions',
+        generationPlan.dataPersistence.creatorCanDeleteSubmissions,
+      ),
+      ...this.buildBooleanMirrorIssue(
+        submissionPersistence,
+        'endUserLoginRequired',
+        generationPlan.dataPersistence.endUserLoginRequired,
+      ),
+      ...[
+        'tenantScoped',
+        'tokenSnapshotRequired',
+        'softDeleteRequired',
+      ].flatMap((field) =>
+        this.buildBooleanMirrorIssue(submissionPersistence, field, true),
+      ),
+      ...this.buildMissingItemsIssues(
+        'submissionPersistence.fields',
+        this.getStringArray(submissionPersistence?.fields),
+        [
+          'input',
+          'result',
+          'report',
+          'errorMessage',
+          'anonymousSessionId',
+          'publicShareToken',
+        ],
+      ),
+    ];
+    const testEntryIssues = [
+      ...this.requireRecord(testEntry, 'testEntry'),
+      ...[
+        'staticCheckCommand',
+        'buildGateCommand',
+        'unitGateCommand',
+        'integrationGateCommand',
+        'browserGateCommand',
+        'verifierGateCommand',
+        'publishCandidateGateCommand',
+      ].flatMap((field) =>
+        this.getNonEmptyString(testEntry?.[field])
+          ? []
+          : [`testEntry.${field} 缺失`],
+      ),
+      ...this.buildMissingItemsIssues(
+        'testEntry.blockingGateIds',
+        this.getStringArray(testEntry?.blockingGateIds),
+        requiredFutureGateIds,
+      ),
+      ...this.buildUnknownReferenceIssues(
+        'testEntry.blockingGateIds',
+        this.getStringArray(testEntry?.blockingGateIds),
+        new Set(requiredFutureGateIds),
+      ),
+      ...this.buildMissingItemsIssues(
+        'testEntry.acceptanceScenarioIds',
+        this.getStringArray(testEntry?.acceptanceScenarioIds),
+        scenarioIds,
+      ),
+      ...this.buildUnknownReferenceIssues(
+        'testEntry.acceptanceScenarioIds',
+        this.getStringArray(testEntry?.acceptanceScenarioIds),
+        knownScenarioIds,
+      ),
+    ];
+    const traceabilityUnknownRequirementIssues = traceability
+      .map((entry, index) => ({
+        index,
+        requirementId: this.getNonEmptyString(entry.requirementId),
+      }))
+      .filter(
+        (entry): entry is { index: number; requirementId: string } =>
+          entry.requirementId !== null &&
+          !knownRequirementIds.has(entry.requirementId),
+      )
+      .map(
+        (entry) =>
+          `traceability[${entry.index}].requirementId 引用了未知需求 ${this.formatIssueValue(
+            entry.requirementId,
+          )}`,
+      );
+    const traceabilityIssues = [
+      ...traceabilityUnknownRequirementIssues,
+      ...requirementIds.flatMap((requirementId) => {
+        const entry = traceabilityByRequirementId.get(requirementId);
+        const plannedTraceability = generationPlan.traceability.find(
+          (candidate) => candidate.requirementId === requirementId,
+        );
+        const expectedNodeIds =
+          plannedTraceability?.orchestrationStepIds.map(
+            (stepId) => `node-${this.buildPlanSegment(stepId)}`,
+          ) ?? [];
+
+        if (!entry) {
+          return [`需求 ${requirementId} 缺少 static contract traceability`];
+        }
+
+        return [
+          ...this.buildMissingItemsIssues(
+            `traceability[${requirementId}].scenarioIds`,
+            this.getStringArray(entry.scenarioIds),
+            plannedTraceability?.scenarioIds ?? [],
+          ),
+          ...this.buildMissingItemsIssues(
+            `traceability[${requirementId}].pageIds`,
+            this.getStringArray(entry.pageIds),
+            plannedTraceability?.pageIds ?? [],
+          ),
+          ...this.buildMissingItemsIssues(
+            `traceability[${requirementId}].orchestrationNodeIds`,
+            this.getStringArray(entry.orchestrationNodeIds),
+            expectedNodeIds,
+          ),
+          ...this.buildMissingItemsIssues(
+            `traceability[${requirementId}].staticContractIds`,
+            this.getStringArray(entry.staticContractIds),
+            [...GATE_2_STATIC_CONTRACT_IDS],
+          ),
+          ...this.buildUnknownReferenceIssues(
+            `traceability[${requirementId}].staticContractIds`,
+            this.getStringArray(entry.staticContractIds),
+            knownStaticContractIds,
+          ),
+          ...this.buildUnknownReferenceIssues(
+            `traceability[${requirementId}].scenarioIds`,
+            this.getStringArray(entry.scenarioIds),
+            knownScenarioIds,
+          ),
+          ...this.buildUnknownReferenceIssues(
+            `traceability[${requirementId}].pageIds`,
+            this.getStringArray(entry.pageIds),
+            routePageIds,
+          ),
+          ...this.buildUnknownReferenceIssues(
+            `traceability[${requirementId}].orchestrationNodeIds`,
+            this.getStringArray(entry.orchestrationNodeIds),
+            nodeIdsSet,
+          ),
+        ];
+      }),
+    ];
+
+    return [
+      {
+        id: 'version-binding',
+        label: '静态合约版本绑定',
+        passed: versionIssues.length === 0,
+        summary:
+          '检查 staticContracts 是否绑定当前 AppSpec 和 generationPlan。',
+        issues: versionIssues,
+      },
+      {
+        id: 'public-runtime-contract',
+        label: 'public runtime 输入输出合约',
+        passed: publicRuntimeIssues.length === 0,
+        summary: '检查公开运行输入、输出、数据用途提示和匿名提交约束。',
+        issues: publicRuntimeIssues,
+      },
+      {
+        id: 'frontend-route-contract',
+        label: 'frontend route/page 合约',
+        passed: frontendRouteIssues.length === 0,
+        summary: `检查 ${generationPlan.frontend.pages.length} 个页面是否都有 route/page contract。`,
+        issues: frontendRouteIssues,
+      },
+      {
+        id: 'orchestration-contract',
+        label: 'Workflow/Agent 编排合约',
+        passed: orchestrationIssues.length === 0,
+        summary: `检查 ${generationPlan.orchestration.steps.length} 个编排步骤是否有节点、边和输入输出合约。`,
+        issues: orchestrationIssues,
+      },
+      {
+        id: 'plugin-permission-contract',
+        label: '插件/工具权限合约',
+        passed: pluginPermissionIssues.length === 0,
+        summary:
+          '检查插件/工具 manifest、权限策略和 sandbox smoke test 硬门槛。',
+        issues: pluginPermissionIssues,
+      },
+      {
+        id: 'submission-persistence-contract',
+        label: 'submission persistence 合约',
+        passed: submissionPersistenceIssues.length === 0,
+        summary: '检查公开提交持久化、租户归属、token 快照和软删除字段。',
+        issues: submissionPersistenceIssues,
+      },
+      {
+        id: 'test-entry-contract',
+        label: '测试入口合约',
+        passed: testEntryIssues.length === 0,
+        summary: '检查 Gate 3-7 后续测试入口和 acceptance scenario 覆盖。',
+        issues: testEntryIssues,
+      },
+      {
+        id: 'traceability-contract',
+        label: '静态合约 traceability',
+        passed: traceabilityIssues.length === 0,
+        summary: `检查 ${appSpec.coreRequirements.length} 条核心需求是否连接到静态合约证据。`,
+        issues: traceabilityIssues,
+      },
+    ];
+  }
+
   private evaluateGate1GenerationPlan(
     appSpec: GeneratedAppSpec,
     generationPlan: GeneratedAppGenerationPlan,
@@ -2039,6 +2903,10 @@ export class GeneratedAppService {
     return typeof value === 'object' && value !== null && !Array.isArray(value);
   }
 
+  private getRecord(value: unknown): Record<string, unknown> | null {
+    return this.isRecord(value) ? value : null;
+  }
+
   private getRecordArray(value: unknown): Record<string, unknown>[] {
     return Array.isArray(value)
       ? value.filter((item) => this.isRecord(item))
@@ -2058,6 +2926,121 @@ export class GeneratedAppService {
     return typeof value === 'string' && value.trim().length > 0
       ? value.trim()
       : null;
+  }
+
+  private requireRecord(
+    value: Record<string, unknown> | null,
+    label: string,
+  ): string[] {
+    return value ? [] : [`${label} 必须是对象`];
+  }
+
+  private buildMissingItemsIssues(
+    label: string,
+    actual: string[],
+    expected: string[],
+  ): string[] {
+    return expected
+      .filter((item) => !actual.includes(item))
+      .map((item) => `${label} 缺少 ${item}`);
+  }
+
+  private buildUnknownReferenceIssues(
+    label: string,
+    values: string[],
+    knownValues: ReadonlySet<string>,
+  ): string[] {
+    return values
+      .filter((value) => !knownValues.has(value))
+      .map(
+        (value) => `${label} 引用了未知对象 ${this.formatIssueValue(value)}`,
+      );
+  }
+
+  private buildDuplicateItemIssues(label: string, values: string[]): string[] {
+    const seen = new Set<string>();
+    const duplicates = new Set<string>();
+
+    for (const value of values) {
+      if (seen.has(value)) {
+        duplicates.add(value);
+      } else {
+        seen.add(value);
+      }
+    }
+
+    return [...duplicates].map(
+      (value) => `${label} 存在重复值 ${this.formatIssueValue(value)}`,
+    );
+  }
+
+  private formatIssueValue(value: string): string {
+    if (/^[a-f0-9]{64}$/i.test(value)) {
+      return '[REDACTED_TOKEN]';
+    }
+
+    if (/^(sk|pk|pat|ghp|glpat|xox[baprs])-/.test(value)) {
+      return '[REDACTED_SECRET]';
+    }
+
+    return value;
+  }
+
+  private buildBooleanMirrorIssue(
+    source: Record<string, unknown> | null,
+    field: string,
+    expected: boolean,
+  ): string[] {
+    return source?.[field] === expected
+      ? []
+      : [`${field} 必须为 ${String(expected)}`];
+  }
+
+  private isAcyclicGraph(
+    nodeIds: string[],
+    edges: Array<{ fromNodeId: string | null; toNodeId: string | null }>,
+  ): boolean {
+    const nodeSet = new Set(nodeIds);
+    const visiting = new Set<string>();
+    const visited = new Set<string>();
+    const adjacency = new Map<string, string[]>(
+      nodeIds.map((nodeId) => [nodeId, []]),
+    );
+
+    for (const edge of edges) {
+      if (
+        edge.fromNodeId &&
+        edge.toNodeId &&
+        nodeSet.has(edge.fromNodeId) &&
+        nodeSet.has(edge.toNodeId)
+      ) {
+        adjacency.get(edge.fromNodeId)?.push(edge.toNodeId);
+      }
+    }
+
+    const visit = (nodeId: string): boolean => {
+      if (visited.has(nodeId)) {
+        return true;
+      }
+
+      if (visiting.has(nodeId)) {
+        return false;
+      }
+
+      visiting.add(nodeId);
+
+      for (const nextNodeId of adjacency.get(nodeId) ?? []) {
+        if (!visit(nextNodeId)) {
+          return false;
+        }
+      }
+
+      visiting.delete(nodeId);
+      visited.add(nodeId);
+      return true;
+    };
+
+    return nodeIds.every((nodeId) => visit(nodeId));
   }
 
   private buildGateResultsUpdatePayload(

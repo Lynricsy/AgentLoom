@@ -18,7 +18,7 @@
   - `description text not null`
   - `status generated_app_status not null`
   - `app_spec jsonb not null`
-  - `generation_plan jsonb null`
+  - `generation_plan jsonb null`; after Gate 2 runs, the deterministic static contract skeleton is stored under `generationPlan.staticContracts`
   - `gate_results jsonb not null`
   - `readiness jsonb not null`
   - `preview jsonb not null`
@@ -213,16 +213,20 @@
   - List is ordered by `created_at desc` and uses the standard paginated `{ data, meta }` envelope.
   - Update is scoped by `tenant_id + generated_app_id + run_id`; missing rows return `GeneratedAppGenerationRunNotFoundException`.
 - Synchronous gate runner skeleton:
-  - `POST /generated-apps/:appId/generation-runs/start` must resolve the generated app in tenant scope, create a generation run, execute the deterministic Gate 0 AppSpec completeness check, write one linked `generated_app_gate_runs` row for `gate-0`, and stop before Gate 1 when Gate 0 fails.
+  - `POST /generated-apps/:appId/generation-runs/start` must resolve the generated app in tenant scope, create a generation run, execute deterministic gates in order (`gate-0` AppSpec -> `gate-1` generation plan -> `gate-2` static contracts), and stop before the next gate when the current gate fails.
   - Gate 0 checks must validate that `AppSpec` has a usable app summary, actors, core requirements, pages/flows, data policy and scope boundary, acceptance scenarios, requirement coverage, and traceability. Failure evidence must include check labels, missing pieces, and repair instructions.
   - If Gate 0 passes, the runner must deterministically derive a structured `generationPlan` from `AppSpec`, persist it to `generated_apps.generation_plan`, execute the deterministic Gate 1 architecture-plan completeness check, and write one linked `generated_app_gate_runs` row for `gate-1`.
   - The persisted `generationPlan` must include stable fields for `appSpecVersion`, `frontend` page/runtime plan, `orchestration` Agent/Workflow plan, `pluginTools` plan with an explicit empty reason when no tools are required, `dataPersistence` plan, `testGates` plan for Gate 2-7, and requirement-level `traceability` to scenarios/pages/plan evidence.
   - Gate 1 checks must validate that the generation plan binds the current AppSpec version, covers all AppSpec pages, maps every core requirement into Agent/Workflow orchestration steps, records plugin/tool permission policy or an empty-plan reason, mirrors data persistence policy, defines Gate 2-7 test plans, and connects every core requirement to scenarios, pages, orchestration steps, and plan evidence. Traceability and plan references must point to existing AppSpec requirements/scenarios/pages, planned orchestration steps, and known plan evidence ids; non-empty but dangling references fail Gate 1.
-  - The skeleton must not mark Gate 2-7 as `passed`, because it does not execute static contracts, build, integration, browser, verifier, or publish-candidate gates.
-  - If Gate 0 and Gate 1 pass but Gate 2-7 are not executed, the generation run must stay conservative with `status='failed'` and `failure_reason='Gate 2-7 runner 尚未接入/未执行，不能形成 publish candidate。'`; Gate 0 and Gate 1 evidence may still be recorded as `passed`.
-  - If Gate 1 fails, the generation run must stay `failed` and `failure_reason` must describe the Gate 1 plan failure.
+  - If Gate 1 passes, the runner must deterministically derive `generationPlan.staticContracts` from `AppSpec + generationPlan`, persist the attempted contracts inside `generated_apps.generation_plan`, execute the deterministic Gate 2 static-contract completeness check, and write one linked `generated_app_gate_runs` row for `gate-2`.
+  - The persisted `generationPlan.staticContracts` must include stable contract surfaces for public runtime input/output, frontend route/page, Workflow/Agent orchestration graph, plugin/tool permissions, public submission persistence, Gate 3-7 test entry commands, and requirement-level traceability.
+  - Gate 2 checks must validate that static contracts bind the current AppSpec and generationPlan, cover public runtime inputs/outputs, every planned frontend page route and its requirement/scenario coverage, orchestration nodes/edges/handles as a DAG, plugin/tool manifest and permission hard gates for every planned tool, submission persistence fields including the public token snapshot, Gate 3-7 test entries including independent verifier and publish-candidate commands, and traceability from each core requirement to known static contract ids, scenarios, pages, and orchestration nodes.
+  - The skeleton must not mark Gate 3-7 as `passed`, because it does not execute build, integration, browser, verifier, or publish-candidate gates.
+  - If Gate 0, Gate 1, and Gate 2 pass but Gate 3-7 are not executed, the generation run must stay conservative with `status='failed'` and `failure_reason='Gate 3-7 runner 尚未接入/未执行，不能形成 publish candidate。'`; Gate 0, Gate 1, and Gate 2 evidence may still be recorded as `passed`.
+  - If Gate 1 fails, the generation run must stay `failed`, `failure_reason` must describe the Gate 1 plan failure, Gate 2 must not run, and `generationPlan.staticContracts` must not be generated.
+  - If Gate 2 fails, the generation run must stay `failed`, `failure_reason` must describe the Gate 2 static-contract failure, and the attempted `generationPlan.staticContracts` must be retained for repair.
   - The skeleton must recompute `generated_apps.gate_results/readiness/status` through the same readiness helper as gate run recording. If any blocking gate remains pending/skipped/running/failed, `canCreatePublicShare=false`.
-  - When the skeleton starts from a previously publishable or published app, any unexecuted canonical Gate 2-7 summaries must be represented as not passed for the current runner result, so the app cannot remain or become `publish_candidate` from stale evidence.
+  - When the skeleton starts from a previously publishable or published app, any unexecuted canonical Gate 3-7 summaries must be represented as not passed for the current runner result, so the app cannot remain or become `publish_candidate` from stale evidence.
   - If skeleton readiness is not publishable, it must disable public sharing, clear `public_share_token`, and set `public_share_disabled_at`. Gate evidence and failure details must not contain `publicShareToken` or other sensitive tokens.
 - Repair attempt ledger:
   - Repair attempts are nested under one generation run and must be scoped by `tenant_id + generated_app_id + generation_run_id`.
@@ -272,9 +276,10 @@
 | Gate run records `passed` but other blocking gates are still not passed | Keep readiness in `preview` and keep public share disabled |
 | Gate run references another app's generation run or repair attempt | Return not found for the referenced ledger row and do not insert gate evidence |
 | Synchronous runner starts for a missing or cross-tenant app | Return `GeneratedAppNotFoundException` and do not insert generation or gate run rows |
-| Synchronous runner Gate 0 passes and Gate 1 passes but Gate 2-7 are not executed | Insert linked passed Gate 0 and Gate 1 evidence, persist deterministic `generationPlan`, mark the generation run failed with the Gate 2-7-not-executed failure reason, keep Gate 2-7 not passed, recompute readiness to non-publishable preview, and clear any active public token |
-| Synchronous runner Gate 0 fails | Insert linked failed Gate 0 evidence, do not execute Gate 1, do not refresh `generationPlan`, mark the generation run failed, set readiness to blocked, and clear any active public token |
-| Synchronous runner Gate 1 fails | Insert linked passed Gate 0 evidence and failed Gate 1 evidence, persist the attempted `generationPlan`, mark the generation run failed with the Gate 1 failure reason, set readiness to blocked, and clear any active public token |
+| Synchronous runner Gate 0 passes, Gate 1 passes, and Gate 2 passes but Gate 3-7 are not executed | Insert linked passed Gate 0, Gate 1, and Gate 2 evidence, persist deterministic `generationPlan.staticContracts`, mark the generation run failed with the Gate 3-7-not-executed failure reason, keep Gate 3-7 not passed, recompute readiness to non-publishable preview, and clear any active public token |
+| Synchronous runner Gate 0 fails | Insert linked failed Gate 0 evidence, do not execute Gate 1 or Gate 2, do not refresh `generationPlan` or static contracts, mark the generation run failed, set readiness to blocked, and clear any active public token |
+| Synchronous runner Gate 1 fails | Insert linked passed Gate 0 evidence and failed Gate 1 evidence, persist the attempted `generationPlan`, do not execute Gate 2, do not refresh static contracts, mark the generation run failed with the Gate 1 failure reason, set readiness to blocked, and clear any active public token |
+| Synchronous runner Gate 2 fails | Insert linked passed Gate 0 and Gate 1 evidence plus failed Gate 2 evidence, persist the attempted `generationPlan.staticContracts`, mark the generation run failed with the Gate 2 failure reason, set readiness to blocked, and clear any active public token |
 | Generation run update misses tenant/app scope | Return `GeneratedAppGenerationRunNotFoundException` |
 | Repair attempt create references a missing generation run | Return `GeneratedAppGenerationRunNotFoundException` and do not insert repair attempt |
 | Repair attempt update misses tenant/app/run scope | Return `GeneratedAppRepairAttemptNotFoundException` |
@@ -295,9 +300,9 @@
 
 ### 5. Good / Base / Bad Cases
 
-- Good: the synchronous runner skeleton writes linked Gate 0 and Gate 1 evidence when Gate 0 passes, persists a structured architecture `generationPlan`, leaves Gate 2-7 not passed until real runners execute them, recomputes readiness to non-publishable preview, and clears stale public sharing.
+- Good: the synchronous runner skeleton writes linked Gate 0, Gate 1, and Gate 2 evidence when earlier gates pass, persists a structured architecture `generationPlan` plus `generationPlan.staticContracts`, leaves Gate 3-7 not passed until real runners execute them, recomputes readiness to non-publishable preview, and clears stale public sharing.
 - Good: a future full gate runner writes all blocking gates as `passed`, verifier has no warning, service returns `publish_candidate`, and `POST /generated-apps/:appId/public-share` creates a 64-hex-character token.
-- Base: newly created prompt generates an AppSpec draft and can synchronously produce Gate 0 + Gate 1 evidence, but Gate 2-7 remain pending; the app is visible to the creator but cannot create a public link.
+- Base: newly created prompt generates an AppSpec draft and can synchronously produce Gate 0 + Gate 1 + Gate 2 evidence, but Gate 3-7 remain pending; the app is visible to the creator but cannot create a public link.
 - Base: warning evidence exists after blocking gates pass; the app can remain in creator trial but cannot become a public runtime.
 - Bad: code enables a public link while `readiness.state !== 'publish_candidate'`.
 - Bad: code disables a public link but keeps the old token reusable.
@@ -330,9 +335,10 @@
   - gate run listing filters by tenant id, app id, gate id, status, generation run id, and repair attempt id and returns paginated results
   - generation run create/list/update preserve run number, status, trigger source, repair budget, runtime budget, summary, failure reason, and timestamps
   - synchronous runner start creates a generation run and linked Gate 0 run
-  - synchronous runner Gate 0 failure keeps readiness non-publishable, does not execute Gate 1, does not refresh `generationPlan`, and clears public share token
-  - synchronous runner Gate 0 pass creates linked Gate 0 and Gate 1 runs, persists structured `generationPlan`, leaves the generation run failed with a Gate 2-7-not-executed failure reason when Gate 1 passes, does not mark unexecuted Gate 2-7 as passed, clears stale Gate 2-7 evidence, and does not produce `publish_candidate`
+  - synchronous runner Gate 0 failure keeps readiness non-publishable, does not execute Gate 1 or Gate 2, does not refresh `generationPlan` or static contracts, and clears public share token
+  - synchronous runner Gate 0 + Gate 1 + Gate 2 pass creates linked Gate 0, Gate 1, and Gate 2 runs, persists structured `generationPlan.staticContracts`, leaves the generation run failed with a Gate 3-7-not-executed failure reason, does not mark unexecuted Gate 3-7 as passed, clears stale Gate 3-7 evidence, and does not produce `publish_candidate`
   - synchronous runner Gate 1 failure is covered with a malformed but non-empty `generationPlan` reference so completeness checks cannot regress to "field exists means passed"
+  - synchronous runner Gate 2 failure is covered with malformed static contracts so completeness checks cannot regress to "field exists means passed"
   - synchronous runner missing/cross-tenant app returns `GeneratedAppNotFoundException` before inserting ledgers
   - repair attempt create/list/update preserve parent generation run, target gate, attempt number, failure summary, change summary, verification summary, and timestamps
   - gate run recording can link to a generation run and repair attempt in the same tenant/app scope

@@ -9,6 +9,7 @@ import type {
   GeneratedAppGateRun,
   GeneratedAppReadiness,
   GeneratedAppRepairAttempt,
+  GeneratedAppStaticContracts,
   GeneratedAppSubmission,
 } from '../../../database/schema';
 import {
@@ -38,8 +39,14 @@ const SUBMISSION_ID = '44444444-4444-4444-8444-444444444444';
 const GENERATION_RUN_ID = '55555555-5555-4555-8555-555555555555';
 const GATE_RUN_ID = '66666666-6666-4666-8666-666666666666';
 const GATE_1_RUN_ID = '66666666-6666-4666-8666-666666666667';
+const GATE_2_RUN_ID = '66666666-6666-4666-8666-666666666668';
 const REPAIR_ATTEMPT_ID = '77777777-7777-4777-8777-777777777777';
 const NOW = new Date('2026-04-25T00:00:00.000Z');
+const DEFAULT_START_GENERATION_RUN_DTO = {
+  triggerSource: 'manual',
+  maxRepairAttempts: 3,
+  maxRuntimeSeconds: 1800,
+} as const;
 
 function createSelectChain<T>(result: T[]) {
   return {
@@ -625,7 +632,7 @@ describe('GeneratedAppService', () => {
     );
   });
 
-  it('Gate 0 通过后应写入 generationPlan、linked Gate 0/Gate 1 run 且清理未执行门禁旧证据', async () => {
+  it('Gate 0/Gate 1/Gate 2 通过后应写入 staticContracts、linked gate runs 且清理未执行门禁旧证据', async () => {
     const previousGateResults = createInitialGeneratedAppGateResults(
       NOW.toISOString(),
     ).map((gate) => ({
@@ -676,6 +683,17 @@ describe('GeneratedAppService', () => {
         'Gate 1 通过：generationPlan 已覆盖 AppSpec 页面、Agent/Workflow 编排、插件/工具策略、数据持久化、Gate 2-7 测试计划和需求 traceability。',
       evidence: [],
     });
+    const gate2Run = createGeneratedAppGateRun({
+      id: GATE_2_RUN_ID,
+      gateId: 'gate-2',
+      gateOrder: 2,
+      gateName: '静态合约门禁',
+      generationRunId: GENERATION_RUN_ID,
+      status: 'passed',
+      summary:
+        'Gate 2 通过：staticContracts 已覆盖公开运行输入输出、前端路由、Workflow/Agent 编排、插件权限、提交持久化、测试入口和需求 traceability。',
+      evidence: [],
+    });
     const completedRun = createGeneratedAppGenerationRun({
       runNumber: 2,
       status: 'failed',
@@ -683,19 +701,25 @@ describe('GeneratedAppService', () => {
       maxRuntimeSeconds: 600,
       completedAt: NOW,
       summary:
-        '门禁运行器骨架完成 Gate 0 AppSpec 完整性检查和 Gate 1 架构计划门禁；Gate 2-7 runner 尚未接入/未执行，当前应用不能形成 publish candidate，保持不可发布。',
+        '门禁运行器骨架完成 Gate 0 AppSpec 完整性检查、Gate 1 架构计划门禁和 Gate 2 静态合约门禁；Gate 3-7 runner 尚未接入/未执行，当前应用不能形成 publish candidate，保持不可发布。',
       failureReason:
-        'Gate 2-7 runner 尚未接入/未执行，不能形成 publish candidate。',
+        'Gate 3-7 runner 尚未接入/未执行，不能形成 publish candidate。',
     });
     const insertRunChain = createInsertReturningChain([run]);
     const insertGateRunChain = createInsertReturningChain([gateRun]);
     const insertGate1RunChain = createInsertReturningChain([gate1Run]);
+    const insertGate2RunChain = createInsertReturningChain([gate2Run]);
     let gate1UpdatePayload: Partial<GeneratedApp> = {};
+    let gate2UpdatePayload: Partial<GeneratedApp> = {};
     const updateAppAfterGate0Chain =
       createGeneratedAppUpdateReturningFromPayload(app);
     const updateAppAfterGate1Chain =
       createGeneratedAppUpdateReturningFromPayload(app, (payload) => {
         gate1UpdatePayload = payload;
+      });
+    const updateAppAfterGate2Chain =
+      createGeneratedAppUpdateReturningFromPayload(app, (payload) => {
+        gate2UpdatePayload = payload;
       });
     const updateRunChain = createUpdateReturningChain([completedRun]);
     mockTenantDb.select
@@ -704,10 +728,12 @@ describe('GeneratedAppService', () => {
     mockTenantDb.insert
       .mockReturnValueOnce(insertRunChain)
       .mockReturnValueOnce(insertGateRunChain)
-      .mockReturnValueOnce(insertGate1RunChain);
+      .mockReturnValueOnce(insertGate1RunChain)
+      .mockReturnValueOnce(insertGate2RunChain);
     mockTenantDb.update
       .mockReturnValueOnce(updateAppAfterGate0Chain)
       .mockReturnValueOnce(updateAppAfterGate1Chain)
+      .mockReturnValueOnce(updateAppAfterGate2Chain)
       .mockReturnValueOnce(updateRunChain);
 
     const response = await service.startGenerationRun(
@@ -759,6 +785,19 @@ describe('GeneratedAppService', () => {
         repairInstructions: null,
       }),
     );
+    expect(insertGate2RunChain.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: TENANT_ID,
+        generatedAppId: APP_ID,
+        generationRunId: GENERATION_RUN_ID,
+        gateId: 'gate-2',
+        gateOrder: 2,
+        gateName: '静态合约门禁',
+        status: 'passed',
+        failure: null,
+        repairInstructions: null,
+      }),
+    );
     const gate1RunPayload = insertGate1RunChain.values.mock.calls[0]?.[0] as {
       evidence: GeneratedApp['gateResults'][number]['evidence'];
     };
@@ -774,8 +813,27 @@ describe('GeneratedAppService', () => {
         }),
       ]),
     );
+    const gate2RunPayload = insertGate2RunChain.values.mock.calls[0]?.[0] as {
+      evidence: GeneratedApp['gateResults'][number]['evidence'];
+    };
+    expect(gate2RunPayload.evidence).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'gate-2-public-runtime-contract',
+          kind: 'static_check',
+        }),
+        expect.objectContaining({
+          id: 'gate-2-test-entry-contract',
+          kind: 'static_check',
+        }),
+      ]),
+    );
 
-    const appUpdatePayload = gate1UpdatePayload as {
+    expect(gate1UpdatePayload.generationPlan).not.toHaveProperty(
+      'staticContracts',
+    );
+
+    const appUpdatePayload = gate2UpdatePayload as {
       gateResults: GeneratedApp['gateResults'];
       readiness: GeneratedApp['readiness'];
       status: GeneratedApp['status'];
@@ -786,15 +844,26 @@ describe('GeneratedAppService', () => {
     const passedGateIds = appUpdatePayload.gateResults
       .filter((gate) => gate.status === 'passed')
       .map((gate) => gate.gateId);
-    expect(passedGateIds).toEqual(['gate-0', 'gate-1']);
+    expect(passedGateIds).toEqual(['gate-0', 'gate-1', 'gate-2']);
     expect(
-      appUpdatePayload.gateResults.find((gate) => gate.gateId === 'gate-2')
+      appUpdatePayload.gateResults.find((gate) => gate.gateId === 'gate-3')
         ?.status,
     ).toBe('pending');
     expect(
-      appUpdatePayload.gateResults.find((gate) => gate.gateId === 'gate-2')
+      appUpdatePayload.gateResults.find((gate) => gate.gateId === 'gate-3')
         ?.evidence,
     ).toEqual([]);
+    expect(
+      appUpdatePayload.gateResults
+        .filter((gate) =>
+          ['gate-3', 'gate-4', 'gate-5', 'gate-6', 'gate-7'].includes(
+            gate.gateId,
+          ),
+        )
+        .every(
+          (gate) => gate.status !== 'passed' && gate.evidence.length === 0,
+        ),
+    ).toBe(true);
     expect(appUpdatePayload.readiness.canCreatePublicShare).toBe(false);
     expect(appUpdatePayload.status).toBe('preview_ready');
     expect(appUpdatePayload.publicShareToken).toBeNull();
@@ -844,11 +913,69 @@ describe('GeneratedAppService', () => {
         }),
       ]),
     );
+    expect(appUpdatePayload.generationPlan.staticContracts).toEqual(
+      expect.objectContaining({
+        contractVersion: 1,
+        appSpecVersion: 1,
+        publicRuntime: expect.objectContaining({
+          input: expect.objectContaining({
+            source: 'public-runtime-submission',
+            requiredFields: ['input'],
+          }),
+        }),
+        frontendRoutes: expect.arrayContaining([
+          expect.objectContaining({
+            pageId: 'page-public-runtime',
+            route: '/public-runtime',
+          }),
+        ]),
+        orchestration: expect.objectContaining({
+          target: 'workflow',
+          nodes: expect.arrayContaining([
+            expect.objectContaining({
+              stepId: 'step-1-req-1',
+              requirementIds: ['req-1'],
+            }),
+          ]),
+        }),
+        pluginToolPermissions: expect.objectContaining({
+          emptyReason: expect.stringContaining('当前 AppSpec 未声明'),
+          implicitPermissionsAllowed: false,
+        }),
+        submissionPersistence: expect.objectContaining({
+          tenantScoped: true,
+          tokenSnapshotRequired: true,
+          softDeleteRequired: true,
+          fields: expect.arrayContaining([
+            'input',
+            'anonymousSessionId',
+            'publicShareToken',
+          ]),
+        }),
+        testEntry: expect.objectContaining({
+          blockingGateIds: ['gate-3', 'gate-4', 'gate-5', 'gate-6', 'gate-7'],
+          acceptanceScenarioIds: ['scenario-1'],
+          verifierGateCommand:
+            'agentloom generated-app gate-6 independent-verifier',
+          publishCandidateGateCommand:
+            'agentloom generated-app gate-7 publish-candidate',
+        }),
+        traceability: expect.arrayContaining([
+          expect.objectContaining({
+            requirementId: 'req-1',
+            staticContractIds: expect.arrayContaining([
+              'gate-2-public-runtime-contract',
+              'gate-2-traceability-contract',
+            ]),
+          }),
+        ]),
+      }),
+    );
     expect(updateRunChain.set).toHaveBeenCalledWith(
       expect.objectContaining({
         status: 'failed',
         failureReason:
-          'Gate 2-7 runner 尚未接入/未执行，不能形成 publish candidate。',
+          'Gate 3-7 runner 尚未接入/未执行，不能形成 publish candidate。',
         completedAt: expect.any(Date),
       }),
     );
@@ -857,7 +984,7 @@ describe('GeneratedAppService', () => {
         id: GENERATION_RUN_ID,
         status: 'failed',
         failureReason:
-          'Gate 2-7 runner 尚未接入/未执行，不能形成 publish candidate。',
+          'Gate 3-7 runner 尚未接入/未执行，不能形成 publish candidate。',
       }),
     );
     expect(response.gateRuns).toEqual([
@@ -871,9 +998,19 @@ describe('GeneratedAppService', () => {
         generationRunId: GENERATION_RUN_ID,
         status: 'passed',
       }),
+      expect.objectContaining({
+        gateId: 'gate-2',
+        generationRunId: GENERATION_RUN_ID,
+        status: 'passed',
+      }),
     ]);
     expect(response.app.generationPlan).toEqual(
-      expect.objectContaining({ appSpecVersion: 1 }),
+      expect.objectContaining({
+        appSpecVersion: 1,
+        staticContracts: expect.objectContaining({
+          contractVersion: 1,
+        }),
+      }),
     );
     expect(response.app.id).toBe(APP_ID);
   });
@@ -969,7 +1106,7 @@ describe('GeneratedAppService', () => {
       TENANT_ID,
       USER_ID,
       APP_ID,
-      {},
+      DEFAULT_START_GENERATION_RUN_DTO,
     );
 
     expect(insertGate1RunChain.values).toHaveBeenCalledWith(
@@ -996,6 +1133,9 @@ describe('GeneratedAppService', () => {
       app.publicShareToken,
     );
     expect(gate1UpdatePayload.generationPlan).toEqual(brokenPlan);
+    expect(gate1UpdatePayload.generationPlan).not.toHaveProperty(
+      'staticContracts',
+    );
     expect(gate1UpdatePayload.status).toBe('failed');
     expect(gate1UpdatePayload.publicShareToken).toBeNull();
     expect(gate1UpdatePayload.publicShareEnabled).toBe(false);
@@ -1008,6 +1148,7 @@ describe('GeneratedAppService', () => {
       }),
     );
     expect(response.generationRun.status).toBe('failed');
+    expect(mockTenantDb.insert).toHaveBeenCalledTimes(3);
     expect(response.gateRuns).toHaveLength(2);
     expect(response.gateRuns[1]).toEqual(
       expect.objectContaining({
@@ -1019,6 +1160,286 @@ describe('GeneratedAppService', () => {
       }),
     );
     expect(response.app.generationPlan).toEqual(brokenPlan);
+  });
+
+  it('Gate 2 失败时应写入失败证据、保留 attempted staticContracts 并以 Gate 2 failure reason 结束', async () => {
+    const app = createGeneratedApp({
+      status: 'published',
+      readiness: createPublishCandidateReadiness(),
+      publicShareEnabled: true,
+      publicShareToken: 'd'.repeat(64),
+      publicShareCreatedAt: NOW,
+    });
+    const validPlan = (
+      service as unknown as {
+        buildGenerationPlan(
+          appSpec: GeneratedApp['appSpec'],
+        ): GeneratedAppGenerationPlan;
+      }
+    ).buildGenerationPlan(app.appSpec);
+    const validPlanWithTool: GeneratedAppGenerationPlan = {
+      ...validPlan,
+      pluginTools: {
+        ...validPlan.pluginTools,
+        tools: [
+          {
+            toolId: 'tool-symptom-score',
+            purpose: '对问诊输入做结构化评分。',
+            requirementIds: ['req-1'],
+            permissionNotes: ['禁止隐式网络、存储、知识库或 LLM 权限。'],
+          },
+        ],
+        emptyReason: null,
+      },
+    };
+    vi.spyOn(
+      service as unknown as {
+        buildGenerationPlan(
+          appSpec: GeneratedApp['appSpec'],
+        ): GeneratedAppGenerationPlan;
+      },
+      'buildGenerationPlan',
+    ).mockReturnValue(validPlanWithTool);
+    const validContracts = (
+      service as unknown as {
+        buildStaticContracts(
+          appSpec: GeneratedApp['appSpec'],
+          generationPlan: GeneratedAppGenerationPlan,
+        ): GeneratedAppStaticContracts;
+      }
+    ).buildStaticContracts(app.appSpec, validPlanWithTool);
+    const malformedContracts: GeneratedAppStaticContracts = {
+      ...validContracts,
+      frontendRoutes: validContracts.frontendRoutes.map((route) => ({
+        ...route,
+        scenarioIds: [],
+      })),
+      orchestration: {
+        ...validContracts.orchestration,
+        nodes: validContracts.orchestration.nodes.map((node, index) =>
+          index === 0
+            ? {
+                ...node,
+                scenarioIds: [],
+                outputHandle: '',
+              }
+            : node,
+        ),
+      },
+      pluginToolPermissions: {
+        ...validContracts.pluginToolPermissions,
+        tools: [],
+      },
+      submissionPersistence: {
+        ...validContracts.submissionPersistence,
+        fields: validContracts.submissionPersistence.fields.filter(
+          (field) => field !== 'publicShareToken',
+        ),
+      },
+      testEntry: {
+        ...validContracts.testEntry,
+        verifierGateCommand: '',
+        publishCandidateGateCommand: '',
+      },
+      traceability: validContracts.traceability.map((entry) => ({
+        ...entry,
+        scenarioIds: [],
+        staticContractIds: ['missing-contract'],
+      })),
+    };
+    vi.spyOn(
+      service as unknown as {
+        buildStaticContracts(
+          appSpec: GeneratedApp['appSpec'],
+          generationPlan: GeneratedAppGenerationPlan,
+        ): GeneratedAppStaticContracts;
+      },
+      'buildStaticContracts',
+    ).mockReturnValue(malformedContracts);
+    const run = createGeneratedAppGenerationRun();
+    const gateRun = createGeneratedAppGateRun({
+      gateId: 'gate-0',
+      gateOrder: 0,
+      gateName: '需求规格门禁',
+      generationRunId: GENERATION_RUN_ID,
+      status: 'passed',
+      summary:
+        'Gate 0 通过：AppSpec 结构完整，核心需求均有 acceptance scenario 与 traceability 覆盖。',
+      evidence: [],
+    });
+    const gate1Run = createGeneratedAppGateRun({
+      id: GATE_1_RUN_ID,
+      gateId: 'gate-1',
+      gateOrder: 1,
+      gateName: '架构计划门禁',
+      generationRunId: GENERATION_RUN_ID,
+      status: 'passed',
+      summary:
+        'Gate 1 通过：generationPlan 已覆盖 AppSpec 页面、Agent/Workflow 编排、插件/工具策略、数据持久化、Gate 2-7 测试计划和需求 traceability。',
+      evidence: [],
+    });
+    const gate2Run = createGeneratedAppGateRun({
+      id: GATE_2_RUN_ID,
+      gateId: 'gate-2',
+      gateOrder: 2,
+      gateName: '静态合约门禁',
+      generationRunId: GENERATION_RUN_ID,
+      status: 'failed',
+      summary:
+        'Gate 2 失败：staticContracts 未完整覆盖公开运行、前端路由、编排、插件权限、提交持久化、测试入口或 traceability。',
+      failure: {
+        code: 'static-contracts-incomplete',
+        message: 'StaticContracts 静态合约检查失败：静态合约 traceability。',
+      },
+      repairInstructions:
+        '修复 generationPlan.staticContracts，使其覆盖 public runtime 输入输出、frontend route/page、Workflow/Agent 编排、插件/工具权限、submission persistence、Gate 3-7 测试入口和每条核心需求 traceability。',
+      evidence: [],
+    });
+    const completedRun = createGeneratedAppGenerationRun({
+      status: 'failed',
+      failureReason:
+        'StaticContracts 静态合约检查失败：静态合约 traceability。',
+      completedAt: NOW,
+    });
+    const insertRunChain = createInsertReturningChain([run]);
+    const insertGateRunChain = createInsertReturningChain([gateRun]);
+    const insertGate1RunChain = createInsertReturningChain([gate1Run]);
+    const insertGate2RunChain = createInsertReturningChain([gate2Run]);
+    const updateAppAfterGate0Chain =
+      createGeneratedAppUpdateReturningFromPayload(app);
+    const updateAppAfterGate1Chain =
+      createGeneratedAppUpdateReturningFromPayload(app);
+    let gate2UpdatePayload: Partial<GeneratedApp> = {};
+    const updateAppAfterGate2Chain =
+      createGeneratedAppUpdateReturningFromPayload(app, (payload) => {
+        gate2UpdatePayload = payload;
+      });
+    const updateRunChain = createUpdateReturningChain([completedRun]);
+    mockTenantDb.select
+      .mockReturnValueOnce(createSelectChain([app]))
+      .mockReturnValueOnce(createSelectLatestRunNumberChain(null));
+    mockTenantDb.insert
+      .mockReturnValueOnce(insertRunChain)
+      .mockReturnValueOnce(insertGateRunChain)
+      .mockReturnValueOnce(insertGate1RunChain)
+      .mockReturnValueOnce(insertGate2RunChain);
+    mockTenantDb.update
+      .mockReturnValueOnce(updateAppAfterGate0Chain)
+      .mockReturnValueOnce(updateAppAfterGate1Chain)
+      .mockReturnValueOnce(updateAppAfterGate2Chain)
+      .mockReturnValueOnce(updateRunChain);
+
+    const response = await service.startGenerationRun(
+      TENANT_ID,
+      USER_ID,
+      APP_ID,
+      DEFAULT_START_GENERATION_RUN_DTO,
+    );
+
+    expect(insertGate2RunChain.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        gateId: 'gate-2',
+        status: 'failed',
+        failure: expect.objectContaining({
+          code: 'static-contracts-incomplete',
+          message: expect.stringContaining('StaticContracts 静态合约检查失败'),
+        }),
+        repairInstructions: expect.stringContaining(
+          '修复 generationPlan.staticContracts',
+        ),
+      }),
+    );
+    const gate2RunPayload = insertGate2RunChain.values.mock.calls[0]?.[0] as {
+      evidence: GeneratedApp['gateResults'][number]['evidence'];
+      failure: { details?: { checks?: Array<{ issues: string[] }> } };
+    };
+    expect(
+      gate2RunPayload.evidence.some((item) =>
+        item.summary.includes('missing-contract'),
+      ),
+    ).toBe(true);
+    expect(
+      gate2RunPayload.evidence.some((item) =>
+        item.summary.includes('frontendRoutes[0].scenarioIds 缺少 scenario-1'),
+      ),
+    ).toBe(true);
+    expect(
+      gate2RunPayload.evidence.some((item) =>
+        item.summary.includes('orchestration.nodes[0].outputHandle 缺失'),
+      ),
+    ).toBe(true);
+    expect(
+      gate2RunPayload.evidence.some((item) =>
+        item.summary.includes('tool-symptom-score 缺少权限合约'),
+      ),
+    ).toBe(true);
+    expect(
+      gate2RunPayload.evidence.some((item) =>
+        item.summary.includes(
+          'submissionPersistence.fields 缺少 publicShareToken',
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      gate2RunPayload.evidence.some((item) =>
+        item.summary.includes('testEntry.verifierGateCommand 缺失'),
+      ),
+    ).toBe(true);
+    expect(JSON.stringify(gate2RunPayload.failure)).not.toContain(
+      app.publicShareToken,
+    );
+
+    const appUpdatePayload = gate2UpdatePayload as {
+      generationPlan: GeneratedAppGenerationPlan;
+      gateResults: GeneratedApp['gateResults'];
+      status: GeneratedApp['status'];
+      publicShareToken: string | null;
+      publicShareEnabled: boolean;
+    };
+    expect(appUpdatePayload.generationPlan.staticContracts).toEqual(
+      malformedContracts,
+    );
+    expect(
+      appUpdatePayload.gateResults.find((gate) => gate.gateId === 'gate-2'),
+    ).toEqual(
+      expect.objectContaining({
+        status: 'failed',
+        summary:
+          'Gate 2 失败：staticContracts 未完整覆盖公开运行、前端路由、编排、插件权限、提交持久化、测试入口或 traceability。',
+      }),
+    );
+    expect(
+      appUpdatePayload.gateResults.find((gate) => gate.gateId === 'gate-3')
+        ?.status,
+    ).toBe('pending');
+    expect(appUpdatePayload.status).toBe('failed');
+    expect(appUpdatePayload.publicShareToken).toBeNull();
+    expect(appUpdatePayload.publicShareEnabled).toBe(false);
+    expect(updateRunChain.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'failed',
+        failureReason: expect.stringContaining(
+          'StaticContracts 静态合约检查失败',
+        ),
+      }),
+    );
+    expect(response.generationRun.status).toBe('failed');
+    expect(response.generationRun.failureReason).toContain(
+      'StaticContracts 静态合约检查失败',
+    );
+    expect(response.gateRuns).toHaveLength(3);
+    expect(response.gateRuns[2]).toEqual(
+      expect.objectContaining({
+        gateId: 'gate-2',
+        status: 'failed',
+        failure: expect.objectContaining({
+          code: 'static-contracts-incomplete',
+        }),
+      }),
+    );
+    expect(response.app.generationPlan?.staticContracts).toEqual(
+      malformedContracts,
+    );
   });
 
   it('Gate 0 失败时应写入失败证据、降级 readiness 并关闭公开链接', async () => {
@@ -1084,7 +1505,7 @@ describe('GeneratedAppService', () => {
       TENANT_ID,
       USER_ID,
       APP_ID,
-      {},
+      DEFAULT_START_GENERATION_RUN_DTO,
     );
 
     expect(insertGateRunChain.values).toHaveBeenCalledWith(
@@ -1139,7 +1560,12 @@ describe('GeneratedAppService', () => {
     mockTenantDb.select.mockReturnValueOnce(createSelectChain([]));
 
     await expect(
-      service.startGenerationRun(TENANT_ID, USER_ID, APP_ID, {}),
+      service.startGenerationRun(
+        TENANT_ID,
+        USER_ID,
+        APP_ID,
+        DEFAULT_START_GENERATION_RUN_DTO,
+      ),
     ).rejects.toBeInstanceOf(GeneratedAppNotFoundException);
 
     expect(mockTenantDb.insert).not.toHaveBeenCalled();
