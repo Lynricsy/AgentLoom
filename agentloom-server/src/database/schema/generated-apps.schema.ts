@@ -216,6 +216,7 @@ export interface GeneratedAppGenerationPlan {
   integrationPlan?: GeneratedAppIntegrationPlan;
   browserAcceptancePlan?: GeneratedAppBrowserAcceptancePlan;
   independentVerificationPlan?: GeneratedAppIndependentVerificationPlan;
+  publishCandidatePlan?: GeneratedAppPublishCandidatePlan;
 }
 
 export interface GeneratedAppStaticContracts {
@@ -752,6 +753,108 @@ export interface GeneratedAppIndependentVerificationPlan {
     evidenceIds: string[];
     required: boolean;
     coveredByRubricCategories: GeneratedAppIndependentVerificationRubricCategory[];
+  }>;
+  failureCaptureFields: string[];
+}
+
+export type GeneratedAppPublishCandidateArtifactKind =
+  | 'frontend_artifact'
+  | 'plugin_bundle_artifact'
+  | 'test_report'
+  | 'integration_trace'
+  | 'browser_artifact'
+  | 'verifier_report'
+  | 'source_artifact_placeholder';
+
+export type GeneratedAppPublishCandidateBlockerCategory =
+  | 'skeleton_only_upstream_gate'
+  | 'missing_real_execution_artifact'
+  | 'missing_real_independent_verifier_verdict'
+  | 'unresolved_warning_or_blocking_finding'
+  | 'stale_public_token_requirement';
+
+export interface GeneratedAppPublishCandidatePlan {
+  planVersion: 1;
+  appSpecVersion: number;
+  generationPlanVersion: number;
+  staticContractsVersion: number;
+  buildUnitPlanVersion: number;
+  integrationPlanVersion: number;
+  browserAcceptancePlanVersion: number;
+  independentVerificationPlanVersion: number;
+  executionLevel: 'publish-candidate-guard-skeleton';
+  skeletonDisclaimer: string;
+  publishReadinessInputs: {
+    requiredGateIds: string[];
+    upstreamGateIds: string[];
+    upstreamEvidenceRefs: Array<{
+      gateId: string;
+      evidenceIds: string[];
+    }>;
+    readinessPreconditions: string[];
+    requiredNonSkeletonEvidenceClasses: string[];
+  };
+  artifactReleaseManifest: Array<{
+    artifactId: string;
+    kind: GeneratedAppPublishCandidateArtifactKind;
+    sourceGateId: string;
+    sourcePlan: string;
+    path: string;
+    required: boolean;
+    placeholder: boolean;
+    containsSecrets: false;
+    evidenceIds: string[];
+  }>;
+  publicationBlockers: Array<{
+    blockerId: string;
+    category: GeneratedAppPublishCandidateBlockerCategory;
+    gateIds: string[];
+    evidenceIds: string[];
+    artifactIds: string[];
+    message: string;
+    blocking: true;
+  }>;
+  rollbackShareControls: {
+    publicTokenCreation: 'disabled-while-guard-fails';
+    publicShareEnabledWhileGuardFails: false;
+    createdPublicShareToken: null;
+    stalePublicTokenRequiredAction: 'clear-before-publish-candidate';
+    closeShareControl: 'DELETE /generated-apps/:appId/public-share';
+    regenerateShareControl: 'POST /generated-apps/:appId/public-share/regenerate';
+    existingPublicShareControlsReferenced: true;
+  };
+  finalVerdict: {
+    publishCandidateAllowed: false;
+    blockingReasons: string[];
+    warningReasons: string[];
+    requiredRealGateRunnerIds: string[];
+    evidenceIds: string[];
+    repairSuggestions: string[];
+  };
+  requirementCoverage: Array<{
+    requirementId: string;
+    scenarioIds: string[];
+    gateIds: string[];
+    evidenceIds: string[];
+    artifactIds: string[];
+    blockerIds: string[];
+  }>;
+  gateCoverage: Array<{
+    gateId: string;
+    evidenceIds: string[];
+    required: boolean;
+    executionLevel: string;
+    skeletonOnly: boolean;
+    requiredRealGateRunnerId: string;
+  }>;
+  artifactCoverage: Array<{
+    artifactId: string;
+    kind: GeneratedAppPublishCandidateArtifactKind;
+    sourceGateId: string;
+    evidenceIds: string[];
+    requirementIds: string[];
+    scenarioIds: string[];
+    required: boolean;
   }>;
   failureCaptureFields: string[];
 }

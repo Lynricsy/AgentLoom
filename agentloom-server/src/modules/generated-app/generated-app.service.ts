@@ -18,6 +18,7 @@ import type {
   GeneratedAppIntegrationPlan,
   GeneratedAppGateRunFailure,
   GeneratedAppGateRun,
+  GeneratedAppPublishCandidatePlan,
   GeneratedAppSpec,
   GeneratedAppStaticContracts,
   GeneratedAppGateResult,
@@ -84,7 +85,7 @@ const DEFAULT_PREVIEW: GeneratedAppPreview = {
 };
 
 const GATE_7_RUNNER_INCOMPLETE_FAILURE_REASON =
-  'Gate 7 runner 尚未接入/未执行，不能形成 publish candidate。';
+  'Gate 7 publish-candidate guard skeleton 检测到 Gate 3-6 仍为 skeleton-only upstream evidence，不能形成 publish candidate。';
 
 const GATE_2_STATIC_CONTRACT_IDS = [
   'gate-2-public-runtime-contract',
@@ -434,6 +435,124 @@ const GATE_6_ALLOWED_COVERAGE_MATRIX_SOURCE_PLANS = [
   'independentVerificationPlan',
 ] as const;
 
+const GATE_7_SKELETON_EVIDENCE_NOTE =
+  'Gate 7 当前只做 publish-candidate-guard-skeleton 检查；未生成真实发布候选、未签收真实 artifact、未证明真实质量门禁全量通过，也不能启用公开分享。';
+
+const GATE_7_REQUIRED_GATE_IDS = [
+  'gate-0',
+  'gate-1',
+  'gate-2',
+  'gate-3',
+  'gate-4',
+  'gate-5',
+  'gate-6',
+  'gate-7',
+] as const;
+
+const GATE_7_UPSTREAM_GATE_IDS = [
+  'gate-0',
+  'gate-1',
+  'gate-2',
+  'gate-3',
+  'gate-4',
+  'gate-5',
+  'gate-6',
+] as const;
+
+const GATE_7_SKELETON_ONLY_UPSTREAM_GATE_IDS = [
+  'gate-3',
+  'gate-4',
+  'gate-5',
+  'gate-6',
+] as const;
+
+const GATE_7_REQUIRED_READINESS_PRECONDITIONS = [
+  'all-gate-0-through-gate-7-blocking-gates-passed',
+  'no-blocking-findings',
+  'no-unresolved-warning-findings',
+  'real-artifacts-signed-off',
+  'real-independent-verifier-verdict-pass',
+  'public-share-token-created-only-after-publish-candidate',
+] as const;
+
+const GATE_7_REQUIRED_NON_SKELETON_EVIDENCE_CLASSES = [
+  'real_frontend_build_artifact',
+  'real_plugin_bundle_artifact',
+  'real_test_report',
+  'real_integration_trace',
+  'real_browser_artifact',
+  'real_independent_verifier_report',
+  'real_source_artifact',
+] as const;
+
+const GATE_7_ALLOWED_ARTIFACT_KINDS = [
+  'frontend_artifact',
+  'plugin_bundle_artifact',
+  'test_report',
+  'integration_trace',
+  'browser_artifact',
+  'verifier_report',
+  'source_artifact_placeholder',
+] as const;
+
+const GATE_7_REQUIRED_ARTIFACT_KINDS = [
+  ...GATE_7_ALLOWED_ARTIFACT_KINDS,
+] as const;
+
+const GATE_7_REQUIRED_BLOCKER_CATEGORIES = [
+  'skeleton_only_upstream_gate',
+  'missing_real_execution_artifact',
+  'missing_real_independent_verifier_verdict',
+  'unresolved_warning_or_blocking_finding',
+  'stale_public_token_requirement',
+] as const;
+
+const GATE_7_REQUIRED_REAL_GATE_RUNNER_IDS = [
+  'gate-3-real-build-unit-runner',
+  'gate-4-real-integration-runner',
+  'gate-5-real-browser-acceptance-runner',
+  'gate-6-real-independent-verifier-runner',
+  'gate-7-real-publish-candidate-runner',
+] as const;
+
+const GATE_7_REQUIRED_BLOCKING_REASON_FRAGMENTS = [
+  'skeleton/contract-level',
+  '真实 build/test/integration/browser/verifier artifact',
+  '真实独立 verifier verdict',
+] as const;
+
+const GATE_7_EXPECTED_EVIDENCE_IDS = [
+  'gate-7-publish-readiness-inputs',
+  'gate-7-artifact-release-manifest',
+  'gate-7-publication-blockers',
+  'gate-7-rollback-share-controls',
+  'gate-7-final-verdict',
+  'gate-7-coverage-matrices',
+  'gate-7-failure-capture-fields',
+] as const;
+
+const GATE_7_ALLOWED_FINAL_VERDICT_FIELDS = [
+  'publishCandidateAllowed',
+  'blockingReasons',
+  'warningReasons',
+  'requiredRealGateRunnerIds',
+  'evidenceIds',
+  'repairSuggestions',
+] as const;
+
+const GATE_7_REQUIRED_FAILURE_CAPTURE_FIELDS = [
+  'publishCandidateGuardRunId',
+  'upstreamGateIds',
+  'skeletonOnlyGateIds',
+  'missingRealEvidenceClasses',
+  'artifactIds',
+  'blockingReasons',
+  'warningReasons',
+  'publicShareTokenAction',
+  'repairSuggestions',
+  'durationMs',
+] as const;
+
 interface Gate0Check {
   id: string;
   label: string;
@@ -539,6 +658,22 @@ interface Gate6Check {
 }
 
 interface Gate6Evaluation {
+  status: 'passed' | 'failed';
+  summary: string;
+  evidence: GeneratedAppGateEvidence[];
+  failure: GeneratedAppGateRunFailure | null;
+  repairInstructions: string | null;
+}
+
+interface Gate7Check {
+  id: string;
+  label: string;
+  passed: boolean;
+  summary: string;
+  issues: string[];
+}
+
+interface Gate7Evaluation {
   status: 'passed' | 'failed';
   summary: string;
   evidence: GeneratedAppGateEvidence[];
@@ -1263,9 +1398,87 @@ export class GeneratedAppService {
                   completedSummary =
                     '门禁运行器骨架完成 Gate 0、Gate 1、Gate 2、Gate 3、Gate 4 和 Gate 5，但 Gate 6 independent verifier skeleton 检查失败；当前应用保持不可发布。';
                 } else {
-                  finalFailureReason = GATE_7_RUNNER_INCOMPLETE_FAILURE_REASON;
+                  const publishCandidatePlan = this.buildPublishCandidatePlan(
+                    app.appSpec,
+                    generationPlan,
+                    staticContracts,
+                    buildUnitPlan,
+                    integrationPlan,
+                    browserAcceptancePlan,
+                    independentVerificationPlan,
+                    latestApp.gateResults,
+                  );
+                  const generationPlanWithPublishCandidatePlan: GeneratedAppGenerationPlan =
+                    {
+                      ...generationPlanWithIndependentVerificationPlan,
+                      publishCandidatePlan,
+                    };
+                  const gate7Evaluation =
+                    this.evaluateGate7PublishCandidatePlan(
+                      app.appSpec,
+                      generationPlan,
+                      staticContracts,
+                      buildUnitPlan,
+                      integrationPlan,
+                      browserAcceptancePlan,
+                      independentVerificationPlan,
+                      latestApp.gateResults,
+                      publishCandidatePlan,
+                    );
+                  const gate6Result = latestApp.gateResults.find(
+                    (gate) => gate.gateId === 'gate-6',
+                  );
+                  const gate7StartedAt = new Date();
+                  const gate7CompletedAt = new Date();
+                  const gate7AppSnapshot: GeneratedApp = {
+                    ...app,
+                    gateResults: latestApp.gateResults,
+                    generationPlan: latestApp.generationPlan,
+                  };
+                  const gate7RunResult = await this.createGateRunAndUpdateApp(
+                    tenantId,
+                    userId,
+                    gate7AppSnapshot,
+                    {
+                      gateId: 'gate-7',
+                      generationRunId: run.id,
+                      attemptNumber: 1,
+                      status: gate7Evaluation.status,
+                      summary: gate7Evaluation.summary,
+                      evidence: gate7Evaluation.evidence,
+                      failure: gate7Evaluation.failure,
+                      repairInstructions: gate7Evaluation.repairInstructions,
+                      startedAt: gate7StartedAt.toISOString(),
+                      completedAt: gate7CompletedAt.toISOString(),
+                    },
+                    {
+                      generationPlan: generationPlanWithPublishCandidatePlan,
+                      buildGateResults: (gate7Result, nowIso) =>
+                        this.buildRunnerGateResults(
+                          app,
+                          [
+                            ...(gate0Result ? [gate0Result] : []),
+                            ...(gate1Result ? [gate1Result] : []),
+                            ...(gate2Result ? [gate2Result] : []),
+                            ...(gate3Result ? [gate3Result] : []),
+                            ...(gate4Result ? [gate4Result] : []),
+                            ...(gate5Result ? [gate5Result] : []),
+                            ...(gate6Result ? [gate6Result] : []),
+                            gate7Result,
+                          ],
+                          nowIso,
+                        ),
+                    },
+                  );
+
+                  producedGateRuns.push(gate7RunResult.gateRun);
+                  latestApp = gate7RunResult.app;
+                  completedAt = gate7CompletedAt;
+                  finalFailureReason =
+                    gate7Evaluation.failure?.message ??
+                    GATE_7_RUNNER_INCOMPLETE_FAILURE_REASON;
                   completedSummary =
-                    '门禁运行器骨架完成 Gate 0 AppSpec 完整性检查、Gate 1 架构计划门禁、Gate 2 静态合约门禁、Gate 3 构建与单元 skeleton 完整性检查、Gate 4 integration skeleton 完整性检查、Gate 5 browser acceptance skeleton 完整性检查和 Gate 6 independent verifier skeleton 完整性检查；Gate 7 runner 尚未接入/未执行，当前应用不能形成 publish candidate，保持不可发布。';
+                    '门禁运行器骨架完成 Gate 0 AppSpec 完整性检查、Gate 1 架构计划门禁、Gate 2 静态合约门禁、Gate 3 构建与单元 skeleton 完整性检查、Gate 4 integration skeleton 完整性检查、Gate 5 browser acceptance skeleton 完整性检查和 Gate 6 independent verifier skeleton 完整性检查；Gate 7 publish-candidate guard skeleton 检测到上游仍只有 skeleton/contract-level evidence，当前应用不能形成 publish candidate，保持不可发布。';
                 }
               }
             }
@@ -5794,6 +6007,1285 @@ export class GeneratedAppService {
         passed: failureCaptureIssues.length === 0,
         summary:
           '检查后续真实 Gate 6 runner 失败时必须捕获 verifier、bundle、finding、evidence、repair 和 residual risk 字段。',
+        issues: failureCaptureIssues,
+      },
+    ];
+  }
+
+  private buildPublishCandidatePlan(
+    appSpec: GeneratedAppSpec,
+    generationPlan: GeneratedAppGenerationPlan,
+    staticContracts: GeneratedAppStaticContracts,
+    buildUnitPlan: GeneratedAppBuildUnitPlan,
+    integrationPlan: GeneratedAppIntegrationPlan,
+    browserAcceptancePlan: GeneratedAppBrowserAcceptancePlan,
+    independentVerificationPlan: GeneratedAppIndependentVerificationPlan,
+    gateResults: GeneratedAppGateResult[],
+  ): GeneratedAppPublishCandidatePlan {
+    const requirementIds = appSpec.coreRequirements.map(
+      (requirement) => requirement.id,
+    );
+    const scenarioIds = appSpec.acceptanceScenarios.map(
+      (scenario) => scenario.id,
+    );
+    const upstreamGateIds = [...GATE_7_UPSTREAM_GATE_IDS];
+    const upstreamEvidenceRefs = upstreamGateIds.map((gateId) => ({
+      gateId,
+      evidenceIds:
+        gateResults
+          .find((gate) => gate.gateId === gateId)
+          ?.evidence.map((evidence) => evidence.id) ?? [],
+    }));
+    const upstreamEvidenceIds = upstreamEvidenceRefs.flatMap(
+      (entry) => entry.evidenceIds,
+    );
+    const gate7EvidenceIds = [...GATE_7_EXPECTED_EVIDENCE_IDS];
+    const releaseManifest: GeneratedAppPublishCandidatePlan['artifactReleaseManifest'] =
+      [
+        ...buildUnitPlan.artifactExpectations
+          .filter((artifact) => artifact.kind === 'frontend_build')
+          .map((artifact) => ({
+            artifactId: artifact.artifactId,
+            kind: 'frontend_artifact' as const,
+            sourceGateId: 'gate-3',
+            sourcePlan: 'buildUnitPlan',
+            path: artifact.path,
+            required: artifact.required,
+            placeholder: true,
+            containsSecrets: false as const,
+            evidenceIds: upstreamEvidenceRefs.find(
+              (entry) => entry.gateId === 'gate-3',
+            )?.evidenceIds ?? [...gate7EvidenceIds],
+          })),
+        ...buildUnitPlan.artifactExpectations
+          .filter((artifact) => artifact.kind === 'plugin_bundle')
+          .map((artifact) => ({
+            artifactId: artifact.artifactId,
+            kind: 'plugin_bundle_artifact' as const,
+            sourceGateId: 'gate-3',
+            sourcePlan: 'buildUnitPlan',
+            path: artifact.path,
+            required: artifact.required,
+            placeholder: true,
+            containsSecrets: false as const,
+            evidenceIds: upstreamEvidenceRefs.find(
+              (entry) => entry.gateId === 'gate-3',
+            )?.evidenceIds ?? [...gate7EvidenceIds],
+          })),
+        ...(buildUnitPlan.artifactExpectations.some(
+          (artifact) => artifact.kind === 'plugin_bundle',
+        )
+          ? []
+          : [
+              {
+                artifactId: 'no-plugin-bundle-artifacts-required',
+                kind: 'plugin_bundle_artifact' as const,
+                sourceGateId: 'gate-3',
+                sourcePlan: 'buildUnitPlan',
+                path: 'artifacts/gate-7/no-plugin-bundle-required.json',
+                required: false,
+                placeholder: true,
+                containsSecrets: false as const,
+                evidenceIds: [...gate7EvidenceIds],
+              },
+            ]),
+        ...buildUnitPlan.artifactExpectations
+          .filter((artifact) =>
+            [
+              'unit_test_report',
+              'component_golden_report',
+              'coverage_report',
+            ].includes(artifact.kind),
+          )
+          .map((artifact) => ({
+            artifactId: artifact.artifactId,
+            kind: 'test_report' as const,
+            sourceGateId: 'gate-3',
+            sourcePlan: 'buildUnitPlan',
+            path: artifact.path,
+            required: artifact.required,
+            placeholder: true,
+            containsSecrets: false as const,
+            evidenceIds: upstreamEvidenceRefs.find(
+              (entry) => entry.gateId === 'gate-3',
+            )?.evidenceIds ?? [...gate7EvidenceIds],
+          })),
+        ...integrationPlan.traceArtifacts.map((artifact) => ({
+          artifactId: artifact.artifactId,
+          kind: 'integration_trace' as const,
+          sourceGateId: 'gate-4',
+          sourcePlan: 'integrationPlan',
+          path: artifact.path,
+          required: true,
+          placeholder: true,
+          containsSecrets: false as const,
+          evidenceIds: upstreamEvidenceRefs.find(
+            (entry) => entry.gateId === 'gate-4',
+          )?.evidenceIds ?? [...gate7EvidenceIds],
+        })),
+        ...browserAcceptancePlan.artifactExpectations.map((artifact) => ({
+          artifactId: artifact.artifactId,
+          kind: 'browser_artifact' as const,
+          sourceGateId: 'gate-5',
+          sourcePlan: 'browserAcceptancePlan',
+          path: artifact.path,
+          required: artifact.required,
+          placeholder: true,
+          containsSecrets: false as const,
+          evidenceIds: upstreamEvidenceRefs.find(
+            (entry) => entry.gateId === 'gate-5',
+          )?.evidenceIds ?? [...gate7EvidenceIds],
+        })),
+        {
+          artifactId: 'independent-verifier-report-placeholder',
+          kind: 'verifier_report',
+          sourceGateId: 'gate-6',
+          sourcePlan: 'independentVerificationPlan',
+          path: 'artifacts/gate-6/independent-verifier-report.json',
+          required: true,
+          placeholder: true,
+          containsSecrets: false,
+          evidenceIds: upstreamEvidenceRefs.find(
+            (entry) => entry.gateId === 'gate-6',
+          )?.evidenceIds ?? [...gate7EvidenceIds],
+        },
+        {
+          artifactId: 'source-artifact-placeholder',
+          kind: 'source_artifact_placeholder',
+          sourceGateId: 'gate-7',
+          sourcePlan: 'publishCandidatePlan',
+          path: 'artifacts/gate-7/source-artifact-placeholder.tar.zst',
+          required: true,
+          placeholder: true,
+          containsSecrets: false,
+          evidenceIds: [...gate7EvidenceIds],
+        },
+      ];
+    const artifactIds = releaseManifest.map((artifact) => artifact.artifactId);
+    const blockerIds = [
+      'blocker-skeleton-only-upstream-gates',
+      'blocker-missing-real-execution-artifacts',
+      'blocker-missing-real-independent-verifier-verdict',
+      'blocker-unresolved-warning-or-blocking-findings',
+      'blocker-stale-public-token-requires-regeneration',
+    ];
+
+    return {
+      planVersion: 1,
+      appSpecVersion: appSpec.version,
+      generationPlanVersion: generationPlan.planVersion,
+      staticContractsVersion: staticContracts.contractVersion,
+      buildUnitPlanVersion: buildUnitPlan.planVersion,
+      integrationPlanVersion: integrationPlan.planVersion,
+      browserAcceptancePlanVersion: browserAcceptancePlan.planVersion,
+      independentVerificationPlanVersion:
+        independentVerificationPlan.planVersion,
+      executionLevel: 'publish-candidate-guard-skeleton',
+      skeletonDisclaimer: GATE_7_SKELETON_EVIDENCE_NOTE,
+      publishReadinessInputs: {
+        requiredGateIds: [...GATE_7_REQUIRED_GATE_IDS],
+        upstreamGateIds,
+        upstreamEvidenceRefs,
+        readinessPreconditions: [...GATE_7_REQUIRED_READINESS_PRECONDITIONS],
+        requiredNonSkeletonEvidenceClasses: [
+          ...GATE_7_REQUIRED_NON_SKELETON_EVIDENCE_CLASSES,
+        ],
+      },
+      artifactReleaseManifest: releaseManifest,
+      publicationBlockers: [
+        {
+          blockerId: blockerIds[0] ?? 'blocker-skeleton-only-upstream-gates',
+          category: 'skeleton_only_upstream_gate',
+          gateIds: [...GATE_7_SKELETON_ONLY_UPSTREAM_GATE_IDS],
+          evidenceIds: upstreamEvidenceIds,
+          artifactIds,
+          message:
+            'Gate 3-6 当前只有 contract-level skeleton evidence，不能作为发布候选签收依据。',
+          blocking: true,
+        },
+        {
+          blockerId:
+            blockerIds[1] ?? 'blocker-missing-real-execution-artifacts',
+          category: 'missing_real_execution_artifact',
+          gateIds: ['gate-3', 'gate-4', 'gate-5'],
+          evidenceIds: upstreamEvidenceIds,
+          artifactIds,
+          message:
+            '缺少真实前端构建、插件构建、测试报告、集成 trace 和浏览器 artifact。',
+          blocking: true,
+        },
+        {
+          blockerId:
+            blockerIds[2] ??
+            'blocker-missing-real-independent-verifier-verdict',
+          category: 'missing_real_independent_verifier_verdict',
+          gateIds: ['gate-6'],
+          evidenceIds:
+            upstreamEvidenceRefs.find((entry) => entry.gateId === 'gate-6')
+              ?.evidenceIds ?? upstreamEvidenceIds,
+          artifactIds: ['independent-verifier-report-placeholder'],
+          message:
+            '缺少真实独立 verifier verdict，Gate 6 skeleton 不能替代真实审查结论。',
+          blocking: true,
+        },
+        {
+          blockerId:
+            blockerIds[3] ?? 'blocker-unresolved-warning-or-blocking-findings',
+          category: 'unresolved_warning_or_blocking_finding',
+          gateIds: ['gate-6', 'gate-7'],
+          evidenceIds: [...upstreamEvidenceIds, ...gate7EvidenceIds],
+          artifactIds: ['independent-verifier-report-placeholder'],
+          message:
+            '当前没有真实 verifier 结论证明 warning 和 blocking findings 已清零。',
+          blocking: true,
+        },
+        {
+          blockerId:
+            blockerIds[4] ?? 'blocker-stale-public-token-requires-regeneration',
+          category: 'stale_public_token_requirement',
+          gateIds: ['gate-7'],
+          evidenceIds: gate7EvidenceIds,
+          artifactIds: ['source-artifact-placeholder'],
+          message:
+            'Gate 7 失败时必须保持 public share token disabled/cleared，未来通过后也必须走既有 regenerate/enable 控制重新创建 token。',
+          blocking: true,
+        },
+      ],
+      rollbackShareControls: {
+        publicTokenCreation: 'disabled-while-guard-fails',
+        publicShareEnabledWhileGuardFails: false,
+        createdPublicShareToken: null,
+        stalePublicTokenRequiredAction: 'clear-before-publish-candidate',
+        closeShareControl: 'DELETE /generated-apps/:appId/public-share',
+        regenerateShareControl:
+          'POST /generated-apps/:appId/public-share/regenerate',
+        existingPublicShareControlsReferenced: true,
+      },
+      finalVerdict: {
+        publishCandidateAllowed: false,
+        blockingReasons: [
+          'Gate 3-6 当前只有 skeleton/contract-level completeness evidence。',
+          '缺少真实 build/test/integration/browser/verifier artifact 签收。',
+          '缺少真实独立 verifier verdict，Gate 6 skeleton 不能替代真实审查结论。',
+          'Gate 7 guard 失败期间 public share token 必须保持禁用并清空。',
+        ],
+        warningReasons: [
+          '当前 plan 只保留 attempted publish candidate guard skeleton，不能对终端用户公开。',
+        ],
+        requiredRealGateRunnerIds: [...GATE_7_REQUIRED_REAL_GATE_RUNNER_IDS],
+        evidenceIds: [...upstreamEvidenceIds, ...gate7EvidenceIds],
+        repairSuggestions: [
+          '接入真实 Gate 3 build/unit runner 并产出真实构建与测试报告。',
+          '接入真实 Gate 4 integration runner 并产出 API、Agent/Workflow、插件 sandbox trace。',
+          '接入真实 Gate 5 browser runner 并产出截图、视频、trace、console 和 network 证据。',
+          '接入真实 Gate 6 independent verifier 并产出独立 verdict。',
+          '只有真实 Gate 3-7 阻断证据通过后才允许重新创建公开分享 token。',
+        ],
+      },
+      requirementCoverage: appSpec.coreRequirements.map((requirement) => ({
+        requirementId: requirement.id,
+        scenarioIds:
+          appSpec.traceability.find(
+            (entry) => entry.requirementId === requirement.id,
+          )?.scenarioIds ?? [],
+        gateIds: [...GATE_7_REQUIRED_GATE_IDS],
+        evidenceIds: [...upstreamEvidenceIds, ...gate7EvidenceIds],
+        artifactIds,
+        blockerIds,
+      })),
+      gateCoverage: GATE_7_REQUIRED_GATE_IDS.map((gateId) => ({
+        gateId,
+        evidenceIds:
+          gateId === 'gate-7'
+            ? gate7EvidenceIds
+            : (upstreamEvidenceRefs.find((entry) => entry.gateId === gateId)
+                ?.evidenceIds ?? []),
+        required: true,
+        executionLevel: this.resolveGate7CoverageExecutionLevel(gateId),
+        skeletonOnly:
+          gateId === 'gate-7' ||
+          GATE_7_SKELETON_ONLY_UPSTREAM_GATE_IDS.includes(
+            gateId as (typeof GATE_7_SKELETON_ONLY_UPSTREAM_GATE_IDS)[number],
+          ),
+        requiredRealGateRunnerId: this.resolveGate7RequiredRealRunnerId(gateId),
+      })),
+      artifactCoverage: releaseManifest.map((artifact) => ({
+        artifactId: artifact.artifactId,
+        kind: artifact.kind,
+        sourceGateId: artifact.sourceGateId,
+        evidenceIds: artifact.evidenceIds,
+        requirementIds,
+        scenarioIds,
+        required: artifact.required,
+      })),
+      failureCaptureFields: [
+        ...GATE_7_REQUIRED_FAILURE_CAPTURE_FIELDS,
+        'publishCandidatePlanPath',
+      ],
+    };
+  }
+
+  private resolveGate7CoverageExecutionLevel(gateId: string): string {
+    const executionLevels: Record<string, string> = {
+      'gate-0': 'app-spec-deterministic-completeness',
+      'gate-1': 'architecture-plan-deterministic-completeness',
+      'gate-2': 'static-contracts-deterministic-completeness',
+      'gate-3': 'contract-skeleton',
+      'gate-4': 'integration-skeleton',
+      'gate-5': 'browser-acceptance-skeleton',
+      'gate-6': 'independent-verifier-skeleton',
+      'gate-7': 'publish-candidate-guard-skeleton',
+    };
+
+    return executionLevels[gateId] ?? 'unknown';
+  }
+
+  private resolveGate7RequiredRealRunnerId(gateId: string): string {
+    const realRunnerIds: Record<string, string> = {
+      'gate-3': 'gate-3-real-build-unit-runner',
+      'gate-4': 'gate-4-real-integration-runner',
+      'gate-5': 'gate-5-real-browser-acceptance-runner',
+      'gate-6': 'gate-6-real-independent-verifier-runner',
+      'gate-7': 'gate-7-real-publish-candidate-runner',
+    };
+
+    return (
+      realRunnerIds[gateId] ?? 'not-required-for-current-deterministic-gate'
+    );
+  }
+
+  private evaluateGate7PublishCandidatePlan(
+    appSpec: GeneratedAppSpec,
+    generationPlan: GeneratedAppGenerationPlan,
+    staticContracts: GeneratedAppStaticContracts,
+    buildUnitPlan: GeneratedAppBuildUnitPlan,
+    integrationPlan: GeneratedAppIntegrationPlan,
+    browserAcceptancePlan: GeneratedAppBrowserAcceptancePlan,
+    independentVerificationPlan: GeneratedAppIndependentVerificationPlan,
+    gateResults: GeneratedAppGateResult[],
+    publishCandidatePlan: unknown,
+  ): Gate7Evaluation {
+    const checks = this.buildGate7Checks(
+      appSpec,
+      generationPlan,
+      staticContracts,
+      buildUnitPlan,
+      integrationPlan,
+      browserAcceptancePlan,
+      independentVerificationPlan,
+      gateResults,
+      publishCandidatePlan,
+    );
+    const failedChecks = checks.filter((check) => !check.passed);
+    const evidence = checks.map((check) => ({
+      id: `gate-7-${check.id}`,
+      label: check.label,
+      kind: 'manual' as const,
+      url: null,
+      summary:
+        check.issues.length === 0
+          ? `${check.summary} ${GATE_7_SKELETON_EVIDENCE_NOTE}`
+          : `${check.summary} 缺口：${check.issues.join(
+              '；',
+            )} ${GATE_7_SKELETON_EVIDENCE_NOTE}`,
+    }));
+
+    if (failedChecks.length > 0) {
+      const failure: GeneratedAppGateRunFailure = {
+        code: 'publish-candidate-plan-incomplete',
+        message: `PublishCandidatePlan publish-candidate guard skeleton 检查失败：${failedChecks
+          .map((check) => check.label)
+          .join(
+            '、',
+          )}；本失败只来自 publish-candidate-guard-skeleton 合约完整性检查，不代表真实发布候选已生成、真实 artifact 已签收、真实质量门禁全量通过或可以公开分享。`,
+        details: {
+          checks: checks.map((check) => ({
+            id: check.id,
+            label: check.label,
+            passed: check.passed,
+            issues: check.issues,
+          })),
+        },
+      };
+
+      return {
+        status: 'failed',
+        summary:
+          'Gate 7 失败：publishCandidatePlan 未完整覆盖发布 readiness 输入、artifact release manifest、publication blockers、rollback/share controls、final verdict、覆盖矩阵或失败捕获字段；本结果仅表示 publish-candidate guard skeleton 检查失败，不代表真实发布候选已生成、真实 artifact 已签收、真实质量门禁全量通过或可以公开分享。',
+        evidence,
+        failure,
+        repairInstructions:
+          '修复 generationPlan.publishCandidatePlan，使其绑定 AppSpec/generationPlan/staticContracts/buildUnitPlan/integrationPlan/browserAcceptancePlan/independentVerificationPlan 版本，覆盖 Gate 0-7 readiness 输入、Gate 0-6 evidence ids、真实非 skeleton 证据要求、artifact release manifest、publication blockers、public share 禁用控制、final verdict 和覆盖矩阵；当前 Gate 7 仍只检查 publish-candidate-guard-skeleton，不能启用公开分享。',
+      };
+    }
+
+    const plan = publishCandidatePlan as GeneratedAppPublishCandidatePlan;
+    const blockingReasons = plan.finalVerdict.blockingReasons.join('；');
+    const failure: GeneratedAppGateRunFailure = {
+      code: 'publish-candidate-guard-blocked',
+      message: `${GATE_7_RUNNER_INCOMPLETE_FAILURE_REASON} 阻断原因：${blockingReasons}`,
+      details: {
+        blockers: plan.publicationBlockers,
+        finalVerdict: plan.finalVerdict,
+        skeletonOnlyUpstreamGateIds: [
+          ...GATE_7_SKELETON_ONLY_UPSTREAM_GATE_IDS,
+        ],
+      },
+    };
+
+    return {
+      status: 'failed',
+      summary:
+        'Gate 7 失败：publishCandidatePlan guard skeleton 已生成并保留，但检测到 Gate 3-6 仍只有 skeleton/contract-level completeness evidence，缺少真实 build/test/integration/browser/verifier 证据，不能形成 publish candidate 或启用公开分享。',
+      evidence,
+      failure,
+      repairInstructions:
+        '接入真实 Gate 3-6 执行 runner、真实 artifact 签收和真实独立 verifier verdict 后，再由 Gate 7 重新评估 publish candidate；在 Gate 7 guard 失败期间 public token 必须保持禁用并清空。',
+    };
+  }
+
+  private buildGate7Checks(
+    appSpec: GeneratedAppSpec,
+    generationPlan: GeneratedAppGenerationPlan,
+    staticContracts: GeneratedAppStaticContracts,
+    buildUnitPlan: GeneratedAppBuildUnitPlan,
+    integrationPlan: GeneratedAppIntegrationPlan,
+    browserAcceptancePlan: GeneratedAppBrowserAcceptancePlan,
+    independentVerificationPlan: GeneratedAppIndependentVerificationPlan,
+    gateResults: GeneratedAppGateResult[],
+    publishCandidatePlan: unknown,
+  ): Gate7Check[] {
+    if (!this.isRecord(publishCandidatePlan)) {
+      return [
+        {
+          id: 'publish-candidate-plan-object',
+          label: 'PublishCandidatePlan JSON 对象',
+          passed: false,
+          summary:
+            '检查 generationPlan.publishCandidatePlan 是否为结构化 JSON 对象。',
+          issues: ['publishCandidatePlan 不是对象'],
+        },
+      ];
+    }
+
+    const requirementIds = appSpec.coreRequirements.map(
+      (requirement) => requirement.id,
+    );
+    const scenarioIds = appSpec.acceptanceScenarios.map(
+      (scenario) => scenario.id,
+    );
+    const knownRequirementIds = new Set(requirementIds);
+    const knownScenarioIds = new Set(scenarioIds);
+    const requiredGateIds = [...GATE_7_REQUIRED_GATE_IDS];
+    const upstreamGateIds = [...GATE_7_UPSTREAM_GATE_IDS];
+    const knownGateIds = new Set<string>(requiredGateIds);
+    const upstreamGateIdSet = new Set<string>(upstreamGateIds);
+    const gateEvidenceIdsByGateId = new Map<string, string[]>(
+      upstreamGateIds.map((gateId) => [
+        gateId,
+        gateResults
+          .find((gate) => gate.gateId === gateId)
+          ?.evidence.map((evidence) => evidence.id) ?? [],
+      ]),
+    );
+    const upstreamEvidenceEntries = [
+      ...gateEvidenceIdsByGateId.entries(),
+    ].flatMap(([gateId, evidenceIds]) =>
+      evidenceIds.map((evidenceId) => ({ gateId, evidenceId })),
+    );
+    const upstreamEvidenceIds = upstreamEvidenceEntries.map(
+      (entry) => entry.evidenceId,
+    );
+    const knownEvidenceIds = new Set<string>([
+      ...upstreamEvidenceIds,
+      ...GATE_7_EXPECTED_EVIDENCE_IDS,
+    ]);
+    const publishReadinessInputs = this.getRecord(
+      publishCandidatePlan.publishReadinessInputs,
+    );
+    const artifactReleaseManifest = this.getRecordArray(
+      publishCandidatePlan.artifactReleaseManifest,
+    );
+    const publicationBlockers = this.getRecordArray(
+      publishCandidatePlan.publicationBlockers,
+    );
+    const rollbackShareControls = this.getRecord(
+      publishCandidatePlan.rollbackShareControls,
+    );
+    const finalVerdict = this.getRecord(publishCandidatePlan.finalVerdict);
+    const requirementCoverage = this.getRecordArray(
+      publishCandidatePlan.requirementCoverage,
+    );
+    const gateCoverage = this.getRecordArray(publishCandidatePlan.gateCoverage);
+    const artifactCoverage = this.getRecordArray(
+      publishCandidatePlan.artifactCoverage,
+    );
+    const artifactIds = artifactReleaseManifest
+      .map((artifact) => this.getNonEmptyString(artifact.artifactId))
+      .filter((artifactId): artifactId is string => artifactId !== null);
+    const knownArtifactIds = new Set(artifactIds);
+    const blockerIds = publicationBlockers
+      .map((blocker) => this.getNonEmptyString(blocker.blockerId))
+      .filter((blockerId): blockerId is string => blockerId !== null);
+    const knownBlockerIds = new Set(blockerIds);
+    const allowedArtifactKinds = new Set<string>([
+      ...GATE_7_ALLOWED_ARTIFACT_KINDS,
+    ]);
+    const requiredArtifactKinds = [...GATE_7_REQUIRED_ARTIFACT_KINDS];
+    const artifactKinds = artifactReleaseManifest
+      .map((artifact) => this.getNonEmptyString(artifact.kind))
+      .filter((kind): kind is string => kind !== null);
+    const blockerCategories = publicationBlockers
+      .map((blocker) => this.getNonEmptyString(blocker.category))
+      .filter((category): category is string => category !== null);
+    const allowedBlockerCategories = new Set<string>([
+      ...GATE_7_REQUIRED_BLOCKER_CATEGORIES,
+    ]);
+    const finalVerdictRequiredRealGateRunnerIds = this.getStringArray(
+      finalVerdict?.requiredRealGateRunnerIds,
+    );
+    const allowedFinalVerdictRealGateRunnerIds = new Set<string>([
+      ...GATE_7_REQUIRED_REAL_GATE_RUNNER_IDS,
+    ]);
+    const allowedGateCoverageRealGateRunnerIds = new Set<string>([
+      ...GATE_7_REQUIRED_REAL_GATE_RUNNER_IDS,
+      'not-required-for-current-deterministic-gate',
+    ]);
+    const finalVerdictBlockingReasons = this.getStringArray(
+      finalVerdict?.blockingReasons,
+    );
+
+    const versionAndInputIssues = [
+      ...(publishCandidatePlan.planVersion === 1
+        ? []
+        : ['planVersion 必须为 1']),
+      ...(publishCandidatePlan.appSpecVersion === appSpec.version
+        ? []
+        : [
+            `appSpecVersion=${String(
+              publishCandidatePlan.appSpecVersion,
+            )} 与 AppSpec version=${appSpec.version} 不一致`,
+          ]),
+      ...(publishCandidatePlan.generationPlanVersion ===
+      generationPlan.planVersion
+        ? []
+        : [
+            `generationPlanVersion=${String(
+              publishCandidatePlan.generationPlanVersion,
+            )} 与 generationPlan.planVersion=${generationPlan.planVersion} 不一致`,
+          ]),
+      ...(publishCandidatePlan.staticContractsVersion ===
+      staticContracts.contractVersion
+        ? []
+        : [
+            `staticContractsVersion=${String(
+              publishCandidatePlan.staticContractsVersion,
+            )} 与 staticContracts.contractVersion=${staticContracts.contractVersion} 不一致`,
+          ]),
+      ...(publishCandidatePlan.buildUnitPlanVersion ===
+      buildUnitPlan.planVersion
+        ? []
+        : [
+            `buildUnitPlanVersion=${String(
+              publishCandidatePlan.buildUnitPlanVersion,
+            )} 与 buildUnitPlan.planVersion=${buildUnitPlan.planVersion} 不一致`,
+          ]),
+      ...(publishCandidatePlan.integrationPlanVersion ===
+      integrationPlan.planVersion
+        ? []
+        : [
+            `integrationPlanVersion=${String(
+              publishCandidatePlan.integrationPlanVersion,
+            )} 与 integrationPlan.planVersion=${integrationPlan.planVersion} 不一致`,
+          ]),
+      ...(publishCandidatePlan.browserAcceptancePlanVersion ===
+      browserAcceptancePlan.planVersion
+        ? []
+        : [
+            `browserAcceptancePlanVersion=${String(
+              publishCandidatePlan.browserAcceptancePlanVersion,
+            )} 与 browserAcceptancePlan.planVersion=${browserAcceptancePlan.planVersion} 不一致`,
+          ]),
+      ...(publishCandidatePlan.independentVerificationPlanVersion ===
+      independentVerificationPlan.planVersion
+        ? []
+        : [
+            `independentVerificationPlanVersion=${String(
+              publishCandidatePlan.independentVerificationPlanVersion,
+            )} 与 independentVerificationPlan.planVersion=${independentVerificationPlan.planVersion} 不一致`,
+          ]),
+      ...(publishCandidatePlan.executionLevel ===
+      'publish-candidate-guard-skeleton'
+        ? []
+        : ['executionLevel 必须为 publish-candidate-guard-skeleton']),
+      ...(!this.getNonEmptyString(publishCandidatePlan.skeletonDisclaimer)
+        ? ['skeletonDisclaimer 缺失']
+        : []),
+      ...this.collectSensitiveTokenIssues(
+        publishCandidatePlan,
+        'publishCandidatePlan',
+      ),
+      ...this.requireRecord(publishReadinessInputs, 'publishReadinessInputs'),
+      ...(this.getStringArray(publishReadinessInputs?.requiredGateIds)
+        .length === 0
+        ? ['publishReadinessInputs.requiredGateIds 不能为空']
+        : []),
+      ...this.buildMissingItemsIssues(
+        'publishReadinessInputs.requiredGateIds',
+        this.getStringArray(publishReadinessInputs?.requiredGateIds),
+        requiredGateIds,
+      ),
+      ...this.buildUnknownReferenceIssues(
+        'publishReadinessInputs.requiredGateIds',
+        this.getStringArray(publishReadinessInputs?.requiredGateIds),
+        knownGateIds,
+      ),
+      ...this.buildDuplicateItemIssues(
+        'publishReadinessInputs.requiredGateIds',
+        this.getStringArray(publishReadinessInputs?.requiredGateIds),
+      ),
+      ...(this.getStringArray(publishReadinessInputs?.upstreamGateIds)
+        .length === 0
+        ? ['publishReadinessInputs.upstreamGateIds 不能为空']
+        : []),
+      ...this.buildMissingItemsIssues(
+        'publishReadinessInputs.upstreamGateIds',
+        this.getStringArray(publishReadinessInputs?.upstreamGateIds),
+        upstreamGateIds,
+      ),
+      ...this.buildUnknownReferenceIssues(
+        'publishReadinessInputs.upstreamGateIds',
+        this.getStringArray(publishReadinessInputs?.upstreamGateIds),
+        upstreamGateIdSet,
+      ),
+      ...(this.getRecordArray(publishReadinessInputs?.upstreamEvidenceRefs)
+        .length === 0
+        ? ['publishReadinessInputs.upstreamEvidenceRefs 不能为空']
+        : []),
+      ...this.buildMissingItemsIssues(
+        'publishReadinessInputs.upstreamEvidenceRefs.gateId',
+        this.getRecordArray(publishReadinessInputs?.upstreamEvidenceRefs)
+          .map((entry) => this.getNonEmptyString(entry.gateId))
+          .filter((gateId): gateId is string => gateId !== null),
+        upstreamGateIds,
+      ),
+      ...this.getRecordArray(
+        publishReadinessInputs?.upstreamEvidenceRefs,
+      ).flatMap((entry, index) => {
+        const gateId = this.getNonEmptyString(entry.gateId);
+        const evidenceIds = this.getStringArray(entry.evidenceIds);
+        const expectedEvidenceIds =
+          gateId === null ? [] : (gateEvidenceIdsByGateId.get(gateId) ?? []);
+
+        return [
+          ...(!gateId
+            ? [
+                `publishReadinessInputs.upstreamEvidenceRefs[${index}].gateId 缺失`,
+              ]
+            : []),
+          ...(gateId && !upstreamGateIdSet.has(gateId)
+            ? [
+                `publishReadinessInputs.upstreamEvidenceRefs[${index}].gateId 引用了未知 gate ${this.formatIssueValue(
+                  gateId,
+                )}`,
+              ]
+            : []),
+          ...(evidenceIds.length === 0
+            ? [
+                `publishReadinessInputs.upstreamEvidenceRefs[${index}].evidenceIds 不能为空`,
+              ]
+            : []),
+          ...this.buildUnknownReferenceIssues(
+            `publishReadinessInputs.upstreamEvidenceRefs[${index}].evidenceIds`,
+            evidenceIds,
+            knownEvidenceIds,
+          ),
+          ...this.buildMissingItemsIssues(
+            `publishReadinessInputs.upstreamEvidenceRefs[${index}].evidenceIds`,
+            evidenceIds,
+            expectedEvidenceIds,
+          ),
+        ];
+      }),
+      ...upstreamGateIds.flatMap((gateId) =>
+        gateResults.find((gate) => gate.gateId === gateId)?.status === 'passed'
+          ? []
+          : [`Gate 7 前置 ${gateId} 必须为 passed`],
+      ),
+      ...(this.getStringArray(publishReadinessInputs?.readinessPreconditions)
+        .length === 0
+        ? ['publishReadinessInputs.readinessPreconditions 不能为空']
+        : []),
+      ...this.buildMissingItemsIssues(
+        'publishReadinessInputs.readinessPreconditions',
+        this.getStringArray(publishReadinessInputs?.readinessPreconditions),
+        [...GATE_7_REQUIRED_READINESS_PRECONDITIONS],
+      ),
+      ...(this.getStringArray(
+        publishReadinessInputs?.requiredNonSkeletonEvidenceClasses,
+      ).length === 0
+        ? ['publishReadinessInputs.requiredNonSkeletonEvidenceClasses 不能为空']
+        : []),
+      ...this.buildMissingItemsIssues(
+        'publishReadinessInputs.requiredNonSkeletonEvidenceClasses',
+        this.getStringArray(
+          publishReadinessInputs?.requiredNonSkeletonEvidenceClasses,
+        ),
+        [...GATE_7_REQUIRED_NON_SKELETON_EVIDENCE_CLASSES],
+      ),
+    ];
+    const artifactIssues = [
+      ...(artifactReleaseManifest.length === 0
+        ? ['artifactReleaseManifest 不能为空']
+        : []),
+      ...this.buildMissingItemsIssues(
+        'artifactReleaseManifest.kind',
+        artifactKinds,
+        requiredArtifactKinds,
+      ),
+      ...this.buildDuplicateItemIssues(
+        'artifactReleaseManifest.artifactId',
+        artifactIds,
+      ),
+      ...artifactReleaseManifest.flatMap((artifact, index) => {
+        const artifactId = this.getNonEmptyString(artifact.artifactId);
+        const kind = this.getNonEmptyString(artifact.kind);
+        const sourceGateId = this.getNonEmptyString(artifact.sourceGateId);
+
+        return [
+          ...(!artifactId
+            ? [`artifactReleaseManifest[${index}].artifactId 缺失`]
+            : []),
+          ...(!kind ? [`artifactReleaseManifest[${index}].kind 缺失`] : []),
+          ...(kind && !allowedArtifactKinds.has(kind)
+            ? [
+                `artifactReleaseManifest[${index}].kind 是非法 artifact kind ${this.formatIssueValue(
+                  kind,
+                )}`,
+              ]
+            : []),
+          ...(!sourceGateId
+            ? [`artifactReleaseManifest[${index}].sourceGateId 缺失`]
+            : []),
+          ...(sourceGateId && !knownGateIds.has(sourceGateId)
+            ? [
+                `artifactReleaseManifest[${index}].sourceGateId 引用了未知 gate ${this.formatIssueValue(
+                  sourceGateId,
+                )}`,
+              ]
+            : []),
+          ...(!this.getNonEmptyString(artifact.sourcePlan)
+            ? [`artifactReleaseManifest[${index}].sourcePlan 缺失`]
+            : []),
+          ...(!this.getNonEmptyString(artifact.path)
+            ? [`artifactReleaseManifest[${index}].path 缺失`]
+            : []),
+          ...(typeof artifact.required === 'boolean'
+            ? []
+            : [`artifactReleaseManifest[${index}].required 必须是 boolean`]),
+          ...(typeof artifact.placeholder === 'boolean'
+            ? []
+            : [`artifactReleaseManifest[${index}].placeholder 必须是 boolean`]),
+          ...(artifact.containsSecrets === false
+            ? []
+            : [
+                `artifactReleaseManifest[${index}].containsSecrets 必须为 false`,
+              ]),
+          ...(this.getStringArray(artifact.evidenceIds).length === 0
+            ? [`artifactReleaseManifest[${index}].evidenceIds 不能为空`]
+            : []),
+          ...this.buildUnknownReferenceIssues(
+            `artifactReleaseManifest[${index}].evidenceIds`,
+            this.getStringArray(artifact.evidenceIds),
+            knownEvidenceIds,
+          ),
+        ];
+      }),
+    ];
+    const blockerIssues = [
+      ...(publicationBlockers.length === 0
+        ? ['publicationBlockers 不能为空']
+        : []),
+      ...this.buildMissingItemsIssues(
+        'publicationBlockers.category',
+        blockerCategories,
+        [...GATE_7_REQUIRED_BLOCKER_CATEGORIES],
+      ),
+      ...this.buildDuplicateItemIssues(
+        'publicationBlockers.blockerId',
+        blockerIds,
+      ),
+      ...publicationBlockers.flatMap((blocker, index) => {
+        const blockerId = this.getNonEmptyString(blocker.blockerId);
+        const category = this.getNonEmptyString(blocker.category);
+
+        return [
+          ...(!blockerId
+            ? [`publicationBlockers[${index}].blockerId 缺失`]
+            : []),
+          ...(!category ? [`publicationBlockers[${index}].category 缺失`] : []),
+          ...(category && !allowedBlockerCategories.has(category)
+            ? [
+                `publicationBlockers[${index}].category 是非法 blocker category ${this.formatIssueValue(
+                  category,
+                )}`,
+              ]
+            : []),
+          ...(blocker.blocking === true
+            ? []
+            : [`publicationBlockers[${index}].blocking 必须为 true`]),
+          ...(!this.getNonEmptyString(blocker.message)
+            ? [`publicationBlockers[${index}].message 缺失`]
+            : []),
+          ...(this.getStringArray(blocker.gateIds).length === 0
+            ? [`publicationBlockers[${index}].gateIds 不能为空`]
+            : []),
+          ...this.buildUnknownReferenceIssues(
+            `publicationBlockers[${index}].gateIds`,
+            this.getStringArray(blocker.gateIds),
+            knownGateIds,
+          ),
+          ...(this.getStringArray(blocker.evidenceIds).length === 0
+            ? [`publicationBlockers[${index}].evidenceIds 不能为空`]
+            : []),
+          ...this.buildUnknownReferenceIssues(
+            `publicationBlockers[${index}].evidenceIds`,
+            this.getStringArray(blocker.evidenceIds),
+            knownEvidenceIds,
+          ),
+          ...(this.getStringArray(blocker.artifactIds).length === 0
+            ? [`publicationBlockers[${index}].artifactIds 不能为空`]
+            : []),
+          ...this.buildUnknownReferenceIssues(
+            `publicationBlockers[${index}].artifactIds`,
+            this.getStringArray(blocker.artifactIds),
+            knownArtifactIds,
+          ),
+        ];
+      }),
+    ];
+    const rollbackIssues = [
+      ...this.requireRecord(rollbackShareControls, 'rollbackShareControls'),
+      ...(rollbackShareControls?.publicTokenCreation ===
+      'disabled-while-guard-fails'
+        ? []
+        : [
+            'rollbackShareControls.publicTokenCreation 必须为 disabled-while-guard-fails',
+          ]),
+      ...(rollbackShareControls?.publicShareEnabledWhileGuardFails === false
+        ? []
+        : [
+            'rollbackShareControls.publicShareEnabledWhileGuardFails 必须为 false',
+          ]),
+      ...(rollbackShareControls?.createdPublicShareToken === null
+        ? []
+        : ['rollbackShareControls.createdPublicShareToken 必须为 null']),
+      ...(rollbackShareControls?.stalePublicTokenRequiredAction ===
+      'clear-before-publish-candidate'
+        ? []
+        : [
+            'rollbackShareControls.stalePublicTokenRequiredAction 必须为 clear-before-publish-candidate',
+          ]),
+      ...(rollbackShareControls?.closeShareControl ===
+      'DELETE /generated-apps/:appId/public-share'
+        ? []
+        : ['rollbackShareControls.closeShareControl 必须引用关闭公开分享接口']),
+      ...(rollbackShareControls?.regenerateShareControl ===
+      'POST /generated-apps/:appId/public-share/regenerate'
+        ? []
+        : [
+            'rollbackShareControls.regenerateShareControl 必须引用重新生成公开分享接口',
+          ]),
+      ...(rollbackShareControls?.existingPublicShareControlsReferenced === true
+        ? []
+        : [
+            'rollbackShareControls.existingPublicShareControlsReferenced 必须为 true',
+          ]),
+    ];
+    const verdictFieldNames = finalVerdict ? Object.keys(finalVerdict) : [];
+    const finalVerdictIssues = [
+      ...this.requireRecord(finalVerdict, 'finalVerdict'),
+      ...verdictFieldNames
+        .filter(
+          (field) =>
+            !new Set<string>([...GATE_7_ALLOWED_FINAL_VERDICT_FIELDS]).has(
+              field,
+            ),
+        )
+        .map(
+          (field) =>
+            `finalVerdict 包含非法 verdict field ${this.formatIssueValue(
+              field,
+            )}`,
+        ),
+      ...this.buildMissingItemsIssues(
+        'finalVerdict fields',
+        verdictFieldNames,
+        [...GATE_7_ALLOWED_FINAL_VERDICT_FIELDS],
+      ),
+      ...(finalVerdict?.publishCandidateAllowed === false
+        ? []
+        : ['finalVerdict.publishCandidateAllowed 必须为 false']),
+      ...(finalVerdictBlockingReasons.length === 0
+        ? ['finalVerdict.blockingReasons 不能为空']
+        : []),
+      ...GATE_7_REQUIRED_BLOCKING_REASON_FRAGMENTS.flatMap((fragment) =>
+        finalVerdictBlockingReasons.some((reason) => reason.includes(fragment))
+          ? []
+          : [`finalVerdict.blockingReasons 缺少 ${fragment} 阻断原因`],
+      ),
+      ...(this.getStringArray(finalVerdict?.warningReasons).length === 0
+        ? ['finalVerdict.warningReasons 不能为空']
+        : []),
+      ...(finalVerdictRequiredRealGateRunnerIds.length === 0
+        ? ['finalVerdict.requiredRealGateRunnerIds 不能为空']
+        : []),
+      ...this.buildMissingItemsIssues(
+        'finalVerdict.requiredRealGateRunnerIds',
+        finalVerdictRequiredRealGateRunnerIds,
+        [...GATE_7_REQUIRED_REAL_GATE_RUNNER_IDS],
+      ),
+      ...this.buildUnknownReferenceIssues(
+        'finalVerdict.requiredRealGateRunnerIds',
+        finalVerdictRequiredRealGateRunnerIds,
+        allowedFinalVerdictRealGateRunnerIds,
+      ),
+      ...this.buildDuplicateItemIssues(
+        'finalVerdict.requiredRealGateRunnerIds',
+        finalVerdictRequiredRealGateRunnerIds,
+      ),
+      ...(this.getStringArray(finalVerdict?.evidenceIds).length === 0
+        ? ['finalVerdict.evidenceIds 不能为空']
+        : []),
+      ...this.buildUnknownReferenceIssues(
+        'finalVerdict.evidenceIds',
+        this.getStringArray(finalVerdict?.evidenceIds),
+        knownEvidenceIds,
+      ),
+      ...(this.getStringArray(finalVerdict?.repairSuggestions).length === 0
+        ? ['finalVerdict.repairSuggestions 不能为空']
+        : []),
+    ];
+    const requirementCoverageById = new Map(
+      requirementCoverage
+        .map((entry) => {
+          const requirementId = this.getNonEmptyString(entry.requirementId);
+          return requirementId ? ([requirementId, entry] as const) : null;
+        })
+        .filter(
+          (entry): entry is readonly [string, Record<string, unknown>] =>
+            entry !== null,
+        ),
+    );
+    const gateCoverageById = new Map(
+      gateCoverage
+        .map((entry) => {
+          const gateId = this.getNonEmptyString(entry.gateId);
+          return gateId ? ([gateId, entry] as const) : null;
+        })
+        .filter(
+          (entry): entry is readonly [string, Record<string, unknown>] =>
+            entry !== null,
+        ),
+    );
+    const artifactCoverageById = new Map(
+      artifactCoverage
+        .map((entry) => {
+          const artifactId = this.getNonEmptyString(entry.artifactId);
+          return artifactId ? ([artifactId, entry] as const) : null;
+        })
+        .filter(
+          (entry): entry is readonly [string, Record<string, unknown>] =>
+            entry !== null,
+        ),
+    );
+    const coverageIssues = [
+      ...(requirementCoverage.length === 0
+        ? ['requirementCoverage 不能为空']
+        : []),
+      ...requirementCoverage.flatMap((entry, index) => {
+        const requirementId = this.getNonEmptyString(entry.requirementId);
+
+        return [
+          ...(!requirementId
+            ? [`requirementCoverage[${index}].requirementId 缺失`]
+            : []),
+          ...(requirementId && !knownRequirementIds.has(requirementId)
+            ? [
+                `requirementCoverage[${index}].requirementId 引用了未知需求 ${this.formatIssueValue(
+                  requirementId,
+                )}`,
+              ]
+            : []),
+          ...(this.getStringArray(entry.scenarioIds).length === 0
+            ? [`requirementCoverage[${index}].scenarioIds 不能为空`]
+            : []),
+          ...this.buildUnknownReferenceIssues(
+            `requirementCoverage[${index}].scenarioIds`,
+            this.getStringArray(entry.scenarioIds),
+            knownScenarioIds,
+          ),
+          ...(this.getStringArray(entry.gateIds).length === 0
+            ? [`requirementCoverage[${index}].gateIds 不能为空`]
+            : []),
+          ...this.buildMissingItemsIssues(
+            `requirementCoverage[${index}].gateIds`,
+            this.getStringArray(entry.gateIds),
+            requiredGateIds,
+          ),
+          ...this.buildUnknownReferenceIssues(
+            `requirementCoverage[${index}].gateIds`,
+            this.getStringArray(entry.gateIds),
+            knownGateIds,
+          ),
+          ...(this.getStringArray(entry.evidenceIds).length === 0
+            ? [`requirementCoverage[${index}].evidenceIds 不能为空`]
+            : []),
+          ...this.buildUnknownReferenceIssues(
+            `requirementCoverage[${index}].evidenceIds`,
+            this.getStringArray(entry.evidenceIds),
+            knownEvidenceIds,
+          ),
+          ...(this.getStringArray(entry.artifactIds).length === 0
+            ? [`requirementCoverage[${index}].artifactIds 不能为空`]
+            : []),
+          ...this.buildUnknownReferenceIssues(
+            `requirementCoverage[${index}].artifactIds`,
+            this.getStringArray(entry.artifactIds),
+            knownArtifactIds,
+          ),
+          ...(this.getStringArray(entry.blockerIds).length === 0
+            ? [`requirementCoverage[${index}].blockerIds 不能为空`]
+            : []),
+          ...this.buildUnknownReferenceIssues(
+            `requirementCoverage[${index}].blockerIds`,
+            this.getStringArray(entry.blockerIds),
+            knownBlockerIds,
+          ),
+        ];
+      }),
+      ...requirementIds.flatMap((requirementId) => {
+        const entry = requirementCoverageById.get(requirementId);
+        const expectedScenarioIds =
+          appSpec.traceability.find(
+            (candidate) => candidate.requirementId === requirementId,
+          )?.scenarioIds ?? [];
+
+        if (!entry) {
+          return [`需求 ${requirementId} 缺少 Gate 7 覆盖声明`];
+        }
+
+        return [
+          ...this.buildMissingItemsIssues(
+            `requirementCoverage[${requirementId}].scenarioIds`,
+            this.getStringArray(entry.scenarioIds),
+            expectedScenarioIds,
+          ),
+        ];
+      }),
+      ...(gateCoverage.length === 0 ? ['gateCoverage 不能为空'] : []),
+      ...gateCoverage.flatMap((entry, index) => {
+        const gateId = this.getNonEmptyString(entry.gateId);
+        const requiredRealGateRunnerId = this.getNonEmptyString(
+          entry.requiredRealGateRunnerId,
+        );
+        const expectedRealGateRunnerId = gateId
+          ? this.resolveGate7RequiredRealRunnerId(gateId)
+          : null;
+
+        return [
+          ...(!gateId ? [`gateCoverage[${index}].gateId 缺失`] : []),
+          ...(gateId && !knownGateIds.has(gateId)
+            ? [
+                `gateCoverage[${index}].gateId 引用了未知 gate ${this.formatIssueValue(
+                  gateId,
+                )}`,
+              ]
+            : []),
+          ...(entry.required === true
+            ? []
+            : [`gateCoverage[${index}].required 必须为 true`]),
+          ...(typeof entry.skeletonOnly === 'boolean'
+            ? []
+            : [`gateCoverage[${index}].skeletonOnly 必须是 boolean`]),
+          ...(!this.getNonEmptyString(entry.executionLevel)
+            ? [`gateCoverage[${index}].executionLevel 缺失`]
+            : []),
+          ...(!requiredRealGateRunnerId
+            ? [`gateCoverage[${index}].requiredRealGateRunnerId 缺失`]
+            : []),
+          ...(requiredRealGateRunnerId &&
+          !allowedGateCoverageRealGateRunnerIds.has(requiredRealGateRunnerId)
+            ? [
+                `gateCoverage[${index}].requiredRealGateRunnerId 引用了未知 real runner ${this.formatIssueValue(
+                  requiredRealGateRunnerId,
+                )}`,
+              ]
+            : []),
+          ...(gateId &&
+          knownGateIds.has(gateId) &&
+          requiredRealGateRunnerId &&
+          expectedRealGateRunnerId &&
+          requiredRealGateRunnerId !== expectedRealGateRunnerId
+            ? [
+                `gateCoverage[${index}].requiredRealGateRunnerId 必须为 ${expectedRealGateRunnerId}`,
+              ]
+            : []),
+          ...(this.getStringArray(entry.evidenceIds).length === 0
+            ? [`gateCoverage[${index}].evidenceIds 不能为空`]
+            : []),
+          ...this.buildUnknownReferenceIssues(
+            `gateCoverage[${index}].evidenceIds`,
+            this.getStringArray(entry.evidenceIds),
+            knownEvidenceIds,
+          ),
+        ];
+      }),
+      ...requiredGateIds.flatMap((gateId) =>
+        gateCoverageById.has(gateId)
+          ? []
+          : [`gate ${gateId} 缺少 Gate 7 覆盖声明`],
+      ),
+      ...(artifactCoverage.length === 0 ? ['artifactCoverage 不能为空'] : []),
+      ...artifactCoverage.flatMap((entry, index) => {
+        const artifactId = this.getNonEmptyString(entry.artifactId);
+        const kind = this.getNonEmptyString(entry.kind);
+        const manifestArtifact = artifactId
+          ? artifactReleaseManifest.find(
+              (artifact) =>
+                this.getNonEmptyString(artifact.artifactId) === artifactId,
+            )
+          : undefined;
+
+        return [
+          ...(!artifactId
+            ? [`artifactCoverage[${index}].artifactId 缺失`]
+            : []),
+          ...(artifactId && !knownArtifactIds.has(artifactId)
+            ? [
+                `artifactCoverage[${index}].artifactId 引用了未知 artifact ${this.formatIssueValue(
+                  artifactId,
+                )}`,
+              ]
+            : []),
+          ...(!kind ? [`artifactCoverage[${index}].kind 缺失`] : []),
+          ...(kind && !allowedArtifactKinds.has(kind)
+            ? [
+                `artifactCoverage[${index}].kind 是非法 artifact kind ${this.formatIssueValue(
+                  kind,
+                )}`,
+              ]
+            : []),
+          ...(manifestArtifact &&
+          kind &&
+          this.getNonEmptyString(manifestArtifact.kind) !== kind
+            ? [
+                `artifactCoverage[${index}].kind 与 artifactReleaseManifest 不一致`,
+              ]
+            : []),
+          ...this.buildUnknownReferenceIssues(
+            `artifactCoverage[${index}].sourceGateId`,
+            this.getStringArray([entry.sourceGateId]),
+            knownGateIds,
+          ),
+          ...(this.getStringArray(entry.evidenceIds).length === 0
+            ? [`artifactCoverage[${index}].evidenceIds 不能为空`]
+            : []),
+          ...this.buildUnknownReferenceIssues(
+            `artifactCoverage[${index}].evidenceIds`,
+            this.getStringArray(entry.evidenceIds),
+            knownEvidenceIds,
+          ),
+          ...(this.getStringArray(entry.requirementIds).length === 0
+            ? [`artifactCoverage[${index}].requirementIds 不能为空`]
+            : []),
+          ...this.buildUnknownReferenceIssues(
+            `artifactCoverage[${index}].requirementIds`,
+            this.getStringArray(entry.requirementIds),
+            knownRequirementIds,
+          ),
+          ...(this.getStringArray(entry.scenarioIds).length === 0
+            ? [`artifactCoverage[${index}].scenarioIds 不能为空`]
+            : []),
+          ...this.buildUnknownReferenceIssues(
+            `artifactCoverage[${index}].scenarioIds`,
+            this.getStringArray(entry.scenarioIds),
+            knownScenarioIds,
+          ),
+          ...(typeof entry.required === 'boolean'
+            ? []
+            : [`artifactCoverage[${index}].required 必须是 boolean`]),
+        ];
+      }),
+      ...artifactIds.flatMap((artifactId) =>
+        artifactCoverageById.has(artifactId)
+          ? []
+          : [`artifact ${artifactId} 缺少 Gate 7 覆盖声明`],
+      ),
+    ];
+    const failureCaptureIssues = [
+      ...this.buildMissingItemsIssues(
+        'failureCaptureFields',
+        this.getStringArray(publishCandidatePlan.failureCaptureFields),
+        [...GATE_7_REQUIRED_FAILURE_CAPTURE_FIELDS],
+      ),
+    ];
+
+    return [
+      {
+        id: 'publish-readiness-inputs',
+        label: 'publish readiness 输入',
+        passed: versionAndInputIssues.length === 0,
+        summary:
+          '检查 publishCandidatePlan 版本绑定、Gate 0-7 readiness 输入、Gate 0-6 evidence ids、preconditions 和 required non-skeleton evidence classes。',
+        issues: versionAndInputIssues,
+      },
+      {
+        id: 'artifact-release-manifest',
+        label: 'artifact release manifest',
+        passed: artifactIssues.length === 0,
+        summary:
+          '检查 frontend artifact、plugin bundle artifacts、test reports、integration traces、browser artifacts、verifier report 和 source artifact placeholder，且不含真实 token/secret。',
+        issues: artifactIssues,
+      },
+      {
+        id: 'publication-blockers',
+        label: 'publication blockers',
+        passed: blockerIssues.length === 0,
+        summary:
+          '检查 skeleton-only upstream gates、缺失真实执行 artifact、缺失真实 verifier verdict、未解决 findings 和 stale public token requirement 阻断项。',
+        issues: blockerIssues,
+      },
+      {
+        id: 'rollback-share-controls',
+        label: 'rollback/share controls',
+        passed: rollbackIssues.length === 0,
+        summary:
+          '检查 Gate 7 guard 失败时 public token 创建保持禁用、token 不写入 plan，并引用现有关闭/重新生成公开分享控制。',
+        issues: rollbackIssues,
+      },
+      {
+        id: 'final-verdict',
+        label: 'final verdict schema',
+        passed: finalVerdictIssues.length === 0,
+        summary:
+          '检查 final verdict 是否显式 publishCandidateAllowed=false、列出 blocking/warning reasons、真实 runner 要求、evidence ids 和 repair suggestions。',
+        issues: finalVerdictIssues,
+      },
+      {
+        id: 'coverage-matrices',
+        label: 'requirement/gate/artifact 覆盖',
+        passed: coverageIssues.length === 0,
+        summary:
+          '检查 requirementCoverage、gateCoverage 和 artifactCoverage 是否拒绝 dangling requirement/gate/evidence/artifact/blocker references。',
+        issues: coverageIssues,
+      },
+      {
+        id: 'failure-capture-fields',
+        label: '失败捕获字段',
+        passed: failureCaptureIssues.length === 0,
+        summary:
+          '检查真实 Gate 7 runner 失败时必须捕获 guard run、上游门禁、缺失证据、artifact、public share 动作和修复建议字段。',
         issues: failureCaptureIssues,
       },
     ];
