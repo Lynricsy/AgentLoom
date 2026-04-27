@@ -214,6 +214,7 @@ export interface GeneratedAppGenerationPlan {
   staticContracts?: GeneratedAppStaticContracts;
   buildUnitPlan?: GeneratedAppBuildUnitPlan;
   integrationPlan?: GeneratedAppIntegrationPlan;
+  browserAcceptancePlan?: GeneratedAppBrowserAcceptancePlan;
 }
 
 export interface GeneratedAppStaticContracts {
@@ -488,6 +489,146 @@ export interface GeneratedAppIntegrationPlan {
       | 'plugin_sandbox_smoke_trace';
     path: string;
     producedByCheckIds: string[];
+  }>;
+  failureCaptureFields: string[];
+}
+
+export interface GeneratedAppBrowserAcceptancePlan {
+  planVersion: 1;
+  appSpecVersion: number;
+  generationPlanVersion: number;
+  staticContractsVersion: number;
+  buildUnitPlanVersion: number;
+  integrationPlanVersion: number;
+  executionLevel: 'browser-acceptance-skeleton';
+  skeletonDisclaimer: string;
+  browserToolPlan: {
+    runner: 'playwright';
+    command: string;
+    testEntry: string;
+    workingDirectory: string;
+    baseUrlShape: string;
+    publicShareAccessPlaceholder: string;
+    usesRealTokens: false;
+    scenarioIds: string[];
+  };
+  viewportMatrix: Array<{
+    viewportId: string;
+    category: 'desktop' | 'mobile';
+    deviceLabel: string;
+    width: number;
+    height: number;
+    scenarioIds: string[];
+    requirementIds: string[];
+  }>;
+  publicRuntimeJourneys: Array<{
+    journeyId: string;
+    kind:
+      | 'public_runtime_open'
+      | 'public_runtime_interaction_submit'
+      | 'public_submission_result_detail';
+    title: string;
+    steps: string[];
+    viewportIds: string[];
+    scenarioIds: string[];
+    requirementIds: string[];
+    publicRuntimeApiCheckIds: string[];
+    staticContractIds: string[];
+  }>;
+  creatorManagementJourneys: Array<{
+    journeyId: string;
+    kind:
+      | 'creator_generation_run_review'
+      | 'creator_gate_run_review'
+      | 'creator_submission_review';
+    title: string;
+    steps: string[];
+    viewportIds: string[];
+    scenarioIds: string[];
+    requirementIds: string[];
+    creatorManagementApiCheckIds: string[];
+    staticContractIds: string[];
+  }>;
+  consoleAssertions: Array<{
+    assertionId: string;
+    kind: 'no_unhandled_console_error' | 'allowed_warning_policy';
+    journeyIds: string[];
+    viewportIds: string[];
+    allowedWarnings: string[];
+    emptyAllowedWarningsReason: string | null;
+  }>;
+  networkAssertions: Array<{
+    assertionId: string;
+    kind:
+      | 'core_requests_2xx'
+      | 'public_journey_forbids_creator_internal_endpoints'
+      | 'no_token_or_secret_leak';
+    journeyIds: string[];
+    apiCheckIds: string[];
+    staticContractIds: string[];
+    forbiddenEndpointPatterns: string[];
+    expectedStatusRange: '2xx';
+  }>;
+  accessibilityInteractionAssertions: Array<{
+    assertionId: string;
+    kind:
+      | 'critical_inputs_reachable'
+      | 'critical_buttons_clickable'
+      | 'main_content_not_occluded';
+    journeyIds: string[];
+    viewportIds: string[];
+    staticContractIds: string[];
+  }>;
+  responsiveLayoutAssertions: Array<{
+    assertionId: string;
+    kind:
+      | 'desktop_no_critical_overflow'
+      | 'mobile_no_critical_overflow'
+      | 'viewport_content_not_occluded';
+    journeyIds: string[];
+    viewportIds: string[];
+    staticContractIds: string[];
+  }>;
+  artifactExpectations: Array<{
+    artifactId: string;
+    kind:
+      | 'screenshot'
+      | 'video'
+      | 'playwright_trace'
+      | 'console_log'
+      | 'network_log'
+      | 'failure_summary';
+    path: string;
+    required: boolean;
+    producedByJourneyIds: string[];
+    producedByAssertionIds: string[];
+    referencesGate4TraceArtifactIds: string[];
+  }>;
+  acceptanceScenarioCoverage: Array<{
+    scenarioId: string;
+    requirementIds: string[];
+    journeyIds: string[];
+    viewportIds: string[];
+    assertionIds: string[];
+    artifactIds: string[];
+  }>;
+  requirementCoverage: Array<{
+    requirementId: string;
+    scenarioIds: string[];
+    journeyIds: string[];
+    assertionIds: string[];
+    artifactIds: string[];
+    staticContractIds: string[];
+    gate4ApiCheckIds: string[];
+  }>;
+  journeyCoverage: Array<{
+    journeyId: string;
+    kind: string;
+    scenarioIds: string[];
+    requirementIds: string[];
+    viewportIds: string[];
+    assertionIds: string[];
+    artifactIds: string[];
   }>;
   failureCaptureFields: string[];
 }

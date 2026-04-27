@@ -9,6 +9,7 @@ import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import * as schema from '../../database/schema';
 import type {
   GeneratedApp,
+  GeneratedAppBrowserAcceptancePlan,
   GeneratedAppBuildUnitPlan,
   GeneratedAppGateEvidence,
   GeneratedAppGenerationPlan,
@@ -81,8 +82,8 @@ const DEFAULT_PREVIEW: GeneratedAppPreview = {
   testReportUrl: null,
 };
 
-const GATE_5_7_RUNNER_INCOMPLETE_FAILURE_REASON =
-  'Gate 5-7 runner 尚未接入/未执行，不能形成 publish candidate。';
+const GATE_6_7_RUNNER_INCOMPLETE_FAILURE_REASON =
+  'Gate 6-7 runner 尚未接入/未执行，不能形成 publish candidate。';
 
 const GATE_2_STATIC_CONTRACT_IDS = [
   'gate-2-public-runtime-contract',
@@ -239,6 +240,110 @@ const GATE_4_ALLOWED_PAYLOAD_CONTRACT_REFS = [
   'staticContracts.submissionPersistence',
 ] as const;
 
+const GATE_5_SKELETON_EVIDENCE_NOTE =
+  'Gate 5 当前只做 browser-acceptance-skeleton 完整性检查；未执行真实 Playwright/browser test、真实截图/视频/trace 捕获、真实 console/network 检查、真实公开链接访问或真实端到端交互。';
+
+const GATE_5_VIEWPORT_IDS = ['viewport-desktop', 'viewport-mobile'] as const;
+
+const GATE_5_PUBLIC_RUNTIME_JOURNEY_IDS = [
+  'gate-5-public-runtime-open',
+  'gate-5-public-runtime-submit',
+  'gate-5-public-submission-detail',
+] as const;
+
+const GATE_5_CREATOR_MANAGEMENT_JOURNEY_IDS = [
+  'gate-5-creator-generation-run-review',
+  'gate-5-creator-gate-run-review',
+  'gate-5-creator-submission-review',
+] as const;
+
+const GATE_5_ALLOWED_PUBLIC_JOURNEY_KINDS = [
+  'public_runtime_open',
+  'public_runtime_interaction_submit',
+  'public_submission_result_detail',
+] as const;
+
+const GATE_5_ALLOWED_CREATOR_JOURNEY_KINDS = [
+  'creator_generation_run_review',
+  'creator_gate_run_review',
+  'creator_submission_review',
+] as const;
+
+const GATE_5_ALLOWED_ASSERTION_KINDS = [
+  'no_unhandled_console_error',
+  'allowed_warning_policy',
+  'core_requests_2xx',
+  'public_journey_forbids_creator_internal_endpoints',
+  'no_token_or_secret_leak',
+  'critical_inputs_reachable',
+  'critical_buttons_clickable',
+  'main_content_not_occluded',
+  'desktop_no_critical_overflow',
+  'mobile_no_critical_overflow',
+  'viewport_content_not_occluded',
+] as const;
+
+const GATE_5_REQUIRED_ASSERTION_IDS = [
+  'gate-5-console-no-unhandled-error',
+  'gate-5-console-allowed-warning-policy',
+  'gate-5-network-core-requests-2xx',
+  'gate-5-network-public-forbids-creator-internal',
+  'gate-5-network-no-token-secret-leak',
+  'gate-5-accessibility-critical-inputs-reachable',
+  'gate-5-accessibility-critical-buttons-clickable',
+  'gate-5-accessibility-main-content-not-occluded',
+  'gate-5-responsive-desktop-no-overflow',
+  'gate-5-responsive-mobile-no-overflow',
+  'gate-5-responsive-content-not-occluded',
+] as const;
+
+const GATE_5_ALLOWED_ARTIFACT_KINDS = [
+  'screenshot',
+  'video',
+  'playwright_trace',
+  'console_log',
+  'network_log',
+  'failure_summary',
+] as const;
+
+const GATE_5_REQUIRED_ARTIFACT_IDS = [
+  'desktop-screenshot',
+  'mobile-screenshot',
+  'browser-video',
+  'playwright-trace',
+  'console-log',
+  'network-log',
+  'failure-summary',
+] as const;
+
+const GATE_5_REQUIRED_FAILURE_CAPTURE_FIELDS = [
+  'journeyId',
+  'viewportId',
+  'assertionId',
+  'artifactPath',
+  'consoleErrors',
+  'networkFailures',
+  'screenshotPath',
+  'tracePath',
+  'durationMs',
+] as const;
+
+const GATE_5_REQUIRED_PUBLIC_FORBIDDEN_ENDPOINT_PATTERNS = [
+  '/generated-apps/{appId}',
+  '/generated-apps/{appId}/generation-runs',
+  '/generated-apps/{appId}/gate-runs',
+  '/generated-apps/{appId}/submissions',
+  '/settings',
+  '/internal',
+] as const;
+
+const GATE_5_REQUIRED_SECRET_LEAK_PATTERNS = [
+  'authorization',
+  'public_share_token',
+  'api_key',
+  'secret',
+] as const;
+
 interface Gate0Check {
   id: string;
   label: string;
@@ -312,6 +417,22 @@ interface Gate4Check {
 }
 
 interface Gate4Evaluation {
+  status: 'passed' | 'failed';
+  summary: string;
+  evidence: GeneratedAppGateEvidence[];
+  failure: GeneratedAppGateRunFailure | null;
+  repairInstructions: string | null;
+}
+
+interface Gate5Check {
+  id: string;
+  label: string;
+  passed: boolean;
+  summary: string;
+  issues: string[];
+}
+
+interface Gate5Evaluation {
   status: 'passed' | 'failed';
   summary: string;
   evidence: GeneratedAppGateEvidence[];
@@ -878,9 +999,85 @@ export class GeneratedAppService {
               completedSummary =
                 '门禁运行器骨架完成 Gate 0、Gate 1、Gate 2 和 Gate 3，但 Gate 4 integration skeleton 检查失败；当前应用保持不可发布。';
             } else {
-              finalFailureReason = GATE_5_7_RUNNER_INCOMPLETE_FAILURE_REASON;
-              completedSummary =
-                '门禁运行器骨架完成 Gate 0 AppSpec 完整性检查、Gate 1 架构计划门禁、Gate 2 静态合约门禁、Gate 3 构建与单元 skeleton 完整性检查和 Gate 4 integration skeleton 完整性检查；Gate 5-7 runner 尚未接入/未执行，当前应用不能形成 publish candidate，保持不可发布。';
+              const browserAcceptancePlan = this.buildBrowserAcceptancePlan(
+                app.appSpec,
+                generationPlan,
+                staticContracts,
+                buildUnitPlan,
+                integrationPlan,
+              );
+              const generationPlanWithBrowserAcceptancePlan: GeneratedAppGenerationPlan =
+                {
+                  ...generationPlanWithIntegrationPlan,
+                  browserAcceptancePlan,
+                };
+              const gate5Evaluation = this.evaluateGate5BrowserAcceptancePlan(
+                app.appSpec,
+                generationPlan,
+                staticContracts,
+                buildUnitPlan,
+                integrationPlan,
+                browserAcceptancePlan,
+              );
+              const gate4Result = latestApp.gateResults.find(
+                (gate) => gate.gateId === 'gate-4',
+              );
+              const gate5StartedAt = new Date();
+              const gate5CompletedAt = new Date();
+              const gate5AppSnapshot: GeneratedApp = {
+                ...app,
+                gateResults: latestApp.gateResults,
+                generationPlan: latestApp.generationPlan,
+              };
+              const gate5RunResult = await this.createGateRunAndUpdateApp(
+                tenantId,
+                userId,
+                gate5AppSnapshot,
+                {
+                  gateId: 'gate-5',
+                  generationRunId: run.id,
+                  attemptNumber: 1,
+                  status: gate5Evaluation.status,
+                  summary: gate5Evaluation.summary,
+                  evidence: gate5Evaluation.evidence,
+                  failure: gate5Evaluation.failure,
+                  repairInstructions: gate5Evaluation.repairInstructions,
+                  startedAt: gate5StartedAt.toISOString(),
+                  completedAt: gate5CompletedAt.toISOString(),
+                },
+                {
+                  generationPlan: generationPlanWithBrowserAcceptancePlan,
+                  buildGateResults: (gate5Result, nowIso) =>
+                    this.buildRunnerGateResults(
+                      app,
+                      [
+                        ...(gate0Result ? [gate0Result] : []),
+                        ...(gate1Result ? [gate1Result] : []),
+                        ...(gate2Result ? [gate2Result] : []),
+                        ...(gate3Result ? [gate3Result] : []),
+                        ...(gate4Result ? [gate4Result] : []),
+                        gate5Result,
+                      ],
+                      nowIso,
+                    ),
+                },
+              );
+
+              producedGateRuns.push(gate5RunResult.gateRun);
+              latestApp = gate5RunResult.app;
+              completedAt = gate5CompletedAt;
+
+              if (gate5Evaluation.status === 'failed') {
+                finalFailureReason =
+                  gate5Evaluation.failure?.message ??
+                  'Gate 5 浏览器验收 skeleton 门禁失败，不能继续执行 Gate 6-7。';
+                completedSummary =
+                  '门禁运行器骨架完成 Gate 0、Gate 1、Gate 2、Gate 3 和 Gate 4，但 Gate 5 browser acceptance skeleton 检查失败；当前应用保持不可发布。';
+              } else {
+                finalFailureReason = GATE_6_7_RUNNER_INCOMPLETE_FAILURE_REASON;
+                completedSummary =
+                  '门禁运行器骨架完成 Gate 0 AppSpec 完整性检查、Gate 1 架构计划门禁、Gate 2 静态合约门禁、Gate 3 构建与单元 skeleton 完整性检查、Gate 4 integration skeleton 完整性检查和 Gate 5 browser acceptance skeleton 完整性检查；Gate 6-7 runner 尚未接入/未执行，当前应用不能形成 publish candidate，保持不可发布。';
+              }
             }
           }
         }
@@ -2502,6 +2699,1616 @@ export class GeneratedAppService {
       failure: null,
       repairInstructions: null,
     };
+  }
+
+  private buildBrowserAcceptancePlan(
+    appSpec: GeneratedAppSpec,
+    generationPlan: GeneratedAppGenerationPlan,
+    staticContracts: GeneratedAppStaticContracts,
+    buildUnitPlan: GeneratedAppBuildUnitPlan,
+    integrationPlan: GeneratedAppIntegrationPlan,
+  ): GeneratedAppBrowserAcceptancePlan {
+    const requirementIds = appSpec.coreRequirements.map(
+      (requirement) => requirement.id,
+    );
+    const scenarioIds = appSpec.acceptanceScenarios.map(
+      (scenario) => scenario.id,
+    );
+    const gate4PublicCheckIds = integrationPlan.publicRuntimeApiChecks.map(
+      (check) => check.checkId,
+    );
+    const gate4CreatorCheckIds = integrationPlan.creatorManagementApiChecks.map(
+      (check) => check.checkId,
+    );
+    const gate4ApiCheckIds = [...gate4PublicCheckIds, ...gate4CreatorCheckIds];
+    const gate4TraceArtifactIds = integrationPlan.traceArtifacts.map(
+      (artifact) => artifact.artifactId,
+    );
+    const allJourneyIds = [
+      ...GATE_5_PUBLIC_RUNTIME_JOURNEY_IDS,
+      ...GATE_5_CREATOR_MANAGEMENT_JOURNEY_IDS,
+    ];
+    const publicViewportIds = [...GATE_5_VIEWPORT_IDS];
+    const allAssertionIds = [...GATE_5_REQUIRED_ASSERTION_IDS];
+
+    const publicRuntimeJourneys: GeneratedAppBrowserAcceptancePlan['publicRuntimeJourneys'] =
+      [
+        {
+          journeyId: 'gate-5-public-runtime-open',
+          kind: 'public_runtime_open',
+          title: '打开公开 runtime 页面并校验可访问面',
+          steps: [
+            '打开公开 runtime URL，占位访问标识由测试 fixture 提供。',
+            '确认只展示 end-user runtime surface 和数据用途提示。',
+            '确认页面不展示 Studio 管理接口、源码、测试报告或内部配置。',
+          ],
+          viewportIds: publicViewportIds,
+          scenarioIds,
+          requirementIds,
+          publicRuntimeApiCheckIds: ['gate-4-public-runtime-read'],
+          staticContractIds: [
+            'gate-2-public-runtime-contract',
+            'gate-2-frontend-route-contract',
+          ],
+        },
+        {
+          journeyId: 'gate-5-public-runtime-submit',
+          kind: 'public_runtime_interaction_submit',
+          title: '填写公开 runtime 表单/交互并提交',
+          steps: [
+            '按 acceptance scenario fixture 填写或交互关键输入。',
+            '提交公开应用输入并等待运行状态进入可读结果态或错误态。',
+            '确认公开端请求只命中 public runtime surface。',
+          ],
+          viewportIds: publicViewportIds,
+          scenarioIds,
+          requirementIds,
+          publicRuntimeApiCheckIds: ['gate-4-public-runtime-submit-input'],
+          staticContractIds: [
+            'gate-2-public-runtime-contract',
+            'gate-2-submission-persistence-contract',
+          ],
+        },
+        {
+          journeyId: 'gate-5-public-submission-detail',
+          kind: 'public_submission_result_detail',
+          title: '读取公开 submission detail',
+          steps: [
+            '使用提交响应中的 submission id 读取结果详情。',
+            '确认结果/报告/错误态字段符合 public runtime output contract。',
+            '确认旧访问标识或非当前应用 submission 不可被读取。',
+          ],
+          viewportIds: publicViewportIds,
+          scenarioIds,
+          requirementIds,
+          publicRuntimeApiCheckIds: ['gate-4-public-submission-detail'],
+          staticContractIds: [
+            'gate-2-public-runtime-contract',
+            'gate-2-submission-persistence-contract',
+          ],
+        },
+      ];
+    const creatorManagementJourneys: GeneratedAppBrowserAcceptancePlan['creatorManagementJourneys'] =
+      [
+        {
+          journeyId: 'gate-5-creator-generation-run-review',
+          kind: 'creator_generation_run_review',
+          title: '创建者查看 generation run',
+          steps: [
+            '创建者在登录态打开生成应用工作台。',
+            '读取 generation run 列表并定位当前 run。',
+            '确认状态、summary、failure reason 和预算字段可供诊断。',
+          ],
+          viewportIds: ['viewport-desktop'],
+          scenarioIds,
+          requirementIds,
+          creatorManagementApiCheckIds: ['gate-4-creator-generation-run-query'],
+          staticContractIds: [
+            'gate-2-test-entry-contract',
+            'gate-2-traceability-contract',
+          ],
+        },
+        {
+          journeyId: 'gate-5-creator-gate-run-review',
+          kind: 'creator_gate_run_review',
+          title: '创建者查看 linked gate runs',
+          steps: [
+            '创建者选择当前 generation run。',
+            '读取 gate run 列表并按 generationRunId 过滤。',
+            '确认 Gate 0-5 evidence summary 可读且未展示 public share access value。',
+          ],
+          viewportIds: ['viewport-desktop'],
+          scenarioIds,
+          requirementIds,
+          creatorManagementApiCheckIds: ['gate-4-creator-gate-run-query'],
+          staticContractIds: [
+            'gate-2-test-entry-contract',
+            'gate-2-traceability-contract',
+          ],
+        },
+        {
+          journeyId: 'gate-5-creator-submission-review',
+          kind: 'creator_submission_review',
+          title: '创建者查看 submission 列表与详情',
+          steps: [
+            '创建者打开 submission 列表。',
+            '读取单条 submission detail。',
+            '确认 input/result/report/error 字段可读且遵守软删除边界。',
+          ],
+          viewportIds: ['viewport-desktop'],
+          scenarioIds,
+          requirementIds,
+          creatorManagementApiCheckIds: ['gate-4-creator-submission-query'],
+          staticContractIds: [
+            'gate-2-submission-persistence-contract',
+            'gate-2-traceability-contract',
+          ],
+        },
+      ];
+
+    return {
+      planVersion: 1,
+      appSpecVersion: appSpec.version,
+      generationPlanVersion: generationPlan.planVersion,
+      staticContractsVersion: staticContracts.contractVersion,
+      buildUnitPlanVersion: buildUnitPlan.planVersion,
+      integrationPlanVersion: integrationPlan.planVersion,
+      executionLevel: 'browser-acceptance-skeleton',
+      skeletonDisclaimer: GATE_5_SKELETON_EVIDENCE_NOTE,
+      browserToolPlan: {
+        runner: 'playwright',
+        command: staticContracts.testEntry.browserGateCommand,
+        testEntry: 'tests/generated-app/browser-acceptance.spec.ts',
+        workingDirectory: '/workspace/generated-app',
+        baseUrlShape:
+          'http://localhost:{previewPort}/generated-apps/public/{publicShareAccess}',
+        publicShareAccessPlaceholder: '{publicShareAccessFromTestFixture}',
+        usesRealTokens: false,
+        scenarioIds,
+      },
+      viewportMatrix: [
+        {
+          viewportId: 'viewport-desktop',
+          category: 'desktop',
+          deviceLabel: 'Desktop 1440x900',
+          width: 1440,
+          height: 900,
+          scenarioIds,
+          requirementIds,
+        },
+        {
+          viewportId: 'viewport-mobile',
+          category: 'mobile',
+          deviceLabel: 'Mobile 390x844',
+          width: 390,
+          height: 844,
+          scenarioIds,
+          requirementIds,
+        },
+      ],
+      publicRuntimeJourneys,
+      creatorManagementJourneys,
+      consoleAssertions: [
+        {
+          assertionId: 'gate-5-console-no-unhandled-error',
+          kind: 'no_unhandled_console_error',
+          journeyIds: allJourneyIds,
+          viewportIds: publicViewportIds,
+          allowedWarnings: [],
+          emptyAllowedWarningsReason:
+            'Gate 5 skeleton 默认不允许 console warning；如真实 runner 后续需要允许列表，必须显式列出原因和匹配规则。',
+        },
+        {
+          assertionId: 'gate-5-console-allowed-warning-policy',
+          kind: 'allowed_warning_policy',
+          journeyIds: allJourneyIds,
+          viewportIds: publicViewportIds,
+          allowedWarnings: [],
+          emptyAllowedWarningsReason:
+            '当前 browser acceptance skeleton 没有已知允许 warning。',
+        },
+      ],
+      networkAssertions: [
+        {
+          assertionId: 'gate-5-network-core-requests-2xx',
+          kind: 'core_requests_2xx',
+          journeyIds: allJourneyIds,
+          apiCheckIds: gate4ApiCheckIds,
+          staticContractIds: [...GATE_2_STATIC_CONTRACT_IDS],
+          forbiddenEndpointPatterns: [],
+          expectedStatusRange: '2xx',
+        },
+        {
+          assertionId: 'gate-5-network-public-forbids-creator-internal',
+          kind: 'public_journey_forbids_creator_internal_endpoints',
+          journeyIds: [...GATE_5_PUBLIC_RUNTIME_JOURNEY_IDS],
+          apiCheckIds: gate4PublicCheckIds,
+          staticContractIds: [
+            'gate-2-public-runtime-contract',
+            'gate-2-submission-persistence-contract',
+          ],
+          forbiddenEndpointPatterns: [
+            '/generated-apps/{appId}',
+            '/generated-apps/{appId}/generation-runs',
+            '/generated-apps/{appId}/gate-runs',
+            '/generated-apps/{appId}/submissions',
+            '/settings',
+            '/internal',
+          ],
+          expectedStatusRange: '2xx',
+        },
+        {
+          assertionId: 'gate-5-network-no-token-secret-leak',
+          kind: 'no_token_or_secret_leak',
+          journeyIds: allJourneyIds,
+          apiCheckIds: gate4ApiCheckIds,
+          staticContractIds: [...GATE_2_STATIC_CONTRACT_IDS],
+          forbiddenEndpointPatterns: [
+            'authorization',
+            'public_share_token',
+            'api_key',
+            'secret',
+          ],
+          expectedStatusRange: '2xx',
+        },
+      ],
+      accessibilityInteractionAssertions: [
+        {
+          assertionId: 'gate-5-accessibility-critical-inputs-reachable',
+          kind: 'critical_inputs_reachable',
+          journeyIds: allJourneyIds,
+          viewportIds: publicViewportIds,
+          staticContractIds: [
+            'gate-2-public-runtime-contract',
+            'gate-2-frontend-route-contract',
+          ],
+        },
+        {
+          assertionId: 'gate-5-accessibility-critical-buttons-clickable',
+          kind: 'critical_buttons_clickable',
+          journeyIds: allJourneyIds,
+          viewportIds: publicViewportIds,
+          staticContractIds: [
+            'gate-2-public-runtime-contract',
+            'gate-2-frontend-route-contract',
+          ],
+        },
+        {
+          assertionId: 'gate-5-accessibility-main-content-not-occluded',
+          kind: 'main_content_not_occluded',
+          journeyIds: allJourneyIds,
+          viewportIds: publicViewportIds,
+          staticContractIds: ['gate-2-frontend-route-contract'],
+        },
+      ],
+      responsiveLayoutAssertions: [
+        {
+          assertionId: 'gate-5-responsive-desktop-no-overflow',
+          kind: 'desktop_no_critical_overflow',
+          journeyIds: allJourneyIds,
+          viewportIds: ['viewport-desktop'],
+          staticContractIds: ['gate-2-frontend-route-contract'],
+        },
+        {
+          assertionId: 'gate-5-responsive-mobile-no-overflow',
+          kind: 'mobile_no_critical_overflow',
+          journeyIds: allJourneyIds,
+          viewportIds: ['viewport-mobile'],
+          staticContractIds: ['gate-2-frontend-route-contract'],
+        },
+        {
+          assertionId: 'gate-5-responsive-content-not-occluded',
+          kind: 'viewport_content_not_occluded',
+          journeyIds: allJourneyIds,
+          viewportIds: publicViewportIds,
+          staticContractIds: ['gate-2-frontend-route-contract'],
+        },
+      ],
+      artifactExpectations: [
+        {
+          artifactId: 'desktop-screenshot',
+          kind: 'screenshot',
+          path: 'artifacts/gate-5/screenshots/desktop.png',
+          required: true,
+          producedByJourneyIds: allJourneyIds,
+          producedByAssertionIds: allAssertionIds,
+          referencesGate4TraceArtifactIds: gate4TraceArtifactIds,
+        },
+        {
+          artifactId: 'mobile-screenshot',
+          kind: 'screenshot',
+          path: 'artifacts/gate-5/screenshots/mobile.png',
+          required: true,
+          producedByJourneyIds: allJourneyIds,
+          producedByAssertionIds: allAssertionIds,
+          referencesGate4TraceArtifactIds: gate4TraceArtifactIds,
+        },
+        {
+          artifactId: 'browser-video',
+          kind: 'video',
+          path: 'artifacts/gate-5/browser-video.webm',
+          required: true,
+          producedByJourneyIds: allJourneyIds,
+          producedByAssertionIds: allAssertionIds,
+          referencesGate4TraceArtifactIds: gate4TraceArtifactIds,
+        },
+        {
+          artifactId: 'playwright-trace',
+          kind: 'playwright_trace',
+          path: 'artifacts/gate-5/playwright-trace.zip',
+          required: true,
+          producedByJourneyIds: allJourneyIds,
+          producedByAssertionIds: allAssertionIds,
+          referencesGate4TraceArtifactIds: gate4TraceArtifactIds,
+        },
+        {
+          artifactId: 'console-log',
+          kind: 'console_log',
+          path: 'artifacts/gate-5/console.json',
+          required: true,
+          producedByJourneyIds: allJourneyIds,
+          producedByAssertionIds: [
+            'gate-5-console-no-unhandled-error',
+            'gate-5-console-allowed-warning-policy',
+          ],
+          referencesGate4TraceArtifactIds: gate4TraceArtifactIds,
+        },
+        {
+          artifactId: 'network-log',
+          kind: 'network_log',
+          path: 'artifacts/gate-5/network.json',
+          required: true,
+          producedByJourneyIds: allJourneyIds,
+          producedByAssertionIds: [
+            'gate-5-network-core-requests-2xx',
+            'gate-5-network-public-forbids-creator-internal',
+            'gate-5-network-no-token-secret-leak',
+          ],
+          referencesGate4TraceArtifactIds: gate4TraceArtifactIds,
+        },
+        {
+          artifactId: 'failure-summary',
+          kind: 'failure_summary',
+          path: 'artifacts/gate-5/failure-summary.json',
+          required: true,
+          producedByJourneyIds: allJourneyIds,
+          producedByAssertionIds: allAssertionIds,
+          referencesGate4TraceArtifactIds: gate4TraceArtifactIds,
+        },
+      ],
+      acceptanceScenarioCoverage: appSpec.acceptanceScenarios.map(
+        (scenario) => ({
+          scenarioId: scenario.id,
+          requirementIds: scenario.requirementIds,
+          journeyIds: allJourneyIds,
+          viewportIds: publicViewportIds,
+          assertionIds: allAssertionIds,
+          artifactIds: [...GATE_5_REQUIRED_ARTIFACT_IDS],
+        }),
+      ),
+      requirementCoverage: appSpec.coreRequirements.map((requirement) => ({
+        requirementId: requirement.id,
+        scenarioIds:
+          appSpec.traceability.find(
+            (entry) => entry.requirementId === requirement.id,
+          )?.scenarioIds ?? [],
+        journeyIds: allJourneyIds,
+        assertionIds: allAssertionIds,
+        artifactIds: [...GATE_5_REQUIRED_ARTIFACT_IDS],
+        staticContractIds: [...GATE_2_STATIC_CONTRACT_IDS],
+        gate4ApiCheckIds,
+      })),
+      journeyCoverage: [
+        ...publicRuntimeJourneys.map((journey) => ({
+          journeyId: journey.journeyId,
+          kind: journey.kind,
+          scenarioIds: journey.scenarioIds,
+          requirementIds: journey.requirementIds,
+          viewportIds: journey.viewportIds,
+          assertionIds: allAssertionIds,
+          artifactIds: [...GATE_5_REQUIRED_ARTIFACT_IDS],
+        })),
+        ...creatorManagementJourneys.map((journey) => ({
+          journeyId: journey.journeyId,
+          kind: journey.kind,
+          scenarioIds: journey.scenarioIds,
+          requirementIds: journey.requirementIds,
+          viewportIds: journey.viewportIds,
+          assertionIds: allAssertionIds,
+          artifactIds: [...GATE_5_REQUIRED_ARTIFACT_IDS],
+        })),
+      ],
+      failureCaptureFields: [
+        ...GATE_5_REQUIRED_FAILURE_CAPTURE_FIELDS,
+        'redactedConsoleSample',
+        'redactedNetworkSample',
+      ],
+    };
+  }
+
+  private evaluateGate5BrowserAcceptancePlan(
+    appSpec: GeneratedAppSpec,
+    generationPlan: GeneratedAppGenerationPlan,
+    staticContracts: GeneratedAppStaticContracts,
+    buildUnitPlan: GeneratedAppBuildUnitPlan,
+    integrationPlan: GeneratedAppIntegrationPlan,
+    browserAcceptancePlan: unknown,
+  ): Gate5Evaluation {
+    const checks = this.buildGate5Checks(
+      appSpec,
+      generationPlan,
+      staticContracts,
+      buildUnitPlan,
+      integrationPlan,
+      browserAcceptancePlan,
+    );
+    const failedChecks = checks.filter((check) => !check.passed);
+    const evidence = checks.map((check) => ({
+      id: `gate-5-${check.id}`,
+      label: check.label,
+      kind: 'browser' as const,
+      url: null,
+      summary:
+        check.issues.length === 0
+          ? `${check.summary} ${GATE_5_SKELETON_EVIDENCE_NOTE}`
+          : `${check.summary} 缺口：${check.issues.join(
+              '；',
+            )} ${GATE_5_SKELETON_EVIDENCE_NOTE}`,
+    }));
+
+    if (failedChecks.length > 0) {
+      const failure: GeneratedAppGateRunFailure = {
+        code: 'browser-acceptance-plan-incomplete',
+        message: `BrowserAcceptancePlan 浏览器验收 skeleton 检查失败：${failedChecks
+          .map((check) => check.label)
+          .join(
+            '、',
+          )}；本失败只来自 browser-acceptance-skeleton 合约完整性检查，不代表真实 Playwright/browser test、真实截图/视频/trace 捕获、真实 console/network 检查、真实公开链接访问或真实端到端交互已经执行。`,
+        details: {
+          checks: checks.map((check) => ({
+            id: check.id,
+            label: check.label,
+            passed: check.passed,
+            issues: check.issues,
+          })),
+        },
+      };
+
+      return {
+        status: 'failed',
+        summary:
+          'Gate 5 失败：browserAcceptancePlan 未完整覆盖浏览器 runner、桌面/移动视口、公开 runtime journeys、创建者管理 journeys、console/network/accessibility/responsive assertions、截图/视频/trace artifacts、覆盖矩阵或失败捕获字段；本结果仅表示契约级 browser acceptance skeleton 检查失败，不代表真实 Playwright/browser test、真实截图/视频/trace 捕获、真实 console/network 检查、真实公开链接访问或真实端到端交互已经执行。',
+        evidence,
+        failure,
+        repairInstructions:
+          '修复 generationPlan.browserAcceptancePlan，使其覆盖 Playwright 或等价浏览器 runner、desktop/mobile viewport matrix、公开 runtime 与创建者管理 journeys、console/network/accessibility/responsive assertions、引用 Gate 4 trace artifacts 的截图/视频/trace 产物期望、需求/场景/旅程覆盖和 failure capture fields；当前 Gate 5 仍只检查 browser-acceptance-skeleton 合约，不代表真实 Playwright/browser test、真实截图/视频/trace 捕获、真实 console/network 检查、真实公开链接访问或真实端到端交互已经执行。',
+      };
+    }
+
+    return {
+      status: 'passed',
+      summary:
+        'Gate 5 通过：browserAcceptancePlan 浏览器验收 skeleton 已完整覆盖浏览器 runner、桌面/移动视口、公开 runtime journeys、创建者管理 journeys、console/network/accessibility/responsive assertions、截图/视频/trace artifact 期望、覆盖矩阵和失败捕获字段；本结果仅表示契约级 browser acceptance skeleton 完整，不代表真实 Playwright/browser test、真实截图/视频/trace 捕获、真实 console/network 检查、真实公开链接访问或真实端到端交互已经执行。',
+      evidence,
+      failure: null,
+      repairInstructions: null,
+    };
+  }
+
+  private buildGate5Checks(
+    appSpec: GeneratedAppSpec,
+    generationPlan: GeneratedAppGenerationPlan,
+    staticContracts: GeneratedAppStaticContracts,
+    buildUnitPlan: GeneratedAppBuildUnitPlan,
+    integrationPlan: GeneratedAppIntegrationPlan,
+    browserAcceptancePlan: unknown,
+  ): Gate5Check[] {
+    if (!this.isRecord(browserAcceptancePlan)) {
+      return [
+        {
+          id: 'browser-acceptance-plan-object',
+          label: 'BrowserAcceptancePlan JSON 对象',
+          passed: false,
+          summary:
+            '检查 generationPlan.browserAcceptancePlan 是否为结构化 JSON 对象。',
+          issues: ['browserAcceptancePlan 不是对象'],
+        },
+      ];
+    }
+
+    const requirementIds = appSpec.coreRequirements.map(
+      (requirement) => requirement.id,
+    );
+    const scenarioIds = appSpec.acceptanceScenarios.map(
+      (scenario) => scenario.id,
+    );
+    const knownRequirementIds = new Set(requirementIds);
+    const knownScenarioIds = new Set(scenarioIds);
+    const knownStaticContractIds = new Set<string>([
+      ...GATE_2_STATIC_CONTRACT_IDS,
+    ]);
+    const gate4PublicApiCheckIds = integrationPlan.publicRuntimeApiChecks.map(
+      (check) => check.checkId,
+    );
+    const gate4CreatorApiCheckIds =
+      integrationPlan.creatorManagementApiChecks.map((check) => check.checkId);
+    const gate4ApiCheckIds = [
+      ...gate4PublicApiCheckIds,
+      ...gate4CreatorApiCheckIds,
+    ];
+    const knownGate4PublicApiCheckIds = new Set(gate4PublicApiCheckIds);
+    const knownGate4CreatorApiCheckIds = new Set(gate4CreatorApiCheckIds);
+    const knownGate4ApiCheckIds = new Set(gate4ApiCheckIds);
+    const gate4TraceArtifactIds = integrationPlan.traceArtifacts.map(
+      (artifact) => artifact.artifactId,
+    );
+    const knownGate4TraceArtifactIds = new Set(gate4TraceArtifactIds);
+
+    const browserToolPlan = this.getRecord(
+      browserAcceptancePlan.browserToolPlan,
+    );
+    const viewportMatrix = this.getRecordArray(
+      browserAcceptancePlan.viewportMatrix,
+    );
+    const publicRuntimeJourneys = this.getRecordArray(
+      browserAcceptancePlan.publicRuntimeJourneys,
+    );
+    const creatorManagementJourneys = this.getRecordArray(
+      browserAcceptancePlan.creatorManagementJourneys,
+    );
+    const consoleAssertions = this.getRecordArray(
+      browserAcceptancePlan.consoleAssertions,
+    );
+    const networkAssertions = this.getRecordArray(
+      browserAcceptancePlan.networkAssertions,
+    );
+    const accessibilityAssertions = this.getRecordArray(
+      browserAcceptancePlan.accessibilityInteractionAssertions,
+    );
+    const responsiveAssertions = this.getRecordArray(
+      browserAcceptancePlan.responsiveLayoutAssertions,
+    );
+    const allAssertions = [
+      ...consoleAssertions,
+      ...networkAssertions,
+      ...accessibilityAssertions,
+      ...responsiveAssertions,
+    ];
+    const artifactExpectations = this.getRecordArray(
+      browserAcceptancePlan.artifactExpectations,
+    );
+    const acceptanceScenarioCoverage = this.getRecordArray(
+      browserAcceptancePlan.acceptanceScenarioCoverage,
+    );
+    const requirementCoverage = this.getRecordArray(
+      browserAcceptancePlan.requirementCoverage,
+    );
+    const journeyCoverage = this.getRecordArray(
+      browserAcceptancePlan.journeyCoverage,
+    );
+
+    const viewportIds = viewportMatrix
+      .map((viewport) => this.getNonEmptyString(viewport.viewportId))
+      .filter((viewportId): viewportId is string => viewportId !== null);
+    const knownViewportIds = new Set(viewportIds);
+    const publicJourneyIds = publicRuntimeJourneys
+      .map((journey) => this.getNonEmptyString(journey.journeyId))
+      .filter((journeyId): journeyId is string => journeyId !== null);
+    const creatorJourneyIds = creatorManagementJourneys
+      .map((journey) => this.getNonEmptyString(journey.journeyId))
+      .filter((journeyId): journeyId is string => journeyId !== null);
+    const journeyIds = [...publicJourneyIds, ...creatorJourneyIds];
+    const knownJourneyIds = new Set(journeyIds);
+    const assertionIds = allAssertions
+      .map((assertion) => this.getNonEmptyString(assertion.assertionId))
+      .filter((assertionId): assertionId is string => assertionId !== null);
+    const knownAssertionIds = new Set(assertionIds);
+    const artifactIds = artifactExpectations
+      .map((artifact) => this.getNonEmptyString(artifact.artifactId))
+      .filter((artifactId): artifactId is string => artifactId !== null);
+    const knownArtifactIds = new Set(artifactIds);
+    const expectedPublicJourneyKinds = new Map<string, string>([
+      ['gate-5-public-runtime-open', 'public_runtime_open'],
+      ['gate-5-public-runtime-submit', 'public_runtime_interaction_submit'],
+      ['gate-5-public-submission-detail', 'public_submission_result_detail'],
+    ]);
+    const expectedCreatorJourneyKinds = new Map<string, string>([
+      ['gate-5-creator-generation-run-review', 'creator_generation_run_review'],
+      ['gate-5-creator-gate-run-review', 'creator_gate_run_review'],
+      ['gate-5-creator-submission-review', 'creator_submission_review'],
+    ]);
+    const expectedAssertionKinds = new Map<string, string>([
+      ['gate-5-console-no-unhandled-error', 'no_unhandled_console_error'],
+      ['gate-5-console-allowed-warning-policy', 'allowed_warning_policy'],
+      ['gate-5-network-core-requests-2xx', 'core_requests_2xx'],
+      [
+        'gate-5-network-public-forbids-creator-internal',
+        'public_journey_forbids_creator_internal_endpoints',
+      ],
+      ['gate-5-network-no-token-secret-leak', 'no_token_or_secret_leak'],
+      [
+        'gate-5-accessibility-critical-inputs-reachable',
+        'critical_inputs_reachable',
+      ],
+      [
+        'gate-5-accessibility-critical-buttons-clickable',
+        'critical_buttons_clickable',
+      ],
+      [
+        'gate-5-accessibility-main-content-not-occluded',
+        'main_content_not_occluded',
+      ],
+      ['gate-5-responsive-desktop-no-overflow', 'desktop_no_critical_overflow'],
+      ['gate-5-responsive-mobile-no-overflow', 'mobile_no_critical_overflow'],
+      [
+        'gate-5-responsive-content-not-occluded',
+        'viewport_content_not_occluded',
+      ],
+    ]);
+
+    const versionIssues = [
+      ...(browserAcceptancePlan.planVersion === 1
+        ? []
+        : ['planVersion 必须为 1']),
+      ...(browserAcceptancePlan.appSpecVersion === appSpec.version
+        ? []
+        : [
+            `appSpecVersion=${String(
+              browserAcceptancePlan.appSpecVersion,
+            )} 与 AppSpec version=${appSpec.version} 不一致`,
+          ]),
+      ...(browserAcceptancePlan.generationPlanVersion ===
+      generationPlan.planVersion
+        ? []
+        : [
+            `generationPlanVersion=${String(
+              browserAcceptancePlan.generationPlanVersion,
+            )} 与 generationPlan.planVersion=${generationPlan.planVersion} 不一致`,
+          ]),
+      ...(browserAcceptancePlan.staticContractsVersion ===
+      staticContracts.contractVersion
+        ? []
+        : [
+            `staticContractsVersion=${String(
+              browserAcceptancePlan.staticContractsVersion,
+            )} 与 staticContracts.contractVersion=${staticContracts.contractVersion} 不一致`,
+          ]),
+      ...(browserAcceptancePlan.buildUnitPlanVersion ===
+      buildUnitPlan.planVersion
+        ? []
+        : [
+            `buildUnitPlanVersion=${String(
+              browserAcceptancePlan.buildUnitPlanVersion,
+            )} 与 buildUnitPlan.planVersion=${buildUnitPlan.planVersion} 不一致`,
+          ]),
+      ...(browserAcceptancePlan.integrationPlanVersion ===
+      integrationPlan.planVersion
+        ? []
+        : [
+            `integrationPlanVersion=${String(
+              browserAcceptancePlan.integrationPlanVersion,
+            )} 与 integrationPlan.planVersion=${integrationPlan.planVersion} 不一致`,
+          ]),
+      ...(browserAcceptancePlan.executionLevel === 'browser-acceptance-skeleton'
+        ? []
+        : ['executionLevel 必须为 browser-acceptance-skeleton']),
+      ...(!this.getNonEmptyString(browserAcceptancePlan.skeletonDisclaimer)
+        ? ['skeletonDisclaimer 缺失']
+        : []),
+    ];
+    const browserToolIssues = [
+      ...this.requireRecord(browserToolPlan, 'browserToolPlan'),
+      ...(browserToolPlan?.runner === 'playwright'
+        ? []
+        : ['browserToolPlan.runner 必须为 playwright']),
+      ...(!this.getNonEmptyString(browserToolPlan?.command)
+        ? ['browserToolPlan.command 缺失']
+        : []),
+      ...(!this.getNonEmptyString(browserToolPlan?.testEntry)
+        ? ['browserToolPlan.testEntry 缺失']
+        : []),
+      ...(!this.getNonEmptyString(browserToolPlan?.workingDirectory)
+        ? ['browserToolPlan.workingDirectory 缺失']
+        : []),
+      ...(!this.getNonEmptyString(browserToolPlan?.baseUrlShape)
+        ? ['browserToolPlan.baseUrlShape 缺失']
+        : []),
+      ...(this.getNonEmptyString(browserToolPlan?.baseUrlShape)?.includes(
+        '{publicShareAccess}',
+      )
+        ? []
+        : ['browserToolPlan.baseUrlShape 必须使用占位访问标识']),
+      ...(!this.getNonEmptyString(browserToolPlan?.publicShareAccessPlaceholder)
+        ? ['browserToolPlan.publicShareAccessPlaceholder 缺失']
+        : []),
+      ...(browserToolPlan?.usesRealTokens === false
+        ? []
+        : ['browserToolPlan.usesRealTokens 必须为 false']),
+      ...this.buildMissingItemsIssues(
+        'browserToolPlan.scenarioIds',
+        this.getStringArray(browserToolPlan?.scenarioIds),
+        scenarioIds,
+      ),
+      ...this.buildUnknownReferenceIssues(
+        'browserToolPlan.scenarioIds',
+        this.getStringArray(browserToolPlan?.scenarioIds),
+        knownScenarioIds,
+      ),
+      ...this.collectSensitiveTokenIssues(
+        browserAcceptancePlan,
+        'browserAcceptancePlan',
+      ),
+    ];
+    const viewportIssues = [
+      ...(viewportMatrix.length === 0 ? ['viewportMatrix 不能为空'] : []),
+      ...this.buildMissingItemsIssues(
+        'viewportMatrix.viewportId',
+        viewportIds,
+        [...GATE_5_VIEWPORT_IDS],
+      ),
+      ...this.buildDuplicateItemIssues(
+        'viewportMatrix.viewportId',
+        viewportIds,
+      ),
+      ...(viewportMatrix.some((viewport) => viewport.category === 'desktop')
+        ? []
+        : ['viewportMatrix 必须包含 desktop 视口']),
+      ...(viewportMatrix.some((viewport) => viewport.category === 'mobile')
+        ? []
+        : ['viewportMatrix 必须包含 mobile 视口']),
+      ...viewportMatrix.flatMap((viewport, index) => [
+        ...(!this.getNonEmptyString(viewport.viewportId)
+          ? [`viewportMatrix[${index}].viewportId 缺失`]
+          : []),
+        ...(!['desktop', 'mobile'].includes(String(viewport.category))
+          ? [`viewportMatrix[${index}].category 必须为 desktop 或 mobile`]
+          : []),
+        ...(!this.getNonEmptyString(viewport.deviceLabel)
+          ? [`viewportMatrix[${index}].deviceLabel 缺失`]
+          : []),
+        ...(typeof viewport.width === 'number' && viewport.width > 0
+          ? []
+          : [`viewportMatrix[${index}].width 必须为正数`]),
+        ...(typeof viewport.height === 'number' && viewport.height > 0
+          ? []
+          : [`viewportMatrix[${index}].height 必须为正数`]),
+        ...this.buildMissingItemsIssues(
+          `viewportMatrix[${index}].scenarioIds`,
+          this.getStringArray(viewport.scenarioIds),
+          scenarioIds,
+        ),
+        ...this.buildUnknownReferenceIssues(
+          `viewportMatrix[${index}].scenarioIds`,
+          this.getStringArray(viewport.scenarioIds),
+          knownScenarioIds,
+        ),
+        ...this.buildMissingItemsIssues(
+          `viewportMatrix[${index}].requirementIds`,
+          this.getStringArray(viewport.requirementIds),
+          requirementIds,
+        ),
+        ...this.buildUnknownReferenceIssues(
+          `viewportMatrix[${index}].requirementIds`,
+          this.getStringArray(viewport.requirementIds),
+          knownRequirementIds,
+        ),
+      ]),
+    ];
+    const publicJourneyIssues = [
+      ...(publicRuntimeJourneys.length === 0
+        ? ['publicRuntimeJourneys 不能为空']
+        : []),
+      ...this.buildMissingItemsIssues(
+        'publicRuntimeJourneys.journeyId',
+        publicJourneyIds,
+        [...GATE_5_PUBLIC_RUNTIME_JOURNEY_IDS],
+      ),
+      ...this.buildDuplicateItemIssues(
+        'publicRuntimeJourneys.journeyId',
+        publicJourneyIds,
+      ),
+      ...publicRuntimeJourneys.flatMap((journey, index) => {
+        const journeyId = this.getNonEmptyString(journey.journeyId);
+        const kind = this.getNonEmptyString(journey.kind);
+        const expectedKind = journeyId
+          ? expectedPublicJourneyKinds.get(journeyId)
+          : undefined;
+
+        return [
+          ...(!journeyId
+            ? [`publicRuntimeJourneys[${index}].journeyId 缺失`]
+            : []),
+          ...(journeyId && !expectedPublicJourneyKinds.has(journeyId)
+            ? [
+                `publicRuntimeJourneys[${index}].journeyId 引用了未知 journey ${this.formatIssueValue(
+                  journeyId,
+                )}`,
+              ]
+            : []),
+          ...(!kind ? [`publicRuntimeJourneys[${index}].kind 缺失`] : []),
+          ...(kind &&
+          !GATE_5_ALLOWED_PUBLIC_JOURNEY_KINDS.includes(
+            kind as (typeof GATE_5_ALLOWED_PUBLIC_JOURNEY_KINDS)[number],
+          )
+            ? [
+                `publicRuntimeJourneys[${index}].kind 必须是 ${GATE_5_ALLOWED_PUBLIC_JOURNEY_KINDS.join(
+                  ' | ',
+                )} 之一`,
+              ]
+            : []),
+          ...(expectedKind && kind !== expectedKind
+            ? [
+                `publicRuntimeJourneys[${index}].kind 与 journeyId ${journeyId} 不一致`,
+              ]
+            : []),
+          ...(!this.getNonEmptyString(journey.title)
+            ? [`publicRuntimeJourneys[${index}].title 缺失`]
+            : []),
+          ...(this.getStringArray(journey.steps).length === 0
+            ? [`publicRuntimeJourneys[${index}].steps 不能为空`]
+            : []),
+          ...this.buildMissingItemsIssues(
+            `publicRuntimeJourneys[${index}].viewportIds`,
+            this.getStringArray(journey.viewportIds),
+            [...GATE_5_VIEWPORT_IDS],
+          ),
+          ...this.buildUnknownReferenceIssues(
+            `publicRuntimeJourneys[${index}].viewportIds`,
+            this.getStringArray(journey.viewportIds),
+            knownViewportIds,
+          ),
+          ...this.buildMissingItemsIssues(
+            `publicRuntimeJourneys[${index}].scenarioIds`,
+            this.getStringArray(journey.scenarioIds),
+            scenarioIds,
+          ),
+          ...this.buildUnknownReferenceIssues(
+            `publicRuntimeJourneys[${index}].scenarioIds`,
+            this.getStringArray(journey.scenarioIds),
+            knownScenarioIds,
+          ),
+          ...this.buildMissingItemsIssues(
+            `publicRuntimeJourneys[${index}].requirementIds`,
+            this.getStringArray(journey.requirementIds),
+            requirementIds,
+          ),
+          ...this.buildUnknownReferenceIssues(
+            `publicRuntimeJourneys[${index}].requirementIds`,
+            this.getStringArray(journey.requirementIds),
+            knownRequirementIds,
+          ),
+          ...(this.getStringArray(journey.publicRuntimeApiCheckIds).length === 0
+            ? [
+                `publicRuntimeJourneys[${index}].publicRuntimeApiCheckIds 不能为空`,
+              ]
+            : []),
+          ...this.buildUnknownReferenceIssues(
+            `publicRuntimeJourneys[${index}].publicRuntimeApiCheckIds`,
+            this.getStringArray(journey.publicRuntimeApiCheckIds),
+            knownGate4PublicApiCheckIds,
+          ),
+          ...(this.getStringArray(journey.staticContractIds).length === 0
+            ? [`publicRuntimeJourneys[${index}].staticContractIds 不能为空`]
+            : []),
+          ...this.buildUnknownReferenceIssues(
+            `publicRuntimeJourneys[${index}].staticContractIds`,
+            this.getStringArray(journey.staticContractIds),
+            knownStaticContractIds,
+          ),
+        ];
+      }),
+    ];
+    const creatorJourneyIssues = [
+      ...(creatorManagementJourneys.length === 0
+        ? ['creatorManagementJourneys 不能为空']
+        : []),
+      ...this.buildMissingItemsIssues(
+        'creatorManagementJourneys.journeyId',
+        creatorJourneyIds,
+        [...GATE_5_CREATOR_MANAGEMENT_JOURNEY_IDS],
+      ),
+      ...this.buildDuplicateItemIssues(
+        'creatorManagementJourneys.journeyId',
+        creatorJourneyIds,
+      ),
+      ...creatorManagementJourneys.flatMap((journey, index) => {
+        const journeyId = this.getNonEmptyString(journey.journeyId);
+        const kind = this.getNonEmptyString(journey.kind);
+        const expectedKind = journeyId
+          ? expectedCreatorJourneyKinds.get(journeyId)
+          : undefined;
+
+        return [
+          ...(!journeyId
+            ? [`creatorManagementJourneys[${index}].journeyId 缺失`]
+            : []),
+          ...(journeyId && !expectedCreatorJourneyKinds.has(journeyId)
+            ? [
+                `creatorManagementJourneys[${index}].journeyId 引用了未知 journey ${this.formatIssueValue(
+                  journeyId,
+                )}`,
+              ]
+            : []),
+          ...(!kind ? [`creatorManagementJourneys[${index}].kind 缺失`] : []),
+          ...(kind &&
+          !GATE_5_ALLOWED_CREATOR_JOURNEY_KINDS.includes(
+            kind as (typeof GATE_5_ALLOWED_CREATOR_JOURNEY_KINDS)[number],
+          )
+            ? [
+                `creatorManagementJourneys[${index}].kind 必须是 ${GATE_5_ALLOWED_CREATOR_JOURNEY_KINDS.join(
+                  ' | ',
+                )} 之一`,
+              ]
+            : []),
+          ...(expectedKind && kind !== expectedKind
+            ? [
+                `creatorManagementJourneys[${index}].kind 与 journeyId ${journeyId} 不一致`,
+              ]
+            : []),
+          ...(!this.getNonEmptyString(journey.title)
+            ? [`creatorManagementJourneys[${index}].title 缺失`]
+            : []),
+          ...(this.getStringArray(journey.steps).length === 0
+            ? [`creatorManagementJourneys[${index}].steps 不能为空`]
+            : []),
+          ...(this.getStringArray(journey.viewportIds).length === 0
+            ? [`creatorManagementJourneys[${index}].viewportIds 不能为空`]
+            : []),
+          ...this.buildUnknownReferenceIssues(
+            `creatorManagementJourneys[${index}].viewportIds`,
+            this.getStringArray(journey.viewportIds),
+            knownViewportIds,
+          ),
+          ...this.buildMissingItemsIssues(
+            `creatorManagementJourneys[${index}].scenarioIds`,
+            this.getStringArray(journey.scenarioIds),
+            scenarioIds,
+          ),
+          ...this.buildUnknownReferenceIssues(
+            `creatorManagementJourneys[${index}].scenarioIds`,
+            this.getStringArray(journey.scenarioIds),
+            knownScenarioIds,
+          ),
+          ...this.buildMissingItemsIssues(
+            `creatorManagementJourneys[${index}].requirementIds`,
+            this.getStringArray(journey.requirementIds),
+            requirementIds,
+          ),
+          ...this.buildUnknownReferenceIssues(
+            `creatorManagementJourneys[${index}].requirementIds`,
+            this.getStringArray(journey.requirementIds),
+            knownRequirementIds,
+          ),
+          ...(this.getStringArray(journey.creatorManagementApiCheckIds)
+            .length === 0
+            ? [
+                `creatorManagementJourneys[${index}].creatorManagementApiCheckIds 不能为空`,
+              ]
+            : []),
+          ...this.buildUnknownReferenceIssues(
+            `creatorManagementJourneys[${index}].creatorManagementApiCheckIds`,
+            this.getStringArray(journey.creatorManagementApiCheckIds),
+            knownGate4CreatorApiCheckIds,
+          ),
+          ...(this.getStringArray(journey.staticContractIds).length === 0
+            ? [`creatorManagementJourneys[${index}].staticContractIds 不能为空`]
+            : []),
+          ...this.buildUnknownReferenceIssues(
+            `creatorManagementJourneys[${index}].staticContractIds`,
+            this.getStringArray(journey.staticContractIds),
+            knownStaticContractIds,
+          ),
+        ];
+      }),
+    ];
+    const assertionIssues = [
+      ...(consoleAssertions.length === 0 ? ['consoleAssertions 不能为空'] : []),
+      ...(networkAssertions.length === 0 ? ['networkAssertions 不能为空'] : []),
+      ...(accessibilityAssertions.length === 0
+        ? ['accessibilityInteractionAssertions 不能为空']
+        : []),
+      ...(responsiveAssertions.length === 0
+        ? ['responsiveLayoutAssertions 不能为空']
+        : []),
+      ...this.buildMissingItemsIssues('assertions.assertionId', assertionIds, [
+        ...GATE_5_REQUIRED_ASSERTION_IDS,
+      ]),
+      ...this.buildDuplicateItemIssues('assertions.assertionId', assertionIds),
+      ...allAssertions.flatMap((assertion, index) => {
+        const assertionId = this.getNonEmptyString(assertion.assertionId);
+        const kind = this.getNonEmptyString(assertion.kind);
+        const expectedKind = assertionId
+          ? expectedAssertionKinds.get(assertionId)
+          : undefined;
+        const assertionJourneyIds = this.getStringArray(assertion.journeyIds);
+        const assertionViewportIds = this.getStringArray(assertion.viewportIds);
+        const assertionApiCheckIds = this.getStringArray(assertion.apiCheckIds);
+        const forbiddenEndpointPatterns = this.getStringArray(
+          assertion.forbiddenEndpointPatterns,
+        );
+
+        return [
+          ...(!assertionId ? [`assertions[${index}].assertionId 缺失`] : []),
+          ...(assertionId &&
+          !GATE_5_REQUIRED_ASSERTION_IDS.includes(
+            assertionId as (typeof GATE_5_REQUIRED_ASSERTION_IDS)[number],
+          )
+            ? [
+                `assertions[${index}].assertionId 引用了未知 assertion ${this.formatIssueValue(
+                  assertionId,
+                )}`,
+              ]
+            : []),
+          ...(!kind ? [`assertions[${index}].kind 缺失`] : []),
+          ...(kind &&
+          !GATE_5_ALLOWED_ASSERTION_KINDS.includes(
+            kind as (typeof GATE_5_ALLOWED_ASSERTION_KINDS)[number],
+          )
+            ? [
+                `assertions[${index}].kind 必须是 ${GATE_5_ALLOWED_ASSERTION_KINDS.join(
+                  ' | ',
+                )} 之一`,
+              ]
+            : []),
+          ...(expectedKind && kind !== expectedKind
+            ? [`assertions[${index}].kind 与 assertionId ${assertionId} 不一致`]
+            : []),
+          ...(assertionJourneyIds.length === 0
+            ? [`assertions[${index}].journeyIds 不能为空`]
+            : []),
+          ...this.buildUnknownReferenceIssues(
+            `assertions[${index}].journeyIds`,
+            assertionJourneyIds,
+            knownJourneyIds,
+          ),
+          ...('viewportIds' in assertion && assertionViewportIds.length === 0
+            ? [`assertions[${index}].viewportIds 不能为空`]
+            : []),
+          ...this.buildUnknownReferenceIssues(
+            `assertions[${index}].viewportIds`,
+            assertionViewportIds,
+            knownViewportIds,
+          ),
+          ...(kind === 'allowed_warning_policy' &&
+          this.getStringArray(assertion.allowedWarnings).length === 0 &&
+          !this.getNonEmptyString(assertion.emptyAllowedWarningsReason)
+            ? [
+                `assertions[${index}].emptyAllowedWarningsReason 缺失；allowed warning 为空时必须说明原因`,
+              ]
+            : []),
+          ...(kind === 'core_requests_2xx' &&
+          assertion.expectedStatusRange !== '2xx'
+            ? [`assertions[${index}].expectedStatusRange 必须为 2xx`]
+            : []),
+          ...('apiCheckIds' in assertion && assertionApiCheckIds.length === 0
+            ? [`assertions[${index}].apiCheckIds 不能为空`]
+            : []),
+          ...this.buildUnknownReferenceIssues(
+            `assertions[${index}].apiCheckIds`,
+            assertionApiCheckIds,
+            knownGate4ApiCheckIds,
+          ),
+          ...('staticContractIds' in assertion &&
+          this.getStringArray(assertion.staticContractIds).length === 0
+            ? [`assertions[${index}].staticContractIds 不能为空`]
+            : []),
+          ...this.buildUnknownReferenceIssues(
+            `assertions[${index}].staticContractIds`,
+            this.getStringArray(assertion.staticContractIds),
+            knownStaticContractIds,
+          ),
+          ...(kind === 'public_journey_forbids_creator_internal_endpoints'
+            ? [
+                ...assertionJourneyIds
+                  .filter((journeyId) => !publicJourneyIds.includes(journeyId))
+                  .map(
+                    (journeyId) =>
+                      `assertions[${index}].journeyIds 只能引用公开 runtime journey，收到 ${this.formatIssueValue(
+                        journeyId,
+                      )}`,
+                  ),
+                ...assertionApiCheckIds
+                  .filter(
+                    (apiCheckId) =>
+                      !knownGate4PublicApiCheckIds.has(apiCheckId),
+                  )
+                  .map(
+                    (apiCheckId) =>
+                      `assertions[${index}].apiCheckIds 只能引用 Gate 4 public runtime API check，收到 ${this.formatIssueValue(
+                        apiCheckId,
+                      )}`,
+                  ),
+                ...(forbiddenEndpointPatterns.length === 0
+                  ? [`assertions[${index}].forbiddenEndpointPatterns 不能为空`]
+                  : []),
+                ...this.buildMissingItemsIssues(
+                  `assertions[${index}].forbiddenEndpointPatterns`,
+                  forbiddenEndpointPatterns,
+                  [...GATE_5_REQUIRED_PUBLIC_FORBIDDEN_ENDPOINT_PATTERNS],
+                ),
+              ]
+            : []),
+          ...(kind === 'no_token_or_secret_leak'
+            ? [
+                ...(forbiddenEndpointPatterns.length === 0
+                  ? [`assertions[${index}].forbiddenEndpointPatterns 不能为空`]
+                  : []),
+                ...this.buildMissingItemsIssues(
+                  `assertions[${index}].forbiddenEndpointPatterns`,
+                  forbiddenEndpointPatterns,
+                  [...GATE_5_REQUIRED_SECRET_LEAK_PATTERNS],
+                ),
+              ]
+            : []),
+          ...(kind === 'desktop_no_critical_overflow' &&
+          !assertionViewportIds.includes('viewport-desktop')
+            ? [`assertions[${index}].viewportIds 必须包含 viewport-desktop`]
+            : []),
+          ...(kind === 'mobile_no_critical_overflow' &&
+          !assertionViewportIds.includes('viewport-mobile')
+            ? [`assertions[${index}].viewportIds 必须包含 viewport-mobile`]
+            : []),
+          ...(kind === 'viewport_content_not_occluded'
+            ? this.buildMissingItemsIssues(
+                `assertions[${index}].viewportIds`,
+                assertionViewportIds,
+                [...GATE_5_VIEWPORT_IDS],
+              )
+            : []),
+        ];
+      }),
+    ];
+    const artifactIssues = [
+      ...(artifactExpectations.length === 0
+        ? ['artifactExpectations 不能为空']
+        : []),
+      ...this.buildMissingItemsIssues(
+        'artifactExpectations.artifactId',
+        artifactIds,
+        [...GATE_5_REQUIRED_ARTIFACT_IDS],
+      ),
+      ...this.buildDuplicateItemIssues(
+        'artifactExpectations.artifactId',
+        artifactIds,
+      ),
+      ...artifactExpectations.flatMap((artifact, index) => [
+        ...(!this.getNonEmptyString(artifact.artifactId)
+          ? [`artifactExpectations[${index}].artifactId 缺失`]
+          : []),
+        ...(this.getNonEmptyString(artifact.artifactId) &&
+        !GATE_5_REQUIRED_ARTIFACT_IDS.includes(
+          this.getNonEmptyString(
+            artifact.artifactId,
+          ) as (typeof GATE_5_REQUIRED_ARTIFACT_IDS)[number],
+        )
+          ? [
+              `artifactExpectations[${index}].artifactId 引用了未知 artifact ${this.formatIssueValue(
+                this.getNonEmptyString(artifact.artifactId) ?? '',
+              )}`,
+            ]
+          : []),
+        ...(!this.getNonEmptyString(artifact.kind)
+          ? [`artifactExpectations[${index}].kind 缺失`]
+          : []),
+        ...(this.getNonEmptyString(artifact.kind) &&
+        !GATE_5_ALLOWED_ARTIFACT_KINDS.includes(
+          this.getNonEmptyString(
+            artifact.kind,
+          ) as (typeof GATE_5_ALLOWED_ARTIFACT_KINDS)[number],
+        )
+          ? [
+              `artifactExpectations[${index}].kind 必须是 ${GATE_5_ALLOWED_ARTIFACT_KINDS.join(
+                ' | ',
+              )} 之一`,
+            ]
+          : []),
+        ...(!this.getNonEmptyString(artifact.path)
+          ? [`artifactExpectations[${index}].path 缺失`]
+          : []),
+        ...(artifact.required === true
+          ? []
+          : [`artifactExpectations[${index}].required 必须为 true`]),
+        ...(this.getStringArray(artifact.producedByJourneyIds).length === 0
+          ? [`artifactExpectations[${index}].producedByJourneyIds 不能为空`]
+          : []),
+        ...this.buildUnknownReferenceIssues(
+          `artifactExpectations[${index}].producedByJourneyIds`,
+          this.getStringArray(artifact.producedByJourneyIds),
+          knownJourneyIds,
+        ),
+        ...(this.getStringArray(artifact.producedByAssertionIds).length === 0
+          ? [`artifactExpectations[${index}].producedByAssertionIds 不能为空`]
+          : []),
+        ...this.buildUnknownReferenceIssues(
+          `artifactExpectations[${index}].producedByAssertionIds`,
+          this.getStringArray(artifact.producedByAssertionIds),
+          knownAssertionIds,
+        ),
+        ...(this.getStringArray(artifact.referencesGate4TraceArtifactIds)
+          .length === 0
+          ? [
+              `artifactExpectations[${index}].referencesGate4TraceArtifactIds 不能为空`,
+            ]
+          : []),
+        ...this.buildUnknownReferenceIssues(
+          `artifactExpectations[${index}].referencesGate4TraceArtifactIds`,
+          this.getStringArray(artifact.referencesGate4TraceArtifactIds),
+          knownGate4TraceArtifactIds,
+        ),
+      ]),
+    ];
+    const acceptanceCoverageById = new Map(
+      acceptanceScenarioCoverage
+        .map((entry) => {
+          const scenarioId = this.getNonEmptyString(entry.scenarioId);
+          return scenarioId ? ([scenarioId, entry] as const) : null;
+        })
+        .filter(
+          (entry): entry is readonly [string, Record<string, unknown>] =>
+            entry !== null,
+        ),
+    );
+    const acceptanceCoverageIssues = [
+      ...(acceptanceScenarioCoverage.length === 0
+        ? ['acceptanceScenarioCoverage 不能为空']
+        : []),
+      ...acceptanceScenarioCoverage.flatMap((entry, index) => {
+        const scenarioId = this.getNonEmptyString(entry.scenarioId);
+
+        return [
+          ...(!scenarioId
+            ? [`acceptanceScenarioCoverage[${index}].scenarioId 缺失`]
+            : []),
+          ...(scenarioId && !knownScenarioIds.has(scenarioId)
+            ? [
+                `acceptanceScenarioCoverage[${index}].scenarioId 引用了未知场景 ${this.formatIssueValue(
+                  scenarioId,
+                )}`,
+              ]
+            : []),
+          ...this.buildUnknownReferenceIssues(
+            `acceptanceScenarioCoverage[${index}].requirementIds`,
+            this.getStringArray(entry.requirementIds),
+            knownRequirementIds,
+          ),
+          ...this.buildUnknownReferenceIssues(
+            `acceptanceScenarioCoverage[${index}].journeyIds`,
+            this.getStringArray(entry.journeyIds),
+            knownJourneyIds,
+          ),
+          ...this.buildUnknownReferenceIssues(
+            `acceptanceScenarioCoverage[${index}].viewportIds`,
+            this.getStringArray(entry.viewportIds),
+            knownViewportIds,
+          ),
+          ...this.buildUnknownReferenceIssues(
+            `acceptanceScenarioCoverage[${index}].assertionIds`,
+            this.getStringArray(entry.assertionIds),
+            knownAssertionIds,
+          ),
+          ...this.buildUnknownReferenceIssues(
+            `acceptanceScenarioCoverage[${index}].artifactIds`,
+            this.getStringArray(entry.artifactIds),
+            knownArtifactIds,
+          ),
+        ];
+      }),
+      ...scenarioIds.flatMap((scenarioId) => {
+        const entry = acceptanceCoverageById.get(scenarioId);
+        const scenario = appSpec.acceptanceScenarios.find(
+          (candidate) => candidate.id === scenarioId,
+        );
+
+        if (!entry) {
+          return [`场景 ${scenarioId} 缺少 Gate 5 覆盖声明`];
+        }
+
+        return [
+          ...this.buildMissingItemsIssues(
+            `acceptanceScenarioCoverage[${scenarioId}].requirementIds`,
+            this.getStringArray(entry.requirementIds),
+            scenario?.requirementIds ?? [],
+          ),
+          ...(this.getStringArray(entry.journeyIds).length === 0
+            ? [`acceptanceScenarioCoverage[${scenarioId}].journeyIds 不能为空`]
+            : []),
+          ...(this.getStringArray(entry.viewportIds).length === 0
+            ? [`acceptanceScenarioCoverage[${scenarioId}].viewportIds 不能为空`]
+            : []),
+          ...(this.getStringArray(entry.assertionIds).length === 0
+            ? [
+                `acceptanceScenarioCoverage[${scenarioId}].assertionIds 不能为空`,
+              ]
+            : []),
+          ...(this.getStringArray(entry.artifactIds).length === 0
+            ? [`acceptanceScenarioCoverage[${scenarioId}].artifactIds 不能为空`]
+            : []),
+        ];
+      }),
+    ];
+    const requirementCoverageById = new Map(
+      requirementCoverage
+        .map((entry) => {
+          const requirementId = this.getNonEmptyString(entry.requirementId);
+          return requirementId ? ([requirementId, entry] as const) : null;
+        })
+        .filter(
+          (entry): entry is readonly [string, Record<string, unknown>] =>
+            entry !== null,
+        ),
+    );
+    const requirementCoverageIssues = [
+      ...(requirementCoverage.length === 0
+        ? ['requirementCoverage 不能为空']
+        : []),
+      ...requirementCoverage.flatMap((entry, index) => {
+        const requirementId = this.getNonEmptyString(entry.requirementId);
+
+        return [
+          ...(!requirementId
+            ? [`requirementCoverage[${index}].requirementId 缺失`]
+            : []),
+          ...(requirementId && !knownRequirementIds.has(requirementId)
+            ? [
+                `requirementCoverage[${index}].requirementId 引用了未知需求 ${this.formatIssueValue(
+                  requirementId,
+                )}`,
+              ]
+            : []),
+          ...this.buildUnknownReferenceIssues(
+            `requirementCoverage[${index}].scenarioIds`,
+            this.getStringArray(entry.scenarioIds),
+            knownScenarioIds,
+          ),
+          ...this.buildUnknownReferenceIssues(
+            `requirementCoverage[${index}].journeyIds`,
+            this.getStringArray(entry.journeyIds),
+            knownJourneyIds,
+          ),
+          ...this.buildUnknownReferenceIssues(
+            `requirementCoverage[${index}].assertionIds`,
+            this.getStringArray(entry.assertionIds),
+            knownAssertionIds,
+          ),
+          ...this.buildUnknownReferenceIssues(
+            `requirementCoverage[${index}].artifactIds`,
+            this.getStringArray(entry.artifactIds),
+            knownArtifactIds,
+          ),
+          ...this.buildUnknownReferenceIssues(
+            `requirementCoverage[${index}].staticContractIds`,
+            this.getStringArray(entry.staticContractIds),
+            knownStaticContractIds,
+          ),
+          ...this.buildUnknownReferenceIssues(
+            `requirementCoverage[${index}].gate4ApiCheckIds`,
+            this.getStringArray(entry.gate4ApiCheckIds),
+            knownGate4ApiCheckIds,
+          ),
+        ];
+      }),
+      ...requirementIds.flatMap((requirementId) => {
+        const entry = requirementCoverageById.get(requirementId);
+
+        if (!entry) {
+          return [`需求 ${requirementId} 缺少 Gate 5 覆盖声明`];
+        }
+
+        const expectedScenarioIds =
+          appSpec.traceability.find(
+            (candidate) => candidate.requirementId === requirementId,
+          )?.scenarioIds ?? [];
+
+        return [
+          ...this.buildMissingItemsIssues(
+            `requirementCoverage[${requirementId}].scenarioIds`,
+            this.getStringArray(entry.scenarioIds),
+            expectedScenarioIds,
+          ),
+          ...[
+            'journeyIds',
+            'assertionIds',
+            'artifactIds',
+            'staticContractIds',
+            'gate4ApiCheckIds',
+          ].flatMap((field) =>
+            this.getStringArray(entry[field]).length === 0
+              ? [`requirementCoverage[${requirementId}].${field} 不能为空`]
+              : [],
+          ),
+          ...this.buildMissingItemsIssues(
+            `requirementCoverage[${requirementId}].gate4ApiCheckIds`,
+            this.getStringArray(entry.gate4ApiCheckIds),
+            gate4ApiCheckIds,
+          ),
+        ];
+      }),
+    ];
+    const journeyCoverageById = new Map(
+      journeyCoverage
+        .map((entry) => {
+          const journeyId = this.getNonEmptyString(entry.journeyId);
+          return journeyId ? ([journeyId, entry] as const) : null;
+        })
+        .filter(
+          (entry): entry is readonly [string, Record<string, unknown>] =>
+            entry !== null,
+        ),
+    );
+    const allowedJourneyKinds = new Set<string>([
+      ...GATE_5_ALLOWED_PUBLIC_JOURNEY_KINDS,
+      ...GATE_5_ALLOWED_CREATOR_JOURNEY_KINDS,
+    ]);
+    const journeyCoverageIssues = [
+      ...(journeyCoverage.length === 0 ? ['journeyCoverage 不能为空'] : []),
+      ...journeyCoverage.flatMap((entry, index) => {
+        const journeyId = this.getNonEmptyString(entry.journeyId);
+        const kind = this.getNonEmptyString(entry.kind);
+
+        return [
+          ...(!journeyId ? [`journeyCoverage[${index}].journeyId 缺失`] : []),
+          ...(journeyId && !knownJourneyIds.has(journeyId)
+            ? [
+                `journeyCoverage[${index}].journeyId 引用了未知 journey ${this.formatIssueValue(
+                  journeyId,
+                )}`,
+              ]
+            : []),
+          ...(!kind ? [`journeyCoverage[${index}].kind 缺失`] : []),
+          ...(kind && !allowedJourneyKinds.has(kind)
+            ? [
+                `journeyCoverage[${index}].kind 是非法 journey kind ${this.formatIssueValue(
+                  kind,
+                )}`,
+              ]
+            : []),
+          ...this.buildUnknownReferenceIssues(
+            `journeyCoverage[${index}].scenarioIds`,
+            this.getStringArray(entry.scenarioIds),
+            knownScenarioIds,
+          ),
+          ...this.buildUnknownReferenceIssues(
+            `journeyCoverage[${index}].requirementIds`,
+            this.getStringArray(entry.requirementIds),
+            knownRequirementIds,
+          ),
+          ...this.buildUnknownReferenceIssues(
+            `journeyCoverage[${index}].viewportIds`,
+            this.getStringArray(entry.viewportIds),
+            knownViewportIds,
+          ),
+          ...this.buildUnknownReferenceIssues(
+            `journeyCoverage[${index}].assertionIds`,
+            this.getStringArray(entry.assertionIds),
+            knownAssertionIds,
+          ),
+          ...this.buildUnknownReferenceIssues(
+            `journeyCoverage[${index}].artifactIds`,
+            this.getStringArray(entry.artifactIds),
+            knownArtifactIds,
+          ),
+        ];
+      }),
+      ...journeyIds.flatMap((journeyId) => {
+        const entry = journeyCoverageById.get(journeyId);
+
+        if (!entry) {
+          return [`journey ${journeyId} 缺少 Gate 5 覆盖声明`];
+        }
+
+        return [
+          ...[
+            'scenarioIds',
+            'requirementIds',
+            'viewportIds',
+            'assertionIds',
+            'artifactIds',
+          ].flatMap((field) =>
+            this.getStringArray(entry[field]).length === 0
+              ? [`journeyCoverage[${journeyId}].${field} 不能为空`]
+              : [],
+          ),
+        ];
+      }),
+    ];
+    const failureCaptureIssues = [
+      ...this.buildMissingItemsIssues(
+        'failureCaptureFields',
+        this.getStringArray(browserAcceptancePlan.failureCaptureFields),
+        [...GATE_5_REQUIRED_FAILURE_CAPTURE_FIELDS],
+      ),
+    ];
+
+    return [
+      {
+        id: 'browser-acceptance-plan-version',
+        label: 'BrowserAcceptancePlan 版本绑定',
+        passed: versionIssues.length === 0,
+        summary:
+          '检查 browserAcceptancePlan 是否绑定当前 AppSpec、generationPlan、staticContracts、buildUnitPlan 和 integrationPlan。',
+        issues: versionIssues,
+      },
+      {
+        id: 'browser-tool-plan',
+        label: '浏览器 runner 计划',
+        passed: browserToolIssues.length === 0,
+        summary:
+          '检查 Playwright runner 命令、测试入口、base URL 占位形态和场景覆盖，确保没有真实访问 token。',
+        issues: browserToolIssues,
+      },
+      {
+        id: 'viewport-matrix',
+        label: '桌面与移动 viewport matrix',
+        passed: viewportIssues.length === 0,
+        summary:
+          '检查 browser acceptance skeleton 是否覆盖 desktop 与 mobile 视口、尺寸和场景/需求。',
+        issues: viewportIssues,
+      },
+      {
+        id: 'public-runtime-journeys',
+        label: '公开 runtime journeys',
+        passed: publicJourneyIssues.length === 0,
+        summary:
+          '检查打开公开 runtime、填写/交互提交、等待/读取 submission detail 是否绑定 acceptance scenarios、需求、Gate 4 API checks 和静态合约。',
+        issues: publicJourneyIssues,
+      },
+      {
+        id: 'creator-management-journeys',
+        label: '创建者管理 journeys',
+        passed: creatorJourneyIssues.length === 0,
+        summary:
+          '检查创建者查看 generation run、gate run、submission list/detail 的保守浏览器验收建模。',
+        issues: creatorJourneyIssues,
+      },
+      {
+        id: 'browser-assertions',
+        label: 'console/network/accessibility/responsive assertions',
+        passed: assertionIssues.length === 0,
+        summary:
+          '检查 console error、network 2xx/泄漏/公开端边界、可达可点和响应式布局 assertions。',
+        issues: assertionIssues,
+      },
+      {
+        id: 'artifact-expectations',
+        label: '截图、视频和 trace artifact 期望',
+        passed: artifactIssues.length === 0,
+        summary:
+          '检查后续真实浏览器 runner 的 screenshot/video/trace/console/network/failure artifacts 是否引用 Gate 4 trace artifacts。',
+        issues: artifactIssues,
+      },
+      {
+        id: 'acceptance-scenario-coverage',
+        label: 'acceptance scenario 覆盖',
+        passed: acceptanceCoverageIssues.length === 0,
+        summary:
+          '检查每条 acceptance scenario 是否连接到 Gate 5 journeys、viewports、assertions 和 artifacts。',
+        issues: acceptanceCoverageIssues,
+      },
+      {
+        id: 'requirement-coverage',
+        label: '需求覆盖',
+        passed: requirementCoverageIssues.length === 0,
+        summary:
+          '检查每条核心需求是否连接到 Gate 5 journeys、assertions、artifacts、静态合约和 Gate 4 API checks。',
+        issues: requirementCoverageIssues,
+      },
+      {
+        id: 'journey-coverage',
+        label: 'journey 覆盖',
+        passed: journeyCoverageIssues.length === 0,
+        summary:
+          '检查每条 browser journey 是否连接场景、需求、viewport、assertion 和 artifact。',
+        issues: journeyCoverageIssues,
+      },
+      {
+        id: 'failure-capture-fields',
+        label: '失败捕获字段',
+        passed: failureCaptureIssues.length === 0,
+        summary:
+          '检查后续真实 Gate 5 runner 失败时必须捕获 journey、viewport、assertion、console/network、截图、trace 和耗时。',
+        issues: failureCaptureIssues,
+      },
+    ];
   }
 
   private buildGate4Checks(
@@ -5557,7 +7364,7 @@ export class GeneratedAppService {
         (!Array.isArray(nestedValue) || nestedValue.length > 0) &&
         (!this.isRecord(nestedValue) || Object.keys(nestedValue).length > 0)
           ? [
-              `${nextPath} 不能包含真实 token/secret 字段；Gate 4 测试资源必须使用合成无密钥上下文`,
+              `${nextPath} 不能包含真实 token/secret 字段；门禁测试资源必须使用合成无密钥上下文`,
             ]
           : [];
 

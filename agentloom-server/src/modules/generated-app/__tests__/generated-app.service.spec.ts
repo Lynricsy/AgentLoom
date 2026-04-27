@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DrizzleDB } from '../../../database/database.module';
 import type {
   GeneratedApp,
+  GeneratedAppBrowserAcceptancePlan,
   GeneratedAppBuildUnitPlan,
   GeneratedAppGenerationPlan,
   GeneratedAppGenerationRun,
@@ -44,6 +45,7 @@ const GATE_1_RUN_ID = '66666666-6666-4666-8666-666666666667';
 const GATE_2_RUN_ID = '66666666-6666-4666-8666-666666666668';
 const GATE_3_RUN_ID = '66666666-6666-4666-8666-666666666669';
 const GATE_4_RUN_ID = '66666666-6666-4666-8666-666666666670';
+const GATE_5_RUN_ID = '66666666-6666-4666-8666-666666666671';
 const REPAIR_ATTEMPT_ID = '77777777-7777-4777-8777-777777777777';
 const NOW = new Date('2026-04-25T00:00:00.000Z');
 const DEFAULT_START_GENERATION_RUN_DTO = {
@@ -636,7 +638,7 @@ describe('GeneratedAppService', () => {
     );
   });
 
-  it('Gate 0/Gate 1/Gate 2/Gate 3/Gate 4 通过后应写入 integrationPlan、linked gate runs 且清理未执行门禁旧证据', async () => {
+  it('Gate 0/Gate 1/Gate 2/Gate 3/Gate 4/Gate 5 通过后应写入 browserAcceptancePlan、linked gate runs 且清理未执行门禁旧证据', async () => {
     const previousGateResults = createInitialGeneratedAppGateResults(
       NOW.toISOString(),
     ).map((gate) => ({
@@ -720,6 +722,17 @@ describe('GeneratedAppService', () => {
         'Gate 4 通过：integrationPlan 集成 skeleton 已完整覆盖测试租户/资源、公开 runtime API、创建者管理 API、Agent/Workflow dry-run fixture、插件 sandbox smoke、Gate 3 依赖 artifact、覆盖矩阵、trace artifact 和失败捕获字段；本结果仅表示契约级 integration skeleton 完整，不代表真实 API 调用、真实 Agent/Workflow dry-run、真实插件 WASM/Extism smoke test 或真实 sandbox run 已经执行。',
       evidence: [],
     });
+    const gate5Run = createGeneratedAppGateRun({
+      id: GATE_5_RUN_ID,
+      gateId: 'gate-5',
+      gateOrder: 5,
+      gateName: '浏览器验收门禁',
+      generationRunId: GENERATION_RUN_ID,
+      status: 'passed',
+      summary:
+        'Gate 5 通过：browserAcceptancePlan 浏览器验收 skeleton 已完整覆盖浏览器 runner、桌面/移动视口、公开 runtime journeys、创建者管理 journeys、console/network/accessibility/responsive assertions、截图/视频/trace artifact 期望、覆盖矩阵和失败捕获字段；本结果仅表示契约级 browser acceptance skeleton 完整，不代表真实 Playwright/browser test、真实截图/视频/trace 捕获、真实 console/network 检查、真实公开链接访问或真实端到端交互已经执行。',
+      evidence: [],
+    });
     const completedRun = createGeneratedAppGenerationRun({
       runNumber: 2,
       status: 'failed',
@@ -727,9 +740,9 @@ describe('GeneratedAppService', () => {
       maxRuntimeSeconds: 600,
       completedAt: NOW,
       summary:
-        '门禁运行器骨架完成 Gate 0 AppSpec 完整性检查、Gate 1 架构计划门禁、Gate 2 静态合约门禁、Gate 3 构建与单元 skeleton 完整性检查和 Gate 4 integration skeleton 完整性检查；Gate 5-7 runner 尚未接入/未执行，当前应用不能形成 publish candidate，保持不可发布。',
+        '门禁运行器骨架完成 Gate 0 AppSpec 完整性检查、Gate 1 架构计划门禁、Gate 2 静态合约门禁、Gate 3 构建与单元 skeleton 完整性检查、Gate 4 integration skeleton 完整性检查和 Gate 5 browser acceptance skeleton 完整性检查；Gate 6-7 runner 尚未接入/未执行，当前应用不能形成 publish candidate，保持不可发布。',
       failureReason:
-        'Gate 5-7 runner 尚未接入/未执行，不能形成 publish candidate。',
+        'Gate 6-7 runner 尚未接入/未执行，不能形成 publish candidate。',
     });
     const insertRunChain = createInsertReturningChain([run]);
     const insertGateRunChain = createInsertReturningChain([gateRun]);
@@ -737,10 +750,12 @@ describe('GeneratedAppService', () => {
     const insertGate2RunChain = createInsertReturningChain([gate2Run]);
     const insertGate3RunChain = createInsertReturningChain([gate3Run]);
     const insertGate4RunChain = createInsertReturningChain([gate4Run]);
+    const insertGate5RunChain = createInsertReturningChain([gate5Run]);
     let gate1UpdatePayload: Partial<GeneratedApp> = {};
     let gate2UpdatePayload: Partial<GeneratedApp> = {};
     let gate3UpdatePayload: Partial<GeneratedApp> = {};
     let gate4UpdatePayload: Partial<GeneratedApp> = {};
+    let gate5UpdatePayload: Partial<GeneratedApp> = {};
     const updateAppAfterGate0Chain =
       createGeneratedAppUpdateReturningFromPayload(app);
     const updateAppAfterGate1Chain =
@@ -759,6 +774,10 @@ describe('GeneratedAppService', () => {
       createGeneratedAppUpdateReturningFromPayload(app, (payload) => {
         gate4UpdatePayload = payload;
       });
+    const updateAppAfterGate5Chain =
+      createGeneratedAppUpdateReturningFromPayload(app, (payload) => {
+        gate5UpdatePayload = payload;
+      });
     const updateRunChain = createUpdateReturningChain([completedRun]);
     mockTenantDb.select
       .mockReturnValueOnce(createSelectChain([app]))
@@ -769,13 +788,15 @@ describe('GeneratedAppService', () => {
       .mockReturnValueOnce(insertGate1RunChain)
       .mockReturnValueOnce(insertGate2RunChain)
       .mockReturnValueOnce(insertGate3RunChain)
-      .mockReturnValueOnce(insertGate4RunChain);
+      .mockReturnValueOnce(insertGate4RunChain)
+      .mockReturnValueOnce(insertGate5RunChain);
     mockTenantDb.update
       .mockReturnValueOnce(updateAppAfterGate0Chain)
       .mockReturnValueOnce(updateAppAfterGate1Chain)
       .mockReturnValueOnce(updateAppAfterGate2Chain)
       .mockReturnValueOnce(updateAppAfterGate3Chain)
       .mockReturnValueOnce(updateAppAfterGate4Chain)
+      .mockReturnValueOnce(updateAppAfterGate5Chain)
       .mockReturnValueOnce(updateRunChain);
 
     const response = await service.startGenerationRun(
@@ -866,6 +887,19 @@ describe('GeneratedAppService', () => {
         repairInstructions: null,
       }),
     );
+    expect(insertGate5RunChain.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: TENANT_ID,
+        generatedAppId: APP_ID,
+        generationRunId: GENERATION_RUN_ID,
+        gateId: 'gate-5',
+        gateOrder: 5,
+        gateName: '浏览器验收门禁',
+        status: 'passed',
+        failure: null,
+        repairInstructions: null,
+      }),
+    );
     const gate1RunPayload = insertGate1RunChain.values.mock.calls[0]?.[0] as {
       evidence: GeneratedApp['gateResults'][number]['evidence'];
     };
@@ -950,6 +984,32 @@ describe('GeneratedAppService', () => {
         }),
       ]),
     );
+    const gate5RunPayload = insertGate5RunChain.values.mock.calls[0]?.[0] as {
+      evidence: GeneratedApp['gateResults'][number]['evidence'];
+    };
+    expect(gate5RunPayload.evidence).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'gate-5-browser-tool-plan',
+          kind: 'browser',
+          summary: expect.stringContaining(
+            '未执行真实 Playwright/browser test',
+          ),
+        }),
+        expect.objectContaining({
+          id: 'gate-5-public-runtime-journeys',
+          kind: 'browser',
+          summary: expect.stringContaining('真实公开链接访问或真实端到端交互'),
+        }),
+        expect.objectContaining({
+          id: 'gate-5-artifact-expectations',
+          kind: 'browser',
+          summary: expect.stringContaining(
+            '真实截图/视频/trace 捕获、真实 console/network 检查',
+          ),
+        }),
+      ]),
+    );
 
     expect(gate1UpdatePayload.generationPlan).not.toHaveProperty(
       'staticContracts',
@@ -960,8 +1020,11 @@ describe('GeneratedAppService', () => {
     expect(gate3UpdatePayload.generationPlan).not.toHaveProperty(
       'integrationPlan',
     );
+    expect(gate4UpdatePayload.generationPlan).not.toHaveProperty(
+      'browserAcceptancePlan',
+    );
 
-    const appUpdatePayload = gate4UpdatePayload as {
+    const appUpdatePayload = gate5UpdatePayload as {
       gateResults: GeneratedApp['gateResults'];
       readiness: GeneratedApp['readiness'];
       status: GeneratedApp['status'];
@@ -978,18 +1041,19 @@ describe('GeneratedAppService', () => {
       'gate-2',
       'gate-3',
       'gate-4',
+      'gate-5',
     ]);
     expect(
-      appUpdatePayload.gateResults.find((gate) => gate.gateId === 'gate-5')
+      appUpdatePayload.gateResults.find((gate) => gate.gateId === 'gate-6')
         ?.status,
     ).toBe('pending');
     expect(
-      appUpdatePayload.gateResults.find((gate) => gate.gateId === 'gate-5')
+      appUpdatePayload.gateResults.find((gate) => gate.gateId === 'gate-6')
         ?.evidence,
     ).toEqual([]);
     expect(
       appUpdatePayload.gateResults
-        .filter((gate) => ['gate-5', 'gate-6', 'gate-7'].includes(gate.gateId))
+        .filter((gate) => ['gate-6', 'gate-7'].includes(gate.gateId))
         .every(
           (gate) => gate.status !== 'passed' && gate.evidence.length === 0,
         ),
@@ -1290,11 +1354,156 @@ describe('GeneratedAppService', () => {
         ]),
       }),
     );
+    expect(appUpdatePayload.generationPlan.browserAcceptancePlan).toEqual(
+      expect.objectContaining({
+        planVersion: 1,
+        appSpecVersion: 1,
+        generationPlanVersion: 1,
+        staticContractsVersion: 1,
+        buildUnitPlanVersion: 1,
+        integrationPlanVersion: 1,
+        executionLevel: 'browser-acceptance-skeleton',
+        browserToolPlan: expect.objectContaining({
+          runner: 'playwright',
+          command: 'agentloom generated-app gate-5 browser-acceptance',
+          testEntry: 'tests/generated-app/browser-acceptance.spec.ts',
+          baseUrlShape:
+            'http://localhost:{previewPort}/generated-apps/public/{publicShareAccess}',
+          usesRealTokens: false,
+          scenarioIds: ['scenario-1'],
+        }),
+        viewportMatrix: expect.arrayContaining([
+          expect.objectContaining({
+            viewportId: 'viewport-desktop',
+            category: 'desktop',
+            width: 1440,
+            height: 900,
+          }),
+          expect.objectContaining({
+            viewportId: 'viewport-mobile',
+            category: 'mobile',
+            width: 390,
+            height: 844,
+          }),
+        ]),
+        publicRuntimeJourneys: expect.arrayContaining([
+          expect.objectContaining({
+            journeyId: 'gate-5-public-runtime-open',
+            publicRuntimeApiCheckIds: ['gate-4-public-runtime-read'],
+          }),
+          expect.objectContaining({
+            journeyId: 'gate-5-public-runtime-submit',
+            publicRuntimeApiCheckIds: ['gate-4-public-runtime-submit-input'],
+          }),
+          expect.objectContaining({
+            journeyId: 'gate-5-public-submission-detail',
+            publicRuntimeApiCheckIds: ['gate-4-public-submission-detail'],
+          }),
+        ]),
+        creatorManagementJourneys: expect.arrayContaining([
+          expect.objectContaining({
+            journeyId: 'gate-5-creator-generation-run-review',
+            creatorManagementApiCheckIds: [
+              'gate-4-creator-generation-run-query',
+            ],
+          }),
+          expect.objectContaining({
+            journeyId: 'gate-5-creator-gate-run-review',
+            creatorManagementApiCheckIds: ['gate-4-creator-gate-run-query'],
+          }),
+          expect.objectContaining({
+            journeyId: 'gate-5-creator-submission-review',
+            creatorManagementApiCheckIds: ['gate-4-creator-submission-query'],
+          }),
+        ]),
+        consoleAssertions: expect.arrayContaining([
+          expect.objectContaining({
+            assertionId: 'gate-5-console-no-unhandled-error',
+            emptyAllowedWarningsReason: expect.stringContaining(
+              '不允许 console warning',
+            ),
+          }),
+        ]),
+        networkAssertions: expect.arrayContaining([
+          expect.objectContaining({
+            assertionId: 'gate-5-network-core-requests-2xx',
+            expectedStatusRange: '2xx',
+          }),
+          expect.objectContaining({
+            assertionId: 'gate-5-network-public-forbids-creator-internal',
+            forbiddenEndpointPatterns: expect.arrayContaining([
+              '/generated-apps/{appId}/generation-runs',
+            ]),
+          }),
+        ]),
+        accessibilityInteractionAssertions: expect.arrayContaining([
+          expect.objectContaining({
+            assertionId: 'gate-5-accessibility-critical-buttons-clickable',
+          }),
+        ]),
+        responsiveLayoutAssertions: expect.arrayContaining([
+          expect.objectContaining({
+            assertionId: 'gate-5-responsive-mobile-no-overflow',
+            viewportIds: ['viewport-mobile'],
+          }),
+        ]),
+        artifactExpectations: expect.arrayContaining([
+          expect.objectContaining({
+            artifactId: 'desktop-screenshot',
+            kind: 'screenshot',
+            referencesGate4TraceArtifactIds: expect.arrayContaining([
+              'public-runtime-api-trace',
+              'agent-workflow-dry-run-trace',
+            ]),
+          }),
+          expect.objectContaining({
+            artifactId: 'playwright-trace',
+            kind: 'playwright_trace',
+          }),
+        ]),
+        acceptanceScenarioCoverage: [
+          expect.objectContaining({
+            scenarioId: 'scenario-1',
+            journeyIds: expect.arrayContaining([
+              'gate-5-public-runtime-submit',
+            ]),
+            viewportIds: expect.arrayContaining([
+              'viewport-desktop',
+              'viewport-mobile',
+            ]),
+          }),
+        ],
+        requirementCoverage: expect.arrayContaining([
+          expect.objectContaining({
+            requirementId: 'req-1',
+            gate4ApiCheckIds: expect.arrayContaining([
+              'gate-4-public-runtime-submit-input',
+              'gate-4-creator-submission-query',
+            ]),
+          }),
+        ]),
+        journeyCoverage: expect.arrayContaining([
+          expect.objectContaining({
+            journeyId: 'gate-5-public-runtime-submit',
+            assertionIds: expect.arrayContaining([
+              'gate-5-network-core-requests-2xx',
+            ]),
+          }),
+        ]),
+        failureCaptureFields: expect.arrayContaining([
+          'journeyId',
+          'viewportId',
+          'assertionId',
+          'tracePath',
+          'durationMs',
+        ]),
+      }),
+    );
     expect(updateRunChain.set).toHaveBeenCalledWith(
       expect.objectContaining({
         status: 'failed',
         failureReason:
-          'Gate 5-7 runner 尚未接入/未执行，不能形成 publish candidate。',
+          'Gate 6-7 runner 尚未接入/未执行，不能形成 publish candidate。',
         completedAt: expect.any(Date),
       }),
     );
@@ -1303,7 +1512,7 @@ describe('GeneratedAppService', () => {
         id: GENERATION_RUN_ID,
         status: 'failed',
         failureReason:
-          'Gate 5-7 runner 尚未接入/未执行，不能形成 publish candidate。',
+          'Gate 6-7 runner 尚未接入/未执行，不能形成 publish candidate。',
       }),
     );
     expect(response.gateRuns).toEqual([
@@ -1334,6 +1543,12 @@ describe('GeneratedAppService', () => {
         status: 'passed',
         summary: expect.stringContaining('integration skeleton 完整'),
       }),
+      expect.objectContaining({
+        gateId: 'gate-5',
+        generationRunId: GENERATION_RUN_ID,
+        status: 'passed',
+        summary: expect.stringContaining('browser acceptance skeleton 完整'),
+      }),
     ]);
     expect(response.app.generationPlan).toEqual(
       expect.objectContaining({
@@ -1346,6 +1561,9 @@ describe('GeneratedAppService', () => {
         }),
         integrationPlan: expect.objectContaining({
           executionLevel: 'integration-skeleton',
+        }),
+        browserAcceptancePlan: expect.objectContaining({
+          executionLevel: 'browser-acceptance-skeleton',
         }),
       }),
     );
@@ -2621,6 +2839,9 @@ describe('GeneratedAppService', () => {
     expect(appUpdatePayload.generationPlan.integrationPlan).toEqual(
       malformedIntegrationPlan,
     );
+    expect(appUpdatePayload.generationPlan).not.toHaveProperty(
+      'browserAcceptancePlan',
+    );
     expect(
       appUpdatePayload.gateResults.find((gate) => gate.gateId === 'gate-4'),
     ).toEqual(
@@ -2658,6 +2879,539 @@ describe('GeneratedAppService', () => {
     );
     expect(response.app.generationPlan?.integrationPlan).toEqual(
       malformedIntegrationPlan,
+    );
+    expect(response.app.generationPlan).not.toHaveProperty(
+      'browserAcceptancePlan',
+    );
+    expect(
+      response.gateRuns.some((gateRun) => gateRun.gateId === 'gate-5'),
+    ).toBe(false);
+  });
+
+  it('Gate 5 失败时应写入失败证据、保留 attempted browserAcceptancePlan 并以 Gate 5 failure reason 结束', async () => {
+    const app = createGeneratedApp({
+      status: 'published',
+      readiness: createPublishCandidateReadiness(),
+      publicShareEnabled: true,
+      publicShareToken: 'f'.repeat(64),
+      publicShareCreatedAt: NOW,
+    });
+    const validPlan = (
+      service as unknown as {
+        buildGenerationPlan(
+          appSpec: GeneratedApp['appSpec'],
+        ): GeneratedAppGenerationPlan;
+      }
+    ).buildGenerationPlan(app.appSpec);
+    const validContracts = (
+      service as unknown as {
+        buildStaticContracts(
+          appSpec: GeneratedApp['appSpec'],
+          generationPlan: GeneratedAppGenerationPlan,
+        ): GeneratedAppStaticContracts;
+      }
+    ).buildStaticContracts(app.appSpec, validPlan);
+    const validBuildUnitPlan = (
+      service as unknown as {
+        buildBuildUnitPlan(
+          appSpec: GeneratedApp['appSpec'],
+          generationPlan: GeneratedAppGenerationPlan,
+          staticContracts: GeneratedAppStaticContracts,
+        ): GeneratedAppBuildUnitPlan;
+      }
+    ).buildBuildUnitPlan(app.appSpec, validPlan, validContracts);
+    const validIntegrationPlan = (
+      service as unknown as {
+        buildIntegrationPlan(
+          appSpec: GeneratedApp['appSpec'],
+          generationPlan: GeneratedAppGenerationPlan,
+          staticContracts: GeneratedAppStaticContracts,
+          buildUnitPlan: GeneratedAppBuildUnitPlan,
+        ): GeneratedAppIntegrationPlan;
+      }
+    ).buildIntegrationPlan(
+      app.appSpec,
+      validPlan,
+      validContracts,
+      validBuildUnitPlan,
+    );
+    const validBrowserAcceptancePlan = (
+      service as unknown as {
+        buildBrowserAcceptancePlan(
+          appSpec: GeneratedApp['appSpec'],
+          generationPlan: GeneratedAppGenerationPlan,
+          staticContracts: GeneratedAppStaticContracts,
+          buildUnitPlan: GeneratedAppBuildUnitPlan,
+          integrationPlan: GeneratedAppIntegrationPlan,
+        ): GeneratedAppBrowserAcceptancePlan;
+      }
+    ).buildBrowserAcceptancePlan(
+      app.appSpec,
+      validPlan,
+      validContracts,
+      validBuildUnitPlan,
+      validIntegrationPlan,
+    );
+    const malformedBrowserAcceptancePlan: GeneratedAppBrowserAcceptancePlan = {
+      ...validBrowserAcceptancePlan,
+      browserToolPlan: {
+        ...validBrowserAcceptancePlan.browserToolPlan,
+        baseUrlShape: app.publicShareToken ?? 'f'.repeat(64),
+        publicShareAccessPlaceholder: app.publicShareToken ?? 'f'.repeat(64),
+        usesRealTokens: true,
+        scenarioIds: ['scenario-1', 'scenario-missing'],
+      } as unknown as GeneratedAppBrowserAcceptancePlan['browserToolPlan'],
+      viewportMatrix: [
+        {
+          ...validBrowserAcceptancePlan.viewportMatrix[0],
+          scenarioIds: ['scenario-missing'],
+          requirementIds: ['req-missing'],
+        },
+      ],
+      publicRuntimeJourneys:
+        validBrowserAcceptancePlan.publicRuntimeJourneys.map(
+          (journey, index) =>
+            index === 0
+              ? {
+                  ...journey,
+                  kind: 'public_runtime_hack' as GeneratedAppBrowserAcceptancePlan['publicRuntimeJourneys'][number]['kind'],
+                  publicRuntimeApiCheckIds: ['gate-4-public-missing'],
+                  staticContractIds: ['gate-2-missing'],
+                  scenarioIds: ['scenario-missing'],
+                }
+              : journey,
+        ),
+      creatorManagementJourneys:
+        validBrowserAcceptancePlan.creatorManagementJourneys.map(
+          (journey, index) =>
+            index === 0
+              ? {
+                  ...journey,
+                  journeyId: 'gate-5-creator-ghost-review',
+                  creatorManagementApiCheckIds: [
+                    'gate-4-creator-missing-query',
+                  ],
+                }
+              : journey,
+        ),
+      consoleAssertions: [
+        {
+          assertionId: 'gate-5-console-allowed-warning-policy',
+          kind: 'allowed_warning_policy',
+          journeyIds: ['gate-5-public-runtime-open'],
+          viewportIds: ['viewport-desktop'],
+          allowedWarnings: [],
+          emptyAllowedWarningsReason: null,
+        },
+      ],
+      networkAssertions: [
+        {
+          ...validBrowserAcceptancePlan.networkAssertions[0],
+          apiCheckIds: ['gate-4-missing-check'],
+          staticContractIds: ['gate-2-missing'],
+          expectedStatusRange:
+            '3xx' as GeneratedAppBrowserAcceptancePlan['networkAssertions'][number]['expectedStatusRange'],
+        },
+        {
+          ...validBrowserAcceptancePlan.networkAssertions[1],
+          journeyIds: [
+            'gate-5-public-runtime-open',
+            'gate-5-creator-gate-run-review',
+          ],
+          apiCheckIds: [
+            'gate-4-public-runtime-read',
+            'gate-4-creator-gate-run-query',
+          ],
+          forbiddenEndpointPatterns: [],
+        },
+        {
+          ...validBrowserAcceptancePlan.networkAssertions[2],
+          forbiddenEndpointPatterns: ['authorization'],
+        },
+      ],
+      accessibilityInteractionAssertions: [
+        {
+          ...validBrowserAcceptancePlan.accessibilityInteractionAssertions[0],
+          assertionId: 'gate-5-accessibility-ghost',
+          journeyIds: ['gate-5-journey-missing'],
+          viewportIds: ['viewport-missing'],
+        },
+      ],
+      responsiveLayoutAssertions: [],
+      artifactExpectations: [
+        {
+          artifactId: 'desktop-screenshot',
+          kind: 'ghost_artifact' as GeneratedAppBrowserAcceptancePlan['artifactExpectations'][number]['kind'],
+          path: '',
+          required: false,
+          producedByJourneyIds: ['gate-5-journey-missing'],
+          producedByAssertionIds: ['gate-5-assertion-missing'],
+          referencesGate4TraceArtifactIds: ['gate-4-trace-missing'],
+        },
+      ],
+      acceptanceScenarioCoverage: [
+        {
+          scenarioId: 'scenario-missing',
+          requirementIds: ['req-missing'],
+          journeyIds: ['gate-5-journey-missing'],
+          viewportIds: ['viewport-missing'],
+          assertionIds: ['gate-5-assertion-missing'],
+          artifactIds: ['artifact-missing'],
+        },
+      ],
+      requirementCoverage: [
+        {
+          requirementId: 'req-missing',
+          scenarioIds: ['scenario-missing'],
+          journeyIds: ['gate-5-journey-missing'],
+          assertionIds: ['gate-5-assertion-missing'],
+          artifactIds: ['artifact-missing'],
+          staticContractIds: ['gate-2-missing'],
+          gate4ApiCheckIds: ['gate-4-missing-check'],
+        },
+      ],
+      journeyCoverage: [
+        {
+          journeyId: 'gate-5-journey-missing',
+          kind: 'illegal_journey_kind',
+          scenarioIds: ['scenario-missing'],
+          requirementIds: ['req-missing'],
+          viewportIds: ['viewport-missing'],
+          assertionIds: ['gate-5-assertion-missing'],
+          artifactIds: ['artifact-missing'],
+        },
+      ],
+      failureCaptureFields: ['journeyId'],
+    };
+    vi.spyOn(
+      service as unknown as {
+        buildBrowserAcceptancePlan(
+          appSpec: GeneratedApp['appSpec'],
+          generationPlan: GeneratedAppGenerationPlan,
+          staticContracts: GeneratedAppStaticContracts,
+          buildUnitPlan: GeneratedAppBuildUnitPlan,
+          integrationPlan: GeneratedAppIntegrationPlan,
+        ): GeneratedAppBrowserAcceptancePlan;
+      },
+      'buildBrowserAcceptancePlan',
+    ).mockReturnValue(malformedBrowserAcceptancePlan);
+    const run = createGeneratedAppGenerationRun();
+    const gateRun = createGeneratedAppGateRun({
+      gateId: 'gate-0',
+      gateOrder: 0,
+      gateName: '需求规格门禁',
+      generationRunId: GENERATION_RUN_ID,
+      status: 'passed',
+      summary:
+        'Gate 0 通过：AppSpec 结构完整，核心需求均有 acceptance scenario 与 traceability 覆盖。',
+      evidence: [],
+    });
+    const gate1Run = createGeneratedAppGateRun({
+      id: GATE_1_RUN_ID,
+      gateId: 'gate-1',
+      gateOrder: 1,
+      gateName: '架构计划门禁',
+      generationRunId: GENERATION_RUN_ID,
+      status: 'passed',
+      summary:
+        'Gate 1 通过：generationPlan 已覆盖 AppSpec 页面、Agent/Workflow 编排、插件/工具策略、数据持久化、Gate 2-7 测试计划和需求 traceability。',
+      evidence: [],
+    });
+    const gate2Run = createGeneratedAppGateRun({
+      id: GATE_2_RUN_ID,
+      gateId: 'gate-2',
+      gateOrder: 2,
+      gateName: '静态合约门禁',
+      generationRunId: GENERATION_RUN_ID,
+      status: 'passed',
+      summary:
+        'Gate 2 通过：staticContracts 已覆盖公开运行输入输出、前端路由、Workflow/Agent 编排、插件权限、提交持久化、测试入口和需求 traceability。',
+      evidence: [],
+    });
+    const gate3Run = createGeneratedAppGateRun({
+      id: GATE_3_RUN_ID,
+      gateId: 'gate-3',
+      gateOrder: 3,
+      gateName: '构建与单元门禁',
+      generationRunId: GENERATION_RUN_ID,
+      status: 'passed',
+      summary:
+        'Gate 3 通过：buildUnitPlan 构建与单元 skeleton 已完整覆盖命令、预期产物、测试入口、合约/场景覆盖、插件构建期望和失败捕获字段；本结果仅表示契约级 skeleton 完整，不代表真实前端构建、插件构建、单元测试、组件测试或 golden test 已经执行。',
+      evidence: [],
+    });
+    const gate4Run = createGeneratedAppGateRun({
+      id: GATE_4_RUN_ID,
+      gateId: 'gate-4',
+      gateOrder: 4,
+      gateName: '集成门禁',
+      generationRunId: GENERATION_RUN_ID,
+      status: 'passed',
+      summary:
+        'Gate 4 通过：integrationPlan 集成 skeleton 已完整覆盖测试租户/资源、公开 runtime API、创建者管理 API、Agent/Workflow dry-run fixture、插件 sandbox smoke、Gate 3 依赖 artifact、覆盖矩阵、trace artifact 和失败捕获字段；本结果仅表示契约级 integration skeleton 完整，不代表真实 API 调用、真实 Agent/Workflow dry-run、真实插件 WASM/Extism smoke test 或真实 sandbox run 已经执行。',
+      evidence: [],
+    });
+    const gate5Run = createGeneratedAppGateRun({
+      id: GATE_5_RUN_ID,
+      gateId: 'gate-5',
+      gateOrder: 5,
+      gateName: '浏览器验收门禁',
+      generationRunId: GENERATION_RUN_ID,
+      status: 'failed',
+      summary:
+        'Gate 5 失败：browserAcceptancePlan 未完整覆盖浏览器 runner、桌面/移动视口、公开 runtime journeys、创建者管理 journeys、console/network/accessibility/responsive assertions、截图/视频/trace artifacts、覆盖矩阵或失败捕获字段；本结果仅表示契约级 browser acceptance skeleton 检查失败，不代表真实 Playwright/browser test、真实截图/视频/trace 捕获、真实 console/network 检查、真实公开链接访问或真实端到端交互已经执行。',
+      failure: {
+        code: 'browser-acceptance-plan-incomplete',
+        message:
+          'BrowserAcceptancePlan 浏览器验收 skeleton 检查失败：浏览器 runner 计划；本失败只来自 browser-acceptance-skeleton 合约完整性检查，不代表真实 Playwright/browser test、真实截图/视频/trace 捕获、真实 console/network 检查、真实公开链接访问或真实端到端交互已经执行。',
+      },
+      repairInstructions:
+        '修复 generationPlan.browserAcceptancePlan，使其覆盖 Playwright 或等价浏览器 runner、desktop/mobile viewport matrix、公开 runtime 与创建者管理 journeys、console/network/accessibility/responsive assertions、引用 Gate 4 trace artifacts 的截图/视频/trace 产物期望、需求/场景/旅程覆盖和 failure capture fields；当前 Gate 5 仍只检查 browser-acceptance-skeleton 合约，不代表真实 Playwright/browser test、真实截图/视频/trace 捕获、真实 console/network 检查、真实公开链接访问或真实端到端交互已经执行。',
+      evidence: [],
+    });
+    const completedRun = createGeneratedAppGenerationRun({
+      status: 'failed',
+      failureReason:
+        'BrowserAcceptancePlan 浏览器验收 skeleton 检查失败：浏览器 runner 计划；本失败只来自 browser-acceptance-skeleton 合约完整性检查，不代表真实 Playwright/browser test、真实截图/视频/trace 捕获、真实 console/network 检查、真实公开链接访问或真实端到端交互已经执行。',
+      completedAt: NOW,
+    });
+    const insertRunChain = createInsertReturningChain([run]);
+    const insertGateRunChain = createInsertReturningChain([gateRun]);
+    const insertGate1RunChain = createInsertReturningChain([gate1Run]);
+    const insertGate2RunChain = createInsertReturningChain([gate2Run]);
+    const insertGate3RunChain = createInsertReturningChain([gate3Run]);
+    const insertGate4RunChain = createInsertReturningChain([gate4Run]);
+    const insertGate5RunChain = createInsertReturningChain([gate5Run]);
+    const updateAppAfterGate0Chain =
+      createGeneratedAppUpdateReturningFromPayload(app);
+    const updateAppAfterGate1Chain =
+      createGeneratedAppUpdateReturningFromPayload(app);
+    const updateAppAfterGate2Chain =
+      createGeneratedAppUpdateReturningFromPayload(app);
+    const updateAppAfterGate3Chain =
+      createGeneratedAppUpdateReturningFromPayload(app);
+    const updateAppAfterGate4Chain =
+      createGeneratedAppUpdateReturningFromPayload(app);
+    let gate5UpdatePayload: Partial<GeneratedApp> = {};
+    const updateAppAfterGate5Chain =
+      createGeneratedAppUpdateReturningFromPayload(app, (payload) => {
+        gate5UpdatePayload = payload;
+      });
+    const updateRunChain = createUpdateReturningChain([completedRun]);
+    mockTenantDb.select
+      .mockReturnValueOnce(createSelectChain([app]))
+      .mockReturnValueOnce(createSelectLatestRunNumberChain(null));
+    mockTenantDb.insert
+      .mockReturnValueOnce(insertRunChain)
+      .mockReturnValueOnce(insertGateRunChain)
+      .mockReturnValueOnce(insertGate1RunChain)
+      .mockReturnValueOnce(insertGate2RunChain)
+      .mockReturnValueOnce(insertGate3RunChain)
+      .mockReturnValueOnce(insertGate4RunChain)
+      .mockReturnValueOnce(insertGate5RunChain);
+    mockTenantDb.update
+      .mockReturnValueOnce(updateAppAfterGate0Chain)
+      .mockReturnValueOnce(updateAppAfterGate1Chain)
+      .mockReturnValueOnce(updateAppAfterGate2Chain)
+      .mockReturnValueOnce(updateAppAfterGate3Chain)
+      .mockReturnValueOnce(updateAppAfterGate4Chain)
+      .mockReturnValueOnce(updateAppAfterGate5Chain)
+      .mockReturnValueOnce(updateRunChain);
+
+    const response = await service.startGenerationRun(
+      TENANT_ID,
+      USER_ID,
+      APP_ID,
+      DEFAULT_START_GENERATION_RUN_DTO,
+    );
+
+    expect(insertGate5RunChain.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        gateId: 'gate-5',
+        status: 'failed',
+        summary: expect.stringContaining('不代表真实 Playwright/browser test'),
+        failure: expect.objectContaining({
+          code: 'browser-acceptance-plan-incomplete',
+          message: expect.stringContaining(
+            '不代表真实 Playwright/browser test',
+          ),
+        }),
+        repairInstructions: expect.stringContaining(
+          '修复 generationPlan.browserAcceptancePlan',
+        ),
+      }),
+    );
+    const gate5RunPayload = insertGate5RunChain.values.mock.calls[0]?.[0] as {
+      evidence: GeneratedApp['gateResults'][number]['evidence'];
+      failure: { details?: { checks?: Array<{ issues: string[] }> } };
+    };
+    expect(
+      gate5RunPayload.evidence.some((item) =>
+        item.summary.includes('browserToolPlan.usesRealTokens 必须为 false'),
+      ),
+    ).toBe(true);
+    expect(
+      gate5RunPayload.evidence.some((item) =>
+        item.summary.includes('browserToolPlan.scenarioIds 引用了未知对象'),
+      ),
+    ).toBe(true);
+    expect(
+      gate5RunPayload.evidence.some((item) =>
+        item.summary.includes('viewportMatrix.viewportId 缺少 viewport-mobile'),
+      ),
+    ).toBe(true);
+    expect(
+      gate5RunPayload.evidence.some((item) =>
+        item.summary.includes('publicRuntimeJourneys[0].kind 必须是'),
+      ),
+    ).toBe(true);
+    expect(
+      gate5RunPayload.evidence.some((item) =>
+        item.summary.includes(
+          'publicRuntimeJourneys[0].publicRuntimeApiCheckIds 引用了未知对象 gate-4-public-missing',
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      gate5RunPayload.evidence.some((item) =>
+        item.summary.includes(
+          'creatorManagementJourneys[0].journeyId 引用了未知 journey gate-5-creator-ghost-review',
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      gate5RunPayload.evidence.some((item) =>
+        item.summary.includes('emptyAllowedWarningsReason 缺失'),
+      ),
+    ).toBe(true);
+    expect(
+      gate5RunPayload.evidence.some((item) =>
+        item.summary.includes('expectedStatusRange 必须为 2xx'),
+      ),
+    ).toBe(true);
+    expect(
+      gate5RunPayload.evidence.some((item) =>
+        item.summary.includes(
+          'journeyIds 只能引用公开 runtime journey，收到 gate-5-creator-gate-run-review',
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      gate5RunPayload.evidence.some((item) =>
+        item.summary.includes(
+          'apiCheckIds 只能引用 Gate 4 public runtime API check，收到 gate-4-creator-gate-run-query',
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      gate5RunPayload.evidence.some((item) =>
+        item.summary.includes(
+          'forbiddenEndpointPatterns 缺少 /generated-apps/{appId}',
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      gate5RunPayload.evidence.some((item) =>
+        item.summary.includes(
+          'forbiddenEndpointPatterns 缺少 public_share_token',
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      gate5RunPayload.evidence.some((item) =>
+        item.summary.includes('responsiveLayoutAssertions 不能为空'),
+      ),
+    ).toBe(true);
+    expect(
+      gate5RunPayload.evidence.some((item) =>
+        item.summary.includes(
+          'artifactExpectations.artifactId 缺少 mobile-screenshot',
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      gate5RunPayload.evidence.some((item) =>
+        item.summary.includes('artifactExpectations[0].kind 必须是'),
+      ),
+    ).toBe(true);
+    expect(
+      gate5RunPayload.evidence.some((item) =>
+        item.summary.includes(
+          'referencesGate4TraceArtifactIds 引用了未知对象 gate-4-trace-missing',
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      gate5RunPayload.evidence.some((item) =>
+        item.summary.includes(
+          'journeyCoverage[0].kind 是非法 journey kind illegal_journey_kind',
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      gate5RunPayload.evidence.some((item) =>
+        item.summary.includes('failureCaptureFields 缺少 viewportId'),
+      ),
+    ).toBe(true);
+    expect(
+      gate5RunPayload.evidence.every((item) =>
+        item.summary.includes(
+          '未执行真实 Playwright/browser test、真实截图/视频/trace 捕获、真实 console/network 检查、真实公开链接访问或真实端到端交互',
+        ),
+      ),
+    ).toBe(true);
+    expect(JSON.stringify(gate5RunPayload.failure)).not.toContain(
+      app.publicShareToken,
+    );
+
+    const appUpdatePayload = gate5UpdatePayload as {
+      generationPlan: GeneratedAppGenerationPlan;
+      gateResults: GeneratedApp['gateResults'];
+      status: GeneratedApp['status'];
+      publicShareToken: string | null;
+      publicShareEnabled: boolean;
+    };
+    expect(appUpdatePayload.generationPlan.browserAcceptancePlan).toEqual(
+      malformedBrowserAcceptancePlan,
+    );
+    expect(
+      appUpdatePayload.gateResults.find((gate) => gate.gateId === 'gate-5'),
+    ).toEqual(
+      expect.objectContaining({
+        status: 'failed',
+        summary: expect.stringContaining('Gate 5 失败：browserAcceptancePlan'),
+      }),
+    );
+    expect(
+      appUpdatePayload.gateResults.find((gate) => gate.gateId === 'gate-6')
+        ?.status,
+    ).toBe('pending');
+    expect(appUpdatePayload.status).toBe('failed');
+    expect(appUpdatePayload.publicShareToken).toBeNull();
+    expect(appUpdatePayload.publicShareEnabled).toBe(false);
+    expect(updateRunChain.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'failed',
+        failureReason: expect.stringContaining(
+          'BrowserAcceptancePlan 浏览器验收 skeleton',
+        ),
+      }),
+    );
+    expect(response.generationRun.status).toBe('failed');
+    expect(response.generationRun.failureReason).toContain(
+      'BrowserAcceptancePlan 浏览器验收 skeleton',
+    );
+    expect(response.gateRuns).toHaveLength(6);
+    expect(response.gateRuns[5]).toEqual(
+      expect.objectContaining({
+        gateId: 'gate-5',
+        status: 'failed',
+        failure: expect.objectContaining({
+          code: 'browser-acceptance-plan-incomplete',
+        }),
+      }),
+    );
+    expect(response.app.generationPlan?.browserAcceptancePlan).toEqual(
+      malformedBrowserAcceptancePlan,
     );
   });
 
