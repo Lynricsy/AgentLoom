@@ -276,6 +276,23 @@ export type CreateGeneratedAppGenerationRunDtoType = z.infer<
   typeof CreateGeneratedAppGenerationRunSchema
 >;
 
+export const StartGeneratedAppGenerationRunSchema = z.preprocess(
+  (value) => value ?? {},
+  z.object({
+    triggerSource: GeneratedAppGenerationRunTriggerSchema.default('manual'),
+    maxRepairAttempts: z.number().int().min(0).max(20).default(3),
+    maxRuntimeSeconds: z.number().int().min(1).max(86400).default(1800),
+  }),
+);
+
+export class StartGeneratedAppGenerationRunDto extends createZodDto(
+  StartGeneratedAppGenerationRunSchema,
+) {}
+
+export type StartGeneratedAppGenerationRunDtoType = z.infer<
+  typeof StartGeneratedAppGenerationRunSchema
+>;
+
 export const UpdateGeneratedAppGenerationRunSchema = z.object({
   status: GeneratedAppGenerationRunStatusSchema.optional(),
   summary: z.string().trim().min(1).max(4000).optional(),
@@ -426,6 +443,12 @@ export interface GeneratedAppGenerationRunResponseDto {
   createdBy: string | null;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface StartGeneratedAppGenerationRunResponseDto {
+  generationRun: GeneratedAppGenerationRunResponseDto;
+  gateRuns: GeneratedAppGateRunResponseDto[];
+  app: GeneratedAppResponseDto;
 }
 
 export interface GeneratedAppRepairAttemptResponseDto {

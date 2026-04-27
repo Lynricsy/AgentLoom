@@ -57,6 +57,15 @@ function createSelectPageChain<T>(result: T[]) {
   };
 }
 
+function createSelectLatestRunNumberChain(runNumber: number | null) {
+  return {
+    from: vi.fn().mockReturnThis(),
+    where: vi.fn().mockReturnThis(),
+    orderBy: vi.fn().mockReturnThis(),
+    limit: vi.fn().mockResolvedValue(runNumber === null ? [] : [{ runNumber }]),
+  };
+}
+
 function createCountChain(total: number) {
   return {
     from: vi.fn().mockReturnThis(),
@@ -253,7 +262,7 @@ function createGeneratedApp(
         creatorCanDeleteSubmissions: true,
         endUserLoginRequired: false,
       },
-      nonGoals: [],
+      nonGoals: ['不绕过 AgentLoom 租户隔离和发布门禁。'],
       acceptanceScenarios: [
         {
           id: 'scenario-1',
@@ -592,6 +601,265 @@ describe('GeneratedAppService', () => {
         failureReason: 'gate-2 多次修复后仍失败。',
       }),
     );
+  });
+
+  it('启动门禁运行器时应创建 generation run、linked Gate 0 run 且不伪造未执行门禁通过', async () => {
+    const previousGateResults = createInitialGeneratedAppGateResults(
+      NOW.toISOString(),
+    ).map((gate) => ({
+      ...gate,
+      status: 'passed' as const,
+      summary: `${gate.name} 曾经通过`,
+    }));
+    const app = createGeneratedApp({
+      status: 'published',
+      readiness: createPublishCandidateReadiness(),
+      gateResults: previousGateResults,
+      publicShareEnabled: true,
+      publicShareToken: 'a'.repeat(64),
+      publicShareCreatedAt: NOW,
+    });
+    const run = createGeneratedAppGenerationRun({
+      runNumber: 2,
+      maxRepairAttempts: 2,
+      maxRuntimeSeconds: 600,
+    });
+    const gateRun = createGeneratedAppGateRun({
+      gateId: 'gate-0',
+      gateOrder: 0,
+      gateName: '需求规格门禁',
+      generationRunId: GENERATION_RUN_ID,
+      status: 'passed',
+      summary:
+        'Gate 0 通过：AppSpec 结构完整，核心需求均有 acceptance scenario 与 traceability 覆盖。',
+      evidence: [],
+    });
+    const completedRun = createGeneratedAppGenerationRun({
+      runNumber: 2,
+      status: 'failed',
+      maxRepairAttempts: 2,
+      maxRuntimeSeconds: 600,
+      completedAt: NOW,
+      summary:
+        '门禁运行器骨架完成 Gate 0 AppSpec 完整性检查；Gate 1-7 runner 尚未接入/未执行，当前应用不能形成 publish candidate，保持不可发布。',
+      failureReason:
+        'Gate 1-7 runner 尚未接入/未执行，不能形成 publish candidate。',
+    });
+    const insertRunChain = createInsertReturningChain([run]);
+    const insertGateRunChain = createInsertReturningChain([gateRun]);
+    const updateAppChain = createUpdateReturningChain([
+      createGeneratedApp({
+        ...app,
+        status: 'preview_ready',
+        publicShareEnabled: false,
+        publicShareToken: null,
+      }),
+    ]);
+    const updateRunChain = createUpdateReturningChain([completedRun]);
+    mockTenantDb.select
+      .mockReturnValueOnce(createSelectChain([app]))
+      .mockReturnValueOnce(createSelectLatestRunNumberChain(1));
+    mockTenantDb.insert
+      .mockReturnValueOnce(insertRunChain)
+      .mockReturnValueOnce(insertGateRunChain);
+    mockTenantDb.update
+      .mockReturnValueOnce(updateAppChain)
+      .mockReturnValueOnce(updateRunChain);
+
+    const response = await service.startGenerationRun(
+      TENANT_ID,
+      USER_ID,
+      APP_ID,
+      {
+        triggerSource: 'manual',
+        maxRepairAttempts: 2,
+        maxRuntimeSeconds: 600,
+      },
+    );
+
+    expect(insertRunChain.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: TENANT_ID,
+        generatedAppId: APP_ID,
+        runNumber: 2,
+        status: 'running',
+        triggerSource: 'manual',
+        maxRepairAttempts: 2,
+        maxRuntimeSeconds: 600,
+        createdBy: USER_ID,
+      }),
+    );
+    expect(insertGateRunChain.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: TENANT_ID,
+        generatedAppId: APP_ID,
+        generationRunId: GENERATION_RUN_ID,
+        gateId: 'gate-0',
+        gateOrder: 0,
+        gateName: '需求规格门禁',
+        status: 'passed',
+        failure: null,
+        repairInstructions: null,
+      }),
+    );
+
+    const appUpdatePayload = updateAppChain.set.mock.calls[0]?.[0] as {
+      gateResults: GeneratedApp['gateResults'];
+      readiness: GeneratedApp['readiness'];
+      status: GeneratedApp['status'];
+      publicShareToken: string | null;
+      publicShareEnabled: boolean;
+    };
+    const passedGateIds = appUpdatePayload.gateResults
+      .filter((gate) => gate.status === 'passed')
+      .map((gate) => gate.gateId);
+    expect(passedGateIds).toEqual(['gate-0']);
+    expect(
+      appUpdatePayload.gateResults.find((gate) => gate.gateId === 'gate-1')
+        ?.status,
+    ).toBe('pending');
+    expect(appUpdatePayload.readiness.canCreatePublicShare).toBe(false);
+    expect(appUpdatePayload.status).toBe('preview_ready');
+    expect(appUpdatePayload.publicShareToken).toBeNull();
+    expect(appUpdatePayload.publicShareEnabled).toBe(false);
+    expect(updateRunChain.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'failed',
+        failureReason:
+          'Gate 1-7 runner 尚未接入/未执行，不能形成 publish candidate。',
+        completedAt: expect.any(Date),
+      }),
+    );
+    expect(response.generationRun).toEqual(
+      expect.objectContaining({
+        id: GENERATION_RUN_ID,
+        status: 'failed',
+        failureReason:
+          'Gate 1-7 runner 尚未接入/未执行，不能形成 publish candidate。',
+      }),
+    );
+    expect(response.gateRuns).toEqual([
+      expect.objectContaining({
+        gateId: 'gate-0',
+        generationRunId: GENERATION_RUN_ID,
+        status: 'passed',
+      }),
+    ]);
+    expect(response.app.id).toBe(APP_ID);
+  });
+
+  it('Gate 0 失败时应写入失败证据、降级 readiness 并关闭公开链接', async () => {
+    const invalidAppSpec = {
+      ...createGeneratedApp().appSpec,
+      acceptanceScenarios: [],
+      traceability: [],
+    } as GeneratedApp['appSpec'];
+    const app = createGeneratedApp({
+      status: 'published',
+      readiness: createPublishCandidateReadiness(),
+      appSpec: invalidAppSpec,
+      publicShareEnabled: true,
+      publicShareToken: 'b'.repeat(64),
+      publicShareCreatedAt: NOW,
+    });
+    const run = createGeneratedAppGenerationRun();
+    const gateRun = createGeneratedAppGateRun({
+      gateId: 'gate-0',
+      gateOrder: 0,
+      gateName: '需求规格门禁',
+      generationRunId: GENERATION_RUN_ID,
+      status: 'failed',
+      summary:
+        'Gate 0 失败：AppSpec 缺少可验证生成所需的结构化字段或需求覆盖证据。',
+      failure: {
+        code: 'app-spec-incomplete',
+        message:
+          'AppSpec 完整性检查失败：验收场景结构、需求到验收场景覆盖、需求证据 traceability。',
+      },
+      repairInstructions:
+        '补齐 AppSpec 的核心需求、页面/流程、数据策略、acceptance scenarios 与 traceability 后重新启动门禁运行器。',
+    });
+    const completedRun = createGeneratedAppGenerationRun({
+      status: 'failed',
+      failureReason:
+        'AppSpec 完整性检查失败：验收场景结构、需求到验收场景覆盖、需求证据 traceability。',
+      completedAt: NOW,
+    });
+    const insertRunChain = createInsertReturningChain([run]);
+    const insertGateRunChain = createInsertReturningChain([gateRun]);
+    const updateAppChain = createUpdateReturningChain([
+      createGeneratedApp({
+        ...app,
+        status: 'failed',
+        publicShareEnabled: false,
+        publicShareToken: null,
+      }),
+    ]);
+    const updateRunChain = createUpdateReturningChain([completedRun]);
+    mockTenantDb.select
+      .mockReturnValueOnce(createSelectChain([app]))
+      .mockReturnValueOnce(createSelectLatestRunNumberChain(null));
+    mockTenantDb.insert
+      .mockReturnValueOnce(insertRunChain)
+      .mockReturnValueOnce(insertGateRunChain);
+    mockTenantDb.update
+      .mockReturnValueOnce(updateAppChain)
+      .mockReturnValueOnce(updateRunChain);
+
+    const response = await service.startGenerationRun(
+      TENANT_ID,
+      USER_ID,
+      APP_ID,
+      {},
+    );
+
+    expect(insertGateRunChain.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        gateId: 'gate-0',
+        status: 'failed',
+        failure: expect.objectContaining({
+          code: 'app-spec-incomplete',
+        }),
+        repairInstructions:
+          '补齐 AppSpec 的核心需求、页面/流程、数据策略、acceptance scenarios 与 traceability 后重新启动门禁运行器。',
+      }),
+    );
+    const gateRunPayload = insertGateRunChain.values.mock.calls[0]?.[0] as {
+      evidence: GeneratedApp['gateResults'][number]['evidence'];
+    };
+    expect(gateRunPayload.evidence.length).toBeGreaterThan(0);
+    expect(
+      gateRunPayload.evidence.some((item) =>
+        item.summary.includes('acceptanceScenarios 不能为空'),
+      ),
+    ).toBe(true);
+    expect(updateAppChain.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'failed',
+        publicShareToken: null,
+        publicShareEnabled: false,
+        publicShareDisabledAt: expect.any(Date),
+      }),
+    );
+    expect(updateRunChain.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'failed',
+        failureReason: expect.stringContaining('AppSpec 完整性检查失败'),
+      }),
+    );
+    expect(response.generationRun.status).toBe('failed');
+    expect(response.gateRuns[0]?.status).toBe('failed');
+  });
+
+  it('启动门禁运行器遇到不存在或跨租户应用时应沿用 not found 且不写入台账', async () => {
+    mockTenantDb.select.mockReturnValueOnce(createSelectChain([]));
+
+    await expect(
+      service.startGenerationRun(TENANT_ID, USER_ID, APP_ID, {}),
+    ).rejects.toBeInstanceOf(GeneratedAppNotFoundException);
+
+    expect(mockTenantDb.insert).not.toHaveBeenCalled();
+    expect(mockTenantDb.update).not.toHaveBeenCalled();
   });
 
   it('创建和更新修复尝试台账时应绑定生成运行', async () => {

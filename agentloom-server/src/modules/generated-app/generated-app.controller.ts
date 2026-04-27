@@ -43,6 +43,8 @@ import {
   QueryGeneratedAppsSchema,
   RecordGeneratedAppGateResultsDto,
   RecordGeneratedAppGateResultsSchema,
+  StartGeneratedAppGenerationRunDto,
+  StartGeneratedAppGenerationRunSchema,
   UpdateGeneratedAppGenerationRunDto,
   UpdateGeneratedAppGenerationRunSchema,
   UpdateGeneratedAppRepairAttemptDto,
@@ -112,6 +114,29 @@ export class GeneratedAppController {
     @CurrentUser('sub') userId: string,
   ) {
     const data = await this.generatedAppService.createGenerationRun(
+      tenantId,
+      userId,
+      appId,
+      dto,
+    );
+
+    return { data };
+  }
+
+  @Post(':appId/generation-runs/start')
+  @Roles('owner', 'admin', 'creator')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: '启动同步轻量生成门禁运行器' })
+  @ApiResponse({ status: 201, description: '生成门禁运行器已完成同步切片' })
+  @ApiResponse({ status: 404, description: '生成应用任务不存在' })
+  async startGenerationRun(
+    @Param('appId', ParseUUIDPipe) appId: string,
+    @Body(new ZodValidationPipe(StartGeneratedAppGenerationRunSchema))
+    dto: StartGeneratedAppGenerationRunDto,
+    @CurrentTenant() tenantId: string,
+    @CurrentUser('sub') userId: string,
+  ) {
+    const data = await this.generatedAppService.startGenerationRun(
       tenantId,
       userId,
       appId,

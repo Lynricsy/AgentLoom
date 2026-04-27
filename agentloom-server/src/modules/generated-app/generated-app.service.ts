@@ -9,7 +9,9 @@ import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import * as schema from '../../database/schema';
 import type {
   GeneratedApp,
+  GeneratedAppGateEvidence,
   GeneratedAppGenerationRun,
+  GeneratedAppGateRunFailure,
   GeneratedAppGateRun,
   GeneratedAppSpec,
   GeneratedAppGateResult,
@@ -45,6 +47,9 @@ import {
   RecordGeneratedAppGateResultsSchema,
   type RecordGeneratedAppGateRunResponseDto,
   type RecordGeneratedAppGateResultsDtoType,
+  StartGeneratedAppGenerationRunSchema,
+  type StartGeneratedAppGenerationRunDtoType,
+  type StartGeneratedAppGenerationRunResponseDto,
   UpdateGeneratedAppGenerationRunSchema,
   type UpdateGeneratedAppGenerationRunDtoType,
   UpdateGeneratedAppRepairAttemptSchema,
@@ -71,6 +76,25 @@ const DEFAULT_PREVIEW: GeneratedAppPreview = {
   sourceArtifactUrl: null,
   testReportUrl: null,
 };
+
+const GATE_RUNNER_SKELETON_INCOMPLETE_FAILURE_REASON =
+  'Gate 1-7 runner 尚未接入/未执行，不能形成 publish candidate。';
+
+interface Gate0Check {
+  id: string;
+  label: string;
+  passed: boolean;
+  summary: string;
+  issues: string[];
+}
+
+interface Gate0Evaluation {
+  status: 'passed' | 'failed';
+  summary: string;
+  evidence: GeneratedAppGateEvidence[];
+  failure: GeneratedAppGateRunFailure | null;
+  repairInstructions: string | null;
+}
 
 @Injectable()
 export class GeneratedAppService {
@@ -304,6 +328,99 @@ export class GeneratedAppService {
       .returning();
 
     return this.toGenerationRunResponseDto(run);
+  }
+
+  async startGenerationRun(
+    tenantId: string,
+    userId: string,
+    appId: string,
+    dto: StartGeneratedAppGenerationRunDtoType,
+  ): Promise<StartGeneratedAppGenerationRunResponseDto> {
+    const app = await this.findGeneratedAppRecord(tenantId, appId);
+    const parsed = StartGeneratedAppGenerationRunSchema.parse(dto);
+    const startedAt = new Date();
+    const runNumber = await this.resolveNextGenerationRunNumber(
+      tenantId,
+      appId,
+    );
+
+    const [run] = await this.tenantDb
+      .insert(schema.generatedAppGenerationRuns)
+      .values({
+        tenantId,
+        generatedAppId: appId,
+        runNumber,
+        status: 'running',
+        triggerSource: parsed.triggerSource,
+        maxRepairAttempts: parsed.maxRepairAttempts,
+        maxRuntimeSeconds: parsed.maxRuntimeSeconds,
+        summary: '门禁运行器骨架已启动，正在执行 Gate 0 AppSpec 完整性检查。',
+        failureReason: null,
+        startedAt,
+        completedAt: null,
+        createdBy: userId,
+      })
+      .returning();
+
+    const gate0Evaluation = this.evaluateGate0AppSpec(app.appSpec);
+    const gateCompletedAt = new Date();
+    const gateRunResult = await this.createGateRunAndUpdateApp(
+      tenantId,
+      userId,
+      app,
+      {
+        gateId: 'gate-0',
+        generationRunId: run.id,
+        attemptNumber: 1,
+        status: gate0Evaluation.status,
+        summary: gate0Evaluation.summary,
+        evidence: gate0Evaluation.evidence,
+        failure: gate0Evaluation.failure,
+        repairInstructions: gate0Evaluation.repairInstructions,
+        startedAt: startedAt.toISOString(),
+        completedAt: gateCompletedAt.toISOString(),
+      },
+      {
+        buildGateResults: (gateResult, nowIso) =>
+          this.buildRunnerSkeletonGateResults(app, gateResult, nowIso),
+      },
+    );
+
+    const runStatus = 'failed';
+    const completedSummary =
+      gate0Evaluation.status === 'passed'
+        ? '门禁运行器骨架完成 Gate 0 AppSpec 完整性检查；Gate 1-7 runner 尚未接入/未执行，当前应用不能形成 publish candidate，保持不可发布。'
+        : '门禁运行器骨架在 Gate 0 AppSpec 完整性检查失败；当前应用保持不可发布。';
+    const [completedRun] = await this.tenantDb
+      .update(schema.generatedAppGenerationRuns)
+      .set({
+        status: runStatus,
+        summary: completedSummary,
+        failureReason:
+          gate0Evaluation.status === 'failed'
+            ? gate0Evaluation.failure?.message
+            : GATE_RUNNER_SKELETON_INCOMPLETE_FAILURE_REASON,
+        completedAt: gateCompletedAt,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(schema.generatedAppGenerationRuns.id, run.id),
+          eq(schema.generatedAppGenerationRuns.tenantId, tenantId),
+          eq(schema.generatedAppGenerationRuns.generatedAppId, appId),
+        ),
+      )
+      .returning();
+
+    if (!completedRun) {
+      throw new GeneratedAppGenerationRunNotFoundException(run.id);
+    }
+
+    return {
+      generationRun: this.toGenerationRunResponseDto(completedRun),
+      gateRuns: [gateRunResult.gateRun],
+      app: gateRunResult.app,
+    };
   }
 
   async updateGenerationRun(
@@ -594,109 +711,9 @@ export class GeneratedAppService {
   ): Promise<RecordGeneratedAppGateRunResponseDto> {
     const app = await this.findGeneratedAppRecord(tenantId, appId);
     const parsed = CreateGeneratedAppGateRunSchema.parse(dto);
-    const gateDefinition = getGeneratedAppGateDefinition(parsed.gateId);
+    await this.assertGateRunLinks(tenantId, appId, parsed);
 
-    if (!gateDefinition) {
-      throw new GeneratedAppGateDefinitionNotFoundException(parsed.gateId);
-    }
-
-    if (parsed.generationRunId) {
-      await this.findGenerationRunRecord(
-        tenantId,
-        appId,
-        parsed.generationRunId,
-      );
-    }
-
-    if (parsed.repairAttemptId) {
-      const repairAttempt = await this.findRepairAttemptRecord(
-        tenantId,
-        appId,
-        parsed.repairAttemptId,
-      );
-
-      if (
-        parsed.generationRunId &&
-        repairAttempt.generationRunId !== parsed.generationRunId
-      ) {
-        throw new GeneratedAppRepairAttemptNotFoundException(
-          parsed.repairAttemptId,
-        );
-      }
-    }
-
-    const now = new Date();
-    const startedAt = parsed.startedAt ? new Date(parsed.startedAt) : now;
-    const completedAt =
-      parsed.completedAt !== undefined
-        ? parsed.completedAt === null
-          ? null
-          : new Date(parsed.completedAt)
-        : parsed.status === 'running'
-          ? null
-          : now;
-
-    const [gateRun] = await this.tenantDb
-      .insert(schema.generatedAppGateRuns)
-      .values({
-        tenantId,
-        generatedAppId: appId,
-        generationRunId: parsed.generationRunId ?? null,
-        repairAttemptId: parsed.repairAttemptId ?? null,
-        gateId: gateDefinition.gateId,
-        gateOrder: gateDefinition.order,
-        gateName: gateDefinition.name,
-        blocking: gateDefinition.blocking,
-        attemptNumber: parsed.attemptNumber,
-        status: parsed.status,
-        summary: parsed.summary,
-        evidence: parsed.evidence,
-        failure: parsed.failure ?? null,
-        repairInstructions: parsed.repairInstructions ?? null,
-        startedAt,
-        completedAt,
-        createdBy: userId,
-      })
-      .returning();
-
-    const gateResult: GeneratedAppGateResult = {
-      gateId: gateDefinition.gateId,
-      order: gateDefinition.order,
-      name: gateDefinition.name,
-      blocking: gateDefinition.blocking,
-      status: parsed.status,
-      summary: parsed.summary,
-      evidence: parsed.evidence,
-      updatedAt: (completedAt ?? now).toISOString(),
-    };
-    const gateResults = normalizeGeneratedAppGateResults([
-      ...app.gateResults.filter((gate) => gate.gateId !== gateResult.gateId),
-      gateResult,
-    ]);
-    const updatePayload = this.buildGateResultsUpdatePayload(
-      userId,
-      gateResults,
-    );
-
-    const [updated] = await this.tenantDb
-      .update(schema.generatedApps)
-      .set(updatePayload)
-      .where(
-        and(
-          eq(schema.generatedApps.id, appId),
-          eq(schema.generatedApps.tenantId, tenantId),
-        ),
-      )
-      .returning();
-
-    if (!updated) {
-      throw new GeneratedAppNotFoundException(appId);
-    }
-
-    return {
-      gateRun: this.toGateRunResponseDto(gateRun),
-      app: this.toResponseDto(updated),
-    };
+    return this.createGateRunAndUpdateApp(tenantId, userId, app, parsed);
   }
 
   async enablePublicShare(
@@ -974,6 +991,477 @@ export class GeneratedAppService {
         app.readiness.summary,
       );
     }
+  }
+
+  private async assertGateRunLinks(
+    tenantId: string,
+    appId: string,
+    parsed: CreateGeneratedAppGateRunDtoType,
+  ) {
+    const gateDefinition = getGeneratedAppGateDefinition(parsed.gateId);
+
+    if (!gateDefinition) {
+      throw new GeneratedAppGateDefinitionNotFoundException(parsed.gateId);
+    }
+
+    if (parsed.generationRunId) {
+      await this.findGenerationRunRecord(
+        tenantId,
+        appId,
+        parsed.generationRunId,
+      );
+    }
+
+    if (parsed.repairAttemptId) {
+      const repairAttempt = await this.findRepairAttemptRecord(
+        tenantId,
+        appId,
+        parsed.repairAttemptId,
+      );
+
+      if (
+        parsed.generationRunId &&
+        repairAttempt.generationRunId !== parsed.generationRunId
+      ) {
+        throw new GeneratedAppRepairAttemptNotFoundException(
+          parsed.repairAttemptId,
+        );
+      }
+    }
+  }
+
+  private async createGateRunAndUpdateApp(
+    tenantId: string,
+    userId: string,
+    app: GeneratedApp,
+    parsed: CreateGeneratedAppGateRunDtoType,
+    options: {
+      buildGateResults?: (
+        gateResult: GeneratedAppGateResult,
+        nowIso: string,
+      ) => GeneratedAppGateResult[];
+    } = {},
+  ): Promise<RecordGeneratedAppGateRunResponseDto> {
+    const gateDefinition = getGeneratedAppGateDefinition(parsed.gateId);
+
+    if (!gateDefinition) {
+      throw new GeneratedAppGateDefinitionNotFoundException(parsed.gateId);
+    }
+
+    const now = new Date();
+    const startedAt = parsed.startedAt ? new Date(parsed.startedAt) : now;
+    const completedAt =
+      parsed.completedAt !== undefined
+        ? parsed.completedAt === null
+          ? null
+          : new Date(parsed.completedAt)
+        : parsed.status === 'running'
+          ? null
+          : now;
+
+    const [gateRun] = await this.tenantDb
+      .insert(schema.generatedAppGateRuns)
+      .values({
+        tenantId,
+        generatedAppId: app.id,
+        generationRunId: parsed.generationRunId ?? null,
+        repairAttemptId: parsed.repairAttemptId ?? null,
+        gateId: gateDefinition.gateId,
+        gateOrder: gateDefinition.order,
+        gateName: gateDefinition.name,
+        blocking: gateDefinition.blocking,
+        attemptNumber: parsed.attemptNumber,
+        status: parsed.status,
+        summary: parsed.summary,
+        evidence: parsed.evidence,
+        failure: parsed.failure ?? null,
+        repairInstructions: parsed.repairInstructions ?? null,
+        startedAt,
+        completedAt,
+        createdBy: userId,
+      })
+      .returning();
+
+    const updatedAt = completedAt ?? now;
+    const gateResult: GeneratedAppGateResult = {
+      gateId: gateDefinition.gateId,
+      order: gateDefinition.order,
+      name: gateDefinition.name,
+      blocking: gateDefinition.blocking,
+      status: parsed.status,
+      summary: parsed.summary,
+      evidence: parsed.evidence,
+      updatedAt: updatedAt.toISOString(),
+    };
+    const gateResults =
+      options.buildGateResults?.(gateResult, updatedAt.toISOString()) ??
+      normalizeGeneratedAppGateResults([
+        ...app.gateResults.filter((gate) => gate.gateId !== gateResult.gateId),
+        gateResult,
+      ]);
+    const updatePayload = this.buildGateResultsUpdatePayload(
+      userId,
+      gateResults,
+    );
+
+    const [updated] = await this.tenantDb
+      .update(schema.generatedApps)
+      .set(updatePayload)
+      .where(
+        and(
+          eq(schema.generatedApps.id, app.id),
+          eq(schema.generatedApps.tenantId, tenantId),
+        ),
+      )
+      .returning();
+
+    if (!updated) {
+      throw new GeneratedAppNotFoundException(app.id);
+    }
+
+    return {
+      gateRun: this.toGateRunResponseDto(gateRun),
+      app: this.toResponseDto(updated),
+    };
+  }
+
+  private buildRunnerSkeletonGateResults(
+    app: GeneratedApp,
+    gate0Result: GeneratedAppGateResult,
+    nowIso: string,
+  ): GeneratedAppGateResult[] {
+    const initialGateResults = createInitialGeneratedAppGateResults(nowIso);
+    const canonicalGateIds = new Set(
+      initialGateResults.map((gate) => gate.gateId),
+    );
+    const extensionGateResults = app.gateResults.filter(
+      (gate) => !canonicalGateIds.has(gate.gateId),
+    );
+
+    return normalizeGeneratedAppGateResults(
+      [
+        gate0Result,
+        ...initialGateResults.filter((gate) => gate.gateId !== 'gate-0'),
+        ...extensionGateResults,
+      ],
+      nowIso,
+    );
+  }
+
+  private evaluateGate0AppSpec(appSpec: GeneratedAppSpec): Gate0Evaluation {
+    const checks = this.buildGate0Checks(appSpec);
+    const failedChecks = checks.filter((check) => !check.passed);
+    const evidence = checks.map((check) => ({
+      id: `gate-0-${check.id}`,
+      label: check.label,
+      kind: 'app_spec' as const,
+      url: null,
+      summary:
+        check.issues.length === 0
+          ? check.summary
+          : `${check.summary} 缺口：${check.issues.join('；')}`,
+    }));
+
+    if (failedChecks.length > 0) {
+      const failure: GeneratedAppGateRunFailure = {
+        code: 'app-spec-incomplete',
+        message: `AppSpec 完整性检查失败：${failedChecks
+          .map((check) => check.label)
+          .join('、')}。`,
+        details: {
+          checks: checks.map((check) => ({
+            id: check.id,
+            label: check.label,
+            passed: check.passed,
+            issues: check.issues,
+          })),
+        },
+      };
+
+      return {
+        status: 'failed',
+        summary:
+          'Gate 0 失败：AppSpec 缺少可验证生成所需的结构化字段或需求覆盖证据。',
+        evidence,
+        failure,
+        repairInstructions:
+          '补齐 AppSpec 的核心需求、页面/流程、数据策略、acceptance scenarios 与 traceability 后重新启动门禁运行器。',
+      };
+    }
+
+    return {
+      status: 'passed',
+      summary:
+        'Gate 0 通过：AppSpec 结构完整，核心需求均有 acceptance scenario 与 traceability 覆盖。',
+      evidence,
+      failure: null,
+      repairInstructions: null,
+    };
+  }
+
+  private buildGate0Checks(appSpec: unknown): Gate0Check[] {
+    if (!this.isRecord(appSpec)) {
+      return [
+        {
+          id: 'app-spec-object',
+          label: 'AppSpec JSON 对象',
+          passed: false,
+          summary: 'AppSpec 必须是结构化 JSON 对象。',
+          issues: ['appSpec 不是对象'],
+        },
+      ];
+    }
+
+    const coreRequirements = this.getRecordArray(appSpec.coreRequirements);
+    const requirementIds = coreRequirements
+      .map((requirement) => this.getNonEmptyString(requirement.id))
+      .filter((id): id is string => id !== null);
+    const pages = this.getRecordArray(appSpec.pages);
+    const acceptanceScenarios = this.getRecordArray(
+      appSpec.acceptanceScenarios,
+    );
+    const scenarioIds = new Set(
+      acceptanceScenarios
+        .map((scenario) => this.getNonEmptyString(scenario.id))
+        .filter((id): id is string => id !== null),
+    );
+    const coveredRequirementIds = new Set<string>();
+
+    for (const scenario of acceptanceScenarios) {
+      for (const requirementId of this.getStringArray(
+        scenario.requirementIds,
+      )) {
+        coveredRequirementIds.add(requirementId);
+      }
+    }
+
+    const traceability = this.getRecordArray(appSpec.traceability);
+    const traceabilityRequirementIds = new Set(
+      traceability
+        .filter((entry) => {
+          const scenarioRefs = this.getStringArray(entry.scenarioIds);
+          const evidenceRefs = this.getStringArray(entry.evidenceIds);
+          return (
+            scenarioRefs.length > 0 &&
+            scenarioRefs.every((scenarioId) => scenarioIds.has(scenarioId)) &&
+            evidenceRefs.length > 0
+          );
+        })
+        .map((entry) => this.getNonEmptyString(entry.requirementId))
+        .filter((id): id is string => id !== null),
+    );
+
+    const textIssues = ['appName', 'summary', 'userGoal'].filter(
+      (field) => this.getNonEmptyString(appSpec[field]) === null,
+    );
+    const actorIssues =
+      this.getStringArray(appSpec.actors).length === 0
+        ? ['actors 至少需要一个角色']
+        : [];
+    const requirementIssues = [
+      ...(coreRequirements.length === 0 ? ['coreRequirements 不能为空'] : []),
+      ...coreRequirements.flatMap((requirement, index) => {
+        const issues: string[] = [];
+
+        if (this.getNonEmptyString(requirement.id) === null) {
+          issues.push(`coreRequirements[${index}].id 缺失`);
+        }
+
+        if (this.getNonEmptyString(requirement.text) === null) {
+          issues.push(`coreRequirements[${index}].text 缺失`);
+        }
+
+        return issues;
+      }),
+    ];
+    const pageIssues = [
+      ...(pages.length === 0 ? ['pages 不能为空'] : []),
+      ...pages.flatMap((page, index) => {
+        const issues: string[] = [];
+
+        for (const field of ['id', 'name', 'purpose']) {
+          if (this.getNonEmptyString(page[field]) === null) {
+            issues.push(`pages[${index}].${field} 缺失`);
+          }
+        }
+
+        return issues;
+      }),
+    ];
+    const policyIssues = this.buildDataPolicyIssues(appSpec);
+    const scenarioIssues = [
+      ...(acceptanceScenarios.length === 0
+        ? ['acceptanceScenarios 不能为空']
+        : []),
+      ...acceptanceScenarios.flatMap((scenario, index) =>
+        this.buildScenarioIssues(scenario, index),
+      ),
+    ];
+    const uncoveredRequirementIds = requirementIds.filter(
+      (requirementId) => !coveredRequirementIds.has(requirementId),
+    );
+    const traceabilityIssues = [
+      ...(traceability.length === 0 ? ['traceability 不能为空'] : []),
+      ...requirementIds
+        .filter(
+          (requirementId) => !traceabilityRequirementIds.has(requirementId),
+        )
+        .map((requirementId) => `需求 ${requirementId} 缺少有效 traceability`),
+    ];
+
+    return [
+      {
+        id: 'identity',
+        label: 'AppSpec 基本摘要',
+        passed: textIssues.length === 0 && actorIssues.length === 0,
+        summary: '检查 appName、summary、userGoal 与 actors 是否完整。',
+        issues: [...textIssues.map((field) => `${field} 缺失`), ...actorIssues],
+      },
+      {
+        id: 'core-requirements',
+        label: '核心需求列表',
+        passed: requirementIssues.length === 0,
+        summary: `检查 ${coreRequirements.length} 条核心需求是否具备 id 和 text。`,
+        issues: requirementIssues,
+      },
+      {
+        id: 'pages',
+        label: '页面/流程定义',
+        passed: pageIssues.length === 0,
+        summary: `检查 ${pages.length} 个页面或流程是否具备 id、name 和 purpose。`,
+        issues: pageIssues,
+      },
+      {
+        id: 'risk-boundary',
+        label: '数据策略与范围边界',
+        passed: policyIssues.length === 0,
+        summary:
+          '检查 dataPolicy 和 nonGoals 是否能表达数据保存、登录要求与初始风险/范围边界。',
+        issues: policyIssues,
+      },
+      {
+        id: 'acceptance-scenarios',
+        label: '验收场景结构',
+        passed: scenarioIssues.length === 0,
+        summary: `检查 ${acceptanceScenarios.length} 条 acceptance scenario 是否可执行。`,
+        issues: scenarioIssues,
+      },
+      {
+        id: 'requirement-coverage',
+        label: '需求到验收场景覆盖',
+        passed:
+          uncoveredRequirementIds.length === 0 && requirementIds.length > 0,
+        summary: `检查 ${requirementIds.length} 条核心需求是否至少被一个 acceptance scenario 覆盖。`,
+        issues:
+          requirementIds.length === 0
+            ? ['没有可覆盖的核心需求 id']
+            : uncoveredRequirementIds.map(
+                (requirementId) =>
+                  `需求 ${requirementId} 未被 acceptance scenario 引用`,
+              ),
+      },
+      {
+        id: 'traceability',
+        label: '需求证据 traceability',
+        passed: traceabilityIssues.length === 0 && requirementIds.length > 0,
+        summary: `检查 ${traceability.length} 条 traceability 是否连接需求、场景和证据。`,
+        issues: traceabilityIssues,
+      },
+    ];
+  }
+
+  private buildDataPolicyIssues(appSpec: Record<string, unknown>): string[] {
+    const dataPolicy = appSpec.dataPolicy;
+    const issues: string[] = [];
+
+    if (!this.isRecord(dataPolicy)) {
+      issues.push('dataPolicy 缺失');
+    } else {
+      for (const field of [
+        'publicSubmissionsPersisted',
+        'creatorCanDeleteSubmissions',
+        'endUserLoginRequired',
+      ]) {
+        if (typeof dataPolicy[field] !== 'boolean') {
+          issues.push(`dataPolicy.${field} 必须是 boolean`);
+        }
+      }
+    }
+
+    if (this.getStringArray(appSpec.nonGoals).length === 0) {
+      issues.push('nonGoals 至少需要一条范围边界');
+    }
+
+    return issues;
+  }
+
+  private buildScenarioIssues(
+    scenario: Record<string, unknown>,
+    index: number,
+  ): string[] {
+    const issues: string[] = [];
+
+    for (const field of ['id', 'title']) {
+      if (this.getNonEmptyString(scenario[field]) === null) {
+        issues.push(`acceptanceScenarios[${index}].${field} 缺失`);
+      }
+    }
+
+    if (this.getStringArray(scenario.requirementIds).length === 0) {
+      issues.push(`acceptanceScenarios[${index}].requirementIds 不能为空`);
+    }
+
+    for (const field of ['given', 'when', 'then']) {
+      if (this.getStringArray(scenario[field]).length === 0) {
+        issues.push(`acceptanceScenarios[${index}].${field} 不能为空`);
+      }
+    }
+
+    return issues;
+  }
+
+  private async resolveNextGenerationRunNumber(
+    tenantId: string,
+    appId: string,
+  ): Promise<number> {
+    const [latestRun] = await this.tenantDb
+      .select({ runNumber: schema.generatedAppGenerationRuns.runNumber })
+      .from(schema.generatedAppGenerationRuns)
+      .where(
+        and(
+          eq(schema.generatedAppGenerationRuns.tenantId, tenantId),
+          eq(schema.generatedAppGenerationRuns.generatedAppId, appId),
+        ),
+      )
+      .orderBy(desc(schema.generatedAppGenerationRuns.runNumber))
+      .limit(1);
+
+    return (latestRun?.runNumber ?? 0) + 1;
+  }
+
+  private isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+  }
+
+  private getRecordArray(value: unknown): Record<string, unknown>[] {
+    return Array.isArray(value)
+      ? value.filter((item) => this.isRecord(item))
+      : [];
+  }
+
+  private getStringArray(value: unknown): string[] {
+    return Array.isArray(value)
+      ? value.filter(
+          (item): item is string =>
+            typeof item === 'string' && item.trim().length > 0,
+        )
+      : [];
+  }
+
+  private getNonEmptyString(value: unknown): string | null {
+    return typeof value === 'string' && value.trim().length > 0
+      ? value.trim()
+      : null;
   }
 
   private buildGateResultsUpdatePayload(

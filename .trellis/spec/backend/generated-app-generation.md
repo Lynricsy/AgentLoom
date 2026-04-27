@@ -114,6 +114,7 @@
   - `PATCH /generated-apps/:appId/gates`
   - `GET /generated-apps/:appId/generation-runs?page=&pageSize=&status=`
   - `POST /generated-apps/:appId/generation-runs`
+  - `POST /generated-apps/:appId/generation-runs/start`
   - `PATCH /generated-apps/:appId/generation-runs/:runId`
   - `GET /generated-apps/:appId/generation-runs/:runId/repair-attempts?page=&pageSize=&status=&targetGateId=`
   - `POST /generated-apps/:appId/generation-runs/:runId/repair-attempts`
@@ -162,6 +163,11 @@
   - `summary`: required human-readable generation loop summary.
   - `failureReason`: optional nullable failure reason.
   - `startedAt` / `completedAt`: optional ISO timestamps.
+- `StartGeneratedAppGenerationRunDto`
+  - `triggerSource`: `initial | manual | retry | system`, default `manual`.
+  - `maxRepairAttempts`: integer 0-20, default 3.
+  - `maxRuntimeSeconds`: integer 1-86400, default 1800.
+  - The response returns `{ generationRun, gateRuns, app }`, where `gateRuns` contains the gate runs produced by the synchronous skeleton and `app` is the creator-side generated app after readiness sync.
 - `UpdateGeneratedAppGenerationRunDto`
   - Allows patching `status`, `summary`, `failureReason`, `startedAt`, and `completedAt`.
 - `CreateGeneratedAppRepairAttemptDto`
@@ -206,6 +212,14 @@
   - Create/update/list endpoints must use tenant-aware DB access and filter by `tenant_id + generated_app_id`.
   - List is ordered by `created_at desc` and uses the standard paginated `{ data, meta }` envelope.
   - Update is scoped by `tenant_id + generated_app_id + run_id`; missing rows return `GeneratedAppGenerationRunNotFoundException`.
+- Synchronous gate runner skeleton:
+  - `POST /generated-apps/:appId/generation-runs/start` must resolve the generated app in tenant scope, create a generation run, execute the deterministic Gate 0 AppSpec completeness check, write exactly one linked `generated_app_gate_runs` row for `gate-0`, update the generation run to `failed`, and return the run, produced gate runs, and updated app while the skeleton only executes Gate 0.
+  - Gate 0 checks must validate that `AppSpec` has a usable app summary, actors, core requirements, pages/flows, data policy and scope boundary, acceptance scenarios, requirement coverage, and traceability. Failure evidence must include check labels, missing pieces, and repair instructions.
+  - The skeleton must not mark Gate 1-7 as `passed`, because it does not execute architecture, static contracts, build, integration, browser, verifier, or publish-candidate gates.
+  - If Gate 0 passes but Gate 1-7 are not executed, the generation run must stay conservative with `status='failed'` and `failure_reason='Gate 1-7 runner 尚未接入/未执行，不能形成 publish candidate。'`; Gate 0 evidence itself may still be recorded as `passed`.
+  - The skeleton must recompute `generated_apps.gate_results/readiness/status` through the same readiness helper as gate run recording. If any blocking gate remains pending/skipped/running/failed, `canCreatePublicShare=false`.
+  - When the skeleton starts from a previously publishable or published app, any unexecuted canonical Gate 1-7 summaries must be represented as not passed for the current runner result, so the app cannot remain or become `publish_candidate` from stale evidence.
+  - If skeleton readiness is not publishable, it must disable public sharing, clear `public_share_token`, and set `public_share_disabled_at`. Gate evidence and failure details must not contain `publicShareToken` or other sensitive tokens.
 - Repair attempt ledger:
   - Repair attempts are nested under one generation run and must be scoped by `tenant_id + generated_app_id + generation_run_id`.
   - Create must first resolve the generation run in the same tenant/app scope before inserting.
@@ -253,6 +267,9 @@
 | Gate run records `running`, `skipped`, or `warning` for a blocking gate | Insert run evidence, recompute readiness to non-publishable state, and clear public share token |
 | Gate run records `passed` but other blocking gates are still not passed | Keep readiness in `preview` and keep public share disabled |
 | Gate run references another app's generation run or repair attempt | Return not found for the referenced ledger row and do not insert gate evidence |
+| Synchronous runner starts for a missing or cross-tenant app | Return `GeneratedAppNotFoundException` and do not insert generation or gate run rows |
+| Synchronous runner Gate 0 passes but Gate 1-7 are not executed | Insert linked passed Gate 0 evidence, mark the generation run failed with the Gate 1-7-not-executed failure reason, keep Gate 1-7 not passed, recompute readiness to non-publishable preview, and clear any active public token |
+| Synchronous runner Gate 0 fails | Insert linked failed Gate 0 evidence, mark the generation run failed, set readiness to blocked, and clear any active public token |
 | Generation run update misses tenant/app scope | Return `GeneratedAppGenerationRunNotFoundException` |
 | Repair attempt create references a missing generation run | Return `GeneratedAppGenerationRunNotFoundException` and do not insert repair attempt |
 | Repair attempt update misses tenant/app/run scope | Return `GeneratedAppRepairAttemptNotFoundException` |
@@ -273,7 +290,8 @@
 
 ### 5. Good / Base / Bad Cases
 
-- Good: gate runner writes all blocking gates as `passed`, verifier has no warning, service returns `publish_candidate`, and `POST /generated-apps/:appId/public-share` creates a 64-hex-character token.
+- Good: the synchronous runner skeleton writes linked Gate 0 evidence, leaves Gate 1-7 not passed until real runners execute them, recomputes readiness to non-publishable preview, and clears stale public sharing.
+- Good: a future full gate runner writes all blocking gates as `passed`, verifier has no warning, service returns `publish_candidate`, and `POST /generated-apps/:appId/public-share` creates a 64-hex-character token.
 - Base: newly created prompt generates an AppSpec draft and Gate 0 evidence, but Gate 1-7 remain pending; the app is visible to the creator but cannot create a public link.
 - Base: warning evidence exists after blocking gates pass; the app can remain in creator trial but cannot become a public runtime.
 - Bad: code enables a public link while `readiness.state !== 'publish_candidate'`.
@@ -306,6 +324,10 @@
   - failed or non-publishable gate runs clear any active public share token
   - gate run listing filters by tenant id, app id, gate id, status, generation run id, and repair attempt id and returns paginated results
   - generation run create/list/update preserve run number, status, trigger source, repair budget, runtime budget, summary, failure reason, and timestamps
+  - synchronous runner start creates a generation run and linked Gate 0 run
+  - synchronous runner Gate 0 failure keeps readiness non-publishable and clears public share token
+  - synchronous runner Gate 0 pass marks only Gate 0 evidence as passed, leaves the generation run failed with a Gate 1-7-not-executed failure reason, does not mark unexecuted Gate 1-7 as passed, and does not produce `publish_candidate`
+  - synchronous runner missing/cross-tenant app returns `GeneratedAppNotFoundException` before inserting ledgers
   - repair attempt create/list/update preserve parent generation run, target gate, attempt number, failure summary, change summary, verification summary, and timestamps
   - gate run recording can link to a generation run and repair attempt in the same tenant/app scope
 - Run scoped lint, `tsconfig.build.json` typecheck, and targeted tests for any generated-app change.
