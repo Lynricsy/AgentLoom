@@ -14,6 +14,7 @@ import type {
   GeneratedAppGateEvidence,
   GeneratedAppGenerationPlan,
   GeneratedAppGenerationRun,
+  GeneratedAppIndependentVerificationPlan,
   GeneratedAppIntegrationPlan,
   GeneratedAppGateRunFailure,
   GeneratedAppGateRun,
@@ -82,8 +83,8 @@ const DEFAULT_PREVIEW: GeneratedAppPreview = {
   testReportUrl: null,
 };
 
-const GATE_6_7_RUNNER_INCOMPLETE_FAILURE_REASON =
-  'Gate 6-7 runner 尚未接入/未执行，不能形成 publish candidate。';
+const GATE_7_RUNNER_INCOMPLETE_FAILURE_REASON =
+  'Gate 7 runner 尚未接入/未执行，不能形成 publish candidate。';
 
 const GATE_2_STATIC_CONTRACT_IDS = [
   'gate-2-public-runtime-contract',
@@ -344,6 +345,95 @@ const GATE_5_REQUIRED_SECRET_LEAK_PATTERNS = [
   'secret',
 ] as const;
 
+const GATE_6_SKELETON_EVIDENCE_NOTE =
+  'Gate 6 当前只做 independent-verifier-skeleton 完整性检查；未执行真实独立模型审查、真实独立代理审查、真实人工审查、真实运行结果判定或真实需求满足判定。';
+
+const GATE_6_REQUIRED_GATE_IDS = [
+  'gate-0',
+  'gate-1',
+  'gate-2',
+  'gate-3',
+  'gate-4',
+  'gate-5',
+] as const;
+
+const GATE_6_REQUIRED_ISOLATION_CONTROLS = [
+  'fresh-reviewer-identity',
+  'fresh-context-no-generation-transcript',
+  'redacted-evidence-bundle-only',
+  'reject-generator-self-attestation',
+  'evidence-id-citation-required',
+  'no-public-share-token-or-real-secret',
+] as const;
+
+const GATE_6_REQUIRED_RUBRIC_CATEGORIES = [
+  'requirement_coverage',
+  'scenario_coverage',
+  'ui_runtime_usability',
+  'agent_workflow_behavior',
+  'plugin_permission_safety',
+  'security_privacy',
+  'data_persistence',
+  'public_runtime_boundary',
+  'failure_error_states',
+  'publish_blockers',
+] as const;
+
+const GATE_6_REQUIRED_VERDICT_FIELDS = [
+  'blockingFindings',
+  'warnings',
+  'decision',
+  'traceabilityCoverage',
+  'repairSuggestions',
+  'residualRiskSummary',
+] as const;
+
+const GATE_6_ALLOWED_FINDING_SEVERITIES = ['blocking', 'warning'] as const;
+
+const GATE_6_ALLOWED_DECISION_VALUES = ['pass', 'fail'] as const;
+
+const GATE_6_REQUIRED_INDEPENDENCE_CHECK_KINDS = [
+  'reviewer_identity_context_isolation',
+  'input_material_redaction',
+  'reject_generator_self_attestation',
+  'evidence_id_citation_required',
+] as const;
+
+const GATE_6_REQUIRED_FAILURE_CAPTURE_FIELDS = [
+  'verifierRunId',
+  'verifierIdentity',
+  'inputBundleId',
+  'blockingFindings',
+  'warningFindings',
+  'evidenceIds',
+  'repairSuggestions',
+  'residualRiskSummary',
+  'durationMs',
+] as const;
+
+const GATE_6_REQUIRED_FORBIDDEN_SENSITIVE_FIELDS = [
+  'publicShareToken',
+  'authorization',
+  'apiKey',
+  'secret',
+] as const;
+
+const GATE_6_REQUIRED_COVERAGE_MATRIX_IDS = [
+  'requirementCoverage',
+  'scenarioCoverage',
+  'evidenceCoverage',
+  'gateCoverage',
+] as const;
+
+const GATE_6_ALLOWED_COVERAGE_MATRIX_SOURCE_PLANS = [
+  'generationPlan',
+  'staticContracts',
+  'buildUnitPlan',
+  'integrationPlan',
+  'browserAcceptancePlan',
+  'independentVerificationPlan',
+] as const;
+
 interface Gate0Check {
   id: string;
   label: string;
@@ -433,6 +523,22 @@ interface Gate5Check {
 }
 
 interface Gate5Evaluation {
+  status: 'passed' | 'failed';
+  summary: string;
+  evidence: GeneratedAppGateEvidence[];
+  failure: GeneratedAppGateRunFailure | null;
+  repairInstructions: string | null;
+}
+
+interface Gate6Check {
+  id: string;
+  label: string;
+  passed: boolean;
+  summary: string;
+  issues: string[];
+}
+
+interface Gate6Evaluation {
   status: 'passed' | 'failed';
   summary: string;
   evidence: GeneratedAppGateEvidence[];
@@ -1074,9 +1180,93 @@ export class GeneratedAppService {
                 completedSummary =
                   '门禁运行器骨架完成 Gate 0、Gate 1、Gate 2、Gate 3 和 Gate 4，但 Gate 5 browser acceptance skeleton 检查失败；当前应用保持不可发布。';
               } else {
-                finalFailureReason = GATE_6_7_RUNNER_INCOMPLETE_FAILURE_REASON;
-                completedSummary =
-                  '门禁运行器骨架完成 Gate 0 AppSpec 完整性检查、Gate 1 架构计划门禁、Gate 2 静态合约门禁、Gate 3 构建与单元 skeleton 完整性检查、Gate 4 integration skeleton 完整性检查和 Gate 5 browser acceptance skeleton 完整性检查；Gate 6-7 runner 尚未接入/未执行，当前应用不能形成 publish candidate，保持不可发布。';
+                const independentVerificationPlan =
+                  this.buildIndependentVerificationPlan(
+                    app.appSpec,
+                    generationPlan,
+                    staticContracts,
+                    buildUnitPlan,
+                    integrationPlan,
+                    browserAcceptancePlan,
+                    latestApp.gateResults,
+                  );
+                const generationPlanWithIndependentVerificationPlan: GeneratedAppGenerationPlan =
+                  {
+                    ...generationPlanWithBrowserAcceptancePlan,
+                    independentVerificationPlan,
+                  };
+                const gate6Evaluation =
+                  this.evaluateGate6IndependentVerificationPlan(
+                    app.appSpec,
+                    generationPlan,
+                    staticContracts,
+                    buildUnitPlan,
+                    integrationPlan,
+                    browserAcceptancePlan,
+                    latestApp.gateResults,
+                    independentVerificationPlan,
+                  );
+                const gate5Result = latestApp.gateResults.find(
+                  (gate) => gate.gateId === 'gate-5',
+                );
+                const gate6StartedAt = new Date();
+                const gate6CompletedAt = new Date();
+                const gate6AppSnapshot: GeneratedApp = {
+                  ...app,
+                  gateResults: latestApp.gateResults,
+                  generationPlan: latestApp.generationPlan,
+                };
+                const gate6RunResult = await this.createGateRunAndUpdateApp(
+                  tenantId,
+                  userId,
+                  gate6AppSnapshot,
+                  {
+                    gateId: 'gate-6',
+                    generationRunId: run.id,
+                    attemptNumber: 1,
+                    status: gate6Evaluation.status,
+                    summary: gate6Evaluation.summary,
+                    evidence: gate6Evaluation.evidence,
+                    failure: gate6Evaluation.failure,
+                    repairInstructions: gate6Evaluation.repairInstructions,
+                    startedAt: gate6StartedAt.toISOString(),
+                    completedAt: gate6CompletedAt.toISOString(),
+                  },
+                  {
+                    generationPlan:
+                      generationPlanWithIndependentVerificationPlan,
+                    buildGateResults: (gate6Result, nowIso) =>
+                      this.buildRunnerGateResults(
+                        app,
+                        [
+                          ...(gate0Result ? [gate0Result] : []),
+                          ...(gate1Result ? [gate1Result] : []),
+                          ...(gate2Result ? [gate2Result] : []),
+                          ...(gate3Result ? [gate3Result] : []),
+                          ...(gate4Result ? [gate4Result] : []),
+                          ...(gate5Result ? [gate5Result] : []),
+                          gate6Result,
+                        ],
+                        nowIso,
+                      ),
+                  },
+                );
+
+                producedGateRuns.push(gate6RunResult.gateRun);
+                latestApp = gate6RunResult.app;
+                completedAt = gate6CompletedAt;
+
+                if (gate6Evaluation.status === 'failed') {
+                  finalFailureReason =
+                    gate6Evaluation.failure?.message ??
+                    'Gate 6 独立审查 skeleton 门禁失败，不能继续执行 Gate 7。';
+                  completedSummary =
+                    '门禁运行器骨架完成 Gate 0、Gate 1、Gate 2、Gate 3、Gate 4 和 Gate 5，但 Gate 6 independent verifier skeleton 检查失败；当前应用保持不可发布。';
+                } else {
+                  finalFailureReason = GATE_7_RUNNER_INCOMPLETE_FAILURE_REASON;
+                  completedSummary =
+                    '门禁运行器骨架完成 Gate 0 AppSpec 完整性检查、Gate 1 架构计划门禁、Gate 2 静态合约门禁、Gate 3 构建与单元 skeleton 完整性检查、Gate 4 integration skeleton 完整性检查、Gate 5 browser acceptance skeleton 完整性检查和 Gate 6 independent verifier skeleton 完整性检查；Gate 7 runner 尚未接入/未执行，当前应用不能形成 publish candidate，保持不可发布。';
+                }
               }
             }
           }
@@ -4311,6 +4501,1304 @@ export class GeneratedAppService {
     ];
   }
 
+  private buildIndependentVerificationPlan(
+    appSpec: GeneratedAppSpec,
+    generationPlan: GeneratedAppGenerationPlan,
+    staticContracts: GeneratedAppStaticContracts,
+    buildUnitPlan: GeneratedAppBuildUnitPlan,
+    integrationPlan: GeneratedAppIntegrationPlan,
+    browserAcceptancePlan: GeneratedAppBrowserAcceptancePlan,
+    gateResults: GeneratedAppGateResult[],
+  ): GeneratedAppIndependentVerificationPlan {
+    const requirementIds = appSpec.coreRequirements.map(
+      (requirement) => requirement.id,
+    );
+    const scenarioIds = appSpec.acceptanceScenarios.map(
+      (scenario) => scenario.id,
+    );
+    const requiredGateIds = [...GATE_6_REQUIRED_GATE_IDS];
+    const gateEvidenceRefs = requiredGateIds.map((gateId) => ({
+      gateId,
+      evidenceIds:
+        gateResults
+          .find((gate) => gate.gateId === gateId)
+          ?.evidence.map((evidence) => evidence.id) ?? [],
+    }));
+    const evidenceIds = gateEvidenceRefs.flatMap((entry) => entry.evidenceIds);
+    const staticContractIds = [...GATE_2_STATIC_CONTRACT_IDS];
+    const buildUnitArtifactIds = buildUnitPlan.artifactExpectations.map(
+      (artifact) => artifact.artifactId,
+    );
+    const integrationTraceArtifactIds = integrationPlan.traceArtifacts.map(
+      (artifact) => artifact.artifactId,
+    );
+    const browserArtifactIds = browserAcceptancePlan.artifactExpectations.map(
+      (artifact) => artifact.artifactId,
+    );
+    const rubricCategories = [...GATE_6_REQUIRED_RUBRIC_CATEGORIES];
+    const coverageMatrixRefs: GeneratedAppIndependentVerificationPlan['evidenceBundle']['coverageMatrixRefs'] =
+      [
+        {
+          matrixId: 'requirementCoverage',
+          sourcePlan: 'independentVerificationPlan',
+          requirementIds,
+          scenarioIds,
+          gateIds: requiredGateIds,
+        },
+        {
+          matrixId: 'scenarioCoverage',
+          sourcePlan: 'browserAcceptancePlan',
+          requirementIds,
+          scenarioIds,
+          gateIds: requiredGateIds,
+        },
+        {
+          matrixId: 'evidenceCoverage',
+          sourcePlan: 'independentVerificationPlan',
+          requirementIds,
+          scenarioIds,
+          gateIds: requiredGateIds,
+        },
+        {
+          matrixId: 'gateCoverage',
+          sourcePlan: 'independentVerificationPlan',
+          requirementIds,
+          scenarioIds,
+          gateIds: requiredGateIds,
+        },
+      ];
+
+    return {
+      planVersion: 1,
+      appSpecVersion: appSpec.version,
+      generationPlanVersion: generationPlan.planVersion,
+      staticContractsVersion: staticContracts.contractVersion,
+      buildUnitPlanVersion: buildUnitPlan.planVersion,
+      integrationPlanVersion: integrationPlan.planVersion,
+      browserAcceptancePlanVersion: browserAcceptancePlan.planVersion,
+      executionLevel: 'independent-verifier-skeleton',
+      skeletonDisclaimer: GATE_6_SKELETON_EVIDENCE_NOTE,
+      verifierIsolationPolicy: {
+        verifierContext: 'fresh-independent-context',
+        reuseGenerationContext: false,
+        acceptsGeneratorSelfAttestation: false,
+        readsPublicShareToken: false,
+        readsRealSecrets: false,
+        inputMaterialPolicy: 'redacted-evidence-bundle-only',
+        requiredControls: [...GATE_6_REQUIRED_ISOLATION_CONTROLS],
+      },
+      evidenceBundle: {
+        bundleId: 'gate-6-redacted-evidence-bundle',
+        redactionLevel: 'redacted-no-public-token-or-secret',
+        referencedGateIds: requiredGateIds,
+        gateEvidenceRefs,
+        staticContractIds,
+        buildUnitArtifactIds,
+        integrationTraceArtifactIds,
+        browserArtifactIds,
+        coverageMatrixRefs,
+        forbiddenSensitiveFields: [
+          ...GATE_6_REQUIRED_FORBIDDEN_SENSITIVE_FIELDS,
+        ],
+      },
+      rubric: rubricCategories.map((category) => ({
+        category,
+        label: this.buildGate6RubricLabel(category),
+        requirementIds,
+        scenarioIds,
+        evidenceIds,
+        blocking: true,
+      })),
+      verdictSchema: {
+        requiredFields: [...GATE_6_REQUIRED_VERDICT_FIELDS],
+        findingSeverities: [...GATE_6_ALLOWED_FINDING_SEVERITIES],
+        decisionValues: [...GATE_6_ALLOWED_DECISION_VALUES],
+        requiresEvidenceIds: true,
+        requiresRepairSuggestions: true,
+        residualRiskSummaryRequired: true,
+      },
+      independenceChecks: [
+        {
+          checkId: 'gate-6-reviewer-context-isolation',
+          kind: 'reviewer_identity_context_isolation',
+          required: true,
+          gateIds: requiredGateIds,
+          evidenceIds,
+        },
+        {
+          checkId: 'gate-6-redacted-input-material',
+          kind: 'input_material_redaction',
+          required: true,
+          gateIds: requiredGateIds,
+          evidenceIds,
+        },
+        {
+          checkId: 'gate-6-reject-generator-self-attestation',
+          kind: 'reject_generator_self_attestation',
+          required: true,
+          gateIds: requiredGateIds,
+          evidenceIds,
+        },
+        {
+          checkId: 'gate-6-evidence-id-citation-required',
+          kind: 'evidence_id_citation_required',
+          required: true,
+          gateIds: requiredGateIds,
+          evidenceIds,
+        },
+      ],
+      requirementCoverage: appSpec.coreRequirements.map((requirement) => ({
+        requirementId: requirement.id,
+        scenarioIds:
+          appSpec.traceability.find(
+            (entry) => entry.requirementId === requirement.id,
+          )?.scenarioIds ?? [],
+        rubricCategories,
+        evidenceIds,
+        gateIds: requiredGateIds,
+        staticContractIds,
+        browserArtifactIds,
+      })),
+      scenarioCoverage: appSpec.acceptanceScenarios.map((scenario) => ({
+        scenarioId: scenario.id,
+        requirementIds: scenario.requirementIds,
+        rubricCategories,
+        evidenceIds,
+        gateIds: requiredGateIds,
+        browserArtifactIds,
+      })),
+      evidenceCoverage: gateEvidenceRefs.flatMap((entry) =>
+        entry.evidenceIds.map((evidenceId) => ({
+          evidenceId,
+          gateId: entry.gateId,
+          usedByRubricCategories: rubricCategories,
+          requirementIds,
+          scenarioIds,
+        })),
+      ),
+      gateCoverage: gateEvidenceRefs.map((entry) => ({
+        gateId: entry.gateId,
+        evidenceIds: entry.evidenceIds,
+        required: true,
+        coveredByRubricCategories: rubricCategories,
+      })),
+      failureCaptureFields: [
+        ...GATE_6_REQUIRED_FAILURE_CAPTURE_FIELDS,
+        'redactedEvidenceBundlePath',
+      ],
+    };
+  }
+
+  private buildGate6RubricLabel(
+    category: GeneratedAppIndependentVerificationPlan['rubric'][number]['category'],
+  ): string {
+    const labels: Record<
+      GeneratedAppIndependentVerificationPlan['rubric'][number]['category'],
+      string
+    > = {
+      requirement_coverage: '需求覆盖',
+      scenario_coverage: 'scenario 覆盖',
+      ui_runtime_usability: 'UI/runtime 可用性',
+      agent_workflow_behavior: 'Agent/Workflow 行为',
+      plugin_permission_safety: '插件/权限安全',
+      security_privacy: '安全与隐私',
+      data_persistence: '数据持久化',
+      public_runtime_boundary: '公开 runtime 边界',
+      failure_error_states: '失败与错误态',
+      publish_blockers: '可发布阻断项',
+    };
+
+    return labels[category];
+  }
+
+  private evaluateGate6IndependentVerificationPlan(
+    appSpec: GeneratedAppSpec,
+    generationPlan: GeneratedAppGenerationPlan,
+    staticContracts: GeneratedAppStaticContracts,
+    buildUnitPlan: GeneratedAppBuildUnitPlan,
+    integrationPlan: GeneratedAppIntegrationPlan,
+    browserAcceptancePlan: GeneratedAppBrowserAcceptancePlan,
+    gateResults: GeneratedAppGateResult[],
+    independentVerificationPlan: unknown,
+  ): Gate6Evaluation {
+    const checks = this.buildGate6Checks(
+      appSpec,
+      generationPlan,
+      staticContracts,
+      buildUnitPlan,
+      integrationPlan,
+      browserAcceptancePlan,
+      gateResults,
+      independentVerificationPlan,
+    );
+    const failedChecks = checks.filter((check) => !check.passed);
+    const evidence = checks.map((check) => ({
+      id: `gate-6-${check.id}`,
+      label: check.label,
+      kind: 'verifier' as const,
+      url: null,
+      summary:
+        check.issues.length === 0
+          ? `${check.summary} ${GATE_6_SKELETON_EVIDENCE_NOTE}`
+          : `${check.summary} 缺口：${check.issues.join(
+              '；',
+            )} ${GATE_6_SKELETON_EVIDENCE_NOTE}`,
+    }));
+
+    if (failedChecks.length > 0) {
+      const failure: GeneratedAppGateRunFailure = {
+        code: 'independent-verifier-plan-incomplete',
+        message: `IndependentVerificationPlan 独立审查 skeleton 检查失败：${failedChecks
+          .map((check) => check.label)
+          .join(
+            '、',
+          )}；本失败只来自 independent-verifier-skeleton 合约完整性检查，不代表真实独立模型审查、真实独立代理审查、真实人工审查、真实运行结果判定或真实需求满足判定已经执行。`,
+        details: {
+          checks: checks.map((check) => ({
+            id: check.id,
+            label: check.label,
+            passed: check.passed,
+            issues: check.issues,
+          })),
+        },
+      };
+
+      return {
+        status: 'failed',
+        summary:
+          'Gate 6 失败：independentVerificationPlan 未完整覆盖 verifier 隔离策略、redacted evidence bundle、审查 rubric、verdict schema、independence checks、需求/场景/evidence/gate 覆盖或失败捕获字段；本结果仅表示契约级 independent verifier skeleton 检查失败，不代表真实独立模型审查、真实独立代理审查、真实人工审查、真实运行结果判定或真实需求满足判定已经执行。',
+        evidence,
+        failure,
+        repairInstructions:
+          '修复 generationPlan.independentVerificationPlan，使其覆盖 AppSpec/generationPlan/staticContracts/buildUnitPlan/integrationPlan/browserAcceptancePlan 版本绑定、verifier 隔离策略、只含 redacted evidence 的 bundle、Gate 0-5 evidence ids、rubric、verdict schema、independence checks、需求/场景/evidence/gate 覆盖和 failure capture fields；当前 Gate 6 仍只检查 independent-verifier-skeleton 合约，不代表真实独立模型/代理/人工审查或真实需求满足判定已经执行。',
+      };
+    }
+
+    return {
+      status: 'passed',
+      summary:
+        'Gate 6 通过：independentVerificationPlan 独立审查 skeleton 已完整覆盖 verifier 隔离策略、redacted evidence bundle、Gate 0-5 evidence ids、审查 rubric、verdict schema、independence checks、需求/场景/evidence/gate 覆盖和失败捕获字段；本结果仅表示契约级 independent verifier skeleton 完整，不代表真实独立模型审查、真实独立代理审查、真实人工审查、真实运行结果判定或真实需求满足判定已经执行。',
+      evidence,
+      failure: null,
+      repairInstructions: null,
+    };
+  }
+
+  private buildGate6Checks(
+    appSpec: GeneratedAppSpec,
+    generationPlan: GeneratedAppGenerationPlan,
+    staticContracts: GeneratedAppStaticContracts,
+    buildUnitPlan: GeneratedAppBuildUnitPlan,
+    integrationPlan: GeneratedAppIntegrationPlan,
+    browserAcceptancePlan: GeneratedAppBrowserAcceptancePlan,
+    gateResults: GeneratedAppGateResult[],
+    independentVerificationPlan: unknown,
+  ): Gate6Check[] {
+    if (!this.isRecord(independentVerificationPlan)) {
+      return [
+        {
+          id: 'independent-verification-plan-object',
+          label: 'IndependentVerificationPlan JSON 对象',
+          passed: false,
+          summary:
+            '检查 generationPlan.independentVerificationPlan 是否为结构化 JSON 对象。',
+          issues: ['independentVerificationPlan 不是对象'],
+        },
+      ];
+    }
+
+    const requirementIds = appSpec.coreRequirements.map(
+      (requirement) => requirement.id,
+    );
+    const scenarioIds = appSpec.acceptanceScenarios.map(
+      (scenario) => scenario.id,
+    );
+    const knownRequirementIds = new Set(requirementIds);
+    const knownScenarioIds = new Set(scenarioIds);
+    const requiredGateIds = [...GATE_6_REQUIRED_GATE_IDS];
+    const knownGateIds = new Set<string>(requiredGateIds);
+    const knownStaticContractIds = new Set<string>([
+      ...GATE_2_STATIC_CONTRACT_IDS,
+    ]);
+    const buildUnitArtifactIds = buildUnitPlan.artifactExpectations.map(
+      (artifact) => artifact.artifactId,
+    );
+    const knownBuildUnitArtifactIds = new Set(buildUnitArtifactIds);
+    const integrationTraceArtifactIds = integrationPlan.traceArtifacts.map(
+      (artifact) => artifact.artifactId,
+    );
+    const knownIntegrationTraceArtifactIds = new Set(
+      integrationTraceArtifactIds,
+    );
+    const browserArtifactIds = browserAcceptancePlan.artifactExpectations.map(
+      (artifact) => artifact.artifactId,
+    );
+    const knownBrowserArtifactIds = new Set(browserArtifactIds);
+    const gateEvidenceIdsByGateId = new Map<string, string[]>(
+      requiredGateIds.map((gateId) => [
+        gateId,
+        gateResults
+          .find((gate) => gate.gateId === gateId)
+          ?.evidence.map((evidence) => evidence.id) ?? [],
+      ]),
+    );
+    const knownEvidenceEntries = [...gateEvidenceIdsByGateId.entries()].flatMap(
+      ([gateId, evidenceIds]) =>
+        evidenceIds.map((evidenceId) => ({ gateId, evidenceId })),
+    );
+    const evidenceIds = knownEvidenceEntries.map((entry) => entry.evidenceId);
+    const knownEvidenceIds = new Set(evidenceIds);
+    const knownRubricCategories = new Set<string>([
+      ...GATE_6_REQUIRED_RUBRIC_CATEGORIES,
+    ]);
+    const evidenceBundle = this.getRecord(
+      independentVerificationPlan.evidenceBundle,
+    );
+    const verifierIsolationPolicy = this.getRecord(
+      independentVerificationPlan.verifierIsolationPolicy,
+    );
+    const gateEvidenceRefs = this.getRecordArray(
+      evidenceBundle?.gateEvidenceRefs,
+    );
+    const coverageMatrixRefs = this.getRecordArray(
+      evidenceBundle?.coverageMatrixRefs,
+    );
+    const rubric = this.getRecordArray(independentVerificationPlan.rubric);
+    const verdictSchema = this.getRecord(
+      independentVerificationPlan.verdictSchema,
+    );
+    const independenceChecks = this.getRecordArray(
+      independentVerificationPlan.independenceChecks,
+    );
+    const requirementCoverage = this.getRecordArray(
+      independentVerificationPlan.requirementCoverage,
+    );
+    const scenarioCoverage = this.getRecordArray(
+      independentVerificationPlan.scenarioCoverage,
+    );
+    const evidenceCoverage = this.getRecordArray(
+      independentVerificationPlan.evidenceCoverage,
+    );
+    const gateCoverage = this.getRecordArray(
+      independentVerificationPlan.gateCoverage,
+    );
+
+    const versionIssues = [
+      ...(independentVerificationPlan.planVersion === 1
+        ? []
+        : ['planVersion 必须为 1']),
+      ...(independentVerificationPlan.appSpecVersion === appSpec.version
+        ? []
+        : [
+            `appSpecVersion=${String(
+              independentVerificationPlan.appSpecVersion,
+            )} 与 AppSpec version=${appSpec.version} 不一致`,
+          ]),
+      ...(independentVerificationPlan.generationPlanVersion ===
+      generationPlan.planVersion
+        ? []
+        : [
+            `generationPlanVersion=${String(
+              independentVerificationPlan.generationPlanVersion,
+            )} 与 generationPlan.planVersion=${generationPlan.planVersion} 不一致`,
+          ]),
+      ...(independentVerificationPlan.staticContractsVersion ===
+      staticContracts.contractVersion
+        ? []
+        : [
+            `staticContractsVersion=${String(
+              independentVerificationPlan.staticContractsVersion,
+            )} 与 staticContracts.contractVersion=${staticContracts.contractVersion} 不一致`,
+          ]),
+      ...(independentVerificationPlan.buildUnitPlanVersion ===
+      buildUnitPlan.planVersion
+        ? []
+        : [
+            `buildUnitPlanVersion=${String(
+              independentVerificationPlan.buildUnitPlanVersion,
+            )} 与 buildUnitPlan.planVersion=${buildUnitPlan.planVersion} 不一致`,
+          ]),
+      ...(independentVerificationPlan.integrationPlanVersion ===
+      integrationPlan.planVersion
+        ? []
+        : [
+            `integrationPlanVersion=${String(
+              independentVerificationPlan.integrationPlanVersion,
+            )} 与 integrationPlan.planVersion=${integrationPlan.planVersion} 不一致`,
+          ]),
+      ...(independentVerificationPlan.browserAcceptancePlanVersion ===
+      browserAcceptancePlan.planVersion
+        ? []
+        : [
+            `browserAcceptancePlanVersion=${String(
+              independentVerificationPlan.browserAcceptancePlanVersion,
+            )} 与 browserAcceptancePlan.planVersion=${browserAcceptancePlan.planVersion} 不一致`,
+          ]),
+      ...(independentVerificationPlan.executionLevel ===
+      'independent-verifier-skeleton'
+        ? []
+        : ['executionLevel 必须为 independent-verifier-skeleton']),
+      ...(!this.getNonEmptyString(
+        independentVerificationPlan.skeletonDisclaimer,
+      )
+        ? ['skeletonDisclaimer 缺失']
+        : []),
+      ...this.collectSensitiveTokenIssues(
+        independentVerificationPlan,
+        'independentVerificationPlan',
+      ),
+    ];
+    const isolationIssues = [
+      ...this.requireRecord(verifierIsolationPolicy, 'verifierIsolationPolicy'),
+      ...(verifierIsolationPolicy?.verifierContext ===
+      'fresh-independent-context'
+        ? []
+        : [
+            'verifierIsolationPolicy.verifierContext 必须为 fresh-independent-context',
+          ]),
+      ...(verifierIsolationPolicy?.reuseGenerationContext === false
+        ? []
+        : ['verifierIsolationPolicy.reuseGenerationContext 必须为 false']),
+      ...(verifierIsolationPolicy?.acceptsGeneratorSelfAttestation === false
+        ? []
+        : [
+            'verifierIsolationPolicy.acceptsGeneratorSelfAttestation 必须为 false',
+          ]),
+      ...(verifierIsolationPolicy?.readsPublicShareToken === false
+        ? []
+        : ['verifierIsolationPolicy.readsPublicShareToken 必须为 false']),
+      ...(verifierIsolationPolicy?.readsRealSecrets === false
+        ? []
+        : ['verifierIsolationPolicy.readsRealSecrets 必须为 false']),
+      ...(verifierIsolationPolicy?.inputMaterialPolicy ===
+      'redacted-evidence-bundle-only'
+        ? []
+        : [
+            'verifierIsolationPolicy.inputMaterialPolicy 必须为 redacted-evidence-bundle-only',
+          ]),
+      ...(this.getStringArray(verifierIsolationPolicy?.requiredControls)
+        .length === 0
+        ? ['verifierIsolationPolicy.requiredControls 不能为空']
+        : []),
+      ...this.buildMissingItemsIssues(
+        'verifierIsolationPolicy.requiredControls',
+        this.getStringArray(verifierIsolationPolicy?.requiredControls),
+        [...GATE_6_REQUIRED_ISOLATION_CONTROLS],
+      ),
+    ];
+    const gateEvidenceRefGateIds = gateEvidenceRefs
+      .map((entry) => this.getNonEmptyString(entry.gateId))
+      .filter((gateId): gateId is string => gateId !== null);
+    const coverageMatrixIds = coverageMatrixRefs
+      .map((entry) => this.getNonEmptyString(entry.matrixId))
+      .filter((matrixId): matrixId is string => matrixId !== null);
+    const evidenceBundleIssues = [
+      ...this.requireRecord(evidenceBundle, 'evidenceBundle'),
+      ...(!this.getNonEmptyString(evidenceBundle?.bundleId)
+        ? ['evidenceBundle.bundleId 缺失']
+        : []),
+      ...(evidenceBundle?.redactionLevel ===
+      'redacted-no-public-token-or-secret'
+        ? []
+        : [
+            'evidenceBundle.redactionLevel 必须为 redacted-no-public-token-or-secret',
+          ]),
+      ...(this.getStringArray(evidenceBundle?.referencedGateIds).length === 0
+        ? ['evidenceBundle.referencedGateIds 不能为空']
+        : []),
+      ...this.buildMissingItemsIssues(
+        'evidenceBundle.referencedGateIds',
+        this.getStringArray(evidenceBundle?.referencedGateIds),
+        requiredGateIds,
+      ),
+      ...this.buildUnknownReferenceIssues(
+        'evidenceBundle.referencedGateIds',
+        this.getStringArray(evidenceBundle?.referencedGateIds),
+        knownGateIds,
+      ),
+      ...this.buildDuplicateItemIssues(
+        'evidenceBundle.referencedGateIds',
+        this.getStringArray(evidenceBundle?.referencedGateIds),
+      ),
+      ...(gateEvidenceRefs.length === 0
+        ? ['evidenceBundle.gateEvidenceRefs 不能为空']
+        : []),
+      ...this.buildMissingItemsIssues(
+        'evidenceBundle.gateEvidenceRefs.gateId',
+        gateEvidenceRefGateIds,
+        requiredGateIds,
+      ),
+      ...gateEvidenceRefs.flatMap((entry, index) => {
+        const gateId = this.getNonEmptyString(entry.gateId);
+        const entryEvidenceIds = this.getStringArray(entry.evidenceIds);
+        const gateSpecificEvidenceIds =
+          gateId === null ? [] : (gateEvidenceIdsByGateId.get(gateId) ?? []);
+
+        return [
+          ...(!gateId
+            ? [`evidenceBundle.gateEvidenceRefs[${index}].gateId 缺失`]
+            : []),
+          ...(gateId && !knownGateIds.has(gateId)
+            ? [
+                `evidenceBundle.gateEvidenceRefs[${index}].gateId 引用了未知 gate ${this.formatIssueValue(
+                  gateId,
+                )}`,
+              ]
+            : []),
+          ...(entryEvidenceIds.length === 0
+            ? [`evidenceBundle.gateEvidenceRefs[${index}].evidenceIds 不能为空`]
+            : []),
+          ...this.buildUnknownReferenceIssues(
+            `evidenceBundle.gateEvidenceRefs[${index}].evidenceIds`,
+            entryEvidenceIds,
+            knownEvidenceIds,
+          ),
+          ...entryEvidenceIds
+            .filter(
+              (evidenceId) =>
+                gateId !== null &&
+                knownGateIds.has(gateId) &&
+                knownEvidenceIds.has(evidenceId) &&
+                !gateSpecificEvidenceIds.includes(evidenceId),
+            )
+            .map(
+              (evidenceId) =>
+                `evidenceBundle.gateEvidenceRefs[${index}].evidenceIds ${this.formatIssueValue(
+                  evidenceId,
+                )} 不属于 ${gateId}`,
+            ),
+        ];
+      }),
+      ...(this.getStringArray(evidenceBundle?.staticContractIds).length === 0
+        ? ['evidenceBundle.staticContractIds 不能为空']
+        : []),
+      ...this.buildMissingItemsIssues(
+        'evidenceBundle.staticContractIds',
+        this.getStringArray(evidenceBundle?.staticContractIds),
+        [...GATE_2_STATIC_CONTRACT_IDS],
+      ),
+      ...this.buildUnknownReferenceIssues(
+        'evidenceBundle.staticContractIds',
+        this.getStringArray(evidenceBundle?.staticContractIds),
+        knownStaticContractIds,
+      ),
+      ...(this.getStringArray(evidenceBundle?.buildUnitArtifactIds).length === 0
+        ? ['evidenceBundle.buildUnitArtifactIds 不能为空']
+        : []),
+      ...this.buildMissingItemsIssues(
+        'evidenceBundle.buildUnitArtifactIds',
+        this.getStringArray(evidenceBundle?.buildUnitArtifactIds),
+        buildUnitArtifactIds,
+      ),
+      ...this.buildUnknownReferenceIssues(
+        'evidenceBundle.buildUnitArtifactIds',
+        this.getStringArray(evidenceBundle?.buildUnitArtifactIds),
+        knownBuildUnitArtifactIds,
+      ),
+      ...(this.getStringArray(evidenceBundle?.integrationTraceArtifactIds)
+        .length === 0
+        ? ['evidenceBundle.integrationTraceArtifactIds 不能为空']
+        : []),
+      ...this.buildMissingItemsIssues(
+        'evidenceBundle.integrationTraceArtifactIds',
+        this.getStringArray(evidenceBundle?.integrationTraceArtifactIds),
+        integrationTraceArtifactIds,
+      ),
+      ...this.buildUnknownReferenceIssues(
+        'evidenceBundle.integrationTraceArtifactIds',
+        this.getStringArray(evidenceBundle?.integrationTraceArtifactIds),
+        knownIntegrationTraceArtifactIds,
+      ),
+      ...(this.getStringArray(evidenceBundle?.browserArtifactIds).length === 0
+        ? ['evidenceBundle.browserArtifactIds 不能为空']
+        : []),
+      ...this.buildMissingItemsIssues(
+        'evidenceBundle.browserArtifactIds',
+        this.getStringArray(evidenceBundle?.browserArtifactIds),
+        browserArtifactIds,
+      ),
+      ...this.buildUnknownReferenceIssues(
+        'evidenceBundle.browserArtifactIds',
+        this.getStringArray(evidenceBundle?.browserArtifactIds),
+        knownBrowserArtifactIds,
+      ),
+      ...(coverageMatrixRefs.length === 0
+        ? ['evidenceBundle.coverageMatrixRefs 不能为空']
+        : []),
+      ...this.buildMissingItemsIssues(
+        'evidenceBundle.coverageMatrixRefs.matrixId',
+        coverageMatrixIds,
+        [...GATE_6_REQUIRED_COVERAGE_MATRIX_IDS],
+      ),
+      ...this.buildDuplicateItemIssues(
+        'evidenceBundle.coverageMatrixRefs.matrixId',
+        coverageMatrixIds,
+      ),
+      ...coverageMatrixRefs.flatMap((entry, index) => {
+        const matrixId = this.getNonEmptyString(entry.matrixId);
+        const sourcePlan = this.getNonEmptyString(entry.sourcePlan);
+        const allowedMatrixIds = new Set<string>([
+          ...GATE_6_REQUIRED_COVERAGE_MATRIX_IDS,
+        ]);
+        const allowedSourcePlans = new Set<string>([
+          ...GATE_6_ALLOWED_COVERAGE_MATRIX_SOURCE_PLANS,
+        ]);
+
+        return [
+          ...(!matrixId ? [`coverageMatrixRefs[${index}].matrixId 缺失`] : []),
+          ...(matrixId && !allowedMatrixIds.has(matrixId)
+            ? [
+                `coverageMatrixRefs[${index}].matrixId 是非法 coverage matrix ${this.formatIssueValue(
+                  matrixId,
+                )}`,
+              ]
+            : []),
+          ...(!sourcePlan
+            ? [`coverageMatrixRefs[${index}].sourcePlan 缺失`]
+            : []),
+          ...(sourcePlan && !allowedSourcePlans.has(sourcePlan)
+            ? [
+                `coverageMatrixRefs[${index}].sourcePlan 是非法 source plan ${this.formatIssueValue(
+                  sourcePlan,
+                )}`,
+              ]
+            : []),
+          ...(this.getStringArray(entry.requirementIds).length === 0
+            ? [`coverageMatrixRefs[${index}].requirementIds 不能为空`]
+            : []),
+          ...this.buildUnknownReferenceIssues(
+            `coverageMatrixRefs[${index}].requirementIds`,
+            this.getStringArray(entry.requirementIds),
+            knownRequirementIds,
+          ),
+          ...(this.getStringArray(entry.scenarioIds).length === 0
+            ? [`coverageMatrixRefs[${index}].scenarioIds 不能为空`]
+            : []),
+          ...this.buildUnknownReferenceIssues(
+            `coverageMatrixRefs[${index}].scenarioIds`,
+            this.getStringArray(entry.scenarioIds),
+            knownScenarioIds,
+          ),
+          ...(this.getStringArray(entry.gateIds).length === 0
+            ? [`coverageMatrixRefs[${index}].gateIds 不能为空`]
+            : []),
+          ...this.buildUnknownReferenceIssues(
+            `coverageMatrixRefs[${index}].gateIds`,
+            this.getStringArray(entry.gateIds),
+            knownGateIds,
+          ),
+        ];
+      }),
+      ...(this.getStringArray(evidenceBundle?.forbiddenSensitiveFields)
+        .length === 0
+        ? ['evidenceBundle.forbiddenSensitiveFields 不能为空']
+        : []),
+      ...this.buildMissingItemsIssues(
+        'evidenceBundle.forbiddenSensitiveFields',
+        this.getStringArray(evidenceBundle?.forbiddenSensitiveFields),
+        [...GATE_6_REQUIRED_FORBIDDEN_SENSITIVE_FIELDS],
+      ),
+    ];
+    const rubricCategories = rubric
+      .map((entry) => this.getNonEmptyString(entry.category))
+      .filter((category): category is string => category !== null);
+    const rubricIssues = [
+      ...(rubric.length === 0 ? ['rubric 不能为空'] : []),
+      ...this.buildMissingItemsIssues('rubric.category', rubricCategories, [
+        ...GATE_6_REQUIRED_RUBRIC_CATEGORIES,
+      ]),
+      ...this.buildDuplicateItemIssues('rubric.category', rubricCategories),
+      ...rubric.flatMap((entry, index) => {
+        const category = this.getNonEmptyString(entry.category);
+
+        return [
+          ...(!category ? [`rubric[${index}].category 缺失`] : []),
+          ...(category && !knownRubricCategories.has(category)
+            ? [
+                `rubric[${index}].category 是非法 rubric category ${this.formatIssueValue(
+                  category,
+                )}`,
+              ]
+            : []),
+          ...(!this.getNonEmptyString(entry.label)
+            ? [`rubric[${index}].label 缺失`]
+            : []),
+          ...(this.getStringArray(entry.requirementIds).length === 0
+            ? [`rubric[${index}].requirementIds 不能为空`]
+            : []),
+          ...this.buildUnknownReferenceIssues(
+            `rubric[${index}].requirementIds`,
+            this.getStringArray(entry.requirementIds),
+            knownRequirementIds,
+          ),
+          ...(this.getStringArray(entry.scenarioIds).length === 0
+            ? [`rubric[${index}].scenarioIds 不能为空`]
+            : []),
+          ...this.buildUnknownReferenceIssues(
+            `rubric[${index}].scenarioIds`,
+            this.getStringArray(entry.scenarioIds),
+            knownScenarioIds,
+          ),
+          ...(this.getStringArray(entry.evidenceIds).length === 0
+            ? [`rubric[${index}].evidenceIds 不能为空`]
+            : []),
+          ...this.buildUnknownReferenceIssues(
+            `rubric[${index}].evidenceIds`,
+            this.getStringArray(entry.evidenceIds),
+            knownEvidenceIds,
+          ),
+          ...(typeof entry.blocking === 'boolean'
+            ? []
+            : [`rubric[${index}].blocking 必须为 boolean`]),
+        ];
+      }),
+    ];
+    const verdictSchemaIssues = [
+      ...this.requireRecord(verdictSchema, 'verdictSchema'),
+      ...(this.getStringArray(verdictSchema?.requiredFields).length === 0
+        ? ['verdictSchema.requiredFields 不能为空']
+        : []),
+      ...this.buildMissingItemsIssues(
+        'verdictSchema.requiredFields',
+        this.getStringArray(verdictSchema?.requiredFields),
+        [...GATE_6_REQUIRED_VERDICT_FIELDS],
+      ),
+      ...this.getStringArray(verdictSchema?.requiredFields)
+        .filter(
+          (field) =>
+            !new Set<string>([...GATE_6_REQUIRED_VERDICT_FIELDS]).has(field),
+        )
+        .map(
+          (field) =>
+            `verdictSchema.requiredFields 包含非法字段 ${this.formatIssueValue(
+              field,
+            )}`,
+        ),
+      ...(this.getStringArray(verdictSchema?.findingSeverities).length === 0
+        ? ['verdictSchema.findingSeverities 不能为空']
+        : []),
+      ...this.buildMissingItemsIssues(
+        'verdictSchema.findingSeverities',
+        this.getStringArray(verdictSchema?.findingSeverities),
+        [...GATE_6_ALLOWED_FINDING_SEVERITIES],
+      ),
+      ...this.getStringArray(verdictSchema?.findingSeverities)
+        .filter(
+          (severity) =>
+            !new Set<string>([...GATE_6_ALLOWED_FINDING_SEVERITIES]).has(
+              severity,
+            ),
+        )
+        .map(
+          (severity) =>
+            `verdictSchema.findingSeverities 包含非法 severity ${this.formatIssueValue(
+              severity,
+            )}`,
+        ),
+      ...(this.getStringArray(verdictSchema?.decisionValues).length === 0
+        ? ['verdictSchema.decisionValues 不能为空']
+        : []),
+      ...this.buildMissingItemsIssues(
+        'verdictSchema.decisionValues',
+        this.getStringArray(verdictSchema?.decisionValues),
+        [...GATE_6_ALLOWED_DECISION_VALUES],
+      ),
+      ...this.getStringArray(verdictSchema?.decisionValues)
+        .filter(
+          (decision) =>
+            !new Set<string>([...GATE_6_ALLOWED_DECISION_VALUES]).has(decision),
+        )
+        .map(
+          (decision) =>
+            `verdictSchema.decisionValues 包含非法 decision ${this.formatIssueValue(
+              decision,
+            )}`,
+        ),
+      ...(verdictSchema?.requiresEvidenceIds === true
+        ? []
+        : ['verdictSchema.requiresEvidenceIds 必须为 true']),
+      ...(verdictSchema?.requiresRepairSuggestions === true
+        ? []
+        : ['verdictSchema.requiresRepairSuggestions 必须为 true']),
+      ...(verdictSchema?.residualRiskSummaryRequired === true
+        ? []
+        : ['verdictSchema.residualRiskSummaryRequired 必须为 true']),
+    ];
+    const independenceCheckKinds = independenceChecks
+      .map((entry) => this.getNonEmptyString(entry.kind))
+      .filter((kind): kind is string => kind !== null);
+    const knownIndependenceKinds = new Set<string>([
+      ...GATE_6_REQUIRED_INDEPENDENCE_CHECK_KINDS,
+    ]);
+    const independenceIssues = [
+      ...(independenceChecks.length === 0
+        ? ['independenceChecks 不能为空']
+        : []),
+      ...this.buildMissingItemsIssues(
+        'independenceChecks.kind',
+        independenceCheckKinds,
+        [...GATE_6_REQUIRED_INDEPENDENCE_CHECK_KINDS],
+      ),
+      ...independenceChecks.flatMap((entry, index) => {
+        const checkId = this.getNonEmptyString(entry.checkId);
+        const kind = this.getNonEmptyString(entry.kind);
+
+        return [
+          ...(!checkId ? [`independenceChecks[${index}].checkId 缺失`] : []),
+          ...(!kind ? [`independenceChecks[${index}].kind 缺失`] : []),
+          ...(kind && !knownIndependenceKinds.has(kind)
+            ? [
+                `independenceChecks[${index}].kind 是非法 independence check kind ${this.formatIssueValue(
+                  kind,
+                )}`,
+              ]
+            : []),
+          ...(entry.required === true
+            ? []
+            : [`independenceChecks[${index}].required 必须为 true`]),
+          ...(this.getStringArray(entry.gateIds).length === 0
+            ? [`independenceChecks[${index}].gateIds 不能为空`]
+            : []),
+          ...this.buildUnknownReferenceIssues(
+            `independenceChecks[${index}].gateIds`,
+            this.getStringArray(entry.gateIds),
+            knownGateIds,
+          ),
+          ...(this.getStringArray(entry.evidenceIds).length === 0
+            ? [`independenceChecks[${index}].evidenceIds 不能为空`]
+            : []),
+          ...this.buildUnknownReferenceIssues(
+            `independenceChecks[${index}].evidenceIds`,
+            this.getStringArray(entry.evidenceIds),
+            knownEvidenceIds,
+          ),
+        ];
+      }),
+    ];
+    const requirementCoverageById = new Map(
+      requirementCoverage
+        .map((entry) => {
+          const requirementId = this.getNonEmptyString(entry.requirementId);
+          return requirementId ? ([requirementId, entry] as const) : null;
+        })
+        .filter(
+          (entry): entry is readonly [string, Record<string, unknown>] =>
+            entry !== null,
+        ),
+    );
+    const requirementCoverageIssues = [
+      ...(requirementCoverage.length === 0
+        ? ['requirementCoverage 不能为空']
+        : []),
+      ...requirementCoverage.flatMap((entry, index) => {
+        const requirementId = this.getNonEmptyString(entry.requirementId);
+
+        return [
+          ...(!requirementId
+            ? [`requirementCoverage[${index}].requirementId 缺失`]
+            : []),
+          ...(requirementId && !knownRequirementIds.has(requirementId)
+            ? [
+                `requirementCoverage[${index}].requirementId 引用了未知需求 ${this.formatIssueValue(
+                  requirementId,
+                )}`,
+              ]
+            : []),
+          ...this.buildUnknownReferenceIssues(
+            `requirementCoverage[${index}].scenarioIds`,
+            this.getStringArray(entry.scenarioIds),
+            knownScenarioIds,
+          ),
+          ...this.buildUnknownReferenceIssues(
+            `requirementCoverage[${index}].rubricCategories`,
+            this.getStringArray(entry.rubricCategories),
+            knownRubricCategories,
+          ),
+          ...this.buildUnknownReferenceIssues(
+            `requirementCoverage[${index}].evidenceIds`,
+            this.getStringArray(entry.evidenceIds),
+            knownEvidenceIds,
+          ),
+          ...this.buildUnknownReferenceIssues(
+            `requirementCoverage[${index}].gateIds`,
+            this.getStringArray(entry.gateIds),
+            knownGateIds,
+          ),
+          ...this.buildUnknownReferenceIssues(
+            `requirementCoverage[${index}].staticContractIds`,
+            this.getStringArray(entry.staticContractIds),
+            knownStaticContractIds,
+          ),
+          ...this.buildUnknownReferenceIssues(
+            `requirementCoverage[${index}].browserArtifactIds`,
+            this.getStringArray(entry.browserArtifactIds),
+            knownBrowserArtifactIds,
+          ),
+        ];
+      }),
+      ...requirementIds.flatMap((requirementId) => {
+        const entry = requirementCoverageById.get(requirementId);
+        const expectedScenarioIds =
+          appSpec.traceability.find(
+            (candidate) => candidate.requirementId === requirementId,
+          )?.scenarioIds ?? [];
+
+        if (!entry) {
+          return [`需求 ${requirementId} 缺少 Gate 6 覆盖声明`];
+        }
+
+        return [
+          ...this.buildMissingItemsIssues(
+            `requirementCoverage[${requirementId}].scenarioIds`,
+            this.getStringArray(entry.scenarioIds),
+            expectedScenarioIds,
+          ),
+          ...[
+            'rubricCategories',
+            'evidenceIds',
+            'gateIds',
+            'staticContractIds',
+            'browserArtifactIds',
+          ].flatMap((field) =>
+            this.getStringArray(entry[field]).length === 0
+              ? [`requirementCoverage[${requirementId}].${field} 不能为空`]
+              : [],
+          ),
+          ...this.buildMissingItemsIssues(
+            `requirementCoverage[${requirementId}].gateIds`,
+            this.getStringArray(entry.gateIds),
+            requiredGateIds,
+          ),
+        ];
+      }),
+    ];
+    const scenarioCoverageById = new Map(
+      scenarioCoverage
+        .map((entry) => {
+          const scenarioId = this.getNonEmptyString(entry.scenarioId);
+          return scenarioId ? ([scenarioId, entry] as const) : null;
+        })
+        .filter(
+          (entry): entry is readonly [string, Record<string, unknown>] =>
+            entry !== null,
+        ),
+    );
+    const scenarioCoverageIssues = [
+      ...(scenarioCoverage.length === 0 ? ['scenarioCoverage 不能为空'] : []),
+      ...scenarioCoverage.flatMap((entry, index) => {
+        const scenarioId = this.getNonEmptyString(entry.scenarioId);
+
+        return [
+          ...(!scenarioId
+            ? [`scenarioCoverage[${index}].scenarioId 缺失`]
+            : []),
+          ...(scenarioId && !knownScenarioIds.has(scenarioId)
+            ? [
+                `scenarioCoverage[${index}].scenarioId 引用了未知场景 ${this.formatIssueValue(
+                  scenarioId,
+                )}`,
+              ]
+            : []),
+          ...this.buildUnknownReferenceIssues(
+            `scenarioCoverage[${index}].requirementIds`,
+            this.getStringArray(entry.requirementIds),
+            knownRequirementIds,
+          ),
+          ...this.buildUnknownReferenceIssues(
+            `scenarioCoverage[${index}].rubricCategories`,
+            this.getStringArray(entry.rubricCategories),
+            knownRubricCategories,
+          ),
+          ...this.buildUnknownReferenceIssues(
+            `scenarioCoverage[${index}].evidenceIds`,
+            this.getStringArray(entry.evidenceIds),
+            knownEvidenceIds,
+          ),
+          ...this.buildUnknownReferenceIssues(
+            `scenarioCoverage[${index}].gateIds`,
+            this.getStringArray(entry.gateIds),
+            knownGateIds,
+          ),
+          ...this.buildUnknownReferenceIssues(
+            `scenarioCoverage[${index}].browserArtifactIds`,
+            this.getStringArray(entry.browserArtifactIds),
+            knownBrowserArtifactIds,
+          ),
+        ];
+      }),
+      ...scenarioIds.flatMap((scenarioId) => {
+        const entry = scenarioCoverageById.get(scenarioId);
+        const scenario = appSpec.acceptanceScenarios.find(
+          (candidate) => candidate.id === scenarioId,
+        );
+
+        if (!entry) {
+          return [`场景 ${scenarioId} 缺少 Gate 6 覆盖声明`];
+        }
+
+        return [
+          ...this.buildMissingItemsIssues(
+            `scenarioCoverage[${scenarioId}].requirementIds`,
+            this.getStringArray(entry.requirementIds),
+            scenario?.requirementIds ?? [],
+          ),
+          ...[
+            'rubricCategories',
+            'evidenceIds',
+            'gateIds',
+            'browserArtifactIds',
+          ].flatMap((field) =>
+            this.getStringArray(entry[field]).length === 0
+              ? [`scenarioCoverage[${scenarioId}].${field} 不能为空`]
+              : [],
+          ),
+          ...this.buildMissingItemsIssues(
+            `scenarioCoverage[${scenarioId}].gateIds`,
+            this.getStringArray(entry.gateIds),
+            requiredGateIds,
+          ),
+        ];
+      }),
+    ];
+    const evidenceCoverageById = new Map(
+      evidenceCoverage
+        .map((entry) => {
+          const evidenceId = this.getNonEmptyString(entry.evidenceId);
+          return evidenceId ? ([evidenceId, entry] as const) : null;
+        })
+        .filter(
+          (entry): entry is readonly [string, Record<string, unknown>] =>
+            entry !== null,
+        ),
+    );
+    const evidenceCoverageIssues = [
+      ...(evidenceCoverage.length === 0 ? ['evidenceCoverage 不能为空'] : []),
+      ...evidenceCoverage.flatMap((entry, index) => {
+        const evidenceId = this.getNonEmptyString(entry.evidenceId);
+        const gateId = this.getNonEmptyString(entry.gateId);
+        const expectedGateId = evidenceId
+          ? knownEvidenceEntries.find(
+              (candidate) => candidate.evidenceId === evidenceId,
+            )?.gateId
+          : undefined;
+
+        return [
+          ...(!evidenceId
+            ? [`evidenceCoverage[${index}].evidenceId 缺失`]
+            : []),
+          ...(evidenceId && !knownEvidenceIds.has(evidenceId)
+            ? [
+                `evidenceCoverage[${index}].evidenceId 引用了未知 evidence ${this.formatIssueValue(
+                  evidenceId,
+                )}`,
+              ]
+            : []),
+          ...(!gateId ? [`evidenceCoverage[${index}].gateId 缺失`] : []),
+          ...(gateId && !knownGateIds.has(gateId)
+            ? [
+                `evidenceCoverage[${index}].gateId 引用了未知 gate ${this.formatIssueValue(
+                  gateId,
+                )}`,
+              ]
+            : []),
+          ...(gateId && expectedGateId && gateId !== expectedGateId
+            ? [
+                `evidenceCoverage[${index}].gateId 与 evidence ${this.formatIssueValue(
+                  evidenceId ?? '',
+                )} 所属 gate ${expectedGateId} 不一致`,
+              ]
+            : []),
+          ...(this.getStringArray(entry.usedByRubricCategories).length === 0
+            ? [`evidenceCoverage[${index}].usedByRubricCategories 不能为空`]
+            : []),
+          ...this.buildUnknownReferenceIssues(
+            `evidenceCoverage[${index}].usedByRubricCategories`,
+            this.getStringArray(entry.usedByRubricCategories),
+            knownRubricCategories,
+          ),
+          ...(this.getStringArray(entry.requirementIds).length === 0
+            ? [`evidenceCoverage[${index}].requirementIds 不能为空`]
+            : []),
+          ...this.buildUnknownReferenceIssues(
+            `evidenceCoverage[${index}].requirementIds`,
+            this.getStringArray(entry.requirementIds),
+            knownRequirementIds,
+          ),
+          ...(this.getStringArray(entry.scenarioIds).length === 0
+            ? [`evidenceCoverage[${index}].scenarioIds 不能为空`]
+            : []),
+          ...this.buildUnknownReferenceIssues(
+            `evidenceCoverage[${index}].scenarioIds`,
+            this.getStringArray(entry.scenarioIds),
+            knownScenarioIds,
+          ),
+        ];
+      }),
+      ...evidenceIds.flatMap((evidenceId) =>
+        evidenceCoverageById.has(evidenceId)
+          ? []
+          : [`evidence ${evidenceId} 缺少 Gate 6 覆盖声明`],
+      ),
+    ];
+    const gateCoverageById = new Map(
+      gateCoverage
+        .map((entry) => {
+          const gateId = this.getNonEmptyString(entry.gateId);
+          return gateId ? ([gateId, entry] as const) : null;
+        })
+        .filter(
+          (entry): entry is readonly [string, Record<string, unknown>] =>
+            entry !== null,
+        ),
+    );
+    const gateCoverageIssues = [
+      ...(gateCoverage.length === 0 ? ['gateCoverage 不能为空'] : []),
+      ...gateCoverage.flatMap((entry, index) => {
+        const gateId = this.getNonEmptyString(entry.gateId);
+        const expectedEvidenceIds =
+          gateId === null ? [] : (gateEvidenceIdsByGateId.get(gateId) ?? []);
+
+        return [
+          ...(!gateId ? [`gateCoverage[${index}].gateId 缺失`] : []),
+          ...(gateId && !knownGateIds.has(gateId)
+            ? [
+                `gateCoverage[${index}].gateId 引用了未知 gate ${this.formatIssueValue(
+                  gateId,
+                )}`,
+              ]
+            : []),
+          ...(entry.required === true
+            ? []
+            : [`gateCoverage[${index}].required 必须为 true`]),
+          ...(this.getStringArray(entry.evidenceIds).length === 0
+            ? [`gateCoverage[${index}].evidenceIds 不能为空`]
+            : []),
+          ...this.buildUnknownReferenceIssues(
+            `gateCoverage[${index}].evidenceIds`,
+            this.getStringArray(entry.evidenceIds),
+            knownEvidenceIds,
+          ),
+          ...this.buildMissingItemsIssues(
+            `gateCoverage[${index}].evidenceIds`,
+            this.getStringArray(entry.evidenceIds),
+            expectedEvidenceIds,
+          ),
+          ...(this.getStringArray(entry.coveredByRubricCategories).length === 0
+            ? [`gateCoverage[${index}].coveredByRubricCategories 不能为空`]
+            : []),
+          ...this.buildUnknownReferenceIssues(
+            `gateCoverage[${index}].coveredByRubricCategories`,
+            this.getStringArray(entry.coveredByRubricCategories),
+            knownRubricCategories,
+          ),
+        ];
+      }),
+      ...requiredGateIds.flatMap((gateId) =>
+        gateCoverageById.has(gateId)
+          ? []
+          : [`gate ${gateId} 缺少 Gate 6 覆盖声明`],
+      ),
+    ];
+    const failureCaptureIssues = [
+      ...this.buildMissingItemsIssues(
+        'failureCaptureFields',
+        this.getStringArray(independentVerificationPlan.failureCaptureFields),
+        [...GATE_6_REQUIRED_FAILURE_CAPTURE_FIELDS],
+      ),
+    ];
+
+    return [
+      {
+        id: 'independent-verifier-plan-version',
+        label: 'IndependentVerificationPlan 版本绑定',
+        passed: versionIssues.length === 0,
+        summary:
+          '检查 independentVerificationPlan 是否绑定当前 AppSpec、generationPlan、staticContracts、buildUnitPlan、integrationPlan 和 browserAcceptancePlan。',
+        issues: versionIssues,
+      },
+      {
+        id: 'verifier-isolation-policy',
+        label: 'verifier 隔离策略',
+        passed: isolationIssues.length === 0,
+        summary:
+          '检查 verifier context 不复用生成上下文、不接受 generator self-attestation、不读取 publicShareToken/真实 secret，且只读取 redacted evidence bundle。',
+        issues: isolationIssues,
+      },
+      {
+        id: 'redacted-evidence-bundle',
+        label: 'redacted evidence bundle',
+        passed: evidenceBundleIssues.length === 0,
+        summary:
+          '检查 evidence bundle 是否引用 Gate 0-5、gate evidence ids、static contracts、build/unit artifacts、integration traces、browser artifacts 和 coverage matrix，且不含真实 token。',
+        issues: evidenceBundleIssues,
+      },
+      {
+        id: 'independent-verifier-rubric',
+        label: '独立审查 rubric',
+        passed: rubricIssues.length === 0,
+        summary:
+          '检查需求覆盖、scenario 覆盖、UI/runtime、Agent/Workflow、插件/权限、安全/隐私、数据持久化、公开 runtime、错误态和发布阻断项 rubric。',
+        issues: rubricIssues,
+      },
+      {
+        id: 'verdict-schema',
+        label: 'verdict schema',
+        passed: verdictSchemaIssues.length === 0,
+        summary:
+          '检查 verdict schema 是否包含 blocking findings、warnings、pass/fail decision、traceability coverage、repair suggestions 和 residual risk summary。',
+        issues: verdictSchemaIssues,
+      },
+      {
+        id: 'independence-checks',
+        label: 'independence checks',
+        passed: independenceIssues.length === 0,
+        summary:
+          '检查审查者身份/上下文隔离、输入材料 redaction、拒绝 generator self-attestation 和 evidence id citation 要求。',
+        issues: independenceIssues,
+      },
+      {
+        id: 'requirement-coverage',
+        label: '需求覆盖',
+        passed: requirementCoverageIssues.length === 0,
+        summary:
+          '检查每条核心需求是否连接 Gate 6 rubric、Gate 0-5 evidence、static contracts 和 browser artifacts。',
+        issues: requirementCoverageIssues,
+      },
+      {
+        id: 'scenario-coverage',
+        label: 'scenario 覆盖',
+        passed: scenarioCoverageIssues.length === 0,
+        summary:
+          '检查每条 acceptance scenario 是否连接 Gate 6 rubric、Gate 0-5 evidence 和 browser artifacts。',
+        issues: scenarioCoverageIssues,
+      },
+      {
+        id: 'evidence-coverage',
+        label: 'evidence 覆盖',
+        passed: evidenceCoverageIssues.length === 0,
+        summary:
+          '检查 Gate 0-5 每条 evidence 是否被 Gate 6 覆盖矩阵引用且 gate 归属正确。',
+        issues: evidenceCoverageIssues,
+      },
+      {
+        id: 'gate-coverage',
+        label: 'Gate 覆盖',
+        passed: gateCoverageIssues.length === 0,
+        summary:
+          '检查 Gate 0-5 是否都有 evidence coverage 和 rubric coverage。',
+        issues: gateCoverageIssues,
+      },
+      {
+        id: 'failure-capture-fields',
+        label: '失败捕获字段',
+        passed: failureCaptureIssues.length === 0,
+        summary:
+          '检查后续真实 Gate 6 runner 失败时必须捕获 verifier、bundle、finding、evidence、repair 和 residual risk 字段。',
+        issues: failureCaptureIssues,
+      },
+    ];
+  }
+
   private buildGate4Checks(
     appSpec: GeneratedAppSpec,
     generationPlan: GeneratedAppGenerationPlan,
@@ -7361,6 +8849,7 @@ export class GeneratedAppService {
         hasSensitiveKey &&
         nestedValue !== null &&
         nestedValue !== undefined &&
+        nestedValue !== false &&
         (!Array.isArray(nestedValue) || nestedValue.length > 0) &&
         (!this.isRecord(nestedValue) || Object.keys(nestedValue).length > 0)
           ? [
@@ -7391,6 +8880,10 @@ export class GeneratedAppService {
     }
 
     if (/^(sk|pk|pat|ghp|glpat|xox[baprs])[-_]/.test(value)) {
+      return '[REDACTED_SECRET]';
+    }
+
+    if (/^bearer\s+\S+/i.test(value)) {
       return '[REDACTED_SECRET]';
     }
 

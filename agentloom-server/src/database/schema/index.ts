@@ -468,6 +468,8 @@ export {
   type GeneratedAppBuildUnitPlan,
   type GeneratedAppIntegrationPlan,
   type GeneratedAppBrowserAcceptancePlan,
+  type GeneratedAppIndependentVerificationPlan,
+  type GeneratedAppIndependentVerificationRubricCategory,
   type GeneratedAppGateEvidence,
   type GeneratedAppGateRunFailure,
   type GeneratedAppGateResult,

@@ -215,6 +215,7 @@ export interface GeneratedAppGenerationPlan {
   buildUnitPlan?: GeneratedAppBuildUnitPlan;
   integrationPlan?: GeneratedAppIntegrationPlan;
   browserAcceptancePlan?: GeneratedAppBrowserAcceptancePlan;
+  independentVerificationPlan?: GeneratedAppIndependentVerificationPlan;
 }
 
 export interface GeneratedAppStaticContracts {
@@ -629,6 +630,128 @@ export interface GeneratedAppBrowserAcceptancePlan {
     viewportIds: string[];
     assertionIds: string[];
     artifactIds: string[];
+  }>;
+  failureCaptureFields: string[];
+}
+
+export type GeneratedAppIndependentVerificationRubricCategory =
+  | 'requirement_coverage'
+  | 'scenario_coverage'
+  | 'ui_runtime_usability'
+  | 'agent_workflow_behavior'
+  | 'plugin_permission_safety'
+  | 'security_privacy'
+  | 'data_persistence'
+  | 'public_runtime_boundary'
+  | 'failure_error_states'
+  | 'publish_blockers';
+
+export interface GeneratedAppIndependentVerificationPlan {
+  planVersion: 1;
+  appSpecVersion: number;
+  generationPlanVersion: number;
+  staticContractsVersion: number;
+  buildUnitPlanVersion: number;
+  integrationPlanVersion: number;
+  browserAcceptancePlanVersion: number;
+  executionLevel: 'independent-verifier-skeleton';
+  skeletonDisclaimer: string;
+  verifierIsolationPolicy: {
+    verifierContext: 'fresh-independent-context';
+    reuseGenerationContext: false;
+    acceptsGeneratorSelfAttestation: false;
+    readsPublicShareToken: false;
+    readsRealSecrets: false;
+    inputMaterialPolicy: 'redacted-evidence-bundle-only';
+    requiredControls: string[];
+  };
+  evidenceBundle: {
+    bundleId: string;
+    redactionLevel: 'redacted-no-public-token-or-secret';
+    referencedGateIds: string[];
+    gateEvidenceRefs: Array<{
+      gateId: string;
+      evidenceIds: string[];
+    }>;
+    staticContractIds: string[];
+    buildUnitArtifactIds: string[];
+    integrationTraceArtifactIds: string[];
+    browserArtifactIds: string[];
+    coverageMatrixRefs: Array<{
+      matrixId:
+        | 'requirementCoverage'
+        | 'scenarioCoverage'
+        | 'evidenceCoverage'
+        | 'gateCoverage';
+      sourcePlan:
+        | 'generationPlan'
+        | 'staticContracts'
+        | 'buildUnitPlan'
+        | 'integrationPlan'
+        | 'browserAcceptancePlan'
+        | 'independentVerificationPlan';
+      requirementIds: string[];
+      scenarioIds: string[];
+      gateIds: string[];
+    }>;
+    forbiddenSensitiveFields: string[];
+  };
+  rubric: Array<{
+    category: GeneratedAppIndependentVerificationRubricCategory;
+    label: string;
+    requirementIds: string[];
+    scenarioIds: string[];
+    evidenceIds: string[];
+    blocking: boolean;
+  }>;
+  verdictSchema: {
+    requiredFields: string[];
+    findingSeverities: string[];
+    decisionValues: string[];
+    requiresEvidenceIds: true;
+    requiresRepairSuggestions: true;
+    residualRiskSummaryRequired: true;
+  };
+  independenceChecks: Array<{
+    checkId: string;
+    kind:
+      | 'reviewer_identity_context_isolation'
+      | 'input_material_redaction'
+      | 'reject_generator_self_attestation'
+      | 'evidence_id_citation_required';
+    required: boolean;
+    gateIds: string[];
+    evidenceIds: string[];
+  }>;
+  requirementCoverage: Array<{
+    requirementId: string;
+    scenarioIds: string[];
+    rubricCategories: GeneratedAppIndependentVerificationRubricCategory[];
+    evidenceIds: string[];
+    gateIds: string[];
+    staticContractIds: string[];
+    browserArtifactIds: string[];
+  }>;
+  scenarioCoverage: Array<{
+    scenarioId: string;
+    requirementIds: string[];
+    rubricCategories: GeneratedAppIndependentVerificationRubricCategory[];
+    evidenceIds: string[];
+    gateIds: string[];
+    browserArtifactIds: string[];
+  }>;
+  evidenceCoverage: Array<{
+    evidenceId: string;
+    gateId: string;
+    usedByRubricCategories: GeneratedAppIndependentVerificationRubricCategory[];
+    requirementIds: string[];
+    scenarioIds: string[];
+  }>;
+  gateCoverage: Array<{
+    gateId: string;
+    evidenceIds: string[];
+    required: boolean;
+    coveredByRubricCategories: GeneratedAppIndependentVerificationRubricCategory[];
   }>;
   failureCaptureFields: string[];
 }
