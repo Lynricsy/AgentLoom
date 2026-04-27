@@ -212,6 +212,7 @@ export interface GeneratedAppGenerationPlan {
     planEvidenceIds: string[];
   }>;
   staticContracts?: GeneratedAppStaticContracts;
+  buildUnitPlan?: GeneratedAppBuildUnitPlan;
 }
 
 export interface GeneratedAppStaticContracts {
@@ -299,6 +300,71 @@ export interface GeneratedAppStaticContracts {
     orchestrationNodeIds: string[];
     staticContractIds: string[];
   }>;
+}
+
+export interface GeneratedAppBuildUnitPlan {
+  planVersion: 1;
+  appSpecVersion: number;
+  generationPlanVersion: number;
+  staticContractsVersion: number;
+  executionLevel: 'contract-skeleton';
+  frontendBuild: {
+    command: string;
+    workingDirectory: string;
+    routeIds: string[];
+    requirementIds: string[];
+    scenarioIds: string[];
+    expectedArtifacts: string[];
+  };
+  typecheck: {
+    command: string;
+    tsconfigPath: string;
+    requirementIds: string[];
+  };
+  unitTests: {
+    command: string;
+    entry: string;
+    requirementIds: string[];
+    scenarioIds: string[];
+  };
+  componentGoldenTests: {
+    command: string;
+    entry: string;
+    scenarioIds: string[];
+    goldenArtifactPath: string;
+  };
+  artifactExpectations: Array<{
+    artifactId: string;
+    kind:
+      | 'frontend_build'
+      | 'unit_test_report'
+      | 'component_golden_report'
+      | 'coverage_report'
+      | 'plugin_bundle';
+    path: string;
+    required: boolean;
+  }>;
+  staticContractsCoverage: Array<{
+    staticContractId: string;
+    coveredBy: string[];
+  }>;
+  acceptanceScenarioCoverage: Array<{
+    scenarioId: string;
+    requirementIds: string[];
+    coveredBy: string[];
+  }>;
+  pluginBuildExpectations: {
+    tools: Array<{
+      toolId: string;
+      command: string;
+      manifestPath: string;
+      artifactPath: string;
+      goldenTestCommand: string;
+      requirementIds: string[];
+    }>;
+    emptyReason: string | null;
+  };
+  failureCaptureFields: string[];
 }
 
 export interface GeneratedAppGateResult {

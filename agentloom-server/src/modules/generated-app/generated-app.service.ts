@@ -9,6 +9,7 @@ import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import * as schema from '../../database/schema';
 import type {
   GeneratedApp,
+  GeneratedAppBuildUnitPlan,
   GeneratedAppGateEvidence,
   GeneratedAppGenerationPlan,
   GeneratedAppGenerationRun,
@@ -79,8 +80,8 @@ const DEFAULT_PREVIEW: GeneratedAppPreview = {
   testReportUrl: null,
 };
 
-const GATE_3_7_RUNNER_INCOMPLETE_FAILURE_REASON =
-  'Gate 3-7 runner 尚未接入/未执行，不能形成 publish candidate。';
+const GATE_4_7_RUNNER_INCOMPLETE_FAILURE_REASON =
+  'Gate 4-7 runner 尚未接入/未执行，不能形成 publish candidate。';
 
 const GATE_2_STATIC_CONTRACT_IDS = [
   'gate-2-public-runtime-contract',
@@ -91,6 +92,45 @@ const GATE_2_STATIC_CONTRACT_IDS = [
   'gate-2-test-entry-contract',
   'gate-2-traceability-contract',
 ] as const;
+
+const GATE_3_CORE_ARTIFACT_IDS = [
+  'frontend-build-output',
+  'unit-test-report',
+  'component-golden-report',
+  'coverage-report',
+] as const;
+
+const GATE_3_ARTIFACT_KINDS = [
+  'frontend_build',
+  'unit_test_report',
+  'component_golden_report',
+  'coverage_report',
+  'plugin_bundle',
+] as const;
+
+const GATE_3_REQUIRED_FAILURE_CAPTURE_FIELDS = [
+  'command',
+  'exitCode',
+  'stdout',
+  'stderr',
+  'durationMs',
+  'artifactPath',
+] as const;
+
+const GATE_3_COVERAGE_TARGET_IDS = [
+  'gate-3-frontend-build-command',
+  'gate-3-typecheck-command',
+  'gate-3-unit-test-command',
+  'gate-3-component-golden-test-entry',
+  'gate-3-artifact-expectations',
+  'gate-3-static-contracts-coverage',
+  'gate-3-acceptance-scenario-coverage',
+  'gate-3-plugin-build-expectations',
+  'gate-3-failure-capture-fields',
+] as const;
+
+const GATE_3_SKELETON_EVIDENCE_NOTE =
+  'Gate 3 当前只做 contract-skeleton 完整性检查；未执行真实前端构建、插件构建、单元测试、组件测试或 golden test。';
 
 interface Gate0Check {
   id: string;
@@ -133,6 +173,22 @@ interface Gate2Check {
 }
 
 interface Gate2Evaluation {
+  status: 'passed' | 'failed';
+  summary: string;
+  evidence: GeneratedAppGateEvidence[];
+  failure: GeneratedAppGateRunFailure | null;
+  repairInstructions: string | null;
+}
+
+interface Gate3Check {
+  id: string;
+  label: string;
+  passed: boolean;
+  summary: string;
+  issues: string[];
+}
+
+interface Gate3Evaluation {
   status: 'passed' | 'failed';
   summary: string;
   evidence: GeneratedAppGateEvidence[];
@@ -559,9 +615,78 @@ export class GeneratedAppService {
           completedSummary =
             '门禁运行器骨架完成 Gate 0 和 Gate 1，但 Gate 2 静态合约门禁失败；当前应用保持不可发布。';
         } else {
-          finalFailureReason = GATE_3_7_RUNNER_INCOMPLETE_FAILURE_REASON;
-          completedSummary =
-            '门禁运行器骨架完成 Gate 0 AppSpec 完整性检查、Gate 1 架构计划门禁和 Gate 2 静态合约门禁；Gate 3-7 runner 尚未接入/未执行，当前应用不能形成 publish candidate，保持不可发布。';
+          const buildUnitPlan = this.buildBuildUnitPlan(
+            app.appSpec,
+            generationPlan,
+            staticContracts,
+          );
+          const generationPlanWithBuildUnitPlan: GeneratedAppGenerationPlan = {
+            ...generationPlanWithStaticContracts,
+            buildUnitPlan,
+          };
+          const gate3Evaluation = this.evaluateGate3BuildUnitPlan(
+            app.appSpec,
+            generationPlan,
+            staticContracts,
+            buildUnitPlan,
+          );
+          const gate2Result = latestApp.gateResults.find(
+            (gate) => gate.gateId === 'gate-2',
+          );
+          const gate3StartedAt = new Date();
+          const gate3CompletedAt = new Date();
+          const gate3AppSnapshot: GeneratedApp = {
+            ...app,
+            gateResults: latestApp.gateResults,
+            generationPlan: latestApp.generationPlan,
+          };
+          const gate3RunResult = await this.createGateRunAndUpdateApp(
+            tenantId,
+            userId,
+            gate3AppSnapshot,
+            {
+              gateId: 'gate-3',
+              generationRunId: run.id,
+              attemptNumber: 1,
+              status: gate3Evaluation.status,
+              summary: gate3Evaluation.summary,
+              evidence: gate3Evaluation.evidence,
+              failure: gate3Evaluation.failure,
+              repairInstructions: gate3Evaluation.repairInstructions,
+              startedAt: gate3StartedAt.toISOString(),
+              completedAt: gate3CompletedAt.toISOString(),
+            },
+            {
+              generationPlan: generationPlanWithBuildUnitPlan,
+              buildGateResults: (gate3Result, nowIso) =>
+                this.buildRunnerGateResults(
+                  app,
+                  [
+                    ...(gate0Result ? [gate0Result] : []),
+                    ...(gate1Result ? [gate1Result] : []),
+                    ...(gate2Result ? [gate2Result] : []),
+                    gate3Result,
+                  ],
+                  nowIso,
+                ),
+            },
+          );
+
+          producedGateRuns.push(gate3RunResult.gateRun);
+          latestApp = gate3RunResult.app;
+          completedAt = gate3CompletedAt;
+
+          if (gate3Evaluation.status === 'failed') {
+            finalFailureReason =
+              gate3Evaluation.failure?.message ??
+              'Gate 3 构建与单元门禁失败，不能继续执行 Gate 4-7。';
+            completedSummary =
+              '门禁运行器骨架完成 Gate 0、Gate 1 和 Gate 2，但 Gate 3 构建与单元门禁 skeleton 检查失败；当前应用保持不可发布。';
+          } else {
+            finalFailureReason = GATE_4_7_RUNNER_INCOMPLETE_FAILURE_REASON;
+            completedSummary =
+              '门禁运行器骨架完成 Gate 0 AppSpec 完整性检查、Gate 1 架构计划门禁、Gate 2 静态合约门禁和 Gate 3 构建与单元 skeleton 完整性检查；Gate 4-7 runner 尚未接入/未执行，当前应用不能形成 publish candidate，保持不可发布。';
+          }
         }
       }
     }
@@ -1650,6 +1775,714 @@ export class GeneratedAppService {
       failure: null,
       repairInstructions: null,
     };
+  }
+
+  private buildBuildUnitPlan(
+    appSpec: GeneratedAppSpec,
+    generationPlan: GeneratedAppGenerationPlan,
+    staticContracts: GeneratedAppStaticContracts,
+  ): GeneratedAppBuildUnitPlan {
+    const requirementIds = appSpec.coreRequirements.map(
+      (requirement) => requirement.id,
+    );
+    const scenarioIds = appSpec.acceptanceScenarios.map(
+      (scenario) => scenario.id,
+    );
+    const routeIds = staticContracts.frontendRoutes.map(
+      (route) => route.pageId,
+    );
+    const staticContractCoverage = GATE_2_STATIC_CONTRACT_IDS.map(
+      (staticContractId) => ({
+        staticContractId,
+        coveredBy: [
+          'gate-3-frontend-build-command',
+          'gate-3-typecheck-command',
+          'gate-3-unit-test-command',
+        ],
+      }),
+    );
+    const pluginBundleArtifacts = generationPlan.pluginTools.tools.map(
+      (tool) => ({
+        artifactId: `plugin-bundle-${tool.toolId}`,
+        kind: 'plugin_bundle' as const,
+        path: `artifacts/gate-3/plugins/${tool.toolId}.alp`,
+        required: true,
+      }),
+    );
+
+    return {
+      planVersion: 1,
+      appSpecVersion: appSpec.version,
+      generationPlanVersion: generationPlan.planVersion,
+      staticContractsVersion: staticContracts.contractVersion,
+      executionLevel: 'contract-skeleton',
+      frontendBuild: {
+        command: staticContracts.testEntry.buildGateCommand,
+        workingDirectory: '/workspace/generated-app',
+        routeIds,
+        requirementIds,
+        scenarioIds,
+        expectedArtifacts: ['dist/index.html', 'dist/assets/manifest.json'],
+      },
+      typecheck: {
+        command: 'agentloom generated-app gate-3 typecheck',
+        tsconfigPath: 'tsconfig.generated-app.json',
+        requirementIds,
+      },
+      unitTests: {
+        command: staticContracts.testEntry.unitGateCommand,
+        entry: 'src/generated-app/__tests__/runtime.contract.spec.ts',
+        requirementIds,
+        scenarioIds,
+      },
+      componentGoldenTests: {
+        command: 'agentloom generated-app gate-3 component-golden',
+        entry: 'src/generated-app/__tests__/runtime.golden.spec.tsx',
+        scenarioIds,
+        goldenArtifactPath: 'artifacts/gate-3/component-golden-report.json',
+      },
+      artifactExpectations: [
+        {
+          artifactId: 'frontend-build-output',
+          kind: 'frontend_build',
+          path: 'dist/index.html',
+          required: true,
+        },
+        {
+          artifactId: 'unit-test-report',
+          kind: 'unit_test_report',
+          path: 'artifacts/gate-3/unit-test-report.json',
+          required: true,
+        },
+        {
+          artifactId: 'component-golden-report',
+          kind: 'component_golden_report',
+          path: 'artifacts/gate-3/component-golden-report.json',
+          required: true,
+        },
+        {
+          artifactId: 'coverage-report',
+          kind: 'coverage_report',
+          path: 'coverage/generated-app/coverage-summary.json',
+          required: true,
+        },
+        ...pluginBundleArtifacts,
+      ],
+      staticContractsCoverage: staticContractCoverage,
+      acceptanceScenarioCoverage: appSpec.acceptanceScenarios.map(
+        (scenario) => ({
+          scenarioId: scenario.id,
+          requirementIds: scenario.requirementIds,
+          coveredBy: [
+            'gate-3-unit-test-command',
+            'gate-3-component-golden-test-entry',
+          ],
+        }),
+      ),
+      pluginBuildExpectations: {
+        tools: generationPlan.pluginTools.tools.map((tool) => ({
+          toolId: tool.toolId,
+          command: `agentloom generated-app gate-3 plugin-build ${tool.toolId}`,
+          manifestPath: `plugins/${tool.toolId}/agentloom.plugin.json`,
+          artifactPath: `artifacts/gate-3/plugins/${tool.toolId}.alp`,
+          goldenTestCommand: `agentloom generated-app gate-3 plugin-golden ${tool.toolId}`,
+          requirementIds: tool.requirementIds,
+        })),
+        emptyReason:
+          generationPlan.pluginTools.tools.length === 0
+            ? '当前 generationPlan.pluginTools 未声明私有插件；Gate 3 不需要执行插件构建，但仍保留插件构建期望空原因。'
+            : null,
+      },
+      failureCaptureFields: [
+        ...GATE_3_REQUIRED_FAILURE_CAPTURE_FIELDS,
+        'failedTestNames',
+        'coverageSummary',
+      ],
+    };
+  }
+
+  private evaluateGate3BuildUnitPlan(
+    appSpec: GeneratedAppSpec,
+    generationPlan: GeneratedAppGenerationPlan,
+    staticContracts: GeneratedAppStaticContracts,
+    buildUnitPlan: unknown,
+  ): Gate3Evaluation {
+    const checks = this.buildGate3Checks(
+      appSpec,
+      generationPlan,
+      staticContracts,
+      buildUnitPlan,
+    );
+    const failedChecks = checks.filter((check) => !check.passed);
+    const evidence = checks.map((check) => ({
+      id: `gate-3-${check.id}`,
+      label: check.label,
+      kind: (check.id.includes('test') ||
+      check.id.includes('acceptance-scenario')
+        ? 'test'
+        : 'build') as GeneratedAppGateEvidence['kind'],
+      url: null,
+      summary:
+        check.issues.length === 0
+          ? `${check.summary} ${GATE_3_SKELETON_EVIDENCE_NOTE}`
+          : `${check.summary} 缺口：${check.issues.join(
+              '；',
+            )} ${GATE_3_SKELETON_EVIDENCE_NOTE}`,
+    }));
+
+    if (failedChecks.length > 0) {
+      const failure: GeneratedAppGateRunFailure = {
+        code: 'build-unit-plan-incomplete',
+        message: `BuildUnitPlan 构建与单元 skeleton 检查失败：${failedChecks
+          .map((check) => check.label)
+          .join('、')}。`,
+        details: {
+          checks: checks.map((check) => ({
+            id: check.id,
+            label: check.label,
+            passed: check.passed,
+            issues: check.issues,
+          })),
+        },
+      };
+
+      return {
+        status: 'failed',
+        summary:
+          'Gate 3 失败：buildUnitPlan 未完整覆盖构建命令、类型检查、单元/组件/golden 测试、artifact 期望、插件构建期望、合约覆盖、场景覆盖或失败捕获字段。',
+        evidence,
+        failure,
+        repairInstructions:
+          '修复 generationPlan.buildUnitPlan，使其覆盖前端 build/typecheck/unit/component/golden 测试入口、artifact expectations、staticContracts coverage、acceptanceScenario coverage、插件构建期望和失败捕获字段；当前 Gate 3 仍只检查 contract-skeleton 合约，不代表真实前端构建、插件构建、单元测试、组件测试或 golden test 已经执行。',
+      };
+    }
+
+    return {
+      status: 'passed',
+      summary:
+        'Gate 3 通过：buildUnitPlan 构建与单元 skeleton 已完整覆盖命令、预期产物、测试入口、合约/场景覆盖、插件构建期望和失败捕获字段；本结果仅表示契约级 skeleton 完整，不代表真实前端构建、插件构建、单元测试、组件测试或 golden test 已经执行。',
+      evidence,
+      failure: null,
+      repairInstructions: null,
+    };
+  }
+
+  private buildGate3Checks(
+    appSpec: GeneratedAppSpec,
+    generationPlan: GeneratedAppGenerationPlan,
+    staticContracts: GeneratedAppStaticContracts,
+    buildUnitPlan: unknown,
+  ): Gate3Check[] {
+    if (!this.isRecord(buildUnitPlan)) {
+      return [
+        {
+          id: 'build-unit-plan-object',
+          label: 'BuildUnitPlan JSON 对象',
+          passed: false,
+          summary: '检查 generationPlan.buildUnitPlan 是否为结构化 JSON 对象。',
+          issues: ['buildUnitPlan 不是对象'],
+        },
+      ];
+    }
+
+    const requirementIds = appSpec.coreRequirements.map(
+      (requirement) => requirement.id,
+    );
+    const scenarioIds = appSpec.acceptanceScenarios.map(
+      (scenario) => scenario.id,
+    );
+    const knownRequirementIds = new Set(requirementIds);
+    const knownScenarioIds = new Set(scenarioIds);
+    const routeIds = staticContracts.frontendRoutes.map(
+      (route) => route.pageId,
+    );
+    const knownRouteIds = new Set(routeIds);
+    const knownStaticContractIds = new Set<string>([
+      ...GATE_2_STATIC_CONTRACT_IDS,
+    ]);
+    const expectedArtifactIds = [
+      ...GATE_3_CORE_ARTIFACT_IDS,
+      ...generationPlan.pluginTools.tools.map(
+        (tool) => `plugin-bundle-${tool.toolId}`,
+      ),
+    ];
+    const expectedArtifactIdSet = new Set<string>(expectedArtifactIds);
+    const knownArtifactKinds = new Set<string>(GATE_3_ARTIFACT_KINDS);
+    const knownGate3CoverageIds = new Set<string>(GATE_3_COVERAGE_TARGET_IDS);
+    const plannedToolIds = new Set(
+      generationPlan.pluginTools.tools.map((tool) => tool.toolId),
+    );
+    const plannedToolById = new Map(
+      generationPlan.pluginTools.tools.map((tool) => [tool.toolId, tool]),
+    );
+
+    const frontendBuild = this.getRecord(buildUnitPlan.frontendBuild);
+    const typecheck = this.getRecord(buildUnitPlan.typecheck);
+    const unitTests = this.getRecord(buildUnitPlan.unitTests);
+    const componentGoldenTests = this.getRecord(
+      buildUnitPlan.componentGoldenTests,
+    );
+    const artifactExpectations = this.getRecordArray(
+      buildUnitPlan.artifactExpectations,
+    );
+    const staticContractsCoverage = this.getRecordArray(
+      buildUnitPlan.staticContractsCoverage,
+    );
+    const acceptanceScenarioCoverage = this.getRecordArray(
+      buildUnitPlan.acceptanceScenarioCoverage,
+    );
+    const pluginBuildExpectations = this.getRecord(
+      buildUnitPlan.pluginBuildExpectations,
+    );
+    const pluginBuildTools = this.getRecordArray(
+      pluginBuildExpectations?.tools,
+    );
+
+    const artifactIds = artifactExpectations
+      .map((artifact) => this.getNonEmptyString(artifact.artifactId))
+      .filter((artifactId): artifactId is string => artifactId !== null);
+    const coveredStaticContractIds = new Set(
+      staticContractsCoverage
+        .map((entry) => this.getNonEmptyString(entry.staticContractId))
+        .filter((staticContractId): staticContractId is string => {
+          return staticContractId !== null;
+        }),
+    );
+    const scenarioCoverageById = new Map(
+      acceptanceScenarioCoverage
+        .map((entry) => {
+          const scenarioId = this.getNonEmptyString(entry.scenarioId);
+          return scenarioId ? ([scenarioId, entry] as const) : null;
+        })
+        .filter(
+          (entry): entry is readonly [string, Record<string, unknown>] =>
+            entry !== null,
+        ),
+    );
+
+    const versionIssues = [
+      ...(buildUnitPlan.planVersion === 1 ? [] : ['planVersion 必须为 1']),
+      ...(buildUnitPlan.appSpecVersion === appSpec.version
+        ? []
+        : [
+            `appSpecVersion=${String(
+              buildUnitPlan.appSpecVersion,
+            )} 与 AppSpec version=${appSpec.version} 不一致`,
+          ]),
+      ...(buildUnitPlan.generationPlanVersion === generationPlan.planVersion
+        ? []
+        : [
+            `generationPlanVersion=${String(
+              buildUnitPlan.generationPlanVersion,
+            )} 与 generationPlan.planVersion=${generationPlan.planVersion} 不一致`,
+          ]),
+      ...(buildUnitPlan.staticContractsVersion ===
+      staticContracts.contractVersion
+        ? []
+        : [
+            `staticContractsVersion=${String(
+              buildUnitPlan.staticContractsVersion,
+            )} 与 staticContracts.contractVersion=${staticContracts.contractVersion} 不一致`,
+          ]),
+      ...(buildUnitPlan.executionLevel === 'contract-skeleton'
+        ? []
+        : ['executionLevel 必须为 contract-skeleton']),
+    ];
+    const frontendBuildIssues = [
+      ...this.requireRecord(frontendBuild, 'frontendBuild'),
+      ...(!this.getNonEmptyString(frontendBuild?.command)
+        ? ['frontendBuild.command 缺失']
+        : []),
+      ...(!this.getNonEmptyString(frontendBuild?.workingDirectory)
+        ? ['frontendBuild.workingDirectory 缺失']
+        : []),
+      ...this.buildMissingItemsIssues(
+        'frontendBuild.routeIds',
+        this.getStringArray(frontendBuild?.routeIds),
+        routeIds,
+      ),
+      ...this.buildUnknownReferenceIssues(
+        'frontendBuild.routeIds',
+        this.getStringArray(frontendBuild?.routeIds),
+        knownRouteIds,
+      ),
+      ...this.buildMissingItemsIssues(
+        'frontendBuild.requirementIds',
+        this.getStringArray(frontendBuild?.requirementIds),
+        requirementIds,
+      ),
+      ...this.buildUnknownReferenceIssues(
+        'frontendBuild.requirementIds',
+        this.getStringArray(frontendBuild?.requirementIds),
+        knownRequirementIds,
+      ),
+      ...this.buildMissingItemsIssues(
+        'frontendBuild.scenarioIds',
+        this.getStringArray(frontendBuild?.scenarioIds),
+        scenarioIds,
+      ),
+      ...this.buildUnknownReferenceIssues(
+        'frontendBuild.scenarioIds',
+        this.getStringArray(frontendBuild?.scenarioIds),
+        knownScenarioIds,
+      ),
+      ...this.buildMissingItemsIssues(
+        'frontendBuild.expectedArtifacts',
+        this.getStringArray(frontendBuild?.expectedArtifacts),
+        ['dist/index.html', 'dist/assets/manifest.json'],
+      ),
+    ];
+    const typecheckIssues = [
+      ...this.requireRecord(typecheck, 'typecheck'),
+      ...(!this.getNonEmptyString(typecheck?.command)
+        ? ['typecheck.command 缺失']
+        : []),
+      ...(!this.getNonEmptyString(typecheck?.tsconfigPath)
+        ? ['typecheck.tsconfigPath 缺失']
+        : []),
+      ...this.buildMissingItemsIssues(
+        'typecheck.requirementIds',
+        this.getStringArray(typecheck?.requirementIds),
+        requirementIds,
+      ),
+      ...this.buildUnknownReferenceIssues(
+        'typecheck.requirementIds',
+        this.getStringArray(typecheck?.requirementIds),
+        knownRequirementIds,
+      ),
+    ];
+    const unitTestIssues = [
+      ...this.requireRecord(unitTests, 'unitTests'),
+      ...(!this.getNonEmptyString(unitTests?.command)
+        ? ['unitTests.command 缺失']
+        : []),
+      ...(!this.getNonEmptyString(unitTests?.entry)
+        ? ['unitTests.entry 缺失']
+        : []),
+      ...this.buildMissingItemsIssues(
+        'unitTests.requirementIds',
+        this.getStringArray(unitTests?.requirementIds),
+        requirementIds,
+      ),
+      ...this.buildUnknownReferenceIssues(
+        'unitTests.requirementIds',
+        this.getStringArray(unitTests?.requirementIds),
+        knownRequirementIds,
+      ),
+      ...this.buildMissingItemsIssues(
+        'unitTests.scenarioIds',
+        this.getStringArray(unitTests?.scenarioIds),
+        scenarioIds,
+      ),
+      ...this.buildUnknownReferenceIssues(
+        'unitTests.scenarioIds',
+        this.getStringArray(unitTests?.scenarioIds),
+        knownScenarioIds,
+      ),
+    ];
+    const componentGoldenIssues = [
+      ...this.requireRecord(componentGoldenTests, 'componentGoldenTests'),
+      ...(!this.getNonEmptyString(componentGoldenTests?.command)
+        ? ['componentGoldenTests.command 缺失']
+        : []),
+      ...(!this.getNonEmptyString(componentGoldenTests?.entry)
+        ? ['componentGoldenTests.entry 缺失']
+        : []),
+      ...(!this.getNonEmptyString(componentGoldenTests?.goldenArtifactPath)
+        ? ['componentGoldenTests.goldenArtifactPath 缺失']
+        : []),
+      ...this.buildMissingItemsIssues(
+        'componentGoldenTests.scenarioIds',
+        this.getStringArray(componentGoldenTests?.scenarioIds),
+        scenarioIds,
+      ),
+      ...this.buildUnknownReferenceIssues(
+        'componentGoldenTests.scenarioIds',
+        this.getStringArray(componentGoldenTests?.scenarioIds),
+        knownScenarioIds,
+      ),
+    ];
+    const artifactIssues = [
+      ...(artifactExpectations.length === 0
+        ? ['artifactExpectations 不能为空']
+        : []),
+      ...this.buildMissingItemsIssues(
+        'artifactExpectations.artifactId',
+        artifactIds,
+        expectedArtifactIds,
+      ),
+      ...this.buildUnknownReferenceIssues(
+        'artifactExpectations.artifactId',
+        artifactIds,
+        expectedArtifactIdSet,
+      ),
+      ...this.buildDuplicateItemIssues(
+        'artifactExpectations.artifactId',
+        artifactIds,
+      ),
+      ...artifactExpectations.flatMap((artifact, index) => [
+        ...(!this.getNonEmptyString(artifact.artifactId)
+          ? [`artifactExpectations[${index}].artifactId 缺失`]
+          : []),
+        ...(!this.getNonEmptyString(artifact.kind)
+          ? [`artifactExpectations[${index}].kind 缺失`]
+          : []),
+        ...(this.getNonEmptyString(artifact.kind) &&
+        !knownArtifactKinds.has(this.getNonEmptyString(artifact.kind) ?? '')
+          ? [
+              `artifactExpectations[${index}].kind 必须是 ${GATE_3_ARTIFACT_KINDS.join(
+                ' | ',
+              )} 之一`,
+            ]
+          : []),
+        ...(!this.getNonEmptyString(artifact.path)
+          ? [`artifactExpectations[${index}].path 缺失`]
+          : []),
+        ...(artifact.required === true
+          ? []
+          : [`artifactExpectations[${index}].required 必须为 true`]),
+      ]),
+    ];
+    const staticCoverageIssues = [
+      ...(staticContractsCoverage.length === 0
+        ? ['staticContractsCoverage 不能为空']
+        : []),
+      ...[...GATE_2_STATIC_CONTRACT_IDS]
+        .filter(
+          (staticContractId) => !coveredStaticContractIds.has(staticContractId),
+        )
+        .map(
+          (staticContractId) =>
+            `staticContractsCoverage 缺少 ${staticContractId}`,
+        ),
+      ...staticContractsCoverage.flatMap((entry, index) => [
+        ...(!this.getNonEmptyString(entry.staticContractId)
+          ? [`staticContractsCoverage[${index}].staticContractId 缺失`]
+          : []),
+        ...this.buildUnknownReferenceIssues(
+          `staticContractsCoverage[${index}].staticContractId`,
+          this.getStringArray([entry.staticContractId]),
+          knownStaticContractIds,
+        ),
+        ...(this.getStringArray(entry.coveredBy).length === 0
+          ? [`staticContractsCoverage[${index}].coveredBy 不能为空`]
+          : []),
+        ...this.buildUnknownReferenceIssues(
+          `staticContractsCoverage[${index}].coveredBy`,
+          this.getStringArray(entry.coveredBy),
+          knownGate3CoverageIds,
+        ),
+      ]),
+    ];
+    const scenarioCoverageUnknownScenarioIssues = acceptanceScenarioCoverage
+      .map((entry, index) => ({
+        index,
+        scenarioId: this.getNonEmptyString(entry.scenarioId),
+      }))
+      .filter(
+        (entry): entry is { index: number; scenarioId: string } =>
+          entry.scenarioId !== null && !knownScenarioIds.has(entry.scenarioId),
+      )
+      .map(
+        (entry) =>
+          `acceptanceScenarioCoverage[${entry.index}].scenarioId 引用了未知场景 ${this.formatIssueValue(
+            entry.scenarioId,
+          )}`,
+      );
+    const scenarioCoverageIssues = [
+      ...(acceptanceScenarioCoverage.length === 0
+        ? ['acceptanceScenarioCoverage 不能为空']
+        : []),
+      ...scenarioCoverageUnknownScenarioIssues,
+      ...scenarioIds.flatMap((scenarioId) => {
+        const entry = scenarioCoverageById.get(scenarioId);
+
+        if (!entry) {
+          return [`场景 ${scenarioId} 缺少 Gate 3 覆盖声明`];
+        }
+
+        const expectedRequirementIds =
+          appSpec.acceptanceScenarios.find(
+            (scenario) => scenario.id === scenarioId,
+          )?.requirementIds ?? [];
+
+        return [
+          ...this.buildMissingItemsIssues(
+            `acceptanceScenarioCoverage[${scenarioId}].requirementIds`,
+            this.getStringArray(entry.requirementIds),
+            expectedRequirementIds,
+          ),
+          ...this.buildUnknownReferenceIssues(
+            `acceptanceScenarioCoverage[${scenarioId}].requirementIds`,
+            this.getStringArray(entry.requirementIds),
+            knownRequirementIds,
+          ),
+          ...(this.getStringArray(entry.coveredBy).length === 0
+            ? [`acceptanceScenarioCoverage[${scenarioId}].coveredBy 不能为空`]
+            : []),
+          ...this.buildUnknownReferenceIssues(
+            `acceptanceScenarioCoverage[${scenarioId}].coveredBy`,
+            this.getStringArray(entry.coveredBy),
+            knownGate3CoverageIds,
+          ),
+        ];
+      }),
+    ];
+    const pluginBuildIssues = [
+      ...this.requireRecord(pluginBuildExpectations, 'pluginBuildExpectations'),
+      ...(generationPlan.pluginTools.tools.length === 0 &&
+      pluginBuildTools.length > 0
+        ? ['无插件计划时 pluginBuildExpectations.tools 必须为空']
+        : []),
+      ...(generationPlan.pluginTools.tools.length === 0 &&
+      !this.getNonEmptyString(pluginBuildExpectations?.emptyReason)
+        ? ['无插件计划时 pluginBuildExpectations.emptyReason 必须说明原因']
+        : []),
+      ...(generationPlan.pluginTools.tools.length > 0 &&
+      pluginBuildExpectations?.emptyReason !== null
+        ? ['有插件计划时 pluginBuildExpectations.emptyReason 必须为 null']
+        : []),
+      ...generationPlan.pluginTools.tools
+        .filter(
+          (plannedTool) =>
+            !pluginBuildTools.some(
+              (tool) =>
+                this.getNonEmptyString(tool.toolId) === plannedTool.toolId,
+            ),
+        )
+        .map(
+          (plannedTool) =>
+            `插件/工具 ${this.formatIssueValue(
+              plannedTool.toolId,
+            )} 缺少 Gate 3 构建期望`,
+        ),
+      ...pluginBuildTools.flatMap((tool, index) => {
+        const toolId = this.getNonEmptyString(tool.toolId);
+        const plannedTool = toolId ? plannedToolById.get(toolId) : null;
+
+        return [
+          ...(!toolId
+            ? [`pluginBuildExpectations.tools[${index}].toolId 缺失`]
+            : []),
+          ...(toolId && !plannedToolIds.has(toolId)
+            ? [
+                `pluginBuildExpectations.tools[${index}].toolId 引用了未知插件/工具 ${this.formatIssueValue(
+                  toolId,
+                )}`,
+              ]
+            : []),
+          ...(!this.getNonEmptyString(tool.command)
+            ? [`pluginBuildExpectations.tools[${index}].command 缺失`]
+            : []),
+          ...(!this.getNonEmptyString(tool.manifestPath)
+            ? [`pluginBuildExpectations.tools[${index}].manifestPath 缺失`]
+            : []),
+          ...(!this.getNonEmptyString(tool.artifactPath)
+            ? [`pluginBuildExpectations.tools[${index}].artifactPath 缺失`]
+            : []),
+          ...(!this.getNonEmptyString(tool.goldenTestCommand)
+            ? [`pluginBuildExpectations.tools[${index}].goldenTestCommand 缺失`]
+            : []),
+          ...(plannedTool
+            ? this.buildMissingItemsIssues(
+                `pluginBuildExpectations.tools[${index}].requirementIds`,
+                this.getStringArray(tool.requirementIds),
+                plannedTool.requirementIds,
+              )
+            : []),
+          ...this.buildUnknownReferenceIssues(
+            `pluginBuildExpectations.tools[${index}].requirementIds`,
+            this.getStringArray(tool.requirementIds),
+            knownRequirementIds,
+          ),
+        ];
+      }),
+    ];
+    const failureCaptureIssues = [
+      ...this.buildMissingItemsIssues(
+        'failureCaptureFields',
+        this.getStringArray(buildUnitPlan.failureCaptureFields),
+        [...GATE_3_REQUIRED_FAILURE_CAPTURE_FIELDS],
+      ),
+    ];
+
+    return [
+      {
+        id: 'build-unit-plan-version',
+        label: 'BuildUnitPlan 版本绑定',
+        passed: versionIssues.length === 0,
+        summary:
+          '检查 buildUnitPlan 是否绑定当前 AppSpec、generationPlan 和 staticContracts。',
+        issues: versionIssues,
+      },
+      {
+        id: 'frontend-build-command',
+        label: '前端构建命令',
+        passed: frontendBuildIssues.length === 0,
+        summary:
+          '检查 frontend build command、工作目录、页面路由覆盖和预期构建产物。',
+        issues: frontendBuildIssues,
+      },
+      {
+        id: 'typecheck-command',
+        label: '类型检查命令',
+        passed: typecheckIssues.length === 0,
+        summary: '检查 TypeScript typecheck command、tsconfig 和需求覆盖。',
+        issues: typecheckIssues,
+      },
+      {
+        id: 'unit-test-command',
+        label: '单元测试命令',
+        passed: unitTestIssues.length === 0,
+        summary: '检查 unit test command、测试入口、需求和场景覆盖。',
+        issues: unitTestIssues,
+      },
+      {
+        id: 'component-golden-test-entry',
+        label: '组件/golden 测试入口',
+        passed: componentGoldenIssues.length === 0,
+        summary: '检查组件/golden 测试命令、入口、报告 artifact 和场景覆盖。',
+        issues: componentGoldenIssues,
+      },
+      {
+        id: 'artifact-expectations',
+        label: '构建与测试产物期望',
+        passed: artifactIssues.length === 0,
+        summary: '检查 Gate 3 期望产出的 build/test/coverage artifacts。',
+        issues: artifactIssues,
+      },
+      {
+        id: 'static-contracts-coverage',
+        label: 'staticContracts 覆盖',
+        passed: staticCoverageIssues.length === 0,
+        summary: '检查 Gate 3 skeleton 是否覆盖 Gate 2 静态合约面。',
+        issues: staticCoverageIssues,
+      },
+      {
+        id: 'acceptance-scenario-coverage',
+        label: 'acceptance scenario 覆盖',
+        passed: scenarioCoverageIssues.length === 0,
+        summary:
+          '检查每条 acceptance scenario 是否连接到 Gate 3 单元或组件/golden 测试入口。',
+        issues: scenarioCoverageIssues,
+      },
+      {
+        id: 'plugin-build-expectations',
+        label: '插件构建期望',
+        passed: pluginBuildIssues.length === 0,
+        summary:
+          '检查插件构建、manifest、.alp artifact 和 golden test 期望；无插件时必须说明空原因。',
+        issues: pluginBuildIssues,
+      },
+      {
+        id: 'failure-capture-fields',
+        label: '失败捕获字段',
+        passed: failureCaptureIssues.length === 0,
+        summary:
+          '检查后续真实 build/unit runner 失败时必须捕获 command、exitCode、stdout、stderr、durationMs 和 artifactPath。',
+        issues: failureCaptureIssues,
+      },
+    ];
   }
 
   private buildGate2Checks(
