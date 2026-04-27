@@ -466,6 +466,7 @@ export {
   type GeneratedAppGenerationPlan,
   type GeneratedAppStaticContracts,
   type GeneratedAppBuildUnitPlan,
+  type GeneratedAppIntegrationPlan,
   type GeneratedAppGateEvidence,
   type GeneratedAppGateRunFailure,
   type GeneratedAppGateResult,

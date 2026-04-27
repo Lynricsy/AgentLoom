@@ -8,6 +8,7 @@ import type {
   GeneratedAppGenerationPlan,
   GeneratedAppGenerationRun,
   GeneratedAppGateRun,
+  GeneratedAppIntegrationPlan,
   GeneratedAppReadiness,
   GeneratedAppRepairAttempt,
   GeneratedAppStaticContracts,
@@ -42,6 +43,7 @@ const GATE_RUN_ID = '66666666-6666-4666-8666-666666666666';
 const GATE_1_RUN_ID = '66666666-6666-4666-8666-666666666667';
 const GATE_2_RUN_ID = '66666666-6666-4666-8666-666666666668';
 const GATE_3_RUN_ID = '66666666-6666-4666-8666-666666666669';
+const GATE_4_RUN_ID = '66666666-6666-4666-8666-666666666670';
 const REPAIR_ATTEMPT_ID = '77777777-7777-4777-8777-777777777777';
 const NOW = new Date('2026-04-25T00:00:00.000Z');
 const DEFAULT_START_GENERATION_RUN_DTO = {
@@ -634,7 +636,7 @@ describe('GeneratedAppService', () => {
     );
   });
 
-  it('Gate 0/Gate 1/Gate 2/Gate 3 通过后应写入 buildUnitPlan、linked gate runs 且清理未执行门禁旧证据', async () => {
+  it('Gate 0/Gate 1/Gate 2/Gate 3/Gate 4 通过后应写入 integrationPlan、linked gate runs 且清理未执行门禁旧证据', async () => {
     const previousGateResults = createInitialGeneratedAppGateResults(
       NOW.toISOString(),
     ).map((gate) => ({
@@ -707,6 +709,17 @@ describe('GeneratedAppService', () => {
         'Gate 3 通过：buildUnitPlan 构建与单元 skeleton 已完整覆盖命令、预期产物、测试入口、合约/场景覆盖、插件构建期望和失败捕获字段；本结果仅表示契约级 skeleton 完整，不代表真实前端构建、插件构建、单元测试、组件测试或 golden test 已经执行。',
       evidence: [],
     });
+    const gate4Run = createGeneratedAppGateRun({
+      id: GATE_4_RUN_ID,
+      gateId: 'gate-4',
+      gateOrder: 4,
+      gateName: '集成门禁',
+      generationRunId: GENERATION_RUN_ID,
+      status: 'passed',
+      summary:
+        'Gate 4 通过：integrationPlan 集成 skeleton 已完整覆盖测试租户/资源、公开 runtime API、创建者管理 API、Agent/Workflow dry-run fixture、插件 sandbox smoke、Gate 3 依赖 artifact、覆盖矩阵、trace artifact 和失败捕获字段；本结果仅表示契约级 integration skeleton 完整，不代表真实 API 调用、真实 Agent/Workflow dry-run、真实插件 WASM/Extism smoke test 或真实 sandbox run 已经执行。',
+      evidence: [],
+    });
     const completedRun = createGeneratedAppGenerationRun({
       runNumber: 2,
       status: 'failed',
@@ -714,18 +727,20 @@ describe('GeneratedAppService', () => {
       maxRuntimeSeconds: 600,
       completedAt: NOW,
       summary:
-        '门禁运行器骨架完成 Gate 0 AppSpec 完整性检查、Gate 1 架构计划门禁、Gate 2 静态合约门禁和 Gate 3 构建与单元 skeleton 完整性检查；Gate 4-7 runner 尚未接入/未执行，当前应用不能形成 publish candidate，保持不可发布。',
+        '门禁运行器骨架完成 Gate 0 AppSpec 完整性检查、Gate 1 架构计划门禁、Gate 2 静态合约门禁、Gate 3 构建与单元 skeleton 完整性检查和 Gate 4 integration skeleton 完整性检查；Gate 5-7 runner 尚未接入/未执行，当前应用不能形成 publish candidate，保持不可发布。',
       failureReason:
-        'Gate 4-7 runner 尚未接入/未执行，不能形成 publish candidate。',
+        'Gate 5-7 runner 尚未接入/未执行，不能形成 publish candidate。',
     });
     const insertRunChain = createInsertReturningChain([run]);
     const insertGateRunChain = createInsertReturningChain([gateRun]);
     const insertGate1RunChain = createInsertReturningChain([gate1Run]);
     const insertGate2RunChain = createInsertReturningChain([gate2Run]);
     const insertGate3RunChain = createInsertReturningChain([gate3Run]);
+    const insertGate4RunChain = createInsertReturningChain([gate4Run]);
     let gate1UpdatePayload: Partial<GeneratedApp> = {};
     let gate2UpdatePayload: Partial<GeneratedApp> = {};
     let gate3UpdatePayload: Partial<GeneratedApp> = {};
+    let gate4UpdatePayload: Partial<GeneratedApp> = {};
     const updateAppAfterGate0Chain =
       createGeneratedAppUpdateReturningFromPayload(app);
     const updateAppAfterGate1Chain =
@@ -740,6 +755,10 @@ describe('GeneratedAppService', () => {
       createGeneratedAppUpdateReturningFromPayload(app, (payload) => {
         gate3UpdatePayload = payload;
       });
+    const updateAppAfterGate4Chain =
+      createGeneratedAppUpdateReturningFromPayload(app, (payload) => {
+        gate4UpdatePayload = payload;
+      });
     const updateRunChain = createUpdateReturningChain([completedRun]);
     mockTenantDb.select
       .mockReturnValueOnce(createSelectChain([app]))
@@ -749,12 +768,14 @@ describe('GeneratedAppService', () => {
       .mockReturnValueOnce(insertGateRunChain)
       .mockReturnValueOnce(insertGate1RunChain)
       .mockReturnValueOnce(insertGate2RunChain)
-      .mockReturnValueOnce(insertGate3RunChain);
+      .mockReturnValueOnce(insertGate3RunChain)
+      .mockReturnValueOnce(insertGate4RunChain);
     mockTenantDb.update
       .mockReturnValueOnce(updateAppAfterGate0Chain)
       .mockReturnValueOnce(updateAppAfterGate1Chain)
       .mockReturnValueOnce(updateAppAfterGate2Chain)
       .mockReturnValueOnce(updateAppAfterGate3Chain)
+      .mockReturnValueOnce(updateAppAfterGate4Chain)
       .mockReturnValueOnce(updateRunChain);
 
     const response = await service.startGenerationRun(
@@ -832,6 +853,19 @@ describe('GeneratedAppService', () => {
         repairInstructions: null,
       }),
     );
+    expect(insertGate4RunChain.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: TENANT_ID,
+        generatedAppId: APP_ID,
+        generationRunId: GENERATION_RUN_ID,
+        gateId: 'gate-4',
+        gateOrder: 4,
+        gateName: '集成门禁',
+        status: 'passed',
+        failure: null,
+        repairInstructions: null,
+      }),
+    );
     const gate1RunPayload = insertGate1RunChain.values.mock.calls[0]?.[0] as {
       evidence: GeneratedApp['gateResults'][number]['evidence'];
     };
@@ -890,6 +924,32 @@ describe('GeneratedAppService', () => {
         }),
       ]),
     );
+    const gate4RunPayload = insertGate4RunChain.values.mock.calls[0]?.[0] as {
+      evidence: GeneratedApp['gateResults'][number]['evidence'];
+    };
+    expect(gate4RunPayload.evidence).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'gate-4-public-runtime-api-checks',
+          kind: 'test',
+          summary: expect.stringContaining(
+            '未执行真实 API 调用、真实 Agent/Workflow dry-run',
+          ),
+        }),
+        expect.objectContaining({
+          id: 'gate-4-agent-workflow-dry-run-fixtures',
+          kind: 'test',
+          summary: expect.stringContaining(
+            '真实插件 WASM/Extism smoke test 或真实 sandbox run',
+          ),
+        }),
+        expect.objectContaining({
+          id: 'gate-4-plugin-sandbox-smoke-expectations',
+          kind: 'test',
+          summary: expect.stringContaining('integration-skeleton 完整性检查'),
+        }),
+      ]),
+    );
 
     expect(gate1UpdatePayload.generationPlan).not.toHaveProperty(
       'staticContracts',
@@ -897,8 +957,11 @@ describe('GeneratedAppService', () => {
     expect(gate2UpdatePayload.generationPlan).not.toHaveProperty(
       'buildUnitPlan',
     );
+    expect(gate3UpdatePayload.generationPlan).not.toHaveProperty(
+      'integrationPlan',
+    );
 
-    const appUpdatePayload = gate3UpdatePayload as {
+    const appUpdatePayload = gate4UpdatePayload as {
       gateResults: GeneratedApp['gateResults'];
       readiness: GeneratedApp['readiness'];
       status: GeneratedApp['status'];
@@ -909,20 +972,24 @@ describe('GeneratedAppService', () => {
     const passedGateIds = appUpdatePayload.gateResults
       .filter((gate) => gate.status === 'passed')
       .map((gate) => gate.gateId);
-    expect(passedGateIds).toEqual(['gate-0', 'gate-1', 'gate-2', 'gate-3']);
+    expect(passedGateIds).toEqual([
+      'gate-0',
+      'gate-1',
+      'gate-2',
+      'gate-3',
+      'gate-4',
+    ]);
     expect(
-      appUpdatePayload.gateResults.find((gate) => gate.gateId === 'gate-4')
+      appUpdatePayload.gateResults.find((gate) => gate.gateId === 'gate-5')
         ?.status,
     ).toBe('pending');
     expect(
-      appUpdatePayload.gateResults.find((gate) => gate.gateId === 'gate-4')
+      appUpdatePayload.gateResults.find((gate) => gate.gateId === 'gate-5')
         ?.evidence,
     ).toEqual([]);
     expect(
       appUpdatePayload.gateResults
-        .filter((gate) =>
-          ['gate-4', 'gate-5', 'gate-6', 'gate-7'].includes(gate.gateId),
-        )
+        .filter((gate) => ['gate-5', 'gate-6', 'gate-7'].includes(gate.gateId))
         .every(
           (gate) => gate.status !== 'passed' && gate.evidence.length === 0,
         ),
@@ -1104,11 +1171,130 @@ describe('GeneratedAppService', () => {
         ]),
       }),
     );
+    expect(appUpdatePayload.generationPlan.integrationPlan).toEqual(
+      expect.objectContaining({
+        planVersion: 1,
+        appSpecVersion: 1,
+        generationPlanVersion: 1,
+        staticContractsVersion: 1,
+        buildUnitPlanVersion: 1,
+        executionLevel: 'integration-skeleton',
+        testTenant: expect.objectContaining({
+          tenantKind: 'synthetic',
+          usesRealTokens: false,
+          noProductionResources: true,
+        }),
+        testResources: expect.objectContaining({
+          resourceIsolation: 'ephemeral-test-resources-only',
+          usesRealTokens: false,
+          requiredScenarioIds: ['scenario-1'],
+        }),
+        publicRuntimeApiChecks: expect.arrayContaining([
+          expect.objectContaining({
+            checkId: 'gate-4-public-runtime-read',
+            kind: 'public_runtime_read',
+            staticContractIds: expect.arrayContaining([
+              'gate-2-public-runtime-contract',
+            ]),
+          }),
+          expect.objectContaining({
+            checkId: 'gate-4-public-runtime-submit-input',
+            kind: 'public_runtime_submit',
+            staticContractIds: expect.arrayContaining([
+              'gate-2-submission-persistence-contract',
+            ]),
+          }),
+          expect.objectContaining({
+            checkId: 'gate-4-public-submission-detail',
+            kind: 'public_submission_detail',
+          }),
+        ]),
+        creatorManagementApiChecks: expect.arrayContaining([
+          expect.objectContaining({
+            checkId: 'gate-4-creator-generation-run-query',
+          }),
+          expect.objectContaining({
+            checkId: 'gate-4-creator-gate-run-query',
+          }),
+          expect.objectContaining({
+            checkId: 'gate-4-creator-submission-query',
+          }),
+        ]),
+        agentWorkflowDryRunExpectations: expect.objectContaining({
+          expectationLevel: 'dry-run-fixture-skeleton',
+          orchestrationNodeIds: expect.arrayContaining(['node-step-1-req-1']),
+          fixtures: expect.arrayContaining([
+            expect.objectContaining({
+              scenarioId: 'scenario-1',
+              inputMapping: expect.objectContaining({
+                staticContractId: 'gate-2-public-runtime-contract',
+              }),
+              outputMapping: expect.objectContaining({
+                staticContractId: 'gate-2-public-runtime-contract',
+              }),
+            }),
+          ]),
+        }),
+        pluginSandboxSmokeExpectations: expect.objectContaining({
+          tools: [],
+          emptyReason: expect.stringContaining(
+            '当前 generationPlan.pluginTools',
+          ),
+        }),
+        dependencyArtifacts: expect.arrayContaining([
+          expect.objectContaining({
+            artifactId: 'frontend-build-output',
+            sourceGateId: 'gate-3',
+          }),
+          expect.objectContaining({
+            artifactId: 'coverage-report',
+            sourceGateId: 'gate-3',
+          }),
+        ]),
+        acceptanceScenarioCoverage: [
+          expect.objectContaining({
+            scenarioId: 'scenario-1',
+            coveredByCheckIds: expect.arrayContaining([
+              'gate-4-public-runtime-submit-input',
+              'gate-4-agent-workflow-dry-run-fixture',
+            ]),
+          }),
+        ],
+        requirementCoverage: expect.arrayContaining([
+          expect.objectContaining({
+            requirementId: 'req-1',
+            dependencyArtifactIds: expect.arrayContaining([
+              'frontend-build-output',
+              'unit-test-report',
+              'component-golden-report',
+              'coverage-report',
+            ]),
+          }),
+        ]),
+        traceArtifacts: expect.arrayContaining([
+          expect.objectContaining({
+            artifactId: 'public-runtime-api-trace',
+            kind: 'public_runtime_api_trace',
+          }),
+          expect.objectContaining({
+            artifactId: 'agent-workflow-dry-run-trace',
+            kind: 'agent_workflow_dry_run_trace',
+          }),
+        ]),
+        failureCaptureFields: expect.arrayContaining([
+          'checkId',
+          'requestId',
+          'responseStatus',
+          'traceArtifactPath',
+          'durationMs',
+        ]),
+      }),
+    );
     expect(updateRunChain.set).toHaveBeenCalledWith(
       expect.objectContaining({
         status: 'failed',
         failureReason:
-          'Gate 4-7 runner 尚未接入/未执行，不能形成 publish candidate。',
+          'Gate 5-7 runner 尚未接入/未执行，不能形成 publish candidate。',
         completedAt: expect.any(Date),
       }),
     );
@@ -1117,7 +1303,7 @@ describe('GeneratedAppService', () => {
         id: GENERATION_RUN_ID,
         status: 'failed',
         failureReason:
-          'Gate 4-7 runner 尚未接入/未执行，不能形成 publish candidate。',
+          'Gate 5-7 runner 尚未接入/未执行，不能形成 publish candidate。',
       }),
     );
     expect(response.gateRuns).toEqual([
@@ -1142,6 +1328,12 @@ describe('GeneratedAppService', () => {
         status: 'passed',
         summary: expect.stringContaining('仅表示契约级 skeleton 完整'),
       }),
+      expect.objectContaining({
+        gateId: 'gate-4',
+        generationRunId: GENERATION_RUN_ID,
+        status: 'passed',
+        summary: expect.stringContaining('integration skeleton 完整'),
+      }),
     ]);
     expect(response.app.generationPlan).toEqual(
       expect.objectContaining({
@@ -1151,6 +1343,9 @@ describe('GeneratedAppService', () => {
         }),
         buildUnitPlan: expect.objectContaining({
           executionLevel: 'contract-skeleton',
+        }),
+        integrationPlan: expect.objectContaining({
+          executionLevel: 'integration-skeleton',
         }),
       }),
     );
@@ -1947,6 +2142,522 @@ describe('GeneratedAppService', () => {
     );
     expect(response.app.generationPlan?.buildUnitPlan).toEqual(
       malformedBuildUnitPlan,
+    );
+    expect(
+      response.gateRuns.some((gateRun) => gateRun.gateId === 'gate-4'),
+    ).toBe(false);
+    expect(mockTenantDb.insert).toHaveBeenCalledTimes(5);
+  });
+
+  it('Gate 4 失败时应写入失败证据、保留 attempted integrationPlan 并以 Gate 4 failure reason 结束', async () => {
+    const app = createGeneratedApp({
+      status: 'published',
+      readiness: createPublishCandidateReadiness(),
+      publicShareEnabled: true,
+      publicShareToken: 'f'.repeat(64),
+      publicShareCreatedAt: NOW,
+    });
+    const validPlan = (
+      service as unknown as {
+        buildGenerationPlan(
+          appSpec: GeneratedApp['appSpec'],
+        ): GeneratedAppGenerationPlan;
+      }
+    ).buildGenerationPlan(app.appSpec);
+    const validPlanWithTool: GeneratedAppGenerationPlan = {
+      ...validPlan,
+      pluginTools: {
+        ...validPlan.pluginTools,
+        tools: [
+          {
+            toolId: 'tool-symptom-score',
+            purpose: '对问诊输入做结构化评分。',
+            requirementIds: ['req-1'],
+            permissionNotes: ['禁止隐式网络、存储、知识库或 LLM 权限。'],
+          },
+        ],
+        emptyReason: null,
+      },
+    };
+    vi.spyOn(
+      service as unknown as {
+        buildGenerationPlan(
+          appSpec: GeneratedApp['appSpec'],
+        ): GeneratedAppGenerationPlan;
+      },
+      'buildGenerationPlan',
+    ).mockReturnValue(validPlanWithTool);
+    const validContracts = (
+      service as unknown as {
+        buildStaticContracts(
+          appSpec: GeneratedApp['appSpec'],
+          generationPlan: GeneratedAppGenerationPlan,
+        ): GeneratedAppStaticContracts;
+      }
+    ).buildStaticContracts(app.appSpec, validPlanWithTool);
+    const validBuildUnitPlan = (
+      service as unknown as {
+        buildBuildUnitPlan(
+          appSpec: GeneratedApp['appSpec'],
+          generationPlan: GeneratedAppGenerationPlan,
+          staticContracts: GeneratedAppStaticContracts,
+        ): GeneratedAppBuildUnitPlan;
+      }
+    ).buildBuildUnitPlan(app.appSpec, validPlanWithTool, validContracts);
+    const validIntegrationPlan = (
+      service as unknown as {
+        buildIntegrationPlan(
+          appSpec: GeneratedApp['appSpec'],
+          generationPlan: GeneratedAppGenerationPlan,
+          staticContracts: GeneratedAppStaticContracts,
+          buildUnitPlan: GeneratedAppBuildUnitPlan,
+        ): GeneratedAppIntegrationPlan;
+      }
+    ).buildIntegrationPlan(
+      app.appSpec,
+      validPlanWithTool,
+      validContracts,
+      validBuildUnitPlan,
+    );
+    const firstFixture =
+      validIntegrationPlan.agentWorkflowDryRunExpectations.fixtures[0];
+    const malformedIntegrationPlan: GeneratedAppIntegrationPlan = {
+      ...validIntegrationPlan,
+      testTenant: {
+        ...validIntegrationPlan.testTenant,
+        usesRealTokens: true,
+        publicShareToken: app.publicShareToken,
+        apiKey: 'sk-test-secret',
+        githubAccessToken: 'ghp_test-secret',
+      } as unknown as GeneratedAppIntegrationPlan['testTenant'],
+      publicRuntimeApiChecks: validIntegrationPlan.publicRuntimeApiChecks.map(
+        (check, index) =>
+          index === 0
+            ? {
+                ...check,
+                kind: 'ghost_runtime_check' as GeneratedAppIntegrationPlan['publicRuntimeApiChecks'][number]['kind'],
+                staticContractIds: ['gate-2-missing'],
+                scenarioIds: ['scenario-1', 'scenario-missing'],
+                payloadContractRefs: ['staticContracts.ghost'],
+              }
+            : check,
+      ),
+      creatorManagementApiChecks:
+        validIntegrationPlan.creatorManagementApiChecks.map((check, index) =>
+          index === 0
+            ? {
+                ...check,
+                checkId: 'gate-4-creator-ghost-query',
+              }
+            : check,
+        ),
+      agentWorkflowDryRunExpectations: {
+        ...validIntegrationPlan.agentWorkflowDryRunExpectations,
+        orchestrationNodeIds: ['missing-node'],
+        orchestrationEdgeRefs: ['missing-node->node-step-1-req-1'],
+        fixtures: firstFixture
+          ? [
+              {
+                ...firstFixture,
+                scenarioId: 'scenario-missing',
+                requirementIds: ['req-missing'],
+                orchestrationNodeIds: ['missing-node'],
+                traceArtifactIds: ['missing-trace'],
+                inputMapping: {
+                  ...firstFixture.inputMapping,
+                  staticContractId: 'gate-2-missing',
+                  requiredFields: [],
+                },
+                outputMapping: {
+                  ...firstFixture.outputMapping,
+                  destinations: [],
+                },
+              },
+            ]
+          : [],
+      },
+      pluginSandboxSmokeExpectations: {
+        tools:
+          validIntegrationPlan.pluginSandboxSmokeExpectations.tools.flatMap(
+            (tool) => [
+              {
+                ...tool,
+                smokeCheckId: 'gate-4-plugin-smoke-wrong',
+                artifactId: 'frontend-build-output',
+                expectedTraceArtifactId: 'public-runtime-api-trace',
+                sandboxRuntime:
+                  'node' as GeneratedAppIntegrationPlan['pluginSandboxSmokeExpectations']['tools'][number]['sandboxRuntime'],
+              },
+              {
+                ...tool,
+                toolId: 'tool-missing',
+                smokeCheckId: 'gate-4-plugin-smoke-tool-missing',
+                artifactId: 'missing-artifact',
+                expectedTraceArtifactId: 'missing-trace',
+                requirementIds: ['req-missing'],
+                sandboxRuntime:
+                  'node' as GeneratedAppIntegrationPlan['pluginSandboxSmokeExpectations']['tools'][number]['sandboxRuntime'],
+              },
+            ],
+          ),
+        emptyReason: '有插件计划时不应有 emptyReason。',
+      },
+      dependencyArtifacts: [
+        ...validIntegrationPlan.dependencyArtifacts
+          .filter((artifact) => artifact.artifactId !== 'coverage-report')
+          .map((artifact) =>
+            artifact.artifactId === 'frontend-build-output'
+              ? {
+                  ...artifact,
+                  kind: 'plugin_bundle' as GeneratedAppIntegrationPlan['dependencyArtifacts'][number]['kind'],
+                }
+              : artifact,
+          ),
+        {
+          artifactId: 'ghost-artifact',
+          kind: 'ghost_artifact' as GeneratedAppIntegrationPlan['dependencyArtifacts'][number]['kind'],
+          sourceGateId:
+            'gate-2' as GeneratedAppIntegrationPlan['dependencyArtifacts'][number]['sourceGateId'],
+          path: '',
+          required: false,
+        },
+      ],
+      acceptanceScenarioCoverage: [
+        {
+          scenarioId: 'scenario-missing',
+          requirementIds: ['req-missing'],
+          coveredByCheckIds: ['gate-4-missing-check'],
+          fixtureIds: ['missing-fixture'],
+        },
+      ],
+      requirementCoverage: [
+        {
+          requirementId: 'req-missing',
+          scenarioIds: ['scenario-missing'],
+          coveredByCheckIds: ['gate-4-missing-check'],
+          dependencyArtifactIds: ['missing-artifact'],
+        },
+      ],
+      orchestrationCoverage: [
+        {
+          nodeId: 'missing-node',
+          edgeRefs: ['missing-edge'],
+          coveredByFixtureIds: ['missing-fixture'],
+          coveredByCheckIds: ['gate-4-missing-check'],
+        },
+      ],
+      traceArtifacts: [
+        {
+          artifactId: 'public-runtime-api-trace',
+          kind: 'creator_management_api_trace',
+          path: 'artifacts/gate-4/public-runtime-api-trace.json',
+          producedByCheckIds: ['gate-4-missing-check'],
+        },
+        {
+          artifactId: 'creator-management-api-trace',
+          kind: 'ghost_trace' as GeneratedAppIntegrationPlan['traceArtifacts'][number]['kind'],
+          path: '',
+          producedByCheckIds: ['gate-4-missing-check'],
+        },
+      ],
+      failureCaptureFields: ['checkId'],
+    };
+    vi.spyOn(
+      service as unknown as {
+        buildIntegrationPlan(
+          appSpec: GeneratedApp['appSpec'],
+          generationPlan: GeneratedAppGenerationPlan,
+          staticContracts: GeneratedAppStaticContracts,
+          buildUnitPlan: GeneratedAppBuildUnitPlan,
+        ): GeneratedAppIntegrationPlan;
+      },
+      'buildIntegrationPlan',
+    ).mockReturnValue(malformedIntegrationPlan);
+    const run = createGeneratedAppGenerationRun();
+    const gateRun = createGeneratedAppGateRun({
+      gateId: 'gate-0',
+      gateOrder: 0,
+      gateName: '需求规格门禁',
+      generationRunId: GENERATION_RUN_ID,
+      status: 'passed',
+      summary:
+        'Gate 0 通过：AppSpec 结构完整，核心需求均有 acceptance scenario 与 traceability 覆盖。',
+      evidence: [],
+    });
+    const gate1Run = createGeneratedAppGateRun({
+      id: GATE_1_RUN_ID,
+      gateId: 'gate-1',
+      gateOrder: 1,
+      gateName: '架构计划门禁',
+      generationRunId: GENERATION_RUN_ID,
+      status: 'passed',
+      summary:
+        'Gate 1 通过：generationPlan 已覆盖 AppSpec 页面、Agent/Workflow 编排、插件/工具策略、数据持久化、Gate 2-7 测试计划和需求 traceability。',
+      evidence: [],
+    });
+    const gate2Run = createGeneratedAppGateRun({
+      id: GATE_2_RUN_ID,
+      gateId: 'gate-2',
+      gateOrder: 2,
+      gateName: '静态合约门禁',
+      generationRunId: GENERATION_RUN_ID,
+      status: 'passed',
+      summary:
+        'Gate 2 通过：staticContracts 已覆盖公开运行输入输出、前端路由、Workflow/Agent 编排、插件权限、提交持久化、测试入口和需求 traceability。',
+      evidence: [],
+    });
+    const gate3Run = createGeneratedAppGateRun({
+      id: GATE_3_RUN_ID,
+      gateId: 'gate-3',
+      gateOrder: 3,
+      gateName: '构建与单元门禁',
+      generationRunId: GENERATION_RUN_ID,
+      status: 'passed',
+      summary:
+        'Gate 3 通过：buildUnitPlan 构建与单元 skeleton 已完整覆盖命令、预期产物、测试入口、合约/场景覆盖、插件构建期望和失败捕获字段；本结果仅表示契约级 skeleton 完整，不代表真实前端构建、插件构建、单元测试、组件测试或 golden test 已经执行。',
+      evidence: [],
+    });
+    const gate4Run = createGeneratedAppGateRun({
+      id: GATE_4_RUN_ID,
+      gateId: 'gate-4',
+      gateOrder: 4,
+      gateName: '集成门禁',
+      generationRunId: GENERATION_RUN_ID,
+      status: 'failed',
+      summary:
+        'Gate 4 失败：integrationPlan 未完整覆盖测试租户/资源、公开 runtime API、创建者管理 API、Agent/Workflow dry-run fixture、插件 sandbox smoke、Gate 3 依赖 artifact、覆盖矩阵、trace artifact 或失败捕获字段；本结果仅表示契约级 integration skeleton 检查失败，不代表真实 API 调用、真实 Agent/Workflow dry-run、真实插件 WASM/Extism smoke test 或真实 sandbox run 已经执行。',
+      failure: {
+        code: 'integration-plan-incomplete',
+        message:
+          'IntegrationPlan 集成 skeleton 检查失败：public runtime API checks；本失败只来自 integration-skeleton 合约完整性检查，不代表真实 API 调用、真实 Agent/Workflow dry-run、真实插件 WASM/Extism smoke test 或真实 sandbox run 已经执行。',
+      },
+      repairInstructions:
+        '修复 generationPlan.integrationPlan，使其覆盖测试租户/资源、public runtime API checks、creator management API checks、Agent/Workflow dry-run fixture、plugin sandbox smoke expectations、Gate 3 dependency artifacts、需求/场景/编排覆盖、trace artifacts 和 failure capture fields；当前 Gate 4 仍只检查 integration-skeleton 合约，不代表真实 API 调用、真实 Agent/Workflow dry-run、真实插件 WASM/Extism smoke test 或真实 sandbox run 已经执行。',
+      evidence: [],
+    });
+    const completedRun = createGeneratedAppGenerationRun({
+      status: 'failed',
+      failureReason:
+        'IntegrationPlan 集成 skeleton 检查失败：public runtime API checks；本失败只来自 integration-skeleton 合约完整性检查，不代表真实 API 调用、真实 Agent/Workflow dry-run、真实插件 WASM/Extism smoke test 或真实 sandbox run 已经执行。',
+      completedAt: NOW,
+    });
+    const insertRunChain = createInsertReturningChain([run]);
+    const insertGateRunChain = createInsertReturningChain([gateRun]);
+    const insertGate1RunChain = createInsertReturningChain([gate1Run]);
+    const insertGate2RunChain = createInsertReturningChain([gate2Run]);
+    const insertGate3RunChain = createInsertReturningChain([gate3Run]);
+    const insertGate4RunChain = createInsertReturningChain([gate4Run]);
+    const updateAppAfterGate0Chain =
+      createGeneratedAppUpdateReturningFromPayload(app);
+    const updateAppAfterGate1Chain =
+      createGeneratedAppUpdateReturningFromPayload(app);
+    const updateAppAfterGate2Chain =
+      createGeneratedAppUpdateReturningFromPayload(app);
+    const updateAppAfterGate3Chain =
+      createGeneratedAppUpdateReturningFromPayload(app);
+    let gate4UpdatePayload: Partial<GeneratedApp> = {};
+    const updateAppAfterGate4Chain =
+      createGeneratedAppUpdateReturningFromPayload(app, (payload) => {
+        gate4UpdatePayload = payload;
+      });
+    const updateRunChain = createUpdateReturningChain([completedRun]);
+    mockTenantDb.select
+      .mockReturnValueOnce(createSelectChain([app]))
+      .mockReturnValueOnce(createSelectLatestRunNumberChain(null));
+    mockTenantDb.insert
+      .mockReturnValueOnce(insertRunChain)
+      .mockReturnValueOnce(insertGateRunChain)
+      .mockReturnValueOnce(insertGate1RunChain)
+      .mockReturnValueOnce(insertGate2RunChain)
+      .mockReturnValueOnce(insertGate3RunChain)
+      .mockReturnValueOnce(insertGate4RunChain);
+    mockTenantDb.update
+      .mockReturnValueOnce(updateAppAfterGate0Chain)
+      .mockReturnValueOnce(updateAppAfterGate1Chain)
+      .mockReturnValueOnce(updateAppAfterGate2Chain)
+      .mockReturnValueOnce(updateAppAfterGate3Chain)
+      .mockReturnValueOnce(updateAppAfterGate4Chain)
+      .mockReturnValueOnce(updateRunChain);
+
+    const response = await service.startGenerationRun(
+      TENANT_ID,
+      USER_ID,
+      APP_ID,
+      DEFAULT_START_GENERATION_RUN_DTO,
+    );
+
+    expect(insertGate4RunChain.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        gateId: 'gate-4',
+        status: 'failed',
+        summary: expect.stringContaining('不代表真实 API 调用'),
+        failure: expect.objectContaining({
+          code: 'integration-plan-incomplete',
+          message: expect.stringContaining('不代表真实 API 调用'),
+        }),
+        repairInstructions: expect.stringContaining(
+          '修复 generationPlan.integrationPlan',
+        ),
+      }),
+    );
+    const gate4RunPayload = insertGate4RunChain.values.mock.calls[0]?.[0] as {
+      evidence: GeneratedApp['gateResults'][number]['evidence'];
+      failure: { details?: { checks?: Array<{ issues: string[] }> } };
+    };
+    expect(
+      gate4RunPayload.evidence.some((item) =>
+        item.summary.includes(
+          'publicRuntimeApiChecks[0].kind 必须是 public_runtime_read',
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      gate4RunPayload.evidence.some((item) =>
+        item.summary.includes(
+          'publicRuntimeApiChecks[0].staticContractIds 引用了未知对象 gate-2-missing',
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      gate4RunPayload.evidence.some((item) =>
+        item.summary.includes(
+          'publicRuntimeApiChecks[0].payloadContractRefs 引用了未知对象 staticContracts.ghost',
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      gate4RunPayload.evidence.some((item) =>
+        item.summary.includes('scenario-missing'),
+      ),
+    ).toBe(true);
+    expect(
+      gate4RunPayload.evidence.some((item) =>
+        item.summary.includes('tool-missing'),
+      ),
+    ).toBe(true);
+    expect(
+      gate4RunPayload.evidence.some((item) =>
+        item.summary.includes(
+          'pluginSandboxSmokeExpectations.tools[0].smokeCheckId 必须为 gate-4-plugin-smoke-tool-symptom-score',
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      gate4RunPayload.evidence.some((item) =>
+        item.summary.includes(
+          'pluginSandboxSmokeExpectations.tools[0].artifactId 必须引用 plugin-bundle-tool-symptom-score',
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      gate4RunPayload.evidence.some((item) =>
+        item.summary.includes(
+          'pluginSandboxSmokeExpectations.tools[0].expectedTraceArtifactId 必须引用 plugin-smoke-trace-tool-symptom-score',
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      gate4RunPayload.evidence.some((item) =>
+        item.summary.includes(
+          'dependencyArtifacts.artifactId 缺少 coverage-report',
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      gate4RunPayload.evidence.some((item) =>
+        item.summary.includes('dependencyArtifacts[4].kind 必须是'),
+      ),
+    ).toBe(true);
+    expect(
+      gate4RunPayload.evidence.some((item) =>
+        item.summary.includes(
+          'dependencyArtifacts[0].kind 与 Gate 3 artifact frontend-build-output 不一致',
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      gate4RunPayload.evidence.some((item) =>
+        item.summary.includes(
+          'traceArtifacts[0].kind 与 trace artifact public-runtime-api-trace 不一致',
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      gate4RunPayload.evidence.some((item) =>
+        item.summary.includes(
+          'traceArtifacts[1].kind 必须是 public_runtime_api_trace',
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      gate4RunPayload.evidence.some((item) =>
+        item.summary.includes('failureCaptureFields 缺少 requestId'),
+      ),
+    ).toBe(true);
+    expect(
+      gate4RunPayload.evidence.every((item) =>
+        item.summary.includes(
+          '未执行真实 API 调用、真实 Agent/Workflow dry-run、真实插件 WASM/Extism smoke test 或真实 sandbox run',
+        ),
+      ),
+    ).toBe(true);
+    expect(JSON.stringify(gate4RunPayload.failure)).not.toContain(
+      app.publicShareToken,
+    );
+    expect(JSON.stringify(gate4RunPayload.failure)).not.toContain(
+      'sk-test-secret',
+    );
+    expect(JSON.stringify(gate4RunPayload.failure)).not.toContain(
+      'ghp_test-secret',
+    );
+
+    const appUpdatePayload = gate4UpdatePayload as {
+      generationPlan: GeneratedAppGenerationPlan;
+      gateResults: GeneratedApp['gateResults'];
+      status: GeneratedApp['status'];
+      publicShareToken: string | null;
+      publicShareEnabled: boolean;
+    };
+    expect(appUpdatePayload.generationPlan.integrationPlan).toEqual(
+      malformedIntegrationPlan,
+    );
+    expect(
+      appUpdatePayload.gateResults.find((gate) => gate.gateId === 'gate-4'),
+    ).toEqual(
+      expect.objectContaining({
+        status: 'failed',
+        summary: expect.stringContaining('不代表真实 API 调用'),
+      }),
+    );
+    expect(
+      appUpdatePayload.gateResults.find((gate) => gate.gateId === 'gate-5')
+        ?.status,
+    ).toBe('pending');
+    expect(appUpdatePayload.status).toBe('failed');
+    expect(appUpdatePayload.publicShareToken).toBeNull();
+    expect(appUpdatePayload.publicShareEnabled).toBe(false);
+    expect(updateRunChain.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'failed',
+        failureReason: expect.stringContaining('IntegrationPlan 集成 skeleton'),
+      }),
+    );
+    expect(response.generationRun.status).toBe('failed');
+    expect(response.generationRun.failureReason).toContain(
+      'IntegrationPlan 集成 skeleton',
+    );
+    expect(response.gateRuns).toHaveLength(5);
+    expect(response.gateRuns[4]).toEqual(
+      expect.objectContaining({
+        gateId: 'gate-4',
+        status: 'failed',
+        failure: expect.objectContaining({
+          code: 'integration-plan-incomplete',
+        }),
+      }),
+    );
+    expect(response.app.generationPlan?.integrationPlan).toEqual(
+      malformedIntegrationPlan,
     );
   });
 

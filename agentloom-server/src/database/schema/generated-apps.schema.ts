@@ -213,6 +213,7 @@ export interface GeneratedAppGenerationPlan {
   }>;
   staticContracts?: GeneratedAppStaticContracts;
   buildUnitPlan?: GeneratedAppBuildUnitPlan;
+  integrationPlan?: GeneratedAppIntegrationPlan;
 }
 
 export interface GeneratedAppStaticContracts {
@@ -364,6 +365,130 @@ export interface GeneratedAppBuildUnitPlan {
     }>;
     emptyReason: string | null;
   };
+  failureCaptureFields: string[];
+}
+
+export interface GeneratedAppIntegrationPlan {
+  planVersion: 1;
+  appSpecVersion: number;
+  generationPlanVersion: number;
+  staticContractsVersion: number;
+  buildUnitPlanVersion: number;
+  executionLevel: 'integration-skeleton';
+  skeletonDisclaimer: string;
+  testTenant: {
+    tenantKind: 'synthetic';
+    tenantAlias: string;
+    authMode: 'tenant-scoped-synthetic-no-real-token';
+    usesRealTokens: false;
+    noProductionResources: true;
+  };
+  testResources: {
+    resourceIsolation: 'ephemeral-test-resources-only';
+    usesRealTokens: false;
+    generatedAppWorkspacePath: string;
+    fixtureDirectory: string;
+    requiredScenarioIds: string[];
+  };
+  publicRuntimeApiChecks: Array<{
+    checkId: string;
+    kind:
+      | 'public_runtime_read'
+      | 'public_runtime_submit'
+      | 'public_submission_detail';
+    method: 'GET' | 'POST';
+    pathTemplate: string;
+    staticContractIds: string[];
+    requirementIds: string[];
+    scenarioIds: string[];
+    expectedStatus: number;
+    payloadContractRefs: string[];
+  }>;
+  creatorManagementApiChecks: Array<{
+    checkId: string;
+    kind:
+      | 'creator_generation_run_query'
+      | 'creator_gate_run_query'
+      | 'creator_submission_query';
+    method: 'GET';
+    pathTemplate: string;
+    staticContractIds: string[];
+    requirementIds: string[];
+    expectedStatus: number;
+  }>;
+  agentWorkflowDryRunExpectations: {
+    expectationLevel: 'dry-run-fixture-skeleton';
+    orchestrationNodeIds: string[];
+    orchestrationEdgeRefs: string[];
+    fixtures: Array<{
+      fixtureId: string;
+      scenarioId: string;
+      requirementIds: string[];
+      orchestrationNodeIds: string[];
+      orchestrationEdgeRefs: string[];
+      inputMapping: {
+        staticContractId: string;
+        requiredFields: string[];
+      };
+      outputMapping: {
+        staticContractId: string;
+        destinations: string[];
+      };
+      traceArtifactIds: string[];
+    }>;
+  };
+  pluginSandboxSmokeExpectations: {
+    tools: Array<{
+      toolId: string;
+      smokeCheckId: string;
+      artifactId: string;
+      fixturePath: string;
+      expectedTraceArtifactId: string;
+      requirementIds: string[];
+      sandboxRuntime: 'wasm-extism';
+    }>;
+    emptyReason: string | null;
+  };
+  dependencyArtifacts: Array<{
+    artifactId: string;
+    kind:
+      | 'frontend_build'
+      | 'unit_test_report'
+      | 'component_golden_report'
+      | 'coverage_report'
+      | 'plugin_bundle';
+    sourceGateId: 'gate-3';
+    path: string;
+    required: boolean;
+  }>;
+  acceptanceScenarioCoverage: Array<{
+    scenarioId: string;
+    requirementIds: string[];
+    coveredByCheckIds: string[];
+    fixtureIds: string[];
+  }>;
+  requirementCoverage: Array<{
+    requirementId: string;
+    scenarioIds: string[];
+    coveredByCheckIds: string[];
+    dependencyArtifactIds: string[];
+  }>;
+  orchestrationCoverage: Array<{
+    nodeId: string;
+    edgeRefs: string[];
+    coveredByFixtureIds: string[];
+    coveredByCheckIds: string[];
+  }>;
+  traceArtifacts: Array<{
+    artifactId: string;
+    kind:
+      | 'public_runtime_api_trace'
+      | 'creator_management_api_trace'
+      | 'agent_workflow_dry_run_trace'
+      | 'plugin_sandbox_smoke_trace';
+    path: string;
+    producedByCheckIds: string[];
+  }>;
   failureCaptureFields: string[];
 }
 

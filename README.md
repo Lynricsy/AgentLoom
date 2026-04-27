@@ -19,7 +19,7 @@ AgentLoom 让你像编织织布机上的经纬线一样，将多个 AI Agent 编
 - **🏷️ 发布版号语义** — 工作流草稿修订号与用户可见发布版本号分离：自动保存只推进内部 OCC 修订号，只有快照首次发布时才分配 `vN`
 - **🧭 Agent 双运行态** — Agent 创建时显式选择 `sandbox / no_sandbox`；顶层 `no_sandbox` Agent 与 workflow `agent` 节点走 in-process pi-agent-core runtime，仍支持 Skill、知识库、Memory、HTTP MCP 与自进化，而 `sandbox` Agent 继续走容器化 pi-coding-agent runtime；普通运行时工具默认自动执行，仅自进化写操作保留审批
 - **💬 Agent 对话体验** — 首轮 assistant 回复后会自动生成对话标题；标题模型解析顺序为“用户标题偏好 → 当前会话所属 Agent 运行模型 → 组织默认 chat 模型”。服务端标题生成会与 runtime 对齐模型协议选择，但会按 `@ai-sdk/*` SDK 语义单独归一 `baseURL`（例如 Anthropic 请求保留 `/v1`）；无论来自 HTTP 还是 worker 背景触发，标题生成都会在租户事务内完成读写。当这些模型都不可用或 LLM 标题生成失败时，系统会回退为首条用户消息摘要，避免会话列表停留在“新对话”。对于 sandbox Agent，新会话在 live sandbox 就绪前会先显示持久化工作区目录预览；右侧“Agent 的电脑”面板会以结构化进程监视器、文件变更与工具详情呈现当前运行上下文，执行开始时默认落在工具页，但用户手动切到其他 tab 后不会再被后续工具事件抢回；`no_sandbox` Agent 的草稿态与正式会话都只保留消息流和输入区，不再额外占用右侧电脑/工作区面板宽度；子代理 drill-in 视图优先显示 live 瀑布，若缺少实时流则回退到历史摘要视图，避免 breadcrumb 已进入但正文仍停留在主 Agent；若同时存在顶层 `workspaceSnapshotId` 与 `sandboxConfig.restoreWorkspaceId`，预览优先绑定后者，避免预览与实际恢复工作区漂移
-- **🔗 发现与公开分享** — `/discover` 复用 Marketplace 已上架内容做可浏览发现页；workflow 与 Agent 都支持生成 `/s/:token` 公开分享链接，访问者可预览作者、标题、简介、画布/Agent 元数据，并导入到自己的租户。Generated App 使用 `/generated-apps/public/:token` 作为无需登录的公开 runtime 入口，只暴露终端用户业务界面、数据用途提示、有限 AppSpec 与预览链接；生成过程会保存自动开发测试循环、修复轮次、Gate 0-7 运行证据、失败详情和修复建议，后端可同步启动轻量门禁运行器骨架执行 Gate 0 AppSpec 完整性检查，Gate 0 通过后生成结构化 `generationPlan` 并执行 Gate 1 架构计划完整性检查，Gate 1 通过后生成 `generationPlan.staticContracts` 并执行 Gate 2 静态合约完整性检查，Gate 2 通过后生成 `generationPlan.buildUnitPlan` 并执行 Gate 3 构建与单元 skeleton 完整性检查；Gate 0、Gate 1、Gate 2 与 Gate 3 通过但 Gate 4-7 runner 尚未接入/未执行时，generation run 仍以 `failed` 和 failure reason 表达不能形成 publish candidate，Gate 3 只表示构建/单测计划、命令、预期产物、测试入口、插件构建期望、合约覆盖和失败捕获字段完整，不代表真实前端构建、插件构建、单元测试、组件测试或 golden test 已经执行，创建者可在 Studio 详情页查看 generation run、repair attempt 与 Gate run 证据摘要；公开提交内容、运行结果占位和最终报告占位会持久化到创建者租户，创建者可按应用查看提交列表/详情并单条或批量删除。Studio 中 Agent 画布提供独立的保存版本、历史记录、发布工具栏，且未发布 Agent 不暴露分享入口
+- **🔗 发现与公开分享** — `/discover` 复用 Marketplace 已上架内容做可浏览发现页；workflow 与 Agent 都支持生成 `/s/:token` 公开分享链接，访问者可预览作者、标题、简介、画布/Agent 元数据，并导入到自己的租户。Generated App 使用 `/generated-apps/public/:token` 作为无需登录的公开 runtime 入口，只暴露终端用户业务界面、数据用途提示、有限 AppSpec 与预览链接；生成过程会保存自动开发测试循环、修复轮次、Gate 0-7 运行证据、失败详情和修复建议，后端可同步启动轻量门禁运行器骨架执行 Gate 0 AppSpec 完整性检查，Gate 0 通过后生成结构化 `generationPlan` 并执行 Gate 1 架构计划完整性检查，Gate 1 通过后生成 `generationPlan.staticContracts` 并执行 Gate 2 静态合约完整性检查，Gate 2 通过后生成 `generationPlan.buildUnitPlan` 并执行 Gate 3 构建与单元 skeleton 完整性检查，Gate 3 通过后生成 `generationPlan.integrationPlan` 并执行 Gate 4 集成 skeleton 完整性检查；Gate 0、Gate 1、Gate 2、Gate 3 与 Gate 4 通过但 Gate 5-7 runner 尚未接入/未执行时，generation run 仍以 `failed` 和 failure reason 表达不能形成 publish candidate，Gate 3 只表示构建/单测计划、命令、预期产物、测试入口、插件构建期望、合约覆盖和失败捕获字段完整，不代表真实前端构建、插件构建、单元测试、组件测试或 golden test 已经执行；Gate 4 只表示测试租户/资源、公开 runtime API、创建者管理 API、Agent/Workflow dry-run fixture、插件 sandbox smoke、Gate 3 依赖 artifact、覆盖矩阵、trace artifact 和失败捕获字段的 integration skeleton 完整，不代表真实 API 调用、真实 Agent/Workflow dry-run、真实插件 WASM/Extism smoke test 或真实 sandbox run 已经执行，创建者可在 Studio 详情页查看 generation run、repair attempt 与 Gate run 证据摘要；公开提交内容、运行结果占位和最终报告占位会持久化到创建者租户，创建者可按应用查看提交列表/详情并单条或批量删除。Studio 中 Agent 画布提供独立的保存版本、历史记录、发布工具栏，且未发布 Agent 不暴露分享入口
 - **🔌 插件生态系统** — 完整的 SDK + CLI + 市场，`.alp` 插件包 RSA-PSS 签名验证，Extism WASM 沙箱隔离执行
 - **🔐 端到端加密 (E2EE)** — RSA-4096 + AES-256-GCM 混合加密，LLM 输出和决策证据全链路加密
 - **📱 跨端体验** — Web Studio + Flutter 移动端，Socket.IO 实时推送 + FCM 通知
@@ -203,23 +203,23 @@ AgentLoom/
 <details>
 <summary>🗺️ 路由表</summary>
 
-| 路由                           | 页面                                                                       |
-| ------------------------------ | -------------------------------------------------------------------------- |
-| `/workflows/$workflowId`       | 工作流画布编辑器                                                           |
-| `/executions/$executionId`     | 执行调试视图（实时时间线）                                                 |
-| `/discover`                    | 发现页（复用 Marketplace 上架内容）                                        |
-| `/templates`                   | 工作流模板库                                                               |
-| `/marketplace`                 | 工作流/插件市场                                                            |
-| `/s/$token`                    | Workflow / Agent 公开分享预览与导入                                        |
+| 路由                            | 页面                                                                       |
+| ------------------------------- | -------------------------------------------------------------------------- |
+| `/workflows/$workflowId`        | 工作流画布编辑器                                                           |
+| `/executions/$executionId`      | 执行调试视图（实时时间线）                                                 |
+| `/discover`                     | 发现页（复用 Marketplace 上架内容）                                        |
+| `/templates`                    | 工作流模板库                                                               |
+| `/marketplace`                  | 工作流/插件市场                                                            |
+| `/s/$token`                     | Workflow / Agent 公开分享预览与导入                                        |
 | `/generated-apps/public/$token` | Generated App 公开 runtime 只读入口                                        |
-| `/resources/knowledge-bases`   | 知识库管理                                                                 |
-| `/settings/tool-library`       | MCP 工具库                                                                 |
-| `/settings/skills`             | Skill 管理（分类/搜索/启停/SKILL.md 编辑）                                 |
-| `/settings/private-deployment` | 私有部署配置页（owner/admin），与治理 / 监控 / 审计入口形成企业运维面板    |
-| `/settings/audit-logs`         | 审计日志查询页                                                             |
-| `/settings/resource-quotas`    | 资源治理管理页（quota / tenant-workflow governance / 异常 execution 终止） |
-| `/settings/monitoring`         | 组织级运行监控页（只读执行趋势 + 当前队列快照摘要 / alerts / hotspots）    |
-| `/developer-console/earnings`  | 开发者收益面板                                                             |
+| `/resources/knowledge-bases`    | 知识库管理                                                                 |
+| `/settings/tool-library`        | MCP 工具库                                                                 |
+| `/settings/skills`              | Skill 管理（分类/搜索/启停/SKILL.md 编辑）                                 |
+| `/settings/private-deployment`  | 私有部署配置页（owner/admin），与治理 / 监控 / 审计入口形成企业运维面板    |
+| `/settings/audit-logs`          | 审计日志查询页                                                             |
+| `/settings/resource-quotas`     | 资源治理管理页（quota / tenant-workflow governance / 异常 execution 终止） |
+| `/settings/monitoring`          | 组织级运行监控页（只读执行趋势 + 当前队列快照摘要 / alerts / hotspots）    |
+| `/developer-console/earnings`   | 开发者收益面板                                                             |
 
 </details>
 
