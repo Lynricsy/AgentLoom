@@ -117,6 +117,7 @@ describe('WorkflowDefinitionCreateController', () => {
         pageSize: 10,
         status: 'draft',
         search: '审批',
+        sourceKind: undefined,
         sort: 'updatedAt',
         order: 'desc',
       };

@@ -4,14 +4,24 @@ import { AgentToolPermissionSyncService } from '../agent-tool-permission-sync.se
 
 function createMockRedisClient(options?: { withDuplicate?: boolean }) {
   let messageListener: ((channel: string, payload: string) => void) | undefined;
+  type MockRedisClient = {
+    status: string;
+    subscribe: ReturnType<typeof vi.fn>;
+    unsubscribe: ReturnType<typeof vi.fn>;
+    quit: ReturnType<typeof vi.fn>;
+    publish: ReturnType<typeof vi.fn>;
+    duplicate?: ReturnType<typeof vi.fn>;
+    on: ReturnType<typeof vi.fn>;
+    emitMessage(channel: string, payload: string): void;
+  };
 
-  const client = {
+  const client: MockRedisClient = {
     status: 'ready',
     subscribe: vi.fn().mockResolvedValue(undefined),
     unsubscribe: vi.fn().mockResolvedValue(undefined),
     quit: vi.fn().mockResolvedValue(undefined),
     publish: vi.fn().mockResolvedValue(1),
-    duplicate: vi.fn(),
+    duplicate: options?.withDuplicate === false ? undefined : vi.fn(),
     on: vi.fn(
       (event: string, listener: (channel: string, payload: string) => void) => {
         if (event === 'message') {
@@ -25,11 +35,7 @@ function createMockRedisClient(options?: { withDuplicate?: boolean }) {
     },
   };
 
-  if (options?.withDuplicate !== false) {
-    client.duplicate.mockReturnValue(client);
-  } else {
-    client.duplicate = undefined;
-  }
+  client.duplicate?.mockReturnValue(client);
 
   return client;
 }

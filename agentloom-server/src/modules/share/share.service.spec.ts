@@ -14,10 +14,18 @@ import {
   ShareWorkflowNotPublishedException,
 } from './share.exceptions';
 import {
-  type AccessibleShareTokenRecord,
+  type AccessibleAgentShareTokenRecord,
+  type AccessibleWorkflowShareTokenRecord,
   ShareService,
-  type ShareTokenRecord,
 } from './share.service';
+
+type WorkflowShareTokenRecord = Omit<
+  AccessibleWorkflowShareTokenRecord,
+  'publishedVersionId' | 'snapshot'
+> & {
+  publishedVersionId: string | null;
+  snapshot: AccessibleWorkflowShareTokenRecord['snapshot'] | null;
+};
 
 const mocks = vi.hoisted(() => ({
   randomBytes: vi.fn(),
@@ -69,8 +77,8 @@ function createShareRecord(
 }
 
 function createShareTokenRecord(
-  overrides: Partial<ShareTokenRecord> = {},
-): ShareTokenRecord {
+  overrides: Partial<WorkflowShareTokenRecord> = {},
+): WorkflowShareTokenRecord {
   return {
     id: SHARE_ID,
     workflowDefinitionId: WORKFLOW_ID,
@@ -110,19 +118,24 @@ function createShareTokenRecord(
         createdFromVersion: 1,
       },
     },
+    authorDisplayName: 'Wine Fox',
+    authorEmail: 'fox@ling.plus',
+    authorAvatarUrl: null,
     ...overrides,
-  } as ShareTokenRecord;
+  };
 }
 
 function createAccessibleShareTokenRecord(
-  overrides: Partial<AccessibleShareTokenRecord> = {},
-): AccessibleShareTokenRecord {
-  return createShareTokenRecord(overrides) as AccessibleShareTokenRecord;
+  overrides: Partial<AccessibleWorkflowShareTokenRecord> = {},
+): AccessibleWorkflowShareTokenRecord {
+  return createShareTokenRecord(
+    overrides,
+  ) as AccessibleWorkflowShareTokenRecord;
 }
 
 function createAccessibleAgentShareTokenRecord(
-  overrides: Partial<AccessibleShareTokenRecord> = {},
-): AccessibleShareTokenRecord {
+  overrides: Partial<AccessibleAgentShareTokenRecord> = {},
+): AccessibleAgentShareTokenRecord {
   return {
     id: SHARE_ID,
     agentDefinitionId: '66666666-6666-4666-8666-666666666666',
@@ -155,6 +168,9 @@ function createAccessibleAgentShareTokenRecord(
       },
       workspaceSnapshotId: null,
       metadata: {
+        nodeCount: 0,
+        edgeCount: 0,
+        createdFromVersion: 1,
         sandboxLifecycle: 'session',
       },
     },
@@ -162,7 +178,7 @@ function createAccessibleAgentShareTokenRecord(
     authorEmail: 'fox@ling.plus',
     authorAvatarUrl: null,
     ...overrides,
-  } as AccessibleShareTokenRecord;
+  };
 }
 
 function createSelectChain(result: unknown) {

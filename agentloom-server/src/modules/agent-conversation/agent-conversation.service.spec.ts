@@ -231,6 +231,7 @@ describe('AgentConversationService', () => {
         USER_ID,
         {
           content: '请开始处理',
+          contentType: 'text',
         },
       );
 
@@ -276,6 +277,7 @@ describe('AgentConversationService', () => {
       await expect(
         service.startConversation(AGENT_ID, TENANT_ID, USER_ID, {
           content: '请开始处理',
+          contentType: 'text',
         }),
       ).rejects.toThrow(sendError);
 

@@ -114,7 +114,7 @@ describe('KnowledgeBaseController', () => {
   });
 
   it('findAll 应返回分页知识库列表', async () => {
-    const query = { page: 1, pageSize: 10 };
+    const query = { page: 1, pageSize: 10, sourceKind: undefined };
     const kbList = [
       {
         id: KB_ID,

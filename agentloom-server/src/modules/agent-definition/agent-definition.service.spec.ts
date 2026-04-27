@@ -1,6 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AgentDefinitionService } from './agent-definition.service';
+import type {
+  CreateAgentDefinitionDto,
+  CreateAgentVersionDto,
+  ListAgentDefinitionsQueryDto,
+  PublishAgentDto,
+} from './dto';
 import {
   AgentNotFoundException,
   AgentArchivedException,
@@ -217,6 +223,55 @@ function makeVersion(overrides: Partial<Record<string, any>> = {}) {
   };
 }
 
+function makeCreateAgentDefinitionDto(
+  overrides: Partial<CreateAgentDefinitionDto>,
+): CreateAgentDefinitionDto {
+  return {
+    name: 'Test Agent',
+    description: undefined,
+    icon: undefined,
+    runtimeMode: 'sandbox',
+    globalSandboxConfig: undefined,
+    ...overrides,
+  };
+}
+
+function makeListAgentDefinitionsQueryDto(
+  overrides: Partial<ListAgentDefinitionsQueryDto>,
+): ListAgentDefinitionsQueryDto {
+  return {
+    page: 1,
+    pageSize: 20,
+    status: undefined,
+    search: undefined,
+    sourceKind: undefined,
+    sort: 'updatedAt',
+    order: 'desc',
+    ...overrides,
+  };
+}
+
+function makeCreateAgentVersionDto(
+  overrides: Partial<CreateAgentVersionDto> = {},
+): CreateAgentVersionDto {
+  return {
+    label: undefined,
+    releaseNotes: undefined,
+    ...overrides,
+  };
+}
+
+function makePublishAgentDto(
+  overrides: Partial<PublishAgentDto> = {},
+): PublishAgentDto {
+  return {
+    label: undefined,
+    releaseNotes: undefined,
+    versionId: undefined,
+    ...overrides,
+  };
+}
+
 /**
  * 为了精确控制 Drizzle chain 结果，我们需要直接操作底层 mock 返回值
  * 这个 service 只有一个依赖: @Inject(DRIZZLE) db
@@ -299,7 +354,10 @@ describe('AgentDefinitionService', () => {
       mockTxClient.insert.mockReturnValue(insertChain);
 
       const result = await service.create(
-        { name: 'Test Agent', description: 'desc' },
+        makeCreateAgentDefinitionDto({
+          name: 'Test Agent',
+          description: 'desc',
+        }),
         'user-1',
       );
 
@@ -322,7 +380,10 @@ describe('AgentDefinitionService', () => {
         .mockResolvedValueOnce([created]);
       mockTxClient.insert.mockReturnValue(insertChain);
 
-      const result = await service.create({ name: 'Test Agent' }, 'user-1');
+      const result = await service.create(
+        makeCreateAgentDefinitionDto({ name: 'Test Agent' }),
+        'user-1',
+      );
 
       expect(result).toBeDefined();
       // insert 被调用 1 次（chain 复用），但 returning 被调用 2 次
@@ -337,7 +398,10 @@ describe('AgentDefinitionService', () => {
       mockTxClient.insert.mockReturnValue(insertChain);
 
       await expect(
-        service.create({ name: 'Test Agent' }, 'user-1'),
+        service.create(
+          makeCreateAgentDefinitionDto({ name: 'Test Agent' }),
+          'user-1',
+        ),
       ).rejects.toThrow('connection error');
     });
 
@@ -351,7 +415,10 @@ describe('AgentDefinitionService', () => {
       mockTxClient.insert.mockReturnValue(insertChain);
 
       await expect(
-        service.create({ name: 'Test Agent' }, 'user-1'),
+        service.create(
+          makeCreateAgentDefinitionDto({ name: 'Test Agent' }),
+          'user-1',
+        ),
       ).rejects.toThrow('unique violation');
     });
   });
@@ -377,12 +444,14 @@ describe('AgentDefinitionService', () => {
         .mockReturnValueOnce(rowsChain)
         .mockReturnValueOnce(countChain);
 
-      const result = await service.findAll({
-        page: 1,
-        pageSize: 20,
-        sort: 'updatedAt',
-        order: 'desc',
-      });
+      const result = await service.findAll(
+        makeListAgentDefinitionsQueryDto({
+          page: 1,
+          pageSize: 20,
+          sort: 'updatedAt',
+          order: 'desc',
+        }),
+      );
 
       expect(result.data).toHaveLength(2);
       expect(result.meta).toEqual({
@@ -409,14 +478,16 @@ describe('AgentDefinitionService', () => {
         .mockReturnValueOnce(rowsChain)
         .mockReturnValueOnce(countChain);
 
-      const result = await service.findAll({
-        page: 1,
-        pageSize: 10,
-        status: 'draft',
-        search: 'test',
-        sort: 'name',
-        order: 'asc',
-      });
+      const result = await service.findAll(
+        makeListAgentDefinitionsQueryDto({
+          page: 1,
+          pageSize: 10,
+          status: 'draft',
+          search: 'test',
+          sort: 'name',
+          order: 'asc',
+        }),
+      );
 
       expect(result.data).toHaveLength(0);
       expect(result.meta.total).toBe(0);
@@ -438,12 +509,14 @@ describe('AgentDefinitionService', () => {
         .mockReturnValueOnce(rowsChain)
         .mockReturnValueOnce(countChain);
 
-      const result = await service.findAll({
-        page: 1,
-        pageSize: 10,
-        sort: 'updatedAt',
-        order: 'desc',
-      });
+      const result = await service.findAll(
+        makeListAgentDefinitionsQueryDto({
+          page: 1,
+          pageSize: 10,
+          sort: 'updatedAt',
+          order: 'desc',
+        }),
+      );
 
       expect(result.meta.total).toBe(0);
       expect(result.meta.totalPages).toBe(0);
@@ -2849,14 +2922,16 @@ describe('AgentDefinitionService', () => {
 
       const result = await service.createVersion(
         'agent-1',
-        { label: '首版快照' },
+        makeCreateAgentVersionDto({ label: '首版快照' }),
         'user-1',
       );
 
       expect(result).toBeDefined();
       expect(result.id).toBe('version-1');
       expect(result.versionNumber).toBe(1);
-      expect(capturedValues?.label).toBe('首版快照');
+      expect((capturedValues as { label?: string } | null)?.label).toBe(
+        '首版快照',
+      );
     });
 
     it('应将 canvas metadata fields 冻结到版本快照中', async () => {
@@ -2908,7 +2983,7 @@ describe('AgentDefinitionService', () => {
 
       await service.createVersion(
         'agent-1',
-        { releaseNotes: 'Snapshot metadata' },
+        makeCreateAgentVersionDto({ releaseNotes: 'Snapshot metadata' }),
         'user-1',
       );
 
@@ -2936,7 +3011,11 @@ describe('AgentDefinitionService', () => {
       });
 
       await expect(
-        service.createVersion('nonexistent', {}, 'user-1'),
+        service.createVersion(
+          'nonexistent',
+          makeCreateAgentVersionDto(),
+          'user-1',
+        ),
       ).rejects.toThrow(AgentNotFoundException);
     });
 
@@ -2950,7 +3029,7 @@ describe('AgentDefinitionService', () => {
       });
 
       await expect(
-        service.createVersion('agent-1', {}, 'user-1'),
+        service.createVersion('agent-1', makeCreateAgentVersionDto(), 'user-1'),
       ).rejects.toThrow(AgentArchivedException);
     });
 
@@ -2988,7 +3067,7 @@ describe('AgentDefinitionService', () => {
 
       await service.createVersion(
         'agent-1',
-        { releaseNotes: longReleaseNotes },
+        makeCreateAgentVersionDto({ releaseNotes: longReleaseNotes }),
         'user-1',
       );
 
@@ -3098,7 +3177,11 @@ describe('AgentDefinitionService', () => {
         return c;
       });
 
-      const result = await service.publish('agent-1', {}, 'user-1');
+      const result = await service.publish(
+        'agent-1',
+        makePublishAgentDto(),
+        'user-1',
+      );
 
       expect(result).toBeDefined();
     });
@@ -3178,11 +3261,11 @@ describe('AgentDefinitionService', () => {
 
       const result = await service.publish(
         'agent-1',
-        {
+        makePublishAgentDto({
           versionId: 'version-2',
           label: '重新发布版本',
           releaseNotes: '新的发布说明',
-        },
+        }),
         'user-1',
       );
 
@@ -3206,7 +3289,7 @@ describe('AgentDefinitionService', () => {
       });
 
       await expect(
-        service.publish('nonexistent', {}, 'user-1'),
+        service.publish('nonexistent', makePublishAgentDto(), 'user-1'),
       ).rejects.toThrow(AgentNotFoundException);
     });
 
@@ -3219,9 +3302,9 @@ describe('AgentDefinitionService', () => {
         return c;
       });
 
-      await expect(service.publish('agent-1', {}, 'user-1')).rejects.toThrow(
-        AgentArchivedException,
-      );
+      await expect(
+        service.publish('agent-1', makePublishAgentDto(), 'user-1'),
+      ).rejects.toThrow(AgentArchivedException);
     });
 
     it('画布无节点时应抛出 AgentPublishValidationException', async () => {
@@ -3233,9 +3316,9 @@ describe('AgentDefinitionService', () => {
         return c;
       });
 
-      await expect(service.publish('agent-1', {}, 'user-1')).rejects.toThrow(
-        AgentPublishValidationException,
-      );
+      await expect(
+        service.publish('agent-1', makePublishAgentDto(), 'user-1'),
+      ).rejects.toThrow(AgentPublishValidationException);
     });
 
     it('画布 nodes 为 null 时应抛出 AgentPublishValidationException', async () => {
@@ -3247,9 +3330,9 @@ describe('AgentDefinitionService', () => {
         return c;
       });
 
-      await expect(service.publish('agent-1', {}, 'user-1')).rejects.toThrow(
-        AgentPublishValidationException,
-      );
+      await expect(
+        service.publish('agent-1', makePublishAgentDto(), 'user-1'),
+      ).rejects.toThrow(AgentPublishValidationException);
     });
   });
 });

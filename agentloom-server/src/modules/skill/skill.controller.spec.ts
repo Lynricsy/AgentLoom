@@ -170,12 +170,18 @@ describe('SkillController', () => {
       };
       skillService.findAll.mockResolvedValue(response);
 
-      const result = await controller.findAll({ page: 1, pageSize: 20 });
-      expect(result).toEqual(response);
-      expect(skillService.findAll).toHaveBeenCalledWith({
+      const query = {
         page: 1,
         pageSize: 20,
-      });
+        search: undefined,
+        status: undefined,
+        isBuiltin: undefined,
+        sourceKind: undefined,
+      };
+
+      const result = await controller.findAll(query);
+      expect(result).toEqual(response);
+      expect(skillService.findAll).toHaveBeenCalledWith(query);
     });
   });
 

@@ -336,6 +336,10 @@ describe('SkillService', () => {
       const result = await service.findAll({
         page: 1,
         pageSize: 20,
+        search: undefined,
+        status: undefined,
+        isBuiltin: undefined,
+        sourceKind: undefined,
       });
 
       expect(result.data).toEqual(rows);
@@ -362,6 +366,7 @@ describe('SkillService', () => {
         status: 'active',
         isBuiltin: false,
         search: 'test',
+        sourceKind: undefined,
       });
 
       expect(result.data).toEqual(rows);
@@ -378,6 +383,10 @@ describe('SkillService', () => {
       const result = await service.findAll({
         page: 1,
         pageSize: 20,
+        search: undefined,
+        status: undefined,
+        isBuiltin: undefined,
+        sourceKind: undefined,
       });
 
       expect(result.data).toEqual([]);

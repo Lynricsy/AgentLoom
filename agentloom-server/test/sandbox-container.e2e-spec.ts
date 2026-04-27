@@ -478,7 +478,7 @@ describe('Sandbox HTTP Contract (in-process)', () => {
       });
       const { sessionId } = createRes.json();
 
-      let resolvePrompt: (() => void) | null = null;
+      let resolvePrompt: (() => void) | undefined;
       mockSession.prompt = vi.fn().mockImplementation(async () => {
         mockSession._emit({
           type: 'message_update',
@@ -509,11 +509,12 @@ describe('Sandbox HTTP Contract (in-process)', () => {
       });
 
       expect(secondPromptResponse.statusCode).toBe(409);
-      expect(secondPromptResponse.json().error).toContain(
-        'already streaming',
-      );
+      expect(secondPromptResponse.json().error).toContain('already streaming');
 
-      resolvePrompt?.();
+      if (!resolvePrompt) {
+        throw new Error('prompt resolver was not captured');
+      }
+      resolvePrompt();
 
       await vi.waitFor(async () => {
         const thirdPromptResponse = await app.inject({

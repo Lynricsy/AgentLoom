@@ -186,6 +186,10 @@ describe('compiler → runtime tool injection E2E', () => {
   };
   let mockRagService: { search: ReturnType<typeof vi.fn> };
   let mockEventBridge: { emitAgentEvent: ReturnType<typeof vi.fn> };
+  let mockResourceSourceService: {
+    mapCurrentKinds: ReturnType<typeof vi.fn>;
+    buildShareImportedExistsCondition: ReturnType<typeof vi.fn>;
+  };
 
   const storedModelConfig = {
     id: 'model-config-001',
@@ -284,9 +288,18 @@ describe('compiler → runtime tool injection E2E', () => {
     mockEventBridge = {
       emitAgentEvent: vi.fn(),
     };
+    mockResourceSourceService = {
+      mapCurrentKinds: vi.fn().mockResolvedValue(new Map()),
+      buildShareImportedExistsCondition: vi.fn(() => ({
+        type: 'share-imported',
+      })),
+    };
 
     type CompilerArgs = ConstructorParameters<typeof AgentDefinitionService>;
-    compiler = new AgentDefinitionService(mockDb as unknown as CompilerArgs[0]);
+    compiler = new AgentDefinitionService(
+      mockDb as unknown as CompilerArgs[0],
+      mockResourceSourceService as unknown as CompilerArgs[1],
+    );
 
     type AdapterArgs = ConstructorParameters<typeof PiAgentCoreAdapter>;
     adapter = new PiAgentCoreAdapter(
@@ -384,13 +397,13 @@ describe('compiler → runtime tool injection E2E', () => {
     expect(runtimeConfig.tools).toEqual([
       expect.objectContaining({
         toolType: 'mcp',
-        name: 'search_docs',
+        name: 'searchDocs',
         mcpServerConfigId: 'mcp-server-1',
         toolName: 'searchDocs',
       }),
     ]);
     expect(tools).toHaveLength(1);
-    expect(tools[0]).toMatchObject({ name: 'search_docs' });
+    expect(tools[0]).toMatchObject({ name: 'searchDocs' });
     expect(typeof tools[0]?.execute).toBe('function');
   });
 
@@ -490,7 +503,7 @@ describe('compiler → runtime tool injection E2E', () => {
     });
 
     expect(runtimeConfig.tools).toEqual([
-      expect.objectContaining({ toolType: 'mcp', name: 'search_docs' }),
+      expect.objectContaining({ toolType: 'mcp', name: 'searchDocs' }),
       expect.objectContaining({ toolType: 'http', name: 'fetch_api' }),
     ]);
     expect(runtimeConfig.knowledgeBindings).toHaveLength(1);
@@ -498,7 +511,7 @@ describe('compiler → runtime tool injection E2E', () => {
     expect(tools).toHaveLength(7);
     expect(tools.map((tool) => tool.name)).toEqual(
       expect.arrayContaining([
-        'search_docs',
+        'searchDocs',
         'fetch_api',
         'search_knowledge',
         'call_subagent',
@@ -542,13 +555,13 @@ describe('compiler → runtime tool injection E2E', () => {
     const toolNames = tools.map((tool) => tool.name);
 
     expect(runtimeConfig.tools).toEqual([
-      expect.objectContaining({ name: 'search_docs', toolType: 'mcp' }),
+      expect.objectContaining({ name: 'searchDocs', toolType: 'mcp' }),
     ]);
     expect(runtimeConfig.knowledgeBindings).toEqual([
       expect.objectContaining({ knowledgeBaseId: 'kb-1' }),
     ]);
     expect(runtimeConfig.subAgents).toBeUndefined();
-    expect(toolNames).toEqual(['search_docs', 'search_knowledge']);
+    expect(toolNames).toEqual(['searchDocs', 'search_knowledge']);
     expect(toolNames).not.toContain('fetch_orphan');
     expect(toolNames).not.toContain('call_subagent');
   });
