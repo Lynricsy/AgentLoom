@@ -138,6 +138,81 @@ export interface GeneratedAppGateEvidence {
   summary: string;
 }
 
+export interface GeneratedAppGenerationPlan {
+  planVersion: 1;
+  appSpecVersion: number;
+  frontend: {
+    stack: 'react-vite-agentloom-runtime';
+    runtimeSurface: {
+      kind: 'generated-app';
+      publicAccess: 'private-token-after-gates';
+      dataUseNoticeRequired: boolean;
+    };
+    pages: Array<{
+      pageId: string;
+      name: string;
+      purpose: string;
+      route: string;
+      requirementIds: string[];
+      scenarioIds: string[];
+    }>;
+  };
+  orchestration: {
+    target: 'workflow';
+    strategy: 'generated-workflow-with-agent-capability';
+    inputContract: {
+      source: 'public-runtime-submission';
+      requiredFields: string[];
+      scenarioIds: string[];
+    };
+    outputContract: {
+      destinations: string[];
+      reportRequired: boolean;
+    };
+    steps: Array<{
+      stepId: string;
+      label: string;
+      purpose: string;
+      requirementIds: string[];
+      scenarioIds: string[];
+    }>;
+  };
+  pluginTools: {
+    tools: Array<{
+      toolId: string;
+      purpose: string;
+      requirementIds: string[];
+      permissionNotes: string[];
+    }>;
+    emptyReason: string | null;
+    permissionPolicy: string[];
+  };
+  dataPersistence: {
+    publicSubmissionsPersisted: boolean;
+    creatorCanDeleteSubmissions: boolean;
+    endUserLoginRequired: boolean;
+    tenantScoped: boolean;
+    tokenSnapshotRequired: boolean;
+    softDeleteRequired: boolean;
+  };
+  testGates: {
+    blockingGateIds: string[];
+    gatePlan: Array<{
+      gateId: string;
+      purpose: string;
+      evidenceKind: GeneratedAppGateEvidence['kind'];
+    }>;
+    acceptanceScenarioIds: string[];
+  };
+  traceability: Array<{
+    requirementId: string;
+    scenarioIds: string[];
+    pageIds: string[];
+    orchestrationStepIds: string[];
+    planEvidenceIds: string[];
+  }>;
+}
+
 export interface GeneratedAppGateResult {
   gateId: string;
   order: number;
@@ -203,7 +278,7 @@ export const generatedApps = pgTable(
     appSpec: jsonb('app_spec').$type<GeneratedAppSpec>().notNull(),
 
     generationPlan: jsonb('generation_plan')
-      .$type<Record<string, unknown> | null>()
+      .$type<GeneratedAppGenerationPlan | Record<string, unknown> | null>()
       .default(null),
 
     gateResults: jsonb('gate_results')

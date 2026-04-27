@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { DrizzleDB } from '../../../database/database.module';
 import type {
   GeneratedApp,
+  GeneratedAppGenerationPlan,
   GeneratedAppGenerationRun,
   GeneratedAppGateRun,
   GeneratedAppReadiness,
@@ -36,6 +37,7 @@ const APP_ID = '33333333-3333-4333-8333-333333333333';
 const SUBMISSION_ID = '44444444-4444-4444-8444-444444444444';
 const GENERATION_RUN_ID = '55555555-5555-4555-8555-555555555555';
 const GATE_RUN_ID = '66666666-6666-4666-8666-666666666666';
+const GATE_1_RUN_ID = '66666666-6666-4666-8666-666666666667';
 const REPAIR_ATTEMPT_ID = '77777777-7777-4777-8777-777777777777';
 const NOW = new Date('2026-04-25T00:00:00.000Z');
 
@@ -86,6 +88,26 @@ function createUpdateReturningChain<T>(result: T[]) {
     where: vi.fn().mockReturnThis(),
     returning: vi.fn().mockResolvedValue(result),
   };
+}
+
+function createGeneratedAppUpdateReturningFromPayload(
+  baseApp: GeneratedApp,
+  onPayload?: (payload: Partial<GeneratedApp>) => void,
+) {
+  let payload: Partial<GeneratedApp> = {};
+  const chain = {
+    set: vi.fn((nextPayload: Partial<GeneratedApp>) => {
+      payload = nextPayload;
+      onPayload?.(nextPayload);
+      return chain;
+    }),
+    where: vi.fn().mockReturnThis(),
+    returning: vi.fn(async () => [
+      createGeneratedApp({ ...baseApp, ...payload }),
+    ]),
+  };
+
+  return chain;
 }
 
 function createUpdateChain() {
@@ -603,13 +625,22 @@ describe('GeneratedAppService', () => {
     );
   });
 
-  it('启动门禁运行器时应创建 generation run、linked Gate 0 run 且不伪造未执行门禁通过', async () => {
+  it('Gate 0 通过后应写入 generationPlan、linked Gate 0/Gate 1 run 且清理未执行门禁旧证据', async () => {
     const previousGateResults = createInitialGeneratedAppGateResults(
       NOW.toISOString(),
     ).map((gate) => ({
       ...gate,
       status: 'passed' as const,
       summary: `${gate.name} 曾经通过`,
+      evidence: [
+        {
+          id: `${gate.gateId}-stale`,
+          label: '旧证据',
+          kind: 'manual' as const,
+          url: null,
+          summary: '上一轮生成残留的旧通过证据。',
+        },
+      ],
     }));
     const app = createGeneratedApp({
       status: 'published',
@@ -634,6 +665,17 @@ describe('GeneratedAppService', () => {
         'Gate 0 通过：AppSpec 结构完整，核心需求均有 acceptance scenario 与 traceability 覆盖。',
       evidence: [],
     });
+    const gate1Run = createGeneratedAppGateRun({
+      id: GATE_1_RUN_ID,
+      gateId: 'gate-1',
+      gateOrder: 1,
+      gateName: '架构计划门禁',
+      generationRunId: GENERATION_RUN_ID,
+      status: 'passed',
+      summary:
+        'Gate 1 通过：generationPlan 已覆盖 AppSpec 页面、Agent/Workflow 编排、插件/工具策略、数据持久化、Gate 2-7 测试计划和需求 traceability。',
+      evidence: [],
+    });
     const completedRun = createGeneratedAppGenerationRun({
       runNumber: 2,
       status: 'failed',
@@ -641,29 +683,31 @@ describe('GeneratedAppService', () => {
       maxRuntimeSeconds: 600,
       completedAt: NOW,
       summary:
-        '门禁运行器骨架完成 Gate 0 AppSpec 完整性检查；Gate 1-7 runner 尚未接入/未执行，当前应用不能形成 publish candidate，保持不可发布。',
+        '门禁运行器骨架完成 Gate 0 AppSpec 完整性检查和 Gate 1 架构计划门禁；Gate 2-7 runner 尚未接入/未执行，当前应用不能形成 publish candidate，保持不可发布。',
       failureReason:
-        'Gate 1-7 runner 尚未接入/未执行，不能形成 publish candidate。',
+        'Gate 2-7 runner 尚未接入/未执行，不能形成 publish candidate。',
     });
     const insertRunChain = createInsertReturningChain([run]);
     const insertGateRunChain = createInsertReturningChain([gateRun]);
-    const updateAppChain = createUpdateReturningChain([
-      createGeneratedApp({
-        ...app,
-        status: 'preview_ready',
-        publicShareEnabled: false,
-        publicShareToken: null,
-      }),
-    ]);
+    const insertGate1RunChain = createInsertReturningChain([gate1Run]);
+    let gate1UpdatePayload: Partial<GeneratedApp> = {};
+    const updateAppAfterGate0Chain =
+      createGeneratedAppUpdateReturningFromPayload(app);
+    const updateAppAfterGate1Chain =
+      createGeneratedAppUpdateReturningFromPayload(app, (payload) => {
+        gate1UpdatePayload = payload;
+      });
     const updateRunChain = createUpdateReturningChain([completedRun]);
     mockTenantDb.select
       .mockReturnValueOnce(createSelectChain([app]))
       .mockReturnValueOnce(createSelectLatestRunNumberChain(1));
     mockTenantDb.insert
       .mockReturnValueOnce(insertRunChain)
-      .mockReturnValueOnce(insertGateRunChain);
+      .mockReturnValueOnce(insertGateRunChain)
+      .mockReturnValueOnce(insertGate1RunChain);
     mockTenantDb.update
-      .mockReturnValueOnce(updateAppChain)
+      .mockReturnValueOnce(updateAppAfterGate0Chain)
+      .mockReturnValueOnce(updateAppAfterGate1Chain)
       .mockReturnValueOnce(updateRunChain);
 
     const response = await service.startGenerationRun(
@@ -702,31 +746,109 @@ describe('GeneratedAppService', () => {
         repairInstructions: null,
       }),
     );
+    expect(insertGate1RunChain.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: TENANT_ID,
+        generatedAppId: APP_ID,
+        generationRunId: GENERATION_RUN_ID,
+        gateId: 'gate-1',
+        gateOrder: 1,
+        gateName: '架构计划门禁',
+        status: 'passed',
+        failure: null,
+        repairInstructions: null,
+      }),
+    );
+    const gate1RunPayload = insertGate1RunChain.values.mock.calls[0]?.[0] as {
+      evidence: GeneratedApp['gateResults'][number]['evidence'];
+    };
+    expect(gate1RunPayload.evidence).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'gate-1-frontend-plan',
+          kind: 'plan',
+        }),
+        expect.objectContaining({
+          id: 'gate-1-test-gate-plan',
+          kind: 'plan',
+        }),
+      ]),
+    );
 
-    const appUpdatePayload = updateAppChain.set.mock.calls[0]?.[0] as {
+    const appUpdatePayload = gate1UpdatePayload as {
       gateResults: GeneratedApp['gateResults'];
       readiness: GeneratedApp['readiness'];
       status: GeneratedApp['status'];
       publicShareToken: string | null;
       publicShareEnabled: boolean;
+      generationPlan: GeneratedAppGenerationPlan;
     };
     const passedGateIds = appUpdatePayload.gateResults
       .filter((gate) => gate.status === 'passed')
       .map((gate) => gate.gateId);
-    expect(passedGateIds).toEqual(['gate-0']);
+    expect(passedGateIds).toEqual(['gate-0', 'gate-1']);
     expect(
-      appUpdatePayload.gateResults.find((gate) => gate.gateId === 'gate-1')
+      appUpdatePayload.gateResults.find((gate) => gate.gateId === 'gate-2')
         ?.status,
     ).toBe('pending');
+    expect(
+      appUpdatePayload.gateResults.find((gate) => gate.gateId === 'gate-2')
+        ?.evidence,
+    ).toEqual([]);
     expect(appUpdatePayload.readiness.canCreatePublicShare).toBe(false);
     expect(appUpdatePayload.status).toBe('preview_ready');
     expect(appUpdatePayload.publicShareToken).toBeNull();
     expect(appUpdatePayload.publicShareEnabled).toBe(false);
+    expect(appUpdatePayload.generationPlan.appSpecVersion).toBe(1);
+    expect(appUpdatePayload.generationPlan.frontend.pages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          pageId: 'page-public-runtime',
+          route: '/public-runtime',
+        }),
+      ]),
+    );
+    expect(appUpdatePayload.generationPlan.orchestration.steps).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          requirementIds: ['req-1'],
+          scenarioIds: ['scenario-1'],
+        }),
+      ]),
+    );
+    expect(appUpdatePayload.generationPlan.pluginTools.tools).toEqual([]);
+    expect(appUpdatePayload.generationPlan.pluginTools.emptyReason).toContain(
+      '当前 AppSpec 未声明',
+    );
+    expect(appUpdatePayload.generationPlan.dataPersistence).toEqual(
+      expect.objectContaining({
+        publicSubmissionsPersisted: true,
+        creatorCanDeleteSubmissions: true,
+        endUserLoginRequired: false,
+        tenantScoped: true,
+        tokenSnapshotRequired: true,
+      }),
+    );
+    expect(appUpdatePayload.generationPlan.testGates.gatePlan).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ gateId: 'gate-2' }),
+        expect.objectContaining({ gateId: 'gate-7' }),
+      ]),
+    );
+    expect(appUpdatePayload.generationPlan.traceability).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          requirementId: 'req-1',
+          scenarioIds: ['scenario-1'],
+          pageIds: expect.arrayContaining(['page-public-runtime']),
+        }),
+      ]),
+    );
     expect(updateRunChain.set).toHaveBeenCalledWith(
       expect.objectContaining({
         status: 'failed',
         failureReason:
-          'Gate 1-7 runner 尚未接入/未执行，不能形成 publish candidate。',
+          'Gate 2-7 runner 尚未接入/未执行，不能形成 publish candidate。',
         completedAt: expect.any(Date),
       }),
     );
@@ -735,7 +857,7 @@ describe('GeneratedAppService', () => {
         id: GENERATION_RUN_ID,
         status: 'failed',
         failureReason:
-          'Gate 1-7 runner 尚未接入/未执行，不能形成 publish candidate。',
+          'Gate 2-7 runner 尚未接入/未执行，不能形成 publish candidate。',
       }),
     );
     expect(response.gateRuns).toEqual([
@@ -744,8 +866,159 @@ describe('GeneratedAppService', () => {
         generationRunId: GENERATION_RUN_ID,
         status: 'passed',
       }),
+      expect.objectContaining({
+        gateId: 'gate-1',
+        generationRunId: GENERATION_RUN_ID,
+        status: 'passed',
+      }),
     ]);
+    expect(response.app.generationPlan).toEqual(
+      expect.objectContaining({ appSpecVersion: 1 }),
+    );
     expect(response.app.id).toBe(APP_ID);
+  });
+
+  it('Gate 1 失败时应写入失败证据、保留 generationPlan 并以 Gate 1 failure reason 结束', async () => {
+    const app = createGeneratedApp({
+      status: 'published',
+      readiness: createPublishCandidateReadiness(),
+      publicShareEnabled: true,
+      publicShareToken: 'c'.repeat(64),
+      publicShareCreatedAt: NOW,
+    });
+    const validPlan = (
+      service as unknown as {
+        buildGenerationPlan(
+          appSpec: GeneratedApp['appSpec'],
+        ): GeneratedAppGenerationPlan;
+      }
+    ).buildGenerationPlan(app.appSpec);
+    const brokenPlan: GeneratedAppGenerationPlan = {
+      ...validPlan,
+      traceability: validPlan.traceability.map((entry) => ({
+        ...entry,
+        pageIds: ['missing-page'],
+      })),
+    };
+    vi.spyOn(
+      service as unknown as {
+        buildGenerationPlan(
+          appSpec: GeneratedApp['appSpec'],
+        ): GeneratedAppGenerationPlan;
+      },
+      'buildGenerationPlan',
+    ).mockReturnValue(brokenPlan);
+    const run = createGeneratedAppGenerationRun();
+    const gateRun = createGeneratedAppGateRun({
+      gateId: 'gate-0',
+      gateOrder: 0,
+      gateName: '需求规格门禁',
+      generationRunId: GENERATION_RUN_ID,
+      status: 'passed',
+      summary:
+        'Gate 0 通过：AppSpec 结构完整，核心需求均有 acceptance scenario 与 traceability 覆盖。',
+      evidence: [],
+    });
+    const gate1Run = createGeneratedAppGateRun({
+      id: GATE_1_RUN_ID,
+      gateId: 'gate-1',
+      gateOrder: 1,
+      gateName: '架构计划门禁',
+      generationRunId: GENERATION_RUN_ID,
+      status: 'failed',
+      summary:
+        'Gate 1 失败：generationPlan 未完整覆盖 AppSpec 的页面、编排、插件/工具、数据、测试门禁或 traceability。',
+      failure: {
+        code: 'generation-plan-incomplete',
+        message:
+          'GenerationPlan 架构计划检查失败：需求到计划证据 traceability。',
+      },
+      repairInstructions:
+        '修复 generationPlan，使其覆盖 AppSpec 版本、页面计划、Agent/Workflow 编排计划、插件/工具策略、数据持久化策略、Gate 2-7 测试计划和每条核心需求 traceability。',
+    });
+    const completedRun = createGeneratedAppGenerationRun({
+      status: 'failed',
+      failureReason:
+        'GenerationPlan 架构计划检查失败：需求到计划证据 traceability。',
+      completedAt: NOW,
+    });
+    const insertRunChain = createInsertReturningChain([run]);
+    const insertGateRunChain = createInsertReturningChain([gateRun]);
+    const insertGate1RunChain = createInsertReturningChain([gate1Run]);
+    const updateAppAfterGate0Chain =
+      createGeneratedAppUpdateReturningFromPayload(app);
+    let gate1UpdatePayload: Partial<GeneratedApp> = {};
+    const updateAppAfterGate1Chain =
+      createGeneratedAppUpdateReturningFromPayload(app, (payload) => {
+        gate1UpdatePayload = payload;
+      });
+    const updateRunChain = createUpdateReturningChain([completedRun]);
+    mockTenantDb.select
+      .mockReturnValueOnce(createSelectChain([app]))
+      .mockReturnValueOnce(createSelectLatestRunNumberChain(null));
+    mockTenantDb.insert
+      .mockReturnValueOnce(insertRunChain)
+      .mockReturnValueOnce(insertGateRunChain)
+      .mockReturnValueOnce(insertGate1RunChain);
+    mockTenantDb.update
+      .mockReturnValueOnce(updateAppAfterGate0Chain)
+      .mockReturnValueOnce(updateAppAfterGate1Chain)
+      .mockReturnValueOnce(updateRunChain);
+
+    const response = await service.startGenerationRun(
+      TENANT_ID,
+      USER_ID,
+      APP_ID,
+      {},
+    );
+
+    expect(insertGate1RunChain.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        gateId: 'gate-1',
+        status: 'failed',
+        failure: expect.objectContaining({
+          code: 'generation-plan-incomplete',
+          message: expect.stringContaining('traceability'),
+        }),
+        repairInstructions: expect.stringContaining('修复 generationPlan'),
+      }),
+    );
+    const gate1RunPayload = insertGate1RunChain.values.mock.calls[0]?.[0] as {
+      evidence: GeneratedApp['gateResults'][number]['evidence'];
+      failure: { details?: { checks?: Array<{ issues: string[] }> } };
+    };
+    expect(
+      gate1RunPayload.evidence.some((item) =>
+        item.summary.includes('missing-page'),
+      ),
+    ).toBe(true);
+    expect(JSON.stringify(gate1RunPayload.failure)).not.toContain(
+      app.publicShareToken,
+    );
+    expect(gate1UpdatePayload.generationPlan).toEqual(brokenPlan);
+    expect(gate1UpdatePayload.status).toBe('failed');
+    expect(gate1UpdatePayload.publicShareToken).toBeNull();
+    expect(gate1UpdatePayload.publicShareEnabled).toBe(false);
+    expect(updateRunChain.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'failed',
+        failureReason: expect.stringContaining(
+          'GenerationPlan 架构计划检查失败',
+        ),
+      }),
+    );
+    expect(response.generationRun.status).toBe('failed');
+    expect(response.gateRuns).toHaveLength(2);
+    expect(response.gateRuns[1]).toEqual(
+      expect.objectContaining({
+        gateId: 'gate-1',
+        status: 'failed',
+        failure: expect.objectContaining({
+          code: 'generation-plan-incomplete',
+        }),
+      }),
+    );
+    expect(response.app.generationPlan).toEqual(brokenPlan);
   });
 
   it('Gate 0 失败时应写入失败证据、降级 readiness 并关闭公开链接', async () => {
@@ -758,6 +1031,7 @@ describe('GeneratedAppService', () => {
       status: 'published',
       readiness: createPublishCandidateReadiness(),
       appSpec: invalidAppSpec,
+      generationPlan: { stale: true },
       publicShareEnabled: true,
       publicShareToken: 'b'.repeat(64),
       publicShareCreatedAt: NOW,
@@ -841,13 +1115,23 @@ describe('GeneratedAppService', () => {
         publicShareDisabledAt: expect.any(Date),
       }),
     );
+    const appUpdatePayload = updateAppChain.set.mock.calls[0]?.[0] as Record<
+      string,
+      unknown
+    >;
+    expect(
+      Object.prototype.hasOwnProperty.call(appUpdatePayload, 'generationPlan'),
+    ).toBe(false);
     expect(updateRunChain.set).toHaveBeenCalledWith(
       expect.objectContaining({
         status: 'failed',
         failureReason: expect.stringContaining('AppSpec 完整性检查失败'),
       }),
     );
+    expect(mockTenantDb.insert).toHaveBeenCalledTimes(2);
     expect(response.generationRun.status).toBe('failed');
+    expect(response.app.generationPlan).toEqual({ stale: true });
+    expect(response.gateRuns).toHaveLength(1);
     expect(response.gateRuns[0]?.status).toBe('failed');
   });
 
@@ -1053,6 +1337,13 @@ describe('GeneratedAppService', () => {
         ]),
       }),
     );
+    const updatePayload = updateChain.set.mock.calls[0]?.[0] as Record<
+      string,
+      unknown
+    >;
+    expect(
+      Object.prototype.hasOwnProperty.call(updatePayload, 'generationPlan'),
+    ).toBe(false);
     expect(response.gateRun).toEqual(
       expect.objectContaining({
         id: GATE_RUN_ID,

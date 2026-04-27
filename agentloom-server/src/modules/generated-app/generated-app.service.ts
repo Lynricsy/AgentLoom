@@ -10,6 +10,7 @@ import * as schema from '../../database/schema';
 import type {
   GeneratedApp,
   GeneratedAppGateEvidence,
+  GeneratedAppGenerationPlan,
   GeneratedAppGenerationRun,
   GeneratedAppGateRunFailure,
   GeneratedAppGateRun,
@@ -77,8 +78,8 @@ const DEFAULT_PREVIEW: GeneratedAppPreview = {
   testReportUrl: null,
 };
 
-const GATE_RUNNER_SKELETON_INCOMPLETE_FAILURE_REASON =
-  'Gate 1-7 runner 尚未接入/未执行，不能形成 publish candidate。';
+const GATE_2_7_RUNNER_INCOMPLETE_FAILURE_REASON =
+  'Gate 2-7 runner 尚未接入/未执行，不能形成 publish candidate。';
 
 interface Gate0Check {
   id: string;
@@ -89,6 +90,22 @@ interface Gate0Check {
 }
 
 interface Gate0Evaluation {
+  status: 'passed' | 'failed';
+  summary: string;
+  evidence: GeneratedAppGateEvidence[];
+  failure: GeneratedAppGateRunFailure | null;
+  repairInstructions: string | null;
+}
+
+interface Gate1Check {
+  id: string;
+  label: string;
+  passed: boolean;
+  summary: string;
+  issues: string[];
+}
+
+interface Gate1Evaluation {
   status: 'passed' | 'failed';
   summary: string;
   evidence: GeneratedAppGateEvidence[];
@@ -382,25 +399,87 @@ export class GeneratedAppService {
       },
       {
         buildGateResults: (gateResult, nowIso) =>
-          this.buildRunnerSkeletonGateResults(app, gateResult, nowIso),
+          this.buildRunnerGateResults(app, [gateResult], nowIso),
       },
     );
+    const producedGateRuns: GeneratedAppGateRunResponseDto[] = [
+      gateRunResult.gateRun,
+    ];
+    let latestApp = gateRunResult.app;
+    let finalFailureReason =
+      gate0Evaluation.failure?.message ??
+      'Gate 0 AppSpec 完整性检查失败，不能继续执行 Gate 1 架构计划门禁。';
+    let completedSummary =
+      '门禁运行器骨架在 Gate 0 AppSpec 完整性检查失败；当前应用保持不可发布。';
+    let completedAt = gateCompletedAt;
 
-    const runStatus = 'failed';
-    const completedSummary =
-      gate0Evaluation.status === 'passed'
-        ? '门禁运行器骨架完成 Gate 0 AppSpec 完整性检查；Gate 1-7 runner 尚未接入/未执行，当前应用不能形成 publish candidate，保持不可发布。'
-        : '门禁运行器骨架在 Gate 0 AppSpec 完整性检查失败；当前应用保持不可发布。';
+    if (gate0Evaluation.status === 'passed') {
+      const generationPlan = this.buildGenerationPlan(app.appSpec);
+      const gate1Evaluation = this.evaluateGate1GenerationPlan(
+        app.appSpec,
+        generationPlan,
+      );
+      const gate0Result = latestApp.gateResults.find(
+        (gate) => gate.gateId === 'gate-0',
+      );
+      const gate1StartedAt = new Date();
+      const gate1CompletedAt = new Date();
+      const gate1AppSnapshot: GeneratedApp = {
+        ...app,
+        gateResults: latestApp.gateResults,
+        generationPlan: latestApp.generationPlan,
+      };
+      const gate1RunResult = await this.createGateRunAndUpdateApp(
+        tenantId,
+        userId,
+        gate1AppSnapshot,
+        {
+          gateId: 'gate-1',
+          generationRunId: run.id,
+          attemptNumber: 1,
+          status: gate1Evaluation.status,
+          summary: gate1Evaluation.summary,
+          evidence: gate1Evaluation.evidence,
+          failure: gate1Evaluation.failure,
+          repairInstructions: gate1Evaluation.repairInstructions,
+          startedAt: gate1StartedAt.toISOString(),
+          completedAt: gate1CompletedAt.toISOString(),
+        },
+        {
+          generationPlan,
+          buildGateResults: (gate1Result, nowIso) =>
+            this.buildRunnerGateResults(
+              app,
+              gate0Result ? [gate0Result, gate1Result] : [gate1Result],
+              nowIso,
+            ),
+        },
+      );
+
+      producedGateRuns.push(gate1RunResult.gateRun);
+      latestApp = gate1RunResult.app;
+      completedAt = gate1CompletedAt;
+
+      if (gate1Evaluation.status === 'failed') {
+        finalFailureReason =
+          gate1Evaluation.failure?.message ??
+          'Gate 1 架构计划门禁失败，不能继续执行 Gate 2-7。';
+        completedSummary =
+          '门禁运行器骨架完成 Gate 0，但 Gate 1 架构计划门禁失败；当前应用保持不可发布。';
+      } else {
+        finalFailureReason = GATE_2_7_RUNNER_INCOMPLETE_FAILURE_REASON;
+        completedSummary =
+          '门禁运行器骨架完成 Gate 0 AppSpec 完整性检查和 Gate 1 架构计划门禁；Gate 2-7 runner 尚未接入/未执行，当前应用不能形成 publish candidate，保持不可发布。';
+      }
+    }
+
     const [completedRun] = await this.tenantDb
       .update(schema.generatedAppGenerationRuns)
       .set({
-        status: runStatus,
+        status: 'failed',
         summary: completedSummary,
-        failureReason:
-          gate0Evaluation.status === 'failed'
-            ? gate0Evaluation.failure?.message
-            : GATE_RUNNER_SKELETON_INCOMPLETE_FAILURE_REASON,
-        completedAt: gateCompletedAt,
+        failureReason: finalFailureReason,
+        completedAt,
         updatedAt: new Date(),
       })
       .where(
@@ -418,8 +497,8 @@ export class GeneratedAppService {
 
     return {
       generationRun: this.toGenerationRunResponseDto(completedRun),
-      gateRuns: [gateRunResult.gateRun],
-      app: gateRunResult.app,
+      gateRuns: producedGateRuns,
+      app: latestApp,
     };
   }
 
@@ -1040,6 +1119,7 @@ export class GeneratedAppService {
         gateResult: GeneratedAppGateResult,
         nowIso: string,
       ) => GeneratedAppGateResult[];
+      generationPlan?: GeneratedAppGenerationPlan | null;
     } = {},
   ): Promise<RecordGeneratedAppGateRunResponseDto> {
     const gateDefinition = getGeneratedAppGateDefinition(parsed.gateId);
@@ -1102,6 +1182,9 @@ export class GeneratedAppService {
     const updatePayload = this.buildGateResultsUpdatePayload(
       userId,
       gateResults,
+      {
+        generationPlan: options.generationPlan,
+      },
     );
 
     const [updated] = await this.tenantDb
@@ -1125,14 +1208,17 @@ export class GeneratedAppService {
     };
   }
 
-  private buildRunnerSkeletonGateResults(
+  private buildRunnerGateResults(
     app: GeneratedApp,
-    gate0Result: GeneratedAppGateResult,
+    executedGateResults: GeneratedAppGateResult[],
     nowIso: string,
   ): GeneratedAppGateResult[] {
     const initialGateResults = createInitialGeneratedAppGateResults(nowIso);
     const canonicalGateIds = new Set(
       initialGateResults.map((gate) => gate.gateId),
+    );
+    const executedByGateId = new Map(
+      executedGateResults.map((gate) => [gate.gateId, gate]),
     );
     const extensionGateResults = app.gateResults.filter(
       (gate) => !canonicalGateIds.has(gate.gateId),
@@ -1140,12 +1226,522 @@ export class GeneratedAppService {
 
     return normalizeGeneratedAppGateResults(
       [
-        gate0Result,
-        ...initialGateResults.filter((gate) => gate.gateId !== 'gate-0'),
+        ...initialGateResults.map(
+          (gate) => executedByGateId.get(gate.gateId) ?? gate,
+        ),
         ...extensionGateResults,
       ],
       nowIso,
     );
+  }
+
+  private buildGenerationPlan(
+    appSpec: GeneratedAppSpec,
+  ): GeneratedAppGenerationPlan {
+    const allRequirementIds = appSpec.coreRequirements.map(
+      (requirement) => requirement.id,
+    );
+    const allScenarioIds = appSpec.acceptanceScenarios.map(
+      (scenario) => scenario.id,
+    );
+    const allPageIds = appSpec.pages.map((page) => page.id);
+    const scenarioIdsByRequirementId = new Map<string, string[]>();
+
+    for (const requirement of appSpec.coreRequirements) {
+      const traceEntry = appSpec.traceability.find(
+        (entry) => entry.requirementId === requirement.id,
+      );
+      const scenarioIds =
+        traceEntry?.scenarioIds.filter((scenarioId) =>
+          allScenarioIds.includes(scenarioId),
+        ) ??
+        appSpec.acceptanceScenarios
+          .filter((scenario) =>
+            scenario.requirementIds.includes(requirement.id),
+          )
+          .map((scenario) => scenario.id);
+
+      scenarioIdsByRequirementId.set(requirement.id, scenarioIds);
+    }
+
+    return {
+      planVersion: 1,
+      appSpecVersion: appSpec.version,
+      frontend: {
+        stack: 'react-vite-agentloom-runtime',
+        runtimeSurface: {
+          kind: 'generated-app',
+          publicAccess: 'private-token-after-gates',
+          dataUseNoticeRequired: appSpec.dataPolicy.publicSubmissionsPersisted,
+        },
+        pages: appSpec.pages.map((page) => ({
+          pageId: page.id,
+          name: page.name,
+          purpose: page.purpose,
+          route: this.buildPlanRoute(page.id),
+          requirementIds: allRequirementIds,
+          scenarioIds: allScenarioIds,
+        })),
+      },
+      orchestration: {
+        target: 'workflow',
+        strategy: 'generated-workflow-with-agent-capability',
+        inputContract: {
+          source: 'public-runtime-submission',
+          requiredFields: ['input'],
+          scenarioIds: allScenarioIds,
+        },
+        outputContract: {
+          destinations: ['public-runtime-report', 'creator-submission-detail'],
+          reportRequired: true,
+        },
+        steps: appSpec.coreRequirements.map((requirement, index) => ({
+          stepId: `step-${index + 1}-${this.buildPlanSegment(requirement.id)}`,
+          label: `实现 ${requirement.id}`,
+          purpose: requirement.text,
+          requirementIds: [requirement.id],
+          scenarioIds: scenarioIdsByRequirementId.get(requirement.id) ?? [],
+        })),
+      },
+      pluginTools: {
+        tools: [],
+        emptyReason:
+          '当前 AppSpec 未声明需要平台现有能力之外的私有插件或外部工具；后续 Gate 2-4 可在发现缺口时补充受控插件计划。',
+        permissionPolicy: [
+          '插件/工具必须显式声明权限。',
+          '未通过 manifest、构建、签名、权限审计和 sandbox smoke test 前不得绑定到 Agent/Workflow。',
+          '禁止隐式放开网络、存储、知识库或 LLM 权限。',
+        ],
+      },
+      dataPersistence: {
+        publicSubmissionsPersisted:
+          appSpec.dataPolicy.publicSubmissionsPersisted,
+        creatorCanDeleteSubmissions:
+          appSpec.dataPolicy.creatorCanDeleteSubmissions,
+        endUserLoginRequired: appSpec.dataPolicy.endUserLoginRequired,
+        tenantScoped: true,
+        tokenSnapshotRequired: true,
+        softDeleteRequired: true,
+      },
+      testGates: {
+        blockingGateIds: [
+          'gate-2',
+          'gate-3',
+          'gate-4',
+          'gate-5',
+          'gate-6',
+          'gate-7',
+        ],
+        gatePlan: [
+          {
+            gateId: 'gate-2',
+            purpose:
+              '校验前端类型、API contract、Agent/Workflow 图 schema、DAG、端口兼容和插件 manifest。',
+            evidenceKind: 'static_check',
+          },
+          {
+            gateId: 'gate-3',
+            purpose:
+              '执行前端构建、单元测试、组件测试、插件构建和 golden tests。',
+            evidenceKind: 'build',
+          },
+          {
+            gateId: 'gate-4',
+            purpose:
+              '运行生成应用与 Agent/Workflow dry-run、插件 WASM/Extism sandbox smoke test。',
+            evidenceKind: 'test',
+          },
+          {
+            gateId: 'gate-5',
+            purpose:
+              '用浏览器自动化覆盖核心 acceptance scenarios、console 和 network 失败检查。',
+            evidenceKind: 'browser',
+          },
+          {
+            gateId: 'gate-6',
+            purpose: '独立 verifier 审查 AppSpec、计划、证据矩阵与运行结果。',
+            evidenceKind: 'verifier',
+          },
+          {
+            gateId: 'gate-7',
+            purpose:
+              '确认所有阻断门禁通过且无 warning 后才形成 publish candidate。',
+            evidenceKind: 'manual',
+          },
+        ],
+        acceptanceScenarioIds: allScenarioIds,
+      },
+      traceability: appSpec.coreRequirements.map((requirement) => ({
+        requirementId: requirement.id,
+        scenarioIds: scenarioIdsByRequirementId.get(requirement.id) ?? [],
+        pageIds: allPageIds,
+        orchestrationStepIds: [
+          `step-${
+            appSpec.coreRequirements.findIndex(
+              (candidate) => candidate.id === requirement.id,
+            ) + 1
+          }-${this.buildPlanSegment(requirement.id)}`,
+        ],
+        planEvidenceIds: [
+          'gate-1-frontend-plan',
+          'gate-1-orchestration-plan',
+          'gate-1-plugin-tool-plan',
+          'gate-1-data-persistence-plan',
+          'gate-1-test-gate-plan',
+        ],
+      })),
+    };
+  }
+
+  private evaluateGate1GenerationPlan(
+    appSpec: GeneratedAppSpec,
+    generationPlan: GeneratedAppGenerationPlan,
+  ): Gate1Evaluation {
+    const checks = this.buildGate1Checks(appSpec, generationPlan);
+    const failedChecks = checks.filter((check) => !check.passed);
+    const evidence = checks.map((check) => ({
+      id: `gate-1-${check.id}`,
+      label: check.label,
+      kind: 'plan' as const,
+      url: null,
+      summary:
+        check.issues.length === 0
+          ? check.summary
+          : `${check.summary} 缺口：${check.issues.join('；')}`,
+    }));
+
+    if (failedChecks.length > 0) {
+      const failure: GeneratedAppGateRunFailure = {
+        code: 'generation-plan-incomplete',
+        message: `GenerationPlan 架构计划检查失败：${failedChecks
+          .map((check) => check.label)
+          .join('、')}。`,
+        details: {
+          checks: checks.map((check) => ({
+            id: check.id,
+            label: check.label,
+            passed: check.passed,
+            issues: check.issues,
+          })),
+        },
+      };
+
+      return {
+        status: 'failed',
+        summary:
+          'Gate 1 失败：generationPlan 未完整覆盖 AppSpec 的页面、编排、插件/工具、数据、测试门禁或 traceability。',
+        evidence,
+        failure,
+        repairInstructions:
+          '修复 generationPlan，使其覆盖 AppSpec 版本、页面计划、Agent/Workflow 编排计划、插件/工具策略、数据持久化策略、Gate 2-7 测试计划和每条核心需求 traceability。',
+      };
+    }
+
+    return {
+      status: 'passed',
+      summary:
+        'Gate 1 通过：generationPlan 已覆盖 AppSpec 页面、Agent/Workflow 编排、插件/工具策略、数据持久化、Gate 2-7 测试计划和需求 traceability。',
+      evidence,
+      failure: null,
+      repairInstructions: null,
+    };
+  }
+
+  private buildGate1Checks(
+    appSpec: GeneratedAppSpec,
+    generationPlan: GeneratedAppGenerationPlan,
+  ): Gate1Check[] {
+    const requirementIds = appSpec.coreRequirements.map(
+      (requirement) => requirement.id,
+    );
+    const pageIds = appSpec.pages.map((page) => page.id);
+    const scenarioIds = appSpec.acceptanceScenarios.map(
+      (scenario) => scenario.id,
+    );
+    const plannedPageIds = new Set(
+      generationPlan.frontend.pages.map((page) => page.pageId),
+    );
+    const knownScenarioIds = new Set(scenarioIds);
+    const knownRequirementIds = new Set(requirementIds);
+    const plannedScenarioIds = new Set(
+      generationPlan.testGates.acceptanceScenarioIds,
+    );
+    const plannedBlockingGateIds = new Set(
+      generationPlan.testGates.blockingGateIds,
+    );
+    const plannedGateIds = new Set(
+      generationPlan.testGates.gatePlan.map((gate) => gate.gateId),
+    );
+    const plannedStepIds = new Set(
+      generationPlan.orchestration.steps.map((step) => step.stepId),
+    );
+    const plannedRequirementIds = new Set(
+      generationPlan.orchestration.steps.flatMap((step) => step.requirementIds),
+    );
+    const planEvidenceIds = new Set([
+      'gate-1-app-spec-version',
+      'gate-1-frontend-plan',
+      'gate-1-orchestration-plan',
+      'gate-1-plugin-tool-plan',
+      'gate-1-data-persistence-plan',
+      'gate-1-test-gate-plan',
+      'gate-1-traceability',
+    ]);
+    const traceabilityByRequirementId = new Map(
+      generationPlan.traceability.map((entry) => [entry.requirementId, entry]),
+    );
+
+    const versionIssues =
+      generationPlan.appSpecVersion === appSpec.version
+        ? []
+        : [
+            `appSpecVersion=${generationPlan.appSpecVersion} 与 AppSpec version=${appSpec.version} 不一致`,
+          ];
+    const frontendIssues = [
+      ...pageIds
+        .filter((pageId) => !plannedPageIds.has(pageId))
+        .map((pageId) => `页面 ${pageId} 未进入 frontend.pages`),
+      ...generationPlan.frontend.pages.flatMap((page, index) => {
+        const issues: string[] = [];
+
+        if (page.route.trim().length === 0) {
+          issues.push(`frontend.pages[${index}].route 缺失`);
+        }
+
+        if (page.requirementIds.length === 0) {
+          issues.push(`frontend.pages[${index}].requirementIds 不能为空`);
+        }
+
+        for (const requirementId of page.requirementIds) {
+          if (!knownRequirementIds.has(requirementId)) {
+            issues.push(
+              `frontend.pages[${index}].requirementIds 引用了未知需求 ${requirementId}`,
+            );
+          }
+        }
+
+        if (page.scenarioIds.length === 0) {
+          issues.push(`frontend.pages[${index}].scenarioIds 不能为空`);
+        }
+
+        for (const scenarioId of page.scenarioIds) {
+          if (!knownScenarioIds.has(scenarioId)) {
+            issues.push(
+              `frontend.pages[${index}].scenarioIds 引用了未知场景 ${scenarioId}`,
+            );
+          }
+        }
+
+        return issues;
+      }),
+      ...(generationPlan.frontend.runtimeSurface.dataUseNoticeRequired ===
+      appSpec.dataPolicy.publicSubmissionsPersisted
+        ? []
+        : [
+            'runtimeSurface.dataUseNoticeRequired 与 AppSpec 数据保存策略不一致',
+          ]),
+    ];
+    const orchestrationIssues = [
+      ...(generationPlan.orchestration.steps.length === 0
+        ? ['orchestration.steps 不能为空']
+        : []),
+      ...requirementIds
+        .filter((requirementId) => !plannedRequirementIds.has(requirementId))
+        .map(
+          (requirementId) =>
+            `需求 ${requirementId} 未映射到 orchestration step`,
+        ),
+      ...generationPlan.orchestration.steps.flatMap((step, index) => {
+        const issues: string[] = [];
+
+        for (const requirementId of step.requirementIds) {
+          if (!knownRequirementIds.has(requirementId)) {
+            issues.push(
+              `orchestration.steps[${index}].requirementIds 引用了未知需求 ${requirementId}`,
+            );
+          }
+        }
+
+        for (const scenarioId of step.scenarioIds) {
+          if (!knownScenarioIds.has(scenarioId)) {
+            issues.push(
+              `orchestration.steps[${index}].scenarioIds 引用了未知场景 ${scenarioId}`,
+            );
+          }
+        }
+
+        return issues;
+      }),
+      ...(generationPlan.orchestration.inputContract.scenarioIds.length === 0
+        ? ['inputContract.scenarioIds 不能为空']
+        : []),
+      ...generationPlan.orchestration.inputContract.scenarioIds
+        .filter((scenarioId) => !knownScenarioIds.has(scenarioId))
+        .map(
+          (scenarioId) =>
+            `inputContract.scenarioIds 引用了未知场景 ${scenarioId}`,
+        ),
+      ...(generationPlan.orchestration.outputContract.destinations.length === 0
+        ? ['outputContract.destinations 不能为空']
+        : []),
+    ];
+    const pluginToolIssues = [
+      ...(generationPlan.pluginTools.tools.length === 0 &&
+      !generationPlan.pluginTools.emptyReason
+        ? ['插件/工具计划为空时必须给出 emptyReason']
+        : []),
+      ...(generationPlan.pluginTools.permissionPolicy.length === 0
+        ? ['permissionPolicy 不能为空']
+        : []),
+    ];
+    const dataIssues = [
+      ...(generationPlan.dataPersistence.publicSubmissionsPersisted ===
+      appSpec.dataPolicy.publicSubmissionsPersisted
+        ? []
+        : ['dataPersistence.publicSubmissionsPersisted 与 AppSpec 不一致']),
+      ...(generationPlan.dataPersistence.creatorCanDeleteSubmissions ===
+      appSpec.dataPolicy.creatorCanDeleteSubmissions
+        ? []
+        : ['dataPersistence.creatorCanDeleteSubmissions 与 AppSpec 不一致']),
+      ...(generationPlan.dataPersistence.endUserLoginRequired ===
+      appSpec.dataPolicy.endUserLoginRequired
+        ? []
+        : ['dataPersistence.endUserLoginRequired 与 AppSpec 不一致']),
+      ...(generationPlan.dataPersistence.tenantScoped
+        ? []
+        : ['dataPersistence.tenantScoped 必须为 true']),
+      ...(generationPlan.dataPersistence.tokenSnapshotRequired
+        ? []
+        : ['dataPersistence.tokenSnapshotRequired 必须为 true']),
+      ...(generationPlan.dataPersistence.softDeleteRequired
+        ? []
+        : ['dataPersistence.softDeleteRequired 必须为 true']),
+    ];
+    const requiredFutureGateIds = [
+      'gate-2',
+      'gate-3',
+      'gate-4',
+      'gate-5',
+      'gate-6',
+      'gate-7',
+    ];
+    const testGateIssues = [
+      ...requiredFutureGateIds
+        .filter((gateId) => !plannedBlockingGateIds.has(gateId))
+        .map((gateId) => `${gateId} 缺少 blocking gate 声明`),
+      ...requiredFutureGateIds
+        .filter((gateId) => !plannedGateIds.has(gateId))
+        .map((gateId) => `${gateId} 缺少 test gate plan`),
+      ...scenarioIds
+        .filter((scenarioId) => !plannedScenarioIds.has(scenarioId))
+        .map(
+          (scenarioId) =>
+            `场景 ${scenarioId} 未进入 testGates.acceptanceScenarioIds`,
+        ),
+    ];
+    const traceabilityIssues = requirementIds.flatMap((requirementId) => {
+      const entry = traceabilityByRequirementId.get(requirementId);
+
+      if (!entry) {
+        return [`需求 ${requirementId} 缺少 plan traceability`];
+      }
+
+      const issues: string[] = [];
+
+      if (entry.scenarioIds.length === 0) {
+        issues.push(`需求 ${requirementId} 缺少 scenarioIds`);
+      }
+
+      for (const scenarioId of entry.scenarioIds) {
+        if (!knownScenarioIds.has(scenarioId)) {
+          issues.push(`需求 ${requirementId} 引用了未知场景 ${scenarioId}`);
+        }
+      }
+
+      if (entry.pageIds.length === 0) {
+        issues.push(`需求 ${requirementId} 缺少 pageIds`);
+      }
+
+      for (const pageId of entry.pageIds) {
+        if (!plannedPageIds.has(pageId)) {
+          issues.push(`需求 ${requirementId} 引用了未知页面 ${pageId}`);
+        }
+      }
+
+      if (entry.orchestrationStepIds.length === 0) {
+        issues.push(`需求 ${requirementId} 缺少 orchestrationStepIds`);
+      }
+
+      for (const stepId of entry.orchestrationStepIds) {
+        if (!plannedStepIds.has(stepId)) {
+          issues.push(`需求 ${requirementId} 引用了未知编排步骤 ${stepId}`);
+        }
+      }
+
+      if (entry.planEvidenceIds.length === 0) {
+        issues.push(`需求 ${requirementId} 缺少 planEvidenceIds`);
+      }
+
+      for (const evidenceId of entry.planEvidenceIds) {
+        if (!planEvidenceIds.has(evidenceId)) {
+          issues.push(`需求 ${requirementId} 引用了未知计划证据 ${evidenceId}`);
+        }
+      }
+
+      return issues;
+    });
+
+    return [
+      {
+        id: 'app-spec-version',
+        label: 'AppSpec 版本绑定',
+        passed: versionIssues.length === 0,
+        summary: '检查 generationPlan.appSpecVersion 是否绑定当前 AppSpec。',
+        issues: versionIssues,
+      },
+      {
+        id: 'frontend-plan',
+        label: '前端页面计划',
+        passed: frontendIssues.length === 0,
+        summary: `检查 ${appSpec.pages.length} 个 AppSpec 页面是否进入 frontend plan。`,
+        issues: frontendIssues,
+      },
+      {
+        id: 'orchestration-plan',
+        label: 'Agent/Workflow 编排计划',
+        passed: orchestrationIssues.length === 0,
+        summary: `检查 ${appSpec.coreRequirements.length} 条核心需求是否映射到 orchestration steps。`,
+        issues: orchestrationIssues,
+      },
+      {
+        id: 'plugin-tool-plan',
+        label: '插件/工具计划',
+        passed: pluginToolIssues.length === 0,
+        summary: '检查插件/工具计划为空时是否说明原因，并固定权限策略。',
+        issues: pluginToolIssues,
+      },
+      {
+        id: 'data-persistence-plan',
+        label: '数据持久化计划',
+        passed: dataIssues.length === 0,
+        summary: '检查数据保存、租户归属、token 快照和软删除策略。',
+        issues: dataIssues,
+      },
+      {
+        id: 'test-gate-plan',
+        label: 'Gate 2-7 测试计划',
+        passed: testGateIssues.length === 0,
+        summary: '检查 Gate 2-7 和 acceptance scenarios 是否都有后续验证计划。',
+        issues: testGateIssues,
+      },
+      {
+        id: 'traceability',
+        label: '需求到计划证据 traceability',
+        passed: traceabilityIssues.length === 0,
+        summary: `检查 ${appSpec.coreRequirements.length} 条核心需求是否连接到场景、页面、编排步骤和计划证据。`,
+        issues: traceabilityIssues,
+      },
+    ];
   }
 
   private evaluateGate0AppSpec(appSpec: GeneratedAppSpec): Gate0Evaluation {
@@ -1468,7 +2064,7 @@ export class GeneratedAppService {
     userId: string,
     gateResults: GeneratedAppGateResult[],
     options: {
-      generationPlan?: Record<string, unknown> | null;
+      generationPlan?: GeneratedApp['generationPlan'];
       preview?: GeneratedAppPreview;
     } = {},
   ): Partial<schema.NewGeneratedApp> {
@@ -1891,6 +2487,21 @@ export class GeneratedAppService {
     const firstSentence = compact.split(/[。！？!?]/)[0]?.trim() ?? compact;
     const baseName = firstSentence.length > 0 ? firstSentence : '定制化应用';
     return baseName.length > 48 ? `${baseName.slice(0, 48)}...` : baseName;
+  }
+
+  private buildPlanRoute(pageId: string): string {
+    return `/${this.buildPlanSegment(pageId)}`;
+  }
+
+  private buildPlanSegment(value: string): string {
+    const segment = value
+      .trim()
+      .toLowerCase()
+      .replace(/^page-/, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+
+    return segment.length > 0 ? segment : 'generated-app';
   }
 
   private getPublicRuntimePages(

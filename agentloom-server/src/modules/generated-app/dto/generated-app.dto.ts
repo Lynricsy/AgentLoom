@@ -382,7 +382,7 @@ export interface GeneratedAppResponseDto {
   description: string;
   status: GeneratedApp['status'];
   appSpec: GeneratedAppSpec;
-  generationPlan: Record<string, unknown> | null;
+  generationPlan: GeneratedApp['generationPlan'];
   gateResults: GeneratedAppGateResult[];
   readiness: GeneratedAppReadiness;
   preview: GeneratedAppPreview;

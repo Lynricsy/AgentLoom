@@ -463,6 +463,7 @@ export {
   type GeneratedAppGateStatus,
   type GeneratedAppAcceptanceScenario,
   type GeneratedAppSpec,
+  type GeneratedAppGenerationPlan,
   type GeneratedAppGateEvidence,
   type GeneratedAppGateRunFailure,
   type GeneratedAppGateResult,
