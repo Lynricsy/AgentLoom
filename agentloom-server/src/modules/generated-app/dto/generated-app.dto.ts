@@ -168,6 +168,7 @@ export const GeneratedAppGateEvidenceSchema = z.object({
   ]),
   url: z.string().url().nullable().default(null),
   summary: z.string().min(1),
+  details: z.unknown().optional(),
 });
 
 export const GeneratedAppGateResultSchema = z.object({

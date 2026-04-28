@@ -1,6 +1,6 @@
 import * as crypto from 'crypto';
 
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 
@@ -77,6 +77,11 @@ import {
   GeneratedAppRepairAttemptNotFoundException,
   GeneratedAppSubmissionNotFoundException,
 } from './generated-app.exceptions';
+import {
+  GeneratedAppGate3WorkspaceRunner,
+  type GeneratedAppGate3CommandPlan,
+  type GeneratedAppGenerationWorkspaceContract,
+} from './generated-app.workspace';
 
 const DEFAULT_PREVIEW: GeneratedAppPreview = {
   previewUrl: null,
@@ -85,7 +90,7 @@ const DEFAULT_PREVIEW: GeneratedAppPreview = {
 };
 
 const GATE_7_RUNNER_INCOMPLETE_FAILURE_REASON =
-  'Gate 7 publish-candidate guard skeleton 检测到 Gate 3-6 仍为 skeleton-only upstream evidence，不能形成 publish candidate。';
+  'Gate 7 publish-candidate guard skeleton 检测到 Gate 4-6 仍为 skeleton-only upstream evidence，且缺少后续真实 integration/browser/verifier 证据，不能形成 publish candidate。';
 
 const GATE_2_STATIC_CONTRACT_IDS = [
   'gate-2-public-runtime-contract',
@@ -122,6 +127,8 @@ const GATE_3_REQUIRED_FAILURE_CAPTURE_FIELDS = [
 ] as const;
 
 const GATE_3_COVERAGE_TARGET_IDS = [
+  'gate-3-generation-workspace-contract',
+  'gate-3-command-plan',
   'gate-3-frontend-build-command',
   'gate-3-typecheck-command',
   'gate-3-unit-test-command',
@@ -133,8 +140,53 @@ const GATE_3_COVERAGE_TARGET_IDS = [
   'gate-3-failure-capture-fields',
 ] as const;
 
+const GATE_3_ALLOWED_EXECUTION_LEVELS = [
+  'contract-skeleton',
+  'real-local-command-plan',
+  'fixture-execution',
+  'disabled-execution',
+] as const;
+
+const GATE_3_REQUIRED_WORKSPACE_FILE_PATHS = [
+  'package.json',
+  'index.html',
+  'tsconfig.json',
+  'tsconfig.generated-app.json',
+  'vite.config.ts',
+  'src/main.tsx',
+  'src/App.tsx',
+  'src/generated-app/app-spec.ts',
+  'src/generated-app/static-contracts.ts',
+  'src/generated-app/runtime.ts',
+  'src/generated-app/__tests__/runtime.contract.spec.ts',
+  'src/generated-app/__tests__/runtime.golden.spec.tsx',
+  'generated-app.manifest.json',
+  'scripts/gate3-build.mjs',
+  'scripts/gate3-typecheck.mjs',
+  'scripts/gate3-unit.mjs',
+  'scripts/gate3-component-golden.mjs',
+] as const;
+
+const GATE_3_REQUIRED_COMMAND_IDS = [
+  'gate-3-frontend-build-command',
+  'gate-3-typecheck-command',
+  'gate-3-unit-test-command',
+  'gate-3-component-golden-test-entry',
+] as const;
+
+const GATE_3_ALLOWED_COMMAND_BY_ID = {
+  'gate-3-frontend-build-command': 'node scripts/gate3-build.mjs',
+  'gate-3-typecheck-command': 'node scripts/gate3-typecheck.mjs',
+  'gate-3-unit-test-command': 'node scripts/gate3-unit.mjs',
+  'gate-3-component-golden-test-entry':
+    'node scripts/gate3-component-golden.mjs',
+} as const satisfies Record<
+  (typeof GATE_3_REQUIRED_COMMAND_IDS)[number],
+  string
+>;
+
 const GATE_3_SKELETON_EVIDENCE_NOTE =
-  'Gate 3 当前只做 contract-skeleton 完整性检查；未执行真实前端构建、插件构建、单元测试、组件测试或 golden test。';
+  'Gate 3 contract-skeleton 只检查计划完整性；fixture-execution 不执行真实命令；real-local-command-plan 才表示受控本地命令已执行。';
 
 const GATE_4_SKELETON_EVIDENCE_NOTE =
   'Gate 4 当前只做 integration-skeleton 完整性检查；未执行真实 API 调用、真实 Agent/Workflow dry-run、真实插件 WASM/Extism smoke test 或真实 sandbox run。';
@@ -459,13 +511,6 @@ const GATE_7_UPSTREAM_GATE_IDS = [
   'gate-6',
 ] as const;
 
-const GATE_7_SKELETON_ONLY_UPSTREAM_GATE_IDS = [
-  'gate-3',
-  'gate-4',
-  'gate-5',
-  'gate-6',
-] as const;
-
 const GATE_7_REQUIRED_READINESS_PRECONDITIONS = [
   'all-gate-0-through-gate-7-blocking-gates-passed',
   'no-blocking-findings',
@@ -517,7 +562,7 @@ const GATE_7_REQUIRED_REAL_GATE_RUNNER_IDS = [
 
 const GATE_7_REQUIRED_BLOCKING_REASON_FRAGMENTS = [
   'skeleton/contract-level',
-  '真实 build/test/integration/browser/verifier artifact',
+  '真实 integration/browser/verifier artifact',
   '真实独立 verifier verdict',
 ] as const;
 
@@ -683,10 +728,17 @@ interface Gate7Evaluation {
 
 @Injectable()
 export class GeneratedAppService {
+  private readonly gate3WorkspaceRunner: GeneratedAppGate3WorkspaceRunner;
+
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
     private readonly configService: ConfigService,
-  ) {}
+    @Optional() gate3WorkspaceRunner?: GeneratedAppGate3WorkspaceRunner,
+  ) {
+    this.gate3WorkspaceRunner =
+      gate3WorkspaceRunner ??
+      new GeneratedAppGate3WorkspaceRunner(this.configService);
+  }
 
   private get tenantDb(): DrizzleDB {
     return getTenantDb(this.db);
@@ -1100,21 +1152,56 @@ export class GeneratedAppService {
           completedSummary =
             '门禁运行器骨架完成 Gate 0 和 Gate 1，但 Gate 2 静态合约门禁失败；当前应用保持不可发布。';
         } else {
+          const gate3Workspace =
+            this.gate3WorkspaceRunner.buildWorkspaceContract({
+              tenantId,
+              appId,
+              generationRunId: run.id,
+              appSpec: app.appSpec,
+              staticContracts,
+            });
+          const gate3CommandPlan = this.gate3WorkspaceRunner.buildCommandPlan({
+            workspace: gate3Workspace,
+            requirementIds: app.appSpec.coreRequirements.map(
+              (requirement) => requirement.id,
+            ),
+            scenarioIds: app.appSpec.acceptanceScenarios.map(
+              (scenario) => scenario.id,
+            ),
+          });
           const buildUnitPlan = this.buildBuildUnitPlan(
             app.appSpec,
             generationPlan,
             staticContracts,
+            gate3Workspace,
+            gate3CommandPlan,
+            this.gate3WorkspaceRunner.getExecutionLevel(),
           );
           const generationPlanWithBuildUnitPlan: GeneratedAppGenerationPlan = {
             ...generationPlanWithStaticContracts,
             buildUnitPlan,
           };
-          const gate3Evaluation = this.evaluateGate3BuildUnitPlan(
+          let gate3Evaluation = this.evaluateGate3BuildUnitPlan(
             app.appSpec,
             generationPlan,
             staticContracts,
             buildUnitPlan,
           );
+          if (gate3Evaluation.status === 'passed') {
+            gate3Evaluation = await this.gate3WorkspaceRunner.materializeAndRun(
+              {
+                tenantId,
+                appId,
+                generationRunId: run.id,
+                appSpec: app.appSpec,
+                generationPlan,
+                staticContracts,
+                buildUnitPlan,
+                workspace: gate3Workspace,
+                commandPlan: gate3CommandPlan,
+              },
+            );
+          }
           const gate2Result = latestApp.gateResults.find(
             (gate) => gate.gateId === 'gate-2',
           );
@@ -1166,7 +1253,7 @@ export class GeneratedAppService {
               gate3Evaluation.failure?.message ??
               'Gate 3 构建与单元门禁失败，不能继续执行 Gate 4-7。';
             completedSummary =
-              '门禁运行器骨架完成 Gate 0、Gate 1 和 Gate 2，但 Gate 3 构建与单元门禁 skeleton 检查失败；当前应用保持不可发布。';
+              '门禁运行器完成 Gate 0、Gate 1 和 Gate 2，但 Gate 3 Generation Workspace、构建/单元执行或 buildUnitPlan 检查失败；Gate 4-7 未执行，当前应用保持不可发布。';
           } else {
             const integrationPlan = this.buildIntegrationPlan(
               app.appSpec,
@@ -1478,7 +1565,7 @@ export class GeneratedAppService {
                     gate7Evaluation.failure?.message ??
                     GATE_7_RUNNER_INCOMPLETE_FAILURE_REASON;
                   completedSummary =
-                    '门禁运行器骨架完成 Gate 0 AppSpec 完整性检查、Gate 1 架构计划门禁、Gate 2 静态合约门禁、Gate 3 构建与单元 skeleton 完整性检查、Gate 4 integration skeleton 完整性检查、Gate 5 browser acceptance skeleton 完整性检查和 Gate 6 independent verifier skeleton 完整性检查；Gate 7 publish-candidate guard skeleton 检测到上游仍只有 skeleton/contract-level evidence，当前应用不能形成 publish candidate，保持不可发布。';
+                    '门禁运行器完成 Gate 0 AppSpec 完整性检查、Gate 1 架构计划门禁、Gate 2 静态合约门禁、Gate 3 Generation Workspace 与构建/单元执行器；Gate 4 integration、Gate 5 browser acceptance 和 Gate 6 independent verifier 仍为 skeleton 完整性检查，Gate 7 publish-candidate guard 检测到缺少真实集成/浏览器/独立审查证据，当前应用不能形成 publish candidate，保持不可发布。';
                 }
               }
             }
@@ -2577,6 +2664,9 @@ export class GeneratedAppService {
     appSpec: GeneratedAppSpec,
     generationPlan: GeneratedAppGenerationPlan,
     staticContracts: GeneratedAppStaticContracts,
+    generationWorkspace?: GeneratedAppGenerationWorkspaceContract,
+    commandPlan?: GeneratedAppGate3CommandPlan[],
+    executionLevel?: GeneratedAppBuildUnitPlan['executionLevel'],
   ): GeneratedAppBuildUnitPlan {
     const requirementIds = appSpec.coreRequirements.map(
       (requirement) => requirement.id,
@@ -2606,33 +2696,76 @@ export class GeneratedAppService {
       }),
     );
 
+    const resolvedWorkspace =
+      generationWorkspace ??
+      this.gate3WorkspaceRunner.buildWorkspaceContract({
+        tenantId: 'test-tenant',
+        appId: 'test-app',
+        generationRunId: 'test-run',
+        appSpec,
+        staticContracts,
+      });
+    const resolvedExecutionLevel =
+      executionLevel ?? this.gate3WorkspaceRunner.getExecutionLevel();
+    const resolvedCommandPlan =
+      commandPlan ??
+      this.gate3WorkspaceRunner.buildCommandPlan({
+        workspace: resolvedWorkspace,
+        requirementIds,
+        scenarioIds,
+      });
+    const commandById = new Map(
+      resolvedCommandPlan.map((command) => [command.commandId, command]),
+    );
+    const frontendBuildCommand =
+      commandById.get('gate-3-frontend-build-command')?.command ??
+      staticContracts.testEntry.buildGateCommand;
+    const typecheckCommand =
+      commandById.get('gate-3-typecheck-command')?.command ??
+      'agentloom generated-app gate-3 typecheck';
+    const unitTestCommand =
+      commandById.get('gate-3-unit-test-command')?.command ??
+      staticContracts.testEntry.unitGateCommand;
+    const componentGoldenCommand =
+      commandById.get('gate-3-component-golden-test-entry')?.command ??
+      'agentloom generated-app gate-3 component-golden';
+
     return {
       planVersion: 1,
       appSpecVersion: appSpec.version,
       generationPlanVersion: generationPlan.planVersion,
       staticContractsVersion: staticContracts.contractVersion,
-      executionLevel: 'contract-skeleton',
+      executionLevel: resolvedExecutionLevel,
+      generationWorkspace: resolvedWorkspace,
+      commandPlan: resolvedCommandPlan.map((command) => ({
+        commandId: command.commandId,
+        command: command.command,
+        workingDirectory: command.workingDirectory,
+        requirementIds: command.requirementIds,
+        scenarioIds: command.scenarioIds,
+        producesArtifactIds: command.producesArtifactIds,
+      })),
       frontendBuild: {
-        command: staticContracts.testEntry.buildGateCommand,
-        workingDirectory: '/workspace/generated-app',
+        command: frontendBuildCommand,
+        workingDirectory: resolvedWorkspace.relativePath,
         routeIds,
         requirementIds,
         scenarioIds,
         expectedArtifacts: ['dist/index.html', 'dist/assets/manifest.json'],
       },
       typecheck: {
-        command: 'agentloom generated-app gate-3 typecheck',
+        command: typecheckCommand,
         tsconfigPath: 'tsconfig.generated-app.json',
         requirementIds,
       },
       unitTests: {
-        command: staticContracts.testEntry.unitGateCommand,
+        command: unitTestCommand,
         entry: 'src/generated-app/__tests__/runtime.contract.spec.ts',
         requirementIds,
         scenarioIds,
       },
       componentGoldenTests: {
-        command: 'agentloom generated-app gate-3 component-golden',
+        command: componentGoldenCommand,
         entry: 'src/generated-app/__tests__/runtime.golden.spec.tsx',
         scenarioIds,
         goldenArtifactPath: 'artifacts/gate-3/component-golden-report.json',
@@ -6040,6 +6173,9 @@ export class GeneratedAppService {
       (entry) => entry.evidenceIds,
     );
     const gate7EvidenceIds = [...GATE_7_EXPECTED_EVIDENCE_IDS];
+    const skeletonOnlyUpstreamGateIds =
+      this.resolveGate7SkeletonOnlyUpstreamGateIds(buildUnitPlan);
+    const skeletonOnlyGateLabel = skeletonOnlyUpstreamGateIds.join('、');
     const releaseManifest: GeneratedAppPublishCandidatePlan['artifactReleaseManifest'] =
       [
         ...buildUnitPlan.artifactExpectations
@@ -6196,22 +6332,24 @@ export class GeneratedAppService {
         {
           blockerId: blockerIds[0] ?? 'blocker-skeleton-only-upstream-gates',
           category: 'skeleton_only_upstream_gate',
-          gateIds: [...GATE_7_SKELETON_ONLY_UPSTREAM_GATE_IDS],
+          gateIds: [...skeletonOnlyUpstreamGateIds],
           evidenceIds: upstreamEvidenceIds,
           artifactIds,
-          message:
-            'Gate 3-6 当前只有 contract-level skeleton evidence，不能作为发布候选签收依据。',
+          message: `${skeletonOnlyGateLabel} 当前仍只有 contract-level skeleton/fixture evidence，不能作为发布候选签收依据。`,
           blocking: true,
         },
         {
           blockerId:
             blockerIds[1] ?? 'blocker-missing-real-execution-artifacts',
           category: 'missing_real_execution_artifact',
-          gateIds: ['gate-3', 'gate-4', 'gate-5'],
+          gateIds:
+            buildUnitPlan.executionLevel === 'real-local-command-plan'
+              ? ['gate-4', 'gate-5']
+              : ['gate-3', 'gate-4', 'gate-5'],
           evidenceIds: upstreamEvidenceIds,
           artifactIds,
           message:
-            '缺少真实前端构建、插件构建、测试报告、集成 trace 和浏览器 artifact。',
+            '缺少真实集成 trace 和浏览器 artifact；Gate 3 只覆盖构建与单元层。',
           blocking: true,
         },
         {
@@ -6264,8 +6402,8 @@ export class GeneratedAppService {
       finalVerdict: {
         publishCandidateAllowed: false,
         blockingReasons: [
-          'Gate 3-6 当前只有 skeleton/contract-level completeness evidence。',
-          '缺少真实 build/test/integration/browser/verifier artifact 签收。',
+          `${skeletonOnlyGateLabel} 当前只有 skeleton/contract-level completeness evidence。`,
+          '缺少真实 integration/browser/verifier artifact 签收。',
           '缺少真实独立 verifier verdict，Gate 6 skeleton 不能替代真实审查结论。',
           'Gate 7 guard 失败期间 public share token 必须保持禁用并清空。',
         ],
@@ -6275,7 +6413,6 @@ export class GeneratedAppService {
         requiredRealGateRunnerIds: [...GATE_7_REQUIRED_REAL_GATE_RUNNER_IDS],
         evidenceIds: [...upstreamEvidenceIds, ...gate7EvidenceIds],
         repairSuggestions: [
-          '接入真实 Gate 3 build/unit runner 并产出真实构建与测试报告。',
           '接入真实 Gate 4 integration runner 并产出 API、Agent/Workflow、插件 sandbox trace。',
           '接入真实 Gate 5 browser runner 并产出截图、视频、trace、console 和 network 证据。',
           '接入真实 Gate 6 independent verifier 并产出独立 verdict。',
@@ -6301,12 +6438,12 @@ export class GeneratedAppService {
             : (upstreamEvidenceRefs.find((entry) => entry.gateId === gateId)
                 ?.evidenceIds ?? []),
         required: true,
-        executionLevel: this.resolveGate7CoverageExecutionLevel(gateId),
+        executionLevel: this.resolveGate7CoverageExecutionLevel(
+          gateId,
+          buildUnitPlan,
+        ),
         skeletonOnly:
-          gateId === 'gate-7' ||
-          GATE_7_SKELETON_ONLY_UPSTREAM_GATE_IDS.includes(
-            gateId as (typeof GATE_7_SKELETON_ONLY_UPSTREAM_GATE_IDS)[number],
-          ),
+          gateId === 'gate-7' || skeletonOnlyUpstreamGateIds.includes(gateId),
         requiredRealGateRunnerId: this.resolveGate7RequiredRealRunnerId(gateId),
       })),
       artifactCoverage: releaseManifest.map((artifact) => ({
@@ -6325,12 +6462,23 @@ export class GeneratedAppService {
     };
   }
 
-  private resolveGate7CoverageExecutionLevel(gateId: string): string {
+  private resolveGate7SkeletonOnlyUpstreamGateIds(
+    buildUnitPlan: GeneratedAppBuildUnitPlan,
+  ): string[] {
+    return buildUnitPlan.executionLevel === 'real-local-command-plan'
+      ? ['gate-4', 'gate-5', 'gate-6']
+      : ['gate-3', 'gate-4', 'gate-5', 'gate-6'];
+  }
+
+  private resolveGate7CoverageExecutionLevel(
+    gateId: string,
+    buildUnitPlan: GeneratedAppBuildUnitPlan,
+  ): string {
     const executionLevels: Record<string, string> = {
       'gate-0': 'app-spec-deterministic-completeness',
       'gate-1': 'architecture-plan-deterministic-completeness',
       'gate-2': 'static-contracts-deterministic-completeness',
-      'gate-3': 'contract-skeleton',
+      'gate-3': buildUnitPlan.executionLevel,
       'gate-4': 'integration-skeleton',
       'gate-5': 'browser-acceptance-skeleton',
       'gate-6': 'independent-verifier-skeleton',
@@ -6421,26 +6569,34 @@ export class GeneratedAppService {
 
     const plan = publishCandidatePlan as GeneratedAppPublishCandidatePlan;
     const blockingReasons = plan.finalVerdict.blockingReasons.join('；');
+    const skeletonOnlyUpstreamGateIds =
+      this.resolveGate7SkeletonOnlyUpstreamGateIds(buildUnitPlan);
+    const gate7FailureIntro =
+      buildUnitPlan.executionLevel === 'real-local-command-plan'
+        ? GATE_7_RUNNER_INCOMPLETE_FAILURE_REASON
+        : 'Gate 7 publish-candidate guard skeleton 检测到 Gate 3 仍不是真实本地命令执行证据，且 Gate 4-6 仍为 skeleton-only upstream evidence，不能形成 publish candidate。';
     const failure: GeneratedAppGateRunFailure = {
       code: 'publish-candidate-guard-blocked',
-      message: `${GATE_7_RUNNER_INCOMPLETE_FAILURE_REASON} 阻断原因：${blockingReasons}`,
+      message: `${gate7FailureIntro} 阻断原因：${blockingReasons}`,
       details: {
         blockers: plan.publicationBlockers,
         finalVerdict: plan.finalVerdict,
-        skeletonOnlyUpstreamGateIds: [
-          ...GATE_7_SKELETON_ONLY_UPSTREAM_GATE_IDS,
-        ],
+        skeletonOnlyUpstreamGateIds,
       },
     };
 
     return {
       status: 'failed',
       summary:
-        'Gate 7 失败：publishCandidatePlan guard skeleton 已生成并保留，但检测到 Gate 3-6 仍只有 skeleton/contract-level completeness evidence，缺少真实 build/test/integration/browser/verifier 证据，不能形成 publish candidate 或启用公开分享。',
+        buildUnitPlan.executionLevel === 'real-local-command-plan'
+          ? 'Gate 7 失败：publishCandidatePlan guard skeleton 已生成并保留；Gate 3 构建与单元层已按当前执行器记录 evidence，但 Gate 4-6 仍只有 skeleton/contract-level completeness evidence，缺少真实 integration/browser/verifier 证据，不能形成 publish candidate 或启用公开分享。'
+          : 'Gate 7 失败：publishCandidatePlan guard skeleton 已生成并保留；Gate 3 仍不是真实本地命令执行证据，Gate 4-6 仍只有 skeleton/contract-level completeness evidence，不能形成 publish candidate 或启用公开分享。',
       evidence,
       failure,
       repairInstructions:
-        '接入真实 Gate 3-6 执行 runner、真实 artifact 签收和真实独立 verifier verdict 后，再由 Gate 7 重新评估 publish candidate；在 Gate 7 guard 失败期间 public token 必须保持禁用并清空。',
+        buildUnitPlan.executionLevel === 'real-local-command-plan'
+          ? '接入真实 Gate 4-6 执行 runner、真实 artifact 签收和真实独立 verifier verdict 后，再由 Gate 7 重新评估 publish candidate；在 Gate 7 guard 失败期间 public token 必须保持禁用并清空。'
+          : '接入真实 Gate 3-6 执行 runner、真实 artifact 签收和真实独立 verifier verdict 后，再由 Gate 7 重新评估 publish candidate；在 Gate 7 guard 失败期间 public token 必须保持禁用并清空。',
     };
   }
 
@@ -8515,6 +8671,20 @@ export class GeneratedAppService {
     const componentGoldenTests = this.getRecord(
       buildUnitPlan.componentGoldenTests,
     );
+    const generationWorkspace = this.getRecord(
+      buildUnitPlan.generationWorkspace,
+    );
+    const workspaceMaterializedFrom = this.getRecord(
+      generationWorkspace?.materializedFrom,
+    );
+    const workspaceWritePolicy = this.getRecord(
+      generationWorkspace?.writePolicy,
+    );
+    const workspaceFiles = this.getRecordArray(generationWorkspace?.files);
+    const workspaceArtifactPaths = this.getRecord(
+      generationWorkspace?.artifactPaths,
+    );
+    const commandPlan = this.getRecordArray(buildUnitPlan.commandPlan);
     const artifactExpectations = this.getRecordArray(
       buildUnitPlan.artifactExpectations,
     );
@@ -8577,17 +8747,208 @@ export class GeneratedAppService {
               buildUnitPlan.staticContractsVersion,
             )} 与 staticContracts.contractVersion=${staticContracts.contractVersion} 不一致`,
           ]),
-      ...(buildUnitPlan.executionLevel === 'contract-skeleton'
+      ...(typeof buildUnitPlan.executionLevel === 'string' &&
+      GATE_3_ALLOWED_EXECUTION_LEVELS.includes(
+        buildUnitPlan.executionLevel as (typeof GATE_3_ALLOWED_EXECUTION_LEVELS)[number],
+      )
         ? []
-        : ['executionLevel 必须为 contract-skeleton']),
+        : [
+            `executionLevel 必须为 ${GATE_3_ALLOWED_EXECUTION_LEVELS.join(
+              ' | ',
+            )} 之一`,
+          ]),
+    ];
+    const workspaceRelativePath = this.getNonEmptyString(
+      generationWorkspace?.relativePath,
+    );
+    const workspaceFilePaths = workspaceFiles
+      .map((file) => this.getNonEmptyString(file.path))
+      .filter((path): path is string => path !== null);
+    const workspaceIssues = [
+      ...this.requireRecord(generationWorkspace, 'generationWorkspace'),
+      ...(generationWorkspace?.contractVersion === 1
+        ? []
+        : ['generationWorkspace.contractVersion 必须为 1']),
+      ...(generationWorkspace?.storageKind ===
+      'server-controlled-local-workspace'
+        ? []
+        : [
+            'generationWorkspace.storageKind 必须为 server-controlled-local-workspace',
+          ]),
+      ...(generationWorkspace?.rootLabel === 'generated-app-workspaces'
+        ? []
+        : ['generationWorkspace.rootLabel 必须为 generated-app-workspaces']),
+      ...(!this.getNonEmptyString(generationWorkspace?.workspaceId)
+        ? ['generationWorkspace.workspaceId 缺失']
+        : []),
+      ...(!workspaceRelativePath
+        ? ['generationWorkspace.relativePath 缺失']
+        : []),
+      ...this.buildSafeRelativePathIssues(
+        'generationWorkspace.relativePath',
+        workspaceRelativePath,
+      ),
+      ...(generationWorkspace?.scaffold === 'react-vite-typescript'
+        ? []
+        : ['generationWorkspace.scaffold 必须为 react-vite-typescript']),
+      ...this.requireRecord(
+        workspaceMaterializedFrom,
+        'generationWorkspace.materializedFrom',
+      ),
+      ...(workspaceMaterializedFrom?.appSpecVersion === appSpec.version
+        ? []
+        : [
+            `generationWorkspace.materializedFrom.appSpecVersion=${String(
+              workspaceMaterializedFrom?.appSpecVersion,
+            )} 与 AppSpec version=${appSpec.version} 不一致`,
+          ]),
+      ...(workspaceMaterializedFrom?.staticContractsVersion ===
+      staticContracts.contractVersion
+        ? []
+        : [
+            `generationWorkspace.materializedFrom.staticContractsVersion=${String(
+              workspaceMaterializedFrom?.staticContractsVersion,
+            )} 与 staticContracts.contractVersion=${staticContracts.contractVersion} 不一致`,
+          ]),
+      ...this.requireRecord(
+        workspaceWritePolicy,
+        'generationWorkspace.writePolicy',
+      ),
+      ...(workspaceWritePolicy?.arbitraryPathWriteAllowed === false
+        ? []
+        : [
+            'generationWorkspace.writePolicy.arbitraryPathWriteAllowed 必须为 false',
+          ]),
+      ...(workspaceWritePolicy?.traversalGuard ===
+      'resolve-inside-workspace-root'
+        ? []
+        : [
+            'generationWorkspace.writePolicy.traversalGuard 必须为 resolve-inside-workspace-root',
+          ]),
+      ...(workspaceWritePolicy?.exposesAbsoluteHostPath === false
+        ? []
+        : [
+            'generationWorkspace.writePolicy.exposesAbsoluteHostPath 必须为 false',
+          ]),
+      ...this.buildMissingItemsIssues(
+        'generationWorkspace.files.path',
+        workspaceFilePaths,
+        [...GATE_3_REQUIRED_WORKSPACE_FILE_PATHS],
+      ),
+      ...workspaceFilePaths.flatMap((path, index) =>
+        this.buildSafeRelativePathIssues(
+          `generationWorkspace.files[${index}].path`,
+          path,
+        ),
+      ),
+      ...this.requireRecord(
+        workspaceArtifactPaths,
+        'generationWorkspace.artifactPaths',
+      ),
+      ...[
+        'sourceManifest',
+        'sourceArchive',
+        'buildOutput',
+        'buildManifest',
+        'unitReport',
+        'componentGoldenReport',
+        'coverageSummary',
+      ].flatMap((field) =>
+        this.getNonEmptyString(workspaceArtifactPaths?.[field])
+          ? this.buildSafeRelativePathIssues(
+              `generationWorkspace.artifactPaths.${field}`,
+              this.getNonEmptyString(workspaceArtifactPaths?.[field]),
+            )
+          : [`generationWorkspace.artifactPaths.${field} 缺失`],
+      ),
+    ];
+    const commandIds = commandPlan
+      .map((command) => this.getNonEmptyString(command.commandId))
+      .filter((commandId): commandId is string => commandId !== null);
+    const knownCommandIds = new Set<string>([...GATE_3_REQUIRED_COMMAND_IDS]);
+    const commandPlanIssues = [
+      ...(commandPlan.length === 0 ? ['commandPlan 不能为空'] : []),
+      ...this.buildMissingItemsIssues('commandPlan.commandId', commandIds, [
+        ...GATE_3_REQUIRED_COMMAND_IDS,
+      ]),
+      ...this.buildUnknownReferenceIssues(
+        'commandPlan.commandId',
+        commandIds,
+        knownCommandIds,
+      ),
+      ...this.buildDuplicateItemIssues('commandPlan.commandId', commandIds),
+      ...commandPlan.flatMap((command, index) => {
+        const commandId = this.getNonEmptyString(command.commandId);
+        const commandText = this.getNonEmptyString(command.command);
+        const expectedCommand =
+          commandId && commandId in GATE_3_ALLOWED_COMMAND_BY_ID
+            ? GATE_3_ALLOWED_COMMAND_BY_ID[
+                commandId as (typeof GATE_3_REQUIRED_COMMAND_IDS)[number]
+              ]
+            : null;
+        const workingDirectory = this.getNonEmptyString(
+          command.workingDirectory,
+        );
+
+        return [
+          ...(!commandId ? [`commandPlan[${index}].commandId 缺失`] : []),
+          ...(!commandText ? [`commandPlan[${index}].command 缺失`] : []),
+          ...(expectedCommand && commandText !== expectedCommand
+            ? [
+                `commandPlan[${index}].command 必须为受控命令 ${expectedCommand}`,
+              ]
+            : []),
+          ...(!workingDirectory
+            ? [`commandPlan[${index}].workingDirectory 缺失`]
+            : []),
+          ...this.buildSafeRelativePathIssues(
+            `commandPlan[${index}].workingDirectory`,
+            workingDirectory,
+          ),
+          ...(workspaceRelativePath &&
+          workingDirectory &&
+          workingDirectory !== workspaceRelativePath
+            ? [
+                `commandPlan[${index}].workingDirectory 必须等于 generationWorkspace.relativePath`,
+              ]
+            : []),
+          ...(this.getStringArray(command.producesArtifactIds).length === 0
+            ? [`commandPlan[${index}].producesArtifactIds 不能为空`]
+            : []),
+          ...this.buildUnknownReferenceIssues(
+            `commandPlan[${index}].requirementIds`,
+            this.getStringArray(command.requirementIds),
+            knownRequirementIds,
+          ),
+          ...this.buildUnknownReferenceIssues(
+            `commandPlan[${index}].scenarioIds`,
+            this.getStringArray(command.scenarioIds),
+            knownScenarioIds,
+          ),
+        ];
+      }),
     ];
     const frontendBuildIssues = [
       ...this.requireRecord(frontendBuild, 'frontendBuild'),
-      ...(!this.getNonEmptyString(frontendBuild?.command)
-        ? ['frontendBuild.command 缺失']
-        : []),
+      ...this.buildControlledCommandIssues(
+        'frontendBuild.command',
+        this.getNonEmptyString(frontendBuild?.command),
+        'gate-3-frontend-build-command',
+      ),
       ...(!this.getNonEmptyString(frontendBuild?.workingDirectory)
         ? ['frontendBuild.workingDirectory 缺失']
+        : []),
+      ...this.buildSafeRelativePathIssues(
+        'frontendBuild.workingDirectory',
+        this.getNonEmptyString(frontendBuild?.workingDirectory),
+      ),
+      ...(workspaceRelativePath &&
+      this.getNonEmptyString(frontendBuild?.workingDirectory) &&
+      this.getNonEmptyString(frontendBuild?.workingDirectory) !==
+        workspaceRelativePath
+        ? [
+            'frontendBuild.workingDirectory 必须等于 generationWorkspace.relativePath',
+          ]
         : []),
       ...this.buildMissingItemsIssues(
         'frontendBuild.routeIds',
@@ -8627,12 +8988,18 @@ export class GeneratedAppService {
     ];
     const typecheckIssues = [
       ...this.requireRecord(typecheck, 'typecheck'),
-      ...(!this.getNonEmptyString(typecheck?.command)
-        ? ['typecheck.command 缺失']
-        : []),
+      ...this.buildControlledCommandIssues(
+        'typecheck.command',
+        this.getNonEmptyString(typecheck?.command),
+        'gate-3-typecheck-command',
+      ),
       ...(!this.getNonEmptyString(typecheck?.tsconfigPath)
         ? ['typecheck.tsconfigPath 缺失']
         : []),
+      ...this.buildSafeRelativePathIssues(
+        'typecheck.tsconfigPath',
+        this.getNonEmptyString(typecheck?.tsconfigPath),
+      ),
       ...this.buildMissingItemsIssues(
         'typecheck.requirementIds',
         this.getStringArray(typecheck?.requirementIds),
@@ -8646,12 +9013,18 @@ export class GeneratedAppService {
     ];
     const unitTestIssues = [
       ...this.requireRecord(unitTests, 'unitTests'),
-      ...(!this.getNonEmptyString(unitTests?.command)
-        ? ['unitTests.command 缺失']
-        : []),
+      ...this.buildControlledCommandIssues(
+        'unitTests.command',
+        this.getNonEmptyString(unitTests?.command),
+        'gate-3-unit-test-command',
+      ),
       ...(!this.getNonEmptyString(unitTests?.entry)
         ? ['unitTests.entry 缺失']
         : []),
+      ...this.buildSafeRelativePathIssues(
+        'unitTests.entry',
+        this.getNonEmptyString(unitTests?.entry),
+      ),
       ...this.buildMissingItemsIssues(
         'unitTests.requirementIds',
         this.getStringArray(unitTests?.requirementIds),
@@ -8675,15 +9048,25 @@ export class GeneratedAppService {
     ];
     const componentGoldenIssues = [
       ...this.requireRecord(componentGoldenTests, 'componentGoldenTests'),
-      ...(!this.getNonEmptyString(componentGoldenTests?.command)
-        ? ['componentGoldenTests.command 缺失']
-        : []),
+      ...this.buildControlledCommandIssues(
+        'componentGoldenTests.command',
+        this.getNonEmptyString(componentGoldenTests?.command),
+        'gate-3-component-golden-test-entry',
+      ),
       ...(!this.getNonEmptyString(componentGoldenTests?.entry)
         ? ['componentGoldenTests.entry 缺失']
         : []),
+      ...this.buildSafeRelativePathIssues(
+        'componentGoldenTests.entry',
+        this.getNonEmptyString(componentGoldenTests?.entry),
+      ),
       ...(!this.getNonEmptyString(componentGoldenTests?.goldenArtifactPath)
         ? ['componentGoldenTests.goldenArtifactPath 缺失']
         : []),
+      ...this.buildSafeRelativePathIssues(
+        'componentGoldenTests.goldenArtifactPath',
+        this.getNonEmptyString(componentGoldenTests?.goldenArtifactPath),
+      ),
       ...this.buildMissingItemsIssues(
         'componentGoldenTests.scenarioIds',
         this.getStringArray(componentGoldenTests?.scenarioIds),
@@ -8731,6 +9114,10 @@ export class GeneratedAppService {
         ...(!this.getNonEmptyString(artifact.path)
           ? [`artifactExpectations[${index}].path 缺失`]
           : []),
+        ...this.buildSafeRelativePathIssues(
+          `artifactExpectations[${index}].path`,
+          this.getNonEmptyString(artifact.path),
+        ),
         ...(artifact.required === true
           ? []
           : [`artifactExpectations[${index}].required 必须为 true`]),
@@ -8907,6 +9294,22 @@ export class GeneratedAppService {
         summary:
           '检查 buildUnitPlan 是否绑定当前 AppSpec、generationPlan 和 staticContracts。',
         issues: versionIssues,
+      },
+      {
+        id: 'generation-workspace-contract',
+        label: 'Generation Workspace 契约',
+        passed: workspaceIssues.length === 0,
+        summary:
+          '检查 Gate 3 是否使用受控 React/Vite/TypeScript workspace 契约、相对路径和 artifact 路径。',
+        issues: workspaceIssues,
+      },
+      {
+        id: 'command-plan',
+        label: 'Gate 3 命令计划',
+        passed: commandPlanIssues.length === 0,
+        summary:
+          '检查 Gate 3 build/typecheck/unit/component-golden 命令计划、工作目录、产物和需求/场景覆盖。',
+        issues: commandPlanIssues,
       },
       {
         id: 'frontend-build-command',
@@ -10298,6 +10701,51 @@ export class GeneratedAppService {
     return [...duplicates].map(
       (value) => `${label} 存在重复值 ${this.formatIssueValue(value)}`,
     );
+  }
+
+  private buildSafeRelativePathIssues(
+    label: string,
+    value: string | null,
+  ): string[] {
+    if (!value) {
+      return [];
+    }
+
+    if (
+      value.startsWith('/') ||
+      value.startsWith('\\') ||
+      value.includes('\0') ||
+      value.includes('\\')
+    ) {
+      return [`${label} 必须是 workspace 相对路径且不能是绝对路径`];
+    }
+
+    const segments = value.split('/');
+
+    if (
+      segments.some(
+        (segment) =>
+          segment.length === 0 || segment === '.' || segment === '..',
+      )
+    ) {
+      return [`${label} 不能包含空路径段、. 或 .. traversal`];
+    }
+
+    return [];
+  }
+
+  private buildControlledCommandIssues(
+    label: string,
+    value: string | null,
+    commandId: (typeof GATE_3_REQUIRED_COMMAND_IDS)[number],
+  ): string[] {
+    if (!value) {
+      return [`${label} 缺失`];
+    }
+
+    const expected = GATE_3_ALLOWED_COMMAND_BY_ID[commandId];
+
+    return value === expected ? [] : [`${label} 必须为受控命令 ${expected}`];
   }
 
   private collectSensitiveTokenIssues(

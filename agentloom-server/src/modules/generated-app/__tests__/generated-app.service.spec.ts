@@ -24,6 +24,10 @@ import {
 } from '../generated-app.exceptions';
 import { createInitialGeneratedAppGateResults } from '../generated-app.gates';
 import { GeneratedAppService } from '../generated-app.service';
+import {
+  GeneratedAppGate3WorkspaceRunner,
+  type GeneratedAppGate3RunnerResult,
+} from '../generated-app.workspace';
 
 const { mockTenantDb } = vi.hoisted(() => ({
   mockTenantDb: {
@@ -57,6 +61,45 @@ const DEFAULT_START_GENERATION_RUN_DTO = {
   maxRepairAttempts: 3,
   maxRuntimeSeconds: 1800,
 } as const;
+
+function createConfigService(
+  overrides: Record<string, string | undefined> = {},
+): ConfigService {
+  return {
+    get: vi.fn((key: string) => {
+      if (Object.prototype.hasOwnProperty.call(overrides, key)) {
+        return overrides[key];
+      }
+
+      return key === 'APP_FRONTEND_URL'
+        ? 'https://studio.example.test'
+        : undefined;
+    }),
+  } as unknown as ConfigService;
+}
+
+function createGate3RunnerStub(
+  configService: ConfigService,
+  result: GeneratedAppGate3RunnerResult,
+): GeneratedAppGate3WorkspaceRunner {
+  const delegate = new GeneratedAppGate3WorkspaceRunner(configService);
+
+  return {
+    getExecutionLevel: vi.fn(() => result.executionLevel),
+    getExecutorMode: vi.fn(() =>
+      result.executionLevel === 'fixture-execution'
+        ? 'fixture'
+        : result.executionLevel === 'disabled-execution'
+          ? 'disabled'
+          : 'real',
+    ),
+    buildWorkspaceContract: vi.fn(
+      delegate.buildWorkspaceContract.bind(delegate),
+    ),
+    buildCommandPlan: vi.fn(delegate.buildCommandPlan.bind(delegate)),
+    materializeAndRun: vi.fn().mockResolvedValue(result),
+  } as unknown as GeneratedAppGate3WorkspaceRunner;
+}
 
 function createSelectChain<T>(result: T[]) {
   return {
@@ -350,17 +393,132 @@ describe('GeneratedAppService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
-    const configService = {
-      get: vi.fn((key: string) =>
-        key === 'APP_FRONTEND_URL' ? 'https://studio.example.test' : undefined,
-      ),
-    };
+    const configService = createConfigService();
 
     service = new GeneratedAppService(
       mockTenantDb as unknown as DrizzleDB,
-      configService as unknown as ConfigService,
+      configService,
     );
   });
+
+  async function startGenerationRunWithGate3Result(
+    runnerResult: GeneratedAppGate3RunnerResult,
+  ) {
+    const configService = createConfigService();
+    const gate3Runner = createGate3RunnerStub(configService, runnerResult);
+    const serviceWithRunner = new GeneratedAppService(
+      mockTenantDb as unknown as DrizzleDB,
+      configService,
+      gate3Runner,
+    );
+    const app = createGeneratedApp({
+      status: 'published',
+      readiness: createPublishCandidateReadiness(),
+      publicShareEnabled: true,
+      publicShareToken: '9'.repeat(64),
+      publicShareCreatedAt: NOW,
+    });
+    const run = createGeneratedAppGenerationRun();
+    const gateRun = createGeneratedAppGateRun({
+      gateId: 'gate-0',
+      gateOrder: 0,
+      gateName: '需求规格门禁',
+      generationRunId: GENERATION_RUN_ID,
+      status: 'passed',
+      summary:
+        'Gate 0 通过：AppSpec 结构完整，核心需求均有 acceptance scenario 与 traceability 覆盖。',
+      evidence: [],
+    });
+    const gate1Run = createGeneratedAppGateRun({
+      id: GATE_1_RUN_ID,
+      gateId: 'gate-1',
+      gateOrder: 1,
+      gateName: '架构计划门禁',
+      generationRunId: GENERATION_RUN_ID,
+      status: 'passed',
+      summary:
+        'Gate 1 通过：generationPlan 已覆盖 AppSpec 页面、Agent/Workflow 编排、插件/工具策略、数据持久化、Gate 2-7 测试计划和需求 traceability。',
+      evidence: [],
+    });
+    const gate2Run = createGeneratedAppGateRun({
+      id: GATE_2_RUN_ID,
+      gateId: 'gate-2',
+      gateOrder: 2,
+      gateName: '静态合约门禁',
+      generationRunId: GENERATION_RUN_ID,
+      status: 'passed',
+      summary:
+        'Gate 2 通过：staticContracts 已覆盖公开运行输入输出、前端路由、Workflow/Agent 编排、插件权限、提交持久化、测试入口和需求 traceability。',
+      evidence: [],
+    });
+    const gate3Run = createGeneratedAppGateRun({
+      id: GATE_3_RUN_ID,
+      gateId: 'gate-3',
+      gateOrder: 3,
+      gateName: '构建与单元门禁',
+      generationRunId: GENERATION_RUN_ID,
+      status: runnerResult.status,
+      summary: runnerResult.summary,
+      evidence: runnerResult.evidence,
+      failure: runnerResult.failure,
+      repairInstructions: runnerResult.repairInstructions,
+    });
+    const completedRun = createGeneratedAppGenerationRun({
+      status: 'failed',
+      failureReason:
+        runnerResult.failure?.message ??
+        'Gate 3 构建与单元门禁失败，不能继续执行 Gate 4-7。',
+      completedAt: NOW,
+    });
+    const insertRunChain = createInsertReturningChain([run]);
+    const insertGateRunChain = createInsertReturningChain([gateRun]);
+    const insertGate1RunChain = createInsertReturningChain([gate1Run]);
+    const insertGate2RunChain = createInsertReturningChain([gate2Run]);
+    const insertGate3RunChain = createInsertReturningChain([gate3Run]);
+    const updateAppAfterGate0Chain =
+      createGeneratedAppUpdateReturningFromPayload(app);
+    const updateAppAfterGate1Chain =
+      createGeneratedAppUpdateReturningFromPayload(app);
+    const updateAppAfterGate2Chain =
+      createGeneratedAppUpdateReturningFromPayload(app);
+    let gate3UpdatePayload: Partial<GeneratedApp> = {};
+    const updateAppAfterGate3Chain =
+      createGeneratedAppUpdateReturningFromPayload(app, (payload) => {
+        gate3UpdatePayload = payload;
+      });
+    const updateRunChain = createUpdateReturningChain([completedRun]);
+    mockTenantDb.select
+      .mockReturnValueOnce(createSelectChain([app]))
+      .mockReturnValueOnce(createSelectLatestRunNumberChain(null));
+    mockTenantDb.insert
+      .mockReturnValueOnce(insertRunChain)
+      .mockReturnValueOnce(insertGateRunChain)
+      .mockReturnValueOnce(insertGate1RunChain)
+      .mockReturnValueOnce(insertGate2RunChain)
+      .mockReturnValueOnce(insertGate3RunChain);
+    mockTenantDb.update
+      .mockReturnValueOnce(updateAppAfterGate0Chain)
+      .mockReturnValueOnce(updateAppAfterGate1Chain)
+      .mockReturnValueOnce(updateAppAfterGate2Chain)
+      .mockReturnValueOnce(updateAppAfterGate3Chain)
+      .mockReturnValueOnce(updateRunChain);
+
+    const response = await serviceWithRunner.startGenerationRun(
+      TENANT_ID,
+      USER_ID,
+      APP_ID,
+      DEFAULT_START_GENERATION_RUN_DTO,
+    );
+
+    return {
+      app,
+      gate3Runner,
+      gate3UpdatePayload,
+      insertGate3RunChain,
+      response,
+      updateRunChain,
+    };
+  }
 
   it('非 publish_candidate 状态启用公开链接时应拒绝', async () => {
     const selectChain = createSelectChain([createGeneratedApp()]);
@@ -712,7 +870,7 @@ describe('GeneratedAppService', () => {
       generationRunId: GENERATION_RUN_ID,
       status: 'passed',
       summary:
-        'Gate 3 通过：buildUnitPlan 构建与单元 skeleton 已完整覆盖命令、预期产物、测试入口、合约/场景覆盖、插件构建期望和失败捕获字段；本结果仅表示契约级 skeleton 完整，不代表真实前端构建、插件构建、单元测试、组件测试或 golden test 已经执行。',
+        'Gate 3 通过：Generation Workspace 已 materialize，real-local command plan 已执行 build/typecheck/unit/component-golden 四类受控命令并产出构建、测试、golden 和 coverage artifact 证据；Gate 4-6 仍需真实集成、浏览器和独立 verifier runner。',
       evidence: [],
     });
     const gate4Run = createGeneratedAppGateRun({
@@ -756,14 +914,14 @@ describe('GeneratedAppService', () => {
       generationRunId: GENERATION_RUN_ID,
       status: 'failed',
       summary:
-        'Gate 7 失败：publishCandidatePlan guard skeleton 已生成并保留，但检测到 Gate 3-6 仍只有 skeleton/contract-level completeness evidence，缺少真实 build/test/integration/browser/verifier 证据，不能形成 publish candidate 或启用公开分享。',
+        'Gate 7 失败：publishCandidatePlan guard skeleton 已生成并保留；Gate 3 构建与单元层已按当前执行器记录 evidence，但 Gate 4-6 仍只有 skeleton/contract-level completeness evidence，缺少真实 integration/browser/verifier 证据，不能形成 publish candidate 或启用公开分享。',
       failure: {
         code: 'publish-candidate-guard-blocked',
         message:
-          'Gate 7 publish-candidate guard skeleton 检测到 Gate 3-6 仍为 skeleton-only upstream evidence，不能形成 publish candidate。',
+          'Gate 7 publish-candidate guard skeleton 检测到 Gate 4-6 仍为 skeleton-only upstream evidence，且缺少后续真实 integration/browser/verifier 证据，不能形成 publish candidate。',
       },
       repairInstructions:
-        '接入真实 Gate 3-6 执行 runner、真实 artifact 签收和真实独立 verifier verdict 后，再由 Gate 7 重新评估 publish candidate；在 Gate 7 guard 失败期间 public token 必须保持禁用并清空。',
+        '接入真实 Gate 4-6 执行 runner、真实 artifact 签收和真实独立 verifier verdict 后，再由 Gate 7 重新评估 publish candidate；在 Gate 7 guard 失败期间 public token 必须保持禁用并清空。',
       evidence: [],
     });
     const completedRun = createGeneratedAppGenerationRun({
@@ -773,9 +931,9 @@ describe('GeneratedAppService', () => {
       maxRuntimeSeconds: 600,
       completedAt: NOW,
       summary:
-        '门禁运行器骨架完成 Gate 0 AppSpec 完整性检查、Gate 1 架构计划门禁、Gate 2 静态合约门禁、Gate 3 构建与单元 skeleton 完整性检查、Gate 4 integration skeleton 完整性检查、Gate 5 browser acceptance skeleton 完整性检查和 Gate 6 independent verifier skeleton 完整性检查；Gate 7 publish-candidate guard skeleton 检测到上游仍只有 skeleton/contract-level evidence，当前应用不能形成 publish candidate，保持不可发布。',
+        '门禁运行器完成 Gate 0 AppSpec 完整性检查、Gate 1 架构计划门禁、Gate 2 静态合约门禁、Gate 3 Generation Workspace 与构建/单元执行器；Gate 4 integration、Gate 5 browser acceptance 和 Gate 6 independent verifier 仍为 skeleton 完整性检查，Gate 7 publish-candidate guard 检测到缺少真实集成/浏览器/独立审查证据，当前应用不能形成 publish candidate，保持不可发布。',
       failureReason:
-        'Gate 7 publish-candidate guard skeleton 检测到 Gate 3-6 仍为 skeleton-only upstream evidence，不能形成 publish candidate。 阻断原因：Gate 3-6 当前只有 skeleton/contract-level completeness evidence。；缺少真实 build/test/integration/browser/verifier artifact 签收。；Gate 7 guard 失败期间 public share token 必须保持禁用并清空。',
+        'Gate 7 publish-candidate guard skeleton 检测到 Gate 4-6 仍为 skeleton-only upstream evidence，且缺少后续真实 integration/browser/verifier 证据，不能形成 publish candidate。 阻断原因：Gate 4-6 当前只有 skeleton/contract-level completeness evidence。；缺少真实 integration/browser/verifier artifact 签收。；Gate 7 guard 失败期间 public share token 必须保持禁用并清空。',
     });
     const insertRunChain = createInsertReturningChain([run]);
     const insertGateRunChain = createInsertReturningChain([gateRun]);
@@ -974,9 +1132,9 @@ describe('GeneratedAppService', () => {
         summary: expect.stringContaining('Gate 7 失败：publishCandidatePlan'),
         failure: expect.objectContaining({
           code: 'publish-candidate-guard-blocked',
-          message: expect.stringContaining('skeleton-only upstream evidence'),
+          message: expect.stringContaining('Gate 4-6'),
         }),
-        repairInstructions: expect.stringContaining('接入真实 Gate 3-6'),
+        repairInstructions: expect.stringContaining('接入真实 Gate 4-6'),
       }),
     );
     const gate1RunPayload = insertGate1RunChain.values.mock.calls[0]?.[0] as {
@@ -1015,25 +1173,65 @@ describe('GeneratedAppService', () => {
     expect(gate3RunPayload.evidence).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
+          id: 'gate-3-generation-workspace-materialized',
+          kind: 'build',
+          summary: expect.stringContaining('未开放任意路径写入'),
+          details: expect.objectContaining({
+            storageKind: 'server-controlled-local-workspace',
+            rootLabel: 'generated-app-workspaces',
+            workspaceRef: expect.stringContaining(
+              `tenants/${TENANT_ID}/apps/${APP_ID}/runs/${GENERATION_RUN_ID}`,
+            ),
+            writePolicy: expect.objectContaining({
+              arbitraryPathWriteAllowed: false,
+              traversalGuard: 'resolve-inside-workspace-root',
+              exposesAbsoluteHostPath: false,
+            }),
+            artifactPaths: expect.objectContaining({
+              buildOutput: 'dist/index.html',
+              unitReport: 'artifacts/gate-3/unit-test-report.json',
+              componentGoldenReport:
+                'artifacts/gate-3/component-golden-report.json',
+            }),
+          }),
+        }),
+        expect.objectContaining({
           id: 'gate-3-frontend-build-command',
           kind: 'build',
-          summary: expect.stringContaining(
-            'contract-skeleton 完整性检查；未执行真实前端构建',
-          ),
+          summary: expect.stringContaining('exitCode=0'),
+          details: expect.objectContaining({
+            runnerId: 'gate-3-real-build-unit-runner',
+            executionMode: 'real_local_command_plan',
+            executed: true,
+            exitCode: 0,
+            artifactRefs: ['frontend-build-output'],
+            requirementIds: ['req-1'],
+            scenarioIds: ['scenario-1'],
+            stdoutSummary: expect.stringContaining('gate3-build'),
+          }),
         }),
         expect.objectContaining({
           id: 'gate-3-unit-test-command',
           kind: 'test',
-          summary: expect.stringContaining(
-            '未执行真实前端构建、插件构建、单元测试、组件测试或 golden test',
-          ),
+          summary: expect.stringContaining('mode=real_local_command_plan'),
+          details: expect.objectContaining({
+            executed: true,
+            exitCode: 0,
+            artifactRefs: ['unit-test-report'],
+            requirementIds: ['req-1'],
+            scenarioIds: ['scenario-1'],
+            stdoutSummary: expect.stringContaining('gate3-unit'),
+          }),
         }),
         expect.objectContaining({
-          id: 'gate-3-plugin-build-expectations',
-          kind: 'build',
-          summary: expect.stringContaining(
-            '未执行真实前端构建、插件构建、单元测试、组件测试或 golden test',
-          ),
+          id: 'gate-3-component-golden-test-entry',
+          kind: 'test',
+          details: expect.objectContaining({
+            executed: true,
+            exitCode: 0,
+            artifactRefs: ['component-golden-report', 'coverage-report'],
+            stdoutSummary: expect.stringContaining('gate3-component-golden'),
+          }),
         }),
       ]),
     );
@@ -1327,9 +1525,58 @@ describe('GeneratedAppService', () => {
         appSpecVersion: 1,
         generationPlanVersion: 1,
         staticContractsVersion: 1,
-        executionLevel: 'contract-skeleton',
+        executionLevel: 'real-local-command-plan',
+        generationWorkspace: expect.objectContaining({
+          contractVersion: 1,
+          storageKind: 'server-controlled-local-workspace',
+          rootLabel: 'generated-app-workspaces',
+          relativePath: expect.stringContaining(
+            `tenants/${TENANT_ID}/apps/${APP_ID}/runs/${GENERATION_RUN_ID}`,
+          ),
+          scaffold: 'react-vite-typescript',
+          writePolicy: expect.objectContaining({
+            arbitraryPathWriteAllowed: false,
+            traversalGuard: 'resolve-inside-workspace-root',
+            exposesAbsoluteHostPath: false,
+          }),
+          files: expect.arrayContaining([
+            expect.objectContaining({ path: 'package.json' }),
+            expect.objectContaining({ path: 'src/App.tsx' }),
+            expect.objectContaining({ path: 'scripts/gate3-build.mjs' }),
+          ]),
+          artifactPaths: expect.objectContaining({
+            sourceManifest: 'artifacts/gate-3/source-manifest.json',
+            buildOutput: 'dist/index.html',
+            coverageSummary: 'coverage/generated-app/coverage-summary.json',
+          }),
+        }),
+        commandPlan: expect.arrayContaining([
+          expect.objectContaining({
+            commandId: 'gate-3-frontend-build-command',
+            command: 'node scripts/gate3-build.mjs',
+            workingDirectory: expect.stringContaining(
+              `tenants/${TENANT_ID}/apps/${APP_ID}/runs/${GENERATION_RUN_ID}`,
+            ),
+            requirementIds: ['req-1'],
+            scenarioIds: ['scenario-1'],
+            producesArtifactIds: ['frontend-build-output'],
+          }),
+          expect.objectContaining({
+            commandId: 'gate-3-unit-test-command',
+            command: 'node scripts/gate3-unit.mjs',
+            producesArtifactIds: ['unit-test-report'],
+          }),
+          expect.objectContaining({
+            commandId: 'gate-3-component-golden-test-entry',
+            command: 'node scripts/gate3-component-golden.mjs',
+            producesArtifactIds: ['component-golden-report', 'coverage-report'],
+          }),
+        ]),
         frontendBuild: expect.objectContaining({
-          command: 'agentloom generated-app gate-3 build-and-unit',
+          command: 'node scripts/gate3-build.mjs',
+          workingDirectory: expect.stringContaining(
+            `tenants/${TENANT_ID}/apps/${APP_ID}/runs/${GENERATION_RUN_ID}`,
+          ),
           routeIds: ['page-public-runtime'],
           expectedArtifacts: expect.arrayContaining([
             'dist/index.html',
@@ -1337,15 +1584,15 @@ describe('GeneratedAppService', () => {
           ]),
         }),
         typecheck: expect.objectContaining({
-          command: 'agentloom generated-app gate-3 typecheck',
+          command: 'node scripts/gate3-typecheck.mjs',
           tsconfigPath: 'tsconfig.generated-app.json',
         }),
         unitTests: expect.objectContaining({
-          command: 'agentloom generated-app gate-3 unit-tests',
+          command: 'node scripts/gate3-unit.mjs',
           scenarioIds: ['scenario-1'],
         }),
         componentGoldenTests: expect.objectContaining({
-          command: 'agentloom generated-app gate-3 component-golden',
+          command: 'node scripts/gate3-component-golden.mjs',
           scenarioIds: ['scenario-1'],
         }),
         artifactExpectations: expect.arrayContaining([
@@ -1873,7 +2120,7 @@ describe('GeneratedAppService', () => {
         publicationBlockers: expect.arrayContaining([
           expect.objectContaining({
             category: 'skeleton_only_upstream_gate',
-            gateIds: ['gate-3', 'gate-4', 'gate-5', 'gate-6'],
+            gateIds: ['gate-4', 'gate-5', 'gate-6'],
           }),
           expect.objectContaining({
             category: 'stale_public_token_requirement',
@@ -1907,6 +2154,20 @@ describe('GeneratedAppService', () => {
           }),
         ],
         gateCoverage: expect.arrayContaining([
+          expect.objectContaining({
+            gateId: 'gate-3',
+            executionLevel: 'real-local-command-plan',
+            skeletonOnly: false,
+            evidenceIds: expect.arrayContaining([
+              'gate-3-generation-workspace-materialized',
+              'gate-3-frontend-build-command',
+            ]),
+          }),
+          expect.objectContaining({
+            gateId: 'gate-4',
+            executionLevel: 'integration-skeleton',
+            skeletonOnly: true,
+          }),
           expect.objectContaining({
             gateId: 'gate-7',
             executionLevel: 'publish-candidate-guard-skeleton',
@@ -1968,7 +2229,7 @@ describe('GeneratedAppService', () => {
         gateId: 'gate-3',
         generationRunId: GENERATION_RUN_ID,
         status: 'passed',
-        summary: expect.stringContaining('仅表示契约级 skeleton 完整'),
+        summary: expect.stringContaining('real-local command plan'),
       }),
       expect.objectContaining({
         gateId: 'gate-4',
@@ -2002,7 +2263,7 @@ describe('GeneratedAppService', () => {
           contractVersion: 1,
         }),
         buildUnitPlan: expect.objectContaining({
-          executionLevel: 'contract-skeleton',
+          executionLevel: 'real-local-command-plan',
         }),
         integrationPlan: expect.objectContaining({
           executionLevel: 'integration-skeleton',
@@ -2019,6 +2280,217 @@ describe('GeneratedAppService', () => {
       }),
     );
     expect(response.app.id).toBe(APP_ID);
+  });
+
+  it('Gate 7 不应把 Gate 3 fixture evidence 误判为真实 Gate 4-7 已通过', () => {
+    const app = createGeneratedApp();
+    const internals = service as unknown as {
+      buildGenerationPlan(
+        appSpec: GeneratedApp['appSpec'],
+      ): GeneratedAppGenerationPlan;
+      buildStaticContracts(
+        appSpec: GeneratedApp['appSpec'],
+        generationPlan: GeneratedAppGenerationPlan,
+      ): GeneratedAppStaticContracts;
+      buildBuildUnitPlan(
+        appSpec: GeneratedApp['appSpec'],
+        generationPlan: GeneratedAppGenerationPlan,
+        staticContracts: GeneratedAppStaticContracts,
+      ): GeneratedAppBuildUnitPlan;
+      buildIntegrationPlan(
+        appSpec: GeneratedApp['appSpec'],
+        generationPlan: GeneratedAppGenerationPlan,
+        staticContracts: GeneratedAppStaticContracts,
+        buildUnitPlan: GeneratedAppBuildUnitPlan,
+      ): GeneratedAppIntegrationPlan;
+      buildBrowserAcceptancePlan(
+        appSpec: GeneratedApp['appSpec'],
+        generationPlan: GeneratedAppGenerationPlan,
+        staticContracts: GeneratedAppStaticContracts,
+        buildUnitPlan: GeneratedAppBuildUnitPlan,
+        integrationPlan: GeneratedAppIntegrationPlan,
+      ): GeneratedAppBrowserAcceptancePlan;
+      buildIndependentVerificationPlan(
+        appSpec: GeneratedApp['appSpec'],
+        generationPlan: GeneratedAppGenerationPlan,
+        staticContracts: GeneratedAppStaticContracts,
+        buildUnitPlan: GeneratedAppBuildUnitPlan,
+        integrationPlan: GeneratedAppIntegrationPlan,
+        browserAcceptancePlan: GeneratedAppBrowserAcceptancePlan,
+        gateResults: GeneratedApp['gateResults'],
+      ): GeneratedAppIndependentVerificationPlan;
+      buildPublishCandidatePlan(
+        appSpec: GeneratedApp['appSpec'],
+        generationPlan: GeneratedAppGenerationPlan,
+        staticContracts: GeneratedAppStaticContracts,
+        buildUnitPlan: GeneratedAppBuildUnitPlan,
+        integrationPlan: GeneratedAppIntegrationPlan,
+        browserAcceptancePlan: GeneratedAppBrowserAcceptancePlan,
+        independentVerificationPlan: GeneratedAppIndependentVerificationPlan,
+        gateResults: GeneratedApp['gateResults'],
+      ): GeneratedAppPublishCandidatePlan;
+      evaluateGate7PublishCandidatePlan(
+        appSpec: GeneratedApp['appSpec'],
+        generationPlan: GeneratedAppGenerationPlan,
+        staticContracts: GeneratedAppStaticContracts,
+        buildUnitPlan: GeneratedAppBuildUnitPlan,
+        integrationPlan: GeneratedAppIntegrationPlan,
+        browserAcceptancePlan: GeneratedAppBrowserAcceptancePlan,
+        independentVerificationPlan: GeneratedAppIndependentVerificationPlan,
+        gateResults: GeneratedApp['gateResults'],
+        publishCandidatePlan: GeneratedAppPublishCandidatePlan,
+      ): {
+        status: 'passed' | 'failed';
+        failure: {
+          details?: { skeletonOnlyUpstreamGateIds?: string[] };
+        } | null;
+      };
+    };
+    const generationPlan = internals.buildGenerationPlan(app.appSpec);
+    const staticContracts = internals.buildStaticContracts(
+      app.appSpec,
+      generationPlan,
+    );
+    const fixtureBuildUnitPlan: GeneratedAppBuildUnitPlan = {
+      ...internals.buildBuildUnitPlan(
+        app.appSpec,
+        generationPlan,
+        staticContracts,
+      ),
+      executionLevel: 'fixture-execution',
+    };
+    const integrationPlan = internals.buildIntegrationPlan(
+      app.appSpec,
+      generationPlan,
+      staticContracts,
+      fixtureBuildUnitPlan,
+    );
+    const browserAcceptancePlan = internals.buildBrowserAcceptancePlan(
+      app.appSpec,
+      generationPlan,
+      staticContracts,
+      fixtureBuildUnitPlan,
+      integrationPlan,
+    );
+    const gateResultsThroughGate5 = createInitialGeneratedAppGateResults(
+      NOW.toISOString(),
+    ).map((gate) =>
+      ['gate-0', 'gate-1', 'gate-2', 'gate-3', 'gate-4', 'gate-5'].includes(
+        gate.gateId,
+      )
+        ? {
+            ...gate,
+            status: 'passed' as const,
+            summary: `${gate.name} fixture/skeleton evidence passed`,
+            evidence: [
+              {
+                id:
+                  gate.gateId === 'gate-3'
+                    ? 'gate-3-fixture-command-plan'
+                    : `${gate.gateId}-evidence`,
+                label: `${gate.name} evidence`,
+                kind:
+                  gate.gateId === 'gate-3'
+                    ? ('test' as const)
+                    : (gate.evidence[0]?.kind ?? ('manual' as const)),
+                url: null,
+                summary:
+                  gate.gateId === 'gate-3'
+                    ? 'fixture executor: command shape validated, real command not executed'
+                    : `${gate.name} skeleton evidence`,
+                details:
+                  gate.gateId === 'gate-3'
+                    ? {
+                        executionMode: 'fixture',
+                        executed: false,
+                        exitCode: null,
+                      }
+                    : undefined,
+              },
+            ],
+          }
+        : gate,
+    );
+    const independentVerificationPlan =
+      internals.buildIndependentVerificationPlan(
+        app.appSpec,
+        generationPlan,
+        staticContracts,
+        fixtureBuildUnitPlan,
+        integrationPlan,
+        browserAcceptancePlan,
+        gateResultsThroughGate5,
+      );
+    const gateResultsThroughGate6 = gateResultsThroughGate5.map((gate) =>
+      gate.gateId === 'gate-6'
+        ? {
+            ...gate,
+            status: 'passed' as const,
+            summary: 'Gate 6 independent verifier skeleton evidence passed',
+            evidence: [
+              {
+                id: 'gate-6-verifier-skeleton',
+                label: 'Gate 6 skeleton evidence',
+                kind: 'verifier' as const,
+                url: null,
+                summary: 'independent verifier skeleton only',
+              },
+            ],
+          }
+        : gate,
+    );
+
+    const publishCandidatePlan = internals.buildPublishCandidatePlan(
+      app.appSpec,
+      generationPlan,
+      staticContracts,
+      fixtureBuildUnitPlan,
+      integrationPlan,
+      browserAcceptancePlan,
+      independentVerificationPlan,
+      gateResultsThroughGate6,
+    );
+    const evaluation = internals.evaluateGate7PublishCandidatePlan(
+      app.appSpec,
+      generationPlan,
+      staticContracts,
+      fixtureBuildUnitPlan,
+      integrationPlan,
+      browserAcceptancePlan,
+      independentVerificationPlan,
+      gateResultsThroughGate6,
+      publishCandidatePlan,
+    );
+
+    expect(publishCandidatePlan.publicationBlockers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          category: 'skeleton_only_upstream_gate',
+          gateIds: ['gate-3', 'gate-4', 'gate-5', 'gate-6'],
+        }),
+      ]),
+    );
+    expect(publishCandidatePlan.gateCoverage).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          gateId: 'gate-3',
+          executionLevel: 'fixture-execution',
+          skeletonOnly: true,
+          evidenceIds: expect.arrayContaining(['gate-3-fixture-command-plan']),
+        }),
+        expect.objectContaining({
+          gateId: 'gate-4',
+          skeletonOnly: true,
+        }),
+      ]),
+    );
+    expect(evaluation.status).toBe('failed');
+    expect(evaluation.failure?.details?.skeletonOnlyUpstreamGateIds).toEqual([
+      'gate-3',
+      'gate-4',
+      'gate-5',
+      'gate-6',
+    ]);
   });
 
   it('Gate 1 失败时应写入失败证据、保留 generationPlan 并以 Gate 1 failure reason 结束', async () => {
@@ -2487,8 +2959,38 @@ describe('GeneratedAppService', () => {
     ).buildBuildUnitPlan(app.appSpec, validPlan, validContracts);
     const malformedBuildUnitPlan: GeneratedAppBuildUnitPlan = {
       ...validBuildUnitPlan,
+      generationWorkspace: validBuildUnitPlan.generationWorkspace
+        ? {
+            ...validBuildUnitPlan.generationWorkspace,
+            relativePath: '/tmp/leaked-generated-app',
+            files: [
+              ...validBuildUnitPlan.generationWorkspace.files,
+              {
+                path: '../escape.ts',
+                kind: 'source',
+                derivedFrom: 'generated-app-scaffold',
+                required: true,
+              },
+            ],
+            artifactPaths: {
+              ...validBuildUnitPlan.generationWorkspace.artifactPaths,
+              buildOutput: '/tmp/dist/index.html',
+            },
+          }
+        : undefined,
+      commandPlan: validBuildUnitPlan.commandPlan?.map((command, index) =>
+        index === 0
+          ? {
+              ...command,
+              command: 'sh -c "echo unsafe"',
+              workingDirectory: '../outside',
+            }
+          : command,
+      ),
       frontendBuild: {
         ...validBuildUnitPlan.frontendBuild,
+        command: 'sh -c "vite build"',
+        workingDirectory: '/tmp/leaked-generated-app',
         requirementIds: ['req-1', 'req-missing'],
         scenarioIds: ['scenario-1', 'scenario-missing'],
         expectedArtifacts: ['dist/index.html'],
@@ -2496,18 +2998,22 @@ describe('GeneratedAppService', () => {
       typecheck: {
         ...validBuildUnitPlan.typecheck,
         command: '',
+        tsconfigPath: '../tsconfig.generated-app.json',
         requirementIds: ['req-1', 'req-missing'],
       },
       unitTests: {
         ...validBuildUnitPlan.unitTests,
         command: '',
+        entry: '/tmp/runtime.contract.spec.ts',
         requirementIds: ['req-1', 'req-missing'],
         scenarioIds: ['scenario-1', 'scenario-missing'],
       },
       componentGoldenTests: {
         ...validBuildUnitPlan.componentGoldenTests,
+        command: 'node /tmp/golden.mjs',
+        entry: 'src//generated-app/__tests__/runtime.golden.spec.tsx',
         scenarioIds: ['scenario-1', 'scenario-missing'],
-        goldenArtifactPath: '',
+        goldenArtifactPath: '../golden.json',
       },
       artifactExpectations: [
         ...validBuildUnitPlan.artifactExpectations.filter(
@@ -2516,7 +3022,7 @@ describe('GeneratedAppService', () => {
         {
           artifactId: 'ghost-artifact',
           kind: 'ghost_report' as GeneratedAppBuildUnitPlan['artifactExpectations'][number]['kind'],
-          path: 'artifacts/gate-3/ghost.json',
+          path: '/tmp/gate-3/ghost.json',
           required: true,
         },
       ],
@@ -2674,6 +3180,55 @@ describe('GeneratedAppService', () => {
     expect(
       gate3RunPayload.evidence.some((item) =>
         item.summary.includes(
+          'generationWorkspace.relativePath 必须是 workspace 相对路径',
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      gate3RunPayload.evidence.some((item) =>
+        item.summary.includes(
+          'generationWorkspace.files[17].path 不能包含空路径段',
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      gate3RunPayload.evidence.some((item) =>
+        item.summary.includes(
+          'generationWorkspace.artifactPaths.buildOutput 必须是 workspace 相对路径',
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      gate3RunPayload.evidence.some((item) =>
+        item.summary.includes(
+          'commandPlan[0].command 必须为受控命令 node scripts/gate3-build.mjs',
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      gate3RunPayload.evidence.some((item) =>
+        item.summary.includes(
+          'commandPlan[0].workingDirectory 不能包含空路径段',
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      gate3RunPayload.evidence.some((item) =>
+        item.summary.includes(
+          'frontendBuild.command 必须为受控命令 node scripts/gate3-build.mjs',
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      gate3RunPayload.evidence.some((item) =>
+        item.summary.includes(
+          'frontendBuild.workingDirectory 必须是 workspace 相对路径',
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      gate3RunPayload.evidence.some((item) =>
+        item.summary.includes(
           'frontendBuild.requirementIds 引用了未知对象 req-missing',
         ),
       ),
@@ -2692,7 +3247,34 @@ describe('GeneratedAppService', () => {
     ).toBe(true);
     expect(
       gate3RunPayload.evidence.some((item) =>
+        item.summary.includes('typecheck.tsconfigPath 不能包含'),
+      ),
+    ).toBe(true);
+    expect(
+      gate3RunPayload.evidence.some((item) =>
         item.summary.includes('unitTests.command 缺失'),
+      ),
+    ).toBe(true);
+    expect(
+      gate3RunPayload.evidence.some((item) =>
+        item.summary.includes('unitTests.entry 必须是 workspace 相对路径'),
+      ),
+    ).toBe(true);
+    expect(
+      gate3RunPayload.evidence.some((item) =>
+        item.summary.includes('componentGoldenTests.command 必须为受控命令'),
+      ),
+    ).toBe(true);
+    expect(
+      gate3RunPayload.evidence.some((item) =>
+        item.summary.includes('componentGoldenTests.entry 不能包含'),
+      ),
+    ).toBe(true);
+    expect(
+      gate3RunPayload.evidence.some((item) =>
+        item.summary.includes(
+          'componentGoldenTests.goldenArtifactPath 不能包含',
+        ),
       ),
     ).toBe(true);
     expect(
@@ -2712,6 +3294,13 @@ describe('GeneratedAppService', () => {
     expect(
       gate3RunPayload.evidence.some((item) =>
         item.summary.includes('artifactExpectations[3].kind 必须是'),
+      ),
+    ).toBe(true);
+    expect(
+      gate3RunPayload.evidence.some((item) =>
+        item.summary.includes(
+          'artifactExpectations[3].path 必须是 workspace 相对路径',
+        ),
       ),
     ).toBe(true);
     expect(
@@ -2756,9 +3345,7 @@ describe('GeneratedAppService', () => {
     ).toBe(true);
     expect(
       gate3RunPayload.evidence.every((item) =>
-        item.summary.includes(
-          '未执行真实前端构建、插件构建、单元测试、组件测试或 golden test',
-        ),
+        item.summary.includes('contract-skeleton 只检查计划完整性'),
       ),
     ).toBe(true);
     expect(JSON.stringify(gate3RunPayload.failure)).not.toContain(
@@ -2816,6 +3403,473 @@ describe('GeneratedAppService', () => {
       response.gateRuns.some((gateRun) => gateRun.gateId === 'gate-4'),
     ).toBe(false);
     expect(mockTenantDb.insert).toHaveBeenCalledTimes(5);
+  });
+
+  it('Gate 3 workspace materialization 失败时应停止 Gate 4-7 并保留 runner 证据', async () => {
+    const runnerResult: GeneratedAppGate3RunnerResult = {
+      status: 'failed',
+      executionLevel: 'real-local-command-plan',
+      summary:
+        'Gate 3 失败：Generation Workspace materialization 未完成，已停止 Gate 4-7。',
+      evidence: [
+        {
+          id: 'gate-3-generation-workspace-materialization',
+          label: 'Generation Workspace materialization',
+          kind: 'build',
+          url: null,
+          summary: '受控 workspace 写入失败：EACCES',
+          details: {
+            runnerId: 'gate-3-real-build-unit-runner',
+            executionMode: 'real_local_command_plan',
+            executed: false,
+            workspaceRef: `tenants/${TENANT_ID}/apps/${APP_ID}/runs/${GENERATION_RUN_ID}`,
+            errorMessage: 'EACCES',
+          },
+        },
+      ],
+      failure: {
+        code: 'gate-3-workspace-materialization-failed',
+        message:
+          'Gate 3 Generation Workspace materialization 失败，不能继续执行 Gate 4-7。',
+        details: {
+          workspaceRef: `tenants/${TENANT_ID}/apps/${APP_ID}/runs/${GENERATION_RUN_ID}`,
+          errorMessage: 'EACCES',
+        },
+      },
+      repairInstructions:
+        '检查服务端 GENERATED_APP_WORKSPACE_ROOT 可写性、受控 workspace 相对路径和 scaffold 文件写入规则；修复后重新运行 Gate 3。',
+      commandResults: [],
+    };
+
+    const {
+      app,
+      gate3UpdatePayload,
+      insertGate3RunChain,
+      response,
+      updateRunChain,
+    } = await startGenerationRunWithGate3Result(runnerResult);
+
+    expect(insertGate3RunChain.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        gateId: 'gate-3',
+        status: 'failed',
+        summary: expect.stringContaining('Generation Workspace'),
+        failure: expect.objectContaining({
+          code: 'gate-3-workspace-materialization-failed',
+          message: expect.stringContaining('不能继续执行 Gate 4-7'),
+        }),
+        repairInstructions: expect.stringContaining(
+          'GENERATED_APP_WORKSPACE_ROOT',
+        ),
+      }),
+    );
+    const gate3RunPayload = insertGate3RunChain.values.mock.calls[0]?.[0] as {
+      evidence: GeneratedApp['gateResults'][number]['evidence'];
+    };
+    expect(gate3RunPayload.evidence).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'gate-3-generation-workspace-materialization',
+          details: expect.objectContaining({
+            executed: false,
+            executionMode: 'real_local_command_plan',
+            errorMessage: 'EACCES',
+          }),
+        }),
+      ]),
+    );
+    expect(JSON.stringify(gate3RunPayload.evidence)).not.toContain(
+      app.publicShareToken,
+    );
+
+    const appUpdatePayload = gate3UpdatePayload as {
+      generationPlan: GeneratedAppGenerationPlan;
+      gateResults: GeneratedApp['gateResults'];
+      status: GeneratedApp['status'];
+      publicShareToken: string | null;
+      publicShareEnabled: boolean;
+    };
+    expect(
+      appUpdatePayload.gateResults.find((gate) => gate.gateId === 'gate-3'),
+    ).toEqual(
+      expect.objectContaining({
+        status: 'failed',
+        evidence: expect.arrayContaining([
+          expect.objectContaining({
+            id: 'gate-3-generation-workspace-materialization',
+          }),
+        ]),
+      }),
+    );
+    expect(
+      appUpdatePayload.gateResults.find((gate) => gate.gateId === 'gate-4')
+        ?.status,
+    ).toBe('pending');
+    expect(appUpdatePayload.generationPlan.buildUnitPlan).toEqual(
+      expect.objectContaining({
+        executionLevel: 'real-local-command-plan',
+        generationWorkspace: expect.objectContaining({
+          storageKind: 'server-controlled-local-workspace',
+        }),
+      }),
+    );
+    expect(appUpdatePayload.generationPlan).not.toHaveProperty(
+      'integrationPlan',
+    );
+    expect(appUpdatePayload.status).toBe('failed');
+    expect(appUpdatePayload.publicShareToken).toBeNull();
+    expect(appUpdatePayload.publicShareEnabled).toBe(false);
+    expect(mockTenantDb.insert).toHaveBeenCalledTimes(5);
+    expect(response.gateRuns.map((gateRun) => gateRun.gateId)).toEqual([
+      'gate-0',
+      'gate-1',
+      'gate-2',
+      'gate-3',
+    ]);
+    expect(updateRunChain.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'failed',
+        failureReason: expect.stringContaining(
+          'Generation Workspace materialization 失败',
+        ),
+      }),
+    );
+  });
+
+  it('Gate 3 命令失败时应停止 Gate 4-7 并保存命令输出摘要', async () => {
+    const runnerResult: GeneratedAppGate3RunnerResult = {
+      status: 'failed',
+      executionLevel: 'real-local-command-plan',
+      summary:
+        'Gate 3 失败：命令 gate-3-unit-test-command 退出码为 1，已停止 Gate 4-7。',
+      evidence: [
+        {
+          id: 'gate-3-generation-workspace-materialized',
+          label: 'Generation Workspace materialization',
+          kind: 'build',
+          url: null,
+          summary:
+            '受控 react-vite-typescript workspace 已 materialize，未开放任意路径写入。',
+          details: {
+            workspaceRef: `tenants/${TENANT_ID}/apps/${APP_ID}/runs/${GENERATION_RUN_ID}`,
+            storageKind: 'server-controlled-local-workspace',
+          },
+        },
+        {
+          id: 'gate-3-unit-test-command',
+          label: 'Gate 3 gate-3-unit-test-command',
+          kind: 'test',
+          url: null,
+          summary:
+            'node scripts/gate3-unit.mjs exitCode=1；mode=real_local_command_plan；executed=true；artifacts=unit-test-report；requirements=req-1；scenarios=scenario-1',
+          details: {
+            runnerId: 'gate-3-real-build-unit-runner',
+            executionMode: 'real_local_command_plan',
+            workspaceRef: `tenants/${TENANT_ID}/apps/${APP_ID}/runs/${GENERATION_RUN_ID}`,
+            commandId: 'gate-3-unit-test-command',
+            command: 'node scripts/gate3-unit.mjs',
+            exitCode: 1,
+            stdoutSummary: '{"command":"gate3-unit"}',
+            stderrSummary: 'expected scenario coverage to include scenario-1',
+            durationMs: 42,
+            executed: true,
+            timedOut: false,
+            artifactRefs: ['unit-test-report'],
+            requirementIds: ['req-1'],
+            scenarioIds: ['scenario-1'],
+          },
+        },
+      ],
+      failure: {
+        code: 'gate-3-command-failed',
+        message:
+          'Gate 3 命令 gate-3-unit-test-command 执行失败，不能继续执行 Gate 4-7。',
+        details: {
+          workspaceRef: `tenants/${TENANT_ID}/apps/${APP_ID}/runs/${GENERATION_RUN_ID}`,
+          failedCommand: {
+            commandId: 'gate-3-unit-test-command',
+            command: 'node scripts/gate3-unit.mjs',
+            exitCode: 1,
+            stdoutSummary: '{"command":"gate3-unit"}',
+            stderrSummary: 'expected scenario coverage to include scenario-1',
+          },
+        },
+      },
+      repairInstructions:
+        '读取 Gate 3 命令 stdout/stderr 摘要和 artifact refs，修复生成应用源码、静态合约覆盖或测试入口后重新运行 Gate 3。',
+      commandResults: [
+        {
+          commandId: 'gate-3-unit-test-command',
+          command: 'node scripts/gate3-unit.mjs',
+          exitCode: 1,
+          stdoutSummary: '{"command":"gate3-unit"}',
+          stderrSummary: 'expected scenario coverage to include scenario-1',
+          durationMs: 42,
+          executed: true,
+          timedOut: false,
+          artifactRefs: ['unit-test-report'],
+          requirementIds: ['req-1'],
+          scenarioIds: ['scenario-1'],
+        },
+      ],
+    };
+
+    const { gate3UpdatePayload, insertGate3RunChain, response } =
+      await startGenerationRunWithGate3Result(runnerResult);
+
+    expect(insertGate3RunChain.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        gateId: 'gate-3',
+        status: 'failed',
+        summary: expect.stringContaining('gate-3-unit-test-command'),
+        failure: expect.objectContaining({
+          code: 'gate-3-command-failed',
+          details: expect.objectContaining({
+            failedCommand: expect.objectContaining({
+              exitCode: 1,
+              stderrSummary: expect.stringContaining('scenario-1'),
+            }),
+          }),
+        }),
+        repairInstructions: expect.stringContaining('stdout/stderr 摘要'),
+      }),
+    );
+    const gate3RunPayload = insertGate3RunChain.values.mock.calls[0]?.[0] as {
+      evidence: GeneratedApp['gateResults'][number]['evidence'];
+    };
+    expect(gate3RunPayload.evidence).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'gate-3-unit-test-command',
+          details: expect.objectContaining({
+            executed: true,
+            exitCode: 1,
+            stdoutSummary: expect.stringContaining('gate3-unit'),
+            stderrSummary: expect.stringContaining('scenario-1'),
+            artifactRefs: ['unit-test-report'],
+          }),
+        }),
+      ]),
+    );
+
+    const appUpdatePayload = gate3UpdatePayload as {
+      generationPlan: GeneratedAppGenerationPlan;
+      gateResults: GeneratedApp['gateResults'];
+      publicShareToken: string | null;
+      publicShareEnabled: boolean;
+    };
+    expect(
+      appUpdatePayload.gateResults.find((gate) => gate.gateId === 'gate-4')
+        ?.status,
+    ).toBe('pending');
+    expect(appUpdatePayload.generationPlan).not.toHaveProperty(
+      'integrationPlan',
+    );
+    expect(appUpdatePayload.publicShareToken).toBeNull();
+    expect(appUpdatePayload.publicShareEnabled).toBe(false);
+    expect(response.gateRuns.map((gateRun) => gateRun.gateId)).toEqual([
+      'gate-0',
+      'gate-1',
+      'gate-2',
+      'gate-3',
+    ]);
+    expect(mockTenantDb.insert).toHaveBeenCalledTimes(5);
+  });
+
+  it('Gate 3 real-local runner 应拒绝非 allowlist 命令且不执行任意 shell', async () => {
+    const app = createGeneratedApp();
+    const configService = createConfigService({
+      GENERATED_APP_WORKSPACE_ROOT:
+        '/tmp/agentloom-generated-app-gate3-runner-spec',
+    });
+    const runner = new GeneratedAppGate3WorkspaceRunner(configService);
+    const internals = service as unknown as {
+      buildGenerationPlan(
+        appSpec: GeneratedApp['appSpec'],
+      ): GeneratedAppGenerationPlan;
+      buildStaticContracts(
+        appSpec: GeneratedApp['appSpec'],
+        generationPlan: GeneratedAppGenerationPlan,
+      ): GeneratedAppStaticContracts;
+      buildBuildUnitPlan(
+        appSpec: GeneratedApp['appSpec'],
+        generationPlan: GeneratedAppGenerationPlan,
+        staticContracts: GeneratedAppStaticContracts,
+        generationWorkspace: NonNullable<
+          GeneratedAppBuildUnitPlan['generationWorkspace']
+        >,
+        commandPlan: ReturnType<
+          GeneratedAppGate3WorkspaceRunner['buildCommandPlan']
+        >,
+        executionLevel: GeneratedAppBuildUnitPlan['executionLevel'],
+      ): GeneratedAppBuildUnitPlan;
+    };
+    const generationPlan = internals.buildGenerationPlan(app.appSpec);
+    const staticContracts = internals.buildStaticContracts(
+      app.appSpec,
+      generationPlan,
+    );
+    const workspace = runner.buildWorkspaceContract({
+      tenantId: TENANT_ID,
+      appId: APP_ID,
+      generationRunId: GENERATION_RUN_ID,
+      appSpec: app.appSpec,
+      staticContracts,
+    });
+    const commandPlan = runner.buildCommandPlan({
+      workspace,
+      requirementIds: app.appSpec.coreRequirements.map(
+        (requirement) => requirement.id,
+      ),
+      scenarioIds: app.appSpec.acceptanceScenarios.map(
+        (scenario) => scenario.id,
+      ),
+    });
+    const buildUnitPlan = internals.buildBuildUnitPlan(
+      app.appSpec,
+      generationPlan,
+      staticContracts,
+      workspace,
+      commandPlan,
+      'real-local-command-plan',
+    );
+    const result = await runner.materializeAndRun({
+      tenantId: TENANT_ID,
+      appId: APP_ID,
+      generationRunId: GENERATION_RUN_ID,
+      appSpec: app.appSpec,
+      generationPlan,
+      staticContracts,
+      buildUnitPlan,
+      workspace,
+      commandPlan: [
+        {
+          ...commandPlan[0],
+          command: 'sh -c "echo unsafe"',
+          scriptPath: '/bin/sh',
+        },
+      ],
+    });
+
+    expect(result.status).toBe('failed');
+    expect(result.commandResults[0]).toEqual(
+      expect.objectContaining({
+        commandId: 'gate-3-frontend-build-command',
+        executed: false,
+        exitCode: 1,
+        stderrSummary: expect.stringContaining('allowlist'),
+      }),
+    );
+    expect(result.evidence).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'gate-3-frontend-build-command',
+          details: expect.objectContaining({
+            executed: false,
+            stderrSummary: expect.stringContaining('allowlist'),
+          }),
+        }),
+      ]),
+    );
+    expect(JSON.stringify(result)).not.toContain(
+      '/tmp/agentloom-generated-app-gate3-runner-spec',
+    );
+  });
+
+  it('Gate 3 runner 失败摘要不应泄露宿主机 workspace 绝对路径', async () => {
+    const app = createGeneratedApp();
+    const appSpec: GeneratedApp['appSpec'] = {
+      ...app.appSpec,
+      acceptanceScenarios: app.appSpec.acceptanceScenarios.map(
+        (scenario, index) =>
+          index === 0
+            ? {
+                ...scenario,
+                requirementIds: ['req-missing'],
+              }
+            : scenario,
+      ),
+    };
+    const workspaceRoot = '/tmp/agentloom-generated-app-gate3-redaction-spec';
+    const configService = createConfigService({
+      GENERATED_APP_WORKSPACE_ROOT: workspaceRoot,
+    });
+    const runner = new GeneratedAppGate3WorkspaceRunner(configService);
+    const internals = service as unknown as {
+      buildGenerationPlan(
+        appSpec: GeneratedApp['appSpec'],
+      ): GeneratedAppGenerationPlan;
+      buildStaticContracts(
+        appSpec: GeneratedApp['appSpec'],
+        generationPlan: GeneratedAppGenerationPlan,
+      ): GeneratedAppStaticContracts;
+      buildBuildUnitPlan(
+        appSpec: GeneratedApp['appSpec'],
+        generationPlan: GeneratedAppGenerationPlan,
+        staticContracts: GeneratedAppStaticContracts,
+        generationWorkspace: NonNullable<
+          GeneratedAppBuildUnitPlan['generationWorkspace']
+        >,
+        commandPlan: ReturnType<
+          GeneratedAppGate3WorkspaceRunner['buildCommandPlan']
+        >,
+        executionLevel: GeneratedAppBuildUnitPlan['executionLevel'],
+      ): GeneratedAppBuildUnitPlan;
+    };
+    const generationPlan = internals.buildGenerationPlan(appSpec);
+    const staticContracts = internals.buildStaticContracts(
+      appSpec,
+      generationPlan,
+    );
+    const workspace = runner.buildWorkspaceContract({
+      tenantId: TENANT_ID,
+      appId: APP_ID,
+      generationRunId: GENERATION_RUN_ID,
+      appSpec,
+      staticContracts,
+    });
+    const commandPlan = runner.buildCommandPlan({
+      workspace,
+      requirementIds: appSpec.coreRequirements.map(
+        (requirement) => requirement.id,
+      ),
+      scenarioIds: appSpec.acceptanceScenarios.map((scenario) => scenario.id),
+    });
+    const buildUnitPlan = internals.buildBuildUnitPlan(
+      appSpec,
+      generationPlan,
+      staticContracts,
+      workspace,
+      commandPlan,
+      'real-local-command-plan',
+    );
+    const result = await runner.materializeAndRun({
+      tenantId: TENANT_ID,
+      appId: APP_ID,
+      generationRunId: GENERATION_RUN_ID,
+      appSpec,
+      generationPlan,
+      staticContracts,
+      buildUnitPlan,
+      workspace,
+      commandPlan,
+    });
+    const serialized = JSON.stringify(result);
+
+    expect(result.status).toBe('failed');
+    expect(serialized).not.toContain(workspaceRoot);
+    expect(serialized).not.toContain('/tmp/agentloom-generated-app');
+    expect(serialized).toContain('[generated-app-workspace]');
+    expect(result.commandResults).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          commandId: 'gate-3-unit-test-command',
+          executed: true,
+          exitCode: 1,
+          stderrSummary: expect.not.stringContaining(workspaceRoot),
+        }),
+      ]),
+    );
   });
 
   it('Gate 4 失败时应写入失败证据、保留 attempted integrationPlan 并以 Gate 4 failure reason 结束', async () => {

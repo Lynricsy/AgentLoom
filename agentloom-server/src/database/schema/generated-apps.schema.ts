@@ -136,6 +136,7 @@ export interface GeneratedAppGateEvidence {
     | 'manual';
   url: string | null;
   summary: string;
+  details?: unknown;
 }
 
 export interface GeneratedAppGenerationPlan {
@@ -311,7 +312,61 @@ export interface GeneratedAppBuildUnitPlan {
   appSpecVersion: number;
   generationPlanVersion: number;
   staticContractsVersion: number;
-  executionLevel: 'contract-skeleton';
+  executionLevel:
+    | 'contract-skeleton'
+    | 'real-local-command-plan'
+    | 'fixture-execution'
+    | 'disabled-execution';
+  generationWorkspace?: {
+    contractVersion: 1;
+    workspaceId: string;
+    storageKind: 'server-controlled-local-workspace';
+    rootLabel: 'generated-app-workspaces';
+    relativePath: string;
+    scaffold: 'react-vite-typescript';
+    materializedFrom: {
+      appSpecVersion: number;
+      staticContractsVersion: number;
+    };
+    writePolicy: {
+      arbitraryPathWriteAllowed: false;
+      traversalGuard: 'resolve-inside-workspace-root';
+      exposesAbsoluteHostPath: false;
+    };
+    files: Array<{
+      path: string;
+      kind:
+        | 'package'
+        | 'config'
+        | 'html'
+        | 'source'
+        | 'test'
+        | 'script'
+        | 'manifest';
+      derivedFrom:
+        | 'AppSpec'
+        | 'generationPlan.staticContracts'
+        | 'generated-app-scaffold';
+      required: boolean;
+    }>;
+    artifactPaths: {
+      sourceManifest: string;
+      sourceArchive: string;
+      buildOutput: string;
+      buildManifest: string;
+      unitReport: string;
+      componentGoldenReport: string;
+      coverageSummary: string;
+    };
+  };
+  commandPlan?: Array<{
+    commandId: string;
+    command: string;
+    workingDirectory: string;
+    requirementIds: string[];
+    scenarioIds: string[];
+    producesArtifactIds: string[];
+  }>;
   frontendBuild: {
     command: string;
     workingDirectory: string;
