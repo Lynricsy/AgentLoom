@@ -870,7 +870,11 @@ export interface GeneratedAppPublishCandidatePlan {
   integrationPlanVersion: number;
   browserAcceptancePlanVersion: number;
   independentVerificationPlanVersion: number;
-  executionLevel: 'publish-candidate-guard-skeleton';
+  executionLevel:
+    | 'publish-candidate-guard-skeleton'
+    | 'real-local-publish-candidate-contract'
+    | 'fixture-publish-candidate-contract'
+    | 'disabled-publish-candidate-contract';
   skeletonDisclaimer: string;
   publishReadinessInputs: {
     requiredGateIds: string[];
@@ -892,6 +896,19 @@ export interface GeneratedAppPublishCandidatePlan {
     placeholder: boolean;
     containsSecrets: false;
     evidenceIds: string[];
+    checksum?: {
+      algorithm: 'sha256';
+      value: string;
+      placeholder: true;
+      materialized: false;
+    };
+    archiveMaterialized?: false;
+    signature?: {
+      status: 'not-signed';
+      signatureArtifactId: null;
+      reason: string;
+    };
+    signoffStatus?: 'contract-accepted' | 'fixture-only' | 'not-executed';
   }>;
   publicationBlockers: Array<{
     blockerId: string;
@@ -903,16 +920,23 @@ export interface GeneratedAppPublishCandidatePlan {
     blocking: true;
   }>;
   rollbackShareControls: {
-    publicTokenCreation: 'disabled-while-guard-fails';
+    publicTokenCreation:
+      | 'disabled-while-guard-fails'
+      | 'deferred-until-enable-public-share';
     publicShareEnabledWhileGuardFails: false;
     createdPublicShareToken: null;
-    stalePublicTokenRequiredAction: 'clear-before-publish-candidate';
+    stalePublicTokenRequiredAction:
+      | 'clear-before-publish-candidate'
+      | 'clear-before-enable-public-share';
     closeShareControl: 'DELETE /generated-apps/:appId/public-share';
+    enableShareControl?: 'POST /generated-apps/:appId/public-share';
     regenerateShareControl: 'POST /generated-apps/:appId/public-share/regenerate';
     existingPublicShareControlsReferenced: true;
+    publicShareSignoff?: 'deferred-until-enable-public-share';
+    createsPublicShareToken?: false;
   };
   finalVerdict: {
-    publishCandidateAllowed: false;
+    publishCandidateAllowed: boolean;
     blockingReasons: string[];
     warningReasons: string[];
     requiredRealGateRunnerIds: string[];

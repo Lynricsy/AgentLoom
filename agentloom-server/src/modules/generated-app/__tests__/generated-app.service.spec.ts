@@ -1094,7 +1094,7 @@ describe('GeneratedAppService', () => {
     );
   });
 
-  it('Gate 0/Gate 1/Gate 2/Gate 3/Gate 4/Gate 5/Gate 6 通过后应执行 Gate 7 guard、保留 publishCandidatePlan 且阻断公开分享', async () => {
+  it('Gate 0/Gate 1/Gate 2/Gate 3/Gate 4/Gate 5/Gate 6 通过后应执行 Gate 7 real runner、进入 publish_candidate 且不创建公开 token', async () => {
     const previousGateResults = createInitialGeneratedAppGateResults(
       NOW.toISOString(),
     ).map((gate) => ({
@@ -1206,28 +1206,22 @@ describe('GeneratedAppService', () => {
       gateOrder: 7,
       gateName: '发布候选门禁',
       generationRunId: GENERATION_RUN_ID,
-      status: 'failed',
+      status: 'passed',
       summary:
-        'Gate 7 失败：publishCandidatePlan guard skeleton 已生成并保留；Gate 3-6 已有受控本地 real-local evidence，但 Gate 7 仍缺少真实 publish candidate runner、release manifest、artifact signoff 与 public-share signoff，不能形成 publish candidate 或启用公开分享。',
-      failure: {
-        code: 'publish-candidate-guard-blocked',
-        message:
-          'Gate 7 publish-candidate guard skeleton 检测到 Gate 3-6 已有受控本地 real-local evidence，但 Gate 7 仍缺少真实 publish candidate runner、release manifest、artifact signoff 与 public-share signoff，不能形成 publish candidate。',
-      },
-      repairInstructions:
-        '接入真实 Gate 7 publish candidate runner、release manifest、artifact signoff 和 public-share signoff 后，再重新评估 publish candidate；在 Gate 7 guard 失败期间 public token 必须保持禁用并清空。',
+        'Gate 7 通过：real-local publish candidate contract runner 已签收 release manifest contract，未创建 public share token。',
+      failure: null,
+      repairInstructions: null,
       evidence: [],
     });
     const completedRun = createGeneratedAppGenerationRun({
       runNumber: 2,
-      status: 'failed',
+      status: 'passed',
       maxRepairAttempts: 2,
       maxRuntimeSeconds: 600,
       completedAt: NOW,
       summary:
-        '门禁运行器完成 Gate 0 AppSpec 完整性检查、Gate 1 架构计划门禁、Gate 2 静态合约门禁、Gate 3 Generation Workspace 与构建/单元执行器、Gate 4 受控本地 integration runner、Gate 5 受控本地 browser-contract runner 和 Gate 6 受控本地 independent verifier runner；Gate 7 publish-candidate guard 仍缺少真实 release manifest、artifact signoff 与 public-share signoff，当前应用不能形成 publish candidate，保持不可发布。',
-      failureReason:
-        'Gate 7 publish-candidate guard skeleton 检测到 Gate 3-6 已有受控本地 real-local evidence，但 Gate 7 仍缺少真实 publish candidate runner、release manifest、artifact signoff 与 public-share signoff，不能形成 publish candidate。',
+        '门禁运行器完成 Gate 0-7；Gate 7 real-local publish candidate contract runner 已签收 release manifest contract、artifact checksum placeholders、Gate 0-6 evidence citations 和 deferred public-share controls，当前应用进入 publish_candidate，但不会自动发布或创建 public share token。',
+      failureReason: null,
     });
     const insertRunChain = createInsertReturningChain([run]);
     const insertGateRunChain = createInsertReturningChain([gateRun]);
@@ -1422,13 +1416,12 @@ describe('GeneratedAppService', () => {
         gateId: 'gate-7',
         gateOrder: 7,
         gateName: '发布候选门禁',
-        status: 'failed',
-        summary: expect.stringContaining('Gate 7 失败：publishCandidatePlan'),
-        failure: expect.objectContaining({
-          code: 'publish-candidate-guard-blocked',
-          message: expect.stringContaining('Gate 7'),
-        }),
-        repairInstructions: expect.stringContaining('真实 Gate 7'),
+        status: 'passed',
+        summary: expect.stringContaining(
+          'real-local publish candidate contract',
+        ),
+        failure: null,
+        repairInstructions: null,
       }),
     );
     const gate1RunPayload = insertGate1RunChain.values.mock.calls[0]?.[0] as {
@@ -1619,46 +1612,34 @@ describe('GeneratedAppService', () => {
     );
     const gate7RunPayload = insertGate7RunChain.values.mock.calls[0]?.[0] as {
       evidence: GeneratedApp['gateResults'][number]['evidence'];
-      failure: { details?: { blockers?: unknown[]; finalVerdict?: unknown } };
+      failure: null;
     };
     expect(gate7RunPayload.evidence).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
           id: 'gate-7-publish-readiness-inputs',
           kind: 'manual',
-          summary: expect.stringContaining(
-            '未生成真实发布候选、未签收真实 artifact',
-          ),
+          summary: expect.stringContaining('publishCandidateAllowed=true'),
         }),
         expect.objectContaining({
           id: 'gate-7-artifact-release-manifest',
           kind: 'manual',
-          summary: expect.stringContaining('frontend artifact'),
+          summary: expect.stringContaining('release manifest contract'),
+          details: expect.objectContaining({
+            artifactArchiveCreated: false,
+            artifactSignatureCreated: false,
+            realArtifactUploaded: false,
+          }),
         }),
         expect.objectContaining({
           id: 'gate-7-final-verdict',
           kind: 'manual',
-          summary: expect.stringContaining('publishCandidateAllowed=false'),
+          summary: expect.stringContaining('publishCandidateAllowed=true'),
         }),
       ]),
     );
-    expect(gate7RunPayload.failure.details?.blockers).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          category: 'skeleton_only_upstream_gate',
-          gateIds: ['gate-7'],
-        }),
-        expect.objectContaining({
-          category: 'missing_real_execution_artifact',
-          gateIds: ['gate-7'],
-        }),
-        expect.objectContaining({
-          category: 'missing_real_independent_verifier_verdict',
-          message: expect.stringContaining('签收'),
-        }),
-      ]),
-    );
-    expect(JSON.stringify(gate7RunPayload.failure)).not.toContain(
+    expect(gate7RunPayload.failure).toBeNull();
+    expect(JSON.stringify(gate7RunPayload.evidence)).not.toContain(
       app.publicShareToken,
     );
 
@@ -1700,18 +1681,19 @@ describe('GeneratedAppService', () => {
       'gate-4',
       'gate-5',
       'gate-6',
+      'gate-7',
     ]);
     expect(
       appUpdatePayload.gateResults.find((gate) => gate.gateId === 'gate-7')
         ?.status,
-    ).toBe('failed');
+    ).toBe('passed');
     expect(
       appUpdatePayload.gateResults.find((gate) => gate.gateId === 'gate-7')
         ?.evidence,
     ).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          id: 'gate-7-publication-blockers',
+          id: 'gate-7-artifact-release-manifest',
           kind: 'manual',
         }),
       ]),
@@ -1719,11 +1701,11 @@ describe('GeneratedAppService', () => {
     expect(
       appUpdatePayload.gateResults
         .filter((gate) => ['gate-7'].includes(gate.gateId))
-        .every((gate) => gate.status !== 'passed' && gate.evidence.length > 0),
+        .every((gate) => gate.status === 'passed' && gate.evidence.length > 0),
     ).toBe(true);
-    expect(appUpdatePayload.readiness.canCreatePublicShare).toBe(false);
-    expect(appUpdatePayload.readiness.state).toBe('blocked');
-    expect(appUpdatePayload.status).toBe('failed');
+    expect(appUpdatePayload.readiness.canCreatePublicShare).toBe(true);
+    expect(appUpdatePayload.readiness.state).toBe('publish_candidate');
+    expect(appUpdatePayload.status).toBe('publish_candidate');
     expect(appUpdatePayload.publicShareToken).toBeNull();
     expect(appUpdatePayload.publicShareEnabled).toBe(false);
     expect(appUpdatePayload.generationPlan.appSpecVersion).toBe(1);
@@ -2399,7 +2381,7 @@ describe('GeneratedAppService', () => {
         integrationPlanVersion: 1,
         browserAcceptancePlanVersion: 1,
         independentVerificationPlanVersion: 1,
-        executionLevel: 'publish-candidate-guard-skeleton',
+        executionLevel: 'real-local-publish-candidate-contract',
         publishReadinessInputs: expect.objectContaining({
           requiredGateIds: [
             'gate-0',
@@ -2458,40 +2440,27 @@ describe('GeneratedAppService', () => {
             kind: 'source_artifact_placeholder',
           }),
         ]),
-        publicationBlockers: expect.arrayContaining([
-          expect.objectContaining({
-            category: 'skeleton_only_upstream_gate',
-            gateIds: ['gate-7'],
-          }),
-          expect.objectContaining({
-            category: 'missing_real_execution_artifact',
-            gateIds: ['gate-7'],
-          }),
-          expect.objectContaining({
-            category: 'stale_public_token_requirement',
-            gateIds: ['gate-7'],
-          }),
-        ]),
+        publicationBlockers: [],
         rollbackShareControls: expect.objectContaining({
-          publicTokenCreation: 'disabled-while-guard-fails',
+          publicTokenCreation: 'deferred-until-enable-public-share',
           publicShareEnabledWhileGuardFails: false,
           createdPublicShareToken: null,
-          stalePublicTokenRequiredAction: 'clear-before-publish-candidate',
+          stalePublicTokenRequiredAction: 'clear-before-enable-public-share',
+          enableShareControl: 'POST /generated-apps/:appId/public-share',
+          publicShareSignoff: 'deferred-until-enable-public-share',
+          createsPublicShareToken: false,
         }),
         finalVerdict: expect.objectContaining({
-          publishCandidateAllowed: false,
-          blockingReasons: expect.arrayContaining([
-            expect.stringContaining('release manifest'),
-            expect.stringContaining('artifact 签收'),
-            expect.stringContaining('public-share signoff'),
-          ]),
+          publishCandidateAllowed: true,
+          blockingReasons: [],
+          warningReasons: [],
           requiredRealGateRunnerIds: expect.arrayContaining([
             'gate-3-real-build-unit-runner',
             'gate-7-real-publish-candidate-runner',
           ]),
           repairSuggestions: expect.arrayContaining([
-            expect.stringContaining('真实 Gate 7 publish candidate runner'),
-            expect.stringContaining('public-share signoff'),
+            expect.stringContaining('enablePublicShare'),
+            expect.stringContaining('artifact archive'),
           ]),
         }),
         requirementCoverage: [
@@ -2539,8 +2508,8 @@ describe('GeneratedAppService', () => {
           }),
           expect.objectContaining({
             gateId: 'gate-7',
-            executionLevel: 'publish-candidate-guard-skeleton',
-            skeletonOnly: true,
+            executionLevel: 'real-local-publish-candidate-contract',
+            skeletonOnly: false,
             evidenceIds: expect.arrayContaining(['gate-7-final-verdict']),
           }),
         ]),
@@ -2562,20 +2531,16 @@ describe('GeneratedAppService', () => {
     ).not.toContain(app.publicShareToken);
     expect(updateRunChain.set).toHaveBeenCalledWith(
       expect.objectContaining({
-        status: 'failed',
-        failureReason: expect.stringContaining(
-          'Gate 7 publish-candidate guard skeleton',
-        ),
+        status: 'passed',
+        failureReason: null,
         completedAt: expect.any(Date),
       }),
     );
     expect(response.generationRun).toEqual(
       expect.objectContaining({
         id: GENERATION_RUN_ID,
-        status: 'failed',
-        failureReason: expect.stringContaining(
-          'Gate 7 publish-candidate guard skeleton',
-        ),
+        status: 'passed',
+        failureReason: null,
       }),
     );
     expect(response.gateRuns).toEqual([
@@ -2623,7 +2588,7 @@ describe('GeneratedAppService', () => {
       expect.objectContaining({
         gateId: 'gate-7',
         generationRunId: GENERATION_RUN_ID,
-        status: 'failed',
+        status: 'passed',
         summary: expect.stringContaining('release manifest'),
       }),
     ]);
@@ -2649,7 +2614,7 @@ describe('GeneratedAppService', () => {
           }),
         }),
         publishCandidatePlan: expect.objectContaining({
-          executionLevel: 'publish-candidate-guard-skeleton',
+          executionLevel: 'real-local-publish-candidate-contract',
         }),
       }),
     );
@@ -6450,7 +6415,22 @@ describe('GeneratedAppService', () => {
           ...validPublishCandidatePlan.artifactReleaseManifest[0],
           kind: 'deployable_binary',
           sourceGateId: 'gate-missing',
+          path: '/root/AgentLoom/internal-config',
+          placeholder: false,
           containsSecrets: true,
+          checksum: {
+            algorithm: 'sha256',
+            value: 'sha256:real-materialized-checksum',
+            placeholder: false,
+            materialized: true,
+          },
+          archiveMaterialized: true,
+          signature: {
+            status: 'signed',
+            signatureArtifactId: 'real-signature-artifact',
+            reason: '真实签名不允许由 Gate 7 local contract runner 创建。',
+          },
+          signoffStatus: 'not-executed',
           evidenceIds: ['gate-7-missing-evidence'],
           publicShareToken: app.publicShareToken,
         },
@@ -6474,7 +6454,7 @@ describe('GeneratedAppService', () => {
       finalVerdict: {
         ...validPublishCandidatePlan.finalVerdict,
         publishCandidateAllowed: true,
-        blockingReasons: [],
+        blockingReasons: ['仍存在未解决发布阻断。'],
         requiredRealGateRunnerIds: ['gate-unknown-real-runner'],
         evidenceIds: ['gate-7-missing-evidence'],
         illegalVerdictField: 'should-fail',
@@ -6687,6 +6667,34 @@ describe('GeneratedAppService', () => {
     expect(
       gate7RunPayload.evidence.some((item) =>
         item.summary.includes(
+          'artifactReleaseManifest[0].path 必须是 workspace 相对路径且不能是绝对路径',
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      gate7RunPayload.evidence.some((item) =>
+        item.summary.includes(
+          'artifactReleaseManifest[0].placeholder 必须为 true',
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      gate7RunPayload.evidence.some((item) =>
+        item.summary.includes(
+          'artifactReleaseManifest[0].archiveMaterialized 必须为 false',
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      gate7RunPayload.evidence.some((item) =>
+        item.summary.includes(
+          'artifactReleaseManifest[0].signature.status 必须为 not-signed',
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      gate7RunPayload.evidence.some((item) =>
+        item.summary.includes(
           'publicationBlockers[0].category 是非法 blocker category unknown_blocker',
         ),
       ),
@@ -6696,6 +6704,11 @@ describe('GeneratedAppService', () => {
         item.summary.includes(
           'finalVerdict 包含非法 verdict field illegalVerdictField',
         ),
+      ),
+    ).toBe(true);
+    expect(
+      gate7RunPayload.evidence.some((item) =>
+        item.summary.includes('finalVerdict.blockingReasons 通过时必须为空'),
       ),
     ).toBe(true);
     expect(
@@ -6718,7 +6731,7 @@ describe('GeneratedAppService', () => {
     expect(
       gate7RunPayload.evidence.every((item) =>
         item.summary.includes(
-          '未生成真实发布候选、未签收真实 artifact、未证明真实质量门禁全量通过',
+          '不会创建生产发布、真实 artifact archive、真实签名或 public share token',
         ),
       ),
     ).toBe(true);
