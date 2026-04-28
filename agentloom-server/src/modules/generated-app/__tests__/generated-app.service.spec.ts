@@ -1186,7 +1186,7 @@ describe('GeneratedAppService', () => {
       generationRunId: GENERATION_RUN_ID,
       status: 'passed',
       summary:
-        'Gate 5 通过：browserAcceptancePlan 浏览器验收 skeleton 已完整覆盖浏览器 runner、桌面/移动视口、公开 runtime journeys、创建者管理 journeys、console/network/accessibility/responsive assertions、截图/视频/trace artifact 期望、覆盖矩阵和失败捕获字段；本结果仅表示契约级 browser acceptance skeleton 完整，不代表真实 Playwright/browser test、真实截图/视频/trace 捕获、真实 console/network 检查、真实公开链接访问或真实端到端交互已经执行。',
+        'Gate 5 通过：real-local browser-contract runner 已执行受控 deterministic DOM/accessibility/network/console contract，覆盖公开 runtime open/submit/detail、创建者 generation/gate/submission review、desktop/mobile viewport、console/network/accessibility/responsive assertions；未启动 Playwright，未打开真实浏览器，未捕获真实截图、视频或 Playwright trace。',
       evidence: [],
     });
     const gate6Run = createGeneratedAppGateRun({
@@ -1208,14 +1208,14 @@ describe('GeneratedAppService', () => {
       generationRunId: GENERATION_RUN_ID,
       status: 'failed',
       summary:
-        'Gate 7 失败：publishCandidatePlan guard skeleton 已生成并保留；Gate 3 构建与单元层、Gate 4 受控本地 integration 层已按当前执行器记录 real-local contract evidence，但 Gate 5-6 仍只有 skeleton/contract-level completeness evidence，缺少真实 browser/verifier 证据，不能形成 publish candidate 或启用公开分享。',
+        'Gate 7 失败：publishCandidatePlan guard skeleton 已生成并保留；Gate 3 构建与单元层、Gate 4 受控本地 integration 层、Gate 5 受控本地 browser-contract 层已按当前执行器记录 real-local contract evidence，但 Gate 6 仍只有 independent-verifier-skeleton evidence，缺少真实 independent verifier verdict，不能形成 publish candidate 或启用公开分享。',
       failure: {
         code: 'publish-candidate-guard-blocked',
         message:
-          'Gate 7 publish-candidate guard skeleton 检测到 Gate 5-6 仍为 skeleton-only upstream evidence，且缺少后续真实 browser/verifier 证据，不能形成 publish candidate。',
+          'Gate 7 publish-candidate guard skeleton 检测到 Gate 6 仍为 skeleton-only upstream evidence，且缺少真实 independent verifier evidence，不能形成 publish candidate。',
       },
       repairInstructions:
-        '接入真实 Gate 5-6 browser/verifier 执行 runner、真实 browser artifact 签收和真实独立 verifier verdict 后，再由 Gate 7 重新评估 publish candidate；在 Gate 7 guard 失败期间 public token 必须保持禁用并清空。',
+        '接入真实 Gate 6 independent verifier runner、真实 verifier report 和独立 verdict 后，再由 Gate 7 重新评估 publish candidate；在 Gate 7 guard 失败期间 public token 必须保持禁用并清空。',
       evidence: [],
     });
     const completedRun = createGeneratedAppGenerationRun({
@@ -1225,9 +1225,9 @@ describe('GeneratedAppService', () => {
       maxRuntimeSeconds: 600,
       completedAt: NOW,
       summary:
-        '门禁运行器完成 Gate 0 AppSpec 完整性检查、Gate 1 架构计划门禁、Gate 2 静态合约门禁、Gate 3 Generation Workspace 与构建/单元执行器、Gate 4 受控本地 integration runner；Gate 5 browser acceptance 和 Gate 6 independent verifier 仍为 skeleton 完整性检查，Gate 7 publish-candidate guard 检测到缺少真实浏览器/独立审查证据，当前应用不能形成 publish candidate，保持不可发布。',
+        '门禁运行器完成 Gate 0 AppSpec 完整性检查、Gate 1 架构计划门禁、Gate 2 静态合约门禁、Gate 3 Generation Workspace 与构建/单元执行器、Gate 4 受控本地 integration runner、Gate 5 受控本地 browser-contract runner；Gate 6 independent verifier 仍为 skeleton 完整性检查，Gate 7 publish-candidate guard 检测到缺少真实独立审查证据，当前应用不能形成 publish candidate，保持不可发布。',
       failureReason:
-        'Gate 7 publish-candidate guard skeleton 检测到 Gate 5-6 仍为 skeleton-only upstream evidence，且缺少后续真实 browser/verifier 证据，不能形成 publish candidate。 阻断原因：Gate 5-6 当前只有 skeleton/contract-level completeness evidence。；缺少真实 browser/verifier artifact 签收。；Gate 7 guard 失败期间 public share token 必须保持禁用并清空。',
+        'Gate 7 publish-candidate guard skeleton 检测到 Gate 6 仍为 skeleton-only upstream evidence，且缺少真实 independent verifier evidence，不能形成 publish candidate。 阻断原因：Gate 6 当前只有 skeleton/contract-level completeness evidence。；缺少真实 independent verifier artifact 签收。；Gate 7 guard 失败期间 public share token 必须保持禁用并清空。',
     });
     const insertRunChain = createInsertReturningChain([run]);
     const insertGateRunChain = createInsertReturningChain([gateRun]);
@@ -1426,9 +1426,9 @@ describe('GeneratedAppService', () => {
         summary: expect.stringContaining('Gate 7 失败：publishCandidatePlan'),
         failure: expect.objectContaining({
           code: 'publish-candidate-guard-blocked',
-          message: expect.stringContaining('Gate 5-6'),
+          message: expect.stringContaining('Gate 6'),
         }),
-        repairInstructions: expect.stringContaining('接入真实 Gate 5-6'),
+        repairInstructions: expect.stringContaining('真实 Gate 6'),
       }),
     );
     const gate1RunPayload = insertGate1RunChain.values.mock.calls[0]?.[0] as {
@@ -1561,22 +1561,22 @@ describe('GeneratedAppService', () => {
     expect(gate5RunPayload.evidence).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          id: 'gate-5-browser-tool-plan',
+          id: 'gate-5-gate-5-public-runtime-open-viewport-desktop-gate-5-console-no-unhandled-error',
+          kind: 'browser',
+          summary: expect.stringContaining('real_local_browser_contract'),
+        }),
+        expect.objectContaining({
+          id: 'gate-5-gate-5-public-runtime-submit-viewport-mobile-gate-5-network-public-forbids-creator-internal',
           kind: 'browser',
           summary: expect.stringContaining(
-            '未执行真实 Playwright/browser test',
+            'journeyId=gate-5-public-runtime-submit',
           ),
         }),
         expect.objectContaining({
-          id: 'gate-5-public-runtime-journeys',
-          kind: 'browser',
-          summary: expect.stringContaining('真实公开链接访问或真实端到端交互'),
-        }),
-        expect.objectContaining({
-          id: 'gate-5-artifact-expectations',
+          id: 'gate-5-gate-5-creator-submission-review-viewport-desktop-gate-5-responsive-content-not-occluded',
           kind: 'browser',
           summary: expect.stringContaining(
-            '真实截图/视频/trace 捕获、真实 console/network 检查',
+            '未启动 Playwright，未打开真实浏览器',
           ),
         }),
       ]),
@@ -2059,13 +2059,15 @@ describe('GeneratedAppService', () => {
         staticContractsVersion: 1,
         buildUnitPlanVersion: 1,
         integrationPlanVersion: 1,
-        executionLevel: 'browser-acceptance-skeleton',
+        executionLevel: 'real-local-browser-contract',
+        skeletonDisclaimer: expect.stringContaining('不启动 Playwright'),
         browserToolPlan: expect.objectContaining({
-          runner: 'playwright',
-          command: 'agentloom generated-app gate-5 browser-acceptance',
-          testEntry: 'tests/generated-app/browser-acceptance.spec.ts',
+          runner: 'local-browser-contract',
+          command: 'agentloom generated-app gate-5 local-browser-contract',
+          testEntry: 'server-controlled-local-browser-contract',
+          workingDirectory: 'generated-run',
           baseUrlShape:
-            'http://localhost:{previewPort}/generated-apps/public/{publicShareAccess}',
+            'local-contract://generated-app/public-runtime/{publicShareAccess}',
           usesRealTokens: false,
           scenarioIds: ['scenario-1'],
         }),
@@ -2232,7 +2234,9 @@ describe('GeneratedAppService', () => {
           gateEvidenceRefs: expect.arrayContaining([
             expect.objectContaining({
               gateId: 'gate-5',
-              evidenceIds: expect.arrayContaining(['gate-5-browser-tool-plan']),
+              evidenceIds: expect.arrayContaining([
+                'gate-5-gate-5-public-runtime-open-viewport-desktop-gate-5-console-no-unhandled-error',
+              ]),
             }),
           ]),
           staticContractIds: expect.arrayContaining([
@@ -2262,7 +2266,9 @@ describe('GeneratedAppService', () => {
             category: 'requirement_coverage',
             requirementIds: ['req-1'],
             scenarioIds: ['scenario-1'],
-            evidenceIds: expect.arrayContaining(['gate-5-browser-tool-plan']),
+            evidenceIds: expect.arrayContaining([
+              'gate-5-gate-5-public-runtime-open-viewport-desktop-gate-5-console-no-unhandled-error',
+            ]),
           }),
           expect.objectContaining({
             category: 'publish_blockers',
@@ -2292,7 +2298,9 @@ describe('GeneratedAppService', () => {
           }),
           expect.objectContaining({
             kind: 'evidence_id_citation_required',
-            evidenceIds: expect.arrayContaining(['gate-5-browser-tool-plan']),
+            evidenceIds: expect.arrayContaining([
+              'gate-5-gate-5-public-runtime-open-viewport-desktop-gate-5-console-no-unhandled-error',
+            ]),
           }),
         ]),
         requirementCoverage: [
@@ -2321,14 +2329,17 @@ describe('GeneratedAppService', () => {
         ],
         evidenceCoverage: expect.arrayContaining([
           expect.objectContaining({
-            evidenceId: 'gate-5-browser-tool-plan',
+            evidenceId:
+              'gate-5-gate-5-public-runtime-open-viewport-desktop-gate-5-console-no-unhandled-error',
             gateId: 'gate-5',
           }),
         ]),
         gateCoverage: expect.arrayContaining([
           expect.objectContaining({
             gateId: 'gate-5',
-            evidenceIds: expect.arrayContaining(['gate-5-browser-tool-plan']),
+            evidenceIds: expect.arrayContaining([
+              'gate-5-gate-5-public-runtime-open-viewport-desktop-gate-5-console-no-unhandled-error',
+            ]),
             required: true,
           }),
         ]),
@@ -2414,11 +2425,11 @@ describe('GeneratedAppService', () => {
         publicationBlockers: expect.arrayContaining([
           expect.objectContaining({
             category: 'skeleton_only_upstream_gate',
-            gateIds: ['gate-5', 'gate-6'],
+            gateIds: ['gate-6'],
           }),
           expect.objectContaining({
             category: 'missing_real_execution_artifact',
-            gateIds: ['gate-5'],
+            gateIds: ['gate-6'],
           }),
           expect.objectContaining({
             category: 'stale_public_token_requirement',
@@ -2441,7 +2452,7 @@ describe('GeneratedAppService', () => {
             'gate-7-real-publish-candidate-runner',
           ]),
           repairSuggestions: expect.arrayContaining([
-            expect.stringContaining('真实 Gate 5 browser runner'),
+            expect.stringContaining('真实 Gate 6 independent verifier'),
           ]),
         }),
         requirementCoverage: [
@@ -2469,6 +2480,14 @@ describe('GeneratedAppService', () => {
               'gate-4-public-runtime-read',
               'gate-4-public-runtime-submit-input',
               'gate-4-public-submission-detail',
+            ]),
+          }),
+          expect.objectContaining({
+            gateId: 'gate-5',
+            executionLevel: 'real-local-browser-contract',
+            skeletonOnly: false,
+            evidenceIds: expect.arrayContaining([
+              'gate-5-gate-5-public-runtime-open-viewport-desktop-gate-5-console-no-unhandled-error',
             ]),
           }),
           expect.objectContaining({
@@ -2544,7 +2563,7 @@ describe('GeneratedAppService', () => {
         gateId: 'gate-5',
         generationRunId: GENERATION_RUN_ID,
         status: 'passed',
-        summary: expect.stringContaining('browser acceptance skeleton 完整'),
+        summary: expect.stringContaining('real-local browser-contract runner'),
       }),
       expect.objectContaining({
         gateId: 'gate-6',
@@ -2572,7 +2591,7 @@ describe('GeneratedAppService', () => {
           executionLevel: 'real-local-integration',
         }),
         browserAcceptancePlan: expect.objectContaining({
-          executionLevel: 'browser-acceptance-skeleton',
+          executionLevel: 'real-local-browser-contract',
         }),
         independentVerificationPlan: expect.objectContaining({
           executionLevel: 'independent-verifier-skeleton',
@@ -5499,15 +5518,13 @@ describe('GeneratedAppService', () => {
       expect.objectContaining({
         gateId: 'gate-5',
         status: 'failed',
-        summary: expect.stringContaining('不代表真实 Playwright/browser test'),
+        summary: expect.stringContaining('计划不完整时不会执行 Gate 5 runner'),
         failure: expect.objectContaining({
           code: 'browser-acceptance-plan-incomplete',
-          message: expect.stringContaining(
-            '不代表真实 Playwright/browser test',
-          ),
+          message: expect.stringContaining('Gate 5 runner 不会在计划不完整'),
         }),
         repairInstructions: expect.stringContaining(
-          '修复 generationPlan.browserAcceptancePlan',
+          'generated-run relative artifact refs',
         ),
       }),
     );

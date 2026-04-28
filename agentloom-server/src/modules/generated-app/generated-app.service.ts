@@ -86,6 +86,10 @@ import {
   GeneratedAppGate4IntegrationRunner,
   type GeneratedAppIntegrationExecutionLevel,
 } from './generated-app.integration-runner';
+import {
+  GeneratedAppGate5BrowserAcceptanceRunner,
+  type GeneratedAppBrowserAcceptanceExecutionLevel,
+} from './generated-app.browser-acceptance-runner';
 
 const DEFAULT_PREVIEW: GeneratedAppPreview = {
   previewUrl: null,
@@ -312,6 +316,19 @@ const GATE_4_ALLOWED_PAYLOAD_CONTRACT_REFS = [
 
 const GATE_5_SKELETON_EVIDENCE_NOTE =
   'Gate 5 当前只做 browser-acceptance-skeleton 完整性检查；未执行真实 Playwright/browser test、真实截图/视频/trace 捕获、真实 console/network 检查、真实公开链接访问或真实端到端交互。';
+
+const GATE_5_REAL_LOCAL_BROWSER_CONTRACT_NOTE =
+  'Gate 5 real-local-browser-contract 执行受控 deterministic 本地 DOM/accessibility/network/console contract；不执行任意 shell/用户路径，不启动 Playwright 或真实浏览器，不访问真实公开链接，也不捕获真实截图、视频或 Playwright trace。';
+
+const GATE_5_ALLOWED_EXECUTION_LEVELS = [
+  'browser-acceptance-skeleton',
+  'real-local-browser-contract',
+  'fixture-browser-acceptance',
+  'disabled-browser-acceptance',
+] as const;
+
+const GATE_5_LOCAL_BROWSER_CONTRACT_COMMAND =
+  'agentloom generated-app gate-5 local-browser-contract';
 
 const GATE_5_VIEWPORT_IDS = ['viewport-desktop', 'viewport-mobile'] as const;
 
@@ -746,12 +763,15 @@ interface Gate7Evaluation {
 export class GeneratedAppService {
   private readonly gate3WorkspaceRunner: GeneratedAppGate3WorkspaceRunner;
   private readonly gate4IntegrationRunner: GeneratedAppGate4IntegrationRunner;
+  private readonly gate5BrowserAcceptanceRunner: GeneratedAppGate5BrowserAcceptanceRunner;
 
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
     private readonly configService: ConfigService,
     @Optional() gate3WorkspaceRunner?: GeneratedAppGate3WorkspaceRunner,
     @Optional() gate4IntegrationRunner?: GeneratedAppGate4IntegrationRunner,
+    @Optional()
+    gate5BrowserAcceptanceRunner?: GeneratedAppGate5BrowserAcceptanceRunner,
   ) {
     this.gate3WorkspaceRunner =
       gate3WorkspaceRunner ??
@@ -759,6 +779,9 @@ export class GeneratedAppService {
     this.gate4IntegrationRunner =
       gate4IntegrationRunner ??
       new GeneratedAppGate4IntegrationRunner(this.configService);
+    this.gate5BrowserAcceptanceRunner =
+      gate5BrowserAcceptanceRunner ??
+      new GeneratedAppGate5BrowserAcceptanceRunner(this.configService);
   }
 
   private get tenantDb(): DrizzleDB {
@@ -1364,13 +1387,14 @@ export class GeneratedAppService {
                 staticContracts,
                 buildUnitPlan,
                 integrationPlan,
+                this.gate5BrowserAcceptanceRunner.getExecutionLevel(),
               );
               const generationPlanWithBrowserAcceptancePlan: GeneratedAppGenerationPlan =
                 {
                   ...generationPlanWithIntegrationPlan,
                   browserAcceptancePlan,
                 };
-              const gate5Evaluation = this.evaluateGate5BrowserAcceptancePlan(
+              let gate5Evaluation = this.evaluateGate5BrowserAcceptancePlan(
                 app.appSpec,
                 generationPlan,
                 staticContracts,
@@ -1378,6 +1402,16 @@ export class GeneratedAppService {
                 integrationPlan,
                 browserAcceptancePlan,
               );
+              if (gate5Evaluation.status === 'passed') {
+                gate5Evaluation = this.gate5BrowserAcceptanceRunner.run({
+                  appSpec: app.appSpec,
+                  generationPlan,
+                  staticContracts,
+                  buildUnitPlan,
+                  integrationPlan,
+                  browserAcceptancePlan,
+                });
+              }
               const gate4Result = latestApp.gateResults.find(
                 (gate) => gate.gateId === 'gate-4',
               );
@@ -1429,9 +1463,9 @@ export class GeneratedAppService {
               if (gate5Evaluation.status === 'failed') {
                 finalFailureReason =
                   gate5Evaluation.failure?.message ??
-                  'Gate 5 浏览器验收 skeleton 门禁失败，不能继续执行 Gate 6-7。';
+                  'Gate 5 浏览器验收门禁失败，不能继续执行 Gate 6-7。';
                 completedSummary =
-                  '门禁运行器骨架完成 Gate 0、Gate 1、Gate 2、Gate 3 和 Gate 4，但 Gate 5 browser acceptance skeleton 检查失败；当前应用保持不可发布。';
+                  '门禁运行器完成 Gate 0、Gate 1、Gate 2、Gate 3 和 Gate 4，但 Gate 5 browser acceptance plan 或执行器检查失败；Gate 6-7 未执行，当前应用保持不可发布。';
               } else {
                 const independentVerificationPlan =
                   this.buildIndependentVerificationPlan(
@@ -1595,10 +1629,11 @@ export class GeneratedAppService {
                   finalFailureReason =
                     gate7Evaluation.failure?.message ??
                     GATE_7_RUNNER_INCOMPLETE_FAILURE_REASON;
-                  completedSummary =
-                    integrationPlan.executionLevel === 'real-local-integration'
-                      ? '门禁运行器完成 Gate 0 AppSpec 完整性检查、Gate 1 架构计划门禁、Gate 2 静态合约门禁、Gate 3 Generation Workspace 与构建/单元执行器、Gate 4 受控本地 integration runner；Gate 5 browser acceptance 和 Gate 6 independent verifier 仍为 skeleton 完整性检查，Gate 7 publish-candidate guard 检测到缺少真实浏览器/独立审查证据，当前应用不能形成 publish candidate，保持不可发布。'
-                      : '门禁运行器完成 Gate 0 AppSpec 完整性检查、Gate 1 架构计划门禁、Gate 2 静态合约门禁、Gate 3 Generation Workspace 与构建/单元执行器；Gate 4 integration、Gate 5 browser acceptance 和 Gate 6 independent verifier 仍为 skeleton/fixture 完整性检查，Gate 7 publish-candidate guard 检测到缺少真实集成/浏览器/独立审查证据，当前应用不能形成 publish candidate，保持不可发布。';
+                  completedSummary = this.buildGate7CompletedRunSummary(
+                    buildUnitPlan,
+                    integrationPlan,
+                    browserAcceptancePlan,
+                  );
                 }
               }
             }
@@ -3282,6 +3317,7 @@ export class GeneratedAppService {
     staticContracts: GeneratedAppStaticContracts,
     buildUnitPlan: GeneratedAppBuildUnitPlan,
     integrationPlan: GeneratedAppIntegrationPlan,
+    executionLevel: GeneratedAppBrowserAcceptanceExecutionLevel = 'browser-acceptance-skeleton',
   ): GeneratedAppBrowserAcceptancePlan {
     const requirementIds = appSpec.coreRequirements.map(
       (requirement) => requirement.id,
@@ -3428,15 +3464,29 @@ export class GeneratedAppService {
       staticContractsVersion: staticContracts.contractVersion,
       buildUnitPlanVersion: buildUnitPlan.planVersion,
       integrationPlanVersion: integrationPlan.planVersion,
-      executionLevel: 'browser-acceptance-skeleton',
-      skeletonDisclaimer: GATE_5_SKELETON_EVIDENCE_NOTE,
+      executionLevel,
+      skeletonDisclaimer:
+        executionLevel === 'real-local-browser-contract'
+          ? GATE_5_REAL_LOCAL_BROWSER_CONTRACT_NOTE
+          : GATE_5_SKELETON_EVIDENCE_NOTE,
       browserToolPlan: {
-        runner: 'playwright',
-        command: staticContracts.testEntry.browserGateCommand,
-        testEntry: 'tests/generated-app/browser-acceptance.spec.ts',
-        workingDirectory: '/workspace/generated-app',
+        runner:
+          executionLevel === 'browser-acceptance-skeleton'
+            ? 'playwright'
+            : 'local-browser-contract',
+        command:
+          executionLevel === 'browser-acceptance-skeleton'
+            ? staticContracts.testEntry.browserGateCommand
+            : GATE_5_LOCAL_BROWSER_CONTRACT_COMMAND,
+        testEntry:
+          executionLevel === 'browser-acceptance-skeleton'
+            ? 'tests/generated-app/browser-acceptance.spec.ts'
+            : 'server-controlled-local-browser-contract',
+        workingDirectory: 'generated-run',
         baseUrlShape:
-          'http://localhost:{previewPort}/generated-apps/public/{publicShareAccess}',
+          executionLevel === 'browser-acceptance-skeleton'
+            ? 'http://localhost:{previewPort}/generated-apps/public/{publicShareAccess}'
+            : 'local-contract://generated-app/public-runtime/{publicShareAccess}',
         publicShareAccessPlaceholder: '{publicShareAccessFromTestFixture}',
         usesRealTokens: false,
         scenarioIds,
@@ -3717,6 +3767,13 @@ export class GeneratedAppService {
       integrationPlan,
       browserAcceptancePlan,
     );
+    const browserPlanRecord = this.isRecord(browserAcceptancePlan)
+      ? browserAcceptancePlan
+      : null;
+    const gate5EvidenceNote =
+      browserPlanRecord?.executionLevel === 'real-local-browser-contract'
+        ? GATE_5_REAL_LOCAL_BROWSER_CONTRACT_NOTE
+        : GATE_5_SKELETON_EVIDENCE_NOTE;
     const failedChecks = checks.filter((check) => !check.passed);
     const evidence = checks.map((check) => ({
       id: `gate-5-${check.id}`,
@@ -3725,10 +3782,10 @@ export class GeneratedAppService {
       url: null,
       summary:
         check.issues.length === 0
-          ? `${check.summary} ${GATE_5_SKELETON_EVIDENCE_NOTE}`
+          ? `${check.summary} ${gate5EvidenceNote}`
           : `${check.summary} 缺口：${check.issues.join(
               '；',
-            )} ${GATE_5_SKELETON_EVIDENCE_NOTE}`,
+            )} ${gate5EvidenceNote}`,
     }));
 
     if (failedChecks.length > 0) {
@@ -3738,7 +3795,7 @@ export class GeneratedAppService {
           .map((check) => check.label)
           .join(
             '、',
-          )}；本失败只来自 browser-acceptance-skeleton 合约完整性检查，不代表真实 Playwright/browser test、真实截图/视频/trace 捕获、真实 console/network 检查、真实公开链接访问或真实端到端交互已经执行。`,
+          )}；本失败来自 browser acceptance plan 合约完整性检查，Gate 5 runner 不会在计划不完整或边界不安全时继续执行。`,
         details: {
           checks: checks.map((check) => ({
             id: check.id,
@@ -3752,18 +3809,20 @@ export class GeneratedAppService {
       return {
         status: 'failed',
         summary:
-          'Gate 5 失败：browserAcceptancePlan 未完整覆盖浏览器 runner、桌面/移动视口、公开 runtime journeys、创建者管理 journeys、console/network/accessibility/responsive assertions、截图/视频/trace artifacts、覆盖矩阵或失败捕获字段；本结果仅表示契约级 browser acceptance skeleton 检查失败，不代表真实 Playwright/browser test、真实截图/视频/trace 捕获、真实 console/network 检查、真实公开链接访问或真实端到端交互已经执行。',
+          'Gate 5 失败：browserAcceptancePlan 未完整覆盖浏览器 runner、桌面/移动视口、公开 runtime journeys、创建者管理 journeys、console/network/accessibility/responsive assertions、artifact refs、覆盖矩阵、失败捕获字段或安全边界；计划不完整时不会执行 Gate 5 runner，也不会继续 Gate 6-7。',
         evidence,
         failure,
         repairInstructions:
-          '修复 generationPlan.browserAcceptancePlan，使其覆盖 Playwright 或等价浏览器 runner、desktop/mobile viewport matrix、公开 runtime 与创建者管理 journeys、console/network/accessibility/responsive assertions、引用 Gate 4 trace artifacts 的截图/视频/trace 产物期望、需求/场景/旅程覆盖和 failure capture fields；当前 Gate 5 仍只检查 browser-acceptance-skeleton 合约，不代表真实 Playwright/browser test、真实截图/视频/trace 捕获、真实 console/network 检查、真实公开链接访问或真实端到端交互已经执行。',
+          '修复 generationPlan.browserAcceptancePlan，使其覆盖 Gate 5 executionLevel、受控 runner、desktop/mobile viewport matrix、公开 runtime 与创建者管理 journeys、console/network/accessibility/responsive assertions、generated-run relative artifact refs、需求/场景/旅程覆盖和 failure capture fields；fixture/disabled 不得标记为真实执行通过。',
       };
     }
 
     return {
       status: 'passed',
       summary:
-        'Gate 5 通过：browserAcceptancePlan 浏览器验收 skeleton 已完整覆盖浏览器 runner、桌面/移动视口、公开 runtime journeys、创建者管理 journeys、console/network/accessibility/responsive assertions、截图/视频/trace artifact 期望、覆盖矩阵和失败捕获字段；本结果仅表示契约级 browser acceptance skeleton 完整，不代表真实 Playwright/browser test、真实截图/视频/trace 捕获、真实 console/network 检查、真实公开链接访问或真实端到端交互已经执行。',
+        browserPlanRecord?.executionLevel === 'real-local-browser-contract'
+          ? 'Gate 5 计划通过：browserAcceptancePlan 已完整覆盖 real-local browser-contract runner、桌面/移动视口、公开 runtime journeys、创建者管理 journeys、console/network/accessibility/responsive assertions、artifact refs、覆盖矩阵、失败捕获字段和安全边界；将继续执行受控本地 browser contract runner。'
+          : 'Gate 5 通过：browserAcceptancePlan 浏览器验收 skeleton/fixture 计划已完整覆盖 runner、桌面/移动视口、公开 runtime journeys、创建者管理 journeys、console/network/accessibility/responsive assertions、artifact refs、覆盖矩阵和失败捕获字段；fixture/skeleton 不代表真实 browser acceptance 执行。',
       evidence,
       failure: null,
       repairInstructions: null,
@@ -3964,26 +4023,61 @@ export class GeneratedAppService {
               browserAcceptancePlan.integrationPlanVersion,
             )} 与 integrationPlan.planVersion=${integrationPlan.planVersion} 不一致`,
           ]),
-      ...(browserAcceptancePlan.executionLevel === 'browser-acceptance-skeleton'
+      ...(typeof browserAcceptancePlan.executionLevel === 'string' &&
+      GATE_5_ALLOWED_EXECUTION_LEVELS.includes(
+        browserAcceptancePlan.executionLevel as (typeof GATE_5_ALLOWED_EXECUTION_LEVELS)[number],
+      )
         ? []
-        : ['executionLevel 必须为 browser-acceptance-skeleton']),
+        : [
+            `executionLevel 必须为 ${GATE_5_ALLOWED_EXECUTION_LEVELS.join(
+              ' | ',
+            )}`,
+          ]),
       ...(!this.getNonEmptyString(browserAcceptancePlan.skeletonDisclaimer)
         ? ['skeletonDisclaimer 缺失']
         : []),
     ];
+    const expectedBrowserRunner =
+      browserAcceptancePlan.executionLevel === 'browser-acceptance-skeleton'
+        ? 'playwright'
+        : 'local-browser-contract';
+    const expectedBrowserCommand =
+      browserAcceptancePlan.executionLevel === 'browser-acceptance-skeleton'
+        ? staticContracts.testEntry.browserGateCommand
+        : GATE_5_LOCAL_BROWSER_CONTRACT_COMMAND;
     const browserToolIssues = [
       ...this.requireRecord(browserToolPlan, 'browserToolPlan'),
-      ...(browserToolPlan?.runner === 'playwright'
+      ...(browserToolPlan?.runner === expectedBrowserRunner
         ? []
-        : ['browserToolPlan.runner 必须为 playwright']),
+        : [
+            `browserToolPlan.runner 必须为 ${expectedBrowserRunner}，与 executionLevel=${String(
+              browserAcceptancePlan.executionLevel,
+            )} 匹配`,
+          ]),
       ...(!this.getNonEmptyString(browserToolPlan?.command)
         ? ['browserToolPlan.command 缺失']
         : []),
+      ...(this.getNonEmptyString(browserToolPlan?.command) ===
+      expectedBrowserCommand
+        ? []
+        : [
+            `browserToolPlan.command 必须为受控命令描述 ${expectedBrowserCommand}`,
+          ]),
       ...(!this.getNonEmptyString(browserToolPlan?.testEntry)
         ? ['browserToolPlan.testEntry 缺失']
         : []),
       ...(!this.getNonEmptyString(browserToolPlan?.workingDirectory)
         ? ['browserToolPlan.workingDirectory 缺失']
+        : []),
+      ...this.buildSafeRelativePathIssues(
+        'browserToolPlan.workingDirectory',
+        this.getNonEmptyString(browserToolPlan?.workingDirectory),
+      ),
+      ...(browserAcceptancePlan.executionLevel !==
+        'browser-acceptance-skeleton' &&
+      this.getNonEmptyString(browserToolPlan?.workingDirectory) !==
+        'generated-run'
+        ? ['browserToolPlan.workingDirectory 必须为 generated-run']
         : []),
       ...(!this.getNonEmptyString(browserToolPlan?.baseUrlShape)
         ? ['browserToolPlan.baseUrlShape 缺失']
@@ -4480,6 +4574,17 @@ export class GeneratedAppService {
         ...(!this.getNonEmptyString(artifact.path)
           ? [`artifactExpectations[${index}].path 缺失`]
           : []),
+        ...(this.getNonEmptyString(artifact.path)?.startsWith(
+          'artifacts/gate-5/',
+        )
+          ? []
+          : [
+              `artifactExpectations[${index}].path 必须位于 artifacts/gate-5/ generated-run relative 路径下`,
+            ]),
+        ...this.buildSafeRelativePathIssues(
+          `artifactExpectations[${index}].path`,
+          this.getNonEmptyString(artifact.path),
+        ),
         ...(artifact.required === true
           ? []
           : [`artifactExpectations[${index}].required 必须为 true`]),
@@ -6216,6 +6321,7 @@ export class GeneratedAppService {
       this.resolveGate7SkeletonOnlyUpstreamGateIds(
         buildUnitPlan,
         integrationPlan,
+        browserAcceptancePlan,
       );
     const skeletonOnlyGateLabel = skeletonOnlyUpstreamGateIds.join('、');
     const releaseManifest: GeneratedAppPublishCandidatePlan['artifactReleaseManifest'] =
@@ -6354,12 +6460,23 @@ export class GeneratedAppService {
       ...(integrationPlan.executionLevel === 'real-local-integration'
         ? []
         : ['gate-4']),
-      'gate-5',
+      ...(browserAcceptancePlan.executionLevel === 'real-local-browser-contract'
+        ? []
+        : ['gate-5']),
+      ...(browserAcceptancePlan.executionLevel ===
+        'real-local-browser-contract' &&
+      buildUnitPlan.executionLevel === 'real-local-command-plan' &&
+      integrationPlan.executionLevel === 'real-local-integration'
+        ? ['gate-6']
+        : []),
     ];
     const missingExecutionArtifactMessage =
+      browserAcceptancePlan.executionLevel === 'real-local-browser-contract' &&
       integrationPlan.executionLevel === 'real-local-integration'
-        ? '缺少真实浏览器 artifact；Gate 4 已提供受控本地 integration trace，但 Gate 5 尚未执行真实浏览器验收。'
-        : '缺少真实集成 trace 和浏览器 artifact；Gate 3 只覆盖构建与单元层。';
+        ? 'Gate 3、Gate 4 和 Gate 5 已提供受控本地 real-local contract evidence；剩余发布阻断来自 Gate 6 真实独立 verifier report/verdict 缺失。'
+        : integrationPlan.executionLevel === 'real-local-integration'
+          ? '缺少真实浏览器 artifact；Gate 4 已提供受控本地 integration trace，但 Gate 5 尚未执行真实 browser acceptance runner。'
+          : '缺少真实集成 trace 和浏览器 artifact；Gate 3 只覆盖构建与单元层。';
 
     return {
       planVersion: 1,
@@ -6454,9 +6571,11 @@ export class GeneratedAppService {
         publishCandidateAllowed: false,
         blockingReasons: [
           `${skeletonOnlyGateLabel} 当前只有 skeleton/contract-level completeness evidence。`,
-          integrationPlan.executionLevel === 'real-local-integration'
-            ? '缺少真实 browser/verifier artifact 签收。'
-            : '缺少真实 integration/browser/verifier artifact 签收。',
+          browserAcceptancePlan.executionLevel === 'real-local-browser-contract'
+            ? '缺少真实 independent verifier artifact 签收。'
+            : integrationPlan.executionLevel === 'real-local-integration'
+              ? '缺少真实 browser/verifier artifact 签收。'
+              : '缺少真实 integration/browser/verifier artifact 签收。',
           '缺少真实独立 verifier verdict，Gate 6 skeleton 不能替代真实审查结论。',
           'Gate 7 guard 失败期间 public share token 必须保持禁用并清空。',
         ],
@@ -6466,10 +6585,14 @@ export class GeneratedAppService {
         requiredRealGateRunnerIds: [...GATE_7_REQUIRED_REAL_GATE_RUNNER_IDS],
         evidenceIds: [...upstreamEvidenceIds, ...gate7EvidenceIds],
         repairSuggestions: [
-          integrationPlan.executionLevel === 'real-local-integration'
-            ? '保留 Gate 4 real-local integration runner 证据，继续接入真实 Gate 5 browser runner。'
-            : '接入真实 Gate 4 integration runner 并产出 API、Agent/Workflow、插件 sandbox trace。',
-          '接入真实 Gate 5 browser runner 并产出截图、视频、trace、console 和 network 证据。',
+          browserAcceptancePlan.executionLevel === 'real-local-browser-contract'
+            ? '保留 Gate 4 real-local integration 与 Gate 5 real-local browser-contract runner 证据，继续接入真实 Gate 6 independent verifier。'
+            : integrationPlan.executionLevel === 'real-local-integration'
+              ? '保留 Gate 4 real-local integration runner 证据，继续接入真实 Gate 5 browser runner。'
+              : '接入真实 Gate 4 integration runner 并产出 API、Agent/Workflow、插件 sandbox trace。',
+          browserAcceptancePlan.executionLevel === 'real-local-browser-contract'
+            ? 'Gate 5 已有受控本地 DOM/accessibility/network/console contract evidence；后续如需 Playwright 截图/视频/trace，可在独立增强门禁补充。'
+            : '接入真实 Gate 5 browser runner 并产出截图、视频、trace、console 和 network 证据。',
           '接入真实 Gate 6 independent verifier 并产出独立 verdict。',
           '只有真实 Gate 3-7 阻断证据通过后才允许重新创建公开分享 token。',
         ],
@@ -6497,6 +6620,7 @@ export class GeneratedAppService {
           gateId,
           buildUnitPlan,
           integrationPlan,
+          browserAcceptancePlan,
         ),
         skeletonOnly:
           gateId === 'gate-7' || skeletonOnlyUpstreamGateIds.includes(gateId),
@@ -6521,6 +6645,7 @@ export class GeneratedAppService {
   private resolveGate7SkeletonOnlyUpstreamGateIds(
     buildUnitPlan: GeneratedAppBuildUnitPlan,
     integrationPlan: GeneratedAppIntegrationPlan,
+    browserAcceptancePlan: GeneratedAppBrowserAcceptancePlan,
   ): string[] {
     return [
       ...(buildUnitPlan.executionLevel === 'real-local-command-plan'
@@ -6529,7 +6654,9 @@ export class GeneratedAppService {
       ...(integrationPlan.executionLevel === 'real-local-integration'
         ? []
         : ['gate-4']),
-      'gate-5',
+      ...(browserAcceptancePlan.executionLevel === 'real-local-browser-contract'
+        ? []
+        : ['gate-5']),
       'gate-6',
     ];
   }
@@ -6538,6 +6665,7 @@ export class GeneratedAppService {
     gateId: string,
     buildUnitPlan: GeneratedAppBuildUnitPlan,
     integrationPlan: GeneratedAppIntegrationPlan,
+    browserAcceptancePlan: GeneratedAppBrowserAcceptancePlan,
   ): string {
     const executionLevels: Record<string, string> = {
       'gate-0': 'app-spec-deterministic-completeness',
@@ -6545,7 +6673,7 @@ export class GeneratedAppService {
       'gate-2': 'static-contracts-deterministic-completeness',
       'gate-3': buildUnitPlan.executionLevel,
       'gate-4': integrationPlan.executionLevel,
-      'gate-5': 'browser-acceptance-skeleton',
+      'gate-5': browserAcceptancePlan.executionLevel,
       'gate-6': 'independent-verifier-skeleton',
       'gate-7': 'publish-candidate-guard-skeleton',
     };
@@ -6638,10 +6766,12 @@ export class GeneratedAppService {
       this.resolveGate7SkeletonOnlyUpstreamGateIds(
         buildUnitPlan,
         integrationPlan,
+        browserAcceptancePlan,
       );
     const gate7FailureIntro = this.buildGate7FailureIntro(
       buildUnitPlan,
       integrationPlan,
+      browserAcceptancePlan,
     );
     const failure: GeneratedAppGateRunFailure = {
       code: 'publish-candidate-guard-blocked',
@@ -6655,12 +6785,17 @@ export class GeneratedAppService {
 
     return {
       status: 'failed',
-      summary: this.buildGate7FailureSummary(buildUnitPlan, integrationPlan),
+      summary: this.buildGate7FailureSummary(
+        buildUnitPlan,
+        integrationPlan,
+        browserAcceptancePlan,
+      ),
       evidence,
       failure,
       repairInstructions: this.buildGate7RepairInstructions(
         buildUnitPlan,
         integrationPlan,
+        browserAcceptancePlan,
       ),
     };
   }
@@ -6668,7 +6803,16 @@ export class GeneratedAppService {
   private buildGate7FailureIntro(
     buildUnitPlan: GeneratedAppBuildUnitPlan,
     integrationPlan: GeneratedAppIntegrationPlan,
+    browserAcceptancePlan: GeneratedAppBrowserAcceptancePlan,
   ): string {
+    if (
+      buildUnitPlan.executionLevel === 'real-local-command-plan' &&
+      integrationPlan.executionLevel === 'real-local-integration' &&
+      browserAcceptancePlan.executionLevel === 'real-local-browser-contract'
+    ) {
+      return 'Gate 7 publish-candidate guard skeleton 检测到 Gate 6 仍为 skeleton-only upstream evidence，且缺少真实 independent verifier evidence，不能形成 publish candidate。';
+    }
+
     if (
       buildUnitPlan.executionLevel === 'real-local-command-plan' &&
       integrationPlan.executionLevel === 'real-local-integration'
@@ -6686,7 +6830,16 @@ export class GeneratedAppService {
   private buildGate7FailureSummary(
     buildUnitPlan: GeneratedAppBuildUnitPlan,
     integrationPlan: GeneratedAppIntegrationPlan,
+    browserAcceptancePlan: GeneratedAppBrowserAcceptancePlan,
   ): string {
+    if (
+      buildUnitPlan.executionLevel === 'real-local-command-plan' &&
+      integrationPlan.executionLevel === 'real-local-integration' &&
+      browserAcceptancePlan.executionLevel === 'real-local-browser-contract'
+    ) {
+      return 'Gate 7 失败：publishCandidatePlan guard skeleton 已生成并保留；Gate 3 构建与单元层、Gate 4 受控本地 integration 层、Gate 5 受控本地 browser-contract 层已按当前执行器记录 real-local contract evidence，但 Gate 6 仍只有 independent-verifier-skeleton evidence，缺少真实 independent verifier verdict，不能形成 publish candidate 或启用公开分享。';
+    }
+
     if (
       buildUnitPlan.executionLevel === 'real-local-command-plan' &&
       integrationPlan.executionLevel === 'real-local-integration'
@@ -6701,10 +6854,39 @@ export class GeneratedAppService {
     return 'Gate 7 失败：publishCandidatePlan guard skeleton 已生成并保留；Gate 3 仍不是真实本地命令执行证据，Gate 4-6 仍只有 skeleton/fixture/contract-level completeness evidence，不能形成 publish candidate 或启用公开分享。';
   }
 
+  private buildGate7CompletedRunSummary(
+    buildUnitPlan: GeneratedAppBuildUnitPlan,
+    integrationPlan: GeneratedAppIntegrationPlan,
+    browserAcceptancePlan: GeneratedAppBrowserAcceptancePlan,
+  ): string {
+    if (
+      buildUnitPlan.executionLevel === 'real-local-command-plan' &&
+      integrationPlan.executionLevel === 'real-local-integration' &&
+      browserAcceptancePlan.executionLevel === 'real-local-browser-contract'
+    ) {
+      return '门禁运行器完成 Gate 0 AppSpec 完整性检查、Gate 1 架构计划门禁、Gate 2 静态合约门禁、Gate 3 Generation Workspace 与构建/单元执行器、Gate 4 受控本地 integration runner、Gate 5 受控本地 browser-contract runner；Gate 6 independent verifier 仍为 skeleton 完整性检查，Gate 7 publish-candidate guard 检测到缺少真实独立审查证据，当前应用不能形成 publish candidate，保持不可发布。';
+    }
+
+    if (integrationPlan.executionLevel === 'real-local-integration') {
+      return '门禁运行器完成 Gate 0 AppSpec 完整性检查、Gate 1 架构计划门禁、Gate 2 静态合约门禁、Gate 3 Generation Workspace 与构建/单元执行器、Gate 4 受控本地 integration runner；Gate 5 browser acceptance 和 Gate 6 independent verifier 仍为 skeleton/fixture 完整性检查，Gate 7 publish-candidate guard 检测到缺少真实浏览器/独立审查证据，当前应用不能形成 publish candidate，保持不可发布。';
+    }
+
+    return '门禁运行器完成 Gate 0 AppSpec 完整性检查、Gate 1 架构计划门禁、Gate 2 静态合约门禁、Gate 3 Generation Workspace 与构建/单元执行器；Gate 4 integration、Gate 5 browser acceptance 和 Gate 6 independent verifier 仍为 skeleton/fixture 完整性检查，Gate 7 publish-candidate guard 检测到缺少真实集成/浏览器/独立审查证据，当前应用不能形成 publish candidate，保持不可发布。';
+  }
+
   private buildGate7RepairInstructions(
     buildUnitPlan: GeneratedAppBuildUnitPlan,
     integrationPlan: GeneratedAppIntegrationPlan,
+    browserAcceptancePlan: GeneratedAppBrowserAcceptancePlan,
   ): string {
+    if (
+      buildUnitPlan.executionLevel === 'real-local-command-plan' &&
+      integrationPlan.executionLevel === 'real-local-integration' &&
+      browserAcceptancePlan.executionLevel === 'real-local-browser-contract'
+    ) {
+      return '接入真实 Gate 6 independent verifier runner、真实 verifier report 和独立 verdict 后，再由 Gate 7 重新评估 publish candidate；在 Gate 7 guard 失败期间 public token 必须保持禁用并清空。';
+    }
+
     if (
       buildUnitPlan.executionLevel === 'real-local-command-plan' &&
       integrationPlan.executionLevel === 'real-local-integration'
@@ -6830,13 +7012,19 @@ export class GeneratedAppService {
       finalVerdict?.blockingReasons,
     );
     const requiredBlockingReasonFragments =
-      integrationPlan.executionLevel === 'real-local-integration'
+      browserAcceptancePlan.executionLevel === 'real-local-browser-contract'
         ? [
             'skeleton/contract-level',
-            '真实 browser/verifier artifact',
+            '真实 independent verifier artifact',
             '真实独立 verifier verdict',
           ]
-        : [...GATE_7_REQUIRED_BLOCKING_REASON_FRAGMENTS];
+        : integrationPlan.executionLevel === 'real-local-integration'
+          ? [
+              'skeleton/contract-level',
+              '真实 browser/verifier artifact',
+              '真实独立 verifier verdict',
+            ]
+          : [...GATE_7_REQUIRED_BLOCKING_REASON_FRAGMENTS];
 
     const versionAndInputIssues = [
       ...(publishCandidatePlan.planVersion === 1
@@ -11000,22 +11188,22 @@ export class GeneratedAppService {
     const trimmed = value.trim();
 
     return (
-      /^[a-f0-9]{64}$/i.test(trimmed) ||
-      /^(sk|pk|pat|ghp|glpat|xox[baprs])[-_]/.test(trimmed) ||
-      /^bearer\s+\S+/i.test(trimmed)
+      /\b[a-f0-9]{64}\b/i.test(trimmed) ||
+      /\b(sk|pk|pat|ghp|glpat|xox[baprs])[-_][A-Za-z0-9._-]+/i.test(trimmed) ||
+      /\bbearer\s+\S+/i.test(trimmed)
     );
   }
 
   private formatIssueValue(value: string): string {
-    if (/^[a-f0-9]{64}$/i.test(value)) {
+    if (/\b[a-f0-9]{64}\b/i.test(value)) {
       return '[REDACTED_TOKEN]';
     }
 
-    if (/^(sk|pk|pat|ghp|glpat|xox[baprs])[-_]/.test(value)) {
+    if (/\b(sk|pk|pat|ghp|glpat|xox[baprs])[-_][A-Za-z0-9._-]+/i.test(value)) {
       return '[REDACTED_SECRET]';
     }
 
-    if (/^bearer\s+\S+/i.test(value)) {
+    if (/\bbearer\s+\S+/i.test(value)) {
       return '[REDACTED_SECRET]';
     }
 

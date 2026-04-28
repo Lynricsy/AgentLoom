@@ -563,10 +563,14 @@ export interface GeneratedAppBrowserAcceptancePlan {
   staticContractsVersion: number;
   buildUnitPlanVersion: number;
   integrationPlanVersion: number;
-  executionLevel: 'browser-acceptance-skeleton';
+  executionLevel:
+    | 'browser-acceptance-skeleton'
+    | 'real-local-browser-contract'
+    | 'fixture-browser-acceptance'
+    | 'disabled-browser-acceptance';
   skeletonDisclaimer: string;
   browserToolPlan: {
-    runner: 'playwright';
+    runner: 'playwright' | 'local-browser-contract';
     command: string;
     testEntry: string;
     workingDirectory: string;
