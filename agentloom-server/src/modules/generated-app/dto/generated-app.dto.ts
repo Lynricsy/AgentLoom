@@ -112,7 +112,7 @@ export const CreateGeneratedAppSubmissionSchema = z.object({
     .min(1, '匿名会话 ID 不能为空')
     .max(128, '匿名会话 ID 不能超过 128 个字符')
     .optional(),
-  input: JsonObjectSchema.optional().default({}),
+  input: z.unknown().optional().default({}),
   clientContext: JsonObjectSchema.optional(),
 });
 

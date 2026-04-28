@@ -98,6 +98,7 @@ import {
   GeneratedAppGate7PublishCandidateRunner,
   type GeneratedAppPublishCandidateExecutionLevel,
 } from './generated-app.publish-candidate-runner';
+import { evaluateGeneratedAppLocalRuntime } from './generated-app.runtime';
 
 const DEFAULT_PREVIEW: GeneratedAppPreview = {
   previewUrl: null,
@@ -107,6 +108,10 @@ const DEFAULT_PREVIEW: GeneratedAppPreview = {
 
 const GATE_7_RUNNER_INCOMPLETE_FAILURE_REASON =
   'Gate 7 publish-candidate guard skeleton 检测到 Gate 4-6 仍为 skeleton-only upstream evidence，且缺少后续真实 integration/browser/verifier 证据，不能形成 publish candidate。';
+const PUBLIC_ANONYMOUS_SESSION_TOKEN_LIKE_PATTERN =
+  /\b(?:Bearer\s+[A-Za-z0-9._~+/-]{8,}|sk-[A-Za-z0-9_-]{8,}|[A-Za-z0-9_-]{32,})\b/i;
+const PUBLIC_ANONYMOUS_SESSION_HOST_PATH_PATTERN =
+  /(?:\/(?:root|home|users|var|tmp|etc|workspace)\/[^\s"'<>]+|[A-Za-z]:\\[^\s"'<>]+)/i;
 
 const GATE_2_STATIC_CONTRACT_IDS = [
   'gate-2-public-runtime-contract',
@@ -2134,8 +2139,15 @@ export class GeneratedAppService {
     dto: CreateGeneratedAppSubmissionDtoType,
   ): Promise<PublicGeneratedAppSubmissionResponseDto> {
     const app = await this.findPublicGeneratedAppRecord(token);
-    const anonymousSessionId =
-      dto.anonymousSessionId?.trim() || crypto.randomUUID();
+    const anonymousSessionId = this.normalizePublicAnonymousSessionId(
+      dto.anonymousSessionId,
+    );
+    const now = new Date();
+    const evaluation = evaluateGeneratedAppLocalRuntime({
+      app,
+      input: dto.input ?? {},
+      now,
+    });
 
     const [submission] = await this.db
       .insert(schema.generatedAppSubmissions)
@@ -2145,11 +2157,13 @@ export class GeneratedAppService {
         appSpecVersion: app.appSpec.version,
         publicShareToken: token,
         anonymousSessionId,
-        status: 'received',
-        input: dto.input ?? {},
-        result: null,
-        report: null,
-        errorMessage: null,
+        status: evaluation.status,
+        input: evaluation.input,
+        result: evaluation.result,
+        report: evaluation.report,
+        errorMessage: evaluation.errorMessage,
+        createdAt: now,
+        updatedAt: now,
       })
       .returning();
 
@@ -2315,6 +2329,23 @@ export class GeneratedAppService {
         app.readiness.summary,
       );
     }
+  }
+
+  private normalizePublicAnonymousSessionId(value: string | undefined): string {
+    const trimmed = value?.trim();
+
+    if (!trimmed) {
+      return crypto.randomUUID();
+    }
+
+    if (
+      PUBLIC_ANONYMOUS_SESSION_TOKEN_LIKE_PATTERN.test(trimmed) ||
+      PUBLIC_ANONYMOUS_SESSION_HOST_PATH_PATTERN.test(trimmed)
+    ) {
+      return crypto.randomUUID();
+    }
+
+    return trimmed;
   }
 
   private async assertGateRunLinks(
@@ -12078,7 +12109,7 @@ export class GeneratedAppService {
       .limit(1);
 
     if (!app) {
-      throw new GeneratedAppNotFoundException(token);
+      throw new GeneratedAppNotFoundException('公开链接');
     }
 
     this.assertCanEnablePublicShare(app);

@@ -293,6 +293,23 @@ function createInsertReturningChain<T>(result: T[]) {
   };
 }
 
+function createGeneratedAppSubmissionInsertReturningFromPayload(
+  overrides: Partial<GeneratedAppSubmission> = {},
+) {
+  let payload: Partial<GeneratedAppSubmission> = {};
+  const chain = {
+    values: vi.fn((nextPayload: Partial<GeneratedAppSubmission>) => {
+      payload = nextPayload;
+      return chain;
+    }),
+    returning: vi.fn(async () => [
+      createGeneratedAppSubmission({ ...payload, ...overrides }),
+    ]),
+  };
+
+  return chain;
+}
+
 function createUpdateReturningChain<T>(result: T[]) {
   return {
     set: vi.fn().mockReturnThis(),
@@ -7391,7 +7408,7 @@ describe('GeneratedAppService', () => {
     expect(mockTenantDb.update).not.toHaveBeenCalled();
   });
 
-  it('公开提交应写入创建者租户、快照当前 token、缺省生成匿名会话并保持 received 状态', async () => {
+  it('公开提交应写入创建者租户、快照当前 token，并同步生成 completed result/report', async () => {
     const token = '3'.repeat(64);
     const app = createGeneratedApp({
       status: 'published',
@@ -7399,10 +7416,8 @@ describe('GeneratedAppService', () => {
       publicShareEnabled: true,
       publicShareToken: token,
     });
-    const submission = createGeneratedAppSubmission({
-      publicShareToken: token,
-    });
-    const insertChain = createInsertReturningChain([submission]);
+    const insertChain =
+      createGeneratedAppSubmissionInsertReturningFromPayload();
     mockTenantDb.select.mockReturnValueOnce(createSelectChain([app]));
     mockTenantDb.insert.mockReturnValueOnce(insertChain);
 
@@ -7417,29 +7432,61 @@ describe('GeneratedAppService', () => {
       anonymousSessionId: string;
       status: string;
       input: Record<string, unknown>;
-      result: null;
-      report: null;
-      errorMessage: null;
+      result: Record<string, unknown>;
+      report: Record<string, unknown>;
+      errorMessage: string | null;
     };
     expect(insertPayload.tenantId).toBe(TENANT_ID);
     expect(insertPayload.generatedAppId).toBe(APP_ID);
     expect(insertPayload.publicShareToken).toBe(token);
     expect(insertPayload.anonymousSessionId).toMatch(/^[0-9a-f-]{36}$/i);
-    expect(insertPayload.status).toBe('received');
+    expect(insertPayload.status).toBe('completed');
     expect(insertPayload.input).toEqual({ chiefComplaint: '头痛' });
-    expect(insertPayload.result).toBeNull();
-    expect(insertPayload.report).toBeNull();
+    expect(insertPayload.result).toEqual(
+      expect.objectContaining({
+        runtimeKind: 'local-generated-app-deterministic-report',
+        appName: app.appName,
+        userGoal: '整理问诊提交信息、生成下一步问题和免责声明',
+        inputSummary: expect.objectContaining({
+          textPreview: expect.stringContaining('头痛'),
+        }),
+        matchedRequirements: expect.any(Array),
+        scenarioCoverage: expect.any(Array),
+        nextStepQuestions: expect.arrayContaining([
+          expect.stringContaining('主要不适从什么时候开始'),
+        ]),
+        reportSections: expect.any(Array),
+        runtimeNotice: expect.stringContaining('未调用外部模型'),
+      }),
+    );
+    expect(insertPayload.report).toEqual(
+      expect.objectContaining({
+        runtimeKind: 'local-generated-app-deterministic-report',
+        title: `${app.appName} 本地运行报告`,
+        disclaimers: expect.arrayContaining([
+          expect.stringContaining('不提供诊断结论'),
+        ]),
+      }),
+    );
     expect(insertPayload.errorMessage).toBeNull();
-    expect(response.status).toBe('received');
+    expect(response.status).toBe('completed');
+    expect(response.result).toEqual(insertPayload.result);
+    expect(response.report).toEqual(insertPayload.report);
   });
 
   it('公开提交遇到过期或未满足 readiness 的公开应用时应拒绝', async () => {
     const staleToken = '4'.repeat(64);
     mockTenantDb.select.mockReturnValueOnce(createSelectChain([]));
 
-    await expect(
-      service.createPublicSubmission(staleToken, { input: {} }),
-    ).rejects.toBeInstanceOf(GeneratedAppNotFoundException);
+    try {
+      await service.createPublicSubmission(staleToken, { input: {} });
+      throw new Error('expected stale token rejection');
+    } catch (error) {
+      expect(error).toBeInstanceOf(GeneratedAppNotFoundException);
+      expect((error as GeneratedAppNotFoundException).detail).not.toContain(
+        staleToken,
+      );
+    }
 
     vi.clearAllMocks();
 
@@ -7477,9 +7524,7 @@ describe('GeneratedAppService', () => {
     });
     mockTenantDb.select.mockReturnValueOnce(createSelectChain([app]));
     mockTenantDb.insert.mockReturnValueOnce(
-      createInsertReturningChain([
-        createGeneratedAppSubmission({ publicShareToken: token }),
-      ]),
+      createGeneratedAppSubmissionInsertReturningFromPayload(),
     );
 
     const response = await service.createPublicSubmission(token, {
@@ -7496,10 +7541,128 @@ describe('GeneratedAppService', () => {
     expect(response).not.toHaveProperty('pluginIds');
     expect(response).not.toHaveProperty('sourceArtifactUrl');
     expect(response).not.toHaveProperty('testReportUrl');
+    expect(JSON.stringify(response)).not.toContain(token);
   });
 
-  it('创建者提交列表和详情只返回当前租户、应用且未删除的记录', async () => {
-    const submission = createGeneratedAppSubmission();
+  it('公开提交会脱敏 token-like/path 输入，非法结构保存 failed 状态', async () => {
+    const token = '6'.repeat(64);
+    const app = createGeneratedApp({
+      status: 'published',
+      readiness: createPublishCandidateReadiness(),
+      publicShareEnabled: true,
+      publicShareToken: token,
+    });
+    const insertChain =
+      createGeneratedAppSubmissionInsertReturningFromPayload();
+    mockTenantDb.select.mockReturnValueOnce(createSelectChain([app]));
+    mockTenantDb.insert.mockReturnValueOnce(insertChain);
+
+    const response = await service.createPublicSubmission(token, {
+      anonymousSessionId: 'Bearer very-secret-token-value',
+      input: {
+        publicShareToken: 'a'.repeat(64),
+        note: 'Bearer very-secret-token-value',
+        attachmentPath: '/root/AgentLoom/.env',
+        chiefComplaint: '头痛',
+      },
+    });
+
+    const insertPayload = insertChain.values.mock.calls[0]?.[0] as {
+      status: string;
+      input: Record<string, unknown>;
+      result: Record<string, unknown>;
+      report: Record<string, unknown>;
+      errorMessage: string | null;
+      anonymousSessionId: string;
+    };
+    const serializedRuntimeOutput = JSON.stringify({
+      input: insertPayload.input,
+      result: insertPayload.result,
+      report: insertPayload.report,
+      errorMessage: insertPayload.errorMessage,
+    });
+    expect(insertPayload.status).toBe('completed');
+    expect(insertPayload.anonymousSessionId).toMatch(/^[0-9a-f-]{36}$/i);
+    expect(insertPayload.anonymousSessionId).not.toContain(
+      'very-secret-token-value',
+    );
+    expect(insertPayload.input).toEqual(
+      expect.objectContaining({
+        redactedField1: '[REDACTED]',
+        note: '[REDACTED_TOKEN]',
+        attachmentPath: '[REDACTED_PATH]',
+        chiefComplaint: '头痛',
+      }),
+    );
+    expect(serializedRuntimeOutput).not.toContain('publicShareToken');
+    expect(serializedRuntimeOutput).not.toContain('very-secret-token-value');
+    expect(serializedRuntimeOutput).not.toContain('/root/AgentLoom');
+    expect(response.input).toEqual(insertPayload.input);
+    expect(response.errorMessage).toBeNull();
+
+    vi.clearAllMocks();
+
+    const failedInsertChain =
+      createGeneratedAppSubmissionInsertReturningFromPayload();
+    mockTenantDb.select.mockReturnValueOnce(createSelectChain([app]));
+    mockTenantDb.insert.mockReturnValueOnce(failedInsertChain);
+
+    const failedResponse = await service.createPublicSubmission(token, {
+      input: { ['__proto__']: { polluted: true }, safe: 'value' },
+    });
+    const failedInsertPayload = failedInsertChain.values.mock.calls[0]?.[0] as {
+      status: string;
+      result: Record<string, unknown> | null;
+      report: Record<string, unknown> | null;
+      errorMessage: string | null;
+    };
+
+    expect(failedInsertPayload.status).toBe('failed');
+    expect(failedInsertPayload.result).toBeNull();
+    expect(failedInsertPayload.report).toBeNull();
+    expect(failedInsertPayload.errorMessage).toContain('无法处理的结构');
+    expect(failedResponse.status).toBe('failed');
+    expect(failedResponse.errorMessage).toBe(failedInsertPayload.errorMessage);
+
+    vi.clearAllMocks();
+
+    const arrayFailedInsertChain =
+      createGeneratedAppSubmissionInsertReturningFromPayload();
+    mockTenantDb.select.mockReturnValueOnce(createSelectChain([app]));
+    mockTenantDb.insert.mockReturnValueOnce(arrayFailedInsertChain);
+
+    const arrayFailedResponse = await service.createPublicSubmission(token, {
+      input: ['array input is not supported'],
+    });
+    const arrayFailedInsertPayload = arrayFailedInsertChain.values.mock
+      .calls[0]?.[0] as {
+      status: string;
+      input: Record<string, unknown>;
+      result: Record<string, unknown> | null;
+      report: Record<string, unknown> | null;
+      errorMessage: string | null;
+    };
+
+    expect(arrayFailedInsertPayload.status).toBe('failed');
+    expect(arrayFailedInsertPayload.input).toEqual({});
+    expect(arrayFailedInsertPayload.result).toBeNull();
+    expect(arrayFailedInsertPayload.report).toBeNull();
+    expect(arrayFailedInsertPayload.errorMessage).toContain('无法处理的结构');
+    expect(arrayFailedResponse.status).toBe('failed');
+  });
+
+  it('创建者提交列表和详情只返回当前租户、应用且未删除的记录，并能看到同一 completed report', async () => {
+    const submission = createGeneratedAppSubmission({
+      status: 'completed',
+      result: {
+        runtimeKind: 'local-generated-app-deterministic-report',
+        summary: '已生成本地运行结果。',
+      },
+      report: {
+        runtimeKind: 'local-generated-app-deterministic-report',
+        title: '自动化中医问诊系统 本地运行报告',
+      },
+    });
     const listChain = createSelectPageChain([submission]);
     const countChain = createCountChain(1);
     mockTenantDb.select
@@ -7526,6 +7689,9 @@ describe('GeneratedAppService', () => {
         tenantId: TENANT_ID,
         appId: APP_ID,
         deletedAt: null,
+        status: 'completed',
+        result: submission.result,
+        report: submission.report,
       }),
     ]);
     expect(list.meta).toEqual({
@@ -7540,6 +7706,9 @@ describe('GeneratedAppService', () => {
         tenantId: TENANT_ID,
         appId: APP_ID,
         publicShareToken: submission.publicShareToken,
+        status: 'completed',
+        result: submission.result,
+        report: submission.report,
       }),
     );
   });
@@ -7602,8 +7771,14 @@ describe('GeneratedAppService', () => {
     const oldToken = '8'.repeat(64);
     mockTenantDb.select.mockReturnValueOnce(createSelectChain([]));
 
-    await expect(
-      service.getPublicSubmission(oldToken, SUBMISSION_ID),
-    ).rejects.toBeInstanceOf(GeneratedAppNotFoundException);
+    try {
+      await service.getPublicSubmission(oldToken, SUBMISSION_ID);
+      throw new Error('expected old token rejection');
+    } catch (error) {
+      expect(error).toBeInstanceOf(GeneratedAppNotFoundException);
+      expect((error as GeneratedAppNotFoundException).detail).not.toContain(
+        oldToken,
+      );
+    }
   });
 });
