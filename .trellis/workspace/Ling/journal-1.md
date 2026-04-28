@@ -1153,3 +1153,41 @@ studio 前端大量页面无法滚轮滚动、没有滚动条。
 ### Next Steps
 
 - None - task complete
+
+
+## Session 24: Generated App Gate 3-7 runner implementation
+
+**Date**: 2026-04-28
+**Task**: Generated App Gate 3-7 runner implementation
+**Branch**: `main`
+
+### Summary
+
+Converted Generated App Gates 3-7 from skeleton-only checks into controlled real-local runners with workspace/build, integration, browser contract, independent verifier, publish-candidate contract, and manual publish readiness guard; verified generated-app tests, typecheck, lint, diff check, and Trellis validation.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f8c50be6` | (see git log) |
+| `a5ec03c5` | (see git log) |
+| `3096bca9` | (see git log) |
+| `f61e145a` | (see git log) |
+| `1944947f` | (see git log) |
+| `53db3076` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
