@@ -16,6 +16,7 @@
    正确写法：描述系统**当前是什么**，而非**曾经发生了什么**。工作日志请使用 `record-agent-log` 工具记录。
 
 5. 测试账号：test@example.invalid,密码： <TEST_ACCOUNT_PASSWORD>
+6. 测试用模型：key:sk-test-redacted url:https://models.example.test/v1 model:gpt-5-test format:openai-responses
 
 ## 概览
 
