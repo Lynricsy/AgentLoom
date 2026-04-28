@@ -1197,7 +1197,7 @@ describe('GeneratedAppService', () => {
       generationRunId: GENERATION_RUN_ID,
       status: 'passed',
       summary:
-        'Gate 6 通过：independentVerificationPlan 独立审查 skeleton 已完整覆盖 verifier 隔离策略、redacted evidence bundle、Gate 0-5 evidence ids、审查 rubric、verdict schema、independence checks、需求/场景/evidence/gate 覆盖和失败捕获字段；本结果仅表示契约级 independent verifier skeleton 完整，不代表真实独立模型审查、真实独立代理审查、真实人工审查、真实运行结果判定或真实需求满足判定已经执行。',
+        'Gate 6 通过：real-local independent verifier runner 已执行受控 deterministic 本地规则审查，输出 independent verifier verdict；不访问外部网络，不调用任意模型，也不代表外部模型或人工审查。',
       evidence: [],
     });
     const gate7Run = createGeneratedAppGateRun({
@@ -1208,14 +1208,14 @@ describe('GeneratedAppService', () => {
       generationRunId: GENERATION_RUN_ID,
       status: 'failed',
       summary:
-        'Gate 7 失败：publishCandidatePlan guard skeleton 已生成并保留；Gate 3 构建与单元层、Gate 4 受控本地 integration 层、Gate 5 受控本地 browser-contract 层已按当前执行器记录 real-local contract evidence，但 Gate 6 仍只有 independent-verifier-skeleton evidence，缺少真实 independent verifier verdict，不能形成 publish candidate 或启用公开分享。',
+        'Gate 7 失败：publishCandidatePlan guard skeleton 已生成并保留；Gate 3-6 已有受控本地 real-local evidence，但 Gate 7 仍缺少真实 publish candidate runner、release manifest、artifact signoff 与 public-share signoff，不能形成 publish candidate 或启用公开分享。',
       failure: {
         code: 'publish-candidate-guard-blocked',
         message:
-          'Gate 7 publish-candidate guard skeleton 检测到 Gate 6 仍为 skeleton-only upstream evidence，且缺少真实 independent verifier evidence，不能形成 publish candidate。',
+          'Gate 7 publish-candidate guard skeleton 检测到 Gate 3-6 已有受控本地 real-local evidence，但 Gate 7 仍缺少真实 publish candidate runner、release manifest、artifact signoff 与 public-share signoff，不能形成 publish candidate。',
       },
       repairInstructions:
-        '接入真实 Gate 6 independent verifier runner、真实 verifier report 和独立 verdict 后，再由 Gate 7 重新评估 publish candidate；在 Gate 7 guard 失败期间 public token 必须保持禁用并清空。',
+        '接入真实 Gate 7 publish candidate runner、release manifest、artifact signoff 和 public-share signoff 后，再重新评估 publish candidate；在 Gate 7 guard 失败期间 public token 必须保持禁用并清空。',
       evidence: [],
     });
     const completedRun = createGeneratedAppGenerationRun({
@@ -1225,9 +1225,9 @@ describe('GeneratedAppService', () => {
       maxRuntimeSeconds: 600,
       completedAt: NOW,
       summary:
-        '门禁运行器完成 Gate 0 AppSpec 完整性检查、Gate 1 架构计划门禁、Gate 2 静态合约门禁、Gate 3 Generation Workspace 与构建/单元执行器、Gate 4 受控本地 integration runner、Gate 5 受控本地 browser-contract runner；Gate 6 independent verifier 仍为 skeleton 完整性检查，Gate 7 publish-candidate guard 检测到缺少真实独立审查证据，当前应用不能形成 publish candidate，保持不可发布。',
+        '门禁运行器完成 Gate 0 AppSpec 完整性检查、Gate 1 架构计划门禁、Gate 2 静态合约门禁、Gate 3 Generation Workspace 与构建/单元执行器、Gate 4 受控本地 integration runner、Gate 5 受控本地 browser-contract runner 和 Gate 6 受控本地 independent verifier runner；Gate 7 publish-candidate guard 仍缺少真实 release manifest、artifact signoff 与 public-share signoff，当前应用不能形成 publish candidate，保持不可发布。',
       failureReason:
-        'Gate 7 publish-candidate guard skeleton 检测到 Gate 6 仍为 skeleton-only upstream evidence，且缺少真实 independent verifier evidence，不能形成 publish candidate。 阻断原因：Gate 6 当前只有 skeleton/contract-level completeness evidence。；缺少真实 independent verifier artifact 签收。；Gate 7 guard 失败期间 public share token 必须保持禁用并清空。',
+        'Gate 7 publish-candidate guard skeleton 检测到 Gate 3-6 已有受控本地 real-local evidence，但 Gate 7 仍缺少真实 publish candidate runner、release manifest、artifact signoff 与 public-share signoff，不能形成 publish candidate。',
     });
     const insertRunChain = createInsertReturningChain([run]);
     const insertGateRunChain = createInsertReturningChain([gateRun]);
@@ -1426,9 +1426,9 @@ describe('GeneratedAppService', () => {
         summary: expect.stringContaining('Gate 7 失败：publishCandidatePlan'),
         failure: expect.objectContaining({
           code: 'publish-candidate-guard-blocked',
-          message: expect.stringContaining('Gate 6'),
+          message: expect.stringContaining('Gate 7'),
         }),
-        repairInstructions: expect.stringContaining('真实 Gate 6'),
+        repairInstructions: expect.stringContaining('真实 Gate 7'),
       }),
     );
     const gate1RunPayload = insertGate1RunChain.values.mock.calls[0]?.[0] as {
@@ -1587,23 +1587,33 @@ describe('GeneratedAppService', () => {
     expect(gate6RunPayload.evidence).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          id: 'gate-6-verifier-isolation-policy',
+          id: 'gate-6-independent-verifier-verdict',
           kind: 'verifier',
-          summary: expect.stringContaining(
-            '未执行真实独立模型审查、真实独立代理审查、真实人工审查',
-          ),
-        }),
-        expect.objectContaining({
-          id: 'gate-6-redacted-evidence-bundle',
-          kind: 'verifier',
-          summary: expect.stringContaining('不含真实 token'),
-        }),
-        expect.objectContaining({
-          id: 'gate-6-verdict-schema',
-          kind: 'verifier',
-          summary: expect.stringContaining(
-            '未执行真实独立模型审查、真实独立代理审查',
-          ),
+          summary: expect.stringContaining('real_local_independent_rules'),
+          details: expect.objectContaining({
+            runnerId: 'gate-6-real-independent-verifier-runner',
+            executionMode: 'real_local_independent_rules',
+            executionLevel: 'real-local-independent-verifier',
+            executed: true,
+            realLocalIndependentRulesVerdict: true,
+            externalModelExecuted: false,
+            humanReviewExecuted: false,
+            networkAccessed: false,
+            generationTranscriptRead: false,
+            verdict: expect.objectContaining({
+              blockingFindings: [],
+              warnings: [],
+              decision: 'pass',
+              traceabilityCoverage: expect.objectContaining({
+                requirementCoveragePassed: true,
+                scenarioCoveragePassed: true,
+                evidenceCoveragePassed: true,
+                gateCoveragePassed: true,
+                coveredRequirementIds: ['req-1'],
+                coveredScenarioIds: ['scenario-1'],
+              }),
+            }),
+          }),
         }),
       ]),
     );
@@ -1636,9 +1646,15 @@ describe('GeneratedAppService', () => {
       expect.arrayContaining([
         expect.objectContaining({
           category: 'skeleton_only_upstream_gate',
+          gateIds: ['gate-7'],
+        }),
+        expect.objectContaining({
+          category: 'missing_real_execution_artifact',
+          gateIds: ['gate-7'],
         }),
         expect.objectContaining({
           category: 'missing_real_independent_verifier_verdict',
+          message: expect.stringContaining('签收'),
         }),
       ]),
     );
@@ -2207,7 +2223,19 @@ describe('GeneratedAppService', () => {
         buildUnitPlanVersion: 1,
         integrationPlanVersion: 1,
         browserAcceptancePlanVersion: 1,
-        executionLevel: 'independent-verifier-skeleton',
+        executionLevel: 'real-local-independent-verifier',
+        verifierRunner: expect.objectContaining({
+          runner: 'local-independent-rules-verifier',
+          command: 'agentloom generated-app gate-6 local-independent-verifier',
+          workingDirectory: 'generated-run',
+          usesExternalNetwork: false,
+          usesExternalModel: false,
+          usesHumanReviewer: false,
+          usesGenerationTranscript: false,
+          inputBundleId: 'gate-6-redacted-evidence-bundle',
+          verdictArtifactPath:
+            'artifacts/gate-6/independent-verifier-verdict.json',
+        }),
         verifierIsolationPolicy: expect.objectContaining({
           verifierContext: 'fresh-independent-context',
           reuseGenerationContext: false,
@@ -2289,6 +2317,14 @@ describe('GeneratedAppService', () => {
           requiresEvidenceIds: true,
           requiresRepairSuggestions: true,
           residualRiskSummaryRequired: true,
+        }),
+        verdictArtifact: expect.objectContaining({
+          artifactId: 'independent-verifier-verdict',
+          kind: 'verifier_report',
+          path: 'artifacts/gate-6/independent-verifier-verdict.json',
+          required: true,
+          materialized: true,
+          containsSecrets: false,
         }),
         independenceChecks: expect.arrayContaining([
           expect.objectContaining({
@@ -2388,7 +2424,7 @@ describe('GeneratedAppService', () => {
             expect.objectContaining({
               gateId: 'gate-6',
               evidenceIds: expect.arrayContaining([
-                'gate-6-verifier-isolation-policy',
+                'gate-6-independent-verifier-verdict',
               ]),
             }),
           ]),
@@ -2425,11 +2461,11 @@ describe('GeneratedAppService', () => {
         publicationBlockers: expect.arrayContaining([
           expect.objectContaining({
             category: 'skeleton_only_upstream_gate',
-            gateIds: ['gate-6'],
+            gateIds: ['gate-7'],
           }),
           expect.objectContaining({
             category: 'missing_real_execution_artifact',
-            gateIds: ['gate-6'],
+            gateIds: ['gate-7'],
           }),
           expect.objectContaining({
             category: 'stale_public_token_requirement',
@@ -2445,14 +2481,17 @@ describe('GeneratedAppService', () => {
         finalVerdict: expect.objectContaining({
           publishCandidateAllowed: false,
           blockingReasons: expect.arrayContaining([
-            expect.stringContaining('真实独立 verifier verdict'),
+            expect.stringContaining('release manifest'),
+            expect.stringContaining('artifact 签收'),
+            expect.stringContaining('public-share signoff'),
           ]),
           requiredRealGateRunnerIds: expect.arrayContaining([
             'gate-3-real-build-unit-runner',
             'gate-7-real-publish-candidate-runner',
           ]),
           repairSuggestions: expect.arrayContaining([
-            expect.stringContaining('真实 Gate 6 independent verifier'),
+            expect.stringContaining('真实 Gate 7 publish candidate runner'),
+            expect.stringContaining('public-share signoff'),
           ]),
         }),
         requirementCoverage: [
@@ -2488,6 +2527,14 @@ describe('GeneratedAppService', () => {
             skeletonOnly: false,
             evidenceIds: expect.arrayContaining([
               'gate-5-gate-5-public-runtime-open-viewport-desktop-gate-5-console-no-unhandled-error',
+            ]),
+          }),
+          expect.objectContaining({
+            gateId: 'gate-6',
+            executionLevel: 'real-local-independent-verifier',
+            skeletonOnly: false,
+            evidenceIds: expect.arrayContaining([
+              'gate-6-independent-verifier-verdict',
             ]),
           }),
           expect.objectContaining({
@@ -2569,13 +2616,15 @@ describe('GeneratedAppService', () => {
         gateId: 'gate-6',
         generationRunId: GENERATION_RUN_ID,
         status: 'passed',
-        summary: expect.stringContaining('independent verifier skeleton 完整'),
+        summary: expect.stringContaining(
+          'real-local independent verifier runner',
+        ),
       }),
       expect.objectContaining({
         gateId: 'gate-7',
         generationRunId: GENERATION_RUN_ID,
         status: 'failed',
-        summary: expect.stringContaining('publishCandidatePlan guard skeleton'),
+        summary: expect.stringContaining('release manifest'),
       }),
     ]);
     expect(response.app.generationPlan).toEqual(
@@ -2594,7 +2643,10 @@ describe('GeneratedAppService', () => {
           executionLevel: 'real-local-browser-contract',
         }),
         independentVerificationPlan: expect.objectContaining({
-          executionLevel: 'independent-verifier-skeleton',
+          executionLevel: 'real-local-independent-verifier',
+          verdictArtifact: expect.objectContaining({
+            materialized: true,
+          }),
         }),
         publishCandidatePlan: expect.objectContaining({
           executionLevel: 'publish-candidate-guard-skeleton',
@@ -3002,7 +3054,7 @@ describe('GeneratedAppService', () => {
         }),
         expect.objectContaining({
           category: 'missing_real_execution_artifact',
-          gateIds: ['gate-4', 'gate-5'],
+          gateIds: expect.arrayContaining(['gate-4', 'gate-5']),
         }),
       ]),
     );

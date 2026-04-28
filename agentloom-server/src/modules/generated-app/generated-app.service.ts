@@ -90,6 +90,10 @@ import {
   GeneratedAppGate5BrowserAcceptanceRunner,
   type GeneratedAppBrowserAcceptanceExecutionLevel,
 } from './generated-app.browser-acceptance-runner';
+import {
+  GeneratedAppGate6IndependentVerifierRunner,
+  type GeneratedAppIndependentVerifierExecutionLevel,
+} from './generated-app.independent-verifier-runner';
 
 const DEFAULT_PREVIEW: GeneratedAppPreview = {
   previewUrl: null,
@@ -434,6 +438,9 @@ const GATE_5_REQUIRED_SECRET_LEAK_PATTERNS = [
 const GATE_6_SKELETON_EVIDENCE_NOTE =
   'Gate 6 当前只做 independent-verifier-skeleton 完整性检查；未执行真实独立模型审查、真实独立代理审查、真实人工审查、真实运行结果判定或真实需求满足判定。';
 
+const GATE_6_REAL_LOCAL_VERIFIER_NOTE =
+  'Gate 6 real-local-independent-verifier 执行服务端受控 deterministic 本地独立规则审查；不访问外部网络，不调用任意模型，不读取 generation transcript、public share token、API key 或 secret，也不代表外部模型或人工审查。';
+
 const GATE_6_REQUIRED_GATE_IDS = [
   'gate-0',
   'gate-1',
@@ -442,6 +449,16 @@ const GATE_6_REQUIRED_GATE_IDS = [
   'gate-4',
   'gate-5',
 ] as const;
+
+const GATE_6_ALLOWED_EXECUTION_LEVELS = [
+  'independent-verifier-skeleton',
+  'real-local-independent-verifier',
+  'fixture-independent-verifier',
+  'disabled-independent-verifier',
+] as const;
+
+const GATE_6_LOCAL_INDEPENDENT_VERIFIER_COMMAND =
+  'agentloom generated-app gate-6 local-independent-verifier';
 
 const GATE_6_REQUIRED_ISOLATION_CONTROLS = [
   'fresh-reviewer-identity',
@@ -764,6 +781,7 @@ export class GeneratedAppService {
   private readonly gate3WorkspaceRunner: GeneratedAppGate3WorkspaceRunner;
   private readonly gate4IntegrationRunner: GeneratedAppGate4IntegrationRunner;
   private readonly gate5BrowserAcceptanceRunner: GeneratedAppGate5BrowserAcceptanceRunner;
+  private readonly gate6IndependentVerifierRunner: GeneratedAppGate6IndependentVerifierRunner;
 
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
@@ -772,6 +790,8 @@ export class GeneratedAppService {
     @Optional() gate4IntegrationRunner?: GeneratedAppGate4IntegrationRunner,
     @Optional()
     gate5BrowserAcceptanceRunner?: GeneratedAppGate5BrowserAcceptanceRunner,
+    @Optional()
+    gate6IndependentVerifierRunner?: GeneratedAppGate6IndependentVerifierRunner,
   ) {
     this.gate3WorkspaceRunner =
       gate3WorkspaceRunner ??
@@ -782,6 +802,9 @@ export class GeneratedAppService {
     this.gate5BrowserAcceptanceRunner =
       gate5BrowserAcceptanceRunner ??
       new GeneratedAppGate5BrowserAcceptanceRunner(this.configService);
+    this.gate6IndependentVerifierRunner =
+      gate6IndependentVerifierRunner ??
+      new GeneratedAppGate6IndependentVerifierRunner(this.configService);
   }
 
   private get tenantDb(): DrizzleDB {
@@ -1476,13 +1499,14 @@ export class GeneratedAppService {
                     integrationPlan,
                     browserAcceptancePlan,
                     latestApp.gateResults,
+                    this.gate6IndependentVerifierRunner.getExecutionLevel(),
                   );
                 const generationPlanWithIndependentVerificationPlan: GeneratedAppGenerationPlan =
                   {
                     ...generationPlanWithBrowserAcceptancePlan,
                     independentVerificationPlan,
                   };
-                const gate6Evaluation =
+                let gate6Evaluation =
                   this.evaluateGate6IndependentVerificationPlan(
                     app.appSpec,
                     generationPlan,
@@ -1493,6 +1517,18 @@ export class GeneratedAppService {
                     latestApp.gateResults,
                     independentVerificationPlan,
                   );
+                if (gate6Evaluation.status === 'passed') {
+                  gate6Evaluation = this.gate6IndependentVerifierRunner.run({
+                    appSpec: app.appSpec,
+                    generationPlan,
+                    staticContracts,
+                    buildUnitPlan,
+                    integrationPlan,
+                    browserAcceptancePlan,
+                    gateResults: latestApp.gateResults,
+                    independentVerificationPlan,
+                  });
+                }
                 const gate5Result = latestApp.gateResults.find(
                   (gate) => gate.gateId === 'gate-5',
                 );
@@ -1546,9 +1582,9 @@ export class GeneratedAppService {
                 if (gate6Evaluation.status === 'failed') {
                   finalFailureReason =
                     gate6Evaluation.failure?.message ??
-                    'Gate 6 独立审查 skeleton 门禁失败，不能继续执行 Gate 7。';
+                    'Gate 6 独立审查计划或执行器失败，不能继续执行 Gate 7。';
                   completedSummary =
-                    '门禁运行器骨架完成 Gate 0、Gate 1、Gate 2、Gate 3、Gate 4 和 Gate 5，但 Gate 6 independent verifier skeleton 检查失败；当前应用保持不可发布。';
+                    '门禁运行器完成 Gate 0、Gate 1、Gate 2、Gate 3、Gate 4 和 Gate 5，但 Gate 6 independent verifier 计划或执行器失败；当前应用保持不可发布。';
                 } else {
                   const publishCandidatePlan = this.buildPublishCandidatePlan(
                     app.appSpec,
@@ -1633,6 +1669,7 @@ export class GeneratedAppService {
                     buildUnitPlan,
                     integrationPlan,
                     browserAcceptancePlan,
+                    independentVerificationPlan,
                   );
                 }
               }
@@ -4999,6 +5036,7 @@ export class GeneratedAppService {
     integrationPlan: GeneratedAppIntegrationPlan,
     browserAcceptancePlan: GeneratedAppBrowserAcceptancePlan,
     gateResults: GeneratedAppGateResult[],
+    executionLevel: GeneratedAppIndependentVerifierExecutionLevel = 'independent-verifier-skeleton',
   ): GeneratedAppIndependentVerificationPlan {
     const requirementIds = appSpec.coreRequirements.map(
       (requirement) => requirement.id,
@@ -5066,8 +5104,23 @@ export class GeneratedAppService {
       buildUnitPlanVersion: buildUnitPlan.planVersion,
       integrationPlanVersion: integrationPlan.planVersion,
       browserAcceptancePlanVersion: browserAcceptancePlan.planVersion,
-      executionLevel: 'independent-verifier-skeleton',
-      skeletonDisclaimer: GATE_6_SKELETON_EVIDENCE_NOTE,
+      executionLevel,
+      skeletonDisclaimer:
+        executionLevel === 'real-local-independent-verifier'
+          ? GATE_6_REAL_LOCAL_VERIFIER_NOTE
+          : GATE_6_SKELETON_EVIDENCE_NOTE,
+      verifierRunner: {
+        runner: 'local-independent-rules-verifier',
+        command: GATE_6_LOCAL_INDEPENDENT_VERIFIER_COMMAND,
+        workingDirectory: 'generated-run',
+        usesExternalNetwork: false,
+        usesExternalModel: false,
+        usesHumanReviewer: false,
+        usesGenerationTranscript: false,
+        inputBundleId: 'gate-6-redacted-evidence-bundle',
+        verdictArtifactPath:
+          'artifacts/gate-6/independent-verifier-verdict.json',
+      },
       verifierIsolationPolicy: {
         verifierContext: 'fresh-independent-context',
         reuseGenerationContext: false,
@@ -5106,6 +5159,14 @@ export class GeneratedAppService {
         requiresEvidenceIds: true,
         requiresRepairSuggestions: true,
         residualRiskSummaryRequired: true,
+      },
+      verdictArtifact: {
+        artifactId: 'independent-verifier-verdict',
+        kind: 'verifier_report',
+        path: 'artifacts/gate-6/independent-verifier-verdict.json',
+        required: true,
+        materialized: executionLevel === 'real-local-independent-verifier',
+        containsSecrets: false,
       },
       independenceChecks: [
         {
@@ -5347,6 +5408,9 @@ export class GeneratedAppService {
     const verifierIsolationPolicy = this.getRecord(
       independentVerificationPlan.verifierIsolationPolicy,
     );
+    const verifierRunner = this.getRecord(
+      independentVerificationPlan.verifierRunner,
+    );
     const gateEvidenceRefs = this.getRecordArray(
       evidenceBundle?.gateEvidenceRefs,
     );
@@ -5356,6 +5420,9 @@ export class GeneratedAppService {
     const rubric = this.getRecordArray(independentVerificationPlan.rubric);
     const verdictSchema = this.getRecord(
       independentVerificationPlan.verdictSchema,
+    );
+    const verdictArtifact = this.getRecord(
+      independentVerificationPlan.verdictArtifact,
     );
     const independenceChecks = this.getRecordArray(
       independentVerificationPlan.independenceChecks,
@@ -5424,10 +5491,15 @@ export class GeneratedAppService {
               independentVerificationPlan.browserAcceptancePlanVersion,
             )} 与 browserAcceptancePlan.planVersion=${browserAcceptancePlan.planVersion} 不一致`,
           ]),
-      ...(independentVerificationPlan.executionLevel ===
-      'independent-verifier-skeleton'
+      ...(GATE_6_ALLOWED_EXECUTION_LEVELS.includes(
+        independentVerificationPlan.executionLevel as (typeof GATE_6_ALLOWED_EXECUTION_LEVELS)[number],
+      )
         ? []
-        : ['executionLevel 必须为 independent-verifier-skeleton']),
+        : [
+            `executionLevel 必须为 ${GATE_6_ALLOWED_EXECUTION_LEVELS.join(
+              ' | ',
+            )} 之一`,
+          ]),
       ...(!this.getNonEmptyString(
         independentVerificationPlan.skeletonDisclaimer,
       )
@@ -5437,6 +5509,43 @@ export class GeneratedAppService {
         independentVerificationPlan,
         'independentVerificationPlan',
       ),
+    ];
+    const verifierRunnerIssues = [
+      ...this.requireRecord(verifierRunner, 'verifierRunner'),
+      ...(verifierRunner?.runner === 'local-independent-rules-verifier'
+        ? []
+        : ['verifierRunner.runner 必须为 local-independent-rules-verifier']),
+      ...(verifierRunner?.command === GATE_6_LOCAL_INDEPENDENT_VERIFIER_COMMAND
+        ? []
+        : [
+            `verifierRunner.command 必须为 ${GATE_6_LOCAL_INDEPENDENT_VERIFIER_COMMAND}`,
+          ]),
+      ...(verifierRunner?.workingDirectory === 'generated-run'
+        ? []
+        : ['verifierRunner.workingDirectory 必须为 generated-run']),
+      ...(verifierRunner?.usesExternalNetwork === false
+        ? []
+        : ['verifierRunner.usesExternalNetwork 必须为 false']),
+      ...(verifierRunner?.usesExternalModel === false
+        ? []
+        : ['verifierRunner.usesExternalModel 必须为 false']),
+      ...(verifierRunner?.usesHumanReviewer === false
+        ? []
+        : ['verifierRunner.usesHumanReviewer 必须为 false']),
+      ...(verifierRunner?.usesGenerationTranscript === false
+        ? []
+        : ['verifierRunner.usesGenerationTranscript 必须为 false']),
+      ...(verifierRunner?.inputBundleId === 'gate-6-redacted-evidence-bundle'
+        ? []
+        : [
+            'verifierRunner.inputBundleId 必须引用 gate-6-redacted-evidence-bundle',
+          ]),
+      ...(verifierRunner?.verdictArtifactPath ===
+      'artifacts/gate-6/independent-verifier-verdict.json'
+        ? []
+        : [
+            'verifierRunner.verdictArtifactPath 必须为 artifacts/gate-6/independent-verifier-verdict.json',
+          ]),
     ];
     const isolationIssues = [
       ...this.requireRecord(verifierIsolationPolicy, 'verifierIsolationPolicy'),
@@ -5813,6 +5922,30 @@ export class GeneratedAppService {
       ...(verdictSchema?.residualRiskSummaryRequired === true
         ? []
         : ['verdictSchema.residualRiskSummaryRequired 必须为 true']),
+    ];
+    const verdictArtifactIssues = [
+      ...this.requireRecord(verdictArtifact, 'verdictArtifact'),
+      ...(verdictArtifact?.artifactId === 'independent-verifier-verdict'
+        ? []
+        : ['verdictArtifact.artifactId 必须为 independent-verifier-verdict']),
+      ...(verdictArtifact?.kind === 'verifier_report'
+        ? []
+        : ['verdictArtifact.kind 必须为 verifier_report']),
+      ...(verdictArtifact?.path ===
+      'artifacts/gate-6/independent-verifier-verdict.json'
+        ? []
+        : [
+            'verdictArtifact.path 必须为 artifacts/gate-6/independent-verifier-verdict.json',
+          ]),
+      ...(verdictArtifact?.required === true
+        ? []
+        : ['verdictArtifact.required 必须为 true']),
+      ...(typeof verdictArtifact?.materialized === 'boolean'
+        ? []
+        : ['verdictArtifact.materialized 必须是 boolean']),
+      ...(verdictArtifact?.containsSecrets === false
+        ? []
+        : ['verdictArtifact.containsSecrets 必须为 false']),
     ];
     const independenceCheckKinds = independenceChecks
       .map((entry) => this.getNonEmptyString(entry.kind))
@@ -6215,6 +6348,14 @@ export class GeneratedAppService {
         issues: isolationIssues,
       },
       {
+        id: 'verifier-runner-contract',
+        label: 'verifier runner 合约',
+        passed: verifierRunnerIssues.length === 0,
+        summary:
+          '检查 Gate 6 本地独立规则 verifier runner 是否禁用外部网络/模型/人工审查/generation transcript 并固定输出 artifact。',
+        issues: verifierRunnerIssues,
+      },
+      {
         id: 'redacted-evidence-bundle',
         label: 'redacted evidence bundle',
         passed: evidenceBundleIssues.length === 0,
@@ -6233,10 +6374,12 @@ export class GeneratedAppService {
       {
         id: 'verdict-schema',
         label: 'verdict schema',
-        passed: verdictSchemaIssues.length === 0,
+        passed:
+          verdictSchemaIssues.length === 0 &&
+          verdictArtifactIssues.length === 0,
         summary:
-          '检查 verdict schema 是否包含 blocking findings、warnings、pass/fail decision、traceability coverage、repair suggestions 和 residual risk summary。',
-        issues: verdictSchemaIssues,
+          '检查 verdict schema/artifact 是否包含 blocking findings、warnings、pass/fail decision、traceability coverage、repair suggestions、residual risk summary 和 verifier report artifact。',
+        issues: [...verdictSchemaIssues, ...verdictArtifactIssues],
       },
       {
         id: 'independence-checks',
@@ -6322,8 +6465,19 @@ export class GeneratedAppService {
         buildUnitPlan,
         integrationPlan,
         browserAcceptancePlan,
+        independentVerificationPlan,
       );
-    const skeletonOnlyGateLabel = skeletonOnlyUpstreamGateIds.join('、');
+    const gate6IsReal =
+      independentVerificationPlan.executionLevel ===
+      'real-local-independent-verifier';
+    const skeletonOnlyGateLabel =
+      skeletonOnlyUpstreamGateIds.length > 0
+        ? skeletonOnlyUpstreamGateIds.join('、')
+        : 'Gate 7 publish-candidate guard';
+    const skeletonOnlyBlockerGateIds =
+      skeletonOnlyUpstreamGateIds.length > 0
+        ? [...skeletonOnlyUpstreamGateIds]
+        : ['gate-7'];
     const releaseManifest: GeneratedAppPublishCandidatePlan['artifactReleaseManifest'] =
       [
         ...buildUnitPlan.artifactExpectations
@@ -6463,20 +6617,21 @@ export class GeneratedAppService {
       ...(browserAcceptancePlan.executionLevel === 'real-local-browser-contract'
         ? []
         : ['gate-5']),
-      ...(browserAcceptancePlan.executionLevel ===
-        'real-local-browser-contract' &&
-      buildUnitPlan.executionLevel === 'real-local-command-plan' &&
-      integrationPlan.executionLevel === 'real-local-integration'
-        ? ['gate-6']
-        : []),
+      ...(gate6IsReal ? [] : ['gate-6']),
+      'gate-7',
     ];
     const missingExecutionArtifactMessage =
+      gate6IsReal &&
       browserAcceptancePlan.executionLevel === 'real-local-browser-contract' &&
       integrationPlan.executionLevel === 'real-local-integration'
-        ? 'Gate 3、Gate 4 和 Gate 5 已提供受控本地 real-local contract evidence；剩余发布阻断来自 Gate 6 真实独立 verifier report/verdict 缺失。'
-        : integrationPlan.executionLevel === 'real-local-integration'
-          ? '缺少真实浏览器 artifact；Gate 4 已提供受控本地 integration trace，但 Gate 5 尚未执行真实 browser acceptance runner。'
-          : '缺少真实集成 trace 和浏览器 artifact；Gate 3 只覆盖构建与单元层。';
+        ? 'Gate 3、Gate 4、Gate 5 和 Gate 6 已提供受控本地 real-local evidence；剩余发布阻断来自 Gate 7 真实 publish candidate runner、release manifest、artifact signoff 与 public-share signoff 缺失。'
+        : browserAcceptancePlan.executionLevel ===
+              'real-local-browser-contract' &&
+            integrationPlan.executionLevel === 'real-local-integration'
+          ? 'Gate 3、Gate 4 和 Gate 5 已提供受控本地 real-local contract evidence；剩余发布阻断来自 Gate 6 真实独立 verifier report/verdict 缺失。'
+          : integrationPlan.executionLevel === 'real-local-integration'
+            ? '缺少真实浏览器 artifact；Gate 4 已提供受控本地 integration trace，但 Gate 5 尚未执行真实 browser acceptance runner。'
+            : '缺少真实集成 trace 和浏览器 artifact；Gate 3 只覆盖构建与单元层。';
 
     return {
       planVersion: 1,
@@ -6504,10 +6659,13 @@ export class GeneratedAppService {
         {
           blockerId: blockerIds[0] ?? 'blocker-skeleton-only-upstream-gates',
           category: 'skeleton_only_upstream_gate',
-          gateIds: [...skeletonOnlyUpstreamGateIds],
+          gateIds: skeletonOnlyBlockerGateIds,
           evidenceIds: upstreamEvidenceIds,
           artifactIds,
-          message: `${skeletonOnlyGateLabel} 当前仍只有 contract-level skeleton/fixture evidence，不能作为发布候选签收依据。`,
+          message:
+            skeletonOnlyUpstreamGateIds.length > 0
+              ? `${skeletonOnlyGateLabel} 当前仍只有 contract-level skeleton/fixture evidence，不能作为发布候选签收依据。`
+              : 'Gate 3-6 已不再归入 skeleton-only upstream；Gate 7 自身仍只是 publish-candidate guard skeleton，不能生成真实发布候选。',
           blocking: true,
         },
         {
@@ -6530,8 +6688,9 @@ export class GeneratedAppService {
             upstreamEvidenceRefs.find((entry) => entry.gateId === 'gate-6')
               ?.evidenceIds ?? upstreamEvidenceIds,
           artifactIds: ['independent-verifier-report-placeholder'],
-          message:
-            '缺少真实独立 verifier verdict，Gate 6 skeleton 不能替代真实审查结论。',
+          message: gate6IsReal
+            ? 'Gate 6 real-local independent verifier verdict 已生成，但尚未被真实 Gate 7 release manifest、artifact signoff 与 public-share signoff 签收。'
+            : '缺少真实独立 verifier verdict，Gate 6 skeleton/fixture 不能替代真实审查结论。',
           blocking: true,
         },
         {
@@ -6570,13 +6729,20 @@ export class GeneratedAppService {
       finalVerdict: {
         publishCandidateAllowed: false,
         blockingReasons: [
-          `${skeletonOnlyGateLabel} 当前只有 skeleton/contract-level completeness evidence。`,
-          browserAcceptancePlan.executionLevel === 'real-local-browser-contract'
-            ? '缺少真实 independent verifier artifact 签收。'
-            : integrationPlan.executionLevel === 'real-local-integration'
-              ? '缺少真实 browser/verifier artifact 签收。'
-              : '缺少真实 integration/browser/verifier artifact 签收。',
-          '缺少真实独立 verifier verdict，Gate 6 skeleton 不能替代真实审查结论。',
+          skeletonOnlyUpstreamGateIds.length > 0
+            ? `${skeletonOnlyGateLabel} 当前只有 skeleton/contract-level completeness evidence。`
+            : 'Gate 7 当前仍是 publish-candidate guard skeleton，缺少真实 release manifest、artifact 签收和 public-share signoff。',
+          gate6IsReal
+            ? '缺少真实 release manifest、artifact 签收和 public-share signoff。'
+            : browserAcceptancePlan.executionLevel ===
+                'real-local-browser-contract'
+              ? '缺少真实 independent verifier artifact 签收。'
+              : integrationPlan.executionLevel === 'real-local-integration'
+                ? '缺少真实 browser/verifier artifact 签收。'
+                : '缺少真实 integration/browser/verifier artifact 签收。',
+          gate6IsReal
+            ? 'Gate 6 real-local independent verifier verdict 尚未被真实 Gate 7 release manifest、artifact signoff 与 public-share signoff 签收。'
+            : '缺少真实独立 verifier verdict，Gate 6 skeleton/fixture 不能替代真实审查结论。',
           'Gate 7 guard 失败期间 public share token 必须保持禁用并清空。',
         ],
         warningReasons: [
@@ -6585,15 +6751,20 @@ export class GeneratedAppService {
         requiredRealGateRunnerIds: [...GATE_7_REQUIRED_REAL_GATE_RUNNER_IDS],
         evidenceIds: [...upstreamEvidenceIds, ...gate7EvidenceIds],
         repairSuggestions: [
-          browserAcceptancePlan.executionLevel === 'real-local-browser-contract'
-            ? '保留 Gate 4 real-local integration 与 Gate 5 real-local browser-contract runner 证据，继续接入真实 Gate 6 independent verifier。'
-            : integrationPlan.executionLevel === 'real-local-integration'
-              ? '保留 Gate 4 real-local integration runner 证据，继续接入真实 Gate 5 browser runner。'
-              : '接入真实 Gate 4 integration runner 并产出 API、Agent/Workflow、插件 sandbox trace。',
+          gate6IsReal
+            ? '保留 Gate 3-6 受控本地 real-local evidence，继续接入真实 Gate 7 publish candidate runner、release manifest、artifact signoff 和 public-share signoff。'
+            : browserAcceptancePlan.executionLevel ===
+                'real-local-browser-contract'
+              ? '保留 Gate 4 real-local integration 与 Gate 5 real-local browser-contract runner 证据，继续接入真实 Gate 6 independent verifier。'
+              : integrationPlan.executionLevel === 'real-local-integration'
+                ? '保留 Gate 4 real-local integration runner 证据，继续接入真实 Gate 5 browser runner。'
+                : '接入真实 Gate 4 integration runner 并产出 API、Agent/Workflow、插件 sandbox trace。',
           browserAcceptancePlan.executionLevel === 'real-local-browser-contract'
             ? 'Gate 5 已有受控本地 DOM/accessibility/network/console contract evidence；后续如需 Playwright 截图/视频/trace，可在独立增强门禁补充。'
             : '接入真实 Gate 5 browser runner 并产出截图、视频、trace、console 和 network 证据。',
-          '接入真实 Gate 6 independent verifier 并产出独立 verdict。',
+          gate6IsReal
+            ? '实现真实 Gate 7 发布候选检查，签收 release manifest、source artifact、test report 和 public-share signoff。'
+            : '接入真实 Gate 6 independent verifier 并产出独立 verdict。',
           '只有真实 Gate 3-7 阻断证据通过后才允许重新创建公开分享 token。',
         ],
       },
@@ -6621,6 +6792,7 @@ export class GeneratedAppService {
           buildUnitPlan,
           integrationPlan,
           browserAcceptancePlan,
+          independentVerificationPlan,
         ),
         skeletonOnly:
           gateId === 'gate-7' || skeletonOnlyUpstreamGateIds.includes(gateId),
@@ -6646,6 +6818,7 @@ export class GeneratedAppService {
     buildUnitPlan: GeneratedAppBuildUnitPlan,
     integrationPlan: GeneratedAppIntegrationPlan,
     browserAcceptancePlan: GeneratedAppBrowserAcceptancePlan,
+    independentVerificationPlan: GeneratedAppIndependentVerificationPlan,
   ): string[] {
     return [
       ...(buildUnitPlan.executionLevel === 'real-local-command-plan'
@@ -6657,7 +6830,10 @@ export class GeneratedAppService {
       ...(browserAcceptancePlan.executionLevel === 'real-local-browser-contract'
         ? []
         : ['gate-5']),
-      'gate-6',
+      ...(independentVerificationPlan.executionLevel ===
+      'real-local-independent-verifier'
+        ? []
+        : ['gate-6']),
     ];
   }
 
@@ -6666,6 +6842,7 @@ export class GeneratedAppService {
     buildUnitPlan: GeneratedAppBuildUnitPlan,
     integrationPlan: GeneratedAppIntegrationPlan,
     browserAcceptancePlan: GeneratedAppBrowserAcceptancePlan,
+    independentVerificationPlan: GeneratedAppIndependentVerificationPlan,
   ): string {
     const executionLevels: Record<string, string> = {
       'gate-0': 'app-spec-deterministic-completeness',
@@ -6674,7 +6851,7 @@ export class GeneratedAppService {
       'gate-3': buildUnitPlan.executionLevel,
       'gate-4': integrationPlan.executionLevel,
       'gate-5': browserAcceptancePlan.executionLevel,
-      'gate-6': 'independent-verifier-skeleton',
+      'gate-6': independentVerificationPlan.executionLevel,
       'gate-7': 'publish-candidate-guard-skeleton',
     };
 
@@ -6767,11 +6944,13 @@ export class GeneratedAppService {
         buildUnitPlan,
         integrationPlan,
         browserAcceptancePlan,
+        independentVerificationPlan,
       );
     const gate7FailureIntro = this.buildGate7FailureIntro(
       buildUnitPlan,
       integrationPlan,
       browserAcceptancePlan,
+      independentVerificationPlan,
     );
     const failure: GeneratedAppGateRunFailure = {
       code: 'publish-candidate-guard-blocked',
@@ -6789,6 +6968,7 @@ export class GeneratedAppService {
         buildUnitPlan,
         integrationPlan,
         browserAcceptancePlan,
+        independentVerificationPlan,
       ),
       evidence,
       failure,
@@ -6796,6 +6976,7 @@ export class GeneratedAppService {
         buildUnitPlan,
         integrationPlan,
         browserAcceptancePlan,
+        independentVerificationPlan,
       ),
     };
   }
@@ -6804,7 +6985,18 @@ export class GeneratedAppService {
     buildUnitPlan: GeneratedAppBuildUnitPlan,
     integrationPlan: GeneratedAppIntegrationPlan,
     browserAcceptancePlan: GeneratedAppBrowserAcceptancePlan,
+    independentVerificationPlan: GeneratedAppIndependentVerificationPlan,
   ): string {
+    if (
+      buildUnitPlan.executionLevel === 'real-local-command-plan' &&
+      integrationPlan.executionLevel === 'real-local-integration' &&
+      browserAcceptancePlan.executionLevel === 'real-local-browser-contract' &&
+      independentVerificationPlan.executionLevel ===
+        'real-local-independent-verifier'
+    ) {
+      return 'Gate 7 publish-candidate guard skeleton 检测到 Gate 3-6 已有受控本地 real-local evidence，但 Gate 7 仍缺少真实 publish candidate runner、release manifest、artifact signoff 与 public-share signoff，不能形成 publish candidate。';
+    }
+
     if (
       buildUnitPlan.executionLevel === 'real-local-command-plan' &&
       integrationPlan.executionLevel === 'real-local-integration' &&
@@ -6831,7 +7023,18 @@ export class GeneratedAppService {
     buildUnitPlan: GeneratedAppBuildUnitPlan,
     integrationPlan: GeneratedAppIntegrationPlan,
     browserAcceptancePlan: GeneratedAppBrowserAcceptancePlan,
+    independentVerificationPlan: GeneratedAppIndependentVerificationPlan,
   ): string {
+    if (
+      buildUnitPlan.executionLevel === 'real-local-command-plan' &&
+      integrationPlan.executionLevel === 'real-local-integration' &&
+      browserAcceptancePlan.executionLevel === 'real-local-browser-contract' &&
+      independentVerificationPlan.executionLevel ===
+        'real-local-independent-verifier'
+    ) {
+      return 'Gate 7 失败：publishCandidatePlan guard skeleton 已生成并保留；Gate 3 构建与单元层、Gate 4 受控本地 integration 层、Gate 5 受控本地 browser-contract 层和 Gate 6 受控本地 independent verifier 层已记录 real-local evidence，但 Gate 7 仍缺少真实 release manifest、artifact signoff、public-share signoff 和 publish candidate guard，不能形成 publish candidate 或启用公开分享。';
+    }
+
     if (
       buildUnitPlan.executionLevel === 'real-local-command-plan' &&
       integrationPlan.executionLevel === 'real-local-integration' &&
@@ -6858,7 +7061,18 @@ export class GeneratedAppService {
     buildUnitPlan: GeneratedAppBuildUnitPlan,
     integrationPlan: GeneratedAppIntegrationPlan,
     browserAcceptancePlan: GeneratedAppBrowserAcceptancePlan,
+    independentVerificationPlan: GeneratedAppIndependentVerificationPlan,
   ): string {
+    if (
+      buildUnitPlan.executionLevel === 'real-local-command-plan' &&
+      integrationPlan.executionLevel === 'real-local-integration' &&
+      browserAcceptancePlan.executionLevel === 'real-local-browser-contract' &&
+      independentVerificationPlan.executionLevel ===
+        'real-local-independent-verifier'
+    ) {
+      return '门禁运行器完成 Gate 0 AppSpec 完整性检查、Gate 1 架构计划门禁、Gate 2 静态合约门禁、Gate 3 Generation Workspace 与构建/单元执行器、Gate 4 受控本地 integration runner、Gate 5 受控本地 browser-contract runner 和 Gate 6 受控本地 independent verifier runner；Gate 7 publish-candidate guard 仍缺少真实 release manifest、artifact signoff 与 public-share signoff，当前应用不能形成 publish candidate，保持不可发布。';
+    }
+
     if (
       buildUnitPlan.executionLevel === 'real-local-command-plan' &&
       integrationPlan.executionLevel === 'real-local-integration' &&
@@ -6878,7 +7092,18 @@ export class GeneratedAppService {
     buildUnitPlan: GeneratedAppBuildUnitPlan,
     integrationPlan: GeneratedAppIntegrationPlan,
     browserAcceptancePlan: GeneratedAppBrowserAcceptancePlan,
+    independentVerificationPlan: GeneratedAppIndependentVerificationPlan,
   ): string {
+    if (
+      buildUnitPlan.executionLevel === 'real-local-command-plan' &&
+      integrationPlan.executionLevel === 'real-local-integration' &&
+      browserAcceptancePlan.executionLevel === 'real-local-browser-contract' &&
+      independentVerificationPlan.executionLevel ===
+        'real-local-independent-verifier'
+    ) {
+      return '接入真实 Gate 7 publish candidate runner、release manifest、artifact signoff 和 public-share signoff 后，再重新评估 publish candidate；在 Gate 7 guard 失败期间 public token 必须保持禁用并清空。';
+    }
+
     if (
       buildUnitPlan.executionLevel === 'real-local-command-plan' &&
       integrationPlan.executionLevel === 'real-local-integration' &&
@@ -7012,19 +7237,29 @@ export class GeneratedAppService {
       finalVerdict?.blockingReasons,
     );
     const requiredBlockingReasonFragments =
-      browserAcceptancePlan.executionLevel === 'real-local-browser-contract'
+      independentVerificationPlan.executionLevel ===
+        'real-local-independent-verifier' &&
+      browserAcceptancePlan.executionLevel === 'real-local-browser-contract' &&
+      integrationPlan.executionLevel === 'real-local-integration'
         ? [
-            'skeleton/contract-level',
-            '真实 independent verifier artifact',
-            '真实独立 verifier verdict',
+            'Gate 7',
+            'release manifest',
+            'artifact 签收',
+            'public-share signoff',
           ]
-        : integrationPlan.executionLevel === 'real-local-integration'
+        : browserAcceptancePlan.executionLevel === 'real-local-browser-contract'
           ? [
               'skeleton/contract-level',
-              '真实 browser/verifier artifact',
+              '真实 independent verifier artifact',
               '真实独立 verifier verdict',
             ]
-          : [...GATE_7_REQUIRED_BLOCKING_REASON_FRAGMENTS];
+          : integrationPlan.executionLevel === 'real-local-integration'
+            ? [
+                'skeleton/contract-level',
+                '真实 browser/verifier artifact',
+                '真实独立 verifier verdict',
+              ]
+            : [...GATE_7_REQUIRED_BLOCKING_REASON_FRAGMENTS];
 
     const versionAndInputIssues = [
       ...(publishCandidatePlan.planVersion === 1

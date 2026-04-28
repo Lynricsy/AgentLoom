@@ -7,6 +7,7 @@ import {
 } from './generated-app.controller';
 import { GeneratedAppService } from './generated-app.service';
 import { GeneratedAppGate5BrowserAcceptanceRunner } from './generated-app.browser-acceptance-runner';
+import { GeneratedAppGate6IndependentVerifierRunner } from './generated-app.independent-verifier-runner';
 import { GeneratedAppGate4IntegrationRunner } from './generated-app.integration-runner';
 import { GeneratedAppGate3WorkspaceRunner } from './generated-app.workspace';
 
@@ -18,6 +19,7 @@ import { GeneratedAppGate3WorkspaceRunner } from './generated-app.workspace';
     GeneratedAppGate3WorkspaceRunner,
     GeneratedAppGate4IntegrationRunner,
     GeneratedAppGate5BrowserAcceptanceRunner,
+    GeneratedAppGate6IndependentVerifierRunner,
   ],
   exports: [GeneratedAppService],
 })

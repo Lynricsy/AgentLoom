@@ -720,8 +720,23 @@ export interface GeneratedAppIndependentVerificationPlan {
   buildUnitPlanVersion: number;
   integrationPlanVersion: number;
   browserAcceptancePlanVersion: number;
-  executionLevel: 'independent-verifier-skeleton';
+  executionLevel:
+    | 'independent-verifier-skeleton'
+    | 'real-local-independent-verifier'
+    | 'fixture-independent-verifier'
+    | 'disabled-independent-verifier';
   skeletonDisclaimer: string;
+  verifierRunner: {
+    runner: 'local-independent-rules-verifier';
+    command: 'agentloom generated-app gate-6 local-independent-verifier';
+    workingDirectory: 'generated-run';
+    usesExternalNetwork: false;
+    usesExternalModel: false;
+    usesHumanReviewer: false;
+    usesGenerationTranscript: false;
+    inputBundleId: string;
+    verdictArtifactPath: string;
+  };
   verifierIsolationPolicy: {
     verifierContext: 'fresh-independent-context';
     reuseGenerationContext: false;
@@ -777,6 +792,14 @@ export interface GeneratedAppIndependentVerificationPlan {
     requiresEvidenceIds: true;
     requiresRepairSuggestions: true;
     residualRiskSummaryRequired: true;
+  };
+  verdictArtifact: {
+    artifactId: 'independent-verifier-verdict';
+    kind: 'verifier_report';
+    path: 'artifacts/gate-6/independent-verifier-verdict.json';
+    required: true;
+    materialized: boolean;
+    containsSecrets: false;
   };
   independenceChecks: Array<{
     checkId: string;
