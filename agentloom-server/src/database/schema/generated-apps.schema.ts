@@ -432,7 +432,11 @@ export interface GeneratedAppIntegrationPlan {
   generationPlanVersion: number;
   staticContractsVersion: number;
   buildUnitPlanVersion: number;
-  executionLevel: 'integration-skeleton';
+  executionLevel:
+    | 'integration-skeleton'
+    | 'real-local-integration'
+    | 'fixture-integration'
+    | 'disabled-integration';
   skeletonDisclaimer: string;
   testTenant: {
     tenantKind: 'synthetic';
@@ -475,7 +479,9 @@ export interface GeneratedAppIntegrationPlan {
     expectedStatus: number;
   }>;
   agentWorkflowDryRunExpectations: {
-    expectationLevel: 'dry-run-fixture-skeleton';
+    expectationLevel:
+      | 'dry-run-fixture-skeleton'
+      | 'controlled-local-trace-fixture';
     orchestrationNodeIds: string[];
     orchestrationEdgeRefs: string[];
     fixtures: Array<{

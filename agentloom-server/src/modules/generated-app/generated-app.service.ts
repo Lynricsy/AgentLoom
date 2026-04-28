@@ -82,6 +82,10 @@ import {
   type GeneratedAppGate3CommandPlan,
   type GeneratedAppGenerationWorkspaceContract,
 } from './generated-app.workspace';
+import {
+  GeneratedAppGate4IntegrationRunner,
+  type GeneratedAppIntegrationExecutionLevel,
+} from './generated-app.integration-runner';
 
 const DEFAULT_PREVIEW: GeneratedAppPreview = {
   previewUrl: null,
@@ -189,7 +193,19 @@ const GATE_3_SKELETON_EVIDENCE_NOTE =
   'Gate 3 contract-skeleton 只检查计划完整性；fixture-execution 不执行真实命令；real-local-command-plan 才表示受控本地命令已执行。';
 
 const GATE_4_SKELETON_EVIDENCE_NOTE =
-  'Gate 4 当前只做 integration-skeleton 完整性检查；未执行真实 API 调用、真实 Agent/Workflow dry-run、真实插件 WASM/Extism smoke test 或真实 sandbox run。';
+  'Gate 4 integration-skeleton 只做合约完整性检查；fixture-integration 不执行真实本地 integration contract；real-local-integration 才表示受控本地 public/creator API contract、Agent/Workflow trace fixture 与插件 smoke trace fixture 已执行，但仍不是生产 sandbox run 或真实 Extism WASM 执行。';
+
+const GATE_4_ALLOWED_EXECUTION_LEVELS = [
+  'integration-skeleton',
+  'real-local-integration',
+  'fixture-integration',
+  'disabled-integration',
+] as const;
+
+const GATE_4_ALLOWED_DRY_RUN_EXPECTATION_LEVELS = [
+  'dry-run-fixture-skeleton',
+  'controlled-local-trace-fixture',
+] as const;
 
 const GATE_4_PUBLIC_RUNTIME_API_CHECK_IDS = [
   'gate-4-public-runtime-read',
@@ -729,15 +745,20 @@ interface Gate7Evaluation {
 @Injectable()
 export class GeneratedAppService {
   private readonly gate3WorkspaceRunner: GeneratedAppGate3WorkspaceRunner;
+  private readonly gate4IntegrationRunner: GeneratedAppGate4IntegrationRunner;
 
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
     private readonly configService: ConfigService,
     @Optional() gate3WorkspaceRunner?: GeneratedAppGate3WorkspaceRunner,
+    @Optional() gate4IntegrationRunner?: GeneratedAppGate4IntegrationRunner,
   ) {
     this.gate3WorkspaceRunner =
       gate3WorkspaceRunner ??
       new GeneratedAppGate3WorkspaceRunner(this.configService);
+    this.gate4IntegrationRunner =
+      gate4IntegrationRunner ??
+      new GeneratedAppGate4IntegrationRunner(this.configService);
   }
 
   private get tenantDb(): DrizzleDB {
@@ -1260,19 +1281,29 @@ export class GeneratedAppService {
               generationPlan,
               staticContracts,
               buildUnitPlan,
+              this.gate4IntegrationRunner.getExecutionLevel(),
             );
             const generationPlanWithIntegrationPlan: GeneratedAppGenerationPlan =
               {
                 ...generationPlanWithBuildUnitPlan,
                 integrationPlan,
               };
-            const gate4Evaluation = this.evaluateGate4IntegrationPlan(
+            let gate4Evaluation = this.evaluateGate4IntegrationPlan(
               app.appSpec,
               generationPlan,
               staticContracts,
               buildUnitPlan,
               integrationPlan,
             );
+            if (gate4Evaluation.status === 'passed') {
+              gate4Evaluation = this.gate4IntegrationRunner.run({
+                appSpec: app.appSpec,
+                generationPlan,
+                staticContracts,
+                buildUnitPlan,
+                integrationPlan,
+              });
+            }
             const gate3Result = latestApp.gateResults.find(
               (gate) => gate.gateId === 'gate-3',
             );
@@ -1323,9 +1354,9 @@ export class GeneratedAppService {
             if (gate4Evaluation.status === 'failed') {
               finalFailureReason =
                 gate4Evaluation.failure?.message ??
-                'Gate 4 集成 skeleton 门禁失败，不能继续执行 Gate 5-7。';
+                'Gate 4 集成门禁失败，不能继续执行 Gate 5-7。';
               completedSummary =
-                '门禁运行器骨架完成 Gate 0、Gate 1、Gate 2 和 Gate 3，但 Gate 4 integration skeleton 检查失败；当前应用保持不可发布。';
+                '门禁运行器完成 Gate 0、Gate 1、Gate 2 和 Gate 3，但 Gate 4 integration runner 或 integrationPlan 检查失败；Gate 5-7 未执行，当前应用保持不可发布。';
             } else {
               const browserAcceptancePlan = this.buildBrowserAcceptancePlan(
                 app.appSpec,
@@ -1565,7 +1596,9 @@ export class GeneratedAppService {
                     gate7Evaluation.failure?.message ??
                     GATE_7_RUNNER_INCOMPLETE_FAILURE_REASON;
                   completedSummary =
-                    '门禁运行器完成 Gate 0 AppSpec 完整性检查、Gate 1 架构计划门禁、Gate 2 静态合约门禁、Gate 3 Generation Workspace 与构建/单元执行器；Gate 4 integration、Gate 5 browser acceptance 和 Gate 6 independent verifier 仍为 skeleton 完整性检查，Gate 7 publish-candidate guard 检测到缺少真实集成/浏览器/独立审查证据，当前应用不能形成 publish candidate，保持不可发布。';
+                    integrationPlan.executionLevel === 'real-local-integration'
+                      ? '门禁运行器完成 Gate 0 AppSpec 完整性检查、Gate 1 架构计划门禁、Gate 2 静态合约门禁、Gate 3 Generation Workspace 与构建/单元执行器、Gate 4 受控本地 integration runner；Gate 5 browser acceptance 和 Gate 6 independent verifier 仍为 skeleton 完整性检查，Gate 7 publish-candidate guard 检测到缺少真实浏览器/独立审查证据，当前应用不能形成 publish candidate，保持不可发布。'
+                      : '门禁运行器完成 Gate 0 AppSpec 完整性检查、Gate 1 架构计划门禁、Gate 2 静态合约门禁、Gate 3 Generation Workspace 与构建/单元执行器；Gate 4 integration、Gate 5 browser acceptance 和 Gate 6 independent verifier 仍为 skeleton/fixture 完整性检查，Gate 7 publish-candidate guard 检测到缺少真实集成/浏览器/独立审查证据，当前应用不能形成 publish candidate，保持不可发布。';
                 }
               }
             }
@@ -2901,6 +2934,7 @@ export class GeneratedAppService {
     generationPlan: GeneratedAppGenerationPlan,
     staticContracts: GeneratedAppStaticContracts,
     buildUnitPlan: GeneratedAppBuildUnitPlan,
+    executionLevel: GeneratedAppIntegrationExecutionLevel = 'integration-skeleton',
   ): GeneratedAppIntegrationPlan {
     const requirementIds = appSpec.coreRequirements.map(
       (requirement) => requirement.id,
@@ -3097,7 +3131,7 @@ export class GeneratedAppService {
       generationPlanVersion: generationPlan.planVersion,
       staticContractsVersion: staticContracts.contractVersion,
       buildUnitPlanVersion: buildUnitPlan.planVersion,
-      executionLevel: 'integration-skeleton',
+      executionLevel,
       skeletonDisclaimer: GATE_4_SKELETON_EVIDENCE_NOTE,
       testTenant: {
         tenantKind: 'synthetic',
@@ -3109,14 +3143,19 @@ export class GeneratedAppService {
       testResources: {
         resourceIsolation: 'ephemeral-test-resources-only',
         usesRealTokens: false,
-        generatedAppWorkspacePath: '/workspace/generated-app',
+        generatedAppWorkspacePath:
+          buildUnitPlan.generationWorkspace?.relativePath ??
+          'generated-app-workspace',
         fixtureDirectory: 'artifacts/gate-4/fixtures',
         requiredScenarioIds: scenarioIds,
       },
       publicRuntimeApiChecks,
       creatorManagementApiChecks,
       agentWorkflowDryRunExpectations: {
-        expectationLevel: 'dry-run-fixture-skeleton',
+        expectationLevel:
+          executionLevel === 'real-local-integration'
+            ? 'controlled-local-trace-fixture'
+            : 'dry-run-fixture-skeleton',
         orchestrationNodeIds,
         orchestrationEdgeRefs,
         fixtures: dryRunFixtures,
@@ -6174,7 +6213,10 @@ export class GeneratedAppService {
     );
     const gate7EvidenceIds = [...GATE_7_EXPECTED_EVIDENCE_IDS];
     const skeletonOnlyUpstreamGateIds =
-      this.resolveGate7SkeletonOnlyUpstreamGateIds(buildUnitPlan);
+      this.resolveGate7SkeletonOnlyUpstreamGateIds(
+        buildUnitPlan,
+        integrationPlan,
+      );
     const skeletonOnlyGateLabel = skeletonOnlyUpstreamGateIds.join('、');
     const releaseManifest: GeneratedAppPublishCandidatePlan['artifactReleaseManifest'] =
       [
@@ -6305,6 +6347,19 @@ export class GeneratedAppService {
       'blocker-unresolved-warning-or-blocking-findings',
       'blocker-stale-public-token-requires-regeneration',
     ];
+    const missingExecutionArtifactGateIds = [
+      ...(buildUnitPlan.executionLevel === 'real-local-command-plan'
+        ? []
+        : ['gate-3']),
+      ...(integrationPlan.executionLevel === 'real-local-integration'
+        ? []
+        : ['gate-4']),
+      'gate-5',
+    ];
+    const missingExecutionArtifactMessage =
+      integrationPlan.executionLevel === 'real-local-integration'
+        ? '缺少真实浏览器 artifact；Gate 4 已提供受控本地 integration trace，但 Gate 5 尚未执行真实浏览器验收。'
+        : '缺少真实集成 trace 和浏览器 artifact；Gate 3 只覆盖构建与单元层。';
 
     return {
       planVersion: 1,
@@ -6342,14 +6397,10 @@ export class GeneratedAppService {
           blockerId:
             blockerIds[1] ?? 'blocker-missing-real-execution-artifacts',
           category: 'missing_real_execution_artifact',
-          gateIds:
-            buildUnitPlan.executionLevel === 'real-local-command-plan'
-              ? ['gate-4', 'gate-5']
-              : ['gate-3', 'gate-4', 'gate-5'],
+          gateIds: missingExecutionArtifactGateIds,
           evidenceIds: upstreamEvidenceIds,
           artifactIds,
-          message:
-            '缺少真实集成 trace 和浏览器 artifact；Gate 3 只覆盖构建与单元层。',
+          message: missingExecutionArtifactMessage,
           blocking: true,
         },
         {
@@ -6403,7 +6454,9 @@ export class GeneratedAppService {
         publishCandidateAllowed: false,
         blockingReasons: [
           `${skeletonOnlyGateLabel} 当前只有 skeleton/contract-level completeness evidence。`,
-          '缺少真实 integration/browser/verifier artifact 签收。',
+          integrationPlan.executionLevel === 'real-local-integration'
+            ? '缺少真实 browser/verifier artifact 签收。'
+            : '缺少真实 integration/browser/verifier artifact 签收。',
           '缺少真实独立 verifier verdict，Gate 6 skeleton 不能替代真实审查结论。',
           'Gate 7 guard 失败期间 public share token 必须保持禁用并清空。',
         ],
@@ -6413,7 +6466,9 @@ export class GeneratedAppService {
         requiredRealGateRunnerIds: [...GATE_7_REQUIRED_REAL_GATE_RUNNER_IDS],
         evidenceIds: [...upstreamEvidenceIds, ...gate7EvidenceIds],
         repairSuggestions: [
-          '接入真实 Gate 4 integration runner 并产出 API、Agent/Workflow、插件 sandbox trace。',
+          integrationPlan.executionLevel === 'real-local-integration'
+            ? '保留 Gate 4 real-local integration runner 证据，继续接入真实 Gate 5 browser runner。'
+            : '接入真实 Gate 4 integration runner 并产出 API、Agent/Workflow、插件 sandbox trace。',
           '接入真实 Gate 5 browser runner 并产出截图、视频、trace、console 和 network 证据。',
           '接入真实 Gate 6 independent verifier 并产出独立 verdict。',
           '只有真实 Gate 3-7 阻断证据通过后才允许重新创建公开分享 token。',
@@ -6441,6 +6496,7 @@ export class GeneratedAppService {
         executionLevel: this.resolveGate7CoverageExecutionLevel(
           gateId,
           buildUnitPlan,
+          integrationPlan,
         ),
         skeletonOnly:
           gateId === 'gate-7' || skeletonOnlyUpstreamGateIds.includes(gateId),
@@ -6464,22 +6520,31 @@ export class GeneratedAppService {
 
   private resolveGate7SkeletonOnlyUpstreamGateIds(
     buildUnitPlan: GeneratedAppBuildUnitPlan,
+    integrationPlan: GeneratedAppIntegrationPlan,
   ): string[] {
-    return buildUnitPlan.executionLevel === 'real-local-command-plan'
-      ? ['gate-4', 'gate-5', 'gate-6']
-      : ['gate-3', 'gate-4', 'gate-5', 'gate-6'];
+    return [
+      ...(buildUnitPlan.executionLevel === 'real-local-command-plan'
+        ? []
+        : ['gate-3']),
+      ...(integrationPlan.executionLevel === 'real-local-integration'
+        ? []
+        : ['gate-4']),
+      'gate-5',
+      'gate-6',
+    ];
   }
 
   private resolveGate7CoverageExecutionLevel(
     gateId: string,
     buildUnitPlan: GeneratedAppBuildUnitPlan,
+    integrationPlan: GeneratedAppIntegrationPlan,
   ): string {
     const executionLevels: Record<string, string> = {
       'gate-0': 'app-spec-deterministic-completeness',
       'gate-1': 'architecture-plan-deterministic-completeness',
       'gate-2': 'static-contracts-deterministic-completeness',
       'gate-3': buildUnitPlan.executionLevel,
-      'gate-4': 'integration-skeleton',
+      'gate-4': integrationPlan.executionLevel,
       'gate-5': 'browser-acceptance-skeleton',
       'gate-6': 'independent-verifier-skeleton',
       'gate-7': 'publish-candidate-guard-skeleton',
@@ -6570,11 +6635,14 @@ export class GeneratedAppService {
     const plan = publishCandidatePlan as GeneratedAppPublishCandidatePlan;
     const blockingReasons = plan.finalVerdict.blockingReasons.join('；');
     const skeletonOnlyUpstreamGateIds =
-      this.resolveGate7SkeletonOnlyUpstreamGateIds(buildUnitPlan);
-    const gate7FailureIntro =
-      buildUnitPlan.executionLevel === 'real-local-command-plan'
-        ? GATE_7_RUNNER_INCOMPLETE_FAILURE_REASON
-        : 'Gate 7 publish-candidate guard skeleton 检测到 Gate 3 仍不是真实本地命令执行证据，且 Gate 4-6 仍为 skeleton-only upstream evidence，不能形成 publish candidate。';
+      this.resolveGate7SkeletonOnlyUpstreamGateIds(
+        buildUnitPlan,
+        integrationPlan,
+      );
+    const gate7FailureIntro = this.buildGate7FailureIntro(
+      buildUnitPlan,
+      integrationPlan,
+    );
     const failure: GeneratedAppGateRunFailure = {
       code: 'publish-candidate-guard-blocked',
       message: `${gate7FailureIntro} 阻断原因：${blockingReasons}`,
@@ -6587,17 +6655,68 @@ export class GeneratedAppService {
 
     return {
       status: 'failed',
-      summary:
-        buildUnitPlan.executionLevel === 'real-local-command-plan'
-          ? 'Gate 7 失败：publishCandidatePlan guard skeleton 已生成并保留；Gate 3 构建与单元层已按当前执行器记录 evidence，但 Gate 4-6 仍只有 skeleton/contract-level completeness evidence，缺少真实 integration/browser/verifier 证据，不能形成 publish candidate 或启用公开分享。'
-          : 'Gate 7 失败：publishCandidatePlan guard skeleton 已生成并保留；Gate 3 仍不是真实本地命令执行证据，Gate 4-6 仍只有 skeleton/contract-level completeness evidence，不能形成 publish candidate 或启用公开分享。',
+      summary: this.buildGate7FailureSummary(buildUnitPlan, integrationPlan),
       evidence,
       failure,
-      repairInstructions:
-        buildUnitPlan.executionLevel === 'real-local-command-plan'
-          ? '接入真实 Gate 4-6 执行 runner、真实 artifact 签收和真实独立 verifier verdict 后，再由 Gate 7 重新评估 publish candidate；在 Gate 7 guard 失败期间 public token 必须保持禁用并清空。'
-          : '接入真实 Gate 3-6 执行 runner、真实 artifact 签收和真实独立 verifier verdict 后，再由 Gate 7 重新评估 publish candidate；在 Gate 7 guard 失败期间 public token 必须保持禁用并清空。',
+      repairInstructions: this.buildGate7RepairInstructions(
+        buildUnitPlan,
+        integrationPlan,
+      ),
     };
+  }
+
+  private buildGate7FailureIntro(
+    buildUnitPlan: GeneratedAppBuildUnitPlan,
+    integrationPlan: GeneratedAppIntegrationPlan,
+  ): string {
+    if (
+      buildUnitPlan.executionLevel === 'real-local-command-plan' &&
+      integrationPlan.executionLevel === 'real-local-integration'
+    ) {
+      return 'Gate 7 publish-candidate guard skeleton 检测到 Gate 5-6 仍为 skeleton-only upstream evidence，且缺少后续真实 browser/verifier 证据，不能形成 publish candidate。';
+    }
+
+    if (buildUnitPlan.executionLevel === 'real-local-command-plan') {
+      return GATE_7_RUNNER_INCOMPLETE_FAILURE_REASON;
+    }
+
+    return 'Gate 7 publish-candidate guard skeleton 检测到 Gate 3 仍不是真实本地命令执行证据，且 Gate 4-6 仍为 skeleton-only upstream evidence，不能形成 publish candidate。';
+  }
+
+  private buildGate7FailureSummary(
+    buildUnitPlan: GeneratedAppBuildUnitPlan,
+    integrationPlan: GeneratedAppIntegrationPlan,
+  ): string {
+    if (
+      buildUnitPlan.executionLevel === 'real-local-command-plan' &&
+      integrationPlan.executionLevel === 'real-local-integration'
+    ) {
+      return 'Gate 7 失败：publishCandidatePlan guard skeleton 已生成并保留；Gate 3 构建与单元层、Gate 4 受控本地 integration 层已按当前执行器记录 real-local contract evidence，但 Gate 5-6 仍只有 skeleton/contract-level completeness evidence，缺少真实 browser/verifier 证据，不能形成 publish candidate 或启用公开分享。';
+    }
+
+    if (buildUnitPlan.executionLevel === 'real-local-command-plan') {
+      return 'Gate 7 失败：publishCandidatePlan guard skeleton 已生成并保留；Gate 3 构建与单元层已按当前执行器记录 evidence，但 Gate 4-6 仍只有 skeleton/fixture/contract-level completeness evidence，缺少真实 integration/browser/verifier 证据，不能形成 publish candidate 或启用公开分享。';
+    }
+
+    return 'Gate 7 失败：publishCandidatePlan guard skeleton 已生成并保留；Gate 3 仍不是真实本地命令执行证据，Gate 4-6 仍只有 skeleton/fixture/contract-level completeness evidence，不能形成 publish candidate 或启用公开分享。';
+  }
+
+  private buildGate7RepairInstructions(
+    buildUnitPlan: GeneratedAppBuildUnitPlan,
+    integrationPlan: GeneratedAppIntegrationPlan,
+  ): string {
+    if (
+      buildUnitPlan.executionLevel === 'real-local-command-plan' &&
+      integrationPlan.executionLevel === 'real-local-integration'
+    ) {
+      return '接入真实 Gate 5-6 browser/verifier 执行 runner、真实 browser artifact 签收和真实独立 verifier verdict 后，再由 Gate 7 重新评估 publish candidate；在 Gate 7 guard 失败期间 public token 必须保持禁用并清空。';
+    }
+
+    if (buildUnitPlan.executionLevel === 'real-local-command-plan') {
+      return '接入真实 Gate 4-6 执行 runner、真实 artifact 签收和真实独立 verifier verdict 后，再由 Gate 7 重新评估 publish candidate；在 Gate 7 guard 失败期间 public token 必须保持禁用并清空。';
+    }
+
+    return '接入真实 Gate 3-6 执行 runner、真实 artifact 签收和真实独立 verifier verdict 后，再由 Gate 7 重新评估 publish candidate；在 Gate 7 guard 失败期间 public token 必须保持禁用并清空。';
   }
 
   private buildGate7Checks(
@@ -6710,6 +6829,14 @@ export class GeneratedAppService {
     const finalVerdictBlockingReasons = this.getStringArray(
       finalVerdict?.blockingReasons,
     );
+    const requiredBlockingReasonFragments =
+      integrationPlan.executionLevel === 'real-local-integration'
+        ? [
+            'skeleton/contract-level',
+            '真实 browser/verifier artifact',
+            '真实独立 verifier verdict',
+          ]
+        : [...GATE_7_REQUIRED_BLOCKING_REASON_FRAGMENTS];
 
     const versionAndInputIssues = [
       ...(publishCandidatePlan.planVersion === 1
@@ -7085,7 +7212,7 @@ export class GeneratedAppService {
       ...(finalVerdictBlockingReasons.length === 0
         ? ['finalVerdict.blockingReasons 不能为空']
         : []),
-      ...GATE_7_REQUIRED_BLOCKING_REASON_FRAGMENTS.flatMap((fragment) =>
+      ...requiredBlockingReasonFragments.flatMap((fragment) =>
         finalVerdictBlockingReasons.some((reason) => reason.includes(fragment))
           ? []
           : [`finalVerdict.blockingReasons 缺少 ${fragment} 阻断原因`],
@@ -7629,9 +7756,15 @@ export class GeneratedAppService {
               integrationPlan.buildUnitPlanVersion,
             )} 与 buildUnitPlan.planVersion=${buildUnitPlan.planVersion} 不一致`,
           ]),
-      ...(integrationPlan.executionLevel === 'integration-skeleton'
+      ...(GATE_4_ALLOWED_EXECUTION_LEVELS.includes(
+        integrationPlan.executionLevel as (typeof GATE_4_ALLOWED_EXECUTION_LEVELS)[number],
+      )
         ? []
-        : ['executionLevel 必须为 integration-skeleton']),
+        : [
+            `executionLevel 必须为 ${GATE_4_ALLOWED_EXECUTION_LEVELS.join(
+              ' | ',
+            )} 之一`,
+          ]),
       ...(!this.getNonEmptyString(integrationPlan.skeletonDisclaimer)
         ? ['skeletonDisclaimer 缺失']
         : []),
@@ -7668,9 +7801,17 @@ export class GeneratedAppService {
       ...(!this.getNonEmptyString(testResources?.generatedAppWorkspacePath)
         ? ['testResources.generatedAppWorkspacePath 缺失']
         : []),
+      ...this.buildSafeRelativePathIssues(
+        'testResources.generatedAppWorkspacePath',
+        this.getNonEmptyString(testResources?.generatedAppWorkspacePath),
+      ),
       ...(!this.getNonEmptyString(testResources?.fixtureDirectory)
         ? ['testResources.fixtureDirectory 缺失']
         : []),
+      ...this.buildSafeRelativePathIssues(
+        'testResources.fixtureDirectory',
+        this.getNonEmptyString(testResources?.fixtureDirectory),
+      ),
       ...this.buildMissingItemsIssues(
         'testResources.requiredScenarioIds',
         this.getStringArray(testResources?.requiredScenarioIds),
@@ -7740,6 +7881,23 @@ export class GeneratedAppService {
             : []),
           ...(!this.getNonEmptyString(check.pathTemplate)
             ? [`publicRuntimeApiChecks[${index}].pathTemplate 缺失`]
+            : []),
+          ...(this.getNonEmptyString(check.pathTemplate) &&
+          !this.getNonEmptyString(check.pathTemplate)!.startsWith(
+            '/generated-apps/public/{token}',
+          )
+            ? [
+                `publicRuntimeApiChecks[${index}].pathTemplate 必须停留在 public token runtime surface`,
+              ]
+            : []),
+          ...(this.getNonEmptyString(check.pathTemplate)?.includes('{appId}') ||
+          this.getNonEmptyString(check.pathTemplate)?.includes(
+            '/generation-runs',
+          ) ||
+          this.getNonEmptyString(check.pathTemplate)?.includes('/gate-runs')
+            ? [
+                `publicRuntimeApiChecks[${index}].pathTemplate 不得串入 creator/internal API boundary`,
+              ]
             : []),
           ...(typeof check.expectedStatus === 'number' &&
           check.expectedStatus >= 200 &&
@@ -7850,6 +8008,21 @@ export class GeneratedAppService {
           ...(!this.getNonEmptyString(check.pathTemplate)
             ? [`creatorManagementApiChecks[${index}].pathTemplate 缺失`]
             : []),
+          ...(this.getNonEmptyString(check.pathTemplate) &&
+          !this.getNonEmptyString(check.pathTemplate)!.startsWith(
+            '/generated-apps/{appId}',
+          )
+            ? [
+                `creatorManagementApiChecks[${index}].pathTemplate 必须停留在 creator app surface`,
+              ]
+            : []),
+          ...(this.getNonEmptyString(check.pathTemplate)?.includes(
+            '/public/{token}',
+          )
+            ? [
+                `creatorManagementApiChecks[${index}].pathTemplate 不得串入 public token API boundary`,
+              ]
+            : []),
           ...(check.expectedStatus === 200
             ? []
             : [
@@ -7883,10 +8056,16 @@ export class GeneratedAppService {
         dryRunExpectations,
         'agentWorkflowDryRunExpectations',
       ),
-      ...(dryRunExpectations?.expectationLevel === 'dry-run-fixture-skeleton'
+      ...(GATE_4_ALLOWED_DRY_RUN_EXPECTATION_LEVELS.includes(
+        this.getNonEmptyString(
+          dryRunExpectations?.expectationLevel,
+        ) as (typeof GATE_4_ALLOWED_DRY_RUN_EXPECTATION_LEVELS)[number],
+      )
         ? []
         : [
-            'agentWorkflowDryRunExpectations.expectationLevel 必须为 dry-run-fixture-skeleton',
+            `agentWorkflowDryRunExpectations.expectationLevel 必须为 ${GATE_4_ALLOWED_DRY_RUN_EXPECTATION_LEVELS.join(
+              ' | ',
+            )} 之一`,
           ]),
       ...this.buildMissingItemsIssues(
         'agentWorkflowDryRunExpectations.orchestrationNodeIds',
@@ -8126,6 +8305,10 @@ export class GeneratedAppService {
                 `pluginSandboxSmokeExpectations.tools[${index}].fixturePath 缺失`,
               ]
             : []),
+          ...this.buildSafeRelativePathIssues(
+            `pluginSandboxSmokeExpectations.tools[${index}].fixturePath`,
+            this.getNonEmptyString(tool.fixturePath),
+          ),
           ...(!this.getNonEmptyString(tool.expectedTraceArtifactId)
             ? [
                 `pluginSandboxSmokeExpectations.tools[${index}].expectedTraceArtifactId 缺失`,
@@ -8219,6 +8402,10 @@ export class GeneratedAppService {
         ...(!this.getNonEmptyString(artifact.path)
           ? [`dependencyArtifacts[${index}].path 缺失`]
           : []),
+        ...this.buildSafeRelativePathIssues(
+          `dependencyArtifacts[${index}].path`,
+          this.getNonEmptyString(artifact.path),
+        ),
         ...(artifact.required === true
           ? []
           : [`dependencyArtifacts[${index}].required 必须为 true`]),
@@ -8497,6 +8684,10 @@ export class GeneratedAppService {
         ...(!this.getNonEmptyString(artifact.path)
           ? [`traceArtifacts[${index}].path 缺失`]
           : []),
+        ...this.buildSafeRelativePathIssues(
+          `traceArtifacts[${index}].path`,
+          this.getNonEmptyString(artifact.path),
+        ),
         ...(this.getStringArray(artifact.producedByCheckIds).length === 0
           ? [`traceArtifacts[${index}].producedByCheckIds 不能为空`]
           : []),
@@ -10715,7 +10906,8 @@ export class GeneratedAppService {
       value.startsWith('/') ||
       value.startsWith('\\') ||
       value.includes('\0') ||
-      value.includes('\\')
+      value.includes('\\') ||
+      /^[a-zA-Z]:/.test(value)
     ) {
       return [`${label} 必须是 workspace 相对路径且不能是绝对路径`];
     }
