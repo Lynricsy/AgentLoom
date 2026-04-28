@@ -275,7 +275,11 @@
   - Update is scoped by `tenant_id + generated_app_id + generation_run_id + repair_attempt_id`; missing rows return `GeneratedAppRepairAttemptNotFoundException`.
   - Gate run records may link back to repair attempts to prove which verification run closed or re-failed a repair.
 - Public response must expose only end-user runtime surface:
-  - `token`, `appId`, `title`, `description`, `dataUseNotice`, limited `appSpec`, `runtimeSurface`, `createdAt`.
+  - `token`, `appId`, `title`, `description`, `dataUseNotice`, limited `appSpec`, `runtimeSurface`, `runtimeForm`, `createdAt`.
+  - `runtimeForm` is a safe public form/interface descriptor derived from `AppSpec` and, when present, `generationPlan.staticContracts.publicRuntime.input.requiredFields`.
+  - `runtimeForm` may expose only `formId`, `title`, `description`, `submitLabel`, `sections[]`, `fields[]`, and `resultView`. Sections may expose only `id`, `title`, `description`, and `fieldIds`. Fields may expose only `id`, `label`, `type`, `required`, `placeholder`, `helpText`, `options`, `min`, `max`, and `step`. Options may expose only `value` and `label`. Result view may expose only `title`, `description`, `emptyState`, `successTitle`, and `nextStepHint`.
+  - Runtime form field types are a conservative subset: `text`, `textarea`, `single_select`, `multi_select`, `number`, and `range`.
+  - Medical, TCM, or inquiry-style apps must derive intake fields such as chief complaint, duration, symptoms, severity, prior care, medical history, and notes. They must not derive diagnosis, prescription, medication dosage, treatment plan, or medical-advice fields from static contracts.
   - Do not expose `gateResults`, `readiness`, `generationPlan`, `sourceArtifactUrl`, `testReportUrl`, `pluginIds`, `publicShareToken`, or creator-only pages.
 - Public submissions:
   - `POST /generated-apps/public/:token/submissions` accepts `{ anonymousSessionId?, input?, clientContext? }`.
@@ -379,6 +383,7 @@
   - regenerate replaces token
   - gate downgrade disables public link and clears token
   - public response does not leak internal evidence, source, test, plugin, readiness, or token fields
+  - public response includes a safe `runtimeForm` derived from AppSpec/static contracts, including text/textarea/select/multi-select/number/range descriptors, and drops internal or sensitive runtime form keys
   - public endpoint rejects stale apps that no longer satisfy publish candidate readiness
   - public submission persists under the app tenant, snapshots the current token, generates anonymous session id when omitted or unsafe, and inserts successful local deterministic runtime output as `completed` with non-null `result/report`
   - public submission rejects stale or not-ready public apps before insert
@@ -421,6 +426,7 @@
   - Gate 4 `disabled-integration` fails and blocks Gate 5-7.
   - Gate 4 runner rejects unsafe workspace-relative paths, host absolute paths, traversal, execution-level mismatch, and public/creator API boundary crossover before execution.
   - Gate 4 runner returns `gate-4-integration-check-failed` when a controlled local contract check response does not match the expected status or whitelist contract.
+  - Gate 4 runner fails public runtime read evidence when `runtimeForm` contains non-whitelisted keys, public tokens, source/test artifact fields, plugin fields, host paths, or secret-like values.
 - `generated-app.browser-acceptance-runner.spec.ts`
   - Gate 5 `real-local-browser-contract` executes deterministic local DOM/accessibility/network/console contract checks without arbitrary shell, user paths, Playwright, real browser sessions, or real screenshot/video/trace capture.
   - Gate 5 `fixture-browser-acceptance` marks assertion evidence as `executed=false` and never presents itself as real browser acceptance evidence.

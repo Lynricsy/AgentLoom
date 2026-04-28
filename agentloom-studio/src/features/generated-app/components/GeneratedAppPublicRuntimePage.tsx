@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import {
   AlertTriangle,
   AppWindow,
+  CheckCircle2,
   ExternalLink,
   Loader2,
   Send,
@@ -10,6 +11,8 @@ import {
 
 import { cn } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
+import { Input } from '@/shared/ui/input'
+import { Select } from '@/shared/ui/select'
 import {
   useCreateGeneratedAppPublicSubmission,
   useGeneratedAppPublicRuntime,
@@ -23,6 +26,7 @@ import {
 import type {
   GeneratedAppPublicRuntime,
   GeneratedAppPublicSubmission,
+  GeneratedAppRuntimeFormField,
 } from '../types'
 
 interface GeneratedAppPublicRuntimePageProps {
@@ -32,6 +36,17 @@ interface GeneratedAppPublicRuntimePageProps {
 interface PublicSectionProps {
   title: string
   children: ReactNode
+}
+
+type PublicFormValue = string | string[]
+type PublicFormValues = Record<string, PublicFormValue>
+type PublicFormErrors = Record<string, string>
+
+interface RuntimeReportSection {
+  id: string
+  title: string
+  body: string
+  items: string[]
 }
 
 function PublicSection({ title, children }: PublicSectionProps) {
@@ -91,34 +106,6 @@ function PublicRuntimeError({ onRetry }: { onRetry: () => void }) {
   )
 }
 
-function stringifyJson(value: Record<string, unknown> | null): string {
-  if (!value || Object.keys(value).length === 0) {
-    return '暂无'
-  }
-
-  return JSON.stringify(value, null, 2)
-}
-
-function parseSubmissionInput(value: string): Record<string, unknown> {
-  const trimmed = value.trim()
-
-  if (!trimmed) {
-    return {}
-  }
-
-  try {
-    const parsed = JSON.parse(trimmed) as unknown
-
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      return parsed as Record<string, unknown>
-    }
-
-    return { value: parsed }
-  } catch {
-    return { text: trimmed }
-  }
-}
-
 function SubmissionStatusBadge({
   status,
 }: {
@@ -136,73 +123,440 @@ function SubmissionStatusBadge({
   )
 }
 
-function PublicSubmissionJsonPanel({
-  label,
-  value,
+function buildInitialFormValues(
+  fields: GeneratedAppRuntimeFormField[],
+): PublicFormValues {
+  return Object.fromEntries(
+    fields.map((field) => {
+      if (field.type === 'multi_select') {
+        return [field.id, []]
+      }
+
+      if (field.type === 'range') {
+        return [field.id, String(field.min ?? 1)]
+      }
+
+      return [field.id, '']
+    }),
+  )
+}
+
+function isFieldEmpty(value: PublicFormValue | undefined): boolean {
+  if (Array.isArray(value)) {
+    return value.length === 0
+  }
+
+  return !value || value.trim().length === 0
+}
+
+function buildFormErrors(
+  fields: GeneratedAppRuntimeFormField[],
+  values: PublicFormValues,
+): PublicFormErrors {
+  return Object.fromEntries(
+    fields
+      .filter((field) => field.required && isFieldEmpty(values[field.id]))
+      .map((field) => [field.id, `请填写${field.label}。`]),
+  )
+}
+
+function buildSubmissionInput(
+  fields: GeneratedAppRuntimeFormField[],
+  values: PublicFormValues,
+): Record<string, unknown> {
+  const input: Record<string, unknown> = {}
+
+  for (const field of fields) {
+    const value = values[field.id]
+
+    if (isFieldEmpty(value)) {
+      continue
+    }
+
+    if (Array.isArray(value)) {
+      input[field.id] = value
+      continue
+    }
+
+    if (field.type === 'number' || field.type === 'range') {
+      const numeric = Number(value)
+      input[field.id] = Number.isFinite(numeric) ? numeric : value
+      continue
+    }
+
+    if (typeof value === 'string') {
+      input[field.id] = value.trim()
+    }
+  }
+
+  return input
+}
+
+function getStringProperty(
+  value: Record<string, unknown> | null,
+  key: string,
+): string | null {
+  const raw = value?.[key]
+  return typeof raw === 'string' && raw.trim().length > 0 ? raw : null
+}
+
+function getStringArrayProperty(
+  value: Record<string, unknown> | null,
+  key: string,
+): string[] {
+  const raw = value?.[key]
+
+  if (!Array.isArray(raw)) {
+    return []
+  }
+
+  return raw.filter(
+    (item): item is string =>
+      typeof item === 'string' && item.trim().length > 0,
+  )
+}
+
+function getReportSections(
+  report: Record<string, unknown> | null,
+): RuntimeReportSection[] {
+  const rawSections = report?.sections
+
+  if (!Array.isArray(rawSections)) {
+    return []
+  }
+
+  return rawSections
+    .filter(
+      (section): section is Record<string, unknown> =>
+        section !== null &&
+        typeof section === 'object' &&
+        !Array.isArray(section),
+    )
+    .map((section, index) => {
+      const items = Array.isArray(section.items)
+        ? section.items.filter(
+            (item): item is string =>
+              typeof item === 'string' && item.trim().length > 0,
+          )
+        : []
+
+      return {
+        id: getStringProperty(section, 'id') ?? `section-${index + 1}`,
+        title: getStringProperty(section, 'title') ?? `报告分区 ${index + 1}`,
+        body: getStringProperty(section, 'body') ?? '',
+        items,
+      }
+    })
+}
+
+function FieldHelp({
+  field,
+  error,
 }: {
-  label: string
-  value: Record<string, unknown> | null
+  field: GeneratedAppRuntimeFormField
+  error: string | undefined
 }) {
   return (
+    <div className="space-y-1">
+      {field.helpText ? (
+        <p className="break-words text-xs leading-5 text-muted-foreground">
+          {field.helpText}
+        </p>
+      ) : null}
+      {error ? (
+        <p className="break-words text-sm text-rose-300">{error}</p>
+      ) : null}
+    </div>
+  )
+}
+
+function RuntimeFormField({
+  field,
+  value,
+  error,
+  disabled,
+  onChange,
+}: {
+  field: GeneratedAppRuntimeFormField
+  value: PublicFormValue | undefined
+  error: string | undefined
+  disabled: boolean
+  onChange: (fieldId: string, value: PublicFormValue) => void
+}) {
+  const inputId = `generated-app-public-field-${field.id}`
+  const requiredLabel = field.required ? '必填' : '选填'
+  const stringValue = Array.isArray(value) ? '' : (value ?? '')
+  const selectedValues = Array.isArray(value) ? value : []
+
+  return (
     <div className="min-w-0 space-y-2">
-      <h3 className="text-sm font-medium text-foreground">{label}</h3>
-      <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words border border-border bg-muted/50 p-3 text-xs text-muted-foreground">
-        {stringifyJson(value)}
-      </pre>
+      <label
+        htmlFor={inputId}
+        className="flex flex-wrap items-center gap-2 text-sm font-medium text-foreground"
+      >
+        <span>{field.label}</span>
+        <span className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">
+          {requiredLabel}
+        </span>
+      </label>
+
+      {field.type === 'textarea' ? (
+        <textarea
+          id={inputId}
+          value={stringValue}
+          onChange={(event) => onChange(field.id, event.target.value)}
+          placeholder={field.placeholder}
+          rows={4}
+          className="w-full resize-y border border-input bg-background px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/30"
+          disabled={disabled}
+        />
+      ) : null}
+
+      {field.type === 'text' || field.type === 'number' ? (
+        <Input
+          id={inputId}
+          type={field.type === 'number' ? 'number' : 'text'}
+          value={stringValue}
+          onChange={(event) => onChange(field.id, event.target.value)}
+          placeholder={field.placeholder}
+          min={field.min}
+          max={field.max}
+          step={field.step}
+          disabled={disabled}
+        />
+      ) : null}
+
+      {field.type === 'range' ? (
+        <div className="space-y-2">
+          <input
+            id={inputId}
+            type="range"
+            value={stringValue}
+            onChange={(event) => onChange(field.id, event.target.value)}
+            min={field.min ?? 1}
+            max={field.max ?? 10}
+            step={field.step ?? 1}
+            className="w-full accent-primary"
+            disabled={disabled}
+          />
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
+            <span>{field.min ?? 1}</span>
+            <span className="rounded border border-border px-2 py-0.5 text-foreground">
+              当前：{stringValue}
+            </span>
+            <span>{field.max ?? 10}</span>
+          </div>
+        </div>
+      ) : null}
+
+      {field.type === 'single_select' ? (
+        <Select
+          id={inputId}
+          value={stringValue}
+          onValueChange={(nextValue) => onChange(field.id, nextValue)}
+          disabled={disabled}
+        >
+          <option value="">请选择</option>
+          {field.options.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </Select>
+      ) : null}
+
+      {field.type === 'multi_select' ? (
+        <fieldset
+          id={inputId}
+          className="grid gap-2 sm:grid-cols-2"
+          disabled={disabled}
+        >
+          {field.options.map((option) => {
+            const checked = selectedValues.includes(option.value)
+
+            return (
+              <label
+                key={option.value}
+                className="flex min-w-0 items-center gap-2 border border-border bg-background px-3 py-2 text-sm text-foreground"
+              >
+                <input
+                  type="checkbox"
+                  checked={checked}
+                  onChange={(event) => {
+                    const nextValues = event.target.checked
+                      ? [...selectedValues, option.value]
+                      : selectedValues.filter((item) => item !== option.value)
+                    onChange(field.id, nextValues)
+                  }}
+                  className="h-4 w-4 shrink-0 accent-primary"
+                />
+                <span className="break-words">{option.label}</span>
+              </label>
+            )
+          })}
+        </fieldset>
+      ) : null}
+
+      <FieldHelp field={field} error={error} />
     </div>
   )
 }
 
 function PublicSubmissionResult({
+  app,
   submission,
 }: {
+  app: GeneratedAppPublicRuntime
   submission: GeneratedAppPublicSubmission
 }) {
+  const report = submission.report
+  const result = submission.result
+  const failed = submission.status === 'failed'
+  const title =
+    failed
+      ? '提交未能生成报告'
+      : (getStringProperty(report, 'title') ??
+        app.runtimeForm.resultView.successTitle)
+  const summary =
+    failed
+      ? '提交内容已保存为失败状态，但当前公开运行页无法安全处理该输入结构。请调整输入后重新提交。'
+      : (getStringProperty(report, 'summary') ??
+        getStringProperty(result, 'summary') ??
+        app.runtimeForm.resultView.description)
+  const sections = getReportSections(report)
+  const nextStepQuestions = [
+    ...getStringArrayProperty(report, 'nextStepQuestions'),
+    ...getStringArrayProperty(result, 'nextStepQuestions'),
+  ].slice(0, 6)
+  const followUpPrompts = [
+    ...getStringArrayProperty(report, 'followUpPrompts'),
+    ...getStringArrayProperty(result, 'followUpPrompts'),
+  ].slice(0, 5)
+  const disclaimers = getStringArrayProperty(report, 'disclaimers')
+  const runtimeNotice =
+    getStringProperty(report, 'runtimeNotice') ??
+    getStringProperty(result, 'runtimeNotice')
+
   return (
     <article
-      className="space-y-4 border border-border bg-surface-elevated p-4"
+      className="space-y-5 border border-border bg-surface-elevated p-4"
       data-testid="generated-app-public-submission-result"
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 space-y-2">
           <div className="flex flex-wrap items-center gap-2">
             <SubmissionStatusBadge status={submission.status} />
-            <code className="break-all bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
-              {submission.id}
-            </code>
+            <span className="text-xs text-muted-foreground">
+              更新时间 {formatGeneratedAppDateTime(submission.updatedAt)}
+            </span>
           </div>
-          <dl className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-3">
-            <div className="border-l border-border pl-3">
-              <dt>匿名会话</dt>
-              <dd className="break-all text-foreground">
-                {submission.anonymousSessionId}
-              </dd>
+          <div className="flex items-start gap-3">
+            {failed ? (
+              <AlertTriangle className="mt-1 h-5 w-5 shrink-0 text-rose-300" />
+            ) : (
+              <CheckCircle2 className="mt-1 h-5 w-5 shrink-0 text-emerald-300" />
+            )}
+            <div className="min-w-0 space-y-2">
+              <h3 className="break-words text-lg font-semibold text-foreground">
+                {title}
+              </h3>
+              <p className="break-words text-sm leading-6 text-muted-foreground">
+                {summary}
+              </p>
             </div>
-            <div className="border-l border-border pl-3">
-              <dt>AppSpec 版本</dt>
-              <dd className="text-foreground">v{submission.appSpecVersion}</dd>
-            </div>
-            <div className="border-l border-border pl-3">
-              <dt>更新时间</dt>
-              <dd className="text-foreground">
-                {formatGeneratedAppDateTime(submission.updatedAt)}
-              </dd>
-            </div>
-          </dl>
+          </div>
         </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        <PublicSubmissionJsonPanel label="Input" value={submission.input} />
-        <PublicSubmissionJsonPanel label="Result" value={submission.result} />
-        <PublicSubmissionJsonPanel label="Report" value={submission.report} />
-        <div className="min-w-0 space-y-2">
-          <h3 className="text-sm font-medium text-foreground">Error</h3>
-          <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words border border-border bg-muted/50 p-3 text-xs text-muted-foreground">
-            {submission.errorMessage?.trim() || '暂无'}
-          </pre>
+      {submission.errorMessage ? (
+        <div className="border border-rose-500/30 bg-rose-500/5 p-3 text-sm text-rose-200">
+          {submission.errorMessage}
         </div>
-      </div>
+      ) : null}
+
+      {sections.length > 0 ? (
+        <div className="grid gap-4">
+          {sections.map((section) => (
+            <section key={section.id} className="border border-border p-4">
+              <h4 className="break-words text-sm font-semibold text-foreground">
+                {section.title}
+              </h4>
+              {section.body ? (
+                <p className="mt-2 break-words text-sm leading-6 text-muted-foreground">
+                  {section.body}
+                </p>
+              ) : null}
+              {section.items.length > 0 ? (
+                <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
+                  {section.items.map((item) => (
+                    <li
+                      key={item}
+                      className="break-words border-l border-border pl-3"
+                    >
+                      {item}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </section>
+          ))}
+        </div>
+      ) : null}
+
+      {nextStepQuestions.length > 0 ? (
+        <section className="space-y-2">
+          <h4 className="text-sm font-semibold text-foreground">下一步建议</h4>
+          <ul className="space-y-2 text-sm text-muted-foreground">
+            {nextStepQuestions.map((question) => (
+              <li
+                key={question}
+                className="break-words border-l border-border pl-3"
+              >
+                {question}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {followUpPrompts.length > 0 ? (
+        <section className="space-y-2">
+          <h4 className="text-sm font-semibold text-foreground">可补充信息</h4>
+          <ul className="space-y-2 text-sm text-muted-foreground">
+            {followUpPrompts.map((prompt) => (
+              <li
+                key={prompt}
+                className="break-words border-l border-border pl-3"
+              >
+                {prompt}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {disclaimers.length > 0 || runtimeNotice ? (
+        <section className="space-y-2 border-t border-border pt-4">
+          <h4 className="text-sm font-semibold text-foreground">边界说明</h4>
+          {runtimeNotice ? (
+            <p className="break-words text-sm leading-6 text-muted-foreground">
+              {runtimeNotice}
+            </p>
+          ) : null}
+          {disclaimers.length > 0 ? (
+            <ul className="space-y-2 text-sm text-muted-foreground">
+              {disclaimers.map((disclaimer) => (
+                <li
+                  key={disclaimer}
+                  className="break-words border-l border-border pl-3"
+                >
+                  {disclaimer}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </section>
+      ) : null}
     </article>
   )
 }
@@ -215,8 +569,11 @@ function PublicRuntimeSuccess({
   token: string
 }) {
   const previewUrl = app.runtimeSurface.previewUrl
-  const [submissionText, setSubmissionText] = useState('')
+  const [formValues, setFormValues] = useState<PublicFormValues>(() =>
+    buildInitialFormValues(app.runtimeForm.fields),
+  )
   const [submissionId, setSubmissionId] = useState<string | null>(null)
+  const [formErrors, setFormErrors] = useState<PublicFormErrors>({})
   const [formError, setFormError] = useState<string | null>(null)
   const createSubmissionMutation = useCreateGeneratedAppPublicSubmission(token)
   const submissionQuery = useGeneratedAppPublicSubmission(
@@ -225,24 +582,35 @@ function PublicRuntimeSuccess({
   )
   const visibleSubmission =
     submissionQuery.data ?? createSubmissionMutation.data ?? null
+  const fieldsById = useMemo(
+    () => new Map(app.runtimeForm.fields.map((field) => [field.id, field])),
+    [app.runtimeForm.fields],
+  )
 
-  const placeholder = useMemo(() => {
-    const firstPage = app.appSpec.pages[0]
+  const handleFieldChange = useCallback(
+    (fieldId: string, nextValue: PublicFormValue) => {
+      setFormValues((current) => ({ ...current, [fieldId]: nextValue }))
+      setFormErrors((current) => {
+        if (!current[fieldId]) {
+          return current
+        }
 
-    if (firstPage) {
-      return `可以直接输入文字，也可以输入 JSON，例如：\n{"需求":"${firstPage.purpose}","补充说明":"请按实际情况填写"}`
-    }
-
-    return '可以直接输入文字，也可以输入 JSON，例如：\n{"需求":"请根据我的情况生成报告"}'
-  }, [app.appSpec.pages])
+        const nextErrors = { ...current }
+        delete nextErrors[fieldId]
+        return nextErrors
+      })
+    },
+    [],
+  )
 
   const handleSubmit = useCallback(
     async (event: React.FormEvent<HTMLFormElement>) => {
       event.preventDefault()
-      const trimmed = submissionText.trim()
+      const nextErrors = buildFormErrors(app.runtimeForm.fields, formValues)
 
-      if (!trimmed) {
-        setFormError('请输入要提交给应用的内容。')
+      if (Object.keys(nextErrors).length > 0) {
+        setFormErrors(nextErrors)
+        setFormError('请先补齐必填字段。')
         return
       }
 
@@ -250,9 +618,10 @@ function PublicRuntimeSuccess({
 
       try {
         const submission = await createSubmissionMutation.mutateAsync({
-          input: parseSubmissionInput(trimmed),
+          input: buildSubmissionInput(app.runtimeForm.fields, formValues),
           clientContext: {
             submittedAt: new Date().toISOString(),
+            formId: app.runtimeForm.formId,
           },
         })
         setSubmissionId(submission.id)
@@ -262,7 +631,7 @@ function PublicRuntimeSuccess({
         )
       }
     },
-    [createSubmissionMutation, submissionText],
+    [app.runtimeForm, createSubmissionMutation, formValues],
   )
 
   return (
@@ -312,21 +681,97 @@ function PublicRuntimeSuccess({
           </div>
         </PublicSection>
 
-        <PublicSection title="参与者">
-          {app.appSpec.actors.length > 0 ? (
-            <ul className="flex flex-wrap gap-2">
-              {app.appSpec.actors.map((actor) => (
-                <li
-                  key={actor}
-                  className="max-w-full break-words border border-border bg-muted px-3 py-1.5 text-sm text-foreground"
+        <PublicSection title="业务表单">
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <form className="min-w-0 space-y-5" onSubmit={handleSubmit}>
+              <div className="space-y-2">
+                <h3 className="break-words text-lg font-semibold text-foreground">
+                  {app.runtimeForm.title}
+                </h3>
+                <p className="break-words text-sm leading-6 text-muted-foreground">
+                  {app.runtimeForm.description}
+                </p>
+              </div>
+
+              {app.runtimeForm.sections.map((section) => (
+                <section
+                  key={section.id}
+                  className="space-y-4 border border-border p-4"
                 >
-                  {actor}
-                </li>
+                  <div className="space-y-1">
+                    <h4 className="break-words text-sm font-semibold text-foreground">
+                      {section.title}
+                    </h4>
+                    <p className="break-words text-xs leading-5 text-muted-foreground">
+                      {section.description}
+                    </p>
+                  </div>
+                  <div className="grid gap-4">
+                    {section.fieldIds
+                      .map((fieldId) => fieldsById.get(fieldId))
+                      .filter((field): field is GeneratedAppRuntimeFormField =>
+                        Boolean(field),
+                      )
+                      .map((field) => (
+                        <RuntimeFormField
+                          key={field.id}
+                          field={field}
+                          value={formValues[field.id]}
+                          error={formErrors[field.id]}
+                          disabled={createSubmissionMutation.isPending}
+                          onChange={handleFieldChange}
+                        />
+                      ))}
+                  </div>
+                </section>
               ))}
-            </ul>
-          ) : (
-            <p className="text-sm text-muted-foreground">暂无参与者信息。</p>
-          )}
+
+              {formError ? (
+                <p className="break-words text-sm text-rose-300">{formError}</p>
+              ) : null}
+              <Button
+                type="submit"
+                disabled={createSubmissionMutation.isPending}
+              >
+                {createSubmissionMutation.isPending ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="mr-2 h-4 w-4" />
+                )}
+                {app.runtimeForm.submitLabel}
+              </Button>
+            </form>
+
+            <div className="min-w-0 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0 space-y-1">
+                  <h3 className="break-words text-sm font-medium text-foreground">
+                    {app.runtimeForm.resultView.title}
+                  </h3>
+                  <p className="break-words text-xs leading-5 text-muted-foreground">
+                    {app.runtimeForm.resultView.description}
+                  </p>
+                </div>
+                {submissionQuery.isFetching ? (
+                  <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    正在刷新
+                  </span>
+                ) : null}
+              </div>
+
+              {visibleSubmission ? (
+                <PublicSubmissionResult
+                  app={app}
+                  submission={visibleSubmission}
+                />
+              ) : (
+                <div className="border border-dashed border-border p-4 text-sm text-muted-foreground">
+                  {app.runtimeForm.resultView.emptyState}
+                </div>
+              )}
+            </div>
+          </div>
         </PublicSection>
 
         <PublicSection title="页面和流程">
@@ -357,7 +802,7 @@ function PublicRuntimeSuccess({
           )}
         </PublicSection>
 
-        <PublicSection title="运行入口">
+        <PublicSection title="运行预览">
           {previewUrl ? (
             <a
               href={previewUrl}
@@ -373,65 +818,6 @@ function PublicRuntimeSuccess({
               运行界面尚在准备中。
             </p>
           )}
-        </PublicSection>
-
-        <PublicSection title="提交给应用">
-          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-            <form className="min-w-0 space-y-3" onSubmit={handleSubmit}>
-              <label
-                htmlFor="generated-app-public-submission"
-                className="text-sm font-medium text-foreground"
-              >
-                提交内容
-              </label>
-              <textarea
-                id="generated-app-public-submission"
-                value={submissionText}
-                onChange={(event) => setSubmissionText(event.target.value)}
-                placeholder={placeholder}
-                rows={8}
-                className="w-full resize-y border border-input bg-background px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/30"
-                disabled={createSubmissionMutation.isPending}
-              />
-              {formError ? (
-                <p className="break-words text-sm text-rose-300">{formError}</p>
-              ) : null}
-              <Button
-                type="submit"
-                disabled={createSubmissionMutation.isPending}
-              >
-                {createSubmissionMutation.isPending ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                ) : (
-                  <Send className="mr-2 h-4 w-4" />
-                )}
-                提交给应用
-              </Button>
-            </form>
-
-            <div className="min-w-0 space-y-3">
-              <div className="flex items-center justify-between gap-3">
-                <h3 className="text-sm font-medium text-foreground">
-                  提交结果
-                </h3>
-                {submissionQuery.isFetching ? (
-                  <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    正在刷新
-                  </span>
-                ) : null}
-              </div>
-
-              {visibleSubmission ? (
-                <PublicSubmissionResult submission={visibleSubmission} />
-              ) : (
-                <div className="border border-dashed border-border p-4 text-sm text-muted-foreground">
-                  提交后会在这里显示 submission
-                  id、状态、输入、结果、报告和错误信息。
-                </div>
-              )}
-            </div>
-          </div>
         </PublicSection>
 
         <div className="mt-auto border-t border-border py-4" />

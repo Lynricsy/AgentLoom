@@ -26,6 +26,7 @@ import type {
   GeneratedAppGateRun,
   GeneratedAppGenerationRun,
   GeneratedAppRepairAttempt,
+  GeneratedAppRuntimeForm,
   GeneratedAppSubmission,
   StartGeneratedAppGenerationRunResponse,
 } from '../types'
@@ -236,6 +237,56 @@ function makeGateRun(
     createdBy: 'user-1',
     createdAt: '2026-04-25T03:21:00.000Z',
     updatedAt: '2026-04-25T03:25:00.000Z',
+    ...overrides,
+  }
+}
+
+function makeRuntimeForm(
+  overrides: Partial<GeneratedAppRuntimeForm> = {},
+): GeneratedAppRuntimeForm {
+  return {
+    formId: 'runtime-form',
+    title: '问诊采集表',
+    description: '采集终端用户问诊信息。',
+    submitLabel: '提交问诊信息',
+    sections: [
+      {
+        id: 'basic',
+        title: '问诊信息',
+        description: '采集主诉和症状。',
+        fieldIds: ['chiefComplaint', 'symptoms'],
+      },
+    ],
+    fields: [
+      {
+        id: 'chiefComplaint',
+        label: '主诉',
+        type: 'text',
+        required: true,
+        placeholder: '例如：头痛',
+        helpText: '请描述主要不适。',
+        options: [],
+      },
+      {
+        id: 'symptoms',
+        label: '症状',
+        type: 'multi_select',
+        required: true,
+        placeholder: '',
+        helpText: '可多选。',
+        options: [
+          { value: 'pain', label: '疼痛' },
+          { value: 'fever', label: '发热' },
+        ],
+      },
+    ],
+    resultView: {
+      title: '问诊信息报告',
+      description: '展示结构化摘要。',
+      emptyState: '提交后显示报告。',
+      successTitle: '已生成问诊摘要',
+      nextStepHint: '如有急重症请及时线下就医。',
+    },
     ...overrides,
   }
 }
@@ -477,6 +528,14 @@ describe('generatedAppApi', () => {
   })
 
   it('fetches public runtime surface without returning creator-only fields', async () => {
+    const runtimeForm = makeRuntimeForm()
+    const chiefComplaintField = runtimeForm.fields[0]
+    const symptomsField = runtimeForm.fields[1]
+
+    if (!chiefComplaintField || !symptomsField) {
+      throw new Error('runtime form test fixture is invalid')
+    }
+
     const publicResponse = {
       token: 'public-token',
       appId: 'app-public',
@@ -503,6 +562,32 @@ describe('generatedAppApi', () => {
         kind: 'generated-app',
         previewUrl: 'https://preview.example.test/apps/1',
         sourceArtifactUrl: 'https://internal.example.test/source.zip',
+      },
+      runtimeForm: {
+        ...runtimeForm,
+        publicShareToken: 'public-token',
+        gateResults: [],
+        sections: [
+          {
+            id: 'basic',
+            title: '问诊信息',
+            description: '采集主诉和症状。',
+            fieldIds: ['chiefComplaint', 'symptoms'],
+            sourceArtifactUrl: 'https://internal.example.test/source.zip',
+          },
+        ],
+        fields: [
+          {
+            ...chiefComplaintField,
+            publicShareToken: 'public-token',
+            pluginIds: ['plugin-private'],
+          },
+          symptomsField,
+        ],
+        resultView: {
+          ...runtimeForm.resultView,
+          readiness: { state: 'publish_candidate' },
+        },
       },
       createdAt: '2026-04-25T00:00:00.000Z',
       gateResults: [makeGateResult()],
@@ -542,6 +627,7 @@ describe('generatedAppApi', () => {
         kind: 'generated-app',
         previewUrl: 'https://preview.example.test/apps/1',
       },
+      runtimeForm,
       createdAt: '2026-04-25T00:00:00.000Z',
     })
     expect(result).not.toHaveProperty('gateResults')
@@ -553,6 +639,14 @@ describe('generatedAppApi', () => {
     expect(result).not.toHaveProperty('publicShareToken')
     expect(result.appSpec).not.toHaveProperty('coreRequirements')
     expect(result.runtimeSurface).not.toHaveProperty('sourceArtifactUrl')
+    expect(result.runtimeForm).not.toHaveProperty('publicShareToken')
+    expect(result.runtimeForm).not.toHaveProperty('gateResults')
+    expect(result.runtimeForm.sections[0]).not.toHaveProperty(
+      'sourceArtifactUrl',
+    )
+    expect(result.runtimeForm.fields[0]).not.toHaveProperty('publicShareToken')
+    expect(result.runtimeForm.fields[0]).not.toHaveProperty('pluginIds')
+    expect(result.runtimeForm.resultView).not.toHaveProperty('readiness')
   })
 
   it('creates and reads public submissions without using Studio creator paths', async () => {

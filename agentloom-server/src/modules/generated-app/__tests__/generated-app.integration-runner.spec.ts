@@ -11,6 +11,7 @@ import type {
 } from '../../../database/schema';
 import { GeneratedAppService } from '../generated-app.service';
 import { GeneratedAppGate4IntegrationRunner } from '../generated-app.integration-runner';
+import { buildGeneratedAppRuntimeForm } from '../generated-app.runtime';
 
 const TENANT_ID = '11111111-1111-4111-8111-111111111111';
 const APP_ID = '33333333-3333-4333-8333-333333333333';
@@ -392,6 +393,112 @@ describe('GeneratedAppGate4IntegrationRunner', () => {
     expect(serializedResult).not.toContain('internalConfig');
     expect(serializedResult).not.toContain('a'.repeat(64));
     expect(serializedResult).not.toContain('/root/generated-app');
+  });
+
+  it('real 模式应将 public runtimeForm 白名单泄露判为失败并脱敏 evidence', () => {
+    const runner = new GeneratedAppGate4IntegrationRunner(
+      createConfigService(),
+    );
+    const plans = buildGate4Plans('real-local-integration');
+    const runtimeForm = buildGeneratedAppRuntimeForm({
+      appSpec: plans.appSpec,
+      generationPlan: plans.generationPlan,
+      description: plans.appSpec.summary,
+    });
+    const runnerInternals = runner as unknown as {
+      executePublicRuntimeCheck: (
+        kind: GeneratedAppIntegrationPlan['publicRuntimeApiChecks'][number]['kind'],
+      ) => {
+        status: number;
+        body: Record<string, unknown>;
+      };
+    };
+
+    runnerInternals.executePublicRuntimeCheck = (kind) => {
+      if (kind === 'public_runtime_submit') {
+        return {
+          status: 201,
+          body: {
+            submissionId: 'synthetic-submission-id',
+            status: 'received',
+            appSpecVersion: plans.appSpec.version,
+            anonymousSessionId: 'synthetic-anonymous-session',
+            input: { chiefComplaint: 'fixture-chiefComplaint' },
+            result: null,
+            report: null,
+            errorMessage: null,
+          },
+        };
+      }
+
+      if (kind === 'public_submission_detail') {
+        return {
+          status: 200,
+          body: {
+            submissionId: 'synthetic-submission-id',
+            status: 'completed',
+            appSpecVersion: plans.appSpec.version,
+            result: { summary: 'ok' },
+            report: { summary: 'ok' },
+            errorMessage: null,
+          },
+        };
+      }
+
+      return {
+        status: 200,
+        body: {
+          appId: 'synthetic-generated-app-id',
+          title: plans.appSpec.appName,
+          description: plans.appSpec.summary,
+          dataUseNotice:
+            '提交内容会保存并提供给应用创建者查看，用于运行该生成应用。',
+          appSpec: {
+            version: plans.appSpec.version,
+            appName: plans.appSpec.appName,
+            summary: plans.appSpec.summary,
+            userGoal: plans.appSpec.userGoal,
+            actors: plans.appSpec.actors,
+            pages: plans.appSpec.pages.map((page) => ({
+              id: page.id,
+              name: page.name,
+              purpose: page.purpose,
+            })),
+          },
+          runtimeSurface: {
+            kind: 'generated-app',
+            previewUrl: null,
+          },
+          runtimeForm: {
+            ...runtimeForm,
+            publicShareToken: 'a'.repeat(64),
+            fields: runtimeForm.fields.map((field, index) =>
+              index === 0
+                ? {
+                    ...field,
+                    sourceArtifactUrl: '/root/generated-app/source.tar.zst',
+                  }
+                : field,
+            ),
+          },
+        },
+      };
+    };
+
+    const result = runner.run(plans);
+    const failureDetails = result.failure?.details as
+      | { failedCheckIds?: string[] }
+      | undefined;
+    const serializedResult = JSON.stringify(result);
+
+    expect(result.status).toBe('failed');
+    expect(failureDetails?.failedCheckIds).toContain(
+      'gate-4-public-runtime-read',
+    );
+    expect(serializedResult).not.toContain('publicShareToken');
+    expect(serializedResult).not.toContain('sourceArtifactUrl');
+    expect(serializedResult).not.toContain('/root/generated-app');
+    expect(serializedResult).not.toContain('a'.repeat(64));
   });
 
   it('real 模式遇到受控 contract check 不匹配时应返回 runner failure', () => {

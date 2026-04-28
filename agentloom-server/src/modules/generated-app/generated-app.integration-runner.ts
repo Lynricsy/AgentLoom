@@ -10,6 +10,7 @@ import type {
   GeneratedAppSpec,
   GeneratedAppStaticContracts,
 } from '../../database/schema';
+import { buildGeneratedAppRuntimeForm } from './generated-app.runtime';
 
 export type GeneratedAppGate4ExecutorMode = 'real' | 'fixture' | 'disabled';
 
@@ -103,6 +104,7 @@ const PUBLIC_RUNTIME_RESPONSE_TOP_LEVEL_KEYS = {
     'dataUseNotice',
     'appSpec',
     'runtimeSurface',
+    'runtimeForm',
   ],
   public_runtime_submit: [
     'submissionId',
@@ -168,6 +170,41 @@ const PUBLIC_RUNTIME_APP_SPEC_KEYS = [
 ] as const;
 const PUBLIC_RUNTIME_PAGE_KEYS = ['id', 'name', 'purpose'] as const;
 const PUBLIC_RUNTIME_SURFACE_KEYS = ['kind', 'previewUrl'] as const;
+const PUBLIC_RUNTIME_FORM_KEYS = [
+  'formId',
+  'title',
+  'description',
+  'submitLabel',
+  'sections',
+  'fields',
+  'resultView',
+] as const;
+const PUBLIC_RUNTIME_FORM_SECTION_KEYS = [
+  'id',
+  'title',
+  'description',
+  'fieldIds',
+] as const;
+const PUBLIC_RUNTIME_FORM_FIELD_KEYS = [
+  'id',
+  'label',
+  'type',
+  'required',
+  'placeholder',
+  'helpText',
+  'options',
+  'min',
+  'max',
+  'step',
+] as const;
+const PUBLIC_RUNTIME_FORM_OPTION_KEYS = ['value', 'label'] as const;
+const PUBLIC_RUNTIME_RESULT_VIEW_KEYS = [
+  'title',
+  'description',
+  'emptyState',
+  'successTitle',
+  'nextStepHint',
+] as const;
 
 @Injectable()
 export class GeneratedAppGate4IntegrationRunner {
@@ -489,6 +526,11 @@ export class GeneratedAppGate4IntegrationRunner {
             kind: 'generated-app',
             previewUrl: null,
           },
+          runtimeForm: buildGeneratedAppRuntimeForm({
+            appSpec: params.appSpec,
+            generationPlan: params.generationPlan,
+            description: params.appSpec.summary,
+          }),
         },
       };
     }
@@ -874,12 +916,15 @@ export class GeneratedAppGate4IntegrationRunner {
 
     const appSpec = this.getRecord(body.appSpec);
     const runtimeSurface = this.getRecord(body.runtimeSurface);
+    const runtimeForm = this.getRecord(body.runtimeForm);
 
     if (
       appSpec === null ||
       runtimeSurface === null ||
+      runtimeForm === null ||
       !this.recordKeysAreAllowed(appSpec, PUBLIC_RUNTIME_APP_SPEC_KEYS) ||
-      !this.recordKeysAreAllowed(runtimeSurface, PUBLIC_RUNTIME_SURFACE_KEYS)
+      !this.recordKeysAreAllowed(runtimeSurface, PUBLIC_RUNTIME_SURFACE_KEYS) ||
+      !this.publicRuntimeFormKeysAreAllowed(runtimeForm)
     ) {
       return false;
     }
@@ -890,6 +935,48 @@ export class GeneratedAppGate4IntegrationRunner {
         this.isRecord(page) &&
         this.recordKeysAreAllowed(page, PUBLIC_RUNTIME_PAGE_KEYS),
     );
+  }
+
+  private publicRuntimeFormKeysAreAllowed(
+    form: Record<string, unknown>,
+  ): boolean {
+    if (!this.recordKeysAreAllowed(form, PUBLIC_RUNTIME_FORM_KEYS)) {
+      return false;
+    }
+
+    const sections = Array.isArray(form.sections) ? form.sections : [];
+    const fields = Array.isArray(form.fields) ? form.fields : [];
+    const resultView = this.getRecord(form.resultView);
+
+    if (
+      resultView === null ||
+      !this.recordKeysAreAllowed(resultView, PUBLIC_RUNTIME_RESULT_VIEW_KEYS)
+    ) {
+      return false;
+    }
+
+    const sectionsAllowed = sections.every(
+      (section) =>
+        this.isRecord(section) &&
+        this.recordKeysAreAllowed(section, PUBLIC_RUNTIME_FORM_SECTION_KEYS),
+    );
+    const fieldsAllowed = fields.every((field) => {
+      if (
+        !this.isRecord(field) ||
+        !this.recordKeysAreAllowed(field, PUBLIC_RUNTIME_FORM_FIELD_KEYS)
+      ) {
+        return false;
+      }
+
+      const options = Array.isArray(field.options) ? field.options : [];
+      return options.every(
+        (option) =>
+          this.isRecord(option) &&
+          this.recordKeysAreAllowed(option, PUBLIC_RUNTIME_FORM_OPTION_KEYS),
+      );
+    });
+
+    return sectionsAllowed && fieldsAllowed;
   }
 
   private responsePassesCreatorWhitelist(

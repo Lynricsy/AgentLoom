@@ -71,7 +71,8 @@ app.readiness.state === "publish_candidate" &&
   - Creator workbench may show `publicShareUrl`, gate summaries, preview/source/test artifact links, and readiness details.
   - If `publicShareEnabled === true` but readiness is no longer eligible, treat the link as stale and unsafe: hide the old URL, hide regenerate/open actions, show `readiness.summary`, and only present disabled share controls.
   - Public runtime pages must not show `gateResults`, `readiness`, source artifact URLs, test report URLs, plugin permission details, public share tokens, or creator-only pages.
-  - `getGeneratedAppPublicRuntime(token)` must map the response through a public whitelist before returning data to components. Allowed fields are `token`, `appId`, `title`, `description`, `dataUseNotice`, limited `appSpec` (`version`, `appName`, `summary`, `userGoal`, `actors`, `pages[].id/name/purpose`), `runtimeSurface.kind`, `runtimeSurface.previewUrl`, and `createdAt`.
+  - `getGeneratedAppPublicRuntime(token)` must map the response through a public whitelist before returning data to components. Allowed fields are `token`, `appId`, `title`, `description`, `dataUseNotice`, limited `appSpec` (`version`, `appName`, `summary`, `userGoal`, `actors`, `pages[].id/name/purpose`), `runtimeSurface.kind`, `runtimeSurface.previewUrl`, `runtimeForm`, and `createdAt`.
+  - `runtimeForm` mapping must keep only safe dynamic business-form fields: `formId`, `title`, `description`, `submitLabel`, `sections[].id/title/description/fieldIds`, `fields[].id/label/type/required/placeholder/helpText/options/min/max/step`, `fields[].options[].value/label`, and `resultView.title/description/emptyState/successTitle/nextStepHint`.
   - Even though the API client may keep `token` for cache identity/debugging, public runtime components must not render token values or a derived access identifier.
 - Creator generation action:
   - `/generated-apps` may create a Generated App and immediately call `startGeneratedAppGenerationRun()` with `triggerSource='initial'` so zero-background users do not need to understand Gate APIs.
@@ -97,8 +98,9 @@ app.readiness.state === "publish_candidate" &&
   - The evidence section must not render public share token values, creator submission `publicShareToken`, or evidence URLs by default; use evidence labels/kinds/summaries for the first creator-side view.
 - Public submissions API boundary:
   - Public submission functions exist in the generated-app API layer for both built-in public runtime and future custom generated frontends.
-  - The built-in `GeneratedAppPublicRuntimePage` provides a minimal generic text/JSON submission surface until a custom generated frontend/runtime surface is available.
-  - The built-in page posts through `createGeneratedAppPublicSubmission(token, payload)`, reads the resulting detail through `getGeneratedAppPublicSubmission(token, submissionId)`, and displays only submission id, status, anonymous session id, AppSpec version, timestamps, input, result, report, and error message.
+  - The built-in `GeneratedAppPublicRuntimePage` renders the whitelisted `runtimeForm` as the end-user business input surface, including required validation and `text | textarea | single_select | multi_select | number | range` field controls.
+  - The built-in page posts through `createGeneratedAppPublicSubmission(token, payload)`, reads the resulting detail through `getGeneratedAppPublicSubmission(token, submissionId)`, and displays terminal-user-readable status, structured report sections, next-step questions, follow-up prompts, boundary notices, and error message.
+  - Public runtime results must not default to an internal JSON dump. JSON-like values may be parsed only into whitelisted report sections; internal keys such as `runtimeKind`, tokens, readiness, gate evidence, source/test artifacts, plugin ids, and creator-only fields must not render in the public page.
   - Public submission responses must stay separate from creator submission responses and must not expose tenant id, public token, readiness, gate evidence, source/test artifacts, or plugin/internal fields.
 - Public route shell:
   - Static public routes (`/login`, `/register`, `/auth/callback`) must be exact matches.
@@ -135,8 +137,8 @@ app.readiness.state === "publish_candidate" &&
 | Creator selects a repair attempt                                                          | Fetch gate runs with both `generationRunId` and `repairAttemptId`                                                                                               |
 | Generation evidence list fetch fails                                                      | Show an error state and retry action; do not fabricate run or gate data                                                                                         |
 | `/generated-apps/public/:token` lookup fails                                              | Show an inaccessible/closed public state; do not redirect to login                                                                                              |
-| Public runtime submission is empty                                                        | Reject locally and keep the user on the public runtime page                                                                                                     |
-| Public runtime submission succeeds                                                        | Show submission id, status, input, result, report, and error message from the public submission response/detail                                                 |
+| Public runtime required form fields are empty                                             | Reject locally, mark required fields, and keep the user on the public runtime page                                                                               |
+| Public runtime submission succeeds                                                        | Show terminal-user-readable status, structured report sections, next-step questions, follow-up prompts, boundary notices, and error message from public submission response/detail |
 | Public runtime submission/detail response includes creator-only fields                    | Drop them in the API mapping or avoid rendering them in the component                                                                                           |
 | `/login-required-private` or another same-prefix private route is visited unauthenticated | Treat as private and redirect to login                                                                                                                          |
 
@@ -145,7 +147,7 @@ app.readiness.state === "publish_candidate" &&
 - Good: a newly created app starts its initial automatic generation run from the list page, surfaces the resulting summary, and keeps public share disabled unless backend readiness says it is publishable.
 - Good: the creator detail page can rerun automatic generation and verification, then refresh generation-run/Gate-run evidence while leaving public-share controls readiness-gated.
 - Good: a publish candidate row enables the public-share action and mutation invalidates list queries.
-- Good: a public runtime page shows data-use notice, public AppSpec summary, runtime preview link, a minimal text/JSON submission surface, and public submission result/status without rendering Studio navigation or the token value.
+- Good: a public runtime page shows data-use notice, public AppSpec summary, a dynamic business form from `runtimeForm`, optional runtime preview link, and structured public submission report/status without rendering Studio navigation, internal JSON dumps, or the token value.
 - Good: creator detail page shows submission rows and detail JSON panels without rendering `publicShareToken`.
 - Good: creator detail page shows generation runs, repair attempts, and Gate run evidence summaries, while filtering Gate runs by the selected generation run and optional repair attempt.
 - Good: creator deletion uses single or batch delete API after confirmation and refreshes submission caches.
@@ -167,6 +169,7 @@ app.readiness.state === "publish_candidate" &&
   - path and camelCase payload for `POST /generated-apps/:appId/generation-runs/start`.
   - paths for creator submission list/detail/single delete/bulk delete.
   - paths for generation run list, repair attempt list, and gate run list filters.
+  - public runtime mapping preserves whitelisted `runtimeForm` fields and drops nested creator-only/internal fields.
   - public submission create/detail helper paths and response whitelist behavior.
   - Generated App payload casing remains camelCase unless backend changes.
 - Query/mutation tests:
@@ -183,7 +186,7 @@ app.readiness.state === "publish_candidate" &&
   - public runtime API mapping drops creator-only fields and nested source/test/plugin artifacts.
   - list page creation starts automatic generation and provides a detail link even when the runner fails after create.
   - detail page start-run action triggers automatic generation and verification without enabling public share.
-  - public runtime page renders data-use notice, limited AppSpec, optional preview link, generic text/JSON submission UI, public submission result/detail, and does not render tokens or internal fields.
+  - public runtime page renders data-use notice, limited AppSpec, optional preview link, dynamic `runtimeForm` controls, required validation, submitted payload, structured result/report sections, and does not render tokens or internal fields.
   - creator submissions panel renders list rows, detail selection, status filter, pagination, delete confirmation, empty state, and error state.
   - creator generation evidence panel renders generation runs, loads repair/gate data after run selection, filters gate data after repair selection, shows failure/evidence summaries, and shows empty/error states.
   - detail page tests either mock the submissions hooks or assert the submissions section renders with an empty state.

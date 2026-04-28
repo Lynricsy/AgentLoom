@@ -7373,9 +7373,100 @@ describe('GeneratedAppService', () => {
       kind: 'generated-app',
       previewUrl: app.preview.previewUrl,
     });
+    expect(response.runtimeForm).toEqual(
+      expect.objectContaining({
+        title: expect.stringContaining('问诊采集表'),
+        fields: expect.arrayContaining([
+          expect.objectContaining({
+            id: 'chiefComplaint',
+            type: 'text',
+            required: true,
+          }),
+          expect.objectContaining({
+            id: 'symptoms',
+            type: 'multi_select',
+            required: true,
+          }),
+          expect.objectContaining({
+            id: 'severity',
+            type: 'range',
+          }),
+        ]),
+        resultView: expect.objectContaining({
+          successTitle: '已生成问诊摘要',
+        }),
+      }),
+    );
     expect(response.appSpec.pages).toEqual([
       expect.objectContaining({ id: 'page-public-runtime' }),
     ]);
+    expect(JSON.stringify(response)).not.toContain('sourceArtifactUrl');
+    expect(JSON.stringify(response)).not.toContain('testReportUrl');
+    expect(JSON.stringify(response)).not.toContain('plugin-private');
+  });
+
+  it('公开 endpoint 应脱敏白名单字段内部承载的 token、artifact、host path 和医疗建议文案', async () => {
+    const token = '8'.repeat(64);
+    const baseApp = createGeneratedApp();
+    const app = createGeneratedApp({
+      status: 'published',
+      readiness: createPublishCandidateReadiness(),
+      publicShareEnabled: true,
+      publicShareToken: token,
+      appName: 'publicShareToken sk-test-redacted',
+      description: 'sourceArtifactUrl /root/AgentLoom/source.zip 生成处方',
+      appSpec: {
+        ...baseApp.appSpec,
+        appName: 'publicShareToken sk-test-redacted',
+        summary: 'sourceArtifactUrl /root/AgentLoom/source.zip 生成处方',
+        userGoal: '自动化中医问诊并生成诊断处方',
+        actors: ['publicShareToken', '终端用户'],
+        pages: [
+          {
+            id: 'page-public-runtime-sourceArtifactUrl',
+            name: 'testReportUrl',
+            purpose:
+              'pluginIds Bearer real-secret-token-value /root/AgentLoom/.env',
+          },
+        ],
+        coreRequirements: [
+          { id: 'req-1', text: '自动化中医问诊并生成诊断处方' },
+        ],
+      },
+    });
+    mockTenantDb.select.mockReturnValueOnce(createSelectChain([app]));
+    mockTenantDb.update.mockReturnValueOnce(createUpdateChain());
+
+    const response = await service.getPublicApp(token);
+    const serialized = JSON.stringify(response);
+
+    expect(response.title).toBe('Generated App');
+    expect(response.description).toBe(
+      '请填写问诊采集信息，提交后查看结构化摘要、下一步问题和非诊断边界说明。',
+    );
+    expect(response.appSpec.appName).toBe('Generated App');
+    expect(response.appSpec.summary).toBe(
+      '用于整理问诊提交信息、生成下一步问题和免责声明的公开应用。',
+    );
+    expect(response.appSpec.userGoal).toBe(
+      '整理问诊提交信息、生成下一步问题和免责声明',
+    );
+    expect(response.appSpec.actors).toEqual(['终端用户']);
+    expect(response.appSpec.pages).toEqual([
+      {
+        id: 'page-1',
+        name: '问诊运行页',
+        purpose: '终端用户填写问诊信息并查看结构化摘要和边界说明。',
+      },
+    ]);
+    expect(serialized).not.toContain('publicShareToken');
+    expect(serialized).not.toContain('sourceArtifactUrl');
+    expect(serialized).not.toContain('testReportUrl');
+    expect(serialized).not.toContain('pluginIds');
+    expect(serialized).not.toContain('real-secret-token-value');
+    expect(serialized).not.toContain('/root/AgentLoom');
+    expect(serialized).not.toContain('sk-test-redacted');
+    expect(serialized).not.toContain('生成处方');
   });
 
   it('公开 endpoint 遇到非 publish_candidate readiness 时应拒绝', async () => {

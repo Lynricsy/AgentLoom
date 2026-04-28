@@ -98,7 +98,12 @@ import {
   GeneratedAppGate7PublishCandidateRunner,
   type GeneratedAppPublishCandidateExecutionLevel,
 } from './generated-app.publish-candidate-runner';
-import { evaluateGeneratedAppLocalRuntime } from './generated-app.runtime';
+import {
+  buildGeneratedAppRuntimeForm,
+  buildPublicGeneratedAppRuntimeDescription,
+  buildPublicGeneratedAppRuntimeSpec,
+  evaluateGeneratedAppLocalRuntime,
+} from './generated-app.runtime';
 
 const DEFAULT_PREVIEW: GeneratedAppPreview = {
   previewUrl: null,
@@ -2102,6 +2107,14 @@ export class GeneratedAppService {
 
   async getPublicApp(token: string): Promise<PublicGeneratedAppResponseDto> {
     const app = await this.findPublicGeneratedAppRecord(token);
+    const publicAppSpec = buildPublicGeneratedAppRuntimeSpec({
+      appSpec: app.appSpec,
+      pages: this.getPublicRuntimePages(app.appSpec),
+    });
+    const publicDescription = buildPublicGeneratedAppRuntimeDescription({
+      appSpec: app.appSpec,
+      description: app.description,
+    });
 
     await this.db
       .update(schema.generatedApps)
@@ -2114,22 +2127,20 @@ export class GeneratedAppService {
     return {
       token,
       appId: app.id,
-      title: app.appName,
-      description: app.description,
+      title: publicAppSpec.appName,
+      description: publicDescription,
       dataUseNotice:
         '你在此公开应用中提交的内容、运行结果和最终报告会被保存，并提供给应用创建者查看。',
-      appSpec: {
-        version: app.appSpec.version,
-        appName: app.appSpec.appName,
-        summary: app.appSpec.summary,
-        userGoal: app.appSpec.userGoal,
-        actors: app.appSpec.actors,
-        pages: this.getPublicRuntimePages(app.appSpec),
-      },
+      appSpec: publicAppSpec,
       runtimeSurface: {
         kind: 'generated-app',
         previewUrl: app.preview.previewUrl,
       },
+      runtimeForm: buildGeneratedAppRuntimeForm({
+        appSpec: app.appSpec,
+        generationPlan: app.generationPlan,
+        description: app.description,
+      }),
       createdAt: app.createdAt,
     };
   }

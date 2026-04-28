@@ -3,6 +3,13 @@ import type {
   GeneratedAppGenerationPlan,
   GeneratedAppSpec,
 } from '../../database/schema';
+import type {
+  PublicGeneratedAppRuntimeFieldDto,
+  PublicGeneratedAppRuntimeFormDto,
+  PublicGeneratedAppRuntimeFormOptionDto,
+  PublicGeneratedAppRuntimeFormSectionDto,
+  PublicGeneratedAppResponseDto,
+} from './dto';
 
 export const GENERATED_APP_LOCAL_RUNTIME_KIND =
   'local-generated-app-deterministic-report' as const;
@@ -38,6 +45,11 @@ const MEDICAL_DOMAIN_PATTERN =
   /中医|问诊|医疗|医嘱|患者|症状|疼痛|头痛|发热|诊断|处方|药|舌|脉|病史|就医|医生/;
 const MEDICAL_ADVICE_PATTERN =
   /诊断结论|诊断|处方|开药|用药方案|治疗方案|治疗建议|医嘱|建议服用|剂量|治愈|疗法/g;
+const MEDICAL_ADVICE_TEXT_PATTERN =
+  /diagnos|prescription|treatment|therapy|medication|medicine|drug|dosage|dose|medical[-_ ]?advice|care[-_ ]?plan|诊断结论|诊断|处方|开药|用药方案|治疗方案|治疗建议|医嘱|建议服用|药物|方剂|剂量|治愈|疗法/i;
+const MEDICAL_ADVICE_FIELD_PATTERN =
+  /diagnos|prescription|treatment|therapy|medication|medicine|drug|dosage|dose|medical[-_]?advice|care[-_]?plan|herb|remedy|诊断|处方|治疗|医嘱|用药|药物|药方|方剂|剂量/i;
+const FIELD_ID_SAFE_PATTERN = /[^a-zA-Z0-9_-]+/g;
 
 export interface GeneratedAppLocalRuntimeEvaluation {
   status: 'completed' | 'failed';
@@ -102,6 +114,164 @@ type RuntimeApp = Pick<
   'appName' | 'description' | 'appSpec' | 'generationPlan'
 >;
 
+export function buildPublicGeneratedAppRuntimeDescription(params: {
+  appSpec: GeneratedAppSpec;
+  description: string;
+}): string {
+  const medicalDomain = isMedicalAppSpec(params.appSpec);
+
+  return sanitizePublicNarrativeText(
+    params.description || params.appSpec.summary,
+    medicalDomain
+      ? '请填写问诊采集信息，提交后查看结构化摘要、下一步问题和非诊断边界说明。'
+      : '请填写业务输入，提交后查看结构化报告和下一步建议。',
+    medicalDomain,
+  );
+}
+
+export function buildPublicGeneratedAppRuntimeSpec(params: {
+  appSpec: GeneratedAppSpec;
+  pages?: GeneratedAppSpec['pages'];
+}): PublicGeneratedAppResponseDto['appSpec'] {
+  const medicalDomain = isMedicalAppSpec(params.appSpec);
+  const summaryFallback = medicalDomain
+    ? '用于整理问诊提交信息、生成下一步问题和免责声明的公开应用。'
+    : DEFAULT_PUBLIC_USER_GOAL;
+  const userGoalFallback = medicalDomain
+    ? DEFAULT_MEDICAL_USER_GOAL
+    : DEFAULT_PUBLIC_USER_GOAL;
+
+  return {
+    version: params.appSpec.version,
+    appName: sanitizePublicRuntimeText(
+      params.appSpec.appName,
+      DEFAULT_PUBLIC_APP_NAME,
+    ),
+    summary: sanitizePublicNarrativeText(
+      params.appSpec.summary,
+      summaryFallback,
+      medicalDomain,
+    ),
+    userGoal: sanitizePublicNarrativeText(
+      medicalDomain ? DEFAULT_MEDICAL_USER_GOAL : params.appSpec.userGoal,
+      userGoalFallback,
+      medicalDomain,
+    ),
+    actors: sanitizePublicRuntimeTextList(params.appSpec.actors, ['终端用户']),
+    pages: (params.pages ?? params.appSpec.pages).map((page, index) => ({
+      id: buildSafeIdentifier(page.id, `page-${index + 1}`),
+      name: sanitizePublicNarrativeText(
+        page.name,
+        medicalDomain ? '问诊运行页' : '公开运行页',
+        medicalDomain,
+      ),
+      purpose: sanitizePublicNarrativeText(
+        page.purpose,
+        medicalDomain
+          ? '终端用户填写问诊信息并查看结构化摘要和边界说明。'
+          : '终端用户填写业务输入并查看结构化报告。',
+        medicalDomain,
+      ),
+    })),
+  };
+}
+
+export function buildGeneratedAppRuntimeForm(params: {
+  appSpec: GeneratedAppSpec;
+  generationPlan: RuntimeApp['generationPlan'];
+  description: string;
+}): PublicGeneratedAppRuntimeFormDto {
+  const medicalDomain = isMedicalAppSpec(params.appSpec);
+  const contractFieldIds = getPublicRuntimeRequiredFieldIds(
+    params.generationPlan,
+    medicalDomain,
+  );
+  const baseFields = medicalDomain
+    ? buildMedicalRuntimeFields()
+    : buildGeneralRuntimeFields(params.appSpec);
+  const contractFields = buildContractRuntimeFields(
+    contractFieldIds,
+    baseFields.map((field) => field.id),
+  );
+  const fields = uniqueRuntimeFields([...baseFields, ...contractFields]);
+  const publicAppName = sanitizePublicRuntimeText(
+    params.appSpec.appName,
+    DEFAULT_PUBLIC_APP_NAME,
+  );
+  const description = sanitizePublicRuntimeText(
+    params.description || params.appSpec.summary,
+    medicalDomain
+      ? '请填写问诊采集信息，提交后查看结构化摘要、下一步问题和非诊断边界说明。'
+      : '请填写业务输入，提交后查看结构化报告和下一步建议。',
+  );
+  const baseSection = medicalDomain
+    ? [
+        buildRuntimeFormSection({
+          id: 'consultation-basic',
+          title: '问诊信息',
+          description: '采集主诉、持续时间、症状和严重程度。',
+          fieldIds: ['chiefComplaint', 'duration', 'symptoms', 'severity'],
+        }),
+        buildRuntimeFormSection({
+          id: 'consultation-context',
+          title: '背景补充',
+          description: '补充既往处理、健康背景和其他说明。',
+          fieldIds: ['priorCare', 'medicalHistory', 'additionalNotes'],
+        }),
+      ]
+    : [
+        buildRuntimeFormSection({
+          id: 'business-context',
+          title: '业务场景',
+          description: '明确本次要处理的场景、目标和对象。',
+          fieldIds: [
+            'workflowStep',
+            'primaryGoal',
+            'businessContext',
+            'targetAudience',
+          ],
+        }),
+        buildRuntimeFormSection({
+          id: 'report-preferences',
+          title: '报告偏好',
+          description: '选择输出重点、优先级和补充约束。',
+          fieldIds: [
+            'scenarioFocus',
+            'expectedOutput',
+            'priority',
+            'additionalNotes',
+          ],
+        }),
+      ];
+  const contractFieldSection = buildContractFieldSection(contractFields);
+  const sections = filterRuntimeFormSections(
+    contractFieldSection ? [...baseSection, contractFieldSection] : baseSection,
+    fields,
+  );
+
+  return {
+    formId: buildSafeIdentifier(params.appSpec.appName, 'generated-app-form'),
+    title: medicalDomain
+      ? `${publicAppName}问诊采集表`
+      : `${publicAppName}业务表单`,
+    description,
+    submitLabel: medicalDomain ? '提交问诊信息' : '提交并生成报告',
+    sections,
+    fields,
+    resultView: {
+      title: medicalDomain ? '问诊信息报告' : '业务处理报告',
+      description: medicalDomain
+        ? '提交后展示问诊信息摘要、下一步补充问题和非诊断免责声明。'
+        : '提交后展示结构化摘要、需求匹配、场景覆盖和下一步建议。',
+      emptyState: '提交后会在这里显示结构化报告。',
+      successTitle: medicalDomain ? '已生成问诊摘要' : '已生成业务报告',
+      nextStepHint: medicalDomain
+        ? '如有急重症或持续不适，请及时线下就医。'
+        : '可根据报告中的下一步建议补充信息后重新提交。',
+    },
+  };
+}
+
 export function evaluateGeneratedAppLocalRuntime(params: {
   app: RuntimeApp;
   input: unknown;
@@ -121,11 +291,12 @@ export function evaluateGeneratedAppLocalRuntime(params: {
   }
 
   const createdAt = params.now.toISOString();
+  const medicalDomain = isMedicalDomain(params.app.appSpec, inspection);
   const contractSummary = buildRuntimeContractSummary(
     params.app.generationPlan,
+    { medicalDomain },
   );
   const inputSummary = buildInputSummary(inspection);
-  const medicalDomain = isMedicalDomain(params.app.appSpec, inspection);
   const publicAppName = sanitizePublicRuntimeText(
     params.app.appName,
     DEFAULT_PUBLIC_APP_NAME,
@@ -204,6 +375,426 @@ export function evaluateGeneratedAppLocalRuntime(params: {
       runtimeNotice,
     },
   };
+}
+
+function buildMedicalRuntimeFields(): PublicGeneratedAppRuntimeFieldDto[] {
+  return [
+    {
+      id: 'chiefComplaint',
+      label: '主诉',
+      type: 'text',
+      required: true,
+      placeholder: '例如：反复头痛、胃部不适、睡眠差',
+      helpText: '请用自己的话描述当前最主要的不适。',
+      options: [],
+    },
+    {
+      id: 'duration',
+      label: '持续时间',
+      type: 'text',
+      required: true,
+      placeholder: '例如：2 天、半个月、反复 3 年',
+      helpText: '请说明不适开始时间、持续多久，以及是否反复出现。',
+      options: [],
+    },
+    {
+      id: 'symptoms',
+      label: '症状或感受',
+      type: 'multi_select',
+      required: true,
+      placeholder: '',
+      helpText: '可多选；如没有合适选项，可在补充说明中描述。',
+      options: [
+        { value: 'pain', label: '疼痛' },
+        { value: 'fever', label: '发热' },
+        { value: 'fatigue', label: '乏力' },
+        { value: 'sleep_or_appetite', label: '睡眠或饮食异常' },
+        { value: 'digestive_discomfort', label: '消化不适' },
+        { value: 'other', label: '其他' },
+      ],
+    },
+    {
+      id: 'severity',
+      label: '严重程度',
+      type: 'range',
+      required: true,
+      placeholder: '',
+      helpText: '1 表示轻微，10 表示非常严重；该字段只用于信息整理。',
+      options: [],
+      min: 1,
+      max: 10,
+      step: 1,
+    },
+    {
+      id: 'priorCare',
+      label: '既往处理',
+      type: 'textarea',
+      required: false,
+      placeholder: '例如：已休息、饮水、线下就医、使用过的处理方式',
+      helpText: '请只填写客观经历，不需要填写专业判断结论。',
+      options: [],
+    },
+    {
+      id: 'medicalHistory',
+      label: '健康背景',
+      type: 'textarea',
+      required: false,
+      placeholder: '例如：既往病史、过敏史、正在使用的药物、特殊人群情况',
+      helpText: '这些信息有助于生成更完整的问诊摘要。',
+      options: [],
+    },
+    {
+      id: 'additionalNotes',
+      label: '补充说明',
+      type: 'textarea',
+      required: false,
+      placeholder: '可补充寒热、汗出、饮食睡眠、舌象或其他观察信息',
+      helpText: '输出仍仅为信息整理和下一步问题，不提供诊断或治疗方案。',
+      options: [],
+    },
+  ];
+}
+
+function buildGeneralRuntimeFields(
+  appSpec: GeneratedAppSpec,
+): PublicGeneratedAppRuntimeFieldDto[] {
+  const runtimePage =
+    appSpec.pages.find((page) => page.id.toLowerCase().includes('runtime')) ??
+    appSpec.pages[0];
+  const pageOptions = toRuntimeOptions(
+    appSpec.pages.map((page) => ({
+      id: page.id,
+      label: `${page.name}：${page.purpose}`,
+    })),
+    [{ id: 'main-flow', label: '主要业务流程' }],
+  );
+  const scenarioOptions = toRuntimeOptions(
+    appSpec.acceptanceScenarios.map((scenario) => ({
+      id: scenario.id,
+      label: scenario.title,
+    })),
+    [{ id: 'main-scenario', label: '核心业务场景' }],
+  );
+  const actorOptions = toRuntimeOptions(
+    appSpec.actors.map((actor) => ({
+      id: actor,
+      label: actor,
+    })),
+    [
+      { id: 'end-user', label: '终端用户' },
+      { id: 'business-owner', label: '业务负责人' },
+      { id: 'other', label: '其他' },
+    ],
+  );
+
+  return [
+    {
+      id: 'workflowStep',
+      label: '本次使用的业务流程',
+      type: 'single_select',
+      required: true,
+      placeholder: '',
+      helpText: '从应用页面和流程中选择本次要执行的入口。',
+      options: pageOptions,
+    },
+    {
+      id: 'primaryGoal',
+      label: '本次目标',
+      type: 'text',
+      required: true,
+      placeholder: sanitizePublicRuntimeText(
+        appSpec.userGoal,
+        '请描述希望应用完成的目标',
+      ),
+      helpText: '请用一句话说明这次提交希望应用帮助完成什么。',
+      options: [],
+    },
+    {
+      id: 'businessContext',
+      label: '业务背景',
+      type: 'textarea',
+      required: true,
+      placeholder: sanitizePublicRuntimeText(
+        runtimePage?.purpose ?? appSpec.summary,
+        '请补充当前场景、已知信息和判断依据',
+      ),
+      helpText: '请补充与本次业务处理相关的事实、上下文和限制。',
+      options: [],
+    },
+    {
+      id: 'targetAudience',
+      label: '使用角色',
+      type: 'single_select',
+      required: true,
+      placeholder: '',
+      helpText: '选择本次报告主要服务的角色。',
+      options: actorOptions,
+    },
+    {
+      id: 'scenarioFocus',
+      label: '验收场景',
+      type: 'single_select',
+      required: true,
+      placeholder: '',
+      helpText: '从业务验收场景中选择本次最接近的业务路径。',
+      options: scenarioOptions,
+    },
+    {
+      id: 'expectedOutput',
+      label: '期望输出',
+      type: 'single_select',
+      required: true,
+      placeholder: '',
+      helpText: '选择报告最需要突出的输出形态。',
+      options: [
+        { value: 'structured_report', label: '结构化报告' },
+        { value: 'next_step_suggestions', label: '下一步建议' },
+        { value: 'task_summary', label: '任务摘要' },
+      ],
+    },
+    {
+      id: 'priority',
+      label: '优先级',
+      type: 'range',
+      required: false,
+      placeholder: '',
+      helpText: '1 表示普通，5 表示需要优先处理。',
+      options: [],
+      min: 1,
+      max: 5,
+      step: 1,
+    },
+    {
+      id: 'additionalNotes',
+      label: '补充说明',
+      type: 'textarea',
+      required: false,
+      placeholder: '可补充输出格式、注意事项、限制条件或希望避免的内容',
+      helpText: '这些信息会进入提交摘要和下一步建议。',
+      options: [],
+    },
+  ];
+}
+
+function getPublicRuntimeRequiredFieldIds(
+  generationPlan: RuntimeApp['generationPlan'],
+  medicalDomain: boolean,
+): string[] {
+  if (!isGeneratedAppGenerationPlan(generationPlan)) {
+    return [];
+  }
+
+  const staticContracts = generationPlan.staticContracts;
+  const requiredFields =
+    staticContracts?.publicRuntime.input.requiredFields ??
+    generationPlan.orchestration.inputContract.requiredFields;
+
+  return sanitizeContractValues(requiredFields, [])
+    .filter((field) => field !== 'input')
+    .filter((field) =>
+      medicalDomain ? !MEDICAL_ADVICE_FIELD_PATTERN.test(field) : true,
+    )
+    .map((field) => buildSafeIdentifier(field, 'field'))
+    .filter((field) => !SENSITIVE_KEY_PATTERN.test(field));
+}
+
+function buildContractRuntimeFields(
+  fieldIds: string[],
+  existingFieldIds: string[],
+): PublicGeneratedAppRuntimeFieldDto[] {
+  const existing = new Set(existingFieldIds);
+
+  return fieldIds
+    .filter((fieldId) => !existing.has(fieldId))
+    .slice(0, 6)
+    .map((fieldId) => {
+      const label = humanizeRuntimeFieldId(fieldId);
+      const type = inferRuntimeFieldType(fieldId);
+
+      return {
+        id: fieldId,
+        label,
+        type,
+        required: true,
+        placeholder: `请填写${label}`,
+        helpText: '该字段由公开运行输入合约要求，用于生成结构化报告。',
+        options: buildInferredRuntimeFieldOptions(type),
+        ...(type === 'range' ? { min: 1, max: 10, step: 1 } : {}),
+        ...(type === 'number' ? { min: 0, step: 1 } : {}),
+      };
+    });
+}
+
+function buildInferredRuntimeFieldOptions(
+  type: PublicGeneratedAppRuntimeFieldDto['type'],
+): PublicGeneratedAppRuntimeFormOptionDto[] {
+  if (type === 'single_select') {
+    return [
+      { value: 'yes', label: '是' },
+      { value: 'no', label: '否' },
+      { value: 'unknown', label: '暂不确定' },
+    ];
+  }
+
+  if (type === 'multi_select') {
+    return [
+      { value: 'primary', label: '主要项' },
+      { value: 'secondary', label: '补充项' },
+      { value: 'other', label: '其他' },
+    ];
+  }
+
+  return [];
+}
+
+function buildContractFieldSection(
+  fields: PublicGeneratedAppRuntimeFieldDto[],
+): PublicGeneratedAppRuntimeFormSectionDto | null {
+  if (fields.length === 0) {
+    return null;
+  }
+
+  return buildRuntimeFormSection({
+    id: 'contract-fields',
+    title: '应用必填项',
+    description: '这些字段来自公开运行输入合约。',
+    fieldIds: fields.map((field) => field.id),
+  });
+}
+
+function buildRuntimeFormSection(params: {
+  id: string;
+  title: string;
+  description: string;
+  fieldIds: string[];
+}): PublicGeneratedAppRuntimeFormSectionDto {
+  return {
+    id: buildSafeIdentifier(params.id, 'section'),
+    title: sanitizePublicRuntimeText(params.title, '表单分区'),
+    description: sanitizePublicRuntimeText(
+      params.description,
+      '请填写以下字段。',
+    ),
+    fieldIds: uniqueNonEmpty(params.fieldIds),
+  };
+}
+
+function filterRuntimeFormSections(
+  sections: PublicGeneratedAppRuntimeFormSectionDto[],
+  fields: PublicGeneratedAppRuntimeFieldDto[],
+): PublicGeneratedAppRuntimeFormSectionDto[] {
+  const fieldIds = new Set(fields.map((field) => field.id));
+
+  return sections
+    .map((section) => ({
+      ...section,
+      fieldIds: section.fieldIds.filter((fieldId) => fieldIds.has(fieldId)),
+    }))
+    .filter((section) => section.fieldIds.length > 0);
+}
+
+function uniqueRuntimeFields(
+  fields: PublicGeneratedAppRuntimeFieldDto[],
+): PublicGeneratedAppRuntimeFieldDto[] {
+  const seen = new Set<string>();
+  const output: PublicGeneratedAppRuntimeFieldDto[] = [];
+
+  for (const field of fields) {
+    if (seen.has(field.id) || SENSITIVE_KEY_PATTERN.test(field.id)) {
+      continue;
+    }
+
+    seen.add(field.id);
+    output.push({
+      ...field,
+      label: sanitizePublicRuntimeText(field.label, '字段'),
+      placeholder: sanitizePublicRuntimeText(field.placeholder, ''),
+      helpText: sanitizePublicRuntimeText(field.helpText, '请填写该字段。'),
+      options: field.options.map((option) => ({
+        value: buildSafeIdentifier(option.value, 'option'),
+        label: sanitizePublicRuntimeText(option.label, '选项'),
+      })),
+    });
+  }
+
+  return output;
+}
+
+function toRuntimeOptions(
+  values: Array<{ id: string; label: string }>,
+  fallback: Array<{ id: string; label: string }>,
+): PublicGeneratedAppRuntimeFormOptionDto[] {
+  const sanitizeOptions = (source: Array<{ id: string; label: string }>) =>
+    source
+      .map((entry, index) => ({
+        value: buildSafeIdentifier(entry.id, `option-${index + 1}`),
+        label: sanitizePublicRuntimeText(entry.label, ''),
+      }))
+      .filter(
+        (entry) =>
+          entry.label.length > 0 &&
+          !SENSITIVE_KEY_PATTERN.test(entry.value) &&
+          !SENSITIVE_KEY_PATTERN.test(entry.label),
+      );
+  const sanitizedValues = sanitizeOptions(values);
+  const source =
+    sanitizedValues.length > 0 ? sanitizedValues : sanitizeOptions(fallback);
+
+  return source.slice(0, 8);
+}
+
+function inferRuntimeFieldType(
+  fieldId: string,
+): PublicGeneratedAppRuntimeFieldDto['type'] {
+  if (/severity|level|score|priority|rating/i.test(fieldId)) {
+    return 'range';
+  }
+
+  if (/count|number|amount|quantity|age|durationDays/i.test(fieldId)) {
+    return 'number';
+  }
+
+  if (/type|category|status|mode|choice|select|confirmed/i.test(fieldId)) {
+    return 'single_select';
+  }
+
+  if (/tags?|items?|features?|topics?|channels?|symptoms?/i.test(fieldId)) {
+    return 'multi_select';
+  }
+
+  if (/notes|description|details|context|summary/i.test(fieldId)) {
+    return 'textarea';
+  }
+
+  return 'text';
+}
+
+function humanizeRuntimeFieldId(fieldId: string): string {
+  const text = fieldId
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/[-_]+/g, ' ')
+    .trim();
+
+  return sanitizePublicRuntimeText(text, '字段');
+}
+
+function buildSafeIdentifier(value: string, fallback: string): string {
+  const sanitized = redactSensitiveText(value)
+    .text.replace(FIELD_ID_SAFE_PATTERN, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 64);
+
+  if (
+    sanitized.length === 0 ||
+    sanitized.includes(REDACTED_TOKEN_VALUE) ||
+    sanitized.includes(REDACTED_PATH_VALUE) ||
+    sanitized.includes(REDACTED_INTERNAL_VALUE) ||
+    SENSITIVE_KEY_PATTERN.test(sanitized)
+  ) {
+    return fallback;
+  }
+
+  return sanitized;
 }
 
 function inspectRuntimeInput(input: unknown): RuntimeInputInspection {
@@ -379,6 +970,7 @@ function recordInputEntry(
 
 function buildRuntimeContractSummary(
   generationPlan: RuntimeApp['generationPlan'],
+  options: { medicalDomain?: boolean } = {},
 ): RuntimeContractSummary {
   if (!isGeneratedAppGenerationPlan(generationPlan)) {
     return {
@@ -411,6 +1003,8 @@ function buildRuntimeContractSummary(
     requiredInputFields: sanitizeContractValues(
       inputContract?.requiredFields ?? ['input'],
       ['input'],
+    ).filter((field) =>
+      options.medicalDomain ? !MEDICAL_ADVICE_FIELD_PATTERN.test(field) : true,
     ),
     outputDestinations: sanitizeContractValues(
       outputContract?.destinations ?? defaultOutputDestinations,
@@ -629,7 +1223,7 @@ function buildReportSections(params: {
   const recommendedNextStepsSection = {
     id: 'recommended-next-steps',
     title: '建议下一步问题',
-    body: '这些问题由 AppSpec 页面、验收场景、公开运行合约和提交内容确定性生成。',
+    body: '这些问题由应用页面、验收场景、公开运行合约和提交内容确定性生成。',
     items: params.nextStepQuestions,
   };
   const runtimeBoundarySection = {
@@ -655,7 +1249,7 @@ function buildReportSections(params: {
     {
       id: 'requirement-mapping',
       title: '需求匹配',
-      body: '本地 runtime 按 AppSpec 核心需求生成可读映射。',
+      body: '本地 runtime 按应用核心需求生成可读映射。',
       items: params.matchedRequirements.map(
         (match) => `${match.id}: ${match.status} - ${match.text}`,
       ),
@@ -698,6 +1292,19 @@ function isMedicalDomain(
     appSpec.userGoal,
     ...appSpec.coreRequirements.map((requirement) => requirement.text),
     ...inspection.entries.map((entry) => entry.valuePreview),
+  ].join(' ');
+
+  return MEDICAL_DOMAIN_PATTERN.test(corpus);
+}
+
+function isMedicalAppSpec(appSpec: GeneratedAppSpec): boolean {
+  const corpus = [
+    appSpec.appName,
+    appSpec.summary,
+    appSpec.userGoal,
+    ...appSpec.coreRequirements.map((requirement) => requirement.text),
+    ...appSpec.pages.flatMap((page) => [page.name, page.purpose]),
+    ...appSpec.nonGoals,
   ].join(' ');
 
   return MEDICAL_DOMAIN_PATTERN.test(corpus);
@@ -783,6 +1390,37 @@ function sanitizePublicRuntimeText(value: string, fallback: string): string {
     : sanitized;
 }
 
+function sanitizePublicNarrativeText(
+  value: string,
+  fallback: string,
+  medicalDomain: boolean,
+): string {
+  const sanitized = sanitizePublicRuntimeText(value, fallback);
+
+  if (
+    medicalDomain &&
+    (MEDICAL_ADVICE_TEXT_PATTERN.test(sanitized) ||
+      MEDICAL_ADVICE_FIELD_PATTERN.test(sanitized))
+  ) {
+    return fallback;
+  }
+
+  return sanitized;
+}
+
+function sanitizePublicRuntimeTextList(
+  values: string[],
+  fallback: string[],
+): string[] {
+  const sanitized = uniqueNonEmpty(
+    values
+      .map((value) => sanitizePublicRuntimeText(value, ''))
+      .filter((value) => !SENSITIVE_KEY_PATTERN.test(value)),
+  );
+
+  return sanitized.length > 0 ? sanitized : fallback;
+}
+
 function sanitizeRequirementText(
   value: string,
   medicalDomain: boolean,
@@ -791,6 +1429,13 @@ function sanitizeRequirementText(
 
   if (!medicalDomain) {
     return sanitized;
+  }
+
+  if (
+    MEDICAL_ADVICE_TEXT_PATTERN.test(sanitized) ||
+    MEDICAL_ADVICE_FIELD_PATTERN.test(sanitized)
+  ) {
+    return '问诊信息整理与下一步问题生成';
   }
 
   const medicalSafe = sanitized

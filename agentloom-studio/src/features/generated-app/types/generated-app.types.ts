@@ -369,6 +369,57 @@ export interface GeneratedAppPublicRuntimeSpec {
   }>
 }
 
+export type GeneratedAppRuntimeFormFieldType =
+  | 'text'
+  | 'textarea'
+  | 'single_select'
+  | 'multi_select'
+  | 'number'
+  | 'range'
+
+export interface GeneratedAppRuntimeFormOption {
+  value: string
+  label: string
+}
+
+export interface GeneratedAppRuntimeFormField {
+  id: string
+  label: string
+  type: GeneratedAppRuntimeFormFieldType
+  required: boolean
+  placeholder: string
+  helpText: string
+  options: GeneratedAppRuntimeFormOption[]
+  min?: number
+  max?: number
+  step?: number
+}
+
+export interface GeneratedAppRuntimeFormSection {
+  id: string
+  title: string
+  description: string
+  fieldIds: string[]
+}
+
+export interface GeneratedAppRuntimeResultView {
+  title: string
+  description: string
+  emptyState: string
+  successTitle: string
+  nextStepHint: string
+}
+
+export interface GeneratedAppRuntimeForm {
+  formId: string
+  title: string
+  description: string
+  submitLabel: string
+  sections: GeneratedAppRuntimeFormSection[]
+  fields: GeneratedAppRuntimeFormField[]
+  resultView: GeneratedAppRuntimeResultView
+}
+
 export interface GeneratedAppPublicRuntime {
   token: string
   appId: string
@@ -380,5 +431,6 @@ export interface GeneratedAppPublicRuntime {
     kind: 'generated-app'
     previewUrl: string | null
   }
+  runtimeForm: GeneratedAppRuntimeForm
   createdAt: string
 }

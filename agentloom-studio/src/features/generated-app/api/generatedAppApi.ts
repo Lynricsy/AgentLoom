@@ -10,6 +10,7 @@ import type {
   GeneratedAppListResponse,
   GeneratedAppPublicSubmission,
   GeneratedAppPublicRuntime,
+  GeneratedAppRuntimeForm,
   GeneratedAppRepairAttemptListResponse,
   GeneratedAppSubmission,
   GeneratedAppSubmissionListResponse,
@@ -118,7 +119,47 @@ function toPublicRuntime(
       kind: value.runtimeSurface.kind,
       previewUrl: value.runtimeSurface.previewUrl,
     },
+    runtimeForm: toPublicRuntimeForm(value.runtimeForm),
     createdAt: value.createdAt,
+  }
+}
+
+function toPublicRuntimeForm(
+  value: GeneratedAppRuntimeForm,
+): GeneratedAppRuntimeForm {
+  return {
+    formId: value.formId,
+    title: value.title,
+    description: value.description,
+    submitLabel: value.submitLabel,
+    sections: value.sections.map((section) => ({
+      id: section.id,
+      title: section.title,
+      description: section.description,
+      fieldIds: section.fieldIds,
+    })),
+    fields: value.fields.map((field) => ({
+      id: field.id,
+      label: field.label,
+      type: field.type,
+      required: field.required,
+      placeholder: field.placeholder,
+      helpText: field.helpText,
+      options: field.options.map((option) => ({
+        value: option.value,
+        label: option.label,
+      })),
+      min: field.min,
+      max: field.max,
+      step: field.step,
+    })),
+    resultView: {
+      title: value.resultView.title,
+      description: value.resultView.description,
+      emptyState: value.resultView.emptyState,
+      successTitle: value.resultView.successTitle,
+      nextStepHint: value.resultView.nextStepHint,
+    },
   }
 }
 

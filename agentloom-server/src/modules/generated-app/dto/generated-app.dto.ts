@@ -484,7 +484,59 @@ export interface PublicGeneratedAppResponseDto {
     kind: 'generated-app';
     previewUrl: string | null;
   };
+  runtimeForm: PublicGeneratedAppRuntimeFormDto;
   createdAt: Date;
+}
+
+export type PublicGeneratedAppRuntimeFieldType =
+  | 'text'
+  | 'textarea'
+  | 'single_select'
+  | 'multi_select'
+  | 'number'
+  | 'range';
+
+export interface PublicGeneratedAppRuntimeFormOptionDto {
+  value: string;
+  label: string;
+}
+
+export interface PublicGeneratedAppRuntimeFieldDto {
+  id: string;
+  label: string;
+  type: PublicGeneratedAppRuntimeFieldType;
+  required: boolean;
+  placeholder: string;
+  helpText: string;
+  options: PublicGeneratedAppRuntimeFormOptionDto[];
+  min?: number;
+  max?: number;
+  step?: number;
+}
+
+export interface PublicGeneratedAppRuntimeFormSectionDto {
+  id: string;
+  title: string;
+  description: string;
+  fieldIds: string[];
+}
+
+export interface PublicGeneratedAppRuntimeResultViewDto {
+  title: string;
+  description: string;
+  emptyState: string;
+  successTitle: string;
+  nextStepHint: string;
+}
+
+export interface PublicGeneratedAppRuntimeFormDto {
+  formId: string;
+  title: string;
+  description: string;
+  submitLabel: string;
+  sections: PublicGeneratedAppRuntimeFormSectionDto[];
+  fields: PublicGeneratedAppRuntimeFieldDto[];
+  resultView: PublicGeneratedAppRuntimeResultViewDto;
 }
 
 export interface GeneratedAppSubmissionResponseDto {

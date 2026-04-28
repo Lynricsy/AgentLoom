@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type {
   GeneratedAppPublicRuntime,
   GeneratedAppPublicSubmission,
+  GeneratedAppRuntimeForm,
 } from '../../types'
 
 const {
@@ -51,6 +52,95 @@ vi.mock('../../api', () => ({
   },
 }))
 
+function makeRuntimeForm(
+  overrides: Partial<GeneratedAppRuntimeForm> = {},
+): GeneratedAppRuntimeForm {
+  return {
+    formId: 'consultation-runtime-form',
+    title: '问诊采集表',
+    description: '请填写问诊采集信息，提交后查看结构化摘要。',
+    submitLabel: '提交问诊信息',
+    sections: [
+      {
+        id: 'consultation-basic',
+        title: '问诊信息',
+        description: '采集主诉、症状、严重程度和联系偏好。',
+        fieldIds: [
+          'chiefComplaint',
+          'symptoms',
+          'severity',
+          'contactMode',
+          'additionalNotes',
+        ],
+      },
+    ],
+    fields: [
+      {
+        id: 'chiefComplaint',
+        label: '主诉',
+        type: 'text',
+        required: true,
+        placeholder: '例如：反复头痛',
+        helpText: '请描述当前最主要的不适。',
+        options: [],
+      },
+      {
+        id: 'symptoms',
+        label: '症状或感受',
+        type: 'multi_select',
+        required: true,
+        placeholder: '',
+        helpText: '可多选。',
+        options: [
+          { value: 'pain', label: '疼痛' },
+          { value: 'fever', label: '发热' },
+        ],
+      },
+      {
+        id: 'severity',
+        label: '严重程度',
+        type: 'range',
+        required: true,
+        placeholder: '',
+        helpText: '1 表示轻微，10 表示非常严重。',
+        options: [],
+        min: 1,
+        max: 10,
+        step: 1,
+      },
+      {
+        id: 'contactMode',
+        label: '联系偏好',
+        type: 'single_select',
+        required: true,
+        placeholder: '',
+        helpText: '选择后续沟通方式。',
+        options: [
+          { value: 'online', label: '线上沟通' },
+          { value: 'offline', label: '线下沟通' },
+        ],
+      },
+      {
+        id: 'additionalNotes',
+        label: '补充说明',
+        type: 'textarea',
+        required: false,
+        placeholder: '可补充其他观察信息',
+        helpText: '仅用于整理提交摘要。',
+        options: [],
+      },
+    ],
+    resultView: {
+      title: '问诊信息报告',
+      description: '提交后展示问诊摘要、下一步问题和边界说明。',
+      emptyState: '提交后会在这里显示结构化报告。',
+      successTitle: '已生成问诊摘要',
+      nextStepHint: '如有急重症或持续不适，请及时线下就医。',
+    },
+    ...overrides,
+  }
+}
+
 function makePublicRuntime(
   overrides: Partial<GeneratedAppPublicRuntime> = {},
 ): GeneratedAppPublicRuntime {
@@ -79,6 +169,7 @@ function makePublicRuntime(
       kind: 'generated-app',
       previewUrl: 'https://preview.example.test/apps/app-public',
     },
+    runtimeForm: makeRuntimeForm(),
     createdAt: '2026-04-25T00:00:00.000Z',
     ...overrides,
   }
@@ -93,9 +184,28 @@ function makePublicSubmission(
     appSpecVersion: 1,
     status: 'completed',
     anonymousSessionId: 'anon-public',
-    input: { symptom: '头痛' },
-    result: { triage: '建议继续补充症状' },
-    report: { summary: '已生成问诊摘要' },
+    input: { chiefComplaint: '我最近头痛', symptoms: ['pain'] },
+    result: {
+      summary: '已整理问诊信息。',
+      nextStepQuestions: ['是否伴随发热或持续加重？'],
+      followUpPrompts: ['请补充持续时间。'],
+    },
+    report: {
+      title: '已生成问诊摘要',
+      summary: '系统已整理主诉、症状和严重程度。',
+      sections: [
+        {
+          id: 'submitted-information',
+          title: '提交内容摘要',
+          body: '主诉：我最近头痛',
+          items: ['chiefComplaint: 我最近头痛', 'symptoms: 疼痛'],
+        },
+      ],
+      nextStepQuestions: ['主要不适从什么时候开始？'],
+      followUpPrompts: ['请补充既往处理。'],
+      disclaimers: ['不提供诊断结论、处方或治疗建议。'],
+      runtimeNotice: '这是本地 deterministic runtime report。',
+    },
     errorMessage: null,
     createdAt: '2026-04-25T02:00:00.000Z',
     updatedAt: '2026-04-25T02:05:00.000Z',
@@ -141,7 +251,10 @@ describe('GeneratedAppPublicRuntimePage', () => {
     expect(
       screen.getByText('让终端用户完成问诊并查看分析报告。'),
     ).toBeInTheDocument()
-    expect(screen.getByText('终端用户')).toBeInTheDocument()
+    expect(screen.getByText('问诊采集表')).toBeInTheDocument()
+    expect(screen.getByLabelText(/主诉/)).toBeInTheDocument()
+    expect(screen.getByLabelText('疼痛')).toBeInTheDocument()
+    expect(screen.getByLabelText(/严重程度/)).toBeInTheDocument()
     expect(screen.getByText('问诊运行页')).toBeInTheDocument()
     expect(
       screen.getByText('终端用户回答问诊问题并查看报告。'),
@@ -180,9 +293,17 @@ describe('GeneratedAppPublicRuntimePage', () => {
     ).not.toBeInTheDocument()
   })
 
-  it('submits text input and renders public submission fields without creator-only data', async () => {
+  it('renders dynamic form, validates required fields, submits payload, and renders structured report', async () => {
     const user = userEvent.setup()
-    const publicSubmission = makePublicSubmission()
+    const publicSubmission = {
+      ...makePublicSubmission(),
+      tenantId: 'tenant-private',
+      publicShareToken: 'public-token',
+      gateResults: [{ gateId: 'gate-0' }],
+      sourceArtifactUrl: 'https://internal.example.test/source.zip',
+      testReportUrl: 'https://internal.example.test/report.json',
+      pluginIds: ['plugin-private'],
+    } as unknown as GeneratedAppPublicSubmission
     createPublicSubmissionMutation.mutateAsync.mockImplementation(async () => {
       publicSubmissionQuery.data = publicSubmission
       return publicSubmission
@@ -190,13 +311,31 @@ describe('GeneratedAppPublicRuntimePage', () => {
 
     render(<GeneratedAppPublicRuntimePage token="public-token" />)
 
-    await user.type(screen.getByLabelText('提交内容'), '我最近头痛')
-    await user.click(screen.getByRole('button', { name: '提交给应用' }))
+    await user.click(screen.getByRole('button', { name: '提交问诊信息' }))
+
+    expect(screen.getByText('请先补齐必填字段。')).toBeInTheDocument()
+    expect(createPublicSubmissionMutation.mutateAsync).not.toHaveBeenCalled()
+
+    await user.type(screen.getByLabelText(/主诉/), '我最近头痛')
+    await user.click(screen.getByLabelText('疼痛'))
+    fireEvent.change(screen.getByLabelText(/严重程度/), {
+      target: { value: '7' },
+    })
+    await user.selectOptions(screen.getByLabelText(/联系偏好/), 'online')
+    await user.type(screen.getByLabelText(/补充说明/), '夜间加重')
+    await user.click(screen.getByRole('button', { name: '提交问诊信息' }))
 
     await waitFor(() => {
       expect(createPublicSubmissionMutation.mutateAsync).toHaveBeenCalledWith({
-        input: { text: '我最近头痛' },
+        input: {
+          chiefComplaint: '我最近头痛',
+          symptoms: ['pain'],
+          severity: 7,
+          contactMode: 'online',
+          additionalNotes: '夜间加重',
+        },
         clientContext: expect.objectContaining({
+          formId: 'consultation-runtime-form',
           submittedAt: expect.any(String),
         }),
       })
@@ -206,11 +345,18 @@ describe('GeneratedAppPublicRuntimePage', () => {
       )
     })
 
-    expect(screen.getByText('submission-public')).toBeInTheDocument()
     expect(screen.getByText('已完成')).toBeInTheDocument()
-    expect(screen.getAllByText(/头痛/).length).toBeGreaterThan(0)
-    expect(screen.getByText(/建议继续补充症状/)).toBeInTheDocument()
-    expect(screen.getByText(/已生成问诊摘要/)).toBeInTheDocument()
+    expect(screen.getByText('已生成问诊摘要')).toBeInTheDocument()
+    expect(screen.getByText('提交内容摘要')).toBeInTheDocument()
+    expect(screen.getAllByText(/我最近头痛/).length).toBeGreaterThan(0)
+    expect(screen.getByText('主要不适从什么时候开始？')).toBeInTheDocument()
+    expect(screen.getByText('请补充既往处理。')).toBeInTheDocument()
+    expect(
+      screen.getByText('不提供诊断结论、处方或治疗建议。'),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText('这是本地 deterministic runtime report。'),
+    ).toBeInTheDocument()
 
     expect(screen.queryByText(/public-token/)).not.toBeInTheDocument()
     expect(screen.queryByText(/publicShareToken/)).not.toBeInTheDocument()
@@ -219,34 +365,31 @@ describe('GeneratedAppPublicRuntimePage', () => {
     expect(screen.queryByText(/sourceArtifactUrl/)).not.toBeInTheDocument()
     expect(screen.queryByText(/testReportUrl/)).not.toBeInTheDocument()
     expect(screen.queryByText(/pluginIds/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/runtimeKind/)).not.toBeInTheDocument()
   })
 
-  it('submits object JSON input without wrapping it as text', async () => {
-    const user = userEvent.setup()
-    const publicSubmission = makePublicSubmission({
-      id: 'submission-json',
-      input: { symptom: '头痛', duration: '2天' },
-    })
-    createPublicSubmissionMutation.mutateAsync.mockImplementation(async () => {
-      publicSubmissionQuery.data = publicSubmission
-      return publicSubmission
+  it('renders failed public submissions as a safe failure state instead of a success report', () => {
+    createPublicSubmissionMutation.data = makePublicSubmission({
+      status: 'failed',
+      result: null,
+      report: null,
+      errorMessage:
+        '提交内容包含当前本地 Generated App runtime 无法处理的结构，已保存失败状态，请调整输入后重新提交。',
     })
 
     render(<GeneratedAppPublicRuntimePage token="public-token" />)
 
-    fireEvent.change(screen.getByLabelText('提交内容'), {
-      target: { value: '{"symptom":"头痛","duration":"2天"}' },
-    })
-    await user.click(screen.getByRole('button', { name: '提交给应用' }))
-
-    await waitFor(() => {
-      expect(createPublicSubmissionMutation.mutateAsync).toHaveBeenCalledWith({
-        input: { symptom: '头痛', duration: '2天' },
-        clientContext: expect.objectContaining({
-          submittedAt: expect.any(String),
-        }),
-      })
-    })
+    expect(screen.getByText('失败')).toBeInTheDocument()
+    expect(screen.getByText('提交未能生成报告')).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        '提交内容已保存为失败状态，但当前公开运行页无法安全处理该输入结构。请调整输入后重新提交。',
+      ),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(/提交内容包含当前本地 Generated App runtime 无法处理的结构/),
+    ).toBeInTheDocument()
+    expect(screen.queryByText('已生成问诊摘要')).not.toBeInTheDocument()
   })
 
   it('renders an inaccessible or closed state when public runtime lookup fails', async () => {
