@@ -2,6 +2,7 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import {
   getGeneratedApp,
   getGeneratedAppSubmission,
+  getGeneratedAppPublicSubmission,
   getGeneratedAppPublicRuntime,
   listGeneratedAppGateRuns,
   listGeneratedAppGenerationRuns,
@@ -122,5 +123,22 @@ export function useGeneratedAppPublicRuntime(token: string | undefined) {
     enabled: !!token,
     retry: false,
     staleTime: 5 * 60_000,
+  })
+}
+
+export function useGeneratedAppPublicSubmission(
+  token: string | undefined,
+  submissionId: string | undefined,
+) {
+  return useQuery({
+    queryKey: generatedAppKeys.publicSubmission(
+      token ?? '',
+      submissionId ?? '',
+    ),
+    queryFn: () =>
+      getGeneratedAppPublicSubmission(token ?? '', submissionId ?? ''),
+    enabled: !!token && !!submissionId,
+    retry: false,
+    staleTime: GENERATED_APP_STALE_TIME,
   })
 }

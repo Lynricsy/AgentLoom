@@ -1,14 +1,29 @@
-import type { ReactNode } from 'react'
+import { useCallback, useMemo, useState, type ReactNode } from 'react'
 import {
   AlertTriangle,
   AppWindow,
   ExternalLink,
   Loader2,
+  Send,
   ShieldCheck,
 } from 'lucide-react'
 
-import { useGeneratedAppPublicRuntime } from '../api'
-import type { GeneratedAppPublicRuntime } from '../types'
+import { cn } from '@/shared/lib/utils'
+import { Button } from '@/shared/ui/button'
+import {
+  useCreateGeneratedAppPublicSubmission,
+  useGeneratedAppPublicRuntime,
+  useGeneratedAppPublicSubmission,
+} from '../api'
+import {
+  GENERATED_APP_SUBMISSION_STATUS_LABELS,
+  formatGeneratedAppDateTime,
+  getGeneratedAppSubmissionStatusBadgeClass,
+} from '../lib/generatedAppDisplay'
+import type {
+  GeneratedAppPublicRuntime,
+  GeneratedAppPublicSubmission,
+} from '../types'
 
 interface GeneratedAppPublicRuntimePageProps {
   token: string
@@ -76,8 +91,179 @@ function PublicRuntimeError({ onRetry }: { onRetry: () => void }) {
   )
 }
 
-function PublicRuntimeSuccess({ app }: { app: GeneratedAppPublicRuntime }) {
+function stringifyJson(value: Record<string, unknown> | null): string {
+  if (!value || Object.keys(value).length === 0) {
+    return '暂无'
+  }
+
+  return JSON.stringify(value, null, 2)
+}
+
+function parseSubmissionInput(value: string): Record<string, unknown> {
+  const trimmed = value.trim()
+
+  if (!trimmed) {
+    return {}
+  }
+
+  try {
+    const parsed = JSON.parse(trimmed) as unknown
+
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed as Record<string, unknown>
+    }
+
+    return { value: parsed }
+  } catch {
+    return { text: trimmed }
+  }
+}
+
+function SubmissionStatusBadge({
+  status,
+}: {
+  status: GeneratedAppPublicSubmission['status']
+}) {
+  return (
+    <span
+      className={cn(
+        'inline-flex rounded-full border px-2 py-0.5 text-xs font-medium',
+        getGeneratedAppSubmissionStatusBadgeClass(status),
+      )}
+    >
+      {GENERATED_APP_SUBMISSION_STATUS_LABELS[status]}
+    </span>
+  )
+}
+
+function PublicSubmissionJsonPanel({
+  label,
+  value,
+}: {
+  label: string
+  value: Record<string, unknown> | null
+}) {
+  return (
+    <div className="min-w-0 space-y-2">
+      <h3 className="text-sm font-medium text-foreground">{label}</h3>
+      <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words border border-border bg-muted/50 p-3 text-xs text-muted-foreground">
+        {stringifyJson(value)}
+      </pre>
+    </div>
+  )
+}
+
+function PublicSubmissionResult({
+  submission,
+}: {
+  submission: GeneratedAppPublicSubmission
+}) {
+  return (
+    <article
+      className="space-y-4 border border-border bg-surface-elevated p-4"
+      data-testid="generated-app-public-submission-result"
+    >
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <SubmissionStatusBadge status={submission.status} />
+            <code className="break-all bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
+              {submission.id}
+            </code>
+          </div>
+          <dl className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-3">
+            <div className="border-l border-border pl-3">
+              <dt>匿名会话</dt>
+              <dd className="break-all text-foreground">
+                {submission.anonymousSessionId}
+              </dd>
+            </div>
+            <div className="border-l border-border pl-3">
+              <dt>AppSpec 版本</dt>
+              <dd className="text-foreground">v{submission.appSpecVersion}</dd>
+            </div>
+            <div className="border-l border-border pl-3">
+              <dt>更新时间</dt>
+              <dd className="text-foreground">
+                {formatGeneratedAppDateTime(submission.updatedAt)}
+              </dd>
+            </div>
+          </dl>
+        </div>
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <PublicSubmissionJsonPanel label="Input" value={submission.input} />
+        <PublicSubmissionJsonPanel label="Result" value={submission.result} />
+        <PublicSubmissionJsonPanel label="Report" value={submission.report} />
+        <div className="min-w-0 space-y-2">
+          <h3 className="text-sm font-medium text-foreground">Error</h3>
+          <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words border border-border bg-muted/50 p-3 text-xs text-muted-foreground">
+            {submission.errorMessage?.trim() || '暂无'}
+          </pre>
+        </div>
+      </div>
+    </article>
+  )
+}
+
+function PublicRuntimeSuccess({
+  app,
+  token,
+}: {
+  app: GeneratedAppPublicRuntime
+  token: string
+}) {
   const previewUrl = app.runtimeSurface.previewUrl
+  const [submissionText, setSubmissionText] = useState('')
+  const [submissionId, setSubmissionId] = useState<string | null>(null)
+  const [formError, setFormError] = useState<string | null>(null)
+  const createSubmissionMutation = useCreateGeneratedAppPublicSubmission(token)
+  const submissionQuery = useGeneratedAppPublicSubmission(
+    token,
+    submissionId ?? undefined,
+  )
+  const visibleSubmission =
+    submissionQuery.data ?? createSubmissionMutation.data ?? null
+
+  const placeholder = useMemo(() => {
+    const firstPage = app.appSpec.pages[0]
+
+    if (firstPage) {
+      return `可以直接输入文字，也可以输入 JSON，例如：\n{"需求":"${firstPage.purpose}","补充说明":"请按实际情况填写"}`
+    }
+
+    return '可以直接输入文字，也可以输入 JSON，例如：\n{"需求":"请根据我的情况生成报告"}'
+  }, [app.appSpec.pages])
+
+  const handleSubmit = useCallback(
+    async (event: React.FormEvent<HTMLFormElement>) => {
+      event.preventDefault()
+      const trimmed = submissionText.trim()
+
+      if (!trimmed) {
+        setFormError('请输入要提交给应用的内容。')
+        return
+      }
+
+      setFormError(null)
+
+      try {
+        const submission = await createSubmissionMutation.mutateAsync({
+          input: parseSubmissionInput(trimmed),
+          clientContext: {
+            submittedAt: new Date().toISOString(),
+          },
+        })
+        setSubmissionId(submission.id)
+      } catch (error) {
+        setFormError(
+          error instanceof Error ? error.message : '提交失败，请稍后重试。',
+        )
+      }
+    },
+    [createSubmissionMutation, submissionText],
+  )
 
   return (
     <main
@@ -189,6 +375,65 @@ function PublicRuntimeSuccess({ app }: { app: GeneratedAppPublicRuntime }) {
           )}
         </PublicSection>
 
+        <PublicSection title="提交给应用">
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <form className="min-w-0 space-y-3" onSubmit={handleSubmit}>
+              <label
+                htmlFor="generated-app-public-submission"
+                className="text-sm font-medium text-foreground"
+              >
+                提交内容
+              </label>
+              <textarea
+                id="generated-app-public-submission"
+                value={submissionText}
+                onChange={(event) => setSubmissionText(event.target.value)}
+                placeholder={placeholder}
+                rows={8}
+                className="w-full resize-y border border-input bg-background px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/30"
+                disabled={createSubmissionMutation.isPending}
+              />
+              {formError ? (
+                <p className="break-words text-sm text-rose-300">{formError}</p>
+              ) : null}
+              <Button
+                type="submit"
+                disabled={createSubmissionMutation.isPending}
+              >
+                {createSubmissionMutation.isPending ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="mr-2 h-4 w-4" />
+                )}
+                提交给应用
+              </Button>
+            </form>
+
+            <div className="min-w-0 space-y-3">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-sm font-medium text-foreground">
+                  提交结果
+                </h3>
+                {submissionQuery.isFetching ? (
+                  <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    正在刷新
+                  </span>
+                ) : null}
+              </div>
+
+              {visibleSubmission ? (
+                <PublicSubmissionResult submission={visibleSubmission} />
+              ) : (
+                <div className="border border-dashed border-border p-4 text-sm text-muted-foreground">
+                  提交后会在这里显示 submission
+                  id、状态、输入、结果、报告和错误信息。
+                </div>
+              )}
+            </div>
+          </div>
+        </PublicSection>
+
         <div className="mt-auto border-t border-border py-4" />
       </div>
     </main>
@@ -209,5 +454,5 @@ export function GeneratedAppPublicRuntimePage({
     return <PublicRuntimeError onRetry={() => void refetch()} />
   }
 
-  return <PublicRuntimeSuccess app={data} />
+  return <PublicRuntimeSuccess app={data} token={token} />
 }

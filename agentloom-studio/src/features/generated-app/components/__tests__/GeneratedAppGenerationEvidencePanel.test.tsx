@@ -206,6 +206,8 @@ describe('GeneratedAppGenerationEvidencePanel', () => {
   })
 
   it('renders generation runs, failure summaries, and evidence summaries without evidence URLs', async () => {
+    const user = userEvent.setup()
+
     render(<GeneratedAppGenerationEvidencePanel appId="app-1" />)
 
     expect(screen.getByText('共 2 次生成运行')).toBeInTheDocument()
@@ -214,6 +216,23 @@ describe('GeneratedAppGenerationEvidencePanel', () => {
     expect(screen.getAllByText('3 次修复 / 1800s').length).toBeGreaterThan(0)
     expect(screen.getByText('生成源码并执行 Gate 0-5。')).toBeInTheDocument()
     expect(screen.getByText('Gate 5 浏览器验收失败。')).toBeInTheDocument()
+    expect(screen.getAllByText('尚未选中 generation run。')).toHaveLength(2)
+    expect(getLastCall(useGeneratedAppRepairAttemptsMock)).toEqual([
+      undefined,
+      undefined,
+      { page: 1, pageSize: 8 },
+    ])
+    expect(getLastCall(useGeneratedAppGateRunsMock)).toEqual([
+      undefined,
+      {
+        page: 1,
+        pageSize: 8,
+        generationRunId: undefined,
+        repairAttemptId: undefined,
+      },
+    ])
+
+    await user.click(screen.getByRole('button', { name: '选择 Run #1' }))
 
     await waitFor(() => {
       expect(screen.getByText('Repair #1')).toBeInTheDocument()
@@ -274,6 +293,8 @@ describe('GeneratedAppGenerationEvidencePanel', () => {
 
     render(<GeneratedAppGenerationEvidencePanel appId="app-1" />)
 
+    await user.click(screen.getByRole('button', { name: '选择 Run #1' }))
+
     await waitFor(() => {
       expect(screen.getByText('浏览器验收 trace')).toBeInTheDocument()
     })
@@ -301,6 +322,8 @@ describe('GeneratedAppGenerationEvidencePanel', () => {
     const user = userEvent.setup()
 
     render(<GeneratedAppGenerationEvidencePanel appId="app-1" />)
+
+    await user.click(screen.getByRole('button', { name: '选择 Run #1' }))
 
     await waitFor(() => {
       expect(
@@ -361,6 +384,8 @@ describe('GeneratedAppGenerationEvidencePanel', () => {
     gateRunsQuery.isError = true
 
     render(<GeneratedAppGenerationEvidencePanel appId="app-1" />)
+
+    await user.click(screen.getByRole('button', { name: '选择 Run #1' }))
 
     await waitFor(() => {
       expect(screen.getByText('修复尝试加载失败')).toBeInTheDocument()

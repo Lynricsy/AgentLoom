@@ -19,6 +19,8 @@ import type {
   ListGeneratedAppSubmissionsParams,
   ListGeneratedAppsParams,
   RecordGeneratedAppGateResultsPayload,
+  StartGeneratedAppGenerationRunPayload,
+  StartGeneratedAppGenerationRunResponse,
 } from '../types'
 
 const GENERATED_APPS_PATH = 'generated-apps'
@@ -120,6 +122,24 @@ function toPublicRuntime(
   }
 }
 
+function toPublicSubmission(
+  value: GeneratedAppPublicSubmission,
+): GeneratedAppPublicSubmission {
+  return {
+    id: value.id,
+    appId: value.appId,
+    appSpecVersion: value.appSpecVersion,
+    status: value.status,
+    anonymousSessionId: value.anonymousSessionId,
+    input: value.input,
+    result: value.result,
+    report: value.report,
+    errorMessage: value.errorMessage,
+    createdAt: value.createdAt,
+    updatedAt: value.updatedAt,
+  }
+}
+
 export async function createGeneratedApp(
   payload: CreateGeneratedAppPayload,
 ): Promise<GeneratedApp> {
@@ -144,6 +164,19 @@ export async function getGeneratedApp(appId: string): Promise<GeneratedApp> {
   const response = await apiClient
     .get(`${GENERATED_APPS_PATH}/${appId}`)
     .json<ApiResponse<GeneratedApp>>()
+
+  return response.data
+}
+
+export async function startGeneratedAppGenerationRun(
+  appId: string,
+  payload: StartGeneratedAppGenerationRunPayload = {},
+): Promise<StartGeneratedAppGenerationRunResponse> {
+  const response = await apiClient
+    .post(`${GENERATED_APPS_PATH}/${appId}/generation-runs/start`, {
+      json: payload,
+    })
+    .json<ApiResponse<StartGeneratedAppGenerationRunResponse>>()
 
   return response.data
 }
@@ -252,7 +285,7 @@ export async function createGeneratedAppPublicSubmission(
     )
     .json<ApiResponse<GeneratedAppPublicSubmission>>()
 
-  return response.data
+  return toPublicSubmission(response.data)
 }
 
 export async function getGeneratedAppPublicSubmission(
@@ -267,7 +300,7 @@ export async function getGeneratedAppPublicSubmission(
     )
     .json<ApiResponse<GeneratedAppPublicSubmission>>()
 
-  return response.data
+  return toPublicSubmission(response.data)
 }
 
 export async function recordGeneratedAppGateResults(

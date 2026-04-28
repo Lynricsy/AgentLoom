@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
+  createGeneratedAppPublicSubmission,
   createGeneratedApp,
   deleteGeneratedAppSubmission,
   deleteGeneratedAppSubmissions,
@@ -7,14 +8,23 @@ import {
   enableGeneratedAppPublicShare,
   recordGeneratedAppGateResults,
   regenerateGeneratedAppPublicShare,
+  startGeneratedAppGenerationRun,
 } from './generatedAppApi'
 import { generatedAppKeys } from './generatedAppKeys'
 import type {
+  CreateGeneratedAppPublicSubmissionPayload,
   CreateGeneratedAppPayload,
   DeleteGeneratedAppSubmissionsResponse,
   GeneratedApp,
+  GeneratedAppPublicSubmission,
   RecordGeneratedAppGateResultsPayload,
+  StartGeneratedAppGenerationRunPayload,
+  StartGeneratedAppGenerationRunResponse,
 } from '../types'
+
+interface StartGeneratedAppGenerationRunVariables extends StartGeneratedAppGenerationRunPayload {
+  appId?: string
+}
 
 function syncGeneratedAppQueries(
   queryClient: ReturnType<typeof useQueryClient>,
@@ -36,6 +46,25 @@ function invalidateGeneratedAppSubmissionQueries(
   })
 }
 
+function invalidateGeneratedAppRunQueries(
+  queryClient: ReturnType<typeof useQueryClient>,
+  appId: string,
+  generationRunId?: string,
+) {
+  queryClient.invalidateQueries({
+    queryKey: generatedAppKeys.generationRunLists(appId),
+  })
+  queryClient.invalidateQueries({
+    queryKey: generatedAppKeys.gateRunLists(appId),
+  })
+
+  if (generationRunId) {
+    queryClient.invalidateQueries({
+      queryKey: generatedAppKeys.repairAttemptLists(appId, generationRunId),
+    })
+  }
+}
+
 export function useCreateGeneratedApp() {
   const queryClient = useQueryClient()
 
@@ -49,15 +78,81 @@ export function useCreateGeneratedApp() {
   })
 }
 
+export function useStartGeneratedAppGenerationRun(defaultAppId?: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation<
+    StartGeneratedAppGenerationRunResponse,
+    Error,
+    StartGeneratedAppGenerationRunVariables | undefined
+  >({
+    mutationKey: [
+      ...generatedAppKeys.all,
+      'generation-runs',
+      'start',
+      defaultAppId ?? 'dynamic',
+    ],
+    mutationFn: (payload) => {
+      const appId = payload?.appId ?? defaultAppId
+
+      if (!appId) {
+        throw new Error('Generated app id is required to start generation.')
+      }
+
+      const body: StartGeneratedAppGenerationRunPayload = {
+        triggerSource: payload?.triggerSource,
+        maxRepairAttempts: payload?.maxRepairAttempts,
+        maxRuntimeSeconds: payload?.maxRuntimeSeconds,
+      }
+
+      return startGeneratedAppGenerationRun(appId, body)
+    },
+    gcTime: 0,
+    onSuccess: (response) => {
+      syncGeneratedAppQueries(queryClient, response.app)
+      invalidateGeneratedAppRunQueries(
+        queryClient,
+        response.app.id,
+        response.generationRun.id,
+      )
+    },
+  })
+}
+
 export function useRecordGeneratedAppGateResults(appId: string) {
   const queryClient = useQueryClient()
 
-  return useMutation<GeneratedApp, Error, RecordGeneratedAppGateResultsPayload>({
-    mutationKey: [...generatedAppKeys.detail(appId), 'record-gates'],
-    mutationFn: (payload) => recordGeneratedAppGateResults(appId, payload),
+  return useMutation<GeneratedApp, Error, RecordGeneratedAppGateResultsPayload>(
+    {
+      mutationKey: [...generatedAppKeys.detail(appId), 'record-gates'],
+      mutationFn: (payload) => recordGeneratedAppGateResults(appId, payload),
+      gcTime: 0,
+      onSuccess: (app) => {
+        syncGeneratedAppQueries(queryClient, app)
+      },
+    },
+  )
+}
+
+export function useCreateGeneratedAppPublicSubmission(token: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation<
+    GeneratedAppPublicSubmission,
+    Error,
+    CreateGeneratedAppPublicSubmissionPayload
+  >({
+    mutationKey: [...generatedAppKeys.publicRuntime(token), 'submit'],
+    mutationFn: (payload) => createGeneratedAppPublicSubmission(token, payload),
     gcTime: 0,
-    onSuccess: (app) => {
-      syncGeneratedAppQueries(queryClient, app)
+    onSuccess: (submission) => {
+      queryClient.setQueryData(
+        generatedAppKeys.publicSubmission(token, submission.id),
+        submission,
+      )
+      queryClient.invalidateQueries({
+        queryKey: generatedAppKeys.publicSubmission(token, submission.id),
+      })
     },
   })
 }

@@ -14,7 +14,11 @@ import { cn } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import { useToast } from '@/shared/ui/toast'
-import { useCreateGeneratedApp, useGeneratedApps } from '../api'
+import {
+  useCreateGeneratedApp,
+  useGeneratedApps,
+  useStartGeneratedAppGenerationRun,
+} from '../api'
 import { GeneratedAppPublicSharePanel } from './GeneratedAppPublicSharePanel'
 import {
   GENERATED_APP_READINESS_LABELS,
@@ -26,6 +30,13 @@ import {
 import type { GeneratedApp } from '../types'
 
 const PAGE_SIZE = 12
+
+interface GenerationLaunchState {
+  appId: string
+  appName: string
+  summary: string
+  status: 'started' | 'failed'
+}
 
 function GeneratedAppCard({ app }: { app: GeneratedApp }) {
   return (
@@ -110,7 +121,11 @@ export function GeneratedAppListPage() {
   const { notify } = useToast()
   const [prompt, setPrompt] = useState('')
   const [page, setPage] = useState(1)
+  const [lastLaunch, setLastLaunch] = useState<GenerationLaunchState | null>(
+    null,
+  )
   const createGeneratedAppMutation = useCreateGeneratedApp()
+  const startGenerationRunMutation = useStartGeneratedAppGenerationRun()
   const { data, isError, isFetching, isLoading, refetch } = useGeneratedApps({
     page,
     pageSize: PAGE_SIZE,
@@ -133,16 +148,64 @@ export function GeneratedAppListPage() {
         return
       }
 
+      let createdApp: GeneratedApp | null = null
+
       try {
-        await createGeneratedAppMutation.mutateAsync({ prompt: trimmedPrompt })
+        createdApp = await createGeneratedAppMutation.mutateAsync({
+          prompt: trimmedPrompt,
+        })
+        const startResult = await startGenerationRunMutation.mutateAsync({
+          appId: createdApp.id,
+          triggerSource: 'initial',
+        })
+        const runPassed = startResult.generationRun.status === 'passed'
         setPrompt('')
         setPage(1)
+        setLastLaunch({
+          appId: startResult.app.id,
+          appName: startResult.app.appName,
+          summary: `${
+            runPassed
+              ? startResult.generationRun.summary
+              : startResult.generationRun.failureReason ||
+                startResult.generationRun.summary
+          }（${startResult.gateRuns.length} 个 Gate 已写入证据）`,
+          status: runPassed ? 'started' : 'failed',
+        })
         notify({
-          title: '生成任务已创建',
-          description: '系统已生成 AppSpec 初稿和 Gate 0-7 门禁检查项。',
-          variant: 'success',
+          title: runPassed
+            ? '自动生成与验证已完成'
+            : '自动生成与验证未通过',
+          description: runPassed
+            ? '应用已完成当前自动生成与门禁验证，可进入详情查看结果。'
+            : startResult.generationRun.failureReason ||
+              startResult.generationRun.summary,
+          variant: runPassed ? 'success' : 'warning',
         })
       } catch (error) {
+        if (createdApp) {
+          setPrompt('')
+          setPage(1)
+          setLastLaunch({
+            appId: createdApp.id,
+            appName: createdApp.appName,
+            summary:
+              error instanceof Error
+                ? error.message
+                : '自动生成与验证启动失败，请进入详情页重试。',
+            status: 'failed',
+          })
+          notify({
+            title: '应用已创建，但自动生成启动失败',
+            description:
+              error instanceof Error
+                ? error.message
+                : '请进入详情页重新运行自动生成与验证。',
+            variant: 'warning',
+          })
+          return
+        }
+
         notify({
           title: '创建失败',
           description: error instanceof Error ? error.message : '请稍后重试。',
@@ -150,8 +213,11 @@ export function GeneratedAppListPage() {
         })
       }
     },
-    [createGeneratedAppMutation, notify, prompt],
+    [createGeneratedAppMutation, notify, prompt, startGenerationRunMutation],
   )
+
+  const isCreatingOrRunning =
+    createGeneratedAppMutation.isPending || startGenerationRunMutation.isPending
 
   return (
     <div className="h-full overflow-auto" data-testid="generated-app-list-page">
@@ -182,23 +248,53 @@ export function GeneratedAppListPage() {
                 onChange={(event) => setPrompt(event.target.value)}
                 placeholder="例如：自动化中医问诊系统，能逐步提问并生成分析报告"
                 maxLength={4000}
-                disabled={createGeneratedAppMutation.isPending}
+                disabled={isCreatingOrRunning}
               />
               <Button
                 type="submit"
-                disabled={createGeneratedAppMutation.isPending}
+                disabled={isCreatingOrRunning}
                 className="shrink-0"
               >
-                {createGeneratedAppMutation.isPending ? (
+                {isCreatingOrRunning ? (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 ) : (
                   <WandSparkles className="mr-2 h-4 w-4" />
                 )}
-                创建应用
+                {isCreatingOrRunning ? '正在生成' : '创建并生成应用'}
               </Button>
             </div>
           </form>
         </section>
+
+        {lastLaunch ? (
+          <section
+            className={cn(
+              'rounded-lg border p-4',
+              lastLaunch.status === 'started'
+                ? 'border-emerald-500/30 bg-emerald-500/5'
+                : 'border-amber-500/30 bg-amber-500/5',
+            )}
+          >
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0 space-y-1">
+                <h2 className="break-words text-sm font-semibold text-foreground">
+                  {lastLaunch.appName}
+                </h2>
+                <p className="break-words text-sm text-muted-foreground">
+                  {lastLaunch.summary}
+                </p>
+              </div>
+              <Link
+                to="/generated-apps/$appId"
+                params={{ appId: lastLaunch.appId }}
+                className="inline-flex shrink-0 items-center gap-1 text-sm font-medium text-primary hover:text-primary/80"
+              >
+                进入详情
+                <ArrowRight className="h-3.5 w-3.5" />
+              </Link>
+            </div>
+          </section>
+        ) : null}
 
         {isLoading ? (
           <section className="rounded-lg border border-border bg-card p-6">

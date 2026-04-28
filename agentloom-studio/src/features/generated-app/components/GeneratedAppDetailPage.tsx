@@ -7,11 +7,13 @@ import {
   FileCode2,
   Loader2,
   ListChecks,
+  WandSparkles,
 } from 'lucide-react'
 
 import { cn } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
-import { useGeneratedApp } from '../api'
+import { useToast } from '@/shared/ui/toast'
+import { useGeneratedApp, useStartGeneratedAppGenerationRun } from '../api'
 import { GeneratedAppGenerationEvidencePanel } from './GeneratedAppGenerationEvidencePanel'
 import { GeneratedAppPublicSharePanel } from './GeneratedAppPublicSharePanel'
 import { GeneratedAppSubmissionsPanel } from './GeneratedAppSubmissionsPanel'
@@ -395,7 +397,9 @@ function AppSpecSection({ app }: { app: GeneratedApp }) {
 }
 
 export function GeneratedAppDetailPage({ appId }: GeneratedAppDetailPageProps) {
+  const { notify } = useToast()
   const { data: app, isError, isLoading, refetch } = useGeneratedApp(appId)
+  const startGenerationRunMutation = useStartGeneratedAppGenerationRun(appId)
 
   if (isLoading) {
     return (
@@ -439,6 +443,33 @@ export function GeneratedAppDetailPage({ appId }: GeneratedAppDetailPageProps) {
     : app.publicShareEnabled
       ? '门禁不可用'
       : '未启用'
+  const runActionLabel =
+    app.gateResults.length > 0 ? '重新运行自动生成与验证' : '运行自动生成与验证'
+
+  const handleStartGenerationRun = async () => {
+    try {
+      const result = await startGenerationRunMutation.mutateAsync({
+        triggerSource: app.gateResults.length > 0 ? 'retry' : 'manual',
+      })
+      notify({
+        title: '自动生成与验证已完成',
+        description:
+          result.generationRun.status === 'passed'
+            ? '应用已进入当前自动生成结果，可继续查看证据或启用公开分享。'
+            : result.generationRun.failureReason ||
+              result.generationRun.summary,
+        variant:
+          result.generationRun.status === 'passed' ? 'success' : 'warning',
+      })
+      void refetch()
+    } catch (error) {
+      notify({
+        title: '自动生成启动失败',
+        description: error instanceof Error ? error.message : '请稍后重试。',
+        variant: 'error',
+      })
+    }
+  }
 
   return (
     <div
@@ -500,6 +531,35 @@ export function GeneratedAppDetailPage({ appId }: GeneratedAppDetailPageProps) {
             </dl>
           </div>
         </header>
+
+        <DetailSection
+          title="自动生成与验证"
+          description="从当前 AppSpec 启动受控生成、测试和发布候选检查；公开分享仍需在 readiness 允许后显式启用。"
+        >
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0 space-y-1 text-sm text-muted-foreground">
+              <p className="break-words">{app.readiness.summary}</p>
+              <p>
+                当前阻断项 {app.readiness.blockingIssueCount} 个，Warning{' '}
+                {app.readiness.warningCount} 个。
+              </p>
+            </div>
+            <Button
+              onClick={() => void handleStartGenerationRun()}
+              disabled={startGenerationRunMutation.isPending}
+              className="shrink-0"
+            >
+              {startGenerationRunMutation.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <WandSparkles className="mr-2 h-4 w-4" />
+              )}
+              {startGenerationRunMutation.isPending
+                ? '正在运行'
+                : runActionLabel}
+            </Button>
+          </div>
+        </DetailSection>
 
         <DetailSection
           title="Public share"

@@ -324,6 +324,18 @@ export interface CreateGeneratedAppPublicSubmissionPayload {
   clientContext?: Record<string, unknown>
 }
 
+export interface StartGeneratedAppGenerationRunPayload {
+  triggerSource?: GeneratedAppGenerationRunTrigger
+  maxRepairAttempts?: number
+  maxRuntimeSeconds?: number
+}
+
+export interface StartGeneratedAppGenerationRunResponse {
+  generationRun: GeneratedAppGenerationRun
+  gateRuns: GeneratedAppGateRun[]
+  app: GeneratedApp
+}
+
 export interface RecordGeneratedAppGateResultsPayload {
   gateResults: GeneratedAppGateResult[]
   generationPlan?: Record<string, unknown> | null

@@ -36,6 +36,8 @@ export type {
   ListGeneratedAppsParams,
   ListGeneratedAppSubmissionsParams,
   RecordGeneratedAppGateResultsPayload,
+  StartGeneratedAppGenerationRunPayload,
+  StartGeneratedAppGenerationRunResponse,
   CreateGeneratedAppPublicSubmissionPayload,
   DeleteGeneratedAppSubmissionsResponse,
 } from './generated-app.types'

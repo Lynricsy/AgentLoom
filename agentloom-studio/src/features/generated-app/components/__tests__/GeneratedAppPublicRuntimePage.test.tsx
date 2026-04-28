@@ -1,25 +1,53 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { GeneratedAppPublicRuntime } from '../../types'
+import type {
+  GeneratedAppPublicRuntime,
+  GeneratedAppPublicSubmission,
+} from '../../types'
 
-const { publicRuntimeQuery, useGeneratedAppPublicRuntimeMock } = vi.hoisted(
-  () => ({
-    publicRuntimeQuery: {
-      data: undefined as unknown,
-      isError: false,
-      isLoading: false,
-      refetch: vi.fn(),
-    },
-    useGeneratedAppPublicRuntimeMock: vi.fn(),
-  }),
-)
+const {
+  createPublicSubmissionMutation,
+  publicRuntimeQuery,
+  publicSubmissionQuery,
+  useGeneratedAppPublicRuntimeMock,
+  useGeneratedAppPublicSubmissionMock,
+} = vi.hoisted(() => ({
+  createPublicSubmissionMutation: {
+    mutateAsync: vi.fn(),
+    data: undefined as unknown,
+    isPending: false,
+  },
+  publicRuntimeQuery: {
+    data: undefined as unknown,
+    isError: false,
+    isLoading: false,
+    refetch: vi.fn(),
+  },
+  publicSubmissionQuery: {
+    data: undefined as unknown,
+    isError: false,
+    isFetching: false,
+    isLoading: false,
+    refetch: vi.fn(),
+  },
+  useGeneratedAppPublicRuntimeMock: vi.fn(),
+  useGeneratedAppPublicSubmissionMock: vi.fn(),
+}))
 
 vi.mock('../../api', () => ({
+  useCreateGeneratedAppPublicSubmission: () => createPublicSubmissionMutation,
   useGeneratedAppPublicRuntime: (token: string | undefined) => {
     useGeneratedAppPublicRuntimeMock(token)
     return publicRuntimeQuery
+  },
+  useGeneratedAppPublicSubmission: (
+    token: string | undefined,
+    submissionId: string | undefined,
+  ) => {
+    useGeneratedAppPublicSubmissionMock(token, submissionId)
+    return publicSubmissionQuery
   },
 }))
 
@@ -56,6 +84,25 @@ function makePublicRuntime(
   }
 }
 
+function makePublicSubmission(
+  overrides: Partial<GeneratedAppPublicSubmission> = {},
+): GeneratedAppPublicSubmission {
+  return {
+    id: 'submission-public',
+    appId: 'app-public',
+    appSpecVersion: 1,
+    status: 'completed',
+    anonymousSessionId: 'anon-public',
+    input: { symptom: '头痛' },
+    result: { triage: '建议继续补充症状' },
+    report: { summary: '已生成问诊摘要' },
+    errorMessage: null,
+    createdAt: '2026-04-25T02:00:00.000Z',
+    updatedAt: '2026-04-25T02:05:00.000Z',
+    ...overrides,
+  }
+}
+
 const { GeneratedAppPublicRuntimePage } =
   await import('../GeneratedAppPublicRuntimePage')
 
@@ -66,6 +113,14 @@ describe('GeneratedAppPublicRuntimePage', () => {
     publicRuntimeQuery.isError = false
     publicRuntimeQuery.isLoading = false
     publicRuntimeQuery.refetch = vi.fn()
+    publicSubmissionQuery.data = undefined
+    publicSubmissionQuery.isError = false
+    publicSubmissionQuery.isFetching = false
+    publicSubmissionQuery.isLoading = false
+    publicSubmissionQuery.refetch = vi.fn()
+    createPublicSubmissionMutation.mutateAsync = vi.fn()
+    createPublicSubmissionMutation.data = undefined
+    createPublicSubmissionMutation.isPending = false
   })
 
   it('renders data use notice, limited AppSpec, and preview link', () => {
@@ -123,6 +178,75 @@ describe('GeneratedAppPublicRuntimePage', () => {
     expect(
       screen.queryByRole('link', { name: /打开运行预览/ }),
     ).not.toBeInTheDocument()
+  })
+
+  it('submits text input and renders public submission fields without creator-only data', async () => {
+    const user = userEvent.setup()
+    const publicSubmission = makePublicSubmission()
+    createPublicSubmissionMutation.mutateAsync.mockImplementation(async () => {
+      publicSubmissionQuery.data = publicSubmission
+      return publicSubmission
+    })
+
+    render(<GeneratedAppPublicRuntimePage token="public-token" />)
+
+    await user.type(screen.getByLabelText('提交内容'), '我最近头痛')
+    await user.click(screen.getByRole('button', { name: '提交给应用' }))
+
+    await waitFor(() => {
+      expect(createPublicSubmissionMutation.mutateAsync).toHaveBeenCalledWith({
+        input: { text: '我最近头痛' },
+        clientContext: expect.objectContaining({
+          submittedAt: expect.any(String),
+        }),
+      })
+      expect(useGeneratedAppPublicSubmissionMock).toHaveBeenCalledWith(
+        'public-token',
+        'submission-public',
+      )
+    })
+
+    expect(screen.getByText('submission-public')).toBeInTheDocument()
+    expect(screen.getByText('已完成')).toBeInTheDocument()
+    expect(screen.getAllByText(/头痛/).length).toBeGreaterThan(0)
+    expect(screen.getByText(/建议继续补充症状/)).toBeInTheDocument()
+    expect(screen.getByText(/已生成问诊摘要/)).toBeInTheDocument()
+
+    expect(screen.queryByText(/public-token/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/publicShareToken/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/readiness/i)).not.toBeInTheDocument()
+    expect(screen.queryByText(/gateResults/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/sourceArtifactUrl/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/testReportUrl/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/pluginIds/)).not.toBeInTheDocument()
+  })
+
+  it('submits object JSON input without wrapping it as text', async () => {
+    const user = userEvent.setup()
+    const publicSubmission = makePublicSubmission({
+      id: 'submission-json',
+      input: { symptom: '头痛', duration: '2天' },
+    })
+    createPublicSubmissionMutation.mutateAsync.mockImplementation(async () => {
+      publicSubmissionQuery.data = publicSubmission
+      return publicSubmission
+    })
+
+    render(<GeneratedAppPublicRuntimePage token="public-token" />)
+
+    fireEvent.change(screen.getByLabelText('提交内容'), {
+      target: { value: '{"symptom":"头痛","duration":"2天"}' },
+    })
+    await user.click(screen.getByRole('button', { name: '提交给应用' }))
+
+    await waitFor(() => {
+      expect(createPublicSubmissionMutation.mutateAsync).toHaveBeenCalledWith({
+        input: { symptom: '头痛', duration: '2天' },
+        clientContext: expect.objectContaining({
+          submittedAt: expect.any(String),
+        }),
+      })
+    })
   })
 
   it('renders an inaccessible or closed state when public runtime lookup fails', async () => {

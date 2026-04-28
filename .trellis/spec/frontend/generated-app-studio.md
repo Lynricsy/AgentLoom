@@ -19,6 +19,7 @@
   - `listGeneratedApps({ page?, pageSize?, status? })`
   - `getGeneratedApp(appId)`
   - `getGeneratedAppPublicRuntime(token)`
+  - `startGeneratedAppGenerationRun(appId, { triggerSource?, maxRepairAttempts?, maxRuntimeSeconds? })`
   - `listGeneratedAppSubmissions(appId, { page?, pageSize?, status? })`
   - `getGeneratedAppSubmission(appId, submissionId)`
   - `deleteGeneratedAppSubmission(appId, submissionId)`
@@ -59,8 +60,8 @@
   - Enable public share only when:
 
 ```ts
-app.readiness.state === 'publish_candidate' &&
-  app.readiness.canCreatePublicShare === true
+app.readiness.state === "publish_candidate" &&
+  app.readiness.canCreatePublicShare === true;
 ```
 
 - Disabled states:
@@ -72,6 +73,11 @@ app.readiness.state === 'publish_candidate' &&
   - Public runtime pages must not show `gateResults`, `readiness`, source artifact URLs, test report URLs, plugin permission details, public share tokens, or creator-only pages.
   - `getGeneratedAppPublicRuntime(token)` must map the response through a public whitelist before returning data to components. Allowed fields are `token`, `appId`, `title`, `description`, `dataUseNotice`, limited `appSpec` (`version`, `appName`, `summary`, `userGoal`, `actors`, `pages[].id/name/purpose`), `runtimeSurface.kind`, `runtimeSurface.previewUrl`, and `createdAt`.
   - Even though the API client may keep `token` for cache identity/debugging, public runtime components must not render token values or a derived access identifier.
+- Creator generation action:
+  - `/generated-apps` may create a Generated App and immediately call `startGeneratedAppGenerationRun()` with `triggerSource='initial'` so zero-background users do not need to understand Gate APIs.
+  - `/generated-apps/$appId` exposes a creator primary action for running or rerunning automatic generation and verification.
+  - The start-run mutation must write the returned `app` into the detail cache and invalidate generated app lists, generation-run lists, Gate-run lists, and the selected run's repair-attempt list when a run id is returned.
+  - Starting a generation run must not enable public sharing by itself. Public-share enable/regenerate controls still rely only on backend `readiness.state === 'publish_candidate' && readiness.canCreatePublicShare === true`.
 - Creator submissions UI:
   - `/generated-apps/$appId` contains a creator-only submissions section backed by `GET /generated-apps/:appId/submissions`.
   - The submissions list supports pagination and optional `status` filter using the backend submission status union: `received | running | completed | failed`.
@@ -90,8 +96,9 @@ app.readiness.state === 'publish_candidate' &&
   - Gate runs surface canonical gate snapshot, status, attempt number, blocking flag, summary, failure/repair text, evidence count, and compact evidence summaries.
   - The evidence section must not render public share token values, creator submission `publicShareToken`, or evidence URLs by default; use evidence labels/kinds/summaries for the first creator-side view.
 - Public submissions API boundary:
-  - Public submission functions may exist in the generated-app API layer for future custom generated frontends.
-  - The built-in `GeneratedAppPublicRuntimePage` must not grow a fixed form/template submission UI. End-user submission UX belongs to generated/custom runtime surfaces, not a hardcoded Studio public page.
+  - Public submission functions exist in the generated-app API layer for both built-in public runtime and future custom generated frontends.
+  - The built-in `GeneratedAppPublicRuntimePage` provides a minimal generic text/JSON submission surface until a custom generated frontend/runtime surface is available.
+  - The built-in page posts through `createGeneratedAppPublicSubmission(token, payload)`, reads the resulting detail through `getGeneratedAppPublicSubmission(token, submissionId)`, and displays only submission id, status, anonymous session id, AppSpec version, timestamps, input, result, report, and error message.
   - Public submission responses must stay separate from creator submission responses and must not expose tenant id, public token, readiness, gate evidence, source/test artifacts, or plugin/internal fields.
 - Public route shell:
   - Static public routes (`/login`, `/register`, `/auth/callback`) must be exact matches.
@@ -103,36 +110,42 @@ app.readiness.state === 'publish_candidate' &&
 
 ### 4. Validation & Error Matrix
 
-| Condition | Required UI behavior |
-|-----------|----------------------|
-| Prompt is empty | Disable or reject create submission locally |
-| Create succeeds | Clear the prompt, refresh generated app lists, and surface the new task in the workbench |
-| List fetch fails | Show a workbench error state; do not fabricate tasks |
-| `readiness.state='preview'` | Disable public share, show `readiness.summary` |
-| `readiness.state='blocked'` | Disable public share, show `readiness.summary` |
-| `readiness.state='trial'` | Disable public share, show `readiness.summary`; do not label it publishable |
-| `readiness.state='publish_candidate'` but `canCreatePublicShare=false` | Disable public share; treat it as backend-inconsistent and unsafe |
-| `readiness.state='publish_candidate'` and `canCreatePublicShare=true` | Allow enable/regenerate share mutations |
-| `publicShareEnabled=true` but readiness is not eligible | Treat as stale; do not show old URL or regenerate/open actions |
-| Share mutation succeeds | Update detail cache and invalidate list queries |
-| Creator submission list fetch fails | Show an error state and retry action; do not fabricate submissions |
-| Creator submission list is empty | Show an empty state, not a blank table |
-| Creator selects a submission | Fetch detail by `appId + submissionId` and render read-only `input/result/report/errorMessage` |
-| Creator deletes one submission | Confirm first, call single delete, clear selected detail if needed, invalidate submissions list/detail, and toast success/failure |
-| Creator deletes selected submissions | Confirm first, call bulk delete with `{ ids }`, clear selection/detail if needed, invalidate submissions list/detail, and toast success/failure |
-| Generation run list is empty | Show an empty state, not a blank table |
-| No generation run is selected | Do not fetch repair attempt or Gate run evidence lists; show a selection prompt |
-| Creator selects a generation run | Fetch repair attempts by `appId + generationRunId` and gate runs with `generationRunId` |
-| Creator selects a repair attempt | Fetch gate runs with both `generationRunId` and `repairAttemptId` |
-| Generation evidence list fetch fails | Show an error state and retry action; do not fabricate run or gate data |
-| `/generated-apps/public/:token` lookup fails | Show an inaccessible/closed public state; do not redirect to login |
-| `/login-required-private` or another same-prefix private route is visited unauthenticated | Treat as private and redirect to login |
+| Condition                                                                                 | Required UI behavior                                                                                                                                            |
+| ----------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Prompt is empty                                                                           | Disable or reject create submission locally                                                                                                                     |
+| Create succeeds                                                                           | Clear the prompt, refresh generated app lists, start the initial automatic generation run or surface a retryable start failure, and show a detail link          |
+| List fetch fails                                                                          | Show a workbench error state; do not fabricate tasks                                                                                                            |
+| Start generation run succeeds                                                             | Update detail cache, invalidate list/generation-run/Gate-run caches, show a creator-facing completion/failure summary, and keep public share gated by readiness |
+| Start generation run fails after create                                                   | Keep the created app, show the failure reason, and offer the detail page so the creator can rerun                                                               |
+| `readiness.state='preview'`                                                               | Disable public share, show `readiness.summary`                                                                                                                  |
+| `readiness.state='blocked'`                                                               | Disable public share, show `readiness.summary`                                                                                                                  |
+| `readiness.state='trial'`                                                                 | Disable public share, show `readiness.summary`; do not label it publishable                                                                                     |
+| `readiness.state='publish_candidate'` but `canCreatePublicShare=false`                    | Disable public share; treat it as backend-inconsistent and unsafe                                                                                               |
+| `readiness.state='publish_candidate'` and `canCreatePublicShare=true`                     | Allow enable/regenerate share mutations                                                                                                                         |
+| `publicShareEnabled=true` but readiness is not eligible                                   | Treat as stale; do not show old URL or regenerate/open actions                                                                                                  |
+| Share mutation succeeds                                                                   | Update detail cache and invalidate list queries                                                                                                                 |
+| Creator submission list fetch fails                                                       | Show an error state and retry action; do not fabricate submissions                                                                                              |
+| Creator submission list is empty                                                          | Show an empty state, not a blank table                                                                                                                          |
+| Creator selects a submission                                                              | Fetch detail by `appId + submissionId` and render read-only `input/result/report/errorMessage`                                                                  |
+| Creator deletes one submission                                                            | Confirm first, call single delete, clear selected detail if needed, invalidate submissions list/detail, and toast success/failure                               |
+| Creator deletes selected submissions                                                      | Confirm first, call bulk delete with `{ ids }`, clear selection/detail if needed, invalidate submissions list/detail, and toast success/failure                 |
+| Generation run list is empty                                                              | Show an empty state, not a blank table                                                                                                                          |
+| No generation run is selected                                                             | Do not fetch repair attempt or Gate run evidence lists; show a selection prompt                                                                                 |
+| Creator selects a generation run                                                          | Fetch repair attempts by `appId + generationRunId` and gate runs with `generationRunId`                                                                         |
+| Creator selects a repair attempt                                                          | Fetch gate runs with both `generationRunId` and `repairAttemptId`                                                                                               |
+| Generation evidence list fetch fails                                                      | Show an error state and retry action; do not fabricate run or gate data                                                                                         |
+| `/generated-apps/public/:token` lookup fails                                              | Show an inaccessible/closed public state; do not redirect to login                                                                                              |
+| Public runtime submission is empty                                                        | Reject locally and keep the user on the public runtime page                                                                                                     |
+| Public runtime submission succeeds                                                        | Show submission id, status, input, result, report, and error message from the public submission response/detail                                                 |
+| Public runtime submission/detail response includes creator-only fields                    | Drop them in the API mapping or avoid rendering them in the component                                                                                           |
+| `/login-required-private` or another same-prefix private route is visited unauthenticated | Treat as private and redirect to login                                                                                                                          |
 
 ### 5. Good / Base / Bad Cases
 
-- Good: a newly created app appears in the list as preview-only, with Gate readiness summary visible and public share disabled.
+- Good: a newly created app starts its initial automatic generation run from the list page, surfaces the resulting summary, and keeps public share disabled unless backend readiness says it is publishable.
+- Good: the creator detail page can rerun automatic generation and verification, then refresh generation-run/Gate-run evidence while leaving public-share controls readiness-gated.
 - Good: a publish candidate row enables the public-share action and mutation invalidates list queries.
-- Good: a public runtime page shows data-use notice, public AppSpec summary, and a runtime preview link without rendering Studio navigation or the token value.
+- Good: a public runtime page shows data-use notice, public AppSpec summary, runtime preview link, a minimal text/JSON submission surface, and public submission result/status without rendering Studio navigation or the token value.
 - Good: creator detail page shows submission rows and detail JSON panels without rendering `publicShareToken`.
 - Good: creator detail page shows generation runs, repair attempts, and Gate run evidence summaries, while filtering Gate runs by the selected generation run and optional repair attempt.
 - Good: creator deletion uses single or batch delete API after confirmation and refreshes submission caches.
@@ -145,19 +158,22 @@ app.readiness.state === 'publish_candidate' &&
 - Bad: Studio treats `/login-required-private` as public because `/login` was checked with `startsWith`.
 - Bad: Studio renders public share token values as a default column in the submissions table.
 - Bad: Studio renders evidence URLs or public token snapshots as default columns in the generation evidence panel.
-- Bad: the built-in public runtime page grows a fixed generated-app form that bypasses the custom generated frontend/runtime surface.
+- Bad: the built-in public runtime page posts submissions through creator endpoints or renders creator-only submission fields such as tenant id, public token, readiness, gate results, source/test artifacts, or plugin ids.
 
 ### 6. Tests Required
 
 - API tests:
   - paths for create/list/detail/gate update/share enable/share regenerate/share disable.
+  - path and camelCase payload for `POST /generated-apps/:appId/generation-runs/start`.
   - paths for creator submission list/detail/single delete/bulk delete.
   - paths for generation run list, repair attempt list, and gate run list filters.
-  - public submission create/detail helper paths if those helpers exist.
+  - public submission create/detail helper paths and response whitelist behavior.
   - Generated App payload casing remains camelCase unless backend changes.
 - Query/mutation tests:
   - share enable writes the detail cache and invalidates list queries.
   - create invalidates list queries.
+  - start generation run writes the returned app into detail cache and invalidates list, generation-run, Gate-run, and repair-attempt query keys.
+  - public submission create writes and invalidates the public submission detail query key.
   - creator submission delete mutations invalidate submission list/detail keys and clear removed detail caches.
 - Component tests:
   - `preview`, `trial`, and `blocked` disable public share and show `readiness.summary`.
@@ -165,7 +181,9 @@ app.readiness.state === 'publish_candidate' &&
   - `publish_candidate + canCreatePublicShare=true` triggers the share mutation.
   - stale enabled share (`publicShareEnabled=true` + ineligible readiness) hides old public URL and regenerate/open actions.
   - public runtime API mapping drops creator-only fields and nested source/test/plugin artifacts.
-  - public runtime page renders data-use notice, limited AppSpec, optional preview link, and does not render tokens or internal fields.
+  - list page creation starts automatic generation and provides a detail link even when the runner fails after create.
+  - detail page start-run action triggers automatic generation and verification without enabling public share.
+  - public runtime page renders data-use notice, limited AppSpec, optional preview link, generic text/JSON submission UI, public submission result/detail, and does not render tokens or internal fields.
   - creator submissions panel renders list rows, detail selection, status filter, pagination, delete confirmation, empty state, and error state.
   - creator generation evidence panel renders generation runs, loads repair/gate data after run selection, filters gate data after repair selection, shows failure/evidence summaries, and shows empty/error states.
   - detail page tests either mock the submissions hooks or assert the submissions section renders with an empty state.
@@ -180,23 +198,21 @@ app.readiness.state === 'publish_candidate' &&
 Wrong:
 
 ```tsx
-const canShare = app.status === 'publish_candidate';
+const canShare = app.status === "publish_candidate";
 ```
 
 Correct:
 
 ```tsx
 const canShare =
-  app.readiness.state === 'publish_candidate' &&
+  app.readiness.state === "publish_candidate" &&
   app.readiness.canCreatePublicShare;
 ```
 
 Wrong:
 
 ```tsx
-const isPublicRoute = PUBLIC_ROUTES.some((route) =>
-  pathname.startsWith(route),
-);
+const isPublicRoute = PUBLIC_ROUTES.some((route) => pathname.startsWith(route));
 ```
 
 Correct:

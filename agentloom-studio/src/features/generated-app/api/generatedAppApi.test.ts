@@ -18,6 +18,7 @@ import {
   listGeneratedApps,
   recordGeneratedAppGateResults,
   regenerateGeneratedAppPublicShare,
+  startGeneratedAppGenerationRun,
 } from './generatedAppApi'
 import type {
   GeneratedApp,
@@ -26,6 +27,7 @@ import type {
   GeneratedAppGenerationRun,
   GeneratedAppRepairAttempt,
   GeneratedAppSubmission,
+  StartGeneratedAppGenerationRunResponse,
 } from '../types'
 
 const { deleteMock, getMock, patchMock, postMock } = vi.hoisted(() => ({
@@ -395,6 +397,49 @@ describe('generatedAppApi', () => {
     expect(gateRuns).toEqual(gateRunsResponse)
   })
 
+  it('starts a synchronous generation run through the runner endpoint', async () => {
+    const response: StartGeneratedAppGenerationRunResponse = {
+      generationRun: makeGenerationRun({
+        id: 'run-started',
+        status: 'passed',
+        triggerSource: 'manual',
+      }),
+      gateRuns: [makeGateRun({ id: 'gate-run-started' })],
+      app: makeGeneratedApp({
+        id: 'app-runner',
+        status: 'publish_candidate',
+        readiness: {
+          state: 'publish_candidate',
+          canCreatePublicShare: true,
+          blockingIssueCount: 0,
+          warningCount: 0,
+          summary: '全部阻断门禁已通过且没有 warning。',
+          blockers: [],
+          warnings: [],
+        },
+      }),
+    }
+    postMock.mockReturnValue(mockKyJson({ data: response }))
+
+    const result = await startGeneratedAppGenerationRun('app-runner', {
+      triggerSource: 'manual',
+      maxRepairAttempts: 4,
+      maxRuntimeSeconds: 2400,
+    })
+
+    expect(postMock).toHaveBeenCalledWith(
+      'generated-apps/app-runner/generation-runs/start',
+      {
+        json: {
+          triggerSource: 'manual',
+          maxRepairAttempts: 4,
+          maxRuntimeSeconds: 2400,
+        },
+      },
+    )
+    expect(result).toEqual(response)
+  })
+
   it('fetches and deletes creator submission details through scoped app paths', async () => {
     const submission = makeSubmission({ id: 'submission-detail' })
     getMock.mockReturnValue(mockKyJson({ data: submission }))
@@ -523,6 +568,13 @@ describe('generatedAppApi', () => {
       errorMessage: null,
       createdAt: '2026-04-25T02:00:00.000Z',
       updatedAt: '2026-04-25T02:00:00.000Z',
+      publicShareToken: 'public-token',
+      tenantId: 'tenant-private',
+      readiness: makeGeneratedApp().readiness,
+      gateResults: [makeGateResult()],
+      sourceArtifactUrl: 'https://internal.example.test/source.zip',
+      testReportUrl: 'https://internal.example.test/report.json',
+      pluginIds: ['plugin-private'],
     }
     postMock.mockReturnValue(mockKyJson({ data: publicSubmission }))
     getMock.mockReturnValue(mockKyJson({ data: publicSubmission }))
@@ -550,8 +602,27 @@ describe('generatedAppApi', () => {
     expect(getMock).toHaveBeenCalledWith(
       'generated-apps/public/token%2Fvalue/submissions/submission-public',
     )
-    expect(created).toEqual(publicSubmission)
-    expect(detail).toEqual(publicSubmission)
+    expect(created).toEqual({
+      id: 'submission-public',
+      appId: 'app-public',
+      appSpecVersion: 1,
+      anonymousSessionId: 'anon-public',
+      status: 'received',
+      input: { answer: '头痛' },
+      result: null,
+      report: null,
+      errorMessage: null,
+      createdAt: '2026-04-25T02:00:00.000Z',
+      updatedAt: '2026-04-25T02:00:00.000Z',
+    })
+    expect(detail).toEqual(created)
+    expect(created).not.toHaveProperty('publicShareToken')
+    expect(created).not.toHaveProperty('tenantId')
+    expect(created).not.toHaveProperty('readiness')
+    expect(created).not.toHaveProperty('gateResults')
+    expect(created).not.toHaveProperty('sourceArtifactUrl')
+    expect(created).not.toHaveProperty('testReportUrl')
+    expect(created).not.toHaveProperty('pluginIds')
   })
 
   it('records gate results without snake-casing the backend camelCase contract', async () => {

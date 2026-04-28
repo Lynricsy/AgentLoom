@@ -20,6 +20,7 @@ const {
   generationRunsQuery,
   repairAttemptsQuery,
   regenerateShareMutation,
+  startGenerationRunMutation,
   submissionDetailQuery,
   submissionsQuery,
   useGeneratedAppMock,
@@ -80,6 +81,10 @@ const {
     mutateAsync: vi.fn(),
     isPending: false,
   },
+  startGenerationRunMutation: {
+    mutateAsync: vi.fn(),
+    isPending: false,
+  },
   submissionDetailQuery: {
     data: undefined as unknown,
     isError: false,
@@ -118,6 +123,10 @@ vi.mock('../../api', () => ({
   useRegenerateGeneratedAppPublicShare: (appId: string) => {
     useGeneratedAppMock(`regenerate:${appId}`)
     return regenerateShareMutation
+  },
+  useStartGeneratedAppGenerationRun: (appId: string) => {
+    useGeneratedAppMock(`start:${appId}`)
+    return startGenerationRunMutation
   },
   useGeneratedAppSubmission: () => submissionDetailQuery,
   useGeneratedAppSubmissions: () => submissionsQuery,
@@ -274,6 +283,8 @@ describe('GeneratedAppDetailPage', () => {
     regenerateShareMutation.isPending = false
     disableShareMutation.mutateAsync = vi.fn()
     disableShareMutation.isPending = false
+    startGenerationRunMutation.mutateAsync = vi.fn()
+    startGenerationRunMutation.isPending = false
     deleteSubmissionMutation.mutateAsync = vi.fn()
     deleteSubmissionMutation.isPending = false
     deleteSubmissionsMutation.mutateAsync = vi.fn()
@@ -334,7 +345,7 @@ describe('GeneratedAppDetailPage', () => {
 
       render(<GeneratedAppDetailPage appId="app-detail" />)
 
-      expect(screen.getByText(summary)).toBeInTheDocument()
+      expect(screen.getAllByText(summary).length).toBeGreaterThan(0)
       expect(
         screen.getByRole('button', { name: '公开分享不可用' }),
       ).toBeDisabled()
@@ -397,6 +408,44 @@ describe('GeneratedAppDetailPage', () => {
     })
   })
 
+  it('starts an automatic generation and verification run from the detail page', async () => {
+    const user = userEvent.setup()
+    startGenerationRunMutation.mutateAsync.mockResolvedValue({
+      generationRun: {
+        id: 'run-detail',
+        tenantId: 'tenant-1',
+        appId: 'app-detail',
+        runNumber: 2,
+        status: 'passed',
+        triggerSource: 'retry',
+        maxRepairAttempts: 3,
+        maxRuntimeSeconds: 1800,
+        summary: '自动生成完成。',
+        failureReason: null,
+        startedAt: '2026-04-25T03:00:00.000Z',
+        completedAt: '2026-04-25T03:10:00.000Z',
+        createdBy: 'user-1',
+        createdAt: '2026-04-25T03:00:00.000Z',
+        updatedAt: '2026-04-25T03:10:00.000Z',
+      },
+      gateRuns: [],
+      app: makeGeneratedApp(),
+    })
+
+    render(<GeneratedAppDetailPage appId="app-detail" />)
+
+    await user.click(
+      screen.getByRole('button', { name: '重新运行自动生成与验证' }),
+    )
+
+    await waitFor(() => {
+      expect(startGenerationRunMutation.mutateAsync).toHaveBeenCalledWith({
+        triggerSource: 'retry',
+      })
+      expect(generatedAppQuery.refetch).toHaveBeenCalled()
+    })
+  })
+
   it('treats stale enabled share as unavailable when readiness is blocked', () => {
     generatedAppQuery.data = makeGeneratedApp({
       publicShareEnabled: true,
@@ -416,8 +465,8 @@ describe('GeneratedAppDetailPage', () => {
 
     expect(screen.getByText('门禁不可用')).toBeInTheDocument()
     expect(
-      screen.getByText('阻断态：Gate 5 浏览器验收失败。'),
-    ).toBeInTheDocument()
+      screen.getAllByText('阻断态：Gate 5 浏览器验收失败。').length,
+    ).toBeGreaterThan(0)
     expect(
       screen.getByRole('button', { name: '公开分享不可用' }),
     ).toBeDisabled()

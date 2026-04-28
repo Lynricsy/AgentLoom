@@ -12,6 +12,7 @@ const {
   generatedAppsQuery,
   regenerateShareMutation,
   notifyMock,
+  startGenerationRunMutation,
   useEnableGeneratedAppPublicShareMock,
 } = vi.hoisted(() => ({
   createMutation: {
@@ -38,6 +39,10 @@ const {
     isPending: false,
   },
   notifyMock: vi.fn(),
+  startGenerationRunMutation: {
+    mutateAsync: vi.fn(),
+    isPending: false,
+  },
   useEnableGeneratedAppPublicShareMock: vi.fn(),
 }))
 
@@ -50,6 +55,7 @@ vi.mock('../../api', () => ({
   },
   useGeneratedApps: () => generatedAppsQuery,
   useRegenerateGeneratedAppPublicShare: () => regenerateShareMutation,
+  useStartGeneratedAppGenerationRun: () => startGenerationRunMutation,
 }))
 
 vi.mock('@/shared/ui/toast', () => ({
@@ -170,6 +176,8 @@ describe('GeneratedAppListPage', () => {
     regenerateShareMutation.isPending = false
     disableShareMutation.mutateAsync = vi.fn()
     disableShareMutation.isPending = false
+    startGenerationRunMutation.mutateAsync = vi.fn()
+    startGenerationRunMutation.isPending = false
   })
 
   it('disables public share for preview, warning trial, strict false, and blocked apps while showing backend summaries', () => {
@@ -308,21 +316,113 @@ describe('GeneratedAppListPage', () => {
     })
   })
 
-  it('creates a generated app from a one-sentence prompt and clears the input', async () => {
+  it('creates a generated app from a one-sentence prompt and starts automatic generation', async () => {
     const user = userEvent.setup()
-    createMutation.mutateAsync.mockResolvedValue(makeGeneratedApp())
+    createMutation.mutateAsync.mockResolvedValue(
+      makeGeneratedApp({ id: 'app-created' }),
+    )
+    startGenerationRunMutation.mutateAsync.mockResolvedValue({
+      generationRun: {
+        id: 'run-created',
+        tenantId: 'tenant-1',
+        appId: 'app-created',
+        runNumber: 1,
+        status: 'passed',
+        triggerSource: 'initial',
+        maxRepairAttempts: 3,
+        maxRuntimeSeconds: 1800,
+        summary: '自动生成完成。',
+        failureReason: null,
+        startedAt: '2026-04-25T03:00:00.000Z',
+        completedAt: '2026-04-25T03:10:00.000Z',
+        createdBy: 'user-1',
+        createdAt: '2026-04-25T03:00:00.000Z',
+        updatedAt: '2026-04-25T03:10:00.000Z',
+      },
+      gateRuns: [],
+      app: makeGeneratedApp({ id: 'app-created' }),
+    })
 
     renderWithProviders(<GeneratedAppListPage />)
 
     const input = screen.getByLabelText('一句话描述你要的应用')
     await user.type(input, '自动化中医问诊系统')
-    await user.click(screen.getByRole('button', { name: '创建应用' }))
+    await user.click(screen.getByRole('button', { name: '创建并生成应用' }))
 
     await waitFor(() => {
       expect(createMutation.mutateAsync).toHaveBeenCalledWith({
         prompt: '自动化中医问诊系统',
       })
+      expect(startGenerationRunMutation.mutateAsync).toHaveBeenCalledWith({
+        appId: 'app-created',
+        triggerSource: 'initial',
+      })
     })
     expect(input).toHaveValue('')
+    expect(screen.getByRole('link', { name: /进入详情/ })).toHaveAttribute(
+      'href',
+      '/generated-apps/app-created',
+    )
+    expect(notifyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: '自动生成与验证已完成',
+        variant: 'success',
+      }),
+    )
+  })
+
+  it('keeps the created app visible and warns when the initial generation run fails', async () => {
+    const user = userEvent.setup()
+    createMutation.mutateAsync.mockResolvedValue(
+      makeGeneratedApp({ id: 'app-created' }),
+    )
+    startGenerationRunMutation.mutateAsync.mockResolvedValue({
+      generationRun: {
+        id: 'run-created',
+        tenantId: 'tenant-1',
+        appId: 'app-created',
+        runNumber: 1,
+        status: 'failed',
+        triggerSource: 'initial',
+        maxRepairAttempts: 3,
+        maxRuntimeSeconds: 1800,
+        summary: '自动生成失败。',
+        failureReason: 'Gate 5 浏览器验收未通过。',
+        startedAt: '2026-04-25T03:00:00.000Z',
+        completedAt: '2026-04-25T03:10:00.000Z',
+        createdBy: 'user-1',
+        createdAt: '2026-04-25T03:00:00.000Z',
+        updatedAt: '2026-04-25T03:10:00.000Z',
+      },
+      gateRuns: [],
+      app: makeGeneratedApp({ id: 'app-created' }),
+    })
+
+    renderWithProviders(<GeneratedAppListPage />)
+
+    const input = screen.getByLabelText('一句话描述你要的应用')
+    await user.type(input, '自动化中医问诊系统')
+    await user.click(screen.getByRole('button', { name: '创建并生成应用' }))
+
+    await waitFor(() => {
+      expect(startGenerationRunMutation.mutateAsync).toHaveBeenCalledWith({
+        appId: 'app-created',
+        triggerSource: 'initial',
+      })
+    })
+
+    expect(input).toHaveValue('')
+    expect(screen.getByRole('link', { name: /进入详情/ })).toHaveAttribute(
+      'href',
+      '/generated-apps/app-created',
+    )
+    expect(screen.getByText(/Gate 5 浏览器验收未通过/)).toBeInTheDocument()
+    expect(notifyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: '自动生成与验证未通过',
+        description: 'Gate 5 浏览器验收未通过。',
+        variant: 'warning',
+      }),
+    )
   })
 })

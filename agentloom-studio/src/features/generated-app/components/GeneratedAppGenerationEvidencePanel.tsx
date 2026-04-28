@@ -288,7 +288,7 @@ export function GeneratedAppGenerationEvidencePanel({
     generationRunParams,
   )
   const repairAttemptsQuery = useGeneratedAppRepairAttempts(
-    appId,
+    selectedRunId ? appId : undefined,
     selectedRunId ?? undefined,
     repairAttemptParams,
   )
@@ -350,8 +350,8 @@ export function GeneratedAppGenerationEvidencePanel({
       selectedRunId !== null &&
       generationRuns.some((run) => run.id === selectedRunId)
 
-    if (!selectedRunStillVisible) {
-      setSelectedRunId(generationRuns[0]?.id ?? null)
+    if (selectedRunId !== null && !selectedRunStillVisible) {
+      setSelectedRunId(null)
       setSelectedRepairAttemptId(null)
       setRepairPage(1)
       setGatePage(1)
