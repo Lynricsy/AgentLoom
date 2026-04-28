@@ -924,7 +924,7 @@ export class GeneratedAppService {
     appId: string,
     dto: RecordGeneratedAppGateResultsDtoType,
   ): Promise<GeneratedAppResponseDto> {
-    await this.findGeneratedAppRecord(tenantId, appId);
+    const app = await this.findGeneratedAppRecord(tenantId, appId);
 
     const parsed = RecordGeneratedAppGateResultsSchema.parse(dto);
     const gateResults = normalizeGeneratedAppGateResults(
@@ -935,6 +935,7 @@ export class GeneratedAppService {
       gateResults,
       {
         generationPlan: parsed.generationPlan,
+        currentGenerationPlan: parsed.generationPlan ?? app.generationPlan,
         preview: parsed.preview,
       },
     );
@@ -2428,6 +2429,7 @@ export class GeneratedAppService {
       gateResults,
       {
         generationPlan: options.generationPlan,
+        currentGenerationPlan: options.generationPlan ?? app.generationPlan,
       },
     );
 
@@ -11717,13 +11719,18 @@ export class GeneratedAppService {
     gateResults: GeneratedAppGateResult[],
     options: {
       generationPlan?: GeneratedApp['generationPlan'];
+      currentGenerationPlan?: GeneratedApp['generationPlan'];
       preview?: GeneratedAppPreview;
     } = {},
   ): Partial<schema.NewGeneratedApp> {
-    const readiness = evaluateGeneratedAppReadiness(gateResults);
+    const guardedGateResults = this.applyPublishCandidateEvidenceGuard(
+      gateResults,
+      options.currentGenerationPlan ?? options.generationPlan,
+    );
+    const readiness = evaluateGeneratedAppReadiness(guardedGateResults);
     const status = getGeneratedAppStatusForReadiness(readiness);
     const updatePayload: Partial<schema.NewGeneratedApp> = {
-      gateResults,
+      gateResults: guardedGateResults,
       readiness,
       status,
       updatedBy: userId,
@@ -11745,6 +11752,198 @@ export class GeneratedAppService {
     }
 
     return updatePayload;
+  }
+
+  private applyPublishCandidateEvidenceGuard(
+    gateResults: GeneratedAppGateResult[],
+    generationPlan: GeneratedApp['generationPlan'] | undefined,
+  ): GeneratedAppGateResult[] {
+    const readiness = evaluateGeneratedAppReadiness(gateResults);
+
+    if (readiness.state !== 'publish_candidate') {
+      return gateResults;
+    }
+
+    const guardIssues = this.collectPublishCandidateEvidenceGuardIssues(
+      gateResults,
+      generationPlan,
+    );
+
+    if (guardIssues.length === 0) {
+      return gateResults;
+    }
+
+    const nowIso = new Date().toISOString();
+
+    return gateResults.map((gate) => {
+      if (gate.gateId !== 'gate-7') {
+        return gate;
+      }
+
+      return {
+        ...gate,
+        status: 'failed',
+        summary:
+          'Gate 7 失败：publish candidate evidence guard 拒绝了缺少可信 real-local Gate 7 签收的结果；fixture、disabled、skeleton、malformed 或仅手动声明的 evidence 不能放行 publish candidate。',
+        evidence: [
+          ...gate.evidence,
+          {
+            id: 'gate-7-publish-candidate-evidence-guard',
+            label: 'Gate 7 publish candidate evidence guard',
+            kind: 'manual',
+            url: null,
+            summary: `服务端在 readiness 同步前阻断 publish candidate：${guardIssues.join(
+              '；',
+            )}`,
+            details: {
+              issues: guardIssues,
+              publicShareTokenCreated: false,
+              createdPublicShareToken: null,
+            },
+          },
+        ],
+        updatedAt: nowIso,
+      };
+    });
+  }
+
+  private collectPublishCandidateEvidenceGuardIssues(
+    gateResults: GeneratedAppGateResult[],
+    generationPlan: GeneratedApp['generationPlan'] | undefined,
+  ): string[] {
+    const gateResultsById = new Map(
+      gateResults.map((gate) => [gate.gateId, gate]),
+    );
+    const plan = this.getRecord(generationPlan);
+    const buildUnitPlan = this.getRecord(plan?.buildUnitPlan);
+    const integrationPlan = this.getRecord(plan?.integrationPlan);
+    const browserAcceptancePlan = this.getRecord(plan?.browserAcceptancePlan);
+    const independentVerificationPlan = this.getRecord(
+      plan?.independentVerificationPlan,
+    );
+    const publishCandidatePlan = this.getRecord(plan?.publishCandidatePlan);
+    const finalVerdict = this.getRecord(publishCandidatePlan?.finalVerdict);
+    const rollbackShareControls = this.getRecord(
+      publishCandidatePlan?.rollbackShareControls,
+    );
+    const artifactReleaseManifest = this.getRecordArray(
+      publishCandidatePlan?.artifactReleaseManifest,
+    );
+    const gate7 = gateResultsById.get('gate-7');
+    const gate7EvidenceIds = new Set(
+      gate7?.evidence.map((evidence) => evidence.id) ?? [],
+    );
+    const hasTrustedGate7RunnerEvidence =
+      gate7?.evidence.some((evidence) => {
+        const details = this.getRecord(evidence.details);
+
+        return (
+          details?.runnerId === 'gate-7-real-publish-candidate-runner' &&
+          details.executionLevel === 'real-local-publish-candidate-contract' &&
+          details.executed === true &&
+          details.publicShareTokenCreated === false &&
+          details.createdPublicShareToken === null
+        );
+      }) ?? false;
+
+    return [
+      ...GATE_7_REQUIRED_GATE_IDS.flatMap((gateId) => {
+        const gate = gateResultsById.get(gateId);
+
+        return gate?.status === 'passed' ? [] : [`${gateId} 必须为 passed`];
+      }),
+      ...(buildUnitPlan?.executionLevel === 'real-local-command-plan'
+        ? []
+        : [
+            'generationPlan.buildUnitPlan.executionLevel 必须为 real-local-command-plan',
+          ]),
+      ...(integrationPlan?.executionLevel === 'real-local-integration'
+        ? []
+        : [
+            'generationPlan.integrationPlan.executionLevel 必须为 real-local-integration',
+          ]),
+      ...(browserAcceptancePlan?.executionLevel ===
+      'real-local-browser-contract'
+        ? []
+        : [
+            'generationPlan.browserAcceptancePlan.executionLevel 必须为 real-local-browser-contract',
+          ]),
+      ...(independentVerificationPlan?.executionLevel ===
+      'real-local-independent-verifier'
+        ? []
+        : [
+            'generationPlan.independentVerificationPlan.executionLevel 必须为 real-local-independent-verifier',
+          ]),
+      ...(publishCandidatePlan?.executionLevel ===
+      'real-local-publish-candidate-contract'
+        ? []
+        : [
+            'generationPlan.publishCandidatePlan.executionLevel 必须为 real-local-publish-candidate-contract',
+          ]),
+      ...(finalVerdict?.publishCandidateAllowed === true
+        ? []
+        : [
+            'generationPlan.publishCandidatePlan.finalVerdict.publishCandidateAllowed 必须为 true',
+          ]),
+      ...(this.getStringArray(finalVerdict?.blockingReasons).length === 0
+        ? []
+        : [
+            'generationPlan.publishCandidatePlan.finalVerdict.blockingReasons 必须为空',
+          ]),
+      ...(rollbackShareControls?.publicTokenCreation ===
+      'deferred-until-enable-public-share'
+        ? []
+        : [
+            'generationPlan.publishCandidatePlan.rollbackShareControls.publicTokenCreation 必须 deferred',
+          ]),
+      ...(rollbackShareControls?.createdPublicShareToken === null
+        ? []
+        : [
+            'generationPlan.publishCandidatePlan.rollbackShareControls.createdPublicShareToken 必须为 null',
+          ]),
+      ...(rollbackShareControls?.createsPublicShareToken === false
+        ? []
+        : [
+            'generationPlan.publishCandidatePlan.rollbackShareControls.createsPublicShareToken 必须为 false',
+          ]),
+      ...(artifactReleaseManifest.length > 0
+        ? []
+        : [
+            'generationPlan.publishCandidatePlan.artifactReleaseManifest 不能为空',
+          ]),
+      ...artifactReleaseManifest.flatMap((artifact, index) => [
+        ...(artifact.placeholder === true
+          ? []
+          : [`artifactReleaseManifest[${index}].placeholder 必须为 true`]),
+        ...(artifact.archiveMaterialized === false
+          ? []
+          : [
+              `artifactReleaseManifest[${index}].archiveMaterialized 必须为 false`,
+            ]),
+        ...(this.getRecord(artifact.signature)?.status === 'not-signed'
+          ? []
+          : [
+              `artifactReleaseManifest[${index}].signature.status 必须为 not-signed`,
+            ]),
+        ...(artifact.signoffStatus === 'contract-accepted'
+          ? []
+          : [
+              `artifactReleaseManifest[${index}].signoffStatus 必须为 contract-accepted`,
+            ]),
+      ]),
+      ...(gate7EvidenceIds.has('gate-7-artifact-release-manifest') &&
+      gate7EvidenceIds.has('gate-7-rollback-share-controls') &&
+      gate7EvidenceIds.has('gate-7-final-verdict')
+        ? []
+        : [
+            'Gate 7 run evidence 必须包含 release manifest、rollback/share controls 和 final verdict',
+          ]),
+      ...(hasTrustedGate7RunnerEvidence
+        ? []
+        : [
+            'Gate 7 run evidence 必须来自 gate-7-real-publish-candidate-runner 且 executed=true、publicShareTokenCreated=false',
+          ]),
+    ];
   }
 
   private async activatePublicShare(

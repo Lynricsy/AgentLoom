@@ -1020,6 +1020,80 @@ describe('GeneratedAppService', () => {
     );
   });
 
+  it('手动记录全 passed 但缺少可信 Gate 7 real-local evidence 时不应进入 publish_candidate', async () => {
+    const app = createGeneratedApp({
+      status: 'published',
+      readiness: createPublishCandidateReadiness(),
+      publicShareEnabled: true,
+      publicShareToken: 'a'.repeat(64),
+      publicShareCreatedAt: NOW,
+      generationPlan: {
+        malformed: true,
+      },
+    });
+    const gateResults = createInitialGeneratedAppGateResults(
+      NOW.toISOString(),
+    ).map((gate) => ({
+      ...gate,
+      status: 'passed' as const,
+      summary: `${gate.name} 手动标记通过`,
+      evidence: [
+        {
+          id: `${gate.gateId}-manual-evidence`,
+          label: `${gate.name} 手动证据`,
+          kind: 'manual' as const,
+          url: null,
+          summary:
+            gate.gateId === 'gate-7'
+              ? '手动声明 Gate 7 已通过，但缺少 real-local publish candidate runner details。'
+              : `${gate.name} 手动声明通过。`,
+        },
+      ],
+    }));
+    let updatePayload: Partial<GeneratedApp> = {};
+    const updateChain = createGeneratedAppUpdateReturningFromPayload(
+      app,
+      (payload) => {
+        updatePayload = payload;
+      },
+    );
+    mockTenantDb.select.mockReturnValueOnce(createSelectChain([app]));
+    mockTenantDb.update.mockReturnValueOnce(updateChain);
+
+    const response = await service.recordGateResults(
+      TENANT_ID,
+      USER_ID,
+      APP_ID,
+      {
+        gateResults,
+      },
+    );
+
+    const updatedGate7 = updatePayload.gateResults?.find(
+      (gate) => gate.gateId === 'gate-7',
+    );
+    expect(updatePayload.status).toBe('failed');
+    expect(updatePayload.readiness?.state).toBe('blocked');
+    expect(updatePayload.publicShareToken).toBeNull();
+    expect(updatePayload.publicShareEnabled).toBe(false);
+    expect(updatedGate7).toEqual(
+      expect.objectContaining({
+        status: 'failed',
+        summary: expect.stringContaining('publish candidate evidence guard'),
+        evidence: expect.arrayContaining([
+          expect.objectContaining({
+            id: 'gate-7-publish-candidate-evidence-guard',
+            summary: expect.stringContaining(
+              'generationPlan.publishCandidatePlan.executionLevel',
+            ),
+          }),
+        ]),
+      }),
+    );
+    expect(response.status).toBe('failed');
+    expect(response.publicShareToken).toBeNull();
+  });
+
   it('创建和更新生成运行台账时应保留预算、状态和失败原因', async () => {
     const app = createGeneratedApp();
     const run = createGeneratedAppGenerationRun();
