@@ -1,6 +1,6 @@
 import { ConfigService } from '@nestjs/config';
 import * as crypto from 'node:crypto';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -5122,6 +5122,102 @@ describe('GeneratedAppService', () => {
     expect(JSON.stringify(result)).not.toContain(
       '/tmp/agentloom-generated-app-gate3-runner-spec',
     );
+  });
+
+  it('Gate 3 real-local runner 应生成包含业务内容的数据用途构建预览', async () => {
+    const app = createGeneratedApp();
+    const workspaceRoot = join(
+      tmpdir(),
+      'agentloom-generated-app-gate3-preview-spec',
+    );
+    const configService = createConfigService({
+      GENERATED_APP_WORKSPACE_ROOT: workspaceRoot,
+    });
+    const runner = new GeneratedAppGate3WorkspaceRunner(configService);
+    const internals = service as unknown as {
+      buildGenerationPlan(
+        appSpec: GeneratedApp['appSpec'],
+      ): GeneratedAppGenerationPlan;
+      buildStaticContracts(
+        appSpec: GeneratedApp['appSpec'],
+        generationPlan: GeneratedAppGenerationPlan,
+      ): GeneratedAppStaticContracts;
+      buildBuildUnitPlan(
+        appSpec: GeneratedApp['appSpec'],
+        generationPlan: GeneratedAppGenerationPlan,
+        staticContracts: GeneratedAppStaticContracts,
+        generationWorkspace: NonNullable<
+          GeneratedAppBuildUnitPlan['generationWorkspace']
+        >,
+        commandPlan: ReturnType<
+          GeneratedAppGate3WorkspaceRunner['buildCommandPlan']
+        >,
+        executionLevel: GeneratedAppBuildUnitPlan['executionLevel'],
+      ): GeneratedAppBuildUnitPlan;
+    };
+    const generationPlan = internals.buildGenerationPlan(app.appSpec);
+    const staticContracts = internals.buildStaticContracts(
+      app.appSpec,
+      generationPlan,
+    );
+    const workspace = runner.buildWorkspaceContract({
+      tenantId: TENANT_ID,
+      appId: APP_ID,
+      generationRunId: GENERATION_RUN_ID,
+      appSpec: app.appSpec,
+      staticContracts,
+    });
+    const commandPlan = runner.buildCommandPlan({
+      workspace,
+      requirementIds: app.appSpec.coreRequirements.map(
+        (requirement) => requirement.id,
+      ),
+      scenarioIds: app.appSpec.acceptanceScenarios.map(
+        (scenario) => scenario.id,
+      ),
+    });
+    const buildUnitPlan = internals.buildBuildUnitPlan(
+      app.appSpec,
+      generationPlan,
+      staticContracts,
+      workspace,
+      commandPlan,
+      'real-local-command-plan',
+    );
+
+    try {
+      const result = await runner.materializeAndRun({
+        tenantId: TENANT_ID,
+        appId: APP_ID,
+        generationRunId: GENERATION_RUN_ID,
+        appSpec: app.appSpec,
+        generationPlan,
+        staticContracts,
+        buildUnitPlan,
+        workspace,
+        commandPlan,
+      });
+
+      const html = await readFile(
+        join(workspaceRoot, workspace.relativePath, 'dist/index.html'),
+        'utf8',
+      );
+
+      expect(result.status).toBe('passed');
+      expect(html).toContain(
+        '<h1 id="generated-app-title">自动化中医问诊系统</h1>',
+      );
+      expect(html).toContain('围绕需求生成的 AppSpec 初稿。');
+      expect(html).toContain('提交内容会保存并提供给应用创建者查看');
+      expect(html).toContain('核心需求');
+      expect(html).toContain('<li>自动化中医问诊系统</li>');
+      expect(html).toContain('验收场景');
+      expect(html).toContain('系统生成 AppSpec 初稿');
+      expect(html).not.toContain('<div id="root"></div>');
+      expect(html).not.toContain(workspaceRoot);
+    } finally {
+      await rm(workspaceRoot, { recursive: true, force: true });
+    }
   });
 
   it('Gate 3 runner 失败摘要不应泄露宿主机 workspace 绝对路径', async () => {

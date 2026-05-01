@@ -23,6 +23,7 @@ const {
   gateRunsQuery,
   generatedAppQuery,
   artifactContentQuery,
+  buildPreviewContentQuery,
   artifactManifestQuery,
   generationRunsQuery,
   repairAttemptsQuery,
@@ -66,6 +67,12 @@ const {
     refetch: vi.fn(),
   },
   artifactContentQuery: {
+    data: undefined as GeneratedAppArtifactContent | undefined,
+    isError: false,
+    isLoading: false,
+    refetch: vi.fn(),
+  },
+  buildPreviewContentQuery: {
     data: undefined as GeneratedAppArtifactContent | undefined,
     isError: false,
     isLoading: false,
@@ -157,7 +164,13 @@ vi.mock('../../api', () => ({
     useGeneratedAppMock(`detail:${appId ?? ''}`)
     return generatedAppQuery
   },
-  useGeneratedAppArtifactContent: () => artifactContentQuery,
+  useGeneratedAppArtifactContent: (
+    _appId: string | undefined,
+    artifactId: string | undefined,
+  ) =>
+    artifactId === 'gate-3-build-output-html'
+      ? buildPreviewContentQuery
+      : artifactContentQuery,
   useGeneratedAppArtifactManifest: () => artifactManifestQuery,
   useGeneratedAppGateRuns: () => gateRunsQuery,
   useGeneratedAppGenerationRuns: () => generationRunsQuery,
@@ -356,6 +369,10 @@ describe('GeneratedAppDetailPage', () => {
     artifactContentQuery.isError = false
     artifactContentQuery.isLoading = false
     artifactContentQuery.refetch = vi.fn()
+    buildPreviewContentQuery.data = undefined
+    buildPreviewContentQuery.isError = false
+    buildPreviewContentQuery.isLoading = false
+    buildPreviewContentQuery.refetch = vi.fn()
     disableShareMutation.mutateAsync = vi.fn()
     disableShareMutation.isPending = false
     startGenerationRunMutation.mutateAsync = vi.fn()
@@ -695,12 +712,28 @@ describe('GeneratedAppDetailPage', () => {
           readable: false,
           updatedAt: null,
         },
+        {
+          artifactId: 'gate-3-build-output-html',
+          label: 'Gate 3 build output',
+          kind: 'build_output',
+          path: 'dist/index.html',
+          materialized: true,
+          sizeBytes: 180,
+          contentType: 'text/html',
+          readable: true,
+          updatedAt: '2026-04-25T02:00:00.000Z',
+        },
       ],
       updatedAt: '2026-04-25T02:00:00.000Z',
     }
     artifactContentQuery.data = {
       artifact: artifactManifestQuery.data.artifacts[0]!,
       content: 'export function App() { return <main /> }',
+      truncated: false,
+    }
+    buildPreviewContentQuery.data = {
+      artifact: artifactManifestQuery.data.artifacts[2]!,
+      content: '<!doctype html><html><body><h1>问诊助手</h1></body></html>',
       truncated: false,
     }
 
@@ -715,6 +748,15 @@ describe('GeneratedAppDetailPage', () => {
     expect(panel.getByText('real-local-command-plan')).toBeInTheDocument()
     expect(panel.getAllByText('src/App.tsx').length).toBeGreaterThan(0)
     expect(panel.getByText('Gate 3 unit test report')).toBeInTheDocument()
+    expect(panel.getByText('Gate 3 构建预览')).toBeInTheDocument()
+    expect(panel.getAllByText('dist/index.html').length).toBeGreaterThan(0)
+    expect(
+      screen.getByTitle('Generated App Gate 3 构建预览'),
+    ).toHaveAttribute('sandbox', '')
+    expect(screen.getByTitle('Generated App Gate 3 构建预览')).toHaveAttribute(
+      'srcdoc',
+      expect.stringContaining('<h1>问诊助手</h1>'),
+    )
     expect(screen.queryByText('/root')).not.toBeInTheDocument()
 
     await user.click(panel.getByRole('button', { name: /src\/App\.tsx/ }))

@@ -88,6 +88,7 @@ app.readiness.state === "publish_candidate" &&
   - The panel may show legacy preview/source/test URLs from `app.preview`, but controlled workspace source and test files must come from the artifact manifest/content APIs instead of guessing paths client-side.
   - Workspace summary may render `rootLabel`, `relativePath`, `scaffold`, and Gate 3 `executionLevel`; it must not render a host absolute workspace path.
   - Artifact rows show `label`, workspace-relative `path`, kind label, materialized/readable status, and size. Unreadable or unmaterialized artifacts stay disabled and must not trigger content queries.
+  - When the manifest contains readable artifact `gate-3-build-output-html`, the Artifacts panel must also render it as the creator-side Gate 3 build preview in a sandboxed iframe using `srcDoc` and `sandbox=""`. Missing or unreadable build output shows a local empty/unavailable state instead of guessing paths or falling back to legacy preview URLs.
   - Selecting a readable artifact calls `useGeneratedAppArtifactContent(appId, artifactId)` and displays inline text content with loading/error/empty states.
   - `useGeneratedAppArtifactManifest(appId)` is disabled when `appId` is empty. `useGeneratedAppArtifactContent(appId, artifactId)` is disabled until both ids are present.
   - Start-run and app-changing mutations must invalidate `generatedAppKeys.artifactManifest(appId)` so newly materialized Gate 3 artifacts appear without a full reload.
@@ -180,7 +181,7 @@ app.readiness.state === "publish_candidate" &&
 - Good: a public runtime page shows data-use notice, public AppSpec summary, a dynamic business form from `runtimeForm`, optional runtime preview link, and structured public submission report/status without rendering Studio navigation, internal JSON dumps, or the token value.
 - Good: creator detail page shows submission rows and detail JSON panels without rendering `publicShareToken`.
 - Good: creator detail page shows generation runs, repair attempts, and Gate run evidence summaries, while filtering Gate runs by the selected generation run and optional repair attempt.
-- Good: creator detail page shows controlled Gate 3 workspace artifact summaries and previews readable source/test/report content without rendering the host absolute workspace root.
+- Good: creator detail page shows controlled Gate 3 workspace artifact summaries, previews readable source/test/report content, and renders readable `dist/index.html` build output in a sandboxed iframe without rendering the host absolute workspace root.
 - Good: creator deletion uses single or batch delete API after confirmation and refreshes submission caches.
 - Good: creator detail page shows Agent and Workflow ids only inside the authenticated workbench, links them to `/agents/$agentId` and `/workflows/$workflowId`, and shows `尚未绑定` without links when ids are absent.
 - Base: a generated app has warning-only readiness; Studio displays trial/warning summary and keeps public share unavailable.
@@ -230,7 +231,7 @@ app.readiness.state === "publish_candidate" &&
   - public runtime page renders data-use notice, limited AppSpec, optional preview link, dynamic `runtimeForm` controls, required validation, submitted payload, structured result/report sections, and does not render tokens or internal fields.
   - creator submissions panel renders list rows, detail selection, status filter, pagination, delete confirmation, empty state, and error state.
   - creator generation evidence panel renders generation runs, loads repair/gate data after run selection, filters gate data after repair selection, shows failure/evidence summaries, and shows empty/error states.
-  - creator artifact delivery panel renders workspace summary, artifact rows, selected readable content, empty/error states, disabled unreadable artifacts, and does not render host absolute paths.
+  - creator artifact delivery panel renders workspace summary, artifact rows, selected readable content, Gate 3 build-output sandbox iframe preview for readable `gate-3-build-output-html`, empty/error states, disabled unreadable artifacts, and does not render host absolute paths.
   - detail page tests either mock the submissions hooks or assert the submissions section renders with an empty state.
   - detail page renders existing Agent/Workflow editor links for bound ids and renders no editor links for missing ids.
 - Route/navigation smoke:

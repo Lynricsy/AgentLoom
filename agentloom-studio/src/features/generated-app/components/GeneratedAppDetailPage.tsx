@@ -352,10 +352,18 @@ function GeneratedAppArtifactDeliveryPanel({ appId }: { appId: string }) {
   const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(
     null,
   )
+  const buildPreviewArtifact =
+    manifestQuery.data?.artifacts.find(
+      (artifact) => artifact.artifactId === 'gate-3-build-output-html',
+    ) ?? null
   const selectedArtifact =
     manifestQuery.data?.artifacts.find(
       (artifact) => artifact.artifactId === selectedArtifactId,
     ) ?? null
+  const buildPreviewQuery = useGeneratedAppArtifactContent(
+    appId,
+    buildPreviewArtifact?.readable ? buildPreviewArtifact.artifactId : undefined,
+  )
   const contentQuery = useGeneratedAppArtifactContent(
     appId,
     selectedArtifact?.readable ? selectedArtifact.artifactId : undefined,
@@ -403,6 +411,15 @@ function GeneratedAppArtifactDeliveryPanel({ appId }: { appId: string }) {
   return (
     <div className="space-y-4" data-testid="generated-app-artifact-delivery">
       <ArtifactWorkspaceSummary manifest={manifest} />
+      <GeneratedAppBuildPreview
+        artifact={buildPreviewArtifact}
+        isLoading={buildPreviewQuery.isLoading}
+        isError={buildPreviewQuery.isError}
+        html={buildPreviewQuery.data?.content}
+        onRetry={() => {
+          void buildPreviewQuery.refetch()
+        }}
+      />
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
         <div className="min-h-0 overflow-hidden rounded-md border border-border">
@@ -455,6 +472,83 @@ function GeneratedAppArtifactDeliveryPanel({ appId }: { appId: string }) {
           }}
         />
       </div>
+    </div>
+  )
+}
+
+function GeneratedAppBuildPreview({
+  artifact,
+  isLoading,
+  isError,
+  html,
+  onRetry,
+}: {
+  artifact: GeneratedAppArtifactSummary | null
+  isLoading: boolean
+  isError: boolean
+  html: string | undefined
+  onRetry: () => void
+}) {
+  if (!artifact) {
+    return (
+      <div className="rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground">
+        Gate 3 还没有生成可预览的构建产物。
+      </div>
+    )
+  }
+
+  if (!artifact.readable) {
+    return (
+      <div className="rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground">
+        构建产物尚未物化，或超过内联预览限制。
+      </div>
+    )
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-44 items-center justify-center rounded-md border border-border p-6 text-sm text-muted-foreground">
+        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+        正在读取构建预览
+      </div>
+    )
+  }
+
+  if (isError) {
+    return (
+      <div className="flex min-h-44 flex-col items-center justify-center gap-3 rounded-md border border-border p-6 text-center text-sm text-muted-foreground">
+        <span>构建预览读取失败。</span>
+        <Button variant="outline" size="sm" onClick={onRetry}>
+          重试
+        </Button>
+      </div>
+    )
+  }
+
+  return (
+    <div
+      className="overflow-hidden rounded-md border border-border"
+      data-testid="generated-app-build-preview"
+    >
+      <div className="flex flex-col gap-1 border-b border-border px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <h3 className="break-words text-sm font-medium text-foreground">
+            Gate 3 构建预览
+          </h3>
+          <p className="break-all text-xs text-muted-foreground">
+            {artifact.path}
+          </p>
+        </div>
+        <span className="text-xs text-muted-foreground">
+          {formatArtifactSize(artifact.sizeBytes)}
+        </span>
+      </div>
+      <iframe
+        title="Generated App Gate 3 构建预览"
+        sandbox=""
+        srcDoc={html ?? ''}
+        className="h-80 w-full bg-background"
+      />
     </div>
   )
 }
