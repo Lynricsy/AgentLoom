@@ -9404,9 +9404,11 @@ describe('GeneratedAppService', () => {
     );
 
     const insertPayload = insertChain.values.mock.calls[0]?.[0] as {
+      status: string;
       result: Record<string, unknown>;
       report: Record<string, unknown>;
     };
+    expect(insertPayload.status).toBe('received');
     expect(insertPayload.result).toEqual(
       expect.objectContaining({
         runtimeKind: 'local-generated-app-deterministic-report',
@@ -9428,6 +9430,7 @@ describe('GeneratedAppService', () => {
       }),
     );
     expect(response.result).toEqual(insertPayload.result);
+    expect(response.status).toBe('received');
     expect(JSON.stringify(response)).not.toContain(token);
     expect(JSON.stringify(response)).not.toContain('generationPlan');
     expect(JSON.stringify(response)).not.toContain('gateResults');
@@ -9506,6 +9509,7 @@ describe('GeneratedAppService', () => {
         workflowDefinitionId: WORKFLOW_DEFINITION_ID,
       }),
     );
+    expect(response.status).toBe('received');
     expect(JSON.stringify(response)).not.toContain(
       'generated-app-runtime-workflow',
     );

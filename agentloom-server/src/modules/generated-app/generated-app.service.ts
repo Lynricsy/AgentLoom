@@ -3395,6 +3395,13 @@ export class GeneratedAppService {
         )
       : evaluation.report;
 
+    const submissionStatus = workflowExecutionHandoff
+      ? this.getPublicSubmissionStatusForWorkflowHandoff(
+          evaluation.status,
+          workflowExecutionHandoff.executionStatus,
+        )
+      : evaluation.status;
+
     const [submission] = await this.db
       .insert(schema.generatedAppSubmissions)
       .values({
@@ -3403,7 +3410,7 @@ export class GeneratedAppService {
         appSpecVersion: app.appSpec.version,
         publicShareToken: token,
         anonymousSessionId,
-        status: evaluation.status,
+        status: submissionStatus,
         input: evaluation.input,
         result,
         report,
