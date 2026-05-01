@@ -5119,7 +5119,7 @@ export class GeneratedAppService {
     generationRunId: string,
   ): Promise<string> {
     const nodes = this.buildGeneratedWorkflowRuntimeNodes(app);
-    const edges = this.buildGeneratedWorkflowRuntimeEdges();
+    const edges = this.buildGeneratedWorkflowRuntimeEdges(app);
     const viewport = { x: 0, y: 0, zoom: 0.85 };
     const inputSchema = this.buildGeneratedWorkflowRuntimeInputSchema();
     const metadata = {
@@ -5268,6 +5268,7 @@ export class GeneratedAppService {
   private buildGeneratedWorkflowRuntimeNodes(
     app: GeneratedAppResponseDto,
   ): schema.ReactFlowNode[] {
+    const pluginTools = this.getGeneratedPrivatePluginRuntimeBindings(app);
     const promptText = [
       `Generated App: ${app.appName}`,
       `App ID: ${app.id}`,
@@ -5301,6 +5302,9 @@ export class GeneratedAppService {
           ],
         },
       },
+      ...pluginTools.map((tool, index) =>
+        this.buildGeneratedWorkflowRuntimePluginNode(tool, index),
+      ),
       {
         id: 'generated-app-runtime-note',
         type: 'output',
@@ -5343,8 +5347,59 @@ export class GeneratedAppService {
     ];
   }
 
-  private buildGeneratedWorkflowRuntimeEdges(): schema.ReactFlowEdge[] {
-    return [
+  private buildGeneratedWorkflowRuntimePluginNode(
+    tool: { toolId: string; pluginId: string; purpose: string },
+    index: number,
+  ): schema.ReactFlowNode {
+    return {
+      id: `generated-app-plugin-${tool.toolId}`,
+      type: 'plugin',
+      position: { x: 360, y: 180 + index * 180 },
+      data: {
+        label: `私有工具 ${tool.toolId}`,
+        nodeType: 'plugin',
+        category: 'plugin',
+        description: tool.purpose,
+        pluginId: tool.pluginId,
+        pluginName: `Generated App ${tool.toolId}`,
+        pluginNodeType: tool.toolId,
+        pluginConfig: { mode: 'screening' },
+        inputPorts: [
+          this.createWorkflowPort('exec-in', '', 'input', 'exec'),
+          this.createWorkflowPort('input', '业务输入', 'input', 'json'),
+        ],
+        outputPorts: [
+          this.createWorkflowPort('exec-out', '', 'output', 'exec'),
+          this.createWorkflowPort('analysis', '结构化分析', 'output', 'json'),
+          this.createWorkflowPort(
+            'analysis-out',
+            '结构化分析',
+            'output',
+            'json',
+          ),
+        ],
+        portMappingMetadata: {
+          inputs: [
+            { name: 'exec-in', dataType: 'exec' },
+            { name: 'input', dataType: 'json' },
+          ],
+          outputs: [
+            { name: 'exec-out', dataType: 'exec' },
+            { name: 'analysis', dataType: 'json' },
+            { name: 'analysis-out', dataType: 'json' },
+          ],
+        },
+      },
+    };
+  }
+
+  private buildGeneratedWorkflowRuntimeEdges(
+    app?: GeneratedAppResponseDto,
+  ): schema.ReactFlowEdge[] {
+    const pluginTools = app
+      ? this.getGeneratedPrivatePluginRuntimeBindings(app)
+      : [];
+    const edges: schema.ReactFlowEdge[] = [
       {
         id: 'generated-app-trigger-to-output-exec',
         source: 'generated-app-manual-trigger',
@@ -5362,6 +5417,74 @@ export class GeneratedAppService {
         type: 'smart',
       },
     ];
+
+    for (const tool of pluginTools) {
+      const pluginNodeId = `generated-app-plugin-${tool.toolId}`;
+      edges.push(
+        {
+          id: `generated-app-trigger-to-${tool.toolId}-exec`,
+          source: 'generated-app-manual-trigger',
+          target: pluginNodeId,
+          sourceHandle: 'exec-out',
+          targetHandle: 'exec-in',
+          type: 'smart',
+        },
+        {
+          id: `generated-app-payload-to-${tool.toolId}-input`,
+          source: 'generated-app-manual-trigger',
+          target: pluginNodeId,
+          sourceHandle: 'payload-out',
+          targetHandle: 'input',
+          type: 'smart',
+        },
+      );
+    }
+
+    return edges;
+  }
+
+  private getGeneratedPrivatePluginRuntimeBindings(
+    app: GeneratedAppResponseDto,
+  ): Array<{ toolId: string; pluginId: string; purpose: string }> {
+    const generationPlan =
+      app.generationPlan as GeneratedAppGenerationPlan | null;
+    const pluginTools = generationPlan?.pluginTools.tools ?? [];
+
+    return pluginTools
+      .map((tool) => {
+        const toolId = this.getNonEmptyString(tool.toolId);
+        if (!toolId) {
+          return null;
+        }
+
+        return {
+          toolId,
+          pluginId: this.buildGeneratedPrivatePluginId(app.id, toolId),
+          purpose: tool.purpose,
+        };
+      })
+      .filter(
+        (
+          binding,
+        ): binding is { toolId: string; pluginId: string; purpose: string } =>
+          binding !== null,
+      );
+  }
+
+  private buildGeneratedPrivatePluginId(appId: string, toolId: string): string {
+    return `com.agentloom.generated.${this.sanitizeGeneratedPluginSegment(
+      `app-${appId}`,
+    )}.${this.sanitizeGeneratedPluginSegment(toolId)}`;
+  }
+
+  private sanitizeGeneratedPluginSegment(value: string): string {
+    return (
+      value
+        .toLowerCase()
+        .replace(/[^a-z0-9-]/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '') || 'generated'
+    );
   }
 
   private createWorkflowPort(

@@ -1,8 +1,10 @@
 import { Logger } from '@nestjs/common';
+import type { ModuleRef } from '@nestjs/core';
 import { Job } from 'bullmq';
 import { Readable } from 'node:stream';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { DrizzleDB } from '../../database/database.module';
 import type { StorageService } from '../../infrastructure/storage/storage.service';
 import type {
   PluginSandboxService,
@@ -37,6 +39,13 @@ const mocks = vi.hoisted(() => ({
   }),
   createMockPluginUsageService: () => ({
     recordUsage: vi.fn().mockResolvedValue({ id: 'usage-record-id' }),
+  }),
+  createMockStepStateMachine: () => ({
+    updateStepStatus: vi.fn().mockResolvedValue({ id: 'step-id' }),
+  }),
+  createMockNodeScheduler: () => ({
+    onNodeCompleted: vi.fn().mockResolvedValue(undefined),
+    onNodeFailed: vi.fn().mockResolvedValue(undefined),
   }),
 }));
 
@@ -78,9 +87,28 @@ const createPluginRecord = (overrides?: Record<string, unknown>) => ({
       allowedHosts: ['api.example.com', 'cdn.example.com'],
     },
   },
+  metadata: {},
   wasmBundleUrl: 'tenants/t1/plugins/com.example.test/1.0.0/plugin.wasm',
   ...overrides,
 });
+
+const createGeneratedPrivatePluginRecord = (
+  overrides?: Record<string, unknown>,
+) =>
+  createPluginRecord({
+    pluginId: 'com.agentloom.generated.app-1.tool-guided-intake-analysis',
+    manifest: {
+      id: 'com.agentloom.generated.app-1.tool-guided-intake-analysis',
+      permissions: [],
+    },
+    metadata: {
+      source: 'generated-app-private-plugin',
+      activationScope: 'tenant-private',
+      toolId: 'tool-guided-intake-analysis',
+    },
+    wasmBundleUrl: null,
+    ...overrides,
+  });
 
 const createJob = (
   overrides?: Partial<PluginExecutionJobData>,
@@ -106,18 +134,49 @@ describe('PluginExecutionWorker', () => {
   let sandboxService: ReturnType<typeof mocks.createMockSandboxService>;
   let storageService: ReturnType<typeof mocks.createMockStorageService>;
   let pluginUsageService: ReturnType<typeof mocks.createMockPluginUsageService>;
+  let stepStateMachine: ReturnType<typeof mocks.createMockStepStateMachine>;
+  let nodeScheduler: ReturnType<typeof mocks.createMockNodeScheduler>;
+  let moduleRef: { get: ReturnType<typeof vi.fn> };
+  let db: { transaction: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
     pluginService = mocks.createMockPluginService();
     sandboxService = mocks.createMockSandboxService();
     storageService = mocks.createMockStorageService();
     pluginUsageService = mocks.createMockPluginUsageService();
+    stepStateMachine = mocks.createMockStepStateMachine();
+    nodeScheduler = mocks.createMockNodeScheduler();
+    moduleRef = {
+      get: vi.fn((token: unknown) => {
+        const tokenName =
+          typeof token === 'function' ? token.name : String(token);
+
+        if (tokenName === 'StepStateMachineService') {
+          return stepStateMachine;
+        }
+
+        if (tokenName === 'NodeSchedulerService') {
+          return nodeScheduler;
+        }
+
+        throw new Error(`Unexpected moduleRef token: ${tokenName}`);
+      }),
+    };
+    db = {
+      transaction: vi.fn(async (callback) =>
+        callback({
+          execute: vi.fn().mockResolvedValue(undefined),
+        }),
+      ),
+    };
 
     worker = new PluginExecutionWorker(
+      db as unknown as DrizzleDB,
       pluginService as unknown as PluginService,
       sandboxService as unknown as PluginSandboxService,
       storageService as unknown as StorageService,
       pluginUsageService as unknown as PluginUsageService,
+      moduleRef as unknown as ModuleRef,
     );
 
     pluginService.resolveUsageSourceContext.mockResolvedValue(
@@ -307,7 +366,7 @@ describe('PluginExecutionWorker', () => {
       });
     });
 
-    it('执行抛错时不应记录插件使用量', async () => {
+    it('执行抛错时应收口为 failed 结果且不记录插件使用量', async () => {
       pluginService.findActiveByPluginId.mockResolvedValue(
         createPluginRecord(),
       );
@@ -319,59 +378,127 @@ describe('PluginExecutionWorker', () => {
         new PluginSandboxException('com.example.test', 'sandbox crashed'),
       );
 
-      await expect(worker.process(createJob())).rejects.toThrow(
-        PluginSandboxException,
+      const result = await worker.process(createJob());
+
+      expect(result.status).toBe('failed');
+      expect(result.error).toContain('sandbox crashed');
+      expect(nodeScheduler.onNodeFailed).toHaveBeenCalledWith(
+        '22222222-2222-2222-2222-222222222222',
+        '33333333-3333-3333-3333-333333333333',
+        TENANT_ID,
       );
       expect(pluginUsageService.recordUsage).not.toHaveBeenCalled();
     });
 
-    it('插件无 wasmBundleUrl 时应返回跳过结果', async () => {
+    it('Generated App 私有插件无 wasmBundleUrl 时应走受控 fallback', async () => {
+      pluginService.findActiveByPluginId.mockResolvedValue(
+        createGeneratedPrivatePluginRecord(),
+      );
+
+      const result = await worker.process(
+        createJob({
+          pluginId: 'com.agentloom.generated.app-1.tool-guided-intake-analysis',
+          nodeType: 'tool-guided-intake-analysis',
+          inputs: {
+            input: {
+              chiefComplaint: '头痛三天',
+              duration: '3 天',
+            },
+          },
+        }),
+      );
+
+      expect(result.status).toBe('completed');
+      expect(result.outputs.analysis).toEqual(
+        expect.objectContaining({
+          riskLevel: expect.any(String),
+          score: expect.any(Number),
+          generatedPrivatePlugin: true,
+          nodeType: 'tool-guided-intake-analysis',
+        }),
+      );
+      expect(result.outputs['analysis-out']).toEqual(result.outputs.analysis);
+      expect(result.message).toContain('deterministic fallback');
+      expect(storageService.download).not.toHaveBeenCalled();
+      expect(sandboxService.execute).not.toHaveBeenCalled();
+      expect(stepStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID,
+        '33333333-3333-3333-3333-333333333333',
+        'completed',
+        expect.objectContaining({
+          result: expect.objectContaining({
+            analysis: expect.any(Object),
+            'exec-out': { triggered: true },
+          }),
+          checkpointData: expect.objectContaining({
+            runtime: 'generated-private-deterministic',
+          }),
+        }),
+      );
+      expect(nodeScheduler.onNodeCompleted).toHaveBeenCalledWith(
+        '22222222-2222-2222-2222-222222222222',
+        '33333333-3333-3333-3333-333333333333',
+        TENANT_ID,
+      );
+    });
+
+    it('普通插件无 wasmBundleUrl 时应 fail-closed', async () => {
       pluginService.findActiveByPluginId.mockResolvedValue(
         createPluginRecord({ wasmBundleUrl: null }),
       );
 
       const result = await worker.process(createJob());
 
-      expect(result.status).toBe('completed');
-      expect(result.outputs).toEqual({});
-      expect(result.message).toContain('com.example.test');
-      expect(result.message).toContain('跳过执行');
+      expect(result.status).toBe('failed');
+      expect(result.error).toContain('无 WASM bundle');
+
       expect(storageService.download).not.toHaveBeenCalled();
       expect(sandboxService.execute).not.toHaveBeenCalled();
+      expect(nodeScheduler.onNodeFailed).toHaveBeenCalledWith(
+        '22222222-2222-2222-2222-222222222222',
+        '33333333-3333-3333-3333-333333333333',
+        TENANT_ID,
+      );
     });
 
-    it('插件未找到时应抛出 PluginNotFoundException', async () => {
+    it('插件未找到时应收口为 failed 结果', async () => {
       pluginService.findActiveByPluginId.mockRejectedValue(
         new PluginNotFoundException('com.example.test'),
       );
 
-      await expect(worker.process(createJob())).rejects.toThrow(
-        PluginNotFoundException,
-      );
+      const result = await worker.process(createJob());
+
+      expect(result.status).toBe('failed');
+      expect(result.error).toContain('com.example.test');
+      expect(nodeScheduler.onNodeFailed).toHaveBeenCalled();
     });
 
-    it('插件未激活时应抛出 PluginInactiveException', async () => {
+    it('插件未激活时应收口为 failed 结果', async () => {
       pluginService.findActiveByPluginId.mockRejectedValue(
         new PluginInactiveException('plugin-record-id'),
       );
 
-      await expect(worker.process(createJob())).rejects.toThrow(
-        PluginInactiveException,
-      );
+      const result = await worker.process(createJob());
+
+      expect(result.status).toBe('failed');
+      expect(result.error).toContain('plugin-record-id');
+      expect(nodeScheduler.onNodeFailed).toHaveBeenCalled();
     });
 
-    it('WASM 下载失败时应抛出 PluginSandboxException', async () => {
+    it('WASM 下载失败时应收口为 failed 结果', async () => {
       pluginService.findActiveByPluginId.mockResolvedValue(
         createPluginRecord(),
       );
       storageService.download.mockRejectedValue(new Error('MinIO 连接失败'));
 
-      await expect(worker.process(createJob())).rejects.toThrow(
-        PluginSandboxException,
-      );
+      const result = await worker.process(createJob());
+
+      expect(result.status).toBe('failed');
+      expect(result.error).toContain('MinIO 连接失败');
+      expect(nodeScheduler.onNodeFailed).toHaveBeenCalled();
     });
 
-    it('沙箱执行超时时应传播 PluginExecutionTimeoutException', async () => {
+    it('沙箱执行超时时应收口为 failed 结果', async () => {
       pluginService.findActiveByPluginId.mockResolvedValue(
         createPluginRecord(),
       );
@@ -383,12 +510,14 @@ describe('PluginExecutionWorker', () => {
         new PluginExecutionTimeoutException('com.example.test', 30_000),
       );
 
-      await expect(worker.process(createJob())).rejects.toThrow(
-        PluginExecutionTimeoutException,
-      );
+      const result = await worker.process(createJob());
+
+      expect(result.status).toBe('failed');
+      expect(result.error).toContain('com.example.test');
+      expect(nodeScheduler.onNodeFailed).toHaveBeenCalled();
     });
 
-    it('沙箱内存超限时应传播 PluginResourceExhaustedException', async () => {
+    it('沙箱内存超限时应收口为 failed 结果', async () => {
       pluginService.findActiveByPluginId.mockResolvedValue(
         createPluginRecord(),
       );
@@ -400,12 +529,14 @@ describe('PluginExecutionWorker', () => {
         new PluginResourceExhaustedException('com.example.test', '内存'),
       );
 
-      await expect(worker.process(createJob())).rejects.toThrow(
-        PluginResourceExhaustedException,
-      );
+      const result = await worker.process(createJob());
+
+      expect(result.status).toBe('failed');
+      expect(result.error).toContain('内存');
+      expect(nodeScheduler.onNodeFailed).toHaveBeenCalled();
     });
 
-    it('沙箱权限拒绝时应传播 PluginPermissionDeniedException', async () => {
+    it('沙箱权限拒绝时应收口为 failed 结果', async () => {
       pluginService.findActiveByPluginId.mockResolvedValue(
         createPluginRecord(),
       );
@@ -417,9 +548,11 @@ describe('PluginExecutionWorker', () => {
         new PluginPermissionDeniedException('com.example.test', 'evil.com'),
       );
 
-      await expect(worker.process(createJob())).rejects.toThrow(
-        PluginPermissionDeniedException,
-      );
+      const result = await worker.process(createJob());
+
+      expect(result.status).toBe('failed');
+      expect(result.error).toContain('evil.com');
+      expect(nodeScheduler.onNodeFailed).toHaveBeenCalled();
     });
 
     it('执行失败时应返回 failed 状态', async () => {

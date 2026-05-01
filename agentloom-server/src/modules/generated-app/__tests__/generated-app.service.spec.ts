@@ -3556,6 +3556,16 @@ describe('GeneratedAppService', () => {
             data: expect.objectContaining({ nodeType: 'text' }),
           }),
           expect.objectContaining({
+            id: 'generated-app-plugin-tool-guided-intake-analysis',
+            type: 'plugin',
+            data: expect.objectContaining({
+              nodeType: 'plugin',
+              pluginId: GENERATED_PRIVATE_PLUGIN_ID,
+              pluginNodeType: 'tool-guided-intake-analysis',
+              pluginConfig: { mode: 'screening' },
+            }),
+          }),
+          expect.objectContaining({
             id: 'generated-app-runtime-output',
             data: expect.objectContaining({ nodeType: 'text-output' }),
           }),
@@ -3573,6 +3583,18 @@ describe('GeneratedAppService', () => {
             sourceHandle: 'payload-out',
             targetHandle: 'content-in',
           }),
+          expect.objectContaining({
+            source: 'generated-app-manual-trigger',
+            target: 'generated-app-plugin-tool-guided-intake-analysis',
+            sourceHandle: 'exec-out',
+            targetHandle: 'exec-in',
+          }),
+          expect.objectContaining({
+            source: 'generated-app-manual-trigger',
+            target: 'generated-app-plugin-tool-guided-intake-analysis',
+            sourceHandle: 'payload-out',
+            targetHandle: 'input',
+          }),
         ]),
         inputSchema: null,
       }),
@@ -3589,6 +3611,9 @@ describe('GeneratedAppService', () => {
           nodes: expect.arrayContaining([
             expect.objectContaining({ id: 'generated-app-manual-trigger' }),
             expect.objectContaining({ id: 'generated-app-runtime-note' }),
+            expect.objectContaining({
+              id: 'generated-app-plugin-tool-guided-intake-analysis',
+            }),
             expect.objectContaining({ id: 'generated-app-runtime-output' }),
           ]),
           edges: expect.arrayContaining([
@@ -3599,8 +3624,8 @@ describe('GeneratedAppService', () => {
           ]),
           inputSchema: null,
           metadata: expect.objectContaining({
-            nodeCount: 3,
-            edgeCount: 2,
+            nodeCount: 4,
+            edgeCount: 4,
             createdFromVersion: 1,
             releaseNumber: 1,
           }),

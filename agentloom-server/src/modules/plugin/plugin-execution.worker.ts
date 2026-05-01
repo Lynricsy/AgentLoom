@@ -1,8 +1,14 @@
 import { OnWorkerEvent, Processor, WorkerHost } from '@nestjs/bullmq';
-import { Logger } from '@nestjs/common';
+import { Inject, Logger } from '@nestjs/common';
+import { ModuleRef } from '@nestjs/core';
 import { Job } from 'bullmq';
 import type { Readable } from 'node:stream';
 
+import { runInTenantTransaction } from '../../common/interceptors/tenant-transaction.context';
+import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
+import type { PluginRecord } from '../../database/schema/plugins.schema';
+import { NodeSchedulerService } from '../execution/node-scheduler.service';
+import { StepStateMachineService } from '../execution/step-state-machine.service';
 import { StorageService } from '../../infrastructure/storage/storage.service';
 import { PLUGIN_EXECUTION_QUEUE } from './plugin.constants';
 import { PluginSandboxException } from './plugin.exceptions';
@@ -35,12 +41,16 @@ interface PluginExecutionJobResult {
 @Processor(PLUGIN_EXECUTION_QUEUE)
 export class PluginExecutionWorker extends WorkerHost {
   private readonly logger = new Logger(PluginExecutionWorker.name);
+  private nodeSchedulerService?: NodeSchedulerService;
+  private stepStateMachineService?: StepStateMachineService;
 
   constructor(
+    @Inject(DRIZZLE) private readonly db: DrizzleDB,
     private readonly pluginService: PluginService,
     private readonly sandboxService: PluginSandboxService,
     private readonly storageService: StorageService,
     private readonly pluginUsageService: PluginUsageService,
+    private readonly moduleRef: ModuleRef,
   ) {
     super();
   }
@@ -48,24 +58,119 @@ export class PluginExecutionWorker extends WorkerHost {
   async process(
     job: Job<PluginExecutionJobData>,
   ): Promise<PluginExecutionJobResult> {
-    const { tenantId, pluginId, nodeType, inputs, config } = job.data;
+    return runInTenantTransaction(this.db, job.data.tenantId, () =>
+      this.processInTenantContext(job),
+    );
+  }
+
+  private async processInTenantContext(
+    job: Job<PluginExecutionJobData>,
+  ): Promise<PluginExecutionJobResult> {
+    const { tenantId, executionId, stepId, pluginId, nodeType } = job.data;
 
     this.logger.log(`处理插件执行: ${pluginId}/${nodeType} (job=${job.id})`);
 
-    const plugin = await this.pluginService.findActiveByPluginId(
-      pluginId,
-      undefined,
-      tenantId,
-    );
+    try {
+      await this.getStepStateMachineService().updateStepStatus(
+        tenantId,
+        stepId,
+        'running',
+      );
 
+      const plugin = await this.pluginService.findActiveByPluginId(
+        pluginId,
+        undefined,
+        tenantId,
+      );
+
+      const workerResult = await this.executePluginJob(job, plugin);
+      if (workerResult.status === 'completed') {
+        await this.getStepStateMachineService().updateStepStatus(
+          tenantId,
+          stepId,
+          'completed',
+          {
+            result: {
+              ...workerResult.outputs,
+              ...(workerResult.message
+                ? { message: workerResult.message }
+                : {}),
+              'exec-out': { triggered: true },
+            },
+            checkpointData: {
+              pluginId: plugin.pluginId,
+              nodeType,
+              executionTimeMs: workerResult.executionTimeMs ?? null,
+              runtime:
+                plugin.wasmBundleUrl === null
+                  ? 'generated-private-deterministic'
+                  : 'wasm-extism',
+            },
+          },
+        );
+        await this.getNodeSchedulerService().onNodeCompleted(
+          executionId,
+          stepId,
+          tenantId,
+        );
+      } else {
+        await this.getStepStateMachineService().updateStepStatus(
+          tenantId,
+          stepId,
+          'failed',
+          {
+            result: workerResult.outputs,
+            errorMessage: {
+              message: workerResult.error ?? '插件执行失败',
+              nodeId: nodeType,
+              detail: `pluginId=${plugin.pluginId}`,
+            },
+            checkpointData: {
+              pluginId: plugin.pluginId,
+              nodeType,
+              executionTimeMs: workerResult.executionTimeMs ?? null,
+              runtime:
+                plugin.wasmBundleUrl === null
+                  ? 'generated-private-deterministic'
+                  : 'wasm-extism',
+            },
+          },
+        );
+        await this.getNodeSchedulerService().onNodeFailed(
+          executionId,
+          stepId,
+          tenantId,
+        );
+      }
+
+      return workerResult;
+    } catch (error) {
+      return this.markStepFailedBestEffort(job.data, error);
+    }
+  }
+
+  private async executePluginJob(
+    job: Job<PluginExecutionJobData>,
+    plugin: PluginRecord,
+  ): Promise<PluginExecutionJobResult> {
+    const { pluginId, nodeType, inputs, config } = job.data;
     const wasmBundleUrl = plugin.wasmBundleUrl;
     if (!wasmBundleUrl) {
-      this.logger.warn(`插件 "${pluginId}" 未关联 WASM bundle，返回占位结果`);
-      return {
-        status: 'completed',
-        outputs: {},
-        message: `插件 ${pluginId} 节点 ${nodeType} 无 WASM bundle，跳过执行`,
-      };
+      const generatedResult = this.executeGeneratedPrivatePluginFallback(
+        plugin,
+        nodeType,
+        inputs,
+        config,
+      );
+
+      if (generatedResult) {
+        return generatedResult;
+      }
+
+      throw new PluginSandboxException(
+        pluginId,
+        `插件 ${pluginId} 节点 ${nodeType} 无 WASM bundle，无法执行`,
+      );
     }
 
     const wasmBuffer = await this.downloadWasmBuffer(wasmBundleUrl, pluginId);
@@ -103,16 +208,100 @@ export class PluginExecutionWorker extends WorkerHost {
       const sourceContext =
         await this.pluginService.resolveUsageSourceContext(plugin);
 
-      this.recordUsage(job.data, plugin, workerResult, sourceContext).catch(
-        (err) => {
-          this.logger.warn(`Failed to record plugin usage: ${err.message}`, {
-            jobId: job.id,
-          });
-        },
-      );
+      try {
+        await this.recordUsage(job.data, plugin, workerResult, sourceContext);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        this.logger.warn(`Failed to record plugin usage: ${message}`, {
+          jobId: job.id,
+        });
+      }
     }
 
     return workerResult;
+  }
+
+  private executeGeneratedPrivatePluginFallback(
+    plugin: {
+      pluginId: string;
+      metadata: Record<string, unknown> | null;
+    },
+    nodeType: string,
+    inputs: Record<string, unknown>,
+    config: Record<string, unknown>,
+  ): PluginExecutionJobResult | null {
+    const metadata = plugin.metadata ?? {};
+    if (
+      metadata.source !== 'generated-app-private-plugin' ||
+      metadata.activationScope !== 'tenant-private' ||
+      metadata.toolId !== nodeType
+    ) {
+      return null;
+    }
+
+    const startedAt = Date.now();
+    const normalizedInput = this.normalizeGeneratedPrivatePluginInput(inputs);
+    const signals = this.collectGeneratedPrivatePluginSignals(normalizedInput);
+    const mode = typeof config.mode === 'string' ? config.mode : 'screening';
+    const score = Math.min(100, signals.join(' ').length + signals.length * 10);
+    const riskLevel =
+      score >= 70 ? 'needs-review' : score >= 35 ? 'follow-up' : 'low';
+    const analysis = {
+      riskLevel,
+      score,
+      signalCount: signals.length,
+      mode,
+      followUpQuestions: [
+        '请补充症状持续时间、诱因和缓解因素。',
+        '请确认是否存在需要立即就医的严重表现。',
+      ],
+      boundaryNotice:
+        '本工具只做信息整理和追问优先级提示，不提供诊断、处方、剂量或治疗指令。',
+      generatedPrivatePlugin: true,
+      pluginId: plugin.pluginId,
+      nodeType,
+    };
+
+    return {
+      status: 'completed',
+      outputs: {
+        analysis,
+        'analysis-out': analysis,
+      },
+      executionTimeMs: Date.now() - startedAt,
+      message: `Generated App 私有插件 ${plugin.pluginId}/${nodeType} 已通过受控 deterministic fallback 执行`,
+    };
+  }
+
+  private normalizeGeneratedPrivatePluginInput(
+    inputs: Record<string, unknown>,
+  ): Record<string, unknown> {
+    if (
+      inputs.input &&
+      typeof inputs.input === 'object' &&
+      !Array.isArray(inputs.input)
+    ) {
+      return inputs.input as Record<string, unknown>;
+    }
+
+    if (
+      inputs['payload-out'] &&
+      typeof inputs['payload-out'] === 'object' &&
+      !Array.isArray(inputs['payload-out'])
+    ) {
+      return inputs['payload-out'] as Record<string, unknown>;
+    }
+
+    return inputs;
+  }
+
+  private collectGeneratedPrivatePluginSignals(
+    input: Record<string, unknown>,
+  ): string[] {
+    return Object.values(input)
+      .flatMap((value) => (Array.isArray(value) ? value : [value]))
+      .map((value) => String(value ?? '').trim())
+      .filter(Boolean);
   }
 
   private async recordUsage(
@@ -161,6 +350,93 @@ export class PluginExecutionWorker extends WorkerHost {
         error: error.message,
       })}`,
     );
+  }
+
+  private getNodeSchedulerService(): NodeSchedulerService {
+    this.nodeSchedulerService ??= this.moduleRef.get(NodeSchedulerService, {
+      strict: false,
+    });
+
+    return this.nodeSchedulerService;
+  }
+
+  private getStepStateMachineService(): StepStateMachineService {
+    this.stepStateMachineService ??= this.moduleRef.get(
+      StepStateMachineService,
+      {
+        strict: false,
+      },
+    );
+
+    return this.stepStateMachineService;
+  }
+
+  private async markStepFailedBestEffort(
+    jobData: PluginExecutionJobData,
+    error: unknown,
+  ): Promise<PluginExecutionJobResult> {
+    const err = error instanceof Error ? error : new Error(String(error));
+    const message = this.describePluginExecutionError(error);
+
+    try {
+      await this.getStepStateMachineService().updateStepStatus(
+        jobData.tenantId,
+        jobData.stepId,
+        'failed',
+        {
+          errorMessage: {
+            message,
+            stack: err.stack,
+            nodeId: jobData.nodeType,
+            detail: `pluginId=${jobData.pluginId}`,
+          },
+        },
+      );
+      await this.getNodeSchedulerService().onNodeFailed(
+        jobData.executionId,
+        jobData.stepId,
+        jobData.tenantId,
+      );
+    } catch (markError) {
+      this.logger.warn(
+        `插件执行失败状态收口失败: ${
+          markError instanceof Error ? markError.message : String(markError)
+        }`,
+      );
+    }
+
+    return {
+      status: 'failed',
+      outputs: {},
+      error: message,
+      message: `插件 ${jobData.pluginId} 节点 ${jobData.nodeType} 执行失败`,
+    };
+  }
+
+  private describePluginExecutionError(error: unknown): string {
+    if (!error || typeof error !== 'object') {
+      return String(error);
+    }
+
+    const maybeDomainError = error as {
+      detail?: unknown;
+      message?: unknown;
+      name?: unknown;
+    };
+
+    if (typeof maybeDomainError.detail === 'string') {
+      return maybeDomainError.detail;
+    }
+
+    if (typeof maybeDomainError.message === 'string') {
+      return maybeDomainError.message;
+    }
+
+    if (typeof maybeDomainError.name === 'string') {
+      return maybeDomainError.name;
+    }
+
+    return String(error);
   }
 
   private async downloadWasmBuffer(
