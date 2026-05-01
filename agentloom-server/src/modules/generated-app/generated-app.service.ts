@@ -95,6 +95,7 @@ import {
 import {
   GeneratedAppGate3WorkspaceRunner,
   type GeneratedAppGate3CommandPlan,
+  type GeneratedAppGate3RepairResult,
   type GeneratedAppGenerationWorkspaceContract,
 } from './generated-app.workspace';
 import {
@@ -1815,6 +1816,7 @@ export class GeneratedAppService {
     const producedGateRuns: GeneratedAppGateRunResponseDto[] = [
       gateRunResult.gateRun,
     ];
+    const automaticRepairGateRunIdsToExclude = new Set<string>();
     let latestApp = gateRunResult.app;
     let finalFailureReason: string | null =
       gate0Evaluation.failure?.message ??
@@ -2042,12 +2044,97 @@ export class GeneratedAppService {
           latestApp = gate3RunResult.app;
           completedAt = gate3CompletedAt;
 
+          if (
+            gate3Evaluation.status === 'failed' &&
+            parsed.maxRepairAttempts > 0 &&
+            buildUnitPlan.executionLevel === 'real-local-command-plan'
+          ) {
+            const repairAttempt = await this.createRunningGate3RepairAttempt({
+              tenantId,
+              userId,
+              appId,
+              generationRunId: run.id,
+              failedGateRun: gate3RunResult.gateRun,
+            });
+            const repairResult =
+              await this.gate3WorkspaceRunner.applyRepairPatchAndRun({
+                tenantId,
+                appId,
+                generationRunId: run.id,
+                appSpec: app.appSpec,
+                generationPlan,
+                staticContracts,
+                buildUnitPlan,
+                workspace: gate3Workspace,
+                commandPlan: gate3CommandPlan,
+                repairPlan: repairAttempt.repairPlan!,
+                reverificationPlan: repairAttempt.reverificationPlan!,
+              });
+            const repairStartedAt = new Date();
+            const repairCompletedAt = new Date();
+            const gate3RepairRunResult = await this.createGateRunAndUpdateApp(
+              tenantId,
+              userId,
+              {
+                ...app,
+                gateResults: latestApp.gateResults,
+                generationPlan: latestApp.generationPlan,
+              },
+              {
+                gateId: 'gate-3',
+                generationRunId: run.id,
+                repairAttemptId: repairAttempt.id,
+                attemptNumber: 2,
+                status: repairResult.status,
+                summary: repairResult.summary,
+                evidence: repairResult.evidence,
+                failure: repairResult.failure,
+                repairInstructions: repairResult.repairInstructions,
+                startedAt: repairStartedAt.toISOString(),
+                completedAt: repairCompletedAt.toISOString(),
+              },
+              {
+                generationPlan: generationPlanWithBuildUnitPlan,
+                buildGateResults: (gate3RepairResult, nowIso) =>
+                  this.buildRunnerGateResults(
+                    app,
+                    [
+                      ...(gate0Result ? [gate0Result] : []),
+                      ...(gate1Result ? [gate1Result] : []),
+                      ...(gate2Result ? [gate2Result] : []),
+                      gate3RepairResult,
+                    ],
+                    nowIso,
+                  ),
+              },
+            );
+
+            await this.completeGate3RepairAttempt({
+              tenantId,
+              appId,
+              repairAttemptId: repairAttempt.id,
+              repairResult,
+            });
+
+            producedGateRuns.push(gate3RepairRunResult.gateRun);
+            latestApp = gate3RepairRunResult.app;
+            completedAt = repairCompletedAt;
+            automaticRepairGateRunIdsToExclude.add(gate3RunResult.gateRun.id);
+            automaticRepairGateRunIdsToExclude.add(
+              gate3RepairRunResult.gateRun.id,
+            );
+            gate3Evaluation = repairResult;
+          }
+
           if (gate3Evaluation.status === 'failed') {
             finalFailureReason =
               gate3Evaluation.failure?.message ??
               'Gate 3 构建与单元门禁失败，不能继续执行 Gate 4-7。';
-            completedSummary =
-              '门禁运行器完成 Gate 0、Gate 1 和 Gate 2，但 Gate 3 Generation Workspace、构建/单元执行或 buildUnitPlan 检查失败；Gate 4-7 未执行，当前应用保持不可发布。';
+            completedSummary = automaticRepairGateRunIdsToExclude.has(
+              gate3RunResult.gateRun.id,
+            )
+              ? '门禁运行器完成 Gate 0、Gate 1 和 Gate 2；Gate 3 自动修复补丁已尝试并重新验证，但 Gate 3 仍失败；Gate 4-7 未执行，当前应用保持不可发布。'
+              : '门禁运行器完成 Gate 0、Gate 1 和 Gate 2，但 Gate 3 Generation Workspace、构建/单元执行或 buildUnitPlan 检查失败；Gate 4-7 未执行，当前应用保持不可发布。';
           } else {
             const integrationPlan = this.buildIntegrationPlan(
               app.appSpec,
@@ -2440,6 +2527,7 @@ export class GeneratedAppService {
         generationRunId: run.id,
         maxRepairAttempts: parsed.maxRepairAttempts,
         gateRuns: producedGateRuns,
+        excludeGateRunIds: [...automaticRepairGateRunIdsToExclude],
       });
     }
 
@@ -2479,13 +2567,16 @@ export class GeneratedAppService {
     generationRunId: string;
     maxRepairAttempts: number;
     gateRuns: GeneratedAppGateRunResponseDto[];
+    excludeGateRunIds?: string[];
   }): Promise<GeneratedAppRepairAttemptResponseDto | null> {
     if (params.maxRepairAttempts <= 0) {
       return null;
     }
 
+    const excludedGateRunIds = new Set(params.excludeGateRunIds ?? []);
     const failedGateRun = params.gateRuns.find(
-      (gateRun) => gateRun.status === 'failed',
+      (gateRun) =>
+        gateRun.status === 'failed' && !excludedGateRunIds.has(gateRun.id),
     );
 
     if (!failedGateRun) {
@@ -2531,6 +2622,88 @@ export class GeneratedAppService {
         createdBy: params.userId,
       })
       .returning();
+
+    return this.toRepairAttemptResponseDto(attempt);
+  }
+
+  private async createRunningGate3RepairAttempt(params: {
+    tenantId: string;
+    userId: string;
+    appId: string;
+    generationRunId: string;
+    failedGateRun: GeneratedAppGateRunResponseDto;
+  }): Promise<GeneratedAppRepairAttemptResponseDto> {
+    const now = new Date();
+    const repairPlan = this.buildFailedGateRepairPlan(
+      params.failedGateRun,
+      now,
+    );
+    const reverificationPlan = this.buildFailedGateReverificationPlan(
+      params.failedGateRun,
+      now,
+    );
+    const failureMessage =
+      params.failedGateRun.failure?.message ?? params.failedGateRun.summary;
+    const [attempt] = await this.tenantDb
+      .insert(schema.generatedAppRepairAttempts)
+      .values({
+        tenantId: params.tenantId,
+        generatedAppId: params.appId,
+        generationRunId: params.generationRunId,
+        attemptNumber: 1,
+        targetGateId: params.failedGateRun.gateId,
+        status: 'running',
+        failureSummary: this.limitRepairAttemptText(
+          `${params.failedGateRun.gateId} ${params.failedGateRun.gateName} 失败：${failureMessage}`,
+        ),
+        changeSummary: null,
+        verificationSummary: null,
+        repairPlan,
+        reverificationPlan,
+        startedAt: now,
+        completedAt: null,
+        createdBy: params.userId,
+      })
+      .returning();
+
+    return this.toRepairAttemptResponseDto(attempt);
+  }
+
+  private async completeGate3RepairAttempt(params: {
+    tenantId: string;
+    appId: string;
+    repairAttemptId: string;
+    repairResult: GeneratedAppGate3RepairResult;
+  }): Promise<GeneratedAppRepairAttemptResponseDto> {
+    const completedAt = new Date();
+    const [attempt] = await this.tenantDb
+      .update(schema.generatedAppRepairAttempts)
+      .set({
+        status:
+          params.repairResult.status === 'passed' ? 'completed' : 'failed',
+        changeSummary: this.limitRepairAttemptText(
+          params.repairResult.changeSummary,
+        ),
+        verificationSummary: this.limitRepairAttemptText(
+          params.repairResult.verificationSummary,
+        ),
+        completedAt,
+        updatedAt: completedAt,
+      })
+      .where(
+        and(
+          eq(schema.generatedAppRepairAttempts.id, params.repairAttemptId),
+          eq(schema.generatedAppRepairAttempts.tenantId, params.tenantId),
+          eq(schema.generatedAppRepairAttempts.generatedAppId, params.appId),
+        ),
+      )
+      .returning();
+
+    if (!attempt) {
+      throw new GeneratedAppRepairAttemptNotFoundException(
+        params.repairAttemptId,
+      );
+    }
 
     return this.toRepairAttemptResponseDto(attempt);
   }

@@ -40,6 +40,7 @@ import {
 import type { GeneratedAppResponseDto } from '../dto';
 import {
   GeneratedAppGate3WorkspaceRunner,
+  type GeneratedAppGate3RepairResult,
   type GeneratedAppGate3RunnerResult,
 } from '../generated-app.workspace';
 
@@ -75,11 +76,16 @@ const GATE_6_RUN_ID = '66666666-6666-4666-8666-666666666672';
 const GATE_7_RUN_ID = '66666666-6666-4666-8666-666666666673';
 const REPAIR_ATTEMPT_ID = '77777777-7777-4777-8777-777777777777';
 const NOW = new Date('2026-04-25T00:00:00.000Z');
-const DEFAULT_START_GENERATION_RUN_DTO = {
+type StartGenerationRunInput = {
+  triggerSource: 'manual' | 'retry';
+  maxRepairAttempts: number;
+  maxRuntimeSeconds: number;
+};
+const DEFAULT_START_GENERATION_RUN_DTO: StartGenerationRunInput = {
   triggerSource: 'manual',
   maxRepairAttempts: 3,
   maxRuntimeSeconds: 1800,
-} as const;
+};
 
 function createConfigService(
   overrides: Record<string, string | undefined> = {},
@@ -100,6 +106,7 @@ function createConfigService(
 function createGate3RunnerStub(
   configService: ConfigService,
   result: GeneratedAppGate3RunnerResult,
+  repairResult?: GeneratedAppGate3RepairResult,
 ): GeneratedAppGate3WorkspaceRunner {
   const delegate = new GeneratedAppGate3WorkspaceRunner(configService);
 
@@ -117,6 +124,15 @@ function createGate3RunnerStub(
     ),
     buildCommandPlan: vi.fn(delegate.buildCommandPlan.bind(delegate)),
     materializeAndRun: vi.fn().mockResolvedValue(result),
+    applyRepairPatchAndRun: vi.fn().mockResolvedValue(
+      repairResult ??
+        ({
+          ...result,
+          patchApplied: false,
+          changeSummary: '测试替身未应用补丁。',
+          verificationSummary: '测试替身未执行再验证。',
+        } satisfies GeneratedAppGate3RepairResult),
+    ),
   } as unknown as GeneratedAppGate3WorkspaceRunner;
 }
 
@@ -263,6 +279,42 @@ function createGate3RunnerResult(
         scenarioIds: ['scenario-1'],
       },
     ],
+    ...overrides,
+  };
+}
+
+function createGate3RepairResult(
+  overrides: Partial<GeneratedAppGate3RepairResult> = {},
+): GeneratedAppGate3RepairResult {
+  return {
+    ...createGate3RunnerResult({
+      summary:
+        'Gate 3 修复通过：受控 frontend workspace patch 已应用，build/typecheck/unit/component-golden 再验证命令全部通过。',
+      evidence: [
+        ...createGate3RunnerResult().evidence,
+        {
+          id: 'gate-3-controlled-repair-patch',
+          label: 'Gate 3 controlled repair patch',
+          kind: 'build',
+          url: null,
+          summary:
+            '受控 frontend workspace patch 已应用；targetGate=gate-3；patchTargets=generationWorkspace.files；requiredCommands=gate-3-unit-test-command',
+          details: {
+            runnerId: 'gate-3-real-build-unit-runner',
+            executionMode: 'real_local_command_plan',
+            patchApplied: true,
+            artifactRefs: [
+              'src/generated-app/repair-traceability.ts',
+              'artifacts/gate-3/repair-patch.json',
+            ],
+          },
+        },
+      ],
+    }),
+    patchApplied: true,
+    changeSummary: 'Gate 3 自动修复循环已应用受控 frontend workspace patch。',
+    verificationSummary:
+      'Gate 3 再验证通过：build、typecheck、unit 和 component/golden 受控命令全部通过。',
     ...overrides,
   };
 }
@@ -718,6 +770,7 @@ describe('GeneratedAppService', () => {
   let service: GeneratedAppService;
 
   beforeEach(() => {
+    vi.restoreAllMocks();
     vi.clearAllMocks();
 
     const configService = createConfigService();
@@ -1094,6 +1147,7 @@ describe('GeneratedAppService', () => {
 
   async function startGenerationRunWithGate3Result(
     runnerResult: GeneratedAppGate3RunnerResult,
+    dto: StartGenerationRunInput = DEFAULT_START_GENERATION_RUN_DTO,
   ) {
     const configService = createConfigService();
     const gate3Runner = createGate3RunnerStub(configService, runnerResult);
@@ -1166,6 +1220,7 @@ describe('GeneratedAppService', () => {
     const insertGate1RunChain = createInsertReturningChain([gate1Run]);
     const insertGate2RunChain = createInsertReturningChain([gate2Run]);
     const insertGate3RunChain = createInsertReturningChain([gate3Run]);
+    const shouldRecordAutomaticRepairAttempt = dto.maxRepairAttempts > 0;
     const repairAttempt = createGeneratedAppRepairAttempt({
       targetGateId: 'gate-3',
       status: 'failed',
@@ -1176,9 +1231,9 @@ describe('GeneratedAppService', () => {
       verificationSummary: 'Gate 3 仍为 failed。',
       completedAt: NOW,
     });
-    const insertRepairAttemptChain = createInsertReturningChain([
-      repairAttempt,
-    ]);
+    const insertRepairAttemptChain = shouldRecordAutomaticRepairAttempt
+      ? createInsertReturningChain([repairAttempt])
+      : undefined;
     const updateAppAfterGate0Chain =
       createGeneratedAppUpdateReturningFromPayload(app);
     const updateAppAfterGate1Chain =
@@ -1199,8 +1254,10 @@ describe('GeneratedAppService', () => {
       .mockReturnValueOnce(insertGateRunChain)
       .mockReturnValueOnce(insertGate1RunChain)
       .mockReturnValueOnce(insertGate2RunChain)
-      .mockReturnValueOnce(insertGate3RunChain)
-      .mockReturnValueOnce(insertRepairAttemptChain);
+      .mockReturnValueOnce(insertGate3RunChain);
+    if (insertRepairAttemptChain) {
+      mockTenantDb.insert.mockReturnValueOnce(insertRepairAttemptChain);
+    }
     mockTenantDb.update
       .mockReturnValueOnce(updateAppAfterGate0Chain)
       .mockReturnValueOnce(updateAppAfterGate1Chain)
@@ -1212,7 +1269,7 @@ describe('GeneratedAppService', () => {
       TENANT_ID,
       USER_ID,
       APP_ID,
-      DEFAULT_START_GENERATION_RUN_DTO,
+      dto,
     );
 
     return {
@@ -3345,6 +3402,7 @@ describe('GeneratedAppService', () => {
       configService,
       createGate3RunnerResult({
         status: 'failed',
+        executionLevel: 'fixture-execution',
         failure: {
           code: 'gate3-build-failed',
           message: 'Gate 3 构建命令失败。',
@@ -5102,10 +5160,12 @@ describe('GeneratedAppService', () => {
       app,
       gate3UpdatePayload,
       insertGate3RunChain,
-      insertRepairAttemptChain,
       response,
       updateRunChain,
-    } = await startGenerationRunWithGate3Result(runnerResult);
+    } = await startGenerationRunWithGate3Result(runnerResult, {
+      ...DEFAULT_START_GENERATION_RUN_DTO,
+      maxRepairAttempts: 0,
+    });
 
     expect(insertGate3RunChain.values).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -5177,51 +5237,7 @@ describe('GeneratedAppService', () => {
     expect(appUpdatePayload.status).toBe('failed');
     expect(appUpdatePayload.publicShareToken).toBeNull();
     expect(appUpdatePayload.publicShareEnabled).toBe(false);
-    expect(insertRepairAttemptChain.values).toHaveBeenCalledWith(
-      expect.objectContaining({
-        tenantId: TENANT_ID,
-        generatedAppId: APP_ID,
-        generationRunId: GENERATION_RUN_ID,
-        attemptNumber: 1,
-        targetGateId: 'gate-3',
-        status: 'failed',
-        failureSummary: expect.stringContaining(
-          'Generation Workspace materialization 失败',
-        ),
-        changeSummary:
-          expect.stringContaining('自动修复循环已读取失败证据和修复建议'),
-        verificationSummary: expect.stringContaining('gate-3 仍为 failed'),
-        repairPlan: expect.objectContaining({
-          targetGateId: 'gate-3',
-          failureCode: 'gate-3-workspace-materialization-failed',
-          evidenceIds: ['gate-3-generation-workspace-materialization'],
-          allowedChangeScopes: expect.arrayContaining([
-            'frontend-workspace',
-            'test-contracts',
-          ]),
-          patchTargets: expect.arrayContaining([
-            'generationWorkspace.files',
-            'generated_apps.generation_plan.buildUnitPlan',
-          ]),
-        }),
-        reverificationPlan: expect.objectContaining({
-          targetGateId: 'gate-3',
-          requiredGateIds: ['gate-3'],
-          requiredCommandIds: expect.arrayContaining([
-            'gate-3-frontend-build-command',
-            'gate-3-typecheck-command',
-            'gate-3-unit-test-command',
-            'gate-3-component-golden-test-entry',
-          ]),
-          requiredEvidenceIds: ['gate-3-generation-workspace-materialization'],
-          blockedUntilPatchApplied: true,
-        }),
-        startedAt: expect.any(Date),
-        completedAt: expect.any(Date),
-        createdBy: USER_ID,
-      }),
-    );
-    expect(mockTenantDb.insert).toHaveBeenCalledTimes(6);
+    expect(mockTenantDb.insert).toHaveBeenCalledTimes(5);
     expect(response.gateRuns.map((gateRun) => gateRun.gateId)).toEqual([
       'gate-0',
       'gate-1',
@@ -5316,12 +5332,11 @@ describe('GeneratedAppService', () => {
       ],
     };
 
-    const {
-      gate3UpdatePayload,
-      insertGate3RunChain,
-      insertRepairAttemptChain,
-      response,
-    } = await startGenerationRunWithGate3Result(runnerResult);
+    const { gate3UpdatePayload, insertGate3RunChain, response } =
+      await startGenerationRunWithGate3Result(runnerResult, {
+        ...DEFAULT_START_GENERATION_RUN_DTO,
+        maxRepairAttempts: 0,
+      });
 
     expect(insertGate3RunChain.values).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -5379,51 +5394,291 @@ describe('GeneratedAppService', () => {
       'gate-2',
       'gate-3',
     ]);
-    expect(insertRepairAttemptChain.values).toHaveBeenCalledWith(
-      expect.objectContaining({
-        tenantId: TENANT_ID,
-        generatedAppId: APP_ID,
-        generationRunId: GENERATION_RUN_ID,
-        attemptNumber: 1,
-        targetGateId: 'gate-3',
+    expect(mockTenantDb.insert).toHaveBeenCalledTimes(5);
+  });
+
+  it('Gate 3 首次失败后应应用受控补丁、完成修复尝试并继续 Gate 4', async () => {
+    const configService = createConfigService();
+    const initialGate3Failure = createGate3RunnerResult({
+      status: 'failed',
+      summary:
+        'Gate 3 失败：命令 gate-3-unit-test-command 退出码为 1，已停止 Gate 4-7。',
+      failure: {
+        code: 'gate-3-command-failed',
+        message:
+          'Gate 3 命令 gate-3-unit-test-command 执行失败，不能继续执行 Gate 4-7。',
+      },
+      repairInstructions:
+        '读取 Gate 3 命令 stdout/stderr 摘要和 artifact refs，修复生成应用源码、静态合约覆盖或测试入口后重新运行 Gate 3。',
+    });
+    const gate3RepairResult = createGate3RepairResult();
+    const gate3Runner = createGate3RunnerStub(
+      configService,
+      initialGate3Failure,
+      gate3RepairResult,
+    );
+    const gate4Runner = createGate4RunnerStub(
+      configService,
+      createGate4RunnerResult({
         status: 'failed',
-        failureSummary: expect.stringContaining(
-          'gate-3-unit-test-command 执行失败',
-        ),
-        changeSummary: expect.stringContaining('stdout/stderr 摘要'),
-        verificationSummary: expect.stringContaining('gate-3 仍为 failed'),
+        failure: {
+          code: 'gate-4-integration-check-failed',
+          message: 'Gate 4 集成检查失败。',
+        },
+      }),
+    );
+    const serviceWithRunner = new GeneratedAppService(
+      mockTenantDb as unknown as DrizzleDB,
+      configService,
+      gate3Runner,
+      gate4Runner,
+    );
+    const app = createGeneratedApp();
+    const run = createGeneratedAppGenerationRun();
+    const gate0Run = createGeneratedAppGateRun({
+      gateId: 'gate-0',
+      gateOrder: 0,
+      gateName: '需求规格门禁',
+      generationRunId: GENERATION_RUN_ID,
+      status: 'passed',
+      summary: 'Gate 0 通过。',
+      evidence: [],
+    });
+    const gate1Run = createGeneratedAppGateRun({
+      id: GATE_1_RUN_ID,
+      gateId: 'gate-1',
+      gateOrder: 1,
+      gateName: '架构计划门禁',
+      generationRunId: GENERATION_RUN_ID,
+      status: 'passed',
+      summary: 'Gate 1 通过。',
+      evidence: [],
+    });
+    const gate2Run = createGeneratedAppGateRun({
+      id: GATE_2_RUN_ID,
+      gateId: 'gate-2',
+      gateOrder: 2,
+      gateName: '静态合约门禁',
+      generationRunId: GENERATION_RUN_ID,
+      status: 'passed',
+      summary: 'Gate 2 通过。',
+      evidence: [],
+    });
+    const gate3FailedRun = createGeneratedAppGateRun({
+      id: GATE_3_RUN_ID,
+      gateId: 'gate-3',
+      gateOrder: 3,
+      gateName: '构建与单元门禁',
+      generationRunId: GENERATION_RUN_ID,
+      status: 'failed',
+      summary: initialGate3Failure.summary,
+      evidence: initialGate3Failure.evidence,
+      failure: initialGate3Failure.failure,
+      repairInstructions: initialGate3Failure.repairInstructions,
+    });
+    const runningRepairAttempt = createGeneratedAppRepairAttempt({
+      targetGateId: 'gate-3',
+      status: 'running',
+      failureSummary:
+        'gate-3 构建与单元门禁 失败：Gate 3 命令 gate-3-unit-test-command 执行失败，不能继续执行 Gate 4-7。',
+      repairPlan: {
+        planVersion: 1,
+        source: 'automatic-failed-gate-work-order',
+        targetGateId: 'gate-3',
+        targetGateName: '构建与单元门禁',
+        failureCode: 'gate-3-command-failed',
+        failureSummary:
+          'Gate 3 命令 gate-3-unit-test-command 执行失败，不能继续执行 Gate 4-7。',
+        repairInstructions:
+          '读取 Gate 3 命令 stdout/stderr 摘要和 artifact refs，修复生成应用源码、静态合约覆盖或测试入口后重新运行 Gate 3。',
+        evidenceIds: ['gate-3-frontend-build-command'],
+        evidenceSummaries: ['exitCode=1'],
+        allowedChangeScopes: ['frontend-workspace', 'test-contracts'],
+        forbiddenChangeScopes: ['public-share-token'],
+        patchTargets: ['generationWorkspace.files'],
+        requiredTraceability: ['failed-evidence-citation'],
+        generatedAt: NOW.toISOString(),
+      },
+      reverificationPlan: {
+        planVersion: 1,
+        targetGateId: 'gate-3',
+        requiredGateIds: ['gate-3'],
+        requiredCommandIds: ['gate-3-unit-test-command'],
+        requiredEvidenceIds: ['gate-3-frontend-build-command'],
+        successCriteria: ['gate-3 must pass'],
+        blockedUntilPatchApplied: true,
+        generatedAt: NOW.toISOString(),
+      },
+      completedAt: null,
+    });
+    const gate3RepairRun = createGeneratedAppGateRun({
+      id: '66666666-6666-4666-8666-666666666674',
+      gateId: 'gate-3',
+      gateOrder: 3,
+      gateName: '构建与单元门禁',
+      generationRunId: GENERATION_RUN_ID,
+      repairAttemptId: REPAIR_ATTEMPT_ID,
+      attemptNumber: 2,
+      status: 'passed',
+      summary: gate3RepairResult.summary,
+      evidence: gate3RepairResult.evidence,
+      failure: null,
+      repairInstructions: null,
+    });
+    const completedRepairAttempt = createGeneratedAppRepairAttempt({
+      ...runningRepairAttempt,
+      status: 'completed',
+      changeSummary: gate3RepairResult.changeSummary,
+      verificationSummary: gate3RepairResult.verificationSummary,
+      completedAt: NOW,
+    });
+    const gate4Run = createGeneratedAppGateRun({
+      id: GATE_4_RUN_ID,
+      gateId: 'gate-4',
+      gateOrder: 4,
+      gateName: '集成门禁',
+      generationRunId: GENERATION_RUN_ID,
+      status: 'failed',
+      summary: 'Gate 4 集成检查失败。',
+      failure: {
+        code: 'gate-4-integration-check-failed',
+        message: 'Gate 4 集成检查失败。',
+      },
+    });
+    const automaticGate4RepairAttempt = createGeneratedAppRepairAttempt({
+      id: '77777777-7777-4777-8777-777777777778',
+      targetGateId: 'gate-4',
+      status: 'failed',
+      failureSummary: 'Gate 4 集成检查失败。',
+      changeSummary: '自动修复循环已定位 Gate 4 失败。',
+      verificationSummary: 'Gate 4 仍为 failed。',
+    });
+    const completedRun = createGeneratedAppGenerationRun({
+      status: 'failed',
+      failureReason: 'Gate 4 集成检查失败。',
+      completedAt: NOW,
+    });
+    const insertRunChain = createInsertReturningChain([run]);
+    const insertGate0RunChain = createInsertReturningChain([gate0Run]);
+    const insertGate1RunChain = createInsertReturningChain([gate1Run]);
+    const insertGate2RunChain = createInsertReturningChain([gate2Run]);
+    const insertGate3FailedRunChain = createInsertReturningChain([
+      gate3FailedRun,
+    ]);
+    const insertRunningRepairAttemptChain = createInsertReturningChain([
+      runningRepairAttempt,
+    ]);
+    const insertGate3RepairRunChain = createInsertReturningChain([
+      gate3RepairRun,
+    ]);
+    const insertGate4RunChain = createInsertReturningChain([gate4Run]);
+    const insertAutomaticGate4RepairAttemptChain = createInsertReturningChain([
+      automaticGate4RepairAttempt,
+    ]);
+    const updateAppAfterGate0Chain =
+      createGeneratedAppUpdateReturningFromPayload(app);
+    const updateAppAfterGate1Chain =
+      createGeneratedAppUpdateReturningFromPayload(app);
+    const updateAppAfterGate2Chain =
+      createGeneratedAppUpdateReturningFromPayload(app);
+    const updateAppAfterGate3FailedChain =
+      createGeneratedAppUpdateReturningFromPayload(app);
+    const updateAppAfterGate3RepairChain =
+      createGeneratedAppUpdateReturningFromPayload(app);
+    const updateRepairAttemptChain = createUpdateReturningChain([
+      completedRepairAttempt,
+    ]);
+    const updateAppAfterGate4Chain =
+      createGeneratedAppUpdateReturningFromPayload(app);
+    const updateRunChain = createUpdateReturningChain([completedRun]);
+
+    mockTenantDb.select
+      .mockReturnValueOnce(createSelectChain([app]))
+      .mockReturnValueOnce(createSelectLatestRunNumberChain(null));
+    mockTenantDb.insert
+      .mockReturnValueOnce(insertRunChain)
+      .mockReturnValueOnce(insertGate0RunChain)
+      .mockReturnValueOnce(insertGate1RunChain)
+      .mockReturnValueOnce(insertGate2RunChain)
+      .mockReturnValueOnce(insertGate3FailedRunChain)
+      .mockReturnValueOnce(insertRunningRepairAttemptChain)
+      .mockReturnValueOnce(insertGate3RepairRunChain)
+      .mockReturnValueOnce(insertGate4RunChain)
+      .mockReturnValueOnce(insertAutomaticGate4RepairAttemptChain);
+    mockTenantDb.update
+      .mockReturnValueOnce(updateAppAfterGate0Chain)
+      .mockReturnValueOnce(updateAppAfterGate1Chain)
+      .mockReturnValueOnce(updateAppAfterGate2Chain)
+      .mockReturnValueOnce(updateAppAfterGate3FailedChain)
+      .mockReturnValueOnce(updateAppAfterGate3RepairChain)
+      .mockReturnValueOnce(updateRepairAttemptChain)
+      .mockReturnValueOnce(updateAppAfterGate4Chain)
+      .mockReturnValueOnce(updateRunChain);
+
+    const response = await serviceWithRunner.startGenerationRun(
+      TENANT_ID,
+      USER_ID,
+      APP_ID,
+      DEFAULT_START_GENERATION_RUN_DTO,
+    );
+
+    expect(gate3Runner.applyRepairPatchAndRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        repairPlan: runningRepairAttempt.repairPlan,
+        reverificationPlan: runningRepairAttempt.reverificationPlan,
+      }),
+    );
+    expect(insertRunningRepairAttemptChain.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        targetGateId: 'gate-3',
+        status: 'running',
         repairPlan: expect.objectContaining({
           targetGateId: 'gate-3',
           failureCode: 'gate-3-command-failed',
-          evidenceIds: [
-            'gate-3-generation-workspace-materialized',
-            'gate-3-unit-test-command',
-          ],
-          evidenceSummaries: expect.arrayContaining([
-            expect.stringContaining('exitCode=1'),
-          ]),
-          patchTargets: expect.arrayContaining([
-            'generationWorkspace.commandPlan',
-          ]),
         }),
-        reverificationPlan: expect.objectContaining({
-          targetGateId: 'gate-3',
-          requiredGateIds: ['gate-3'],
-          requiredCommandIds: expect.arrayContaining([
-            'gate-3-unit-test-command',
-          ]),
-          requiredEvidenceIds: [
-            'gate-3-generation-workspace-materialized',
-            'gate-3-unit-test-command',
-          ],
-          blockedUntilPatchApplied: true,
-        }),
-        startedAt: expect.any(Date),
-        completedAt: expect.any(Date),
-        createdBy: USER_ID,
       }),
     );
-    expect(mockTenantDb.insert).toHaveBeenCalledTimes(6);
+    expect(insertGate3RepairRunChain.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        gateId: 'gate-3',
+        repairAttemptId: REPAIR_ATTEMPT_ID,
+        attemptNumber: 2,
+        status: 'passed',
+        evidence: expect.arrayContaining([
+          expect.objectContaining({
+            id: 'gate-3-controlled-repair-patch',
+          }),
+        ]),
+      }),
+    );
+    expect(updateRepairAttemptChain.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'completed',
+        changeSummary: gate3RepairResult.changeSummary,
+        verificationSummary: gate3RepairResult.verificationSummary,
+        completedAt: expect.any(Date),
+      }),
+    );
+    expect(insertGate4RunChain.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        gateId: 'gate-4',
+        status: 'failed',
+      }),
+    );
+    expect(insertAutomaticGate4RepairAttemptChain.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        targetGateId: 'gate-4',
+        status: 'failed',
+      }),
+    );
+    expect(response.gateRuns.map((gateRun) => gateRun.gateId)).toEqual([
+      'gate-0',
+      'gate-1',
+      'gate-2',
+      'gate-3',
+      'gate-3',
+      'gate-4',
+    ]);
   });
 
   it('Gate 3 real-local runner 应拒绝非 allowlist 命令且不执行任意 shell', async () => {
@@ -5654,6 +5909,160 @@ describe('GeneratedAppService', () => {
       expect(buildManifest.runtimeFormFields).toEqual(
         expect.arrayContaining(['chiefComplaint', 'symptoms', 'severity']),
       );
+    } finally {
+      await rm(workspaceRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('Gate 3 real-local runner 应应用受控修复补丁并重新执行再验证命令', async () => {
+    const app = createGeneratedApp();
+    const workspaceRoot = join(
+      tmpdir(),
+      'agentloom-generated-app-gate3-repair-spec',
+    );
+    const configService = createConfigService({
+      GENERATED_APP_WORKSPACE_ROOT: workspaceRoot,
+    });
+    const runner = new GeneratedAppGate3WorkspaceRunner(configService);
+    const internals = service as unknown as {
+      buildGenerationPlan(
+        appSpec: GeneratedApp['appSpec'],
+      ): GeneratedAppGenerationPlan;
+      buildStaticContracts(
+        appSpec: GeneratedApp['appSpec'],
+        generationPlan: GeneratedAppGenerationPlan,
+      ): GeneratedAppStaticContracts;
+      buildBuildUnitPlan(
+        appSpec: GeneratedApp['appSpec'],
+        generationPlan: GeneratedAppGenerationPlan,
+        staticContracts: GeneratedAppStaticContracts,
+        generationWorkspace: NonNullable<
+          GeneratedAppBuildUnitPlan['generationWorkspace']
+        >,
+        commandPlan: ReturnType<
+          GeneratedAppGate3WorkspaceRunner['buildCommandPlan']
+        >,
+        executionLevel: GeneratedAppBuildUnitPlan['executionLevel'],
+      ): GeneratedAppBuildUnitPlan;
+    };
+    const generationPlan = internals.buildGenerationPlan(app.appSpec);
+    const staticContracts = internals.buildStaticContracts(
+      app.appSpec,
+      generationPlan,
+    );
+    const workspace = runner.buildWorkspaceContract({
+      tenantId: TENANT_ID,
+      appId: APP_ID,
+      generationRunId: GENERATION_RUN_ID,
+      appSpec: app.appSpec,
+      staticContracts,
+    });
+    const commandPlan = runner.buildCommandPlan({
+      workspace,
+      requirementIds: app.appSpec.coreRequirements.map(
+        (requirement) => requirement.id,
+      ),
+      scenarioIds: app.appSpec.acceptanceScenarios.map(
+        (scenario) => scenario.id,
+      ),
+    });
+    const buildUnitPlan = internals.buildBuildUnitPlan(
+      app.appSpec,
+      generationPlan,
+      staticContracts,
+      workspace,
+      commandPlan,
+      'real-local-command-plan',
+    );
+
+    try {
+      const result = await runner.applyRepairPatchAndRun({
+        tenantId: TENANT_ID,
+        appId: APP_ID,
+        generationRunId: GENERATION_RUN_ID,
+        appSpec: app.appSpec,
+        generationPlan,
+        staticContracts,
+        buildUnitPlan,
+        workspace,
+        commandPlan,
+        repairPlan: {
+          planVersion: 1,
+          source: 'automatic-failed-gate-work-order',
+          targetGateId: 'gate-3',
+          targetGateName: '构建与单元门禁',
+          failureCode: 'gate-3-command-failed',
+          failureSummary: 'Gate 3 命令失败。',
+          repairInstructions: '应用受控 frontend workspace patch。',
+          evidenceIds: ['gate-3-unit-test-command'],
+          evidenceSummaries: ['exitCode=1'],
+          allowedChangeScopes: ['frontend-workspace', 'test-contracts'],
+          forbiddenChangeScopes: ['public-share-token'],
+          patchTargets: ['generationWorkspace.files'],
+          requiredTraceability: ['failed-evidence-citation'],
+          generatedAt: NOW.toISOString(),
+        },
+        reverificationPlan: {
+          planVersion: 1,
+          targetGateId: 'gate-3',
+          requiredGateIds: ['gate-3'],
+          requiredCommandIds: [
+            'gate-3-frontend-build-command',
+            'gate-3-typecheck-command',
+            'gate-3-unit-test-command',
+            'gate-3-component-golden-test-entry',
+          ],
+          requiredEvidenceIds: ['gate-3-unit-test-command'],
+          successCriteria: ['gate-3 must pass'],
+          blockedUntilPatchApplied: true,
+          generatedAt: NOW.toISOString(),
+        },
+      });
+      const repairTraceabilitySource = await readFile(
+        join(
+          workspaceRoot,
+          workspace.relativePath,
+          'src/generated-app/repair-traceability.ts',
+        ),
+        'utf8',
+      );
+      const repairPatchArtifact = JSON.parse(
+        await readFile(
+          join(
+            workspaceRoot,
+            workspace.relativePath,
+            'artifacts/gate-3/repair-patch.json',
+          ),
+          'utf8',
+        ),
+      ) as { patchKind: string; requiredCommandIds: string[] };
+
+      expect(result.status).toBe('passed');
+      expect(result.patchApplied).toBe(true);
+      expect(result.changeSummary).toContain('受控 frontend workspace patch');
+      expect(result.verificationSummary).toContain('再验证通过');
+      expect(result.evidence).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: 'gate-3-controlled-repair-patch',
+            details: expect.objectContaining({
+              patchApplied: true,
+              artifactRefs: expect.arrayContaining([
+                'src/generated-app/repair-traceability.ts',
+                'artifacts/gate-3/repair-patch.json',
+              ]),
+            }),
+          }),
+        ]),
+      );
+      expect(repairTraceabilitySource).toContain('repairTraceability');
+      expect(repairPatchArtifact.patchKind).toBe(
+        'controlled-gate3-frontend-workspace-repair',
+      );
+      expect(repairPatchArtifact.requiredCommandIds).toEqual(
+        expect.arrayContaining(['gate-3-unit-test-command']),
+      );
+      expect(JSON.stringify(result)).not.toContain(workspaceRoot);
     } finally {
       await rm(workspaceRoot, { recursive: true, force: true });
     }

@@ -12,6 +12,8 @@ import type {
   GeneratedAppGateEvidence,
   GeneratedAppGateRunFailure,
   GeneratedAppGenerationPlan,
+  GeneratedAppRepairPlan,
+  GeneratedAppReverificationPlan,
   GeneratedAppSpec,
   GeneratedAppStaticContracts,
 } from '../../database/schema';
@@ -60,6 +62,12 @@ export interface GeneratedAppGate3RunnerResult {
   commandResults: GeneratedAppGate3CommandResult[];
 }
 
+export interface GeneratedAppGate3RepairResult extends GeneratedAppGate3RunnerResult {
+  patchApplied: boolean;
+  changeSummary: string;
+  verificationSummary: string;
+}
+
 interface MaterializeWorkspaceParams {
   tenantId: string;
   appId: string;
@@ -73,6 +81,11 @@ interface MaterializeWorkspaceParams {
 interface Gate3RunParams extends MaterializeWorkspaceParams {
   workspace: GeneratedAppGenerationWorkspaceContract;
   commandPlan: GeneratedAppGate3CommandPlan[];
+}
+
+interface Gate3RepairParams extends Gate3RunParams {
+  repairPlan: GeneratedAppRepairPlan;
+  reverificationPlan: GeneratedAppReverificationPlan;
 }
 
 const GATE_3_RUNNER_IDS = {
@@ -499,6 +512,172 @@ export class GeneratedAppGate3WorkspaceRunner {
       failure: null,
       repairInstructions: null,
       commandResults,
+    };
+  }
+
+  async applyRepairPatchAndRun(
+    params: Gate3RepairParams,
+  ): Promise<GeneratedAppGate3RepairResult> {
+    const mode = this.getExecutorMode();
+    const executionLevel = this.getExecutionLevel();
+
+    if (mode !== 'real') {
+      return {
+        status: 'failed',
+        executionLevel,
+        summary:
+          'Gate 3 修复失败：只有 real-local-command-plan 执行器允许应用受控补丁并重新验证。',
+        evidence: [
+          this.buildExecutionEvidence({
+            id: 'gate-3-controlled-repair-mode-rejected',
+            label: 'Gate 3 controlled repair mode rejected',
+            kind: 'build',
+            summary: `当前 executor mode=${mode}，未应用修复补丁。`,
+            details: {
+              executionMode: mode,
+              executed: false,
+              targetGateId: params.repairPlan.targetGateId,
+            },
+          }),
+        ],
+        failure: {
+          code: 'gate-3-repair-mode-rejected',
+          message:
+            'Gate 3 受控修复补丁只能在 real-local-command-plan 模式下执行。',
+          details: {
+            executionMode: mode,
+            targetGateId: params.repairPlan.targetGateId,
+          },
+        },
+        repairInstructions:
+          '启用 Gate 3 real-local-command-plan 执行器后重新运行修复循环。',
+        commandResults: [],
+        patchApplied: false,
+        changeSummary:
+          'Gate 3 修复循环未应用补丁：当前执行器不是 real-local-command-plan。',
+        verificationSummary: 'Gate 3 修复补丁未执行，未产生再验证结果。',
+      };
+    }
+
+    let workspacePath: string;
+
+    try {
+      ({ workspacePath } = await this.materializeWorkspace(params));
+      await this.applyControlledRepairPatch(workspacePath, params);
+    } catch (error: unknown) {
+      const message = this.redactHostPaths(this.toErrorMessage(error));
+
+      return {
+        status: 'failed',
+        executionLevel,
+        summary:
+          'Gate 3 修复失败：受控补丁应用或 workspace materialization 未完成。',
+        evidence: [
+          this.buildExecutionEvidence({
+            id: 'gate-3-controlled-repair-patch-failed',
+            label: 'Gate 3 controlled repair patch failed',
+            kind: 'build',
+            summary: `受控修复补丁未完成：${message}`,
+            details: {
+              runnerId: GATE_3_RUNNER_IDS.real,
+              executionMode: 'real_local_command_plan',
+              executed: false,
+              workspaceRef: params.workspace.relativePath,
+              targetGateId: params.repairPlan.targetGateId,
+              errorMessage: message,
+            },
+          }),
+        ],
+        failure: {
+          code: 'gate-3-controlled-repair-patch-failed',
+          message: 'Gate 3 受控修复补丁未能应用，不能继续后续门禁。',
+          details: {
+            workspaceRef: params.workspace.relativePath,
+            errorMessage: message,
+          },
+        },
+        repairInstructions:
+          '检查 Gate 3 受控 workspace、repairPlan patchTargets 和服务端写入权限后重新运行修复循环。',
+        commandResults: [],
+        patchApplied: false,
+        changeSummary: `Gate 3 受控修复补丁应用失败：${message}`,
+        verificationSummary: 'Gate 3 修复补丁未应用，未重新执行再验证命令。',
+      };
+    }
+
+    const commandResults: GeneratedAppGate3CommandResult[] = [];
+
+    for (const command of params.commandPlan) {
+      const result = await this.runControlledCommand(workspacePath, command);
+      commandResults.push(result);
+
+      if (result.exitCode !== 0) {
+        const failedResult: GeneratedAppGate3RepairResult = {
+          status: 'failed',
+          executionLevel,
+          summary: `Gate 3 修复失败：补丁已应用，但再验证命令 ${command.commandId} 退出码为 ${String(
+            result.exitCode,
+          )}。`,
+          evidence: [
+            this.buildWorkspaceEvidence(params.workspace),
+            this.buildRepairPatchEvidence(params),
+            ...commandResults.map((item) =>
+              this.buildCommandEvidence(item, {
+                runnerId: GATE_3_RUNNER_IDS.real,
+                executionMode: 'real_local_command_plan',
+                workspaceRef: params.workspace.relativePath,
+              }),
+            ),
+          ],
+          failure: {
+            code: 'gate-3-repair-reverification-failed',
+            message: `Gate 3 修复补丁再验证命令 ${command.commandId} 执行失败。`,
+            details: {
+              workspaceRef: params.workspace.relativePath,
+              failedCommand: result,
+              commandResults,
+              requiredCommandIds: params.reverificationPlan.requiredCommandIds,
+            },
+          },
+          repairInstructions:
+            '读取 Gate 3 修复再验证 stdout/stderr 摘要，继续针对失败命令生成更小范围补丁。',
+          commandResults,
+          patchApplied: true,
+          changeSummary:
+            'Gate 3 自动修复循环已应用受控 frontend workspace patch，并写入 repair traceability artifact；再验证仍失败。',
+          verificationSummary: `Gate 3 再验证失败：${command.commandId} exitCode=${String(
+            result.exitCode,
+          )}。`,
+        };
+
+        return failedResult;
+      }
+    }
+
+    return {
+      status: 'passed',
+      executionLevel,
+      summary:
+        'Gate 3 修复通过：受控 frontend workspace patch 已应用，build/typecheck/unit/component-golden 再验证命令全部通过。',
+      evidence: [
+        this.buildWorkspaceEvidence(params.workspace),
+        this.buildRepairPatchEvidence(params),
+        ...commandResults.map((result) =>
+          this.buildCommandEvidence(result, {
+            runnerId: GATE_3_RUNNER_IDS.real,
+            executionMode: 'real_local_command_plan',
+            workspaceRef: params.workspace.relativePath,
+          }),
+        ),
+      ],
+      failure: null,
+      repairInstructions: null,
+      commandResults,
+      patchApplied: true,
+      changeSummary:
+        'Gate 3 自动修复循环已应用受控 frontend workspace patch：重新 materialize canonical generated source，并写入 repair traceability source/artifact。',
+      verificationSummary:
+        'Gate 3 再验证通过：build、typecheck、unit 和 component/golden 受控命令全部通过。',
     };
   }
 
@@ -1211,6 +1390,78 @@ export class GeneratedAppGate3WorkspaceRunner {
       requirementIds: command.requirementIds,
       scenarioIds: command.scenarioIds,
     };
+  }
+
+  private async applyControlledRepairPatch(
+    workspacePath: string,
+    params: Gate3RepairParams,
+  ): Promise<void> {
+    const appliedAt = new Date().toISOString();
+    const traceability = {
+      patchKind: 'controlled-gate3-frontend-workspace-repair',
+      targetGateId: params.repairPlan.targetGateId,
+      failureCode: params.repairPlan.failureCode,
+      evidenceIds: params.repairPlan.evidenceIds,
+      patchTargets: params.repairPlan.patchTargets,
+      requiredGateIds: params.reverificationPlan.requiredGateIds,
+      requiredCommandIds: params.reverificationPlan.requiredCommandIds,
+      appliedAt,
+    };
+
+    await this.writeFileInside(
+      workspacePath,
+      'src/generated-app/repair-traceability.ts',
+      [
+        `export const repairTraceability = ${JSON.stringify(traceability, null, 2)} as const;`,
+        '',
+      ].join('\n'),
+    );
+    await this.writeFileInside(
+      workspacePath,
+      'artifacts/gate-3/repair-patch.json',
+      JSON.stringify(
+        {
+          ...traceability,
+          repairPlan: params.repairPlan,
+          reverificationPlan: params.reverificationPlan,
+        },
+        null,
+        2,
+      ),
+    );
+  }
+
+  private buildRepairPatchEvidence(
+    params: Gate3RepairParams,
+  ): GeneratedAppGateEvidence {
+    return this.buildExecutionEvidence({
+      id: 'gate-3-controlled-repair-patch',
+      label: 'Gate 3 controlled repair patch',
+      kind: 'build',
+      summary: [
+        '受控 frontend workspace patch 已应用',
+        `targetGate=${params.repairPlan.targetGateId}`,
+        `patchTargets=${params.repairPlan.patchTargets.join(',')}`,
+        `requiredCommands=${params.reverificationPlan.requiredCommandIds.join(',')}`,
+      ].join('；'),
+      details: {
+        runnerId: GATE_3_RUNNER_IDS.real,
+        executionMode: 'real_local_command_plan',
+        workspaceRef: params.workspace.relativePath,
+        patchKind: 'controlled-gate3-frontend-workspace-repair',
+        targetGateId: params.repairPlan.targetGateId,
+        failureCode: params.repairPlan.failureCode,
+        evidenceIds: params.repairPlan.evidenceIds,
+        patchTargets: params.repairPlan.patchTargets,
+        requiredGateIds: params.reverificationPlan.requiredGateIds,
+        requiredCommandIds: params.reverificationPlan.requiredCommandIds,
+        artifactRefs: [
+          'src/generated-app/repair-traceability.ts',
+          'artifacts/gate-3/repair-patch.json',
+        ],
+        patchApplied: true,
+      },
+    });
   }
 
   private buildWorkspaceEvidence(
