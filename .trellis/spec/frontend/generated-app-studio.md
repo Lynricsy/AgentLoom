@@ -110,7 +110,7 @@ app.readiness.state === "publish_candidate" &&
   - Selecting a row reads `GET /generated-apps/:appId/submissions/:submissionId` and shows read-only JSON panels for `input`, `result`, and `report`, plus an error text panel.
   - Selected submission detail also shows a compact creator-only Workflow execution status block above the JSON panels. The block reads handoff data from `report` first and falls back to `result`, renders no-handoff, unavailable/not-started, pending, running, paused, completed, failed, and cancelled states as human-readable copy, and may show only safe notice, updated/completed timestamps, and step-count summary fields.
   - The Workflow execution status block must not render `executionId`, `workflowDefinitionId`, `publicShareToken`, source/test artifact fields, Gate evidence, or internal JSON. The existing creator JSON panels remain the explicit debug surface for raw `input/result/report` payloads.
-  - Creator submission detail queries must treat detail data as immediately stale and poll every 2 seconds while `result` or `report` contains a Workflow execution handoff with `executionStatus='pending' | 'running'`; polling stops for `completed`, `failed`, `cancelled`, unavailable handoff, or missing handoff states.
+  - Creator and public submission detail queries must treat detail data as immediately stale and poll every 2 seconds while `result` or `report` contains a Workflow execution handoff with `executionStatus='pending' | 'running' | 'paused'`; polling stops for `completed`, `failed`, `cancelled`, unavailable handoff, or missing handoff states.
   - Delete actions must require explicit confirmation, call the creator delete APIs, show toast feedback, and invalidate submission list/detail query keys.
   - Batch delete may be exposed through selection checkboxes and must call `POST /generated-apps/:appId/submissions/delete` with `{ ids }`.
   - Creator responses may contain `publicShareToken` for audit, but the Studio submissions UI must not render token values in list or detail by default.
@@ -224,7 +224,7 @@ app.readiness.state === "publish_candidate" &&
   - artifact manifest and artifact content queries use their dedicated keys and remain disabled until required ids exist.
   - start-run and app-changing mutations invalidate artifact manifest keys.
   - public submission create writes and invalidates the public submission detail query key.
-  - creator and public submission detail queries poll every 2 seconds only for Workflow handoff `pending | running` and stop polling for terminal or unavailable handoff states.
+  - creator and public submission detail queries poll every 2 seconds only for Workflow handoff `pending | running | paused` and stop polling for terminal or unavailable handoff states.
   - runtime binding readiness query uses `generatedAppKeys.runtimeBindingReadiness(appId)` and is disabled when `appId` is empty.
   - creator submission delete mutations invalidate submission list/detail keys and clear removed detail caches.
 - Component tests:

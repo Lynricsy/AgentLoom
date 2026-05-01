@@ -335,7 +335,7 @@ describe('generatedAppQueries public submission polling', () => {
     vi.clearAllMocks()
   })
 
-  it.each(['pending', 'running'] as const)(
+  it.each(['pending', 'running', 'paused'] as const)(
     'public submission query enables 2s refetch when workflow execution is %s',
     async (executionStatus) => {
       const submission = makePublicSubmission({
@@ -437,7 +437,7 @@ describe('generatedAppQueries creator submission polling', () => {
     vi.clearAllMocks()
   })
 
-  it.each(['pending', 'running'] as const)(
+  it.each(['pending', 'running', 'paused'] as const)(
     'creator submission query enables 2s refetch when workflow execution is %s',
     async (executionStatus) => {
       const submission = makeCreatorSubmission({

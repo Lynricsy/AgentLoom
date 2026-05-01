@@ -45,7 +45,8 @@ function isWorkflowExecutionPollingSubmission(
   return (
     handoff !== null &&
     (handoff.executionStatus === 'pending' ||
-      handoff.executionStatus === 'running')
+      handoff.executionStatus === 'running' ||
+      handoff.executionStatus === 'paused')
   )
 }
 
