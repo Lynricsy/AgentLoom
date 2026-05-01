@@ -734,6 +734,15 @@ function PublicRuntimeSuccess({
     () => new Map(app.runtimeForm.fields.map((field) => [field.id, field])),
     [app.runtimeForm.fields],
   )
+  const unsectionedFields = useMemo(() => {
+    const sectionFieldIds = new Set(
+      app.runtimeForm.sections.flatMap((section) => section.fieldIds),
+    )
+
+    return app.runtimeForm.fields.filter(
+      (field) => !sectionFieldIds.has(field.id),
+    )
+  }, [app.runtimeForm.fields, app.runtimeForm.sections])
 
   const handleFieldChange = useCallback(
     (fieldId: string, nextValue: PublicFormValue) => {
@@ -869,10 +878,32 @@ function PublicRuntimeSuccess({
                           disabled={createSubmissionMutation.isPending}
                           onChange={handleFieldChange}
                         />
-                      ))}
+                    ))}
                   </div>
                 </section>
               ))}
+
+              {unsectionedFields.length > 0 ? (
+                <section className="space-y-4 border border-border p-4">
+                  <div className="space-y-1">
+                    <h4 className="break-words text-sm font-semibold text-foreground">
+                      其他信息
+                    </h4>
+                  </div>
+                  <div className="grid gap-4">
+                    {unsectionedFields.map((field) => (
+                      <RuntimeFormField
+                        key={field.id}
+                        field={field}
+                        value={formValues[field.id]}
+                        error={formErrors[field.id]}
+                        disabled={createSubmissionMutation.isPending}
+                        onChange={handleFieldChange}
+                      />
+                    ))}
+                  </div>
+                </section>
+              ) : null}
 
               {formError ? (
                 <p className="break-words text-sm text-rose-300">{formError}</p>

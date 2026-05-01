@@ -299,6 +299,74 @@ describe('GeneratedAppPublicRuntimePage', () => {
     ).not.toBeInTheDocument()
   })
 
+  it('renders required fields even when a generated runtime section forgets to reference them', async () => {
+    const user = userEvent.setup()
+    const publicSubmission = makePublicSubmission({
+      input: {
+        chiefComplaint: '我最近头痛',
+        symptoms: ['pain'],
+        severity: 7,
+        unsectionedConcern: '夜间加重',
+      },
+    })
+    publicRuntimeQuery.data = makePublicRuntime({
+      runtimeForm: makeRuntimeForm({
+        sections: [
+          {
+            id: 'consultation-basic',
+            title: '问诊信息',
+            description: '采集主诉、症状和严重程度。',
+            fieldIds: ['chiefComplaint', 'symptoms', 'severity'],
+          },
+        ],
+        fields: [
+          ...makeRuntimeForm().fields,
+          {
+            id: 'unsectionedConcern',
+            label: '未分组关注点',
+            type: 'text',
+            required: true,
+            placeholder: '例如：夜间加重',
+            helpText: '生成器漏挂 section 时仍应可填写。',
+            options: [],
+          },
+        ],
+      }),
+    })
+    createPublicSubmissionMutation.mutateAsync.mockResolvedValue(
+      publicSubmission,
+    )
+
+    render(<GeneratedAppPublicRuntimePage token="public-token" />)
+
+    expect(screen.getByText('其他信息')).toBeInTheDocument()
+    expect(screen.getByLabelText(/未分组关注点/)).toBeInTheDocument()
+
+    await user.type(screen.getByLabelText(/主诉/), '我最近头痛')
+    await user.click(screen.getByLabelText('疼痛'))
+    fireEvent.change(screen.getByLabelText(/严重程度/), {
+      target: { value: '7' },
+    })
+    await user.selectOptions(screen.getByLabelText(/联系偏好/), 'online')
+    await user.type(screen.getByLabelText(/未分组关注点/), '夜间加重')
+    await user.click(screen.getByRole('button', { name: '提交问诊信息' }))
+
+    await waitFor(() => {
+      expect(createPublicSubmissionMutation.mutateAsync).toHaveBeenCalledWith({
+        input: expect.objectContaining({
+          chiefComplaint: '我最近头痛',
+          symptoms: ['pain'],
+          severity: 7,
+          contactMode: 'online',
+          unsectionedConcern: '夜间加重',
+        }),
+        clientContext: expect.objectContaining({
+          formId: 'consultation-runtime-form',
+        }),
+      })
+    })
+  })
+
   it('renders dynamic form, validates required fields, submits payload, and renders structured report', async () => {
     const user = userEvent.setup()
     const publicSubmission = {
