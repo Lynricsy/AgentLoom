@@ -3,18 +3,24 @@ import type { ReactNode } from 'react'
 import {
   AlertTriangle,
   ArrowLeft,
+  CheckCircle2,
   ExternalLink,
   FileCode2,
   PencilLine,
   Loader2,
   ListChecks,
+  ShieldAlert,
   WandSparkles,
 } from 'lucide-react'
 
 import { cn } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
 import { useToast } from '@/shared/ui/toast'
-import { useGeneratedApp, useStartGeneratedAppGenerationRun } from '../api'
+import {
+  useGeneratedApp,
+  useGeneratedAppRuntimeBindingReadiness,
+  useStartGeneratedAppGenerationRun,
+} from '../api'
 import { GeneratedAppGenerationEvidencePanel } from './GeneratedAppGenerationEvidencePanel'
 import { GeneratedAppPublicSharePanel } from './GeneratedAppPublicSharePanel'
 import { GeneratedAppSubmissionsPanel } from './GeneratedAppSubmissionsPanel'
@@ -32,6 +38,7 @@ import type {
   GeneratedApp,
   GeneratedAppAcceptanceScenario,
   GeneratedAppGateResult,
+  GeneratedAppRuntimeBindingReadiness,
 } from '../types'
 
 interface GeneratedAppDetailPageProps {
@@ -339,6 +346,103 @@ function ProfessionalEditorLink({
   )
 }
 
+const RUNTIME_BINDING_READINESS_LABELS = {
+  deterministic_only: 'Deterministic only',
+  editor_handoff_draft: '编辑器草稿',
+  workflow_not_found: 'Workflow 不可用',
+  workflow_not_published: '尚未发布',
+  workflow_published: '可启动 Workflow',
+} as const satisfies Record<
+  GeneratedAppRuntimeBindingReadiness['state'],
+  string
+>
+
+function RuntimeBindingReadinessPanel({
+  readiness,
+  isLoading,
+  isError,
+  onRetry,
+}: {
+  readiness: GeneratedAppRuntimeBindingReadiness | undefined
+  isLoading: boolean
+  isError: boolean
+  onRetry: () => void
+}) {
+  if (isLoading) {
+    return (
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        正在检查绑定 Workflow 的运行状态
+      </div>
+    )
+  }
+
+  if (isError || !readiness) {
+    return (
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <AlertTriangle className="h-4 w-4 text-amber-300" />
+          运行绑定状态暂时无法读取。
+        </div>
+        <Button variant="outline" size="sm" onClick={onRetry}>
+          重新检查
+        </Button>
+      </div>
+    )
+  }
+
+  const canStart = readiness.canStartWorkflowExecution
+
+  return (
+    <div className="space-y-4" data-testid="runtime-binding-readiness">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0 space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={cn(
+                'inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium',
+                canStart
+                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+                  : 'border-amber-500/30 bg-amber-500/10 text-amber-200',
+              )}
+            >
+              {canStart ? (
+                <CheckCircle2 className="h-3.5 w-3.5" />
+              ) : (
+                <ShieldAlert className="h-3.5 w-3.5" />
+              )}
+              {RUNTIME_BINDING_READINESS_LABELS[readiness.state]}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              {canStart ? '公开提交可创建异步执行' : '公开提交不会启动 Workflow'}
+            </span>
+          </div>
+          <p className="break-words text-sm font-medium text-foreground">
+            {readiness.summary}
+          </p>
+          <p className="break-words text-sm text-muted-foreground">
+            {readiness.notice}
+          </p>
+        </div>
+        <dl className="grid shrink-0 gap-2 text-xs text-muted-foreground sm:min-w-48">
+          <div>
+            <dt>Workflow 状态</dt>
+            <dd className="font-medium text-foreground">
+              {readiness.workflowStatus ?? '未绑定'}
+            </dd>
+          </div>
+          <div>
+            <dt>检查时间</dt>
+            <dd className="font-medium text-foreground">
+              {formatGeneratedAppDateTime(readiness.updatedAt)}
+            </dd>
+          </div>
+        </dl>
+      </div>
+    </div>
+  )
+}
+
 function AppSpecSection({ app }: { app: GeneratedApp }) {
   const { appSpec } = app
 
@@ -432,6 +536,8 @@ function AppSpecSection({ app }: { app: GeneratedApp }) {
 export function GeneratedAppDetailPage({ appId }: GeneratedAppDetailPageProps) {
   const { notify } = useToast()
   const { data: app, isError, isLoading, refetch } = useGeneratedApp(appId)
+  const runtimeBindingReadinessQuery =
+    useGeneratedAppRuntimeBindingReadiness(appId)
   const startGenerationRunMutation = useStartGeneratedAppGenerationRun(appId)
 
   if (isLoading) {
@@ -599,6 +705,18 @@ export function GeneratedAppDetailPage({ appId }: GeneratedAppDetailPageProps) {
           description="创建者侧公开链接管理，只在后端 readiness 允许时启用。"
         >
           <GeneratedAppPublicSharePanel app={app} className="max-w-3xl" />
+        </DetailSection>
+
+        <DetailSection
+          title="Runtime binding readiness"
+          description="创建者侧检查公开提交是否会启动绑定 Workflow；不改变 public-share readiness gate。"
+        >
+          <RuntimeBindingReadinessPanel
+            readiness={runtimeBindingReadinessQuery.data}
+            isLoading={runtimeBindingReadinessQuery.isLoading}
+            isError={runtimeBindingReadinessQuery.isError}
+            onRetry={() => void runtimeBindingReadinessQuery.refetch()}
+          />
         </DetailSection>
 
         <DetailSection

@@ -73,6 +73,18 @@ export const GeneratedAppRepairAttemptStatusSchema = z.enum([
   'skipped',
 ]);
 
+export const GeneratedAppRuntimeBindingReadinessStateSchema = z.enum([
+  'deterministic_only',
+  'editor_handoff_draft',
+  'workflow_not_found',
+  'workflow_not_published',
+  'workflow_published',
+]);
+
+export type GeneratedAppRuntimeBindingReadinessState = z.infer<
+  typeof GeneratedAppRuntimeBindingReadinessStateSchema
+>;
+
 export const CreateGeneratedAppSchema = z.object({
   prompt: z
     .string()
@@ -397,6 +409,17 @@ export interface GeneratedAppResponseDto {
   publicShareDisabledAt: Date | null;
   publicViewCount: number;
   createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface GeneratedAppRuntimeBindingReadinessResponseDto {
+  state: GeneratedAppRuntimeBindingReadinessState;
+  workflowDefinitionId: string | null;
+  workflowStatus: string | null;
+  publishedVersionId: string | null;
+  canStartWorkflowExecution: boolean;
+  summary: string;
+  notice: string;
   updatedAt: Date;
 }
 

@@ -16,6 +16,7 @@ import type {
   GeneratedAppRepairAttempt,
   GeneratedAppStaticContracts,
   GeneratedAppSubmission,
+  WorkflowDefinition,
 } from '../../../database/schema';
 import {
   GeneratedAppNotFoundException,
@@ -55,6 +56,7 @@ const SUBMISSION_ID = '44444444-4444-4444-8444-444444444444';
 const GENERATION_RUN_ID = '55555555-5555-4555-8555-555555555555';
 const WORKFLOW_DEFINITION_ID = '55555555-5555-4555-8555-555555555556';
 const WORKFLOW_EXECUTION_ID = '55555555-5555-4555-8555-555555555557';
+const WORKFLOW_VERSION_ID = '55555555-5555-4555-8555-555555555559';
 const WORKFLOW_DEFINITION_V7_ID = '77777777-7777-7777-8777-777777777776';
 const WORKFLOW_EXECUTION_V7_ID = '77777777-7777-7777-8777-777777777777';
 const GATE_RUN_ID = '66666666-6666-4666-8666-666666666666';
@@ -602,6 +604,24 @@ function createGeneratedApp(
   };
 }
 
+function createWorkflowDefinitionReadinessRow(
+  overrides: Partial<
+    Pick<
+      WorkflowDefinition,
+      'id' | 'status' | 'publishedVersionId' | 'metadata' | 'updatedAt'
+    >
+  > = {},
+) {
+  return {
+    id: WORKFLOW_DEFINITION_ID,
+    status: 'draft',
+    publishedVersionId: null,
+    metadata: {},
+    updatedAt: NOW,
+    ...overrides,
+  };
+}
+
 describe('GeneratedAppService', () => {
   let service: GeneratedAppService;
 
@@ -614,6 +634,164 @@ describe('GeneratedAppService', () => {
       mockTenantDb as unknown as DrizzleDB,
       configService,
     );
+  });
+
+  it('runtime binding readiness 无 Workflow 绑定时应返回 deterministic_only', async () => {
+    const app = createGeneratedApp({ workflowDefinitionId: null });
+    mockTenantDb.select.mockReturnValueOnce(createSelectChain([app]));
+
+    const response = await service.getRuntimeBindingReadiness(
+      TENANT_ID,
+      APP_ID,
+    );
+
+    expect(response).toEqual(
+      expect.objectContaining({
+        state: 'deterministic_only',
+        workflowDefinitionId: null,
+        workflowStatus: null,
+        publishedVersionId: null,
+        canStartWorkflowExecution: false,
+        summary: expect.stringContaining('没有绑定 Workflow'),
+        notice: expect.stringContaining('deterministic report'),
+        updatedAt: NOW,
+      }),
+    );
+    expect(mockTenantDb.select).toHaveBeenCalledTimes(1);
+  });
+
+  it('runtime binding readiness 绑定 Workflow 不存在时应返回 workflow_not_found', async () => {
+    const app = createGeneratedApp({
+      workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+    });
+    mockTenantDb.select
+      .mockReturnValueOnce(createSelectChain([app]))
+      .mockReturnValueOnce(createSelectChain([]));
+
+    const response = await service.getRuntimeBindingReadiness(
+      TENANT_ID,
+      APP_ID,
+    );
+
+    expect(response).toEqual(
+      expect.objectContaining({
+        state: 'workflow_not_found',
+        workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+        workflowStatus: null,
+        publishedVersionId: null,
+        canStartWorkflowExecution: false,
+        summary: expect.stringContaining('不存在'),
+      }),
+    );
+  });
+
+  it('runtime binding readiness 对 editor handoff draft 即使已发布也不应标记可执行', async () => {
+    const app = createGeneratedApp({
+      workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+    });
+    mockTenantDb.select
+      .mockReturnValueOnce(createSelectChain([app]))
+      .mockReturnValueOnce(
+        createSelectChain([
+          createWorkflowDefinitionReadinessRow({
+            status: 'published',
+            publishedVersionId: WORKFLOW_VERSION_ID,
+            metadata: {
+              source: 'generated-app-editor-handoff',
+              generatedAppId: APP_ID,
+              bindingKind: 'editor-handoff-draft',
+              publicRuntimeBoundary:
+                'Generated App public runtime never exposes this internal resource id',
+            },
+          }),
+        ]),
+      );
+
+    const response = await service.getRuntimeBindingReadiness(
+      TENANT_ID,
+      APP_ID,
+    );
+
+    expect(response).toEqual(
+      expect.objectContaining({
+        state: 'editor_handoff_draft',
+        workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+        workflowStatus: 'published',
+        publishedVersionId: WORKFLOW_VERSION_ID,
+        canStartWorkflowExecution: false,
+        summary: expect.stringContaining('专业编辑器草稿'),
+        notice: expect.stringContaining('不会被公开提交自动执行'),
+      }),
+    );
+    expect(JSON.stringify(response)).not.toContain('generatedAppId');
+    expect(JSON.stringify(response)).not.toContain('publicRuntimeBoundary');
+  });
+
+  it('runtime binding readiness 对未发布 Workflow 应返回 workflow_not_published', async () => {
+    const app = createGeneratedApp({
+      workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+    });
+    mockTenantDb.select
+      .mockReturnValueOnce(createSelectChain([app]))
+      .mockReturnValueOnce(
+        createSelectChain([
+          createWorkflowDefinitionReadinessRow({
+            status: 'draft',
+            publishedVersionId: null,
+          }),
+        ]),
+      );
+
+    const response = await service.getRuntimeBindingReadiness(
+      TENANT_ID,
+      APP_ID,
+    );
+
+    expect(response).toEqual(
+      expect.objectContaining({
+        state: 'workflow_not_published',
+        workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+        workflowStatus: 'draft',
+        publishedVersionId: null,
+        canStartWorkflowExecution: false,
+        summary: expect.stringContaining('尚未发布'),
+      }),
+    );
+  });
+
+  it('runtime binding readiness 对已发布非草稿 Workflow 应返回 workflow_published', async () => {
+    const app = createGeneratedApp({
+      workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+    });
+    mockTenantDb.select
+      .mockReturnValueOnce(createSelectChain([app]))
+      .mockReturnValueOnce(
+        createSelectChain([
+          createWorkflowDefinitionReadinessRow({
+            status: 'published',
+            publishedVersionId: WORKFLOW_VERSION_ID,
+            metadata: { source: 'manual-runtime-workflow' },
+          }),
+        ]),
+      );
+
+    const response = await service.getRuntimeBindingReadiness(
+      TENANT_ID,
+      APP_ID,
+    );
+
+    expect(response).toEqual(
+      expect.objectContaining({
+        state: 'workflow_published',
+        workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+        workflowStatus: 'published',
+        publishedVersionId: WORKFLOW_VERSION_ID,
+        canStartWorkflowExecution: true,
+        summary: expect.stringContaining('已发布'),
+        notice: expect.stringContaining('创建异步 Workflow execution'),
+      }),
+    );
+    expect(JSON.stringify(response)).not.toContain('manual-runtime-workflow');
   });
 
   async function startGenerationRunWithGate3Result(
@@ -8048,6 +8226,88 @@ describe('GeneratedAppService', () => {
     );
     expect(response.status).toBe('completed');
     expect(response.result).toEqual(insertPayload.result);
+  });
+
+  it('公开提交绑定 editor handoff draft 即使异常 published 也不应调用 execution', async () => {
+    const token = '3'.repeat(64);
+    const runWorkflow = vi.fn();
+    const serviceWithExecution = createGeneratedAppServiceWithExecution({
+      runWorkflow,
+    });
+    const app = createGeneratedApp({
+      status: 'published',
+      readiness: createPublishCandidateReadiness(),
+      publicShareEnabled: true,
+      publicShareToken: token,
+      workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+    });
+    const insertChain =
+      createGeneratedAppSubmissionInsertReturningFromPayload();
+    mockTenantDb.select
+      .mockReturnValueOnce(createSelectChain([app]))
+      .mockReturnValueOnce(
+        createSelectChain([
+          {
+            id: WORKFLOW_DEFINITION_ID,
+            status: 'published',
+            publishedVersionId: WORKFLOW_VERSION_ID,
+            metadata: {
+              source: 'generated-app-editor-handoff',
+              bindingKind: 'editor-handoff-draft',
+              generatedAppId: APP_ID,
+              publicRuntimeBoundary:
+                'Generated App public runtime never exposes this internal resource id',
+            },
+            inputSchema: {
+              collectionMode: 'form',
+              fields: [
+                {
+                  id: 'chiefComplaint',
+                  type: 'text',
+                  label: '主诉',
+                  required: true,
+                },
+              ],
+            },
+          },
+        ]),
+      );
+    mockTenantDb.insert.mockReturnValueOnce(insertChain);
+
+    const response = await serviceWithExecution.createPublicSubmission(token, {
+      input: { chiefComplaint: '头痛' },
+    });
+
+    expect(runWorkflow).not.toHaveBeenCalled();
+
+    const insertPayload = insertChain.values.mock.calls[0]?.[0] as {
+      status: string;
+      result: Record<string, unknown>;
+      report: Record<string, unknown>;
+    };
+    expect(insertPayload.status).toBe('completed');
+    expect(insertPayload.result).toEqual(
+      expect.objectContaining({
+        workflowExecution: false,
+        executionId: null,
+        executionStatus: null,
+        workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+        executionBoundary: 'local-deterministic-report-only',
+        workflowExecutionNotStartedReason: 'workflow-not-published',
+        workflowExecutionNotice: expect.stringContaining('尚未发布'),
+      }),
+    );
+    expect(insertPayload.report).toEqual(
+      expect.objectContaining({
+        workflowExecution: false,
+        workflowExecutionNotStartedReason: 'workflow-not-published',
+      }),
+    );
+    expect(JSON.stringify(response)).not.toContain(
+      'generated-app-editor-handoff',
+    );
+    expect(JSON.stringify(response)).not.toContain('editor-handoff-draft');
+    expect(JSON.stringify(response)).not.toContain('publicRuntimeBoundary');
   });
 
   it('公开提交绑定不存在或跨租户 Workflow 时不应调用 execution', async () => {

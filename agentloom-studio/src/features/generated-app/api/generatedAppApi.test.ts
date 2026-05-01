@@ -8,6 +8,7 @@ import {
   disableGeneratedAppPublicShare,
   enableGeneratedAppPublicShare,
   getGeneratedApp,
+  getGeneratedAppRuntimeBindingReadiness,
   getGeneratedAppPublicSubmission,
   getGeneratedAppSubmission,
   getGeneratedAppPublicRuntime,
@@ -339,6 +340,27 @@ describe('generatedAppApi', () => {
 
     expect(getMock).toHaveBeenCalledWith('generated-apps/app-detail')
     expect(result).toEqual(app)
+  })
+
+  it('fetches runtime binding readiness from the creator-only app subroute', async () => {
+    const readiness = {
+      state: 'workflow_published',
+      workflowDefinitionId: 'workflow-1',
+      workflowStatus: 'published',
+      publishedVersionId: 'version-1',
+      canStartWorkflowExecution: true,
+      summary: '绑定 Workflow 已发布。',
+      notice: '公开提交可创建异步 Workflow execution。',
+      updatedAt: '2026-04-25T02:00:00.000Z',
+    }
+    getMock.mockReturnValue(mockKyJson({ data: readiness }))
+
+    const result = await getGeneratedAppRuntimeBindingReadiness('app-detail')
+
+    expect(getMock).toHaveBeenCalledWith(
+      'generated-apps/app-detail/runtime-binding-readiness',
+    )
+    expect(result).toEqual(readiness)
   })
 
   it('lists generated app submissions with camelCase query params', async () => {

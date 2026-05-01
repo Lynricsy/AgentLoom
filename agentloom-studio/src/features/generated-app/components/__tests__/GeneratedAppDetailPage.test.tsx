@@ -20,6 +20,7 @@ const {
   generationRunsQuery,
   repairAttemptsQuery,
   regenerateShareMutation,
+  runtimeBindingReadinessQuery,
   startGenerationRunMutation,
   submissionDetailQuery,
   submissionsQuery,
@@ -81,6 +82,22 @@ const {
     mutateAsync: vi.fn(),
     isPending: false,
   },
+  runtimeBindingReadinessQuery: {
+    data: {
+      state: 'deterministic_only',
+      workflowDefinitionId: null,
+      workflowStatus: null,
+      publishedVersionId: null,
+      canStartWorkflowExecution: false,
+      summary: '当前 Generated App 没有绑定 Workflow。',
+      notice:
+        '公开提交只会返回本地 deterministic report，不会创建 Workflow execution。',
+      updatedAt: '2026-04-25T01:00:00.000Z',
+    } as unknown,
+    isError: false,
+    isLoading: false,
+    refetch: vi.fn(),
+  },
   startGenerationRunMutation: {
     mutateAsync: vi.fn(),
     isPending: false,
@@ -119,6 +136,7 @@ vi.mock('../../api', () => ({
   },
   useGeneratedAppGateRuns: () => gateRunsQuery,
   useGeneratedAppGenerationRuns: () => generationRunsQuery,
+  useGeneratedAppRuntimeBindingReadiness: () => runtimeBindingReadinessQuery,
   useGeneratedAppRepairAttempts: () => repairAttemptsQuery,
   useRegenerateGeneratedAppPublicShare: (appId: string) => {
     useGeneratedAppMock(`regenerate:${appId}`)
@@ -287,6 +305,20 @@ describe('GeneratedAppDetailPage', () => {
     enableShareMutation.isPending = false
     regenerateShareMutation.mutateAsync = vi.fn()
     regenerateShareMutation.isPending = false
+    runtimeBindingReadinessQuery.data = {
+      state: 'deterministic_only',
+      workflowDefinitionId: null,
+      workflowStatus: null,
+      publishedVersionId: null,
+      canStartWorkflowExecution: false,
+      summary: '当前 Generated App 没有绑定 Workflow。',
+      notice:
+        '公开提交只会返回本地 deterministic report，不会创建 Workflow execution。',
+      updatedAt: '2026-04-25T01:00:00.000Z',
+    }
+    runtimeBindingReadinessQuery.isError = false
+    runtimeBindingReadinessQuery.isLoading = false
+    runtimeBindingReadinessQuery.refetch = vi.fn()
     disableShareMutation.mutateAsync = vi.fn()
     disableShareMutation.isPending = false
     startGenerationRunMutation.mutateAsync = vi.fn()
@@ -529,10 +561,77 @@ describe('GeneratedAppDetailPage', () => {
     ).toHaveAttribute('href', '/workflows/workflow-bound-1')
   })
 
+  it('shows editor handoff draft runtime readiness as not automatically executable', () => {
+    generatedAppQuery.data = makeGeneratedApp({
+      workflowDefinitionId: 'workflow-editor-draft',
+    })
+    runtimeBindingReadinessQuery.data = {
+      state: 'editor_handoff_draft',
+      workflowDefinitionId: 'workflow-editor-draft',
+      workflowStatus: 'draft',
+      publishedVersionId: null,
+      canStartWorkflowExecution: false,
+      summary: '绑定 Workflow 是 Generated App 专业编辑器草稿。',
+      notice:
+        'Gate 7 创建的专业编辑器草稿只用于创建者精修，不会被公开提交自动执行；需要精修并发布真正 Workflow 后，公开提交才可启动 Workflow execution。',
+      updatedAt: '2026-04-25T02:00:00.000Z',
+    }
+
+    render(<GeneratedAppDetailPage appId="app-detail" />)
+
+    const panel = within(screen.getByTestId('runtime-binding-readiness'))
+    expect(panel.getByText('编辑器草稿')).toBeInTheDocument()
+    expect(
+      panel.getByText(/不会被公开提交自动执行/),
+    ).toBeInTheDocument()
+    expect(
+      panel.getByText('公开提交不会启动 Workflow'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('workflow-editor-draft')).toBeInTheDocument()
+  })
+
+  it('shows published runtime readiness as able to start async Workflow execution', () => {
+    generatedAppQuery.data = makeGeneratedApp({
+      workflowDefinitionId: 'workflow-runtime-published',
+    })
+    runtimeBindingReadinessQuery.data = {
+      state: 'workflow_published',
+      workflowDefinitionId: 'workflow-runtime-published',
+      workflowStatus: 'published',
+      publishedVersionId: 'workflow-version-published',
+      canStartWorkflowExecution: true,
+      summary: '绑定 Workflow 已发布，可由公开提交创建异步执行。',
+      notice:
+        '公开提交会先保存本地 deterministic report，并尝试创建异步 Workflow execution。',
+      updatedAt: '2026-04-25T02:00:00.000Z',
+    }
+
+    render(<GeneratedAppDetailPage appId="app-detail" />)
+
+    const panel = within(screen.getByTestId('runtime-binding-readiness'))
+    expect(panel.getByText('可启动 Workflow')).toBeInTheDocument()
+    expect(
+      panel.getByText('公开提交可创建异步执行'),
+    ).toBeInTheDocument()
+    expect(
+      panel.getByText(/创建异步 Workflow execution/),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText('workflow-runtime-published'),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByText('workflow-version-published'),
+    ).not.toBeInTheDocument()
+  })
+
   it('keeps resource binding empty states clear when no professional resources are bound', () => {
     render(<GeneratedAppDetailPage appId="app-detail" />)
 
     expect(screen.getAllByText('尚未绑定')).toHaveLength(2)
+    expect(screen.getByText('Deterministic only')).toBeInTheDocument()
+    expect(
+      screen.getByText(/只会返回本地 deterministic report/),
+    ).toBeInTheDocument()
     expect(
       screen.queryByRole('link', { name: '打开 Agent 专业编辑器' }),
     ).not.toBeInTheDocument()

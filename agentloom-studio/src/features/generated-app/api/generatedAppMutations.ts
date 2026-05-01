@@ -32,6 +32,9 @@ function syncGeneratedAppQueries(
 ) {
   queryClient.setQueryData(generatedAppKeys.detail(app.id), app)
   queryClient.invalidateQueries({ queryKey: generatedAppKeys.lists() })
+  queryClient.invalidateQueries({
+    queryKey: generatedAppKeys.runtimeBindingReadiness(app.id),
+  })
 }
 
 function invalidateGeneratedAppSubmissionQueries(

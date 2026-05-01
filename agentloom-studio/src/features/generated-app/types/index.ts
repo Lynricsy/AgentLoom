@@ -28,6 +28,8 @@ export type {
   GeneratedAppRepairAttemptListResponse,
   GeneratedAppRepairAttemptStatus,
   GeneratedAppRuntimeForm,
+  GeneratedAppRuntimeBindingReadiness,
+  GeneratedAppRuntimeBindingReadinessState,
   GeneratedAppRuntimeFormField,
   GeneratedAppRuntimeFormFieldType,
   GeneratedAppRuntimeFormOption,

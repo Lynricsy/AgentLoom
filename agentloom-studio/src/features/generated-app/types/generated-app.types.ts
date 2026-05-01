@@ -66,6 +66,13 @@ export type GeneratedAppSubmissionStatus =
   | 'completed'
   | 'failed'
 
+export type GeneratedAppRuntimeBindingReadinessState =
+  | 'deterministic_only'
+  | 'editor_handoff_draft'
+  | 'workflow_not_found'
+  | 'workflow_not_published'
+  | 'workflow_published'
+
 export type GeneratedAppWorkflowExecutionStatus =
   | 'pending'
   | 'running'
@@ -211,6 +218,17 @@ export interface GeneratedApp {
   publicShareDisabledAt: string | null
   publicViewCount: number
   createdAt: string
+  updatedAt: string
+}
+
+export interface GeneratedAppRuntimeBindingReadiness {
+  state: GeneratedAppRuntimeBindingReadinessState
+  workflowDefinitionId: string | null
+  workflowStatus: string | null
+  publishedVersionId: string | null
+  canStartWorkflowExecution: boolean
+  summary: string
+  notice: string
   updatedAt: string
 }
 

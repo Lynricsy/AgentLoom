@@ -43,6 +43,7 @@ import {
   type GeneratedAppGenerationRunResponseDto,
   type GeneratedAppGateRunResponseDto,
   type GeneratedAppRepairAttemptResponseDto,
+  type GeneratedAppRuntimeBindingReadinessResponseDto,
   type GeneratedAppResponseDto,
   type GeneratedAppSubmissionResponseDto,
   type PublicGeneratedAppSubmissionResponseDto,
@@ -1041,6 +1042,98 @@ export class GeneratedAppService {
   ): Promise<GeneratedAppResponseDto> {
     const app = await this.findGeneratedAppRecord(tenantId, appId);
     return this.toResponseDto(app);
+  }
+
+  async getRuntimeBindingReadiness(
+    tenantId: string,
+    appId: string,
+  ): Promise<GeneratedAppRuntimeBindingReadinessResponseDto> {
+    const app = await this.findGeneratedAppRecord(tenantId, appId);
+
+    if (!app.workflowDefinitionId) {
+      return this.buildRuntimeBindingReadinessResponse({
+        state: 'deterministic_only',
+        workflowDefinitionId: null,
+        workflowStatus: null,
+        publishedVersionId: null,
+        canStartWorkflowExecution: false,
+        summary: '当前 Generated App 没有绑定 Workflow。',
+        notice:
+          '公开提交只会返回本地 deterministic report，不会创建 Workflow execution。',
+        updatedAt: app.updatedAt,
+      });
+    }
+
+    const [workflow] = await this.tenantDb
+      .select({
+        id: schema.workflowDefinitions.id,
+        status: schema.workflowDefinitions.status,
+        publishedVersionId: schema.workflowDefinitions.publishedVersionId,
+        metadata: schema.workflowDefinitions.metadata,
+        updatedAt: schema.workflowDefinitions.updatedAt,
+      })
+      .from(schema.workflowDefinitions)
+      .where(
+        and(
+          eq(schema.workflowDefinitions.id, app.workflowDefinitionId),
+          eq(schema.workflowDefinitions.tenantId, tenantId),
+        ),
+      )
+      .limit(1);
+
+    if (!workflow) {
+      return this.buildRuntimeBindingReadinessResponse({
+        state: 'workflow_not_found',
+        workflowDefinitionId: app.workflowDefinitionId,
+        workflowStatus: null,
+        publishedVersionId: null,
+        canStartWorkflowExecution: false,
+        summary: '绑定 Workflow 不存在或当前租户不可访问。',
+        notice:
+          '公开提交不会创建 Workflow execution；请重新绑定或发布一个可访问的 Workflow。',
+        updatedAt: app.updatedAt,
+      });
+    }
+
+    if (this.isGeneratedAppEditorHandoffWorkflowMetadata(workflow.metadata)) {
+      return this.buildRuntimeBindingReadinessResponse({
+        state: 'editor_handoff_draft',
+        workflowDefinitionId: workflow.id,
+        workflowStatus: workflow.status,
+        publishedVersionId: workflow.publishedVersionId,
+        canStartWorkflowExecution: false,
+        summary: '绑定 Workflow 是 Generated App 专业编辑器草稿。',
+        notice:
+          'Gate 7 创建的专业编辑器草稿只用于创建者精修，不会被公开提交自动执行；需要精修并发布真正 Workflow 后，公开提交才可启动 Workflow execution。',
+        updatedAt: workflow.updatedAt,
+      });
+    }
+
+    if (workflow.status !== 'published' || !workflow.publishedVersionId) {
+      return this.buildRuntimeBindingReadinessResponse({
+        state: 'workflow_not_published',
+        workflowDefinitionId: workflow.id,
+        workflowStatus: workflow.status,
+        publishedVersionId: workflow.publishedVersionId,
+        canStartWorkflowExecution: false,
+        summary: '绑定 Workflow 尚未发布。',
+        notice:
+          '公开提交不会启动未发布 Workflow；请发布绑定 Workflow 后再将其作为 runtime 执行目标。',
+        updatedAt: workflow.updatedAt,
+      });
+    }
+
+    return this.buildRuntimeBindingReadinessResponse({
+      state: 'workflow_published',
+      workflowDefinitionId: workflow.id,
+      workflowStatus: workflow.status,
+      publishedVersionId: workflow.publishedVersionId,
+      canStartWorkflowExecution: true,
+      summary: '绑定 Workflow 已发布，可由公开提交创建异步执行。',
+      notice:
+        '公开提交会先保存本地 deterministic report，并尝试创建异步 Workflow execution。',
+      updatedAt: workflow.updatedAt,
+    });
   }
 
   async recordGateResults(
@@ -2719,6 +2812,7 @@ export class GeneratedAppService {
         id: schema.workflowDefinitions.id,
         status: schema.workflowDefinitions.status,
         publishedVersionId: schema.workflowDefinitions.publishedVersionId,
+        metadata: schema.workflowDefinitions.metadata,
         inputSchema: schema.workflowDefinitions.inputSchema,
       })
       .from(schema.workflowDefinitions)
@@ -2732,6 +2826,7 @@ export class GeneratedAppService {
 
     if (
       !workflow ||
+      this.isGeneratedAppEditorHandoffWorkflowMetadata(workflow.metadata) ||
       workflow.status !== 'published' ||
       !workflow.publishedVersionId
     ) {
@@ -2853,6 +2948,25 @@ export class GeneratedAppService {
       default:
         return '未创建 Workflow execution：当前 Generated App 没有绑定可执行 Workflow，公开提交继续返回本地 deterministic report。';
     }
+  }
+
+  private isGeneratedAppEditorHandoffWorkflowMetadata(
+    metadata: unknown,
+  ): boolean {
+    if (!this.isRecord(metadata)) {
+      return false;
+    }
+
+    return (
+      metadata.source === GENERATED_APP_WORKFLOW_HANDOFF_METADATA_SOURCE ||
+      metadata.bindingKind === 'editor-handoff-draft'
+    );
+  }
+
+  private buildRuntimeBindingReadinessResponse(
+    response: GeneratedAppRuntimeBindingReadinessResponseDto,
+  ): GeneratedAppRuntimeBindingReadinessResponseDto {
+    return response;
   }
 
   private attachWorkflowExecutionHandoff<T extends Record<string, unknown>>(

@@ -1,6 +1,7 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import {
   getGeneratedApp,
+  getGeneratedAppRuntimeBindingReadiness,
   getGeneratedAppSubmission,
   getGeneratedAppPublicSubmission,
   getGeneratedAppPublicRuntime,
@@ -59,6 +60,17 @@ export function useGeneratedApp(appId: string | undefined) {
   return useQuery({
     queryKey: generatedAppKeys.detail(appId ?? ''),
     queryFn: () => getGeneratedApp(appId ?? ''),
+    enabled: !!appId,
+    staleTime: GENERATED_APP_STALE_TIME,
+  })
+}
+
+export function useGeneratedAppRuntimeBindingReadiness(
+  appId: string | undefined,
+) {
+  return useQuery({
+    queryKey: generatedAppKeys.runtimeBindingReadiness(appId ?? ''),
+    queryFn: () => getGeneratedAppRuntimeBindingReadiness(appId ?? ''),
     enabled: !!appId,
     staleTime: GENERATED_APP_STALE_TIME,
   })

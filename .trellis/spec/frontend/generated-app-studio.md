@@ -77,13 +77,17 @@ app.readiness.state === "publish_candidate" &&
 - Creator generation action:
   - `/generated-apps` may create a Generated App and immediately call `startGeneratedAppGenerationRun()` with `triggerSource='initial'` so zero-background users do not need to understand Gate APIs.
   - `/generated-apps/$appId` exposes a creator primary action for running or rerunning automatic generation and verification.
-  - The start-run mutation must write the returned `app` into the detail cache and invalidate generated app lists, generation-run lists, Gate-run lists, and the selected run's repair-attempt list when a run id is returned.
+  - The start-run mutation must write the returned `app` into the detail cache and invalidate generated app lists, runtime binding readiness, generation-run lists, Gate-run lists, and the selected run's repair-attempt list when a run id is returned.
   - Starting a generation run must not enable public sharing by itself. Public-share enable/regenerate controls still rely only on backend `readiness.state === 'publish_candidate' && readiness.canCreatePublicShare === true`.
 - Creator resource bindings:
   - `/generated-apps/$appId` displays creator-side professional resource bindings for Agent, Workflow, and plugins.
   - Bound Agent resources link to the existing `/agents/$agentId` professional editor route; bound Workflow resources link to the existing `/workflows/$workflowId` professional editor route. Do not introduce Generated App-specific editor routes for these links.
   - Missing Agent or Workflow bindings must show a clear empty state such as `尚未绑定`, and must not render a link with an empty path parameter.
   - The resource binding section must explain that these links are creator-side internal resources and are not shown in the public runtime.
+  - `/generated-apps/$appId` also shows a compact creator-only runtime binding readiness panel backed by `GET /generated-apps/:appId/runtime-binding-readiness` and `useGeneratedAppRuntimeBindingReadiness(appId)`.
+  - Runtime binding readiness states map to explicit creator copy: `deterministic_only` means public submissions return only the local deterministic report; `editor_handoff_draft` means Gate 7 created a professional editor draft but public submissions will not execute it and the creator must refine/publish a real Workflow; `workflow_not_found` means the bound Workflow is missing or inaccessible; `workflow_not_published` means the bound Workflow is not published; `workflow_published` means public submissions can create async Workflow executions.
+  - The runtime binding readiness panel must not render `publicShareToken`, Workflow metadata, editor URLs, or internal ids. The existing authenticated Resource bindings section may continue to show the bound Workflow id and professional editor link because that is the creator-side debug/editor surface.
+  - Runtime binding readiness is informational for creator runtime binding health. It must not change the public-share readiness gate, must not auto-enable public sharing, and must not auto-publish a Gate 7 editor handoff draft.
   - The public runtime route and public runtime API mapping must not render `agentDefinitionId`, `workflowDefinitionId`, plugin ids, professional editor links, public share token values, source artifacts, test reports, readiness, or Gate evidence.
 - Creator submissions UI:
   - `/generated-apps/$appId` contains a creator-only submissions section backed by `GET /generated-apps/:appId/submissions`.
@@ -187,9 +191,10 @@ app.readiness.state === "publish_candidate" &&
 - Query/mutation tests:
   - share enable writes the detail cache and invalidates list queries.
   - create invalidates list queries.
-  - start generation run writes the returned app into detail cache and invalidates list, generation-run, Gate-run, and repair-attempt query keys.
+  - start generation run writes the returned app into detail cache and invalidates list, runtime binding readiness, generation-run, Gate-run, and repair-attempt query keys.
   - public submission create writes and invalidates the public submission detail query key.
   - creator and public submission detail queries poll every 2 seconds only for Workflow handoff `pending | running` and stop polling for terminal or unavailable handoff states.
+  - runtime binding readiness query uses `generatedAppKeys.runtimeBindingReadiness(appId)` and is disabled when `appId` is empty.
   - creator submission delete mutations invalidate submission list/detail keys and clear removed detail caches.
 - Component tests:
   - `preview`, `trial`, and `blocked` disable public share and show `readiness.summary`.
@@ -199,6 +204,7 @@ app.readiness.state === "publish_candidate" &&
   - public runtime API mapping drops creator-only fields and nested source/test/plugin artifacts.
   - list page creation starts automatic generation and provides a detail link even when the runner fails after create.
   - detail page start-run action triggers automatic generation and verification without enabling public share.
+  - detail page runtime binding readiness covers editor-handoff draft not auto-executing, published Workflow being executable, and no Workflow falling back to deterministic-only behavior.
   - public runtime page renders data-use notice, limited AppSpec, optional preview link, dynamic `runtimeForm` controls, required validation, submitted payload, structured result/report sections, and does not render tokens or internal fields.
   - creator submissions panel renders list rows, detail selection, status filter, pagination, delete confirmation, empty state, and error state.
   - creator generation evidence panel renders generation runs, loads repair/gate data after run selection, filters gate data after repair selection, shows failure/evidence summaries, and shows empty/error states.

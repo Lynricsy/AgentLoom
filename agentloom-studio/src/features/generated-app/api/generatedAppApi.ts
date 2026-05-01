@@ -11,6 +11,7 @@ import type {
   GeneratedAppPublicSubmission,
   GeneratedAppPublicRuntime,
   GeneratedAppRuntimeForm,
+  GeneratedAppRuntimeBindingReadiness,
   GeneratedAppRepairAttemptListResponse,
   GeneratedAppSubmission,
   GeneratedAppSubmissionListResponse,
@@ -333,6 +334,16 @@ export async function getGeneratedApp(appId: string): Promise<GeneratedApp> {
   const response = await apiClient
     .get(`${GENERATED_APPS_PATH}/${appId}`)
     .json<ApiResponse<GeneratedApp>>()
+
+  return response.data
+}
+
+export async function getGeneratedAppRuntimeBindingReadiness(
+  appId: string,
+): Promise<GeneratedAppRuntimeBindingReadiness> {
+  const response = await apiClient
+    .get(`${GENERATED_APPS_PATH}/${appId}/runtime-binding-readiness`)
+    .json<ApiResponse<GeneratedAppRuntimeBindingReadiness>>()
 
   return response.data
 }

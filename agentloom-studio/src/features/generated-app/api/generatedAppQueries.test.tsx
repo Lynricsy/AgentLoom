@@ -9,22 +9,30 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { generatedAppKeys } from './generatedAppKeys'
 import {
+  useGeneratedAppRuntimeBindingReadiness,
   useGeneratedAppPublicSubmission,
   useGeneratedAppSubmission,
 } from './generatedAppQueries'
 import type {
+  GeneratedAppRuntimeBindingReadiness,
   GeneratedAppPublicSubmission,
   GeneratedAppSubmission,
 } from '../types'
 
-const { getGeneratedAppPublicSubmissionMock, getGeneratedAppSubmissionMock } =
-  vi.hoisted(() => ({
+const {
+  getGeneratedAppRuntimeBindingReadinessMock,
+  getGeneratedAppPublicSubmissionMock,
+  getGeneratedAppSubmissionMock,
+} = vi.hoisted(() => ({
+    getGeneratedAppRuntimeBindingReadinessMock: vi.fn(),
     getGeneratedAppPublicSubmissionMock: vi.fn(),
     getGeneratedAppSubmissionMock: vi.fn(),
   }))
 
 vi.mock('./generatedAppApi', () => ({
   getGeneratedApp: vi.fn(),
+  getGeneratedAppRuntimeBindingReadiness:
+    getGeneratedAppRuntimeBindingReadinessMock,
   getGeneratedAppSubmission: getGeneratedAppSubmissionMock,
   getGeneratedAppPublicSubmission: getGeneratedAppPublicSubmissionMock,
   getGeneratedAppPublicRuntime: vi.fn(),
@@ -130,6 +138,64 @@ function makePublicSubmission(
     ...overrides,
   }
 }
+
+function makeRuntimeBindingReadiness(
+  overrides: Partial<GeneratedAppRuntimeBindingReadiness> = {},
+): GeneratedAppRuntimeBindingReadiness {
+  return {
+    state: 'workflow_published',
+    workflowDefinitionId: 'workflow-1',
+    workflowStatus: 'published',
+    publishedVersionId: 'version-1',
+    canStartWorkflowExecution: true,
+    summary: '绑定 Workflow 已发布。',
+    notice: '公开提交可创建异步 Workflow execution。',
+    updatedAt: '2026-04-25T02:00:00.000Z',
+    ...overrides,
+  }
+}
+
+describe('generatedAppQueries runtime binding readiness', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('uses the runtime binding readiness query key when app id is present', async () => {
+    const readiness = makeRuntimeBindingReadiness()
+    getGeneratedAppRuntimeBindingReadinessMock.mockResolvedValue(readiness)
+
+    const { Wrapper, queryClient } = createWrapper()
+    const { result } = renderHook(
+      () => useGeneratedAppRuntimeBindingReadiness('app-runtime'),
+      { wrapper: Wrapper },
+    )
+
+    await waitFor(() => {
+      expect(result.current.data).toEqual(readiness)
+    })
+
+    expect(getGeneratedAppRuntimeBindingReadinessMock).toHaveBeenCalledWith(
+      'app-runtime',
+    )
+    expect(
+      queryClient.getQueryData(
+        generatedAppKeys.runtimeBindingReadiness('app-runtime'),
+      ),
+    ).toBe(readiness)
+  })
+
+  it('stays disabled when app id is empty', () => {
+    const { Wrapper } = createWrapper()
+
+    const { result } = renderHook(
+      () => useGeneratedAppRuntimeBindingReadiness(undefined),
+      { wrapper: Wrapper },
+    )
+
+    expect(result.current.fetchStatus).toBe('idle')
+    expect(getGeneratedAppRuntimeBindingReadinessMock).not.toHaveBeenCalled()
+  })
+})
 
 describe('generatedAppQueries public submission polling', () => {
   beforeEach(() => {

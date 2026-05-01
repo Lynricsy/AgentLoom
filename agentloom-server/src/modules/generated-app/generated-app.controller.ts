@@ -350,6 +350,24 @@ export class GeneratedAppController {
     return { data };
   }
 
+  @Get(':appId/runtime-binding-readiness')
+  @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '查询生成应用绑定 Workflow 的运行就绪状态' })
+  @ApiResponse({ status: 200, description: '生成应用运行绑定就绪状态' })
+  @ApiResponse({ status: 404, description: '生成应用任务不存在' })
+  async getRuntimeBindingReadiness(
+    @Param('appId', ParseUUIDPipe) appId: string,
+    @CurrentTenant() tenantId: string,
+  ) {
+    const data = await this.generatedAppService.getRuntimeBindingReadiness(
+      tenantId,
+      appId,
+    );
+
+    return { data };
+  }
+
   @Get(':appId')
   @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
   @HttpCode(HttpStatus.OK)
