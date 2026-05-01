@@ -26,7 +26,9 @@ import {
 import type {
   GeneratedAppPublicRuntime,
   GeneratedAppPublicSubmission,
+  GeneratedAppPublicWorkflowExecutionHandoff,
   GeneratedAppRuntimeFormField,
+  GeneratedAppWorkflowExecutionStatus,
 } from '../types'
 
 interface GeneratedAppPublicRuntimePageProps {
@@ -249,6 +251,148 @@ function getReportSections(
     })
 }
 
+function getWorkflowExecutionHandoff(
+  submission: GeneratedAppPublicSubmission,
+): GeneratedAppPublicWorkflowExecutionHandoff | null {
+  const reportHandoff =
+    submission.report?.workflowExecution === true ? submission.report : null
+  const resultHandoff =
+    submission.result?.workflowExecution === true ? submission.result : null
+
+  if (!reportHandoff && !resultHandoff) {
+    return null
+  }
+
+  return {
+    ...resultHandoff,
+    ...reportHandoff,
+    workflowExecutionSummary:
+      reportHandoff?.workflowExecutionSummary ??
+      resultHandoff?.workflowExecutionSummary ??
+      null,
+  }
+}
+
+function getWorkflowExecutionStatusLabel(
+  status: GeneratedAppWorkflowExecutionStatus | null | undefined,
+): string {
+  switch (status) {
+    case 'pending':
+      return '等待执行'
+    case 'running':
+      return '正在执行'
+    case 'paused':
+      return '已暂停'
+    case 'completed':
+      return '已完成'
+    case 'failed':
+      return '执行未完成'
+    case 'cancelled':
+      return '已取消'
+    default:
+      return '未创建'
+  }
+}
+
+function getWorkflowExecutionStateText(
+  handoff: GeneratedAppPublicWorkflowExecutionHandoff,
+): string {
+  switch (handoff.executionStatus) {
+    case 'pending':
+      return 'Workflow 正在排队，页面会自动刷新执行状态。'
+    case 'running':
+      return 'Workflow 正在执行，页面会自动刷新执行状态。'
+    case 'paused':
+      return 'Workflow 已暂停，当前公开页面继续保留本地报告。'
+    case 'completed':
+      return 'Workflow 执行已完成，当前仅展示安全摘要。'
+    case 'failed':
+      return 'Workflow 执行未完成，页面继续保留本地报告。'
+    case 'cancelled':
+      return 'Workflow 已取消，页面继续保留本地报告。'
+    default:
+      return (
+        handoff.workflowExecutionNotice ??
+        '未创建 Workflow execution，页面继续保留本地报告。'
+      )
+  }
+}
+
+function WorkflowExecutionStatusPanel({
+  handoff,
+}: {
+  handoff: GeneratedAppPublicWorkflowExecutionHandoff
+}) {
+  const active =
+    handoff.executionStatus === 'pending' ||
+    handoff.executionStatus === 'running'
+  const completed = handoff.executionStatus === 'completed'
+  const incomplete =
+    handoff.executionStatus === 'failed' ||
+    handoff.executionStatus === 'cancelled'
+  const summary = handoff.workflowExecutionSummary
+
+  return (
+    <section
+      className={cn(
+        'space-y-3 border p-4',
+        completed
+          ? 'border-emerald-500/30 bg-emerald-500/5'
+          : incomplete
+            ? 'border-amber-500/30 bg-amber-500/5'
+            : 'border-sky-500/30 bg-sky-500/5',
+      )}
+      data-testid="workflow-execution-status"
+      data-execution-status={handoff.executionStatus ?? 'unavailable'}
+    >
+      <div className="flex items-start gap-3">
+        {active ? (
+          <Loader2 className="mt-0.5 h-5 w-5 shrink-0 animate-spin text-sky-300" />
+        ) : completed ? (
+          <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-300" />
+        ) : (
+          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-300" />
+        )}
+        <div className="min-w-0 space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <h4 className="break-words text-sm font-semibold text-foreground">
+              Workflow 执行状态
+            </h4>
+            <span className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">
+              {getWorkflowExecutionStatusLabel(handoff.executionStatus)}
+            </span>
+          </div>
+          <p className="break-words text-sm leading-6 text-muted-foreground">
+            {getWorkflowExecutionStateText(handoff)}
+          </p>
+          {handoff.workflowExecutionNotice ? (
+            <p className="break-words text-xs leading-5 text-muted-foreground">
+              {handoff.workflowExecutionNotice}
+            </p>
+          ) : null}
+        </div>
+      </div>
+
+      {summary ? (
+        <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+          {typeof summary.completedSteps === 'number' ? (
+            <span>完成步骤：{summary.completedSteps}</span>
+          ) : null}
+          {typeof summary.totalSteps === 'number' ? (
+            <span>总步骤：{summary.totalSteps}</span>
+          ) : null}
+          {typeof summary.failedSteps === 'number' ? (
+            <span>失败步骤：{summary.failedSteps}</span>
+          ) : null}
+          {typeof summary.cancelledSteps === 'number' ? (
+            <span>取消步骤：{summary.cancelledSteps}</span>
+          ) : null}
+        </div>
+      ) : null}
+    </section>
+  )
+}
+
 function FieldHelp({
   field,
   error,
@@ -412,17 +556,15 @@ function PublicSubmissionResult({
   const report = submission.report
   const result = submission.result
   const failed = submission.status === 'failed'
-  const title =
-    failed
-      ? '提交未能生成报告'
-      : (getStringProperty(report, 'title') ??
-        app.runtimeForm.resultView.successTitle)
-  const summary =
-    failed
-      ? '提交内容已保存为失败状态，但当前公开运行页无法安全处理该输入结构。请调整输入后重新提交。'
-      : (getStringProperty(report, 'summary') ??
-        getStringProperty(result, 'summary') ??
-        app.runtimeForm.resultView.description)
+  const title = failed
+    ? '提交未能生成报告'
+    : (getStringProperty(report, 'title') ??
+      app.runtimeForm.resultView.successTitle)
+  const summary = failed
+    ? '提交内容已保存为失败状态，但当前公开运行页无法安全处理该输入结构。请调整输入后重新提交。'
+    : (getStringProperty(report, 'summary') ??
+      getStringProperty(result, 'summary') ??
+      app.runtimeForm.resultView.description)
   const sections = getReportSections(report)
   const nextStepQuestions = [
     ...getStringArrayProperty(report, 'nextStepQuestions'),
@@ -436,6 +578,7 @@ function PublicSubmissionResult({
   const runtimeNotice =
     getStringProperty(report, 'runtimeNotice') ??
     getStringProperty(result, 'runtimeNotice')
+  const workflowExecutionHandoff = getWorkflowExecutionHandoff(submission)
 
   return (
     <article
@@ -467,6 +610,10 @@ function PublicSubmissionResult({
           </div>
         </div>
       </div>
+
+      {workflowExecutionHandoff ? (
+        <WorkflowExecutionStatusPanel handoff={workflowExecutionHandoff} />
+      ) : null}
 
       {submission.errorMessage ? (
         <div className="border border-rose-500/30 bg-rose-500/5 p-3 text-sm text-rose-200">

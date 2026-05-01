@@ -66,6 +66,36 @@ export type GeneratedAppSubmissionStatus =
   | 'completed'
   | 'failed'
 
+export type GeneratedAppWorkflowExecutionStatus =
+  | 'pending'
+  | 'running'
+  | 'paused'
+  | 'completed'
+  | 'failed'
+  | 'cancelled'
+
+export interface GeneratedAppPublicWorkflowExecutionSummary {
+  summary?: string
+  completedSteps?: number
+  failedSteps?: number
+  cancelledSteps?: number
+  totalSteps?: number
+  latestStepCompletedAt?: string | null
+}
+
+export interface GeneratedAppPublicWorkflowExecutionHandoff {
+  workflowExecution?: boolean
+  executionId?: string | null
+  executionStatus?: GeneratedAppWorkflowExecutionStatus | null
+  workflowDefinitionId?: string | null
+  executionBoundary?: string | null
+  workflowExecutionNotStartedReason?: string | null
+  workflowExecutionNotice?: string | null
+  workflowExecutionUpdatedAt?: string | null
+  workflowExecutionCompletedAt?: string | null
+  workflowExecutionSummary?: GeneratedAppPublicWorkflowExecutionSummary | null
+}
+
 export type GeneratedAppGateEvidenceKind =
   | 'app_spec'
   | 'plan'
@@ -273,8 +303,12 @@ export interface GeneratedAppPublicSubmission {
   status: GeneratedAppSubmissionStatus
   anonymousSessionId: string
   input: Record<string, unknown>
-  result: Record<string, unknown> | null
-  report: Record<string, unknown> | null
+  result:
+    | (Record<string, unknown> & GeneratedAppPublicWorkflowExecutionHandoff)
+    | null
+  report:
+    | (Record<string, unknown> & GeneratedAppPublicWorkflowExecutionHandoff)
+    | null
   errorMessage: string | null
   createdAt: string
   updatedAt: string

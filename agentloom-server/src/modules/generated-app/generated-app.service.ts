@@ -189,8 +189,78 @@ const GENERATED_APP_WORKFLOW_HANDOFF_METADATA_SOURCE =
   'generated-app-editor-handoff';
 const GENERATED_APP_PUBLIC_WORKFLOW_EXECUTION_BOUNDARY =
   'async-workflow-execution-created';
+const GENERATED_APP_PUBLIC_WORKFLOW_COMPLETED_BOUNDARY =
+  'async-workflow-execution-completed';
+const GENERATED_APP_PUBLIC_WORKFLOW_FAILED_BOUNDARY =
+  'async-workflow-execution-failed';
+const GENERATED_APP_PUBLIC_WORKFLOW_CANCELLED_BOUNDARY =
+  'async-workflow-execution-cancelled';
 const GENERATED_APP_PUBLIC_WORKFLOW_NOT_STARTED_BOUNDARY =
   'local-deterministic-report-only';
+const GENERATED_APP_PUBLIC_WORKFLOW_STATUS_SECTION_ID =
+  'workflow-execution-status';
+const UUID_LIKE_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const PUBLIC_SUBMISSION_FORBIDDEN_RESULT_REPORT_KEYS = new Set([
+  '_meta',
+  'api_key',
+  'api_keys',
+  'apikey',
+  'apikeys',
+  'authorization',
+  'bearer',
+  'checkpoint_data',
+  'checkpointdata',
+  'cookie',
+  'cookies',
+  'credential',
+  'credentials',
+  'creator_only',
+  'creatoronly',
+  'definition_snapshot',
+  'definitionsnapshot',
+  'execution_snapshot',
+  'executionsnapshot',
+  'execution_steps',
+  'executionsteps',
+  'gate_results',
+  'gateresults',
+  'host_path',
+  'hostpath',
+  'host_paths',
+  'hostpaths',
+  'input_params',
+  'inputparams',
+  'node_data',
+  'nodedata',
+  'password',
+  'private_key',
+  'privatekey',
+  'plugin_ids',
+  'pluginids',
+  'public_share_token',
+  'publicsharetoken',
+  'readiness',
+  'secret',
+  'secrets',
+  'source_artifact_url',
+  'sourceartifacturl',
+  'stack',
+  'stack_trace',
+  'stacktrace',
+  'steps',
+  'tenant_id',
+  'tenantid',
+  'test_report_url',
+  'testreporturl',
+  'token',
+  'tokens',
+  'tool_calls',
+  'toolcalls',
+]);
+const PUBLIC_SUBMISSION_UNSAFE_STRING_PATTERN =
+  /\b(?:Bearer\s+[A-Za-z0-9._~+/=-]+|(?:sk|pk)-[A-Za-z0-9_-]{12,}|[a-f0-9]{64}|(?:secret|token|credential|password|api[-_]?key)[-_:][A-Za-z0-9._~+/=-]{4,})\b|(?:^|\s)\/(?:Users|home|root|tmp|var|etc|workspace)\b|[A-Za-z]:[\\/][^\s"']*|\b(?:publicShareToken|public_share_token|definitionSnapshot|definition_snapshot|nodeData|node_data|checkpointData|checkpoint_data|toolCalls|tool_calls|sourceArtifactUrl|source_artifact_url|testReportUrl|test_report_url|inputParams|input_params|gateResults|gate_results)\b/i;
+const PUBLIC_SUBMISSION_REDACTED_VALUE = '[已移除内部内容]';
 
 const GATE_3_REQUIRED_WORKSPACE_FILE_PATHS = [
   'package.json',
@@ -829,9 +899,15 @@ interface GeneratedAppWorkflowExecutionHandoff {
   executionStatus: schema.WorkflowExecution['status'] | null;
   executionBoundary:
     | typeof GENERATED_APP_PUBLIC_WORKFLOW_EXECUTION_BOUNDARY
+    | typeof GENERATED_APP_PUBLIC_WORKFLOW_COMPLETED_BOUNDARY
+    | typeof GENERATED_APP_PUBLIC_WORKFLOW_FAILED_BOUNDARY
+    | typeof GENERATED_APP_PUBLIC_WORKFLOW_CANCELLED_BOUNDARY
     | typeof GENERATED_APP_PUBLIC_WORKFLOW_NOT_STARTED_BOUNDARY;
   notStartedReason: GeneratedAppWorkflowExecutionNotStartedReason | null;
   notice: string;
+  updatedAt?: string | null;
+  completedAt?: string | null;
+  summary?: Record<string, unknown>;
 }
 
 @Injectable()
@@ -2269,7 +2345,307 @@ export class GeneratedAppService {
       throw new GeneratedAppSubmissionNotFoundException(submissionId);
     }
 
-    return this.toPublicSubmissionResponseDto(submission);
+    const refreshedSubmission =
+      await this.refreshPublicSubmissionWorkflowHandoff(app, submission);
+
+    return this.toPublicSubmissionResponseDto(refreshedSubmission);
+  }
+
+  private async refreshPublicSubmissionWorkflowHandoff(
+    app: GeneratedApp,
+    submission: GeneratedAppSubmission,
+  ): Promise<GeneratedAppSubmission> {
+    const handoff = this.extractPublicWorkflowExecutionHandoff(submission);
+
+    if (!handoff) {
+      return submission;
+    }
+
+    try {
+      const [execution] = await this.db
+        .select({
+          id: schema.workflowExecutions.id,
+          tenantId: schema.workflowExecutions.tenantId,
+          workflowDefinitionId: schema.workflowExecutions.workflowDefinitionId,
+          status: schema.workflowExecutions.status,
+          completedAt: schema.workflowExecutions.completedAt,
+          failedAt: schema.workflowExecutions.failedAt,
+          cancelledAt: schema.workflowExecutions.cancelledAt,
+          totalSteps: schema.workflowExecutions.totalSteps,
+          completedSteps: schema.workflowExecutions.completedSteps,
+          updatedAt: schema.workflowExecutions.updatedAt,
+        })
+        .from(schema.workflowExecutions)
+        .where(
+          and(
+            eq(schema.workflowExecutions.id, handoff.executionId),
+            eq(schema.workflowExecutions.tenantId, app.tenantId),
+          ),
+        )
+        .limit(1);
+
+      if (
+        !execution ||
+        (handoff.workflowDefinitionId &&
+          execution.workflowDefinitionId !== handoff.workflowDefinitionId) ||
+        (!handoff.workflowDefinitionId &&
+          app.workflowDefinitionId &&
+          execution.workflowDefinitionId !== app.workflowDefinitionId)
+      ) {
+        return this.withRefreshedWorkflowHandoff(
+          submission,
+          this.buildWorkflowExecutionNotStartedHandoff(
+            handoff.workflowDefinitionId ?? app.workflowDefinitionId,
+            'workflow-execution-unavailable',
+          ),
+        );
+      }
+
+      const safeSummary =
+        execution.status === 'completed'
+          ? await this.buildPublicWorkflowExecutionSummary(
+              execution.id,
+              app.tenantId,
+            )
+          : undefined;
+
+      return this.withRefreshedWorkflowHandoff(
+        submission,
+        this.buildRefreshedWorkflowExecutionHandoff({
+          workflowDefinitionId: execution.workflowDefinitionId,
+          executionId: execution.id,
+          status: execution.status,
+          updatedAt: execution.updatedAt,
+          completedAt:
+            execution.completedAt ??
+            execution.failedAt ??
+            execution.cancelledAt ??
+            null,
+          completedSteps: execution.completedSteps,
+          totalSteps: execution.totalSteps,
+          summary: safeSummary,
+        }),
+      );
+    } catch {
+      return this.withRefreshedWorkflowHandoff(
+        submission,
+        this.buildWorkflowExecutionNotStartedHandoff(
+          handoff.workflowDefinitionId ?? app.workflowDefinitionId,
+          'workflow-execution-unavailable',
+        ),
+      );
+    }
+  }
+
+  private extractPublicWorkflowExecutionHandoff(
+    submission: GeneratedAppSubmission,
+  ): { executionId: string; workflowDefinitionId: string | null } | null {
+    const resultHandoff = this.extractPublicWorkflowExecutionHandoffFromPayload(
+      submission.result,
+    );
+
+    if (resultHandoff) {
+      return resultHandoff;
+    }
+
+    return this.extractPublicWorkflowExecutionHandoffFromPayload(
+      submission.report,
+    );
+  }
+
+  private extractPublicWorkflowExecutionHandoffFromPayload(
+    payload: Record<string, unknown> | null,
+  ): { executionId: string; workflowDefinitionId: string | null } | null {
+    const record = this.getRecord(payload);
+
+    if (!record || record.workflowExecution !== true) {
+      return null;
+    }
+
+    const executionId = this.getNonEmptyString(record.executionId);
+
+    if (!executionId || !UUID_LIKE_PATTERN.test(executionId)) {
+      return null;
+    }
+
+    const workflowDefinitionId = this.getNonEmptyString(
+      record.workflowDefinitionId,
+    );
+
+    if (workflowDefinitionId && !UUID_LIKE_PATTERN.test(workflowDefinitionId)) {
+      return null;
+    }
+
+    return { executionId, workflowDefinitionId };
+  }
+
+  private buildRefreshedWorkflowExecutionHandoff(params: {
+    workflowDefinitionId: string;
+    executionId: string;
+    status: schema.WorkflowExecution['status'];
+    updatedAt: Date;
+    completedAt: Date | null;
+    completedSteps: number;
+    totalSteps: number;
+    summary?: Record<string, unknown>;
+  }): GeneratedAppWorkflowExecutionHandoff {
+    const completedAt = params.completedAt?.toISOString() ?? null;
+    const updatedAt = params.updatedAt.toISOString();
+    const progress =
+      params.totalSteps > 0
+        ? `${Math.min(params.completedSteps, params.totalSteps)}/${params.totalSteps}`
+        : null;
+
+    switch (params.status) {
+      case 'completed':
+        return {
+          workflowExecution: true,
+          workflowDefinitionId: params.workflowDefinitionId,
+          executionId: params.executionId,
+          executionStatus: params.status,
+          executionBoundary: GENERATED_APP_PUBLIC_WORKFLOW_COMPLETED_BOUNDARY,
+          notStartedReason: null,
+          notice:
+            'Workflow execution 已完成；公开页面仅展示安全执行摘要，并继续保留本地 deterministic report。',
+          updatedAt,
+          completedAt,
+          summary: params.summary,
+        };
+      case 'failed':
+        return {
+          workflowExecution: true,
+          workflowDefinitionId: params.workflowDefinitionId,
+          executionId: params.executionId,
+          executionStatus: params.status,
+          executionBoundary: GENERATED_APP_PUBLIC_WORKFLOW_FAILED_BOUNDARY,
+          notStartedReason: null,
+          notice:
+            'Workflow execution 未完成；公开页面继续保留本地 deterministic report fallback，不展示内部错误细节。',
+          updatedAt,
+          completedAt,
+        };
+      case 'cancelled':
+        return {
+          workflowExecution: true,
+          workflowDefinitionId: params.workflowDefinitionId,
+          executionId: params.executionId,
+          executionStatus: params.status,
+          executionBoundary: GENERATED_APP_PUBLIC_WORKFLOW_CANCELLED_BOUNDARY,
+          notStartedReason: null,
+          notice:
+            'Workflow execution 已取消；公开页面继续保留本地 deterministic report fallback。',
+          updatedAt,
+          completedAt,
+        };
+      case 'running':
+      case 'pending':
+      case 'paused':
+      default:
+        return {
+          workflowExecution: true,
+          workflowDefinitionId: params.workflowDefinitionId,
+          executionId: params.executionId,
+          executionStatus: params.status,
+          executionBoundary: GENERATED_APP_PUBLIC_WORKFLOW_EXECUTION_BOUNDARY,
+          notStartedReason: null,
+          notice: progress
+            ? `Workflow execution 仍在执行中（${progress}）；公开页面会继续轮询安全状态。`
+            : 'Workflow execution 仍在执行中；公开页面会继续轮询安全状态。',
+          updatedAt,
+          completedAt: null,
+        };
+    }
+  }
+
+  private async buildPublicWorkflowExecutionSummary(
+    executionId: string,
+    tenantId: string,
+  ): Promise<Record<string, unknown>> {
+    const steps = await this.db
+      .select({
+        status: schema.executionSteps.status,
+        completedAt: schema.executionSteps.completedAt,
+      })
+      .from(schema.executionSteps)
+      .innerJoin(
+        schema.workflowExecutions,
+        eq(schema.workflowExecutions.id, schema.executionSteps.executionId),
+      )
+      .where(
+        and(
+          eq(schema.executionSteps.executionId, executionId),
+          eq(schema.workflowExecutions.tenantId, tenantId),
+        ),
+      );
+
+    const completedCount = steps.filter(
+      (step) => step.status === 'completed',
+    ).length;
+    const failedCount = steps.filter((step) => step.status === 'failed').length;
+    const cancelledCount = steps.filter(
+      (step) => step.status === 'cancelled',
+    ).length;
+    const latestCompletedAt = steps
+      .map((step) => step.completedAt)
+      .filter((value): value is Date => value instanceof Date)
+      .sort((left, right) => right.getTime() - left.getTime())[0];
+
+    return {
+      summary:
+        'Workflow execution 已完成。出于公开链接安全边界，仅展示步骤计数摘要，不展开节点输出或内部执行快照。',
+      completedSteps: completedCount,
+      failedSteps: failedCount,
+      cancelledSteps: cancelledCount,
+      totalSteps: steps.length,
+      latestStepCompletedAt: latestCompletedAt?.toISOString() ?? null,
+    };
+  }
+
+  private withRefreshedWorkflowHandoff(
+    submission: GeneratedAppSubmission,
+    handoff: GeneratedAppWorkflowExecutionHandoff,
+  ): GeneratedAppSubmission {
+    const result = this.attachWorkflowExecutionHandoff(
+      this.sanitizePublicSubmissionResultReport(submission.result),
+      handoff,
+    );
+    const report = this.attachWorkflowExecutionHandoff(
+      this.removeWorkflowExecutionStatusSection(
+        this.sanitizePublicSubmissionResultReport(submission.report),
+      ),
+      handoff,
+    );
+
+    return {
+      ...submission,
+      status: this.getPublicSubmissionStatusForWorkflowHandoff(
+        submission.status,
+        handoff.executionStatus,
+      ),
+      result,
+      report: this.appendWorkflowExecutionReportSection(report, handoff),
+      updatedAt: new Date(),
+    };
+  }
+
+  private getPublicSubmissionStatusForWorkflowHandoff(
+    currentStatus: schema.GeneratedAppSubmissionStatus,
+    executionStatus: schema.WorkflowExecution['status'] | null,
+  ): schema.GeneratedAppSubmissionStatus {
+    switch (executionStatus) {
+      case 'pending':
+        return 'received';
+      case 'running':
+      case 'paused':
+        return 'running';
+      case 'completed':
+        return 'completed';
+      case 'failed':
+      case 'cancelled':
+        return 'failed';
+      default:
+        return currentStatus;
+    }
   }
 
   private async createPublicWorkflowExecutionHandoff(params: {
@@ -2418,7 +2794,7 @@ export class GeneratedAppService {
       case 'workflow-not-published':
         return '未创建 Workflow execution：绑定 Workflow 尚未发布，公开提交继续返回本地 deterministic report。';
       case 'workflow-execution-unavailable':
-        return '未创建 Workflow execution：当前服务未启用执行桥接，公开提交继续返回本地 deterministic report。';
+        return 'Workflow execution 当前不可用：公开提交继续返回本地 deterministic report。';
       case 'workflow-execution-blocked':
         return '未创建 Workflow execution：执行启动被平台安全或治理边界阻止，公开提交继续返回本地 deterministic report。';
       case 'no-workflow-bound':
@@ -2444,7 +2820,151 @@ export class GeneratedAppService {
       executionBoundary: handoff.executionBoundary,
       workflowExecutionNotStartedReason: handoff.notStartedReason,
       workflowExecutionNotice: handoff.notice,
+      workflowExecutionUpdatedAt: handoff.updatedAt ?? null,
+      workflowExecutionCompletedAt: handoff.completedAt ?? null,
+      workflowExecutionSummary: handoff.summary ?? null,
     };
+  }
+
+  private removeWorkflowExecutionStatusSection(
+    report: Record<string, unknown> | null,
+  ): Record<string, unknown> | null {
+    if (!report) {
+      return report;
+    }
+
+    const sections = this.getRecordArray(report.sections).filter(
+      (section) =>
+        this.getNonEmptyString(section.id) !==
+        GENERATED_APP_PUBLIC_WORKFLOW_STATUS_SECTION_ID,
+    );
+
+    if (!Array.isArray(report.sections)) {
+      return report;
+    }
+
+    return {
+      ...report,
+      sections,
+    };
+  }
+
+  private appendWorkflowExecutionReportSection(
+    report: Record<string, unknown> | null,
+    handoff: GeneratedAppWorkflowExecutionHandoff,
+  ): Record<string, unknown> | null {
+    if (!report || handoff.workflowExecution !== true) {
+      return report;
+    }
+
+    const sections = this.getRecordArray(report.sections);
+    const statusLabel = this.getWorkflowExecutionPublicStatusLabel(
+      handoff.executionStatus,
+    );
+    const items = [
+      `执行状态：${statusLabel}`,
+      handoff.completedAt ? `完成时间：${handoff.completedAt}` : null,
+      handoff.updatedAt ? `更新时间：${handoff.updatedAt}` : null,
+      handoff.summary
+        ? `安全摘要：${this.getNonEmptyString(handoff.summary.summary) ?? '执行已完成，公开页面仅展示步骤计数摘要。'}`
+        : null,
+    ].filter((item): item is string => Boolean(item));
+
+    return {
+      ...report,
+      sections: [
+        ...sections,
+        {
+          id: GENERATED_APP_PUBLIC_WORKFLOW_STATUS_SECTION_ID,
+          title: 'Workflow 执行状态',
+          body: handoff.notice,
+          items,
+        },
+      ],
+    };
+  }
+
+  private sanitizePublicSubmissionResultReport<
+    T extends Record<string, unknown>,
+  >(payload: T | null): T | null {
+    if (!payload) {
+      return payload;
+    }
+
+    return this.sanitizePublicSubmissionValue(payload) as T;
+  }
+
+  private sanitizePublicSubmissionValue(value: unknown): unknown {
+    if (typeof value === 'string') {
+      return PUBLIC_SUBMISSION_UNSAFE_STRING_PATTERN.test(value)
+        ? PUBLIC_SUBMISSION_REDACTED_VALUE
+        : value;
+    }
+
+    if (Array.isArray(value)) {
+      return value
+        .map((entry) => this.sanitizePublicSubmissionValue(entry))
+        .filter((entry) => entry !== undefined);
+    }
+
+    if (!this.isRecord(value)) {
+      return value;
+    }
+
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([key]) => !this.isForbiddenPublicSubmissionPayloadKey(key))
+        .map(([key, nestedValue]) => [
+          key,
+          this.sanitizePublicSubmissionValue(nestedValue),
+        ])
+        .filter(([, nestedValue]) => nestedValue !== undefined),
+    );
+  }
+
+  private normalizePublicSubmissionPayloadKey(key: string): string {
+    return key.toLowerCase().replace(/[^a-z0-9_]/g, '');
+  }
+
+  private isForbiddenPublicSubmissionPayloadKey(key: string): boolean {
+    const normalizedKey = this.normalizePublicSubmissionPayloadKey(key);
+
+    return (
+      PUBLIC_SUBMISSION_FORBIDDEN_RESULT_REPORT_KEYS.has(normalizedKey) ||
+      normalizedKey.includes('apikey') ||
+      normalizedKey.includes('authorization') ||
+      normalizedKey.includes('bearer') ||
+      normalizedKey.includes('credential') ||
+      normalizedKey.includes('password') ||
+      normalizedKey.includes('privatekey') ||
+      normalizedKey.includes('secret') ||
+      normalizedKey.includes('stacktrace') ||
+      normalizedKey.endsWith('token') ||
+      normalizedKey.endsWith('_token') ||
+      normalizedKey.endsWith('tokens') ||
+      normalizedKey.endsWith('_tokens')
+    );
+  }
+
+  private getWorkflowExecutionPublicStatusLabel(
+    status: schema.WorkflowExecution['status'] | null,
+  ): string {
+    switch (status) {
+      case 'pending':
+        return '等待执行';
+      case 'running':
+        return '正在执行';
+      case 'paused':
+        return '已暂停';
+      case 'completed':
+        return '已完成';
+      case 'failed':
+        return '执行未完成';
+      case 'cancelled':
+        return '已取消';
+      default:
+        return '未创建';
+    }
   }
 
   async listSubmissions(
@@ -12736,8 +13256,8 @@ export class GeneratedAppService {
       status: submission.status,
       anonymousSessionId: submission.anonymousSessionId,
       input: submission.input,
-      result: submission.result,
-      report: submission.report,
+      result: this.sanitizePublicSubmissionResultReport(submission.result),
+      report: this.sanitizePublicSubmissionResultReport(submission.report),
       errorMessage: submission.errorMessage,
       createdAt: submission.createdAt,
       updatedAt: submission.updatedAt,

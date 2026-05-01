@@ -55,6 +55,8 @@ const SUBMISSION_ID = '44444444-4444-4444-8444-444444444444';
 const GENERATION_RUN_ID = '55555555-5555-4555-8555-555555555555';
 const WORKFLOW_DEFINITION_ID = '55555555-5555-4555-8555-555555555556';
 const WORKFLOW_EXECUTION_ID = '55555555-5555-4555-8555-555555555557';
+const WORKFLOW_DEFINITION_V7_ID = '77777777-7777-7777-8777-777777777776';
+const WORKFLOW_EXECUTION_V7_ID = '77777777-7777-7777-8777-777777777777';
 const GATE_RUN_ID = '66666666-6666-4666-8666-666666666666';
 const GATE_1_RUN_ID = '66666666-6666-4666-8666-666666666667';
 const GATE_2_RUN_ID = '66666666-6666-4666-8666-666666666668';
@@ -260,8 +262,17 @@ function createGate3RunnerResult(
 function createSelectChain<T>(result: T[]) {
   return {
     from: vi.fn().mockReturnThis(),
+    innerJoin: vi.fn().mockReturnThis(),
     where: vi.fn().mockReturnThis(),
     limit: vi.fn().mockResolvedValue(result),
+  };
+}
+
+function createSelectManyChain<T>(result: T[]) {
+  return {
+    from: vi.fn().mockReturnThis(),
+    innerJoin: vi.fn().mockReturnThis(),
+    where: vi.fn().mockResolvedValue(result),
   };
 }
 
@@ -8507,5 +8518,400 @@ describe('GeneratedAppService', () => {
         oldToken,
       );
     }
+  });
+
+  it('公开提交详情应把 pending handoff 刷新为 running 且只返回安全字段', async () => {
+    const token = '9'.repeat(64);
+    const app = createGeneratedApp({
+      status: 'published',
+      readiness: createPublishCandidateReadiness(),
+      publicShareEnabled: true,
+      publicShareToken: token,
+      workflowDefinitionId: WORKFLOW_DEFINITION_V7_ID,
+    });
+    const submission = createGeneratedAppSubmission({
+      status: 'completed',
+      publicShareToken: token,
+      result: {
+        runtimeKind: 'local-generated-app-deterministic-report',
+        summary: '保留业务摘要。',
+        workflowExecution: true,
+        executionId: WORKFLOW_EXECUTION_V7_ID,
+        executionStatus: 'pending',
+        workflowDefinitionId: WORKFLOW_DEFINITION_V7_ID,
+        executionBoundary: 'async-workflow-execution-created',
+        workflowExecutionNotice: '已创建异步 Workflow execution。',
+        token: 'secret-token-value',
+        stack: 'internal stack',
+        definitionSnapshot: { nodes: [{ id: 'internal-node' }] },
+        nodeData: { path: '/root/AgentLoom/.env' },
+        checkpointData: { sourceArtifactUrl: 'https://internal/source.zip' },
+        toolCalls: [{ authorization: 'Bearer private-token' }],
+        sourceArtifactUrl: 'https://internal/source.zip',
+        testReportUrl: 'https://internal/report.json',
+      },
+      report: {
+        runtimeKind: 'local-generated-app-deterministic-report',
+        title: '本地运行报告',
+        sections: [
+          {
+            id: 'submitted-information',
+            title: '提交内容摘要',
+            body: '保留业务段落。',
+            items: [
+              '业务字段：可以展示',
+              '内部路径 /root/AgentLoom/.env 需要移除',
+            ],
+            nodeData: { path: '/root/AgentLoom/.env' },
+          },
+        ],
+        workflowExecution: true,
+        executionId: WORKFLOW_EXECUTION_V7_ID,
+        executionStatus: 'pending',
+        workflowDefinitionId: WORKFLOW_DEFINITION_V7_ID,
+        executionBoundary: 'async-workflow-execution-created',
+        workflowExecutionNotice: '已创建异步 Workflow execution。',
+        inputParams: {
+          _meta: { publicShareToken: token },
+        },
+      },
+    });
+    mockTenantDb.select
+      .mockReturnValueOnce(createSelectChain([app]))
+      .mockReturnValueOnce(createSelectChain([submission]))
+      .mockReturnValueOnce(
+        createSelectChain([
+          {
+            id: WORKFLOW_EXECUTION_V7_ID,
+            tenantId: TENANT_ID,
+            workflowDefinitionId: WORKFLOW_DEFINITION_V7_ID,
+            status: 'running',
+            completedAt: null,
+            failedAt: null,
+            cancelledAt: null,
+            totalSteps: 3,
+            completedSteps: 1,
+            updatedAt: NOW,
+          },
+        ]),
+      );
+
+    const response = await service.getPublicSubmission(token, SUBMISSION_ID);
+
+    expect(response.status).toBe('running');
+    expect(response.result).toEqual(
+      expect.objectContaining({
+        runtimeKind: 'local-generated-app-deterministic-report',
+        summary: '保留业务摘要。',
+        workflowExecution: true,
+        executionId: WORKFLOW_EXECUTION_V7_ID,
+        executionStatus: 'running',
+        workflowDefinitionId: WORKFLOW_DEFINITION_V7_ID,
+        executionBoundary: 'async-workflow-execution-created',
+        workflowExecutionUpdatedAt: NOW.toISOString(),
+        workflowExecutionCompletedAt: null,
+        workflowExecutionNotice: expect.stringContaining('仍在执行中'),
+      }),
+    );
+    expect(response.report).toEqual(
+      expect.objectContaining({
+        workflowExecution: true,
+        executionStatus: 'running',
+        sections: expect.arrayContaining([
+          expect.objectContaining({
+            id: 'workflow-execution-status',
+            title: 'Workflow 执行状态',
+            body: expect.stringContaining('仍在执行中'),
+          }),
+        ]),
+      }),
+    );
+    const serialized = JSON.stringify(response);
+    expect(serialized).not.toContain('secret-token-value');
+    expect(serialized).not.toContain('definitionSnapshot');
+    expect(serialized).not.toContain('inputParams');
+    expect(serialized).not.toContain('nodeData');
+    expect(serialized).not.toContain('checkpointData');
+    expect(serialized).not.toContain('toolCalls');
+    expect(serialized).not.toContain('internal stack');
+    expect(serialized).not.toContain('/root/AgentLoom');
+    expect(serialized).not.toContain('sourceArtifactUrl');
+    expect(serialized).not.toContain('testReportUrl');
+    expect(serialized).not.toContain(token);
+    expect(serialized).toContain('保留业务摘要');
+    expect(serialized).toContain('保留业务段落');
+    expect(response).not.toHaveProperty('tenantId');
+    expect(response).not.toHaveProperty('publicShareToken');
+    expect(response).not.toHaveProperty('gateResults');
+    expect(response).not.toHaveProperty('sourceArtifactUrl');
+    expect(response).not.toHaveProperty('testReportUrl');
+    expect(response).not.toHaveProperty('pluginIds');
+  });
+
+  it('公开提交详情应把 completed execution 刷新为安全摘要且不泄露内部执行数据', async () => {
+    const token = '9'.repeat(64);
+    const app = createGeneratedApp({
+      status: 'published',
+      readiness: createPublishCandidateReadiness(),
+      publicShareEnabled: true,
+      publicShareToken: token,
+      workflowDefinitionId: WORKFLOW_DEFINITION_V7_ID,
+    });
+    const submission = createGeneratedAppSubmission({
+      publicShareToken: token,
+      result: {
+        runtimeKind: 'local-generated-app-deterministic-report',
+        workflowExecution: true,
+        executionId: WORKFLOW_EXECUTION_V7_ID,
+        executionStatus: 'running',
+        workflowDefinitionId: WORKFLOW_DEFINITION_V7_ID,
+        executionBoundary: 'async-workflow-execution-created',
+      },
+      report: {
+        title: '本地运行报告',
+        sections: [
+          {
+            id: 'workflow-execution-status',
+            title: '旧执行状态',
+            body: '旧状态会被替换。',
+            items: [],
+          },
+        ],
+        workflowExecution: true,
+        executionId: WORKFLOW_EXECUTION_V7_ID,
+        executionStatus: 'running',
+        workflowDefinitionId: WORKFLOW_DEFINITION_V7_ID,
+      },
+    });
+    mockTenantDb.select
+      .mockReturnValueOnce(createSelectChain([app]))
+      .mockReturnValueOnce(createSelectChain([submission]))
+      .mockReturnValueOnce(
+        createSelectChain([
+          {
+            id: WORKFLOW_EXECUTION_V7_ID,
+            tenantId: TENANT_ID,
+            workflowDefinitionId: WORKFLOW_DEFINITION_V7_ID,
+            status: 'completed',
+            completedAt: NOW,
+            failedAt: null,
+            cancelledAt: null,
+            totalSteps: 2,
+            completedSteps: 2,
+            updatedAt: NOW,
+            definitionSnapshot: {
+              nodes: [{ data: { apiKey: 'secret-token-value' } }],
+            },
+          },
+        ]),
+      )
+      .mockReturnValueOnce(
+        createSelectManyChain([
+          {
+            status: 'completed',
+            completedAt: NOW,
+            result: {
+              nodeData: 'do-not-leak',
+              toolCalls: [{ token: 'secret-token-value' }],
+            },
+            checkpointData: { stack: 'internal stack' },
+            nodeData: { path: '/root/AgentLoom/.env' },
+          },
+          {
+            status: 'completed',
+            completedAt: NOW,
+            result: { sourceArtifactUrl: 'https://internal/source.zip' },
+            checkpointData: { testReportUrl: 'https://internal/report.json' },
+          },
+        ]),
+      );
+
+    const response = await service.getPublicSubmission(token, SUBMISSION_ID);
+    const serialized = JSON.stringify(response);
+
+    expect(response.status).toBe('completed');
+    expect(response.result).toEqual(
+      expect.objectContaining({
+        workflowExecution: true,
+        executionId: WORKFLOW_EXECUTION_V7_ID,
+        executionStatus: 'completed',
+        workflowDefinitionId: WORKFLOW_DEFINITION_V7_ID,
+        executionBoundary: 'async-workflow-execution-completed',
+        workflowExecutionCompletedAt: NOW.toISOString(),
+        workflowExecutionSummary: {
+          summary:
+            'Workflow execution 已完成。出于公开链接安全边界，仅展示步骤计数摘要，不展开节点输出或内部执行快照。',
+          completedSteps: 2,
+          failedSteps: 0,
+          cancelledSteps: 0,
+          totalSteps: 2,
+          latestStepCompletedAt: NOW.toISOString(),
+        },
+      }),
+    );
+    expect(serialized).not.toContain('definitionSnapshot');
+    expect(serialized).not.toContain('nodeData');
+    expect(serialized).not.toContain('checkpointData');
+    expect(serialized).not.toContain('toolCalls');
+    expect(serialized).not.toContain('secret-token-value');
+    expect(serialized).not.toContain('internal stack');
+    expect(serialized).not.toContain('/root/AgentLoom');
+    expect(serialized).not.toContain('sourceArtifactUrl');
+    expect(serialized).not.toContain('testReportUrl');
+  });
+
+  it.each([
+    ['failed', 'async-workflow-execution-failed'],
+    ['cancelled', 'async-workflow-execution-cancelled'],
+  ] as const)(
+    '公开提交详情应把 %s execution 降为失败态并保留 deterministic fallback',
+    async (executionStatus, boundary) => {
+      const token = '9'.repeat(64);
+      const app = createGeneratedApp({
+        status: 'published',
+        readiness: createPublishCandidateReadiness(),
+        publicShareEnabled: true,
+        publicShareToken: token,
+        workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+      });
+      const submission = createGeneratedAppSubmission({
+        publicShareToken: token,
+        status: 'completed',
+        result: {
+          runtimeKind: 'local-generated-app-deterministic-report',
+          workflowExecution: true,
+          executionId: WORKFLOW_EXECUTION_ID,
+          executionStatus: 'running',
+          workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+        },
+        report: {
+          title: '本地运行报告',
+          workflowExecution: true,
+          executionId: WORKFLOW_EXECUTION_ID,
+          executionStatus: 'running',
+          workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+        },
+      });
+      mockTenantDb.select
+        .mockReturnValueOnce(createSelectChain([app]))
+        .mockReturnValueOnce(createSelectChain([submission]))
+        .mockReturnValueOnce(
+          createSelectChain([
+            {
+              id: WORKFLOW_EXECUTION_ID,
+              tenantId: TENANT_ID,
+              workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+              status: executionStatus,
+              completedAt: null,
+              failedAt: executionStatus === 'failed' ? NOW : null,
+              cancelledAt: executionStatus === 'cancelled' ? NOW : null,
+              totalSteps: 2,
+              completedSteps: 1,
+              updatedAt: NOW,
+            },
+          ]),
+        );
+
+      const response = await service.getPublicSubmission(token, SUBMISSION_ID);
+
+      expect(response.status).toBe('failed');
+      expect(response.result).toEqual(
+        expect.objectContaining({
+          runtimeKind: 'local-generated-app-deterministic-report',
+          workflowExecution: true,
+          executionStatus,
+          executionBoundary: boundary,
+          workflowExecutionNotice: expect.stringMatching(/未完成|已取消/),
+        }),
+      );
+      expect(JSON.stringify(response)).not.toContain('stack');
+      expect(JSON.stringify(response)).not.toContain(token);
+    },
+  );
+
+  it('公开提交详情遇到 execution 不存在、跨租户或 workflow mismatch 时应安全降级', async () => {
+    const token = '9'.repeat(64);
+    const app = createGeneratedApp({
+      status: 'published',
+      readiness: createPublishCandidateReadiness(),
+      publicShareEnabled: true,
+      publicShareToken: token,
+      workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+    });
+    const submission = createGeneratedAppSubmission({
+      publicShareToken: token,
+      status: 'completed',
+      result: {
+        runtimeKind: 'local-generated-app-deterministic-report',
+        workflowExecution: true,
+        executionId: WORKFLOW_EXECUTION_ID,
+        executionStatus: 'running',
+        workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+      },
+      report: {
+        title: '本地运行报告',
+        workflowExecution: true,
+        executionId: WORKFLOW_EXECUTION_ID,
+        executionStatus: 'running',
+        workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+      },
+    });
+
+    mockTenantDb.select
+      .mockReturnValueOnce(createSelectChain([app]))
+      .mockReturnValueOnce(createSelectChain([submission]))
+      .mockReturnValueOnce(createSelectChain([]));
+
+    const unavailableResponse = await service.getPublicSubmission(
+      token,
+      SUBMISSION_ID,
+    );
+
+    expect(unavailableResponse.result).toEqual(
+      expect.objectContaining({
+        workflowExecution: false,
+        executionId: null,
+        executionStatus: null,
+        workflowExecutionNotStartedReason: 'workflow-execution-unavailable',
+        workflowExecutionNotice: expect.stringContaining('当前不可用'),
+      }),
+    );
+    expect(JSON.stringify(unavailableResponse)).not.toContain(token);
+
+    vi.clearAllMocks();
+
+    mockTenantDb.select
+      .mockReturnValueOnce(createSelectChain([app]))
+      .mockReturnValueOnce(createSelectChain([submission]))
+      .mockReturnValueOnce(
+        createSelectChain([
+          {
+            id: WORKFLOW_EXECUTION_ID,
+            tenantId: TENANT_ID,
+            workflowDefinitionId: '55555555-5555-4555-8555-555555555558',
+            status: 'completed',
+            completedAt: NOW,
+            failedAt: null,
+            cancelledAt: null,
+            totalSteps: 1,
+            completedSteps: 1,
+            updatedAt: NOW,
+          },
+        ]),
+      );
+
+    const mismatchResponse = await service.getPublicSubmission(
+      token,
+      SUBMISSION_ID,
+    );
+
+    expect(mismatchResponse.result).toEqual(
+      expect.objectContaining({
+        workflowExecution: false,
+        executionId: null,
+        executionStatus: null,
+        workflowExecutionNotStartedReason: 'workflow-execution-unavailable',
+      }),
+    );
   });
 });

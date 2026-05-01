@@ -17,9 +17,28 @@ import type {
   ListGeneratedAppRepairAttemptsParams,
   ListGeneratedAppSubmissionsParams,
   ListGeneratedAppsParams,
+  GeneratedAppPublicSubmission,
 } from '../types'
 
 const GENERATED_APP_STALE_TIME = 30_000
+const GENERATED_APP_PUBLIC_SUBMISSION_POLL_INTERVAL_MS = 2_000
+
+function isWorkflowExecutionPollingSubmission(
+  submission: GeneratedAppPublicSubmission | undefined,
+): boolean {
+  const handoff =
+    submission?.report?.workflowExecution === true
+      ? submission.report
+      : submission?.result?.workflowExecution === true
+        ? submission.result
+        : null
+
+  return (
+    handoff !== null &&
+    (handoff.executionStatus === 'pending' ||
+      handoff.executionStatus === 'running')
+  )
+}
 
 export function useGeneratedApps(params: ListGeneratedAppsParams = {}) {
   return useQuery({
@@ -139,6 +158,10 @@ export function useGeneratedAppPublicSubmission(
       getGeneratedAppPublicSubmission(token ?? '', submissionId ?? ''),
     enabled: !!token && !!submissionId,
     retry: false,
-    staleTime: GENERATED_APP_STALE_TIME,
+    staleTime: 0,
+    refetchInterval: (query) =>
+      isWorkflowExecutionPollingSubmission(query.state.data)
+        ? GENERATED_APP_PUBLIC_SUBMISSION_POLL_INTERVAL_MS
+        : false,
   })
 }

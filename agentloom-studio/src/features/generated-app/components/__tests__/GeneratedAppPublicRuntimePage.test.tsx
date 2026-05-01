@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -368,6 +374,99 @@ describe('GeneratedAppPublicRuntimePage', () => {
     expect(screen.queryByText(/runtimeKind/)).not.toBeInTheDocument()
   })
 
+  it.each([
+    ['pending', '等待执行', 'Workflow 正在排队，页面会自动刷新执行状态。'],
+    ['running', '正在执行', 'Workflow 正在执行，页面会自动刷新执行状态。'],
+    ['completed', '已完成', 'Workflow 执行已完成，当前仅展示安全摘要。'],
+    ['failed', '执行未完成', 'Workflow 执行未完成，页面继续保留本地报告。'],
+    ['cancelled', '已取消', 'Workflow 已取消，页面继续保留本地报告。'],
+  ] as const)(
+    'renders safe async workflow handoff UI for %s status',
+    (executionStatus, label, message) => {
+      createPublicSubmissionMutation.data = makePublicSubmission({
+        status:
+          executionStatus === 'pending'
+            ? 'received'
+            : executionStatus === 'running'
+              ? 'running'
+              : executionStatus === 'completed'
+                ? 'completed'
+                : 'failed',
+        result: {
+          summary: '已整理问诊信息。',
+          workflowExecution: true,
+          executionId: '55555555-5555-4555-8555-555555555557',
+          executionStatus,
+          workflowDefinitionId: '55555555-5555-4555-8555-555555555556',
+          executionBoundary:
+            executionStatus === 'completed'
+              ? 'async-workflow-execution-completed'
+              : executionStatus === 'failed'
+                ? 'async-workflow-execution-failed'
+                : executionStatus === 'cancelled'
+                  ? 'async-workflow-execution-cancelled'
+                  : 'async-workflow-execution-created',
+          workflowExecutionNotice:
+            executionStatus === 'completed'
+              ? 'Workflow execution 已完成；公开页面仅展示安全执行摘要。'
+              : 'Workflow execution 状态已刷新。',
+          workflowExecutionSummary:
+            executionStatus === 'completed'
+              ? {
+                  summary: 'Workflow execution 已完成。',
+                  completedSteps: 2,
+                  totalSteps: 2,
+                  failedSteps: 0,
+                  cancelledSteps: 0,
+                }
+              : null,
+          definitionSnapshot: { token: 'secret-token-value' },
+          checkpointData: { stack: 'internal stack' },
+          nodeData: { path: '/root/AgentLoom/.env' },
+          toolCalls: [{ token: 'secret-token-value' }],
+        },
+        report: {
+          title: '已生成问诊摘要',
+          summary: '系统已整理主诉、症状和严重程度。',
+          sections: [
+            {
+              id: 'submitted-information',
+              title: '提交内容摘要',
+              body: '主诉：我最近头痛',
+              items: ['chiefComplaint: 我最近头痛'],
+            },
+          ],
+          workflowExecution: true,
+          executionId: '55555555-5555-4555-8555-555555555557',
+          executionStatus,
+          workflowDefinitionId: '55555555-5555-4555-8555-555555555556',
+          workflowExecutionNotice: 'Workflow execution 状态已刷新。',
+        },
+      })
+
+      render(<GeneratedAppPublicRuntimePage token="public-token" />)
+
+      const panel = screen.getByTestId('workflow-execution-status')
+      expect(panel).toHaveAttribute('data-execution-status', executionStatus)
+      expect(within(panel).getByText(label)).toBeInTheDocument()
+      expect(within(panel).getByText(message)).toBeInTheDocument()
+
+      if (executionStatus === 'completed') {
+        expect(within(panel).getByText('完成步骤：2')).toBeInTheDocument()
+        expect(within(panel).getByText('总步骤：2')).toBeInTheDocument()
+      }
+
+      expect(screen.queryByText(/55555555-5555/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/definitionSnapshot/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/checkpointData/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/nodeData/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/toolCalls/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/secret-token-value/)).not.toBeInTheDocument()
+      expect(screen.queryByText(/internal stack/)).not.toBeInTheDocument()
+      expect(screen.queryByText('/root/AgentLoom')).not.toBeInTheDocument()
+    },
+  )
+
   it('renders failed public submissions as a safe failure state instead of a success report', () => {
     createPublicSubmissionMutation.data = makePublicSubmission({
       status: 'failed',
@@ -387,7 +486,9 @@ describe('GeneratedAppPublicRuntimePage', () => {
       ),
     ).toBeInTheDocument()
     expect(
-      screen.getByText(/提交内容包含当前本地 Generated App runtime 无法处理的结构/),
+      screen.getByText(
+        /提交内容包含当前本地 Generated App runtime 无法处理的结构/,
+      ),
     ).toBeInTheDocument()
     expect(screen.queryByText('已生成问诊摘要')).not.toBeInTheDocument()
   })

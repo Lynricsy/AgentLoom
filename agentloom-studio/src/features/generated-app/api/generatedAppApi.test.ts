@@ -657,8 +657,40 @@ describe('generatedAppApi', () => {
       anonymousSessionId: 'anon-public',
       status: 'received',
       input: { answer: '头痛' },
-      result: null,
-      report: null,
+      result: {
+        summary: '保留业务摘要。',
+        workflowExecution: true,
+        executionId: '55555555-5555-4555-8555-555555555557',
+        executionStatus: 'running',
+        workflowDefinitionId: '55555555-5555-4555-8555-555555555556',
+        workflowExecutionNotice: 'Workflow execution 仍在执行中。',
+        definitionSnapshot: { nodes: [{ id: 'private-node' }] },
+        inputParams: { _meta: { publicShareToken: 'public-token' } },
+        nodeData: { path: '/root/AgentLoom/.env' },
+        checkpointData: { stack: 'internal stack' },
+        toolCalls: [{ authorization: 'Bearer private-token' }],
+        sourceArtifactUrl: 'https://internal.example.test/source.zip',
+        testReportUrl: 'https://internal.example.test/report.json',
+      },
+      report: {
+        title: '公开报告',
+        sections: [
+          {
+            id: 'safe-section',
+            title: '提交内容摘要',
+            body: '保留业务段落。',
+            items: [
+              '业务字段：可以展示',
+              '内部路径 /root/AgentLoom/.env 需要移除',
+            ],
+            nodeData: { token: 'secret-token-value' },
+          },
+        ],
+        workflowExecution: true,
+        executionId: '55555555-5555-4555-8555-555555555557',
+        executionStatus: 'running',
+        workflowDefinitionId: '55555555-5555-4555-8555-555555555556',
+      },
       errorMessage: null,
       createdAt: '2026-04-25T02:00:00.000Z',
       updatedAt: '2026-04-25T02:00:00.000Z',
@@ -703,13 +735,48 @@ describe('generatedAppApi', () => {
       anonymousSessionId: 'anon-public',
       status: 'received',
       input: { answer: '头痛' },
-      result: null,
-      report: null,
+      result: {
+        summary: '保留业务摘要。',
+        workflowExecution: true,
+        executionId: '55555555-5555-4555-8555-555555555557',
+        executionStatus: 'running',
+        workflowDefinitionId: '55555555-5555-4555-8555-555555555556',
+        workflowExecutionNotice: 'Workflow execution 仍在执行中。',
+      },
+      report: {
+        title: '公开报告',
+        sections: [
+          {
+            id: 'safe-section',
+            title: '提交内容摘要',
+            body: '保留业务段落。',
+            items: ['业务字段：可以展示', '[已移除内部内容]'],
+          },
+        ],
+        workflowExecution: true,
+        executionId: '55555555-5555-4555-8555-555555555557',
+        executionStatus: 'running',
+        workflowDefinitionId: '55555555-5555-4555-8555-555555555556',
+      },
       errorMessage: null,
       createdAt: '2026-04-25T02:00:00.000Z',
       updatedAt: '2026-04-25T02:00:00.000Z',
     })
     expect(detail).toEqual(created)
+    const serialized = JSON.stringify(created)
+    expect(serialized).toContain('保留业务摘要')
+    expect(serialized).toContain('保留业务段落')
+    expect(serialized).not.toContain('definitionSnapshot')
+    expect(serialized).not.toContain('inputParams')
+    expect(serialized).not.toContain('nodeData')
+    expect(serialized).not.toContain('checkpointData')
+    expect(serialized).not.toContain('toolCalls')
+    expect(serialized).not.toContain('secret-token-value')
+    expect(serialized).not.toContain('internal stack')
+    expect(serialized).not.toContain('/root/AgentLoom')
+    expect(serialized).not.toContain('sourceArtifactUrl')
+    expect(serialized).not.toContain('testReportUrl')
+    expect(serialized).not.toContain('public-token')
     expect(created).not.toHaveProperty('publicShareToken')
     expect(created).not.toHaveProperty('tenantId')
     expect(created).not.toHaveProperty('readiness')

@@ -25,6 +25,66 @@ import type {
 } from '../types'
 
 const GENERATED_APPS_PATH = 'generated-apps'
+const PUBLIC_SUBMISSION_REDACTED_VALUE = '[已移除内部内容]'
+const PUBLIC_SUBMISSION_UNSAFE_VALUE_PATTERN =
+  /\b(?:Bearer\s+[A-Za-z0-9._~+/=-]+|(?:sk|pk)-[A-Za-z0-9_-]{12,}|[a-f0-9]{64}|(?:secret|token|credential|password|api[-_]?key)[-_:][A-Za-z0-9._~+/=-]{4,})\b|(?:^|\s)\/(?:Users|home|root|tmp|var|etc|workspace)\b|[A-Za-z]:[\\/][^\s"']*|\b(?:publicShareToken|public_share_token|definitionSnapshot|definition_snapshot|nodeData|node_data|checkpointData|checkpoint_data|toolCalls|tool_calls|sourceArtifactUrl|source_artifact_url|testReportUrl|test_report_url|inputParams|input_params|gateResults|gate_results)\b/i
+const PUBLIC_SUBMISSION_FORBIDDEN_RESULT_REPORT_KEYS = new Set([
+  '_meta',
+  'api_key',
+  'api_keys',
+  'apikey',
+  'apikeys',
+  'authorization',
+  'bearer',
+  'checkpoint_data',
+  'checkpointdata',
+  'cookie',
+  'cookies',
+  'credential',
+  'credentials',
+  'creator_only',
+  'creatoronly',
+  'definition_snapshot',
+  'definitionsnapshot',
+  'execution_snapshot',
+  'executionsnapshot',
+  'execution_steps',
+  'executionsteps',
+  'gate_results',
+  'gateresults',
+  'host_path',
+  'hostpath',
+  'host_paths',
+  'hostpaths',
+  'input_params',
+  'inputparams',
+  'node_data',
+  'nodedata',
+  'password',
+  'private_key',
+  'privatekey',
+  'plugin_ids',
+  'pluginids',
+  'public_share_token',
+  'publicsharetoken',
+  'readiness',
+  'secret',
+  'secrets',
+  'source_artifact_url',
+  'sourceartifacturl',
+  'stack',
+  'stack_trace',
+  'stacktrace',
+  'steps',
+  'tenant_id',
+  'tenantid',
+  'test_report_url',
+  'testreporturl',
+  'token',
+  'tokens',
+  'tool_calls',
+  'toolcalls',
+])
 
 type GeneratedAppSearchParamValue = number | string | null | undefined
 
@@ -173,12 +233,80 @@ function toPublicSubmission(
     status: value.status,
     anonymousSessionId: value.anonymousSessionId,
     input: value.input,
-    result: value.result,
-    report: value.report,
+    result: sanitizePublicSubmissionPayload(value.result),
+    report: sanitizePublicSubmissionPayload(value.report),
     errorMessage: value.errorMessage,
     createdAt: value.createdAt,
     updatedAt: value.updatedAt,
   }
+}
+
+function sanitizePublicSubmissionPayload(
+  value: GeneratedAppPublicSubmission['result'],
+): GeneratedAppPublicSubmission['result'] {
+  if (!value) {
+    return value
+  }
+
+  return sanitizePublicSubmissionValue(
+    value,
+  ) as GeneratedAppPublicSubmission['result']
+}
+
+function sanitizePublicSubmissionValue(value: unknown): unknown {
+  if (typeof value === 'string') {
+    return PUBLIC_SUBMISSION_UNSAFE_VALUE_PATTERN.test(value)
+      ? PUBLIC_SUBMISSION_REDACTED_VALUE
+      : value
+  }
+
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => sanitizePublicSubmissionValue(item))
+      .filter((item) => item !== undefined)
+  }
+
+  if (!isPlainRecord(value)) {
+    return value
+  }
+
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([key]) => !isForbiddenPublicSubmissionPayloadKey(key))
+      .map(([key, nestedValue]) => [
+        key,
+        sanitizePublicSubmissionValue(nestedValue),
+      ])
+      .filter(([, nestedValue]) => nestedValue !== undefined),
+  )
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function normalizePublicSubmissionPayloadKey(key: string): string {
+  return key.toLowerCase().replace(/[^a-z0-9_]/g, '')
+}
+
+function isForbiddenPublicSubmissionPayloadKey(key: string): boolean {
+  const normalizedKey = normalizePublicSubmissionPayloadKey(key)
+
+  return (
+    PUBLIC_SUBMISSION_FORBIDDEN_RESULT_REPORT_KEYS.has(normalizedKey) ||
+    normalizedKey.includes('apikey') ||
+    normalizedKey.includes('authorization') ||
+    normalizedKey.includes('bearer') ||
+    normalizedKey.includes('credential') ||
+    normalizedKey.includes('password') ||
+    normalizedKey.includes('privatekey') ||
+    normalizedKey.includes('secret') ||
+    normalizedKey.includes('stacktrace') ||
+    normalizedKey.endsWith('token') ||
+    normalizedKey.endsWith('_token') ||
+    normalizedKey.endsWith('tokens') ||
+    normalizedKey.endsWith('_tokens')
+  )
 }
 
 export async function createGeneratedApp(
