@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
+import { hasPostgresErrorCode } from '../../common/utils/postgres-error.utils';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import * as schema from '../../database/schema';
 import type {
@@ -104,6 +105,8 @@ import {
   buildPublicGeneratedAppRuntimeSpec,
   evaluateGeneratedAppLocalRuntime,
 } from './generated-app.runtime';
+import { appendSlugSuffix, generateSlug } from '../organization/slug.utils';
+import type { WorkflowInputSchema } from '../workflow/dto/workflow-input-schema.dto';
 
 const DEFAULT_PREVIEW: GeneratedAppPreview = {
   previewUrl: null,
@@ -172,6 +175,9 @@ const GATE_3_ALLOWED_EXECUTION_LEVELS = [
   'fixture-execution',
   'disabled-execution',
 ] as const;
+
+const GENERATED_APP_WORKFLOW_HANDOFF_METADATA_SOURCE =
+  'generated-app-editor-handoff';
 
 const GATE_3_REQUIRED_WORKSPACE_FILE_PATHS = [
   'package.json',
@@ -1705,6 +1711,12 @@ export class GeneratedAppService {
                   latestApp = gate7RunResult.app;
                   completedAt = gate7CompletedAt;
                   if (gate7Evaluation.status === 'passed') {
+                    latestApp = await this.ensureGeneratedWorkflowEditorBinding(
+                      tenantId,
+                      userId,
+                      latestApp,
+                      run.id,
+                    );
                     completedStatus = 'passed';
                     finalFailureReason = null;
                     completedSummary =
@@ -2493,6 +2505,285 @@ export class GeneratedAppService {
     return {
       gateRun: this.toGateRunResponseDto(gateRun),
       app: this.toResponseDto(updated),
+    };
+  }
+
+  private async ensureGeneratedWorkflowEditorBinding(
+    tenantId: string,
+    userId: string,
+    app: GeneratedAppResponseDto,
+    generationRunId: string,
+  ): Promise<GeneratedAppResponseDto> {
+    if (app.workflowDefinitionId) {
+      return app;
+    }
+
+    const existingWorkflow = await this.findGeneratedWorkflowEditorBinding(
+      tenantId,
+      app.id,
+    );
+    const workflowDefinitionId =
+      existingWorkflow?.id ??
+      (await this.createGeneratedWorkflowEditorBinding(
+        tenantId,
+        userId,
+        app,
+        generationRunId,
+      ));
+
+    const [updated] = await this.tenantDb
+      .update(schema.generatedApps)
+      .set({
+        workflowDefinitionId,
+        updatedBy: userId,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(schema.generatedApps.id, app.id),
+          eq(schema.generatedApps.tenantId, tenantId),
+        ),
+      )
+      .returning();
+
+    if (!updated) {
+      throw new GeneratedAppNotFoundException(app.id);
+    }
+
+    return this.toResponseDto(updated);
+  }
+
+  private async findGeneratedWorkflowEditorBinding(
+    tenantId: string,
+    appId: string,
+  ): Promise<{ id: string } | null> {
+    const [workflow] = await this.tenantDb
+      .select({ id: schema.workflowDefinitions.id })
+      .from(schema.workflowDefinitions)
+      .where(
+        and(
+          eq(schema.workflowDefinitions.tenantId, tenantId),
+          eq(
+            sql`${schema.workflowDefinitions.metadata}->>'source'`,
+            GENERATED_APP_WORKFLOW_HANDOFF_METADATA_SOURCE,
+          ),
+          eq(
+            sql`${schema.workflowDefinitions.metadata}->>'generatedAppId'`,
+            appId,
+          ),
+        ),
+      )
+      .limit(1);
+
+    return workflow ?? null;
+  }
+
+  private async createGeneratedWorkflowEditorBinding(
+    tenantId: string,
+    userId: string,
+    app: GeneratedAppResponseDto,
+    generationRunId: string,
+  ): Promise<string> {
+    let slug = generateSlug(`${app.appName}-generated-editor-draft`);
+
+    for (let attempt = 0; attempt <= 5; attempt += 1) {
+      try {
+        const [workflow] = await this.tenantDb
+          .insert(schema.workflowDefinitions)
+          .values({
+            tenantId,
+            name: `${app.appName} - 生成应用编辑草稿`,
+            slug,
+            description:
+              '由 Generated App 自动生成流程创建的专业编辑器草稿入口。该 Workflow 仅用于创建者继续精修，不代表已发布或已在公开 runtime 中执行。',
+            icon: 'WandSparkles',
+            nodes: this.buildGeneratedWorkflowEditorNodes(app),
+            edges: this.buildGeneratedWorkflowEditorEdges(),
+            viewport: { x: 0, y: 0, zoom: 0.85 },
+            metadata: {
+              source: GENERATED_APP_WORKFLOW_HANDOFF_METADATA_SOURCE,
+              generatedAppId: app.id,
+              generationRunId,
+              appSpecVersion: app.appSpec.version,
+              bindingKind: 'editor-handoff-draft',
+              publishBoundary:
+                'draft-only: this binding does not publish, execute, or enable public sharing by itself',
+              publicRuntimeBoundary:
+                'Generated App public runtime never exposes this internal resource id',
+              createdFromGate: 'gate-7',
+              createdAt: new Date().toISOString(),
+            },
+            inputSchema: this.buildGeneratedWorkflowInputSchema(app),
+            status: 'draft',
+            createdBy: userId,
+            updatedBy: userId,
+          })
+          .returning({ id: schema.workflowDefinitions.id });
+
+        if (!workflow) {
+          throw new Error(
+            'Generated workflow editor binding insert returned no row',
+          );
+        }
+
+        return workflow.id;
+      } catch (error: unknown) {
+        const isUniqueViolation = hasPostgresErrorCode(error, '23505');
+
+        if (!isUniqueViolation || attempt === 5) {
+          throw error;
+        }
+
+        const existingWorkflow = await this.findGeneratedWorkflowEditorBinding(
+          tenantId,
+          app.id,
+        );
+
+        if (existingWorkflow) {
+          return existingWorkflow.id;
+        }
+
+        slug = appendSlugSuffix(slug);
+      }
+    }
+
+    throw new Error('Unreachable: generated workflow slug retry exhausted');
+  }
+
+  private buildGeneratedWorkflowEditorNodes(
+    app: GeneratedAppResponseDto,
+  ): schema.ReactFlowNode[] {
+    const promptText = [
+      `Generated App: ${app.appName}`,
+      `App ID: ${app.id}`,
+      `AppSpec v${app.appSpec.version}`,
+      '',
+      app.appSpec.summary,
+      '',
+      '此草稿用于在现有 Workflow 编辑器中继续精修生成应用的编排。当前公开 runtime 仍使用 Generated App deterministic runtime，不会自动执行此草稿 Workflow。',
+    ].join('\n');
+
+    return [
+      {
+        id: 'generated-app-manual-trigger',
+        type: 'trigger',
+        position: { x: 0, y: 80 },
+        data: {
+          label: '生成应用输入',
+          nodeType: 'manual-trigger',
+          category: 'trigger',
+          description: '创建者在专业编辑器中继续精修时使用的手动入口。',
+          config: {},
+          inputPorts: [],
+          outputPorts: [
+            this.createWorkflowPort('exec-out', '', 'output', 'exec'),
+            this.createWorkflowPort(
+              'payload-out',
+              '触发数据',
+              'output',
+              'json',
+            ),
+          ],
+        },
+      },
+      {
+        id: 'generated-app-handoff-note',
+        type: 'output',
+        position: { x: 360, y: 0 },
+        data: {
+          label: '生成应用交接说明',
+          nodeType: 'text',
+          category: 'output',
+          description:
+            '说明该资源绑定是 editor handoff draft，而非已发布资源。',
+          config: {
+            text: promptText,
+          },
+          inputPorts: [],
+          outputPorts: [
+            this.createWorkflowPort('text-out', '文本', 'output', 'text', {
+              multiple: true,
+              maxConnections: null,
+            }),
+          ],
+        },
+      },
+      {
+        id: 'generated-app-draft-output',
+        type: 'output',
+        position: { x: 720, y: 80 },
+        data: {
+          label: '草稿输出',
+          nodeType: 'text-output',
+          category: 'output',
+          description: '用于承接精修后的应用报告或输出。',
+          config: {},
+          inputPorts: [
+            this.createWorkflowPort('exec-in', '', 'input', 'exec'),
+            this.createWorkflowPort('content-in', '文本', 'input', 'text'),
+          ],
+          outputPorts: [],
+        },
+      },
+    ];
+  }
+
+  private buildGeneratedWorkflowEditorEdges(): schema.ReactFlowEdge[] {
+    return [
+      {
+        id: 'generated-app-trigger-to-output-exec',
+        source: 'generated-app-manual-trigger',
+        target: 'generated-app-draft-output',
+        sourceHandle: 'exec-out',
+        targetHandle: 'exec-in',
+        type: 'smart',
+      },
+      {
+        id: 'generated-app-note-to-output-text',
+        source: 'generated-app-handoff-note',
+        target: 'generated-app-draft-output',
+        sourceHandle: 'text-out',
+        targetHandle: 'content-in',
+        type: 'smart',
+      },
+    ];
+  }
+
+  private createWorkflowPort(
+    id: string,
+    label: string,
+    direction: 'input' | 'output',
+    dataType: string,
+    overrides: Record<string, unknown> = {},
+  ): Record<string, unknown> {
+    return {
+      id,
+      label,
+      direction,
+      dataType,
+      required: false,
+      multiple: false,
+      maxConnections: direction === 'input' ? 1 : null,
+      ...overrides,
+    };
+  }
+
+  private buildGeneratedWorkflowInputSchema(
+    app: GeneratedAppResponseDto,
+  ): WorkflowInputSchema {
+    return {
+      version: 1,
+      collectionMode: 'form',
+      fields: [
+        {
+          id: 'generatedAppInput',
+          label: '生成应用输入',
+          type: 'text',
+          required: true,
+          description: app.appSpec.userGoal,
+          collectionHint: 'form',
+        },
+      ],
     };
   }
 

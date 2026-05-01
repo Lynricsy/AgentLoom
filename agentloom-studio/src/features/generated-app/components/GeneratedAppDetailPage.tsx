@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   ExternalLink,
   FileCode2,
+  PencilLine,
   Loader2,
   ListChecks,
   WandSparkles,
@@ -302,6 +303,38 @@ function ArtifactLink({ label, url }: { label: string; url: string | null }) {
           <span className="text-muted-foreground">尚未生成</span>
         )}
       </dd>
+    </div>
+  )
+}
+
+function ProfessionalEditorLink({
+  label,
+  resourceId,
+  to,
+  params,
+}: {
+  label: string
+  resourceId: string | null
+  to: '/agents/$agentId' | '/workflows/$workflowId'
+  params: { agentId: string } | { workflowId: string }
+}) {
+  if (!resourceId) {
+    return <span className="text-muted-foreground">尚未绑定</span>
+  }
+
+  return (
+    <div className="space-y-2">
+      <code className="block break-all rounded bg-muted px-1.5 py-1 text-xs text-muted-foreground">
+        {resourceId}
+      </code>
+      <Link
+        to={to}
+        params={params}
+        className="inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:text-primary/80"
+      >
+        <PencilLine className="h-3.5 w-3.5" />
+        {label}
+      </Link>
     </div>
   )
 }
@@ -621,7 +654,7 @@ export function GeneratedAppDetailPage({ appId }: GeneratedAppDetailPageProps) {
 
         <DetailSection
           title="Resource bindings"
-          description="底层专业资源仍可在后续切片进入现有编辑器继续精修。"
+          description="创建者侧专业资源入口；公开 runtime 不展示这些内部资源。"
         >
           <dl className="grid gap-4 text-sm md:grid-cols-3">
             <div className="space-y-1 border-l border-border pl-3">
@@ -629,8 +662,13 @@ export function GeneratedAppDetailPage({ appId }: GeneratedAppDetailPageProps) {
                 <FileCode2 className="h-4 w-4 text-muted-foreground" />
                 Agent
               </dt>
-              <dd className="break-all text-muted-foreground">
-                {app.agentDefinitionId ?? '尚未绑定'}
+              <dd>
+                <ProfessionalEditorLink
+                  label="打开 Agent 专业编辑器"
+                  resourceId={app.agentDefinitionId}
+                  to="/agents/$agentId"
+                  params={{ agentId: app.agentDefinitionId ?? '' }}
+                />
               </dd>
             </div>
             <div className="space-y-1 border-l border-border pl-3">
@@ -638,8 +676,13 @@ export function GeneratedAppDetailPage({ appId }: GeneratedAppDetailPageProps) {
                 <ListChecks className="h-4 w-4 text-muted-foreground" />
                 Workflow
               </dt>
-              <dd className="break-all text-muted-foreground">
-                {app.workflowDefinitionId ?? '尚未绑定'}
+              <dd>
+                <ProfessionalEditorLink
+                  label="打开 Workflow 专业编辑器"
+                  resourceId={app.workflowDefinitionId}
+                  to="/workflows/$workflowId"
+                  params={{ workflowId: app.workflowDefinitionId ?? '' }}
+                />
               </dd>
             </div>
             <div className="space-y-1 border-l border-border pl-3">

@@ -79,6 +79,12 @@ app.readiness.state === "publish_candidate" &&
   - `/generated-apps/$appId` exposes a creator primary action for running or rerunning automatic generation and verification.
   - The start-run mutation must write the returned `app` into the detail cache and invalidate generated app lists, generation-run lists, Gate-run lists, and the selected run's repair-attempt list when a run id is returned.
   - Starting a generation run must not enable public sharing by itself. Public-share enable/regenerate controls still rely only on backend `readiness.state === 'publish_candidate' && readiness.canCreatePublicShare === true`.
+- Creator resource bindings:
+  - `/generated-apps/$appId` displays creator-side professional resource bindings for Agent, Workflow, and plugins.
+  - Bound Agent resources link to the existing `/agents/$agentId` professional editor route; bound Workflow resources link to the existing `/workflows/$workflowId` professional editor route. Do not introduce Generated App-specific editor routes for these links.
+  - Missing Agent or Workflow bindings must show a clear empty state such as `尚未绑定`, and must not render a link with an empty path parameter.
+  - The resource binding section must explain that these links are creator-side internal resources and are not shown in the public runtime.
+  - The public runtime route and public runtime API mapping must not render `agentDefinitionId`, `workflowDefinitionId`, plugin ids, professional editor links, public share token values, source artifacts, test reports, readiness, or Gate evidence.
 - Creator submissions UI:
   - `/generated-apps/$appId` contains a creator-only submissions section backed by `GET /generated-apps/:appId/submissions`.
   - The submissions list supports pagination and optional `status` filter using the backend submission status union: `received | running | completed | failed`.
@@ -151,6 +157,7 @@ app.readiness.state === "publish_candidate" &&
 - Good: creator detail page shows submission rows and detail JSON panels without rendering `publicShareToken`.
 - Good: creator detail page shows generation runs, repair attempts, and Gate run evidence summaries, while filtering Gate runs by the selected generation run and optional repair attempt.
 - Good: creator deletion uses single or batch delete API after confirmation and refreshes submission caches.
+- Good: creator detail page shows Agent and Workflow ids only inside the authenticated workbench, links them to `/agents/$agentId` and `/workflows/$workflowId`, and shows `尚未绑定` without links when ids are absent.
 - Base: a generated app has warning-only readiness; Studio displays trial/warning summary and keeps public share unavailable.
 - Base: a generated app has no public submissions; Studio shows an empty state and keeps the rest of the workbench usable.
 - Bad: Studio enables share because `status === 'publish_candidate'` while `readiness.canCreatePublicShare` is false.
@@ -161,6 +168,8 @@ app.readiness.state === "publish_candidate" &&
 - Bad: Studio renders public share token values as a default column in the submissions table.
 - Bad: Studio renders evidence URLs or public token snapshots as default columns in the generation evidence panel.
 - Bad: the built-in public runtime page posts submissions through creator endpoints or renders creator-only submission fields such as tenant id, public token, readiness, gate results, source/test artifacts, or plugin ids.
+- Bad: Studio invents `/generated-apps/:appId/workflow-editor` or another Generated App-specific professional editor route instead of linking to the existing Agent/Workflow editor routes.
+- Bad: Studio renders public runtime resource ids or editor links because `agentDefinitionId` or `workflowDefinitionId` exists on the creator DTO.
 
 ### 6. Tests Required
 
@@ -190,6 +199,7 @@ app.readiness.state === "publish_candidate" &&
   - creator submissions panel renders list rows, detail selection, status filter, pagination, delete confirmation, empty state, and error state.
   - creator generation evidence panel renders generation runs, loads repair/gate data after run selection, filters gate data after repair selection, shows failure/evidence summaries, and shows empty/error states.
   - detail page tests either mock the submissions hooks or assert the submissions section renders with an empty state.
+  - detail page renders existing Agent/Workflow editor links for bound ids and renders no editor links for missing ids.
 - Route/navigation smoke:
   - `/generated-apps` route is registered in the route tree.
   - `/generated-apps/public/$token` route is registered and bypasses auth shell without opening authenticated notification socket.

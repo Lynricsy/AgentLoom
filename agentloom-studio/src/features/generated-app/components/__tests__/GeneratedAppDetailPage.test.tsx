@@ -144,10 +144,16 @@ vi.mock('@tanstack/react-router', () => ({
     ...rest
   }: {
     to: string
-    params?: { appId?: string }
+    params?: { agentId?: string; appId?: string; workflowId?: string }
     children: React.ReactNode
   }) => (
-    <a href={to.replace('$appId', params?.appId ?? '')} {...rest}>
+    <a
+      href={to
+        .replace('$agentId', params?.agentId ?? '')
+        .replace('$appId', params?.appId ?? '')
+        .replace('$workflowId', params?.workflowId ?? '')}
+      {...rest}
+    >
       {children}
     </a>
   ),
@@ -503,5 +509,35 @@ describe('GeneratedAppDetailPage', () => {
     expect(traceability.getByText('req-intake')).toBeInTheDocument()
     expect(traceability.getByText('scenario-main')).toBeInTheDocument()
     expect(traceability.getByText('evidence-browser-main')).toBeInTheDocument()
+  })
+
+  it('renders professional editor links for bound Agent and Workflow resources', () => {
+    generatedAppQuery.data = makeGeneratedApp({
+      agentDefinitionId: 'agent-bound-1',
+      workflowDefinitionId: 'workflow-bound-1',
+    })
+
+    render(<GeneratedAppDetailPage appId="app-detail" />)
+
+    expect(screen.getByText('agent-bound-1')).toBeInTheDocument()
+    expect(screen.getByText('workflow-bound-1')).toBeInTheDocument()
+    expect(
+      screen.getByRole('link', { name: '打开 Agent 专业编辑器' }),
+    ).toHaveAttribute('href', '/agents/agent-bound-1')
+    expect(
+      screen.getByRole('link', { name: '打开 Workflow 专业编辑器' }),
+    ).toHaveAttribute('href', '/workflows/workflow-bound-1')
+  })
+
+  it('keeps resource binding empty states clear when no professional resources are bound', () => {
+    render(<GeneratedAppDetailPage appId="app-detail" />)
+
+    expect(screen.getAllByText('尚未绑定')).toHaveLength(2)
+    expect(
+      screen.queryByRole('link', { name: '打开 Agent 专业编辑器' }),
+    ).not.toBeInTheDocument()
+    expect(
+      screen.queryByRole('link', { name: '打开 Workflow 专业编辑器' }),
+    ).not.toBeInTheDocument()
   })
 })
