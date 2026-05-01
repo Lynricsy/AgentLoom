@@ -285,6 +285,7 @@ const GATE_3_REQUIRED_WORKSPACE_FILE_PATHS = [
   'src/App.tsx',
   'src/generated-app/app-spec.ts',
   'src/generated-app/static-contracts.ts',
+  'src/generated-app/runtime-form.ts',
   'src/generated-app/runtime.ts',
   'src/generated-app/__tests__/runtime.contract.spec.ts',
   'src/generated-app/__tests__/runtime.golden.spec.tsx',
@@ -356,6 +357,13 @@ const GENERATED_APP_WORKSPACE_SOURCE_ARTIFACTS = [
     label: 'src/generated-app/static-contracts.ts',
     kind: 'workspace_source_file',
     path: 'src/generated-app/static-contracts.ts',
+    contentType: 'text/typescript',
+  },
+  {
+    artifactId: 'source-runtime-form-ts',
+    label: 'src/generated-app/runtime-form.ts',
+    kind: 'workspace_source_file',
+    path: 'src/generated-app/runtime-form.ts',
     contentType: 'text/typescript',
   },
   {

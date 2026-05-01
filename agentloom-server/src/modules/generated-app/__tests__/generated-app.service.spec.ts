@@ -910,6 +910,21 @@ describe('GeneratedAppService', () => {
       'export function App() { return null; }\n',
       'utf8',
     );
+    await mkdir(
+      join(workspaceRoot, workspace.relativePath, 'src/generated-app'),
+      {
+        recursive: true,
+      },
+    );
+    await writeFile(
+      join(
+        workspaceRoot,
+        workspace.relativePath,
+        'src/generated-app/runtime-form.ts',
+      ),
+      'export const runtimeForm = { fields: [] } as const;\n',
+      'utf8',
+    );
 
     mockTenantDb.select.mockReturnValueOnce(createSelectChain([app]));
 
@@ -933,6 +948,13 @@ describe('GeneratedAppService', () => {
         expect.objectContaining({
           artifactId: 'source-app-tsx',
           path: 'src/App.tsx',
+          materialized: true,
+          readable: true,
+          contentType: 'text/typescript',
+        }),
+        expect.objectContaining({
+          artifactId: 'source-runtime-form-ts',
+          path: 'src/generated-app/runtime-form.ts',
           materialized: true,
           readable: true,
           contentType: 'text/typescript',
@@ -4769,10 +4791,10 @@ describe('GeneratedAppService', () => {
       ),
     ).toBe(true);
     expect(
-      gate3RunPayload.evidence.some((item) =>
-        item.summary.includes(
-          'generationWorkspace.files[17].path 不能包含空路径段',
-        ),
+      gate3RunPayload.evidence.some(
+        (item) =>
+          item.summary.includes('generationWorkspace.files[') &&
+          item.summary.includes('.path 不能包含空路径段'),
       ),
     ).toBe(true);
     expect(
@@ -5487,12 +5509,49 @@ describe('GeneratedAppService', () => {
       );
       expect(html).toContain('围绕需求生成的 AppSpec 初稿。');
       expect(html).toContain('提交内容会保存并提供给应用创建者查看');
+      expect(html).toContain('自动化中医问诊系统问诊采集表');
+      expect(html).toContain('id="generated-app-form"');
+      expect(html).toContain('name="chiefComplaint"');
+      expect(html).toContain('name="symptoms"');
+      expect(html).toContain('id="report-questions"');
+      expect(html).toContain('已生成问诊摘要');
       expect(html).toContain('核心需求');
       expect(html).toContain('<li>自动化中医问诊系统</li>');
       expect(html).toContain('验收场景');
       expect(html).toContain('系统生成 AppSpec 初稿');
       expect(html).not.toContain('<div id="root"></div>');
       expect(html).not.toContain(workspaceRoot);
+
+      const runtimeFormSource = await readFile(
+        join(
+          workspaceRoot,
+          workspace.relativePath,
+          'src/generated-app/runtime-form.ts',
+        ),
+        'utf8',
+      );
+      const appSource = await readFile(
+        join(workspaceRoot, workspace.relativePath, 'src/App.tsx'),
+        'utf8',
+      );
+      const buildManifest = JSON.parse(
+        await readFile(
+          join(
+            workspaceRoot,
+            workspace.relativePath,
+            'dist/assets/manifest.json',
+          ),
+          'utf8',
+        ),
+      ) as { runtimeFormFields: string[] };
+
+      expect(runtimeFormSource).toContain('runtimeForm');
+      expect(runtimeFormSource).toContain('chiefComplaint');
+      expect(appSource).toContain('buildLocalReport');
+      expect(appSource).toContain('runtimeForm.sections.map');
+      expect(buildManifest.runtimeFormFields).toEqual(
+        expect.arrayContaining(['chiefComplaint', 'symptoms', 'severity']),
+      );
     } finally {
       await rm(workspaceRoot, { recursive: true, force: true });
     }
