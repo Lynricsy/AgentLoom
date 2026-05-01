@@ -325,6 +325,35 @@ describe('GeneratedAppGenerationEvidencePanel', () => {
     })
   })
 
+  it('auto-selects the latest visible generation run when enabled', async () => {
+    render(
+      <GeneratedAppGenerationEvidencePanel appId="app-1" autoSelectLatestRun />,
+    )
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('button', { name: '当前 Run #1' }),
+      ).toBeInTheDocument()
+      expect(getLastCall(useGeneratedAppRepairAttemptsMock)).toEqual([
+        'app-1',
+        'run-1',
+        { page: 1, pageSize: 8 },
+      ])
+      expect(getLastCall(useGeneratedAppGateRunsMock)).toEqual([
+        'app-1',
+        {
+          page: 1,
+          pageSize: 8,
+          generationRunId: 'run-1',
+          repairAttemptId: undefined,
+        },
+      ])
+    })
+
+    expect(screen.getByText('Repair #1')).toBeInTheDocument()
+    expect(screen.getByText('浏览器验收 trace')).toBeInTheDocument()
+  })
+
   it('hides stale scoped data while a newly selected generation run is loading', async () => {
     const user = userEvent.setup()
 

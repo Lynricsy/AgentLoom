@@ -64,6 +64,7 @@ const GENERATION_RUN_STATUS_OPTIONS: Array<{
 
 interface GeneratedAppGenerationEvidencePanelProps {
   appId: string
+  autoSelectLatestRun?: boolean
 }
 
 function InlineErrorState({
@@ -282,6 +283,7 @@ function formatBudget(run: GeneratedAppGenerationRun): string {
 
 export function GeneratedAppGenerationEvidencePanel({
   appId,
+  autoSelectLatestRun = false,
 }: GeneratedAppGenerationEvidencePanelProps) {
   const [runPage, setRunPage] = useState(1)
   const [repairPage, setRepairPage] = useState(1)
@@ -397,6 +399,31 @@ export function GeneratedAppGenerationEvidencePanel({
       setGatePage(1)
     }
   }, [generationRuns, selectedRepairAttemptId, selectedRunId])
+
+  useEffect(() => {
+    if (!autoSelectLatestRun || selectedRunId !== null) {
+      return
+    }
+
+    if (generationRunsQuery.isFetching || generationRuns.length === 0) {
+      return
+    }
+
+    const latestVisibleRun = generationRuns[0]
+    if (!latestVisibleRun) {
+      return
+    }
+
+    setSelectedRunId(latestVisibleRun.id)
+    setSelectedRepairAttemptId(null)
+    setRepairPage(1)
+    setGatePage(1)
+  }, [
+    autoSelectLatestRun,
+    generationRuns,
+    generationRunsQuery.isFetching,
+    selectedRunId,
+  ])
 
   useEffect(() => {
     if (!selectedRepairAttemptId) return

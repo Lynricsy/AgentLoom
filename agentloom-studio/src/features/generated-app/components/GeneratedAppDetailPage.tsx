@@ -1073,7 +1073,10 @@ export function GeneratedAppDetailPage({ appId }: GeneratedAppDetailPageProps) {
           title="生成证据/运行记录"
           description="创建者侧查看 generation runs、repair attempts 与 Gate run 证据摘要。"
         >
-          <GeneratedAppGenerationEvidencePanel appId={app.id} />
+          <GeneratedAppGenerationEvidencePanel
+            appId={app.id}
+            autoSelectLatestRun
+          />
         </DetailSection>
 
         <AppSpecSection app={app} />

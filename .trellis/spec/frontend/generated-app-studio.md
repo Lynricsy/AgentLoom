@@ -117,7 +117,8 @@ app.readiness.state === "publish_candidate" &&
 - Creator generation evidence UI:
   - `/generated-apps/$appId` contains a creator-only generation evidence section backed by generation run, repair attempt, and gate run list APIs.
   - Generation runs are listed with run number, status, trigger source, repair/runtime budget, summary, failure reason, started time, and completed time.
-  - Until a generation run is selected, repair attempt and Gate run queries stay disabled and the panel shows a selection prompt instead of app-wide evidence.
+  - The detail page enables evidence-panel auto-selection: after the generation run list finishes loading, the first visible generation run is selected automatically so creators immediately see the latest scoped repair attempts and Gate evidence.
+  - The reusable evidence panel keeps manual selection as its default. Until a generation run is selected in manual mode, repair attempt and Gate run queries stay disabled and the panel shows a selection prompt instead of app-wide evidence.
   - Selecting a generation run scopes repair attempts to that run and scopes gate runs by `generationRunId`.
   - Selecting a repair attempt further scopes gate runs by `repairAttemptId`; clearing the repair selection falls back to the selected run scope.
   - Repair attempts surface target gate id, attempt number, status, failure summary, change summary, and verification summary.
@@ -160,7 +161,8 @@ app.readiness.state === "publish_candidate" &&
 | Creator deletes one submission                                                            | Confirm first, call single delete, clear selected detail if needed, invalidate submissions list/detail, and toast success/failure                               |
 | Creator deletes selected submissions                                                      | Confirm first, call bulk delete with `{ ids }`, clear selection/detail if needed, invalidate submissions list/detail, and toast success/failure                 |
 | Generation run list is empty                                                              | Show an empty state, not a blank table                                                                                                                          |
-| No generation run is selected                                                             | Do not fetch repair attempt or Gate run evidence lists; show a selection prompt                                                                                 |
+| No generation run is selected in the reusable panel's manual mode                          | Do not fetch repair attempt or Gate run evidence lists; show a selection prompt                                                                                 |
+| Creator opens `/generated-apps/$appId` with visible generation runs                        | Auto-select the first visible generation run after list loading completes, then fetch scoped repair attempts and Gate runs                                       |
 | Creator selects a generation run                                                          | Fetch repair attempts by `appId + generationRunId` and gate runs with `generationRunId`                                                                         |
 | Creator selects a repair attempt                                                          | Fetch gate runs with both `generationRunId` and `repairAttemptId`                                                                                               |
 | Generation evidence list fetch fails                                                      | Show an error state and retry action; do not fabricate run or gate data                                                                                         |
@@ -182,6 +184,7 @@ app.readiness.state === "publish_candidate" &&
 - Good: a public runtime page shows data-use notice, public AppSpec summary, a dynamic business form from `runtimeForm`, optional runtime preview link, and structured public submission report/status without rendering Studio navigation, internal JSON dumps, or the token value.
 - Good: creator detail page shows submission rows and detail JSON panels without rendering `publicShareToken`.
 - Good: creator detail page shows generation runs, repair attempts, and Gate run evidence summaries, while filtering Gate runs by the selected generation run and optional repair attempt.
+- Good: creator detail page auto-selects the first visible generation run so the latest repair attempts and Gate evidence are visible without requiring a novice creator to understand run selection first.
 - Good: creator detail page highlights an automatic failed repair attempt as "failure gate identified, no patch applied" when the backend summary says the synchronous runner did not apply a patch.
 - Good: creator detail page shows controlled Gate 3 workspace artifact summaries, previews readable source/test/report content, and renders readable `dist/index.html` build output in a sandboxed iframe without rendering the host absolute workspace root.
 - Good: creator deletion uses single or batch delete API after confirmation and refreshes submission caches.
@@ -233,6 +236,7 @@ app.readiness.state === "publish_candidate" &&
   - public runtime page renders data-use notice, limited AppSpec, optional preview link, dynamic `runtimeForm` controls, required validation, submitted payload, structured result/report sections, and does not render tokens or internal fields.
   - creator submissions panel renders list rows, detail selection, status filter, pagination, delete confirmation, empty state, and error state.
   - creator generation evidence panel renders generation runs, loads repair/gate data after run selection, filters gate data after repair selection, shows failure/evidence summaries, and shows empty/error states.
+  - creator detail page enables generation evidence auto-selection, while the reusable panel default still leaves repair/gate queries disabled until manual selection.
   - creator generation evidence panel highlights failed automatic repair attempts that did not apply a patch, and does not show that notice for completed manual repair attempts.
   - creator artifact delivery panel renders workspace summary, artifact rows, selected readable content, Gate 3 build-output sandbox iframe preview for readable `gate-3-build-output-html`, empty/error states, disabled unreadable artifacts, and does not render host absolute paths.
   - detail page tests either mock the submissions hooks or assert the submissions section renders with an empty state.
