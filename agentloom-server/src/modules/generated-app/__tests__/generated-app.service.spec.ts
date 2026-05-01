@@ -423,6 +423,26 @@ function createUpdateReturningChain<T>(result: T[]) {
   };
 }
 
+function createSubmissionUpdateReturningFromPayload(
+  baseSubmission: GeneratedAppSubmission,
+  onPayload?: (payload: Partial<GeneratedAppSubmission>) => void,
+) {
+  let payload: Partial<GeneratedAppSubmission> = {};
+  const chain = {
+    set: vi.fn((nextPayload: Partial<GeneratedAppSubmission>) => {
+      payload = nextPayload;
+      onPayload?.(nextPayload);
+      return chain;
+    }),
+    where: vi.fn().mockReturnThis(),
+    returning: vi.fn(async () => [
+      createGeneratedAppSubmission({ ...baseSubmission, ...payload }),
+    ]),
+  };
+
+  return chain;
+}
+
 function createGeneratedAppUpdateReturningFromPayload(
   baseApp: GeneratedApp,
   onPayload?: (payload: Partial<GeneratedApp>) => void,
@@ -697,7 +717,7 @@ function createWorkflowDefinitionReadinessRow(
 
 function createGeneratedAppWithGate3Workspace(
   overrides: Partial<GeneratedApp> = {},
-): GeneratedApp {
+): GeneratedApp & { generationPlan: GeneratedAppGenerationPlan } {
   const baseApp = createGeneratedApp();
   const gate3Runner = new GeneratedAppGate3WorkspaceRunner(
     createConfigService(),
@@ -740,7 +760,7 @@ function createGeneratedAppWithGate3Workspace(
       staticContracts,
       buildUnitPlan,
     },
-  });
+  }) as GeneratedApp & { generationPlan: GeneratedAppGenerationPlan };
 }
 
 function serviceAccessForPlans() {
@@ -10120,6 +10140,100 @@ describe('GeneratedAppService', () => {
     );
   });
 
+  it('创建者提交列表应刷新当前页内未终止的 Workflow handoff 并持久化状态', async () => {
+    const app = createGeneratedApp({
+      workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+    });
+    const submission = createGeneratedAppSubmission({
+      status: 'received',
+      result: {
+        runtimeKind: 'local-generated-app-deterministic-report',
+        summary: '保留列表可见业务摘要。',
+        workflowExecution: true,
+        executionId: WORKFLOW_EXECUTION_ID,
+        executionStatus: 'pending',
+        workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+        executionBoundary: 'async-workflow-execution-created',
+      },
+      report: {
+        runtimeKind: 'local-generated-app-deterministic-report',
+        title: '本地运行报告',
+        sections: [],
+        workflowExecution: true,
+        executionId: WORKFLOW_EXECUTION_ID,
+        executionStatus: 'pending',
+        workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+      },
+    });
+    const listChain = createSelectPageChain([submission]);
+    const countChain = createCountChain(1);
+    const updateChain = createSubmissionUpdateReturningFromPayload(submission);
+
+    mockTenantDb.select
+      .mockReturnValueOnce(listChain)
+      .mockReturnValueOnce(countChain)
+      .mockReturnValueOnce(createSelectChain([app]))
+      .mockReturnValueOnce(
+        createSelectChain([
+          {
+            id: WORKFLOW_EXECUTION_ID,
+            tenantId: TENANT_ID,
+            workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+            status: 'running',
+            completedAt: null,
+            failedAt: null,
+            cancelledAt: null,
+            totalSteps: 2,
+            completedSteps: 1,
+            updatedAt: NOW,
+            inputParams: {
+              _meta: {
+                generatedAppId: APP_ID,
+                appSpecVersion: 1,
+                submissionSource: 'generated-app-public-submission',
+                submission: {
+                  anonymousSessionId: 'anonymous-session-1',
+                  submittedAt: NOW.toISOString(),
+                },
+              },
+            },
+          },
+        ]),
+      );
+    mockTenantDb.update.mockReturnValueOnce(updateChain);
+
+    const list = await service.listSubmissions(TENANT_ID, APP_ID, {
+      page: 1,
+      pageSize: 20,
+    });
+
+    expect(list.data).toEqual([
+      expect.objectContaining({
+        id: SUBMISSION_ID,
+        status: 'running',
+        result: expect.objectContaining({
+          workflowExecution: true,
+          executionStatus: 'running',
+          workflowExecutionUpdatedAt: NOW.toISOString(),
+        }),
+        report: expect.objectContaining({
+          workflowExecution: true,
+          executionStatus: 'running',
+        }),
+      }),
+    ]);
+    expect(updateChain.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'running',
+        result: expect.objectContaining({
+          workflowExecution: true,
+          executionStatus: 'running',
+        }),
+        updatedAt: expect.any(Date),
+      }),
+    );
+  });
+
   it('创建者提交详情应把 running execution handoff 刷新到 result/report', async () => {
     const app = createGeneratedApp({
       workflowDefinitionId: WORKFLOW_DEFINITION_ID,
@@ -10152,6 +10266,7 @@ describe('GeneratedAppService', () => {
         workflowDefinitionId: WORKFLOW_DEFINITION_ID,
       },
     });
+    const updateChain = createSubmissionUpdateReturningFromPayload(submission);
 
     mockTenantDb.select
       .mockReturnValueOnce(createSelectChain([app]))
@@ -10184,6 +10299,7 @@ describe('GeneratedAppService', () => {
           },
         ]),
       );
+    mockTenantDb.update.mockReturnValueOnce(updateChain);
 
     const detail = await service.findSubmission(
       TENANT_ID,
@@ -10216,6 +10332,21 @@ describe('GeneratedAppService', () => {
             body: expect.stringContaining('2/4'),
           }),
         ]),
+      }),
+    );
+    expect(updateChain.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'running',
+        result: expect.objectContaining({
+          workflowExecution: true,
+          executionStatus: 'running',
+          workflowExecutionUpdatedAt: NOW.toISOString(),
+        }),
+        report: expect.objectContaining({
+          workflowExecution: true,
+          executionStatus: 'running',
+        }),
+        updatedAt: expect.any(Date),
       }),
     );
     expect(detail.tenantId).toBe(TENANT_ID);
@@ -10271,6 +10402,7 @@ describe('GeneratedAppService', () => {
         workflowDefinitionId: WORKFLOW_DEFINITION_ID,
       },
     });
+    const updateChain = createSubmissionUpdateReturningFromPayload(submission);
 
     mockTenantDb.select
       .mockReturnValueOnce(createSelectChain([app]))
@@ -10331,6 +10463,7 @@ describe('GeneratedAppService', () => {
           },
         ]),
       );
+    mockTenantDb.update.mockReturnValueOnce(updateChain);
 
     const detail = await service.findSubmission(
       TENANT_ID,
@@ -10372,6 +10505,26 @@ describe('GeneratedAppService', () => {
     expect(serialized).not.toContain('testReportUrl');
     expect(serialized).toContain('保留业务摘要');
     expect(serialized).toContain('保留业务段落');
+    expect(updateChain.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'completed',
+        result: expect.objectContaining({
+          workflowExecution: true,
+          executionStatus: 'completed',
+          workflowExecutionSummary: expect.objectContaining({
+            totalSteps: 3,
+          }),
+        }),
+        report: expect.objectContaining({
+          workflowExecution: true,
+          executionStatus: 'completed',
+        }),
+        updatedAt: expect.any(Date),
+      }),
+    );
+    expect(JSON.stringify(updateChain.set.mock.calls[0]?.[0])).not.toContain(
+      'secret-token-value',
+    );
   });
 
   it.each([
@@ -10484,11 +10637,14 @@ describe('GeneratedAppService', () => {
           workflowDefinitionId: WORKFLOW_DEFINITION_ID,
         },
       });
+      const updateChain =
+        createSubmissionUpdateReturningFromPayload(submission);
 
       mockTenantDb.select
         .mockReturnValueOnce(createSelectChain([app]))
         .mockReturnValueOnce(createSelectChain([submission]))
         .mockReturnValueOnce(createSelectChain([...executionRows]));
+      mockTenantDb.update.mockReturnValueOnce(updateChain);
 
       const detail = await service.findSubmission(
         TENANT_ID,
@@ -10507,6 +10663,17 @@ describe('GeneratedAppService', () => {
         }),
       );
       expect(JSON.stringify(detail)).not.toContain('secret-token-value');
+      expect(updateChain.set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'failed',
+          result: expect.objectContaining({
+            workflowExecution: false,
+            executionStatus: null,
+            workflowExecutionNotStartedReason: 'workflow-execution-unavailable',
+          }),
+          updatedAt: expect.any(Date),
+        }),
+      );
     },
   );
 
@@ -10635,6 +10802,7 @@ describe('GeneratedAppService', () => {
         },
       },
     });
+    const updateChain = createSubmissionUpdateReturningFromPayload(submission);
     mockTenantDb.select
       .mockReturnValueOnce(createSelectChain([app]))
       .mockReturnValueOnce(createSelectChain([submission]))
@@ -10654,6 +10822,7 @@ describe('GeneratedAppService', () => {
           },
         ]),
       );
+    mockTenantDb.update.mockReturnValueOnce(updateChain);
 
     const response = await service.getPublicSubmission(token, SUBMISSION_ID);
 
@@ -10705,6 +10874,24 @@ describe('GeneratedAppService', () => {
     expect(response).not.toHaveProperty('sourceArtifactUrl');
     expect(response).not.toHaveProperty('testReportUrl');
     expect(response).not.toHaveProperty('pluginIds');
+    expect(updateChain.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'running',
+        result: expect.objectContaining({
+          workflowExecution: true,
+          executionStatus: 'running',
+          workflowExecutionUpdatedAt: NOW.toISOString(),
+        }),
+        report: expect.objectContaining({
+          workflowExecution: true,
+          executionStatus: 'running',
+        }),
+        updatedAt: expect.any(Date),
+      }),
+    );
+    expect(JSON.stringify(updateChain.set.mock.calls[0]?.[0])).not.toContain(
+      token,
+    );
   });
 
   it('公开提交详情应把 completed execution 刷新为安全摘要且不泄露内部执行数据', async () => {
@@ -10742,6 +10929,7 @@ describe('GeneratedAppService', () => {
         workflowDefinitionId: WORKFLOW_DEFINITION_V7_ID,
       },
     });
+    const updateChain = createSubmissionUpdateReturningFromPayload(submission);
     mockTenantDb.select
       .mockReturnValueOnce(createSelectChain([app]))
       .mockReturnValueOnce(createSelectChain([submission]))
@@ -10784,6 +10972,7 @@ describe('GeneratedAppService', () => {
           },
         ]),
       );
+    mockTenantDb.update.mockReturnValueOnce(updateChain);
 
     const response = await service.getPublicSubmission(token, SUBMISSION_ID);
     const serialized = JSON.stringify(response);
@@ -10817,6 +11006,26 @@ describe('GeneratedAppService', () => {
     expect(serialized).not.toContain('/root/AgentLoom');
     expect(serialized).not.toContain('sourceArtifactUrl');
     expect(serialized).not.toContain('testReportUrl');
+    expect(updateChain.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'completed',
+        result: expect.objectContaining({
+          workflowExecution: true,
+          executionStatus: 'completed',
+          workflowExecutionSummary: expect.objectContaining({
+            totalSteps: 2,
+          }),
+        }),
+        report: expect.objectContaining({
+          workflowExecution: true,
+          executionStatus: 'completed',
+        }),
+        updatedAt: expect.any(Date),
+      }),
+    );
+    expect(JSON.stringify(updateChain.set.mock.calls[0]?.[0])).not.toContain(
+      'secret-token-value',
+    );
   });
 
   it.each([
@@ -10851,6 +11060,8 @@ describe('GeneratedAppService', () => {
           workflowDefinitionId: WORKFLOW_DEFINITION_ID,
         },
       });
+      const updateChain =
+        createSubmissionUpdateReturningFromPayload(submission);
       mockTenantDb.select
         .mockReturnValueOnce(createSelectChain([app]))
         .mockReturnValueOnce(createSelectChain([submission]))
@@ -10870,6 +11081,7 @@ describe('GeneratedAppService', () => {
             },
           ]),
         );
+      mockTenantDb.update.mockReturnValueOnce(updateChain);
 
       const response = await service.getPublicSubmission(token, SUBMISSION_ID);
 
@@ -10885,6 +11097,17 @@ describe('GeneratedAppService', () => {
       );
       expect(JSON.stringify(response)).not.toContain('stack');
       expect(JSON.stringify(response)).not.toContain(token);
+      expect(updateChain.set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'failed',
+          result: expect.objectContaining({
+            workflowExecution: true,
+            executionStatus,
+            executionBoundary: boundary,
+          }),
+          updatedAt: expect.any(Date),
+        }),
+      );
     },
   );
 
@@ -10915,11 +11138,14 @@ describe('GeneratedAppService', () => {
         workflowDefinitionId: WORKFLOW_DEFINITION_ID,
       },
     });
+    const unavailableUpdateChain =
+      createSubmissionUpdateReturningFromPayload(submission);
 
     mockTenantDb.select
       .mockReturnValueOnce(createSelectChain([app]))
       .mockReturnValueOnce(createSelectChain([submission]))
       .mockReturnValueOnce(createSelectChain([]));
+    mockTenantDb.update.mockReturnValueOnce(unavailableUpdateChain);
 
     const unavailableResponse = await service.getPublicSubmission(
       token,
@@ -10936,8 +11162,22 @@ describe('GeneratedAppService', () => {
       }),
     );
     expect(JSON.stringify(unavailableResponse)).not.toContain(token);
+    expect(unavailableResponse.status).toBe('failed');
+    expect(unavailableUpdateChain.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'failed',
+        result: expect.objectContaining({
+          workflowExecution: false,
+          executionStatus: null,
+          workflowExecutionNotStartedReason: 'workflow-execution-unavailable',
+        }),
+        updatedAt: expect.any(Date),
+      }),
+    );
 
     vi.clearAllMocks();
+    const mismatchUpdateChain =
+      createSubmissionUpdateReturningFromPayload(submission);
 
     mockTenantDb.select
       .mockReturnValueOnce(createSelectChain([app]))
@@ -10958,6 +11198,7 @@ describe('GeneratedAppService', () => {
           },
         ]),
       );
+    mockTenantDb.update.mockReturnValueOnce(mismatchUpdateChain);
 
     const mismatchResponse = await service.getPublicSubmission(
       token,
@@ -10970,6 +11211,17 @@ describe('GeneratedAppService', () => {
         executionId: null,
         executionStatus: null,
         workflowExecutionNotStartedReason: 'workflow-execution-unavailable',
+      }),
+    );
+    expect(mismatchResponse.status).toBe('failed');
+    expect(mismatchUpdateChain.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'failed',
+        result: expect.objectContaining({
+          workflowExecution: false,
+          executionStatus: null,
+        }),
+        updatedAt: expect.any(Date),
       }),
     );
   });

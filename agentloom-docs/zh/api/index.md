@@ -20,7 +20,7 @@ Generated App API 适合把“一句话生成应用”接入 Studio 之外的前
 4. 终端用户访问 `GET /generated-apps/public/:token`，读取 `runtimeForm`，按 `runtimeForm.fields` 动态渲染输入控件。
 5. 终端用户提交 `POST /generated-apps/public/:token/submissions`，最小请求体为 `{ input }`；也可传入 `anonymousSessionId`，但它只是匿名会话标识，不能作为认证或授权依据。
 6. 使用 `GET /generated-apps/public/:token/submissions/:submissionId` 查询报告状态、`result`、`report` 和 `errorMessage`，并把 `report.sections`、下一步问题、追问提示、异步 Workflow 执行状态和免责声明渲染成终端用户可读内容。如果 `result` 或 `report` 表示 `workflowExecution=true` 且 `executionStatus` 为 `pending`、`running` 或 `paused`，终端前端可以按 2 秒左右的间隔轮询这个 public submission detail 接口；`completed`、`failed`、`cancelled`、`workflowExecution=false` 或没有 handoff 字段时应停止轮询。
-7. 创建者在登录态使用 `GET /generated-apps/:appId/submissions`、`GET /generated-apps/:appId/submissions/:submissionId`、`DELETE /generated-apps/:appId/submissions/:submissionId` 或 `POST /generated-apps/:appId/submissions/delete` 管理公开提交。
+7. 创建者在登录态使用 `GET /generated-apps/:appId/submissions`、`GET /generated-apps/:appId/submissions/:submissionId`、`DELETE /generated-apps/:appId/submissions/:submissionId` 或 `POST /generated-apps/:appId/submissions/delete` 管理公开提交；创建者提交列表会刷新当前页仍处于 `pending`、`running` 或 `paused` 的异步 Workflow handoff，并返回已持久化的安全状态。
 
 ### TypeScript fetch 示例
 
@@ -128,7 +128,7 @@ if (detail.status === "failed") {
 | `workflowExecution=true` 且 `executionStatus=completed` | 展示本地报告、Workflow 状态段和 `workflowExecutionSummary`，停止轮询 |
 | `workflowExecution=true` 且 `executionStatus=failed/cancelled` | 展示本地报告 fallback 和安全失败/取消提示，停止轮询 |
 
-公开 submission 的 `status` 会随 handoff 刷新而变化：`pending` 映射为 `received`，`running/paused` 映射为 `running`，`completed` 映射为 `completed`，`failed/cancelled` 映射为 `failed`。前端可以用顶层 `status` 做列表 badge，但是否继续轮询应优先读取 `result` 或 `report` 中的 handoff 字段。
+公开 submission 的 `status` 会随 handoff 刷新而变化并持久化到提交记录：`pending` 映射为 `received`，`running/paused` 映射为 `running`，`completed` 映射为 `completed`，`failed/cancelled` 映射为 `failed`。如果已经创建过 handoff 但 execution 不存在、跨租户、Workflow 不匹配或查询失败，服务端会把记录安全降级为 `failed`、`workflowExecution=false`，并保留本地确定性报告 fallback。前端可以用顶层 `status` 做列表 badge，但是否继续轮询应优先读取 `result` 或 `report` 中的 handoff 字段。
 
 ### 公开响应边界
 
@@ -140,7 +140,7 @@ if (detail.status === "failed") {
 
 ### 当前 runtime 边界
 
-public submission 会先生成本地确定性报告：服务端会基于 `appSpec`、安全的 public runtime contract 摘要和清洗后的 `input` 同步生成 `result` / `report`，不会伪装为真实 AI、生产沙箱或插件执行。当 Generated App 绑定的是同租户已发布 Workflow 且存在 `publishedVersionId` 时，服务端会通过执行服务创建一个异步 Workflow execution，并在公开报告中只展示 execution id、status 与 boundary；创建响应不会等待 execution 完成，也不会伪造最终 Workflow 输出。Gate 7 real-local 通过后，服务端会创建或复用同租户已发布的 Generated App runtime Workflow，并把它写入 `workflowDefinitionId`，因此创建者显式启用公开分享后，公开提交默认可以走异步 execution handoff。之后 `GET /generated-apps/public/:token/submissions/:submissionId` 会在当前应用租户范围内做最小安全查询并刷新 handoff 状态：`pending/running/paused` 表示仍在执行，`completed` 表示执行已完成但公开端只展示安全摘要，`failed/cancelled` 表示执行未完成并继续保留 deterministic report fallback。若 execution 不存在、跨租户、Workflow 不匹配或查询失败，公开响应会安全降级为不可用 handoff，不暴露内部错误。历史或手动绑定的 editor handoff draft 仍只用于创建者在专业编辑器中继续精修，公开提交不会执行这类 draft；未发布、不可见或被治理阻止的 Workflow 会回退到本地 deterministic report 并显示安全的未启动原因。医疗、问诊或中医类应用只能做信息整理、下一步问题和免责声明，不能输出诊断、处方、剂量、治疗指令或专业医疗建议。
+public submission 会先生成本地确定性报告：服务端会基于 `appSpec`、安全的 public runtime contract 摘要和清洗后的 `input` 同步生成 `result` / `report`，不会伪装为真实 AI、生产沙箱或插件执行。当 Generated App 绑定的是同租户已发布 Workflow 且存在 `publishedVersionId` 时，服务端会通过执行服务创建一个异步 Workflow execution，并在公开报告中只展示 execution id、status 与 boundary；创建响应不会等待 execution 完成，也不会伪造最终 Workflow 输出。Gate 7 real-local 通过后，服务端会创建或复用同租户已发布的 Generated App runtime Workflow，并把它写入 `workflowDefinitionId`，因此创建者显式启用公开分享后，公开提交默认可以走异步 execution handoff。之后 `GET /generated-apps/public/:token/submissions/:submissionId` 会在当前应用租户范围内做最小安全查询、刷新 handoff 状态，并把脱敏后的安全 handoff 字段持久化回提交记录：`pending/running/paused` 表示仍在执行，`completed` 表示执行已完成但公开端只展示安全摘要，`failed/cancelled` 表示执行未完成并继续保留 deterministic report fallback。创建者提交详情使用同一套安全刷新规则，并验证 execution `_meta` 与提交记录匹配；创建者提交列表只刷新当前页中未终止的 handoff 行。若 execution 不存在、跨租户、Workflow 不匹配或查询失败，公开响应会安全降级为不可用 handoff，将记录状态收敛为 `failed`，且不暴露内部错误。历史或手动绑定的 editor handoff draft 仍只用于创建者在专业编辑器中继续精修，公开提交不会执行这类 draft；未发布、不可见或被治理阻止的 Workflow 会回退到本地 deterministic report 并显示安全的未启动原因。医疗、问诊或中医类应用只能做信息整理、下一步问题和免责声明，不能输出诊断、处方、剂量、治疗指令或专业医疗建议。
 
 ## 完整 OpenAPI 规范
 

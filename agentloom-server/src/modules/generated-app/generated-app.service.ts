@@ -3396,7 +3396,7 @@ export class GeneratedAppService {
       : evaluation.report;
 
     const submissionStatus = workflowExecutionHandoff
-      ? this.getPublicSubmissionStatusForWorkflowHandoff(
+      ? this.getPublicSubmissionStatusForWorkflowExecutionStatus(
           evaluation.status,
           workflowExecutionHandoff.executionStatus,
         )
@@ -3517,7 +3517,7 @@ export class GeneratedAppService {
             submission,
           ))
       ) {
-        return this.withRefreshedWorkflowHandoff(
+        return this.persistRefreshedSubmissionWorkflowHandoff(
           submission,
           this.buildWorkflowExecutionNotStartedHandoff(
             handoff.workflowDefinitionId ?? app.workflowDefinitionId,
@@ -3534,7 +3534,7 @@ export class GeneratedAppService {
             )
           : undefined;
 
-      return this.withRefreshedWorkflowHandoff(
+      return this.persistRefreshedSubmissionWorkflowHandoff(
         submission,
         this.buildRefreshedWorkflowExecutionHandoff({
           workflowDefinitionId: execution.workflowDefinitionId,
@@ -3552,7 +3552,7 @@ export class GeneratedAppService {
         }),
       );
     } catch {
-      return this.withRefreshedWorkflowHandoff(
+      return this.persistRefreshedSubmissionWorkflowHandoff(
         submission,
         this.buildWorkflowExecutionNotStartedHandoff(
           handoff.workflowDefinitionId ?? app.workflowDefinitionId,
@@ -3587,6 +3587,60 @@ export class GeneratedAppService {
       Number.isFinite(submittedAtTime) &&
       submittedAtTime === submission.createdAt.getTime()
     );
+  }
+
+  private shouldRefreshSubmissionWorkflowHandoff(
+    submission: GeneratedAppSubmission,
+  ): boolean {
+    const handoff = this.extractPublicWorkflowExecutionHandoff(submission);
+
+    if (!handoff) {
+      return false;
+    }
+
+    const reportStatus = this.getWorkflowExecutionStatusFromPayload(
+      submission.report,
+    );
+
+    if (reportStatus) {
+      return this.isRefreshableWorkflowExecutionStatus(reportStatus);
+    }
+
+    const resultStatus = this.getWorkflowExecutionStatusFromPayload(
+      submission.result,
+    );
+
+    return resultStatus
+      ? this.isRefreshableWorkflowExecutionStatus(resultStatus)
+      : true;
+  }
+
+  private getWorkflowExecutionStatusFromPayload(
+    payload: Record<string, unknown> | null,
+  ): schema.WorkflowExecution['status'] | null {
+    const record = this.getRecord(payload);
+    const status = this.getNonEmptyString(record?.executionStatus);
+
+    return this.isWorkflowExecutionStatus(status) ? status : null;
+  }
+
+  private isWorkflowExecutionStatus(
+    status: string | null | undefined,
+  ): status is schema.WorkflowExecution['status'] {
+    return (
+      status === 'pending' ||
+      status === 'running' ||
+      status === 'paused' ||
+      status === 'completed' ||
+      status === 'failed' ||
+      status === 'cancelled'
+    );
+  }
+
+  private isRefreshableWorkflowExecutionStatus(
+    status: schema.WorkflowExecution['status'],
+  ): boolean {
+    return status === 'pending' || status === 'running' || status === 'paused';
   }
 
   private extractPublicWorkflowExecutionHandoff(
@@ -3772,7 +3826,7 @@ export class GeneratedAppService {
       ...submission,
       status: this.getPublicSubmissionStatusForWorkflowHandoff(
         submission.status,
-        handoff.executionStatus,
+        handoff,
       ),
       result,
       report: this.appendWorkflowExecutionReportSection(report, handoff),
@@ -3780,7 +3834,51 @@ export class GeneratedAppService {
     };
   }
 
+  private async persistRefreshedSubmissionWorkflowHandoff(
+    submission: GeneratedAppSubmission,
+    handoff: GeneratedAppWorkflowExecutionHandoff,
+  ): Promise<GeneratedAppSubmission> {
+    const refreshed = this.withRefreshedWorkflowHandoff(submission, handoff);
+    const [updated] = await this.tenantDb
+      .update(schema.generatedAppSubmissions)
+      .set({
+        status: refreshed.status,
+        result: refreshed.result,
+        report: refreshed.report,
+        errorMessage: refreshed.errorMessage,
+        updatedAt: refreshed.updatedAt,
+      })
+      .where(
+        and(
+          eq(schema.generatedAppSubmissions.id, submission.id),
+          eq(schema.generatedAppSubmissions.tenantId, submission.tenantId),
+          eq(
+            schema.generatedAppSubmissions.generatedAppId,
+            submission.generatedAppId,
+          ),
+          isNull(schema.generatedAppSubmissions.deletedAt),
+        ),
+      )
+      .returning();
+
+    return updated ?? refreshed;
+  }
+
   private getPublicSubmissionStatusForWorkflowHandoff(
+    currentStatus: schema.GeneratedAppSubmissionStatus,
+    handoff: GeneratedAppWorkflowExecutionHandoff,
+  ): schema.GeneratedAppSubmissionStatus {
+    if (handoff.workflowExecution === false) {
+      return 'failed';
+    }
+
+    return this.getPublicSubmissionStatusForWorkflowExecutionStatus(
+      currentStatus,
+      handoff.executionStatus,
+    );
+  }
+
+  private getPublicSubmissionStatusForWorkflowExecutionStatus(
     currentStatus: schema.GeneratedAppSubmissionStatus,
     executionStatus: schema.WorkflowExecution['status'] | null,
   ): schema.GeneratedAppSubmissionStatus {
@@ -4183,9 +4281,23 @@ export class GeneratedAppService {
     ]);
 
     const total = countRows[0]?.count ?? 0;
+    const app = submissions.some((submission) =>
+      this.shouldRefreshSubmissionWorkflowHandoff(submission),
+    )
+      ? await this.findGeneratedAppRecord(tenantId, appId)
+      : null;
+    const refreshedSubmissions = app
+      ? await Promise.all(
+          submissions.map((submission) =>
+            this.shouldRefreshSubmissionWorkflowHandoff(submission)
+              ? this.refreshCreatorSubmissionWorkflowHandoff(app, submission)
+              : submission,
+          ),
+        )
+      : submissions;
 
     return {
-      data: submissions.map((submission) =>
+      data: refreshedSubmissions.map((submission) =>
         this.toSubmissionResponseDto(submission),
       ),
       meta: {
