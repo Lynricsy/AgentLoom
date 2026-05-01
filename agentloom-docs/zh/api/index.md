@@ -135,7 +135,7 @@ if (detail.status === "failed") {
 
 公开 runtime 响应只应作为终端用户业务界面使用。API 响应可能包含 `token` 以便客户端缓存或调试，但公开页面不得渲染或记录 token 值。终端页面可展示的数据应限制在 `appId`、`title`、`description`、`dataUseNotice`、有限的 `appSpec`、`runtimeSurface.previewUrl`、`runtimeForm` 和 `createdAt`。其中 `runtimeForm` 只暴露 `formId`、`title`、`description`、`submitLabel`、`sections[]`、`fields[]`、`resultView` 以及字段的 `id`、`label`、`type`、`required`、`placeholder`、`helpText`、`options`、`min`、`max`、`step`。
 
-`runtimeSurface.previewUrl` 只用于可选运行预览链接。Gate 3 build output 可读时，服务端会返回 `/api/v1/generated-apps/public/:token/preview` 形式的公开预览端点；该端点返回 `text/html`，内容只来自受控 workspace 中 allowlist 的 `gate-3-build-output-html` / `dist/index.html`。第三方前端可以直接打开这个链接，但不应把它当作 artifact API：公开预览端点不会返回 artifact manifest、源码文件、测试报告、插件信息、Gate 证据、workspace metadata 或 host 绝对路径。
+`runtimeSurface.previewUrl` 只用于可选运行预览链接。Gate 3 build output 可读时，服务端会返回 `/api/v1/generated-apps/public/:token/preview` 形式的公开预览端点；该端点返回 `text/html`，内容只来自受控 workspace 中 allowlist 的 `gate-3-build-output-html` / `dist/index.html`。当这个 HTML 通过公开预览路径打开时，它会从路径解析 token，并且只能调用同源 public submission API 来创建提交、读取提交详情和轮询异步 Workflow handoff 状态；如果不在公开预览路径下、无法解析 token 或 public submission API 不可用，它会退回本地 deterministic 预览，不会写入公开提交记录。第三方前端可以直接打开这个链接，但不应把它当作 artifact API：公开预览端点不会返回 artifact manifest、源码文件、测试报告、插件信息、Gate 证据、workspace metadata 或 host 绝对路径，也不会允许外部网络连接。
 
 公开页面和第三方终端前端禁止展示或记录内部字段：`gateResults`、`readiness`、`generationPlan`、`sourceArtifactUrl`、`testReportUrl`、`pluginIds`、`publicShareToken`、宿主机路径和 `secrets`。公开提交响应也不能暴露租户 ID、公开 token、门禁证据、源码/测试 artifact、插件内部信息或创建者专用字段。
 

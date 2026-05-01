@@ -1,4 +1,5 @@
 import { ConfigService } from '@nestjs/config';
+import { HEADERS_METADATA } from '@nestjs/common/constants';
 import * as crypto from 'node:crypto';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -38,6 +39,7 @@ import {
   type GeneratedAppGate4RunnerResult,
 } from '../generated-app.integration-runner';
 import type { GeneratedAppResponseDto } from '../dto';
+import { GeneratedAppPublicController } from '../generated-app.controller';
 import {
   GeneratedAppGate3WorkspaceRunner,
   type GeneratedAppGate3RepairResult,
@@ -5933,7 +5935,16 @@ describe('GeneratedAppService', () => {
       expect(html).toContain('name="chiefComplaint"');
       expect(html).toContain('name="symptoms"');
       expect(html).toContain('id="report-questions"');
+      expect(html).toContain('id="report-status"');
+      expect(html).toContain('id="report-sections"');
       expect(html).toContain('已生成问诊摘要');
+      expect(html).toContain('source:"gate-3-public-preview"');
+      expect(html).toContain('fetch(publicSubmissionBase');
+      expect(html).toContain(
+        'resolvePublicSubmissionBase(){const path=trimTrailingSlash(window.location.pathname)',
+      );
+      expect(html).toContain('公开提交接口暂不可用，已生成本地预览报告。');
+      expect(html).toContain('workflowExecution===true');
       expect(html).toContain('核心需求');
       expect(html).toContain('<li>自动化中医问诊系统</li>');
       expect(html).toContain('验收场景');
@@ -9340,6 +9351,26 @@ describe('GeneratedAppService', () => {
     } finally {
       await rm(workspaceRoot, { recursive: true, force: true });
     }
+  });
+
+  it('公开构建预览响应头应仅允许同源 public submission API 连接', () => {
+    const handler = Object.getOwnPropertyDescriptor(
+      GeneratedAppPublicController.prototype,
+      'getPublicBuildPreview',
+    )?.value as (() => Promise<string>) | undefined;
+
+    const headers = Reflect.getMetadata(HEADERS_METADATA, handler) as
+      | Array<{ name: string; value: string }>
+      | undefined;
+    const contentSecurityPolicy = headers?.find(
+      (header) => header.name === 'Content-Security-Policy',
+    )?.value;
+
+    expect(contentSecurityPolicy).toContain("connect-src 'self'");
+    expect(contentSecurityPolicy).toContain("default-src 'none'");
+    expect(contentSecurityPolicy).toContain("frame-ancestors 'none'");
+    expect(contentSecurityPolicy).not.toContain('https:');
+    expect(contentSecurityPolicy).not.toContain('*');
   });
 
   it('公开 endpoint 应脱敏白名单字段内部承载的 token、artifact、host path 和医疗建议文案', async () => {

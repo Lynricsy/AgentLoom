@@ -552,7 +552,7 @@ export class GeneratedAppPublicController {
   @Header('Cache-Control', 'no-store')
   @Header(
     'Content-Security-Policy',
-    "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; form-action 'none'; base-uri 'none'; frame-ancestors 'none'",
+    "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'self'; form-action 'none'; base-uri 'none'; frame-ancestors 'none'",
   )
   @Header('Referrer-Policy', 'no-referrer')
   @Header('X-Content-Type-Options', 'nosniff')
