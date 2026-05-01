@@ -1897,7 +1897,7 @@ describe('GeneratedAppService', () => {
       generationRunId: GENERATION_RUN_ID,
       status: 'passed',
       summary:
-        'Gate 5 通过：real-local browser-contract runner 已执行受控 deterministic DOM/accessibility/network/console contract，覆盖公开 runtime open/submit/detail、创建者 generation/gate/submission review、desktop/mobile viewport、console/network/accessibility/responsive assertions；未启动 Playwright，未打开真实浏览器，未捕获真实截图、视频或 Playwright trace。',
+        'Gate 5 通过：real-local browser-contract runner 已执行受控 deterministic DOM/accessibility/network/console contract，覆盖公开 runtime open/submit/detail、public build preview submit、创建者 generation/gate/submission review、desktop/mobile viewport、console/network/accessibility/responsive assertions；未启动 Playwright，未打开真实浏览器，未捕获真实截图、视频或 Playwright trace。',
       evidence: [],
     });
     const gate6Run = createGeneratedAppGateRun({
@@ -2302,6 +2302,13 @@ describe('GeneratedAppService', () => {
           kind: 'browser',
           summary: expect.stringContaining(
             'journeyId=gate-5-public-runtime-submit',
+          ),
+        }),
+        expect.objectContaining({
+          id: 'gate-5-gate-5-public-build-preview-submit-viewport-mobile-gate-5-network-public-forbids-creator-internal',
+          kind: 'browser',
+          summary: expect.stringContaining(
+            'journeyId=gate-5-public-build-preview-submit',
           ),
         }),
         expect.objectContaining({
@@ -2832,6 +2839,20 @@ describe('GeneratedAppService', () => {
             publicRuntimeApiCheckIds: ['gate-4-public-runtime-submit-input'],
           }),
           expect.objectContaining({
+            journeyId: 'gate-5-public-build-preview-submit',
+            kind: 'public_build_preview_submit',
+            publicRuntimeApiCheckIds: [
+              'gate-4-public-runtime-read',
+              'gate-4-public-runtime-submit-input',
+              'gate-4-public-submission-detail',
+            ],
+            staticContractIds: expect.arrayContaining([
+              'gate-2-public-runtime-contract',
+              'gate-2-frontend-route-contract',
+              'gate-2-submission-persistence-contract',
+            ]),
+          }),
+          expect.objectContaining({
             journeyId: 'gate-5-public-submission-detail',
             publicRuntimeApiCheckIds: ['gate-4-public-submission-detail'],
           }),
@@ -2902,6 +2923,7 @@ describe('GeneratedAppService', () => {
             scenarioId: 'scenario-1',
             journeyIds: expect.arrayContaining([
               'gate-5-public-runtime-submit',
+              'gate-5-public-build-preview-submit',
             ]),
             viewportIds: expect.arrayContaining([
               'viewport-desktop',
@@ -2923,6 +2945,13 @@ describe('GeneratedAppService', () => {
             journeyId: 'gate-5-public-runtime-submit',
             assertionIds: expect.arrayContaining([
               'gate-5-network-core-requests-2xx',
+            ]),
+          }),
+          expect.objectContaining({
+            journeyId: 'gate-5-public-build-preview-submit',
+            kind: 'public_build_preview_submit',
+            assertionIds: expect.arrayContaining([
+              'gate-5-network-public-forbids-creator-internal',
             ]),
           }),
         ]),

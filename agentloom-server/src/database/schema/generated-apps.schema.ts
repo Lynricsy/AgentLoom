@@ -653,6 +653,7 @@ export interface GeneratedAppBrowserAcceptancePlan {
     kind:
       | 'public_runtime_open'
       | 'public_runtime_interaction_submit'
+      | 'public_build_preview_submit'
       | 'public_submission_result_detail';
     title: string;
     steps: string[];

@@ -649,6 +649,7 @@ const GATE_5_VIEWPORT_IDS = ['viewport-desktop', 'viewport-mobile'] as const;
 const GATE_5_PUBLIC_RUNTIME_JOURNEY_IDS = [
   'gate-5-public-runtime-open',
   'gate-5-public-runtime-submit',
+  'gate-5-public-build-preview-submit',
   'gate-5-public-submission-detail',
 ] as const;
 
@@ -661,6 +662,7 @@ const GATE_5_CREATOR_MANAGEMENT_JOURNEY_IDS = [
 const GATE_5_ALLOWED_PUBLIC_JOURNEY_KINDS = [
   'public_runtime_open',
   'public_runtime_interaction_submit',
+  'public_build_preview_submit',
   'public_submission_result_detail',
 ] as const;
 
@@ -5976,6 +5978,29 @@ export class GeneratedAppService {
           ],
         },
         {
+          journeyId: 'gate-5-public-build-preview-submit',
+          kind: 'public_build_preview_submit',
+          title: '打开公开 build preview HTML 并提交',
+          steps: [
+            '打开 runtimeSurface.previewUrl 指向的 Gate 3 build output HTML。',
+            '确认 HTML 只从公开预览路径解析访问标识，不渲染真实 token 值。',
+            '提交动态表单，确认只调用同源 public submission create/detail API；API 不可用时保留本地 deterministic fallback。',
+          ],
+          viewportIds: publicViewportIds,
+          scenarioIds,
+          requirementIds,
+          publicRuntimeApiCheckIds: [
+            'gate-4-public-runtime-read',
+            'gate-4-public-runtime-submit-input',
+            'gate-4-public-submission-detail',
+          ],
+          staticContractIds: [
+            'gate-2-public-runtime-contract',
+            'gate-2-frontend-route-contract',
+            'gate-2-submission-persistence-contract',
+          ],
+        },
+        {
           journeyId: 'gate-5-public-submission-detail',
           kind: 'public_submission_result_detail',
           title: '读取公开 submission detail',
@@ -6539,6 +6564,7 @@ export class GeneratedAppService {
     const expectedPublicJourneyKinds = new Map<string, string>([
       ['gate-5-public-runtime-open', 'public_runtime_open'],
       ['gate-5-public-runtime-submit', 'public_runtime_interaction_submit'],
+      ['gate-5-public-build-preview-submit', 'public_build_preview_submit'],
       ['gate-5-public-submission-detail', 'public_submission_result_detail'],
     ]);
     const expectedCreatorJourneyKinds = new Map<string, string>([

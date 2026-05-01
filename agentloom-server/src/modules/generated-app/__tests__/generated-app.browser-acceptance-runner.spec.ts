@@ -158,6 +158,7 @@ describe('GeneratedAppGate5BrowserAcceptanceRunner', () => {
     expect(result.status).toBe('passed');
     expect(result.executionLevel).toBe('real-local-browser-contract');
     expect(result.summary).toContain('real-local browser-contract runner');
+    expect(result.summary).toContain('public build preview submit');
     expect(result.summary).toContain('未启动 Playwright');
     expect(result.summary).toContain('未打开真实浏览器');
     expect(result.summary).toContain('未捕获真实截图、视频或 Playwright trace');
@@ -197,6 +198,16 @@ describe('GeneratedAppGate5BrowserAcceptanceRunner', () => {
           viewportId: 'viewport-mobile',
           status: 'passed',
           networkSummary: expect.stringContaining('"publicBoundarySafe":true'),
+          boundary: 'public-runtime',
+        }),
+        expect.objectContaining({
+          assertionId: 'gate-5-network-public-forbids-creator-internal',
+          journeyId: 'gate-5-public-build-preview-submit',
+          viewportId: 'viewport-mobile',
+          status: 'passed',
+          networkSummary: expect.stringContaining(
+            'gate-4-public-runtime-submit-input',
+          ),
           boundary: 'public-runtime',
         }),
         expect.objectContaining({

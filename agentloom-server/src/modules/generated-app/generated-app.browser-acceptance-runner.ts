@@ -262,7 +262,7 @@ export class GeneratedAppGate5BrowserAcceptanceRunner {
     return {
       status: 'passed',
       executionLevel,
-      summary: `Gate 5 通过：real-local browser-contract runner 已执行受控 deterministic DOM/accessibility/network/console contract，覆盖公开 runtime open/submit/detail、创建者 generation/gate/submission review、desktop/mobile viewport、console/network/accessibility/responsive assertions；${REAL_LOCAL_BROWSER_CONTRACT_NOTE}`,
+      summary: `Gate 5 通过：real-local browser-contract runner 已执行受控 deterministic DOM/accessibility/network/console contract，覆盖公开 runtime open/submit/detail、public build preview submit、创建者 generation/gate/submission review、desktop/mobile viewport、console/network/accessibility/responsive assertions；${REAL_LOCAL_BROWSER_CONTRACT_NOTE}`,
       evidence,
       failure: null,
       repairInstructions: null,
