@@ -203,6 +203,9 @@ const GATE_3_ALLOWED_EXECUTION_LEVELS = [
 
 const GENERATED_APP_WORKFLOW_HANDOFF_METADATA_SOURCE =
   'generated-app-editor-handoff';
+const GENERATED_APP_WORKFLOW_RUNTIME_METADATA_SOURCE =
+  'generated-app-runtime-workflow';
+const GENERATED_APP_WORKFLOW_RUNTIME_BINDING_KIND = 'public-runtime-workflow';
 const GENERATED_APP_PUBLIC_WORKFLOW_EXECUTION_BOUNDARY =
   'async-workflow-execution-created';
 const GENERATED_APP_PUBLIC_WORKFLOW_COMPLETED_BOUNDARY =
@@ -2490,16 +2493,17 @@ export class GeneratedAppService {
                   latestApp = gate7RunResult.app;
                   completedAt = gate7CompletedAt;
                   if (gate7Evaluation.status === 'passed') {
-                    latestApp = await this.ensureGeneratedWorkflowEditorBinding(
-                      tenantId,
-                      userId,
-                      latestApp,
-                      run.id,
-                    );
+                    latestApp =
+                      await this.ensureGeneratedWorkflowRuntimeBinding(
+                        tenantId,
+                        userId,
+                        latestApp,
+                        run.id,
+                      );
                     completedStatus = 'passed';
                     finalFailureReason = null;
                     completedSummary =
-                      '门禁运行器完成 Gate 0-7；Gate 7 real-local publish candidate contract runner 已签收 release manifest contract、artifact checksum placeholders、Gate 0-6 evidence citations 和 deferred public-share controls，当前应用进入 publish_candidate，但不会自动发布或创建 public share token。';
+                      '门禁运行器完成 Gate 0-7；Gate 7 real-local publish candidate contract runner 已签收 release manifest contract、artifact checksum placeholders、Gate 0-6 evidence citations 和 deferred public-share controls，并创建或复用已发布 Generated App runtime Workflow；当前应用进入 publish_candidate，但不会自动创建 public share token。';
                   } else {
                     finalFailureReason =
                       gate7Evaluation.failure?.message ??
@@ -4422,23 +4426,44 @@ export class GeneratedAppService {
     };
   }
 
-  private async ensureGeneratedWorkflowEditorBinding(
+  private async ensureGeneratedWorkflowRuntimeBinding(
     tenantId: string,
     userId: string,
     app: GeneratedAppResponseDto,
     generationRunId: string,
   ): Promise<GeneratedAppResponseDto> {
     if (app.workflowDefinitionId) {
-      return app;
+      const [boundWorkflow] = await this.tenantDb
+        .select({
+          id: schema.workflowDefinitions.id,
+          metadata: schema.workflowDefinitions.metadata,
+        })
+        .from(schema.workflowDefinitions)
+        .where(
+          and(
+            eq(schema.workflowDefinitions.id, app.workflowDefinitionId),
+            eq(schema.workflowDefinitions.tenantId, tenantId),
+          ),
+        )
+        .limit(1);
+
+      if (
+        boundWorkflow &&
+        !this.isGeneratedAppEditorHandoffWorkflowMetadata(
+          boundWorkflow.metadata,
+        )
+      ) {
+        return app;
+      }
     }
 
-    const existingWorkflow = await this.findGeneratedWorkflowEditorBinding(
+    const existingWorkflow = await this.findGeneratedWorkflowRuntimeBinding(
       tenantId,
       app.id,
     );
     const workflowDefinitionId =
       existingWorkflow?.id ??
-      (await this.createGeneratedWorkflowEditorBinding(
+      (await this.createGeneratedWorkflowRuntimeBinding(
         tenantId,
         userId,
         app,
@@ -4467,7 +4492,7 @@ export class GeneratedAppService {
     return this.toResponseDto(updated);
   }
 
-  private async findGeneratedWorkflowEditorBinding(
+  private async findGeneratedWorkflowRuntimeBinding(
     tenantId: string,
     appId: string,
   ): Promise<{ id: string } | null> {
@@ -4479,7 +4504,7 @@ export class GeneratedAppService {
           eq(schema.workflowDefinitions.tenantId, tenantId),
           eq(
             sql`${schema.workflowDefinitions.metadata}->>'source'`,
-            GENERATED_APP_WORKFLOW_HANDOFF_METADATA_SOURCE,
+            GENERATED_APP_WORKFLOW_RUNTIME_METADATA_SOURCE,
           ),
           eq(
             sql`${schema.workflowDefinitions.metadata}->>'generatedAppId'`,
@@ -4492,13 +4517,30 @@ export class GeneratedAppService {
     return workflow ?? null;
   }
 
-  private async createGeneratedWorkflowEditorBinding(
+  private async createGeneratedWorkflowRuntimeBinding(
     tenantId: string,
     userId: string,
     app: GeneratedAppResponseDto,
     generationRunId: string,
   ): Promise<string> {
-    let slug = generateSlug(`${app.appName}-generated-editor-draft`);
+    const nodes = this.buildGeneratedWorkflowRuntimeNodes(app);
+    const edges = this.buildGeneratedWorkflowRuntimeEdges();
+    const viewport = { x: 0, y: 0, zoom: 0.85 };
+    const inputSchema = this.buildGeneratedWorkflowRuntimeInputSchema();
+    const metadata = {
+      source: GENERATED_APP_WORKFLOW_RUNTIME_METADATA_SOURCE,
+      generatedAppId: app.id,
+      generationRunId,
+      appSpecVersion: app.appSpec.version,
+      bindingKind: GENERATED_APP_WORKFLOW_RUNTIME_BINDING_KIND,
+      publishBoundary:
+        'published-runtime: public submissions may create async Workflow executions after public share is explicitly enabled',
+      publicRuntimeBoundary:
+        'Generated App public runtime exposes only execution handoff ids/status and never exposes workflow graph internals',
+      createdFromGate: 'gate-7',
+      createdAt: new Date().toISOString(),
+    };
+    let slug = generateSlug(`${app.appName}-generated-runtime-workflow`);
 
     for (let attempt = 0; attempt <= 5; attempt += 1) {
       try {
@@ -4506,28 +4548,16 @@ export class GeneratedAppService {
           .insert(schema.workflowDefinitions)
           .values({
             tenantId,
-            name: `${app.appName} - 生成应用编辑草稿`,
+            name: `${app.appName} - 生成应用运行时`,
             slug,
             description:
-              '由 Generated App 自动生成流程创建的专业编辑器草稿入口。该 Workflow 仅用于创建者继续精修，不代表已发布或已在公开 runtime 中执行。',
+              '由 Generated App Gate 7 自动生成并发布的运行时 Workflow，用于公开提交的异步执行入口；公开端只暴露安全 execution handoff。',
             icon: 'WandSparkles',
-            nodes: this.buildGeneratedWorkflowEditorNodes(app),
-            edges: this.buildGeneratedWorkflowEditorEdges(),
-            viewport: { x: 0, y: 0, zoom: 0.85 },
-            metadata: {
-              source: GENERATED_APP_WORKFLOW_HANDOFF_METADATA_SOURCE,
-              generatedAppId: app.id,
-              generationRunId,
-              appSpecVersion: app.appSpec.version,
-              bindingKind: 'editor-handoff-draft',
-              publishBoundary:
-                'draft-only: this binding does not publish, execute, or enable public sharing by itself',
-              publicRuntimeBoundary:
-                'Generated App public runtime never exposes this internal resource id',
-              createdFromGate: 'gate-7',
-              createdAt: new Date().toISOString(),
-            },
-            inputSchema: this.buildGeneratedWorkflowInputSchema(app),
+            nodes,
+            edges,
+            viewport,
+            metadata,
+            inputSchema,
             status: 'draft',
             createdBy: userId,
             updatedBy: userId,
@@ -4536,9 +4566,19 @@ export class GeneratedAppService {
 
         if (!workflow) {
           throw new Error(
-            'Generated workflow editor binding insert returned no row',
+            'Generated workflow runtime binding insert returned no row',
           );
         }
+
+        await this.publishGeneratedWorkflowRuntimeBinding({
+          tenantId,
+          userId,
+          workflowDefinitionId: workflow.id,
+          nodes,
+          edges,
+          viewport,
+          inputSchema,
+        });
 
         return workflow.id;
       } catch (error: unknown) {
@@ -4548,7 +4588,7 @@ export class GeneratedAppService {
           throw error;
         }
 
-        const existingWorkflow = await this.findGeneratedWorkflowEditorBinding(
+        const existingWorkflow = await this.findGeneratedWorkflowRuntimeBinding(
           tenantId,
           app.id,
         );
@@ -4564,7 +4604,73 @@ export class GeneratedAppService {
     throw new Error('Unreachable: generated workflow slug retry exhausted');
   }
 
-  private buildGeneratedWorkflowEditorNodes(
+  private async publishGeneratedWorkflowRuntimeBinding(params: {
+    tenantId: string;
+    userId: string;
+    workflowDefinitionId: string;
+    nodes: schema.ReactFlowNode[];
+    edges: schema.ReactFlowEdge[];
+    viewport: schema.ReactFlowViewport;
+    inputSchema: WorkflowInputSchema | null;
+  }): Promise<string> {
+    const snapshot: schema.WorkflowVersionSnapshot = {
+      nodes: params.nodes,
+      edges: params.edges,
+      viewport: params.viewport,
+      inputSchema: params.inputSchema,
+      metadata: {
+        nodeCount: params.nodes.length,
+        edgeCount: params.edges.length,
+        createdFromVersion: 1,
+        releaseNotes: 'Generated App Gate 7 runtime workflow initial publish.',
+        releaseNumber: 1,
+      },
+    };
+    const publishedAt = new Date();
+    const [version] = await this.tenantDb
+      .insert(schema.workflowVersions)
+      .values({
+        workflowDefinitionId: params.workflowDefinitionId,
+        tenantId: params.tenantId,
+        versionNumber: 1,
+        label: 'Generated App runtime v1',
+        snapshot,
+        publishedAt,
+        archivedAt: null,
+        createdBy: params.userId,
+      })
+      .returning({ id: schema.workflowVersions.id });
+
+    if (!version) {
+      throw new Error(
+        'Generated workflow runtime version insert returned no row',
+      );
+    }
+
+    const [workflow] = await this.tenantDb
+      .update(schema.workflowDefinitions)
+      .set({
+        status: 'published',
+        publishedVersionId: version.id,
+        updatedBy: params.userId,
+        updatedAt: publishedAt,
+      })
+      .where(
+        and(
+          eq(schema.workflowDefinitions.id, params.workflowDefinitionId),
+          eq(schema.workflowDefinitions.tenantId, params.tenantId),
+        ),
+      )
+      .returning({ id: schema.workflowDefinitions.id });
+
+    if (!workflow) {
+      throw new Error('Generated workflow runtime publish update failed');
+    }
+
+    return version.id;
+  }
+
+  private buildGeneratedWorkflowRuntimeNodes(
     app: GeneratedAppResponseDto,
   ): schema.ReactFlowNode[] {
     const promptText = [
@@ -4574,7 +4680,7 @@ export class GeneratedAppService {
       '',
       app.appSpec.summary,
       '',
-      '此草稿用于在现有 Workflow 编辑器中继续精修生成应用的编排。当前公开 runtime 仍使用 Generated App deterministic runtime，不会自动执行此草稿 Workflow。',
+      '此运行时 Workflow 由 Gate 7 自动生成并发布。公开提交会先保存 deterministic report，再创建异步 Workflow execution；公开端只暴露 execution handoff，不暴露画布、节点、插件或内部证据。',
     ].join('\n');
 
     return [
@@ -4586,7 +4692,7 @@ export class GeneratedAppService {
           label: '生成应用输入',
           nodeType: 'manual-trigger',
           category: 'trigger',
-          description: '创建者在专业编辑器中继续精修时使用的手动入口。',
+          description: '公开提交创建异步 execution 时使用的运行时入口。',
           config: {},
           inputPorts: [],
           outputPorts: [
@@ -4601,15 +4707,15 @@ export class GeneratedAppService {
         },
       },
       {
-        id: 'generated-app-handoff-note',
+        id: 'generated-app-runtime-note',
         type: 'output',
         position: { x: 360, y: 0 },
         data: {
-          label: '生成应用交接说明',
+          label: '生成应用运行时说明',
           nodeType: 'text',
           category: 'output',
           description:
-            '说明该资源绑定是 editor handoff draft，而非已发布资源。',
+            '说明该资源绑定是已发布 runtime Workflow，并记录公开执行边界。',
           config: {
             text: promptText,
           },
@@ -4623,14 +4729,14 @@ export class GeneratedAppService {
         },
       },
       {
-        id: 'generated-app-draft-output',
+        id: 'generated-app-runtime-output',
         type: 'output',
         position: { x: 720, y: 80 },
         data: {
-          label: '草稿输出',
+          label: '运行时输出',
           nodeType: 'text-output',
           category: 'output',
-          description: '用于承接精修后的应用报告或输出。',
+          description: '输出 Generated App runtime handoff 边界说明。',
           config: {},
           inputPorts: [
             this.createWorkflowPort('exec-in', '', 'input', 'exec'),
@@ -4642,21 +4748,21 @@ export class GeneratedAppService {
     ];
   }
 
-  private buildGeneratedWorkflowEditorEdges(): schema.ReactFlowEdge[] {
+  private buildGeneratedWorkflowRuntimeEdges(): schema.ReactFlowEdge[] {
     return [
       {
         id: 'generated-app-trigger-to-output-exec',
         source: 'generated-app-manual-trigger',
-        target: 'generated-app-draft-output',
+        target: 'generated-app-runtime-output',
         sourceHandle: 'exec-out',
         targetHandle: 'exec-in',
         type: 'smart',
       },
       {
-        id: 'generated-app-note-to-output-text',
-        source: 'generated-app-handoff-note',
-        target: 'generated-app-draft-output',
-        sourceHandle: 'text-out',
+        id: 'generated-app-payload-to-output-content',
+        source: 'generated-app-manual-trigger',
+        target: 'generated-app-runtime-output',
+        sourceHandle: 'payload-out',
         targetHandle: 'content-in',
         type: 'smart',
       },
@@ -4682,23 +4788,8 @@ export class GeneratedAppService {
     };
   }
 
-  private buildGeneratedWorkflowInputSchema(
-    app: GeneratedAppResponseDto,
-  ): WorkflowInputSchema {
-    return {
-      version: 1,
-      collectionMode: 'form',
-      fields: [
-        {
-          id: 'generatedAppInput',
-          label: '生成应用输入',
-          type: 'text',
-          required: true,
-          description: app.appSpec.userGoal,
-          collectionHint: 'form',
-        },
-      ],
-    };
+  private buildGeneratedWorkflowRuntimeInputSchema(): WorkflowInputSchema | null {
+    return null;
   }
 
   private buildRunnerGateResults(

@@ -1961,6 +1961,9 @@ describe('GeneratedAppService', () => {
     const findExistingWorkflowChain = createSelectChain([]);
     const insertWorkflowChain =
       createGeneratedWorkflowInsertReturningFromPayload();
+    const insertWorkflowVersionChain = createInsertReturningChain([
+      { id: WORKFLOW_VERSION_ID },
+    ]);
     let workflowBindingUpdatePayload: Partial<GeneratedApp> = {};
     const updateAppWorkflowBindingChain = {
       set: vi.fn((payload: Partial<GeneratedApp>) => {
@@ -1991,7 +1994,8 @@ describe('GeneratedAppService', () => {
       .mockReturnValueOnce(insertGate5RunChain)
       .mockReturnValueOnce(insertGate6RunChain)
       .mockReturnValueOnce(insertGate7RunChain)
-      .mockReturnValueOnce(insertWorkflowChain);
+      .mockReturnValueOnce(insertWorkflowChain)
+      .mockReturnValueOnce(insertWorkflowVersionChain);
     mockTenantDb.update
       .mockReturnValueOnce(updateAppAfterGate0Chain)
       .mockReturnValueOnce(updateAppAfterGate1Chain)
@@ -2001,6 +2005,9 @@ describe('GeneratedAppService', () => {
       .mockReturnValueOnce(updateAppAfterGate5Chain)
       .mockReturnValueOnce(updateAppAfterGate6Chain)
       .mockReturnValueOnce(updateAppAfterGate7Chain)
+      .mockReturnValueOnce(
+        createUpdateReturningChain([{ id: WORKFLOW_DEFINITION_ID }]),
+      )
       .mockReturnValueOnce(updateAppWorkflowBindingChain)
       .mockReturnValueOnce(updateRunChain);
 
@@ -3249,19 +3256,17 @@ describe('GeneratedAppService', () => {
     expect(insertWorkflowChain.values).toHaveBeenCalledWith(
       expect.objectContaining({
         tenantId: TENANT_ID,
-        name: expect.stringContaining('生成应用编辑草稿'),
+        name: expect.stringContaining('生成应用运行时'),
         status: 'draft',
         createdBy: USER_ID,
         updatedBy: USER_ID,
         metadata: expect.objectContaining({
-          source: 'generated-app-editor-handoff',
+          source: 'generated-app-runtime-workflow',
           generatedAppId: APP_ID,
           generationRunId: GENERATION_RUN_ID,
-          bindingKind: 'editor-handoff-draft',
+          bindingKind: 'public-runtime-workflow',
           createdFromGate: 'gate-7',
-          publicRuntimeBoundary: expect.stringContaining(
-            'public runtime never exposes',
-          ),
+          publicRuntimeBoundary: expect.stringContaining('execution handoff'),
         }),
         nodes: expect.arrayContaining([
           expect.objectContaining({
@@ -3269,38 +3274,58 @@ describe('GeneratedAppService', () => {
             data: expect.objectContaining({ nodeType: 'manual-trigger' }),
           }),
           expect.objectContaining({
-            id: 'generated-app-handoff-note',
+            id: 'generated-app-runtime-note',
             data: expect.objectContaining({ nodeType: 'text' }),
           }),
           expect.objectContaining({
-            id: 'generated-app-draft-output',
+            id: 'generated-app-runtime-output',
             data: expect.objectContaining({ nodeType: 'text-output' }),
           }),
         ]),
         edges: expect.arrayContaining([
           expect.objectContaining({
             source: 'generated-app-manual-trigger',
-            target: 'generated-app-draft-output',
+            target: 'generated-app-runtime-output',
             sourceHandle: 'exec-out',
             targetHandle: 'exec-in',
           }),
           expect.objectContaining({
-            source: 'generated-app-handoff-note',
-            target: 'generated-app-draft-output',
-            sourceHandle: 'text-out',
+            source: 'generated-app-manual-trigger',
+            target: 'generated-app-runtime-output',
+            sourceHandle: 'payload-out',
             targetHandle: 'content-in',
           }),
         ]),
-        inputSchema: expect.objectContaining({
-          version: 1,
-          collectionMode: 'form',
-          fields: expect.arrayContaining([
+        inputSchema: null,
+      }),
+    );
+    expect(insertWorkflowVersionChain.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+        tenantId: TENANT_ID,
+        versionNumber: 1,
+        label: 'Generated App runtime v1',
+        publishedAt: expect.any(Date),
+        createdBy: USER_ID,
+        snapshot: expect.objectContaining({
+          nodes: expect.arrayContaining([
+            expect.objectContaining({ id: 'generated-app-manual-trigger' }),
+            expect.objectContaining({ id: 'generated-app-runtime-note' }),
+            expect.objectContaining({ id: 'generated-app-runtime-output' }),
+          ]),
+          edges: expect.arrayContaining([
             expect.objectContaining({
-              id: 'generatedAppInput',
-              type: 'text',
-              required: true,
+              source: 'generated-app-manual-trigger',
+              target: 'generated-app-runtime-output',
             }),
           ]),
+          inputSchema: null,
+          metadata: expect.objectContaining({
+            nodeCount: 3,
+            edgeCount: 2,
+            createdFromVersion: 1,
+            releaseNumber: 1,
+          }),
         }),
       }),
     );
@@ -3642,7 +3667,7 @@ describe('GeneratedAppService', () => {
     );
   });
 
-  it('Gate 7 通过后的 rerun 应复用已有 Generated App handoff workflow 而不重复创建', async () => {
+  it('Gate 7 通过后的 rerun 应复用已有 Generated App runtime workflow 而不重复创建', async () => {
     const app = createGeneratedApp();
     const existingWorkflowId = '55555555-5555-4555-8555-555555555557';
     const updatedApp = createGeneratedApp({
@@ -3659,14 +3684,14 @@ describe('GeneratedAppService', () => {
 
     const response = await (
       service as unknown as {
-        ensureGeneratedWorkflowEditorBinding(
+        ensureGeneratedWorkflowRuntimeBinding(
           tenantId: string,
           userId: string,
           app: GeneratedAppResponseDto,
           generationRunId: string,
         ): Promise<GeneratedAppResponseDto>;
       }
-    ).ensureGeneratedWorkflowEditorBinding(
+    ).ensureGeneratedWorkflowRuntimeBinding(
       TENANT_ID,
       USER_ID,
       app as unknown as GeneratedAppResponseDto,
@@ -3683,7 +3708,7 @@ describe('GeneratedAppService', () => {
     expect(response.workflowDefinitionId).toBe(existingWorkflowId);
   });
 
-  it('Gate 7 通过后即使已有 Agent 绑定也应补充 Workflow editor handoff', async () => {
+  it('Gate 7 通过后即使已有 Agent 绑定也应补充已发布 Workflow runtime 绑定', async () => {
     const app = createGeneratedApp({
       agentDefinitionId: '77777777-7777-4777-8777-777777777777',
     });
@@ -3694,23 +3719,32 @@ describe('GeneratedAppService', () => {
     const findExistingWorkflowChain = createSelectChain([]);
     const insertWorkflowChain =
       createGeneratedWorkflowInsertReturningFromPayload();
+    const insertWorkflowVersionChain = createInsertReturningChain([
+      { id: WORKFLOW_VERSION_ID },
+    ]);
     const updateAppWorkflowBindingChain = createUpdateReturningChain([
       updatedApp,
     ]);
     mockTenantDb.select.mockReturnValueOnce(findExistingWorkflowChain);
-    mockTenantDb.insert.mockReturnValueOnce(insertWorkflowChain);
-    mockTenantDb.update.mockReturnValueOnce(updateAppWorkflowBindingChain);
+    mockTenantDb.insert
+      .mockReturnValueOnce(insertWorkflowChain)
+      .mockReturnValueOnce(insertWorkflowVersionChain);
+    mockTenantDb.update
+      .mockReturnValueOnce(
+        createUpdateReturningChain([{ id: WORKFLOW_DEFINITION_ID }]),
+      )
+      .mockReturnValueOnce(updateAppWorkflowBindingChain);
 
     const response = await (
       service as unknown as {
-        ensureGeneratedWorkflowEditorBinding(
+        ensureGeneratedWorkflowRuntimeBinding(
           tenantId: string,
           userId: string,
           app: GeneratedAppResponseDto,
           generationRunId: string,
         ): Promise<GeneratedAppResponseDto>;
       }
-    ).ensureGeneratedWorkflowEditorBinding(
+    ).ensureGeneratedWorkflowRuntimeBinding(
       TENANT_ID,
       USER_ID,
       app as unknown as GeneratedAppResponseDto,
@@ -3720,11 +3754,19 @@ describe('GeneratedAppService', () => {
     expect(insertWorkflowChain.values).toHaveBeenCalledWith(
       expect.objectContaining({
         metadata: expect.objectContaining({
-          source: 'generated-app-editor-handoff',
+          source: 'generated-app-runtime-workflow',
           generatedAppId: APP_ID,
-          bindingKind: 'editor-handoff-draft',
+          bindingKind: 'public-runtime-workflow',
         }),
         status: 'draft',
+      }),
+    );
+    expect(insertWorkflowVersionChain.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+        tenantId: TENANT_ID,
+        versionNumber: 1,
+        publishedAt: expect.any(Date),
       }),
     );
     expect(updateAppWorkflowBindingChain.set).toHaveBeenCalledWith(
@@ -3737,7 +3779,7 @@ describe('GeneratedAppService', () => {
     expect(response.workflowDefinitionId).toBe(WORKFLOW_DEFINITION_ID);
   });
 
-  it('Gate 7 handoff slug 冲突时应复查 metadata 绑定并复用并发创建出的 workflow', async () => {
+  it('Gate 7 runtime slug 冲突时应复查 metadata 绑定并复用并发创建出的 workflow', async () => {
     const app = createGeneratedApp();
     const concurrentWorkflowId = '55555555-5555-4555-8555-555555555558';
     const insertWorkflowChain = {
@@ -3755,14 +3797,14 @@ describe('GeneratedAppService', () => {
 
     const workflowId = await (
       service as unknown as {
-        createGeneratedWorkflowEditorBinding(
+        createGeneratedWorkflowRuntimeBinding(
           tenantId: string,
           userId: string,
           app: GeneratedAppResponseDto,
           generationRunId: string,
         ): Promise<string>;
       }
-    ).createGeneratedWorkflowEditorBinding(
+    ).createGeneratedWorkflowRuntimeBinding(
       TENANT_ID,
       USER_ID,
       app as unknown as GeneratedAppResponseDto,
@@ -9392,6 +9434,83 @@ describe('GeneratedAppService', () => {
     expect(JSON.stringify(response)).not.toContain('sourceArtifactUrl');
     expect(JSON.stringify(response)).not.toContain('testReportUrl');
     expect(JSON.stringify(response)).not.toContain('plugin-private');
+  });
+
+  it('公开提交绑定 Gate 7 自动 runtime Workflow 时应创建异步 execution', async () => {
+    const token = '3'.repeat(64);
+    const runWorkflow = vi.fn().mockResolvedValue({
+      id: WORKFLOW_EXECUTION_ID,
+      status: 'pending',
+    });
+    const serviceWithExecution = createGeneratedAppServiceWithExecution({
+      runWorkflow,
+    });
+    const app = createGeneratedApp({
+      status: 'published',
+      readiness: createPublishCandidateReadiness(),
+      publicShareEnabled: true,
+      publicShareToken: token,
+      workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+    });
+    const insertChain =
+      createGeneratedAppSubmissionInsertReturningFromPayload();
+    mockTenantDb.select
+      .mockReturnValueOnce(createSelectChain([app]))
+      .mockReturnValueOnce(
+        createSelectChain([
+          {
+            id: WORKFLOW_DEFINITION_ID,
+            status: 'published',
+            publishedVersionId: WORKFLOW_VERSION_ID,
+            metadata: {
+              source: 'generated-app-runtime-workflow',
+              generatedAppId: APP_ID,
+              bindingKind: 'public-runtime-workflow',
+              publicRuntimeBoundary:
+                'Generated App public runtime exposes only execution handoff ids/status',
+            },
+            inputSchema: null,
+          },
+        ]),
+      );
+    mockTenantDb.insert.mockReturnValueOnce(insertChain);
+
+    const response = await serviceWithExecution.createPublicSubmission(token, {
+      anonymousSessionId: 'browser-session-1',
+      input: { chiefComplaint: '头痛', duration: '三天' },
+    });
+
+    expect(runWorkflow).toHaveBeenCalledWith(
+      WORKFLOW_DEFINITION_ID,
+      expect.objectContaining({
+        launchSource: 'api',
+        triggerType: 'api',
+        schemaVersion: undefined,
+        inputParams: expect.objectContaining({
+          chiefComplaint: '头痛',
+          duration: '三天',
+          _meta: expect.objectContaining({
+            launchSource: 'api',
+            generatedAppId: APP_ID,
+            submissionSource: 'generated-app-public-submission',
+          }),
+        }),
+      }),
+      TENANT_ID,
+      USER_ID,
+    );
+    expect(response.result).toEqual(
+      expect.objectContaining({
+        workflowExecution: true,
+        executionId: WORKFLOW_EXECUTION_ID,
+        workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+      }),
+    );
+    expect(JSON.stringify(response)).not.toContain(
+      'generated-app-runtime-workflow',
+    );
+    expect(JSON.stringify(response)).not.toContain('public-runtime-workflow');
+    expect(JSON.stringify(response)).not.toContain('publicRuntimeBoundary');
   });
 
   it('公开提交应先归一化 Workflow inputSchema 默认值再传递 schemaVersion', async () => {
