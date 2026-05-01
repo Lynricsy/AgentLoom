@@ -541,7 +541,11 @@ function buildNormalizedExecutionInputParams(
     launchSource: runRequest?.launchSource ?? null,
   };
 
+  const existingMeta = isRecord(runRequest?.inputParams?._meta)
+    ? { ...runRequest.inputParams._meta }
+    : {};
   const meta: Record<string, unknown> = {
+    ...existingMeta,
     launchConfig,
   };
 
@@ -663,7 +667,12 @@ export class ExecutionService {
     const [workflow] = await this.tenantDb
       .select()
       .from(schema.workflowDefinitions)
-      .where(eq(schema.workflowDefinitions.id, workflowId));
+      .where(
+        and(
+          eq(schema.workflowDefinitions.id, workflowId),
+          eq(schema.workflowDefinitions.tenantId, tenantId),
+        ),
+      );
 
     if (workflow?.status === 'archived') {
       throw new WorkflowArchivedException(workflowId);
@@ -695,7 +704,17 @@ export class ExecutionService {
     const [publishedVersion] = await this.tenantDb
       .select()
       .from(schema.workflowVersions)
-      .where(eq(schema.workflowVersions.id, workflow.publishedVersionId));
+      .where(
+        and(
+          eq(schema.workflowVersions.id, workflow.publishedVersionId),
+          eq(schema.workflowVersions.workflowDefinitionId, workflowId),
+          eq(schema.workflowVersions.tenantId, tenantId),
+        ),
+      );
+
+    if (!publishedVersion) {
+      throw new WorkflowNotPublishedException(workflowId);
+    }
 
     const definitionSnapshot = useDraftDefinition
       ? this.buildDraftExecutionSnapshot(workflow)

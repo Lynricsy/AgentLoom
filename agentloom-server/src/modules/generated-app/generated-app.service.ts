@@ -105,8 +105,17 @@ import {
   buildPublicGeneratedAppRuntimeSpec,
   evaluateGeneratedAppLocalRuntime,
 } from './generated-app.runtime';
+import type {
+  InternalRunWorkflowRequest,
+  ExecutionTriggerType,
+} from '../execution/dto/run-workflow.dto';
+import { WorkflowNotPublishedException } from '../execution/execution.exceptions';
+import { ExecutionService } from '../execution/execution.service';
 import { appendSlugSuffix, generateSlug } from '../organization/slug.utils';
-import type { WorkflowInputSchema } from '../workflow/dto/workflow-input-schema.dto';
+import {
+  workflowInputSchemaSchema,
+  type WorkflowInputSchema,
+} from '../workflow/dto/workflow-input-schema.dto';
 
 const DEFAULT_PREVIEW: GeneratedAppPreview = {
   previewUrl: null,
@@ -178,6 +187,10 @@ const GATE_3_ALLOWED_EXECUTION_LEVELS = [
 
 const GENERATED_APP_WORKFLOW_HANDOFF_METADATA_SOURCE =
   'generated-app-editor-handoff';
+const GENERATED_APP_PUBLIC_WORKFLOW_EXECUTION_BOUNDARY =
+  'async-workflow-execution-created';
+const GENERATED_APP_PUBLIC_WORKFLOW_NOT_STARTED_BOUNDARY =
+  'local-deterministic-report-only';
 
 const GATE_3_REQUIRED_WORKSPACE_FILE_PATHS = [
   'package.json',
@@ -803,6 +816,24 @@ interface Gate7Evaluation {
   repairInstructions: string | null;
 }
 
+type GeneratedAppWorkflowExecutionNotStartedReason =
+  | 'no-workflow-bound'
+  | 'workflow-not-published'
+  | 'workflow-execution-unavailable'
+  | 'workflow-execution-blocked';
+
+interface GeneratedAppWorkflowExecutionHandoff {
+  workflowExecution: boolean;
+  workflowDefinitionId: string | null;
+  executionId: string | null;
+  executionStatus: schema.WorkflowExecution['status'] | null;
+  executionBoundary:
+    | typeof GENERATED_APP_PUBLIC_WORKFLOW_EXECUTION_BOUNDARY
+    | typeof GENERATED_APP_PUBLIC_WORKFLOW_NOT_STARTED_BOUNDARY;
+  notStartedReason: GeneratedAppWorkflowExecutionNotStartedReason | null;
+  notice: string;
+}
+
 @Injectable()
 export class GeneratedAppService {
   private readonly gate3WorkspaceRunner: GeneratedAppGate3WorkspaceRunner;
@@ -822,6 +853,8 @@ export class GeneratedAppService {
     gate6IndependentVerifierRunner?: GeneratedAppGate6IndependentVerifierRunner,
     @Optional()
     gate7PublishCandidateRunner?: GeneratedAppGate7PublishCandidateRunner,
+    @Optional()
+    private readonly executionService?: ExecutionService,
   ) {
     this.gate3WorkspaceRunner =
       gate3WorkspaceRunner ??
@@ -2171,6 +2204,27 @@ export class GeneratedAppService {
       input: dto.input ?? {},
       now,
     });
+    const workflowExecutionHandoff =
+      evaluation.status === 'completed'
+        ? await this.createPublicWorkflowExecutionHandoff({
+            app,
+            input: evaluation.input,
+            anonymousSessionId,
+            submittedAt: now,
+          })
+        : null;
+    const result = workflowExecutionHandoff
+      ? this.attachWorkflowExecutionHandoff(
+          evaluation.result,
+          workflowExecutionHandoff,
+        )
+      : evaluation.result;
+    const report = workflowExecutionHandoff
+      ? this.attachWorkflowExecutionHandoff(
+          evaluation.report,
+          workflowExecutionHandoff,
+        )
+      : evaluation.report;
 
     const [submission] = await this.db
       .insert(schema.generatedAppSubmissions)
@@ -2182,8 +2236,8 @@ export class GeneratedAppService {
         anonymousSessionId,
         status: evaluation.status,
         input: evaluation.input,
-        result: evaluation.result,
-        report: evaluation.report,
+        result,
+        report,
         errorMessage: evaluation.errorMessage,
         createdAt: now,
         updatedAt: now,
@@ -2216,6 +2270,181 @@ export class GeneratedAppService {
     }
 
     return this.toPublicSubmissionResponseDto(submission);
+  }
+
+  private async createPublicWorkflowExecutionHandoff(params: {
+    app: GeneratedApp;
+    input: Record<string, unknown>;
+    anonymousSessionId: string;
+    submittedAt: Date;
+  }): Promise<GeneratedAppWorkflowExecutionHandoff> {
+    if (!params.app.workflowDefinitionId) {
+      return this.buildWorkflowExecutionNotStartedHandoff(
+        null,
+        'no-workflow-bound',
+      );
+    }
+
+    const workflowDefinitionId = params.app.workflowDefinitionId;
+    const [workflow] = await this.db
+      .select({
+        id: schema.workflowDefinitions.id,
+        status: schema.workflowDefinitions.status,
+        publishedVersionId: schema.workflowDefinitions.publishedVersionId,
+        inputSchema: schema.workflowDefinitions.inputSchema,
+      })
+      .from(schema.workflowDefinitions)
+      .where(
+        and(
+          eq(schema.workflowDefinitions.id, workflowDefinitionId),
+          eq(schema.workflowDefinitions.tenantId, params.app.tenantId),
+        ),
+      )
+      .limit(1);
+
+    if (
+      !workflow ||
+      workflow.status !== 'published' ||
+      !workflow.publishedVersionId
+    ) {
+      return this.buildWorkflowExecutionNotStartedHandoff(
+        workflowDefinitionId,
+        'workflow-not-published',
+      );
+    }
+
+    if (!this.executionService) {
+      return this.buildWorkflowExecutionNotStartedHandoff(
+        workflowDefinitionId,
+        'workflow-execution-unavailable',
+      );
+    }
+
+    try {
+      const workflowInputSchema = workflow.inputSchema
+        ? workflowInputSchemaSchema.parse(workflow.inputSchema)
+        : null;
+      const execution = await this.executionService.runWorkflow(
+        workflowDefinitionId,
+        this.buildGeneratedAppPublicRunRequest({
+          app: params.app,
+          input: params.input,
+          anonymousSessionId: params.anonymousSessionId,
+          submittedAt: params.submittedAt,
+          workflowInputSchemaVersion: workflowInputSchema?.version,
+        }),
+        params.app.tenantId,
+        params.app.createdBy,
+      );
+
+      return {
+        workflowExecution: true,
+        workflowDefinitionId,
+        executionId: execution.id,
+        executionStatus: execution.status,
+        executionBoundary: GENERATED_APP_PUBLIC_WORKFLOW_EXECUTION_BOUNDARY,
+        notStartedReason: null,
+        notice:
+          '已创建异步 Workflow execution；公开提交响应只展示 execution id/status/boundary，不等待执行完成，也不伪造最终 Workflow 输出。',
+      };
+    } catch (error) {
+      const reason =
+        error instanceof WorkflowNotPublishedException
+          ? 'workflow-not-published'
+          : 'workflow-execution-blocked';
+
+      return this.buildWorkflowExecutionNotStartedHandoff(
+        workflowDefinitionId,
+        reason,
+      );
+    }
+  }
+
+  private buildGeneratedAppPublicRunRequest(params: {
+    app: GeneratedApp;
+    input: Record<string, unknown>;
+    anonymousSessionId: string;
+    submittedAt: Date;
+    workflowInputSchemaVersion?: number;
+  }): InternalRunWorkflowRequest {
+    const inputParams: Record<string, unknown> = {
+      ...params.input,
+      _meta: {
+        launchSource: 'api',
+        generatedAppId: params.app.id,
+        appSpecVersion: params.app.appSpec.version,
+        submissionSource: 'generated-app-public-submission',
+        submission: {
+          source: 'generated-app-public-submission',
+          anonymousSessionId: params.anonymousSessionId,
+          submittedAt: params.submittedAt.toISOString(),
+        },
+        runtime: {
+          kind: 'generated-app-public-runtime',
+          boundary: 'public-generated-app-async-workflow-handoff',
+        },
+        executionBoundary:
+          'public submission creates async Workflow execution only',
+      },
+    };
+
+    return {
+      inputParams,
+      launchSource: 'api',
+      schemaVersion: params.workflowInputSchemaVersion,
+      triggerType: 'api' satisfies ExecutionTriggerType,
+    };
+  }
+
+  private buildWorkflowExecutionNotStartedHandoff(
+    workflowDefinitionId: string | null,
+    reason: GeneratedAppWorkflowExecutionNotStartedReason,
+  ): GeneratedAppWorkflowExecutionHandoff {
+    return {
+      workflowExecution: false,
+      workflowDefinitionId,
+      executionId: null,
+      executionStatus: null,
+      executionBoundary: GENERATED_APP_PUBLIC_WORKFLOW_NOT_STARTED_BOUNDARY,
+      notStartedReason: reason,
+      notice: this.getWorkflowExecutionNotStartedNotice(reason),
+    };
+  }
+
+  private getWorkflowExecutionNotStartedNotice(
+    reason: GeneratedAppWorkflowExecutionNotStartedReason,
+  ): string {
+    switch (reason) {
+      case 'workflow-not-published':
+        return '未创建 Workflow execution：绑定 Workflow 尚未发布，公开提交继续返回本地 deterministic report。';
+      case 'workflow-execution-unavailable':
+        return '未创建 Workflow execution：当前服务未启用执行桥接，公开提交继续返回本地 deterministic report。';
+      case 'workflow-execution-blocked':
+        return '未创建 Workflow execution：执行启动被平台安全或治理边界阻止，公开提交继续返回本地 deterministic report。';
+      case 'no-workflow-bound':
+      default:
+        return '未创建 Workflow execution：当前 Generated App 没有绑定可执行 Workflow，公开提交继续返回本地 deterministic report。';
+    }
+  }
+
+  private attachWorkflowExecutionHandoff<T extends Record<string, unknown>>(
+    payload: T | null,
+    handoff: GeneratedAppWorkflowExecutionHandoff,
+  ): T | null {
+    if (!payload) {
+      return payload;
+    }
+
+    return {
+      ...payload,
+      workflowExecution: handoff.workflowExecution,
+      executionId: handoff.executionId,
+      executionStatus: handoff.executionStatus,
+      workflowDefinitionId: handoff.workflowDefinitionId,
+      executionBoundary: handoff.executionBoundary,
+      workflowExecutionNotStartedReason: handoff.notStartedReason,
+      workflowExecutionNotice: handoff.notice,
+    };
   }
 
   async listSubmissions(

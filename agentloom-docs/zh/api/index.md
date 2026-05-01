@@ -122,11 +122,11 @@ if (detail.status === "failed") {
 
 公开页面和第三方终端前端禁止展示或记录内部字段：`gateResults`、`readiness`、`generationPlan`、`sourceArtifactUrl`、`testReportUrl`、`pluginIds`、`publicShareToken`、宿主机路径和 `secrets`。公开提交响应也不能暴露租户 ID、公开 token、门禁证据、源码/测试 artifact、插件内部信息或创建者专用字段。
 
-公开提交详情只应使用 public submission 响应：`id`、`appId`、`appSpecVersion`、`status`、`anonymousSessionId`、`input`、`result`、`report`、`errorMessage`、`createdAt` 和 `updatedAt`。`result` / `report` 不能直接作为内部 JSON dump 展示；终端页面应只渲染结构化报告段落、下一步问题、追问提示和边界说明，并过滤 `runtimeKind`、`contractSummary`、token、readiness、门禁证据、artifact URL、插件 ID 和创建者专用字段。
+公开提交详情只应使用 public submission 响应：`id`、`appId`、`appSpecVersion`、`status`、`anonymousSessionId`、`input`、`result`、`report`、`errorMessage`、`createdAt` 和 `updatedAt`。当绑定的 Workflow 已发布时，`result` / `report` 还可能包含 `workflowExecution`、`executionId`、`executionStatus`、`workflowDefinitionId`、`executionBoundary`、`workflowExecutionNotStartedReason` 和 `workflowExecutionNotice`，这些字段只表示服务端已创建或未创建异步 Workflow execution，不代表最终执行输出已经可用。`result` / `report` 不能直接作为内部 JSON dump 展示；终端页面应只渲染结构化报告段落、下一步问题、追问提示、异步执行边界说明和免责声明，并过滤 `runtimeKind`、`contractSummary`、token、readiness、门禁证据、artifact URL、插件 ID 和创建者专用字段。
 
 ### 当前 runtime 边界
 
-public submission 首版是本地确定性报告：服务端会基于 `appSpec`、安全的 public runtime contract 摘要和清洗后的 `input` 同步生成 `result` / `report`，不会伪装为真实 AI、Workflow、生产沙箱或插件执行。文案应明确称为本地 deterministic runtime report，不能把它包装成模型推理、真实工作流运行或插件执行结果。医疗、问诊或中医类应用只能做信息整理、下一步问题和免责声明，不能输出诊断、处方、剂量、治疗指令或专业医疗建议。
+public submission 会先生成本地确定性报告：服务端会基于 `appSpec`、安全的 public runtime contract 摘要和清洗后的 `input` 同步生成 `result` / `report`，不会伪装为真实 AI、生产沙箱或插件执行。当 Generated App 绑定的是同租户已发布 Workflow 且存在 `publishedVersionId` 时，服务端会通过执行服务创建一个异步 Workflow execution，并在公开报告中只展示 execution id、status 与 boundary；终端响应不会等待 execution 完成，也不会伪造最终 Workflow 输出。Gate 7 创建的 draft Workflow handoff 只用于创建者继续编辑，未发布时不会被公开提交执行；未发布、不可见或被治理阻止的 Workflow 会回退到本地 deterministic report 并显示安全的未启动原因。医疗、问诊或中医类应用只能做信息整理、下一步问题和免责声明，不能输出诊断、处方、剂量、治疗指令或专业医疗建议。
 
 ## 完整 OpenAPI 规范
 

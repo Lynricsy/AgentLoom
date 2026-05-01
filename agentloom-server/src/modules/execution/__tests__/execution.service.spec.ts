@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import { Test } from '@nestjs/testing';
 import { Logger } from '@nestjs/common';
 import { getQueueToken } from '@nestjs/bullmq';
+import { PgDialect } from 'drizzle-orm/pg-core';
 import { ExecutionService } from '../execution.service';
 import { EventBridgeService } from '../services/event-bridge.service';
 import { runInTenantTransaction } from '../../../common/interceptors/tenant-transaction.context';
@@ -31,6 +32,10 @@ const EXECUTION_ID = '019391d4-d000-7000-0000-000000000004';
 const VERSION_ID = '019391d4-e000-7000-0000-000000000005';
 
 const NOW = new Date('2025-01-01T00:00:00Z');
+
+function renderSql(sql: Parameters<PgDialect['sqlToQuery']>[0]): string {
+  return new PgDialect().sqlToQuery(sql).sql;
+}
 
 const mockSnapshot = {
   nodes: [
@@ -809,6 +814,77 @@ describe('ExecutionService', () => {
       const insertValues =
         db.insert.mock.results[0].value.values.mock.calls[0][0];
       expect(insertValues.inputParams).toEqual(normalizedInputParams);
+    });
+
+    it('归一化 inputSchema 时应保留调用方已有 _meta 并写入 launchConfig', async () => {
+      const workflowWithInputSchema = {
+        ...mockPublishedWorkflow,
+        inputSchema: CONDITIONAL_RUN_INPUT_SCHEMA,
+      };
+      const versionWithInputSchema = {
+        ...mockVersion,
+        snapshot: {
+          ...mockSnapshot,
+          inputSchema: CONDITIONAL_RUN_INPUT_SCHEMA,
+        },
+      };
+      const executionWithGeneratedAppMeta = {
+        ...mockExecution,
+        inputParams: {
+          topic: 'AI 趋势',
+          mode: 'basic',
+          locale: 'zh-CN',
+          _meta: {
+            generatedAppId: 'generated-app-id',
+            submissionSource: 'generated-app-public-submission',
+            launchSource: 'api',
+            launchConfig: {
+              workflowId: WORKFLOW_ID,
+              schemaVersion: 2,
+              collectionMode: 'form',
+              resolvedInputs: {
+                topic: 'AI 趋势',
+                mode: 'basic',
+                locale: 'zh-CN',
+              },
+              unresolvedFieldIds: ['advancedNote'],
+              launchSource: 'api',
+            },
+          },
+        },
+      };
+
+      db.select
+        .mockReturnValueOnce(createSelectChain([workflowWithInputSchema]))
+        .mockReturnValueOnce(createSelectChain([versionWithInputSchema]));
+      db.insert.mockReturnValueOnce(
+        createInsertChainReturning([executionWithGeneratedAppMeta]),
+      );
+      mockQueue.add.mockResolvedValue(undefined);
+
+      await service.runWorkflow(
+        WORKFLOW_ID,
+        {
+          schemaVersion: 2,
+          inputParams: {
+            topic: 'AI 趋势',
+            _meta: {
+              generatedAppId: 'generated-app-id',
+              submissionSource: 'generated-app-public-submission',
+            },
+          },
+          launchSource: 'api',
+          triggerType: 'api',
+        },
+        TENANT_ID,
+        USER_ID,
+      );
+
+      const insertValues =
+        db.insert.mock.results[0].value.values.mock.calls[0][0];
+      expect(insertValues.inputParams).toEqual(
+        executionWithGeneratedAppMeta.inputParams,
+      );
     });
 
     it('应在 schemaVersion 与已发布 inputSchema.version 不匹配时抛出 409', async () => {
@@ -1644,6 +1720,48 @@ describe('ExecutionService', () => {
       await expect(
         service.runWorkflow(WORKFLOW_ID, undefined, TENANT_ID, USER_ID),
       ).rejects.toThrow(WorkflowNotPublishedException);
+    });
+
+    it('应在 raw context 下按 tenantId 查询 workflow 和 published version', async () => {
+      db.select
+        .mockReturnValueOnce(createSelectChain([mockPublishedWorkflow]))
+        .mockReturnValueOnce(createSelectChain([mockVersion]));
+      db.insert.mockReturnValueOnce(
+        createInsertChainReturning([mockExecution]),
+      );
+      mockQueue.add.mockResolvedValue(undefined);
+
+      await service.runWorkflow(WORKFLOW_ID, undefined, TENANT_ID, USER_ID);
+
+      const workflowWhere =
+        db.select.mock.results[0].value.from.mock.results[0].value.where.mock
+          .calls[0]?.[0];
+      const versionWhere =
+        db.select.mock.results[1].value.from.mock.results[0].value.where.mock
+          .calls[0]?.[0];
+
+      expect(renderSql(workflowWhere)).toContain(
+        '"workflow_definitions"."tenant_id"',
+      );
+      expect(renderSql(versionWhere)).toContain(
+        '"workflow_versions"."tenant_id"',
+      );
+      expect(renderSql(versionWhere)).toContain(
+        '"workflow_versions"."workflow_definition_id"',
+      );
+    });
+
+    it('应在 published version 不属于当前租户或 workflow 时拒绝执行', async () => {
+      db.select
+        .mockReturnValueOnce(createSelectChain([mockPublishedWorkflow]))
+        .mockReturnValueOnce(createSelectChain([]));
+
+      await expect(
+        service.runWorkflow(WORKFLOW_ID, undefined, TENANT_ID, USER_ID),
+      ).rejects.toThrow(WorkflowNotPublishedException);
+
+      expect(db.insert).not.toHaveBeenCalled();
+      expect(mockQueue.add).not.toHaveBeenCalled();
     });
   });
 

@@ -24,6 +24,8 @@ import {
 } from '../generated-app.exceptions';
 import { createInitialGeneratedAppGateResults } from '../generated-app.gates';
 import { GeneratedAppService } from '../generated-app.service';
+import { WorkflowNotPublishedException } from '../../execution/execution.exceptions';
+import type { ExecutionService } from '../../execution/execution.service';
 import {
   GeneratedAppGate4IntegrationRunner,
   type GeneratedAppGate4RunnerResult,
@@ -52,6 +54,7 @@ const APP_ID = '33333333-3333-4333-8333-333333333333';
 const SUBMISSION_ID = '44444444-4444-4444-8444-444444444444';
 const GENERATION_RUN_ID = '55555555-5555-4555-8555-555555555555';
 const WORKFLOW_DEFINITION_ID = '55555555-5555-4555-8555-555555555556';
+const WORKFLOW_EXECUTION_ID = '55555555-5555-4555-8555-555555555557';
 const GATE_RUN_ID = '66666666-6666-4666-8666-666666666666';
 const GATE_1_RUN_ID = '66666666-6666-4666-8666-666666666667';
 const GATE_2_RUN_ID = '66666666-6666-4666-8666-666666666668';
@@ -361,6 +364,21 @@ function createUpdateChain() {
     set: vi.fn().mockReturnThis(),
     where: vi.fn().mockResolvedValue(undefined),
   };
+}
+
+function createGeneratedAppServiceWithExecution(
+  executionService: Partial<ExecutionService>,
+) {
+  return new GeneratedAppService(
+    mockTenantDb as unknown as DrizzleDB,
+    createConfigService(),
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    executionService as ExecutionService,
+  );
 }
 
 function createPublishCandidateReadiness(): GeneratedAppReadiness {
@@ -7804,6 +7822,383 @@ describe('GeneratedAppService', () => {
     expect(response.status).toBe('completed');
     expect(response.result).toEqual(insertPayload.result);
     expect(response.report).toEqual(insertPayload.report);
+  });
+
+  it('公开提交绑定已发布 Workflow 时应创建异步 execution 并只写入安全 handoff 字段', async () => {
+    const token = '3'.repeat(64);
+    const runWorkflow = vi.fn().mockResolvedValue({
+      id: WORKFLOW_EXECUTION_ID,
+      status: 'pending',
+    });
+    const serviceWithExecution = createGeneratedAppServiceWithExecution({
+      runWorkflow,
+    });
+    const app = createGeneratedApp({
+      status: 'published',
+      readiness: createPublishCandidateReadiness(),
+      publicShareEnabled: true,
+      publicShareToken: token,
+      workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+    });
+    const insertChain =
+      createGeneratedAppSubmissionInsertReturningFromPayload();
+    mockTenantDb.select
+      .mockReturnValueOnce(createSelectChain([app]))
+      .mockReturnValueOnce(
+        createSelectChain([
+          {
+            id: WORKFLOW_DEFINITION_ID,
+            status: 'published',
+            publishedVersionId: '55555555-5555-4555-8555-555555555559',
+            inputSchema: { version: 7 },
+          },
+        ]),
+      );
+    mockTenantDb.insert.mockReturnValueOnce(insertChain);
+
+    const response = await serviceWithExecution.createPublicSubmission(token, {
+      anonymousSessionId: 'browser-session-1',
+      input: { chiefComplaint: '头痛' },
+    });
+
+    expect(runWorkflow).toHaveBeenCalledWith(
+      WORKFLOW_DEFINITION_ID,
+      expect.objectContaining({
+        launchSource: 'api',
+        triggerType: 'api',
+        schemaVersion: 7,
+        inputParams: expect.objectContaining({
+          chiefComplaint: '头痛',
+          _meta: expect.objectContaining({
+            launchSource: 'api',
+            generatedAppId: APP_ID,
+            appSpecVersion: app.appSpec.version,
+            submissionSource: 'generated-app-public-submission',
+            submission: expect.objectContaining({
+              source: 'generated-app-public-submission',
+              anonymousSessionId: 'browser-session-1',
+            }),
+            runtime: expect.objectContaining({
+              kind: 'generated-app-public-runtime',
+            }),
+          }),
+        }),
+      }),
+      TENANT_ID,
+      USER_ID,
+    );
+
+    const insertPayload = insertChain.values.mock.calls[0]?.[0] as {
+      result: Record<string, unknown>;
+      report: Record<string, unknown>;
+    };
+    expect(insertPayload.result).toEqual(
+      expect.objectContaining({
+        runtimeKind: 'local-generated-app-deterministic-report',
+        workflowExecution: true,
+        executionId: WORKFLOW_EXECUTION_ID,
+        executionStatus: 'pending',
+        workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+        executionBoundary: 'async-workflow-execution-created',
+        workflowExecutionNotStartedReason: null,
+      }),
+    );
+    expect(insertPayload.report).toEqual(
+      expect.objectContaining({
+        workflowExecution: true,
+        executionId: WORKFLOW_EXECUTION_ID,
+        executionStatus: 'pending',
+        workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+        executionBoundary: 'async-workflow-execution-created',
+      }),
+    );
+    expect(response.result).toEqual(insertPayload.result);
+    expect(JSON.stringify(response)).not.toContain(token);
+    expect(JSON.stringify(response)).not.toContain('generationPlan');
+    expect(JSON.stringify(response)).not.toContain('gateResults');
+    expect(JSON.stringify(response)).not.toContain('sourceArtifactUrl');
+    expect(JSON.stringify(response)).not.toContain('testReportUrl');
+    expect(JSON.stringify(response)).not.toContain('plugin-private');
+  });
+
+  it('公开提交应先归一化 Workflow inputSchema 默认值再传递 schemaVersion', async () => {
+    const token = '3'.repeat(64);
+    const runWorkflow = vi.fn().mockResolvedValue({
+      id: WORKFLOW_EXECUTION_ID,
+      status: 'pending',
+    });
+    const serviceWithExecution = createGeneratedAppServiceWithExecution({
+      runWorkflow,
+    });
+    const app = createGeneratedApp({
+      status: 'published',
+      readiness: createPublishCandidateReadiness(),
+      publicShareEnabled: true,
+      publicShareToken: token,
+      workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+    });
+    const insertChain =
+      createGeneratedAppSubmissionInsertReturningFromPayload();
+    mockTenantDb.select
+      .mockReturnValueOnce(createSelectChain([app]))
+      .mockReturnValueOnce(
+        createSelectChain([
+          {
+            id: WORKFLOW_DEFINITION_ID,
+            status: 'published',
+            publishedVersionId: '55555555-5555-4555-8555-555555555559',
+            inputSchema: {
+              collectionMode: 'form',
+              fields: [
+                {
+                  id: 'chiefComplaint',
+                  type: 'text',
+                  label: '主诉',
+                  required: true,
+                },
+              ],
+            },
+          },
+        ]),
+      );
+    mockTenantDb.insert.mockReturnValueOnce(insertChain);
+
+    await serviceWithExecution.createPublicSubmission(token, {
+      input: { chiefComplaint: '头痛' },
+    });
+
+    expect(runWorkflow).toHaveBeenCalledWith(
+      WORKFLOW_DEFINITION_ID,
+      expect.objectContaining({
+        schemaVersion: 1,
+      }),
+      TENANT_ID,
+      USER_ID,
+    );
+  });
+
+  it('公开提交绑定 draft/unpublished Workflow 时不应调用 execution 且应标记 workflow-not-published', async () => {
+    const token = '3'.repeat(64);
+    const runWorkflow = vi.fn();
+    const serviceWithExecution = createGeneratedAppServiceWithExecution({
+      runWorkflow,
+    });
+    const app = createGeneratedApp({
+      status: 'published',
+      readiness: createPublishCandidateReadiness(),
+      publicShareEnabled: true,
+      publicShareToken: token,
+      workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+    });
+    const insertChain =
+      createGeneratedAppSubmissionInsertReturningFromPayload();
+    mockTenantDb.select
+      .mockReturnValueOnce(createSelectChain([app]))
+      .mockReturnValueOnce(
+        createSelectChain([
+          {
+            id: WORKFLOW_DEFINITION_ID,
+            status: 'draft',
+            publishedVersionId: null,
+          },
+        ]),
+      );
+    mockTenantDb.insert.mockReturnValueOnce(insertChain);
+
+    const response = await serviceWithExecution.createPublicSubmission(token, {
+      input: { chiefComplaint: '头痛' },
+    });
+
+    expect(runWorkflow).not.toHaveBeenCalled();
+
+    const insertPayload = insertChain.values.mock.calls[0]?.[0] as {
+      status: string;
+      result: Record<string, unknown>;
+      report: Record<string, unknown>;
+    };
+    expect(insertPayload.status).toBe('completed');
+    expect(insertPayload.result).toEqual(
+      expect.objectContaining({
+        runtimeKind: 'local-generated-app-deterministic-report',
+        workflowExecution: false,
+        executionId: null,
+        executionStatus: null,
+        workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+        executionBoundary: 'local-deterministic-report-only',
+        workflowExecutionNotStartedReason: 'workflow-not-published',
+        workflowExecutionNotice: expect.stringContaining('尚未发布'),
+      }),
+    );
+    expect(insertPayload.report).toEqual(
+      expect.objectContaining({
+        workflowExecution: false,
+        workflowExecutionNotStartedReason: 'workflow-not-published',
+      }),
+    );
+    expect(response.status).toBe('completed');
+    expect(response.result).toEqual(insertPayload.result);
+  });
+
+  it('公开提交绑定不存在或跨租户 Workflow 时不应调用 execution', async () => {
+    const token = '3'.repeat(64);
+    const runWorkflow = vi.fn();
+    const serviceWithExecution = createGeneratedAppServiceWithExecution({
+      runWorkflow,
+    });
+    const app = createGeneratedApp({
+      status: 'published',
+      readiness: createPublishCandidateReadiness(),
+      publicShareEnabled: true,
+      publicShareToken: token,
+      workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+    });
+    const insertChain =
+      createGeneratedAppSubmissionInsertReturningFromPayload();
+    mockTenantDb.select
+      .mockReturnValueOnce(createSelectChain([app]))
+      .mockReturnValueOnce(createSelectChain([]));
+    mockTenantDb.insert.mockReturnValueOnce(insertChain);
+
+    const response = await serviceWithExecution.createPublicSubmission(token, {
+      input: { chiefComplaint: '头痛' },
+    });
+
+    expect(runWorkflow).not.toHaveBeenCalled();
+
+    const insertPayload = insertChain.values.mock.calls[0]?.[0] as {
+      status: string;
+      result: Record<string, unknown>;
+    };
+    expect(insertPayload.status).toBe('completed');
+    expect(insertPayload.result).toEqual(
+      expect.objectContaining({
+        workflowExecution: false,
+        workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+        executionBoundary: 'local-deterministic-report-only',
+        workflowExecutionNotStartedReason: 'workflow-not-published',
+      }),
+    );
+    expect(response.result).toEqual(insertPayload.result);
+  });
+
+  it('公开提交遇到 execution service 抛错时应安全收口且不泄露堆栈或 token', async () => {
+    const token = '3'.repeat(64);
+    const runWorkflow = vi
+      .fn()
+      .mockRejectedValue(
+        new Error(
+          'internal stack Bearer secret-token-value sk-test-redacted governance sourceArtifactUrl testReportUrl pluginIds readiness generationPlan gateResults',
+        ),
+      );
+    const serviceWithExecution = createGeneratedAppServiceWithExecution({
+      runWorkflow,
+    });
+    const app = createGeneratedApp({
+      status: 'published',
+      readiness: createPublishCandidateReadiness(),
+      publicShareEnabled: true,
+      publicShareToken: token,
+      workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+    });
+    const insertChain =
+      createGeneratedAppSubmissionInsertReturningFromPayload();
+    mockTenantDb.select
+      .mockReturnValueOnce(createSelectChain([app]))
+      .mockReturnValueOnce(
+        createSelectChain([
+          {
+            id: WORKFLOW_DEFINITION_ID,
+            status: 'published',
+            publishedVersionId: '55555555-5555-4555-8555-555555555559',
+          },
+        ]),
+      );
+    mockTenantDb.insert.mockReturnValueOnce(insertChain);
+
+    const response = await serviceWithExecution.createPublicSubmission(token, {
+      input: { chiefComplaint: '头痛' },
+    });
+
+    const insertPayload = insertChain.values.mock.calls[0]?.[0] as {
+      status: string;
+      result: Record<string, unknown>;
+      report: Record<string, unknown>;
+      errorMessage: string | null;
+    };
+    const serialized = JSON.stringify(response);
+    expect(insertPayload.status).toBe('completed');
+    expect(insertPayload.errorMessage).toBeNull();
+    expect(insertPayload.result).toEqual(
+      expect.objectContaining({
+        workflowExecution: false,
+        executionId: null,
+        executionStatus: null,
+        workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+        executionBoundary: 'local-deterministic-report-only',
+        workflowExecutionNotStartedReason: 'workflow-execution-blocked',
+      }),
+    );
+    expect(serialized).not.toContain('secret-token-value');
+    expect(serialized).not.toContain('sk-test-redacted');
+    expect(serialized).not.toContain('internal stack');
+    expect(serialized).not.toContain('Bearer');
+    expect(serialized).not.toContain('governance');
+    expect(serialized).not.toContain('sourceArtifactUrl');
+    expect(serialized).not.toContain('testReportUrl');
+    expect(serialized).not.toContain('pluginIds');
+    expect(serialized).not.toContain('readiness');
+    expect(serialized).not.toContain('generationPlan');
+    expect(serialized).not.toContain('gateResults');
+  });
+
+  it('公开提交遇到 runWorkflow 再次报告未发布时应保持 deterministic report 且不泄露 WorkflowNotPublished detail', async () => {
+    const token = '3'.repeat(64);
+    const runWorkflow = vi
+      .fn()
+      .mockRejectedValue(
+        new WorkflowNotPublishedException(WORKFLOW_DEFINITION_ID),
+      );
+    const serviceWithExecution = createGeneratedAppServiceWithExecution({
+      runWorkflow,
+    });
+    const app = createGeneratedApp({
+      status: 'published',
+      readiness: createPublishCandidateReadiness(),
+      publicShareEnabled: true,
+      publicShareToken: token,
+      workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+    });
+    const insertChain =
+      createGeneratedAppSubmissionInsertReturningFromPayload();
+    mockTenantDb.select
+      .mockReturnValueOnce(createSelectChain([app]))
+      .mockReturnValueOnce(
+        createSelectChain([
+          {
+            id: WORKFLOW_DEFINITION_ID,
+            status: 'published',
+            publishedVersionId: '55555555-5555-4555-8555-555555555559',
+          },
+        ]),
+      );
+    mockTenantDb.insert.mockReturnValueOnce(insertChain);
+
+    const response = await serviceWithExecution.createPublicSubmission(token, {
+      input: { chiefComplaint: '头痛' },
+    });
+
+    expect(runWorkflow).toHaveBeenCalledTimes(1);
+
+    const insertPayload = insertChain.values.mock.calls[0]?.[0] as {
+      result: Record<string, unknown>;
+    };
+    expect(insertPayload.result).toEqual(
+      expect.objectContaining({
+        workflowExecution: false,
+        workflowExecutionNotStartedReason: 'workflow-not-published',
+      }),
+    );
+    expect(JSON.stringify(response)).not.toContain('尚未发布，无法启动执行');
   });
 
   it('公开提交遇到过期或未满足 readiness 的公开应用时应拒绝', async () => {
