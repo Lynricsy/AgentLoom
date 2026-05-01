@@ -211,6 +211,7 @@ react-hook-form + @hookform/resolvers + Zod v4
 
 ## 架构偏差与注意事项
 
+- **Generated App Gate 3 构建预览**: 创建者详情页的 Gate 3 build output 预览使用 `iframe srcDoc` 加 `sandbox="allow-scripts"`，允许生成预览内的 deterministic 表单/报告脚本运行；不得加 `allow-same-origin`、forms、popups、downloads、top-navigation 或 parent access 能力，也不得让公开 runtime 页内联 creator artifact HTML。
 - **非标准子目录**: `developer-console` 和 `monitoring` 使用 `pages/` 子目录（而非 `components/`）
 - **Barrel 导出例外**: `marketplace/index.ts` 使用 wildcard re-export（其余 feature 使用 named export）
 - **无 canonical 布局**: `workflow-input-schema` 无 `api/` 目录且无 `index.ts`

@@ -750,10 +750,14 @@ describe('GeneratedAppDetailPage', () => {
     expect(panel.getByText('Gate 3 unit test report')).toBeInTheDocument()
     expect(panel.getByText('Gate 3 构建预览')).toBeInTheDocument()
     expect(panel.getAllByText('dist/index.html').length).toBeGreaterThan(0)
-    expect(
-      screen.getByTitle('Generated App Gate 3 构建预览'),
-    ).toHaveAttribute('sandbox', '')
-    expect(screen.getByTitle('Generated App Gate 3 构建预览')).toHaveAttribute(
+    const buildPreviewFrame = screen.getByTitle(
+      'Generated App Gate 3 构建预览',
+    )
+    expect(buildPreviewFrame).toHaveAttribute('sandbox', 'allow-scripts')
+    expect(buildPreviewFrame.getAttribute('sandbox')).not.toContain(
+      'allow-same-origin',
+    )
+    expect(buildPreviewFrame).toHaveAttribute(
       'srcdoc',
       expect.stringContaining('<h1>问诊助手</h1>'),
     )

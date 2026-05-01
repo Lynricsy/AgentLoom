@@ -44,6 +44,11 @@ AgentLoom Studio 是基于 **React 19 + Vite 7** 的前端工作台，负责工�
 
 `AgentCanvasPage` 当前将版本管理主路径收敛到顶部工具栏：保存版本使用独立对话框，历史记录使用独立右侧面板，发布使用独立弹层；分享按钮只在 Agent 已发布时出现，避免把用户引到未发布必然失败的分享路径。
 
+## Generated App 预览事实
+
+- `GeneratedAppDetailPage` 的 Gate 3 build output 内联预览使用 `iframe srcDoc` 与 `sandbox="allow-scripts"`，让生成的 deterministic 表单/报告脚本可交互运行；该 iframe 不授予 `allow-same-origin`、forms、popups、downloads、top-navigation 或 parent access。
+- 公开 runtime 页只打开后端公开预览链接，不内联 creator artifact HTML，也不调用 artifact manifest/content API。
+
 ## Agent 对话工作区预览事实
 
 - `AgentConversationPage` 在 sandbox Agent 对话冷开时，会先尝试加载持久化工作区目录预览，再等待 live sandbox 的 authoritative tree 接管。

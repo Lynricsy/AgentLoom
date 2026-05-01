@@ -545,7 +545,7 @@ function GeneratedAppBuildPreview({
       </div>
       <iframe
         title="Generated App Gate 3 构建预览"
-        sandbox=""
+        sandbox="allow-scripts"
         srcDoc={html ?? ''}
         className="h-80 w-full bg-background"
       />
