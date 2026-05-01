@@ -8,7 +8,12 @@ import {
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { GeneratedApp, GeneratedAppReadinessState } from '../../types'
+import type {
+  GeneratedApp,
+  GeneratedAppArtifactContent,
+  GeneratedAppArtifactManifest,
+  GeneratedAppReadinessState,
+} from '../../types'
 
 const {
   disableShareMutation,
@@ -17,6 +22,8 @@ const {
   enableShareMutation,
   gateRunsQuery,
   generatedAppQuery,
+  artifactContentQuery,
+  artifactManifestQuery,
   generationRunsQuery,
   repairAttemptsQuery,
   regenerateShareMutation,
@@ -54,6 +61,22 @@ const {
   },
   generatedAppQuery: {
     data: undefined as unknown,
+    isError: false,
+    isLoading: false,
+    refetch: vi.fn(),
+  },
+  artifactContentQuery: {
+    data: undefined as GeneratedAppArtifactContent | undefined,
+    isError: false,
+    isLoading: false,
+    refetch: vi.fn(),
+  },
+  artifactManifestQuery: {
+    data: {
+      workspace: null,
+      artifacts: [],
+      updatedAt: '2026-04-25T01:00:00.000Z',
+    } as GeneratedAppArtifactManifest,
     isError: false,
     isLoading: false,
     refetch: vi.fn(),
@@ -134,6 +157,8 @@ vi.mock('../../api', () => ({
     useGeneratedAppMock(`detail:${appId ?? ''}`)
     return generatedAppQuery
   },
+  useGeneratedAppArtifactContent: () => artifactContentQuery,
+  useGeneratedAppArtifactManifest: () => artifactManifestQuery,
   useGeneratedAppGateRuns: () => gateRunsQuery,
   useGeneratedAppGenerationRuns: () => generationRunsQuery,
   useGeneratedAppRuntimeBindingReadiness: () => runtimeBindingReadinessQuery,
@@ -319,6 +344,18 @@ describe('GeneratedAppDetailPage', () => {
     runtimeBindingReadinessQuery.isError = false
     runtimeBindingReadinessQuery.isLoading = false
     runtimeBindingReadinessQuery.refetch = vi.fn()
+    artifactManifestQuery.data = {
+      workspace: null,
+      artifacts: [],
+      updatedAt: '2026-04-25T01:00:00.000Z',
+    }
+    artifactManifestQuery.isError = false
+    artifactManifestQuery.isLoading = false
+    artifactManifestQuery.refetch = vi.fn()
+    artifactContentQuery.data = undefined
+    artifactContentQuery.isError = false
+    artifactContentQuery.isLoading = false
+    artifactContentQuery.refetch = vi.fn()
     disableShareMutation.mutateAsync = vi.fn()
     disableShareMutation.isPending = false
     startGenerationRunMutation.mutateAsync = vi.fn()
@@ -622,6 +659,69 @@ describe('GeneratedAppDetailPage', () => {
     expect(
       screen.queryByText('workflow-version-published'),
     ).not.toBeInTheDocument()
+  })
+
+  it('renders creator-only controlled workspace artifacts and selected content', async () => {
+    const user = userEvent.setup()
+    artifactManifestQuery.data = {
+      workspace: {
+        workspaceId: 'workspace-1',
+        rootLabel: 'generated-app-workspaces',
+        relativePath: 'tenants/tenant-1/apps/app-detail/runs/run-1',
+        scaffold: 'react-vite-typescript',
+        executionLevel: 'real-local-command-plan',
+        materialized: true,
+      },
+      artifacts: [
+        {
+          artifactId: 'source-app-tsx',
+          label: 'src/App.tsx',
+          kind: 'workspace_source_file',
+          path: 'src/App.tsx',
+          materialized: true,
+          sizeBytes: 42,
+          contentType: 'text/typescript',
+          readable: true,
+          updatedAt: '2026-04-25T02:00:00.000Z',
+        },
+        {
+          artifactId: 'gate-3-unit-test-report',
+          label: 'Gate 3 unit test report',
+          kind: 'unit_test_report',
+          path: 'artifacts/gate-3/unit-test-report.json',
+          materialized: false,
+          sizeBytes: null,
+          contentType: 'application/json',
+          readable: false,
+          updatedAt: null,
+        },
+      ],
+      updatedAt: '2026-04-25T02:00:00.000Z',
+    }
+    artifactContentQuery.data = {
+      artifact: artifactManifestQuery.data.artifacts[0]!,
+      content: 'export function App() { return <main /> }',
+      truncated: false,
+    }
+
+    render(<GeneratedAppDetailPage appId="app-detail" />)
+
+    const panel = within(screen.getByTestId('generated-app-artifact-delivery'))
+    expect(
+      panel.getByText(
+        'generated-app-workspaces/tenants/tenant-1/apps/app-detail/runs/run-1',
+      ),
+    ).toBeInTheDocument()
+    expect(panel.getByText('real-local-command-plan')).toBeInTheDocument()
+    expect(panel.getAllByText('src/App.tsx').length).toBeGreaterThan(0)
+    expect(panel.getByText('Gate 3 unit test report')).toBeInTheDocument()
+    expect(screen.queryByText('/root')).not.toBeInTheDocument()
+
+    await user.click(panel.getByRole('button', { name: /src\/App\.tsx/ }))
+
+    expect(
+      screen.getByText('export function App() { return <main /> }'),
+    ).toBeInTheDocument()
   })
 
   it('keeps resource binding empty states clear when no professional resources are bound', () => {

@@ -1,5 +1,9 @@
 import * as crypto from 'crypto';
 
+import { readFile, stat } from 'node:fs/promises';
+import { join, resolve, sep } from 'node:path';
+import { tmpdir } from 'node:os';
+
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
@@ -40,6 +44,10 @@ import {
   type CreateGeneratedAppDtoType,
   type DeleteGeneratedAppSubmissionsResponseDto,
   type DeleteGeneratedAppSubmissionsDtoType,
+  type GeneratedAppArtifactContentResponseDto,
+  type GeneratedAppArtifactKind,
+  type GeneratedAppArtifactManifestResponseDto,
+  type GeneratedAppArtifactSummaryDto,
   type GeneratedAppGenerationRunResponseDto,
   type GeneratedAppGateRunResponseDto,
   type GeneratedAppRepairAttemptResponseDto,
@@ -77,6 +85,8 @@ import {
   GeneratedAppNotFoundException,
   GeneratedAppPublicShareNotReadyException,
   GeneratedAppRepairAttemptNotFoundException,
+  GeneratedAppArtifactNotFoundException,
+  GeneratedAppArtifactTooLargeException,
   GeneratedAppSubmissionNotFoundException,
 } from './generated-app.exceptions';
 import {
@@ -300,6 +310,175 @@ const GATE_3_ALLOWED_COMMAND_BY_ID = {
   (typeof GATE_3_REQUIRED_COMMAND_IDS)[number],
   string
 >;
+
+const GENERATED_APP_ARTIFACT_INLINE_MAX_BYTES = 256 * 1024;
+
+const GENERATED_APP_WORKSPACE_SOURCE_ARTIFACTS = [
+  {
+    artifactId: 'source-package-json',
+    label: 'package.json',
+    kind: 'workspace_source_file',
+    path: 'package.json',
+    contentType: 'application/json',
+  },
+  {
+    artifactId: 'source-index-html',
+    label: 'index.html',
+    kind: 'workspace_source_file',
+    path: 'index.html',
+    contentType: 'text/html',
+  },
+  {
+    artifactId: 'source-app-tsx',
+    label: 'src/App.tsx',
+    kind: 'workspace_source_file',
+    path: 'src/App.tsx',
+    contentType: 'text/typescript',
+  },
+  {
+    artifactId: 'source-main-tsx',
+    label: 'src/main.tsx',
+    kind: 'workspace_source_file',
+    path: 'src/main.tsx',
+    contentType: 'text/typescript',
+  },
+  {
+    artifactId: 'source-app-spec-ts',
+    label: 'src/generated-app/app-spec.ts',
+    kind: 'workspace_source_file',
+    path: 'src/generated-app/app-spec.ts',
+    contentType: 'text/typescript',
+  },
+  {
+    artifactId: 'source-static-contracts-ts',
+    label: 'src/generated-app/static-contracts.ts',
+    kind: 'workspace_source_file',
+    path: 'src/generated-app/static-contracts.ts',
+    contentType: 'text/typescript',
+  },
+  {
+    artifactId: 'source-runtime-ts',
+    label: 'src/generated-app/runtime.ts',
+    kind: 'workspace_source_file',
+    path: 'src/generated-app/runtime.ts',
+    contentType: 'text/typescript',
+  },
+  {
+    artifactId: 'test-runtime-contract-spec',
+    label: 'src/generated-app/__tests__/runtime.contract.spec.ts',
+    kind: 'workspace_test_file',
+    path: 'src/generated-app/__tests__/runtime.contract.spec.ts',
+    contentType: 'text/typescript',
+  },
+  {
+    artifactId: 'test-runtime-golden-spec',
+    label: 'src/generated-app/__tests__/runtime.golden.spec.tsx',
+    kind: 'workspace_test_file',
+    path: 'src/generated-app/__tests__/runtime.golden.spec.tsx',
+    contentType: 'text/typescript',
+  },
+] as const satisfies ReadonlyArray<{
+  artifactId: string;
+  label: string;
+  kind: Extract<
+    GeneratedAppArtifactKind,
+    'workspace_source_file' | 'workspace_test_file'
+  >;
+  path: string;
+  contentType: string;
+}>;
+
+const GENERATED_APP_WORKSPACE_ARTIFACT_PATH_FIELDS = [
+  {
+    field: 'sourceManifest',
+    artifactId: 'gate-3-source-manifest',
+    label: 'Gate 3 source manifest',
+    kind: 'source_manifest',
+    contentType: 'application/json',
+  },
+  {
+    field: 'sourceArchive',
+    artifactId: 'gate-3-source-artifact-manifest',
+    label: 'Gate 3 source artifact manifest',
+    kind: 'source_artifact_manifest',
+    contentType: 'application/json',
+  },
+  {
+    field: 'buildOutput',
+    artifactId: 'gate-3-build-output-html',
+    label: 'Gate 3 build output',
+    kind: 'build_output',
+    contentType: 'text/html',
+  },
+  {
+    field: 'buildManifest',
+    artifactId: 'gate-3-build-manifest',
+    label: 'Gate 3 build manifest',
+    kind: 'build_manifest',
+    contentType: 'application/json',
+  },
+  {
+    field: 'unitReport',
+    artifactId: 'gate-3-unit-test-report',
+    label: 'Gate 3 unit test report',
+    kind: 'unit_test_report',
+    contentType: 'application/json',
+  },
+  {
+    field: 'componentGoldenReport',
+    artifactId: 'gate-3-component-golden-report',
+    label: 'Gate 3 component/golden report',
+    kind: 'component_golden_report',
+    contentType: 'application/json',
+  },
+  {
+    field: 'coverageSummary',
+    artifactId: 'gate-3-coverage-summary',
+    label: 'Gate 3 coverage summary',
+    kind: 'coverage_summary',
+    contentType: 'application/json',
+  },
+] as const satisfies ReadonlyArray<{
+  field: keyof GeneratedAppGenerationWorkspaceContract['artifactPaths'];
+  artifactId: string;
+  label: string;
+  kind: Exclude<
+    GeneratedAppArtifactKind,
+    'workspace_source_file' | 'workspace_test_file' | 'typecheck_report'
+  >;
+  contentType: string;
+}>;
+
+const GENERATED_APP_DERIVED_GATE_3_ARTIFACTS = [
+  {
+    artifactId: 'gate-3-typecheck-report',
+    label: 'Gate 3 typecheck report',
+    kind: 'typecheck_report',
+    path: 'artifacts/gate-3/typecheck-report.json',
+    contentType: 'application/json',
+  },
+] as const satisfies ReadonlyArray<{
+  artifactId: string;
+  label: string;
+  kind: Extract<GeneratedAppArtifactKind, 'typecheck_report'>;
+  path: string;
+  contentType: string;
+}>;
+
+const GENERATED_APP_BUILD_UNIT_EXECUTION_LEVELS = [
+  'contract-skeleton',
+  'real-local-command-plan',
+  'fixture-execution',
+  'disabled-execution',
+] as const satisfies ReadonlyArray<GeneratedAppBuildUnitPlan['executionLevel']>;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
 
 const GATE_3_SKELETON_EVIDENCE_NOTE =
   'Gate 3 contract-skeleton 只检查计划完整性；fixture-execution 不执行真实命令；real-local-command-plan 才表示受控本地命令已执行。';
@@ -954,6 +1133,206 @@ export class GeneratedAppService {
     return getTenantDb(this.db);
   }
 
+  private resolveWorkspaceRoot(): string {
+    const configuredRoot =
+      this.configService.get<string>('GENERATED_APP_WORKSPACE_ROOT') ??
+      this.configService.get<string>('APP_GENERATED_APP_WORKSPACE_ROOT');
+
+    return resolve(
+      configuredRoot && configuredRoot.trim().length > 0
+        ? configuredRoot
+        : join(tmpdir(), 'agentloom-generated-app-workspaces'),
+    );
+  }
+
+  private resolveArtifactWorkspaceContext(app: GeneratedApp): {
+    workspace: GeneratedAppGenerationWorkspaceContract;
+    workspacePath: string;
+    executionLevel: GeneratedAppBuildUnitPlan['executionLevel'];
+  } | null {
+    const buildUnitPlan = this.resolveArtifactBuildUnitPlan(app);
+    const workspace = buildUnitPlan?.generationWorkspace;
+
+    if (!workspace) {
+      return null;
+    }
+
+    try {
+      const workspacePath = this.resolveSafeRelativePathInside(
+        this.resolveWorkspaceRoot(),
+        workspace.relativePath,
+      );
+
+      return {
+        workspace,
+        workspacePath,
+        executionLevel: buildUnitPlan.executionLevel,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  private resolveArtifactBuildUnitPlan(
+    app: GeneratedApp,
+  ): GeneratedAppBuildUnitPlan | null {
+    const generationPlan = app.generationPlan;
+
+    if (!isRecord(generationPlan)) {
+      return null;
+    }
+
+    const buildUnitPlan = generationPlan.buildUnitPlan;
+
+    if (!isRecord(buildUnitPlan)) {
+      return null;
+    }
+
+    if (
+      !GENERATED_APP_BUILD_UNIT_EXECUTION_LEVELS.includes(
+        buildUnitPlan.executionLevel as GeneratedAppBuildUnitPlan['executionLevel'],
+      )
+    ) {
+      return null;
+    }
+
+    const workspace = buildUnitPlan.generationWorkspace;
+
+    if (!isRecord(workspace) || !isRecord(workspace.artifactPaths)) {
+      return null;
+    }
+
+    const artifactPaths = workspace.artifactPaths;
+
+    if (
+      !isNonEmptyString(workspace.workspaceId) ||
+      !isNonEmptyString(workspace.rootLabel) ||
+      !isNonEmptyString(workspace.relativePath) ||
+      !isNonEmptyString(workspace.scaffold) ||
+      !GENERATED_APP_WORKSPACE_ARTIFACT_PATH_FIELDS.every((definition) =>
+        isNonEmptyString(artifactPaths[definition.field]),
+      )
+    ) {
+      return null;
+    }
+
+    return buildUnitPlan as unknown as GeneratedAppBuildUnitPlan;
+  }
+
+  private buildArtifactDefinitions(
+    workspace: GeneratedAppGenerationWorkspaceContract,
+  ): Array<{
+    artifactId: string;
+    label: string;
+    kind: GeneratedAppArtifactKind;
+    path: string;
+    contentType: string;
+  }> {
+    return [
+      ...GENERATED_APP_WORKSPACE_SOURCE_ARTIFACTS,
+      ...GENERATED_APP_WORKSPACE_ARTIFACT_PATH_FIELDS.map((definition) => ({
+        artifactId: definition.artifactId,
+        label: definition.label,
+        kind: definition.kind,
+        path: workspace.artifactPaths[definition.field],
+        contentType: definition.contentType,
+      })),
+      ...GENERATED_APP_DERIVED_GATE_3_ARTIFACTS,
+    ];
+  }
+
+  private async toArtifactSummaryDto(
+    workspacePath: string,
+    definition: {
+      artifactId: string;
+      label: string;
+      kind: GeneratedAppArtifactKind;
+      path: string;
+      contentType: string;
+    },
+  ): Promise<GeneratedAppArtifactSummaryDto> {
+    let materialized = false;
+    let sizeBytes: number | null = null;
+    let updatedAt: Date | null = null;
+
+    try {
+      const filePath = this.resolveArtifactFilePath(
+        workspacePath,
+        definition.path,
+      );
+      const fileStat = await stat(filePath);
+
+      if (fileStat.isFile()) {
+        materialized = true;
+        sizeBytes = fileStat.size;
+        updatedAt = fileStat.mtime;
+      }
+    } catch {
+      materialized = false;
+      sizeBytes = null;
+      updatedAt = null;
+    }
+
+    return {
+      artifactId: definition.artifactId,
+      label: definition.label,
+      kind: definition.kind,
+      path: definition.path,
+      materialized,
+      sizeBytes,
+      contentType: definition.contentType,
+      readable:
+        materialized &&
+        sizeBytes !== null &&
+        sizeBytes <= GENERATED_APP_ARTIFACT_INLINE_MAX_BYTES,
+      updatedAt,
+    };
+  }
+
+  private resolveArtifactFilePath(
+    workspacePath: string,
+    relativePath: string,
+  ): string {
+    return this.resolveSafeRelativePathInside(workspacePath, relativePath);
+  }
+
+  private resolveSafeRelativePathInside(root: string, relativePath: string) {
+    const trimmedPath = relativePath.trim();
+
+    if (
+      trimmedPath.length === 0 ||
+      trimmedPath.startsWith('/') ||
+      trimmedPath.startsWith('\\') ||
+      trimmedPath.includes('\0') ||
+      trimmedPath.includes('\\')
+    ) {
+      throw new GeneratedAppArtifactNotFoundException(relativePath);
+    }
+
+    const segments = trimmedPath.split('/');
+
+    if (
+      segments.some(
+        (segment) =>
+          segment.length === 0 || segment === '.' || segment === '..',
+      )
+    ) {
+      throw new GeneratedAppArtifactNotFoundException(relativePath);
+    }
+
+    const resolvedRoot = resolve(root);
+    const resolvedPath = resolve(resolvedRoot, trimmedPath);
+
+    if (
+      resolvedPath !== resolvedRoot &&
+      !resolvedPath.startsWith(`${resolvedRoot}${sep}`)
+    ) {
+      throw new GeneratedAppArtifactNotFoundException(relativePath);
+    }
+
+    return resolvedPath;
+  }
+
   async create(
     tenantId: string,
     userId: string,
@@ -1134,6 +1513,98 @@ export class GeneratedAppService {
         '公开提交会先保存本地 deterministic report，并尝试创建异步 Workflow execution。',
       updatedAt: workflow.updatedAt,
     });
+  }
+
+  async getArtifactManifest(
+    tenantId: string,
+    appId: string,
+  ): Promise<GeneratedAppArtifactManifestResponseDto> {
+    const app = await this.findGeneratedAppRecord(tenantId, appId);
+    const workspaceContext = this.resolveArtifactWorkspaceContext(app);
+
+    if (!workspaceContext) {
+      return {
+        workspace: null,
+        artifacts: [],
+        updatedAt: app.updatedAt,
+      };
+    }
+
+    const artifacts = await Promise.all(
+      this.buildArtifactDefinitions(workspaceContext.workspace).map(
+        (definition) =>
+          this.toArtifactSummaryDto(workspaceContext.workspacePath, definition),
+      ),
+    );
+
+    return {
+      workspace: {
+        workspaceId: workspaceContext.workspace.workspaceId,
+        rootLabel: workspaceContext.workspace.rootLabel,
+        relativePath: workspaceContext.workspace.relativePath,
+        scaffold: workspaceContext.workspace.scaffold,
+        executionLevel: workspaceContext.executionLevel,
+        materialized: artifacts.some((artifact) => artifact.materialized),
+      },
+      artifacts,
+      updatedAt: app.updatedAt,
+    };
+  }
+
+  async getArtifactContent(
+    tenantId: string,
+    appId: string,
+    artifactId: string,
+  ): Promise<GeneratedAppArtifactContentResponseDto> {
+    const app = await this.findGeneratedAppRecord(tenantId, appId);
+    const workspaceContext = this.resolveArtifactWorkspaceContext(app);
+
+    if (!workspaceContext) {
+      throw new GeneratedAppArtifactNotFoundException(artifactId);
+    }
+
+    const definition = this.buildArtifactDefinitions(
+      workspaceContext.workspace,
+    ).find((artifact) => artifact.artifactId === artifactId);
+
+    if (!definition) {
+      throw new GeneratedAppArtifactNotFoundException(artifactId);
+    }
+
+    const summary = await this.toArtifactSummaryDto(
+      workspaceContext.workspacePath,
+      definition,
+    );
+
+    if (!summary.materialized) {
+      throw new GeneratedAppArtifactNotFoundException(artifactId);
+    }
+
+    if (
+      summary.sizeBytes !== null &&
+      summary.sizeBytes > GENERATED_APP_ARTIFACT_INLINE_MAX_BYTES
+    ) {
+      throw new GeneratedAppArtifactTooLargeException(
+        artifactId,
+        GENERATED_APP_ARTIFACT_INLINE_MAX_BYTES,
+      );
+    }
+
+    if (!summary.readable) {
+      throw new GeneratedAppArtifactNotFoundException(artifactId);
+    }
+
+    const filePath = this.resolveArtifactFilePath(
+      workspaceContext.workspacePath,
+      definition.path,
+    );
+    const content = await readFile(filePath, 'utf8');
+
+    return {
+      artifact: summary,
+      content,
+      truncated: false,
+    };
   }
 
   async recordGateResults(

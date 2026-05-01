@@ -6,6 +6,8 @@ export {
   disableGeneratedAppPublicShare,
   enableGeneratedAppPublicShare,
   getGeneratedApp,
+  getGeneratedAppArtifactContent,
+  getGeneratedAppArtifactManifest,
   getGeneratedAppRuntimeBindingReadiness,
   listGeneratedAppGateRuns,
   listGeneratedAppGenerationRuns,
@@ -22,6 +24,8 @@ export {
 export { generatedAppKeys } from './generatedAppKeys'
 export {
   useGeneratedApp,
+  useGeneratedAppArtifactContent,
+  useGeneratedAppArtifactManifest,
   useGeneratedAppGateRuns,
   useGeneratedAppGenerationRuns,
   useGeneratedAppRuntimeBindingReadiness,

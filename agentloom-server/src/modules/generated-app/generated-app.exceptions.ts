@@ -67,3 +67,25 @@ export class GeneratedAppSubmissionNotFoundException extends DomainException {
     });
   }
 }
+
+export class GeneratedAppArtifactNotFoundException extends DomainException {
+  constructor(id: string) {
+    super({
+      type: 'https://agentloom.dev/errors/generated-app-artifact-not-found',
+      title: '生成应用交付物不存在',
+      status: HttpStatus.NOT_FOUND,
+      detail: `生成应用交付物 ${id} 不存在、尚未物化或无权访问`,
+    });
+  }
+}
+
+export class GeneratedAppArtifactTooLargeException extends DomainException {
+  constructor(id: string, maxBytes: number) {
+    super({
+      type: 'https://agentloom.dev/errors/generated-app-artifact-too-large',
+      title: '生成应用交付物过大',
+      status: HttpStatus.PAYLOAD_TOO_LARGE,
+      detail: `生成应用交付物 ${id} 超过 ${maxBytes} 字节，不能以内联文本方式读取`,
+    });
+  }
+}

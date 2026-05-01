@@ -1,4 +1,8 @@
 import { ConfigService } from '@nestjs/config';
+import * as crypto from 'node:crypto';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { DrizzleDB } from '../../../database/database.module';
@@ -19,6 +23,8 @@ import type {
   WorkflowDefinition,
 } from '../../../database/schema';
 import {
+  GeneratedAppArtifactNotFoundException,
+  GeneratedAppArtifactTooLargeException,
   GeneratedAppNotFoundException,
   GeneratedAppPublicShareNotReadyException,
   GeneratedAppSubmissionNotFoundException,
@@ -622,6 +628,77 @@ function createWorkflowDefinitionReadinessRow(
   };
 }
 
+function createGeneratedAppWithGate3Workspace(
+  overrides: Partial<GeneratedApp> = {},
+): GeneratedApp {
+  const baseApp = createGeneratedApp();
+  const gate3Runner = new GeneratedAppGate3WorkspaceRunner(
+    createConfigService(),
+  );
+  const serviceInternals = serviceAccessForPlans();
+  const generationPlan = serviceInternals.buildGenerationPlan(baseApp.appSpec);
+  const staticContracts = serviceInternals.buildStaticContracts(
+    baseApp.appSpec,
+    generationPlan,
+  );
+  const workspace = gate3Runner.buildWorkspaceContract({
+    tenantId: TENANT_ID,
+    appId: APP_ID,
+    generationRunId: GENERATION_RUN_ID,
+    appSpec: baseApp.appSpec,
+    staticContracts,
+  });
+  const commandPlan = gate3Runner.buildCommandPlan({
+    workspace,
+    requirementIds: baseApp.appSpec.coreRequirements.map(
+      (requirement) => requirement.id,
+    ),
+    scenarioIds: baseApp.appSpec.acceptanceScenarios.map(
+      (scenario) => scenario.id,
+    ),
+  });
+  const buildUnitPlan = serviceInternals.buildBuildUnitPlan(
+    baseApp.appSpec,
+    generationPlan,
+    staticContracts,
+    workspace,
+    commandPlan,
+    'real-local-command-plan',
+  );
+
+  return createGeneratedApp({
+    ...overrides,
+    generationPlan: {
+      ...generationPlan,
+      staticContracts,
+      buildUnitPlan,
+    },
+  });
+}
+
+function serviceAccessForPlans() {
+  return new GeneratedAppService(
+    mockTenantDb as unknown as DrizzleDB,
+    createConfigService(),
+  ) as unknown as {
+    buildGenerationPlan(
+      appSpec: GeneratedApp['appSpec'],
+    ): GeneratedAppGenerationPlan;
+    buildStaticContracts(
+      appSpec: GeneratedApp['appSpec'],
+      generationPlan: GeneratedAppGenerationPlan,
+    ): GeneratedAppStaticContracts;
+    buildBuildUnitPlan(
+      appSpec: GeneratedApp['appSpec'],
+      generationPlan: GeneratedAppGenerationPlan,
+      staticContracts: GeneratedAppStaticContracts,
+      generationWorkspace?: GeneratedAppBuildUnitPlan['generationWorkspace'],
+      commandPlan?: GeneratedAppBuildUnitPlan['commandPlan'],
+      executionLevel?: GeneratedAppBuildUnitPlan['executionLevel'],
+    ): GeneratedAppBuildUnitPlan;
+  };
+}
+
 describe('GeneratedAppService', () => {
   let service: GeneratedAppService;
 
@@ -792,6 +869,190 @@ describe('GeneratedAppService', () => {
       }),
     );
     expect(JSON.stringify(response)).not.toContain('manual-runtime-workflow');
+  });
+
+  it('artifact manifest 应返回受控 Gate 3 workspace 源码与测试交付物清单', async () => {
+    const workspaceRoot = join(
+      tmpdir(),
+      `agentloom-generated-app-artifact-manifest-${crypto.randomUUID()}`,
+    );
+    const artifactService = new GeneratedAppService(
+      mockTenantDb as unknown as DrizzleDB,
+      createConfigService({
+        GENERATED_APP_WORKSPACE_ROOT: workspaceRoot,
+      }),
+    );
+    const app = createGeneratedAppWithGate3Workspace();
+    const workspace = app.generationPlan?.buildUnitPlan?.generationWorkspace;
+
+    if (!workspace) {
+      throw new Error('test fixture missing workspace');
+    }
+
+    await mkdir(join(workspaceRoot, workspace.relativePath, 'src'), {
+      recursive: true,
+    });
+    await writeFile(
+      join(workspaceRoot, workspace.relativePath, 'src/App.tsx'),
+      'export function App() { return null; }\n',
+      'utf8',
+    );
+
+    mockTenantDb.select.mockReturnValueOnce(createSelectChain([app]));
+
+    const response = await artifactService.getArtifactManifest(
+      TENANT_ID,
+      APP_ID,
+    );
+
+    expect(response.workspace).toEqual(
+      expect.objectContaining({
+        workspaceId: workspace.workspaceId,
+        rootLabel: 'generated-app-workspaces',
+        relativePath: workspace.relativePath,
+        scaffold: 'react-vite-typescript',
+        executionLevel: 'real-local-command-plan',
+        materialized: true,
+      }),
+    );
+    expect(response.artifacts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          artifactId: 'source-app-tsx',
+          path: 'src/App.tsx',
+          materialized: true,
+          readable: true,
+          contentType: 'text/typescript',
+        }),
+        expect.objectContaining({
+          artifactId: 'gate-3-unit-test-report',
+          path: 'artifacts/gate-3/unit-test-report.json',
+          materialized: false,
+        }),
+      ]),
+    );
+    expect(JSON.stringify(response)).not.toContain(workspaceRoot);
+
+    await rm(workspaceRoot, { recursive: true, force: true });
+  });
+
+  it('artifact content 应只按 artifact id 读取受控 workspace 文件内容', async () => {
+    const workspaceRoot = join(
+      tmpdir(),
+      `agentloom-generated-app-artifact-content-${crypto.randomUUID()}`,
+    );
+    const artifactService = new GeneratedAppService(
+      mockTenantDb as unknown as DrizzleDB,
+      createConfigService({
+        GENERATED_APP_WORKSPACE_ROOT: workspaceRoot,
+      }),
+    );
+    const app = createGeneratedAppWithGate3Workspace();
+    const workspace = app.generationPlan?.buildUnitPlan?.generationWorkspace;
+
+    if (!workspace) {
+      throw new Error('test fixture missing workspace');
+    }
+
+    await mkdir(join(workspaceRoot, workspace.relativePath, 'src'), {
+      recursive: true,
+    });
+    await writeFile(
+      join(workspaceRoot, workspace.relativePath, 'src/App.tsx'),
+      'export function App() { return <main />; }\n',
+      'utf8',
+    );
+
+    mockTenantDb.select.mockReturnValueOnce(createSelectChain([app]));
+
+    const response = await artifactService.getArtifactContent(
+      TENANT_ID,
+      APP_ID,
+      'source-app-tsx',
+    );
+
+    expect(response.artifact).toEqual(
+      expect.objectContaining({
+        artifactId: 'source-app-tsx',
+        path: 'src/App.tsx',
+        materialized: true,
+        readable: true,
+      }),
+    );
+    expect(response.content).toContain('export function App()');
+    expect(response.truncated).toBe(false);
+    expect(JSON.stringify(response)).not.toContain(workspaceRoot);
+
+    await rm(workspaceRoot, { recursive: true, force: true });
+  });
+
+  it('artifact content 对未知 artifact id 应拒绝任意路径读取', async () => {
+    const workspaceRoot = join(
+      tmpdir(),
+      `agentloom-generated-app-artifact-unknown-${crypto.randomUUID()}`,
+    );
+    const artifactService = new GeneratedAppService(
+      mockTenantDb as unknown as DrizzleDB,
+      createConfigService({
+        GENERATED_APP_WORKSPACE_ROOT: workspaceRoot,
+      }),
+    );
+    const app = createGeneratedAppWithGate3Workspace();
+
+    mockTenantDb.select.mockReturnValueOnce(createSelectChain([app]));
+
+    await expect(
+      artifactService.getArtifactContent(TENANT_ID, APP_ID, '../secret'),
+    ).rejects.toBeInstanceOf(GeneratedAppArtifactNotFoundException);
+  });
+
+  it('artifact content 对超出内联限制的产物应返回过大错误', async () => {
+    const workspaceRoot = join(
+      tmpdir(),
+      `agentloom-generated-app-artifact-large-${crypto.randomUUID()}`,
+    );
+    const artifactService = new GeneratedAppService(
+      mockTenantDb as unknown as DrizzleDB,
+      createConfigService({
+        GENERATED_APP_WORKSPACE_ROOT: workspaceRoot,
+      }),
+    );
+    const app = createGeneratedAppWithGate3Workspace();
+    const workspace = app.generationPlan?.buildUnitPlan?.generationWorkspace;
+
+    if (!workspace) {
+      throw new Error('test fixture missing workspace');
+    }
+
+    await mkdir(join(workspaceRoot, workspace.relativePath, 'src'), {
+      recursive: true,
+    });
+    await writeFile(
+      join(workspaceRoot, workspace.relativePath, 'src/App.tsx'),
+      'x'.repeat(256 * 1024 + 1),
+      'utf8',
+    );
+
+    mockTenantDb.select.mockReturnValueOnce(createSelectChain([app]));
+
+    await expect(
+      artifactService.getArtifactContent(TENANT_ID, APP_ID, 'source-app-tsx'),
+    ).rejects.toBeInstanceOf(GeneratedAppArtifactTooLargeException);
+
+    await rm(workspaceRoot, { recursive: true, force: true });
+  });
+
+  it('artifact manifest 对未生成 workspace 的应用应返回空清单', async () => {
+    const app = createGeneratedApp({ generationPlan: null });
+    mockTenantDb.select.mockReturnValueOnce(createSelectChain([app]));
+
+    const response = await service.getArtifactManifest(TENANT_ID, APP_ID);
+
+    expect(response).toEqual({
+      workspace: null,
+      artifacts: [],
+      updatedAt: app.updatedAt,
+    });
   });
 
   async function startGenerationRunWithGate3Result(

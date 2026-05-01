@@ -1,6 +1,8 @@
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
 import {
   getGeneratedApp,
+  getGeneratedAppArtifactContent,
+  getGeneratedAppArtifactManifest,
   getGeneratedAppRuntimeBindingReadiness,
   getGeneratedAppSubmission,
   getGeneratedAppPublicSubmission,
@@ -72,6 +74,28 @@ export function useGeneratedAppRuntimeBindingReadiness(
     queryKey: generatedAppKeys.runtimeBindingReadiness(appId ?? ''),
     queryFn: () => getGeneratedAppRuntimeBindingReadiness(appId ?? ''),
     enabled: !!appId,
+    staleTime: GENERATED_APP_STALE_TIME,
+  })
+}
+
+export function useGeneratedAppArtifactManifest(appId: string | undefined) {
+  return useQuery({
+    queryKey: generatedAppKeys.artifactManifest(appId ?? ''),
+    queryFn: () => getGeneratedAppArtifactManifest(appId ?? ''),
+    enabled: !!appId,
+    staleTime: GENERATED_APP_STALE_TIME,
+  })
+}
+
+export function useGeneratedAppArtifactContent(
+  appId: string | undefined,
+  artifactId: string | undefined,
+) {
+  return useQuery({
+    queryKey: generatedAppKeys.artifactContent(appId ?? '', artifactId ?? ''),
+    queryFn: () =>
+      getGeneratedAppArtifactContent(appId ?? '', artifactId ?? ''),
+    enabled: !!appId && !!artifactId,
     staleTime: GENERATED_APP_STALE_TIME,
   })
 }

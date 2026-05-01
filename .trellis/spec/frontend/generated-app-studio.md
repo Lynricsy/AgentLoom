@@ -18,6 +18,8 @@
   - `createGeneratedApp({ prompt })`
   - `listGeneratedApps({ page?, pageSize?, status? })`
   - `getGeneratedApp(appId)`
+  - `getGeneratedAppArtifactManifest(appId)`
+  - `getGeneratedAppArtifactContent(appId, artifactId)`
   - `getGeneratedAppPublicRuntime(token)`
   - `startGeneratedAppGenerationRun(appId, { triggerSource?, maxRepairAttempts?, maxRuntimeSeconds? })`
   - `listGeneratedAppSubmissions(appId, { page?, pageSize?, status? })`
@@ -38,6 +40,8 @@
   - `generatedAppKeys.lists()`
   - `generatedAppKeys.list(params)`
   - `generatedAppKeys.detail(appId)`
+  - `generatedAppKeys.artifactManifest(appId)`
+  - `generatedAppKeys.artifactContent(appId, artifactId)`
   - `generatedAppKeys.generationRunLists(appId)`
   - `generatedAppKeys.generationRunList(appId, params)`
   - `generatedAppKeys.repairAttemptLists(appId, generationRunId)`
@@ -79,6 +83,15 @@ app.readiness.state === "publish_candidate" &&
   - `/generated-apps/$appId` exposes a creator primary action for running or rerunning automatic generation and verification.
   - The start-run mutation must write the returned `app` into the detail cache and invalidate generated app lists, runtime binding readiness, generation-run lists, Gate-run lists, and the selected run's repair-attempt list when a run id is returned.
   - Starting a generation run must not enable public sharing by itself. Public-share enable/regenerate controls still rely only on backend `readiness.state === 'publish_candidate' && readiness.canCreatePublicShare === true`.
+- Creator artifact delivery:
+  - `/generated-apps/$appId` contains a creator-only Artifacts panel backed by `GET /generated-apps/:appId/artifacts` and `GET /generated-apps/:appId/artifacts/:artifactId`.
+  - The panel may show legacy preview/source/test URLs from `app.preview`, but controlled workspace source and test files must come from the artifact manifest/content APIs instead of guessing paths client-side.
+  - Workspace summary may render `rootLabel`, `relativePath`, `scaffold`, and Gate 3 `executionLevel`; it must not render a host absolute workspace path.
+  - Artifact rows show `label`, workspace-relative `path`, kind label, materialized/readable status, and size. Unreadable or unmaterialized artifacts stay disabled and must not trigger content queries.
+  - Selecting a readable artifact calls `useGeneratedAppArtifactContent(appId, artifactId)` and displays inline text content with loading/error/empty states.
+  - `useGeneratedAppArtifactManifest(appId)` is disabled when `appId` is empty. `useGeneratedAppArtifactContent(appId, artifactId)` is disabled until both ids are present.
+  - Start-run and app-changing mutations must invalidate `generatedAppKeys.artifactManifest(appId)` so newly materialized Gate 3 artifacts appear without a full reload.
+  - The public runtime route and public runtime API mapping must not call artifact manifest/content APIs and must not render source/test artifact rows or controlled workspace metadata.
 - Creator resource bindings:
   - `/generated-apps/$appId` displays creator-side professional resource bindings for Agent, Workflow, and plugins.
   - Bound Agent resources link to the existing `/agents/$agentId` professional editor route; bound Workflow resources link to the existing `/workflows/$workflowId` professional editor route. Do not introduce Generated App-specific editor routes for these links.
@@ -149,6 +162,10 @@ app.readiness.state === "publish_candidate" &&
 | Creator selects a generation run                                                          | Fetch repair attempts by `appId + generationRunId` and gate runs with `generationRunId`                                                                         |
 | Creator selects a repair attempt                                                          | Fetch gate runs with both `generationRunId` and `repairAttemptId`                                                                                               |
 | Generation evidence list fetch fails                                                      | Show an error state and retry action; do not fabricate run or gate data                                                                                         |
+| Creator artifact manifest fetch fails                                                     | Show an error state with retry; do not fabricate workspace files                                                                                                 |
+| Creator artifact manifest has `workspace=null` or no artifacts                             | Show an empty state that Gate 3 has no controlled workspace artifacts yet                                                                                        |
+| Creator selects an unreadable or unmaterialized artifact                                   | Keep the content query disabled and show an unavailable state                                                                                                    |
+| Creator artifact content fetch fails                                                      | Show an error state with retry; do not fall back to raw paths or legacy preview URLs                                                                             |
 | `/generated-apps/public/:token` lookup fails                                              | Show an inaccessible/closed public state; do not redirect to login                                                                                              |
 | Public runtime required form fields are empty                                             | Reject locally, mark required fields, and keep the user on the public runtime page                                                                               |
 | Public runtime submission succeeds                                                        | Show terminal-user-readable status, structured report sections, next-step questions, follow-up prompts, boundary notices, and error message from public submission response/detail |
@@ -163,6 +180,7 @@ app.readiness.state === "publish_candidate" &&
 - Good: a public runtime page shows data-use notice, public AppSpec summary, a dynamic business form from `runtimeForm`, optional runtime preview link, and structured public submission report/status without rendering Studio navigation, internal JSON dumps, or the token value.
 - Good: creator detail page shows submission rows and detail JSON panels without rendering `publicShareToken`.
 - Good: creator detail page shows generation runs, repair attempts, and Gate run evidence summaries, while filtering Gate runs by the selected generation run and optional repair attempt.
+- Good: creator detail page shows controlled Gate 3 workspace artifact summaries and previews readable source/test/report content without rendering the host absolute workspace root.
 - Good: creator deletion uses single or batch delete API after confirmation and refreshes submission caches.
 - Good: creator detail page shows Agent and Workflow ids only inside the authenticated workbench, links them to `/agents/$agentId` and `/workflows/$workflowId`, and shows `尚未绑定` without links when ids are absent.
 - Base: a generated app has warning-only readiness; Studio displays trial/warning summary and keeps public share unavailable.
@@ -174,6 +192,7 @@ app.readiness.state === "publish_candidate" &&
 - Bad: Studio treats `/login-required-private` as public because `/login` was checked with `startsWith`.
 - Bad: Studio renders public share token values as a default column in the submissions table.
 - Bad: Studio renders evidence URLs or public token snapshots as default columns in the generation evidence panel.
+- Bad: Studio reads artifact content by passing a raw path or renders controlled workspace source/test artifacts on `/generated-apps/public/$token`.
 - Bad: the built-in public runtime page posts submissions through creator endpoints or renders creator-only submission fields such as tenant id, public token, readiness, gate results, source/test artifacts, or plugin ids.
 - Bad: Studio invents `/generated-apps/:appId/workflow-editor` or another Generated App-specific professional editor route instead of linking to the existing Agent/Workflow editor routes.
 - Bad: Studio renders public runtime resource ids or editor links because `agentDefinitionId` or `workflowDefinitionId` exists on the creator DTO.
@@ -185,6 +204,7 @@ app.readiness.state === "publish_candidate" &&
   - path and camelCase payload for `POST /generated-apps/:appId/generation-runs/start`.
   - paths for creator submission list/detail/single delete/bulk delete.
   - paths for generation run list, repair attempt list, and gate run list filters.
+  - paths for artifact manifest and encoded artifact content ids.
   - public runtime mapping preserves whitelisted `runtimeForm` fields and drops nested creator-only/internal fields.
   - public submission create/detail helper paths and response whitelist behavior.
   - Generated App payload casing remains camelCase unless backend changes.
@@ -192,6 +212,8 @@ app.readiness.state === "publish_candidate" &&
   - share enable writes the detail cache and invalidates list queries.
   - create invalidates list queries.
   - start generation run writes the returned app into detail cache and invalidates list, runtime binding readiness, generation-run, Gate-run, and repair-attempt query keys.
+  - artifact manifest and artifact content queries use their dedicated keys and remain disabled until required ids exist.
+  - start-run and app-changing mutations invalidate artifact manifest keys.
   - public submission create writes and invalidates the public submission detail query key.
   - creator and public submission detail queries poll every 2 seconds only for Workflow handoff `pending | running` and stop polling for terminal or unavailable handoff states.
   - runtime binding readiness query uses `generatedAppKeys.runtimeBindingReadiness(appId)` and is disabled when `appId` is empty.
@@ -208,6 +230,7 @@ app.readiness.state === "publish_candidate" &&
   - public runtime page renders data-use notice, limited AppSpec, optional preview link, dynamic `runtimeForm` controls, required validation, submitted payload, structured result/report sections, and does not render tokens or internal fields.
   - creator submissions panel renders list rows, detail selection, status filter, pagination, delete confirmation, empty state, and error state.
   - creator generation evidence panel renders generation runs, loads repair/gate data after run selection, filters gate data after repair selection, shows failure/evidence summaries, and shows empty/error states.
+  - creator artifact delivery panel renders workspace summary, artifact rows, selected readable content, empty/error states, disabled unreadable artifacts, and does not render host absolute paths.
   - detail page tests either mock the submissions hooks or assert the submissions section renders with an empty state.
   - detail page renders existing Agent/Workflow editor links for bound ids and renders no editor links for missing ids.
 - Route/navigation smoke:
@@ -217,6 +240,19 @@ app.readiness.state === "publish_candidate" &&
   - App sidebar contains a Generated App workbench entry.
 
 ### 7. Wrong vs Correct
+
+Wrong:
+
+```tsx
+const artifactUrl = `/api/v1/generated-apps/${appId}/artifacts?path=${path}`;
+```
+
+Correct:
+
+```tsx
+const manifestQuery = useGeneratedAppArtifactManifest(appId);
+const contentQuery = useGeneratedAppArtifactContent(appId, selectedArtifactId);
+```
 
 Wrong:
 

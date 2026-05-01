@@ -368,6 +368,44 @@ export class GeneratedAppController {
     return { data };
   }
 
+  @Get(':appId/artifacts')
+  @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '查询生成应用受控源码与测试交付物清单' })
+  @ApiResponse({ status: 200, description: '生成应用交付物清单' })
+  @ApiResponse({ status: 404, description: '生成应用任务不存在' })
+  async getArtifactManifest(
+    @Param('appId', ParseUUIDPipe) appId: string,
+    @CurrentTenant() tenantId: string,
+  ) {
+    const data = await this.generatedAppService.getArtifactManifest(
+      tenantId,
+      appId,
+    );
+
+    return { data };
+  }
+
+  @Get(':appId/artifacts/:artifactId')
+  @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '读取生成应用受控源码或测试交付物内容' })
+  @ApiResponse({ status: 200, description: '生成应用交付物内容' })
+  @ApiResponse({ status: 404, description: '交付物不存在或尚未物化' })
+  async getArtifactContent(
+    @Param('appId', ParseUUIDPipe) appId: string,
+    @Param('artifactId') artifactId: string,
+    @CurrentTenant() tenantId: string,
+  ) {
+    const data = await this.generatedAppService.getArtifactContent(
+      tenantId,
+      appId,
+      artifactId,
+    );
+
+    return { data };
+  }
+
   @Get(':appId')
   @Roles('owner', 'admin', 'creator', 'operator', 'viewer')
   @HttpCode(HttpStatus.OK)

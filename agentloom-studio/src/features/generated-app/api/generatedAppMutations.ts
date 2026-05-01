@@ -35,6 +35,9 @@ function syncGeneratedAppQueries(
   queryClient.invalidateQueries({
     queryKey: generatedAppKeys.runtimeBindingReadiness(app.id),
   })
+  queryClient.invalidateQueries({
+    queryKey: generatedAppKeys.artifactManifest(app.id),
+  })
 }
 
 function invalidateGeneratedAppSubmissionQueries(

@@ -9,28 +9,38 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { generatedAppKeys } from './generatedAppKeys'
 import {
+  useGeneratedAppArtifactContent,
+  useGeneratedAppArtifactManifest,
   useGeneratedAppRuntimeBindingReadiness,
   useGeneratedAppPublicSubmission,
   useGeneratedAppSubmission,
 } from './generatedAppQueries'
 import type {
+  GeneratedAppArtifactContent,
+  GeneratedAppArtifactManifest,
   GeneratedAppRuntimeBindingReadiness,
   GeneratedAppPublicSubmission,
   GeneratedAppSubmission,
 } from '../types'
 
 const {
+  getGeneratedAppArtifactContentMock,
+  getGeneratedAppArtifactManifestMock,
   getGeneratedAppRuntimeBindingReadinessMock,
   getGeneratedAppPublicSubmissionMock,
   getGeneratedAppSubmissionMock,
 } = vi.hoisted(() => ({
-    getGeneratedAppRuntimeBindingReadinessMock: vi.fn(),
-    getGeneratedAppPublicSubmissionMock: vi.fn(),
-    getGeneratedAppSubmissionMock: vi.fn(),
-  }))
+  getGeneratedAppArtifactContentMock: vi.fn(),
+  getGeneratedAppArtifactManifestMock: vi.fn(),
+  getGeneratedAppRuntimeBindingReadinessMock: vi.fn(),
+  getGeneratedAppPublicSubmissionMock: vi.fn(),
+  getGeneratedAppSubmissionMock: vi.fn(),
+}))
 
 vi.mock('./generatedAppApi', () => ({
   getGeneratedApp: vi.fn(),
+  getGeneratedAppArtifactContent: getGeneratedAppArtifactContentMock,
+  getGeneratedAppArtifactManifest: getGeneratedAppArtifactManifestMock,
   getGeneratedAppRuntimeBindingReadiness:
     getGeneratedAppRuntimeBindingReadinessMock,
   getGeneratedAppSubmission: getGeneratedAppSubmissionMock,
@@ -155,6 +165,50 @@ function makeRuntimeBindingReadiness(
   }
 }
 
+function makeArtifactManifest(
+  overrides: Partial<GeneratedAppArtifactManifest> = {},
+): GeneratedAppArtifactManifest {
+  return {
+    workspace: {
+      workspaceId: 'generated-app-workspace',
+      rootLabel: 'generated-app-workspaces',
+      relativePath: 'tenants/tenant-1/apps/app-1/runs/run-1',
+      scaffold: 'react-vite-typescript',
+      executionLevel: 'real-local-command-plan',
+      materialized: true,
+    },
+    artifacts: [
+      {
+        artifactId: 'source-app-tsx',
+        label: 'src/App.tsx',
+        kind: 'workspace_source_file',
+        path: 'src/App.tsx',
+        materialized: true,
+        sizeBytes: 64,
+        contentType: 'text/typescript',
+        readable: true,
+        updatedAt: '2026-04-25T02:00:00.000Z',
+      },
+    ],
+    updatedAt: '2026-04-25T02:00:00.000Z',
+    ...overrides,
+  }
+}
+
+function makeArtifactContent(
+  overrides: Partial<GeneratedAppArtifactContent> = {},
+): GeneratedAppArtifactContent {
+  const manifest = makeArtifactManifest()
+  const artifact = manifest.artifacts[0]!
+
+  return {
+    artifact,
+    content: 'export function App() {}',
+    truncated: false,
+    ...overrides,
+  }
+}
+
 describe('generatedAppQueries runtime binding readiness', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -194,6 +248,85 @@ describe('generatedAppQueries runtime binding readiness', () => {
 
     expect(result.current.fetchStatus).toBe('idle')
     expect(getGeneratedAppRuntimeBindingReadinessMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('generatedAppQueries artifact delivery', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('uses the artifact manifest query key when app id is present', async () => {
+    const manifest = makeArtifactManifest()
+    getGeneratedAppArtifactManifestMock.mockResolvedValue(manifest)
+
+    const { Wrapper, queryClient } = createWrapper()
+    const { result } = renderHook(
+      () => useGeneratedAppArtifactManifest('app-artifacts'),
+      { wrapper: Wrapper },
+    )
+
+    await waitFor(() => {
+      expect(result.current.data).toEqual(manifest)
+    })
+
+    expect(getGeneratedAppArtifactManifestMock).toHaveBeenCalledWith(
+      'app-artifacts',
+    )
+    expect(
+      queryClient.getQueryData(
+        generatedAppKeys.artifactManifest('app-artifacts'),
+      ),
+    ).toBe(manifest)
+  })
+
+  it('keeps artifact manifest disabled when app id is empty', () => {
+    const { Wrapper } = createWrapper()
+
+    const { result } = renderHook(
+      () => useGeneratedAppArtifactManifest(undefined),
+      { wrapper: Wrapper },
+    )
+
+    expect(result.current.fetchStatus).toBe('idle')
+    expect(getGeneratedAppArtifactManifestMock).not.toHaveBeenCalled()
+  })
+
+  it('uses app id and artifact id in artifact content query key', async () => {
+    const content = makeArtifactContent()
+    getGeneratedAppArtifactContentMock.mockResolvedValue(content)
+
+    const { Wrapper, queryClient } = createWrapper()
+    const { result } = renderHook(
+      () => useGeneratedAppArtifactContent('app-artifacts', 'source-app-tsx'),
+      { wrapper: Wrapper },
+    )
+
+    await waitFor(() => {
+      expect(result.current.data).toEqual(content)
+    })
+
+    expect(getGeneratedAppArtifactContentMock).toHaveBeenCalledWith(
+      'app-artifacts',
+      'source-app-tsx',
+    )
+    expect(
+      queryClient.getQueryData(
+        generatedAppKeys.artifactContent('app-artifacts', 'source-app-tsx'),
+      ),
+    ).toBe(content)
+  })
+
+  it('keeps artifact content disabled until both app id and artifact id exist', () => {
+    const { Wrapper } = createWrapper()
+
+    const { result } = renderHook(
+      () => useGeneratedAppArtifactContent('app-artifacts', undefined),
+      { wrapper: Wrapper },
+    )
+
+    expect(result.current.fetchStatus).toBe('idle')
+    expect(getGeneratedAppArtifactContentMock).not.toHaveBeenCalled()
   })
 })
 

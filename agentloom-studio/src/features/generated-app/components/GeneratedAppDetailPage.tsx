@@ -1,5 +1,5 @@
 import { Link } from '@tanstack/react-router'
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import {
   AlertTriangle,
   ArrowLeft,
@@ -18,6 +18,8 @@ import { Button } from '@/shared/ui/button'
 import { useToast } from '@/shared/ui/toast'
 import {
   useGeneratedApp,
+  useGeneratedAppArtifactContent,
+  useGeneratedAppArtifactManifest,
   useGeneratedAppRuntimeBindingReadiness,
   useStartGeneratedAppGenerationRun,
 } from '../api'
@@ -37,6 +39,8 @@ import {
 import type {
   GeneratedApp,
   GeneratedAppAcceptanceScenario,
+  GeneratedAppArtifactManifest,
+  GeneratedAppArtifactSummary,
   GeneratedAppGateResult,
   GeneratedAppRuntimeBindingReadiness,
 } from '../types'
@@ -310,6 +314,251 @@ function ArtifactLink({ label, url }: { label: string; url: string | null }) {
           <span className="text-muted-foreground">尚未生成</span>
         )}
       </dd>
+    </div>
+  )
+}
+
+const ARTIFACT_KIND_LABELS = {
+  workspace_source_file: '源码',
+  workspace_test_file: '测试',
+  source_manifest: '源码清单',
+  source_artifact_manifest: '源码交付',
+  build_output: '构建产物',
+  build_manifest: '构建清单',
+  unit_test_report: '单测报告',
+  typecheck_report: '类型检查',
+  component_golden_report: '组件/Golden',
+  coverage_summary: '覆盖率',
+} as const satisfies Record<GeneratedAppArtifactSummary['kind'], string>
+
+function formatArtifactSize(sizeBytes: number | null) {
+  if (sizeBytes === null) {
+    return '未物化'
+  }
+
+  if (sizeBytes < 1024) {
+    return `${sizeBytes} B`
+  }
+
+  if (sizeBytes < 1024 * 1024) {
+    return `${(sizeBytes / 1024).toFixed(1)} KB`
+  }
+
+  return `${(sizeBytes / 1024 / 1024).toFixed(1)} MB`
+}
+
+function GeneratedAppArtifactDeliveryPanel({ appId }: { appId: string }) {
+  const manifestQuery = useGeneratedAppArtifactManifest(appId)
+  const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(
+    null,
+  )
+  const selectedArtifact =
+    manifestQuery.data?.artifacts.find(
+      (artifact) => artifact.artifactId === selectedArtifactId,
+    ) ?? null
+  const contentQuery = useGeneratedAppArtifactContent(
+    appId,
+    selectedArtifact?.readable ? selectedArtifact.artifactId : undefined,
+  )
+
+  if (manifestQuery.isLoading) {
+    return (
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        正在读取受控 workspace 交付物
+      </div>
+    )
+  }
+
+  if (manifestQuery.isError) {
+    return (
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <AlertTriangle className="h-4 w-4 text-amber-300" />
+            交付物清单暂时无法读取。
+          </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            void manifestQuery.refetch()
+          }}
+        >
+          重新读取
+        </Button>
+      </div>
+    )
+  }
+
+  const manifest = manifestQuery.data
+
+  if (!manifest?.workspace || manifest.artifacts.length === 0) {
+    return (
+      <p className="text-sm text-muted-foreground">
+        Gate 3 还没有生成可查看的受控 workspace 交付物。
+      </p>
+    )
+  }
+
+  return (
+    <div className="space-y-4" data-testid="generated-app-artifact-delivery">
+      <ArtifactWorkspaceSummary manifest={manifest} />
+
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+        <div className="min-h-0 overflow-hidden rounded-md border border-border">
+          <div className="border-b border-border px-3 py-2 text-xs font-medium uppercase text-muted-foreground">
+            交付文件
+          </div>
+          <div className="max-h-96 overflow-auto">
+            {manifest.artifacts.map((artifact) => (
+              <button
+                key={artifact.artifactId}
+                type="button"
+                disabled={!artifact.readable}
+                onClick={() => setSelectedArtifactId(artifact.artifactId)}
+                className={cn(
+                  'flex w-full min-w-0 items-start justify-between gap-3 border-b border-border px-3 py-3 text-left last:border-b-0',
+                  selectedArtifactId === artifact.artifactId
+                    ? 'bg-primary/10'
+                    : 'hover:bg-muted/40',
+                  !artifact.readable && 'cursor-not-allowed opacity-60',
+                )}
+              >
+                <span className="min-w-0 space-y-1">
+                  <span className="block break-words text-sm font-medium text-foreground">
+                    {artifact.label}
+                  </span>
+                  <span className="block break-all text-xs text-muted-foreground">
+                    {artifact.path}
+                  </span>
+                </span>
+                <span className="shrink-0 space-y-1 text-right">
+                  <span className="block rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">
+                    {ARTIFACT_KIND_LABELS[artifact.kind]}
+                  </span>
+                  <span className="block text-xs text-muted-foreground">
+                    {formatArtifactSize(artifact.sizeBytes)}
+                  </span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <ArtifactContentPreview
+          artifact={selectedArtifact}
+          isLoading={contentQuery.isLoading}
+          isError={contentQuery.isError}
+          content={contentQuery.data?.content}
+          onRetry={() => {
+            void contentQuery.refetch()
+          }}
+        />
+      </div>
+    </div>
+  )
+}
+
+function ArtifactWorkspaceSummary({
+  manifest,
+}: {
+  manifest: GeneratedAppArtifactManifest
+}) {
+  const workspace = manifest.workspace
+
+  if (!workspace) {
+    return null
+  }
+
+  return (
+    <dl className="grid gap-3 rounded-md border border-border bg-muted/20 p-3 text-xs text-muted-foreground md:grid-cols-3">
+      <div className="min-w-0">
+        <dt>Workspace</dt>
+        <dd className="break-all font-medium text-foreground">
+          {workspace.rootLabel}/{workspace.relativePath}
+        </dd>
+      </div>
+      <div>
+        <dt>Scaffold</dt>
+        <dd className="font-medium text-foreground">{workspace.scaffold}</dd>
+      </div>
+      <div>
+        <dt>Gate 3 执行层级</dt>
+        <dd className="font-medium text-foreground">
+          {workspace.executionLevel ?? '未生成'}
+        </dd>
+      </div>
+    </dl>
+  )
+}
+
+function ArtifactContentPreview({
+  artifact,
+  isLoading,
+  isError,
+  content,
+  onRetry,
+}: {
+  artifact: GeneratedAppArtifactSummary | null
+  isLoading: boolean
+  isError: boolean
+  content: string | undefined
+  onRetry: () => void
+}) {
+  if (!artifact) {
+    return (
+      <div className="flex min-h-56 items-center justify-center rounded-md border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+        选择一个已物化且可读的源码或测试产物查看内容。
+      </div>
+    )
+  }
+
+  if (!artifact.readable) {
+    return (
+      <div className="flex min-h-56 items-center justify-center rounded-md border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+        该交付物尚未物化，或大小超过内联查看限制。
+      </div>
+    )
+  }
+
+  if (isLoading) {
+    return (
+      <div className="flex min-h-56 items-center justify-center rounded-md border border-border p-6 text-sm text-muted-foreground">
+        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+        正在读取 {artifact.label}
+      </div>
+    )
+  }
+
+  if (isError) {
+    return (
+      <div className="flex min-h-56 flex-col items-center justify-center gap-3 rounded-md border border-border p-6 text-center text-sm text-muted-foreground">
+        <span>交付物内容读取失败。</span>
+        <Button variant="outline" size="sm" onClick={onRetry}>
+          重试
+        </Button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="overflow-hidden rounded-md border border-border">
+      <div className="flex flex-col gap-1 border-b border-border px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <h3 className="break-words text-sm font-medium text-foreground">
+            {artifact.label}
+          </h3>
+          <p className="break-all text-xs text-muted-foreground">
+            {artifact.path}
+          </p>
+        </div>
+        <span className="text-xs text-muted-foreground">
+          {formatArtifactSize(artifact.sizeBytes)}
+        </span>
+      </div>
+      <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-words bg-background p-3 text-xs leading-5 text-muted-foreground">
+        {content ?? ''}
+      </pre>
     </div>
   )
 }
@@ -758,16 +1007,22 @@ export function GeneratedAppDetailPage({ appId }: GeneratedAppDetailPageProps) {
 
         <DetailSection
           title="Artifacts"
-          description="预览、源码与测试报告仅在 Studio 创建者工作台展示。"
+          description="预览 URL、受控 workspace 源码与测试报告仅在 Studio 创建者工作台展示。"
         >
-          <dl>
-            <ArtifactLink label="Preview URL" url={app.preview.previewUrl} />
-            <ArtifactLink
-              label="Source artifact"
-              url={app.preview.sourceArtifactUrl}
-            />
-            <ArtifactLink label="Test report" url={app.preview.testReportUrl} />
-          </dl>
+          <div className="space-y-5">
+            <dl>
+              <ArtifactLink label="Preview URL" url={app.preview.previewUrl} />
+              <ArtifactLink
+                label="Source artifact URL"
+                url={app.preview.sourceArtifactUrl}
+              />
+              <ArtifactLink
+                label="Test report URL"
+                url={app.preview.testReportUrl}
+              />
+            </dl>
+            <GeneratedAppArtifactDeliveryPanel appId={app.id} />
+          </div>
         </DetailSection>
 
         <DetailSection

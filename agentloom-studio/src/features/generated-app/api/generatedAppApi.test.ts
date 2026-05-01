@@ -8,6 +8,8 @@ import {
   disableGeneratedAppPublicShare,
   enableGeneratedAppPublicShare,
   getGeneratedApp,
+  getGeneratedAppArtifactContent,
+  getGeneratedAppArtifactManifest,
   getGeneratedAppRuntimeBindingReadiness,
   getGeneratedAppPublicSubmission,
   getGeneratedAppSubmission,
@@ -23,6 +25,7 @@ import {
 } from './generatedAppApi'
 import type {
   GeneratedApp,
+  GeneratedAppArtifactManifest,
   GeneratedAppGateResult,
   GeneratedAppGateRun,
   GeneratedAppGenerationRun,
@@ -110,6 +113,36 @@ function makeGeneratedApp(overrides: Partial<GeneratedApp> = {}): GeneratedApp {
     publicViewCount: 0,
     createdAt: '2026-04-25T00:00:00.000Z',
     updatedAt: '2026-04-25T01:00:00.000Z',
+    ...overrides,
+  }
+}
+
+function makeArtifactManifest(
+  overrides: Partial<GeneratedAppArtifactManifest> = {},
+): GeneratedAppArtifactManifest {
+  return {
+    workspace: {
+      workspaceId: 'generated-app-workspace',
+      rootLabel: 'generated-app-workspaces',
+      relativePath: 'tenants/tenant-1/apps/app-1/runs/run-1',
+      scaffold: 'react-vite-typescript',
+      executionLevel: 'real-local-command-plan',
+      materialized: true,
+    },
+    artifacts: [
+      {
+        artifactId: 'source-app-tsx',
+        label: 'src/App.tsx',
+        kind: 'workspace_source_file',
+        path: 'src/App.tsx',
+        materialized: true,
+        sizeBytes: 64,
+        contentType: 'text/typescript',
+        readable: true,
+        updatedAt: '2026-04-25T02:00:00.000Z',
+      },
+    ],
+    updatedAt: '2026-04-25T02:00:00.000Z',
     ...overrides,
   }
 }
@@ -361,6 +394,36 @@ describe('generatedAppApi', () => {
       'generated-apps/app-detail/runtime-binding-readiness',
     )
     expect(result).toEqual(readiness)
+  })
+
+  it('fetches creator-only generated app artifact manifest', async () => {
+    const manifest = makeArtifactManifest()
+    getMock.mockReturnValue(mockKyJson({ data: manifest }))
+
+    const result = await getGeneratedAppArtifactManifest('app-detail')
+
+    expect(getMock).toHaveBeenCalledWith('generated-apps/app-detail/artifacts')
+    expect(result).toEqual(manifest)
+  })
+
+  it('fetches creator-only generated app artifact content with encoded artifact id', async () => {
+    const manifest = makeArtifactManifest()
+    const content = {
+      artifact: manifest.artifacts[0],
+      content: 'export function App() {}',
+      truncated: false,
+    }
+    getMock.mockReturnValue(mockKyJson({ data: content }))
+
+    const result = await getGeneratedAppArtifactContent(
+      'app-detail',
+      'source app.tsx',
+    )
+
+    expect(getMock).toHaveBeenCalledWith(
+      'generated-apps/app-detail/artifacts/source%20app.tsx',
+    )
+    expect(result).toEqual(content)
   })
 
   it('lists generated app submissions with camelCase query params', async () => {

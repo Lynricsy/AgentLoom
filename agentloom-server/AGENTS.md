@@ -79,6 +79,7 @@ TenantMiddleware (extract tenantId from JWT no-verify; skip when X-Api-Key prese
 ### Generated App public runtime 补充事实
 
 - 公开提交的 `anonymousSessionId` 为空、token-like 或 host-path-like 时由服务端生成 UUID，避免把调用方误填的 secret-looking 标识回显到公开或创建者响应；旧 token、stale token 和轮换前 token 的公开 not-found 错误详情不包含提交的 token 值。
+- 创建者侧 `GET /api/v1/generated-apps/:appId/artifacts` 与 `GET /api/v1/generated-apps/:appId/artifacts/:artifactId` 基于 `generationPlan.buildUnitPlan.generationWorkspace` 读取 Gate 3 受控 workspace 产物，只接受服务端 allowlist artifactId，不接受任意路径；manifest 只返回 `rootLabel/relativePath`、workspace-relative artifact path、materialized/readable/size/contentType 等信息，不返回 host 绝对 workspace root。内容接口仅内联读取不超过 256 KiB 的 UTF-8 文本产物；未知 id、未物化文件、目录、traversal、反斜杠或绝对路径都 fail-closed 为 not found，公开 runtime 不调用也不暴露这些创建者产物接口。
 
 ### Agent 对话补充事实
 

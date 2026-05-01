@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import type {
   GeneratedApp,
+  GeneratedAppBuildUnitPlan,
   GeneratedAppGenerationRun,
   GeneratedAppGateRun,
   GeneratedAppGateRunFailure,
@@ -421,6 +422,49 @@ export interface GeneratedAppRuntimeBindingReadinessResponseDto {
   summary: string;
   notice: string;
   updatedAt: Date;
+}
+
+export type GeneratedAppArtifactKind =
+  | 'workspace_source_file'
+  | 'workspace_test_file'
+  | 'source_manifest'
+  | 'source_artifact_manifest'
+  | 'build_output'
+  | 'build_manifest'
+  | 'unit_test_report'
+  | 'typecheck_report'
+  | 'component_golden_report'
+  | 'coverage_summary';
+
+export interface GeneratedAppArtifactSummaryDto {
+  artifactId: string;
+  label: string;
+  kind: GeneratedAppArtifactKind;
+  path: string;
+  materialized: boolean;
+  sizeBytes: number | null;
+  contentType: string;
+  readable: boolean;
+  updatedAt: Date | null;
+}
+
+export interface GeneratedAppArtifactManifestResponseDto {
+  workspace: {
+    workspaceId: string;
+    rootLabel: string;
+    relativePath: string;
+    scaffold: string;
+    executionLevel: GeneratedAppBuildUnitPlan['executionLevel'] | null;
+    materialized: boolean;
+  } | null;
+  artifacts: GeneratedAppArtifactSummaryDto[];
+  updatedAt: Date;
+}
+
+export interface GeneratedAppArtifactContentResponseDto {
+  artifact: GeneratedAppArtifactSummaryDto;
+  content: string;
+  truncated: boolean;
 }
 
 export interface GeneratedAppGateRunResponseDto {

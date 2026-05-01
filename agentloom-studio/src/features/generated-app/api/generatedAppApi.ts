@@ -5,6 +5,8 @@ import type {
   CreateGeneratedAppPayload,
   DeleteGeneratedAppSubmissionsResponse,
   GeneratedApp,
+  GeneratedAppArtifactContent,
+  GeneratedAppArtifactManifest,
   GeneratedAppGateRunListResponse,
   GeneratedAppGenerationRunListResponse,
   GeneratedAppListResponse,
@@ -344,6 +346,31 @@ export async function getGeneratedAppRuntimeBindingReadiness(
   const response = await apiClient
     .get(`${GENERATED_APPS_PATH}/${appId}/runtime-binding-readiness`)
     .json<ApiResponse<GeneratedAppRuntimeBindingReadiness>>()
+
+  return response.data
+}
+
+export async function getGeneratedAppArtifactManifest(
+  appId: string,
+): Promise<GeneratedAppArtifactManifest> {
+  const response = await apiClient
+    .get(`${GENERATED_APPS_PATH}/${appId}/artifacts`)
+    .json<ApiResponse<GeneratedAppArtifactManifest>>()
+
+  return response.data
+}
+
+export async function getGeneratedAppArtifactContent(
+  appId: string,
+  artifactId: string,
+): Promise<GeneratedAppArtifactContent> {
+  const response = await apiClient
+    .get(
+      `${GENERATED_APPS_PATH}/${appId}/artifacts/${encodeURIComponent(
+        artifactId,
+      )}`,
+    )
+    .json<ApiResponse<GeneratedAppArtifactContent>>()
 
   return response.data
 }

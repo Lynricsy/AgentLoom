@@ -232,6 +232,49 @@ export interface GeneratedAppRuntimeBindingReadiness {
   updatedAt: string
 }
 
+export type GeneratedAppArtifactKind =
+  | 'workspace_source_file'
+  | 'workspace_test_file'
+  | 'source_manifest'
+  | 'source_artifact_manifest'
+  | 'build_output'
+  | 'build_manifest'
+  | 'unit_test_report'
+  | 'typecheck_report'
+  | 'component_golden_report'
+  | 'coverage_summary'
+
+export interface GeneratedAppArtifactSummary {
+  artifactId: string
+  label: string
+  kind: GeneratedAppArtifactKind
+  path: string
+  materialized: boolean
+  sizeBytes: number | null
+  contentType: string
+  readable: boolean
+  updatedAt: string | null
+}
+
+export interface GeneratedAppArtifactManifest {
+  workspace: {
+    workspaceId: string
+    rootLabel: string
+    relativePath: string
+    scaffold: string
+    executionLevel: string | null
+    materialized: boolean
+  } | null
+  artifacts: GeneratedAppArtifactSummary[]
+  updatedAt: string
+}
+
+export interface GeneratedAppArtifactContent {
+  artifact: GeneratedAppArtifactSummary
+  content: string
+  truncated: boolean
+}
+
 export interface GeneratedAppGenerationRun {
   id: string
   tenantId: string

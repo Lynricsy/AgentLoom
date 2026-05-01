@@ -189,6 +189,9 @@ describe('generatedAppMutations', () => {
       expect(invalidateSpy).toHaveBeenCalledWith({
         queryKey: generatedAppKeys.runtimeBindingReadiness('app-created'),
       })
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: generatedAppKeys.artifactManifest('app-created'),
+      })
     })
   })
 
@@ -222,6 +225,9 @@ describe('generatedAppMutations', () => {
       })
       expect(invalidateSpy).toHaveBeenCalledWith({
         queryKey: generatedAppKeys.runtimeBindingReadiness('app-share'),
+      })
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: generatedAppKeys.artifactManifest('app-share'),
       })
     })
   })
@@ -292,6 +298,9 @@ describe('generatedAppMutations', () => {
       })
       expect(invalidateSpy).toHaveBeenCalledWith({
         queryKey: generatedAppKeys.runtimeBindingReadiness('app-runner'),
+      })
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: generatedAppKeys.artifactManifest('app-runner'),
       })
       expect(invalidateSpy).toHaveBeenCalledWith({
         queryKey: generatedAppKeys.repairAttemptLists('app-runner', 'run-1'),

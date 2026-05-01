@@ -111,6 +111,8 @@
   - `POST /generated-apps`
   - `GET /generated-apps`
   - `GET /generated-apps/:appId`
+  - `GET /generated-apps/:appId/artifacts`
+  - `GET /generated-apps/:appId/artifacts/:artifactId`
   - `PATCH /generated-apps/:appId/gates`
   - `GET /generated-apps/:appId/generation-runs?page=&pageSize=&status=`
   - `POST /generated-apps/:appId/generation-runs`
@@ -180,6 +182,14 @@
   - `startedAt` / `completedAt`: optional ISO timestamps.
 - `UpdateGeneratedAppRepairAttemptDto`
   - Allows patching `status`, `failureSummary`, `changeSummary`, `verificationSummary`, `startedAt`, and `completedAt`.
+- `GeneratedAppArtifactManifestResponseDto`
+  - `workspace`: nullable controlled workspace summary with `workspaceId`, `rootLabel`, `relativePath`, `scaffold`, `executionLevel`, and `materialized`.
+  - `artifacts`: array of server-allowlisted artifact summaries. Each summary contains `artifactId`, `label`, `kind`, workspace-relative `path`, `materialized`, nullable `sizeBytes`, `contentType`, `readable`, and nullable `updatedAt`.
+  - `updatedAt`: the owning generated app update time.
+- `GeneratedAppArtifactContentResponseDto`
+  - `artifact`: the same allowlisted artifact summary returned by the manifest endpoint.
+  - `content`: UTF-8 text content for readable inline artifacts.
+  - `truncated`: currently `false`; oversized artifacts fail instead of returning partial content.
 - Canonical gates:
   - `gate-0` requirement spec
   - `gate-1` architecture plan
@@ -230,6 +240,7 @@
   - Gate 3 checks must validate that `buildUnitPlan` binds the current AppSpec, generationPlan, and staticContracts versions; marks `executionLevel` as one of `contract-skeleton | real-local-command-plan | fixture-execution | disabled-execution`; includes the controlled workspace contract and command plan; covers every frontend route, core requirement, acceptance scenario, Gate 2 static contract id, required artifact expectation, plugin build expectation or explicit no-plugin reason, and required failure capture field; and rejects dangling requirement, scenario, route, static contract, coverage target, plugin tool, command id, workspace file, and artifact references.
   - In `real-local-command-plan` mode, Gate 3 must materialize a deterministic React/Vite/TypeScript app scaffold from `AppSpec` and `generationPlan.staticContracts` into the server-controlled workspace, execute controlled local commands, and store evidence with command id, command, exit code, stdout/stderr summaries, duration, artifact refs, and requirement/scenario coverage. The real-local runner must execute only server-authored allowlisted Node script entries with `shell=false`; it must reject unknown command ids, non-matching command strings, absolute script paths, traversal paths, or workspace-relative cwd mismatches before execution. Host absolute workspace paths must be redacted from stdout/stderr summaries, failures, and evidence. In `fixture-execution` mode, evidence must clearly mark `executed=false` and must not be described as a real build/test pass. In `disabled-execution` mode, Gate 3 must fail and stop the generation run.
   - Gate 3 materialization failure or command failure must write failed Gate 3 evidence, keep the attempted `generationPlan.buildUnitPlan`, mark the generation run failed with readable failure and repair instructions, keep Gate 4-7 not passed, and clear any active public token.
+  - Creator-only artifact delivery reads from `generationPlan.buildUnitPlan.generationWorkspace` and the server-controlled workspace root. `GET /generated-apps/:appId/artifacts` returns only the controlled workspace summary and an allowlisted manifest of known Gate 3 source, test, build, typecheck, unit, component/golden, and coverage artifacts; it must not expose the host absolute workspace root. `GET /generated-apps/:appId/artifacts/:artifactId` reads only an allowlisted `artifactId`, never a caller-supplied path, and returns inline UTF-8 content only when the artifact is materialized and no larger than 256 KiB. Missing workspace, unknown artifact id, unmaterialized file, unreadable file, absolute path, Windows path, traversal segment, empty segment, or backslash path all fail closed as `GeneratedAppArtifactNotFoundException`; oversized files fail as `GeneratedAppArtifactTooLargeException`. Public endpoints must never expose or dereference these creator artifact endpoints.
   - If Gate 3 passes, the runner must deterministically derive `generationPlan.integrationPlan` from `AppSpec + generationPlan + staticContracts + buildUnitPlan`, persist the attempted integration plan inside `generated_apps.generation_plan`, execute the deterministic Gate 4 integration plan completeness check, invoke the configured Gate 4 integration runner when the plan is complete, and write one linked `generated_app_gate_runs` row for `gate-4`.
   - The Gate 4 integration runner is selected by `GENERATED_APP_GATE4_EXECUTOR_MODE` or `APP_GENERATED_APP_GATE4_EXECUTOR_MODE`; supported modes are `real`, `fixture`, and `disabled`. The persisted `generationPlan.integrationPlan.executionLevel` must be one of `integration-skeleton | real-local-integration | fixture-integration | disabled-integration` and must match the configured runner level before execution.
   - The persisted `generationPlan.integrationPlan` must include stable contract-level surfaces for current AppSpec/generationPlan/staticContracts/buildUnitPlan version binding, synthetic test tenant and test resource plan without real tokens, public runtime API checks, creator management API checks, Agent/Workflow dry-run fixture expectations, plugin sandbox smoke expectations with explicit empty reason when no plugin is planned, Gate 3 dependency artifacts, acceptance scenario coverage, requirement coverage, orchestration coverage, trace artifacts, and failure capture fields.
@@ -375,11 +386,17 @@
 | Creator list/detail sees rows from another tenant, another app, or soft-deleted rows                                           | Exclude them by SQL filters                                                                                                                                                                                                                                                                                                                                                                       |
 | Creator single delete misses the row in tenant/app scope                                                                       | Return `GeneratedAppSubmissionNotFoundException`                                                                                                                                                                                                                                                                                                                                                  |
 | Creator batch delete includes unknown, duplicate, cross-tenant, cross-app, or already-deleted IDs                              | Ignore non-matching rows and return the actual `deletedCount`                                                                                                                                                                                                                                                                                                                                     |
+| Creator artifact manifest reads an app without a Gate 3 workspace                                                              | Return `workspace=null`, `artifacts=[]`, and the app `updatedAt` instead of fabricating files                                                                                                                                                                                                                                                                                                      |
+| Creator artifact manifest resolves a stored workspace relative path outside the workspace root                                  | Return an empty artifact manifest by treating the workspace as unavailable                                                                                                                                                                                                                                                                                                                         |
+| Creator artifact content receives an unknown `artifactId` or a path-like traversal value                                       | Return `GeneratedAppArtifactNotFoundException`                                                                                                                                                                                                                                                                                                                                                    |
+| Creator artifact content targets an unmaterialized, missing, directory, or unreadable allowlisted artifact                      | Return `GeneratedAppArtifactNotFoundException`                                                                                                                                                                                                                                                                                                                                                    |
+| Creator artifact content targets a materialized artifact larger than 256 KiB                                                    | Return `GeneratedAppArtifactTooLargeException` and do not inline partial content                                                                                                                                                                                                                                                                                                                   |
 
 ### 5. Good / Base / Bad Cases
 
 - Good: the synchronous runner writes linked Gate 0, Gate 1, Gate 2, Gate 3, Gate 4, Gate 5, Gate 6, and Gate 7 evidence when earlier gates pass, persists a structured architecture `generationPlan` plus `generationPlan.staticContracts`, `generationPlan.buildUnitPlan`, `generationPlan.integrationPlan`, `generationPlan.browserAcceptancePlan`, `generationPlan.independentVerificationPlan`, and attempted `generationPlan.publishCandidatePlan`, lets Gate 7 pass only in `real-local-publish-candidate-contract` mode with Gate 3-6 real-local upstream evidence, moves readiness to `publish_candidate` without creating a public token, and keeps Gate 7 failed/non-publishable when Gate 7 is fixture/disabled or upstream evidence is fixture/disabled/skeleton.
 - Good: Gate 3 real-local evidence clearly says the controlled Generation Workspace was materialized and records command, exitCode, stdout/stderr summary, artifact refs, and requirement/scenario coverage for build/typecheck/unit/component-golden commands.
+- Good: creator artifact manifest exposes only controlled workspace labels/relative paths plus allowlisted source/test/report artifact summaries, and artifact content reads by artifact id without leaking the host absolute workspace root.
 - Good: Gate 3 fixture evidence clearly says commands were not executed and cannot be used as a real build/test pass.
 - Good: Gate 4 real-local evidence clearly says the controlled deterministic local contract runner executed public runtime, creator query, Agent/Workflow local trace fixture, and plugin local smoke trace fixture checks, and also says it is not proof of production sandbox execution or real plugin WASM/Extism execution.
 - Good: Gate 5 real-local evidence clearly says the controlled deterministic local DOM/accessibility/network/console contract runner executed and records assertionId, journeyId, viewportId, status, durationMs, artifact refs, console/network summaries, requirement/scenario/staticContract coverage, and Gate 4 trace coverage; it also says it is not proof of a Playwright run, real browser session, real screenshot/video/trace capture, real public-link visit, or full end-to-end browser execution.
@@ -393,6 +410,7 @@
 - Bad: code enables a public link while `readiness.state !== 'publish_candidate'`.
 - Bad: code disables a public link but keeps the old token reusable.
 - Bad: public endpoint returns creator-only fields such as gate results, test report URLs, source artifact URLs, plugin IDs, or permission details.
+- Bad: creator artifact content accepts an arbitrary `path` query/body value or returns host absolute paths in manifest/content responses.
 
 ### 6. Tests Required
 
@@ -416,6 +434,8 @@
   - public submission handles `runWorkflow()` failures without leaking stack traces, tokens, governance details, source/test artifacts, generation plans, gate results, or plugin/internal fields
   - public submission rejects stale or not-ready public apps before insert
   - public submission response does not expose tenant id, public token, readiness, gates, source/test artifacts, or plugin/internal fields
+  - creator artifact manifest returns controlled Gate 3 workspace source/test/report artifact summaries, reports materialized/readable state from the filesystem, returns an empty manifest when no Gate 3 workspace exists, and never exposes the host absolute workspace root
+  - creator artifact content reads only allowlisted artifact ids from the controlled workspace, rejects unknown ids and traversal-like ids, rejects missing/unmaterialized artifacts, returns 413 for files larger than the inline limit, and never uses request-provided paths
   - public submission sanitizes token-like, secret-like, host-path, and unsupported input structures; unprocessable structures persist as failed submissions with generic `errorMessage`
   - stale or old public token errors do not include the submitted token value in problem details
   - creator submission list/detail filter by tenant id, app id, and `deleted_at is null`, and creator detail sees the same `status/result/report/errorMessage` persisted by public submission creation
@@ -472,6 +492,27 @@
 - Run scoped lint, `tsconfig.build.json` typecheck, and targeted tests for any generated-app change.
 
 ### 7. Wrong vs Correct
+
+Wrong:
+
+```ts
+const content = await readFile(req.query.path, 'utf8');
+```
+
+Correct:
+
+```ts
+const definition = buildArtifactDefinitions(workspace).find(
+  (artifact) => artifact.artifactId === artifactId,
+);
+
+if (!definition) {
+  throw new GeneratedAppArtifactNotFoundException(artifactId);
+}
+
+const filePath = resolveSafeRelativePathInside(workspacePath, definition.path);
+const content = await readFile(filePath, 'utf8');
+```
 
 Wrong:
 

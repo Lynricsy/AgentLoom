@@ -15,6 +15,10 @@ export const generatedAppKeys = {
   detail: (appId: string) => [...generatedAppKeys.details(), appId] as const,
   runtimeBindingReadiness: (appId: string) =>
     [...generatedAppKeys.detail(appId), 'runtime-binding-readiness'] as const,
+  artifactManifest: (appId: string) =>
+    [...generatedAppKeys.detail(appId), 'artifacts'] as const,
+  artifactContent: (appId: string, artifactId: string) =>
+    [...generatedAppKeys.artifactManifest(appId), artifactId] as const,
   publicShare: (appId: string) =>
     [...generatedAppKeys.detail(appId), 'public-share'] as const,
   generationRunLists: (appId: string) =>
