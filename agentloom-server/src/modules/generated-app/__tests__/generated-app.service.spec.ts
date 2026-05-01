@@ -5,6 +5,11 @@ import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  computeContentHash as computePluginArchiveContentHash,
+  readArchiveManifest,
+  verifyArchiveSignature as verifyPluginArchiveSignature,
+} from '@agentloom/plugin-sdk';
 
 import type { DrizzleDB } from '../../../database/database.module';
 import type {
@@ -34,6 +39,7 @@ import { createInitialGeneratedAppGateResults } from '../generated-app.gates';
 import { GeneratedAppService } from '../generated-app.service';
 import { WorkflowNotPublishedException } from '../../execution/execution.exceptions';
 import type { ExecutionService } from '../../execution/execution.service';
+import type { PluginService } from '../../plugin/plugin.service';
 import {
   GeneratedAppGate4IntegrationRunner,
   type GeneratedAppGate4RunnerResult,
@@ -68,6 +74,9 @@ const WORKFLOW_EXECUTION_ID = '55555555-5555-4555-8555-555555555557';
 const WORKFLOW_VERSION_ID = '55555555-5555-4555-8555-555555555559';
 const WORKFLOW_DEFINITION_V7_ID = '77777777-7777-7777-8777-777777777776';
 const WORKFLOW_EXECUTION_V7_ID = '77777777-7777-7777-8777-777777777777';
+const GENERATED_PRIVATE_PLUGIN_DB_ID = '77777777-7777-4777-8777-777777777770';
+const GENERATED_PRIVATE_PLUGIN_ID =
+  'com.agentloom.generated.app-33333333-3333-4333-8333-333333333333.tool-guided-intake-analysis';
 const GATE_RUN_ID = '66666666-6666-4666-8666-666666666666';
 const GATE_1_RUN_ID = '66666666-6666-4666-8666-666666666667';
 const GATE_2_RUN_ID = '66666666-6666-4666-8666-666666666668';
@@ -483,6 +492,7 @@ function createGeneratedAppServiceWithExecution(
     undefined,
     undefined,
     undefined,
+    undefined,
     executionService as ExecutionService,
   );
 }
@@ -541,6 +551,60 @@ function createGeneratedAppSubmission(
     deletedAt: null,
     ...overrides,
   };
+}
+
+function createGeneratedPrivatePluginRecord(
+  overrides: Partial<{
+    id: string;
+    pluginId: string;
+    status: 'registered' | 'active' | 'disabled' | 'error';
+    occVersion: number;
+  }> = {},
+) {
+  const id = overrides.id ?? GENERATED_PRIVATE_PLUGIN_DB_ID;
+  const pluginId = overrides.pluginId ?? GENERATED_PRIVATE_PLUGIN_ID;
+
+  return {
+    id,
+    tenantId: TENANT_ID,
+    orgId: '88888888-8888-4888-8888-888888888888',
+    pluginId,
+    name: 'Guided Intake Analysis',
+    version: '1.0.0',
+    author: 'AgentLoom Generated App',
+    description: 'Generated private plugin',
+    license: 'UNLICENSED',
+    status: overrides.status ?? 'active',
+    manifest: {},
+    nodeDefinitions: [],
+    storageKey: null,
+    signature: null,
+    contentHash: null,
+    wasmBundleUrl: null,
+    permissions: [],
+    installedBy: USER_ID,
+    metadata: null,
+    occVersion: overrides.occVersion ?? 1,
+    createdAt: NOW,
+    updatedAt: NOW,
+  };
+}
+
+function createGeneratedPrivatePluginServiceMock(
+  overrides: Partial<PluginService> = {},
+): PluginService {
+  const plugin = createGeneratedPrivatePluginRecord();
+
+  return {
+    findByPluginId: vi.fn().mockResolvedValue(plugin),
+    register: vi.fn().mockResolvedValue(plugin),
+    updateStatus: vi.fn().mockResolvedValue({
+      ...plugin,
+      status: 'active',
+      occVersion: plugin.occVersion + 1,
+    }),
+    ...overrides,
+  } as unknown as PluginService;
 }
 
 function createGeneratedAppGateRun(
@@ -800,6 +864,12 @@ describe('GeneratedAppService', () => {
     service = new GeneratedAppService(
       mockTenantDb as unknown as DrizzleDB,
       configService,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      createGeneratedPrivatePluginServiceMock(),
     );
   });
 
@@ -1002,6 +1072,23 @@ describe('GeneratedAppService', () => {
       'export const runtimeForm = { fields: [] } as const;\n',
       'utf8',
     );
+    await mkdir(
+      join(
+        workspaceRoot,
+        workspace.relativePath,
+        'plugins/tool-guided-intake-analysis',
+      ),
+      { recursive: true },
+    );
+    await writeFile(
+      join(
+        workspaceRoot,
+        workspace.relativePath,
+        'plugins/tool-guided-intake-analysis/agentloom.plugin.json',
+      ),
+      '{"id":"com.agentloom.generated.tool-guided-intake-analysis"}\n',
+      'utf8',
+    );
 
     mockTenantDb.select.mockReturnValueOnce(createSelectChain([app]));
 
@@ -1040,6 +1127,22 @@ describe('GeneratedAppService', () => {
           artifactId: 'gate-3-unit-test-report',
           path: 'artifacts/gate-3/unit-test-report.json',
           materialized: false,
+        }),
+        expect.objectContaining({
+          artifactId: 'plugin-tool-guided-intake-analysis-manifest',
+          path: 'plugins/tool-guided-intake-analysis/agentloom.plugin.json',
+          kind: 'plugin_manifest',
+          materialized: true,
+          readable: true,
+          contentType: 'application/json',
+        }),
+        expect.objectContaining({
+          artifactId: 'plugin-tool-guided-intake-analysis-bundle',
+          path: 'artifacts/gate-3/plugins/tool-guided-intake-analysis.alp',
+          kind: 'plugin_bundle',
+          materialized: false,
+          readable: false,
+          contentType: 'application/zip',
         }),
       ]),
     );
@@ -1177,6 +1280,11 @@ describe('GeneratedAppService', () => {
       mockTenantDb as unknown as DrizzleDB,
       configService,
       gate3Runner,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      createGeneratedPrivatePluginServiceMock(),
     );
     const app = createGeneratedApp({
       status: 'published',
@@ -1319,6 +1427,10 @@ describe('GeneratedAppService', () => {
       configService,
       gate3Runner,
       gate4Runner,
+      undefined,
+      undefined,
+      undefined,
+      createGeneratedPrivatePluginServiceMock(),
     );
     const app = createGeneratedApp({
       status: 'published',
@@ -1987,6 +2099,7 @@ describe('GeneratedAppService', () => {
       { id: WORKFLOW_VERSION_ID },
     ]);
     let workflowBindingUpdatePayload: Partial<GeneratedApp> = {};
+    let privatePluginBindingUpdatePayload: Partial<GeneratedApp> = {};
     const updateAppWorkflowBindingChain = {
       set: vi.fn((payload: Partial<GeneratedApp>) => {
         workflowBindingUpdatePayload = payload;
@@ -1998,6 +2111,21 @@ describe('GeneratedAppService', () => {
           ...app,
           ...gate7UpdatePayload,
           ...workflowBindingUpdatePayload,
+        }),
+      ]),
+    };
+    const updateAppPrivatePluginBindingChain = {
+      set: vi.fn((payload: Partial<GeneratedApp>) => {
+        privatePluginBindingUpdatePayload = payload;
+        return updateAppPrivatePluginBindingChain;
+      }),
+      where: vi.fn().mockReturnThis(),
+      returning: vi.fn(async () => [
+        createGeneratedApp({
+          ...app,
+          ...gate7UpdatePayload,
+          ...workflowBindingUpdatePayload,
+          ...privatePluginBindingUpdatePayload,
         }),
       ]),
     };
@@ -2031,6 +2159,7 @@ describe('GeneratedAppService', () => {
         createUpdateReturningChain([{ id: WORKFLOW_DEFINITION_ID }]),
       )
       .mockReturnValueOnce(updateAppWorkflowBindingChain)
+      .mockReturnValueOnce(updateAppPrivatePluginBindingChain)
       .mockReturnValueOnce(updateRunChain);
 
     const response = await service.startGenerationRun(
@@ -2471,10 +2600,28 @@ describe('GeneratedAppService', () => {
         }),
       ]),
     );
-    expect(appUpdatePayload.generationPlan.pluginTools.tools).toEqual([]);
-    expect(appUpdatePayload.generationPlan.pluginTools.emptyReason).toContain(
-      '当前 AppSpec 未声明',
+    expect(appUpdatePayload.generationPlan.pluginTools.tools).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          toolId: 'tool-guided-intake-analysis',
+          purpose: expect.stringContaining('结构化整理'),
+          requirementIds: ['req-1'],
+          activationPolicy: expect.objectContaining({
+            scope: 'tenant-private',
+            autoActivateAfterHardGates: true,
+            requiredHardGates: expect.arrayContaining([
+              'manifest-validation',
+              'build',
+              'signature-verification',
+              'permission-policy',
+              'sandbox-smoke',
+              'generation-safety-scan',
+            ]),
+          }),
+        }),
+      ]),
     );
+    expect(appUpdatePayload.generationPlan.pluginTools.emptyReason).toBeNull();
     expect(appUpdatePayload.generationPlan.dataPersistence).toEqual(
       expect.objectContaining({
         publicSubmissionsPersisted: true,
@@ -2525,7 +2672,17 @@ describe('GeneratedAppService', () => {
           ]),
         }),
         pluginToolPermissions: expect.objectContaining({
-          emptyReason: expect.stringContaining('当前 AppSpec 未声明'),
+          tools: expect.arrayContaining([
+            expect.objectContaining({
+              toolId: 'tool-guided-intake-analysis',
+              manifestRequired: true,
+              sandboxSmokeTestRequired: true,
+              permissions: expect.arrayContaining([
+                expect.stringContaining('manifest.permissions 必须为空数组'),
+              ]),
+            }),
+          ]),
+          emptyReason: null,
           implicitPermissionsAllowed: false,
         }),
         submissionPersistence: expect.objectContaining({
@@ -2581,6 +2738,18 @@ describe('GeneratedAppService', () => {
             expect.objectContaining({ path: 'package.json' }),
             expect.objectContaining({ path: 'src/App.tsx' }),
             expect.objectContaining({ path: 'scripts/gate3-build.mjs' }),
+            expect.objectContaining({
+              path: 'scripts/gate3-plugin-build.mjs',
+            }),
+            expect.objectContaining({
+              path: 'plugins/tool-guided-intake-analysis/agentloom.plugin.json',
+            }),
+            expect.objectContaining({
+              path: 'plugins/tool-guided-intake-analysis/node-definitions.json',
+            }),
+            expect.objectContaining({
+              path: 'plugins/tool-guided-intake-analysis/src/index.ts',
+            }),
           ]),
           artifactPaths: expect.objectContaining({
             sourceManifest: 'artifacts/gate-3/source-manifest.json',
@@ -2608,6 +2777,11 @@ describe('GeneratedAppService', () => {
             commandId: 'gate-3-component-golden-test-entry',
             command: 'node scripts/gate3-component-golden.mjs',
             producesArtifactIds: ['component-golden-report', 'coverage-report'],
+          }),
+          expect.objectContaining({
+            commandId: 'gate-3-plugin-build-command',
+            command: 'node scripts/gate3-plugin-build.mjs',
+            producesArtifactIds: ['plugin-bundle-tool-guided-intake-analysis'],
           }),
         ]),
         frontendBuild: expect.objectContaining({
@@ -2642,6 +2816,12 @@ describe('GeneratedAppService', () => {
             artifactId: 'coverage-report',
             required: true,
           }),
+          expect.objectContaining({
+            artifactId: 'plugin-bundle-tool-guided-intake-analysis',
+            kind: 'plugin_bundle',
+            path: 'artifacts/gate-3/plugins/tool-guided-intake-analysis.alp',
+            required: true,
+          }),
         ]),
         staticContractsCoverage: expect.arrayContaining([
           expect.objectContaining({
@@ -2661,10 +2841,29 @@ describe('GeneratedAppService', () => {
           }),
         ],
         pluginBuildExpectations: expect.objectContaining({
-          tools: [],
-          emptyReason: expect.stringContaining(
-            '当前 generationPlan.pluginTools',
-          ),
+          tools: expect.arrayContaining([
+            expect.objectContaining({
+              toolId: 'tool-guided-intake-analysis',
+              command: 'node scripts/gate3-plugin-build.mjs',
+              manifestPath:
+                'plugins/tool-guided-intake-analysis/agentloom.plugin.json',
+              nodeDefinitionsPath:
+                'plugins/tool-guided-intake-analysis/node-definitions.json',
+              sourcePath: 'plugins/tool-guided-intake-analysis/src/index.ts',
+              smokeFixturePath:
+                'plugins/tool-guided-intake-analysis/smoke-fixture.json',
+              buildReportPath:
+                'artifacts/gate-3/plugins/tool-guided-intake-analysis-build-report.json',
+              artifactPath:
+                'artifacts/gate-3/plugins/tool-guided-intake-analysis.alp',
+              goldenTestCommand: 'node scripts/gate3-plugin-build.mjs',
+              activationPolicy: expect.objectContaining({
+                scope: 'tenant-private',
+                autoActivateAfterHardGates: true,
+              }),
+            }),
+          ]),
+          emptyReason: null,
         }),
         failureCaptureFields: expect.arrayContaining([
           'command',
@@ -2741,10 +2940,19 @@ describe('GeneratedAppService', () => {
           ]),
         }),
         pluginSandboxSmokeExpectations: expect.objectContaining({
-          tools: [],
-          emptyReason: expect.stringContaining(
-            '当前 generationPlan.pluginTools',
-          ),
+          tools: expect.arrayContaining([
+            expect.objectContaining({
+              toolId: 'tool-guided-intake-analysis',
+              smokeCheckId: 'gate-4-plugin-smoke-tool-guided-intake-analysis',
+              artifactId: 'plugin-bundle-tool-guided-intake-analysis',
+              fixturePath:
+                'artifacts/gate-4/plugins/tool-guided-intake-analysis-smoke-fixture.json',
+              expectedTraceArtifactId:
+                'plugin-smoke-trace-tool-guided-intake-analysis',
+              sandboxRuntime: 'wasm-extism',
+            }),
+          ]),
+          emptyReason: null,
         }),
         dependencyArtifacts: expect.arrayContaining([
           expect.objectContaining({
@@ -2753,6 +2961,11 @@ describe('GeneratedAppService', () => {
           }),
           expect.objectContaining({
             artifactId: 'coverage-report',
+            sourceGateId: 'gate-3',
+          }),
+          expect.objectContaining({
+            artifactId: 'plugin-bundle-tool-guided-intake-analysis',
+            kind: 'plugin_bundle',
             sourceGateId: 'gate-3',
           }),
         ]),
@@ -2773,6 +2986,7 @@ describe('GeneratedAppService', () => {
               'unit-test-report',
               'component-golden-report',
               'coverage-report',
+              'plugin-bundle-tool-guided-intake-analysis',
             ]),
           }),
         ]),
@@ -2784,6 +2998,10 @@ describe('GeneratedAppService', () => {
           expect.objectContaining({
             artifactId: 'agent-workflow-dry-run-trace',
             kind: 'agent_workflow_dry_run_trace',
+          }),
+          expect.objectContaining({
+            artifactId: 'plugin-smoke-trace-tool-guided-intake-analysis',
+            kind: 'plugin_sandbox_smoke_trace',
           }),
         ]),
         failureCaptureFields: expect.arrayContaining([
@@ -3191,9 +3409,10 @@ describe('GeneratedAppService', () => {
             containsSecrets: false,
           }),
           expect.objectContaining({
-            artifactId: 'no-plugin-bundle-artifacts-required',
+            artifactId: 'plugin-bundle-tool-guided-intake-analysis',
             kind: 'plugin_bundle_artifact',
-            required: false,
+            required: true,
+            containsSecrets: false,
           }),
           expect.objectContaining({
             artifactId: 'playwright-trace',
@@ -3235,7 +3454,10 @@ describe('GeneratedAppService', () => {
           expect.objectContaining({
             requirementId: 'req-1',
             gateIds: expect.arrayContaining(['gate-0', 'gate-7']),
-            artifactIds: expect.arrayContaining(['frontend-build-output']),
+            artifactIds: expect.arrayContaining([
+              'frontend-build-output',
+              'plugin-bundle-tool-guided-intake-analysis',
+            ]),
           }),
         ],
         gateCoverage: expect.arrayContaining([
@@ -3282,6 +3504,11 @@ describe('GeneratedAppService', () => {
           }),
         ]),
         artifactCoverage: expect.arrayContaining([
+          expect.objectContaining({
+            artifactId: 'plugin-bundle-tool-guided-intake-analysis',
+            kind: 'plugin_bundle_artifact',
+            sourceGateId: 'gate-3',
+          }),
           expect.objectContaining({
             artifactId: 'source-artifact-placeholder',
             kind: 'source_artifact_placeholder',
@@ -3386,6 +3613,12 @@ describe('GeneratedAppService', () => {
         updatedBy: USER_ID,
       }),
     );
+    expect(updateAppPrivatePluginBindingChain.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        pluginIds: [GENERATED_PRIVATE_PLUGIN_DB_ID],
+        updatedBy: USER_ID,
+      }),
+    );
     expect(response.generationRun).toEqual(
       expect.objectContaining({
         id: GENERATION_RUN_ID,
@@ -3470,6 +3703,7 @@ describe('GeneratedAppService', () => {
     );
     expect(response.app.id).toBe(APP_ID);
     expect(response.app.workflowDefinitionId).toBe(WORKFLOW_DEFINITION_ID);
+    expect(response.app.pluginIds).toEqual([GENERATED_PRIVATE_PLUGIN_DB_ID]);
   });
 
   it('retry 启动门禁运行器时应把最近 failed repair attempt 写入本轮 generationPlan 和 Gate 1 证据', async () => {
@@ -5101,13 +5335,13 @@ describe('GeneratedAppService', () => {
     ).toBe(true);
     expect(
       gate3RunPayload.evidence.some((item) =>
-        item.summary.includes('artifactExpectations[3].kind 必须是'),
+        item.summary.includes('artifactExpectations[4].kind 必须是'),
       ),
     ).toBe(true);
     expect(
       gate3RunPayload.evidence.some((item) =>
         item.summary.includes(
-          'artifactExpectations[3].path 必须是 workspace 相对路径',
+          'artifactExpectations[4].path 必须是 workspace 相对路径',
         ),
       ),
     ).toBe(true);
@@ -5525,6 +5759,10 @@ describe('GeneratedAppService', () => {
       configService,
       gate3Runner,
       gate4Runner,
+      undefined,
+      undefined,
+      undefined,
+      createGeneratedPrivatePluginServiceMock(),
     );
     const app = createGeneratedApp();
     const run = createGeneratedAppGenerationRun();
@@ -5997,6 +6235,58 @@ describe('GeneratedAppService', () => {
         join(workspaceRoot, workspace.relativePath, 'scripts/gate3-build.mjs'),
         'utf8',
       );
+      const pluginManifest = JSON.parse(
+        await readFile(
+          join(
+            workspaceRoot,
+            workspace.relativePath,
+            'plugins/tool-guided-intake-analysis/agentloom.plugin.json',
+          ),
+          'utf8',
+        ),
+      ) as { id: string; permissions: string[] };
+      const pluginNodeDefinitions = JSON.parse(
+        await readFile(
+          join(
+            workspaceRoot,
+            workspace.relativePath,
+            'plugins/tool-guided-intake-analysis/node-definitions.json',
+          ),
+          'utf8',
+        ),
+      ) as Array<{ type: string }>;
+      const pluginSource = await readFile(
+        join(
+          workspaceRoot,
+          workspace.relativePath,
+          'plugins/tool-guided-intake-analysis/src/index.ts',
+        ),
+        'utf8',
+      );
+      const pluginBuildReport = JSON.parse(
+        await readFile(
+          join(
+            workspaceRoot,
+            workspace.relativePath,
+            'artifacts/gate-3/plugins/tool-guided-intake-analysis-build-report.json',
+          ),
+          'utf8',
+        ),
+      ) as {
+        manifestValid: boolean;
+        nodeDefinitionsValid: boolean;
+        contentHash: string;
+        signature: string;
+        generatedSigningPublicKeyPem: string;
+        signingVerification: { requiredBeforePrivateActivation: boolean };
+      };
+      const pluginBundle = await readFile(
+        join(
+          workspaceRoot,
+          workspace.relativePath,
+          'artifacts/gate-3/plugins/tool-guided-intake-analysis.alp',
+        ),
+      );
       const buildManifest = JSON.parse(
         await readFile(
           join(
@@ -6018,6 +6308,73 @@ describe('GeneratedAppService', () => {
       expect(buildScript).toContain('unsectionedFields');
       expect(buildScript).toContain('unsectionedSection');
       expect(buildScript).toContain('${sections}${unsectionedSection}');
+      expect(commandPlan).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            commandId: 'gate-3-plugin-build-command',
+            command: 'node scripts/gate3-plugin-build.mjs',
+            producesArtifactIds: ['plugin-bundle-tool-guided-intake-analysis'],
+          }),
+        ]),
+      );
+      expect(result.commandResults).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            commandId: 'gate-3-plugin-build-command',
+            executed: true,
+            exitCode: 0,
+            artifactRefs: ['plugin-bundle-tool-guided-intake-analysis'],
+          }),
+        ]),
+      );
+      expect(pluginManifest).toEqual(
+        expect.objectContaining({
+          id: GENERATED_PRIVATE_PLUGIN_ID,
+          permissions: [],
+        }),
+      );
+      await expect(readArchiveManifest(pluginBundle)).resolves.toEqual(
+        expect.objectContaining({
+          id: GENERATED_PRIVATE_PLUGIN_ID,
+          contentHash: pluginBuildReport.contentHash,
+          signature: pluginBuildReport.signature,
+        }),
+      );
+      await expect(computePluginArchiveContentHash(pluginBundle)).resolves.toBe(
+        pluginBuildReport.contentHash,
+      );
+      await expect(
+        verifyPluginArchiveSignature(
+          pluginBundle,
+          pluginBuildReport.signature,
+          pluginBuildReport.generatedSigningPublicKeyPem,
+        ),
+      ).resolves.toBe(true);
+      expect(pluginNodeDefinitions).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: 'tool-guided-intake-analysis',
+          }),
+        ]),
+      );
+      expect(pluginSource).toContain('AgentLoomPlugin');
+      expect(pluginSource).toContain('boundaryNotice');
+      expect(pluginBuildReport).toEqual(
+        expect.objectContaining({
+          manifestValid: true,
+          nodeDefinitionsValid: true,
+          contentHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+          signature: expect.any(String),
+          generatedSigningPublicKeyPem:
+            expect.stringContaining('BEGIN PUBLIC KEY'),
+          signingVerification: expect.objectContaining({
+            requiredBeforePrivateActivation: true,
+            verified: true,
+            contentHashMatches: true,
+          }),
+        }),
+      );
+      expect(pluginBundle.subarray(0, 4).toString('hex')).toBe('504b0304');
       expect(buildManifest.runtimeFormFields).toEqual(
         expect.arrayContaining(['chiefComplaint', 'symptoms', 'severity']),
       );

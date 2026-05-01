@@ -119,6 +119,12 @@ const GATE_3_COMMAND_DEFINITIONS = [
     scriptPath: 'scripts/gate3-component-golden.mjs',
     producesArtifactIds: ['component-golden-report', 'coverage-report'],
   },
+  {
+    commandId: 'gate-3-plugin-build-command',
+    command: 'node scripts/gate3-plugin-build.mjs',
+    scriptPath: 'scripts/gate3-plugin-build.mjs',
+    producesArtifactIds: [],
+  },
 ] as const satisfies ReadonlyArray<{
   commandId: string;
   command: string;
@@ -246,6 +252,12 @@ const GATE_3_WORKSPACE_FILES: GeneratedAppGenerationWorkspaceContract['files'] =
       derivedFrom: 'generated-app-scaffold',
       required: true,
     },
+    {
+      path: 'scripts/gate3-plugin-build.mjs',
+      kind: 'script',
+      derivedFrom: 'generated-app-scaffold',
+      required: true,
+    },
   ];
 
 @Injectable()
@@ -307,7 +319,14 @@ export class GeneratedAppGate3WorkspaceRunner {
         traversalGuard: 'resolve-inside-workspace-root',
         exposesAbsoluteHostPath: false,
       },
-      files: [...GATE_3_WORKSPACE_FILES],
+      files: [
+        ...GATE_3_WORKSPACE_FILES,
+        ...this.buildPluginWorkspaceFileContracts(
+          params.staticContracts.pluginToolPermissions.tools.map(
+            (tool) => tool.toolId,
+          ),
+        ),
+      ],
       artifactPaths: {
         sourceManifest: 'artifacts/gate-3/source-manifest.json',
         sourceArchive: 'artifacts/gate-3/source-artifact.json',
@@ -326,8 +345,18 @@ export class GeneratedAppGate3WorkspaceRunner {
     scenarioIds: string[];
   }): GeneratedAppGate3CommandPlan[] {
     const workingDirectory = params.workspace.relativePath;
+    const pluginToolIds = this.extractPluginToolIdsFromWorkspace(
+      params.workspace,
+    );
+    const pluginBundleArtifactIds = pluginToolIds.map(
+      (toolId) => `plugin-bundle-${toolId}`,
+    );
 
-    return GATE_3_COMMAND_DEFINITIONS.map((definition) => ({
+    return GATE_3_COMMAND_DEFINITIONS.filter(
+      (definition) =>
+        definition.commandId !== 'gate-3-plugin-build-command' ||
+        pluginBundleArtifactIds.length > 0,
+    ).map((definition) => ({
       commandId: definition.commandId,
       command: definition.command,
       scriptPath: definition.scriptPath,
@@ -337,7 +366,10 @@ export class GeneratedAppGate3WorkspaceRunner {
         definition.commandId === 'gate-3-typecheck-command'
           ? []
           : params.scenarioIds,
-      producesArtifactIds: [...definition.producesArtifactIds],
+      producesArtifactIds:
+        definition.commandId === 'gate-3-plugin-build-command'
+          ? pluginBundleArtifactIds
+          : [...definition.producesArtifactIds],
     }));
   }
 
@@ -771,6 +803,7 @@ export class GeneratedAppGate3WorkspaceRunner {
             typecheck: 'node scripts/gate3-typecheck.mjs',
             test: 'node scripts/gate3-unit.mjs',
             'test:component': 'node scripts/gate3-component-golden.mjs',
+            'build:plugins': 'node scripts/gate3-plugin-build.mjs',
           },
           dependencies: {
             '@vitejs/plugin-react': '^5.0.0',
@@ -1129,7 +1162,281 @@ export class GeneratedAppGate3WorkspaceRunner {
       'scripts/gate3-unit.mjs': this.buildGate3UnitScript(),
       'scripts/gate3-component-golden.mjs':
         this.buildGate3ComponentGoldenScript(),
+      'scripts/gate3-plugin-build.mjs': this.buildGate3PluginBuildScript(),
+      ...this.buildPluginWorkspaceFiles(params),
     };
+  }
+
+  private buildPluginWorkspaceFileContracts(
+    toolIds: string[],
+  ): GeneratedAppGenerationWorkspaceContract['files'] {
+    return toolIds.flatMap((toolId) => {
+      const safeToolId = this.sanitizeSegment(toolId);
+
+      return [
+        {
+          path: `plugins/${safeToolId}/package.json`,
+          kind: 'package',
+          derivedFrom: 'generated-app-scaffold',
+          required: true,
+        },
+        {
+          path: `plugins/${safeToolId}/tsconfig.json`,
+          kind: 'config',
+          derivedFrom: 'generated-app-scaffold',
+          required: true,
+        },
+        {
+          path: `plugins/${safeToolId}/agentloom.plugin.json`,
+          kind: 'manifest',
+          derivedFrom: 'generationPlan.staticContracts',
+          required: true,
+        },
+        {
+          path: `plugins/${safeToolId}/src/index.ts`,
+          kind: 'source',
+          derivedFrom: 'generationPlan.staticContracts',
+          required: true,
+        },
+        {
+          path: `plugins/${safeToolId}/node-definitions.json`,
+          kind: 'manifest',
+          derivedFrom: 'generationPlan.staticContracts',
+          required: true,
+        },
+        {
+          path: `plugins/${safeToolId}/smoke-fixture.json`,
+          kind: 'test',
+          derivedFrom: 'generationPlan.staticContracts',
+          required: true,
+        },
+      ];
+    });
+  }
+
+  private buildPluginWorkspaceFiles(
+    params: MaterializeWorkspaceParams,
+  ): Record<string, string> {
+    return Object.fromEntries(
+      params.generationPlan.pluginTools.tools.flatMap((tool) => {
+        const toolId = this.sanitizeSegment(tool.toolId);
+        const pluginManifest = this.buildPluginManifest(tool, params.appId);
+        const nodeDefinition = this.buildPluginNodeDefinition(tool);
+        const pluginDir = `plugins/${toolId}`;
+
+        return [
+          [
+            `${pluginDir}/package.json`,
+            JSON.stringify(
+              {
+                name: `agentloom-generated-${toolId}`,
+                private: true,
+                version: pluginManifest.version,
+                type: 'module',
+                scripts: {
+                  build: 'tsc -p tsconfig.json',
+                  test: 'node ../../scripts/gate3-plugin-build.mjs',
+                },
+                dependencies: {
+                  '@agentloom/plugin-sdk': 'workspace:*',
+                },
+                devDependencies: {
+                  typescript: '^5.9.0',
+                },
+              },
+              null,
+              2,
+            ),
+          ],
+          [
+            `${pluginDir}/tsconfig.json`,
+            JSON.stringify(
+              {
+                compilerOptions: {
+                  target: 'ES2022',
+                  module: 'ESNext',
+                  moduleResolution: 'Bundler',
+                  strict: true,
+                  declaration: true,
+                  outDir: 'dist',
+                  rootDir: 'src',
+                },
+                include: ['src/**/*.ts'],
+              },
+              null,
+              2,
+            ),
+          ],
+          [
+            `${pluginDir}/agentloom.plugin.json`,
+            JSON.stringify(pluginManifest, null, 2),
+          ],
+          [
+            `${pluginDir}/node-definitions.json`,
+            JSON.stringify([nodeDefinition], null, 2),
+          ],
+          [
+            `${pluginDir}/smoke-fixture.json`,
+            JSON.stringify(
+              {
+                toolId: tool.toolId,
+                input: {
+                  values: {
+                    chiefComplaint: '头痛三天',
+                    symptoms: ['头痛', '乏力'],
+                    severity: 5,
+                  },
+                },
+                expectedOutputKeys: [
+                  'riskLevel',
+                  'score',
+                  'followUpQuestions',
+                  'boundaryNotice',
+                ],
+                requirementIds: tool.requirementIds,
+                sandboxRuntime: 'wasm-extism',
+              },
+              null,
+              2,
+            ),
+          ],
+          [
+            `${pluginDir}/src/index.ts`,
+            this.buildPluginSource(tool, params.appId),
+          ],
+        ];
+      }),
+    );
+  }
+
+  private buildPluginManifest(
+    tool: GeneratedAppGenerationPlan['pluginTools']['tools'][number],
+    appId: string,
+  ): Record<string, unknown> {
+    const toolId = this.sanitizeSegment(tool.toolId);
+    const appSegment = this.sanitizeSegment(`app-${appId}`);
+
+    return {
+      id: `com.agentloom.generated.${appSegment}.${toolId}`,
+      name: this.toPluginDisplayName(tool.toolId),
+      version: '1.0.0',
+      author: 'AgentLoom Generated App',
+      description: tool.purpose,
+      license: 'UNLICENSED',
+      minPlatformVersion: '0.1.0',
+      permissions: [],
+      keywords: ['generated-app', 'private-tool', toolId],
+      sandbox: {
+        allowedHosts: [],
+        maxMemoryPages: 256,
+        timeoutMs: 3000,
+      },
+    };
+  }
+
+  private buildPluginNodeDefinition(
+    tool: GeneratedAppGenerationPlan['pluginTools']['tools'][number],
+  ): Record<string, unknown> {
+    const toolId = this.sanitizeSegment(tool.toolId);
+
+    return {
+      type: toolId,
+      label: this.toPluginDisplayName(tool.toolId),
+      category: 'utility',
+      description: tool.purpose,
+      inputPorts: [
+        {
+          id: 'input',
+          label: '业务输入',
+          dataType: 'json',
+          required: true,
+        },
+      ],
+      outputPorts: [
+        {
+          id: 'analysis',
+          label: '结构化分析',
+          dataType: 'json',
+        },
+      ],
+      configSchema: {
+        type: 'object',
+        properties: {
+          mode: {
+            type: 'string',
+            title: '模式',
+            enum: ['screening', 'summary'],
+          },
+        },
+      },
+      metadata: {
+        generatedAppPrivateTool: true,
+        requirementIds: tool.requirementIds,
+        permissionNotes: tool.permissionNotes,
+      },
+    };
+  }
+
+  private buildPluginSource(
+    tool: GeneratedAppGenerationPlan['pluginTools']['tools'][number],
+    appId: string,
+  ): string {
+    const nodeDefinition = this.buildPluginNodeDefinition(tool);
+    const manifest = this.buildPluginManifest(tool, appId);
+
+    return [
+      "import type { AgentLoomPlugin, CustomNodeDefinition, NodeExecutionContext, NodeExecutionResult } from '@agentloom/plugin-sdk';",
+      '',
+      `const manifest = ${JSON.stringify(manifest, null, 2)} as const;`,
+      '',
+      `const nodeDefinition = ${JSON.stringify(nodeDefinition, null, 2)} as CustomNodeDefinition;`,
+      '',
+      'function normalizeInput(value: unknown): Record<string, unknown> {',
+      '  return value && typeof value === "object" && !Array.isArray(value)',
+      '    ? (value as Record<string, unknown>)',
+      '    : { value };',
+      '}',
+      '',
+      'function collectSignals(input: Record<string, unknown>): string[] {',
+      '  return Object.values(input)',
+      '    .flatMap((value) => (Array.isArray(value) ? value : [value]))',
+      '    .map((value) => String(value ?? "").trim())',
+      '    .filter(Boolean);',
+      '}',
+      '',
+      'async function execute(context: NodeExecutionContext): Promise<NodeExecutionResult> {',
+      '  const input = normalizeInput(context.inputs.input);',
+      '  const signals = collectSignals(input);',
+      '  const score = Math.min(100, signals.join(" ").length + signals.length * 10);',
+      '  const riskLevel = score >= 70 ? "needs-review" : score >= 35 ? "follow-up" : "low";',
+      '',
+      '  return {',
+      '    outputs: {',
+      '      analysis: {',
+      '        riskLevel,',
+      '        score,',
+      '        signalCount: signals.length,',
+      '        followUpQuestions: [',
+      '          "请补充症状持续时间、诱因和缓解因素。",',
+      '          "请确认是否存在需要立即就医的严重表现。",',
+      '        ],',
+      '        boundaryNotice:',
+      '          "本工具只做信息整理和追问优先级提示，不提供诊断、处方、剂量或治疗指令。",',
+      '      },',
+      '    },',
+      '  };',
+      '}',
+      '',
+      'const plugin: AgentLoomPlugin = {',
+      '  manifest: manifest as AgentLoomPlugin["manifest"],',
+      '  nodes: [{ ...nodeDefinition, execute }],',
+      '  async activate() { return Promise.resolve(); },',
+      '  async deactivate() { return Promise.resolve(); },',
+      '};',
+      '',
+      'export default plugin;',
+      '',
+    ].join('\n');
   }
 
   private buildGate3BuildScript(): string {
@@ -1337,6 +1644,177 @@ export class GeneratedAppGate3WorkspaceRunner {
       "await writeFile('artifacts/gate-3/component-golden-report.json', JSON.stringify({ command: 'gate3-component-golden', routeIds: manifest.staticContracts.frontendRoutes.map((route) => route.pageId), scenarios: manifest.appSpec.acceptanceScenarios.map((scenario) => scenario.id), passed: true }, null, 2));",
       "await writeFile('coverage/generated-app/coverage-summary.json', JSON.stringify({ total: { lines: { pct: 100 }, statements: { pct: 100 }, functions: { pct: 100 }, branches: { pct: 100 } }, source: 'gate3-component-golden' }, null, 2));",
       "console.log(JSON.stringify({ command: 'gate3-component-golden', routes: manifest.staticContracts.frontendRoutes.length }));",
+      '',
+    ].join('\n');
+  }
+
+  private buildGate3PluginBuildScript(): string {
+    return [
+      "import { access, mkdir, readFile, writeFile } from 'node:fs/promises';",
+      "import { constants, createHash, generateKeyPairSync, createSign, createVerify } from 'node:crypto';",
+      "import { dirname, join } from 'node:path';",
+      "import { crc32 } from 'node:zlib';",
+      '',
+      "const manifest = JSON.parse(await readFile('generated-app.manifest.json', 'utf8'));",
+      'const tools = manifest.generationPlan.pluginTools.tools;',
+      "await mkdir('artifacts/gate-3/plugins', { recursive: true });",
+      'const allowedPermissions = new Set(["network:outbound", "storage:read", "storage:write", "knowledge:read", "knowledge:write", "llm:invoke"]);',
+      'function assertSafeToolId(toolId) {',
+      '  if (!/^tool-[a-z0-9-]+$/.test(toolId)) throw new Error(`unsafe plugin tool id ${toolId}`);',
+      '}',
+      'function validateReverseDomain(value) {',
+      '  return /^[a-z][a-z0-9-]*(\\.[a-z][a-z0-9-]*)+$/.test(value);',
+      '}',
+      'function validateSemver(value) {',
+      '  return /^\\d+\\.\\d+\\.\\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(value);',
+      '}',
+      'function validateManifest(pluginManifest, tool) {',
+      '  const issues = [];',
+      '  for (const field of ["id", "name", "version", "author", "description", "license", "minPlatformVersion"]) {',
+      '    if (typeof pluginManifest[field] !== "string" || pluginManifest[field].trim().length === 0) issues.push(`${field} is required`);',
+      '  }',
+      '  if (!validateReverseDomain(pluginManifest.id)) issues.push("id must use reverse-domain format");',
+      '  if (!validateSemver(pluginManifest.version)) issues.push("version must be semver");',
+      '  if (!validateSemver(pluginManifest.minPlatformVersion)) issues.push("minPlatformVersion must be semver");',
+      '  if (!Array.isArray(pluginManifest.permissions)) issues.push("permissions must be an array");',
+      '  for (const permission of pluginManifest.permissions ?? []) {',
+      '    if (!allowedPermissions.has(permission)) issues.push(`unknown permission ${permission}`);',
+      '  }',
+      '  if (!pluginManifest.id.endsWith(tool.toolId)) issues.push("manifest id must end with the generated tool id");',
+      '  return issues;',
+      '}',
+      'function validateNodeDefinitions(nodeDefinitions, tool) {',
+      '  const issues = [];',
+      '  if (!Array.isArray(nodeDefinitions) || nodeDefinitions.length !== 1) issues.push("nodeDefinitions must contain exactly one node");',
+      '  const node = nodeDefinitions[0] ?? {};',
+      '  if (node.type !== tool.toolId) issues.push("node type must equal toolId");',
+      '  if (!Array.isArray(node.inputPorts) || node.inputPorts.length === 0) issues.push("node inputPorts are required");',
+      '  if (!Array.isArray(node.outputPorts) || node.outputPorts.length === 0) issues.push("node outputPorts are required");',
+      '  return issues;',
+      '}',
+      'function dosTime(date) {',
+      '  const time = ((date.getHours() & 31) << 11) | ((date.getMinutes() & 63) << 5) | ((Math.floor(date.getSeconds() / 2)) & 31);',
+      '  const day = date.getDate() & 31;',
+      '  const month = (date.getMonth() + 1) & 15;',
+      '  const year = Math.max(0, date.getFullYear() - 1980) & 127;',
+      '  return { time, date: (year << 9) | (month << 5) | day };',
+      '}',
+      'function u16(value) { const buffer = Buffer.alloc(2); buffer.writeUInt16LE(value); return buffer; }',
+      'function u32(value) { const buffer = Buffer.alloc(4); buffer.writeUInt32LE(value >>> 0); return buffer; }',
+      'function zip(entries) {',
+      '  const now = dosTime(new Date("2026-01-01T00:00:00.000Z"));',
+      '  const localParts = [];',
+      '  const centralParts = [];',
+      '  let offset = 0;',
+      '  for (const entry of entries) {',
+      '    const name = Buffer.from(entry.name, "utf8");',
+      '    const data = Buffer.isBuffer(entry.data) ? entry.data : Buffer.from(String(entry.data), "utf8");',
+      '    const checksum = crc32(data) >>> 0;',
+      '    const local = Buffer.concat([u32(0x04034b50), u16(20), u16(0), u16(0), u16(now.time), u16(now.date), u32(checksum), u32(data.length), u32(data.length), u16(name.length), u16(0), name, data]);',
+      '    const central = Buffer.concat([u32(0x02014b50), u16(20), u16(20), u16(0), u16(0), u16(now.time), u16(now.date), u32(checksum), u32(data.length), u32(data.length), u16(name.length), u16(0), u16(0), u16(0), u16(0), u32(0), u32(offset), name]);',
+      '    localParts.push(local);',
+      '    centralParts.push(central);',
+      '    offset += local.length;',
+      '  }',
+      '  const central = Buffer.concat(centralParts);',
+      '  const end = Buffer.concat([u32(0x06054b50), u16(0), u16(0), u16(entries.length), u16(entries.length), u32(central.length), u32(offset), u16(0)]);',
+      '  return Buffer.concat([...localParts, central, end]);',
+      '}',
+      'function stripSigningMetadata(pluginManifest) {',
+      '  const clone = { ...pluginManifest };',
+      '  delete clone.signature;',
+      '  delete clone.contentHash;',
+      '  delete clone.developerKeyFingerprint;',
+      '  return clone;',
+      '}',
+      'function sortJsonValue(value) {',
+      '  if (Array.isArray(value)) return value.map(sortJsonValue);',
+      '  if (value && typeof value === "object") {',
+      '    return Object.fromEntries(Object.entries(value).sort(([left], [right]) => left.localeCompare(right)).map(([key, entry]) => [key, sortJsonValue(entry)]));',
+      '  }',
+      '  return value;',
+      '}',
+      'function sha256Hex(data) {',
+      '  return createHash("sha256").update(data).digest("hex");',
+      '}',
+      'function canonicalPayload(pluginManifest, entries) {',
+      '  const files = entries',
+      '    .filter((entry) => entry.name !== "manifest.json")',
+      '    .map((entry) => ({ path: entry.name, sha256: sha256Hex(Buffer.isBuffer(entry.data) ? entry.data : Buffer.from(String(entry.data), "utf8")) }))',
+      '    .sort((left, right) => left.path.localeCompare(right.path));',
+      '  return Buffer.from(JSON.stringify({ manifest: sortJsonValue(stripSigningMetadata(pluginManifest)), files }), "utf8");',
+      '}',
+      'function signPayload(payload) {',
+      '  const { privateKey, publicKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });',
+      '  const signer = createSign("SHA256");',
+      '  signer.update(payload);',
+      '  signer.end();',
+      '  const signature = signer.sign({ key: privateKey, padding: constants.RSA_PKCS1_PSS_PADDING, saltLength: constants.RSA_PSS_SALTLEN_DIGEST }, "base64");',
+      '  const publicKeyPem = publicKey.export({ type: "spki", format: "pem" });',
+      '  const verifier = createVerify("SHA256");',
+      '  verifier.update(payload);',
+      '  verifier.end();',
+      '  const valid = verifier.verify({ key: publicKeyPem, padding: constants.RSA_PKCS1_PSS_PADDING, saltLength: constants.RSA_PSS_SALTLEN_DIGEST }, Buffer.from(signature, "base64"));',
+      '  if (!valid) throw new Error("generated plugin signature self verification failed");',
+      '  return { signature, publicKeyPem, fingerprint: sha256Hex(publicKey.export({ type: "spki", format: "der" })) };',
+      '}',
+      'const reports = [];',
+      'for (const tool of tools) {',
+      '  assertSafeToolId(tool.toolId);',
+      '  const toolDir = join("plugins", tool.toolId);',
+      '  const manifestPath = join(toolDir, "agentloom.plugin.json");',
+      '  const nodeDefinitionsPath = join(toolDir, "node-definitions.json");',
+      '  const sourcePath = join(toolDir, "src", "index.ts");',
+      '  const fixturePath = join(toolDir, "smoke-fixture.json");',
+      '  for (const file of [manifestPath, nodeDefinitionsPath, sourcePath, fixturePath]) await access(file);',
+      '  const pluginManifest = JSON.parse(await readFile(manifestPath, "utf8"));',
+      '  const nodeDefinitions = JSON.parse(await readFile(nodeDefinitionsPath, "utf8"));',
+      '  const source = await readFile(sourcePath, "utf8");',
+      '  const fixture = JSON.parse(await readFile(fixturePath, "utf8"));',
+      '  const manifestIssues = validateManifest(pluginManifest, tool);',
+      '  const nodeIssues = validateNodeDefinitions(nodeDefinitions, tool);',
+      '  if (manifestIssues.length > 0 || nodeIssues.length > 0) throw new Error(`${tool.toolId} plugin validation failed: ${manifestIssues.concat(nodeIssues).join("; ")}`);',
+      '  const distSource = [`export const manifest = ${JSON.stringify(pluginManifest)};`, `export const nodeDefinitions = ${JSON.stringify(nodeDefinitions)};`, `export function execute(input){const text=JSON.stringify(input||{});return {analysis:{riskLevel:text.length>80?"needs-review":"follow-up",score:Math.min(100,text.length),followUpQuestions:["请补充症状持续时间、诱因和缓解因素。"],boundaryNotice:"本工具只做信息整理和追问优先级提示，不提供诊断、处方、剂量或治疗指令。"}};}`].join("\\n");',
+      '  const unsignedEntries = [',
+      '    { name: "node-definitions.json", data: `${JSON.stringify(nodeDefinitions, null, 2)}\\n` },',
+      '    { name: "dist/index.js", data: `${distSource}\\n` },',
+      '    { name: "src/index.ts", data: `${source}\\n` },',
+      '    { name: "smoke-fixture.json", data: `${JSON.stringify(fixture, null, 2)}\\n` },',
+      '    { name: "README.md", data: `# ${pluginManifest.name}\\n\\n${pluginManifest.description}\\n` },',
+      '  ];',
+      '  const contentHash = sha256Hex(canonicalPayload(pluginManifest, unsignedEntries));',
+      '  const signing = signPayload(canonicalPayload(pluginManifest, unsignedEntries));',
+      '  const signedManifest = { ...pluginManifest, signature: signing.signature, contentHash, developerKeyFingerprint: signing.fingerprint };',
+      '  const archive = zip([{ name: "manifest.json", data: `${JSON.stringify(signedManifest, null, 2)}\\n` }, ...unsignedEntries]);',
+      '  const artifactPath = join("artifacts", "gate-3", "plugins", `${tool.toolId}.alp`);',
+      '  await mkdir(dirname(artifactPath), { recursive: true });',
+      '  await writeFile(artifactPath, archive);',
+      '  const report = {',
+      '    command: "gate3-plugin-build",',
+      '    toolId: tool.toolId,',
+      '    manifestPath,',
+      '    nodeDefinitionsPath,',
+      '    sourcePath,',
+      '    fixturePath,',
+      '    artifactPath,',
+      '    archiveFormat: "alp-zip",',
+      '    manifestValid: true,',
+      '    nodeDefinitionsValid: true,',
+      '    contentHash,',
+      '    signature: signing.signature,',
+      '    developerKeyFingerprint: signing.fingerprint,',
+      '    generatedSigningPublicKeyPem: signing.publicKeyPem,',
+      '    permissionNotes: tool.permissionNotes,',
+      '    declaredPermissions: pluginManifest.permissions,',
+      '    signingVerification: { requiredBeforePrivateActivation: true, status: "self-verified-generated-signature", contentHashMatches: true, verified: true },',
+      '    sandboxSmokeExpectation: { gateId: "gate-4", runtime: "wasm-extism", fixturePath: `artifacts/gate-4/plugins/${tool.toolId}-smoke-fixture.json` },',
+      '    passed: true,',
+      '  };',
+      '  await writeFile(join("artifacts", "gate-3", "plugins", `${tool.toolId}-build-report.json`), JSON.stringify(report, null, 2));',
+      '  reports.push(report);',
+      '}',
+      'await writeFile(join("artifacts", "gate-3", "plugin-build-report.json"), JSON.stringify({ command: "gate3-plugin-build", toolCount: tools.length, reports, passed: true }, null, 2));',
+      'console.log(JSON.stringify({ command: "gate3-plugin-build", pluginBundles: reports.map((report) => report.artifactPath) }));',
       '',
     ].join('\n');
   }
@@ -1765,6 +2243,35 @@ export class GeneratedAppGate3WorkspaceRunner {
     const sanitized = value.toLowerCase().replace(/[^a-z0-9_-]/g, '-');
 
     return sanitized.length > 0 ? sanitized : randomUUID();
+  }
+
+  private extractPluginToolIdsFromWorkspace(
+    workspace: GeneratedAppGenerationWorkspaceContract,
+  ): string[] {
+    return [
+      ...new Set(
+        workspace.files
+          .map((file) => {
+            const match = file.path.match(
+              /^plugins\/(tool-[a-z0-9-]+)\/agentloom\.plugin\.json$/,
+            );
+
+            return match?.[1] ?? null;
+          })
+          .filter((toolId): toolId is string => toolId !== null),
+      ),
+    ];
+  }
+
+  private toPluginDisplayName(toolId: string): string {
+    return toolId
+      .replace(/^tool-/, '')
+      .split('-')
+      .filter(Boolean)
+      .map(
+        (segment) => `${segment.slice(0, 1).toUpperCase()}${segment.slice(1)}`,
+      )
+      .join(' ');
   }
 
   private sanitizePackageName(value: string): string {

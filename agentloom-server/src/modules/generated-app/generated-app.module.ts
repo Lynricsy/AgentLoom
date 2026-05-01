@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 
 import { ExecutionModule } from '../execution/execution.module';
+import { PluginModule } from '../plugin/plugin.module';
 import {
   GeneratedAppController,
   GeneratedAppPublicController,
@@ -14,7 +15,7 @@ import { GeneratedAppGate7PublishCandidateRunner } from './generated-app.publish
 import { GeneratedAppGate3WorkspaceRunner } from './generated-app.workspace';
 
 @Module({
-  imports: [ConfigModule, ExecutionModule],
+  imports: [ConfigModule, ExecutionModule, PluginModule],
   controllers: [GeneratedAppController, GeneratedAppPublicController],
   providers: [
     GeneratedAppService,

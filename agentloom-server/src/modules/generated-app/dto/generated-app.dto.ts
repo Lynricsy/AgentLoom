@@ -441,7 +441,13 @@ export type GeneratedAppArtifactKind =
   | 'unit_test_report'
   | 'typecheck_report'
   | 'component_golden_report'
-  | 'coverage_summary';
+  | 'coverage_summary'
+  | 'plugin_manifest'
+  | 'plugin_node_definitions'
+  | 'plugin_source_file'
+  | 'plugin_smoke_fixture'
+  | 'plugin_build_report'
+  | 'plugin_bundle';
 
 export interface GeneratedAppArtifactSummaryDto {
   artifactId: string;

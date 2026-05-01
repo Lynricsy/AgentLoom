@@ -7,6 +7,12 @@ import { tmpdir } from 'node:os';
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import {
+  computeContentHash as computePluginArchiveContentHash,
+  readArchiveManifest,
+  validateManifest as validatePluginManifest,
+  verifyArchiveSignature as verifyPluginArchiveSignature,
+} from '@agentloom/plugin-sdk';
 
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import { hasPostgresErrorCode } from '../../common/utils/postgres-error.utils';
@@ -127,6 +133,8 @@ import type {
 import { WorkflowNotPublishedException } from '../execution/execution.exceptions';
 import { ExecutionService } from '../execution/execution.service';
 import { appendSlugSuffix, generateSlug } from '../organization/slug.utils';
+import { PluginAlreadyExistsException } from '../plugin/plugin.exceptions';
+import { PluginService } from '../plugin/plugin.service';
 import {
   workflowInputSchemaSchema,
   type WorkflowInputSchema,
@@ -300,6 +308,7 @@ const GATE_3_REQUIRED_WORKSPACE_FILE_PATHS = [
   'scripts/gate3-typecheck.mjs',
   'scripts/gate3-unit.mjs',
   'scripts/gate3-component-golden.mjs',
+  'scripts/gate3-plugin-build.mjs',
 ] as const;
 
 const GATE_3_REQUIRED_COMMAND_IDS = [
@@ -307,6 +316,7 @@ const GATE_3_REQUIRED_COMMAND_IDS = [
   'gate-3-typecheck-command',
   'gate-3-unit-test-command',
   'gate-3-component-golden-test-entry',
+  'gate-3-plugin-build-command',
 ] as const;
 
 const GATE_3_ALLOWED_COMMAND_BY_ID = {
@@ -315,6 +325,7 @@ const GATE_3_ALLOWED_COMMAND_BY_ID = {
   'gate-3-unit-test-command': 'node scripts/gate3-unit.mjs',
   'gate-3-component-golden-test-entry':
     'node scripts/gate3-component-golden.mjs',
+  'gate-3-plugin-build-command': 'node scripts/gate3-plugin-build.mjs',
 } as const satisfies Record<
   (typeof GATE_3_REQUIRED_COMMAND_IDS)[number],
   string
@@ -492,6 +503,66 @@ const GENERATED_APP_DERIVED_GATE_3_ARTIFACTS = [
   contentType: string;
 }>;
 
+const GENERATED_APP_PLUGIN_ARTIFACT_DEFINITIONS = [
+  {
+    suffix: 'manifest',
+    labelSuffix: 'manifest',
+    kind: 'plugin_manifest',
+    path: (toolId: string) => `plugins/${toolId}/agentloom.plugin.json`,
+    contentType: 'application/json',
+  },
+  {
+    suffix: 'node-definitions',
+    labelSuffix: 'node definitions',
+    kind: 'plugin_node_definitions',
+    path: (toolId: string) => `plugins/${toolId}/node-definitions.json`,
+    contentType: 'application/json',
+  },
+  {
+    suffix: 'source',
+    labelSuffix: 'source',
+    kind: 'plugin_source_file',
+    path: (toolId: string) => `plugins/${toolId}/src/index.ts`,
+    contentType: 'text/typescript',
+  },
+  {
+    suffix: 'smoke-fixture',
+    labelSuffix: 'smoke fixture',
+    kind: 'plugin_smoke_fixture',
+    path: (toolId: string) => `plugins/${toolId}/smoke-fixture.json`,
+    contentType: 'application/json',
+  },
+  {
+    suffix: 'build-report',
+    labelSuffix: 'build report',
+    kind: 'plugin_build_report',
+    path: (toolId: string) =>
+      `artifacts/gate-3/plugins/${toolId}-build-report.json`,
+    contentType: 'application/json',
+  },
+  {
+    suffix: 'bundle',
+    labelSuffix: '.alp bundle',
+    kind: 'plugin_bundle',
+    path: (toolId: string) => `artifacts/gate-3/plugins/${toolId}.alp`,
+    contentType: 'application/zip',
+  },
+] as const satisfies ReadonlyArray<{
+  suffix: string;
+  labelSuffix: string;
+  kind: Extract<
+    GeneratedAppArtifactKind,
+    | 'plugin_manifest'
+    | 'plugin_node_definitions'
+    | 'plugin_source_file'
+    | 'plugin_smoke_fixture'
+    | 'plugin_build_report'
+    | 'plugin_bundle'
+  >;
+  path: (toolId: string) => string;
+  contentType: string;
+}>;
+
 const GENERATED_APP_BUILD_UNIT_EXECUTION_LEVELS = [
   'contract-skeleton',
   'real-local-command-plan',
@@ -626,6 +697,15 @@ const GATE_4_ALLOWED_PAYLOAD_CONTRACT_REFS = [
   'staticContracts.publicRuntime.input',
   'staticContracts.publicRuntime.output',
   'staticContracts.submissionPersistence',
+] as const;
+
+const GENERATED_APP_PRIVATE_PLUGIN_HARD_GATES = [
+  'manifest-validation',
+  'build',
+  'signature-verification',
+  'permission-policy',
+  'sandbox-smoke',
+  'generation-safety-scan',
 ] as const;
 
 const GATE_5_SKELETON_EVIDENCE_NOTE =
@@ -1119,6 +1199,25 @@ interface GeneratedAppWorkflowExecutionHandoff {
   summary?: Record<string, unknown>;
 }
 
+interface GeneratedAppPrivatePluginBuildReport {
+  toolId: string;
+  manifestValid: boolean;
+  nodeDefinitionsValid: boolean;
+  contentHash: string;
+  signature: string;
+  developerKeyFingerprint: string;
+  generatedSigningPublicKeyPem: string;
+  signingVerification: {
+    requiredBeforePrivateActivation?: boolean;
+    status?: string;
+    contentHashMatches?: boolean;
+    verified?: boolean;
+  };
+  declaredPermissions: string[];
+  artifactPath: string;
+  passed: boolean;
+}
+
 @Injectable()
 export class GeneratedAppService {
   private readonly gate3WorkspaceRunner: GeneratedAppGate3WorkspaceRunner;
@@ -1138,6 +1237,8 @@ export class GeneratedAppService {
     gate6IndependentVerifierRunner?: GeneratedAppGate6IndependentVerifierRunner,
     @Optional()
     gate7PublishCandidateRunner?: GeneratedAppGate7PublishCandidateRunner,
+    @Optional()
+    private readonly pluginService?: PluginService,
     @Optional()
     private readonly executionService?: ExecutionService,
   ) {
@@ -1261,6 +1362,33 @@ export class GeneratedAppService {
         contentType: definition.contentType,
       })),
       ...GENERATED_APP_DERIVED_GATE_3_ARTIFACTS,
+      ...this.extractPluginToolIdsFromWorkspace(workspace).flatMap((toolId) =>
+        GENERATED_APP_PLUGIN_ARTIFACT_DEFINITIONS.map((definition) => ({
+          artifactId: `plugin-${toolId}-${definition.suffix}`,
+          label: `Plugin ${toolId} ${definition.labelSuffix}`,
+          kind: definition.kind,
+          path: definition.path(toolId),
+          contentType: definition.contentType,
+        })),
+      ),
+    ];
+  }
+
+  private extractPluginToolIdsFromWorkspace(
+    workspace: GeneratedAppGenerationWorkspaceContract,
+  ): string[] {
+    return [
+      ...new Set(
+        workspace.files
+          .map((file) => {
+            const match = file.path.match(
+              /^plugins\/(tool-[a-z0-9-]+)\/agentloom\.plugin\.json$/,
+            );
+
+            return match?.[1] ?? null;
+          })
+          .filter((toolId): toolId is string => toolId !== null),
+      ),
     ];
   }
 
@@ -1301,7 +1429,8 @@ export class GeneratedAppService {
       readable:
         materialized &&
         sizeBytes !== null &&
-        sizeBytes <= GENERATED_APP_ARTIFACT_INLINE_MAX_BYTES,
+        sizeBytes <= GENERATED_APP_ARTIFACT_INLINE_MAX_BYTES &&
+        definition.contentType !== 'application/zip',
       updatedAt,
     };
   }
@@ -2544,10 +2673,15 @@ export class GeneratedAppService {
                         latestApp,
                         run.id,
                       );
+                    latestApp = await this.ensureGeneratedPrivatePluginBindings(
+                      tenantId,
+                      userId,
+                      latestApp,
+                    );
                     completedStatus = 'passed';
                     finalFailureReason = null;
                     completedSummary =
-                      '门禁运行器完成 Gate 0-7；Gate 7 real-local publish candidate contract runner 已签收 release manifest contract、artifact checksum placeholders、Gate 0-6 evidence citations 和 deferred public-share controls，并创建或复用已发布 Generated App runtime Workflow；当前应用进入 publish_candidate，但不会自动创建 public share token。';
+                      '门禁运行器完成 Gate 0-7；Gate 7 real-local publish candidate contract runner 已签收 release manifest contract、artifact checksum placeholders、Gate 0-6 evidence citations 和 deferred public-share controls，并创建或复用已发布 Generated App runtime Workflow，注册/激活通过硬门槛的租户私有生成插件；当前应用进入 publish_candidate，但不会自动创建 public share token。';
                   } else {
                     finalFailureReason =
                       gate7Evaluation.failure?.message ??
@@ -4666,6 +4800,293 @@ export class GeneratedAppService {
     return this.toResponseDto(updated);
   }
 
+  private async ensureGeneratedPrivatePluginBindings(
+    tenantId: string,
+    userId: string,
+    app: GeneratedAppResponseDto,
+  ): Promise<GeneratedAppResponseDto> {
+    const generationPlan =
+      app.generationPlan as GeneratedAppGenerationPlan | null;
+    const pluginTools = generationPlan?.pluginTools.tools ?? [];
+
+    if (pluginTools.length === 0) {
+      return app;
+    }
+
+    if (!this.pluginService) {
+      throw new Error(
+        'Generated App 私有插件自动激活需要 PluginService，但当前模块未提供。',
+      );
+    }
+
+    const workspace = generationPlan?.buildUnitPlan?.generationWorkspace;
+    if (!workspace?.relativePath) {
+      throw new Error('Generated App 私有插件缺少 Gate 3 workspace。');
+    }
+
+    const activatedPluginDbIds: string[] = [];
+    for (const tool of pluginTools) {
+      const toolId = this.getNonEmptyString(tool.toolId);
+      if (!toolId) {
+        throw new Error('Generated App 私有插件 toolId 缺失。');
+      }
+
+      const pluginBundle = await this.loadAndVerifyGeneratedPrivatePlugin({
+        app,
+        toolId,
+        workspaceRelativePath: workspace.relativePath,
+      });
+      let pluginRecord = await this.pluginService.findByPluginId(
+        pluginBundle.pluginId,
+        undefined,
+        tenantId,
+      );
+
+      if (!pluginRecord) {
+        try {
+          pluginRecord = await this.pluginService.register(
+            tenantId,
+            undefined,
+            userId,
+            {
+              ...pluginBundle.manifest,
+              metadata: {
+                source: 'generated-app-private-plugin',
+                generatedAppId: app.id,
+                appSpecVersion: app.appSpec.version,
+                toolId,
+                activationScope: 'tenant-private',
+                gate3ArtifactPath: pluginBundle.artifactPath,
+                gate3BuildReportPath: pluginBundle.buildReportPath,
+                signingVerification:
+                  pluginBundle.buildReport.signingVerification,
+                activationHardGates: [
+                  ...GENERATED_APP_PRIVATE_PLUGIN_HARD_GATES,
+                ],
+              },
+            },
+            pluginBundle.nodeDefinitions,
+            pluginBundle.storageKey,
+            {
+              signature: pluginBundle.signature,
+              contentHash: pluginBundle.contentHash,
+              wasmBundleUrl: undefined,
+            },
+          );
+        } catch (error) {
+          if (!(error instanceof PluginAlreadyExistsException)) {
+            throw error;
+          }
+
+          pluginRecord = await this.pluginService.findByPluginId(
+            pluginBundle.pluginId,
+            undefined,
+            tenantId,
+          );
+        }
+      }
+
+      if (!pluginRecord) {
+        throw new Error(
+          `Generated App 私有插件 ${pluginBundle.pluginId} 注册后未找到记录。`,
+        );
+      }
+
+      if (pluginRecord.status !== 'active') {
+        pluginRecord = await this.pluginService.updateStatus(
+          pluginRecord.id,
+          tenantId,
+          'active',
+          pluginRecord.occVersion,
+        );
+      }
+
+      activatedPluginDbIds.push(pluginRecord.id);
+    }
+
+    const pluginIds = [...new Set([...app.pluginIds, ...activatedPluginDbIds])];
+    if (
+      pluginIds.length === app.pluginIds.length &&
+      pluginIds.every((pluginId, index) => pluginId === app.pluginIds[index])
+    ) {
+      return app;
+    }
+
+    const [updated] = await this.tenantDb
+      .update(schema.generatedApps)
+      .set({
+        pluginIds,
+        updatedBy: userId,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(schema.generatedApps.id, app.id),
+          eq(schema.generatedApps.tenantId, tenantId),
+        ),
+      )
+      .returning();
+
+    if (!updated) {
+      throw new GeneratedAppNotFoundException(app.id);
+    }
+
+    return this.toResponseDto(updated);
+  }
+
+  private async loadAndVerifyGeneratedPrivatePlugin(params: {
+    app: GeneratedAppResponseDto;
+    toolId: string;
+    workspaceRelativePath: string;
+  }): Promise<{
+    pluginId: string;
+    manifest: Record<string, unknown>;
+    nodeDefinitions: Array<Record<string, unknown>>;
+    artifactPath: string;
+    buildReportPath: string;
+    storageKey: string;
+    signature: string;
+    contentHash: string;
+    buildReport: GeneratedAppPrivatePluginBuildReport;
+  }> {
+    const workspaceRoot = this.resolveWorkspaceRoot();
+    const workspacePath = this.resolveSafeRelativePathInside(
+      workspaceRoot,
+      params.workspaceRelativePath,
+    );
+    const artifactPath = `artifacts/gate-3/plugins/${params.toolId}.alp`;
+    const buildReportPath = `artifacts/gate-3/plugins/${params.toolId}-build-report.json`;
+    const artifactAbsolutePath = this.resolveSafeRelativePathInside(
+      workspacePath,
+      artifactPath,
+    );
+    const buildReportAbsolutePath = this.resolveSafeRelativePathInside(
+      workspacePath,
+      buildReportPath,
+    );
+    const [archiveBuffer, buildReport] = await Promise.all([
+      readFile(artifactAbsolutePath),
+      this.readJsonFile<GeneratedAppPrivatePluginBuildReport>(
+        buildReportAbsolutePath,
+      ),
+    ]);
+    const manifest =
+      await readArchiveManifest<Record<string, unknown>>(archiveBuffer);
+    const validation = validatePluginManifest(manifest);
+
+    if (!validation.valid) {
+      throw new Error(
+        `Generated App 私有插件 manifest 校验失败：${validation.errors.join('；')}`,
+      );
+    }
+
+    const pluginId = this.getNonEmptyString(manifest.id);
+    const signature = this.getNonEmptyString(manifest.signature);
+    const contentHash = this.getNonEmptyString(manifest.contentHash);
+    const publicKeyPem = this.getNonEmptyString(
+      buildReport.generatedSigningPublicKeyPem,
+    );
+
+    if (!pluginId || !signature || !contentHash || !publicKeyPem) {
+      throw new Error(
+        `Generated App 私有插件 ${params.toolId} 缺少签名、内容哈希或生成公钥。`,
+      );
+    }
+
+    if (
+      !Array.isArray(manifest.permissions) ||
+      manifest.permissions.length > 0
+    ) {
+      throw new Error(
+        `Generated App 私有插件 ${pluginId} 不允许声明隐式权限。`,
+      );
+    }
+
+    const computedContentHash =
+      await computePluginArchiveContentHash(archiveBuffer);
+    const signatureValid = await verifyPluginArchiveSignature(
+      archiveBuffer,
+      signature,
+      publicKeyPem,
+    );
+
+    if (
+      computedContentHash !== contentHash ||
+      contentHash !== buildReport.contentHash ||
+      buildReport.signature !== signature ||
+      buildReport.signingVerification.verified !== true ||
+      !signatureValid
+    ) {
+      throw new Error(
+        `Generated App 私有插件 ${pluginId} 签名或内容哈希验证失败。`,
+      );
+    }
+
+    this.assertGeneratedPrivatePluginHardGates(params.toolId, buildReport);
+
+    const nodeDefinitions = await this.readJsonFile<
+      Array<Record<string, unknown>>
+    >(
+      this.resolveSafeRelativePathInside(
+        workspacePath,
+        `plugins/${params.toolId}/node-definitions.json`,
+      ),
+    );
+
+    if (
+      !Array.isArray(nodeDefinitions) ||
+      !nodeDefinitions.some(
+        (definition) =>
+          this.getNonEmptyString(definition.type) === params.toolId,
+      )
+    ) {
+      throw new Error(
+        `Generated App 私有插件 ${pluginId} 节点定义未覆盖 ${params.toolId}。`,
+      );
+    }
+
+    return {
+      pluginId,
+      manifest,
+      nodeDefinitions,
+      artifactPath,
+      buildReportPath,
+      storageKey: `generated-apps/${params.app.id}/plugins/${params.toolId}.alp`,
+      signature,
+      contentHash,
+      buildReport,
+    };
+  }
+
+  private assertGeneratedPrivatePluginHardGates(
+    toolId: string,
+    buildReport: GeneratedAppPrivatePluginBuildReport,
+  ): void {
+    if (
+      buildReport.toolId !== toolId ||
+      buildReport.passed !== true ||
+      buildReport.manifestValid !== true ||
+      buildReport.nodeDefinitionsValid !== true ||
+      buildReport.signingVerification.requiredBeforePrivateActivation !==
+        true ||
+      buildReport.signingVerification.status !==
+        'self-verified-generated-signature' ||
+      buildReport.signingVerification.contentHashMatches !== true ||
+      buildReport.signingVerification.verified !== true ||
+      buildReport.declaredPermissions.length > 0
+    ) {
+      throw new Error(
+        `Generated App 私有插件 ${toolId} 未通过自动激活硬门槛。`,
+      );
+    }
+  }
+
+  private async readJsonFile<T>(path: string): Promise<T> {
+    const content = await readFile(path, 'utf8');
+
+    return JSON.parse(content) as T;
+  }
+
   private async findGeneratedWorkflowRuntimeBinding(
     tenantId: string,
     appId: string,
@@ -5023,6 +5444,10 @@ export class GeneratedAppService {
       scenarioIdsByRequirementId.set(requirement.id, scenarioIds);
     }
 
+    const pluginTools = this.buildPluginToolPlan(
+      appSpec,
+      scenarioIdsByRequirementId,
+    );
     const generationPlan: GeneratedAppGenerationPlan = {
       planVersion: 1,
       appSpecVersion: appSpec.version,
@@ -5063,12 +5488,15 @@ export class GeneratedAppService {
         })),
       },
       pluginTools: {
-        tools: [],
+        tools: pluginTools,
         emptyReason:
-          '当前 AppSpec 未声明需要平台现有能力之外的私有插件或外部工具；后续 Gate 2-4 可在发现缺口时补充受控插件计划。',
+          pluginTools.length === 0
+            ? '当前 AppSpec 未声明需要平台现有能力之外的私有插件或外部工具；后续 Gate 2-4 可在发现缺口时补充受控插件计划。'
+            : null,
         permissionPolicy: [
           '插件/工具必须显式声明权限。',
           '未通过 manifest、构建、签名、权限审计和 sandbox smoke test 前不得绑定到 Agent/Workflow。',
+          '生成插件默认只能自动激活为当前租户私有资源，不能自动发布到 Marketplace。',
           '禁止隐式放开网络、存储、知识库或 LLM 权限。',
         ],
       },
@@ -5157,6 +5585,76 @@ export class GeneratedAppService {
     }
 
     return generationPlan;
+  }
+
+  private buildPluginToolPlan(
+    appSpec: GeneratedAppSpec,
+    scenarioIdsByRequirementId: Map<string, string[]>,
+  ): GeneratedAppGenerationPlan['pluginTools']['tools'] {
+    const requiresPrivateTool = appSpec.coreRequirements.some((requirement) =>
+      this.requirementNeedsPrivatePluginTool(requirement.text),
+    );
+
+    if (!requiresPrivateTool) {
+      return [];
+    }
+
+    const requirementIds = appSpec.coreRequirements.map(
+      (requirement) => requirement.id,
+    );
+    const primaryRequirement =
+      appSpec.coreRequirements.find((requirement) =>
+        this.requirementNeedsPrivatePluginTool(requirement.text),
+      ) ?? appSpec.coreRequirements[0];
+    const scenarioIds =
+      primaryRequirement === undefined
+        ? []
+        : (scenarioIdsByRequirementId.get(primaryRequirement.id) ?? []);
+
+    return [
+      {
+        toolId: 'tool-guided-intake-analysis',
+        purpose: this.buildPrivatePluginToolPurpose(appSpec),
+        requirementIds:
+          requirementIds.length > 0
+            ? requirementIds
+            : primaryRequirement
+              ? [primaryRequirement.id]
+              : [],
+        permissionNotes: [
+          '租户私有生成插件，默认不发布到 Marketplace。',
+          'manifest.permissions 必须为空数组；禁止隐式网络、存储、知识库或 LLM 权限。',
+          '仅处理本次 public-runtime-submission 的结构化输入，输出追问、评分或摘要建议。',
+          '必须通过 manifest 校验、插件构建、签名/验签、权限审计、WASM/Extism sandbox smoke test 和生成安全扫描后才可自动激活。',
+          ...(scenarioIds.length > 0
+            ? [`覆盖验收场景：${scenarioIds.join('、')}。`]
+            : []),
+        ],
+        activationPolicy: {
+          scope: 'tenant-private',
+          autoActivateAfterHardGates: true,
+          requiredHardGates: [...GENERATED_APP_PRIVATE_PLUGIN_HARD_GATES],
+        },
+      },
+    ];
+  }
+
+  private requirementNeedsPrivatePluginTool(text: string): boolean {
+    return /问诊|评分|量表|计算|校验|评估|分诊|风险|筛查|自动追问|逐步生成|选择题|结构化分析|插件|工具|外部接口|API/i.test(
+      text,
+    );
+  }
+
+  private buildPrivatePluginToolPurpose(appSpec: GeneratedAppSpec): string {
+    if (/问诊|中医|医疗|症状|患者|分诊|风险|筛查/.test(appSpec.userGoal)) {
+      return '对问诊输入做租户私有的结构化整理、风险提示和下一步追问候选生成，不输出诊断、处方、剂量或治疗指令。';
+    }
+
+    if (/评分|量表|计算|评估/.test(appSpec.userGoal)) {
+      return '对公开提交输入执行租户私有的规则化评分、校验和结果解释生成。';
+    }
+
+    return '对公开提交输入执行租户私有的结构化转换、校验和追问建议生成。';
   }
 
   private buildStaticContracts(
@@ -5476,11 +5974,20 @@ export class GeneratedAppService {
       pluginBuildExpectations: {
         tools: generationPlan.pluginTools.tools.map((tool) => ({
           toolId: tool.toolId,
-          command: `agentloom generated-app gate-3 plugin-build ${tool.toolId}`,
+          command: 'node scripts/gate3-plugin-build.mjs',
           manifestPath: `plugins/${tool.toolId}/agentloom.plugin.json`,
+          nodeDefinitionsPath: `plugins/${tool.toolId}/node-definitions.json`,
+          sourcePath: `plugins/${tool.toolId}/src/index.ts`,
+          smokeFixturePath: `plugins/${tool.toolId}/smoke-fixture.json`,
+          buildReportPath: `artifacts/gate-3/plugins/${tool.toolId}-build-report.json`,
           artifactPath: `artifacts/gate-3/plugins/${tool.toolId}.alp`,
-          goldenTestCommand: `agentloom generated-app gate-3 plugin-golden ${tool.toolId}`,
+          goldenTestCommand: 'node scripts/gate3-plugin-build.mjs',
           requirementIds: tool.requirementIds,
+          activationPolicy: {
+            scope: 'tenant-private',
+            autoActivateAfterHardGates: true,
+            requiredHardGates: [...GENERATED_APP_PRIVATE_PLUGIN_HARD_GATES],
+          },
         })),
         emptyReason:
           generationPlan.pluginTools.tools.length === 0
@@ -12028,6 +12535,12 @@ export class GeneratedAppService {
     const expectedArtifactIdSet = new Set<string>(expectedArtifactIds);
     const knownArtifactKinds = new Set<string>(GATE_3_ARTIFACT_KINDS);
     const knownGate3CoverageIds = new Set<string>(GATE_3_COVERAGE_TARGET_IDS);
+    const expectedRequiredCommandIds =
+      generationPlan.pluginTools.tools.length > 0
+        ? [...GATE_3_REQUIRED_COMMAND_IDS]
+        : GATE_3_REQUIRED_COMMAND_IDS.filter(
+            (commandId) => commandId !== 'gate-3-plugin-build-command',
+          );
     const plannedToolIds = new Set(
       generationPlan.pluginTools.tools.map((tool) => tool.toolId),
     );
@@ -12239,7 +12752,7 @@ export class GeneratedAppService {
     const commandPlanIssues = [
       ...(commandPlan.length === 0 ? ['commandPlan 不能为空'] : []),
       ...this.buildMissingItemsIssues('commandPlan.commandId', commandIds, [
-        ...GATE_3_REQUIRED_COMMAND_IDS,
+        ...expectedRequiredCommandIds,
       ]),
       ...this.buildUnknownReferenceIssues(
         'commandPlan.commandId',
@@ -12624,15 +13137,67 @@ export class GeneratedAppService {
           ...(!this.getNonEmptyString(tool.command)
             ? [`pluginBuildExpectations.tools[${index}].command 缺失`]
             : []),
+          ...this.buildControlledCommandIssues(
+            `pluginBuildExpectations.tools[${index}].command`,
+            this.getNonEmptyString(tool.command),
+            'gate-3-plugin-build-command',
+          ),
           ...(!this.getNonEmptyString(tool.manifestPath)
             ? [`pluginBuildExpectations.tools[${index}].manifestPath 缺失`]
             : []),
+          ...this.buildSafeRelativePathIssues(
+            `pluginBuildExpectations.tools[${index}].manifestPath`,
+            this.getNonEmptyString(tool.manifestPath),
+          ),
+          ...(!this.getNonEmptyString(tool.nodeDefinitionsPath)
+            ? [
+                `pluginBuildExpectations.tools[${index}].nodeDefinitionsPath 缺失`,
+              ]
+            : []),
+          ...this.buildSafeRelativePathIssues(
+            `pluginBuildExpectations.tools[${index}].nodeDefinitionsPath`,
+            this.getNonEmptyString(tool.nodeDefinitionsPath),
+          ),
+          ...(!this.getNonEmptyString(tool.sourcePath)
+            ? [`pluginBuildExpectations.tools[${index}].sourcePath 缺失`]
+            : []),
+          ...this.buildSafeRelativePathIssues(
+            `pluginBuildExpectations.tools[${index}].sourcePath`,
+            this.getNonEmptyString(tool.sourcePath),
+          ),
+          ...(!this.getNonEmptyString(tool.smokeFixturePath)
+            ? [`pluginBuildExpectations.tools[${index}].smokeFixturePath 缺失`]
+            : []),
+          ...this.buildSafeRelativePathIssues(
+            `pluginBuildExpectations.tools[${index}].smokeFixturePath`,
+            this.getNonEmptyString(tool.smokeFixturePath),
+          ),
+          ...(!this.getNonEmptyString(tool.buildReportPath)
+            ? [`pluginBuildExpectations.tools[${index}].buildReportPath 缺失`]
+            : []),
+          ...this.buildSafeRelativePathIssues(
+            `pluginBuildExpectations.tools[${index}].buildReportPath`,
+            this.getNonEmptyString(tool.buildReportPath),
+          ),
           ...(!this.getNonEmptyString(tool.artifactPath)
             ? [`pluginBuildExpectations.tools[${index}].artifactPath 缺失`]
             : []),
+          ...this.buildSafeRelativePathIssues(
+            `pluginBuildExpectations.tools[${index}].artifactPath`,
+            this.getNonEmptyString(tool.artifactPath),
+          ),
           ...(!this.getNonEmptyString(tool.goldenTestCommand)
             ? [`pluginBuildExpectations.tools[${index}].goldenTestCommand 缺失`]
             : []),
+          ...this.buildControlledCommandIssues(
+            `pluginBuildExpectations.tools[${index}].goldenTestCommand`,
+            this.getNonEmptyString(tool.goldenTestCommand),
+            'gate-3-plugin-build-command',
+          ),
+          ...this.buildPluginActivationPolicyIssues(
+            `pluginBuildExpectations.tools[${index}].activationPolicy`,
+            this.getRecord(tool.activationPolicy),
+          ),
           ...(plannedTool
             ? this.buildMissingItemsIssues(
                 `pluginBuildExpectations.tools[${index}].requirementIds`,
@@ -14169,6 +14734,31 @@ export class GeneratedAppService {
     const expected = GATE_3_ALLOWED_COMMAND_BY_ID[commandId];
 
     return value === expected ? [] : [`${label} 必须为受控命令 ${expected}`];
+  }
+
+  private buildPluginActivationPolicyIssues(
+    label: string,
+    policy: Record<string, unknown> | null,
+  ): string[] {
+    return [
+      ...this.requireRecord(policy, label),
+      ...(policy?.scope === 'tenant-private'
+        ? []
+        : [`${label}.scope 必须为 tenant-private`]),
+      ...(policy?.autoActivateAfterHardGates === true
+        ? []
+        : [`${label}.autoActivateAfterHardGates 必须为 true`]),
+      ...this.buildMissingItemsIssues(
+        `${label}.requiredHardGates`,
+        this.getStringArray(policy?.requiredHardGates),
+        [...GENERATED_APP_PRIVATE_PLUGIN_HARD_GATES],
+      ),
+      ...this.buildUnknownReferenceIssues(
+        `${label}.requiredHardGates`,
+        this.getStringArray(policy?.requiredHardGates),
+        new Set<string>([...GENERATED_APP_PRIVATE_PLUGIN_HARD_GATES]),
+      ),
+    ];
   }
 
   private collectSensitiveTokenIssues(

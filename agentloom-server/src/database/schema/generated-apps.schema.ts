@@ -185,6 +185,18 @@ export interface GeneratedAppGenerationPlan {
       purpose: string;
       requirementIds: string[];
       permissionNotes: string[];
+      activationPolicy?: {
+        scope: 'tenant-private';
+        autoActivateAfterHardGates: boolean;
+        requiredHardGates: Array<
+          | 'manifest-validation'
+          | 'build'
+          | 'signature-verification'
+          | 'permission-policy'
+          | 'sandbox-smoke'
+          | 'generation-safety-scan'
+        >;
+      };
     }>;
     emptyReason: string | null;
     permissionPolicy: string[];
@@ -477,9 +489,18 @@ export interface GeneratedAppBuildUnitPlan {
       toolId: string;
       command: string;
       manifestPath: string;
+      nodeDefinitionsPath?: string;
+      sourcePath?: string;
+      smokeFixturePath?: string;
+      buildReportPath?: string;
       artifactPath: string;
       goldenTestCommand: string;
       requirementIds: string[];
+      activationPolicy?: {
+        scope: 'tenant-private';
+        autoActivateAfterHardGates: boolean;
+        requiredHardGates: string[];
+      };
     }>;
     emptyReason: string | null;
   };
