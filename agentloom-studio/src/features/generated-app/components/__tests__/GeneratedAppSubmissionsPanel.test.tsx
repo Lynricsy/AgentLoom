@@ -168,7 +168,213 @@ describe('GeneratedAppSubmissionsPanel', () => {
     expect(detail.getByText(/李四/)).toBeInTheDocument()
     expect(detail.getByText(/失败报告/)).toBeInTheDocument()
     expect(detail.getByText(/模型运行超时/)).toBeInTheDocument()
+    const statusBlock = screen.getByTestId('creator-workflow-execution-status')
+    expect(statusBlock).toHaveAttribute(
+      'data-execution-status',
+      'not-enabled',
+    )
+    expect(
+      within(statusBlock).getByText('Workflow 执行未启用。'),
+    ).toBeInTheDocument()
+    expect(within(statusBlock).getByText('未启用')).toBeInTheDocument()
     expect(detail.queryByText('token-snapshot')).not.toBeInTheDocument()
+  })
+
+  it('uses report handoff before result handoff for terminal status', async () => {
+    const user = userEvent.setup()
+    const resultExecutionId = '11111111-1111-4111-8111-111111111111'
+    const reportExecutionId = '22222222-2222-4222-8222-222222222222'
+    detailQuery.data = makeSubmission({
+      status: 'completed',
+      result: {
+        title: '旧的 result handoff',
+        workflowExecution: true,
+        executionId: resultExecutionId,
+        executionStatus: 'running',
+        workflowExecutionNotice: 'Result handoff 仍在运行。',
+      },
+      report: {
+        title: '最终 report handoff',
+        workflowExecution: true,
+        executionId: reportExecutionId,
+        executionStatus: 'completed',
+        workflowExecutionNotice: 'Report handoff 已完成。',
+        workflowExecutionSummary: {
+          summary: 'Report 终态优先生效。',
+          completedSteps: 2,
+          totalSteps: 2,
+        },
+      },
+    })
+
+    render(<GeneratedAppSubmissionsPanel appId="app-1" />)
+
+    await user.click(
+      screen.getByRole('button', {
+        name: '查看提交记录 submission-1 详情',
+      }),
+    )
+
+    const statusBlock = screen.getByTestId('creator-workflow-execution-status')
+    expect(statusBlock).toHaveAttribute('data-execution-status', 'completed')
+    expect(within(statusBlock).getByText('已完成')).toBeInTheDocument()
+    expect(
+      within(statusBlock).getByText('Report handoff 已完成。'),
+    ).toBeInTheDocument()
+    expect(
+      within(statusBlock).getByText(/Report 终态优先生效。/),
+    ).toBeInTheDocument()
+    expect(statusBlock).not.toHaveTextContent('Result handoff 仍在运行。')
+    expect(statusBlock).not.toHaveTextContent(resultExecutionId)
+    expect(statusBlock).not.toHaveTextContent(reportExecutionId)
+  })
+
+  it('renders running workflow handoff status without internal ids or token values', async () => {
+    const user = userEvent.setup()
+    const executionId = '77777777-7777-4777-8777-777777777777'
+    detailQuery.data = makeSubmission({
+      status: 'running',
+      result: {
+        summary: '已接收提交。',
+        workflowExecution: true,
+        executionId: 'result-execution-id',
+        executionStatus: 'pending',
+        workflowDefinitionId: 'result-workflow-definition-id',
+      },
+      report: {
+        title: '后台执行中',
+        workflowExecution: true,
+        executionId,
+        executionStatus: 'running',
+        workflowDefinitionId: '88888888-8888-4888-8888-888888888888',
+        publicShareToken: 'token-snapshot',
+        sourceArtifactUrl: 'https://internal.example/source.zip',
+        testReportUrl: 'https://internal.example/test-report.json',
+        gateResults: [{ id: 'gate-7', status: 'passed' }],
+        workflowExecutionNotice: 'Workflow execution 仍在执行中。',
+        workflowExecutionUpdatedAt: '2026-04-25T02:08:00.000Z',
+        workflowExecutionSummary: {
+          completedSteps: 1,
+          failedSteps: 0,
+          cancelledSteps: 0,
+          totalSteps: 4,
+          latestStepCompletedAt: '2026-04-25T02:07:00.000Z',
+        },
+      },
+    })
+
+    render(<GeneratedAppSubmissionsPanel appId="app-1" />)
+
+    await user.click(
+      screen.getByRole('button', {
+        name: '查看提交记录 submission-1 详情',
+      }),
+    )
+
+    const statusBlock = screen.getByTestId('creator-workflow-execution-status')
+    expect(statusBlock).toHaveAttribute('data-execution-status', 'running')
+    expect(
+      within(statusBlock).getByText('Workflow 执行状态'),
+    ).toBeInTheDocument()
+    expect(within(statusBlock).getByText('正在执行')).toBeInTheDocument()
+    expect(
+      within(statusBlock).getByText(
+        'Workflow 正在执行，提交详情会自动刷新状态。',
+      ),
+    ).toBeInTheDocument()
+    expect(
+      within(statusBlock).getByText('Workflow execution 仍在执行中。'),
+    ).toBeInTheDocument()
+    expect(within(statusBlock).getByText('完成步骤')).toBeInTheDocument()
+    expect(within(statusBlock).getByText('总步骤')).toBeInTheDocument()
+    expect(statusBlock).not.toHaveTextContent(executionId)
+    expect(statusBlock).not.toHaveTextContent('result-execution-id')
+    expect(statusBlock).not.toHaveTextContent('88888888-8888')
+    expect(statusBlock).not.toHaveTextContent('token-snapshot')
+    expect(statusBlock).not.toHaveTextContent('sourceArtifactUrl')
+    expect(statusBlock).not.toHaveTextContent('testReportUrl')
+    expect(statusBlock).not.toHaveTextContent('gateResults')
+  })
+
+  it('renders completed workflow handoff summary without exposing execution ids', async () => {
+    const user = userEvent.setup()
+    const executionId = '99999999-9999-4999-8999-999999999999'
+    detailQuery.data = makeSubmission({
+      report: {
+        title: '执行完成',
+        workflowExecution: true,
+        executionId,
+        executionStatus: 'completed',
+        workflowDefinitionId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        publicShareToken: 'token-snapshot',
+        gateEvidence: [{ kind: 'browser', label: 'internal evidence' }],
+        workflowExecutionUpdatedAt: '2026-04-25T02:12:00.000Z',
+        workflowExecutionCompletedAt: '2026-04-25T02:12:30.000Z',
+        workflowExecutionSummary: {
+          summary: 'Workflow execution 已完成。',
+          completedSteps: 3,
+          failedSteps: 0,
+          cancelledSteps: 0,
+          totalSteps: 3,
+          latestStepCompletedAt: '2026-04-25T02:12:20.000Z',
+        },
+      },
+    })
+
+    render(<GeneratedAppSubmissionsPanel appId="app-1" />)
+
+    await user.click(
+      screen.getByRole('button', {
+        name: '查看提交记录 submission-1 详情',
+      }),
+    )
+
+    const statusBlock = screen.getByTestId('creator-workflow-execution-status')
+    expect(statusBlock).toHaveAttribute('data-execution-status', 'completed')
+    expect(within(statusBlock).getByText('已完成')).toBeInTheDocument()
+    expect(
+      within(statusBlock).getByText(/Workflow execution 已完成。/),
+    ).toBeInTheDocument()
+    expect(within(statusBlock).getByText('完成步骤')).toBeInTheDocument()
+    expect(within(statusBlock).getByText('失败步骤')).toBeInTheDocument()
+    expect(within(statusBlock).getByText('取消步骤')).toBeInTheDocument()
+    expect(within(statusBlock).getByText('总步骤')).toBeInTheDocument()
+    expect(within(statusBlock).getByText('最新步骤完成')).toBeInTheDocument()
+    expect(statusBlock).not.toHaveTextContent(executionId)
+    expect(statusBlock).not.toHaveTextContent('aaaaaaaa-aaaa')
+    expect(statusBlock).not.toHaveTextContent('token-snapshot')
+    expect(statusBlock).not.toHaveTextContent('gateEvidence')
+    expect(statusBlock).not.toHaveTextContent('internal evidence')
+  })
+
+  it('renders unavailable workflow handoff reason and notice', async () => {
+    const user = userEvent.setup()
+    detailQuery.data = makeSubmission({
+      report: {
+        title: '未启动后台执行',
+        workflowExecution: false,
+        workflowExecutionNotStartedReason: '绑定 Workflow 尚未发布，未启动执行。',
+        workflowExecutionNotice: '当前仅展示公开应用本地报告。',
+      },
+    })
+
+    render(<GeneratedAppSubmissionsPanel appId="app-1" />)
+
+    await user.click(
+      screen.getByRole('button', {
+        name: '查看提交记录 submission-1 详情',
+      }),
+    )
+
+    const statusBlock = screen.getByTestId('creator-workflow-execution-status')
+    expect(statusBlock).toHaveAttribute('data-execution-status', 'not-started')
+    expect(within(statusBlock).getByText('未启动')).toBeInTheDocument()
+    expect(
+      within(statusBlock).getByText('绑定 Workflow 尚未发布，未启动执行。'),
+    ).toBeInTheDocument()
+    expect(
+      within(statusBlock).getByText('当前仅展示公开应用本地报告。'),
+    ).toBeInTheDocument()
   })
 
   it('updates status filter and pagination query params', async () => {

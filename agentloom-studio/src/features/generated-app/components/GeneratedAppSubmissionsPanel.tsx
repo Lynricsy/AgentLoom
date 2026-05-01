@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import {
   AlertTriangle,
+  CheckCircle2,
   Eye,
   Loader2,
   RefreshCw,
@@ -25,8 +26,10 @@ import {
   getGeneratedAppSubmissionStatusBadgeClass,
 } from '../lib/generatedAppDisplay'
 import type {
+  GeneratedAppPublicWorkflowExecutionHandoff,
   GeneratedAppSubmission,
   GeneratedAppSubmissionStatus,
+  GeneratedAppWorkflowExecutionStatus,
 } from '../types'
 
 const PAGE_SIZE = 10
@@ -120,6 +123,235 @@ function ErrorReadOnlyPanel({ value }: { value: string | null }) {
         {value?.trim() ? value : '暂无'}
       </pre>
     </div>
+  )
+}
+
+function hasWorkflowExecutionHandoff(
+  value: GeneratedAppSubmission['report'] | GeneratedAppSubmission['result'],
+): value is NonNullable<GeneratedAppSubmission['report']> {
+  return typeof value?.workflowExecution === 'boolean'
+}
+
+function getWorkflowExecutionHandoff(
+  submission: GeneratedAppSubmission,
+): GeneratedAppPublicWorkflowExecutionHandoff | null {
+  const reportHandoff = hasWorkflowExecutionHandoff(submission.report)
+    ? submission.report
+    : null
+  const resultHandoff = hasWorkflowExecutionHandoff(submission.result)
+    ? submission.result
+    : null
+
+  return reportHandoff ?? resultHandoff
+}
+
+function getWorkflowExecutionStatusLabel(
+  status: GeneratedAppWorkflowExecutionStatus | null | undefined,
+): string {
+  switch (status) {
+    case 'pending':
+      return '等待执行'
+    case 'running':
+      return '正在执行'
+    case 'paused':
+      return '已暂停'
+    case 'completed':
+      return '已完成'
+    case 'failed':
+      return '执行失败'
+    case 'cancelled':
+      return '已取消'
+    default:
+      return '未启动'
+  }
+}
+
+function getWorkflowExecutionDisplayStatus(
+  handoff: GeneratedAppPublicWorkflowExecutionHandoff | null,
+): GeneratedAppWorkflowExecutionStatus | 'not-enabled' | 'not-started' {
+  if (!handoff) {
+    return 'not-enabled'
+  }
+
+  if (handoff.workflowExecution === false) {
+    return 'not-started'
+  }
+
+  return handoff.executionStatus ?? 'not-started'
+}
+
+function getWorkflowExecutionMessage(
+  handoff: GeneratedAppPublicWorkflowExecutionHandoff | null,
+): string {
+  if (!handoff) {
+    return 'Workflow 执行未启用。'
+  }
+
+  if (handoff.workflowExecution === false) {
+    return (
+      handoff.workflowExecutionNotStartedReason ??
+      'Workflow 执行未启动或不可用。'
+    )
+  }
+
+  switch (handoff.executionStatus) {
+    case 'pending':
+      return 'Workflow 正在等待执行，提交详情会自动刷新状态。'
+    case 'running':
+      return 'Workflow 正在执行，提交详情会自动刷新状态。'
+    case 'paused':
+      return 'Workflow 已暂停，当前仅展示安全状态摘要。'
+    case 'completed':
+      return 'Workflow 执行已完成，当前仅展示安全状态摘要。'
+    case 'failed':
+      return 'Workflow 执行未完成，当前仅展示安全终态。'
+    case 'cancelled':
+      return 'Workflow 已取消，当前仅展示安全终态。'
+    default:
+      return '当前提交尚未创建后台 Workflow execution。'
+  }
+}
+
+function getWorkflowExecutionPanelClass(
+  status: ReturnType<typeof getWorkflowExecutionDisplayStatus>,
+): string {
+  if (status === 'completed') {
+    return 'border-emerald-500/30 bg-emerald-500/5'
+  }
+
+  if (status === 'pending' || status === 'running') {
+    return 'border-sky-500/30 bg-sky-500/5'
+  }
+
+  return 'border-amber-500/30 bg-amber-500/5'
+}
+
+function WorkflowExecutionStatusBlock({
+  submission,
+}: {
+  submission: GeneratedAppSubmission
+}) {
+  const handoff = getWorkflowExecutionHandoff(submission)
+  const displayStatus = getWorkflowExecutionDisplayStatus(handoff)
+  const summary = handoff?.workflowExecutionSummary ?? null
+  const isActive =
+    displayStatus === 'pending' || displayStatus === 'running'
+  const hasStepSummary =
+    typeof summary?.completedSteps === 'number' ||
+    typeof summary?.failedSteps === 'number' ||
+    typeof summary?.cancelledSteps === 'number' ||
+    typeof summary?.totalSteps === 'number' ||
+    Boolean(summary?.latestStepCompletedAt)
+
+  return (
+    <section
+      className={cn(
+        'rounded-md border p-3',
+        getWorkflowExecutionPanelClass(displayStatus),
+      )}
+      data-testid="creator-workflow-execution-status"
+      data-execution-status={displayStatus}
+    >
+      <div className="flex items-start gap-3">
+        {isActive ? (
+          <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-sky-300" />
+        ) : displayStatus === 'completed' ? (
+          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" />
+        ) : (
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
+        )}
+        <div className="min-w-0 flex-1 space-y-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <h4 className="break-words text-sm font-semibold text-foreground">
+              Workflow 执行状态
+            </h4>
+            <span className="rounded-full border border-border bg-background/30 px-2 py-0.5 text-xs text-muted-foreground">
+              {handoff
+                ? getWorkflowExecutionStatusLabel(
+                    displayStatus === 'not-enabled' ||
+                      displayStatus === 'not-started'
+                      ? null
+                      : displayStatus,
+                  )
+                : '未启用'}
+            </span>
+          </div>
+          <p className="break-words text-xs leading-5 text-muted-foreground">
+            {getWorkflowExecutionMessage(handoff)}
+          </p>
+          {handoff?.workflowExecutionNotice ? (
+            <p className="break-words text-xs leading-5 text-muted-foreground">
+              {handoff.workflowExecutionNotice}
+            </p>
+          ) : null}
+
+          {summary?.summary ? (
+            <p className="break-words text-xs leading-5 text-muted-foreground">
+              执行摘要：{summary.summary}
+            </p>
+          ) : null}
+
+          {hasStepSummary ||
+          handoff?.workflowExecutionUpdatedAt ||
+          handoff?.workflowExecutionCompletedAt ? (
+            <dl className="grid gap-x-4 gap-y-1 text-xs text-muted-foreground sm:grid-cols-2 lg:grid-cols-4">
+              {typeof summary?.completedSteps === 'number' ? (
+                <div>
+                  <dt>完成步骤</dt>
+                  <dd className="text-foreground">{summary.completedSteps}</dd>
+                </div>
+              ) : null}
+              {typeof summary?.failedSteps === 'number' ? (
+                <div>
+                  <dt>失败步骤</dt>
+                  <dd className="text-foreground">{summary.failedSteps}</dd>
+                </div>
+              ) : null}
+              {typeof summary?.cancelledSteps === 'number' ? (
+                <div>
+                  <dt>取消步骤</dt>
+                  <dd className="text-foreground">{summary.cancelledSteps}</dd>
+                </div>
+              ) : null}
+              {typeof summary?.totalSteps === 'number' ? (
+                <div>
+                  <dt>总步骤</dt>
+                  <dd className="text-foreground">{summary.totalSteps}</dd>
+                </div>
+              ) : null}
+              {handoff?.workflowExecutionUpdatedAt ? (
+                <div>
+                  <dt>更新时间</dt>
+                  <dd className="text-foreground">
+                    {formatGeneratedAppDateTime(
+                      handoff.workflowExecutionUpdatedAt,
+                    )}
+                  </dd>
+                </div>
+              ) : null}
+              {handoff?.workflowExecutionCompletedAt ? (
+                <div>
+                  <dt>完成时间</dt>
+                  <dd className="text-foreground">
+                    {formatGeneratedAppDateTime(
+                      handoff.workflowExecutionCompletedAt,
+                    )}
+                  </dd>
+                </div>
+              ) : null}
+              {summary?.latestStepCompletedAt ? (
+                <div>
+                  <dt>最新步骤完成</dt>
+                  <dd className="text-foreground">
+                    {formatGeneratedAppDateTime(summary.latestStepCompletedAt)}
+                  </dd>
+                </div>
+              ) : null}
+            </dl>
+          ) : null}
+        </div>
+      </div>
+    </section>
   )
 }
 
@@ -592,6 +824,8 @@ export function GeneratedAppSubmissionsPanel({
               审计信息仅展示匿名会话、应用版本和时间信息；公开分享
               token 不在创建者详情面板明文展示。
             </div>
+
+            <WorkflowExecutionStatusBlock submission={selectedSubmission} />
 
             <div className="grid gap-4 lg:grid-cols-2">
               <JsonReadOnlyPanel label="Input" value={selectedSubmission.input} />
