@@ -12,6 +12,7 @@ import {
 } from './generatedAppApi'
 import { generatedAppKeys } from './generatedAppKeys'
 import type {
+  GeneratedAppSubmission,
   ListGeneratedAppGateRunsParams,
   ListGeneratedAppGenerationRunsParams,
   ListGeneratedAppRepairAttemptsParams,
@@ -21,10 +22,15 @@ import type {
 } from '../types'
 
 const GENERATED_APP_STALE_TIME = 30_000
-const GENERATED_APP_PUBLIC_SUBMISSION_POLL_INTERVAL_MS = 2_000
+const GENERATED_APP_WORKFLOW_EXECUTION_POLL_INTERVAL_MS = 2_000
+
+type WorkflowExecutionPollingSubmission = Pick<
+  GeneratedAppPublicSubmission | GeneratedAppSubmission,
+  'report' | 'result'
+>
 
 function isWorkflowExecutionPollingSubmission(
-  submission: GeneratedAppPublicSubmission | undefined,
+  submission: WorkflowExecutionPollingSubmission | undefined,
 ): boolean {
   const handoff =
     submission?.report?.workflowExecution === true
@@ -131,7 +137,11 @@ export function useGeneratedAppSubmission(
     ),
     queryFn: () => getGeneratedAppSubmission(appId ?? '', submissionId ?? ''),
     enabled: !!appId && !!submissionId,
-    staleTime: GENERATED_APP_STALE_TIME,
+    staleTime: 0,
+    refetchInterval: (query) =>
+      isWorkflowExecutionPollingSubmission(query.state.data)
+        ? GENERATED_APP_WORKFLOW_EXECUTION_POLL_INTERVAL_MS
+        : false,
   })
 }
 
@@ -161,7 +171,7 @@ export function useGeneratedAppPublicSubmission(
     staleTime: 0,
     refetchInterval: (query) =>
       isWorkflowExecutionPollingSubmission(query.state.data)
-        ? GENERATED_APP_PUBLIC_SUBMISSION_POLL_INTERVAL_MS
+        ? GENERATED_APP_WORKFLOW_EXECUTION_POLL_INTERVAL_MS
         : false,
   })
 }

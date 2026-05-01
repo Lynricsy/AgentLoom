@@ -90,6 +90,7 @@ app.readiness.state === "publish_candidate" &&
   - The submissions list supports pagination and optional `status` filter using the backend submission status union: `received | running | completed | failed`.
   - Each row surfaces status, anonymous session id, creation time, and compact summaries for `input`, `result`, `report`, and `errorMessage`.
   - Selecting a row reads `GET /generated-apps/:appId/submissions/:submissionId` and shows read-only JSON panels for `input`, `result`, and `report`, plus an error text panel.
+  - Creator submission detail queries must treat detail data as immediately stale and poll every 2 seconds while `result` or `report` contains a Workflow execution handoff with `executionStatus='pending' | 'running'`; polling stops for `completed`, `failed`, `cancelled`, unavailable handoff, or missing handoff states.
   - Delete actions must require explicit confirmation, call the creator delete APIs, show toast feedback, and invalidate submission list/detail query keys.
   - Batch delete may be exposed through selection checkboxes and must call `POST /generated-apps/:appId/submissions/delete` with `{ ids }`.
   - Creator responses may contain `publicShareToken` for audit, but the Studio submissions UI must not render token values in list or detail by default.
@@ -186,6 +187,7 @@ app.readiness.state === "publish_candidate" &&
   - create invalidates list queries.
   - start generation run writes the returned app into detail cache and invalidates list, generation-run, Gate-run, and repair-attempt query keys.
   - public submission create writes and invalidates the public submission detail query key.
+  - creator and public submission detail queries poll every 2 seconds only for Workflow handoff `pending | running` and stop polling for terminal or unavailable handoff states.
   - creator submission delete mutations invalidate submission list/detail keys and clear removed detail caches.
 - Component tests:
   - `preview`, `trial`, and `blocked` disable public share and show `readiness.summary`.

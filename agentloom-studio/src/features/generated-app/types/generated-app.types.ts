@@ -288,8 +288,12 @@ export interface GeneratedAppSubmission {
   anonymousSessionId: string
   status: GeneratedAppSubmissionStatus
   input: Record<string, unknown>
-  result: Record<string, unknown> | null
-  report: Record<string, unknown> | null
+  result:
+    | (Record<string, unknown> & GeneratedAppPublicWorkflowExecutionHandoff)
+    | null
+  report:
+    | (Record<string, unknown> & GeneratedAppPublicWorkflowExecutionHandoff)
+    | null
   errorMessage: string | null
   createdAt: string
   updatedAt: string
