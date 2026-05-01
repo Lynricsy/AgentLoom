@@ -5993,6 +5993,10 @@ describe('GeneratedAppService', () => {
         join(workspaceRoot, workspace.relativePath, 'src/App.tsx'),
         'utf8',
       );
+      const buildScript = await readFile(
+        join(workspaceRoot, workspace.relativePath, 'scripts/gate3-build.mjs'),
+        'utf8',
+      );
       const buildManifest = JSON.parse(
         await readFile(
           join(
@@ -6008,6 +6012,12 @@ describe('GeneratedAppService', () => {
       expect(runtimeFormSource).toContain('chiefComplaint');
       expect(appSource).toContain('buildLocalReport');
       expect(appSource).toContain('runtimeForm.sections.map');
+      expect(appSource).toContain('unsectionedFields');
+      expect(appSource).toContain('generated-app-other-fields-title');
+      expect(appSource).toContain('return renderField(field);');
+      expect(buildScript).toContain('unsectionedFields');
+      expect(buildScript).toContain('unsectionedSection');
+      expect(buildScript).toContain('${sections}${unsectionedSection}');
       expect(buildManifest.runtimeFormFields).toEqual(
         expect.arrayContaining(['chiefComplaint', 'symptoms', 'severity']),
       );

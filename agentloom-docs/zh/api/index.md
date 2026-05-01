@@ -133,7 +133,7 @@ if (detail.status === "failed") {
 
 ### 公开响应边界
 
-公开 runtime 响应只应作为终端用户业务界面使用。API 响应可能包含 `token` 以便客户端缓存或调试，但公开页面不得渲染或记录 token 值。终端页面可展示的数据应限制在 `appId`、`title`、`description`、`dataUseNotice`、有限的 `appSpec`、`runtimeSurface.previewUrl`、`runtimeForm` 和 `createdAt`。其中 `runtimeForm` 只暴露 `formId`、`title`、`description`、`submitLabel`、`sections[]`、`fields[]`、`resultView` 以及字段的 `id`、`label`、`type`、`required`、`placeholder`、`helpText`、`options`、`min`、`max`、`step`。
+公开 runtime 响应只应作为终端用户业务界面使用。API 响应可能包含 `token` 以便客户端缓存或调试，但公开页面不得渲染或记录 token 值。终端页面可展示的数据应限制在 `appId`、`title`、`description`、`dataUseNotice`、有限的 `appSpec`、`runtimeSurface.previewUrl`、`runtimeForm` 和 `createdAt`。其中 `runtimeForm` 只暴露 `formId`、`title`、`description`、`submitLabel`、`sections[]`、`fields[]`、`resultView` 以及字段的 `id`、`label`、`type`、`required`、`placeholder`、`helpText`、`options`、`min`、`max`、`step`。第三方前端必须把 `runtimeForm.fields[]` 视为完整输入字段集合；`runtimeForm.sections[].fieldIds` 只用于分组布局。若某个字段没有被任何 section 引用，前端仍应在类似“其他信息”的兜底分组中渲染它，并让它正常参与必填校验和提交。
 
 `runtimeSurface.previewUrl` 只用于可选运行预览链接。Gate 3 build output 可读时，服务端会返回 `/api/v1/generated-apps/public/:token/preview` 形式的公开预览端点；该端点返回 `text/html`，内容只来自受控 workspace 中 allowlist 的 `gate-3-build-output-html` / `dist/index.html`。当这个 HTML 通过公开预览路径打开时，它会从路径解析 token，并且只能调用同源 public submission API 来创建提交、读取提交详情和轮询异步 Workflow handoff 状态；如果不在公开预览路径下、无法解析 token 或 public submission API 不可用，它会退回本地 deterministic 预览，不会写入公开提交记录。第三方前端可以直接打开这个链接，但不应把它当作 artifact API：公开预览端点不会返回 artifact manifest、源码文件、测试报告、插件信息、Gate 证据、workspace metadata 或 host 绝对路径，也不会允许外部网络连接。
 
