@@ -261,6 +261,43 @@ describe('GeneratedAppGenerationEvidencePanel', () => {
     expect(
       screen.queryByText('https://internal.example.test/token-sensitive'),
     ).not.toBeInTheDocument()
+    expect(
+      screen.queryByText('已定位失败 Gate，尚未应用补丁'),
+    ).not.toBeInTheDocument()
+  })
+
+  it('highlights automatic failed repair attempts that did not apply a patch', async () => {
+    const user = userEvent.setup()
+    repairAttemptsQuery.data = makeListData([
+      makeRepairAttempt({
+        status: 'failed',
+        targetGateId: 'gate-3',
+        failureSummary:
+          'gate-3 构建与单元门禁失败：命令 gate-3-unit-test-command 执行失败。',
+        changeSummary:
+          '自动修复循环已读取失败证据和修复建议。当前同步 runner 未应用源码、Workflow 或插件补丁，已将该 Gate 标记为下一轮修复目标。',
+        verificationSummary:
+          '本次修复尝试未形成可执行补丁，gate-3 仍为 failed。',
+        completedAt: '2026-04-25T03:40:00.000Z',
+      }),
+    ])
+
+    render(<GeneratedAppGenerationEvidencePanel appId="app-1" />)
+
+    await user.click(screen.getByRole('button', { name: '选择 Run #1' }))
+
+    await waitFor(() => {
+      expect(
+        screen.getByText('已定位失败 Gate，尚未应用补丁'),
+      ).toBeInTheDocument()
+    })
+
+    expect(
+      screen.getByText(/自动修复循环已把 gate-3 标记为下一轮修复目标/),
+    ).toBeInTheDocument()
+    expect(
+      screen.getByText(/当前同步 runner 未修改源码、Workflow 或插件/),
+    ).toBeInTheDocument()
   })
 
   it('loads repair attempts and gate runs for the selected generation run', async () => {

@@ -173,6 +173,46 @@ function SummaryText({ children }: { children: string }) {
   )
 }
 
+function isAutomaticNoPatchRepairAttempt(
+  attempt: GeneratedAppRepairAttempt,
+): boolean {
+  const summaryText = [
+    attempt.failureSummary,
+    attempt.changeSummary,
+    attempt.verificationSummary,
+  ]
+    .filter(Boolean)
+    .join('\n')
+
+  return (
+    attempt.status === 'failed' &&
+    summaryText.includes('同步 runner') &&
+    summaryText.includes('未应用') &&
+    summaryText.includes('补丁')
+  )
+}
+
+function AutomaticRepairAttemptNotice({
+  attempt,
+}: {
+  attempt: GeneratedAppRepairAttempt
+}) {
+  if (!isAutomaticNoPatchRepairAttempt(attempt)) {
+    return null
+  }
+
+  return (
+    <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-xs">
+      <p className="font-medium text-amber-200">已定位失败 Gate，尚未应用补丁</p>
+      <p className="mt-1 break-words text-muted-foreground">
+        自动修复循环已把 {attempt.targetGateId}{' '}
+        标记为下一轮修复目标；当前同步 runner 未修改源码、Workflow
+        或插件，重新运行前仍需要完成对应修复。
+      </p>
+    </div>
+  )
+}
+
 function EvidenceSummaryList({
   evidence,
 }: {
@@ -645,7 +685,10 @@ export function GeneratedAppGenerationEvidencePanel({
                         <RepairAttemptStatusBadge status={attempt.status} />
                       </td>
                       <td className="px-3 py-3">
-                        <SummaryText>{attempt.failureSummary}</SummaryText>
+                        <div className="min-w-0 space-y-2">
+                          <AutomaticRepairAttemptNotice attempt={attempt} />
+                          <SummaryText>{attempt.failureSummary}</SummaryText>
+                        </div>
                       </td>
                       <td className="px-3 py-3">
                         <SummaryText>

@@ -121,6 +121,7 @@ app.readiness.state === "publish_candidate" &&
   - Selecting a generation run scopes repair attempts to that run and scopes gate runs by `generationRunId`.
   - Selecting a repair attempt further scopes gate runs by `repairAttemptId`; clearing the repair selection falls back to the selected run scope.
   - Repair attempts surface target gate id, attempt number, status, failure summary, change summary, and verification summary.
+  - A failed repair attempt whose summaries state that the synchronous runner did not apply a source/Workflow/plugin patch must show a compact creator-facing notice that the failed gate has been identified but no patch was applied. This notice must not imply the app was repaired, and it should point the creator to rerun only after the underlying gap is fixed.
   - Gate runs surface canonical gate snapshot, status, attempt number, blocking flag, summary, failure/repair text, evidence count, and compact evidence summaries.
   - The evidence section must not render public share token values, creator submission `publicShareToken`, or evidence URLs by default; use evidence labels/kinds/summaries for the first creator-side view.
 - Public submissions API boundary:
@@ -181,6 +182,7 @@ app.readiness.state === "publish_candidate" &&
 - Good: a public runtime page shows data-use notice, public AppSpec summary, a dynamic business form from `runtimeForm`, optional runtime preview link, and structured public submission report/status without rendering Studio navigation, internal JSON dumps, or the token value.
 - Good: creator detail page shows submission rows and detail JSON panels without rendering `publicShareToken`.
 - Good: creator detail page shows generation runs, repair attempts, and Gate run evidence summaries, while filtering Gate runs by the selected generation run and optional repair attempt.
+- Good: creator detail page highlights an automatic failed repair attempt as "failure gate identified, no patch applied" when the backend summary says the synchronous runner did not apply a patch.
 - Good: creator detail page shows controlled Gate 3 workspace artifact summaries, previews readable source/test/report content, and renders readable `dist/index.html` build output in a sandboxed iframe without rendering the host absolute workspace root.
 - Good: creator deletion uses single or batch delete API after confirmation and refreshes submission caches.
 - Good: creator detail page shows Agent and Workflow ids only inside the authenticated workbench, links them to `/agents/$agentId` and `/workflows/$workflowId`, and shows `尚未绑定` without links when ids are absent.
@@ -231,6 +233,7 @@ app.readiness.state === "publish_candidate" &&
   - public runtime page renders data-use notice, limited AppSpec, optional preview link, dynamic `runtimeForm` controls, required validation, submitted payload, structured result/report sections, and does not render tokens or internal fields.
   - creator submissions panel renders list rows, detail selection, status filter, pagination, delete confirmation, empty state, and error state.
   - creator generation evidence panel renders generation runs, loads repair/gate data after run selection, filters gate data after repair selection, shows failure/evidence summaries, and shows empty/error states.
+  - creator generation evidence panel highlights failed automatic repair attempts that did not apply a patch, and does not show that notice for completed manual repair attempts.
   - creator artifact delivery panel renders workspace summary, artifact rows, selected readable content, Gate 3 build-output sandbox iframe preview for readable `gate-3-build-output-html`, empty/error states, disabled unreadable artifacts, and does not render host absolute paths.
   - detail page tests either mock the submissions hooks or assert the submissions section renders with an empty state.
   - detail page renders existing Agent/Workflow editor links for bound ids and renders no editor links for missing ids.
