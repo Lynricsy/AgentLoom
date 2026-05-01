@@ -297,6 +297,8 @@
   - List is ordered by `created_at desc` and supports optional `status` and `targetGateId` filters.
   - Update is scoped by `tenant_id + generated_app_id + generation_run_id + repair_attempt_id`; missing rows return `GeneratedAppRepairAttemptNotFoundException`.
   - Gate run records may link back to repair attempts to prove which verification run closed or re-failed a repair.
+  - `startGenerationRun()` creates at most one automatic repair attempt ledger row for the first failed blocking gate when the parsed `maxRepairAttempts` budget is greater than zero. The row must target the failed gate, use `attemptNumber=1`, set `status='failed'` when no executable patch was produced, copy a readable failure summary, record that no source/Workflow/plugin patch was applied by the synchronous runner, and include a verification summary that the failed gate remains failed. The synchronous runner must not mark a gate passed, re-run later gates, or claim that code was repaired unless a real repair patch and verification run exist.
+  - When `maxRepairAttempts=0`, `startGenerationRun()` must not insert an automatic repair attempt row. Manual repair attempt create/update/list endpoints remain available.
 - Public response must expose only end-user runtime surface:
   - `token`, `appId`, `title`, `description`, `dataUseNotice`, limited `appSpec`, `runtimeSurface`, `runtimeForm`, `createdAt`.
   - `runtimeForm` is a safe public form/interface descriptor derived from `AppSpec` and, when present, `generationPlan.staticContracts.publicRuntime.input.requiredFields`.
@@ -369,6 +371,8 @@
 | Synchronous runner Gate 4 fails                                                                                                | Insert linked passed Gate 0, Gate 1, Gate 2, and Gate 3 evidence plus failed Gate 4 evidence, persist the attempted `generationPlan.integrationPlan`, mark the generation run failed with the Gate 4 integration skeleton failure reason, set readiness to blocked, keep Gate 5-7 not passed, and clear any active public token                                                                   |
 | Synchronous runner Gate 5 fails                                                                                                | Insert linked passed Gate 0, Gate 1, Gate 2, Gate 3, and Gate 4 evidence plus failed Gate 5 evidence, persist the attempted `generationPlan.browserAcceptancePlan`, mark the generation run failed with the Gate 5 browser acceptance plan or runner failure reason, set readiness to blocked, keep Gate 6-7 not passed, and clear any active public token                                           |
 | Synchronous runner Gate 6 fails                                                                                                | Insert linked passed Gate 0, Gate 1, Gate 2, Gate 3, Gate 4, and Gate 5 evidence plus failed Gate 6 evidence, persist the attempted `generationPlan.independentVerificationPlan`, mark the generation run failed with the Gate 6 independent verifier plan or runner failure reason, set readiness to blocked, do not execute Gate 7, do not generate or refresh `generationPlan.publishCandidatePlan`, and clear any active public token                                  |
+| Failed synchronous runner has `maxRepairAttempts > 0`                                                                          | Insert one `generated_app_repair_attempts` row for the first failed gate with `status='failed'`, failure summary, no-patch change summary, verification summary, `started_at`, `completed_at`, and creator id; keep generation run response shape unchanged                                                                                                                                      |
+| Failed synchronous runner has `maxRepairAttempts=0`                                                                            | Do not insert automatic repair attempt rows; preserve failed generation/gate evidence only                                                                                                                                                                                                                                                                                                        |
 | Generation run update misses tenant/app scope                                                                                  | Return `GeneratedAppGenerationRunNotFoundException`                                                                                                                                                                                                                                                                                                                                               |
 | Repair attempt create references a missing generation run                                                                      | Return `GeneratedAppGenerationRunNotFoundException` and do not insert repair attempt                                                                                                                                                                                                                                                                                                              |
 | Repair attempt update misses tenant/app/run scope                                                                              | Return `GeneratedAppRepairAttemptNotFoundException`                                                                                                                                                                                                                                                                                                                                               |
@@ -406,12 +410,14 @@
 - Good: Gate 6 fixture/disabled/skeleton evidence clearly says it is not a real independent verifier verdict and cannot be used as a release signoff.
 - Good: Gate 7 real-local evidence clearly says the controlled deterministic local publish-candidate contract runner signed off a release manifest contract, checksum placeholders, Gate 0-6 evidence citations, and deferred public-share controls, and also says it did not create a production publish, artifact archive, real signature, external verifier result, or public share token.
 - Good: after Gate 7 real-local passes, service returns `publish_candidate` and `POST /generated-apps/:appId/public-share` creates a fresh 64-hex-character token only through the explicit readiness-guarded public-share action.
+- Good: a failed synchronous run with repair budget records one failed automatic repair attempt row for the failed gate, making the next repair target visible in creator evidence without pretending that a source, Workflow, or plugin patch was applied.
 - Base: newly created prompt generates an AppSpec draft and can synchronously produce Gate 0 + Gate 1 + Gate 2 + Gate 3 workspace/build-unit evidence + Gate 4 integration evidence + Gate 5 browser acceptance evidence + Gate 6 real-local independent verifier verdict plus Gate 7 real-local publish-candidate contract evidence; the app is visible to the creator as `publish_candidate` but is not public until explicit public-share enable creates a token.
 - Base: warning evidence exists after blocking gates pass; the app can remain in creator trial but cannot become a public runtime.
 - Bad: code enables a public link while `readiness.state !== 'publish_candidate'`.
 - Bad: code disables a public link but keeps the old token reusable.
 - Bad: public endpoint returns creator-only fields such as gate results, test report URLs, source artifact URLs, plugin IDs, or permission details.
 - Bad: creator artifact content accepts an arbitrary `path` query/body value or returns host absolute paths in manifest/content responses.
+- Bad: code consumes the whole repair budget by inserting multiple automatic repair attempts for one failed synchronous run without applying and verifying real patches.
 
 ### 6. Tests Required
 
@@ -459,6 +465,8 @@
   - synchronous runner Gate 3 failure is covered with a malformed but non-empty `generationPlan.buildUnitPlan` reference, including dangling build/unit coverage references, so completeness checks cannot regress to "field exists means passed"; Gate 4 must not run or refresh `generationPlan.integrationPlan`
   - synchronous runner Gate 3 workspace materialization failure stops Gate 4-7, keeps attempted `buildUnitPlan`, saves readable failure/repair instructions, and clears stale public sharing.
   - synchronous runner Gate 3 command failure stops Gate 4-7 and saves command id, command, exit code, stdout/stderr summary, artifact refs, and requirement/scenario coverage.
+  - synchronous runner failure with `maxRepairAttempts > 0` inserts one failed automatic repair attempt row for the first failed gate, including target gate id, failure summary, no-patch change summary, verification summary, timestamps, and creator id.
+  - synchronous runner failure with `maxRepairAttempts=0` does not insert an automatic repair attempt row.
   - Gate 3 command execution rejects non-allowlisted command strings, absolute script paths, traversal working directories, and arbitrary shell execution before spawning a process.
   - Gate 3 command/materialization failures redact host absolute workspace paths from evidence and failure details.
   - Gate 7 coverage treats Gate 3 `fixture-execution`, `disabled-execution`, and `contract-skeleton` evidence as non-real upstream evidence; treats Gate 4 `fixture-integration`, `disabled-integration`, and `integration-skeleton` as non-real upstream evidence; treats Gate 5 `fixture-browser-acceptance`, `disabled-browser-acceptance`, and `browser-acceptance-skeleton` as non-real upstream evidence; treats Gate 6 `fixture-independent-verifier`, `disabled-independent-verifier`, and `independent-verifier-skeleton` as non-real upstream evidence; does not classify Gate 5 `real-local-browser-contract` or Gate 6 `real-local-independent-verifier` as skeleton-only; and allows publish candidate only when Gate 7 `real-local-publish-candidate-contract` validates the release manifest contract, Gate 0-6 evidence citations, artifact placeholders, and deferred public-share signoff.
@@ -494,6 +502,28 @@
 - Run scoped lint, `tsconfig.build.json` typecheck, and targeted tests for any generated-app change.
 
 ### 7. Wrong vs Correct
+
+Wrong:
+
+```ts
+for (let attempt = 1; attempt <= run.maxRepairAttempts; attempt += 1) {
+  await insertRepairAttempt({ status: "completed" });
+}
+```
+
+Correct:
+
+```ts
+if (run.status === "failed" && run.maxRepairAttempts > 0) {
+  await insertRepairAttempt({
+    attemptNumber: 1,
+    targetGateId: failedGateRun.gateId,
+    status: "failed",
+    changeSummary:
+      "同步 runner 未应用源码、Workflow 或插件补丁，已记录下一轮修复目标。",
+  });
+}
+```
 
 Wrong:
 

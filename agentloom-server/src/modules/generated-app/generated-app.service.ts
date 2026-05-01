@@ -136,6 +136,7 @@ const DEFAULT_PREVIEW: GeneratedAppPreview = {
 
 const GATE_7_RUNNER_INCOMPLETE_FAILURE_REASON =
   'Gate 7 publish-candidate guard skeleton 检测到 Gate 4-6 仍为 skeleton-only upstream evidence，且缺少后续真实 integration/browser/verifier 证据，不能形成 publish candidate。';
+const GENERATED_APP_REPAIR_ATTEMPT_TEXT_MAX_LENGTH = 4000;
 const PUBLIC_ANONYMOUS_SESSION_TOKEN_LIKE_PATTERN =
   /\b(?:Bearer\s+[A-Za-z0-9._~+/-]{8,}|sk-[A-Za-z0-9_-]{8,}|[A-Za-z0-9_-]{32,})\b/i;
 const PUBLIC_ANONYMOUS_SESSION_HOST_PATH_PATTERN =
@@ -2413,6 +2414,17 @@ export class GeneratedAppService {
       }
     }
 
+    if (completedStatus === 'failed') {
+      await this.recordAutomaticRepairAttemptForFailedRun({
+        tenantId,
+        userId,
+        appId,
+        generationRunId: run.id,
+        maxRepairAttempts: parsed.maxRepairAttempts,
+        gateRuns: producedGateRuns,
+      });
+    }
+
     const [completedRun] = await this.tenantDb
       .update(schema.generatedAppGenerationRuns)
       .set({
@@ -2440,6 +2452,75 @@ export class GeneratedAppService {
       gateRuns: producedGateRuns,
       app: latestApp,
     };
+  }
+
+  private async recordAutomaticRepairAttemptForFailedRun(params: {
+    tenantId: string;
+    userId: string;
+    appId: string;
+    generationRunId: string;
+    maxRepairAttempts: number;
+    gateRuns: GeneratedAppGateRunResponseDto[];
+  }): Promise<GeneratedAppRepairAttemptResponseDto | null> {
+    if (params.maxRepairAttempts <= 0) {
+      return null;
+    }
+
+    const failedGateRun = params.gateRuns.find(
+      (gateRun) => gateRun.status === 'failed',
+    );
+
+    if (!failedGateRun) {
+      return null;
+    }
+
+    const now = new Date();
+    const failureMessage =
+      failedGateRun.failure?.message ?? failedGateRun.summary;
+    const failureSummary = this.limitRepairAttemptText(
+      `${failedGateRun.gateId} ${failedGateRun.gateName} 失败：${failureMessage}`,
+    );
+    const changeSummary = this.limitRepairAttemptText(
+      failedGateRun.repairInstructions
+        ? `自动修复循环已读取失败证据和修复建议：${failedGateRun.repairInstructions} 当前同步 runner 未应用源码、Workflow 或插件补丁，已将该 Gate 标记为下一轮修复目标。`
+        : '自动修复循环已读取失败证据。当前同步 runner 未应用源码、Workflow 或插件补丁，已将该 Gate 标记为下一轮修复目标。',
+    );
+    const verificationSummary = this.limitRepairAttemptText(
+      `本次修复尝试未形成可执行补丁，${failedGateRun.gateId} 仍为 failed；重新运行前必须修复对应证据缺口。`,
+    );
+
+    const [attempt] = await this.tenantDb
+      .insert(schema.generatedAppRepairAttempts)
+      .values({
+        tenantId: params.tenantId,
+        generatedAppId: params.appId,
+        generationRunId: params.generationRunId,
+        attemptNumber: 1,
+        targetGateId: failedGateRun.gateId,
+        status: 'failed',
+        failureSummary,
+        changeSummary,
+        verificationSummary,
+        startedAt: now,
+        completedAt: now,
+        createdBy: params.userId,
+      })
+      .returning();
+
+    return this.toRepairAttemptResponseDto(attempt);
+  }
+
+  private limitRepairAttemptText(value: string): string {
+    const normalized = value.trim();
+
+    if (normalized.length <= GENERATED_APP_REPAIR_ATTEMPT_TEXT_MAX_LENGTH) {
+      return normalized;
+    }
+
+    return `${normalized.slice(
+      0,
+      GENERATED_APP_REPAIR_ATTEMPT_TEXT_MAX_LENGTH - 3,
+    )}...`;
   }
 
   async updateGenerationRun(

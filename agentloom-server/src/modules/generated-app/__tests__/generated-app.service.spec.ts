@@ -1129,6 +1129,19 @@ describe('GeneratedAppService', () => {
     const insertGate1RunChain = createInsertReturningChain([gate1Run]);
     const insertGate2RunChain = createInsertReturningChain([gate2Run]);
     const insertGate3RunChain = createInsertReturningChain([gate3Run]);
+    const repairAttempt = createGeneratedAppRepairAttempt({
+      targetGateId: 'gate-3',
+      status: 'failed',
+      failureSummary:
+        runnerResult.failure?.message ??
+        'Gate 3 构建与单元门禁失败，不能继续执行 Gate 4-7。',
+      changeSummary: '自动修复循环已定位 Gate 3 失败，但未应用源码补丁。',
+      verificationSummary: 'Gate 3 仍为 failed。',
+      completedAt: NOW,
+    });
+    const insertRepairAttemptChain = createInsertReturningChain([
+      repairAttempt,
+    ]);
     const updateAppAfterGate0Chain =
       createGeneratedAppUpdateReturningFromPayload(app);
     const updateAppAfterGate1Chain =
@@ -1149,7 +1162,8 @@ describe('GeneratedAppService', () => {
       .mockReturnValueOnce(insertGateRunChain)
       .mockReturnValueOnce(insertGate1RunChain)
       .mockReturnValueOnce(insertGate2RunChain)
-      .mockReturnValueOnce(insertGate3RunChain);
+      .mockReturnValueOnce(insertGate3RunChain)
+      .mockReturnValueOnce(insertRepairAttemptChain);
     mockTenantDb.update
       .mockReturnValueOnce(updateAppAfterGate0Chain)
       .mockReturnValueOnce(updateAppAfterGate1Chain)
@@ -1169,6 +1183,7 @@ describe('GeneratedAppService', () => {
       gate3Runner,
       gate3UpdatePayload,
       insertGate3RunChain,
+      insertRepairAttemptChain,
       response,
       updateRunChain,
     };
@@ -1303,7 +1318,10 @@ describe('GeneratedAppService', () => {
       TENANT_ID,
       USER_ID,
       APP_ID,
-      DEFAULT_START_GENERATION_RUN_DTO,
+      {
+        ...DEFAULT_START_GENERATION_RUN_DTO,
+        maxRepairAttempts: 0,
+      },
     );
 
     return {
@@ -3932,7 +3950,10 @@ describe('GeneratedAppService', () => {
       TENANT_ID,
       USER_ID,
       APP_ID,
-      DEFAULT_START_GENERATION_RUN_DTO,
+      {
+        ...DEFAULT_START_GENERATION_RUN_DTO,
+        maxRepairAttempts: 0,
+      },
     );
 
     expect(insertGate1RunChain.values).toHaveBeenCalledWith(
@@ -4159,7 +4180,10 @@ describe('GeneratedAppService', () => {
       TENANT_ID,
       USER_ID,
       APP_ID,
-      DEFAULT_START_GENERATION_RUN_DTO,
+      {
+        ...DEFAULT_START_GENERATION_RUN_DTO,
+        maxRepairAttempts: 0,
+      },
     );
 
     expect(insertGate2RunChain.values).toHaveBeenCalledWith(
@@ -4505,7 +4529,10 @@ describe('GeneratedAppService', () => {
       TENANT_ID,
       USER_ID,
       APP_ID,
-      DEFAULT_START_GENERATION_RUN_DTO,
+      {
+        ...DEFAULT_START_GENERATION_RUN_DTO,
+        maxRepairAttempts: 0,
+      },
     );
 
     expect(insertGate3RunChain.values).toHaveBeenCalledWith(
@@ -4793,6 +4820,7 @@ describe('GeneratedAppService', () => {
       app,
       gate3UpdatePayload,
       insertGate3RunChain,
+      insertRepairAttemptChain,
       response,
       updateRunChain,
     } = await startGenerationRunWithGate3Result(runnerResult);
@@ -4867,7 +4895,26 @@ describe('GeneratedAppService', () => {
     expect(appUpdatePayload.status).toBe('failed');
     expect(appUpdatePayload.publicShareToken).toBeNull();
     expect(appUpdatePayload.publicShareEnabled).toBe(false);
-    expect(mockTenantDb.insert).toHaveBeenCalledTimes(5);
+    expect(insertRepairAttemptChain.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: TENANT_ID,
+        generatedAppId: APP_ID,
+        generationRunId: GENERATION_RUN_ID,
+        attemptNumber: 1,
+        targetGateId: 'gate-3',
+        status: 'failed',
+        failureSummary: expect.stringContaining(
+          'Generation Workspace materialization 失败',
+        ),
+        changeSummary:
+          expect.stringContaining('自动修复循环已读取失败证据和修复建议'),
+        verificationSummary: expect.stringContaining('gate-3 仍为 failed'),
+        startedAt: expect.any(Date),
+        completedAt: expect.any(Date),
+        createdBy: USER_ID,
+      }),
+    );
+    expect(mockTenantDb.insert).toHaveBeenCalledTimes(6);
     expect(response.gateRuns.map((gateRun) => gateRun.gateId)).toEqual([
       'gate-0',
       'gate-1',
@@ -4962,8 +5009,12 @@ describe('GeneratedAppService', () => {
       ],
     };
 
-    const { gate3UpdatePayload, insertGate3RunChain, response } =
-      await startGenerationRunWithGate3Result(runnerResult);
+    const {
+      gate3UpdatePayload,
+      insertGate3RunChain,
+      insertRepairAttemptChain,
+      response,
+    } = await startGenerationRunWithGate3Result(runnerResult);
 
     expect(insertGate3RunChain.values).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -5021,7 +5072,25 @@ describe('GeneratedAppService', () => {
       'gate-2',
       'gate-3',
     ]);
-    expect(mockTenantDb.insert).toHaveBeenCalledTimes(5);
+    expect(insertRepairAttemptChain.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: TENANT_ID,
+        generatedAppId: APP_ID,
+        generationRunId: GENERATION_RUN_ID,
+        attemptNumber: 1,
+        targetGateId: 'gate-3',
+        status: 'failed',
+        failureSummary: expect.stringContaining(
+          'gate-3-unit-test-command 执行失败',
+        ),
+        changeSummary: expect.stringContaining('stdout/stderr 摘要'),
+        verificationSummary: expect.stringContaining('gate-3 仍为 failed'),
+        startedAt: expect.any(Date),
+        completedAt: expect.any(Date),
+        createdBy: USER_ID,
+      }),
+    );
+    expect(mockTenantDb.insert).toHaveBeenCalledTimes(6);
   });
 
   it('Gate 3 real-local runner 应拒绝非 allowlist 命令且不执行任意 shell', async () => {
@@ -5650,7 +5719,10 @@ describe('GeneratedAppService', () => {
       TENANT_ID,
       USER_ID,
       APP_ID,
-      DEFAULT_START_GENERATION_RUN_DTO,
+      {
+        ...DEFAULT_START_GENERATION_RUN_DTO,
+        maxRepairAttempts: 0,
+      },
     );
 
     expect(insertGate4RunChain.values).toHaveBeenCalledWith(
@@ -6419,7 +6491,10 @@ describe('GeneratedAppService', () => {
       TENANT_ID,
       USER_ID,
       APP_ID,
-      DEFAULT_START_GENERATION_RUN_DTO,
+      {
+        ...DEFAULT_START_GENERATION_RUN_DTO,
+        maxRepairAttempts: 0,
+      },
     );
 
     expect(insertGate5RunChain.values).toHaveBeenCalledWith(
@@ -6967,7 +7042,10 @@ describe('GeneratedAppService', () => {
       TENANT_ID,
       USER_ID,
       APP_ID,
-      DEFAULT_START_GENERATION_RUN_DTO,
+      {
+        ...DEFAULT_START_GENERATION_RUN_DTO,
+        maxRepairAttempts: 0,
+      },
     );
 
     expect(insertGate6RunChain.values).toHaveBeenCalledWith(
@@ -7519,7 +7597,10 @@ describe('GeneratedAppService', () => {
       TENANT_ID,
       USER_ID,
       APP_ID,
-      DEFAULT_START_GENERATION_RUN_DTO,
+      {
+        ...DEFAULT_START_GENERATION_RUN_DTO,
+        maxRepairAttempts: 0,
+      },
     );
 
     const insertGate7RunChain = insertGateRunChains[7];
@@ -7754,7 +7835,10 @@ describe('GeneratedAppService', () => {
       TENANT_ID,
       USER_ID,
       APP_ID,
-      DEFAULT_START_GENERATION_RUN_DTO,
+      {
+        ...DEFAULT_START_GENERATION_RUN_DTO,
+        maxRepairAttempts: 0,
+      },
     );
 
     expect(insertGateRunChain.values).toHaveBeenCalledWith(
