@@ -101,6 +101,32 @@ function makeRepairAttempt(
     failureSummary: '移动端提交按钮被报告区域遮挡。',
     changeSummary: '调整移动端布局和提交按钮层级。',
     verificationSummary: 'Playwright 移动端验收重新通过。',
+    repairPlan: {
+      planVersion: 1,
+      source: 'automatic-failed-gate-work-order',
+      targetGateId: 'gate-5',
+      targetGateName: '浏览器验收门禁',
+      failureCode: 'mobile-submit-occluded',
+      failureSummary: '移动端提交按钮被报告区域遮挡。',
+      repairInstructions: '修复移动端布局。',
+      evidenceIds: ['gate-5-mobile-responsive'],
+      evidenceSummaries: ['移动端提交按钮被遮挡。'],
+      allowedChangeScopes: ['frontend-workspace', 'test-contracts'],
+      forbiddenChangeScopes: ['public-share-token'],
+      patchTargets: ['src/App.tsx'],
+      requiredTraceability: ['failed-evidence-citation'],
+      generatedAt: '2026-04-25T03:31:00.000Z',
+    },
+    reverificationPlan: {
+      planVersion: 1,
+      targetGateId: 'gate-5',
+      requiredGateIds: ['gate-5'],
+      requiredCommandIds: ['agentloom generated-app gate-5 local-browser-contract'],
+      requiredEvidenceIds: ['gate-5-mobile-responsive'],
+      successCriteria: ['gate-5 must pass'],
+      blockedUntilPatchApplied: true,
+      generatedAt: '2026-04-25T03:31:00.000Z',
+    },
     startedAt: '2026-04-25T03:31:00.000Z',
     completedAt: '2026-04-25T03:40:00.000Z',
     createdBy: 'user-1',
@@ -246,6 +272,12 @@ describe('GeneratedAppGenerationEvidencePanel', () => {
     ).toBeInTheDocument()
     expect(
       screen.getByText('Playwright 移动端验收重新通过。'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('修复工作单：src/App.tsx')).toBeInTheDocument()
+    expect(
+      screen.getByText(
+        '再验证：gate-5 / agentloom generated-app gate-5 local-browser-contract',
+      ),
     ).toBeInTheDocument()
     expect(screen.getByText('2 条证据')).toBeInTheDocument()
     expect(screen.getByText('浏览器验收 trace')).toBeInTheDocument()

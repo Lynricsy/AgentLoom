@@ -122,6 +122,7 @@ app.readiness.state === "publish_candidate" &&
   - Selecting a generation run scopes repair attempts to that run and scopes gate runs by `generationRunId`.
   - Selecting a repair attempt further scopes gate runs by `repairAttemptId`; clearing the repair selection falls back to the selected run scope.
   - Repair attempts surface target gate id, attempt number, status, failure summary, change summary, and verification summary.
+  - When a repair attempt includes structured `repairPlan` or `reverificationPlan`, the evidence panel must show a compact creator-facing summary of patch targets and required re-verification Gate/command ids. This summary is diagnostic context only and must not imply that the patch has already been applied.
   - A failed repair attempt whose summaries state that the synchronous runner did not apply a source/Workflow/plugin patch must show a compact creator-facing notice that the failed gate has been identified but no patch was applied. This notice must not imply the app was repaired, and it should point the creator to rerun only after the underlying gap is fixed.
   - Gate runs surface canonical gate snapshot, status, attempt number, blocking flag, summary, failure/repair text, evidence count, and compact evidence summaries.
   - The evidence section must not render public share token values, creator submission `publicShareToken`, or evidence URLs by default; use evidence labels/kinds/summaries for the first creator-side view.
@@ -165,6 +166,7 @@ app.readiness.state === "publish_candidate" &&
 | Creator opens `/generated-apps/$appId` with visible generation runs                        | Auto-select the first visible generation run after list loading completes, then fetch scoped repair attempts and Gate runs                                       |
 | Creator selects a generation run                                                          | Fetch repair attempts by `appId + generationRunId` and gate runs with `generationRunId`                                                                         |
 | Creator selects a repair attempt                                                          | Fetch gate runs with both `generationRunId` and `repairAttemptId`                                                                                               |
+| Repair attempt includes `repairPlan` / `reverificationPlan`                                | Show patch targets and required re-verification Gate/command ids as creator-only diagnostic context; do not present it as proof that a repair was applied       |
 | Generation evidence list fetch fails                                                      | Show an error state and retry action; do not fabricate run or gate data                                                                                         |
 | Creator artifact manifest fetch fails                                                     | Show an error state with retry; do not fabricate workspace files                                                                                                 |
 | Creator artifact manifest has `workspace=null` or no artifacts                             | Show an empty state that Gate 3 has no controlled workspace artifacts yet                                                                                        |
@@ -186,6 +188,7 @@ app.readiness.state === "publish_candidate" &&
 - Good: creator detail page shows generation runs, repair attempts, and Gate run evidence summaries, while filtering Gate runs by the selected generation run and optional repair attempt.
 - Good: creator detail page auto-selects the first visible generation run so the latest repair attempts and Gate evidence are visible without requiring a novice creator to understand run selection first.
 - Good: creator detail page highlights an automatic failed repair attempt as "failure gate identified, no patch applied" when the backend summary says the synchronous runner did not apply a patch.
+- Good: creator detail page shows structured repair work order and re-verification plan summaries beside repair attempts without exposing public share tokens or evidence URLs.
 - Good: creator detail page shows controlled Gate 3 workspace artifact summaries, previews readable source/test/report content, and renders readable `dist/index.html` build output in a sandboxed iframe without rendering the host absolute workspace root.
 - Good: creator deletion uses single or batch delete API after confirmation and refreshes submission caches.
 - Good: creator detail page shows Agent and Workflow ids only inside the authenticated workbench, links them to `/agents/$agentId` and `/workflows/$workflowId`, and shows `尚未绑定` without links when ids are absent.
@@ -237,6 +240,7 @@ app.readiness.state === "publish_candidate" &&
   - creator submissions panel renders list rows, detail selection, status filter, pagination, delete confirmation, empty state, and error state.
   - creator generation evidence panel renders generation runs, loads repair/gate data after run selection, filters gate data after repair selection, shows failure/evidence summaries, and shows empty/error states.
   - creator detail page enables generation evidence auto-selection, while the reusable panel default still leaves repair/gate queries disabled until manual selection.
+  - creator generation evidence panel renders structured repair work order and re-verification plan summaries when repair attempts include them.
   - creator generation evidence panel highlights failed automatic repair attempts that did not apply a patch, and does not show that notice for completed manual repair attempts.
   - creator artifact delivery panel renders workspace summary, artifact rows, selected readable content, Gate 3 build-output sandbox iframe preview for readable `gate-3-build-output-html`, empty/error states, disabled unreadable artifacts, and does not render host absolute paths.
   - detail page tests either mock the submissions hooks or assert the submissions section renders with an empty state.

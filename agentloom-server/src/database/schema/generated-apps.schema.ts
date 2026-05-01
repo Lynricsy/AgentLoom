@@ -231,7 +231,53 @@ export interface GeneratedAppGenerationRepairContext {
   failureSummary: string;
   changeSummary: string | null;
   verificationSummary: string | null;
+  repairPlan: GeneratedAppRepairPlan | null;
+  reverificationPlan: GeneratedAppReverificationPlan | null;
   capturedAt: string;
+}
+
+export interface GeneratedAppRepairPlan {
+  planVersion: 1;
+  source: 'automatic-failed-gate-work-order' | 'manual-repair-work-order';
+  targetGateId: string;
+  targetGateName: string;
+  failureCode: string | null;
+  failureSummary: string;
+  repairInstructions: string | null;
+  evidenceIds: string[];
+  evidenceSummaries: string[];
+  allowedChangeScopes: Array<
+    | 'app-spec'
+    | 'generation-plan'
+    | 'static-contracts'
+    | 'frontend-workspace'
+    | 'workflow-orchestration'
+    | 'plugin-tools'
+    | 'test-contracts'
+    | 'publish-contract'
+  >;
+  forbiddenChangeScopes: Array<
+    | 'tenant-boundary'
+    | 'public-share-token'
+    | 'host-absolute-path'
+    | 'production-credentials'
+    | 'external-network-without-permission'
+    | 'unrelated-gate-rewrite'
+  >;
+  patchTargets: string[];
+  requiredTraceability: string[];
+  generatedAt: string;
+}
+
+export interface GeneratedAppReverificationPlan {
+  planVersion: 1;
+  targetGateId: string;
+  requiredGateIds: string[];
+  requiredCommandIds: string[];
+  requiredEvidenceIds: string[];
+  successCriteria: string[];
+  blockedUntilPatchApplied: boolean;
+  generatedAt: string;
 }
 
 export interface GeneratedAppStaticContracts {
@@ -1295,6 +1341,12 @@ export const generatedAppRepairAttempts = pgTable(
     changeSummary: text('change_summary'),
 
     verificationSummary: text('verification_summary'),
+
+    repairPlan: jsonb('repair_plan').$type<GeneratedAppRepairPlan | null>(),
+
+    reverificationPlan: jsonb(
+      'reverification_plan',
+    ).$type<GeneratedAppReverificationPlan | null>(),
 
     startedAt: timestamp('started_at', { withTimezone: true })
       .notNull()

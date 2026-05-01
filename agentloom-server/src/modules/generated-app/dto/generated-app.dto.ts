@@ -5,12 +5,14 @@ import type {
   GeneratedApp,
   GeneratedAppBuildUnitPlan,
   GeneratedAppGenerationRun,
+  GeneratedAppRepairPlan,
   GeneratedAppGateRun,
   GeneratedAppGateRunFailure,
   GeneratedAppGateResult,
   GeneratedAppPreview,
   GeneratedAppReadiness,
   GeneratedAppRepairAttempt,
+  GeneratedAppReverificationPlan,
   GeneratedAppSpec,
   GeneratedAppSubmission,
 } from '../../../database/schema';
@@ -117,6 +119,7 @@ export type QueryGeneratedAppsDtoType = z.infer<
 >;
 
 const JsonObjectSchema = z.record(z.string(), z.unknown());
+const NullableJsonObjectSchema = JsonObjectSchema.nullable().optional();
 
 export const CreateGeneratedAppSubmissionSchema = z.object({
   anonymousSessionId: z
@@ -344,6 +347,8 @@ export const CreateGeneratedAppRepairAttemptSchema = z.object({
   failureSummary: z.string().trim().min(1, '修复目标不能为空').max(4000),
   changeSummary: z.string().trim().min(1).max(4000).nullable().optional(),
   verificationSummary: z.string().trim().min(1).max(4000).nullable().optional(),
+  repairPlan: NullableJsonObjectSchema,
+  reverificationPlan: NullableJsonObjectSchema,
   startedAt: z.string().datetime().optional(),
   completedAt: z.string().datetime().nullable().optional(),
 });
@@ -361,6 +366,8 @@ export const UpdateGeneratedAppRepairAttemptSchema = z.object({
   failureSummary: z.string().trim().min(1).max(4000).optional(),
   changeSummary: z.string().trim().min(1).max(4000).nullable().optional(),
   verificationSummary: z.string().trim().min(1).max(4000).nullable().optional(),
+  repairPlan: NullableJsonObjectSchema,
+  reverificationPlan: NullableJsonObjectSchema,
   startedAt: z.string().datetime().optional(),
   completedAt: z.string().datetime().nullable().optional(),
 });
@@ -530,6 +537,8 @@ export interface GeneratedAppRepairAttemptResponseDto {
   failureSummary: string;
   changeSummary: string | null;
   verificationSummary: string | null;
+  repairPlan: GeneratedAppRepairPlan | null;
+  reverificationPlan: GeneratedAppReverificationPlan | null;
   startedAt: Date;
   completedAt: Date | null;
   createdBy: string | null;

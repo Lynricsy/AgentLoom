@@ -196,6 +196,34 @@ export interface GeneratedAppPreview {
   testReportUrl: string | null
 }
 
+export interface GeneratedAppRepairPlan {
+  planVersion: 1
+  source: 'automatic-failed-gate-work-order' | 'manual-repair-work-order'
+  targetGateId: GeneratedAppCanonicalGateId
+  targetGateName: string
+  failureCode: string | null
+  failureSummary: string
+  repairInstructions: string | null
+  evidenceIds: string[]
+  evidenceSummaries: string[]
+  allowedChangeScopes: string[]
+  forbiddenChangeScopes: string[]
+  patchTargets: string[]
+  requiredTraceability: string[]
+  generatedAt: string
+}
+
+export interface GeneratedAppReverificationPlan {
+  planVersion: 1
+  targetGateId: GeneratedAppCanonicalGateId
+  requiredGateIds: GeneratedAppCanonicalGateId[]
+  requiredCommandIds: string[]
+  requiredEvidenceIds: string[]
+  successCriteria: string[]
+  blockedUntilPatchApplied: boolean
+  generatedAt: string
+}
+
 export interface GeneratedApp {
   id: string
   tenantId: string
@@ -304,6 +332,8 @@ export interface GeneratedAppRepairAttempt {
   failureSummary: string
   changeSummary: string | null
   verificationSummary: string | null
+  repairPlan: GeneratedAppRepairPlan | null
+  reverificationPlan: GeneratedAppReverificationPlan | null
   startedAt: string
   completedAt: string | null
   createdBy: string | null

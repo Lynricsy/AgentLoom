@@ -465,6 +465,8 @@ export {
   type GeneratedAppSpec,
   type GeneratedAppGenerationPlan,
   type GeneratedAppGenerationRepairContext,
+  type GeneratedAppRepairPlan,
+  type GeneratedAppReverificationPlan,
   type GeneratedAppStaticContracts,
   type GeneratedAppBuildUnitPlan,
   type GeneratedAppIntegrationPlan,

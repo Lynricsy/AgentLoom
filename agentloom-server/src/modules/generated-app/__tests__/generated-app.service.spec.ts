@@ -542,6 +542,8 @@ function createGeneratedAppRepairAttempt(
     failureSummary: '静态合约检查失败。',
     changeSummary: null,
     verificationSummary: null,
+    repairPlan: null,
+    reverificationPlan: null,
     startedAt: NOW,
     completedAt: null,
     createdBy: USER_ID,
@@ -3370,6 +3372,32 @@ describe('GeneratedAppService', () => {
       changeSummary:
         '当前同步 runner 未应用源码、Workflow 或插件补丁，已将 Gate 3 标记为下一轮修复目标。',
       verificationSummary: 'Gate 3 仍为 failed。',
+      repairPlan: {
+        planVersion: 1,
+        source: 'automatic-failed-gate-work-order',
+        targetGateId: 'gate-3',
+        targetGateName: '构建与单元门禁',
+        failureCode: 'gate3-build-failed',
+        failureSummary: 'Gate 3 构建命令失败。',
+        repairInstructions: '修复 Gate 3 构建脚本后重新运行。',
+        evidenceIds: ['gate-3-unit-test-command'],
+        evidenceSummaries: ['gate-3-unit-test-command exitCode=1'],
+        allowedChangeScopes: ['frontend-workspace', 'test-contracts'],
+        forbiddenChangeScopes: ['tenant-boundary', 'public-share-token'],
+        patchTargets: ['generationWorkspace.files'],
+        requiredTraceability: ['failed-evidence-citation'],
+        generatedAt: NOW.toISOString(),
+      },
+      reverificationPlan: {
+        planVersion: 1,
+        targetGateId: 'gate-3',
+        requiredGateIds: ['gate-3'],
+        requiredCommandIds: ['gate-3-unit-test-command'],
+        requiredEvidenceIds: ['gate-3-unit-test-command'],
+        successCriteria: ['gate-3 must pass'],
+        blockedUntilPatchApplied: true,
+        generatedAt: NOW.toISOString(),
+      },
       completedAt: NOW,
     });
     const gate0Run = createGeneratedAppGateRun({
@@ -3505,6 +3533,8 @@ describe('GeneratedAppService', () => {
         failureSummary: 'Gate 3 构建命令失败。',
         changeSummary: previousRepairAttempt.changeSummary,
         verificationSummary: 'Gate 3 仍为 failed。',
+        repairPlan: previousRepairAttempt.repairPlan,
+        reverificationPlan: previousRepairAttempt.reverificationPlan,
       }),
     );
     expect(gate1Plan.traceability[0]?.planEvidenceIds).toContain(
@@ -3529,6 +3559,27 @@ describe('GeneratedAppService', () => {
       expect.objectContaining({
         targetGateId: 'gate-3',
         status: 'failed',
+        repairPlan: expect.objectContaining({
+          planVersion: 1,
+          source: 'automatic-failed-gate-work-order',
+          targetGateId: 'gate-3',
+          patchTargets: expect.arrayContaining(['generationWorkspace.files']),
+          forbiddenChangeScopes: expect.arrayContaining([
+            'public-share-token',
+            'host-absolute-path',
+          ]),
+        }),
+        reverificationPlan: expect.objectContaining({
+          targetGateId: 'gate-3',
+          requiredGateIds: ['gate-3'],
+          requiredCommandIds: expect.arrayContaining([
+            'gate-3-frontend-build-command',
+            'gate-3-typecheck-command',
+            'gate-3-unit-test-command',
+            'gate-3-component-golden-test-entry',
+          ]),
+          blockedUntilPatchApplied: true,
+        }),
       }),
     );
   });
@@ -5140,6 +5191,31 @@ describe('GeneratedAppService', () => {
         changeSummary:
           expect.stringContaining('自动修复循环已读取失败证据和修复建议'),
         verificationSummary: expect.stringContaining('gate-3 仍为 failed'),
+        repairPlan: expect.objectContaining({
+          targetGateId: 'gate-3',
+          failureCode: 'gate-3-workspace-materialization-failed',
+          evidenceIds: ['gate-3-generation-workspace-materialization'],
+          allowedChangeScopes: expect.arrayContaining([
+            'frontend-workspace',
+            'test-contracts',
+          ]),
+          patchTargets: expect.arrayContaining([
+            'generationWorkspace.files',
+            'generated_apps.generation_plan.buildUnitPlan',
+          ]),
+        }),
+        reverificationPlan: expect.objectContaining({
+          targetGateId: 'gate-3',
+          requiredGateIds: ['gate-3'],
+          requiredCommandIds: expect.arrayContaining([
+            'gate-3-frontend-build-command',
+            'gate-3-typecheck-command',
+            'gate-3-unit-test-command',
+            'gate-3-component-golden-test-entry',
+          ]),
+          requiredEvidenceIds: ['gate-3-generation-workspace-materialization'],
+          blockedUntilPatchApplied: true,
+        }),
         startedAt: expect.any(Date),
         completedAt: expect.any(Date),
         createdBy: USER_ID,
@@ -5316,6 +5392,32 @@ describe('GeneratedAppService', () => {
         ),
         changeSummary: expect.stringContaining('stdout/stderr 摘要'),
         verificationSummary: expect.stringContaining('gate-3 仍为 failed'),
+        repairPlan: expect.objectContaining({
+          targetGateId: 'gate-3',
+          failureCode: 'gate-3-command-failed',
+          evidenceIds: [
+            'gate-3-generation-workspace-materialized',
+            'gate-3-unit-test-command',
+          ],
+          evidenceSummaries: expect.arrayContaining([
+            expect.stringContaining('exitCode=1'),
+          ]),
+          patchTargets: expect.arrayContaining([
+            'generationWorkspace.commandPlan',
+          ]),
+        }),
+        reverificationPlan: expect.objectContaining({
+          targetGateId: 'gate-3',
+          requiredGateIds: ['gate-3'],
+          requiredCommandIds: expect.arrayContaining([
+            'gate-3-unit-test-command',
+          ]),
+          requiredEvidenceIds: [
+            'gate-3-generation-workspace-materialized',
+            'gate-3-unit-test-command',
+          ],
+          blockedUntilPatchApplied: true,
+        }),
         startedAt: expect.any(Date),
         completedAt: expect.any(Date),
         createdBy: USER_ID,
@@ -8181,6 +8283,32 @@ describe('GeneratedAppService', () => {
       status: 'completed',
       changeSummary: '修复 TypeScript 类型错误。',
       verificationSummary: 'gate-2 重新运行通过。',
+      repairPlan: {
+        planVersion: 1,
+        source: 'manual-repair-work-order',
+        targetGateId: 'gate-2',
+        targetGateName: '静态合约门禁',
+        failureCode: 'static-contract-incomplete',
+        failureSummary: '静态合约检查失败。',
+        repairInstructions: '补齐 staticContracts。',
+        evidenceIds: ['gate-2-static-contracts'],
+        evidenceSummaries: ['staticContracts 缺失。'],
+        allowedChangeScopes: ['static-contracts', 'test-contracts'],
+        forbiddenChangeScopes: ['public-share-token'],
+        patchTargets: ['generated_apps.generation_plan.staticContracts'],
+        requiredTraceability: ['failed-evidence-citation'],
+        generatedAt: NOW.toISOString(),
+      },
+      reverificationPlan: {
+        planVersion: 1,
+        targetGateId: 'gate-2',
+        requiredGateIds: ['gate-2'],
+        requiredCommandIds: [],
+        requiredEvidenceIds: ['gate-2-static-contracts'],
+        successCriteria: ['gate-2 重新运行通过。'],
+        blockedUntilPatchApplied: true,
+        generatedAt: NOW.toISOString(),
+      },
       completedAt: NOW,
     });
     const insertChain = createInsertReturningChain([repairAttempt]);
@@ -8211,6 +8339,32 @@ describe('GeneratedAppService', () => {
         status: 'completed',
         changeSummary: '修复 TypeScript 类型错误。',
         verificationSummary: 'gate-2 重新运行通过。',
+        repairPlan: {
+          planVersion: 1,
+          source: 'manual-repair-work-order',
+          targetGateId: 'gate-2',
+          targetGateName: '静态合约门禁',
+          failureCode: 'static-contract-incomplete',
+          failureSummary: '静态合约检查失败。',
+          repairInstructions: '补齐 staticContracts。',
+          evidenceIds: ['gate-2-static-contracts'],
+          evidenceSummaries: ['staticContracts 缺失。'],
+          allowedChangeScopes: ['static-contracts', 'test-contracts'],
+          forbiddenChangeScopes: ['public-share-token'],
+          patchTargets: ['generated_apps.generation_plan.staticContracts'],
+          requiredTraceability: ['failed-evidence-citation'],
+          generatedAt: NOW.toISOString(),
+        },
+        reverificationPlan: {
+          planVersion: 1,
+          targetGateId: 'gate-2',
+          requiredGateIds: ['gate-2'],
+          requiredCommandIds: [],
+          requiredEvidenceIds: ['gate-2-static-contracts'],
+          successCriteria: ['gate-2 重新运行通过。'],
+          blockedUntilPatchApplied: true,
+          generatedAt: NOW.toISOString(),
+        },
         completedAt: NOW.toISOString(),
       },
     );
@@ -8231,11 +8385,23 @@ describe('GeneratedAppService', () => {
         status: 'completed',
         changeSummary: '修复 TypeScript 类型错误。',
         verificationSummary: 'gate-2 重新运行通过。',
+        repairPlan: expect.objectContaining({
+          targetGateId: 'gate-2',
+          patchTargets: ['generated_apps.generation_plan.staticContracts'],
+        }),
+        reverificationPlan: expect.objectContaining({
+          targetGateId: 'gate-2',
+          requiredGateIds: ['gate-2'],
+        }),
         completedAt: NOW,
       }),
     );
     expect(created.generationRunId).toBe(GENERATION_RUN_ID);
     expect(updated.status).toBe('completed');
+    expect(updated.repairPlan).toEqual(completedAttempt.repairPlan);
+    expect(updated.reverificationPlan).toEqual(
+      completedAttempt.reverificationPlan,
+    );
   });
 
   it('创建者可以分页筛选生成运行和修复尝试台账', async () => {

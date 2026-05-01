@@ -22,6 +22,8 @@ import type {
   GeneratedAppGenerationRun,
   GeneratedAppIndependentVerificationPlan,
   GeneratedAppIntegrationPlan,
+  GeneratedAppRepairPlan,
+  GeneratedAppReverificationPlan,
   GeneratedAppGateRunFailure,
   GeneratedAppGateRun,
   GeneratedAppPublishCandidatePlan,
@@ -2504,6 +2506,11 @@ export class GeneratedAppService {
     const verificationSummary = this.limitRepairAttemptText(
       `本次修复尝试未形成可执行补丁，${failedGateRun.gateId} 仍为 failed；重新运行前必须修复对应证据缺口。`,
     );
+    const repairPlan = this.buildFailedGateRepairPlan(failedGateRun, now);
+    const reverificationPlan = this.buildFailedGateReverificationPlan(
+      failedGateRun,
+      now,
+    );
 
     const [attempt] = await this.tenantDb
       .insert(schema.generatedAppRepairAttempts)
@@ -2517,6 +2524,8 @@ export class GeneratedAppService {
         failureSummary,
         changeSummary,
         verificationSummary,
+        repairPlan,
+        reverificationPlan,
         startedAt: now,
         completedAt: now,
         createdBy: params.userId,
@@ -2524,6 +2533,179 @@ export class GeneratedAppService {
       .returning();
 
     return this.toRepairAttemptResponseDto(attempt);
+  }
+
+  private buildFailedGateRepairPlan(
+    failedGateRun: GeneratedAppGateRunResponseDto,
+    generatedAt: Date,
+  ): GeneratedAppRepairPlan {
+    const gateDefinition = getGeneratedAppGateDefinition(failedGateRun.gateId);
+    const evidenceIds = failedGateRun.evidence.map((item) => item.id);
+    const evidenceSummaries = failedGateRun.evidence
+      .map((item) => item.summary.trim())
+      .filter((summary) => summary.length > 0)
+      .slice(0, 12);
+
+    return {
+      planVersion: 1,
+      source: 'automatic-failed-gate-work-order',
+      targetGateId: failedGateRun.gateId,
+      targetGateName: gateDefinition?.name ?? failedGateRun.gateName,
+      failureCode: failedGateRun.failure?.code ?? null,
+      failureSummary: this.limitRepairAttemptText(
+        failedGateRun.failure?.message ?? failedGateRun.summary,
+      ),
+      repairInstructions: failedGateRun.repairInstructions
+        ? this.limitRepairAttemptText(failedGateRun.repairInstructions)
+        : null,
+      evidenceIds,
+      evidenceSummaries,
+      allowedChangeScopes: this.resolveRepairAllowedChangeScopes(
+        failedGateRun.gateId,
+      ),
+      forbiddenChangeScopes: [
+        'tenant-boundary',
+        'public-share-token',
+        'host-absolute-path',
+        'production-credentials',
+        'external-network-without-permission',
+        'unrelated-gate-rewrite',
+      ],
+      patchTargets: this.resolveRepairPatchTargets(failedGateRun.gateId),
+      requiredTraceability: [
+        'repair-plan-target-gate',
+        'failed-evidence-citation',
+        'patch-target-to-reverification-command',
+        'post-patch-gate-evidence',
+      ],
+      generatedAt: generatedAt.toISOString(),
+    };
+  }
+
+  private buildFailedGateReverificationPlan(
+    failedGateRun: GeneratedAppGateRunResponseDto,
+    generatedAt: Date,
+  ): GeneratedAppReverificationPlan {
+    return {
+      planVersion: 1,
+      targetGateId: failedGateRun.gateId,
+      requiredGateIds: this.resolveReverificationGateIds(failedGateRun.gateId),
+      requiredCommandIds: this.resolveReverificationCommandIds(
+        failedGateRun.gateId,
+      ),
+      requiredEvidenceIds: failedGateRun.evidence.map((item) => item.id),
+      successCriteria: [
+        `${failedGateRun.gateId} must be recorded as passed before later gates can run.`,
+        'All new gate evidence must cite the failed evidence or command output that drove the patch.',
+        'No host absolute paths, public share tokens, production credentials, or unrelated gate rewrites may appear in repair evidence.',
+      ],
+      blockedUntilPatchApplied: true,
+      generatedAt: generatedAt.toISOString(),
+    };
+  }
+
+  private resolveRepairAllowedChangeScopes(
+    gateId: string,
+  ): GeneratedAppRepairPlan['allowedChangeScopes'] {
+    switch (gateId) {
+      case 'gate-0':
+        return ['app-spec', 'test-contracts'];
+      case 'gate-1':
+        return ['generation-plan', 'test-contracts'];
+      case 'gate-2':
+        return [
+          'static-contracts',
+          'generation-plan',
+          'workflow-orchestration',
+          'plugin-tools',
+          'test-contracts',
+        ];
+      case 'gate-3':
+        return [
+          'frontend-workspace',
+          'static-contracts',
+          'plugin-tools',
+          'test-contracts',
+        ];
+      case 'gate-4':
+        return [
+          'frontend-workspace',
+          'workflow-orchestration',
+          'plugin-tools',
+          'test-contracts',
+        ];
+      case 'gate-5':
+        return ['frontend-workspace', 'test-contracts'];
+      case 'gate-6':
+        return [
+          'app-spec',
+          'generation-plan',
+          'static-contracts',
+          'frontend-workspace',
+          'workflow-orchestration',
+          'plugin-tools',
+          'test-contracts',
+        ];
+      case 'gate-7':
+        return ['publish-contract', 'test-contracts'];
+      default:
+        return ['test-contracts'];
+    }
+  }
+
+  private resolveRepairPatchTargets(gateId: string): string[] {
+    switch (gateId) {
+      case 'gate-0':
+        return ['generated_apps.app_spec'];
+      case 'gate-1':
+        return ['generated_apps.generation_plan'];
+      case 'gate-2':
+        return ['generated_apps.generation_plan.staticContracts'];
+      case 'gate-3':
+        return [
+          'generationWorkspace.files',
+          'generationWorkspace.commandPlan',
+          'generationWorkspace.artifactPaths',
+          'generated_apps.generation_plan.buildUnitPlan',
+        ];
+      case 'gate-4':
+        return ['generated_apps.generation_plan.integrationPlan'];
+      case 'gate-5':
+        return ['generated_apps.generation_plan.browserAcceptancePlan'];
+      case 'gate-6':
+        return ['generated_apps.generation_plan.independentVerificationPlan'];
+      case 'gate-7':
+        return ['generated_apps.generation_plan.publishCandidatePlan'];
+      default:
+        return ['generated_apps.generation_plan'];
+    }
+  }
+
+  private resolveReverificationGateIds(gateId: string): string[] {
+    const gateDefinition = getGeneratedAppGateDefinition(gateId);
+
+    if (!gateDefinition) {
+      return [gateId];
+    }
+
+    return [`gate-${gateDefinition.order}`];
+  }
+
+  private resolveReverificationCommandIds(gateId: string): string[] {
+    switch (gateId) {
+      case 'gate-3':
+        return [...GATE_3_REQUIRED_COMMAND_IDS];
+      case 'gate-4':
+        return ['agentloom generated-app gate-4 local-integration'];
+      case 'gate-5':
+        return ['agentloom generated-app gate-5 local-browser-contract'];
+      case 'gate-6':
+        return ['agentloom generated-app gate-6 local-independent-verifier'];
+      case 'gate-7':
+        return ['agentloom generated-app gate-7 publish-candidate'];
+      default:
+        return [];
+    }
   }
 
   private limitRepairAttemptText(value: string): string {
@@ -2574,8 +2756,26 @@ export class GeneratedAppService {
       verificationSummary: attempt.verificationSummary
         ? this.limitRepairAttemptText(attempt.verificationSummary)
         : null,
+      repairPlan: this.getRepairPlanOrNull(attempt.repairPlan),
+      reverificationPlan: this.getReverificationPlanOrNull(
+        attempt.reverificationPlan,
+      ),
       capturedAt: new Date().toISOString(),
     };
+  }
+
+  private getRepairPlanOrNull(value: unknown): GeneratedAppRepairPlan | null {
+    return this.isRecord(value)
+      ? (value as unknown as GeneratedAppRepairPlan)
+      : null;
+  }
+
+  private getReverificationPlanOrNull(
+    value: unknown,
+  ): GeneratedAppReverificationPlan | null {
+    return this.isRecord(value)
+      ? (value as unknown as GeneratedAppReverificationPlan)
+      : null;
   }
 
   async updateGenerationRun(
@@ -2723,6 +2923,12 @@ export class GeneratedAppService {
         failureSummary: parsed.failureSummary,
         changeSummary: parsed.changeSummary ?? null,
         verificationSummary: parsed.verificationSummary ?? null,
+        repairPlan:
+          (parsed.repairPlan as schema.NewGeneratedAppRepairAttempt['repairPlan']) ??
+          null,
+        reverificationPlan:
+          (parsed.reverificationPlan as schema.NewGeneratedAppRepairAttempt['reverificationPlan']) ??
+          null,
         startedAt,
         completedAt,
         createdBy: userId,
@@ -2758,6 +2964,16 @@ export class GeneratedAppService {
 
     if (parsed.verificationSummary !== undefined) {
       updatePayload.verificationSummary = parsed.verificationSummary;
+    }
+
+    if (parsed.repairPlan !== undefined) {
+      updatePayload.repairPlan =
+        parsed.repairPlan as schema.NewGeneratedAppRepairAttempt['repairPlan'];
+    }
+
+    if (parsed.reverificationPlan !== undefined) {
+      updatePayload.reverificationPlan =
+        parsed.reverificationPlan as schema.NewGeneratedAppRepairAttempt['reverificationPlan'];
     }
 
     if (parsed.startedAt !== undefined) {
@@ -13005,6 +13221,14 @@ export class GeneratedAppService {
             ...(this.getNonEmptyString(repairContext.failureSummary)
               ? []
               : ['repairContext.failureSummary 缺失']),
+            ...(repairContext.repairPlan === null ||
+            this.isRecord(repairContext.repairPlan)
+              ? []
+              : ['repairContext.repairPlan 必须为对象或 null']),
+            ...(repairContext.reverificationPlan === null ||
+            this.isRecord(repairContext.reverificationPlan)
+              ? []
+              : ['repairContext.reverificationPlan 必须为对象或 null']),
             ...(this.getNonEmptyString(repairContext.capturedAt)
               ? []
               : ['repairContext.capturedAt 缺失']),
@@ -14155,6 +14379,10 @@ export class GeneratedAppService {
       failureSummary: attempt.failureSummary,
       changeSummary: attempt.changeSummary,
       verificationSummary: attempt.verificationSummary,
+      repairPlan: this.getRepairPlanOrNull(attempt.repairPlan),
+      reverificationPlan: this.getReverificationPlanOrNull(
+        attempt.reverificationPlan,
+      ),
       startedAt: attempt.startedAt,
       completedAt: attempt.completedAt,
       createdBy: attempt.createdBy,

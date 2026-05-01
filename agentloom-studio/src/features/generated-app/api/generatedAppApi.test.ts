@@ -230,6 +230,8 @@ function makeRepairAttempt(
     failureSummary: '移动端提交按钮不可点击。',
     changeSummary: '调整响应式布局和按钮层级。',
     verificationSummary: '浏览器验收重新通过。',
+    repairPlan: null,
+    reverificationPlan: null,
     startedAt: '2026-04-25T03:11:00.000Z',
     completedAt: '2026-04-25T03:20:00.000Z',
     createdBy: 'user-1',

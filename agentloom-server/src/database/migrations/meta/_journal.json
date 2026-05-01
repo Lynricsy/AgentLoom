@@ -505,6 +505,13 @@
       "when": 1777197600000,
       "tag": "0071_generated_app_generation_runs",
       "breakpoints": true
+    },
+    {
+      "idx": 72,
+      "version": "7",
+      "when": 1777795200000,
+      "tag": "0072_generated_app_repair_attempt_plans",
+      "breakpoints": true
     }
   ]
 }

@@ -214,6 +214,35 @@ function AutomaticRepairAttemptNotice({
   )
 }
 
+function RepairPlanSummary({
+  attempt,
+}: {
+  attempt: GeneratedAppRepairAttempt
+}) {
+  if (!attempt.repairPlan && !attempt.reverificationPlan) {
+    return null
+  }
+
+  return (
+    <div className="space-y-1 rounded-md border border-border bg-muted/30 p-3 text-xs">
+      {attempt.repairPlan ? (
+        <p className="break-words text-muted-foreground">
+          修复工作单：{attempt.repairPlan.patchTargets.join('、') || '暂无目标'}
+        </p>
+      ) : null}
+      {attempt.reverificationPlan ? (
+        <p className="break-words text-muted-foreground">
+          再验证：
+          {attempt.reverificationPlan.requiredGateIds.join('、') || '暂无 Gate'}
+          {attempt.reverificationPlan.requiredCommandIds.length > 0
+            ? ` / ${attempt.reverificationPlan.requiredCommandIds.join('、')}`
+            : ''}
+        </p>
+      ) : null}
+    </div>
+  )
+}
+
 function EvidenceSummaryList({
   evidence,
 }: {
@@ -714,6 +743,7 @@ export function GeneratedAppGenerationEvidencePanel({
                       <td className="px-3 py-3">
                         <div className="min-w-0 space-y-2">
                           <AutomaticRepairAttemptNotice attempt={attempt} />
+                          <RepairPlanSummary attempt={attempt} />
                           <SummaryText>{attempt.failureSummary}</SummaryText>
                         </div>
                       </td>
