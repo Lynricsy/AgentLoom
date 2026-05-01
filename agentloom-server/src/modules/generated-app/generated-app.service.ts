@@ -226,6 +226,8 @@ const GENERATED_APP_PUBLIC_WORKFLOW_NOT_STARTED_BOUNDARY =
   'local-deterministic-report-only';
 const GENERATED_APP_PUBLIC_WORKFLOW_STATUS_SECTION_ID =
   'workflow-execution-status';
+const GENERATED_APP_PUBLIC_WORKFLOW_OUTPUT_LIMIT = 5;
+const GENERATED_APP_PUBLIC_WORKFLOW_OUTPUT_TEXT_LIMIT = 500;
 const UUID_LIKE_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PUBLIC_SUBMISSION_FORBIDDEN_RESULT_REPORT_KEYS = new Set([
@@ -265,6 +267,8 @@ const PUBLIC_SUBMISSION_FORBIDDEN_RESULT_REPORT_KEYS = new Set([
   'privatekey',
   'plugin_ids',
   'pluginids',
+  'plugin_id',
+  'pluginid',
   'public_share_token',
   'publicsharetoken',
   'readiness',
@@ -3958,8 +3962,11 @@ export class GeneratedAppService {
   ): Promise<Record<string, unknown>> {
     const steps = await this.db
       .select({
+        nodeId: schema.executionSteps.nodeId,
+        nodeType: schema.executionSteps.nodeType,
         status: schema.executionSteps.status,
         completedAt: schema.executionSteps.completedAt,
+        result: schema.executionSteps.result,
       })
       .from(schema.executionSteps)
       .innerJoin(
@@ -3984,16 +3991,110 @@ export class GeneratedAppService {
       .map((step) => step.completedAt)
       .filter((value): value is Date => value instanceof Date)
       .sort((left, right) => right.getTime() - left.getTime())[0];
+    const publicOutputs = steps
+      .filter((step) => step.status === 'completed')
+      .flatMap((step) =>
+        this.extractPublicWorkflowStepOutputs({
+          nodeId: step.nodeId,
+          nodeType: step.nodeType,
+          result: step.result,
+        }),
+      )
+      .slice(0, GENERATED_APP_PUBLIC_WORKFLOW_OUTPUT_LIMIT);
 
     return {
       summary:
-        'Workflow execution 已完成。出于公开链接安全边界，仅展示步骤计数摘要，不展开节点输出或内部执行快照。',
+        publicOutputs.length > 0
+          ? 'Workflow execution 已完成；公开页面展示经过白名单过滤的业务输出摘要，并继续隐藏内部执行快照。'
+          : 'Workflow execution 已完成。出于公开链接安全边界，仅展示步骤计数摘要，不展开节点输出或内部执行快照。',
       completedSteps: completedCount,
       failedSteps: failedCount,
       cancelledSteps: cancelledCount,
       totalSteps: steps.length,
       latestStepCompletedAt: latestCompletedAt?.toISOString() ?? null,
+      publicOutputs,
     };
+  }
+
+  private extractPublicWorkflowStepOutputs(params: {
+    nodeId: string;
+    nodeType: string | null;
+    result: Record<string, unknown> | null;
+  }): Array<Record<string, unknown>> {
+    const result = this.getRecord(params.result);
+
+    if (!result) {
+      return [];
+    }
+
+    const analysis =
+      this.getRecord(result.analysis) ?? this.getRecord(result['analysis-out']);
+
+    if (analysis) {
+      return [
+        {
+          kind: 'analysis',
+          title:
+            params.nodeType === 'plugin'
+              ? '私有工具分析摘要'
+              : '结构化分析摘要',
+          nodeId: params.nodeId,
+          nodeType: params.nodeType,
+          value: this.sanitizePublicWorkflowOutputValue(analysis),
+        },
+      ];
+    }
+
+    if (params.nodeType === 'text-output') {
+      const content = this.getNonEmptyString(result.content);
+
+      return content
+        ? [
+            {
+              kind: 'text',
+              title: 'Workflow 文本输出',
+              nodeId: params.nodeId,
+              nodeType: params.nodeType,
+              value: this.limitPublicWorkflowOutputText(content),
+            },
+          ]
+        : [];
+    }
+
+    if (params.nodeType === 'json-output') {
+      const json = this.getRecord(result.json);
+
+      return json
+        ? [
+            {
+              kind: 'json',
+              title: 'Workflow JSON 输出',
+              nodeId: params.nodeId,
+              nodeType: params.nodeType,
+              value: this.sanitizePublicWorkflowOutputValue(json),
+            },
+          ]
+        : [];
+    }
+
+    return [];
+  }
+
+  private sanitizePublicWorkflowOutputValue(value: unknown): unknown {
+    const sanitized = this.sanitizePublicSubmissionValue(value);
+    if (typeof sanitized === 'string') {
+      return this.limitPublicWorkflowOutputText(sanitized);
+    }
+
+    return sanitized;
+  }
+
+  private limitPublicWorkflowOutputText(value: string): string {
+    const trimmed = value.trim();
+
+    return trimmed.length > GENERATED_APP_PUBLIC_WORKFLOW_OUTPUT_TEXT_LIMIT
+      ? `${trimmed.slice(0, GENERATED_APP_PUBLIC_WORKFLOW_OUTPUT_TEXT_LIMIT)}...`
+      : trimmed;
   }
 
   private withRefreshedWorkflowHandoff(
@@ -4328,6 +4429,7 @@ export class GeneratedAppService {
       handoff.summary
         ? `安全摘要：${this.getNonEmptyString(handoff.summary.summary) ?? '执行已完成，公开页面仅展示步骤计数摘要。'}`
         : null,
+      ...this.buildPublicWorkflowOutputReportItems(handoff.summary),
     ].filter((item): item is string => Boolean(item));
 
     return {
@@ -4342,6 +4444,66 @@ export class GeneratedAppService {
         },
       ],
     };
+  }
+
+  private buildPublicWorkflowOutputReportItems(
+    summary: Record<string, unknown> | undefined,
+  ): string[] {
+    const outputs = this.getRecordArray(summary?.publicOutputs);
+
+    return outputs
+      .map((output) => {
+        const title = this.getNonEmptyString(output.title) ?? '业务输出';
+        const value = this.formatPublicWorkflowOutputValue(output.value);
+
+        return value ? `${title}：${value}` : null;
+      })
+      .filter((item): item is string => Boolean(item));
+  }
+
+  private formatPublicWorkflowOutputValue(value: unknown): string | null {
+    if (typeof value === 'string') {
+      return this.limitPublicWorkflowOutputText(value);
+    }
+
+    if (typeof value === 'number' || typeof value === 'boolean') {
+      return String(value);
+    }
+
+    if (!this.isRecord(value)) {
+      return null;
+    }
+
+    const preferredParts = [
+      this.formatPublicWorkflowOutputField('风险等级', value.riskLevel),
+      this.formatPublicWorkflowOutputField('评分', value.score),
+      this.formatPublicWorkflowOutputField('信号数量', value.signalCount),
+      this.formatPublicWorkflowOutputField('模式', value.mode),
+    ].filter((item): item is string => Boolean(item));
+
+    const followUpQuestions = this.getStringArray(value.followUpQuestions);
+    if (followUpQuestions.length > 0) {
+      preferredParts.push(`追问：${followUpQuestions.slice(0, 2).join('；')}`);
+    }
+
+    if (preferredParts.length > 0) {
+      return this.limitPublicWorkflowOutputText(preferredParts.join('；'));
+    }
+
+    return this.limitPublicWorkflowOutputText(JSON.stringify(value));
+  }
+
+  private formatPublicWorkflowOutputField(
+    label: string,
+    value: unknown,
+  ): string | null {
+    if (typeof value === 'number' || typeof value === 'boolean') {
+      return `${label}=${String(value)}`;
+    }
+
+    const text = this.getNonEmptyString(value);
+
+    return text ? `${label}=${text}` : null;
   }
 
   private sanitizePublicSubmissionResultReport<

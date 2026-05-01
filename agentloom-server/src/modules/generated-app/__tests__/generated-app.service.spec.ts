@@ -11203,6 +11203,7 @@ describe('GeneratedAppService', () => {
           cancelledSteps: 1,
           totalSteps: 3,
           latestStepCompletedAt: NOW.toISOString(),
+          publicOutputs: [],
         },
       }),
     );
@@ -11669,19 +11670,36 @@ describe('GeneratedAppService', () => {
       .mockReturnValueOnce(
         createSelectManyChain([
           {
+            nodeId: 'generated-app-plugin-tool-guided-intake-analysis',
+            nodeType: 'plugin',
             status: 'completed',
             completedAt: NOW,
             result: {
-              nodeData: 'do-not-leak',
+              analysis: {
+                riskLevel: 'follow-up',
+                score: 42,
+                signalCount: 2,
+                mode: 'screening',
+                followUpQuestions: ['请补充症状持续时间。'],
+                boundaryNotice: '只做信息整理。',
+                pluginId: GENERATED_PRIVATE_PLUGIN_ID,
+                sourceArtifactUrl: 'https://internal/source.zip',
+                nodeData: 'do-not-leak',
+              },
               toolCalls: [{ token: 'secret-token-value' }],
             },
             checkpointData: { stack: 'internal stack' },
             nodeData: { path: '/root/AgentLoom/.env' },
           },
           {
+            nodeId: 'generated-app-runtime-output',
+            nodeType: 'text-output',
             status: 'completed',
             completedAt: NOW,
-            result: { sourceArtifactUrl: 'https://internal/source.zip' },
+            result: {
+              content: 'Workflow 已生成可公开展示的问诊整理摘要。',
+              sourceArtifactUrl: 'https://internal/source.zip',
+            },
             checkpointData: { testReportUrl: 'https://internal/report.json' },
           },
         ]),
@@ -11702,13 +11720,50 @@ describe('GeneratedAppService', () => {
         workflowExecutionCompletedAt: NOW.toISOString(),
         workflowExecutionSummary: {
           summary:
-            'Workflow execution 已完成。出于公开链接安全边界，仅展示步骤计数摘要，不展开节点输出或内部执行快照。',
+            'Workflow execution 已完成；公开页面展示经过白名单过滤的业务输出摘要，并继续隐藏内部执行快照。',
           completedSteps: 2,
           failedSteps: 0,
           cancelledSteps: 0,
           totalSteps: 2,
           latestStepCompletedAt: NOW.toISOString(),
+          publicOutputs: [
+            {
+              kind: 'analysis',
+              title: '私有工具分析摘要',
+              nodeId: 'generated-app-plugin-tool-guided-intake-analysis',
+              nodeType: 'plugin',
+              value: expect.objectContaining({
+                riskLevel: 'follow-up',
+                score: 42,
+                signalCount: 2,
+                mode: 'screening',
+                followUpQuestions: ['请补充症状持续时间。'],
+                boundaryNotice: '只做信息整理。',
+              }),
+            },
+            {
+              kind: 'text',
+              title: 'Workflow 文本输出',
+              nodeId: 'generated-app-runtime-output',
+              nodeType: 'text-output',
+              value: 'Workflow 已生成可公开展示的问诊整理摘要。',
+            },
+          ],
         },
+      }),
+    );
+    expect(response.report).toEqual(
+      expect.objectContaining({
+        sections: expect.arrayContaining([
+          expect.objectContaining({
+            id: 'workflow-execution-status',
+            items: expect.arrayContaining([
+              expect.stringContaining('私有工具分析摘要'),
+              expect.stringContaining('风险等级=follow-up'),
+              expect.stringContaining('Workflow 文本输出'),
+            ]),
+          }),
+        ]),
       }),
     );
     expect(serialized).not.toContain('definitionSnapshot');
@@ -11720,6 +11775,10 @@ describe('GeneratedAppService', () => {
     expect(serialized).not.toContain('/root/AgentLoom');
     expect(serialized).not.toContain('sourceArtifactUrl');
     expect(serialized).not.toContain('testReportUrl');
+    expect(serialized).not.toContain(GENERATED_PRIVATE_PLUGIN_ID);
+    expect(serialized).toContain('follow-up');
+    expect(serialized).toContain('请补充症状持续时间');
+    expect(serialized).toContain('Workflow 已生成可公开展示的问诊整理摘要');
     expect(updateChain.set).toHaveBeenCalledWith(
       expect.objectContaining({
         status: 'completed',
