@@ -142,6 +142,7 @@ export interface GeneratedAppGateEvidence {
 export interface GeneratedAppGenerationPlan {
   planVersion: 1;
   appSpecVersion: number;
+  repairContext?: GeneratedAppGenerationRepairContext;
   frontend: {
     stack: 'react-vite-agentloom-runtime';
     runtimeSurface: {
@@ -218,6 +219,19 @@ export interface GeneratedAppGenerationPlan {
   browserAcceptancePlan?: GeneratedAppBrowserAcceptancePlan;
   independentVerificationPlan?: GeneratedAppIndependentVerificationPlan;
   publishCandidatePlan?: GeneratedAppPublishCandidatePlan;
+}
+
+export interface GeneratedAppGenerationRepairContext {
+  source: 'previous-failed-repair-attempt';
+  sourceGenerationRunId: string;
+  sourceRepairAttemptId: string;
+  targetGateId: string;
+  attemptNumber: number;
+  status: GeneratedAppRepairAttemptStatus;
+  failureSummary: string;
+  changeSummary: string | null;
+  verificationSummary: string | null;
+  capturedAt: string;
 }
 
 export interface GeneratedAppStaticContracts {

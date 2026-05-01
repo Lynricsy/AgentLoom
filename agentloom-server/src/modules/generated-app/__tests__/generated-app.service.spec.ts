@@ -303,6 +303,19 @@ function createSelectLatestRunNumberChain(runNumber: number | null) {
   };
 }
 
+function createSelectOrderedLimitChain<T>(result: T[]) {
+  return {
+    from: vi.fn().mockReturnThis(),
+    where: vi.fn().mockReturnThis(),
+    orderBy: vi.fn().mockReturnThis(),
+    limit: vi.fn().mockResolvedValue(result),
+  };
+}
+
+type SelectOrderedLimitChain<T> = ReturnType<
+  typeof createSelectOrderedLimitChain<T>
+>;
+
 function createCountChain(total: number) {
   return {
     from: vi.fn().mockReturnThis(),
@@ -3300,6 +3313,202 @@ describe('GeneratedAppService', () => {
     );
     expect(response.app.id).toBe(APP_ID);
     expect(response.app.workflowDefinitionId).toBe(WORKFLOW_DEFINITION_ID);
+  });
+
+  it('retry 启动门禁运行器时应把最近 failed repair attempt 写入本轮 generationPlan 和 Gate 1 证据', async () => {
+    const configService = createConfigService();
+    const gate3Runner = createGate3RunnerStub(
+      configService,
+      createGate3RunnerResult({
+        status: 'failed',
+        failure: {
+          code: 'gate3-build-failed',
+          message: 'Gate 3 构建命令失败。',
+        },
+        repairInstructions: '修复 Gate 3 构建脚本后重新运行。',
+      }),
+    );
+    const serviceWithRunner = new GeneratedAppService(
+      mockTenantDb as unknown as DrizzleDB,
+      configService,
+      gate3Runner,
+    );
+    const app = createGeneratedApp();
+    const run = createGeneratedAppGenerationRun({
+      triggerSource: 'retry',
+      runNumber: 2,
+    });
+    const previousRepairAttempt = createGeneratedAppRepairAttempt({
+      id: REPAIR_ATTEMPT_ID,
+      generationRunId: '99999999-9999-4999-8999-999999999999',
+      targetGateId: 'gate-3',
+      attemptNumber: 1,
+      status: 'failed',
+      failureSummary: 'Gate 3 构建命令失败。',
+      changeSummary:
+        '当前同步 runner 未应用源码、Workflow 或插件补丁，已将 Gate 3 标记为下一轮修复目标。',
+      verificationSummary: 'Gate 3 仍为 failed。',
+      completedAt: NOW,
+    });
+    const gate0Run = createGeneratedAppGateRun({
+      gateId: 'gate-0',
+      gateOrder: 0,
+      gateName: '需求规格门禁',
+      generationRunId: GENERATION_RUN_ID,
+      status: 'passed',
+      summary:
+        'Gate 0 通过：AppSpec 结构完整，核心需求均有 acceptance scenario 与 traceability 覆盖。',
+      evidence: [],
+    });
+    const gate1Run = createGeneratedAppGateRun({
+      id: GATE_1_RUN_ID,
+      gateId: 'gate-1',
+      gateOrder: 1,
+      gateName: '架构计划门禁',
+      generationRunId: GENERATION_RUN_ID,
+      status: 'passed',
+      summary:
+        'Gate 1 通过：generationPlan 已覆盖 AppSpec 页面、Agent/Workflow 编排、插件/工具策略、数据持久化、Gate 2-7 测试计划和需求 traceability。',
+      evidence: [],
+    });
+    const gate2Run = createGeneratedAppGateRun({
+      id: GATE_2_RUN_ID,
+      gateId: 'gate-2',
+      gateOrder: 2,
+      gateName: '静态合约门禁',
+      generationRunId: GENERATION_RUN_ID,
+      status: 'passed',
+      summary:
+        'Gate 2 通过：staticContracts 已覆盖公开运行输入输出、前端路由、Workflow/Agent 编排、插件权限、提交持久化、测试入口和需求 traceability。',
+      evidence: [],
+    });
+    const gate3Run = createGeneratedAppGateRun({
+      id: GATE_3_RUN_ID,
+      gateId: 'gate-3',
+      gateOrder: 3,
+      gateName: '构建与单元门禁',
+      generationRunId: GENERATION_RUN_ID,
+      status: 'failed',
+      summary: 'Gate 3 构建命令失败。',
+      failure: {
+        code: 'gate3-build-failed',
+        message: 'Gate 3 构建命令失败。',
+      },
+      repairInstructions: '修复 Gate 3 构建脚本后重新运行。',
+    });
+    const automaticRepairAttempt = createGeneratedAppRepairAttempt({
+      targetGateId: 'gate-3',
+      status: 'failed',
+      failureSummary: 'Gate 3 构建命令失败。',
+      changeSummary:
+        '自动修复循环已读取失败证据和修复建议。当前同步 runner 未应用源码、Workflow 或插件补丁，已将该 Gate 标记为下一轮修复目标。',
+      verificationSummary: 'Gate 3 仍为 failed。',
+      completedAt: NOW,
+    });
+    const completedRun = createGeneratedAppGenerationRun({
+      status: 'failed',
+      triggerSource: 'retry',
+      failureReason: 'Gate 3 构建命令失败。',
+      completedAt: NOW,
+    });
+    const insertRunChain = createInsertReturningChain([run]);
+    const insertGate0RunChain = createInsertReturningChain([gate0Run]);
+    const insertGate1RunChain = createInsertReturningChain([gate1Run]);
+    const insertGate2RunChain = createInsertReturningChain([gate2Run]);
+    const insertGate3RunChain = createInsertReturningChain([gate3Run]);
+    const insertRepairAttemptChain = createInsertReturningChain([
+      automaticRepairAttempt,
+    ]);
+    const updateAppAfterGate0Chain =
+      createGeneratedAppUpdateReturningFromPayload(app);
+    let gate1UpdatePayload: Partial<GeneratedApp> = {};
+    const updateAppAfterGate1Chain =
+      createGeneratedAppUpdateReturningFromPayload(app, (payload) => {
+        gate1UpdatePayload = payload;
+      });
+    const updateAppAfterGate2Chain =
+      createGeneratedAppUpdateReturningFromPayload(app);
+    const updateAppAfterGate3Chain =
+      createGeneratedAppUpdateReturningFromPayload(app);
+    const updateRunChain = createUpdateReturningChain([completedRun]);
+    mockTenantDb.select
+      .mockReturnValueOnce(createSelectChain([app]))
+      .mockReturnValueOnce(createSelectLatestRunNumberChain(1))
+      .mockReturnValueOnce(
+        createSelectOrderedLimitChain([previousRepairAttempt]),
+      );
+    mockTenantDb.insert
+      .mockReturnValueOnce(insertRunChain)
+      .mockReturnValueOnce(insertGate0RunChain)
+      .mockReturnValueOnce(insertGate1RunChain)
+      .mockReturnValueOnce(insertGate2RunChain)
+      .mockReturnValueOnce(insertGate3RunChain)
+      .mockReturnValueOnce(insertRepairAttemptChain);
+    mockTenantDb.update
+      .mockReturnValueOnce(updateAppAfterGate0Chain)
+      .mockReturnValueOnce(updateAppAfterGate1Chain)
+      .mockReturnValueOnce(updateAppAfterGate2Chain)
+      .mockReturnValueOnce(updateAppAfterGate3Chain)
+      .mockReturnValueOnce(updateRunChain);
+
+    const response = await serviceWithRunner.startGenerationRun(
+      TENANT_ID,
+      USER_ID,
+      APP_ID,
+      {
+        triggerSource: 'retry',
+        maxRepairAttempts: 2,
+        maxRuntimeSeconds: 600,
+      },
+    );
+
+    expect(insertRunChain.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        triggerSource: 'retry',
+        runNumber: 2,
+      }),
+    );
+    const repairContextSelectChain = mockTenantDb.select.mock.results[2]
+      ?.value as SelectOrderedLimitChain<GeneratedAppRepairAttempt>;
+    expect(repairContextSelectChain.orderBy).toHaveBeenCalled();
+    const gate1Plan =
+      gate1UpdatePayload.generationPlan as GeneratedAppGenerationPlan;
+    expect(gate1Plan.repairContext).toEqual(
+      expect.objectContaining({
+        source: 'previous-failed-repair-attempt',
+        sourceGenerationRunId: previousRepairAttempt.generationRunId,
+        sourceRepairAttemptId: previousRepairAttempt.id,
+        targetGateId: 'gate-3',
+        status: 'failed',
+        failureSummary: 'Gate 3 构建命令失败。',
+        changeSummary: previousRepairAttempt.changeSummary,
+        verificationSummary: 'Gate 3 仍为 failed。',
+      }),
+    );
+    expect(gate1Plan.traceability[0]?.planEvidenceIds).toContain(
+      'gate-1-retry-repair-context',
+    );
+    const gate1Payload = insertGate1RunChain.values.mock.calls[0]?.[0] as {
+      evidence: GeneratedApp['gateResults'][number]['evidence'];
+    };
+    expect(gate1Payload.evidence).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'gate-1-retry-repair-context',
+          kind: 'plan',
+          summary: expect.stringContaining(
+            '当前 retry 已携带 gate-3 的上一轮失败修复上下文',
+          ),
+        }),
+      ]),
+    );
+    expect(response.generationRun.status).toBe('failed');
+    expect(insertRepairAttemptChain.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        targetGateId: 'gate-3',
+        status: 'failed',
+      }),
+    );
   });
 
   it('Gate 7 通过后的 rerun 应复用已有 Generated App handoff workflow 而不重复创建', async () => {

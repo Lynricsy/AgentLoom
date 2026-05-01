@@ -18,6 +18,7 @@ import type {
   GeneratedAppBuildUnitPlan,
   GeneratedAppGateEvidence,
   GeneratedAppGenerationPlan,
+  GeneratedAppGenerationRepairContext,
   GeneratedAppGenerationRun,
   GeneratedAppIndependentVerificationPlan,
   GeneratedAppIntegrationPlan,
@@ -1773,6 +1774,10 @@ export class GeneratedAppService {
         createdBy: userId,
       })
       .returning();
+    const retryRepairContext =
+      parsed.triggerSource === 'retry'
+        ? await this.resolveLatestFailedRepairContext(tenantId, appId)
+        : null;
 
     const gate0Evaluation = this.evaluateGate0AppSpec(app.appSpec);
     const gateCompletedAt = new Date();
@@ -1810,7 +1815,10 @@ export class GeneratedAppService {
     let completedStatus: schema.GeneratedAppGenerationRunStatus = 'failed';
 
     if (gate0Evaluation.status === 'passed') {
-      const generationPlan = this.buildGenerationPlan(app.appSpec);
+      const generationPlan = this.buildGenerationPlan(
+        app.appSpec,
+        retryRepairContext,
+      );
       const gate1Evaluation = this.evaluateGate1GenerationPlan(
         app.appSpec,
         generationPlan,
@@ -2521,6 +2529,45 @@ export class GeneratedAppService {
       0,
       GENERATED_APP_REPAIR_ATTEMPT_TEXT_MAX_LENGTH - 3,
     )}...`;
+  }
+
+  private async resolveLatestFailedRepairContext(
+    tenantId: string,
+    appId: string,
+  ): Promise<GeneratedAppGenerationRepairContext | null> {
+    const [attempt] = await this.tenantDb
+      .select()
+      .from(schema.generatedAppRepairAttempts)
+      .where(
+        and(
+          eq(schema.generatedAppRepairAttempts.tenantId, tenantId),
+          eq(schema.generatedAppRepairAttempts.generatedAppId, appId),
+          eq(schema.generatedAppRepairAttempts.status, 'failed'),
+        ),
+      )
+      .orderBy(desc(schema.generatedAppRepairAttempts.createdAt))
+      .limit(1);
+
+    if (!attempt) {
+      return null;
+    }
+
+    return {
+      source: 'previous-failed-repair-attempt',
+      sourceGenerationRunId: attempt.generationRunId,
+      sourceRepairAttemptId: attempt.id,
+      targetGateId: attempt.targetGateId,
+      attemptNumber: attempt.attemptNumber,
+      status: attempt.status,
+      failureSummary: this.limitRepairAttemptText(attempt.failureSummary),
+      changeSummary: attempt.changeSummary
+        ? this.limitRepairAttemptText(attempt.changeSummary)
+        : null,
+      verificationSummary: attempt.verificationSummary
+        ? this.limitRepairAttemptText(attempt.verificationSummary)
+        : null,
+      capturedAt: new Date().toISOString(),
+    };
   }
 
   async updateGenerationRun(
@@ -4286,6 +4333,7 @@ export class GeneratedAppService {
 
   private buildGenerationPlan(
     appSpec: GeneratedAppSpec,
+    repairContext: GeneratedAppGenerationRepairContext | null = null,
   ): GeneratedAppGenerationPlan {
     const allRequirementIds = appSpec.coreRequirements.map(
       (requirement) => requirement.id,
@@ -4313,7 +4361,7 @@ export class GeneratedAppService {
       scenarioIdsByRequirementId.set(requirement.id, scenarioIds);
     }
 
-    return {
+    const generationPlan: GeneratedAppGenerationPlan = {
       planVersion: 1,
       appSpecVersion: appSpec.version,
       frontend: {
@@ -4437,9 +4485,16 @@ export class GeneratedAppService {
           'gate-1-plugin-tool-plan',
           'gate-1-data-persistence-plan',
           'gate-1-test-gate-plan',
+          ...(repairContext ? ['gate-1-retry-repair-context'] : []),
         ],
       })),
     };
+
+    if (repairContext) {
+      generationPlan.repairContext = repairContext;
+    }
+
+    return generationPlan;
   }
 
   private buildStaticContracts(
@@ -12708,6 +12763,7 @@ export class GeneratedAppService {
       'gate-1-data-persistence-plan',
       'gate-1-test-gate-plan',
       'gate-1-traceability',
+      'gate-1-retry-repair-context',
     ]);
     const traceabilityByRequirementId = new Map(
       generationPlan.traceability.map((entry) => [entry.requirementId, entry]),
@@ -12912,6 +12968,39 @@ export class GeneratedAppService {
 
       return issues;
     });
+    const repairContext = this.getRecord(generationPlan.repairContext);
+    const repairContextIssues =
+      repairContext === null
+        ? []
+        : [
+            ...(repairContext.source === 'previous-failed-repair-attempt'
+              ? []
+              : ['repairContext.source 必须为 previous-failed-repair-attempt']),
+            ...(this.getNonEmptyString(repairContext.sourceGenerationRunId)
+              ? []
+              : ['repairContext.sourceGenerationRunId 缺失']),
+            ...(this.getNonEmptyString(repairContext.sourceRepairAttemptId)
+              ? []
+              : ['repairContext.sourceRepairAttemptId 缺失']),
+            ...(this.getNonEmptyString(repairContext.targetGateId) &&
+            getGeneratedAppGateDefinition(String(repairContext.targetGateId))
+              ? []
+              : ['repairContext.targetGateId 必须指向 Gate 0-7']),
+            ...(typeof repairContext.attemptNumber === 'number' &&
+            Number.isInteger(repairContext.attemptNumber) &&
+            repairContext.attemptNumber > 0
+              ? []
+              : ['repairContext.attemptNumber 必须为正整数']),
+            ...(repairContext.status === 'failed'
+              ? []
+              : ['repairContext.status 必须为 failed']),
+            ...(this.getNonEmptyString(repairContext.failureSummary)
+              ? []
+              : ['repairContext.failureSummary 缺失']),
+            ...(this.getNonEmptyString(repairContext.capturedAt)
+              ? []
+              : ['repairContext.capturedAt 缺失']),
+          ];
 
     return [
       {
@@ -12962,6 +13051,16 @@ export class GeneratedAppService {
         passed: traceabilityIssues.length === 0,
         summary: `检查 ${appSpec.coreRequirements.length} 条核心需求是否连接到场景、页面、编排步骤和计划证据。`,
         issues: traceabilityIssues,
+      },
+      {
+        id: 'retry-repair-context',
+        label: 'Retry 修复上下文',
+        passed: repairContextIssues.length === 0,
+        summary:
+          repairContext === null
+            ? '当前 generation run 没有携带上一轮失败修复上下文。'
+            : `当前 retry 已携带 ${String(repairContext.targetGateId)} 的上一轮失败修复上下文。`,
+        issues: repairContextIssues,
       },
     ];
   }

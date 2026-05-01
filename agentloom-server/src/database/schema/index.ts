@@ -464,6 +464,7 @@ export {
   type GeneratedAppAcceptanceScenario,
   type GeneratedAppSpec,
   type GeneratedAppGenerationPlan,
+  type GeneratedAppGenerationRepairContext,
   type GeneratedAppStaticContracts,
   type GeneratedAppBuildUnitPlan,
   type GeneratedAppIntegrationPlan,
