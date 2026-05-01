@@ -303,7 +303,7 @@ function getWorkflowExecutionStateText(
     case 'running':
       return 'Workflow 正在执行，页面会自动刷新执行状态。'
     case 'paused':
-      return 'Workflow 已暂停，当前公开页面继续保留本地报告。'
+      return 'Workflow 已暂停，页面会继续刷新执行状态，并保留本地报告。'
     case 'completed':
       return 'Workflow 执行已完成，当前仅展示安全摘要。'
     case 'failed':
@@ -325,7 +325,8 @@ function WorkflowExecutionStatusPanel({
 }) {
   const active =
     handoff.executionStatus === 'pending' ||
-    handoff.executionStatus === 'running'
+    handoff.executionStatus === 'running' ||
+    handoff.executionStatus === 'paused'
   const completed = handoff.executionStatus === 'completed'
   const incomplete =
     handoff.executionStatus === 'failed' ||

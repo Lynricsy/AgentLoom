@@ -296,6 +296,55 @@ describe('GeneratedAppSubmissionsPanel', () => {
     expect(statusBlock).not.toHaveTextContent('gateResults')
   })
 
+  it('keeps selected submission detail visible while workflow handoff polling refreshes', async () => {
+    const user = userEvent.setup()
+    detailQuery.data = makeSubmission({
+      status: 'running',
+      report: {
+        title: '后台暂停中',
+        workflowExecution: true,
+        executionId: '77777777-7777-4777-8777-777777777777',
+        executionStatus: 'paused',
+        workflowDefinitionId: '88888888-8888-4888-8888-888888888888',
+        workflowExecutionNotice: 'Workflow execution 暂停等待继续。',
+        workflowExecutionUpdatedAt: '2026-04-25T02:08:00.000Z',
+        workflowExecutionSummary: {
+          completedSteps: 1,
+          failedSteps: 0,
+          cancelledSteps: 0,
+          totalSteps: 4,
+        },
+      },
+    })
+    detailQuery.isFetching = true
+
+    render(<GeneratedAppSubmissionsPanel appId="app-1" />)
+
+    await user.click(
+      screen.getByRole('button', {
+        name: '查看提交记录 submission-1 详情',
+      }),
+    )
+
+    const detail = screen.getByTestId('generated-app-submission-detail')
+    expect(within(detail).getByText('正在刷新')).toBeInTheDocument()
+    expect(screen.queryByText('正在加载提交详情...')).not.toBeInTheDocument()
+
+    const statusBlock = screen.getByTestId('creator-workflow-execution-status')
+    expect(statusBlock).toHaveAttribute('data-execution-status', 'paused')
+    expect(within(statusBlock).getByText('已暂停')).toBeInTheDocument()
+    expect(
+      within(statusBlock).getByText(
+        'Workflow 已暂停，提交详情会继续自动刷新状态，并保留安全状态摘要。',
+      ),
+    ).toBeInTheDocument()
+    expect(
+      within(statusBlock).getByText('Workflow execution 暂停等待继续。'),
+    ).toBeInTheDocument()
+    expect(statusBlock).not.toHaveTextContent('77777777-7777')
+    expect(statusBlock).not.toHaveTextContent('88888888-8888')
+  })
+
   it('renders completed workflow handoff summary without exposing execution ids', async () => {
     const user = userEvent.setup()
     const executionId = '99999999-9999-4999-8999-999999999999'

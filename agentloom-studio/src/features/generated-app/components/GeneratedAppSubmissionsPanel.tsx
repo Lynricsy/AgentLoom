@@ -200,7 +200,7 @@ function getWorkflowExecutionMessage(
     case 'running':
       return 'Workflow 正在执行，提交详情会自动刷新状态。'
     case 'paused':
-      return 'Workflow 已暂停，当前仅展示安全状态摘要。'
+      return 'Workflow 已暂停，提交详情会继续自动刷新状态，并保留安全状态摘要。'
     case 'completed':
       return 'Workflow 执行已完成，当前仅展示安全状态摘要。'
     case 'failed':
@@ -219,7 +219,7 @@ function getWorkflowExecutionPanelClass(
     return 'border-emerald-500/30 bg-emerald-500/5'
   }
 
-  if (status === 'pending' || status === 'running') {
+  if (status === 'pending' || status === 'running' || status === 'paused') {
     return 'border-sky-500/30 bg-sky-500/5'
   }
 
@@ -235,7 +235,9 @@ function WorkflowExecutionStatusBlock({
   const displayStatus = getWorkflowExecutionDisplayStatus(handoff)
   const summary = handoff?.workflowExecutionSummary ?? null
   const isActive =
-    displayStatus === 'pending' || displayStatus === 'running'
+    displayStatus === 'pending' ||
+    displayStatus === 'running' ||
+    displayStatus === 'paused'
   const hasStepSummary =
     typeof summary?.completedSteps === 'number' ||
     typeof summary?.failedSteps === 'number' ||
@@ -737,7 +739,7 @@ export function GeneratedAppSubmissionsPanel({
           <p className="text-sm text-muted-foreground">
             选择一条提交记录后，可查看完整 input、result、report 和错误信息。
           </p>
-        ) : detailQuery.isLoading || detailQuery.isFetching ? (
+        ) : detailQuery.isLoading && !selectedSubmission ? (
           <div className="flex items-center gap-3 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
             正在加载提交详情...
@@ -773,6 +775,12 @@ export function GeneratedAppSubmissionsPanel({
               <div className="min-w-0 space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <SubmissionStatusBadge status={selectedSubmission.status} />
+                  {detailQuery.isFetching ? (
+                    <span className="inline-flex items-center gap-1 rounded-full border border-border bg-background/30 px-2 py-0.5 text-xs text-muted-foreground">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      正在刷新
+                    </span>
+                  ) : null}
                   <code className="break-all rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
                     {selectedSubmission.id}
                   </code>

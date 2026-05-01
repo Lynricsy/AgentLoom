@@ -377,6 +377,11 @@ describe('GeneratedAppPublicRuntimePage', () => {
   it.each([
     ['pending', '等待执行', 'Workflow 正在排队，页面会自动刷新执行状态。'],
     ['running', '正在执行', 'Workflow 正在执行，页面会自动刷新执行状态。'],
+    [
+      'paused',
+      '已暂停',
+      'Workflow 已暂停，页面会继续刷新执行状态，并保留本地报告。',
+    ],
     ['completed', '已完成', 'Workflow 执行已完成，当前仅展示安全摘要。'],
     ['failed', '执行未完成', 'Workflow 执行未完成，页面继续保留本地报告。'],
     ['cancelled', '已取消', 'Workflow 已取消，页面继续保留本地报告。'],
@@ -387,7 +392,7 @@ describe('GeneratedAppPublicRuntimePage', () => {
         status:
           executionStatus === 'pending'
             ? 'received'
-            : executionStatus === 'running'
+            : executionStatus === 'running' || executionStatus === 'paused'
               ? 'running'
               : executionStatus === 'completed'
                 ? 'completed'

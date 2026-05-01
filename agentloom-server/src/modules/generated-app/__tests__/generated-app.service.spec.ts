@@ -10353,6 +10353,125 @@ describe('GeneratedAppService', () => {
     expect(detail.publicShareToken).toBe(submission.publicShareToken);
   });
 
+  it('创建者提交详情刷新 Workflow handoff 时应优先使用 report 中的执行记录', async () => {
+    const reportExecutionId = WORKFLOW_EXECUTION_V7_ID;
+    const staleWorkflowDefinitionId = '55555555-5555-4555-8555-555555555558';
+    const app = createGeneratedApp({
+      workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+    });
+    const submission = createGeneratedAppSubmission({
+      status: 'running',
+      result: {
+        runtimeKind: 'local-generated-app-deterministic-report',
+        summary: '保留业务摘要。',
+        workflowExecution: true,
+        executionId: WORKFLOW_EXECUTION_ID,
+        executionStatus: 'running',
+        workflowDefinitionId: staleWorkflowDefinitionId,
+      },
+      report: {
+        runtimeKind: 'local-generated-app-deterministic-report',
+        title: '本地运行报告',
+        sections: [
+          {
+            id: 'workflow-execution-status',
+            title: '旧执行状态',
+            body: '旧状态会被替换。',
+            items: [],
+          },
+        ],
+        workflowExecution: true,
+        executionId: reportExecutionId,
+        executionStatus: 'paused',
+        workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+      },
+    });
+    const updateChain = createSubmissionUpdateReturningFromPayload(submission);
+
+    mockTenantDb.select
+      .mockReturnValueOnce(createSelectChain([app]))
+      .mockReturnValueOnce(createSelectChain([submission]))
+      .mockReturnValueOnce(
+        createSelectChain([
+          {
+            id: reportExecutionId,
+            tenantId: TENANT_ID,
+            workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+            status: 'completed',
+            completedAt: NOW,
+            failedAt: null,
+            cancelledAt: null,
+            totalSteps: 2,
+            completedSteps: 2,
+            updatedAt: NOW,
+            inputParams: {
+              _meta: {
+                generatedAppId: APP_ID,
+                appSpecVersion: 1,
+                submissionSource: 'generated-app-public-submission',
+                submission: {
+                  anonymousSessionId: 'anonymous-session-1',
+                  submittedAt: NOW.toISOString(),
+                },
+              },
+            },
+          },
+        ]),
+      )
+      .mockReturnValueOnce(
+        createSelectManyChain([
+          {
+            status: 'completed',
+            completedAt: NOW,
+          },
+          {
+            status: 'completed',
+            completedAt: NOW,
+          },
+        ]),
+      );
+    mockTenantDb.update.mockReturnValueOnce(updateChain);
+
+    const detail = await service.findSubmission(
+      TENANT_ID,
+      APP_ID,
+      SUBMISSION_ID,
+    );
+
+    expect(detail.status).toBe('completed');
+    expect(detail.result).toEqual(
+      expect.objectContaining({
+        workflowExecution: true,
+        executionId: reportExecutionId,
+        executionStatus: 'completed',
+        workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+        workflowExecutionCompletedAt: NOW.toISOString(),
+      }),
+    );
+    expect(detail.report).toEqual(
+      expect.objectContaining({
+        workflowExecution: true,
+        executionId: reportExecutionId,
+        executionStatus: 'completed',
+      }),
+    );
+    expect(updateChain.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'completed',
+        result: expect.objectContaining({
+          executionId: reportExecutionId,
+          executionStatus: 'completed',
+        }),
+        report: expect.objectContaining({
+          executionId: reportExecutionId,
+          executionStatus: 'completed',
+        }),
+        updatedAt: expect.any(Date),
+      }),
+    );
+    expect(JSON.stringify(detail)).not.toContain(WORKFLOW_EXECUTION_ID);
+  });
+
   it('创建者提交详情应把 completed execution 刷新为步骤计数摘要且不泄露内部字段', async () => {
     const app = createGeneratedApp({
       workflowDefinitionId: WORKFLOW_DEFINITION_ID,

@@ -3646,16 +3646,16 @@ export class GeneratedAppService {
   private extractPublicWorkflowExecutionHandoff(
     submission: GeneratedAppSubmission,
   ): { executionId: string; workflowDefinitionId: string | null } | null {
-    const resultHandoff = this.extractPublicWorkflowExecutionHandoffFromPayload(
-      submission.result,
+    const reportHandoff = this.extractPublicWorkflowExecutionHandoffFromPayload(
+      submission.report,
     );
 
-    if (resultHandoff) {
-      return resultHandoff;
+    if (reportHandoff) {
+      return reportHandoff;
     }
 
     return this.extractPublicWorkflowExecutionHandoffFromPayload(
-      submission.report,
+      submission.result,
     );
   }
 
