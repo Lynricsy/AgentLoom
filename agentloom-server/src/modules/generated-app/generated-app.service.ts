@@ -2355,6 +2355,25 @@ export class GeneratedAppService {
     app: GeneratedApp,
     submission: GeneratedAppSubmission,
   ): Promise<GeneratedAppSubmission> {
+    return this.refreshSubmissionWorkflowHandoff(app, submission, {
+      requireGeneratedAppMetadata: false,
+    });
+  }
+
+  private async refreshCreatorSubmissionWorkflowHandoff(
+    app: GeneratedApp,
+    submission: GeneratedAppSubmission,
+  ): Promise<GeneratedAppSubmission> {
+    return this.refreshSubmissionWorkflowHandoff(app, submission, {
+      requireGeneratedAppMetadata: true,
+    });
+  }
+
+  private async refreshSubmissionWorkflowHandoff(
+    app: GeneratedApp,
+    submission: GeneratedAppSubmission,
+    options: { requireGeneratedAppMetadata: boolean },
+  ): Promise<GeneratedAppSubmission> {
     const handoff = this.extractPublicWorkflowExecutionHandoff(submission);
 
     if (!handoff) {
@@ -2374,6 +2393,7 @@ export class GeneratedAppService {
           totalSteps: schema.workflowExecutions.totalSteps,
           completedSteps: schema.workflowExecutions.completedSteps,
           updatedAt: schema.workflowExecutions.updatedAt,
+          inputParams: schema.workflowExecutions.inputParams,
         })
         .from(schema.workflowExecutions)
         .where(
@@ -2383,14 +2403,19 @@ export class GeneratedAppService {
           ),
         )
         .limit(1);
+      const expectedWorkflowDefinitionId =
+        handoff.workflowDefinitionId ?? app.workflowDefinitionId ?? null;
 
       if (
         !execution ||
-        (handoff.workflowDefinitionId &&
-          execution.workflowDefinitionId !== handoff.workflowDefinitionId) ||
-        (!handoff.workflowDefinitionId &&
-          app.workflowDefinitionId &&
-          execution.workflowDefinitionId !== app.workflowDefinitionId)
+        !expectedWorkflowDefinitionId ||
+        execution.workflowDefinitionId !== expectedWorkflowDefinitionId ||
+        (options.requireGeneratedAppMetadata &&
+          !this.isWorkflowExecutionForGeneratedAppSubmission(
+            execution.inputParams,
+            app,
+            submission,
+          ))
       ) {
         return this.withRefreshedWorkflowHandoff(
           submission,
@@ -2435,6 +2460,33 @@ export class GeneratedAppService {
         ),
       );
     }
+  }
+
+  private isWorkflowExecutionForGeneratedAppSubmission(
+    inputParams: Record<string, unknown> | null,
+    app: GeneratedApp,
+    submission: GeneratedAppSubmission,
+  ): boolean {
+    const metadata = this.getRecord(inputParams?._meta);
+
+    if (!metadata) {
+      return false;
+    }
+
+    const submissionMetadata = this.getRecord(metadata.submission);
+    const submittedAt = this.getNonEmptyString(submissionMetadata?.submittedAt);
+    const submittedAtTime = submittedAt ? Date.parse(submittedAt) : Number.NaN;
+
+    return (
+      this.getNonEmptyString(metadata.generatedAppId) === app.id &&
+      this.getNonEmptyString(metadata.submissionSource) ===
+        'generated-app-public-submission' &&
+      Number(metadata.appSpecVersion) === submission.appSpecVersion &&
+      this.getNonEmptyString(submissionMetadata?.anonymousSessionId) ===
+        submission.anonymousSessionId &&
+      Number.isFinite(submittedAtTime) &&
+      submittedAtTime === submission.createdAt.getTime()
+    );
   }
 
   private extractPublicWorkflowExecutionHandoff(
@@ -3029,13 +3081,16 @@ export class GeneratedAppService {
     appId: string,
     submissionId: string,
   ): Promise<GeneratedAppSubmissionResponseDto> {
+    const app = await this.findGeneratedAppRecord(tenantId, appId);
     const submission = await this.findSubmissionRecord(
       tenantId,
       appId,
       submissionId,
     );
+    const refreshedSubmission =
+      await this.refreshCreatorSubmissionWorkflowHandoff(app, submission);
 
-    return this.toSubmissionResponseDto(submission);
+    return this.toSubmissionResponseDto(refreshedSubmission);
   }
 
   async deleteSubmission(

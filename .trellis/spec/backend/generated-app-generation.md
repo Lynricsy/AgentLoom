@@ -318,7 +318,10 @@
 - Creator submission management:
   - Creator list/detail/delete endpoints use tenant-aware DB access and must filter by `tenant_id + generated_app_id + deleted_at is null`.
   - Creator list is ordered by `created_at desc` and returns the standard paginated `{ data, meta }` envelope; `status` may filter by submission status.
+  - Creator submission detail refreshes stored async Workflow execution handoff fields with the same safe summary rules as public submission detail before returning. The refresh must remain tenant-scoped, verify the execution Workflow definition against the stored handoff/app binding, and verify public-submission `_meta.generatedAppId`, `_meta.submissionSource`, `_meta.appSpecVersion`, `_meta.submission.anonymousSessionId`, and `_meta.submission.submittedAt` against the submission row so an execution from another Generated App submission cannot be reused.
+  - Creator submission list must not bulk-refresh async Workflow execution handoffs; lists return persisted submission rows to avoid N+1 execution lookups.
   - Creator response may include `tenantId` and `publicShareToken` because those are audit fields for the owning tenant.
+  - Creator submission detail may include creator audit fields such as `tenantId` and `publicShareToken`, but refreshed `result/report` must not expose execution internals such as `workflow_executions.definition_snapshot`, `workflow_executions.input_params`, `inputParams._meta`, `execution_steps.result`, `execution_steps.node_data`, `execution_steps.checkpoint_data`, tool calls, secrets, tokens, source/test artifact URLs, host paths, stack traces, node payloads, or full execution snapshots.
   - Delete operations are soft deletes only: set `deleted_at` and `updated_at`; never hard-delete individual submission rows from application service code.
   - Batch delete accepts `{ ids: string[] }` and returns `{ deletedCount }` for records actually soft-deleted in the current tenant/app scope.
 
