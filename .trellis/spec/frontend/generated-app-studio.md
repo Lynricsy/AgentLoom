@@ -76,6 +76,8 @@ app.readiness.state === "publish_candidate" &&
   - If `publicShareEnabled === true` but readiness is no longer eligible, treat the link as stale and unsafe: hide the old URL, hide regenerate/open actions, show `readiness.summary`, and only present disabled share controls.
   - Public runtime pages must not show `gateResults`, `readiness`, source artifact URLs, test report URLs, plugin permission details, public share tokens, or creator-only pages.
   - `getGeneratedAppPublicRuntime(token)` must map the response through a public whitelist before returning data to components. Allowed fields are `token`, `appId`, `title`, `description`, `dataUseNotice`, limited `appSpec` (`version`, `appName`, `summary`, `userGoal`, `actors`, `pages[].id/name/purpose`), `runtimeSurface.kind`, `runtimeSurface.previewUrl`, `runtimeForm`, and `createdAt`.
+  - When `runtimeSurface.previewUrl` is the backend public build preview path (`/api/v1/generated-apps/public/:token/preview`), the API mapping may resolve it against an absolute `VITE_API_BASE_URL`; same-origin `/api/v1` deployments should keep the relative path unchanged.
+  - Public runtime pages may render only an "open preview" link for `runtimeSurface.previewUrl`; they must not inline the preview HTML, call creator artifact APIs, list artifacts, or expose source/test/report workspace metadata.
   - `runtimeForm` mapping must keep only safe dynamic business-form fields: `formId`, `title`, `description`, `submitLabel`, `sections[].id/title/description/fieldIds`, `fields[].id/label/type/required/placeholder/helpText/options/min/max/step`, `fields[].options[].value/label`, and `resultView.title/description/emptyState/successTitle/nextStepHint`.
   - Even though the API client may keep `token` for cache identity/debugging, public runtime components must not render token values or a derived access identifier.
 - Creator generation action:
@@ -226,6 +228,7 @@ app.readiness.state === "publish_candidate" &&
   - start generation run writes the returned app into detail cache and invalidates list, runtime binding readiness, generation-run, Gate-run, and repair-attempt query keys.
   - artifact manifest and artifact content queries use their dedicated keys and remain disabled until required ids exist.
   - start-run and app-changing mutations invalidate artifact manifest keys.
+  - public runtime API mapping preserves legacy absolute preview URLs and resolves backend `/api/v1/generated-apps/public/:token/preview` URLs correctly when `VITE_API_BASE_URL` is absolute.
   - public submission create writes and invalidates the public submission detail query key.
   - creator and public submission detail queries poll every 2 seconds only for Workflow handoff `pending | running | paused` and stop polling for terminal or unavailable handoff states.
   - runtime binding readiness query uses `generatedAppKeys.runtimeBindingReadiness(appId)` and is disabled when `appId` is empty.
@@ -236,6 +239,7 @@ app.readiness.state === "publish_candidate" &&
   - `publish_candidate + canCreatePublicShare=true` triggers the share mutation.
   - stale enabled share (`publicShareEnabled=true` + ineligible readiness) hides old public URL and regenerate/open actions.
   - public runtime API mapping drops creator-only fields and nested source/test/plugin artifacts.
+  - public runtime page opens the optional preview link without rendering source/test artifact rows or controlled workspace metadata.
   - list page creation starts automatic generation and provides a detail link even when the runner fails after create.
   - detail page start-run action triggers automatic generation and verification without enabling public share.
   - detail page runtime binding readiness covers editor-handoff draft not auto-executing, published Workflow being executable, and no Workflow falling back to deterministic-only behavior.

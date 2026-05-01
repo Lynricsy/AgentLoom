@@ -18,9 +18,10 @@ Generated App API 适合把“一句话生成应用”接入 Studio 之外的前
 2. 调用 `POST /generated-apps/:appId/generation-runs/start`，启动自动生成与 Gate 0-7 校验。
 3. 当返回的 `app.readiness.state === "publish_candidate"` 且 `app.readiness.canCreatePublicShare === true` 时，调用 `POST /generated-apps/:appId/public-share` 启用公开链接。
 4. 终端用户访问 `GET /generated-apps/public/:token`，读取 `runtimeForm`，按 `runtimeForm.fields` 动态渲染输入控件。
-5. 终端用户提交 `POST /generated-apps/public/:token/submissions`，最小请求体为 `{ input }`；也可传入 `anonymousSessionId`，但它只是匿名会话标识，不能作为认证或授权依据。
-6. 使用 `GET /generated-apps/public/:token/submissions/:submissionId` 查询报告状态、`result`、`report` 和 `errorMessage`，并把 `report.sections`、下一步问题、追问提示、异步 Workflow 执行状态和免责声明渲染成终端用户可读内容。如果 `result` 或 `report` 表示 `workflowExecution=true` 且 `executionStatus` 为 `pending`、`running` 或 `paused`，终端前端可以按 2 秒左右的间隔轮询这个 public submission detail 接口；`completed`、`failed`、`cancelled`、`workflowExecution=false` 或没有 handoff 字段时应停止轮询。
-7. 创建者在登录态使用 `GET /generated-apps/:appId/submissions`、`GET /generated-apps/:appId/submissions/:submissionId`、`DELETE /generated-apps/:appId/submissions/:submissionId` 或 `POST /generated-apps/:appId/submissions/delete` 管理公开提交；创建者提交列表会刷新当前页仍处于 `pending`、`running` 或 `paused` 的异步 Workflow handoff，并返回已持久化的安全状态。
+5. 如果 `runtimeSurface.previewUrl` 存在，可把它作为“打开运行预览”链接展示。Gate 3 构建产物可用时，该链接通常指向 `GET /generated-apps/public/:token/preview`，它只返回 `dist/index.html` 的公开 HTML 预览，不返回源码、测试报告、artifact 清单或 workspace 路径。
+6. 终端用户提交 `POST /generated-apps/public/:token/submissions`，最小请求体为 `{ input }`；也可传入 `anonymousSessionId`，但它只是匿名会话标识，不能作为认证或授权依据。
+7. 使用 `GET /generated-apps/public/:token/submissions/:submissionId` 查询报告状态、`result`、`report` 和 `errorMessage`，并把 `report.sections`、下一步问题、追问提示、异步 Workflow 执行状态和免责声明渲染成终端用户可读内容。如果 `result` 或 `report` 表示 `workflowExecution=true` 且 `executionStatus` 为 `pending`、`running` 或 `paused`，终端前端可以按 2 秒左右的间隔轮询这个 public submission detail 接口；`completed`、`failed`、`cancelled`、`workflowExecution=false` 或没有 handoff 字段时应停止轮询。
+8. 创建者在登录态使用 `GET /generated-apps/:appId/submissions`、`GET /generated-apps/:appId/submissions/:submissionId`、`DELETE /generated-apps/:appId/submissions/:submissionId` 或 `POST /generated-apps/:appId/submissions/delete` 管理公开提交；创建者提交列表会刷新当前页仍处于 `pending`、`running` 或 `paused` 的异步 Workflow handoff，并返回已持久化的安全状态。
 
 ### TypeScript fetch 示例
 
@@ -133,6 +134,8 @@ if (detail.status === "failed") {
 ### 公开响应边界
 
 公开 runtime 响应只应作为终端用户业务界面使用。API 响应可能包含 `token` 以便客户端缓存或调试，但公开页面不得渲染或记录 token 值。终端页面可展示的数据应限制在 `appId`、`title`、`description`、`dataUseNotice`、有限的 `appSpec`、`runtimeSurface.previewUrl`、`runtimeForm` 和 `createdAt`。其中 `runtimeForm` 只暴露 `formId`、`title`、`description`、`submitLabel`、`sections[]`、`fields[]`、`resultView` 以及字段的 `id`、`label`、`type`、`required`、`placeholder`、`helpText`、`options`、`min`、`max`、`step`。
+
+`runtimeSurface.previewUrl` 只用于可选运行预览链接。Gate 3 build output 可读时，服务端会返回 `/api/v1/generated-apps/public/:token/preview` 形式的公开预览端点；该端点返回 `text/html`，内容只来自受控 workspace 中 allowlist 的 `gate-3-build-output-html` / `dist/index.html`。第三方前端可以直接打开这个链接，但不应把它当作 artifact API：公开预览端点不会返回 artifact manifest、源码文件、测试报告、插件信息、Gate 证据、workspace metadata 或 host 绝对路径。
 
 公开页面和第三方终端前端禁止展示或记录内部字段：`gateResults`、`readiness`、`generationPlan`、`sourceArtifactUrl`、`testReportUrl`、`pluginIds`、`publicShareToken`、宿主机路径和 `secrets`。公开提交响应也不能暴露租户 ID、公开 token、门禁证据、源码/测试 artifact、插件内部信息或创建者专用字段。
 

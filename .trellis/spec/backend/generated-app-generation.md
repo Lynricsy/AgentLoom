@@ -133,6 +133,7 @@
   - `POST /generated-apps/:appId/submissions/delete`
 - Public API:
   - `GET /generated-apps/public/:token`
+  - `GET /generated-apps/public/:token/preview`
   - `POST /generated-apps/public/:token/submissions`
   - `GET /generated-apps/public/:token/submissions/:submissionId`
   - Must be decorated with `@Public()` and excluded from `TenantMiddleware` in `app.module.ts`.
@@ -199,6 +200,11 @@
   - `artifact`: the same allowlisted artifact summary returned by the manifest endpoint.
   - `content`: UTF-8 text content for readable inline artifacts.
   - `truncated`: currently `false`; oversized artifacts fail instead of returning partial content.
+- `GET /generated-apps/public/:token/preview`
+  - Resolves the same current public app guard as `GET /generated-apps/public/:token`: token must match `public_share_token`, sharing must be enabled, app status must be `published`, and readiness must remain publish-candidate eligible.
+  - Returns `text/html; charset=utf-8` for only the allowlisted Gate 3 build output artifact `gate-3-build-output-html` (`dist/index.html`) when that artifact is materialized and no larger than the inline artifact limit.
+  - Must not return the creator artifact DTO envelope, artifact manifest, source/test/report files, workspace metadata, host absolute workspace root, plugin details, gate evidence, or any generated source code.
+  - Missing workspace, missing/unreadable build output, or an invalid/stale token fails closed. Oversized build output follows the same too-large behavior as authenticated artifact content.
 - Canonical gates:
   - `gate-0` requirement spec
   - `gate-1` architecture plan
@@ -311,9 +317,10 @@
   - When no executable patch is produced, including unsupported gates outside the current Gate 3 controlled repair path, the automatic row must target the failed gate, use `attemptNumber=1`, set `status='failed'`, copy a readable failure summary, record that no source/Workflow/plugin patch was applied by the synchronous runner, include a verification summary that the failed gate remains failed, and persist structured `repairPlan` / `reverificationPlan` JSON so the next patch agent has machine-readable scope, evidence, patch targets, forbidden scopes, command ids, and success criteria. The synchronous runner must not mark a gate passed, re-run later gates, or claim that code was repaired unless a real repair patch and verification run exist.
   - Retry-triggered `startGenerationRun()` may consume the latest failed repair attempt only as scoped repair context. It must not decrement budgets, mutate the old attempt, or claim a patch was applied just because context was attached.
   - When `maxRepairAttempts=0`, `startGenerationRun()` must not insert an automatic repair attempt row. Manual repair attempt create/update/list endpoints remain available.
-- Public response must expose only end-user runtime surface:
+  - Public response must expose only end-user runtime surface:
   - `token`, `appId`, `title`, `description`, `dataUseNotice`, limited `appSpec`, `runtimeSurface`, `runtimeForm`, `createdAt`.
   - `runtimeForm` is a safe public form/interface descriptor derived from `AppSpec` and, when present, `generationPlan.staticContracts.publicRuntime.input.requiredFields`.
+  - When the Gate 3 build output artifact is materialized and readable, `runtimeSurface.previewUrl` points to `/api/v1/generated-apps/public/:token/preview`, so public/third-party frontends can open the generated static app preview without calling creator artifact APIs. If the public build preview is unavailable, the service may fall back to legacy `app.preview.previewUrl`.
   - `runtimeForm` may expose only `formId`, `title`, `description`, `submitLabel`, `sections[]`, `fields[]`, and `resultView`. Sections may expose only `id`, `title`, `description`, and `fieldIds`. Fields may expose only `id`, `label`, `type`, `required`, `placeholder`, `helpText`, `options`, `min`, `max`, and `step`. Options may expose only `value` and `label`. Result view may expose only `title`, `description`, `emptyState`, `successTitle`, and `nextStepHint`.
   - Runtime form field types are a conservative subset: `text`, `textarea`, `single_select`, `multi_select`, `number`, and `range`.
   - Medical, TCM, or inquiry-style apps must derive intake fields such as chief complaint, duration, symptoms, severity, prior care, medical history, and notes. They must not derive diagnosis, prescription, medication dosage, treatment plan, or medical-advice fields from static contracts.
@@ -416,12 +423,14 @@
 | Creator artifact content receives an unknown `artifactId` or a path-like traversal value                                       | Return `GeneratedAppArtifactNotFoundException`                                                                                                                                                                                                                                                                                                                                                    |
 | Creator artifact content targets an unmaterialized, missing, directory, or unreadable allowlisted artifact                      | Return `GeneratedAppArtifactNotFoundException`                                                                                                                                                                                                                                                                                                                                                    |
 | Creator artifact content targets a materialized artifact larger than 256 KiB                                                    | Return `GeneratedAppArtifactTooLargeException` and do not inline partial content                                                                                                                                                                                                                                                                                                                   |
+| Public build preview endpoint has a valid token but no readable Gate 3 `gate-3-build-output-html` artifact                      | Return `GeneratedAppArtifactNotFoundException`; do not expose artifact manifest or workspace metadata                                                                                                                                                                                                                                                                                             |
 
 ### 5. Good / Base / Bad Cases
 
 - Good: the synchronous runner writes linked Gate 0, Gate 1, Gate 2, Gate 3, Gate 4, Gate 5, Gate 6, and Gate 7 evidence when earlier gates pass, persists a structured architecture `generationPlan` plus `generationPlan.staticContracts`, `generationPlan.buildUnitPlan`, `generationPlan.integrationPlan`, `generationPlan.browserAcceptancePlan`, `generationPlan.independentVerificationPlan`, and attempted `generationPlan.publishCandidatePlan`, lets Gate 7 pass only in `real-local-publish-candidate-contract` mode with Gate 3-6 real-local upstream evidence, moves readiness to `publish_candidate` without creating a public token, and keeps Gate 7 failed/non-publishable when Gate 7 is fixture/disabled or upstream evidence is fixture/disabled/skeleton.
 - Good: Gate 3 real-local evidence clearly says the controlled Generation Workspace was materialized and records command, exitCode, stdout/stderr summary, artifact refs, and requirement/scenario coverage for build/typecheck/unit/component-golden commands.
 - Good: creator artifact manifest exposes only controlled workspace labels/relative paths plus allowlisted source/test/report artifact summaries, and artifact content reads by artifact id without leaking the host absolute workspace root.
+- Good: public runtime exposes the generated Gate 3 build preview only through `GET /generated-apps/public/:token/preview`, returning HTML for `dist/index.html` while keeping source, tests, reports, manifests, workspace paths, and artifact lists creator-only.
 - Good: Gate 3 fixture evidence clearly says commands were not executed and cannot be used as a real build/test pass.
 - Good: Gate 4 real-local evidence clearly says the controlled deterministic local contract runner executed public runtime, creator query, Agent/Workflow local trace fixture, and plugin local smoke trace fixture checks, and also says it is not proof of production sandbox execution or real plugin WASM/Extism execution.
 - Good: Gate 5 real-local evidence clearly says the controlled deterministic local DOM/accessibility/network/console contract runner executed and records assertionId, journeyId, viewportId, status, durationMs, artifact refs, console/network summaries, requirement/scenario/staticContract coverage, and Gate 4 trace coverage; it also says it is not proof of a Playwright run, real browser session, real screenshot/video/trace capture, real public-link visit, or full end-to-end browser execution.
@@ -456,6 +465,8 @@
   - regenerate replaces token
   - gate downgrade disables public link and clears token
   - public response does not leak internal evidence, source, test, plugin, readiness, or token fields
+  - public runtime returns `/api/v1/generated-apps/public/:token/preview` when Gate 3 build output is readable, and the public preview endpoint returns only Gate 3 build output HTML
+  - public preview endpoint rejects missing build output and does not expose source/test/report artifact content or workspace metadata
   - public response includes a safe `runtimeForm` derived from AppSpec/static contracts, including text/textarea/select/multi-select/number/range descriptors, and drops internal or sensitive runtime form keys
   - public endpoint rejects stale apps that no longer satisfy publish candidate readiness
   - public submission persists under the app tenant, snapshots the current token, generates anonymous session id when omitted or unsafe, and inserts successful local deterministic runtime output as `completed` with non-null `result/report`

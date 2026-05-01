@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Header,
   HttpCode,
   HttpStatus,
   Param,
@@ -544,6 +545,24 @@ export class GeneratedAppPublicController {
     );
 
     return { data };
+  }
+
+  @Get(':token/preview')
+  @Header('Content-Type', 'text/html; charset=utf-8')
+  @Header('Cache-Control', 'no-store')
+  @Header(
+    'Content-Security-Policy',
+    "default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; form-action 'none'; base-uri 'none'; frame-ancestors 'none'",
+  )
+  @Header('Referrer-Policy', 'no-referrer')
+  @Header('X-Content-Type-Options', 'nosniff')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '公开访问生成应用 Gate 3 构建预览 HTML' })
+  @ApiResponse({ status: 200, description: '公开构建预览 HTML' })
+  @ApiResponse({ status: 404, description: '公开链接或构建预览不存在' })
+  @ApiResponse({ status: 409, description: '生成应用不再满足发布门槛' })
+  async getPublicBuildPreview(@Param('token') token: string) {
+    return this.generatedAppService.getPublicBuildPreviewHtml(token);
   }
 
   @Get(':token')

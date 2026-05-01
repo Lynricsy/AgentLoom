@@ -28,6 +28,9 @@ import type {
 } from '../types'
 
 const GENERATED_APPS_PATH = 'generated-apps'
+const GENERATED_APP_API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL ?? '/api/v1'
+const GENERATED_APP_API_PREFIX = '/api/v1'
 const PUBLIC_SUBMISSION_REDACTED_VALUE = '[已移除内部内容]'
 const PUBLIC_SUBMISSION_UNSAFE_VALUE_PATTERN =
   /\b(?:Bearer\s+[A-Za-z0-9._~+/=-]+|(?:sk|pk)-[A-Za-z0-9_-]{12,}|[a-f0-9]{64}|(?:secret|token|credential|password|api[-_]?key)[-_:][A-Za-z0-9._~+/=-]{4,})\b|(?:^|\s)\/(?:Users|home|root|tmp|var|etc|workspace)\b|[A-Za-z]:[\\/][^\s"']*|\b(?:publicShareToken|public_share_token|definitionSnapshot|definition_snapshot|nodeData|node_data|checkpointData|checkpoint_data|toolCalls|tool_calls|sourceArtifactUrl|source_artifact_url|testReportUrl|test_report_url|inputParams|input_params|gateResults|gate_results)\b/i
@@ -157,6 +160,38 @@ function buildGeneratedAppGateRunSearchParams(
   })
 }
 
+function resolvePublicPreviewUrl(previewUrl: string | null): string | null {
+  if (!previewUrl) {
+    return null
+  }
+
+  if (/^[a-z][a-z\d+.-]*:/i.test(previewUrl)) {
+    return previewUrl
+  }
+
+  if (!previewUrl.startsWith(`${GENERATED_APP_API_PREFIX}/`)) {
+    return previewUrl
+  }
+
+  const apiBaseUrl = GENERATED_APP_API_BASE_URL.trim()
+
+  if (!/^https?:\/\//i.test(apiBaseUrl)) {
+    return previewUrl
+  }
+
+  const normalizedApiBase = apiBaseUrl.replace(/\/+$/, '')
+
+  if (!normalizedApiBase.endsWith(GENERATED_APP_API_PREFIX)) {
+    return new URL(previewUrl, `${normalizedApiBase}/`).toString()
+  }
+
+  const previewPathWithoutPrefix = previewUrl.slice(
+    GENERATED_APP_API_PREFIX.length,
+  )
+
+  return `${normalizedApiBase}${previewPathWithoutPrefix}`
+}
+
 function toPublicRuntime(
   value: GeneratedAppPublicRuntime,
 ): GeneratedAppPublicRuntime {
@@ -180,7 +215,7 @@ function toPublicRuntime(
     },
     runtimeSurface: {
       kind: value.runtimeSurface.kind,
-      previewUrl: value.runtimeSurface.previewUrl,
+      previewUrl: resolvePublicPreviewUrl(value.runtimeSurface.previewUrl),
     },
     runtimeForm: toPublicRuntimeForm(value.runtimeForm),
     createdAt: value.createdAt,

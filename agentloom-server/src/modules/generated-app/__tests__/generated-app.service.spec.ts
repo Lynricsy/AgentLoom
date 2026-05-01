@@ -9199,6 +9199,149 @@ describe('GeneratedAppService', () => {
     expect(JSON.stringify(response)).not.toContain('plugin-private');
   });
 
+  it('公开 endpoint 有 Gate 3 构建产物时应返回 public preview URL 而非源码 artifact', async () => {
+    const token = '6'.repeat(64);
+    const workspaceRoot = join(
+      tmpdir(),
+      `agentloom-generated-app-public-preview-${crypto.randomUUID()}`,
+    );
+    const previewService = new GeneratedAppService(
+      mockTenantDb as unknown as DrizzleDB,
+      createConfigService({
+        GENERATED_APP_WORKSPACE_ROOT: workspaceRoot,
+      }),
+    );
+    const app = createGeneratedAppWithGate3Workspace({
+      status: 'published',
+      readiness: createPublishCandidateReadiness(),
+      publicShareEnabled: true,
+      publicShareToken: token,
+      preview: {
+        previewUrl: 'https://legacy-preview.example.test/apps/1',
+        sourceArtifactUrl: 'https://internal.example.test/source.zip',
+        testReportUrl: 'https://internal.example.test/report.json',
+      },
+      pluginIds: ['plugin-private'],
+    });
+    const workspace = app.generationPlan?.buildUnitPlan?.generationWorkspace;
+
+    if (!workspace) {
+      throw new Error('test fixture missing workspace');
+    }
+
+    try {
+      await mkdir(join(workspaceRoot, workspace.relativePath, 'dist'), {
+        recursive: true,
+      });
+      await writeFile(
+        join(workspaceRoot, workspace.relativePath, 'dist/index.html'),
+        '<!doctype html><html><body><h1>公开构建预览</h1></body></html>',
+        'utf8',
+      );
+      mockTenantDb.select.mockReturnValueOnce(createSelectChain([app]));
+      mockTenantDb.update.mockReturnValueOnce(createUpdateChain());
+
+      const response = await previewService.getPublicApp(token);
+      const serialized = JSON.stringify(response);
+
+      expect(response.runtimeSurface).toEqual({
+        kind: 'generated-app',
+        previewUrl: `/api/v1/generated-apps/public/${token}/preview`,
+      });
+      expect(serialized).not.toContain('sourceArtifactUrl');
+      expect(serialized).not.toContain('testReportUrl');
+      expect(serialized).not.toContain('plugin-private');
+      expect(serialized).not.toContain(workspaceRoot);
+      expect(serialized).not.toContain('source-app-tsx');
+      expect(serialized).not.toContain('gate-3-unit-test-report');
+    } finally {
+      await rm(workspaceRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('公开构建预览端点应只返回 Gate 3 build output HTML', async () => {
+    const token = '7'.repeat(64);
+    const workspaceRoot = join(
+      tmpdir(),
+      `agentloom-generated-app-public-preview-html-${crypto.randomUUID()}`,
+    );
+    const previewService = new GeneratedAppService(
+      mockTenantDb as unknown as DrizzleDB,
+      createConfigService({
+        GENERATED_APP_WORKSPACE_ROOT: workspaceRoot,
+      }),
+    );
+    const app = createGeneratedAppWithGate3Workspace({
+      status: 'published',
+      readiness: createPublishCandidateReadiness(),
+      publicShareEnabled: true,
+      publicShareToken: token,
+    });
+    const workspace = app.generationPlan?.buildUnitPlan?.generationWorkspace;
+
+    if (!workspace) {
+      throw new Error('test fixture missing workspace');
+    }
+
+    try {
+      await mkdir(join(workspaceRoot, workspace.relativePath, 'dist'), {
+        recursive: true,
+      });
+      await mkdir(join(workspaceRoot, workspace.relativePath, 'src'), {
+        recursive: true,
+      });
+      await writeFile(
+        join(workspaceRoot, workspace.relativePath, 'dist/index.html'),
+        '<!doctype html><html><body><main>终端用户界面</main></body></html>',
+        'utf8',
+      );
+      await writeFile(
+        join(workspaceRoot, workspace.relativePath, 'src/App.tsx'),
+        'export const internalSource = "不应公开";\n',
+        'utf8',
+      );
+      mockTenantDb.select.mockReturnValueOnce(createSelectChain([app]));
+
+      const html = await previewService.getPublicBuildPreviewHtml(token);
+
+      expect(html).toContain('<main>终端用户界面</main>');
+      expect(html).not.toContain('internalSource');
+      expect(html).not.toContain(workspaceRoot);
+    } finally {
+      await rm(workspaceRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('公开构建预览端点缺少 Gate 3 build output 时应拒绝读取', async () => {
+    const token = 'a'.repeat(64);
+    const workspaceRoot = join(
+      tmpdir(),
+      `agentloom-generated-app-public-preview-missing-${crypto.randomUUID()}`,
+    );
+    const previewService = new GeneratedAppService(
+      mockTenantDb as unknown as DrizzleDB,
+      createConfigService({
+        GENERATED_APP_WORKSPACE_ROOT: workspaceRoot,
+      }),
+    );
+    const app = createGeneratedAppWithGate3Workspace({
+      status: 'published',
+      readiness: createPublishCandidateReadiness(),
+      publicShareEnabled: true,
+      publicShareToken: token,
+    });
+
+    try {
+      mockTenantDb.select.mockReturnValueOnce(createSelectChain([app]));
+
+      await expect(
+        previewService.getPublicBuildPreviewHtml(token),
+      ).rejects.toBeInstanceOf(GeneratedAppArtifactNotFoundException);
+    } finally {
+      await rm(workspaceRoot, { recursive: true, force: true });
+    }
+  });
+
   it('公开 endpoint 应脱敏白名单字段内部承载的 token、artifact、host path 和医疗建议文案', async () => {
     const token = '8'.repeat(64);
     const baseApp = createGeneratedApp();

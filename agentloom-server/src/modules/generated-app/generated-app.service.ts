@@ -321,6 +321,17 @@ const GATE_3_ALLOWED_COMMAND_BY_ID = {
 >;
 
 const GENERATED_APP_ARTIFACT_INLINE_MAX_BYTES = 256 * 1024;
+const GENERATED_APP_BUILD_OUTPUT_ARTIFACT_ID = 'gate-3-build-output-html';
+const GENERATED_APP_PUBLIC_PREVIEW_PATH_PREFIX =
+  '/api/v1/generated-apps/public';
+
+type GeneratedAppArtifactDefinition = {
+  artifactId: string;
+  label: string;
+  kind: GeneratedAppArtifactKind;
+  path: string;
+  contentType: string;
+};
 
 const GENERATED_APP_WORKSPACE_SOURCE_ARTIFACTS = [
   {
@@ -421,7 +432,7 @@ const GENERATED_APP_WORKSPACE_ARTIFACT_PATH_FIELDS = [
   },
   {
     field: 'buildOutput',
-    artifactId: 'gate-3-build-output-html',
+    artifactId: GENERATED_APP_BUILD_OUTPUT_ARTIFACT_ID,
     label: 'Gate 3 build output',
     kind: 'build_output',
     contentType: 'text/html',
@@ -1237,13 +1248,7 @@ export class GeneratedAppService {
 
   private buildArtifactDefinitions(
     workspace: GeneratedAppGenerationWorkspaceContract,
-  ): Array<{
-    artifactId: string;
-    label: string;
-    kind: GeneratedAppArtifactKind;
-    path: string;
-    contentType: string;
-  }> {
+  ): GeneratedAppArtifactDefinition[] {
     return [
       ...GENERATED_APP_WORKSPACE_SOURCE_ARTIFACTS,
       ...GENERATED_APP_WORKSPACE_ARTIFACT_PATH_FIELDS.map((definition) => ({
@@ -1259,13 +1264,7 @@ export class GeneratedAppService {
 
   private async toArtifactSummaryDto(
     workspacePath: string,
-    definition: {
-      artifactId: string;
-      label: string;
-      kind: GeneratedAppArtifactKind;
-      path: string;
-      contentType: string;
-    },
+    definition: GeneratedAppArtifactDefinition,
   ): Promise<GeneratedAppArtifactSummaryDto> {
     let materialized = false;
     let sizeBytes: number | null = null;
@@ -1310,6 +1309,95 @@ export class GeneratedAppService {
     relativePath: string,
   ): string {
     return this.resolveSafeRelativePathInside(workspacePath, relativePath);
+  }
+
+  private async resolveArtifactContentForApp(
+    app: GeneratedApp,
+    artifactId: string,
+  ): Promise<GeneratedAppArtifactContentResponseDto> {
+    const workspaceContext = this.resolveArtifactWorkspaceContext(app);
+
+    if (!workspaceContext) {
+      throw new GeneratedAppArtifactNotFoundException(artifactId);
+    }
+
+    const definition = this.buildArtifactDefinitions(
+      workspaceContext.workspace,
+    ).find((artifact) => artifact.artifactId === artifactId);
+
+    if (!definition) {
+      throw new GeneratedAppArtifactNotFoundException(artifactId);
+    }
+
+    const summary = await this.toArtifactSummaryDto(
+      workspaceContext.workspacePath,
+      definition,
+    );
+
+    if (!summary.materialized) {
+      throw new GeneratedAppArtifactNotFoundException(artifactId);
+    }
+
+    if (
+      summary.sizeBytes !== null &&
+      summary.sizeBytes > GENERATED_APP_ARTIFACT_INLINE_MAX_BYTES
+    ) {
+      throw new GeneratedAppArtifactTooLargeException(
+        artifactId,
+        GENERATED_APP_ARTIFACT_INLINE_MAX_BYTES,
+      );
+    }
+
+    if (!summary.readable) {
+      throw new GeneratedAppArtifactNotFoundException(artifactId);
+    }
+
+    const filePath = this.resolveArtifactFilePath(
+      workspaceContext.workspacePath,
+      definition.path,
+    );
+    const content = await readFile(filePath, 'utf8');
+
+    return {
+      artifact: summary,
+      content,
+      truncated: false,
+    };
+  }
+
+  private async hasReadableArtifactForApp(
+    app: GeneratedApp,
+    artifactId: string,
+  ): Promise<boolean> {
+    try {
+      const artifact = await this.resolveArtifactContentForApp(app, artifactId);
+
+      return artifact.artifact.readable;
+    } catch {
+      return false;
+    }
+  }
+
+  private buildPublicBuildPreviewUrl(token: string): string {
+    return `${GENERATED_APP_PUBLIC_PREVIEW_PATH_PREFIX}/${encodeURIComponent(
+      token,
+    )}/preview`;
+  }
+
+  private async resolvePublicRuntimePreviewUrl(
+    app: GeneratedApp,
+    token: string,
+  ): Promise<string | null> {
+    const hasBuildPreview = await this.hasReadableArtifactForApp(
+      app,
+      GENERATED_APP_BUILD_OUTPUT_ARTIFACT_ID,
+    );
+
+    if (hasBuildPreview) {
+      return this.buildPublicBuildPreviewUrl(token);
+    }
+
+    return app.preview.previewUrl;
   }
 
   private resolveSafeRelativePathInside(root: string, relativePath: string) {
@@ -1573,54 +1661,8 @@ export class GeneratedAppService {
     artifactId: string,
   ): Promise<GeneratedAppArtifactContentResponseDto> {
     const app = await this.findGeneratedAppRecord(tenantId, appId);
-    const workspaceContext = this.resolveArtifactWorkspaceContext(app);
 
-    if (!workspaceContext) {
-      throw new GeneratedAppArtifactNotFoundException(artifactId);
-    }
-
-    const definition = this.buildArtifactDefinitions(
-      workspaceContext.workspace,
-    ).find((artifact) => artifact.artifactId === artifactId);
-
-    if (!definition) {
-      throw new GeneratedAppArtifactNotFoundException(artifactId);
-    }
-
-    const summary = await this.toArtifactSummaryDto(
-      workspaceContext.workspacePath,
-      definition,
-    );
-
-    if (!summary.materialized) {
-      throw new GeneratedAppArtifactNotFoundException(artifactId);
-    }
-
-    if (
-      summary.sizeBytes !== null &&
-      summary.sizeBytes > GENERATED_APP_ARTIFACT_INLINE_MAX_BYTES
-    ) {
-      throw new GeneratedAppArtifactTooLargeException(
-        artifactId,
-        GENERATED_APP_ARTIFACT_INLINE_MAX_BYTES,
-      );
-    }
-
-    if (!summary.readable) {
-      throw new GeneratedAppArtifactNotFoundException(artifactId);
-    }
-
-    const filePath = this.resolveArtifactFilePath(
-      workspaceContext.workspacePath,
-      definition.path,
-    );
-    const content = await readFile(filePath, 'utf8');
-
-    return {
-      artifact: summary,
-      content,
-      truncated: false,
-    };
+    return this.resolveArtifactContentForApp(app, artifactId);
   }
 
   async recordGateResults(
@@ -3329,6 +3371,7 @@ export class GeneratedAppService {
       appSpec: app.appSpec,
       description: app.description,
     });
+    const previewUrl = await this.resolvePublicRuntimePreviewUrl(app, token);
 
     await this.db
       .update(schema.generatedApps)
@@ -3348,7 +3391,7 @@ export class GeneratedAppService {
       appSpec: publicAppSpec,
       runtimeSurface: {
         kind: 'generated-app',
-        previewUrl: app.preview.previewUrl,
+        previewUrl,
       },
       runtimeForm: buildGeneratedAppRuntimeForm({
         appSpec: app.appSpec,
@@ -3357,6 +3400,16 @@ export class GeneratedAppService {
       }),
       createdAt: app.createdAt,
     };
+  }
+
+  async getPublicBuildPreviewHtml(token: string): Promise<string> {
+    const app = await this.findPublicGeneratedAppRecord(token);
+    const artifact = await this.resolveArtifactContentForApp(
+      app,
+      GENERATED_APP_BUILD_OUTPUT_ARTIFACT_ID,
+    );
+
+    return artifact.content;
   }
 
   async createPublicSubmission(

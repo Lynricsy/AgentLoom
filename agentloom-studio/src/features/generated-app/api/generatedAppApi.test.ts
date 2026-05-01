@@ -736,6 +736,50 @@ describe('generatedAppApi', () => {
     expect(result.runtimeForm.resultView).not.toHaveProperty('readiness')
   })
 
+  it('resolves public build preview URLs against an absolute API base', async () => {
+    vi.stubEnv('VITE_API_BASE_URL', 'https://api.example.test/api/v1')
+    vi.resetModules()
+    const { getGeneratedAppPublicRuntime: getRuntimeWithApiBase } =
+      await import('./generatedAppApi')
+    const runtimeForm = makeRuntimeForm()
+    const publicResponse = {
+      token: 'public-token',
+      appId: 'app-public',
+      title: '自动化中医问诊系统',
+      description: '逐步问诊并生成分析报告。',
+      dataUseNotice: '提交内容会被保存并提供给应用创建者查看。',
+      appSpec: {
+        version: 1,
+        appName: '自动化中医问诊系统',
+        summary: '按患者回答动态提问。',
+        userGoal: '完成问诊并查看分析报告。',
+        actors: ['终端用户'],
+        pages: [
+          {
+            id: 'page-public-runtime',
+            name: '问诊运行页',
+            purpose: '让终端用户回答问诊问题。',
+          },
+        ],
+      },
+      runtimeSurface: {
+        kind: 'generated-app',
+        previewUrl: '/api/v1/generated-apps/public/public-token/preview',
+      },
+      runtimeForm,
+      createdAt: '2026-04-25T00:00:00.000Z',
+    }
+    getMock.mockReturnValue(mockKyJson({ data: publicResponse }))
+
+    const result = await getRuntimeWithApiBase('public-token')
+
+    expect(result.runtimeSurface.previewUrl).toBe(
+      'https://api.example.test/api/v1/generated-apps/public/public-token/preview',
+    )
+    vi.unstubAllEnvs()
+    vi.resetModules()
+  })
+
   it('creates and reads public submissions without using Studio creator paths', async () => {
     const publicSubmission = {
       id: 'submission-public',
