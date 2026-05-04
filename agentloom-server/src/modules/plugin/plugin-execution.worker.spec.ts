@@ -442,6 +442,133 @@ describe('PluginExecutionWorker', () => {
       );
     });
 
+    it('Generated App 私有插件有 wasmBundleUrl 时应调用沙箱且不走 fallback', async () => {
+      const plugin = createGeneratedPrivatePluginRecord({
+        wasmBundleUrl:
+          'generated-apps/app-1/plugins/tool-guided-intake-analysis.wasm',
+        manifest: {
+          id: 'com.agentloom.generated.app-1.tool-guided-intake-analysis',
+          wasmEntry: 'dist/plugin.wasm',
+          permissions: [],
+          sandbox: {
+            allowedHosts: [],
+            timeoutMs: 3000,
+            maxMemoryPages: 256,
+          },
+        },
+      });
+      pluginService.findActiveByPluginId.mockResolvedValue(plugin);
+      storageService.download.mockResolvedValue(
+        Readable.from([Buffer.from('generated-private-wasm')]),
+      );
+      sandboxService.buildSandboxConfig.mockReturnValue({
+        timeoutMs: 30_000,
+        maxMemoryPages: 4096,
+        allowedHosts: [],
+      });
+      sandboxService.execute.mockResolvedValue({
+        success: true,
+        output: {
+          analysis: {
+            riskLevel: 'follow-up',
+            score: 42,
+            generatedPrivatePlugin: true,
+            runtime: 'wasm-extism',
+          },
+          'analysis-out': {
+            riskLevel: 'follow-up',
+            score: 42,
+            generatedPrivatePlugin: true,
+            runtime: 'wasm-extism',
+          },
+        },
+        executionTimeMs: 21,
+      });
+
+      const result = await worker.process(
+        createJob({
+          pluginId: 'com.agentloom.generated.app-1.tool-guided-intake-analysis',
+          nodeType: 'tool-guided-intake-analysis',
+          inputs: { input: { chiefComplaint: '头痛三天' } },
+          config: { mode: 'screening' },
+        }),
+      );
+
+      expect(result.status).toBe('completed');
+      expect(result.outputs.analysis).toEqual(
+        expect.objectContaining({
+          riskLevel: 'follow-up',
+          runtime: 'wasm-extism',
+        }),
+      );
+      expect(result.message).toBeUndefined();
+      expect(storageService.download).toHaveBeenCalledWith(
+        'generated-apps/app-1/plugins/tool-guided-intake-analysis.wasm',
+      );
+      expect(sandboxService.execute).toHaveBeenCalledWith(
+        expect.any(Buffer),
+        'execute',
+        {
+          nodeType: 'tool-guided-intake-analysis',
+          inputs: { input: { chiefComplaint: '头痛三天' } },
+          config: { mode: 'screening' },
+        },
+        expect.objectContaining({
+          timeoutMs: 30_000,
+          maxMemoryPages: 4096,
+          allowedHosts: [],
+        }),
+        'com.agentloom.generated.app-1.tool-guided-intake-analysis',
+      );
+      expect(pluginService.resolveUsageSourceContext).toHaveBeenCalledWith(
+        plugin,
+      );
+      expect(stepStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID,
+        '33333333-3333-3333-3333-333333333333',
+        'completed',
+        expect.objectContaining({
+          result: expect.objectContaining({
+            analysis: expect.any(Object),
+            'exec-out': { triggered: true },
+          }),
+          checkpointData: expect.objectContaining({
+            runtime: 'wasm-extism',
+          }),
+        }),
+      );
+    });
+
+    it('Generated App 私有插件无 wasmBundleUrl 但 metadata guard 不匹配时应 fail-closed', async () => {
+      pluginService.findActiveByPluginId.mockResolvedValue(
+        createGeneratedPrivatePluginRecord({
+          metadata: {
+            source: 'generated-app-private-plugin',
+            activationScope: 'tenant-private',
+            toolId: 'tool-other',
+          },
+        }),
+      );
+
+      const result = await worker.process(
+        createJob({
+          pluginId: 'com.agentloom.generated.app-1.tool-guided-intake-analysis',
+          nodeType: 'tool-guided-intake-analysis',
+          inputs: { input: { chiefComplaint: '头痛三天' } },
+        }),
+      );
+
+      expect(result.status).toBe('failed');
+      expect(result.error).toContain('无 WASM bundle');
+      expect(storageService.download).not.toHaveBeenCalled();
+      expect(sandboxService.execute).not.toHaveBeenCalled();
+      expect(nodeScheduler.onNodeFailed).toHaveBeenCalledWith(
+        '22222222-2222-2222-2222-222222222222',
+        '33333333-3333-3333-3333-333333333333',
+        TENANT_ID,
+      );
+    });
+
     it('普通插件无 wasmBundleUrl 时应 fail-closed', async () => {
       pluginService.findActiveByPluginId.mockResolvedValue(
         createPluginRecord({ wasmBundleUrl: null }),

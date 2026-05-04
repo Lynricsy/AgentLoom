@@ -10,6 +10,7 @@ import {
   readArchiveManifest,
   verifyArchiveSignature as verifyPluginArchiveSignature,
 } from '@agentloom/plugin-sdk';
+import JSZip from 'jszip';
 
 import type { DrizzleDB } from '../../../database/database.module';
 import type {
@@ -39,7 +40,9 @@ import { createInitialGeneratedAppGateResults } from '../generated-app.gates';
 import { GeneratedAppService } from '../generated-app.service';
 import { WorkflowNotPublishedException } from '../../execution/execution.exceptions';
 import type { ExecutionService } from '../../execution/execution.service';
+import type { StorageService } from '../../../infrastructure/storage/storage.service';
 import type { PluginService } from '../../plugin/plugin.service';
+import { PluginSandboxService } from '../../plugin/plugin-sandbox.service';
 import {
   GeneratedAppGate4IntegrationRunner,
   type GeneratedAppGate4RunnerResult,
@@ -558,6 +561,13 @@ function createGeneratedPrivatePluginRecord(
     id: string;
     pluginId: string;
     status: 'registered' | 'active' | 'disabled' | 'error';
+    manifest: Record<string, unknown>;
+    nodeDefinitions: Array<Record<string, unknown>>;
+    storageKey: string | null;
+    signature: string | null;
+    contentHash: string | null;
+    wasmBundleUrl: string | null;
+    metadata: Record<string, unknown> | null;
     occVersion: number;
   }> = {},
 ) {
@@ -575,15 +585,15 @@ function createGeneratedPrivatePluginRecord(
     description: 'Generated private plugin',
     license: 'UNLICENSED',
     status: overrides.status ?? 'active',
-    manifest: {},
-    nodeDefinitions: [],
-    storageKey: null,
-    signature: null,
-    contentHash: null,
-    wasmBundleUrl: null,
+    manifest: overrides.manifest ?? {},
+    nodeDefinitions: overrides.nodeDefinitions ?? [],
+    storageKey: overrides.storageKey ?? null,
+    signature: overrides.signature ?? null,
+    contentHash: overrides.contentHash ?? null,
+    wasmBundleUrl: overrides.wasmBundleUrl ?? null,
     permissions: [],
     installedBy: USER_ID,
-    metadata: null,
+    metadata: overrides.metadata ?? null,
     occVersion: overrides.occVersion ?? 1,
     createdAt: NOW,
     updatedAt: NOW,
@@ -598,6 +608,21 @@ function createGeneratedPrivatePluginServiceMock(
   return {
     findByPluginId: vi.fn().mockResolvedValue(plugin),
     register: vi.fn().mockResolvedValue(plugin),
+    updateRegistrationArtifacts: vi.fn().mockResolvedValue({
+      ...plugin,
+      wasmBundleUrl: `generated-apps/${APP_ID}/plugins/tool-guided-intake-analysis.wasm`,
+      metadata: {
+        source: 'generated-app-private-plugin',
+        generatedAppId: APP_ID,
+        appSpecVersion: 1,
+        toolId: 'tool-guided-intake-analysis',
+        activationScope: 'tenant-private',
+        wasmEntry: 'dist/plugin.wasm',
+        wasmBundleUrl: `generated-apps/${APP_ID}/plugins/tool-guided-intake-analysis.wasm`,
+        wasmRuntime: 'wasm-extism',
+      },
+      occVersion: plugin.occVersion + 1,
+    }),
     updateStatus: vi.fn().mockResolvedValue({
       ...plugin,
       status: 'active',
@@ -605,6 +630,15 @@ function createGeneratedPrivatePluginServiceMock(
     }),
     ...overrides,
   } as unknown as PluginService;
+}
+
+function createStorageServiceMock(
+  overrides: Partial<StorageService> = {},
+): StorageService {
+  return {
+    upload: vi.fn().mockResolvedValue(undefined),
+    ...overrides,
+  } as unknown as StorageService;
 }
 
 function createGeneratedAppGateRun(
@@ -870,6 +904,8 @@ describe('GeneratedAppService', () => {
       undefined,
       undefined,
       createGeneratedPrivatePluginServiceMock(),
+      undefined,
+      createStorageServiceMock(),
     );
   });
 
@@ -2110,6 +2146,7 @@ describe('GeneratedAppService', () => {
         createGeneratedApp({
           ...app,
           ...gate7UpdatePayload,
+          ...privatePluginBindingUpdatePayload,
           ...workflowBindingUpdatePayload,
         }),
       ]),
@@ -2124,7 +2161,6 @@ describe('GeneratedAppService', () => {
         createGeneratedApp({
           ...app,
           ...gate7UpdatePayload,
-          ...workflowBindingUpdatePayload,
           ...privatePluginBindingUpdatePayload,
         }),
       ]),
@@ -2155,11 +2191,11 @@ describe('GeneratedAppService', () => {
       .mockReturnValueOnce(updateAppAfterGate5Chain)
       .mockReturnValueOnce(updateAppAfterGate6Chain)
       .mockReturnValueOnce(updateAppAfterGate7Chain)
+      .mockReturnValueOnce(updateAppPrivatePluginBindingChain)
       .mockReturnValueOnce(
         createUpdateReturningChain([{ id: WORKFLOW_DEFINITION_ID }]),
       )
       .mockReturnValueOnce(updateAppWorkflowBindingChain)
-      .mockReturnValueOnce(updateAppPrivatePluginBindingChain)
       .mockReturnValueOnce(updateRunChain);
 
     const response = await service.startGenerationRun(
@@ -3729,6 +3765,439 @@ describe('GeneratedAppService', () => {
     expect(response.app.id).toBe(APP_ID);
     expect(response.app.workflowDefinitionId).toBe(WORKFLOW_DEFINITION_ID);
     expect(response.app.pluginIds).toEqual([GENERATED_PRIVATE_PLUGIN_DB_ID]);
+  });
+
+  it('Gate 7 私有插件注册应上传真实 WASM 并传递 wasmBundleUrl', async () => {
+    const app = createGeneratedApp();
+    const workspaceRoot = join(
+      tmpdir(),
+      'agentloom-generated-app-plugin-wasm-register-spec',
+    );
+    const configService = createConfigService({
+      GENERATED_APP_WORKSPACE_ROOT: workspaceRoot,
+    });
+    const runner = new GeneratedAppGate3WorkspaceRunner(configService);
+    const storageService = createStorageServiceMock();
+    const pluginService = createGeneratedPrivatePluginServiceMock({
+      findByPluginId: vi.fn().mockResolvedValue(null),
+      register: vi.fn().mockImplementation(
+        async (
+          _tenantId,
+          _orgId,
+          _userId,
+          manifest: Record<string, unknown>,
+          nodeDefinitions: Array<Record<string, unknown>>,
+          storageKey: string,
+          options: {
+            signature?: string | null;
+            contentHash?: string | null;
+            wasmBundleUrl?: string;
+          },
+        ) =>
+          createGeneratedPrivatePluginRecord({
+            status: 'registered',
+            manifest,
+            nodeDefinitions,
+            storageKey,
+            signature: options.signature ?? null,
+            contentHash: options.contentHash ?? null,
+            wasmBundleUrl: options.wasmBundleUrl ?? null,
+            metadata:
+              typeof manifest.metadata === 'object' &&
+              manifest.metadata !== null &&
+              !Array.isArray(manifest.metadata)
+                ? (manifest.metadata as Record<string, unknown>)
+                : null,
+          }),
+      ),
+      updateRegistrationArtifacts: vi.fn(),
+      updateStatus: vi.fn().mockResolvedValue(
+        createGeneratedPrivatePluginRecord({
+          status: 'active',
+          wasmBundleUrl: `generated-apps/${APP_ID}/plugins/tool-guided-intake-analysis.wasm`,
+          occVersion: 2,
+        }),
+      ),
+    });
+    const serviceWithStorage = new GeneratedAppService(
+      mockTenantDb as unknown as DrizzleDB,
+      configService,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      pluginService,
+      undefined,
+      storageService,
+    );
+    const internals = serviceWithStorage as unknown as {
+      buildGenerationPlan(
+        appSpec: GeneratedApp['appSpec'],
+      ): GeneratedAppGenerationPlan;
+      buildStaticContracts(
+        appSpec: GeneratedApp['appSpec'],
+        generationPlan: GeneratedAppGenerationPlan,
+      ): GeneratedAppStaticContracts;
+      buildBuildUnitPlan(
+        appSpec: GeneratedApp['appSpec'],
+        generationPlan: GeneratedAppGenerationPlan,
+        staticContracts: GeneratedAppStaticContracts,
+        generationWorkspace: NonNullable<
+          GeneratedAppBuildUnitPlan['generationWorkspace']
+        >,
+        commandPlan: ReturnType<
+          GeneratedAppGate3WorkspaceRunner['buildCommandPlan']
+        >,
+        executionLevel: GeneratedAppBuildUnitPlan['executionLevel'],
+      ): GeneratedAppBuildUnitPlan;
+      ensureGeneratedPrivatePluginBindings(
+        tenantId: string,
+        userId: string,
+        app: GeneratedAppResponseDto,
+      ): Promise<GeneratedAppResponseDto>;
+      toResponseDto(app: GeneratedApp): GeneratedAppResponseDto;
+    };
+    const generationPlan = internals.buildGenerationPlan(app.appSpec);
+    const staticContracts = internals.buildStaticContracts(
+      app.appSpec,
+      generationPlan,
+    );
+    const workspace = runner.buildWorkspaceContract({
+      tenantId: TENANT_ID,
+      appId: APP_ID,
+      generationRunId: GENERATION_RUN_ID,
+      appSpec: app.appSpec,
+      staticContracts,
+    });
+    const commandPlan = runner.buildCommandPlan({
+      workspace,
+      requirementIds: app.appSpec.coreRequirements.map(
+        (requirement) => requirement.id,
+      ),
+      scenarioIds: app.appSpec.acceptanceScenarios.map(
+        (scenario) => scenario.id,
+      ),
+    });
+    const buildUnitPlan = internals.buildBuildUnitPlan(
+      app.appSpec,
+      generationPlan,
+      staticContracts,
+      workspace,
+      commandPlan,
+      'real-local-command-plan',
+    );
+    const appWithPlan = createGeneratedApp({
+      generationPlan: {
+        ...generationPlan,
+        staticContracts,
+        buildUnitPlan,
+      },
+    });
+    const updateAppPluginBindingChain =
+      createGeneratedAppUpdateReturningFromPayload(appWithPlan);
+    mockTenantDb.update.mockReturnValueOnce(updateAppPluginBindingChain);
+
+    try {
+      const gate3Result = await runner.materializeAndRun({
+        tenantId: TENANT_ID,
+        appId: APP_ID,
+        generationRunId: GENERATION_RUN_ID,
+        appSpec: app.appSpec,
+        generationPlan,
+        staticContracts,
+        buildUnitPlan,
+        workspace,
+        commandPlan,
+      });
+      expect(gate3Result.status).toBe('passed');
+
+      const response = await internals.ensureGeneratedPrivatePluginBindings(
+        TENANT_ID,
+        USER_ID,
+        internals.toResponseDto(appWithPlan),
+      );
+
+      const archiveStorageKey = `generated-apps/${APP_ID}/plugins/tool-guided-intake-analysis.alp`;
+      const wasmBundleUrl = `generated-apps/${APP_ID}/plugins/tool-guided-intake-analysis.wasm`;
+      const uploadMock = vi.mocked(storageService.upload);
+      const wasmUploadCall = uploadMock.mock.calls.find(
+        ([storageKey]) => storageKey === wasmBundleUrl,
+      );
+
+      expect(uploadMock).toHaveBeenCalledWith(
+        archiveStorageKey,
+        expect.any(Buffer),
+        expect.any(Number),
+        'application/zip',
+      );
+      expect(wasmUploadCall).toEqual([
+        wasmBundleUrl,
+        expect.any(Buffer),
+        expect.any(Number),
+        'application/wasm',
+      ]);
+      expect(
+        (wasmUploadCall?.[1] as Buffer).subarray(0, 4).toString('hex'),
+      ).toBe('0061736d');
+      expect(pluginService.register).toHaveBeenCalledWith(
+        TENANT_ID,
+        undefined,
+        USER_ID,
+        expect.objectContaining({
+          id: GENERATED_PRIVATE_PLUGIN_ID,
+          permissions: [],
+          wasmEntry: 'dist/plugin.wasm',
+          metadata: expect.objectContaining({
+            source: 'generated-app-private-plugin',
+            generatedAppId: APP_ID,
+            toolId: 'tool-guided-intake-analysis',
+            activationScope: 'tenant-private',
+            wasmEntry: 'dist/plugin.wasm',
+            wasmBundleUrl,
+            wasmRuntime: 'wasm-extism',
+            wasmSizeBytes: (wasmUploadCall?.[1] as Buffer).length,
+          }),
+        }),
+        expect.arrayContaining([
+          expect.objectContaining({ type: 'tool-guided-intake-analysis' }),
+        ]),
+        archiveStorageKey,
+        expect.objectContaining({
+          signature: expect.any(String),
+          contentHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+          wasmBundleUrl,
+        }),
+      );
+      expect(pluginService.updateStatus).toHaveBeenCalledWith(
+        GENERATED_PRIVATE_PLUGIN_DB_ID,
+        TENANT_ID,
+        'active',
+        1,
+      );
+      expect(updateAppPluginBindingChain.set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          pluginIds: [GENERATED_PRIVATE_PLUGIN_DB_ID],
+          updatedBy: USER_ID,
+        }),
+      );
+      expect(response.pluginIds).toEqual([GENERATED_PRIVATE_PLUGIN_DB_ID]);
+    } finally {
+      await rm(workspaceRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('Gate 7 复用 legacy 私有插件记录时应补齐 WASM artifact 和 wasmBundleUrl', async () => {
+    const app = createGeneratedApp();
+    const workspaceRoot = join(
+      tmpdir(),
+      'agentloom-generated-app-plugin-wasm-refresh-spec',
+    );
+    const configService = createConfigService({
+      GENERATED_APP_WORKSPACE_ROOT: workspaceRoot,
+    });
+    const runner = new GeneratedAppGate3WorkspaceRunner(configService);
+    const storageService = createStorageServiceMock();
+    const legacyPluginRecord = createGeneratedPrivatePluginRecord({
+      status: 'active',
+      storageKey:
+        'generated-apps/legacy/plugins/tool-guided-intake-analysis.alp',
+      signature: 'legacy-signature',
+      contentHash: '0'.repeat(64),
+      wasmBundleUrl: null,
+      metadata: {
+        source: 'generated-app-private-plugin',
+        generatedAppId: APP_ID,
+        appSpecVersion: 1,
+        toolId: 'tool-guided-intake-analysis',
+        activationScope: 'tenant-private',
+      },
+    });
+    const pluginService = createGeneratedPrivatePluginServiceMock({
+      findByPluginId: vi.fn().mockResolvedValue(legacyPluginRecord),
+      register: vi.fn(),
+      updateRegistrationArtifacts: vi.fn().mockImplementation(
+        async (
+          id: string,
+          tenantId: string,
+          occVersion: number,
+          manifest: Record<string, unknown>,
+          nodeDefinitions: Array<Record<string, unknown>>,
+          storageKey: string,
+          options: {
+            signature?: string | null;
+            contentHash?: string | null;
+            wasmBundleUrl?: string;
+          },
+        ) =>
+          createGeneratedPrivatePluginRecord({
+            id,
+            status: 'active',
+            manifest,
+            nodeDefinitions,
+            storageKey,
+            signature: options.signature ?? null,
+            contentHash: options.contentHash ?? null,
+            wasmBundleUrl: options.wasmBundleUrl ?? null,
+            metadata:
+              typeof manifest.metadata === 'object' &&
+              manifest.metadata !== null &&
+              !Array.isArray(manifest.metadata)
+                ? (manifest.metadata as Record<string, unknown>)
+                : null,
+            occVersion: occVersion + 1,
+          }),
+      ),
+      updateStatus: vi.fn(),
+    });
+    const serviceWithStorage = new GeneratedAppService(
+      mockTenantDb as unknown as DrizzleDB,
+      configService,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      pluginService,
+      undefined,
+      storageService,
+    );
+    const internals = serviceWithStorage as unknown as {
+      buildGenerationPlan(
+        appSpec: GeneratedApp['appSpec'],
+      ): GeneratedAppGenerationPlan;
+      buildStaticContracts(
+        appSpec: GeneratedApp['appSpec'],
+        generationPlan: GeneratedAppGenerationPlan,
+      ): GeneratedAppStaticContracts;
+      buildBuildUnitPlan(
+        appSpec: GeneratedApp['appSpec'],
+        generationPlan: GeneratedAppGenerationPlan,
+        staticContracts: GeneratedAppStaticContracts,
+        generationWorkspace: NonNullable<
+          GeneratedAppBuildUnitPlan['generationWorkspace']
+        >,
+        commandPlan: ReturnType<
+          GeneratedAppGate3WorkspaceRunner['buildCommandPlan']
+        >,
+        executionLevel: GeneratedAppBuildUnitPlan['executionLevel'],
+      ): GeneratedAppBuildUnitPlan;
+      ensureGeneratedPrivatePluginBindings(
+        tenantId: string,
+        userId: string,
+        app: GeneratedAppResponseDto,
+      ): Promise<GeneratedAppResponseDto>;
+      toResponseDto(app: GeneratedApp): GeneratedAppResponseDto;
+    };
+    const generationPlan = internals.buildGenerationPlan(app.appSpec);
+    const staticContracts = internals.buildStaticContracts(
+      app.appSpec,
+      generationPlan,
+    );
+    const workspace = runner.buildWorkspaceContract({
+      tenantId: TENANT_ID,
+      appId: APP_ID,
+      generationRunId: GENERATION_RUN_ID,
+      appSpec: app.appSpec,
+      staticContracts,
+    });
+    const commandPlan = runner.buildCommandPlan({
+      workspace,
+      requirementIds: app.appSpec.coreRequirements.map(
+        (requirement) => requirement.id,
+      ),
+      scenarioIds: app.appSpec.acceptanceScenarios.map(
+        (scenario) => scenario.id,
+      ),
+    });
+    const buildUnitPlan = internals.buildBuildUnitPlan(
+      app.appSpec,
+      generationPlan,
+      staticContracts,
+      workspace,
+      commandPlan,
+      'real-local-command-plan',
+    );
+    const appWithPlan = createGeneratedApp({
+      generationPlan: {
+        ...generationPlan,
+        staticContracts,
+        buildUnitPlan,
+      },
+    });
+
+    try {
+      const gate3Result = await runner.materializeAndRun({
+        tenantId: TENANT_ID,
+        appId: APP_ID,
+        generationRunId: GENERATION_RUN_ID,
+        appSpec: app.appSpec,
+        generationPlan,
+        staticContracts,
+        buildUnitPlan,
+        workspace,
+        commandPlan,
+      });
+      expect(gate3Result.status).toBe('passed');
+
+      const response = await internals.ensureGeneratedPrivatePluginBindings(
+        TENANT_ID,
+        USER_ID,
+        internals.toResponseDto(
+          createGeneratedApp({
+            ...appWithPlan,
+            pluginIds: [GENERATED_PRIVATE_PLUGIN_DB_ID],
+          }),
+        ),
+      );
+
+      const archiveStorageKey = `generated-apps/${APP_ID}/plugins/tool-guided-intake-analysis.alp`;
+      const wasmBundleUrl = `generated-apps/${APP_ID}/plugins/tool-guided-intake-analysis.wasm`;
+
+      expect(storageService.upload).toHaveBeenCalledWith(
+        archiveStorageKey,
+        expect.any(Buffer),
+        expect.any(Number),
+        'application/zip',
+      );
+      expect(storageService.upload).toHaveBeenCalledWith(
+        wasmBundleUrl,
+        expect.any(Buffer),
+        expect.any(Number),
+        'application/wasm',
+      );
+      expect(pluginService.register).not.toHaveBeenCalled();
+      expect(pluginService.updateRegistrationArtifacts).toHaveBeenCalledWith(
+        GENERATED_PRIVATE_PLUGIN_DB_ID,
+        TENANT_ID,
+        1,
+        expect.objectContaining({
+          id: GENERATED_PRIVATE_PLUGIN_ID,
+          wasmEntry: 'dist/plugin.wasm',
+          metadata: expect.objectContaining({
+            source: 'generated-app-private-plugin',
+            toolId: 'tool-guided-intake-analysis',
+            activationScope: 'tenant-private',
+            wasmBundleUrl,
+            wasmRuntime: 'wasm-extism',
+          }),
+        }),
+        expect.arrayContaining([
+          expect.objectContaining({ type: 'tool-guided-intake-analysis' }),
+        ]),
+        archiveStorageKey,
+        expect.objectContaining({
+          signature: expect.any(String),
+          contentHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+          wasmBundleUrl,
+        }),
+      );
+      expect(pluginService.updateStatus).not.toHaveBeenCalled();
+      expect(mockTenantDb.update).not.toHaveBeenCalled();
+      expect(response.pluginIds).toEqual([GENERATED_PRIVATE_PLUGIN_DB_ID]);
+    } finally {
+      await rm(workspaceRoot, { recursive: true, force: true });
+    }
   });
 
   it('retry 启动门禁运行器时应把最近 failed repair attempt 写入本轮 generationPlan 和 Gate 1 证据', async () => {
@@ -6269,7 +6738,7 @@ describe('GeneratedAppService', () => {
           ),
           'utf8',
         ),
-      ) as { id: string; permissions: string[] };
+      ) as { id: string; permissions: string[]; wasmEntry: string };
       const pluginNodeDefinitions = JSON.parse(
         await readFile(
           join(
@@ -6303,6 +6772,10 @@ describe('GeneratedAppService', () => {
         contentHash: string;
         signature: string;
         generatedSigningPublicKeyPem: string;
+        wasmEntry: string;
+        wasmRuntime: string;
+        wasmSizeBytes: number;
+        wasmSha256: string;
         signingVerification: { requiredBeforePrivateActivation: boolean };
       };
       const pluginBundle = await readFile(
@@ -6356,6 +6829,7 @@ describe('GeneratedAppService', () => {
         expect.objectContaining({
           id: GENERATED_PRIVATE_PLUGIN_ID,
           permissions: [],
+          wasmEntry: 'dist/plugin.wasm',
         }),
       );
       await expect(readArchiveManifest(pluginBundle)).resolves.toEqual(
@@ -6363,6 +6837,42 @@ describe('GeneratedAppService', () => {
           id: GENERATED_PRIVATE_PLUGIN_ID,
           contentHash: pluginBuildReport.contentHash,
           signature: pluginBuildReport.signature,
+          wasmEntry: 'dist/plugin.wasm',
+        }),
+      );
+      const pluginArchive = await JSZip.loadAsync(pluginBundle);
+      const wasmEntry = pluginArchive.file('dist/plugin.wasm');
+      expect(wasmEntry).not.toBeNull();
+      const wasmBundle = Buffer.from(await wasmEntry!.async('uint8array'));
+      expect(wasmBundle.subarray(0, 4).toString('hex')).toBe('0061736d');
+      expect(pluginBuildReport.wasmEntry).toBe('dist/plugin.wasm');
+      expect(pluginBuildReport.wasmRuntime).toBe('extism');
+      expect(pluginBuildReport.wasmSizeBytes).toBe(wasmBundle.length);
+      expect(pluginBuildReport.wasmSha256).toBe(
+        crypto.createHash('sha256').update(wasmBundle).digest('hex'),
+      );
+      const wasmSmokeResult = await new PluginSandboxService().execute(
+        wasmBundle,
+        'execute',
+        { inputs: { input: { chiefComplaint: '头痛三天' } } },
+        {
+          allowedHosts: [],
+          maxMemoryPages: 2,
+          timeoutMs: 3000,
+          useWasi: false,
+        },
+        GENERATED_PRIVATE_PLUGIN_ID,
+      );
+      expect(wasmSmokeResult.success).toBe(true);
+      expect(wasmSmokeResult.output).toEqual(
+        expect.objectContaining({
+          analysis: expect.objectContaining({
+            runtime: 'wasm-extism',
+            generatedPrivatePlugin: true,
+          }),
+          'analysis-out': expect.objectContaining({
+            runtime: 'wasm-extism',
+          }),
         }),
       );
       await expect(computePluginArchiveContentHash(pluginBundle)).resolves.toBe(

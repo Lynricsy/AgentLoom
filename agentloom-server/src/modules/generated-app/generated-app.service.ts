@@ -13,6 +13,7 @@ import {
   validateManifest as validatePluginManifest,
   verifyArchiveSignature as verifyPluginArchiveSignature,
 } from '@agentloom/plugin-sdk';
+import JSZip from 'jszip';
 
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import { hasPostgresErrorCode } from '../../common/utils/postgres-error.utils';
@@ -132,6 +133,7 @@ import type {
 } from '../execution/dto/run-workflow.dto';
 import { WorkflowNotPublishedException } from '../execution/execution.exceptions';
 import { ExecutionService } from '../execution/execution.service';
+import { StorageService } from '../../infrastructure/storage/storage.service';
 import { appendSlugSuffix, generateSlug } from '../organization/slug.utils';
 import { PluginAlreadyExistsException } from '../plugin/plugin.exceptions';
 import { PluginService } from '../plugin/plugin.service';
@@ -1219,6 +1221,10 @@ interface GeneratedAppPrivatePluginBuildReport {
   };
   declaredPermissions: string[];
   artifactPath: string;
+  wasmEntry?: string;
+  wasmRuntime?: string;
+  wasmSizeBytes?: number;
+  wasmSha256?: string;
   passed: boolean;
 }
 
@@ -1245,6 +1251,8 @@ export class GeneratedAppService {
     private readonly pluginService?: PluginService,
     @Optional()
     private readonly executionService?: ExecutionService,
+    @Optional()
+    private readonly storageService?: StorageService,
   ) {
     this.gate3WorkspaceRunner =
       gate3WorkspaceRunner ??
@@ -2670,6 +2678,11 @@ export class GeneratedAppService {
                   latestApp = gate7RunResult.app;
                   completedAt = gate7CompletedAt;
                   if (gate7Evaluation.status === 'passed') {
+                    latestApp = await this.ensureGeneratedPrivatePluginBindings(
+                      tenantId,
+                      userId,
+                      latestApp,
+                    );
                     latestApp =
                       await this.ensureGeneratedWorkflowRuntimeBinding(
                         tenantId,
@@ -2677,11 +2690,6 @@ export class GeneratedAppService {
                         latestApp,
                         run.id,
                       );
-                    latestApp = await this.ensureGeneratedPrivatePluginBindings(
-                      tenantId,
-                      userId,
-                      latestApp,
-                    );
                     completedStatus = 'passed';
                     finalFailureReason = null;
                     completedSummary =
@@ -4998,41 +5006,44 @@ export class GeneratedAppService {
         toolId,
         workspaceRelativePath: workspace.relativePath,
       });
+      const wasmBundleUrl =
+        pluginBundle.wasmBuffer && pluginBundle.wasmEntry
+          ? `generated-apps/${app.id}/plugins/${toolId}.wasm`
+          : undefined;
       let pluginRecord = await this.pluginService.findByPluginId(
         pluginBundle.pluginId,
         undefined,
         tenantId,
       );
 
+      const registrationManifest =
+        this.buildGeneratedPrivatePluginRegistrationManifest({
+          app,
+          toolId,
+          pluginBundle,
+          wasmBundleUrl,
+        });
+
       if (!pluginRecord) {
+        await this.persistGeneratedPrivatePluginArtifacts({
+          archiveStorageKey: pluginBundle.storageKey,
+          archiveBuffer: pluginBundle.archiveBuffer,
+          wasmBundleUrl,
+          wasmBuffer: pluginBundle.wasmBuffer,
+        });
+
         try {
           pluginRecord = await this.pluginService.register(
             tenantId,
             undefined,
             userId,
-            {
-              ...pluginBundle.manifest,
-              metadata: {
-                source: 'generated-app-private-plugin',
-                generatedAppId: app.id,
-                appSpecVersion: app.appSpec.version,
-                toolId,
-                activationScope: 'tenant-private',
-                gate3ArtifactPath: pluginBundle.artifactPath,
-                gate3BuildReportPath: pluginBundle.buildReportPath,
-                signingVerification:
-                  pluginBundle.buildReport.signingVerification,
-                activationHardGates: [
-                  ...GENERATED_APP_PRIVATE_PLUGIN_HARD_GATES,
-                ],
-              },
-            },
+            registrationManifest,
             pluginBundle.nodeDefinitions,
             pluginBundle.storageKey,
             {
               signature: pluginBundle.signature,
               contentHash: pluginBundle.contentHash,
-              wasmBundleUrl: undefined,
+              wasmBundleUrl,
             },
           );
         } catch (error) {
@@ -5046,6 +5057,35 @@ export class GeneratedAppService {
             tenantId,
           );
         }
+      } else if (
+        this.mustRefreshGeneratedPrivatePluginRegistration(
+          app,
+          toolId,
+          pluginRecord,
+          pluginBundle,
+          wasmBundleUrl,
+        )
+      ) {
+        await this.persistGeneratedPrivatePluginArtifacts({
+          archiveStorageKey: pluginBundle.storageKey,
+          archiveBuffer: pluginBundle.archiveBuffer,
+          wasmBundleUrl,
+          wasmBuffer: pluginBundle.wasmBuffer,
+        });
+
+        pluginRecord = await this.pluginService.updateRegistrationArtifacts(
+          pluginRecord.id,
+          tenantId,
+          pluginRecord.occVersion,
+          registrationManifest,
+          pluginBundle.nodeDefinitions,
+          pluginBundle.storageKey,
+          {
+            signature: pluginBundle.signature,
+            contentHash: pluginBundle.contentHash,
+            wasmBundleUrl,
+          },
+        );
       }
 
       if (!pluginRecord) {
@@ -5096,6 +5136,78 @@ export class GeneratedAppService {
     return this.toResponseDto(updated);
   }
 
+  private buildGeneratedPrivatePluginRegistrationManifest(params: {
+    app: GeneratedAppResponseDto;
+    toolId: string;
+    pluginBundle: {
+      manifest: Record<string, unknown>;
+      artifactPath: string;
+      buildReportPath: string;
+      buildReport: GeneratedAppPrivatePluginBuildReport;
+      wasmEntry: string | null;
+      wasmBuffer: Buffer | null;
+    };
+    wasmBundleUrl: string | undefined;
+  }): Record<string, unknown> {
+    const { app, toolId, pluginBundle, wasmBundleUrl } = params;
+
+    return {
+      ...pluginBundle.manifest,
+      metadata: {
+        source: 'generated-app-private-plugin',
+        generatedAppId: app.id,
+        appSpecVersion: app.appSpec.version,
+        toolId,
+        activationScope: 'tenant-private',
+        gate3ArtifactPath: pluginBundle.artifactPath,
+        gate3BuildReportPath: pluginBundle.buildReportPath,
+        signingVerification: pluginBundle.buildReport.signingVerification,
+        activationHardGates: [...GENERATED_APP_PRIVATE_PLUGIN_HARD_GATES],
+        wasmEntry: pluginBundle.wasmEntry ?? null,
+        wasmBundleUrl: wasmBundleUrl ?? null,
+        wasmRuntime: pluginBundle.wasmEntry
+          ? 'wasm-extism'
+          : 'legacy-no-wasm-fallback',
+        wasmSizeBytes: pluginBundle.wasmBuffer?.length ?? null,
+      },
+    };
+  }
+
+  private mustRefreshGeneratedPrivatePluginRegistration(
+    app: GeneratedAppResponseDto,
+    toolId: string,
+    pluginRecord: {
+      storageKey: string | null;
+      signature: string | null;
+      contentHash: string | null;
+      wasmBundleUrl: string | null;
+      metadata: Record<string, unknown> | null;
+    },
+    pluginBundle: {
+      storageKey: string;
+      signature: string;
+      contentHash: string;
+      wasmEntry: string | null;
+    },
+    wasmBundleUrl: string | undefined,
+  ): boolean {
+    const metadata = pluginRecord.metadata ?? {};
+
+    return (
+      pluginRecord.storageKey !== pluginBundle.storageKey ||
+      pluginRecord.signature !== pluginBundle.signature ||
+      pluginRecord.contentHash !== pluginBundle.contentHash ||
+      pluginRecord.wasmBundleUrl !== (wasmBundleUrl ?? null) ||
+      metadata.source !== 'generated-app-private-plugin' ||
+      metadata.activationScope !== 'tenant-private' ||
+      metadata.generatedAppId !== app.id ||
+      metadata.appSpecVersion !== app.appSpec.version ||
+      metadata.toolId !== toolId ||
+      metadata.wasmEntry !== (pluginBundle.wasmEntry ?? null) ||
+      metadata.wasmBundleUrl !== (wasmBundleUrl ?? null)
+    );
+  }
+
   private async loadAndVerifyGeneratedPrivatePlugin(params: {
     app: GeneratedAppResponseDto;
     toolId: string;
@@ -5107,6 +5219,9 @@ export class GeneratedAppService {
     artifactPath: string;
     buildReportPath: string;
     storageKey: string;
+    archiveBuffer: Buffer;
+    wasmEntry: string | null;
+    wasmBuffer: Buffer | null;
     signature: string;
     contentHash: string;
     buildReport: GeneratedAppPrivatePluginBuildReport;
@@ -5186,6 +5301,46 @@ export class GeneratedAppService {
 
     this.assertGeneratedPrivatePluginHardGates(params.toolId, buildReport);
 
+    const wasmEntry = this.getNonEmptyString(manifest.wasmEntry);
+    const wasmBuffer = wasmEntry
+      ? await this.extractGeneratedPrivatePluginWasm(
+          archiveBuffer,
+          wasmEntry,
+          pluginId,
+        )
+      : null;
+
+    if (
+      wasmEntry &&
+      buildReport.wasmEntry &&
+      buildReport.wasmEntry !== wasmEntry
+    ) {
+      throw new Error(
+        `Generated App 私有插件 ${pluginId} build report wasmEntry 与 manifest 不一致。`,
+      );
+    }
+
+    if (
+      wasmBuffer &&
+      typeof buildReport.wasmSizeBytes === 'number' &&
+      buildReport.wasmSizeBytes !== wasmBuffer.length
+    ) {
+      throw new Error(
+        `Generated App 私有插件 ${pluginId} WASM bundle 大小与 build report 不一致。`,
+      );
+    }
+
+    if (
+      wasmBuffer &&
+      buildReport.wasmSha256 &&
+      crypto.createHash('sha256').update(wasmBuffer).digest('hex') !==
+        buildReport.wasmSha256
+    ) {
+      throw new Error(
+        `Generated App 私有插件 ${pluginId} WASM bundle 哈希与 build report 不一致。`,
+      );
+    }
+
     const nodeDefinitions = await this.readJsonFile<
       Array<Record<string, unknown>>
     >(
@@ -5214,10 +5369,90 @@ export class GeneratedAppService {
       artifactPath,
       buildReportPath,
       storageKey: `generated-apps/${params.app.id}/plugins/${params.toolId}.alp`,
+      archiveBuffer,
+      wasmEntry: wasmEntry ?? null,
+      wasmBuffer,
       signature,
       contentHash,
       buildReport,
     };
+  }
+
+  private async persistGeneratedPrivatePluginArtifacts(params: {
+    archiveStorageKey: string;
+    archiveBuffer: Buffer;
+    wasmBundleUrl: string | undefined;
+    wasmBuffer: Buffer | null;
+  }): Promise<void> {
+    if (!this.storageService) {
+      throw new Error(
+        'Generated App 私有插件自动激活需要 StorageService 才能持久化插件 artifact。',
+      );
+    }
+
+    await this.storageService.upload(
+      params.archiveStorageKey,
+      params.archiveBuffer,
+      params.archiveBuffer.length,
+      'application/zip',
+    );
+
+    if (params.wasmBundleUrl && params.wasmBuffer) {
+      await this.storageService.upload(
+        params.wasmBundleUrl,
+        params.wasmBuffer,
+        params.wasmBuffer.length,
+        'application/wasm',
+      );
+    }
+  }
+
+  private async extractGeneratedPrivatePluginWasm(
+    archiveBuffer: Buffer,
+    wasmEntry: string,
+    pluginId: string,
+  ): Promise<Buffer> {
+    this.assertSafeGeneratedPrivatePluginWasmEntry(wasmEntry, pluginId);
+
+    const archive = await JSZip.loadAsync(archiveBuffer);
+    const wasmFile = archive.file(wasmEntry);
+
+    if (!wasmFile) {
+      throw new Error(
+        `Generated App 私有插件 ${pluginId} manifest 声明的 WASM 入口 ${wasmEntry} 不存在。`,
+      );
+    }
+
+    const wasmBuffer = Buffer.from(await wasmFile.async('uint8array'));
+    if (
+      wasmBuffer.length < 8 ||
+      wasmBuffer.subarray(0, 4).toString('hex') !== '0061736d'
+    ) {
+      throw new Error(
+        `Generated App 私有插件 ${pluginId} WASM bundle 不是有效 WebAssembly 模块。`,
+      );
+    }
+
+    return wasmBuffer;
+  }
+
+  private assertSafeGeneratedPrivatePluginWasmEntry(
+    wasmEntry: string,
+    pluginId: string,
+  ): void {
+    const parts = wasmEntry.split('/');
+    if (
+      wasmEntry.trim() !== wasmEntry ||
+      !wasmEntry.endsWith('.wasm') ||
+      wasmEntry.startsWith('/') ||
+      /^[A-Za-z]:/.test(wasmEntry) ||
+      wasmEntry.includes('\\') ||
+      parts.some((part) => part.length === 0 || part === '.' || part === '..')
+    ) {
+      throw new Error(
+        `Generated App 私有插件 ${pluginId} WASM 入口路径不安全。`,
+      );
+    }
   }
 
   private assertGeneratedPrivatePluginHardGates(

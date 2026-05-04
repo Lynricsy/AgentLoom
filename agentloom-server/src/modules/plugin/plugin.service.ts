@@ -295,6 +295,73 @@ export class PluginService {
     return updated;
   }
 
+  async updateRegistrationArtifacts(
+    id: string,
+    tenantId: string,
+    occVersion: number,
+    manifestData: Record<string, unknown>,
+    nodeDefinitions: Array<Record<string, unknown>>,
+    storageKey: string,
+    options?: {
+      signature?: string;
+      contentHash?: string;
+      wasmBundleUrl?: string;
+    },
+  ): Promise<PluginRecord> {
+    const manifest = this.parseManifest(manifestData);
+    const parsedNodeDefinitions = this.parseNodeDefinitions(nodeDefinitions);
+
+    const [updated] = await this.tenantDb
+      .update(schema.plugins)
+      .set({
+        name: manifest.name,
+        version: manifest.version,
+        author: manifest.author,
+        description: this.normalizeNullableText(manifest.description),
+        license: this.normalizeNullableText(manifest.license),
+        manifest: manifest.raw,
+        nodeDefinitions: parsedNodeDefinitions,
+        storageKey: this.normalizeNullableText(storageKey),
+        permissions: manifest.permissions,
+        metadata: manifest.metadata,
+        signature: this.normalizeNullableText(options?.signature),
+        contentHash: this.normalizeNullableText(options?.contentHash),
+        wasmBundleUrl: this.normalizeNullableText(options?.wasmBundleUrl),
+        occVersion: sql`${schema.plugins.occVersion} + 1`,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(schema.plugins.id, id),
+          eq(schema.plugins.tenantId, tenantId),
+          eq(schema.plugins.occVersion, occVersion),
+        ),
+      )
+      .returning();
+
+    if (!updated) {
+      const currentPlugin = await this.findPlugin(tenantId, id);
+
+      if (!currentPlugin) {
+        throw new PluginNotFoundException(id);
+      }
+
+      throw new PluginVersionConflictException(id, currentPlugin.occVersion);
+    }
+
+    this.logger.log(
+      JSON.stringify({
+        action: 'plugin_registration_artifacts_updated',
+        pluginId: updated.pluginId,
+        recordId: updated.id,
+        tenantId,
+        occVersion: updated.occVersion,
+      }),
+    );
+
+    return updated;
+  }
+
   async remove(id: string, tenantId: string): Promise<void> {
     const [deleted] = await this.tenantDb
       .delete(schema.plugins)

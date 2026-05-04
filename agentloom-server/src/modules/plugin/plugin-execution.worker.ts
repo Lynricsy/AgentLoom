@@ -101,10 +101,7 @@ export class PluginExecutionWorker extends WorkerHost {
               pluginId: plugin.pluginId,
               nodeType,
               executionTimeMs: workerResult.executionTimeMs ?? null,
-              runtime:
-                plugin.wasmBundleUrl === null
-                  ? 'generated-private-deterministic'
-                  : 'wasm-extism',
+              runtime: this.resolveCheckpointRuntime(plugin, nodeType),
             },
           },
         );
@@ -129,10 +126,7 @@ export class PluginExecutionWorker extends WorkerHost {
               pluginId: plugin.pluginId,
               nodeType,
               executionTimeMs: workerResult.executionTimeMs ?? null,
-              runtime:
-                plugin.wasmBundleUrl === null
-                  ? 'generated-private-deterministic'
-                  : 'wasm-extism',
+              runtime: this.resolveCheckpointRuntime(plugin, nodeType),
             },
           },
         );
@@ -230,12 +224,7 @@ export class PluginExecutionWorker extends WorkerHost {
     inputs: Record<string, unknown>,
     config: Record<string, unknown>,
   ): PluginExecutionJobResult | null {
-    const metadata = plugin.metadata ?? {};
-    if (
-      metadata.source !== 'generated-app-private-plugin' ||
-      metadata.activationScope !== 'tenant-private' ||
-      metadata.toolId !== nodeType
-    ) {
+    if (!this.isGeneratedPrivatePluginFallbackEligible(plugin, nodeType)) {
       return null;
     }
 
@@ -271,6 +260,37 @@ export class PluginExecutionWorker extends WorkerHost {
       executionTimeMs: Date.now() - startedAt,
       message: `Generated App 私有插件 ${plugin.pluginId}/${nodeType} 已通过受控 deterministic fallback 执行`,
     };
+  }
+
+  private resolveCheckpointRuntime(
+    plugin: {
+      wasmBundleUrl: string | null;
+      metadata: Record<string, unknown> | null;
+    },
+    nodeType: string,
+  ): 'wasm-extism' | 'generated-private-deterministic' | 'no-wasm' {
+    if (plugin.wasmBundleUrl) {
+      return 'wasm-extism';
+    }
+
+    return this.isGeneratedPrivatePluginFallbackEligible(plugin, nodeType)
+      ? 'generated-private-deterministic'
+      : 'no-wasm';
+  }
+
+  private isGeneratedPrivatePluginFallbackEligible(
+    plugin: {
+      metadata: Record<string, unknown> | null;
+    },
+    nodeType: string,
+  ): boolean {
+    const metadata = plugin.metadata ?? {};
+
+    return (
+      metadata.source === 'generated-app-private-plugin' &&
+      metadata.activationScope === 'tenant-private' &&
+      metadata.toolId === nodeType
+    );
   }
 
   private normalizeGeneratedPrivatePluginInput(

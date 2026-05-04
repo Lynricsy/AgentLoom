@@ -394,6 +394,97 @@ describe('PluginService', () => {
     });
   });
 
+  describe('updateRegistrationArtifacts', () => {
+    it('应当用 OCC 回写插件归档、签名、WASM URL 和 metadata', async () => {
+      const updatedPlugin = createPlugin({
+        name: 'Updated Review Analyzer',
+        version: '1.0.1',
+        manifest: {
+          ...VALID_MANIFEST,
+          id: 'com.example.review',
+          pluginId: undefined,
+          name: 'Updated Review Analyzer',
+          version: '1.0.1',
+          metadata: {
+            source: 'generated-app-private-plugin',
+            wasmBundleUrl: 'plugins/review/plugin.wasm',
+          },
+        },
+        storageKey: 'plugins/review/archive.alp',
+        signature: 'signature',
+        contentHash: 'a'.repeat(64),
+        wasmBundleUrl: 'plugins/review/plugin.wasm',
+        metadata: {
+          source: 'generated-app-private-plugin',
+          wasmBundleUrl: 'plugins/review/plugin.wasm',
+        },
+        occVersion: 2,
+      });
+      const updatePlugin = createUpdateChain([updatedPlugin]);
+      db.update.mockReturnValue(updatePlugin);
+
+      const result = await service.updateRegistrationArtifacts(
+        PLUGIN_ID,
+        TENANT_ID,
+        1,
+        {
+          ...VALID_MANIFEST,
+          name: 'Updated Review Analyzer',
+          version: '1.0.1',
+          metadata: {
+            source: 'generated-app-private-plugin',
+            wasmBundleUrl: 'plugins/review/plugin.wasm',
+          },
+        },
+        VALID_NODE_DEFINITIONS,
+        'plugins/review/archive.alp',
+        {
+          signature: 'signature',
+          contentHash: 'a'.repeat(64),
+          wasmBundleUrl: 'plugins/review/plugin.wasm',
+        },
+      );
+
+      expect(updatePlugin.set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: 'Updated Review Analyzer',
+          version: '1.0.1',
+          storageKey: 'plugins/review/archive.alp',
+          signature: 'signature',
+          contentHash: 'a'.repeat(64),
+          wasmBundleUrl: 'plugins/review/plugin.wasm',
+          metadata: {
+            source: 'generated-app-private-plugin',
+            wasmBundleUrl: 'plugins/review/plugin.wasm',
+          },
+          updatedAt: NOW,
+        }),
+      );
+      expect(result).toEqual(updatedPlugin);
+    });
+
+    it('更新归档时版本冲突应抛出 409 并携带 currentVersion', async () => {
+      const updatePlugin = createUpdateChain([]);
+      const selectPlugin = createSelectChain([createPlugin({ occVersion: 4 })]);
+      db.update.mockReturnValue(updatePlugin);
+      db.select.mockReturnValue(selectPlugin);
+
+      await expect(
+        service.updateRegistrationArtifacts(
+          PLUGIN_ID,
+          TENANT_ID,
+          1,
+          VALID_MANIFEST,
+          VALID_NODE_DEFINITIONS,
+          'plugins/review/archive.alp',
+        ),
+      ).rejects.toMatchObject({
+        constructor: PluginVersionConflictException,
+        extensions: { currentVersion: 4 },
+      });
+    });
+  });
+
   describe('remove', () => {
     it('应当删除插件', async () => {
       const deletePlugin = createDeleteChain([{ id: PLUGIN_ID }]);
