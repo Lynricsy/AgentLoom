@@ -271,6 +271,9 @@ export class GeneratedAppGate7PublishCandidateRunner {
     const gateResultsById = new Map(
       params.gateResults.map((gate) => [gate.gateId, gate]),
     );
+    const expectedGate5RunnerId = this.resolveGate5RequiredRunnerId(
+      params.browserAcceptancePlan.executionLevel,
+    );
 
     return [
       ...GATE_7_UPSTREAM_GATE_IDS.flatMap((gateId) => {
@@ -292,9 +295,13 @@ export class GeneratedAppGate7PublishCandidateRunner {
         ? []
         : ['Gate 4 executionLevel 必须为 real-local-integration']),
       ...(params.browserAcceptancePlan.executionLevel ===
-      'real-local-browser-contract'
+        'real-local-browser-contract' ||
+      params.browserAcceptancePlan.executionLevel === 'real-browser-e2e'
         ? []
-        : ['Gate 5 executionLevel 必须为 real-local-browser-contract']),
+        : [
+            'Gate 5 executionLevel 必须为 real-local-browser-contract 或 real-browser-e2e',
+          ]),
+      ...this.collectGate5RunnerEvidenceIssues(params),
       ...(params.independentVerificationPlan.executionLevel ===
       'real-local-independent-verifier'
         ? []
@@ -306,10 +313,65 @@ export class GeneratedAppGate7PublishCandidateRunner {
       ...(params.publishCandidatePlan.finalVerdict.blockingReasons.length === 0
         ? []
         : ['finalVerdict.blockingReasons 通过时必须为空']),
+      ...(params.publishCandidatePlan.finalVerdict.requiredGate5RealRunnerId ===
+      expectedGate5RunnerId
+        ? []
+        : [
+            `finalVerdict.requiredGate5RealRunnerId 必须为 ${expectedGate5RunnerId}`,
+          ]),
       ...(params.publishCandidatePlan.publicationBlockers.length === 0
         ? []
         : ['real-local Gate 7 通过时 publicationBlockers 必须为空']),
     ];
+  }
+
+  private collectGate5RunnerEvidenceIssues(
+    params: GeneratedAppGate7RunParams,
+  ): string[] {
+    const gate5 = params.gateResults.find((gate) => gate.gateId === 'gate-5');
+    const expectedRunnerId = this.resolveGate5RequiredRunnerId(
+      params.browserAcceptancePlan.executionLevel,
+    );
+    const trustedEvidence =
+      gate5?.evidence.some((evidence) => {
+        const details = this.getRecord(evidence.details);
+
+        if (details?.runnerId !== expectedRunnerId) {
+          return false;
+        }
+
+        if (
+          params.browserAcceptancePlan.executionLevel === 'real-browser-e2e'
+        ) {
+          return (
+            details.executionLevel === 'real-browser-e2e' &&
+            details.executed === true &&
+            details.playwrightExecuted === true &&
+            details.realBrowserExecuted === true
+          );
+        }
+
+        return (
+          details.executionLevel === 'real-local-browser-contract' &&
+          details.executed === true &&
+          details.playwrightExecuted === false &&
+          details.realBrowserExecuted === false
+        );
+      }) ?? false;
+
+    return trustedEvidence
+      ? []
+      : [
+          `Gate 5 必须包含 ${expectedRunnerId} 的可信执行 evidence；real-browser-e2e 需要 executed=true、playwrightExecuted=true、realBrowserExecuted=true，real-local-browser-contract 需要 executed=true 且明确未执行 Playwright/真实浏览器。`,
+        ];
+  }
+
+  private resolveGate5RequiredRunnerId(
+    executionLevel: GeneratedAppBrowserAcceptancePlan['executionLevel'],
+  ): string {
+    return executionLevel === 'real-browser-e2e'
+      ? 'gate-5-real-browser-e2e-runner'
+      : 'gate-5-real-browser-acceptance-runner';
   }
 
   private buildFailureResult(params: {
@@ -606,6 +668,18 @@ export class GeneratedAppGate7PublishCandidateRunner {
     }
 
     return GATE_7_RUNNER_IDS.real;
+  }
+
+  private getRecord(value: unknown): Record<string, unknown> | null {
+    if (
+      value !== null &&
+      typeof value === 'object' &&
+      Object.getPrototypeOf(value) === Object.prototype
+    ) {
+      return value as Record<string, unknown>;
+    }
+
+    return null;
   }
 
   private collectSensitiveTokenIssues(value: unknown, path: string): string[] {

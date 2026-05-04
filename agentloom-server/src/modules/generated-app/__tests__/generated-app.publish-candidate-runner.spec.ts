@@ -90,6 +90,47 @@ function buildGateResultsThroughGate6(): GeneratedAppGateResult[] {
   );
 }
 
+function withTrustedGate5Evidence(
+  gateResults: GeneratedAppGateResult[],
+  executionLevel: GeneratedAppBrowserAcceptancePlan['executionLevel'],
+): GeneratedAppGateResult[] {
+  return gateResults.map((gate) => {
+    if (gate.gateId !== 'gate-5') {
+      return gate;
+    }
+
+    const isRealBrowserE2e = executionLevel === 'real-browser-e2e';
+
+    return {
+      ...gate,
+      evidence: [
+        {
+          id: isRealBrowserE2e
+            ? 'gate-5-real-browser-e2e-execution'
+            : 'gate-5-browser-runner-contract',
+          label: 'Gate 5 trusted runner evidence',
+          kind: 'browser',
+          url: null,
+          summary: isRealBrowserE2e
+            ? 'Gate 5 real-browser-e2e runner executed public runtime journey.'
+            : 'Gate 5 real-local browser contract runner executed.',
+          details: {
+            runnerId: isRealBrowserE2e
+              ? 'gate-5-real-browser-e2e-runner'
+              : 'gate-5-real-browser-acceptance-runner',
+            executionLevel: isRealBrowserE2e
+              ? 'real-browser-e2e'
+              : 'real-local-browser-contract',
+            executed: true,
+            playwrightExecuted: isRealBrowserE2e,
+            realBrowserExecuted: isRealBrowserE2e,
+          },
+        },
+      ],
+    };
+  });
+}
+
 function buildPlans(
   configService = createConfigService(),
   overrides: {
@@ -180,7 +221,12 @@ function buildPlans(
     integrationPlan,
     overrides.browserExecutionLevel ?? 'real-local-browser-contract',
   );
-  const gateResults = buildGateResultsThroughGate6();
+  const browserExecutionLevel =
+    overrides.browserExecutionLevel ?? 'real-local-browser-contract';
+  const gateResults = withTrustedGate5Evidence(
+    buildGateResultsThroughGate6(),
+    browserExecutionLevel,
+  );
   const independentVerificationPlan = service.buildIndependentVerificationPlan(
     appSpec,
     generationPlan,
@@ -395,6 +441,85 @@ describe('GeneratedAppGate7PublishCandidateRunner', () => {
         ]),
       }),
     );
+  });
+
+  it('real-browser-e2e 上游缺少真实执行证据时应阻断 publish candidate', () => {
+    const plans = buildPlans(createConfigService(), {
+      browserExecutionLevel: 'real-browser-e2e',
+    });
+    const unavailableGate5Results = plans.gateResults.map((gate) =>
+      gate.gateId === 'gate-5'
+        ? {
+            ...gate,
+            evidence: [
+              {
+                id: 'gate-5-real-browser-e2e-execution',
+                label: 'Gate 5 real browser E2E unavailable',
+                kind: 'browser' as const,
+                url: null,
+                summary: 'real-browser-e2e requested but unavailable.',
+                details: {
+                  runnerId: 'gate-5-real-browser-e2e-runner',
+                  executionLevel: 'real-browser-e2e',
+                  executed: false,
+                  playwrightExecuted: false,
+                  realBrowserExecuted: false,
+                },
+              },
+            ],
+          }
+        : gate,
+    );
+
+    const result = plans.runner.run({
+      ...plans,
+      gateResults: unavailableGate5Results,
+    });
+
+    expect(plans.publishCandidatePlan.finalVerdict).toEqual(
+      expect.objectContaining({
+        requiredGate5RealRunnerId: 'gate-5-real-browser-e2e-runner',
+        requiredRealGateRunnerIds: [
+          'gate-3-real-build-unit-runner',
+          'gate-4-real-integration-runner',
+          'gate-5-real-browser-e2e-runner',
+          'gate-6-real-independent-verifier-runner',
+          'gate-7-real-publish-candidate-runner',
+        ],
+      }),
+    );
+    expect(result.status).toBe('failed');
+    expect(result.failure).toEqual(
+      expect.objectContaining({
+        code: 'gate-7-publish-candidate-contract-blocked',
+      }),
+    );
+    expect(JSON.stringify(result.failure?.details)).toContain(
+      'real-browser-e2e 需要 executed=true',
+    );
+  });
+
+  it('real-browser-e2e 上游有真实执行证据时可由 Gate 7 签收', () => {
+    const plans = buildPlans(createConfigService(), {
+      browserExecutionLevel: 'real-browser-e2e',
+    });
+
+    const result = plans.runner.run(plans);
+
+    expect(result.status).toBe('passed');
+    expect(plans.publishCandidatePlan.gateCoverage).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          gateId: 'gate-5',
+          executionLevel: 'real-browser-e2e',
+          skeletonOnly: false,
+          requiredRealGateRunnerId: 'gate-5-real-browser-e2e-runner',
+        }),
+      ]),
+    );
+    expect(
+      plans.publishCandidatePlan.finalVerdict.requiredRealGateRunnerIds,
+    ).not.toContain('gate-5-real-browser-acceptance-runner');
   });
 
   it('real 模式应拒绝带 blockingReasons 的 publishCandidateAllowed verdict', () => {

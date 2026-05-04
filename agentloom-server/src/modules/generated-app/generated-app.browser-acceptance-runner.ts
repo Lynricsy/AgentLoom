@@ -12,7 +12,11 @@ import type {
   GeneratedAppStaticContracts,
 } from '../../database/schema';
 
-export type GeneratedAppGate5ExecutorMode = 'real' | 'fixture' | 'disabled';
+export type GeneratedAppGate5ExecutorMode =
+  | 'real'
+  | 'real-browser-e2e'
+  | 'fixture'
+  | 'disabled';
 
 export type GeneratedAppBrowserAcceptanceExecutionLevel =
   GeneratedAppBrowserAcceptancePlan['executionLevel'];
@@ -50,6 +54,13 @@ export interface GeneratedAppGate5RunnerResult {
   failure: GeneratedAppGateRunFailure | null;
   repairInstructions: string | null;
   assertionResults: GeneratedAppGate5AssertionResult[];
+}
+
+export interface GeneratedAppGate5RealBrowserAvailability {
+  available: boolean;
+  reason: string | null;
+  packageName: string;
+  runnerCommand: string;
 }
 
 interface Gate5RunParams {
@@ -90,12 +101,19 @@ type BrowserAssertion =
 
 const GATE_5_RUNNER_IDS = {
   real: 'gate-5-real-browser-acceptance-runner',
+  realBrowserE2e: 'gate-5-real-browser-e2e-runner',
   fixture: 'gate-5-fixture-browser-acceptance-runner',
   disabled: 'gate-5-disabled-browser-acceptance-runner',
 } as const;
 
 const REAL_LOCAL_BROWSER_CONTRACT_NOTE =
   'real-local-browser-contract 使用服务端受控 deterministic DOM/accessibility/network/console contract runner；未启动 Playwright，未打开真实浏览器，未访问真实公开链接，也未捕获真实截图、视频或 Playwright trace。';
+
+const REAL_BROWSER_E2E_NOTE =
+  'real-browser-e2e 是服务端受控真实浏览器 E2E runner contract，只允许访问 public runtime/preview token surface；不得访问 creator APIs、内部 artifacts、真实 public token 以外的 secret、host absolute path、plugin ids、workflow snapshots、step/checkpoint/raw tool data。';
+
+const REAL_BROWSER_E2E_COMMAND =
+  'agentloom generated-app gate-5 real-browser-e2e';
 
 @Injectable()
 export class GeneratedAppGate5BrowserAcceptanceRunner {
@@ -105,6 +123,7 @@ export class GeneratedAppGate5BrowserAcceptanceRunner {
     const mode = this.getExecutorMode();
 
     if (mode === 'real') return 'real-local-browser-contract';
+    if (mode === 'real-browser-e2e') return 'real-browser-e2e';
     if (mode === 'fixture') return 'fixture-browser-acceptance';
     return 'disabled-browser-acceptance';
   }
@@ -116,9 +135,20 @@ export class GeneratedAppGate5BrowserAcceptanceRunner {
       'real';
     const normalizedMode = rawMode.trim().toLowerCase();
 
+    if (
+      normalizedMode === 'real-browser-e2e' ||
+      normalizedMode === 'real_browser_e2e' ||
+      normalizedMode === 'playwright'
+    ) {
+      return 'real-browser-e2e';
+    }
     if (normalizedMode === 'fixture') return 'fixture';
     if (normalizedMode === 'disabled') return 'disabled';
     return 'real';
+  }
+
+  getRealBrowserAvailability(): GeneratedAppGate5RealBrowserAvailability {
+    return this.resolveRealBrowserAvailability();
   }
 
   run(params: Gate5RunParams): GeneratedAppGate5RunnerResult {
@@ -183,6 +213,10 @@ export class GeneratedAppGate5BrowserAcceptanceRunner {
       };
     }
 
+    if (mode === 'real-browser-e2e') {
+      return this.runRealBrowserE2e(params, executionLevel);
+    }
+
     const assertionResults =
       mode === 'fixture'
         ? this.buildFixtureAssertionResults(params)
@@ -210,13 +244,20 @@ export class GeneratedAppGate5BrowserAcceptanceRunner {
       mode === 'fixture' ? GATE_5_RUNNER_IDS.fixture : GATE_5_RUNNER_IDS.real;
     const executionMode =
       mode === 'fixture' ? 'fixture' : 'real_local_browser_contract';
-    const evidence = assertionResults.map((assertion) =>
-      this.buildAssertionEvidence(assertion, {
+    const evidence = [
+      ...this.buildRunnerContractEvidence(params, {
         runnerId,
         executionMode,
         executionLevel,
       }),
-    );
+      ...assertionResults.map((assertion) =>
+        this.buildAssertionEvidence(assertion, {
+          runnerId,
+          executionMode,
+          executionLevel,
+        }),
+      ),
+    ];
 
     if (failedAssertions.length > 0) {
       return {
@@ -267,6 +308,111 @@ export class GeneratedAppGate5BrowserAcceptanceRunner {
       failure: null,
       repairInstructions: null,
       assertionResults,
+    };
+  }
+
+  private runRealBrowserE2e(
+    params: Gate5RunParams,
+    executionLevel: GeneratedAppBrowserAcceptanceExecutionLevel,
+  ): GeneratedAppGate5RunnerResult {
+    const availability = this.resolveRealBrowserAvailability();
+
+    if (!availability.available) {
+      const evidence = this.buildEvidence({
+        id: 'gate-5-real-browser-e2e-unavailable',
+        label: 'Gate 5 real browser E2E runner availability',
+        summary: `Gate 5 real-browser-e2e 未执行：服务端真实浏览器 runner 不可用，不能把 fixture 或 local browser contract evidence 伪装为真实 E2E。${REAL_BROWSER_E2E_NOTE}`,
+        details: {
+          runnerId: GATE_5_RUNNER_IDS.realBrowserE2e,
+          executionMode: 'real_browser_e2e',
+          executionLevel,
+          executed: false,
+          playwrightExecuted: false,
+          realBrowserExecuted: false,
+          realScreenshotCaptured: false,
+          realVideoCaptured: false,
+          realTraceCaptured: false,
+          unavailableReason: availability.reason,
+          packageName: availability.packageName,
+          command: availability.runnerCommand,
+          note: REAL_BROWSER_E2E_NOTE,
+          ...this.buildRealBrowserE2eContractDetails(params),
+        },
+      });
+
+      return {
+        status: 'failed',
+        executionLevel,
+        summary:
+          'Gate 5 失败：real-browser-e2e runner 被请求但当前服务端环境不可用，未启动 Playwright/真实浏览器，未捕获真实截图/视频/trace，Gate 6-7 已停止。',
+        evidence: [evidence],
+        failure: {
+          code: 'gate-5-real-browser-e2e-unavailable',
+          message:
+            'Gate 5 real-browser-e2e runner 不可用；不能用 fixture、deterministic local contract 或人工声明替代真实浏览器 E2E。',
+          details: {
+            runnerId: GATE_5_RUNNER_IDS.realBrowserE2e,
+            executionMode: 'real_browser_e2e',
+            executionLevel,
+            availability: this.sanitizeDetailValue(availability),
+          },
+        },
+        repairInstructions:
+          '安装并启用服务端受控 Playwright runner 后重新运行 Gate 5；真实 runner 只能访问 public runtime/preview token surface，必须产出 redacted console/network/action trace 和 generated-run relative artifact evidence。',
+        assertionResults: [],
+      };
+    }
+
+    const evidence = this.buildEvidence({
+      id: 'gate-5-real-browser-e2e-not-implemented',
+      label: 'Gate 5 real browser E2E runner implementation',
+      summary: `Gate 5 real-browser-e2e 未执行：服务端 Playwright package 可解析，但真实浏览器执行适配层尚未接入；不能把可用性检查伪装为真实 E2E 通过。${REAL_BROWSER_E2E_NOTE}`,
+      details: {
+        runnerId: GATE_5_RUNNER_IDS.realBrowserE2e,
+        executionMode: 'real_browser_e2e',
+        executionLevel,
+        executed: false,
+        playwrightExecuted: false,
+        realBrowserExecuted: false,
+        realScreenshotCaptured: false,
+        realVideoCaptured: false,
+        realTraceCaptured: false,
+        packageName: availability.packageName,
+        command: availability.runnerCommand,
+        note: REAL_BROWSER_E2E_NOTE,
+        availability: this.sanitizeDetailValue(availability),
+        implementationStatus: 'not-implemented',
+        ...this.buildRealBrowserE2eContractDetails(params),
+      },
+    });
+
+    return {
+      status: 'failed',
+      executionLevel,
+      summary:
+        'Gate 5 失败：real-browser-e2e runner contract 可用性检查通过，但当前服务端尚未接入真实 Playwright 执行实现，已停止 Gate 6-7。',
+      evidence: [evidence],
+      failure: {
+        code: 'gate-5-real-browser-e2e-not-implemented',
+        message:
+          'Gate 5 real-browser-e2e 必须由服务端受控 runner 执行 open -> fill -> submit -> detail/report 真实浏览器旅程；当前实现不会伪造真实 E2E 证据。',
+        details: {
+          runnerId: GATE_5_RUNNER_IDS.realBrowserE2e,
+          executionMode: 'real_browser_e2e',
+          executionLevel,
+          availability: this.sanitizeDetailValue(availability),
+          issues: [
+            '缺少服务端受控 Playwright 执行适配层',
+            '缺少真实浏览器 artifact materialization 与 redacted console/network/action trace 写入',
+          ],
+          executed: false,
+          playwrightExecuted: false,
+          realBrowserExecuted: false,
+        },
+      },
+      repairInstructions:
+        '接入服务端受控 Playwright 执行适配层后重新运行 Gate 5；真实 runner 必须只访问 public runtime/preview token surface，并产出 redacted console/network/action trace 与 generated-run relative artifact evidence。',
+      assertionResults: [],
     };
   }
 
@@ -543,6 +689,184 @@ export class GeneratedAppGate5BrowserAcceptanceRunner {
     });
   }
 
+  private buildRunnerContractEvidence(
+    params: Gate5RunParams,
+    context: {
+      runnerId: string;
+      executionMode: 'real_local_browser_contract' | 'fixture';
+      executionLevel: GeneratedAppBrowserAcceptanceExecutionLevel;
+    },
+  ): GeneratedAppGateEvidence[] {
+    const publicJourneys =
+      params.browserAcceptancePlan.publicRuntimeJourneys.map((journey) => ({
+        journeyId: journey.journeyId,
+        kind: journey.kind,
+        viewportIds: journey.viewportIds,
+        apiCheckIds: journey.publicRuntimeApiCheckIds,
+      }));
+    const creatorJourneys =
+      params.browserAcceptancePlan.creatorManagementJourneys.map((journey) => ({
+        journeyId: journey.journeyId,
+        kind: journey.kind,
+        viewportIds: journey.viewportIds,
+        apiCheckIds: journey.creatorManagementApiCheckIds,
+      }));
+
+    return [
+      this.buildEvidence({
+        id: 'gate-5-browser-runner-contract',
+        label: 'Gate 5 browser runner contract',
+        summary: [
+          `mode=${context.executionMode}`,
+          `executionLevel=${context.executionLevel}`,
+          `runnerId=${context.runnerId}`,
+          `publicJourneys=${publicJourneys
+            .map((journey) => journey.journeyId)
+            .join(',')}`,
+          `creatorJourneys=${creatorJourneys
+            .map((journey) => journey.journeyId)
+            .join(',')}`,
+          'public journey covers open/fill/submit/detail/report and public build preview submit',
+          REAL_LOCAL_BROWSER_CONTRACT_NOTE,
+        ].join('；'),
+        details: {
+          runnerId: context.runnerId,
+          executionMode: context.executionMode,
+          executionLevel: context.executionLevel,
+          executed: context.executionMode !== 'fixture',
+          serverControlled: true,
+          publicJourneys,
+          creatorJourneys,
+          allowedEndpointPrefixes: ['/generated-apps/public/{token}'],
+          forbiddenEndpointPatterns: [
+            '/generated-apps/{appId}',
+            '/generated-apps/{appId}/artifacts',
+            '/generated-apps/{appId}/generation-runs',
+            '/generated-apps/{appId}/gate-runs',
+            '/generated-apps/{appId}/submissions',
+            '/workflow-definitions',
+            '/executions',
+            '/plugins',
+            '/internal',
+            '/settings',
+          ],
+          fixtureEvidenceOnly: context.executionMode === 'fixture',
+          playwrightExecuted: false,
+          realBrowserExecuted: false,
+          realScreenshotCaptured: false,
+          realVideoCaptured: false,
+          realTraceCaptured: false,
+        },
+      }),
+    ];
+  }
+
+  private buildRealBrowserE2eContractDetails(params: Gate5RunParams): {
+    requiredEnvironment: string[];
+    runnerContract: {
+      journeys: string[];
+      requiredPublicJourneyKinds: string[];
+      allowedEndpointPrefixes: string[];
+      forbiddenEndpointPatterns: string[];
+      artifactPolicy: {
+        root: 'generated-run';
+        allowHostAbsolutePaths: false;
+        allowCreatorApis: false;
+        allowInternalArtifacts: false;
+        redactSensitiveValues: true;
+      };
+      failureEvidence: string[];
+    };
+  } {
+    const journeys = [
+      ...params.browserAcceptancePlan.publicRuntimeJourneys.map(
+        (journey) => journey.journeyId,
+      ),
+    ];
+
+    return {
+      requiredEnvironment: [
+        'GENERATED_APP_GATE5_EXECUTOR_MODE=real-browser-e2e',
+        'Playwright package installed in agentloom-server',
+        'Playwright browser binaries installed for the runtime image',
+        'Public preview/runtime base URL supplied by the server-side runner harness',
+      ],
+      runnerContract: {
+        journeys,
+        requiredPublicJourneyKinds: [
+          'public_runtime_open',
+          'public_runtime_interaction_submit',
+          'public_build_preview_submit',
+          'public_submission_result_detail',
+        ],
+        allowedEndpointPrefixes: ['/generated-apps/public/{token}'],
+        forbiddenEndpointPatterns: [
+          '/generated-apps/{appId}',
+          '/artifacts',
+          '/generation-runs',
+          '/gate-runs',
+          '/workflow-definitions',
+          '/executions',
+          '/plugins',
+          '/internal',
+          '/settings',
+        ],
+        artifactPolicy: {
+          root: 'generated-run',
+          allowHostAbsolutePaths: false,
+          allowCreatorApis: false,
+          allowInternalArtifacts: false,
+          redactSensitiveValues: true,
+        },
+        failureEvidence: [
+          'redacted console errors',
+          'redacted failed network requests',
+          'journey/action trace without token values',
+          'relative screenshot/video/trace artifact refs when captured',
+          'assertion id, journey id, viewport id, scenario ids, requirement ids',
+        ],
+      },
+    };
+  }
+
+  private resolveRealBrowserAvailability(): GeneratedAppGate5RealBrowserAvailability {
+    const forcedUnavailableReason =
+      this.configService.get<string>(
+        'GENERATED_APP_GATE5_REAL_BROWSER_UNAVAILABLE_REASON',
+      ) ??
+      this.configService.get<string>(
+        'APP_GENERATED_APP_GATE5_REAL_BROWSER_UNAVAILABLE_REASON',
+      );
+
+    if (forcedUnavailableReason?.trim()) {
+      return {
+        available: false,
+        reason: forcedUnavailableReason.trim(),
+        packageName: 'playwright',
+        runnerCommand: REAL_BROWSER_E2E_COMMAND,
+      };
+    }
+
+    try {
+      require.resolve('playwright');
+
+      return {
+        available: true,
+        reason: null,
+        packageName: 'playwright',
+        runnerCommand: REAL_BROWSER_E2E_COMMAND,
+      };
+    } catch {
+      return {
+        available: false,
+        reason:
+          'Node package "playwright" is not installed in agentloom-server; real-browser-e2e runner cannot start a real browser in this environment.',
+        packageName: 'playwright',
+        runnerCommand: REAL_BROWSER_E2E_COMMAND,
+      };
+    }
+  }
+
   private collectPlanSafetyIssues(
     browserAcceptancePlan: GeneratedAppBrowserAcceptancePlan,
     integrationPlan: GeneratedAppIntegrationPlan,
@@ -561,16 +885,128 @@ export class GeneratedAppGate5BrowserAcceptanceRunner {
     }
 
     if (
-      expectedExecutionLevel !== 'browser-acceptance-skeleton' &&
-      browserAcceptancePlan.browserToolPlan.runner !== 'local-browser-contract'
+      expectedExecutionLevel === 'real-browser-e2e' &&
+      browserAcceptancePlan.browserToolPlan.runner !== 'playwright'
     ) {
       issues.push(
-        'Gate 5 real/fixture/disabled runner 必须使用 local-browser-contract runner，不能伪装成 Playwright 执行。',
+        'Gate 5 real-browser-e2e runner 必须声明 playwright runner；不可用时必须 fail-closed，不能退回 fixture 或 local-browser-contract 伪装真实 E2E。',
       );
     }
 
     if (
       expectedExecutionLevel !== 'browser-acceptance-skeleton' &&
+      expectedExecutionLevel !== 'real-browser-e2e' &&
+      browserAcceptancePlan.browserToolPlan.runner !== 'local-browser-contract'
+    ) {
+      issues.push(
+        'Gate 5 real/fixture/disabled local runner 必须使用 local-browser-contract runner，不能伪装成 Playwright 执行。',
+      );
+    }
+
+    if (
+      expectedExecutionLevel === 'real-browser-e2e' &&
+      browserAcceptancePlan.browserToolPlan.command !== REAL_BROWSER_E2E_COMMAND
+    ) {
+      issues.push(
+        'Gate 5 real-browser-e2e 只能使用服务端固定 real-browser-e2e command 描述，不执行用户提供 shell。',
+      );
+    }
+
+    if (expectedExecutionLevel === 'real-browser-e2e') {
+      const browserToolPlan = browserAcceptancePlan.browserToolPlan;
+      const artifactPolicy = browserToolPlan.artifactPolicy;
+      const requiredEnvironment = Array.isArray(
+        browserToolPlan.requiredEnvironment,
+      )
+        ? browserToolPlan.requiredEnvironment
+        : [];
+      const allowedPublicEndpoints = Array.isArray(
+        browserToolPlan.allowedPublicEndpoints,
+      )
+        ? browserToolPlan.allowedPublicEndpoints
+        : [];
+      const forbiddenEndpointPatterns = Array.isArray(
+        browserToolPlan.forbiddenEndpointPatterns,
+      )
+        ? browserToolPlan.forbiddenEndpointPatterns
+        : [];
+
+      if (browserToolPlan.runnerMode !== 'real-browser-e2e') {
+        issues.push(
+          'Gate 5 real-browser-e2e browserToolPlan.runnerMode 必须为 real-browser-e2e，不能降级为 fixture/disabled/local contract。',
+        );
+      }
+
+      if (browserToolPlan.serverControlled !== true) {
+        issues.push(
+          'Gate 5 real-browser-e2e browserToolPlan.serverControlled 必须为 true。',
+        );
+      }
+
+      if (
+        !requiredEnvironment.includes(
+          'GENERATED_APP_GATE5_EXECUTOR_MODE=real-browser-e2e',
+        )
+      ) {
+        issues.push(
+          'Gate 5 real-browser-e2e requiredEnvironment 必须声明 GENERATED_APP_GATE5_EXECUTOR_MODE=real-browser-e2e。',
+        );
+      }
+
+      if (!allowedPublicEndpoints.includes('/generated-apps/public/{token}')) {
+        issues.push(
+          'Gate 5 real-browser-e2e allowedPublicEndpoints 只能显式开放 /generated-apps/public/{token} public token surface。',
+        );
+      }
+
+      for (const requiredPattern of [
+        '/generated-apps/{appId}',
+        '/internal',
+        '/settings',
+      ]) {
+        if (!forbiddenEndpointPatterns.includes(requiredPattern)) {
+          issues.push(
+            `Gate 5 real-browser-e2e forbiddenEndpointPatterns 缺少 ${requiredPattern}。`,
+          );
+        }
+      }
+
+      if (!artifactPolicy) {
+        issues.push(
+          'Gate 5 real-browser-e2e browserToolPlan.artifactPolicy 缺失。',
+        );
+      } else {
+        if (artifactPolicy.root !== 'generated-run') {
+          issues.push(
+            'Gate 5 real-browser-e2e artifactPolicy.root 必须为 generated-run。',
+          );
+        }
+        if (artifactPolicy.allowHostAbsolutePaths !== false) {
+          issues.push(
+            'Gate 5 real-browser-e2e artifactPolicy.allowHostAbsolutePaths 必须为 false。',
+          );
+        }
+        if (artifactPolicy.allowCreatorApis !== false) {
+          issues.push(
+            'Gate 5 real-browser-e2e artifactPolicy.allowCreatorApis 必须为 false。',
+          );
+        }
+        if (artifactPolicy.allowInternalArtifacts !== false) {
+          issues.push(
+            'Gate 5 real-browser-e2e artifactPolicy.allowInternalArtifacts 必须为 false。',
+          );
+        }
+        if (artifactPolicy.redactSensitiveValues !== true) {
+          issues.push(
+            'Gate 5 real-browser-e2e artifactPolicy.redactSensitiveValues 必须为 true。',
+          );
+        }
+      }
+    }
+
+    if (
+      expectedExecutionLevel !== 'browser-acceptance-skeleton' &&
+      expectedExecutionLevel !== 'real-browser-e2e' &&
       browserAcceptancePlan.browserToolPlan.command !==
         'agentloom generated-app gate-5 local-browser-contract'
     ) {

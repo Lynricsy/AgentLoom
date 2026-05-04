@@ -24,7 +24,9 @@ import type {
   GeneratedAppIntegrationPlan,
   GeneratedAppPublishCandidatePlan,
   GeneratedAppReadiness,
+  GeneratedAppRepairPlan,
   GeneratedAppRepairAttempt,
+  GeneratedAppReverificationPlan,
   GeneratedAppStaticContracts,
   GeneratedAppSubmission,
   WorkflowDefinition,
@@ -883,6 +885,42 @@ function serviceAccessForPlans() {
       commandPlan?: GeneratedAppBuildUnitPlan['commandPlan'],
       executionLevel?: GeneratedAppBuildUnitPlan['executionLevel'],
     ): GeneratedAppBuildUnitPlan;
+    buildIntegrationPlan(
+      appSpec: GeneratedApp['appSpec'],
+      generationPlan: GeneratedAppGenerationPlan,
+      staticContracts: GeneratedAppStaticContracts,
+      buildUnitPlan: GeneratedAppBuildUnitPlan,
+      executionLevel?: GeneratedAppIntegrationPlan['executionLevel'],
+    ): GeneratedAppIntegrationPlan;
+    buildBrowserAcceptancePlan(
+      appSpec: GeneratedApp['appSpec'],
+      generationPlan: GeneratedAppGenerationPlan,
+      staticContracts: GeneratedAppStaticContracts,
+      buildUnitPlan: GeneratedAppBuildUnitPlan,
+      integrationPlan: GeneratedAppIntegrationPlan,
+      executionLevel?: GeneratedAppBrowserAcceptancePlan['executionLevel'],
+    ): GeneratedAppBrowserAcceptancePlan;
+    buildIndependentVerificationPlan(
+      appSpec: GeneratedApp['appSpec'],
+      generationPlan: GeneratedAppGenerationPlan,
+      staticContracts: GeneratedAppStaticContracts,
+      buildUnitPlan: GeneratedAppBuildUnitPlan,
+      integrationPlan: GeneratedAppIntegrationPlan,
+      browserAcceptancePlan: GeneratedAppBrowserAcceptancePlan,
+      gateResults: GeneratedApp['gateResults'],
+      executionLevel?: GeneratedAppIndependentVerificationPlan['executionLevel'],
+    ): GeneratedAppIndependentVerificationPlan;
+    buildPublishCandidatePlan(
+      appSpec: GeneratedApp['appSpec'],
+      generationPlan: GeneratedAppGenerationPlan,
+      staticContracts: GeneratedAppStaticContracts,
+      buildUnitPlan: GeneratedAppBuildUnitPlan,
+      integrationPlan: GeneratedAppIntegrationPlan,
+      browserAcceptancePlan: GeneratedAppBrowserAcceptancePlan,
+      independentVerificationPlan: GeneratedAppIndependentVerificationPlan,
+      gateResults: GeneratedApp['gateResults'],
+      executionLevel?: GeneratedAppPublishCandidatePlan['executionLevel'],
+    ): GeneratedAppPublishCandidatePlan;
   };
 }
 
@@ -1065,6 +1103,156 @@ describe('GeneratedAppService', () => {
       }),
     );
     expect(JSON.stringify(response)).not.toContain('manual-runtime-workflow');
+  });
+
+  it('Gate 5 real-browser-e2e 失败应生成脱敏 repairPlan 和可执行再验证工作单', () => {
+    const failedGateRun = createGeneratedAppGateRun({
+      id: GATE_5_RUN_ID,
+      gateId: 'gate-5',
+      gateOrder: 5,
+      gateName: '浏览器验收门禁',
+      status: 'failed',
+      summary:
+        'Gate 5 real-browser-e2e 失败：publicShareToken=abc sk-sensitive /root/generated-app/private pluginIds workflowSnapshots rawToolData',
+      evidence: [
+        {
+          id: 'gate-5-real-browser-e2e-unavailable',
+          label: 'Gate 5 real browser E2E runner availability',
+          kind: 'browser',
+          url: null,
+          summary:
+            'real-browser-e2e unavailable /root/.cache/ms-playwright sk-secret-token publicShareToken=abc pluginIds workflowSnapshots checkpointData rawToolData',
+          details: {
+            runnerId: 'gate-5-real-browser-e2e-runner',
+            executionMode: 'real_browser_e2e',
+            executionLevel: 'real-browser-e2e',
+          },
+        },
+      ],
+      failure: {
+        code: 'gate-5-real-browser-e2e-unavailable',
+        message:
+          'Gate 5 failed with Bearer secret-token and /root/preview public_share_token=abc workflowSnapshots',
+      },
+      repairInstructions:
+        '修复 publicShareToken、pluginIds、workflowSnapshots、rawToolData、/root/preview 和 sk-secret 后重新运行。',
+    });
+    const internals = service as unknown as {
+      buildFailedGateRepairPlan(
+        failedGateRun: ReturnType<typeof createGeneratedAppGateRun>,
+        generatedAt: Date,
+      ): GeneratedAppRepairPlan;
+      buildFailedGateReverificationPlan(
+        failedGateRun: ReturnType<typeof createGeneratedAppGateRun>,
+        generatedAt: Date,
+      ): GeneratedAppReverificationPlan;
+    };
+
+    const repairPlan = internals.buildFailedGateRepairPlan(failedGateRun, NOW);
+    const reverificationPlan = internals.buildFailedGateReverificationPlan(
+      failedGateRun,
+      NOW,
+    );
+    const serializedWorkOrder = JSON.stringify({
+      repairPlan,
+      reverificationPlan,
+    });
+    const sanitizedTextSections = JSON.stringify({
+      failureSummary: repairPlan.failureSummary,
+      repairInstructions: repairPlan.repairInstructions,
+      evidenceSummaries: repairPlan.evidenceSummaries,
+    });
+
+    expect(repairPlan).toEqual(
+      expect.objectContaining({
+        source: 'automatic-failed-gate-work-order',
+        targetGateId: 'gate-5',
+        failureCode: 'gate-5-real-browser-e2e-unavailable',
+        allowedChangeScopes: expect.arrayContaining([
+          'frontend-workspace',
+          'workflow-orchestration',
+          'plugin-tools',
+          'test-contracts',
+        ]),
+        forbiddenChangeScopes: expect.arrayContaining([
+          'public-share-token',
+          'host-absolute-path',
+          'production-credentials',
+        ]),
+        patchTargets: expect.arrayContaining([
+          'generationWorkspace.files.src/generated-app/runtime-form.ts',
+          'generationWorkspace.files.dist/index.html',
+          'publicPreviewSubmissionHandoff',
+          'publicRuntimeSubmissionDetailHandoff',
+          'workflowRuntimeBinding.outputSummaryMapping',
+          'pluginTools.publicOutputSummaryMapping',
+        ]),
+        browserRepairTargets: expect.arrayContaining([
+          expect.objectContaining({
+            targetId: 'public-runtime-form',
+            path: 'generationWorkspace.files.src/generated-app/runtime-form.ts',
+          }),
+          expect.objectContaining({
+            targetId: 'public-preview-html',
+            path: 'generationWorkspace.files.dist/index.html',
+          }),
+          expect.objectContaining({
+            targetId: 'workflow-output-summary',
+            path: 'workflowRuntimeBinding.outputSummaryMapping',
+          }),
+          expect.objectContaining({
+            targetId: 'plugin-output-summary',
+            path: 'pluginTools.publicOutputSummaryMapping',
+          }),
+        ]),
+        e2eRunnerContract: expect.objectContaining({
+          mode: 'real-browser-e2e',
+          command: 'agentloom generated-app gate-5 real-browser-e2e',
+          journey: 'open -> fill -> submit -> detail/report',
+          allowedEndpointPrefixes: ['/generated-apps/public/{token}'],
+          forbiddenEndpointPatterns: expect.arrayContaining([
+            '/generated-apps/{appId}',
+            '/plugins',
+            '/workflow-definitions',
+            '/internal',
+            '/settings',
+          ]),
+          forbiddenEvidenceFields: expect.arrayContaining([
+            'publicShareToken',
+            'pluginIds',
+            'workflowSnapshots',
+            'checkpointData',
+            'rawToolData',
+          ]),
+        }),
+      }),
+    );
+    expect(reverificationPlan).toEqual(
+      expect.objectContaining({
+        targetGateId: 'gate-5',
+        requiredGateIds: ['gate-5'],
+        requiredCommandIds: [
+          'agentloom generated-app gate-5 local-browser-contract',
+          'agentloom generated-app gate-5 real-browser-e2e',
+        ],
+        requiredEvidenceIds: ['gate-5-real-browser-e2e-unavailable'],
+        successCriteria: expect.arrayContaining([
+          expect.stringContaining('fixture or local contract evidence'),
+          expect.stringContaining('open -> fill -> submit -> detail/report'),
+          expect.stringContaining('plugin ids'),
+        ]),
+        blockedUntilPatchApplied: true,
+      }),
+    );
+    expect(serializedWorkOrder).toContain('[已移除内部内容]');
+    expect(serializedWorkOrder).not.toContain('/root/');
+    expect(serializedWorkOrder).not.toContain('sk-secret');
+    expect(serializedWorkOrder).not.toContain('secret-token');
+    expect(serializedWorkOrder).not.toContain('publicShareToken=abc');
+    expect(serializedWorkOrder).not.toContain('public_share_token=abc');
+    expect(sanitizedTextSections).not.toContain('workflowSnapshots');
+    expect(sanitizedTextSections).not.toContain('rawToolData');
+    expect(sanitizedTextSections).not.toContain('checkpointData');
   });
 
   it('artifact manifest 应返回受控 Gate 3 workspace 源码与测试交付物清单', async () => {
@@ -1879,6 +2067,221 @@ describe('GeneratedAppService', () => {
     expect(response.publicShareToken).toBeNull();
   });
 
+  it('手动记录全 passed 但 Gate 5 real-browser-e2e 未真实执行时不应进入 publish_candidate', async () => {
+    const app = createGeneratedApp({
+      status: 'published',
+      readiness: createPublishCandidateReadiness(),
+      publicShareEnabled: true,
+      publicShareToken: 'b'.repeat(64),
+      publicShareCreatedAt: NOW,
+    });
+    const internals = serviceAccessForPlans();
+    const generationPlan = internals.buildGenerationPlan(app.appSpec);
+    const staticContracts = internals.buildStaticContracts(
+      app.appSpec,
+      generationPlan,
+    );
+    const buildUnitPlan = internals.buildBuildUnitPlan(
+      app.appSpec,
+      generationPlan,
+      staticContracts,
+      undefined,
+      undefined,
+      'real-local-command-plan',
+    );
+    const integrationPlan = internals.buildIntegrationPlan(
+      app.appSpec,
+      generationPlan,
+      staticContracts,
+      buildUnitPlan,
+      'real-local-integration',
+    );
+    const browserAcceptancePlan = internals.buildBrowserAcceptancePlan(
+      app.appSpec,
+      generationPlan,
+      staticContracts,
+      buildUnitPlan,
+      integrationPlan,
+      'real-browser-e2e',
+    );
+    const gateResultsThroughGate6 = createInitialGeneratedAppGateResults(
+      NOW.toISOString(),
+    ).map((gate) => {
+      if (gate.gateId === 'gate-7') {
+        return gate;
+      }
+
+      return {
+        ...gate,
+        status: 'passed' as const,
+        summary:
+          gate.gateId === 'gate-5'
+            ? 'Gate 5 手动标记通过，但真实浏览器未执行。'
+            : `${gate.name} 已通过。`,
+        evidence: [
+          gate.gateId === 'gate-5'
+            ? {
+                id: 'gate-5-real-browser-e2e-unavailable',
+                label: 'Gate 5 real browser E2E unavailable',
+                kind: 'browser' as const,
+                url: null,
+                summary:
+                  'real-browser-e2e requested but unavailable；executed=false。',
+                details: {
+                  runnerId: 'gate-5-real-browser-e2e-runner',
+                  executionLevel: 'real-browser-e2e',
+                  executed: false,
+                  playwrightExecuted: false,
+                  realBrowserExecuted: false,
+                },
+              }
+            : {
+                id:
+                  gate.gateId === 'gate-6'
+                    ? 'gate-6-independent-verifier-verdict'
+                    : `${gate.gateId}-evidence`,
+                label: `${gate.name} evidence`,
+                kind:
+                  gate.gateId === 'gate-6'
+                    ? ('verifier' as const)
+                    : (gate.evidence[0]?.kind ?? ('manual' as const)),
+                url: null,
+                summary: `${gate.name} evidence citation`,
+              },
+        ],
+      };
+    });
+    const independentVerificationPlan =
+      internals.buildIndependentVerificationPlan(
+        app.appSpec,
+        generationPlan,
+        staticContracts,
+        buildUnitPlan,
+        integrationPlan,
+        browserAcceptancePlan,
+        gateResultsThroughGate6,
+        'real-local-independent-verifier',
+      );
+    const publishCandidatePlan = internals.buildPublishCandidatePlan(
+      app.appSpec,
+      generationPlan,
+      staticContracts,
+      buildUnitPlan,
+      integrationPlan,
+      browserAcceptancePlan,
+      independentVerificationPlan,
+      gateResultsThroughGate6,
+      'real-local-publish-candidate-contract',
+    );
+    const trustedGate7Details = {
+      runnerId: 'gate-7-real-publish-candidate-runner',
+      executionLevel: 'real-local-publish-candidate-contract',
+      executed: true,
+      publicShareTokenCreated: false,
+      createdPublicShareToken: null,
+    };
+    const gateResults = gateResultsThroughGate6.map((gate) =>
+      gate.gateId === 'gate-7'
+        ? {
+            ...gate,
+            status: 'passed' as const,
+            summary:
+              'Gate 7 real-local publish candidate contract runner 已签收。',
+            evidence: [
+              {
+                id: 'gate-7-publish-readiness-inputs',
+                label: 'Gate 7 publish readiness inputs',
+                kind: 'manual' as const,
+                url: null,
+                summary: 'Gate 7 已校验 readiness inputs。',
+                details: trustedGate7Details,
+              },
+              {
+                id: 'gate-7-artifact-release-manifest',
+                label: 'Gate 7 artifact release manifest',
+                kind: 'manual' as const,
+                url: null,
+                summary: 'Gate 7 已签收 release manifest contract。',
+                details: trustedGate7Details,
+              },
+              {
+                id: 'gate-7-rollback-share-controls',
+                label: 'Gate 7 rollback share controls',
+                kind: 'manual' as const,
+                url: null,
+                summary: 'Gate 7 已签收 deferred public-share controls。',
+                details: trustedGate7Details,
+              },
+              {
+                id: 'gate-7-final-verdict',
+                label: 'Gate 7 final verdict',
+                kind: 'manual' as const,
+                url: null,
+                summary: 'Gate 7 final verdict publishCandidateAllowed=true。',
+                details: trustedGate7Details,
+              },
+            ],
+          }
+        : gate,
+    );
+    const completeGenerationPlan: GeneratedAppGenerationPlan = {
+      ...generationPlan,
+      staticContracts,
+      buildUnitPlan,
+      integrationPlan,
+      browserAcceptancePlan,
+      independentVerificationPlan,
+      publishCandidatePlan,
+    };
+    let updatePayload: Partial<GeneratedApp> = {};
+    const updateChain = createGeneratedAppUpdateReturningFromPayload(
+      app,
+      (payload) => {
+        updatePayload = payload;
+      },
+    );
+    mockTenantDb.select.mockReturnValueOnce(createSelectChain([app]));
+    mockTenantDb.update.mockReturnValueOnce(updateChain);
+
+    const response = await service.recordGateResults(
+      TENANT_ID,
+      USER_ID,
+      APP_ID,
+      {
+        gateResults,
+        generationPlan: completeGenerationPlan,
+      },
+    );
+
+    const updatedGate7 = updatePayload.gateResults?.find(
+      (gate) => gate.gateId === 'gate-7',
+    );
+    const serializedGate7 = JSON.stringify(updatedGate7);
+
+    expect(updatePayload.status).toBe('failed');
+    expect(updatePayload.readiness?.state).toBe('blocked');
+    expect(updatePayload.publicShareToken).toBeNull();
+    expect(updatePayload.publicShareEnabled).toBe(false);
+    expect(updatedGate7).toEqual(
+      expect.objectContaining({
+        status: 'failed',
+        evidence: expect.arrayContaining([
+          expect.objectContaining({
+            id: 'gate-7-publish-candidate-evidence-guard',
+            summary: expect.stringContaining(
+              'Gate 5 run evidence 必须来自 gate-5-real-browser-e2e-runner',
+            ),
+          }),
+        ]),
+      }),
+    );
+    expect(serializedGate7).toContain(
+      'executed=true、playwrightExecuted=true、realBrowserExecuted=true',
+    );
+    expect(response.status).toBe('failed');
+    expect(response.publicShareToken).toBeNull();
+  });
+
   it('创建和更新生成运行台账时应保留预算、状态和失败原因', async () => {
     const app = createGeneratedApp();
     const run = createGeneratedAppGenerationRun();
@@ -2457,6 +2860,24 @@ describe('GeneratedAppService', () => {
     };
     expect(gate5RunPayload.evidence).toEqual(
       expect.arrayContaining([
+        expect.objectContaining({
+          id: 'gate-5-browser-runner-contract',
+          kind: 'browser',
+          summary: expect.stringContaining('public build preview submit'),
+          details: expect.objectContaining({
+            runnerId: 'gate-5-real-browser-acceptance-runner',
+            executionMode: 'real_local_browser_contract',
+            serverControlled: true,
+            allowedEndpointPrefixes: ['/generated-apps/public/{token}'],
+            forbiddenEndpointPatterns: expect.arrayContaining([
+              '/generated-apps/{appId}',
+              '/plugins',
+              '/executions',
+            ]),
+            playwrightExecuted: false,
+            realBrowserExecuted: false,
+          }),
+        }),
         expect.objectContaining({
           id: 'gate-5-gate-5-public-runtime-open-viewport-desktop-gate-5-console-no-unhandled-error',
           kind: 'browser',
@@ -3477,10 +3898,14 @@ describe('GeneratedAppService', () => {
           publishCandidateAllowed: true,
           blockingReasons: [],
           warningReasons: [],
-          requiredRealGateRunnerIds: expect.arrayContaining([
+          requiredRealGateRunnerIds: [
             'gate-3-real-build-unit-runner',
+            'gate-4-real-integration-runner',
+            'gate-5-real-browser-acceptance-runner',
+            'gate-6-real-independent-verifier-runner',
             'gate-7-real-publish-candidate-runner',
-          ]),
+          ],
+          requiredGate5RealRunnerId: 'gate-5-real-browser-acceptance-runner',
           repairSuggestions: expect.arrayContaining([
             expect.stringContaining('enablePublicShare'),
             expect.stringContaining('artifact archive'),
@@ -10288,7 +10713,7 @@ describe('GeneratedAppService', () => {
     const handler = Object.getOwnPropertyDescriptor(
       GeneratedAppPublicController.prototype,
       'getPublicBuildPreview',
-    )?.value as (() => Promise<string>) | undefined;
+    )?.value as object;
 
     const headers = Reflect.getMetadata(HEADERS_METADATA, handler) as
       | Array<{ name: string; value: string }>

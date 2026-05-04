@@ -1,5 +1,5 @@
 import { ConfigService } from '@nestjs/config';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { DrizzleDB } from '../../../database/database.module';
 import type {
@@ -222,6 +222,24 @@ describe('GeneratedAppGate5BrowserAcceptanceRunner', () => {
     expect(result.evidence).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
+          id: 'gate-5-browser-runner-contract',
+          kind: 'browser',
+          summary: expect.stringContaining('public build preview submit'),
+          details: expect.objectContaining({
+            runnerId: 'gate-5-real-browser-acceptance-runner',
+            executionMode: 'real_local_browser_contract',
+            serverControlled: true,
+            allowedEndpointPrefixes: ['/generated-apps/public/{token}'],
+            forbiddenEndpointPatterns: expect.arrayContaining([
+              '/generated-apps/{appId}',
+              '/plugins',
+              '/executions',
+            ]),
+            playwrightExecuted: false,
+            realBrowserExecuted: false,
+          }),
+        }),
+        expect.objectContaining({
           id: 'gate-5-gate-5-public-runtime-open-viewport-desktop-gate-5-console-no-unhandled-error',
           kind: 'browser',
           summary: expect.stringContaining('mode=real_local_browser_contract'),
@@ -245,6 +263,201 @@ describe('GeneratedAppGate5BrowserAcceptanceRunner', () => {
     );
     expect(JSON.stringify(result)).not.toContain('/root/');
     expect(JSON.stringify(result)).not.toContain('publicShareToken');
+  });
+
+  it('real-browser-e2e 模式在 Playwright 不可用时应 fail-closed 并产出真实 E2E runner contract evidence', () => {
+    const runner = new GeneratedAppGate5BrowserAcceptanceRunner(
+      createConfigService({
+        GENERATED_APP_GATE5_EXECUTOR_MODE: 'real-browser-e2e',
+        GENERATED_APP_GATE5_REAL_BROWSER_UNAVAILABLE_REASON:
+          'Playwright browsers missing at /root/.cache/ms-playwright with sk-secret and publicShareToken=abc',
+      }),
+    );
+    const plans = buildGate5Plans('real-browser-e2e');
+
+    const result = runner.run(plans);
+    const serialized = JSON.stringify(result);
+
+    expect(runner.getExecutorMode()).toBe('real-browser-e2e');
+    expect(runner.getExecutionLevel()).toBe('real-browser-e2e');
+    expect(runner.getRealBrowserAvailability()).toEqual(
+      expect.objectContaining({
+        available: false,
+        packageName: 'playwright',
+        runnerCommand: 'agentloom generated-app gate-5 real-browser-e2e',
+      }),
+    );
+    expect(result.status).toBe('failed');
+    expect(result.failure).toEqual(
+      expect.objectContaining({
+        code: 'gate-5-real-browser-e2e-unavailable',
+        message: expect.stringContaining('不能用 fixture'),
+      }),
+    );
+    expect(result.summary).toContain('未启动 Playwright/真实浏览器');
+    expect(result.evidence).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'gate-5-real-browser-e2e-unavailable',
+          details: expect.objectContaining({
+            runnerId: 'gate-5-real-browser-e2e-runner',
+            executionMode: 'real_browser_e2e',
+            executionLevel: 'real-browser-e2e',
+            executed: false,
+            playwrightExecuted: false,
+            realBrowserExecuted: false,
+            runnerContract: expect.objectContaining({
+              requiredPublicJourneyKinds: expect.arrayContaining([
+                'public_runtime_open',
+                'public_runtime_interaction_submit',
+                'public_build_preview_submit',
+                'public_submission_result_detail',
+              ]),
+              allowedEndpointPrefixes: ['/generated-apps/public/{token}'],
+              forbiddenEndpointPatterns: expect.arrayContaining([
+                '/generated-apps/{appId}',
+                '/artifacts',
+                '/plugins',
+                '/workflow-definitions',
+              ]),
+              artifactPolicy: expect.objectContaining({
+                root: 'generated-run',
+                allowHostAbsolutePaths: false,
+                allowCreatorApis: false,
+                allowInternalArtifacts: false,
+                redactSensitiveValues: true,
+              }),
+            }),
+          }),
+        }),
+      ]),
+    );
+    expect(serialized).toContain('[redacted-host-path]');
+    expect(serialized).toContain('[redacted-token]');
+    expect(serialized).not.toContain('/root/.cache');
+    expect(serialized).not.toContain('sk-secret');
+    expect(serialized).not.toContain('publicShareToken=abc');
+  });
+
+  it('real-browser-e2e 模式在 Playwright package 可用但适配层未实现时仍应 fail-closed', () => {
+    const runner = new GeneratedAppGate5BrowserAcceptanceRunner(
+      createConfigService({
+        GENERATED_APP_GATE5_EXECUTOR_MODE: 'real-browser-e2e',
+      }),
+    );
+    const runnerWithInternals = runner as unknown as {
+      resolveRealBrowserAvailability(): {
+        available: boolean;
+        reason: string | null;
+        packageName: string;
+        runnerCommand: string;
+      };
+    };
+    const availabilitySpy = vi
+      .spyOn(runnerWithInternals, 'resolveRealBrowserAvailability')
+      .mockReturnValue({
+        available: true,
+        reason: null,
+        packageName: 'playwright',
+        runnerCommand: 'agentloom generated-app gate-5 real-browser-e2e',
+      });
+
+    const result = runner.run(buildGate5Plans('real-browser-e2e'));
+
+    expect(availabilitySpy).toHaveBeenCalled();
+    expect(result.status).toBe('failed');
+    expect(result.failure).toEqual(
+      expect.objectContaining({
+        code: 'gate-5-real-browser-e2e-not-implemented',
+        details: expect.objectContaining({
+          runnerId: 'gate-5-real-browser-e2e-runner',
+          executionMode: 'real_browser_e2e',
+          executionLevel: 'real-browser-e2e',
+          executed: false,
+          playwrightExecuted: false,
+          realBrowserExecuted: false,
+        }),
+      }),
+    );
+    expect(result.evidence).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'gate-5-real-browser-e2e-not-implemented',
+          details: expect.objectContaining({
+            runnerId: 'gate-5-real-browser-e2e-runner',
+            executed: false,
+            playwrightExecuted: false,
+            realBrowserExecuted: false,
+            runnerContract: expect.objectContaining({
+              allowedEndpointPrefixes: ['/generated-apps/public/{token}'],
+              forbiddenEndpointPatterns: expect.arrayContaining([
+                '/generated-apps/{appId}',
+                '/plugins',
+                '/workflow-definitions',
+              ]),
+            }),
+          }),
+        }),
+      ]),
+    );
+    expect(JSON.stringify(result)).not.toContain(
+      'gate-5-real-browser-acceptance-runner',
+    );
+  });
+
+  it('real-browser-e2e 模式应拒绝缺失服务端受控边界的计划且不退回 fixture/local evidence', () => {
+    const runner = new GeneratedAppGate5BrowserAcceptanceRunner(
+      createConfigService({
+        GENERATED_APP_GATE5_EXECUTOR_MODE: 'real-browser-e2e',
+      }),
+    );
+    const plans = buildGate5Plans('real-browser-e2e');
+    const unsafePlan: GeneratedAppBrowserAcceptancePlan = {
+      ...plans.browserAcceptancePlan,
+      browserToolPlan: {
+        ...plans.browserAcceptancePlan.browserToolPlan,
+        runner: 'local-browser-contract',
+        command: 'agentloom generated-app gate-5 local-browser-contract',
+        runnerMode: 'fixture',
+        serverControlled: false,
+        requiredEnvironment: [],
+        allowedPublicEndpoints: ['/generated-apps/{appId}/submissions'],
+        forbiddenEndpointPatterns: ['/internal'],
+        artifactPolicy: {
+          root: 'generated-run',
+          allowHostAbsolutePaths: true,
+          allowCreatorApis: true,
+          allowInternalArtifacts: true,
+          redactSensitiveValues: false,
+        } as unknown as GeneratedAppBrowserAcceptancePlan['browserToolPlan']['artifactPolicy'],
+      },
+    };
+
+    const result = runner.run({
+      ...plans,
+      browserAcceptancePlan: unsafePlan,
+    });
+    const serialized = JSON.stringify(result);
+
+    expect(result.status).toBe('failed');
+    expect(result.failure?.code).toBe('gate-5-browser-acceptance-plan-unsafe');
+    expect(result.assertionResults).toEqual([]);
+    expect(serialized).toContain('runner 必须声明 playwright');
+    expect(serialized).toContain('runnerMode 必须为 real-browser-e2e');
+    expect(serialized).toContain('serverControlled 必须为 true');
+    expect(serialized).toContain(
+      'requiredEnvironment 必须声明 GENERATED_APP_GATE5_EXECUTOR_MODE=real-browser-e2e',
+    );
+    expect(serialized).toContain(
+      'allowedPublicEndpoints 只能显式开放 /generated-apps/public/{token}',
+    );
+    expect(serialized).toContain(
+      'artifactPolicy.allowCreatorApis 必须为 false',
+    );
+    expect(serialized).not.toContain(
+      'gate-5-fixture-browser-acceptance-runner',
+    );
+    expect(serialized).not.toContain('gate-5-real-browser-acceptance-runner');
   });
 
   it('fixture 模式只能验证 evidence 形状，不能伪装为真实浏览器执行', () => {

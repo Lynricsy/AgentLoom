@@ -278,6 +278,20 @@ export interface GeneratedAppRepairPlan {
   >;
   patchTargets: string[];
   requiredTraceability: string[];
+  browserRepairTargets?: Array<{
+    targetId: string;
+    path: string;
+    reason: string;
+  }>;
+  e2eRunnerContract?: {
+    mode: 'real-browser-e2e';
+    command: string;
+    journey: string;
+    allowedEndpointPrefixes: string[];
+    forbiddenEndpointPatterns: string[];
+    requiredFailureEvidence: string[];
+    forbiddenEvidenceFields: string[];
+  };
   generatedAt: string;
 }
 
@@ -647,6 +661,7 @@ export interface GeneratedAppBrowserAcceptancePlan {
   executionLevel:
     | 'browser-acceptance-skeleton'
     | 'real-local-browser-contract'
+    | 'real-browser-e2e'
     | 'fixture-browser-acceptance'
     | 'disabled-browser-acceptance';
   skeletonDisclaimer: string;
@@ -659,6 +674,18 @@ export interface GeneratedAppBrowserAcceptancePlan {
     publicShareAccessPlaceholder: string;
     usesRealTokens: false;
     scenarioIds: string[];
+    runnerMode?: 'real' | 'real-browser-e2e' | 'fixture' | 'disabled';
+    serverControlled?: boolean;
+    requiredEnvironment?: string[];
+    allowedPublicEndpoints?: string[];
+    forbiddenEndpointPatterns?: string[];
+    artifactPolicy?: {
+      root: 'generated-run';
+      allowHostAbsolutePaths: false;
+      allowCreatorApis: false;
+      allowInternalArtifacts: false;
+      redactSensitiveValues: true;
+    };
   };
   viewportMatrix: Array<{
     viewportId: string;
@@ -1022,6 +1049,7 @@ export interface GeneratedAppPublishCandidatePlan {
     blockingReasons: string[];
     warningReasons: string[];
     requiredRealGateRunnerIds: string[];
+    requiredGate5RealRunnerId: string;
     evidenceIds: string[];
     repairSuggestions: string[];
   };
