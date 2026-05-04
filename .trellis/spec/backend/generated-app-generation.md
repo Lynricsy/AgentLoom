@@ -635,3 +635,208 @@ await db.update(generatedApps).set({
   publicShareDisabledAt: new Date(),
 });
 ```
+
+## Scenario: Generated App Private Plugin WASM Activation
+
+### 1. Scope / Trigger
+
+- Trigger: 修改 Generated App Gate 3 插件产物、Gate 7 私有插件激活、`PluginService` 注册记录、插件 artifact storage、Workflow `plugin` 节点执行，或 `PluginExecutionWorker` fallback 规则时必须遵守本场景。
+- 本场景覆盖“一句话生成应用”中的私有工具闭环：Gate 3 生成 `.alp + WASM`，Gate 7 验证并激活为租户私有插件，公开提交触发 runtime Workflow 后由 `PluginExecutionWorker` 通过 Extism 沙箱执行。
+- 目标是让 generated-private 插件优先走正式 WASM 沙箱路径，同时只为历史无 WASM 产物保留受控 fallback。
+
+### 2. Signatures
+
+- Gate 3 `.alp` archive entries:
+  - `manifest.json`
+  - `node-definitions.json`
+  - `dist/plugin.wasm`
+  - `dist/index.js`
+  - `src/index.ts`
+  - `smoke-fixture.json`
+- Generated plugin manifest fields:
+  - `id: string` using `com.agentloom.generated.app-<appId>.<toolId>`
+  - `permissions: []`
+  - `wasmEntry: "dist/plugin.wasm"`
+  - `sandbox.allowedHosts: []`
+  - signature metadata: `signature`, `contentHash`, `developerKeyFingerprint`
+- Gate 3 per-tool build report fields:
+  - `artifactPath: "artifacts/gate-3/plugins/<toolId>.alp"`
+  - `contentHash: string`
+  - `signature: string`
+  - `generatedSigningPublicKeyPem: string`
+  - `declaredPermissions: []`
+  - `wasmEntry: "dist/plugin.wasm"`
+  - `wasmRuntime: "extism"`
+  - `wasmSizeBytes: number`
+  - `wasmSha256: string`
+  - `signingVerification.verified: true`
+  - all hard gates in `activationHardGates` must be present and passed.
+- Storage keys:
+  - archive: `generated-apps/<generatedAppId>/plugins/<toolId>.alp`
+  - wasm: `generated-apps/<generatedAppId>/plugins/<toolId>.wasm`
+- `PluginService.updateRegistrationArtifacts(...)`:
+
+```ts
+updateRegistrationArtifacts(
+  id: string,
+  tenantId: string,
+  occVersion: number,
+  manifestData: Record<string, unknown>,
+  nodeDefinitions: Array<Record<string, unknown>>,
+  storageKey: string,
+  options?: {
+    signature?: string;
+    contentHash?: string;
+    wasmBundleUrl?: string;
+  },
+): Promise<PluginRecord>
+```
+
+- `plugins` row fields that must be current after activation:
+  - `manifest`
+  - `nodeDefinitions`
+  - `storageKey`
+  - `permissions`
+  - `metadata`
+  - `signature`
+  - `contentHash`
+  - `wasmBundleUrl`
+  - `status='active'`
+- `PluginExecutionJobData` must include `tenantId`, `executionId`, `stepId`, `pluginId`, `nodeType`, `inputs`, and `config`.
+
+### 3. Contracts
+
+- Gate 3 must put the WASM bytes inside the signed `.alp`; `contentHash` and RSA-PSS signature must cover the canonical archive payload that includes `dist/plugin.wasm`.
+- Gate 3 generated WASM must be Extism-callable through exported function `execute`; it must return schema-compatible business output containing `analysis` and `analysis-out`.
+- Gate 7 must resolve the Gate 3 workspace only inside the configured generated-app workspace root, then read the `.alp` and build report from workspace-relative artifact paths.
+- Gate 7 must validate manifest shape through the plugin SDK, recompute archive `contentHash`, verify RSA-PSS signature with `generatedSigningPublicKeyPem`, require zero permissions, validate safe `wasmEntry`, extract WASM from the archive, verify WebAssembly magic bytes, and compare `wasmSizeBytes` / `wasmSha256` when present.
+- Gate 7 must upload both `.alp` and `.wasm` before registering or refreshing the plugin record. Missing `StorageService` is a hard failure for automatic activation.
+- If the plugin record does not exist, Gate 7 must call `PluginService.register()` with `wasmBundleUrl`.
+- If the plugin record already exists in the same tenant, Gate 7 must compare archive/signature/content hash/metadata/`wasmBundleUrl`; when stale, it must call `PluginService.updateRegistrationArtifacts()` with the current `occVersion`. OCC conflict must not be silently ignored.
+- Runtime Workflow creation must happen after private plugin activation so generated workflow plugin nodes can bind the activated plugin id.
+- `PluginExecutionWorker` must run generated-private plugins with `wasmBundleUrl` through `StorageService.download()` -> `PluginSandboxService.execute()` -> normalized step outputs.
+- `PluginExecutionWorker` may use deterministic fallback only when `wasmBundleUrl` is absent and metadata exactly matches `source='generated-app-private-plugin'`, `activationScope='tenant-private'`, and `toolId === nodeType`.
+- Public runtime, public submissions, public previews, and marketplace listings must not expose plugin ids, plugin manifests, build reports, `.alp` paths, WASM paths, storage keys, signatures, or activation metadata.
+
+### 4. Validation & Error Matrix
+
+| Condition | Required behavior |
+| --- | --- |
+| `.alp` missing `manifest.json` or invalid manifest | Gate 7 fails before storage upload and does not create/activate plugin |
+| Manifest `wasmEntry` is absolute, traversal, Windows drive, empty segment, backslash, non-`.wasm`, or missing archive entry | Gate 7 fails closed |
+| WASM bytes do not start with WebAssembly magic bytes | Gate 7 fails closed |
+| Build report `wasmEntry`, `wasmSizeBytes`, or `wasmSha256` conflicts with archive content | Gate 7 fails closed |
+| Manifest declares any permission | Gate 7 fails closed; generated-private MVP remains zero-permission only |
+| Signature or content hash mismatch | Gate 7 fails before storage upload and before DB registration |
+| Existing same-tenant plugin record lacks `wasmBundleUrl` or has stale signature/hash/metadata | Upload current `.alp/.wasm`, refresh registration artifacts with OCC, then activate |
+| Existing plugin artifact refresh hits OCC conflict | Surface `PluginVersionConflictException` instead of continuing with stale artifact |
+| Ordinary active plugin has no `wasmBundleUrl` | `PluginExecutionWorker` fails closed and checkpoint runtime is `no-wasm` |
+| Generated-private plugin has `wasmBundleUrl` | Worker downloads WASM and executes through Extism; deterministic fallback must not run |
+| Legacy generated-private plugin lacks `wasmBundleUrl` but metadata guard matches | Worker may emit controlled `analysis` / `analysis-out` fallback |
+| Legacy generated-private plugin lacks `wasmBundleUrl` and metadata guard fails | Worker fails closed |
+
+### 5. Good / Base / Bad Cases
+
+- Good: Gate 3 writes a signed `.alp` containing `dist/plugin.wasm`, Gate 7 verifies and uploads both archive and WASM, the plugin row has non-null `wasmBundleUrl`, and runtime Workflow plugin node execution calls `PluginSandboxService.execute()`.
+- Good: rerunning Gate 7 against a legacy generated-private plugin row refreshes `wasmBundleUrl` and metadata instead of reusing a stale no-WASM record.
+- Good: ordinary marketplace or manually registered plugins without WASM fail closed; generated-private fallback does not broaden the general plugin execution model.
+- Base: a historical generated-private row without WASM and with exact metadata guard can still produce safe deterministic `analysis` so old submissions do not break abruptly.
+- Bad: workflow plugin nodes are created before Gate 7 activation, causing node binding to miss the plugin id.
+- Bad: Gate 7 registers a plugin record before uploading `.wasm`, leaving a DB row that points to missing artifact storage.
+- Bad: generated-private fallback runs for any plugin whose id looks generated but metadata `source`, `activationScope`, or `toolId` does not exactly match.
+- Bad: public submission detail exposes plugin ids, storage keys, build report contents, WASM URLs, raw step checkpoint data, or tool internals.
+
+### 6. Tests Required
+
+- `generated-app.service.spec.ts`
+  - Gate 3 generated `.alp` contains `manifest.wasmEntry='dist/plugin.wasm'`, `dist/plugin.wasm`, and a build report with matching `wasmSizeBytes` / `wasmSha256`.
+  - The generated WASM can execute through the real `PluginSandboxService` and returns `analysis` / `analysis-out`.
+  - Gate 7 new plugin activation uploads `.alp` and `.wasm`, calls `PluginService.register()` with non-null `wasmBundleUrl`, activates the plugin, stores plugin ids, and creates runtime Workflow after plugin activation.
+  - Gate 7 reuse of a legacy generated-private record calls `PluginService.updateRegistrationArtifacts()` with non-null `wasmBundleUrl` instead of creating a duplicate plugin.
+  - Gate 7 rejects unsafe `wasmEntry`, invalid WASM magic bytes, size/hash mismatch, non-zero permissions, signature mismatch, and content hash mismatch.
+- `plugin.service.spec.ts`
+  - `updateRegistrationArtifacts()` updates manifest, node definitions, storage key, permissions, metadata, signature, content hash, `wasmBundleUrl`, and increments `occVersion`.
+  - OCC mismatch returns `PluginVersionConflictException`; missing plugin returns `PluginNotFoundException`.
+- `plugin-execution.worker.spec.ts`
+  - Generated-private plugin with `wasmBundleUrl` downloads WASM and calls `PluginSandboxService.execute()`; fallback is not called.
+  - Ordinary plugin without `wasmBundleUrl` fails closed and records checkpoint runtime `no-wasm`.
+  - Legacy generated-private no-WASM plugin emits deterministic fallback only when metadata guard exactly matches.
+  - Mismatched `toolId`, `source`, or `activationScope` fails closed.
+- Public generated-app submission detail tests must assert that safe `analysis` can appear as business output while plugin ids, artifact URLs, storage keys, raw step data, and checkpoint metadata remain hidden.
+
+### 7. Wrong vs Correct
+
+Wrong:
+
+```ts
+await pluginService.register(
+  tenantId,
+  undefined,
+  userId,
+  manifest,
+  nodeDefinitions,
+  storageKey,
+  { signature, contentHash, wasmBundleUrl: undefined },
+);
+```
+
+Correct:
+
+```ts
+await storageService.upload(archiveStorageKey, archiveBuffer, archiveBuffer.length, "application/zip");
+await storageService.upload(wasmBundleUrl, wasmBuffer, wasmBuffer.length, "application/wasm");
+
+await pluginService.register(
+  tenantId,
+  undefined,
+  userId,
+  registrationManifest,
+  nodeDefinitions,
+  archiveStorageKey,
+  { signature, contentHash, wasmBundleUrl },
+);
+```
+
+Wrong:
+
+```ts
+if (existingPlugin) {
+  pluginRecord = existingPlugin;
+}
+```
+
+Correct:
+
+```ts
+if (existingPlugin && mustRefreshRegistration(existingPlugin, pluginBundle)) {
+  pluginRecord = await pluginService.updateRegistrationArtifacts(
+    existingPlugin.id,
+    tenantId,
+    existingPlugin.occVersion,
+    registrationManifest,
+    nodeDefinitions,
+    archiveStorageKey,
+    { signature, contentHash, wasmBundleUrl },
+  );
+}
+```
+
+Wrong:
+
+```ts
+if (!plugin.wasmBundleUrl && plugin.pluginId.startsWith("com.agentloom.generated.")) {
+  return executeGeneratedFallback(plugin, nodeType, inputs, config);
+}
+```
+
+Correct:
+
+```ts
+if (!plugin.wasmBundleUrl) {
+  if (isGeneratedPrivatePluginFallbackEligible(plugin, nodeType)) {
+    return executeGeneratedPrivatePluginFallback(plugin, nodeType, inputs, config);
+  }
+
+  throw new PluginSandboxException(pluginId, "插件缺少 WASM bundle，无法执行");
+}
+```
