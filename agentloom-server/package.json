@@ -4,7 +4,7 @@
   "description": "AgentLoom 后端服务 - NestJS + Fastify + Drizzle ORM",
   "author": "Wine Fox <fox@ling.plus>",
   "private": true,
-  "license": "UNLICENSED",
+  "license": "GPL-3.0-only",
   "scripts": {
     "build": "nest build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",

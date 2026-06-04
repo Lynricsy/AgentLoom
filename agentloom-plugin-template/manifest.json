@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "author": "AgentLoom Team",
   "description": "A sample plugin that converts text to uppercase with optional prefix and suffix",
-  "license": "MIT",
+  "license": "GPL-3.0-only",
   "minPlatformVersion": "0.1.0",
   "permissions": [],
   "keywords": ["text", "transform", "example"]
