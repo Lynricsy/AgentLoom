@@ -15,8 +15,8 @@
 
    正确写法：描述系统**当前是什么**，而非**曾经发生了什么**。工作日志请使用 `record-agent-log` 工具记录。
 
-5. 测试账号：test@example.invalid,密码： <TEST_ACCOUNT_PASSWORD>
-6. 测试用模型：key:sk-test-redacted url:https://models.example.test/v1 model:gpt-5-test format:openai-responses
+5. 测试账号：从私有运维文档或环境变量 `AGENTLOOM_TEST_EMAIL`、`AGENTLOOM_TEST_PASSWORD` 读取，禁止写入真实账号或密码。
+6. 测试用模型：从私有运维文档或环境变量 `AGENTLOOM_TEST_MODEL_API_KEY`、`AGENTLOOM_TEST_MODEL_BASE_URL` 读取，模型名和响应格式由私有运维文档或 `AGENTLOOM_TEST_MODEL_NAME`、`AGENTLOOM_TEST_MODEL_FORMAT` 指定。
 
 ## 概览
 

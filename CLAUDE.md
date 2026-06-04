@@ -14,7 +14,7 @@
    - 开发过程记录（如 "审查修复补充"、"某 Story 补充"）
    
    正确写法：描述系统**当前是什么**，而非**曾经发生了什么**。工作日志请使用 `record-agent-log` 工具记录。
-5. 测试账号：test@example.invalid,密码： <TEST_ACCOUNT_PASSWORD>
+5. 测试账号：从私有运维文档或环境变量 `AGENTLOOM_TEST_EMAIL`、`AGENTLOOM_TEST_PASSWORD` 读取，禁止写入真实账号或密码。
 
 ## 概览
 
