@@ -69,6 +69,11 @@ $RECYCLE.BIN/
 # ──────────────────────────────────────────────
 # Agent / 工具运行时 (Agent / Tool Runtime)
 # ──────────────────────────────────────────────
+.sisyphus/
+.trellis/tasks/
+_bmad-output/
+SubmitDocs/
+bmad-opencode/
 AgentLogs/
 .autobmad-logs/
 .autobmad-state.json
