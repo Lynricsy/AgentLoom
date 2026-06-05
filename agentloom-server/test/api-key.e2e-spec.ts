@@ -295,7 +295,7 @@ describe('API Key (E2E)', () => {
       expect(body.data).toBeDefined();
       expect(body.data.provider).toBe('openai');
       expect(body.data.label).toBe('My OpenAI Key');
-      expect(body.data.keyPreview).toBe('sk-...cdef');
+      expect(body.data.keyPreview).toBe('sk-...cted');
       expect(body.data.status).toBe('active');
       expect(body.data.rotatedAt).toBeNull();
       expect(body.data.id).toBeDefined();
