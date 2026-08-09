@@ -26,6 +26,13 @@ env:
     APP_MINIO_USE_SSL: "false"
     APP_MINIO_BUCKET: agentloom-documents
     APP_QDRANT_URL: ""
+    APP_FIRECRACKER_RUNTIME_URL: ""
+    APP_FIRECRACKER_RUNTIME_CA: /run/secrets/firecracker/manager-ca.crt
+    APP_FIRECRACKER_RUNTIME_CERT: /run/secrets/firecracker/app-client.crt
+    APP_FIRECRACKER_RUNTIME_KEY: /run/secrets/firecracker/app-client.key
+    APP_FIRECRACKER_RUNTIME_SERVER_NAME: firecracker-runtime
+    APP_SANDBOX_MAINTENANCE_MODE: "false"
+    APP_SANDBOX_ROLLBACK_HOURS: "168"
   server:
     APP_JWT_SECRET: change-me-jwt-secret
     APP_MASTER_ENCRYPTION_KEY: REPLACE_WITH_BASE64_32_BYTES
@@ -70,6 +77,38 @@ worker:
     minReplicas: 1
     maxReplicas: 3
     targetCPUUtilizationPercentage: 80
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+firecrackerRuntime:
+  enabled: true
+  image:
+    repository: agentloom/firecracker-runtime
+    tag: 1.16.1
+    pullPolicy: IfNotPresent
+  service:
+    port: 8443
+  managerPkiSecretName: agentloom-firecracker-manager-pki
+  clientPkiSecretName: agentloom-firecracker-client-pki
+  state:
+    existingClaim: ""
+    storageClassName: ""
+    size: 250Gi
+  guestCIDR: 172.30.0.0/16
+  gateway: 172.30.0.1
+  # 默认拒绝 guest 访问私网；仅为受管 private LLM/MCP 添加 IPv4 CIDR。
+  allowedPrivateCIDRs: []
+  maxVMs: "20"
+  maxVCPU: "20"
+  maxMemoryMiB: "40960"
+  maxDiskGiB: "200"
+  allowUnsupportedKernel: "false"
+  smtPolicy: deny
+  resources:
+    limits:
+      cpu: "24"
+      memory: 48Gi
   nodeSelector: {}
   tolerations: []
   affinity: {}

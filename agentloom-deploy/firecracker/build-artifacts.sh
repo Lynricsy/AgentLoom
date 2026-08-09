@@ -9,13 +9,13 @@ DOWNLOAD_ROOT="$BUILD_ROOT/downloads"
 CONTEXT_ROOT="$SCRIPT_DIR/build-context"
 ARTIFACT_ROOT="$SCRIPT_DIR/artifacts"
 
-for command in curl docker go jq mke2fs npm sha256sum tar; do
+for command in curl docker go jq mke2fs npm od sha256sum tar tr; do
   command -v "$command" >/dev/null || { echo "missing required command: $command" >&2; exit 1; }
 done
 [[ "$(uname -m)" == "x86_64" ]] || { echo "linux x86_64 build host required" >&2; exit 1; }
 
 mkdir -p "$DOWNLOAD_ROOT"
-rm -rf "$CONTEXT_ROOT" "$BUILD_ROOT/output" "$BUILD_ROOT/rootfs"
+rm -rf "$CONTEXT_ROOT" "$BUILD_ROOT/output" "$BUILD_ROOT/rootfs" "$BUILD_ROOT/kernel-output"
 mkdir -p "$CONTEXT_ROOT" "$BUILD_ROOT/output" "$BUILD_ROOT/rootfs"
 
 download_verified() {
@@ -82,6 +82,9 @@ docker buildx build \
   --build-arg "ARCH_SNAPSHOT=$arch_snapshot" \
   --output "type=local,dest=$BUILD_ROOT/rootfs" \
   "$CONTEXT_ROOT/rootfs"
+rm -f "$BUILD_ROOT/rootfs/etc/resolv.conf"
+ln -s /proc/net/pnp "$BUILD_ROOT/rootfs/etc/resolv.conf"
+[[ "$(readlink "$BUILD_ROOT/rootfs/etc/resolv.conf")" == "/proc/net/pnp" ]]
 
 truncate -s "$(jq -r '.rootfs.sizeGiB' "$LOCK_FILE")G" "$BUILD_ROOT/output/rootfs.ext4"
 mke2fs -q -t ext4 -F -d "$BUILD_ROOT/rootfs" "$BUILD_ROOT/output/rootfs.ext4"
@@ -101,6 +104,8 @@ docker buildx build \
   --build-arg "BUSYBOX_ARCHIVE_SHA256=$busybox_sha" \
   --output "type=local,dest=$BUILD_ROOT/kernel-output" \
   "$CONTEXT_ROOT/kernel"
+kernel_magic="$(od -An -tx1 -N4 "$BUILD_ROOT/kernel-output/vmlinux" | tr -d '[:space:]')"
+[[ "$kernel_magic" == "7f454c46" ]] || { echo "kernel output is not an ELF image" >&2; exit 1; }
 cp "$BUILD_ROOT/kernel-output/vmlinux" "$BUILD_ROOT/output/vmlinux"
 cp "$BUILD_ROOT/kernel-output/initramfs.cpio.gz" "$BUILD_ROOT/output/initramfs.cpio.gz"
 

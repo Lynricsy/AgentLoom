@@ -6,8 +6,6 @@ x-server-app: &server-app
     context: ..
     dockerfile: agentloom-deploy/docker/server.Dockerfile
   restart: unless-stopped
-  group_add:
-    - '${HOST_DOCKER_GID:-969}'
   environment: &server-env
     APP_PORT: ${APP_PORT:-3000}
     APP_NODE_ENV: ${APP_NODE_ENV:-production}
@@ -29,14 +27,21 @@ x-server-app: &server-app
     APP_MINIO_USE_SSL: ${APP_MINIO_USE_SSL:-false}
     APP_MINIO_BUCKET: ${APP_MINIO_BUCKET:-agentloom-documents}
     APP_QDRANT_URL: ${APP_QDRANT_URL:-http://qdrant:6333}
-    APP_DOCKER_SANDBOX_NETWORK: ${APP_DOCKER_SANDBOX_NETWORK:-agentloom-sandbox}
+    APP_FIRECRACKER_RUNTIME_URL: ${APP_FIRECRACKER_RUNTIME_URL:-https://firecracker-runtime:8443}
+    APP_FIRECRACKER_RUNTIME_CA: /run/secrets/firecracker-manager-ca
+    APP_FIRECRACKER_RUNTIME_CERT: /run/secrets/firecracker-client-cert
+    APP_FIRECRACKER_RUNTIME_KEY: /run/secrets/firecracker-client-key
+    APP_FIRECRACKER_RUNTIME_SERVER_NAME: ${APP_FIRECRACKER_RUNTIME_SERVER_NAME:-firecracker-runtime}
+    APP_SANDBOX_MAINTENANCE_MODE: ${APP_SANDBOX_MAINTENANCE_MODE:-false}
+    APP_SANDBOX_ROLLBACK_HOURS: ${APP_SANDBOX_ROLLBACK_HOURS:-168}
     FIREBASE_SERVICE_ACCOUNT: ${FIREBASE_SERVICE_ACCOUNT:-}
-  volumes:
-    - /var/run/docker.sock:/var/run/docker.sock
+  secrets:
+    - firecracker-manager-ca
+    - firecracker-client-cert
+    - firecracker-client-key
   networks:
     - frontend_net
     - app_net
-    - sandbox_net
     - supabase_net
   depends_on:
     postgres:
@@ -46,6 +51,8 @@ x-server-app: &server-app
     minio:
       condition: service_healthy
     qdrant:
+      condition: service_healthy
+    firecracker-runtime:
       condition: service_healthy
 
 x-studio-app: &studio-app
@@ -186,7 +193,7 @@ services:
       APP_SANDBOX_CALLBACK_BASE_URL: ${APP_SANDBOX_CALLBACK_BASE_URL_WORKER:-http://worker:3000/api/v1}
     networks:
       - app_net
-      - sandbox_net
+      - supabase_net
     deploy:
       resources:
         limits:
@@ -204,6 +211,115 @@ services:
       timeout: 5s
       retries: 10
       start_period: 30s
+
+  firecracker-runtime:
+    image: ${FIRECRACKER_RUNTIME_IMAGE:-agentloom/firecracker-runtime:1.16.1}
+    build:
+      context: ..
+      dockerfile: agentloom-deploy/firecracker/runtime-manager.Dockerfile
+    restart: unless-stopped
+    stop_grace_period: 60s
+    privileged: true
+    pid: host
+    cgroup: host
+    read_only: true
+    environment:
+      FIRECRACKER_MANAGER_LISTEN: 0.0.0.0:8443
+      FIRECRACKER_STATE_ROOT: /var/lib/agentloom-firecracker
+      FIRECRACKER_CHROOT_BASE: /fc
+      FIRECRACKER_ARTIFACT_ROOT: /opt/agentloom-firecracker/artifacts
+      FIRECRACKER_CNI_TEMPLATE: /etc/agentloom-firecracker/network/10-agentloom-firecracker.conflist.template
+      FIRECRACKER_GUEST_CIDR: ${FIRECRACKER_GUEST_CIDR:-172.30.0.0/16}
+      FIRECRACKER_GATEWAY: ${FIRECRACKER_GATEWAY:-172.30.0.1}
+      FIRECRACKER_EGRESS_ALLOWED_PRIVATE_CIDRS: ${FIRECRACKER_EGRESS_ALLOWED_PRIVATE_CIDRS:-}
+      FIRECRACKER_CALLBACK_ALLOWED_HOSTS: ${FIRECRACKER_CALLBACK_ALLOWED_HOSTS:-server,worker}
+      FIRECRACKER_MANAGER_TLS_CERT: /run/secrets/firecracker-manager-cert
+      FIRECRACKER_MANAGER_TLS_KEY: /run/secrets/firecracker-manager-key
+      FIRECRACKER_MANAGER_CLIENT_CA: /run/secrets/firecracker-client-ca
+      FIRECRACKER_GUEST_CA: /run/secrets/firecracker-guest-ca
+      FIRECRACKER_GUEST_CA_KEY: /run/secrets/firecracker-guest-ca-key
+      FIRECRACKER_GUEST_SERVER_NAME: ${FIRECRACKER_GUEST_SERVER_NAME:-agentloom-guest}
+      FIRECRACKER_MAX_VMS: ${FIRECRACKER_MAX_VMS:-20}
+      FIRECRACKER_MAX_VCPU: ${FIRECRACKER_MAX_VCPU:-20}
+      FIRECRACKER_MAX_MEMORY_MIB: ${FIRECRACKER_MAX_MEMORY_MIB:-40960}
+      FIRECRACKER_MAX_DISK_GIB: ${FIRECRACKER_MAX_DISK_GIB:-200}
+      FIRECRACKER_ALLOW_UNSUPPORTED_KERNEL: ${FIRECRACKER_ALLOW_UNSUPPORTED_KERNEL:-false}
+      FIRECRACKER_SMT_POLICY: ${FIRECRACKER_SMT_POLICY:-deny}
+      FIRECRACKER_ENV: ${FIRECRACKER_ENV:-production}
+      FIRECRACKER_ALLOW_SWAP: ${FIRECRACKER_ALLOW_SWAP:-false}
+    expose:
+      - '8443'
+    volumes:
+      - firecracker_state:/var/lib/agentloom-firecracker
+      - /dev/kvm:/dev/kvm
+      - /dev/net/tun:/dev/net/tun
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    tmpfs:
+      - /run:rw,nosuid,nodev,mode=0755
+      - /var/lib/cni:rw,nosuid,nodev,noexec,mode=0700
+      - /tmp:rw,nosuid,nodev,noexec,mode=1777
+    secrets:
+      - firecracker-manager-cert
+      - firecracker-manager-ca
+      - firecracker-manager-key
+      - firecracker-client-ca
+      - firecracker-guest-ca
+      - firecracker-guest-ca-key
+      - firecracker-health-client-cert
+      - firecracker-health-client-key
+    networks:
+      - app_net
+      - sandbox_egress_net
+    deploy:
+      resources:
+        limits:
+          cpus: '${FIRECRACKER_RUNTIME_CPU_LIMIT:-24}'
+          memory: ${FIRECRACKER_RUNTIME_MEMORY_LIMIT:-48G}
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'curl',
+          '--fail',
+          '--silent',
+          '--show-error',
+          '--resolve',
+          'firecracker-runtime:8443:127.0.0.1',
+          '--cacert',
+          '/run/secrets/firecracker-manager-ca',
+          '--cert',
+          '/run/secrets/firecracker-health-client-cert',
+          '--key',
+          '/run/secrets/firecracker-health-client-key',
+          'https://firecracker-runtime:8443/readyz',
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  sandbox-cutover:
+    profiles: ['migration']
+    image: ${FIRECRACKER_RUNTIME_IMAGE:-agentloom/firecracker-runtime:1.16.1}
+    build:
+      context: ..
+      dockerfile: agentloom-deploy/firecracker/runtime-manager.Dockerfile
+    entrypoint: ['/usr/local/bin/sandbox-cutover']
+    environment:
+      <<: *server-env
+      APP_SANDBOX_MAINTENANCE_MODE: 'true'
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    secrets:
+      - firecracker-manager-ca
+      - firecracker-client-cert
+      - firecracker-client-key
+    networks:
+      - app_net
+      - supabase_net
+    depends_on:
+      firecracker-runtime:
+        condition: service_healthy
 
   postgres:
     image: ${POSTGRES_IMAGE:-postgres:16-alpine}
@@ -331,6 +447,7 @@ volumes:
   redis_data:
   minio_data:
   qdrant_data:
+  firecracker_state:
 
 networks:
   frontend_net:
@@ -338,11 +455,32 @@ networks:
   app_net:
     name: agentloom-app
     internal: true
-  sandbox_net:
-    name: agentloom-sandbox
   data_net:
     name: agentloom-data
     internal: true
+  sandbox_egress_net:
+    name: agentloom-sandbox-egress
   supabase_net:
     name: ${SUPABASE_NETWORK:-supabase-shared}
     external: true
+secrets:
+  firecracker-manager-cert:
+    file: ${FIRECRACKER_MANAGER_CERT_FILE:-./secrets/firecracker/manager.crt}
+  firecracker-manager-key:
+    file: ${FIRECRACKER_MANAGER_KEY_FILE:-./secrets/firecracker/manager.key}
+  firecracker-manager-ca:
+    file: ${FIRECRACKER_MANAGER_CA_FILE:-./secrets/firecracker/manager-ca.crt}
+  firecracker-client-ca:
+    file: ${FIRECRACKER_CLIENT_CA_FILE:-./secrets/firecracker/client-ca.crt}
+  firecracker-client-cert:
+    file: ${FIRECRACKER_CLIENT_CERT_FILE:-./secrets/firecracker/app-client.crt}
+  firecracker-client-key:
+    file: ${FIRECRACKER_CLIENT_KEY_FILE:-./secrets/firecracker/app-client.key}
+  firecracker-health-client-cert:
+    file: ${FIRECRACKER_HEALTH_CLIENT_CERT_FILE:-./secrets/firecracker/health-client.crt}
+  firecracker-health-client-key:
+    file: ${FIRECRACKER_HEALTH_CLIENT_KEY_FILE:-./secrets/firecracker/health-client.key}
+  firecracker-guest-ca:
+    file: ${FIRECRACKER_GUEST_CA_FILE:-./secrets/firecracker/guest-ca.crt}
+  firecracker-guest-ca-key:
+    file: ${FIRECRACKER_GUEST_CA_KEY_FILE:-./secrets/firecracker/guest-ca.key}

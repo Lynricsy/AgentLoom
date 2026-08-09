@@ -8,6 +8,10 @@
     "releaseArchiveSha256": "382a02a869e4d6d5cb14c40577f9545e8458021ea8b0b2d3fc10ec14d9c242e6",
     "goSdkCommit": "6fb280e993d4516ee6d5d20238572fe8752bc7ca"
   },
+  "network": {
+    "tcRedirectTapVersion": "v0.0.0-20250516183331-34bf829e9a5c",
+    "tcRedirectTapCommit": "34bf829e9a5c"
+  },
   "kernel": {
     "sourceTag": "microvm-kernel-6.1.177-45.371.amzn2023",
     "sourceCommit": "f4ea506268dde60590dda6cc371c24feceba77e1",

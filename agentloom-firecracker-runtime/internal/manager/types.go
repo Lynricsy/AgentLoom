@@ -99,6 +99,7 @@ type Instance interface {
 type Launcher interface {
 	Launch(context.Context, LaunchSpec) (Instance, error)
 	Reattach(context.Context, Metadata, string) (Instance, error)
+	Cleanup(context.Context, Metadata) error
 }
 
 type NetworkProvisioner interface {

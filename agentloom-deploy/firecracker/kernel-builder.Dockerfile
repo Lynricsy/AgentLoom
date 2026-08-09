@@ -16,8 +16,8 @@ RUN echo "${KERNEL_ARCHIVE_SHA256}  /build/kernel.tar.gz" | sha256sum -c - \
     && cp /build/kernel.config /build/kernel/.config \
     && cat /build/kernel.config.fragment >> /build/kernel/.config \
     && make -C /build/kernel olddefconfig \
-    && make -C /build/kernel -j"$(nproc)" bzImage \
-    && cp /build/kernel/arch/x86/boot/bzImage /output/vmlinux \
+    && make -C /build/kernel -j"$(nproc)" vmlinux \
+    && cp /build/kernel/vmlinux /output/vmlinux \
     && tar -xjf /build/busybox.tar.bz2 --strip-components=1 -C /build/busybox \
     && make -C /build/busybox allnoconfig \
     && sed -i \

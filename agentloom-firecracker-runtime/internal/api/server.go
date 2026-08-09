@@ -70,8 +70,7 @@ func NewServer(runtimeManager *manager.Manager, config ServerConfig, logger *slo
 	server.mux.HandleFunc("GET /metrics", server.metrics)
 	server.mux.HandleFunc("POST /v1/vms", server.create)
 	server.mux.HandleFunc("GET /v1/vms/{id}", server.inspect)
-	server.mux.HandleFunc("POST /v1/vms/{id}:start", server.start)
-	server.mux.HandleFunc("POST /v1/vms/{id}:stop", server.stop)
+	server.mux.HandleFunc("POST /v1/vms/{action}", server.action)
 	server.mux.HandleFunc("DELETE /v1/vms/{id}", server.delete)
 	server.mux.HandleFunc("/v1/vms/{id}/guest/{path...}", server.guestProxy)
 	return server, nil
@@ -135,6 +134,25 @@ func (server *Server) inspect(response http.ResponseWriter, request *http.Reques
 		return
 	}
 	writeJSON(response, http.StatusOK, vmResponse(metadata))
+}
+
+func (server *Server) action(response http.ResponseWriter, request *http.Request) {
+	raw := request.PathValue("action")
+	if id, ok := strings.CutSuffix(raw, ":start"); ok {
+		request.SetPathValue("id", id)
+		server.start(response, request)
+		return
+	}
+	if id, ok := strings.CutSuffix(raw, ":stop"); ok {
+		request.SetPathValue("id", id)
+		server.stop(response, request)
+		return
+	}
+	server.writeError(
+		response,
+		request,
+		fmt.Errorf("%w: unsupported VM action", manager.ErrInvalid),
+	)
 }
 
 func (server *Server) start(response http.ResponseWriter, request *http.Request) {

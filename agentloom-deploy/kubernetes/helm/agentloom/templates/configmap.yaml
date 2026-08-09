@@ -15,6 +15,13 @@ data:
   APP_QDRANT_URL: {{ include "agentloom.qdrantUrl" . | quote }}
   APP_OAUTH_REDIRECT_URL: {{ .Values.env.server.APP_OAUTH_REDIRECT_URL | quote }}
   APP_FRONTEND_URL: {{ .Values.env.server.APP_FRONTEND_URL | quote }}
+  APP_FIRECRACKER_RUNTIME_URL: {{ default (printf "https://%s:%v" (include "agentloom.firecrackerRuntimeFullname" .) .Values.firecrackerRuntime.service.port) .Values.env.shared.APP_FIRECRACKER_RUNTIME_URL | quote }}
+  APP_FIRECRACKER_RUNTIME_CA: {{ .Values.env.shared.APP_FIRECRACKER_RUNTIME_CA | quote }}
+  APP_FIRECRACKER_RUNTIME_CERT: {{ .Values.env.shared.APP_FIRECRACKER_RUNTIME_CERT | quote }}
+  APP_FIRECRACKER_RUNTIME_KEY: {{ .Values.env.shared.APP_FIRECRACKER_RUNTIME_KEY | quote }}
+  APP_FIRECRACKER_RUNTIME_SERVER_NAME: {{ .Values.env.shared.APP_FIRECRACKER_RUNTIME_SERVER_NAME | quote }}
+  APP_SANDBOX_MAINTENANCE_MODE: {{ .Values.env.shared.APP_SANDBOX_MAINTENANCE_MODE | quote }}
+  APP_SANDBOX_ROLLBACK_HOURS: {{ .Values.env.shared.APP_SANDBOX_ROLLBACK_HOURS | quote }}
 ---
 apiVersion: v1
 kind: ConfigMap

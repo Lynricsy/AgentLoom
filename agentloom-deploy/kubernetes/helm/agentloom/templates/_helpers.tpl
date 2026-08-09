@@ -39,6 +39,10 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- printf "%s-studio" (include "agentloom.fullname" .) -}}
 {{- end -}}
 
+{{- define "agentloom.firecrackerRuntimeFullname" -}}
+{{- printf "%s-firecracker-runtime" (include "agentloom.fullname" .) -}}
+{{- end -}}
+
 {{- define "agentloom.postgresFullname" -}}
 {{- printf "%s-postgres" (include "agentloom.fullname" .) -}}
 {{- end -}}

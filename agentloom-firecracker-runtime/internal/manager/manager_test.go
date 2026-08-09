@@ -3,10 +3,13 @@ package manager
 import (
 	"context"
 	"errors"
+	"io"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 const testID = "11111111-1111-4111-8111-111111111111"
@@ -42,13 +45,17 @@ func (disk *fakeDisk) Delete(context.Context, string) error { disk.deleted++; re
 type fakeNetwork struct {
 	allocation   NetworkAllocation
 	provisionErr error
+	releaseErr   error
 	released     int
 }
 
 func (network *fakeNetwork) Provision(context.Context, string) (NetworkAllocation, error) {
 	return network.allocation, network.provisionErr
 }
-func (network *fakeNetwork) Release(context.Context, Metadata) error { network.released++; return nil }
+func (network *fakeNetwork) Release(context.Context, Metadata) error {
+	network.released++
+	return network.releaseErr
+}
 
 type fakeInstance struct {
 	shutdownErr error
@@ -76,9 +83,11 @@ func (instance *fakeInstance) Wait(ctx context.Context) error {
 }
 
 type fakeLauncher struct {
-	instance *fakeInstance
-	err      error
-	launches int
+	instance   *fakeInstance
+	err        error
+	launches   int
+	cleanups   int
+	cleanupErr error
 }
 
 func (launcher *fakeLauncher) Launch(context.Context, LaunchSpec) (Instance, error) {
@@ -87,6 +96,10 @@ func (launcher *fakeLauncher) Launch(context.Context, LaunchSpec) (Instance, err
 }
 func (launcher *fakeLauncher) Reattach(context.Context, Metadata, string) (Instance, error) {
 	return launcher.instance, launcher.err
+}
+func (launcher *fakeLauncher) Cleanup(context.Context, Metadata) error {
+	launcher.cleanups++
+	return launcher.cleanupErr
 }
 
 type fakeChecker struct{ err error }
@@ -341,5 +354,180 @@ func TestMetadataStoreRejectsTraversalAndWritesAtomically(t *testing.T) {
 	}
 	if info.Mode().Perm() != 0o600 {
 		t.Fatalf("metadata mode is %o", info.Mode().Perm())
+	}
+}
+
+func TestRecoverMovesMissingPersistentVMToRestartableStoppedState(t *testing.T) {
+	fixture := newFixture(t, nil)
+	now := time.Now().UTC()
+	metadata := Metadata{
+		SchemaVersion: 1, SessionID: testID,
+		ArtifactDigest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		Resources:      Resources{CPU: 1, VCPUs: 1, MemoryMiB: 512, DiskGiB: 2},
+		LifecycleMode:  LifecyclePersistent,
+		DiskPath:       fixture.disk.path,
+		State:          StateRunning,
+		PID:            999999999,
+		APISocketPath:  "/run/missing-firecracker.socket",
+		GuestIP:        "172.30.0.2",
+		GuestMAC:       "06:01:02:03:04:05",
+		TapName:        "tap0",
+		NetNSPath:      "/run/netns/test",
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}
+	if err := fixture.store.Write(metadata); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.manager.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	recovered, err := fixture.store.Read(testID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recovered.State != StateStopped || recovered.PID != 0 || recovered.APISocketPath != "" {
+		t.Fatalf("unexpected recovered metadata: %#v", recovered)
+	}
+	if fixture.network.released != 1 {
+		t.Fatalf("expected one network release, got %d", fixture.network.released)
+	}
+	if fixture.launcher.cleanups != 1 {
+		t.Fatalf("expected stale launcher artifacts to be cleaned, got %d calls", fixture.launcher.cleanups)
+	}
+	if _, err := fixture.manager.Start(context.Background(), testID); err != nil {
+		t.Fatalf("persistent VM must be restartable after crash recovery: %v", err)
+	}
+}
+
+func TestRecoverRetainsCleanupHandlesUntilNetworkReleaseCanBeRetried(t *testing.T) {
+	fixture := newFixture(t, nil)
+	now := time.Now().UTC()
+	metadata := Metadata{
+		SchemaVersion: 1, SessionID: testID,
+		ArtifactDigest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		Resources:      Resources{CPU: 1, VCPUs: 1, MemoryMiB: 512, DiskGiB: 2},
+		LifecycleMode:  LifecyclePersistent,
+		DiskPath:       fixture.disk.path,
+		State:          StateRunning,
+		PID:            999999999,
+		APISocketPath:  "/run/missing-firecracker.socket",
+		GuestIP:        "172.30.0.2",
+		GuestMAC:       "06:01:02:03:04:05",
+		TapName:        "tap0",
+		NetNSPath:      "/run/netns/test",
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}
+	if err := fixture.store.Write(metadata); err != nil {
+		t.Fatal(err)
+	}
+	fixture.network.releaseErr = errors.New("transient CNI cleanup failure")
+	if err := fixture.manager.Recover(context.Background()); !errors.Is(err, ErrUnavailable) {
+		t.Fatalf("expected fail-closed cleanup error, got %v", err)
+	}
+	failed, err := fixture.store.Read(testID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if failed.State != StateFailed ||
+		failed.PID != metadata.PID ||
+		failed.APISocketPath != metadata.APISocketPath ||
+		failed.NetNSPath != metadata.NetNSPath {
+		t.Fatalf("cleanup handles were lost after release failure: %#v", failed)
+	}
+
+	fixture.network.releaseErr = nil
+	if err := fixture.manager.Recover(context.Background()); err != nil {
+		t.Fatalf("cleanup retry failed: %v", err)
+	}
+	recovered, err := fixture.store.Read(testID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recovered.State != StateStopped || hasRuntimeCleanupHandles(recovered) {
+		t.Fatalf("cleanup retry did not produce restartable stopped metadata: %#v", recovered)
+	}
+	if fixture.network.released != 2 || fixture.launcher.cleanups != 2 {
+		t.Fatalf(
+			"expected both cleanup layers to retry, network=%d launcher=%d",
+			fixture.network.released,
+			fixture.launcher.cleanups,
+		)
+	}
+}
+
+func TestRecoverKeepsFailedCreateFailedWhenMutableDiskWasDeleted(t *testing.T) {
+	fixture := newFixture(t, nil)
+	now := time.Now().UTC()
+	fixture.disk.checkErr = os.ErrNotExist
+	metadata := Metadata{
+		SchemaVersion: 1, SessionID: testID,
+		ArtifactDigest: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		Resources:      Resources{CPU: 1, VCPUs: 1, MemoryMiB: 512, DiskGiB: 2},
+		LifecycleMode:  LifecyclePersistent,
+		DiskPath:       fixture.disk.path,
+		State:          StateFailed,
+		Failure:        "guest readiness failed",
+		PID:            999999999,
+		APISocketPath:  "/run/missing-firecracker.socket",
+		GuestIP:        "172.30.0.2",
+		GuestMAC:       "06:01:02:03:04:05",
+		TapName:        "tap0",
+		NetNSPath:      "/run/netns/test",
+		CreatedAt:      now,
+		UpdatedAt:      now,
+	}
+	if err := fixture.store.Write(metadata); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.manager.Recover(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	recovered, err := fixture.store.Read(testID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recovered.State != StateFailed ||
+		recovered.DiskPath != "" ||
+		hasRuntimeCleanupHandles(recovered) {
+		t.Fatalf("failed create was incorrectly promoted to restartable: %#v", recovered)
+	}
+	if snapshot := fixture.capacity.Snapshot(); snapshot.DiskGiBUsed != 0 {
+		t.Fatalf("missing failed-create disk remained reserved: %#v", snapshot)
+	}
+}
+
+func TestIsExpectedVMProcessAcceptsFirecrackerExecutable(t *testing.T) {
+	source, err := os.Open("/bin/sleep")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer source.Close()
+	executable := filepath.Join(t.TempDir(), "firecracker-test")
+	target, err := os.OpenFile(executable, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.Copy(target, source); err != nil {
+		_ = target.Close()
+		t.Fatal(err)
+	}
+	if err := target.Close(); err != nil {
+		t.Fatal(err)
+	}
+	process := exec.Command(executable, "30")
+	if err := process.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = process.Process.Kill()
+		_ = process.Wait()
+	}()
+	if !isExpectedVMProcess(process.Process.Pid) {
+		t.Fatal("Firecracker executable PID must be accepted for manager recovery")
+	}
+	if isExpectedVMProcess(os.Getpid()) {
+		t.Fatal("manager test process must not be accepted as a Firecracker VM")
 	}
 }

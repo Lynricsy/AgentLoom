@@ -11,8 +11,9 @@ import (
 )
 
 type orchestratorRepository struct {
-	migrations []MigrationRecord
-	rolledBack []string
+	migrations             []MigrationRecord
+	rolledBack             []string
+	runtimeHandleFinalized bool
 }
 
 func (repository *orchestratorRepository) ListPersistentSandboxes(context.Context) ([]LegacySandbox, error) {
@@ -41,6 +42,10 @@ func (repository *orchestratorRepository) MarkRolledBack(_ context.Context, sess
 	return nil
 }
 func (repository *orchestratorRepository) MarkFinalized(context.Context, string, time.Time) error {
+	return nil
+}
+func (repository *orchestratorRepository) FinalizeRuntimeHandleCutover(context.Context) error {
+	repository.runtimeHandleFinalized = true
 	return nil
 }
 
@@ -161,4 +166,46 @@ func testWorkspaceTar(t *testing.T, name string, content []byte) []byte {
 		t.Fatal(err)
 	}
 	return output.Bytes()
+}
+
+func TestFinalizeDropsLegacyRuntimeContractAfterRollbackWindow(t *testing.T) {
+	verifiedAt := time.Now().UTC().Add(-2 * time.Hour)
+	repository := &orchestratorRepository{migrations: []MigrationRecord{{
+		SessionID:         "11111111-1111-4111-8111-111111111111",
+		TenantID:          "tenant",
+		WorkspaceIdentity: "workspace",
+		LegacyContainerID: "legacy",
+		ArchiveObjectKey:  "archive",
+		ManifestObjectKey: "manifest",
+		VerifiedAt:        &verifiedAt,
+	}}}
+	orchestrator := Orchestrator{
+		Repository: repository,
+		Store:      orchestratorStore{},
+		Runtime:    &orchestratorRuntime{},
+		Legacy:     &orchestratorLegacy{},
+		Now:        func() time.Time { return verifiedAt.Add(2 * time.Hour) },
+	}
+	if err := orchestrator.FinalizeAll(context.Background(), time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	if !repository.runtimeHandleFinalized {
+		t.Fatal("legacy runtime column was not finalized")
+	}
+}
+
+func TestFinalizeRetriesLegacyColumnCleanupAfterRowsAreAlreadyFinalized(t *testing.T) {
+	repository := &orchestratorRepository{}
+	orchestrator := Orchestrator{
+		Repository: repository,
+		Store:      orchestratorStore{},
+		Runtime:    &orchestratorRuntime{},
+		Legacy:     &orchestratorLegacy{},
+	}
+	if err := orchestrator.FinalizeAll(context.Background(), time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	if !repository.runtimeHandleFinalized {
+		t.Fatal("zero-row finalize did not retry legacy runtime column cleanup")
+	}
 }

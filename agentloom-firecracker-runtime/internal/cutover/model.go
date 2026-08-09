@@ -143,4 +143,5 @@ type CutoverRepository interface {
 	ActivateCutover(context.Context) error
 	MarkRolledBack(context.Context, string, time.Time) error
 	MarkFinalized(context.Context, string, time.Time) error
+	FinalizeRuntimeHandleCutover(context.Context) error
 }

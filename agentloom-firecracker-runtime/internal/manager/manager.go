@@ -139,18 +139,36 @@ func (manager *Manager) Create(ctx context.Context, request CreateRequest) (Meta
 		var cleanupErrors []error
 		if instance != nil {
 			cleanupContext, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			cleanupErrors = append(cleanupErrors, instance.Kill(cleanupContext))
+			instanceCleanupErr := errors.Join(
+				instance.Kill(cleanupContext),
+				instance.Wait(cleanupContext),
+			)
 			cancel()
+			cleanupErrors = append(cleanupErrors, instanceCleanupErr)
+			if instanceCleanupErr == nil {
+				metadata.PID, metadata.APISocketPath = 0, ""
+			}
 		}
 		if allocation.TapName != "" {
-			cleanupErrors = append(cleanupErrors, manager.network.Release(context.Background(), metadata))
+			networkCleanupErr := manager.network.Release(context.Background(), metadata)
+			cleanupErrors = append(cleanupErrors, networkCleanupErr)
+			if networkCleanupErr == nil {
+				metadata.GuestIP, metadata.GuestMAC = "", ""
+				metadata.TapName, metadata.NetNSPath = "", ""
+			}
 		}
 		if diskCreated {
-			cleanupErrors = append(cleanupErrors, manager.disks.Delete(context.Background(), metadata.DiskPath))
+			diskCleanupErr := manager.disks.Delete(context.Background(), metadata.DiskPath)
+			cleanupErrors = append(cleanupErrors, diskCleanupErr)
+			if diskCleanupErr == nil {
+				metadata.DiskPath = ""
+			}
 		}
 		manager.capacity.Delete(request.ID)
 		metadata.State = StateFailed
-		metadata.Failure = cause.Error()
+		metadata.Failure = errors.Join(
+			append([]error{cause}, cleanupErrors...)...,
+		).Error()
 		metadata.UpdatedAt = manager.now().UTC()
 		cleanupErrors = append(cleanupErrors, manager.store.Write(metadata))
 		return Metadata{}, &OperationError{Kind: ErrUnavailable, Op: "create", Err: errors.Join(append([]error{cause}, cleanupErrors...)...)}
@@ -411,26 +429,61 @@ func (manager *Manager) Recover(ctx context.Context) error {
 			}
 		}
 		switch metadata.State {
-		case StateStopped, StateFailed:
+		case StateStopped:
+		case StateFailed:
+			if hasRuntimeCleanupHandles(metadata) {
+				cause := errors.New(metadata.Failure)
+				diskIsRestartable := false
+				if metadata.LifecycleMode == LifecyclePersistent && metadata.DiskPath != "" {
+					diskErr := manager.disks.Check(ctx, metadata.DiskPath)
+					diskIsRestartable = diskErr == nil
+					if errors.Is(diskErr, os.ErrNotExist) {
+						manager.capacity.Delete(metadata.SessionID)
+						metadata.DiskPath = ""
+					}
+				}
+				if diskIsRestartable {
+					if err := manager.reconcileStopped(metadata, cause); err != nil {
+						return err
+					}
+				} else if err := manager.reconcileFailed(metadata, cause); err != nil {
+					return err
+				}
+			}
 		case StateCreating, StateStopping:
-			manager.reconcileFailed(metadata, errors.New("manager interrupted a state transition"))
+			if err := manager.reconcileFailed(metadata, errors.New("manager interrupted a state transition")); err != nil {
+				return err
+			}
 		case StateRunning:
 			if err := manager.capacity.Reserve(metadata.SessionID, metadata.Resources, true); err != nil {
-				manager.reconcileFailed(metadata, err)
+				if cleanupErr := manager.reconcileFailed(metadata, err); cleanupErr != nil {
+					return cleanupErr
+				}
 				continue
 			}
 			if !isExpectedVMProcess(metadata.PID) {
-				manager.reconcileFailed(metadata, errors.New("recorded Firecracker process is not alive"))
+				cause := errors.New("recorded Firecracker process is not alive")
+				if metadata.LifecycleMode == LifecyclePersistent {
+					if err := manager.reconcileStopped(metadata, cause); err != nil {
+						return err
+					}
+				} else if err := manager.reconcileFailed(metadata, cause); err != nil {
+					return err
+				}
 				continue
 			}
 			token, err := manager.tokenRecoverer.Recover(ctx, metadata)
 			if err != nil {
-				manager.reconcileFailed(metadata, fmt.Errorf("recover guest token: %w", err))
+				if cleanupErr := manager.reconcileFailed(metadata, fmt.Errorf("recover guest token: %w", err)); cleanupErr != nil {
+					return cleanupErr
+				}
 				continue
 			}
 			instance, err := manager.launcher.Reattach(ctx, metadata, token)
 			if err != nil {
-				manager.reconcileFailed(metadata, fmt.Errorf("reattach Firecracker process: %w", err))
+				if cleanupErr := manager.reconcileFailed(metadata, fmt.Errorf("reattach Firecracker process: %w", err)); cleanupErr != nil {
+					return cleanupErr
+				}
 				continue
 			}
 			manager.live[metadata.SessionID] = liveVM{instance: instance, token: token}
@@ -441,24 +494,62 @@ func (manager *Manager) Recover(ctx context.Context) error {
 	return nil
 }
 
-func (manager *Manager) reconcileFailed(metadata Metadata, cause error) {
-	if isExpectedVMProcess(metadata.PID) {
-		process, err := os.FindProcess(metadata.PID)
-		if err == nil {
-			_ = process.Signal(syscall.SIGKILL)
+func (manager *Manager) reconcileStopped(metadata Metadata, cause error) error {
+	cleanupErr := errors.Join(
+		manager.launcher.Cleanup(context.Background(), metadata),
+		manager.network.Release(context.Background(), metadata),
+	)
+	manager.capacity.Deactivate(metadata.SessionID)
+	metadata.UpdatedAt = manager.now().UTC()
+	if cleanupErr != nil {
+		metadata.State = StateFailed
+		metadata.Failure = errors.Join(cause, cleanupErr).Error()
+		writeErr := manager.store.Write(metadata)
+		return &OperationError{
+			Kind: ErrUnavailable,
+			Op:   "reconcile stopped runtime",
+			Err:  errors.Join(cleanupErr, writeErr),
 		}
 	}
-	if err := manager.network.Release(context.Background(), metadata); err != nil {
-		manager.logger.Error("failed to release network while reconciling", "sessionId", metadata.SessionID, "error", err)
-	}
+	metadata.State, metadata.Failure = StateStopped, cause.Error()
+	clearRuntimeCleanupHandles(&metadata)
+	return manager.store.Write(metadata)
+}
+
+func (manager *Manager) reconcileFailed(metadata Metadata, cause error) error {
+	cleanupErr := errors.Join(
+		manager.launcher.Cleanup(context.Background(), metadata),
+		manager.network.Release(context.Background(), metadata),
+	)
 	manager.capacity.Deactivate(metadata.SessionID)
-	metadata.State, metadata.Failure = StateFailed, cause.Error()
+	metadata.State, metadata.Failure = StateFailed, errors.Join(cause, cleanupErr).Error()
+	metadata.UpdatedAt = manager.now().UTC()
+	if cleanupErr == nil {
+		clearRuntimeCleanupHandles(&metadata)
+	}
+	writeErr := manager.store.Write(metadata)
+	if cleanupErr != nil || writeErr != nil {
+		return &OperationError{
+			Kind: ErrUnavailable,
+			Op:   "reconcile failed runtime",
+			Err:  errors.Join(cleanupErr, writeErr),
+		}
+	}
+	return nil
+}
+
+func hasRuntimeCleanupHandles(metadata Metadata) bool {
+	return metadata.PID != 0 ||
+		metadata.APISocketPath != "" ||
+		metadata.GuestIP != "" ||
+		metadata.GuestMAC != "" ||
+		metadata.TapName != "" ||
+		metadata.NetNSPath != ""
+}
+
+func clearRuntimeCleanupHandles(metadata *Metadata) {
 	metadata.PID, metadata.APISocketPath = 0, ""
 	metadata.GuestIP, metadata.GuestMAC, metadata.TapName, metadata.NetNSPath = "", "", "", ""
-	metadata.UpdatedAt = manager.now().UTC()
-	if err := manager.store.Write(metadata); err != nil {
-		manager.logger.Error("failed to persist reconciliation", "sessionId", metadata.SessionID, "error", err)
-	}
 }
 
 func isExpectedVMProcess(pid int) bool {

@@ -3,6 +3,7 @@ package runtime
 import (
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
@@ -13,7 +14,7 @@ import (
 	"time"
 )
 
-func TestGuestCertificateIsEphemeralAndVerifiesForSNIAndIP(t *testing.T) {
+func TestGuestCertificateVerifiesForAllocatedIPAndClientRejectsSharedSNI(t *testing.T) {
 	root := t.TempDir()
 	caKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -63,5 +64,18 @@ func TestGuestCertificateIsEphemeralAndVerifiesForSNIAndIP(t *testing.T) {
 	}
 	if _, err := certificate.Verify(x509.VerifyOptions{Roots: pool, DNSName: "172.30.0.2"}); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := NewHTTPSGuestChecker(&tls.Config{
+		MinVersion: tls.VersionTLS13,
+		RootCAs:    pool,
+		ServerName: "agentloom-guest",
+	}, 8443); err == nil {
+		t.Fatal("guest client must not use the shared guest DNS name")
+	}
+	if _, err := NewHTTPSGuestChecker(&tls.Config{
+		MinVersion: tls.VersionTLS13,
+		RootCAs:    pool,
+	}, 8443); err != nil {
+		t.Fatalf("guest client must verify the allocated destination IP: %v", err)
 	}
 }
