@@ -20,6 +20,7 @@ import type {
 import {
   SandboxInvalidStateException,
   SandboxNotFoundException,
+  SandboxMaintenanceException,
   SandboxNotPersistentException,
   SandboxProcessesUnavailableException,
   SandboxStatsUnavailableException,
@@ -83,6 +84,12 @@ export class SandboxService {
     return getTenantDb(this.db);
   }
 
+  private assertRuntimeAvailable(action: 'create' | 'start'): void {
+    if (process.env.APP_SANDBOX_MAINTENANCE_MODE === 'true') {
+      throw new SandboxMaintenanceException(action);
+    }
+  }
+
   @OnEvent('agent-conversation.message-sent')
   async handleConversationMessageSent(payload: {
     conversationId: string;
@@ -102,6 +109,7 @@ export class SandboxService {
     agentConversationId,
     piConfigInput,
   }: CreateSandboxSessionParams): Promise<SandboxSession> {
+    this.assertRuntimeAvailable('create');
     const existing = await this.findActiveSession({
       executionId,
       agentConversationId,
@@ -1370,6 +1378,7 @@ export class SandboxService {
       conversationIdleAutoEndMinutes?: number;
     },
   ): Promise<SandboxSession> {
+    this.assertRuntimeAvailable('create');
     const config: SandboxConfig = {
       cpu: params.cpu,
       memory: params.memory,
@@ -1624,6 +1633,7 @@ export class SandboxService {
     sessionId: string,
     tenantId: string,
   ): Promise<SandboxSession> {
+    this.assertRuntimeAvailable('start');
     const session = await this.getSessionById(sessionId);
 
     if ((session.config.lifecycleMode ?? 'session') !== 'persistent') {

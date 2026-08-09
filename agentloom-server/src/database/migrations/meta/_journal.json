@@ -512,6 +512,13 @@
       "when": 1777795200000,
       "tag": "0072_generated_app_repair_attempt_plans",
       "breakpoints": true
+    },
+    {
+      "idx": 73,
+      "version": "7",
+      "when": 1786260158486,
+      "tag": "0073_giant_red_ghost",
+      "breakpoints": true
     }
   ]
 }

@@ -8,6 +8,7 @@ import { SandboxService } from '../sandbox.service';
 import { SandboxLifecycleProducer } from '../sandbox-lifecycle.producer';
 import {
   SandboxNotFoundException,
+  SandboxMaintenanceException,
   SandboxProcessesUnavailableException,
   SandboxStatsUnavailableException,
 } from '../sandbox.exceptions';
@@ -156,6 +157,7 @@ describe('SandboxService', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    delete process.env.APP_SANDBOX_MAINTENANCE_MODE;
     tenantTransactionMocks.hasActiveTenantTransaction.mockReturnValue(false);
     tenantTransactionMocks.registerAfterCommitHook.mockImplementation(() => {});
 
@@ -219,6 +221,23 @@ describe('SandboxService', () => {
   });
 
   describe('createSandboxSession', () => {
+    it('维护模式应在任何数据库写入前拒绝创建', async () => {
+      process.env.APP_SANDBOX_MAINTENANCE_MODE = 'true';
+
+      await expect(
+        service.createSandboxSession({
+          executionId: TEST_EXECUTION_ID,
+          sandboxNodeId: 'sandbox-1',
+          config: TEST_CONFIG,
+          tenantId: TEST_TENANT_ID,
+        }),
+      ).rejects.toBeInstanceOf(SandboxMaintenanceException);
+
+      expect(db.select).not.toHaveBeenCalled();
+      expect(db.insert).not.toHaveBeenCalled();
+      expect(mockLifecycleProducer.addCreateTask).not.toHaveBeenCalled();
+    });
+
     it('既存アクティブセッション無しの場合、新規セッションを作成してキューに投入', async () => {
       const newSession = buildSession();
 
@@ -1186,6 +1205,17 @@ describe('SandboxService', () => {
   });
 
   describe('startSandbox', () => {
+    it('维护模式应在查询运行时状态前拒绝启动', async () => {
+      process.env.APP_SANDBOX_MAINTENANCE_MODE = 'true';
+
+      await expect(
+        service.startSandbox(TEST_SESSION_ID, TEST_TENANT_ID),
+      ).rejects.toBeInstanceOf(SandboxMaintenanceException);
+
+      expect(db.select).not.toHaveBeenCalled();
+      expect(mockLifecycleProducer.addStartTask).not.toHaveBeenCalled();
+    });
+
     it('stopped 持久沙箱应复用原容器并入队 start 任务', async () => {
       const stoppedSession = buildSession({
         status: 'stopped',

@@ -134,6 +134,17 @@ export {
   type NewSandboxSession,
 } from './sandbox-sessions.schema';
 export {
+  sandboxRuntimeMigrationStatusEnum,
+  sandboxRuntimeMigrations,
+  type SandboxRuntimeMigration,
+  type NewSandboxRuntimeMigration,
+} from './sandbox-runtime-migrations.schema';
+export {
+  workspaceRuntimeLeases,
+  type WorkspaceRuntimeLease,
+  type NewWorkspaceRuntimeLease,
+} from './workspace-runtime-leases.schema';
+export {
   sandboxLogs,
   type SandboxLog,
   type NewSandboxLog,
