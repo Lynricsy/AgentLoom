@@ -1,4 +1,5 @@
 import type { Readable } from 'node:stream';
+import type { RequestInit } from 'undici';
 
 import type { SandboxConfig } from '../../database/schema';
 import type { PiConfigInput } from './pi-config-generator.service';
@@ -62,8 +63,11 @@ export interface SandboxRuntimeDriver {
     options?: RemoveContainerOptions,
   ): Promise<void>;
   healthCheck(containerId: string): Promise<boolean>;
-  getPromptUrl(containerId: string): Promise<string>;
-  getSessionUrl(containerId: string): Promise<string>;
+  requestGuest(
+    containerId: string,
+    path: string,
+    init?: RequestInit,
+  ): Promise<Response>;
   attachLogs(
     containerId: string,
     callback: (level: string, message: string) => void,
@@ -74,7 +78,22 @@ export interface SandboxRuntimeDriver {
     stream: Readable,
     path: string,
   ): Promise<void>;
-  getWorkspaceHostPath(containerId: string): Promise<string>;
+  readTextFile(
+    containerId: string,
+    path: string,
+    maxBytes: number,
+  ): Promise<Buffer>;
+  validateTextFileWrite(
+    containerId: string,
+    path: string,
+    maxBytes: number,
+  ): Promise<void>;
+  writeTextFile(
+    containerId: string,
+    path: string,
+    content: string,
+    maxBytes: number,
+  ): Promise<void>;
   createExec(
     containerId: string,
     options: DockerExecCreateOptions,

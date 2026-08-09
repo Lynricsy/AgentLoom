@@ -76,6 +76,26 @@ const baseEnvSchema = z.object({
     .enum(['true', 'false'])
     .default('false')
     .transform((value) => value === 'true'),
+  APP_FIRECRACKER_RUNTIME_URL: z
+    .string()
+    .url()
+    .default('https://firecracker-runtime:8443'),
+  APP_FIRECRACKER_RUNTIME_CA: z
+    .string()
+    .min(1)
+    .default('/run/secrets/firecracker-client/ca.crt'),
+  APP_FIRECRACKER_RUNTIME_CERT: z
+    .string()
+    .min(1)
+    .default('/run/secrets/firecracker-client/tls.crt'),
+  APP_FIRECRACKER_RUNTIME_KEY: z
+    .string()
+    .min(1)
+    .default('/run/secrets/firecracker-client/tls.key'),
+  APP_FIRECRACKER_RUNTIME_SERVER_NAME: z
+    .string()
+    .min(1)
+    .default('firecracker-runtime'),
   APP_QDRANT_URL: z.string().url().default('http://localhost:6333'),
 });
 

@@ -52,6 +52,7 @@ type Server struct {
 	metadata    Metadata
 	proxy       *httputil.ReverseProxy
 	certificate *tls.Certificate
+	runtime     *RuntimeAPI
 }
 
 func NewServer(config Config, metadata Metadata) (*Server, error) {
@@ -94,7 +95,7 @@ func NewServer(config Config, metadata Metadata) (*Server, error) {
 		config.Logger.Warn("node runtime unavailable", "path", request.URL.Path, "error", err)
 		http.Error(response, "guest runtime unavailable", http.StatusServiceUnavailable)
 	}
-	return &Server{config: config, metadata: metadata, proxy: proxy, certificate: certificate}, nil
+	return &Server{config: config, metadata: metadata, proxy: proxy, certificate: certificate, runtime: NewRuntimeAPI()}, nil
 }
 
 func (server *Server) Handler() http.Handler {
@@ -104,6 +105,11 @@ func (server *Server) Handler() http.Handler {
 			subtle.ConstantTimeCompare([]byte(provided), []byte(server.metadata.Token)) != 1 {
 			response.Header().Set("WWW-Authenticate", "Bearer")
 			http.Error(response, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		request.Header.Del("Authorization")
+		if strings.HasPrefix(request.URL.Path, "/v1/runtime/") {
+			server.runtime.ServeHTTP(response, request)
 			return
 		}
 		if request.Method == http.MethodGet && request.URL.Path == "/health" {
@@ -120,7 +126,6 @@ func (server *Server) Handler() http.Handler {
 			})
 			return
 		}
-		request.Header.Del("Authorization")
 		server.proxy.ServeHTTP(response, request)
 	})
 }

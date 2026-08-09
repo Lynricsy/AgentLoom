@@ -77,8 +77,8 @@ const PROVIDER_BASE_URL_MAP: Record<string, string> = {
 
 /**
  * Maps provider name → environment variable name for API key.
- * pi-mono's resolveConfigValue() looks up process.env[value] first,
- * so these match the env vars injected by DockerService.createContainer().
+ * pi-mono's resolveConfigValue() looks up process.env[value] first; the
+ * Firecracker guest session factory injects these names into its in-memory runtime config.
  */
 const PROVIDER_API_KEY_ENV_MAP: Record<string, string> = {
   anthropic: 'ANTHROPIC_API_KEY',

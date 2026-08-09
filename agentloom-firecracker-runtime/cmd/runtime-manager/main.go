@@ -108,8 +108,9 @@ func main() {
 	fatalIf(logger, err, "load manager mTLS identity")
 	httpServer := &http.Server{
 		Addr: config.Listen, Handler: apiServer.Handler(), TLSConfig: serverTLS,
-		ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 65 * time.Second, WriteTimeout: 65 * time.Second,
-		IdleTimeout: 90 * time.Second, MaxHeaderBytes: 32 * 1024,
+		ReadHeaderTimeout: 5 * time.Second,
+		IdleTimeout:       90 * time.Second,
+		MaxHeaderBytes:    32 * 1024,
 	}
 	callbackServer := &http.Server{
 		Addr: "0.0.0.0:18080", Handler: apiServer.CallbackHandler(),

@@ -4,7 +4,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { StorageModule } from '../../infrastructure/storage';
 import { ApiKeyModule } from '../api-key/api-key.module';
 import { SandboxService } from './sandbox.service';
-import { DockerService } from './docker.service';
+import { FirecrackerRuntimeService } from './firecracker-runtime.service';
 import { SandboxLifecycleProducer } from './sandbox-lifecycle.producer';
 import { SandboxLifecycleWorker } from './sandbox-lifecycle.worker';
 import { SandboxController } from './sandbox.controller';
@@ -29,10 +29,10 @@ import { SANDBOX_RUNTIME_DRIVER } from './sandbox-runtime-driver.port';
   controllers: [SandboxController],
   providers: [
     SandboxService,
-    DockerService,
+    FirecrackerRuntimeService,
     {
       provide: SANDBOX_RUNTIME_DRIVER,
-      useExisting: DockerService,
+      useExisting: FirecrackerRuntimeService,
     },
     SandboxLifecycleProducer,
     SandboxLifecycleWorker,
@@ -40,7 +40,7 @@ import { SANDBOX_RUNTIME_DRIVER } from './sandbox-runtime-driver.port';
   ],
   exports: [
     SandboxService,
-    DockerService,
+    FirecrackerRuntimeService,
     SANDBOX_RUNTIME_DRIVER,
     SandboxLifecycleProducer,
     PiConfigGeneratorService,

@@ -1,12 +1,4 @@
-import {
-  access,
-  lstat,
-  readFile,
-  realpath,
-  stat,
-  writeFile,
-} from 'node:fs/promises';
-import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
+import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { Inject, Injectable } from '@nestjs/common';
 import { and, eq, inArray } from 'drizzle-orm';
 import { DRIZZLE, type DrizzleDB } from '../../../database/database.module';
@@ -25,11 +17,11 @@ const ACTIVE_SANDBOX_STATUSES = ['ready', 'busy'] as const;
 
 interface SandboxSessionAccess {
   readonly containerId: string | null;
-  readonly workspacePath: string | null;
 }
 
 interface SandboxResolvedTarget {
-  readonly hostPath: string;
+  readonly runtimeHandle: string;
+  readonly guestPath: string;
 }
 
 export interface SandboxReadTextFileParams {
@@ -59,42 +51,39 @@ export class AcpFilesystemSandboxService {
       params.path,
       'read',
     );
-    const targetStats = await this.readFileStats(target.hostPath);
-
-    if (!targetStats.isFile()) {
-      throw this.createSandboxError(
-        'ACP server sandbox path must reference a regular file',
-        'sandbox_target_not_file',
+    let content: Buffer;
+    try {
+      content = await this.dockerService.readTextFile(
+        target.runtimeHandle,
+        target.guestPath,
+        MAX_TEXT_FILE_BYTES,
       );
+    } catch (error) {
+      throw this.mapRuntimeFileError(error, 'read');
     }
-
-    if (targetStats.size > MAX_TEXT_FILE_BYTES) {
-      throw this.createSandboxError(
-        'ACP server sandbox file exceeds size limit',
-        'sandbox_file_too_large',
-      );
-    }
-
-    const content = await readFile(target.hostPath);
-
-    if (this.isBinaryBuffer(content)) {
+    if (content.includes(0)) {
       throw this.createSandboxError(
         'ACP server sandbox file is binary and cannot be read as text',
         'sandbox_binary_file',
       );
     }
-
-    return {
-      text: content.toString('utf8'),
-    };
+    return { text: content.toString('utf8') };
   }
 
   async writeTextFile(
     params: SandboxWriteTextFileParams,
   ): Promise<{ success: true }> {
     const target = await this.prepareWriteTarget(params);
-
-    await writeFile(target.hostPath, params.content, 'utf8');
+    try {
+      await this.dockerService.writeTextFile(
+        target.runtimeHandle,
+        target.guestPath,
+        params.content,
+        MAX_TEXT_FILE_BYTES,
+      );
+    } catch (error) {
+      throw this.mapRuntimeFileError(error, 'write');
+    }
 
     return {
       success: true,
@@ -112,88 +101,31 @@ export class AcpFilesystemSandboxService {
     pathValue: string,
     operation: 'read' | 'write',
   ): Promise<SandboxResolvedTarget> {
-    const workspaceRoot = await this.resolveWorkspaceRoot(trackedSession);
-    const workspaceRealPath = await this.resolveRealPath(
-      workspaceRoot,
-      'sandbox_workspace_unavailable',
-      'ACP server sandbox workspace is unavailable',
-    );
+    const runtimeHandle = await this.resolveRuntimeHandle(trackedSession);
     const logicalPath = this.resolveLogicalSandboxPath(
       pathValue,
       trackedSession,
     );
     const relativeWorkspacePath = this.toWorkspaceRelativePath(logicalPath);
-
     if (relativeWorkspacePath === '') {
       throw this.createSandboxError(
         'ACP server sandbox path must reference a file inside workspace',
         'sandbox_workspace_root_targeted',
       );
     }
-
-    const candidatePath = resolve(workspaceRealPath, relativeWorkspacePath);
-
-    if (operation === 'read') {
-      const resolvedTargetPath = await this.resolveRealPath(
-        candidatePath,
-        'sandbox_path_missing',
-        'ACP server sandbox path does not exist',
-      );
-
-      this.ensureWithinWorkspace(
-        resolvedTargetPath,
-        workspaceRealPath,
-        'sandbox_path_escaped_workspace',
-      );
-
-      return {
-        hostPath: resolvedTargetPath,
-      };
-    }
-
-    const targetExists = await this.pathExists(candidatePath);
-
-    if (targetExists) {
-      const resolvedTargetPath = await this.resolveRealPath(
-        candidatePath,
-        'sandbox_path_missing',
-        'ACP server sandbox path does not exist',
-      );
-
-      this.ensureWithinWorkspace(
-        resolvedTargetPath,
-        workspaceRealPath,
-        'sandbox_path_escaped_workspace',
-      );
-
-      const targetStats = await this.readFileStats(resolvedTargetPath);
-      if (!targetStats.isFile()) {
-        throw this.createSandboxError(
-          'ACP server sandbox path must reference a regular file',
-          'sandbox_target_not_file',
+    const guestPath = resolve(SANDBOX_WORKSPACE_ROOT, relativeWorkspacePath);
+    if (operation === 'write') {
+      try {
+        await this.dockerService.validateTextFileWrite(
+          runtimeHandle,
+          guestPath,
+          MAX_TEXT_FILE_BYTES,
         );
+      } catch (error) {
+        throw this.mapRuntimeFileError(error, 'write');
       }
-
-      return {
-        hostPath: resolvedTargetPath,
-      };
     }
-
-    const parentRealPath = await this.resolveRealPath(
-      dirname(candidatePath),
-      'sandbox_parent_missing',
-      'ACP server sandbox parent directory does not exist',
-    );
-
-    this.ensureWithinWorkspace(
-      parentRealPath,
-      workspaceRealPath,
-      'sandbox_path_escaped_workspace',
-    );
-
-    return {
-      hostPath: candidatePath,
-    };
+    return { runtimeHandle, guestPath };
   }
 
   private async prepareWriteTarget(
@@ -257,50 +189,38 @@ export class AcpFilesystemSandboxService {
     return relativePath;
   }
 
-  private async resolveWorkspaceRoot(
+  private async resolveRuntimeHandle(
     trackedSession: AcpTrackedSession,
   ): Promise<string> {
     const binding = this.readSandboxBinding(trackedSession);
-
     const sandboxSession = await runInTenantTransaction(
       this.db,
       trackedSession.tenantId,
       async (dbClient) => {
         const rows = await dbClient
-          .select({
-            containerId: sandboxSessions.containerId,
-            workspacePath: sandboxSessions.workspacePath,
-          })
+          .select({ containerId: sandboxSessions.containerId })
           .from(sandboxSessions)
           .where(this.buildActiveSandboxWhere(trackedSession.tenantId, binding))
           .limit(1);
-
         return rows[0] satisfies SandboxSessionAccess | undefined;
       },
     );
-
     if (!sandboxSession) {
       throw this.createSandboxError(
         'ACP server sandbox session is unavailable',
         'sandbox_session_unavailable',
       );
     }
-
-    if (this.isTrustedWorkspacePath(sandboxSession.workspacePath)) {
-      return resolve(sandboxSession.workspacePath);
-    }
-
     if (
       typeof sandboxSession.containerId !== 'string' ||
       sandboxSession.containerId.length === 0
     ) {
       throw this.createSandboxError(
-        'ACP server sandbox workspace is unavailable',
+        'ACP server sandbox runtime is unavailable',
         'sandbox_workspace_unavailable',
       );
     }
-
-    return this.dockerService.getWorkspaceHostPath(sandboxSession.containerId);
+    return sandboxSession.containerId;
   }
 
   private buildActiveSandboxWhere(
@@ -359,86 +279,32 @@ export class AcpFilesystemSandboxService {
     };
   }
 
-  private isTrustedWorkspacePath(
-    workspacePath: string | null,
-  ): workspacePath is string {
-    if (typeof workspacePath !== 'string' || workspacePath.length === 0) {
-      return false;
+  private mapRuntimeFileError(
+    error: unknown,
+    operation: 'read' | 'write',
+  ): AcpJsonRpcError {
+    if (error instanceof AcpJsonRpcError) {
+      return error;
     }
-
-    const normalizedPath = resolve(workspacePath);
-    return (
-      isAbsolute(normalizedPath) && normalizedPath !== SANDBOX_WORKSPACE_ROOT
+    const detail = error instanceof Error ? error.message : String(error);
+    if (detail.includes('413')) {
+      return this.createSandboxError(
+        operation === 'read'
+          ? 'ACP server sandbox file exceeds size limit'
+          : 'ACP server sandbox content exceeds size limit',
+        operation === 'read'
+          ? 'sandbox_file_too_large'
+          : 'sandbox_content_too_large',
+      );
+    }
+    return this.createSandboxError(
+      operation === 'read'
+        ? 'ACP server sandbox path does not exist'
+        : 'ACP server sandbox write target is unavailable',
+      operation === 'read'
+        ? 'sandbox_path_missing'
+        : 'sandbox_path_escaped_workspace',
     );
-  }
-
-  private ensureWithinWorkspace(
-    resolvedPath: string,
-    workspaceRoot: string,
-    reason: string,
-  ) {
-    const relativePath = relative(workspaceRoot, resolvedPath);
-
-    if (
-      relativePath === '..' ||
-      relativePath.startsWith(`..${sep}`) ||
-      isAbsolute(relativePath)
-    ) {
-      throw this.createSandboxError(
-        'ACP server sandbox path escapes workspace',
-        reason,
-      );
-    }
-  }
-
-  private async resolveRealPath(
-    pathValue: string,
-    reason: string,
-    message: string,
-  ): Promise<string> {
-    try {
-      return await realpath(pathValue);
-    } catch {
-      throw this.createSandboxError(message, reason);
-    }
-  }
-
-  private async pathExists(pathValue: string): Promise<boolean> {
-    try {
-      await access(pathValue);
-      return true;
-    } catch {
-      return false;
-    }
-  }
-
-  private async readFileStats(pathValue: string) {
-    try {
-      const fileStats = await stat(pathValue);
-      const fileLstat = await lstat(pathValue);
-
-      if (fileLstat.isSymbolicLink() && !fileStats.isFile()) {
-        throw this.createSandboxError(
-          'ACP server sandbox symlink target is not a regular file',
-          'sandbox_symlink_invalid_target',
-        );
-      }
-
-      return fileStats;
-    } catch (error) {
-      if (error instanceof AcpJsonRpcError) {
-        throw error;
-      }
-
-      throw this.createSandboxError(
-        'ACP server sandbox path does not exist',
-        'sandbox_path_missing',
-      );
-    }
-  }
-
-  private isBinaryBuffer(content: Buffer): boolean {
-    return content.includes(0);
   }
 
   private createSandboxError(message: string, reason: string): AcpJsonRpcError {
