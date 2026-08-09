@@ -2,65 +2,46 @@
 
 ## 概览
 
-`agentloom-deploy/` 是私有化部署 bundle，提供单机 Docker Compose、Kubernetes Helm Chart、Nginx 反向代理、备份恢复脚本与 systemd 定时任务。目标：让企业在自有基础设施上一键拉起完整 AgentLoom 实例。
+`agentloom-deploy/` 是私有化部署 bundle，提供单机 Docker Compose、Kubernetes Helm Chart、Firecracker node-local sandbox control plane、Nginx 反向代理、备份恢复脚本与 systemd 定时任务。
 
 ## 目录结构
 
 ```
 agentloom-deploy/
-├── .env.template                      # 根环境变量模板（Compose/Helm 共用契约）
-├── docker-compose.yml                 # 根 Compose 入口（8 服务）
-├── nginx.conf                         # 反向代理配置
-├── docker/
-│   ├── docker-compose.prod.yml        # Compose 变体（与根 Compose 存在重复）
-│   ├── server.Dockerfile              # server/worker 共用镜像
-│   └── studio.Dockerfile              # Studio 静态资源镜像（运行时 sed 注入 VITE_*）
-├── envs/
-│   ├── .env.shared.example            # 共享变量拆分视图
-│   ├── .env.server.example            # Server 专属变量
-│   └── .env.studio.example            # Studio 专属变量
-├── kubernetes/helm/agentloom/         # Helm Chart
-│   ├── Chart.yaml
-│   ├── values.yaml                    # 默认 values
-│   ├── values.private.yaml            # 生产 overlay（2 副本、TLS、大容量 PVC）
-│   └── templates/                     # 15 个模板（含 BYOD fail() 守卫的 _helpers.tpl）
-├── sandbox/                           # 沙箱容器镜像与 HTTP 适配层
-│   ├── build.sh                       # 构建 agentloom/sandbox:latest 镜像
-│   ├── Dockerfile                     # archlinux + pi-coding-agent + Fastify HTTP
-│   ├── src/                           # Fastify v5 HTTP 适配层（server.ts, acp-adapter.ts, event-stream.ts, extension-factory.ts）
-│   └── test/                          # 容器 HTTP 适配层测试
+├── docker-compose.yml                  # 主 Compose；仅 runtime manager privileged
+├── docker/                             # server/worker/studio/docs 镜像
+├── firecracker/                        # artifact lock、kernel/rootfs/initramfs、CNI/nft、runtime image
+├── sandbox/                            # Firecracker guest 内 Fastify runtime 适配层
+├── kubernetes/helm/agentloom/          # singleton runtime StatefulSet + 应用与依赖
 ├── scripts/
-│   ├── init-db.sh                     # 数据库初始化（Supabase 兼容角色 bootstrap + migrate + seed）
-│   ├── backup-postgres.sh             # pg_dump -Fc + sha256 校验 + 结构验证
-│   ├── backup-minio.sh               # mc mirror 对象备份
-│   └── restore.sh                     # PG + MinIO 恢复（含前置校验与烟雾测试）
-├── systemd/                           # 备份定时任务（4 个 unit 文件）
-├── backups/                           # 备份输出目录（PG + MinIO）
-└── README.md                          # 私有部署手册
+│   ├── generate-firecracker-pki.sh     # manager/client/guest 独立 CA
+│   ├── init-db.sh
+│   ├── backup-postgres.sh
+│   ├── backup-minio.sh
+│   └── restore.sh
+├── systemd/                            # PostgreSQL / MinIO 备份定时任务
+└── README.md                           # operator runbook、cutover、容量与备份责任
 ```
 
 ## Docker Compose 部署
 
-`docker-compose.yml` 定义 8 个服务，共享单一命名网络 `agentloom-private`：
+`docker-compose.yml` 的应用服务由 Docker 承载，但 sandbox 隔离边界固定为 Firecracker microVM：
 
-| 服务 | 镜像 | 说明 |
-|------|------|------|
-| `reverse-proxy` | nginx:1.27-alpine | 唯一对外入口（默认 `:8080`） |
-| `studio` | agentloom/studio | 前端静态站，内部监听 `:8080` |
-| `server` | agentloom/server | API + Socket.IO + BullMQ |
-| `worker` | agentloom/server（同镜像） | 部署拓扑拆分，运行同一 `node dist/src/main.js` |
-| `postgres` | postgres:16-alpine | 持久卷 `postgres_data` |
-| `redis` | redis:7-alpine | AOF 持久化，requirepass |
-| `minio` | minio/minio:latest | 回环绑定 Console `:9001` |
-| `qdrant` | qdrant/qdrant:v1.17.0 | 回环绑定 HTTP `:6333` |
+| 服务 | 权限与职责 |
+|------|------------|
+| `reverse-proxy` / `studio` | 唯一 Web 入口与静态站 |
+| `server` / `worker` | 普通 mTLS runtime client；无 Docker socket、KVM、NET_ADMIN、SYS_ADMIN |
+| `firecracker-runtime` | singleton privileged control plane；独占 KVM、TUN、cgroup、CNI/nft 与 mutable disk |
+| `sandbox-cutover` | `migration` profile 一次性工具；仅 legacy export/rollback/finalize 临时挂载 Docker socket |
+| `postgres` / `redis` / `minio` / `qdrant` | 数据依赖 |
 
-Server 与 Worker 使用同一 Docker 镜像、同一启动命令。Worker 不暴露到外网，仅作水平扩展用途。MinIO Console 和 Qdrant HTTP 只绑定 `127.0.0.1`，需 SSH 隧道访问。`reverse-proxy` 的 `nginx.conf` 现通过 Docker embedded DNS（`127.0.0.11`）做运行时上游解析，避免 Compose 重建 `server/studio/docs/supabase-kong` 后因容器换 IP 出现 stale upstream。
+runtime manager 的 8443 仅在 internal `app_net` 暴露并强制 TLS 1.3 mTLS。server 与 worker 分别设置 callback base URL，guest remote tool 与 permission callback 经 manager allowlisted relay 返回创建 session 的同一进程。
 
 ## Kubernetes 部署
 
-Chart 路径：`kubernetes/helm/agentloom/`，包含 15 个模板文件。
+Chart 在 `kubernetes/helm/agentloom/`。`firecracker-runtime` 使用 replicas=1 StatefulSet、RWO state PVC、privileged security context 和 `/dev/kvm`、`/dev/net/tun`、cgroup hostPath；必须通过 nodeSelector 固定到经过预检的唯一 x86_64 Linux 节点。manager Pod 挂载 `agentloom-firecracker-manager-pki`；server/worker 只读挂载不含 guest CA 私钥的 `agentloom-firecracker-client-pki`，worker 的内部 Service 只供 callback relay。
 
-`_helpers.tpl` 内置 BYOD `fail()` 守卫：当内置依赖（PG/Redis/MinIO/Qdrant）被禁用但未提供外部连接信息时，`helm install` 直接报错。`values.private.yaml` 为生产 overlay：server 2 副本、TLS Ingress、PG 50Gi、MinIO 100Gi。每个依赖通过 `*.enabled` 开关控制是否部署内置实例。
+`_helpers.tpl` 保留 BYOD `fail()` 守卫；PG/Redis/MinIO/Qdrant 禁用时必须提供外部连接。runtime state volume 不能多写或跨节点透明漂移。
 
 ## 备份与恢复
 
@@ -199,15 +180,11 @@ docker compose down -v         # 停止并移除容器+卷（完全重置数据�
 - private 模式下 `APP_SUPABASE_*` 三个变量遵循"全空或全填"契约，全空时 Supabase 相关认证链路不可用
 - `docker-compose.supabase.yml` 中 `supabase-auth` 与 `supabase-kong` 的资源限制现通过 env 变量控制；当前默认基线为 Auth `1 CPU / 1GiB`、Kong `1 CPU / 1GiB`，Kong healthcheck 为 `kong health`，`timeout=10s`、`retries=10`、`start_period=30s`
 
-## 沙箱容器 (sandbox/)
+## Firecracker Sandbox
 
-`sandbox/` 子目录包含独立的 Agent 沙箱容器镜像构建与 HTTP 适配层：
-
-- **镜像**: `agentloom/sandbox:latest`，基于 archlinux，内嵌 `pi-coding-agent` 运行时 + Fastify v5 HTTP 适配层
-- **构建**: `bash sandbox/build.sh` 执行 Docker build
-- **端点**: `POST /v1/session`（创建会话）、`POST /v1/prompt`（SSE 流式应答）、`POST /v1/abort`（取消）、`GET /health`（健康检查）
-- **SSE keepalive**: `/v1/prompt` 在等待真实 agent 事件期间会每 15 秒输出一次 `: ping\n\n` heartbeat comment，直到 `done/error` 终态或连接关闭，避免 server <-> sandbox 长静默链路被中间层按 idle timeout 提前掐断
-- **配置挂载**: Server 通过 `PiConfigGeneratorService` 生成 `settings.json`、`models.json`、`system-prompt.md`，bind-mount 到容器 `/config/`
-- **LLM API Key**: 通过容器环境变量注入（ANTHROPIC_API_KEY、OPENAI_API_KEY 等）
-- **工具权限**: 仅当 `/v1/prompt` 显式传入 `permissionCallbackUrl` 时，容器才会回调 AgentLoom 请求工具权限，30s 超时默认拒绝；当前普通 Agent 对话主路径默认不启用该链路
-- **测试**: `npm test` 运行 Vitest 单元测试（mock session factory，无需真实 pi-coding-agent）
+- `firecracker/artifact-lock.json` 固定 Firecracker v1.16.1、kernel、BusyBox 与 Arch OCI digest；`build-artifacts.sh` 清理旧 kernel output、校验所有上游 SHA-256 和 ELF64 x86-64 `vmlinux`，构建 initramfs、2GiB ext4 rootfs、Firecracker/jailer 和静态 `agentloom-guestd`，并生成 runtime 启动时再次验证的 manifest。
+- `sandbox/` 是 guest rootfs 内的 Fastify v5 适配层，提供 `/v1/session`、`/v1/prompt` SSE、`/v1/abort`、PTY、workspace archive 与 runtime exec；guest `/etc/resolv.conf` 指向 kernel IP autoconfiguration 的 `/proc/net/pnp`。
+- `agentloom-firecracker-runtime` 的 manager 使用官方 jailer、per-VM netns/TAP/CNI、host-veth tc IPv4/MAC/ARP source enforcement、nftables egress、cgroup 资源限制和 per-session ext4 mutable disk；guest kernel 禁用 IPv6。Compose/Helm 仅 manager 加入宿主 PID/cgroup namespace；cold recovery 会在清理 jail/cgroup/PID/netns 全部成功后把 persistent VM 收口为可重启 stopped，任何清理失败都保留 handle 并 fail closed。
+- manager API 与 guest API 分属独立 mTLS 信任域。manager 按分配的 guest IP 校验证书 IP SAN，不使用共享 DNS SNI；server/worker 没有 guest bearer token或 CA 私钥；guest callback 只能通过 manager relay 到配置的 server/worker host。Compose 中 manager 独占 `sandbox_egress_net`，应用内部服务仍只使用 internal 网络。
+- `sandbox-cutover` 要求 maintenance=true、execution/prompt/queue 全部 drained。export/restore 使用 MinIO archive+manifest checksum；activate 写入 opaque `runtime_handle`；rollback 先从 Firecracker 导出最新写入再回灌 legacy volume；finalize 过 rollback window 后删除 legacy container/volume/object 与 `container_id`。`firecracker/test/cutover-rehearsal.sh` 使用隔离 database/bucket/queue 与真实 KVM 自动验证 fail-closed、rollback 和 finalize。
+- 当前 production topology 为单节点 singleton manager。operator 负责 KVM/TUN/cgroup v2、支持内核、SMT deny、guest CIDR 冲突、容量、egress allowlist，以及 runtime state 冷快照；persistent workspace 的权威备份是同步到 MinIO 的 Workspace snapshot。

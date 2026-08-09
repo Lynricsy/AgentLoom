@@ -1,8 +1,8 @@
 # AgentLoom 私有部署资产
 
-这套 `agentloom-deploy/` 目录是当前仓库现实下的私有部署 bundle，覆盖 Docker Compose、Nginx、Helm、环境变量模板，以及 PostgreSQL / MinIO 的备份恢复脚本。它只描述**当前代码已经支持**的部署方式，不假设未来才会出现的 worker-only 入口、独立 API runtime，或额外的运维平台能力。
+这套 `agentloom-deploy/` 目录覆盖 Docker Compose、Nginx、Helm、Firecracker runtime manager、环境变量模板，以及 PostgreSQL / MinIO 的备份恢复脚本。Docker 只承载部署服务；sandbox 隔离边界固定为 Firecracker microVM。
 
-> 关键现实约束：`agentloom-server` 当前只有 `start:prod = node dist/src/main.js`，而 `main.ts` 会启动完整的 Nest runtime（HTTP + Socket.IO + BullMQ processors + 启动期 scheduler）。因此这里保留了 `server(api)` 和 `worker` 两个部署单元，但它们**复用同一镜像、同一启动命令**，只是部署拓扑拆分，**不是运行职责隔离**。当前 `server` 和 `worker` 都会处理队列；对外暴露只由 Nginx / Ingress 指向 `server`。
+`server` 和 `worker` 复用同一 Nest 镜像和启动命令，但都只是 mTLS runtime client。两者不挂载 Docker socket、不访问 `/dev/kvm`，也不管理 TAP、network namespace 或 cgroup；这些权限只属于 singleton `firecracker-runtime`。
 
 ## 目录说明
 
@@ -19,11 +19,13 @@ agentloom-deploy/
 │   ├── .env.shared.example               # shared env contract
 │   ├── .env.server.example               # server-only env contract
 │   └── .env.studio.example               # studio-only env contract
-├── kubernetes/helm/agentloom/            # 私有部署 Helm chart
+├── firecracker/                          # 可复现 kernel/rootfs/Firecracker 构建与网络模板
+├── kubernetes/helm/agentloom/            # 含 singleton runtime manager 的私有部署 Helm chart
 └── scripts/
+    ├── generate-firecracker-pki.sh       # 生成 manager/client/guest 三个 mTLS 信任域
     ├── init-db.sh                        # 用 server 镜像执行 migrate/seed
     ├── backup-postgres.sh                # pg_dump -Fc
-    ├── backup-minio.sh                   # mc mirror 备份 bucket
+    ├── backup-minio.sh                    # mc mirror 备份 bucket
     └── restore.sh                        # PostgreSQL + MinIO 恢复与烟雾检查
 ```
 
@@ -40,7 +42,8 @@ cp agentloom-deploy/.env.template agentloom-deploy/.env
 `agentloom-deploy/.env.template` 汇总了 Compose 与 Helm 共享的环境合同，变量名和应用真实代码对齐，包括：
 
 - shared：`APP_DEPLOYMENT_MODE`、`APP_DATABASE_URL`、`APP_REDIS_URL`、`APP_MINIO_*`、`APP_QDRANT_URL`
-- server：`APP_JWT_SECRET`、`APP_MASTER_ENCRYPTION_KEY`、`APP_SUPABASE_*`、`APP_FRONTEND_URL`、`APP_OAUTH_REDIRECT_URL`、`HOST_DOCKER_GID`
+- server：`APP_JWT_SECRET`、`APP_MASTER_ENCRYPTION_KEY`、`APP_SUPABASE_*`、`APP_FRONTEND_URL`、`APP_OAUTH_REDIRECT_URL`
+- Firecracker：`FIRECRACKER_MAX_*`、`FIRECRACKER_GUEST_CIDR`、`FIRECRACKER_SMT_POLICY`、`APP_SANDBOX_MAINTENANCE_MODE`
 - studio：`VITE_API_BASE_URL`、`VITE_AUTOSAVE_DEBOUNCE_MS`、`VITE_SUPABASE_URL`、`VITE_SUPABASE_ANON_KEY`
 - 运维自动化：`POSTGRES_BACKUP_RETENTION_DAYS`、`MINIO_BACKUP_RETENTION_DAYS`
 
@@ -73,17 +76,19 @@ cp agentloom-deploy/.env.template agentloom-deploy/.env
 - `studio`：前端静态站点，默认使用 `VITE_API_BASE_URL=/api/v1`
 - `server`：对外 API / Socket.IO 暴露点，同时也会处理队列
 - `worker`：内部-only 部署单元，**仍然运行完整的 `node dist/src/main.js`**，并非 worker-only 进程
+- `firecracker-runtime`：唯一具备 KVM、TUN、cgroup 与网络管理权限的 node-local control plane；为每个 sandbox 创建独立 microVM，并通过 mTLS guest proxy 提供 prompt、文件、PTY 和 exec 能力
 - `postgres`
 - `redis`
 - `minio`
 - `qdrant`：向量数据库，默认镜像 `qdrant/qdrant:v1.17.0`，与服务端当前使用的 Qdrant JS client 1.17.x 保持兼容
 
-### 单机部署资源与网络基线
+### 单节点资源、内核与网络基线
 
-- 最小建议：4 vCPU / 8 GiB RAM / 100 GiB SSD；若要在同一主机上同时保留 7 天 PostgreSQL + MinIO 备份，建议预留额外 100 GiB 以上备份盘空间。
-- `reverse-proxy` 当前使用 Docker embedded DNS（`127.0.0.11`）做运行时上游解析，避免 `server` / `studio` / `docs` / `supabase-kong` 在 Compose 重建后换 IP 时，Nginx 继续把流量打到旧容器地址。
-- 对外只暴露 `NGINX_HTTP_PORT`（默认 `8080`）；MinIO Console（默认 `127.0.0.1:9001`）与 Qdrant HTTP（默认 `127.0.0.1:6333`）只绑定回环地址，供运维跳板机或 SSH 隧道使用。
-- 如需正式域名 / TLS，优先在外层 LB 或反向代理终止 TLS，并把 `APP_FRONTEND_URL`、`APP_OAUTH_REDIRECT_URL`、`SUPABASE_GOTRUE_EXTERNAL_URL` 与 `SUPABASE_SITE_URL` 改成企业域名；若直接使用当前 `nginx.conf`，则应在进入生产前替换为带证书的企业反向代理配置。
+- 当前 Compose 与 Helm 都只支持 **一个 runtime manager 节点**。不能把同一个 runtime state volume 同时挂到多个 manager，也不能把 server/worker 横向扩容误认为 sandbox control plane 高可用。
+- 宿主必须是 Linux x86_64，启用硬件虚拟化并暴露 `/dev/kvm`、`/dev/net/tun`、cgroup v2 和 nftables；内核必须位于 Firecracker v1.16.1 官方支持范围。生产环境保持 `FIRECRACKER_ALLOW_UNSUPPORTED_KERNEL=false`，SMT 默认 `deny`。
+- 容量由 `FIRECRACKER_MAX_VMS`、`FIRECRACKER_MAX_VCPU`、`FIRECRACKER_MAX_MEMORY_MIB`、`FIRECRACKER_MAX_DISK_GIB` 四个硬上限共同约束。默认 runtime manager 预留 24 CPU、48 GiB 内存和 250 GiB mutable disk。
+- guest 默认使用 `172.30.0.0/16`。runtime manager 只允许到 server/worker callback relay 的受控回调，并由 nftables/CNI 执行 guest egress 策略；不要让 guest 网段与企业网络、集群 Pod CIDR 或 Service CIDR 重叠。
+- 对外只暴露 `NGINX_HTTP_PORT`；runtime manager 的 8443 仅存在于内部网络，且强制 TLS 1.3 双向认证。
 
 ### 默认暴露端口
 
@@ -114,9 +119,13 @@ cp agentloom-deploy/.env.template agentloom-deploy/.env
 - `APP_JWT_SECRET`
 - `APP_MASTER_ENCRYPTION_KEY`
 
-此外，当前沙箱生命周期会由 `server` / `worker` 直接通过宿主 Docker daemon 拉起 `agentloom/sandbox:latest`，因此 `.env` 里还需要设置：
+首次部署还必须生成不会写入镜像或日志的 mTLS 文件：
 
-- `HOST_DOCKER_GID=$(stat -c '%g' /var/run/docker.sock)`
+```bash
+./agentloom-deploy/scripts/generate-firecracker-pki.sh
+```
+
+生成目录已由 `.gitignore` 排除。manager、应用 client 和 guest 使用三个独立 CA；server/worker 只挂载应用 client 证书，不持有 guest CA 私钥。
 
 如果自托管 Supabase 需要承受更高认证流量，或宿主资源充足，也可以在 `.env` 中继续调大：
 
@@ -134,7 +143,7 @@ cp agentloom-deploy/.env.template agentloom-deploy/.env
 openssl rand -base64 32
 ```
 
-如果宿主机没有 Docker socket，或 socket 的 group id 没有正确映射到 `HOST_DOCKER_GID`，`POST /api/v1/sandboxes` 会先返回 `201`，随后在异步 `sandbox-lifecycle` worker 中因无法连接 `/var/run/docker.sock` 而把 session 置为 `failed`。
+若 `/dev/kvm`、`/dev/net/tun`、cgroup v2、内核版本或 SMT 策略不满足要求，runtime manager 会在 readiness 前 fail closed；API 不会回退到 Docker 或宿主 exec。
 
 ### 2. 初始化数据库
 
@@ -159,41 +168,23 @@ openssl rand -base64 32
 
 ### 3. 启动全栈
 
-在首次启动全栈前，先准备 sandbox runtime 镜像：
+在首次启动全栈前，构建锁定版本且带校验和的 Firecracker、jailer、guest kernel、initramfs、rootfs 和 `agentloom-guestd`：
 
 ```bash
-bash agentloom-deploy/sandbox/build.sh
+./agentloom-deploy/firecracker/build-artifacts.sh
+./agentloom-deploy/firecracker/build-runtime-image.sh
 ```
 
-这一步会先调用共享的 `agentloom-deploy/scripts/prepare-pi-tarballs.sh`，再在宿主机上构建 `agentloom/sandbox:latest`。当前 `server` / `worker` 只负责通过 Docker daemon 拉起该镜像，并不会在 `docker compose up` 时自动帮你构建它。
+`artifact-lock.json` 固定 Firecracker v1.16.1、kernel、BusyBox 与 Arch rootfs digest；构建脚本逐项校验下载 SHA-256，并生成 `manifest.json`。runtime manager 启动时再次校验 manifest，拒绝缺失或被篡改的 artifact。guest rootfs 内运行真实 sandbox Fastify 适配层，不使用宿主进程或 fake runtime。
 
-默认行为：
-
-- 从 `https://github.com/badlogic/pi-mono` 拉取源码
-- 默认锁定 `PI_MONO_REF=576e5e1a2fbe1abbbad96b696f4058cffd8391ca`
-- 生成 4 个 tarball：`pi-tui.tgz`、`pi-ai.tgz`、`pi-agent-core.tgz`、`pi-coding-agent.tgz`
-- 同时发布到 `agentloom-deploy/docker/.pi-tarballs` 与 `agentloom-deploy/sandbox/.pi-tarballs`
-
-如果你想覆盖默认来源，可以显式指定：
-
-- 使用本地 checkout：`PI_MONO_DIR=/your/path/to/pi-mono`
-- 升级/回退到其它提交、tag 或分支：`PI_MONO_REF=<commit|tag|branch>`
-- 切换上游仓库：`PI_MONO_REPO_URL=<git-url>`
-
-例如：
+启动前执行宿主预检：
 
 ```bash
-PI_MONO_DIR=/your/path/to/pi-mono bash agentloom-deploy/sandbox/build.sh
-```
-
-```bash
-PI_MONO_REF=main bash agentloom-deploy/sandbox/build.sh
-```
-
-如果你只想预热 tarballs，而暂时不构建 sandbox 镜像，可单独执行：
-
-```bash
-./agentloom-deploy/scripts/prepare-pi-tarballs.sh
+test -r /dev/kvm
+test -c /dev/net/tun
+docker compose -f agentloom-deploy/docker-compose.yml \
+  --env-file agentloom-deploy/.env \
+  run --rm --entrypoint preflight firecracker-runtime
 ```
 
 ```bash
@@ -210,9 +201,8 @@ docker compose \
 ```bash
 time ./agentloom-deploy/scripts/init-db.sh
 
-time ./agentloom-deploy/scripts/prepare-pi-tarballs.sh
-
-time docker build -t agentloom/sandbox:latest agentloom-deploy/sandbox
+time ./agentloom-deploy/firecracker/build-artifacts.sh
+time ./agentloom-deploy/firecracker/build-runtime-image.sh
 
 time docker compose \
   -f agentloom-deploy/docker-compose.yml \
@@ -227,11 +217,16 @@ docker compose \
 
 验收要点：
 
-- `postgres`、`redis`、`minio`、`qdrant`、`server`、`worker`、`studio`、`reverse-proxy` 全部为 `running`，且需要 healthcheck 的服务进入 `healthy`。
+- `postgres`、`redis`、`minio`、`qdrant`、`firecracker-runtime`、`server`、`worker`、`studio`、`reverse-proxy` 全部为 `running`，且需要 healthcheck 的服务进入 `healthy`。
 - `curl http://localhost:8080/healthz` 与 `curl http://localhost:8080/api/v1/health` 返回成功。
-- `cat agentloom-deploy/docker/.pi-tarballs/pi-mono-source.txt` 与 `cat agentloom-deploy/sandbox/.pi-tarballs/pi-mono-source.txt` 都能看到一致的 `resolved_commit`。
-- `docker image inspect agentloom/sandbox:latest` 成功，且 `docker compose exec -T server sh -c 'ls -l /var/run/docker.sock && id'` 能看到挂载后的 Docker socket 与补充 group。
-- 首次从 `.env.template` 到 `docker compose up -d --build` 的总耗时应记录在交付单中；若明显超过 30 分钟，优先检查镜像缓存、主机磁盘性能与企业代理下载带宽。
+- `agentloom-deploy/firecracker/artifacts/manifest.json` 中的每个 SHA-256 与实际 artifact 一致。
+- `server` / `worker` 没有 `/var/run/docker.sock`、`/dev/kvm`、`NET_ADMIN` 或 `SYS_ADMIN`；只有 `firecracker-runtime` 为 privileged，并加入宿主 PID/cgroup namespace 管理 jailer 子树。
+- `firecracker-runtime` 同时连接 internal `app_net` 与独占的 `sandbox_egress_net`；CNI provision 后的 host-veth tc filter 固定 guest IPv4/MAC 与 ARP sender 身份，guest kernel 不提供 IPv6，manager nftables 拒绝 sibling VM、私网/reserved CIDR 与非 relay host ingress，再为允许的公网流量执行 NAT。
+- 运行 `agentloom-deploy/firecracker/firecracker-smoke.sh`，确认真实 KVM VM 的 session、SSE terminal event、abort、文件、runtime exec、PTY registry、callback rewrite、persistent stop/start、禁用 IPv6、source-IP spoof 拒绝、manager control-plane 拒绝以及 guest DNS/HTTPS。
+
+runtime manager 会在 `SIGTERM` 时先收口 active VM；Compose/Kubernetes 应保留至少 60 秒终止宽限期。若宿主故障或强制终止遗留 Firecracker 进程，operator 必须先清理对应 `agentloom-firecracker/<runtimeHandle>` cgroup，再重启 manager；cold recovery 会把仍标记为 running 但进程已不存在的 persistent VM 收口为可重新启动的 stopped 状态。
+
+guest 默认允许公网 egress（smoke 覆盖 DNS/HTTPS），并拒绝 source-IP/MAC/ARP spoof、sibling VM、loopback、link-local、RFC1918、CGNAT、metadata 与 reserved CIDR。private LLM/MCP 需要在 `FIRECRACKER_EGRESS_ALLOWED_PRIVATE_CIDRS`（Helm: `firecrackerRuntime.allowedPrivateCIDRs`）逐项加入 IPv4 CIDR；该 allowlist 不能放开 sibling VM。
 
 ### 4. 验证
 
@@ -241,6 +236,35 @@ curl http://localhost:8080/api/v1/health
 ```
 
 > `StorageService` 会在应用启动时自动创建缺失的 MinIO bucket，所以这套部署脚本**不需要额外的 bucket bootstrap 步骤**。
+
+## Legacy Docker → Firecracker 数据切换
+
+已有 persistent sandbox 必须经过一次 maintenance cutover；fresh install 没有 legacy session，迁移会直接创建 `runtime_handle` 并移除空的 legacy 列。
+
+1. 把 `.env` 中 `APP_SANDBOX_MAINTENANCE_MODE=true`，重启 server/worker，等待 execution、agent conversation prompt 和 `sandbox-lifecycle` 队列排空。
+2. 顺序执行：
+
+```bash
+docker compose -f agentloom-deploy/docker-compose.yml --env-file agentloom-deploy/.env \
+  --profile migration run --rm sandbox-cutover export
+docker compose -f agentloom-deploy/docker-compose.yml --env-file agentloom-deploy/.env \
+  --profile migration run --rm sandbox-cutover restore
+docker compose -f agentloom-deploy/docker-compose.yml --env-file agentloom-deploy/.env \
+  --profile migration run --rm sandbox-cutover activate
+```
+
+`export` 是唯一临时挂载 Docker socket 的进程。它按共享 workspace 分组归档到 MinIO，同时保存文件 manifest 与 SHA-256；`restore` 为每个 session 创建独立 ext4 mutable disk，逐项校验 manifest，并保证同一 workspace lease 只有一个 active runtime。任何对象截断、checksum、manifest、manager metadata 或 disk 不一致都会 fail closed，数据库不会 activate。
+
+3. 取消 maintenance，重启应用并运行真实 KVM smoke。在 `APP_SANDBOX_ROLLBACK_HOURS` 窗口内若需回退，重新进入 maintenance、排空队列后执行 `sandbox-cutover rollback`，再部署上一版 legacy server。rollback 先从当前 Firecracker workspace 导出最新归档，再覆盖旧 Docker volume，因此不会丢失 cutover 后写入。
+4. 窗口结束且验收通过后执行 `sandbox-cutover finalize`。它删除 legacy container/volume 和临时迁移对象，把所有记录标记为 finalized，最后删除 `sandbox_sessions.container_id`。finalize 后不可 rollback。
+
+切换前必须在隔离测试数据上执行完整演练；脚本会创建临时 PostgreSQL database、MinIO bucket、Redis queue keys、三个 legacy container/两个 volume 和真实 KVM VM，并在退出时清理：
+
+```bash
+./agentloom-deploy/firecracker/test/cutover-rehearsal.sh
+```
+
+演练覆盖 maintenance/drain gate、共享 workspace、文本/binary/空目录/Unicode/symlink manifest、截断对象 fail-closed、active workspace 冲突、cutover 后写入回滚、再次 forward/finalize 和 fresh install 空表迁移。
 
 ## 备份与恢复
 
@@ -349,7 +373,7 @@ Environment=AGENTLOOM_DEPLOY_DIR=/your/path/to/agentloom-deploy
    - `curl http://localhost:8080/api/v1/health`
 4. 若恢复总时长超过 4 小时，优先分析磁盘吞吐、对象存储体量、数据库大小与企业网络带宽；若最近备份超过 1 小时，则说明调度器未达成 `RPO < 1h`。
 
-这份 runbook 是当前 bundle 的正式恢复演练文档：它把“备份存在”进一步收敛为“备份可校验、可恢复、可量化地满足 NFR23 的路径”。
+这份 runbook 把“备份存在”收敛为“备份可校验、可恢复、可量化”。
 
 ## Helm Chart
 
@@ -358,11 +382,27 @@ Chart 路径：`agentloom-deploy/kubernetes/helm/agentloom`
 它覆盖：
 
 - `server` Deployment + Service + 可选 HPA
-- `worker` Deployment + 可选 HPA
+- `worker` Deployment + 内部 callback Service + 可选 HPA
+- singleton `firecracker-runtime` StatefulSet + Service + RWO state PVC
 - `studio` Deployment + Service + 可选 HPA
 - `Ingress`（把 `/api` 与 `/socket.io` 指向 `server`，`/` 指向 `studio`）
 - PostgreSQL / Redis / MinIO / Qdrant 的可选内置依赖
-- PVC、ConfigMap、Secret
+- PVC、ConfigMap，以及由 operator 预创建的 Firecracker PKI Secret
+
+部署前先创建 PKI Secret，并把 runtime manager 固定到满足 KVM 前提的唯一节点：
+
+```bash
+./agentloom-deploy/scripts/generate-firecracker-pki.sh
+kubectl create secret generic agentloom-firecracker-manager-pki \
+  --from-file=agentloom-deploy/secrets/firecracker
+kubectl create secret generic agentloom-firecracker-client-pki \
+  --from-file=manager-ca.crt=agentloom-deploy/secrets/firecracker/manager-ca.crt \
+  --from-file=app-client.crt=agentloom-deploy/secrets/firecracker/app-client.crt \
+  --from-file=app-client.key=agentloom-deploy/secrets/firecracker/app-client.key
+kubectl label node <runtime-node> agentloom.dev/firecracker=true
+```
+
+然后设置 `firecrackerRuntime.nodeSelector.agentloom.dev/firecracker=true`。state PVC 必须是 RWO，且容量要覆盖所有 mutable guest disk；server/worker 只读挂载 client Secret，manager Secret 中的 guest CA 私钥不会进入应用 Pod。
 
 ### 推荐私有部署样例
 
@@ -388,12 +428,11 @@ helm upgrade --install agentloom \
 
 这样 Compose 与 Helm 依然维持**同一套应用 env contract**。
 
-## 当前部署 caveats
+## 当前部署约束
 
-1. **不存在 worker-only runtime。** 当前 `worker` 只是独立 Deployment / Compose service，实际仍然运行完整的 `node dist/src/main.js`。
-2. **`server` 也会消费队列。** 即使只把对外流量指向 `server`，它仍会启动 BullMQ processors 和启动期 scheduler。
-3. **`worker` 不应暴露到外网。** 这套资产只通过 Nginx / Ingress 暴露 `server`。
-4. **认证能力取决于 Supabase 配置。** private 模式允许空配，但空配不代表 Supabase 相关登录能力可用。
-5. **沙箱依赖宿主 Docker daemon。** 当前 Compose 路径下，`server` 和 `worker` 需要挂载 `/var/run/docker.sock`，并通过 `HOST_DOCKER_GID` 获得访问权限；同时宿主机必须预先构建 `agentloom/sandbox:latest`。
-
-这几个 caveat 需要继续保留到后续 story / 运维文档阶段，直到仓库真正出现独立的 runtime role split 为止。
+1. **singleton control plane。** Compose 与 Helm 都只支持一个 runtime manager；state volume 不支持多写或跨节点透明漂移。
+2. **宿主责任。** operator 负责支持范围内的 Linux kernel、KVM/TUN/cgroup/nftables、CPU/内存/disk 容量和 guest 网段冲突检查。
+3. **备份责任。** PostgreSQL/MinIO 备份不包含 mutable microVM disk。persistent sandbox 的权威工作区应定期同步为 Workspace snapshot；runtime state volume 只能在 manager 停止后做 crash-consistent block snapshot。
+4. **egress 责任。** 默认 nftables/CNI 策略只允许受控 DNS、HTTP(S) egress 和 callback relay。企业环境应进一步收紧目的 CIDR/域名，并验证 guest CIDR 与 Pod/Service/VPC 网段不重叠。
+5. **没有 Docker fallback。** runtime manager 不可用、artifact 校验失败或 manager metadata/disk 不一致时，sandbox 操作 fail closed；不得把 Docker socket、KVM 或额外 capabilities 加回 server/worker。
+6. **worker 仍不是 worker-only runtime。** `server` 与 `worker` 都运行完整 Nest 入口并消费队列；worker Service 只供 guest callback relay 使用，不可暴露到公网。
