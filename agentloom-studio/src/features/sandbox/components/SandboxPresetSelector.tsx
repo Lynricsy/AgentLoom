@@ -1,26 +1,26 @@
-import { memo, useState } from 'react'
-import { Cpu, MemoryStick, HardDrive, X, Plus, Pencil } from 'lucide-react'
-import { cn } from '@/shared/lib/utils'
-import { Button } from '@/shared/ui/button'
-import { Input } from '@/shared/ui/input'
+import { memo, useState } from "react";
+import { Cpu, MemoryStick, HardDrive, X, Plus, Pencil } from "lucide-react";
+import { cn } from "@/shared/lib/utils";
+import { Button } from "@/shared/ui/button";
+import { Input } from "@/shared/ui/input";
 import {
   useSandboxPresetStore,
   getAllPresets,
   findMatchingPreset,
   type SandboxPreset,
-} from '../stores/sandboxPresetStore'
+} from "../stores/sandboxPresetStore";
 
 interface SandboxPresetSelectorProps {
-  selectedPresetId?: string
-  onSelect: (preset: SandboxPreset) => void
+  selectedPresetId?: string;
+  onSelect: (preset: SandboxPreset) => void;
   onSaveAsPreset?: (preset: {
-    name: string
-    cpu: number
-    memory: number
-    disk: number
-  }) => void
-  currentConfig?: { cpu: number; memory: number; disk: number }
-  compact?: boolean
+    name: string;
+    cpu: number;
+    memory: number;
+    disk: number;
+  }) => void;
+  currentConfig?: { cpu: number; memory: number; disk: number };
+  compact?: boolean;
 }
 
 const PresetCard = memo(function PresetCard({
@@ -31,12 +31,12 @@ const PresetCard = memo(function PresetCard({
   onStartRename,
   compact,
 }: {
-  preset: SandboxPreset
-  isSelected: boolean
-  onSelect: () => void
-  onRemove?: () => void
-  onStartRename?: () => void
-  compact?: boolean
+  preset: SandboxPreset;
+  isSelected: boolean;
+  onSelect: () => void;
+  onRemove?: () => void;
+  onStartRename?: () => void;
+  compact?: boolean;
 }) {
   return (
     <div className="relative">
@@ -44,17 +44,17 @@ const PresetCard = memo(function PresetCard({
         type="button"
         onClick={onSelect}
         className={cn(
-          'w-full rounded-lg border px-3 text-left transition-colors',
-          compact ? 'py-2' : 'py-2.5',
+          "w-full rounded-lg border px-3 text-left transition-colors",
+          compact ? "py-2" : "py-2.5",
           isSelected
-            ? 'border-primary bg-primary/5'
-            : 'border-border bg-surface-elevated hover:border-primary/50',
+            ? "border-primary bg-primary/5"
+            : "border-border bg-surface-elevated hover:border-primary/50",
         )}
       >
         <span
           className={cn(
-            'block text-xs font-medium',
-            isSelected ? 'text-primary' : 'text-foreground',
+            "block text-xs font-medium",
+            isSelected ? "text-primary" : "text-foreground",
           )}
         >
           {preset.name}
@@ -106,8 +106,8 @@ const PresetCard = memo(function PresetCard({
         </div>
       )}
     </div>
-  )
-})
+  );
+});
 
 export const SandboxPresetSelector = memo(function SandboxPresetSelector({
   selectedPresetId,
@@ -116,63 +116,68 @@ export const SandboxPresetSelector = memo(function SandboxPresetSelector({
   currentConfig,
   compact = false,
 }: SandboxPresetSelectorProps) {
-  const customPresets = useSandboxPresetStore((s) => s.customPresets)
-  const removePreset = useSandboxPresetStore((s) => s.removePreset)
-  const renamePreset = useSandboxPresetStore((s) => s.renamePreset)
-  const allPresets = getAllPresets(customPresets)
+  const customPresets = useSandboxPresetStore((s) => s.customPresets);
+  const removePreset = useSandboxPresetStore((s) => s.removePreset);
+  const renamePreset = useSandboxPresetStore((s) => s.renamePreset);
+  const allPresets = getAllPresets(customPresets);
 
-  const [showSaveForm, setShowSaveForm] = useState(false)
-  const [newPresetName, setNewPresetName] = useState('')
-  const [editingPresetId, setEditingPresetId] = useState<string | null>(null)
-  const [editingPresetName, setEditingPresetName] = useState('')
+  const [showSaveForm, setShowSaveForm] = useState(false);
+  const [newPresetName, setNewPresetName] = useState("");
+  const [editingPresetId, setEditingPresetId] = useState<string | null>(null);
+  const [editingPresetName, setEditingPresetName] = useState("");
 
   // 判断当前配置是否已经匹配某个预设
   const matchedPreset = currentConfig
     ? findMatchingPreset(allPresets, currentConfig)
-    : undefined
-  const activePresetId = selectedPresetId ?? matchedPreset?.id
-  const canSave = currentConfig && !matchedPreset && onSaveAsPreset
+    : undefined;
+  const activePresetId = selectedPresetId ?? matchedPreset?.id;
+  const canSave = currentConfig && !matchedPreset && onSaveAsPreset;
 
   function handleSavePreset() {
-    if (!newPresetName.trim() || !currentConfig || !onSaveAsPreset) return
+    if (!newPresetName.trim() || !currentConfig || !onSaveAsPreset) return;
     onSaveAsPreset({
       name: newPresetName.trim(),
       ...currentConfig,
-    })
-    setNewPresetName('')
-    setShowSaveForm(false)
+    });
+    setNewPresetName("");
+    setShowSaveForm(false);
   }
 
   function handleStartRename(preset: SandboxPreset) {
-    setShowSaveForm(false)
-    setNewPresetName('')
-    setEditingPresetId(preset.id)
-    setEditingPresetName(preset.name)
+    setShowSaveForm(false);
+    setNewPresetName("");
+    setEditingPresetId(preset.id);
+    setEditingPresetName(preset.name);
   }
 
   function clearRename() {
-    setEditingPresetId(null)
-    setEditingPresetName('')
+    setEditingPresetId(null);
+    setEditingPresetName("");
   }
 
   function handleRenamePreset() {
-    if (!editingPresetId || !editingPresetName.trim()) return
-    renamePreset(editingPresetId, editingPresetName.trim())
-    clearRename()
+    if (!editingPresetId || !editingPresetName.trim()) return;
+    renamePreset(editingPresetId, editingPresetName.trim());
+    clearRename();
   }
 
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between">
-        <label className={cn('font-medium text-foreground', compact ? 'text-xs' : 'text-sm')}>
+        <label
+          className={cn(
+            "font-medium text-foreground",
+            compact ? "text-xs" : "text-sm",
+          )}
+        >
           配置预设
         </label>
         {canSave && !showSaveForm && (
           <button
             type="button"
             onClick={() => {
-              clearRename()
-              setShowSaveForm(true)
+              clearRename();
+              setShowSaveForm(true);
             }}
             className="inline-flex items-center gap-1 text-[11px] text-primary transition-colors hover:text-primary/80"
           >
@@ -182,15 +187,21 @@ export const SandboxPresetSelector = memo(function SandboxPresetSelector({
         )}
       </div>
 
-      <div className={cn('grid gap-2', compact ? 'grid-cols-2' : 'grid-cols-3')}>
+      <div
+        className={cn("grid gap-2", compact ? "grid-cols-2" : "grid-cols-3")}
+      >
         {allPresets.map((preset) => (
           <PresetCard
             key={preset.id}
             preset={preset}
             isSelected={activePresetId === preset.id}
             onSelect={() => onSelect(preset)}
-            onRemove={!preset.isBuiltin ? () => removePreset(preset.id) : undefined}
-            onStartRename={!preset.isBuiltin ? () => handleStartRename(preset) : undefined}
+            onRemove={
+              !preset.isBuiltin ? () => removePreset(preset.id) : undefined
+            }
+            onStartRename={
+              !preset.isBuiltin ? () => handleStartRename(preset) : undefined
+            }
             compact={compact}
           />
         ))}
@@ -204,8 +215,8 @@ export const SandboxPresetSelector = memo(function SandboxPresetSelector({
             placeholder="重命名预设"
             className="h-7 flex-1 text-xs"
             onKeyDown={(e) => {
-              if (e.key === 'Enter') handleRenamePreset()
-              if (e.key === 'Escape') clearRename()
+              if (e.key === "Enter") handleRenamePreset();
+              if (e.key === "Escape") clearRename();
             }}
             autoFocus
           />
@@ -236,15 +247,20 @@ export const SandboxPresetSelector = memo(function SandboxPresetSelector({
             placeholder="预设名称"
             className="h-7 flex-1 text-xs"
             onKeyDown={(e) => {
-              if (e.key === 'Enter') handleSavePreset()
-              if (e.key === 'Escape') {
-                setShowSaveForm(false)
-                setNewPresetName('')
+              if (e.key === "Enter") handleSavePreset();
+              if (e.key === "Escape") {
+                setShowSaveForm(false);
+                setNewPresetName("");
               }
             }}
             autoFocus
           />
-          <Button size="sm" className="h-7 px-2 text-xs" onClick={handleSavePreset} disabled={!newPresetName.trim()}>
+          <Button
+            size="sm"
+            className="h-7 px-2 text-xs"
+            onClick={handleSavePreset}
+            disabled={!newPresetName.trim()}
+          >
             保存
           </Button>
           <Button
@@ -252,8 +268,8 @@ export const SandboxPresetSelector = memo(function SandboxPresetSelector({
             size="sm"
             className="h-7 px-2 text-xs"
             onClick={() => {
-              setShowSaveForm(false)
-              setNewPresetName('')
+              setShowSaveForm(false);
+              setNewPresetName("");
             }}
           >
             取消
@@ -261,5 +277,5 @@ export const SandboxPresetSelector = memo(function SandboxPresetSelector({
         </div>
       )}
     </div>
-  )
-})
+  );
+});

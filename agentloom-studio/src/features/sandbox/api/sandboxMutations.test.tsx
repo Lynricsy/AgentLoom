@@ -1,11 +1,11 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { act, renderHook, waitFor } from '@testing-library/react'
-import type { ReactNode } from 'react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { act, renderHook, waitFor } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { useStartSandbox } from './sandboxMutations'
-import { sandboxKeys } from './sandboxKeys'
-import type { SandboxListResponse, SandboxSession } from '../types'
+import { useStartSandbox } from "./sandboxMutations";
+import { sandboxKeys } from "./sandboxKeys";
+import type { SandboxListResponse, SandboxSession } from "../types";
 
 const {
   createSandboxMock,
@@ -17,14 +17,14 @@ const {
   stopSandboxMock: vi.fn(),
   startSandboxMock: vi.fn(),
   deleteSandboxMock: vi.fn(),
-}))
+}));
 
-vi.mock('./sandboxApi', () => ({
+vi.mock("./sandboxApi", () => ({
   createSandbox: createSandboxMock,
   stopSandbox: stopSandboxMock,
   startSandbox: startSandboxMock,
   deleteSandbox: deleteSandboxMock,
-}))
+}));
 
 function createWrapper() {
   const queryClient = new QueryClient({
@@ -36,48 +36,45 @@ function createWrapper() {
         retry: false,
       },
     },
-  })
+  });
 
   return {
     queryClient,
     Wrapper({ children }: { children: ReactNode }) {
       return (
-        <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-      )
+        <QueryClientProvider client={queryClient}>
+          {children}
+        </QueryClientProvider>
+      );
     },
-  }
+  };
 }
 
-function makeSession(
-  overrides: Partial<SandboxSession> = {},
-): SandboxSession {
+function makeSession(overrides: Partial<SandboxSession> = {}): SandboxSession {
   return {
-    id: 'session-1',
+    id: "session-1",
     executionId: null,
     agentConversationId: null,
     sandboxNodeId: null,
-    containerId: 'container-1',
-    status: 'stopped',
+    status: "stopped",
     config: {
-      name: 'Persistent Sandbox',
+      name: "Persistent Sandbox",
       cpu: 2,
       memory: 2048,
       disk: 20,
       timeout: 24,
-      lifecycleMode: 'persistent',
+      lifecycleMode: "persistent",
     },
-    bindingType: 'resource',
-    workspacePath: '/workspace/',
-    startedAt: '2025-01-01T00:00:00.000Z',
-    stoppedAt: '2025-01-02T00:00:00.000Z',
-    createdAt: '2025-01-01T00:00:00.000Z',
+    bindingType: "resource",
+    workspacePath: "/workspace/",
+    startedAt: "2025-01-01T00:00:00.000Z",
+    stoppedAt: "2025-01-02T00:00:00.000Z",
+    createdAt: "2025-01-01T00:00:00.000Z",
     ...overrides,
-  }
+  };
 }
 
-function makeListResponse(
-  sessions: SandboxSession[],
-): SandboxListResponse {
+function makeListResponse(sessions: SandboxSession[]): SandboxListResponse {
   return {
     data: sessions,
     meta: {
@@ -86,104 +83,96 @@ function makeListResponse(
       total: sessions.length,
       totalPages: sessions.length > 0 ? 1 : 0,
     },
-  }
+  };
 }
 
-describe('useStartSandbox', () => {
+describe("useStartSandbox", () => {
   beforeEach(() => {
-    vi.clearAllMocks()
-  })
+    vi.clearAllMocks();
+  });
 
-  it('资源页启动沙箱时会先乐观切到 creating，并显式刷新活动列表', async () => {
-    const stoppedSession = makeSession()
+  it("资源页启动沙箱时会先乐观切到 creating，并显式刷新活动列表", async () => {
+    const stoppedSession = makeSession();
     const creatingSession = makeSession({
-      status: 'creating',
+      status: "creating",
       startedAt: null,
       stoppedAt: null,
-    })
+    });
     const params = {
       page: 1,
       pageSize: 20,
-      bindingType: 'resource' as const,
-    }
+      bindingType: "resource" as const,
+    };
 
-    let resolveStart:
-      | ((value: SandboxSession) => void)
-      | undefined
+    let resolveStart: ((value: SandboxSession) => void) | undefined;
     startSandboxMock.mockImplementation(
       () =>
         new Promise<SandboxSession>((resolve) => {
-          resolveStart = resolve
+          resolveStart = resolve;
         }),
-    )
+    );
 
-    const { queryClient, Wrapper } = createWrapper()
+    const { queryClient, Wrapper } = createWrapper();
     queryClient.setQueryData(
       sandboxKeys.list(params),
       makeListResponse([stoppedSession]),
-    )
-    queryClient.setQueryData(
-      sandboxKeys.persistent(),
-      [stoppedSession],
-    )
+    );
+    queryClient.setQueryData(sandboxKeys.persistent(), [stoppedSession]);
 
-    const invalidateSpy = vi.spyOn(queryClient, 'invalidateQueries')
-    const refetchSpy = vi.spyOn(queryClient, 'refetchQueries')
+    const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+    const refetchSpy = vi.spyOn(queryClient, "refetchQueries");
 
     const { result } = renderHook(() => useStartSandbox(), {
       wrapper: Wrapper,
-    })
+    });
 
     act(() => {
-      result.current.mutate(stoppedSession.id)
-    })
+      result.current.mutate(stoppedSession.id);
+    });
 
     await waitFor(() => {
       expect(
-        queryClient.getQueryData<SandboxListResponse>(
-          sandboxKeys.list(params),
-        )?.data[0]?.status,
-      ).toBe('creating')
-    })
+        queryClient.getQueryData<SandboxListResponse>(sandboxKeys.list(params))
+          ?.data[0]?.status,
+      ).toBe("creating");
+    });
     expect(
-      queryClient.getQueryData<SandboxSession[]>(
-        sandboxKeys.persistent(),
-      )?.[0]?.status,
-    ).toBe('creating')
+      queryClient.getQueryData<SandboxSession[]>(sandboxKeys.persistent())?.[0]
+        ?.status,
+    ).toBe("creating");
 
     await act(async () => {
-      resolveStart?.(creatingSession)
-      await Promise.resolve()
-    })
+      resolveStart?.(creatingSession);
+      await Promise.resolve();
+    });
 
     await waitFor(() => {
       expect(invalidateSpy).toHaveBeenCalledWith({
         queryKey: sandboxKeys.lists(),
-      })
-    })
+      });
+    });
 
     expect(refetchSpy).toHaveBeenCalledWith({
       queryKey: sandboxKeys.lists(),
-      type: 'active',
-    })
+      type: "active",
+    });
     expect(refetchSpy).toHaveBeenCalledWith({
       queryKey: sandboxKeys.persistent(),
-      type: 'active',
-    })
+      type: "active",
+    });
     expect(refetchSpy).toHaveBeenCalledWith({
       queryKey: sandboxKeys.stats(stoppedSession.id),
-      type: 'active',
-    })
+      type: "active",
+    });
 
     expect(
-      queryClient.getQueryData<SandboxListResponse>(
-        sandboxKeys.list(params),
-      )?.data[0],
+      queryClient.getQueryData<SandboxListResponse>(sandboxKeys.list(params))
+        ?.data[0],
     ).toMatchObject({
       id: stoppedSession.id,
-      status: 'creating',
+      status: "creating",
       startedAt: null,
       stoppedAt: null,
-    })
-  })
-})
+    });
+  });
+});
