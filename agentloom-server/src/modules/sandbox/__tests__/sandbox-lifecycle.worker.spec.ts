@@ -726,48 +726,30 @@ describe('SandboxLifecycleWorker', () => {
       expect(mockInsert).toHaveBeenCalled();
     });
 
-    it('旧 containerId 缺失时应自动重建容器并更新 session.containerId', async () => {
+    it('manager 404 时应保留 runtime handle 并失败收口', async () => {
       mockDockerService.startContainer.mockRejectedValueOnce(
         new SandboxContainerNotFoundException('c-missing'),
       );
-      mockDockerService.createContainer.mockResolvedValueOnce({
-        containerId: 'c-recreated',
-      });
 
-      await worker.process(
-        createJob({
-          jobType: 'start',
-          sessionId: 's1',
-          agentConversationId: 'conv-1',
-          tenantId: 't1',
-          containerId: 'c-missing',
-          config: DEFAULT_CONFIG,
-        }),
-      );
+      await expect(
+        worker.process(
+          createJob({
+            jobType: 'start',
+            sessionId: 's1',
+            agentConversationId: 'conv-1',
+            tenantId: 't1',
+            containerId: 'c-missing',
+            config: DEFAULT_CONFIG,
+          }),
+        ),
+      ).rejects.toThrow(SandboxContainerNotFoundException);
 
-      expect(mockDockerService.startContainer).toHaveBeenCalledWith(
-        'c-missing',
-      );
-      expect(mockDockerService.createContainer).toHaveBeenCalledWith(
-        's1',
-        DEFAULT_CONFIG,
-        { piConfigInput: undefined, conversationId: 'conv-1' },
-      );
+      expect(mockDockerService.createContainer).not.toHaveBeenCalled();
+      expect(mockDockerService.removeContainer).not.toHaveBeenCalled();
       expect(mockSet).toHaveBeenCalledWith(
-        expect.objectContaining({
-          containerId: 'c-recreated',
-          status: 'ready',
-          stoppedAt: null,
-          workspacePath: '/workspace/',
-        }),
+        expect.objectContaining({ status: 'failed' }),
       );
-      expect(mockDockerService.attachLogs).toHaveBeenCalledWith(
-        'c-recreated',
-        expect.any(Function),
-      );
-      expect(
-        mockLifecycleProducer.addConversationIdleEndCheckTask,
-      ).toHaveBeenCalled();
+      expect(mockDockerService.attachLogs).not.toHaveBeenCalled();
     });
 
     it('缺少 containerId 时应抛出异常', async () => {

@@ -1551,22 +1551,32 @@ export class SandboxService {
       return session;
     }
 
-    let runtimeAvailable = false;
-    if (session.containerId) {
-      runtimeAvailable = await this.dockerService.healthCheck(
-        session.containerId,
-      );
+    if (!session.containerId) {
+      return session;
     }
-
+    const runtimeAvailable = await this.dockerService.healthCheck(
+      session.containerId,
+    );
     if (runtimeAvailable) {
       return session;
     }
 
+    const runtime = await this.dockerService.inspectRuntime(
+      session.containerId,
+    );
+    const reconciledStatus =
+      runtime.state === 'stopped' ? ('stopped' as const) : ('failed' as const);
+    if (runtime.state !== 'stopped' && runtime.state !== 'failed') {
+      throw new SandboxInvalidStateException(
+        session.id,
+        session.status,
+        `reconcile runtime in manager state ${runtime.state}`,
+      );
+    }
     const [updatedSession] = await this.tenantDb
       .update(schema.sandboxSessions)
       .set({
-        status: 'stopped',
-        containerId: null,
+        status: reconciledStatus,
         workspacePath: null,
         stoppedAt: new Date(),
       })
@@ -1580,11 +1590,10 @@ export class SandboxService {
 
     if (updatedSession) {
       this.logger.warn(
-        `Sandbox ${session.id} was ${session.status} but runtime container ${session.containerId ?? 'n/a'} is unavailable; reconciled session to stopped`,
+        `Sandbox ${session.id} reconciled to ${reconciledStatus}; Firecracker runtime ${session.containerId} remains attached with state ${runtime.state}`,
       );
       return updatedSession;
     }
-
     return this.getSessionById(session.id);
   }
 
@@ -1674,76 +1683,36 @@ export class SandboxService {
       );
     }
 
-    const canRestartStoppedContainer =
-      session.status === 'stopped' &&
-      typeof session.containerId === 'string' &&
-      session.containerId.length > 0;
-
-    if (canRestartStoppedContainer) {
-      await this.updateSessionStatus(sessionId, 'creating', {
-        startedAt: null,
-        stoppedAt: null,
-      });
-
-      await this.enqueueLifecycleTask(async () => {
-        await this.lifecycleProducer.removeConversationIdleEndCheckTask(
-          sessionId,
-        );
-        await this.lifecycleProducer.addStartTask({
-          sessionId,
-          tenantId,
-          containerId: session.containerId!,
-          config: session.config,
-          ...(session.executionId ? { executionId: session.executionId } : {}),
-          ...(session.agentConversationId
-            ? { agentConversationId: session.agentConversationId }
-            : {}),
-          ...(session.sandboxNodeId
-            ? { sandboxNodeId: session.sandboxNodeId }
-            : {}),
-        });
-      });
-
-      this.logger.log(
-        `Enqueued restart for stopped persistent sandbox ${sessionId}`,
+    if (!session.containerId) {
+      throw new SandboxInvalidStateException(
+        sessionId,
+        session.status,
+        'start without a durable runtime handle',
       );
-
-      return this.getSessionById(sessionId);
     }
-
-    if (session.containerId) {
-      await this.dockerService
-        .stopContainer(session.containerId)
-        .catch((error) => {
-          this.logger.warn(
-            `Failed to stop stale container ${session.containerId} before restarting sandbox ${sessionId}: ${error instanceof Error ? error.message : String(error)}`,
-          );
-        });
-      await this.dockerService
-        .removeContainer(session.containerId, {
-          removeVolumes: this.shouldRemoveContainerVolumes(session.config),
-        })
-        .catch((error) => {
-          this.logger.warn(
-            `Failed to remove stale container ${session.containerId} before restarting sandbox ${sessionId}: ${error instanceof Error ? error.message : String(error)}`,
-          );
-        });
+    const runtime = await this.dockerService.inspectRuntime(
+      session.containerId,
+    );
+    if (runtime.state !== 'stopped') {
+      throw new SandboxInvalidStateException(
+        sessionId,
+        session.status,
+        `start runtime in manager state ${runtime.state}`,
+      );
     }
 
     await this.updateSessionStatus(sessionId, 'creating', {
-      containerId: null,
-      workspacePath: null,
       startedAt: null,
       stoppedAt: null,
     });
-
     await this.enqueueLifecycleTask(async () => {
       await this.lifecycleProducer.removeConversationIdleEndCheckTask(
         sessionId,
       );
-      await this.lifecycleProducer.addCreateTask({
+      await this.lifecycleProducer.addStartTask({
         sessionId,
         tenantId,
+        containerId: session.containerId!,
         config: session.config,
         ...(session.executionId ? { executionId: session.executionId } : {}),
         ...(session.agentConversationId
@@ -1754,8 +1723,9 @@ export class SandboxService {
           : {}),
       });
     });
-
-    this.logger.log(`Enqueued start for persistent sandbox ${sessionId}`);
+    this.logger.log(
+      `Enqueued restart for stopped persistent sandbox ${sessionId}`,
+    );
 
     return this.getSessionById(sessionId);
   }

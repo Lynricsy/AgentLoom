@@ -9,6 +9,7 @@ import { SandboxLifecycleProducer } from '../sandbox-lifecycle.producer';
 import {
   SandboxNotFoundException,
   SandboxMaintenanceException,
+  SandboxInvalidStateException,
   SandboxProcessesUnavailableException,
   SandboxStatsUnavailableException,
 } from '../sandbox.exceptions';
@@ -186,6 +187,7 @@ describe('SandboxService', () => {
 
     mockDockerService = {
       healthCheck: vi.fn().mockResolvedValue(true),
+      inspectRuntime: vi.fn().mockResolvedValue({ state: 'stopped' }),
       getContainerStats: vi.fn(),
       listContainerProcesses: vi.fn(),
       stopContainer: vi.fn().mockResolvedValue(undefined),
@@ -623,7 +625,7 @@ describe('SandboxService', () => {
       expect(mockLifecycleProducer.addCreateTask).not.toHaveBeenCalled();
     });
 
-    it('ready 持久沙箱若记录已陈旧但容器缺失，再次引用时应先收口再自动恢复', async () => {
+    it('ready 持久沙箱对应 stopped runtime 时保留 handle 并显式恢复', async () => {
       const stalePersistentSession = buildSession({
         status: 'ready',
         containerId: 'container-missing',
@@ -644,13 +646,13 @@ describe('SandboxService', () => {
       const reconciledStoppedSession = buildSession({
         ...stalePersistentSession,
         status: 'stopped',
-        containerId: null,
+        containerId: 'container-missing',
         workspacePath: null,
         stoppedAt: new Date('2025-01-03T00:00:00Z'),
       });
       const attachedSession = buildSession({
         status: 'creating',
-        containerId: null,
+        containerId: 'container-missing',
         sandboxNodeId: null,
         config: {
           ...stalePersistentSession.config,
@@ -866,7 +868,7 @@ describe('SandboxService', () => {
       );
     });
 
-    it('应在活跃沙箱记录已陈旧且容器缺失时先收口为 stopped', async () => {
+    it('manager 报告 stopped 时收口状态但保留 durable runtime handle', async () => {
       const staleSession = buildSession({
         containerId: 'container-gone',
         status: 'ready',
@@ -874,7 +876,7 @@ describe('SandboxService', () => {
       });
       const stoppedSession = buildSession({
         status: 'stopped',
-        containerId: null,
+        containerId: 'container-gone',
         workspacePath: null,
         startedAt: staleSession.startedAt,
         stoppedAt: new Date('2025-01-03T00:00:00Z'),
@@ -1270,7 +1272,7 @@ describe('SandboxService', () => {
       expect(mockLifecycleProducer.addCreateTask).not.toHaveBeenCalled();
     });
 
-    it('failed 持久沙箱应清理旧容器并重新入队 create 任务', async () => {
+    it('failed runtime 应 fail closed 且不得删除持久磁盘', async () => {
       const failedSession = buildSession({
         status: 'failed',
         containerId: 'container-old',
@@ -1283,48 +1285,22 @@ describe('SandboxService', () => {
           name: 'Persistent Sandbox',
         },
       });
-      const creatingSession = buildSession({
-        status: 'creating',
-        containerId: null,
-        workspacePath: null,
-        startedAt: null,
-        stoppedAt: null,
-        config: failedSession.config,
+      db.select.mockReturnValueOnce(
+        createSelectChainWithLimit([failedSession]),
+      );
+      mockDockerService.inspectRuntime.mockResolvedValueOnce({
+        state: 'failed',
       });
-      const updateChain = createUpdateChainReturning([{ id: TEST_SESSION_ID }]);
-
-      db.select
-        .mockReturnValueOnce(createSelectChainWithLimit([failedSession]))
-        .mockReturnValueOnce(createSelectChainWithLimit([creatingSession]));
-      db.update.mockReturnValueOnce(updateChain);
 
       await expect(
         service.startSandbox(TEST_SESSION_ID, TEST_TENANT_ID),
-      ).resolves.toEqual(creatingSession);
+      ).rejects.toBeInstanceOf(SandboxInvalidStateException);
 
-      expect(mockDockerService.stopContainer).toHaveBeenCalledWith(
-        'container-old',
-      );
-      expect(mockDockerService.removeContainer).toHaveBeenCalledWith(
-        'container-old',
-        {
-          removeVolumes: true,
-        },
-      );
-      expect(updateChain.set).toHaveBeenCalledWith({
-        status: 'creating',
-        containerId: null,
-        workspacePath: null,
-        startedAt: null,
-        stoppedAt: null,
-      });
-      expect(mockLifecycleProducer.addCreateTask).toHaveBeenCalledWith({
-        sessionId: TEST_SESSION_ID,
-        executionId: TEST_EXECUTION_ID,
-        sandboxNodeId: 'sandbox-1',
-        tenantId: TEST_TENANT_ID,
-        config: failedSession.config,
-      });
+      expect(mockDockerService.stopContainer).not.toHaveBeenCalled();
+      expect(mockDockerService.removeContainer).not.toHaveBeenCalled();
+      expect(db.update).not.toHaveBeenCalled();
+      expect(mockLifecycleProducer.addCreateTask).not.toHaveBeenCalled();
+      expect(mockLifecycleProducer.addStartTask).not.toHaveBeenCalled();
     });
   });
 
@@ -1590,7 +1566,7 @@ describe('SandboxService', () => {
       );
     });
 
-    it('应将已陈旧但容器缺失的活跃沙箱自动收口为 stopped 后返回', async () => {
+    it('已陈旧 runtime 为 stopped 时保留 handle 并返回', async () => {
       const staleSession = buildSession({
         status: 'ready',
         executionId: null,
@@ -1606,7 +1582,7 @@ describe('SandboxService', () => {
       const stoppedSession = buildSession({
         ...staleSession,
         status: 'stopped',
-        containerId: null,
+        containerId: 'container-gone',
         workspacePath: null,
         stoppedAt: new Date('2025-01-03T00:00:00Z'),
       });

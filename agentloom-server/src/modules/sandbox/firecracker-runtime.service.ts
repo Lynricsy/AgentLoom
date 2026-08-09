@@ -15,6 +15,7 @@ import type {
   RemoveContainerOptions,
   SandboxRuntimeDriver,
 } from './sandbox-runtime-driver.port';
+import { SandboxContainerNotFoundException } from './sandbox.exceptions';
 
 interface RuntimeResponse {
   runtimeHandle: string;
@@ -47,6 +48,13 @@ export class FirecrackerRuntimeService implements SandboxRuntimeDriver {
         workspaceId: config.restoreWorkspaceId,
       }),
     });
+    if (response.state === 'stopped') {
+      await this.startContainer(response.runtimeHandle);
+    } else if (response.state !== 'running') {
+      throw new Error(
+        `Firecracker runtime ${response.runtimeHandle} is ${response.state}`,
+      );
+    }
     return { containerId: response.runtimeHandle };
   }
 
@@ -72,6 +80,13 @@ export class FirecrackerRuntimeService implements SandboxRuntimeDriver {
       `/v1/vms/${encodeURIComponent(runtimeHandle)}?deleteDisk=${options?.removeVolumes ?? true}`,
       { method: 'DELETE' },
     );
+  }
+
+  async inspectRuntime(runtimeHandle: string): Promise<{ state: string }> {
+    const runtime = await this.managerJson<RuntimeResponse>(
+      `/v1/vms/${encodeURIComponent(runtimeHandle)}`,
+    );
+    return { state: runtime.state };
   }
 
   async healthCheck(runtimeHandle: string): Promise<boolean> {
@@ -305,6 +320,11 @@ export class FirecrackerRuntimeService implements SandboxRuntimeDriver {
         init.signal ??
         AbortSignal.timeout(path.includes('/guest/') ? 15 * 60_000 : 60_000),
     });
+    if (response.status === 404 && !path.includes('/guest/')) {
+      throw new SandboxContainerNotFoundException(
+        this.runtimeHandleFromPath(path),
+      );
+    }
     if (!response.ok && !path.includes('/guest/')) {
       const detail = (await response.text()).slice(0, 4_096);
       throw new Error(
@@ -312,6 +332,11 @@ export class FirecrackerRuntimeService implements SandboxRuntimeDriver {
       );
     }
     return response as unknown as Response;
+  }
+
+  private runtimeHandleFromPath(path: string): string {
+    const match = path.match(/^\/v1\/vms\/([^/:?]+)/);
+    return match ? decodeURIComponent(match[1]) : 'unknown';
   }
 
   private async readJson<T>(response: Response, operation: string): Promise<T> {

@@ -20,6 +20,7 @@ vi.mock('node:fs', async (importOriginal) => {
 });
 
 import { FirecrackerRuntimeService } from '../firecracker-runtime.service';
+import { SandboxContainerNotFoundException } from '../sandbox.exceptions';
 
 function jsonResponse(value: unknown, status = 200): Response {
   return new Response(JSON.stringify(value), {
@@ -77,6 +78,47 @@ describe('FirecrackerRuntimeService', () => {
         }),
       }),
     );
+  });
+
+  it('manager 重启恢复出 stopped persistent runtime 时显式 start 且复用 handle', async () => {
+    undiciMocks.fetch
+      .mockResolvedValueOnce(
+        jsonResponse({ runtimeHandle: 'runtime-1', state: 'stopped' }, 200),
+      )
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    const service = new FirecrackerRuntimeService();
+
+    await expect(
+      service.createContainer('session-1', {
+        cpu: 1,
+        memory: 512,
+        disk: 2,
+        timeout: 1,
+        lifecycleMode: 'persistent',
+      }),
+    ).resolves.toEqual({ containerId: 'runtime-1' });
+
+    expect(undiciMocks.fetch).toHaveBeenNthCalledWith(
+      2,
+      'https://firecracker-runtime:8443/v1/vms/runtime-1:start',
+      expect.objectContaining({ method: 'POST' }),
+    );
+  });
+
+  it('inspectRuntime 返回 manager lifecycle state 并明确映射 404', async () => {
+    undiciMocks.fetch
+      .mockResolvedValueOnce(
+        jsonResponse({ runtimeHandle: 'runtime-1', state: 'stopped' }),
+      )
+      .mockResolvedValueOnce(jsonResponse({ error: 'not found' }, 404));
+    const service = new FirecrackerRuntimeService();
+
+    await expect(service.inspectRuntime('runtime-1')).resolves.toEqual({
+      state: 'stopped',
+    });
+    await expect(
+      service.inspectRuntime('missing-runtime'),
+    ).rejects.toBeInstanceOf(SandboxContainerNotFoundException);
   });
 
   it('只通过 manager guest proxy 转发 session 请求', async () => {
