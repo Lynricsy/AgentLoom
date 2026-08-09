@@ -156,14 +156,23 @@ func (runtime *FirecrackerRuntime) Verify(ctx context.Context, migration Migrati
 		return err
 	}
 	defer archive.Close()
-	var compressed bytes.Buffer
-	var manifest bytes.Buffer
-	result, err := BuildWorkspaceArchive(archive, &compressed, &manifest)
+	return VerifyWorkspaceArchive(archive, migration)
+}
+
+func VerifyWorkspaceArchive(archive io.Reader, migration MigrationRecord) error {
+	result, err := BuildWorkspaceArchive(archive, io.Discard, io.Discard)
 	if err != nil {
 		return err
 	}
-	if result.ManifestSHA256 != migration.ManifestSHA256 || result.FileCount != migration.FileCount || result.TotalBytes != migration.TotalBytes {
-		return fmt.Errorf("guest workspace manifest mismatch: digest=%s files=%d bytes=%d", result.ManifestSHA256, result.FileCount, result.TotalBytes)
+	if result.ManifestSHA256 != migration.ManifestSHA256 ||
+		result.FileCount != migration.FileCount ||
+		result.TotalBytes != migration.TotalBytes {
+		return fmt.Errorf(
+			"guest workspace manifest mismatch: digest=%s files=%d bytes=%d",
+			result.ManifestSHA256,
+			result.FileCount,
+			result.TotalBytes,
+		)
 	}
 	return nil
 }

@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"testing"
 	"time"
@@ -54,9 +55,10 @@ func (orchestratorStore) Get(context.Context, string) (io.ReadCloser, error) {
 }
 
 type orchestratorRuntime struct {
-	archive []byte
-	started []string
-	stopped []string
+	archive    []byte
+	started    []string
+	stopped    []string
+	archiveErr error
 }
 
 func (*orchestratorRuntime) Create(context.Context, MigrationRecord) error { return nil }
@@ -71,6 +73,9 @@ func (runtime *orchestratorRuntime) Stop(_ context.Context, id string) error {
 func (*orchestratorRuntime) Delete(context.Context, string, bool) error       { return nil }
 func (*orchestratorRuntime) Restore(context.Context, string, io.Reader) error { return nil }
 func (runtime *orchestratorRuntime) WorkspaceArchive(_ context.Context, id string) (io.ReadCloser, error) {
+	if runtime.archiveErr != nil {
+		return nil, runtime.archiveErr
+	}
 	if len(runtime.started) == 0 || runtime.started[len(runtime.started)-1] != id {
 		panic("archive requested from runtime that was not started")
 	}
@@ -113,6 +118,32 @@ func TestRollbackUsesLastPublishedNonFirstWorkspaceSession(t *testing.T) {
 	}
 	if len(repository.rolledBack) != 2 {
 		t.Fatalf("rollback did not verify every legacy container: %v", repository.rolledBack)
+	}
+}
+
+func TestRollbackStopsRuntimeWhenArchiveFails(t *testing.T) {
+	sessionID := "11111111-1111-4111-8111-111111111111"
+	repository := &orchestratorRepository{migrations: []MigrationRecord{
+		{
+			SessionID:               sessionID,
+			TenantID:                "tenant",
+			WorkspaceIdentity:       "workspace",
+			LegacyContainerID:       "legacy",
+			RollbackSourceSessionID: sessionID,
+		},
+	}}
+	runtime := &orchestratorRuntime{archiveErr: errors.New("archive failed")}
+	orchestrator := Orchestrator{
+		Repository: repository,
+		Store:      orchestratorStore{},
+		Runtime:    runtime,
+		Legacy:     &orchestratorLegacy{},
+	}
+	if err := orchestrator.RollbackAll(context.Background()); err == nil {
+		t.Fatal("expected rollback failure")
+	}
+	if len(runtime.stopped) != 1 || runtime.stopped[0] != sessionID {
+		t.Fatalf("runtime was not stopped after rollback failure: %v", runtime.stopped)
 	}
 }
 
