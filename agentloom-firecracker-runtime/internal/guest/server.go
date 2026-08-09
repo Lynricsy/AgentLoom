@@ -3,6 +3,7 @@ package guest
 import (
 	"context"
 	"crypto/subtle"
+	"crypto/tls"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -27,11 +28,15 @@ const (
 )
 
 type Metadata struct {
-	Token           string `json:"token"`
-	GuestIP         string `json:"guestIp"`
-	Gateway         string `json:"gateway"`
-	ArtifactDigest  string `json:"artifactDigest"`
-	GuestAPIVersion string `json:"guestApiVersion"`
+	Token            string `json:"token"`
+	SessionID        string `json:"sessionId"`
+	GuestIP          string `json:"guestIp"`
+	Gateway          string `json:"gateway"`
+	ArtifactDigest   string `json:"artifactDigest"`
+	GuestAPIVersion  string `json:"guestApiVersion"`
+	TLSCertificate   string `json:"tlsCertificate"`
+	TLSPrivateKey    string `json:"tlsPrivateKey"`
+	CallbackRelayURL string `json:"callbackRelayUrl"`
 }
 
 type Config struct {
@@ -39,12 +44,14 @@ type Config struct {
 	NodeSocket    string
 	NodeEntry     string
 	Logger        *slog.Logger
+	DevMode       bool
 }
 
 type Server struct {
-	config   Config
-	metadata Metadata
-	proxy    *httputil.ReverseProxy
+	config      Config
+	metadata    Metadata
+	proxy       *httputil.ReverseProxy
+	certificate *tls.Certificate
 }
 
 func NewServer(config Config, metadata Metadata) (*Server, error) {
@@ -52,7 +59,7 @@ func NewServer(config Config, metadata Metadata) (*Server, error) {
 		return nil, errors.New("guest bearer token is required")
 	}
 	if config.ListenAddress == "" {
-		config.ListenAddress = ":8080"
+		config.ListenAddress = ":8443"
 	}
 	if config.NodeSocket == "" {
 		config.NodeSocket = defaultNodeSocket
@@ -62,6 +69,14 @@ func NewServer(config Config, metadata Metadata) (*Server, error) {
 	}
 	if config.Logger == nil {
 		config.Logger = slog.Default()
+	}
+	var certificate *tls.Certificate
+	if metadata.TLSCertificate != "" || metadata.TLSPrivateKey != "" {
+		parsed, err := tls.X509KeyPair([]byte(metadata.TLSCertificate), []byte(metadata.TLSPrivateKey))
+		if err != nil {
+			return nil, fmt.Errorf("parse guest TLS identity: %w", err)
+		}
+		certificate = &parsed
 	}
 
 	backend, _ := url.Parse("http://agentloom-node")
@@ -79,7 +94,7 @@ func NewServer(config Config, metadata Metadata) (*Server, error) {
 		config.Logger.Warn("node runtime unavailable", "path", request.URL.Path, "error", err)
 		http.Error(response, "guest runtime unavailable", http.StatusServiceUnavailable)
 	}
-	return &Server{config: config, metadata: metadata, proxy: proxy}, nil
+	return &Server{config: config, metadata: metadata, proxy: proxy, certificate: certificate}, nil
 }
 
 func (server *Server) Handler() http.Handler {
@@ -89,6 +104,20 @@ func (server *Server) Handler() http.Handler {
 			subtle.ConstantTimeCompare([]byte(provided), []byte(server.metadata.Token)) != 1 {
 			response.Header().Set("WWW-Authenticate", "Bearer")
 			http.Error(response, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		if request.Method == http.MethodGet && request.URL.Path == "/health" {
+			connection, err := net.DialTimeout("unix", server.config.NodeSocket, 500*time.Millisecond)
+			if err != nil {
+				http.Error(response, "guest runtime unavailable", http.StatusServiceUnavailable)
+				return
+			}
+			_ = connection.Close()
+			response.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(response).Encode(map[string]string{
+				"status": "ok", "guestApiVersion": server.metadata.GuestAPIVersion,
+				"artifactDigest": server.metadata.ArtifactDigest,
+			})
 			return
 		}
 		request.Header.Del("Authorization")
@@ -109,9 +138,20 @@ func (server *Server) Run(ctx context.Context) error {
 		IdleTimeout:       90 * time.Second,
 		MaxHeaderBytes:    64 * 1024,
 	}
+	listener, err := net.Listen("tcp", server.config.ListenAddress)
+	if err != nil {
+		return err
+	}
+	if !server.config.DevMode {
+		if server.certificate == nil {
+			listener.Close()
+			return errors.New("guest TLS identity is required")
+		}
+		listener = tls.NewListener(listener, &tls.Config{MinVersion: tls.VersionTLS13, Certificates: []tls.Certificate{*server.certificate}})
+	}
 	serverErrors := make(chan error, 1)
 	go func() {
-		serverErrors <- httpServer.ListenAndServe()
+		serverErrors <- httpServer.Serve(listener)
 	}()
 
 	select {
@@ -222,6 +262,7 @@ func RunMain() error {
 		ListenAddress: os.Getenv("AGENTLOOM_GUESTD_LISTEN"),
 		NodeSocket:    os.Getenv("SANDBOX_LISTEN_SOCKET"),
 		NodeEntry:     os.Getenv("AGENTLOOM_NODE_ENTRY"),
+		DevMode:       devMode,
 	}, metadata)
 	if err != nil {
 		return err
