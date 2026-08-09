@@ -1,0 +1,24 @@
+[Unit]
+Description=AgentLoom Firecracker guest runtime gateway
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/agentloom-guestd
+Restart=on-failure
+RestartSec=1s
+Environment=AGENTLOOM_GUESTD_LISTEN=:8080
+Environment=SANDBOX_LISTEN_SOCKET=/run/agentloom/agent.sock
+Environment=AGENTLOOM_NODE_ENTRY=/opt/agentloom-sandbox/dist/server.js
+RuntimeDirectory=agentloom
+RuntimeDirectoryMode=0700
+LimitCORE=0
+NoNewPrivileges=yes
+ProtectSystem=full
+ProtectHome=yes
+PrivateTmp=yes
+ReadWritePaths=/run/agentloom /workspace
+
+[Install]
+WantedBy=multi-user.target

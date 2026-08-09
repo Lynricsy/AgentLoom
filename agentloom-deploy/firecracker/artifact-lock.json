@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "guestApiVersion": "v1",
+  "firecracker": {
+    "version": "v1.16.1",
+    "commit": "2038188f145fb81b8d098147a10e9d9f392fd22f",
+    "releaseArchive": "https://github.com/firecracker-microvm/firecracker/releases/download/v1.16.1/firecracker-v1.16.1-x86_64.tgz",
+    "releaseArchiveSha256": "382a02a869e4d6d5cb14c40577f9545e8458021ea8b0b2d3fc10ec14d9c242e6",
+    "goSdkCommit": "6fb280e993d4516ee6d5d20238572fe8752bc7ca"
+  },
+  "kernel": {
+    "sourceTag": "microvm-kernel-6.1.177-45.371.amzn2023",
+    "sourceCommit": "f4ea506268dde60590dda6cc371c24feceba77e1",
+    "sourceArchive": "https://github.com/amazonlinux/linux/archive/f4ea506268dde60590dda6cc371c24feceba77e1.tar.gz",
+    "sourceArchiveSha256": "bfce7061e3e07440cd2f80abfec97d8d01871c564656bdd07a465d36766f79c3",
+    "configCommit": "2038188f145fb81b8d098147a10e9d9f392fd22f",
+    "configUrl": "https://raw.githubusercontent.com/firecracker-microvm/firecracker/2038188f145fb81b8d098147a10e9d9f392fd22f/resources/guest_configs/microvm-kernel-ci-x86_64-6.1.config",
+    "configSha256": "adbc70ab5e89213ba00594b12d25e09bdf8bb1ed3c252d7449326bb14c22963b"
+  },
+  "busybox": {
+    "version": "1.37.0",
+    "sourceArchive": "https://busybox.net/downloads/busybox-1.37.0.tar.bz2",
+    "sourceArchiveSha256": "3311dff32e746499f4df0d5df04d7eb396382d7e108bb9250e7b519b837043a4"
+  },
+  "rootfs": {
+    "archOciDigest": "sha256:a674898d53cc63b1af4023a468ccddc25ed9d7aecc3996f16171838a57085999",
+    "archSnapshot": "2026/08/01",
+    "sizeGiB": 2
+  }
+}

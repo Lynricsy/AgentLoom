@@ -1,0 +1,24 @@
+#!/bin/sh
+set -eu
+
+export PATH=/sbin:/bin:/usr/sbin:/usr/bin
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+mount -t devtmpfs devtmpfs /dev
+mkdir -p /run /lower /mutable /newroot
+mount -t tmpfs -o mode=0755,nosuid,nodev tmpfs /run
+
+mount -t ext4 -o ro,noload /dev/vda /lower
+mount -t ext4 -o rw,noatime,nodiratime /dev/vdb /mutable
+mkdir -p /mutable/upper /mutable/work /mutable/workspace
+mount -t overlay overlay \
+  -o lowerdir=/lower,upperdir=/mutable/upper,workdir=/mutable/work \
+  /newroot
+mkdir -p /newroot/workspace
+mount --bind /mutable/workspace /newroot/workspace
+
+mount --move /proc /newroot/proc
+mount --move /sys /newroot/sys
+mount --move /dev /newroot/dev
+mount --move /run /newroot/run
+exec switch_root /newroot /sbin/init
