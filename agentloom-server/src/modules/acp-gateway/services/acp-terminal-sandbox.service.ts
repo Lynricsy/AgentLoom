@@ -1,4 +1,3 @@
-import { access, realpath, stat } from 'node:fs/promises';
 import { isAbsolute, relative, resolve, sep } from 'node:path';
 import { Inject, Injectable } from '@nestjs/common';
 import { and, eq, inArray } from 'drizzle-orm';
@@ -8,6 +7,7 @@ import { sandboxSessions } from '../../../database/schema';
 import {
   SANDBOX_RUNTIME_DRIVER,
   type DockerExecExitInfo,
+  type DockerExecHandle,
   type SandboxRuntimeDriver,
 } from '../../sandbox/sandbox-runtime-driver.port';
 import { AcpJsonRpcError } from '../acp-jsonrpc';
@@ -18,7 +18,6 @@ const ACTIVE_SANDBOX_STATUSES = ['ready', 'busy'] as const;
 
 interface SandboxSessionAccess {
   readonly containerId: string | null;
-  readonly workspacePath: string | null;
 }
 
 export interface SandboxCreateTerminalParams {
@@ -50,20 +49,23 @@ export class AcpTerminalSandboxService {
     params: SandboxCreateTerminalParams,
   ): Promise<SandboxCreateTerminalResult> {
     const access = await this.resolveSandboxAccess(params.trackedSession);
-    const workspaceRoot = await this.resolveWorkspaceRoot(
-      params.trackedSession,
-      access,
-    );
-    const resolvedCwd = await this.resolveTerminalCwd(
+    const resolvedCwd = this.resolveTerminalCwd(
       params.trackedSession,
       params.cwd,
-      workspaceRoot,
     );
-    const exec = await this.dockerService.createExec(access.containerId, {
-      command: params.command,
-      args: params.args,
-      cwd: resolvedCwd.execCwd,
-    });
+    let exec: DockerExecHandle;
+    try {
+      exec = await this.dockerService.createExec(access.containerId, {
+        command: params.command,
+        args: params.args,
+        cwd: resolvedCwd.execCwd,
+      });
+    } catch {
+      throw this.createSandboxError(
+        'ACP server sandbox cwd does not exist or is not a directory',
+        'sandbox_cwd_missing',
+      );
+    }
 
     return {
       execId: exec.execId,
@@ -90,7 +92,7 @@ export class AcpTerminalSandboxService {
 
   private async resolveSandboxAccess(
     trackedSession: AcpTrackedSession,
-  ): Promise<{ containerId: string; workspacePath: string | null }> {
+  ): Promise<{ containerId: string }> {
     const binding = this.readSandboxBinding(trackedSession);
 
     const sandboxSession = await runInTenantTransaction(
@@ -98,10 +100,7 @@ export class AcpTerminalSandboxService {
       trackedSession.tenantId,
       async (dbClient) => {
         const rows = await dbClient
-          .select({
-            containerId: sandboxSessions.containerId,
-            workspacePath: sandboxSessions.workspacePath,
-          })
+          .select({ containerId: sandboxSessions.containerId })
           .from(sandboxSessions)
           .where(this.buildActiveSandboxWhere(trackedSession.tenantId, binding))
           .limit(1);
@@ -127,10 +126,7 @@ export class AcpTerminalSandboxService {
       );
     }
 
-    return {
-      containerId: sandboxSession.containerId,
-      workspacePath: sandboxSession.workspacePath,
-    };
+    return { containerId: sandboxSession.containerId };
   }
 
   private buildActiveSandboxWhere(
@@ -189,67 +185,18 @@ export class AcpTerminalSandboxService {
     };
   }
 
-  private async resolveWorkspaceRoot(
-    _trackedSession: AcpTrackedSession,
-    access: { containerId: string; workspacePath: string | null },
-  ): Promise<string> {
-    if (this.isTrustedWorkspacePath(access.workspacePath)) {
-      return this.resolveRealPath(
-        resolve(access.workspacePath),
-        'sandbox_workspace_unavailable',
-        'ACP server sandbox workspace is unavailable',
-      );
-    }
-
-    return this.resolveRealPath(
-      await this.dockerService.getWorkspaceHostPath(access.containerId),
-      'sandbox_workspace_unavailable',
-      'ACP server sandbox workspace is unavailable',
-    );
-  }
-
-  private async resolveTerminalCwd(
+  private resolveTerminalCwd(
     trackedSession: AcpTrackedSession,
     cwd: string | undefined,
-    workspaceRoot: string,
-  ): Promise<ResolvedTerminalCwd> {
+  ): ResolvedTerminalCwd {
     const logicalCwd = this.resolveLogicalSandboxPath(
       cwd ?? trackedSession.cwd,
       trackedSession,
     );
     const relativeWorkspacePath = this.toWorkspaceRelativePath(logicalCwd);
-    const workspaceRealPath = await this.resolveRealPath(
-      workspaceRoot,
-      'sandbox_workspace_unavailable',
-      'ACP server sandbox workspace is unavailable',
-    );
-    const candidatePath = resolve(workspaceRealPath, relativeWorkspacePath);
-    const resolvedTargetPath = await this.resolveRealPath(
-      candidatePath,
-      'sandbox_cwd_missing',
-      'ACP server sandbox cwd does not exist',
-    );
-
-    this.ensureWithinWorkspace(
-      resolvedTargetPath,
-      workspaceRealPath,
-      'sandbox_path_escaped_workspace',
-    );
-
-    const targetStats = await stat(resolvedTargetPath);
-    if (!targetStats.isDirectory()) {
-      throw this.createSandboxError(
-        'ACP server sandbox cwd must reference a directory',
-        'sandbox_cwd_not_directory',
-      );
-    }
-
     return {
       logicalCwd,
-      execCwd:
-        process.env.ACP_TEST_FAKE_RUNTIME === '1'
-          ? resolvedTargetPath
-          : logicalCwd,
+      execCwd: resolve(SANDBOX_WORKSPACE_ROOT, relativeWorkspacePath),
     };
   }
 
@@ -294,51 +241,6 @@ export class AcpTerminalSandboxService {
     }
 
     return relativePath;
-  }
-
-  private isTrustedWorkspacePath(
-    workspacePath: string | null,
-  ): workspacePath is string {
-    if (typeof workspacePath !== 'string' || workspacePath.length === 0) {
-      return false;
-    }
-
-    const normalizedPath = resolve(workspacePath);
-    return (
-      isAbsolute(normalizedPath) && normalizedPath !== SANDBOX_WORKSPACE_ROOT
-    );
-  }
-
-  private ensureWithinWorkspace(
-    resolvedPath: string,
-    workspaceRoot: string,
-    reason: string,
-  ) {
-    const relativePath = relative(workspaceRoot, resolvedPath);
-
-    if (
-      relativePath === '..' ||
-      relativePath.startsWith(`..${sep}`) ||
-      isAbsolute(relativePath)
-    ) {
-      throw this.createSandboxError(
-        'ACP server sandbox path escapes workspace',
-        reason,
-      );
-    }
-  }
-
-  private async resolveRealPath(
-    pathValue: string,
-    reason: string,
-    message: string,
-  ): Promise<string> {
-    try {
-      await access(pathValue);
-      return await realpath(pathValue);
-    } catch {
-      throw this.createSandboxError(message, reason);
-    }
   }
 
   private createSandboxError(message: string, reason: string): AcpJsonRpcError {

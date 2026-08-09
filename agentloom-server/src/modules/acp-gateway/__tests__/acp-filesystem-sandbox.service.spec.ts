@@ -1,9 +1,14 @@
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
-import { tmpdir } from 'node:os';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+  vi,
+  type MockedFunction,
+} from 'vitest';
+
 import type { DrizzleDB } from '../../../database/database.module';
-import type { DockerService } from '../../sandbox/docker.service';
+import type { SandboxRuntimeDriver } from '../../sandbox/sandbox-runtime-driver.port';
 import type { AcpTrackedSession } from '../acp-types';
 import { AcpFilesystemSandboxService } from '../services/acp-filesystem-sandbox.service';
 
@@ -15,27 +20,18 @@ vi.mock('../../../common/interceptors/tenant-transaction.context', () => ({
   runInTenantTransaction: runInTenantTransactionMock,
 }));
 
+interface RuntimeFileDriverMock {
+  readTextFile: MockedFunction<SandboxRuntimeDriver['readTextFile']>;
+  validateTextFileWrite: MockedFunction<
+    SandboxRuntimeDriver['validateTextFileWrite']
+  >;
+  writeTextFile: MockedFunction<SandboxRuntimeDriver['writeTextFile']>;
+}
+
 describe('AcpFilesystemSandboxService', () => {
-  const tempDirs: string[] = [];
-
-  afterEach(async () => {
+  afterEach(() => {
     runInTenantTransactionMock.mockReset();
-
-    while (tempDirs.length > 0) {
-      const tempDir = tempDirs.pop();
-      if (!tempDir) {
-        continue;
-      }
-
-      await rm(tempDir, { recursive: true, force: true });
-    }
   });
-
-  async function createWorkspaceRoot() {
-    const root = await mkdtemp(join(tmpdir(), 'acp-sandbox-'));
-    tempDirs.push(root);
-    return root;
-  }
 
   function createTrackedSession(
     overrides?: Partial<AcpTrackedSession>,
@@ -53,89 +49,48 @@ describe('AcpFilesystemSandboxService', () => {
     };
   }
 
-  function createService() {
-    const dockerService = {
-      getWorkspaceHostPath: vi.fn(),
-    } satisfies Pick<DockerService, 'getWorkspaceHostPath'>;
-    const dockerServiceForInjection: unknown = dockerService;
-
+  function createService(): {
+    service: AcpFilesystemSandboxService;
+    runtime: RuntimeFileDriverMock;
+  } {
+    const runtime: RuntimeFileDriverMock = {
+      readTextFile: vi.fn(),
+      validateTextFileWrite: vi.fn().mockResolvedValue(undefined),
+      writeTextFile: vi.fn().mockResolvedValue(undefined),
+    };
     const service = new AcpFilesystemSandboxService(
       {} as DrizzleDB,
-      dockerServiceForInjection as DockerService,
+      runtime as unknown as SandboxRuntimeDriver,
     );
-
-    return {
-      service,
-      dockerService,
-    };
+    return { service, runtime };
   }
 
-  it('应在受信任 workspacePath 下读取工作区内文本文件', async () => {
-    const workspaceRoot = await createWorkspaceRoot();
-    await mkdir(join(workspaceRoot, 'demo', 'notes'), { recursive: true });
-    await writeFile(
-      join(workspaceRoot, 'demo', 'notes', 'todo.txt'),
-      '来自真实沙箱文件系统',
-      'utf8',
+  it('通过 opaque runtime handle 读取工作区文本', async () => {
+    runInTenantTransactionMock.mockResolvedValue({ containerId: 'runtime-1' });
+    const { service, runtime } = createService();
+    runtime.readTextFile.mockResolvedValue(
+      Buffer.from('来自 Firecracker guest 文件系统'),
     );
-    runInTenantTransactionMock.mockResolvedValue({
-      containerId: 'container-1',
-      workspacePath: workspaceRoot,
-    });
-    const { service, dockerService } = createService();
 
     await expect(
       service.readTextFile({
         trackedSession: createTrackedSession(),
         path: 'notes/todo.txt',
       }),
-    ).resolves.toEqual({
-      text: '来自真实沙箱文件系统',
-    });
-    expect(dockerService.getWorkspaceHostPath).not.toHaveBeenCalled();
-  });
-
-  it('应在持久化 workspacePath 仍为 /workspace 时回退到 Docker 挂载解析', async () => {
-    const workspaceRoot = await createWorkspaceRoot();
-    await mkdir(join(workspaceRoot, 'demo', 'notes'), { recursive: true });
-    await writeFile(
-      join(workspaceRoot, 'demo', 'notes', 'todo.txt'),
-      '来自 Docker 挂载解析',
-      'utf8',
-    );
-    runInTenantTransactionMock.mockResolvedValue({
-      containerId: 'container-1',
-      workspacePath: '/workspace/',
-    });
-    const { service, dockerService } = createService();
-    dockerService.getWorkspaceHostPath.mockResolvedValue(workspaceRoot);
-
-    await expect(
-      service.readTextFile({
-        trackedSession: createTrackedSession(),
-        path: 'notes/todo.txt',
-      }),
-    ).resolves.toEqual({
-      text: '来自 Docker 挂载解析',
-    });
-    expect(dockerService.getWorkspaceHostPath).toHaveBeenCalledWith(
-      'container-1',
+    ).resolves.toEqual({ text: '来自 Firecracker guest 文件系统' });
+    expect(runtime.readTextFile).toHaveBeenCalledWith(
+      'runtime-1',
+      '/workspace/demo/notes/todo.txt',
+      10 * 1024 * 1024,
     );
   });
 
-  it('应支持按 agentConversationId 绑定解析工作区', async () => {
-    const workspaceRoot = await createWorkspaceRoot();
-    await mkdir(join(workspaceRoot, 'demo', 'notes'), { recursive: true });
-    await writeFile(
-      join(workspaceRoot, 'demo', 'notes', 'conversation.txt'),
-      'conversation sandbox ok',
-      'utf8',
-    );
+  it('支持按 agentConversationId 绑定解析 runtime', async () => {
     runInTenantTransactionMock.mockResolvedValue({
-      containerId: 'container-conv',
-      workspacePath: workspaceRoot,
+      containerId: 'runtime-conversation',
     });
-    const { service } = createService();
+    const { service, runtime } = createService();
+    runtime.readTextFile.mockResolvedValue(Buffer.from('conversation ok'));
 
     await expect(
       service.readTextFile({
@@ -146,18 +101,17 @@ describe('AcpFilesystemSandboxService', () => {
         }),
         path: 'notes/conversation.txt',
       }),
-    ).resolves.toEqual({
-      text: 'conversation sandbox ok',
-    });
+    ).resolves.toEqual({ text: 'conversation ok' });
+    expect(runtime.readTextFile).toHaveBeenCalledWith(
+      'runtime-conversation',
+      '/workspace/demo/notes/conversation.txt',
+      10 * 1024 * 1024,
+    );
   });
 
-  it('应拒绝逃逸 /workspace 边界的读取路径', async () => {
-    const workspaceRoot = await createWorkspaceRoot();
-    runInTenantTransactionMock.mockResolvedValue({
-      containerId: 'container-1',
-      workspacePath: workspaceRoot,
-    });
-    const { service } = createService();
+  it('在请求 runtime 前拒绝逃逸 /workspace 的路径', async () => {
+    runInTenantTransactionMock.mockResolvedValue({ containerId: 'runtime-1' });
+    const { service, runtime } = createService();
 
     await expect(
       service.readTextFile({
@@ -166,50 +120,31 @@ describe('AcpFilesystemSandboxService', () => {
       }),
     ).rejects.toMatchObject({
       code: -32004,
-      message: 'ACP server sandbox path escapes workspace',
       data: { reason: 'sandbox_path_escaped_workspace' },
     });
+    expect(runtime.readTextFile).not.toHaveBeenCalled();
   });
 
-  it('应拒绝指向工作区外部的符号链接读取', async () => {
-    const workspaceRoot = await createWorkspaceRoot();
-    const outsideRoot = await createWorkspaceRoot();
-    await mkdir(join(workspaceRoot, 'demo', 'notes'), { recursive: true });
-    await writeFile(join(outsideRoot, 'secret.txt'), 'top-secret', 'utf8');
-    await symlink(
-      join(outsideRoot, 'secret.txt'),
-      join(workspaceRoot, 'demo', 'notes', 'secret-link.txt'),
-    );
-    runInTenantTransactionMock.mockResolvedValue({
-      containerId: 'container-1',
-      workspacePath: workspaceRoot,
-    });
-    const { service } = createService();
+  it('将 guest 缺失或 symlink 拒绝映射为稳定读取错误', async () => {
+    runInTenantTransactionMock.mockResolvedValue({ containerId: 'runtime-1' });
+    const { service, runtime } = createService();
+    runtime.readTextFile.mockRejectedValue(new Error('status 404'));
 
     await expect(
       service.readTextFile({
         trackedSession: createTrackedSession(),
-        path: 'notes/secret-link.txt',
+        path: 'notes/escape-link.txt',
       }),
     ).rejects.toMatchObject({
       code: -32004,
-      message: 'ACP server sandbox path escapes workspace',
-      data: { reason: 'sandbox_path_escaped_workspace' },
+      data: { reason: 'sandbox_path_missing' },
     });
   });
 
-  it('应拒绝超过 10MB 的读取目标', async () => {
-    const workspaceRoot = await createWorkspaceRoot();
-    await mkdir(join(workspaceRoot, 'demo', 'notes'), { recursive: true });
-    await writeFile(
-      join(workspaceRoot, 'demo', 'notes', 'huge.txt'),
-      Buffer.alloc(10 * 1024 * 1024 + 1, 'a'),
-    );
-    runInTenantTransactionMock.mockResolvedValue({
-      containerId: 'container-1',
-      workspacePath: workspaceRoot,
-    });
-    const { service } = createService();
+  it('将 guest 413 映射为文本文件大小错误', async () => {
+    runInTenantTransactionMock.mockResolvedValue({ containerId: 'runtime-1' });
+    const { service, runtime } = createService();
+    runtime.readTextFile.mockRejectedValue(new Error('status 413'));
 
     await expect(
       service.readTextFile({
@@ -218,23 +153,14 @@ describe('AcpFilesystemSandboxService', () => {
       }),
     ).rejects.toMatchObject({
       code: -32004,
-      message: 'ACP server sandbox file exceeds size limit',
       data: { reason: 'sandbox_file_too_large' },
     });
   });
 
-  it('应拒绝二进制文件读取', async () => {
-    const workspaceRoot = await createWorkspaceRoot();
-    await mkdir(join(workspaceRoot, 'demo', 'notes'), { recursive: true });
-    await writeFile(
-      join(workspaceRoot, 'demo', 'notes', 'binary.bin'),
-      Buffer.from([0x00, 0x61, 0x62, 0x63]),
-    );
-    runInTenantTransactionMock.mockResolvedValue({
-      containerId: 'container-1',
-      workspacePath: workspaceRoot,
-    });
-    const { service } = createService();
+  it('拒绝 guest 返回的二进制内容', async () => {
+    runInTenantTransactionMock.mockResolvedValue({ containerId: 'runtime-1' });
+    const { service, runtime } = createService();
+    runtime.readTextFile.mockResolvedValue(Buffer.from([0, 1, 2]));
 
     await expect(
       service.readTextFile({
@@ -243,19 +169,13 @@ describe('AcpFilesystemSandboxService', () => {
       }),
     ).rejects.toMatchObject({
       code: -32004,
-      message: 'ACP server sandbox file is binary and cannot be read as text',
       data: { reason: 'sandbox_binary_file' },
     });
   });
 
-  it('应在工作区内成功写入文本文件', async () => {
-    const workspaceRoot = await createWorkspaceRoot();
-    await mkdir(join(workspaceRoot, 'demo', 'notes'), { recursive: true });
-    runInTenantTransactionMock.mockResolvedValue({
-      containerId: 'container-1',
-      workspacePath: workspaceRoot,
-    });
-    const { service } = createService();
+  it('先远程校验再写入 guest 文本文件', async () => {
+    runInTenantTransactionMock.mockResolvedValue({ containerId: 'runtime-1' });
+    const { service, runtime } = createService();
 
     await expect(
       service.writeTextFile({
@@ -264,29 +184,23 @@ describe('AcpFilesystemSandboxService', () => {
         content: 'sandbox write ok',
       }),
     ).resolves.toEqual({ success: true });
-
-    await expect(
-      service.readTextFile({
-        trackedSession: createTrackedSession(),
-        path: 'notes/output.txt',
-      }),
-    ).resolves.toEqual({ text: 'sandbox write ok' });
+    expect(runtime.validateTextFileWrite).toHaveBeenCalledWith(
+      'runtime-1',
+      '/workspace/demo/notes/output.txt',
+      10 * 1024 * 1024,
+    );
+    expect(runtime.writeTextFile).toHaveBeenCalledWith(
+      'runtime-1',
+      '/workspace/demo/notes/output.txt',
+      'sandbox write ok',
+      10 * 1024 * 1024,
+    );
   });
 
-  it('应拒绝通过工作区外部符号链接目录写入文件', async () => {
-    const workspaceRoot = await createWorkspaceRoot();
-    const outsideRoot = await createWorkspaceRoot();
-    await mkdir(join(workspaceRoot, 'demo'), { recursive: true });
-    await mkdir(join(outsideRoot, 'external'), { recursive: true });
-    await symlink(
-      join(outsideRoot, 'external'),
-      join(workspaceRoot, 'demo', 'notes-link'),
-    );
-    runInTenantTransactionMock.mockResolvedValue({
-      containerId: 'container-1',
-      workspacePath: workspaceRoot,
-    });
-    const { service } = createService();
+  it('将 guest 写目标拒绝映射为 workspace 边界错误', async () => {
+    runInTenantTransactionMock.mockResolvedValue({ containerId: 'runtime-1' });
+    const { service, runtime } = createService();
+    runtime.validateTextFileWrite.mockRejectedValue(new Error('status 400'));
 
     await expect(
       service.writeTextFile({
@@ -296,19 +210,14 @@ describe('AcpFilesystemSandboxService', () => {
       }),
     ).rejects.toMatchObject({
       code: -32004,
-      message: 'ACP server sandbox path escapes workspace',
       data: { reason: 'sandbox_path_escaped_workspace' },
     });
+    expect(runtime.writeTextFile).not.toHaveBeenCalled();
   });
 
-  it('应拒绝超过 10MB 的文本写入', async () => {
-    const workspaceRoot = await createWorkspaceRoot();
-    await mkdir(join(workspaceRoot, 'demo', 'notes'), { recursive: true });
-    runInTenantTransactionMock.mockResolvedValue({
-      containerId: 'container-1',
-      workspacePath: workspaceRoot,
-    });
-    const { service } = createService();
+  it('在请求 guest 前拒绝超过 10MB 的文本', async () => {
+    runInTenantTransactionMock.mockResolvedValue({ containerId: 'runtime-1' });
+    const { service, runtime } = createService();
 
     await expect(
       service.writeTextFile({
@@ -318,12 +227,12 @@ describe('AcpFilesystemSandboxService', () => {
       }),
     ).rejects.toMatchObject({
       code: -32004,
-      message: 'ACP server sandbox content exceeds size limit',
       data: { reason: 'sandbox_content_too_large' },
     });
+    expect(runtime.validateTextFileWrite).not.toHaveBeenCalled();
   });
 
-  it('应在找不到活跃沙箱会话时返回稳定错误', async () => {
+  it('找不到活跃 runtime 时返回稳定错误', async () => {
     runInTenantTransactionMock.mockResolvedValue(undefined);
     const { service } = createService();
 
@@ -334,7 +243,6 @@ describe('AcpFilesystemSandboxService', () => {
       }),
     ).rejects.toMatchObject({
       code: -32004,
-      message: 'ACP server sandbox session is unavailable',
       data: { reason: 'sandbox_session_unavailable' },
     });
   });

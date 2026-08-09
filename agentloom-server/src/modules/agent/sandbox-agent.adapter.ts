@@ -320,16 +320,13 @@ export class SandboxAgentAdapter implements IAgentRuntime {
           sandboxBinding,
           tenantId,
         );
-        const sessionUrl = await this.dockerService.getSessionUrl(
-          sandboxSession.containerId,
-        );
         const sessionInitPayload = await this.buildContainerSessionPayload({
           session,
           runtimeConfig: params.runtimeConfig,
           mcpServers: params.mcpServers,
         });
 
-        await this.initializeContainerSession(sessionUrl, {
+        await this.initializeContainerSession(sandboxSession.containerId, {
           sessionId: session.id,
           cwd: CONTAINER_WORKSPACE,
           createCodingTools: true,
@@ -390,24 +387,25 @@ export class SandboxAgentAdapter implements IAgentRuntime {
           `Sandbox session ${sandboxSession.id} has no containerId`,
         );
       }
-      const containerUrl = await this.dockerService.getPromptUrl(
-        sandboxSession.containerId,
-      );
       const timeoutSignal = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
       const combinedSignal = abortController
         ? AbortSignal.any([abortController.signal, timeoutSignal])
         : timeoutSignal;
 
-      const response = await fetch(containerUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId,
-          content,
-          cwd: CONTAINER_WORKSPACE,
-        }),
-        signal: combinedSignal,
-      });
+      const response = await this.dockerService.requestGuest(
+        sandboxSession.containerId,
+        '/v1/prompt',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sessionId,
+            content,
+            cwd: CONTAINER_WORKSPACE,
+          }),
+          signal: combinedSignal,
+        },
+      );
 
       if (!response.ok || !response.body) {
         throw new Error(
@@ -1243,7 +1241,7 @@ export class SandboxAgentAdapter implements IAgentRuntime {
   }
 
   private async initializeContainerSession(
-    sessionUrl: string,
+    containerId: string,
     payload: Record<string, unknown>,
   ): Promise<void> {
     const { requestTimeoutMs, totalTimeoutMs } =
@@ -1256,12 +1254,16 @@ export class SandboxAgentAdapter implements IAgentRuntime {
       attempt += 1;
 
       try {
-        const response = await fetch(sessionUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-          signal: AbortSignal.timeout(requestTimeoutMs),
-        });
+        const response = await this.dockerService.requestGuest(
+          containerId,
+          '/v1/session',
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+            signal: AbortSignal.timeout(requestTimeoutMs),
+          },
+        );
 
         if (response.ok) {
           return;
@@ -2538,12 +2540,15 @@ export class SandboxAgentAdapter implements IAgentRuntime {
       sandboxBinding,
       tenantId,
     );
-    const baseUrl = await this.getContainerBaseUrl(sandboxSession.containerId);
 
-    const response = await fetch(`${baseUrl}/v1/pty/sessions`, {
-      method: 'GET',
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    });
+    const response = await this.dockerService.requestGuest(
+      sandboxSession.containerId,
+      '/v1/pty/sessions',
+      {
+        method: 'GET',
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      },
+    );
 
     if (!response.ok) {
       throw new Error(`PTY sessions 查询失败: status=${response.status}`);
@@ -2562,14 +2567,17 @@ export class SandboxAgentAdapter implements IAgentRuntime {
       sandboxBinding,
       tenantId,
     );
-    const baseUrl = await this.getContainerBaseUrl(sandboxSession.containerId);
 
-    const response = await fetch(`${baseUrl}/v1/pty/buffer-dump`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId: ptySessionId, ...options }),
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    });
+    const response = await this.dockerService.requestGuest(
+      sandboxSession.containerId,
+      '/v1/pty/buffer-dump',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: ptySessionId, ...options }),
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      },
+    );
 
     if (!response.ok) {
       throw new Error(`PTY buffer-dump 失败: status=${response.status}`);
@@ -2588,25 +2596,23 @@ export class SandboxAgentAdapter implements IAgentRuntime {
       sandboxBinding,
       tenantId,
     );
-    const baseUrl = await this.getContainerBaseUrl(sandboxSession.containerId);
 
-    const response = await fetch(`${baseUrl}/v1/pty/write`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId: ptySessionId, data }),
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    });
+    const response = await this.dockerService.requestGuest(
+      sandboxSession.containerId,
+      '/v1/pty/write',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: ptySessionId, data }),
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+      },
+    );
 
     if (!response.ok) {
       throw new Error(`PTY write 失败: status=${response.status}`);
     }
 
     return response.json();
-  }
-
-  private async getContainerBaseUrl(containerId: string): Promise<string> {
-    const promptUrl = await this.dockerService.getPromptUrl(containerId);
-    return promptUrl.replace(/\/v1\/prompt$/, '');
   }
 
   private async abortContainerPrompt(
@@ -2619,18 +2625,16 @@ export class SandboxAgentAdapter implements IAgentRuntime {
         sandboxBinding,
         tenantId,
       );
-      const promptUrl = await this.dockerService.getPromptUrl(
+      const response = await this.dockerService.requestGuest(
         sandboxSession.containerId,
+        '/v1/abort',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId }),
+          signal: AbortSignal.timeout(ABORT_REQUEST_TIMEOUT_MS),
+        },
       );
-      const abortUrl = new URL(promptUrl);
-      abortUrl.pathname = '/v1/abort';
-
-      const response = await fetch(abortUrl.toString(), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId }),
-        signal: AbortSignal.timeout(ABORT_REQUEST_TIMEOUT_MS),
-      });
 
       if (!response.ok) {
         this.logger.warn(

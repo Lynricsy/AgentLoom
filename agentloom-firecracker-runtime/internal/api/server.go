@@ -78,7 +78,7 @@ func NewServer(runtimeManager *manager.Manager, config ServerConfig, logger *slo
 }
 
 func (server *Server) Handler() http.Handler {
-	return http.MaxBytesHandler(server.requestID(server.mux), 1024*1024)
+	return server.requestID(server.mux)
 }
 
 func (server *Server) requestID(next http.Handler) http.Handler {
@@ -108,7 +108,7 @@ func (server *Server) metrics(response http.ResponseWriter, _ *http.Request) {
 
 func (server *Server) create(response http.ResponseWriter, request *http.Request) {
 	var input manager.CreateRequest
-	decoder := json.NewDecoder(request.Body)
+	decoder := json.NewDecoder(http.MaxBytesReader(response, request.Body, 1024*1024))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(&input); err != nil {
 		server.writeError(response, request, fmt.Errorf("%w: %v", manager.ErrInvalid, err))

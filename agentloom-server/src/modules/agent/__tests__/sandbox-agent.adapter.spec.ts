@@ -1,4 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+  type MockedFunction,
+} from 'vitest';
 import { jsonSchema, tool } from 'ai';
 
 import { SandboxAgentAdapter } from '../sandbox-agent.adapter';
@@ -7,6 +15,8 @@ import type { CreateSessionParams } from '../types/agent-session.types';
 import type { AgentEvent } from '../types/agent-event.types';
 import { RagService } from '../../knowledge/services/rag.service';
 import { PiConfigGeneratorService } from '../../sandbox/pi-config-generator.service';
+import type { SandboxRuntimeDriver } from '../../sandbox/sandbox-runtime-driver.port';
+import type { RequestInit as UndiciRequestInit } from 'undici';
 
 vi.mock('@nestjs/common', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@nestjs/common')>();
@@ -39,6 +49,7 @@ describe('SandboxAgentAdapter', () => {
     getPromptUrl: ReturnType<typeof vi.fn>;
     healthCheck: ReturnType<typeof vi.fn>;
     getSessionUrl: ReturnType<typeof vi.fn>;
+    requestGuest: MockedFunction<SandboxRuntimeDriver['requestGuest']>;
   };
   let mockMcpService: {
     resolveRuntimeConnection: ReturnType<typeof vi.fn>;
@@ -157,6 +168,13 @@ describe('SandboxAgentAdapter', () => {
       getSessionUrl: vi
         .fn()
         .mockResolvedValue('http://127.0.0.1:49123/v1/session'),
+      requestGuest: vi.fn(
+        async (_containerId: string, path: string, init?: UndiciRequestInit) =>
+          globalThis.fetch(
+            `http://127.0.0.1:49123${path}`,
+            init as globalThis.RequestInit,
+          ),
+      ),
     };
     mockMcpService = {
       resolveRuntimeConnection: vi.fn(),
@@ -334,11 +352,9 @@ describe('SandboxAgentAdapter', () => {
       expect(mockDockerService.healthCheck).toHaveBeenCalledWith(
         'abc123def456',
       );
-      expect(mockDockerService.getSessionUrl).toHaveBeenCalledWith(
+      expect(mockDockerService.requestGuest).toHaveBeenCalledWith(
         'abc123def456',
-      );
-      expect(globalThis.fetch).toHaveBeenCalledWith(
-        'http://127.0.0.1:49123/v1/session',
+        '/v1/session',
         expect.objectContaining({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -585,8 +601,10 @@ describe('SandboxAgentAdapter', () => {
       expect(mockDockerService.healthCheck).toHaveBeenCalledWith(
         'abc123def456',
       );
-      expect(mockDockerService.getSessionUrl).toHaveBeenCalledWith(
+      expect(mockDockerService.requestGuest).toHaveBeenCalledWith(
         'abc123def456',
+        '/v1/session',
+        expect.any(Object),
       );
       expect(session.status).toBe('active');
     });
@@ -743,11 +761,9 @@ describe('SandboxAgentAdapter', () => {
       expect(mockDockerService.healthCheck).toHaveBeenCalledWith(
         'abc123def456',
       );
-      expect(mockDockerService.getPromptUrl).toHaveBeenCalledWith(
+      expect(mockDockerService.requestGuest).toHaveBeenCalledWith(
         'abc123def456',
-      );
-      expect(globalThis.fetch).toHaveBeenCalledWith(
-        'http://127.0.0.1:49123/v1/prompt',
+        '/v1/prompt',
         expect.objectContaining({
           method: 'POST',
           body: JSON.stringify({
@@ -2273,9 +2289,6 @@ describe('SandboxAgentAdapter', () => {
         containerId: 'conv-container',
       });
       mockDockerService.healthCheck.mockResolvedValue(true);
-      mockDockerService.getPromptUrl.mockResolvedValue(
-        'http://127.0.0.1:49456/v1/prompt',
-      );
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
         status: 200,
@@ -2289,8 +2302,9 @@ describe('SandboxAgentAdapter', () => {
         'echo hi\n',
       );
 
-      expect(globalThis.fetch).toHaveBeenCalledWith(
-        'http://127.0.0.1:49456/v1/pty/write',
+      expect(mockDockerService.requestGuest).toHaveBeenCalledWith(
+        'conv-container',
+        '/v1/pty/write',
         expect.objectContaining({
           method: 'POST',
           body: JSON.stringify({ sessionId: 'pty-conv', data: 'echo hi\n' }),

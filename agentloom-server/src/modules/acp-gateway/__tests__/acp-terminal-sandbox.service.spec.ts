@@ -1,9 +1,16 @@
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterEach,
+  describe,
+  expect,
+  it,
+  vi,
+  type MockedFunction,
+} from 'vitest';
 import type { DrizzleDB } from '../../../database/database.module';
-import type { DockerService } from '../../sandbox/docker.service';
+import type { SandboxRuntimeDriver } from '../../sandbox/sandbox-runtime-driver.port';
 import type { AcpTrackedSession } from '../acp-types';
 import { AcpTerminalSandboxService } from '../services/acp-terminal-sandbox.service';
 
@@ -55,20 +62,19 @@ describe('AcpTerminalSandboxService', () => {
   }
 
   function createService() {
-    const dockerService = {
-      getWorkspaceHostPath: vi.fn(),
+    const runtime: {
+      createExec: MockedFunction<SandboxRuntimeDriver['createExec']>;
+    } = {
       createExec: vi.fn(),
-    } satisfies Pick<DockerService, 'getWorkspaceHostPath' | 'createExec'>;
-    const dockerServiceForInjection: unknown = dockerService;
-
+    };
     const service = new AcpTerminalSandboxService(
       {} as DrizzleDB,
-      dockerServiceForInjection as DockerService,
+      runtime as unknown as SandboxRuntimeDriver,
     );
 
     return {
       service,
-      dockerService,
+      dockerService: runtime,
     };
   }
 
