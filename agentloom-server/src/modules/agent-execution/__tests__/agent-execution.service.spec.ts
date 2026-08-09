@@ -43,6 +43,7 @@ describe('AgentExecutionService', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    delete process.env.APP_SANDBOX_MAINTENANCE_MODE;
 
     service = new AgentExecutionService(
       {} as never,
@@ -83,6 +84,20 @@ describe('AgentExecutionService', () => {
       },
       { jobId: 'conversation-1' },
     );
+  });
+
+  it('maintenance 模式应拒绝新的 conversation execution', async () => {
+    process.env.APP_SANDBOX_MAINTENANCE_MODE = 'true';
+
+    await expect(
+      service.handleMessageSent({
+        conversationId: 'conversation-1',
+        tenantId: 'tenant-1',
+        messageId: 'message-1',
+      }),
+    ).rejects.toMatchObject({ status: 503 });
+
+    expect(mockQueue.add).not.toHaveBeenCalled();
   });
 
   it('injectMessage 在会话运行中只通知活跃 loop', async () => {

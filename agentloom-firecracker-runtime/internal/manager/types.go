@@ -37,6 +37,7 @@ type CreateRequest struct {
 	MemoryMiB     int64         `json:"memoryMiB"`
 	DiskGiB       int64         `json:"diskGiB"`
 	LifecycleMode LifecycleMode `json:"lifecycleMode"`
+	WorkspaceID   string        `json:"workspaceId,omitempty"`
 }
 
 type Metadata struct {
@@ -49,6 +50,7 @@ type Metadata struct {
 	TapName        string        `json:"tapName,omitempty"`
 	NetNSPath      string        `json:"netnsPath,omitempty"`
 	LifecycleMode  LifecycleMode `json:"lifecycleMode"`
+	WorkspaceID    string        `json:"workspaceId"`
 	DiskPath       string        `json:"diskPath"`
 	APISocketPath  string        `json:"apiSocketPath,omitempty"`
 	PID            int           `json:"pid,omitempty"`

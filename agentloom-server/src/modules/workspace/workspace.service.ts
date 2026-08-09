@@ -1,10 +1,12 @@
 import {
   BadRequestException,
+  ConflictException,
   Inject,
   Injectable,
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import { eq, and, desc, ne, count, sql } from 'drizzle-orm';
 import { spawn } from 'node:child_process';
 import { createReadStream, createWriteStream } from 'node:fs';
@@ -25,10 +27,12 @@ import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import * as schema from '../../database/schema';
 import { StorageService } from '../../infrastructure/storage/storage.service';
+import { runInTenantTransaction } from '../../common/interceptors/tenant-transaction.context';
 import {
   SANDBOX_RUNTIME_DRIVER,
   type SandboxRuntimeDriver,
 } from '../sandbox/sandbox-runtime-driver.port';
+import type { WorkspaceRuntimeLeaseToken } from '../sandbox/workspace-runtime-lease.service';
 import {
   buildWorkspaceStorageKey,
   isLegacyEmptyWorkspaceStorageKey,
@@ -179,6 +183,7 @@ export class WorkspaceService {
     workspaceId: string,
     containerId: string,
     tenantId: string,
+    leaseToken: WorkspaceRuntimeLeaseToken,
   ): Promise<schema.WorkspaceSnapshot> {
     const tenantDb = getTenantDb(this.db);
     const [snapshot] = await tenantDb
@@ -200,14 +205,18 @@ export class WorkspaceService {
     }
 
     this.logger.log(
-      `Syncing workspace ${workspaceId} from container ${containerId}`,
+      `Syncing workspace ${workspaceId} from sandbox runtime ${containerId}`,
     );
 
     const stagedArchive = await this.stageContainerWorkspaceArchive(
       containerId,
       `agentloom-workspace-sync-${workspaceId}`,
     );
-    const targetStorageKey = this.buildCanonicalWorkspaceStorageKey(snapshot);
+    const canonicalStorageKey =
+      this.buildCanonicalWorkspaceStorageKey(snapshot);
+    const targetStorageKey = `${canonicalStorageKey}.runtime/${leaseToken.sandboxSessionId}/${leaseToken.fencingToken}-${Date.now()}.tar`;
+    const archiveSha256 = await this.sha256File(stagedArchive.filePath);
+    let published = false;
 
     try {
       await this.storageService.upload(
@@ -217,30 +226,84 @@ export class WorkspaceService {
         'application/x-tar',
       );
 
-      const [updated] = await tenantDb
-        .update(schema.workspaceSnapshots)
-        .set({
-          storageKey: targetStorageKey,
-          sizeBytes: stagedArchive.sizeBytes,
-          status: 'ready',
-          updatedAt: new Date(),
-        })
-        .where(
-          and(
-            eq(schema.workspaceSnapshots.id, workspaceId),
-            eq(schema.workspaceSnapshots.tenantId, tenantId),
-          ),
-        )
-        .returning();
-
-      this.logger.log(
-        `Workspace ${workspaceId} synced from container ${containerId}`,
+      const [updated] = await runInTenantTransaction(
+        this.db,
+        tenantId,
+        async (transactionDb) =>
+          transactionDb
+            .update(schema.workspaceSnapshots)
+            .set({
+              storageKey: targetStorageKey,
+              sizeBytes: stagedArchive.sizeBytes,
+              config: {
+                ...(snapshot.config ?? {}),
+                runtimePublication: {
+                  sessionId: leaseToken.sandboxSessionId,
+                  fencingToken: leaseToken.fencingToken,
+                  archiveSha256,
+                  storageKey: targetStorageKey,
+                  publishedAt: new Date().toISOString(),
+                },
+              },
+              status: 'ready',
+              updatedAt: new Date(),
+            })
+            .where(
+              and(
+                eq(schema.workspaceSnapshots.id, workspaceId),
+                eq(schema.workspaceSnapshots.tenantId, tenantId),
+                eq(schema.workspaceSnapshots.status, 'ready'),
+                sql`EXISTS (
+                  SELECT 1
+                  FROM ${schema.workspaceRuntimeLeases} lease
+                  WHERE lease.workspace_id = ${workspaceId}
+                    AND lease.sandbox_session_id = ${leaseToken.sandboxSessionId}
+                    AND lease.fencing_token = ${leaseToken.fencingToken}
+                    AND lease.lease_expires_at > now()
+                )`,
+              ),
+            )
+            .returning(),
       );
 
+      if (!updated) {
+        throw new ConflictException(
+          `Workspace ${workspaceId} lease became stale during snapshot publish`,
+        );
+      }
+      published = true;
+
+      if (
+        snapshot.storageKey !== targetStorageKey &&
+        !isLegacyEmptyWorkspaceStorageKey(tenantId, snapshot.storageKey)
+      ) {
+        await this.storageService.delete(snapshot.storageKey).catch((error) => {
+          this.logger.warn(
+            `Failed to remove superseded workspace object ${snapshot.storageKey}: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        });
+      }
+
+      this.logger.log(
+        `Workspace ${workspaceId} snapshot published with fencing token ${leaseToken.fencingToken}`,
+      );
       return updated;
     } finally {
       await stagedArchive.cleanup();
+      if (!published) {
+        await this.storageService
+          .delete(targetStorageKey)
+          .catch(() => undefined);
+      }
     }
+  }
+
+  private async sha256File(filePath: string): Promise<string> {
+    const hash = createHash('sha256');
+    for await (const chunk of createReadStream(filePath)) {
+      hash.update(chunk);
+    }
+    return hash.digest('hex');
   }
 
   async restoreToSandbox(

@@ -387,6 +387,7 @@ describe('ExecutionService', () => {
 
   beforeEach(async () => {
     vi.clearAllMocks();
+    delete process.env.APP_SANDBOX_MAINTENANCE_MODE;
     db.select.mockReset();
     db.insert.mockReset();
     db.update.mockReset();
@@ -441,6 +442,17 @@ describe('ExecutionService', () => {
   });
 
   describe('runWorkflow', () => {
+    it('maintenance 模式应在数据库读取前拒绝 workflow run', async () => {
+      process.env.APP_SANDBOX_MAINTENANCE_MODE = 'true';
+
+      await expect(
+        service.runWorkflow(WORKFLOW_ID, undefined, TENANT_ID, USER_ID),
+      ).rejects.toMatchObject({ status: 503 });
+
+      expect(db.select).not.toHaveBeenCalled();
+      expect(mockQueue.add).not.toHaveBeenCalled();
+    });
+
     it('应为已发布的工作流创建执行并添加队列任务', async () => {
       db.select
         .mockReturnValueOnce(createSelectChain([mockPublishedWorkflow]))

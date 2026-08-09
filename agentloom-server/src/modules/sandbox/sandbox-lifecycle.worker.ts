@@ -6,7 +6,7 @@ import { Job } from 'bullmq';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import { runInTenantTransaction } from '../../common/interceptors/tenant-transaction.context';
 import * as schema from '../../database/schema';
-import { and, asc, eq, inArray, notInArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, notInArray } from 'drizzle-orm';
 
 import { StorageService } from '../../infrastructure/storage/storage.service';
 import { SandboxService } from './sandbox.service';
@@ -32,6 +32,10 @@ import {
   resolveSandboxTimeoutDelayMs,
 } from './sandbox-timeout.utils';
 import { resolveSandboxConversationIdleAutoEndDelayMs } from './sandbox-conversation-idle.utils';
+import {
+  WorkspaceRuntimeLeaseService,
+  type WorkspaceRuntimeLeaseToken,
+} from './workspace-runtime-lease.service';
 const CONTAINER_WORKSPACE = '/workspace/';
 const ACTIVE_STEP_STATUSES = [
   'pending',
@@ -53,6 +57,7 @@ export class SandboxLifecycleWorker extends WorkerHost {
     private readonly sandboxService: SandboxService,
     private readonly lifecycleProducer: SandboxLifecycleProducer,
     private readonly storageService: StorageService,
+    private readonly workspaceLeaseService: WorkspaceRuntimeLeaseService,
   ) {
     super();
   }
@@ -71,6 +76,8 @@ export class SandboxLifecycleWorker extends WorkerHost {
         return this.handleDestroy(job.data);
       case 'timeout_check':
         return this.handleTimeoutCheck(job.data);
+      case 'workspace_lease_renew':
+        return this.handleWorkspaceLeaseRenew(job.data);
       case 'conversation_idle_end_check':
         return this.handleConversationIdleEndCheck(job.data);
     }
@@ -85,8 +92,18 @@ export class SandboxLifecycleWorker extends WorkerHost {
     }
 
     let containerId: string | undefined;
+    const restoreWorkspaceId = this.readRestoreWorkspaceId(config);
+    let workspaceLease: WorkspaceRuntimeLeaseToken | null = null;
 
     try {
+      if (restoreWorkspaceId) {
+        workspaceLease = await this.workspaceLeaseService.acquire(
+          tenantId,
+          restoreWorkspaceId,
+          sessionId,
+          this.resolveWorkspaceLeaseTtlMs(config),
+        );
+      }
       const container = await this.dockerService.createContainer(
         sessionId,
         config,
@@ -143,6 +160,9 @@ export class SandboxLifecycleWorker extends WorkerHost {
         this.logger.warn(
           `Sandbox ${sessionId} left creating state before container ${containerId} could be activated`,
         );
+        if (workspaceLease) {
+          await this.workspaceLeaseService.release(tenantId, workspaceLease);
+        }
         return;
       }
 
@@ -150,9 +170,12 @@ export class SandboxLifecycleWorker extends WorkerHost {
         sessionId,
         tenantId,
         containerId,
-        restoreWorkspaceId: this.readRestoreWorkspaceId(config),
+        restoreWorkspaceId,
         phaseLabel: 'create',
       });
+      if (workspaceLease) {
+        await this.workspaceLeaseService.assertHeld(tenantId, workspaceLease);
+      }
 
       await this.insertLog(
         sessionId,
@@ -171,6 +194,12 @@ export class SandboxLifecycleWorker extends WorkerHost {
           ? [binding.agentConversationId]
           : [],
       );
+      if (workspaceLease) {
+        await this.lifecycleProducer.upsertWorkspaceLeaseRenewal({
+          sessionId,
+          tenantId,
+        });
+      }
 
       this.logger.log(
         `Sandbox ${sessionId} created with container ${containerId}`,
@@ -186,6 +215,11 @@ export class SandboxLifecycleWorker extends WorkerHost {
               `Failed to cleanup container ${containerId} after sandbox creation error: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`,
             );
           });
+      }
+      if (workspaceLease) {
+        await this.workspaceLeaseService
+          .release(tenantId, workspaceLease)
+          .catch(() => undefined);
       }
 
       await runInTenantTransaction(this.db, tenantId, async (tenantDb) => {
@@ -222,8 +256,18 @@ export class SandboxLifecycleWorker extends WorkerHost {
         'Missing containerId in start job data',
       );
     }
+    const restoreWorkspaceId = this.readRestoreWorkspaceId(config);
+    let workspaceLease: WorkspaceRuntimeLeaseToken | null = null;
 
     try {
+      if (restoreWorkspaceId) {
+        workspaceLease = await this.workspaceLeaseService.acquire(
+          tenantId,
+          restoreWorkspaceId,
+          sessionId,
+          this.resolveWorkspaceLeaseTtlMs(config),
+        );
+      }
       let activeContainerId = containerId;
       let recreatedMissingContainer = false;
 
@@ -296,6 +340,9 @@ export class SandboxLifecycleWorker extends WorkerHost {
         this.logger.warn(
           `Sandbox ${sessionId} left creating state before container ${activeContainerId} could be activated`,
         );
+        if (workspaceLease) {
+          await this.workspaceLeaseService.release(tenantId, workspaceLease);
+        }
         return;
       }
 
@@ -308,14 +355,15 @@ export class SandboxLifecycleWorker extends WorkerHost {
         tenantId,
       );
 
-      if (recreatedMissingContainer) {
-        await this.restoreWorkspaceIfNeeded({
-          sessionId,
-          tenantId,
-          containerId: activeContainerId,
-          restoreWorkspaceId: this.readRestoreWorkspaceId(config),
-          phaseLabel: 'start',
-        });
+      await this.restoreWorkspaceIfNeeded({
+        sessionId,
+        tenantId,
+        containerId: activeContainerId,
+        restoreWorkspaceId,
+        phaseLabel: 'start',
+      });
+      if (workspaceLease) {
+        await this.workspaceLeaseService.assertHeld(tenantId, workspaceLease);
       }
 
       await this.attachContainerLogs(sessionId, activeContainerId, tenantId);
@@ -328,6 +376,12 @@ export class SandboxLifecycleWorker extends WorkerHost {
           ? [binding.agentConversationId]
           : [],
       );
+      if (workspaceLease) {
+        await this.lifecycleProducer.upsertWorkspaceLeaseRenewal({
+          sessionId,
+          tenantId,
+        });
+      }
 
       this.logger.log(
         recreatedMissingContainer
@@ -335,6 +389,11 @@ export class SandboxLifecycleWorker extends WorkerHost {
           : `Sandbox ${sessionId} restarted with container ${activeContainerId}`,
       );
     } catch (error) {
+      if (workspaceLease) {
+        await this.workspaceLeaseService
+          .release(tenantId, workspaceLease)
+          .catch(() => undefined);
+      }
       await runInTenantTransaction(this.db, tenantId, async (tenantDb) => {
         await tenantDb
           .update(schema.sandboxSessions)
@@ -359,6 +418,15 @@ export class SandboxLifecycleWorker extends WorkerHost {
   private async handleStop(data: SandboxLifecycleJobData): Promise<void> {
     const { sessionId, containerId, tenantId, persistencePath, config } = data;
     const binding = this.resolveBinding(data);
+    const restoreWorkspaceId = this.readRestoreWorkspaceId(config);
+    const workspaceLease = restoreWorkspaceId
+      ? await this.workspaceLeaseService.renewOwned(
+          tenantId,
+          restoreWorkspaceId,
+          sessionId,
+          5 * 60_000,
+        )
+      : null;
 
     await this.lifecycleProducer.removeTimeoutCheckTask(sessionId);
     await this.lifecycleProducer.removeConversationIdleEndCheckTask(sessionId);
@@ -368,9 +436,13 @@ export class SandboxLifecycleWorker extends WorkerHost {
         sessionId,
         tenantId,
         containerId,
-        restoreWorkspaceId: this.readRestoreWorkspaceId(config),
+        restoreWorkspaceId,
         phaseLabel: 'stop',
+        leaseToken: workspaceLease,
       });
+      if (workspaceLease) {
+        await this.workspaceLeaseService.assertHeld(tenantId, workspaceLease);
+      }
 
       if (persistencePath) {
         try {
@@ -401,6 +473,7 @@ export class SandboxLifecycleWorker extends WorkerHost {
       }
 
       await this.dockerService.stopContainer(containerId);
+      await this.lifecycleProducer.removeWorkspaceLeaseRenewal(sessionId);
     }
 
     await runInTenantTransaction(this.db, tenantId, async (tenantDb) => {
@@ -409,6 +482,9 @@ export class SandboxLifecycleWorker extends WorkerHost {
         .set({ status: 'stopped', stoppedAt: new Date() })
         .where(eq(schema.sandboxSessions.id, sessionId));
     });
+    if (workspaceLease) {
+      await this.workspaceLeaseService.release(tenantId, workspaceLease);
+    }
 
     await this.insertLog(sessionId, 'system', 'Sandbox stopped', tenantId);
     this.logger.log(`Sandbox ${sessionId} stopped`);
@@ -428,6 +504,15 @@ export class SandboxLifecycleWorker extends WorkerHost {
           .limit(1);
       },
     );
+    const restoreWorkspaceId = this.readRestoreWorkspaceId(session?.config);
+    const workspaceLease = restoreWorkspaceId
+      ? await this.workspaceLeaseService.renewOwned(
+          tenantId,
+          restoreWorkspaceId,
+          sessionId,
+          5 * 60_000,
+        )
+      : null;
 
     await this.lifecycleProducer.removeTimeoutCheckTask(sessionId);
     await this.lifecycleProducer.removeConversationIdleEndCheckTask(sessionId);
@@ -437,8 +522,9 @@ export class SandboxLifecycleWorker extends WorkerHost {
         sessionId,
         tenantId,
         containerId,
-        restoreWorkspaceId: this.readRestoreWorkspaceId(session?.config),
+        restoreWorkspaceId,
         phaseLabel: 'destroy',
+        leaseToken: workspaceLease,
       });
 
       if (persistencePath) {
@@ -474,6 +560,7 @@ export class SandboxLifecycleWorker extends WorkerHost {
       await this.dockerService.removeContainer(containerId, {
         removeVolumes: this.shouldRemoveContainerVolumes(session?.config),
       });
+      await this.lifecycleProducer.removeWorkspaceLeaseRenewal(sessionId);
     }
 
     const purged = await runInTenantTransaction(
@@ -499,6 +586,9 @@ export class SandboxLifecycleWorker extends WorkerHost {
       },
     );
 
+    if (workspaceLease) {
+      await this.workspaceLeaseService.release(tenantId, workspaceLease);
+    }
     if (!purged) {
       await this.insertLog(sessionId, 'system', 'Sandbox destroyed', tenantId);
     }
@@ -507,6 +597,32 @@ export class SandboxLifecycleWorker extends WorkerHost {
       purged
         ? `Sandbox ${sessionId} destroyed and purged (session-mode)`
         : `Sandbox ${sessionId} destroyed`,
+    );
+  }
+
+  private async handleWorkspaceLeaseRenew(
+    data: SandboxLifecycleJobData,
+  ): Promise<void> {
+    const { sessionId, tenantId } = data;
+    const session = await this.sandboxService
+      .getSessionById(sessionId)
+      .catch(() => null);
+    const restoreWorkspaceId = this.readRestoreWorkspaceId(session?.config);
+    if (
+      !session ||
+      !restoreWorkspaceId ||
+      TERMINAL_SANDBOX_STATUSES.includes(
+        session.status as (typeof TERMINAL_SANDBOX_STATUSES)[number],
+      )
+    ) {
+      await this.lifecycleProducer.removeWorkspaceLeaseRenewal(sessionId);
+      return;
+    }
+    await this.workspaceLeaseService.renewOwned(
+      tenantId,
+      restoreWorkspaceId,
+      sessionId,
+      2 * 60_000,
     );
   }
 
@@ -535,6 +651,15 @@ export class SandboxLifecycleWorker extends WorkerHost {
     };
     const isSessionMode =
       (session.config.lifecycleMode ?? 'session') === 'session';
+    const restoreWorkspaceId = this.readRestoreWorkspaceId(session.config);
+    const workspaceLease = restoreWorkspaceId
+      ? await this.workspaceLeaseService.renewOwned(
+          tenantId,
+          restoreWorkspaceId,
+          sessionId,
+          5 * 60_000,
+        )
+      : null;
 
     this.logger.warn(`Sandbox ${sessionId} timed out, force stopping`);
 
@@ -543,9 +668,13 @@ export class SandboxLifecycleWorker extends WorkerHost {
         sessionId,
         tenantId,
         containerId: session.containerId,
-        restoreWorkspaceId: this.readRestoreWorkspaceId(session.config),
+        restoreWorkspaceId,
         phaseLabel: 'timeout',
+        leaseToken: workspaceLease,
       });
+      if (workspaceLease) {
+        await this.workspaceLeaseService.assertHeld(tenantId, workspaceLease);
+      }
 
       if (session.config.persistencePath) {
         try {
@@ -581,6 +710,7 @@ export class SandboxLifecycleWorker extends WorkerHost {
           removeVolumes: this.shouldRemoveContainerVolumes(session.config),
         });
       }
+      await this.lifecycleProducer.removeWorkspaceLeaseRenewal(sessionId);
     }
 
     await runInTenantTransaction(this.db, tenantId, async (tenantDb) => {
@@ -634,6 +764,9 @@ export class SandboxLifecycleWorker extends WorkerHost {
           );
       }
     });
+    if (workspaceLease) {
+      await this.workspaceLeaseService.release(tenantId, workspaceLease);
+    }
 
     if (!isSessionMode) {
       await this.insertLog(
@@ -1006,8 +1139,20 @@ export class SandboxLifecycleWorker extends WorkerHost {
       : undefined;
   }
 
-  private shouldRemoveContainerVolumes(config: unknown): boolean {
-    return this.readRestoreWorkspaceId(config) === undefined;
+  private resolveWorkspaceLeaseTtlMs(config: unknown): number {
+    if (!config || typeof config !== 'object' || Array.isArray(config)) {
+      return 5 * 60_000;
+    }
+    const timeout = (config as Record<string, unknown>)['timeout'];
+    const timeoutHours =
+      typeof timeout === 'number' && Number.isFinite(timeout) && timeout > 0
+        ? timeout
+        : 1;
+    return Math.max(timeoutHours * 60 * 60_000 + 60_000, 5 * 60_000);
+  }
+
+  private shouldRemoveContainerVolumes(_config: unknown): boolean {
+    return true;
   }
 
   private async restoreWorkspaceIfNeeded(params: {
@@ -1024,25 +1169,11 @@ export class SandboxLifecycleWorker extends WorkerHost {
       return;
     }
 
-    if (
-      await this.hasOtherActiveWorkspaceMount({
-        tenantId,
-        restoreWorkspaceId,
-        excludeSessionId: sessionId,
-      })
-    ) {
-      this.logger.log(
-        `Skipping workspace restore during ${phaseLabel} for session ${sessionId} because workspace ${restoreWorkspaceId} is already mounted by another active sandbox`,
-      );
-      return;
-    }
-
     const workspaceService = this.getWorkspaceService();
     if (!workspaceService) {
-      this.logger.warn(
-        `WorkspaceService unavailable, skipping restored workspace ${restoreWorkspaceId} during ${phaseLabel} for session ${sessionId}`,
+      throw new SandboxCreationException(
+        `WorkspaceService unavailable while restoring workspace ${restoreWorkspaceId}`,
       );
-      return;
     }
 
     try {
@@ -1055,10 +1186,10 @@ export class SandboxLifecycleWorker extends WorkerHost {
         `Restored workspace ${restoreWorkspaceId} to sandbox ${sessionId}`,
       );
     } catch (restoreError) {
-      this.logger.warn(
+      this.logger.error(
         `Failed to restore workspace ${restoreWorkspaceId} to sandbox ${sessionId}: ${restoreError instanceof Error ? restoreError.message : String(restoreError)}`,
       );
-      // 恢复失败不阻塞沙箱创建或重建启动，容器仍然可用（只是没有预加载的工作区）
+      throw restoreError;
     }
   }
 
@@ -1068,33 +1199,31 @@ export class SandboxLifecycleWorker extends WorkerHost {
     containerId: string;
     restoreWorkspaceId?: string;
     phaseLabel: 'stop' | 'destroy' | 'timeout';
+    leaseToken: WorkspaceRuntimeLeaseToken | null;
   }): Promise<void> {
-    const { sessionId, tenantId, containerId, restoreWorkspaceId, phaseLabel } =
-      params;
+    const {
+      sessionId,
+      tenantId,
+      containerId,
+      restoreWorkspaceId,
+      phaseLabel,
+      leaseToken,
+    } = params;
 
     if (!restoreWorkspaceId) {
       return;
     }
-
-    if (
-      await this.hasOtherActiveWorkspaceMount({
-        tenantId,
-        restoreWorkspaceId,
-        excludeSessionId: sessionId,
-      })
-    ) {
-      this.logger.log(
-        `Skipping restored workspace sync before ${phaseLabel} for session ${sessionId} because workspace ${restoreWorkspaceId} is still mounted by another active sandbox`,
+    if (!leaseToken) {
+      throw new SandboxCreationException(
+        `Workspace ${restoreWorkspaceId} has no active fencing token`,
       );
-      return;
     }
 
     const workspaceService = this.getWorkspaceService();
     if (!workspaceService) {
-      this.logger.warn(
-        `WorkspaceService unavailable, skipping restored workspace sync for session ${sessionId}`,
+      throw new SandboxCreationException(
+        `WorkspaceService unavailable while syncing workspace ${restoreWorkspaceId}`,
       );
-      return;
     }
 
     try {
@@ -1102,74 +1231,17 @@ export class SandboxLifecycleWorker extends WorkerHost {
         restoreWorkspaceId,
         containerId,
         tenantId,
+        leaseToken,
       );
       this.logger.log(
         `Restored workspace ${restoreWorkspaceId} synced before ${phaseLabel} for session ${sessionId}`,
       );
     } catch (error) {
-      this.logger.warn(
+      this.logger.error(
         `Failed to sync restored workspace ${restoreWorkspaceId} before ${phaseLabel} for session ${sessionId}: ${error instanceof Error ? error.message : String(error)}`,
       );
+      throw error;
     }
-  }
-
-  private async hasOtherActiveWorkspaceMount(params: {
-    tenantId: string;
-    restoreWorkspaceId: string;
-    excludeSessionId: string;
-  }): Promise<boolean> {
-    const result = await runInTenantTransaction(
-      this.db,
-      params.tenantId,
-      async (tenantDb) => {
-        return tenantDb.execute(sql`
-          select count(*)::int as count
-          from sandbox_sessions
-          where tenant_id = ${params.tenantId}
-            and id <> ${params.excludeSessionId}
-            and container_id is not null
-            and status not in ('stopping', 'stopped', 'failed')
-            and config->>'restoreWorkspaceId' = ${params.restoreWorkspaceId}
-        `);
-      },
-    );
-
-    return this.readExecuteCount(result) > 0;
-  }
-
-  private readExecuteCount(result: unknown): number {
-    const [row] = this.readExecuteRows<{ count?: number | string }>(result);
-    const rawCount = row?.count;
-
-    if (typeof rawCount === 'number' && Number.isFinite(rawCount)) {
-      return rawCount;
-    }
-
-    if (typeof rawCount === 'string') {
-      const parsed = Number.parseInt(rawCount, 10);
-      return Number.isFinite(parsed) ? parsed : 0;
-    }
-
-    return 0;
-  }
-
-  private readExecuteRows<T extends Record<string, unknown>>(
-    result: unknown,
-  ): T[] {
-    if (Array.isArray(result)) {
-      return result as T[];
-    }
-
-    if (
-      result &&
-      typeof result === 'object' &&
-      'rows' in result &&
-      Array.isArray((result as { rows?: unknown[] }).rows)
-    ) {
-      return (result as { rows: T[] }).rows;
-    }
-
-    return [];
   }
 
   @OnWorkerEvent('failed')

@@ -44,6 +44,7 @@ export class FirecrackerRuntimeService implements SandboxRuntimeDriver {
         memoryMiB: config.memory,
         diskGiB: config.disk,
         lifecycleMode: config.lifecycleMode ?? 'session',
+        workspaceId: config.restoreWorkspaceId,
       }),
     });
     return { containerId: response.runtimeHandle };

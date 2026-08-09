@@ -22,14 +22,18 @@ func (value fakeArtifacts) Resolve(digest string) (ArtifactSet, error) {
 }
 
 type fakeDisk struct {
-	path      string
-	created   bool
-	ensureErr error
-	checkErr  error
-	deleted   int
+	path         string
+	created      bool
+	ensureErr    error
+	checkErr     error
+	deleted      int
+	ensuredIDs   []string
+	ensuredSizes []int64
 }
 
-func (disk *fakeDisk) Ensure(context.Context, string, int64) (string, bool, error) {
+func (disk *fakeDisk) Ensure(_ context.Context, id string, sizeGiB int64) (string, bool, error) {
+	disk.ensuredIDs = append(disk.ensuredIDs, id)
+	disk.ensuredSizes = append(disk.ensuredSizes, sizeGiB)
 	return disk.path, disk.created, disk.ensureErr
 }
 func (disk *fakeDisk) Check(context.Context, string) error  { return disk.checkErr }
@@ -157,6 +161,63 @@ func TestCreateIsIdempotentAndRejectsImmutableDrift(t *testing.T) {
 	}
 	if string(content) == "" || containsSecret(string(content)) {
 		t.Fatal("guest token was persisted")
+	}
+}
+
+func TestLogicalWorkspaceIsExclusiveButUsesPerSessionDisksAndCapacity(t *testing.T) {
+	fixture := newFixture(t, nil)
+	workspaceID := "22222222-2222-4222-8222-222222222222"
+	first := validRequest()
+	first.WorkspaceID = workspaceID
+	if _, err := fixture.manager.Create(context.Background(), first); err != nil {
+		t.Fatal(err)
+	}
+	second := validRequest()
+	second.ID = "33333333-3333-4333-8333-333333333333"
+	second.WorkspaceID = workspaceID
+	second.DiskGiB = 3
+	if _, err := fixture.manager.Create(context.Background(), second); !errors.Is(err, ErrConflict) {
+		t.Fatalf("expected active workspace conflict, got %v", err)
+	}
+	if _, err := fixture.manager.Stop(context.Background(), first.ID); err != nil {
+		t.Fatal(err)
+	}
+	fixture.launcher.instance = &fakeInstance{}
+	if _, err := fixture.manager.Create(context.Background(), second); err != nil {
+		t.Fatal(err)
+	}
+	if len(fixture.disk.ensuredIDs) != 2 ||
+		fixture.disk.ensuredIDs[0] != first.ID ||
+		fixture.disk.ensuredIDs[1] != second.ID {
+		t.Fatalf("per-session disk identities were not used: %v", fixture.disk.ensuredIDs)
+	}
+	if fixture.disk.ensuredSizes[0] != 2 || fixture.disk.ensuredSizes[1] != 3 {
+		t.Fatalf("per-session disk sizes were not preserved: %v", fixture.disk.ensuredSizes)
+	}
+	if snapshot := fixture.manager.Capacity(); snapshot.DiskGiBUsed != 5 {
+		t.Fatalf("disk capacity was not charged per session: %+v", snapshot)
+	}
+}
+
+func TestDeleteWithoutDiskRetainsTrackedMetadataAndCapacity(t *testing.T) {
+	fixture := newFixture(t, nil)
+	if _, err := fixture.manager.Create(context.Background(), validRequest()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.manager.Stop(context.Background(), testID); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.manager.Delete(context.Background(), testID, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := fixture.store.Read(testID); err != nil {
+		t.Fatalf("preserved disk lost its metadata: %v", err)
+	}
+	if fixture.disk.deleted != 0 {
+		t.Fatal("preserved disk was deleted")
+	}
+	if snapshot := fixture.manager.Capacity(); snapshot.DiskGiBUsed != 2 {
+		t.Fatalf("preserved disk lost capacity accounting: %+v", snapshot)
 	}
 }
 

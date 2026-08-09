@@ -117,6 +117,9 @@ func (store *MetadataStore) Read(id string) (Metadata, error) {
 	if metadata.SchemaVersion != 1 || metadata.SessionID != id {
 		return Metadata{}, fmt.Errorf("metadata identity mismatch for %s", id)
 	}
+	if metadata.WorkspaceID == "" {
+		metadata.WorkspaceID = metadata.SessionID
+	}
 	return metadata, nil
 }
 

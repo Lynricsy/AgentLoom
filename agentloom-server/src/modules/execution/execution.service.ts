@@ -41,6 +41,7 @@ import {
   isTrackedExecutionStep,
 } from './compound-runtime.util';
 import { normalizeWorkflowNodesAndEdges } from '../workflow-definition/utils/normalize-workflow-graph.utils';
+import { SandboxMaintenanceException } from '../sandbox/sandbox.exceptions';
 
 export interface ExecutionJobData {
   executionId: string;
@@ -663,6 +664,9 @@ export class ExecutionService {
     tenantId: string,
     userId: string,
   ): Promise<schema.WorkflowExecution> {
+    if (process.env.APP_SANDBOX_MAINTENANCE_MODE === 'true') {
+      throw new SandboxMaintenanceException('execute');
+    }
     const useDraftDefinition = this.shouldUseDraftDefinition(runRequest);
     const [workflow] = await this.tenantDb
       .select()

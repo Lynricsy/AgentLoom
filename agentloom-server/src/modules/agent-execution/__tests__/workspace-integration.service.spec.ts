@@ -25,6 +25,7 @@ const {
     findByConversationId: vi.fn(),
     findByExecutionId: vi.fn(),
     endConversationSandbox: vi.fn(),
+    renewWorkspaceLease: vi.fn(),
   },
   mockWorkspaceService: {
     createFromSandbox: vi.fn(),
@@ -171,6 +172,11 @@ describe('WorkspaceIntegrationService', () => {
     mockSandboxService.findByConversationId.mockReset();
     mockSandboxService.findByExecutionId.mockReset();
     mockSandboxService.endConversationSandbox.mockReset();
+    mockSandboxService.renewWorkspaceLease.mockReset().mockResolvedValue({
+      workspaceId: WORKSPACE_SNAPSHOT_ID,
+      sandboxSessionId: SESSION_ID,
+      fencingToken: 1,
+    });
     mockWorkspaceService.findOne.mockReset();
     mockWorkspaceService.getFileTree.mockReset();
     mockWorkspaceService.getFilePreview.mockReset();
@@ -1115,7 +1121,12 @@ describe('WorkspaceIntegrationService', () => {
       expect(snapshotId).toBe(WORKSPACE_SNAPSHOT_ID);
       expect(
         mockWorkspaceService.syncFromSandboxContainer,
-      ).toHaveBeenCalledWith(WORKSPACE_SNAPSHOT_ID, CONTAINER_ID, TENANT_ID);
+      ).toHaveBeenCalledWith(
+        WORKSPACE_SNAPSHOT_ID,
+        CONTAINER_ID,
+        TENANT_ID,
+        expect.objectContaining({ fencingToken: 1 }),
+      );
       expect(mockWorkspaceService.createFromSandbox).not.toHaveBeenCalled();
       expect(mockWorkspaceService.resolveOrganizationId).not.toHaveBeenCalled();
     });

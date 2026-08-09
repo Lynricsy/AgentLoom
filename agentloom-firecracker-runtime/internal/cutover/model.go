@@ -71,9 +71,50 @@ type ArchivedMigration struct {
 	ArchivedAt        time.Time
 }
 
+type MigrationRecord struct {
+	SessionID               string
+	TenantID                string
+	LegacyContainerID       string
+	WorkspaceIdentity       string
+	WorkspaceID             string
+	ArchiveObjectKey        string
+	ManifestObjectKey       string
+	ArchiveSHA256           string
+	ManifestSHA256          string
+	FileCount               int64
+	TotalBytes              int64
+	CPU                     float64
+	MemoryMiB               int64
+	DiskGiB                 int64
+	Status                  MigrationStatus
+	VerifiedAt              *time.Time
+	RollbackSourceSessionID string
+	SnapshotObjectKey       string
+	SnapshotSHA256          string
+}
+
 type LegacyRuntime interface {
 	Stop(context.Context, string, time.Duration) error
 	WorkspaceArchive(context.Context, string) (io.ReadCloser, error)
+}
+
+type CutoverRuntime interface {
+	Create(context.Context, MigrationRecord) error
+	Start(context.Context, string) error
+	Stop(context.Context, string) error
+	Delete(context.Context, string, bool) error
+	Restore(context.Context, string, io.Reader) error
+	WorkspaceArchive(context.Context, string) (io.ReadCloser, error)
+	Verify(context.Context, MigrationRecord) error
+}
+
+type RollbackLegacyRuntime interface {
+	Start(context.Context, string) error
+	ClearWorkspace(context.Context, string) error
+	PutWorkspaceArchive(context.Context, string, io.Reader) error
+	WorkspaceArchive(context.Context, string) (io.ReadCloser, error)
+	DeleteContainer(context.Context, string) error
+	DeleteVolume(context.Context, string) error
 }
 
 type ObjectStore interface {
@@ -81,9 +122,25 @@ type ObjectStore interface {
 	Remove(context.Context, string) error
 }
 
+type MigrationObjectStore interface {
+	ObjectStore
+	Get(context.Context, string) (io.ReadCloser, error)
+}
+
 type MigrationRepository interface {
 	ListPersistentSandboxes(context.Context) ([]LegacySandbox, error)
 	EnsurePending(context.Context, LegacySandbox) error
 	SetStatus(context.Context, []string, MigrationStatus, string) error
 	MarkArchived(context.Context, []string, ArchivedMigration) error
+}
+
+type CutoverRepository interface {
+	MigrationRepository
+	ListMigrations(context.Context, ...MigrationStatus) ([]MigrationRecord, error)
+	MarkRestoring(context.Context, []string) error
+	MarkVerified(context.Context, []string, time.Time) error
+	AssertDrained(context.Context) error
+	ActivateCutover(context.Context) error
+	MarkRolledBack(context.Context, string, time.Time) error
+	MarkFinalized(context.Context, string, time.Time) error
 }
