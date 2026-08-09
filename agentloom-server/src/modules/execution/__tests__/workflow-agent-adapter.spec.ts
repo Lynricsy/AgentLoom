@@ -253,31 +253,32 @@ describe('WorkflowAgentAdapter', () => {
   });
 
   it('工作流已有 sandbox 绑定时不会新建沙箱，且子 Agent 共享父级绑定', async () => {
-    mockSandboxRuntime.prompt.mockImplementation(
-      async function* (sessionId: string, content: ContentBlock[]) {
-        if (sessionAgentIds.get(sessionId) === 'child-agent') {
-          expect(content[0]).toMatchObject({ type: 'text' });
-          yield { type: 'message_chunk', content: 'child-output' };
-          yield { type: 'done', stopReason: 'end_turn' };
-          return;
-        }
-
-        expect((content[0] as { text: string }).text).toContain('hello');
-        const provider = sessionProviders.get(sessionId);
-        expect(provider).toBeTypeOf('function');
-        const tools = await provider?.();
-        const childResult = await tools?.call_subagent.execute?.(
-          { alias: 'writer', task: '整理 hello' },
-          { toolCallId: 'tool-call-subagent-1' } as never,
-        );
-        expect(JSON.parse(childResult as string)).toMatchObject({
-          content: 'child-output',
-        });
-
-        yield { type: 'message_chunk', content: 'parent-output' };
+    mockSandboxRuntime.prompt.mockImplementation(async function* (
+      sessionId: string,
+      content: ContentBlock[],
+    ) {
+      if (sessionAgentIds.get(sessionId) === 'child-agent') {
+        expect(content[0]).toMatchObject({ type: 'text' });
+        yield { type: 'message_chunk', content: 'child-output' };
         yield { type: 'done', stopReason: 'end_turn' };
-      },
-    );
+        return;
+      }
+
+      expect((content[0] as { text: string }).text).toContain('hello');
+      const provider = sessionProviders.get(sessionId);
+      expect(provider).toBeTypeOf('function');
+      const tools = await provider?.();
+      const childResult = await tools?.call_subagent.execute?.(
+        { alias: 'writer', task: '整理 hello' },
+        { toolCallId: 'tool-call-subagent-1' } as never,
+      );
+      expect(JSON.parse(childResult as string)).toMatchObject({
+        content: 'child-output',
+      });
+
+      yield { type: 'message_chunk', content: 'parent-output' };
+      yield { type: 'done', stopReason: 'end_turn' };
+    });
 
     const adapter = new WorkflowAgentAdapter(
       {
@@ -1367,23 +1368,24 @@ describe('WorkflowAgentAdapter', () => {
         };
       },
     );
-    mockSandboxRuntime.prompt
-      .mockImplementation(async function* (sessionId: string) {
-        if (sessionAgentIds.get(sessionId) === 'child-agent') {
-          yield { type: 'message_chunk', content: 'child-result' };
-          yield { type: 'done', stopReason: 'end_turn' };
-          return;
-        }
-
-        const provider = sessionProviders.get(sessionId);
-        const tools = await provider?.();
-        await tools?.call_subagent.execute?.(
-          { alias: 'writer', task: '写总结' },
-          { toolCallId: 'tool-call-subagent-2' } as never,
-        );
-        yield { type: 'message_chunk', content: 'parent-result' };
+    mockSandboxRuntime.prompt.mockImplementation(async function* (
+      sessionId: string,
+    ) {
+      if (sessionAgentIds.get(sessionId) === 'child-agent') {
+        yield { type: 'message_chunk', content: 'child-result' };
         yield { type: 'done', stopReason: 'end_turn' };
-      });
+        return;
+      }
+
+      const provider = sessionProviders.get(sessionId);
+      const tools = await provider?.();
+      await tools?.call_subagent.execute?.(
+        { alias: 'writer', task: '写总结' },
+        { toolCallId: 'tool-call-subagent-2' } as never,
+      );
+      yield { type: 'message_chunk', content: 'parent-result' };
+      yield { type: 'done', stopReason: 'end_turn' };
+    });
 
     const adapter = createAdapter({
       db,
@@ -1446,26 +1448,27 @@ describe('WorkflowAgentAdapter', () => {
       },
     );
 
-    mockSandboxRuntime.prompt
-      .mockImplementation(async function* (sessionId: string) {
-        if (sessionAgentIds.get(sessionId) === 'child-agent') {
-          yield { type: 'message_chunk', content: 'child-result' };
-          yield { type: 'done', stopReason: 'end_turn' };
-          return;
-        }
-
-        const provider = sessionProviders.get(sessionId);
-        const tools = await provider?.();
-        const result = await tools?.call_subagent.execute?.(
-          { alias: 'child-agent', task: '写输出' },
-          { toolCallId: 'tool-call-subagent-3' } as never,
-        );
-        expect(JSON.parse(result as string)).toMatchObject({
-          content: 'child-result',
-        });
-        yield { type: 'message_chunk', content: 'parent-result' };
+    mockSandboxRuntime.prompt.mockImplementation(async function* (
+      sessionId: string,
+    ) {
+      if (sessionAgentIds.get(sessionId) === 'child-agent') {
+        yield { type: 'message_chunk', content: 'child-result' };
         yield { type: 'done', stopReason: 'end_turn' };
+        return;
+      }
+
+      const provider = sessionProviders.get(sessionId);
+      const tools = await provider?.();
+      const result = await tools?.call_subagent.execute?.(
+        { alias: 'child-agent', task: '写输出' },
+        { toolCallId: 'tool-call-subagent-3' } as never,
+      );
+      expect(JSON.parse(result as string)).toMatchObject({
+        content: 'child-result',
       });
+      yield { type: 'message_chunk', content: 'parent-result' };
+      yield { type: 'done', stopReason: 'end_turn' };
+    });
 
     const adapter = createAdapter({
       db,

@@ -48,7 +48,7 @@ describe('sandboxSessions 表定义', () => {
         'agentConversationId',
         'sandboxNodeId',
         'tenantId',
-        'containerId',
+        'runtimeHandle',
         'status',
         'config',
         'workspacePath',
@@ -68,8 +68,8 @@ describe('sandboxSessions 表定义', () => {
     expect(columns.executionId.notNull).toBe(false);
   });
 
-  it('containerId 应可为空', () => {
-    expect(columns.containerId.notNull).toBe(false);
+  it('runtimeHandle 应可为空', () => {
+    expect(columns.runtimeHandle.notNull).toBe(false);
   });
 
   it('status 默认值应为 creating', () => {
@@ -159,7 +159,7 @@ describe('推断类型导出验证', () => {
       executionId: '00000000-0000-0000-0000-000000000002',
       sandboxNodeId: 'sandbox-1',
       tenantId: '00000000-0000-0000-0000-000000000003',
-      containerId: null,
+      runtimeHandle: null,
       status: 'creating',
       config: { cpu: 1, memory: 512, disk: 2, timeout: 2 },
       workspacePath: null,

@@ -20,7 +20,7 @@ vi.mock('node:fs', async (importOriginal) => {
 });
 
 import { FirecrackerRuntimeService } from '../firecracker-runtime.service';
-import { SandboxContainerNotFoundException } from '../sandbox.exceptions';
+import { SandboxRuntimeNotFoundException } from '../sandbox.exceptions';
 
 function jsonResponse(value: unknown, status = 200): Response {
   return new Response(JSON.stringify(value), {
@@ -45,14 +45,14 @@ describe('FirecrackerRuntimeService', () => {
     const service = new FirecrackerRuntimeService();
 
     await expect(
-      service.createContainer('session-1', {
+      service.createRuntime('session-1', {
         cpu: 1.5,
         memory: 512,
         disk: 2,
         timeout: 1,
         lifecycleMode: 'persistent',
       }),
-    ).resolves.toEqual({ containerId: 'runtime-1' });
+    ).resolves.toEqual({ runtimeHandle: 'runtime-1' });
 
     expect(undiciMocks.fetch).toHaveBeenCalledWith(
       'https://firecracker-runtime:8443/v1/vms',
@@ -89,14 +89,14 @@ describe('FirecrackerRuntimeService', () => {
     const service = new FirecrackerRuntimeService();
 
     await expect(
-      service.createContainer('session-1', {
+      service.createRuntime('session-1', {
         cpu: 1,
         memory: 512,
         disk: 2,
         timeout: 1,
         lifecycleMode: 'persistent',
       }),
-    ).resolves.toEqual({ containerId: 'runtime-1' });
+    ).resolves.toEqual({ runtimeHandle: 'runtime-1' });
 
     expect(undiciMocks.fetch).toHaveBeenNthCalledWith(
       2,
@@ -116,9 +116,12 @@ describe('FirecrackerRuntimeService', () => {
     await expect(service.inspectRuntime('runtime-1')).resolves.toEqual({
       state: 'stopped',
     });
-    await expect(
-      service.inspectRuntime('missing-runtime'),
-    ).rejects.toBeInstanceOf(SandboxContainerNotFoundException);
+    const notFoundError = await service
+      .inspectRuntime('missing-runtime')
+      .then(() => null)
+      .catch((error: unknown) => error);
+    expect(notFoundError).toBeInstanceOf(SandboxRuntimeNotFoundException);
+    expect(JSON.stringify(notFoundError)).not.toContain('missing-runtime');
   });
 
   it('只通过 manager guest proxy 转发 session 请求', async () => {

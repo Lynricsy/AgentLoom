@@ -23,9 +23,7 @@ function remapHandle(handle: string, idMap: Map<string, string>): string {
   return result;
 }
 
-function readNodeParentId(
-  node: ReactFlowNode,
-): string | undefined {
+function readNodeParentId(node: ReactFlowNode): string | undefined {
   const rawNode = node as ReactFlowNode & Record<string, unknown>;
   const rawParentId =
     typeof rawNode.parentId === 'string'

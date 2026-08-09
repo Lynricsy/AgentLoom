@@ -138,7 +138,7 @@ function buildSession(overrides?: Partial<SandboxSession>): SandboxSession {
     executionId: TEST_EXECUTION_ID,
     sandboxNodeId: 'sandbox-1',
     tenantId: TEST_TENANT_ID,
-    containerId: null,
+    runtimeHandle: null,
     status: 'creating',
     config: TEST_CONFIG,
     workspacePath: null,
@@ -154,7 +154,7 @@ describe('SandboxService', () => {
   let service: SandboxService;
   let db: Record<string, ReturnType<typeof vi.fn>>;
   let mockLifecycleProducer: Record<string, ReturnType<typeof vi.fn>>;
-  let mockDockerService: Record<string, ReturnType<typeof vi.fn>>;
+  let mockRuntimeDriver: Record<string, ReturnType<typeof vi.fn>>;
   let mockWorkspaceService: Record<string, ReturnType<typeof vi.fn>>;
   let mockWorkspaceLeaseService: Record<string, ReturnType<typeof vi.fn>>;
 
@@ -185,13 +185,13 @@ describe('SandboxService', () => {
       removeWorkspaceLeaseRenewal: vi.fn().mockResolvedValue(undefined),
     };
 
-    mockDockerService = {
+    mockRuntimeDriver = {
       healthCheck: vi.fn().mockResolvedValue(true),
       inspectRuntime: vi.fn().mockResolvedValue({ state: 'stopped' }),
-      getContainerStats: vi.fn(),
-      listContainerProcesses: vi.fn(),
-      stopContainer: vi.fn().mockResolvedValue(undefined),
-      removeContainer: vi.fn().mockResolvedValue(undefined),
+      getRuntimeStats: vi.fn(),
+      listRuntimeProcesses: vi.fn(),
+      stopRuntime: vi.fn().mockResolvedValue(undefined),
+      deleteRuntime: vi.fn().mockResolvedValue(undefined),
     };
 
     mockWorkspaceService = {
@@ -227,7 +227,7 @@ describe('SandboxService', () => {
         },
         {
           provide: SANDBOX_RUNTIME_DRIVER,
-          useValue: mockDockerService,
+          useValue: mockRuntimeDriver,
         },
         {
           provide: WorkspaceService,
@@ -453,7 +453,7 @@ describe('SandboxService', () => {
         executionId: null,
         sandboxNodeId: null,
         status: 'ready',
-        containerId: 'container-persistent',
+        runtimeHandle: 'container-persistent',
         config: {
           ...TEST_CONFIG,
           lifecycleMode: 'persistent',
@@ -465,7 +465,7 @@ describe('SandboxService', () => {
         agentConversationId: TEST_CONVERSATION_ID,
         sandboxNodeId: null,
         status: 'ready',
-        containerId: 'container-persistent',
+        runtimeHandle: 'container-persistent',
         config: {
           ...TEST_CONFIG,
           lifecycleMode: 'persistent',
@@ -525,7 +525,7 @@ describe('SandboxService', () => {
         executionId: null,
         sandboxNodeId: null,
         status: 'ready',
-        containerId: 'container-persistent',
+        runtimeHandle: 'container-persistent',
         config: {
           ...TEST_CONFIG,
           lifecycleMode: 'persistent',
@@ -560,7 +560,7 @@ describe('SandboxService', () => {
     it('failed 持久沙箱被 workflow 节点再次引用时应自动恢复并继续绑定', async () => {
       const failedPersistentSession = buildSession({
         status: 'failed',
-        containerId: 'container-old',
+        runtimeHandle: 'container-old',
         sandboxNodeId: null,
         config: {
           ...TEST_CONFIG,
@@ -576,7 +576,7 @@ describe('SandboxService', () => {
       });
       const attachedSession = buildSession({
         status: 'creating',
-        containerId: null,
+        runtimeHandle: null,
         sandboxNodeId: null,
         config: {
           ...failedPersistentSession.config,
@@ -628,7 +628,7 @@ describe('SandboxService', () => {
     it('ready 持久沙箱对应 stopped runtime 时保留 handle 并显式恢复', async () => {
       const stalePersistentSession = buildSession({
         status: 'ready',
-        containerId: 'container-missing',
+        runtimeHandle: 'container-missing',
         sandboxNodeId: null,
         startedAt: new Date('2025-01-02T00:00:00Z'),
         config: {
@@ -646,13 +646,13 @@ describe('SandboxService', () => {
       const reconciledStoppedSession = buildSession({
         ...stalePersistentSession,
         status: 'stopped',
-        containerId: 'container-missing',
+        runtimeHandle: 'container-missing',
         workspacePath: null,
         stoppedAt: new Date('2025-01-03T00:00:00Z'),
       });
       const attachedSession = buildSession({
         status: 'creating',
-        containerId: 'container-missing',
+        runtimeHandle: 'container-missing',
         sandboxNodeId: null,
         config: {
           ...stalePersistentSession.config,
@@ -686,7 +686,7 @@ describe('SandboxService', () => {
       db.update
         .mockReturnValueOnce(reconcileUpdateChain)
         .mockReturnValueOnce(updateBindingChain);
-      mockDockerService.healthCheck.mockResolvedValueOnce(false);
+      mockRuntimeDriver.healthCheck.mockResolvedValueOnce(false);
 
       const result = await service.createSandboxSession({
         executionId: TEST_EXECUTION_ID,
@@ -808,24 +808,24 @@ describe('SandboxService', () => {
     });
   });
 
-  describe('getContainerStats', () => {
+  describe('getRuntimeStats', () => {
     it('应在 driver 返回磁盘占用时补齐磁盘总配额', async () => {
       const session = buildSession({
-        containerId: 'container-abc123',
+        runtimeHandle: 'container-abc123',
         status: 'ready',
         config: { ...TEST_CONFIG, disk: 6 },
       });
       db.select.mockReturnValueOnce(createSelectChainWithLimit([session]));
-      mockDockerService.getContainerStats.mockResolvedValueOnce({
+      mockRuntimeDriver.getRuntimeStats.mockResolvedValueOnce({
         cpuPercent: 10,
         memoryUsageMb: 128,
         memoryLimitMb: 512,
         diskUsage: 4096,
       });
 
-      const result = await service.getContainerStats(TEST_SESSION_ID);
+      const result = await service.getRuntimeStats(TEST_SESSION_ID);
 
-      expect(mockDockerService.getContainerStats).toHaveBeenCalledWith(
+      expect(mockRuntimeDriver.getRuntimeStats).toHaveBeenCalledWith(
         'container-abc123',
       );
       expect(result).toEqual({
@@ -839,19 +839,19 @@ describe('SandboxService', () => {
 
     it('应在 driver 读取容器统计失败时降级为统计不可用', async () => {
       const session = buildSession({
-        containerId: 'container-missing',
+        runtimeHandle: 'container-missing',
         status: 'ready',
         startedAt: new Date('2025-01-02T00:00:00Z'),
       });
       db.select.mockReturnValueOnce(createSelectChainWithLimit([session]));
-      mockDockerService.healthCheck.mockResolvedValueOnce(true);
-      mockDockerService.getContainerStats.mockRejectedValueOnce(
+      mockRuntimeDriver.healthCheck.mockResolvedValueOnce(true);
+      mockRuntimeDriver.getRuntimeStats.mockRejectedValueOnce(
         new Error('No such container'),
       );
       const updateChain = createUpdateChainReturning([
         buildSession({
           status: 'stopped',
-          containerId: null,
+          runtimeHandle: null,
           workspacePath: null,
           startedAt: session.startedAt,
           stoppedAt: new Date('2025-01-03T00:00:00Z'),
@@ -859,24 +859,24 @@ describe('SandboxService', () => {
       ]);
       db.update.mockReturnValueOnce(updateChain);
 
-      await expect(service.getContainerStats(TEST_SESSION_ID)).rejects.toThrow(
+      await expect(service.getRuntimeStats(TEST_SESSION_ID)).rejects.toThrow(
         SandboxStatsUnavailableException,
       );
 
-      expect(mockDockerService.getContainerStats).toHaveBeenCalledWith(
+      expect(mockRuntimeDriver.getRuntimeStats).toHaveBeenCalledWith(
         'container-missing',
       );
     });
 
     it('manager 报告 stopped 时收口状态但保留 durable runtime handle', async () => {
       const staleSession = buildSession({
-        containerId: 'container-gone',
+        runtimeHandle: 'container-gone',
         status: 'ready',
         startedAt: new Date('2025-01-02T00:00:00Z'),
       });
       const stoppedSession = buildSession({
         status: 'stopped',
-        containerId: 'container-gone',
+        runtimeHandle: 'container-gone',
         workspacePath: null,
         startedAt: staleSession.startedAt,
         stoppedAt: new Date('2025-01-03T00:00:00Z'),
@@ -885,13 +885,13 @@ describe('SandboxService', () => {
       db.update.mockReturnValueOnce(
         createUpdateChainReturning([stoppedSession]),
       );
-      mockDockerService.healthCheck.mockResolvedValueOnce(false);
+      mockRuntimeDriver.healthCheck.mockResolvedValueOnce(false);
 
-      await expect(service.getContainerStats(TEST_SESSION_ID)).rejects.toThrow(
+      await expect(service.getRuntimeStats(TEST_SESSION_ID)).rejects.toThrow(
         SandboxStatsUnavailableException,
       );
 
-      expect(mockDockerService.getContainerStats).not.toHaveBeenCalled();
+      expect(mockRuntimeDriver.getRuntimeStats).not.toHaveBeenCalled();
       expect(db.update).toHaveBeenCalledOnce();
     });
   });
@@ -901,7 +901,7 @@ describe('SandboxService', () => {
       const session = buildSession({
         executionId: null,
         agentConversationId: TEST_CONVERSATION_ID,
-        containerId: 'container-abc123',
+        runtimeHandle: 'container-abc123',
         status: 'ready',
       });
       const processes = [
@@ -917,14 +917,14 @@ describe('SandboxService', () => {
       ];
 
       db.select.mockReturnValueOnce(createSelectChainWithLimit([session]));
-      mockDockerService.listContainerProcesses.mockResolvedValueOnce(processes);
+      mockRuntimeDriver.listRuntimeProcesses.mockResolvedValueOnce(processes);
 
       const result = await service.getConversationSandboxProcesses(
         TEST_CONVERSATION_ID,
         TEST_TENANT_ID,
       );
 
-      expect(mockDockerService.listContainerProcesses).toHaveBeenCalledWith(
+      expect(mockRuntimeDriver.listRuntimeProcesses).toHaveBeenCalledWith(
         'container-abc123',
       );
       expect(result).toEqual(processes);
@@ -934,13 +934,13 @@ describe('SandboxService', () => {
       const session = buildSession({
         executionId: null,
         agentConversationId: TEST_CONVERSATION_ID,
-        containerId: 'container-missing',
+        runtimeHandle: 'container-missing',
         status: 'ready',
         startedAt: new Date('2025-01-02T00:00:00Z'),
       });
       db.select.mockReturnValueOnce(createSelectChainWithLimit([session]));
-      mockDockerService.healthCheck.mockResolvedValueOnce(true);
-      mockDockerService.listContainerProcesses.mockRejectedValueOnce(
+      mockRuntimeDriver.healthCheck.mockResolvedValueOnce(true);
+      mockRuntimeDriver.listRuntimeProcesses.mockRejectedValueOnce(
         new Error('No such container'),
       );
       db.update.mockReturnValueOnce(
@@ -949,7 +949,7 @@ describe('SandboxService', () => {
             executionId: null,
             agentConversationId: TEST_CONVERSATION_ID,
             status: 'stopped',
-            containerId: null,
+            runtimeHandle: null,
             workspacePath: null,
             startedAt: session.startedAt,
             stoppedAt: new Date('2025-01-03T00:00:00Z'),
@@ -964,7 +964,7 @@ describe('SandboxService', () => {
         ),
       ).rejects.toThrow(SandboxProcessesUnavailableException);
 
-      expect(mockDockerService.listContainerProcesses).toHaveBeenCalledWith(
+      expect(mockRuntimeDriver.listRuntimeProcesses).toHaveBeenCalledWith(
         'container-missing',
       );
     });
@@ -1026,7 +1026,7 @@ describe('SandboxService', () => {
 
       await expect(
         service.updateSessionStatus(TEST_SESSION_ID, 'ready', {
-          containerId: 'container-abc',
+          runtimeHandle: 'container-abc',
           startedAt: new Date(),
         }),
       ).resolves.toBeUndefined();
@@ -1047,7 +1047,7 @@ describe('SandboxService', () => {
     it('アクティブセッション発見時にステータス更新 → destroy キュー投入', async () => {
       const session = buildSession({
         status: 'ready',
-        containerId: 'container-abc',
+        runtimeHandle: 'container-abc',
         config: {
           ...TEST_CONFIG,
           persistencePath: 'tenants/t1/sandboxes/e1',
@@ -1069,7 +1069,7 @@ describe('SandboxService', () => {
         executionId: TEST_EXECUTION_ID,
         sandboxNodeId: 'sandbox-1',
         tenantId: TEST_TENANT_ID,
-        containerId: 'container-abc',
+        runtimeHandle: 'container-abc',
         persistencePath: 'tenants/t1/sandboxes/e1',
       });
     });
@@ -1089,7 +1089,7 @@ describe('SandboxService', () => {
         executionId: null,
         agentConversationId: TEST_CONVERSATION_ID,
         status: 'ready',
-        containerId: 'container-conv',
+        runtimeHandle: 'container-conv',
       });
 
       db.select.mockReturnValueOnce(createSelectChainWithLimit([session]));
@@ -1107,14 +1107,14 @@ describe('SandboxService', () => {
         agentConversationId: TEST_CONVERSATION_ID,
         sandboxNodeId: 'sandbox-1',
         tenantId: TEST_TENANT_ID,
-        containerId: 'container-conv',
+        runtimeHandle: 'container-conv',
       });
     });
 
     it('事务内销毁执行级沙箱时应在提交后再入队 destroy task', async () => {
       const session = buildSession({
         status: 'ready',
-        containerId: 'container-abc',
+        runtimeHandle: 'container-abc',
       });
       let afterCommitHook: (() => Promise<void>) | undefined;
 
@@ -1146,14 +1146,14 @@ describe('SandboxService', () => {
         executionId: TEST_EXECUTION_ID,
         sandboxNodeId: 'sandbox-1',
         tenantId: TEST_TENANT_ID,
-        containerId: 'container-abc',
+        runtimeHandle: 'container-abc',
       });
     });
 
     it('并发重复销毁时若会话已被其他请求切到 stopping，应跳过重复 destroy 入队', async () => {
       const session = buildSession({
         status: 'ready',
-        containerId: 'container-abc',
+        runtimeHandle: 'container-abc',
       });
 
       db.select
@@ -1225,7 +1225,7 @@ describe('SandboxService', () => {
     it('stopped 持久沙箱应复用原容器并入队 start 任务', async () => {
       const stoppedSession = buildSession({
         status: 'stopped',
-        containerId: 'container-stopped',
+        runtimeHandle: 'container-stopped',
         workspacePath: '/workspace/',
         startedAt: new Date('2025-01-01T00:00:00.000Z'),
         stoppedAt: new Date('2025-01-02T00:00:00.000Z'),
@@ -1237,7 +1237,7 @@ describe('SandboxService', () => {
       });
       const creatingSession = buildSession({
         status: 'creating',
-        containerId: 'container-stopped',
+        runtimeHandle: 'container-stopped',
         workspacePath: '/workspace/',
         startedAt: null,
         stoppedAt: null,
@@ -1254,8 +1254,8 @@ describe('SandboxService', () => {
         service.startSandbox(TEST_SESSION_ID, TEST_TENANT_ID),
       ).resolves.toEqual(creatingSession);
 
-      expect(mockDockerService.stopContainer).not.toHaveBeenCalled();
-      expect(mockDockerService.removeContainer).not.toHaveBeenCalled();
+      expect(mockRuntimeDriver.stopRuntime).not.toHaveBeenCalled();
+      expect(mockRuntimeDriver.deleteRuntime).not.toHaveBeenCalled();
       expect(updateChain.set).toHaveBeenCalledWith({
         status: 'creating',
         startedAt: null,
@@ -1266,7 +1266,7 @@ describe('SandboxService', () => {
         executionId: TEST_EXECUTION_ID,
         sandboxNodeId: 'sandbox-1',
         tenantId: TEST_TENANT_ID,
-        containerId: 'container-stopped',
+        runtimeHandle: 'container-stopped',
         config: stoppedSession.config,
       });
       expect(mockLifecycleProducer.addCreateTask).not.toHaveBeenCalled();
@@ -1275,7 +1275,7 @@ describe('SandboxService', () => {
     it('failed runtime 应 fail closed 且不得删除持久磁盘', async () => {
       const failedSession = buildSession({
         status: 'failed',
-        containerId: 'container-old',
+        runtimeHandle: 'container-old',
         workspacePath: '/workspace/',
         startedAt: new Date('2025-01-01T00:00:00.000Z'),
         stoppedAt: new Date('2025-01-02T00:00:00.000Z'),
@@ -1288,7 +1288,7 @@ describe('SandboxService', () => {
       db.select.mockReturnValueOnce(
         createSelectChainWithLimit([failedSession]),
       );
-      mockDockerService.inspectRuntime.mockResolvedValueOnce({
+      mockRuntimeDriver.inspectRuntime.mockResolvedValueOnce({
         state: 'failed',
       });
 
@@ -1296,8 +1296,8 @@ describe('SandboxService', () => {
         service.startSandbox(TEST_SESSION_ID, TEST_TENANT_ID),
       ).rejects.toBeInstanceOf(SandboxInvalidStateException);
 
-      expect(mockDockerService.stopContainer).not.toHaveBeenCalled();
-      expect(mockDockerService.removeContainer).not.toHaveBeenCalled();
+      expect(mockRuntimeDriver.stopRuntime).not.toHaveBeenCalled();
+      expect(mockRuntimeDriver.deleteRuntime).not.toHaveBeenCalled();
       expect(db.update).not.toHaveBeenCalled();
       expect(mockLifecycleProducer.addCreateTask).not.toHaveBeenCalled();
       expect(mockLifecycleProducer.addStartTask).not.toHaveBeenCalled();
@@ -1308,7 +1308,7 @@ describe('SandboxService', () => {
     it('persistent 沙箱应入队 stop task 而不是 destroy task', async () => {
       const session = buildSession({
         status: 'ready',
-        containerId: 'container-abc',
+        runtimeHandle: 'container-abc',
         config: {
           ...TEST_CONFIG,
           lifecycleMode: 'persistent',
@@ -1330,7 +1330,7 @@ describe('SandboxService', () => {
         executionId: TEST_EXECUTION_ID,
         sandboxNodeId: 'sandbox-1',
         tenantId: TEST_TENANT_ID,
-        containerId: 'container-abc',
+        runtimeHandle: 'container-abc',
         persistencePath: 'tenants/t1/sandboxes/e1',
         config: session.config,
       });
@@ -1342,7 +1342,7 @@ describe('SandboxService', () => {
     it('stopped 持久沙箱删除时也应 remove 已停止容器并清理 timeout job', async () => {
       const session = buildSession({
         status: 'stopped',
-        containerId: 'container-stopped',
+        runtimeHandle: 'container-stopped',
         config: {
           ...TEST_CONFIG,
           lifecycleMode: 'persistent',
@@ -1359,8 +1359,8 @@ describe('SandboxService', () => {
       expect(mockLifecycleProducer.removeTimeoutCheckTask).toHaveBeenCalledWith(
         TEST_SESSION_ID,
       );
-      expect(mockDockerService.stopContainer).not.toHaveBeenCalled();
-      expect(mockDockerService.removeContainer).toHaveBeenCalledWith(
+      expect(mockRuntimeDriver.stopRuntime).not.toHaveBeenCalled();
+      expect(mockRuntimeDriver.deleteRuntime).toHaveBeenCalledWith(
         'container-stopped',
         {
           removeVolumes: true,
@@ -1409,7 +1409,7 @@ describe('SandboxService', () => {
     it('共享同一持久沙箱资源的多个节点中，一个节点结束时只应移除自己的绑定', async () => {
       const sharedPersistentSession = buildSession({
         status: 'ready',
-        containerId: 'container-shared',
+        runtimeHandle: 'container-shared',
         sandboxNodeId: null,
         config: {
           ...TEST_CONFIG,
@@ -1464,7 +1464,7 @@ describe('SandboxService', () => {
     it('最后一个 persistent execution binding 释放时应先同步 restoreWorkspaceId 再解绑', async () => {
       const persistentSession = buildSession({
         status: 'ready',
-        containerId: 'container-shared',
+        runtimeHandle: 'container-shared',
         sandboxNodeId: 'sandbox-1',
         config: {
           ...TEST_CONFIG,
@@ -1571,7 +1571,7 @@ describe('SandboxService', () => {
         status: 'ready',
         executionId: null,
         sandboxNodeId: null,
-        containerId: 'container-gone',
+        runtimeHandle: 'container-gone',
         startedAt: new Date('2025-01-02T00:00:00Z'),
         config: {
           ...TEST_CONFIG,
@@ -1582,7 +1582,7 @@ describe('SandboxService', () => {
       const stoppedSession = buildSession({
         ...staleSession,
         status: 'stopped',
-        containerId: 'container-gone',
+        runtimeHandle: 'container-gone',
         workspacePath: null,
         stoppedAt: new Date('2025-01-03T00:00:00Z'),
       });
@@ -1593,7 +1593,7 @@ describe('SandboxService', () => {
       db.update.mockReturnValueOnce(
         createUpdateChainReturning([stoppedSession]),
       );
-      mockDockerService.healthCheck.mockResolvedValueOnce(false);
+      mockRuntimeDriver.healthCheck.mockResolvedValueOnce(false);
 
       const result = await service.listSandboxes(TEST_TENANT_ID, {
         page: 1,
@@ -1618,7 +1618,7 @@ describe('SandboxService', () => {
         executionId: null,
         agentConversationId: TEST_CONVERSATION_ID,
         status: 'ready',
-        containerId: 'container-conv',
+        runtimeHandle: 'container-conv',
         config: TEST_CONFIG,
       });
 
@@ -1639,7 +1639,7 @@ describe('SandboxService', () => {
           sessionId: TEST_SESSION_ID,
           agentConversationId: TEST_CONVERSATION_ID,
           tenantId: TEST_TENANT_ID,
-          containerId: 'container-conv',
+          runtimeHandle: 'container-conv',
         }),
       );
     });
@@ -1649,7 +1649,7 @@ describe('SandboxService', () => {
         executionId: null,
         agentConversationId: TEST_CONVERSATION_ID,
         status: 'ready',
-        containerId: 'container-conv',
+        runtimeHandle: 'container-conv',
         config: { ...TEST_CONFIG, lifecycleMode: 'session' as const },
       });
 
@@ -1673,7 +1673,7 @@ describe('SandboxService', () => {
         executionId: null,
         agentConversationId: TEST_CONVERSATION_ID,
         status: 'ready',
-        containerId: 'container-conv',
+        runtimeHandle: 'container-conv',
         config: {
           ...TEST_CONFIG,
           lifecycleMode: 'persistent' as const,

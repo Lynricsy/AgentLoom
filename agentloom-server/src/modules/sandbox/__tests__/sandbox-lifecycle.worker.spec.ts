@@ -3,11 +3,11 @@ import { Readable } from 'node:stream';
 
 import type { SandboxConfig } from '../../../database/schema';
 
-const mockDockerService = {
-  createContainer: vi.fn().mockResolvedValue({ containerId: 'c-123' }),
-  startContainer: vi.fn().mockResolvedValue(undefined),
-  stopContainer: vi.fn().mockResolvedValue(undefined),
-  removeContainer: vi.fn().mockResolvedValue(undefined),
+const mockRuntimeDriver = {
+  createRuntime: vi.fn().mockResolvedValue({ runtimeHandle: 'c-123' }),
+  startRuntime: vi.fn().mockResolvedValue(undefined),
+  stopRuntime: vi.fn().mockResolvedValue(undefined),
+  deleteRuntime: vi.fn().mockResolvedValue(undefined),
   attachLogs: vi.fn().mockResolvedValue(undefined),
   getArchive: vi
     .fn()
@@ -117,7 +117,7 @@ vi.mock('@nestjs/common', async (importOriginal) => {
 import { SandboxLifecycleWorker } from '../sandbox-lifecycle.worker';
 import {
   SandboxCreationException,
-  SandboxContainerNotFoundException,
+  SandboxRuntimeNotFoundException,
   SandboxTimeoutException,
 } from '../sandbox.exceptions';
 
@@ -157,7 +157,7 @@ describe('SandboxLifecycleWorker', () => {
     worker = new SandboxLifecycleWorker(
       {} as any,
       mockModuleRef as any,
-      mockDockerService as any,
+      mockRuntimeDriver as any,
       mockSandboxService as any,
       mockLifecycleProducer as any,
       mockStorageService as any,
@@ -199,7 +199,7 @@ describe('SandboxLifecycleWorker', () => {
         }),
       );
 
-      expect(mockDockerService.createContainer).toHaveBeenCalledWith(
+      expect(mockRuntimeDriver.createRuntime).toHaveBeenCalledWith(
         's1',
         DEFAULT_CONFIG,
         { piConfigInput: undefined, conversationId: undefined },
@@ -207,13 +207,16 @@ describe('SandboxLifecycleWorker', () => {
       expect(mockUpdate).toHaveBeenCalled();
       expect(mockSet).toHaveBeenCalledWith(
         expect.objectContaining({
-          containerId: 'c-123',
+          runtimeHandle: 'c-123',
           status: 'ready',
           workspacePath: '/workspace/',
         }),
       );
       expect(mockInsert).toHaveBeenCalled();
-      expect(mockDockerService.attachLogs).toHaveBeenCalledWith(
+      expect(mockValues).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'Sandbox runtime created' }),
+      );
+      expect(mockRuntimeDriver.attachLogs).toHaveBeenCalledWith(
         'c-123',
         expect.any(Function),
       );
@@ -306,17 +309,17 @@ describe('SandboxLifecycleWorker', () => {
         }),
       );
 
-      expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
-      expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123', {
+      expect(mockRuntimeDriver.stopRuntime).toHaveBeenCalledWith('c-123');
+      expect(mockRuntimeDriver.deleteRuntime).toHaveBeenCalledWith('c-123', {
         removeVolumes: true,
       });
-      expect(mockDockerService.attachLogs).not.toHaveBeenCalled();
+      expect(mockRuntimeDriver.attachLogs).not.toHaveBeenCalled();
       expect(mockLifecycleProducer.addTimeoutCheckTask).not.toHaveBeenCalled();
       expect(mockInsert).toHaveBeenCalled();
     });
 
     it('session 模式容器创建失败时应保留 failed 状态并记录日志', async () => {
-      mockDockerService.createContainer.mockRejectedValueOnce(
+      mockRuntimeDriver.createRuntime.mockRejectedValueOnce(
         new Error('image not found'),
       );
 
@@ -340,7 +343,7 @@ describe('SandboxLifecycleWorker', () => {
     });
 
     it('persistent 模式容器创建失败时应标记为 failed 并记录日志', async () => {
-      mockDockerService.createContainer.mockRejectedValueOnce(
+      mockRuntimeDriver.createRuntime.mockRejectedValueOnce(
         new Error('image not found'),
       );
 
@@ -391,7 +394,7 @@ describe('SandboxLifecycleWorker', () => {
       const workerWithModuleRef = new SandboxLifecycleWorker(
         {} as any,
         mockModuleRef as any,
-        mockDockerService as any,
+        mockRuntimeDriver as any,
         mockSandboxService as any,
         mockLifecycleProducer as any,
         mockStorageService as any,
@@ -433,7 +436,7 @@ describe('SandboxLifecycleWorker', () => {
         ),
       ).rejects.toThrow('workspace lease conflict');
 
-      expect(mockDockerService.createContainer).not.toHaveBeenCalled();
+      expect(mockRuntimeDriver.createRuntime).not.toHaveBeenCalled();
     });
 
     it('工作区恢复失败时应使沙箱创建失败并释放 lease', async () => {
@@ -449,7 +452,7 @@ describe('SandboxLifecycleWorker', () => {
       const workerWithModuleRef = new SandboxLifecycleWorker(
         {} as any,
         mockModuleRef as any,
-        mockDockerService as any,
+        mockRuntimeDriver as any,
         mockSandboxService as any,
         mockLifecycleProducer as any,
         mockStorageService as any,
@@ -469,9 +472,9 @@ describe('SandboxLifecycleWorker', () => {
       ).rejects.toThrow('Workspace restore failed');
 
       expect(mockWorkspaceService.restoreToSandbox).toHaveBeenCalled();
-      expect(mockDockerService.removeContainer).toHaveBeenCalled();
+      expect(mockRuntimeDriver.deleteRuntime).toHaveBeenCalled();
       expect(mockWorkspaceLeaseService.release).toHaveBeenCalled();
-      expect(mockDockerService.attachLogs).not.toHaveBeenCalled();
+      expect(mockRuntimeDriver.attachLogs).not.toHaveBeenCalled();
     });
   });
 
@@ -483,12 +486,12 @@ describe('SandboxLifecycleWorker', () => {
           sessionId: 's1',
           executionId: 'e1',
           tenantId: 't1',
-          containerId: 'c-123',
+          runtimeHandle: 'c-123',
         }),
       );
 
-      expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
-      expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123', {
+      expect(mockRuntimeDriver.stopRuntime).toHaveBeenCalledWith('c-123');
+      expect(mockRuntimeDriver.deleteRuntime).toHaveBeenCalledWith('c-123', {
         removeVolumes: true,
       });
       expect(mockSelect).toHaveBeenCalled();
@@ -515,12 +518,12 @@ describe('SandboxLifecycleWorker', () => {
           sessionId: 's1',
           executionId: 'e1',
           tenantId: 't1',
-          containerId: 'c-123',
+          runtimeHandle: 'c-123',
         }),
       );
 
-      expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
-      expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123', {
+      expect(mockRuntimeDriver.stopRuntime).toHaveBeenCalledWith('c-123');
+      expect(mockRuntimeDriver.deleteRuntime).toHaveBeenCalledWith('c-123', {
         removeVolumes: true,
       });
       expect(mockSet).toHaveBeenCalledWith(
@@ -529,7 +532,7 @@ describe('SandboxLifecycleWorker', () => {
       expect(mockInsert).toHaveBeenCalled();
     });
 
-    it('无 containerId 时应仅清除数据库记录', async () => {
+    it('无 runtimeHandle 时应仅清除数据库记录', async () => {
       await worker.process(
         createJob({
           jobType: 'destroy',
@@ -539,8 +542,8 @@ describe('SandboxLifecycleWorker', () => {
         }),
       );
 
-      expect(mockDockerService.stopContainer).not.toHaveBeenCalled();
-      expect(mockDockerService.removeContainer).not.toHaveBeenCalled();
+      expect(mockRuntimeDriver.stopRuntime).not.toHaveBeenCalled();
+      expect(mockRuntimeDriver.deleteRuntime).not.toHaveBeenCalled();
       expect(mockDeleteWhere).toHaveBeenCalled();
     });
 
@@ -551,12 +554,12 @@ describe('SandboxLifecycleWorker', () => {
           sessionId: 's1',
           executionId: 'e1',
           tenantId: 't1',
-          containerId: 'c-123',
+          runtimeHandle: 'c-123',
           persistencePath: '/outputs/result',
         }),
       );
 
-      expect(mockDockerService.getArchive).toHaveBeenCalledWith(
+      expect(mockRuntimeDriver.getArchive).toHaveBeenCalledWith(
         'c-123',
         '/workspace/',
       );
@@ -566,8 +569,8 @@ describe('SandboxLifecycleWorker', () => {
         undefined,
         'application/x-tar',
       );
-      expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
-      expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123', {
+      expect(mockRuntimeDriver.stopRuntime).toHaveBeenCalledWith('c-123');
+      expect(mockRuntimeDriver.deleteRuntime).toHaveBeenCalledWith('c-123', {
         removeVolumes: true,
       });
     });
@@ -579,13 +582,13 @@ describe('SandboxLifecycleWorker', () => {
           sessionId: 's1',
           executionId: 'e1',
           tenantId: 't1',
-          containerId: 'c-123',
+          runtimeHandle: 'c-123',
         }),
       );
 
-      expect(mockDockerService.getArchive).not.toHaveBeenCalled();
+      expect(mockRuntimeDriver.getArchive).not.toHaveBeenCalled();
       expect(mockStorageService.upload).not.toHaveBeenCalled();
-      expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
+      expect(mockRuntimeDriver.stopRuntime).toHaveBeenCalledWith('c-123');
     });
 
     it('restoreWorkspaceId 存在时应先回写原工作区再销毁', async () => {
@@ -595,7 +598,7 @@ describe('SandboxLifecycleWorker', () => {
       const workerWithModuleRef = new SandboxLifecycleWorker(
         {} as any,
         { get: vi.fn().mockReturnValue(mockWorkspaceService) } as any,
-        mockDockerService as any,
+        mockRuntimeDriver as any,
         mockSandboxService as any,
         mockLifecycleProducer as any,
         mockStorageService as any,
@@ -616,7 +619,7 @@ describe('SandboxLifecycleWorker', () => {
           sessionId: 's1',
           executionId: 'e1',
           tenantId: 't1',
-          containerId: 'c-123',
+          runtimeHandle: 'c-123',
         }),
       );
 
@@ -628,14 +631,14 @@ describe('SandboxLifecycleWorker', () => {
         't1',
         expect.objectContaining({ fencingToken: 1 }),
       );
-      expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
-      expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123', {
+      expect(mockRuntimeDriver.stopRuntime).toHaveBeenCalledWith('c-123');
+      expect(mockRuntimeDriver.deleteRuntime).toHaveBeenCalledWith('c-123', {
         removeVolumes: true,
       });
     });
 
     it('workspace 同步失败时不应阻止销毁流程', async () => {
-      mockDockerService.getArchive.mockRejectedValueOnce(
+      mockRuntimeDriver.getArchive.mockRejectedValueOnce(
         new Error('archive failed'),
       );
 
@@ -645,13 +648,13 @@ describe('SandboxLifecycleWorker', () => {
           sessionId: 's1',
           executionId: 'e1',
           tenantId: 't1',
-          containerId: 'c-123',
+          runtimeHandle: 'c-123',
           persistencePath: '/outputs/result',
         }),
       );
 
-      expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
-      expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123', {
+      expect(mockRuntimeDriver.stopRuntime).toHaveBeenCalledWith('c-123');
+      expect(mockRuntimeDriver.deleteRuntime).toHaveBeenCalledWith('c-123', {
         removeVolumes: true,
       });
       expect(mockDeleteWhere).toHaveBeenCalled();
@@ -664,7 +667,7 @@ describe('SandboxLifecycleWorker', () => {
           sessionId: 's1',
           executionId: 'e1',
           tenantId: 't1',
-          containerId: 'c-123',
+          runtimeHandle: 'c-123',
           persistencePath: 'tenants/t1/sandboxes/custom/workspace.tar',
         }),
       );
@@ -684,12 +687,12 @@ describe('SandboxLifecycleWorker', () => {
           sessionId: 's-conv',
           agentConversationId: 'conv-1',
           tenantId: 't1',
-          containerId: 'c-123',
+          runtimeHandle: 'c-123',
         }),
       );
 
-      expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
-      expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123', {
+      expect(mockRuntimeDriver.stopRuntime).toHaveBeenCalledWith('c-123');
+      expect(mockRuntimeDriver.deleteRuntime).toHaveBeenCalledWith('c-123', {
         removeVolumes: true,
       });
       expect(mockDeleteWhere).toHaveBeenCalled();
@@ -704,12 +707,12 @@ describe('SandboxLifecycleWorker', () => {
           sessionId: 's1',
           executionId: 'e1',
           tenantId: 't1',
-          containerId: 'c-123',
+          runtimeHandle: 'c-123',
           config: DEFAULT_CONFIG,
         }),
       );
 
-      expect(mockDockerService.startContainer).toHaveBeenCalledWith('c-123');
+      expect(mockRuntimeDriver.startRuntime).toHaveBeenCalledWith('c-123');
       expect(mockSet).toHaveBeenCalledWith(
         expect.objectContaining({
           status: 'ready',
@@ -727,8 +730,8 @@ describe('SandboxLifecycleWorker', () => {
     });
 
     it('manager 404 时应保留 runtime handle 并失败收口', async () => {
-      mockDockerService.startContainer.mockRejectedValueOnce(
-        new SandboxContainerNotFoundException('c-missing'),
+      mockRuntimeDriver.startRuntime.mockRejectedValueOnce(
+        new SandboxRuntimeNotFoundException(),
       );
 
       await expect(
@@ -738,21 +741,21 @@ describe('SandboxLifecycleWorker', () => {
             sessionId: 's1',
             agentConversationId: 'conv-1',
             tenantId: 't1',
-            containerId: 'c-missing',
+            runtimeHandle: 'c-missing',
             config: DEFAULT_CONFIG,
           }),
         ),
-      ).rejects.toThrow(SandboxContainerNotFoundException);
+      ).rejects.toThrow(SandboxRuntimeNotFoundException);
 
-      expect(mockDockerService.createContainer).not.toHaveBeenCalled();
-      expect(mockDockerService.removeContainer).not.toHaveBeenCalled();
+      expect(mockRuntimeDriver.createRuntime).not.toHaveBeenCalled();
+      expect(mockRuntimeDriver.deleteRuntime).not.toHaveBeenCalled();
       expect(mockSet).toHaveBeenCalledWith(
         expect.objectContaining({ status: 'failed' }),
       );
-      expect(mockDockerService.attachLogs).not.toHaveBeenCalled();
+      expect(mockRuntimeDriver.attachLogs).not.toHaveBeenCalled();
     });
 
-    it('缺少 containerId 时应抛出异常', async () => {
+    it('缺少 runtimeHandle 时应抛出异常', async () => {
       await expect(
         worker.process(
           createJob({
@@ -775,7 +778,7 @@ describe('SandboxLifecycleWorker', () => {
           sessionId: 's1',
           executionId: 'e1',
           tenantId: 't1',
-          containerId: 'c-123',
+          runtimeHandle: 'c-123',
           config: {
             ...DEFAULT_CONFIG,
             lifecycleMode: 'persistent',
@@ -786,8 +789,8 @@ describe('SandboxLifecycleWorker', () => {
       expect(mockLifecycleProducer.removeTimeoutCheckTask).toHaveBeenCalledWith(
         's1',
       );
-      expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
-      expect(mockDockerService.removeContainer).not.toHaveBeenCalled();
+      expect(mockRuntimeDriver.stopRuntime).toHaveBeenCalledWith('c-123');
+      expect(mockRuntimeDriver.deleteRuntime).not.toHaveBeenCalled();
       expect(mockSet).toHaveBeenCalledWith(
         expect.objectContaining({
           status: 'stopped',
@@ -804,7 +807,7 @@ describe('SandboxLifecycleWorker', () => {
       const workerWithModuleRef = new SandboxLifecycleWorker(
         {} as any,
         { get: vi.fn().mockReturnValue(mockWorkspaceService) } as any,
-        mockDockerService as any,
+        mockRuntimeDriver as any,
         mockSandboxService as any,
         mockLifecycleProducer as any,
         mockStorageService as any,
@@ -817,7 +820,7 @@ describe('SandboxLifecycleWorker', () => {
           sessionId: 's1',
           executionId: 'e1',
           tenantId: 't1',
-          containerId: 'c-123',
+          runtimeHandle: 'c-123',
           config: {
             ...DEFAULT_CONFIG,
             lifecycleMode: 'persistent',
@@ -834,7 +837,7 @@ describe('SandboxLifecycleWorker', () => {
         't1',
         expect.objectContaining({ fencingToken: 1 }),
       );
-      expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
+      expect(mockRuntimeDriver.stopRuntime).toHaveBeenCalledWith('c-123');
     });
   });
 
@@ -844,7 +847,7 @@ describe('SandboxLifecycleWorker', () => {
         id: 's1',
         executionId: 'e1',
         status: 'ready',
-        containerId: 'c-123',
+        runtimeHandle: 'c-123',
         config: { cpu: 1, memory: 512, disk: 2, timeout: 2 },
       });
 
@@ -860,8 +863,8 @@ describe('SandboxLifecycleWorker', () => {
       ).rejects.toThrow(SandboxTimeoutException);
 
       expect(mockSandboxService.getSessionById).toHaveBeenCalledWith('s1');
-      expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
-      expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123', {
+      expect(mockRuntimeDriver.stopRuntime).toHaveBeenCalledWith('c-123');
+      expect(mockRuntimeDriver.deleteRuntime).toHaveBeenCalledWith('c-123', {
         removeVolumes: true,
       });
       // Session-mode: sandbox row is deleted, not updated
@@ -891,7 +894,7 @@ describe('SandboxLifecycleWorker', () => {
         id: 's1',
         executionId: 'e1',
         status: 'ready',
-        containerId: 'c-123',
+        runtimeHandle: 'c-123',
         config: {
           cpu: 1,
           memory: 512,
@@ -912,8 +915,8 @@ describe('SandboxLifecycleWorker', () => {
         ),
       ).rejects.toThrow(SandboxTimeoutException);
 
-      expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
-      expect(mockDockerService.removeContainer).not.toHaveBeenCalled();
+      expect(mockRuntimeDriver.stopRuntime).toHaveBeenCalledWith('c-123');
+      expect(mockRuntimeDriver.deleteRuntime).not.toHaveBeenCalled();
       const updatePayloads = mockSet.mock.calls.map(([payload]) => payload);
       expect(updatePayloads).toContainEqual(
         expect.objectContaining({
@@ -928,7 +931,7 @@ describe('SandboxLifecycleWorker', () => {
       mockSandboxService.getSessionById.mockResolvedValueOnce({
         id: 's-resource',
         status: 'ready',
-        containerId: 'c-123',
+        runtimeHandle: 'c-123',
         executionId: null,
         agentConversationId: null,
         sandboxNodeId: null,
@@ -951,8 +954,8 @@ describe('SandboxLifecycleWorker', () => {
         ),
       ).resolves.toBeUndefined();
 
-      expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
-      expect(mockDockerService.removeContainer).not.toHaveBeenCalled();
+      expect(mockRuntimeDriver.stopRuntime).toHaveBeenCalledWith('c-123');
+      expect(mockRuntimeDriver.deleteRuntime).not.toHaveBeenCalled();
 
       const updatePayloads = mockSet.mock.calls.map(([payload]) => payload);
       expect(updatePayloads).toContainEqual(
@@ -977,7 +980,7 @@ describe('SandboxLifecycleWorker', () => {
       mockSandboxService.getSessionById.mockResolvedValueOnce({
         id: 's1',
         status: 'stopped',
-        containerId: 'c-123',
+        runtimeHandle: 'c-123',
       });
 
       await worker.process(
@@ -989,7 +992,7 @@ describe('SandboxLifecycleWorker', () => {
         }),
       );
 
-      expect(mockDockerService.stopContainer).not.toHaveBeenCalled();
+      expect(mockRuntimeDriver.stopRuntime).not.toHaveBeenCalled();
     });
 
     it('会话不存在时应跳过处理', async () => {
@@ -1004,7 +1007,7 @@ describe('SandboxLifecycleWorker', () => {
         }),
       );
 
-      expect(mockDockerService.stopContainer).not.toHaveBeenCalled();
+      expect(mockRuntimeDriver.stopRuntime).not.toHaveBeenCalled();
     });
 
     it('conversation timeout 应只停止 sandbox 且不级联失败 workflow', async () => {
@@ -1012,7 +1015,7 @@ describe('SandboxLifecycleWorker', () => {
         id: 's-conv',
         agentConversationId: 'conv-1',
         status: 'ready',
-        containerId: 'c-123',
+        runtimeHandle: 'c-123',
         config: { cpu: 1, memory: 512, disk: 2, timeout: 2 },
       });
 
@@ -1028,8 +1031,8 @@ describe('SandboxLifecycleWorker', () => {
       ).resolves.toBeUndefined();
 
       expect(mockSandboxService.getSessionById).toHaveBeenCalledWith('s-conv');
-      expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
-      expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123', {
+      expect(mockRuntimeDriver.stopRuntime).toHaveBeenCalledWith('c-123');
+      expect(mockRuntimeDriver.deleteRuntime).toHaveBeenCalledWith('c-123', {
         removeVolumes: true,
       });
       const updatePayloads = mockSet.mock.calls.map(([payload]) => payload);
@@ -1058,7 +1061,7 @@ describe('SandboxLifecycleWorker', () => {
         id: 's1',
         executionId: 'e1',
         status: 'ready',
-        containerId: 'c-123',
+        runtimeHandle: 'c-123',
         config: {
           cpu: 1,
           memory: 512,
@@ -1079,7 +1082,7 @@ describe('SandboxLifecycleWorker', () => {
         ),
       ).rejects.toThrow(SandboxTimeoutException);
 
-      expect(mockDockerService.getArchive).toHaveBeenCalledWith(
+      expect(mockRuntimeDriver.getArchive).toHaveBeenCalledWith(
         'c-123',
         '/workspace/',
       );
@@ -1089,8 +1092,8 @@ describe('SandboxLifecycleWorker', () => {
         undefined,
         'application/x-tar',
       );
-      expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
-      expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123', {
+      expect(mockRuntimeDriver.stopRuntime).toHaveBeenCalledWith('c-123');
+      expect(mockRuntimeDriver.deleteRuntime).toHaveBeenCalledWith('c-123', {
         removeVolumes: true,
       });
     });
@@ -1100,7 +1103,7 @@ describe('SandboxLifecycleWorker', () => {
         id: 's1',
         executionId: 'e1',
         status: 'ready',
-        containerId: 'c-123',
+        runtimeHandle: 'c-123',
         config: {
           cpu: 1,
           memory: 512,
@@ -1110,7 +1113,7 @@ describe('SandboxLifecycleWorker', () => {
         },
       });
 
-      mockDockerService.getArchive.mockRejectedValueOnce(
+      mockRuntimeDriver.getArchive.mockRejectedValueOnce(
         new Error('archive stream failed'),
       );
 
@@ -1125,13 +1128,13 @@ describe('SandboxLifecycleWorker', () => {
         ),
       ).rejects.toThrow(SandboxTimeoutException);
 
-      expect(mockDockerService.getArchive).toHaveBeenCalledWith(
+      expect(mockRuntimeDriver.getArchive).toHaveBeenCalledWith(
         'c-123',
         '/workspace/',
       );
       expect(mockStorageService.upload).not.toHaveBeenCalled();
-      expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
-      expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123', {
+      expect(mockRuntimeDriver.stopRuntime).toHaveBeenCalledWith('c-123');
+      expect(mockRuntimeDriver.deleteRuntime).toHaveBeenCalledWith('c-123', {
         removeVolumes: true,
       });
     });
@@ -1141,7 +1144,7 @@ describe('SandboxLifecycleWorker', () => {
         id: 's1',
         executionId: 'e1',
         status: 'ready',
-        containerId: 'c-123',
+        runtimeHandle: 'c-123',
         config: { cpu: 1, memory: 512, disk: 2, timeout: 2 },
       });
 
@@ -1156,9 +1159,9 @@ describe('SandboxLifecycleWorker', () => {
         ),
       ).rejects.toThrow(SandboxTimeoutException);
 
-      expect(mockDockerService.getArchive).not.toHaveBeenCalled();
+      expect(mockRuntimeDriver.getArchive).not.toHaveBeenCalled();
       expect(mockStorageService.upload).not.toHaveBeenCalled();
-      expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
+      expect(mockRuntimeDriver.stopRuntime).toHaveBeenCalledWith('c-123');
     });
 
     it('restoreWorkspaceId 存在时应在 timeout 前回写原工作区', async () => {
@@ -1168,7 +1171,7 @@ describe('SandboxLifecycleWorker', () => {
       const workerWithModuleRef = new SandboxLifecycleWorker(
         {} as any,
         { get: vi.fn().mockReturnValue(mockWorkspaceService) } as any,
-        mockDockerService as any,
+        mockRuntimeDriver as any,
         mockSandboxService as any,
         mockLifecycleProducer as any,
         mockStorageService as any,
@@ -1178,7 +1181,7 @@ describe('SandboxLifecycleWorker', () => {
         id: 's1',
         executionId: 'e1',
         status: 'ready',
-        containerId: 'c-123',
+        runtimeHandle: 'c-123',
         config: {
           cpu: 1,
           memory: 512,
@@ -1207,8 +1210,8 @@ describe('SandboxLifecycleWorker', () => {
         't1',
         expect.objectContaining({ fencingToken: 1 }),
       );
-      expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
-      expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123', {
+      expect(mockRuntimeDriver.stopRuntime).toHaveBeenCalledWith('c-123');
+      expect(mockRuntimeDriver.deleteRuntime).toHaveBeenCalledWith('c-123', {
         removeVolumes: true,
       });
     });
@@ -1218,7 +1221,7 @@ describe('SandboxLifecycleWorker', () => {
         id: 's-conv',
         agentConversationId: 'conv-1',
         status: 'ready',
-        containerId: 'c-123',
+        runtimeHandle: 'c-123',
         config: {
           cpu: 1,
           memory: 512,
@@ -1239,7 +1242,7 @@ describe('SandboxLifecycleWorker', () => {
         ),
       ).resolves.toBeUndefined();
 
-      expect(mockDockerService.getArchive).toHaveBeenCalledWith(
+      expect(mockRuntimeDriver.getArchive).toHaveBeenCalledWith(
         'c-123',
         '/workspace/',
       );
@@ -1249,7 +1252,7 @@ describe('SandboxLifecycleWorker', () => {
         undefined,
         'application/x-tar',
       );
-      expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
+      expect(mockRuntimeDriver.stopRuntime).toHaveBeenCalledWith('c-123');
     });
   });
 

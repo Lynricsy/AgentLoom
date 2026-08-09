@@ -1544,9 +1544,7 @@ export class WorkflowAgentAdapter {
     }
   }
 
-  private buildContentBlocks(
-    input: Record<string, unknown>,
-  ): ContentBlock[] {
+  private buildContentBlocks(input: Record<string, unknown>): ContentBlock[] {
     return buildAgentPromptContentBlocks({ input });
   }
 

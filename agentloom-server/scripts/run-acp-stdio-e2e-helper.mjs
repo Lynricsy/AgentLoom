@@ -9,7 +9,8 @@ import postgres from 'postgres';
 
 const SERVER_DIR = process.env.ACP_TEST_SERVER_DIR ?? process.cwd();
 const DATABASE_URL = process.env.ACP_TEST_DATABASE_URL;
-const TEST_JWT_SECRET = process.env.ACP_TEST_JWT_SECRET ?? 'test-e2e-jwt-secret';
+const TEST_JWT_SECRET =
+  process.env.ACP_TEST_JWT_SECRET ?? 'test-e2e-jwt-secret';
 const TEST_TENANT_ID =
   process.env.ACP_TEST_TENANT_ID ?? '11111111-1111-4111-8111-111111111111';
 const TEST_ORG_ID =
@@ -95,11 +96,12 @@ function createJsonRpcResponse(id, result) {
   };
 }
 
-function createAcpChildEnv(databaseUrl) {
+function createAcpChildEnv(databaseUrl, sandboxWorkspaceRoot) {
   const env = {
     NODE_ENV: 'test',
     ACP_TEST_FAKE_RUNTIME: '1',
     ACP_TEST_TERMINAL_TIMEOUT_MS: '500',
+    ACP_TEST_SANDBOX_WORKSPACE_ROOT: sandboxWorkspaceRoot,
     APP_DEPLOYMENT_MODE: 'private',
     APP_DATABASE_URL: databaseUrl,
     APP_JWT_SECRET: TEST_JWT_SECRET,
@@ -150,7 +152,9 @@ class StdoutLineReader {
           return;
         }
 
-        const line = this.bufferedOutput.slice(0, newlineIndex).replace(/\r$/, '');
+        const line = this.bufferedOutput
+          .slice(0, newlineIndex)
+          .replace(/\r$/, '');
         this.bufferedOutput = this.bufferedOutput.slice(newlineIndex + 1);
         this.protocolLines.push(line);
 
@@ -230,11 +234,11 @@ class StdoutLineReader {
   }
 }
 
-function spawnAcpProcess(databaseUrl) {
+function spawnAcpProcess(databaseUrl, sandboxWorkspaceRoot) {
   const distEntry = path.join(SERVER_DIR, 'dist', 'src', 'acp-stdio.js');
   const child = spawn(process.execPath, [distEntry], {
     cwd: SERVER_DIR,
-    env: createAcpChildEnv(databaseUrl),
+    env: createAcpChildEnv(databaseUrl, sandboxWorkspaceRoot),
     stdio: ['pipe', 'pipe', 'pipe'],
   });
 
@@ -254,7 +258,13 @@ function spawnAcpProcess(databaseUrl) {
   };
 }
 
-async function initializeAndAuthenticate(child, stdout, token, initializeId, authId) {
+async function initializeAndAuthenticate(
+  child,
+  stdout,
+  token,
+  initializeId,
+  authId,
+) {
   await writeJsonRpc(
     child,
     createJsonRpcRequest(initializeId, 'initialize', {
@@ -312,10 +322,7 @@ async function collectUntilResponse(
   child,
   stdout,
   requestId,
-  {
-    timeoutMs = 10_000,
-    onServerRequest,
-  } = {},
+  { timeoutMs = 10_000, onServerRequest } = {},
 ) {
   const notifications = [];
   const serverRequests = [];
@@ -565,7 +572,7 @@ async function runScenario() {
         execution_id uuid NOT NULL,
         sandbox_node_id varchar(64) NOT NULL,
         tenant_id uuid NOT NULL,
-        container_id varchar(128),
+        runtime_handle varchar(128),
         status text NOT NULL DEFAULT 'creating',
         config jsonb NOT NULL,
         workspace_path varchar(256),
@@ -574,12 +581,18 @@ async function runScenario() {
         created_at timestamptz NOT NULL DEFAULT now()
       )
     `);
-    await sql.unsafe(`GRANT SELECT, INSERT, UPDATE, DELETE ON revoked_tokens TO authenticated`);
+    await sql.unsafe(
+      `GRANT SELECT, INSERT, UPDATE, DELETE ON revoked_tokens TO authenticated`,
+    );
     await sql.unsafe(
       `GRANT SELECT, INSERT, UPDATE, DELETE ON acp_conversation_sessions TO authenticated`,
     );
-    await sql.unsafe(`GRANT SELECT, INSERT, UPDATE, DELETE ON audit_logs TO authenticated`);
-    await sql.unsafe(`GRANT SELECT, INSERT, UPDATE, DELETE ON sandbox_sessions TO authenticated`);
+    await sql.unsafe(
+      `GRANT SELECT, INSERT, UPDATE, DELETE ON audit_logs TO authenticated`,
+    );
+    await sql.unsafe(
+      `GRANT SELECT, INSERT, UPDATE, DELETE ON sandbox_sessions TO authenticated`,
+    );
     await sql`DELETE FROM revoked_tokens`;
     await sql`DELETE FROM acp_conversation_sessions`;
     await sql`DELETE FROM audit_logs`;
@@ -695,7 +708,7 @@ async function runScenario() {
         execution_id,
         sandbox_node_id,
         tenant_id,
-        container_id,
+        runtime_handle,
         status,
         config,
         workspace_path
@@ -712,7 +725,10 @@ async function runScenario() {
       )
     `;
 
-    const { child, stdout, getStderr } = spawnAcpProcess(DATABASE_URL);
+    const { child, stdout, getStderr } = spawnAcpProcess(
+      DATABASE_URL,
+      sandboxWorkspaceRoot,
+    );
     let loadProcess;
 
     try {
@@ -829,7 +845,10 @@ async function runScenario() {
         }),
       );
       const terminalWaitForExitResponse = await stdout.nextJson(10_000);
-      if (terminalWaitForExitResponse?.id === 78 && !terminalWaitForExitResponse?.result) {
+      if (
+        terminalWaitForExitResponse?.id === 78 &&
+        !terminalWaitForExitResponse?.result
+      ) {
         throw new Error(
           `Unexpected terminal/wait_for_exit response for request 78: ${JSON.stringify(terminalWaitForExitResponse)}`,
         );
@@ -952,7 +971,8 @@ async function runScenario() {
         await collectUntilResponse(child, stdout, 89, {
           timeoutMs: 10_000,
         });
-      const terminalCancelSessionId = terminalCancelSessionNewResponse.result.sessionId;
+      const terminalCancelSessionId =
+        terminalCancelSessionNewResponse.result.sessionId;
 
       await writeJsonRpc(
         child,
@@ -1006,7 +1026,8 @@ async function runScenario() {
         await collectUntilResponse(child, stdout, 92, {
           timeoutMs: 10_000,
         });
-      const terminalLoadSessionId = terminalLoadSessionNewResponse.result.sessionId;
+      const terminalLoadSessionId =
+        terminalLoadSessionNewResponse.result.sessionId;
 
       await writeJsonRpc(
         child,
@@ -1062,34 +1083,39 @@ async function runScenario() {
           mode: 'client_proxy',
         }),
       );
-      const fsWriteConversation = await collectUntilResponse(child, stdout, 62, {
-        timeoutMs: 10_000,
-        onServerRequest: async (request) => {
-          if (request.method === 'session/request_permission') {
+      const fsWriteConversation = await collectUntilResponse(
+        child,
+        stdout,
+        62,
+        {
+          timeoutMs: 10_000,
+          onServerRequest: async (request) => {
+            if (request.method === 'session/request_permission') {
+              await writeJsonRpc(
+                child,
+                createJsonRpcResponse(request.id, {
+                  outcome: {
+                    outcome: 'selected',
+                    optionId: 'allow-once',
+                  },
+                }),
+              );
+              return;
+            }
+
+            if (request.method !== 'fs/write_text_file') {
+              return;
+            }
+
             await writeJsonRpc(
               child,
               createJsonRpcResponse(request.id, {
-                outcome: {
-                  outcome: 'selected',
-                  optionId: 'allow-once',
-                },
+                success: true,
               }),
             );
-            return;
-          }
-
-          if (request.method !== 'fs/write_text_file') {
-            return;
-          }
-
-          await writeJsonRpc(
-            child,
-            createJsonRpcResponse(request.id, {
-              success: true,
-            }),
-          );
+          },
         },
-      });
+      );
 
       await writeJsonRpc(
         child,
@@ -1100,24 +1126,29 @@ async function runScenario() {
           mode: 'client_proxy',
         }),
       );
-      const fsWriteDeniedConversation = await collectUntilResponse(child, stdout, 66, {
-        timeoutMs: 10_000,
-        onServerRequest: async (request) => {
-          if (request.method !== 'session/request_permission') {
-            return;
-          }
+      const fsWriteDeniedConversation = await collectUntilResponse(
+        child,
+        stdout,
+        66,
+        {
+          timeoutMs: 10_000,
+          onServerRequest: async (request) => {
+            if (request.method !== 'session/request_permission') {
+              return;
+            }
 
-          await writeJsonRpc(
-            child,
-            createJsonRpcResponse(request.id, {
-              outcome: {
-                outcome: 'selected',
-                optionId: 'reject-once',
-              },
-            }),
-          );
+            await writeJsonRpc(
+              child,
+              createJsonRpcResponse(request.id, {
+                outcome: {
+                  outcome: 'selected',
+                  optionId: 'reject-once',
+                },
+              }),
+            );
+          },
         },
-      });
+      );
 
       await writeJsonRpc(
         child,
@@ -1128,23 +1159,28 @@ async function runScenario() {
           mode: 'client_proxy',
         }),
       );
-      const fsWriteCancelledConversation = await collectUntilResponse(child, stdout, 67, {
-        timeoutMs: 10_000,
-        onServerRequest: async (request) => {
-          if (request.method !== 'session/request_permission') {
-            return;
-          }
+      const fsWriteCancelledConversation = await collectUntilResponse(
+        child,
+        stdout,
+        67,
+        {
+          timeoutMs: 10_000,
+          onServerRequest: async (request) => {
+            if (request.method !== 'session/request_permission') {
+              return;
+            }
 
-          await writeJsonRpc(
-            child,
-            createJsonRpcResponse(request.id, {
-              outcome: {
-                outcome: 'cancelled',
-              },
-            }),
-          );
+            await writeJsonRpc(
+              child,
+              createJsonRpcResponse(request.id, {
+                outcome: {
+                  outcome: 'cancelled',
+                },
+              }),
+            );
+          },
         },
-      });
+      );
 
       await writeJsonRpc(
         child,
@@ -1155,24 +1191,29 @@ async function runScenario() {
           mode: 'server_sandbox',
         }),
       );
-      const sandboxWriteConversation = await collectUntilResponse(child, stdout, 68, {
-        timeoutMs: 10_000,
-        onServerRequest: async (request) => {
-          if (request.method !== 'session/request_permission') {
-            return;
-          }
+      const sandboxWriteConversation = await collectUntilResponse(
+        child,
+        stdout,
+        68,
+        {
+          timeoutMs: 10_000,
+          onServerRequest: async (request) => {
+            if (request.method !== 'session/request_permission') {
+              return;
+            }
 
-          await writeJsonRpc(
-            child,
-            createJsonRpcResponse(request.id, {
-              outcome: {
-                outcome: 'selected',
-                optionId: 'allow-once',
-              },
-            }),
-          );
+            await writeJsonRpc(
+              child,
+              createJsonRpcResponse(request.id, {
+                outcome: {
+                  outcome: 'selected',
+                  optionId: 'allow-once',
+                },
+              }),
+            );
+          },
         },
-      });
+      );
 
       await writeJsonRpc(
         child,
@@ -1234,9 +1275,14 @@ async function runScenario() {
           sessionId: fsCancelSessionId,
         },
       });
-      const fsCancelConversation = await collectUntilResponse(child, stdout, 64, {
-        timeoutMs: 10_000,
-      });
+      const fsCancelConversation = await collectUntilResponse(
+        child,
+        stdout,
+        64,
+        {
+          timeoutMs: 10_000,
+        },
+      );
 
       await writeJsonRpc(
         child,
@@ -1299,9 +1345,14 @@ async function runScenario() {
           ],
         }),
       );
-      const mcpPromptConversation = await collectUntilResponse(child, stdout, 17, {
-        timeoutMs: 10_000,
-      });
+      const mcpPromptConversation = await collectUntilResponse(
+        child,
+        stdout,
+        17,
+        {
+          timeoutMs: 10_000,
+        },
+      );
 
       await writeJsonRpc(
         child,
@@ -1354,10 +1405,14 @@ async function runScenario() {
           cwd: SANDBOX_SESSION_CWD,
         }),
       );
-      const { response: cancelSessionNewResponse } =
-        await collectUntilResponse(child, stdout, 8, {
+      const { response: cancelSessionNewResponse } = await collectUntilResponse(
+        child,
+        stdout,
+        8,
+        {
           timeoutMs: 10_000,
-        });
+        },
+      );
       const cancelSessionId = cancelSessionNewResponse.result.sessionId;
 
       await writeJsonRpc(
@@ -1440,7 +1495,7 @@ async function runScenario() {
       );
       const revokedResponse = await stdout.nextJson(10_000);
 
-      loadProcess = spawnAcpProcess(DATABASE_URL);
+      loadProcess = spawnAcpProcess(DATABASE_URL, sandboxWorkspaceRoot);
       const {
         initializeResponse: loadInitializeResponse,
         initializedNotificationSilent: loadInitializedNotificationSilent,
@@ -1474,7 +1529,8 @@ async function runScenario() {
           sessionId: terminalLoadSessionId,
         }),
       );
-      const loadTerminalFailClosedResponse = await loadProcess.stdout.nextJson(10_000);
+      const loadTerminalFailClosedResponse =
+        await loadProcess.stdout.nextJson(10_000);
 
       await writeJsonRpc(
         loadProcess.child,
@@ -1589,7 +1645,10 @@ async function runScenario() {
 
       const result = {
         ok: true,
-        protocolLines: [...stdout.protocolLines, ...loadProcess.stdout.protocolLines],
+        protocolLines: [
+          ...stdout.protocolLines,
+          ...loadProcess.stdout.protocolLines,
+        ],
         stderr: getStderr(),
         childExitCode: child.exitCode,
         initializedNotificationSilent,
@@ -1627,8 +1686,10 @@ async function runScenario() {
         fsWriteDeniedServerRequests: fsWriteDeniedConversation.serverRequests,
         fsWriteDeniedNotifications: fsWriteDeniedConversation.notifications,
         fsWriteDeniedResponse: fsWriteDeniedConversation.response,
-        fsWriteCancelledServerRequests: fsWriteCancelledConversation.serverRequests,
-        fsWriteCancelledNotifications: fsWriteCancelledConversation.notifications,
+        fsWriteCancelledServerRequests:
+          fsWriteCancelledConversation.serverRequests,
+        fsWriteCancelledNotifications:
+          fsWriteCancelledConversation.notifications,
         fsWriteCancelledResponse: fsWriteCancelledConversation.response,
         sandboxWriteServerRequests: sandboxWriteConversation.serverRequests,
         sandboxWriteNotifications: sandboxWriteConversation.notifications,

@@ -68,7 +68,7 @@ export class WorkspaceService {
     private readonly db: DrizzleDB,
     private readonly storageService: StorageService,
     @Inject(SANDBOX_RUNTIME_DRIVER)
-    private readonly dockerService: SandboxRuntimeDriver,
+    private readonly runtimeDriver: SandboxRuntimeDriver,
   ) {}
 
   async resolveOrganizationId(tenantId: string): Promise<string> {
@@ -103,9 +103,9 @@ export class WorkspaceService {
       .where(eq(schema.sandboxSessions.id, sandboxSessionId))
       .limit(1);
 
-    if (!session || !session.containerId) {
+    if (!session || !session.runtimeHandle) {
       throw new NotFoundException(
-        `Sandbox session ${sandboxSessionId} not found or container not ready`,
+        `Sandbox session ${sandboxSessionId} not found or runtime not ready`,
       );
     }
 
@@ -127,7 +127,7 @@ export class WorkspaceService {
 
     try {
       const stagedArchive = await this.stageContainerWorkspaceArchive(
-        session.containerId,
+        session.runtimeHandle,
         `agentloom-workspace-snapshot-${snapshot.id}`,
       );
 
@@ -181,7 +181,7 @@ export class WorkspaceService {
 
   async syncFromSandboxContainer(
     workspaceId: string,
-    containerId: string,
+    runtimeHandle: string,
     tenantId: string,
     leaseToken: WorkspaceRuntimeLeaseToken,
   ): Promise<schema.WorkspaceSnapshot> {
@@ -205,11 +205,11 @@ export class WorkspaceService {
     }
 
     this.logger.log(
-      `Syncing workspace ${workspaceId} from sandbox runtime ${containerId}`,
+      `Syncing workspace ${workspaceId} from sandbox runtime ${runtimeHandle}`,
     );
 
     const stagedArchive = await this.stageContainerWorkspaceArchive(
-      containerId,
+      runtimeHandle,
       `agentloom-workspace-sync-${workspaceId}`,
     );
     const canonicalStorageKey =
@@ -308,7 +308,7 @@ export class WorkspaceService {
 
   async restoreToSandbox(
     workspaceId: string,
-    containerId: string,
+    runtimeHandle: string,
     tenantId: string,
   ): Promise<void> {
     const snapshot = await this.findWorkspaceSnapshotRecord(
@@ -326,12 +326,12 @@ export class WorkspaceService {
     }
 
     this.logger.log(
-      `Restoring workspace ${workspaceId} to container ${containerId}`,
+      `Restoring workspace ${workspaceId} to runtime ${runtimeHandle}`,
     );
 
     if (snapshot.sizeBytes === 0) {
       this.logger.log(
-        `Workspace ${workspaceId} is empty, skipping archive restore for container ${containerId}`,
+        `Workspace ${workspaceId} is empty, skipping archive restore for runtime ${runtimeHandle}`,
       );
       return;
     }
@@ -346,13 +346,13 @@ export class WorkspaceService {
     const containerArchivePath = `${CONTAINER_TEMP_ROOT}/${stagedArchive.containerFileName}`;
 
     try {
-      await this.dockerService.putArchive(
-        containerId,
+      await this.runtimeDriver.putArchive(
+        runtimeHandle,
         createReadStream(stagedArchive.uploadArchivePath),
         CONTAINER_TEMP_ROOT,
       );
 
-      await this.execInContainer(containerId, 'sh', [
+      await this.execInContainer(runtimeHandle, 'sh', [
         '-lc',
         [
           'set -eu',
@@ -365,42 +365,42 @@ export class WorkspaceService {
     } finally {
       await stagedArchive.cleanup();
       try {
-        await this.execInContainer(containerId, 'sh', [
+        await this.execInContainer(runtimeHandle, 'sh', [
           '-lc',
           `rm -f ${this.quoteShellPath(containerArchivePath)}`,
         ]);
       } catch (cleanupError) {
         this.logger.warn(
-          `Failed to cleanup temporary workspace restore files in container ${containerId}: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`,
+          `Failed to cleanup temporary workspace restore files in runtime ${runtimeHandle}: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`,
         );
       }
     }
 
     this.logger.log(
-      `Workspace ${workspaceId} restored to container ${containerId}`,
+      `Workspace ${workspaceId} restored to runtime ${runtimeHandle}`,
     );
   }
 
   private async execInContainer(
-    containerId: string,
+    runtimeHandle: string,
     command: string,
     args: string[],
   ): Promise<string> {
-    const handle = await this.dockerService.createExec(containerId, {
+    const handle = await this.runtimeDriver.createExec(runtimeHandle, {
       command,
       args,
     });
 
     const outputChunks: string[] = [];
 
-    await this.dockerService.attachExecOutput(
+    await this.runtimeDriver.attachExecOutput(
       handle.execId,
       (_level, message) => {
         outputChunks.push(message);
       },
     );
 
-    const exitInfo = await this.dockerService.waitForExecExit(handle.execId);
+    const exitInfo = await this.runtimeDriver.waitForExecExit(handle.execId);
 
     if (exitInfo.exitCode !== 0) {
       throw new Error(
@@ -412,7 +412,7 @@ export class WorkspaceService {
   }
 
   private async stageContainerWorkspaceArchive(
-    containerId: string,
+    runtimeHandle: string,
     prefix: string,
   ): Promise<{
     tempDir: string;
@@ -420,8 +420,8 @@ export class WorkspaceService {
     sizeBytes: number;
     cleanup: () => Promise<void>;
   }> {
-    const archiveStream = await this.dockerService.getArchive(
-      containerId,
+    const archiveStream = await this.runtimeDriver.getArchive(
+      runtimeHandle,
       CONTAINER_WORKSPACE,
     );
 
@@ -743,19 +743,19 @@ export class WorkspaceService {
     tenantId: string,
     workspaceId: string,
   ): Promise<WorkspaceFileTreeNode[]> {
-    const activeContainerId = await this.findActiveWorkspaceContainerId(
+    const activeRuntimeHandle = await this.findActiveWorkspaceRuntimeHandle(
       tenantId,
       workspaceId,
     );
 
-    if (activeContainerId) {
+    if (activeRuntimeHandle) {
       try {
         const entries =
-          await this.readLiveWorkspaceSnapshotTreeEntries(activeContainerId);
+          await this.readLiveWorkspaceSnapshotTreeEntries(activeRuntimeHandle);
         return buildWorkspaceFileTree(entries);
       } catch (error) {
         this.logger.warn(
-          `Failed to read live workspace tree for ${workspaceId} from container ${activeContainerId}, falling back to snapshot: ${error instanceof Error ? error.message : String(error)}`,
+          `Failed to read live workspace tree for ${workspaceId} from runtime ${activeRuntimeHandle}, falling back to snapshot: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
     }
@@ -772,21 +772,21 @@ export class WorkspaceService {
     workspaceId: string,
     filePath: string,
   ): Promise<WorkspaceFilePreview> {
-    const activeContainerId = await this.findActiveWorkspaceContainerId(
+    const activeRuntimeHandle = await this.findActiveWorkspaceRuntimeHandle(
       tenantId,
       workspaceId,
     );
 
-    if (activeContainerId) {
+    if (activeRuntimeHandle) {
       try {
         const { normalizedPath, entry } = await this.readLiveWorkspaceFileEntry(
-          activeContainerId,
+          activeRuntimeHandle,
           filePath,
         );
         return buildWorkspaceFilePreview(normalizedPath, entry);
       } catch (error) {
         this.logger.warn(
-          `Failed to read live workspace preview for ${workspaceId}/${filePath} from container ${activeContainerId}, falling back to snapshot: ${error instanceof Error ? error.message : String(error)}`,
+          `Failed to read live workspace preview for ${workspaceId}/${filePath} from runtime ${activeRuntimeHandle}, falling back to snapshot: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
     }
@@ -804,15 +804,15 @@ export class WorkspaceService {
     workspaceId: string,
     filePath: string,
   ): Promise<WorkspaceFileAsset> {
-    const activeContainerId = await this.findActiveWorkspaceContainerId(
+    const activeRuntimeHandle = await this.findActiveWorkspaceRuntimeHandle(
       tenantId,
       workspaceId,
     );
 
-    if (activeContainerId) {
+    if (activeRuntimeHandle) {
       try {
         const { normalizedPath, entry } = await this.readLiveWorkspaceFileEntry(
-          activeContainerId,
+          activeRuntimeHandle,
           filePath,
         );
         return {
@@ -824,7 +824,7 @@ export class WorkspaceService {
         };
       } catch (error) {
         this.logger.warn(
-          `Failed to read live workspace asset for ${workspaceId}/${filePath} from container ${activeContainerId}, falling back to snapshot: ${error instanceof Error ? error.message : String(error)}`,
+          `Failed to read live workspace asset for ${workspaceId}/${filePath} from runtime ${activeRuntimeHandle}, falling back to snapshot: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
     }
@@ -1009,10 +1009,10 @@ export class WorkspaceService {
   }
 
   private async readLiveWorkspaceSnapshotTreeEntries(
-    containerId: string,
+    runtimeHandle: string,
   ): Promise<WorkspaceArchiveEntry[]> {
-    const archiveStream = await this.dockerService.getArchive(
-      containerId,
+    const archiveStream = await this.runtimeDriver.getArchive(
+      runtimeHandle,
       CONTAINER_WORKSPACE,
     );
     return parseWorkspaceArchiveEntriesFromStream(archiveStream);
@@ -1049,12 +1049,12 @@ export class WorkspaceService {
   }
 
   private async readLiveWorkspaceFileEntry(
-    containerId: string,
+    runtimeHandle: string,
     filePath: string,
   ): Promise<{ normalizedPath: string; entry: WorkspaceArchiveEntry }> {
     const normalizedPath = normalizeWorkspacePreviewPath(filePath);
-    const archiveStream = await this.dockerService.getArchive(
-      containerId,
+    const archiveStream = await this.runtimeDriver.getArchive(
+      runtimeHandle,
       `${CONTAINER_WORKSPACE}${normalizedPath}`,
     );
     const entries = parseWorkspaceArchiveEntries(
@@ -1101,25 +1101,25 @@ export class WorkspaceService {
     return buildWorkspaceStorageKey(snapshot.tenantId, snapshot.id);
   }
 
-  private async findActiveWorkspaceContainerId(
+  private async findActiveWorkspaceRuntimeHandle(
     tenantId: string,
     workspaceId: string,
   ): Promise<string | null> {
     const tenantDb = getTenantDb(this.db);
     const result = await tenantDb.execute(sql`
-      select container_id as "containerId"
+      select runtime_handle as "runtimeHandle"
       from sandbox_sessions
       where tenant_id = ${tenantId}
-        and container_id is not null
+        and runtime_handle is not null
         and status not in ('stopping', 'stopped', 'failed')
         and config->>'restoreWorkspaceId' = ${workspaceId}
       limit 1
     `);
-    const [row] = this.readExecuteRows<{ containerId?: string }>(result);
+    const [row] = this.readExecuteRows<{ runtimeHandle?: string }>(result);
 
-    return typeof row?.containerId === 'string' &&
-      row.containerId.trim().length > 0
-      ? row.containerId
+    return typeof row?.runtimeHandle === 'string' &&
+      row.runtimeHandle.trim().length > 0
+      ? row.runtimeHandle
       : null;
   }
 

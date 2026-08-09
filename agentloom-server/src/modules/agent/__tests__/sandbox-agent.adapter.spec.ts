@@ -45,7 +45,7 @@ describe('SandboxAgentAdapter', () => {
     findLatestByConversationId: ReturnType<typeof vi.fn>;
     getSandboxLogs: ReturnType<typeof vi.fn>;
   };
-  let mockDockerService: {
+  let mockRuntimeDriver: {
     getPromptUrl: ReturnType<typeof vi.fn>;
     healthCheck: ReturnType<typeof vi.fn>;
     getSessionUrl: ReturnType<typeof vi.fn>;
@@ -151,25 +151,29 @@ describe('SandboxAgentAdapter', () => {
       getSandboxSession: vi.fn().mockResolvedValue({
         id: 'sandbox-001',
         status: 'ready',
-        containerId: 'abc123def456',
+        runtimeHandle: 'abc123def456',
       }),
       findByConversationId: vi.fn().mockResolvedValue({
         id: 'sandbox-001',
         status: 'ready',
-        containerId: 'abc123def456',
+        runtimeHandle: 'abc123def456',
       }),
       findLatestByExecutionId: vi.fn().mockResolvedValue(null),
       findLatestByConversationId: vi.fn().mockResolvedValue(null),
       getSandboxLogs: vi.fn().mockResolvedValue([]),
     };
-    mockDockerService = {
+    mockRuntimeDriver = {
       getPromptUrl: vi.fn(),
       healthCheck: vi.fn().mockResolvedValue(true),
       getSessionUrl: vi
         .fn()
         .mockResolvedValue('http://127.0.0.1:49123/v1/session'),
       requestGuest: vi.fn(
-        async (_containerId: string, path: string, init?: UndiciRequestInit) =>
+        async (
+          _runtimeHandle: string,
+          path: string,
+          init?: UndiciRequestInit,
+        ) =>
           globalThis.fetch(
             `http://127.0.0.1:49123${path}`,
             init as globalThis.RequestInit,
@@ -205,7 +209,7 @@ describe('SandboxAgentAdapter', () => {
     adapter = new SandboxAgentAdapter(
       mockDb as never,
       mockSandboxService as never,
-      mockDockerService as never,
+      mockRuntimeDriver as never,
       mockMcpService as never,
       mockRagService as never,
       mockCodeExecutionService as never,
@@ -349,10 +353,10 @@ describe('SandboxAgentAdapter', () => {
         'tenant-001',
         undefined,
       );
-      expect(mockDockerService.healthCheck).toHaveBeenCalledWith(
+      expect(mockRuntimeDriver.healthCheck).toHaveBeenCalledWith(
         'abc123def456',
       );
-      expect(mockDockerService.requestGuest).toHaveBeenCalledWith(
+      expect(mockRuntimeDriver.requestGuest).toHaveBeenCalledWith(
         'abc123def456',
         '/v1/session',
         expect.objectContaining({
@@ -466,7 +470,7 @@ describe('SandboxAgentAdapter', () => {
       const adapterWithoutDecrypt = new SandboxAgentAdapter(
         mockDb as never,
         mockSandboxService as never,
-        mockDockerService as never,
+        mockRuntimeDriver as never,
         mockMcpService as never,
         mockRagService as never,
         mockCodeExecutionService as never,
@@ -598,10 +602,10 @@ describe('SandboxAgentAdapter', () => {
         'conv-001',
         'tenant-001',
       );
-      expect(mockDockerService.healthCheck).toHaveBeenCalledWith(
+      expect(mockRuntimeDriver.healthCheck).toHaveBeenCalledWith(
         'abc123def456',
       );
-      expect(mockDockerService.requestGuest).toHaveBeenCalledWith(
+      expect(mockRuntimeDriver.requestGuest).toHaveBeenCalledWith(
         'abc123def456',
         '/v1/session',
         expect.any(Object),
@@ -614,7 +618,7 @@ describe('SandboxAgentAdapter', () => {
       mockSandboxService.findLatestByConversationId.mockResolvedValueOnce({
         id: 'sandbox-failed',
         status: 'failed',
-        containerId: null,
+        runtimeHandle: null,
       });
       mockSandboxService.getSandboxLogs.mockResolvedValueOnce([
         {
@@ -639,7 +643,7 @@ describe('SandboxAgentAdapter', () => {
       expect(mockSandboxService.getSandboxLogs).toHaveBeenCalledWith(
         'sandbox-failed',
       );
-      expect(mockDockerService.getSessionUrl).not.toHaveBeenCalled();
+      expect(mockRuntimeDriver.getSessionUrl).not.toHaveBeenCalled();
     });
 
     it('容器 session 初始化失败时应设置会话状态为 error 并抛出', async () => {
@@ -688,7 +692,7 @@ describe('SandboxAgentAdapter', () => {
 
       expect(mockSandboxService.getSandboxSession).not.toHaveBeenCalled();
       expect(mockSandboxService.findByConversationId).not.toHaveBeenCalled();
-      expect(mockDockerService.getSessionUrl).not.toHaveBeenCalled();
+      expect(mockRuntimeDriver.getSessionUrl).not.toHaveBeenCalled();
       expect(session.status).toBe('active');
     });
   });
@@ -711,10 +715,10 @@ describe('SandboxAgentAdapter', () => {
       mockSandboxService.getSandboxSession.mockResolvedValue({
         id: 'sandbox-001',
         status: 'ready',
-        containerId: 'abc123def456',
+        runtimeHandle: 'abc123def456',
       });
-      mockDockerService.healthCheck.mockResolvedValue(true);
-      mockDockerService.getPromptUrl.mockResolvedValue(
+      mockRuntimeDriver.healthCheck.mockResolvedValue(true);
+      mockRuntimeDriver.getPromptUrl.mockResolvedValue(
         'http://127.0.0.1:49123/v1/prompt',
       );
 
@@ -758,10 +762,10 @@ describe('SandboxAgentAdapter', () => {
         'tenant-001',
         undefined,
       );
-      expect(mockDockerService.healthCheck).toHaveBeenCalledWith(
+      expect(mockRuntimeDriver.healthCheck).toHaveBeenCalledWith(
         'abc123def456',
       );
-      expect(mockDockerService.requestGuest).toHaveBeenCalledWith(
+      expect(mockRuntimeDriver.requestGuest).toHaveBeenCalledWith(
         'abc123def456',
         '/v1/prompt',
         expect.objectContaining({
@@ -782,10 +786,10 @@ describe('SandboxAgentAdapter', () => {
       mockSandboxService.getSandboxSession.mockResolvedValue({
         id: 'sandbox-001',
         status: 'ready',
-        containerId: 'abc123def456',
+        runtimeHandle: 'abc123def456',
       });
-      mockDockerService.healthCheck.mockResolvedValue(true);
-      mockDockerService.getPromptUrl.mockResolvedValue(
+      mockRuntimeDriver.healthCheck.mockResolvedValue(true);
+      mockRuntimeDriver.getPromptUrl.mockResolvedValue(
         'http://127.0.0.1:49123/v1/prompt',
       );
 
@@ -811,7 +815,7 @@ describe('SandboxAgentAdapter', () => {
 
     it('应把容器 JSON-RPC SSE 事件翻译为规范 AgentEvent', async () => {
       const session = await adapter.createSession(defaultParams);
-      mockDockerService.getPromptUrl.mockResolvedValue(
+      mockRuntimeDriver.getPromptUrl.mockResolvedValue(
         'http://127.0.0.1:49123/v1/prompt',
       );
 
@@ -861,7 +865,7 @@ describe('SandboxAgentAdapter', () => {
 
     it('收到 done 事件后应立即结束，不等待 SSE 连接自己关闭', async () => {
       const session = await adapter.createSession(defaultParams);
-      mockDockerService.getPromptUrl.mockResolvedValue(
+      mockRuntimeDriver.getPromptUrl.mockResolvedValue(
         'http://127.0.0.1:49123/v1/prompt',
       );
 
@@ -892,7 +896,7 @@ describe('SandboxAgentAdapter', () => {
 
     it('普通 tool_call_update 在缺少审批语义时应保持 in_progress', async () => {
       const session = await adapter.createSession(defaultParams);
-      mockDockerService.getPromptUrl.mockResolvedValue(
+      mockRuntimeDriver.getPromptUrl.mockResolvedValue(
         'http://127.0.0.1:49123/v1/prompt',
       );
 
@@ -925,7 +929,7 @@ describe('SandboxAgentAdapter', () => {
 
     it('容器 error 事件应抛给上层', async () => {
       const session = await adapter.createSession(defaultParams);
-      mockDockerService.getPromptUrl.mockResolvedValue(
+      mockRuntimeDriver.getPromptUrl.mockResolvedValue(
         'http://127.0.0.1:49123/v1/prompt',
       );
 
@@ -946,7 +950,7 @@ describe('SandboxAgentAdapter', () => {
 
     it('应读取容器顶层 error.message，避免退化成泛化错误', async () => {
       const session = await adapter.createSession(defaultParams);
-      mockDockerService.getPromptUrl.mockResolvedValue(
+      mockRuntimeDriver.getPromptUrl.mockResolvedValue(
         'http://127.0.0.1:49123/v1/prompt',
       );
 
@@ -967,7 +971,7 @@ describe('SandboxAgentAdapter', () => {
 
     it('模型提供方错误应保留 code 与 rawMessage', async () => {
       const session = await adapter.createSession(defaultParams);
-      mockDockerService.getPromptUrl.mockResolvedValue(
+      mockRuntimeDriver.getPromptUrl.mockResolvedValue(
         'http://127.0.0.1:49123/v1/prompt',
       );
 
@@ -1014,10 +1018,10 @@ describe('SandboxAgentAdapter', () => {
       mockSandboxService.findByConversationId.mockResolvedValue({
         id: 'sandbox-001',
         status: 'ready',
-        containerId: 'abc123def456',
+        runtimeHandle: 'abc123def456',
       });
-      mockDockerService.healthCheck.mockResolvedValue(true);
-      mockDockerService.getPromptUrl.mockResolvedValue(
+      mockRuntimeDriver.healthCheck.mockResolvedValue(true);
+      mockRuntimeDriver.getPromptUrl.mockResolvedValue(
         'http://127.0.0.1:49123/v1/prompt',
       );
 
@@ -1069,10 +1073,10 @@ describe('SandboxAgentAdapter', () => {
       mockSandboxService.getSandboxSession.mockResolvedValue({
         id: 'sandbox-001',
         status: 'ready',
-        containerId: 'abc123def456',
+        runtimeHandle: 'abc123def456',
       });
-      mockDockerService.healthCheck.mockResolvedValue(true);
-      mockDockerService.getPromptUrl.mockResolvedValue(
+      mockRuntimeDriver.healthCheck.mockResolvedValue(true);
+      mockRuntimeDriver.getPromptUrl.mockResolvedValue(
         'http://127.0.0.1:49123/v1/prompt',
       );
 
@@ -1095,10 +1099,10 @@ describe('SandboxAgentAdapter', () => {
       mockSandboxService.getSandboxSession.mockResolvedValue({
         id: 'sandbox-001',
         status: 'ready',
-        containerId: 'abc123def456',
+        runtimeHandle: 'abc123def456',
       });
-      mockDockerService.healthCheck.mockResolvedValue(true);
-      mockDockerService.getPromptUrl.mockResolvedValue(
+      mockRuntimeDriver.healthCheck.mockResolvedValue(true);
+      mockRuntimeDriver.getPromptUrl.mockResolvedValue(
         'http://127.0.0.1:49123/v1/prompt',
       );
 
@@ -1123,10 +1127,10 @@ describe('SandboxAgentAdapter', () => {
       mockSandboxService.getSandboxSession.mockResolvedValue({
         id: 'sandbox-001',
         status: 'ready',
-        containerId: 'abc123def456',
+        runtimeHandle: 'abc123def456',
       });
-      mockDockerService.healthCheck.mockResolvedValue(true);
-      mockDockerService.getPromptUrl.mockResolvedValue(
+      mockRuntimeDriver.healthCheck.mockResolvedValue(true);
+      mockRuntimeDriver.getPromptUrl.mockResolvedValue(
         'http://127.0.0.1:49123/v1/prompt',
       );
 
@@ -1150,7 +1154,7 @@ describe('SandboxAgentAdapter', () => {
   describe('cancel', () => {
     it('应调用容器 /v1/abort', async () => {
       const session = await adapter.createSession(defaultParams);
-      mockDockerService.getPromptUrl.mockResolvedValue(
+      mockRuntimeDriver.getPromptUrl.mockResolvedValue(
         'http://127.0.0.1:49123/v1/prompt',
       );
       globalThis.fetch = vi
@@ -1171,7 +1175,7 @@ describe('SandboxAgentAdapter', () => {
 
     it('应将会话状态设为 completed', async () => {
       const session = await adapter.createSession(defaultParams);
-      mockDockerService.getPromptUrl.mockResolvedValue(
+      mockRuntimeDriver.getPromptUrl.mockResolvedValue(
         'http://127.0.0.1:49123/v1/prompt',
       );
       globalThis.fetch = vi
@@ -1484,10 +1488,10 @@ describe('SandboxAgentAdapter', () => {
       mockSandboxService.getSandboxSession.mockResolvedValue({
         id: 'sandbox-001',
         status: 'ready',
-        containerId: 'abc123def456',
+        runtimeHandle: 'abc123def456',
       });
-      mockDockerService.healthCheck.mockResolvedValue(true);
-      mockDockerService.getPromptUrl.mockResolvedValue(
+      mockRuntimeDriver.healthCheck.mockResolvedValue(true);
+      mockRuntimeDriver.getPromptUrl.mockResolvedValue(
         'http://127.0.0.1:49123/v1/prompt',
       );
 
@@ -1961,10 +1965,10 @@ describe('SandboxAgentAdapter', () => {
       mockSandboxService.getSandboxSession.mockResolvedValue({
         id: 'sandbox-001',
         status: 'ready',
-        containerId: 'abc123def456',
+        runtimeHandle: 'abc123def456',
       });
-      mockDockerService.healthCheck.mockResolvedValue(true);
-      mockDockerService.getPromptUrl.mockResolvedValue(
+      mockRuntimeDriver.healthCheck.mockResolvedValue(true);
+      mockRuntimeDriver.getPromptUrl.mockResolvedValue(
         'http://127.0.0.1:49123/v1/prompt',
       );
 
@@ -2125,10 +2129,10 @@ describe('SandboxAgentAdapter', () => {
       mockSandboxService.getSandboxSession.mockResolvedValue({
         id: 'sandbox-001',
         status: 'ready',
-        containerId: 'abc123def456',
+        runtimeHandle: 'abc123def456',
       });
-      mockDockerService.healthCheck.mockResolvedValue(true);
-      mockDockerService.getPromptUrl.mockResolvedValue(
+      mockRuntimeDriver.healthCheck.mockResolvedValue(true);
+      mockRuntimeDriver.getPromptUrl.mockResolvedValue(
         'http://127.0.0.1:49123/v1/prompt',
       );
       return session;
@@ -2286,9 +2290,9 @@ describe('SandboxAgentAdapter', () => {
       mockSandboxService.findByConversationId.mockResolvedValue({
         id: 'sandbox-conv',
         status: 'ready',
-        containerId: 'conv-container',
+        runtimeHandle: 'conv-container',
       });
-      mockDockerService.healthCheck.mockResolvedValue(true);
+      mockRuntimeDriver.healthCheck.mockResolvedValue(true);
       globalThis.fetch = vi.fn().mockResolvedValue({
         ok: true,
         status: 200,
@@ -2302,7 +2306,7 @@ describe('SandboxAgentAdapter', () => {
         'echo hi\n',
       );
 
-      expect(mockDockerService.requestGuest).toHaveBeenCalledWith(
+      expect(mockRuntimeDriver.requestGuest).toHaveBeenCalledWith(
         'conv-container',
         '/v1/pty/write',
         expect.objectContaining({
@@ -2369,10 +2373,10 @@ describe('SandboxAgentAdapter', () => {
       mockSandboxService.getSandboxSession.mockResolvedValue({
         id: 'sandbox-001',
         status: 'ready',
-        containerId: 'abc123def456',
+        runtimeHandle: 'abc123def456',
       });
-      mockDockerService.healthCheck.mockResolvedValue(true);
-      mockDockerService.getPromptUrl.mockResolvedValue(
+      mockRuntimeDriver.healthCheck.mockResolvedValue(true);
+      mockRuntimeDriver.getPromptUrl.mockResolvedValue(
         'http://127.0.0.1:49123/v1/prompt',
       );
 
@@ -2394,10 +2398,10 @@ describe('SandboxAgentAdapter', () => {
       mockSandboxService.getSandboxSession.mockResolvedValue({
         id: 'sandbox-001',
         status: 'ready',
-        containerId: 'abc123def456',
+        runtimeHandle: 'abc123def456',
       });
-      mockDockerService.healthCheck.mockResolvedValue(true);
-      mockDockerService.getPromptUrl.mockResolvedValue(
+      mockRuntimeDriver.healthCheck.mockResolvedValue(true);
+      mockRuntimeDriver.getPromptUrl.mockResolvedValue(
         'http://127.0.0.1:49123/v1/prompt',
       );
 
@@ -2421,10 +2425,10 @@ describe('SandboxAgentAdapter', () => {
       mockSandboxService.getSandboxSession.mockResolvedValue({
         id: 'sandbox-001',
         status: 'ready',
-        containerId: 'abc123def456',
+        runtimeHandle: 'abc123def456',
       });
-      mockDockerService.healthCheck.mockResolvedValue(true);
-      mockDockerService.getPromptUrl.mockResolvedValue(
+      mockRuntimeDriver.healthCheck.mockResolvedValue(true);
+      mockRuntimeDriver.getPromptUrl.mockResolvedValue(
         'http://127.0.0.1:49123/v1/prompt',
       );
 

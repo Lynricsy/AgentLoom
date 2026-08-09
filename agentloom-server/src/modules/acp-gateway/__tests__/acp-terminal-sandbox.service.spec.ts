@@ -74,7 +74,7 @@ describe('AcpTerminalSandboxService', () => {
 
     return {
       service,
-      dockerService: runtime,
+      runtimeDriver: runtime,
     };
   }
 
@@ -82,11 +82,11 @@ describe('AcpTerminalSandboxService', () => {
     const workspaceRoot = await createWorkspaceRoot();
     await mkdir(join(workspaceRoot, 'demo', 'notes'), { recursive: true });
     runInTenantTransactionMock.mockResolvedValue({
-      containerId: 'container-1',
+      runtimeHandle: 'container-1',
       workspacePath: workspaceRoot,
     });
-    const { service, dockerService } = createService();
-    dockerService.createExec.mockResolvedValue({
+    const { service, runtimeDriver } = createService();
+    runtimeDriver.createExec.mockResolvedValue({
       execId: 'exec-1',
     });
 
@@ -102,7 +102,7 @@ describe('AcpTerminalSandboxService', () => {
       cwd: '/workspace/demo/notes',
     });
 
-    expect(dockerService.createExec).toHaveBeenCalledWith('container-1', {
+    expect(runtimeDriver.createExec).toHaveBeenCalledWith('container-1', {
       command: 'ls',
       args: ['-la'],
       cwd: '/workspace/demo/notes',
@@ -113,11 +113,11 @@ describe('AcpTerminalSandboxService', () => {
     const workspaceRoot = await createWorkspaceRoot();
     await mkdir(join(workspaceRoot, 'demo'), { recursive: true });
     runInTenantTransactionMock.mockResolvedValue({
-      containerId: 'container-1',
+      runtimeHandle: 'container-1',
       workspacePath: workspaceRoot,
     });
-    const { service, dockerService } = createService();
-    dockerService.createExec.mockResolvedValue({
+    const { service, runtimeDriver } = createService();
+    runtimeDriver.createExec.mockResolvedValue({
       execId: 'exec-2',
     });
 
@@ -131,7 +131,7 @@ describe('AcpTerminalSandboxService', () => {
       cwd: '/workspace/demo',
     });
 
-    expect(dockerService.createExec).toHaveBeenCalledWith('container-1', {
+    expect(runtimeDriver.createExec).toHaveBeenCalledWith('container-1', {
       command: 'pwd',
       args: undefined,
       cwd: '/workspace/demo',
@@ -142,11 +142,11 @@ describe('AcpTerminalSandboxService', () => {
     const workspaceRoot = await createWorkspaceRoot();
     await mkdir(join(workspaceRoot, 'demo', 'notes'), { recursive: true });
     runInTenantTransactionMock.mockResolvedValue({
-      containerId: 'container-conv',
+      runtimeHandle: 'container-conv',
       workspacePath: workspaceRoot,
     });
-    const { service, dockerService } = createService();
-    dockerService.createExec.mockResolvedValue({
+    const { service, runtimeDriver } = createService();
+    runtimeDriver.createExec.mockResolvedValue({
       execId: 'exec-conv',
     });
 
@@ -165,7 +165,7 @@ describe('AcpTerminalSandboxService', () => {
       cwd: '/workspace/demo/notes',
     });
 
-    expect(dockerService.createExec).toHaveBeenCalledWith('container-conv', {
+    expect(runtimeDriver.createExec).toHaveBeenCalledWith('container-conv', {
       command: 'ls',
       args: undefined,
       cwd: '/workspace/demo/notes',
@@ -176,7 +176,7 @@ describe('AcpTerminalSandboxService', () => {
     const workspaceRoot = await createWorkspaceRoot();
     await mkdir(join(workspaceRoot, 'demo'), { recursive: true });
     runInTenantTransactionMock.mockResolvedValue({
-      containerId: 'container-1',
+      runtimeHandle: 'container-1',
       workspacePath: workspaceRoot,
     });
     const { service } = createService();

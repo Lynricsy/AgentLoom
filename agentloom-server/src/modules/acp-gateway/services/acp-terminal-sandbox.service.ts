@@ -6,8 +6,8 @@ import { runInTenantTransaction } from '../../../common/interceptors/tenant-tran
 import { sandboxSessions } from '../../../database/schema';
 import {
   SANDBOX_RUNTIME_DRIVER,
-  type DockerExecExitInfo,
-  type DockerExecHandle,
+  type RuntimeExecExitInfo,
+  type RuntimeExecHandle,
   type SandboxRuntimeDriver,
 } from '../../sandbox/sandbox-runtime-driver.port';
 import { AcpJsonRpcError } from '../acp-jsonrpc';
@@ -17,7 +17,7 @@ const SANDBOX_WORKSPACE_ROOT = '/workspace';
 const ACTIVE_SANDBOX_STATUSES = ['ready', 'busy'] as const;
 
 interface SandboxSessionAccess {
-  readonly containerId: string | null;
+  readonly runtimeHandle: string | null;
 }
 
 export interface SandboxCreateTerminalParams {
@@ -42,7 +42,7 @@ export class AcpTerminalSandboxService {
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
     @Inject(SANDBOX_RUNTIME_DRIVER)
-    private readonly dockerService: SandboxRuntimeDriver,
+    private readonly runtimeDriver: SandboxRuntimeDriver,
   ) {}
 
   async createTerminal(
@@ -53,9 +53,9 @@ export class AcpTerminalSandboxService {
       params.trackedSession,
       params.cwd,
     );
-    let exec: DockerExecHandle;
+    let exec: RuntimeExecHandle;
     try {
-      exec = await this.dockerService.createExec(access.containerId, {
+      exec = await this.runtimeDriver.createExec(access.runtimeHandle, {
         command: params.command,
         args: params.args,
         cwd: resolvedCwd.execCwd,
@@ -77,22 +77,22 @@ export class AcpTerminalSandboxService {
     execId: string,
     callback: (stream: 'stdout' | 'stderr', chunk: string) => void,
   ): Promise<void> {
-    await this.dockerService.attachExecOutput(execId, (level, message) => {
+    await this.runtimeDriver.attachExecOutput(execId, (level, message) => {
       callback(level === 'stderr' ? 'stderr' : 'stdout', message);
     });
   }
 
   async killTerminal(execId: string, signal = 'TERM'): Promise<void> {
-    await this.dockerService.killExec(execId, signal);
+    await this.runtimeDriver.killExec(execId, signal);
   }
 
-  async waitForExit(execId: string): Promise<DockerExecExitInfo> {
-    return this.dockerService.waitForExecExit(execId);
+  async waitForExit(execId: string): Promise<RuntimeExecExitInfo> {
+    return this.runtimeDriver.waitForExecExit(execId);
   }
 
   private async resolveSandboxAccess(
     trackedSession: AcpTrackedSession,
-  ): Promise<{ containerId: string }> {
+  ): Promise<{ runtimeHandle: string }> {
     const binding = this.readSandboxBinding(trackedSession);
 
     const sandboxSession = await runInTenantTransaction(
@@ -100,7 +100,7 @@ export class AcpTerminalSandboxService {
       trackedSession.tenantId,
       async (dbClient) => {
         const rows = await dbClient
-          .select({ containerId: sandboxSessions.containerId })
+          .select({ runtimeHandle: sandboxSessions.runtimeHandle })
           .from(sandboxSessions)
           .where(this.buildActiveSandboxWhere(trackedSession.tenantId, binding))
           .limit(1);
@@ -117,8 +117,8 @@ export class AcpTerminalSandboxService {
     }
 
     if (
-      typeof sandboxSession.containerId !== 'string' ||
-      sandboxSession.containerId.length === 0
+      typeof sandboxSession.runtimeHandle !== 'string' ||
+      sandboxSession.runtimeHandle.length === 0
     ) {
       throw this.createSandboxError(
         'ACP server sandbox workspace is unavailable',
@@ -126,7 +126,7 @@ export class AcpTerminalSandboxService {
       );
     }
 
-    return { containerId: sandboxSession.containerId };
+    return { runtimeHandle: sandboxSession.runtimeHandle };
   }
 
   private buildActiveSandboxWhere(

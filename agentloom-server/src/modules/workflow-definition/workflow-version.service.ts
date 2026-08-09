@@ -164,10 +164,7 @@ function setNodeConfigField(
   node.data = nodeData;
 }
 
-function clearNodeConfigField(
-  node: schema.ReactFlowNode,
-  key: string,
-): void {
+function clearNodeConfigField(node: schema.ReactFlowNode, key: string): void {
   const nodeData = (asRecord(node.data) ?? {}) as Record<string, unknown>;
   const config = (asRecord(nodeData.config) ?? {}) as Record<string, unknown>;
 
@@ -1785,9 +1782,21 @@ export class WorkflowVersionService {
       clearNodeConfigField(node, 'agent_name');
       clearNodeConfigField(node, 'version_label');
       clearNodeConfigField(node, 'agent_runtime_mode');
-      setNodeConfigField(node, 'selectedAgentId', clonedAgent.agentDefinitionId);
-      setNodeConfigField(node, 'agentDefinitionId', clonedAgent.agentDefinitionId);
-      setNodeConfigField(node, 'agentVersionId', clonedAgent.publishedVersionId);
+      setNodeConfigField(
+        node,
+        'selectedAgentId',
+        clonedAgent.agentDefinitionId,
+      );
+      setNodeConfigField(
+        node,
+        'agentDefinitionId',
+        clonedAgent.agentDefinitionId,
+      );
+      setNodeConfigField(
+        node,
+        'agentVersionId',
+        clonedAgent.publishedVersionId,
+      );
       setNodeConfigField(node, 'agentName', clonedAgent.name);
       setNodeConfigField(node, 'versionLabel', 'published');
       setNodeConfigField(node, 'agentRuntimeMode', clonedAgent.runtimeMode);
@@ -2372,7 +2381,11 @@ export class WorkflowVersionService {
     setNodeConfigField(params.node, 'modelType', targetModel.config.modelType);
 
     if (targetModel.provider.apiKeyId) {
-      setNodeConfigField(params.node, 'apiKeyId', targetModel.provider.apiKeyId);
+      setNodeConfigField(
+        params.node,
+        'apiKeyId',
+        targetModel.provider.apiKeyId,
+      );
     } else {
       clearNodeConfigField(params.node, 'apiKeyId');
     }
@@ -2515,7 +2528,9 @@ export class WorkflowVersionService {
       return byName;
     }
 
-    const byDefault = candidates.find((candidate) => candidate.config.isDefault);
+    const byDefault = candidates.find(
+      (candidate) => candidate.config.isDefault,
+    );
     return byDefault ?? candidates[0];
   }
 

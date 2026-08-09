@@ -247,7 +247,10 @@ function createSelectChainWithPagination(result: unknown) {
 
 function createSelectChainWithInnerJoin(result: unknown) {
   const where = vi.fn().mockResolvedValue(result);
-  const chain = { where } as { innerJoin?: ReturnType<typeof vi.fn>; where: typeof where };
+  const chain = { where } as {
+    innerJoin?: ReturnType<typeof vi.fn>;
+    where: typeof where;
+  };
   const innerJoin = vi.fn().mockReturnValue(chain);
   chain.innerJoin = innerJoin;
   const from = vi.fn().mockReturnValue({ innerJoin });
@@ -2404,12 +2407,10 @@ describe('WorkflowVersionService', () => {
               label: '共享开发沙箱',
               nodeType: 'sandbox',
               restoreWorkspaceId: sourceWorkspaceId,
-              persistentSandboxId:
-                '40000000-0000-0000-0000-000000000111',
+              persistentSandboxId: '40000000-0000-0000-0000-000000000111',
               config: {
                 restore_workspace_id: sourceWorkspaceId,
-                persistent_sandbox_id:
-                  '40000000-0000-0000-0000-000000000111',
+                persistent_sandbox_id: '40000000-0000-0000-0000-000000000111',
               },
             },
           },
@@ -2486,8 +2487,8 @@ describe('WorkflowVersionService', () => {
 
       expect(result).toEqual(publishedResult);
 
-      const workspaceInsertValues = db.insert.mock.results[0].value.values.mock
-        .calls[0][0];
+      const workspaceInsertValues =
+        db.insert.mock.results[0].value.values.mock.calls[0][0];
       expect(workspaceInsertValues).toMatchObject({
         organizationId,
         tenantId: TENANT_ID,
@@ -2498,8 +2499,8 @@ describe('WorkflowVersionService', () => {
         createdById: USER_ID,
       });
 
-      const workflowInsertValues = db.insert.mock.results[1].value.values.mock
-        .calls[0][0];
+      const workflowInsertValues =
+        db.insert.mock.results[1].value.values.mock.calls[0][0];
       expect(workflowInsertValues.nodes).toHaveLength(2);
       const clonedWorkspaceNode = workflowInsertValues.nodes.find(
         (node: Record<string, unknown>) =>
@@ -2515,8 +2516,10 @@ describe('WorkflowVersionService', () => {
         (clonedWorkspaceNode.data as Record<string, unknown>).workspaceId,
       ).toBe(targetWorkspaceId);
       expect(
-        ((clonedWorkspaceNode.data as Record<string, unknown>)
-          .config as Record<string, unknown>).workspaceId,
+        (
+          (clonedWorkspaceNode.data as Record<string, unknown>)
+            .config as Record<string, unknown>
+        ).workspaceId,
       ).toBe(targetWorkspaceId);
       expect(
         (clonedWorkspaceNode.data as Record<string, unknown>).workspace_id,
@@ -2528,16 +2531,23 @@ describe('WorkflowVersionService', () => {
         (clonedSandboxNode.data as Record<string, unknown>).restoreWorkspaceId,
       ).toBe(targetWorkspaceId);
       expect(
-        ((clonedSandboxNode.data as Record<string, unknown>)
-          .config as Record<string, unknown>).restoreWorkspaceId,
+        (
+          (clonedSandboxNode.data as Record<string, unknown>).config as Record<
+            string,
+            unknown
+          >
+        ).restoreWorkspaceId,
       ).toBe(targetWorkspaceId);
       expect(
-        (clonedSandboxNode.data as Record<string, unknown>)
-          .persistentSandboxId,
+        (clonedSandboxNode.data as Record<string, unknown>).persistentSandboxId,
       ).toBeUndefined();
       expect(
-        ((clonedSandboxNode.data as Record<string, unknown>)
-          .config as Record<string, unknown>).persistentSandboxId,
+        (
+          (clonedSandboxNode.data as Record<string, unknown>).config as Record<
+            string,
+            unknown
+          >
+        ).persistentSandboxId,
       ).toBeUndefined();
     });
 
@@ -2777,13 +2787,20 @@ describe('WorkflowVersionService', () => {
       expect(result.status).toBe('published');
       expect(db.insert).toHaveBeenCalledTimes(4);
 
-      const importedAgentValues = db.insert.mock.results[0].value.values.mock.calls[0][0];
+      const importedAgentValues =
+        db.insert.mock.results[0].value.values.mock.calls[0][0];
       const importedModelNode = importedAgentValues.nodes.find(
         (node: Record<string, unknown>) =>
           (node.data as Record<string, unknown>).nodeType === 'llm-model',
       ) as Record<string, unknown>;
-      const importedModelData = importedModelNode.data as Record<string, unknown>;
-      const importedModelConfig = importedModelData.config as Record<string, unknown>;
+      const importedModelData = importedModelNode.data as Record<
+        string,
+        unknown
+      >;
+      const importedModelConfig = importedModelData.config as Record<
+        string,
+        unknown
+      >;
       expect(importedAgentValues.runtimeMode).toBe('no_sandbox');
       expect(importedModelData.llmConfigId).toBe(targetModelConfigId);
       expect(importedModelData.modelConfigId).toBe(targetModelConfigId);

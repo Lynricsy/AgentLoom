@@ -24,6 +24,7 @@ const mockLogs = [
 
 const mockService: Record<string, ReturnType<typeof vi.fn>> = {
   getSandboxLogs: vi.fn(),
+  listSandboxes: vi.fn(),
 };
 
 describe('SandboxController', () => {
@@ -57,5 +58,30 @@ describe('SandboxController', () => {
 
       expect(result).toEqual({ data: [] });
     });
+  });
+
+  it('公开 sandbox 响应不得泄露内部 runtime handle', async () => {
+    mockService.listSandboxes.mockResolvedValue({
+      data: [
+        {
+          id: SESSION_ID,
+          runtimeHandle: 'opaque-runtime',
+          status: 'stopped',
+        },
+      ],
+      meta: { page: 1, pageSize: 20, total: 1, totalPages: 1 },
+    });
+
+    const result = await controller.listSandboxes('tenant-1', {
+      page: 1,
+      pageSize: 20,
+      status: undefined,
+      lifecycleMode: undefined,
+      bindingType: undefined,
+      search: undefined,
+    });
+
+    expect(result.data).toEqual([{ id: SESSION_ID, status: 'stopped' }]);
+    expect(result.data[0]).not.toHaveProperty('runtimeHandle');
   });
 });

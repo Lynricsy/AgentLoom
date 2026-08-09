@@ -77,14 +77,14 @@ type ExecutionStepWatchTarget = {
 type WatchTarget = ConversationWatchTarget | ExecutionStepWatchTarget;
 
 type ResolvedExecutionStepContainer = {
-  containerId: string;
+  runtimeHandle: string;
   sandboxNodeId?: string;
 };
 
 type ResolvedExecutionStepWorkspaceSource =
   | {
       kind: 'live';
-      containerId: string;
+      runtimeHandle: string;
       sandboxNodeId?: string;
     }
   | {
@@ -101,7 +101,7 @@ type ConversationWorkspaceTreeSnapshot = {
 type ResolvedConversationWorkspaceSource =
   | {
       kind: 'live';
-      containerId: string;
+      runtimeHandle: string;
     }
   | {
       kind: 'snapshot';
@@ -121,7 +121,7 @@ export class WorkspaceIntegrationService {
     @Inject(DRIZZLE)
     private readonly db: DrizzleDB,
     @Inject(SANDBOX_RUNTIME_DRIVER)
-    private readonly dockerService: SandboxRuntimeDriver,
+    private readonly runtimeDriver: SandboxRuntimeDriver,
     private readonly sandboxService: SandboxService,
     private readonly workspaceService: WorkspaceService,
     private readonly eventEmitter: EventEmitter2,
@@ -143,7 +143,7 @@ export class WorkspaceIntegrationService {
       );
 
       if (workspaceSource.kind === 'live') {
-        return this.readFileTreeFromContainer(workspaceSource.containerId);
+        return this.readFileTreeFromContainer(workspaceSource.runtimeHandle);
       }
 
       return workspaceSource.snapshot.nodes;
@@ -169,7 +169,7 @@ export class WorkspaceIntegrationService {
     );
 
     if (workspaceSource.kind === 'live') {
-      return this.readFileTreeFromContainer(workspaceSource.containerId);
+      return this.readFileTreeFromContainer(workspaceSource.runtimeHandle);
     }
 
     return this.workspaceService.getFileTree(
@@ -191,7 +191,7 @@ export class WorkspaceIntegrationService {
 
     if (workspaceSource.kind === 'live') {
       return this.readFileContentFromContainer(
-        workspaceSource.containerId,
+        workspaceSource.runtimeHandle,
         filePath,
       );
     }
@@ -215,12 +215,12 @@ export class WorkspaceIntegrationService {
       conversationId,
       tenantId,
     );
-    if (!session?.containerId) {
+    if (!session?.runtimeHandle) {
       return null;
     }
 
     const relativePath = await this.resolveAttachmentRelativePath(
-      session.containerId,
+      session.runtimeHandle,
       attachment.fileName,
     );
     const archive = await this.createConversationAttachmentArchive(
@@ -229,8 +229,8 @@ export class WorkspaceIntegrationService {
     );
 
     try {
-      await this.dockerService.putArchive(
-        session.containerId,
+      await this.runtimeDriver.putArchive(
+        session.runtimeHandle,
         createReadStream(archive.archivePath),
         CONTAINER_WORKSPACE,
       );
@@ -255,7 +255,7 @@ export class WorkspaceIntegrationService {
 
     if (workspaceSource.kind === 'live') {
       return this.readFileContentFromContainer(
-        workspaceSource.containerId,
+        workspaceSource.runtimeHandle,
         filePath,
       );
     }
@@ -316,7 +316,7 @@ export class WorkspaceIntegrationService {
       );
       restoreWorkspaceId = this.readWorkspaceRestoreId(sandboxSession?.config);
 
-      if (!sandboxSession?.containerId) {
+      if (!sandboxSession?.runtimeHandle) {
         return existingSnapshotId ?? restoreWorkspaceId ?? null;
       }
 
@@ -328,7 +328,7 @@ export class WorkspaceIntegrationService {
         );
         await this.workspaceService.syncFromSandboxContainer(
           restoreWorkspaceId,
-          sandboxSession.containerId,
+          sandboxSession.runtimeHandle,
           tenantId,
           leaseToken,
         );
@@ -374,7 +374,7 @@ export class WorkspaceIntegrationService {
   startFileWatcher(
     conversationId: string,
     tenantId: string,
-    containerId: string,
+    runtimeHandle: string,
   ): void {
     this.startWatcher(
       {
@@ -382,7 +382,7 @@ export class WorkspaceIntegrationService {
         conversationId,
       },
       tenantId,
-      containerId,
+      runtimeHandle,
     );
   }
 
@@ -399,7 +399,7 @@ export class WorkspaceIntegrationService {
         tenantId,
         sandboxNodeId,
       );
-      if (!session?.containerId) {
+      if (!session?.runtimeHandle) {
         return;
       }
 
@@ -411,7 +411,7 @@ export class WorkspaceIntegrationService {
           ...(sandboxNodeId ? { sandboxNodeId } : {}),
         },
         tenantId,
-        session.containerId,
+        session.runtimeHandle,
       );
     } catch (error) {
       this.logger.warn(
@@ -457,7 +457,7 @@ export class WorkspaceIntegrationService {
       tenantId,
     );
 
-    if (!session?.containerId) {
+    if (!session?.runtimeHandle) {
       this.logger.debug(
         `对话 ${conversationId} 没有关联的运行中沙箱容器，跳过目录树快照保存`,
       );
@@ -465,7 +465,7 @@ export class WorkspaceIntegrationService {
     }
 
     try {
-      const tree = await this.readFileTreeFromContainer(session.containerId);
+      const tree = await this.readFileTreeFromContainer(session.runtimeHandle);
       await this.persistConversationWorkspaceTreeSnapshot(
         conversationId,
         tenantId,
@@ -529,13 +529,13 @@ export class WorkspaceIntegrationService {
       tenantId,
     );
 
-    if (!session || !session.containerId) {
+    if (!session || !session.runtimeHandle) {
       throw new NotFoundException(
         `对话 ${conversationId} 没有运行中的沙箱容器`,
       );
     }
 
-    return session.containerId;
+    return session.runtimeHandle;
   }
 
   private async resolveConversationWorkspaceSource(
@@ -543,14 +543,14 @@ export class WorkspaceIntegrationService {
     tenantId: string,
   ): Promise<ResolvedConversationWorkspaceSource> {
     try {
-      const containerId = await this.resolveConversationContainerId(
+      const runtimeHandle = await this.resolveConversationContainerId(
         conversationId,
         tenantId,
       );
 
       return {
         kind: 'live',
-        containerId,
+        runtimeHandle,
       };
     } catch (error) {
       const snapshot = await this.loadConversationWorkspaceTreeSnapshot(
@@ -740,14 +740,14 @@ export class WorkspaceIntegrationService {
       sandboxBinding.sandboxNodeId,
     );
 
-    if (!sandboxSession?.containerId) {
+    if (!sandboxSession?.runtimeHandle) {
       throw new NotFoundException(
         `执行 ${executionId} 的步骤 ${stepId} 没有关联的运行中沙箱容器`,
       );
     }
 
     return {
-      containerId: sandboxSession.containerId,
+      runtimeHandle: sandboxSession.runtimeHandle,
       ...(sandboxBinding.sandboxNodeId
         ? { sandboxNodeId: sandboxBinding.sandboxNodeId }
         : {}),
@@ -774,7 +774,7 @@ export class WorkspaceIntegrationService {
 
       return {
         kind: 'live',
-        containerId: liveContainer.containerId,
+        runtimeHandle: liveContainer.runtimeHandle,
         ...(liveContainer.sandboxNodeId
           ? { sandboxNodeId: liveContainer.sandboxNodeId }
           : {}),
@@ -894,9 +894,9 @@ export class WorkspaceIntegrationService {
   }
 
   private async readFileTreeFromContainer(
-    containerId: string,
+    runtimeHandle: string,
   ): Promise<FileTreeNode[]> {
-    const output = await this.execInContainer(containerId, 'find', [
+    const output = await this.execInContainer(runtimeHandle, 'find', [
       CONTAINER_WORKSPACE,
       '-not',
       '-path',
@@ -912,13 +912,13 @@ export class WorkspaceIntegrationService {
   }
 
   private async readFileContentFromContainer(
-    containerId: string,
+    runtimeHandle: string,
     filePath: string,
   ): Promise<FileContentResult> {
     const normalizedPath = this.normalizePath(filePath);
     const fullPath = `${CONTAINER_WORKSPACE}/${normalizedPath}`;
 
-    const statOutput = await this.execInContainer(containerId, 'stat', [
+    const statOutput = await this.execInContainer(runtimeHandle, 'stat', [
       '-c',
       '%s|%F',
       fullPath,
@@ -937,7 +937,7 @@ export class WorkspaceIntegrationService {
       );
     }
 
-    const headOutput = await this.execInContainerRaw(containerId, 'head', [
+    const headOutput = await this.execInContainerRaw(runtimeHandle, 'head', [
       '-c',
       '8192',
       fullPath,
@@ -949,7 +949,9 @@ export class WorkspaceIntegrationService {
       );
     }
 
-    const content = await this.execInContainer(containerId, 'cat', [fullPath]);
+    const content = await this.execInContainer(runtimeHandle, 'cat', [
+      fullPath,
+    ]);
 
     return {
       path: normalizedPath,
@@ -960,7 +962,7 @@ export class WorkspaceIntegrationService {
   }
 
   private async resolveAttachmentRelativePath(
-    containerId: string,
+    runtimeHandle: string,
     fileName: string,
   ): Promise<string> {
     const sanitized = this.sanitizeAttachmentFileName(fileName);
@@ -968,7 +970,7 @@ export class WorkspaceIntegrationService {
 
     if (
       !(await this.containerPathExists(
-        containerId,
+        runtimeHandle,
         `${CONTAINER_WORKSPACE}/${candidate}`,
       ))
     ) {
@@ -981,11 +983,11 @@ export class WorkspaceIntegrationService {
   }
 
   private async containerPathExists(
-    containerId: string,
+    runtimeHandle: string,
     fullPath: string,
   ): Promise<boolean> {
     try {
-      const output = await this.execInContainer(containerId, 'sh', [
+      const output = await this.execInContainer(runtimeHandle, 'sh', [
         '-lc',
         `[ -e ${this.quoteShellPath(fullPath)} ] && printf exists || printf missing`,
       ]);
@@ -1079,11 +1081,11 @@ export class WorkspaceIntegrationService {
   }
 
   private async execInContainer(
-    containerId: string,
+    runtimeHandle: string,
     command: string,
     args: string[],
   ): Promise<string> {
-    const handle = await this.dockerService.createExec(containerId, {
+    const handle = await this.runtimeDriver.createExec(runtimeHandle, {
       command,
       args,
       cwd: CONTAINER_WORKSPACE,
@@ -1091,7 +1093,7 @@ export class WorkspaceIntegrationService {
 
     const chunks: string[] = [];
 
-    await this.dockerService.attachExecOutput(
+    await this.runtimeDriver.attachExecOutput(
       handle.execId,
       (level, message) => {
         if (level === 'stdout') {
@@ -1100,7 +1102,7 @@ export class WorkspaceIntegrationService {
       },
     );
 
-    const exitInfo = await this.dockerService.waitForExecExit(handle.execId);
+    const exitInfo = await this.runtimeDriver.waitForExecExit(handle.execId);
 
     if (exitInfo.exitCode !== 0) {
       const errorOutput = chunks.join('');
@@ -1113,11 +1115,11 @@ export class WorkspaceIntegrationService {
   }
 
   private async execInContainerRaw(
-    containerId: string,
+    runtimeHandle: string,
     command: string,
     args: string[],
   ): Promise<Buffer> {
-    const handle = await this.dockerService.createExec(containerId, {
+    const handle = await this.runtimeDriver.createExec(runtimeHandle, {
       command,
       args,
       cwd: CONTAINER_WORKSPACE,
@@ -1125,14 +1127,14 @@ export class WorkspaceIntegrationService {
 
     const chunks: Buffer[] = [];
 
-    await this.dockerService.attachExecOutput(
+    await this.runtimeDriver.attachExecOutput(
       handle.execId,
       (_level, message) => {
         chunks.push(Buffer.from(message));
       },
     );
 
-    await this.dockerService.waitForExecExit(handle.execId);
+    await this.runtimeDriver.waitForExecExit(handle.execId);
 
     return Buffer.concat(chunks);
   }
@@ -1245,14 +1247,14 @@ export class WorkspaceIntegrationService {
     return root;
   }
 
-  private async initMarkerFile(containerId: string): Promise<void> {
-    await this.execInContainer(containerId, 'touch', [MARKER_FILE]);
+  private async initMarkerFile(runtimeHandle: string): Promise<void> {
+    await this.execInContainer(runtimeHandle, 'touch', [MARKER_FILE]);
   }
 
   private startWatcher(
     target: WatchTarget,
     tenantId: string,
-    containerId: string,
+    runtimeHandle: string,
   ): void {
     const watchKey = this.buildWatchKey(target);
 
@@ -1261,7 +1263,7 @@ export class WorkspaceIntegrationService {
       return;
     }
 
-    this.initMarkerFile(containerId).catch((err) =>
+    this.initMarkerFile(runtimeHandle).catch((err) =>
       this.logger.warn(
         `创建标记文件失败: key=${watchKey}, error=${err instanceof Error ? err.message : String(err)}`,
       ),
@@ -1269,7 +1271,7 @@ export class WorkspaceIntegrationService {
 
     const timer = setInterval(async () => {
       try {
-        await this.pollFileChanges(target, tenantId, containerId);
+        await this.pollFileChanges(target, tenantId, runtimeHandle);
       } catch (error) {
         this.logger.warn(
           `文件变更轮询失败: key=${watchKey}, error=${error instanceof Error ? error.message : String(error)}`,
@@ -1304,9 +1306,9 @@ export class WorkspaceIntegrationService {
   private async pollFileChanges(
     target: WatchTarget,
     tenantId: string,
-    containerId: string,
+    runtimeHandle: string,
   ): Promise<void> {
-    const output = await this.execInContainer(containerId, 'find', [
+    const output = await this.execInContainer(runtimeHandle, 'find', [
       CONTAINER_WORKSPACE,
       '-newer',
       MARKER_FILE,
@@ -1329,7 +1331,7 @@ export class WorkspaceIntegrationService {
       .filter((path): path is string => Boolean(path));
 
     if (changedFiles.length > 0) {
-      await this.execInContainer(containerId, 'touch', [MARKER_FILE]);
+      await this.execInContainer(runtimeHandle, 'touch', [MARKER_FILE]);
 
       const event: FileChangeEvent = {
         tenantId,

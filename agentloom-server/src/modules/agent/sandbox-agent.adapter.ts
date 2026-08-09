@@ -241,7 +241,7 @@ export class SandboxAgentAdapter implements IAgentRuntime {
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
     private readonly sandboxService: SandboxService,
     @Inject(SANDBOX_RUNTIME_DRIVER)
-    private readonly dockerService: SandboxRuntimeDriver,
+    private readonly runtimeDriver: SandboxRuntimeDriver,
     @Optional() private readonly mcpService?: McpService,
     @Optional() private readonly ragService?: RagService,
     @Optional() private readonly codeExecutionService?: CodeExecutionService,
@@ -326,7 +326,7 @@ export class SandboxAgentAdapter implements IAgentRuntime {
           mcpServers: params.mcpServers,
         });
 
-        await this.initializeContainerSession(sandboxSession.containerId, {
+        await this.initializeContainerSession(sandboxSession.runtimeHandle, {
           sessionId: session.id,
           cwd: CONTAINER_WORKSPACE,
           createCodingTools: true,
@@ -382,9 +382,9 @@ export class SandboxAgentAdapter implements IAgentRuntime {
         sandboxBinding,
         tenantId,
       );
-      if (!sandboxSession.containerId) {
+      if (!sandboxSession.runtimeHandle) {
         throw new Error(
-          `Sandbox session ${sandboxSession.id} has no containerId`,
+          `Sandbox session ${sandboxSession.id} has no runtimeHandle`,
         );
       }
       const timeoutSignal = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
@@ -392,8 +392,8 @@ export class SandboxAgentAdapter implements IAgentRuntime {
         ? AbortSignal.any([abortController.signal, timeoutSignal])
         : timeoutSignal;
 
-      const response = await this.dockerService.requestGuest(
-        sandboxSession.containerId,
+      const response = await this.runtimeDriver.requestGuest(
+        sandboxSession.runtimeHandle,
         '/v1/prompt',
         {
           method: 'POST',
@@ -616,7 +616,7 @@ export class SandboxAgentAdapter implements IAgentRuntime {
   private async waitForSandboxReady(
     sandboxBinding: SandboxBinding,
     tenantId: string,
-  ): Promise<SandboxSession & { containerId: string }> {
+  ): Promise<SandboxSession & { runtimeHandle: string }> {
     const startedAt = Date.now();
     const bindingLabel = this.describeSandboxBinding(sandboxBinding);
 
@@ -675,12 +675,12 @@ export class SandboxAgentAdapter implements IAgentRuntime {
 
       if (
         sandboxSession.status === 'ready' &&
-        sandboxSession.containerId &&
-        (await this.dockerService.healthCheck(sandboxSession.containerId))
+        sandboxSession.runtimeHandle &&
+        (await this.runtimeDriver.healthCheck(sandboxSession.runtimeHandle))
       ) {
         return {
           ...sandboxSession,
-          containerId: sandboxSession.containerId,
+          runtimeHandle: sandboxSession.runtimeHandle,
         };
       }
 
@@ -1241,7 +1241,7 @@ export class SandboxAgentAdapter implements IAgentRuntime {
   }
 
   private async initializeContainerSession(
-    containerId: string,
+    runtimeHandle: string,
     payload: Record<string, unknown>,
   ): Promise<void> {
     const { requestTimeoutMs, totalTimeoutMs } =
@@ -1254,8 +1254,8 @@ export class SandboxAgentAdapter implements IAgentRuntime {
       attempt += 1;
 
       try {
-        const response = await this.dockerService.requestGuest(
-          containerId,
+        const response = await this.runtimeDriver.requestGuest(
+          runtimeHandle,
           '/v1/session',
           {
             method: 'POST',
@@ -2541,8 +2541,8 @@ export class SandboxAgentAdapter implements IAgentRuntime {
       tenantId,
     );
 
-    const response = await this.dockerService.requestGuest(
-      sandboxSession.containerId,
+    const response = await this.runtimeDriver.requestGuest(
+      sandboxSession.runtimeHandle,
       '/v1/pty/sessions',
       {
         method: 'GET',
@@ -2568,8 +2568,8 @@ export class SandboxAgentAdapter implements IAgentRuntime {
       tenantId,
     );
 
-    const response = await this.dockerService.requestGuest(
-      sandboxSession.containerId,
+    const response = await this.runtimeDriver.requestGuest(
+      sandboxSession.runtimeHandle,
       '/v1/pty/buffer-dump',
       {
         method: 'POST',
@@ -2597,8 +2597,8 @@ export class SandboxAgentAdapter implements IAgentRuntime {
       tenantId,
     );
 
-    const response = await this.dockerService.requestGuest(
-      sandboxSession.containerId,
+    const response = await this.runtimeDriver.requestGuest(
+      sandboxSession.runtimeHandle,
       '/v1/pty/write',
       {
         method: 'POST',
@@ -2625,8 +2625,8 @@ export class SandboxAgentAdapter implements IAgentRuntime {
         sandboxBinding,
         tenantId,
       );
-      const response = await this.dockerService.requestGuest(
-        sandboxSession.containerId,
+      const response = await this.runtimeDriver.requestGuest(
+        sandboxSession.runtimeHandle,
         '/v1/abort',
         {
           method: 'POST',

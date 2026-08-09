@@ -6,7 +6,7 @@ import type { PiConfigInput } from './pi-config-generator.service';
 
 export const SANDBOX_RUNTIME_DRIVER = Symbol('SANDBOX_RUNTIME_DRIVER');
 
-export interface ContainerStats {
+export interface RuntimeStats {
   cpuPercent: number;
   memoryUsageMb: number;
   memoryLimitMb: number;
@@ -14,7 +14,7 @@ export interface ContainerStats {
   diskTotal?: number;
 }
 
-export interface ContainerProcess {
+export interface RuntimeProcess {
   pid: number;
   cpuPercent: number;
   memoryPercent: number;
@@ -24,87 +24,87 @@ export interface ContainerProcess {
   command: string;
 }
 
-export interface DockerExecCreateOptions {
+export interface RuntimeExecCreateOptions {
   command: string;
   args?: string[];
   cwd?: string;
   env?: string[];
 }
 
-export interface DockerExecHandle {
+export interface RuntimeExecHandle {
   execId: string;
 }
 
-export interface DockerExecExitInfo {
+export interface RuntimeExecExitInfo {
   running: boolean;
   exitCode: number | null;
   pid: number | null;
 }
 
-export interface CreateContainerPiContext {
+export interface CreateRuntimePiContext {
   piConfigInput?: PiConfigInput;
   conversationId?: string;
 }
 
-export interface RemoveContainerOptions {
+export interface DeleteRuntimeOptions {
   removeVolumes?: boolean;
 }
 
 export interface SandboxRuntimeDriver {
-  createContainer(
+  createRuntime(
     sessionId: string,
     config: SandboxConfig,
-    piContext?: CreateContainerPiContext,
-  ): Promise<{ containerId: string }>;
-  startContainer(containerId: string): Promise<void>;
-  stopContainer(containerId: string): Promise<void>;
-  removeContainer(
-    containerId: string,
-    options?: RemoveContainerOptions,
+    piContext?: CreateRuntimePiContext,
+  ): Promise<{ runtimeHandle: string }>;
+  startRuntime(runtimeHandle: string): Promise<void>;
+  stopRuntime(runtimeHandle: string): Promise<void>;
+  deleteRuntime(
+    runtimeHandle: string,
+    options?: DeleteRuntimeOptions,
   ): Promise<void>;
-  healthCheck(containerId: string): Promise<boolean>;
-  inspectRuntime(containerId: string): Promise<{ state: string }>;
+  healthCheck(runtimeHandle: string): Promise<boolean>;
+  inspectRuntime(runtimeHandle: string): Promise<{ state: string }>;
   requestGuest(
-    containerId: string,
+    runtimeHandle: string,
     path: string,
     init?: RequestInit,
   ): Promise<Response>;
   attachLogs(
-    containerId: string,
+    runtimeHandle: string,
     callback: (level: string, message: string) => void,
   ): Promise<void>;
-  getArchive(containerId: string, path: string): Promise<Readable>;
+  getArchive(runtimeHandle: string, path: string): Promise<Readable>;
   putArchive(
-    containerId: string,
+    runtimeHandle: string,
     stream: Readable,
     path: string,
   ): Promise<void>;
   readTextFile(
-    containerId: string,
+    runtimeHandle: string,
     path: string,
     maxBytes: number,
   ): Promise<Buffer>;
   validateTextFileWrite(
-    containerId: string,
+    runtimeHandle: string,
     path: string,
     maxBytes: number,
   ): Promise<void>;
   writeTextFile(
-    containerId: string,
+    runtimeHandle: string,
     path: string,
     content: string,
     maxBytes: number,
   ): Promise<void>;
   createExec(
-    containerId: string,
-    options: DockerExecCreateOptions,
-  ): Promise<DockerExecHandle>;
+    runtimeHandle: string,
+    options: RuntimeExecCreateOptions,
+  ): Promise<RuntimeExecHandle>;
   attachExecOutput(
     execId: string,
     callback: (level: string, message: string) => void,
   ): Promise<void>;
-  waitForExecExit(execId: string): Promise<DockerExecExitInfo>;
+  waitForExecExit(execId: string): Promise<RuntimeExecExitInfo>;
   killExec(execId: string, signal?: string): Promise<void>;
-  getContainerStats(containerId: string): Promise<ContainerStats>;
-  listContainerProcesses(containerId: string): Promise<ContainerProcess[]>;
+  getRuntimeStats(runtimeHandle: string): Promise<RuntimeStats>;
+  listRuntimeProcesses(runtimeHandle: string): Promise<RuntimeProcess[]>;
 }
