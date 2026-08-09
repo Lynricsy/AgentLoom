@@ -141,4 +141,17 @@ describe('envSchema', () => {
       ]),
     );
   });
+  it('默认关闭 sandbox maintenance mode', () => {
+    const result = envSchema.parse(createBaseEnv());
+
+    expect(result.APP_SANDBOX_MAINTENANCE_MODE).toBe(false);
+  });
+
+  it('显式启用 sandbox maintenance mode', () => {
+    const result = envSchema.parse(
+      createBaseEnv({ APP_SANDBOX_MAINTENANCE_MODE: 'true' }),
+    );
+
+    expect(result.APP_SANDBOX_MAINTENANCE_MODE).toBe(true);
+  });
 });

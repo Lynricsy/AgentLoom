@@ -72,6 +72,10 @@ const baseEnvSchema = z.object({
     .transform((val) => val === 'true'),
   APP_MINIO_BUCKET: z.string().min(1).default('agentloom-documents'),
 
+  APP_SANDBOX_MAINTENANCE_MODE: z
+    .enum(['true', 'false'])
+    .default('false')
+    .transform((value) => value === 'true'),
   APP_QDRANT_URL: z.string().url().default('http://localhost:6333'),
 });
 

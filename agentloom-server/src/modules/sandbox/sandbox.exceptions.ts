@@ -106,3 +106,14 @@ export class SandboxProcessesUnavailableException extends DomainException {
     });
   }
 }
+
+export class SandboxMaintenanceException extends DomainException {
+  constructor(action: 'create' | 'start') {
+    super({
+      type: 'https://agentloom.dev/errors/sandbox-maintenance',
+      title: '沙箱运行时正在维护',
+      status: HttpStatus.SERVICE_UNAVAILABLE,
+      detail: `Cannot ${action} sandbox while runtime maintenance mode is enabled`,
+    });
+  }
+}
