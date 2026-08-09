@@ -24,6 +24,18 @@ func NewMinIOStore(endpoint, accessKey, secretKey, bucket string, secure bool) (
 	return &MinIOStore{client: client, bucket: bucket}, nil
 }
 
+func (store *MinIOStore) Get(ctx context.Context, key string) (io.ReadCloser, error) {
+	object, err := store.client.GetObject(ctx, store.bucket, key, minio.GetObjectOptions{})
+	if err != nil {
+		return nil, err
+	}
+	if _, err := object.Stat(); err != nil {
+		object.Close()
+		return nil, err
+	}
+	return object, nil
+}
+
 func (store *MinIOStore) Put(
 	ctx context.Context,
 	key string,

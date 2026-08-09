@@ -9,6 +9,7 @@ export type SandboxLifecycleJobType =
   | 'stop'
   | 'destroy'
   | 'timeout_check'
+  | 'workspace_lease_renew'
   | 'conversation_idle_end_check';
 
 export interface SandboxLifecycleBinding {

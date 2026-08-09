@@ -15,6 +15,7 @@ import {
 import type { SandboxConfig, SandboxSession } from '../../../database/schema';
 import { SANDBOX_RUNTIME_DRIVER } from '../sandbox-runtime-driver.port';
 import { WorkspaceService } from '../../workspace/workspace.service';
+import { WorkspaceRuntimeLeaseService } from '../workspace-runtime-lease.service';
 
 const tenantTransactionMocks = vi.hoisted(() => ({
   runInTenantTransaction: vi.fn(
@@ -154,6 +155,7 @@ describe('SandboxService', () => {
   let mockLifecycleProducer: Record<string, ReturnType<typeof vi.fn>>;
   let mockDockerService: Record<string, ReturnType<typeof vi.fn>>;
   let mockWorkspaceService: Record<string, ReturnType<typeof vi.fn>>;
+  let mockWorkspaceLeaseService: Record<string, ReturnType<typeof vi.fn>>;
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -178,6 +180,8 @@ describe('SandboxService', () => {
       addConversationIdleEndCheckTask: vi.fn().mockResolvedValue(undefined),
       removeTimeoutCheckTask: vi.fn().mockResolvedValue(undefined),
       removeConversationIdleEndCheckTask: vi.fn().mockResolvedValue(undefined),
+      upsertWorkspaceLeaseRenewal: vi.fn().mockResolvedValue(undefined),
+      removeWorkspaceLeaseRenewal: vi.fn().mockResolvedValue(undefined),
     };
 
     mockDockerService = {
@@ -191,6 +195,19 @@ describe('SandboxService', () => {
     mockWorkspaceService = {
       syncFromSandboxContainer: vi.fn().mockResolvedValue(undefined),
       restoreToSandbox: vi.fn().mockResolvedValue(undefined),
+    };
+    mockWorkspaceLeaseService = {
+      acquire: vi.fn().mockResolvedValue({
+        workspaceId: 'workspace-1',
+        sandboxSessionId: TEST_SESSION_ID,
+        fencingToken: 1,
+      }),
+      renewOwned: vi.fn().mockResolvedValue({
+        workspaceId: 'workspace-1',
+        sandboxSessionId: TEST_SESSION_ID,
+        fencingToken: 1,
+      }),
+      release: vi.fn().mockResolvedValue(undefined),
     };
 
     vi.spyOn(Logger.prototype, 'log').mockImplementation(() => {});
@@ -213,6 +230,10 @@ describe('SandboxService', () => {
         {
           provide: WorkspaceService,
           useValue: mockWorkspaceService,
+        },
+        {
+          provide: WorkspaceRuntimeLeaseService,
+          useValue: mockWorkspaceLeaseService,
         },
       ],
     }).compile();
@@ -497,7 +518,7 @@ describe('SandboxService', () => {
       );
     });
 
-    it('resource 态 ready persistent sandbox attach 时若 workspace 已被其他沙箱挂载则不应重复恢复', async () => {
+    it('resource 态 ready persistent sandbox attach 时 lease 冲突应拒绝恢复', async () => {
       const persistentSession = buildSession({
         executionId: null,
         sandboxNodeId: null,
@@ -509,46 +530,29 @@ describe('SandboxService', () => {
           name: 'Persistent Sandbox',
         },
       });
-      const attachedSession = buildSession({
-        executionId: null,
-        agentConversationId: TEST_CONVERSATION_ID,
-        sandboxNodeId: null,
-        status: 'ready',
-        containerId: 'container-persistent',
-        config: {
-          ...TEST_CONFIG,
-          lifecycleMode: 'persistent',
-          name: 'Persistent Sandbox',
-          restoreWorkspaceId: 'workspace-hapi',
-          activeBindings: [
-            {
-              agentConversationId: TEST_CONVERSATION_ID,
-            },
-          ],
-        },
-      });
-      const updateChain = createUpdateChainNoReturn();
-
       db.select
         .mockReturnValueOnce(createSelectChainWithLimit([]))
-        .mockReturnValueOnce(createSelectChainWithLimit([persistentSession]))
-        .mockReturnValueOnce(createSelectChainWithLimit([attachedSession]));
-      db.execute.mockResolvedValueOnce({ rows: [{ count: 1 }] });
-      db.update.mockReturnValueOnce(updateChain);
+        .mockReturnValueOnce(createSelectChainWithLimit([persistentSession]));
+      mockWorkspaceLeaseService.acquire.mockRejectedValueOnce(
+        new Error('workspace lease conflict'),
+      );
 
-      await service.createSandboxSession({
-        sandboxNodeId: null,
-        config: {
-          ...TEST_CONFIG,
-          lifecycleMode: 'persistent',
-          persistentSandboxId: TEST_SESSION_ID,
-          restoreWorkspaceId: 'workspace-hapi',
-        },
-        tenantId: TEST_TENANT_ID,
-        agentConversationId: TEST_CONVERSATION_ID,
-      });
+      await expect(
+        service.createSandboxSession({
+          sandboxNodeId: null,
+          config: {
+            ...TEST_CONFIG,
+            lifecycleMode: 'persistent',
+            persistentSandboxId: TEST_SESSION_ID,
+            restoreWorkspaceId: 'workspace-hapi',
+          },
+          tenantId: TEST_TENANT_ID,
+          agentConversationId: TEST_CONVERSATION_ID,
+        }),
+      ).rejects.toThrow('workspace lease conflict');
 
       expect(mockWorkspaceService.restoreToSandbox).not.toHaveBeenCalled();
+      expect(db.update).not.toHaveBeenCalled();
     });
 
     it('failed 持久沙箱被 workflow 节点再次引用时应自动恢复并继续绑定', async () => {
@@ -1511,42 +1515,12 @@ describe('SandboxService', () => {
         'workspace-shared',
         'container-shared',
         TEST_TENANT_ID,
+        expect.objectContaining({ fencingToken: 1 }),
       );
       expect(
         mockWorkspaceService.syncFromSandboxContainer.mock
           .invocationCallOrder[0],
       ).toBeLessThan(updateChain.set.mock.invocationCallOrder[0]);
-    });
-
-    it('最后一个 binding 释放时若 workspace 仍被其他活跃沙箱挂载则不应提前同步', async () => {
-      const persistentSession = buildSession({
-        status: 'ready',
-        containerId: 'container-shared',
-        sandboxNodeId: 'sandbox-1',
-        config: {
-          ...TEST_CONFIG,
-          lifecycleMode: 'persistent',
-          restoreWorkspaceId: 'workspace-shared',
-        },
-      });
-      const updateChain = createUpdateChainNoReturn();
-
-      db.select
-        .mockReturnValueOnce(createSelectChainWithLimit([]))
-        .mockReturnValueOnce(createSelectChainWithLimit([persistentSession]));
-      db.execute.mockResolvedValueOnce({ rows: [{ count: 1 }] });
-      db.update.mockReturnValueOnce(updateChain);
-
-      await service.releaseExecutionSandbox(
-        TEST_EXECUTION_ID,
-        'sandbox-1',
-        TEST_TENANT_ID,
-      );
-
-      expect(
-        mockWorkspaceService.syncFromSandboxContainer,
-      ).not.toHaveBeenCalled();
-      expect(updateChain.set).toHaveBeenCalledOnce();
     });
   });
 
@@ -1749,6 +1723,7 @@ describe('SandboxService', () => {
         'workspace-conv',
         'container-conv',
         TEST_TENANT_ID,
+        expect.objectContaining({ fencingToken: 1 }),
       );
       expect(
         mockWorkspaceService.syncFromSandboxContainer.mock

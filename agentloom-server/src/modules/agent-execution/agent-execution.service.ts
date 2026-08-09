@@ -13,6 +13,7 @@ import type { DrizzleDB } from '../../database/database.module';
 import { agentConversations } from '../../database/schema/agent-conversations.schema';
 import { AgentConversationService } from '../agent-conversation/agent-conversation.service';
 import type { SendMessageDto } from '../agent-conversation/dto/send-message.dto';
+import { SandboxMaintenanceException } from '../sandbox/sandbox.exceptions';
 
 export const AGENT_CONVERSATION_EXECUTION_QUEUE =
   'agent-conversation-execution';
@@ -216,6 +217,9 @@ export class AgentExecutionService {
     conversationId: string,
     tenantId: string,
   ): Promise<void> {
+    if (process.env.APP_SANDBOX_MAINTENANCE_MODE === 'true') {
+      throw new SandboxMaintenanceException('execute');
+    }
     await this.dispatchAfterCommit(async () => {
       const activeRun = this.activeRuns.get(conversationId);
       if (activeRun) {

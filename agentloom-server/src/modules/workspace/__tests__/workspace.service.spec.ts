@@ -1,5 +1,10 @@
 import { Test } from '@nestjs/testing';
-import { BadRequestException, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Readable } from 'node:stream';
 import { PgDialect } from 'drizzle-orm/pg-core';
@@ -88,6 +93,11 @@ const TEST_WORKSPACE_ID = '00000000-0000-0000-0000-000000000040';
 const TEST_CONTAINER_ID = 'abc123def456';
 const TEST_CONTAINER_ARCHIVE_PATH = `/tmp/agentloom-workspace-restore-${TEST_WORKSPACE_ID}.tar`;
 const TEST_ARCHIVE_SIZE = Buffer.byteLength('fake-tar-data');
+const TEST_LEASE_TOKEN = {
+  workspaceId: TEST_WORKSPACE_ID,
+  sandboxSessionId: TEST_SESSION_ID,
+  fencingToken: 7,
+};
 
 function buildSnapshot(
   overrides?: Partial<WorkspaceSnapshot>,
@@ -302,6 +312,7 @@ describe('WorkspaceService', () => {
       update: vi.fn(),
       delete: vi.fn(),
       execute: vi.fn().mockResolvedValue({ rows: [] }),
+      transaction: vi.fn(async (operation) => operation(db)),
     };
 
     mockStorageService = {
@@ -483,6 +494,7 @@ describe('WorkspaceService', () => {
         TEST_WORKSPACE_ID,
         TEST_CONTAINER_ID,
         TEST_TENANT_ID,
+        TEST_LEASE_TOKEN,
       );
 
       expect(mockDockerService.getArchive).toHaveBeenCalledWith(
@@ -490,7 +502,9 @@ describe('WorkspaceService', () => {
         '/workspace/',
       );
       expect(mockStorageService.upload).toHaveBeenCalledWith(
-        snapshot.storageKey,
+        expect.stringContaining(
+          `${snapshot.storageKey}.runtime/${TEST_SESSION_ID}/7-`,
+        ),
         expect.any(Object),
         TEST_ARCHIVE_SIZE,
         'application/x-tar',
@@ -518,15 +532,42 @@ describe('WorkspaceService', () => {
         TEST_WORKSPACE_ID,
         TEST_CONTAINER_ID,
         TEST_TENANT_ID,
+        TEST_LEASE_TOKEN,
       );
 
       expect(mockStorageService.upload).toHaveBeenCalledWith(
-        updatedSnapshot.storageKey,
+        expect.stringContaining(
+          `${buildWorkspaceStorageKey(TEST_TENANT_ID, TEST_WORKSPACE_ID)}.runtime/${TEST_SESSION_ID}/7-`,
+        ),
         expect.any(Object),
         TEST_ARCHIVE_SIZE,
         'application/x-tar',
       );
       expect(result.storageKey).toBe(updatedSnapshot.storageKey);
+    });
+
+    it('fencing token 失效时不得发布快照并应删除临时对象', async () => {
+      const snapshot = buildSnapshot({ status: 'ready' });
+      db.select.mockReturnValueOnce(createSelectChainWithLimit([snapshot]));
+      db.update.mockReturnValueOnce(createUpdateChainReturning([]));
+
+      await expect(
+        service.syncFromSandboxContainer(
+          TEST_WORKSPACE_ID,
+          TEST_CONTAINER_ID,
+          TEST_TENANT_ID,
+          TEST_LEASE_TOKEN,
+        ),
+      ).rejects.toThrow(ConflictException);
+
+      expect(mockStorageService.delete).toHaveBeenCalledWith(
+        expect.stringContaining(
+          `${snapshot.storageKey}.runtime/${TEST_SESSION_ID}/7-`,
+        ),
+      );
+      expect(mockStorageService.delete).not.toHaveBeenCalledWith(
+        snapshot.storageKey,
+      );
     });
 
     it('目标工作区不存在时应当抛出 NotFoundException', async () => {
@@ -537,6 +578,7 @@ describe('WorkspaceService', () => {
           TEST_WORKSPACE_ID,
           TEST_CONTAINER_ID,
           TEST_TENANT_ID,
+          TEST_LEASE_TOKEN,
         ),
       ).rejects.toThrow(NotFoundException);
     });

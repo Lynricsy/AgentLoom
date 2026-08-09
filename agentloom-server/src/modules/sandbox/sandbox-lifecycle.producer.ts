@@ -150,6 +150,31 @@ export class SandboxLifecycleProducer {
     );
   }
 
+  async upsertWorkspaceLeaseRenewal(params: {
+    sessionId: string;
+    tenantId: string;
+  }): Promise<void> {
+    await this.queue.upsertJobScheduler(
+      `sandbox-workspace-lease-renew-${params.sessionId}`,
+      { every: 60_000 },
+      {
+        name: 'sandbox-workspace-lease-renew',
+        data: {
+          sessionId: params.sessionId,
+          tenantId: params.tenantId,
+          jobType: 'workspace_lease_renew',
+        },
+        opts: { attempts: 1 },
+      },
+    );
+  }
+
+  async removeWorkspaceLeaseRenewal(sessionId: string): Promise<void> {
+    await this.queue.removeJobScheduler(
+      `sandbox-workspace-lease-renew-${sessionId}`,
+    );
+  }
+
   async removeTimeoutCheckTask(sessionId: string): Promise<void> {
     const existingJob = await this.queue.getJob(`sandbox-timeout-${sessionId}`);
     if (existingJob) {

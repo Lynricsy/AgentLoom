@@ -321,10 +321,16 @@ export class WorkspaceIntegrationService {
       }
 
       if (restoreWorkspaceId) {
+        const leaseToken = await this.sandboxService.renewWorkspaceLease(
+          tenantId,
+          restoreWorkspaceId,
+          sandboxSession.id,
+        );
         await this.workspaceService.syncFromSandboxContainer(
           restoreWorkspaceId,
           sandboxSession.containerId,
           tenantId,
+          leaseToken,
         );
         return restoreWorkspaceId;
       }

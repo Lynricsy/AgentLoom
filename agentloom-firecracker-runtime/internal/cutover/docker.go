@@ -2,6 +2,7 @@ package cutover
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -70,6 +71,152 @@ func (runtime *DockerRuntime) Stop(ctx context.Context, containerID string, time
 		return nil
 	}
 	return dockerAPIError(response)
+}
+func (runtime *DockerRuntime) Start(ctx context.Context, containerID string) error {
+	response, err := runtime.do(ctx, http.MethodPost, fmt.Sprintf(
+		"http://docker/%s/containers/%s/start",
+		legacyDockerAPIVersion,
+		url.PathEscape(containerID),
+	), nil, "")
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode == http.StatusNoContent || response.StatusCode == http.StatusNotModified {
+		return nil
+	}
+	return dockerAPIError(response)
+}
+
+func (runtime *DockerRuntime) PutWorkspaceArchive(
+	ctx context.Context,
+	containerID string,
+	archive io.Reader,
+) error {
+	response, err := runtime.do(ctx, http.MethodPut, fmt.Sprintf(
+		"http://docker/%s/containers/%s/archive?path=%s",
+		legacyDockerAPIVersion,
+		url.PathEscape(containerID),
+		url.QueryEscape("/"),
+	), archive, "application/x-tar")
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return dockerAPIError(response)
+	}
+	return nil
+}
+
+func (runtime *DockerRuntime) ClearWorkspace(ctx context.Context, containerID string) error {
+	payload := strings.NewReader(`{"AttachStdout":true,"AttachStderr":true,"Cmd":["/bin/sh","-c","find /workspace -mindepth 1 -delete"]}`)
+	response, err := runtime.do(ctx, http.MethodPost, fmt.Sprintf(
+		"http://docker/%s/containers/%s/exec",
+		legacyDockerAPIVersion,
+		url.PathEscape(containerID),
+	), payload, "application/json")
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusCreated {
+		return dockerAPIError(response)
+	}
+	var created struct {
+		ID string `json:"Id"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&created); err != nil {
+		return err
+	}
+	startPayload := strings.NewReader(`{"Detach":false,"Tty":false}`)
+	start, err := runtime.do(ctx, http.MethodPost, fmt.Sprintf(
+		"http://docker/%s/exec/%s/start",
+		legacyDockerAPIVersion,
+		url.PathEscape(created.ID),
+	), startPayload, "application/json")
+	if err != nil {
+		return err
+	}
+	defer start.Body.Close()
+	if start.StatusCode != http.StatusOK {
+		return dockerAPIError(start)
+	}
+	if _, err := io.Copy(io.Discard, start.Body); err != nil {
+		return err
+	}
+	inspect, err := runtime.do(ctx, http.MethodGet, fmt.Sprintf(
+		"http://docker/%s/exec/%s/json",
+		legacyDockerAPIVersion,
+		url.PathEscape(created.ID),
+	), nil, "")
+	if err != nil {
+		return err
+	}
+	defer inspect.Body.Close()
+	if inspect.StatusCode != http.StatusOK {
+		return dockerAPIError(inspect)
+	}
+	var result struct {
+		Running  bool `json:"Running"`
+		ExitCode int  `json:"ExitCode"`
+	}
+	if err := json.NewDecoder(inspect.Body).Decode(&result); err != nil {
+		return err
+	}
+	if result.Running || result.ExitCode != 0 {
+		return fmt.Errorf("legacy workspace cleanup failed: running=%t exitCode=%d", result.Running, result.ExitCode)
+	}
+	return nil
+}
+
+func (runtime *DockerRuntime) DeleteContainer(ctx context.Context, containerID string) error {
+	response, err := runtime.do(ctx, http.MethodDelete, fmt.Sprintf(
+		"http://docker/%s/containers/%s?v=1&force=0",
+		legacyDockerAPIVersion,
+		url.PathEscape(containerID),
+	), nil, "")
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode == http.StatusNoContent || response.StatusCode == http.StatusNotFound {
+		return nil
+	}
+	return dockerAPIError(response)
+}
+
+func (runtime *DockerRuntime) DeleteVolume(ctx context.Context, volumeName string) error {
+	response, err := runtime.do(ctx, http.MethodDelete, fmt.Sprintf(
+		"http://docker/%s/volumes/%s",
+		legacyDockerAPIVersion,
+		url.PathEscape(volumeName),
+	), nil, "")
+	if err != nil {
+		return err
+	}
+	defer response.Body.Close()
+	if response.StatusCode == http.StatusNoContent || response.StatusCode == http.StatusNotFound {
+		return nil
+	}
+	return dockerAPIError(response)
+}
+
+func (runtime *DockerRuntime) do(
+	ctx context.Context,
+	method string,
+	endpoint string,
+	body io.Reader,
+	contentType string,
+) (*http.Response, error) {
+	request, err := http.NewRequestWithContext(ctx, method, endpoint, body)
+	if err != nil {
+		return nil, err
+	}
+	if contentType != "" {
+		request.Header.Set("Content-Type", contentType)
+	}
+	return runtime.client.Do(request)
 }
 
 func (runtime *DockerRuntime) WorkspaceArchive(ctx context.Context, containerID string) (io.ReadCloser, error) {

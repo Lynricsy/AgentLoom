@@ -69,6 +69,11 @@ func resourcesFromRequest(request CreateRequest) (Resources, error) {
 	if err := ValidateSessionID(request.ID); err != nil {
 		return Resources{}, err
 	}
+	if request.WorkspaceID != "" {
+		if err := ValidateSessionID(request.WorkspaceID); err != nil {
+			return Resources{}, fmt.Errorf("%w: workspace id must be a lowercase UUID", ErrInvalid)
+		}
+	}
 	if request.CPU < 0.5 || request.CPU > 4 || request.MemoryMiB < 256 || request.MemoryMiB > 4096 ||
 		request.DiskGiB < 1 || request.DiskGiB > 10 {
 		return Resources{}, fmt.Errorf("%w: resources outside supported bounds", ErrInvalid)
@@ -89,13 +94,27 @@ func (manager *Manager) Create(ctx context.Context, request CreateRequest) (Meta
 	if err != nil {
 		return Metadata{}, err
 	}
+	workspaceID := request.WorkspaceID
+	if workspaceID == "" {
+		workspaceID = request.ID
+	}
 	if existing, readErr := manager.store.Read(request.ID); readErr == nil {
-		if existing.Resources != resources || existing.LifecycleMode != request.LifecycleMode {
-			return Metadata{}, &OperationError{Kind: ErrConflict, Op: "create", Err: errors.New("immutable resources differ")}
+		if existing.Resources != resources || existing.LifecycleMode != request.LifecycleMode ||
+			existing.WorkspaceID != workspaceID {
+			return Metadata{}, &OperationError{Kind: ErrConflict, Op: "create", Err: errors.New("immutable runtime configuration differs")}
 		}
 		return existing, nil
 	} else if !errors.Is(readErr, ErrNotFound) {
 		return Metadata{}, readErr
+	}
+	if conflict, conflictErr := manager.workspaceConflict(request.ID, workspaceID); conflictErr != nil {
+		return Metadata{}, conflictErr
+	} else if conflict != "" {
+		return Metadata{}, &OperationError{
+			Kind: ErrConflict,
+			Op:   "create",
+			Err:  fmt.Errorf("workspace is active in runtime %s", conflict),
+		}
 	}
 
 	artifacts := manager.artifacts.Current()
@@ -107,7 +126,7 @@ func (manager *Manager) Create(ctx context.Context, request CreateRequest) (Meta
 	}
 	now := manager.now().UTC()
 	metadata := Metadata{SchemaVersion: 1, SessionID: request.ID, ArtifactDigest: artifacts.Digest, Resources: resources,
-		LifecycleMode: request.LifecycleMode, State: StateCreating, CreatedAt: now, UpdatedAt: now}
+		LifecycleMode: request.LifecycleMode, WorkspaceID: workspaceID, State: StateCreating, CreatedAt: now, UpdatedAt: now}
 	if err := manager.store.Write(metadata); err != nil {
 		manager.capacity.Delete(request.ID)
 		return Metadata{}, err
@@ -175,6 +194,22 @@ func newGuestToken() (string, error) {
 	return hex.EncodeToString(value), nil
 }
 
+func (manager *Manager) workspaceConflict(sessionID, workspaceID string) (string, error) {
+	all, err := manager.store.ReadAll()
+	if err != nil {
+		return "", err
+	}
+	for _, candidate := range all {
+		if candidate.SessionID == sessionID || candidate.WorkspaceID != workspaceID {
+			continue
+		}
+		if candidate.State == StateRunning || candidate.State == StateCreating || candidate.State == StateStopping {
+			return candidate.SessionID, nil
+		}
+	}
+	return "", nil
+}
+
 func (manager *Manager) Inspect(id string) (Metadata, error) {
 	manager.mutex.Lock()
 	defer manager.mutex.Unlock()
@@ -200,6 +235,15 @@ func (manager *Manager) Start(ctx context.Context, id string) (Metadata, error) 
 	}
 	if metadata.State != StateStopped {
 		return Metadata{}, &OperationError{Kind: ErrConflict, Op: "start", Err: fmt.Errorf("state is %s", metadata.State)}
+	}
+	if conflict, conflictErr := manager.workspaceConflict(id, metadata.WorkspaceID); conflictErr != nil {
+		return Metadata{}, conflictErr
+	} else if conflict != "" {
+		return Metadata{}, &OperationError{
+			Kind: ErrConflict,
+			Op:   "start",
+			Err:  fmt.Errorf("workspace is active in runtime %s", conflict),
+		}
 	}
 	if err := manager.capacity.Reserve(id, metadata.Resources, true); err != nil {
 		return Metadata{}, &OperationError{Kind: err, Op: "reserve capacity", Err: err}

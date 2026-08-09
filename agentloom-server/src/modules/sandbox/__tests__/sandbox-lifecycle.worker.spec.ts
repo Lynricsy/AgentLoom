@@ -27,6 +27,8 @@ const mockLifecycleProducer = {
   }),
   removeTimeoutCheckTask: vi.fn().mockResolvedValue(undefined),
   removeConversationIdleEndCheckTask: vi.fn().mockResolvedValue(undefined),
+  upsertWorkspaceLeaseRenewal: vi.fn().mockResolvedValue(undefined),
+  removeWorkspaceLeaseRenewal: vi.fn().mockResolvedValue(undefined),
 };
 
 const mockStorageService = {
@@ -34,6 +36,20 @@ const mockStorageService = {
 };
 const mockModuleRef = {
   get: vi.fn(),
+};
+const mockWorkspaceLeaseService = {
+  acquire: vi.fn().mockResolvedValue({
+    workspaceId: 'workspace-1',
+    sandboxSessionId: 's1',
+    fencingToken: 1,
+  }),
+  renewOwned: vi.fn().mockResolvedValue({
+    workspaceId: 'workspace-1',
+    sandboxSessionId: 's1',
+    fencingToken: 1,
+  }),
+  assertHeld: vi.fn().mockResolvedValue(undefined),
+  release: vi.fn().mockResolvedValue(undefined),
 };
 
 const mockUpdate = vi.fn().mockReturnThis();
@@ -145,6 +161,29 @@ describe('SandboxLifecycleWorker', () => {
       mockSandboxService as any,
       mockLifecycleProducer as any,
       mockStorageService as any,
+      mockWorkspaceLeaseService as any,
+    );
+  });
+  it('workspace lease scheduler 应周期续租运行中的 sandbox', async () => {
+    mockSandboxService.getSessionById.mockResolvedValueOnce({
+      id: 's1',
+      status: 'ready',
+      config: { ...DEFAULT_CONFIG, restoreWorkspaceId: 'ws-1' },
+    });
+
+    await worker.process(
+      createJob({
+        jobType: 'workspace_lease_renew',
+        sessionId: 's1',
+        tenantId: 't1',
+      }),
+    );
+
+    expect(mockWorkspaceLeaseService.renewOwned).toHaveBeenCalledWith(
+      't1',
+      'ws-1',
+      's1',
+      2 * 60_000,
     );
   });
 
@@ -356,6 +395,7 @@ describe('SandboxLifecycleWorker', () => {
         mockSandboxService as any,
         mockLifecycleProducer as any,
         mockStorageService as any,
+        mockWorkspaceLeaseService as any,
       );
 
       await workerWithModuleRef.process(
@@ -376,38 +416,27 @@ describe('SandboxLifecycleWorker', () => {
       );
     });
 
-    it('workspace 已被其他活跃沙箱挂载��不应重复恢复', async () => {
-      const mockWorkspaceService = {
-        restoreToSandbox: vi.fn().mockResolvedValue(undefined),
-      };
-      const mockModuleRef = {
-        get: vi.fn().mockReturnValue(mockWorkspaceService),
-      };
-
-      const workerWithModuleRef = new SandboxLifecycleWorker(
-        {} as any,
-        mockModuleRef as any,
-        mockDockerService as any,
-        mockSandboxService as any,
-        mockLifecycleProducer as any,
-        mockStorageService as any,
-      );
-      mockTenantDb.execute.mockResolvedValueOnce({ rows: [{ count: 1 }] });
-
-      await workerWithModuleRef.process(
-        createJob({
-          jobType: 'create',
-          sessionId: 's1',
-          executionId: 'e1',
-          tenantId: 't1',
-          config: { ...DEFAULT_CONFIG, restoreWorkspaceId: 'ws-1' },
-        }),
+    it('workspace lease 已被占用时应拒绝创建运行时', async () => {
+      mockWorkspaceLeaseService.acquire.mockRejectedValueOnce(
+        new Error('workspace lease conflict'),
       );
 
-      expect(mockWorkspaceService.restoreToSandbox).not.toHaveBeenCalled();
+      await expect(
+        worker.process(
+          createJob({
+            jobType: 'create',
+            sessionId: 's1',
+            executionId: 'e1',
+            tenantId: 't1',
+            config: { ...DEFAULT_CONFIG, restoreWorkspaceId: 'ws-1' },
+          }),
+        ),
+      ).rejects.toThrow('workspace lease conflict');
+
+      expect(mockDockerService.createContainer).not.toHaveBeenCalled();
     });
 
-    it('工作区恢复失败时不阻塞沙箱创建', async () => {
+    it('工作区恢复失败时应使沙箱创建失败并释放 lease', async () => {
       const mockWorkspaceService = {
         restoreToSandbox: vi
           .fn()
@@ -424,21 +453,25 @@ describe('SandboxLifecycleWorker', () => {
         mockSandboxService as any,
         mockLifecycleProducer as any,
         mockStorageService as any,
+        mockWorkspaceLeaseService as any,
       );
 
-      await workerWithModuleRef.process(
-        createJob({
-          jobType: 'create',
-          sessionId: 's1',
-          executionId: 'e1',
-          tenantId: 't1',
-          config: { ...DEFAULT_CONFIG, restoreWorkspaceId: 'ws-1' },
-        }),
-      );
+      await expect(
+        workerWithModuleRef.process(
+          createJob({
+            jobType: 'create',
+            sessionId: 's1',
+            executionId: 'e1',
+            tenantId: 't1',
+            config: { ...DEFAULT_CONFIG, restoreWorkspaceId: 'ws-1' },
+          }),
+        ),
+      ).rejects.toThrow('Workspace restore failed');
 
       expect(mockWorkspaceService.restoreToSandbox).toHaveBeenCalled();
-      expect(mockDockerService.attachLogs).toHaveBeenCalled();
-      expect(mockLifecycleProducer.addTimeoutCheckTask).toHaveBeenCalled();
+      expect(mockDockerService.removeContainer).toHaveBeenCalled();
+      expect(mockWorkspaceLeaseService.release).toHaveBeenCalled();
+      expect(mockDockerService.attachLogs).not.toHaveBeenCalled();
     });
   });
 
@@ -566,6 +599,7 @@ describe('SandboxLifecycleWorker', () => {
         mockSandboxService as any,
         mockLifecycleProducer as any,
         mockStorageService as any,
+        mockWorkspaceLeaseService as any,
       );
       mockLimit.mockResolvedValueOnce([
         {
@@ -588,50 +622,15 @@ describe('SandboxLifecycleWorker', () => {
 
       expect(
         mockWorkspaceService.syncFromSandboxContainer,
-      ).toHaveBeenCalledWith('ws-1', 'c-123', 't1');
+      ).toHaveBeenCalledWith(
+        'ws-1',
+        'c-123',
+        't1',
+        expect.objectContaining({ fencingToken: 1 }),
+      );
       expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
       expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123', {
-        removeVolumes: false,
-      });
-    });
-
-    it('workspace 仍被其他活跃沙箱挂载时销毁不应提前回写 snapshot', async () => {
-      const mockWorkspaceService = {
-        syncFromSandboxContainer: vi.fn().mockResolvedValue(undefined),
-      };
-      const workerWithModuleRef = new SandboxLifecycleWorker(
-        {} as any,
-        { get: vi.fn().mockReturnValue(mockWorkspaceService) } as any,
-        mockDockerService as any,
-        mockSandboxService as any,
-        mockLifecycleProducer as any,
-        mockStorageService as any,
-      );
-      mockLimit.mockResolvedValueOnce([
-        {
-          config: {
-            ...DEFAULT_CONFIG,
-            restoreWorkspaceId: 'ws-1',
-          },
-        },
-      ]);
-      mockTenantDb.execute.mockResolvedValueOnce({ rows: [{ count: 1 }] });
-
-      await workerWithModuleRef.process(
-        createJob({
-          jobType: 'destroy',
-          sessionId: 's1',
-          executionId: 'e1',
-          tenantId: 't1',
-          containerId: 'c-123',
-        }),
-      );
-
-      expect(
-        mockWorkspaceService.syncFromSandboxContainer,
-      ).not.toHaveBeenCalled();
-      expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123', {
-        removeVolumes: false,
+        removeVolumes: true,
       });
     });
 
@@ -827,6 +826,7 @@ describe('SandboxLifecycleWorker', () => {
         mockSandboxService as any,
         mockLifecycleProducer as any,
         mockStorageService as any,
+        mockWorkspaceLeaseService as any,
       );
 
       await workerWithModuleRef.process(
@@ -846,7 +846,12 @@ describe('SandboxLifecycleWorker', () => {
 
       expect(
         mockWorkspaceService.syncFromSandboxContainer,
-      ).toHaveBeenCalledWith('ws-1', 'c-123', 't1');
+      ).toHaveBeenCalledWith(
+        'ws-1',
+        'c-123',
+        't1',
+        expect.objectContaining({ fencingToken: 1 }),
+      );
       expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
     });
   });
@@ -1185,6 +1190,7 @@ describe('SandboxLifecycleWorker', () => {
         mockSandboxService as any,
         mockLifecycleProducer as any,
         mockStorageService as any,
+        mockWorkspaceLeaseService as any,
       );
       mockSandboxService.getSessionById.mockResolvedValueOnce({
         id: 's1',
@@ -1213,10 +1219,15 @@ describe('SandboxLifecycleWorker', () => {
 
       expect(
         mockWorkspaceService.syncFromSandboxContainer,
-      ).toHaveBeenCalledWith('ws-1', 'c-123', 't1');
+      ).toHaveBeenCalledWith(
+        'ws-1',
+        'c-123',
+        't1',
+        expect.objectContaining({ fencingToken: 1 }),
+      );
       expect(mockDockerService.stopContainer).toHaveBeenCalledWith('c-123');
       expect(mockDockerService.removeContainer).toHaveBeenCalledWith('c-123', {
-        removeVolumes: false,
+        removeVolumes: true,
       });
     });
 

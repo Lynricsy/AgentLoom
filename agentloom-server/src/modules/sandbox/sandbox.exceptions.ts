@@ -108,7 +108,7 @@ export class SandboxProcessesUnavailableException extends DomainException {
 }
 
 export class SandboxMaintenanceException extends DomainException {
-  constructor(action: 'create' | 'start') {
+  constructor(action: 'create' | 'start' | 'execute') {
     super({
       type: 'https://agentloom.dev/errors/sandbox-maintenance',
       title: '沙箱运行时正在维护',
