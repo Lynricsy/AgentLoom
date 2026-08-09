@@ -141,3 +141,4 @@ agentloom_mobile/android/app/google-services.json
 # AI tool configs
 .agents/
 .codex/
+.agent-logs/
