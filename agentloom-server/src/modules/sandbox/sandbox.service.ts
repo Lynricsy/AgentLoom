@@ -29,8 +29,8 @@ import { SandboxLifecycleProducer } from './sandbox-lifecycle.producer';
 import type { PiConfigInput } from './pi-config-generator.service';
 import {
   SANDBOX_RUNTIME_DRIVER,
-  type ContainerProcess,
-  type ContainerStats,
+  type RuntimeProcess,
+  type RuntimeStats,
   type SandboxRuntimeDriver,
 } from './sandbox-runtime-driver.port';
 import {
@@ -77,7 +77,7 @@ export class SandboxService {
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
     private readonly lifecycleProducer: SandboxLifecycleProducer,
     @Inject(SANDBOX_RUNTIME_DRIVER)
-    private readonly dockerService: SandboxRuntimeDriver,
+    private readonly runtimeDriver: SandboxRuntimeDriver,
     private readonly moduleRef: ModuleRef,
     private readonly workspaceLeaseService: WorkspaceRuntimeLeaseService,
   ) {}
@@ -213,7 +213,7 @@ export class SandboxService {
   async getConversationSandboxStats(
     agentConversationId: string,
     tenantId: string,
-  ): Promise<ContainerStats> {
+  ): Promise<RuntimeStats> {
     const session = await this.findByConversationId(
       agentConversationId,
       tenantId,
@@ -229,7 +229,7 @@ export class SandboxService {
   async getConversationSandboxProcesses(
     agentConversationId: string,
     tenantId: string,
-  ): Promise<ContainerProcess[]> {
+  ): Promise<RuntimeProcess[]> {
     const session = await this.findByConversationId(
       agentConversationId,
       tenantId,
@@ -299,7 +299,7 @@ export class SandboxService {
     metadata?: Partial<
       Pick<
         SandboxSession,
-        'containerId' | 'workspacePath' | 'startedAt' | 'stoppedAt'
+        'runtimeHandle' | 'workspacePath' | 'startedAt' | 'stoppedAt'
       >
     >,
   ): Promise<void> {
@@ -466,7 +466,9 @@ export class SandboxService {
         ...(session.sandboxNodeId
           ? { sandboxNodeId: session.sandboxNodeId }
           : {}),
-        ...(session.containerId ? { containerId: session.containerId } : {}),
+        ...(session.runtimeHandle
+          ? { runtimeHandle: session.runtimeHandle }
+          : {}),
         ...(session.config.persistencePath
           ? { persistencePath: session.config.persistencePath }
           : {}),
@@ -1070,7 +1072,7 @@ export class SandboxService {
     tenantId: string,
     remainingBindings: SandboxBindingRef[],
   ): Promise<void> {
-    if (remainingBindings.length > 0 || !session.containerId) {
+    if (remainingBindings.length > 0 || !session.runtimeHandle) {
       return;
     }
 
@@ -1101,7 +1103,7 @@ export class SandboxService {
     try {
       await workspaceService.syncFromSandboxContainer(
         restoreWorkspaceId,
-        session.containerId,
+        session.runtimeHandle,
         tenantId,
         leaseToken,
       );
@@ -1214,7 +1216,7 @@ export class SandboxService {
       const shouldRestoreReadySandbox =
         existingBindings.length === 0 &&
         session.status === 'ready' &&
-        typeof session.containerId === 'string' &&
+        typeof session.runtimeHandle === 'string' &&
         incomingRestoreWorkspaceId !== null;
 
       if (shouldRestoreReadySandbox) {
@@ -1239,7 +1241,7 @@ export class SandboxService {
         try {
           await workspaceService.restoreToSandbox(
             incomingRestoreWorkspaceId,
-            session.containerId!,
+            session.runtimeHandle!,
             params.tenantId,
           );
         } catch (error) {
@@ -1456,7 +1458,7 @@ export class SandboxService {
     return session;
   }
 
-  async getContainerStats(sessionId: string): Promise<ContainerStats> {
+  async getRuntimeStats(sessionId: string): Promise<RuntimeStats> {
     const session = await this.getSessionById(sessionId);
 
     return this.buildContainerStats(session);
@@ -1464,11 +1466,11 @@ export class SandboxService {
 
   private async buildContainerStats(
     session: SandboxSession,
-  ): Promise<ContainerStats> {
+  ): Promise<RuntimeStats> {
     const runtimeSession =
       await this.reconcileUnavailableRuntimeSession(session);
     if (
-      !runtimeSession.containerId ||
+      !runtimeSession.runtimeHandle ||
       TERMINAL_STATUSES.includes(
         runtimeSession.status as (typeof TERMINAL_STATUSES)[number],
       )
@@ -1476,14 +1478,14 @@ export class SandboxService {
       throw new SandboxStatsUnavailableException(runtimeSession.id);
     }
 
-    let stats: ContainerStats;
+    let stats: RuntimeStats;
     try {
-      stats = await this.dockerService.getContainerStats(
-        runtimeSession.containerId,
+      stats = await this.runtimeDriver.getRuntimeStats(
+        runtimeSession.runtimeHandle,
       );
     } catch (error) {
       this.logger.warn(
-        `Container stats unavailable for sandbox ${runtimeSession.id} (${runtimeSession.containerId}): ${error instanceof Error ? error.message : String(error)}`,
+        `Container stats unavailable for sandbox ${runtimeSession.id} (${runtimeSession.runtimeHandle}): ${error instanceof Error ? error.message : String(error)}`,
       );
       await this.reconcileUnavailableRuntimeSession(runtimeSession, {
         force: true,
@@ -1501,11 +1503,11 @@ export class SandboxService {
 
   private async buildContainerProcesses(
     session: SandboxSession,
-  ): Promise<ContainerProcess[]> {
+  ): Promise<RuntimeProcess[]> {
     const runtimeSession =
       await this.reconcileUnavailableRuntimeSession(session);
     if (
-      !runtimeSession.containerId ||
+      !runtimeSession.runtimeHandle ||
       TERMINAL_STATUSES.includes(
         runtimeSession.status as (typeof TERMINAL_STATUSES)[number],
       )
@@ -1514,12 +1516,12 @@ export class SandboxService {
     }
 
     try {
-      return await this.dockerService.listContainerProcesses(
-        runtimeSession.containerId,
+      return await this.runtimeDriver.listRuntimeProcesses(
+        runtimeSession.runtimeHandle,
       );
     } catch (error) {
       this.logger.warn(
-        `Container process list unavailable for sandbox ${runtimeSession.id} (${runtimeSession.containerId}): ${error instanceof Error ? error.message : String(error)}`,
+        `Container process list unavailable for sandbox ${runtimeSession.id} (${runtimeSession.runtimeHandle}): ${error instanceof Error ? error.message : String(error)}`,
       );
       await this.reconcileUnavailableRuntimeSession(runtimeSession, {
         force: true,
@@ -1551,18 +1553,18 @@ export class SandboxService {
       return session;
     }
 
-    if (!session.containerId) {
+    if (!session.runtimeHandle) {
       return session;
     }
-    const runtimeAvailable = await this.dockerService.healthCheck(
-      session.containerId,
+    const runtimeAvailable = await this.runtimeDriver.healthCheck(
+      session.runtimeHandle,
     );
     if (runtimeAvailable) {
       return session;
     }
 
-    const runtime = await this.dockerService.inspectRuntime(
-      session.containerId,
+    const runtime = await this.runtimeDriver.inspectRuntime(
+      session.runtimeHandle,
     );
     const reconciledStatus =
       runtime.state === 'stopped' ? ('stopped' as const) : ('failed' as const);
@@ -1590,7 +1592,7 @@ export class SandboxService {
 
     if (updatedSession) {
       this.logger.warn(
-        `Sandbox ${session.id} reconciled to ${reconciledStatus}; Firecracker runtime ${session.containerId} remains attached with state ${runtime.state}`,
+        `Sandbox ${session.id} reconciled to ${reconciledStatus}; Firecracker runtime ${session.runtimeHandle} remains attached with state ${runtime.state}`,
       );
       return updatedSession;
     }
@@ -1633,7 +1635,9 @@ export class SandboxService {
           ...(session.sandboxNodeId
             ? { sandboxNodeId: session.sandboxNodeId }
             : {}),
-          ...(session.containerId ? { containerId: session.containerId } : {}),
+          ...(session.runtimeHandle
+            ? { runtimeHandle: session.runtimeHandle }
+            : {}),
           ...(session.config.persistencePath
             ? { persistencePath: session.config.persistencePath }
             : {}),
@@ -1651,7 +1655,9 @@ export class SandboxService {
         ...(session.sandboxNodeId
           ? { sandboxNodeId: session.sandboxNodeId }
           : {}),
-        ...(session.containerId ? { containerId: session.containerId } : {}),
+        ...(session.runtimeHandle
+          ? { runtimeHandle: session.runtimeHandle }
+          : {}),
         ...(session.config.persistencePath
           ? { persistencePath: session.config.persistencePath }
           : {}),
@@ -1683,15 +1689,15 @@ export class SandboxService {
       );
     }
 
-    if (!session.containerId) {
+    if (!session.runtimeHandle) {
       throw new SandboxInvalidStateException(
         sessionId,
         session.status,
         'start without a durable runtime handle',
       );
     }
-    const runtime = await this.dockerService.inspectRuntime(
-      session.containerId,
+    const runtime = await this.runtimeDriver.inspectRuntime(
+      session.runtimeHandle,
     );
     if (runtime.state !== 'stopped') {
       throw new SandboxInvalidStateException(
@@ -1712,7 +1718,7 @@ export class SandboxService {
       await this.lifecycleProducer.addStartTask({
         sessionId,
         tenantId,
-        containerId: session.containerId!,
+        runtimeHandle: session.runtimeHandle!,
         config: session.config,
         ...(session.executionId ? { executionId: session.executionId } : {}),
         ...(session.agentConversationId
@@ -1740,16 +1746,16 @@ export class SandboxService {
     await this.lifecycleProducer.removeTimeoutCheckTask(sessionId);
     await this.lifecycleProducer.removeConversationIdleEndCheckTask(sessionId);
 
-    if (session.containerId) {
+    if (session.runtimeHandle) {
       try {
         if (
           !TERMINAL_STATUSES.includes(
             session.status as (typeof TERMINAL_STATUSES)[number],
           )
         ) {
-          await this.dockerService.stopContainer(session.containerId);
+          await this.runtimeDriver.stopRuntime(session.runtimeHandle);
         }
-        await this.dockerService.removeContainer(session.containerId, {
+        await this.runtimeDriver.deleteRuntime(session.runtimeHandle, {
           removeVolumes: this.shouldRemoveContainerVolumes(session.config),
         });
       } catch (error) {

@@ -23,7 +23,7 @@ export interface SandboxLifecycleJobData extends SandboxLifecycleBinding {
   tenantId: string;
   jobType: SandboxLifecycleJobType;
   config?: SandboxConfig;
-  containerId?: string;
+  runtimeHandle?: string;
   persistencePath?: string;
   piConfigInput?: PiConfigInput;
 }

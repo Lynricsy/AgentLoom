@@ -123,7 +123,7 @@ function buildSandboxSession(overrides?: Record<string, unknown>) {
   return {
     id: TEST_SESSION_ID,
     tenantId: TEST_TENANT_ID,
-    containerId: TEST_CONTAINER_ID,
+    runtimeHandle: TEST_CONTAINER_ID,
     status: 'ready',
     ...overrides,
   };
@@ -301,7 +301,7 @@ describe('WorkspaceService', () => {
   let service: WorkspaceService;
   let db: Record<string, ReturnType<typeof vi.fn>>;
   let mockStorageService: Record<string, ReturnType<typeof vi.fn>>;
-  let mockDockerService: Record<string, ReturnType<typeof vi.fn>>;
+  let mockRuntimeDriver: Record<string, ReturnType<typeof vi.fn>>;
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -321,7 +321,7 @@ describe('WorkspaceService', () => {
       delete: vi.fn().mockResolvedValue(undefined),
     };
 
-    mockDockerService = {
+    mockRuntimeDriver = {
       getArchive: vi.fn().mockResolvedValue(createReadableStream()),
       putArchive: vi.fn().mockResolvedValue(undefined),
       createExec: vi.fn(),
@@ -342,7 +342,7 @@ describe('WorkspaceService', () => {
         WorkspaceService,
         { provide: DRIZZLE, useValue: db },
         { provide: StorageService, useValue: mockStorageService },
-        { provide: SANDBOX_RUNTIME_DRIVER, useValue: mockDockerService },
+        { provide: SANDBOX_RUNTIME_DRIVER, useValue: mockRuntimeDriver },
       ],
     }).compile();
 
@@ -377,7 +377,7 @@ describe('WorkspaceService', () => {
       );
 
       expect(result.status).toBe('ready');
-      expect(mockDockerService.getArchive).toHaveBeenCalledWith(
+      expect(mockRuntimeDriver.getArchive).toHaveBeenCalledWith(
         TEST_CONTAINER_ID,
         '/workspace/',
       );
@@ -404,8 +404,8 @@ describe('WorkspaceService', () => {
       ).rejects.toThrow(NotFoundException);
     });
 
-    it('沙箱容器未就绪（containerId 为空）时应当抛出 NotFoundException', async () => {
-      const session = buildSandboxSession({ containerId: null });
+    it('沙箱容器未就绪（runtimeHandle 为空）时应当抛出 NotFoundException', async () => {
+      const session = buildSandboxSession({ runtimeHandle: null });
       db.select.mockReturnValueOnce(createSelectChainWithLimit([session]));
 
       await expect(
@@ -428,7 +428,7 @@ describe('WorkspaceService', () => {
         createInsertChainReturning([creatingSnapshot]),
       );
       db.update.mockReturnValueOnce(createUpdateChainNoReturning());
-      mockDockerService.getArchive.mockRejectedValueOnce(
+      mockRuntimeDriver.getArchive.mockRejectedValueOnce(
         new Error('Docker unavailable'),
       );
 
@@ -497,7 +497,7 @@ describe('WorkspaceService', () => {
         TEST_LEASE_TOKEN,
       );
 
-      expect(mockDockerService.getArchive).toHaveBeenCalledWith(
+      expect(mockRuntimeDriver.getArchive).toHaveBeenCalledWith(
         TEST_CONTAINER_ID,
         '/workspace/',
       );
@@ -590,7 +590,7 @@ describe('WorkspaceService', () => {
     it('应当从 MinIO 下载归档并恢复到 Docker 容器', async () => {
       const snapshot = buildSnapshot({ status: 'ready' });
       db.select.mockReturnValueOnce(createSelectChainWithLimit([snapshot]));
-      mockDockerService.createExec
+      mockRuntimeDriver.createExec
         .mockResolvedValueOnce({ execId: 'exec-apply' })
         .mockResolvedValueOnce({ execId: 'exec-cleanup' });
 
@@ -603,12 +603,12 @@ describe('WorkspaceService', () => {
       expect(mockStorageService.download).toHaveBeenCalledWith(
         snapshot.storageKey,
       );
-      expect(mockDockerService.putArchive).toHaveBeenCalledWith(
+      expect(mockRuntimeDriver.putArchive).toHaveBeenCalledWith(
         TEST_CONTAINER_ID,
         expect.any(Object),
         '/tmp',
       );
-      expect(mockDockerService.createExec).toHaveBeenNthCalledWith(
+      expect(mockRuntimeDriver.createExec).toHaveBeenNthCalledWith(
         1,
         TEST_CONTAINER_ID,
         {
@@ -619,7 +619,7 @@ describe('WorkspaceService', () => {
           ],
         },
       );
-      expect(mockDockerService.createExec).toHaveBeenNthCalledWith(
+      expect(mockRuntimeDriver.createExec).toHaveBeenNthCalledWith(
         2,
         TEST_CONTAINER_ID,
         {
@@ -632,10 +632,10 @@ describe('WorkspaceService', () => {
     it('恢复命令失败时应当抛错并仍尝试清理临时目录', async () => {
       const snapshot = buildSnapshot({ status: 'ready' });
       db.select.mockReturnValueOnce(createSelectChainWithLimit([snapshot]));
-      mockDockerService.createExec
+      mockRuntimeDriver.createExec
         .mockResolvedValueOnce({ execId: 'exec-apply' })
         .mockResolvedValueOnce({ execId: 'exec-cleanup' });
-      mockDockerService.attachExecOutput.mockImplementationOnce(
+      mockRuntimeDriver.attachExecOutput.mockImplementationOnce(
         async (
           _execId: string,
           callback: (level: string, message: string) => void,
@@ -643,7 +643,7 @@ describe('WorkspaceService', () => {
           callback('stderr', 'copy failed');
         },
       );
-      mockDockerService.waitForExecExit
+      mockRuntimeDriver.waitForExecExit
         .mockResolvedValueOnce({
           running: false,
           exitCode: 2,
@@ -663,13 +663,13 @@ describe('WorkspaceService', () => {
         ),
       ).rejects.toThrow('Container command failed');
 
-      expect(mockDockerService.createExec).toHaveBeenCalledTimes(2);
+      expect(mockRuntimeDriver.createExec).toHaveBeenCalledTimes(2);
     });
 
     it('sizeBytes 为空时仍应尝试恢复归档内容', async () => {
       const snapshot = buildSnapshot({ status: 'ready', sizeBytes: null });
       db.select.mockReturnValueOnce(createSelectChainWithLimit([snapshot]));
-      mockDockerService.createExec
+      mockRuntimeDriver.createExec
         .mockResolvedValueOnce({ execId: 'exec-apply' })
         .mockResolvedValueOnce({ execId: 'exec-cleanup' });
 
@@ -682,7 +682,7 @@ describe('WorkspaceService', () => {
       expect(mockStorageService.download).toHaveBeenCalledWith(
         snapshot.storageKey,
       );
-      expect(mockDockerService.putArchive).toHaveBeenCalledWith(
+      expect(mockRuntimeDriver.putArchive).toHaveBeenCalledWith(
         TEST_CONTAINER_ID,
         expect.any(Object),
         '/tmp',
@@ -724,8 +724,8 @@ describe('WorkspaceService', () => {
       );
 
       expect(mockStorageService.download).not.toHaveBeenCalled();
-      expect(mockDockerService.putArchive).not.toHaveBeenCalled();
-      expect(mockDockerService.createExec).not.toHaveBeenCalled();
+      expect(mockRuntimeDriver.putArchive).not.toHaveBeenCalled();
+      expect(mockRuntimeDriver.createExec).not.toHaveBeenCalled();
     });
   });
 
@@ -1005,9 +1005,9 @@ describe('WorkspaceService', () => {
       ]);
 
       db.execute.mockResolvedValueOnce({
-        rows: [{ containerId: TEST_CONTAINER_ID }],
+        rows: [{ runtimeHandle: TEST_CONTAINER_ID }],
       });
-      mockDockerService.getArchive.mockResolvedValueOnce(
+      mockRuntimeDriver.getArchive.mockResolvedValueOnce(
         createReadableStreamFromBuffer(archive),
       );
 
@@ -1028,7 +1028,7 @@ describe('WorkspaceService', () => {
           ],
         },
       ]);
-      expect(mockDockerService.getArchive).toHaveBeenCalledWith(
+      expect(mockRuntimeDriver.getArchive).toHaveBeenCalledWith(
         TEST_CONTAINER_ID,
         '/workspace/',
       );
@@ -1217,12 +1217,12 @@ describe('WorkspaceService', () => {
 
     it('getFilePreview 在 workspace 被活跃��箱挂载时应直接读取 live 容器', async () => {
       db.execute.mockResolvedValueOnce({
-        rows: [{ containerId: TEST_CONTAINER_ID }],
+        rows: [{ runtimeHandle: TEST_CONTAINER_ID }],
       });
       db.select.mockReturnValueOnce(
         createSelectChainWithLimit([buildSnapshot()]),
       );
-      mockDockerService.getArchive.mockResolvedValueOnce(
+      mockRuntimeDriver.getArchive.mockResolvedValueOnce(
         createStreamingTarArchive([
           {
             path: 'workspace/lobe-chat',

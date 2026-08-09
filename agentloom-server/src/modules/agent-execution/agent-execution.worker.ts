@@ -1152,14 +1152,14 @@ export class AgentExecutionWorker extends WorkerHost {
       tenantId,
     );
 
-    if (!sandboxSession?.containerId) {
+    if (!sandboxSession?.runtimeHandle) {
       return;
     }
 
     this.workspaceIntegrationService.startFileWatcher(
       conversationId,
       tenantId,
-      sandboxSession.containerId,
+      sandboxSession.runtimeHandle,
     );
   }
 
@@ -1426,7 +1426,8 @@ export class AgentExecutionWorker extends WorkerHost {
       turnResult.toolCalls.length > 0 ||
       turnResult.toolResults.length > 0 ||
       turnResult.segments.length > 0 ||
-      Object.keys(turnResult.subAgentStreams).length > 0 ||
+      (turnResult.subAgentStreams &&
+        Object.keys(turnResult.subAgentStreams).length > 0) ||
       Boolean(turnResult.decision)
     );
   }
@@ -1625,7 +1626,8 @@ export class AgentExecutionWorker extends WorkerHost {
               ...(turnResult.segments.length > 0
                 ? { segments: turnResult.segments }
                 : {}),
-              ...(Object.keys(turnResult.subAgentStreams).length > 0
+              ...(turnResult.subAgentStreams &&
+              Object.keys(turnResult.subAgentStreams).length > 0
                 ? { subAgentStreams: turnResult.subAgentStreams }
                 : {}),
               ...(isEmptyTurn ? { emptyTurn: true } : {}),

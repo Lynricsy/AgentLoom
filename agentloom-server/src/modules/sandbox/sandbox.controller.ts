@@ -35,7 +35,10 @@ export class SandboxController {
     @Query() query: ListSandboxesQueryDto,
   ) {
     const result = await this.sandboxService.listSandboxes(tenantId, query);
-    return { data: result.data, meta: result.meta };
+    return {
+      data: result.data.map((session) => this.presentSession(session)),
+      meta: result.meta,
+    };
   }
 
   @Post('sandboxes')
@@ -51,7 +54,7 @@ export class SandboxController {
       tenantId,
       dto,
     );
-    return { data };
+    return { data: this.presentSession(data) };
   }
 
   @Get('sandboxes/:sessionId/stats')
@@ -59,7 +62,7 @@ export class SandboxController {
   @ApiOperation({ summary: 'Get sandbox container resource stats' })
   @ApiResponse({ status: 200, description: 'Container resource usage stats' })
   async getStats(@Param('sessionId', ParseUUIDPipe) sessionId: string) {
-    const data = await this.sandboxService.getContainerStats(sessionId);
+    const data = await this.sandboxService.getRuntimeStats(sessionId);
     return { data };
   }
 
@@ -73,7 +76,7 @@ export class SandboxController {
     @CurrentTenant() tenantId: string,
   ) {
     const data = await this.sandboxService.stopSandbox(sessionId, tenantId);
-    return { data };
+    return { data: this.presentSession(data) };
   }
 
   @Post('sandboxes/:sessionId/start')
@@ -86,7 +89,7 @@ export class SandboxController {
     @CurrentTenant() tenantId: string,
   ) {
     const data = await this.sandboxService.startSandbox(sessionId, tenantId);
-    return { data };
+    return { data: this.presentSession(data) };
   }
 
   @Delete('sandboxes/:sessionId')
@@ -110,5 +113,11 @@ export class SandboxController {
   async getSandboxLogs(@Param('sessionId', ParseUUIDPipe) sessionId: string) {
     const logs = await this.sandboxService.getSandboxLogs(sessionId);
     return { data: logs };
+  }
+  private presentSession<T extends { runtimeHandle?: unknown }>(
+    session: T,
+  ): Omit<T, 'runtimeHandle'> {
+    const { runtimeHandle: _runtimeHandle, ...publicSession } = session;
+    return publicSession;
   }
 }

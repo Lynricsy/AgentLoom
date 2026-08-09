@@ -6,16 +6,16 @@ import { Agent, fetch as undiciFetch, type RequestInit } from 'undici';
 
 import type { SandboxConfig } from '../../database/schema';
 import type {
-  ContainerProcess,
-  ContainerStats,
-  CreateContainerPiContext,
-  DockerExecCreateOptions,
-  DockerExecExitInfo,
-  DockerExecHandle,
-  RemoveContainerOptions,
+  RuntimeProcess,
+  RuntimeStats,
+  CreateRuntimePiContext,
+  RuntimeExecCreateOptions,
+  RuntimeExecExitInfo,
+  RuntimeExecHandle,
+  DeleteRuntimeOptions,
   SandboxRuntimeDriver,
 } from './sandbox-runtime-driver.port';
-import { SandboxContainerNotFoundException } from './sandbox.exceptions';
+import { SandboxRuntimeNotFoundException } from './sandbox.exceptions';
 
 interface RuntimeResponse {
   runtimeHandle: string;
@@ -31,11 +31,11 @@ export class FirecrackerRuntimeService implements SandboxRuntimeDriver {
   ).replace(/\/$/, '');
   private dispatcher?: Agent;
 
-  async createContainer(
+  async createRuntime(
     sessionId: string,
     config: SandboxConfig,
-    _piContext?: CreateContainerPiContext,
-  ): Promise<{ containerId: string }> {
+    _piContext?: CreateRuntimePiContext,
+  ): Promise<{ runtimeHandle: string }> {
     const response = await this.managerJson<RuntimeResponse>('/v1/vms', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -49,32 +49,30 @@ export class FirecrackerRuntimeService implements SandboxRuntimeDriver {
       }),
     });
     if (response.state === 'stopped') {
-      await this.startContainer(response.runtimeHandle);
+      await this.startRuntime(response.runtimeHandle);
     } else if (response.state !== 'running') {
-      throw new Error(
-        `Firecracker runtime ${response.runtimeHandle} is ${response.state}`,
-      );
+      throw new Error(`Firecracker runtime is ${response.state}`);
     }
-    return { containerId: response.runtimeHandle };
+    return { runtimeHandle: response.runtimeHandle };
   }
 
-  async startContainer(runtimeHandle: string): Promise<void> {
+  async startRuntime(runtimeHandle: string): Promise<void> {
     await this.managerRequest(
       `/v1/vms/${encodeURIComponent(runtimeHandle)}:start`,
       { method: 'POST' },
     );
   }
 
-  async stopContainer(runtimeHandle: string): Promise<void> {
+  async stopRuntime(runtimeHandle: string): Promise<void> {
     await this.managerRequest(
       `/v1/vms/${encodeURIComponent(runtimeHandle)}:stop`,
       { method: 'POST' },
     );
   }
 
-  async removeContainer(
+  async deleteRuntime(
     runtimeHandle: string,
-    options?: RemoveContainerOptions,
+    options?: DeleteRuntimeOptions,
   ): Promise<void> {
     await this.managerRequest(
       `/v1/vms/${encodeURIComponent(runtimeHandle)}?deleteDisk=${options?.removeVolumes ?? true}`,
@@ -214,8 +212,8 @@ export class FirecrackerRuntimeService implements SandboxRuntimeDriver {
 
   async createExec(
     runtimeHandle: string,
-    options: DockerExecCreateOptions,
-  ): Promise<DockerExecHandle> {
+    options: RuntimeExecCreateOptions,
+  ): Promise<RuntimeExecHandle> {
     const response = await this.requestGuest(
       runtimeHandle,
       '/v1/runtime/exec',
@@ -225,7 +223,7 @@ export class FirecrackerRuntimeService implements SandboxRuntimeDriver {
         body: JSON.stringify(options),
       },
     );
-    const handle = await this.readJson<DockerExecHandle>(
+    const handle = await this.readJson<RuntimeExecHandle>(
       response,
       'create guest exec',
     );
@@ -256,13 +254,13 @@ export class FirecrackerRuntimeService implements SandboxRuntimeDriver {
     }
   }
 
-  async waitForExecExit(execId: string): Promise<DockerExecExitInfo> {
+  async waitForExecExit(execId: string): Promise<RuntimeExecExitInfo> {
     const [runtimeHandle, guestExecId] = this.parseExecHandle(execId);
     const response = await this.requestGuest(
       runtimeHandle,
       `/v1/runtime/exec/${encodeURIComponent(guestExecId)}/wait`,
     );
-    return this.readJson<DockerExecExitInfo>(response, 'wait for guest exec');
+    return this.readJson<RuntimeExecExitInfo>(response, 'wait for guest exec');
   }
 
   async killExec(execId: string, signal = 'TERM'): Promise<void> {
@@ -281,22 +279,20 @@ export class FirecrackerRuntimeService implements SandboxRuntimeDriver {
     }
   }
 
-  async getContainerStats(runtimeHandle: string): Promise<ContainerStats> {
+  async getRuntimeStats(runtimeHandle: string): Promise<RuntimeStats> {
     const response = await this.requestGuest(
       runtimeHandle,
       '/v1/runtime/stats',
     );
-    return this.readJson<ContainerStats>(response, 'read guest stats');
+    return this.readJson<RuntimeStats>(response, 'read guest stats');
   }
 
-  async listContainerProcesses(
-    runtimeHandle: string,
-  ): Promise<ContainerProcess[]> {
+  async listRuntimeProcesses(runtimeHandle: string): Promise<RuntimeProcess[]> {
     const response = await this.requestGuest(
       runtimeHandle,
       '/v1/runtime/processes',
     );
-    return this.readJson<ContainerProcess[]>(response, 'list guest processes');
+    return this.readJson<RuntimeProcess[]>(response, 'list guest processes');
   }
 
   private async managerJson<T>(
@@ -321,30 +317,21 @@ export class FirecrackerRuntimeService implements SandboxRuntimeDriver {
         AbortSignal.timeout(path.includes('/guest/') ? 15 * 60_000 : 60_000),
     });
     if (response.status === 404 && !path.includes('/guest/')) {
-      throw new SandboxContainerNotFoundException(
-        this.runtimeHandleFromPath(path),
-      );
+      throw new SandboxRuntimeNotFoundException();
     }
     if (!response.ok && !path.includes('/guest/')) {
-      const detail = (await response.text()).slice(0, 4_096);
+      await response.body?.cancel();
       throw new Error(
-        `Firecracker runtime request failed (${response.status}): ${detail}`,
+        `Firecracker runtime request failed (${response.status})`,
       );
     }
     return response as unknown as Response;
   }
 
-  private runtimeHandleFromPath(path: string): string {
-    const match = path.match(/^\/v1\/vms\/([^/:?]+)/);
-    return match ? decodeURIComponent(match[1]) : 'unknown';
-  }
-
   private async readJson<T>(response: Response, operation: string): Promise<T> {
     if (!response.ok) {
-      const detail = (await response.text()).slice(0, 4_096);
-      throw new Error(
-        `${operation} failed with status ${response.status}: ${detail}`,
-      );
+      await response.body?.cancel();
+      throw new Error(`${operation} failed with status ${response.status}`);
     }
     return (await response.json()) as T;
   }

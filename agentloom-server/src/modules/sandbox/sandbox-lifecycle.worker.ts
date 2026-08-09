@@ -52,7 +52,7 @@ export class SandboxLifecycleWorker extends WorkerHost {
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
     private readonly moduleRef: ModuleRef,
     @Inject(SANDBOX_RUNTIME_DRIVER)
-    private readonly dockerService: SandboxRuntimeDriver,
+    private readonly runtimeDriver: SandboxRuntimeDriver,
     private readonly sandboxService: SandboxService,
     private readonly lifecycleProducer: SandboxLifecycleProducer,
     private readonly storageService: StorageService,
@@ -90,7 +90,7 @@ export class SandboxLifecycleWorker extends WorkerHost {
       throw new SandboxCreationException('Missing config in create job data');
     }
 
-    let containerId: string | undefined;
+    let runtimeHandle: string | undefined;
     const restoreWorkspaceId = this.readRestoreWorkspaceId(config);
     let workspaceLease: WorkspaceRuntimeLeaseToken | null = null;
 
@@ -103,7 +103,7 @@ export class SandboxLifecycleWorker extends WorkerHost {
           this.resolveWorkspaceLeaseTtlMs(config),
         );
       }
-      const container = await this.dockerService.createContainer(
+      const container = await this.runtimeDriver.createRuntime(
         sessionId,
         config,
         {
@@ -111,7 +111,7 @@ export class SandboxLifecycleWorker extends WorkerHost {
           conversationId: data.agentConversationId,
         },
       );
-      containerId = container.containerId;
+      runtimeHandle = container.runtimeHandle;
 
       const [activatedSession] = await runInTenantTransaction(
         this.db,
@@ -120,7 +120,7 @@ export class SandboxLifecycleWorker extends WorkerHost {
           return await tenantDb
             .update(schema.sandboxSessions)
             .set({
-              containerId,
+              runtimeHandle,
               status: 'ready',
               startedAt: new Date(),
               workspacePath: CONTAINER_WORKSPACE,
@@ -136,28 +136,28 @@ export class SandboxLifecycleWorker extends WorkerHost {
       );
 
       if (!activatedSession) {
-        await this.dockerService.stopContainer(containerId).catch((error) => {
+        await this.runtimeDriver.stopRuntime(runtimeHandle).catch((error) => {
           this.logger.warn(
-            `Failed to stop sandbox container ${containerId} after session ${sessionId} left creating state: ${error instanceof Error ? error.message : String(error)}`,
+            `Failed to stop sandbox container ${runtimeHandle} after session ${sessionId} left creating state: ${error instanceof Error ? error.message : String(error)}`,
           );
         });
-        await this.dockerService
-          .removeContainer(containerId, {
+        await this.runtimeDriver
+          .deleteRuntime(runtimeHandle, {
             removeVolumes: this.shouldRemoveContainerVolumes(config),
           })
           .catch((error) => {
             this.logger.warn(
-              `Failed to cleanup sandbox container ${containerId} after session ${sessionId} left creating state: ${error instanceof Error ? error.message : String(error)}`,
+              `Failed to cleanup sandbox container ${runtimeHandle} after session ${sessionId} left creating state: ${error instanceof Error ? error.message : String(error)}`,
             );
           });
         await this.insertLog(
           sessionId,
           'system',
-          `Sandbox container ${containerId} discarded because session left creating state`,
+          'Sandbox runtime discarded because session left creating state',
           tenantId,
         );
         this.logger.warn(
-          `Sandbox ${sessionId} left creating state before container ${containerId} could be activated`,
+          `Sandbox ${sessionId} left creating state before container ${runtimeHandle} could be activated`,
         );
         if (workspaceLease) {
           await this.workspaceLeaseService.release(tenantId, workspaceLease);
@@ -168,9 +168,8 @@ export class SandboxLifecycleWorker extends WorkerHost {
       await this.restoreWorkspaceIfNeeded({
         sessionId,
         tenantId,
-        containerId,
+        runtimeHandle,
         restoreWorkspaceId,
-        phaseLabel: 'create',
       });
       if (workspaceLease) {
         await this.workspaceLeaseService.assertHeld(tenantId, workspaceLease);
@@ -179,11 +178,11 @@ export class SandboxLifecycleWorker extends WorkerHost {
       await this.insertLog(
         sessionId,
         'system',
-        `Sandbox container ${containerId} created`,
+        'Sandbox runtime created',
         tenantId,
       );
 
-      await this.attachContainerLogs(sessionId, containerId, tenantId);
+      await this.attachRuntimeLogs(sessionId, runtimeHandle, tenantId);
       await this.scheduleTimeoutCheck(sessionId, tenantId, config, binding);
       await this.scheduleConversationIdleEndCheck(
         sessionId,
@@ -201,17 +200,17 @@ export class SandboxLifecycleWorker extends WorkerHost {
       }
 
       this.logger.log(
-        `Sandbox ${sessionId} created with container ${containerId}`,
+        `Sandbox ${sessionId} created with container ${runtimeHandle}`,
       );
     } catch (error) {
-      if (containerId) {
-        await this.dockerService
-          .removeContainer(containerId, {
+      if (runtimeHandle) {
+        await this.runtimeDriver
+          .deleteRuntime(runtimeHandle, {
             removeVolumes: this.shouldRemoveContainerVolumes(config),
           })
           .catch((cleanupError) => {
             this.logger.warn(
-              `Failed to cleanup container ${containerId} after sandbox creation error: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`,
+              `Failed to cleanup container ${runtimeHandle} after sandbox creation error: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`,
             );
           });
       }
@@ -243,14 +242,14 @@ export class SandboxLifecycleWorker extends WorkerHost {
   }
 
   private async handleStart(data: SandboxLifecycleJobData): Promise<void> {
-    const { sessionId, tenantId, config, containerId } = data;
+    const { sessionId, tenantId, config, runtimeHandle } = data;
     const binding = this.resolveBinding(data);
     if (!config) {
       throw new SandboxCreationException('Missing config in start job data');
     }
-    if (!containerId) {
+    if (!runtimeHandle) {
       throw new SandboxCreationException(
-        'Missing containerId in start job data',
+        'Missing runtimeHandle in start job data',
       );
     }
     const restoreWorkspaceId = this.readRestoreWorkspaceId(config);
@@ -265,7 +264,7 @@ export class SandboxLifecycleWorker extends WorkerHost {
           this.resolveWorkspaceLeaseTtlMs(config),
         );
       }
-      await this.dockerService.startContainer(containerId);
+      await this.runtimeDriver.startRuntime(runtimeHandle);
       const [activatedSession] = await runInTenantTransaction(
         this.db,
         tenantId,
@@ -287,9 +286,9 @@ export class SandboxLifecycleWorker extends WorkerHost {
             .returning({ id: schema.sandboxSessions.id }),
       );
       if (!activatedSession) {
-        await this.dockerService.stopContainer(containerId).catch((error) => {
+        await this.runtimeDriver.stopRuntime(runtimeHandle).catch((error) => {
           this.logger.warn(
-            `Failed to stop Firecracker runtime ${containerId} after session ${sessionId} left creating state: ${error instanceof Error ? error.message : String(error)}`,
+            `Failed to stop Firecracker runtime ${runtimeHandle} after session ${sessionId} left creating state: ${error instanceof Error ? error.message : String(error)}`,
           );
         });
         if (workspaceLease) {
@@ -301,9 +300,8 @@ export class SandboxLifecycleWorker extends WorkerHost {
       await this.restoreWorkspaceIfNeeded({
         sessionId,
         tenantId,
-        containerId,
+        runtimeHandle,
         restoreWorkspaceId,
-        phaseLabel: 'start',
       });
       if (workspaceLease) {
         await this.workspaceLeaseService.assertHeld(tenantId, workspaceLease);
@@ -311,10 +309,10 @@ export class SandboxLifecycleWorker extends WorkerHost {
       await this.insertLog(
         sessionId,
         'system',
-        `Firecracker runtime ${containerId} started`,
+        `Firecracker runtime ${runtimeHandle} started`,
         tenantId,
       );
-      await this.attachContainerLogs(sessionId, containerId, tenantId);
+      await this.attachRuntimeLogs(sessionId, runtimeHandle, tenantId);
       await this.scheduleTimeoutCheck(sessionId, tenantId, config, binding);
       await this.scheduleConversationIdleEndCheck(
         sessionId,
@@ -331,7 +329,7 @@ export class SandboxLifecycleWorker extends WorkerHost {
         });
       }
       this.logger.log(
-        `Sandbox ${sessionId} restarted with Firecracker runtime ${containerId}`,
+        `Sandbox ${sessionId} restarted with Firecracker runtime ${runtimeHandle}`,
       );
     } catch (error) {
       if (workspaceLease) {
@@ -356,7 +354,8 @@ export class SandboxLifecycleWorker extends WorkerHost {
   }
 
   private async handleStop(data: SandboxLifecycleJobData): Promise<void> {
-    const { sessionId, containerId, tenantId, persistencePath, config } = data;
+    const { sessionId, runtimeHandle, tenantId, persistencePath, config } =
+      data;
     const binding = this.resolveBinding(data);
     const restoreWorkspaceId = this.readRestoreWorkspaceId(config);
     const workspaceLease = restoreWorkspaceId
@@ -371,11 +370,11 @@ export class SandboxLifecycleWorker extends WorkerHost {
     await this.lifecycleProducer.removeTimeoutCheckTask(sessionId);
     await this.lifecycleProducer.removeConversationIdleEndCheckTask(sessionId);
 
-    if (containerId) {
+    if (runtimeHandle) {
       await this.syncRestoredWorkspaceSnapshot({
         sessionId,
         tenantId,
-        containerId,
+        runtimeHandle,
         restoreWorkspaceId,
         phaseLabel: 'stop',
         leaseToken: workspaceLease,
@@ -386,8 +385,8 @@ export class SandboxLifecycleWorker extends WorkerHost {
 
       if (persistencePath) {
         try {
-          const archiveStream = await this.dockerService.getArchive(
-            containerId,
+          const archiveStream = await this.runtimeDriver.getArchive(
+            runtimeHandle,
             CONTAINER_WORKSPACE,
           );
           const bindingId = this.getBindingId(binding);
@@ -412,7 +411,7 @@ export class SandboxLifecycleWorker extends WorkerHost {
         }
       }
 
-      await this.dockerService.stopContainer(containerId);
+      await this.runtimeDriver.stopRuntime(runtimeHandle);
       await this.lifecycleProducer.removeWorkspaceLeaseRenewal(sessionId);
     }
 
@@ -431,7 +430,7 @@ export class SandboxLifecycleWorker extends WorkerHost {
   }
 
   private async handleDestroy(data: SandboxLifecycleJobData): Promise<void> {
-    const { sessionId, containerId, tenantId, persistencePath } = data;
+    const { sessionId, runtimeHandle, tenantId, persistencePath } = data;
     const binding = this.resolveBinding(data);
     const [session] = await runInTenantTransaction(
       this.db,
@@ -457,11 +456,11 @@ export class SandboxLifecycleWorker extends WorkerHost {
     await this.lifecycleProducer.removeTimeoutCheckTask(sessionId);
     await this.lifecycleProducer.removeConversationIdleEndCheckTask(sessionId);
 
-    if (containerId) {
+    if (runtimeHandle) {
       await this.syncRestoredWorkspaceSnapshot({
         sessionId,
         tenantId,
-        containerId,
+        runtimeHandle,
         restoreWorkspaceId,
         phaseLabel: 'destroy',
         leaseToken: workspaceLease,
@@ -469,8 +468,8 @@ export class SandboxLifecycleWorker extends WorkerHost {
 
       if (persistencePath) {
         try {
-          const archiveStream = await this.dockerService.getArchive(
-            containerId,
+          const archiveStream = await this.runtimeDriver.getArchive(
+            runtimeHandle,
             CONTAINER_WORKSPACE,
           );
           const bindingId = this.getBindingId(binding);
@@ -496,8 +495,8 @@ export class SandboxLifecycleWorker extends WorkerHost {
         }
       }
 
-      await this.dockerService.stopContainer(containerId);
-      await this.dockerService.removeContainer(containerId, {
+      await this.runtimeDriver.stopRuntime(runtimeHandle);
+      await this.runtimeDriver.deleteRuntime(runtimeHandle, {
         removeVolumes: this.shouldRemoveContainerVolumes(session?.config),
       });
       await this.lifecycleProducer.removeWorkspaceLeaseRenewal(sessionId);
@@ -603,11 +602,11 @@ export class SandboxLifecycleWorker extends WorkerHost {
 
     this.logger.warn(`Sandbox ${sessionId} timed out, force stopping`);
 
-    if (session.containerId) {
+    if (session.runtimeHandle) {
       await this.syncRestoredWorkspaceSnapshot({
         sessionId,
         tenantId,
-        containerId: session.containerId,
+        runtimeHandle: session.runtimeHandle,
         restoreWorkspaceId,
         phaseLabel: 'timeout',
         leaseToken: workspaceLease,
@@ -618,8 +617,8 @@ export class SandboxLifecycleWorker extends WorkerHost {
 
       if (session.config.persistencePath) {
         try {
-          const archiveStream = await this.dockerService.getArchive(
-            session.containerId,
+          const archiveStream = await this.runtimeDriver.getArchive(
+            session.runtimeHandle,
             CONTAINER_WORKSPACE,
           );
           const bindingId = this.getBindingId(binding);
@@ -644,9 +643,9 @@ export class SandboxLifecycleWorker extends WorkerHost {
         }
       }
 
-      await this.dockerService.stopContainer(session.containerId);
+      await this.runtimeDriver.stopRuntime(session.runtimeHandle);
       if (isSessionMode) {
-        await this.dockerService.removeContainer(session.containerId, {
+        await this.runtimeDriver.deleteRuntime(session.runtimeHandle, {
           removeVolumes: this.shouldRemoveContainerVolumes(session.config),
         });
       }
@@ -839,12 +838,12 @@ export class SandboxLifecycleWorker extends WorkerHost {
     });
   }
 
-  private async attachContainerLogs(
+  private async attachRuntimeLogs(
     sessionId: string,
-    containerId: string,
+    runtimeHandle: string,
     tenantId: string,
   ): Promise<void> {
-    await this.dockerService.attachLogs(containerId, (level, message) => {
+    await this.runtimeDriver.attachLogs(runtimeHandle, (level, message) => {
       this.insertLog(sessionId, level, message, tenantId).catch((err) => {
         this.logger.error(`Failed to insert log for session ${sessionId}`, err);
       });
@@ -1098,12 +1097,10 @@ export class SandboxLifecycleWorker extends WorkerHost {
   private async restoreWorkspaceIfNeeded(params: {
     sessionId: string;
     tenantId: string;
-    containerId: string;
+    runtimeHandle: string;
     restoreWorkspaceId?: string;
-    phaseLabel: 'create' | 'start';
   }): Promise<void> {
-    const { sessionId, tenantId, containerId, restoreWorkspaceId, phaseLabel } =
-      params;
+    const { sessionId, tenantId, runtimeHandle, restoreWorkspaceId } = params;
 
     if (!restoreWorkspaceId) {
       return;
@@ -1119,7 +1116,7 @@ export class SandboxLifecycleWorker extends WorkerHost {
     try {
       await workspaceService.restoreToSandbox(
         restoreWorkspaceId,
-        containerId,
+        runtimeHandle,
         tenantId,
       );
       this.logger.log(
@@ -1136,7 +1133,7 @@ export class SandboxLifecycleWorker extends WorkerHost {
   private async syncRestoredWorkspaceSnapshot(params: {
     sessionId: string;
     tenantId: string;
-    containerId: string;
+    runtimeHandle: string;
     restoreWorkspaceId?: string;
     phaseLabel: 'stop' | 'destroy' | 'timeout';
     leaseToken: WorkspaceRuntimeLeaseToken | null;
@@ -1144,7 +1141,7 @@ export class SandboxLifecycleWorker extends WorkerHost {
     const {
       sessionId,
       tenantId,
-      containerId,
+      runtimeHandle,
       restoreWorkspaceId,
       phaseLabel,
       leaseToken,
@@ -1169,7 +1166,7 @@ export class SandboxLifecycleWorker extends WorkerHost {
     try {
       await workspaceService.syncFromSandboxContainer(
         restoreWorkspaceId,
-        containerId,
+        runtimeHandle,
         tenantId,
         leaseToken,
       );

@@ -73,7 +73,7 @@ export const sandboxSessions = pgTable(
     ),
     sandboxNodeId: varchar('sandbox_node_id', { length: 64 }),
     tenantId: uuid('tenant_id').notNull(),
-    containerId: varchar('container_id', { length: 128 }),
+    runtimeHandle: varchar('runtime_handle', { length: 128 }),
     status: sandboxSessionStatusEnum('status').notNull().default('creating'),
     config: jsonb('config').notNull().$type<SandboxConfig>(),
     workspacePath: varchar('workspace_path', { length: 256 }),

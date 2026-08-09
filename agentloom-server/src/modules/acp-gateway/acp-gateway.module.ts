@@ -22,6 +22,7 @@ import { AcpFilesystemProxyService } from './services/acp-filesystem-proxy.servi
 import { AcpSessionMcpRegistryService } from './services/acp-session-mcp-registry.service';
 import { AcpTerminalProxyService } from './services/acp-terminal-proxy.service';
 import { AcpTerminalSandboxService } from './services/acp-terminal-sandbox.service';
+import { ACP_TEST_SANDBOX_RUNTIME_PROVIDER } from './testing/acp-test-sandbox-runtime';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { AcpTerminalSandboxService } from './services/acp-terminal-sandbox.servi
     SandboxModule,
   ],
   providers: [
+    ACP_TEST_SANDBOX_RUNTIME_PROVIDER,
     AcpAuthenticationService,
     SessionPersistenceService,
     AuditLogService,

@@ -244,7 +244,8 @@ describe('cloneDefinitionWithNewIds', () => {
     };
 
     const result = cloneDefinitionWithNewIds(definition);
-    const clonedChild = result.nodes[1] as ReactFlowNode & Record<string, unknown>;
+    const clonedChild = result.nodes[1] as ReactFlowNode &
+      Record<string, unknown>;
 
     expect(clonedChild.parentId).toBe(MOCK_UUIDS[0]);
     expect(clonedChild.parent_id).toBeUndefined();

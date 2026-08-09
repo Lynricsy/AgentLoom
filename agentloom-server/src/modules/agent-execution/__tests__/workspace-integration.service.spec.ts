@@ -8,14 +8,14 @@ import { ConflictException } from '@nestjs/common';
 import { WorkspaceIntegrationService } from '../workspace-integration.service';
 
 const {
-  mockDockerService,
+  mockRuntimeDriver,
   mockSandboxService,
   mockWorkspaceService,
   mockEventEmitter,
   mockSessionPersistence,
   mockDb,
 } = vi.hoisted(() => ({
-  mockDockerService: {
+  mockRuntimeDriver: {
     createExec: vi.fn(),
     attachExecOutput: vi.fn(),
     waitForExecExit: vi.fn(),
@@ -61,7 +61,7 @@ const WORKSPACE_SNAPSHOT_ID = 'workspace-001';
 function mockSandboxSession(overrides: Record<string, unknown> = {}) {
   return {
     id: SESSION_ID,
-    containerId: CONTAINER_ID,
+    runtimeHandle: CONTAINER_ID,
     config: {},
     status: 'running',
     tenantId: TENANT_ID,
@@ -114,11 +114,11 @@ function createUpdateChain() {
 function setupExecWithOutput(output: string) {
   let execCounter = 0;
 
-  mockDockerService.createExec.mockImplementation(async () => ({
+  mockRuntimeDriver.createExec.mockImplementation(async () => ({
     execId: `exec-${++execCounter}`,
   }));
 
-  mockDockerService.attachExecOutput.mockImplementation(
+  mockRuntimeDriver.attachExecOutput.mockImplementation(
     async (
       _execId: string,
       callback: (level: string, message: string) => void,
@@ -127,7 +127,7 @@ function setupExecWithOutput(output: string) {
     },
   );
 
-  mockDockerService.waitForExecExit.mockResolvedValue({
+  mockRuntimeDriver.waitForExecExit.mockResolvedValue({
     running: false,
     exitCode: 0,
     pid: 123,
@@ -141,11 +141,11 @@ function setupExecWithSequentialOutputs(outputs: string[]) {
   let execCounter = 0;
   let outputIndex = 0;
 
-  mockDockerService.createExec.mockImplementation(async () => ({
+  mockRuntimeDriver.createExec.mockImplementation(async () => ({
     execId: `exec-${++execCounter}`,
   }));
 
-  mockDockerService.attachExecOutput.mockImplementation(
+  mockRuntimeDriver.attachExecOutput.mockImplementation(
     async (
       _execId: string,
       callback: (level: string, message: string) => void,
@@ -156,7 +156,7 @@ function setupExecWithSequentialOutputs(outputs: string[]) {
     },
   );
 
-  mockDockerService.waitForExecExit.mockResolvedValue({
+  mockRuntimeDriver.waitForExecExit.mockResolvedValue({
     running: false,
     exitCode: 0,
     pid: 123,
@@ -187,13 +187,13 @@ describe('WorkspaceIntegrationService', () => {
     mockSessionPersistence.loadFromCheckpoint
       .mockReset()
       .mockResolvedValue(null);
-    mockDockerService.putArchive.mockReset().mockResolvedValue(undefined);
+    mockRuntimeDriver.putArchive.mockReset().mockResolvedValue(undefined);
     mockDb.select.mockReset();
     mockDb.update.mockReset();
 
     service = new WorkspaceIntegrationService(
       mockDb as never,
-      mockDockerService as never,
+      mockRuntimeDriver as never,
       mockSandboxService as never,
       mockWorkspaceService as never,
       mockEventEmitter as never,
@@ -251,7 +251,7 @@ describe('WorkspaceIntegrationService', () => {
 
     it('容器 ID 为空时应返回空目录树', async () => {
       mockSandboxService.findByConversationId.mockResolvedValue(
-        mockSandboxSession({ containerId: null }),
+        mockSandboxSession({ runtimeHandle: null }),
       );
       mockDb.select.mockReturnValue(
         createSelectChain({
@@ -521,11 +521,11 @@ describe('WorkspaceIntegrationService', () => {
       let outputIndex = 0;
       const outputs = ['1024|regular file'];
 
-      mockDockerService.createExec.mockImplementation(async () => ({
+      mockRuntimeDriver.createExec.mockImplementation(async () => ({
         execId: `exec-binary-${++outputIndex}`,
       }));
 
-      mockDockerService.attachExecOutput.mockImplementation(
+      mockRuntimeDriver.attachExecOutput.mockImplementation(
         async (
           _execId: string,
           callback: (level: string, message: string) => void,
@@ -539,7 +539,7 @@ describe('WorkspaceIntegrationService', () => {
         },
       );
 
-      mockDockerService.waitForExecExit.mockResolvedValue({
+      mockRuntimeDriver.waitForExecExit.mockResolvedValue({
         running: false,
         exitCode: 0,
         pid: 123,
@@ -726,7 +726,7 @@ describe('WorkspaceIntegrationService', () => {
         .spyOn(
           service as unknown as {
             resolveAttachmentRelativePath: (
-              containerId: string,
+              runtimeHandle: string,
               fileName: string,
             ) => Promise<string>;
           },
@@ -777,7 +777,7 @@ describe('WorkspaceIntegrationService', () => {
         },
         'uploads/design.png',
       );
-      expect(mockDockerService.putArchive).toHaveBeenCalledWith(
+      expect(mockRuntimeDriver.putArchive).toHaveBeenCalledWith(
         CONTAINER_ID,
         expect.any(Object),
         '/workspace',
@@ -803,7 +803,7 @@ describe('WorkspaceIntegrationService', () => {
       );
 
       expect(result).toBeNull();
-      expect(mockDockerService.putArchive).not.toHaveBeenCalled();
+      expect(mockRuntimeDriver.putArchive).not.toHaveBeenCalled();
     });
   });
 
@@ -1021,7 +1021,7 @@ describe('WorkspaceIntegrationService', () => {
           config: { persistencePath: '/data' },
         }),
       );
-      mockDockerService.createExec.mockRejectedValue(new Error('exec down'));
+      mockRuntimeDriver.createExec.mockRejectedValue(new Error('exec down'));
 
       await expect(
         service.onConversationEnd(CONVERSATION_ID, TENANT_ID, ORG_ID, USER_ID),
@@ -1041,9 +1041,9 @@ describe('WorkspaceIntegrationService', () => {
         USER_ID,
       );
 
-      mockDockerService.createExec.mockClear();
+      mockRuntimeDriver.createExec.mockClear();
       await vi.advanceTimersByTimeAsync(3000);
-      expect(mockDockerService.createExec).not.toHaveBeenCalled();
+      expect(mockRuntimeDriver.createExec).not.toHaveBeenCalled();
     });
   });
 
@@ -1144,7 +1144,7 @@ describe('WorkspaceIntegrationService', () => {
       );
       mockSandboxService.findByExecutionId.mockResolvedValue(
         mockSandboxSession({
-          containerId: null,
+          runtimeHandle: null,
           config: { restoreWorkspaceId: WORKSPACE_SNAPSHOT_ID },
         }),
       );
@@ -1445,8 +1445,8 @@ describe('WorkspaceIntegrationService', () => {
         mockSandboxSession(),
       );
 
-      mockDockerService.createExec.mockResolvedValue({ execId: 'exec-fail' });
-      mockDockerService.attachExecOutput.mockImplementation(
+      mockRuntimeDriver.createExec.mockResolvedValue({ execId: 'exec-fail' });
+      mockRuntimeDriver.attachExecOutput.mockImplementation(
         async (
           _execId: string,
           callback: (level: string, message: string) => void,
@@ -1454,7 +1454,7 @@ describe('WorkspaceIntegrationService', () => {
           callback('stdout', 'No such file');
         },
       );
-      mockDockerService.waitForExecExit.mockResolvedValue({
+      mockRuntimeDriver.waitForExecExit.mockResolvedValue({
         running: false,
         exitCode: 1,
         pid: 123,

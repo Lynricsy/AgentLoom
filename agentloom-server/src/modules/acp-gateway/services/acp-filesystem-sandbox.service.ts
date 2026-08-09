@@ -16,7 +16,7 @@ const MAX_TEXT_FILE_BYTES = 10 * 1024 * 1024;
 const ACTIVE_SANDBOX_STATUSES = ['ready', 'busy'] as const;
 
 interface SandboxSessionAccess {
-  readonly containerId: string | null;
+  readonly runtimeHandle: string | null;
 }
 
 interface SandboxResolvedTarget {
@@ -40,7 +40,7 @@ export class AcpFilesystemSandboxService {
   constructor(
     @Inject(DRIZZLE) private readonly db: DrizzleDB,
     @Inject(SANDBOX_RUNTIME_DRIVER)
-    private readonly dockerService: SandboxRuntimeDriver,
+    private readonly runtimeDriver: SandboxRuntimeDriver,
   ) {}
 
   async readTextFile(
@@ -53,7 +53,7 @@ export class AcpFilesystemSandboxService {
     );
     let content: Buffer;
     try {
-      content = await this.dockerService.readTextFile(
+      content = await this.runtimeDriver.readTextFile(
         target.runtimeHandle,
         target.guestPath,
         MAX_TEXT_FILE_BYTES,
@@ -75,7 +75,7 @@ export class AcpFilesystemSandboxService {
   ): Promise<{ success: true }> {
     const target = await this.prepareWriteTarget(params);
     try {
-      await this.dockerService.writeTextFile(
+      await this.runtimeDriver.writeTextFile(
         target.runtimeHandle,
         target.guestPath,
         params.content,
@@ -116,7 +116,7 @@ export class AcpFilesystemSandboxService {
     const guestPath = resolve(SANDBOX_WORKSPACE_ROOT, relativeWorkspacePath);
     if (operation === 'write') {
       try {
-        await this.dockerService.validateTextFileWrite(
+        await this.runtimeDriver.validateTextFileWrite(
           runtimeHandle,
           guestPath,
           MAX_TEXT_FILE_BYTES,
@@ -198,7 +198,7 @@ export class AcpFilesystemSandboxService {
       trackedSession.tenantId,
       async (dbClient) => {
         const rows = await dbClient
-          .select({ containerId: sandboxSessions.containerId })
+          .select({ runtimeHandle: sandboxSessions.runtimeHandle })
           .from(sandboxSessions)
           .where(this.buildActiveSandboxWhere(trackedSession.tenantId, binding))
           .limit(1);
@@ -212,15 +212,15 @@ export class AcpFilesystemSandboxService {
       );
     }
     if (
-      typeof sandboxSession.containerId !== 'string' ||
-      sandboxSession.containerId.length === 0
+      typeof sandboxSession.runtimeHandle !== 'string' ||
+      sandboxSession.runtimeHandle.length === 0
     ) {
       throw this.createSandboxError(
         'ACP server sandbox runtime is unavailable',
         'sandbox_workspace_unavailable',
       );
     }
-    return sandboxSession.containerId;
+    return sandboxSession.runtimeHandle;
   }
 
   private buildActiveSandboxWhere(

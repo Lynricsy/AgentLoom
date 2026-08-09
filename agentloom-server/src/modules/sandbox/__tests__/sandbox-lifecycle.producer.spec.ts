@@ -67,11 +67,11 @@ describe('SandboxLifecycleProducer', () => {
     });
   });
 
-  it('addStartTask 应使用正确的 jobType 和 containerId 入队', async () => {
+  it('addStartTask 应使用正确的 jobType 和 runtimeHandle 入队', async () => {
     await producer.addStartTask({
       sessionId: 's1',
       executionId: 'e1',
-      containerId: 'c1',
+      runtimeHandle: 'c1',
       config: DEFAULT_CONFIG,
       tenantId: 't1',
     });
@@ -81,7 +81,7 @@ describe('SandboxLifecycleProducer', () => {
       executionId: 'e1',
       tenantId: 't1',
       jobType: 'start',
-      containerId: 'c1',
+      runtimeHandle: 'c1',
       config: DEFAULT_CONFIG,
     });
   });
@@ -90,7 +90,7 @@ describe('SandboxLifecycleProducer', () => {
     await producer.addStopTask({
       sessionId: 's1',
       executionId: 'e1',
-      containerId: 'c1',
+      runtimeHandle: 'c1',
       config: DEFAULT_CONFIG,
       tenantId: 't1',
     });
@@ -100,16 +100,16 @@ describe('SandboxLifecycleProducer', () => {
       executionId: 'e1',
       tenantId: 't1',
       jobType: 'stop',
-      containerId: 'c1',
+      runtimeHandle: 'c1',
       config: DEFAULT_CONFIG,
     });
   });
 
-  it('addDestroyTask 应使用正确的 jobType 和 containerId 入队', async () => {
+  it('addDestroyTask 应使用正确的 jobType 和 runtimeHandle 入队', async () => {
     await producer.addDestroyTask({
       sessionId: 's1',
       executionId: 'e1',
-      containerId: 'c1',
+      runtimeHandle: 'c1',
       persistencePath: 'tenants/t1/sandboxes/e1',
       tenantId: 't1',
     });
@@ -119,7 +119,7 @@ describe('SandboxLifecycleProducer', () => {
       executionId: 'e1',
       tenantId: 't1',
       jobType: 'destroy',
-      containerId: 'c1',
+      runtimeHandle: 'c1',
       persistencePath: 'tenants/t1/sandboxes/e1',
     });
   });
@@ -128,7 +128,7 @@ describe('SandboxLifecycleProducer', () => {
     await producer.addDestroyTask({
       sessionId: 's-conv',
       agentConversationId: 'c1',
-      containerId: 'c1',
+      runtimeHandle: 'c1',
       tenantId: 't1',
     });
 
@@ -137,7 +137,7 @@ describe('SandboxLifecycleProducer', () => {
       agentConversationId: 'c1',
       tenantId: 't1',
       jobType: 'destroy',
-      containerId: 'c1',
+      runtimeHandle: 'c1',
     });
   });
 

@@ -25,7 +25,7 @@ function makeFakeSession(
     tenantId: 'tenant-1',
     config: { image: 'node:20' } as any,
     status: 'ready',
-    containerId: null,
+    runtimeHandle: null,
     workspacePath: null,
     startedAt: null,
     stoppedAt: null,

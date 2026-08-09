@@ -66,7 +66,9 @@ describe('AcpFilesystemSandboxService', () => {
   }
 
   it('通过 opaque runtime handle 读取工作区文本', async () => {
-    runInTenantTransactionMock.mockResolvedValue({ containerId: 'runtime-1' });
+    runInTenantTransactionMock.mockResolvedValue({
+      runtimeHandle: 'runtime-1',
+    });
     const { service, runtime } = createService();
     runtime.readTextFile.mockResolvedValue(
       Buffer.from('来自 Firecracker guest 文件系统'),
@@ -87,7 +89,7 @@ describe('AcpFilesystemSandboxService', () => {
 
   it('支持按 agentConversationId 绑定解析 runtime', async () => {
     runInTenantTransactionMock.mockResolvedValue({
-      containerId: 'runtime-conversation',
+      runtimeHandle: 'runtime-conversation',
     });
     const { service, runtime } = createService();
     runtime.readTextFile.mockResolvedValue(Buffer.from('conversation ok'));
@@ -110,7 +112,9 @@ describe('AcpFilesystemSandboxService', () => {
   });
 
   it('在请求 runtime 前拒绝逃逸 /workspace 的路径', async () => {
-    runInTenantTransactionMock.mockResolvedValue({ containerId: 'runtime-1' });
+    runInTenantTransactionMock.mockResolvedValue({
+      runtimeHandle: 'runtime-1',
+    });
     const { service, runtime } = createService();
 
     await expect(
@@ -126,7 +130,9 @@ describe('AcpFilesystemSandboxService', () => {
   });
 
   it('将 guest 缺失或 symlink 拒绝映射为稳定读取错误', async () => {
-    runInTenantTransactionMock.mockResolvedValue({ containerId: 'runtime-1' });
+    runInTenantTransactionMock.mockResolvedValue({
+      runtimeHandle: 'runtime-1',
+    });
     const { service, runtime } = createService();
     runtime.readTextFile.mockRejectedValue(new Error('status 404'));
 
@@ -142,7 +148,9 @@ describe('AcpFilesystemSandboxService', () => {
   });
 
   it('将 guest 413 映射为文本文件大小错误', async () => {
-    runInTenantTransactionMock.mockResolvedValue({ containerId: 'runtime-1' });
+    runInTenantTransactionMock.mockResolvedValue({
+      runtimeHandle: 'runtime-1',
+    });
     const { service, runtime } = createService();
     runtime.readTextFile.mockRejectedValue(new Error('status 413'));
 
@@ -158,7 +166,9 @@ describe('AcpFilesystemSandboxService', () => {
   });
 
   it('拒绝 guest 返回的二进制内容', async () => {
-    runInTenantTransactionMock.mockResolvedValue({ containerId: 'runtime-1' });
+    runInTenantTransactionMock.mockResolvedValue({
+      runtimeHandle: 'runtime-1',
+    });
     const { service, runtime } = createService();
     runtime.readTextFile.mockResolvedValue(Buffer.from([0, 1, 2]));
 
@@ -174,7 +184,9 @@ describe('AcpFilesystemSandboxService', () => {
   });
 
   it('先远程校验再写入 guest 文本文件', async () => {
-    runInTenantTransactionMock.mockResolvedValue({ containerId: 'runtime-1' });
+    runInTenantTransactionMock.mockResolvedValue({
+      runtimeHandle: 'runtime-1',
+    });
     const { service, runtime } = createService();
 
     await expect(
@@ -198,7 +210,9 @@ describe('AcpFilesystemSandboxService', () => {
   });
 
   it('将 guest 写目标拒绝映射为 workspace 边界错误', async () => {
-    runInTenantTransactionMock.mockResolvedValue({ containerId: 'runtime-1' });
+    runInTenantTransactionMock.mockResolvedValue({
+      runtimeHandle: 'runtime-1',
+    });
     const { service, runtime } = createService();
     runtime.validateTextFileWrite.mockRejectedValue(new Error('status 400'));
 
@@ -216,7 +230,9 @@ describe('AcpFilesystemSandboxService', () => {
   });
 
   it('在请求 guest 前拒绝超过 10MB 的文本', async () => {
-    runInTenantTransactionMock.mockResolvedValue({ containerId: 'runtime-1' });
+    runInTenantTransactionMock.mockResolvedValue({
+      runtimeHandle: 'runtime-1',
+    });
     const { service, runtime } = createService();
 
     await expect(

@@ -519,6 +519,13 @@
       "when": 1786260158486,
       "tag": "0073_giant_red_ghost",
       "breakpoints": true
+    },
+    {
+      "idx": 74,
+      "version": "7",
+      "when": 1786271241283,
+      "tag": "0074_sandbox_runtime_handle",
+      "breakpoints": true
     }
   ]
 }

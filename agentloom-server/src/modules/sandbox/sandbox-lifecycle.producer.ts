@@ -46,7 +46,7 @@ export class SandboxLifecycleProducer {
     executionId?: string;
     agentConversationId?: string;
     sandboxNodeId?: string;
-    containerId: string;
+    runtimeHandle: string;
     config: SandboxConfig;
     tenantId: string;
   }): Promise<Job<SandboxLifecycleJobData>> {
@@ -54,7 +54,7 @@ export class SandboxLifecycleProducer {
       sessionId: params.sessionId,
       tenantId: params.tenantId,
       jobType: 'start',
-      containerId: params.containerId,
+      runtimeHandle: params.runtimeHandle,
       config: params.config,
       ...this.buildBinding(params),
     });
@@ -65,7 +65,7 @@ export class SandboxLifecycleProducer {
     executionId?: string;
     agentConversationId?: string;
     sandboxNodeId?: string;
-    containerId?: string;
+    runtimeHandle?: string;
     persistencePath?: string;
     config: SandboxConfig;
     tenantId: string;
@@ -76,7 +76,7 @@ export class SandboxLifecycleProducer {
       jobType: 'stop',
       config: params.config,
       ...this.buildBinding(params),
-      ...(params.containerId ? { containerId: params.containerId } : {}),
+      ...(params.runtimeHandle ? { runtimeHandle: params.runtimeHandle } : {}),
       ...(params.persistencePath
         ? { persistencePath: params.persistencePath }
         : {}),
@@ -88,7 +88,7 @@ export class SandboxLifecycleProducer {
     executionId?: string;
     agentConversationId?: string;
     sandboxNodeId?: string;
-    containerId?: string;
+    runtimeHandle?: string;
     persistencePath?: string;
     tenantId: string;
   }): Promise<Job<SandboxLifecycleJobData>> {
@@ -97,7 +97,7 @@ export class SandboxLifecycleProducer {
       tenantId: params.tenantId,
       jobType: 'destroy',
       ...this.buildBinding(params),
-      ...(params.containerId ? { containerId: params.containerId } : {}),
+      ...(params.runtimeHandle ? { runtimeHandle: params.runtimeHandle } : {}),
       ...(params.persistencePath
         ? { persistencePath: params.persistencePath }
         : {}),
