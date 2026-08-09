@@ -1,0 +1,23 @@
+{
+  "cniVersion": "1.0.0",
+  "name": "agentloom-firecracker",
+  "plugins": [
+    {
+      "type": "bridge",
+      "bridge": "agentloom-fc0",
+      "isGateway": true,
+      "ipMasq": false,
+      "hairpinMode": false,
+      "promiscMode": false,
+      "ipam": {
+        "type": "host-local",
+        "ranges": [[{ "subnet": "${FIRECRACKER_GUEST_CIDR}", "gateway": "${FIRECRACKER_GATEWAY}" }]],
+        "routes": [{ "dst": "0.0.0.0/0" }]
+      }
+    },
+    {
+      "type": "tc-redirect-tap",
+      "tap": "${FIRECRACKER_TAP_NAME}"
+    }
+  ]
+}

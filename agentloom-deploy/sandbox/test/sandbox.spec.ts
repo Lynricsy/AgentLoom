@@ -530,7 +530,10 @@ describe("AcpAdapter", () => {
     expect(mockFactory).toHaveBeenCalledWith(
       "/custom/dir",
       expect.any(Object),
-      { cwd: "/custom/dir" },
+      expect.objectContaining({
+        cwd: "/custom/dir",
+        sessionId: expect.any(String),
+      }),
     );
   });
 
@@ -542,7 +545,7 @@ describe("AcpAdapter", () => {
     expect(mockFactory).toHaveBeenCalledWith(
       "/workspace",
       expect.any(Object),
-      {},
+      expect.objectContaining({ sessionId: expect.any(String) }),
     );
   });
 });

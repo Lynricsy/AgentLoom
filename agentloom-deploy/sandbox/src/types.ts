@@ -111,6 +111,8 @@ export interface CreateSessionRequest {
   models?: SessionModelsConfig;
   mcpServers?: McpServersConfig;
   runtimeApiKeys?: Record<string, string>;
+  /** 写入 session tmpfs 的相对文本文件，例如 skills/<name>/SKILL.md */
+  files?: Record<string, string>;
   remoteToolExecution?: RemoteToolExecutionConfig;
   nativeToolPolicy?: {
     readEnabled?: boolean;

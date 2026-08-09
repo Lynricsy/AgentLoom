@@ -1,8 +1,13 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mockPtyManager = { id: 'pty-manager' };
 const mockPtyRegister = vi.fn();
 const mockMcpRegister = vi.fn();
+
+let sessionRoot: string;
 
 vi.mock('../src/pty-extension.js', () => ({
   createPtyExtension: vi.fn(() => ({
@@ -24,9 +29,16 @@ import { createPtyExtension } from '../src/pty-extension.js';
 describe('createPiSessionFactory', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    sessionRoot = mkdtempSync(join(tmpdir(), 'agentloom-factory-test-'));
+    process.env['SANDBOX_SESSION_ROOT'] = sessionRoot;
   });
 
-  it('should wire /config-backed settings, models, and system prompt into createAgentSession', async () => {
+  afterEach(() => {
+    delete process.env['SANDBOX_SESSION_ROOT'];
+    rmSync(sessionRoot, { recursive: true, force: true });
+  });
+
+  it('should wire session-scoped settings, models, and system prompt into createAgentSession', async () => {
     const session = {
       prompt: vi.fn(),
       abort: vi.fn(),
@@ -70,6 +82,7 @@ describe('createPiSessionFactory', () => {
         },
       },
     }, {
+      sessionId: 'session-123',
       remoteToolExecution: {
         sessionId: 'session-123',
         callbackUrl: 'http://worker-1:3000/api/v1/agent-runtime/sessions/session-123/tool-executions',
@@ -112,11 +125,14 @@ describe('createPiSessionFactory', () => {
       defaultModel: 'claude-opus-4-6',
     });
     expect(piAgent.AuthStorage.inMemory).toHaveBeenCalledWith();
-    expect(piAgent.ModelRegistry).toHaveBeenCalledWith(authStorage, '/config/models.json');
+    expect(piAgent.ModelRegistry).toHaveBeenCalledWith(
+      authStorage,
+      expect.stringMatching(/session-123\/models\.json$/),
+    );
     expect(piAgent.DefaultResourceLoader).toHaveBeenCalledWith(
       expect.objectContaining({
         cwd: '/workspace/project',
-        agentDir: '/config',
+        agentDir: expect.stringMatching(/session-123$/),
         settingsManager,
         systemPrompt: '你是测试沙箱里的 agent。',
         extensionFactories: [mockMcpRegister, mockPtyRegister],
@@ -127,7 +143,7 @@ describe('createPiSessionFactory', () => {
     expect(piAgent.createAgentSession).toHaveBeenCalledWith(
       expect.objectContaining({
         cwd: '/workspace/project',
-        agentDir: '/config',
+        agentDir: expect.stringMatching(/session-123$/),
         sessionManager,
         settingsManager,
         authStorage,
@@ -198,6 +214,7 @@ describe('createPiSessionFactory', () => {
         },
       },
       {
+        sessionId: 'session-dynamic',
         settings: {
           defaultProvider: 'openai',
           defaultModel: 'gpt-4.1',
@@ -361,6 +378,7 @@ describe('createPiSessionFactory', () => {
     };
 
     await factory('/workspace/project', staticConfig, {
+      sessionId: 'session-a',
       settings: {
         defaultProvider: 'openai',
         defaultModel: 'gpt-4.1',
@@ -381,6 +399,7 @@ describe('createPiSessionFactory', () => {
     });
 
     await factory('/workspace/project', staticConfig, {
+      sessionId: 'session-b',
       settings: {
         defaultProvider: 'anthropic',
         defaultModel: 'claude-sonnet-4-6',

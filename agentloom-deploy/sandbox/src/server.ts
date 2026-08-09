@@ -1,13 +1,16 @@
-import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { chmodSync, existsSync, mkdirSync, unlinkSync } from 'node:fs';
+import { dirname } from 'node:path';
 import Fastify from 'fastify';
 import { AcpAdapter, type SessionFactory } from './acp-adapter.js';
 import { streamSessionEvents } from './event-stream.js';
 import { createPtyExtension } from './pty-extension.js';
 import { createMcpExtension } from './mcp-extension.js';
 import { createRemoteToolDefinitions } from './remote-tools.js';
+import { prepareSessionConfig } from './session-config.js';
 import type { PTYManager } from './pty/pty-manager.js';
 import type {
+  IAgentSession,
   CreateSessionRequest,
   PromptRequest,
   AbortRequest,
@@ -17,13 +20,12 @@ import type {
 export interface SandboxServerOptions {
   host?: string;
   port?: number;
+  socketPath?: string;
   sessionFactory: SessionFactory;
   /** 获取当前 PTY manager（支持 session factory 动态设置） */
   getPtyManager?: () => PTYManager | null;
 }
 
-const SANDBOX_AGENT_DIR = '/config';
-const SANDBOX_MODELS_PATH = join(SANDBOX_AGENT_DIR, 'models.json');
 const DEFAULT_SESSION_MODEL_COST = {
   input: 0,
   output: 0,
@@ -305,7 +307,13 @@ function resolvePromptText(body: PromptRequest | undefined): string | null {
 }
 
 export async function createSandboxServer(options: SandboxServerOptions) {
-  const { host = '0.0.0.0', port = 8080, sessionFactory, getPtyManager } = options;
+  const {
+    host = '0.0.0.0',
+    port = 8080,
+    socketPath = process.env['SANDBOX_LISTEN_SOCKET'],
+    sessionFactory,
+    getPtyManager,
+  } = options;
 
   const app = Fastify({ logger: true });
   const adapter = new AcpAdapter(sessionFactory);
@@ -468,7 +476,16 @@ export async function createSandboxServer(options: SandboxServerOptions) {
     adapter.disposeAll();
   });
 
-  await app.listen({ host, port });
+  if (socketPath) {
+    mkdirSync(dirname(socketPath), { recursive: true, mode: 0o755 });
+    if (existsSync(socketPath)) {
+      unlinkSync(socketPath);
+    }
+    await app.listen({ path: socketPath });
+    chmodSync(socketPath, 0o600);
+  } else {
+    await app.listen({ host, port });
+  }
   return app;
 }
 
@@ -477,73 +494,92 @@ export function createPiSessionFactory(
   setPtyManager?: (manager: PTYManager | null) => void,
 ): SessionFactory {
   return async (cwd, config, request) => {
-    const {
-      createAgentSession,
-      createReadTool,
-      createBashTool,
-      createEditTool,
-      createWriteTool,
-      DefaultResourceLoader,
-      SessionManager,
-      SettingsManager,
-      AuthStorage,
-      ModelRegistry,
-    } = piAgent;
+    const sessionRequest: CreateSessionRequest = request.sessionId
+      ? request
+      : { ...request, sessionId: randomUUID() };
+    const preparedConfig = prepareSessionConfig(sessionRequest);
+    try {
+      const {
+        createAgentSession,
+        createReadTool,
+        createBashTool,
+        createEditTool,
+        createWriteTool,
+        DefaultResourceLoader,
+        SessionManager,
+        SettingsManager,
+        AuthStorage,
+        ModelRegistry,
+      } = piAgent;
 
-    // PTY extension（每个 session 创建独立的 PTYManager）
-    const ptyExt = createPtyExtension({
-      onPtyEvent: () => {},
-      workdir: cwd,
-    });
-    setPtyManager?.(ptyExt.manager);
+      const ptyExt = createPtyExtension({
+        onPtyEvent: () => {},
+        workdir: cwd,
+      });
+      setPtyManager?.(ptyExt.manager);
 
-    const sessionMcpServers = request.mcpServers ?? config.mcpServers;
-    // MCP extension（根据配置连接 MCP 服务器，发现并注册工具）
-    const mcpExt = createMcpExtension({
-      mcpServers: sessionMcpServers,
-    });
+      const sessionMcpServers = sessionRequest.mcpServers ?? config.mcpServers;
+      const mcpExt = createMcpExtension({
+        mcpServers: sessionMcpServers,
+      });
 
-    // 使用 /config 作为 pi 的 agentDir，确保 models/settings/skills 均参与真实运行时装配。
-    const mergedSettings =
-      mergeRecords(config.settings, request.settings) ?? {};
-    const settingsManager = SettingsManager.inMemory(mergedSettings);
-    const authStorage = AuthStorage.inMemory();
-    applyRuntimeApiKeys(authStorage, request.runtimeApiKeys);
-    const modelRegistry = new ModelRegistry(authStorage, SANDBOX_MODELS_PATH);
-    applyDynamicProviders(modelRegistry, request.models);
-    const resourceLoader = new DefaultResourceLoader({
-      cwd,
-      agentDir: SANDBOX_AGENT_DIR,
-      settingsManager,
-      systemPrompt: resolveSessionSystemPrompt(config, request),
-      extensionFactories: [mcpExt.register, ptyExt.register] as any,
-    });
-    await resourceLoader.reload();
-
-    const { session } = await createAgentSession({
-      cwd,
-      agentDir: SANDBOX_AGENT_DIR,
-      sessionManager: SessionManager.inMemory(cwd),
-      settingsManager,
-      authStorage,
-      modelRegistry,
-      tools: buildNativeTools(
-        {
-          ...piAgent,
-          createReadTool,
-          createBashTool,
-          createEditTool,
-          createWriteTool,
-        },
+      const mergedSettings =
+        mergeRecords(config.settings, sessionRequest.settings) ?? {};
+      const settingsManager = SettingsManager.inMemory(mergedSettings);
+      const authStorage = AuthStorage.inMemory();
+      applyRuntimeApiKeys(authStorage, sessionRequest.runtimeApiKeys);
+      const modelRegistry = new ModelRegistry(
+        authStorage,
+        preparedConfig.modelsPath,
+      );
+      applyDynamicProviders(modelRegistry, sessionRequest.models);
+      const resourceLoader = new DefaultResourceLoader({
         cwd,
-        request.nativeToolPolicy,
-      ),
-      resourceLoader,
-      customTools: createRemoteToolDefinitions(request.remoteToolExecution),
-    });
+        agentDir: preparedConfig.directory,
+        settingsManager,
+        systemPrompt: resolveSessionSystemPrompt(config, sessionRequest),
+        extensionFactories: [mcpExt.register, ptyExt.register],
+      });
+      await resourceLoader.reload();
 
-    // AgentSession 与 IAgentSession 结构兼容（subscribe 事件类型是超集）
-    return session as unknown as import('./types.js').IAgentSession;
+      const { session } = await createAgentSession({
+        cwd,
+        agentDir: preparedConfig.directory,
+        sessionManager: SessionManager.inMemory(cwd),
+        settingsManager,
+        authStorage,
+        modelRegistry,
+        tools: buildNativeTools(
+          {
+            ...piAgent,
+            createReadTool,
+            createBashTool,
+            createEditTool,
+            createWriteTool,
+          },
+          cwd,
+          sessionRequest.nativeToolPolicy,
+        ),
+        resourceLoader,
+        customTools: createRemoteToolDefinitions(
+          sessionRequest.remoteToolExecution,
+        ),
+      });
+
+      const runtimeSession = session as unknown as IAgentSession;
+      const disposeRuntimeSession = runtimeSession.dispose.bind(runtimeSession);
+      runtimeSession.dispose = () => {
+        try {
+          disposeRuntimeSession();
+        } finally {
+          preparedConfig.dispose();
+        }
+      };
+      return runtimeSession;
+    } catch (error) {
+      preparedConfig.dispose();
+      throw error;
+    }
   };
 }
 

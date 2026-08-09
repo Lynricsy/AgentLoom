@@ -73,12 +73,21 @@ export class AcpAdapter {
   }
 
   async createNewSession(req: CreateSessionRequest): Promise<CreateSessionResponse> {
-    const cwd = req.cwd ?? '/workspace';
-    const session = await this.createSession(cwd, this.config ?? {}, req);
     const id =
       typeof req.sessionId === 'string' && req.sessionId.trim().length > 0
-        ? req.sessionId
+        ? req.sessionId.trim()
         : randomUUID();
+    if (this.sessions.has(id)) {
+      throw new Error(`Session '${id}' already exists`);
+    }
+
+    const normalizedRequest: CreateSessionRequest = { ...req, sessionId: id };
+    const cwd = normalizedRequest.cwd ?? '/workspace';
+    const session = await this.createSession(
+      cwd,
+      this.config ?? {},
+      normalizedRequest,
+    );
 
     this.sessions.set(id, {
       id,
