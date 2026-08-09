@@ -115,6 +115,12 @@ func (orchestrator *Orchestrator) rollbackGroup(ctx context.Context, migrations 
 	if err := orchestrator.Runtime.Start(ctx, primary.SessionID); err != nil {
 		return fmt.Errorf("start Firecracker runtime for rollback %s: %w", primary.SessionID, err)
 	}
+	runtimeRunning := true
+	defer func() {
+		if runtimeRunning {
+			_ = orchestrator.Runtime.Stop(context.Background(), primary.SessionID)
+		}
+	}()
 	source, err := orchestrator.Runtime.WorkspaceArchive(ctx, primary.SessionID)
 	if err != nil {
 		return err
@@ -140,6 +146,7 @@ func (orchestrator *Orchestrator) rollbackGroup(ctx context.Context, migrations 
 	if err := orchestrator.Runtime.Stop(ctx, primary.SessionID); err != nil {
 		return err
 	}
+	runtimeRunning = false
 
 	for _, migration := range migrations {
 		if err := orchestrator.Legacy.Start(ctx, migration.LegacyContainerID); err != nil {
