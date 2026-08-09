@@ -63,6 +63,7 @@ export interface SandboxRuntimeDriver {
     options?: RemoveContainerOptions,
   ): Promise<void>;
   healthCheck(containerId: string): Promise<boolean>;
+  inspectRuntime(containerId: string): Promise<{ state: string }>;
   requestGuest(
     containerId: string,
     path: string,
