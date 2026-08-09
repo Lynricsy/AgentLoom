@@ -2,6 +2,7 @@ package preflight
 
 import (
 	"crypto/sha256"
+	"debug/elf"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -37,6 +38,7 @@ type Config struct {
 	RequiredStateBytes     uint64
 	AllowUnsupportedKernel bool
 	AllowSMT               bool
+	AllowSwap              bool
 	SkipDeviceChecks       bool
 }
 
@@ -90,9 +92,13 @@ func Check(config Config) (Result, error) {
 	result.Checks["binaries"] = "firecracker,jailer,ip,tc,nft"
 
 	if err := checkSwap(); err != nil {
-		return result, err
+		if !config.AllowSwap {
+			return result, err
+		}
+		result.Warnings = append(result.Warnings, "host swap active by test-only override")
+	} else {
+		result.Checks["swap"] = "disabled"
 	}
-	result.Checks["swap"] = "disabled"
 	if smtActive() {
 		if !config.AllowSMT {
 			return result, errors.New("SMT is active and FIRECRACKER_SMT_POLICY does not allow it")
@@ -235,6 +241,11 @@ func verifyArtifacts(root, manifestPath string) (ArtifactManifest, error) {
 		if !strings.HasPrefix(resolved, rootWithSeparator) {
 			return ArtifactManifest{}, fmt.Errorf("artifact path escapes root: %s", artifact.Path)
 		}
+		if filepath.Base(artifact.Path) == "vmlinux" {
+			if err := verifyKernelELF(resolved); err != nil {
+				return ArtifactManifest{}, err
+			}
+		}
 		file, err := os.Open(resolved)
 		if err != nil {
 			return ArtifactManifest{}, err
@@ -250,6 +261,22 @@ func verifyArtifacts(root, manifestPath string) (ArtifactManifest, error) {
 		}
 	}
 	return manifest, nil
+}
+
+func verifyKernelELF(path string) error {
+	image, err := elf.Open(path)
+	if err != nil {
+		return fmt.Errorf("vmlinux is not an ELF image: %w", err)
+	}
+	defer image.Close()
+	if image.Class != elf.ELFCLASS64 || image.Machine != elf.EM_X86_64 {
+		return fmt.Errorf(
+			"vmlinux has unsupported ELF class or machine: %s/%s",
+			image.Class,
+			image.Machine,
+		)
+	}
+	return nil
 }
 
 func RequiredStateBytesFromEnv() (uint64, error) {

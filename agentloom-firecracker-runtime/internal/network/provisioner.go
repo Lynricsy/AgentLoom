@@ -2,7 +2,6 @@ package network
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -10,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	libcni "github.com/containernetworking/cni/libcni"
@@ -32,6 +32,8 @@ type Config struct {
 	Nameservers  []string
 	TapName      string
 	Firewall     Firewall
+	TapUID       int
+	TapGID       int
 }
 
 type CNIProvisioner struct {
@@ -54,6 +56,12 @@ func NewCNIProvisioner(config Config) (*CNIProvisioner, error) {
 	}
 	if len(config.Nameservers) == 0 {
 		config.Nameservers = []string{"1.1.1.1"}
+	}
+	if config.TapUID < 1 {
+		config.TapUID = 1000
+	}
+	if config.TapGID < 1 {
+		config.TapGID = 1000
 	}
 	if err := os.MkdirAll(config.NetNSRoot, 0o755); err != nil {
 		return nil, err
@@ -111,9 +119,20 @@ func (provisioner *CNIProvisioner) Provision(ctx context.Context, id string) (ma
 	if selected == nil || selected.Gateway == nil {
 		return manager.NetworkAllocation{}, errors.New("CNI did not return an IPv4 address and gateway")
 	}
+	mac, err := guestMAC(converted, id)
+	if err != nil {
+		return manager.NetworkAllocation{}, err
+	}
+	hostInterface, err := hostVeth(converted, selected)
+	if err != nil {
+		return manager.NetworkAllocation{}, err
+	}
 	allocation := manager.NetworkAllocation{
 		GuestIP: selected.Address.IP.String(), Gateway: selected.Gateway.String(), Netmask: net.IP(selected.Address.Mask).String(),
-		Nameservers: append([]string(nil), provisioner.config.Nameservers...), MAC: deterministicMAC(id), TapName: provisioner.config.TapName, NetNSPath: namespacePath,
+		Nameservers: append([]string(nil), provisioner.config.Nameservers...), MAC: mac, TapName: provisioner.config.TapName, NetNSPath: namespacePath,
+	}
+	if err := configureEgressIdentity(ctx, hostInterface, allocation.GuestIP, allocation.MAC); err != nil {
+		return manager.NetworkAllocation{}, err
 	}
 	if err := provisioner.writeLease(lease{SessionID: id, Allocation: allocation}); err != nil {
 		return manager.NetworkAllocation{}, err
@@ -158,9 +177,56 @@ func (provisioner *CNIProvisioner) Release(ctx context.Context, metadata manager
 	return errors.Join(result, provisioner.config.Firewall.Reconcile(ctx, active))
 }
 
-func deterministicMAC(id string) string {
-	digest := sha256.Sum256([]byte(id))
-	return fmt.Sprintf("06:%02x:%02x:%02x:%02x:%02x", digest[0], digest[1], digest[2], digest[3], digest[4])
+func configureEgressIdentity(
+	ctx context.Context,
+	interfaceName string,
+	guestIP string,
+	guestMAC string,
+) error {
+	commands := [][]string{
+		{"qdisc", "add", "dev", interfaceName, "ingress"},
+		{"filter", "add", "dev", interfaceName, "parent", "ffff:", "protocol", "ip", "pref", "10", "flower", "src_ip", guestIP, "src_mac", guestMAC, "action", "pass"},
+		{"filter", "add", "dev", interfaceName, "parent", "ffff:", "protocol", "arp", "pref", "11", "flower", "src_mac", guestMAC, "arp_sip", guestIP, "action", "pass"},
+		{"filter", "add", "dev", interfaceName, "parent", "ffff:", "protocol", "ipv6", "pref", "12", "flower", "action", "drop"},
+		{"filter", "add", "dev", interfaceName, "parent", "ffff:", "pref", "20", "matchall", "action", "drop"},
+	}
+	for _, arguments := range commands {
+		output, err := exec.CommandContext(ctx, "tc", arguments...).CombinedOutput()
+		if err != nil {
+			return fmt.Errorf(
+				"configure guest egress identity: tc %s: %w: %s",
+				strings.Join(arguments, " "),
+				err,
+				strings.TrimSpace(string(output)),
+			)
+		}
+	}
+	return nil
+}
+
+func hostVeth(result *current.Result, selected *current.IPConfig) (string, error) {
+	if selected.Interface == nil || *selected.Interface < 1 || *selected.Interface >= len(result.Interfaces) {
+		return "", errors.New("CNI did not identify the guest veth pair")
+	}
+	host := result.Interfaces[*selected.Interface-1]
+	if host == nil || host.Name == "" || host.Sandbox != "" {
+		return "", errors.New("CNI did not return a host-side veth interface")
+	}
+	return host.Name, nil
+}
+
+func guestMAC(result *current.Result, id string) (string, error) {
+	for _, networkInterface := range result.Interfaces {
+		if networkInterface == nil || networkInterface.Sandbox != id || networkInterface.Mac == "" {
+			continue
+		}
+		mac, err := net.ParseMAC(networkInterface.Mac)
+		if err != nil {
+			return "", fmt.Errorf("CNI returned invalid guest MAC: %w", err)
+		}
+		return mac.String(), nil
+	}
+	return "", errors.New("CNI did not return a guest interface MAC")
 }
 
 func (provisioner *CNIProvisioner) cniConfig(id, namespacePath string) (*libcni.NetworkConfigList, *libcni.RuntimeConf, error) {
@@ -177,7 +243,16 @@ func (provisioner *CNIProvisioner) cniConfig(id, namespacePath string) (*libcni.
 	if err != nil {
 		return nil, nil, err
 	}
-	return list, &libcni.RuntimeConf{ContainerID: id, NetNS: namespacePath, IfName: "eth0"}, nil
+	return list, &libcni.RuntimeConf{
+		ContainerID: id,
+		NetNS:       namespacePath,
+		IfName:      "eth0",
+		Args: [][2]string{
+			{"IgnoreUnknown", "true"},
+			{"TC_REDIRECT_TAP_UID", strconv.Itoa(provisioner.config.TapUID)},
+			{"TC_REDIRECT_TAP_GID", strconv.Itoa(provisioner.config.TapGID)},
+		},
+	}, nil
 }
 
 func (provisioner *CNIProvisioner) leasePath(id string) string {

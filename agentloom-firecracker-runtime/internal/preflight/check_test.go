@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -62,6 +63,37 @@ func TestVerifyArtifactsRejectsChecksumMismatch(t *testing.T) {
 	}
 	if _, err := verifyArtifacts(root, manifestPath); err == nil {
 		t.Fatal("expected checksum mismatch")
+	}
+}
+
+func TestVerifyArtifactsRejectsNonELFVmlinuxWithValidChecksum(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	content := []byte("valid-checksum-but-not-an-elf-kernel")
+	if err := os.WriteFile(filepath.Join(root, "vmlinux"), content, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	digest := sha256.Sum256(content)
+	manifest := ArtifactManifest{
+		SchemaVersion:   1,
+		GuestAPIVersion: "v1",
+		ArtifactDigest:  "digest",
+		Files: []ArtifactFile{{
+			Path:   "vmlinux",
+			SHA256: hex.EncodeToString(digest[:]),
+		}},
+	}
+	encoded, err := json.Marshal(manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifestPath := filepath.Join(root, "manifest.json")
+	if err := os.WriteFile(manifestPath, encoded, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := verifyArtifacts(root, manifestPath); err == nil ||
+		!strings.Contains(err.Error(), "not an ELF") {
+		t.Fatalf("expected ELF validation failure, got %v", err)
 	}
 }
 

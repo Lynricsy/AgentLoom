@@ -25,6 +25,7 @@ func main() {
 		RequiredStateBytes:     requiredBytes,
 		AllowUnsupportedKernel: allowUnsupported,
 		AllowSMT:               os.Getenv("FIRECRACKER_SMT_POLICY") == "allow",
+		AllowSwap:              os.Getenv("FIRECRACKER_ALLOW_SWAP") == "true" && os.Getenv("FIRECRACKER_ENV") == "test",
 		SkipDeviceChecks:       os.Getenv("FIRECRACKER_PREFLIGHT_SKIP_DEVICES") == "true" && os.Getenv("FIRECRACKER_ENV") == "test",
 	})
 	if err != nil {

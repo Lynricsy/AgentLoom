@@ -209,7 +209,11 @@ func (runtime *DockerRuntime) do(
 	body io.Reader,
 	contentType string,
 ) (*http.Response, error) {
-	request, err := http.NewRequestWithContext(ctx, method, endpoint, body)
+	var requestBody io.Reader
+	if body != nil {
+		requestBody = io.NopCloser(struct{ io.Reader }{body})
+	}
+	request, err := http.NewRequestWithContext(ctx, method, endpoint, requestBody)
 	if err != nil {
 		return nil, err
 	}

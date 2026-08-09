@@ -138,6 +138,9 @@ temp/
 # Firebase (contains API keys)
 agentloom_mobile/android/app/google-services.json
 
+# Firecracker mTLS private keys
+agentloom-deploy/secrets/firecracker/
+
 # AI tool configs
 .agents/
 .codex/

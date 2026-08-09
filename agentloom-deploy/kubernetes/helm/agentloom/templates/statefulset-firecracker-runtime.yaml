@@ -1,0 +1,170 @@
+{{- if .Values.firecrackerRuntime.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "agentloom.firecrackerRuntimeFullname" . }}
+  labels:
+    {{- include "agentloom.labels" . | nindent 4 }}
+    app.kubernetes.io/component: firecracker-runtime
+spec:
+  serviceName: {{ include "agentloom.firecrackerRuntimeFullname" . }}
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "agentloom.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: firecracker-runtime
+  template:
+    metadata:
+      labels:
+        {{- include "agentloom.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: firecracker-runtime
+    spec:
+      hostPID: true
+      terminationGracePeriodSeconds: 60
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: runtime-manager
+          image: "{{ .Values.firecrackerRuntime.image.repository }}:{{ .Values.firecrackerRuntime.image.tag }}"
+          imagePullPolicy: {{ .Values.firecrackerRuntime.image.pullPolicy }}
+          securityContext:
+            privileged: true
+            readOnlyRootFilesystem: true
+            allowPrivilegeEscalation: true
+          env:
+            - name: FIRECRACKER_MANAGER_LISTEN
+              value: "0.0.0.0:{{ .Values.firecrackerRuntime.service.port }}"
+            - name: FIRECRACKER_STATE_ROOT
+              value: /var/lib/agentloom-firecracker
+            - name: FIRECRACKER_CHROOT_BASE
+              value: /fc
+            - name: FIRECRACKER_ARTIFACT_ROOT
+              value: /opt/agentloom-firecracker/artifacts
+            - name: FIRECRACKER_CNI_TEMPLATE
+              value: /etc/agentloom-firecracker/network/10-agentloom-firecracker.conflist.template
+            - name: FIRECRACKER_GUEST_CIDR
+              value: {{ .Values.firecrackerRuntime.guestCIDR | quote }}
+            - name: FIRECRACKER_GATEWAY
+              value: {{ .Values.firecrackerRuntime.gateway | quote }}
+            - name: FIRECRACKER_EGRESS_ALLOWED_PRIVATE_CIDRS
+              value: {{ join "," .Values.firecrackerRuntime.allowedPrivateCIDRs | quote }}
+            - name: FIRECRACKER_CALLBACK_ALLOWED_HOSTS
+              value: {{ printf "%s,%s" (include "agentloom.serverFullname" .) (include "agentloom.workerFullname" .) | quote }}
+            - name: FIRECRACKER_MANAGER_TLS_CERT
+              value: /run/secrets/firecracker/manager.crt
+            - name: FIRECRACKER_MANAGER_TLS_KEY
+              value: /run/secrets/firecracker/manager.key
+            - name: FIRECRACKER_MANAGER_CLIENT_CA
+              value: /run/secrets/firecracker/client-ca.crt
+            - name: FIRECRACKER_GUEST_CA
+              value: /run/secrets/firecracker/guest-ca.crt
+            - name: FIRECRACKER_GUEST_CA_KEY
+              value: /run/secrets/firecracker/guest-ca.key
+            - name: FIRECRACKER_GUEST_SERVER_NAME
+              value: agentloom-guest
+            - name: FIRECRACKER_MAX_VMS
+              value: {{ .Values.firecrackerRuntime.maxVMs | quote }}
+            - name: FIRECRACKER_MAX_VCPU
+              value: {{ .Values.firecrackerRuntime.maxVCPU | quote }}
+            - name: FIRECRACKER_MAX_MEMORY_MIB
+              value: {{ .Values.firecrackerRuntime.maxMemoryMiB | quote }}
+            - name: FIRECRACKER_MAX_DISK_GIB
+              value: {{ .Values.firecrackerRuntime.maxDiskGiB | quote }}
+            - name: FIRECRACKER_ALLOW_UNSUPPORTED_KERNEL
+              value: {{ .Values.firecrackerRuntime.allowUnsupportedKernel | quote }}
+            - name: FIRECRACKER_SMT_POLICY
+              value: {{ .Values.firecrackerRuntime.smtPolicy | quote }}
+          ports:
+            - name: https
+              containerPort: {{ .Values.firecrackerRuntime.service.port }}
+              protocol: TCP
+          readinessProbe:
+            exec:
+              command:
+                - curl
+                - --fail
+                - --silent
+                - --show-error
+                - --resolve
+                - firecracker-runtime:{{ .Values.firecrackerRuntime.service.port }}:127.0.0.1
+                - --cacert
+                - /run/secrets/firecracker/manager-ca.crt
+                - --cert
+                - /run/secrets/firecracker/app-client.crt
+                - --key
+                - /run/secrets/firecracker/app-client.key
+                - https://firecracker-runtime:{{ .Values.firecrackerRuntime.service.port }}/readyz
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 10
+          resources:
+            {{- toYaml .Values.firecrackerRuntime.resources | nindent 12 }}
+          volumeMounts:
+            - name: state
+              mountPath: /var/lib/agentloom-firecracker
+            - name: firecracker-pki
+              mountPath: /run/secrets/firecracker
+              readOnly: true
+            - name: kvm
+              mountPath: /dev/kvm
+            - name: tun
+              mountPath: /dev/net/tun
+            - name: cgroup
+              mountPath: /sys/fs/cgroup
+            - name: run
+              mountPath: /run
+            - name: tmp
+              mountPath: /tmp
+            - name: cni-state
+              mountPath: /var/lib/cni
+      volumes:
+        {{- if .Values.firecrackerRuntime.state.existingClaim }}
+        - name: state
+          persistentVolumeClaim:
+            claimName: {{ .Values.firecrackerRuntime.state.existingClaim | quote }}
+        {{- end }}
+        - name: firecracker-pki
+          secret:
+            secretName: {{ .Values.firecrackerRuntime.managerPkiSecretName | quote }}
+        - name: kvm
+          hostPath:
+            path: /dev/kvm
+            type: CharDevice
+        - name: tun
+          hostPath:
+            path: /dev/net/tun
+            type: CharDevice
+        - name: cgroup
+          hostPath:
+            path: /sys/fs/cgroup
+            type: Directory
+        - name: run
+          emptyDir:
+            medium: Memory
+        - name: tmp
+          emptyDir:
+            medium: Memory
+        - name: cni-state
+          emptyDir: {}
+      nodeSelector:
+        {{- toYaml .Values.firecrackerRuntime.nodeSelector | nindent 8 }}
+      tolerations:
+        {{- toYaml .Values.firecrackerRuntime.tolerations | nindent 8 }}
+      affinity:
+        {{- toYaml .Values.firecrackerRuntime.affinity | nindent 8 }}
+  {{- if not .Values.firecrackerRuntime.state.existingClaim }}
+  volumeClaimTemplates:
+    - metadata:
+        name: state
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        {{- with .Values.firecrackerRuntime.state.storageClassName }}
+        storageClassName: {{ . | quote }}
+        {{- end }}
+        resources:
+          requests:
+            storage: {{ .Values.firecrackerRuntime.state.size }}
+  {{- end }}
+{{- end }}

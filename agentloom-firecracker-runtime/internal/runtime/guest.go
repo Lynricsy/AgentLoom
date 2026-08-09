@@ -21,8 +21,8 @@ type HTTPSGuestChecker struct {
 }
 
 func NewHTTPSGuestChecker(tlsConfig *tls.Config, port int) (*HTTPSGuestChecker, error) {
-	if tlsConfig == nil || tlsConfig.RootCAs == nil || tlsConfig.InsecureSkipVerify || tlsConfig.ServerName == "" {
-		return nil, errors.New("guest TLS must verify a configured CA and server name")
+	if tlsConfig == nil || tlsConfig.RootCAs == nil || tlsConfig.InsecureSkipVerify || tlsConfig.ServerName != "" {
+		return nil, errors.New("guest TLS must verify the destination IP against a configured CA")
 	}
 	if port < 1 || port > 65535 {
 		return nil, errors.New("invalid guest HTTPS port")

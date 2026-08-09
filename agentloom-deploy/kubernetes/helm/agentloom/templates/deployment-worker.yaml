@@ -36,6 +36,13 @@ spec:
                 name: {{ include "agentloom.fullname" . }}-server-config
             - secretRef:
                 name: {{ include "agentloom.fullname" . }}-server-secret
+          env:
+            - name: APP_SANDBOX_CALLBACK_BASE_URL
+              value: {{ printf "http://%s:%v/api/v1" (include "agentloom.workerFullname" .) .Values.server.service.port | quote }}
+          volumeMounts:
+            - name: firecracker-pki
+              mountPath: /run/secrets/firecracker
+              readOnly: true
           ports:
             - name: http
               containerPort: {{ .Values.server.service.port }}
@@ -54,6 +61,10 @@ spec:
             periodSeconds: 10
           resources:
             {{- toYaml .Values.worker.resources | nindent 12 }}
+      volumes:
+        - name: firecracker-pki
+          secret:
+            secretName: {{ .Values.firecrackerRuntime.clientPkiSecretName | quote }}
       nodeSelector:
         {{- toYaml .Values.worker.nodeSelector | nindent 8 }}
       tolerations:

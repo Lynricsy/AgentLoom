@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -23,6 +24,7 @@ import (
 type LauncherConfig struct {
 	ChrootBase      string
 	JailerWrapper   string
+	PIDRoot         string
 	UID             int
 	GID             int
 	ParentCgroup    string
@@ -38,7 +40,8 @@ type FirecrackerLauncher struct {
 }
 
 func NewFirecrackerLauncher(config LauncherConfig) (*FirecrackerLauncher, error) {
-	if !filepath.IsAbs(config.ChrootBase) || !filepath.IsAbs(config.JailerWrapper) || config.UID < 1 || config.GID < 1 {
+	if !filepath.IsAbs(config.ChrootBase) || !filepath.IsAbs(config.JailerWrapper) ||
+		!filepath.IsAbs(config.PIDRoot) || config.UID < 1 || config.GID < 1 {
 		return nil, errors.New("absolute chroot/wrapper paths and non-root jailer identity are required")
 	}
 	if config.ParentCgroup == "" {
@@ -55,6 +58,32 @@ func NewFirecrackerLauncher(config LauncherConfig) (*FirecrackerLauncher, error)
 }
 
 func (launcher *FirecrackerLauncher) Launch(ctx context.Context, spec manager.LaunchSpec) (manager.Instance, error) {
+	if err := prepareParentCgroup(launcher.config.ParentCgroup); err != nil {
+		return nil, fmt.Errorf("prepare jailer parent cgroup: %w", err)
+	}
+	vmCgroupPath, err := prepareVMCgroup(
+		launcher.config.ParentCgroup,
+		spec.Metadata.SessionID,
+		spec.Metadata.Resources,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("prepare VM cgroup: %w", err)
+	}
+	jailDir := filepath.Join(
+		launcher.config.ChrootBase,
+		filepath.Base(spec.Artifacts.Firecracker),
+		spec.Metadata.SessionID,
+	)
+	if err := os.RemoveAll(jailDir); err != nil {
+		return nil, fmt.Errorf("remove stale jail: %w", err)
+	}
+	cleanupOnError := true
+	defer func() {
+		if cleanupOnError {
+			_ = killAndRemoveCgroup(vmCgroupPath)
+			_ = os.RemoveAll(jailDir)
+		}
+	}()
 	if err := os.Chown(spec.Metadata.DiskPath, launcher.config.UID, launcher.config.GID); err != nil {
 		return nil, fmt.Errorf("chown mutable disk: %w", err)
 	}
@@ -71,8 +100,24 @@ func (launcher *FirecrackerLauncher) Launch(ctx context.Context, spec manager.La
 	if err != nil {
 		return nil, fmt.Errorf("issue guest identity: %w", err)
 	}
-	uid, gid, numa := launcher.config.UID, launcher.config.GID, 0
+	guestMetadata, err := json.Marshal(map[string]string{
+		"token": spec.Token, "sessionId": spec.Metadata.SessionID, "guestIp": spec.Network.GuestIP,
+		"gateway": spec.Network.Gateway, "artifactDigest": spec.Artifacts.Digest, "guestApiVersion": spec.Artifacts.GuestAPI,
+		"tlsCertificate": certificate, "tlsPrivateKey": privateKey,
+		"callbackRelayUrl": "http://" + net.JoinHostPort(spec.Network.Gateway, "18080") + "/v1/callbacks",
+	})
+	if err != nil {
+		return nil, fmt.Errorf("encode guest metadata: %w", err)
+	}
+	uid, gid, numa := launcher.config.UID, launcher.config.GID, -1
 	cpuQuota := strconv.FormatInt(int64(spec.Metadata.Resources.CPU*100000), 10) + " 100000"
+	pidPath := filepath.Join(launcher.config.PIDRoot, spec.Metadata.SessionID+".pid")
+	if err := os.MkdirAll(launcher.config.PIDRoot, 0o755); err != nil {
+		return nil, fmt.Errorf("prepare PID root: %w", err)
+	}
+	if err := os.Remove(pidPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return nil, fmt.Errorf("remove stale PID file: %w", err)
+	}
 	socketRelative := "run/firecracker.socket"
 	machineConfig := firecracker.Config{
 		VMID:            spec.Metadata.SessionID,
@@ -84,13 +129,22 @@ func (launcher *FirecrackerLauncher) Launch(ctx context.Context, spec manager.La
 			{DriveID: firecracker.String("rootfs"), PathOnHost: firecracker.String(spec.Artifacts.RootFS), IsRootDevice: firecracker.Bool(true), IsReadOnly: firecracker.Bool(true)},
 			{DriveID: firecracker.String("mutable"), PathOnHost: firecracker.String(spec.Metadata.DiskPath), IsRootDevice: firecracker.Bool(false), IsReadOnly: firecracker.Bool(false)},
 		},
-		MachineCfg: models.MachineConfiguration{VcpuCount: firecracker.Int64(spec.Metadata.Resources.VCPUs), MemSizeMib: firecracker.Int64(spec.Metadata.Resources.MemoryMiB), Smt: firecracker.Bool(false)},
+		MachineCfg: models.MachineConfiguration{
+			VcpuCount:  firecracker.Int64(spec.Metadata.Resources.VCPUs),
+			MemSizeMib: firecracker.Int64(spec.Metadata.Resources.MemoryMiB),
+			Smt:        firecracker.Bool(false),
+		},
 		NetworkInterfaces: firecracker.NetworkInterfaces{{
 			AllowMMDS: true,
 			StaticConfiguration: &firecracker.StaticNetworkConfiguration{
-				HostDevName:     spec.Network.TapName,
-				MacAddress:      spec.Network.MAC,
-				IPConfiguration: &firecracker.IPConfiguration{IPAddr: net.IPNet{IP: ipAddress, Mask: net.IPMask(maskAddress)}, Gateway: gateway, Nameservers: spec.Network.Nameservers, IfName: "eth0"},
+				HostDevName: spec.Network.TapName,
+				MacAddress:  spec.Network.MAC,
+				IPConfiguration: &firecracker.IPConfiguration{
+					IPAddr:      net.IPNet{IP: ipAddress, Mask: net.IPMask(maskAddress)},
+					Gateway:     gateway,
+					Nameservers: spec.Network.Nameservers,
+					IfName:      "eth0",
+				},
 			},
 		}},
 		NetNS:       spec.Network.NetNSPath,
@@ -100,45 +154,188 @@ func (launcher *FirecrackerLauncher) Launch(ctx context.Context, spec manager.La
 		JailerCfg: &firecracker.JailerConfig{
 			UID: &uid, GID: &gid, ID: spec.Metadata.SessionID, NumaNode: &numa,
 			ExecFile: spec.Artifacts.Firecracker, JailerBinary: launcher.config.JailerWrapper,
-			ChrootBaseDir: launcher.config.ChrootBase, ChrootStrategy: firecracker.NewNaiveChrootStrategy(spec.Artifacts.Kernel),
-			Daemonize: true, CgroupVersion: "2", ParentCgroup: launcher.config.ParentCgroup,
-			CgroupArgs: []string{"cpu.max=" + cpuQuota, "memory.max=" + strconv.FormatInt(spec.Metadata.Resources.MemoryMiB*1024*1024, 10), "pids.max=256"},
+			ChrootBaseDir: launcher.config.ChrootBase,
+			ChrootStrategy: firecracker.NewNaiveChrootStrategy(
+				spec.Artifacts.Kernel,
+			),
+			Daemonize:     false,
+			CgroupVersion: "2",
+			ParentCgroup: filepath.Join(
+				launcher.config.ParentCgroup,
+				spec.Metadata.SessionID,
+			),
+			CgroupArgs: []string{
+				"cpu.max=" + cpuQuota,
+				"memory.max=" + strconv.FormatInt(spec.Metadata.Resources.MemoryMiB*1024*1024, 10),
+				"pids.max=256",
+			},
 		},
 	}
 	machineContext := context.Background()
-	machine, err := firecracker.NewMachine(machineContext, machineConfig, firecracker.WithLogger(launcher.logger))
+	machine, err := firecracker.NewMachine(
+		machineContext,
+		machineConfig,
+		firecracker.WithLogger(launcher.logger),
+	)
 	if err != nil {
 		return nil, err
 	}
+	if _, err := os.Stat(vmCgroupPath); err != nil {
+		return nil, fmt.Errorf("verify VM cgroup before jailer: %w", err)
+	}
+	launcher.logger.WithField("cgroup", vmCgroupPath).Info("verified VM cgroup before jailer")
 	machine.Handlers.FcInit = machine.Handlers.FcInit.Append(firecracker.NewSetMetadataHandler(map[string]any{
-		"agentloom": map[string]any{
-			"token": spec.Token, "sessionId": spec.Metadata.SessionID, "guestIp": spec.Network.GuestIP,
-			"gateway": spec.Network.Gateway, "artifactDigest": spec.Artifacts.Digest, "guestApiVersion": spec.Artifacts.GuestAPI,
-			"tlsCertificate": certificate, "tlsPrivateKey": privateKey,
-			"callbackRelayUrl": "http://" + net.JoinHostPort(spec.Network.Gateway, "18080") + "/v1/callbacks",
-		},
+		"latest": map[string]any{"meta-data": map[string]any{"agentloom": string(guestMetadata)}},
 	}))
 	if err := machine.Start(machineContext); err != nil {
 		return nil, err
 	}
-	jailRoot := filepath.Join(launcher.config.ChrootBase, filepath.Base(spec.Artifacts.Firecracker), spec.Metadata.SessionID, "root")
-	pid, err := waitForPIDFile(ctx, filepath.Join(jailRoot, "firecracker.pid"))
+	pid, err := waitForPIDFile(ctx, pidPath)
 	if err != nil {
 		_ = machine.Shutdown(context.Background())
 		return nil, err
 	}
+	jailRoot := filepath.Join(jailDir, "root")
 	socketPath := filepath.Join(jailRoot, socketRelative)
-	return &firecrackerInstance{pid: pid, socketPath: socketPath, machine: machine, client: firecracker.NewClient(socketPath, launcher.logger, false)}, nil
+	cleanupOnError = false
+	return &firecrackerInstance{
+		pid: pid, socketPath: socketPath, pidPath: pidPath,
+		cgroupPath: vmCgroupPath, jailDir: jailDir,
+		machine: machine, client: firecracker.NewClient(socketPath, launcher.logger, false),
+	}, nil
 }
 
 func (launcher *FirecrackerLauncher) Reattach(_ context.Context, metadata manager.Metadata, _ string) (manager.Instance, error) {
 	if metadata.PID < 2 || metadata.APISocketPath == "" {
 		return nil, errors.New("persisted instance handle is incomplete")
 	}
+	if err := manager.ValidateSessionID(metadata.SessionID); err != nil {
+		return nil, err
+	}
 	if _, err := os.Stat(metadata.APISocketPath); err != nil {
 		return nil, err
 	}
-	return &firecrackerInstance{pid: metadata.PID, socketPath: metadata.APISocketPath, client: firecracker.NewClient(metadata.APISocketPath, launcher.logger, false)}, nil
+	jailDir := filepath.Dir(filepath.Dir(filepath.Dir(metadata.APISocketPath)))
+	cgroupPath := filepath.Join("/sys/fs/cgroup", launcher.config.ParentCgroup, metadata.SessionID)
+	if _, err := os.Stat(cgroupPath); errors.Is(err, os.ErrNotExist) {
+		cgroupPath = ""
+	} else if err != nil {
+		return nil, err
+	}
+	return &firecrackerInstance{
+		pid: metadata.PID, socketPath: metadata.APISocketPath,
+		pidPath:    filepath.Join(launcher.config.PIDRoot, metadata.SessionID+".pid"),
+		cgroupPath: cgroupPath, jailDir: jailDir,
+		client: firecracker.NewClient(metadata.APISocketPath, launcher.logger, false),
+	}, nil
+}
+
+func (launcher *FirecrackerLauncher) Cleanup(_ context.Context, metadata manager.Metadata) error {
+	if err := manager.ValidateSessionID(metadata.SessionID); err != nil {
+		return err
+	}
+	cgroupPath := filepath.Join(
+		"/sys/fs/cgroup",
+		launcher.config.ParentCgroup,
+		metadata.SessionID,
+	)
+	jailDir := filepath.Join(
+		launcher.config.ChrootBase,
+		"firecracker",
+		metadata.SessionID,
+	)
+	pidPath := filepath.Join(
+		launcher.config.PIDRoot,
+		metadata.SessionID+".pid",
+	)
+	var cleanupErrors []error
+	cleanupErrors = append(cleanupErrors, killAndRemoveCgroup(cgroupPath))
+	if err := os.RemoveAll(jailDir); err != nil {
+		cleanupErrors = append(cleanupErrors, err)
+	}
+	if err := os.Remove(pidPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		cleanupErrors = append(cleanupErrors, err)
+	}
+	return errors.Join(cleanupErrors...)
+}
+
+func prepareParentCgroup(parent string) error {
+	clean := filepath.Clean(parent)
+	if clean == "." || filepath.IsAbs(clean) || strings.Contains(clean, string(os.PathSeparator)) {
+		return errors.New("parent cgroup must be one path segment")
+	}
+	if err := os.WriteFile(
+		"/sys/fs/cgroup/cgroup.subtree_control",
+		[]byte("+cpu +memory +pids"),
+		0o644,
+	); err != nil {
+		return err
+	}
+	path := filepath.Join("/sys/fs/cgroup", clean)
+	if err := os.MkdirAll(path, 0o755); err != nil {
+		return err
+	}
+	if err := os.WriteFile(
+		filepath.Join(path, "cgroup.subtree_control"),
+		[]byte("+cpu +memory +pids"),
+		0o644,
+	); err != nil {
+		return err
+	}
+	return nil
+}
+
+func prepareVMCgroup(
+	parent string,
+	sessionID string,
+	resources manager.Resources,
+) (string, error) {
+	if err := manager.ValidateSessionID(sessionID); err != nil {
+		return "", err
+	}
+	path := filepath.Join("/sys/fs/cgroup", parent, sessionID)
+	if err := os.Mkdir(path, 0o755); err != nil && !errors.Is(err, os.ErrExist) {
+		return "", err
+	}
+	values := map[string]string{
+		"cpu.max":    strconv.FormatInt(int64(resources.CPU*100000), 10) + " 100000",
+		"memory.max": strconv.FormatInt(resources.MemoryMiB*1024*1024, 10),
+		"pids.max":   "256",
+	}
+	for name, value := range values {
+		if err := os.WriteFile(filepath.Join(path, name), []byte(value), 0o644); err != nil {
+			_ = os.Remove(path)
+			return "", err
+		}
+	}
+	return path, nil
+}
+
+func killAndRemoveCgroup(path string) error {
+	killPath := filepath.Join(path, "cgroup.kill")
+	if err := os.WriteFile(killPath, []byte("1"), 0o644); err != nil &&
+		!errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		processes, err := os.ReadFile(filepath.Join(path, "cgroup.procs"))
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if strings.TrimSpace(string(processes)) == "" {
+			if err := os.Remove(path); err == nil || errors.Is(err, os.ErrNotExist) {
+				return nil
+			}
+		}
+		if time.Now().After(deadline) {
+			return fmt.Errorf("timed out cleaning VM cgroup %s", filepath.Base(path))
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
 }
 
 func waitForPIDFile(ctx context.Context, path string) (int, error) {
@@ -154,7 +351,7 @@ func waitForPIDFile(ctx context.Context, path string) (int, error) {
 		}
 		select {
 		case <-ctx.Done():
-			return 0, fmt.Errorf("wait for Firecracker pid file: %w", ctx.Err())
+			return 0, ctx.Err()
 		case <-ticker.C:
 		}
 	}
@@ -163,7 +360,10 @@ func waitForPIDFile(ctx context.Context, path string) (int, error) {
 type firecrackerInstance struct {
 	pid          int
 	socketPath   string
+	cgroupPath   string
+	jailDir      string
 	machine      *firecracker.Machine
+	pidPath      string
 	client       *firecracker.Client
 	shutdownOnce sync.Once
 	shutdownErr  error
@@ -210,6 +410,25 @@ func (instance *firecrackerInstance) Wait(ctx context.Context) error {
 	defer ticker.Stop()
 	for {
 		if !processRunning(instance.pid) {
+			if instance.cgroupPath != "" {
+				if err := killAndRemoveCgroup(instance.cgroupPath); err != nil {
+					return err
+				}
+				instance.cgroupPath = ""
+			}
+			if instance.jailDir != "" {
+				if err := os.RemoveAll(instance.jailDir); err != nil {
+					return err
+				}
+				instance.jailDir = ""
+			}
+			if instance.pidPath != "" {
+				if err := os.Remove(instance.pidPath); err != nil &&
+					!errors.Is(err, os.ErrNotExist) {
+					return err
+				}
+				instance.pidPath = ""
+			}
 			return nil
 		}
 		select {

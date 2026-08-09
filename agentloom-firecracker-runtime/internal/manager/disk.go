@@ -71,6 +71,9 @@ func (manager *Ext4DiskManager) Ensure(ctx context.Context, id string, sizeGiB i
 }
 
 func (manager *Ext4DiskManager) Check(ctx context.Context, path string) error {
+	if _, err := os.Stat(path); err != nil {
+		return err
+	}
 	command := exec.CommandContext(ctx, "e2fsck", "-fn", path)
 	if output, err := command.CombinedOutput(); err != nil {
 		return fmt.Errorf("mutable ext4 check failed: %w: %s", err, output)

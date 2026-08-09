@@ -379,7 +379,8 @@ func (repository *PostgresRepository) ActivateCutover(ctx context.Context) error
 	}
 	if _, err := tx.Exec(ctx, `
 		UPDATE sandbox_sessions session
-		SET status = 'stopped',
+		SET runtime_handle = session.id::text,
+		    status = 'stopped',
 		    stopped_at = now(),
 		    updated_at = now()
 		FROM sandbox_runtime_migrations migration
@@ -396,7 +397,33 @@ func (repository *PostgresRepository) MarkRolledBack(
 	sessionID string,
 	rolledBackAt time.Time,
 ) error {
-	return repository.transitionOne(ctx, sessionID, StatusVerified, StatusRolledBack, "rolled_back_at", rolledBackAt)
+	if !CanTransition(StatusVerified, StatusRolledBack) {
+		return errors.New("invalid verified -> rolled_back migration transition")
+	}
+	command, err := repository.pool.Exec(ctx, `
+		WITH migrated AS (
+			UPDATE sandbox_runtime_migrations
+			SET status = 'rolled_back',
+			    rolled_back_at = $2,
+			    error = NULL,
+			    updated_at = now()
+			WHERE sandbox_session_id = $1
+			  AND status = 'verified'
+			RETURNING sandbox_session_id
+		)
+		UPDATE sandbox_sessions session
+		SET runtime_handle = NULL,
+		    updated_at = now()
+		FROM migrated
+		WHERE session.id = migrated.sandbox_session_id
+	`, sessionID, rolledBackAt)
+	if err != nil {
+		return err
+	}
+	if command.RowsAffected() != 1 {
+		return fmt.Errorf("migration row %s is not verified", sessionID)
+	}
+	return nil
 }
 
 func (repository *PostgresRepository) MarkFinalized(
@@ -405,6 +432,29 @@ func (repository *PostgresRepository) MarkFinalized(
 	finalizedAt time.Time,
 ) error {
 	return repository.transitionOne(ctx, sessionID, StatusVerified, StatusFinalized, "finalized_at", finalizedAt)
+}
+
+func (repository *PostgresRepository) FinalizeRuntimeHandleCutover(ctx context.Context) error {
+	tx, err := repository.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+	var unfinished int64
+	if err := tx.QueryRow(ctx, `
+		SELECT count(*)
+		FROM sandbox_runtime_migrations
+		WHERE status <> 'finalized'
+	`).Scan(&unfinished); err != nil {
+		return err
+	}
+	if unfinished != 0 {
+		return fmt.Errorf("cannot drop legacy container_id: %d migrations are not finalized", unfinished)
+	}
+	if _, err := tx.Exec(ctx, `ALTER TABLE sandbox_sessions DROP COLUMN IF EXISTS container_id`); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
 }
 
 func (repository *PostgresRepository) transitionOne(

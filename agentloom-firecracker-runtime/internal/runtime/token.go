@@ -32,15 +32,23 @@ func (recoverer *MMDSTokenRecoverer) Recover(ctx context.Context, metadata manag
 		return "", err
 	}
 	var document struct {
-		AgentLoom struct {
-			Token string `json:"token"`
-		} `json:"agentloom"`
+		Latest struct {
+			Metadata struct {
+				AgentLoom string `json:"agentloom"`
+			} `json:"meta-data"`
+		} `json:"latest"`
 	}
 	if err := json.Unmarshal(content, &document); err != nil {
 		return "", err
 	}
-	if len(document.AgentLoom.Token) != 64 {
+	var payload struct {
+		Token string `json:"token"`
+	}
+	if err := json.Unmarshal([]byte(document.Latest.Metadata.AgentLoom), &payload); err != nil {
+		return "", err
+	}
+	if len(payload.Token) != 64 {
 		return "", errors.New("MMDS guest token is missing or invalid")
 	}
-	return document.AgentLoom.Token, nil
+	return payload.Token, nil
 }

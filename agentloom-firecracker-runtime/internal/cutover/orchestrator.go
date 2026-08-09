@@ -190,9 +190,6 @@ func (orchestrator *Orchestrator) FinalizeAll(ctx context.Context, rollbackWindo
 	if err != nil {
 		return err
 	}
-	if len(migrations) == 0 {
-		return nil
-	}
 	now := orchestrator.now()
 	for _, migration := range migrations {
 		if migration.VerifiedAt == nil {
@@ -222,6 +219,9 @@ func (orchestrator *Orchestrator) FinalizeAll(ctx context.Context, rollbackWindo
 				return err
 			}
 		}
+	}
+	if err := orchestrator.Repository.FinalizeRuntimeHandleCutover(ctx); err != nil {
+		return err
 	}
 	return nil
 }
