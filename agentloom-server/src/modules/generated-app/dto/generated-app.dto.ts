@@ -5,6 +5,7 @@ import type {
   GeneratedApp,
   GeneratedAppBuildUnitPlan,
   GeneratedAppGenerationRun,
+  GeneratedAppGenerationPlan,
   GeneratedAppRepairPlan,
   GeneratedAppGateRun,
   GeneratedAppGateRunFailure,
@@ -224,9 +225,14 @@ export class RecordGeneratedAppGateResultsDto extends createZodDto(
   RecordGeneratedAppGateResultsSchema,
 ) {}
 
-export type RecordGeneratedAppGateResultsDtoType = z.infer<
-  typeof RecordGeneratedAppGateResultsSchema
->;
+export type RecordGeneratedAppGateResultsDtoType = Omit<
+  z.infer<typeof RecordGeneratedAppGateResultsSchema>,
+  'generationPlan'
+> & {
+  generationPlan?:
+    | z.infer<typeof RecordGeneratedAppGateResultsSchema>['generationPlan']
+    | GeneratedAppGenerationPlan;
+};
 
 export const GeneratedAppGateRunFailureSchema = z.object({
   code: z.string().trim().min(1).max(128).optional(),
