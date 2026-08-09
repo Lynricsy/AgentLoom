@@ -3,16 +3,17 @@ module github.com/agentloom/agentloom-firecracker-runtime
 go 1.25.0
 
 require (
+	github.com/containernetworking/cni v1.3.0
 	github.com/firecracker-microvm/firecracker-go-sdk v1.0.1-0.20251224190957-6fb280e993d4
 	github.com/jackc/pgx/v5 v5.7.2
 	github.com/klauspost/compress v1.18.0
 	github.com/minio/minio-go/v7 v7.0.95
+	github.com/sirupsen/logrus v1.9.3
 )
 
 require (
 	github.com/asaskevich/govalidator v0.0.0-20230301143203-a9d515a09cc2 // indirect
 	github.com/containerd/fifo v1.1.0 // indirect
-	github.com/containernetworking/cni v1.3.0 // indirect
 	github.com/containernetworking/plugins v1.9.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/go-ini/ini v1.67.0 // indirect
@@ -43,7 +44,6 @@ require (
 	github.com/opentracing/opentracing-go v1.2.0 // indirect
 	github.com/philhofer/fwd v1.2.0 // indirect
 	github.com/rs/xid v1.6.0 // indirect
-	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/stretchr/testify v1.11.1 // indirect
 	github.com/tinylib/msgp v1.3.0 // indirect
 	github.com/vishvananda/netlink v1.3.1 // indirect
