@@ -1,27 +1,28 @@
-import { useQuery, keepPreviousData, useQueryClient } from '@tanstack/react-query'
-import { HTTPError } from 'ky'
+import {
+  useQuery,
+  keepPreviousData,
+  useQueryClient,
+} from "@tanstack/react-query";
+import { HTTPError } from "ky";
 import {
   fetchSandboxes,
   fetchSandboxStats,
   fetchPersistentSandboxes,
-} from './sandboxApi'
-import { sandboxKeys } from './sandboxKeys'
+} from "./sandboxApi";
+import { sandboxKeys } from "./sandboxKeys";
 import type {
   SandboxListParams,
   SandboxListResponse,
   SandboxStats,
   SandboxStatus,
-} from '../types'
+} from "../types";
 
 const TRANSITIONAL_STATUSES: ReadonlySet<SandboxStatus> = new Set([
-  'creating',
-  'stopping',
-])
+  "creating",
+  "stopping",
+]);
 
-const RUNNING_STATUSES: ReadonlySet<SandboxStatus> = new Set([
-  'ready',
-  'busy',
-])
+const RUNNING_STATUSES: ReadonlySet<SandboxStatus> = new Set(["ready", "busy"]);
 
 export function useSandboxes(params?: SandboxListParams) {
   return useQuery({
@@ -30,28 +31,26 @@ export function useSandboxes(params?: SandboxListParams) {
     placeholderData: keepPreviousData,
     staleTime: 15_000,
     refetchInterval: (query) => {
-      const data = query.state.data as SandboxListResponse | undefined
+      const data = query.state.data as SandboxListResponse | undefined;
       const hasTransitioningSession =
-        data?.data.some((session) => TRANSITIONAL_STATUSES.has(session.status)) ??
-        false
+        data?.data.some((session) =>
+          TRANSITIONAL_STATUSES.has(session.status),
+        ) ?? false;
 
-      return hasTransitioningSession ? 3_000 : false
+      return hasTransitioningSession ? 3_000 : false;
     },
-  })
+  });
 }
 
-export function useSandboxStats(
-  sessionId: string,
-  status?: SandboxStatus,
-) {
-  const queryClient = useQueryClient()
-  const isRunning = status ? RUNNING_STATUSES.has(status) : false
+export function useSandboxStats(sessionId: string, status?: SandboxStatus) {
+  const queryClient = useQueryClient();
+  const isRunning = status ? RUNNING_STATUSES.has(status) : false;
 
   return useQuery({
     queryKey: sandboxKeys.stats(sessionId),
     queryFn: async (): Promise<SandboxStats | null> => {
       try {
-        return await fetchSandboxStats(sessionId)
+        return await fetchSandboxStats(sessionId);
       } catch (error) {
         if (
           error instanceof HTTPError &&
@@ -59,26 +58,28 @@ export function useSandboxStats(
         ) {
           await Promise.all([
             queryClient.invalidateQueries({ queryKey: sandboxKeys.lists() }),
-            queryClient.invalidateQueries({ queryKey: sandboxKeys.persistent() }),
-          ])
-          return null
+            queryClient.invalidateQueries({
+              queryKey: sandboxKeys.persistent(),
+            }),
+          ]);
+          return null;
         }
 
-        throw error
+        throw error;
       }
     },
     enabled: Boolean(sessionId) && isRunning,
     refetchInterval: (query) => {
       if (!isRunning) {
-        return false
+        return false;
       }
 
-      const data = query.state.data as SandboxStats | null | undefined
-      return data === null ? false : 5_000
+      const data = query.state.data as SandboxStats | null | undefined;
+      return data === null ? false : 5_000;
     },
     staleTime: 4_000,
     retry: false,
-  })
+  });
 }
 
 export function usePersistentSandboxes() {
@@ -86,5 +87,5 @@ export function usePersistentSandboxes() {
     queryKey: sandboxKeys.persistent(),
     queryFn: fetchPersistentSandboxes,
     staleTime: 30_000,
-  })
+  });
 }

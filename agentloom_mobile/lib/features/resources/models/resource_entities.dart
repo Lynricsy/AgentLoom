@@ -213,7 +213,6 @@ class SandboxSessionDto {
     this.executionId,
     this.agentConversationId,
     this.sandboxNodeId,
-    this.containerId,
     this.workspacePath,
     this.startedAt,
     this.stoppedAt,
@@ -230,7 +229,6 @@ class SandboxSessionDto {
       executionId: _readValue(json, 'executionId') as String?,
       agentConversationId: _readValue(json, 'agentConversationId') as String?,
       sandboxNodeId: _readValue(json, 'sandboxNodeId') as String?,
-      containerId: _readValue(json, 'containerId') as String?,
       workspacePath: _readValue(json, 'workspacePath') as String?,
       startedAt: _readValue(json, 'startedAt') as String?,
       stoppedAt: _readValue(json, 'stoppedAt') as String?,
@@ -246,7 +244,6 @@ class SandboxSessionDto {
   final String? executionId;
   final String? agentConversationId;
   final String? sandboxNodeId;
-  final String? containerId;
   final String? workspacePath;
   final String? startedAt;
   final String? stoppedAt;

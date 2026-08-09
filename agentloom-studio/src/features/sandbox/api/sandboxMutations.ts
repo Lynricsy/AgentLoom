@@ -1,48 +1,49 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   createSandbox,
   stopSandbox,
   startSandbox,
   deleteSandbox,
-} from './sandboxApi'
-import { sandboxKeys } from './sandboxKeys'
+} from "./sandboxApi";
+import { sandboxKeys } from "./sandboxKeys";
 import type {
   CreateSandboxPayload,
   SandboxListResponse,
   SandboxSession,
   SandboxStatus,
-} from '../types'
+} from "../types";
 
 type SandboxMutationContext = {
-  previousListQueries: Array<[readonly unknown[], SandboxListResponse | undefined]>
-  previousPersistent: SandboxSession[] | undefined
-}
+  previousListQueries: Array<
+    [readonly unknown[], SandboxListResponse | undefined]
+  >;
+  previousPersistent: SandboxSession[] | undefined;
+};
 
 function updateSandboxStatus(
   session: SandboxSession,
   status: SandboxStatus,
 ): SandboxSession {
-  if (status === 'creating') {
+  if (status === "creating") {
     return {
       ...session,
       status,
-      containerId: null,
       startedAt: null,
       stoppedAt: null,
-    }
+    };
   }
 
-  if (status === 'stopping') {
+  if (status === "stopping") {
     return {
       ...session,
       status,
-    }
+    };
   }
 
   return {
     ...session,
     status,
-  }
+  };
 }
 
 function patchSandboxLists(
@@ -52,16 +53,16 @@ function patchSandboxLists(
   queryClient.setQueriesData<SandboxListResponse>(
     { queryKey: sandboxKeys.lists() },
     (current) => {
-      if (!current) return current
+      if (!current) return current;
 
       return {
         ...current,
         data: current.data
           .map((session) => updater(session))
           .filter((session): session is SandboxSession => session !== null),
-      }
+      };
     },
-  )
+  );
 }
 
 function patchPersistentSandboxes(
@@ -71,13 +72,13 @@ function patchPersistentSandboxes(
   queryClient.setQueryData<SandboxSession[]>(
     sandboxKeys.persistent(),
     (current) => {
-      if (!current) return current
+      if (!current) return current;
 
       return current
         .map((session) => updater(session))
-        .filter((session): session is SandboxSession => session !== null)
+        .filter((session): session is SandboxSession => session !== null);
     },
-  )
+  );
 }
 
 function syncSandboxSession(
@@ -86,23 +87,26 @@ function syncSandboxSession(
 ) {
   patchSandboxLists(queryClient, (session) =>
     session.id === nextSession.id ? nextSession : session,
-  )
+  );
   patchPersistentSandboxes(queryClient, (session) =>
     session.id === nextSession.id ? nextSession : session,
-  )
+  );
 }
 
 function restoreSandboxCaches(
   queryClient: ReturnType<typeof useQueryClient>,
   context: SandboxMutationContext | undefined,
 ) {
-  if (!context) return
+  if (!context) return;
 
   for (const [queryKey, data] of context.previousListQueries) {
-    queryClient.setQueryData(queryKey, data)
+    queryClient.setQueryData(queryKey, data);
   }
 
-  queryClient.setQueryData(sandboxKeys.persistent(), context.previousPersistent)
+  queryClient.setQueryData(
+    sandboxKeys.persistent(),
+    context.previousPersistent,
+  );
 }
 
 async function refreshSandboxQueries(
@@ -113,46 +117,48 @@ async function refreshSandboxQueries(
     queryClient.invalidateQueries({ queryKey: sandboxKeys.lists() }),
     queryClient.invalidateQueries({ queryKey: sandboxKeys.persistent() }),
     sessionId
-      ? queryClient.invalidateQueries({ queryKey: sandboxKeys.stats(sessionId) })
+      ? queryClient.invalidateQueries({
+          queryKey: sandboxKeys.stats(sessionId),
+        })
       : Promise.resolve(),
-  ])
+  ]);
 
   await Promise.all([
     queryClient.refetchQueries({
       queryKey: sandboxKeys.lists(),
-      type: 'active',
+      type: "active",
     }),
     queryClient.refetchQueries({
       queryKey: sandboxKeys.persistent(),
-      type: 'active',
+      type: "active",
     }),
     sessionId
       ? queryClient.refetchQueries({
           queryKey: sandboxKeys.stats(sessionId),
-          type: 'active',
+          type: "active",
         })
       : Promise.resolve(),
-  ])
+  ]);
 }
 
 export function useCreateSandbox() {
-  const queryClient = useQueryClient()
+  const queryClient = useQueryClient();
 
   return useMutation({
-    mutationKey: [...sandboxKeys.all, 'create'],
+    mutationKey: [...sandboxKeys.all, "create"],
     gcTime: 0,
     mutationFn: (payload: CreateSandboxPayload) => createSandbox(payload),
     onSuccess: async () => {
-      await refreshSandboxQueries(queryClient)
+      await refreshSandboxQueries(queryClient);
     },
-  })
+  });
 }
 
 export function useStopSandbox() {
-  const queryClient = useQueryClient()
+  const queryClient = useQueryClient();
 
   return useMutation({
-    mutationKey: [...sandboxKeys.all, 'stop'],
+    mutationKey: [...sandboxKeys.all, "stop"],
     gcTime: 0,
     mutationFn: (sessionId: string) => stopSandbox(sessionId),
     onMutate: async (sessionId) => {
@@ -160,47 +166,47 @@ export function useStopSandbox() {
         queryClient.cancelQueries({ queryKey: sandboxKeys.lists() }),
         queryClient.cancelQueries({ queryKey: sandboxKeys.persistent() }),
         queryClient.cancelQueries({ queryKey: sandboxKeys.stats(sessionId) }),
-      ])
+      ]);
 
       const context: SandboxMutationContext = {
-        previousListQueries:
-          queryClient.getQueriesData<SandboxListResponse>({
-            queryKey: sandboxKeys.lists(),
-          }),
-        previousPersistent:
-          queryClient.getQueryData<SandboxSession[]>(sandboxKeys.persistent()),
-      }
+        previousListQueries: queryClient.getQueriesData<SandboxListResponse>({
+          queryKey: sandboxKeys.lists(),
+        }),
+        previousPersistent: queryClient.getQueryData<SandboxSession[]>(
+          sandboxKeys.persistent(),
+        ),
+      };
 
       patchSandboxLists(queryClient, (session) =>
         session.id === sessionId
-          ? updateSandboxStatus(session, 'stopping')
+          ? updateSandboxStatus(session, "stopping")
           : session,
-      )
+      );
       patchPersistentSandboxes(queryClient, (session) =>
         session.id === sessionId
-          ? updateSandboxStatus(session, 'stopping')
+          ? updateSandboxStatus(session, "stopping")
           : session,
-      )
+      );
 
-      return context
+      return context;
     },
     onSuccess: (session) => {
-      syncSandboxSession(queryClient, session)
+      syncSandboxSession(queryClient, session);
     },
     onError: (_error, _sessionId, context) => {
-      restoreSandboxCaches(queryClient, context)
+      restoreSandboxCaches(queryClient, context);
     },
     onSettled: async (_data, _error, sessionId) => {
-      await refreshSandboxQueries(queryClient, sessionId)
+      await refreshSandboxQueries(queryClient, sessionId);
     },
-  })
+  });
 }
 
 export function useStartSandbox() {
-  const queryClient = useQueryClient()
+  const queryClient = useQueryClient();
 
   return useMutation({
-    mutationKey: [...sandboxKeys.all, 'start'],
+    mutationKey: [...sandboxKeys.all, "start"],
     gcTime: 0,
     mutationFn: (sessionId: string) => startSandbox(sessionId),
     onMutate: async (sessionId) => {
@@ -208,47 +214,47 @@ export function useStartSandbox() {
         queryClient.cancelQueries({ queryKey: sandboxKeys.lists() }),
         queryClient.cancelQueries({ queryKey: sandboxKeys.persistent() }),
         queryClient.cancelQueries({ queryKey: sandboxKeys.stats(sessionId) }),
-      ])
+      ]);
 
       const context: SandboxMutationContext = {
-        previousListQueries:
-          queryClient.getQueriesData<SandboxListResponse>({
-            queryKey: sandboxKeys.lists(),
-          }),
-        previousPersistent:
-          queryClient.getQueryData<SandboxSession[]>(sandboxKeys.persistent()),
-      }
+        previousListQueries: queryClient.getQueriesData<SandboxListResponse>({
+          queryKey: sandboxKeys.lists(),
+        }),
+        previousPersistent: queryClient.getQueryData<SandboxSession[]>(
+          sandboxKeys.persistent(),
+        ),
+      };
 
       patchSandboxLists(queryClient, (session) =>
         session.id === sessionId
-          ? updateSandboxStatus(session, 'creating')
+          ? updateSandboxStatus(session, "creating")
           : session,
-      )
+      );
       patchPersistentSandboxes(queryClient, (session) =>
         session.id === sessionId
-          ? updateSandboxStatus(session, 'creating')
+          ? updateSandboxStatus(session, "creating")
           : session,
-      )
+      );
 
-      return context
+      return context;
     },
     onSuccess: (session) => {
-      syncSandboxSession(queryClient, session)
+      syncSandboxSession(queryClient, session);
     },
     onError: (_error, _sessionId, context) => {
-      restoreSandboxCaches(queryClient, context)
+      restoreSandboxCaches(queryClient, context);
     },
     onSettled: async (_data, _error, sessionId) => {
-      await refreshSandboxQueries(queryClient, sessionId)
+      await refreshSandboxQueries(queryClient, sessionId);
     },
-  })
+  });
 }
 
 export function useDeleteSandbox() {
-  const queryClient = useQueryClient()
+  const queryClient = useQueryClient();
 
   return useMutation({
-    mutationKey: [...sandboxKeys.all, 'delete'],
+    mutationKey: [...sandboxKeys.all, "delete"],
     gcTime: 0,
     mutationFn: (sessionId: string) => deleteSandbox(sessionId),
     onMutate: async (sessionId) => {
@@ -256,32 +262,32 @@ export function useDeleteSandbox() {
         queryClient.cancelQueries({ queryKey: sandboxKeys.lists() }),
         queryClient.cancelQueries({ queryKey: sandboxKeys.persistent() }),
         queryClient.cancelQueries({ queryKey: sandboxKeys.stats(sessionId) }),
-      ])
+      ]);
 
       const context: SandboxMutationContext = {
-        previousListQueries:
-          queryClient.getQueriesData<SandboxListResponse>({
-            queryKey: sandboxKeys.lists(),
-          }),
-        previousPersistent:
-          queryClient.getQueryData<SandboxSession[]>(sandboxKeys.persistent()),
-      }
+        previousListQueries: queryClient.getQueriesData<SandboxListResponse>({
+          queryKey: sandboxKeys.lists(),
+        }),
+        previousPersistent: queryClient.getQueryData<SandboxSession[]>(
+          sandboxKeys.persistent(),
+        ),
+      };
 
       patchSandboxLists(queryClient, (session) =>
         session.id === sessionId ? null : session,
-      )
+      );
       patchPersistentSandboxes(queryClient, (session) =>
         session.id === sessionId ? null : session,
-      )
-      queryClient.removeQueries({ queryKey: sandboxKeys.stats(sessionId) })
+      );
+      queryClient.removeQueries({ queryKey: sandboxKeys.stats(sessionId) });
 
-      return context
+      return context;
     },
     onError: (_error, _sessionId, context) => {
-      restoreSandboxCaches(queryClient, context)
+      restoreSandboxCaches(queryClient, context);
     },
     onSettled: async (_data, _error, sessionId) => {
-      await refreshSandboxQueries(queryClient, sessionId)
+      await refreshSandboxQueries(queryClient, sessionId);
     },
-  })
+  });
 }
