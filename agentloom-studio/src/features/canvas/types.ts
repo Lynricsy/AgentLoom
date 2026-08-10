@@ -317,5 +317,6 @@ export interface PluginNodeData extends CanvasNodeData {
   pluginConfig?: Record<string, unknown>
 }
 
-export type { NodeType, PortDefinition, CreatePortOptions } from './types/nodeTypeRegistry'
+export type { NodeType, PortDefinition } from './types/nodeTypeRegistry'
+export type { CreatePortOptions } from './types/portSchema'
 export type { PortDataType, TypeSchema } from './types/typeSchema'

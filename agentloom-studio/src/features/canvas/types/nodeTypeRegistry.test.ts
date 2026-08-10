@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { buildPaletteGroups } from "../components/nodeCategories";
 import { PORT_DATA_TYPES } from "./typeSchema";
 import {
-  clonePortDefinitions,
   DYNAMIC_ONLY_NODE_TYPES,
   EXEC_PORT_NODE_TYPES,
   getResolvedNodeTypeConfig,
@@ -16,6 +15,7 @@ import {
   type NodeType,
   type PortDefinition,
 } from "./nodeTypeRegistry";
+import { clonePortDefinitions } from "./portSchema";
 
 describe("nodeTypeRegistry", () => {
   it("exports all supported node types in a stable order", () => {

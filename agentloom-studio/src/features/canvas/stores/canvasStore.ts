@@ -22,29 +22,21 @@ import type {
 } from "../types";
 import { createDefaultEdgeData, createDefaultAgentNodeData } from "../types";
 import {
-  clonePortDefinitions,
-  EXEC_PORT_NODE_TYPES,
   getNodeTypeConfig,
   getNodeTypeConfigOrNull,
-  hydratePortDefinitions,
-  type NodeTypeConfig,
-  type PortDefinition,
 } from "../types/nodeTypeRegistry";
 import {
-  arePortDataTypesCompatible,
-  evaluateConnection,
-  mergeEdgeDataWithStoredMappings,
-  resolveConnectionPorts,
-} from "../lib/connectionCompatibility";
+  clonePortDefinitions,
+  hydratePortDefinitions,
+} from "../types/portSchema";
+import { arePortDataTypesCompatible } from "../lib/connectionCompatibility";
 import { getNodePortContractSignature } from "../lib/typeEngine/serialize";
 import {
   buildCompoundChildExtent,
   clampPositionToExtent,
   getCompoundInitialChildPosition,
   readCompoundNodeDimension,
-  resolveCompoundContainerSize,
 } from "../lib/compoundLayout";
-import type { NodeType } from "../types/nodeTypeRegistry";
 import {
   buildConditionInputPorts,
   buildConditionOutputPorts,
@@ -58,7 +50,6 @@ import {
   buildIterationStartOutputPorts,
   buildLoopInputPorts,
   buildLoopStartOutputPorts,
-  buildCompoundOutputPorts,
   createDefaultIterationNodeConfig,
   createDefaultIterationStartNodeConfig,
   createDefaultLoopCompoundNodeConfig,
@@ -71,64 +62,23 @@ import {
   parseManualTriggerConfig,
 } from "../types/trigger.types";
 import { normalizeTextNodeConfig } from "../lib/textNodeConfig";
+import {
+  collectDescendantNodeIds,
+  collectPortIds,
+  createEdgeId,
+  createNodeId,
+  ensureExecPortsForHydration,
+  findLastIndex,
+  invalidateEdgeCompatibilityRefreshVersion,
+  isAgentNodeType,
+  matchesSearchQuery,
+  nextEdgeCompatibilityRefreshVersion,
+  revalidateConnectedEdges,
+  syncCompoundParentLayout,
+  syncCompoundParentOutputPorts,
+} from "../lib/canvasStoreHelpers";
 
 enableMapSet();
-
-const AGENT_NODE_TYPES: ReadonlySet<NodeType> = new Set(["agent"]);
-function isAgentNodeType(nodeType: string): boolean {
-  return AGENT_NODE_TYPES.has(nodeType as NodeType);
-}
-
-function findLastIndex<T>(
-  arr: readonly T[],
-  predicate: (item: T) => boolean,
-): number {
-  for (let i = arr.length - 1; i >= 0; i--) {
-    if (predicate(arr[i]!)) return i;
-  }
-  return -1;
-}
-
-function prependMissingPort(
-  ports: PortDefinition[],
-  defaultPorts: readonly PortDefinition[],
-  portId: "exec-in" | "exec-out",
-): PortDefinition[] {
-  if (ports.some((port) => port.id === portId)) {
-    return ports;
-  }
-
-  const defaultPort = defaultPorts.find((port) => port.id === portId);
-  if (!defaultPort) {
-    return ports;
-  }
-
-  return [clonePortDefinitions([defaultPort])[0]!, ...ports];
-}
-
-function ensureExecPortsForHydration(
-  nodeType: string,
-  typeConfig: NodeTypeConfig | null,
-  inputPorts: PortDefinition[],
-  outputPorts: PortDefinition[],
-): { inputPorts: PortDefinition[]; outputPorts: PortDefinition[] } {
-  if (!typeConfig || !EXEC_PORT_NODE_TYPES.has(nodeType as NodeType)) {
-    return { inputPorts, outputPorts };
-  }
-
-  return {
-    inputPorts: prependMissingPort(
-      inputPorts,
-      typeConfig.inputPorts,
-      "exec-in",
-    ),
-    outputPorts: prependMissingPort(
-      outputPorts,
-      typeConfig.outputPorts,
-      "exec-out",
-    ),
-  };
-}
 
 const MAX_UNDO_STACK_SIZE = 10;
 
@@ -214,119 +164,6 @@ interface CanvasActions {
   };
 }
 
-function collectPortIds(ports: readonly { id: string }[]): Set<string> {
-  return new Set(ports.map((port) => port.id));
-}
-
-function collectDescendantNodeIds(
-  nodes: readonly CanvasNode[],
-  rootNodeIds: readonly string[],
-): Set<string> {
-  const collected = new Set(rootNodeIds);
-  let changed = true;
-
-  while (changed) {
-    changed = false;
-    for (const node of nodes) {
-      if (
-        node.parentId &&
-        collected.has(node.parentId) &&
-        !collected.has(node.id)
-      ) {
-        collected.add(node.id);
-        changed = true;
-      }
-    }
-  }
-
-  return collected;
-}
-
-function syncCompoundParentOutputPorts(
-  nodes: CanvasNode[],
-  parentNodeId: string,
-): void {
-  const parentNode = nodes.find((node) => node.id === parentNodeId);
-  if (!parentNode) {
-    return;
-  }
-
-  if (
-    parentNode.data.nodeType !== "loop" &&
-    parentNode.data.nodeType !== "iteration"
-  ) {
-    return;
-  }
-
-  const outputKeys = nodes
-    .filter(
-      (node) =>
-        node.parentId === parentNodeId && node.data.nodeType === "result",
-    )
-    .map((node) => {
-      const outputKey = node.data.config?.outputKey;
-      return typeof outputKey === "string" && outputKey.trim().length > 0
-        ? outputKey.trim()
-        : "result";
-    })
-    .filter((value, index, items) => items.indexOf(value) === index);
-
-  parentNode.data.outputPorts = buildCompoundOutputPorts(outputKeys);
-}
-
-function syncCompoundParentLayout(
-  nodes: CanvasNode[],
-  parentNodeId: string,
-): void {
-  const parentNode = nodes.find((node) => node.id === parentNodeId);
-  if (!parentNode || !isCompoundContainerNodeType(parentNode.data.nodeType)) {
-    return;
-  }
-
-  const isCollapsed = parentNode.data.config?.isCollapsed === true;
-  const parentSize = resolveCompoundContainerSize({
-    inputPortCount: parentNode.data.inputPorts.length,
-    outputPortCount: parentNode.data.outputPorts.length,
-    width: readCompoundNodeDimension(parentNode, "width"),
-    height: readCompoundNodeDimension(parentNode, "height"),
-    isCollapsed,
-  });
-
-  parentNode.style = {
-    ...(parentNode.style ?? {}),
-    width: parentSize.width,
-    height: parentSize.height,
-  };
-
-  if (isCollapsed) {
-    return;
-  }
-
-  for (const childNode of nodes) {
-    if (childNode.parentId !== parentNodeId) {
-      continue;
-    }
-
-    const childExtent = buildCompoundChildExtent({
-      inputPortCount: parentNode.data.inputPorts.length,
-      outputPortCount: parentNode.data.outputPorts.length,
-      width: parentSize.width,
-      height: parentSize.height,
-    });
-
-    childNode.extent = childExtent;
-    childNode.expandParent = false;
-    childNode.position = clampPositionToExtent(
-      childNode.position,
-      childExtent,
-      {
-        childWidth: readCompoundNodeDimension(childNode, "width"),
-        childHeight: readCompoundNodeDimension(childNode, "height"),
-      },
-    );
-  }
-}
-
 function createInitialState(): CanvasState {
   return {
     nodes: [],
@@ -350,35 +187,6 @@ function createInitialState(): CanvasState {
     nodeValidationErrors: {},
     fieldMappingUndoStack: [],
   };
-}
-
-function createEdgeId(): string {
-  if (
-    typeof crypto !== "undefined" &&
-    typeof crypto.randomUUID === "function"
-  ) {
-    return crypto.randomUUID();
-  }
-
-  return `edge-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function createNodeId(): string {
-  if (
-    typeof crypto !== "undefined" &&
-    typeof crypto.randomUUID === "function"
-  ) {
-    return crypto.randomUUID();
-  }
-
-  return `node-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function matchesSearchQuery(node: CanvasNode, lowerQuery: string): boolean {
-  return (
-    node.data.label.toLowerCase().includes(lowerQuery) ||
-    node.data.nodeType.toLowerCase().includes(lowerQuery)
-  );
 }
 
 export const useCanvasStore = create<CanvasState & CanvasActions>()(
@@ -1563,7 +1371,11 @@ export const useCanvasStore = create<CanvasState & CanvasActions>()(
             });
 
             if (shouldRevalidate) {
-              void revalidateConnectedEdges(nodeId, revalidationVersion);
+              void revalidateConnectedEdges(
+                useCanvasStore,
+                nodeId,
+                revalidationVersion,
+              );
             }
           },
 
@@ -1592,93 +1404,6 @@ export const useCanvasNodes = () => useCanvasStore((s) => s.nodes);
 export const useCanvasEdges = () => useCanvasStore((s) => s.edges);
 
 export const useCanvasActions = () => useCanvasStore((s) => s.actions);
-
-let edgeCompatibilityRefreshVersion = 0;
-
-function invalidateEdgeCompatibilityRefreshVersion(): number {
-  edgeCompatibilityRefreshVersion += 1;
-  return edgeCompatibilityRefreshVersion;
-}
-
-function nextEdgeCompatibilityRefreshVersion(): number {
-  return invalidateEdgeCompatibilityRefreshVersion();
-}
-
-async function revalidateConnectedEdges(
-  nodeId: string,
-  refreshVersion: number,
-) {
-  const snapshot = useCanvasStore.getState();
-  const connectedEdges = snapshot.edges.filter(
-    (edge) => edge.source === nodeId || edge.target === nodeId,
-  );
-
-  if (connectedEdges.length === 0) {
-    return;
-  }
-
-  const updates = await Promise.all(
-    connectedEdges.map(async (edge) => {
-      const resolved = resolveConnectionPorts(snapshot.nodes, edge);
-      const evaluated = await evaluateConnection(
-        snapshot.nodes,
-        edge,
-        snapshot.edges.filter((candidate) => candidate.id !== edge.id),
-      );
-
-      const edgeData = resolved
-        ? mergeEdgeDataWithStoredMappings(
-            resolved.source.port,
-            resolved.target.port,
-            evaluated.edgeData,
-            edge.data ?? createDefaultEdgeData(),
-          )
-        : evaluated.edgeData;
-
-      return {
-        edgeId: edge.id,
-        edgeData,
-      };
-    }),
-  );
-
-  if (refreshVersion !== edgeCompatibilityRefreshVersion) {
-    return;
-  }
-
-  const latestState = useCanvasStore.getState();
-  const latestUpdates = updates.flatMap((update) => {
-    const latestEdge = latestState.edges.find(
-      (edge) => edge.id === update.edgeId,
-    );
-    if (!latestEdge) {
-      return [];
-    }
-
-    const resolved = resolveConnectionPorts(latestState.nodes, latestEdge);
-    const edgeData = resolved
-      ? mergeEdgeDataWithStoredMappings(
-          resolved.source.port,
-          resolved.target.port,
-          update.edgeData,
-          latestEdge.data ?? createDefaultEdgeData(),
-        )
-      : update.edgeData;
-
-    return [
-      {
-        edgeId: update.edgeId,
-        edgeData,
-      },
-    ];
-  });
-
-  if (latestUpdates.length === 0) {
-    return;
-  }
-
-  latestState.actions.refreshEdgeCompatibility(latestUpdates);
-}
 
 export const useCanvasSaveStatus = () =>
   useCanvasStore(

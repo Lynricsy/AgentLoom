@@ -1,5 +1,6 @@
 import type { WorkflowInputFieldDefinition } from '@/features/workflow/types'
-import { createPort, type PortDefinition } from './nodeTypeRegistry'
+import { type PortDefinition } from './nodeTypeRegistry'
+import { createPort } from './portSchema'
 
 /**
  * Manual trigger 输出字段 — 存储在 trigger 节点 config 中的工作简化副本。

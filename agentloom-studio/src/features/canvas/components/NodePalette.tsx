@@ -12,11 +12,11 @@ import {
 } from './nodeCategories'
 import type { PaletteGroup, PaletteNodeItem } from '../types'
 import {
-  createPort,
   getNodeTypeConfig,
   PORT_DATA_TYPE_META,
   type PortDefinition,
 } from '../types/nodeTypeRegistry'
+import { createPort } from '../types/portSchema'
 import { isCompoundContainerNodeType } from '../types/controlFlow.types'
 import type { PortDataType } from '../types/typeSchema'
 

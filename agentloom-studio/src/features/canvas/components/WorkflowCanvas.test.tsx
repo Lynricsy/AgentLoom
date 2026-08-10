@@ -6,7 +6,8 @@ import { setTypeEngineServiceForTesting } from '../lib/typeEngine/service'
 import { useCanvasStore } from '../stores/canvasStore'
 import { createDefaultEdgeData } from '../types'
 import type { CanvasEdge, CanvasNode } from '../types'
-import { clonePortDefinitions, getNodeTypeConfig } from '../types/nodeTypeRegistry'
+import { getNodeTypeConfig } from '../types/nodeTypeRegistry'
+import { clonePortDefinitions } from '../types/portSchema'
 import { WorkflowCanvas } from './WorkflowCanvas'
 
 let capturedProps: Record<string, unknown> = {}

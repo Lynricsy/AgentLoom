@@ -26,10 +26,12 @@ import { AGENT_CANVAS_NODE_REGISTRY } from "@/features/canvas/registry/agent-can
 import { arePortDataTypesCompatible } from "@/features/canvas/lib/connectionCompatibility";
 import { normalizeTextNodeConfig } from "@/features/canvas/lib/textNodeConfig";
 import {
-  clonePortDefinitions,
   getNodeTypeConfigOrNull,
-  hydratePortDefinitions,
 } from "@/features/canvas/types/nodeTypeRegistry";
+import {
+  clonePortDefinitions,
+  hydratePortDefinitions,
+} from "@/features/canvas/types/portSchema";
 
 enableMapSet();
 

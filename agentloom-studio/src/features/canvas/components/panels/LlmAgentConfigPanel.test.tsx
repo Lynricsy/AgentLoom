@@ -3,7 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_AUTONOMY_CONFIG, type AutonomyConfig } from '../../autonomy.types'
 import { createDefaultAgentNodeData, type CanvasNode } from '../../types'
 import { useCanvasStore } from '../../stores/canvasStore'
-import { clonePortDefinitions, getNodeTypeConfig } from '../../types/nodeTypeRegistry'
+import { getNodeTypeConfig } from '../../types/nodeTypeRegistry'
+import { clonePortDefinitions } from '../../types/portSchema'
 import { LlmAgentConfigPanel } from './LlmAgentConfigPanel'
 
 const {

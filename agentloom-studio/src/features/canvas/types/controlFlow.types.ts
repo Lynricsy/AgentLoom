@@ -1,5 +1,5 @@
 import type { PortDefinition } from "./nodeTypeRegistry";
-import { createPort } from "./nodeTypeRegistry";
+import { createPort } from "./portSchema";
 
 export const COMPOUND_CONTAINER_NODE_TYPES = ["loop", "iteration"] as const;
 export type CompoundContainerNodeType =

@@ -20,7 +20,7 @@ import {
 import type { CanvasNode } from '../../types'
 import type { RoutingStrategy } from '../../types'
 import { useCanvasActions } from '../../stores/canvasStore'
-import { createPort } from '../../types/nodeTypeRegistry'
+import { createPort } from '../../types/portSchema'
 import {
   STRATEGY_META,
   STRATEGY_CATEGORY_COLORS,

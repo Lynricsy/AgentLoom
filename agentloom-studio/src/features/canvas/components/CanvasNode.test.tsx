@@ -7,10 +7,8 @@ import {
   type NodeExecutionState,
 } from "@/features/execution/stores/executionStore";
 import { CanvasNodeShell } from "./CanvasNode";
-import {
-  clonePortDefinitions,
-  getNodeTypeConfig,
-} from "../types/nodeTypeRegistry";
+import { getNodeTypeConfig } from "../types/nodeTypeRegistry";
+import { clonePortDefinitions } from "../types/portSchema";
 import type { CanvasNode, CanvasNodeData } from "../types";
 import type { LevelOfDetail } from "../hooks/useLevelOfDetail";
 

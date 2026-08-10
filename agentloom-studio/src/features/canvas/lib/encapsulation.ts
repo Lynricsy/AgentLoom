@@ -1,6 +1,7 @@
 import type { CanvasEdge, CanvasNode, PortDataType } from '../types'
 import { createDefaultEdgeData } from '../types'
-import { createPort, type PortDefinition } from '../types/nodeTypeRegistry'
+import { type PortDefinition } from '../types/nodeTypeRegistry'
+import { createPort } from '../types/portSchema'
 
 export interface DerivedPort {
   id: string
