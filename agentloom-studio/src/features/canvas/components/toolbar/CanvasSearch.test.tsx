@@ -2,7 +2,8 @@ import { fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useCanvasStore } from '../../stores/canvasStore'
 import type { CanvasNode } from '../../types'
-import { clonePortDefinitions, getNodeTypeConfig } from '../../types/nodeTypeRegistry'
+import { getNodeTypeConfig } from '../../types/nodeTypeRegistry'
+import { clonePortDefinitions } from '../../types/portSchema'
 import { CanvasSearch } from './CanvasSearch'
 
 const fitViewMock = vi.fn()

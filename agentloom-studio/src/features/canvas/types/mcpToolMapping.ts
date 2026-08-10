@@ -1,6 +1,6 @@
 import type { PortDataType, TypeSchema } from './typeSchema'
 import type { PortDefinition } from './nodeTypeRegistry'
-import { createPort } from './nodeTypeRegistry'
+import { createPort } from './portSchema'
 
 export type BackendPortDataType = PortDataType | 'number' | 'boolean'
 

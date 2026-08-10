@@ -4,10 +4,8 @@ import type { WorkflowDefinition } from "@/features/workflow";
 import type { ExecutionStatus } from "@/features/execution/types";
 import type { WorkflowInputSchema } from "@/features/workflow/types";
 import { useCanvasStore } from "../stores/canvasStore";
-import {
-  clonePortDefinitions,
-  getNodeTypeConfig,
-} from "../types/nodeTypeRegistry";
+import { getNodeTypeConfig } from "../types/nodeTypeRegistry";
+import { clonePortDefinitions } from "../types/portSchema";
 import { WorkflowCanvasPage } from "./WorkflowCanvasPage";
 
 function createNodeData(nodeType: Parameters<typeof getNodeTypeConfig>[0]) {

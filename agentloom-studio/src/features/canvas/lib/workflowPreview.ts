@@ -8,13 +8,15 @@ import type {
 } from '../types'
 import { createDefaultAgentNodeData, createDefaultEdgeData } from '../types'
 import {
-  clonePortDefinitions,
   getNodeTypeConfigOrNull,
   getWorkflowAgentInputPorts,
-  hydratePortDefinitions,
   type NodeType,
   type PortDefinition,
 } from '../types/nodeTypeRegistry'
+import {
+  clonePortDefinitions,
+  hydratePortDefinitions,
+} from '../types/portSchema'
 
 const NODE_CATEGORIES = new Set<NodeCategory>([
   'agent',

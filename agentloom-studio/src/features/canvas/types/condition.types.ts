@@ -4,7 +4,8 @@
  * Condition 节点与 break / continue 等控制流节点共用。
  */
 
-import { createPort, type PortDefinition } from './nodeTypeRegistry'
+import { type PortDefinition } from './nodeTypeRegistry'
+import { createPort } from './portSchema'
 
 export const CONDITION_EXEC_PORT_ID = 'exec-in'
 export const CONDITION_VALUE_PORT_PREFIX = 'input-'

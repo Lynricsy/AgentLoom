@@ -4,7 +4,8 @@ import { ToastProvider } from '@/shared/ui/toast'
 import { useCanvasStore } from '../stores/canvasStore'
 import { createDefaultEdgeData } from '../types'
 import type { CanvasEdge, CanvasNode } from '../types'
-import { clonePortDefinitions, getNodeTypeConfig } from '../types/nodeTypeRegistry'
+import { getNodeTypeConfig } from '../types/nodeTypeRegistry'
+import { clonePortDefinitions } from '../types/portSchema'
 import { AUTOSAVE_DEBOUNCE_MS, useAutoSave } from './useAutoSave'
 
 const llmAgentConfig = getNodeTypeConfig('agent')

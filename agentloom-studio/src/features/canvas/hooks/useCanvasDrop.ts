@@ -5,7 +5,11 @@ import {
   type BlockDefinition as ReusableBlockDefinition,
   type BlockPort,
 } from '@/features/block-library'
-import { createPort, PORT_DATA_TYPE_META, type PortDefinition } from '../types/nodeTypeRegistry'
+import {
+  PORT_DATA_TYPE_META,
+  type PortDefinition,
+} from '../types/nodeTypeRegistry'
+import { createPort } from '../types/portSchema'
 import { DRAG_TRANSFER_TYPE } from '../components/NodePalette'
 import { useCanvasActions, useCanvasNodes } from '../stores/canvasStore'
 import { useToast } from '@/shared/ui/toast'

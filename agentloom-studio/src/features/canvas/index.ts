@@ -44,8 +44,8 @@ export {
   getAllNodeTypes,
   getNodeTypeConfig,
   getNodeTypeConfigOrNull,
-  clonePortDefinitions,
 } from './types/nodeTypeRegistry'
+export { clonePortDefinitions } from './types/portSchema'
 export {
   useCanvasActions,
   useCanvasEdges,

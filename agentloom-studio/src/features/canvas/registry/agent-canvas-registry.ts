@@ -1,10 +1,9 @@
 import {
-  createPort,
   type NodeTypeConfig,
   type NodeType,
-  type NodeConfigFieldSchema,
   type NodeConfigSchema,
 } from "../types/nodeTypeRegistry";
+import { createConfigField, createPort } from "../types/portSchema";
 import type { NodeCategory } from "../types";
 
 // Agent canvas extends base NodeType with 'sub-agent' and 'agent-main', exclusive to the agent editor
@@ -31,15 +30,6 @@ const AGENT_CATEGORY_COLOR_TOKENS: Record<NodeCategory, string> = {
   plugin: "var(--color-type-tool)",
   memory: "var(--color-type-json)",
 };
-
-// Local createConfigField helper — mirrors the unexported version in nodeTypeRegistry.ts
-function createConfigField(
-  type: NodeConfigFieldSchema["type"],
-  title: string,
-  options: Omit<NodeConfigFieldSchema, "type" | "title"> = {},
-): NodeConfigFieldSchema {
-  return { type, title, ...options };
-}
 
 const EMPTY_AGENT_CONFIG_SCHEMA: NodeConfigSchema = {
   type: "object",
