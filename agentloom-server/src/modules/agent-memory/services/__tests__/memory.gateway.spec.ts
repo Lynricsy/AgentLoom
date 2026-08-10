@@ -508,7 +508,9 @@ describe('MemoryGateway', () => {
       gateway.emitNodeUpdated('tenant-abc', 'instance-1', { nodeId: 'n2' });
       gateway.emitNodeDeleted('tenant-abc', 'instance-1', { nodeId: 'n3' });
 
-      const calls = mockServer._emitFn.mock.calls;
+      const calls = mockServer._emitFn.mock.calls as Array<
+        [string, Record<string, unknown>]
+      >;
       const eventIds = calls.map(
         (call: [string, Record<string, unknown>]) =>
           (call[1] as { eventId: number }).eventId,
