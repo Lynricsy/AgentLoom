@@ -157,7 +157,7 @@ async function safeAwait<T>(
 
 function emitRecoveredContent(
   stream: {
-    push: (event: Record<string, unknown>) => void;
+    push(event: Record<string, unknown>): void;
   },
   partial: PartialAssistantMessage,
   contentParts: unknown[],
