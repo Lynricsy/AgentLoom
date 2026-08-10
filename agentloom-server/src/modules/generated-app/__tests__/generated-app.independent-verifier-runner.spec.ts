@@ -20,7 +20,10 @@ import { buildIntegrationPlan } from '../plan-builders/integration-plan.builder'
 import { GeneratedAppGate3WorkspaceRunner } from '../generated-app.workspace';
 import { createInitialGeneratedAppGateResults } from '../generated-app.gates';
 import { buildBrowserAcceptancePlan } from '../plan-builders/browser-acceptance-plan.builder';
-import { buildIndependentVerificationPlan } from '../plan-builders/independent-verification-plan.builder';
+import {
+  buildIndependentVerificationPlan,
+  evaluateGate6IndependentVerificationPlan,
+} from '../plan-builders/independent-verification-plan.builder';
 import {
   GeneratedAppGate6IndependentVerifierRunner,
   type GeneratedAppIndependentVerifierExecutionLevel,
@@ -418,5 +421,468 @@ describe('GeneratedAppGate6IndependentVerifierRunner', () => {
         ]),
       }),
     );
+  });
+  it.each([
+    'independent-verifier-skeleton',
+    'fixture-independent-verifier',
+    'real-local-independent-verifier',
+  ] as const)('builder 对完整 %s 计划应聚合通过 evidence', (level) => {
+    const plans = buildGate6Plans(level);
+    const evaluation = evaluateGate6IndependentVerificationPlan(
+      plans.appSpec,
+      plans.generationPlan,
+      plans.staticContracts,
+      plans.buildUnitPlan,
+      plans.integrationPlan,
+      plans.browserAcceptancePlan,
+      plans.gateResults,
+      plans.independentVerificationPlan,
+    );
+
+    expect(evaluation.status).toBe('passed');
+    expect(evaluation.failure).toBeNull();
+    expect(evaluation.evidence.length).toBeGreaterThan(5);
+    expect(evaluation.evidence.every((item) => item.kind === 'verifier')).toBe(
+      true,
+    );
+  });
+
+  it.each([
+    {
+      name: '非对象计划',
+      mutate: () => undefined,
+      issue: 'independentVerificationPlan 不是对象',
+    },
+    {
+      name: '缺少 Gate evidence refs',
+      mutate: (plan: GeneratedAppIndependentVerificationPlan) => ({
+        ...plan,
+        evidenceBundle: { ...plan.evidenceBundle, gateEvidenceRefs: [] },
+      }),
+      issue: 'gateEvidenceRefs',
+    },
+    {
+      name: '重复 rubric category',
+      mutate: (plan: GeneratedAppIndependentVerificationPlan) => ({
+        ...plan,
+        rubric: [...plan.rubric, plan.rubric[0]],
+      }),
+      issue: '重复',
+    },
+    {
+      name: '未知 requirement coverage id',
+      mutate: (plan: GeneratedAppIndependentVerificationPlan) => ({
+        ...plan,
+        requirementCoverage: plan.requirementCoverage.map((coverage, index) =>
+          index === 0
+            ? { ...coverage, requirementId: 'req-unknown' }
+            : coverage,
+        ),
+      }),
+      issue: 'req-unknown',
+    },
+    {
+      name: '缺少 verdict artifact',
+      mutate: (plan: GeneratedAppIndependentVerificationPlan) => ({
+        ...plan,
+        verdictArtifact: null,
+      }),
+      issue: 'verdictArtifact',
+    },
+    {
+      name: '非法 execution level',
+      mutate: (plan: GeneratedAppIndependentVerificationPlan) => ({
+        ...plan,
+        executionLevel: 'external-model-verifier',
+      }),
+      issue: 'executionLevel',
+    },
+  ])('builder 应聚合$name并拒绝生成 verdict', ({ mutate, issue }) => {
+    const plans = buildGate6Plans('real-local-independent-verifier');
+    const evaluation = evaluateGate6IndependentVerificationPlan(
+      plans.appSpec,
+      plans.generationPlan,
+      plans.staticContracts,
+      plans.buildUnitPlan,
+      plans.integrationPlan,
+      plans.browserAcceptancePlan,
+      plans.gateResults,
+      mutate(plans.independentVerificationPlan),
+    );
+
+    expect(evaluation.status).toBe('failed');
+    expect(evaluation.failure?.code).toBe(
+      'independent-verifier-plan-incomplete',
+    );
+    expect(
+      evaluation.evidence.some((item) => item.summary.includes(issue)),
+    ).toBe(true);
+  });
+
+  it.each([{ gateId: 'gate-0' as const }, { gateId: 'gate-5' as const }])(
+    'builder 应拒绝 $gateId 缺失的上游 evidence',
+    ({ gateId }) => {
+      const plans = buildGate6Plans('real-local-independent-verifier');
+      const gateResults = plans.gateResults.map((gate) =>
+        gate.gateId === gateId ? { ...gate, evidence: [] } : gate,
+      );
+      const evaluation = evaluateGate6IndependentVerificationPlan(
+        plans.appSpec,
+        plans.generationPlan,
+        plans.staticContracts,
+        plans.buildUnitPlan,
+        plans.integrationPlan,
+        plans.browserAcceptancePlan,
+        gateResults,
+        plans.independentVerificationPlan,
+      );
+
+      expect(evaluation.status).toBe('failed');
+      expect(
+        evaluation.evidence.some((item) => item.summary.includes('evidence')),
+      ).toBe(true);
+    },
+  );
+  it('builder 应为缺失的上游 Gate evidence 和 traceability 使用安全默认值', () => {
+    const plans = buildGate6Plans('real-local-independent-verifier');
+    const appSpec = { ...plans.appSpec, traceability: [] };
+    const plan = buildIndependentVerificationPlan(
+      appSpec,
+      plans.generationPlan,
+      plans.staticContracts,
+      plans.buildUnitPlan,
+      plans.integrationPlan,
+      plans.browserAcceptancePlan,
+      plans.gateResults.filter((gate) => gate.gateId !== 'gate-0'),
+    );
+
+    expect(plan.executionLevel).toBe('independent-verifier-skeleton');
+    expect(
+      plan.evidenceBundle.gateEvidenceRefs.find(
+        (entry) => entry.gateId === 'gate-0',
+      )?.evidenceIds,
+    ).toEqual([]);
+    expect(plan.requirementCoverage[0]?.scenarioIds).toEqual([]);
+    expect(plan.verdictArtifact.materialized).toBe(false);
+  });
+
+  it('builder 应聚合 requirements、scenarios、contracts、artifacts、commands、evidence 和 unknown 引用缺口', () => {
+    const plans = buildGate6Plans('real-local-independent-verifier');
+    const cases: Array<{
+      name: string;
+      mutate: (plan: GeneratedAppIndependentVerificationPlan) => unknown;
+      issues: string[];
+    }> = [
+      {
+        name: '版本和受控 verifier command',
+        mutate: (plan) => ({
+          ...plan,
+          planVersion: 0,
+          appSpecVersion: 0,
+          generationPlanVersion: 0,
+          staticContractsVersion: 0,
+          buildUnitPlanVersion: 0,
+          integrationPlanVersion: 0,
+          browserAcceptancePlanVersion: 0,
+          skeletonDisclaimer: '',
+          verifierRunner: {
+            runner: 'external-verifier',
+            command: 'uncontrolled command',
+            workingDirectory: '/',
+            usesExternalNetwork: true,
+            usesExternalModel: true,
+            usesHumanReviewer: true,
+            usesGenerationTranscript: true,
+            inputBundleId: 'unknown-bundle',
+            verdictArtifactPath: '/tmp/verdict.json',
+          },
+        }),
+        issues: [
+          'planVersion 必须为 1',
+          'verifierRunner.command 必须为',
+          'verifierRunner.usesExternalNetwork 必须为 false',
+          'skeletonDisclaimer 缺失',
+        ],
+      },
+      {
+        name: '隔离控制',
+        mutate: (plan) => ({
+          ...plan,
+          verifierIsolationPolicy: {
+            verifierContext: 'generation-context',
+            reuseGenerationContext: true,
+            acceptsGeneratorSelfAttestation: true,
+            readsPublicShareToken: true,
+            readsRealSecrets: true,
+            inputMaterialPolicy: 'raw-generation-context',
+            requiredControls: [],
+          },
+        }),
+        issues: [
+          'verifierIsolationPolicy.requiredControls 不能为空',
+          'reuseGenerationContext 必须为 false',
+          'readsRealSecrets 必须为 false',
+        ],
+      },
+      {
+        name: 'contracts 和 artifacts',
+        mutate: (plan) => ({
+          ...plan,
+          evidenceBundle: {
+            ...plan.evidenceBundle,
+            referencedGateIds: [],
+            gateEvidenceRefs: [],
+            staticContractIds: [],
+            buildUnitArtifactIds: [],
+            integrationTraceArtifactIds: [],
+            browserArtifactIds: [],
+            coverageMatrixRefs: [],
+            forbiddenSensitiveFields: [],
+          },
+        }),
+        issues: [
+          'evidenceBundle.staticContractIds 不能为空',
+          'evidenceBundle.buildUnitArtifactIds 不能为空',
+          'evidenceBundle.integrationTraceArtifactIds 不能为空',
+          'evidenceBundle.browserArtifactIds 不能为空',
+        ],
+      },
+      {
+        name: 'unknown evidence 和 coverage matrix 引用',
+        mutate: (plan) => ({
+          ...plan,
+          evidenceBundle: {
+            ...plan.evidenceBundle,
+            referencedGateIds: ['gate-unknown'],
+            gateEvidenceRefs: [
+              {
+                gateId: 'gate-1',
+                evidenceIds: ['gate-0-synthetic-evidence', 'evidence-unknown'],
+              },
+              { evidenceIds: [] },
+            ],
+            coverageMatrixRefs: [
+              {
+                matrixId: 'matrix-unknown',
+                sourcePlan: 'unknownPlan',
+                requirementIds: ['req-unknown'],
+                scenarioIds: ['scenario-unknown'],
+                gateIds: ['gate-unknown'],
+              },
+              {
+                matrixId: '',
+                sourcePlan: '',
+                requirementIds: [],
+                scenarioIds: [],
+                gateIds: [],
+              },
+            ],
+          },
+        }),
+        issues: [
+          '引用了未知对象 gate-unknown',
+          'evidence-unknown',
+          '不属于 gate-1',
+          '非法 coverage matrix',
+          '非法 source plan',
+          'matrixId 缺失',
+        ],
+      },
+      {
+        name: 'rubric',
+        mutate: (plan) => ({
+          ...plan,
+          rubric: [
+            {
+              category: 'unknown-category',
+              label: '',
+              requirementIds: [],
+              scenarioIds: [],
+              evidenceIds: [],
+              blocking: 'yes',
+            },
+          ],
+        }),
+        issues: [
+          '非法 rubric category',
+          'label 缺失',
+          'requirementIds 不能为空',
+          'blocking 必须为 boolean',
+        ],
+      },
+      {
+        name: 'verdict schema 和 artifact',
+        mutate: (plan) => ({
+          ...plan,
+          verdictSchema: {
+            requiredFields: ['unknown-field'],
+            findingSeverities: ['fatal'],
+            decisionValues: ['maybe'],
+            requiresEvidenceIds: false,
+            requiresRepairSuggestions: false,
+            residualRiskSummaryRequired: false,
+          },
+          verdictArtifact: {
+            artifactId: 'unknown-artifact',
+            kind: 'log',
+            path: '/tmp/verdict.json',
+            required: false,
+            materialized: 'yes',
+            containsSecrets: true,
+          },
+        }),
+        issues: [
+          'requiredFields 包含非法字段',
+          'findingSeverities 包含非法 severity',
+          'decisionValues 包含非法 decision',
+          'verdictArtifact.artifactId 必须为',
+          'verdictArtifact.materialized 必须是 boolean',
+        ],
+      },
+      {
+        name: 'independence checks',
+        mutate: (plan) => ({
+          ...plan,
+          independenceChecks: [
+            {
+              checkId: '',
+              kind: 'unknown-check',
+              required: false,
+              gateIds: [],
+              evidenceIds: [],
+            },
+            {},
+          ],
+        }),
+        issues: [
+          'checkId 缺失',
+          '非法 independence check kind',
+          'required 必须为 true',
+          'evidenceIds 不能为空',
+          'kind 缺失',
+        ],
+      },
+      {
+        name: 'requirements coverage',
+        mutate: (plan) => ({
+          ...plan,
+          requirementCoverage: [
+            {
+              requirementId: 'req-unknown',
+              scenarioIds: ['scenario-unknown'],
+              rubricCategories: ['rubric-unknown'],
+              evidenceIds: ['evidence-unknown'],
+              gateIds: ['gate-unknown'],
+              staticContractIds: ['contract-unknown'],
+              browserArtifactIds: ['artifact-unknown'],
+            },
+            {},
+          ],
+        }),
+        issues: [
+          '引用了未知需求',
+          'scenario-unknown',
+          'contract-unknown',
+          'requirementId 缺失',
+          '需求 req-1 缺少 Gate 6 覆盖声明',
+        ],
+      },
+      {
+        name: 'scenarios coverage',
+        mutate: (plan) => ({
+          ...plan,
+          scenarioCoverage: [
+            {
+              scenarioId: 'scenario-unknown',
+              requirementIds: ['req-unknown'],
+              rubricCategories: ['rubric-unknown'],
+              evidenceIds: ['evidence-unknown'],
+              gateIds: ['gate-unknown'],
+              browserArtifactIds: ['artifact-unknown'],
+            },
+            {},
+          ],
+        }),
+        issues: [
+          '引用了未知场景',
+          'req-unknown',
+          'scenarioId 缺失',
+          '场景 scenario-1 缺少 Gate 6 覆盖声明',
+        ],
+      },
+      {
+        name: 'evidence coverage',
+        mutate: (plan) => ({
+          ...plan,
+          evidenceCoverage: [
+            {
+              evidenceId: 'gate-0-synthetic-evidence',
+              gateId: 'gate-1',
+              usedByRubricCategories: [],
+              requirementIds: [],
+              scenarioIds: [],
+            },
+            {
+              evidenceId: 'evidence-unknown',
+              gateId: 'gate-unknown',
+              usedByRubricCategories: ['rubric-unknown'],
+              requirementIds: ['req-unknown'],
+              scenarioIds: ['scenario-unknown'],
+            },
+            {},
+          ],
+        }),
+        issues: [
+          '所属 gate gate-0 不一致',
+          'usedByRubricCategories 不能为空',
+          '引用了未知 evidence',
+          'evidenceId 缺失',
+          'gateId 缺失',
+        ],
+      },
+      {
+        name: 'gate coverage',
+        mutate: (plan) => ({
+          ...plan,
+          gateCoverage: [
+            {
+              gateId: 'gate-unknown',
+              evidenceIds: [],
+              required: false,
+              coveredByRubricCategories: [],
+            },
+            {},
+          ],
+        }),
+        issues: [
+          '引用了未知 gate',
+          'required 必须为 true',
+          'evidenceIds 不能为空',
+          'coveredByRubricCategories 不能为空',
+          'gate gate-0 缺少 Gate 6 覆盖声明',
+        ],
+      },
+    ];
+
+    for (const testCase of cases) {
+      const evaluation = evaluateGate6IndependentVerificationPlan(
+        plans.appSpec,
+        plans.generationPlan,
+        plans.staticContracts,
+        plans.buildUnitPlan,
+        plans.integrationPlan,
+        plans.browserAcceptancePlan,
+        plans.gateResults,
+        testCase.mutate(plans.independentVerificationPlan),
+      );
+      const evidenceSummary = evaluation.evidence
+        .map((item) => item.summary)
+        .join('\n');
+
+      expect(evaluation.status, testCase.name).toBe('failed');
+      for (const issue of testCase.issues) {
+        expect(evidenceSummary, `${testCase.name}: ${issue}`).toContain(issue);
+      }
+    }
   });
 });

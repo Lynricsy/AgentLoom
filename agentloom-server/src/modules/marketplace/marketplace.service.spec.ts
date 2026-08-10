@@ -893,4 +893,331 @@ describe('MarketplaceService', () => {
       expect(db.update).not.toHaveBeenCalled();
     });
   });
+  describe('状态、筛选、定价与安装补充分支', () => {
+    it('pending_review listing 禁止重复提交且不查询版本', async () => {
+      db.select.mockReturnValueOnce(
+        createSelectChain([
+          createMarketplaceListing({ status: 'pending_review' }),
+        ]),
+      );
+
+      await expect(
+        service.submit(TENANT_ID, USER_ID, createSubmitDto()),
+      ).rejects.toBeInstanceOf(MarketplaceListingConflictException);
+      expect(db.select).toHaveBeenCalledTimes(1);
+      expect(reviewService.review).not.toHaveBeenCalled();
+    });
+
+    it('首次审查失败转为 review_failed 并清空 publishedAt', async () => {
+      const dto = createSubmitDto({
+        coverImageUrl: undefined,
+        category: undefined,
+      });
+      const created = createMarketplaceListing();
+      const reviewResult = createReviewResult({ outcome: 'failed' });
+      const failed = createMarketplaceListing({
+        status: 'review_failed',
+        reviewResult,
+      });
+      const insertChain = createInsertChain([created]);
+      const updateChain = createUpdateChain([failed]);
+      db.select
+        .mockReturnValueOnce(createSelectChain([]))
+        .mockReturnValueOnce(createSelectChain([{ id: VERSION_ID }]));
+      db.insert.mockReturnValue(insertChain);
+      db.update.mockReturnValue(updateChain);
+      reviewService.review.mockResolvedValue(reviewResult);
+
+      const result = await service.submit(TENANT_ID, USER_ID, dto);
+
+      expect(insertChain.values).toHaveBeenCalledWith(
+        expect.objectContaining({ coverImageUrl: null, category: null }),
+      );
+      expect(updateChain.set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'review_failed',
+          publishedAt: null,
+        }),
+      );
+      expect(result).toEqual({ listing: failed, reviewResult });
+    });
+
+    it('重新提交审查失败时写回 review_failed 与 null publishedAt', async () => {
+      const existing = createMarketplaceListing({ status: 'unlisted' });
+      const reviewResult = createReviewResult({ outcome: 'failed' });
+      const failed = createMarketplaceListing({
+        status: 'review_failed',
+        reviewResult,
+      });
+      const pendingUpdate = createUpdateWhereChain(undefined);
+      const reviewedUpdate = createUpdateChain([failed]);
+      db.select
+        .mockReturnValueOnce(createSelectChain([existing]))
+        .mockReturnValueOnce(createSelectChain([{ id: VERSION_ID }]));
+      db.update
+        .mockReturnValueOnce(pendingUpdate)
+        .mockReturnValueOnce(reviewedUpdate);
+      reviewService.review.mockResolvedValue(reviewResult);
+
+      const result = await service.submit(
+        TENANT_ID,
+        USER_ID,
+        createSubmitDto({ coverImageUrl: undefined, category: undefined }),
+      );
+
+      expect(pendingUpdate.set).toHaveBeenCalledWith(
+        expect.objectContaining({ coverImageUrl: null, category: null }),
+      );
+      expect(reviewedUpdate.set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'review_failed',
+          publishedAt: null,
+        }),
+      );
+      expect(result).toEqual({ listing: failed, reviewResult });
+    });
+
+    it('非 listed 状态禁止下架且不写数据库', async () => {
+      db.select.mockReturnValue(
+        createSelectChain([
+          createMarketplaceListing({ status: 'review_failed' }),
+        ]),
+      );
+
+      await expect(
+        service.unlist(TENANT_ID, WORKFLOW_LISTING_ID, USER_ID),
+      ).rejects.toBeInstanceOf(MarketplaceListingConflictException);
+      expect(db.update).not.toHaveBeenCalled();
+    });
+
+    it('仅 unlisted 状态可 relist', async () => {
+      db.select.mockReturnValue(
+        createSelectChain([createMarketplaceListing({ status: 'listed' })]),
+      );
+
+      await expect(
+        service.relist(TENANT_ID, WORKFLOW_LISTING_ID, USER_ID),
+      ).rejects.toBeInstanceOf(MarketplaceListingConflictException);
+      expect(reviewService.review).not.toHaveBeenCalled();
+    });
+
+    it('未绑定工作流版本的 unlisted listing 在进入审查前失败', async () => {
+      const listing = createMarketplaceListing({
+        status: 'unlisted',
+        workflowVersionId: null,
+      });
+      const pendingUpdate = createUpdateWhereChain(undefined);
+      db.select.mockReturnValue(createSelectChain([listing]));
+      db.update.mockReturnValue(pendingUpdate);
+
+      await expect(
+        service.relist(TENANT_ID, WORKFLOW_LISTING_ID, USER_ID),
+      ).rejects.toBeInstanceOf(MarketplaceListingConflictException);
+      expect(pendingUpdate.set).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'pending_review' }),
+      );
+      expect(reviewService.review).not.toHaveBeenCalled();
+    });
+
+    it('relist 复审失败转为 review_failed 且 publishedAt 为空', async () => {
+      const listing = createMarketplaceListing({ status: 'unlisted' });
+      const reviewResult = createReviewResult({ outcome: 'failed' });
+      const failed = createMarketplaceListing({
+        status: 'review_failed',
+        reviewResult,
+      });
+      const pendingUpdate = createUpdateWhereChain(undefined);
+      const reviewedUpdate = createUpdateChain([failed]);
+      db.select.mockReturnValue(createSelectChain([listing]));
+      db.update
+        .mockReturnValueOnce(pendingUpdate)
+        .mockReturnValueOnce(reviewedUpdate);
+      reviewService.review.mockResolvedValue(reviewResult);
+
+      const result = await service.relist(
+        TENANT_ID,
+        WORKFLOW_LISTING_ID,
+        USER_ID,
+      );
+
+      expect(reviewedUpdate.set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'review_failed',
+          publishedAt: null,
+        }),
+      );
+      expect(result).toEqual({ listing: failed, reviewResult });
+    });
+
+    it('我的 listings 无筛选且空结果时 totalPages 为零', async () => {
+      const dataQuery = createSelectChainWithTripleLeftJoinPagination([]);
+      db.select
+        .mockReturnValueOnce(dataQuery)
+        .mockReturnValueOnce(createSelectChain([]));
+
+      const result = await service.findMyListings(TENANT_ID, {
+        page: 1,
+        pageSize: 20,
+      });
+
+      expect(result).toEqual({
+        data: [],
+        meta: { page: 1, pageSize: 20, total: 0, totalPages: 0 },
+      });
+    });
+
+    it.each(['newest', 'popular'] as const)(
+      '公开列表支持 %s 排序、类型与分类筛选',
+      async (sort) => {
+        const dataQuery = createSelectChainWithDoubleLeftJoinPagination([]);
+        db.select
+          .mockReturnValueOnce(dataQuery)
+          .mockReturnValueOnce(createSelectChain([{ count: 0 }]));
+
+        const result = await service.findPublicListings({
+          listingType: 'plugin',
+          category: 'automation',
+          sort,
+          page: 1,
+          pageSize: 5,
+        });
+
+        expect(dataQuery.orderBy).toHaveBeenCalled();
+        expect(result.meta).toEqual({
+          page: 1,
+          pageSize: 5,
+          total: 0,
+          totalPages: 0,
+        });
+      },
+    );
+
+    it('公开列表为缺失作者与插件可选字段提供稳定回退', async () => {
+      const pluginRow = createPublicPluginListingRow({
+        pluginName: null,
+        pluginVersion: null,
+        pluginAuthor: null,
+        pluginDescription: null,
+        pluginLicense: null,
+        authorDisplayName: null,
+      });
+      db.select
+        .mockReturnValueOnce(
+          createSelectChainWithDoubleLeftJoinPagination([pluginRow]),
+        )
+        .mockReturnValueOnce(createSelectChain([{ count: 1 }]));
+
+      const result = await service.findPublicListings({});
+
+      expect(result.data[0]).toMatchObject({
+        plugin: {
+          pluginId: PLUGIN_ID,
+          name: PLUGIN_ID,
+          version: '',
+          author: '',
+          description: null,
+          license: null,
+        },
+        author: { displayName: '未知用户' },
+      });
+    });
+
+    it('公开列表 pluginId 缺失时 descriptor 为 null', async () => {
+      const pluginRow = createPublicPluginListingRow({ pluginId: null });
+      db.select
+        .mockReturnValueOnce(
+          createSelectChainWithDoubleLeftJoinPagination([pluginRow]),
+        )
+        .mockReturnValueOnce(createSelectChain([{ count: 1 }]));
+
+      const result = await service.findPublicListings({});
+
+      expect(result.data[0].plugin).toBeNull();
+    });
+
+    it('plugin 详情缺少 pluginId 时按不可用 listing 处理', async () => {
+      db.select
+        .mockReturnValueOnce(
+          createSelectChainWithTripleLeftJoinWhere([
+            createPublicPluginListingRow({ pluginId: null }),
+          ]),
+        )
+        .mockReturnValueOnce(createSelectChainWithSingleLeftJoinOrdered([]));
+
+      await expect(
+        service.findPublicById(PLUGIN_LISTING_ID),
+      ).rejects.toBeInstanceOf(MarketplaceListingNotFoundException);
+    });
+
+    it('workflow 详情缺少 snapshot 时按不可用 listing 处理', async () => {
+      db.select
+        .mockReturnValueOnce(
+          createSelectChainWithTripleLeftJoinWhere([
+            createPublicWorkflowListingRow({ snapshot: null }),
+          ]),
+        )
+        .mockReturnValueOnce(createSelectChainWithSingleLeftJoinOrdered([]));
+
+      await expect(
+        service.findPublicById(WORKFLOW_LISTING_ID),
+      ).rejects.toBeInstanceOf(MarketplaceListingNotFoundException);
+    });
+
+    it('不存在或未 listed 的公开 listing 无法安装', async () => {
+      db.select.mockReturnValueOnce(
+        createSelectChainWithTripleLeftJoinWhere([]),
+      );
+
+      await expect(
+        service.installListing(TENANT_ID, USER_ID, WORKFLOW_LISTING_ID, {}),
+      ).rejects.toBeInstanceOf(MarketplaceListingNotFoundException);
+      expect(workflowVersionService.create).not.toHaveBeenCalled();
+    });
+
+    it('workflow 安装优先采用显式名称与描述', async () => {
+      const workflowRow = createPublicWorkflowListingRow();
+      const created = {
+        id: WORKFLOW_ID,
+        name: '自定义安装名称',
+      };
+      db.select.mockReturnValueOnce(
+        createSelectChainWithTripleLeftJoinWhere([workflowRow]),
+      );
+      db.update.mockReturnValue(createUpdateWhereChain(undefined));
+      workflowVersionService.create.mockResolvedValue(created);
+
+      const result = await service.installListing(
+        TENANT_ID,
+        USER_ID,
+        WORKFLOW_LISTING_ID,
+        { name: '自定义安装名称', description: '自定义安装描述' },
+      );
+
+      expect(workflowVersionService.create).toHaveBeenCalledWith(
+        TENANT_ID,
+        USER_ID,
+        expect.objectContaining({
+          name: '自定义安装名称',
+          description: '自定义安装描述',
+        }),
+      );
+      expect(result.name).toBe('自定义安装名称');
+    });
+
+    it('plugin listing 找不到有效安装源时不克隆也不记 useCount', async () => {
+      db.select
+        .mockReturnValueOnce(
+          createSelectChainWithTripleLeftJoinWhere([
+            createPublicPluginListingRow(),
+          ]),
+        )
+        .mockReturnValueOnce(createSelectChainWithInnerJoinWhereLimit([]));
+
+      await expect(
+        service.installListing(TENANT_ID, USER_ID, PLUGIN_LISTING_ID, {}),
+      ).rejects.toBeInstanceOf(MarketplaceListingNotFoundException);
+      expect(pluginService.cloneMarketplacePlugin).not.toHaveBeenCalled();
+      expect(db.update).not.toHaveBeenCalled();
+    });
+  });
 });

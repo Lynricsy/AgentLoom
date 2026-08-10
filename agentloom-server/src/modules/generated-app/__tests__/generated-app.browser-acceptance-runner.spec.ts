@@ -16,7 +16,10 @@ import {
 } from '../plan-builders/generation-plan.builder';
 import { buildIntegrationPlan } from '../plan-builders/integration-plan.builder';
 import { GeneratedAppGate3WorkspaceRunner } from '../generated-app.workspace';
-import { buildBrowserAcceptancePlan } from '../plan-builders/browser-acceptance-plan.builder';
+import {
+  buildBrowserAcceptancePlan,
+  evaluateGate5BrowserAcceptancePlan,
+} from '../plan-builders/browser-acceptance-plan.builder';
 import {
   GeneratedAppGate5BrowserAcceptanceRunner,
   type GeneratedAppBrowserAcceptanceExecutionLevel,
@@ -696,5 +699,387 @@ describe('GeneratedAppGate5BrowserAcceptanceRunner', () => {
     expect(serialized).not.toContain('sk-testtoken');
     expect(serialized).not.toContain('/root/generated-app/private');
     expect(serialized).not.toContain('/home/generated-app/private');
+  });
+  it.each([
+    'browser-acceptance-skeleton',
+    'fixture-browser-acceptance',
+    'real-local-browser-contract',
+    'real-browser-e2e',
+  ] as const)('builder 应接受 %s execution level 的完整计划', (level) => {
+    const plans = buildGate5Plans(level);
+    const evaluation = evaluateGate5BrowserAcceptancePlan(
+      plans.appSpec,
+      plans.generationPlan,
+      plans.staticContracts,
+      plans.buildUnitPlan,
+      plans.integrationPlan,
+      plans.browserAcceptancePlan,
+    );
+
+    expect(evaluation.status).toBe('passed');
+    expect(evaluation.failure).toBeNull();
+    expect(evaluation.summary).toContain(
+      level === 'real-browser-e2e'
+        ? 'real-browser-e2e'
+        : level === 'real-local-browser-contract'
+          ? 'real-local'
+          : 'skeleton/fixture',
+    );
+  });
+  it.each([
+    {
+      name: '非对象计划',
+      mutate: () => 'malformed',
+      issue: 'browserAcceptancePlan 不是对象',
+    },
+    {
+      name: '重复 viewport id',
+      mutate: (plan: GeneratedAppBrowserAcceptancePlan) => ({
+        ...plan,
+        viewportMatrix: [...plan.viewportMatrix, plan.viewportMatrix[0]],
+      }),
+      issue: '重复',
+    },
+    {
+      name: '未知 public journey id',
+      mutate: (plan: GeneratedAppBrowserAcceptancePlan) => ({
+        ...plan,
+        publicRuntimeJourneys: plan.publicRuntimeJourneys.map(
+          (journey, index) =>
+            index === 0
+              ? { ...journey, journeyId: 'gate-5-unknown-journey' }
+              : journey,
+        ),
+      }),
+      issue: 'gate-5-unknown-journey',
+    },
+    {
+      name: '缺少 artifacts',
+      mutate: (plan: GeneratedAppBrowserAcceptancePlan) => ({
+        ...plan,
+        artifactExpectations: [],
+      }),
+      issue: 'artifactExpectations',
+    },
+    {
+      name: '缺少 runner contract',
+      mutate: (plan: GeneratedAppBrowserAcceptancePlan) => ({
+        ...plan,
+        browserToolPlan: null,
+      }),
+      issue: 'browserToolPlan',
+    },
+    {
+      name: '非法 execution level',
+      mutate: (plan: GeneratedAppBrowserAcceptancePlan) => ({
+        ...plan,
+        executionLevel: 'production-browser',
+      }),
+      issue: 'executionLevel',
+    },
+  ])('builder 应聚合$name缺口并阻止 runner', ({ mutate, issue }) => {
+    const plans = buildGate5Plans('real-local-browser-contract');
+    const evaluation = evaluateGate5BrowserAcceptancePlan(
+      plans.appSpec,
+      plans.generationPlan,
+      plans.staticContracts,
+      plans.buildUnitPlan,
+      plans.integrationPlan,
+      mutate(plans.browserAcceptancePlan),
+    );
+
+    expect(evaluation.status).toBe('failed');
+    expect(evaluation.failure?.code).toBe('browser-acceptance-plan-incomplete');
+    expect(
+      evaluation.evidence.some((item) => item.summary.includes(issue)),
+    ).toBe(true);
+    expect(evaluation.summary).toContain('不会执行 Gate 5 runner');
+  });
+  it.each([
+    {
+      name: '版本和免责声明字段',
+      level: 'real-local-browser-contract' as const,
+      mutate: (plan: GeneratedAppBrowserAcceptancePlan) => ({
+        ...plan,
+        planVersion: 2,
+        appSpecVersion: 2,
+        generationPlanVersion: 2,
+        staticContractsVersion: 2,
+        buildUnitPlanVersion: 2,
+        integrationPlanVersion: 2,
+        skeletonDisclaimer: '',
+      }),
+      issues: [
+        'planVersion 必须为 1',
+        'appSpecVersion=2',
+        'generationPlanVersion=2',
+        'staticContractsVersion=2',
+        'buildUnitPlanVersion=2',
+        'integrationPlanVersion=2',
+        'skeletonDisclaimer 缺失',
+      ],
+    },
+    {
+      name: '真实浏览器环境和 artifact policy',
+      level: 'real-browser-e2e' as const,
+      mutate: (plan: GeneratedAppBrowserAcceptancePlan) => ({
+        ...plan,
+        browserToolPlan: {
+          ...plan.browserToolPlan,
+          serverControlled: false,
+          requiredEnvironment: [],
+          allowedPublicEndpoints: [],
+          forbiddenEndpointPatterns: [],
+          artifactPolicy: {
+            root: 'host-output',
+            allowHostAbsolutePaths: true,
+            allowCreatorApis: true,
+            allowInternalArtifacts: true,
+            redactSensitiveValues: false,
+          },
+        },
+      }),
+      issues: [
+        'serverControlled 必须为 true',
+        'requiredEnvironment 缺少 GENERATED_APP_GATE5_EXECUTOR_MODE',
+        'allowedPublicEndpoints 必须只开放',
+        'forbiddenEndpointPatterns 缺少 /internal',
+        'artifactPolicy.root 必须为 generated-run',
+        'allowHostAbsolutePaths 必须为 false',
+        'allowCreatorApis 必须为 false',
+        'allowInternalArtifacts 必须为 false',
+        'redactSensitiveValues 必须为 true',
+      ],
+    },
+    {
+      name: 'viewport 可选字段和尺寸',
+      level: 'real-local-browser-contract' as const,
+      mutate: (plan: GeneratedAppBrowserAcceptancePlan) => ({
+        ...plan,
+        viewportMatrix: [
+          {
+            viewportId: '',
+            category: 'watch',
+            deviceLabel: '',
+            width: 0,
+            height: -1,
+            scenarioIds: [],
+            requirementIds: [],
+          },
+        ],
+      }),
+      issues: [
+        'viewportId 缺失',
+        'category 必须为 desktop 或 mobile',
+        'deviceLabel 缺失',
+        'width 必须为正数',
+        'height 必须为正数',
+        'scenarioIds 缺少 scenario-1',
+        'requirementIds 缺少 req-1',
+      ],
+    },
+    {
+      name: '公开和创建者 journey 可选字段',
+      level: 'real-local-browser-contract' as const,
+      mutate: (plan: GeneratedAppBrowserAcceptancePlan) => ({
+        ...plan,
+        publicRuntimeJourneys: [
+          {
+            ...plan.publicRuntimeJourneys[0],
+            journeyId: '',
+            kind: '',
+            title: '',
+            steps: [],
+            publicRuntimeApiCheckIds: [],
+            staticContractIds: [],
+          },
+        ],
+        creatorManagementJourneys: [
+          {
+            ...plan.creatorManagementJourneys[0],
+            journeyId: '',
+            kind: '',
+            title: '',
+            steps: [],
+            viewportIds: [],
+            creatorManagementApiCheckIds: [],
+            staticContractIds: [],
+          },
+        ],
+      }),
+      issues: [
+        'publicRuntimeJourneys[0].journeyId 缺失',
+        'publicRuntimeJourneys[0].kind 缺失',
+        'publicRuntimeJourneys[0].title 缺失',
+        'publicRuntimeJourneys[0].steps 不能为空',
+        'publicRuntimeJourneys[0].publicRuntimeApiCheckIds 不能为空',
+        'publicRuntimeJourneys[0].staticContractIds 不能为空',
+        'creatorManagementJourneys[0].journeyId 缺失',
+        'creatorManagementJourneys[0].kind 缺失',
+        'creatorManagementJourneys[0].title 缺失',
+        'creatorManagementJourneys[0].steps 不能为空',
+        'creatorManagementJourneys[0].viewportIds 不能为空',
+        'creatorManagementJourneys[0].creatorManagementApiCheckIds 不能为空',
+        'creatorManagementJourneys[0].staticContractIds 不能为空',
+      ],
+    },
+    {
+      name: 'assertion selector 和 fallback policy',
+      level: 'real-local-browser-contract' as const,
+      mutate: (plan: GeneratedAppBrowserAcceptancePlan) => ({
+        ...plan,
+        consoleAssertions: plan.consoleAssertions.map((assertion) =>
+          assertion.assertionId === 'gate-5-console-allowed-warning-policy'
+            ? {
+                ...assertion,
+                journeyIds: [],
+                viewportIds: [],
+                emptyAllowedWarningsReason: '',
+              }
+            : assertion,
+        ),
+        networkAssertions: plan.networkAssertions.map((assertion) =>
+          assertion.assertionId === 'gate-5-network-core-requests-2xx'
+            ? {
+                ...assertion,
+                expectedStatusRange: '5xx',
+                apiCheckIds: [],
+                staticContractIds: [],
+              }
+            : assertion.assertionId ===
+                'gate-5-network-public-forbids-creator-internal'
+              ? {
+                  ...assertion,
+                  journeyIds: ['gate-5-creator-gate-run-review'],
+                  apiCheckIds: ['gate-4-creator-gate-run-query'],
+                  forbiddenEndpointPatterns: [],
+                }
+              : assertion,
+        ),
+        responsiveLayoutAssertions: plan.responsiveLayoutAssertions.map(
+          (assertion) =>
+            assertion.assertionId === 'gate-5-responsive-desktop-no-overflow'
+              ? { ...assertion, viewportIds: [] }
+              : assertion.assertionId === 'gate-5-responsive-mobile-no-overflow'
+                ? { ...assertion, viewportIds: [] }
+                : assertion.assertionId ===
+                    'gate-5-responsive-content-not-occluded'
+                  ? { ...assertion, viewportIds: ['viewport-desktop'] }
+                  : assertion,
+        ),
+      }),
+      issues: [
+        'journeyIds 不能为空',
+        'viewportIds 不能为空',
+        'emptyAllowedWarningsReason 缺失',
+        'expectedStatusRange 必须为 2xx',
+        'apiCheckIds 不能为空',
+        'staticContractIds 不能为空',
+        '只能引用公开 runtime journey',
+        '只能引用 Gate 4 public runtime API check',
+        'forbiddenEndpointPatterns 不能为空',
+        'viewportIds 必须包含 viewport-desktop',
+        'viewportIds 必须包含 viewport-mobile',
+        'viewportIds 缺少 viewport-mobile',
+      ],
+    },
+    {
+      name: 'artifact evidence 可选引用',
+      level: 'real-local-browser-contract' as const,
+      mutate: (plan: GeneratedAppBrowserAcceptancePlan) => ({
+        ...plan,
+        artifactExpectations: [
+          {
+            ...plan.artifactExpectations[0],
+            artifactId: '',
+            kind: '',
+            path: '',
+            required: false,
+            producedByJourneyIds: [],
+            producedByAssertionIds: [],
+            referencesGate4TraceArtifactIds: [],
+          },
+        ],
+      }),
+      issues: [
+        'artifactId 缺失',
+        'kind 缺失',
+        'path 缺失',
+        'path 必须位于 artifacts/gate-5/',
+        'required 必须为 true',
+        'producedByJourneyIds 不能为空',
+        'producedByAssertionIds 不能为空',
+        'referencesGate4TraceArtifactIds 不能为空',
+      ],
+    },
+    {
+      name: 'scenario requirement journey evidence coverage fallback',
+      level: 'real-local-browser-contract' as const,
+      mutate: (plan: GeneratedAppBrowserAcceptancePlan) => ({
+        ...plan,
+        acceptanceScenarioCoverage: [
+          {
+            scenarioId: '',
+            requirementIds: [],
+            journeyIds: [],
+            viewportIds: [],
+            assertionIds: [],
+            artifactIds: [],
+          },
+        ],
+        requirementCoverage: [
+          {
+            requirementId: '',
+            scenarioIds: [],
+            journeyIds: [],
+            assertionIds: [],
+            artifactIds: [],
+            staticContractIds: [],
+            gate4ApiCheckIds: [],
+          },
+        ],
+        journeyCoverage: [
+          {
+            journeyId: '',
+            kind: '',
+            scenarioIds: [],
+            requirementIds: [],
+            viewportIds: [],
+            assertionIds: [],
+            artifactIds: [],
+          },
+        ],
+        failureCaptureFields: [],
+      }),
+      issues: [
+        'scenarioId 缺失',
+        '场景 scenario-1 缺少 Gate 5 覆盖声明',
+        'requirementId 缺失',
+        '需求 req-1 缺少 Gate 5 覆盖声明',
+        'journeyId 缺失',
+        'kind 缺失',
+        '缺少 Gate 5 覆盖声明',
+        'failureCaptureFields 缺少 journeyId',
+      ],
+    },
+  ])('builder 应报告 $name 的真实合约缺口', ({ level, mutate, issues }) => {
+    const plans = buildGate5Plans(level);
+    const evaluation = evaluateGate5BrowserAcceptancePlan(
+      plans.appSpec,
+      plans.generationPlan,
+      plans.staticContracts,
+      plans.buildUnitPlan,
+      plans.integrationPlan,
+      mutate(plans.browserAcceptancePlan),
+    );
+    const summaries = evaluation.evidence
+      .map((item) => item.summary)
+      .join('\n');
+
+    expect(evaluation.status).toBe('failed');
+    expect(evaluation.failure?.code).toBe('browser-acceptance-plan-incomplete');
+    for (const issue of issues) {
+      expect(summaries).toContain(issue);
+    }
   });
 });

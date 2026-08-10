@@ -13,6 +13,7 @@ import {
   AgentCanvasInvalidMcpToolBindingException,
   AgentCanvasUnknownNodeTypeException,
   AgentVersionConflictException,
+  AgentVersionNotFoundException,
   AgentPublishValidationException,
 } from './agent-definition.exceptions';
 
@@ -129,6 +130,11 @@ vi.mock('../../database/schema', () => ({
     createdBy: 'createdBy',
     createdAt: 'createdAt',
   },
+  mcpServerConfigs: {
+    id: 'mcpServerConfigId',
+    name: 'mcpServerConfigName',
+    transportType: 'mcpServerConfigTransportType',
+  },
 }));
 
 vi.mock('../organization/slug.utils', () => ({
@@ -139,25 +145,32 @@ vi.mock('../organization/slug.utils', () => ({
 }));
 
 vi.mock('./dto/agent-definition-response.dto', () => ({
-  serializeAgentDefinition: vi.fn((row: Record<string, any>) => ({
-    id: row.id,
-    name: row.name,
-    slug: row.slug,
-    status: row.status,
-    version: row.version,
-  })),
-  serializeAgentDefinitionDetail: vi.fn((row: Record<string, any>) => ({
-    id: row.id,
-    name: row.name,
-    slug: row.slug,
-    status: row.status,
-    version: row.version,
-    publishedVersionId: row.publishedVersionId ?? null,
-    nodes: row.nodes ?? [],
-    edges: row.edges ?? [],
-    systemPrompt: row.systemPrompt ?? null,
-    sandboxConfig: row.sandboxConfig ?? null,
-  })),
+  serializeAgentDefinition: vi.fn(
+    (row: Record<string, any>, options?: Record<string, any>) => ({
+      id: row.id,
+      name: row.name,
+      slug: row.slug,
+      status: row.status,
+      version: row.version,
+      resourceSourceKind: options?.resourceSourceKind,
+    }),
+  ),
+  serializeAgentDefinitionDetail: vi.fn(
+    (row: Record<string, any>, options?: Record<string, any>) => ({
+      id: row.id,
+      name: row.name,
+      slug: row.slug,
+      status: row.status,
+      version: row.version,
+      publishedVersionId: row.publishedVersionId ?? null,
+      runtimeMode: row.runtimeMode ?? 'sandbox',
+      nodes: row.nodes ?? [],
+      edges: row.edges ?? [],
+      systemPrompt: row.systemPrompt ?? null,
+      sandboxConfig: row.sandboxConfig ?? null,
+      resourceSourceKind: options?.resourceSourceKind,
+    }),
+  ),
 }));
 
 // 由于 drizzle-orm 操作符在 mock DB 中不会真正执行，直接 mock 避免导入问题
@@ -167,8 +180,10 @@ vi.mock('drizzle-orm', () => ({
   desc: vi.fn((col: unknown) => col),
   eq: vi.fn((a: unknown, b: unknown) => [a, b]),
   ilike: vi.fn((a: unknown, b: unknown) => [a, b]),
+  inArray: vi.fn((column: unknown, values: unknown[]) => [column, values]),
   max: vi.fn((col: unknown) => col),
   or: vi.fn((...args: unknown[]) => args),
+  not: vi.fn((value: unknown) => ['not', value]),
   sql: Object.assign(
     vi.fn((...args: unknown[]) => args),
     {
@@ -3333,6 +3348,1055 @@ describe('AgentDefinitionService', () => {
       await expect(
         service.publish('agent-1', makePublishAgentDto(), 'user-1'),
       ).rejects.toThrow(AgentPublishValidationException);
+    });
+  });
+  describe('CRUD、资源来源、OCC 与事务边界补充', () => {
+    it.each([
+      {
+        runtimeMode: 'sandbox',
+        globalSandboxConfig: { cpu: 2 },
+        expectedSandboxConfig: { cpu: 2 },
+      },
+      {
+        runtimeMode: 'no_sandbox',
+        globalSandboxConfig: { cpu: 8 },
+        expectedSandboxConfig: null,
+      },
+    ] as const)(
+      'create 应按 $runtimeMode 持久化可选字段和 sandbox 配置',
+      async ({ runtimeMode, globalSandboxConfig, expectedSandboxConfig }) => {
+        let inserted: Record<string, unknown> | undefined;
+        mockTxClient.insert.mockImplementation(() => {
+          const chain: Record<string, any> = {};
+          chain.values = vi.fn((values: Record<string, unknown>) => {
+            inserted = values;
+            return chain;
+          });
+          chain.returning = vi
+            .fn()
+            .mockResolvedValue([
+              makeAgent({ runtimeMode, sandboxConfig: expectedSandboxConfig }),
+            ]);
+          return chain;
+        });
+
+        await service.create(
+          makeCreateAgentDefinitionDto({
+            name: '  Preserved Name  ',
+            description: 'description',
+            icon: 'robot',
+            runtimeMode,
+            globalSandboxConfig,
+          }),
+          'creator',
+        );
+
+        expect(inserted).toMatchObject({
+          name: '  Preserved Name  ',
+          description: 'description',
+          icon: 'robot',
+          runtimeMode,
+          sandboxConfig: expectedSandboxConfig,
+          createdBy: 'creator',
+          updatedBy: 'creator',
+        });
+      },
+    );
+
+    it('create 的事务错误应原样传播且不进行 slug 重试', async () => {
+      const transactionError = new Error('begin failed');
+      mockTenantDb.transaction.mockRejectedValue(transactionError);
+
+      await expect(
+        service.create(makeCreateAgentDefinitionDto({}), 'user-1'),
+      ).rejects.toBe(transactionError);
+      expect(mockTenantDb.transaction).toHaveBeenCalledTimes(1);
+    });
+
+    it.each([
+      {
+        sourceKind: 'share_imported',
+        mappedKind: 'share_imported',
+        expectedCondition: { type: 'share-imported' },
+      },
+      {
+        sourceKind: 'manual',
+        mappedKind: undefined,
+        expectedCondition: ['not', { type: 'share-imported' }],
+      },
+    ] as const)(
+      'findAll 应按 $sourceKind 过滤并返回资源来源',
+      async ({ sourceKind, mappedKind, expectedCondition }) => {
+        const row = makeAgent();
+        const rowsChain: Record<string, any> = {};
+        rowsChain.from = vi.fn().mockReturnValue(rowsChain);
+        rowsChain.where = vi.fn().mockReturnValue(rowsChain);
+        rowsChain.orderBy = vi.fn().mockReturnValue(rowsChain);
+        rowsChain.limit = vi.fn().mockReturnValue(rowsChain);
+        rowsChain.offset = vi.fn().mockResolvedValue([row]);
+        const countChain: Record<string, any> = {};
+        countChain.from = vi.fn().mockReturnValue(countChain);
+        countChain.where = vi.fn().mockResolvedValue([{ total: 1 }]);
+        mockTenantDb.select
+          .mockReturnValueOnce(rowsChain)
+          .mockReturnValueOnce(countChain);
+        mockResourceSourceService.mapCurrentKinds.mockResolvedValue(
+          mappedKind ? new Map([[row.id, mappedKind]]) : new Map(),
+        );
+
+        const result = await service.findAll(
+          makeListAgentDefinitionsQueryDto({
+            sourceKind,
+            sort: 'createdAt',
+          }),
+        );
+
+        expect(rowsChain.where).toHaveBeenCalledWith([expectedCondition]);
+        expect(result.data[0]).toMatchObject({
+          id: 'agent-1',
+          resourceSourceKind: mappedKind ?? 'manual',
+        });
+      },
+    );
+
+    it.each([
+      ['findById', 'share_imported'],
+      ['findDetailById', undefined],
+    ] as const)(
+      '%s 应将缺失资源来源回退 manual',
+      async (method, mappedKind) => {
+        const row = makeAgent();
+        const chain: Record<string, any> = {};
+        chain.from = vi.fn().mockReturnValue(chain);
+        chain.where = vi.fn().mockResolvedValue([row]);
+        mockTenantDb.select.mockReturnValue(chain);
+        mockResourceSourceService.mapCurrentKinds.mockResolvedValue(
+          mappedKind ? new Map([[row.id, mappedKind]]) : new Map(),
+        );
+
+        const result = await service[method]('agent-1');
+
+        expect(result.resourceSourceKind).toBe(mappedKind ?? 'manual');
+        expect(mockResourceSourceService.mapCurrentKinds).toHaveBeenCalledWith(
+          'agent_definition',
+          ['agent-1'],
+        );
+      },
+    );
+
+    it.each([
+      {
+        runtimeMode: 'sandbox',
+        globalSandboxConfig: { cpu: 4 },
+        expectedSandboxConfig: { cpu: 4 },
+      },
+      {
+        runtimeMode: 'no_sandbox',
+        globalSandboxConfig: { cpu: 4 },
+        expectedSandboxConfig: null,
+      },
+    ] as const)(
+      'update 应按 $runtimeMode 持久化所有可选字段',
+      async ({ runtimeMode, globalSandboxConfig, expectedSandboxConfig }) => {
+        const agent = makeAgent({ runtimeMode });
+        let setClause: Record<string, unknown> | undefined;
+        mockTxClient.select.mockImplementation(() => {
+          const chain: Record<string, any> = {};
+          chain.from = vi.fn().mockReturnValue(chain);
+          chain.where = vi.fn().mockResolvedValue([agent]);
+          return chain;
+        });
+        mockTxClient.update.mockImplementation(() => {
+          const chain: Record<string, any> = {};
+          chain.set = vi.fn((value: Record<string, unknown>) => {
+            setClause = value;
+            return chain;
+          });
+          chain.where = vi.fn().mockReturnValue(chain);
+          chain.returning = vi
+            .fn()
+            .mockResolvedValue([makeAgent({ runtimeMode, version: 2 })]);
+          return chain;
+        });
+
+        await service.update(
+          'agent-1',
+          {
+            version: 1,
+            name: 'renamed',
+            description: null,
+            icon: 'new-icon',
+            globalSandboxConfig,
+          },
+          'editor',
+        );
+
+        expect(setClause).toMatchObject({
+          name: 'renamed',
+          description: null,
+          icon: 'new-icon',
+          sandboxConfig: expectedSandboxConfig,
+          updatedBy: 'editor',
+        });
+      },
+    );
+
+    it('写锁 transaction 失败时 update 不执行读写并原样传播', async () => {
+      const transactionError = new Error('transaction unavailable');
+      mockTenantDb.transaction.mockRejectedValue(transactionError);
+
+      await expect(
+        service.update('agent-1', { version: 1 }, 'user-1'),
+      ).rejects.toBe(transactionError);
+      expect(mockTxClient.select).not.toHaveBeenCalled();
+      expect(mockTxClient.update).not.toHaveBeenCalled();
+    });
+
+    it('archive 第二次持久化失败时应回滚式传播错误', async () => {
+      const definitionUpdateError = new Error('definition update failed');
+      mockTxClient.select.mockImplementation(() => {
+        const chain: Record<string, any> = {};
+        chain.from = vi.fn().mockReturnValue(chain);
+        chain.where = vi.fn().mockResolvedValue([makeAgent()]);
+        return chain;
+      });
+      const archivedValues: Record<string, unknown>[] = [];
+      mockTxClient.update
+        .mockImplementationOnce(() => {
+          const chain: Record<string, any> = {};
+          chain.set = vi.fn((value: Record<string, unknown>) => {
+            archivedValues.push(value);
+            return chain;
+          });
+          chain.where = vi.fn().mockResolvedValue(undefined);
+          return chain;
+        })
+        .mockImplementationOnce(() => {
+          const chain: Record<string, any> = {};
+          chain.set = vi.fn((value: Record<string, unknown>) => {
+            archivedValues.push(value);
+            return chain;
+          });
+          chain.where = vi.fn().mockRejectedValue(definitionUpdateError);
+          return chain;
+        });
+
+      await expect(service.archive('agent-1', 'archiver')).rejects.toBe(
+        definitionUpdateError,
+      );
+      expect(archivedValues[0]?.archivedAt).toBeInstanceOf(Date);
+      expect(archivedValues[1]).toMatchObject({
+        status: 'archived',
+        updatedBy: 'archiver',
+      });
+    });
+  });
+
+  describe('canvas snapshot 边界与事务错误', () => {
+    it.each([
+      {
+        selected: undefined,
+        error: AgentNotFoundException,
+      },
+      {
+        selected: makeAgent({ status: 'archived' }),
+        error: AgentArchivedException,
+      },
+      {
+        selected: makeAgent({ version: 9 }),
+        error: AgentVersionConflictException,
+      },
+    ])(
+      'applyCanvasSnapshot 应抛出 $error.name',
+      async ({ selected, error }) => {
+        mockTxClient.select.mockImplementation(() => {
+          const chain: Record<string, any> = {};
+          chain.from = vi.fn().mockReturnValue(chain);
+          chain.where = vi.fn().mockResolvedValue(selected ? [selected] : []);
+          return chain;
+        });
+
+        await expect(
+          service.applyCanvasSnapshot(
+            'agent-1',
+            {
+              canvasNodes: [],
+              canvasEdges: [],
+              expectedVersion: 1,
+            },
+            'user-1',
+          ),
+        ).rejects.toThrow(error);
+        expect(mockTxClient.update).not.toHaveBeenCalled();
+      },
+    );
+
+    it('applyCanvasSnapshot 应持久化 viewport/workspace/metadata 且不误发布草稿', async () => {
+      const agent = makeAgent({
+        version: 3,
+        publishedVersionId: null,
+      });
+      const updated = makeAgent({ version: 4, nodes: [] });
+      let setClause: Record<string, unknown> | undefined;
+      mockTxClient.select.mockImplementation(() => {
+        const chain: Record<string, any> = {};
+        chain.from = vi.fn().mockReturnValue(chain);
+        chain.where = vi.fn().mockResolvedValue([agent]);
+        return chain;
+      });
+      mockTxClient.update.mockImplementation(() => {
+        const chain: Record<string, any> = {};
+        chain.set = vi.fn((value: Record<string, unknown>) => {
+          setClause = value;
+          return chain;
+        });
+        chain.where = vi.fn().mockReturnValue(chain);
+        chain.returning = vi.fn().mockResolvedValue([updated]);
+        return chain;
+      });
+
+      const result = await service.applyCanvasSnapshot(
+        'agent-1',
+        {
+          canvasNodes: [],
+          canvasEdges: [],
+          expectedVersion: 3,
+          canvasViewport: { x: 1, y: 2, zoom: 0.5 },
+          workspaceSnapshotId: null,
+          inputSchema: null,
+          memoryInstanceIds: [],
+          sandboxLifecycle: 'session',
+          publishIfCurrentlyPublished: true,
+        },
+        'user-1',
+      );
+
+      expect(setClause).toMatchObject({
+        viewport: { x: 1, y: 2, zoom: 0.5 },
+        workspaceSnapshotId: null,
+      });
+      expect(setClause).toHaveProperty('metadata');
+      expect(result.publishedVersionId).toBeUndefined();
+      expect(mockTxClient.insert).not.toHaveBeenCalled();
+    });
+
+    it.each([null, []] as const)(
+      '发布空 updatedDraft.nodes=%s 应抛发布校验异常且不插入版本',
+      async (nodes) => {
+        const agent = makeAgent({ version: 1 });
+        mockTxClient.select.mockImplementation(() => {
+          const chain: Record<string, any> = {};
+          chain.from = vi.fn().mockReturnValue(chain);
+          chain.where = vi.fn().mockResolvedValue([agent]);
+          return chain;
+        });
+        mockTxClient.update.mockImplementation(() => {
+          const chain: Record<string, any> = {};
+          chain.set = vi.fn().mockReturnValue(chain);
+          chain.where = vi.fn().mockReturnValue(chain);
+          chain.returning = vi
+            .fn()
+            .mockResolvedValue([makeAgent({ nodes, version: 2 })]);
+          return chain;
+        });
+
+        await expect(
+          service.applyCanvasSnapshot(
+            'agent-1',
+            {
+              canvasNodes: [],
+              canvasEdges: [],
+              publishAfterSave: true,
+            },
+            'user-1',
+          ),
+        ).rejects.toThrow(AgentPublishValidationException);
+        expect(mockTxClient.insert).not.toHaveBeenCalled();
+      },
+    );
+
+    it('saveCanvas 的 update 事务错误应原样传播', async () => {
+      const updateError = new Error('canvas persistence failed');
+      mockTxClient.select.mockImplementation(() => {
+        const chain: Record<string, any> = {};
+        chain.from = vi.fn().mockReturnValue(chain);
+        chain.where = vi.fn().mockResolvedValue([makeAgent()]);
+        return chain;
+      });
+      mockTxClient.update.mockImplementation(() => {
+        const chain: Record<string, any> = {};
+        chain.set = vi.fn().mockReturnValue(chain);
+        chain.where = vi.fn().mockReturnValue(chain);
+        chain.returning = vi.fn().mockRejectedValue(updateError);
+        return chain;
+      });
+
+      await expect(
+        service.saveCanvas(
+          'agent-1',
+          { canvasNodes: [], canvasEdges: [] },
+          'user-1',
+        ),
+      ).rejects.toBe(updateError);
+    });
+  });
+
+  describe('版本与发布分支补充', () => {
+    it('createVersion 应规范空 label/releaseNotes、从空 maxVersion 创建 v1', async () => {
+      const agent = makeAgent({ metadata: null, edges: null });
+      let selectCount = 0;
+      mockTxClient.select.mockImplementation(() => {
+        selectCount += 1;
+        const chain: Record<string, any> = {};
+        chain.from = vi.fn().mockReturnValue(chain);
+        chain.where = vi
+          .fn()
+          .mockResolvedValue(selectCount === 1 ? [agent] : []);
+        return chain;
+      });
+      let inserted: Record<string, any> | undefined;
+      mockTxClient.insert.mockImplementation(() => {
+        const chain: Record<string, any> = {};
+        chain.values = vi.fn((value: Record<string, any>) => {
+          inserted = value;
+          return chain;
+        });
+        chain.returning = vi.fn().mockResolvedValue([
+          makeVersion({
+            label: 'v1',
+            snapshot: {
+              runtimeMode: 'sandbox',
+              nodes: agent.nodes,
+              edges: null,
+              viewport: null,
+              systemPrompt: null,
+              sandboxConfig: null,
+              workspaceSnapshotId: null,
+              metadata: {
+                nodeCount: 1,
+                edgeCount: 0,
+                createdFromVersion: 1,
+              },
+            },
+          }),
+        ]);
+        return chain;
+      });
+
+      const result = await service.createVersion(
+        'agent-1',
+        makeCreateAgentVersionDto({ label: ' ', releaseNotes: '  ' }),
+        'user-1',
+      );
+
+      expect(inserted).toMatchObject({
+        versionNumber: 1,
+        label: 'v1',
+      });
+      expect(inserted?.snapshot.metadata).toMatchObject({
+        nodeCount: 1,
+        edgeCount: 0,
+        createdFromVersion: 1,
+        releaseNotes: undefined,
+      });
+      expect(result.snapshot.runtimeMode).toBe('sandbox');
+    });
+
+    it('listVersions 应序列化日期、迁移 legacy prompt 并保留冻结的 no_sandbox 快照', async () => {
+      const version = makeVersion({
+        publishedAt: new Date('2025-02-03T04:05:06.000Z'),
+        archivedAt: new Date('2025-03-04T05:06:07.000Z'),
+        snapshot: {
+          runtimeMode: 'no_sandbox',
+          nodes: [
+            {
+              id: 'main',
+              type: 'agent',
+              position: { x: 320, y: 320 },
+              data: { nodeType: 'agent-main' },
+            },
+          ],
+          edges: [],
+          viewport: null,
+          systemPrompt: 'legacy',
+          sandboxConfig: { cpu: 8 },
+          metadata: {
+            nodeCount: 1,
+            edgeCount: 0,
+            createdFromVersion: 1,
+          },
+        },
+      });
+      const rowsChain: Record<string, any> = {};
+      rowsChain.from = vi.fn().mockReturnValue(rowsChain);
+      rowsChain.where = vi.fn().mockReturnValue(rowsChain);
+      rowsChain.orderBy = vi.fn().mockReturnValue(rowsChain);
+      rowsChain.limit = vi.fn().mockReturnValue(rowsChain);
+      rowsChain.offset = vi.fn().mockResolvedValue([version]);
+      const countChain: Record<string, any> = {};
+      countChain.from = vi.fn().mockReturnValue(countChain);
+      countChain.where = vi.fn().mockResolvedValue([{ total: 21 }]);
+      mockTenantDb.select
+        .mockReturnValueOnce(rowsChain)
+        .mockReturnValueOnce(countChain);
+
+      const result = await service.listVersions('agent-1', 2, 10);
+
+      expect(result.meta).toEqual({
+        total: 21,
+        page: 2,
+        pageSize: 10,
+        totalPages: 3,
+      });
+      expect(result.data[0]).toMatchObject({
+        publishedAt: '2025-02-03T04:05:06.000Z',
+        archivedAt: '2025-03-04T05:06:07.000Z',
+        snapshot: {
+          runtimeMode: 'no_sandbox',
+          systemPrompt: null,
+          sandboxConfig: { cpu: 8 },
+        },
+      });
+      expect(result.data[0]?.snapshot.nodes).toContainEqual(
+        expect.objectContaining({ id: 'main__system-prompt' }),
+      );
+    });
+
+    it('publish 指定不存在版本时应抛 AgentVersionNotFoundException', async () => {
+      let selectCount = 0;
+      mockTxClient.select.mockImplementation(() => {
+        selectCount += 1;
+        const chain: Record<string, any> = {};
+        chain.from = vi.fn().mockReturnValue(chain);
+        chain.where = vi
+          .fn()
+          .mockResolvedValue(selectCount === 1 ? [makeAgent()] : []);
+        return chain;
+      });
+      mockTxClient.update.mockImplementation(() => {
+        const chain: Record<string, any> = {};
+        chain.set = vi.fn().mockReturnValue(chain);
+        chain.where = vi.fn().mockResolvedValue(undefined);
+        return chain;
+      });
+
+      await expect(
+        service.publish(
+          'agent-1',
+          makePublishAgentDto({ versionId: 'missing-version' }),
+          'user-1',
+        ),
+      ).rejects.toThrow(AgentVersionNotFoundException);
+    });
+
+    it('重新发布历史版本时空覆盖值应保留原 label 和 releaseNotes', async () => {
+      const existing = makeVersion({
+        id: 'version-old',
+        label: 'Original',
+        snapshot: {
+          runtimeMode: 'sandbox',
+          nodes: [{ id: 'node', type: 'text', data: { nodeType: 'text' } }],
+          edges: [],
+          viewport: null,
+          systemPrompt: null,
+          metadata: {
+            nodeCount: 1,
+            edgeCount: 0,
+            createdFromVersion: 1,
+            releaseNotes: 'Original notes',
+          },
+        },
+      });
+      let selectCount = 0;
+      mockTxClient.select.mockImplementation(() => {
+        selectCount += 1;
+        const chain: Record<string, any> = {};
+        chain.from = vi.fn().mockReturnValue(chain);
+        chain.where = vi
+          .fn()
+          .mockResolvedValue(selectCount === 1 ? [makeAgent()] : [existing]);
+        return chain;
+      });
+      const updates: Record<string, any>[] = [];
+      let updateCount = 0;
+      mockTxClient.update.mockImplementation(() => {
+        updateCount += 1;
+        const chain: Record<string, any> = {};
+        chain.set = vi.fn((value: Record<string, any>) => {
+          updates.push(value);
+          return chain;
+        });
+        if (updateCount === 1) {
+          chain.where = vi.fn().mockResolvedValue(undefined);
+        } else {
+          chain.where = vi.fn().mockReturnValue(chain);
+          chain.returning = vi.fn().mockResolvedValue(
+            updateCount === 2
+              ? [{ ...existing, publishedAt: new Date() }]
+              : [
+                  makeAgent({
+                    status: 'published',
+                    publishedVersionId: existing.id,
+                  }),
+                ],
+          );
+        }
+        return chain;
+      });
+
+      await service.publish(
+        'agent-1',
+        makePublishAgentDto({
+          versionId: existing.id,
+          label: ' ',
+          releaseNotes: ' ',
+        }),
+        'publisher',
+      );
+
+      expect(updates[1]).toMatchObject({
+        label: 'Original',
+        snapshot: {
+          metadata: {
+            releaseNotes: 'Original notes',
+          },
+        },
+      });
+      expect(updates[2]).toMatchObject({
+        status: 'published',
+        publishedVersionId: existing.id,
+        updatedBy: 'publisher',
+      });
+    });
+
+    it('publish 的版本插入错误应原样传播且不更新 definition', async () => {
+      const insertError = new Error('version insert failed');
+      let selectCount = 0;
+      mockTxClient.select.mockImplementation(() => {
+        selectCount += 1;
+        const chain: Record<string, any> = {};
+        chain.from = vi.fn().mockReturnValue(chain);
+        chain.where = vi
+          .fn()
+          .mockResolvedValue(
+            selectCount === 1 ? [makeAgent()] : [{ maxVersion: null }],
+          );
+        return chain;
+      });
+      let updateCount = 0;
+      mockTxClient.update.mockImplementation(() => {
+        updateCount += 1;
+        const chain: Record<string, any> = {};
+        chain.set = vi.fn().mockReturnValue(chain);
+        chain.where = vi.fn().mockResolvedValue(undefined);
+        return chain;
+      });
+      mockTxClient.insert.mockImplementation(() => {
+        const chain: Record<string, any> = {};
+        chain.values = vi.fn().mockReturnValue(chain);
+        chain.returning = vi.fn().mockRejectedValue(insertError);
+        return chain;
+      });
+
+      await expect(
+        service.publish('agent-1', makePublishAgentDto(), 'user-1'),
+      ).rejects.toBe(insertError);
+      expect(updateCount).toBe(1);
+    });
+  });
+
+  describe('可选配置、输入迁移与错误分支契约', () => {
+    it('findAll 遇到未知排序字段时应回退 updatedAt 并返回稳定分页结果', async () => {
+      const row = makeAgent({ id: 'fallback-sort-agent' });
+      const rowsChain: Record<string, any> = {};
+      rowsChain.from = vi.fn().mockReturnValue(rowsChain);
+      rowsChain.where = vi.fn().mockReturnValue(rowsChain);
+      rowsChain.orderBy = vi.fn().mockReturnValue(rowsChain);
+      rowsChain.limit = vi.fn().mockReturnValue(rowsChain);
+      rowsChain.offset = vi.fn().mockResolvedValue([row]);
+      const countChain: Record<string, any> = {};
+      countChain.from = vi.fn().mockReturnValue(countChain);
+      countChain.where = vi.fn().mockResolvedValue([{ total: 1 }]);
+      mockTenantDb.select
+        .mockReturnValueOnce(rowsChain)
+        .mockReturnValueOnce(countChain);
+
+      const result = await service.findAll(
+        makeListAgentDefinitionsQueryDto({
+          sort: 'removed-column' as ListAgentDefinitionsQueryDto['sort'],
+        }),
+      );
+
+      expect(result).toMatchObject({
+        data: [{ id: 'fallback-sort-agent' }],
+        meta: { total: 1, page: 1, pageSize: 20, totalPages: 1 },
+      });
+    });
+    it.each([
+      {
+        field: 'authConfig',
+        value: { header: 'Authorization', scheme: 'Bearer' },
+      },
+      {
+        field: 'auth_config',
+        value: { queryParam: 'api_key' },
+      },
+    ])('llm-model 应保留 $field 对象认证配置', ({ field, value }) => {
+      const config = service.buildRuntimeConfigFromNodes(
+        [
+          {
+            id: `model-${field}`,
+            type: 'llm-model',
+            data: {
+              llmConfigId: 'config-1',
+              provider: 'custom',
+              [field]: value,
+            },
+          },
+        ],
+        [],
+      );
+
+      expect(config.modelConfig).toMatchObject({
+        modelId: 'config-1',
+        provider: 'custom',
+        authConfig: value,
+      });
+    });
+
+    it('工具缺少可选执行字段时应保留有效判别字段且不伪造默认值', () => {
+      const config = service.buildRuntimeConfigFromNodes(
+        [
+          {
+            id: 'http-sparse',
+            type: 'http-tool',
+            data: { url: 'https://example.test/ping' },
+          },
+          {
+            id: 'code-sparse',
+            type: 'code-tool',
+            data: { language: 'python' },
+          },
+        ],
+        [],
+      );
+
+      expect(config.tools).toEqual([
+        expect.objectContaining({
+          toolId: 'http-sparse',
+          toolType: 'http',
+          url: 'https://example.test/ping',
+        }),
+        expect.objectContaining({
+          toolId: 'code-sparse',
+          toolType: 'code',
+          language: 'python',
+        }),
+      ]);
+      expect(config.tools?.[0]).not.toHaveProperty('method');
+      expect(config.tools?.[1]).not.toHaveProperty('code');
+      expect(config.tools?.[1]).not.toHaveProperty('timeout');
+    });
+
+    it('input-preprocessor 应区分直接、嵌套与纯内联配置并遵守优先级', () => {
+      const config = service.buildRuntimeConfigFromNodes(
+        [
+          {
+            id: 'direct',
+            type: 'input-preprocessor',
+            data: {
+              type: 'direct',
+              preprocessorConfig: { source: 'direct' },
+              config: { source: 'ignored' },
+              expression: 'ignored-inline',
+            },
+          },
+          {
+            id: 'nested-config',
+            type: 'input-preprocessor',
+            data: {
+              type: 'nested',
+              config: {
+                config: {
+                  config: { expression: 'input.value' },
+                  outputFormat: 'json',
+                },
+              },
+            },
+          },
+          {
+            id: 'nested-preprocessor',
+            type: 'input-preprocessor',
+            data: {
+              type: 'nested-alias',
+              config: {
+                preprocessorConfig: { template: '{{input}}' },
+              },
+            },
+          },
+          {
+            id: 'inline',
+            type: 'input-preprocessor',
+            data: {
+              type: 'inline',
+              expression: 'input.trim()',
+              label: 'not runtime config',
+              icon: 'also excluded',
+            },
+          },
+        ],
+        [],
+      );
+
+      expect(config.inputPreprocessors).toEqual([
+        { type: 'direct', config: { source: 'direct' } },
+        {
+          type: 'nested',
+          config: { expression: 'input.value', outputFormat: 'json' },
+        },
+        {
+          type: 'nested-alias',
+          config: { template: '{{input}}' },
+        },
+        {
+          type: 'inline',
+          config: { type: 'inline', expression: 'input.trim()' },
+        },
+      ]);
+    });
+
+    it('smart-routing 无显式顺序时应按端口序号排序、去重并追加非标准端口', () => {
+      const nodes = [
+        { id: 'main', type: 'agent-main', data: {} },
+        {
+          id: 'router',
+          type: 'smart-routing',
+          data: { strategy: 'COST_FIRST' },
+        },
+        {
+          id: 'model-two',
+          type: 'llm-model',
+          data: { modelId: 'model-2' },
+        },
+        {
+          id: 'model-ten',
+          type: 'llm-model',
+          data: { modelId: 'model-10' },
+        },
+        {
+          id: 'model-custom',
+          type: 'llm-model',
+          data: { modelId: 'model-custom' },
+        },
+        {
+          id: 'model-empty',
+          type: 'llm-model',
+          data: {},
+        },
+        { id: 'not-model', type: 'text', data: { text: 'ignored' } },
+      ];
+      const edges = [
+        { source: 'router', target: 'main', targetHandle: 'model-in' },
+        { source: 'model-ten', target: 'router', targetHandle: 'model-in-10' },
+        { source: 'model-two', target: 'router', targetHandle: 'model-in-2' },
+        { source: 'model-custom', target: 'router', targetHandle: 'custom' },
+        { source: 'model-two', target: 'router', targetHandle: 'model-in-2' },
+        { source: 'model-empty', target: 'router' },
+        { source: 'not-model', target: 'router', targetHandle: 'model-in-1' },
+        { source: 'missing', target: 'router', targetHandle: 'model-in-0' },
+        null,
+      ];
+
+      const config = service.buildRuntimeConfigFromNodes(nodes, edges);
+
+      expect(config.routingConfig).toEqual({
+        strategy: 'COST_FIRST',
+        candidateModelIds: ['model-2', 'model-10', 'model-custom'],
+        fallbackModelId: undefined,
+      });
+    });
+
+    it('仅配置旧 timeout 小时值时应保留小时并不派生秒字段', () => {
+      const config = service.buildRuntimeConfigFromNodes(
+        [
+          {
+            id: 'sandbox-hours',
+            type: 'sandbox',
+            data: {
+              timeout: 3,
+              timeoutSeconds: Number.NaN,
+              cpuLimit: 2,
+              memoryLimitMb: 2048,
+              diskLimitGb: 8,
+            },
+          },
+        ],
+        [],
+      );
+
+      expect(config.sandboxConfig).toMatchObject({
+        cpu: 2,
+        memory: 2048,
+        disk: 8,
+        timeout: 3,
+      });
+      expect(config.sandboxConfig).not.toHaveProperty('timeoutSeconds');
+    });
+
+    it('listVersions 应迁移 legacy sub-agent 输入句柄并派生 sandbox 快照配置', async () => {
+      const version = makeVersion({
+        snapshot: {
+          runtimeMode: 'sandbox',
+          nodes: [
+            {
+              id: 'main',
+              type: 'agent-main',
+              position: { x: 0, y: 0 },
+              data: {},
+            },
+            {
+              id: 'sub',
+              type: 'sub-agent',
+              position: { x: 100, y: 0 },
+              data: { agentDefinitionId: 'child-agent' },
+            },
+            {
+              id: 'sandbox',
+              type: 'sandbox',
+              position: { x: 0, y: 100 },
+              data: { cpu: 2, timeoutSeconds: 900 },
+            },
+          ],
+          edges: [
+            {
+              id: 'legacy-text',
+              source: 'main',
+              target: 'sub',
+              targetHandle: 'text-in',
+            },
+            {
+              id: 'legacy-json',
+              source: 'main',
+              target: 'sub',
+              targetHandle: 'json',
+            },
+            {
+              id: 'sandbox-to-main',
+              source: 'sandbox',
+              target: 'main',
+              targetHandle: 'sandbox-in',
+            },
+          ],
+          viewport: null,
+          systemPrompt: null,
+          metadata: { nodeCount: 3, edgeCount: 2, createdFromVersion: 1 },
+        },
+      });
+      const rowsChain: Record<string, any> = {};
+      rowsChain.from = vi.fn().mockReturnValue(rowsChain);
+      rowsChain.where = vi.fn().mockReturnValue(rowsChain);
+      rowsChain.orderBy = vi.fn().mockReturnValue(rowsChain);
+      rowsChain.limit = vi.fn().mockReturnValue(rowsChain);
+      rowsChain.offset = vi.fn().mockResolvedValue([version]);
+      const countChain: Record<string, any> = {};
+      countChain.from = vi.fn().mockReturnValue(countChain);
+      countChain.where = vi.fn().mockResolvedValue([{ total: 1 }]);
+      mockTenantDb.select
+        .mockReturnValueOnce(rowsChain)
+        .mockReturnValueOnce(countChain);
+
+      const result = await service.listVersions('agent-1');
+
+      expect(result.data[0]?.snapshot.edges).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            id: 'legacy-text',
+            targetHandle: 'system-prompt-in',
+          }),
+          expect.objectContaining({
+            id: 'legacy-json',
+            targetHandle: 'schema-in',
+          }),
+        ]),
+      );
+      expect(result.data[0]?.snapshot.sandboxConfig).toMatchObject({
+        cpu: 2,
+        timeoutSeconds: 900,
+      });
+    });
+
+    it('no_sandbox 创建版本时绑定 stdio MCP 应以发布校验错误拒绝', async () => {
+      const agent = makeAgent({
+        runtimeMode: 'no_sandbox',
+        nodes: [
+          {
+            id: 'mcp-tool',
+            type: 'mcp-tool',
+            data: {
+              mcpServerConfigId: 'stdio-config',
+              toolName: 'local_tool',
+            },
+          },
+        ],
+        edges: [],
+      });
+      let selectCount = 0;
+      mockTxClient.select.mockImplementation(() => {
+        selectCount += 1;
+        const chain: Record<string, any> = {};
+        chain.from = vi.fn().mockReturnValue(chain);
+        chain.where = vi.fn().mockResolvedValue(
+          selectCount === 1
+            ? [agent]
+            : [
+                {
+                  id: 'stdio-config',
+                  name: 'Local stdio',
+                  transportType: 'stdio',
+                },
+              ],
+        );
+        return chain;
+      });
+
+      await expect(
+        service.createVersion('agent-1', makeCreateAgentVersionDto(), 'user-1'),
+      ).rejects.toMatchObject({
+        type: 'https://agentloom.dev/errors/agent-publish-validation',
+        detail:
+          '无 sandbox Agent 只能绑定 HTTP MCP，以下 MCP server 使用了 stdio: Local stdio',
+        errors: [
+          {
+            field: 'agent',
+            message:
+              '无 sandbox Agent 只能绑定 HTTP MCP，以下 MCP server 使用了 stdio: Local stdio',
+          },
+        ],
+      });
+      expect(mockTxClient.insert).not.toHaveBeenCalled();
+    });
+
+    it('archive 的版本归档写入失败时应传播错误且不更新 definition', async () => {
+      const archiveError = new Error('version archive failed');
+      mockTxClient.select.mockImplementation(() => {
+        const chain: Record<string, any> = {};
+        chain.from = vi.fn().mockReturnValue(chain);
+        chain.where = vi.fn().mockResolvedValue([makeAgent()]);
+        return chain;
+      });
+      let updateCount = 0;
+      mockTxClient.update.mockImplementation(() => {
+        updateCount += 1;
+        const chain: Record<string, any> = {};
+        chain.set = vi.fn().mockReturnValue(chain);
+        chain.where = vi.fn().mockRejectedValue(archiveError);
+        return chain;
+      });
+
+      await expect(service.archive('agent-1', 'user-1')).rejects.toBe(
+        archiveError,
+      );
+      expect(updateCount).toBe(1);
     });
   });
 });

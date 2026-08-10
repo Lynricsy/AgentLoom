@@ -3351,6 +3351,97 @@ describe('NodeSchedulerService', () => {
       );
       expect(mockQueue.add).not.toHaveBeenCalled();
     });
+    const inlineDispatchCases = [
+      ['llm-model', 'executeLlmModelNode', false],
+      ['knowledge-base', 'executeKnowledgeNode', false],
+      ['condition', 'executeConditional', true],
+      ['conditional', 'executeConditional', true],
+      ['loop', 'executeLoopNode', true],
+      ['iteration', 'executeIterationNode', true],
+      ['loop-start', 'executeLoopStartNode', false],
+      ['iteration-start', 'executeIterationStartNode', false],
+      ['loop-state', 'executeLoopStateNode', true],
+      ['result', 'executeResultNode', true],
+      ['break', 'executeBreakNode', true],
+      ['continue', 'executeContinueNode', true],
+      ['merge', 'executeMerge', true],
+      ['text-output', 'executeOutputNode', true],
+      ['json-output', 'executeOutputNode', true],
+      ['skill', 'executeSkillNode', true],
+    ] as const;
+
+    it.each(inlineDispatchCases)(
+      '%s 节点应分派给 %s，并保持标准调度上下文',
+      async (nodeType, handlerName, receivesInput) => {
+        const step = makeStep({
+          id: `step-${nodeType}`,
+          nodeId: `node-${nodeType}`,
+          nodeType,
+          nodeData: {},
+        });
+        const snapshot = makeSnapshot([makeNode(step.nodeId, nodeType)], []);
+        const handler = vi
+          .spyOn(service, handlerName)
+          .mockResolvedValue(undefined);
+        db.update.mockReturnValueOnce(createUpdateChainVoid());
+
+        await service.scheduleNode(
+          EXECUTION_ID,
+          step.nodeId,
+          TENANT_ID,
+          snapshot,
+          [step],
+          { skipLatestState: true },
+        );
+
+        expect(handler).toHaveBeenCalledTimes(1);
+        expect(handler).toHaveBeenCalledWith(
+          step,
+          ...(receivesInput ? [{}] : []),
+          TENANT_ID,
+          EXECUTION_ID,
+        );
+        expect(mockQueue.add).not.toHaveBeenCalled();
+      },
+    );
+
+    it.each(['sub-agent', 'future-custom-node'])(
+      '%s 节点应使用 agent 任务队列兜底执行',
+      async (nodeType) => {
+        const step = makeStep({
+          id: `step-${nodeType}`,
+          nodeId: `node-${nodeType}`,
+          nodeType,
+          nodeData: {},
+        });
+        const snapshot = makeSnapshot([makeNode(step.nodeId, nodeType)], []);
+        db.update.mockReturnValueOnce(createUpdateChainVoid());
+
+        await service.scheduleNode(
+          EXECUTION_ID,
+          step.nodeId,
+          TENANT_ID,
+          snapshot,
+          [step],
+          { skipLatestState: true },
+        );
+
+        expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+          TENANT_ID,
+          step.id,
+          'queued',
+        );
+        expect(mockQueue.add).toHaveBeenCalledWith(
+          'agent-task',
+          expect.objectContaining({
+            executionId: EXECUTION_ID,
+            stepId: step.id,
+            nodeData: { agentId: step.nodeId },
+          }),
+          undefined,
+        );
+      },
+    );
   });
 
   describe('onNodeCompleted', () => {
@@ -3446,6 +3537,166 @@ describe('NodeSchedulerService', () => {
       expect(mockSandboxService.releaseExecutionSandbox).toHaveBeenCalledWith(
         EXECUTION_ID,
         'S',
+        TENANT_ID,
+      );
+    });
+    it.each(['schedule', 'skip', 'wait'] as const)(
+      '后继调度决策为 %s 时应只执行对应动作',
+      async (decision) => {
+        const snapshot = makeSnapshot(
+          [makeNode('A'), makeNode('B')],
+          [makeEdge('A', 'B')],
+        );
+        const completedStep = makeStep({
+          id: 'step-a',
+          nodeId: 'A',
+          status: 'completed',
+          result: { ok: true },
+        });
+        const steps = [
+          completedStep,
+          makeStep({ id: 'step-b', nodeId: 'B', status: 'pending' }),
+        ];
+        db.select
+          .mockReturnValueOnce(createSelectChain([completedStep]))
+          .mockReturnValueOnce(
+            createSelectChain([makeExecution(snapshot, 'running')]),
+          )
+          .mockReturnValueOnce(createSelectChain(steps))
+          .mockReturnValueOnce(createSelectChain([{ status: 'running' }]));
+        mockDagResolver.resolveDag.mockReturnValue(
+          makePlan(
+            [['A'], ['B']],
+            new Map([
+              ['A', ['B']],
+              ['B', []],
+            ]),
+            new Map([
+              ['A', 0],
+              ['B', 1],
+            ]),
+          ),
+        );
+        const scheduleNode = vi
+          .spyOn(service, 'scheduleNode')
+          .mockResolvedValue(undefined);
+        const completionView = service as unknown as {
+          getSchedulingDecision(
+            nodeId: string,
+            edges: ReactFlowEdge[],
+            executionSteps: ExecutionStep[],
+          ): 'schedule' | 'skip' | 'wait';
+          skipAndCascade(
+            executionId: string,
+            nodeId: string,
+            executionSteps: ExecutionStep[],
+            tenantId: string,
+          ): Promise<void>;
+        };
+        vi.spyOn(completionView, 'getSchedulingDecision').mockReturnValue(
+          decision,
+        );
+        const skipAndCascade = vi
+          .spyOn(completionView, 'skipAndCascade')
+          .mockResolvedValue(undefined);
+
+        await service.onNodeCompleted(EXECUTION_ID, 'step-a', TENANT_ID);
+
+        if (decision === 'schedule') {
+          expect(scheduleNode).toHaveBeenCalledWith(
+            EXECUTION_ID,
+            'B',
+            TENANT_ID,
+            expect.objectContaining({
+              nodes: snapshot.nodes,
+              edges: snapshot.edges,
+            }),
+            steps,
+          );
+          expect(skipAndCascade).not.toHaveBeenCalled();
+        } else if (decision === 'skip') {
+          expect(skipAndCascade).toHaveBeenCalledWith(
+            EXECUTION_ID,
+            'B',
+            steps,
+            TENANT_ID,
+          );
+          expect(scheduleNode).not.toHaveBeenCalled();
+        } else {
+          expect(scheduleNode).not.toHaveBeenCalled();
+          expect(skipAndCascade).not.toHaveBeenCalled();
+        }
+        expect(mockStateMachine.updateExecutionStatus).toHaveBeenCalledWith(
+          EXECUTION_ID,
+          TENANT_ID,
+        );
+      },
+    );
+
+    it('condition 完成时应交给分支处理器，并支持没有普通后继的执行计划', async () => {
+      const snapshot = makeSnapshot(
+        [makeNode('C', 'condition'), makeNode('T'), makeNode('F')],
+        [makeEdge('C', 'T', 'true'), makeEdge('C', 'F', 'false')],
+      );
+      const completedStep = makeStep({
+        id: 'step-condition',
+        nodeId: 'C',
+        nodeType: 'condition',
+        status: 'completed',
+        result: { branch: 'true' },
+      });
+      const steps = [
+        completedStep,
+        makeStep({ id: 'step-true', nodeId: 'T', status: 'pending' }),
+        makeStep({ id: 'step-false', nodeId: 'F', status: 'pending' }),
+      ];
+      db.select
+        .mockReturnValueOnce(createSelectChain([completedStep]))
+        .mockReturnValueOnce(
+          createSelectChain([makeExecution(snapshot, 'running')]),
+        )
+        .mockReturnValueOnce(createSelectChain(steps))
+        .mockReturnValueOnce(createSelectChain([{ status: 'running' }]));
+      mockDagResolver.resolveDag.mockReturnValue(
+        makePlan(
+          [['C'], ['T', 'F']],
+          new Map(),
+          new Map([
+            ['C', 0],
+            ['T', 1],
+            ['F', 1],
+          ]),
+        ),
+      );
+      const completionView = service as unknown as {
+        handleConditionalBranching(
+          executionId: string,
+          conditionalNodeId: string,
+          branch: string,
+          graph: { nodes: ReactFlowNode[]; edges: ReactFlowEdge[] },
+          executionSteps: ExecutionStep[],
+          tenantId: string,
+        ): Promise<void>;
+      };
+      const handleConditionalBranching = vi
+        .spyOn(completionView, 'handleConditionalBranching')
+        .mockResolvedValue(undefined);
+
+      await service.onNodeCompleted(EXECUTION_ID, completedStep.id, TENANT_ID);
+
+      expect(handleConditionalBranching).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        'C',
+        'true',
+        expect.objectContaining({
+          nodes: snapshot.nodes,
+          edges: snapshot.edges,
+        }),
+        steps,
+        TENANT_ID,
+      );
+      expect(mockStateMachine.updateExecutionStatus).toHaveBeenCalledWith(
+        EXECUTION_ID,
         TENANT_ID,
       );
     });

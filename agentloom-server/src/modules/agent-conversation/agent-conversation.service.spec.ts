@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DRIZZLE } from '../../database/database.module';
 import { AgentConversationService } from './agent-conversation.service';
+import type { SendMessageDto } from './dto/send-message.dto';
 
 const tenantTransactionMocks = vi.hoisted(() => ({
   hasActiveTenantTransaction: vi.fn(() => false),
@@ -832,5 +833,173 @@ describe('AgentConversationService', () => {
         },
       );
     });
+  });
+
+  describe('listMessages', () => {
+    it('应按页返回序列化消息并计算总页数', async () => {
+      const conversationChain = createSelectChain([{ id: CONVERSATION_ID }]);
+      const messagesChain = createPaginatedSelectChain([createMessageRecord()]);
+      const countChain = createCountSelectChain([{ total: 21 }]);
+      db.select
+        .mockReturnValueOnce(conversationChain)
+        .mockReturnValueOnce(messagesChain)
+        .mockReturnValueOnce(countChain);
+
+      const result = await service.listMessages(CONVERSATION_ID, 3, 10);
+
+      expect(messagesChain.limit).toHaveBeenCalledWith(10);
+      expect(messagesChain.offset).toHaveBeenCalledWith(20);
+      expect(result.data).toEqual([
+        expect.objectContaining({ id: MESSAGE_ID, content: '你好' }),
+      ]);
+      expect(result.meta).toEqual({
+        total: 21,
+        page: 3,
+        pageSize: 10,
+        totalPages: 3,
+      });
+    });
+
+    it('对话不存在时应拒绝读取消息', async () => {
+      db.select.mockReturnValueOnce(createSelectChain([]));
+
+      await expect(service.listMessages(CONVERSATION_ID)).rejects.toThrow(
+        `Conversation ${CONVERSATION_ID} not found`,
+      );
+    });
+  });
+
+  describe('getPermissionResolutionTarget', () => {
+    function createPermissionTargetSelectChain(result: unknown[]) {
+      const limit = vi.fn().mockResolvedValue(result);
+      const where = vi.fn().mockReturnValue({ limit });
+      const innerJoin = vi.fn().mockReturnValue({ where });
+      const from = vi.fn().mockReturnValue({ innerJoin });
+      return { from, innerJoin, where, limit };
+    }
+
+    it('应返回定义的运行模式和 execution sessionId', async () => {
+      db.select.mockReturnValueOnce(
+        createPermissionTargetSelectChain([
+          {
+            id: CONVERSATION_ID,
+            runtimeMode: 'no_sandbox',
+            metadata: {
+              execution: {
+                sessionId: 'session-1',
+                executionId: 'execution-1',
+              },
+            },
+          },
+        ]),
+      );
+
+      await expect(
+        service.getPermissionResolutionTarget(CONVERSATION_ID),
+      ).resolves.toEqual({
+        runtimeMode: 'no_sandbox',
+        sessionId: 'session-1',
+      });
+    });
+
+    it.each([
+      { metadata: null, runtimeMode: null },
+      { metadata: [], runtimeMode: undefined },
+      { metadata: { execution: null }, runtimeMode: 'sandbox' },
+      { metadata: { execution: 'invalid' }, runtimeMode: 'sandbox' },
+      { metadata: { unrelated: true }, runtimeMode: 'sandbox' },
+    ])('无有效 execution metadata 时仅返回安全运行模式 %#', async (row) => {
+      db.select.mockReturnValueOnce(
+        createPermissionTargetSelectChain([
+          {
+            id: CONVERSATION_ID,
+            ...row,
+          },
+        ]),
+      );
+
+      await expect(
+        service.getPermissionResolutionTarget(CONVERSATION_ID),
+      ).resolves.toEqual({ runtimeMode: row.runtimeMode ?? 'sandbox' });
+    });
+
+    it('对话不存在时应抛出 NotFoundException', async () => {
+      db.select.mockReturnValueOnce(createPermissionTargetSelectChain([]));
+
+      await expect(
+        service.getPermissionResolutionTarget(CONVERSATION_ID),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('updateConversation', () => {
+    it('应同时更新标题、metadata 和 updatedAt', async () => {
+      const updated = createConversationRecord({
+        title: '新标题',
+        metadata: { pinned: true },
+      });
+      const updateChain = createUpdateChain([updated]);
+      db.update.mockReturnValueOnce(updateChain);
+
+      const result = await service.updateConversation(
+        CONVERSATION_ID,
+        TENANT_ID,
+        {
+          title: '新标题',
+          metadata: { pinned: true },
+        },
+      );
+
+      expect(updateChain.set).toHaveBeenCalledWith({
+        title: '新标题',
+        metadata: { pinned: true },
+        updatedAt: NOW,
+      });
+      expect(result.data).toMatchObject({
+        id: CONVERSATION_ID,
+        title: '新标题',
+        metadata: { pinned: true },
+      });
+    });
+
+    it('空更新只应刷新 updatedAt，且找不到对话时抛错', async () => {
+      const updateChain = createUpdateChain([]);
+      db.update.mockReturnValueOnce(updateChain);
+
+      await expect(
+        service.updateConversation(CONVERSATION_ID, TENANT_ID, {}),
+      ).rejects.toBeInstanceOf(NotFoundException);
+
+      expect(updateChain.set).toHaveBeenCalledWith({ updatedAt: NOW });
+    });
+  });
+
+  it('附件类型与请求类型不一致时应拒绝且不持久化', async () => {
+    db.select.mockReturnValueOnce(
+      createSelectChain([{ id: CONVERSATION_ID, status: 'active' }]),
+    );
+
+    const dto = {
+      content: '附件',
+      role: 'user',
+      contentType: 'image',
+      metadata: {
+        attachments: [
+          {
+            kind: 'file',
+            fileName: 'notes.txt',
+            mimeType: 'text/plain',
+            sizeBytes: 5,
+            textContent: 'notes',
+          },
+        ],
+      },
+    } satisfies SendMessageDto;
+    await expect(
+      service.sendMessage(CONVERSATION_ID, TENANT_ID, dto),
+    ).rejects.toBeInstanceOf(BadRequestException);
+
+    expect(db.insert).not.toHaveBeenCalled();
+    expect(db.update).not.toHaveBeenCalled();
   });
 });

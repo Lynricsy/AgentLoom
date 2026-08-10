@@ -1465,4 +1465,401 @@ describe('WorkspaceIntegrationService', () => {
       ).rejects.toThrow('命令执行失败');
     });
   });
+
+  describe('workspace snapshot 与 watcher 边界', () => {
+    it('应过滤损坏的目录树节点并为旧快照补默认字段', async () => {
+      mockSandboxService.findByConversationId.mockResolvedValue(null);
+      mockDb.select.mockReturnValue(
+        createSelectChain({
+          id: CONVERSATION_ID,
+          metadata: {
+            workspaceTreeSnapshot: {
+              nodes: [
+                null,
+                'invalid',
+                { name: '', path: 'empty-name', type: 'file' },
+                { name: 'invalid-type', path: 'x', type: 'link' },
+                {
+                  name: 'src',
+                  path: 'src',
+                  type: 'directory',
+                  size: Number.POSITIVE_INFINITY,
+                  children: [
+                    {
+                      name: 'main.ts',
+                      path: 'src/main.ts',
+                      type: 'file',
+                      size: 12,
+                    },
+                    { name: 'broken', path: '', type: 'file' },
+                  ],
+                },
+              ],
+              capturedAt: 123,
+              previewUnavailableReason: null,
+            },
+          },
+        }),
+      );
+
+      const tree = await service.getFileTree(CONVERSATION_ID, TENANT_ID);
+
+      expect(tree).toEqual([
+        {
+          name: 'src',
+          path: 'src',
+          type: 'directory',
+          children: [
+            {
+              name: 'main.ts',
+              path: 'src/main.ts',
+              type: 'file',
+              size: 12,
+            },
+          ],
+        },
+      ]);
+      await expect(
+        service.getFileContent(CONVERSATION_ID, TENANT_ID, 'src/main.ts'),
+      ).rejects.toThrow('仅保留工作区目录结构');
+    });
+
+    it('非对象 metadata 不应污染保存的目录树快照', async () => {
+      mockSandboxService.findByConversationId.mockResolvedValue(
+        mockSandboxSession(),
+      );
+      setupExecWithOutput('f|5|note.txt');
+      mockDb.select.mockReturnValue(
+        createSelectChain({
+          id: CONVERSATION_ID,
+          metadata: 'legacy-metadata',
+        }),
+      );
+      const updateChain = createUpdateChain();
+      mockDb.update.mockReturnValue(updateChain);
+
+      await service.captureConversationWorkspaceTreeSnapshot(
+        CONVERSATION_ID,
+        TENANT_ID,
+      );
+
+      expect(updateChain.set).toHaveBeenCalledWith({
+        metadata: {
+          workspaceTreeSnapshot: expect.objectContaining({
+            nodes: [
+              {
+                name: 'note.txt',
+                path: 'note.txt',
+                type: 'file',
+                size: 5,
+              },
+            ],
+          }),
+        },
+        updatedAt: expect.any(Date),
+      });
+    });
+
+    it('归档快照中的二进制 preview 应明确拒绝文本读取', async () => {
+      mockDb.select.mockReturnValue(
+        createSelectChain({
+          id: STEP_ID,
+          executionId: EXECUTION_ID,
+          checkpointData: { workspaceSnapshotId: WORKSPACE_SNAPSHOT_ID },
+        }),
+      );
+      mockSandboxService.findByExecutionId.mockResolvedValue(null);
+      mockWorkspaceService.getFilePreview.mockResolvedValue({
+        kind: 'binary',
+        path: 'image.png',
+        size: 8,
+      });
+
+      await expect(
+        service.getExecutionStepFileContent(
+          EXECUTION_ID,
+          STEP_ID,
+          TENANT_ID,
+          'image.png',
+        ),
+      ).rejects.toThrow('二进制文件');
+    });
+
+    it('无附件 metadata 时不应查询沙箱或写入 archive', async () => {
+      await expect(
+        service.stageConversationAttachment(
+          CONVERSATION_ID,
+          TENANT_ID,
+          undefined,
+        ),
+      ).resolves.toBeNull();
+
+      expect(mockSandboxService.findByConversationId).not.toHaveBeenCalled();
+      expect(mockRuntimeDriver.putArchive).not.toHaveBeenCalled();
+    });
+
+    it('workflow step 无运行容器或查询失败时不应留下 watcher', async () => {
+      mockSandboxService.findByExecutionId.mockResolvedValueOnce(null);
+      await service.startExecutionStepFileWatcher({
+        executionId: EXECUTION_ID,
+        stepId: STEP_ID,
+        tenantId: TENANT_ID,
+      });
+
+      mockSandboxService.findByExecutionId.mockRejectedValueOnce(
+        new Error('sandbox unavailable'),
+      );
+      await expect(
+        service.startExecutionStepFileWatcher({
+          executionId: 'exec-error',
+          stepId: STEP_ID,
+          tenantId: TENANT_ID,
+        }),
+      ).resolves.toBeUndefined();
+
+      mockRuntimeDriver.createExec.mockClear();
+      await vi.advanceTimersByTimeAsync(3000);
+      expect(mockRuntimeDriver.createExec).not.toHaveBeenCalled();
+    });
+  });
+  describe('sandbox、snapshot 与 watcher 可选失败分支', () => {
+    it('sandbox lookup 的非 NotFound 失败应原样传播', async () => {
+      mockSandboxService.findByConversationId.mockRejectedValue(
+        new Error('sandbox lookup failed'),
+      );
+      mockDb.select.mockReturnValue(
+        createSelectChain({
+          id: CONVERSATION_ID,
+          metadata: {},
+        }),
+      );
+
+      await expect(
+        service.getFileTree(CONVERSATION_ID, TENANT_ID),
+      ).rejects.toThrow('sandbox lookup failed');
+    });
+
+    it('conversation 记录不存在时不应伪造空目录树', async () => {
+      mockSandboxService.findByConversationId.mockResolvedValue(null);
+      mockDb.select.mockReturnValue(createSelectChain(undefined));
+
+      await expect(
+        service.getFileTree(CONVERSATION_ID, TENANT_ID),
+      ).rejects.toThrow(`对话 ${CONVERSATION_ID} 不存在`);
+    });
+
+    it('旧快照的 nodes 不是数组时应安全归一化为空目录树', async () => {
+      mockSandboxService.findByConversationId.mockResolvedValue(null);
+      mockDb.select.mockReturnValue(
+        createSelectChain({
+          id: CONVERSATION_ID,
+          metadata: {
+            workspaceTreeSnapshot: {
+              nodes: 'invalid-tree',
+            },
+          },
+        }),
+      );
+
+      await expect(
+        service.getFileTree(CONVERSATION_ID, TENANT_ID),
+      ).resolves.toEqual([]);
+      await expect(
+        service.getFileContent(CONVERSATION_ID, TENANT_ID, 'missing.txt'),
+      ).rejects.toThrow('仅保留工作区目录结构');
+    });
+
+    it('workflow step 没有 sandboxNodeId 时应按 execution 查找 live sandbox', async () => {
+      mockDb.select.mockReturnValue(
+        createSelectChain({
+          id: STEP_ID,
+          executionId: EXECUTION_ID,
+          checkpointData: {},
+        }),
+      );
+      mockSessionPersistence.loadFromCheckpoint.mockResolvedValue(null);
+      mockSandboxService.findByExecutionId.mockResolvedValue(
+        mockSandboxSession(),
+      );
+      setupExecWithOutput('f|4|live.txt');
+
+      await expect(
+        service.getExecutionStepFileTree(EXECUTION_ID, STEP_ID, TENANT_ID),
+      ).resolves.toEqual([
+        {
+          name: 'live.txt',
+          type: 'file',
+          path: 'live.txt',
+          size: 4,
+        },
+      ]);
+      expect(mockSandboxService.findByExecutionId).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        TENANT_ID,
+        undefined,
+      );
+    });
+
+    it('step 记录属于其他 execution 时应拒绝 sandbox lookup', async () => {
+      mockDb.select.mockReturnValue(
+        createSelectChain({
+          id: STEP_ID,
+          executionId: 'exec-other',
+          checkpointData: {},
+        }),
+      );
+
+      await expect(
+        service.getExecutionStepFileTree(EXECUTION_ID, STEP_ID, TENANT_ID),
+      ).rejects.toThrow(`步骤 ${STEP_ID} 不属于执行 ${EXECUTION_ID}`);
+      expect(mockSandboxService.findByExecutionId).not.toHaveBeenCalled();
+    });
+
+    it('无 sandboxNodeId 的 workflow watcher 应发出不含该可选字段的事件', async () => {
+      mockSandboxService.findByExecutionId.mockResolvedValue(
+        mockSandboxSession(),
+      );
+      setupExecWithOutput('');
+
+      await service.startExecutionStepFileWatcher({
+        executionId: EXECUTION_ID,
+        stepId: STEP_ID,
+        tenantId: TENANT_ID,
+      });
+      await vi.advanceTimersByTimeAsync(0);
+
+      setupExecWithOutput('src/main.ts');
+      await vi.advanceTimersByTimeAsync(3000);
+
+      const event = mockEventEmitter.emit.mock.calls.find(
+        ([name]) => name === 'workspace.file_change',
+      )?.[1];
+      expect(event).toEqual(
+        expect.objectContaining({
+          executionId: EXECUTION_ID,
+          stepId: STEP_ID,
+          tenantId: TENANT_ID,
+          changedFiles: ['src/main.ts'],
+        }),
+      );
+      expect(event).not.toHaveProperty('sandboxNodeId');
+    });
+
+    it('workflow watcher lookup 抛出非 Error 值时应静默失败且不启动轮询', async () => {
+      mockSandboxService.findByExecutionId.mockRejectedValue(
+        'sandbox unavailable',
+      );
+
+      await expect(
+        service.startExecutionStepFileWatcher({
+          executionId: EXECUTION_ID,
+          stepId: STEP_ID,
+          tenantId: TENANT_ID,
+        }),
+      ).resolves.toBeUndefined();
+      await vi.advanceTimersByTimeAsync(3000);
+      expect(mockRuntimeDriver.createExec).not.toHaveBeenCalled();
+    });
+
+    it('目录树快照读取抛出非 Error 值时应吞掉失败且不持久化', async () => {
+      mockSandboxService.findByConversationId.mockResolvedValue(
+        mockSandboxSession(),
+      );
+      mockRuntimeDriver.createExec.mockRejectedValue('runtime unavailable');
+
+      await expect(
+        service.captureConversationWorkspaceTreeSnapshot(
+          CONVERSATION_ID,
+          TENANT_ID,
+        ),
+      ).resolves.toBeUndefined();
+      expect(mockDb.update).not.toHaveBeenCalled();
+    });
+
+    it('conversation sandbox cleanup 抛出非 Error 值时仍应完成结束处理', async () => {
+      mockSandboxService.findByConversationId.mockResolvedValue(null);
+      mockSandboxService.endConversationSandbox.mockRejectedValue(
+        'cleanup unavailable',
+      );
+
+      await expect(
+        service.handleConversationEnded({
+          conversationId: CONVERSATION_ID,
+          tenantId: TENANT_ID,
+          organizationId: ORG_ID,
+          userId: USER_ID,
+        }),
+      ).resolves.toBeUndefined();
+      expect(mockSandboxService.endConversationSandbox).toHaveBeenCalledWith(
+        CONVERSATION_ID,
+        TENANT_ID,
+      );
+    });
+
+    it('marker 初始化失败不应阻止后续 watcher 轮询', async () => {
+      mockRuntimeDriver.createExec.mockRejectedValueOnce('marker unavailable');
+      service.startFileWatcher(CONVERSATION_ID, TENANT_ID, CONTAINER_ID);
+      await vi.advanceTimersByTimeAsync(0);
+
+      setupExecWithOutput('recovered.txt');
+      await vi.advanceTimersByTimeAsync(3000);
+
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+        'workspace.file_change',
+        expect.objectContaining({
+          conversationId: CONVERSATION_ID,
+          changedFiles: ['recovered.txt'],
+        }),
+      );
+    });
+
+    it('单次轮询抛出非 Error 值后 watcher 应在下一周期恢复', async () => {
+      setupExecWithOutput('');
+      service.startFileWatcher(CONVERSATION_ID, TENANT_ID, CONTAINER_ID);
+      await vi.advanceTimersByTimeAsync(0);
+
+      mockRuntimeDriver.createExec.mockRejectedValue('poll unavailable');
+      await vi.advanceTimersByTimeAsync(3000);
+      expect(mockEventEmitter.emit).not.toHaveBeenCalled();
+
+      setupExecWithOutput('after-error.txt');
+      await vi.advanceTimersByTimeAsync(3000);
+      expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+        'workspace.file_change',
+        expect.objectContaining({
+          changedFiles: ['after-error.txt'],
+        }),
+      );
+    });
+
+    it('目录树应忽略空规范路径、重复文件和 stderr 输出', async () => {
+      mockSandboxService.findByConversationId.mockResolvedValue(
+        mockSandboxSession(),
+      );
+      setupExecWithOutput(['f|1|.', 'f|2|same.txt', 'f|9|same.txt'].join('\n'));
+
+      await expect(
+        service.getFileTree(CONVERSATION_ID, TENANT_ID),
+      ).resolves.toEqual([
+        {
+          name: 'same.txt',
+          type: 'file',
+          path: 'same.txt',
+          size: 2,
+        },
+      ]);
+
+      mockRuntimeDriver.attachExecOutput.mockImplementation(
+        async (
+          _execId: string,
+          callback: (level: string, message: string) => void,
+        ) => {
+          callback('stderr', 'not-a-tree-entry');
+        },
+      );
+      await expect(
+        service.getFileTree(CONVERSATION_ID, TENANT_ID),
+      ).resolves.toEqual([]);
+    });
+  });
 });

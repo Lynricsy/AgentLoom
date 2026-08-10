@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { AgentSession } from '../../agent/types/agent-session.types';
 import type { AuditLogService } from '../../evidence/audit-log.service';
 import type { AcpTrackedSession } from '../acp-types';
+import { AcpJsonRpcError } from '../acp-jsonrpc';
 import { AcpTerminalProxyService } from '../services/acp-terminal-proxy.service';
 
 type TerminalTrackedSession = AcpTrackedSession & {
@@ -1144,5 +1145,370 @@ describe('AcpTerminalProxyService', () => {
       message: 'Failed to restore ACP terminal continuity',
       data: { reason: 'terminal_continuity_unavailable' },
     });
+  });
+  it('应拒绝不支持的 terminal mode，并在 sandbox capability 缺失时返回稳定错误', async () => {
+    const { service, auditLogService } = createService();
+
+    await expect(
+      service.createTerminal(
+        {
+          command: 'ls',
+          mode: 'local' as never,
+        },
+        createTrackedSession(),
+      ),
+    ).rejects.toMatchObject({
+      code: -32602,
+      message: 'Invalid params',
+    });
+    expect(auditLogService.record).not.toHaveBeenCalled();
+
+    const unavailableService = new AcpTerminalProxyService();
+    await expect(
+      unavailableService.createTerminal(
+        {
+          command: 'ls',
+        },
+        createTrackedSession(),
+      ),
+    ).rejects.toMatchObject({
+      code: -32603,
+      message: 'ACP server sandbox terminal service is unavailable',
+      data: { reason: 'sandbox_service_unavailable' },
+    });
+  });
+
+  it('应在创建失败回滚时保留调用前已有的 terminal ids，即使 best-effort kill 也失败', async () => {
+    const { service, sandboxTerminalService, sessionPersistence } =
+      createService();
+    const trackedSession = createTrackedSession({
+      terminalIds: ['terminal-existing'],
+    });
+    sandboxTerminalService.createTerminal.mockResolvedValue({
+      execId: 'exec-rollback-existing',
+      cwd: '/workspace/demo',
+    });
+    sandboxTerminalService.attachOutput.mockResolvedValue(undefined);
+    sandboxTerminalService.killTerminal.mockRejectedValue(
+      new Error('kill failed'),
+    );
+    sessionPersistence.saveConversationSession.mockRejectedValue(
+      new Error('persist failed'),
+    );
+
+    await expect(
+      service.createTerminal(
+        {
+          command: 'ls',
+          mode: 'server_sandbox',
+        },
+        trackedSession,
+      ),
+    ).rejects.toMatchObject({
+      code: -32603,
+      message: 'ACP terminal creation failed',
+    });
+
+    expect(trackedSession.terminalIds).toEqual(['terminal-existing']);
+    expect(sandboxTerminalService.killTerminal).toHaveBeenCalledWith(
+      'exec-rollback-existing',
+      'TERM',
+    );
+  });
+
+  it('应在 terminal 仍运行时返回无 exitCode 的轮询状态，并让重复 kill 保持幂等', async () => {
+    const { service, sandboxTerminalService } = createService();
+    const trackedSession = createTrackedSession();
+    sandboxTerminalService.createTerminal.mockResolvedValue({
+      execId: 'exec-still-running',
+      cwd: '/workspace/demo',
+    });
+    sandboxTerminalService.attachOutput.mockResolvedValue(undefined);
+    sandboxTerminalService.waitForExit.mockResolvedValue({
+      running: true,
+      exitCode: null,
+      pid: 301,
+    });
+
+    const { terminalId } = await service.createTerminal(
+      {
+        command: 'sleep',
+        args: ['30'],
+        mode: 'server_sandbox',
+      },
+      trackedSession,
+    );
+
+    await expect(
+      service.waitForTerminalExit({ terminalId }, trackedSession),
+    ).resolves.toEqual({
+      terminalId,
+      status: 'running',
+      signal: null,
+    });
+
+    await service.killTerminal({ terminalId }, trackedSession);
+    await expect(
+      service.killTerminal({ terminalId }, trackedSession),
+    ).resolves.toEqual({ success: true });
+    expect(sandboxTerminalService.killTerminal).toHaveBeenCalledTimes(1);
+
+    await expect(
+      service.releaseTerminal({ terminalId }, trackedSession),
+    ).resolves.toEqual({ success: true });
+    expect(sandboxTerminalService.killTerminal).toHaveBeenCalledTimes(1);
+  });
+
+  it('应在 wait 期间被 kill 时保留 killed 状态，并接受缺失的 exitCode', async () => {
+    const { service, sandboxTerminalService } = createService();
+    const trackedSession = createTrackedSession();
+    type ExitResult = {
+      running: false;
+      exitCode?: number;
+      pid: number;
+    };
+    let resolveExit!: (value: ExitResult) => void;
+    const exitPromise = new Promise<ExitResult>((resolve) => {
+      resolveExit = resolve;
+    });
+    sandboxTerminalService.createTerminal.mockResolvedValue({
+      execId: 'exec-killed-during-wait',
+      cwd: '/workspace/demo',
+    });
+    sandboxTerminalService.attachOutput.mockResolvedValue(undefined);
+    sandboxTerminalService.waitForExit.mockReturnValue(exitPromise);
+
+    const { terminalId } = await service.createTerminal(
+      {
+        command: 'sleep',
+        args: ['30'],
+        mode: 'server_sandbox',
+      },
+      trackedSession,
+    );
+    const waitResult = service.waitForTerminalExit(
+      { terminalId },
+      trackedSession,
+    );
+    await service.killTerminal({ terminalId }, trackedSession);
+    resolveExit({ running: false, pid: 302 });
+
+    await expect(waitResult).resolves.toEqual({
+      terminalId,
+      status: 'killed',
+      signal: 'TERM',
+    });
+  });
+
+  it('应在 cleanup 时忽略未知 terminal id，并在没有 terminalIds 时仍持久化空 continuity', async () => {
+    const {
+      service,
+      sandboxTerminalService,
+      runtimeSession,
+      sessionPersistence,
+    } = createService();
+    const trackedSession = createTrackedSession({
+      terminalIds: ['terminal-unknown'],
+    });
+
+    await service.cleanupSessionTerminals(trackedSession);
+
+    expect(sandboxTerminalService.killTerminal).not.toHaveBeenCalled();
+    expect(trackedSession.terminalIds).toEqual([]);
+    expect(runtimeSession.context.terminalContinuity).toEqual({
+      terminals: [],
+    });
+
+    trackedSession.terminalIds = undefined;
+    await service.cleanupSessionTerminals(trackedSession);
+    expect(sessionPersistence.saveConversationSession).toHaveBeenCalledTimes(2);
+  });
+
+  it('应让 timeout cleanup 对未知 terminal 幂等，并吞掉 sandbox kill 失败以保留服务可用性', async () => {
+    const { service, sandboxTerminalService, auditLogService } =
+      createService();
+    const trackedSession = createTrackedSession();
+    const handleTerminalTimeout = Reflect.get(service, 'handleTerminalTimeout');
+    if (typeof handleTerminalTimeout !== 'function') {
+      throw new Error('handleTerminalTimeout 不可用');
+    }
+
+    await expect(
+      handleTerminalTimeout.call(service, 'terminal-unknown', trackedSession),
+    ).resolves.toBeUndefined();
+
+    sandboxTerminalService.createTerminal.mockResolvedValue({
+      execId: 'exec-timeout-kill-failure',
+      cwd: '/workspace/demo',
+    });
+    sandboxTerminalService.attachOutput.mockResolvedValue(undefined);
+    const { terminalId } = await service.createTerminal(
+      {
+        command: 'sleep',
+        args: ['30'],
+        mode: 'server_sandbox',
+      },
+      trackedSession,
+    );
+    sandboxTerminalService.killTerminal.mockRejectedValue(
+      new Error('sandbox unavailable'),
+    );
+
+    await expect(
+      handleTerminalTimeout.call(service, terminalId, trackedSession),
+    ).resolves.toBeUndefined();
+    expect(auditLogService.record).not.toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: 'acp.terminal.server_sandbox.timed_out',
+      }),
+    );
+
+    sandboxTerminalService.waitForExit.mockResolvedValue({
+      running: true,
+      exitCode: null,
+      pid: 303,
+    });
+    await expect(
+      service.waitForTerminalExit({ terminalId }, trackedSession),
+    ).resolves.toMatchObject({
+      terminalId,
+      status: 'running',
+    });
+  });
+
+  it('应在 continuity capability 缺失或 runtime session 不匹配时 fail-closed', async () => {
+    const sandboxTerminalService = {
+      createTerminal: vi.fn().mockResolvedValue({
+        execId: 'exec-no-persistence',
+        cwd: '/workspace/demo',
+      }),
+      attachOutput: vi.fn().mockResolvedValue(undefined),
+      killTerminal: vi.fn().mockResolvedValue(undefined),
+      waitForExit: vi.fn(),
+    };
+    const serviceWithoutPersistence = new AcpTerminalProxyService(
+      undefined,
+      sandboxTerminalService as never,
+      undefined,
+      undefined,
+    );
+
+    await expect(
+      serviceWithoutPersistence.createTerminal(
+        {
+          command: 'ls',
+          mode: 'server_sandbox',
+        },
+        createTrackedSession(),
+      ),
+    ).rejects.toMatchObject({
+      code: -32603,
+      message: 'ACP terminal continuity persistence is unavailable',
+      data: { reason: 'terminal_continuity_persistence_unavailable' },
+    });
+    expect(sandboxTerminalService.killTerminal).toHaveBeenCalledWith(
+      'exec-no-persistence',
+      'TERM',
+    );
+
+    const { service, sandboxTerminalService: mismatchedSandbox } =
+      createService({
+        runtimeSession: {
+          id: 'session-001',
+          agentId: 'agent-001',
+          mode: 'workflow',
+          context: {
+            history: [],
+            cwd: '/workspace/demo',
+          },
+          status: 'active',
+          tenantId: 'tenant-other',
+          createdAt: new Date('2025-01-01T00:00:00.000Z'),
+          updatedAt: new Date('2025-01-01T00:00:00.000Z'),
+        },
+      });
+    mismatchedSandbox.createTerminal.mockResolvedValue({
+      execId: 'exec-runtime-mismatch',
+      cwd: '/workspace/demo',
+    });
+    mismatchedSandbox.attachOutput.mockResolvedValue(undefined);
+
+    await expect(
+      service.createTerminal(
+        {
+          command: 'ls',
+          mode: 'server_sandbox',
+        },
+        createTrackedSession(),
+      ),
+    ).rejects.toMatchObject({
+      code: -32603,
+      message: 'Failed to restore ACP terminal continuity',
+      data: { reason: 'terminal_continuity_unavailable' },
+    });
+    expect(mismatchedSandbox.killTerminal).toHaveBeenCalledWith(
+      'exec-runtime-mismatch',
+      'TERM',
+    );
+  });
+  it('应保留完整 UTF-8 输出字符，并审计 sandbox 返回的无 reason policy error', async () => {
+    const { service, sandboxTerminalService, auditLogService } =
+      createService();
+    const trackedSession = createTrackedSession();
+    sandboxTerminalService.createTerminal.mockResolvedValueOnce({
+      execId: 'exec-utf8-output',
+      cwd: '/workspace/demo',
+    });
+    sandboxTerminalService.attachOutput.mockImplementationOnce(
+      async (
+        _execId: string,
+        onOutput: (stream: 'stdout' | 'stderr', chunk: string) => void,
+      ) => {
+        onOutput('stdout', 'A😀B');
+      },
+    );
+
+    const { terminalId } = await service.createTerminal(
+      {
+        command: 'printf',
+        args: ['A😀B'],
+        mode: 'server_sandbox',
+        outputByteLimit: 4,
+      },
+      trackedSession,
+    );
+    await expect(
+      service.readTerminalOutput({ terminalId }, trackedSession),
+    ).resolves.toEqual({
+      terminalId,
+      output: 'B',
+      nextOffset: 6,
+      truncated: true,
+    });
+
+    sandboxTerminalService.createTerminal.mockRejectedValueOnce(
+      new AcpJsonRpcError(-32004, 'sandbox policy rejected'),
+    );
+    await expect(
+      service.createTerminal(
+        {
+          command: 'printf',
+          mode: 'server_sandbox',
+        },
+        trackedSession,
+      ),
+    ).rejects.toMatchObject({
+      code: -32004,
+      message: 'sandbox policy rejected',
+    });
+    expect(auditLogService.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: 'acp.terminal.server_sandbox.rejected',
+        metadata: expect.objectContaining({
+          command: 'printf',
+          reason: 'terminal_request_failed',
+        }),
+      }),
+    );
   });
 });

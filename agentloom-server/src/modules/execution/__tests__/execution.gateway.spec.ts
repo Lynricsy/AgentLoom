@@ -15,6 +15,7 @@ import type { EventBridgeService } from '../services/event-bridge.service';
 import type { ConfigService } from '@nestjs/config';
 import type { TokenBlacklistService } from '../../../common/services/token-blacklist.service';
 import type { ExecutionStateSnapshot } from '../types/execution-event.types';
+import * as jwt from 'jsonwebtoken';
 
 vi.spyOn(Logger.prototype, 'debug').mockImplementation(() => {});
 vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => {});
@@ -147,6 +148,164 @@ describe('ExecutionGateway', () => {
     });
   });
 
+  describe('authentication middleware', () => {
+    it('accepts a bearer token and maps fallback JWT claims', async () => {
+      const token = jwt.sign(
+        {
+          tenant_id: 'tenant-snake',
+          tenant_role: 'member',
+        },
+        'test-secret',
+        {
+          subject: 'user-snake',
+          audience: 'authenticated',
+          expiresIn: '1h',
+        },
+      );
+      gateway.afterInit(mockServer as any);
+      const middleware = mockServer.use.mock.calls[0][0];
+      const socket = makeSocket({
+        handshake: {
+          auth: {},
+          headers: { authorization: `Bearer ${token}` },
+        },
+        data: {},
+      });
+      const next = vi.fn();
+
+      await middleware(socket, next);
+
+      expect(mockTokenBlacklist.isBlacklisted).toHaveBeenCalledWith(token);
+      expect(socket.data.user).toMatchObject({
+        sub: 'user-snake',
+        email: '',
+        tenantId: 'tenant-snake',
+        tenantRole: 'member',
+      });
+      expect(next).toHaveBeenCalledWith();
+    });
+
+    it('prefers auth token and camel-case tenant claims', async () => {
+      const token = jwt.sign(
+        {
+          email: 'user@example.com',
+          tenantId: 'tenant-camel',
+          tenant_id: 'tenant-snake',
+          tenantRole: 'owner',
+          tenant_role: 'member',
+        },
+        'test-secret',
+        {
+          subject: 'user-camel',
+          audience: 'authenticated',
+          expiresIn: '1h',
+        },
+      );
+      gateway.afterInit(mockServer as any);
+      const middleware = mockServer.use.mock.calls[0][0];
+      const socket = makeSocket({
+        handshake: {
+          auth: { token },
+          headers: { authorization: 'Bearer ignored-token' },
+        },
+        data: {},
+      });
+      const next = vi.fn();
+
+      await middleware(socket, next);
+
+      expect(mockTokenBlacklist.isBlacklisted).toHaveBeenCalledWith(token);
+      expect(socket.data.user).toMatchObject({
+        email: 'user@example.com',
+        tenantId: 'tenant-camel',
+        tenantRole: 'owner',
+      });
+      expect(next).toHaveBeenCalledWith();
+    });
+
+    it('rejects a blacklisted token with the authentication close code', async () => {
+      mockTokenBlacklist.isBlacklisted.mockResolvedValue(true);
+      gateway.afterInit(mockServer as any);
+      const middleware = mockServer.use.mock.calls[0][0];
+      const next = vi.fn();
+
+      await middleware(makeSocket(), next);
+
+      expect(next.mock.calls[0][0]).toMatchObject({
+        message: 'Token has been revoked',
+        data: { code: 4001, reason: 'Token has been revoked' },
+      });
+    });
+
+    it('rejects an MFA-pending token', async () => {
+      const token = jwt.sign({ type: 'mfa_pending' }, 'test-secret', {
+        subject: 'user-1',
+        audience: 'authenticated',
+        expiresIn: '1h',
+      });
+      gateway.afterInit(mockServer as any);
+      const middleware = mockServer.use.mock.calls[0][0];
+      const next = vi.fn();
+
+      await middleware(
+        makeSocket({ handshake: { auth: { token }, headers: {} } }),
+        next,
+      );
+
+      expect(next.mock.calls[0][0]).toMatchObject({
+        message: 'MFA verification required',
+        data: { code: 4001, reason: 'MFA verification required' },
+      });
+    });
+
+    it('rejects a verified token that lacks required claims', async () => {
+      const token = jwt.sign({}, 'test-secret', {
+        audience: 'authenticated',
+        expiresIn: '1h',
+      });
+      gateway.afterInit(mockServer as any);
+      const middleware = mockServer.use.mock.calls[0][0];
+      const next = vi.fn();
+
+      await middleware(
+        makeSocket({ handshake: { auth: { token }, headers: {} } }),
+        next,
+      );
+
+      expect(next.mock.calls[0][0]).toMatchObject({
+        message: 'Invalid token claims',
+        data: { code: 4001, reason: 'Invalid token claims' },
+      });
+    });
+
+    it('normalizes verification failures to an authentication error', async () => {
+      gateway.afterInit(mockServer as any);
+      const middleware = mockServer.use.mock.calls[0][0];
+      const next = vi.fn();
+
+      await middleware(makeSocket(), next);
+
+      expect(next.mock.calls[0][0]).toMatchObject({
+        message: 'Invalid or expired token',
+        data: { code: 4001, reason: 'Invalid or expired token' },
+      });
+    });
+
+    it.each(['MFA provider unavailable', 'token revoked upstream'])(
+      'preserves explicit authentication errors containing %s',
+      async (message) => {
+        mockTokenBlacklist.isBlacklisted.mockRejectedValue(new Error(message));
+        gateway.afterInit(mockServer as any);
+        const middleware = mockServer.use.mock.calls[0][0];
+        const next = vi.fn();
+
+        await middleware(makeSocket(), next);
+
+        expect(next.mock.calls[0][0]).toEqual(new Error(message));
+      },
+    );
+  });
+
   describe('handleConnection', () => {
     it('logs authenticated client', () => {
       const client = makeSocket();
@@ -156,6 +315,12 @@ describe('ExecutionGateway', () => {
     it('logs unknown user when no data.user', () => {
       const client = makeSocket({ data: {} });
       gateway.handleConnection(client as any);
+    });
+  });
+
+  describe('handleDisconnect', () => {
+    it('accepts disconnects from authenticated sockets', () => {
+      expect(() => gateway.handleDisconnect(makeSocket() as any)).not.toThrow();
     });
   });
 
@@ -171,6 +336,20 @@ describe('ExecutionGateway', () => {
       const client = makeSocket();
       await gateway.handleJoin(client as any, { executionId: 'exec-1' });
 
+      expect(client.join).toHaveBeenCalledWith('execution:tenant-1:exec-1');
+    });
+
+    it('legacy subscribe returns the same acknowledgement', async () => {
+      const client = makeSocket();
+
+      const result = await gateway.handleSubscribeLegacy(client as any, {
+        executionId: 'exec-1',
+      });
+
+      expect(result).toEqual({
+        status: 'subscribed',
+        currentState: makeSnapshot(),
+      });
       expect(client.join).toHaveBeenCalledWith('execution:tenant-1:exec-1');
     });
 
@@ -449,6 +628,83 @@ describe('ExecutionGateway', () => {
         snapshot,
       );
     });
+
+    it('falls back to event id zero and ignores invalid buffered step ids', async () => {
+      const snapshot = makeSnapshot({
+        steps: [
+          {
+            stepId: 'active',
+            nodeId: 'node-active',
+            status: 'queued',
+            startedAt: null,
+            completedAt: null,
+          },
+        ],
+      });
+      mockStateReplay.getExecutionSnapshot.mockResolvedValue(snapshot);
+      mockEventBridge.getLastEventId.mockReturnValue(undefined);
+      mockEventBridge.getEventsSince.mockReturnValue([]);
+      mockEventBridge.getBufferedEvents.mockReturnValue([
+        {
+          eventId: 1,
+          event: 'execution.node.output-chunk',
+          executionId: 'exec-1',
+          tenantId: 'tenant-1',
+          timestamp: '2025-01-01T00:00:00.000Z',
+          data: {},
+        },
+        {
+          eventId: 2,
+          event: 'execution.node.output-chunk',
+          executionId: 'exec-1',
+          tenantId: 'tenant-1',
+          timestamp: '2025-01-01T00:00:01.000Z',
+          data: { stepId: 42 },
+        },
+        {
+          eventId: 3,
+          event: 'execution.node.output-chunk',
+          executionId: 'exec-1',
+          tenantId: 'tenant-1',
+          timestamp: '2025-01-01T00:00:02.000Z',
+          data: { stepId: '' },
+        },
+      ]);
+      const client = makeSocket();
+
+      await gateway.handleSubscribe(client as any, {
+        executionId: 'exec-1',
+        lastEventId: -1,
+      });
+
+      expect(mockEventBridge.getEventsSince).toHaveBeenCalledWith('exec-1', -1);
+      expect(client.emit).toHaveBeenCalledTimes(1);
+      expect(client.emit).toHaveBeenCalledWith(
+        'execution.state.snapshot',
+        snapshot,
+      );
+    });
+
+    it('does not request buffered events when no steps are active', async () => {
+      const snapshot = makeSnapshot({
+        steps: [
+          {
+            stepId: 'done',
+            nodeId: 'node-done',
+            status: 'completed',
+            startedAt: null,
+            completedAt: '2025-01-01T00:00:01.000Z',
+          },
+        ],
+      });
+      mockStateReplay.getExecutionSnapshot.mockResolvedValue(snapshot);
+      const client = makeSocket();
+
+      await gateway.handleSubscribe(client as any, { executionId: 'exec-1' });
+
+      expect(mockEventBridge.getBufferedEvents).not.toHaveBeenCalled();
+      expect(client.emit).toHaveBeenCalledOnce();
+    });
   });
 
   describe('handleUnsubscribe / handleLeave', () => {
@@ -474,6 +730,16 @@ describe('ExecutionGateway', () => {
       });
 
       expect(client.leave).toHaveBeenCalledWith('execution::exec-1');
+    });
+
+    it('legacy unsubscribe delegates to the same leave behavior', () => {
+      const client = makeSocket();
+
+      gateway.handleUnsubscribeLegacy(client as any, {
+        executionId: 'exec-1',
+      });
+
+      expect(client.leave).toHaveBeenCalledWith('execution:tenant-1:exec-1');
     });
   });
 
@@ -554,6 +820,53 @@ describe('ExecutionGateway', () => {
     });
   });
 
+  describe('backpressure limits and retries', () => {
+    it('retries a queued event until throttle capacity returns', () => {
+      vi.useFakeTimers();
+      const emitFn = vi.fn();
+      mockServer.to.mockReturnValue({ emit: emitFn });
+      mockThrottle.tryConsume.mockReturnValue(false);
+
+      gateway.broadcastTypedEvent('t1', 'e1', 'execution.node.status-changed', {
+        status: 'queued',
+      });
+      vi.advanceTimersByTime(100);
+      expect(emitFn).not.toHaveBeenCalled();
+
+      mockThrottle.tryConsume.mockReturnValue(true);
+      vi.advanceTimersByTime(100);
+
+      expect(emitFn).toHaveBeenCalledWith('execution.node.status-changed', {
+        status: 'queued',
+      });
+      vi.useRealTimers();
+    });
+
+    it('drops the oldest event when the backpressure queue reaches its limit', () => {
+      vi.useFakeTimers();
+      const emitFn = vi.fn();
+      mockServer.to.mockReturnValue({ emit: emitFn });
+      mockThrottle.tryConsume.mockReturnValue(false);
+
+      for (let index = 0; index <= 500; index += 1) {
+        gateway.broadcastTypedEvent('t1', 'e1', 'execution.node.output-chunk', {
+          index,
+        });
+      }
+      gateway.flushExecutionQueue('t1', 'e1');
+
+      expect(emitFn).toHaveBeenCalledTimes(500);
+      expect(emitFn).not.toHaveBeenCalledWith('execution.node.output-chunk', {
+        index: 0,
+      });
+      expect(emitFn).toHaveBeenNthCalledWith(1, 'execution.node.output-chunk', {
+        index: 1,
+      });
+      expect(Logger.prototype.warn).toHaveBeenCalled();
+      vi.useRealTimers();
+    });
+  });
+
   describe('broadcastTypedEventImmediately', () => {
     it('bypasses throttle and emits directly to the room', () => {
       const emitFn = vi.fn();
@@ -605,6 +918,18 @@ describe('ExecutionGateway', () => {
       expect(emitFn).toHaveBeenCalledTimes(2);
 
       vi.useRealTimers();
+    });
+  });
+
+  describe('empty queue flush', () => {
+    it('treats an absent queue as an idempotent flush', () => {
+      const emitFn = vi.fn();
+      mockServer.to.mockReturnValue({ emit: emitFn });
+
+      gateway.flushExecutionQueue('t1', 'missing');
+
+      expect(mockServer.to).not.toHaveBeenCalled();
+      expect(emitFn).not.toHaveBeenCalled();
     });
   });
 

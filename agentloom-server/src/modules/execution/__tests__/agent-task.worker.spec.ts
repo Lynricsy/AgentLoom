@@ -304,6 +304,11 @@ describe('AgentTaskWorker', () => {
     resolveAutonomyCapForTenant: vi.fn().mockResolvedValue('LLM_SUGGEST'),
   };
 
+  const mockLlmEncryptionService = {
+    isE2EEEnabled: vi.fn().mockResolvedValue(false),
+    encryptForTenant: vi.fn(),
+  };
+
   const mockMemoryToolsService = {
     createSessionToolProvider: vi.fn(),
   };
@@ -333,6 +338,8 @@ describe('AgentTaskWorker', () => {
     mockOrganizationAutonomyPolicyService.resolveAutonomyCapForTenant
       .mockReset()
       .mockResolvedValue('LLM_SUGGEST');
+    mockLlmEncryptionService.isE2EEEnabled.mockReset().mockResolvedValue(false);
+    mockLlmEncryptionService.encryptForTenant.mockReset();
     mockMemoryToolsService.createSessionToolProvider.mockReset();
     mockMemoryFusionService.bootAll.mockReset();
     mockWorkspaceIntegrationService.startExecutionStepFileWatcher
@@ -372,10 +379,7 @@ describe('AgentTaskWorker', () => {
         { provide: NotificationService, useValue: mockNotificationService },
         {
           provide: LlmEncryptionService,
-          useValue: {
-            isE2EEEnabled: vi.fn().mockResolvedValue(false),
-            encryptForTenant: vi.fn(),
-          },
+          useValue: mockLlmEncryptionService,
         },
         { provide: SmartRoutingService, useValue: mockSmartRoutingService },
         {
@@ -420,6 +424,18 @@ describe('AgentTaskWorker', () => {
   });
 
   describe('process', () => {
+    it('步骤不存在时应拒绝任务且不启动 runtime 或状态转换', async () => {
+      mockDb.select.mockReturnValue(createSelectChain([]));
+
+      await expect(worker.process(createMockJob())).rejects.toThrow(
+        `步骤 ${STEP_ID} 不存在`,
+      );
+
+      expect(mockAgentRuntime.createSession).not.toHaveBeenCalled();
+      expect(mockStateMachine.updateStepStatus).not.toHaveBeenCalled();
+      expect(mockNodeScheduler.onNodeFailed).not.toHaveBeenCalled();
+    });
+
     it('会创建携带 workflow 上下文元数据的 session，并以 JSON 文本块调用 prompt', async () => {
       const input = { source: { text: 'hello' } };
       const step = makeStep({
@@ -800,6 +816,88 @@ describe('AgentTaskWorker', () => {
           .invocationCallOrder[0],
       ).toBeLessThan(
         mockNodeScheduler.onNodeCompleted.mock.invocationCallOrder[0]!,
+      );
+    });
+
+    it('租户启用 E2EE 时仅持久化密文占位与加密证据', async () => {
+      mockDb.select.mockReturnValue(createSelectChain(makeStep()));
+      mockAgentRuntime.createSession.mockResolvedValue(makeSession());
+      mockAgentRuntime.prompt.mockReturnValue(
+        createEventStream([
+          { type: 'message_chunk', content: '机密结果' },
+          { type: 'done', stopReason: 'end_turn' },
+        ]),
+      );
+      mockLlmEncryptionService.isE2EEEnabled.mockResolvedValue(true);
+      mockLlmEncryptionService.encryptForTenant.mockResolvedValue({
+        ciphertext: 'ciphertext',
+        iv: 'iv',
+        authTag: 'tag',
+        algorithm: 'aes-256-gcm',
+        keyFingerprint: 'sha256:key',
+      });
+
+      await worker.process(createMockJob());
+
+      expect(mockLlmEncryptionService.encryptForTenant).toHaveBeenCalledWith(
+        TENANT_ID,
+        STEP_ID,
+        '机密结果',
+      );
+      expect(mockStateMachine.updateStepStatus).toHaveBeenNthCalledWith(
+        2,
+        TENANT_ID,
+        STEP_ID,
+        'completed',
+        expect.objectContaining({
+          isEncrypted: true,
+          result: expect.objectContaining({
+            content: '[ENCRYPTED]',
+            encryptedContent: expect.objectContaining({
+              ciphertext: 'ciphertext',
+              keyFingerprint: 'sha256:key',
+            }),
+            encryptionMetadata: expect.objectContaining({
+              algorithm: 'aes-256-gcm',
+              keyFingerprint: 'sha256:key',
+              encryptedAt: expect.any(String),
+            }),
+          }),
+        }),
+      );
+    });
+
+    it('加密服务失败时应保留明文并标注降级证据，任务仍完成', async () => {
+      mockDb.select.mockReturnValue(createSelectChain(makeStep()));
+      mockAgentRuntime.createSession.mockResolvedValue(makeSession());
+      mockAgentRuntime.prompt.mockReturnValue(
+        createEventStream([
+          { type: 'message_chunk', content: '可用结果' },
+          { type: 'done', stopReason: 'end_turn' },
+        ]),
+      );
+      mockLlmEncryptionService.isE2EEEnabled.mockRejectedValue(
+        'key service unavailable',
+      );
+
+      await worker.process(createMockJob());
+
+      expect(mockStateMachine.updateStepStatus).toHaveBeenNthCalledWith(
+        2,
+        TENANT_ID,
+        STEP_ID,
+        'completed',
+        expect.objectContaining({
+          result: expect.objectContaining({
+            content: '可用结果',
+            encryptionFailed: true,
+          }),
+        }),
+      );
+      expect(mockNodeScheduler.onNodeCompleted).toHaveBeenCalledWith(
+        EXECUTION_ID,
+        STEP_ID,
+        TENANT_ID,
       );
     });
 
@@ -3133,6 +3231,634 @@ describe('AgentTaskWorker', () => {
           }),
         );
       });
+    });
+  });
+
+  describe('attempt、checkpoint evidence 与队列重试边界', () => {
+    it.each([
+      [{ attemptsMade: 0, opts: { attempts: 2 } }, true, 2],
+      [{ attemptsMade: 1, opts: { attempts: 2 } }, false, 2],
+      [{ attemptsMade: 0, opts: {} }, false, 1],
+      [{ attemptsMade: 0, opts: { attempts: 0 } }, false, 1],
+    ])(
+      '按 BullMQ attempts 契约决定是否重试 %#',
+      (jobShape, expectedRetry, expectedMaxAttempts) => {
+        const subject = worker as unknown as {
+          shouldRetry(job: Job<AgentTaskJobData>): boolean;
+          getMaxAttempts(job: Job<AgentTaskJobData>): number;
+        };
+        const job = createMockJob(jobShape as Partial<Job<AgentTaskJobData>>);
+
+        expect(subject.shouldRetry(job)).toBe(expectedRetry);
+        expect(subject.getMaxAttempts(job)).toBe(expectedMaxAttempts);
+      },
+    );
+
+    it('仅接受合法 checkpoint evidence，非法字段回退到安全初值', () => {
+      const subject = worker as unknown as {
+        loadToolLoopStateFromCheckpoint(step: {
+          checkpointData?: Record<string, unknown> | null;
+        }): {
+          partialContent: string;
+          chunkIndex: number;
+          round: number;
+          decision?: Record<string, unknown>;
+          toolCalls: unknown[];
+          segments: unknown[];
+        };
+      };
+
+      expect(
+        subject.loadToolLoopStateFromCheckpoint(
+          makeStep({
+            checkpointData: {
+              partialContent: 42,
+              chunkIndex: '1',
+              round: null,
+              decision: [],
+              toolCalls: 'invalid',
+              segments: 'invalid',
+            },
+          }),
+        ),
+      ).toEqual({
+        partialContent: '',
+        chunkIndex: 0,
+        round: 0,
+        decision: undefined,
+        toolCalls: [],
+        segments: [],
+      });
+
+      expect(
+        subject.loadToolLoopStateFromCheckpoint(
+          makeStep({
+            checkpointData: {
+              partialContent: 'partial',
+              chunkIndex: 3,
+              round: 2,
+              decision: { action: 'review' },
+              toolCalls: [{ id: 'tc-1' }],
+              segments: [{ type: 'text', content: 'partial' }],
+            },
+          }),
+        ),
+      ).toMatchObject({
+        partialContent: 'partial',
+        chunkIndex: 3,
+        round: 2,
+        decision: { action: 'review' },
+        toolCalls: [{ id: 'tc-1' }],
+        segments: [{ type: 'text', content: 'partial' }],
+      });
+    });
+
+    it('sandbox watcher 优先显式 nodeId，并支持嵌套 evidence 与空值', () => {
+      const subject = worker as unknown as {
+        resolveWorkflowSandboxNodeId(
+          context: Record<string, unknown>,
+        ): string | undefined;
+      };
+
+      expect(
+        subject.resolveWorkflowSandboxNodeId({
+          sandboxNodeId: ' explicit ',
+          serverSandbox: { sandboxNodeId: 'nested' },
+        }),
+      ).toBe('explicit');
+      expect(
+        subject.resolveWorkflowSandboxNodeId({
+          serverSandbox: { sandboxNodeId: ' nested ' },
+        }),
+      ).toBe('nested');
+      expect(
+        subject.resolveWorkflowSandboxNodeId({
+          sandboxNodeId: ' ',
+          serverSandbox: { sandboxNodeId: '' },
+        }),
+      ).toBeUndefined();
+      expect(subject.resolveWorkflowSandboxNodeId({ serverSandbox: [] })).toBe(
+        undefined,
+      );
+    });
+
+    it('同一 tool call 合并时保留旧证据，新增 id 则追加', () => {
+      const subject = worker as unknown as {
+        mergeToolCall(
+          toolCalls: Array<Record<string, unknown>>,
+          toolCall: Record<string, unknown>,
+        ): Array<Record<string, unknown>>;
+      };
+      const existing = [
+        {
+          id: 'tc-1',
+          tool: 'search',
+          args: { q: 'old' },
+          transitions: [{ to: 'pending' }],
+          result: { hits: 1 },
+          error: 'old-error',
+          permissionRequest: { reason: 'sensitive' },
+        },
+      ];
+
+      expect(
+        subject.mergeToolCall(existing, {
+          id: 'tc-1',
+          tool: 'search',
+          status: 'completed',
+        }),
+      ).toEqual([
+        expect.objectContaining({
+          id: 'tc-1',
+          status: 'completed',
+          args: { q: 'old' },
+          transitions: [{ to: 'pending' }],
+          result: { hits: 1 },
+          error: 'old-error',
+          permissionRequest: { reason: 'sensitive' },
+        }),
+      ]);
+      expect(
+        subject.mergeToolCall(existing, {
+          id: 'tc-2',
+          tool: 'write',
+          status: 'pending',
+        }),
+      ).toHaveLength(2);
+    });
+
+    it('人工干预 evidence 按 modify、decision、partial、empty 的优先级解析', () => {
+      const subject = worker as unknown as {
+        resolveInterventionContent(
+          intervention: Record<string, unknown>,
+          checkpoint: Record<string, unknown>,
+        ): unknown;
+      };
+
+      expect(
+        subject.resolveInterventionContent(
+          { action: 'modify', modifiedContent: 'operator edit' },
+          {
+            decision: { suggestedContent: 'suggestion' },
+            partialContent: 'partial',
+          },
+        ),
+      ).toBe('operator edit');
+      expect(subject.resolveInterventionContent({ action: 'modify' }, {})).toBe(
+        '',
+      );
+      expect(
+        subject.resolveInterventionContent(
+          { action: 'approve' },
+          { decision: { suggestedContent: { summary: 'structured' } } },
+        ),
+      ).toEqual({ summary: 'structured' });
+      expect(
+        subject.resolveInterventionContent(
+          { action: 'approve' },
+          { partialContent: 'partial' },
+        ),
+      ).toBe('partial');
+      expect(
+        subject.resolveInterventionContent(
+          { action: 'approve' },
+          { partialContent: 7 },
+        ),
+      ).toBe('');
+    });
+
+    it('人工干预审计复用完整记录，并为超时回退生成可追溯默认值', () => {
+      const subject = worker as unknown as {
+        resolveInterventionRecord(
+          checkpoint: Record<string, unknown>,
+          intervention: Record<string, unknown>,
+        ): Record<string, unknown>;
+      };
+      const existing = makeInterventionAudit();
+
+      expect(
+        subject.resolveInterventionRecord(
+          { intervention: existing },
+          { action: 'approve', timeout: true },
+        ),
+      ).toEqual({ ...existing, timeout: true });
+
+      expect(
+        subject.resolveInterventionRecord(
+          { interventionRequestedAt: REQUESTED_AT },
+          {
+            action: 'reject',
+            feedback: 'policy timeout',
+            resolvedAt: RESOLVED_AT,
+            timeout: true,
+          },
+        ),
+      ).toEqual({
+        requested_at: REQUESTED_AT,
+        resolved_at: RESOLVED_AT,
+        action: 'reject',
+        instruction: 'policy timeout',
+        resolved_by_user_id: SYSTEM_TIMEOUT_INTERVENTION_USER_ID,
+        timeout: true,
+      });
+    });
+
+    it.each([
+      [{ autonomyMode: 'FULL_AUTO' }, 'FULL_AUTO'],
+      [{ autonomyConfig: { mode: 'LLM_SUGGEST' } }, 'LLM_SUGGEST'],
+      [{ settings: { autonomyMode: 'MANUAL_CONFIRM' } }, 'MANUAL_CONFIRM'],
+      [{ config: { autonomyMode: 'LLM_SUGGEST' } }, 'LLM_SUGGEST'],
+      [{ autonomyMode: '' }, 'FULL_AUTO'],
+    ])('按配置优先级解析 autonomy mode %#', (nodeData, expected) => {
+      const subject = worker as unknown as {
+        resolveRawAutonomyMode(value: Record<string, unknown>): string;
+      };
+
+      expect(subject.resolveRawAutonomyMode(nodeData)).toBe(expected);
+    });
+
+    it.each([
+      [{ type: 'thinking', content: ' reasoning ' }, ' reasoning '],
+      [{ type: 'plan', content: 'plan' }, 'plan'],
+      [
+        {
+          type: 'decision',
+          rationale: 'because',
+          suggestedContent: 'proposal',
+        },
+        'because\n\nproposal',
+      ],
+      [{ type: 'decision', rationale: '', suggestedContent: 7 }, undefined],
+      [{ type: 'message_chunk', content: 'ignored' }, undefined],
+    ])('仅从思考类事件提取可展示证据 %#', (event, expected) => {
+      const subject = worker as unknown as {
+        extractThinkingEventContent(
+          value: Record<string, unknown>,
+        ): string | undefined;
+      };
+
+      expect(subject.extractThinkingEventContent(event)).toBe(expected);
+    });
+
+    it('技能 evidence 仅接受具备 id/name 的记录并规范缺省字段', () => {
+      const subject = worker as unknown as {
+        extractUpstreamSkills(
+          input: Record<string, unknown>,
+        ): Array<Record<string, unknown>>;
+      };
+
+      expect(
+        subject.extractUpstreamSkills({
+          first: {
+            skills: [
+              {
+                id: 'skill-1',
+                name: 'Research',
+                description: 'desc',
+                content: 'body',
+              },
+              { id: 'skill-2', name: 'Minimal' },
+              { id: 3, name: 'invalid' },
+              null,
+            ],
+          },
+          second: { skills: 'invalid' },
+          third: null,
+        }),
+      ).toEqual([
+        {
+          id: 'skill-1',
+          name: 'Research',
+          description: 'desc',
+          content: 'body',
+        },
+        {
+          id: 'skill-2',
+          name: 'Minimal',
+          description: '',
+          content: null,
+        },
+      ]);
+    });
+    it('memory prompt helpers preserve optional sections and reject malformed session ids', () => {
+      const subject = worker as unknown as {
+        resolveMemorySessionIds(value: unknown): string[];
+        buildMemoryBootPrompt(value: {
+          systemPrompt: string;
+          boot: unknown;
+          index: Array<{ domain: string; pathString: string }>;
+          glossary: Array<{ keyword: string; nodeId: string }>;
+        }): string | undefined;
+        prependSystemPrompt(
+          memoryPrompt?: string,
+          baseSystemPrompt?: string,
+        ): string | undefined;
+      };
+
+      expect(subject.resolveMemorySessionIds('memory-1')).toEqual([]);
+      expect(
+        subject.resolveMemorySessionIds(['memory-1', null, 2, 'memory-2']),
+      ).toEqual(['memory-1', 'memory-2']);
+      expect(
+        subject.buildMemoryBootPrompt({
+          systemPrompt: ' memory system ',
+          boot: ' boot instructions ',
+          index: [{ domain: 'project', pathString: 'decisions' }],
+          glossary: [{ keyword: 'AgentLoom', nodeId: 'node-1' }],
+        }),
+      ).toBe(
+        [
+          'memory system',
+          '## Memory Boot\nboot instructions',
+          '## Memory Index\n- project://decisions',
+          '## Memory Glossary\n- AgentLoom -> node:node-1',
+        ].join('\n\n'),
+      );
+      expect(
+        subject.buildMemoryBootPrompt({
+          systemPrompt: '',
+          boot: 7,
+          index: [],
+          glossary: [],
+        }),
+      ).toBeUndefined();
+      expect(subject.prependSystemPrompt(' memory ', ' base ')).toBe(
+        'memory\n\nbase',
+      );
+      expect(subject.prependSystemPrompt(undefined, ' base ')).toBe('base');
+      expect(subject.prependSystemPrompt(' memory ')).toBe('memory');
+      expect(subject.prependSystemPrompt()).toBeUndefined();
+    });
+
+    it('runtime optional adapters are guarded and cleanup failures are non-fatal', () => {
+      const subject = worker as unknown as {
+        registerMemoryToolsProvider(
+          runtime: IAgentRuntime,
+          sessionId: string | null | undefined,
+          memorySessionIds: string[],
+        ): void;
+        cleanupMemoryToolsProvider(
+          runtime: IAgentRuntime,
+          sessionId: string | null | undefined,
+          memorySessionIds: string[],
+        ): void;
+        resolveSessionMcpServers(value: unknown): unknown;
+        getCheckpointData(step: {
+          checkpointData?: Record<string, unknown> | null;
+        }): Record<string, unknown>;
+      };
+      const provider = { execute: vi.fn() };
+      mockMemoryToolsService.createSessionToolProvider.mockReturnValue(
+        provider,
+      );
+
+      subject.registerMemoryToolsProvider(
+        mockAgentRuntime as unknown as IAgentRuntime,
+        SESSION_ID,
+        ['memory-1'],
+      );
+      expect(mockAgentRuntime.registerSessionToolProvider).toHaveBeenCalledWith(
+        SESSION_ID,
+        provider,
+      );
+
+      mockAgentRuntime.registerSessionToolProvider.mockClear();
+      subject.registerMemoryToolsProvider(
+        mockAgentRuntime as unknown as IAgentRuntime,
+        null,
+        ['memory-1'],
+      );
+      subject.registerMemoryToolsProvider(
+        mockAgentRuntime as unknown as IAgentRuntime,
+        SESSION_ID,
+        [],
+      );
+      expect(
+        mockAgentRuntime.registerSessionToolProvider,
+      ).not.toHaveBeenCalled();
+
+      mockAgentRuntime.unregisterSessionToolProvider.mockImplementationOnce(
+        () => {
+          throw 'cleanup rejected';
+        },
+      );
+      expect(() =>
+        subject.cleanupMemoryToolsProvider(
+          mockAgentRuntime as unknown as IAgentRuntime,
+          SESSION_ID,
+          ['memory-1'],
+        ),
+      ).not.toThrow();
+      expect(
+        mockAgentRuntime.unregisterSessionToolProvider,
+      ).toHaveBeenCalledWith(SESSION_ID);
+
+      mockAgentRuntime.unregisterSessionToolProvider.mockClear();
+      subject.cleanupMemoryToolsProvider(
+        mockAgentRuntime as unknown as IAgentRuntime,
+        undefined,
+        ['memory-1'],
+      );
+      subject.cleanupMemoryToolsProvider(
+        mockAgentRuntime as unknown as IAgentRuntime,
+        SESSION_ID,
+        [],
+      );
+      expect(
+        mockAgentRuntime.unregisterSessionToolProvider,
+      ).not.toHaveBeenCalled();
+
+      const mcpServers = { research: { command: 'server' } };
+      expect(subject.resolveSessionMcpServers(mcpServers)).toBe(mcpServers);
+      expect(subject.resolveSessionMcpServers([])).toBeUndefined();
+      expect(subject.resolveSessionMcpServers(null)).toBeUndefined();
+      expect(subject.getCheckpointData(makeStep())).toEqual({});
+      expect(
+        subject.getCheckpointData(
+          makeStep({ checkpointData: { sessionId: SESSION_ID } }),
+        ),
+      ).toEqual({ sessionId: SESSION_ID });
+    });
+
+    it('tool transition evidence handles defaults, terminal shortcuts, and direct updates', () => {
+      const subject = worker as unknown as {
+        appendToolCallTransition(
+          toolCall: Record<string, unknown>,
+          source: string,
+          to: string,
+          from?: string,
+        ): Record<string, unknown>;
+        resolveToolCallTransitions(
+          currentStatus: string,
+          targetStatus: string,
+          source: string,
+        ): Array<{ to: string; source: string }>;
+      };
+
+      expect(
+        subject.appendToolCallTransition(
+          { id: 'tc-1', status: 'pending' },
+          'runtime',
+          'in_progress',
+        ),
+      ).toMatchObject({
+        status: 'in_progress',
+        transitions: [
+          expect.objectContaining({
+            to: 'in_progress',
+            source: 'runtime',
+          }),
+        ],
+      });
+      expect(
+        subject.appendToolCallTransition(
+          {
+            id: 'tc-1',
+            transitions: [{ from: 'pending', to: 'in_progress' }],
+          },
+          'worker',
+          'completed',
+          'in_progress',
+        ),
+      ).toMatchObject({
+        transitions: [
+          { from: 'pending', to: 'in_progress' },
+          expect.objectContaining({
+            from: 'in_progress',
+            to: 'completed',
+            source: 'worker',
+          }),
+        ],
+      });
+      expect(
+        subject.resolveToolCallTransitions('completed', 'completed', 'runtime'),
+      ).toEqual([]);
+      expect(
+        subject.resolveToolCallTransitions('pending', 'failed', 'runtime'),
+      ).toEqual([
+        { to: 'in_progress', source: 'worker' },
+        { to: 'failed', source: 'runtime' },
+      ]);
+      expect(
+        subject.resolveToolCallTransitions(
+          'in_progress',
+          'completed',
+          'runtime',
+        ),
+      ).toEqual([{ to: 'completed', source: 'runtime' }]);
+    });
+
+    it('routing and display defaults expose deterministic fallback evidence', () => {
+      type RoutingContext = {
+        strategy: string;
+        candidateModelIds: string[];
+        currentModelIndex: number;
+        selectedModelId: string;
+        routerType?: string;
+        evaluatedModels?: Array<Record<string, unknown>>;
+      };
+      const subject = worker as unknown as {
+        resolveNodeName(step: {
+          nodeId: string;
+          nodeData?: Record<string, unknown> | null;
+        }): string;
+        getNextSmartRoutingContext(
+          value?: RoutingContext,
+        ): RoutingContext | undefined;
+        buildFallbackRoutingDecision(
+          current: RoutingContext | undefined,
+          next: RoutingContext,
+          attempts: Array<{
+            attempt: number;
+            error: string;
+            timestamp: string;
+          }>,
+          error: Error,
+        ): {
+          strategy: string;
+          routerType: string;
+          reasoning: string;
+          evaluatedModels: Array<Record<string, unknown>>;
+        };
+        estimateTokenCount(value: unknown): number;
+      };
+
+      expect(
+        subject.resolveNodeName(makeStep({ nodeData: { label: ' Agent ' } })),
+      ).toBe('Agent');
+      expect(
+        subject.resolveNodeName(makeStep({ nodeData: { label: ' ' } })),
+      ).toBe('node-1');
+      expect(subject.resolveNodeName(makeStep({ nodeData: null }))).toBe(
+        'node-1',
+      );
+      expect(subject.getNextSmartRoutingContext()).toBeUndefined();
+      expect(
+        subject.getNextSmartRoutingContext({
+          strategy: 'QUALITY_FIRST',
+          candidateModelIds: ['model-1', 'model-2'],
+          currentModelIndex: 0,
+          selectedModelId: 'model-1',
+        }),
+      ).toBeUndefined();
+      expect(
+        subject.getNextSmartRoutingContext({
+          strategy: 'FALLBACK_CHAIN',
+          candidateModelIds: ['model-1'],
+          currentModelIndex: 0,
+          selectedModelId: 'model-1',
+        }),
+      ).toBeUndefined();
+      expect(
+        subject.getNextSmartRoutingContext({
+          strategy: 'fallback_chain',
+          candidateModelIds: ['model-1', 'model-2'],
+          currentModelIndex: 0,
+          selectedModelId: 'model-1',
+        }),
+      ).toMatchObject({ currentModelIndex: 1, selectedModelId: 'model-2' });
+
+      const decision = subject.buildFallbackRoutingDecision(
+        undefined,
+        {
+          strategy: 'fallback_chain',
+          candidateModelIds: ['model-1', 'model-2'],
+          currentModelIndex: 1,
+          selectedModelId: 'model-2',
+          evaluatedModels: [
+            {
+              modelId: 'model-2',
+              modelName: 'Second',
+              provider: 'openai',
+              score: 5,
+              reasoning: 'old',
+            },
+          ],
+        },
+        [{ attempt: 1, error: 'timeout', timestamp: REQUESTED_AT }],
+        new Error('provider unavailable'),
+      );
+      expect(decision).toMatchObject({
+        strategy: 'fallback_chain',
+        routerType: 'fallback_chain',
+        reasoning: expect.stringContaining('第 1 次：timeout'),
+        evaluatedModels: [
+          expect.objectContaining({
+            modelId: 'model-2',
+            provider: 'openai',
+            score: 100,
+            reasoning: '上一候选失败后切换到当前模型',
+          }),
+          expect.objectContaining({
+            modelId: 'model-1',
+            provider: 'fallback',
+            reasoning: '回退链候选模型',
+          }),
+        ],
+      });
+      expect(subject.estimateTokenCount('12345')).toBe(2);
+      expect(subject.estimateTokenCount({ ok: true })).toBe(3);
+      expect(subject.estimateTokenCount(undefined)).toBe(1);
     });
   });
 });

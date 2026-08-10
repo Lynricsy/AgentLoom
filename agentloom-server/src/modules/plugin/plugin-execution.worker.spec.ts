@@ -926,6 +926,305 @@ describe('PluginExecutionWorker', () => {
         expect(result.outputs).toEqual({ result: [1, 2, 3] });
       });
     });
+    describe('执行记账、错误与限制补充分支', () => {
+      const prepareSuccessfulSandbox = (
+        output: unknown = { ok: true },
+        executionTimeMs: number | undefined = 10,
+      ) => {
+        const plugin = createPluginRecord();
+        pluginService.findActiveByPluginId.mockResolvedValue(plugin);
+        storageService.download.mockResolvedValue(
+          Readable.from(['wasm-as-string-chunk']),
+        );
+        sandboxService.buildSandboxConfig.mockReturnValue({});
+        sandboxService.execute.mockResolvedValue({
+          success: true,
+          output,
+          executionTimeMs,
+        });
+        return plugin;
+      };
+      it('executionTimeMs 缺失时 checkpoint 与 usage 时长均记录 null', async () => {
+        prepareSuccessfulSandbox();
+        sandboxService.execute.mockResolvedValue({
+          success: true,
+          output: undefined,
+          executionTimeMs: undefined,
+        });
+
+        const result = await worker.process(createJob());
+
+        expect(result.outputs).toEqual({});
+        expect(pluginUsageService.recordUsage).toHaveBeenCalledWith(
+          expect.objectContaining({ executionDurationMs: null }),
+        );
+        expect(stepStateMachine.updateStepStatus).toHaveBeenLastCalledWith(
+          TENANT_ID,
+          '33333333-3333-3333-3333-333333333333',
+          'completed',
+          expect.objectContaining({
+            checkpointData: expect.objectContaining({
+              executionTimeMs: null,
+              runtime: 'wasm-extism',
+            }),
+          }),
+        );
+      });
+
+      it('sandbox 返回 failed 且无 error 时使用默认错误并保留 no-wasm 之外的运行时', async () => {
+        pluginService.findActiveByPluginId.mockResolvedValue(
+          createPluginRecord(),
+        );
+        storageService.download.mockResolvedValue(Readable.from(['wasm']));
+        sandboxService.buildSandboxConfig.mockReturnValue({});
+        sandboxService.execute.mockResolvedValue({
+          success: false,
+          output: undefined,
+          executionTimeMs: undefined,
+        });
+
+        const result = await worker.process(createJob());
+
+        expect(result).toEqual({
+          status: 'failed',
+          outputs: {},
+          executionTimeMs: undefined,
+        });
+        expect(stepStateMachine.updateStepStatus).toHaveBeenLastCalledWith(
+          TENANT_ID,
+          '33333333-3333-3333-3333-333333333333',
+          'failed',
+          expect.objectContaining({
+            errorMessage: expect.objectContaining({ message: '插件执行失败' }),
+            checkpointData: expect.objectContaining({
+              executionTimeMs: null,
+              runtime: 'wasm-extism',
+            }),
+          }),
+        );
+      });
+
+      it('usage 服务抛出非 Error 值也不改变已完成结果', async () => {
+        prepareSuccessfulSandbox();
+        const warnSpy = vi
+          .spyOn(Logger.prototype, 'warn')
+          .mockImplementation(() => {});
+        pluginUsageService.recordUsage.mockRejectedValue('quota unavailable');
+
+        await expect(worker.process(createJob())).resolves.toMatchObject({
+          status: 'completed',
+        });
+        expect(warnSpy).toHaveBeenCalledWith(
+          'Failed to record plugin usage: quota unavailable',
+          { jobId: 'job-1' },
+        );
+      });
+
+      it('生成插件从 payload-out 读取数组与空值信号并采用显式 mode', async () => {
+        pluginService.findActiveByPluginId.mockResolvedValue(
+          createGeneratedPrivatePluginRecord(),
+        );
+
+        const result = await worker.process(
+          createJob({
+            pluginId:
+              'com.agentloom.generated.app-1.tool-guided-intake-analysis',
+            nodeType: 'tool-guided-intake-analysis',
+            inputs: {
+              'payload-out': {
+                symptoms: ['持续胸痛超过三天', '活动后明显呼吸困难', null],
+                ignored: '  ',
+              },
+            },
+            config: { mode: 'triage' },
+          }),
+        );
+
+        expect(result.outputs.analysis).toMatchObject({
+          mode: 'triage',
+          signalCount: 2,
+          riskLevel: 'follow-up',
+        });
+      });
+
+      it('生成插件高分信号进入 needs-review，非字符串 mode 回退 screening', async () => {
+        pluginService.findActiveByPluginId.mockResolvedValue(
+          createGeneratedPrivatePluginRecord(),
+        );
+
+        const result = await worker.process(
+          createJob({
+            pluginId:
+              'com.agentloom.generated.app-1.tool-guided-intake-analysis',
+            nodeType: 'tool-guided-intake-analysis',
+            inputs: {
+              complaint:
+                '持续性剧烈胸痛伴随呼吸困难和意识模糊，需要立即评估紧急风险；症状反复加重并伴随大汗、晕厥和无法正常说话，需要尽快进行专业急诊评估。',
+            },
+            config: { mode: 42 },
+          }),
+        );
+
+        expect(result.outputs.analysis).toMatchObject({
+          mode: 'screening',
+          riskLevel: 'needs-review',
+        });
+      });
+
+      it('原始输入没有嵌套对象时仍可执行低风险 fallback', async () => {
+        pluginService.findActiveByPluginId.mockResolvedValue(
+          createGeneratedPrivatePluginRecord(),
+        );
+
+        const result = await worker.process(
+          createJob({
+            pluginId:
+              'com.agentloom.generated.app-1.tool-guided-intake-analysis',
+            nodeType: 'tool-guided-intake-analysis',
+            inputs: { note: '' },
+          }),
+        );
+
+        expect(result.outputs.analysis).toMatchObject({
+          signalCount: 0,
+          riskLevel: 'low',
+        });
+      });
+
+      it('下载抛出非 Error 值时转换为可观察 sandbox 错误', async () => {
+        pluginService.findActiveByPluginId.mockResolvedValue(
+          createPluginRecord(),
+        );
+        storageService.download.mockRejectedValue('storage offline');
+
+        const result = await worker.process(createJob());
+
+        expect(result).toMatchObject({
+          status: 'failed',
+          error: expect.stringContaining('storage offline'),
+        });
+      });
+
+      it.each([
+        [{ detail: 'domain detail', message: 'ignored' }, 'domain detail'],
+        [{ message: 'plain message' }, 'plain message'],
+        [{ name: 'NamedFailure' }, 'NamedFailure'],
+        [null, 'null'],
+        [42, '42'],
+        [{ code: 500 }, '[object Object]'],
+      ])(
+        '错误描述按 detail/message/name/字符串优先级收口 %#',
+        async (thrown, expected) => {
+          pluginService.findActiveByPluginId.mockRejectedValue(thrown);
+
+          const result = await worker.process(createJob());
+
+          expect(result.error).toBe(expected);
+          expect(nodeScheduler.onNodeFailed).toHaveBeenCalled();
+        },
+      );
+
+      it('失败状态写入自身失败时保持原始失败结果并记录非 Error 原因', async () => {
+        const warnSpy = vi
+          .spyOn(Logger.prototype, 'warn')
+          .mockImplementation(() => {});
+        pluginService.findActiveByPluginId.mockRejectedValue(
+          'original failure',
+        );
+        stepStateMachine.updateStepStatus
+          .mockResolvedValueOnce({ id: 'running' })
+          .mockRejectedValueOnce('state store unavailable');
+
+        const result = await worker.process(createJob());
+
+        expect(result).toMatchObject({
+          status: 'failed',
+          error: 'original failure',
+        });
+        expect(warnSpy).toHaveBeenCalledWith(
+          '插件执行失败状态收口失败: state store unavailable',
+        );
+      });
+
+      it('空白 functionName 回退 execute，并忽略非正数、无限数及非数组限制', async () => {
+        prepareSuccessfulSandbox();
+        sandboxService.buildSandboxConfig.mockReturnValue({
+          timeoutMs: 30_000,
+          maxMemoryPages: 1024,
+          allowedHosts: ['api.example.com'],
+        });
+
+        await worker.process(
+          createJob({
+            config: {
+              functionName: '   ',
+              timeoutMs: 0,
+              maxMemoryPages: Number.POSITIVE_INFINITY,
+              allowedHosts: 'api.example.com',
+            },
+          }),
+        );
+
+        expect(sandboxService.execute).toHaveBeenCalledWith(
+          expect.any(Buffer),
+          'execute',
+          expect.any(Object),
+          {
+            timeoutMs: 30_000,
+            maxMemoryPages: 1024,
+            allowedHosts: ['api.example.com'],
+          },
+          'com.example.test',
+        );
+      });
+
+      it('base 未设数值限制时采用截断后的 runtime 正整数', async () => {
+        prepareSuccessfulSandbox();
+        sandboxService.buildSandboxConfig.mockReturnValue({});
+
+        await worker.process(
+          createJob({
+            config: { timeoutMs: 1234.9, maxMemoryPages: 128.8 },
+          }),
+        );
+
+        expect(sandboxService.execute).toHaveBeenCalledWith(
+          expect.any(Buffer),
+          'execute',
+          expect.any(Object),
+          expect.objectContaining({ timeoutMs: 1234, maxMemoryPages: 128 }),
+          expect.any(String),
+        );
+      });
+
+      it('allowedHosts 去重并过滤非字符串后与 manifest 白名单取交集', async () => {
+        prepareSuccessfulSandbox();
+        sandboxService.buildSandboxConfig.mockReturnValue({
+          allowedHosts: ['api.example.com', 'cdn.example.com'],
+        });
+
+        await worker.process(
+          createJob({
+            config: {
+              allowedHosts: [
+                'api.example.com',
+                'api.example.com',
+                7,
+                'missing.example.com',
+              ],
+            },
+          }),
+        );
+
+        expect(sandboxService.execute).toHaveBeenCalledWith(
+          expect.any(Buffer),
+          expect.any(String),
+          expect.any(Object),
+          expect.objectContaining({ allowedHosts: ['api.example.com'] }),
+          expect.any(String),
+        );
+      });
+    });
   });
 
   describe('onFailed', () => {

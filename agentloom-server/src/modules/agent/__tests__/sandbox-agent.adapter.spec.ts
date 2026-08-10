@@ -2465,4 +2465,722 @@ describe('SandboxAgentAdapter', () => {
       await expect(pending).resolves.toEqual({ allowed: true });
     });
   });
+  describe('补充 lifecycle 与 runtime 边界契约', () => {
+    it('显式 sessionId 与可选会话字段应原样保留，且无 tenant 时不初始化容器', async () => {
+      const session = await adapter.createSession({
+        ...defaultParams,
+        sessionId: 'session-explicit',
+        tenantId: undefined,
+        autonomyMode: 'full',
+        systemPrompt: undefined,
+      });
+
+      expect(session).toMatchObject({
+        id: 'session-explicit',
+        autonomyMode: 'full',
+        tenantId: undefined,
+        systemPrompt: undefined,
+        status: 'active',
+      });
+      expect(globalThis.fetch).not.toHaveBeenCalled();
+    });
+
+    it.each(['failed', 'stopped'] as const)(
+      'sandbox 已处于 %s 时 createSession 应失败并留下 error 状态',
+      async (status) => {
+        mockSandboxService.getSandboxSession.mockResolvedValueOnce({
+          id: `sandbox-${status}`,
+          status,
+          runtimeHandle: null,
+        });
+
+        await expect(
+          adapter.createSession({
+            ...defaultParams,
+            sessionId: `session-${status}`,
+          }),
+        ).rejects.toThrow(`is ${status}`);
+
+        await expect(adapter.loadSession(`session-${status}`)).resolves.toEqual(
+          expect.objectContaining({ status: 'error' }),
+        );
+      },
+    );
+
+    it('最近 sandbox 为 stopped 时应暴露带 binding 的不可用错误', async () => {
+      mockSandboxService.getSandboxSession.mockResolvedValueOnce(null);
+      mockSandboxService.findLatestByExecutionId.mockResolvedValueOnce({
+        id: 'sandbox-stopped-latest',
+        status: 'stopped',
+      });
+
+      await expect(
+        adapter.createSession({
+          ...defaultParams,
+          context: {
+            executionId: 'exec-both',
+            agentConversationId: 'conv-both',
+            sandboxNodeId: 'node-a',
+          },
+        }),
+      ).rejects.toThrow(
+        'Sandbox session sandbox-stopped-latest is stopped for execution exec-both / sandbox node-a / conversation conv-both',
+      );
+    });
+
+    it('读取失败日志本身失败时应回退为结构化 sandbox 状态错误', async () => {
+      mockSandboxService.findByConversationId.mockResolvedValueOnce(null);
+      mockSandboxService.findLatestByConversationId.mockResolvedValueOnce({
+        id: 'sandbox-failed-no-logs',
+        status: 'failed',
+      });
+      mockSandboxService.getSandboxLogs.mockRejectedValueOnce(
+        'log backend down',
+      );
+
+      await expect(
+        adapter.createSession({
+          ...defaultParams,
+          context: { agentConversationId: 'conv-no-logs' },
+        }),
+      ).rejects.toThrow(
+        'Sandbox session sandbox-failed-no-logs is failed for conversation conv-no-logs',
+      );
+    });
+
+    it('prompt 应把图片、音频与资源附件原样传给容器并写入 history', async () => {
+      const session = await adapter.createSession(defaultParams);
+      const content = [
+        { type: 'image', data: 'base64-image', mimeType: 'image/png' },
+        { type: 'audio', data: 'base64-audio', mimeType: 'audio/wav' },
+        {
+          type: 'resource',
+          uri: 'file:///workspace/report.txt',
+          text: 'report',
+          mimeType: 'text/plain',
+        },
+        {
+          type: 'resource_link',
+          uri: 'https://example.test/source',
+          title: 'source',
+        },
+      ] as const;
+      globalThis.fetch = vi
+        .fn()
+        .mockResolvedValue(
+          createSseResponse([
+            'data: {"type":"done","stopReason":"end_turn"}\n\n',
+          ]),
+        );
+
+      await collectEvents(adapter.prompt(session.id, [...content]));
+
+      const promptCall = vi.mocked(globalThis.fetch).mock.calls[0];
+      expect(JSON.parse(String(promptCall?.[1]?.body))).toEqual({
+        sessionId: session.id,
+        content,
+        cwd: '/workspace/',
+      });
+      expect(session.context.history).toEqual(content);
+    });
+
+    it('workflowState tenantId 应优先于 session tenantId 请求 sandbox', async () => {
+      const session = await adapter.createSession({
+        ...defaultParams,
+        tenantId: undefined,
+        context: { executionId: 'exec-runtime', tenantId: 'tenant-runtime' },
+      });
+      globalThis.fetch = vi
+        .fn()
+        .mockResolvedValue(
+          createSseResponse([
+            'data: {"type":"done","stopReason":"end_turn"}\n\n',
+          ]),
+        );
+
+      await collectEvents(
+        adapter.prompt(session.id, [{ type: 'text', text: 'run' }]),
+      );
+
+      expect(mockSandboxService.getSandboxSession).toHaveBeenLastCalledWith(
+        'exec-runtime',
+        'tenant-runtime',
+        undefined,
+      );
+    });
+
+    it('done 位于无分隔符的最终 buffer 时仍应产出 terminal event', async () => {
+      const session = await adapter.createSession(defaultParams);
+      globalThis.fetch = vi
+        .fn()
+        .mockResolvedValue(
+          createSseResponse([
+            'data: {"jsonrpc":"2.0","method":"event","params":{"type":"text_delta","data":{"delta":"tail"}}}\n\n',
+            'data: {"type":"done","stopReason":"max_tokens"}',
+          ]),
+        );
+
+      await expect(
+        collectEvents(
+          adapter.prompt(session.id, [{ type: 'text', text: 'final buffer' }]),
+        ),
+      ).resolves.toEqual([
+        { type: 'message_chunk', content: 'tail' },
+        { type: 'done', stopReason: 'max_tokens' },
+      ]);
+    });
+
+    it('terminal event 后 reader.cancel 失败不应覆盖已完成结果', async () => {
+      const encoder = new TextEncoder();
+      const cancel = vi.fn().mockRejectedValue(new Error('transport closed'));
+      globalThis.fetch = vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        body: {
+          getReader: () => ({
+            read: vi.fn().mockResolvedValueOnce({
+              done: false,
+              value: encoder.encode(
+                'data: {"type":"done","stopReason":"end_turn"}\n\n',
+              ),
+            }),
+            cancel,
+          }),
+        },
+      } as unknown as Response);
+      const session = await adapter.createSession(defaultParams);
+
+      await expect(
+        collectEvents(
+          adapter.prompt(session.id, [{ type: 'text', text: 'finish' }]),
+        ),
+      ).resolves.toEqual([{ type: 'done', stopReason: 'end_turn' }]);
+      expect(cancel).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe('补充 permission 与 callback 错误契约', () => {
+    it('callback 显式 sessionId 应允许无 conversation 映射的权限流程', async () => {
+      const session = await adapter.createSession(defaultParams);
+      const pending = adapter.awaitToolPermission('unknown-conversation', {
+        sessionId: session.id,
+        toolCallId: 'tool-explicit-session',
+        toolName: 'write',
+      });
+      await Promise.resolve();
+
+      await adapter.resolveToolPermission(
+        session.id,
+        'tool-explicit-session',
+        'approve',
+      );
+      await expect(pending).resolves.toEqual({ allowed: true });
+    });
+
+    it('cancel 应中止并清理所有挂起权限', async () => {
+      const session = await adapter.createSession({
+        ...defaultParams,
+        mode: 'conversation',
+        context: { agentConversationId: 'conv-cancel-permission' },
+      });
+      const first = adapter.awaitToolPermission('conv-cancel-permission', {
+        toolCallId: 'permission-a',
+        toolName: 'write',
+      });
+      const second = adapter.awaitToolPermission('conv-cancel-permission', {
+        toolCallId: 'permission-b',
+        toolName: 'delete',
+      });
+      await Promise.resolve();
+
+      await adapter.cancel(session.id);
+
+      await expect(first).resolves.toEqual({ allowed: false });
+      await expect(second).resolves.toEqual({ allowed: false });
+      await expect(
+        adapter.resolveConversationToolPermission(
+          'conv-cancel-permission',
+          'permission-a',
+          'approve',
+        ),
+      ).rejects.toThrow('has no pending tool permission');
+    });
+
+    it('已完成 session 上等待权限应立即拒绝', async () => {
+      const session = await adapter.createSession(defaultParams);
+      session.status = 'completed';
+
+      await expect(
+        adapter.awaitToolPermission('unused', {
+          sessionId: session.id,
+          toolCallId: 'after-complete',
+          toolName: 'write',
+        }),
+      ).resolves.toEqual({ allowed: false });
+    });
+
+    it('remote callback 应拒绝 sessionId 不匹配、缺失 token 与错误 token', async () => {
+      adapter.registerSessionToolProvider('session-secure', () => ({
+        secure_tool: tool({
+          inputSchema: jsonSchema({ type: 'object' }),
+          execute: vi.fn(),
+        }),
+      }));
+      await adapter.createSession({
+        ...defaultParams,
+        sessionId: 'session-secure',
+      });
+
+      await expect(
+        adapter.executeSessionToolCallback('session-secure', {
+          sessionId: 'another-session',
+          toolCallId: 'call-mismatch',
+          toolName: 'secure_tool',
+          input: {},
+        }),
+      ).rejects.toThrow('sessionId mismatch');
+      await expect(
+        adapter.executeSessionToolCallback('session-secure', {
+          sessionId: 'session-secure',
+          toolCallId: 'call-missing-token',
+          toolName: 'secure_tool',
+          input: {},
+        }),
+      ).rejects.toThrow('callback token is required');
+      await expect(
+        adapter.executeSessionToolCallback(
+          'session-secure',
+          {
+            sessionId: 'session-secure',
+            toolCallId: 'call-invalid-token',
+            toolName: 'secure_tool',
+            input: {},
+          },
+          'invalid-token',
+        ),
+      ).rejects.toThrow('callback token is invalid');
+    });
+
+    it('合法 callback 应区分未知工具与不可执行工具', async () => {
+      adapter.registerSessionToolProvider('session-nonexec', () => ({
+        metadata_only: tool({
+          description: '仅描述工具',
+          inputSchema: jsonSchema({ type: 'object' }),
+        }),
+      }));
+      mockSandboxService.getSandboxSession.mockResolvedValue({
+        id: 'sandbox-session-nonexec',
+        status: 'ready',
+        runtimeHandle: 'runtime-session-nonexec',
+      });
+      mockRuntimeDriver.healthCheck.mockResolvedValue(true);
+      await adapter.createSession({
+        ...defaultParams,
+        sessionId: 'session-nonexec',
+      });
+      const initPayload = JSON.parse(
+        String(vi.mocked(globalThis.fetch).mock.calls[0]?.[1]?.body),
+      ) as { remoteToolExecution: { callbackToken: string } };
+      const callbackToken = initPayload.remoteToolExecution.callbackToken;
+
+      await expect(
+        adapter.executeSessionToolCallback(
+          'session-nonexec',
+          {
+            sessionId: 'session-nonexec',
+            toolCallId: 'call-unknown',
+            toolName: 'unknown_tool',
+            input: null,
+          },
+          callbackToken,
+        ),
+      ).rejects.toThrow('沙箱会话未找到');
+      await expect(
+        adapter.executeSessionToolCallback(
+          'session-nonexec',
+          {
+            sessionId: 'session-nonexec',
+            toolCallId: 'call-nonexec',
+            toolName: 'metadata_only',
+            input: null,
+          },
+          callbackToken,
+        ),
+      ).rejects.toThrow('is not executable');
+    });
+
+    it('缺少 tenantId 的 session tool callback 应在执行前拒绝', async () => {
+      adapter.registerSessionToolProvider('session-no-tenant', () => ({
+        local_tool: tool({
+          inputSchema: jsonSchema({ type: 'object' }),
+          execute: vi.fn(),
+        }),
+      }));
+      const session = await adapter.createSession({
+        ...defaultParams,
+        sessionId: 'session-no-tenant',
+        tenantId: undefined,
+      });
+      const adapterInternals = adapter as unknown as {
+        sessionToolCallbackTokens: Map<string, string>;
+      };
+      const callbackToken = adapterInternals.sessionToolCallbackTokens.get(
+        session.id,
+      );
+
+      await expect(
+        adapter.executeSessionToolCallback(
+          session.id,
+          {
+            sessionId: session.id,
+            toolCallId: 'call-no-tenant',
+            toolName: 'local_tool',
+            input: 'not-an-object',
+          },
+          callbackToken,
+        ),
+      ).rejects.toThrow('is missing tenantId');
+    });
+
+    it('no_sandbox 应拒绝 stdio MCP，而 sandbox runtime 应允许并返回工具结果', async () => {
+      const createMcpSession = async (
+        sessionId: string,
+        runtimeMode: 'no_sandbox' | 'sandbox',
+      ) => {
+        await adapter.createSession({
+          ...defaultParams,
+          sessionId,
+          runtimeConfig: {
+            runtimeMode,
+            tools: [
+              {
+                toolId: 'mcp-search',
+                toolType: 'mcp',
+                name: 'search_docs',
+                description: '搜索文档',
+                enabled: true,
+                mcpServerConfigId: 'mcp-config-1',
+                toolName: 'search',
+                inputSchema: {
+                  type: 'object',
+                  properties: { query: { type: 'string' } },
+                },
+              },
+            ],
+          },
+        });
+        const initCall = vi.mocked(globalThis.fetch).mock.calls.at(-1);
+        const initPayload = JSON.parse(String(initCall?.[1]?.body)) as {
+          remoteToolExecution: { callbackToken: string };
+        };
+        return initPayload.remoteToolExecution.callbackToken;
+      };
+      mockMcpService.resolveRuntimeConnection.mockResolvedValue({
+        transportType: 'stdio',
+      });
+      mockMcpService.callRuntimeTool.mockResolvedValue({
+        content: [{ type: 'text', text: 'found' }],
+      });
+
+      const noSandboxToken = await createMcpSession(
+        'session-no-sandbox-mcp',
+        'no_sandbox',
+      );
+      await expect(
+        adapter.executeSessionToolCallback(
+          'session-no-sandbox-mcp',
+          {
+            sessionId: 'session-no-sandbox-mcp',
+            toolCallId: 'call-no-sandbox',
+            toolName: 'search_docs',
+            input: { query: 'policy' },
+          },
+          noSandboxToken,
+        ),
+      ).rejects.toThrow('无 sandbox Agent 只能使用 HTTP MCP');
+      expect(mockMcpService.callRuntimeTool).not.toHaveBeenCalled();
+
+      const sandboxToken = await createMcpSession(
+        'session-sandbox-mcp',
+        'sandbox',
+      );
+      await expect(
+        adapter.executeSessionToolCallback(
+          'session-sandbox-mcp',
+          {
+            sessionId: 'session-sandbox-mcp',
+            toolCallId: 'call-sandbox',
+            toolName: 'search_docs',
+            input: { query: 'policy' },
+          },
+          sandboxToken,
+        ),
+      ).resolves.toEqual({
+        result: { content: [{ type: 'text', text: 'found' }] },
+      });
+      expect(mockMcpService.callRuntimeTool).toHaveBeenCalledWith(
+        expect.objectContaining({ transportType: 'stdio' }),
+        'search',
+        { query: 'policy' },
+      );
+    });
+
+    it('code remote tool 应合并参数覆盖并转发 timeout，缺少执行服务时返回可观察失败', async () => {
+      mockCodeExecutionService.execute.mockResolvedValue({
+        success: true,
+        output: 'ok',
+      });
+      await adapter.createSession({
+        ...defaultParams,
+        sessionId: 'session-code-tool',
+        runtimeConfig: {
+          tools: [
+            {
+              toolId: 'code-1',
+              toolType: 'code',
+              name: '1 invalid code name',
+              description: '执行脚本',
+              enabled: true,
+              language: 'python',
+              code: 'print(input)',
+              timeout: 12,
+              parameterOverrides: { fixed: true },
+            },
+          ],
+        },
+      });
+      const initPayload = JSON.parse(
+        String(vi.mocked(globalThis.fetch).mock.calls.at(-1)?.[1]?.body),
+      ) as {
+        remoteToolExecution: {
+          callbackToken: string;
+          tools: Array<{ name: string }>;
+        };
+      };
+      expect(initPayload.remoteToolExecution.tools[0]?.name).toBe(
+        'tool_1_invalid_code_name',
+      );
+
+      await expect(
+        adapter.executeSessionToolCallback(
+          'session-code-tool',
+          {
+            sessionId: 'session-code-tool',
+            toolCallId: 'call-code',
+            toolName: 'tool_1_invalid_code_name',
+            input: { supplied: 'value', fixed: false },
+          },
+          initPayload.remoteToolExecution.callbackToken,
+        ),
+      ).resolves.toEqual({ result: { success: true, output: 'ok' } });
+      expect(mockCodeExecutionService.execute).toHaveBeenCalledWith({
+        language: 'python',
+        code: 'print(input)',
+        input: { supplied: 'value', fixed: true },
+        timeout: 12,
+      });
+
+      const adapterWithoutCode = new SandboxAgentAdapter(
+        mockDb as never,
+        mockSandboxService as never,
+        mockRuntimeDriver as never,
+        mockMcpService as never,
+        mockRagService as never,
+        undefined,
+        mockDecryptionBoundaryService as never,
+        piConfigGenerator,
+        mockSelfEvolutionService as never,
+      );
+      await adapterWithoutCode.createSession({
+        ...defaultParams,
+        sessionId: 'session-code-missing-service',
+        runtimeConfig: {
+          tools: [
+            {
+              toolId: 'code-2',
+              toolType: 'code',
+              name: '',
+              enabled: true,
+              language: 'bash',
+            },
+          ],
+        },
+      });
+      const missingServicePayload = JSON.parse(
+        String(vi.mocked(globalThis.fetch).mock.calls.at(-1)?.[1]?.body),
+      ) as {
+        remoteToolExecution: {
+          callbackToken: string;
+          tools: Array<{ name: string }>;
+        };
+      };
+      const fallbackName =
+        missingServicePayload.remoteToolExecution.tools[0]?.name ?? '';
+      await expect(
+        adapterWithoutCode.executeSessionToolCallback(
+          'session-code-missing-service',
+          {
+            sessionId: 'session-code-missing-service',
+            toolCallId: 'call-code-missing',
+            toolName: fallbackName,
+            input: null,
+          },
+          missingServicePayload.remoteToolExecution.callbackToken,
+        ),
+      ).resolves.toEqual({
+        result: expect.objectContaining({
+          success: false,
+          toolId: 'code-2',
+          language: 'bash',
+          code: '',
+          input: {},
+        }),
+      });
+    });
+  });
+
+  describe('补充 stream 可选字段映射', () => {
+    async function promptEvents(frames: string[]): Promise<AgentEvent[]> {
+      const session = await adapter.createSession(defaultParams);
+      globalThis.fetch = vi.fn().mockResolvedValue(createSseResponse(frames));
+      return collectEvents(
+        adapter.prompt(session.id, [{ type: 'text', text: 'map events' }]),
+      );
+    }
+
+    it('permissionRequest 应保留全部受支持元数据并过滤无效资源路径', async () => {
+      const events = await promptEvents([
+        `data: ${JSON.stringify({
+          jsonrpc: '2.0',
+          method: 'event',
+          params: {
+            type: 'tool_call_update',
+            data: {
+              toolCallId: 'call-permission-full',
+              toolName: 'fs/write',
+              permissionRequest: {
+                description: '覆盖配置文件',
+                resourcePaths: ['/workspace/a.json', '', 42],
+                domain: 'filesystem',
+                category: 'write',
+                riskLevel: 'high',
+                sourceLabel: '配置生成器',
+                targetType: 'file',
+                targetLabel: 'a.json',
+                approveEffect: '写入文件',
+                denyEffect: '保持原文件',
+                diffPreview: { before: '{}', after: '{"ok":true}' },
+                rememberable: false,
+              },
+            },
+          },
+        })}\n\n`,
+        'data: {"type":"done","stopReason":"end_turn"}\n\n',
+      ]);
+
+      expect(events[0]).toEqual({
+        type: 'tool_call',
+        call: expect.objectContaining({
+          status: 'awaiting_permission',
+          permissionRequest: {
+            description: '覆盖配置文件',
+            resourcePaths: ['/workspace/a.json'],
+            domain: 'filesystem',
+            category: 'write',
+            riskLevel: 'high',
+            sourceLabel: '配置生成器',
+            targetType: 'file',
+            targetLabel: 'a.json',
+            approveEffect: '写入文件',
+            denyEffect: '保持原文件',
+            diffPreview: { before: '{}', after: '{"ok":true}' },
+            rememberable: false,
+          },
+        }),
+      });
+    });
+
+    it('data 顶层权限元数据应映射，非法 riskLevel 与 diffPreview 应省略', async () => {
+      const events = await promptEvents([
+        `data: ${JSON.stringify({
+          type: 'tool_call_update',
+          toolCallId: 'call-permission-flat',
+          toolName: 'net/fetch',
+          resourcePaths: ['/api'],
+          domain: 'network',
+          category: 'read',
+          riskLevel: 'critical',
+          sourceLabel: 'HTTP tool',
+          targetType: 'endpoint',
+          targetLabel: '/api',
+          approveEffect: '发起请求',
+          denyEffect: '取消请求',
+          diffPreview: 'not-a-record',
+          rememberable: true,
+        })}\n\n`,
+        'data: {"type":"done","stopReason":"end_turn"}\n\n',
+      ]);
+      const permissionRequest = (
+        events[0] as Extract<AgentEvent, { type: 'tool_call' }>
+      ).call.permissionRequest;
+
+      expect(permissionRequest).toEqual({
+        description: '允许工具 net/fetch 执行',
+        resourcePaths: ['/api'],
+        domain: 'network',
+        category: 'read',
+        sourceLabel: 'HTTP tool',
+        targetType: 'endpoint',
+        targetLabel: '/api',
+        approveEffect: '发起请求',
+        denyEffect: '取消请求',
+        rememberable: true,
+      });
+    });
+
+    it('tool result 的 falsy 值、未知 tool/id fallback 与空 transitions 应保持契约', async () => {
+      const events = await promptEvents([
+        'data: {"type":"tool_call_end","data":{"result":false,"transitions":[]}}\n\n',
+        'data: {"type":"done","stopReason":"end_turn"}\n\n',
+      ]);
+      const call = (events[0] as Extract<AgentEvent, { type: 'tool_call' }>)
+        .call;
+
+      expect(call.tool).toBe('unknown_tool');
+      expect(call.id).toEqual(expect.any(String));
+      expect(call.result).toBe(false);
+      expect(call.status).toBe('completed');
+      expect(call).not.toHaveProperty('transitions');
+      expect(call).not.toHaveProperty('error');
+      expect(call).not.toHaveProperty('permissionRequest');
+    });
+
+    it('直接 AgentEvent 的 message、tool 与 PTY 变体应原样透传', async () => {
+      const directEvents = [
+        { type: 'message_chunk', content: 'direct' },
+        {
+          type: 'tool_call',
+          call: {
+            id: 'direct-tool',
+            tool: 'read',
+            args: {},
+            status: 'completed',
+          },
+        },
+        { type: 'pty.spawned', sessionId: 'pty-direct', info: {} },
+        { type: 'pty.output', sessionId: 'pty-direct', data: '' },
+        { type: 'pty.exit', sessionId: 'pty-direct' },
+        { type: 'pty.killed', sessionId: 'pty-direct' },
+      ];
+      const events = await promptEvents([
+        ...directEvents.map((event) => `data: ${JSON.stringify(event)}\n\n`),
+        'data: {"type":"done","stopReason":"end_turn"}\n\n',
+      ]);
+
+      expect(events).toEqual([
+        ...directEvents,
+        { type: 'done', stopReason: 'end_turn' },
+      ]);
+    });
+  });
 });

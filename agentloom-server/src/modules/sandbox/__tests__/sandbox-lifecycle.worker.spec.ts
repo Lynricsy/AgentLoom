@@ -1417,4 +1417,492 @@ describe('SandboxLifecycleWorker', () => {
       ).not.toHaveBeenCalled();
     });
   });
+
+  describe('manager 恢复、lease 与 cleanup 边界', () => {
+    it('未知 jobType 不产生资源副作用', async () => {
+      await expect(
+        worker.process(createJob({ jobType: 'unknown', sessionId: 's1' })),
+      ).resolves.toBeUndefined();
+      expect(mockRuntimeDriver.createRuntime).not.toHaveBeenCalled();
+      expect(mockRuntimeDriver.stopRuntime).not.toHaveBeenCalled();
+    });
+
+    it('start 缺少 config 应在 manager 调用前拒绝', async () => {
+      await expect(
+        worker.process(
+          createJob({
+            jobType: 'start',
+            sessionId: 's1',
+            tenantId: 't1',
+            runtimeHandle: 'r1',
+          }),
+        ),
+      ).rejects.toBeInstanceOf(SandboxCreationException);
+      expect(mockRuntimeDriver.startRuntime).not.toHaveBeenCalled();
+    });
+
+    it('start 激活竞争失败时停止 runtime、释放 lease 且不恢复 workspace', async () => {
+      mockReturning.mockResolvedValueOnce([]);
+      mockRuntimeDriver.stopRuntime.mockRejectedValueOnce('already stopped');
+      const workspaceService = {
+        restoreToSandbox: vi.fn().mockResolvedValue(undefined),
+      };
+      mockModuleRef.get.mockReturnValue(workspaceService);
+
+      await expect(
+        worker.process(
+          createJob({
+            jobType: 'start',
+            sessionId: 's1',
+            tenantId: 't1',
+            runtimeHandle: 'r1',
+            config: {
+              ...DEFAULT_CONFIG,
+              lifecycleMode: 'persistent',
+              restoreWorkspaceId: ' workspace-1 ',
+            },
+          }),
+        ),
+      ).resolves.toBeUndefined();
+
+      expect(mockWorkspaceLeaseService.acquire).toHaveBeenCalled();
+      expect(mockWorkspaceLeaseService.release).toHaveBeenCalled();
+      expect(workspaceService.restoreToSandbox).not.toHaveBeenCalled();
+      expect(mockLifecycleProducer.addTimeoutCheckTask).not.toHaveBeenCalled();
+    });
+
+    it('create 激活竞争失败即使 stop/delete cleanup 失败也释放 lease', async () => {
+      mockReturning.mockResolvedValueOnce([]);
+      mockRuntimeDriver.stopRuntime.mockRejectedValueOnce('stop failed');
+      mockRuntimeDriver.deleteRuntime.mockRejectedValueOnce('delete failed');
+
+      await expect(
+        worker.process(
+          createJob({
+            jobType: 'create',
+            sessionId: 's1',
+            tenantId: 't1',
+            config: {
+              ...DEFAULT_CONFIG,
+              restoreWorkspaceId: 'workspace-1',
+            },
+          }),
+        ),
+      ).resolves.toBeUndefined();
+
+      expect(mockWorkspaceLeaseService.release).toHaveBeenCalled();
+      expect(mockValues).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message:
+            'Sandbox runtime discarded because session left creating state',
+        }),
+      );
+    });
+
+    it('stop 无 handle 时仍提交 stopped 状态，但不碰 manager 或 lease renewal', async () => {
+      await worker.process(
+        createJob({
+          jobType: 'stop',
+          sessionId: 's1',
+          tenantId: 't1',
+          config: DEFAULT_CONFIG,
+        }),
+      );
+
+      expect(mockRuntimeDriver.stopRuntime).not.toHaveBeenCalled();
+      expect(
+        mockLifecycleProducer.removeWorkspaceLeaseRenewal,
+      ).not.toHaveBeenCalled();
+      expect(mockSet).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'stopped' }),
+      );
+    });
+
+    it('lease renewal 在会话缺失、workspace 缺失或终态时移除重复任务', async () => {
+      mockSandboxService.getSessionById
+        .mockRejectedValueOnce(new Error('gone'))
+        .mockResolvedValueOnce({
+          id: 's1',
+          status: 'ready',
+          config: DEFAULT_CONFIG,
+        })
+        .mockResolvedValueOnce({
+          id: 's1',
+          status: 'failed',
+          config: { ...DEFAULT_CONFIG, restoreWorkspaceId: 'workspace-1' },
+        });
+
+      for (let index = 0; index < 3; index += 1) {
+        await worker.process(
+          createJob({
+            jobType: 'workspace_lease_renew',
+            sessionId: 's1',
+            tenantId: 't1',
+          }),
+        );
+      }
+
+      expect(
+        mockLifecycleProducer.removeWorkspaceLeaseRenewal,
+      ).toHaveBeenCalledTimes(3);
+      expect(mockWorkspaceLeaseService.renewOwned).not.toHaveBeenCalled();
+    });
+
+    it('timeout 无 runtime handle 的 resource persistent 只更新状态且不抛错', async () => {
+      mockSandboxService.getSessionById.mockResolvedValueOnce({
+        id: 's-resource',
+        executionId: null,
+        agentConversationId: null,
+        sandboxNodeId: null,
+        status: 'ready',
+        runtimeHandle: null,
+        config: { ...DEFAULT_CONFIG, lifecycleMode: 'persistent' },
+      });
+
+      await expect(
+        worker.process(
+          createJob({
+            jobType: 'timeout_check',
+            sessionId: 's-resource',
+            tenantId: 't1',
+          }),
+        ),
+      ).resolves.toBeUndefined();
+
+      expect(mockRuntimeDriver.stopRuntime).not.toHaveBeenCalled();
+      expect(mockRuntimeDriver.deleteRuntime).not.toHaveBeenCalled();
+      expect(mockSet).toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'stopped' }),
+      );
+    });
+
+    it('路径与 binding 规范化保证归档始终租户隔离且稳定', () => {
+      const internals = worker as unknown as {
+        resolvePersistenceStorageKey(
+          tenantId: string,
+          bindingId: string,
+          path: string,
+        ): string;
+        resolveBinding(data: Record<string, unknown>): Record<string, string>;
+        getBindingId(binding: Record<string, string>): string;
+      };
+
+      expect(
+        internals.resolvePersistenceStorageKey(
+          't1',
+          'e1/node-1',
+          String.raw` \foo\..\bar\. `,
+        ),
+      ).toBe('tenants/t1/foo/bar/workspace.tar');
+      expect(
+        internals.resolvePersistenceStorageKey(
+          't1',
+          'e1',
+          'tenants/t1/archive.tar',
+        ),
+      ).toBe('tenants/t1/archive.tar');
+      expect(
+        internals.resolvePersistenceStorageKey('t1', 'e1/node-1', ' /../ '),
+      ).toBe('tenants/t1/sandboxes/e1/node-1/workspace.tar');
+      expect(
+        internals.resolveBinding({
+          executionId: 'e1',
+          agentConversationId: 'c1',
+          sandboxNodeId: 'n1',
+        }),
+      ).toEqual({
+        executionId: 'e1',
+        agentConversationId: 'c1',
+        sandboxNodeId: 'n1',
+      });
+      expect(internals.resolveBinding({})).toEqual({});
+      expect(internals.getBindingId({ executionId: 'e1' })).toBe('e1');
+      expect(
+        internals.getBindingId({ executionId: 'e1', sandboxNodeId: 'n1' }),
+      ).toBe('e1/n1');
+      expect(internals.getBindingId({ agentConversationId: 'c1' })).toBe('c1');
+      expect(internals.getBindingId({})).toBe('standalone');
+    });
+
+    it('workspace id 与 lease TTL 只接受有效配置并采用安全下限', () => {
+      const internals = worker as unknown as {
+        readRestoreWorkspaceId(config: unknown): string | undefined;
+        resolveWorkspaceLeaseTtlMs(config: unknown): number;
+      };
+
+      expect(internals.readRestoreWorkspaceId(null)).toBeUndefined();
+      expect(internals.readRestoreWorkspaceId([])).toBeUndefined();
+      expect(
+        internals.readRestoreWorkspaceId({ restoreWorkspaceId: ' ws-1 ' }),
+      ).toBe('ws-1');
+      expect(
+        internals.readRestoreWorkspaceId({ restoreWorkspaceId: ' ' }),
+      ).toBeUndefined();
+      expect(internals.resolveWorkspaceLeaseTtlMs(null)).toBe(5 * 60_000);
+      expect(internals.resolveWorkspaceLeaseTtlMs([])).toBe(5 * 60_000);
+      expect(
+        internals.resolveWorkspaceLeaseTtlMs({ timeout: Number.NaN }),
+      ).toBe(61 * 60_000);
+      expect(internals.resolveWorkspaceLeaseTtlMs({ timeout: 0.01 })).toBe(
+        5 * 60_000,
+      );
+      expect(internals.resolveWorkspaceLeaseTtlMs({ timeout: 2 })).toBe(
+        121 * 60_000,
+      );
+    });
+
+    it('conversation 绑定去重，活动 run、running metadata 与未处理消息均阻止 expiry', () => {
+      const internals = worker as unknown as {
+        getBoundConversationIds(session: {
+          agentConversationId: string | null;
+          executionId: string | null;
+          sandboxNodeId: string | null;
+          config: SandboxConfig;
+        }): string[];
+        isConversationIdleForAutoEnd(
+          conversation: { id: string; metadata: Record<string, unknown> },
+          latestMessageId: string | undefined,
+          executionService: unknown,
+        ): boolean;
+        readConversationExecutionMetadata(
+          metadata: Record<string, unknown>,
+        ): Record<string, unknown>;
+      };
+      expect(
+        internals.getBoundConversationIds({
+          agentConversationId: 'c1',
+          executionId: null,
+          sandboxNodeId: null,
+          config: {
+            ...DEFAULT_CONFIG,
+            activeBindings: [
+              { agentConversationId: 'c1' },
+              { agentConversationId: 'c2' },
+              { executionId: 'e1' },
+            ],
+          },
+        }),
+      ).toEqual(['c1', 'c2']);
+      expect(
+        internals.getBoundConversationIds({
+          agentConversationId: null,
+          executionId: null,
+          sandboxNodeId: null,
+          config: DEFAULT_CONFIG,
+        }),
+      ).toEqual([]);
+      const activeRun = {
+        getActiveRun: vi.fn().mockReturnValue({
+          abort: { signal: { aborted: false } },
+        }),
+      };
+      expect(
+        internals.isConversationIdleForAutoEnd(
+          { id: 'c1', metadata: {} },
+          undefined,
+          activeRun,
+        ),
+      ).toBe(false);
+      expect(
+        internals.isConversationIdleForAutoEnd(
+          {
+            id: 'c1',
+            metadata: { execution: { runningState: 'running' } },
+          },
+          undefined,
+          null,
+        ),
+      ).toBe(false);
+      expect(
+        internals.isConversationIdleForAutoEnd(
+          {
+            id: 'c1',
+            metadata: {
+              execution: {
+                runningState: 'idle',
+                lastProcessedMessageId: 'old',
+              },
+            },
+          },
+          'new',
+          null,
+        ),
+      ).toBe(false);
+      expect(
+        internals.isConversationIdleForAutoEnd(
+          {
+            id: 'c1',
+            metadata: {
+              execution: {
+                runningState: 'idle',
+                lastProcessedMessageId: 'new',
+              },
+            },
+          },
+          'new',
+          null,
+        ),
+      ).toBe(true);
+      expect(
+        internals.readConversationExecutionMetadata({
+          execution: [],
+        }),
+      ).toEqual({});
+      expect(
+        internals.readConversationExecutionMetadata({
+          execution: {
+            lastProcessedMessageId: 1,
+            runningState: null,
+          },
+        }),
+      ).toEqual({});
+    });
+
+    it('workspace restore/snapshot 缺少依赖或 fencing token 时 fail closed', async () => {
+      const internals = worker as unknown as {
+        restoreWorkspaceIfNeeded(
+          params: Record<string, unknown>,
+        ): Promise<void>;
+        syncRestoredWorkspaceSnapshot(
+          params: Record<string, unknown>,
+        ): Promise<void>;
+      };
+
+      await expect(
+        internals.restoreWorkspaceIfNeeded({
+          sessionId: 's1',
+          tenantId: 't1',
+          runtimeHandle: 'r1',
+        }),
+      ).resolves.toBeUndefined();
+      await expect(
+        internals.syncRestoredWorkspaceSnapshot({
+          sessionId: 's1',
+          tenantId: 't1',
+          runtimeHandle: 'r1',
+          phaseLabel: 'stop',
+          leaseToken: null,
+        }),
+      ).resolves.toBeUndefined();
+      mockModuleRef.get.mockReturnValue(undefined);
+      await expect(
+        internals.restoreWorkspaceIfNeeded({
+          sessionId: 's1',
+          tenantId: 't1',
+          runtimeHandle: 'r1',
+          restoreWorkspaceId: 'ws-1',
+        }),
+      ).rejects.toBeInstanceOf(SandboxCreationException);
+      const fencingError = await internals
+        .syncRestoredWorkspaceSnapshot({
+          sessionId: 's1',
+          tenantId: 't1',
+          runtimeHandle: 'r1',
+          restoreWorkspaceId: 'ws-1',
+          phaseLabel: 'stop',
+          leaseToken: null,
+        })
+        .catch((error: unknown) => error);
+      expect(fencingError).toBeInstanceOf(SandboxCreationException);
+      expect(fencingError).toMatchObject({
+        message: '沙箱容器创建失败',
+        detail: expect.stringContaining('no active fencing token'),
+      });
+      expect(mockSet).not.toHaveBeenCalledWith(
+        expect.objectContaining({ status: 'ready' }),
+      );
+      const missingServiceError = await internals
+        .syncRestoredWorkspaceSnapshot({
+          sessionId: 's1',
+          tenantId: 't1',
+          runtimeHandle: 'r1',
+          restoreWorkspaceId: 'ws-1',
+          phaseLabel: 'destroy',
+          leaseToken: {
+            workspaceId: 'ws-1',
+            sandboxSessionId: 's1',
+            fencingToken: 1,
+          },
+        })
+        .catch((error: unknown) => error);
+      expect(missingServiceError).toBeInstanceOf(SandboxCreationException);
+      expect(missingServiceError).toMatchObject({
+        message: '沙箱容器创建失败',
+        detail: expect.stringContaining('WorkspaceService unavailable'),
+      });
+    });
+
+    it('workspace snapshot 同步失败向上抛出原始非 Error，禁止继续破坏 runtime', async () => {
+      const workspaceService = {
+        syncFromSandboxContainer: vi.fn().mockRejectedValue('sync denied'),
+      };
+      mockModuleRef.get.mockReturnValue(workspaceService);
+      const internals = worker as unknown as {
+        syncRestoredWorkspaceSnapshot(
+          params: Record<string, unknown>,
+        ): Promise<void>;
+      };
+
+      await expect(
+        internals.syncRestoredWorkspaceSnapshot({
+          sessionId: 's1',
+          tenantId: 't1',
+          runtimeHandle: 'r1',
+          restoreWorkspaceId: 'ws-1',
+          phaseLabel: 'timeout',
+          leaseToken: {
+            workspaceId: 'ws-1',
+            sandboxSessionId: 's1',
+            fencingToken: 1,
+          },
+        }),
+      ).rejects.toBe('sync denied');
+      expect(mockRuntimeDriver.stopRuntime).not.toHaveBeenCalled();
+    });
+
+    it('可选模块查找异常时统一降级为 null', () => {
+      mockModuleRef.get.mockImplementation(() => {
+        throw new Error('module unavailable');
+      });
+      const internals = worker as unknown as {
+        getAgentExecutionService(): unknown;
+        getAgentConversationService(): unknown;
+        getWorkspaceService(): unknown;
+      };
+
+      expect(internals.getAgentExecutionService()).toBeNull();
+      expect(internals.getAgentConversationService()).toBeNull();
+      expect(internals.getWorkspaceService()).toBeNull();
+    });
+
+    it('schedule helpers 对缺失 config/binding 保持无任务，对有效 conversation 调度一次', async () => {
+      const internals = worker as unknown as {
+        scheduleConversationIdleEndCheck(
+          sessionId: string,
+          tenantId: string,
+          config: SandboxConfig | undefined,
+          conversationIds?: string[],
+        ): Promise<void>;
+      };
+
+      await internals.scheduleConversationIdleEndCheck('s1', 't1', undefined, [
+        'c1',
+      ]);
+      await internals.scheduleConversationIdleEndCheck(
+        's1',
+        't1',
+        DEFAULT_CONFIG,
+      );
+      await internals.scheduleConversationIdleEndCheck(
+        's1',
+        't1',
+        DEFAULT_CONFIG,
+        ['c1'],
+      );
+
+      expect(
+        mockLifecycleProducer.addConversationIdleEndCheckTask,
+      ).toHaveBeenCalledTimes(1);
+    });
+  });
 });

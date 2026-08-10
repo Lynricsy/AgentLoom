@@ -655,4 +655,162 @@ describe('EvidenceExportService', () => {
       }),
     );
   });
+  it('persists every direct filter in a frozen audit-recall snapshot', async () => {
+    const matchedAt = new Date('2026-03-16T09:00:00.000Z');
+    tenantDb.select
+      .mockReturnValueOnce(
+        createSelectChain([
+          {
+            executionId: 'exec-2',
+            matchedAt,
+            auditId: 'audit-b',
+          },
+        ]),
+      )
+      .mockReturnValueOnce(
+        createSelectChain([
+          {
+            executionId: 'exec-1',
+            matchedAt,
+            auditId: 'audit-a',
+          },
+          {
+            executionId: 'exec-2',
+            matchedAt,
+            auditId: 'audit-c',
+          },
+        ]),
+      );
+    const insertReturning = createInsertReturning([
+      createExportJob({
+        id: 'export-all-filters',
+        status: 'queued',
+        matchedExecutionCount: 2,
+      }),
+    ]);
+    tenantDb.insert.mockImplementation(insertReturning.insert);
+
+    const filters = {
+      workflowId: WORKFLOW_ID,
+      executionIds: ['exec-1', 'exec-2'],
+      eventType: 'execution.failed',
+      resourceType: 'execution',
+      resourceId: 'resource-1',
+      actorType: 'service' as const,
+      actorId: 'service-1',
+      from: '2026-03-16T00:00:00.000Z',
+      to: '2026-03-17T00:00:00.000Z',
+    };
+
+    await service.requestExport({
+      tenantId: TENANT_ID,
+      actorId: ACTOR_ID,
+      filters,
+    });
+
+    expect(insertReturning.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'queued',
+        filters: {
+          ...filters,
+          executionIds: ['exec-1', 'exec-2'],
+        },
+        matchedExecutionCount: 2,
+      }),
+    );
+    expect(exportQueue.add).toHaveBeenCalledWith(
+      expect.any(String),
+      { exportId: 'export-all-filters', tenantId: TENANT_ID },
+      expect.any(Object),
+    );
+  });
+
+  it('fails safely when persistence does not return the created export job', async () => {
+    tenantDb.select.mockReturnValueOnce(createSelectChain([{ id: 'exec-1' }]));
+    const insertReturning = createInsertReturning([]);
+    tenantDb.insert.mockImplementation(insertReturning.insert);
+
+    await expect(
+      service.requestExport({
+        tenantId: TENANT_ID,
+        actorId: ACTOR_ID,
+        filters: {},
+      }),
+    ).rejects.toThrow('Failed to create evidence export job');
+
+    expect(auditLogService.record).not.toHaveBeenCalled();
+    expect(exportQueue.add).not.toHaveBeenCalled();
+  });
+
+  it('reports completed jobs without retention metadata as unavailable', async () => {
+    tenantDb.select.mockReturnValueOnce(
+      createSelectChain([createExportJob({ expiresAt: null })]),
+    );
+
+    await expect(
+      service.getDownloadDetail({
+        tenantId: TENANT_ID,
+        actorId: ACTOR_ID,
+        exportId: 'export-1',
+      }),
+    ).rejects.toBeInstanceOf(EvidenceExportArtifactUnavailableException);
+
+    expect(storageService.getPresignedUrl).not.toHaveBeenCalled();
+    expect(auditLogService.record).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: 'evidence.export.download.unavailable',
+        metadata: {
+          refresh: false,
+          reason: 'missing_retention_expiry',
+        },
+      }),
+    );
+  });
+
+  it('uses stable archive defaults when optional artifact labels are absent', async () => {
+    tenantDb.select.mockReturnValueOnce(
+      createSelectChain([
+        createExportJob({
+          fileName: null,
+          mimeType: null,
+        }),
+      ]),
+    );
+    storageService.getPresignedUrl.mockResolvedValue('https://signed/default');
+
+    await expect(
+      service.getDownloadDetail({
+        tenantId: TENANT_ID,
+        actorId: ACTOR_ID,
+        exportId: 'export-1',
+      }),
+    ).resolves.toMatchObject({
+      url: 'https://signed/default',
+      fileName: 'evidence-export.zip',
+      mimeType: 'application/zip',
+    });
+  });
+
+  it('does not disguise unexpected storage failures as domain errors', async () => {
+    const storageError = new Error('signature implementation failed');
+    tenantDb.select.mockReturnValueOnce(createSelectChain([createExportJob()]));
+    storageService.getPresignedUrl.mockRejectedValue(storageError);
+
+    await expect(
+      service.getDownloadDetail({
+        tenantId: TENANT_ID,
+        actorId: ACTOR_ID,
+        exportId: 'export-1',
+      }),
+    ).rejects.toBe(storageError);
+
+    expect(auditLogService.record).not.toHaveBeenCalled();
+  });
+
+  it('returns export jobs through the tenant-scoped lookup contract', async () => {
+    const job = createExportJob();
+    tenantDb.select.mockReturnValueOnce(createSelectChain([job]));
+
+    await expect(service.findById(TENANT_ID, 'export-1')).resolves.toBe(job);
+  });
 });

@@ -8,14 +8,17 @@ import JSZip from 'jszip';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ROLES_KEY } from '../../common/decorators/roles.decorator';
+import { TenantRequiredException } from '../../common/exceptions/auth.exceptions';
 import type { JwtPayload } from '../../common/guards/auth.guard';
 import { StorageService } from '../../infrastructure/storage/storage.service';
 import { QueryPluginsDto, UpdatePluginStatusDto } from './dto/plugin.dto';
 import { PluginController } from './plugin.controller';
 import { PluginDeveloperKeyService } from './plugin-developer-key.service';
 import {
+  PluginFileTooLargeException,
   PluginSignatureInvalidException,
   PluginSignatureMissingException,
+  PluginValidationException,
 } from './plugin.exceptions';
 import { PluginSignatureService } from './plugin-signature.service';
 import { PluginService } from './plugin.service';
@@ -509,6 +512,265 @@ describe('PluginController', () => {
       expect(getRoles(controller, 'remove')).toEqual(['owner', 'admin']);
       expect(getHttpCode(controller, 'remove')).toBe(HttpStatus.NO_CONTENT);
       expect(service.remove).toHaveBeenCalledWith(PLUGIN_RECORD_ID, TENANT_ID);
+    });
+  });
+  describe('multipart 与 archive 边界', () => {
+    it('tenant 上下文同时缺失时在读取 multipart 前拒绝请求', async () => {
+      const request = await createRegisterRequest();
+      request.tenantId = undefined;
+      request.user.tenantId = undefined;
+
+      await expect(controller.register(request)).rejects.toBeInstanceOf(
+        TenantRequiredException,
+      );
+      expect(request.file).not.toHaveBeenCalled();
+    });
+
+    it('缺少 multipart 文件时返回插件校验错误', async () => {
+      const request = createRequest();
+      vi.mocked(request.file).mockResolvedValue(undefined);
+
+      await expect(controller.register(request)).rejects.toBeInstanceOf(
+        PluginValidationException,
+      );
+      expect(service.register).not.toHaveBeenCalled();
+    });
+
+    it('Fastify 在读取文件时报告大小超限应转换为领域异常', async () => {
+      const request = createRequest();
+      vi.mocked(request.file).mockRejectedValue({
+        code: 'FST_REQ_FILE_TOO_LARGE',
+      });
+
+      await expect(controller.register(request)).rejects.toBeInstanceOf(
+        PluginFileTooLargeException,
+      );
+    });
+
+    it('非 .alp 文件名应在读取 buffer 前被拒绝', async () => {
+      const request = await createRegisterRequest();
+      const multipart = await request.file();
+      (multipart as unknown as { filename: string }).filename = 'plugin.zip';
+      vi.mocked(request.file).mockResolvedValue(multipart);
+
+      await expect(controller.register(request)).rejects.toBeInstanceOf(
+        PluginValidationException,
+      );
+      expect(
+        (multipart as unknown as { toBuffer: ReturnType<typeof vi.fn> })
+          .toBuffer,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('multipart 流标记 truncated 时拒绝持久化', async () => {
+      const request = await createRegisterRequest();
+      const multipart = await request.file();
+      (
+        multipart as unknown as { file: { truncated: boolean } }
+      ).file.truncated = true;
+      vi.mocked(request.file).mockResolvedValue(multipart);
+
+      await expect(controller.register(request)).rejects.toBeInstanceOf(
+        PluginFileTooLargeException,
+      );
+      expect(storageService.upload).not.toHaveBeenCalled();
+    });
+
+    it('toBuffer 抛出 Fastify 大小错误时转换为领域异常', async () => {
+      const request = await createRegisterRequest();
+      const multipart = await request.file();
+      vi.mocked(
+        (multipart as unknown as { toBuffer: ReturnType<typeof vi.fn> })
+          .toBuffer,
+      ).mockRejectedValue({ code: 'FST_REQ_FILE_TOO_LARGE' });
+      vi.mocked(request.file).mockResolvedValue(multipart);
+
+      await expect(controller.register(request)).rejects.toBeInstanceOf(
+        PluginFileTooLargeException,
+      );
+    });
+
+    it('损坏的 zip 应作为插件包解析失败而不是泄漏底层异常', async () => {
+      const request = await createRegisterRequest();
+      const multipart = await request.file();
+      vi.mocked(
+        (multipart as unknown as { toBuffer: ReturnType<typeof vi.fn> })
+          .toBuffer,
+      ).mockResolvedValue(Buffer.from('not-a-zip'));
+      vi.mocked(request.file).mockResolvedValue(multipart);
+
+      await expect(controller.register(request)).rejects.toBeInstanceOf(
+        PluginValidationException,
+      );
+      expect(service.register).not.toHaveBeenCalled();
+    });
+
+    it('缺少 manifest.json 时拒绝注册', async () => {
+      const zip = new JSZip();
+      zip.file('node-definitions.json', '[]');
+      const request = await createRegisterRequest();
+      const multipart = await request.file();
+      vi.mocked(
+        (multipart as unknown as { toBuffer: ReturnType<typeof vi.fn> })
+          .toBuffer,
+      ).mockResolvedValue(await zip.generateAsync({ type: 'nodebuffer' }));
+      vi.mocked(request.file).mockResolvedValue(multipart);
+
+      await expect(controller.register(request)).rejects.toBeInstanceOf(
+        PluginValidationException,
+      );
+      expect(service.register).not.toHaveBeenCalled();
+    });
+
+    it('manifest 必须是 JSON 对象', async () => {
+      const zip = new JSZip();
+      zip.file('manifest.json', '[]');
+      const request = await createRegisterRequest();
+      const multipart = await request.file();
+      vi.mocked(
+        (multipart as unknown as { toBuffer: ReturnType<typeof vi.fn> })
+          .toBuffer,
+      ).mockResolvedValue(await zip.generateAsync({ type: 'nodebuffer' }));
+      vi.mocked(request.file).mockResolvedValue(multipart);
+
+      await expect(controller.register(request)).rejects.toBeInstanceOf(
+        PluginValidationException,
+      );
+      expect(service.register).not.toHaveBeenCalled();
+    });
+
+    it('nodeDefinitions 可从 manifest 的兼容 nodes 字段读取', async () => {
+      const zip = new JSZip();
+      zip.file(
+        'manifest.json',
+        JSON.stringify({
+          pluginId: 'com.example.compat',
+          version: '2.0.0',
+          signature: SIGNATURE,
+          contentHash: CONTENT_HASH,
+          developerKeyFingerprint: KEY_FINGERPRINT,
+          nodes: [{ type: 'compat-node' }],
+        }),
+      );
+      const buffer = await zip.generateAsync({ type: 'nodebuffer' });
+      const request = await createRegisterRequest({ status: 'registered' });
+      const multipart = await request.file();
+      vi.mocked(
+        (multipart as unknown as { toBuffer: ReturnType<typeof vi.fn> })
+          .toBuffer,
+      ).mockResolvedValue(buffer);
+      vi.mocked(request.file).mockResolvedValue(multipart);
+      developerKeyService.findActiveKeyByFingerprint.mockResolvedValue({
+        publicKey: 'pem',
+      });
+      signatureService.verifyArchiveSignature.mockResolvedValue({
+        valid: true,
+        contentHash: CONTENT_HASH,
+      });
+      service.register.mockResolvedValue(
+        createPluginResponse({ pluginId: 'com.example.compat' }),
+      );
+
+      await controller.register(request);
+
+      expect(service.register).toHaveBeenCalledWith(
+        TENANT_ID,
+        ORG_ID,
+        USER_ID,
+        expect.any(Object),
+        [{ type: 'compat-node' }],
+        expect.any(String),
+        expect.any(Object),
+      );
+    });
+
+    it('WASM entry 存在时上传 archive 与 wasm 两个对象', async () => {
+      const zip = new JSZip();
+      zip.file(
+        'manifest.json',
+        JSON.stringify({
+          id: 'com.example.wasm',
+          version: '1.0.0',
+          wasmEntry: 'dist/plugin.wasm',
+          signature: SIGNATURE,
+          contentHash: CONTENT_HASH,
+          developerKeyFingerprint: KEY_FINGERPRINT,
+        }),
+      );
+      zip.file('dist/plugin.wasm', Buffer.from([0, 97, 115, 109]));
+      const buffer = await zip.generateAsync({ type: 'nodebuffer' });
+      const request = await createRegisterRequest({ status: 'registered' });
+      const multipart = await request.file();
+      vi.mocked(
+        (multipart as unknown as { toBuffer: ReturnType<typeof vi.fn> })
+          .toBuffer,
+      ).mockResolvedValue(buffer);
+      vi.mocked(request.file).mockResolvedValue(multipart);
+      developerKeyService.findActiveKeyByFingerprint.mockResolvedValue({
+        publicKey: 'pem',
+      });
+      signatureService.verifyArchiveSignature.mockResolvedValue({
+        valid: true,
+        contentHash: CONTENT_HASH,
+      });
+      service.register.mockResolvedValue(createPluginResponse());
+
+      await controller.register(request);
+
+      expect(storageService.upload).toHaveBeenCalledTimes(2);
+      expect(storageService.upload).toHaveBeenLastCalledWith(
+        expect.stringContaining('plugin.wasm'),
+        Buffer.from([0, 97, 115, 109]),
+        4,
+        'application/wasm',
+      );
+    });
+
+    it('WASM entry 缺失时仍注册 archive 且 wasmBundleUrl 为空', async () => {
+      const request = await createRegisterRequest({
+        status: 'registered',
+        manifestOverrides: {
+          wasmEntry: 'missing.wasm',
+          signature: SIGNATURE,
+          contentHash: CONTENT_HASH,
+          developerKeyFingerprint: KEY_FINGERPRINT,
+        },
+      });
+      developerKeyService.findActiveKeyByFingerprint.mockResolvedValue({
+        publicKey: 'pem',
+      });
+      signatureService.verifyArchiveSignature.mockResolvedValue({
+        valid: true,
+        contentHash: CONTENT_HASH,
+      });
+      service.register.mockResolvedValue(createPluginResponse());
+
+      await controller.register(request);
+
+      expect(storageService.upload).toHaveBeenCalledTimes(1);
+      expect(service.register).toHaveBeenCalledWith(
+        TENANT_ID,
+        ORG_ID,
+        USER_ID,
+        expect.any(Object),
+        expect.any(Array),
+        expect.any(String),
+        expect.objectContaining({ wasmBundleUrl: undefined }),
+      );
+    });
+
+    it('空白签名字段按缺失处理', async () => {
+      await expect(
+        controller.register(
+          await createRegisterRequest({
+            manifestOverrides: {
+              signature: '   ',
+              contentHash: CONTENT_HASH,
+              developerKeyFingerprint: KEY_FINGERPRINT,
+            },
+          }),
+        ),
+      ).rejects.toBeInstanceOf(PluginSignatureMissingException);
     });
   });
 });
