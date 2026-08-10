@@ -2,7 +2,6 @@ import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { and, eq, inArray } from 'drizzle-orm';
-import { Script } from 'node:vm';
 import { DRIZZLE, type DrizzleDB } from '../../database/database.module';
 import { getTenantDb } from '../../common/providers/tenant-aware-db.provider';
 import { DomainException } from '../../common/exceptions/domain.exception';
@@ -22,7 +21,6 @@ import {
   SYSTEM_TIMEOUT_INTERVENTION_USER_ID,
   type AgentTaskJobData,
   type InterventionResolution,
-  type SmartRoutingRuntimeContext,
   type ToolPermissionResolution,
 } from './execution.constants';
 import type { InterventionCheckpointRecord } from './types/execution-event.types';
@@ -48,7 +46,6 @@ import { SmartRoutingService } from '../smart-routing/smart-routing.service';
 import { RouterRegistry } from '../smart-routing/core/router-registry';
 import type { RoutingCandidate } from '../smart-routing/core/routing-candidate';
 import type { RoutingContext as SmartRoutingContext } from '../smart-routing/core/routing-context';
-import type { RoutingDecision as RouterDecision } from '../smart-routing/core/routing-decision';
 import { HealthMonitorService } from '../smart-routing/circuit-breaker/health-monitor.service';
 import { EmbeddingIntegrationService } from '../smart-routing/embedding/embedding.service';
 import { PluginService } from '../plugin/plugin.service';
@@ -75,6 +72,52 @@ import {
   readCompoundParentNodeId,
   readExecutionRuntimeMeta,
 } from './compound-runtime.util';
+import {
+  extractCodeToolInputPayload,
+  extractExecutionInputPayload,
+  extractOutputValue,
+  flattenInput,
+  getRuntimeNodeData,
+  isRecord,
+  normalizeJsonOutputValue,
+  normalizeTransformResult,
+  readEdgeHandle,
+  readFirstDefined,
+  readFirstString,
+  readHttpMethod,
+  readNumber,
+  readOptionalNumber,
+  readStringArray,
+  resolveJsonPath,
+  resolveTextNodeContent,
+  setValueAtPath,
+  stringifyOutputValue,
+} from './node-value.util';
+import {
+  evaluateExpression,
+  evaluateConditionBranch,
+  isConditionNode,
+  normalizeConditionBranch,
+  normalizeConditionSourceHandle,
+  normalizeLoopItemsInput,
+  resolveConditionBranches,
+  unwrapConditionBranchPayload,
+} from './condition-evaluator.util';
+import { buildHttpToolRequestInput } from './http-tool-request.util';
+import {
+  collectModelConfigIds,
+  estimateTokenCount,
+  extractMcpServerConfigIds,
+  extractSmartRoutingContext,
+  extractSmartRoutingQueryText,
+  extractSmartRoutingTaskCategory,
+  extractStructuredModelConfigIds,
+  isFallbackChainStrategy,
+  mapRoutingDecisionScores,
+  normalizeSmartRoutingStrategyName,
+  resolveSmartRoutingStrategyConfig,
+  resolveSmartRoutingStrategyValue,
+} from './smart-routing-input.util';
 
 /** 调度决策 */
 type SchedulingDecision = 'schedule' | 'skip' | 'wait';
@@ -335,10 +378,7 @@ export class NodeSchedulerService {
         resolvedSnapshot.nodes,
       );
     } catch (error) {
-      if (
-        error instanceof InvalidStepTransitionException
-      )
-        throw error;
+      if (error instanceof InvalidStepTransitionException) throw error;
       const message = error instanceof Error ? error.message : String(error);
       await this.stepStateMachine.updateStepStatus(
         tenantId,
@@ -576,7 +616,7 @@ export class NodeSchedulerService {
     tenantId: string,
     executionId: string,
   ): Promise<void> {
-    const nodeData = this.isRecord(step.nodeData) ? step.nodeData : {};
+    const nodeData = isRecord(step.nodeData) ? step.nodeData : {};
     const pluginId =
       typeof nodeData.pluginId === 'string' ? nodeData.pluginId : undefined;
     const pluginNodeType =
@@ -605,7 +645,7 @@ export class NodeSchedulerService {
       pluginId: plugin.pluginId,
       nodeType: pluginNodeType,
       inputs: input,
-      config: this.isRecord(nodeData.pluginConfig) ? nodeData.pluginConfig : {},
+      config: isRecord(nodeData.pluginConfig) ? nodeData.pluginConfig : {},
     });
   }
 
@@ -639,11 +679,11 @@ export class NodeSchedulerService {
 
       this.checkEdgePortTypeCompatibility(edge, nodes);
 
-      const sourceHandle = this.readEdgeHandle(edge, 'source');
-      const targetHandle = this.readEdgeHandle(edge, 'target');
+      const sourceHandle = readEdgeHandle(edge, 'source');
+      const targetHandle = readEdgeHandle(edge, 'target');
 
       if (targetHandle) {
-        this.setValueAtPath(
+        setValueAtPath(
           input,
           targetHandle,
           sourceHandle
@@ -654,7 +694,7 @@ export class NodeSchedulerService {
       }
 
       if (sourceHandle) {
-        this.setValueAtPath(
+        setValueAtPath(
           input,
           sourceHandle,
           this.resolveSourceHandleValue(sourceStep, sourceHandle),
@@ -672,8 +712,8 @@ export class NodeSchedulerService {
     edge: ReactFlowEdge,
     nodes: schema.ReactFlowNode[],
   ): void {
-    const sourceHandle = this.readEdgeHandle(edge, 'source');
-    const targetHandle = this.readEdgeHandle(edge, 'target');
+    const sourceHandle = readEdgeHandle(edge, 'source');
+    const targetHandle = readEdgeHandle(edge, 'target');
     if (!sourceHandle || !targetHandle) return;
 
     const sourceNode = nodes.find((n) => n.id === edge.source);
@@ -1177,13 +1217,13 @@ export class NodeSchedulerService {
       let result: Record<string, unknown>;
 
       if (expression) {
-        result = this.normalizeTransformResult(
-          this.evaluateExpression(expression, input),
+        result = normalizeTransformResult(
+          evaluateExpression(expression, input),
         );
       } else if (mapping) {
         result = {};
         for (const [outputKey, inputPath] of Object.entries(mapping)) {
-          result[outputKey] = this.resolveJsonPath(input, inputPath);
+          result[outputKey] = resolveJsonPath(input, inputPath);
         }
       } else {
         // 无映射配置 → 透传
@@ -1200,9 +1240,7 @@ export class NodeSchedulerService {
       await this.onNodeCompleted(executionId, step.id, tenantId);
     } catch (error) {
       // updateStepStatus 抛出的 InvalidStepTransitionException 不二次捕获
-      if (
-        error instanceof InvalidStepTransitionException
-      ) {
+      if (error instanceof InvalidStepTransitionException) {
         throw error;
       }
 
@@ -1239,7 +1277,7 @@ export class NodeSchedulerService {
     await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'running');
 
     try {
-      const nodeData = this.getRuntimeNodeData(step.nodeData ?? {});
+      const nodeData = getRuntimeNodeData(step.nodeData ?? {});
       const config: InputPreprocessorConfig =
         normalizeInputPreprocessorConfig(nodeData);
 
@@ -1273,9 +1311,7 @@ export class NodeSchedulerService {
 
       await this.onNodeCompleted(executionId, step.id, tenantId);
     } catch (error) {
-      if (
-        error instanceof InvalidStepTransitionException
-      ) {
+      if (error instanceof InvalidStepTransitionException) {
         throw error;
       }
 
@@ -1312,19 +1348,19 @@ export class NodeSchedulerService {
     await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'running');
 
     try {
-      const nodeData = this.getRuntimeNodeData(step.nodeData ?? {});
-      const url = this.readFirstString(nodeData.url);
+      const nodeData = getRuntimeNodeData(step.nodeData ?? {});
+      const url = readFirstString(nodeData.url);
       if (!url) {
         throw new Error('HTTP Tool 节点缺少 URL 配置');
       }
 
-      const method = this.readHttpMethod(nodeData.method);
-      const timeout = this.readOptionalNumber(
+      const method = readHttpMethod(nodeData.method);
+      const timeout = readOptionalNumber(
         nodeData.timeout,
         nodeData.timeoutSeconds,
         nodeData.timeout_seconds,
       );
-      const request = this.buildHttpToolRequestInput(nodeData, input);
+      const request = buildHttpToolRequestInput(nodeData, input);
       const response = await executeHttpToolRequest(
         {
           url,
@@ -1356,9 +1392,7 @@ export class NodeSchedulerService {
 
       await this.onNodeCompleted(executionId, step.id, tenantId);
     } catch (error) {
-      if (
-        error instanceof InvalidStepTransitionException
-      ) {
+      if (error instanceof InvalidStepTransitionException) {
         throw error;
       }
 
@@ -1395,10 +1429,10 @@ export class NodeSchedulerService {
     await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'running');
 
     try {
-      const nodeData = this.getRuntimeNodeData(step.nodeData ?? {});
-      const language = this.readFirstString(nodeData.language);
+      const nodeData = getRuntimeNodeData(step.nodeData ?? {});
+      const language = readFirstString(nodeData.language);
       const rawCode = typeof nodeData.code === 'string' ? nodeData.code : '';
-      const timeout = this.readOptionalNumber(
+      const timeout = readOptionalNumber(
         nodeData.timeout,
         nodeData.timeoutSeconds,
         nodeData.timeout_seconds,
@@ -1420,7 +1454,7 @@ export class NodeSchedulerService {
       const executionResult = await this.codeExecutionService.execute({
         language,
         code: rawCode,
-        input: this.extractCodeToolInputPayload(input),
+        input: extractCodeToolInputPayload(input),
         ...(timeout !== undefined ? { timeout } : {}),
       });
 
@@ -1447,9 +1481,7 @@ export class NodeSchedulerService {
 
       await this.onNodeCompleted(executionId, step.id, tenantId);
     } catch (error) {
-      if (
-        error instanceof InvalidStepTransitionException
-      ) {
+      if (error instanceof InvalidStepTransitionException) {
         throw error;
       }
 
@@ -1488,10 +1520,8 @@ export class NodeSchedulerService {
     await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'running');
 
     try {
-      const nodeData = this.isRecord(step.nodeData) ? step.nodeData : {};
-      const config = this.isRecord(nodeData.config)
-        ? nodeData.config
-        : nodeData;
+      const nodeData = isRecord(step.nodeData) ? step.nodeData : {};
+      const config = isRecord(nodeData.config) ? nodeData.config : nodeData;
       const skillId =
         typeof config.skillId === 'string' && config.skillId.trim().length > 0
           ? config.skillId.trim()
@@ -1591,9 +1621,7 @@ export class NodeSchedulerService {
       );
       await this.onNodeCompleted(executionId, step.id, tenantId);
     } catch (error) {
-      if (
-        error instanceof InvalidStepTransitionException
-      ) {
+      if (error instanceof InvalidStepTransitionException) {
         throw error;
       }
 
@@ -1633,12 +1661,12 @@ export class NodeSchedulerService {
     await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'running');
 
     try {
-      const nodeData = this.getRuntimeNodeData(step.nodeData ?? {});
-      const mcpServerConfigId = this.readFirstString(
+      const nodeData = getRuntimeNodeData(step.nodeData ?? {});
+      const mcpServerConfigId = readFirstString(
         nodeData.mcpServerConfigId,
         nodeData.mcp_server_config_id,
       );
-      const enabledToolIds = this.readStringArray(
+      const enabledToolIds = readStringArray(
         nodeData.enabledToolIds,
         nodeData.enabled_tool_ids,
       );
@@ -1700,9 +1728,7 @@ export class NodeSchedulerService {
       );
       await this.onNodeCompleted(executionId, step.id, tenantId);
     } catch (error) {
-      if (
-        error instanceof InvalidStepTransitionException
-      ) {
+      if (error instanceof InvalidStepTransitionException) {
         throw error;
       }
 
@@ -1742,17 +1768,17 @@ export class NodeSchedulerService {
     await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'running');
 
     try {
-      const nodeData = this.getRuntimeNodeData(step.nodeData ?? {});
-      const flatInput = this.flattenInput(input);
+      const nodeData = getRuntimeNodeData(step.nodeData ?? {});
+      const flatInput = flattenInput(input);
 
       // 检测新格式（branches 数组）vs 旧格式（mode + expression/conditionField）
-      const branches = this.resolveConditionBranches(nodeData);
+      const branches = resolveConditionBranches(nodeData);
 
       // 顺序评估每个分支，找到第一个匹配的
       let matchedBranchId: string | null = null;
 
       for (const branch of branches) {
-        const matches = this.evaluateConditionBranch(branch, input, flatInput);
+        const matches = evaluateConditionBranch(branch, input, flatInput);
         if (matches) {
           matchedBranchId = branch.id;
           break;
@@ -1790,9 +1816,7 @@ export class NodeSchedulerService {
 
       await this.onNodeCompleted(executionId, step.id, tenantId);
     } catch (error) {
-      if (
-        error instanceof InvalidStepTransitionException
-      ) {
+      if (error instanceof InvalidStepTransitionException) {
         throw error;
       }
 
@@ -1873,9 +1897,7 @@ export class NodeSchedulerService {
 
       await this.onNodeCompleted(executionId, step.id, tenantId);
     } catch (error) {
-      if (
-        error instanceof InvalidStepTransitionException
-      ) {
+      if (error instanceof InvalidStepTransitionException) {
         throw error;
       }
 
@@ -1926,9 +1948,7 @@ export class NodeSchedulerService {
 
       await this.onNodeCompleted(executionId, step.id, tenantId);
     } catch (error) {
-      if (
-        error instanceof InvalidStepTransitionException
-      ) {
+      if (error instanceof InvalidStepTransitionException) {
         throw error;
       }
 
@@ -1985,9 +2005,7 @@ export class NodeSchedulerService {
       );
       await this.onNodeCompleted(executionId, step.id, tenantId);
     } catch (error) {
-      if (
-        error instanceof InvalidStepTransitionException
-      ) {
+      if (error instanceof InvalidStepTransitionException) {
         throw error;
       }
 
@@ -2028,10 +2046,9 @@ export class NodeSchedulerService {
         step,
         executionId,
       );
-      const nodeData = this.getRuntimeNodeData(step.nodeData ?? {});
+      const nodeData = getRuntimeNodeData(step.nodeData ?? {});
       const outputKey =
-        this.readFirstString(nodeData.outputKey, nodeData.output_key) ??
-        'result';
+        readFirstString(nodeData.outputKey, nodeData.output_key) ?? 'result';
       const value = this.extractCompoundValueInput(input, 'value-in');
 
       context.roundOutputs[outputKey] = value;
@@ -2049,9 +2066,7 @@ export class NodeSchedulerService {
       );
       await this.onNodeCompleted(executionId, step.id, tenantId);
     } catch (error) {
-      if (
-        error instanceof InvalidStepTransitionException
-      ) {
+      if (error instanceof InvalidStepTransitionException) {
         throw error;
       }
 
@@ -2110,9 +2125,7 @@ export class NodeSchedulerService {
       );
       await this.onNodeCompleted(executionId, step.id, tenantId);
     } catch (error) {
-      if (
-        error instanceof InvalidStepTransitionException
-      ) {
+      if (error instanceof InvalidStepTransitionException) {
         throw error;
       }
 
@@ -2171,9 +2184,7 @@ export class NodeSchedulerService {
       );
       await this.onNodeCompleted(executionId, step.id, tenantId);
     } catch (error) {
-      if (
-        error instanceof InvalidStepTransitionException
-      ) {
+      if (error instanceof InvalidStepTransitionException) {
         throw error;
       }
 
@@ -2239,9 +2250,7 @@ export class NodeSchedulerService {
       await this.resetCompoundRoundSteps(context, steps, tenantId);
       await this.scheduleNextCompoundNode(context, tenantId);
     } catch (error) {
-      if (
-        error instanceof InvalidStepTransitionException
-      ) {
+      if (error instanceof InvalidStepTransitionException) {
         throw error;
       }
 
@@ -2290,7 +2299,7 @@ export class NodeSchedulerService {
       .resolveDag(internalNodes, internalEdges)
       .layers.flat();
 
-    const nodeData = this.getRuntimeNodeData(step.nodeData ?? {});
+    const nodeData = getRuntimeNodeData(step.nodeData ?? {});
     const inputPorts = Array.isArray(nodeData.inputPorts)
       ? nodeData.inputPorts
       : Array.isArray(nodeData.input_ports)
@@ -2299,12 +2308,12 @@ export class NodeSchedulerService {
     const extraInputPortIds = inputPorts
       .filter(
         (port) =>
-          this.isRecord(port) &&
+          isRecord(port) &&
           typeof port.id === 'string' &&
           port.id.startsWith('input-'),
       )
       .map((port) => port.id as string);
-    const configuredMaxIterations = this.readOptionalNumber(
+    const configuredMaxIterations = readOptionalNumber(
       nodeData.maxIterations,
       nodeData.max_iterations,
     );
@@ -2317,16 +2326,13 @@ export class NodeSchedulerService {
       parentNodeType,
       parentInput: input,
       outputMode:
-        this.readFirstString(nodeData.outputMode, nodeData.output_mode) ===
-        'none'
+        readFirstString(nodeData.outputMode, nodeData.output_mode) === 'none'
           ? 'none'
-          : this.readFirstString(nodeData.outputMode, nodeData.output_mode) ===
+          : readFirstString(nodeData.outputMode, nodeData.output_mode) ===
               'collect-array'
             ? 'collect-array'
-            : this.readFirstString(
-                  nodeData.outputMode,
-                  nodeData.output_mode,
-                ) === 'last'
+            : readFirstString(nodeData.outputMode, nodeData.output_mode) ===
+                'last'
               ? 'last'
               : parentNodeType === 'iteration'
                 ? 'collect-array'
@@ -2336,14 +2342,12 @@ export class NodeSchedulerService {
       orderedNodeIds,
       extraInputPortIds,
       iterationItems:
-        parentNodeType === 'iteration'
-          ? this.normalizeLoopItemsInput(input)
-          : [],
+        parentNodeType === 'iteration' ? normalizeLoopItemsInput(input) : [],
       iterationIndex: 0,
       completedRounds: 0,
       loopState:
         input['state-in'] ??
-        this.readFirstDefined(nodeData.defaultState, nodeData.default_state) ??
+        readFirstDefined(nodeData.defaultState, nodeData.default_state) ??
         null,
       loopRound: 0,
       maxIterations:
@@ -2384,9 +2388,9 @@ export class NodeSchedulerService {
     step: ExecutionStep,
     input: Record<string, unknown>,
   ): boolean {
-    const nodeData = this.getRuntimeNodeData(step.nodeData ?? {});
+    const nodeData = getRuntimeNodeData(step.nodeData ?? {});
     const mode =
-      this.readFirstString(nodeData.mode, nodeData.jumpMode) === 'expression'
+      readFirstString(nodeData.mode, nodeData.jumpMode) === 'expression'
         ? 'expression'
         : 'always';
 
@@ -2394,7 +2398,7 @@ export class NodeSchedulerService {
       return true;
     }
 
-    const expression = this.readFirstString(
+    const expression = readFirstString(
       nodeData.expression,
       nodeData.jumpExpression,
     );
@@ -2402,7 +2406,7 @@ export class NodeSchedulerService {
       return false;
     }
 
-    return Boolean(this.evaluateExpression(expression, input));
+    return Boolean(evaluateExpression(expression, input));
   }
 
   private buildLoopStartResult(
@@ -2454,7 +2458,7 @@ export class NodeSchedulerService {
       return input[portId];
     }
 
-    return this.extractOutputValue(input);
+    return extractOutputValue(input);
   }
 
   private async resetCompoundRoundSteps(
@@ -2830,16 +2834,13 @@ export class NodeSchedulerService {
     await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'running');
 
     try {
-      const nodeData = this.getRuntimeNodeData(step.nodeData ?? {});
+      const nodeData = getRuntimeNodeData(step.nodeData ?? {});
       const mode =
-        this.readFirstString(nodeData.mode) === 'merge-by-key'
+        readFirstString(nodeData.mode) === 'merge-by-key'
           ? 'merge-by-key'
           : 'append';
-      const mergeKey = this.readFirstString(
-        nodeData.mergeKey,
-        nodeData.merge_key,
-      );
-      const rawInputCount = this.readOptionalNumber(
+      const mergeKey = readFirstString(nodeData.mergeKey, nodeData.merge_key);
+      const rawInputCount = readOptionalNumber(
         nodeData.inputCount,
         nodeData.input_count,
       );
@@ -2919,9 +2920,7 @@ export class NodeSchedulerService {
 
       await this.onNodeCompleted(executionId, step.id, tenantId);
     } catch (error) {
-      if (
-        error instanceof InvalidStepTransitionException
-      ) {
+      if (error instanceof InvalidStepTransitionException) {
         throw error;
       }
 
@@ -2955,7 +2954,7 @@ export class NodeSchedulerService {
     mergeMap: Map<string, Record<string, unknown>>,
     orderKeys: string[],
   ): void {
-    if (!this.isRecord(item)) return;
+    if (!isRecord(item)) return;
 
     const keyValue = item[mergeKey];
     if (keyValue === undefined || keyValue === null) return;
@@ -2979,24 +2978,21 @@ export class NodeSchedulerService {
     await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'running');
 
     try {
-      const nodeData = this.getRuntimeNodeData(step.nodeData ?? {});
-      const rawStrategy = this.resolveSmartRoutingStrategyValue(nodeData);
-      const strategyName = this.normalizeSmartRoutingStrategyName(rawStrategy);
-      const strategyConfig = this.resolveSmartRoutingStrategyConfig(nodeData);
+      const nodeData = getRuntimeNodeData(step.nodeData ?? {});
+      const rawStrategy = resolveSmartRoutingStrategyValue(nodeData);
+      const strategyName = normalizeSmartRoutingStrategyName(rawStrategy);
+      const strategyConfig = resolveSmartRoutingStrategyConfig(nodeData);
       const router = this.routerRegistry.get(strategyName);
 
-      const modelConfigIds = this.collectModelConfigIds(nodeData, input);
+      const modelConfigIds = collectModelConfigIds(nodeData, input);
       const tokenThreshold =
         typeof nodeData.tokenThreshold === 'number' &&
         nodeData.tokenThreshold > 0
           ? nodeData.tokenThreshold
           : 4096;
-      const queryText = this.extractSmartRoutingQueryText(nodeData, input);
-      const taskCategory = this.extractSmartRoutingTaskCategory(
-        nodeData,
-        input,
-      );
-      const inputTokenCount = this.estimateTokenCount(input);
+      const queryText = extractSmartRoutingQueryText(nodeData, input);
+      const taskCategory = extractSmartRoutingTaskCategory(nodeData, input);
+      const inputTokenCount = estimateTokenCount(input);
       const historicalMetrics =
         strategyName === 'historical_best'
           ? await this.smartRoutingService.getHistoricalMetrics(
@@ -3046,7 +3042,7 @@ export class NodeSchedulerService {
         );
       }
 
-      const evaluatedModels = this.mapRoutingDecisionScores(decision);
+      const evaluatedModels = mapRoutingDecisionScores(decision);
       const routingDecisionId = await this.smartRoutingService.recordDecision(
         step.id,
         tenantId,
@@ -3103,9 +3099,7 @@ export class NodeSchedulerService {
 
       await this.onNodeCompleted(executionId, step.id, tenantId);
     } catch (error) {
-      if (
-        error instanceof InvalidStepTransitionException
-      ) {
+      if (error instanceof InvalidStepTransitionException) {
         throw error;
       }
 
@@ -3133,45 +3127,6 @@ export class NodeSchedulerService {
     }
   }
 
-  private collectModelConfigIds(
-    nodeData: Record<string, unknown>,
-    input: Record<string, unknown>,
-  ): string[] {
-    const ids: string[] = [];
-    const seen = new Set<string>();
-
-    const appendIds = (value: unknown): void => {
-      for (const modelId of this.extractModelConfigIds(value)) {
-        if (!seen.has(modelId)) {
-          seen.add(modelId);
-          ids.push(modelId);
-        }
-      }
-    };
-
-    const fallbackPriority = Array.isArray(nodeData.fallbackPriority)
-      ? nodeData.fallbackPriority.filter(
-          (path): path is string => typeof path === 'string' && path.length > 0,
-        )
-      : [];
-
-    for (const path of fallbackPriority) {
-      appendIds(this.resolveJsonPath(input, path));
-    }
-
-    for (const value of Object.values(input)) {
-      appendIds(value);
-    }
-
-    if (Array.isArray(nodeData.modelConfigIds)) {
-      for (const id of nodeData.modelConfigIds) {
-        appendIds(id);
-      }
-    }
-
-    return ids;
-  }
-
   private async buildAgentTaskJobData(params: {
     executionId: string;
     tenantId: string;
@@ -3191,8 +3146,8 @@ export class NodeSchedulerService {
       sandboxBinding,
       memorySessionIds,
     } = params;
-    const smartRouting = this.extractSmartRoutingContext(input);
-    const nodeData = this.getRuntimeNodeData(step.nodeData ?? {});
+    const smartRouting = extractSmartRoutingContext(input);
+    const nodeData = getRuntimeNodeData(step.nodeData ?? {});
 
     if (smartRouting) {
       nodeData.llmModelConfigId = smartRouting.selectedModelId;
@@ -3203,7 +3158,7 @@ export class NodeSchedulerService {
       nodeData.llmModelConfigId.length === 0
     ) {
       const fallbackModelId = Object.values(input)
-        .flatMap((value) => this.extractStructuredModelConfigIds(value))
+        .flatMap((value) => extractStructuredModelConfigIds(value))
         .at(0);
       if (fallbackModelId) {
         nodeData.llmModelConfigId = fallbackModelId;
@@ -3243,7 +3198,7 @@ export class NodeSchedulerService {
         ...(sandboxBinding ? { hasSandbox: true } : {}),
         ...(Object.keys(workflowContext).length > 0 ? { workflowContext } : {}),
       },
-      ...(this.isFallbackChainStrategy(smartRouting?.strategy)
+      ...(isFallbackChainStrategy(smartRouting?.strategy)
         ? { options: { attempts: 1 } }
         : {}),
     };
@@ -3255,7 +3210,7 @@ export class NodeSchedulerService {
   ): Promise<Record<string, McpRuntimeConnection> | undefined> {
     if (!this.mcpService) return undefined;
 
-    const configIds = this.extractMcpServerConfigIds(input);
+    const configIds = extractMcpServerConfigIds(input);
     if (configIds.length === 0) return undefined;
 
     const servers: Record<string, McpRuntimeConnection> = {};
@@ -3274,179 +3229,6 @@ export class NodeSchedulerService {
     }
 
     return Object.keys(servers).length > 0 ? servers : undefined;
-  }
-
-  private extractMcpServerConfigIds(input: Record<string, unknown>): string[] {
-    const ids = new Set<string>();
-
-    const visit = (value: unknown): void => {
-      if (Array.isArray(value)) {
-        for (const item of value) {
-          visit(item);
-        }
-        return;
-      }
-
-      if (!this.isRecord(value)) {
-        return;
-      }
-
-      if (
-        value.type === 'mcp-tool' &&
-        typeof value.mcpServerConfigId === 'string'
-      ) {
-        ids.add(value.mcpServerConfigId);
-      }
-
-      for (const nestedValue of Object.values(value)) {
-        visit(nestedValue);
-      }
-    };
-
-    visit(input);
-
-    return [...ids];
-  }
-
-  private resolveSmartRoutingStrategyValue(
-    nodeData: Record<string, unknown>,
-  ): string {
-    if (
-      typeof nodeData.strategyName === 'string' &&
-      nodeData.strategyName.length > 0
-    ) {
-      return nodeData.strategyName;
-    }
-
-    if (typeof nodeData.strategy === 'string' && nodeData.strategy.length > 0) {
-      return nodeData.strategy;
-    }
-
-    return 'FALLBACK_CHAIN';
-  }
-
-  private resolveSmartRoutingStrategyConfig(
-    nodeData: Record<string, unknown>,
-  ): Record<string, unknown> | undefined {
-    if (this.isRecord(nodeData.strategyConfig)) {
-      return nodeData.strategyConfig;
-    }
-
-    if (this.isRecord(nodeData.strategy_config)) {
-      return nodeData.strategy_config;
-    }
-
-    return undefined;
-  }
-
-  private normalizeSmartRoutingStrategyName(strategy: string): string {
-    const normalized = strategy.trim();
-    const strategyAliases: Record<string, string> = {
-      TOKEN_OPTIMIZED: 'token_optimized',
-      COST_OPTIMIZED: 'cost_optimized',
-      QUALITY_FIRST: 'quality_first',
-      LATENCY_FIRST: 'latency_first',
-      HISTORICAL_BEST: 'historical_best',
-      FALLBACK_CHAIN: 'fallback_chain',
-      'memory-bank': 'memory_bank',
-      'wasm-plugin': 'wasm_plugin',
-    };
-
-    return strategyAliases[normalized] ?? normalized.toLowerCase();
-  }
-
-  private isFallbackChainStrategy(strategy?: string): boolean {
-    return Boolean(
-      strategy &&
-      this.normalizeSmartRoutingStrategyName(strategy) === 'fallback_chain',
-    );
-  }
-
-  private extractSmartRoutingQueryText(
-    nodeData: Record<string, unknown>,
-    input: Record<string, unknown>,
-  ): string | undefined {
-    return (
-      this.findFirstStringByKeys(nodeData, [
-        'queryText',
-        'query',
-        'promptText',
-        'prompt',
-        'content',
-        'text',
-      ]) ??
-      this.findFirstStringByKeys(input, [
-        'queryText',
-        'query',
-        'promptText',
-        'prompt',
-        'content',
-        'text',
-        'task',
-      ])
-    );
-  }
-
-  private extractSmartRoutingTaskCategory(
-    nodeData: Record<string, unknown>,
-    input: Record<string, unknown>,
-  ): string | undefined {
-    return (
-      this.findFirstStringByKeys(nodeData, [
-        'taskCategory',
-        'category',
-        'intent',
-      ]) ??
-      this.findFirstStringByKeys(input, ['taskCategory', 'category', 'intent'])
-    );
-  }
-
-  private findFirstStringByKeys(
-    value: unknown,
-    keys: string[],
-    seen: Set<object> = new Set<object>(),
-  ): string | undefined {
-    if (typeof value === 'string' && value.length > 0) {
-      return value;
-    }
-
-    if (!this.isRecord(value) && !Array.isArray(value)) {
-      return undefined;
-    }
-
-    if (typeof value === 'object' && value !== null) {
-      if (seen.has(value)) {
-        return undefined;
-      }
-      seen.add(value);
-    }
-
-    if (this.isRecord(value)) {
-      for (const key of keys) {
-        const directValue = value[key];
-        if (typeof directValue === 'string' && directValue.length > 0) {
-          return directValue;
-        }
-      }
-
-      for (const nestedValue of Object.values(value)) {
-        const nestedMatch = this.findFirstStringByKeys(nestedValue, keys, seen);
-        if (nestedMatch) {
-          return nestedMatch;
-        }
-      }
-
-      return undefined;
-    }
-
-    for (const item of value) {
-      const nestedMatch = this.findFirstStringByKeys(item, keys, seen);
-      if (nestedMatch) {
-        return nestedMatch;
-      }
-    }
-
-    return undefined;
   }
 
   private async loadRoutingCandidates(
@@ -3512,10 +3294,10 @@ export class NodeSchedulerService {
         modelConfig.providerSlug,
         modelConfig.modelId,
       );
-      const rawRoutingMeta = this.isRecord(routingMetadata?.routingMeta)
+      const rawRoutingMeta = isRecord(routingMetadata?.routingMeta)
         ? routingMetadata.routingMeta
         : undefined;
-      const rawCosts = this.isRecord(rawRoutingMeta?.costs)
+      const rawCosts = isRecord(rawRoutingMeta?.costs)
         ? rawRoutingMeta.costs
         : undefined;
 
@@ -3525,36 +3307,36 @@ export class NodeSchedulerService {
         name: modelConfig.name,
         provider: routingMetadata?.providerName ?? modelConfig.providerSlug,
         routingMeta: {
-          contextWindow: this.readNumber(
+          contextWindow: readNumber(
             rawRoutingMeta?.contextWindow,
             fallbackMeta.contextWindow,
           ),
           costs: {
-            input: this.readNumber(
+            input: readNumber(
               rawCosts?.inputPer1kTokens,
               fallbackMeta.costPer1kInputTokens,
             ),
-            output: this.readNumber(
+            output: readNumber(
               rawCosts?.outputPer1kTokens,
               fallbackMeta.costPer1kOutputTokens,
             ),
           },
-          qualityRank: this.readNumber(
+          qualityRank: readNumber(
             rawRoutingMeta?.qualityRank,
             fallbackMeta.qualityRank,
           ),
-          avgLatencyMs: this.readNumber(
+          avgLatencyMs: readNumber(
             rawRoutingMeta?.avgLatencyMs,
             fallbackMeta.avgLatencyMs,
           ),
-          maxInputTokens: this.readNumber(
+          maxInputTokens: readNumber(
             rawRoutingMeta?.maxInputTokens,
-            this.readNumber(
+            readNumber(
               rawRoutingMeta?.contextWindow,
               fallbackMeta.contextWindow,
             ),
           ),
-          eloRating: this.readNumber(routingMetadata?.eloRating, 1200),
+          eloRating: readNumber(routingMetadata?.eloRating, 1200),
         },
         healthStatus: 'healthy',
       });
@@ -3563,245 +3345,14 @@ export class NodeSchedulerService {
     return candidates;
   }
 
-  private mapRoutingDecisionScores(decision: RouterDecision): Array<{
-    modelId: string;
-    modelName: string;
-    provider: string;
-    score: number;
-    reasoning: string;
-  }> {
-    return decision.scores.map((score) => ({
-      modelId: score.modelId,
-      modelName: score.modelName,
-      provider: score.provider,
-      score: score.score,
-      reasoning: score.reasoning,
-    }));
-  }
-
-  private extractSmartRoutingContext(
-    input: Record<string, unknown>,
-  ): SmartRoutingRuntimeContext | undefined {
-    return this.findSmartRoutingContext(input, new Set<object>());
-  }
-
-  private findSmartRoutingContext(
-    value: unknown,
-    seen: Set<object>,
-  ): SmartRoutingRuntimeContext | undefined {
-    if (!value || typeof value !== 'object') {
-      return undefined;
-    }
-
-    if (this.isSmartRoutingRuntimeContext(value)) {
-      return value;
-    }
-
-    if (seen.has(value)) {
-      return undefined;
-    }
-    seen.add(value);
-
-    const children = Array.isArray(value) ? value : Object.values(value);
-    for (const child of children) {
-      const found = this.findSmartRoutingContext(child, seen);
-      if (found) {
-        return found;
-      }
-    }
-
-    return undefined;
-  }
-
-  private isSmartRoutingRuntimeContext(
-    value: unknown,
-  ): value is SmartRoutingRuntimeContext {
-    if (!this.isRecord(value)) {
-      return false;
-    }
-
-    return (
-      typeof value.routingStepId === 'string' &&
-      typeof value.routingNodeId === 'string' &&
-      typeof value.strategy === 'string' &&
-      typeof value.selectedModelId === 'string' &&
-      typeof value.currentModelIndex === 'number' &&
-      Array.isArray(value.candidateModelIds) &&
-      value.candidateModelIds.every((id) => typeof id === 'string')
-    );
-  }
-
-  private extractModelConfigIds(value: unknown): string[] {
-    if (typeof value === 'string' && value.length > 0) {
-      return [value];
-    }
-
-    if (Array.isArray(value)) {
-      return value.flatMap((item) => this.extractModelConfigIds(item));
-    }
-
-    if (!this.isRecord(value)) {
-      return [];
-    }
-
-    if (Array.isArray(value.candidateModelIds)) {
-      return value.candidateModelIds.filter(
-        (modelId): modelId is string =>
-          typeof modelId === 'string' && modelId.length > 0,
-      );
-    }
-
-    const directId =
-      typeof value.selectedModelId === 'string'
-        ? value.selectedModelId
-        : typeof value.llmModelConfigId === 'string'
-          ? value.llmModelConfigId
-          : typeof value.modelConfigId === 'string'
-            ? value.modelConfigId
-            : undefined;
-
-    if (directId) {
-      return [directId];
-    }
-
-    return Object.values(value).flatMap((item) =>
-      this.extractModelConfigIds(item),
-    );
-  }
-
-  private estimateTokenCount(value: unknown): number {
-    const serialized =
-      typeof value === 'string' ? value : JSON.stringify(value ?? {});
-
-    return Math.max(0, Math.ceil(serialized.length / 4));
-  }
-
-  private readNumber(value: unknown, fallback: number): number {
-    if (typeof value === 'number' && Number.isFinite(value)) {
-      return value;
-    }
-
-    if (typeof value === 'string') {
-      const parsed = Number(value);
-      if (Number.isFinite(parsed)) {
-        return parsed;
-      }
-    }
-
-    return fallback;
-  }
-
-  private readOptionalNumber(...values: unknown[]): number | undefined {
-    for (const value of values) {
-      if (typeof value === 'number' && Number.isFinite(value)) {
-        return value;
-      }
-
-      if (typeof value === 'string') {
-        const parsed = Number(value);
-        if (Number.isFinite(parsed)) {
-          return parsed;
-        }
-      }
-    }
-
-    return undefined;
-  }
-
-  private readFirstString(...values: unknown[]): string | undefined {
-    for (const value of values) {
-      if (typeof value === 'string' && value.trim().length > 0) {
-        return value.trim();
-      }
-    }
-
-    return undefined;
-  }
-
-  private readFirstDefined<T>(...values: T[]): T | undefined {
-    for (const value of values) {
-      if (value !== undefined) {
-        return value;
-      }
-    }
-
-    return undefined;
-  }
-
-  private readStringArray(...values: unknown[]): string[] {
-    for (const value of values) {
-      if (!Array.isArray(value)) {
-        continue;
-      }
-
-      return value.filter(
-        (item): item is string =>
-          typeof item === 'string' && item.trim().length > 0,
-      );
-    }
-
-    return [];
-  }
-
-  private readHttpMethod(
-    value: unknown,
-  ): 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' {
-    return value === 'POST' ||
-      value === 'PUT' ||
-      value === 'PATCH' ||
-      value === 'DELETE'
-      ? value
-      : 'GET';
-  }
-
-  private getRuntimeNodeData(
-    nodeData: Record<string, unknown>,
-  ): Record<string, unknown> {
-    const config = this.isRecord(nodeData.config) ? nodeData.config : {};
-    return { ...config, ...nodeData };
-  }
-
-  private resolveTextNodeContent(nodeData: Record<string, unknown>): string {
-    const config = this.isRecord(nodeData.config) ? nodeData.config : undefined;
-
-    const candidates = [
-      config?.text,
-      config?.value,
-      config?.content,
-      nodeData.text,
-      nodeData.value,
-      nodeData.content,
-    ];
-
-    for (const candidate of candidates) {
-      if (typeof candidate === 'string') {
-        return candidate;
-      }
-    }
-
-    return '';
-  }
-
-  private readEdgeHandle(
-    edge: ReactFlowEdge,
-    handleKind: 'source' | 'target',
-  ): string | undefined {
-    const rawEdge = edge as unknown as Record<string, unknown>;
-
-    return this.readFirstString(
-      handleKind === 'source' ? edge.sourceHandle : edge.targetHandle,
-      rawEdge[`${handleKind}_handle`],
-    );
-  }
-
   // ── 私有辅助 ───────────────────────────────────────────────
 
   private getWorkflowAgentDefinitionId(
     nodeData: Record<string, unknown>,
   ): string | undefined {
-    const runtimeNodeData = this.getRuntimeNodeData(nodeData);
+    const runtimeNodeData = getRuntimeNodeData(nodeData);
 
-    return this.readFirstString(
+    return readFirstString(
       runtimeNodeData.agentDefinitionId,
       runtimeNodeData.agent_definition_id,
       runtimeNodeData.selectedAgentId,
@@ -3812,8 +3363,8 @@ export class NodeSchedulerService {
   private getWorkflowAgentRuntimeMode(
     nodeData: Record<string, unknown>,
   ): 'sandbox' | 'no_sandbox' {
-    const runtimeNodeData = this.getRuntimeNodeData(nodeData);
-    const runtimeMode = this.readFirstString(
+    const runtimeNodeData = getRuntimeNodeData(nodeData);
+    const runtimeMode = readFirstString(
       runtimeNodeData.agentRuntimeMode,
       runtimeNodeData.agent_runtime_mode,
       runtimeNodeData.runtimeMode,
@@ -3934,9 +3485,7 @@ export class NodeSchedulerService {
 
       await this.onNodeCompleted(executionId, step.id, tenantId);
     } catch (error) {
-      if (
-        error instanceof InvalidStepTransitionException
-      ) {
+      if (error instanceof InvalidStepTransitionException) {
         throw error;
       }
 
@@ -4000,7 +3549,7 @@ export class NodeSchedulerService {
     sandboxNodeId?: string,
     workspaceSnapshotId?: string,
   ): Record<string, unknown> {
-    const rawCheckpoint = this.isRecord(checkpointData) ? checkpointData : {};
+    const rawCheckpoint = isRecord(checkpointData) ? checkpointData : {};
     const {
       sandboxNodeId: _sandboxNodeId,
       serverSandbox: _serverSandbox,
@@ -4042,7 +3591,7 @@ export class NodeSchedulerService {
     } = {},
   ): SandboxConfig {
     const sandboxConfigSource = this.getSandboxConfigSource(nodeData);
-    const lifecycleModeValue = this.readFirstString(
+    const lifecycleModeValue = readFirstString(
       sandboxConfigSource.lifecycleMode,
       sandboxConfigSource.lifecycle_mode,
     );
@@ -4052,34 +3601,34 @@ export class NodeSchedulerService {
         : lifecycleModeValue === 'session'
           ? 'session'
           : undefined;
-    const restoreWorkspaceId = this.readFirstString(
+    const restoreWorkspaceId = readFirstString(
       overrides.restoreWorkspaceId,
       sandboxConfigSource.restoreWorkspaceId,
       sandboxConfigSource.restore_workspace_id,
     );
-    const persistencePath = this.readFirstString(
+    const persistencePath = readFirstString(
       sandboxConfigSource.persistencePath,
       sandboxConfigSource.persistence_path,
     );
-    const persistenceExpiryHours = this.readOptionalNumber(
+    const persistenceExpiryHours = readOptionalNumber(
       sandboxConfigSource.persistenceExpiryHours,
       sandboxConfigSource.persistence_expiry_hours,
     );
-    const name = this.readFirstString(
+    const name = readFirstString(
       sandboxConfigSource.name,
       sandboxConfigSource.persistentSandboxName,
       sandboxConfigSource.persistent_sandbox_name,
     );
-    const persistentSandboxId = this.readFirstString(
+    const persistentSandboxId = readFirstString(
       sandboxConfigSource.persistentSandboxId,
       sandboxConfigSource.persistent_sandbox_id,
     );
 
     return {
-      cpu: this.readNumber(sandboxConfigSource.cpu, 1),
-      memory: this.readNumber(sandboxConfigSource.memory, 512),
-      disk: this.readNumber(sandboxConfigSource.disk, 2),
-      timeout: this.readNumber(sandboxConfigSource.timeout, 0),
+      cpu: readNumber(sandboxConfigSource.cpu, 1),
+      memory: readNumber(sandboxConfigSource.memory, 512),
+      disk: readNumber(sandboxConfigSource.disk, 2),
+      timeout: readNumber(sandboxConfigSource.timeout, 0),
       ...(persistencePath ? { persistencePath } : {}),
       ...(restoreWorkspaceId ? { restoreWorkspaceId } : {}),
       ...(lifecycleMode ? { lifecycleMode } : {}),
@@ -4148,9 +3697,7 @@ export class NodeSchedulerService {
 
       await this.onNodeCompleted(executionId, step.id, tenantId);
     } catch (error) {
-      if (
-        error instanceof InvalidStepTransitionException
-      ) {
+      if (error instanceof InvalidStepTransitionException) {
         throw error;
       }
 
@@ -4186,8 +3733,8 @@ export class NodeSchedulerService {
     await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'running');
 
     try {
-      const nodeData = this.getRuntimeNodeData(step.nodeData ?? {});
-      const workspaceId = this.readFirstString(
+      const nodeData = getRuntimeNodeData(step.nodeData ?? {});
+      const workspaceId = readFirstString(
         nodeData.workspaceId,
         nodeData.workspace_id,
       );
@@ -4196,7 +3743,7 @@ export class NodeSchedulerService {
         throw new Error('Workspace node requires workspaceId');
       }
 
-      const workspaceName = this.readFirstString(
+      const workspaceName = readFirstString(
         nodeData.workspaceName,
         nodeData.workspace_name,
         nodeData.label,
@@ -4225,9 +3772,7 @@ export class NodeSchedulerService {
 
       await this.onNodeCompleted(executionId, step.id, tenantId);
     } catch (error) {
-      if (
-        error instanceof InvalidStepTransitionException
-      ) {
+      if (error instanceof InvalidStepTransitionException) {
         throw error;
       }
 
@@ -4298,9 +3843,7 @@ export class NodeSchedulerService {
 
       await this.onNodeCompleted(executionId, step.id, tenantId);
     } catch (error) {
-      if (
-        error instanceof InvalidStepTransitionException
-      ) {
+      if (error instanceof InvalidStepTransitionException) {
         throw error;
       }
 
@@ -4345,7 +3888,7 @@ export class NodeSchedulerService {
         .where(eq(schema.workflowExecutions.id, executionId))
         .limit(1);
 
-      const payload = this.extractExecutionInputPayload(execution?.inputParams);
+      const payload = extractExecutionInputPayload(execution?.inputParams);
       const result = {
         triggerType: execution?.triggerType ?? step.nodeType,
         payload,
@@ -4364,9 +3907,7 @@ export class NodeSchedulerService {
 
       await this.onNodeCompleted(executionId, step.id, tenantId);
     } catch (error) {
-      if (
-        error instanceof InvalidStepTransitionException
-      ) {
+      if (error instanceof InvalidStepTransitionException) {
         throw error;
       }
 
@@ -4402,8 +3943,8 @@ export class NodeSchedulerService {
     await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'running');
 
     try {
-      const nodeData = this.getRuntimeNodeData(step.nodeData ?? {});
-      const llmModelConfigId = this.readFirstString(
+      const nodeData = getRuntimeNodeData(step.nodeData ?? {});
+      const llmModelConfigId = readFirstString(
         nodeData.llmModelConfigId,
         nodeData.llm_config_id,
         nodeData.modelConfigId,
@@ -4418,11 +3959,11 @@ export class NodeSchedulerService {
         llmModelConfigId,
         modelConfigId: llmModelConfigId,
         modelId: llmModelConfigId,
-        ...(this.readFirstString(nodeData.provider)
+        ...(readFirstString(nodeData.provider)
           ? { provider: nodeData.provider }
           : {}),
-        ...(this.readFirstString(nodeData.name) ? { name: nodeData.name } : {}),
-        ...(this.readFirstString(nodeData.modelName)
+        ...(readFirstString(nodeData.name) ? { name: nodeData.name } : {}),
+        ...(readFirstString(nodeData.modelName)
           ? { modelName: nodeData.modelName }
           : {}),
         'exec-out': {
@@ -4453,9 +3994,7 @@ export class NodeSchedulerService {
 
       await this.onNodeCompleted(executionId, step.id, tenantId);
     } catch (error) {
-      if (
-        error instanceof InvalidStepTransitionException
-      ) {
+      if (error instanceof InvalidStepTransitionException) {
         throw error;
       }
 
@@ -4491,17 +4030,17 @@ export class NodeSchedulerService {
     await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'running');
 
     try {
-      const nodeData = this.getRuntimeNodeData(step.nodeData ?? {});
-      const knowledgeBaseId = this.readFirstString(
+      const nodeData = getRuntimeNodeData(step.nodeData ?? {});
+      const knowledgeBaseId = readFirstString(
         nodeData.knowledgeBaseId,
         nodeData.knowledge_base_id,
       );
-      const knowledgeBaseName = this.readFirstString(
+      const knowledgeBaseName = readFirstString(
         nodeData.knowledgeBaseName,
         nodeData.knowledge_base_name,
       );
-      const topK = this.readOptionalNumber(nodeData.topK, nodeData.top_k);
-      const similarityThreshold = this.readOptionalNumber(
+      const topK = readOptionalNumber(nodeData.topK, nodeData.top_k);
+      const similarityThreshold = readOptionalNumber(
         nodeData.similarityThreshold,
         nodeData.similarity_threshold,
       );
@@ -4539,9 +4078,7 @@ export class NodeSchedulerService {
 
       await this.onNodeCompleted(executionId, step.id, tenantId);
     } catch (error) {
-      if (
-        error instanceof InvalidStepTransitionException
-      ) {
+      if (error instanceof InvalidStepTransitionException) {
         throw error;
       }
 
@@ -4577,8 +4114,8 @@ export class NodeSchedulerService {
     await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'running');
 
     try {
-      const nodeData = this.isRecord(step.nodeData) ? step.nodeData : {};
-      const content = this.resolveTextNodeContent(nodeData);
+      const nodeData = isRecord(step.nodeData) ? step.nodeData : {};
+      const content = resolveTextNodeContent(nodeData);
       const result = {
         content,
         text: content,
@@ -4594,9 +4131,7 @@ export class NodeSchedulerService {
 
       await this.onNodeCompleted(executionId, step.id, tenantId);
     } catch (error) {
-      if (
-        error instanceof InvalidStepTransitionException
-      ) {
+      if (error instanceof InvalidStepTransitionException) {
         throw error;
       }
 
@@ -4633,11 +4168,11 @@ export class NodeSchedulerService {
     await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'running');
 
     try {
-      const rawOutput = this.extractOutputValue(input);
+      const rawOutput = extractOutputValue(input);
       const content =
         step.nodeType === 'text-output'
-          ? this.stringifyOutputValue(rawOutput)
-          : this.normalizeJsonOutputValue(rawOutput);
+          ? stringifyOutputValue(rawOutput)
+          : normalizeJsonOutputValue(rawOutput);
       const result =
         step.nodeType === 'text-output' ? { content } : { json: content };
 
@@ -4650,9 +4185,7 @@ export class NodeSchedulerService {
 
       await this.onNodeCompleted(executionId, step.id, tenantId);
     } catch (error) {
-      if (
-        error instanceof InvalidStepTransitionException
-      ) {
+      if (error instanceof InvalidStepTransitionException) {
         throw error;
       }
 
@@ -4687,22 +4220,22 @@ export class NodeSchedulerService {
     const sandboxConfig = nodeData.sandboxConfig;
     const globalSandboxConfig = nodeData.globalSandboxConfig;
 
-    if (this.isRecord(nestedConfig)) {
+    if (isRecord(nestedConfig)) {
       return nestedConfig;
     }
 
-    if (this.isRecord(sandboxConfig)) {
+    if (isRecord(sandboxConfig)) {
       return sandboxConfig;
     }
 
     if (
-      this.isRecord(globalSandboxConfig) &&
-      this.isRecord(globalSandboxConfig.sandboxConfig)
+      isRecord(globalSandboxConfig) &&
+      isRecord(globalSandboxConfig.sandboxConfig)
     ) {
       return globalSandboxConfig.sandboxConfig;
     }
 
-    if (this.isRecord(globalSandboxConfig)) {
+    if (isRecord(globalSandboxConfig)) {
       return globalSandboxConfig;
     }
 
@@ -4714,8 +4247,8 @@ export class NodeSchedulerService {
     tenantId: string,
     executionId: string,
   ): MemoryResourceConfig {
-    const memoryConfigSource = this.getRuntimeNodeData(nodeData);
-    const memoryInstanceId = this.readFirstString(
+    const memoryConfigSource = getRuntimeNodeData(nodeData);
+    const memoryInstanceId = readFirstString(
       memoryConfigSource.memoryInstanceId,
       memoryConfigSource.memory_instance_id,
     );
@@ -4732,7 +4265,7 @@ export class NodeSchedulerService {
             memoryConfigSource.boot_uris.every((uri) => typeof uri === 'string')
           ? memoryConfigSource.boot_uris
           : [];
-    const fusionPriority = this.readOptionalNumber(
+    const fusionPriority = readOptionalNumber(
       memoryConfigSource.fusionPriority,
       memoryConfigSource.fusion_priority,
     );
@@ -4745,10 +4278,6 @@ export class NodeSchedulerService {
       tenantId,
       executionId,
     };
-  }
-
-  private isRecord(value: unknown): value is Record<string, unknown> {
-    return typeof value === 'object' && value !== null && !Array.isArray(value);
   }
 
   private getSandboxSourceStep(
@@ -4808,11 +4337,11 @@ export class NodeSchedulerService {
   }
 
   private readSandboxSessionId(value: unknown): string | undefined {
-    if (!this.isRecord(value)) {
+    if (!isRecord(value)) {
       return undefined;
     }
 
-    return this.readFirstString(value.sessionId, value.session_id);
+    return readFirstString(value.sessionId, value.session_id);
   }
 
   private getSandboxRestoreWorkspaceId(
@@ -4830,16 +4359,12 @@ export class NodeSchedulerService {
         continue;
       }
 
-      const nodeData = this.isRecord(sourceStep.nodeData)
-        ? sourceStep.nodeData
-        : {};
-      const config = this.isRecord(nodeData.config)
-        ? nodeData.config
-        : nodeData;
+      const nodeData = isRecord(sourceStep.nodeData) ? sourceStep.nodeData : {};
+      const config = isRecord(nodeData.config) ? nodeData.config : nodeData;
       const workspaceId =
         typeof config.workspaceId === 'string' && config.workspaceId.trim()
           ? config.workspaceId.trim()
-          : this.isRecord(sourceStep.result) &&
+          : isRecord(sourceStep.result) &&
               typeof sourceStep.result.workspaceId === 'string' &&
               sourceStep.result.workspaceId.trim()
             ? sourceStep.result.workspaceId.trim()
@@ -4853,266 +4378,6 @@ export class NodeSchedulerService {
     return undefined;
   }
 
-  private buildHttpToolRequestInput(
-    nodeData: Record<string, unknown>,
-    input: Record<string, unknown>,
-  ): Record<string, unknown> {
-    const dynamicRequest = this.extractHttpToolDynamicRequest(input);
-    const staticQueryParams = this.readFirstDefined(
-      nodeData.queryParams,
-      nodeData.query_params,
-    );
-    const headers = {
-      ...this.keyValuePairsToRecord(nodeData.headers),
-      ...this.buildHttpToolAuthHeaders(nodeData),
-      ...this.extractHttpToolHeaders(dynamicRequest.headers),
-    };
-    const query = {
-      ...this.keyValuePairsToRecord(staticQueryParams, true),
-      ...this.buildHttpToolAuthQuery(nodeData),
-      ...this.extractHttpToolQuery(dynamicRequest.query),
-    };
-    const request: Record<string, unknown> = {};
-
-    if (Object.keys(headers).length > 0) {
-      request.headers = headers;
-    }
-
-    if (Object.keys(query).length > 0) {
-      request.query = query;
-    }
-
-    const requestBody = this.resolveHttpToolRequestBody(
-      nodeData,
-      dynamicRequest,
-    );
-    if (requestBody !== undefined) {
-      request.body = requestBody;
-    }
-
-    return request;
-  }
-
-  private resolveHttpToolRequestBody(
-    nodeData: Record<string, unknown>,
-    dynamicRequest: Record<string, unknown>,
-  ): unknown {
-    if (Object.prototype.hasOwnProperty.call(dynamicRequest, 'body')) {
-      return dynamicRequest.body;
-    }
-
-    if (
-      Object.keys(dynamicRequest).length > 0 &&
-      !Object.prototype.hasOwnProperty.call(dynamicRequest, 'query') &&
-      !Object.prototype.hasOwnProperty.call(dynamicRequest, 'headers')
-    ) {
-      return dynamicRequest;
-    }
-
-    if (
-      typeof nodeData.body !== 'string' ||
-      nodeData.body.trim().length === 0
-    ) {
-      return undefined;
-    }
-
-    return this.parseJsonLikeValue(nodeData.body);
-  }
-
-  private extractHttpToolDynamicRequest(
-    input: Record<string, unknown>,
-  ): Record<string, unknown> {
-    const requestValue =
-      Object.prototype.hasOwnProperty.call(input, 'request-in') &&
-      input['request-in'] !== undefined
-        ? input['request-in']
-        : Object.prototype.hasOwnProperty.call(input, 'request') &&
-            input.request !== undefined
-          ? input.request
-          : this.stripExecOnlyInputs(input);
-
-    if (requestValue === undefined) {
-      return {};
-    }
-
-    if (this.isRecord(requestValue)) {
-      return requestValue;
-    }
-
-    return { body: requestValue };
-  }
-
-  private stripExecOnlyInputs(
-    input: Record<string, unknown>,
-  ): Record<string, unknown> | undefined {
-    const entries = Object.entries(input).filter(
-      ([key]) => key !== 'exec-in' && key !== 'exec_in',
-    );
-    if (entries.length === 0) {
-      return undefined;
-    }
-
-    return Object.fromEntries(entries);
-  }
-
-  private extractHttpToolHeaders(value: unknown): Record<string, string> {
-    if (!this.isRecord(value)) {
-      return {};
-    }
-
-    return Object.fromEntries(
-      Object.entries(value).filter(
-        (entry): entry is [string, string] => typeof entry[1] === 'string',
-      ),
-    );
-  }
-
-  private extractHttpToolQuery(value: unknown): Record<string, unknown> {
-    return this.isRecord(value) ? value : {};
-  }
-
-  private buildHttpToolAuthHeaders(
-    nodeData: Record<string, unknown>,
-  ): Record<string, string> {
-    const authType = this.readFirstString(
-      nodeData.authType,
-      nodeData.auth_type,
-    );
-    const authConfig = this.isRecord(nodeData.authConfig)
-      ? nodeData.authConfig
-      : this.isRecord(nodeData.auth_config)
-        ? nodeData.auth_config
-        : undefined;
-    if (!authType || !authConfig) {
-      return {};
-    }
-
-    if (authType === 'bearer') {
-      const token = this.readFirstString(authConfig.token);
-      return token ? { Authorization: `Bearer ${token}` } : {};
-    }
-
-    if (authType === 'basic') {
-      const username = this.readFirstString(authConfig.username);
-      const password = this.readFirstString(authConfig.password);
-      return username !== undefined && password !== undefined
-        ? {
-            Authorization: `Basic ${Buffer.from(`${username}:${password}`).toString('base64')}`,
-          }
-        : {};
-    }
-
-    if (
-      authType === 'api-key' &&
-      this.readFirstString(authConfig.location) !== 'query'
-    ) {
-      const keyName = this.readFirstString(
-        authConfig.keyName,
-        authConfig.key_name,
-      );
-      const keyValue = this.readFirstString(
-        authConfig.keyValue,
-        authConfig.key_value,
-      );
-      return keyName && keyValue ? { [keyName]: keyValue } : {};
-    }
-
-    return {};
-  }
-
-  private buildHttpToolAuthQuery(
-    nodeData: Record<string, unknown>,
-  ): Record<string, unknown> {
-    const authType = this.readFirstString(
-      nodeData.authType,
-      nodeData.auth_type,
-    );
-    const authConfig = this.isRecord(nodeData.authConfig)
-      ? nodeData.authConfig
-      : this.isRecord(nodeData.auth_config)
-        ? nodeData.auth_config
-        : undefined;
-
-    if (authType !== 'api-key' || !authConfig) {
-      return {};
-    }
-
-    const location = this.readFirstString(authConfig.location) ?? 'header';
-    if (location !== 'query') {
-      return {};
-    }
-
-    const keyName = this.readFirstString(
-      authConfig.keyName,
-      authConfig.key_name,
-    );
-    const keyValue = this.readFirstString(
-      authConfig.keyValue,
-      authConfig.key_value,
-    );
-
-    return keyName && keyValue ? { [keyName]: keyValue } : {};
-  }
-
-  private keyValuePairsToRecord(
-    value: unknown,
-    parseJsonValue = false,
-  ): Record<string, unknown> {
-    if (!Array.isArray(value)) {
-      return {};
-    }
-
-    const result: Record<string, unknown> = {};
-
-    for (const entry of value) {
-      if (!this.isRecord(entry)) {
-        continue;
-      }
-
-      const key = this.readFirstString(entry.key);
-      if (!key || typeof entry.value !== 'string') {
-        continue;
-      }
-
-      result[key] = parseJsonValue
-        ? this.parseJsonLikeValue(entry.value)
-        : entry.value;
-    }
-
-    return result;
-  }
-
-  private parseJsonLikeValue(value: string): unknown {
-    const trimmed = value.trim();
-    if (!trimmed) {
-      return '';
-    }
-
-    try {
-      return JSON.parse(trimmed);
-    } catch {
-      return trimmed;
-    }
-  }
-
-  private extractCodeToolInputPayload(input: Record<string, unknown>): unknown {
-    if (Object.prototype.hasOwnProperty.call(input, 'input-in')) {
-      return input['input-in'];
-    }
-
-    if (Object.prototype.hasOwnProperty.call(input, 'input')) {
-      return input.input;
-    }
-
-    const stripped = this.stripExecOnlyInputs(input);
-    if (!stripped) {
-      return {};
-    }
-
-    const values = Object.values(stripped);
-    return values.length === 1 ? values[0] : stripped;
-  }
-
   private extractConfiguredMcpTools(
     nodeData: Record<string, unknown>,
     enabledToolIds: string[],
@@ -5124,7 +4389,7 @@ export class NodeSchedulerService {
   }> {
     const tools = Array.isArray(nodeData.tools) ? nodeData.tools : [];
     const selectedTools = tools
-      .filter((tool) => this.isRecord(tool))
+      .filter((tool) => isRecord(tool))
       .filter((tool) => {
         if (enabledToolIds.length === 0) {
           return true;
@@ -5134,7 +4399,7 @@ export class NodeSchedulerService {
       })
       .map((tool) => {
         const toolRecord = tool as Record<string, unknown>;
-        const toolName = this.readFirstString(
+        const toolName = readFirstString(
           toolRecord.toolName,
           toolRecord.name,
           toolRecord.title,
@@ -5148,12 +4413,12 @@ export class NodeSchedulerService {
           ...(typeof toolRecord.id === 'string'
             ? { mcpToolDefinitionId: toolRecord.id }
             : {}),
-          ...(this.isRecord(toolRecord.inputSchema)
+          ...(isRecord(toolRecord.inputSchema)
             ? { inputSchema: toolRecord.inputSchema }
             : {}),
-          ...(this.isRecord(toolRecord.portMapping)
+          ...(isRecord(toolRecord.portMapping)
             ? { portMapping: toolRecord.portMapping }
-            : this.isRecord(toolRecord.portMappingMetadata)
+            : isRecord(toolRecord.portMappingMetadata)
               ? { portMapping: toolRecord.portMappingMetadata }
               : {}),
         };
@@ -5173,7 +4438,7 @@ export class NodeSchedulerService {
       return selectedTools;
     }
 
-    const fallbackToolName = this.readFirstString(
+    const fallbackToolName = readFirstString(
       nodeData.toolName,
       nodeData.tool_name,
     );
@@ -5187,12 +4452,12 @@ export class NodeSchedulerService {
         ...(typeof nodeData.mcpToolDefinitionId === 'string'
           ? { mcpToolDefinitionId: nodeData.mcpToolDefinitionId }
           : {}),
-        ...(this.isRecord(nodeData.inputSchema)
+        ...(isRecord(nodeData.inputSchema)
           ? { inputSchema: nodeData.inputSchema }
           : {}),
-        ...(this.isRecord(nodeData.portMapping)
+        ...(isRecord(nodeData.portMapping)
           ? { portMapping: nodeData.portMapping }
-          : this.isRecord(nodeData.portMappingMetadata)
+          : isRecord(nodeData.portMappingMetadata)
             ? { portMapping: nodeData.portMappingMetadata }
             : {}),
       },
@@ -5211,10 +4476,7 @@ export class NodeSchedulerService {
       const sourceStep = steps.find(
         (candidate) => candidate.nodeId === edge.source,
       );
-      if (
-        sourceStep?.nodeType !== 'memory' ||
-        !this.isRecord(sourceStep.result)
-      ) {
+      if (sourceStep?.nodeType !== 'memory' || !isRecord(sourceStep.result)) {
         continue;
       }
 
@@ -5359,207 +4621,18 @@ export class NodeSchedulerService {
     };
   }
 
-  private evaluateExpression(
-    expression: string,
-    input: Record<string, unknown>,
-  ): unknown {
-    const script = new Script(`(${expression})`);
-
-    return script.runInNewContext(
-      {
-        input,
-        flatInput: this.flattenInput(input),
-        ports: this.buildExpressionPorts(input),
-      },
-      { timeout: 1000 },
-    );
-  }
-
-  private normalizeTransformResult(result: unknown): Record<string, unknown> {
-    if (
-      result !== null &&
-      typeof result === 'object' &&
-      !Array.isArray(result)
-    ) {
-      return result as Record<string, unknown>;
-    }
-
-    return { value: result };
-  }
-
-  private extractExecutionInputPayload(
-    inputParams: Record<string, unknown> | null | undefined,
-  ): Record<string, unknown> {
-    if (!this.isRecord(inputParams)) {
-      return {};
-    }
-
-    const payload = { ...inputParams };
-    delete payload._meta;
-    return payload;
-  }
-
-  private normalizeLoopItemsInput(input: Record<string, unknown>): unknown[] {
-    const directCandidates = [
-      input['items-in'],
-      input.items,
-      input.json,
-      input.value,
-      input.content,
-      this.flattenInput(input)['items-in'],
-      this.flattenInput(input).items,
-      this.flattenInput(input).json,
-      this.flattenInput(input).value,
-      this.flattenInput(input).content,
-    ];
-
-    for (const candidate of directCandidates) {
-      const normalized = this.extractLoopItemsCandidate(candidate);
-      if (normalized) {
-        return normalized;
-      }
-    }
-
-    const fallbackEntries = Object.entries(input).filter(
-      ([key]) => key !== 'exec-in' && key !== 'exec_in',
-    );
-
-    if (fallbackEntries.length === 1) {
-      return this.coerceLoopItems(fallbackEntries[0][1]);
-    }
-
-    for (const [, value] of fallbackEntries) {
-      const normalized = this.extractLoopItemsCandidate(value);
-      if (normalized) {
-        return normalized;
-      }
-    }
-
-    return [];
-  }
-
-  private extractLoopItemsCandidate(value: unknown): unknown[] | undefined {
-    if (Array.isArray(value)) {
-      return value;
-    }
-
-    if (!this.isRecord(value)) {
-      return value === undefined || value === null ? undefined : [value];
-    }
-
-    const nestedCandidates = [
-      value.items,
-      value.json,
-      value.value,
-      value.content,
-      value.payload,
-    ];
-
-    for (const candidate of nestedCandidates) {
-      if (Array.isArray(candidate)) {
-        return candidate;
-      }
-    }
-
-    return undefined;
-  }
-
-  private coerceLoopItems(value: unknown): unknown[] {
-    if (Array.isArray(value)) {
-      return value;
-    }
-
-    if (value === undefined || value === null) {
-      return [];
-    }
-
-    return [value];
-  }
-
-  private extractOutputValue(input: Record<string, unknown>): unknown {
-    if (Object.prototype.hasOwnProperty.call(input, 'content-in')) {
-      return input['content-in'];
-    }
-
-    if (Object.prototype.hasOwnProperty.call(input, 'content')) {
-      return input.content;
-    }
-
-    if (Object.prototype.hasOwnProperty.call(input, 'json')) {
-      return input.json;
-    }
-
-    if (Object.prototype.hasOwnProperty.call(input, 'value')) {
-      return input.value;
-    }
-
-    const values = Object.values(input);
-    if (values.length === 1) {
-      return values[0];
-    }
-
-    return input;
-  }
-
-  private extractStructuredModelConfigIds(value: unknown): string[] {
-    if (!this.isRecord(value)) {
-      return [];
-    }
-
-    if (Array.isArray(value.candidateModelIds)) {
-      return value.candidateModelIds.filter(
-        (modelId): modelId is string =>
-          typeof modelId === 'string' && modelId.length > 0,
-      );
-    }
-
-    const directId = this.readFirstString(
-      value.selectedModelId,
-      value.llmModelConfigId,
-      value.modelConfigId,
-    );
-
-    if (directId) {
-      return [directId];
-    }
-
-    return Object.values(value).flatMap((item) =>
-      this.extractStructuredModelConfigIds(item),
-    );
-  }
-
-  private stringifyOutputValue(value: unknown): string {
-    if (typeof value === 'string') {
-      return value;
-    }
-
-    if (value === undefined) {
-      return '';
-    }
-
-    return JSON.stringify(value ?? null);
-  }
-
-  private normalizeJsonOutputValue(value: unknown): Record<string, unknown> {
-    if (this.isRecord(value)) {
-      return value;
-    }
-
-    return { value };
-  }
-
   private resolveSourceHandleValue(
     sourceStep: ExecutionStep,
     sourceHandle: string,
   ): unknown {
-    if (!this.isRecord(sourceStep.result)) {
+    if (!isRecord(sourceStep.result)) {
       return undefined;
     }
 
-    const resolved = this.resolveJsonPath(sourceStep.result, sourceHandle);
+    const resolved = resolveJsonPath(sourceStep.result, sourceHandle);
     if (resolved !== undefined) {
-      if (this.isConditionNode(sourceStep.nodeType)) {
-        return this.unwrapConditionBranchPayload(sourceHandle, resolved);
+      if (isConditionNode(sourceStep.nodeType)) {
+        return unwrapConditionBranchPayload(sourceHandle, resolved);
       }
 
       return resolved;
@@ -5594,7 +4667,7 @@ export class NodeSchedulerService {
         if (sourceHandle === 'exec-out' || sourceHandle === 'exec_out') {
           return sourceStep.result['exec-out'] ?? sourceStep.result.exec_out;
         }
-        if (this.isRecord(sourceStep.result.payload)) {
+        if (isRecord(sourceStep.result.payload)) {
           return sourceStep.result.payload[sourceHandle];
         }
         return undefined;
@@ -5636,87 +4709,6 @@ export class NodeSchedulerService {
     }
   }
 
-  private isConditionNode(nodeType: string | null | undefined): boolean {
-    return nodeType === 'condition' || nodeType === 'conditional';
-  }
-
-  private unwrapConditionBranchPayload(
-    sourceHandle: string,
-    value: unknown,
-  ): unknown {
-    // 识别条件分支 handle（新格式 branch-N/else + 旧格式 matched/unmatched）
-    const isConditionHandle =
-      sourceHandle.startsWith('branch-') ||
-      sourceHandle === 'else' ||
-      sourceHandle === 'matched-out' ||
-      sourceHandle === 'unmatched-out' ||
-      sourceHandle === 'matched' ||
-      sourceHandle === 'unmatched' ||
-      sourceHandle === 'true' ||
-      sourceHandle === 'false';
-
-    if (!isConditionHandle) {
-      return value;
-    }
-
-    if (!this.isRecord(value)) {
-      return value;
-    }
-
-    const keys = Object.keys(value);
-    if (keys.length === 1 && (keys[0] === 'input-in' || keys[0] === 'input')) {
-      return value[keys[0]];
-    }
-
-    return value;
-  }
-
-  private normalizeConditionBranch(branch: string): string {
-    // 新格式: branch-0, branch-1, ..., else
-    if (branch.startsWith('branch-') || branch === 'else') {
-      return branch;
-    }
-
-    // 旧格式: matched/true → branch-0, unmatched/false → else
-    if (branch === 'true' || branch === 'matched') {
-      return 'branch-0';
-    }
-
-    return 'else';
-  }
-
-  private normalizeConditionSourceHandle(
-    sourceHandle?: string,
-  ): string | undefined {
-    if (!sourceHandle) {
-      return undefined;
-    }
-
-    // 新格式 handle: branch-0, branch-1, ..., else
-    if (sourceHandle.startsWith('branch-') || sourceHandle === 'else') {
-      return sourceHandle;
-    }
-
-    // 旧格式 handle → 映射到新格式
-    if (
-      sourceHandle === 'matched-out' ||
-      sourceHandle === 'true' ||
-      sourceHandle === 'matched'
-    ) {
-      return 'branch-0';
-    }
-
-    if (
-      sourceHandle === 'unmatched-out' ||
-      sourceHandle === 'false' ||
-      sourceHandle === 'unmatched'
-    ) {
-      return 'else';
-    }
-
-    return undefined;
-  }
-
   /**
    * 条件节点分支处理：匹配分支正常调度，不匹配分支跳过。
    */
@@ -5728,14 +4720,14 @@ export class NodeSchedulerService {
     steps: ExecutionStep[],
     tenantId: string,
   ): Promise<void> {
-    const normalizedBranch = this.normalizeConditionBranch(branch);
+    const normalizedBranch = normalizeConditionBranch(branch);
     const outgoingEdges = snapshot.edges.filter(
       (e) => e.source === conditionalNodeId,
     );
 
     for (const edge of outgoingEdges) {
-      const normalizedHandle = this.normalizeConditionSourceHandle(
-        this.readEdgeHandle(edge, 'source'),
+      const normalizedHandle = normalizeConditionSourceHandle(
+        readEdgeHandle(edge, 'source'),
       );
 
       if (!normalizedHandle || normalizedHandle === normalizedBranch) {
@@ -5823,8 +4815,7 @@ export class NodeSchedulerService {
     const requiredTargetHandles = this.getRequiredInputHandles(nodeId, steps);
     for (const requiredTargetHandle of requiredTargetHandles) {
       const connectedRequiredEdges = incomingDependencies.filter(
-        ({ edge }) =>
-          this.readEdgeHandle(edge, 'target') === requiredTargetHandle,
+        ({ edge }) => readEdgeHandle(edge, 'target') === requiredTargetHandle,
       );
 
       if (connectedRequiredEdges.length === 0) {
@@ -5848,7 +4839,7 @@ export class NodeSchedulerService {
     steps: ExecutionStep[],
   ): Set<string> {
     const targetStep = steps.find((step) => step.nodeId === nodeId);
-    if (!targetStep || !this.isRecord(targetStep.nodeData)) {
+    if (!targetStep || !isRecord(targetStep.nodeData)) {
       return new Set();
     }
 
@@ -5861,7 +4852,7 @@ export class NodeSchedulerService {
 
     return new Set(
       inputPorts.flatMap((port) => {
-        if (!this.isRecord(port) || port.required !== true) {
+        if (!isRecord(port) || port.required !== true) {
           return [];
         }
 
@@ -5870,569 +4861,5 @@ export class NodeSchedulerService {
           : [];
       }),
     );
-  }
-
-  /**
-   * 简单 JSON 路径解析（支持 `key.nested.field` 与 `items[0].name` 格式）。
-   */
-  private resolveJsonPath(obj: Record<string, unknown>, path: string): unknown {
-    if (!path) {
-      return obj;
-    }
-
-    const segments = path
-      .replace(/\[(\d+)\]/g, '.$1')
-      .split('.')
-      .filter(Boolean);
-
-    return segments.reduce<unknown>((acc, key) => {
-      if (Array.isArray(acc)) {
-        const index = Number.parseInt(key, 10);
-        return Number.isFinite(index) ? acc[index] : undefined;
-      }
-
-      if (acc && typeof acc === 'object') {
-        return (acc as Record<string, unknown>)[key];
-      }
-
-      return undefined;
-    }, obj);
-  }
-
-  private setValueAtPath(
-    target: Record<string, unknown>,
-    path: string,
-    value: unknown,
-  ): void {
-    const segments = path.split('.').filter(Boolean);
-    if (segments.length === 0) {
-      return;
-    }
-
-    let cursor = target;
-
-    for (const [index, segment] of segments.entries()) {
-      const isLeaf = index === segments.length - 1;
-
-      if (isLeaf) {
-        const existingValue = cursor[segment];
-        if (existingValue === undefined) {
-          cursor[segment] = value;
-          return;
-        }
-
-        if (Array.isArray(existingValue)) {
-          existingValue.push(value);
-          cursor[segment] = existingValue;
-          return;
-        }
-
-        cursor[segment] = [existingValue, value];
-        return;
-      }
-
-      const next = cursor[segment];
-      if (!next || typeof next !== 'object' || Array.isArray(next)) {
-        cursor[segment] = {};
-      }
-
-      cursor = cursor[segment] as Record<string, unknown>;
-    }
-  }
-
-  /**
-   * 扁平化输入：将 `{ [nodeId]: { field: value } }` 展开。
-   *
-   * 多个源节点有同名字段时后者覆盖前者。
-   */
-  // ── N-way 条件分支评估 ─────────────────────────────────────
-
-  /**
-   * 条件分支描述（统一新旧格式后的内部表示）
-   */
-  private resolveConditionBranches(nodeData: Record<string, unknown>): Array<{
-    id: string;
-    mode: 'visual' | 'expression';
-    expression: string;
-    conditions: {
-      rules: Array<{
-        sourcePortId: string;
-        fieldPath: string;
-        operator: string;
-        value: string;
-      }>;
-      logic: 'and' | 'or';
-    };
-  }> {
-    // 新格式: branches 数组
-    if (Array.isArray(nodeData.branches)) {
-      return nodeData.branches
-        .filter((b) => this.isRecord(b))
-        .map((b, index) => ({
-          id: typeof b.id === 'string' ? b.id : `branch-${index}`,
-          mode: b.mode === 'expression' ? 'expression' : 'visual',
-          expression: typeof b.expression === 'string' ? b.expression : '',
-          conditions: this.normalizeConditionGroup(b.conditions),
-        }));
-    }
-
-    // 旧格式: mode + expression/conditionField
-    const mode = nodeData.mode;
-
-    if (mode === 'expression') {
-      const expression =
-        typeof nodeData.expression === 'string'
-          ? nodeData.expression.trim()
-          : '';
-      return [
-        {
-          id: 'branch-0',
-          mode: 'expression',
-          expression,
-          conditions: { rules: [], logic: 'and' },
-        },
-      ];
-    }
-
-    if (mode === 'field-comparison') {
-      const field = this.readFirstString(
-        nodeData.conditionField,
-        nodeData.condition_field,
-      );
-      const value =
-        nodeData.expectedValue != null
-          ? String(nodeData.expectedValue)
-          : nodeData.expected_value != null
-            ? String(nodeData.expected_value)
-            : '';
-      return [
-        {
-          id: 'branch-0',
-          mode: 'visual' as const,
-          expression: '',
-          conditions: {
-            rules: [
-              {
-                sourcePortId: 'input-0',
-                fieldPath: field ?? '',
-                operator: 'equals',
-                value,
-              },
-            ],
-            logic: 'and' as const,
-          },
-        },
-      ];
-    }
-
-    // 无条件配置但有 expression 或 conditionField（旧版兼容 fallback）
-    const fallbackExpression = this.readFirstString(nodeData.expression);
-    const fallbackField = this.readFirstString(
-      nodeData.conditionField,
-      nodeData.condition_field,
-    );
-
-    if (fallbackExpression) {
-      return [
-        {
-          id: 'branch-0',
-          mode: 'expression',
-          expression: fallbackExpression,
-          conditions: { rules: [], logic: 'and' },
-        },
-      ];
-    }
-
-    if (fallbackField) {
-      const value =
-        nodeData.expectedValue != null
-          ? String(nodeData.expectedValue)
-          : nodeData.expected_value != null
-            ? String(nodeData.expected_value)
-            : '';
-      return [
-        {
-          id: 'branch-0',
-          mode: 'visual',
-          expression: '',
-          conditions: {
-            rules: [
-              {
-                sourcePortId: 'input-0',
-                fieldPath: fallbackField,
-                operator: 'equals',
-                value,
-              },
-            ],
-            logic: 'and',
-          },
-        },
-      ];
-    }
-
-    // 完全空配置
-    return [];
-  }
-
-  private normalizeConditionGroup(value: unknown): {
-    rules: Array<{
-      sourcePortId: string;
-      fieldPath: string;
-      operator: string;
-      value: string;
-    }>;
-    logic: 'and' | 'or';
-  } {
-    if (!this.isRecord(value)) {
-      return { rules: [], logic: 'and' };
-    }
-
-    const logic = value.logic === 'or' ? 'or' : 'and';
-    const rawRules = Array.isArray(value.rules) ? value.rules : [];
-    const rules = rawRules
-      .filter((r) => this.isRecord(r))
-      .map((r) => ({
-        sourcePortId:
-          typeof r.sourcePortId === 'string' && r.sourcePortId.length > 0
-            ? r.sourcePortId
-            : 'input-0',
-        fieldPath:
-          typeof r.fieldPath === 'string'
-            ? r.fieldPath
-            : typeof r.field === 'string'
-              ? r.field
-              : '',
-        operator: typeof r.operator === 'string' ? r.operator : 'equals',
-        value: typeof r.value === 'string' ? r.value : '',
-      }));
-
-    return { rules, logic };
-  }
-
-  /**
-   * 评估单个分支是否匹配
-   */
-  private evaluateConditionBranch(
-    branch: {
-      mode: 'visual' | 'expression';
-      expression: string;
-      conditions: {
-        rules: Array<{
-          sourcePortId: string;
-          fieldPath: string;
-          operator: string;
-          value: string;
-        }>;
-        logic: 'and' | 'or';
-      };
-    },
-    input: Record<string, unknown>,
-    flatInput: Record<string, unknown>,
-  ): boolean {
-    if (branch.mode === 'expression') {
-      if (!branch.expression.trim()) {
-        return false;
-      }
-
-      return !!this.evaluateExpression(branch.expression, input);
-    }
-
-    // 可视化模式: 评估条件规则组
-    const { rules, logic } = branch.conditions;
-    if (rules.length === 0) {
-      return false;
-    }
-
-    if (logic === 'and') {
-      return rules.every((rule) =>
-        this.evaluateConditionRule(rule, input, flatInput),
-      );
-    }
-
-    return rules.some((rule) =>
-      this.evaluateConditionRule(rule, input, flatInput),
-    );
-  }
-
-  /**
-   * 评估单条规则（11 种运算符 + 向后兼容 expression 运算符）
-   */
-  private evaluateConditionRule(
-    rule: {
-      sourcePortId: string;
-      fieldPath: string;
-      operator: string;
-      value: string;
-    },
-    input: Record<string, unknown>,
-    flatInput: Record<string, unknown>,
-  ): boolean {
-    // expression 运算符: 整个 value 作为 JS 表达式
-    if (rule.operator === 'expression') {
-      const expr = rule.value.trim();
-      if (!expr) {
-        return false;
-      }
-
-      return !!this.evaluateExpression(expr, input);
-    }
-
-    const fieldValue = this.resolveConditionFieldValue(
-      rule.sourcePortId,
-      rule.fieldPath,
-      input,
-      flatInput,
-    );
-    const expected = rule.value;
-
-    switch (rule.operator) {
-      case 'equals':
-        return String(fieldValue ?? '') === expected;
-      case 'not_equals':
-        return String(fieldValue ?? '') !== expected;
-      case 'contains':
-        return String(fieldValue ?? '').includes(expected);
-      case 'not_contains':
-        return !String(fieldValue ?? '').includes(expected);
-      case 'gt':
-        return Number(fieldValue) > Number(expected);
-      case 'gte':
-        return Number(fieldValue) >= Number(expected);
-      case 'lt':
-        return Number(fieldValue) < Number(expected);
-      case 'lte':
-        return Number(fieldValue) <= Number(expected);
-      case 'starts_with':
-        return String(fieldValue ?? '').startsWith(expected);
-      case 'ends_with':
-        return String(fieldValue ?? '').endsWith(expected);
-      case 'is_empty':
-        return (
-          fieldValue === null ||
-          fieldValue === undefined ||
-          fieldValue === '' ||
-          (Array.isArray(fieldValue) && fieldValue.length === 0)
-        );
-      case 'is_not_empty':
-        return !(
-          fieldValue === null ||
-          fieldValue === undefined ||
-          fieldValue === '' ||
-          (Array.isArray(fieldValue) && fieldValue.length === 0)
-        );
-      case 'regex_match':
-        try {
-          return new RegExp(expected).test(String(fieldValue ?? ''));
-        } catch {
-          return false;
-        }
-      default:
-        return String(fieldValue ?? '') === expected;
-    }
-  }
-
-  /**
-   * 解析条件规则中的字段值：先在 flatInput 中查找，再在 input 中做路径解析
-   */
-  private resolveConditionFieldValue(
-    sourcePortId: string,
-    fieldPath: string,
-    input: Record<string, unknown>,
-    flatInput: Record<string, unknown>,
-  ): unknown {
-    if (!sourcePortId) {
-      return undefined;
-    }
-
-    const portValue = input[sourcePortId];
-    if (!fieldPath) {
-      return portValue;
-    }
-
-    const normalizedPath = fieldPath.startsWith('[')
-      ? `${sourcePortId}${fieldPath}`
-      : `${sourcePortId}.${fieldPath}`;
-
-    // 直接查 flatInput
-    if (Object.prototype.hasOwnProperty.call(flatInput, normalizedPath)) {
-      return flatInput[normalizedPath];
-    }
-
-    // 路径解析
-    return this.resolveJsonPath(input, normalizedPath);
-  }
-
-  private flattenInput(
-    input: Record<string, unknown>,
-  ): Record<string, unknown> {
-    const result: Record<string, unknown> = {};
-    for (const [key, value] of Object.entries(input)) {
-      result[key] = value;
-      if (value && typeof value === 'object') {
-        this.flattenInputInto(result, key, value);
-      }
-    }
-    return result;
-  }
-
-  private flattenInputInto(
-    target: Record<string, unknown>,
-    prefix: string,
-    value: unknown,
-  ): void {
-    if (Array.isArray(value)) {
-      value.forEach((entry, index) => {
-        const nextPath = `${prefix}[${index}]`;
-        target[nextPath] = entry;
-        if (entry && typeof entry === 'object') {
-          this.flattenInputInto(target, nextPath, entry);
-        }
-      });
-      return;
-    }
-
-    if (!this.isRecord(value)) {
-      return;
-    }
-
-    for (const [childKey, childValue] of Object.entries(value)) {
-      const nextPath = `${prefix}.${childKey}`;
-      target[nextPath] = childValue;
-      if (childValue && typeof childValue === 'object') {
-        this.flattenInputInto(target, nextPath, childValue);
-      }
-    }
-  }
-
-  private buildExpressionPorts(
-    input: Record<string, unknown>,
-  ): Record<number, unknown> {
-    const ports: Record<number, unknown> = {};
-    const orderedInputs = Object.entries(input)
-      .filter(([key]) => key.startsWith('input-'))
-      .sort(([left], [right]) =>
-        left.localeCompare(right, undefined, { numeric: true }),
-      );
-
-    orderedInputs.forEach(([_, value], index) => {
-      ports[index + 1] = value;
-    });
-
-    return ports;
-  }
-
-  // ── Loop 停止条件辅助方法 ─────────────────────────────────────
-
-  /**
-   * 从 nodeData 解析循环停止条件（visual 模式下的 ConditionGroup）
-   */
-  private resolveLoopStopCondition(nodeData: Record<string, unknown>):
-    | {
-        rules: Array<{
-          sourcePortId: string;
-          fieldPath: string;
-          operator: string;
-          value: string;
-        }>;
-        logic: 'and' | 'or';
-      }
-    | undefined {
-    const raw = this.readFirstDefined(
-      nodeData.stopCondition,
-      nodeData.stop_condition,
-    );
-
-    if (!this.isRecord(raw)) {
-      return undefined;
-    }
-
-    const logic = raw.logic === 'or' ? 'or' : 'and';
-    const rawRules = Array.isArray(raw.rules) ? raw.rules : [];
-    const rules = rawRules
-      .filter((r) => this.isRecord(r))
-      .map((r) => ({
-        sourcePortId: 'input-0',
-        fieldPath:
-          typeof r.fieldPath === 'string'
-            ? r.fieldPath
-            : typeof r.field === 'string'
-              ? r.field
-              : '',
-        operator: typeof r.operator === 'string' ? r.operator : 'equals',
-        value: typeof r.value === 'string' ? r.value : '',
-      }));
-
-    if (rules.length === 0) {
-      return undefined;
-    }
-
-    return { rules, logic };
-  }
-
-  /**
-   * 从 nodeData 解析循环错误处理策略
-   */
-  private resolveLoopErrorStrategy(
-    nodeData: Record<string, unknown>,
-  ): 'stop' | 'skip' | 'collect' {
-    const raw = this.readFirstString(
-      nodeData.errorStrategy,
-      nodeData.error_strategy,
-    );
-
-    return raw === 'skip' || raw === 'collect' ? raw : 'stop';
-  }
-
-  /**
-   * 评估循环停止条件（visual 模式）
-   *
-   * 将当前迭代项包装为 input 对象后复用 evaluateConditionBranch
-   */
-  private evaluateLoopStopCondition(
-    conditions: {
-      rules: Array<{
-        sourcePortId: string;
-        fieldPath: string;
-        operator: string;
-        value: string;
-      }>;
-      logic: 'and' | 'or';
-    },
-    currentItem: unknown,
-  ): boolean {
-    const wrappedInput = this.wrapLoopItemAsInput(currentItem);
-    const flatInput = this.flattenInput(wrappedInput);
-
-    return this.evaluateConditionBranch(
-      {
-        mode: 'visual',
-        expression: '',
-        conditions,
-      },
-      wrappedInput,
-      flatInput,
-    );
-  }
-
-  /**
-   * 评估循环停止表达式（expression 模式）
-   */
-  private evaluateLoopStopExpression(
-    expression: string,
-    currentItem: unknown,
-  ): boolean {
-    const wrappedInput = this.wrapLoopItemAsInput(currentItem);
-    return !!this.evaluateExpression(expression, wrappedInput);
-  }
-
-  /**
-   * 将循环迭代项包装为 evaluateConditionBranch 期望的 input 格式
-   */
-  private wrapLoopItemAsInput(item: unknown): Record<string, unknown> {
-    if (this.isRecord(item)) {
-      return item;
-    }
-
-    return { value: item };
   }
 }
