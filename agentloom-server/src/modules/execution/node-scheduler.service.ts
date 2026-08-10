@@ -336,8 +336,7 @@ export class NodeSchedulerService {
       );
     } catch (error) {
       if (
-        error instanceof Error &&
-        error.constructor.name === 'InvalidStepTransitionException'
+        error instanceof InvalidStepTransitionException
       )
         throw error;
       const message = error instanceof Error ? error.message : String(error);
@@ -1202,8 +1201,7 @@ export class NodeSchedulerService {
     } catch (error) {
       // updateStepStatus 抛出的 InvalidStepTransitionException 不二次捕获
       if (
-        error instanceof Error &&
-        error.constructor.name === 'InvalidStepTransitionException'
+        error instanceof InvalidStepTransitionException
       ) {
         throw error;
       }
@@ -1276,8 +1274,7 @@ export class NodeSchedulerService {
       await this.onNodeCompleted(executionId, step.id, tenantId);
     } catch (error) {
       if (
-        error instanceof Error &&
-        error.constructor.name === 'InvalidStepTransitionException'
+        error instanceof InvalidStepTransitionException
       ) {
         throw error;
       }
@@ -1360,8 +1357,7 @@ export class NodeSchedulerService {
       await this.onNodeCompleted(executionId, step.id, tenantId);
     } catch (error) {
       if (
-        error instanceof Error &&
-        error.constructor.name === 'InvalidStepTransitionException'
+        error instanceof InvalidStepTransitionException
       ) {
         throw error;
       }
@@ -1452,8 +1448,7 @@ export class NodeSchedulerService {
       await this.onNodeCompleted(executionId, step.id, tenantId);
     } catch (error) {
       if (
-        error instanceof Error &&
-        error.constructor.name === 'InvalidStepTransitionException'
+        error instanceof InvalidStepTransitionException
       ) {
         throw error;
       }
@@ -1597,8 +1592,7 @@ export class NodeSchedulerService {
       await this.onNodeCompleted(executionId, step.id, tenantId);
     } catch (error) {
       if (
-        error instanceof Error &&
-        error.constructor.name === 'InvalidStepTransitionException'
+        error instanceof InvalidStepTransitionException
       ) {
         throw error;
       }
@@ -1707,8 +1701,7 @@ export class NodeSchedulerService {
       await this.onNodeCompleted(executionId, step.id, tenantId);
     } catch (error) {
       if (
-        error instanceof Error &&
-        error.constructor.name === 'InvalidStepTransitionException'
+        error instanceof InvalidStepTransitionException
       ) {
         throw error;
       }
@@ -1798,8 +1791,7 @@ export class NodeSchedulerService {
       await this.onNodeCompleted(executionId, step.id, tenantId);
     } catch (error) {
       if (
-        error instanceof Error &&
-        error.constructor.name === 'InvalidStepTransitionException'
+        error instanceof InvalidStepTransitionException
       ) {
         throw error;
       }
@@ -1882,8 +1874,7 @@ export class NodeSchedulerService {
       await this.onNodeCompleted(executionId, step.id, tenantId);
     } catch (error) {
       if (
-        error instanceof Error &&
-        error.constructor.name === 'InvalidStepTransitionException'
+        error instanceof InvalidStepTransitionException
       ) {
         throw error;
       }
@@ -1936,8 +1927,7 @@ export class NodeSchedulerService {
       await this.onNodeCompleted(executionId, step.id, tenantId);
     } catch (error) {
       if (
-        error instanceof Error &&
-        error.constructor.name === 'InvalidStepTransitionException'
+        error instanceof InvalidStepTransitionException
       ) {
         throw error;
       }
@@ -1996,8 +1986,7 @@ export class NodeSchedulerService {
       await this.onNodeCompleted(executionId, step.id, tenantId);
     } catch (error) {
       if (
-        error instanceof Error &&
-        error.constructor.name === 'InvalidStepTransitionException'
+        error instanceof InvalidStepTransitionException
       ) {
         throw error;
       }
@@ -2061,8 +2050,7 @@ export class NodeSchedulerService {
       await this.onNodeCompleted(executionId, step.id, tenantId);
     } catch (error) {
       if (
-        error instanceof Error &&
-        error.constructor.name === 'InvalidStepTransitionException'
+        error instanceof InvalidStepTransitionException
       ) {
         throw error;
       }
@@ -2123,8 +2111,7 @@ export class NodeSchedulerService {
       await this.onNodeCompleted(executionId, step.id, tenantId);
     } catch (error) {
       if (
-        error instanceof Error &&
-        error.constructor.name === 'InvalidStepTransitionException'
+        error instanceof InvalidStepTransitionException
       ) {
         throw error;
       }
@@ -2185,8 +2172,7 @@ export class NodeSchedulerService {
       await this.onNodeCompleted(executionId, step.id, tenantId);
     } catch (error) {
       if (
-        error instanceof Error &&
-        error.constructor.name === 'InvalidStepTransitionException'
+        error instanceof InvalidStepTransitionException
       ) {
         throw error;
       }
@@ -2254,8 +2240,7 @@ export class NodeSchedulerService {
       await this.scheduleNextCompoundNode(context, tenantId);
     } catch (error) {
       if (
-        error instanceof Error &&
-        error.constructor.name === 'InvalidStepTransitionException'
+        error instanceof InvalidStepTransitionException
       ) {
         throw error;
       }
@@ -2935,8 +2920,7 @@ export class NodeSchedulerService {
       await this.onNodeCompleted(executionId, step.id, tenantId);
     } catch (error) {
       if (
-        error instanceof Error &&
-        error.constructor.name === 'InvalidStepTransitionException'
+        error instanceof InvalidStepTransitionException
       ) {
         throw error;
       }
@@ -3120,8 +3104,7 @@ export class NodeSchedulerService {
       await this.onNodeCompleted(executionId, step.id, tenantId);
     } catch (error) {
       if (
-        error instanceof Error &&
-        error.constructor.name === 'InvalidStepTransitionException'
+        error instanceof InvalidStepTransitionException
       ) {
         throw error;
       }
@@ -3952,8 +3935,7 @@ export class NodeSchedulerService {
       await this.onNodeCompleted(executionId, step.id, tenantId);
     } catch (error) {
       if (
-        error instanceof Error &&
-        error.constructor.name === 'InvalidStepTransitionException'
+        error instanceof InvalidStepTransitionException
       ) {
         throw error;
       }
@@ -4167,8 +4149,7 @@ export class NodeSchedulerService {
       await this.onNodeCompleted(executionId, step.id, tenantId);
     } catch (error) {
       if (
-        error instanceof Error &&
-        error.constructor.name === 'InvalidStepTransitionException'
+        error instanceof InvalidStepTransitionException
       ) {
         throw error;
       }
@@ -4245,8 +4226,7 @@ export class NodeSchedulerService {
       await this.onNodeCompleted(executionId, step.id, tenantId);
     } catch (error) {
       if (
-        error instanceof Error &&
-        error.constructor.name === 'InvalidStepTransitionException'
+        error instanceof InvalidStepTransitionException
       ) {
         throw error;
       }
@@ -4319,8 +4299,7 @@ export class NodeSchedulerService {
       await this.onNodeCompleted(executionId, step.id, tenantId);
     } catch (error) {
       if (
-        error instanceof Error &&
-        error.constructor.name === 'InvalidStepTransitionException'
+        error instanceof InvalidStepTransitionException
       ) {
         throw error;
       }
@@ -4386,8 +4365,7 @@ export class NodeSchedulerService {
       await this.onNodeCompleted(executionId, step.id, tenantId);
     } catch (error) {
       if (
-        error instanceof Error &&
-        error.constructor.name === 'InvalidStepTransitionException'
+        error instanceof InvalidStepTransitionException
       ) {
         throw error;
       }
@@ -4476,8 +4454,7 @@ export class NodeSchedulerService {
       await this.onNodeCompleted(executionId, step.id, tenantId);
     } catch (error) {
       if (
-        error instanceof Error &&
-        error.constructor.name === 'InvalidStepTransitionException'
+        error instanceof InvalidStepTransitionException
       ) {
         throw error;
       }
@@ -4563,8 +4540,7 @@ export class NodeSchedulerService {
       await this.onNodeCompleted(executionId, step.id, tenantId);
     } catch (error) {
       if (
-        error instanceof Error &&
-        error.constructor.name === 'InvalidStepTransitionException'
+        error instanceof InvalidStepTransitionException
       ) {
         throw error;
       }
@@ -4619,8 +4595,7 @@ export class NodeSchedulerService {
       await this.onNodeCompleted(executionId, step.id, tenantId);
     } catch (error) {
       if (
-        error instanceof Error &&
-        error.constructor.name === 'InvalidStepTransitionException'
+        error instanceof InvalidStepTransitionException
       ) {
         throw error;
       }
@@ -4676,8 +4651,7 @@ export class NodeSchedulerService {
       await this.onNodeCompleted(executionId, step.id, tenantId);
     } catch (error) {
       if (
-        error instanceof Error &&
-        error.constructor.name === 'InvalidStepTransitionException'
+        error instanceof InvalidStepTransitionException
       ) {
         throw error;
       }
