@@ -9,7 +9,6 @@ import { RbacCacheService } from '../../common/services/rbac-cache.service';
 import * as schema from '../../database/schema';
 import type { ReactFlowEdge } from '../../database/schema';
 import type { ExecutionStep } from '../../database/schema';
-import type { SandboxConfig } from '../../database/schema';
 import { DagResolverService } from './dag-resolver.service';
 import {
   StepStateMachineService,
@@ -96,12 +95,10 @@ import {
 import {
   evaluateExpression,
   evaluateConditionBranch,
-  isConditionNode,
   normalizeConditionBranch,
   normalizeConditionSourceHandle,
   normalizeLoopItemsInput,
   resolveConditionBranches,
-  unwrapConditionBranchPayload,
 } from './condition-evaluator.util';
 import { buildHttpToolRequestInput } from './http-tool-request.util';
 import {
@@ -118,6 +115,19 @@ import {
   resolveSmartRoutingStrategyConfig,
   resolveSmartRoutingStrategyValue,
 } from './smart-routing-input.util';
+import { resolveSourceHandleValue } from './node-output-port.util';
+import {
+  buildWorkflowAgentCheckpointData,
+  extractConfiguredMcpTools,
+  getExecutionSandboxBinding,
+  getSandboxSourceStep,
+  getUpstreamMemorySessionIds,
+  getWorkflowAgentDefinitionId,
+  getWorkflowAgentRuntimeMode,
+  getWorkflowSandboxOverride,
+  resolveMemoryConfig,
+  resolveSandboxConfigForStep,
+} from './workflow-runtime-input.util';
 
 /** 调度决策 */
 type SchedulingDecision = 'schedule' | 'skip' | 'wait';
@@ -408,14 +418,14 @@ export class NodeSchedulerService {
       .set({ input })
       .where(eq(schema.executionSteps.id, step.id));
 
-    const sandboxBinding = this.getExecutionSandboxBinding(
+    const sandboxBinding = getExecutionSandboxBinding(
       nodeId,
       executionId,
       resolvedSnapshot.edges,
       resolvedSteps,
       input,
     );
-    const memorySessionIds = this.getUpstreamMemorySessionIds(
+    const memorySessionIds = getUpstreamMemorySessionIds(
       nodeId,
       resolvedSnapshot.edges,
       resolvedSteps,
@@ -424,7 +434,7 @@ export class NodeSchedulerService {
     switch (step.nodeType) {
       case 'agent':
       case 'chat-agent':
-        if (this.getWorkflowAgentDefinitionId(step.nodeData ?? {})) {
+        if (getWorkflowAgentDefinitionId(step.nodeData ?? {})) {
           await this.executeWorkflowAgentNode(
             step,
             input,
@@ -687,7 +697,7 @@ export class NodeSchedulerService {
           input,
           targetHandle,
           sourceHandle
-            ? this.resolveSourceHandleValue(sourceStep, sourceHandle)
+            ? resolveSourceHandleValue(sourceStep, sourceHandle)
             : sourceStep.result,
         );
         continue;
@@ -697,7 +707,7 @@ export class NodeSchedulerService {
         setValueAtPath(
           input,
           sourceHandle,
-          this.resolveSourceHandleValue(sourceStep, sourceHandle),
+          resolveSourceHandleValue(sourceStep, sourceHandle),
         );
         continue;
       }
@@ -1670,7 +1680,7 @@ export class NodeSchedulerService {
         nodeData.enabledToolIds,
         nodeData.enabled_tool_ids,
       );
-      const tools = this.extractConfiguredMcpTools(nodeData, enabledToolIds);
+      const tools = extractConfiguredMcpTools(nodeData, enabledToolIds);
       const selectedTool = tools[0];
 
       if (!mcpServerConfigId || !selectedTool) {
@@ -3347,33 +3357,6 @@ export class NodeSchedulerService {
 
   // ── 私有辅助 ───────────────────────────────────────────────
 
-  private getWorkflowAgentDefinitionId(
-    nodeData: Record<string, unknown>,
-  ): string | undefined {
-    const runtimeNodeData = getRuntimeNodeData(nodeData);
-
-    return readFirstString(
-      runtimeNodeData.agentDefinitionId,
-      runtimeNodeData.agent_definition_id,
-      runtimeNodeData.selectedAgentId,
-      runtimeNodeData.selected_agent_id,
-    );
-  }
-
-  private getWorkflowAgentRuntimeMode(
-    nodeData: Record<string, unknown>,
-  ): 'sandbox' | 'no_sandbox' {
-    const runtimeNodeData = getRuntimeNodeData(nodeData);
-    const runtimeMode = readFirstString(
-      runtimeNodeData.agentRuntimeMode,
-      runtimeNodeData.agent_runtime_mode,
-      runtimeNodeData.runtimeMode,
-      runtimeNodeData.runtime_mode,
-    );
-
-    return runtimeMode === 'no_sandbox' ? 'no_sandbox' : 'sandbox';
-  }
-
   private async executeWorkflowAgentNode(
     step: ExecutionStep,
     input: Record<string, unknown>,
@@ -3384,7 +3367,7 @@ export class NodeSchedulerService {
   ): Promise<void> {
     try {
       const nodeData = step.nodeData ?? {};
-      const agentDefinitionId = this.getWorkflowAgentDefinitionId(nodeData);
+      const agentDefinitionId = getWorkflowAgentDefinitionId(nodeData);
 
       if (!agentDefinitionId) {
         throw new Error(
@@ -3392,20 +3375,19 @@ export class NodeSchedulerService {
         );
       }
 
-      const workflowSandboxBinding = this.getExecutionSandboxBinding(
+      const workflowSandboxBinding = getExecutionSandboxBinding(
         step.nodeId,
         executionId,
         edges,
         steps,
         input,
       );
-      const workflowAgentRuntimeMode =
-        this.getWorkflowAgentRuntimeMode(nodeData);
+      const workflowAgentRuntimeMode = getWorkflowAgentRuntimeMode(nodeData);
       const usesSandboxRuntime = workflowAgentRuntimeMode === 'sandbox';
       const workflowSandboxNodeId = usesSandboxRuntime
         ? (workflowSandboxBinding?.sandboxNodeId ?? step.nodeId)
         : undefined;
-      const runningCheckpointData = this.buildWorkflowAgentCheckpointData(
+      const runningCheckpointData = buildWorkflowAgentCheckpointData(
         step.checkpointData,
         executionId,
         workflowSandboxNodeId,
@@ -3430,7 +3412,7 @@ export class NodeSchedulerService {
       }
 
       const workflowSandboxConfig = workflowSandboxNodeId
-        ? this.getWorkflowSandboxOverride(step.nodeId, edges, steps)
+        ? getWorkflowSandboxOverride(step.nodeId, edges, steps)
         : undefined;
       const adapter =
         this.workflowAgentAdapterFactory.createFromAgentDefinition(
@@ -3470,7 +3452,7 @@ export class NodeSchedulerService {
         'completed',
         {
           result,
-          checkpointData: this.buildWorkflowAgentCheckpointData(
+          checkpointData: buildWorkflowAgentCheckpointData(
             step.checkpointData,
             executionId,
             workflowSandboxNodeId,
@@ -3491,7 +3473,7 @@ export class NodeSchedulerService {
 
       const message = error instanceof Error ? error.message : String(error);
       const workflowSandboxNodeId =
-        this.getExecutionSandboxBinding(
+        getExecutionSandboxBinding(
           step.nodeId,
           executionId,
           edges,
@@ -3522,7 +3504,7 @@ export class NodeSchedulerService {
               : {}),
             nodeId: step.nodeId,
           },
-          checkpointData: this.buildWorkflowAgentCheckpointData(
+          checkpointData: buildWorkflowAgentCheckpointData(
             step.checkpointData,
             executionId,
             workflowSandboxNodeId,
@@ -3543,117 +3525,6 @@ export class NodeSchedulerService {
     }
   }
 
-  private buildWorkflowAgentCheckpointData(
-    checkpointData: ExecutionStep['checkpointData'],
-    executionId: string,
-    sandboxNodeId?: string,
-    workspaceSnapshotId?: string,
-  ): Record<string, unknown> {
-    const rawCheckpoint = isRecord(checkpointData) ? checkpointData : {};
-    const {
-      sandboxNodeId: _sandboxNodeId,
-      serverSandbox: _serverSandbox,
-      ...existingCheckpoint
-    } = rawCheckpoint;
-
-    return {
-      ...existingCheckpoint,
-      ...(sandboxNodeId ? { sandboxNodeId } : {}),
-      ...(sandboxNodeId
-        ? {
-            serverSandbox: {
-              executionId,
-              sandboxNodeId,
-            },
-          }
-        : {}),
-      ...(workspaceSnapshotId ? { workspaceSnapshotId } : {}),
-    };
-  }
-
-  private getWorkflowSandboxOverride(
-    nodeId: string,
-    edges: ReactFlowEdge[],
-    steps: ExecutionStep[],
-  ): SandboxConfig | undefined {
-    const sourceStep = this.getSandboxSourceStep(nodeId, edges, steps);
-    if (sourceStep) {
-      return this.resolveSandboxConfigForStep(sourceStep, edges, steps);
-    }
-
-    return undefined;
-  }
-
-  private resolveSandboxConfig(
-    nodeData: Record<string, unknown>,
-    overrides: {
-      restoreWorkspaceId?: string;
-    } = {},
-  ): SandboxConfig {
-    const sandboxConfigSource = this.getSandboxConfigSource(nodeData);
-    const lifecycleModeValue = readFirstString(
-      sandboxConfigSource.lifecycleMode,
-      sandboxConfigSource.lifecycle_mode,
-    );
-    const lifecycleMode =
-      lifecycleModeValue === 'persistent'
-        ? 'persistent'
-        : lifecycleModeValue === 'session'
-          ? 'session'
-          : undefined;
-    const restoreWorkspaceId = readFirstString(
-      overrides.restoreWorkspaceId,
-      sandboxConfigSource.restoreWorkspaceId,
-      sandboxConfigSource.restore_workspace_id,
-    );
-    const persistencePath = readFirstString(
-      sandboxConfigSource.persistencePath,
-      sandboxConfigSource.persistence_path,
-    );
-    const persistenceExpiryHours = readOptionalNumber(
-      sandboxConfigSource.persistenceExpiryHours,
-      sandboxConfigSource.persistence_expiry_hours,
-    );
-    const name = readFirstString(
-      sandboxConfigSource.name,
-      sandboxConfigSource.persistentSandboxName,
-      sandboxConfigSource.persistent_sandbox_name,
-    );
-    const persistentSandboxId = readFirstString(
-      sandboxConfigSource.persistentSandboxId,
-      sandboxConfigSource.persistent_sandbox_id,
-    );
-
-    return {
-      cpu: readNumber(sandboxConfigSource.cpu, 1),
-      memory: readNumber(sandboxConfigSource.memory, 512),
-      disk: readNumber(sandboxConfigSource.disk, 2),
-      timeout: readNumber(sandboxConfigSource.timeout, 0),
-      ...(persistencePath ? { persistencePath } : {}),
-      ...(restoreWorkspaceId ? { restoreWorkspaceId } : {}),
-      ...(lifecycleMode ? { lifecycleMode } : {}),
-      ...(persistenceExpiryHours !== undefined
-        ? { persistenceExpiryHours }
-        : {}),
-      ...(name ? { name } : {}),
-      ...(persistentSandboxId ? { persistentSandboxId } : {}),
-    };
-  }
-
-  private resolveSandboxConfigForStep(
-    step: ExecutionStep,
-    edges: ReactFlowEdge[],
-    steps: ExecutionStep[],
-  ): SandboxConfig {
-    return this.resolveSandboxConfig(step.nodeData ?? {}, {
-      restoreWorkspaceId: this.getSandboxRestoreWorkspaceId(
-        step.nodeId,
-        edges,
-        steps,
-      ),
-    });
-  }
-
   async executeSandboxNode(
     step: ExecutionStep,
     _input: Record<string, unknown>,
@@ -3665,7 +3536,7 @@ export class NodeSchedulerService {
     await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'running');
 
     try {
-      const config = this.resolveSandboxConfigForStep(step, edges, steps);
+      const config = resolveSandboxConfigForStep(step, edges, steps);
 
       const session = await this.sandboxService.createSandboxSession({
         executionId,
@@ -3808,7 +3679,7 @@ export class NodeSchedulerService {
     await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'running');
 
     try {
-      const config = this.resolveMemoryConfig(
+      const config = resolveMemoryConfig(
         step.nodeData ?? {},
         tenantId,
         executionId,
@@ -4213,282 +4084,6 @@ export class NodeSchedulerService {
     }
   }
 
-  private getSandboxConfigSource(
-    nodeData: Record<string, unknown>,
-  ): Record<string, unknown> {
-    const nestedConfig = nodeData.config;
-    const sandboxConfig = nodeData.sandboxConfig;
-    const globalSandboxConfig = nodeData.globalSandboxConfig;
-
-    if (isRecord(nestedConfig)) {
-      return nestedConfig;
-    }
-
-    if (isRecord(sandboxConfig)) {
-      return sandboxConfig;
-    }
-
-    if (
-      isRecord(globalSandboxConfig) &&
-      isRecord(globalSandboxConfig.sandboxConfig)
-    ) {
-      return globalSandboxConfig.sandboxConfig;
-    }
-
-    if (isRecord(globalSandboxConfig)) {
-      return globalSandboxConfig;
-    }
-
-    return nodeData;
-  }
-
-  private resolveMemoryConfig(
-    nodeData: Record<string, unknown>,
-    tenantId: string,
-    executionId: string,
-  ): MemoryResourceConfig {
-    const memoryConfigSource = getRuntimeNodeData(nodeData);
-    const memoryInstanceId = readFirstString(
-      memoryConfigSource.memoryInstanceId,
-      memoryConfigSource.memory_instance_id,
-    );
-
-    if (!memoryInstanceId) {
-      throw new Error('Memory node requires memoryInstanceId');
-    }
-
-    const bootUris =
-      Array.isArray(memoryConfigSource.bootUris) &&
-      memoryConfigSource.bootUris.every((uri) => typeof uri === 'string')
-        ? memoryConfigSource.bootUris
-        : Array.isArray(memoryConfigSource.boot_uris) &&
-            memoryConfigSource.boot_uris.every((uri) => typeof uri === 'string')
-          ? memoryConfigSource.boot_uris
-          : [];
-    const fusionPriority = readOptionalNumber(
-      memoryConfigSource.fusionPriority,
-      memoryConfigSource.fusion_priority,
-    );
-
-    return {
-      memoryInstanceId,
-      role: memoryConfigSource.role === 'readonly' ? 'readonly' : 'primary',
-      bootUris,
-      fusionPriority: fusionPriority ?? 0,
-      tenantId,
-      executionId,
-    };
-  }
-
-  private getSandboxSourceStep(
-    nodeId: string,
-    edges: ReactFlowEdge[],
-    steps: ExecutionStep[],
-  ): ExecutionStep | undefined {
-    const incomingEdges = edges.filter((e) => e.target === nodeId);
-    for (const edge of incomingEdges) {
-      const sourceStep = steps.find((s) => s.nodeId === edge.source);
-      if (sourceStep?.nodeType === 'sandbox') {
-        return sourceStep;
-      }
-    }
-
-    return undefined;
-  }
-
-  private getExecutionSandboxBinding(
-    nodeId: string,
-    executionId: string,
-    edges: ReactFlowEdge[],
-    steps: ExecutionStep[],
-    input?: Record<string, unknown>,
-  ): { executionId: string; sandboxNodeId: string } | undefined {
-    const sourceStep = this.getSandboxSourceStep(nodeId, edges, steps);
-    if (!sourceStep) {
-      const sandboxSessionId = this.readSandboxSessionId(
-        input?.['sandbox-in'] ??
-          input?.sandbox ??
-          input?.['sandbox-out'] ??
-          input?.['sandbox-output'],
-      );
-      if (!sandboxSessionId) {
-        return undefined;
-      }
-
-      const matchedSandboxStep = steps.find(
-        (step) =>
-          step.nodeType === 'sandbox' &&
-          this.readSandboxSessionId(step.result) === sandboxSessionId,
-      );
-      if (!matchedSandboxStep) {
-        return undefined;
-      }
-
-      return {
-        executionId,
-        sandboxNodeId: matchedSandboxStep.nodeId,
-      };
-    }
-
-    return {
-      executionId,
-      sandboxNodeId: sourceStep.nodeId,
-    };
-  }
-
-  private readSandboxSessionId(value: unknown): string | undefined {
-    if (!isRecord(value)) {
-      return undefined;
-    }
-
-    return readFirstString(value.sessionId, value.session_id);
-  }
-
-  private getSandboxRestoreWorkspaceId(
-    sandboxNodeId: string,
-    edges: ReactFlowEdge[],
-    steps: ExecutionStep[],
-  ): string | undefined {
-    const incomingEdges = edges.filter((edge) => edge.target === sandboxNodeId);
-
-    for (const edge of incomingEdges) {
-      const sourceStep = steps.find(
-        (candidate) => candidate.nodeId === edge.source,
-      );
-      if (sourceStep?.nodeType !== 'workspace') {
-        continue;
-      }
-
-      const nodeData = isRecord(sourceStep.nodeData) ? sourceStep.nodeData : {};
-      const config = isRecord(nodeData.config) ? nodeData.config : nodeData;
-      const workspaceId =
-        typeof config.workspaceId === 'string' && config.workspaceId.trim()
-          ? config.workspaceId.trim()
-          : isRecord(sourceStep.result) &&
-              typeof sourceStep.result.workspaceId === 'string' &&
-              sourceStep.result.workspaceId.trim()
-            ? sourceStep.result.workspaceId.trim()
-            : undefined;
-
-      if (workspaceId) {
-        return workspaceId;
-      }
-    }
-
-    return undefined;
-  }
-
-  private extractConfiguredMcpTools(
-    nodeData: Record<string, unknown>,
-    enabledToolIds: string[],
-  ): Array<{
-    toolName: string;
-    mcpToolDefinitionId?: string;
-    inputSchema?: Record<string, unknown>;
-    portMapping?: Record<string, unknown>;
-  }> {
-    const tools = Array.isArray(nodeData.tools) ? nodeData.tools : [];
-    const selectedTools = tools
-      .filter((tool) => isRecord(tool))
-      .filter((tool) => {
-        if (enabledToolIds.length === 0) {
-          return true;
-        }
-
-        return typeof tool.id === 'string' && enabledToolIds.includes(tool.id);
-      })
-      .map((tool) => {
-        const toolRecord = tool as Record<string, unknown>;
-        const toolName = readFirstString(
-          toolRecord.toolName,
-          toolRecord.name,
-          toolRecord.title,
-        );
-        if (!toolName) {
-          return null;
-        }
-
-        return {
-          toolName,
-          ...(typeof toolRecord.id === 'string'
-            ? { mcpToolDefinitionId: toolRecord.id }
-            : {}),
-          ...(isRecord(toolRecord.inputSchema)
-            ? { inputSchema: toolRecord.inputSchema }
-            : {}),
-          ...(isRecord(toolRecord.portMapping)
-            ? { portMapping: toolRecord.portMapping }
-            : isRecord(toolRecord.portMappingMetadata)
-              ? { portMapping: toolRecord.portMappingMetadata }
-              : {}),
-        };
-      })
-      .filter(
-        (
-          tool,
-        ): tool is {
-          toolName: string;
-          mcpToolDefinitionId?: string;
-          inputSchema?: Record<string, unknown>;
-          portMapping?: Record<string, unknown>;
-        } => tool !== null,
-      );
-
-    if (selectedTools.length > 0) {
-      return selectedTools;
-    }
-
-    const fallbackToolName = readFirstString(
-      nodeData.toolName,
-      nodeData.tool_name,
-    );
-    if (!fallbackToolName) {
-      return [];
-    }
-
-    return [
-      {
-        toolName: fallbackToolName,
-        ...(typeof nodeData.mcpToolDefinitionId === 'string'
-          ? { mcpToolDefinitionId: nodeData.mcpToolDefinitionId }
-          : {}),
-        ...(isRecord(nodeData.inputSchema)
-          ? { inputSchema: nodeData.inputSchema }
-          : {}),
-        ...(isRecord(nodeData.portMapping)
-          ? { portMapping: nodeData.portMapping }
-          : isRecord(nodeData.portMappingMetadata)
-            ? { portMapping: nodeData.portMappingMetadata }
-            : {}),
-      },
-    ];
-  }
-
-  private getUpstreamMemorySessionIds(
-    nodeId: string,
-    edges: ReactFlowEdge[],
-    steps: ExecutionStep[],
-  ): string[] {
-    const sessionIds = new Set<string>();
-    const incomingEdges = edges.filter((edge) => edge.target === nodeId);
-
-    for (const edge of incomingEdges) {
-      const sourceStep = steps.find(
-        (candidate) => candidate.nodeId === edge.source,
-      );
-      if (sourceStep?.nodeType !== 'memory' || !isRecord(sourceStep.result)) {
-        continue;
-      }
-
-      const { sessionId } = sourceStep.result;
-      if (typeof sessionId === 'string' && sessionId.trim()) {
-        sessionIds.add(sessionId.trim());
-      }
-    }
-
-    return [...sessionIds];
-  }
-
   private async cleanupConnectedSandboxIfIdle(
     completedStep: ExecutionStep,
     executionId: string,
@@ -4496,7 +4091,7 @@ export class NodeSchedulerService {
     snapshot: { nodes: schema.ReactFlowNode[]; edges: ReactFlowEdge[] },
     steps: ExecutionStep[],
   ): Promise<void> {
-    const sandboxSource = this.getSandboxSourceStep(
+    const sandboxSource = getSandboxSourceStep(
       completedStep.nodeId,
       snapshot.edges,
       steps,
@@ -4619,94 +4214,6 @@ export class NodeSchedulerService {
       },
       steps,
     };
-  }
-
-  private resolveSourceHandleValue(
-    sourceStep: ExecutionStep,
-    sourceHandle: string,
-  ): unknown {
-    if (!isRecord(sourceStep.result)) {
-      return undefined;
-    }
-
-    const resolved = resolveJsonPath(sourceStep.result, sourceHandle);
-    if (resolved !== undefined) {
-      if (isConditionNode(sourceStep.nodeType)) {
-        return unwrapConditionBranchPayload(sourceHandle, resolved);
-      }
-
-      return resolved;
-    }
-
-    switch (sourceStep.nodeType) {
-      case 'agent':
-      case 'chat-agent':
-        if (
-          sourceHandle === 'reply-out' ||
-          sourceHandle === 'agent-out' ||
-          sourceHandle === 'reply' ||
-          sourceHandle === 'agent-output'
-        ) {
-          return sourceStep.result.content;
-        }
-        if (
-          sourceHandle === 'structured-out' ||
-          sourceHandle === 'structured' ||
-          sourceHandle === 'structured-output'
-        ) {
-          return sourceStep.result.decision;
-        }
-        return undefined;
-      case 'manual-trigger':
-      case 'schedule-trigger':
-      case 'webhook-trigger':
-      case 'api-event-trigger':
-        if (sourceHandle === 'payload-out' || sourceHandle === 'payload') {
-          return sourceStep.result.payload;
-        }
-        if (sourceHandle === 'exec-out' || sourceHandle === 'exec_out') {
-          return sourceStep.result['exec-out'] ?? sourceStep.result.exec_out;
-        }
-        if (isRecord(sourceStep.result.payload)) {
-          return sourceStep.result.payload[sourceHandle];
-        }
-        return undefined;
-      case 'llm-model':
-        return sourceHandle === 'model-out' || sourceHandle === 'model-output'
-          ? sourceStep.result
-          : undefined;
-      case 'smart-routing':
-        return sourceHandle === 'model-out' ? sourceStep.result : undefined;
-      case 'mcp-tool':
-        return sourceHandle === 'tool-out' || sourceHandle === 'tool-output'
-          ? sourceStep.result
-          : undefined;
-      case 'skill':
-        return sourceHandle === 'skill-out' ? sourceStep.result : undefined;
-      case 'knowledge-base':
-        return sourceHandle === 'knowledge-out' || sourceHandle === 'knowledge'
-          ? sourceStep.result
-          : undefined;
-      case 'sandbox':
-        return sourceHandle === 'sandbox-out' ||
-          sourceHandle === 'sandbox-output'
-          ? sourceStep.result
-          : undefined;
-      case 'workspace':
-        return sourceHandle === 'volume-out' || sourceHandle === 'volume-output'
-          ? sourceStep.result
-          : undefined;
-      case 'memory':
-        return sourceHandle === 'memory-out' || sourceHandle === 'memory-out-0'
-          ? sourceStep.result
-          : undefined;
-      case 'merge':
-        return sourceHandle === 'merged-out' || sourceHandle === 'merged'
-          ? sourceStep.result
-          : undefined;
-      default:
-        return undefined;
-    }
   }
 
   /**
