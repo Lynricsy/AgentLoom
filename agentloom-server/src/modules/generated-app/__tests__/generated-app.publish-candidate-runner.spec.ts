@@ -1,7 +1,6 @@
 import { ConfigService } from '@nestjs/config';
 import { describe, expect, it } from 'vitest';
 
-import type { DrizzleDB } from '../../../database/database.module';
 import type {
   GeneratedAppBrowserAcceptancePlan,
   GeneratedAppBuildUnitPlan,
@@ -13,9 +12,18 @@ import type {
   GeneratedAppSpec,
   GeneratedAppStaticContracts,
 } from '../../../database/schema';
+import {
+  buildBuildUnitPlan,
+  buildGenerationPlan,
+  buildStaticContracts,
+} from '../plan-builders/generation-plan.builder';
+import { buildIntegrationPlan } from '../plan-builders/integration-plan.builder';
+import { GeneratedAppGate3WorkspaceRunner } from '../generated-app.workspace';
 import { createInitialGeneratedAppGateResults } from '../generated-app.gates';
+import { buildBrowserAcceptancePlan } from '../plan-builders/browser-acceptance-plan.builder';
+import { buildIndependentVerificationPlan } from '../plan-builders/independent-verification-plan.builder';
+import { buildPublishCandidatePlan } from '../plan-builders/publish-candidate-plan.builder';
 import { GeneratedAppGate7PublishCandidateRunner } from '../generated-app.publish-candidate-runner';
-import { GeneratedAppService } from '../generated-app.service';
 
 function createConfigService(
   overrides: Record<string, string | undefined> = {},
@@ -131,6 +139,38 @@ function withTrustedGate5Evidence(
   });
 }
 
+function buildBuildUnitPlanForTest(
+  appSpec: GeneratedAppSpec,
+  generationPlan: GeneratedAppGenerationPlan,
+  staticContracts: GeneratedAppStaticContracts,
+  gate3Runner: GeneratedAppGate3WorkspaceRunner,
+  executionLevel = gate3Runner.getExecutionLevel(),
+): GeneratedAppBuildUnitPlan {
+  const workspace = gate3Runner.buildWorkspaceContract({
+    tenantId: 'test-tenant',
+    appId: 'test-app',
+    generationRunId: 'test-run',
+    appSpec,
+    staticContracts,
+  });
+  const commandPlan = gate3Runner.buildCommandPlan({
+    workspace,
+    requirementIds: appSpec.coreRequirements.map(
+      (requirement) => requirement.id,
+    ),
+    scenarioIds: appSpec.acceptanceScenarios.map((scenario) => scenario.id),
+  });
+
+  return buildBuildUnitPlan(
+    appSpec,
+    generationPlan,
+    staticContracts,
+    workspace,
+    commandPlan,
+    executionLevel,
+  );
+}
+
 function buildPlans(
   configService = createConfigService(),
   overrides: {
@@ -140,80 +180,26 @@ function buildPlans(
     verifierExecutionLevel?: GeneratedAppIndependentVerificationPlan['executionLevel'];
   } = {},
 ) {
-  const service = new GeneratedAppService(
-    {} as DrizzleDB,
-    configService,
-  ) as unknown as {
-    buildGenerationPlan(appSpec: GeneratedAppSpec): GeneratedAppGenerationPlan;
-    buildStaticContracts(
-      appSpec: GeneratedAppSpec,
-      generationPlan: GeneratedAppGenerationPlan,
-    ): GeneratedAppStaticContracts;
-    buildBuildUnitPlan(
-      appSpec: GeneratedAppSpec,
-      generationPlan: GeneratedAppGenerationPlan,
-      staticContracts: GeneratedAppStaticContracts,
-      generationWorkspace?: unknown,
-      commandPlan?: unknown,
-      executionLevel?: GeneratedAppBuildUnitPlan['executionLevel'],
-    ): GeneratedAppBuildUnitPlan;
-    buildIntegrationPlan(
-      appSpec: GeneratedAppSpec,
-      generationPlan: GeneratedAppGenerationPlan,
-      staticContracts: GeneratedAppStaticContracts,
-      buildUnitPlan: GeneratedAppBuildUnitPlan,
-      executionLevel?: GeneratedAppIntegrationPlan['executionLevel'],
-    ): GeneratedAppIntegrationPlan;
-    buildBrowserAcceptancePlan(
-      appSpec: GeneratedAppSpec,
-      generationPlan: GeneratedAppGenerationPlan,
-      staticContracts: GeneratedAppStaticContracts,
-      buildUnitPlan: GeneratedAppBuildUnitPlan,
-      integrationPlan: GeneratedAppIntegrationPlan,
-      executionLevel?: GeneratedAppBrowserAcceptancePlan['executionLevel'],
-    ): GeneratedAppBrowserAcceptancePlan;
-    buildIndependentVerificationPlan(
-      appSpec: GeneratedAppSpec,
-      generationPlan: GeneratedAppGenerationPlan,
-      staticContracts: GeneratedAppStaticContracts,
-      buildUnitPlan: GeneratedAppBuildUnitPlan,
-      integrationPlan: GeneratedAppIntegrationPlan,
-      browserAcceptancePlan: GeneratedAppBrowserAcceptancePlan,
-      gateResults: GeneratedAppGateResult[],
-      executionLevel?: GeneratedAppIndependentVerificationPlan['executionLevel'],
-    ): GeneratedAppIndependentVerificationPlan;
-    buildPublishCandidatePlan(
-      appSpec: GeneratedAppSpec,
-      generationPlan: GeneratedAppGenerationPlan,
-      staticContracts: GeneratedAppStaticContracts,
-      buildUnitPlan: GeneratedAppBuildUnitPlan,
-      integrationPlan: GeneratedAppIntegrationPlan,
-      browserAcceptancePlan: GeneratedAppBrowserAcceptancePlan,
-      independentVerificationPlan: GeneratedAppIndependentVerificationPlan,
-      gateResults: GeneratedAppGateResult[],
-      executionLevel?: GeneratedAppPublishCandidatePlan['executionLevel'],
-    ): GeneratedAppPublishCandidatePlan;
-  };
   const runner = new GeneratedAppGate7PublishCandidateRunner(configService);
   const appSpec = createAppSpec();
-  const generationPlan = service.buildGenerationPlan(appSpec);
-  const staticContracts = service.buildStaticContracts(appSpec, generationPlan);
-  const buildUnitPlan = service.buildBuildUnitPlan(
+  const gate3Runner = new GeneratedAppGate3WorkspaceRunner(configService);
+  const generationPlan = buildGenerationPlan(appSpec);
+  const staticContracts = buildStaticContracts(appSpec, generationPlan);
+  const buildUnitPlan = buildBuildUnitPlanForTest(
     appSpec,
     generationPlan,
     staticContracts,
-    undefined,
-    undefined,
+    gate3Runner,
     overrides.buildUnitExecutionLevel ?? 'real-local-command-plan',
   );
-  const integrationPlan = service.buildIntegrationPlan(
+  const integrationPlan = buildIntegrationPlan(
     appSpec,
     generationPlan,
     staticContracts,
     buildUnitPlan,
     overrides.integrationExecutionLevel ?? 'real-local-integration',
   );
-  const browserAcceptancePlan = service.buildBrowserAcceptancePlan(
+  const browserAcceptancePlan = buildBrowserAcceptancePlan(
     appSpec,
     generationPlan,
     staticContracts,
@@ -227,7 +213,7 @@ function buildPlans(
     buildGateResultsThroughGate6(),
     browserExecutionLevel,
   );
-  const independentVerificationPlan = service.buildIndependentVerificationPlan(
+  const independentVerificationPlan = buildIndependentVerificationPlan(
     appSpec,
     generationPlan,
     staticContracts,
@@ -237,7 +223,7 @@ function buildPlans(
     gateResults,
     overrides.verifierExecutionLevel ?? 'real-local-independent-verifier',
   );
-  const publishCandidatePlan = service.buildPublishCandidatePlan(
+  const publishCandidatePlan = buildPublishCandidatePlan(
     appSpec,
     generationPlan,
     staticContracts,
