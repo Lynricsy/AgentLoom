@@ -57,6 +57,8 @@ agentloom-server ─► PostgreSQL/Supabase  # tenancy, definitions, execution r
 
 At runtime, the server is the authority for authentication, tenancy, workflow and agent definitions, execution orchestration, plugin registration, generated-app readiness gates, public runtime boundaries, evidence, audit, and governance. Studio and Mobile are clients over those contracts rather than separate backend runtimes.
 
+Within the server, side-effectful orchestration remains in NestJS services and workers. Generated-app gate plans, workflow node value/condition/runtime-input handling, and agent-conversation metadata/config/prompt normalization live in sibling pure helper modules so they can evolve independently of database, queue, and runtime coordination.
+
 ## Tech Stack
 
 | Package | Stack |
