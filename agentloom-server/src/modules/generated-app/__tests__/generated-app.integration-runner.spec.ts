@@ -1,7 +1,6 @@
 import { ConfigService } from '@nestjs/config';
 import { describe, expect, it } from 'vitest';
 
-import type { DrizzleDB } from '../../../database/database.module';
 import type {
   GeneratedAppBuildUnitPlan,
   GeneratedAppGenerationPlan,
@@ -9,7 +8,13 @@ import type {
   GeneratedAppSpec,
   GeneratedAppStaticContracts,
 } from '../../../database/schema';
-import { GeneratedAppService } from '../generated-app.service';
+import {
+  buildBuildUnitPlan,
+  buildGenerationPlan,
+  buildStaticContracts,
+} from '../plan-builders/generation-plan.builder';
+import { buildIntegrationPlan } from '../plan-builders/integration-plan.builder';
+import { GeneratedAppGate3WorkspaceRunner } from '../generated-app.workspace';
 import { GeneratedAppGate4IntegrationRunner } from '../generated-app.integration-runner';
 import { buildGeneratedAppRuntimeForm } from '../generated-app.runtime';
 
@@ -71,43 +76,57 @@ function createAppSpec(): GeneratedAppSpec {
   };
 }
 
+function buildBuildUnitPlanForTest(
+  appSpec: GeneratedAppSpec,
+  generationPlan: GeneratedAppGenerationPlan,
+  staticContracts: GeneratedAppStaticContracts,
+  gate3Runner: GeneratedAppGate3WorkspaceRunner,
+  executionLevel = gate3Runner.getExecutionLevel(),
+): GeneratedAppBuildUnitPlan {
+  const workspace = gate3Runner.buildWorkspaceContract({
+    tenantId: 'test-tenant',
+    appId: 'test-app',
+    generationRunId: 'test-run',
+    appSpec,
+    staticContracts,
+  });
+  const commandPlan = gate3Runner.buildCommandPlan({
+    workspace,
+    requirementIds: appSpec.coreRequirements.map(
+      (requirement) => requirement.id,
+    ),
+    scenarioIds: appSpec.acceptanceScenarios.map((scenario) => scenario.id),
+  });
+
+  return buildBuildUnitPlan(
+    appSpec,
+    generationPlan,
+    staticContracts,
+    workspace,
+    commandPlan,
+    executionLevel,
+  );
+}
+
 function buildGate4Plans(
   executionLevel: GeneratedAppIntegrationPlan['executionLevel'],
 ) {
   const appSpec = createAppSpec();
-  const service = new GeneratedAppService(
-    {} as unknown as DrizzleDB,
+  const gate3Runner = new GeneratedAppGate3WorkspaceRunner(
     createConfigService(),
   );
-  const internals = service as unknown as {
-    buildGenerationPlan(appSpec: GeneratedAppSpec): GeneratedAppGenerationPlan;
-    buildStaticContracts(
-      appSpec: GeneratedAppSpec,
-      generationPlan: GeneratedAppGenerationPlan,
-    ): GeneratedAppStaticContracts;
-    buildBuildUnitPlan(
-      appSpec: GeneratedAppSpec,
-      generationPlan: GeneratedAppGenerationPlan,
-      staticContracts: GeneratedAppStaticContracts,
-    ): GeneratedAppBuildUnitPlan;
-    buildIntegrationPlan(
-      appSpec: GeneratedAppSpec,
-      generationPlan: GeneratedAppGenerationPlan,
-      staticContracts: GeneratedAppStaticContracts,
-      buildUnitPlan: GeneratedAppBuildUnitPlan,
-      executionLevel: GeneratedAppIntegrationPlan['executionLevel'],
-    ): GeneratedAppIntegrationPlan;
-  };
-  const generationPlan = internals.buildGenerationPlan(appSpec);
-  const staticContracts = internals.buildStaticContracts(
-    appSpec,
-    generationPlan,
-  );
+  const generationPlan = buildGenerationPlan(appSpec);
+  const staticContracts = buildStaticContracts(appSpec, generationPlan);
   const buildUnitPlan = {
-    ...internals.buildBuildUnitPlan(appSpec, generationPlan, staticContracts),
+    ...buildBuildUnitPlanForTest(
+      appSpec,
+      generationPlan,
+      staticContracts,
+      gate3Runner,
+    ),
     executionLevel: 'real-local-command-plan' as const,
   };
-  const integrationPlan = internals.buildIntegrationPlan(
+  const integrationPlan = buildIntegrationPlan(
     appSpec,
     generationPlan,
     staticContracts,

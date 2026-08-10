@@ -38,6 +38,21 @@ import {
   GeneratedAppPublicShareNotReadyException,
   GeneratedAppSubmissionNotFoundException,
 } from '../generated-app.exceptions';
+import * as generationPlanBuilder from '../plan-builders/generation-plan.builder';
+import * as integrationPlanBuilder from '../plan-builders/integration-plan.builder';
+import * as browserAcceptancePlanBuilder from '../plan-builders/browser-acceptance-plan.builder';
+import * as independentVerificationPlanBuilder from '../plan-builders/independent-verification-plan.builder';
+import * as publishCandidatePlanBuilder from '../plan-builders/publish-candidate-plan.builder';
+import {
+  buildBuildUnitPlan,
+  buildGenerationPlan,
+  buildStaticContracts,
+} from '../plan-builders/generation-plan.builder';
+import { buildIntegrationPlan } from '../plan-builders/integration-plan.builder';
+import { buildBrowserAcceptancePlan } from '../plan-builders/browser-acceptance-plan.builder';
+import { buildIndependentVerificationPlan } from '../plan-builders/independent-verification-plan.builder';
+import { buildPublishCandidatePlan } from '../plan-builders/publish-candidate-plan.builder';
+import { GeneratedAppGate7PublishCandidateRunner } from '../generated-app.publish-candidate-runner';
 import { createInitialGeneratedAppGateResults } from '../generated-app.gates';
 import { GeneratedAppService } from '../generated-app.service';
 import { WorkflowNotPublishedException } from '../../execution/execution.exceptions';
@@ -727,6 +742,50 @@ function createGeneratedAppRepairAttempt(
   };
 }
 
+const planGate3Runner = new GeneratedAppGate3WorkspaceRunner(
+  createConfigService(),
+);
+const planGate7Runner = new GeneratedAppGate7PublishCandidateRunner(
+  createConfigService(),
+);
+
+function buildBuildUnitPlanForTest(
+  appSpec: GeneratedApp['appSpec'],
+  generationPlan: GeneratedAppGenerationPlan,
+  staticContracts: GeneratedAppStaticContracts,
+  generationWorkspace?: Parameters<typeof buildBuildUnitPlan>[3],
+  commandPlan?: Parameters<typeof buildBuildUnitPlan>[4],
+  executionLevel = planGate3Runner.getExecutionLevel(),
+): GeneratedAppBuildUnitPlan {
+  const workspace =
+    generationWorkspace ??
+    planGate3Runner.buildWorkspaceContract({
+      tenantId: 'test-tenant',
+      appId: 'test-app',
+      generationRunId: 'test-run',
+      appSpec,
+      staticContracts,
+    });
+  const commands =
+    commandPlan ??
+    planGate3Runner.buildCommandPlan({
+      workspace,
+      requirementIds: appSpec.coreRequirements.map(
+        (requirement) => requirement.id,
+      ),
+      scenarioIds: appSpec.acceptanceScenarios.map((scenario) => scenario.id),
+    });
+
+  return buildBuildUnitPlan(
+    appSpec,
+    generationPlan,
+    staticContracts,
+    workspace,
+    commands,
+    executionLevel,
+  );
+}
+
 function createGeneratedApp(
   overrides: Partial<GeneratedApp> = {},
 ): GeneratedApp {
@@ -824,12 +883,8 @@ function createGeneratedAppWithGate3Workspace(
   const gate3Runner = new GeneratedAppGate3WorkspaceRunner(
     createConfigService(),
   );
-  const serviceInternals = serviceAccessForPlans();
-  const generationPlan = serviceInternals.buildGenerationPlan(baseApp.appSpec);
-  const staticContracts = serviceInternals.buildStaticContracts(
-    baseApp.appSpec,
-    generationPlan,
-  );
+  const generationPlan = buildGenerationPlan(baseApp.appSpec);
+  const staticContracts = buildStaticContracts(baseApp.appSpec, generationPlan);
   const workspace = gate3Runner.buildWorkspaceContract({
     tenantId: TENANT_ID,
     appId: APP_ID,
@@ -846,7 +901,7 @@ function createGeneratedAppWithGate3Workspace(
       (scenario) => scenario.id,
     ),
   });
-  const buildUnitPlan = serviceInternals.buildBuildUnitPlan(
+  const buildUnitPlan = buildBuildUnitPlanForTest(
     baseApp.appSpec,
     generationPlan,
     staticContracts,
@@ -863,65 +918,6 @@ function createGeneratedAppWithGate3Workspace(
       buildUnitPlan,
     },
   }) as GeneratedApp & { generationPlan: GeneratedAppGenerationPlan };
-}
-
-function serviceAccessForPlans() {
-  return new GeneratedAppService(
-    mockTenantDb as unknown as DrizzleDB,
-    createConfigService(),
-  ) as unknown as {
-    buildGenerationPlan(
-      appSpec: GeneratedApp['appSpec'],
-    ): GeneratedAppGenerationPlan;
-    buildStaticContracts(
-      appSpec: GeneratedApp['appSpec'],
-      generationPlan: GeneratedAppGenerationPlan,
-    ): GeneratedAppStaticContracts;
-    buildBuildUnitPlan(
-      appSpec: GeneratedApp['appSpec'],
-      generationPlan: GeneratedAppGenerationPlan,
-      staticContracts: GeneratedAppStaticContracts,
-      generationWorkspace?: GeneratedAppBuildUnitPlan['generationWorkspace'],
-      commandPlan?: GeneratedAppBuildUnitPlan['commandPlan'],
-      executionLevel?: GeneratedAppBuildUnitPlan['executionLevel'],
-    ): GeneratedAppBuildUnitPlan;
-    buildIntegrationPlan(
-      appSpec: GeneratedApp['appSpec'],
-      generationPlan: GeneratedAppGenerationPlan,
-      staticContracts: GeneratedAppStaticContracts,
-      buildUnitPlan: GeneratedAppBuildUnitPlan,
-      executionLevel?: GeneratedAppIntegrationPlan['executionLevel'],
-    ): GeneratedAppIntegrationPlan;
-    buildBrowserAcceptancePlan(
-      appSpec: GeneratedApp['appSpec'],
-      generationPlan: GeneratedAppGenerationPlan,
-      staticContracts: GeneratedAppStaticContracts,
-      buildUnitPlan: GeneratedAppBuildUnitPlan,
-      integrationPlan: GeneratedAppIntegrationPlan,
-      executionLevel?: GeneratedAppBrowserAcceptancePlan['executionLevel'],
-    ): GeneratedAppBrowserAcceptancePlan;
-    buildIndependentVerificationPlan(
-      appSpec: GeneratedApp['appSpec'],
-      generationPlan: GeneratedAppGenerationPlan,
-      staticContracts: GeneratedAppStaticContracts,
-      buildUnitPlan: GeneratedAppBuildUnitPlan,
-      integrationPlan: GeneratedAppIntegrationPlan,
-      browserAcceptancePlan: GeneratedAppBrowserAcceptancePlan,
-      gateResults: GeneratedApp['gateResults'],
-      executionLevel?: GeneratedAppIndependentVerificationPlan['executionLevel'],
-    ): GeneratedAppIndependentVerificationPlan;
-    buildPublishCandidatePlan(
-      appSpec: GeneratedApp['appSpec'],
-      generationPlan: GeneratedAppGenerationPlan,
-      staticContracts: GeneratedAppStaticContracts,
-      buildUnitPlan: GeneratedAppBuildUnitPlan,
-      integrationPlan: GeneratedAppIntegrationPlan,
-      browserAcceptancePlan: GeneratedAppBrowserAcceptancePlan,
-      independentVerificationPlan: GeneratedAppIndependentVerificationPlan,
-      gateResults: GeneratedApp['gateResults'],
-      executionLevel?: GeneratedAppPublishCandidatePlan['executionLevel'],
-    ): GeneratedAppPublishCandidatePlan;
-  };
 }
 
 describe('GeneratedAppService', () => {
@@ -1139,12 +1135,12 @@ describe('GeneratedAppService', () => {
     });
     const internals = service as unknown as {
       buildFailedGateRepairPlan(
-        failedGateRun: ReturnType<typeof createGeneratedAppGateRun>,
-        generatedAt: Date,
+        failedGateRun: GeneratedAppGateRun,
+        now: Date,
       ): GeneratedAppRepairPlan;
       buildFailedGateReverificationPlan(
-        failedGateRun: ReturnType<typeof createGeneratedAppGateRun>,
-        generatedAt: Date,
+        failedGateRun: GeneratedAppGateRun,
+        now: Date,
       ): GeneratedAppReverificationPlan;
     };
 
@@ -2075,13 +2071,9 @@ describe('GeneratedAppService', () => {
       publicShareToken: 'b'.repeat(64),
       publicShareCreatedAt: NOW,
     });
-    const internals = serviceAccessForPlans();
-    const generationPlan = internals.buildGenerationPlan(app.appSpec);
-    const staticContracts = internals.buildStaticContracts(
-      app.appSpec,
-      generationPlan,
-    );
-    const buildUnitPlan = internals.buildBuildUnitPlan(
+    const generationPlan = buildGenerationPlan(app.appSpec);
+    const staticContracts = buildStaticContracts(app.appSpec, generationPlan);
+    const buildUnitPlan = buildBuildUnitPlanForTest(
       app.appSpec,
       generationPlan,
       staticContracts,
@@ -2089,14 +2081,14 @@ describe('GeneratedAppService', () => {
       undefined,
       'real-local-command-plan',
     );
-    const integrationPlan = internals.buildIntegrationPlan(
+    const integrationPlan = buildIntegrationPlan(
       app.appSpec,
       generationPlan,
       staticContracts,
       buildUnitPlan,
       'real-local-integration',
     );
-    const browserAcceptancePlan = internals.buildBrowserAcceptancePlan(
+    const browserAcceptancePlan = buildBrowserAcceptancePlan(
       app.appSpec,
       generationPlan,
       staticContracts,
@@ -2151,18 +2143,17 @@ describe('GeneratedAppService', () => {
         ],
       };
     });
-    const independentVerificationPlan =
-      internals.buildIndependentVerificationPlan(
-        app.appSpec,
-        generationPlan,
-        staticContracts,
-        buildUnitPlan,
-        integrationPlan,
-        browserAcceptancePlan,
-        gateResultsThroughGate6,
-        'real-local-independent-verifier',
-      );
-    const publishCandidatePlan = internals.buildPublishCandidatePlan(
+    const independentVerificationPlan = buildIndependentVerificationPlan(
+      app.appSpec,
+      generationPlan,
+      staticContracts,
+      buildUnitPlan,
+      integrationPlan,
+      browserAcceptancePlan,
+      gateResultsThroughGate6,
+      'real-local-independent-verifier',
+    );
+    const publishCandidatePlan = buildPublishCandidatePlan(
       app.appSpec,
       generationPlan,
       staticContracts,
@@ -4257,25 +4248,6 @@ describe('GeneratedAppService', () => {
       storageService,
     );
     const internals = serviceWithStorage as unknown as {
-      buildGenerationPlan(
-        appSpec: GeneratedApp['appSpec'],
-      ): GeneratedAppGenerationPlan;
-      buildStaticContracts(
-        appSpec: GeneratedApp['appSpec'],
-        generationPlan: GeneratedAppGenerationPlan,
-      ): GeneratedAppStaticContracts;
-      buildBuildUnitPlan(
-        appSpec: GeneratedApp['appSpec'],
-        generationPlan: GeneratedAppGenerationPlan,
-        staticContracts: GeneratedAppStaticContracts,
-        generationWorkspace: NonNullable<
-          GeneratedAppBuildUnitPlan['generationWorkspace']
-        >,
-        commandPlan: ReturnType<
-          GeneratedAppGate3WorkspaceRunner['buildCommandPlan']
-        >,
-        executionLevel: GeneratedAppBuildUnitPlan['executionLevel'],
-      ): GeneratedAppBuildUnitPlan;
       ensureGeneratedPrivatePluginBindings(
         tenantId: string,
         userId: string,
@@ -4283,11 +4255,8 @@ describe('GeneratedAppService', () => {
       ): Promise<GeneratedAppResponseDto>;
       toResponseDto(app: GeneratedApp): GeneratedAppResponseDto;
     };
-    const generationPlan = internals.buildGenerationPlan(app.appSpec);
-    const staticContracts = internals.buildStaticContracts(
-      app.appSpec,
-      generationPlan,
-    );
+    const generationPlan = buildGenerationPlan(app.appSpec);
+    const staticContracts = buildStaticContracts(app.appSpec, generationPlan);
     const workspace = runner.buildWorkspaceContract({
       tenantId: TENANT_ID,
       appId: APP_ID,
@@ -4304,7 +4273,7 @@ describe('GeneratedAppService', () => {
         (scenario) => scenario.id,
       ),
     });
-    const buildUnitPlan = internals.buildBuildUnitPlan(
+    const buildUnitPlan = buildBuildUnitPlan(
       app.appSpec,
       generationPlan,
       staticContracts,
@@ -4488,25 +4457,6 @@ describe('GeneratedAppService', () => {
       storageService,
     );
     const internals = serviceWithStorage as unknown as {
-      buildGenerationPlan(
-        appSpec: GeneratedApp['appSpec'],
-      ): GeneratedAppGenerationPlan;
-      buildStaticContracts(
-        appSpec: GeneratedApp['appSpec'],
-        generationPlan: GeneratedAppGenerationPlan,
-      ): GeneratedAppStaticContracts;
-      buildBuildUnitPlan(
-        appSpec: GeneratedApp['appSpec'],
-        generationPlan: GeneratedAppGenerationPlan,
-        staticContracts: GeneratedAppStaticContracts,
-        generationWorkspace: NonNullable<
-          GeneratedAppBuildUnitPlan['generationWorkspace']
-        >,
-        commandPlan: ReturnType<
-          GeneratedAppGate3WorkspaceRunner['buildCommandPlan']
-        >,
-        executionLevel: GeneratedAppBuildUnitPlan['executionLevel'],
-      ): GeneratedAppBuildUnitPlan;
       ensureGeneratedPrivatePluginBindings(
         tenantId: string,
         userId: string,
@@ -4514,11 +4464,8 @@ describe('GeneratedAppService', () => {
       ): Promise<GeneratedAppResponseDto>;
       toResponseDto(app: GeneratedApp): GeneratedAppResponseDto;
     };
-    const generationPlan = internals.buildGenerationPlan(app.appSpec);
-    const staticContracts = internals.buildStaticContracts(
-      app.appSpec,
-      generationPlan,
-    );
+    const generationPlan = buildGenerationPlan(app.appSpec);
+    const staticContracts = buildStaticContracts(app.appSpec, generationPlan);
     const workspace = runner.buildWorkspaceContract({
       tenantId: TENANT_ID,
       appId: APP_ID,
@@ -4535,7 +4482,7 @@ describe('GeneratedAppService', () => {
         (scenario) => scenario.id,
       ),
     });
-    const buildUnitPlan = internals.buildBuildUnitPlan(
+    const buildUnitPlan = buildBuildUnitPlan(
       app.appSpec,
       generationPlan,
       staticContracts,
@@ -5022,88 +4969,23 @@ describe('GeneratedAppService', () => {
 
   it('Gate 7 不应把 Gate 3 fixture evidence 误判为真实 Gate 4-7 已通过', () => {
     const app = createGeneratedApp();
-    const internals = service as unknown as {
-      buildGenerationPlan(
-        appSpec: GeneratedApp['appSpec'],
-      ): GeneratedAppGenerationPlan;
-      buildStaticContracts(
-        appSpec: GeneratedApp['appSpec'],
-        generationPlan: GeneratedAppGenerationPlan,
-      ): GeneratedAppStaticContracts;
-      buildBuildUnitPlan(
-        appSpec: GeneratedApp['appSpec'],
-        generationPlan: GeneratedAppGenerationPlan,
-        staticContracts: GeneratedAppStaticContracts,
-      ): GeneratedAppBuildUnitPlan;
-      buildIntegrationPlan(
-        appSpec: GeneratedApp['appSpec'],
-        generationPlan: GeneratedAppGenerationPlan,
-        staticContracts: GeneratedAppStaticContracts,
-        buildUnitPlan: GeneratedAppBuildUnitPlan,
-      ): GeneratedAppIntegrationPlan;
-      buildBrowserAcceptancePlan(
-        appSpec: GeneratedApp['appSpec'],
-        generationPlan: GeneratedAppGenerationPlan,
-        staticContracts: GeneratedAppStaticContracts,
-        buildUnitPlan: GeneratedAppBuildUnitPlan,
-        integrationPlan: GeneratedAppIntegrationPlan,
-      ): GeneratedAppBrowserAcceptancePlan;
-      buildIndependentVerificationPlan(
-        appSpec: GeneratedApp['appSpec'],
-        generationPlan: GeneratedAppGenerationPlan,
-        staticContracts: GeneratedAppStaticContracts,
-        buildUnitPlan: GeneratedAppBuildUnitPlan,
-        integrationPlan: GeneratedAppIntegrationPlan,
-        browserAcceptancePlan: GeneratedAppBrowserAcceptancePlan,
-        gateResults: GeneratedApp['gateResults'],
-      ): GeneratedAppIndependentVerificationPlan;
-      buildPublishCandidatePlan(
-        appSpec: GeneratedApp['appSpec'],
-        generationPlan: GeneratedAppGenerationPlan,
-        staticContracts: GeneratedAppStaticContracts,
-        buildUnitPlan: GeneratedAppBuildUnitPlan,
-        integrationPlan: GeneratedAppIntegrationPlan,
-        browserAcceptancePlan: GeneratedAppBrowserAcceptancePlan,
-        independentVerificationPlan: GeneratedAppIndependentVerificationPlan,
-        gateResults: GeneratedApp['gateResults'],
-      ): GeneratedAppPublishCandidatePlan;
-      evaluateGate7PublishCandidatePlan(
-        appSpec: GeneratedApp['appSpec'],
-        generationPlan: GeneratedAppGenerationPlan,
-        staticContracts: GeneratedAppStaticContracts,
-        buildUnitPlan: GeneratedAppBuildUnitPlan,
-        integrationPlan: GeneratedAppIntegrationPlan,
-        browserAcceptancePlan: GeneratedAppBrowserAcceptancePlan,
-        independentVerificationPlan: GeneratedAppIndependentVerificationPlan,
-        gateResults: GeneratedApp['gateResults'],
-        publishCandidatePlan: GeneratedAppPublishCandidatePlan,
-      ): {
-        status: 'passed' | 'failed';
-        failure: {
-          details?: { skeletonOnlyUpstreamGateIds?: string[] };
-        } | null;
-      };
-    };
-    const generationPlan = internals.buildGenerationPlan(app.appSpec);
-    const staticContracts = internals.buildStaticContracts(
-      app.appSpec,
-      generationPlan,
-    );
+    const generationPlan = buildGenerationPlan(app.appSpec);
+    const staticContracts = buildStaticContracts(app.appSpec, generationPlan);
     const fixtureBuildUnitPlan: GeneratedAppBuildUnitPlan = {
-      ...internals.buildBuildUnitPlan(
+      ...buildBuildUnitPlanForTest(
         app.appSpec,
         generationPlan,
         staticContracts,
       ),
       executionLevel: 'fixture-execution',
     };
-    const integrationPlan = internals.buildIntegrationPlan(
+    const integrationPlan = buildIntegrationPlan(
       app.appSpec,
       generationPlan,
       staticContracts,
       fixtureBuildUnitPlan,
     );
-    const browserAcceptancePlan = internals.buildBrowserAcceptancePlan(
+    const browserAcceptancePlan = buildBrowserAcceptancePlan(
       app.appSpec,
       generationPlan,
       staticContracts,
@@ -5149,16 +5031,15 @@ describe('GeneratedAppService', () => {
           }
         : gate,
     );
-    const independentVerificationPlan =
-      internals.buildIndependentVerificationPlan(
-        app.appSpec,
-        generationPlan,
-        staticContracts,
-        fixtureBuildUnitPlan,
-        integrationPlan,
-        browserAcceptancePlan,
-        gateResultsThroughGate5,
-      );
+    const independentVerificationPlan = buildIndependentVerificationPlan(
+      app.appSpec,
+      generationPlan,
+      staticContracts,
+      fixtureBuildUnitPlan,
+      integrationPlan,
+      browserAcceptancePlan,
+      gateResultsThroughGate5,
+    );
     const gateResultsThroughGate6 = gateResultsThroughGate5.map((gate) =>
       gate.gateId === 'gate-6'
         ? {
@@ -5178,7 +5059,7 @@ describe('GeneratedAppService', () => {
         : gate,
     );
 
-    const publishCandidatePlan = internals.buildPublishCandidatePlan(
+    const publishCandidatePlan = buildPublishCandidatePlan(
       app.appSpec,
       generationPlan,
       staticContracts,
@@ -5187,18 +5068,20 @@ describe('GeneratedAppService', () => {
       browserAcceptancePlan,
       independentVerificationPlan,
       gateResultsThroughGate6,
+      planGate7Runner.getExecutionLevel(),
     );
-    const evaluation = internals.evaluateGate7PublishCandidatePlan(
-      app.appSpec,
-      generationPlan,
-      staticContracts,
-      fixtureBuildUnitPlan,
-      integrationPlan,
-      browserAcceptancePlan,
-      independentVerificationPlan,
-      gateResultsThroughGate6,
-      publishCandidatePlan,
-    );
+    const evaluation =
+      publishCandidatePlanBuilder.evaluateGate7PublishCandidatePlan(
+        app.appSpec,
+        generationPlan,
+        staticContracts,
+        fixtureBuildUnitPlan,
+        integrationPlan,
+        browserAcceptancePlan,
+        independentVerificationPlan,
+        gateResultsThroughGate6,
+        publishCandidatePlan,
+      );
 
     expect(publishCandidatePlan.publicationBlockers).toEqual(
       expect.arrayContaining([
@@ -5223,97 +5106,32 @@ describe('GeneratedAppService', () => {
       ]),
     );
     expect(evaluation.status).toBe('failed');
-    expect(evaluation.failure?.details?.skeletonOnlyUpstreamGateIds).toEqual([
-      'gate-3',
-      'gate-4',
-      'gate-5',
-      'gate-6',
-    ]);
+    expect(
+      (
+        evaluation.failure?.details as
+          | { skeletonOnlyUpstreamGateIds?: string[] }
+          | undefined
+      )?.skeletonOnlyUpstreamGateIds,
+    ).toEqual(['gate-3', 'gate-4', 'gate-5', 'gate-6']);
   });
 
   it('Gate 7 不应把 Gate 4 fixture integration evidence 误判为真实集成通过', () => {
     const app = createGeneratedApp();
-    const internals = service as unknown as {
-      buildGenerationPlan(
-        appSpec: GeneratedApp['appSpec'],
-      ): GeneratedAppGenerationPlan;
-      buildStaticContracts(
-        appSpec: GeneratedApp['appSpec'],
-        generationPlan: GeneratedAppGenerationPlan,
-      ): GeneratedAppStaticContracts;
-      buildBuildUnitPlan(
-        appSpec: GeneratedApp['appSpec'],
-        generationPlan: GeneratedAppGenerationPlan,
-        staticContracts: GeneratedAppStaticContracts,
-      ): GeneratedAppBuildUnitPlan;
-      buildIntegrationPlan(
-        appSpec: GeneratedApp['appSpec'],
-        generationPlan: GeneratedAppGenerationPlan,
-        staticContracts: GeneratedAppStaticContracts,
-        buildUnitPlan: GeneratedAppBuildUnitPlan,
-        executionLevel: GeneratedAppIntegrationPlan['executionLevel'],
-      ): GeneratedAppIntegrationPlan;
-      buildBrowserAcceptancePlan(
-        appSpec: GeneratedApp['appSpec'],
-        generationPlan: GeneratedAppGenerationPlan,
-        staticContracts: GeneratedAppStaticContracts,
-        buildUnitPlan: GeneratedAppBuildUnitPlan,
-        integrationPlan: GeneratedAppIntegrationPlan,
-      ): GeneratedAppBrowserAcceptancePlan;
-      buildIndependentVerificationPlan(
-        appSpec: GeneratedApp['appSpec'],
-        generationPlan: GeneratedAppGenerationPlan,
-        staticContracts: GeneratedAppStaticContracts,
-        buildUnitPlan: GeneratedAppBuildUnitPlan,
-        integrationPlan: GeneratedAppIntegrationPlan,
-        browserAcceptancePlan: GeneratedAppBrowserAcceptancePlan,
-        gateResults: GeneratedApp['gateResults'],
-      ): GeneratedAppIndependentVerificationPlan;
-      buildPublishCandidatePlan(
-        appSpec: GeneratedApp['appSpec'],
-        generationPlan: GeneratedAppGenerationPlan,
-        staticContracts: GeneratedAppStaticContracts,
-        buildUnitPlan: GeneratedAppBuildUnitPlan,
-        integrationPlan: GeneratedAppIntegrationPlan,
-        browserAcceptancePlan: GeneratedAppBrowserAcceptancePlan,
-        independentVerificationPlan: GeneratedAppIndependentVerificationPlan,
-        gateResults: GeneratedApp['gateResults'],
-      ): GeneratedAppPublishCandidatePlan;
-      evaluateGate7PublishCandidatePlan(
-        appSpec: GeneratedApp['appSpec'],
-        generationPlan: GeneratedAppGenerationPlan,
-        staticContracts: GeneratedAppStaticContracts,
-        buildUnitPlan: GeneratedAppBuildUnitPlan,
-        integrationPlan: GeneratedAppIntegrationPlan,
-        browserAcceptancePlan: GeneratedAppBrowserAcceptancePlan,
-        independentVerificationPlan: GeneratedAppIndependentVerificationPlan,
-        gateResults: GeneratedApp['gateResults'],
-        publishCandidatePlan: GeneratedAppPublishCandidatePlan,
-      ): {
-        status: 'passed' | 'failed';
-        failure: {
-          details?: { skeletonOnlyUpstreamGateIds?: string[] };
-        } | null;
-      };
-    };
-    const generationPlan = internals.buildGenerationPlan(app.appSpec);
-    const staticContracts = internals.buildStaticContracts(
-      app.appSpec,
-      generationPlan,
-    );
-    const buildUnitPlan = internals.buildBuildUnitPlan(
+    const generationPlan = buildGenerationPlan(app.appSpec);
+    const staticContracts = buildStaticContracts(app.appSpec, generationPlan);
+    const buildUnitPlan = buildBuildUnitPlanForTest(
       app.appSpec,
       generationPlan,
       staticContracts,
     );
-    const integrationPlan = internals.buildIntegrationPlan(
+    const integrationPlan = buildIntegrationPlan(
       app.appSpec,
       generationPlan,
       staticContracts,
       buildUnitPlan,
       'fixture-integration',
     );
-    const browserAcceptancePlan = internals.buildBrowserAcceptancePlan(
+    const browserAcceptancePlan = buildBrowserAcceptancePlan(
       app.appSpec,
       generationPlan,
       staticContracts,
@@ -5359,16 +5177,15 @@ describe('GeneratedAppService', () => {
           }
         : gate,
     );
-    const independentVerificationPlan =
-      internals.buildIndependentVerificationPlan(
-        app.appSpec,
-        generationPlan,
-        staticContracts,
-        buildUnitPlan,
-        integrationPlan,
-        browserAcceptancePlan,
-        gateResultsThroughGate5,
-      );
+    const independentVerificationPlan = buildIndependentVerificationPlan(
+      app.appSpec,
+      generationPlan,
+      staticContracts,
+      buildUnitPlan,
+      integrationPlan,
+      browserAcceptancePlan,
+      gateResultsThroughGate5,
+    );
     const gateResultsThroughGate6 = gateResultsThroughGate5.map((gate) =>
       gate.gateId === 'gate-6'
         ? {
@@ -5388,7 +5205,7 @@ describe('GeneratedAppService', () => {
         : gate,
     );
 
-    const publishCandidatePlan = internals.buildPublishCandidatePlan(
+    const publishCandidatePlan = buildPublishCandidatePlan(
       app.appSpec,
       generationPlan,
       staticContracts,
@@ -5397,18 +5214,20 @@ describe('GeneratedAppService', () => {
       browserAcceptancePlan,
       independentVerificationPlan,
       gateResultsThroughGate6,
+      planGate7Runner.getExecutionLevel(),
     );
-    const evaluation = internals.evaluateGate7PublishCandidatePlan(
-      app.appSpec,
-      generationPlan,
-      staticContracts,
-      buildUnitPlan,
-      integrationPlan,
-      browserAcceptancePlan,
-      independentVerificationPlan,
-      gateResultsThroughGate6,
-      publishCandidatePlan,
-    );
+    const evaluation =
+      publishCandidatePlanBuilder.evaluateGate7PublishCandidatePlan(
+        app.appSpec,
+        generationPlan,
+        staticContracts,
+        buildUnitPlan,
+        integrationPlan,
+        browserAcceptancePlan,
+        independentVerificationPlan,
+        gateResultsThroughGate6,
+        publishCandidatePlan,
+      );
 
     expect(publishCandidatePlan.publicationBlockers).toEqual(
       expect.arrayContaining([
@@ -5438,11 +5257,13 @@ describe('GeneratedAppService', () => {
       ]),
     );
     expect(evaluation.status).toBe('failed');
-    expect(evaluation.failure?.details?.skeletonOnlyUpstreamGateIds).toEqual([
-      'gate-4',
-      'gate-5',
-      'gate-6',
-    ]);
+    expect(
+      (
+        evaluation.failure?.details as
+          | { skeletonOnlyUpstreamGateIds?: string[] }
+          | undefined
+      )?.skeletonOnlyUpstreamGateIds,
+    ).toEqual(['gate-4', 'gate-5', 'gate-6']);
   });
 
   it('Gate 1 失败时应写入失败证据、保留 generationPlan 并以 Gate 1 failure reason 结束', async () => {
@@ -5453,13 +5274,7 @@ describe('GeneratedAppService', () => {
       publicShareToken: 'c'.repeat(64),
       publicShareCreatedAt: NOW,
     });
-    const validPlan = (
-      service as unknown as {
-        buildGenerationPlan(
-          appSpec: GeneratedApp['appSpec'],
-        ): GeneratedAppGenerationPlan;
-      }
-    ).buildGenerationPlan(app.appSpec);
+    const validPlan = buildGenerationPlan(app.appSpec);
     const brokenPlan: GeneratedAppGenerationPlan = {
       ...validPlan,
       traceability: validPlan.traceability.map((entry) => ({
@@ -5467,14 +5282,9 @@ describe('GeneratedAppService', () => {
         pageIds: ['missing-page'],
       })),
     };
-    vi.spyOn(
-      service as unknown as {
-        buildGenerationPlan(
-          appSpec: GeneratedApp['appSpec'],
-        ): GeneratedAppGenerationPlan;
-      },
-      'buildGenerationPlan',
-    ).mockReturnValue(brokenPlan);
+    vi.spyOn(generationPlanBuilder, 'buildGenerationPlan').mockReturnValue(
+      brokenPlan,
+    );
     const run = createGeneratedAppGenerationRun();
     const gateRun = createGeneratedAppGateRun({
       gateId: 'gate-0',
@@ -5603,13 +5413,7 @@ describe('GeneratedAppService', () => {
       publicShareToken: 'd'.repeat(64),
       publicShareCreatedAt: NOW,
     });
-    const validPlan = (
-      service as unknown as {
-        buildGenerationPlan(
-          appSpec: GeneratedApp['appSpec'],
-        ): GeneratedAppGenerationPlan;
-      }
-    ).buildGenerationPlan(app.appSpec);
+    const validPlan = buildGenerationPlan(app.appSpec);
     const validPlanWithTool: GeneratedAppGenerationPlan = {
       ...validPlan,
       pluginTools: {
@@ -5625,22 +5429,10 @@ describe('GeneratedAppService', () => {
         emptyReason: null,
       },
     };
-    vi.spyOn(
-      service as unknown as {
-        buildGenerationPlan(
-          appSpec: GeneratedApp['appSpec'],
-        ): GeneratedAppGenerationPlan;
-      },
-      'buildGenerationPlan',
-    ).mockReturnValue(validPlanWithTool);
-    const validContracts = (
-      service as unknown as {
-        buildStaticContracts(
-          appSpec: GeneratedApp['appSpec'],
-          generationPlan: GeneratedAppGenerationPlan,
-        ): GeneratedAppStaticContracts;
-      }
-    ).buildStaticContracts(app.appSpec, validPlanWithTool);
+    vi.spyOn(generationPlanBuilder, 'buildGenerationPlan').mockReturnValue(
+      validPlanWithTool,
+    );
+    const validContracts = buildStaticContracts(app.appSpec, validPlanWithTool);
     const malformedContracts: GeneratedAppStaticContracts = {
       ...validContracts,
       frontendRoutes: validContracts.frontendRoutes.map((route) => ({
@@ -5680,15 +5472,9 @@ describe('GeneratedAppService', () => {
         staticContractIds: ['missing-contract'],
       })),
     };
-    vi.spyOn(
-      service as unknown as {
-        buildStaticContracts(
-          appSpec: GeneratedApp['appSpec'],
-          generationPlan: GeneratedAppGenerationPlan,
-        ): GeneratedAppStaticContracts;
-      },
-      'buildStaticContracts',
-    ).mockReturnValue(malformedContracts);
+    vi.spyOn(generationPlanBuilder, 'buildStaticContracts').mockReturnValue(
+      malformedContracts,
+    );
     const run = createGeneratedAppGenerationRun();
     const gateRun = createGeneratedAppGateRun({
       gateId: 'gate-0',
@@ -5891,30 +5677,13 @@ describe('GeneratedAppService', () => {
       publicShareToken: 'e'.repeat(64),
       publicShareCreatedAt: NOW,
     });
-    const validPlan = (
-      service as unknown as {
-        buildGenerationPlan(
-          appSpec: GeneratedApp['appSpec'],
-        ): GeneratedAppGenerationPlan;
-      }
-    ).buildGenerationPlan(app.appSpec);
-    const validContracts = (
-      service as unknown as {
-        buildStaticContracts(
-          appSpec: GeneratedApp['appSpec'],
-          generationPlan: GeneratedAppGenerationPlan,
-        ): GeneratedAppStaticContracts;
-      }
-    ).buildStaticContracts(app.appSpec, validPlan);
-    const validBuildUnitPlan = (
-      service as unknown as {
-        buildBuildUnitPlan(
-          appSpec: GeneratedApp['appSpec'],
-          generationPlan: GeneratedAppGenerationPlan,
-          staticContracts: GeneratedAppStaticContracts,
-        ): GeneratedAppBuildUnitPlan;
-      }
-    ).buildBuildUnitPlan(app.appSpec, validPlan, validContracts);
+    const validPlan = buildGenerationPlan(app.appSpec);
+    const validContracts = buildStaticContracts(app.appSpec, validPlan);
+    const validBuildUnitPlan = buildBuildUnitPlanForTest(
+      app.appSpec,
+      validPlan,
+      validContracts,
+    );
     const malformedBuildUnitPlan: GeneratedAppBuildUnitPlan = {
       ...validBuildUnitPlan,
       generationWorkspace: validBuildUnitPlan.generationWorkspace
@@ -6012,16 +5781,9 @@ describe('GeneratedAppService', () => {
       },
       failureCaptureFields: ['command', 'exitCode'],
     };
-    vi.spyOn(
-      service as unknown as {
-        buildBuildUnitPlan(
-          appSpec: GeneratedApp['appSpec'],
-          generationPlan: GeneratedAppGenerationPlan,
-          staticContracts: GeneratedAppStaticContracts,
-        ): GeneratedAppBuildUnitPlan;
-      },
-      'buildBuildUnitPlan',
-    ).mockReturnValue(malformedBuildUnitPlan);
+    vi.spyOn(generationPlanBuilder, 'buildBuildUnitPlan').mockReturnValue(
+      malformedBuildUnitPlan,
+    );
     const run = createGeneratedAppGenerationRun();
     const gateRun = createGeneratedAppGateRun({
       gateId: 'gate-0',
@@ -6938,32 +6700,8 @@ describe('GeneratedAppService', () => {
         '/tmp/agentloom-generated-app-gate3-runner-spec',
     });
     const runner = new GeneratedAppGate3WorkspaceRunner(configService);
-    const internals = service as unknown as {
-      buildGenerationPlan(
-        appSpec: GeneratedApp['appSpec'],
-      ): GeneratedAppGenerationPlan;
-      buildStaticContracts(
-        appSpec: GeneratedApp['appSpec'],
-        generationPlan: GeneratedAppGenerationPlan,
-      ): GeneratedAppStaticContracts;
-      buildBuildUnitPlan(
-        appSpec: GeneratedApp['appSpec'],
-        generationPlan: GeneratedAppGenerationPlan,
-        staticContracts: GeneratedAppStaticContracts,
-        generationWorkspace: NonNullable<
-          GeneratedAppBuildUnitPlan['generationWorkspace']
-        >,
-        commandPlan: ReturnType<
-          GeneratedAppGate3WorkspaceRunner['buildCommandPlan']
-        >,
-        executionLevel: GeneratedAppBuildUnitPlan['executionLevel'],
-      ): GeneratedAppBuildUnitPlan;
-    };
-    const generationPlan = internals.buildGenerationPlan(app.appSpec);
-    const staticContracts = internals.buildStaticContracts(
-      app.appSpec,
-      generationPlan,
-    );
+    const generationPlan = buildGenerationPlan(app.appSpec);
+    const staticContracts = buildStaticContracts(app.appSpec, generationPlan);
     const workspace = runner.buildWorkspaceContract({
       tenantId: TENANT_ID,
       appId: APP_ID,
@@ -6980,7 +6718,7 @@ describe('GeneratedAppService', () => {
         (scenario) => scenario.id,
       ),
     });
-    const buildUnitPlan = internals.buildBuildUnitPlan(
+    const buildUnitPlan = buildBuildUnitPlan(
       app.appSpec,
       generationPlan,
       staticContracts,
@@ -7041,32 +6779,8 @@ describe('GeneratedAppService', () => {
       GENERATED_APP_WORKSPACE_ROOT: workspaceRoot,
     });
     const runner = new GeneratedAppGate3WorkspaceRunner(configService);
-    const internals = service as unknown as {
-      buildGenerationPlan(
-        appSpec: GeneratedApp['appSpec'],
-      ): GeneratedAppGenerationPlan;
-      buildStaticContracts(
-        appSpec: GeneratedApp['appSpec'],
-        generationPlan: GeneratedAppGenerationPlan,
-      ): GeneratedAppStaticContracts;
-      buildBuildUnitPlan(
-        appSpec: GeneratedApp['appSpec'],
-        generationPlan: GeneratedAppGenerationPlan,
-        staticContracts: GeneratedAppStaticContracts,
-        generationWorkspace: NonNullable<
-          GeneratedAppBuildUnitPlan['generationWorkspace']
-        >,
-        commandPlan: ReturnType<
-          GeneratedAppGate3WorkspaceRunner['buildCommandPlan']
-        >,
-        executionLevel: GeneratedAppBuildUnitPlan['executionLevel'],
-      ): GeneratedAppBuildUnitPlan;
-    };
-    const generationPlan = internals.buildGenerationPlan(app.appSpec);
-    const staticContracts = internals.buildStaticContracts(
-      app.appSpec,
-      generationPlan,
-    );
+    const generationPlan = buildGenerationPlan(app.appSpec);
+    const staticContracts = buildStaticContracts(app.appSpec, generationPlan);
     const workspace = runner.buildWorkspaceContract({
       tenantId: TENANT_ID,
       appId: APP_ID,
@@ -7083,7 +6797,7 @@ describe('GeneratedAppService', () => {
         (scenario) => scenario.id,
       ),
     });
-    const buildUnitPlan = internals.buildBuildUnitPlan(
+    const buildUnitPlan = buildBuildUnitPlan(
       app.appSpec,
       generationPlan,
       staticContracts,
@@ -7353,32 +7067,8 @@ describe('GeneratedAppService', () => {
       GENERATED_APP_WORKSPACE_ROOT: workspaceRoot,
     });
     const runner = new GeneratedAppGate3WorkspaceRunner(configService);
-    const internals = service as unknown as {
-      buildGenerationPlan(
-        appSpec: GeneratedApp['appSpec'],
-      ): GeneratedAppGenerationPlan;
-      buildStaticContracts(
-        appSpec: GeneratedApp['appSpec'],
-        generationPlan: GeneratedAppGenerationPlan,
-      ): GeneratedAppStaticContracts;
-      buildBuildUnitPlan(
-        appSpec: GeneratedApp['appSpec'],
-        generationPlan: GeneratedAppGenerationPlan,
-        staticContracts: GeneratedAppStaticContracts,
-        generationWorkspace: NonNullable<
-          GeneratedAppBuildUnitPlan['generationWorkspace']
-        >,
-        commandPlan: ReturnType<
-          GeneratedAppGate3WorkspaceRunner['buildCommandPlan']
-        >,
-        executionLevel: GeneratedAppBuildUnitPlan['executionLevel'],
-      ): GeneratedAppBuildUnitPlan;
-    };
-    const generationPlan = internals.buildGenerationPlan(app.appSpec);
-    const staticContracts = internals.buildStaticContracts(
-      app.appSpec,
-      generationPlan,
-    );
+    const generationPlan = buildGenerationPlan(app.appSpec);
+    const staticContracts = buildStaticContracts(app.appSpec, generationPlan);
     const workspace = runner.buildWorkspaceContract({
       tenantId: TENANT_ID,
       appId: APP_ID,
@@ -7395,7 +7085,7 @@ describe('GeneratedAppService', () => {
         (scenario) => scenario.id,
       ),
     });
-    const buildUnitPlan = internals.buildBuildUnitPlan(
+    const buildUnitPlan = buildBuildUnitPlan(
       app.appSpec,
       generationPlan,
       staticContracts,
@@ -7516,32 +7206,8 @@ describe('GeneratedAppService', () => {
       GENERATED_APP_WORKSPACE_ROOT: workspaceRoot,
     });
     const runner = new GeneratedAppGate3WorkspaceRunner(configService);
-    const internals = service as unknown as {
-      buildGenerationPlan(
-        appSpec: GeneratedApp['appSpec'],
-      ): GeneratedAppGenerationPlan;
-      buildStaticContracts(
-        appSpec: GeneratedApp['appSpec'],
-        generationPlan: GeneratedAppGenerationPlan,
-      ): GeneratedAppStaticContracts;
-      buildBuildUnitPlan(
-        appSpec: GeneratedApp['appSpec'],
-        generationPlan: GeneratedAppGenerationPlan,
-        staticContracts: GeneratedAppStaticContracts,
-        generationWorkspace: NonNullable<
-          GeneratedAppBuildUnitPlan['generationWorkspace']
-        >,
-        commandPlan: ReturnType<
-          GeneratedAppGate3WorkspaceRunner['buildCommandPlan']
-        >,
-        executionLevel: GeneratedAppBuildUnitPlan['executionLevel'],
-      ): GeneratedAppBuildUnitPlan;
-    };
-    const generationPlan = internals.buildGenerationPlan(appSpec);
-    const staticContracts = internals.buildStaticContracts(
-      appSpec,
-      generationPlan,
-    );
+    const generationPlan = buildGenerationPlan(appSpec);
+    const staticContracts = buildStaticContracts(appSpec, generationPlan);
     const workspace = runner.buildWorkspaceContract({
       tenantId: TENANT_ID,
       appId: APP_ID,
@@ -7556,7 +7222,7 @@ describe('GeneratedAppService', () => {
       ),
       scenarioIds: appSpec.acceptanceScenarios.map((scenario) => scenario.id),
     });
-    const buildUnitPlan = internals.buildBuildUnitPlan(
+    const buildUnitPlan = buildBuildUnitPlan(
       appSpec,
       generationPlan,
       staticContracts,
@@ -7601,13 +7267,7 @@ describe('GeneratedAppService', () => {
       publicShareToken: 'f'.repeat(64),
       publicShareCreatedAt: NOW,
     });
-    const validPlan = (
-      service as unknown as {
-        buildGenerationPlan(
-          appSpec: GeneratedApp['appSpec'],
-        ): GeneratedAppGenerationPlan;
-      }
-    ).buildGenerationPlan(app.appSpec);
+    const validPlan = buildGenerationPlan(app.appSpec);
     const validPlanWithTool: GeneratedAppGenerationPlan = {
       ...validPlan,
       pluginTools: {
@@ -7623,41 +7283,16 @@ describe('GeneratedAppService', () => {
         emptyReason: null,
       },
     };
-    vi.spyOn(
-      service as unknown as {
-        buildGenerationPlan(
-          appSpec: GeneratedApp['appSpec'],
-        ): GeneratedAppGenerationPlan;
-      },
-      'buildGenerationPlan',
-    ).mockReturnValue(validPlanWithTool);
-    const validContracts = (
-      service as unknown as {
-        buildStaticContracts(
-          appSpec: GeneratedApp['appSpec'],
-          generationPlan: GeneratedAppGenerationPlan,
-        ): GeneratedAppStaticContracts;
-      }
-    ).buildStaticContracts(app.appSpec, validPlanWithTool);
-    const validBuildUnitPlan = (
-      service as unknown as {
-        buildBuildUnitPlan(
-          appSpec: GeneratedApp['appSpec'],
-          generationPlan: GeneratedAppGenerationPlan,
-          staticContracts: GeneratedAppStaticContracts,
-        ): GeneratedAppBuildUnitPlan;
-      }
-    ).buildBuildUnitPlan(app.appSpec, validPlanWithTool, validContracts);
-    const validIntegrationPlan = (
-      service as unknown as {
-        buildIntegrationPlan(
-          appSpec: GeneratedApp['appSpec'],
-          generationPlan: GeneratedAppGenerationPlan,
-          staticContracts: GeneratedAppStaticContracts,
-          buildUnitPlan: GeneratedAppBuildUnitPlan,
-        ): GeneratedAppIntegrationPlan;
-      }
-    ).buildIntegrationPlan(
+    vi.spyOn(generationPlanBuilder, 'buildGenerationPlan').mockReturnValue(
+      validPlanWithTool,
+    );
+    const validContracts = buildStaticContracts(app.appSpec, validPlanWithTool);
+    const validBuildUnitPlan = buildBuildUnitPlanForTest(
+      app.appSpec,
+      validPlanWithTool,
+      validContracts,
+    );
+    const validIntegrationPlan = buildIntegrationPlan(
       app.appSpec,
       validPlanWithTool,
       validContracts,
@@ -7806,17 +7441,9 @@ describe('GeneratedAppService', () => {
       ],
       failureCaptureFields: ['checkId'],
     };
-    vi.spyOn(
-      service as unknown as {
-        buildIntegrationPlan(
-          appSpec: GeneratedApp['appSpec'],
-          generationPlan: GeneratedAppGenerationPlan,
-          staticContracts: GeneratedAppStaticContracts,
-          buildUnitPlan: GeneratedAppBuildUnitPlan,
-        ): GeneratedAppIntegrationPlan;
-      },
-      'buildIntegrationPlan',
-    ).mockReturnValue(malformedIntegrationPlan);
+    vi.spyOn(integrationPlanBuilder, 'buildIntegrationPlan').mockReturnValue(
+      malformedIntegrationPlan,
+    );
     const run = createGeneratedAppGenerationRun();
     const gateRun = createGeneratedAppGateRun({
       gateId: 'gate-0',
@@ -8374,56 +8001,20 @@ describe('GeneratedAppService', () => {
       publicShareToken: 'f'.repeat(64),
       publicShareCreatedAt: NOW,
     });
-    const validPlan = (
-      service as unknown as {
-        buildGenerationPlan(
-          appSpec: GeneratedApp['appSpec'],
-        ): GeneratedAppGenerationPlan;
-      }
-    ).buildGenerationPlan(app.appSpec);
-    const validContracts = (
-      service as unknown as {
-        buildStaticContracts(
-          appSpec: GeneratedApp['appSpec'],
-          generationPlan: GeneratedAppGenerationPlan,
-        ): GeneratedAppStaticContracts;
-      }
-    ).buildStaticContracts(app.appSpec, validPlan);
-    const validBuildUnitPlan = (
-      service as unknown as {
-        buildBuildUnitPlan(
-          appSpec: GeneratedApp['appSpec'],
-          generationPlan: GeneratedAppGenerationPlan,
-          staticContracts: GeneratedAppStaticContracts,
-        ): GeneratedAppBuildUnitPlan;
-      }
-    ).buildBuildUnitPlan(app.appSpec, validPlan, validContracts);
-    const validIntegrationPlan = (
-      service as unknown as {
-        buildIntegrationPlan(
-          appSpec: GeneratedApp['appSpec'],
-          generationPlan: GeneratedAppGenerationPlan,
-          staticContracts: GeneratedAppStaticContracts,
-          buildUnitPlan: GeneratedAppBuildUnitPlan,
-        ): GeneratedAppIntegrationPlan;
-      }
-    ).buildIntegrationPlan(
+    const validPlan = buildGenerationPlan(app.appSpec);
+    const validContracts = buildStaticContracts(app.appSpec, validPlan);
+    const validBuildUnitPlan = buildBuildUnitPlanForTest(
+      app.appSpec,
+      validPlan,
+      validContracts,
+    );
+    const validIntegrationPlan = buildIntegrationPlan(
       app.appSpec,
       validPlan,
       validContracts,
       validBuildUnitPlan,
     );
-    const validBrowserAcceptancePlan = (
-      service as unknown as {
-        buildBrowserAcceptancePlan(
-          appSpec: GeneratedApp['appSpec'],
-          generationPlan: GeneratedAppGenerationPlan,
-          staticContracts: GeneratedAppStaticContracts,
-          buildUnitPlan: GeneratedAppBuildUnitPlan,
-          integrationPlan: GeneratedAppIntegrationPlan,
-        ): GeneratedAppBrowserAcceptancePlan;
-      }
-    ).buildBrowserAcceptancePlan(
+    const validBrowserAcceptancePlan = buildBrowserAcceptancePlan(
       app.appSpec,
       validPlan,
       validContracts,
@@ -8562,15 +8153,7 @@ describe('GeneratedAppService', () => {
       failureCaptureFields: ['journeyId'],
     };
     vi.spyOn(
-      service as unknown as {
-        buildBrowserAcceptancePlan(
-          appSpec: GeneratedApp['appSpec'],
-          generationPlan: GeneratedAppGenerationPlan,
-          staticContracts: GeneratedAppStaticContracts,
-          buildUnitPlan: GeneratedAppBuildUnitPlan,
-          integrationPlan: GeneratedAppIntegrationPlan,
-        ): GeneratedAppBrowserAcceptancePlan;
-      },
+      browserAcceptancePlanBuilder,
       'buildBrowserAcceptancePlan',
     ).mockReturnValue(malformedBrowserAcceptancePlan);
     const run = createGeneratedAppGenerationRun();
@@ -8905,56 +8488,20 @@ describe('GeneratedAppService', () => {
       publicShareToken: 'a'.repeat(64),
       publicShareCreatedAt: NOW,
     });
-    const validPlan = (
-      service as unknown as {
-        buildGenerationPlan(
-          appSpec: GeneratedApp['appSpec'],
-        ): GeneratedAppGenerationPlan;
-      }
-    ).buildGenerationPlan(app.appSpec);
-    const validContracts = (
-      service as unknown as {
-        buildStaticContracts(
-          appSpec: GeneratedApp['appSpec'],
-          generationPlan: GeneratedAppGenerationPlan,
-        ): GeneratedAppStaticContracts;
-      }
-    ).buildStaticContracts(app.appSpec, validPlan);
-    const validBuildUnitPlan = (
-      service as unknown as {
-        buildBuildUnitPlan(
-          appSpec: GeneratedApp['appSpec'],
-          generationPlan: GeneratedAppGenerationPlan,
-          staticContracts: GeneratedAppStaticContracts,
-        ): GeneratedAppBuildUnitPlan;
-      }
-    ).buildBuildUnitPlan(app.appSpec, validPlan, validContracts);
-    const validIntegrationPlan = (
-      service as unknown as {
-        buildIntegrationPlan(
-          appSpec: GeneratedApp['appSpec'],
-          generationPlan: GeneratedAppGenerationPlan,
-          staticContracts: GeneratedAppStaticContracts,
-          buildUnitPlan: GeneratedAppBuildUnitPlan,
-        ): GeneratedAppIntegrationPlan;
-      }
-    ).buildIntegrationPlan(
+    const validPlan = buildGenerationPlan(app.appSpec);
+    const validContracts = buildStaticContracts(app.appSpec, validPlan);
+    const validBuildUnitPlan = buildBuildUnitPlanForTest(
+      app.appSpec,
+      validPlan,
+      validContracts,
+    );
+    const validIntegrationPlan = buildIntegrationPlan(
       app.appSpec,
       validPlan,
       validContracts,
       validBuildUnitPlan,
     );
-    const validBrowserAcceptancePlan = (
-      service as unknown as {
-        buildBrowserAcceptancePlan(
-          appSpec: GeneratedApp['appSpec'],
-          generationPlan: GeneratedAppGenerationPlan,
-          staticContracts: GeneratedAppStaticContracts,
-          buildUnitPlan: GeneratedAppBuildUnitPlan,
-          integrationPlan: GeneratedAppIntegrationPlan,
-        ): GeneratedAppBrowserAcceptancePlan;
-      }
-    ).buildBrowserAcceptancePlan(
+    const validBrowserAcceptancePlan = buildBrowserAcceptancePlan(
       app.appSpec,
       validPlan,
       validContracts,
@@ -8976,19 +8523,7 @@ describe('GeneratedAppService', () => {
         },
       ],
     }));
-    const validIndependentVerificationPlan = (
-      service as unknown as {
-        buildIndependentVerificationPlan(
-          appSpec: GeneratedApp['appSpec'],
-          generationPlan: GeneratedAppGenerationPlan,
-          staticContracts: GeneratedAppStaticContracts,
-          buildUnitPlan: GeneratedAppBuildUnitPlan,
-          integrationPlan: GeneratedAppIntegrationPlan,
-          browserAcceptancePlan: GeneratedAppBrowserAcceptancePlan,
-          gateResults: GeneratedApp['gateResults'],
-        ): GeneratedAppIndependentVerificationPlan;
-      }
-    ).buildIndependentVerificationPlan(
+    const validIndependentVerificationPlan = buildIndependentVerificationPlan(
       app.appSpec,
       validPlan,
       validContracts,
@@ -9095,17 +8630,7 @@ describe('GeneratedAppService', () => {
       failureCaptureFields: ['verifierRunId'],
     } as unknown as GeneratedAppIndependentVerificationPlan;
     vi.spyOn(
-      service as unknown as {
-        buildIndependentVerificationPlan(
-          appSpec: GeneratedApp['appSpec'],
-          generationPlan: GeneratedAppGenerationPlan,
-          staticContracts: GeneratedAppStaticContracts,
-          buildUnitPlan: GeneratedAppBuildUnitPlan,
-          integrationPlan: GeneratedAppIntegrationPlan,
-          browserAcceptancePlan: GeneratedAppBrowserAcceptancePlan,
-          gateResults: GeneratedApp['gateResults'],
-        ): GeneratedAppIndependentVerificationPlan;
-      },
+      independentVerificationPlanBuilder,
       'buildIndependentVerificationPlan',
     ).mockReturnValue(malformedIndependentVerificationPlan);
     const run = createGeneratedAppGenerationRun();
@@ -9452,56 +8977,20 @@ describe('GeneratedAppService', () => {
       publicShareToken: 'a'.repeat(64),
       publicShareCreatedAt: NOW,
     });
-    const validPlan = (
-      service as unknown as {
-        buildGenerationPlan(
-          appSpec: GeneratedApp['appSpec'],
-        ): GeneratedAppGenerationPlan;
-      }
-    ).buildGenerationPlan(app.appSpec);
-    const validContracts = (
-      service as unknown as {
-        buildStaticContracts(
-          appSpec: GeneratedApp['appSpec'],
-          generationPlan: GeneratedAppGenerationPlan,
-        ): GeneratedAppStaticContracts;
-      }
-    ).buildStaticContracts(app.appSpec, validPlan);
-    const validBuildUnitPlan = (
-      service as unknown as {
-        buildBuildUnitPlan(
-          appSpec: GeneratedApp['appSpec'],
-          generationPlan: GeneratedAppGenerationPlan,
-          staticContracts: GeneratedAppStaticContracts,
-        ): GeneratedAppBuildUnitPlan;
-      }
-    ).buildBuildUnitPlan(app.appSpec, validPlan, validContracts);
-    const validIntegrationPlan = (
-      service as unknown as {
-        buildIntegrationPlan(
-          appSpec: GeneratedApp['appSpec'],
-          generationPlan: GeneratedAppGenerationPlan,
-          staticContracts: GeneratedAppStaticContracts,
-          buildUnitPlan: GeneratedAppBuildUnitPlan,
-        ): GeneratedAppIntegrationPlan;
-      }
-    ).buildIntegrationPlan(
+    const validPlan = buildGenerationPlan(app.appSpec);
+    const validContracts = buildStaticContracts(app.appSpec, validPlan);
+    const validBuildUnitPlan = buildBuildUnitPlanForTest(
+      app.appSpec,
+      validPlan,
+      validContracts,
+    );
+    const validIntegrationPlan = buildIntegrationPlan(
       app.appSpec,
       validPlan,
       validContracts,
       validBuildUnitPlan,
     );
-    const validBrowserAcceptancePlan = (
-      service as unknown as {
-        buildBrowserAcceptancePlan(
-          appSpec: GeneratedApp['appSpec'],
-          generationPlan: GeneratedAppGenerationPlan,
-          staticContracts: GeneratedAppStaticContracts,
-          buildUnitPlan: GeneratedAppBuildUnitPlan,
-          integrationPlan: GeneratedAppIntegrationPlan,
-        ): GeneratedAppBrowserAcceptancePlan;
-      }
-    ).buildBrowserAcceptancePlan(
+    const validBrowserAcceptancePlan = buildBrowserAcceptancePlan(
       app.appSpec,
       validPlan,
       validContracts,
@@ -9527,19 +9016,7 @@ describe('GeneratedAppService', () => {
               },
             ],
     }));
-    const validIndependentVerificationPlan = (
-      service as unknown as {
-        buildIndependentVerificationPlan(
-          appSpec: GeneratedApp['appSpec'],
-          generationPlan: GeneratedAppGenerationPlan,
-          staticContracts: GeneratedAppStaticContracts,
-          buildUnitPlan: GeneratedAppBuildUnitPlan,
-          integrationPlan: GeneratedAppIntegrationPlan,
-          browserAcceptancePlan: GeneratedAppBrowserAcceptancePlan,
-          gateResults: GeneratedApp['gateResults'],
-        ): GeneratedAppIndependentVerificationPlan;
-      }
-    ).buildIndependentVerificationPlan(
+    const validIndependentVerificationPlan = buildIndependentVerificationPlan(
       app.appSpec,
       validPlan,
       validContracts,
@@ -9548,20 +9025,7 @@ describe('GeneratedAppService', () => {
       validBrowserAcceptancePlan,
       syntheticGateResults,
     );
-    const validPublishCandidatePlan = (
-      service as unknown as {
-        buildPublishCandidatePlan(
-          appSpec: GeneratedApp['appSpec'],
-          generationPlan: GeneratedAppGenerationPlan,
-          staticContracts: GeneratedAppStaticContracts,
-          buildUnitPlan: GeneratedAppBuildUnitPlan,
-          integrationPlan: GeneratedAppIntegrationPlan,
-          browserAcceptancePlan: GeneratedAppBrowserAcceptancePlan,
-          independentVerificationPlan: GeneratedAppIndependentVerificationPlan,
-          gateResults: GeneratedApp['gateResults'],
-        ): GeneratedAppPublishCandidatePlan;
-      }
-    ).buildPublishCandidatePlan(
+    const validPublishCandidatePlan = buildPublishCandidatePlan(
       app.appSpec,
       validPlan,
       validContracts,
@@ -9570,6 +9034,7 @@ describe('GeneratedAppService', () => {
       validBrowserAcceptancePlan,
       validIndependentVerificationPlan,
       syntheticGateResults,
+      planGate7Runner.getExecutionLevel(),
     );
     const malformedPublishCandidatePlan = {
       ...validPublishCandidatePlan,
@@ -9662,18 +9127,7 @@ describe('GeneratedAppService', () => {
       rawBearer: 'Bearer real-secret-token',
     } as unknown as GeneratedAppPublishCandidatePlan;
     vi.spyOn(
-      service as unknown as {
-        buildPublishCandidatePlan(
-          appSpec: GeneratedApp['appSpec'],
-          generationPlan: GeneratedAppGenerationPlan,
-          staticContracts: GeneratedAppStaticContracts,
-          buildUnitPlan: GeneratedAppBuildUnitPlan,
-          integrationPlan: GeneratedAppIntegrationPlan,
-          browserAcceptancePlan: GeneratedAppBrowserAcceptancePlan,
-          independentVerificationPlan: GeneratedAppIndependentVerificationPlan,
-          gateResults: GeneratedApp['gateResults'],
-        ): GeneratedAppPublishCandidatePlan;
-      },
+      publishCandidatePlanBuilder,
       'buildPublishCandidatePlan',
     ).mockReturnValue(malformedPublishCandidatePlan);
     const run = createGeneratedAppGenerationRun();
