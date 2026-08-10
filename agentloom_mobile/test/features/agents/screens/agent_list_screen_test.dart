@@ -91,9 +91,9 @@ void main() {
       await tester.pumpAndSettle();
 
       // 状态筛选按钮应存在
-      expect(find.text('All'), findsOneWidget);
-      expect(find.text('Published'), findsWidgets);
-      expect(find.text('Draft'), findsWidgets);
+      expect(find.text('全部'), findsOneWidget);
+      expect(find.text('已发布'), findsWidgets);
+      expect(find.text('草稿'), findsWidgets);
     });
 
     testWidgets('shows empty state when no agents', (tester) async {
@@ -109,7 +109,7 @@ void main() {
       await tester.pumpWidget(createTestWidget());
       await tester.pumpAndSettle();
 
-      expect(find.text('No agents found'), findsOneWidget);
+      expect(find.text('未找到智能体'), findsOneWidget);
     });
 
     testWidgets('shows error state on API failure', (tester) async {
@@ -125,8 +125,8 @@ void main() {
       await tester.pumpWidget(createTestWidget());
       await tester.pumpAndSettle();
 
-      expect(find.text('Failed to load agents'), findsOneWidget);
-      expect(find.text('Retry'), findsOneWidget);
+      expect(find.text('加载智能体失败'), findsOneWidget);
+      expect(find.text('重试'), findsOneWidget);
     });
   });
 }

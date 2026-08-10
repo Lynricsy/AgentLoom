@@ -78,7 +78,7 @@ void main() {
       await tester.pumpWidget(createTestWidget());
       await tester.pumpAndSettle();
 
-      expect(find.text('Audit Log'), findsOneWidget);
+      expect(find.text('审计日志'), findsOneWidget);
     });
 
     testWidgets('renders audit entry tiles after loading', (tester) async {
@@ -88,11 +88,11 @@ void main() {
       await tester.pumpAndSettle();
 
       // 应该显示操作标签
-      expect(find.text('Node Created'), findsOneWidget);
-      expect(find.text('Version Updated'), findsOneWidget);
-      expect(find.text('Path Deleted'), findsOneWidget);
-      expect(find.text('Review Approved'), findsOneWidget);
-      expect(find.text('Review Rejected'), findsOneWidget);
+      expect(find.text('节点已创建'), findsOneWidget);
+      expect(find.text('版本已更新'), findsOneWidget);
+      expect(find.text('路径已删除'), findsOneWidget);
+      expect(find.text('评审已批准'), findsOneWidget);
+      expect(find.text('评审已拒绝'), findsOneWidget);
     });
 
     testWidgets('shows correct action icons', (tester) async {
@@ -129,7 +129,7 @@ void main() {
       await tester.pumpWidget(createTestWidget());
       await tester.pumpAndSettle();
 
-      expect(find.text('No audit entries found'), findsOneWidget);
+      expect(find.text('未找到审计记录'), findsOneWidget);
       expect(find.byIcon(Icons.history), findsOneWidget);
     });
 
@@ -145,8 +145,8 @@ void main() {
       await tester.pumpWidget(createTestWidget());
       await tester.pumpAndSettle();
 
-      expect(find.text('Failed to load audit log'), findsOneWidget);
-      expect(find.text('Retry'), findsOneWidget);
+      expect(find.text('加载审计日志失败'), findsOneWidget);
+      expect(find.text('重试'), findsOneWidget);
     });
 
     testWidgets('supports pull-to-refresh', (tester) async {
@@ -206,7 +206,7 @@ void main() {
       await tester.pumpWidget(createTestWidget());
       await tester.pumpAndSettle();
 
-      expect(find.text('2h ago'), findsOneWidget);
+      expect(find.text('2 小时前'), findsOneWidget);
     });
 
     testWidgets('shows delete action icon with error color', (tester) async {
@@ -219,7 +219,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byIcon(Icons.delete_outline), findsOneWidget);
-      expect(find.text('Path Deleted'), findsOneWidget);
+      expect(find.text('路径已删除'), findsOneWidget);
     });
 
     testWidgets('shows rollback action icon', (tester) async {
@@ -232,7 +232,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byIcon(Icons.undo), findsOneWidget);
-      expect(find.text('Rollback'), findsOneWidget);
+      expect(find.text('回滚'), findsOneWidget);
     });
 
     testWidgets('shows unknown action with formatted label', (tester) async {

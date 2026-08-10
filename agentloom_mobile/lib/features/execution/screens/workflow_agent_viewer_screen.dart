@@ -7,6 +7,7 @@ import 'package:agentloom_mobile/features/execution/lib/workflow_agent_runtime.d
 import 'package:agentloom_mobile/features/execution/models/execution_runtime.dart';
 import 'package:agentloom_mobile/features/execution/models/execution_state.dart';
 import 'package:agentloom_mobile/features/execution/providers/execution_monitor_provider.dart';
+import 'package:agentloom_mobile/features/execution/providers/execution_monitor_state.dart';
 import 'package:agentloom_mobile/features/workflows/api/workflow_api.dart';
 import 'package:agentloom_mobile/shared/utils/scrolling.dart';
 import 'package:flutter/material.dart';

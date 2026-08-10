@@ -78,7 +78,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('3'), findsOneWidget);
-      expect(find.text('Disclosure'), findsOneWidget);
+      expect(find.text('可见性'), findsOneWidget);
     });
 
     testWidgets('shows version history section', (tester) async {
@@ -108,7 +108,7 @@ void main() {
       await tester.pumpWidget(createTestWidget());
       await tester.pumpAndSettle();
 
-      expect(find.text('No version history'), findsOneWidget);
+      expect(find.text('暂无版本历史'), findsOneWidget);
     });
 
     testWidgets('shows error state with retry', (tester) async {
@@ -122,8 +122,8 @@ void main() {
       await tester.pumpWidget(createTestWidget());
       await tester.pumpAndSettle();
 
-      expect(find.text('Failed to load node'), findsOneWidget);
-      expect(find.text('Retry'), findsOneWidget);
+      expect(find.text('加载节点失败'), findsOneWidget);
+      expect(find.text('重试'), findsOneWidget);
     });
 
     testWidgets('version tile shows change type', (tester) async {

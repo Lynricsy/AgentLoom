@@ -13,7 +13,7 @@ void main() {
         ),
       );
 
-      expect(find.text('No steps yet'), findsOneWidget);
+      expect(find.text('暂无执行步骤'), findsOneWidget);
       expect(find.byType(StepTimelineItem), findsNothing);
     });
 

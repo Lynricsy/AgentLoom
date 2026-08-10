@@ -24,7 +24,7 @@ void main() {
       expect(find.text('Email Agent'), findsOneWidget);
       expect(find.text('agent'), findsOneWidget);
       expect(find.text('my-agent-node'), findsOneWidget);
-      expect(find.text('Running'), findsOneWidget);
+      expect(find.text('运行中'), findsOneWidget);
     });
 
     testWidgets('shows duration for completed step', (tester) async {
@@ -59,7 +59,7 @@ void main() {
         ),
       );
 
-      expect(find.textContaining('Started at'), findsOneWidget);
+      expect(find.textContaining('开始于'), findsOneWidget);
     });
 
     testWidgets('shows error message for failed step', (tester) async {
@@ -98,8 +98,8 @@ void main() {
       );
 
       expect(find.text('node-1'), findsOneWidget);
-      expect(find.text('Pending'), findsOneWidget);
-      expect(find.textContaining('Started at'), findsNothing);
+      expect(find.text('等待中'), findsOneWidget);
+      expect(find.textContaining('开始于'), findsNothing);
     });
 
     testWidgets('renders sync icon for running status', (tester) async {

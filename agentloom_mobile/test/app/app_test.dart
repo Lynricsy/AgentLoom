@@ -58,7 +58,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // Dashboard AppBar title
-      expect(find.widgetWithText(AppBar, 'Dashboard'), findsOneWidget);
+      expect(find.widgetWithText(AppBar, '仪表盘'), findsOneWidget);
     });
 
     testWidgets('ProviderScope wraps MaterialApp.router', (tester) async {

@@ -48,7 +48,7 @@ void main() {
       await tester.pumpWidget(createTestApp());
       await tester.pumpAndSettle();
 
-      expect(find.widgetWithText(AppBar, 'Dashboard'), findsOneWidget);
+      expect(find.widgetWithText(AppBar, '仪表盘'), findsOneWidget);
     });
 
     testWidgets('goRouterProvider returns GoRouter instance', (tester) async {
@@ -67,7 +67,7 @@ void main() {
       await tester.tap(find.text('工作流'));
       await tester.pumpAndSettle();
 
-      expect(find.widgetWithText(AppBar, 'Workflows'), findsOneWidget);
+      expect(find.widgetWithText(AppBar, '工作流'), findsOneWidget);
     });
 
     testWidgets('can navigate to /settings', (tester) async {
@@ -77,7 +77,7 @@ void main() {
       await tester.tap(find.text('设置'));
       await tester.pumpAndSettle();
 
-      expect(find.widgetWithText(AppBar, 'Settings'), findsOneWidget);
+      expect(find.widgetWithText(AppBar, '设置'), findsOneWidget);
     });
 
     testWidgets('can navigate back to /dashboard from /workflows', (
@@ -89,12 +89,12 @@ void main() {
       // Go to workflows
       await tester.tap(find.text('工作流'));
       await tester.pumpAndSettle();
-      expect(find.widgetWithText(AppBar, 'Workflows'), findsOneWidget);
+      expect(find.widgetWithText(AppBar, '工作流'), findsOneWidget);
 
       // Go back to dashboard
       await tester.tap(find.text('总览'));
       await tester.pumpAndSettle();
-      expect(find.widgetWithText(AppBar, 'Dashboard'), findsOneWidget);
+      expect(find.widgetWithText(AppBar, '仪表盘'), findsOneWidget);
     });
 
     testWidgets('bottom nav highlight syncs after navigation', (tester) async {
@@ -137,7 +137,7 @@ void main() {
 
       final navBar = tester.widget<NavigationBar>(find.byType(NavigationBar));
       expect(navBar.selectedIndex, 1);
-      expect(find.widgetWithText(AppBar, 'Workflows'), findsOneWidget);
+      expect(find.widgetWithText(AppBar, '工作流'), findsOneWidget);
       expect(router.routeInformationProvider.value.uri.path, '/workflows');
     });
 
@@ -155,7 +155,7 @@ void main() {
       // 先导航到 Workflows
       await tester.tap(find.text('工作流'));
       await tester.pumpAndSettle();
-      expect(find.widgetWithText(AppBar, 'Workflows'), findsOneWidget);
+      expect(find.widgetWithText(AppBar, '工作流'), findsOneWidget);
       expect(router.routeInformationProvider.value.uri.path, '/workflows');
 
       // 再次点击工作流（重复点击）— 使用 NavBar 内的标签避免与 AppBar 冲突
@@ -168,7 +168,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // 应仍停留在 Workflows 页面
-      expect(find.widgetWithText(AppBar, 'Workflows'), findsOneWidget);
+      expect(find.widgetWithText(AppBar, '工作流'), findsOneWidget);
       expect(router.routeInformationProvider.value.uri.path, '/workflows');
     });
   });

@@ -65,7 +65,7 @@ void main() {
     testWidgets('renders empty state when no sessions', (tester) async {
       await tester.pumpWidget(_createTestWidget());
 
-      expect(find.text('No terminal sessions'), findsOneWidget);
+      expect(find.text('暂无终端会话'), findsOneWidget);
       expect(find.byIcon(Icons.terminal), findsOneWidget);
     });
 
@@ -86,7 +86,7 @@ void main() {
       );
 
       // 会话选择器应该存在
-      expect(find.text('Terminal Session'), findsOneWidget);
+      expect(find.text('终端会话'), findsOneWidget);
       // 命令应该显示在信息栏
       expect(find.text('npm run dev'), findsWidgets);
     });
@@ -182,7 +182,7 @@ void main() {
         ),
       );
 
-      expect(find.text('Waiting for output...'), findsOneWidget);
+      expect(find.text('等待输出...'), findsOneWidget);
     });
 
     testWidgets('handles large output (1000+ lines) without crash', (
@@ -206,7 +206,7 @@ void main() {
       );
 
       // 行数显示
-      expect(find.text('1500 lines'), findsOneWidget);
+      expect(find.text('1500 行'), findsOneWidget);
 
       // ListView.builder 应该虚拟化，不会全部渲染
       // 验证至少能找到可见范围内的某些行
@@ -263,7 +263,7 @@ void main() {
         ),
       );
 
-      expect(find.text('42 lines'), findsOneWidget);
+      expect(find.text('42 行'), findsOneWidget);
     });
   });
 

@@ -86,15 +86,15 @@ void main() {
         await tester.pumpWidget(createTestWidget());
         await tester.pumpAndSettle();
 
-        expect(find.text('Runtime Capabilities'), findsOneWidget);
-        expect(find.text('Native Tools'), findsOneWidget);
-        expect(find.text('Self Evolution'), findsOneWidget);
-        expect(find.text('Read Off'), findsOneWidget);
-        expect(find.text('Write On'), findsOneWidget);
-        expect(find.text('Enabled On'), findsOneWidget);
-        expect(find.text('Resource Mgmt On'), findsOneWidget);
-        expect(find.text('External Edit Off'), findsOneWidget);
-        expect(find.text('Sandbox Mgmt On'), findsOneWidget);
+        expect(find.text('运行时能力'), findsOneWidget);
+        expect(find.text('原生工具'), findsOneWidget);
+        expect(find.text('自我进化'), findsOneWidget);
+        expect(find.text('读取 关'), findsOneWidget);
+        expect(find.text('写入 开'), findsOneWidget);
+        expect(find.text('已启用 开'), findsOneWidget);
+        expect(find.text('资源管理 开'), findsOneWidget);
+        expect(find.text('外部编辑 关'), findsOneWidget);
+        expect(find.text('沙箱管理 开'), findsOneWidget);
       },
     );
 
@@ -114,10 +114,10 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.text('无沙箱'), findsOneWidget);
-      expect(find.textContaining('无 sandbox Agent 不提供内置'), findsOneWidget);
+      expect(find.textContaining('无沙箱 Agent 不提供内置'), findsOneWidget);
       expect(find.textContaining('可使用 Skill、知识库、记忆、HTTP MCP'), findsOneWidget);
-      expect(find.text('Read Off'), findsOneWidget);
-      expect(find.text('Terminal Off'), findsOneWidget);
+      expect(find.text('读取 关'), findsOneWidget);
+      expect(find.text('终端 关'), findsOneWidget);
     });
 
     testWidgets('点击 New Chat 应进入草稿对话路由', (tester) async {
@@ -135,7 +135,7 @@ void main() {
       await tester.pumpWidget(createRouterWidget());
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('New Chat'));
+      await tester.tap(find.text('新对话'));
       await tester.pumpAndSettle();
 
       verifyNever(

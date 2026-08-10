@@ -6,6 +6,7 @@ import '../models/execution_state.dart';
 import '../models/execution_status.dart';
 import '../models/execution_runtime.dart';
 import '../providers/execution_monitor_provider.dart';
+import '../providers/execution_monitor_state.dart';
 import '../widgets/execution_alert_banner.dart';
 import '../widgets/execution_status_header.dart';
 import '../widgets/execution_waterfall.dart';

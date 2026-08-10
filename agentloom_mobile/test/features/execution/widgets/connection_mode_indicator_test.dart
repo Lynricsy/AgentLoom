@@ -1,4 +1,4 @@
-import 'package:agentloom_mobile/features/execution/providers/execution_monitor_provider.dart';
+import 'package:agentloom_mobile/features/execution/providers/execution_monitor_state.dart';
 import 'package:agentloom_mobile/features/execution/widgets/connection_mode_indicator.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';

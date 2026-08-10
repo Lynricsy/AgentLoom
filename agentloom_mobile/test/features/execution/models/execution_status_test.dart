@@ -42,9 +42,9 @@ void main() {
     });
 
     test('label 返回正确显示文本', () {
-      expect(ExecutionStatus.running.label, 'Running');
-      expect(ExecutionStatus.completed.label, 'Completed');
-      expect(ExecutionStatus.failed.label, 'Failed');
+      expect(ExecutionStatus.running.label, '运行中');
+      expect(ExecutionStatus.completed.label, '已完成');
+      expect(ExecutionStatus.failed.label, '失败');
     });
 
     test('icon 返回正确图标', () {
@@ -105,8 +105,8 @@ void main() {
     });
 
     test('label 返回正确显示文本', () {
-      expect(StepStatus.waitingIntervention.label, 'Waiting');
-      expect(StepStatus.running.label, 'Running');
+      expect(StepStatus.waitingIntervention.label, '等待介入');
+      expect(StepStatus.running.label, '运行中');
     });
 
     test('icon 返回正确图标', () {

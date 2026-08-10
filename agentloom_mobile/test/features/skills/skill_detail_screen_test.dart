@@ -112,7 +112,7 @@ void main() {
       await tester.pumpWidget(createTestWidget(skillId: 'skill-2'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Built-in'), findsWidgets);
+      expect(find.text('内置'), findsWidgets);
     });
 
     testWidgets('shows error state on fetch failure', (tester) async {
@@ -145,7 +145,7 @@ void main() {
       await tester.pumpWidget(createTestWidget(skillId: 'skill-1'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Custom'), findsOneWidget);
+      expect(find.text('自定义'), findsOneWidget);
     });
 
     testWidgets('shows Skill Detail in AppBar when loading', (tester) async {
@@ -157,7 +157,7 @@ void main() {
       await tester.pumpWidget(createTestWidget(skillId: 'skill-1'));
       await tester.pump();
 
-      expect(find.text('Skill Detail'), findsOneWidget);
+      expect(find.text('技能详情'), findsOneWidget);
     });
 
     testWidgets('builtin skill has no popup menu and no FAB', (tester) async {
