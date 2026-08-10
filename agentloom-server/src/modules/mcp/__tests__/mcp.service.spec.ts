@@ -328,6 +328,17 @@ function createUpdateChain(result: unknown) {
   };
 }
 
+function createDeferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+
+  return { promise, resolve, reject };
+}
+
 function getCallableMethod<TArgs extends unknown[], TResult>(
   target: object,
   methodName: string,
@@ -1396,6 +1407,678 @@ describe('McpService', () => {
       db.select.mockReturnValueOnce(selectChain);
 
       await expect(service.listTools(TENANT_ID)).rejects.toThrow(error);
+    });
+  });
+
+  describe('连接配置与传输边界', () => {
+    it('应当在未配置 env 或 headers 时不向 transport 注入空认证选项', async () => {
+      mcpMocks.mockClient.connect.mockResolvedValue(undefined);
+      mcpMocks.mockClient.getServerVersion.mockReturnValue(undefined);
+
+      const stdioResult = await service.testConnection({
+        connection: createStdioConnection({
+          args: undefined,
+          env: undefined,
+        }),
+      });
+      const sseResult = await service.testConnection({
+        connection: createSseConnection({ headers: undefined }),
+      });
+      const httpResult = await service.testConnection({
+        connection: createStreamableHttpConnection({ headers: undefined }),
+      });
+
+      expect(stdioResult).toEqual({ success: true, serverInfo: undefined });
+      expect(sseResult).toEqual({ success: true, serverInfo: undefined });
+      expect(httpResult).toEqual({ success: true, serverInfo: undefined });
+      expect(mcpMocks.StdioClientTransport).toHaveBeenCalledWith({
+        command: 'node',
+        args: undefined,
+        env: undefined,
+      });
+      expect(mcpMocks.SSEClientTransport).toHaveBeenCalledWith(
+        new URL('https://mcp.example.com/sse'),
+        undefined,
+      );
+      expect(mcpMocks.StreamableHTTPClientTransport).toHaveBeenCalledWith(
+        new URL('https://mcp.example.com/http'),
+        undefined,
+      );
+    });
+
+    it('应当忽略服务端非字符串 protocolVersion', async () => {
+      mcpMocks.mockClient.connect.mockResolvedValue(undefined);
+      mcpMocks.mockClient.getServerVersion.mockReturnValue({
+        name: 'Legacy MCP',
+        version: '0.9.0',
+        protocolVersion: 42,
+      });
+
+      await expect(
+        service.testConnection({ connection: createStdioConnection() }),
+      ).resolves.toEqual({
+        success: true,
+        serverInfo: {
+          name: 'Legacy MCP',
+          version: '0.9.0',
+          protocolVersion: undefined,
+        },
+      });
+    });
+
+    it('应当从无凭据的 stdio 与 HTTP 保存配置恢复受限连接字段', async () => {
+      db.select
+        .mockReturnValueOnce(
+          createSelectChain([
+            createMcpServerConfigRecord({
+              transportType: 'stdio',
+              command: 'pnpm',
+              args: null,
+              url: null,
+              encryptedData: null,
+              encryptedDek: null,
+              iv: null,
+              authTag: null,
+            }),
+          ]),
+        )
+        .mockReturnValueOnce(
+          createSelectChain([
+            createMcpServerConfigRecord({
+              encryptedData: null,
+              encryptedDek: null,
+              iv: null,
+              authTag: null,
+            }),
+          ]),
+        );
+
+      await expect(
+        service.resolveRuntimeConnection(CONFIG_ID, TENANT_ID),
+      ).resolves.toEqual({
+        transportType: 'stdio',
+        command: 'pnpm',
+        args: undefined,
+        env: undefined,
+      });
+      await expect(
+        service.resolveRuntimeConnection(CONFIG_ID, TENANT_ID),
+      ).resolves.toEqual({
+        transportType: 'streamable_http',
+        url: 'https://mcp.example.com/http',
+        headers: undefined,
+      });
+      expect(encryptionService.decrypt).not.toHaveBeenCalled();
+    });
+
+    it('应当拒绝缺少 command 或 url 的已保存 transport 配置', async () => {
+      db.select
+        .mockReturnValueOnce(
+          createSelectChain([
+            createMcpServerConfigRecord({
+              transportType: 'stdio',
+              command: null,
+              url: null,
+              encryptedData: null,
+              encryptedDek: null,
+              iv: null,
+              authTag: null,
+            }),
+          ]),
+        )
+        .mockReturnValueOnce(
+          createSelectChain([
+            createMcpServerConfigRecord({
+              transportType: 'sse',
+              url: null,
+              encryptedData: null,
+              encryptedDek: null,
+              iv: null,
+              authTag: null,
+            }),
+          ]),
+        );
+
+      await expect(
+        service.resolveRuntimeConnection(CONFIG_ID, TENANT_ID),
+      ).rejects.toMatchObject({
+        detail: '已保存的 MCP stdio 配置缺少 command',
+      });
+      await expect(
+        service.resolveRuntimeConnection(CONFIG_ID, TENANT_ID),
+      ).rejects.toMatchObject({
+        detail: '已保存的 MCP HTTP 配置缺少 url',
+      });
+    });
+
+    it('应当拒绝无法解析或包含非字符串值的加密凭据', async () => {
+      db.select
+        .mockReturnValueOnce(createSelectChain([createMcpServerConfigRecord()]))
+        .mockReturnValueOnce(
+          createSelectChain([createMcpServerConfigRecord()]),
+        );
+      encryptionService.decrypt
+        .mockReturnValueOnce('{bad json')
+        .mockReturnValueOnce(JSON.stringify({ Authorization: 123 }));
+
+      await expect(
+        service.resolveRuntimeConnection(CONFIG_ID, TENANT_ID),
+      ).rejects.toMatchObject({
+        detail: expect.stringContaining('已保存的 MCP 凭据解析失败'),
+      });
+      await expect(
+        service.resolveRuntimeConnection(CONFIG_ID, TENANT_ID),
+      ).rejects.toMatchObject({
+        detail: expect.stringContaining('解密后的凭据不是字符串字典'),
+      });
+    });
+
+    it('应当首次保存 stdio 配置时只持久化 command/args/env 并报告缺失工具', async () => {
+      mcpMocks.mockClient.connect.mockResolvedValue(undefined);
+      mcpMocks.mockClient.listTools.mockResolvedValue({ tools: [] });
+      db.select.mockReturnValueOnce(createSelectChain([{ id: ORG_ID }]));
+
+      const tx: TransactionMock = {
+        insert: vi.fn(),
+        select: vi.fn(),
+        update: vi.fn(),
+      };
+      const configInsertChain = createInsertChain([{ id: CONFIG_ID }]);
+      tx.insert.mockReturnValueOnce(configInsertChain);
+      db.transaction.mockImplementationOnce(
+        async (callback: TransactionCallback) => callback(tx),
+      );
+
+      const result = await service.importTools(
+        {
+          serverName: 'Local MCP',
+          connection: createStdioConnection({
+            args: undefined,
+            env: undefined,
+          }),
+          conflictStrategy: 'skip',
+          toolNames: ['missing-tool'],
+        },
+        USER_ID,
+        TENANT_ID,
+      );
+
+      expect(configInsertChain.values).toHaveBeenCalledWith(
+        expect.objectContaining({
+          transportType: 'stdio',
+          command: 'node',
+          args: null,
+          url: null,
+          encryptedData: null,
+          encryptedDek: null,
+          iv: null,
+          authTag: null,
+          status: 'active',
+        }),
+      );
+      expect(encryptionService.encrypt).not.toHaveBeenCalled();
+      expect(tx.insert).toHaveBeenCalledTimes(1);
+      expect(result).toEqual({
+        mcpServerConfigId: CONFIG_ID,
+        summary: {
+          total: 1,
+          imported: 0,
+          overwritten: 0,
+          skipped: 0,
+          failed: 1,
+        },
+        results: [
+          {
+            toolName: 'missing-tool',
+            status: 'failed',
+            reasonCode: 'tool_not_found',
+            reasonMessage: '请求导入的工具不存在: missing-tool',
+          },
+        ],
+      });
+    });
+  });
+
+  describe('工具发现、超时与清理', () => {
+    it('应当聚合分页工具、容忍空 tools 并归一化不可信元数据', async () => {
+      mcpMocks.mockClient.connect.mockResolvedValue(undefined);
+      mcpMocks.mockClient.getServerVersion.mockReturnValue(undefined);
+      mcpMocks.mockClient.listTools
+        .mockResolvedValueOnce({
+          tools: undefined,
+          nextCursor: 'next',
+        })
+        .mockResolvedValueOnce({
+          tools: [
+            createDiscoveredTool({
+              title: 123,
+              inputSchema: [],
+              annotations: 'unsafe',
+            }),
+          ],
+        });
+
+      const result = await service.discoverTools({
+        connection: createSseConnection(),
+      });
+
+      expect(mcpMocks.mockClient.listTools).toHaveBeenNthCalledWith(
+        1,
+        undefined,
+      );
+      expect(mcpMocks.mockClient.listTools).toHaveBeenNthCalledWith(2, {
+        cursor: 'next',
+      });
+      expect(result).toEqual({
+        tools: [
+          {
+            name: 'search-docs',
+            title: undefined,
+            description: '搜索知识库文档',
+            inputSchema: undefined,
+            annotations: undefined,
+          },
+        ],
+        serverInfo: undefined,
+      });
+    });
+
+    it('应当拒绝循环分页游标并始终关闭连接', async () => {
+      mcpMocks.mockClient.connect.mockResolvedValue(undefined);
+      mcpMocks.mockClient.listTools
+        .mockResolvedValueOnce({ tools: [], nextCursor: 'loop' })
+        .mockResolvedValueOnce({ tools: [], nextCursor: 'loop' });
+
+      await expect(
+        service.discoverTools({
+          connection: createStreamableHttpConnection(),
+        }),
+      ).rejects.toMatchObject({
+        detail: expect.stringContaining('MCP 工具列表分页游标重复: loop'),
+      });
+      expect(
+        mcpMocks.streamableHttpTransport.terminateSession,
+      ).toHaveBeenCalledOnce();
+      expect(mcpMocks.mockClient.close).toHaveBeenCalledOnce();
+      expect(mcpMocks.streamableHttpTransport.close).toHaveBeenCalledOnce();
+    });
+
+    it('应当将工具发现和运行时调用超时保留为 timeout 异常', async () => {
+      mcpMocks.mockClient.connect.mockResolvedValue(undefined);
+      mcpMocks.mockClient.listTools.mockImplementation(
+        () => createDeferred<never>().promise,
+      );
+
+      const discovery = service.discoverTools({
+        connection: createStdioConnection(),
+      });
+      const discoveryAssertion = expect(discovery).rejects.toMatchObject({
+        detail: '工具发现超时',
+      });
+      await vi.advanceTimersByTimeAsync(60_000);
+      await discoveryAssertion;
+
+      mcpMocks.mockClient.callTool.mockImplementation(
+        () => createDeferred<never>().promise,
+      );
+      const invocation = service.callRuntimeTool(
+        createStreamableHttpConnection(),
+        'slow-tool',
+        {},
+      );
+      const invocationAssertion = expect(invocation).rejects.toMatchObject({
+        detail: '运行时工具调用超时',
+      });
+      await vi.advanceTimersByTimeAsync(60_000);
+      await invocationAssertion;
+    });
+
+    it('应当把非 Error 调用失败映射为连接失败并吞掉所有清理错误', async () => {
+      mcpMocks.mockClient.connect.mockResolvedValue(undefined);
+      mcpMocks.mockClient.callTool.mockRejectedValue('socket closed');
+      mcpMocks.streamableHttpTransport.terminateSession.mockRejectedValue(
+        new Error('terminate failed'),
+      );
+      mcpMocks.mockClient.close.mockRejectedValue(new Error('client failed'));
+      mcpMocks.streamableHttpTransport.close.mockRejectedValue(
+        new Error('transport failed'),
+      );
+
+      await expect(
+        service.callRuntimeTool(
+          createStreamableHttpConnection(),
+          'search-docs',
+          {},
+        ),
+      ).rejects.toMatchObject({
+        detail: 'MCP 运行时工具调用失败: socket closed',
+      });
+      expect(
+        mcpMocks.streamableHttpTransport.terminateSession,
+      ).toHaveBeenCalledOnce();
+      expect(mcpMocks.mockClient.close).toHaveBeenCalledOnce();
+      expect(mcpMocks.streamableHttpTransport.close).toHaveBeenCalledOnce();
+    });
+  });
+
+  describe('配置列表过滤', () => {
+    function createConfigRowsChain(rows: unknown[]) {
+      const offset = vi.fn().mockResolvedValue(rows);
+      const limit = vi.fn().mockReturnValue({ offset });
+      const orderBy = vi.fn().mockReturnValue({ limit });
+      const where = vi.fn().mockReturnValue({ orderBy });
+      const from = vi.fn().mockReturnValue({ where });
+      return { from, where, orderBy, limit, offset };
+    }
+
+    function createToolCountsChain(rows: unknown[]) {
+      const groupBy = vi.fn().mockResolvedValue(rows);
+      const where = vi.fn().mockReturnValue({ groupBy });
+      const from = vi.fn().mockReturnValue({ where });
+      return { from, where, groupBy };
+    }
+
+    it('应当组合搜索、状态、transport 与共享来源过滤并汇总工具数', async () => {
+      const config = createMcpServerConfigRecord({
+        transportType: 'sse',
+      });
+      const rowsChain = createConfigRowsChain([config]);
+      const countChain = createSelectChain([{ total: 3 }]);
+      const toolCountsChain = createToolCountsChain([
+        { mcpServerConfigId: CONFIG_ID, count: 4 },
+      ]);
+      db.select
+        .mockReturnValueOnce(rowsChain)
+        .mockReturnValueOnce(countChain)
+        .mockReturnValueOnce(toolCountsChain);
+      resourceSourceService.mapCurrentKinds.mockResolvedValueOnce(
+        new Map([[CONFIG_ID, 'share_imported']]),
+      );
+
+      const result = await service.findAllConfigs(TENANT_ID, {
+        page: 2,
+        pageSize: 2,
+        search: 'knowledge',
+        status: 'active',
+        transportType: 'sse',
+        sourceKind: 'share_imported',
+      });
+
+      expect(
+        resourceSourceService.buildShareImportedExistsCondition,
+      ).toHaveBeenCalledWith({
+        resourceType: 'mcp_server_config',
+        resourceIdColumn: mcpServerConfigs.id,
+      });
+      expect(rowsChain.limit).toHaveBeenCalledWith(2);
+      expect(rowsChain.offset).toHaveBeenCalledWith(2);
+      expect(result).toEqual({
+        data: [
+          {
+            ...config,
+            toolCount: 4,
+            sourceKind: 'share_imported',
+          },
+        ],
+        meta: {
+          total: 3,
+          page: 2,
+          pageSize: 2,
+          totalPages: 2,
+        },
+      });
+    });
+
+    it('应当为空列表提供零计数，并支持排除共享导入来源', async () => {
+      const rowsChain = createConfigRowsChain([]);
+      const countChain = createSelectChain([]);
+      db.select.mockReturnValueOnce(rowsChain).mockReturnValueOnce(countChain);
+
+      const result = await service.findAllConfigs(TENANT_ID, {
+        page: 1,
+        pageSize: 20,
+        search: undefined,
+        status: undefined,
+        transportType: undefined,
+        sourceKind: 'manual',
+      });
+
+      expect(db.select).toHaveBeenCalledTimes(2);
+      expect(resourceSourceService.mapCurrentKinds).toHaveBeenCalledWith(
+        'mcp_server_config',
+        [],
+      );
+      expect(result).toEqual({
+        data: [],
+        meta: {
+          total: 0,
+          page: 1,
+          pageSize: 20,
+          totalPages: 0,
+        },
+      });
+    });
+  });
+
+  describe('配置查询与状态转换', () => {
+    it('应当返回详情但只暴露凭据 key，并标记共享导入来源', async () => {
+      const config = createMcpServerConfigRecord();
+      const tools = [createToolDefinitionRecord()];
+      db.select
+        .mockReturnValueOnce(createSelectChain([config]))
+        .mockReturnValueOnce(createSelectChain(tools));
+      encryptionService.decrypt.mockReturnValue(
+        JSON.stringify({
+          Authorization: 'Bearer secret',
+          'X-Workspace': 'workspace',
+        }),
+      );
+      resourceSourceService.mapCurrentKinds.mockResolvedValueOnce(
+        new Map([[CONFIG_ID, 'share_imported']]),
+      );
+
+      const result = await service.findConfigById(TENANT_ID, CONFIG_ID);
+
+      expect(result).toMatchObject({
+        id: CONFIG_ID,
+        tools,
+        credentialKeys: ['Authorization', 'X-Workspace'],
+        sourceKind: 'share_imported',
+      });
+      expect(result).not.toHaveProperty('encryptedData');
+      expect(result).not.toHaveProperty('encryptedDek');
+      expect(result).not.toHaveProperty('iv');
+      expect(result).not.toHaveProperty('authTag');
+    });
+
+    it('应当更新 stdio 配置、状态和可清空字段，并清除空凭据密文', async () => {
+      db.select.mockReturnValueOnce(
+        createSelectChain([createMcpServerConfigRecord()]),
+      );
+      const updated = createMcpServerConfigRecord({
+        name: 'Local MCP',
+        description: null,
+        status: 'inactive',
+        transportType: 'stdio',
+        command: 'node',
+        args: null,
+        url: null,
+        encryptedData: null,
+        encryptedDek: null,
+        iv: null,
+        authTag: null,
+      });
+      const updateChain = createUpdateChain([updated]);
+      db.update.mockReturnValueOnce(updateChain);
+
+      const result = await service.updateConfig(TENANT_ID, CONFIG_ID, {
+        name: 'Local MCP',
+        description: null,
+        status: 'inactive',
+        connection: createStdioConnection({
+          args: undefined,
+          env: undefined,
+        }),
+      });
+
+      expect(updateChain.set).toHaveBeenCalledWith({
+        updatedAt: NOW,
+        name: 'Local MCP',
+        description: null,
+        status: 'inactive',
+        transportType: 'stdio',
+        command: 'node',
+        args: null,
+        url: null,
+        encryptedData: null,
+        encryptedDek: null,
+        iv: null,
+        authTag: null,
+        connectionFingerprint: createSha256Fingerprint('stdio|node||'),
+      });
+      expect(encryptionService.encrypt).not.toHaveBeenCalled();
+      expect(result).toMatchObject({
+        status: 'inactive',
+        transportType: 'stdio',
+        sourceKind: 'manual',
+      });
+    });
+
+    it('应当更新 HTTP 地址并加密 headers，同时清除 stdio 专属字段', async () => {
+      db.select.mockReturnValueOnce(
+        createSelectChain([createMcpServerConfigRecord()]),
+      );
+      const updated = createMcpServerConfigRecord({
+        transportType: 'sse',
+        url: 'https://new.example.com/sse',
+      });
+      const updateChain = createUpdateChain([updated]);
+      db.update.mockReturnValueOnce(updateChain);
+      resourceSourceService.mapCurrentKinds.mockResolvedValueOnce(
+        new Map([[CONFIG_ID, 'share_imported']]),
+      );
+
+      const result = await service.updateConfig(TENANT_ID, CONFIG_ID, {
+        connection: createSseConnection({
+          url: 'https://new.example.com/sse',
+          headers: { 'X-Token': 'secret' },
+        }),
+      });
+
+      expect(encryptionService.encrypt).toHaveBeenCalledWith(
+        JSON.stringify({ 'X-Token': 'secret' }),
+      );
+      expect(updateChain.set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          transportType: 'sse',
+          url: 'https://new.example.com/sse',
+          command: null,
+          args: null,
+          encryptedData: MOCK_ENCRYPTED.encryptedKey,
+          encryptedDek: MOCK_ENCRYPTED.encryptedDek,
+          iv: MOCK_ENCRYPTED.iv,
+          authTag: MOCK_ENCRYPTED.authTag,
+        }),
+      );
+      expect(result.sourceKind).toBe('share_imported');
+    });
+
+    it('应当删除已存在配置并拒绝未知配置', async () => {
+      const deleteWhere = vi.fn().mockResolvedValue(undefined);
+      db.select
+        .mockReturnValueOnce(createSelectChain([createMcpServerConfigRecord()]))
+        .mockReturnValueOnce(createSelectChain([]));
+      db.delete.mockReturnValueOnce({
+        where: deleteWhere,
+      });
+
+      await expect(
+        service.deleteConfig(TENANT_ID, CONFIG_ID),
+      ).resolves.toBeUndefined();
+      expect(db.delete).toHaveBeenCalledWith(mcpServerConfigs);
+      expect(deleteWhere).toHaveBeenCalledOnce();
+      await expect(
+        service.deleteConfig(TENANT_ID, 'missing-config'),
+      ).rejects.toMatchObject({
+        detail: 'MCP 服务器配置不存在: missing-config',
+      });
+    });
+  });
+
+  describe('端口映射边界', () => {
+    it('应当对缺失 schema/properties 返回 null，并覆盖剩余类型和描述启发式', () => {
+      const generatePortMapping = getCallableMethod<
+        [tool: { inputSchema?: Record<string, unknown> }],
+        {
+          inputs: Array<{ name: string; dataType: string; required: boolean }>;
+        } | null
+      >(service, 'generatePortMapping');
+
+      expect(generatePortMapping({})).toBeNull();
+      expect(
+        generatePortMapping({ inputSchema: { type: 'object' } }),
+      ).toBeNull();
+
+      const mapping = generatePortMapping({
+        inputSchema: {
+          type: 'object',
+          required: 'not-an-array',
+          properties: {
+            modelId: { type: 'number', description: 'model selector' },
+            function: { type: 'string', description: 'function_call target' },
+            environment: { type: 'string', description: 'execution_env id' },
+            retriever: { type: 'string', description: 'RAG source' },
+            photo: { type: 'string', contentMediaType: 'video/mp4' },
+            ratio: { type: 'number' },
+            mystery: {},
+          },
+        },
+      });
+
+      expect(mapping?.inputs).toEqual([
+        {
+          name: 'modelId',
+          dataType: 'json',
+          description: 'model selector',
+          required: false,
+        },
+        {
+          name: 'function',
+          dataType: 'tool',
+          description: 'function_call target',
+          required: false,
+        },
+        {
+          name: 'environment',
+          dataType: 'sandbox',
+          description: 'execution_env id',
+          required: false,
+        },
+        {
+          name: 'retriever',
+          dataType: 'knowledge',
+          description: 'RAG source',
+          required: false,
+        },
+        {
+          name: 'photo',
+          dataType: 'text',
+          description: undefined,
+          required: false,
+        },
+        {
+          name: 'ratio',
+          dataType: 'json',
+          description: undefined,
+          required: false,
+        },
+        {
+          name: 'mystery',
+          dataType: 'text',
+          description: undefined,
+          required: false,
+        },
+      ]);
     });
   });
 });

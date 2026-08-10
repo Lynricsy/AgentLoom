@@ -17,6 +17,7 @@ import { ResourceSourceService } from '../../resource-source/resource-source.ser
 import { WorkflowNotPublishedException } from '../../execution/execution.exceptions';
 import { MarketplaceListingNotFoundException } from '../../marketplace/marketplace.exceptions';
 import { ListWorkflowDefinitionsQueryDto } from '../dto/list-workflow-definitions-query.dto';
+import { WORKFLOW_EXPORT_VERSION } from '../dto/workflow-export.dto';
 import { WorkflowVersionService } from '../workflow-version.service';
 import {
   WorkflowArchivedException,
@@ -284,6 +285,8 @@ function createListDefinitionsQuery(
     status: 'draft' | 'published' | 'archived';
     search: string;
     sourceKind: 'manual' | 'share_imported';
+    sort: 'updatedAt' | 'createdAt' | 'name';
+    order: 'asc' | 'desc';
   }> = {},
 ): ListWorkflowDefinitionsQueryDto {
   return Object.assign(new ListWorkflowDefinitionsQueryDto(), overrides);
@@ -539,6 +542,34 @@ describe('WorkflowVersionService', () => {
         resourceIdColumn: expect.anything(),
       });
       expect(result.data[0]?.resourceSourceKind).toBe('share_imported');
+    });
+
+    it('应当支持手工来源与升序排序并在计数行缺失时回退为零', async () => {
+      const selectDefinitions = createSelectChainWithPagination([]);
+      const selectCount = createSelectChain([]);
+
+      db.select
+        .mockReturnValueOnce(selectDefinitions)
+        .mockReturnValueOnce(selectCount);
+
+      const result = await service.findAllDefinitions(
+        createListDefinitionsQuery({
+          sourceKind: 'manual',
+          sort: 'name',
+          order: 'asc',
+        }),
+      );
+
+      expect(selectDefinitions.orderBy).toHaveBeenCalledOnce();
+      expect(result).toEqual({
+        data: [],
+        meta: {
+          total: 0,
+          page: 1,
+          pageSize: 20,
+          totalPages: 0,
+        },
+      });
     });
 
     it('应当支持按搜索词筛选', async () => {
@@ -848,6 +879,166 @@ describe('WorkflowVersionService', () => {
     });
   });
 
+  describe('exportWorkflow', () => {
+    it('草稿画布字段为空时应导出默认画布与空输入 schema', async () => {
+      db.select.mockReturnValueOnce(
+        createSelectChain([
+          createDraftWorkflow({
+            nodes: null,
+            edges: null,
+            viewport: null,
+            inputSchema: null,
+          }),
+        ]),
+      );
+
+      const result = await service.exportWorkflow(TENANT_ID, WORKFLOW_ID);
+
+      expect(result).toEqual({
+        schema_version: WORKFLOW_EXPORT_VERSION,
+        exported_at: NOW.toISOString(),
+        workflow: {
+          name: '测试工作流',
+          description: null,
+          definition: {
+            nodes: [],
+            edges: [],
+            viewport: { x: 0, y: 0, zoom: 1 },
+          },
+          input_schema: null,
+        },
+      });
+    });
+
+    it('已发布定义应优先导出发布快照的画布与输入 schema', async () => {
+      const publishedNodes = [
+        {
+          id: 'published-node',
+          type: 'test',
+          position: { x: 12, y: 24 },
+          data: { label: 'Published' },
+        },
+      ];
+      const publishedViewport = { x: 10, y: 20, zoom: 0.75 };
+
+      db.select
+        .mockReturnValueOnce(
+          createSelectChain([
+            createDraftWorkflow({
+              status: 'published',
+              publishedVersionId: VERSION_ID,
+              nodes: MOCK_NODES,
+              edges: MOCK_EDGES,
+              viewport: MOCK_VIEWPORT,
+              inputSchema: null,
+            }),
+          ]),
+        )
+        .mockReturnValueOnce(
+          createSelectChain([
+            {
+              snapshot: {
+                nodes: publishedNodes,
+                edges: [],
+                viewport: publishedViewport,
+                inputSchema: MOCK_INPUT_SCHEMA,
+                metadata: {},
+              },
+            },
+          ]),
+        );
+
+      const result = await service.exportWorkflow(TENANT_ID, WORKFLOW_ID);
+
+      expect(result.workflow.definition.nodes).toEqual([
+        expect.objectContaining({ id: 'published-node' }),
+      ]);
+      expect(result.workflow.definition.edges).toEqual([]);
+      expect(result.workflow.definition.viewport).toEqual(publishedViewport);
+      expect(result.workflow.input_schema).toEqual(MOCK_INPUT_SCHEMA);
+    });
+
+    it('发布快照缺少画布字段时应使用画布默认值并保留定义输入 schema', async () => {
+      db.select
+        .mockReturnValueOnce(
+          createSelectChain([
+            createDraftWorkflow({
+              status: 'published',
+              publishedVersionId: VERSION_ID,
+              nodes: MOCK_NODES,
+              edges: [],
+              viewport: MOCK_VIEWPORT,
+              inputSchema: MOCK_INPUT_SCHEMA,
+            }),
+          ]),
+        )
+        .mockReturnValueOnce(
+          createSelectChain([
+            {
+              snapshot: {
+                nodes: null,
+                edges: null,
+                viewport: null,
+                inputSchema: null,
+                metadata: {},
+              },
+            },
+          ]),
+        );
+
+      const result = await service.exportWorkflow(TENANT_ID, WORKFLOW_ID);
+
+      expect(result.workflow.definition).toEqual({
+        nodes: [],
+        edges: [],
+        viewport: { x: 0, y: 0, zoom: 1 },
+      });
+      expect(result.workflow.input_schema).toEqual(MOCK_INPUT_SCHEMA);
+    });
+
+    it('发布版本记录缺失时应回退导出定义当前画布', async () => {
+      const currentNodes = [
+        {
+          id: 'current-node',
+          type: 'test',
+          position: { x: 1, y: 2 },
+          data: {},
+        },
+      ];
+
+      db.select
+        .mockReturnValueOnce(
+          createSelectChain([
+            createDraftWorkflow({
+              status: 'published',
+              publishedVersionId: VERSION_ID,
+              nodes: currentNodes,
+              edges: [],
+              viewport: MOCK_VIEWPORT,
+              inputSchema: MOCK_INPUT_SCHEMA,
+            }),
+          ]),
+        )
+        .mockReturnValueOnce(createSelectChain([]));
+
+      const result = await service.exportWorkflow(TENANT_ID, WORKFLOW_ID);
+
+      expect(result.workflow.definition.nodes).toEqual([
+        expect.objectContaining({ id: 'current-node' }),
+      ]);
+      expect(result.workflow.definition.viewport).toEqual(MOCK_VIEWPORT);
+      expect(result.workflow.input_schema).toEqual(MOCK_INPUT_SCHEMA);
+    });
+
+    it('定义不存在时应抛出 WorkflowNotFoundException', async () => {
+      db.select.mockReturnValueOnce(createSelectChain([]));
+
+      await expect(
+        service.exportWorkflow(TENANT_ID, WORKFLOW_ID),
+      ).rejects.toBeInstanceOf(WorkflowNotFoundException);
+    });
+  });
+
   describe('updateDefinition', () => {
     it('应当更新工作流并返回含递增 version 的完整记录', async () => {
       const workflow = createDraftWorkflow({ version: 3 });
@@ -1135,6 +1326,37 @@ describe('WorkflowVersionService', () => {
         ...CONDITIONAL_INPUT_SCHEMA,
         version: 2,
       });
+    });
+
+    it('OCC 更新首次设置默认输入 schema 时应从默认版本开始且不虚增 schema 版本', async () => {
+      const defaultInputSchema = {
+        version: 1,
+        collectionMode: 'form' as const,
+        fields: [],
+      };
+      const workflow = createDraftWorkflow({
+        version: 7,
+        inputSchema: null,
+      });
+      const updatedWorkflow = createDraftWorkflow({
+        version: 8,
+        inputSchema: defaultInputSchema,
+        updatedBy: USER_ID,
+      });
+
+      db.select.mockReturnValueOnce(createSelectChain([workflow]));
+      db.update.mockReturnValueOnce(createUpdateChain([updatedWorkflow]));
+
+      const result = await service.updateDefinition(WORKFLOW_ID, USER_ID, {
+        version: 7,
+        inputSchema: defaultInputSchema,
+      });
+
+      expect(
+        db.update.mock.results[0].value.set.mock.calls[0][0].inputSchema,
+      ).toEqual(defaultInputSchema);
+      expect(result.inputSchema).toEqual(defaultInputSchema);
+      expect(result.version).toBe(8);
     });
 
     it('非 schema 更新时不应变更现有 inputSchema.version', async () => {
@@ -3020,6 +3242,425 @@ describe('WorkflowVersionService', () => {
 
       // 不应重试
       expect(db.insert).toHaveBeenCalledOnce();
+    });
+  });
+  describe('版本快照与 release 契约补充', () => {
+    it('创建版本时应将 legacy graph、空 viewport/inputSchema 与快照元数据一并冻结', async () => {
+      const workflow = createDraftWorkflow({
+        version: 6,
+        viewport: null,
+        inputSchema: null,
+        nodes: [
+          {
+            id: 'trigger',
+            type: 'workflow-node',
+            position: { x: 0, y: 0 },
+            data: {
+              node_type: 'manual-trigger',
+              output_ports: [{ id: 'payload-out' }],
+            },
+          },
+          {
+            id: 'output',
+            type: 'workflow-node',
+            position: { x: 100, y: 0 },
+            data: {
+              node_type: 'json-output',
+              input_ports: [{ id: 'json-in' }],
+            },
+          },
+        ],
+        edges: [
+          {
+            id: 'edge',
+            source: 'trigger',
+            target: 'output',
+            source_handle: 'payload',
+            target_handle: 'json',
+          },
+        ],
+      });
+      db.select
+        .mockReturnValueOnce(createSelectChain([workflow]))
+        .mockReturnValueOnce(createSelectChain([{ maxVersion: 8 }]));
+      const insertChain = createInsertChain([
+        createMockVersion({ versionNumber: 9 }),
+      ]);
+      db.insert.mockReturnValueOnce(insertChain);
+
+      await service.createVersion(WORKFLOW_ID, {}, USER_ID);
+
+      expect(insertChain.values).toHaveBeenCalledWith(
+        expect.objectContaining({
+          versionNumber: 9,
+          label: null,
+          snapshot: {
+            nodes: [
+              expect.objectContaining({
+                id: 'trigger',
+                type: 'trigger',
+                data: expect.objectContaining({
+                  nodeType: 'manual-trigger',
+                  outputPorts: expect.arrayContaining([
+                    expect.objectContaining({ id: 'payload-out' }),
+                  ]),
+                }),
+              }),
+              expect.objectContaining({
+                id: 'output',
+                type: 'output',
+                data: expect.objectContaining({ nodeType: 'json-output' }),
+              }),
+            ],
+            edges: [
+              expect.objectContaining({
+                id: 'edge',
+                sourceHandle: 'payload-out',
+                targetHandle: 'json-in',
+              }),
+            ],
+            viewport: null,
+            inputSchema: null,
+            metadata: {
+              nodeCount: 2,
+              edgeCount: 1,
+              createdFromVersion: 6,
+              releaseNotes: null,
+              releaseNumber: null,
+            },
+          },
+        }),
+      );
+    });
+
+    it('发布当前草稿时应跨历史版本取最大 release number 并修剪 release notes', async () => {
+      const workflow = createDraftWorkflow({ version: 4 });
+      db.select
+        .mockReturnValueOnce(createSelectChain([workflow]))
+        .mockReturnValueOnce(
+          createSelectChain([
+            {
+              snapshot: {
+                ...MOCK_SNAPSHOT,
+                metadata: { ...MOCK_SNAPSHOT.metadata, releaseNumber: 4 },
+              },
+              publishedAt: NOW,
+            },
+            {
+              snapshot: {
+                ...MOCK_SNAPSHOT,
+                metadata: { ...MOCK_SNAPSHOT.metadata, releaseNumber: -2 },
+              },
+              publishedAt: NOW,
+            },
+            {
+              snapshot: {
+                ...MOCK_SNAPSHOT,
+                metadata: { ...MOCK_SNAPSHOT.metadata, releaseNumber: 2.5 },
+              },
+              publishedAt: null,
+            },
+          ]),
+        )
+        .mockReturnValueOnce(createSelectChain([{ maxVersion: null }]));
+      const insertedVersion = createMockVersion({
+        versionNumber: 1,
+        publishedAt: NOW,
+        snapshot: {
+          ...MOCK_SNAPSHOT,
+          metadata: {
+            ...MOCK_SNAPSHOT.metadata,
+            releaseNotes: 'Ship it',
+            releaseNumber: 5,
+          },
+        },
+      });
+      const insertChain = createInsertChain([insertedVersion]);
+      db.insert.mockReturnValueOnce(insertChain);
+      db.update
+        .mockReturnValueOnce(createUpdateChainVoid())
+        .mockReturnValueOnce(createUpdateChainVoid());
+      redis.del.mockResolvedValueOnce(undefined);
+
+      const result = await service.publish(
+        WORKFLOW_ID,
+        { releaseNotes: '  Ship it  ' },
+        USER_ID,
+      );
+
+      expect(insertChain.values).toHaveBeenCalledWith(
+        expect.objectContaining({
+          versionNumber: 1,
+          snapshot: expect.objectContaining({
+            metadata: expect.objectContaining({
+              createdFromVersion: 4,
+              releaseNotes: 'Ship it',
+              releaseNumber: 5,
+            }),
+          }),
+        }),
+      );
+      expect(result.data.releaseNumber).toBe(5);
+    });
+
+    it('重新发布已有快照时应保留其 release number、label 与既有说明', async () => {
+      const workflow = createDraftWorkflow();
+      const existingVersion = createMockVersion({
+        label: 'Existing',
+        publishedAt: null,
+        snapshot: {
+          ...MOCK_SNAPSHOT,
+          metadata: {
+            ...MOCK_SNAPSHOT.metadata,
+            releaseNotes: 'Original notes',
+            releaseNumber: 7,
+          },
+        },
+      });
+      db.select
+        .mockReturnValueOnce(createSelectChain([workflow]))
+        .mockReturnValueOnce(
+          createSelectChain([
+            {
+              snapshot: {
+                ...MOCK_SNAPSHOT,
+                metadata: { ...MOCK_SNAPSHOT.metadata, releaseNumber: 9 },
+              },
+              publishedAt: NOW,
+            },
+          ]),
+        )
+        .mockReturnValueOnce(createSelectChain([existingVersion]));
+      const updatedVersion = {
+        ...existingVersion,
+        publishedAt: NOW,
+      };
+      const clearPublished = createUpdateChainVoid();
+      const publishExisting = createUpdateChain([updatedVersion]);
+      db.update
+        .mockReturnValueOnce(clearPublished)
+        .mockReturnValueOnce(publishExisting)
+        .mockReturnValueOnce(createUpdateChainVoid());
+      redis.del.mockResolvedValueOnce(undefined);
+
+      await service.publish(
+        WORKFLOW_ID,
+        { versionId: VERSION_ID, releaseNotes: '   ' },
+        USER_ID,
+      );
+
+      expect(publishExisting.set).toHaveBeenCalledWith({
+        publishedAt: NOW,
+        label: 'Existing',
+        snapshot: {
+          ...existingVersion.snapshot,
+          metadata: {
+            ...existingVersion.snapshot.metadata,
+            releaseNotes: 'Original notes',
+            releaseNumber: 7,
+          },
+        },
+      });
+    });
+
+    it('版本 DTO 应区分显式 release、legacy 已发布版本与未发布草稿', async () => {
+      const explicitRelease = createMockVersion({
+        snapshot: {
+          ...MOCK_SNAPSHOT,
+          metadata: { ...MOCK_SNAPSHOT.metadata, releaseNumber: 3 },
+        },
+      });
+      const legacyPublished = createMockVersion({
+        id: VERSION_ID_2,
+        publishedAt: NOW,
+        snapshot: {
+          ...MOCK_SNAPSHOT,
+          metadata: { ...MOCK_SNAPSHOT.metadata, releaseNumber: 0 },
+        },
+      });
+      const draftVersion = createMockVersion({
+        id: '00000000-0000-0000-0000-000000000006',
+        snapshot: {
+          ...MOCK_SNAPSHOT,
+          metadata: { ...MOCK_SNAPSHOT.metadata, releaseNumber: Number.NaN },
+        },
+      });
+      db.select
+        .mockReturnValueOnce(createSelectChain([createDraftWorkflow()]))
+        .mockReturnValueOnce(
+          createSelectChainWithPagination([
+            explicitRelease,
+            legacyPublished,
+            draftVersion,
+          ]),
+        )
+        .mockReturnValueOnce(createSelectChain([{ count: 3 }]));
+
+      const result = await service.listVersions(WORKFLOW_ID, {
+        page: 1,
+        pageSize: 10,
+      });
+
+      expect(result.data.map((version) => version.releaseNumber)).toEqual([
+        3,
+        1,
+        null,
+      ]);
+    });
+
+    it('OCC 更新仅 nodes 时应借用现有 edges 归一化，但只持久化请求字段', async () => {
+      const workflow = createDraftWorkflow({
+        version: 2,
+        edges: [
+          {
+            id: 'existing-edge',
+            source: 'trigger',
+            target: 'output',
+            source_handle: 'payload',
+            target_handle: 'content',
+          },
+        ],
+      });
+      const updatedWorkflow = createDraftWorkflow({
+        version: 3,
+        nodes: [],
+        updatedBy: USER_ID,
+      });
+      db.select.mockReturnValueOnce(createSelectChain([workflow]));
+      const updateChain = createUpdateChain([updatedWorkflow]);
+      db.update.mockReturnValueOnce(updateChain);
+
+      await service.updateDefinition(WORKFLOW_ID, USER_ID, {
+        version: 2,
+        nodes: [
+          {
+            id: 'trigger',
+            type: 'workflow-node',
+            position: { x: 0, y: 0 },
+            data: {
+              node_type: 'manual-trigger',
+              output_ports: [{ id: 'payload-out' }],
+            },
+          },
+          {
+            id: 'output',
+            type: 'workflow-node',
+            position: { x: 1, y: 0 },
+            data: {
+              node_type: 'text-output',
+              input_ports: [{ id: 'content-in' }],
+            },
+          },
+        ] as never,
+      });
+
+      const setClause = updateChain.set.mock.calls[0][0];
+      expect(setClause.nodes).toEqual([
+        expect.objectContaining({ id: 'trigger', type: 'trigger' }),
+        expect.objectContaining({ id: 'output', type: 'output' }),
+      ]);
+      expect(setClause).not.toHaveProperty('edges');
+      expect(updateChain.where).toHaveBeenCalledOnce();
+    });
+
+    it('OCC 更新仅 edges 时应借用现有 nodes 解析 legacy handles 且不覆写 nodes', async () => {
+      const workflow = createDraftWorkflow({
+        version: 10,
+        nodes: [
+          {
+            id: 'trigger',
+            type: 'trigger',
+            position: { x: 0, y: 0 },
+            data: {
+              nodeType: 'manual-trigger',
+              outputPorts: [{ id: 'payload-out' }],
+            },
+          },
+          {
+            id: 'output',
+            type: 'output',
+            position: { x: 1, y: 0 },
+            data: {
+              nodeType: 'text-output',
+              inputPorts: [{ id: 'content-in' }],
+            },
+          },
+        ],
+      });
+      db.select.mockReturnValueOnce(createSelectChain([workflow]));
+      const updateChain = createUpdateChain([
+        createDraftWorkflow({ version: 11 }),
+      ]);
+      db.update.mockReturnValueOnce(updateChain);
+
+      await service.updateDefinition(WORKFLOW_ID, USER_ID, {
+        version: 10,
+        edges: [
+          {
+            id: 'new-edge',
+            source: 'trigger',
+            target: 'output',
+            source_handle: 'payload',
+            target_handle: 'content',
+          },
+        ] as never,
+      });
+
+      const setClause = updateChain.set.mock.calls[0][0];
+      expect(setClause.edges).toEqual([
+        {
+          id: 'new-edge',
+          source: 'trigger',
+          target: 'output',
+          sourceHandle: 'payload-out',
+          targetHandle: 'content-in',
+        },
+      ]);
+      expect(setClause).not.toHaveProperty('nodes');
+    });
+    it('定义详情应从已发布快照公开 release number', async () => {
+      db.select
+        .mockReturnValueOnce(
+          createSelectChain([
+            createDraftWorkflow({
+              status: 'published',
+              publishedVersionId: VERSION_ID,
+            }),
+          ]),
+        )
+        .mockReturnValueOnce(
+          createSelectChain([
+            {
+              snapshot: {
+                ...MOCK_SNAPSHOT,
+                metadata: { ...MOCK_SNAPSHOT.metadata, releaseNumber: 12 },
+              },
+              publishedAt: NOW,
+            },
+          ]),
+        );
+
+      const result = await service.findDefinitionById(WORKFLOW_ID);
+
+      expect(result.publishedVersionId).toBe(VERSION_ID);
+      expect(result.publishedReleaseNumber).toBe(12);
+    });
+
+    it('定义指向已删除版本时应将 published release 暴露为 null', async () => {
+      db.select
+        .mockReturnValueOnce(
+          createSelectChain([
+            createDraftWorkflow({
+              status: 'published',
+              publishedVersionId: VERSION_ID,
+            }),
+          ]),
+        )
+        .mockReturnValueOnce(createSelectChain([]));
+
+      const result = await service.findDefinitionById(WORKFLOW_ID);
+
+      expect(result.publishedReleaseNumber).toBeNull();
     });
   });
 });

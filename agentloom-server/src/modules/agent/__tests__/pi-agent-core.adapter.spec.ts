@@ -2049,4 +2049,725 @@ describe('PiAgentCoreAdapter', () => {
       expect(helper.getToolName({ toolCall: {} })).toBe('unknown_tool');
     });
   });
+  describe('code tool runtime behavior', () => {
+    it('normalizes every supported language and forwards code, input, overrides, and timeout', async () => {
+      const execute = vi.fn().mockImplementation(async (params: unknown) => ({
+        success: true,
+        output: params,
+        stdout: '',
+        stderr: '',
+        executionTimeMs: 1,
+      }));
+      type AdapterArgs = ConstructorParameters<typeof PiAgentCoreAdapter>;
+      adapter = new PiAgentCoreAdapter(
+        mockDb as unknown as AdapterArgs[0],
+        mockPiAiAdapter as unknown as AdapterArgs[1],
+        mockMcpService as unknown as AdapterArgs[2],
+        mockRagService as unknown as AdapterArgs[3],
+        { execute } as unknown as AdapterArgs[4],
+        mockToolPermissionSyncService as unknown as AdapterArgs[5],
+      );
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
+
+      const session = await adapter.createSession(
+        createParams({
+          runtimeConfig: {
+            tools: [
+              {
+                toolId: 'ts',
+                name: 'Type Script',
+                description: 'typed execution',
+                toolType: 'code',
+                language: 'typescript',
+                code: 'output = input',
+                timeout: 9,
+                parameterOverrides: { fixed: true },
+                enabled: true,
+              },
+              {
+                toolId: 'js',
+                name: '123 JS',
+                toolType: 'code',
+                language: 'javascript',
+                enabled: true,
+              },
+              {
+                toolId: 'py',
+                name: 'Python',
+                toolType: 'code',
+                language: 'python',
+                code: 'output = input',
+                enabled: true,
+              },
+              {
+                toolId: 'sh',
+                name: 'Bash',
+                language: 'bash',
+                code: 'echo ok',
+                enabled: true,
+              },
+              {
+                toolId: 'disabled',
+                name: 'Disabled',
+                toolType: 'code',
+                language: 'javascript',
+                enabled: false,
+              },
+              {
+                toolId: 'invalid',
+                name: 'Invalid',
+                toolType: 'code',
+                language: 'ruby',
+                enabled: true,
+              } as never,
+            ],
+            knowledgeBindings: [],
+          },
+        }),
+      );
+
+      hoisted.MockPiAgent.script = async (agent) => {
+        expect(
+          agent.tools.map((item) => (item as { name: string }).name),
+        ).toEqual(['Type_Script', 'tool_123_JS', 'Python', 'Bash']);
+        for (const piTool of agent.tools as Array<{
+          execute: (
+            id: string,
+            params: unknown,
+            signal?: AbortSignal,
+          ) => Promise<unknown>;
+        }>) {
+          await piTool.execute('code-call', { runtime: 1 });
+        }
+        agent.emit({
+          type: 'agent_end',
+          messages: [{ role: 'assistant', stopReason: 'stop' }],
+        });
+      };
+
+      await collectEvents(
+        adapter.prompt(session.id, [{ type: 'text', text: 'run code' }]),
+      );
+
+      expect(execute.mock.calls.map(([params]) => params)).toEqual([
+        {
+          language: 'typescript',
+          code: 'output = input',
+          input: { runtime: 1, fixed: true },
+          timeout: 9,
+        },
+        {
+          language: 'javascript',
+          code: '',
+          input: { runtime: 1 },
+          timeout: 30,
+        },
+        {
+          language: 'python',
+          code: 'output = input',
+          input: { runtime: 1 },
+          timeout: 30,
+        },
+        {
+          language: 'bash',
+          code: 'echo ok',
+          input: { runtime: 1 },
+          timeout: 30,
+        },
+      ]);
+      expect(hoisted.flexibleSchemaToTypeBox).toHaveBeenCalledTimes(8);
+      expect(hoisted.flexibleSchemaToTypeBox.mock.calls[0]?.[0]).toMatchObject({
+        jsonSchema: {
+          type: 'object',
+          properties: {
+            input: {
+              description: '传入代码工具的结构化输入',
+            },
+          },
+          additionalProperties: true,
+        },
+      });
+    });
+
+    it('returns an actionable tool result when CodeExecutionService is absent', async () => {
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
+      const session = await adapter.createSession(
+        createParams({
+          runtimeConfig: {
+            tools: [
+              {
+                toolId: 'code-1',
+                name: '',
+                toolType: 'code',
+                language: 'python',
+                enabled: true,
+              },
+            ],
+            knowledgeBindings: [],
+          },
+        }),
+      );
+
+      hoisted.MockPiAgent.script = async (agent) => {
+        const tool = agent.tools[0] as {
+          name: string;
+          description: string;
+          execute: (
+            id: string,
+            params: unknown,
+          ) => Promise<{
+            content: Array<{ text: string }>;
+            details: unknown;
+          }>;
+        };
+        expect(tool.name).toBe('code_code-1');
+        expect(tool.description).toBe('执行 python 代码片段');
+        const result = await tool.execute('call', 'not-an-object');
+        expect(result.details).toEqual({
+          success: false,
+          message:
+            'In-process runtime 未配置 CodeExecutionService，无法执行 python 代码工具。',
+          toolId: 'code-1',
+          language: 'python',
+          code: '',
+          input: {},
+        });
+        expect(result.content[0]?.text).toContain('CodeExecutionService');
+        agent.emit({
+          type: 'agent_end',
+          messages: [{ role: 'assistant', stopReason: 'stop' }],
+        });
+      };
+
+      await collectEvents(
+        adapter.prompt(session.id, [{ type: 'text', text: 'run' }]),
+      );
+    });
+  });
+
+  describe('session stream and abort boundaries', () => {
+    it('uses explicit session id and omits API-key callback when the model has no key', async () => {
+      mockPiAiAdapter.getPiRuntimeModel.mockResolvedValueOnce({
+        model: { id: 'without-key' },
+      });
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
+
+      const session = await adapter.createSession(
+        createParams({
+          sessionId: 'fixed-session',
+          systemPrompt: undefined,
+          cwd: undefined,
+          mcpServers: undefined,
+          serverSandbox: undefined,
+        }),
+      );
+      const agent = hoisted.MockPiAgent.instances[0];
+
+      expect(session.id).toBe('fixed-session');
+      expect(session.context).toEqual({ history: [] });
+      expect(agent.options.initialState).toMatchObject({ systemPrompt: '' });
+      expect(agent.options).not.toHaveProperty('getApiKey');
+    });
+
+    it('aborting an active permission wait cancels the gate and preserves completed status', async () => {
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
+      const session = await adapter.createSession(createParams());
+      hoisted.MockPiAgent.script = async (agent) => {
+        const decision = await agent.options.beforeToolCall?.(
+          {
+            toolCall: {
+              id: 'abort-call',
+              name: 'apply_change',
+              arguments: { path: '/tmp/a' },
+            },
+          },
+          agent.abortController.signal,
+        );
+        expect(decision).toEqual({
+          block: true,
+          reason: 'Tool execution cancelled.',
+        });
+        agent.emit({
+          type: 'agent_end',
+          messages: [{ role: 'assistant', stopReason: 'aborted' }],
+        });
+      };
+
+      const iterator = adapter
+        .prompt(session.id, [{ type: 'text', text: 'mutate' }])
+        [Symbol.asyncIterator]();
+      await expect(iterator.next()).resolves.toMatchObject({
+        value: {
+          type: 'tool_call',
+          call: { id: 'abort-call', status: 'awaiting_permission' },
+        },
+      });
+
+      await adapter.cancel(session.id);
+      await expect(collectIteratorRest(iterator)).resolves.toEqual([
+        { type: 'done', stopReason: 'cancelled' },
+      ]);
+      expect((await adapter.loadSession(session.id)).status).toBe('completed');
+      expect(
+        mockToolPermissionSyncService.unregisterPendingResolution,
+      ).toHaveBeenCalledWith(session.id, 'abort-call');
+    });
+
+    it('does not append empty assistant history after a stream with no text deltas', async () => {
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
+      const session = await adapter.createSession(createParams());
+      hoisted.MockPiAgent.script = async (agent) => {
+        agent.emit({
+          type: 'message_update',
+          assistantMessageEvent: { type: 'text_delta', delta: '' },
+        });
+        agent.emit({
+          type: 'agent_end',
+          messages: [],
+        });
+      };
+
+      await expect(
+        collectEvents(
+          adapter.prompt(session.id, [{ type: 'text', text: 'silent' }]),
+        ),
+      ).resolves.toEqual([
+        { type: 'message_chunk', content: '' },
+        { type: 'done', stopReason: 'end_turn' },
+      ]);
+      expect((await adapter.loadSession(session.id)).context.history).toEqual([
+        { type: 'text', text: 'silent' },
+      ]);
+    });
+    it('normalizes non-Error prompt failures for stream consumers', async () => {
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
+      const session = await adapter.createSession(createParams());
+      hoisted.MockPiAgent.script = async () => {
+        throw 'string failure';
+      };
+
+      await expect(
+        collectEvents(
+          adapter.prompt(session.id, [{ type: 'text', text: 'fail' }]),
+        ),
+      ).rejects.toThrow('string failure');
+      expect((await adapter.loadSession(session.id)).status).toBe('error');
+    });
+
+    it('resolves an explicitly selected model and rejects missing selected/default models', async () => {
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
+      const selected = await adapter.createSession(
+        createParams({ llmModelConfigId: 'model-config-001' }),
+      );
+      expect(selected.llmModelConfigId).toBe('model-config-001');
+
+      mockDb.select.mockReturnValueOnce(createSelectChain([]));
+      await expect(
+        adapter.createSession(
+          createParams({
+            sessionId: 'missing-selected',
+            llmModelConfigId: 'missing-model',
+          }),
+        ),
+      ).rejects.toThrow('LLM 模型配置不存在: missing-model');
+
+      mockDb.select.mockReturnValueOnce(createSelectChain([]));
+      await expect(
+        adapter.createSession(
+          createParams({
+            sessionId: 'missing-default',
+            llmModelConfigId: undefined,
+          }),
+        ),
+      ).rejects.toThrow('租户 tenant-001 未配置默认 LLM 模型');
+    });
+  });
+  describe('remaining runtime branch contracts', () => {
+    it('normalizes inferred HTTP tools and drops malformed runtime bindings', async () => {
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
+
+      await adapter.createSession(
+        createParams({
+          runtimeConfig: {
+            tools: [
+              {
+                toolId: 'inferred-http',
+                name: '9 status!',
+                url: 'https://example.com/status',
+                enabled: true,
+              } as never,
+              {
+                toolId: 'missing-url',
+                name: 'broken-http',
+                toolType: 'http',
+                enabled: true,
+              } as never,
+              {
+                toolId: 'unknown',
+                name: 'unknown',
+                enabled: true,
+              } as never,
+            ],
+          },
+        }),
+      );
+
+      const tools = hoisted.MockPiAgent.instances[0]?.options.initialState
+        ?.tools as Array<{
+        name: string;
+        description: string;
+      }>;
+      expect(tools).toEqual([
+        expect.objectContaining({
+          name: 'tool_9_status_',
+          description: '通过 GET https://example.com/status 调用 HTTP 接口',
+        }),
+      ]);
+    });
+
+    it('omits MCP and knowledge tools when their optional services are unavailable', async () => {
+      type AdapterArgs = ConstructorParameters<typeof PiAgentCoreAdapter>;
+      adapter = new PiAgentCoreAdapter(
+        mockDb as unknown as AdapterArgs[0],
+        mockPiAiAdapter as unknown as AdapterArgs[1],
+        undefined,
+        undefined,
+        undefined,
+        mockToolPermissionSyncService as unknown as AdapterArgs[5],
+      );
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
+
+      await adapter.createSession(
+        createParams({
+          runtimeConfig: {
+            tools: [
+              {
+                toolId: 'mcp-without-service',
+                toolType: 'mcp',
+                mcpServerConfigId: 'mcp-1',
+                toolName: 'search',
+                enabled: true,
+              } as never,
+            ],
+            knowledgeBindings: [
+              {
+                knowledgeBaseId: 'kb-1',
+                enabled: true,
+              },
+            ],
+          },
+        }),
+      );
+
+      expect(hoisted.MockPiAgent.instances[0]?.tools).toEqual([]);
+    });
+
+    it('uses direct MCP descriptors, skips incomplete descriptors, and blocks stdio without a sandbox', async () => {
+      mockMcpService.resolveRuntimeConnection.mockResolvedValueOnce({
+        transportType: 'stdio',
+        command: 'node',
+      });
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
+      const session = await adapter.createSession(
+        createParams({
+          runtimeConfig: {
+            runtimeMode: 'no_sandbox',
+            tools: [
+              {
+                toolId: 'direct-mcp',
+                toolType: 'mcp',
+                mcpServerConfigId: 'mcp-direct',
+                toolName: 'raw search',
+                enabled: true,
+              } as never,
+              {
+                toolId: 'incomplete-mcp',
+                toolType: 'mcp',
+                enabled: true,
+              } as never,
+            ],
+          },
+        }),
+      );
+
+      hoisted.MockPiAgent.script = async (agent) => {
+        const piTool = agent.tools[0] as {
+          name: string;
+          description: string;
+          execute: (id: string, params: unknown) => Promise<unknown>;
+        };
+        expect(agent.tools).toHaveLength(1);
+        expect(piTool.name).toBe('raw_search');
+        expect(piTool.description).toBe('');
+        await expect(
+          piTool.execute('mcp-call', { query: 'docs' }),
+        ).rejects.toThrow('禁止执行 stdio MCP');
+        agent.emit({
+          type: 'agent_end',
+          messages: [{ role: 'assistant', stopReason: 'stop' }],
+        });
+      };
+
+      await collectEvents(
+        adapter.prompt(session.id, [{ type: 'text', text: 'search' }]),
+      );
+      expect(mockMcpService.resolveRuntimeConnection).toHaveBeenCalledWith(
+        'mcp-direct',
+        'tenant-001',
+      );
+      expect(mockMcpService.callRuntimeTool).not.toHaveBeenCalled();
+      expect(hoisted.normalizeFlexibleSchemaJson).toHaveBeenCalledWith(
+        undefined,
+      );
+    });
+
+    it('validates knowledge IDs and derives defaults for multi-binding searches', async () => {
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
+      const session = await adapter.createSession(
+        createParams({
+          runtimeConfig: {
+            knowledgeBindings: [
+              {
+                knowledgeBaseId: 'kb-1',
+                topK: 3,
+                similarityThreshold: 0.4,
+                enabled: true,
+              },
+              {
+                knowledgeBaseId: 'kb-2',
+                topK: 12,
+                similarityThreshold: 0.7,
+                enabled: true,
+              },
+            ],
+          },
+        }),
+      );
+
+      hoisted.MockPiAgent.script = async (agent) => {
+        const knowledgeTool = agent.tools[0] as {
+          execute: (
+            id: string,
+            params: unknown,
+          ) => Promise<{
+            details: {
+              knowledgeBaseIds: string[];
+              total: number;
+            };
+          }>;
+        };
+        await expect(knowledgeTool.execute('missing', {})).rejects.toThrow(
+          '必须提供 knowledgeBaseIds',
+        );
+        await expect(
+          knowledgeTool.execute('invalid', {
+            knowledgeBaseIds: ['kb-1', '', 7, 'kb-other'],
+          }),
+        ).rejects.toThrow('非法 ID: kb-other');
+
+        const result = await knowledgeTool.execute('valid', {
+          query: 42,
+          knowledgeBaseIds: ['kb-1', 'kb-2'],
+          topK: Number.NaN,
+        });
+        expect(result.details).toMatchObject({
+          knowledgeBaseIds: ['kb-1', 'kb-2'],
+          total: 1,
+        });
+        agent.emit({
+          type: 'agent_end',
+          messages: [{ role: 'assistant', stopReason: 'stop' }],
+        });
+      };
+
+      await collectEvents(
+        adapter.prompt(session.id, [{ type: 'text', text: 'knowledge' }]),
+      );
+      expect(mockRagService.search).toHaveBeenCalledWith('', 'tenant-001', {
+        knowledgeBaseIds: ['kb-1', 'kb-2'],
+        limit: 12,
+      });
+    });
+
+    it('preserves raw tool results, normalizes defaults, and exposes Error messages', async () => {
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
+      const session = await adapter.createSession(createParams());
+      adapter.registerSessionToolProvider(session.id, async () => ({}));
+      const execute = vi.fn().mockResolvedValue(undefined);
+      adapter.registerSessionToolProvider(
+        session.id,
+        async () =>
+          ({
+            rawTool: {
+              inputSchema: z.object({}),
+              execute,
+            },
+          }) as unknown as ToolSet,
+      );
+
+      hoisted.MockPiAgent.script = async (agent) => {
+        const piTool = agent.tools[0] as {
+          description: string;
+          execute: (
+            id: string,
+            params: unknown,
+            signal?: AbortSignal,
+          ) => Promise<{ content: Array<{ text: string }>; details: unknown }>;
+        };
+        expect(piTool.description).toBe('');
+        await expect(
+          piTool.execute(
+            'raw-call',
+            { value: 1 },
+            agent.abortController.signal,
+          ),
+        ).resolves.toEqual({
+          content: [{ type: 'text', text: '' }],
+          details: undefined,
+        });
+
+        agent.emit({
+          type: 'message_update',
+          assistantMessageEvent: null,
+        });
+        agent.emit({
+          type: 'tool_execution_start',
+          toolCallId: '',
+          toolName: '',
+          args: 'not-an-object',
+        });
+        agent.emit({
+          type: 'tool_execution_end',
+          toolCallId: 'raw-result',
+          toolName: 'rawTool',
+          result: { raw: true },
+          isError: false,
+        });
+        agent.emit({
+          type: 'tool_execution_end',
+          toolCallId: 'error-result',
+          toolName: 'rawTool',
+          result: { details: new Error('process failed') },
+          isError: true,
+        });
+        agent.emit({ type: 'agent_end' });
+      };
+
+      const events = await collectEvents(
+        adapter.prompt(session.id, [{ type: 'text', text: 'raw' }]),
+      );
+      expect(execute).toHaveBeenCalledWith(
+        { value: 1 },
+        expect.objectContaining({
+          toolCallId: 'raw-call',
+          abortSignal: expect.any(AbortSignal),
+        }),
+      );
+      expect(events).toEqual([
+        {
+          type: 'tool_call',
+          call: {
+            id: expect.any(String),
+            tool: 'unknown_tool',
+            args: {},
+            status: 'in_progress',
+          },
+        },
+        {
+          type: 'tool_call',
+          call: {
+            id: 'raw-result',
+            tool: 'rawTool',
+            args: {},
+            status: 'completed',
+            result: { raw: true },
+          },
+        },
+        {
+          type: 'tool_call',
+          call: {
+            id: 'error-result',
+            tool: 'rawTool',
+            args: {},
+            status: 'failed',
+            error: 'process failed',
+          },
+        },
+        { type: 'done', stopReason: 'end_turn' },
+      ]);
+    });
+
+    it('rejects duplicate permission waits and missing local or distributed gates', async () => {
+      mockDb.select.mockReturnValueOnce(
+        createSelectChain([defaultModelConfig]),
+      );
+      const session = await adapter.createSession(createParams());
+      hoisted.MockPiAgent.script = async (agent) => {
+        const context = {
+          toolCall: {
+            id: 'duplicate-call',
+            name: 'apply_change',
+            arguments: { path: '/tmp/change' },
+          },
+        };
+        const first = agent.options.beforeToolCall?.(context);
+        await expect(agent.options.beforeToolCall?.(context)).rejects.toThrow(
+          'already has a pending tool permission',
+        );
+        await adapter.resolveToolPermission(
+          session.id,
+          'duplicate-call',
+          'approve',
+        );
+        await expect(first).resolves.toBeUndefined();
+        agent.emit({
+          type: 'agent_end',
+          messages: [{ role: 'assistant', stopReason: 'stop' }],
+        });
+      };
+
+      await collectEvents(
+        adapter.prompt(session.id, [{ type: 'text', text: 'change' }]),
+      );
+
+      type AdapterArgs = ConstructorParameters<typeof PiAgentCoreAdapter>;
+      const adapterWithoutSync = new PiAgentCoreAdapter(
+        mockDb as unknown as AdapterArgs[0],
+        mockPiAiAdapter as unknown as AdapterArgs[1],
+        mockMcpService as unknown as AdapterArgs[2],
+        mockRagService as unknown as AdapterArgs[3],
+      );
+      await expect(
+        adapterWithoutSync.resolveToolPermission(
+          'missing-session',
+          'missing-call',
+          'approve',
+        ),
+      ).rejects.toThrow('has no pending tool permission');
+    });
+  });
 });

@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TenantRequiredException } from '../../common/exceptions/auth.exceptions';
 import { DomainException } from '../../common/exceptions/domain.exception';
 import { DRIZZLE } from '../../database/database.module';
+import { AgentNotFoundException } from '../agent-definition/agent-definition.exceptions';
 import { WorkflowNotFoundException } from '../workflow-definition/workflow-version.exceptions';
 import {
   ShareExpiredException,
@@ -51,6 +52,8 @@ const USER_ID = '22222222-2222-4222-8222-222222222222';
 const WORKFLOW_ID = '33333333-3333-4333-8333-333333333333';
 const SHARE_ID = '44444444-4444-4444-8444-444444444444';
 const VERSION_ID = '55555555-5555-4555-8555-555555555555';
+const AGENT_ID = '66666666-6666-4666-8666-666666666666';
+const MISSING_AGENT_ID = '77777777-7777-4777-8777-777777777777';
 const SHARE_TOKEN = 'ab'.repeat(32);
 const NOW = new Date('2025-01-01T00:00:00.000Z');
 const ORIGINAL_APP_FRONTEND_URL = process.env.APP_FRONTEND_URL;
@@ -757,5 +760,272 @@ describe('ShareService', () => {
         ShareNotFoundException,
       );
     });
+  });
+
+  describe('agent shares', () => {
+    it('创建 Agent 分享时应生成 token、持久化过期时间并返回 Agent 资源响应', async () => {
+      const agent = {
+        id: AGENT_ID,
+        name: 'Published Agent',
+        description: 'Agent description',
+        publishedVersionId: VERSION_ID,
+      };
+      const created = {
+        ...createShareRecord({
+          agentDefinitionId: AGENT_ID,
+          shareType: 'copyable',
+          expiresAt: new Date('2025-02-01T00:00:00.000Z'),
+        }),
+      };
+      delete created.workflowDefinitionId;
+      db.select.mockReturnValueOnce(createSelectChain([agent]));
+      const insert = createInsertChain([created]);
+      db.insert.mockReturnValueOnce(insert);
+
+      const result = await service.createAgentShare(TENANT_ID, USER_ID, {
+        agent_definition_id: AGENT_ID,
+        share_type: 'copyable',
+        expires_at: '2025-02-01T00:00:00.000Z',
+      });
+
+      expect(insert.values).toHaveBeenCalledWith({
+        agentDefinitionId: AGENT_ID,
+        tenantId: TENANT_ID,
+        shareToken: SHARE_TOKEN,
+        shareType: 'copyable',
+        createdBy: USER_ID,
+        expiresAt: new Date('2025-02-01T00:00:00.000Z'),
+      });
+      expect(result).toMatchObject({
+        resourceType: 'agent',
+        resourceId: AGENT_ID,
+        agentDefinitionId: AGENT_ID,
+        title: 'Published Agent',
+        description: 'Agent description',
+        shareUrl: `https://studio.agentloom.dev/s/${SHARE_TOKEN}`,
+      });
+    });
+
+    it('Agent 不存在、未发布或 tenant 缺失时不创建分享', async () => {
+      db.select.mockReturnValueOnce(createSelectChain([]));
+      await expect(
+        service.createAgentShare(TENANT_ID, USER_ID, {
+          agent_definition_id: MISSING_AGENT_ID,
+          share_type: 'read_only',
+        }),
+      ).rejects.toBeInstanceOf(AgentNotFoundException);
+
+      db.select.mockReturnValueOnce(
+        createSelectChain([
+          {
+            id: AGENT_ID,
+            name: 'Draft',
+            description: null,
+            publishedVersionId: null,
+          },
+        ]),
+      );
+      await expect(
+        service.createAgentShare(TENANT_ID, USER_ID, {
+          agent_definition_id: AGENT_ID,
+          share_type: 'read_only',
+        }),
+      ).rejects.toMatchObject({
+        status: HttpStatus.CONFLICT,
+        type: 'https://agentloom.dev/errors/share-agent-not-published',
+      });
+
+      await expect(
+        service.createAgentShare(undefined as unknown as string, USER_ID, {
+          agent_definition_id: AGENT_ID,
+          share_type: 'read_only',
+        }),
+      ).rejects.toBeInstanceOf(TenantRequiredException);
+      expect(db.insert).not.toHaveBeenCalled();
+    });
+
+    it('分页查询 Agent 分享并处理空计数', async () => {
+      const agentShare = {
+        ...createShareRecord({
+          agentDefinitionId: AGENT_ID,
+          title: 'Shared Agent',
+          description: null,
+        }),
+      };
+      delete agentShare.workflowDefinitionId;
+      const list = createPaginatedSelectChain([agentShare]);
+      db.select
+        .mockReturnValueOnce(list)
+        .mockReturnValueOnce(createSelectChain([{ count: 3 }]));
+
+      const result = await service.findSharesByAgent(TENANT_ID, {
+        page: 2,
+        page_size: 2,
+        agent_definition_id: AGENT_ID,
+      });
+
+      expect(list.limit).toHaveBeenCalledWith(2);
+      expect(list.offset).toHaveBeenCalledWith(2);
+      expect(result.meta).toEqual({
+        page: 2,
+        pageSize: 2,
+        total: 3,
+        totalPages: 2,
+      });
+      expect(result.data[0]).toMatchObject({
+        resourceType: 'agent',
+        agentDefinitionId: AGENT_ID,
+        title: 'Shared Agent',
+      });
+
+      db.select
+        .mockReturnValueOnce(createPaginatedSelectChain([]))
+        .mockReturnValueOnce(createSelectChain([]));
+      await expect(
+        service.findSharesByAgent(TENANT_ID, { page: 1, page_size: 20 }),
+      ).resolves.toEqual({
+        data: [],
+        meta: {
+          page: 1,
+          pageSize: 20,
+          total: 0,
+          totalPages: 0,
+        },
+      });
+    });
+
+    it('Agent 分享撤销应校验 tenant 并区分成功与不存在', async () => {
+      const update = createUpdateChain([{ id: SHARE_ID }]);
+      db.update.mockReturnValueOnce(update);
+      await expect(
+        service.revokeAgentShare(TENANT_ID, SHARE_ID),
+      ).resolves.toBeUndefined();
+      expect(update.set).toHaveBeenCalledWith({
+        isRevoked: true,
+        updatedAt: NOW,
+      });
+
+      db.update.mockReturnValueOnce(createUpdateChain([]));
+      await expect(
+        service.revokeAgentShare(TENANT_ID, 'missing-share'),
+      ).rejects.toBeInstanceOf(ShareNotFoundException);
+
+      await expect(
+        service.revokeAgentShare(undefined as unknown as string, SHARE_ID),
+      ).rejects.toBeInstanceOf(TenantRequiredException);
+    });
+
+    it('Agent token 查询校验缺失、撤销、到期、发布版本与快照', async () => {
+      db.select.mockReturnValueOnce(createSelectChainWithJoins([]));
+      await expect(
+        service.getAgentShareByToken(SHARE_TOKEN),
+      ).rejects.toBeInstanceOf(ShareNotFoundException);
+
+      db.select.mockReturnValueOnce(
+        createSelectChainWithJoins([
+          createAccessibleAgentShareTokenRecord({ isRevoked: true }),
+        ]),
+      );
+      await expect(
+        service.getAgentShareByToken(SHARE_TOKEN),
+      ).rejects.toBeInstanceOf(ShareRevokedException);
+
+      db.select.mockReturnValueOnce(
+        createSelectChainWithJoins([
+          createAccessibleAgentShareTokenRecord({
+            expiresAt: new Date('2024-12-31T23:59:59.000Z'),
+          }),
+        ]),
+      );
+      await expect(
+        service.getAgentShareByToken(SHARE_TOKEN),
+      ).rejects.toBeInstanceOf(ShareExpiredException);
+
+      for (const inaccessible of [
+        createAccessibleAgentShareTokenRecord({
+          publishedVersionId: null as never,
+        }),
+        createAccessibleAgentShareTokenRecord({ snapshot: null as never }),
+      ]) {
+        db.select.mockReturnValueOnce(
+          createSelectChainWithJoins([inaccessible]),
+        );
+        await expect(
+          service.getAgentShareByToken(SHARE_TOKEN),
+        ).rejects.toMatchObject({
+          status: HttpStatus.CONFLICT,
+          type: 'https://agentloom.dev/errors/share-agent-not-published',
+        });
+      }
+    });
+
+    it('公开 Agent 响应处理默认视口、作者回退、输入 schema 与 lifecycle 优先级', async () => {
+      const base = createAccessibleAgentShareTokenRecord();
+      const agent = createAccessibleAgentShareTokenRecord({
+        authorDisplayName: null,
+        authorEmail: 'author@example.com',
+        authorAvatarUrl: null,
+        snapshot: {
+          ...base.snapshot,
+          viewport: null,
+          metadata: {
+            nodeCount: 0,
+            edgeCount: 0,
+            createdFromVersion: 1,
+            inputSchema: { type: 'object' },
+            sandboxLifecycle: 'session',
+          },
+          sandboxConfig: null,
+        },
+      });
+      db.select
+        .mockReturnValueOnce(createSelectChainWithJoins([]))
+        .mockReturnValueOnce(createSelectChainWithJoins([agent]));
+      db.update.mockReturnValueOnce(createUpdateWhereChain(undefined));
+
+      const result = await service.getPublicShare(SHARE_TOKEN);
+
+      expect(result).toMatchObject({
+        resourceType: 'agent',
+        author: {
+          displayName: 'author@example.com',
+          email: 'author@example.com',
+          avatarUrl: null,
+        },
+        definition: { viewport: { x: 0, y: 0, zoom: 1 } },
+        inputSchema: { type: 'object' },
+        sandboxLifecycle: 'session',
+      });
+    });
+
+    it.each([
+      [{}, null],
+      [{ sandboxLifecycle: 'invalid' }, null],
+      [{ sandboxLifecycle: 'persistent' }, 'persistent'],
+    ])(
+      '公开 Agent metadata %j 应解析 lifecycle 为 %s',
+      async (metadata, expectedLifecycle) => {
+        const base = createAccessibleAgentShareTokenRecord();
+        const agent = createAccessibleAgentShareTokenRecord({
+          authorDisplayName: null,
+          authorEmail: null,
+          snapshot: {
+            ...base.snapshot,
+            metadata: metadata as never,
+            sandboxConfig: null,
+          },
+        });
+        db.select
+          .mockReturnValueOnce(createSelectChainWithJoins([]))
+          .mockReturnValueOnce(createSelectChainWithJoins([agent]));
+        db.update.mockReturnValueOnce(createUpdateWhereChain(undefined));
+
+        const result = await service.getPublicShare(SHARE_TOKEN);
+        expect(result.author.displayName).toBe('未知作者');
+        expect(
+          result.resourceType === 'agent' ? result.sandboxLifecycle : undefined,
+        ).toBe(expectedLifecycle);
+      },
+    );
   });
 });

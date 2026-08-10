@@ -919,4 +919,309 @@ describe('PluginMarketplaceController', () => {
       });
     });
   });
+  describe('marketplace 状态与权限补充分支', () => {
+    it('pending_review listing 禁止重复提交且不再次审查', async () => {
+      pluginService.findById.mockResolvedValue(
+        createPlugin({ status: 'active' }),
+      );
+      db.__selectResults.push([createListing({ status: 'pending_review' })]);
+
+      await expect(
+        controller.submit(
+          SubmitPluginListingSchema.parse({
+            pluginDbId: PLUGIN_ID,
+            title: '重复提交插件',
+            summary: '这是用于验证审查中 listing 禁止重复提交的摘要内容。',
+            pricingModel: 'free',
+          }),
+          TENANT_ID,
+          USER_ID,
+        ),
+      ).rejects.toBeInstanceOf(MarketplaceListingConflictException);
+      expect(pluginMarketplaceReviewService.review).not.toHaveBeenCalled();
+    });
+
+    it('首次提交收费 listing 审查失败时保留价格并转为 review_failed', async () => {
+      const plugin = createPlugin({ status: 'active' });
+      const created = createListing({
+        pricingModel: 'per_execution',
+        pricePerExecution: '0.50000000',
+      });
+      const reviewResult = createReviewResult({ outcome: 'failed' });
+      const failed = createListing({
+        status: 'review_failed',
+        pricingModel: 'per_execution',
+        pricePerExecution: '0.50000000',
+        reviewResult,
+      });
+      pluginService.findById.mockResolvedValue(plugin);
+      db.__selectResults.push([]);
+      db.__insertResults.push([created]);
+      db.__updateResults.push([failed]);
+      pluginMarketplaceReviewService.review.mockReturnValue(reviewResult);
+
+      const result = await controller.submit(
+        SubmitPluginListingSchema.parse({
+          pluginDbId: PLUGIN_ID,
+          title: '收费插件',
+          summary: '这是用于验证收费 listing 审查失败状态转换的摘要内容。',
+          pricingModel: 'per_execution',
+          pricePerExecution: '0.50000000',
+        }),
+        TENANT_ID,
+        USER_ID,
+      );
+
+      expect(db.__insertValues[0]).toMatchObject({
+        tags: [],
+        pricingModel: 'per_execution',
+        pricePerExecution: '0.50000000',
+      });
+      expect(db.__updateValues[0]).toMatchObject({
+        status: 'review_failed',
+        publishedAt: null,
+      });
+      expect(result).toEqual({ data: failed, reviewResult });
+    });
+
+    it('无筛选 listing 查询返回空分页且 totalPages 为零', async () => {
+      db.__selectResults.push([], []);
+
+      const result = await controller.findAll(
+        QueryPluginListingsSchema.parse({}),
+        TENANT_ID,
+      );
+
+      expect(result).toEqual({
+        data: [],
+        meta: { page: 1, pageSize: 20, total: 0, totalPages: 0 },
+      });
+    });
+
+    it('收益短 bucket 原样返回，零执行量排行百分比为零并回退插件名', async () => {
+      pluginEarningsService.getDashboardTrends.mockResolvedValue([
+        {
+          bucket: '2025',
+          totalRevenue: '0',
+          developerShare: '0',
+          platformShare: '0',
+          listingCommission: '0',
+          totalExecutions: 0,
+        },
+      ]);
+      pluginEarningsService.getDashboardRanking.mockResolvedValue([
+        {
+          pluginDbId: PLUGIN_ID,
+          pluginId: 'com.example.fallback',
+          pluginName: null,
+          totalRevenue: '0',
+          developerShare: '0',
+          platformShare: '0',
+          listingCommission: '0',
+          totalExecutions: 0,
+        },
+      ]);
+
+      const trends = await controller.getEarningsTrends(
+        QueryPluginEarningsTrendSchema.parse({ interval: 'month' }),
+        TENANT_ID,
+      );
+      const ranking = await controller.getEarningsRanking(
+        QueryPluginEarningsRankingSchema.parse({}),
+        TENANT_ID,
+      );
+
+      expect(trends[0]).toMatchObject({ month: '2025', executions: 0 });
+      expect(ranking[0]).toMatchObject({
+        pluginName: 'com.example.fallback',
+        percentage: 0,
+      });
+    });
+
+    it('空更新直接返回当前 listing 且不写数据库', async () => {
+      const listing = createListing();
+      db.__selectResults.push([listing]);
+      pluginService.findById.mockResolvedValue(
+        createPlugin({ status: 'active' }),
+      );
+
+      const result = await controller.update(
+        LISTING_ID,
+        UpdatePluginListingSchema.parse({}),
+        TENANT_ID,
+        USER_ID,
+      );
+
+      expect(result).toEqual({ data: listing });
+      expect(db.update).not.toHaveBeenCalled();
+    });
+
+    it('更新全部可编辑字段且按次价格未显式传入时沿用原价格', async () => {
+      const listing = createListing({
+        pricingModel: 'per_execution',
+        pricePerExecution: '0.25000000',
+      });
+      const updated = createListing({
+        title: '全部字段更新',
+        summary: '这是更新后的完整 listing 摘要内容',
+        category: 'automation',
+        pricingModel: 'per_execution',
+        pricePerExecution: '0.25000000',
+      });
+      db.__selectResults.push([listing]);
+      db.__updateResults.push([updated]);
+      pluginService.findById.mockResolvedValue(
+        createPlugin({ status: 'active' }),
+      );
+
+      const result = await controller.update(
+        LISTING_ID,
+        UpdatePluginListingSchema.parse({
+          title: '全部字段更新',
+          summary: '这是更新后的完整 listing 摘要内容',
+          category: 'automation',
+          tags: ['updated'],
+          pricingModel: 'per_execution',
+          pricePerExecution: '0.25000000',
+        }),
+        TENANT_ID,
+        USER_ID,
+      );
+
+      expect(db.__updateValues[0]).toMatchObject({
+        title: '全部字段更新',
+        summary: '这是更新后的完整 listing 摘要内容',
+        category: 'automation',
+        tags: ['updated'],
+        pricingModel: 'per_execution',
+        pricePerExecution: '0.25000000',
+      });
+      expect(result).toEqual({ data: updated });
+    });
+
+    it('更新 returning 为空时报告 listing 不存在', async () => {
+      db.__selectResults.push([createListing()]);
+      db.__updateResults.push([]);
+      pluginService.findById.mockResolvedValue(
+        createPlugin({ status: 'active' }),
+      );
+
+      await expect(
+        controller.update(
+          LISTING_ID,
+          UpdatePluginListingSchema.parse({ title: '更新但记录已删除' }),
+          TENANT_ID,
+          USER_ID,
+        ),
+      ).rejects.toBeInstanceOf(MarketplaceListingNotFoundException);
+    });
+
+    it('listing 未绑定 pluginDbId 时拒绝更新、下架与重新上架', async () => {
+      for (const action of ['update', 'unlist', 'relist'] as const) {
+        db.__selectResults.push([
+          createListing({ pluginDbId: null, status: 'listed' }),
+        ]);
+
+        const operation =
+          action === 'update'
+            ? controller.update(
+                LISTING_ID,
+                UpdatePluginListingSchema.parse({ title: '无绑定更新' }),
+                TENANT_ID,
+                USER_ID,
+              )
+            : action === 'unlist'
+              ? controller.unlist(LISTING_ID, TENANT_ID, USER_ID)
+              : controller.relist(LISTING_ID, TENANT_ID, USER_ID);
+
+        await expect(operation).rejects.toBeInstanceOf(
+          MarketplaceListingConflictException,
+        );
+      }
+      expect(pluginService.findById).not.toHaveBeenCalled();
+    });
+
+    it('非 listed 状态禁止下架', async () => {
+      db.__selectResults.push([createListing({ status: 'review_failed' })]);
+      pluginService.findById.mockResolvedValue(
+        createPlugin({ status: 'active' }),
+      );
+
+      await expect(
+        controller.unlist(LISTING_ID, TENANT_ID, USER_ID),
+      ).rejects.toBeInstanceOf(MarketplaceListingConflictException);
+      expect(db.update).not.toHaveBeenCalled();
+    });
+
+    it('下架 returning 为空时报告 listing 不存在', async () => {
+      db.__selectResults.push([createListing({ status: 'listed' })]);
+      db.__updateResults.push([]);
+      pluginService.findById.mockResolvedValue(
+        createPlugin({ status: 'active' }),
+      );
+
+      await expect(
+        controller.unlist(LISTING_ID, TENANT_ID, USER_ID),
+      ).rejects.toBeInstanceOf(MarketplaceListingNotFoundException);
+    });
+
+    it('listed 与 pending_review 状态均禁止 relist', async () => {
+      for (const status of ['listed', 'pending_review'] as const) {
+        db.__selectResults.push([createListing({ status })]);
+        pluginService.findById.mockResolvedValueOnce(
+          createPlugin({ status: 'active' }),
+        );
+
+        await expect(
+          controller.relist(LISTING_ID, TENANT_ID, USER_ID),
+        ).rejects.toBeInstanceOf(MarketplaceListingConflictException);
+      }
+      expect(pluginMarketplaceReviewService.review).not.toHaveBeenCalled();
+    });
+
+    it('review_failed listing 可 relist，复审失败时保留 unlistedAt', async () => {
+      const unlistedAt = new Date('2025-01-03T00:00:00.000Z');
+      const listing = createListing({ status: 'review_failed', unlistedAt });
+      const reviewResult = createReviewResult({ outcome: 'failed' });
+      const updated = createListing({
+        status: 'review_failed',
+        unlistedAt,
+        reviewResult,
+      });
+      db.__selectResults.push([listing]);
+      db.__updateResults.push([], [updated]);
+      pluginService.findById.mockResolvedValue(
+        createPlugin({ status: 'active' }),
+      );
+      pluginMarketplaceReviewService.review.mockReturnValue(reviewResult);
+
+      const result = await controller.relist(LISTING_ID, TENANT_ID, USER_ID);
+
+      expect(db.__updateValues[1]).toMatchObject({
+        status: 'review_failed',
+        publishedAt: null,
+        unlistedAt,
+      });
+      expect(result).toEqual({ data: updated, reviewResult });
+    });
+
+    it('管理过程中插件失活或安装者不匹配均拒绝写入', async () => {
+      for (const plugin of [
+        createPlugin({ status: 'disabled' }),
+        createPlugin({ status: 'active', installedBy: PLUGIN_ID_2 }),
+      ]) {
+        db.__selectResults.push([createListing({ status: 'listed' })]);
+        pluginService.findById.mockResolvedValueOnce(plugin);
+
+        await expect(
+          controller.unlist(LISTING_ID, TENANT_ID, USER_ID),
+        ).rejects.toBeInstanceOf(
+          plugin.status === 'active'
+            ? PluginPermissionDeniedException
+            : PluginInactiveException,
+        );
+      }
+      expect(db.update).not.toHaveBeenCalled();
+    });
+  });
 });

@@ -12,6 +12,7 @@ import {
   SandboxInvalidStateException,
   SandboxProcessesUnavailableException,
   SandboxStatsUnavailableException,
+  SandboxNotPersistentException,
 } from '../sandbox.exceptions';
 import type { SandboxConfig, SandboxSession } from '../../../database/schema';
 import { SANDBOX_RUNTIME_DRIVER } from '../sandbox-runtime-driver.port';
@@ -1718,6 +1719,730 @@ describe('SandboxService', () => {
       expect(db.update).not.toHaveBeenCalled();
       expect(mockLifecycleProducer.addDestroyTask).not.toHaveBeenCalled();
       expect(Logger.prototype.warn).toHaveBeenCalled();
+    });
+  });
+
+  describe('生命周期与绑定边界不变量', () => {
+    it('绑定规范化会剔除空身份、去重，并在多绑定时避免伪造单一节点归属', () => {
+      const internals = service as unknown as {
+        normalizeBinding(
+          value: Record<string, unknown>,
+        ): Record<string, string>;
+        dedupeBindings(
+          values: Array<Record<string, string | null>>,
+        ): Array<Record<string, string>>;
+        projectPersistentBindingState(values: Array<Record<string, string>>): {
+          executionId: string | null;
+          agentConversationId: string | null;
+          sandboxNodeId: string | null;
+        };
+        buildPersistentConfig(
+          config: SandboxConfig,
+          values: Array<Record<string, string>>,
+        ): SandboxConfig;
+        shouldDetachPersistentBinding(
+          candidate: Record<string, string>,
+          target: Record<string, string>,
+        ): boolean;
+        describeBinding(value: Record<string, string>): string;
+      };
+
+      expect(
+        internals.normalizeBinding({
+          executionId: ' exec-1 ',
+          agentConversationId: ' ',
+          sandboxNodeId: null,
+        }),
+      ).toEqual({ executionId: 'exec-1' });
+      const bindings = internals.dedupeBindings([
+        { executionId: ' exec-1 ', sandboxNodeId: ' node-1 ' },
+        { executionId: 'exec-1', sandboxNodeId: 'node-1' },
+        { executionId: null, agentConversationId: null },
+        { executionId: 'exec-1', sandboxNodeId: 'node-2' },
+        { agentConversationId: 'conv-1' },
+      ]);
+      expect(bindings).toEqual([
+        { executionId: ' exec-1 ', sandboxNodeId: ' node-1 ' },
+        { executionId: 'exec-1', sandboxNodeId: 'node-2' },
+        { agentConversationId: 'conv-1' },
+      ]);
+      expect(internals.projectPersistentBindingState([])).toEqual({
+        executionId: null,
+        agentConversationId: null,
+        sandboxNodeId: null,
+      });
+      expect(internals.projectPersistentBindingState(bindings)).toEqual({
+        executionId: null,
+        agentConversationId: 'conv-1',
+        sandboxNodeId: null,
+      });
+      expect(
+        internals.buildPersistentConfig(
+          { ...TEST_CONFIG, activeBindings: bindings },
+          [],
+        ),
+      ).not.toHaveProperty('activeBindings');
+      expect(
+        internals.buildPersistentConfig(TEST_CONFIG, [
+          { executionId: 'exec-1', sandboxNodeId: 'node-1' },
+        ]),
+      ).toMatchObject({
+        activeBindings: [{ executionId: 'exec-1', sandboxNodeId: 'node-1' }],
+      });
+      expect(
+        internals.shouldDetachPersistentBinding(
+          { executionId: 'other', sandboxNodeId: 'node-1' },
+          { executionId: 'exec-1', sandboxNodeId: 'node-1' },
+        ),
+      ).toBe(false);
+      expect(
+        internals.shouldDetachPersistentBinding(
+          { executionId: 'exec-1', sandboxNodeId: 'node-2' },
+          { executionId: 'exec-1', sandboxNodeId: 'node-1' },
+        ),
+      ).toBe(false);
+      expect(
+        internals.shouldDetachPersistentBinding(
+          { executionId: 'exec-1', sandboxNodeId: 'node-2' },
+          { executionId: 'exec-1' },
+        ),
+      ).toBe(true);
+      expect(
+        internals.describeBinding({
+          executionId: 'exec-1',
+          agentConversationId: 'conv-1',
+          sandboxNodeId: 'node-1',
+        }),
+      ).toBe('execution exec-1 / sandbox node-1 / conversation conv-1');
+      expect(internals.describeBinding({ executionId: 'exec-1' })).toBe(
+        'execution exec-1',
+      );
+      expect(internals.describeBinding({ agentConversationId: 'conv-1' })).toBe(
+        'conversation conv-1',
+      );
+    });
+
+    it('legacy persistent binding、空配置与 lease TTL 均保持兼容且不扩大身份', () => {
+      const internals = service as unknown as {
+        getPersistentBindings(
+          session: SandboxSession,
+        ): Array<Record<string, string>>;
+        projectPersistentBindingState(values: Array<Record<string, string>>): {
+          executionId: string | null;
+          agentConversationId: string | null;
+          sandboxNodeId: string | null;
+        };
+        bindingsEqual(
+          left: Record<string, string>,
+          right: Record<string, string>,
+        ): boolean;
+        readRestoreWorkspaceId(config: SandboxConfig): string | null;
+        resolveWorkspaceLeaseTtlMs(config: SandboxConfig): number;
+      };
+
+      expect(
+        internals.getPersistentBindings(
+          buildSession({
+            executionId: null,
+            agentConversationId: null,
+            sandboxNodeId: null,
+            config: TEST_CONFIG,
+          }),
+        ),
+      ).toEqual([]);
+      expect(
+        internals.getPersistentBindings(
+          buildSession({
+            executionId: ' exec-1 ',
+            agentConversationId: null,
+            sandboxNodeId: ' node-1 ',
+            config: { ...TEST_CONFIG, activeBindings: [] },
+          }),
+        ),
+      ).toEqual([{ executionId: 'exec-1', sandboxNodeId: 'node-1' }]);
+      expect(
+        internals.getPersistentBindings(
+          buildSession({
+            config: {
+              ...TEST_CONFIG,
+              activeBindings: [
+                { executionId: 'e1', sandboxNodeId: 'n1' },
+                { executionId: 'e1', sandboxNodeId: 'n1' },
+              ],
+            },
+          }),
+        ),
+      ).toEqual([{ executionId: 'e1', sandboxNodeId: 'n1' }]);
+      expect(
+        internals.projectPersistentBindingState([
+          { executionId: 'e1', sandboxNodeId: 'n1' },
+        ]),
+      ).toEqual({
+        executionId: 'e1',
+        agentConversationId: null,
+        sandboxNodeId: 'n1',
+      });
+      expect(
+        internals.projectPersistentBindingState([
+          { executionId: 'e1', sandboxNodeId: 'n1' },
+          { executionId: 'e2', sandboxNodeId: 'n2' },
+        ]),
+      ).toEqual({
+        executionId: null,
+        agentConversationId: null,
+        sandboxNodeId: null,
+      });
+      expect(
+        internals.bindingsEqual({ executionId: 'e1' }, { executionId: 'e1' }),
+      ).toBe(true);
+      expect(
+        internals.bindingsEqual(
+          { executionId: 'e1' },
+          { agentConversationId: 'c1' },
+        ),
+      ).toBe(false);
+      expect(internals.readRestoreWorkspaceId(TEST_CONFIG)).toBeNull();
+      expect(
+        internals.readRestoreWorkspaceId({
+          ...TEST_CONFIG,
+          restoreWorkspaceId: ' workspace-1 ',
+        }),
+      ).toBe('workspace-1');
+      expect(
+        internals.resolveWorkspaceLeaseTtlMs({
+          ...TEST_CONFIG,
+          timeout: Number.NaN,
+        }),
+      ).toBe(61 * 60_000);
+      expect(
+        internals.resolveWorkspaceLeaseTtlMs({
+          ...TEST_CONFIG,
+          timeout: 0.01,
+        }),
+      ).toBe(5 * 60_000);
+    });
+
+    it('缺失会话的 stats/process/idle 操作均 fail closed 或保持无副作用', async () => {
+      db.select
+        .mockReturnValueOnce(createSelectChainWithLimit([]))
+        .mockReturnValueOnce(createSelectChainWithLimit([]))
+        .mockReturnValueOnce(createSelectChainWithLimit([]))
+        .mockReturnValueOnce(createSelectChainWithLimit([]));
+
+      await expect(
+        service.getConversationSandboxStats(
+          TEST_CONVERSATION_ID,
+          TEST_TENANT_ID,
+        ),
+      ).rejects.toBeInstanceOf(SandboxStatsUnavailableException);
+      await expect(
+        service.getConversationSandboxProcesses(
+          TEST_CONVERSATION_ID,
+          TEST_TENANT_ID,
+        ),
+      ).rejects.toBeInstanceOf(SandboxProcessesUnavailableException);
+      await service.scheduleConversationIdleAutoEnd(
+        TEST_CONVERSATION_ID,
+        TEST_TENANT_ID,
+      );
+      await service.cancelConversationIdleAutoEnd(
+        TEST_CONVERSATION_ID,
+        TEST_TENANT_ID,
+      );
+
+      expect(
+        mockLifecycleProducer.addConversationIdleEndCheckTask,
+      ).not.toHaveBeenCalled();
+      expect(
+        mockLifecycleProducer.removeConversationIdleEndCheckTask,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('没有 conversation 绑定的 resource session 不应产生 idle 到期任务', async () => {
+      db.select.mockReturnValueOnce(
+        createSelectChainWithLimit([
+          buildSession({
+            executionId: null,
+            agentConversationId: null,
+            sandboxNodeId: null,
+            config: { ...TEST_CONFIG, lifecycleMode: 'persistent' },
+          }),
+        ]),
+      );
+
+      await service.scheduleConversationIdleAutoEnd(
+        TEST_CONVERSATION_ID,
+        TEST_TENANT_ID,
+      );
+
+      expect(
+        mockLifecycleProducer.addConversationIdleEndCheckTask,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('事务中的生命周期任务只在 after-commit 执行', async () => {
+      tenantTransactionMocks.hasActiveTenantTransaction.mockReturnValue(true);
+      const callback = vi.fn().mockResolvedValue(undefined);
+      const enqueue = service as unknown as {
+        enqueueLifecycleTask(task: () => Promise<void>): Promise<void>;
+      };
+
+      await enqueue.enqueueLifecycleTask(callback);
+
+      expect(callback).not.toHaveBeenCalled();
+      expect(
+        tenantTransactionMocks.registerAfterCommitHook,
+      ).toHaveBeenCalledWith(callback);
+    });
+
+    it('找不到 execution session 时 destroy/release 均幂等且不入队', async () => {
+      db.select
+        .mockReturnValueOnce(createSelectChain([]))
+        .mockReturnValueOnce(createSelectChainWithLimit([]))
+        .mockReturnValueOnce(createSelectChainWithLimit([]));
+
+      await service.destroySandbox(TEST_EXECUTION_ID, TEST_TENANT_ID);
+      await service.releaseExecutionSandbox(
+        TEST_EXECUTION_ID,
+        'sandbox-1',
+        TEST_TENANT_ID,
+      );
+
+      expect(mockLifecycleProducer.addDestroyTask).not.toHaveBeenCalled();
+      expect(mockLifecycleProducer.addStopTask).not.toHaveBeenCalled();
+    });
+
+    it('重复 stop 竞争失败时不重复入队，并返回数据库中的最新状态', async () => {
+      const session = buildSession({ status: 'ready', runtimeHandle: null });
+      const latest = buildSession({ status: 'stopping', runtimeHandle: null });
+      db.select
+        .mockReturnValueOnce(createSelectChainWithLimit([session]))
+        .mockReturnValueOnce(createSelectChainWithLimit([latest]));
+      db.update.mockReturnValueOnce(createUpdateChainReturning([]));
+
+      await expect(
+        service.stopSandbox(TEST_SESSION_ID, TEST_TENANT_ID),
+      ).resolves.toEqual(latest);
+
+      expect(mockLifecycleProducer.addStopTask).not.toHaveBeenCalled();
+      expect(mockLifecycleProducer.addDestroyTask).not.toHaveBeenCalled();
+    });
+
+    it('stop 拒绝终态；session stop 则只入队 destroy 且不伪造可选绑定', async () => {
+      db.select.mockReturnValueOnce(
+        createSelectChainWithLimit([
+          buildSession({ status: 'stopped', runtimeHandle: null }),
+        ]),
+      );
+      await expect(
+        service.stopSandbox(TEST_SESSION_ID, TEST_TENANT_ID),
+      ).rejects.toBeInstanceOf(SandboxInvalidStateException);
+
+      const resourceSession = buildSession({
+        executionId: null,
+        agentConversationId: TEST_CONVERSATION_ID,
+        sandboxNodeId: null,
+        status: 'creating',
+        runtimeHandle: null,
+        config: { ...TEST_CONFIG, lifecycleMode: 'session' },
+      });
+      db.select
+        .mockReturnValueOnce(createSelectChainWithLimit([resourceSession]))
+        .mockReturnValueOnce(createSelectChainWithLimit([resourceSession]));
+      db.update.mockReturnValueOnce(
+        createUpdateChainReturning([{ id: TEST_SESSION_ID }]),
+      );
+
+      await service.stopSandbox(TEST_SESSION_ID, TEST_TENANT_ID);
+
+      expect(mockLifecycleProducer.addDestroyTask).toHaveBeenCalledWith({
+        sessionId: TEST_SESSION_ID,
+        tenantId: TEST_TENANT_ID,
+        agentConversationId: TEST_CONVERSATION_ID,
+      });
+    });
+
+    it('start 严格拒绝 session、活动状态、缺失 handle 与非 stopped manager 状态', async () => {
+      const cases = [
+        buildSession({
+          status: 'stopped',
+          runtimeHandle: 'r1',
+          config: TEST_CONFIG,
+        }),
+        buildSession({
+          status: 'ready',
+          runtimeHandle: 'r1',
+          config: { ...TEST_CONFIG, lifecycleMode: 'persistent' },
+        }),
+        buildSession({
+          status: 'stopped',
+          runtimeHandle: null,
+          config: { ...TEST_CONFIG, lifecycleMode: 'persistent' },
+        }),
+        buildSession({
+          status: 'stopped',
+          runtimeHandle: 'r1',
+          config: { ...TEST_CONFIG, lifecycleMode: 'persistent' },
+        }),
+      ];
+      for (const session of cases) {
+        db.select.mockReturnValueOnce(createSelectChainWithLimit([session]));
+      }
+      mockRuntimeDriver.inspectRuntime.mockResolvedValueOnce({
+        state: 'running',
+      });
+
+      await expect(
+        service.startSandbox(TEST_SESSION_ID, TEST_TENANT_ID),
+      ).rejects.toBeInstanceOf(SandboxNotPersistentException);
+      await expect(
+        service.startSandbox(TEST_SESSION_ID, TEST_TENANT_ID),
+      ).rejects.toBeInstanceOf(SandboxInvalidStateException);
+      await expect(
+        service.startSandbox(TEST_SESSION_ID, TEST_TENANT_ID),
+      ).rejects.toBeInstanceOf(SandboxInvalidStateException);
+      await expect(
+        service.startSandbox(TEST_SESSION_ID, TEST_TENANT_ID),
+      ).rejects.toBeInstanceOf(SandboxInvalidStateException);
+      expect(mockLifecycleProducer.addStartTask).not.toHaveBeenCalled();
+    });
+
+    it('delete 拒绝 session；活动 persistent 会先 stop，cleanup 失败也仍删除数据库记录', async () => {
+      db.select.mockReturnValueOnce(
+        createSelectChainWithLimit([
+          buildSession({ status: 'ready', config: TEST_CONFIG }),
+        ]),
+      );
+      await expect(
+        service.deleteSandbox(TEST_SESSION_ID, TEST_TENANT_ID),
+      ).rejects.toBeInstanceOf(SandboxNotPersistentException);
+
+      const persistent = buildSession({
+        status: 'busy',
+        runtimeHandle: 'r1',
+        config: { ...TEST_CONFIG, lifecycleMode: 'persistent' },
+      });
+      const deleteWhere = vi.fn().mockResolvedValue(undefined);
+      db.select.mockReturnValueOnce(createSelectChainWithLimit([persistent]));
+      db.delete.mockReturnValue({ where: deleteWhere });
+      mockRuntimeDriver.deleteRuntime.mockRejectedValueOnce('disk busy');
+
+      await service.deleteSandbox(TEST_SESSION_ID, TEST_TENANT_ID);
+
+      expect(mockRuntimeDriver.stopRuntime).toHaveBeenCalledWith('r1');
+      expect(mockRuntimeDriver.deleteRuntime).toHaveBeenCalledWith('r1', {
+        removeVolumes: true,
+      });
+      expect(db.delete).toHaveBeenCalledTimes(2);
+      expect(Logger.prototype.warn).toHaveBeenCalledWith(
+        expect.stringContaining('disk busy'),
+      );
+    });
+
+    it('resource persistent 无 handle 删除时只清理调度与数据库', async () => {
+      const persistent = buildSession({
+        executionId: null,
+        sandboxNodeId: null,
+        status: 'failed',
+        runtimeHandle: null,
+        config: { ...TEST_CONFIG, lifecycleMode: 'persistent' },
+      });
+      db.select.mockReturnValueOnce(createSelectChainWithLimit([persistent]));
+      db.delete.mockReturnValue({
+        where: vi.fn().mockResolvedValue(undefined),
+      });
+
+      await service.deleteSandbox(TEST_SESSION_ID, TEST_TENANT_ID);
+
+      expect(mockRuntimeDriver.stopRuntime).not.toHaveBeenCalled();
+      expect(mockRuntimeDriver.deleteRuntime).not.toHaveBeenCalled();
+      expect(mockLifecycleProducer.removeTimeoutCheckTask).toHaveBeenCalled();
+      expect(
+        mockLifecycleProducer.removeConversationIdleEndCheckTask,
+      ).toHaveBeenCalled();
+    });
+
+    it('persistent attach 拒绝非持久、跨上下文占用和 stopping 状态', async () => {
+      const attach = service as unknown as {
+        attachPersistentSandbox(
+          params: Record<string, unknown>,
+        ): Promise<unknown>;
+      };
+      const baseParams = {
+        executionId: TEST_EXECUTION_ID,
+        sandboxNodeId: 'node-2',
+        persistentSandboxId: TEST_SESSION_ID,
+        tenantId: TEST_TENANT_ID,
+      };
+      db.select
+        .mockReturnValueOnce(
+          createSelectChainWithLimit([
+            buildSession({ status: 'ready', config: TEST_CONFIG }),
+          ]),
+        )
+        .mockReturnValueOnce(
+          createSelectChainWithLimit([
+            buildSession({
+              status: 'ready',
+              config: {
+                ...TEST_CONFIG,
+                lifecycleMode: 'persistent',
+                activeBindings: [
+                  { executionId: 'other-execution', sandboxNodeId: 'node-1' },
+                ],
+              },
+            }),
+          ]),
+        )
+        .mockReturnValueOnce(
+          createSelectChainWithLimit([
+            buildSession({
+              status: 'stopping',
+              config: {
+                ...TEST_CONFIG,
+                lifecycleMode: 'persistent',
+                activeBindings: [
+                  {
+                    executionId: TEST_EXECUTION_ID,
+                    sandboxNodeId: 'node-1',
+                  },
+                ],
+              },
+            }),
+          ]),
+        );
+
+      await expect(
+        attach.attachPersistentSandbox(baseParams),
+      ).rejects.toBeInstanceOf(SandboxNotPersistentException);
+      await expect(
+        attach.attachPersistentSandbox(baseParams),
+      ).rejects.toBeInstanceOf(SandboxInvalidStateException);
+      await expect(
+        attach.attachPersistentSandbox(baseParams),
+      ).rejects.toBeInstanceOf(SandboxInvalidStateException);
+    });
+
+    it('ready resource 恢复 workspace 失败时必须释放刚取得的 lease 且不写绑定', async () => {
+      const resource = buildSession({
+        executionId: null,
+        agentConversationId: null,
+        sandboxNodeId: null,
+        status: 'ready',
+        runtimeHandle: 'r1',
+        config: { ...TEST_CONFIG, lifecycleMode: 'persistent' },
+      });
+      db.select
+        .mockReturnValueOnce(createSelectChainWithLimit([]))
+        .mockReturnValueOnce(createSelectChainWithLimit([resource]));
+      mockWorkspaceService.restoreToSandbox.mockRejectedValueOnce(
+        new Error('restore failed'),
+      );
+
+      await expect(
+        service.createSandboxSession({
+          agentConversationId: TEST_CONVERSATION_ID,
+          sandboxNodeId: null,
+          tenantId: TEST_TENANT_ID,
+          config: {
+            ...TEST_CONFIG,
+            lifecycleMode: 'persistent',
+            persistentSandboxId: TEST_SESSION_ID,
+            restoreWorkspaceId: ' workspace-1 ',
+          },
+        }),
+      ).rejects.toThrow('restore failed');
+
+      expect(mockWorkspaceLeaseService.release).toHaveBeenCalledWith(
+        TEST_TENANT_ID,
+        expect.objectContaining({ fencingToken: 1 }),
+      );
+      expect(db.update).not.toHaveBeenCalled();
+      expect(
+        mockLifecycleProducer.upsertWorkspaceLeaseRenewal,
+      ).not.toHaveBeenCalled();
+    });
+
+    it('runtime reconcile 在 grace window/健康 runtime 保持原状态，未知 manager 状态 fail closed', async () => {
+      const reconcile = service as unknown as {
+        reconcileUnavailableRuntimeSession(
+          session: SandboxSession,
+          options?: { force?: boolean },
+        ): Promise<SandboxSession>;
+      };
+      const inactive = buildSession({ status: 'creating' });
+      const noStart = buildSession({
+        status: 'ready',
+        runtimeHandle: 'r1',
+        startedAt: null,
+      });
+      const recent = buildSession({
+        status: 'busy',
+        runtimeHandle: 'r1',
+        startedAt: new Date(),
+      });
+      const healthy = buildSession({
+        status: 'ready',
+        runtimeHandle: 'r1',
+        startedAt: new Date('2025-01-01T00:00:00.000Z'),
+      });
+      const unknownManagerState = buildSession({
+        id: 'unknown-manager-state',
+        status: 'ready',
+        runtimeHandle: 'r2',
+        startedAt: new Date('2025-01-01T00:00:00.000Z'),
+      });
+      const noHandle = buildSession({
+        status: 'ready',
+        runtimeHandle: null,
+        startedAt: new Date(0),
+      });
+
+      await expect(
+        reconcile.reconcileUnavailableRuntimeSession(inactive),
+      ).resolves.toBe(inactive);
+      await expect(
+        reconcile.reconcileUnavailableRuntimeSession(noStart),
+      ).resolves.toBe(noStart);
+      await expect(
+        reconcile.reconcileUnavailableRuntimeSession(recent),
+      ).resolves.toBe(recent);
+      await expect(
+        reconcile.reconcileUnavailableRuntimeSession(noHandle, { force: true }),
+      ).resolves.toBe(noHandle);
+      mockRuntimeDriver.healthCheck.mockResolvedValueOnce(true);
+      await expect(
+        reconcile.reconcileUnavailableRuntimeSession(healthy),
+      ).resolves.toBe(healthy);
+      mockRuntimeDriver.healthCheck.mockResolvedValueOnce(false);
+      mockRuntimeDriver.inspectRuntime.mockResolvedValueOnce({
+        state: 'starting',
+      });
+      await expect(
+        reconcile.reconcileUnavailableRuntimeSession(unknownManagerState, {
+          force: true,
+        }),
+      ).rejects.toBeInstanceOf(SandboxInvalidStateException);
+    });
+
+    it('管理列表组合 status/lifecycle/binding 过滤并正确区分 conversation/resource', async () => {
+      const conversation = buildSession({
+        executionId: TEST_EXECUTION_ID,
+        agentConversationId: TEST_CONVERSATION_ID,
+        status: 'ready',
+      });
+      const listChain = createSelectChainForList([conversation]);
+      db.select
+        .mockReturnValueOnce(listChain)
+        .mockReturnValueOnce(createSelectChainForCount(1));
+
+      const result = await service.listSandboxes(TEST_TENANT_ID, {
+        page: 2,
+        pageSize: 1,
+        status: 'ready',
+        lifecycleMode: 'persistent',
+        bindingType: 'conversation',
+      });
+
+      expect(result.data[0]?.bindingType).toBe('conversation');
+      expect(result.meta).toEqual({
+        page: 2,
+        pageSize: 1,
+        total: 1,
+        totalPages: 1,
+      });
+      const whereClause = listChain.from().where.mock.calls[0]?.[0];
+      const rendered = renderSql(whereClause).toLowerCase();
+      expect(rendered).toContain('"sandbox_sessions"."status"');
+      expect(renderSqlWithParams(whereClause).params).toEqual(
+        expect.arrayContaining(['ready', 'persistent']),
+      );
+      expect(rendered).toContain(
+        '"sandbox_sessions"."agent_conversation_id" is not null',
+      );
+    });
+
+    it('execution binding 过滤和空 count 均返回稳定分页元数据', async () => {
+      const listChain = createSelectChainForList([]);
+      const countChain = createSelectChainForCount(0);
+      countChain.from().where.mockResolvedValueOnce([{ total: null }]);
+      db.select.mockReturnValueOnce(listChain).mockReturnValueOnce(countChain);
+
+      const result = await service.listSandboxes(TEST_TENANT_ID, {
+        page: 1,
+        pageSize: 10,
+        bindingType: 'execution',
+      });
+
+      expect(result).toEqual({
+        data: [],
+        meta: { page: 1, pageSize: 10, total: 0, totalPages: 0 },
+      });
+      expect(
+        renderSql(listChain.from().where.mock.calls[0]?.[0]).toLowerCase(),
+      ).toContain('"sandbox_sessions"."execution_id" is not null');
+    });
+
+    it('createPersistentSandbox 固定 persistent timeout 并保留显式 idle 配置', async () => {
+      const session = buildSession({
+        executionId: null,
+        sandboxNodeId: null,
+        config: {
+          ...TEST_CONFIG,
+          lifecycleMode: 'persistent',
+          name: 'resource',
+        },
+      });
+      db.insert.mockReturnValueOnce(createInsertChainReturning([session]));
+
+      await service.createPersistentSandbox(TEST_TENANT_ID, {
+        name: 'resource',
+        cpu: 2,
+        memory: 1024,
+        disk: 5,
+        conversationIdleAutoEndMinutes: 7,
+      });
+
+      expect(mockLifecycleProducer.addCreateTask).toHaveBeenCalledWith({
+        sessionId: TEST_SESSION_ID,
+        tenantId: TEST_TENANT_ID,
+        config: expect.objectContaining({
+          lifecycleMode: 'persistent',
+          timeout: 24,
+          conversationIdleAutoEndMinutes: 7,
+          name: 'resource',
+        }),
+      });
+    });
+
+    it('getSessionById 与 terminal runtime 读取均映射为领域错误', async () => {
+      db.select
+        .mockReturnValueOnce(createSelectChainWithLimit([]))
+        .mockReturnValueOnce(
+          createSelectChainWithLimit([
+            buildSession({ status: 'failed', runtimeHandle: 'r1' }),
+          ]),
+        )
+        .mockReturnValueOnce(
+          createSelectChainWithLimit([
+            buildSession({ status: 'stopped', runtimeHandle: 'r1' }),
+          ]),
+        );
+
+      await expect(
+        service.getSessionById(TEST_SESSION_ID),
+      ).rejects.toBeInstanceOf(SandboxNotFoundException);
+      await expect(
+        service.getRuntimeStats(TEST_SESSION_ID),
+      ).rejects.toBeInstanceOf(SandboxStatsUnavailableException);
+      await expect(
+        service.getConversationSandboxProcesses(
+          TEST_CONVERSATION_ID,
+          TEST_TENANT_ID,
+        ),
+      ).rejects.toBeInstanceOf(SandboxProcessesUnavailableException);
+      expect(mockRuntimeDriver.getRuntimeStats).not.toHaveBeenCalled();
+      expect(mockRuntimeDriver.listRuntimeProcesses).not.toHaveBeenCalled();
     });
   });
 });

@@ -1096,4 +1096,350 @@ describe('PrivateDeploymentService', () => {
       expect(auditInput.after).not.toHaveProperty('license.licenseKey');
     });
   });
+
+  describe('license and managed-secret edge cases', () => {
+    function mockStoredLicense(rawLicense: string | Error) {
+      db.query.organizations.findFirst.mockResolvedValue(makeOrganization());
+      db.query.organizationMembers.findFirst.mockResolvedValue(
+        makeMembership(),
+      );
+      db.query.privateDeploymentSettings.findFirst.mockResolvedValue(
+        makeSettings({
+          licenseKeyEncryptedKey: makeEnvelope('license').encryptedKey,
+          licenseKeyEncryptedDek: makeEnvelope('license').encryptedDek,
+          licenseKeyIv: makeEnvelope('license').iv,
+          licenseKeyAuthTag: makeEnvelope('license').authTag,
+        }),
+      );
+      if (rawLicense instanceof Error) {
+        encryptionService.decrypt.mockImplementation(() => {
+          throw rawLicense;
+        });
+      } else {
+        encryptionService.decrypt.mockReturnValue(rawLicense);
+      }
+    }
+
+    it('marks a signed license invalid when it belongs to another organization', async () => {
+      mockStoredLicense(
+        createLicenseKey({
+          organizationId: '019577a0-0000-7000-8000-000000000999',
+        }),
+      );
+
+      await expect(
+        service.getSettings(ORG_ID, OWNER_ID),
+      ).resolves.toMatchObject({
+        license: {
+          status: 'invalid',
+          fingerprint: LICENSE_PUBLIC_KEY_FINGERPRINT,
+          expiresAt: null,
+          lastVerifiedAt: NOW.toISOString(),
+        },
+      });
+    });
+
+    it.each([
+      ['missing expiry', { expiresAt: undefined }],
+      ['invalid expiry', { expiresAt: 'not-a-date' }],
+    ])('marks a signed license with %s invalid', async (_, payload) => {
+      mockStoredLicense(createLicenseKey(payload));
+
+      await expect(
+        service.getSettings(ORG_ID, OWNER_ID),
+      ).resolves.toMatchObject({
+        license: {
+          status: 'invalid',
+          fingerprint: LICENSE_PUBLIC_KEY_FINGERPRINT,
+          expiresAt: null,
+        },
+      });
+    });
+
+    it.each([
+      ['malformed JSON', '{'],
+      ['missing payload', JSON.stringify({ signature: 'sig' })],
+      [
+        'empty signature',
+        JSON.stringify({ payload: JSON.stringify({}), signature: '' }),
+      ],
+      [
+        'malformed payload',
+        JSON.stringify({ payload: '{', signature: 'c2ln' }),
+      ],
+    ])('redacts and rejects %s license material', async (_, rawLicense) => {
+      mockStoredLicense(rawLicense);
+
+      const result = await service.getSettings(ORG_ID, OWNER_ID);
+
+      expect(result.license).toEqual({
+        status: 'invalid',
+        fingerprint: LICENSE_PUBLIC_KEY_FINGERPRINT,
+        expiresAt: null,
+        lastVerifiedAt: NOW.toISOString(),
+      });
+      expect(result.license).not.toHaveProperty('licenseKey');
+      expect(result).not.toHaveProperty('licenseKey');
+    });
+
+    it('marks an undecryptable license invalid without exposing ciphertext details', async () => {
+      mockStoredLicense(new Error('kms ciphertext secret detail'));
+
+      const result = await service.getSettings(ORG_ID, OWNER_ID);
+
+      expect(result.license.status).toBe('invalid');
+      expect(JSON.stringify(result)).not.toContain(
+        'kms ciphertext secret detail',
+      );
+    });
+
+    it('marks a license invalid when no public verification key is configured', async () => {
+      mockStoredLicense(createLicenseKey());
+      configService.get.mockImplementation((key: string) =>
+        key === 'APP_DEPLOYMENT_MODE' ? 'private' : undefined,
+      );
+
+      await expect(
+        service.getSettings(ORG_ID, OWNER_ID),
+      ).resolves.toMatchObject({
+        license: {
+          status: 'invalid',
+          fingerprint: null,
+          expiresAt: null,
+          lastVerifiedAt: NOW.toISOString(),
+        },
+      });
+    });
+
+    it('rejects a private key configured in the public-key slot', async () => {
+      mockStoredLicense(createLicenseKey());
+      configService.get.mockImplementation((key: string) => {
+        if (key === 'APP_DEPLOYMENT_MODE') return 'private';
+        if (key === 'APP_PRIVATE_DEPLOYMENT_LICENSE_PUBLIC_KEY') {
+          return LICENSE_PRIVATE_KEY_PEM;
+        }
+        return undefined;
+      });
+
+      await expect(
+        service.getSettings(ORG_ID, OWNER_ID),
+      ).resolves.toMatchObject({
+        license: {
+          status: 'invalid',
+          fingerprint: null,
+          expiresAt: null,
+        },
+      });
+    });
+
+    it('preserves matching organization secret references without re-encrypting', async () => {
+      const updateChain = createUpdateChain([makeSettings({ version: 2 })]);
+      db.query.organizations.findFirst.mockResolvedValue(makeOrganization());
+      db.query.organizationMembers.findFirst.mockResolvedValue(
+        makeMembership(),
+      );
+      db.query.privateDeploymentSettings.findFirst.mockResolvedValue(
+        makeSettings(),
+      );
+      db.update.mockReturnValue(updateChain);
+
+      await service.updateSettings(
+        ORG_ID,
+        {
+          smtp: {
+            host: 'smtp.internal.local',
+            port: 587,
+            username: 'mailer',
+            fromEmail: 'noreply@example.com',
+            passwordSecretRef: smtpPasswordSecretRef(),
+            useTls: true,
+          },
+          llmProxy: {
+            mode: 'private_cloud',
+            baseUrl: 'https://proxy.internal.local',
+            apiKeySecretRef: llmProxyApiKeySecretRef(),
+            allowExternalEgress: false,
+          },
+        },
+        OWNER_ID,
+      );
+
+      expect(encryptionService.encrypt).not.toHaveBeenCalled();
+      expect(updateChain.set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          smtpPasswordEncryptedKey: makeEnvelope('smtp').encryptedKey,
+          privateCloudApiKeyEncryptedKey: makeEnvelope('llm').encryptedKey,
+        }),
+      );
+    });
+
+    it('clears managed secrets through null references and direct mode', async () => {
+      const updateChain = createUpdateChain([
+        makeSettings({
+          privateCloudAuthMethod: 'none',
+          privateCloudEndpointUrl: null,
+          smtpPasswordEncryptedKey: null,
+          smtpPasswordEncryptedDek: null,
+          smtpPasswordIv: null,
+          smtpPasswordAuthTag: null,
+          privateCloudApiKeyEncryptedKey: null,
+          privateCloudApiKeyEncryptedDek: null,
+          privateCloudApiKeyIv: null,
+          privateCloudApiKeyAuthTag: null,
+          version: 2,
+        }),
+      ]);
+      db.query.organizations.findFirst.mockResolvedValue(makeOrganization());
+      db.query.organizationMembers.findFirst.mockResolvedValue(
+        makeMembership(),
+      );
+      db.query.privateDeploymentSettings.findFirst.mockResolvedValue(
+        makeSettings(),
+      );
+      db.update.mockReturnValue(updateChain);
+
+      const result = await service.updateSettings(
+        ORG_ID,
+        {
+          smtp: {
+            host: 'smtp.internal.local',
+            port: 587,
+            username: 'mailer',
+            fromEmail: 'noreply@example.com',
+            passwordSecretRef: null,
+            useTls: true,
+          },
+          llmProxy: {
+            mode: 'direct',
+            baseUrl: null,
+            apiKeySecretRef: null,
+            allowExternalEgress: false,
+          },
+        },
+        OWNER_ID,
+      );
+
+      expect(updateChain.set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          smtpPasswordEncryptedKey: null,
+          privateCloudEndpointUrl: null,
+          privateCloudAuthMethod: 'none',
+          privateCloudApiKeyEncryptedKey: null,
+        }),
+      );
+      expect(result.smtp.passwordSecretRef).toBeNull();
+      expect(result.llmProxy).toMatchObject({
+        mode: 'direct',
+        baseUrl: null,
+        apiKeySecretRef: null,
+      });
+    });
+
+    it('keeps an absent secret empty when a matching reference has no stored envelope', async () => {
+      const emptySettings = makeSettings({
+        smtpPasswordEncryptedKey: null,
+        smtpPasswordEncryptedDek: null,
+        smtpPasswordIv: null,
+        smtpPasswordAuthTag: null,
+      });
+      const updateChain = createUpdateChain([
+        makeSettings({
+          ...emptySettings,
+          version: 2,
+        }),
+      ]);
+      db.query.organizations.findFirst.mockResolvedValue(makeOrganization());
+      db.query.organizationMembers.findFirst.mockResolvedValue(
+        makeMembership(),
+      );
+      db.query.privateDeploymentSettings.findFirst.mockResolvedValue(
+        emptySettings,
+      );
+      db.update.mockReturnValue(updateChain);
+
+      const result = await service.updateSettings(
+        ORG_ID,
+        {
+          smtp: {
+            host: 'smtp.internal.local',
+            port: 587,
+            username: 'mailer',
+            fromEmail: 'noreply@example.com',
+            passwordSecretRef: smtpPasswordSecretRef(),
+            useTls: true,
+          },
+        },
+        OWNER_ID,
+      );
+
+      expect(updateChain.set).toHaveBeenCalledWith(
+        expect.objectContaining({ smtpPasswordEncryptedKey: null }),
+      );
+      expect(result.smtp.passwordSecretRef).toBeNull();
+    });
+
+    it('defaults unknown deployment-mode configuration to saas', async () => {
+      db.query.organizations.findFirst.mockResolvedValue(makeOrganization());
+      db.query.organizationMembers.findFirst.mockResolvedValue(
+        makeMembership(),
+      );
+      db.query.privateDeploymentSettings.findFirst.mockResolvedValue(null);
+      configService.get.mockReturnValue(undefined);
+
+      await expect(
+        service.getSettings(ORG_ID, OWNER_ID),
+      ).resolves.toMatchObject({
+        deploymentMode: 'saas',
+      });
+    });
+
+    it('rejects an LLM secret reference owned by another organization', async () => {
+      db.query.organizations.findFirst.mockResolvedValue(makeOrganization());
+      db.query.organizationMembers.findFirst.mockResolvedValue(
+        makeMembership(),
+      );
+      db.query.privateDeploymentSettings.findFirst.mockResolvedValue(
+        makeSettings(),
+      );
+
+      await expect(
+        service.updateSettings(
+          ORG_ID,
+          {
+            llmProxy: {
+              mode: 'private_cloud',
+              baseUrl: 'https://proxy.internal.local',
+              apiKeySecretRef:
+                'private-deployment://organizations/019577a0-0000-7000-8000-000000000999/llm-proxy/api-key',
+              allowExternalEgress: false,
+            },
+          },
+          OWNER_ID,
+        ),
+      ).rejects.toMatchObject({
+        status: 400,
+        message: '私有部署 secret 引用必须属于当前组织',
+      });
+      expect(db.update).not.toHaveBeenCalled();
+    });
+
+    it('treats malformed public-key configuration as unverifiable and redacts it', async () => {
+      mockStoredLicense(createLicenseKey());
+      configService.get.mockImplementation((key: string) => {
+        if (key === 'APP_DEPLOYMENT_MODE') return 'private';
+        if (key === 'APP_PRIVATE_DEPLOYMENT_LICENSE_PUBLIC_KEY') {
+          return 'not a public key secret';
+        }
+        return undefined;
+      });
+
+      const result = await service.getSettings(ORG_ID, OWNER_ID);
+
+      expect(result.license).toMatchObject({
+        status: 'invalid',
+        fingerprint: null,
+      });
+      expect(JSON.stringify(result)).not.toContain('not a public key secret');
+    });
+  });
 });

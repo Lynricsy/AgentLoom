@@ -1700,6 +1700,36 @@ describe('ExecutionService', () => {
       );
     });
 
+    it('队列抛出非 Error 值时仍应记录稳定失败原因并原样拒绝', async () => {
+      db.select
+        .mockReturnValueOnce(createSelectChain([mockPublishedWorkflow]))
+        .mockReturnValueOnce(createSelectChain([mockVersion]));
+      db.insert.mockReturnValueOnce(
+        createInsertChainReturning([mockExecution]),
+      );
+      db.update.mockReturnValueOnce(createUpdateChainVoid());
+      mockQueue.add.mockRejectedValueOnce('redis disconnected');
+
+      await expect(
+        service.runWorkflow(WORKFLOW_ID, undefined, TENANT_ID, USER_ID),
+      ).rejects.toBe('redis disconnected');
+
+      const setValues = db.update.mock.results[0].value.set.mock.calls[0][0];
+      expect(setValues).toMatchObject({
+        status: 'failed',
+        errorMessage: { message: 'Unknown execution enqueue error' },
+      });
+      expect(mockEventBridge.emitExecutionStatusChanged).toHaveBeenCalledWith(
+        TENANT_ID,
+        EXECUTION_ID,
+        {
+          executionId: EXECUTION_ID,
+          status: 'failed',
+          errorMessage: 'Unknown execution enqueue error',
+        },
+      );
+    });
+
     it('应拒绝草稿工作流 (WorkflowNotPublishedException)', async () => {
       const draftWorkflow = {
         ...mockPublishedWorkflow,
@@ -1774,6 +1804,261 @@ describe('ExecutionService', () => {
 
       expect(db.insert).not.toHaveBeenCalled();
       expect(mockQueue.add).not.toHaveBeenCalled();
+    });
+
+    it('应一次返回所有字段类型错误且拒绝未知输入字段', async () => {
+      const validationSchema = {
+        version: 9,
+        collectionMode: 'form' as const,
+        fields: [
+          { id: 'text', type: 'text' as const, label: 'Text', required: true },
+          {
+            id: 'number',
+            type: 'number' as const,
+            label: 'Number',
+            required: true,
+          },
+          {
+            id: 'single',
+            type: 'single_select' as const,
+            label: 'Single',
+            required: true,
+            options: ['a', 'b'],
+          },
+          {
+            id: 'multi',
+            type: 'multi_select' as const,
+            label: 'Multi',
+            required: true,
+            options: ['a', 'b'],
+          },
+        ],
+      };
+      db.select.mockReturnValueOnce(
+        createSelectChain([
+          { ...mockPublishedWorkflow, inputSchema: validationSchema },
+        ]),
+      );
+
+      await expect(
+        service.runWorkflow(
+          WORKFLOW_ID,
+          {
+            schemaVersion: 9,
+            inputParams: {
+              text: 7,
+              number: '7',
+              single: 7,
+              multi: 'a',
+              unknown: true,
+            },
+          },
+          TENANT_ID,
+          USER_ID,
+        ),
+      ).rejects.toMatchObject({
+        errors: [expect.objectContaining({ field: 'inputParams.unknown' })],
+      });
+      expect(db.insert).not.toHaveBeenCalled();
+
+      db.select
+        .mockReset()
+        .mockReturnValueOnce(
+          createSelectChain([
+            { ...mockPublishedWorkflow, inputSchema: validationSchema },
+          ]),
+        );
+      await expect(
+        service.runWorkflow(
+          WORKFLOW_ID,
+          {
+            schemaVersion: 9,
+            inputParams: {
+              text: 7,
+              number: '7',
+              single: 7,
+              multi: 'a',
+            },
+          },
+          TENANT_ID,
+          USER_ID,
+        ),
+      ).rejects.toMatchObject({
+        errors: expect.arrayContaining([
+          expect.objectContaining({
+            field: 'inputParams.text',
+            message: '该字段必须是字符串',
+          }),
+          expect.objectContaining({
+            field: 'inputParams.number',
+            message: '该字段必须是数字',
+          }),
+          expect.objectContaining({
+            field: 'inputParams.single',
+            message: '该字段必须是字符串选项',
+          }),
+          expect.objectContaining({
+            field: 'inputParams.multi',
+            message: '该字段必须是字符串数组',
+          }),
+        ]),
+      });
+    });
+
+    it('应聚合长度、数值与选项边界错误而不创建 execution', async () => {
+      const validationSchema = {
+        version: 10,
+        collectionMode: 'form' as const,
+        fields: [
+          {
+            id: 'shortText',
+            type: 'text' as const,
+            label: 'Short',
+            required: true,
+            validation: { minLength: 3 },
+          },
+          {
+            id: 'longText',
+            type: 'text' as const,
+            label: 'Long',
+            required: true,
+            validation: { maxLength: 3 },
+          },
+          {
+            id: 'low',
+            type: 'number' as const,
+            label: 'Low',
+            required: true,
+            validation: { min: 1 },
+          },
+          {
+            id: 'high',
+            type: 'number' as const,
+            label: 'High',
+            required: true,
+            validation: { max: 5 },
+          },
+          {
+            id: 'single',
+            type: 'single_select' as const,
+            label: 'Single',
+            required: true,
+            options: ['known'],
+          },
+          {
+            id: 'multi',
+            type: 'multi_select' as const,
+            label: 'Multi',
+            required: true,
+            options: ['known'],
+          },
+        ],
+      };
+      db.select.mockReturnValueOnce(
+        createSelectChain([
+          { ...mockPublishedWorkflow, inputSchema: validationSchema },
+        ]),
+      );
+
+      await expect(
+        service.runWorkflow(
+          WORKFLOW_ID,
+          {
+            schemaVersion: 10,
+            inputParams: {
+              shortText: 'x',
+              longText: 'xxxx',
+              low: 0,
+              high: 6,
+              single: 'unknown',
+              multi: ['known', 'unknown'],
+            },
+          },
+          TENANT_ID,
+          USER_ID,
+        ),
+      ).rejects.toMatchObject({
+        errors: expect.arrayContaining([
+          expect.objectContaining({ message: '长度不能少于 3 个字符' }),
+          expect.objectContaining({ message: '长度不能超过 3 个字符' }),
+          expect.objectContaining({ message: '数值不能小于 1' }),
+          expect.objectContaining({ message: '数值不能大于 5' }),
+          expect.objectContaining({ message: '该字段必须是预定义选项之一' }),
+          expect.objectContaining({ message: '该字段包含未定义的选项' }),
+        ]),
+      });
+      expect(db.insert).not.toHaveBeenCalled();
+    });
+
+    it.each(['manual', 'api'] as const)(
+      '%s 启动必须显式携带 schemaVersion',
+      async (triggerType) => {
+        db.select.mockReturnValueOnce(
+          createSelectChain([
+            {
+              ...mockPublishedWorkflow,
+              inputSchema: CONDITIONAL_RUN_INPUT_SCHEMA,
+            },
+          ]),
+        );
+
+        await expect(
+          service.runWorkflow(
+            WORKFLOW_ID,
+            {
+              triggerType,
+              inputParams: { topic: 'AI 趋势' },
+            },
+            TENANT_ID,
+            USER_ID,
+          ),
+        ).rejects.toMatchObject({
+          errors: [
+            {
+              field: 'schemaVersion',
+              message: 'schemaVersion 是必填字段',
+            },
+          ],
+        });
+      },
+    );
+
+    it('内部 webhook 启动可省略 schemaVersion，并保留默认字段与 triggerType', async () => {
+      const workflow = {
+        ...mockPublishedWorkflow,
+        inputSchema: CONDITIONAL_RUN_INPUT_SCHEMA,
+      };
+      const execution = {
+        ...mockExecution,
+        triggerType: 'webhook' as const,
+      };
+      db.select
+        .mockReturnValueOnce(createSelectChain([workflow]))
+        .mockReturnValueOnce(createSelectChain([mockVersion]));
+      db.insert.mockReturnValueOnce(createInsertChainReturning([execution]));
+      mockQueue.add.mockResolvedValue(undefined);
+
+      await service.runWorkflow(
+        WORKFLOW_ID,
+        {
+          triggerType: 'webhook',
+          inputParams: { topic: 'AI 趋势' },
+          launchSource: 'webhook-trigger',
+        },
+        TENANT_ID,
+        USER_ID,
+      );
+
+      expect(db.insert.mock.results[0].value.values).toHaveBeenCalledWith(
+        expect.objectContaining({
+          triggerType: 'webhook',
+          inputParams: expect.objectContaining({
+            topic: 'AI 趋势',
+            mode: 'basic',
+            locale: 'zh-CN',
+          }),
+        }),
+      );
     });
   });
 
@@ -2159,6 +2444,70 @@ describe('ExecutionService', () => {
       ]);
     });
 
+    it('应规范 legacy canvas node type，并为不可识别空类型写入 null', async () => {
+      const execution = {
+        ...mockExecution,
+        status: 'running' as const,
+        definitionSnapshot: {
+          ...mockSnapshot,
+          nodes: [
+            {
+              id: 'legacy-condition',
+              type: 'conditional',
+              data: {},
+              position: { x: 0, y: 0 },
+            },
+            {
+              id: 'legacy-transform',
+              type: 'data_transform',
+              data: {},
+              position: { x: 0, y: 0 },
+            },
+            {
+              id: 'category-agent',
+              type: 'agent',
+              data: null,
+              position: { x: 0, y: 0 },
+            },
+            {
+              id: 'empty-type',
+              type: '',
+              data: {},
+              position: { x: 0, y: 0 },
+            },
+          ],
+          edges: [],
+        },
+      };
+      db.select.mockReturnValueOnce(createSelectChain([execution]));
+      txDb.select
+        .mockReturnValueOnce(createSelectChain([execution]))
+        .mockReturnValueOnce(createSelectChain([]));
+      const insertChain = createInsertChainVoid();
+      txDb.insert.mockReturnValueOnce(insertChain);
+
+      await service.initializeSteps(EXECUTION_ID);
+
+      expect(insertChain.values).toHaveBeenCalledWith([
+        expect.objectContaining({
+          nodeId: 'legacy-condition',
+          nodeType: 'condition',
+        }),
+        expect.objectContaining({
+          nodeId: 'legacy-transform',
+          nodeType: 'input-preprocessor',
+        }),
+        expect.objectContaining({
+          nodeId: 'category-agent',
+          nodeType: 'agent',
+        }),
+        expect.objectContaining({
+          nodeId: 'empty-type',
+          nodeType: null,
+        }),
+      ]);
+    });
+
     it('应兼容 snake_case parent_id 并将 compound 内部节点排除出 tracked step 统计', async () => {
       const workflowWithSnakeCaseCompound = {
         ...mockExecution,
@@ -2299,6 +2648,50 @@ describe('ExecutionService', () => {
       expect(txDb.update).not.toHaveBeenCalled();
       expect(txDb.insert).not.toHaveBeenCalled();
     });
+
+    it('paused execution 可补建缺失步骤但不得改变暂停状态', async () => {
+      const pausedExecution = {
+        ...mockExecution,
+        status: 'paused' as const,
+      };
+      db.select.mockReturnValueOnce(createSelectChain([pausedExecution]));
+      txDb.select
+        .mockReturnValueOnce(createSelectChain([pausedExecution]))
+        .mockReturnValueOnce(createSelectChain([]));
+      txDb.insert.mockReturnValueOnce(createInsertChainVoid());
+
+      await service.initializeSteps(EXECUTION_ID);
+
+      expect(txDb.update).not.toHaveBeenCalled();
+      expect(txDb.insert).toHaveBeenCalledTimes(1);
+      expect(mockEventBridge.emitExecutionStatusChanged).not.toHaveBeenCalled();
+    });
+
+    it('pending 状态被并发修改后应停止初始化，避免重复插入步骤', async () => {
+      db.select.mockReturnValueOnce(createSelectChain([mockExecution]));
+      txDb.select
+        .mockReturnValueOnce(createSelectChain([mockExecution]))
+        .mockReturnValueOnce(createSelectChain([]))
+        .mockReturnValueOnce(createSelectChain([]));
+      txDb.update.mockReturnValueOnce(createUpdateChainReturning([]));
+
+      await service.initializeSteps(EXECUTION_ID);
+
+      expect(txDb.update).toHaveBeenCalledTimes(1);
+      expect(txDb.insert).not.toHaveBeenCalled();
+      expect(mockEventBridge.emitExecutionStatusChanged).not.toHaveBeenCalled();
+    });
+
+    it('事务内 execution 消失时应失败且不创建任何 step', async () => {
+      db.select.mockReturnValueOnce(createSelectChain([mockExecution]));
+      txDb.select.mockReturnValueOnce(createSelectChain([]));
+
+      await expect(service.initializeSteps(EXECUTION_ID)).rejects.toThrow(
+        ExecutionNotFoundException,
+      );
+      expect(txDb.update).not.toHaveBeenCalled();
+      expect(txDb.insert).not.toHaveBeenCalled();
+    });
   });
 
   describe('markFailed', () => {
@@ -2408,6 +2801,53 @@ describe('ExecutionService', () => {
         totalPages: 1,
       });
       expect(mockAgentTaskQueue.getFailed).toHaveBeenCalledWith(0, 1);
+    });
+
+    it('失败队列为空时不读取 job，并返回稳定分页元数据', async () => {
+      mockAgentTaskQueue.getJobCounts.mockResolvedValue({ failed: 0 });
+
+      await expect(service.getDeadLetterJobs(TENANT_ID, 3, 5)).resolves.toEqual(
+        {
+          data: [],
+          meta: {
+            total: 0,
+            page: 3,
+            limit: 5,
+            totalPages: 0,
+          },
+        },
+      );
+      expect(mockAgentTaskQueue.getFailed).not.toHaveBeenCalled();
+    });
+
+    it('应过滤缺少合法 tenantId 的失败任务并按租户结果分页', async () => {
+      const ownJobs = Array.from({ length: 3 }, (_, index) => ({
+        id: `own-${index}`,
+        name: 'agent-task',
+        data: { tenantId: TENANT_ID, stepId: `step-${index}` },
+        failedReason: 'failed',
+        attemptsMade: 1,
+        timestamp: index,
+      }));
+      mockAgentTaskQueue.getJobCounts.mockResolvedValue({ failed: 6 });
+      mockAgentTaskQueue.getFailed.mockResolvedValue([
+        { id: 'null-data', data: null },
+        { id: 'array-data', data: [{ tenantId: TENANT_ID }] },
+        { id: 'numeric-tenant', data: { tenantId: 7 } },
+        ...ownJobs,
+      ]);
+
+      const result = await service.getDeadLetterJobs(TENANT_ID, 2, 2);
+
+      expect(result.data).toEqual([
+        expect.objectContaining({ jobId: 'own-2' }),
+      ]);
+      expect(result.meta).toEqual({
+        total: 3,
+        page: 2,
+        limit: 2,
+        totalPages: 2,
+      });
     });
 
     it('应重试指定的失败任务', async () => {

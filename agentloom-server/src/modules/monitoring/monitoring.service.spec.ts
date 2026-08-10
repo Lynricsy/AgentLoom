@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Queue } from 'bullmq';
 import type { ResourceGovernanceService } from '../resource-governance/resource-governance.service';
+import { ResourceGovernanceAccessDeniedException } from '../resource-governance/resource-governance.exceptions';
 import { MonitoringService } from './monitoring.service';
 
 const NOW = new Date('2026-03-18T06:00:00.000Z');
@@ -316,5 +317,331 @@ describe('MonitoringService', () => {
     expect(dashboard.trend.every((point) => point.queueDepth === null)).toBe(
       true,
     );
+  });
+  it('coerces nullable snapshots and aggregates the full-day window across alert and hotspot variants', async () => {
+    resourceGovernanceService.getEffectiveState.mockResolvedValue({
+      organizationId: ORGANIZATION_ID,
+      quota: { tenantId: TENANT_ID, apiRateLimitPerMinute: 100 },
+      governance: {
+        tenantControl: {
+          scope: 'tenant',
+          targetId: TENANT_ID,
+          status: 'active',
+          reason: null,
+          updatedAt: null,
+          updatedBy: null,
+        },
+        workflowControls: [],
+        version: 0,
+      },
+    });
+    tenantDb.query.workflowExecutions.findMany.mockResolvedValue([
+      {
+        id: 'execution-completed',
+        workflowDefinitionId: 'workflow-completed',
+        status: 'completed',
+        createdAt: new Date('2026-03-17T07:00:00.000Z'),
+        updatedAt: new Date('2026-03-17T07:01:00.000Z'),
+      },
+      {
+        id: 'execution-failed',
+        workflowDefinitionId: 'workflow-failed',
+        status: 'failed',
+        createdAt: new Date('2026-03-17T11:00:00.000Z'),
+        updatedAt: new Date('2026-03-17T11:01:00.000Z'),
+      },
+      {
+        id: 'execution-running',
+        workflowDefinitionId: 'workflow-running',
+        status: 'running',
+        createdAt: new Date('2026-03-18T05:00:00.000Z'),
+        updatedAt: new Date('2026-03-18T05:30:00.000Z'),
+      },
+    ]);
+    tenantDb.query.workflowDefinitions.findMany.mockResolvedValue([
+      { id: 'workflow-completed', name: 'Completed workflow' },
+      { id: 'workflow-failed', name: 'Failed workflow' },
+    ]);
+    tenantDb.query.agentExecutionRecords.findMany.mockResolvedValue([
+      {
+        executionId: 'execution-completed',
+        summaryData: { executionDurationMs: 1_001 },
+      },
+      {
+        executionId: 'execution-failed',
+        summaryData: null,
+      },
+    ]);
+    tenantDb.query.notifications.findMany.mockResolvedValue([
+      {
+        type: 'intervention_required',
+        title: 'Needs input',
+        body: null,
+        createdAt: new Date('2026-03-18T05:01:00.000Z'),
+      },
+      {
+        type: 'resource_governance_execution_terminated',
+        title: 'Terminated',
+        body: {
+          executionId: 'execution-failed',
+          effectedAt: '2026-03-18T05:02:00.000Z',
+          timelineUrl: '/executions/execution-failed',
+        },
+        createdAt: new Date('2026-03-18T05:02:30.000Z'),
+      },
+      {
+        type: 'execution_failed',
+        title: 'Failed without details',
+        body: {
+          executionId: '   ',
+          errorReason: '',
+          timelineUrl: null,
+        },
+        createdAt: new Date('2026-03-18T05:03:00.000Z'),
+      },
+      {
+        type: 'resource_governance_execution_blocked',
+        title: 'Blocked without details',
+        body: 42,
+        createdAt: new Date('2026-03-18T05:04:00.000Z'),
+      },
+      {
+        type: 'future_monitoring_signal',
+        title: 'Unsupported',
+        body: {},
+        createdAt: new Date('2026-03-18T05:05:00.000Z'),
+      },
+    ]);
+    tenantDb.query.auditLogs.findMany.mockResolvedValue([]);
+    agentTaskQueue.getJobs.mockResolvedValue([
+      {
+        name: 'agent-task',
+        timestamp: new Date('2026-03-18T05:10:00.000Z').getTime(),
+        data: { tenantId: TENANT_ID },
+      },
+      {
+        id: 22,
+        name: 'agent-task',
+        timestamp: new Date('2026-03-18T05:11:00.000Z').getTime(),
+        data: { tenantId: TENANT_ID, executionId: 'execution-running' },
+      },
+      {
+        id: 'job-running-2',
+        timestamp: new Date('2026-03-18T05:12:00.000Z').getTime(),
+        data: { tenantId: TENANT_ID, executionId: 'execution-running' },
+      },
+      {
+        id: 'foreign-job',
+        timestamp: new Date('2026-03-18T05:13:00.000Z').getTime(),
+        data: { tenantId: 'another-tenant', executionId: 'execution-running' },
+      },
+      {
+        id: 'missing-data',
+        timestamp: new Date('2026-03-18T05:14:00.000Z').getTime(),
+        data: null,
+      },
+    ]);
+
+    const dashboard = await service.getDashboard({
+      organizationId: ORGANIZATION_ID,
+      tenantId: TENANT_ID,
+      userId: USER_ID,
+      window: '24h',
+    });
+
+    expect(agentTaskQueue.getJobs).toHaveBeenCalledWith([
+      'waiting',
+      'active',
+      'delayed',
+      'prioritized',
+    ]);
+    expect(dashboard.summary).toEqual(
+      expect.objectContaining({
+        window: '24h',
+        executionCount: 3,
+        successRate: 50,
+        failureRate: 50,
+        averageDurationMs: 1_001,
+        queueDepth: 3,
+      }),
+    );
+    expect(dashboard.trend).toHaveLength(6);
+    expect(dashboard.trend[0]?.bucketLabel).toBe('03-17 06:00');
+    expect(dashboard.alerts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          title: 'Needs input',
+          reason: '执行需要人工确认后才能继续。',
+          affectedSummary: '有执行进入人工介入链路。',
+          linkTarget: undefined,
+        }),
+        expect.objectContaining({
+          title: 'Terminated',
+          reason: '异常执行已被治理流程终止。',
+          detectedAt: '2026-03-18T05:02:00.000Z',
+          linkTarget: {
+            type: 'execution',
+            href: '/executions/execution-failed',
+          },
+        }),
+        expect.objectContaining({
+          title: 'Failed without details',
+          reason: '执行失败，请进入执行详情查看时间线。',
+          affectedSummary: '有执行在当前窗口内失败。',
+          linkTarget: undefined,
+        }),
+        expect.objectContaining({
+          title: 'Blocked without details',
+          reason: '新的执行已被治理规则阻止。',
+          affectedSummary: '某个工作流被治理规则阻止。',
+          linkTarget: undefined,
+        }),
+      ]),
+    );
+    expect(dashboard.alerts).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ title: 'Unsupported' }),
+      ]),
+    );
+    expect(dashboard.hotspots).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'workflow-workflow-running',
+          label: '工作流 workflow',
+          status: 'running',
+          failureRate: null,
+        }),
+        expect.objectContaining({
+          id: 'execution-execution-running',
+          status: 'running',
+          queueDepth: 2,
+          impactSummary:
+            '该执行关联的 agent-task 队列中仍有 2 个作业等待或运行。',
+        }),
+        expect.objectContaining({
+          id: 'execution-execution-failed',
+          status: 'failed',
+          failureRate: 100,
+        }),
+      ]),
+    );
+  });
+
+  it('reports warning thresholds without a critical signal', async () => {
+    resourceGovernanceService.getEffectiveState.mockResolvedValue({
+      organizationId: ORGANIZATION_ID,
+      quota: { tenantId: TENANT_ID, apiRateLimitPerMinute: 100 },
+      governance: {
+        tenantControl: {
+          scope: 'tenant',
+          targetId: TENANT_ID,
+          status: 'active',
+          reason: null,
+          updatedAt: null,
+          updatedBy: null,
+        },
+        workflowControls: [],
+        version: 0,
+      },
+    });
+    tenantDb.query.workflowExecutions.findMany.mockResolvedValue(
+      Array.from({ length: 10 }, (_, index) => ({
+        id: `execution-${index}`,
+        workflowDefinitionId: 'workflow-warning',
+        status: index === 0 ? 'failed' : 'completed',
+        createdAt: new Date(
+          `2026-03-18T05:${String(index).padStart(2, '0')}:00.000Z`,
+        ),
+        updatedAt: new Date(
+          `2026-03-18T05:${String(index).padStart(2, '0')}:30.000Z`,
+        ),
+      })),
+    );
+    tenantDb.query.workflowDefinitions.findMany.mockResolvedValue([
+      { id: 'workflow-warning', name: 'Warning workflow' },
+    ]);
+    tenantDb.query.agentExecutionRecords.findMany.mockResolvedValue([]);
+    tenantDb.query.notifications.findMany.mockResolvedValue([]);
+    tenantDb.query.auditLogs.findMany.mockResolvedValue([]);
+    agentTaskQueue.getJobs.mockResolvedValue(
+      Array.from({ length: 5 }, (_, index) => ({
+        id: `queue-${index}`,
+        timestamp: NOW.getTime(),
+        data: { tenantId: TENANT_ID },
+      })),
+    );
+
+    const dashboard = await service.getDashboard({
+      organizationId: ORGANIZATION_ID,
+      tenantId: TENANT_ID,
+      userId: USER_ID,
+      window: '1h',
+    });
+
+    expect(dashboard.summary).toEqual(
+      expect.objectContaining({
+        failureRate: 10,
+        successRate: 90,
+        queueDepth: 5,
+      }),
+    );
+    expect(dashboard.alerts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          category: 'error-rate',
+          severity: 'warning',
+        }),
+        expect.objectContaining({
+          category: 'queue-depth',
+          severity: 'warning',
+        }),
+      ]),
+    );
+    expect(dashboard.riskSummary).toEqual(
+      expect.objectContaining({
+        level: 'warning',
+        governancePauseActive: false,
+        primaryLinkTarget: undefined,
+      }),
+    );
+  });
+
+  it('rejects a governance snapshot belonging to another tenant', async () => {
+    resourceGovernanceService.getEffectiveState.mockResolvedValue({
+      organizationId: ORGANIZATION_ID,
+      quota: {
+        tenantId: 'another-tenant',
+        apiRateLimitPerMinute: 100,
+      },
+      governance: {
+        tenantControl: {
+          scope: 'tenant',
+          targetId: 'another-tenant',
+          status: 'active',
+          reason: null,
+          updatedAt: null,
+          updatedBy: null,
+        },
+        workflowControls: [],
+        version: 0,
+      },
+    });
+    tenantDb.query.workflowExecutions.findMany.mockResolvedValue([]);
+    tenantDb.query.notifications.findMany.mockResolvedValue([]);
+    tenantDb.query.auditLogs.findMany.mockResolvedValue([]);
+    agentTaskQueue.getJobs.mockResolvedValue([]);
+
+    await expect(
+      service.getDashboard({
+        organizationId: ORGANIZATION_ID,
+        tenantId: TENANT_ID,
+        userId: USER_ID,
+        window: '15m',
+      }),
+    ).rejects.toBeInstanceOf(ResourceGovernanceAccessDeniedException);
+    expect(
+      tenantDb.query.agentExecutionRecords.findMany,
+    ).not.toHaveBeenCalled();
+    expect(tenantDb.query.workflowDefinitions.findMany).not.toHaveBeenCalled();
   });
 });

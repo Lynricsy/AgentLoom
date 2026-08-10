@@ -34,8 +34,10 @@ import type {
 import {
   GeneratedAppArtifactNotFoundException,
   GeneratedAppArtifactTooLargeException,
+  GeneratedAppGenerationRunNotFoundException,
   GeneratedAppNotFoundException,
   GeneratedAppPublicShareNotReadyException,
+  GeneratedAppRepairAttemptNotFoundException,
   GeneratedAppSubmissionNotFoundException,
 } from '../generated-app.exceptions';
 import * as generationPlanBuilder from '../plan-builders/generation-plan.builder';
@@ -12386,5 +12388,1183 @@ describe('GeneratedAppService', () => {
         updatedAt: expect.any(Date),
       }),
     );
+  });
+});
+
+describe('GeneratedAppService coverage branches', () => {
+  let service: GeneratedAppService;
+
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.clearAllMocks();
+
+    service = new GeneratedAppService(
+      mockTenantDb as unknown as DrizzleDB,
+      createConfigService(),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      createGeneratedPrivatePluginServiceMock(),
+      undefined,
+      createStorageServiceMock(),
+    );
+  });
+
+  it('空台账分页应稳定返回零总数而不是依赖 count 行存在', async () => {
+    const emptyCountChain = () => ({
+      from: vi.fn().mockReturnThis(),
+      where: vi.fn().mockResolvedValue([]),
+    });
+    mockTenantDb.select
+      .mockReturnValueOnce(createSelectPageChain([]))
+      .mockReturnValueOnce(emptyCountChain())
+      .mockReturnValueOnce(createSelectPageChain([]))
+      .mockReturnValueOnce(emptyCountChain())
+      .mockReturnValueOnce(createSelectPageChain([]))
+      .mockReturnValueOnce(emptyCountChain());
+
+    const [runs, repairs, gates] = await Promise.all([
+      service.listGenerationRuns(TENANT_ID, APP_ID, {
+        page: 2,
+        pageSize: 10,
+      }),
+      service.listRepairAttempts(TENANT_ID, APP_ID, GENERATION_RUN_ID, {
+        page: 3,
+        pageSize: 5,
+      }),
+      service.listGateRuns(TENANT_ID, APP_ID, {
+        page: 4,
+        pageSize: 25,
+      }),
+    ]);
+
+    expect(runs).toEqual({
+      data: [],
+      meta: { total: 0, page: 2, pageSize: 10, totalPages: 0 },
+    });
+    expect(repairs).toEqual({
+      data: [],
+      meta: { total: 0, page: 3, pageSize: 5, totalPages: 0 },
+    });
+    expect(gates).toEqual({
+      data: [],
+      meta: { total: 0, page: 4, pageSize: 25, totalPages: 0 },
+    });
+  });
+
+  it('生成运行 DTO 应保留默认时间、显式 null 和完整更新字段', async () => {
+    const app = createGeneratedApp();
+    const createdRun = createGeneratedAppGenerationRun();
+    const updatedRun = createGeneratedAppGenerationRun({
+      status: 'failed',
+      summary: '门禁回滚完成。',
+      failureReason: null,
+      startedAt: new Date('2026-04-25T01:00:00.000Z'),
+      completedAt: null,
+    });
+    const insertChain = createInsertReturningChain([createdRun]);
+    const updateChain = createUpdateReturningChain([updatedRun]);
+    mockTenantDb.select.mockReturnValueOnce(createSelectChain([app]));
+    mockTenantDb.insert.mockReturnValueOnce(insertChain);
+    mockTenantDb.update.mockReturnValueOnce(updateChain);
+
+    const created = await service.createGenerationRun(
+      TENANT_ID,
+      USER_ID,
+      APP_ID,
+      {
+        runNumber: 2,
+        status: 'running',
+        triggerSource: 'retry',
+        maxRepairAttempts: 2,
+        maxRuntimeSeconds: 900,
+        summary: '重试门禁。',
+        completedAt: null,
+      },
+    );
+    const updated = await service.updateGenerationRun(
+      TENANT_ID,
+      APP_ID,
+      GENERATION_RUN_ID,
+      {
+        status: 'failed',
+        summary: '门禁回滚完成。',
+        failureReason: null,
+        startedAt: '2026-04-25T01:00:00.000Z',
+        completedAt: null,
+      },
+    );
+
+    expect(insertChain.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        runNumber: 2,
+        status: 'running',
+        triggerSource: 'retry',
+        failureReason: null,
+        startedAt: expect.any(Date),
+        completedAt: null,
+      }),
+    );
+    expect(updateChain.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'failed',
+        summary: '门禁回滚完成。',
+        failureReason: null,
+        startedAt: new Date('2026-04-25T01:00:00.000Z'),
+        completedAt: null,
+        updatedAt: expect.any(Date),
+      }),
+    );
+    expect(created).toEqual(
+      expect.objectContaining({ id: GENERATION_RUN_ID, status: 'running' }),
+    );
+    expect(updated).toEqual(
+      expect.objectContaining({
+        status: 'failed',
+        failureReason: null,
+        completedAt: null,
+      }),
+    );
+  });
+
+  it('生成运行和修复尝试更新零行时应回滚为领域 not-found 错误', async () => {
+    mockTenantDb.update
+      .mockReturnValueOnce(createUpdateReturningChain([]))
+      .mockReturnValueOnce(createUpdateReturningChain([]));
+
+    await expect(
+      service.updateGenerationRun(TENANT_ID, APP_ID, GENERATION_RUN_ID, {
+        completedAt: null,
+      }),
+    ).rejects.toBeInstanceOf(GeneratedAppGenerationRunNotFoundException);
+    await expect(
+      service.updateRepairAttempt(
+        TENANT_ID,
+        APP_ID,
+        GENERATION_RUN_ID,
+        REPAIR_ATTEMPT_ID,
+        { completedAt: null },
+      ),
+    ).rejects.toBeInstanceOf(GeneratedAppRepairAttemptNotFoundException);
+  });
+
+  it('修复尝试 DTO 应归一化缺省时间、nullable 计划并持久化全部状态转换字段', async () => {
+    const run = createGeneratedAppGenerationRun();
+    const createdAttempt = createGeneratedAppRepairAttempt({
+      repairPlan: null,
+      reverificationPlan: null,
+    });
+    const updatedAttempt = createGeneratedAppRepairAttempt({
+      status: 'failed',
+      failureSummary: '仍有阻断证据。',
+      changeSummary: null,
+      verificationSummary: null,
+      completedAt: null,
+    });
+    const insertChain = createInsertReturningChain([createdAttempt]);
+    const updateChain = createUpdateReturningChain([updatedAttempt]);
+    mockTenantDb.select.mockReturnValueOnce(createSelectChain([run]));
+    mockTenantDb.insert.mockReturnValueOnce(insertChain);
+    mockTenantDb.update.mockReturnValueOnce(updateChain);
+
+    const created = await service.createRepairAttempt(
+      TENANT_ID,
+      USER_ID,
+      APP_ID,
+      GENERATION_RUN_ID,
+      {
+        attemptNumber: 2,
+        targetGateId: 'gate-6',
+        status: 'running',
+        failureSummary: '独立审查缺少证据。',
+        changeSummary: null,
+        verificationSummary: null,
+        repairPlan: null,
+        reverificationPlan: null,
+        completedAt: null,
+      },
+    );
+    const updated = await service.updateRepairAttempt(
+      TENANT_ID,
+      APP_ID,
+      GENERATION_RUN_ID,
+      REPAIR_ATTEMPT_ID,
+      {
+        status: 'failed',
+        failureSummary: '仍有阻断证据。',
+        changeSummary: null,
+        verificationSummary: null,
+        repairPlan: null,
+        reverificationPlan: null,
+        startedAt: '2026-04-25T02:00:00.000Z',
+        completedAt: null,
+      },
+    );
+
+    expect(insertChain.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        targetGateId: 'gate-6',
+        repairPlan: null,
+        reverificationPlan: null,
+        startedAt: expect.any(Date),
+        completedAt: null,
+      }),
+    );
+    expect(updateChain.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'failed',
+        failureSummary: '仍有阻断证据。',
+        changeSummary: null,
+        verificationSummary: null,
+        repairPlan: null,
+        reverificationPlan: null,
+        startedAt: new Date('2026-04-25T02:00:00.000Z'),
+        completedAt: null,
+      }),
+    );
+    expect(created.repairPlan).toBeNull();
+    expect(created.reverificationPlan).toBeNull();
+    expect(updated).toEqual(
+      expect.objectContaining({ status: 'failed', completedAt: null }),
+    );
+  });
+
+  it('重复启用现有公开链接应复用 token，并在缺少创建时间时补记时间', async () => {
+    const token = 'b'.repeat(64);
+    const app = createGeneratedApp({
+      status: 'published',
+      readiness: createPublishCandidateReadiness(),
+      publicShareEnabled: true,
+      publicShareToken: token,
+      publicShareCreatedAt: null,
+    });
+    const updateChain = createGeneratedAppUpdateReturningFromPayload(app);
+    mockTenantDb.select.mockReturnValueOnce(createSelectChain([app]));
+    mockTenantDb.update.mockReturnValueOnce(updateChain);
+
+    const response = await service.enablePublicShare(
+      TENANT_ID,
+      USER_ID,
+      APP_ID,
+    );
+
+    expect(updateChain.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'published',
+        publicShareEnabled: true,
+        publicShareToken: token,
+        publicShareCreatedAt: expect.any(Date),
+        publicShareDisabledAt: null,
+      }),
+    );
+    expect(response.publicShareToken).toBe(token);
+    expect(response.publicShareUrl).toContain(token);
+  });
+
+  it('公开链接写入零行时不应返回伪成功，且 APP_BASE_URL 应作为 DTO 地址回退', async () => {
+    const app = createGeneratedApp({
+      status: 'publish_candidate',
+      readiness: createPublishCandidateReadiness(),
+    });
+    mockTenantDb.select.mockReturnValueOnce(createSelectChain([app]));
+    mockTenantDb.update.mockReturnValueOnce(createUpdateReturningChain([]));
+
+    await expect(
+      service.enablePublicShare(TENANT_ID, USER_ID, APP_ID),
+    ).rejects.toBeInstanceOf(GeneratedAppNotFoundException);
+
+    const token = 'c'.repeat(64);
+    const configService = createConfigService({
+      APP_FRONTEND_URL: undefined,
+      APP_BASE_URL: 'https://api.example.test///',
+    });
+    const fallbackService = new GeneratedAppService(
+      mockTenantDb as unknown as DrizzleDB,
+      configService,
+    );
+    mockTenantDb.select.mockReturnValueOnce(
+      createSelectChain([
+        createGeneratedApp({
+          status: 'published',
+          readiness: createPublishCandidateReadiness(),
+          publicShareEnabled: true,
+          publicShareToken: token,
+        }),
+      ]),
+    );
+
+    const response = await fallbackService.findOne(TENANT_ID, APP_ID);
+
+    expect(response.publicShareUrl).toBe(
+      `https://api.example.test/generated-apps/public/${token}`,
+    );
+  });
+
+  it('公开提交省略 input 时应按空对象执行并持久化确定性报告', async () => {
+    const token = 'd'.repeat(64);
+    const app = createGeneratedApp({
+      status: 'published',
+      readiness: createPublishCandidateReadiness(),
+      publicShareEnabled: true,
+      publicShareToken: token,
+    });
+    const insertChain =
+      createGeneratedAppSubmissionInsertReturningFromPayload();
+    mockTenantDb.select.mockReturnValueOnce(createSelectChain([app]));
+    mockTenantDb.insert.mockReturnValueOnce(insertChain);
+
+    const response = await service.createPublicSubmission(token, {
+      input: undefined,
+    });
+
+    expect(insertChain.values).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: TENANT_ID,
+        generatedAppId: APP_ID,
+        publicShareToken: token,
+        input: {},
+        status: 'completed',
+        result: expect.objectContaining({
+          runtimeKind: 'local-generated-app-deterministic-report',
+        }),
+        report: expect.objectContaining({
+          runtimeKind: 'local-generated-app-deterministic-report',
+        }),
+        errorMessage: null,
+      }),
+    );
+    expect(response).toEqual(
+      expect.objectContaining({
+        appId: APP_ID,
+        status: 'completed',
+        input: {},
+      }),
+    );
+  });
+
+  it('无插件工具时绑定编排应保持应用不变且不访问插件服务', async () => {
+    const pluginService = createGeneratedPrivatePluginServiceMock();
+    const pluginServiceInstance = new GeneratedAppService(
+      mockTenantDb as unknown as DrizzleDB,
+      createConfigService(),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      pluginService,
+    );
+    const generationPlan = buildGenerationPlan(createGeneratedApp().appSpec);
+    const appWithoutPlan = createGeneratedApp({ generationPlan: null });
+    const appWithEmptyTools = createGeneratedApp({
+      generationPlan: {
+        ...generationPlan,
+        pluginTools: {
+          ...generationPlan.pluginTools,
+          tools: [],
+        },
+      },
+    });
+    const pluginBindingInternals = pluginServiceInstance as unknown as {
+      ensureGeneratedPrivatePluginBindings(
+        tenantId: string,
+        userId: string,
+        app: GeneratedApp,
+      ): Promise<GeneratedApp>;
+    };
+
+    const withoutPlan =
+      await pluginBindingInternals.ensureGeneratedPrivatePluginBindings(
+        TENANT_ID,
+        USER_ID,
+        appWithoutPlan,
+      );
+    const withEmptyTools =
+      await pluginBindingInternals.ensureGeneratedPrivatePluginBindings(
+        TENANT_ID,
+        USER_ID,
+        appWithEmptyTools,
+      );
+
+    expect(withoutPlan).toBe(appWithoutPlan);
+    expect(withEmptyTools).toBe(appWithEmptyTools);
+    expect(pluginService.findByPluginId).not.toHaveBeenCalled();
+    expect(mockTenantDb.update).not.toHaveBeenCalled();
+  });
+
+  it('存在插件工具但模块缺少 PluginService 时应在任何持久化前失败', async () => {
+    const serviceWithoutPlugin = new GeneratedAppService(
+      mockTenantDb as unknown as DrizzleDB,
+      createConfigService(),
+    );
+    const app = createGeneratedApp({
+      generationPlan: buildGenerationPlan(createGeneratedApp().appSpec),
+    });
+    const pluginBindingInternals = serviceWithoutPlugin as unknown as {
+      ensureGeneratedPrivatePluginBindings(
+        tenantId: string,
+        userId: string,
+        app: GeneratedApp,
+      ): Promise<GeneratedApp>;
+    };
+
+    await expect(
+      pluginBindingInternals.ensureGeneratedPrivatePluginBindings(
+        TENANT_ID,
+        USER_ID,
+        app,
+      ),
+    ).rejects.toThrow('需要 PluginService');
+    expect(mockTenantDb.insert).not.toHaveBeenCalled();
+    expect(mockTenantDb.update).not.toHaveBeenCalled();
+  });
+
+  it('插件绑定应在 Gate 3 workspace 或规范化 toolId 缺失时拒绝进入文件与数据库阶段', async () => {
+    const pluginService = createGeneratedPrivatePluginServiceMock();
+    const pluginServiceInstance = new GeneratedAppService(
+      mockTenantDb as unknown as DrizzleDB,
+      createConfigService(),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      pluginService,
+    );
+    const pluginBindingInternals = pluginServiceInstance as unknown as {
+      ensureGeneratedPrivatePluginBindings(
+        tenantId: string,
+        userId: string,
+        app: GeneratedApp,
+      ): Promise<GeneratedApp>;
+    };
+    const planWithoutWorkspace = buildGenerationPlan(
+      createGeneratedApp().appSpec,
+    );
+    const appWithoutWorkspace = createGeneratedApp({
+      generationPlan: planWithoutWorkspace,
+    });
+
+    await expect(
+      pluginBindingInternals.ensureGeneratedPrivatePluginBindings(
+        TENANT_ID,
+        USER_ID,
+        appWithoutWorkspace,
+      ),
+    ).rejects.toThrow('缺少 Gate 3 workspace');
+
+    const appWithWorkspace = createGeneratedAppWithGate3Workspace();
+    const firstTool = appWithWorkspace.generationPlan.pluginTools.tools[0];
+    const appWithoutToolId = createGeneratedApp({
+      generationPlan: {
+        ...appWithWorkspace.generationPlan,
+        pluginTools: {
+          ...appWithWorkspace.generationPlan.pluginTools,
+          tools: firstTool ? [{ ...firstTool, toolId: ' ' }] : [],
+        },
+      },
+    });
+
+    await expect(
+      pluginBindingInternals.ensureGeneratedPrivatePluginBindings(
+        TENANT_ID,
+        USER_ID,
+        appWithoutToolId,
+      ),
+    ).rejects.toThrow('toolId 缺失');
+    expect(pluginService.findByPluginId).not.toHaveBeenCalled();
+    expect(mockTenantDb.update).not.toHaveBeenCalled();
+  });
+
+  it('公开链接关闭写入零行时应报告应用不存在而不返回旧状态', async () => {
+    const app = createGeneratedApp({
+      status: 'published',
+      readiness: createPublishCandidateReadiness(),
+      publicShareEnabled: true,
+      publicShareToken: 'e'.repeat(64),
+    });
+    mockTenantDb.select.mockReturnValueOnce(createSelectChain([app]));
+    mockTenantDb.update.mockReturnValueOnce(createUpdateReturningChain([]));
+
+    await expect(
+      service.disablePublicShare(TENANT_ID, USER_ID, APP_ID),
+    ).rejects.toBeInstanceOf(GeneratedAppNotFoundException);
+  });
+
+  it('Gate 3 自动修复失败应持久化 failed，更新零行时应暴露修复台账丢失', async () => {
+    const failedAttempt = createGeneratedAppRepairAttempt({
+      status: 'failed',
+      changeSummary: '补丁已应用但未修复构建。',
+      verificationSummary: 'unit 仍失败。',
+      completedAt: NOW,
+    });
+    const failedUpdateChain = createUpdateReturningChain([failedAttempt]);
+    const missingUpdateChain = createUpdateReturningChain([]);
+    mockTenantDb.update
+      .mockReturnValueOnce(failedUpdateChain)
+      .mockReturnValueOnce(missingUpdateChain);
+    const repairInternals = service as unknown as {
+      completeGate3RepairAttempt(params: {
+        tenantId: string;
+        appId: string;
+        repairAttemptId: string;
+        repairResult: GeneratedAppGate3RepairResult;
+      }): Promise<unknown>;
+    };
+    const repairResult = createGate3RepairResult({
+      status: 'failed',
+      changeSummary: '补丁已应用但未修复构建。',
+      verificationSummary: 'unit 仍失败。',
+    });
+
+    const response = await repairInternals.completeGate3RepairAttempt({
+      tenantId: TENANT_ID,
+      appId: APP_ID,
+      repairAttemptId: REPAIR_ATTEMPT_ID,
+      repairResult,
+    });
+
+    expect(failedUpdateChain.set).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: 'failed',
+        changeSummary: '补丁已应用但未修复构建。',
+        verificationSummary: 'unit 仍失败。',
+        completedAt: expect.any(Date),
+        updatedAt: expect.any(Date),
+      }),
+    );
+    expect(response).toEqual(
+      expect.objectContaining({ id: REPAIR_ATTEMPT_ID, status: 'failed' }),
+    );
+    await expect(
+      repairInternals.completeGate3RepairAttempt({
+        tenantId: TENANT_ID,
+        appId: APP_ID,
+        repairAttemptId: REPAIR_ATTEMPT_ID,
+        repairResult,
+      }),
+    ).rejects.toBeInstanceOf(GeneratedAppRepairAttemptNotFoundException);
+  });
+
+  it('插件注册刷新决策应识别 artifact 与每个租户私有 metadata 漂移', () => {
+    const wasmBundleUrl = `generated-apps/${APP_ID}/plugins/tool.wasm`;
+    const pluginBundle = {
+      storageKey: `generated-apps/${APP_ID}/plugins/tool.alp`,
+      signature: 'signature-v1',
+      contentHash: 'content-hash-v1',
+      wasmEntry: 'dist/plugin.wasm',
+    };
+    const metadata = {
+      source: 'generated-app-private-plugin',
+      activationScope: 'tenant-private',
+      generatedAppId: APP_ID,
+      appSpecVersion: 1,
+      toolId: 'tool',
+      wasmEntry: pluginBundle.wasmEntry,
+      wasmBundleUrl,
+    };
+    const pluginRecord = {
+      storageKey: pluginBundle.storageKey,
+      signature: pluginBundle.signature,
+      contentHash: pluginBundle.contentHash,
+      wasmBundleUrl,
+      metadata,
+    };
+    const pluginInternals = service as unknown as {
+      mustRefreshGeneratedPrivatePluginRegistration(
+        app: GeneratedApp,
+        toolId: string,
+        pluginRecord: {
+          storageKey: string | null;
+          signature: string | null;
+          contentHash: string | null;
+          wasmBundleUrl: string | null;
+          metadata: Record<string, unknown> | null;
+        },
+        pluginBundle: {
+          storageKey: string;
+          signature: string;
+          contentHash: string;
+          wasmEntry: string | null;
+        },
+        wasmBundleUrl: string | undefined,
+      ): boolean;
+    };
+
+    expect(
+      pluginInternals.mustRefreshGeneratedPrivatePluginRegistration(
+        createGeneratedApp(),
+        'tool',
+        pluginRecord,
+        pluginBundle,
+        wasmBundleUrl,
+      ),
+    ).toBe(false);
+
+    const driftedRecords = [
+      { ...pluginRecord, storageKey: 'stale.alp' },
+      { ...pluginRecord, signature: 'stale-signature' },
+      { ...pluginRecord, contentHash: 'stale-hash' },
+      { ...pluginRecord, wasmBundleUrl: null },
+      { ...pluginRecord, metadata: { ...metadata, source: 'manual' } },
+      {
+        ...pluginRecord,
+        metadata: { ...metadata, activationScope: 'organization' },
+      },
+      {
+        ...pluginRecord,
+        metadata: { ...metadata, generatedAppId: 'other-app' },
+      },
+      { ...pluginRecord, metadata: { ...metadata, appSpecVersion: 2 } },
+      { ...pluginRecord, metadata: { ...metadata, toolId: 'other-tool' } },
+      { ...pluginRecord, metadata: { ...metadata, wasmEntry: null } },
+      { ...pluginRecord, metadata: { ...metadata, wasmBundleUrl: null } },
+      { ...pluginRecord, metadata: null },
+    ];
+
+    for (const driftedRecord of driftedRecords) {
+      expect(
+        pluginInternals.mustRefreshGeneratedPrivatePluginRegistration(
+          createGeneratedApp(),
+          'tool',
+          driftedRecord,
+          pluginBundle,
+          wasmBundleUrl,
+        ),
+      ).toBe(true);
+    }
+  });
+
+  it.each([
+    ['gate-0', ['app-spec', 'test-contracts'], ['generated_apps.app_spec'], []],
+    [
+      'gate-1',
+      ['generation-plan', 'test-contracts'],
+      ['generated_apps.generation_plan'],
+      [],
+    ],
+    [
+      'gate-2',
+      [
+        'static-contracts',
+        'generation-plan',
+        'workflow-orchestration',
+        'plugin-tools',
+        'test-contracts',
+      ],
+      ['generated_apps.generation_plan.staticContracts'],
+      [],
+    ],
+    [
+      'gate-6',
+      [
+        'app-spec',
+        'generation-plan',
+        'static-contracts',
+        'frontend-workspace',
+        'workflow-orchestration',
+        'plugin-tools',
+        'test-contracts',
+      ],
+      ['generated_apps.generation_plan.independentVerificationPlan'],
+      ['agentloom generated-app gate-6 local-independent-verifier'],
+    ],
+    [
+      'gate-7',
+      ['publish-contract', 'test-contracts'],
+      ['generated_apps.generation_plan.publishCandidatePlan'],
+      ['agentloom generated-app gate-7 publish-candidate'],
+    ],
+    [
+      'gate-extension',
+      ['test-contracts'],
+      ['generated_apps.generation_plan'],
+      [],
+    ],
+  ] as const)(
+    '%s 自动修复工单应把失败证据映射到受控范围、补丁目标和再验证命令',
+    async (gateId, allowedChangeScopes, patchTargets, requiredCommandIds) => {
+      const gateRun = {
+        ...createGeneratedAppGateRun({
+          id: `${GATE_RUN_ID}-${gateId}`,
+          gateId,
+          gateName: `${gateId} 扩展门禁`,
+          status: 'failed',
+          summary: `${gateId} runner summary`,
+          evidence: [
+            {
+              id: `${gateId}-evidence`,
+              label: `${gateId} evidence`,
+              kind: 'verifier',
+              url: null,
+              summary: '  ',
+            },
+          ],
+          failure: null,
+          repairInstructions: null,
+        }),
+        appId: APP_ID,
+      };
+      const returnedAttempt = createGeneratedAppRepairAttempt({
+        targetGateId: gateId,
+        status: 'failed',
+      });
+      const insertChain = createInsertReturningChain([returnedAttempt]);
+      mockTenantDb.insert.mockReturnValueOnce(insertChain);
+      const repairInternals = service as unknown as {
+        recordAutomaticRepairAttemptForFailedRun(params: {
+          tenantId: string;
+          userId: string;
+          appId: string;
+          generationRunId: string;
+          maxRepairAttempts: number;
+          gateRuns: unknown[];
+        }): Promise<unknown>;
+      };
+      const response =
+        await repairInternals.recordAutomaticRepairAttemptForFailedRun({
+          tenantId: TENANT_ID,
+          userId: USER_ID,
+          appId: APP_ID,
+          generationRunId: GENERATION_RUN_ID,
+          maxRepairAttempts: 1,
+          gateRuns: [gateRun],
+        });
+
+      expect(insertChain.values).toHaveBeenCalledWith(
+        expect.objectContaining({
+          targetGateId: gateId,
+          status: 'failed',
+          failureSummary: expect.stringContaining(`${gateId} runner summary`),
+          changeSummary: expect.stringContaining('已读取失败证据'),
+          verificationSummary: expect.stringContaining('仍为 failed'),
+          repairPlan: expect.objectContaining({
+            targetGateId: gateId,
+            failureCode: null,
+            repairInstructions: null,
+            evidenceIds: [`${gateId}-evidence`],
+            evidenceSummaries: [],
+            allowedChangeScopes: [...allowedChangeScopes],
+            patchTargets: [...patchTargets],
+          }),
+          reverificationPlan: expect.objectContaining({
+            targetGateId: gateId,
+            requiredCommandIds: [...requiredCommandIds],
+            requiredEvidenceIds: [`${gateId}-evidence`],
+          }),
+          createdBy: USER_ID,
+        }),
+      );
+      expect(response).toEqual(
+        expect.objectContaining({ id: REPAIR_ATTEMPT_ID, status: 'failed' }),
+      );
+    },
+  );
+
+  it('自动修复预算耗尽或没有未排除失败门禁时不应写入修复台账', async () => {
+    const failedGate = {
+      ...createGeneratedAppGateRun({
+        status: 'failed',
+        failure: null,
+      }),
+      appId: APP_ID,
+    };
+    const repairInternals = service as unknown as {
+      recordAutomaticRepairAttemptForFailedRun(params: {
+        tenantId: string;
+        userId: string;
+        appId: string;
+        generationRunId: string;
+        maxRepairAttempts: number;
+        gateRuns: unknown[];
+        excludeGateRunIds?: string[];
+      }): Promise<unknown>;
+    };
+    const recordAutomaticRepairAttemptForFailedRun =
+      repairInternals.recordAutomaticRepairAttemptForFailedRun.bind(service);
+
+    const exhausted = await recordAutomaticRepairAttemptForFailedRun({
+      tenantId: TENANT_ID,
+      userId: USER_ID,
+      appId: APP_ID,
+      generationRunId: GENERATION_RUN_ID,
+      maxRepairAttempts: 0,
+      gateRuns: [failedGate],
+    });
+    const excluded = await recordAutomaticRepairAttemptForFailedRun({
+      tenantId: TENANT_ID,
+      userId: USER_ID,
+      appId: APP_ID,
+      generationRunId: GENERATION_RUN_ID,
+      maxRepairAttempts: 1,
+      gateRuns: [failedGate],
+      excludeGateRunIds: [failedGate.id],
+    });
+
+    expect(exhausted).toBeNull();
+    expect(excluded).toBeNull();
+    expect(mockTenantDb.insert).not.toHaveBeenCalled();
+  });
+});
+
+describe('GeneratedAppService focused branch contracts', () => {
+  let service: GeneratedAppService;
+
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.clearAllMocks();
+    service = new GeneratedAppService(
+      mockTenantDb as unknown as DrizzleDB,
+      createConfigService(),
+    );
+  });
+
+  it.each([
+    {
+      name: 'buildUnitPlan 不是对象',
+      mutate: (plan: Record<string, unknown>) => {
+        plan.buildUnitPlan = null;
+      },
+    },
+    {
+      name: 'executionLevel 不受支持',
+      mutate: (plan: Record<string, unknown>) => {
+        (plan.buildUnitPlan as Record<string, unknown>).executionLevel =
+          'remote-command-plan';
+      },
+    },
+    {
+      name: 'generationWorkspace 不是对象',
+      mutate: (plan: Record<string, unknown>) => {
+        (plan.buildUnitPlan as Record<string, unknown>).generationWorkspace =
+          null;
+      },
+    },
+    {
+      name: 'workspace 必填标识为空',
+      mutate: (plan: Record<string, unknown>) => {
+        const buildUnitPlan = plan.buildUnitPlan as Record<string, unknown>;
+        (
+          buildUnitPlan.generationWorkspace as Record<string, unknown>
+        ).workspaceId = '';
+      },
+    },
+    {
+      name: 'workspace 使用绝对路径',
+      mutate: (plan: Record<string, unknown>) => {
+        const buildUnitPlan = plan.buildUnitPlan as Record<string, unknown>;
+        (
+          buildUnitPlan.generationWorkspace as Record<string, unknown>
+        ).relativePath = '/tmp/outside-workspace';
+      },
+    },
+    {
+      name: 'workspace 使用 traversal 路径',
+      mutate: (plan: Record<string, unknown>) => {
+        const buildUnitPlan = plan.buildUnitPlan as Record<string, unknown>;
+        (
+          buildUnitPlan.generationWorkspace as Record<string, unknown>
+        ).relativePath = '../outside-workspace';
+      },
+    },
+  ])('artifact manifest 对 $name 应保持不可用', async ({ mutate }) => {
+    const app = createGeneratedAppWithGate3Workspace();
+    const generationPlan = structuredClone(
+      app.generationPlan,
+    ) as unknown as Record<string, unknown>;
+    mutate(generationPlan);
+    const malformedApp = createGeneratedApp({
+      generationPlan: generationPlan as unknown as GeneratedAppGenerationPlan,
+    });
+    mockTenantDb.select.mockReturnValueOnce(createSelectChain([malformedApp]));
+
+    const response = await service.getArtifactManifest(TENANT_ID, APP_ID);
+
+    expect(response).toEqual({
+      workspace: null,
+      artifacts: [],
+      updatedAt: malformedApp.updatedAt,
+    });
+  });
+
+  it('artifact manifest 不应把同名目录当成已物化文件', async () => {
+    const workspaceRoot = join(
+      tmpdir(),
+      `agentloom-generated-app-artifact-directory-${crypto.randomUUID()}`,
+    );
+    const artifactService = new GeneratedAppService(
+      mockTenantDb as unknown as DrizzleDB,
+      createConfigService({ GENERATED_APP_WORKSPACE_ROOT: workspaceRoot }),
+    );
+    const app = createGeneratedAppWithGate3Workspace();
+    const workspace = app.generationPlan.buildUnitPlan?.generationWorkspace;
+    if (!workspace) {
+      throw new Error('test fixture missing workspace');
+    }
+
+    try {
+      await mkdir(join(workspaceRoot, workspace.relativePath, 'src/App.tsx'), {
+        recursive: true,
+      });
+      mockTenantDb.select.mockReturnValueOnce(createSelectChain([app]));
+
+      const response = await artifactService.getArtifactManifest(
+        TENANT_ID,
+        APP_ID,
+      );
+
+      expect(response.artifacts).toContainEqual(
+        expect.objectContaining({
+          artifactId: 'source-app-tsx',
+          materialized: false,
+          readable: false,
+          sizeBytes: null,
+        }),
+      );
+    } finally {
+      await rm(workspaceRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('artifact content 不应内联可物化的 zip 插件包', async () => {
+    const workspaceRoot = join(
+      tmpdir(),
+      `agentloom-generated-app-artifact-zip-${crypto.randomUUID()}`,
+    );
+    const artifactService = new GeneratedAppService(
+      mockTenantDb as unknown as DrizzleDB,
+      createConfigService({ GENERATED_APP_WORKSPACE_ROOT: workspaceRoot }),
+    );
+    const app = createGeneratedAppWithGate3Workspace();
+    const workspace = app.generationPlan.buildUnitPlan?.generationWorkspace;
+    if (!workspace) {
+      throw new Error('test fixture missing workspace');
+    }
+    const bundlePath = join(
+      workspaceRoot,
+      workspace.relativePath,
+      'artifacts/gate-3/plugins/tool-guided-intake-analysis.alp',
+    );
+
+    try {
+      await mkdir(join(bundlePath, '..'), { recursive: true });
+      await writeFile(bundlePath, 'not-an-inline-public-artifact', 'utf8');
+      mockTenantDb.select.mockReturnValueOnce(createSelectChain([app]));
+
+      await expect(
+        artifactService.getArtifactContent(
+          TENANT_ID,
+          APP_ID,
+          'plugin-tool-guided-intake-analysis-bundle',
+        ),
+      ).rejects.toBeInstanceOf(GeneratedAppArtifactNotFoundException);
+    } finally {
+      await rm(workspaceRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('workflow handoff 刷新策略应区分全部运行态与终态', () => {
+    const internals = service as unknown as {
+      shouldRefreshSubmissionWorkflowHandoff(
+        submission: GeneratedAppSubmission,
+      ): boolean;
+    };
+    const handoff = {
+      workflowExecution: true,
+      workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+      executionId: WORKFLOW_EXECUTION_ID,
+    };
+
+    for (const status of ['pending', 'running', 'paused'] as const) {
+      expect(
+        internals.shouldRefreshSubmissionWorkflowHandoff(
+          createGeneratedAppSubmission({
+            report: { ...handoff, executionStatus: status },
+          }),
+        ),
+      ).toBe(true);
+    }
+    for (const status of ['completed', 'failed', 'cancelled'] as const) {
+      expect(
+        internals.shouldRefreshSubmissionWorkflowHandoff(
+          createGeneratedAppSubmission({
+            report: { ...handoff, executionStatus: status },
+          }),
+        ),
+      ).toBe(false);
+    }
+    expect(
+      internals.shouldRefreshSubmissionWorkflowHandoff(
+        createGeneratedAppSubmission({
+          report: { ...handoff, executionStatus: 'unknown' },
+          result: { ...handoff, executionStatus: 'running' },
+        }),
+      ),
+    ).toBe(true);
+  });
+
+  it('workflow handoff 应拒绝非法 execution 与 workflow 标识', () => {
+    const internals = service as unknown as {
+      extractPublicWorkflowExecutionHandoffFromPayload(
+        payload: Record<string, unknown>,
+      ): {
+        executionId: string;
+        workflowDefinitionId: string | null;
+      } | null;
+    };
+
+    expect(
+      internals.extractPublicWorkflowExecutionHandoffFromPayload({
+        workflowExecution: true,
+        executionId: 'not-a-uuid',
+      }),
+    ).toBeNull();
+    expect(
+      internals.extractPublicWorkflowExecutionHandoffFromPayload({
+        workflowExecution: true,
+        executionId: WORKFLOW_EXECUTION_ID,
+        workflowDefinitionId: 'not-a-uuid',
+      }),
+    ).toBeNull();
+  });
+
+  it('workflow 运行中 handoff 应仅在存在步骤总数时公开进度', () => {
+    const internals = service as unknown as {
+      buildRefreshedWorkflowExecutionHandoff(params: {
+        workflowDefinitionId: string;
+        executionId: string;
+        status:
+          | 'pending'
+          | 'running'
+          | 'paused'
+          | 'completed'
+          | 'failed'
+          | 'cancelled';
+        updatedAt: Date;
+        completedAt: Date | null;
+        completedSteps: number;
+        totalSteps: number;
+      }): Record<string, unknown>;
+    };
+    const build = (
+      status: 'running' | 'paused',
+      completedSteps: number,
+      totalSteps: number,
+    ) =>
+      internals.buildRefreshedWorkflowExecutionHandoff({
+        workflowDefinitionId: WORKFLOW_DEFINITION_ID,
+        executionId: WORKFLOW_EXECUTION_ID,
+        status,
+        updatedAt: NOW,
+        completedAt: null,
+        completedSteps,
+        totalSteps,
+      });
+
+    expect(build('running', 0, 0)).toEqual(
+      expect.objectContaining({
+        executionStatus: 'running',
+        notice: 'Workflow execution 仍在执行中；公开页面会继续轮询安全状态。',
+      }),
+    );
+    expect(build('paused', 9, 3)).toEqual(
+      expect.objectContaining({
+        executionStatus: 'paused',
+        notice: expect.stringContaining('3/3'),
+      }),
+    );
+  });
+
+  it('workflow 完成摘要应过滤非白名单输出并处理缺失完成时间', async () => {
+    const steps = [
+      {
+        nodeId: 'analysis-node',
+        nodeType: 'agent',
+        status: 'completed',
+        completedAt: null,
+        result: { analysis: { score: 86 } },
+      },
+      {
+        nodeId: 'text-empty',
+        nodeType: 'text-output',
+        status: 'completed',
+        completedAt: null,
+        result: { content: '' },
+      },
+      {
+        nodeId: 'text-output',
+        nodeType: 'text-output',
+        status: 'completed',
+        completedAt: null,
+        result: { content: '公开业务结论' },
+      },
+      {
+        nodeId: 'json-output',
+        nodeType: 'json-output',
+        status: 'completed',
+        completedAt: null,
+        result: { json: { recommendation: '复核' } },
+      },
+      {
+        nodeId: 'json-empty',
+        nodeType: 'json-output',
+        status: 'completed',
+        completedAt: null,
+        result: { json: null },
+      },
+      {
+        nodeId: 'failed-node',
+        nodeType: 'plugin',
+        status: 'failed',
+        completedAt: null,
+        result: { internalError: 'hidden' },
+      },
+      {
+        nodeId: 'cancelled-node',
+        nodeType: 'plugin',
+        status: 'cancelled',
+        completedAt: null,
+        result: null,
+      },
+    ];
+    mockTenantDb.select.mockReturnValueOnce(createSelectManyChain(steps));
+    const internals = service as unknown as {
+      buildPublicWorkflowExecutionSummary(
+        executionId: string,
+        tenantId: string,
+      ): Promise<Record<string, unknown>>;
+    };
+
+    const summary = await internals.buildPublicWorkflowExecutionSummary(
+      WORKFLOW_EXECUTION_ID,
+      TENANT_ID,
+    );
+
+    expect(summary).toEqual(
+      expect.objectContaining({
+        completedSteps: 5,
+        failedSteps: 1,
+        cancelledSteps: 1,
+        totalSteps: 7,
+        latestStepCompletedAt: null,
+        publicOutputs: [
+          expect.objectContaining({
+            kind: 'analysis',
+            title: '结构化分析摘要',
+          }),
+          expect.objectContaining({
+            kind: 'text',
+            value: '公开业务结论',
+          }),
+          expect.objectContaining({
+            kind: 'json',
+            value: { recommendation: '复核' },
+          }),
+        ],
+      }),
+    );
+    expect(JSON.stringify(summary)).not.toContain('internalError');
   });
 });

@@ -1509,4 +1509,390 @@ describe('WorkspaceService', () => {
       expect(mockStorageService.upload).not.toHaveBeenCalled();
     });
   });
+
+  describe('preview and snapshot boundary branches', () => {
+    it('resolveOrganizationId rejects a tenant without an organization', async () => {
+      db.select.mockReturnValueOnce(createSelectChainWithLimit([]));
+
+      await expect(
+        service.resolveOrganizationId(TEST_TENANT_ID),
+      ).rejects.toThrow(`Organization for tenant ${TEST_TENANT_ID} not found`);
+    });
+
+    it('returns an empty tree without downloading an empty ready snapshot', async () => {
+      db.select.mockReturnValueOnce(
+        createSelectChainWithLimit([buildSnapshot({ sizeBytes: 0 })]),
+      );
+
+      await expect(
+        service.getFileTree(TEST_TENANT_ID, TEST_WORKSPACE_ID),
+      ).resolves.toEqual([]);
+      expect(mockStorageService.download).not.toHaveBeenCalled();
+    });
+
+    it('rejects tree reads from a snapshot that is not ready', async () => {
+      db.select.mockReturnValueOnce(
+        createSelectChainWithLimit([
+          buildSnapshot({ status: 'creating', sizeBytes: 10 }),
+        ]),
+      );
+
+      await expect(
+        service.getFileTree(TEST_TENANT_ID, TEST_WORKSPACE_ID),
+      ).rejects.toThrow('not found or not ready');
+    });
+
+    it('falls back from a failing live tree to the persisted snapshot', async () => {
+      const snapshot = buildSnapshot({ sizeBytes: 1024 });
+      const archive = createTarArchive([
+        { path: 'workspace/fallback.txt', type: 'file', content: 'saved' },
+      ]);
+      db.execute.mockResolvedValueOnce([{ runtimeHandle: TEST_CONTAINER_ID }]);
+      mockRuntimeDriver.getArchive.mockRejectedValueOnce('live unavailable');
+      db.select.mockReturnValueOnce(createSelectChainWithLimit([snapshot]));
+      mockStorageService.download.mockResolvedValueOnce(
+        createReadableStreamFromBuffer(archive),
+      );
+
+      await expect(
+        service.getFileTree(TEST_TENANT_ID, TEST_WORKSPACE_ID),
+      ).resolves.toEqual([
+        {
+          name: 'fallback.txt',
+          type: 'file',
+          path: 'fallback.txt',
+          size: 5,
+        },
+      ]);
+    });
+
+    it('treats blank and malformed active-runtime query output as no runtime', async () => {
+      const empty = buildSnapshot({ sizeBytes: 0 });
+      db.execute
+        .mockResolvedValueOnce({ rows: [{ runtimeHandle: '   ' }] })
+        .mockResolvedValueOnce({ rows: 'invalid' });
+      db.select
+        .mockReturnValueOnce(createSelectChainWithLimit([empty]))
+        .mockReturnValueOnce(createSelectChainWithLimit([empty]));
+
+      await expect(
+        service.getFileTree(TEST_TENANT_ID, TEST_WORKSPACE_ID),
+      ).resolves.toEqual([]);
+      await expect(
+        service.getFileTree(TEST_TENANT_ID, TEST_WORKSPACE_ID),
+      ).resolves.toEqual([]);
+    });
+
+    it('rejects preview and asset reads from empty snapshots without downloading', async () => {
+      const empty = buildSnapshot({ sizeBytes: 0 });
+      db.select
+        .mockReturnValueOnce(createSelectChainWithLimit([empty]))
+        .mockReturnValueOnce(createSelectChainWithLimit([empty]));
+
+      await expect(
+        service.getFilePreview(
+          TEST_TENANT_ID,
+          TEST_WORKSPACE_ID,
+          'missing.txt',
+        ),
+      ).rejects.toThrow('不是普通文件');
+      await expect(
+        service.getFileAsset(TEST_TENANT_ID, TEST_WORKSPACE_ID, 'missing.txt'),
+      ).rejects.toThrow('不是普通文件');
+      expect(mockStorageService.download).not.toHaveBeenCalled();
+    });
+
+    it('rejects preview reads from non-ready snapshots and unsafe paths', async () => {
+      db.select
+        .mockReturnValueOnce(
+          createSelectChainWithLimit([
+            buildSnapshot({ status: 'creating', sizeBytes: 10 }),
+          ]),
+        )
+        .mockReturnValueOnce(
+          createSelectChainWithLimit([buildSnapshot({ sizeBytes: 10 })]),
+        );
+
+      await expect(
+        service.getFilePreview(TEST_TENANT_ID, TEST_WORKSPACE_ID, 'readme.md'),
+      ).rejects.toThrow('not found or not ready');
+      await expect(
+        service.getFilePreview(TEST_TENANT_ID, TEST_WORKSPACE_ID, '../secret'),
+      ).rejects.toThrow('路径穿越被拒绝');
+    });
+
+    it('falls back from live preview and asset errors to persisted raw bytes', async () => {
+      const snapshot = buildSnapshot({ sizeBytes: 1024 });
+      const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0]);
+      const archive = createTarArchive([
+        { path: 'workspace/cover.png', type: 'file', content: png },
+      ]);
+      db.execute
+        .mockResolvedValueOnce({ rows: [{ runtimeHandle: TEST_CONTAINER_ID }] })
+        .mockResolvedValueOnce({
+          rows: [{ runtimeHandle: TEST_CONTAINER_ID }],
+        });
+      mockRuntimeDriver.getArchive
+        .mockRejectedValueOnce(new Error('preview live failed'))
+        .mockRejectedValueOnce('asset live failed');
+      db.select
+        .mockReturnValueOnce(createSelectChainWithLimit([snapshot]))
+        .mockReturnValueOnce(createSelectChainWithLimit([snapshot]));
+      mockStorageService.download
+        .mockResolvedValueOnce(createReadableStreamFromBuffer(archive))
+        .mockResolvedValueOnce(createReadableStreamFromBuffer(archive));
+
+      await expect(
+        service.getFilePreview(TEST_TENANT_ID, TEST_WORKSPACE_ID, 'cover.png'),
+      ).resolves.toMatchObject({ kind: 'image', mimeType: 'image/png' });
+      await expect(
+        service.getFileAsset(TEST_TENANT_ID, TEST_WORKSPACE_ID, 'cover.png'),
+      ).resolves.toEqual({
+        path: 'cover.png',
+        fileName: 'cover.png',
+        size: png.length,
+        mimeType: 'image/png',
+        content: png,
+      });
+    });
+
+    it('returns a live raw asset and supports the single-file archive fallback', async () => {
+      const payload = Buffer.from('live bytes');
+      const archive = createTarArchive([
+        {
+          path: 'workspace/runtime-name.dat',
+          type: 'file',
+          content: payload,
+        },
+      ]);
+      db.execute.mockResolvedValueOnce({
+        rows: [{ runtimeHandle: TEST_CONTAINER_ID }],
+      });
+      mockRuntimeDriver.getArchive.mockResolvedValueOnce(
+        createReadableStreamFromBuffer(archive),
+      );
+
+      await expect(
+        service.getFileAsset(
+          TEST_TENANT_ID,
+          TEST_WORKSPACE_ID,
+          'requested-name.dat',
+        ),
+      ).resolves.toEqual({
+        path: 'requested-name.dat',
+        fileName: 'requested-name.dat',
+        size: payload.length,
+        mimeType: 'text/plain',
+        content: payload,
+      });
+      expect(mockStorageService.download).not.toHaveBeenCalled();
+    });
+
+    it('falls back when a live archive has no ordinary file', async () => {
+      const snapshot = buildSnapshot({ sizeBytes: 1024 });
+      const liveArchive = createTarArchive([
+        { path: 'workspace/docs', type: 'directory' },
+      ]);
+      const savedArchive = createTarArchive([
+        { path: 'workspace/docs/readme.md', type: 'file', content: 'saved' },
+      ]);
+      db.execute.mockResolvedValueOnce({
+        rows: [{ runtimeHandle: TEST_CONTAINER_ID }],
+      });
+      mockRuntimeDriver.getArchive.mockResolvedValueOnce(
+        createReadableStreamFromBuffer(liveArchive),
+      );
+      db.select.mockReturnValueOnce(createSelectChainWithLimit([snapshot]));
+      mockStorageService.download.mockResolvedValueOnce(
+        createReadableStreamFromBuffer(savedArchive),
+      );
+
+      await expect(
+        service.getFilePreview(
+          TEST_TENANT_ID,
+          TEST_WORKSPACE_ID,
+          'docs/readme.md',
+        ),
+      ).resolves.toMatchObject({ kind: 'text', content: 'saved' });
+    });
+
+    it('rejects edits for non-ready, empty, missing, and directory targets', async () => {
+      const nonReady = buildSnapshot({ status: 'creating', sizeBytes: 10 });
+      const empty = buildSnapshot({ sizeBytes: 0 });
+      const archive = createTarArchive([
+        { path: 'workspace/docs', type: 'directory' },
+      ]);
+      db.select
+        .mockReturnValueOnce(createSelectChainWithLimit([nonReady]))
+        .mockReturnValueOnce(createSelectChainWithLimit([empty]))
+        .mockReturnValueOnce(
+          createSelectChainWithLimit([buildSnapshot({ sizeBytes: 1024 })]),
+        )
+        .mockReturnValueOnce(
+          createSelectChainWithLimit([buildSnapshot({ sizeBytes: 1024 })]),
+        );
+      mockStorageService.download
+        .mockResolvedValueOnce(createReadableStreamFromBuffer(archive))
+        .mockResolvedValueOnce(createReadableStreamFromBuffer(archive));
+
+      await expect(
+        service.updateTextFile(TEST_TENANT_ID, TEST_WORKSPACE_ID, 'a.txt', 'x'),
+      ).rejects.toThrow('not found or not ready');
+      await expect(
+        service.updateTextFile(TEST_TENANT_ID, TEST_WORKSPACE_ID, 'a.txt', 'x'),
+      ).rejects.toThrow('不是普通文件');
+      await expect(
+        service.updateTextFile(
+          TEST_TENANT_ID,
+          TEST_WORKSPACE_ID,
+          'missing.txt',
+          'x',
+        ),
+      ).rejects.toThrow('不是普通文件');
+      await expect(
+        service.updateTextFile(TEST_TENANT_ID, TEST_WORKSPACE_ID, 'docs', 'x'),
+      ).rejects.toThrow('不是普通文件');
+    });
+
+    it('rejects edited text that exceeds the online text boundary', async () => {
+      const archive = createTarArchive([
+        { path: 'workspace/a.txt', type: 'file', content: 'old' },
+      ]);
+      db.select.mockReturnValueOnce(
+        createSelectChainWithLimit([
+          buildSnapshot({ sizeBytes: archive.length }),
+        ]),
+      );
+      mockStorageService.download.mockResolvedValueOnce(
+        createReadableStreamFromBuffer(archive),
+      );
+
+      await expect(
+        service.updateTextFile(
+          TEST_TENANT_ID,
+          TEST_WORKSPACE_ID,
+          'a.txt',
+          'x'.repeat(10 * 1024 * 1024 + 1),
+        ),
+      ).rejects.toThrow('文本文件超过在线预览限制');
+      expect(mockStorageService.upload).not.toHaveBeenCalled();
+    });
+
+    it('repairs a legacy empty key without object IO and preserves the row if update returns nothing', async () => {
+      const legacy = buildSnapshot({
+        storageKey: buildLegacyEmptyWorkspaceStorageKey(TEST_TENANT_ID),
+        sizeBytes: 0,
+      });
+      db.select.mockReturnValueOnce(createSelectChainWithLimit([legacy]));
+      db.update.mockReturnValueOnce(createUpdateChainReturning([]));
+
+      await expect(
+        service.findOne(TEST_TENANT_ID, TEST_WORKSPACE_ID),
+      ).resolves.toMatchObject({ id: TEST_WORKSPACE_ID });
+      expect(mockStorageService.download).not.toHaveBeenCalled();
+      expect(mockStorageService.upload).not.toHaveBeenCalled();
+    });
+
+    it('preserves a legacy snapshot when re-home fails with a non-Error value', async () => {
+      const legacy = buildSnapshot({
+        storageKey: buildLegacyEmptyWorkspaceStorageKey(TEST_TENANT_ID),
+        sizeBytes: 512,
+      });
+      db.select.mockReturnValueOnce(createSelectChainWithLimit([legacy]));
+      mockStorageService.download.mockRejectedValueOnce('offline');
+
+      await expect(
+        service.findOne(TEST_TENANT_ID, TEST_WORKSPACE_ID),
+      ).resolves.toMatchObject({ id: TEST_WORKSPACE_ID });
+    });
+
+    it('keeps a newly inserted empty snapshot when the canonical-key update returns no row', async () => {
+      const snapshot = buildSnapshot({
+        storageKey: 'pending',
+        sizeBytes: 0,
+        description: null,
+      });
+      db.insert.mockReturnValueOnce(createInsertChainReturning([snapshot]));
+      db.update.mockReturnValueOnce(createUpdateChainReturning([]));
+
+      await expect(
+        service.createEmpty(TEST_TENANT_ID, TEST_ORG_ID, TEST_USER_ID, 'empty'),
+      ).resolves.toBe(snapshot);
+    });
+
+    it('marks a snapshot deleted even when object deletion rejects with a non-Error value', async () => {
+      const snapshot = buildSnapshot();
+      db.select.mockReturnValueOnce(createSelectChainWithLimit([snapshot]));
+      db.update.mockReturnValueOnce(createUpdateChainNoReturning());
+      mockStorageService.delete.mockRejectedValueOnce('offline');
+
+      await expect(
+        service.delete(TEST_TENANT_ID, TEST_WORKSPACE_ID),
+      ).resolves.toBeUndefined();
+    });
+
+    it('handles Uint8Array and string chunks returned by live archive streams', async () => {
+      const payload = Buffer.from('chunked');
+      const archive = createTarArchive([
+        { path: 'workspace/chunk.txt', type: 'file', content: payload },
+      ]);
+      db.execute
+        .mockResolvedValueOnce({ rows: [{ runtimeHandle: TEST_CONTAINER_ID }] })
+        .mockResolvedValueOnce({
+          rows: [{ runtimeHandle: TEST_CONTAINER_ID }],
+        });
+      mockRuntimeDriver.getArchive
+        .mockResolvedValueOnce(Readable.from([new Uint8Array(archive)]))
+        .mockResolvedValueOnce(Readable.from([archive.toString('utf-8')]));
+
+      await expect(
+        service.getFileAsset(TEST_TENANT_ID, TEST_WORKSPACE_ID, 'chunk.txt'),
+      ).resolves.toMatchObject({ content: payload });
+      await expect(
+        service.getFileAsset(TEST_TENANT_ID, TEST_WORKSPACE_ID, 'chunk.txt'),
+      ).resolves.toMatchObject({ content: payload });
+    });
+
+    it('falls back from Error-valued live tree and asset failures', async () => {
+      const snapshot = buildSnapshot({ sizeBytes: 1024 });
+      const archive = createTarArchive([
+        { path: 'workspace/saved.txt', type: 'file', content: 'saved' },
+      ]);
+      db.execute
+        .mockResolvedValueOnce({ rows: [{ runtimeHandle: TEST_CONTAINER_ID }] })
+        .mockResolvedValueOnce({
+          rows: [{ runtimeHandle: TEST_CONTAINER_ID }],
+        });
+      mockRuntimeDriver.getArchive
+        .mockRejectedValueOnce(new Error('tree failed'))
+        .mockRejectedValueOnce(new Error('asset failed'));
+      db.select
+        .mockReturnValueOnce(createSelectChainWithLimit([snapshot]))
+        .mockReturnValueOnce(createSelectChainWithLimit([snapshot]));
+      mockStorageService.download
+        .mockResolvedValueOnce(createReadableStreamFromBuffer(archive))
+        .mockResolvedValueOnce(createReadableStreamFromBuffer(archive));
+
+      await expect(
+        service.getFileTree(TEST_TENANT_ID, TEST_WORKSPACE_ID),
+      ).resolves.toHaveLength(1);
+      await expect(
+        service.getFileAsset(TEST_TENANT_ID, TEST_WORKSPACE_ID, 'saved.txt'),
+      ).resolves.toMatchObject({ content: Buffer.from('saved') });
+    });
+
+    it('returns zero total when the count query omits its row', async () => {
+      const { dataChain, countChain } = createPaginatedChain([], 0);
+      countChain.from().where.mockResolvedValueOnce([]);
+      db.select.mockReturnValueOnce(dataChain).mockReturnValueOnce(countChain);
+
+      await expect(
+        service.findAll(TEST_TENANT_ID, {
+          page: 2,
+          pageSize: 5,
+          search: 'doc',
+        }),
+      ).resolves.toEqual({ data: [], total: 0 });
+    });
+  });
 });

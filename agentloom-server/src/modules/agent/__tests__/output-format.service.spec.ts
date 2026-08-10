@@ -340,4 +340,389 @@ describe('OutputFormatService', () => {
       expect(result.attempts[1]?.rawOutput).toBe('{"name":"ok"}');
     });
   });
+  describe('structured fallback boundaries', () => {
+    it('uses only the start level when degradation is disabled', async () => {
+      const { generateText } = await import('ai');
+      vi.mocked(generateText).mockRejectedValueOnce(new Error('provider down'));
+
+      const result = await service.executeStructuredOutput({
+        ...baseRequest,
+        strategy: { ...baseRequest.strategy, allowDegrade: false },
+      });
+
+      expect(result).toMatchObject({
+        outputFormatLevel: 'L1',
+        degraded: true,
+        data: null,
+        rawText: undefined,
+      });
+      expect(result.attempts).toEqual([
+        expect.objectContaining({
+          level: 'L1',
+          success: false,
+          error: 'L1 failed: provider down',
+        }),
+      ]);
+    });
+
+    it('starts at L2 for blank schema and accepts any valid JSON', async () => {
+      const { generateText } = await import('ai');
+      vi.mocked(generateText).mockResolvedValueOnce(
+        createGenerateTextResponse({ text: '[1,true,null]' }),
+      );
+
+      const result = await service.executeStructuredOutput({
+        ...baseRequest,
+        strategy: { ...baseRequest.strategy, outputSchema: '   ' },
+      });
+
+      expect(result).toMatchObject({
+        outputFormatLevel: 'L2',
+        degraded: false,
+        data: [1, true, null],
+      });
+      expect(vi.mocked(generateText).mock.calls[0]?.[0].prompt).toContain(
+        'You MUST respond with valid JSON matching this schema:',
+      );
+    });
+
+    it.each(['none', 'manual'] as const)(
+      '%s repair policy parses directly and records invalid JSON',
+      async (repairPolicy) => {
+        const { generateText } = await import('ai');
+        vi.mocked(generateText).mockResolvedValueOnce(
+          createGenerateTextResponse({ text: '{invalid}' }),
+        );
+
+        const result = await service.executeStructuredOutput({
+          ...baseRequest,
+          providerId: 'deepseek',
+          strategy: {
+            ...baseRequest.strategy,
+            strictness: 'strict',
+            allowDegrade: false,
+            repairPolicy,
+          },
+        });
+
+        expect(result.attempts[0]).toMatchObject({
+          level: 'L2',
+          success: false,
+          rawOutput: '{invalid}',
+        });
+      },
+    );
+    it.each([
+      [
+        'fenced',
+        'prefix\n```json\n{"name":"fenced"}\n```\nsuffix',
+        { name: 'fenced' },
+      ],
+      ['object', 'answer: {"name":"object"} thanks', { name: 'object' }],
+      ['array', 'answer: [1,2,3] thanks', [1, 2, 3]],
+    ] as const)(
+      'L4 extracts %s JSON from surrounding prose',
+      async (kind, text, data) => {
+        const { generateText } = await import('ai');
+        vi.mocked(generateText)
+          .mockRejectedValueOnce(new Error('L2 unavailable'))
+          .mockRejectedValueOnce(new Error('L3 unavailable'))
+          .mockResolvedValueOnce(createGenerateTextResponse({ text }));
+
+        const result = await service.executeStructuredOutput({
+          ...baseRequest,
+          providerId: 'deepseek',
+          strategy: {
+            ...baseRequest.strategy,
+            strictness: 'lenient',
+            outputSchema:
+              kind === 'array'
+                ? JSON.stringify({
+                    type: 'array',
+                    items: { type: 'number' },
+                  })
+                : baseSchema,
+          },
+        });
+
+        expect(result).toMatchObject({
+          outputFormatLevel: 'L4',
+          data,
+          rawText: text,
+        });
+        expect(result.attempts).toEqual([
+          expect.objectContaining({
+            level: 'L2',
+            success: false,
+            error: 'L2 failed: L2 unavailable',
+          }),
+          expect.objectContaining({
+            level: 'L3',
+            success: false,
+            error: 'L3 failed: L3 unavailable',
+          }),
+          expect.objectContaining({
+            level: 'L4',
+            success: true,
+            rawOutput: text,
+          }),
+        ]);
+      },
+    );
+
+    it('auto repair uses jsonrepair after direct parsing fails', async () => {
+      const { generateText } = await import('ai');
+      const { jsonrepair } = await import('jsonrepair');
+      vi.mocked(jsonrepair).mockReturnValueOnce('{"name":"repaired"}');
+      vi.mocked(generateText).mockResolvedValueOnce(
+        createGenerateTextResponse({ text: "{name:'repaired'}" }),
+      );
+
+      const result = await service.executeStructuredOutput({
+        ...baseRequest,
+        providerId: 'deepseek',
+      });
+
+      expect(result).toMatchObject({
+        outputFormatLevel: 'L2',
+        data: { name: 'repaired' },
+      });
+      expect(jsonrepair).toHaveBeenCalledWith("{name:'repaired'}");
+    });
+
+    it('rejects empty L2 output before attempting JSON repair', async () => {
+      const { generateText } = await import('ai');
+      const { jsonrepair } = await import('jsonrepair');
+      vi.mocked(generateText).mockResolvedValueOnce(
+        createGenerateTextResponse({ text: '   ' }),
+      );
+
+      const result = await service.executeStructuredOutput({
+        ...baseRequest,
+        providerId: 'deepseek',
+        strategy: {
+          ...baseRequest.strategy,
+          strictness: 'strict',
+          allowDegrade: false,
+        },
+      });
+
+      expect(result.attempts[0]).toMatchObject({
+        level: 'L2',
+        success: false,
+        error: 'L2 failed: Empty JSON output',
+        rawOutput: '   ',
+      });
+      expect(jsonrepair).not.toHaveBeenCalled();
+    });
+
+    it('L3 repairs a string output and derives raw output when text is blank', async () => {
+      const { generateText } = await import('ai');
+      const { jsonrepair } = await import('jsonrepair');
+      vi.mocked(jsonrepair).mockReturnValueOnce('{"name":"l3"}');
+      vi.mocked(generateText)
+        .mockResolvedValueOnce(
+          createGenerateTextResponse({ text: '{"wrong":true}' }),
+        )
+        .mockResolvedValueOnce(
+          createGenerateTextResponse({
+            text: '',
+            output: "{name:'l3'}",
+          }),
+        );
+
+      const result = await service.executeStructuredOutput({
+        ...baseRequest,
+        providerId: 'deepseek',
+      });
+
+      expect(result).toMatchObject({
+        outputFormatLevel: 'L3',
+        data: { name: 'l3' },
+      });
+      expect(result.attempts[1]?.rawOutput).toBe('"{name:\'l3\'}"');
+    });
+
+    it('keeps L4 raw text when extracted JSON fails validation', async () => {
+      const { generateText } = await import('ai');
+      vi.mocked(generateText)
+        .mockRejectedValueOnce(new Error('L2 unavailable'))
+        .mockRejectedValueOnce(new Error('L3 unavailable'))
+        .mockResolvedValueOnce(
+          createGenerateTextResponse({ text: 'answer {"wrong":true}' }),
+        );
+
+      const result = await service.executeStructuredOutput({
+        ...baseRequest,
+        strategy: { ...baseRequest.strategy, strictness: 'lenient' },
+        providerId: 'deepseek',
+      });
+
+      expect(result.attempts[2]).toMatchObject({
+        level: 'L4',
+        success: false,
+        rawOutput: 'answer {"wrong":true}',
+      });
+      expect(result.rawText).toBe('answer {"wrong":true}');
+    });
+    it('omits raw output when native structured-output errors expose non-text payloads', async () => {
+      const { generateText } = await import('ai');
+      const error = await createNoObjectGeneratedError('native failed', 'text');
+      Object.defineProperty(error, 'text', { value: 42 });
+      vi.mocked(generateText).mockRejectedValueOnce(error);
+
+      const result = await service.executeStructuredOutput({
+        ...baseRequest,
+        strategy: { ...baseRequest.strategy, allowDegrade: false },
+      });
+
+      expect(result.attempts[0]).toMatchObject({
+        level: 'L1',
+        success: false,
+        error: 'L1 native structured output failed: native failed',
+      });
+      expect(result.attempts[0]?.rawOutput).toBeUndefined();
+    });
+
+    it('falls back to L4 as the maximum for an unknown strictness value', async () => {
+      const { generateText } = await import('ai');
+      vi.mocked(generateText)
+        .mockRejectedValueOnce(new Error('L2 unavailable'))
+        .mockRejectedValueOnce(new Error('L3 unavailable'))
+        .mockResolvedValueOnce(
+          createGenerateTextResponse({ text: '{"name":"fallback"}' }),
+        );
+
+      const result = await service.executeStructuredOutput({
+        ...baseRequest,
+        providerId: 'deepseek',
+        strategy: {
+          ...baseRequest.strategy,
+          strictness: 'future-value' as never,
+        },
+      });
+
+      expect(result).toMatchObject({
+        outputFormatLevel: 'L4',
+        data: { name: 'fallback' },
+      });
+      expect(result.attempts.map((attempt) => attempt.level)).toEqual([
+        'L2',
+        'L3',
+        'L4',
+      ]);
+    });
+  });
+
+  describe('JSON Schema conversion contracts', () => {
+    it.each([
+      [{ type: 'string' }, 'text', true],
+      [{ type: 'string' }, 1, false],
+      [{ type: 'number' }, 1.5, true],
+      [{ type: 'integer' }, 1.5, false],
+      [{ type: 'boolean' }, false, true],
+      [{ type: 'null' }, null, true],
+      [{ type: 'array', items: { type: 'string' } }, ['a'], true],
+      [{ type: 'array' }, [1, 'a'], true],
+    ] as const)('validates primitive schema %#', (schema, value, success) => {
+      expect(
+        service.parseJsonSchemaToZod(JSON.stringify(schema)).safeParse(value)
+          .success,
+      ).toBe(success);
+    });
+
+    it('supports required, optional, strict, and typed additional properties', () => {
+      const strict = service.parseJsonSchemaToZod(
+        JSON.stringify({
+          type: 'object',
+          properties: {
+            required: { type: 'string' },
+            optional: { type: 'number' },
+          },
+          required: ['required'],
+          additionalProperties: false,
+        }),
+      );
+      expect(strict.safeParse({ required: 'yes' }).success).toBe(true);
+      expect(strict.safeParse({ required: 'yes', extra: true }).success).toBe(
+        false,
+      );
+      expect(strict.safeParse({}).success).toBe(false);
+
+      const catchall = service.parseJsonSchemaToZod(
+        JSON.stringify({
+          properties: {},
+          additionalProperties: { type: 'integer' },
+        }),
+      );
+      expect(catchall.safeParse({ count: 2 }).success).toBe(true);
+      expect(catchall.safeParse({ count: 2.5 }).success).toBe(false);
+    });
+
+    it('supports enums, anyOf, oneOf, and multi-type unions', () => {
+      const enumSchema = service.parseJsonSchemaToZod(
+        JSON.stringify({ enum: ['draft', 'published', null] }),
+      );
+      expect(enumSchema.safeParse('draft').success).toBe(true);
+      expect(enumSchema.safeParse(null).success).toBe(true);
+      expect(enumSchema.safeParse('other').success).toBe(false);
+
+      const anyOf = service.parseJsonSchemaToZod(
+        JSON.stringify({ anyOf: [{ type: 'string' }, { type: 'number' }] }),
+      );
+      expect(anyOf.safeParse('value').success).toBe(true);
+      expect(anyOf.safeParse(3).success).toBe(true);
+      expect(anyOf.safeParse(false).success).toBe(false);
+
+      const oneOf = service.parseJsonSchemaToZod(
+        JSON.stringify({ oneOf: [{ type: 'boolean' }] }),
+      );
+      expect(oneOf.safeParse(true).success).toBe(true);
+
+      const multi = service.parseJsonSchemaToZod(
+        JSON.stringify({ type: ['string', 'number', 'null'] }),
+      );
+      expect(multi.safeParse('x').success).toBe(true);
+      expect(multi.safeParse(4).success).toBe(true);
+      expect(multi.safeParse(null).success).toBe(true);
+    });
+
+    it('infers object and array types and applies explicit nullability', () => {
+      const inferredObject = service.parseJsonSchemaToZod(
+        JSON.stringify({ properties: { value: { type: 'string' } } }),
+      );
+      expect(inferredObject.safeParse({ value: 'ok' }).success).toBe(true);
+
+      const inferredArray = service.parseJsonSchemaToZod(
+        JSON.stringify({ items: { type: 'boolean' } }),
+      );
+      expect(inferredArray.safeParse([true, false]).success).toBe(true);
+
+      const nullable = service.parseJsonSchemaToZod(
+        JSON.stringify({ type: 'string', nullable: true }),
+      );
+      expect(nullable.safeParse(null).success).toBe(true);
+
+      const emptyTypeWithProperties = service.parseJsonSchemaToZod(
+        JSON.stringify({ type: [], properties: { id: { type: 'string' } } }),
+      );
+      expect(emptyTypeWithProperties.safeParse({ id: 'a' }).success).toBe(true);
+
+      const booleanAdditionalProperties = service.parseJsonSchemaToZod(
+        JSON.stringify({ additionalProperties: true }),
+      );
+      expect(
+        booleanAdditionalProperties.safeParse({ arbitrary: 'value' }).success,
+      ).toBe(true);
+    });
+
+    it('uses a loose object for blank and unconstrained schemas', () => {
+      expect(
+        service.parseJsonSchemaToZod('   ').safeParse({ any: 1 }).success,
+      ).toBe(true);
+      const unconstrained = service.parseJsonSchemaToZod('{}');
+      expect(unconstrained.safeParse({ any: 1 }).success).toBe(true);
+      expect(unconstrained.safeParse('not-an-object').success).toBe(false);
+    });
+  });
 });

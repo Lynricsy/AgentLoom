@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 
 import { AgentExecutionWorker } from '../agent-execution.worker';
 import { AgentSandboxNotConnectedException } from '../../agent-definition/agent-definition.exceptions';
@@ -142,9 +142,26 @@ function createFailingAsyncIterable<T>(
   };
 }
 
+type PrepareRuntimeSession = (
+  context: Record<string, unknown>,
+  conversationId: string,
+  tenantId: string,
+  parentAbortSignal: AbortSignal,
+  subAgentTracker: { abortControllers: Map<string, AbortController> },
+  currentAgentDefinitionId: string,
+  initialPendingMessages?: unknown[],
+) => Promise<{
+  runtime: typeof mockRuntime;
+  session: Record<string, unknown>;
+  memorySessionIds?: string[];
+  restoredExistingSession?: boolean;
+  sandboxReused?: boolean;
+  lastPhase?: string;
+}>;
+
 type WorkerInternals = {
   loadConversationExecutionContext: ReturnType<typeof vi.fn>;
-  prepareRuntimeSession: ReturnType<typeof vi.fn>;
+  prepareRuntimeSession: Mock<PrepareRuntimeSession>;
   loadConversationHistoryMessages: ReturnType<typeof vi.fn>;
   loadPendingUserMessages: ReturnType<typeof vi.fn>;
   updateExecutionMetadata: ReturnType<typeof vi.fn>;
@@ -155,6 +172,67 @@ type WorkerInternals = {
   mergeExecutionMetadata: ReturnType<typeof vi.fn>;
   writeExecutionMetadata: ReturnType<typeof vi.fn>;
   runConversationTurn: ReturnType<typeof vi.fn>;
+  resolveConversationStartupRuntimeConfig: (
+    runtimeConfig: Record<string, unknown>,
+    tenantId: string,
+    pendingMessages: unknown[],
+  ) => Promise<Record<string, unknown>>;
+  selectConversationRoutingModelId: (params: {
+    tenantId: string;
+    routingConfig: Record<string, unknown>;
+    candidateModelIds: string[];
+    pendingMessages: unknown[];
+  }) => Promise<string | undefined>;
+  describeConversationExecutionError: (error: unknown) => {
+    errorMessage: string;
+    errorCode?: string;
+    rawErrorMessage?: string;
+  };
+  materializePendingMessagesForRuntime: (
+    pendingMessages: Array<Record<string, unknown>>,
+    conversationId: string,
+    tenantId: string,
+    runtimeMode: string | undefined,
+  ) => Promise<Array<Record<string, unknown>>>;
+  runSubAgentPrompt: (
+    runtime: typeof mockRuntime,
+    session: Record<string, unknown>,
+    task: string,
+    context?: string,
+    eventProxy?: { emitEvent: (event: unknown) => void },
+  ) => Promise<{
+    content: string;
+    stopReason: string;
+    decision?: Record<string, unknown>;
+  }>;
+  buildSubAgentPrompt: (task: string, context?: string) => string;
+  startConversationWorkspaceWatcher: (
+    conversationId: string,
+    tenantId: string,
+  ) => Promise<void>;
+  registerMemoryToolsProvider: (
+    runtime: typeof mockRuntime,
+    sessionId: string,
+    memorySessionIds: string[],
+  ) => void;
+  cleanupConversationMemorySessions: (
+    tenantId: string,
+    memorySessionIds: string[] | undefined,
+  ) => Promise<void>;
+  emitPreparationPhase: (
+    tenantId: string,
+    conversationId: string,
+    phase: string,
+    extra?: {
+      sandboxReused?: boolean;
+      failedPhase?: string;
+      error?: string;
+    },
+  ) => void;
+  resolveAgentRuntimeMode: (
+    definitionRuntimeMode: unknown,
+    snapshotRuntimeMode: unknown,
+  ) => string;
 };
 
 function createJob(name: string, data: Record<string, unknown>) {
@@ -3048,5 +3126,329 @@ describe('AgentExecutionWorker', () => {
     expect(
       mockSandboxService.scheduleConversationIdleAutoEnd,
     ).not.toHaveBeenCalled();
+  });
+
+  describe('branch contracts — runtime defaults and failures', () => {
+    it('model routing covers absent, single, unsupported, empty-decision and thrown strategies', async () => {
+      const unchanged = { modelConfig: { modelId: 'model-original' } };
+      await expect(
+        workerInternals.resolveConversationStartupRuntimeConfig(
+          unchanged,
+          'tenant-1',
+          [],
+        ),
+      ).resolves.toBe(unchanged);
+
+      await expect(
+        workerInternals.selectConversationRoutingModelId({
+          tenantId: 'tenant-1',
+          routingConfig: {},
+          candidateModelIds: ['model-only'],
+          pendingMessages: [],
+        }),
+      ).resolves.toBe('model-only');
+      expect(mockSmartRoutingService.evaluate).not.toHaveBeenCalled();
+
+      await expect(
+        workerInternals.selectConversationRoutingModelId({
+          tenantId: 'tenant-1',
+          routingConfig: { strategy: 'unsupported-strategy' },
+          candidateModelIds: ['model-first', 'model-second'],
+          pendingMessages: [],
+        }),
+      ).resolves.toBe('model-first');
+
+      mockSmartRoutingService.evaluate.mockResolvedValueOnce({
+        selectedModelId: undefined,
+      });
+      const noDecisionConfig = {
+        routingConfig: {
+          strategy: 'FALLBACK_CHAIN',
+          candidateModelIds: ['model-first', 'model-second'],
+        },
+      };
+      await expect(
+        workerInternals.resolveConversationStartupRuntimeConfig(
+          noDecisionConfig,
+          'tenant-1',
+          [],
+        ),
+      ).resolves.toBe(noDecisionConfig);
+
+      mockSmartRoutingService.evaluate.mockRejectedValueOnce(
+        'routing service unavailable',
+      );
+      await expect(
+        workerInternals.selectConversationRoutingModelId({
+          tenantId: 'tenant-1',
+          routingConfig: { strategy: 'FALLBACK_CHAIN' },
+          candidateModelIds: ['model-first', 'model-second'],
+          pendingMessages: [{ content: 'route this request' }],
+        }),
+      ).resolves.toBe('model-first');
+    });
+
+    it('restores an existing sandbox runtime session and reuses its watcher binding', async () => {
+      mockAdapterFactory.selectAdapter.mockReturnValue(mockSandboxRuntime);
+      mockSandboxService.findByConversationId.mockResolvedValue({
+        id: 'sandbox-session-1',
+        runtimeHandle: 'runtime-handle-1',
+      });
+      mockSkillResolverService.resolveSkillsForAgent.mockResolvedValue([]);
+      mockSandboxRuntime.loadSession.mockResolvedValue(
+        makeSession({ id: 'restored-session-1' }),
+      );
+
+      const result = await workerInternals.prepareRuntimeSession(
+        makeActiveContext({
+          runtimeConfig: {
+            runtimeMode: 'sandbox',
+            sandboxConfig: { image: 'agentloom/sandbox:latest' },
+            modelConfig: { modelId: 'model-1' },
+          },
+          executionMetadata: { sessionId: 'restored-session-1' },
+        }),
+        'conversation-1',
+        'tenant-1',
+        new AbortController().signal,
+        { abortControllers: new Map() },
+        'agent-1',
+      );
+
+      expect(result).toEqual(
+        expect.objectContaining({
+          session: expect.objectContaining({ id: 'restored-session-1' }),
+          restoredExistingSession: true,
+          sandboxReused: true,
+        }),
+      );
+      expect(mockSandboxRuntime.createSession).not.toHaveBeenCalled();
+      expect(
+        mockWorkspaceIntegrationService.startFileWatcher,
+      ).toHaveBeenCalledWith('conversation-1', 'tenant-1', 'runtime-handle-1');
+    });
+
+    it('workspace watcher ignores a missing handle and starts for a concrete handle', async () => {
+      mockSandboxService.findByConversationId
+        .mockResolvedValueOnce({ id: 'sandbox-without-handle' })
+        .mockResolvedValueOnce({
+          id: 'sandbox-with-handle',
+          runtimeHandle: 'runtime-handle-2',
+        });
+
+      await workerInternals.startConversationWorkspaceWatcher(
+        'conversation-1',
+        'tenant-1',
+      );
+      expect(
+        mockWorkspaceIntegrationService.startFileWatcher,
+      ).not.toHaveBeenCalled();
+
+      await workerInternals.startConversationWorkspaceWatcher(
+        'conversation-1',
+        'tenant-1',
+      );
+      expect(
+        mockWorkspaceIntegrationService.startFileWatcher,
+      ).toHaveBeenCalledWith('conversation-1', 'tenant-1', 'runtime-handle-2');
+    });
+
+    it('normalizes definition and snapshot runtime-mode defaults', () => {
+      expect(
+        workerInternals.resolveAgentRuntimeMode('no_sandbox', 'sandbox'),
+      ).toBe('sandbox');
+      expect(
+        workerInternals.resolveAgentRuntimeMode('sandbox', 'no_sandbox'),
+      ).toBe('no_sandbox');
+      expect(
+        workerInternals.resolveAgentRuntimeMode('no_sandbox', undefined),
+      ).toBe('no_sandbox');
+      expect(
+        workerInternals.resolveAgentRuntimeMode('unexpected', undefined),
+      ).toBe('sandbox');
+    });
+  });
+
+  describe('branch contracts — attachments, memory, loop and retry', () => {
+    it('keeps messages unchanged for optional attachment paths and staging failures', async () => {
+      const plain = {
+        id: 'plain',
+        content: 'plain message',
+        metadata: {},
+        createdAt: new Date(),
+      };
+      await expect(
+        workerInternals.materializePendingMessagesForRuntime(
+          [plain],
+          'conversation-1',
+          'tenant-1',
+          'no_sandbox',
+        ),
+      ).resolves.toEqual([plain]);
+
+      mockWorkspaceIntegrationService.stageConversationAttachment
+        .mockResolvedValueOnce(undefined)
+        .mockRejectedValueOnce('stage unavailable');
+      const attachment = {
+        kind: 'file',
+        fileName: 'notes.txt',
+        mimeType: 'text/plain',
+        sizeBytes: 4,
+        textContent: 'note',
+      };
+      const unstaged = {
+        id: 'unstaged',
+        content: 'first',
+        metadata: { attachment },
+        createdAt: new Date(),
+      };
+      const failed = {
+        id: 'failed',
+        content: 'second',
+        metadata: { attachment },
+        createdAt: new Date(),
+      };
+
+      await expect(
+        workerInternals.materializePendingMessagesForRuntime(
+          [plain, unstaged, failed],
+          'conversation-1',
+          'tenant-1',
+          'sandbox',
+        ),
+      ).resolves.toEqual([plain, unstaged, failed]);
+    });
+
+    it('sub-agent prompt retries after tool_use, forwards events and preserves decision', async () => {
+      const emitEvent = vi.fn();
+      mockRuntime.prompt
+        .mockReturnValueOnce(
+          createAsyncIterable([
+            { type: 'message_chunk', content: 'first ' },
+            {
+              type: 'decision',
+              action: 'delegate',
+              reasoning: 'need a tool',
+            },
+            { type: 'done', stopReason: 'tool_use' },
+          ]),
+        )
+        .mockReturnValueOnce(
+          createAsyncIterable([
+            { type: 'message_chunk', content: 'second' },
+            { type: 'done', stopReason: 'end_turn' },
+          ]),
+        );
+
+      const result = await workerInternals.runSubAgentPrompt(
+        mockRuntime,
+        makeSession(),
+        ' inspect ',
+        '  extra context  ',
+        { emitEvent },
+      );
+
+      expect(mockRuntime.prompt).toHaveBeenNthCalledWith(2, 'session-1', []);
+      expect(emitEvent).toHaveBeenCalledTimes(5);
+      expect(result).toEqual(
+        expect.objectContaining({
+          content: 'first second',
+          stopReason: 'end_turn',
+          decision: expect.objectContaining({ action: 'delegate' }),
+        }),
+      );
+      expect(workerInternals.buildSubAgentPrompt('plain task', '   ')).toBe(
+        'plain task',
+      );
+      expect(
+        workerInternals.buildSubAgentPrompt(' inspect ', ' context '),
+      ).toContain('额外上下文：\ncontext');
+    });
+
+    it('memory tools and cleanup skip absent optional inputs without side effects', async () => {
+      workerInternals.registerMemoryToolsProvider(mockRuntime, 'session-1', []);
+      await workerInternals.cleanupConversationMemorySessions(
+        'tenant-1',
+        undefined,
+      );
+
+      expect(
+        mockMemoryToolsService.createSessionToolProvider,
+      ).not.toHaveBeenCalled();
+      expect(mockDb.select).not.toHaveBeenCalled();
+      expect(mockMemoryResourceProvider.destroy).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('branch contracts — observable error metadata', () => {
+    it('describes unknown, provider and upstream failures without losing raw details', () => {
+      expect(
+        workerInternals.describeConversationExecutionError('plain failure'),
+      ).toEqual({
+        errorMessage: 'Agent conversation execution failed',
+      });
+
+      const providerError = Object.assign(new Error('provider rejected'), {
+        code: 'MODEL_PROVIDER_ERROR',
+        rawMessage: 'provider raw detail',
+      });
+      expect(
+        workerInternals.describeConversationExecutionError(providerError),
+      ).toEqual({
+        errorMessage:
+          '模型提供方错误（MODEL_PROVIDER_ERROR: provider raw detail）',
+        errorCode: 'MODEL_PROVIDER_ERROR',
+        rawErrorMessage: 'provider raw detail',
+      });
+
+      expect(
+        workerInternals.describeConversationExecutionError(
+          new Error('stream terminated unexpectedly'),
+        ),
+      ).toEqual({
+        errorMessage: '上游模型流中断（stream terminated unexpectedly）',
+        rawErrorMessage: 'stream terminated unexpectedly',
+      });
+    });
+
+    it('emits preparation defaults and optional failure metadata', () => {
+      workerInternals.emitPreparationPhase(
+        'tenant-1',
+        'conversation-1',
+        'queued',
+      );
+      workerInternals.emitPreparationPhase(
+        'tenant-1',
+        'conversation-1',
+        'running',
+        {
+          sandboxReused: false,
+          failedPhase: 'sandbox_creating',
+          error: 'sandbox unavailable',
+        },
+      );
+
+      expect(
+        mockEventBridge.emitExecutionStatusChanged,
+      ).toHaveBeenNthCalledWith(1, 'tenant-1', 'conversation-1', {
+        executionId: 'conversation-1',
+        status: 'preparing',
+        executionType: 'conversation',
+        phase: 'queued',
+      });
+      expect(
+        mockEventBridge.emitExecutionStatusChanged,
+      ).toHaveBeenNthCalledWith(
+        2,
+        'tenant-1',
+        'conversation-1',
+        expect.objectContaining({
+          status: 'running',
+          sandboxReused: false,
+          failedPhase: 'sandbox_creating',
+          error: 'sandbox unavailable',
+        }),
+      );
+    });
   });
 });

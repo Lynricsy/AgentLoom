@@ -13,7 +13,10 @@ import {
   buildGenerationPlan,
   buildStaticContracts,
 } from '../plan-builders/generation-plan.builder';
-import { buildIntegrationPlan } from '../plan-builders/integration-plan.builder';
+import {
+  buildIntegrationPlan,
+  evaluateGate4IntegrationPlan,
+} from '../plan-builders/integration-plan.builder';
 import { GeneratedAppGate3WorkspaceRunner } from '../generated-app.workspace';
 import { GeneratedAppGate4IntegrationRunner } from '../generated-app.integration-runner';
 import { buildGeneratedAppRuntimeForm } from '../generated-app.runtime';
@@ -558,5 +561,365 @@ describe('GeneratedAppGate4IntegrationRunner', () => {
         }),
       ]),
     );
+  });
+  it.each([
+    'integration-skeleton',
+    'fixture-integration',
+    'real-local-integration',
+  ] as const)('builder 应接受 %s execution level 的完整计划', (level) => {
+    const plans = buildGate4Plans(level);
+    const evaluation = evaluateGate4IntegrationPlan(
+      plans.appSpec,
+      plans.generationPlan,
+      plans.staticContracts,
+      plans.buildUnitPlan,
+      plans.integrationPlan,
+    );
+
+    expect(evaluation.status).toBe('passed');
+    expect(evaluation.failure).toBeNull();
+    expect(evaluation.evidence.length).toBeGreaterThan(5);
+  });
+
+  it('builder 应为私有插件与缺省 workspace/traceability 生成完整的集成引用', () => {
+    const appSpec: GeneratedAppSpec = {
+      ...createAppSpec(),
+      traceability: [],
+    };
+    const generationPlan = buildGenerationPlan(appSpec);
+    const generationPlanWithPlugin: GeneratedAppGenerationPlan = {
+      ...generationPlan,
+      pluginTools: {
+        ...generationPlan.pluginTools,
+        tools: [
+          {
+            toolId: 'tool-intake-score',
+            purpose: '对公开问诊输入生成结构化评分。',
+            requirementIds: ['req-1'],
+            permissionNotes: ['禁止隐式网络、存储、知识库或 LLM 权限。'],
+          },
+        ],
+        emptyReason: null,
+      },
+    };
+    const staticContracts = buildStaticContracts(
+      appSpec,
+      generationPlanWithPlugin,
+    );
+    const gate3Runner = new GeneratedAppGate3WorkspaceRunner(
+      createConfigService(),
+    );
+    const builtUnitPlan = buildBuildUnitPlanForTest(
+      appSpec,
+      generationPlanWithPlugin,
+      staticContracts,
+      gate3Runner,
+    );
+    const buildUnitPlan = {
+      ...builtUnitPlan,
+      generationWorkspace: undefined,
+    } as unknown as GeneratedAppBuildUnitPlan;
+
+    const integrationPlan = buildIntegrationPlan(
+      appSpec,
+      generationPlanWithPlugin,
+      staticContracts,
+      buildUnitPlan,
+      'real-local-integration',
+    );
+    const evaluation = evaluateGate4IntegrationPlan(
+      appSpec,
+      generationPlanWithPlugin,
+      staticContracts,
+      buildUnitPlan,
+      integrationPlan,
+    );
+
+    expect(integrationPlan.testResources.generatedAppWorkspacePath).toBe(
+      'generated-app-workspace',
+    );
+    expect(integrationPlan.requirementCoverage).toEqual([
+      expect.objectContaining({
+        requirementId: 'req-1',
+        scenarioIds: [],
+        coveredByCheckIds: expect.arrayContaining([
+          'gate-4-plugin-smoke-tool-intake-score',
+        ]),
+      }),
+    ]);
+    expect(integrationPlan.pluginSandboxSmokeExpectations).toEqual({
+      tools: [
+        expect.objectContaining({
+          toolId: 'tool-intake-score',
+          artifactId: 'plugin-bundle-tool-intake-score',
+          expectedTraceArtifactId: 'plugin-smoke-trace-tool-intake-score',
+          sandboxRuntime: 'wasm-extism',
+        }),
+      ],
+      emptyReason: null,
+    });
+    expect(integrationPlan.traceArtifacts).toContainEqual(
+      expect.objectContaining({
+        artifactId: 'plugin-smoke-trace-tool-intake-score',
+        kind: 'plugin_sandbox_smoke_trace',
+      }),
+    );
+    expect(evaluation.status).toBe('passed');
+    expect(evaluation.repairInstructions).toBeNull();
+  });
+
+  it('builder 应聚合缺省 route、workspace、command、evidence 与 plugin policy 缺口', () => {
+    const plans = buildGate4Plans('real-local-integration');
+    const malformedPlan = {
+      ...plans.integrationPlan,
+      planVersion: 2,
+      appSpecVersion: 2,
+      generationPlanVersion: 2,
+      staticContractsVersion: 2,
+      buildUnitPlanVersion: 2,
+      skeletonDisclaimer: '',
+      testTenant: {
+        tenantKind: 'production',
+        tenantAlias: '',
+        authMode: 'bearer',
+        usesRealTokens: true,
+        noProductionResources: false,
+      },
+      testResources: {
+        resourceIsolation: 'shared',
+        usesRealTokens: true,
+        generatedAppWorkspacePath: '',
+        fixtureDirectory: '',
+        requiredScenarioIds: [],
+      },
+      publicRuntimeApiChecks: [
+        {
+          checkId: '',
+          kind: '',
+          method: 'DELETE',
+          pathTemplate: '',
+          staticContractIds: [],
+          requirementIds: [],
+          scenarioIds: [],
+          expectedStatus: 500,
+          payloadContractRefs: [],
+        },
+        {
+          ...plans.integrationPlan.publicRuntimeApiChecks[0],
+          checkId: 'unknown-public-check',
+          kind: 'public_runtime_submit',
+          pathTemplate: '/generated-apps/{appId}/generation-runs',
+        },
+      ],
+      creatorManagementApiChecks: [
+        {
+          checkId: '',
+          kind: '',
+          method: 'POST',
+          pathTemplate: '',
+          staticContractIds: [],
+          requirementIds: [],
+          expectedStatus: 201,
+        },
+        {
+          ...plans.integrationPlan.creatorManagementApiChecks[0],
+          checkId: 'unknown-creator-check',
+          kind: 'creator_gate_run_query',
+          pathTemplate: '/generated-apps/public/{token}',
+        },
+      ],
+      agentWorkflowDryRunExpectations: {
+        expectationLevel: 'production',
+        orchestrationNodeIds: [],
+        orchestrationEdgeRefs: [],
+        fixtures: [
+          {
+            fixtureId: '',
+            scenarioId: '',
+            requirementIds: [],
+            orchestrationNodeIds: [],
+            orchestrationEdgeRefs: [],
+            inputMapping: null,
+            outputMapping: null,
+            traceArtifactIds: [],
+          },
+        ],
+      },
+      pluginSandboxSmokeExpectations: {
+        tools: [
+          {
+            toolId: '',
+            smokeCheckId: '',
+            artifactId: '',
+            fixturePath: '',
+            expectedTraceArtifactId: '',
+            requirementIds: [],
+            sandboxRuntime: 'node',
+          },
+        ],
+        emptyReason: '',
+      },
+      dependencyArtifacts: [
+        {
+          artifactId: '',
+          kind: '',
+          sourceGateId: 'gate-2',
+          path: '',
+          required: false,
+        },
+      ],
+      acceptanceScenarioCoverage: [
+        {
+          scenarioId: '',
+          requirementIds: [],
+          coveredByCheckIds: [],
+          fixtureIds: [],
+        },
+      ],
+      requirementCoverage: [
+        {
+          requirementId: '',
+          scenarioIds: [],
+          coveredByCheckIds: [],
+          dependencyArtifactIds: [],
+        },
+      ],
+      orchestrationCoverage: [
+        {
+          nodeId: '',
+          edgeRefs: [],
+          coveredByFixtureIds: [],
+          coveredByCheckIds: [],
+        },
+      ],
+      traceArtifacts: [
+        {
+          artifactId: '',
+          kind: '',
+          path: '',
+          producedByCheckIds: [],
+        },
+      ],
+      failureCaptureFields: [],
+    } as unknown as GeneratedAppIntegrationPlan;
+
+    const evaluation = evaluateGate4IntegrationPlan(
+      plans.appSpec,
+      plans.generationPlan,
+      plans.staticContracts,
+      plans.buildUnitPlan,
+      malformedPlan,
+    );
+    const failureDetails = JSON.stringify(evaluation.failure?.details);
+
+    expect(evaluation.status).toBe('failed');
+    expect(evaluation.failure?.code).toBe('integration-plan-incomplete');
+    expect(evaluation.repairInstructions).toContain('integrationPlan');
+    expect(failureDetails).toContain('planVersion 必须为 1');
+    expect(failureDetails).toContain('testTenant.tenantAlias 缺失');
+    expect(failureDetails).toContain(
+      'testResources.generatedAppWorkspacePath 缺失',
+    );
+    expect(failureDetails).toContain(
+      'publicRuntimeApiChecks[0].pathTemplate 缺失',
+    );
+    expect(failureDetails).toContain(
+      'creatorManagementApiChecks[0].method 必须为 GET',
+    );
+    expect(failureDetails).toContain(
+      'agentWorkflowDryRunExpectations.fixtures[0].inputMapping',
+    );
+    expect(failureDetails).toContain(
+      'pluginSandboxSmokeExpectations.tools[0].sandboxRuntime 必须为 wasm-extism',
+    );
+    expect(failureDetails).toContain(
+      'dependencyArtifacts[0].required 必须为 true',
+    );
+    expect(failureDetails).toContain(
+      'acceptanceScenarioCoverage[0].scenarioId 缺失',
+    );
+    expect(failureDetails).toContain(
+      'requirementCoverage[0].requirementId 缺失',
+    );
+    expect(failureDetails).toContain('orchestrationCoverage[0].nodeId 缺失');
+    expect(failureDetails).toContain(
+      'traceArtifacts[0].producedByCheckIds 不能为空',
+    );
+    expect(failureDetails).toContain('failureCaptureFields');
+  });
+  it.each([
+    {
+      name: '非对象计划',
+      mutate: () => null,
+      issue: 'integrationPlan 不是对象',
+    },
+    {
+      name: '未知且缺失 public check id',
+      mutate: (plan: GeneratedAppIntegrationPlan) => ({
+        ...plan,
+        publicRuntimeApiChecks: plan.publicRuntimeApiChecks.map(
+          (check, index) =>
+            index === 0
+              ? { ...check, checkId: 'gate-4-unknown-public' }
+              : check,
+        ),
+      }),
+      issue: 'gate-4-unknown-public',
+    },
+    {
+      name: '重复 creator check id',
+      mutate: (plan: GeneratedAppIntegrationPlan) => ({
+        ...plan,
+        creatorManagementApiChecks: [
+          ...plan.creatorManagementApiChecks,
+          plan.creatorManagementApiChecks[0],
+        ],
+      }),
+      issue: '重复',
+    },
+    {
+      name: '缺少 trace artifacts',
+      mutate: (plan: GeneratedAppIntegrationPlan) => ({
+        ...plan,
+        traceArtifacts: [],
+      }),
+      issue: 'traceArtifacts',
+    },
+    {
+      name: '未知 dependency artifact',
+      mutate: (plan: GeneratedAppIntegrationPlan) => ({
+        ...plan,
+        dependencyArtifacts: plan.dependencyArtifacts.map((artifact, index) =>
+          index === 0
+            ? { ...artifact, artifactId: 'unknown-build-artifact' }
+            : artifact,
+        ),
+      }),
+      issue: 'unknown-build-artifact',
+    },
+    {
+      name: '非法 execution level',
+      mutate: (plan: GeneratedAppIntegrationPlan) => ({
+        ...plan,
+        executionLevel: 'production-integration',
+      }),
+      issue: 'executionLevel',
+    },
+  ])('builder 应聚合$name缺口并 fail closed', ({ mutate, issue }) => {
+    const plans = buildGate4Plans('real-local-integration');
+    const evaluation = evaluateGate4IntegrationPlan(
+      plans.appSpec,
+      plans.generationPlan,
+      plans.staticContracts,
+      plans.buildUnitPlan,
+      mutate(plans.integrationPlan),
+    );
+
+    expect(evaluation.status).toBe('failed');
+    expect(evaluation.failure?.code).toBe('integration-plan-incomplete');
+    expect(
+      evaluation.evidence.some((item) => item.summary.includes(issue)),
+    ).toBe(true);
+    expect(evaluation.repairInstructions).toContain('integrationPlan');
   });
 });

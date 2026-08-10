@@ -265,4 +265,222 @@ describe('ConversationTitleService', () => {
     expect(mockDb.update).not.toHaveBeenCalled();
     expect(mockEventEmitter.emit).not.toHaveBeenCalled();
   });
+
+  it('标题模型偏好有效时应优先于会话运行模型和默认模型', async () => {
+    const messageSelectChain = createSelectChain([
+      { role: 'user', content: '优先使用标题偏好' },
+    ]);
+    const updateChain = createUpdateChain();
+    const preferredConfig = { id: 'preferred-model' };
+    const preferredModel = { provider: 'preferred' };
+    mockDb.select.mockReturnValueOnce(messageSelectChain);
+    mockDb.update.mockReturnValue(updateChain);
+    mockUserPreferenceService.findByUser.mockResolvedValue({
+      titleModelConfigId: ' preferred-model ',
+    });
+    mockLlmService.findById.mockResolvedValue(preferredConfig);
+    mockPiAiAdapter.getModel.mockResolvedValue(preferredModel);
+    mockGenerateText.mockResolvedValue({ text: '  🎯 偏好模型  ' });
+
+    const title = await service.generateTitle(
+      'conversation-1',
+      'tenant-1',
+      'user-1',
+    );
+
+    expect(title).toBe('🎯 偏好模型');
+    expect(mockLlmService.findById).toHaveBeenCalledWith(
+      'preferred-model',
+      'tenant-1',
+    );
+    expect(mockPiAiAdapter.getModel).toHaveBeenCalledWith(preferredConfig);
+    expect(mockLlmService.findDefaultByType).not.toHaveBeenCalled();
+    expect(
+      mockAgentDefinitionService.buildRuntimeConfigFromNodes,
+    ).not.toHaveBeenCalled();
+  });
+
+  it('未传 userId 时应读取会话创建者并解析其偏好', async () => {
+    const creatorSelectChain = createSelectChain([{ createdBy: 'creator-1' }]);
+    const messageSelectChain = createSelectChain([
+      { role: 'user', content: '从创建者读取偏好' },
+    ]);
+    const updateChain = createUpdateChain();
+    mockDb.select
+      .mockReturnValueOnce(creatorSelectChain)
+      .mockReturnValueOnce(messageSelectChain);
+    mockDb.update.mockReturnValue(updateChain);
+    mockUserPreferenceService.findByUser.mockResolvedValue({
+      titleModelConfigId: 'creator-model',
+    });
+    mockLlmService.findById.mockResolvedValue({ id: 'creator-model' });
+    mockPiAiAdapter.getModel.mockResolvedValue({ provider: 'mock' });
+    mockGenerateText.mockResolvedValue({ text: '👤 创建者偏好' });
+
+    await expect(
+      service.generateTitle('conversation-1', 'tenant-1'),
+    ).resolves.toBe('👤 创建者偏好');
+
+    expect(mockUserPreferenceService.findByUser).toHaveBeenCalledWith(
+      'creator-1',
+      'tenant-1',
+    );
+  });
+
+  it('发布版本存在时应从版本快照解析 fallback 路由模型', async () => {
+    const messageSelectChain = createSelectChain([
+      { role: 'user', content: '使用已发布快照' },
+    ]);
+    const conversationSelectChain = createSelectChain([
+      { agentDefinitionId: 'agent-1' },
+    ]);
+    const definitionSelectChain = createSelectChain([
+      {
+        id: 'agent-1',
+        publishedVersionId: 'version-1',
+        nodes: [{ id: 'draft-node' }],
+        edges: [{ id: 'draft-edge' }],
+        runtimeMode: 'sandbox',
+      },
+    ]);
+    const versionSelectChain = createSelectChain([
+      {
+        snapshot: {
+          nodes: [{ id: 'published-node' }],
+          edges: [{ id: 'published-edge' }],
+          runtimeMode: 'no_sandbox',
+        },
+      },
+    ]);
+    mockDb.select
+      .mockReturnValueOnce(messageSelectChain)
+      .mockReturnValueOnce(conversationSelectChain)
+      .mockReturnValueOnce(definitionSelectChain)
+      .mockReturnValueOnce(versionSelectChain);
+    mockDb.update.mockReturnValue(createUpdateChain());
+    mockUserPreferenceService.findByUser.mockResolvedValue(null);
+    mockAgentDefinitionService.buildRuntimeConfigFromNodes.mockReturnValue({
+      routingConfig: {
+        fallbackModelId: 'fallback-model',
+        candidateModelIds: ['candidate-model'],
+      },
+    });
+    mockLlmService.findById.mockResolvedValue({ id: 'fallback-model' });
+    mockPiAiAdapter.getModel.mockResolvedValue({ provider: 'mock' });
+    mockGenerateText.mockResolvedValue({ text: '📦 发布版本' });
+
+    await expect(
+      service.generateTitle('conversation-1', 'tenant-1', 'user-1'),
+    ).resolves.toBe('📦 发布版本');
+
+    expect(
+      mockAgentDefinitionService.buildRuntimeConfigFromNodes,
+    ).toHaveBeenCalledWith(
+      [{ id: 'published-node' }],
+      [{ id: 'published-edge' }],
+      'agent-1',
+      'no_sandbox',
+    );
+    expect(mockLlmService.findById).toHaveBeenCalledWith(
+      'fallback-model',
+      'tenant-1',
+    );
+  });
+
+  it('直接和 fallback 模型为空时应使用首个有效候选模型', async () => {
+    const messageSelectChain = createSelectChain([
+      { role: 'user', content: '候选模型标题' },
+    ]);
+    const conversationSelectChain = createSelectChain([
+      { agentDefinitionId: 'agent-1' },
+    ]);
+    const definitionSelectChain = createSelectChain([
+      {
+        id: 'agent-1',
+        publishedVersionId: null,
+        nodes: [],
+        edges: [],
+        runtimeMode: 'sandbox',
+      },
+    ]);
+    mockDb.select
+      .mockReturnValueOnce(messageSelectChain)
+      .mockReturnValueOnce(conversationSelectChain)
+      .mockReturnValueOnce(definitionSelectChain);
+    mockDb.update.mockReturnValue(createUpdateChain());
+    mockUserPreferenceService.findByUser.mockResolvedValue(null);
+    mockAgentDefinitionService.buildRuntimeConfigFromNodes.mockReturnValue({
+      modelConfig: { modelId: ' ' },
+      routingConfig: {
+        fallbackModelId: '',
+        candidateModelIds: [null, ' ', 'candidate-model', 42],
+      },
+    });
+    mockLlmService.findById.mockResolvedValue({ id: 'candidate-model' });
+    mockPiAiAdapter.getModel.mockResolvedValue({ provider: 'mock' });
+    mockGenerateText.mockResolvedValue({ text: '🧭 候选模型' });
+
+    await service.generateTitle('conversation-1', 'tenant-1', 'user-1');
+
+    expect(mockLlmService.findById).toHaveBeenCalledWith(
+      'candidate-model',
+      'tenant-1',
+    );
+  });
+
+  it('无可用模型时应持久化经过空白和 Markdown 归一化的兜底标题', async () => {
+    const messageSelectChain = createSelectChain([
+      { role: 'assistant', content: '   ' },
+      { role: 'system', content: '  ##   系统   提示   标题  ' },
+    ]);
+    const conversationSelectChain = createSelectChain([]);
+    const updateChain = createUpdateChain();
+    mockDb.select
+      .mockReturnValueOnce(messageSelectChain)
+      .mockReturnValueOnce(conversationSelectChain);
+    mockDb.update.mockReturnValue(updateChain);
+    mockUserPreferenceService.findByUser.mockResolvedValue(null);
+    mockLlmService.findDefaultByType.mockResolvedValue(null);
+
+    const title = await service.generateTitle(
+      'conversation-1',
+      'tenant-1',
+      'user-1',
+    );
+
+    expect(title).toBe('💬 系统 提示 标题');
+    expect(mockGenerateText).not.toHaveBeenCalled();
+    expect(updateChain.set).toHaveBeenCalledWith(
+      expect.objectContaining({ title: '💬 系统 提示 标题' }),
+    );
+  });
+
+  it('模型返回空白时应保留兜底标题，并截断发送给模型的长消息', async () => {
+    const longContent = '甲'.repeat(510);
+    const messageSelectChain = createSelectChain([
+      { role: 'user', content: longContent },
+    ]);
+    const conversationSelectChain = createSelectChain([]);
+    mockDb.select
+      .mockReturnValueOnce(messageSelectChain)
+      .mockReturnValueOnce(conversationSelectChain);
+    mockDb.update.mockReturnValue(createUpdateChain());
+    mockUserPreferenceService.findByUser.mockResolvedValue(null);
+    mockLlmService.findDefaultByType.mockResolvedValue({ id: 'default-model' });
+    mockPiAiAdapter.getModel.mockResolvedValue({ provider: 'mock' });
+    mockGenerateText.mockResolvedValue({ text: '   ' });
+
+    const title = await service.generateTitle(
+      'conversation-1',
+      'tenant-1',
+      'user-1',
+    );
+
+    expect(title).toBe(`💬 ${'甲'.repeat(13)}…`);
+    expect(mockGenerateText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: expect.stringContaining(`${'甲'.repeat(500)}...`),
+      }),
+    );
+  });
 });

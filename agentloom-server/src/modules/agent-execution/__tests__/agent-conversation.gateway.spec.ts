@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { Logger } from '@nestjs/common';
 import type { Server, Socket } from 'socket.io';
+import * as jwt from 'jsonwebtoken';
 
 const mockConfigService = {
   get: vi.fn().mockReturnValue('test-jwt-secret'),
@@ -42,6 +43,8 @@ function makeSocket(
     join: ReturnType<typeof vi.fn>;
     leave: ReturnType<typeof vi.fn>;
     emit: ReturnType<typeof vi.fn>;
+    authToken: string;
+    authorization: string;
   }> = {},
 ): Socket {
   const {
@@ -51,11 +54,17 @@ function makeSocket(
     join = vi.fn().mockResolvedValue(undefined),
     leave = vi.fn(),
     emit = vi.fn(),
+    authToken = '',
+    authorization = '',
   } = overrides;
 
   return {
     id,
-    handshake: { auth: {}, headers: {}, query: {} },
+    handshake: {
+      auth: authToken ? { token: authToken } : {},
+      headers: authorization ? { authorization } : {},
+      query: {},
+    },
     data: {
       user: {
         sub,
@@ -1103,5 +1112,573 @@ describe('AgentConversationGateway', () => {
 
       expect(server.to).not.toHaveBeenCalled();
     });
+  });
+
+  describe('socket authentication middleware', () => {
+    function installMiddleware() {
+      const use = vi.fn();
+      const authServer = {
+        use,
+      } as unknown as Server;
+      gateway.afterInit(authServer);
+      const middleware = use.mock.calls[0]?.[0];
+      if (typeof middleware !== 'function') {
+        throw new Error('gateway auth middleware was not installed');
+      }
+      return middleware;
+    }
+
+    it('缺少 token 时应返回带 websocket close code 的认证错误', async () => {
+      const middleware = installMiddleware();
+      const next = vi.fn();
+
+      await middleware(makeSocket(), next);
+
+      expect(next).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: 'Authentication required',
+          data: {
+            code: 4001,
+            reason: 'Authentication required',
+          },
+        }),
+      );
+    });
+
+    it('应接受 Authorization Bearer token 并兼容 snake_case 租户 claims', async () => {
+      const token = jwt.sign(
+        {
+          sub: 'user-auth',
+          aud: 'authenticated',
+          email: 'auth@example.com',
+          tenant_id: 'tenant-snake',
+          tenant_role: 'member',
+        },
+        'test-jwt-secret',
+        {
+          algorithm: 'HS256',
+          expiresIn: '1h',
+        },
+      );
+      const middleware = installMiddleware();
+      const client = makeSocket({ authorization: `Bearer ${token}` });
+      const next = vi.fn();
+
+      await middleware(client, next);
+
+      expect(next).toHaveBeenCalledWith();
+      expect(client.data.user).toMatchObject({
+        sub: 'user-auth',
+        email: 'auth@example.com',
+        tenantId: 'tenant-snake',
+        tenantRole: 'member',
+      });
+      expect(mockTokenBlacklistService.isBlacklisted).toHaveBeenCalledWith(
+        token,
+      );
+    });
+
+    it('auth token 应优先于无效 Authorization header', async () => {
+      const token = jwt.sign(
+        {
+          sub: 'user-auth',
+          aud: 'authenticated',
+          tenantId: 'tenant-camel',
+          tenantRole: 'admin',
+        },
+        'test-jwt-secret',
+        {
+          algorithm: 'HS256',
+          expiresIn: '1h',
+        },
+      );
+      const middleware = installMiddleware();
+      const client = makeSocket({
+        authToken: token,
+        authorization: 'Basic invalid',
+      });
+      const next = vi.fn();
+
+      await middleware(client, next);
+
+      expect(next).toHaveBeenCalledWith();
+      expect(client.data.user.tenantId).toBe('tenant-camel');
+      expect(client.data.user.email).toBe('');
+    });
+
+    it('黑名单 token 应在签名校验前被拒绝', async () => {
+      mockTokenBlacklistService.isBlacklisted.mockResolvedValueOnce(true);
+      const middleware = installMiddleware();
+      const next = vi.fn();
+
+      await middleware(makeSocket({ authToken: 'revoked-token' }), next);
+
+      expect(next).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: 'Token has been revoked',
+          data: { code: 4001, reason: 'Token has been revoked' },
+        }),
+      );
+    });
+
+    it('mfa_pending token 应要求先完成 MFA 验证', async () => {
+      const token = jwt.sign(
+        {
+          sub: 'user-auth',
+          aud: 'authenticated',
+          type: 'mfa_pending',
+        },
+        'test-jwt-secret',
+        {
+          algorithm: 'HS256',
+          expiresIn: '1h',
+        },
+      );
+      const middleware = installMiddleware();
+      const next = vi.fn();
+
+      await middleware(makeSocket({ authToken: token }), next);
+
+      expect(next).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: 'MFA verification required',
+          data: { code: 4001, reason: 'MFA verification required' },
+        }),
+      );
+    });
+
+    it('缺少必要 claims 或签名无效时应统一返回过期错误', async () => {
+      const incompleteToken = jwt.sign(
+        { aud: 'authenticated' },
+        'test-jwt-secret',
+        { algorithm: 'HS256', expiresIn: '1h' },
+      );
+      const middleware = installMiddleware();
+      const incompleteNext = vi.fn();
+      const invalidNext = vi.fn();
+
+      await middleware(
+        makeSocket({ authToken: incompleteToken }),
+        incompleteNext,
+      );
+      await middleware(
+        makeSocket({ authToken: `${incompleteToken}invalid` }),
+        invalidNext,
+      );
+
+      expect(incompleteNext).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'Invalid token claims' }),
+      );
+      expect(invalidNext).toHaveBeenCalledWith(
+        expect.objectContaining({ message: 'Invalid or expired token' }),
+      );
+    });
+  });
+  describe('branch behavior', () => {
+    it('tracks multiple subscribers and preserves the remaining subscriber on disconnect', async () => {
+      const first = makeSocket({ id: 'socket-1' });
+      const second = makeSocket({ id: 'socket-2' });
+
+      await gateway.handleSubscribe(first, { conversationId: 'conv-shared' });
+      await gateway.handleSubscribe(second, { conversationId: 'conv-shared' });
+
+      expect((gateway as any).conversationSockets.get('conv-shared')).toEqual(
+        new Set(['socket-1', 'socket-2']),
+      );
+
+      gateway.handleDisconnect(first);
+
+      expect((gateway as any).hasSubscribers('conv-shared')).toBe(true);
+      expect((gateway as any).conversationSockets.get('conv-shared')).toEqual(
+        new Set(['socket-2']),
+      );
+    });
+
+    it('preserves the remaining subscriber on unsubscribe', async () => {
+      const first = makeSocket({ id: 'socket-1' });
+      const second = makeSocket({ id: 'socket-2' });
+      await gateway.handleSubscribe(first, { conversationId: 'conv-shared' });
+      await gateway.handleSubscribe(second, { conversationId: 'conv-shared' });
+
+      gateway.handleUnsubscribe(first, { conversationId: 'conv-shared' });
+
+      expect((gateway as any).conversationSockets.get('conv-shared')).toEqual(
+        new Set(['socket-2']),
+      );
+      expect(first.leave).toHaveBeenCalledWith(
+        'conversation:tenant-1:conv-shared',
+      );
+    });
+
+    it('uses an empty tenant room and tolerates unsubscribe without tracking state', () => {
+      const client = makeSocket();
+      client.data = {};
+
+      gateway.handleUnsubscribe(client, { conversationId: 'not-tracked' });
+
+      expect(client.leave).toHaveBeenCalledWith('conversation::not-tracked');
+      expect((gateway as any).conversationSockets.size).toBe(0);
+    });
+
+    it('logs an unknown user when connection data is absent', () => {
+      const client = makeSocket();
+      client.data = {};
+      const debug = vi.spyOn(Logger.prototype, 'debug');
+
+      gateway.handleConnection(client);
+
+      expect(debug).toHaveBeenCalledWith(
+        'Client connected: socket-1 (user=unknown)',
+      );
+    });
+
+    it('routes step status events with optional execution type and rejects workflows', () => {
+      mockThrottleService.tryConsume.mockReturnValue(true);
+
+      gateway.handleStepStatusChanged({
+        tenantId: 'tenant-1',
+        executionId: 'conv-1',
+        stepId: 'step-1',
+        nodeId: 'node-1',
+        from: 'pending',
+        to: 'running',
+      });
+
+      expect(server.to).toHaveBeenCalledWith('conversation:tenant-1:conv-1');
+      vi.clearAllMocks();
+
+      gateway.handleStepStatusChanged({
+        tenantId: 'tenant-1',
+        executionId: 'conv-1',
+        stepId: 'step-1',
+        nodeId: 'node-1',
+        from: 'pending',
+        to: 'running',
+        executionType: 'workflow',
+      });
+
+      expect(server.to).not.toHaveBeenCalled();
+    });
+
+    it('recognizes legacy conversation chunks without executionType', () => {
+      mockThrottleService.tryConsume.mockReturnValue(true);
+
+      gateway.handleOutputChunk({
+        tenantId: 'tenant-1',
+        executionId: 'conv-legacy',
+        stepId: 'conv-legacy',
+        chunk: 'legacy chunk',
+        index: 0,
+      });
+
+      const emit = (server.to as ReturnType<typeof vi.fn>).mock.results[0]
+        ?.value.emit;
+      expect(emit).toHaveBeenCalledWith(
+        ConversationEventName.AGENT_MESSAGE_CHUNK,
+        expect.objectContaining({ chunk: 'legacy chunk' }),
+      );
+    });
+
+    it.each(['thinking', 'plan'] as const)(
+      'maps %s step events to thinking updates',
+      (type) => {
+        mockThrottleService.tryConsume.mockReturnValue(true);
+
+        gateway.handleStepAgentEvent({
+          tenantId: 'tenant-1',
+          executionId: 'conv-1',
+          stepId: 'step-1',
+          event: { type } as any,
+        });
+
+        const emit = (server.to as ReturnType<typeof vi.fn>).mock.results.at(-1)
+          ?.value.emit;
+        expect(emit).toHaveBeenCalledWith(
+          ConversationEventName.AGENT_THINKING,
+          expect.objectContaining({ conversationId: 'conv-1' }),
+        );
+      },
+    );
+
+    it('rejects workflow tool events while accepting omitted executionType', () => {
+      mockThrottleService.tryConsume.mockReturnValue(true);
+      const base = {
+        tenantId: 'tenant-1',
+        executionId: 'conv-1',
+        stepId: 'step-1',
+        nodeId: 'node-1',
+        toolCallId: 'call-1',
+        tool: 'search',
+        status: 'pending' as any,
+      };
+
+      gateway.handleToolCallStatus({ ...base, executionType: 'workflow' });
+      expect(server.to).not.toHaveBeenCalled();
+
+      gateway.handleToolCallStatus(base);
+      expect(server.to).toHaveBeenCalledWith('conversation:tenant-1:conv-1');
+    });
+
+    it('ignores workspace changes without a conversation and emits every provided file', () => {
+      mockThrottleService.tryConsume.mockReturnValue(true);
+      gateway.handleWorkspaceFileChange({
+        tenantId: 'tenant-1',
+        changedFiles: ['ignored.ts'],
+        timestamp: '2026-08-11T00:00:00.000Z',
+      });
+      expect(server.to).not.toHaveBeenCalled();
+
+      gateway.handleWorkspaceFileChange({
+        tenantId: 'tenant-1',
+        conversationId: 'conv-1',
+        changedFiles: ['a.ts', 'b.ts'],
+        timestamp: '2026-08-11T00:00:00.000Z',
+      });
+
+      expect(server.to).toHaveBeenCalledTimes(2);
+      const emit = (server.to as ReturnType<typeof vi.fn>).mock.results[0]
+        ?.value.emit;
+      const emittedPayloads = emit.mock.calls.map((call: unknown[]) => call[1]);
+      expect(emittedPayloads).toEqual([
+        expect.objectContaining({ path: 'a.ts', changeType: 'modified' }),
+        expect.objectContaining({ path: 'b.ts', changeType: 'modified' }),
+      ]);
+    });
+
+    it('maps subagent tool events without call details and unknown events', () => {
+      mockThrottleService.tryConsume.mockReturnValue(true);
+      const subagent = {
+        handle: 'subagent-1',
+        agentId: 'agent-1',
+        task: 'research',
+      } as any;
+
+      gateway.handleSubAgentEvent({
+        tenantId: 'tenant-1',
+        conversationId: 'conv-1',
+        event: { type: 'tool_call' } as any,
+        subagent,
+      });
+      gateway.handleSubAgentEvent({
+        tenantId: 'tenant-1',
+        conversationId: 'conv-1',
+        event: { type: 'unrecognized', content: 'fallback' } as any,
+        subagent,
+      });
+
+      const emit = (server.to as ReturnType<typeof vi.fn>).mock.results[0]
+        ?.value.emit;
+      const emittedEvents = emit.mock.calls.map((call: unknown[]) => call[0]);
+      expect(emittedEvents).toEqual([
+        ConversationEventName.AGENT_TOOL_CALL,
+        ConversationEventName.AGENT_MESSAGE_CHUNK,
+      ]);
+    });
+
+    it('skips empty replay results when the bridge has no current event id', async () => {
+      mockEventBridgeService.getLastEventId.mockReturnValue(undefined);
+      mockEventBridgeService.getEventsSince.mockReturnValue(undefined);
+      const client = makeSocket();
+
+      await gateway.handleSubscribe(client, {
+        conversationId: 'conv-1',
+        lastEventId: -1,
+      });
+
+      expect(mockEventBridgeService.getEventsSince).toHaveBeenCalledWith(
+        'conv-1',
+        -1,
+      );
+      expect(client.emit).not.toHaveBeenCalled();
+    });
+
+    it('replays all remaining mapped event variants and skips unmapped events', async () => {
+      mockEventBridgeService.getLastEventId.mockReturnValue(10);
+      mockEventBridgeService.getEventsSince.mockReturnValue([
+        {
+          eventId: 1,
+          event: ExecutionEventName.STEP_AGENT_EVENT,
+          data: { event: { type: 'message_chunk' } },
+        },
+        {
+          eventId: 2,
+          event: ExecutionEventName.STEP_AGENT_EVENT,
+          data: { event: { type: 'terminal_output' } },
+        },
+        {
+          eventId: 3,
+          event: ExecutionEventName.STEP_AGENT_EVENT,
+          data: { event: { type: 'file_change' } },
+        },
+        {
+          eventId: 4,
+          event: ExecutionEventName.NODE_INTERVENTION_REQUIRED,
+          data: {},
+        },
+        {
+          eventId: 5,
+          event: ExecutionEventName.NODE_INTERVENTION_RESOLVED,
+          data: {},
+        },
+        {
+          eventId: 6,
+          event: ExecutionEventName.STEP_AGENT_EVENT,
+          data: {},
+        },
+      ]);
+      const clientEmit = vi.fn();
+      const client = makeSocket({ emit: clientEmit });
+
+      await gateway.handleSubscribe(client, {
+        conversationId: 'conv-1',
+        lastEventId: 0,
+      });
+
+      expect(clientEmit).toHaveBeenCalledTimes(5);
+      expect(clientEmit.mock.calls.map((call: unknown[]) => call[0])).toEqual([
+        ConversationEventName.AGENT_MESSAGE_CHUNK,
+        ConversationEventName.SANDBOX_TERMINAL_OUTPUT,
+        ConversationEventName.SANDBOX_FILE_CHANGE,
+        ConversationEventName.STATUS_CHANGED,
+        ConversationEventName.STATUS_CHANGED,
+      ]);
+    });
+
+    it('drops the oldest event when the backpressure queue reaches its limit', () => {
+      vi.useFakeTimers();
+      try {
+        mockThrottleService.tryConsume.mockReturnValue(false);
+        for (let index = 0; index <= 500; index += 1) {
+          gateway.broadcastConversationEvent(
+            'tenant-1',
+            'conv-full',
+            ConversationEventName.AGENT_MESSAGE_CHUNK,
+            { index },
+          );
+        }
+
+        const queue = (gateway as any).eventQueue.get('tenant-1:conv-full');
+        expect(queue).toHaveLength(500);
+        expect(queue[0].data).toEqual({ index: 1 });
+        expect(queue[499].data).toEqual({ index: 500 });
+        expect(Logger.prototype.warn).toHaveBeenCalledWith(
+          expect.stringContaining('dropping oldest event'),
+        );
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('drains queued events before broadcasting a newly admitted event', () => {
+      vi.useFakeTimers();
+      try {
+        mockThrottleService.tryConsume
+          .mockReturnValueOnce(false)
+          .mockReturnValueOnce(true)
+          .mockReturnValueOnce(true);
+
+        gateway.broadcastConversationEvent(
+          'tenant-1',
+          'conv-1',
+          ConversationEventName.AGENT_MESSAGE_CHUNK,
+          { order: 1 },
+        );
+        gateway.broadcastConversationEvent(
+          'tenant-1',
+          'conv-1',
+          ConversationEventName.AGENT_MESSAGE_CHUNK,
+          { order: 2 },
+        );
+
+        const emit = (server.to as ReturnType<typeof vi.fn>).mock.results[0]
+          ?.value.emit;
+        const emitted = emit.mock.calls;
+        expect(emitted.map((call: unknown[]) => call[1])).toEqual([
+          { order: 1 },
+          { order: 2 },
+        ]);
+        expect((gateway as any).eventQueue.has('tenant-1:conv-1')).toBe(false);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('reschedules a throttled queue and drains it when capacity returns', () => {
+      vi.useFakeTimers();
+      try {
+        mockThrottleService.tryConsume.mockReturnValue(false);
+        gateway.broadcastConversationEvent(
+          'tenant-1',
+          'conv-1',
+          ConversationEventName.AGENT_MESSAGE_CHUNK,
+          { queued: true },
+        );
+
+        vi.advanceTimersByTime(100);
+        expect((gateway as any).eventQueue.get('tenant-1:conv-1')).toHaveLength(
+          1,
+        );
+        expect((gateway as any).drainTimers.has('tenant-1:conv-1')).toBe(true);
+
+        mockThrottleService.tryConsume.mockReturnValue(true);
+        vi.advanceTimersByTime(100);
+
+        expect((gateway as any).eventQueue.has('tenant-1:conv-1')).toBe(false);
+        expect(
+          (server.to as ReturnType<typeof vi.fn>).mock.results.at(-1)?.value
+            .emit,
+        ).toHaveBeenCalledWith(ConversationEventName.AGENT_MESSAGE_CHUNK, {
+          queued: true,
+        });
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('does not schedule duplicate drain timers and ignores empty synchronous drains', () => {
+      vi.useFakeTimers();
+      try {
+        (gateway as any).scheduleDrain('tenant-1', 'conv-1', 'tenant-1:conv-1');
+        const firstTimer = (gateway as any).drainTimers.get('tenant-1:conv-1');
+
+        (gateway as any).scheduleDrain('tenant-1', 'conv-1', 'tenant-1:conv-1');
+        (gateway as any).drainQueueSync(
+          'tenant-1',
+          'missing',
+          'tenant-1:missing',
+        );
+
+        expect((gateway as any).drainTimers.get('tenant-1:conv-1')).toBe(
+          firstTimer,
+        );
+        expect(server.to).not.toHaveBeenCalled();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
+  describe('authentication error propagation', () => {
+    function installMiddleware() {
+      const use = vi.fn();
+      gateway.afterInit({ use } as unknown as Server);
+      return use.mock.calls[0]?.[0] as (
+        socket: Socket,
+        next: (error?: Error) => void,
+      ) => Promise<void>;
+    }
+
+    it.each(['MFA provider unavailable', 'token revoked upstream'])(
+      'preserves an authentication error containing %s',
+      async (message) => {
+        const failure = new Error(message);
+        mockTokenBlacklistService.isBlacklisted.mockRejectedValueOnce(failure);
+        const next = vi.fn();
+
+        await installMiddleware()(makeSocket({ authToken: 'token' }), next);
+
+        expect(next).toHaveBeenCalledWith(failure);
+      },
+    );
   });
 });

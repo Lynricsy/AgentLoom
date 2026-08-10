@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import type { GeneratedApp, GeneratedAppSpec } from '../../../database/schema';
 import {
   buildGeneratedAppRuntimeForm,
+  buildPublicGeneratedAppRuntimeDescription,
+  buildPublicGeneratedAppRuntimeSpec,
   evaluateGeneratedAppLocalRuntime,
 } from '../generated-app.runtime';
 
@@ -609,5 +611,222 @@ describe('Generated App local runtime evaluator', () => {
     expect(evaluation.report?.disclaimers).toEqual(
       expect.arrayContaining([expect.stringContaining('不提供诊断结论')]),
     );
+  });
+  it('应为一般应用构建安全的公开 runtime 描述和页面规格并采用公开默认值', () => {
+    const appSpec = {
+      ...createGeneralAppSpec(),
+      appName: '',
+      summary: '',
+      userGoal: '',
+      actors: [],
+    };
+
+    expect(
+      buildPublicGeneratedAppRuntimeDescription({
+        appSpec,
+        description: '',
+      }),
+    ).toBe('请填写业务输入，提交后查看结构化报告和下一步建议。');
+
+    const runtimeSpec = buildPublicGeneratedAppRuntimeSpec({
+      appSpec,
+      pages: [
+        {
+          id: 'custom page',
+          name: '',
+          purpose: '',
+        },
+      ],
+    });
+
+    expect(runtimeSpec).toEqual(
+      expect.objectContaining({
+        appName: 'Generated App',
+        summary: '整理公开提交内容并生成本地运行报告',
+        userGoal: '整理公开提交内容并生成本地运行报告',
+        actors: ['终端用户'],
+        pages: [
+          expect.objectContaining({
+            id: 'custom-page',
+            name: '公开运行页',
+            purpose: '终端用户填写业务输入并查看结构化报告。',
+          }),
+        ],
+      }),
+    );
+  });
+
+  it('应保留 JSON 标量和集合、限制超长内容与数组并标记脱敏字段', () => {
+    const longText = 'long public content '.repeat(60);
+    const evaluation = evaluateGeneratedAppLocalRuntime({
+      app: {
+        ...createRuntimeApp(),
+        appSpec: createGeneralAppSpec(),
+      },
+      input: {
+        nullable: null,
+        enabled: true,
+        score: 7,
+        longText,
+        items: Array.from({ length: 22 }, (_, index) => index),
+        nested: { label: '公开值' },
+        apiKey: 'secret-value',
+      },
+      now: new Date('2026-04-28T00:00:00.000Z'),
+    });
+
+    expect(evaluation.status).toBe('completed');
+    expect(evaluation.input).toEqual(
+      expect.objectContaining({
+        nullable: null,
+        enabled: true,
+        score: 7,
+        longText: `${longText.slice(0, 1000)}...`,
+        items: [
+          ...Array.from({ length: 20 }, (_, index) => index),
+          '[TRUNCATED_ARRAY_ITEMS:2]',
+        ],
+        nested: { label: '公开值' },
+        redactedField1: '[REDACTED]',
+      }),
+    );
+    expect(evaluation.result?.inputSummary).toEqual(
+      expect.objectContaining({
+        redactedFieldCount: 1,
+        truncated: true,
+      }),
+    );
+  });
+
+  it('应拒绝过深、字段过多和非 JSON 输入，同时仅返回安全的失败结果', () => {
+    const deeplyNested = {
+      level1: {
+        level2: {
+          level3: {
+            level4: {
+              level5: {
+                level6: {
+                  level7: {
+                    value: 'too deep',
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    };
+    const tooManyFields = Object.fromEntries(
+      Array.from({ length: 82 }, (_, index) => [`field${index}`, index]),
+    );
+
+    for (const input of [
+      deeplyNested,
+      tooManyFields,
+      { createdAt: new Date('2026-04-28T00:00:00.000Z') },
+    ]) {
+      const evaluation = evaluateGeneratedAppLocalRuntime({
+        app: createRuntimeApp(),
+        input,
+        now: new Date('2026-04-28T00:00:00.000Z'),
+      });
+
+      expect(evaluation).toEqual(
+        expect.objectContaining({
+          status: 'failed',
+          result: null,
+          report: null,
+          errorMessage: expect.stringContaining('无法处理的结构'),
+        }),
+      );
+      expect(JSON.stringify(evaluation.input)).not.toContain('too deep');
+    }
+  });
+
+  it('应在无静态合约时使用 runtime 默认输出，并区分部分覆盖和待补充场景', () => {
+    const appSpec: GeneratedAppSpec = {
+      ...createGeneralAppSpec(),
+      pages: [],
+      coreRequirements: [
+        { id: 'req-covered', text: '生成公开报告' },
+        { id: 'req-missing', text: '客户偏好' },
+      ],
+      acceptanceScenarios: [
+        {
+          id: 'scenario-partial',
+          title: '部分覆盖场景',
+          requirementIds: ['req-covered', 'req-missing'],
+          given: [],
+          when: [],
+          then: [],
+        },
+        {
+          id: 'scenario-missing',
+          title: '待补充场景',
+          requirementIds: ['req-missing'],
+          given: [],
+          when: [],
+          then: [],
+        },
+      ],
+    };
+    const generationPlan = createGenerationPlanWithRequiredFields(appSpec, []);
+    const orchestration = generationPlan?.orchestration as Record<
+      string,
+      unknown
+    >;
+    const withoutStaticContracts = {
+      ...generationPlan,
+      staticContracts: undefined,
+      orchestration: {
+        ...orchestration,
+        inputContract: undefined,
+        outputContract: {
+          reportRequired: false,
+        },
+      },
+    } as unknown as GeneratedApp['generationPlan'];
+
+    const evaluation = evaluateGeneratedAppLocalRuntime({
+      app: {
+        appName: appSpec.appName,
+        description: appSpec.summary,
+        appSpec,
+        generationPlan: withoutStaticContracts,
+      },
+      input: {},
+      now: new Date('2026-04-28T00:00:00.000Z'),
+    });
+
+    expect(evaluation.status).toBe('completed');
+    expect(evaluation.result?.contractSummary).toEqual({
+      appSpecVersion: 1,
+      requiredInputFields: ['input'],
+      outputDestinations: [
+        'public-runtime-report',
+        'creator-submission-detail',
+      ],
+      reportRequired: false,
+      scenarioIds: [],
+    });
+    expect(evaluation.result?.inputSummary).toEqual(
+      expect.objectContaining({
+        empty: true,
+        textPreview: '未提供可分析字段。',
+      }),
+    );
+    expect(evaluation.result?.scenarioCoverage).toEqual([
+      expect.objectContaining({
+        id: 'scenario-partial',
+        coverage: 'partially_covered',
+        summary: expect.stringContaining('已部分覆盖'),
+      }),
+      expect.objectContaining({
+        id: 'scenario-missing',
+        coverage: 'needs_more_input',
+        summary: expect.stringContaining('尚无足够输入'),
+      }),
+    ]);
+    expect(evaluation.result?.nextStepQuestions).toHaveLength(2);
   });
 });

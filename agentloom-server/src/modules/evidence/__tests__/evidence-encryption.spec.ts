@@ -506,4 +506,70 @@ describe('EvidenceService encryption integration', () => {
     expect(inserted).not.toHaveProperty('encryptionMetadata');
     expect(inserted.contentHash).toBe(inserted.packet.contentHash as string);
   });
+
+  it('组织查询异常时会保持明文且不探测 E2EE 配置', async () => {
+    mocks.uuidv7.mockReturnValue(GENERATED_ID_1);
+    mocks.tenantDb.select.mockImplementationOnce(() => {
+      throw new Error('organization lookup failed');
+    });
+    const insertMock = setupInsertReturning();
+
+    await service.createEvidenceRecord(TENANT_ID, EXECUTION_ID, {
+      stepId: STEP_ID,
+      sourceType: 'agent_decision',
+      packet: createAgentDecisionPacketInput(),
+    });
+
+    const [inserted] = insertMock.getCapturedValues() as CapturedInsertValue[];
+    expect(mocks.llmEncryptionService.isE2EEEnabled).not.toHaveBeenCalled();
+    expect(mocks.llmEncryptionService.encryptForTenant).not.toHaveBeenCalled();
+    expect(inserted.isEncrypted).toBeUndefined();
+    expect(inserted.packet).toHaveProperty('agentDecision');
+  });
+
+  it('E2EE 配置查询异常时会保持明文并继续持久化', async () => {
+    mocks.uuidv7.mockReturnValue(GENERATED_ID_1);
+    queueOrgLookup([{ id: ORG_ID }]);
+    const insertMock = setupInsertReturning();
+    mocks.llmEncryptionService.isE2EEEnabled.mockRejectedValue(
+      new Error('key service unavailable'),
+    );
+
+    await service.createEvidenceRecord(TENANT_ID, EXECUTION_ID, {
+      stepId: STEP_ID,
+      sourceType: 'tool_output',
+      packet: createToolOutputPacketInput(),
+    });
+
+    const [inserted] = insertMock.getCapturedValues() as CapturedInsertValue[];
+    expect(mocks.llmEncryptionService.encryptForTenant).not.toHaveBeenCalled();
+    expect(inserted.isEncrypted).toBeUndefined();
+    expect(inserted.packet).toHaveProperty('toolOutput');
+  });
+
+  it('非 Error 加密拒绝值也会安全降级并记录可诊断原因', async () => {
+    const warnSpy = vi
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => {});
+    mocks.uuidv7.mockReturnValue(GENERATED_ID_1);
+    queueOrgLookup([{ id: ORG_ID }]);
+    const insertMock = setupInsertReturning();
+    mocks.llmEncryptionService.isE2EEEnabled.mockResolvedValue(true);
+    mocks.llmEncryptionService.encryptForTenant.mockRejectedValue(
+      'kms rejected request',
+    );
+
+    await service.createEvidenceRecord(TENANT_ID, EXECUTION_ID, {
+      stepId: STEP_ID,
+      sourceType: 'agent_decision',
+      packet: createAgentDecisionPacketInput(),
+    });
+
+    const [inserted] = insertMock.getCapturedValues() as CapturedInsertValue[];
+    expect(inserted.isEncrypted).toBeUndefined();
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining('kms rejected request'),
+      { evidenceId: GENERATED_ID_1 },
+    );
+  });
 });

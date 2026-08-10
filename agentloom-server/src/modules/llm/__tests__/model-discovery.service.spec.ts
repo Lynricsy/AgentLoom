@@ -1,19 +1,28 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import type { LlmProvider } from '../../../database/schema/llm-providers.schema';
+import { LlmProviderException, LlmTimeoutException } from '../llm.exceptions';
 import { ModelDiscoveryService } from '../model-discovery.service';
 
 describe('ModelDiscoveryService', () => {
   let service: ModelDiscoveryService;
+  let decryptConfiguredApiKey: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
+    decryptConfiguredApiKey = vi.fn();
     service = new ModelDiscoveryService(
       {
-        decryptApiKeyById: vi.fn(),
+        decryptConfiguredApiKey,
       } as never,
       {
         get: vi.fn(),
       } as never,
     );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
   });
 
   it('lookupModelMetadata 应解析缓存价格与基于 token 阈值的阶梯定价', async () => {
@@ -94,6 +103,506 @@ describe('ModelDiscoveryService', () => {
       inputPer1MTokens: 2.5,
       outputPer1MTokens: 10,
       cachedReadPer1MTokens: 1.25,
+    });
+  });
+
+  const provider = (overrides: Partial<LlmProvider> = {}): LlmProvider =>
+    ({
+      id: 'provider-id',
+      orgId: 'org-id',
+      tenantId: 'tenant-id',
+      slug: 'openai',
+      name: 'OpenAI',
+      iconUrl: null,
+      baseUrl: 'https://api.example.test///',
+      defaultBaseUrl: 'https://default.example.test/',
+      isBuiltin: false,
+      isEnabled: true,
+      apiProtocol: 'openai_chat',
+      apiKeyId: null,
+      sortOrder: 0,
+      createdAt: new Date('2026-01-01T00:00:00Z'),
+      updatedAt: new Date('2026-01-01T00:00:00Z'),
+      ...overrides,
+    }) as LlmProvider;
+
+  const response = (
+    status: number,
+    body: unknown,
+    ok = status >= 200 && status < 300,
+  ): Response =>
+    ({
+      ok,
+      status,
+      json: vi.fn().mockResolvedValue(body),
+    }) as unknown as Response;
+
+  describe('provider protocol discovery and connection', () => {
+    it.each(['anthropic', 'google', 'cohere'] as const)(
+      '%s 协议不请求 OpenAI 模型目录',
+      async (apiProtocol) => {
+        const fetchMock = vi.fn();
+        vi.stubGlobal('fetch', fetchMock);
+
+        await expect(
+          service.discoverModels(provider({ apiProtocol })),
+        ).resolves.toEqual([]);
+        expect(fetchMock).not.toHaveBeenCalled();
+      },
+    );
+
+    it('使用自定义 base URL、Bearer 认证并保留部分模型字段', async () => {
+      decryptConfiguredApiKey.mockResolvedValue('secret-token');
+      const fetchMock = vi.fn().mockResolvedValue(
+        response(200, {
+          data: [{ id: 'gpt-4o', owned_by: 'openai' }, { id: 'proxy-model' }],
+        }),
+      );
+      vi.stubGlobal('fetch', fetchMock);
+
+      await expect(
+        service.discoverModels(provider({ apiKeyId: 'key-id' })),
+      ).resolves.toEqual([
+        { id: 'gpt-4o', name: 'gpt-4o', ownedBy: 'openai' },
+        { id: 'proxy-model', name: 'proxy-model', ownedBy: undefined },
+      ]);
+      expect(decryptConfiguredApiKey).toHaveBeenCalledWith(
+        {
+          apiKeyId: 'key-id',
+          organizationId: 'org-id',
+          tenantId: 'tenant-id',
+          provider: 'openai',
+        },
+        'ModelDiscoveryService',
+      );
+      expect(fetchMock).toHaveBeenCalledWith(
+        'https://api.example.test/v1/models',
+        expect.objectContaining({
+          headers: { Authorization: 'Bearer secret-token' },
+          signal: expect.any(AbortSignal),
+        }),
+      );
+    });
+
+    it('baseUrl 缺失时回退 defaultBaseUrl，无密钥时不发送认证头', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(response(200, { data: [] }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      await service.discoverModels(
+        provider({ baseUrl: null, defaultBaseUrl: 'https://fallback.test///' }),
+      );
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        'https://fallback.test/v1/models',
+        expect.objectContaining({ headers: {} }),
+      );
+      expect(decryptConfiguredApiKey).not.toHaveBeenCalled();
+    });
+
+    it('缺失或非数组 data 的目录响应视为空列表', async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(response(200, {}))
+        .mockResolvedValueOnce(response(200, { data: 'invalid' }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      await expect(service.discoverModels(provider())).resolves.toEqual([]);
+      await expect(service.discoverModels(provider())).resolves.toEqual([]);
+    });
+
+    it('JSON null 与损坏模型项被包装为模型目录异常', async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(response(200, null))
+        .mockResolvedValueOnce(response(200, { data: [null] }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      await expect(service.discoverModels(provider())).rejects.toMatchObject({
+        detail: expect.stringContaining('无法获取模型列表:'),
+      });
+      await expect(service.discoverModels(provider())).rejects.toMatchObject({
+        detail: expect.stringContaining('无法获取模型列表:'),
+      });
+    });
+
+    it.each([401, 403])('目录认证状态 %s 抛出认证异常', async (status) => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(status, {})));
+
+      const error = await service.discoverModels(provider()).catch((e) => e);
+
+      expect(error).toBeInstanceOf(LlmProviderException);
+      expect(error.detail).toContain(`认证失败 (${status})`);
+      expect(error.extensions).toEqual({ authenticationFailed: true });
+    });
+
+    it('目录非成功状态保留 provider 状态错误契约', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockResolvedValue(response(503, { error: 'unavailable' })),
+      );
+
+      await expect(service.discoverModels(provider())).rejects.toMatchObject({
+        detail: '获取模型列表失败，状态码 503',
+      });
+    });
+
+    it('目录网络错误包装为 provider 异常', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockRejectedValue(new Error('socket disconnected')),
+      );
+
+      await expect(service.discoverModels(provider())).rejects.toMatchObject({
+        detail: '无法获取模型列表: socket disconnected',
+      });
+    });
+
+    it('目录 AbortError 保留 timeout 异常', async () => {
+      const abortError = new Error('aborted');
+      abortError.name = 'AbortError';
+      vi.stubGlobal('fetch', vi.fn().mockRejectedValue(abortError));
+
+      const error = await service.discoverModels(provider()).catch((e) => e);
+      expect(error).toBeInstanceOf(LlmTimeoutException);
+      expect(error.detail).toContain('连接超时 (15000ms)');
+    });
+
+    it('Anthropic 连接使用 x-api-key，并从 health 提取有效服务器信息', async () => {
+      decryptConfiguredApiKey.mockResolvedValue('anthropic-secret');
+      const fetchMock = vi.fn().mockResolvedValue(
+        response(200, {
+          version: '1.2.3',
+          status: 'ready',
+          data: [
+            { id: 'claude-3-7' },
+            { id: 42 },
+            ...Array.from({ length: 12 }, (_, index) => ({
+              id: `model-${index}`,
+            })),
+          ],
+        }),
+      );
+      vi.stubGlobal('fetch', fetchMock);
+
+      const result = await service.testConnection(
+        provider({
+          slug: 'anthropic',
+          apiProtocol: 'anthropic',
+          apiKeyId: 'anthropic-key',
+        }),
+        1234,
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.serverInfo).toEqual({
+        version: '1.2.3',
+        status: 'ready',
+        models: [
+          'claude-3-7',
+          'model-0',
+          'model-1',
+          'model-2',
+          'model-3',
+          'model-4',
+          'model-5',
+          'model-6',
+          'model-7',
+          'model-8',
+        ],
+      });
+      expect(fetchMock).toHaveBeenCalledWith(
+        'https://api.example.test/health',
+        expect.objectContaining({
+          headers: {
+            'x-api-key': 'anthropic-secret',
+            'anthropic-version': '2023-06-01',
+          },
+        }),
+      );
+    });
+
+    it('health 非成功时回退 models，无法解析 JSON 时省略 serverInfo', async () => {
+      const malformed = response(200, {});
+      vi.mocked(malformed.json).mockRejectedValue(new SyntaxError('bad json'));
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(response(404, {}))
+        .mockResolvedValueOnce(malformed);
+      vi.stubGlobal('fetch', fetchMock);
+
+      const result = await service.testConnection(provider());
+      expect(result).toEqual(expect.objectContaining({ success: true }));
+      expect(result.serverInfo).toBeUndefined();
+    });
+
+    it('health 网络失败后 models 成功且空信息对象被省略', async () => {
+      const fetchMock = vi
+        .fn()
+        .mockRejectedValueOnce(new Error('health unsupported'))
+        .mockResolvedValueOnce(response(200, { version: 1, status: false }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      const result = await service.testConnection(provider());
+
+      expect(result.success).toBe(true);
+      expect(result.serverInfo).toBeUndefined();
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        2,
+        'https://api.example.test/v1/models',
+        expect.any(Object),
+      );
+    });
+
+    it('health 认证错误不回退 models', async () => {
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(response(401, { error: 'unauthorized' }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      await expect(service.testConnection(provider())).rejects.toMatchObject({
+        detail: '认证失败 (401)，请检查认证配置',
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('health 超时不回退 models', async () => {
+      const abortError = new Error('aborted');
+      abortError.name = 'AbortError';
+      const fetchMock = vi.fn().mockRejectedValue(abortError);
+      vi.stubGlobal('fetch', fetchMock);
+
+      await expect(
+        service.testConnection(provider(), 25),
+      ).rejects.toMatchObject({
+        detail: '连接超时 (25ms)',
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('models 非成功状态抛出 provider 异常', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi
+          .fn()
+          .mockResolvedValueOnce(response(404, {}))
+          .mockResolvedValueOnce(response(502, {})),
+      );
+
+      await expect(service.testConnection(provider())).rejects.toMatchObject({
+        detail: '端点返回状态码 502',
+      });
+    });
+
+    it('health 与 models 网络均失败时包装最终网络错误', async () => {
+      vi.stubGlobal(
+        'fetch',
+        vi
+          .fn()
+          .mockRejectedValueOnce(new Error('no health'))
+          .mockRejectedValueOnce(new Error('network down')),
+      );
+
+      await expect(service.testConnection(provider())).rejects.toMatchObject({
+        detail: '无法连接到提供商端点: network down',
+      });
+    });
+  });
+
+  describe('LiteLLM catalog lookup, filtering and cache', () => {
+    it('构建目录键时保持优先级并去除重复 provider 前缀', () => {
+      const privateService = service as unknown as {
+        buildLiteLLMKeys: (providerSlug: string, modelId: string) => string[];
+      };
+
+      expect(privateService.buildLiteLLMKeys('openai', 'gpt-4o')).toEqual([
+        'gpt-4o',
+        'openai/gpt-4o',
+      ]);
+      expect(privateService.buildLiteLLMKeys('anthropic', 'claude')).toEqual([
+        'claude',
+        'anthropic/claude',
+      ]);
+    });
+
+    it('按 direct、slug 前缀和 LiteLLM provider 前缀优先级查找', async () => {
+      const getData = vi.spyOn(
+        service as unknown as { getLiteLLMData: () => Promise<unknown> },
+        'getLiteLLMData',
+      );
+      getData.mockResolvedValue({
+        'deepseek/deepseek-chat': { max_tokens: 64_000 },
+      });
+
+      await expect(
+        service.lookupModelMetadata('deepseek', 'deepseek-chat'),
+      ).resolves.toEqual(
+        expect.objectContaining({
+          modelId: 'deepseek/deepseek-chat',
+          contextWindow: 64_000,
+          maxOutputTokens: null,
+          pricing: null,
+        }),
+      );
+    });
+
+    it('忽略 primitive 条目且不存在时返回 null', async () => {
+      vi.spyOn(
+        service as unknown as { getLiteLLMData: () => Promise<unknown> },
+        'getLiteLLMData',
+      ).mockResolvedValue({
+        'gpt-missing': 'invalid',
+        'openai/gpt-missing': null,
+      });
+
+      await expect(
+        service.lookupModelMetadata('openai', 'gpt-missing'),
+      ).resolves.toBeNull();
+    });
+
+    it('未知 provider 搜索返回空列表', async () => {
+      vi.spyOn(
+        service as unknown as { getLiteLLMData: () => Promise<unknown> },
+        'getLiteLLMData',
+      ).mockResolvedValue({});
+
+      await expect(service.searchLiteLLMModels('unknown')).resolves.toEqual([]);
+    });
+
+    it('按 provider 过滤无效、空值和其他目录条目', async () => {
+      vi.spyOn(
+        service as unknown as { getLiteLLMData: () => Promise<unknown> },
+        'getLiteLLMData',
+      ).mockResolvedValue({
+        invalid: 'text',
+        empty: null,
+        other: { litellm_provider: 'anthropic' },
+        'gpt-4o': {
+          litellm_provider: 'openai',
+          max_tokens: 128_000,
+          supports_vision: 1,
+        },
+        'azure-gpt': {
+          litellm_provider: 'azure',
+          max_output_tokens: 4096,
+        },
+      });
+
+      const result = await service.searchLiteLLMModels('openai');
+
+      expect(result.map(({ modelId }) => modelId)).toEqual(['gpt-4o']);
+      expect(result.some(({ modelId }) => modelId === 'azure-gpt')).toBe(false);
+      expect(result[0]).toEqual(
+        expect.objectContaining({
+          contextWindow: 128_000,
+          maxOutputTokens: null,
+          capabilities: expect.objectContaining({ vision: true }),
+        }),
+      );
+    });
+
+    it('目录搜索最多返回 100 个匹配模型', async () => {
+      vi.spyOn(
+        service as unknown as { getLiteLLMData: () => Promise<unknown> },
+        'getLiteLLMData',
+      ).mockResolvedValue(
+        Object.fromEntries(
+          Array.from({ length: 105 }, (_, index) => [
+            `model-${index}`,
+            { litellm_provider: 'openai' },
+          ]),
+        ),
+      );
+
+      const result = await service.searchLiteLLMModels('openai');
+      expect(result).toHaveLength(100);
+      expect(result.at(-1)?.modelId).toBe('model-99');
+    });
+
+    it('解析 k、m 与无单位阈值，并以阈值升序去重合并 tier', async () => {
+      vi.spyOn(
+        service as unknown as { getLiteLLMData: () => Promise<unknown> },
+        'getLiteLLMData',
+      ).mockResolvedValue({
+        tiered: {
+          input_cost_per_token: 1e-6,
+          output_cost_per_token: 2e-6,
+          input_cost_per_token_above_2m_tokens: 5e-6,
+          output_cost_per_token_above_10k_tokens: 4e-6,
+          cache_read_input_token_cost_above_10k_tokens: 0.5e-6,
+          cache_creation_input_token_cost_above_500_tokens: 0.25e-6,
+          input_cost_per_token_above_bad_tokens: 99,
+          output_cost_per_token_above_1k_tokens: 'invalid',
+        },
+      });
+
+      const result = await service.lookupModelMetadata('custom', 'tiered');
+
+      expect(result?.pricing?.tiers).toEqual([
+        {
+          aboveTokens: 500,
+          inputPer1MTokens: 1,
+          outputPer1MTokens: 2,
+          cachedWritePer1MTokens: 0.25,
+        },
+        {
+          aboveTokens: 10_000,
+          inputPer1MTokens: 1,
+          outputPer1MTokens: 4,
+          cachedReadPer1MTokens: 0.5,
+        },
+        {
+          aboveTokens: 2_000_000,
+          inputPer1MTokens: 5,
+          outputPer1MTokens: 2,
+        },
+      ]);
+    });
+
+    it('成功获取目录后复用 24 小时内缓存', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValue(response(200, { cached: { max_tokens: 8192 } }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      await expect(
+        service.lookupModelMetadata('custom', 'cached'),
+      ).resolves.toEqual(expect.objectContaining({ contextWindow: 8192 }));
+      await service.lookupModelMetadata('custom', 'cached');
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('过期缓存刷新失败时回退最后成功目录', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(new Date('2026-01-01T00:00:00Z'));
+      const fetchMock = vi
+        .fn()
+        .mockResolvedValueOnce(response(200, { cached: { max_tokens: 4096 } }))
+        .mockResolvedValueOnce(response(503, {}));
+      vi.stubGlobal('fetch', fetchMock);
+
+      await service.lookupModelMetadata('custom', 'cached');
+      vi.advanceTimersByTime(24 * 60 * 60 * 1000 + 1);
+
+      await expect(
+        service.lookupModelMetadata('custom', 'cached'),
+      ).resolves.toEqual(expect.objectContaining({ contextWindow: 4096 }));
+    });
+
+    it('首次目录状态失败时回退空目录', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(500, {})));
+
+      await expect(service.searchLiteLLMModels('openai')).resolves.toEqual([]);
+    });
+
+    it('首次目录网络失败时回退空目录', async () => {
+      vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
+
+      await expect(
+        service.lookupModelMetadata('custom', 'missing'),
+      ).resolves.toBeNull();
     });
   });
 });

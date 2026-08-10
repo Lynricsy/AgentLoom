@@ -801,4 +801,385 @@ describe('AuthService', () => {
       );
     });
   });
+
+  describe('optional Supabase and local-profile branches', () => {
+    it('classifies auth errors by fallback message when Supabase omits the code', async () => {
+      supabaseService.signUp.mockRejectedValue(
+        new AuthApiError('This user is already registered', 422, undefined),
+      );
+
+      await expect(
+        authService.register({
+          email: MOCK_EMAIL,
+          password: MOCK_PASSWORD,
+        }),
+      ).rejects.toMatchObject({
+        type: 'https://agentloom.dev/errors/email-conflict',
+      });
+
+      supabaseService.signIn.mockRejectedValue(
+        new AuthApiError('Invalid login credentials', 400, undefined),
+      );
+
+      await expect(
+        authService.login({
+          email: MOCK_EMAIL,
+          password: MOCK_PASSWORD,
+        }),
+      ).rejects.toMatchObject({
+        type: 'https://agentloom.dev/errors/invalid-credentials',
+      });
+    });
+
+    it.each([
+      'refresh token is malformed',
+      'refresh token was already used',
+      'invalid jwt supplied',
+    ])(
+      'classifies an invalid refresh token from the fallback message: %s',
+      async (message) => {
+        supabaseService.refreshToken.mockRejectedValue(
+          new AuthApiError(message, 401, undefined),
+        );
+
+        await expect(
+          authService.refreshToken({ refresh_token: 'invalid-token' }),
+        ).rejects.toMatchObject({
+          type: 'https://agentloom.dev/errors/refresh-invalid',
+        });
+      },
+    );
+
+    it('logs a non-Error profile insert failure without inventing a stack', async () => {
+      const logger = Reflect.get(authService, 'logger') as {
+        error: (...args: unknown[]) => void;
+      };
+      const loggerErrorSpy = vi
+        .spyOn(logger, 'error')
+        .mockImplementation(() => undefined);
+      supabaseService.signUp.mockResolvedValue({
+        user: mockAuthUser,
+        session: mockSession,
+      });
+      mockInsertReturning.mockRejectedValue('database unavailable');
+
+      await expect(
+        authService.register({
+          email: MOCK_EMAIL,
+          password: MOCK_PASSWORD,
+        }),
+      ).rejects.toMatchObject({
+        type: 'https://agentloom.dev/errors/registration-partial',
+      });
+      expect(loggerErrorSpy).toHaveBeenCalledWith(
+        expect.stringContaining('Failed to create user record'),
+        undefined,
+      );
+    });
+
+    it('logs in without MFA when the optional listFactors capability is absent', async () => {
+      Reflect.deleteProperty(supabaseService, 'listFactors');
+      supabaseService.signIn.mockResolvedValue({
+        user: mockAuthUser,
+        session: mockSession,
+      });
+      mockFindFirst.mockResolvedValue(mockUserRecord);
+
+      const result = await authService.login({
+        email: MOCK_EMAIL,
+        password: MOCK_PASSWORD,
+      });
+
+      expect(result.data).toMatchObject({
+        user: { id: MOCK_UUID },
+        tokens: { access_token: mockSession.access_token },
+      });
+    });
+
+    it('treats an omitted TOTP collection as no verified factors', async () => {
+      supabaseService.signIn.mockResolvedValue({
+        user: mockAuthUser,
+        session: mockSession,
+      });
+      supabaseService.listFactors.mockResolvedValue({});
+      mockFindFirst.mockResolvedValue(mockUserRecord);
+
+      const result = await authService.login({
+        email: MOCK_EMAIL,
+        password: MOCK_PASSWORD,
+      });
+
+      expect(result.data).toHaveProperty(
+        'tokens.access_token',
+        'mock-access-token',
+      );
+    });
+
+    it('fails MFA login when the optional JWT configuration is unavailable', async () => {
+      Reflect.set(authService, 'configService', undefined);
+      supabaseService.signIn.mockResolvedValue({
+        user: mockAuthUser,
+        session: mockSession,
+      });
+      supabaseService.listFactors.mockResolvedValue({
+        totp: [{ id: TEST_FACTOR_ID, status: 'verified' }],
+      });
+      mockFindFirst.mockResolvedValue(mockUserRecord);
+
+      await expect(
+        authService.login({
+          email: MOCK_EMAIL,
+          password: MOCK_PASSWORD,
+        }),
+      ).rejects.toMatchObject({
+        type: 'https://agentloom.dev/errors/login-failed',
+      });
+    });
+  });
+
+  describe('security profile optional fields', () => {
+    it('uses token identity, parses array count rows, and preserves absent factor fields', async () => {
+      supabaseService.listFactors.mockResolvedValue({
+        totp: [
+          {
+            id: TEST_FACTOR_ID,
+            friendly_name: null,
+            status: 'unverified',
+            created_at: '2026-03-07T00:00:00.000Z',
+          },
+        ],
+      });
+      supabaseService.getUser.mockResolvedValue(null);
+      mockExecute.mockResolvedValue([{ active_count: '3' }]);
+
+      const result = await authService.getSecurityInfo(
+        createAccessToken({ sub: MOCK_SUPABASE_UUID }),
+      );
+
+      expect(result).toEqual({
+        mfa: {
+          enabled: false,
+          factors: [
+            {
+              id: TEST_FACTOR_ID,
+              factor_type: 'totp',
+              friendly_name: undefined,
+              status: 'unverified',
+              created_at: '2026-03-07T00:00:00.000Z',
+              updated_at: '2026-03-07T00:00:00.000Z',
+            },
+          ],
+        },
+        sessions: { active_count: 3 },
+        providers: [],
+      });
+    });
+
+    it('falls back to email provider and zero sessions for malformed optional metadata', async () => {
+      supabaseService.listFactors.mockResolvedValue({ totp: [] });
+      supabaseService.getUser.mockResolvedValue({
+        id: MOCK_SUPABASE_UUID,
+        email: MOCK_EMAIL,
+        app_metadata: null,
+        identities: null,
+      });
+      mockExecute.mockResolvedValue({ unexpected: true });
+
+      const result = await authService.getSecurityInfo(
+        mockSession.access_token,
+      );
+
+      expect(result.sessions.active_count).toBe(0);
+      expect(result.providers).toEqual(['email']);
+    });
+
+    it('returns the conservative session count when counting throws a non-Error', async () => {
+      const logger = Reflect.get(authService, 'logger') as {
+        warn: (...args: unknown[]) => void;
+      };
+      const loggerWarnSpy = vi
+        .spyOn(logger, 'warn')
+        .mockImplementation(() => undefined);
+      supabaseService.listFactors.mockResolvedValue({ totp: [] });
+      supabaseService.getUser.mockResolvedValue(mockAuthUser);
+      mockExecute.mockRejectedValue('database unavailable');
+
+      const result = await authService.getSecurityInfo(
+        mockSession.access_token,
+      );
+
+      expect(result.sessions.active_count).toBe(1);
+      expect(loggerWarnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('unknown error'),
+      );
+    });
+  });
+
+  describe('session management', () => {
+    const userId = '01912345-6789-7abc-8ef0-123456789abc';
+    const currentSessionId = '01912345-6789-7abc-8ef0-123456789abd';
+    const otherSessionId = '01912345-6789-7abc-8ef0-123456789abe';
+
+    it('maps direct session rows including nullable optional fields and current marker', async () => {
+      mockExecute.mockResolvedValue([
+        {
+          id: currentSessionId,
+          user_agent: 'Vitest',
+          ip: '127.0.0.1',
+          created_at: '2026-04-01T00:00:00.000Z',
+          last_active_at: new Date('2026-04-02T00:00:00.000Z'),
+        },
+        {},
+      ]);
+
+      const result = await authService.listSessions(
+        createAccessToken({ sub: userId, session_id: currentSessionId }),
+      );
+
+      expect(result.data.sessions).toEqual([
+        {
+          id: currentSessionId,
+          user_agent: 'Vitest',
+          ip: '127.0.0.1',
+          created_at: '2026-04-01T00:00:00.000Z',
+          last_active_at: '2026-04-02T00:00:00.000Z',
+          is_current: true,
+        },
+        {
+          id: '',
+          user_agent: null,
+          ip: null,
+          created_at: null,
+          last_active_at: null,
+          is_current: false,
+        },
+      ]);
+    });
+
+    it('accepts driver rows wrapper and marks no session current when token has no session id', async () => {
+      mockExecute.mockResolvedValue({
+        rows: [{ id: otherSessionId, created_at: null, last_active_at: null }],
+      });
+
+      const result = await authService.listSessions(
+        createAccessToken({ sub: userId, session_id: undefined }),
+      );
+
+      expect(result.data.sessions).toHaveLength(1);
+      expect(result.data.sessions[0]?.is_current).toBe(false);
+    });
+
+    it('returns an empty list for an unrecognized driver result', async () => {
+      mockExecute.mockResolvedValue({ rowCount: 0 });
+
+      await expect(
+        authService.listSessions(createAccessToken({ sub: userId })),
+      ).resolves.toEqual({ data: { sessions: [] } });
+    });
+
+    it('rejects list and revoke requests without a token subject', async () => {
+      const token = createAccessToken({ sub: undefined });
+
+      await expect(authService.listSessions(token)).rejects.toMatchObject({
+        type: 'https://agentloom.dev/errors/unauthorized',
+      });
+      await expect(
+        authService.revokeSession(token, otherSessionId),
+      ).rejects.toMatchObject({
+        type: 'https://agentloom.dev/errors/unauthorized',
+      });
+      await expect(authService.revokeAllSessions(token)).rejects.toMatchObject({
+        type: 'https://agentloom.dev/errors/unauthorized',
+      });
+    });
+
+    it('returns an empty list and logs non-Error database failures', async () => {
+      const logger = Reflect.get(authService, 'logger') as {
+        warn: (...args: unknown[]) => void;
+      };
+      const loggerWarnSpy = vi
+        .spyOn(logger, 'warn')
+        .mockImplementation(() => undefined);
+      mockExecute.mockRejectedValue('database unavailable');
+
+      await expect(
+        authService.listSessions(createAccessToken({ sub: userId })),
+      ).resolves.toEqual({ data: { sessions: [] } });
+      expect(loggerWarnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('unknown error'),
+      );
+    });
+
+    it('does not revoke the current active session', async () => {
+      await expect(
+        authService.revokeSession(
+          createAccessToken({ sub: userId, session_id: currentSessionId }),
+          currentSessionId,
+        ),
+      ).rejects.toMatchObject({
+        type: 'https://agentloom.dev/errors/session-revoke-current',
+      });
+      expect(mockExecute).not.toHaveBeenCalled();
+    });
+
+    it('handles direct empty ownership rows as a missing session', async () => {
+      mockExecute.mockResolvedValue([]);
+
+      await expect(
+        authService.revokeSession(
+          createAccessToken({ sub: userId, session_id: currentSessionId }),
+          otherSessionId,
+        ),
+      ).rejects.toMatchObject({
+        type: 'https://agentloom.dev/errors/session-not-found',
+      });
+    });
+
+    it('revokes a session found in wrapped driver rows', async () => {
+      mockExecute
+        .mockResolvedValueOnce({ rows: [{ id: otherSessionId }] })
+        .mockResolvedValueOnce(undefined);
+
+      await expect(
+        authService.revokeSession(
+          createAccessToken({ sub: userId, session_id: currentSessionId }),
+          otherSessionId,
+        ),
+      ).resolves.toEqual({ message: 'Session revoked successfully' });
+      expect(mockExecute).toHaveBeenCalledTimes(2);
+    });
+
+    it('revokes only other valid session ids from direct rows', async () => {
+      mockExecute
+        .mockResolvedValueOnce([
+          { id: currentSessionId },
+          { id: otherSessionId },
+          {},
+        ])
+        .mockResolvedValue(undefined);
+
+      await expect(
+        authService.revokeAllSessions(
+          createAccessToken({ sub: userId, session_id: currentSessionId }),
+        ),
+      ).resolves.toEqual({ data: { revokedCount: 1 } });
+      expect(mockExecute).toHaveBeenCalledTimes(2);
+    });
+
+    it('returns zero revoked sessions for wrapped or malformed empty rows', async () => {
+      mockExecute.mockResolvedValueOnce({ rows: [{ id: currentSessionId }] });
+
+      await expect(
+        authService.revokeAllSessions(
+          createAccessToken({ sub: userId, session_id: currentSessionId }),
+        ),
+      ).resolves.toEqual({ data: { revokedCount: 0 } });
+
+      mockExecute.mockResolvedValueOnce({ rowCount: 0 });
+
+      await expect(
+        authService.revokeAllSessions(createAccessToken({ sub: userId })),
+      ).resolves.toEqual({ data: { revokedCount: 0 } });
+    });
+  });
 });

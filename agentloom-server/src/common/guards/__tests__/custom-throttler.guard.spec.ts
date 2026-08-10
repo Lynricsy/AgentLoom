@@ -14,9 +14,9 @@ import { ResourceGovernanceService } from '../../../modules/resource-governance/
 import type { ResourceGovernanceStateResponseDto } from '../../../modules/resource-governance/dto/resource-governance-response.dto';
 import { ResourceGovernanceDecisionBlockedException } from '../../../modules/resource-governance/resource-governance.exceptions';
 
-const TENANT_ID = '019391d4-a000-7000-0000-000000000001';
-const USER_ID = '019391d4-b000-7000-0000-000000000002';
-const ORGANIZATION_ID = '019391d4-c000-7000-0000-000000000003';
+const TENANT_ID = '019391d4-a000-7000-8000-000000000001';
+const USER_ID = '019391d4-b000-7000-8000-000000000002';
+const ORGANIZATION_ID = '019391d4-c000-7000-8000-000000000003';
 
 type GuardRequest = {
   headers?: Record<string, string | string[] | undefined>;
@@ -27,6 +27,11 @@ type GuardRequest = {
   };
   apiKeyPrefix?: string;
   ip?: string;
+  apiTokenUserId?: string;
+  raw?: {
+    tenantId?: string;
+    headers?: Record<string, string | string[] | undefined>;
+  };
 };
 
 type HeaderWriter = {
@@ -516,6 +521,272 @@ describe('CustomThrottlerGuard', () => {
       7,
       60_000,
       'default',
+    );
+  });
+
+  it('supports array headers and ignores malformed authentication headers', async () => {
+    const guard = createGuard();
+    const token = jwt.sign({ sub: 'array-user' }, 'test-secret');
+
+    await expect(
+      guard.getTrackerForTest({
+        headers: { authorization: [`Bearer ${token}`] },
+      }),
+    ).resolves.toBe('jwt:array-user');
+    await expect(
+      guard.getTrackerForTest({
+        headers: {
+          'x-api-key': 'wrong-prefix',
+          authorization: 'Bearer malformed',
+        },
+        ip: '10.0.0.9',
+      }),
+    ).resolves.toBe('10.0.0.9');
+    await expect(
+      guard.getTrackerForTest({
+        headers: { authorization: 'Basic credentials' },
+      }),
+    ).resolves.toBe('unknown');
+  });
+
+  it('uses a JWT tenant claim without validating an API token', async () => {
+    const guard = createGuard();
+    const token = jwt.sign({ sub: USER_ID, tenant_id: TENANT_ID }, 'secret');
+    const req: GuardRequest = {
+      headers: { authorization: `Bearer ${token}` },
+    };
+    const res = createResponse();
+    const props = createRequestProps(req, res);
+    storageService.increment.mockResolvedValueOnce({
+      totalHits: 1,
+      timeToExpire: 21,
+      isBlocked: false,
+      timeToBlockExpire: 0,
+    });
+    resourceGovernanceService.resolveRuntimeStateForTenant.mockResolvedValueOnce(
+      createRuntimeState({ apiRateLimitPerMinute: 9 }),
+    );
+
+    await expect(guard.handleRequestForTest(props)).resolves.toBe(true);
+
+    expect(req.tenantId).toBe(TENANT_ID);
+    expect(platformApiTokenService.validateToken).not.toHaveBeenCalled();
+    expect(props.generateKey).toHaveBeenCalledWith(
+      props.context,
+      `tenant:${TENANT_ID}`,
+      'default',
+    );
+  });
+
+  it('prefers the raw adapter tenant and writes named-throttler headers', async () => {
+    const guard = createGuard();
+    const req: GuardRequest = {
+      raw: { tenantId: TENANT_ID },
+      headers: {},
+    };
+    const res = createResponse();
+    const props = createRequestProps(req, res);
+    Object.assign(props, {
+      throttler: {
+        name: 'uploads',
+        ttl: 60_000,
+        limit: 100,
+        setHeaders: true,
+      },
+    });
+    storageService.increment.mockResolvedValueOnce({
+      totalHits: 3,
+      timeToExpire: 44,
+      isBlocked: false,
+      timeToBlockExpire: 0,
+    });
+    resourceGovernanceService.resolveRuntimeStateForTenant.mockResolvedValueOnce(
+      createRuntimeState({ apiRateLimitPerMinute: 10 }),
+    );
+
+    await expect(guard.handleRequestForTest(props)).resolves.toBe(true);
+
+    expect(req.tenantId).toBe(TENANT_ID);
+    expect(res.header).toHaveBeenCalledWith('X-RateLimit-Limit-uploads', 10);
+    expect(res.header).toHaveBeenCalledWith('X-RateLimit-Remaining-uploads', 7);
+    expect(res.header).toHaveBeenCalledWith('X-RateLimit-Reset-uploads', 44);
+  });
+
+  it('honors disabled headers on a blocked tenant request', async () => {
+    const guard = createGuard();
+    const req: GuardRequest = { tenantId: TENANT_ID, headers: {} };
+    const res = createResponse();
+    const props = createRequestProps(req, res);
+    Object.assign(props, {
+      throttler: {
+        name: 'quiet',
+        ttl: 60_000,
+        limit: 100,
+        setHeaders: false,
+      },
+    });
+    resourceGovernanceService.resolveRuntimeStateForTenant.mockResolvedValueOnce(
+      createRuntimeState({ apiRateLimitPerMinute: 2 }),
+    );
+    storageService.increment.mockResolvedValueOnce({
+      totalHits: 3,
+      timeToExpire: 11,
+      isBlocked: true,
+      timeToBlockExpire: 11,
+    });
+
+    await expect(guard.handleRequestForTest(props)).rejects.toBeInstanceOf(
+      ResourceGovernanceDecisionBlockedException,
+    );
+    expect(res.header).not.toHaveBeenCalled();
+  });
+
+  it('delegates anonymous rate-limit failures to the base throttling exception', async () => {
+    const guard = createGuard();
+    const req: GuardRequest = { headers: {}, ip: '192.0.2.1' };
+    const res = createResponse();
+    const props = createRequestProps(req, res);
+    const throttled = new Error('base throttled');
+    const throwThrottlingException = vi.fn().mockRejectedValue(throttled);
+    Object.assign(guard, { throwThrottlingException });
+    storageService.increment.mockResolvedValueOnce({
+      totalHits: 101,
+      timeToExpire: 8,
+      isBlocked: true,
+      timeToBlockExpire: 8,
+    });
+
+    await expect(guard.handleRequestForTest(props)).rejects.toBe(throttled);
+
+    expect(throwThrottlingException).toHaveBeenCalledWith(
+      props.context,
+      expect.objectContaining({
+        tracker: 'jwt:user-1',
+        totalHits: 101,
+        isBlocked: true,
+      }),
+    );
+    expect(res.header).toHaveBeenCalledWith('Retry-After', 8);
+  });
+
+  it('short-circuits matching ignored user agents before tenant or storage work', async () => {
+    const guard = createGuard();
+    Object.assign(guard, {
+      commonOptions: { ignoreUserAgents: [/health-probe/] },
+    });
+    const req: GuardRequest = {
+      headers: { 'user-agent': 'internal-health-probe/1.0' },
+      tenantId: TENANT_ID,
+    };
+    const props = createRequestProps(req, createResponse());
+
+    await expect(guard.handleRequestForTest(props)).resolves.toBe(true);
+
+    expect(storageService.increment).not.toHaveBeenCalled();
+    expect(
+      resourceGovernanceService.resolveRuntimeStateForTenant,
+    ).not.toHaveBeenCalled();
+  });
+
+  it('records API-token users as actors for daily quota blocks', async () => {
+    const guard = createGuard();
+    const req: GuardRequest = {
+      headers: { 'x-api-key': 'al_servicep123456789' },
+    };
+    const props = createRequestProps(req, createResponse(), {
+      getTracker: vi.fn().mockResolvedValue('apikey:al_servicep'),
+    });
+    platformApiTokenService.validateToken.mockResolvedValueOnce({
+      tokenId: 'token-id',
+      tokenPrefix: 'al_servicep',
+      tenantId: TENANT_ID,
+      userId: USER_ID,
+      tenantRole: 'admin',
+    });
+    resourceGovernanceService.resolveRuntimeStateForTenant.mockResolvedValueOnce(
+      createRuntimeState({ dailyApiCallLimit: 1 }),
+    );
+    storageService.increment.mockResolvedValueOnce({
+      totalHits: 2,
+      timeToExpire: 100,
+      isBlocked: true,
+      timeToBlockExpire: 100,
+    });
+
+    await expect(guard.handleRequestForTest(props)).rejects.toBeInstanceOf(
+      ResourceGovernanceDecisionBlockedException,
+    );
+
+    expect(
+      resourceGovernanceService.recordBlockedDecision,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        tenantId: TENANT_ID,
+        actorId: USER_ID,
+        actorType: 'user',
+        metadata: expect.objectContaining({
+          apiKeyPrefix: 'al_servicep',
+          tracker: 'apikey:al_servicep',
+        }),
+      }),
+    );
+  });
+
+  it('records a pre-resolved API key without a user as a service actor', async () => {
+    const guard = createGuard();
+    const req: GuardRequest = {
+      tenantId: TENANT_ID,
+      apiKeyPrefix: 'al_servicep',
+      headers: {},
+    };
+    const props = createRequestProps(req, createResponse());
+    resourceGovernanceService.resolveRuntimeStateForTenant.mockResolvedValueOnce(
+      createRuntimeState({ apiRateLimitPerMinute: 1 }),
+    );
+    storageService.increment.mockResolvedValueOnce({
+      totalHits: 2,
+      timeToExpire: 4,
+      isBlocked: true,
+      timeToBlockExpire: 4,
+    });
+
+    await expect(guard.handleRequestForTest(props)).rejects.toBeInstanceOf(
+      ResourceGovernanceDecisionBlockedException,
+    );
+    expect(
+      resourceGovernanceService.recordBlockedDecision,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorId: null,
+        actorType: 'service',
+      }),
+    );
+  });
+
+  it('falls back to system actor when a tenant has no authenticated identity', async () => {
+    const guard = createGuard();
+    const req: GuardRequest = { tenantId: TENANT_ID, headers: {} };
+    const props = createRequestProps(req, createResponse());
+    resourceGovernanceService.resolveRuntimeStateForTenant.mockResolvedValueOnce(
+      createRuntimeState({ apiRateLimitPerMinute: 1 }),
+    );
+    storageService.increment.mockResolvedValueOnce({
+      totalHits: 2,
+      timeToExpire: 4,
+      isBlocked: true,
+      timeToBlockExpire: 4,
+    });
+
+    await expect(guard.handleRequestForTest(props)).rejects.toBeInstanceOf(
+      ResourceGovernanceDecisionBlockedException,
+    );
+    expect(
+      resourceGovernanceService.recordBlockedDecision,
+    ).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actorId: null,
+        actorType: 'system',
+      }),
     );
   });
 });

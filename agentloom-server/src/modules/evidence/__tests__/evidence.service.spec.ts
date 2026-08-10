@@ -12,6 +12,7 @@ import {
   EvidencePacketSchema,
   QueryEvidenceChainSchema,
   QueryEvidenceSchema,
+  type CreateEvidenceRecordDto,
   type EvidencePacketDto,
   type EvidencePacketSummary,
 } from '../dto/evidence.dto';
@@ -1010,6 +1011,244 @@ describe('EvidenceService', () => {
       );
       expect(mocks.tenantDb.insert).not.toHaveBeenCalled();
     });
+
+    it('ignores non-evidence runtime events without opening a transaction', async () => {
+      await service.handleRagRetrieved({
+        tenantId: TENANT_ID,
+        executionId: EXECUTION_ID,
+        stepId: STEP_ID,
+        results: [],
+      });
+      await service.handleStepAgentEvent({
+        tenantId: TENANT_ID,
+        executionId: EXECUTION_ID,
+        stepId: STEP_ID,
+        event: { type: 'message_chunk', content: 'partial' },
+      });
+      await service.handleToolCallStatus({
+        tenantId: TENANT_ID,
+        executionId: EXECUTION_ID,
+        stepId: STEP_ID,
+        nodeId: NODE_ID,
+        toolCallId: 'tool-call-pending',
+        tool: 'search',
+        status: 'pending',
+      });
+      await service.handleStepFailed({
+        tenantId: TENANT_ID,
+        executionId: EXECUTION_ID,
+        stepId: STEP_ID,
+        nodeId: NODE_ID,
+        from: 'pending',
+        to: 'running',
+      });
+      await service.handleStepFailed({
+        tenantId: TENANT_ID,
+        executionId: EXECUTION_ID,
+        stepId: STEP_ID,
+        nodeId: NODE_ID,
+        from: 'running',
+        to: 'failed',
+      });
+
+      expect(mocks.runInTenantTransaction).not.toHaveBeenCalled();
+      expect(mocks.tenantDb.insert).not.toHaveBeenCalled();
+    });
+
+    it('normalizes alternate RAG location fields and explicit lineage', async () => {
+      mocks.uuidv7.mockReturnValue(GENERATED_ID_1);
+      const insertMock = setupInsertReturning();
+      queueSelectResult('limit', [createStepRecord()]);
+
+      await service.handleRagRetrieved({
+        tenantId: TENANT_ID,
+        executionId: EXECUTION_ID,
+        stepId: STEP_ID,
+        parentEvidenceId: EXISTING_PARENT_ID,
+        results: [
+          {
+            chunkId: 'chunk-alt',
+            score: 2,
+            content: 'y'.repeat(600),
+            location: {
+              file_name: 'alternate.md',
+              paragraph: 7,
+              start_offset: 9,
+              length: 12,
+              section_title: 'Alternate section',
+              excerpt: 'z'.repeat(600),
+            },
+            documentId: 'doc-alt',
+            knowledgeBaseId: 'kb-alt',
+            chunkIndex: 0,
+          },
+        ],
+      });
+
+      const [inserted] = insertMock.getCapturedValues();
+      expect(inserted.parentEvidenceId).toBe(EXISTING_PARENT_ID);
+      expect(inserted.packet).toMatchObject({
+        physicalLocation: {
+          fileName: 'alternate.md',
+          paragraph: 7,
+          offset: 9,
+          length: 12,
+        },
+        semanticLocation: {
+          sectionTitle: 'Alternate section',
+          relevanceScore: 1,
+        },
+      });
+      expect(
+        (
+          (inserted.packet as Record<string, unknown>)
+            .semanticLocation as Record<string, unknown>
+        ).context,
+      ).toHaveLength(500);
+    });
+
+    it('persists default agent-decision metadata when optional event values are absent', async () => {
+      mocks.uuidv7.mockReturnValue(GENERATED_ID_1);
+      const insertMock = setupInsertReturning();
+      queueSelectResult('limit', [
+        createStepRecord({ nodeData: {}, nodeId: 'fallback-node' }),
+      ]);
+      queueSelectResult('limit', []);
+
+      await service.handleStepAgentEvent({
+        tenantId: TENANT_ID,
+        executionId: EXECUTION_ID,
+        stepId: STEP_ID,
+        event: {
+          type: 'decision',
+          suggestedContent: 'Default decision',
+        },
+      });
+
+      const [inserted] = insertMock.getCapturedValues();
+      expect(inserted.parentEvidenceId).toBeNull();
+      expect(inserted.packet).toMatchObject({
+        agentDecision: {
+          nodeId: 'fallback-node',
+          agentName: 'fallback-node',
+          autonomyMode: 'human_in_the_loop',
+          reasoning: 'Agent decision emitted by runtime',
+          selectedAction: 'request_intervention',
+          alternatives: ['approve', 'modify', 'reject'],
+        },
+      });
+      expect(
+        (inserted.packet as Record<string, unknown>).agentDecision,
+      ).not.toHaveProperty('confidence');
+    });
+
+    it('persists tool error and transition fallbacks without optional input', async () => {
+      mocks.uuidv7.mockReturnValue(GENERATED_ID_1);
+      const insertMock = setupInsertReturning();
+      queueSelectResult('limit', [createStepRecord()]);
+      queueSelectResult('limit', []);
+
+      await service.handleToolCallStatus({
+        tenantId: TENANT_ID,
+        executionId: EXECUTION_ID,
+        stepId: STEP_ID,
+        nodeId: NODE_ID,
+        toolCallId: 'tool-call-error',
+        tool: 'search',
+        status: 'failed',
+        error: 'network failed',
+        transitions: [
+          {
+            from: 'in_progress',
+            to: 'failed',
+            source: 'worker',
+            timestamp: NOW,
+          },
+        ],
+      });
+
+      const [inserted] = insertMock.getCapturedValues();
+      expect(inserted.packet).toMatchObject({
+        toolOutput: {
+          toolInput: {},
+          toolOutput: { error: 'network failed' },
+          transitions: [
+            {
+              from: 'in_progress',
+              to: 'failed',
+              source: 'worker',
+              timestamp: NOW,
+            },
+          ],
+        },
+      });
+    });
+
+    it('persists sparse intervention and node errors without inventing optional metadata', async () => {
+      mocks.uuidv7
+        .mockReturnValueOnce(GENERATED_ID_1)
+        .mockReturnValueOnce(GENERATED_ID_2);
+      const insertMock = setupInsertReturning();
+      queueSelectResult('limit', [
+        createStepRecord({
+          checkpointData: { interventionRequestedAt: 123 },
+        }),
+      ]);
+      queueSelectResult('limit', []);
+
+      await service.handleInterventionResolved({
+        tenantId: TENANT_ID,
+        executionId: EXECUTION_ID,
+        stepId: STEP_ID,
+        nodeId: NODE_ID,
+        action: 'reject',
+        resolvedBy: 'system',
+        resolvedAt: NOW,
+        timeout: true,
+      });
+
+      const [intervention] = insertMock.getCapturedValues();
+      queueSelectResult('limit', [createStepRecord()]);
+      queueSelectResult('limit', []);
+      await service.handleStepFailed({
+        tenantId: TENANT_ID,
+        executionId: EXECUTION_ID,
+        stepId: STEP_ID,
+        nodeId: NODE_ID,
+        from: 'running',
+        to: 'failed',
+        errorDetail: {
+          message: 'minimal failure',
+          typeMismatch: {
+            sourcePortId: 'source',
+            sourceType: 'text',
+            targetType: 'image',
+          },
+        },
+      } as Parameters<EvidenceService['handleStepFailed']>[0]);
+
+      const [nodeError] = insertMock.getCapturedValues();
+      expect(intervention.packet).toMatchObject({
+        intervention: {
+          action: 'reject',
+          resolvedBy: 'system',
+          resolvedAt: NOW,
+          timeout: true,
+        },
+      });
+      expect(
+        (intervention.packet as Record<string, unknown>).intervention,
+      ).not.toHaveProperty('requestedAt');
+      expect(nodeError.packet).toMatchObject({
+        nodeError: {
+          nodeId: NODE_ID,
+          errorMessage: 'minimal failure',
+        },
+      });
+      expect(
+        (nodeError.packet as Record<string, unknown>).nodeError,
+      ).not.toHaveProperty('typeMismatch');
+    });
   });
 
   describe('buildPacketSummary', () => {
@@ -1600,5 +1839,620 @@ describe('EvidenceService', () => {
         description: '来源已修改—原始文档内容发生变化',
       });
     });
+  });
+
+  describe('packet type, preview, and encryption metadata contracts', () => {
+    it('builds useful summaries for every public evidence source type', () => {
+      const summarize = (
+        Reflect.get(service, 'buildPacketSummary') as (
+          packet: EvidencePacketDto,
+        ) => EvidencePacketSummary
+      ).bind(service);
+      const packets: Array<{
+        packet: unknown;
+        title: string;
+        metadata?: Record<string, string>;
+      }> = [
+        {
+          packet: {
+            ...createRagPacketInput({
+              retrievedContent: 'x'.repeat(201),
+              physicalLocation: {
+                documentId: 'doc-1',
+                fileName: 'guide.md',
+                knowledgeBaseId: 'kb-1',
+                offset: 0,
+                length: 201,
+                chunkId: 'chunk-1',
+              },
+              semanticLocation: {
+                sectionTitle: 'Overview',
+                context: 'context',
+                relevanceScore: 0.876,
+              },
+            }),
+          },
+          title: 'RAG 检索 · guide.md',
+          metadata: {
+            knowledgeBaseId: 'kb-1',
+            sectionTitle: 'Overview',
+            relevanceScore: '0.88',
+          },
+        },
+        {
+          packet: {
+            sourceType: 'agent_decision',
+            agentDecision: {
+              nodeId: 'agent-node',
+              agentName: 'Planner',
+              autonomyMode: 'full_auto',
+              selectedAction: 'continue',
+              suggestedContent: 'next',
+              reasoning: 'reason',
+              confidence: 0.925,
+            },
+          },
+          title: 'Agent 决策 · Planner',
+          metadata: { confidence: '0.93' },
+        },
+        {
+          packet: {
+            sourceType: 'tool_output',
+            toolOutput: {
+              toolName: 'search',
+              toolCallId: 'call-1',
+              toolInput: {},
+              toolOutput: { count: 2 },
+            },
+          },
+          title: '工具输出 · search',
+          metadata: { toolCallId: 'call-1' },
+        },
+        {
+          packet: {
+            sourceType: 'user_input',
+            userInput: { content: { prompt: 'hello' } },
+          },
+          title: '用户输入',
+        },
+        {
+          packet: {
+            sourceType: 'intervention',
+            intervention: {
+              action: 'modify',
+              resolvedBy: 'user-1',
+              resolvedAt: NOW,
+              modifiedContent: { approved: true },
+            },
+          },
+          title: '人工介入 · modify',
+        },
+      ];
+
+      for (const { packet, title, metadata } of packets) {
+        expect(summarize(packet as unknown as EvidencePacketDto)).toEqual(
+          expect.objectContaining({
+            title,
+            ...(metadata
+              ? { metadata: expect.objectContaining(metadata) }
+              : {}),
+          }),
+        );
+      }
+
+      expect(
+        summarize({
+          sourceType: 'tool_output',
+          evidenceId: GENERATED_ID_1,
+          contentHash: 'a'.repeat(64),
+          timestamp: NOW,
+          encryptedPacket: {
+            ciphertext: 'cipher',
+            encryptedSessionKey: 'key',
+            iv: 'iv',
+            authTag: 'tag',
+            aad: 'aad',
+            keyFingerprint: 'fp',
+            algorithm: 'RSA-OAEP-4096+AES-256-GCM',
+          },
+          summary: { title: 'Encrypted tool', metadata: { status: 'done' } },
+        }),
+      ).toEqual({
+        title: 'Encrypted tool',
+        metadata: { status: 'done' },
+      });
+    });
+
+    it('omits absent optional summary metadata and serializes edge-case previews safely', () => {
+      const summarize = (
+        Reflect.get(service, 'buildPacketSummary') as (
+          packet: EvidencePacketDto,
+        ) => EvidencePacketSummary
+      ).bind(service);
+      const serialize = Reflect.get(service, 'serializePreview') as (
+        value: unknown,
+      ) => string;
+      const circular: Record<string, unknown> = {};
+      circular.self = circular;
+
+      expect(
+        summarize({
+          sourceType: 'agent_decision',
+          agentDecision: {
+            nodeId: 'node-1',
+            agentName: 'Agent',
+            autonomyMode: 'manual',
+            suggestedContent: 'content',
+            reasoning: '',
+            selectedAction: 'wait',
+          },
+        } as unknown as EvidencePacketDto),
+      ).toEqual({
+        title: 'Agent 决策 · Agent',
+        excerpt: undefined,
+        metadata: {
+          nodeId: 'node-1',
+          selectedAction: 'wait',
+          autonomyMode: 'manual',
+        },
+      });
+      expect(
+        summarize({
+          sourceType: 'tool_output',
+          toolOutput: {
+            toolName: 'noop',
+            toolInput: {},
+            toolOutput: undefined,
+          },
+        } as unknown as EvidencePacketDto),
+      ).toMatchObject({ metadata: {} });
+      expect(serialize('plain')).toBe('plain');
+      expect(serialize(undefined)).toBe('undefined');
+      expect(serialize(circular)).toBe('[object Object]');
+    });
+
+    it('normalizes encryption metadata with metadata precedence and payload fallback', () => {
+      const normalize = Reflect.get(service, 'normalizeEncryptionMetadata') as (
+        record: Record<string, unknown>,
+        packet: EvidencePacketDto,
+      ) => Record<string, unknown> | null;
+      const encryptedPacket = {
+        sourceType: 'tool_output',
+        evidenceId: GENERATED_ID_1,
+        contentHash: 'a'.repeat(64),
+        timestamp: NOW,
+        encryptedPacket: {
+          ciphertext: 'cipher',
+          encryptedSessionKey: 'key',
+          iv: 'iv',
+          authTag: 'tag',
+          aad: 'aad',
+          keyFingerprint: 'payload-fp',
+          algorithm: 'payload-algorithm',
+        },
+        summary: { title: 'Encrypted tool' },
+      } as unknown as EvidencePacketDto;
+
+      expect(
+        normalize(
+          { isEncrypted: false, encryptionMetadata: null },
+          encryptedPacket,
+        ),
+      ).toBeNull();
+      expect(
+        normalize(
+          {
+            isEncrypted: true,
+            encryptionMetadata: {
+              keyFingerprint: 'metadata-fp',
+              algorithm: 'metadata-algorithm',
+              encryptedAt: NOW,
+              plaintextHash: 'b'.repeat(64),
+              contractVersion: 2,
+            },
+          },
+          encryptedPacket,
+        ),
+      ).toEqual({
+        isEncrypted: true,
+        keyFingerprint: 'metadata-fp',
+        algorithm: 'metadata-algorithm',
+        encryptedAt: NOW,
+        plaintextHash: 'b'.repeat(64),
+        contractVersion: 2,
+      });
+      expect(
+        normalize(
+          { isEncrypted: true, encryptionMetadata: {} },
+          encryptedPacket,
+        ),
+      ).toEqual({
+        isEncrypted: true,
+        keyFingerprint: 'payload-fp',
+        algorithm: 'payload-algorithm',
+      });
+    });
+
+    it('sanitizes malformed legacy encrypted payloads into a stable contract', () => {
+      const validate = (
+        Reflect.get(service, 'validateEncryptedPayload') as (
+          value: unknown,
+        ) => Record<string, unknown>
+      ).bind(service);
+      const synthetic = Reflect.get(
+        service,
+        'buildSyntheticEncryptedPayload',
+      ) as (
+        metadata: Record<string, unknown> | null,
+      ) => Record<string, unknown>;
+      const readLegacy = (
+        Reflect.get(service, 'readLegacyEncryptedPayload') as (
+          metadata: unknown,
+        ) => Record<string, unknown> | undefined
+      ).bind(service);
+
+      expect(validate(null)).toEqual({
+        ciphertext: '',
+        encryptedSessionKey: '',
+        iv: '',
+        authTag: '',
+        aad: '',
+        keyFingerprint: '',
+        algorithm: 'RSA-OAEP-4096+AES-256-GCM',
+      });
+      expect(
+        validate({
+          ciphertext: 1,
+          encryptedSessionKey: 'key',
+          iv: false,
+          authTag: 'tag',
+          aad: null,
+          keyFingerprint: 'fp',
+          algorithm: 42,
+        }),
+      ).toEqual({
+        ciphertext: '',
+        encryptedSessionKey: 'key',
+        iv: '',
+        authTag: 'tag',
+        aad: '',
+        keyFingerprint: 'fp',
+        algorithm: 'RSA-OAEP-4096+AES-256-GCM',
+      });
+      expect(
+        synthetic({ keyFingerprint: 3, algorithm: 'custom-algorithm' }),
+      ).toMatchObject({
+        keyFingerprint: '',
+        algorithm: 'custom-algorithm',
+      });
+      expect(readLegacy(null)).toBeUndefined();
+      expect(readLegacy({ encryptedPayload: 'cipher' })).toBeUndefined();
+      expect(
+        readLegacy({
+          encryptedPayload: {
+            ciphertext: 'cipher',
+            encryptedSessionKey: 'key',
+          },
+        }),
+      ).toMatchObject({ ciphertext: 'cipher', encryptedSessionKey: 'key' });
+    });
+
+    it('handles hash, lookup, truncation, and score boundaries deterministically', () => {
+      const compare = Reflect.get(service, 'compareHashes') as (
+        left: string,
+        right: string,
+      ) => boolean;
+      const readString = Reflect.get(service, 'readString') as (
+        source: Record<string, unknown>,
+        keys: string[],
+      ) => string | undefined;
+      const readInteger = Reflect.get(service, 'readInteger') as (
+        source: Record<string, unknown>,
+        keys: string[],
+      ) => number | undefined;
+      const truncate = Reflect.get(service, 'truncateContext') as (
+        value: string,
+      ) => string;
+      const clamp = Reflect.get(service, 'clampScore') as (
+        value: number,
+      ) => number;
+
+      expect(compare('aa', 'a')).toBe(false);
+      expect(compare('zz', 'aa')).toBe(false);
+      expect(compare('aa', 'aa')).toBe(true);
+      expect(
+        readString({ first: ' ', second: 2, third: 'value' }, [
+          'first',
+          'second',
+          'third',
+        ]),
+      ).toBe('value');
+      expect(readString({}, ['missing'])).toBeUndefined();
+      expect(
+        readInteger({ first: 1.5, second: '2', third: 3 }, [
+          'first',
+          'second',
+          'third',
+        ]),
+      ).toBe(3);
+      expect(readInteger({}, ['missing'])).toBeUndefined();
+      expect(truncate('x'.repeat(500))).toHaveLength(500);
+      expect(truncate('x'.repeat(501))).toHaveLength(500);
+      expect(clamp(-1)).toBe(0);
+      expect(clamp(0.5)).toBe(0.5);
+      expect(clamp(2)).toBe(1);
+    });
+    it('projects plain and legacy encrypted packets without weakening packet types', () => {
+      const normalizeStoredPacket = (
+        Reflect.get(service, 'normalizeStoredPacket') as (record: {
+          packet: EvidencePacketDto;
+          isEncrypted: boolean;
+          encryptionMetadata: Record<string, unknown> | null;
+          contentHash: string;
+        }) => EvidencePacketDto
+      ).bind(service);
+      const plainPacket = EvidencePacketSchema.parse({
+        sourceType: 'user_input',
+        userInput: { content: 'plain input' },
+        evidenceId: GENERATED_ID_1,
+        contentHash: 'a'.repeat(64),
+        timestamp: NOW,
+      });
+      const ragPacket = EvidencePacketSchema.parse({
+        ...createRagPacketInput(),
+        evidenceId: GENERATED_ID_1,
+        contentHash: 'b'.repeat(64),
+        timestamp: NOW,
+      });
+      const agentPacket = EvidencePacketSchema.parse({
+        sourceType: 'agent_decision',
+        agentDecision: {
+          nodeId: NODE_ID,
+          agentName: 'Legacy agent',
+          autonomyMode: 'manual',
+          suggestedContent: 'continue',
+          reasoning: 'legacy reasoning',
+          selectedAction: 'continue',
+        },
+        parentEvidenceId: EXISTING_PARENT_ID,
+        evidenceId: GENERATED_ID_2,
+        contentHash: 'c'.repeat(64),
+        timestamp: NOW,
+      });
+
+      expect(
+        normalizeStoredPacket({
+          packet: plainPacket,
+          isEncrypted: false,
+          encryptionMetadata: null,
+          contentHash: plainPacket.contentHash,
+        }),
+      ).toEqual(plainPacket);
+      expect(
+        normalizeStoredPacket({
+          packet: ragPacket,
+          isEncrypted: true,
+          encryptionMetadata: null,
+          contentHash: ragPacket.contentHash,
+        }),
+      ).toEqual(ragPacket);
+
+      const normalizedLegacy = normalizeStoredPacket({
+        packet: agentPacket,
+        isEncrypted: true,
+        encryptionMetadata: {
+          encryptedPayload: {
+            ciphertext: 'legacy-cipher',
+            encryptedSessionKey: 'legacy-key',
+            iv: 'legacy-iv',
+            authTag: 'legacy-tag',
+            aad: 'legacy-aad',
+            keyFingerprint: 'legacy-fingerprint',
+            algorithm: 'legacy-algorithm',
+          },
+        },
+        contentHash: agentPacket.contentHash,
+      });
+      expect(normalizedLegacy).toMatchObject({
+        sourceType: 'agent_decision',
+        parentEvidenceId: EXISTING_PARENT_ID,
+        encryptedPacket: {
+          ciphertext: 'legacy-cipher',
+          algorithm: 'legacy-algorithm',
+        },
+        summary: {
+          title: 'Agent 决策 · Legacy agent',
+          metadata: {
+            nodeId: NODE_ID,
+            selectedAction: 'continue',
+            autonomyMode: 'manual',
+          },
+        },
+      });
+    });
+
+    it('preserves complete encrypted payload fields and omits invalid metadata fallbacks', () => {
+      const validate = (
+        Reflect.get(service, 'validateEncryptedPayload') as (
+          value: unknown,
+        ) => Record<string, unknown>
+      ).bind(service);
+      const normalizeMetadata = Reflect.get(
+        service,
+        'normalizeEncryptionMetadata',
+      ) as (
+        record: {
+          isEncrypted: boolean;
+          encryptionMetadata: Record<string, unknown> | null;
+        },
+        packet: EvidencePacketDto,
+      ) => Record<string, unknown> | null;
+      const payload = {
+        ciphertext: 'cipher',
+        encryptedSessionKey: 'session-key',
+        iv: 'iv',
+        authTag: 'tag',
+        aad: 'aad',
+        keyFingerprint: 'fingerprint',
+        algorithm: 'custom-algorithm',
+      };
+      const encryptedPacket = EvidencePacketSchema.parse({
+        sourceType: 'tool_output',
+        encryptedPacket: payload,
+        summary: { title: 'Encrypted tool' },
+        evidenceId: GENERATED_ID_1,
+        contentHash: 'd'.repeat(64),
+        timestamp: NOW,
+      });
+
+      expect(validate(payload)).toEqual(payload);
+      expect(
+        normalizeMetadata(
+          {
+            isEncrypted: true,
+            encryptionMetadata: {
+              keyFingerprint: 42,
+              algorithm: false,
+              encryptedAt: 1,
+              plaintextHash: null,
+              contractVersion: '2',
+            },
+          },
+          EvidencePacketSchema.parse({
+            sourceType: 'user_input',
+            userInput: { content: 'not encrypted' },
+            evidenceId: GENERATED_ID_2,
+            contentHash: 'e'.repeat(64),
+            timestamp: NOW,
+          }),
+        ),
+      ).toEqual({ isEncrypted: true });
+      expect(
+        normalizeMetadata(
+          { isEncrypted: true, encryptionMetadata: null },
+          encryptedPacket,
+        ),
+      ).toEqual({
+        isEncrypted: true,
+        keyFingerprint: 'fingerprint',
+        algorithm: 'custom-algorithm',
+      });
+    });
+
+    it('encrypts a strictly typed tool payload and records optional transition metadata', async () => {
+      const dto = {
+        stepId: STEP_ID,
+        sourceType: 'tool_output',
+        packet: {
+          sourceType: 'tool_output',
+          toolOutput: {
+            toolName: 'terminal',
+            toolInput: { command: 'pwd' },
+            toolOutput: '/workspace',
+            transitions: [
+              {
+                to: 'completed',
+                source: 'runtime',
+                timestamp: NOW,
+              },
+            ],
+          },
+        },
+      } satisfies CreateEvidenceRecordDto;
+      mocks.uuidv7.mockReturnValue(GENERATED_ID_1);
+      queueSelectResult('limit', [{ id: 'org-1' }]);
+      mocks.llmEncryptionService.isE2EEEnabled.mockResolvedValue(true);
+      mocks.llmEncryptionService.encryptForTenant.mockResolvedValue({
+        ciphertext: 'ciphertext',
+        encryptedSessionKey: 'session-key',
+        iv: 'iv',
+        authTag: 'tag',
+        aad: 'aad',
+        keyFingerprint: 'fingerprint',
+        algorithm: 'RSA-OAEP-4096+AES-256-GCM',
+      });
+      const insertMock = setupInsertReturning();
+
+      const record = await service.createEvidenceRecord(
+        TENANT_ID,
+        EXECUTION_ID,
+        dto,
+      );
+
+      const [inserted] = insertMock.getCapturedValues();
+      expect(inserted).toMatchObject({
+        isEncrypted: true,
+        encryptionMetadata: {
+          isEncrypted: true,
+          algorithm: 'RSA-OAEP-4096+AES-256-GCM',
+          keyFingerprint: 'fingerprint',
+          encryptedAt: NOW,
+          contractVersion: 2,
+        },
+        packet: {
+          sourceType: 'tool_output',
+          encryptedPacket: { ciphertext: 'ciphertext' },
+          summary: {
+            title: '工具输出 · terminal',
+            metadata: { status: 'completed' },
+          },
+        },
+      });
+      expect(
+        (inserted.encryptionMetadata as Record<string, unknown>).plaintextHash,
+      ).toMatch(/^[a-f0-9]{64}$/);
+      expect(record.packet).toEqual(inserted.packet);
+    });
+
+    it.each([
+      new Error('key service unavailable'),
+      'non-error encryption failure',
+    ])(
+      'keeps typed payload plaintext when encryption rejects with %p',
+      async (failure) => {
+        const dto = {
+          stepId: STEP_ID,
+          sourceType: 'agent_decision',
+          packet: {
+            sourceType: 'agent_decision',
+            agentDecision: {
+              nodeId: NODE_ID,
+              agentName: 'Planner',
+              autonomyMode: 'manual',
+              suggestedContent: 'continue',
+              reasoning: 'reason',
+              selectedAction: 'continue',
+            },
+          },
+        } satisfies CreateEvidenceRecordDto;
+        mocks.uuidv7.mockReturnValue(GENERATED_ID_1);
+        queueSelectResult('limit', [{ id: 'org-1' }]);
+        mocks.llmEncryptionService.isE2EEEnabled.mockResolvedValue(true);
+        mocks.llmEncryptionService.encryptForTenant.mockRejectedValue(failure);
+        const insertMock = setupInsertReturning();
+        const warnSpy = vi
+          .spyOn(Logger.prototype, 'warn')
+          .mockImplementation(() => {});
+
+        const record = await service.createEvidenceRecord(
+          TENANT_ID,
+          EXECUTION_ID,
+          dto,
+        );
+
+        const [inserted] = insertMock.getCapturedValues();
+        expect(inserted.isEncrypted).toBeUndefined();
+        expect(record.packet).toMatchObject({
+          sourceType: 'agent_decision',
+          agentDecision: { agentName: 'Planner' },
+        });
+        expect(warnSpy).toHaveBeenCalledWith(
+          expect.stringContaining(
+            failure instanceof Error ? failure.message : failure,
+          ),
+          { evidenceId: GENERATED_ID_1 },
+        );
+      },
+    );
   });
 });

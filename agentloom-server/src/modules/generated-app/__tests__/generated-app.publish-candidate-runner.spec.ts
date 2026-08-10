@@ -22,7 +22,10 @@ import { GeneratedAppGate3WorkspaceRunner } from '../generated-app.workspace';
 import { createInitialGeneratedAppGateResults } from '../generated-app.gates';
 import { buildBrowserAcceptancePlan } from '../plan-builders/browser-acceptance-plan.builder';
 import { buildIndependentVerificationPlan } from '../plan-builders/independent-verification-plan.builder';
-import { buildPublishCandidatePlan } from '../plan-builders/publish-candidate-plan.builder';
+import {
+  buildPublishCandidatePlan,
+  evaluateGate7PublishCandidatePlan,
+} from '../plan-builders/publish-candidate-plan.builder';
 import { GeneratedAppGate7PublishCandidateRunner } from '../generated-app.publish-candidate-runner';
 
 function createConfigService(
@@ -550,6 +553,338 @@ describe('GeneratedAppGate7PublishCandidateRunner', () => {
     );
     expect(JSON.stringify(result.failure?.details)).toContain(
       'Gate 3 executionLevel 必须为 real-local-command-plan',
+    );
+  });
+  it.each([
+    {
+      name: '非对象计划',
+      mutate: () => null,
+      issue: 'publishCandidatePlan 不是对象',
+    },
+    {
+      name: '缺少 artifact manifest',
+      mutate: (plan: GeneratedAppPublishCandidatePlan) => ({
+        ...plan,
+        artifactReleaseManifest: [],
+      }),
+      issue: 'artifactReleaseManifest',
+    },
+    {
+      name: '重复 artifact id',
+      mutate: (plan: GeneratedAppPublishCandidatePlan) => ({
+        ...plan,
+        artifactReleaseManifest: [
+          ...plan.artifactReleaseManifest,
+          plan.artifactReleaseManifest[0],
+        ],
+      }),
+      issue: '重复',
+    },
+    {
+      name: '未知 requirement coverage id',
+      mutate: (plan: GeneratedAppPublishCandidatePlan) => ({
+        ...plan,
+        requirementCoverage: plan.requirementCoverage.map((coverage, index) =>
+          index === 0
+            ? { ...coverage, requirementId: 'req-unknown' }
+            : coverage,
+        ),
+      }),
+      issue: 'req-unknown',
+    },
+    {
+      name: '缺少 rollback/share controls',
+      mutate: (plan: GeneratedAppPublishCandidatePlan) => ({
+        ...plan,
+        rollbackShareControls: null,
+      }),
+      issue: 'rollbackShareControls',
+    },
+    {
+      name: '非法 execution level',
+      mutate: (plan: GeneratedAppPublishCandidatePlan) => ({
+        ...plan,
+        executionLevel: 'production-publish',
+      }),
+      issue: 'executionLevel',
+    },
+  ])('builder 应聚合$name且 blocker 优先于通过判定', ({ mutate, issue }) => {
+    const plans = buildPlans();
+    const evaluation = evaluateGate7PublishCandidatePlan(
+      plans.appSpec,
+      plans.generationPlan,
+      plans.staticContracts,
+      plans.buildUnitPlan,
+      plans.integrationPlan,
+      plans.browserAcceptancePlan,
+      plans.independentVerificationPlan,
+      plans.gateResults,
+      mutate(plans.publishCandidatePlan),
+    );
+
+    expect(evaluation.status).toBe('failed');
+    expect(evaluation.failure?.code).toBe('publish-candidate-plan-incomplete');
+    expect(
+      evaluation.evidence.some((item) => item.summary.includes(issue)),
+    ).toBe(true);
+  });
+
+  it('builder 应允许 warning-only verdict，但 blocking reason 仍由既有门禁优先阻断', () => {
+    const plans = buildPlans();
+    const warningPlan: GeneratedAppPublishCandidatePlan = {
+      ...plans.publishCandidatePlan,
+      finalVerdict: {
+        ...plans.publishCandidatePlan.finalVerdict,
+        warningReasons: ['发布后仍需观察非阻断指标。'],
+      },
+    };
+    const evaluation = evaluateGate7PublishCandidatePlan(
+      plans.appSpec,
+      plans.generationPlan,
+      plans.staticContracts,
+      plans.buildUnitPlan,
+      plans.integrationPlan,
+      plans.browserAcceptancePlan,
+      plans.independentVerificationPlan,
+      plans.gateResults,
+      warningPlan,
+    );
+
+    expect(evaluation.status).toBe('passed');
+    expect(evaluation.failure).toBeNull();
+  });
+  it.each([
+    {
+      status: 'failed' as const,
+      keepEvidence: true,
+      issue: 'Gate 7 前置 gate-4 必须为 passed',
+    },
+    {
+      status: 'passed' as const,
+      keepEvidence: false,
+      issue: 'upstreamEvidenceRefs',
+    },
+  ])(
+    'builder 应让 Gate 4 $status/evidence=$keepEvidence 阻断 publish candidate',
+    ({ status, keepEvidence, issue }) => {
+      const plans = buildPlans();
+      const gateResults = plans.gateResults.map((gate) =>
+        gate.gateId === 'gate-4'
+          ? {
+              ...gate,
+              status,
+              evidence: keepEvidence ? gate.evidence : [],
+            }
+          : gate,
+      );
+      const publishCandidatePlan = buildPublishCandidatePlan(
+        plans.appSpec,
+        plans.generationPlan,
+        plans.staticContracts,
+        plans.buildUnitPlan,
+        plans.integrationPlan,
+        plans.browserAcceptancePlan,
+        plans.independentVerificationPlan,
+        gateResults,
+        'real-local-publish-candidate-contract',
+      );
+      const evaluation = evaluateGate7PublishCandidatePlan(
+        plans.appSpec,
+        plans.generationPlan,
+        plans.staticContracts,
+        plans.buildUnitPlan,
+        plans.integrationPlan,
+        plans.browserAcceptancePlan,
+        plans.independentVerificationPlan,
+        gateResults,
+        publishCandidatePlan,
+      );
+
+      expect(publishCandidatePlan.finalVerdict.publishCandidateAllowed).toBe(
+        false,
+      );
+      expect(publishCandidatePlan.publicationBlockers.length).toBeGreaterThan(
+        0,
+      );
+      expect(publishCandidatePlan.finalVerdict.warningReasons.length).toBe(1);
+      expect(evaluation.status).toBe('failed');
+      expect(evaluation.failure?.code).toBe(
+        'publish-candidate-plan-incomplete',
+      );
+      expect(JSON.stringify(evaluation.failure?.details)).toContain(issue);
+    },
+  );
+
+  it('builder 应为缺失上游 evidence、fixture gates、插件产物与空覆盖输入生成可诊断阻断计划', () => {
+    const plans = buildPlans(createConfigService(), {
+      buildUnitExecutionLevel: 'fixture-execution',
+      integrationExecutionLevel: 'fixture-integration',
+      browserExecutionLevel: 'fixture-browser-acceptance',
+      verifierExecutionLevel: 'fixture-independent-verifier',
+    });
+    const appSpec: GeneratedAppSpec = {
+      ...plans.appSpec,
+      traceability: [],
+    };
+    const buildUnitPlan: GeneratedAppBuildUnitPlan = {
+      ...plans.buildUnitPlan,
+      artifactExpectations: [
+        ...plans.buildUnitPlan.artifactExpectations,
+        {
+          ...plans.buildUnitPlan.artifactExpectations[0],
+          artifactId: 'private-plugin-bundle',
+          kind: 'plugin_bundle',
+          path: 'artifacts/gate-3/private-plugin.wasm',
+        },
+      ],
+    };
+
+    const blockedPlan = buildPublishCandidatePlan(
+      appSpec,
+      plans.generationPlan,
+      plans.staticContracts,
+      buildUnitPlan,
+      plans.integrationPlan,
+      plans.browserAcceptancePlan,
+      plans.independentVerificationPlan,
+      [],
+      'real-local-publish-candidate-contract',
+    );
+
+    expect(blockedPlan.finalVerdict.publishCandidateAllowed).toBe(false);
+    expect(blockedPlan.publicationBlockers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          category: 'skeleton_only_upstream_gate',
+          gateIds: ['gate-3', 'gate-4', 'gate-5', 'gate-6'],
+        }),
+        expect.objectContaining({
+          category: 'missing_real_execution_artifact',
+          gateIds: ['gate-3', 'gate-4', 'gate-5', 'gate-6', 'gate-7'],
+        }),
+        expect.objectContaining({
+          category: 'missing_real_independent_verifier_verdict',
+        }),
+      ]),
+    );
+    expect(blockedPlan.artifactReleaseManifest).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          artifactId: 'private-plugin-bundle',
+          kind: 'plugin_bundle_artifact',
+          signoffStatus: 'not-executed',
+        }),
+      ]),
+    );
+    expect(blockedPlan.artifactReleaseManifest).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          artifactId: 'no-plugin-bundle-artifacts-required',
+        }),
+      ]),
+    );
+    expect(blockedPlan.requirementCoverage).toEqual([
+      expect.objectContaining({
+        requirementId: 'req-1',
+        scenarioIds: [],
+      }),
+    ]);
+    expect(blockedPlan.gateCoverage).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          gateId: 'gate-3',
+          executionLevel: 'fixture-execution',
+          skeletonOnly: true,
+        }),
+        expect.objectContaining({
+          gateId: 'gate-4',
+          executionLevel: 'fixture-integration',
+          skeletonOnly: true,
+        }),
+        expect.objectContaining({
+          gateId: 'gate-5',
+          executionLevel: 'fixture-browser-acceptance',
+          skeletonOnly: true,
+        }),
+        expect.objectContaining({
+          gateId: 'gate-6',
+          executionLevel: 'fixture-independent-verifier',
+          skeletonOnly: true,
+        }),
+      ]),
+    );
+
+    const incompleteEvaluation = evaluateGate7PublishCandidatePlan(
+      appSpec,
+      plans.generationPlan,
+      plans.staticContracts,
+      buildUnitPlan,
+      plans.integrationPlan,
+      plans.browserAcceptancePlan,
+      plans.independentVerificationPlan,
+      [],
+      {
+        ...blockedPlan,
+        publishReadinessInputs: {
+          ...blockedPlan.publishReadinessInputs,
+          requiredGateIds: [],
+          upstreamGateIds: [],
+          upstreamEvidenceRefs: [],
+          readinessPreconditions: [],
+          requiredNonSkeletonEvidenceClasses: [],
+        },
+        requirementCoverage: [],
+        gateCoverage: [],
+        artifactCoverage: [],
+        failureCaptureFields: [],
+      },
+    );
+
+    expect(incompleteEvaluation.status).toBe('failed');
+    expect(incompleteEvaluation.failure?.code).toBe(
+      'publish-candidate-plan-incomplete',
+    );
+    expect(JSON.stringify(incompleteEvaluation.failure?.details)).toContain(
+      'publishReadinessInputs.requiredGateIds 不能为空',
+    );
+    expect(JSON.stringify(incompleteEvaluation.failure?.details)).toContain(
+      '需求 req-1 缺少 Gate 7 覆盖声明',
+    );
+    expect(JSON.stringify(incompleteEvaluation.failure?.details)).toContain(
+      'gate gate-7 缺少 Gate 7 覆盖声明',
+    );
+    expect(JSON.stringify(incompleteEvaluation.failure?.details)).toContain(
+      'artifact private-plugin-bundle 缺少 Gate 7 覆盖声明',
+    );
+    expect(JSON.stringify(incompleteEvaluation.failure?.details)).toContain(
+      'failureCaptureFields',
+    );
+  });
+
+  it('builder 对完整 fixture Gate 7 计划应通过完整性检查后由 guard blocker 阻断', () => {
+    const plans = buildPlans(
+      createConfigService({ GENERATED_APP_GATE7_EXECUTOR_MODE: 'fixture' }),
+    );
+    const evaluation = evaluateGate7PublishCandidatePlan(
+      plans.appSpec,
+      plans.generationPlan,
+      plans.staticContracts,
+      plans.buildUnitPlan,
+      plans.integrationPlan,
+      plans.browserAcceptancePlan,
+      plans.independentVerificationPlan,
+      plans.gateResults,
+      plans.publishCandidatePlan,
+    );
+
+    expect(evaluation.status).toBe('failed');
+    expect(evaluation.failure?.code).toBe('publish-candidate-guard-blocked');
+    expect(evaluation.failure?.details).toEqual(
+      expect.objectContaining({
+        blockers: expect.arrayContaining([
+          expect.objectContaining({ blocking: true }),
+        ]),
+      }),
     );
   });
 });
