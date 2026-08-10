@@ -127,7 +127,7 @@ void main() {
       await tester.pumpWidget(createTestWidget(api: mockApi));
       await tester.pumpAndSettle();
 
-      expect(find.text('No skills found'), findsOneWidget);
+      expect(find.text('未找到技能'), findsOneWidget);
     });
 
     testWidgets('shows error view with retry on API failure', (tester) async {
@@ -145,7 +145,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // 错误视图应显示重试按钮
-      expect(find.text('Retry'), findsOneWidget);
+      expect(find.text('重试'), findsOneWidget);
     });
 
     testWidgets('has AppBar with Skills title', (tester) async {
@@ -172,7 +172,7 @@ void main() {
       await tester.pumpWidget(createTestWidget(api: mockApi));
       await tester.pumpAndSettle();
 
-      expect(find.text('Skills'), findsOneWidget);
+      expect(find.text('技能'), findsOneWidget);
     });
 
     testWidgets('has search text field', (tester) async {

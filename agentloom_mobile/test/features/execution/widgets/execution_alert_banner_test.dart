@@ -55,7 +55,7 @@ void main() {
       );
 
       expect(find.byIcon(Icons.error), findsOneWidget);
-      expect(find.text('Email Agent failed: Agent timed out'), findsOneWidget);
+      expect(find.text('Email Agent 失败: Agent timed out'), findsOneWidget);
     });
 
     testWidgets('renders default failed message when no error step', (
@@ -73,7 +73,7 @@ void main() {
       );
 
       expect(find.byIcon(Icons.error), findsOneWidget);
-      expect(find.text('Execution failed'), findsOneWidget);
+      expect(find.text('执行失败'), findsOneWidget);
     });
 
     testWidgets('renders orange banner for cancelled status', (tester) async {
@@ -86,7 +86,7 @@ void main() {
       );
 
       expect(find.byIcon(Icons.cancel), findsOneWidget);
-      expect(find.text('Execution was cancelled'), findsOneWidget);
+      expect(find.text('执行已取消'), findsOneWidget);
     });
 
     testWidgets('renders nothing for pending status', (tester) async {

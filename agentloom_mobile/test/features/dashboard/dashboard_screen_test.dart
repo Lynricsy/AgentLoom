@@ -76,7 +76,7 @@ void main() {
 
       await tester.pumpWidget(createTestWidget());
 
-      expect(find.text('Dashboard'), findsOneWidget);
+      expect(find.text('仪表盘'), findsOneWidget);
     });
 
     testWidgets('shows quick access section with workflows', (tester) async {
@@ -85,7 +85,7 @@ void main() {
       await tester.pumpWidget(createTestWidget());
       await tester.pumpAndSettle();
 
-      expect(find.text('Quick Access'), findsOneWidget);
+      expect(find.text('快速访问'), findsOneWidget);
     });
 
     testWidgets('shows recent executions section', (tester) async {
@@ -94,7 +94,7 @@ void main() {
       await tester.pumpWidget(createTestWidget());
       await tester.pumpAndSettle();
 
-      expect(find.text('Recent Executions'), findsOneWidget);
+      expect(find.text('最近执行'), findsOneWidget);
       expect(
         find.descendant(
           of: find.byType(RecentExecutionsSection),
@@ -118,7 +118,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // QuickAccessSection 错误状态显示错误文本
-      expect(find.text('Quick Access'), findsOneWidget);
+      expect(find.text('快速访问'), findsOneWidget);
     });
   });
 }

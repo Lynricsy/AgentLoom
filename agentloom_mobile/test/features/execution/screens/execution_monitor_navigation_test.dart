@@ -63,7 +63,7 @@ void main() {
       await tester.pumpAndSettle();
 
       // 从 Dashboard 开始
-      expect(find.widgetWithText(AppBar, 'Dashboard'), findsOneWidget);
+      expect(find.widgetWithText(AppBar, '仪表盘'), findsOneWidget);
 
       // 编程式导航到执行监控页
       final router = container.read(goRouterProvider);
@@ -130,7 +130,7 @@ void main() {
       if (backButton.evaluate().isNotEmpty) {
         await tester.tap(backButton);
         await tester.pumpAndSettle();
-        expect(find.widgetWithText(AppBar, 'Dashboard'), findsOneWidget);
+        expect(find.widgetWithText(AppBar, '仪表盘'), findsOneWidget);
       }
     });
 

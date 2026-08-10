@@ -89,7 +89,7 @@ void main() {
       await tester.pumpWidget(createTestWidget());
       await tester.pumpAndSettle();
 
-      expect(find.text('No nodes yet'), findsOneWidget);
+      expect(find.text('暂无节点'), findsOneWidget);
     });
 
     testWidgets('shows Nodes section header', (tester) async {
@@ -101,8 +101,9 @@ void main() {
       await tester.pumpWidget(createTestWidget());
       await tester.pumpAndSettle();
 
-      // 'Nodes' 出现两次：一次在 metadata row，一次在 section header
-      expect(find.text('Nodes'), findsNWidgets(2));
+      // 元数据标签已细化为“节点数”，列表标题仍为 “Nodes”
+      expect(find.text('节点数'), findsOneWidget);
+      expect(find.text('Nodes'), findsOneWidget);
     });
 
     testWidgets('shows error state with retry', (tester) async {
@@ -114,8 +115,8 @@ void main() {
       await tester.pumpWidget(createTestWidget());
       await tester.pumpAndSettle();
 
-      expect(find.text('Failed to load memory instance'), findsOneWidget);
-      expect(find.text('Retry'), findsOneWidget);
+      expect(find.text('加载记忆实例失败'), findsOneWidget);
+      expect(find.text('重试'), findsOneWidget);
     });
 
     testWidgets('shows metadata rows', (tester) async {
@@ -127,12 +128,12 @@ void main() {
       await tester.pumpWidget(createTestWidget());
       await tester.pumpAndSettle();
 
-      // 'Nodes' 出现两次：metadata row + section header
-      expect(find.text('Nodes'), findsNWidgets(2));
-      expect(find.text('Edges'), findsOneWidget);
-      expect(find.text('Config'), findsOneWidget);
-      expect(find.text('Updated'), findsOneWidget);
-      expect(find.text('Created'), findsOneWidget);
+      expect(find.text('节点数'), findsOneWidget);
+      expect(find.text('Nodes'), findsOneWidget);
+      expect(find.text('边数'), findsOneWidget);
+      expect(find.text('配置'), findsOneWidget);
+      expect(find.text('更新时间'), findsOneWidget);
+      expect(find.text('创建时间'), findsOneWidget);
     });
   });
 }

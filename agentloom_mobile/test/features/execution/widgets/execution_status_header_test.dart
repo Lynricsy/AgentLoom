@@ -1,6 +1,6 @@
 import 'package:agentloom_mobile/features/execution/widgets/execution_status_header.dart';
 import 'package:agentloom_mobile/features/execution/widgets/connection_mode_indicator.dart';
-import 'package:agentloom_mobile/features/execution/providers/execution_monitor_provider.dart';
+import 'package:agentloom_mobile/features/execution/providers/execution_monitor_state.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -26,8 +26,8 @@ void main() {
         ),
       );
 
-      expect(find.text('Running'), findsOneWidget);
-      expect(find.text('1 / 3 steps'), findsOneWidget);
+      expect(find.text('运行中'), findsOneWidget);
+      expect(find.text('1 / 3 步'), findsOneWidget);
       expect(find.byType(LinearProgressIndicator), findsOneWidget);
     });
 
@@ -64,7 +64,7 @@ void main() {
       );
 
       // 第一个 step 的 startedAt 是 2026-01-01T10:00:00.000Z
-      expect(find.textContaining('Started at'), findsOneWidget);
+      expect(find.textContaining('开始于'), findsOneWidget);
     });
 
     testWidgets('shows "Not started" when no steps have startedAt', (
@@ -87,7 +87,7 @@ void main() {
         ),
       );
 
-      expect(find.text('Not started'), findsOneWidget);
+      expect(find.text('未开始'), findsOneWidget);
     });
 
     testWidgets('renders completed status badge', (tester) async {
@@ -108,8 +108,8 @@ void main() {
         ),
       );
 
-      expect(find.text('Completed'), findsOneWidget);
-      expect(find.text('3 / 3 steps'), findsOneWidget);
+      expect(find.text('已完成'), findsOneWidget);
+      expect(find.text('3 / 3 步'), findsOneWidget);
     });
 
     testWidgets('handles zero totalSteps gracefully', (tester) async {
@@ -130,7 +130,7 @@ void main() {
         ),
       );
 
-      expect(find.text('0 / 0 steps'), findsOneWidget);
+      expect(find.text('0 / 0 步'), findsOneWidget);
       // 进度条应该值为 0（不 crash）
       final indicator = tester.widget<LinearProgressIndicator>(
         find.byType(LinearProgressIndicator),

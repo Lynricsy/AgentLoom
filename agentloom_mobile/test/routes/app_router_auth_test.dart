@@ -65,7 +65,7 @@ void main() {
 
       expect(find.byType(LoginScreen), findsNothing);
       expect(find.byType(NavigationBar), findsOneWidget);
-      expect(find.widgetWithText(AppBar, 'Dashboard'), findsOneWidget);
+      expect(find.widgetWithText(AppBar, '仪表盘'), findsOneWidget);
     });
 
     testWidgets('已认证用户访问 /login 被重定向到 /dashboard', (tester) async {
@@ -82,7 +82,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(LoginScreen), findsNothing);
-      expect(find.widgetWithText(AppBar, 'Dashboard'), findsOneWidget);
+      expect(find.widgetWithText(AppBar, '仪表盘'), findsOneWidget);
     });
 
     testWidgets('未认证用户可以进入 /register 且不显示 NavigationBar', (tester) async {
@@ -116,7 +116,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.byType(RegisterScreen), findsNothing);
-      expect(find.widgetWithText(AppBar, 'Dashboard'), findsOneWidget);
+      expect(find.widgetWithText(AppBar, '仪表盘'), findsOneWidget);
     });
 
     testWidgets('残缺 token 不会被误判为已认证', (tester) async {

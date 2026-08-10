@@ -10,6 +10,7 @@ import 'package:agentloom_mobile/features/execution/models/execution_event.dart'
 import 'package:agentloom_mobile/features/execution/models/execution_state.dart';
 import 'package:agentloom_mobile/features/execution/models/subscribe_ack.dart';
 import 'package:agentloom_mobile/features/execution/providers/execution_monitor_provider.dart';
+import 'package:agentloom_mobile/features/execution/providers/execution_monitor_state.dart';
 import 'package:agentloom_mobile/features/workflows/api/workflow_api.dart';
 import 'package:agentloom_mobile/shared/providers/env_provider.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';

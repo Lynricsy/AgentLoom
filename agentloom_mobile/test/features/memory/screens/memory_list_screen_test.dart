@@ -95,7 +95,7 @@ void main() {
       await tester.pumpWidget(createTestWidget());
       await tester.pumpAndSettle();
 
-      expect(find.text('No memory instances found'), findsOneWidget);
+      expect(find.text('未找到记忆实例'), findsOneWidget);
     });
 
     testWidgets('shows error state with retry button', (tester) async {
@@ -109,8 +109,8 @@ void main() {
       await tester.pumpWidget(createTestWidget());
       await tester.pumpAndSettle();
 
-      expect(find.text('Failed to load memory instances'), findsOneWidget);
-      expect(find.text('Retry'), findsOneWidget);
+      expect(find.text('加载记忆实例失败'), findsOneWidget);
+      expect(find.text('重试'), findsOneWidget);
     });
 
     testWidgets('supports pull-to-refresh', (tester) async {

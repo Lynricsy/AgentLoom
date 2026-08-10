@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/execution_state.dart';
 import '../models/execution_status.dart';
-import '../providers/execution_monitor_provider.dart';
+import '../providers/execution_monitor_state.dart';
 import 'connection_mode_indicator.dart';
 
 /// 执行状态头部

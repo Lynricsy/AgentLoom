@@ -49,7 +49,7 @@ void main() {
       await tester.pumpWidget(buildTestWidget());
       await tester.pumpAndSettle();
 
-      expect(find.text('Settings'), findsOneWidget);
+      expect(find.text('设置'), findsOneWidget);
       expect(find.text('安全'), findsOneWidget);
     });
 

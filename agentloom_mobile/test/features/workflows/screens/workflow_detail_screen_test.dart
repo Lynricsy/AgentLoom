@@ -132,8 +132,8 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('Failed to load workflow'), findsOneWidget);
-      expect(find.text('Retry'), findsOneWidget);
+      expect(find.text('加载工作流失败'), findsOneWidget);
+      expect(find.text('重试'), findsOneWidget);
     });
 
     testWidgets('shows execution list', (tester) async {
@@ -151,7 +151,7 @@ void main() {
       await tester.pumpWidget(createTestWidget());
       await tester.pumpAndSettle();
 
-      expect(find.text('Recent Executions'), findsOneWidget);
+      expect(find.text('最近执行'), findsOneWidget);
     });
 
     testWidgets('shows empty execution state', (tester) async {
@@ -171,7 +171,7 @@ void main() {
       await tester.pumpWidget(createTestWidget());
       await tester.pumpAndSettle();
 
-      expect(find.text('No executions yet'), findsOneWidget);
+      expect(find.text('暂无执行记录'), findsOneWidget);
     });
 
     testWidgets('run FAB navigates to launch page', (tester) async {

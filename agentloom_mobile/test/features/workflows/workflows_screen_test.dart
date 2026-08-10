@@ -38,7 +38,7 @@ void main() {
 
       await tester.pumpWidget(createTestWidget());
 
-      expect(find.text('Workflows'), findsOneWidget);
+      expect(find.text('工作流'), findsOneWidget);
     });
 
     testWidgets('shows loading indicator initially', (tester) async {
@@ -73,7 +73,7 @@ void main() {
       await tester.pumpWidget(createTestWidget());
 
       expect(find.byType(TextField), findsOneWidget);
-      expect(find.text('Search workflows...'), findsOneWidget);
+      expect(find.text('搜索工作流...'), findsOneWidget);
     });
 
     testWidgets('renders filter chips', (tester) async {
@@ -88,10 +88,10 @@ void main() {
 
       await tester.pumpWidget(createTestWidget());
 
-      expect(find.text('All'), findsOneWidget);
-      expect(find.text('Draft'), findsOneWidget);
-      expect(find.text('Published'), findsOneWidget);
-      expect(find.text('Archived'), findsOneWidget);
+      expect(find.text('全部'), findsOneWidget);
+      expect(find.text('草稿'), findsOneWidget);
+      expect(find.text('已发布'), findsOneWidget);
+      expect(find.text('已归档'), findsOneWidget);
     });
 
     testWidgets('shows workflow list after loading', (tester) async {
@@ -127,7 +127,7 @@ void main() {
       await tester.pumpWidget(createTestWidget());
       await tester.pumpAndSettle();
 
-      expect(find.text('No workflows found'), findsOneWidget);
+      expect(find.text('未找到工作流'), findsOneWidget);
     });
 
     testWidgets('shows error state with retry button', (tester) async {
@@ -143,8 +143,8 @@ void main() {
       await tester.pumpWidget(createTestWidget());
       await tester.pumpAndSettle();
 
-      expect(find.text('Failed to load workflows'), findsOneWidget);
-      expect(find.text('Retry'), findsOneWidget);
+      expect(find.text('加载工作流失败'), findsOneWidget);
+      expect(find.text('重试'), findsOneWidget);
     });
   });
 }

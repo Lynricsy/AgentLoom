@@ -175,6 +175,6 @@ void main() {
 
     final router = container.read(goRouterProvider);
     expect(router.routeInformationProvider.value.uri.path, '/dashboard');
-    expect(find.widgetWithText(AppBar, 'Dashboard'), findsOneWidget);
+    expect(find.widgetWithText(AppBar, '仪表盘'), findsOneWidget);
   });
 }
