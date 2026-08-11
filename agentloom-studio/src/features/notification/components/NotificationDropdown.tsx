@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo } from 'react'
-import { Loader2 } from 'lucide-react'
+import { Link } from '@tanstack/react-router'
+import { ArrowRight, Loader2 } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
 import { cn } from '@/shared/lib/utils'
 import {
@@ -112,7 +113,7 @@ export function NotificationDropdown() {
       ) : null}
 
       {!isLoading && error && visibleNotifications.length === 0 ? (
-        <div className="px-4 py-8 text-center text-sm text-rose-300">
+        <div className="px-4 py-8 text-center text-sm text-error">
           通知加载失败，请稍后重试
         </div>
       ) : null}
@@ -143,6 +144,18 @@ export function NotificationDropdown() {
           ))}
         </div>
       ) : null}
+
+      <div className="border-t border-border/60 px-2 py-2">
+        <Link
+          to="/notifications"
+          onClick={() => setDropdownOpen(false)}
+          className="flex items-center justify-center gap-1 rounded-md px-3 py-1.5 text-xs font-medium text-primary transition-colors hover:bg-surface-elevated"
+          data-testid="notification-view-all"
+        >
+          查看全部通知
+          <ArrowRight className="h-3 w-3" aria-hidden="true" />
+        </Link>
+      </div>
     </div>
   )
 }

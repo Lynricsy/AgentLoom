@@ -283,6 +283,27 @@ export class OrganizationService {
     });
   }
 
+  async listMembers(orgId: string) {
+    const org = await this.tenantDb.query.organizations.findFirst({
+      where: eq(organizations.id, orgId),
+    });
+    if (!org) {
+      throw new OrganizationNotFoundException();
+    }
+
+    return this.tenantDb
+      .select({
+        userId: organizationMembers.userId,
+        email: users.email,
+        displayName: users.displayName,
+        role: organizationMembers.role,
+        createdAt: organizationMembers.joinedAt,
+      })
+      .from(organizationMembers)
+      .innerJoin(users, eq(users.id, organizationMembers.userId))
+      .where(eq(organizationMembers.organizationId, orgId));
+  }
+
   async updateMemberRole(
     orgId: string,
     targetUserId: string,

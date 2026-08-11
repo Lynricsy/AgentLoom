@@ -21,6 +21,14 @@ vi.mock('../hooks/useMonitoringDashboard', () => ({
   useMonitoringDashboard: mocks.useMonitoringDashboard,
 }))
 
+vi.mock('@/features/routing-decision', () => ({
+  RoutingDecisionsPanel: () => <div data-testid="mock-routing-decisions-panel" />,
+}))
+
+vi.mock('@/features/optimization-suggestion', () => ({
+  OptimizationSuggestionsBoard: () => <div data-testid="mock-suggestions-board" />,
+}))
+
 function createToken(payload: Record<string, unknown>) {
   const header = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url')
   const body = Buffer.from(JSON.stringify(payload)).toString('base64url')
@@ -274,5 +282,41 @@ describe('MonitoringDashboardPage', () => {
     )
 
     expect(screen.getByText('execution paused（人工介入）')).toBeInTheDocument()
+  })
+
+  it('在概览 / 路由决策 / 优化建议三个 tab 间切换', async () => {
+    const user = userEvent.setup()
+
+    render(<MonitoringDashboardPage />)
+
+    expect(screen.getByTestId('monitoring-overview')).toBeInTheDocument()
+    expect(screen.queryByTestId('mock-routing-decisions-panel')).not.toBeInTheDocument()
+
+    await user.click(screen.getByTestId('monitoring-tab-routing'))
+    expect(screen.getByTestId('monitoring-routing-tab')).toBeInTheDocument()
+    expect(screen.getByTestId('mock-routing-decisions-panel')).toBeInTheDocument()
+    expect(screen.queryByTestId('monitoring-overview')).not.toBeInTheDocument()
+
+    await user.click(screen.getByTestId('monitoring-tab-suggestions'))
+    expect(screen.getByTestId('mock-suggestions-board')).toBeInTheDocument()
+    expect(screen.queryByTestId('mock-routing-decisions-panel')).not.toBeInTheDocument()
+
+    await user.click(screen.getByTestId('monitoring-tab-overview'))
+    expect(screen.getByTestId('monitoring-overview')).toBeInTheDocument()
+  })
+
+  it('切换 tab 后保留已选择的时间窗口', async () => {
+    const user = userEvent.setup()
+
+    render(<MonitoringDashboardPage />)
+
+    await user.click(screen.getByTestId('monitoring-window-24h'))
+    await user.click(screen.getByTestId('monitoring-tab-routing'))
+    await user.click(screen.getByTestId('monitoring-tab-overview'))
+
+    expect(screen.getByTestId('monitoring-window-24h')).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    )
   })
 })

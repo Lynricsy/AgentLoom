@@ -1,2 +1,10 @@
 allowBuilds:
   esbuild: true
+
+# 强制 Radix 内部包收敛成单一实例。
+# cmdk@1.1.1 固定依赖 @radix-ui/react-dialog@1.1.15，与直接依赖的 1.1.23 并存时，
+# react-focus-scope / react-dismissable-layer / react-focus-guards 等会被装成两份。
+# 这些包持有模块级全局栈（focusScopesStack、层级栈），两份各自维护状态会导致
+# Radix Select 放进 Radix Dialog 时两个 FocusScope 互抢焦点并无限递归（浏览器卡死）。
+overrides:
+  "@radix-ui/react-dialog": "^1.1.23"

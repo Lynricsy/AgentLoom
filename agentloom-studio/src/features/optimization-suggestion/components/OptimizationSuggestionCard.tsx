@@ -2,18 +2,12 @@ import { memo, useCallback } from 'react'
 import { formatAutonomyModeValue } from '@/features/organization-autonomy-policy/lib/autonomyModePolicy'
 import { cn } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
+import { SUGGESTION_TYPE_LABELS } from '../lib/suggestionPresentation'
 import type {
   OptimizationSuggestion,
   SuggestionStatus,
   SuggestionType,
 } from '../types/optimization-suggestion.types'
-
-const SUGGESTION_TYPE_CONFIG: Record<SuggestionType, { label: string }> = {
-  model_downgrade: { label: '模型降级' },
-  timeout_adjustment: { label: '超时调整' },
-  tool_pruning: { label: '工具精简' },
-  autonomy_upgrade: { label: '自主升级' },
-}
 
 const SUGGESTION_STATUS_CONFIG: Record<
   Exclude<SuggestionStatus, 'pending'>,
@@ -115,7 +109,7 @@ export const OptimizationSuggestionCard = memo(function OptimizationSuggestionCa
   onDismiss,
   actionsDisabled = false,
 }: OptimizationSuggestionCardProps) {
-  const typeConfig = SUGGESTION_TYPE_CONFIG[suggestion.suggestionType]
+  const typeLabel = SUGGESTION_TYPE_LABELS[suggestion.suggestionType]
   const isPending = suggestion.status === 'pending'
   const statusConfig = getSuggestionStatusConfig(suggestion.status)
   const policyBlock = suggestion.analysisMetadata?.policyBlock ?? null
@@ -134,7 +128,7 @@ export const OptimizationSuggestionCard = memo(function OptimizationSuggestionCa
       data-testid="optimization-suggestion-card"
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="text-sm font-medium text-zinc-100">{typeConfig.label}</span>
+        <span className="text-sm font-medium text-zinc-100">{typeLabel}</span>
         <div className="flex items-center gap-2">
           {statusConfig ? (
             <span

@@ -16,6 +16,7 @@ import { executionAgentViewerRoute } from "./executions/$executionId.steps.$step
 import { settingsIndexRoute } from "./settings/index";
 import { mcpServerDetailRoute } from "./resources/mcp-servers.$serverId";
 import { auditLogsRoute } from "./settings/audit-logs";
+import { apiTokensRoute } from "./settings/api-tokens";
 import { templatesRoute } from "./templates";
 import { generatedAppsRoute } from "./generated-apps";
 import { generatedAppDetailRoute } from "./generated-apps.$appId";
@@ -26,6 +27,7 @@ import { marketplaceMyListingsRoute } from "./marketplace.my-listings";
 import { shareTokenRoute } from "./share.$token";
 import { encryptionSettingsRoute } from "./settings/encryption";
 import { developerEarningsRoute } from "./developer-console/earnings";
+import { developerKeysRoute } from "./developer-console/keys";
 import { organizationAutonomyPolicyRoute } from "./settings/security/autonomy-policy";
 import { resourceGovernanceRoute } from "./settings/resource-quotas";
 import { monitoringRoute } from "./settings/monitoring";
@@ -55,7 +57,12 @@ import { memoryInstancesRoute } from "./resources/memory-instances";
 import { workspacesRoute } from "./resources/workspaces";
 import { workspaceDetailRoute } from "./resources/workspaces.$workspaceId";
 import { sandboxesRoute } from "./resources/sandboxes";
+import { pluginsRoute } from "./resources/plugins";
 import { memoryInstanceBrowseRoute } from "./resources/memory-instances.$instanceId.browse";
+import { organizationSettingsRoute } from "./settings/organization";
+import { acceptInvitationRoute } from "./invitations.$token";
+import { notificationPreferencesRoute } from "./settings/notifications";
+import { notificationCenterRoute } from "./notifications";
 
 const PUBLIC_ROUTES = ["/login", "/register", "/auth/callback"];
 const PUBLIC_ROUTE_PREFIXES = ["/s/", "/generated-apps/public/"];
@@ -141,6 +148,7 @@ export const routeTree = rootRoute.addChildren([
   executionAgentViewerRoute,
   settingsIndexRoute,
   auditLogsRoute,
+  apiTokensRoute,
   templatesRoute,
   generatedAppsRoute,
   generatedAppDetailRoute,
@@ -151,6 +159,7 @@ export const routeTree = rootRoute.addChildren([
   shareTokenRoute,
   encryptionSettingsRoute,
   developerEarningsRoute,
+  developerKeysRoute,
   organizationAutonomyPolicyRoute,
   resourceGovernanceRoute,
   monitoringRoute,
@@ -181,5 +190,10 @@ export const routeTree = rootRoute.addChildren([
   workspacesRoute,
   workspaceDetailRoute,
   sandboxesRoute,
+  pluginsRoute,
   memoryInstanceBrowseRoute,
+  organizationSettingsRoute,
+  acceptInvitationRoute,
+  notificationPreferencesRoute,
+  notificationCenterRoute,
 ]);

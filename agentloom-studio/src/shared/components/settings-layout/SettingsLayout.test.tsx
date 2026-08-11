@@ -34,6 +34,9 @@ describe('SettingsLayout', () => {
     for (const label of [
       '概览',
       '个人偏好',
+      'API Token',
+      '通知',
+      '组织',
       '安全设置',
       '加密',
       '自治策略',
@@ -56,14 +59,24 @@ describe('SettingsLayout', () => {
   })
 
   // 设置页新增时必须同步补导航入口：此断言是「个人偏好」曾长期缺失的回归闸门
-  it('导航项数量与设置页总数一致（9 项）', async () => {
+  it('导航项数量与设置页总数一致（12 项）', async () => {
     renderAt('/settings')
     await screen.findByText('设置')
     const navLinks = screen.getAllByRole('link').filter((el) => {
       const href = el.getAttribute('href')
       return href !== null && href.startsWith('/settings')
     })
-    expect(navLinks).toHaveLength(9)
+    expect(navLinks).toHaveLength(12)
+  })
+
+  it('组织路径下仅组织高亮', async () => {
+    renderAt('/settings/organization')
+    expect(await currentLabels()).toEqual(['组织'])
+  })
+
+  it('通知路径下仅通知高亮', async () => {
+    renderAt('/settings/notifications')
+    expect(await currentLabels()).toEqual(['通知'])
   })
 
   it('个人偏好路径下仅个人偏好高亮', async () => {

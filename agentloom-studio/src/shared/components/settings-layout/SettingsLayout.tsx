@@ -12,6 +12,8 @@ import {
   Activity,
   Server,
   Gauge,
+  Bell,
+  Building2,
 } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
 import { DUR, EASE } from '@/shared/lib/motion'
@@ -30,6 +32,9 @@ const SETTINGS_GROUPS: SettingsNavGroup[] = [
     items: [
       { label: '概览', to: '/settings', icon: LayoutDashboard, matchPrefix: '/settings' },
       { label: '个人偏好', to: '/settings/preferences', icon: SlidersHorizontal, matchPrefix: '/settings/preferences' },
+      { label: 'API Token', to: '/settings/api-tokens', icon: KeyRound, matchPrefix: '/settings/api-tokens' },
+      { label: '通知', to: '/settings/notifications', icon: Bell, matchPrefix: '/settings/notifications' },
+      { label: '组织', to: '/settings/organization', icon: Building2, matchPrefix: '/settings/organization' },
     ],
   },
   {

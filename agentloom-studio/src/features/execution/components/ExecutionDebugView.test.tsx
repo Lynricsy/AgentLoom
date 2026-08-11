@@ -62,6 +62,12 @@ vi.mock('./ExecutionNodeDetail', () => ({
   ),
 }))
 
+vi.mock('./ExecutionTelemetryPanel', () => ({
+  ExecutionTelemetryPanel: ({ executionId }: { executionId: string }) => (
+    <div data-testid="mock-telemetry-panel">{executionId}</div>
+  ),
+}))
+
 vi.mock('@/features/evidence/components/EvidenceReferencePanel', () => ({
   EvidenceReferencePanel: () => (
     <div data-testid="mock-evidence-reference-panel" />
@@ -172,5 +178,17 @@ describe('ExecutionDebugView', () => {
 
     expect(within(desktopLayout).getByTestId('mock-timeline-selected')).toHaveTextContent('node-1')
     expect(within(desktopLayout).getByTestId('mock-node-detail')).toHaveTextContent('Node One')
+  })
+
+  it('切换到遥测 tab 渲染遥测面板', () => {
+    renderView()
+
+    expect(screen.queryByTestId('mock-telemetry-panel')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByTestId('execution-debug-tab-telemetry'))
+
+    expect(screen.getByTestId('execution-debug-telemetry-tab')).toBeInTheDocument()
+    expect(screen.getByTestId('mock-telemetry-panel')).toHaveTextContent('exec-001')
+    expect(screen.queryByTestId('execution-debug-desktop-layout')).not.toBeInTheDocument()
   })
 })
