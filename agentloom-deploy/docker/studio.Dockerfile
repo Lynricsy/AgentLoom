@@ -10,7 +10,7 @@ WORKDIR /workspace
 
 # 先复制依赖清单（利用 Docker 层缓存）
 COPY agentloom-type-engine/pkg ./agentloom-type-engine/pkg
-COPY agentloom-studio/package.json agentloom-studio/pnpm-lock.yaml ./agentloom-studio/
+COPY agentloom-studio/package.json agentloom-studio/pnpm-lock.yaml agentloom-studio/pnpm-workspace.yaml ./agentloom-studio/
 
 WORKDIR /workspace/agentloom-studio
 RUN pnpm install --frozen-lockfile --config.node-linker=hoisted

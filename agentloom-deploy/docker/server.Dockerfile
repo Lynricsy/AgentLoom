@@ -23,7 +23,7 @@ WORKDIR /build/server
 COPY agentloom-deploy/docker/.pi-tarballs/pi-agent-core.tgz ./.pi-tarballs/
 COPY agentloom-deploy/docker/.pi-tarballs/pi-ai.tgz          ./.pi-tarballs/
 
-COPY agentloom-server/package.json agentloom-server/pnpm-lock.yaml ./
+COPY agentloom-server/package.json agentloom-server/pnpm-lock.yaml agentloom-server/pnpm-workspace.yaml ./
 
 RUN sed -i \
     -e 's|"file:../agentloom-plugin-sdk"|"file:../plugin-sdk"|' \
