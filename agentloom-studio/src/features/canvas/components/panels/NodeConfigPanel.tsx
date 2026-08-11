@@ -1,4 +1,13 @@
-import { memo, useCallback, useEffect } from 'react'
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+} from 'react'
+import { AnimatePresence, motion } from 'motion/react'
 import { X } from 'lucide-react'
 import {
   useExecutionId,
@@ -8,10 +17,16 @@ import {
 import { ToolCallList } from '@/features/execution/components/ToolCallList'
 import type { StepStatus } from '@/features/execution/types'
 import { cn } from '@/shared/lib/utils'
+import { panelSlideRight } from '@/shared/lib/motion'
+import { Tabs, TabsList, TabsTrigger } from '@/shared/ui/tabs'
 import type { CanvasNode } from '../../types'
 import { getResolvedNodeTypeConfig } from '../../types/nodeTypeRegistry'
 import { useCanvasActions, useCanvasStore } from '../../stores/canvasStore'
 import { getOutputContentFormat } from '../../lib/outputContent'
+import {
+  getNodeAccentToken,
+  resolveNodeIcon,
+} from '../node/nodeVisualMeta'
 import { CUSTOM_PANEL_REGISTRY } from './customPanelRegistry'
 import { InterventionPanel } from './InterventionPanel'
 import { DynamicConfigForm } from './DynamicConfigForm'
@@ -20,6 +35,16 @@ import { OutputContentRenderer } from '../output/OutputContentRenderer'
 interface NodeConfigPanelProps {
   className?: string
 }
+
+/** 面板宽度持久化键；min/max 与拖拽夹取范围共用同一组常量 */
+const PANEL_WIDTH_STORAGE_KEY = 'agentloom-config-panel-width'
+const PANEL_MIN_WIDTH = 320
+const PANEL_MAX_WIDTH = 560
+const PANEL_DEFAULT_WIDTH = 360
+/** 键盘微调步长：方向键每次 16px，与 4px 网格对齐 */
+const PANEL_WIDTH_KEYBOARD_STEP = 16
+
+type NodeConfigTab = 'config' | 'output' | 'intervention'
 
 const EXECUTION_STATUS_META: Record<
   StepStatus,
@@ -39,7 +64,7 @@ const EXECUTION_STATUS_META: Record<
   },
   completed: {
     label: '已完成',
-    badgeClassName: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300',
+    badgeClassName: 'border-success/30 bg-success/10 text-success',
   },
   failed: {
     label: '失败',
@@ -55,7 +80,7 @@ const EXECUTION_STATUS_META: Record<
   },
   waiting_intervention: {
     label: '等待干预',
-    badgeClassName: 'border-amber-500/30 bg-amber-500/10 text-amber-300',
+    badgeClassName: 'border-warning/30 bg-warning/10 text-warning',
   },
 }
 
@@ -113,6 +138,114 @@ function getOutputPlaceholder(
   }
 }
 
+function clampPanelWidth(value: number): number {
+  return Math.min(PANEL_MAX_WIDTH, Math.max(PANEL_MIN_WIDTH, Math.round(value)))
+}
+
+function readStoredPanelWidth(): number {
+  if (typeof window === 'undefined') {
+    return PANEL_DEFAULT_WIDTH
+  }
+
+  try {
+    const raw = window.localStorage.getItem(PANEL_WIDTH_STORAGE_KEY)
+    if (!raw) {
+      return PANEL_DEFAULT_WIDTH
+    }
+
+    const parsed = Number.parseInt(raw, 10)
+    return Number.isFinite(parsed) ? clampPanelWidth(parsed) : PANEL_DEFAULT_WIDTH
+  } catch {
+    // 隐私模式或存储配额异常时静默回退默认宽度
+    return PANEL_DEFAULT_WIDTH
+  }
+}
+
+function persistPanelWidth(width: number): void {
+  if (typeof window === 'undefined') {
+    return
+  }
+
+  try {
+    window.localStorage.setItem(PANEL_WIDTH_STORAGE_KEY, String(width))
+  } catch {
+    // 写入失败不影响本次会话内的宽度体验
+  }
+}
+
+/**
+ * 左缘拖拽调宽 + 持久化。
+ * 面板贴右侧，因此「向左拖」= 变宽，位移取 `startX - clientX`。
+ */
+function usePanelWidth() {
+  const [width, setWidth] = useState(readStoredPanelWidth)
+  const [isResizing, setIsResizing] = useState(false)
+  const widthRef = useRef(width)
+  const dragOriginRef = useRef<{ startX: number; startWidth: number } | null>(null)
+
+  const applyWidth = useCallback((next: number) => {
+    const clamped = clampPanelWidth(next)
+    widthRef.current = clamped
+    setWidth(clamped)
+  }, [])
+
+  const handlePointerDown = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      event.preventDefault()
+      dragOriginRef.current = { startX: event.clientX, startWidth: widthRef.current }
+      event.currentTarget.setPointerCapture?.(event.pointerId)
+      setIsResizing(true)
+    },
+    [],
+  )
+
+  const handlePointerMove = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      const origin = dragOriginRef.current
+      if (!origin) return
+
+      applyWidth(origin.startWidth + (origin.startX - event.clientX))
+    },
+    [applyWidth],
+  )
+
+  const handlePointerUp = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      if (!dragOriginRef.current) return
+
+      dragOriginRef.current = null
+      event.currentTarget.releasePointerCapture?.(event.pointerId)
+      setIsResizing(false)
+      persistPanelWidth(widthRef.current)
+    },
+    [],
+  )
+
+  const handleKeyDown = useCallback(
+    (event: ReactKeyboardEvent<HTMLDivElement>) => {
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+
+      event.preventDefault()
+      const delta =
+        event.key === 'ArrowLeft'
+          ? PANEL_WIDTH_KEYBOARD_STEP
+          : -PANEL_WIDTH_KEYBOARD_STEP
+      applyWidth(widthRef.current + delta)
+      persistPanelWidth(widthRef.current)
+    },
+    [applyWidth],
+  )
+
+  return {
+    width,
+    isResizing,
+    handlePointerDown,
+    handlePointerMove,
+    handlePointerUp,
+    handleKeyDown,
+  }
+}
+
 export const NodeConfigPanel = memo(function NodeConfigPanel({
   className,
 }: NodeConfigPanelProps) {
@@ -122,6 +255,36 @@ export const NodeConfigPanel = memo(function NodeConfigPanel({
   )
 
   const { selectNode, updateNodeData, setNodeValidationError } = useCanvasActions()
+  const nodeState = useNodeExecutionState(selectedNodeId ?? '')
+  const isWaitingIntervention = nodeState?.status === 'waiting_intervention'
+
+  const {
+    width,
+    isResizing,
+    handlePointerDown,
+    handlePointerMove,
+    handlePointerUp,
+    handleKeyDown,
+  } = usePanelWidth()
+
+  const [activeTab, setActiveTab] = useState<NodeConfigTab>('config')
+
+  // 进入等待干预时自动切到「介入」tab，保持与改版前「干预面板自动出现」一致的语义；
+  // 干预结束后该 tab 消失，需要退回「配置」避免停在空 tab 上。
+  useEffect(() => {
+    if (isWaitingIntervention) {
+      setActiveTab('intervention')
+      return
+    }
+
+    setActiveTab((current) => (current === 'intervention' ? 'config' : current))
+  }, [isWaitingIntervention])
+
+  const handleTabChange = useCallback((value: string) => {
+    if (value === 'config' || value === 'output' || value === 'intervention') {
+      setActiveTab(value)
+    }
+  }, [])
 
   const handleClose = useCallback(() => {
     selectNode(null)
@@ -135,6 +298,14 @@ export const NodeConfigPanel = memo(function NodeConfigPanel({
     [selectedNodeId, updateNodeData],
   )
 
+  const handleLabelChange = useCallback(
+    (label: string) => {
+      if (!selectedNodeId) return
+      updateNodeData(selectedNodeId, { label })
+    },
+    [selectedNodeId, updateNodeData],
+  )
+
   const handleValidationChange = useCallback(
     (hasErrors: boolean) => {
       if (!selectedNodeId) return
@@ -143,56 +314,162 @@ export const NodeConfigPanel = memo(function NodeConfigPanel({
     [selectedNodeId, setNodeValidationError],
   )
 
-  if (!node) return null
+  const nodeType = node?.data.nodeType
+  const nodeConfig = node
+    ? getResolvedNodeTypeConfig(node.data.nodeType, {
+        category: node.data.category,
+        inputPorts: Array.isArray(node.data.inputPorts)
+          ? node.data.inputPorts
+          : undefined,
+        outputPorts: Array.isArray(node.data.outputPorts)
+          ? node.data.outputPorts
+          : undefined,
+      })
+    : null
 
-  const nodeType = node.data.nodeType
-  const nodeConfig = getResolvedNodeTypeConfig(nodeType, {
-    category: node.data.category,
-    inputPorts: Array.isArray(node.data.inputPorts)
-      ? node.data.inputPorts
-      : undefined,
-    outputPorts: Array.isArray(node.data.outputPorts)
-      ? node.data.outputPorts
-      : undefined,
-  })
+  const accentToken =
+    nodeConfig && nodeType
+      ? getNodeAccentToken(nodeType, nodeConfig.category)
+      : 'var(--color-node-control)'
+  const NodeIcon = resolveNodeIcon(nodeConfig?.icon)
 
   return (
-    <aside
-      data-testid="node-config-panel"
-      className={cn(
-        'flex h-full w-80 flex-col border-l border-border bg-background',
-        className,
-      )}
-    >
-      <header className="flex items-center justify-between border-b border-border px-4 py-3">
-        <div className="min-w-0">
-          <h2 className="truncate text-sm font-semibold">{node.data.label}</h2>
-          <p className="truncate text-xs text-muted-foreground">
-            {nodeConfig.isKnownType
-              ? `${nodeConfig.label} 配置`
-              : `未知节点类型（${nodeConfig.type}）`}
-          </p>
-        </div>
-        <button
-          type="button"
-          onClick={handleClose}
-          className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
-          aria-label="关闭配置面板"
+    <AnimatePresence>
+      {node && nodeConfig ? (
+        <motion.aside
+          key="node-config-panel"
+          data-testid="node-config-panel"
+          initial={panelSlideRight.initial}
+          animate={panelSlideRight.animate}
+          exit={panelSlideRight.exit}
+          transition={panelSlideRight.transition}
+          style={{ width }}
+          className={cn(
+            'relative m-2 flex shrink-0 flex-col overflow-hidden rounded-panel border border-border bg-surface shadow-panel',
+            className,
+          )}
         >
-          <X className="h-4 w-4" />
-        </button>
-      </header>
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            aria-label="调整配置面板宽度"
+            aria-valuenow={width}
+            aria-valuemin={PANEL_MIN_WIDTH}
+            aria-valuemax={PANEL_MAX_WIDTH}
+            tabIndex={0}
+            data-testid="node-config-panel-resize-handle"
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerUp}
+            onKeyDown={handleKeyDown}
+            className={cn(
+              'absolute inset-y-0 left-0 z-10 w-1 cursor-col-resize transition-colors hover:bg-primary/70 focus-visible:bg-primary focus-visible:outline-none',
+              isResizing && 'bg-primary',
+            )}
+          />
 
-      <div className="flex-1 overflow-y-auto">
-        <NodeConfigDispatch
-          node={node}
-          onConfigChange={handleConfigChange}
-          onValidationChange={handleValidationChange}
-        />
+          <header className="flex items-start gap-3 border-b border-border px-4 py-3 pl-5">
+            <span
+              aria-hidden
+              className="flex h-9 w-9 shrink-0 items-center justify-center rounded-card"
+              style={{
+                backgroundColor: `color-mix(in srgb, ${accentToken} 14%, transparent)`,
+                color: accentToken,
+              }}
+            >
+              <NodeIcon className="h-4 w-4" />
+            </span>
 
-        <NodeExecutionSection nodeId={node.id} nodeType={node.data.nodeType} />
-      </div>
-    </aside>
+            <div className="min-w-0 flex-1">
+              <input
+                aria-label="节点名称"
+                data-testid="node-config-panel-title"
+                value={node.data.label}
+                onChange={(event) => handleLabelChange(event.target.value)}
+                className="w-full rounded-md bg-transparent px-1.5 py-0.5 text-sm font-semibold text-foreground transition-colors hover:bg-surface-elevated focus-visible:bg-surface-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+              />
+              <p className="mt-0.5 truncate px-1.5 text-xs text-muted-foreground">
+                {nodeConfig.isKnownType
+                  ? `${nodeConfig.label} 配置`
+                  : `未知节点类型（${nodeConfig.type}）`}
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={handleClose}
+              className="-mr-1 rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-surface-elevated hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+              aria-label="关闭配置面板"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </header>
+
+          <Tabs
+            value={activeTab}
+            defaultValue={activeTab}
+            onValueChange={handleTabChange}
+            className="flex min-h-0 flex-1 flex-col space-y-0"
+          >
+            <div className="px-4 pt-3">
+              <TabsList>
+                <TabsTrigger value="config" data-testid="node-config-tab-config">
+                  配置
+                </TabsTrigger>
+                <TabsTrigger value="output" data-testid="node-config-tab-output">
+                  输出
+                </TabsTrigger>
+                {isWaitingIntervention && (
+                  <TabsTrigger
+                    value="intervention"
+                    data-testid="node-config-tab-intervention"
+                  >
+                    介入
+                  </TabsTrigger>
+                )}
+              </TabsList>
+            </div>
+
+            {/* tab 内容常驻挂载、仅切换可见性：自定义面板持有 Monaco / 草稿等本地状态，卸载会丢编辑上下文 */}
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              <div
+                className={cn(activeTab !== 'config' && 'hidden')}
+                data-testid="node-config-tab-panel-config"
+                data-active={activeTab === 'config'}
+              >
+                <NodeConfigDispatch
+                  node={node}
+                  onConfigChange={handleConfigChange}
+                  onValidationChange={handleValidationChange}
+                />
+              </div>
+
+              <div
+                className={cn(activeTab !== 'output' && 'hidden')}
+                data-testid="node-config-tab-panel-output"
+                data-active={activeTab === 'output'}
+              >
+                <NodeExecutionSection
+                  nodeId={node.id}
+                  nodeType={node.data.nodeType}
+                />
+              </div>
+
+              {isWaitingIntervention && (
+                <div
+                  className={cn('px-4 py-4', activeTab !== 'intervention' && 'hidden')}
+                  data-testid="node-config-tab-panel-intervention"
+                  data-active={activeTab === 'intervention'}
+                >
+                  <InterventionPanel nodeId={node.id} />
+                </div>
+              )}
+            </div>
+          </Tabs>
+        </motion.aside>
+      ) : null}
+    </AnimatePresence>
   )
 })
 
@@ -301,14 +578,11 @@ const NodeExecutionSection = memo(function NodeExecutionSection({
   )
 
   return (
-    <section
-      className="border-t border-border px-4 py-4"
-      data-testid="node-execution-section"
-    >
-      <div className="flex items-center justify-between gap-3">
+    <section className="px-4 py-4" data-testid="node-execution-section">
+      <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="text-sm font-semibold text-foreground">实时执行</h3>
-          <p className="mt-1 text-xs text-muted-foreground">
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
             {nodeState
               ? '节点状态、重试信息与输出流会在这里持续刷新。'
               : isExecutionActive
@@ -330,7 +604,7 @@ const NodeExecutionSection = memo(function NodeExecutionSection({
       </div>
 
       {nodeState && (
-        <dl className="mt-4 grid grid-cols-2 gap-3 rounded-xl border border-border/70 bg-muted/20 p-3 text-xs">
+        <dl className="mt-4 grid grid-cols-2 gap-3 rounded-card border border-border bg-surface-elevated p-3 text-xs">
           <div>
             <dt className="text-muted-foreground">步骤 ID</dt>
             <dd className="mt-1 break-all font-mono text-foreground">
@@ -369,8 +643,6 @@ const NodeExecutionSection = memo(function NodeExecutionSection({
         </dl>
       )}
 
-      <InterventionPanel nodeId={nodeId} />
-
       {executionId && nodeState?.stepId && (
         <ToolCallList
           nodeId={nodeId}
@@ -381,7 +653,7 @@ const NodeExecutionSection = memo(function NodeExecutionSection({
 
       {nodeState?.errorMessage && (
         <div
-          className="mt-4 rounded-xl border border-error/40 bg-error/10 px-3 py-2"
+          className="mt-4 rounded-card border border-error/40 bg-error/10 px-3 py-2"
           data-testid="node-execution-error"
         >
           <p className="text-xs font-medium text-error">执行错误</p>
@@ -391,7 +663,7 @@ const NodeExecutionSection = memo(function NodeExecutionSection({
         </div>
       )}
 
-      <div className="mt-4 space-y-2">
+      <div className="mt-5 space-y-2">
         <div className="flex items-center justify-between gap-3">
           <h4 className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground">
             输出流

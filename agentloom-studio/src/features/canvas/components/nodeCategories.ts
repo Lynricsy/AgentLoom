@@ -7,14 +7,14 @@ import {
 } from '../types/nodeTypeRegistry'
 
 export const NODE_CATEGORIES: Record<NodeCategory, { label: string; icon: string; color: string }> = {
-  agent: { label: 'Agent', icon: 'Bot', color: 'var(--color-type-model)' },
-  tool: { label: 'Tool', icon: 'Wrench', color: 'var(--color-type-tool)' },
-  trigger: { label: 'Trigger', icon: 'Zap', color: 'var(--color-warning)' },
-  knowledge: { label: 'Knowledge', icon: 'BookOpen', color: 'var(--color-type-knowledge)' },
-  output: { label: 'Output', icon: 'ArrowRightFromLine', color: 'var(--color-type-text)' },
-  control: { label: 'Control', icon: 'GitBranch', color: 'var(--color-muted)' },
-  plugin: { label: 'Plugin', icon: 'Puzzle', color: 'var(--color-type-tool)' },
-  memory: { label: 'Memory', icon: 'BrainCircuit', color: 'var(--color-type-json)' },
+  agent: { label: 'Agent', icon: 'Bot', color: 'var(--color-node-agent)' },
+  tool: { label: 'Tool', icon: 'Wrench', color: 'var(--color-node-tool)' },
+  trigger: { label: 'Trigger', icon: 'Zap', color: 'var(--color-node-trigger)' },
+  knowledge: { label: 'Knowledge', icon: 'BookOpen', color: 'var(--color-node-knowledge)' },
+  output: { label: 'Output', icon: 'ArrowRightFromLine', color: 'var(--color-node-output)' },
+  control: { label: 'Control', icon: 'GitBranch', color: 'var(--color-node-control)' },
+  plugin: { label: 'Plugin', icon: 'Puzzle', color: 'var(--color-node-plugin)' },
+  memory: { label: 'Memory', icon: 'BrainCircuit', color: 'var(--color-node-memory)' },
 }
 
 const CATEGORY_ORDER: NodeCategory[] = ['agent', 'tool', 'trigger', 'knowledge', 'memory', 'output', 'control', 'plugin']

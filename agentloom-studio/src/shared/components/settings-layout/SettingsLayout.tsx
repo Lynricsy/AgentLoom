@@ -7,6 +7,7 @@ import {
   Lock,
   MonitorCog,
   Shield,
+  SlidersHorizontal,
   KeyRound,
   Activity,
   Server,
@@ -28,6 +29,7 @@ const SETTINGS_GROUPS: SettingsNavGroup[] = [
     label: '通用',
     items: [
       { label: '概览', to: '/settings', icon: LayoutDashboard, matchPrefix: '/settings' },
+      { label: '个人偏好', to: '/settings/preferences', icon: SlidersHorizontal, matchPrefix: '/settings/preferences' },
     ],
   },
   {

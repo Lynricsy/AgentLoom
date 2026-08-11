@@ -285,135 +285,85 @@ body {
   }
 }
 
-/* ─── Node visual enhancements ──────────────────────── */
+/* ─── 节点外壳 ──────────────────────────────────────── */
+/* 卡片本体：1px 类别色调和边框 + 层级阴影令牌，底色由 utility `bg-surface` 提供 */
 .canvas-node-shell {
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(
-          in srgb,
-          var(--node-color, var(--color-border)) 12%,
-          transparent
-        )
-        0%,
-      transparent 48%
-    ),
-    var(--color-card);
-  /* 4-layer shadow: inset highlight + definition + ambient lift + accent ring */
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 1px 3px rgba(0, 0, 0, 0.24),
-    0 6px 16px -4px rgba(0, 0, 0, 0.2),
-    0 0 0 1px
-      color-mix(
-        in srgb,
-        var(--node-color, var(--color-border)) 18%,
-        transparent
-      );
+  border-color: color-mix(
+    in srgb,
+    var(--node-color, var(--color-border)) 35%,
+    var(--color-border)
+  );
+  box-shadow: var(--shadow-node);
   transition:
-    transform 200ms ease-out,
-    box-shadow 200ms ease-out;
-}
-
-/* Light theme: pronounced inset bevel + softer ambient */
-:root:not(.dark) .canvas-node-shell {
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.85),
-    0 1px 3px rgba(0, 0, 0, 0.12),
-    0 6px 16px -4px rgba(0, 0, 0, 0.1),
-    0 0 0 1px
-      color-mix(
-        in srgb,
-        var(--node-color, var(--color-border)) 16%,
-        transparent
-      );
+    border-color 150ms ease-out,
+    box-shadow 150ms ease-out,
+    transform 150ms ease-out;
 }
 
 .canvas-node-shell:hover {
-  transform: translateY(-3px);
-  /* Hover: dramatic float with node-color glow */
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.12),
-    0 4px 8px rgba(0, 0, 0, 0.28),
-    0 12px 28px -6px rgba(0, 0, 0, 0.22),
-    0 0 16px -2px
-      color-mix(
-        in srgb,
-        var(--node-color, var(--color-border)) 20%,
-        transparent
-      ),
-    0 0 0 1px
-      color-mix(
-        in srgb,
-        var(--node-color, var(--color-border)) 32%,
-        transparent
-      );
+  border-color: color-mix(
+    in srgb,
+    var(--node-color, var(--color-border)) 60%,
+    var(--color-border)
+  );
+  box-shadow: var(--shadow-node-selected);
+  transform: translateY(-1px);
 }
 
-:root:not(.dark) .canvas-node-shell:hover {
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.9),
-    0 4px 8px rgba(0, 0, 0, 0.14),
-    0 12px 28px -6px rgba(0, 0, 0, 0.12),
-    0 0 16px -2px
-      color-mix(
-        in srgb,
-        var(--node-color, var(--color-border)) 14%,
-        transparent
-      ),
-    0 0 0 1px
-      color-mix(
-        in srgb,
-        var(--node-color, var(--color-border)) 32%,
-        transparent
-      );
-}
-
+/* 选中：2px 类别色描边（1px 边框 + 1px ring）+ 20% 类别色光晕 */
 .canvas-node-shell[data-selected="true"] {
-  /* Selected: vivid primary ring + wide glow aura */
+  border-color: var(--node-color, var(--color-primary));
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.12),
-    0 0 0 2.5px var(--color-primary),
-    0 0 20px color-mix(in srgb, var(--color-primary) 28%, transparent),
-    0 0 40px -4px color-mix(in srgb, var(--color-primary) 16%, transparent),
-    0 8px 24px rgba(0, 0, 0, 0.3);
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--color-primary) 14%, transparent) 0%,
-      transparent 36%
-    ),
-    var(--color-card);
+    0 0 0 1px var(--node-color, var(--color-primary)),
+    0 0 0 5px
+      color-mix(
+        in srgb,
+        var(--node-color, var(--color-primary)) 20%,
+        transparent
+      ),
+    var(--shadow-node-selected);
 }
 
-:root:not(.dark) .canvas-node-shell[data-selected="true"] {
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.9),
-    0 0 0 2.5px var(--color-primary),
-    0 0 20px color-mix(in srgb, var(--color-primary) 22%, transparent),
-    0 0 40px -4px color-mix(in srgb, var(--color-primary) 12%, transparent),
-    0 8px 24px rgba(0, 0, 0, 0.14);
+/* 运行中：类别色 conic-gradient 沿边框旋转 */
+@property --node-spin {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
 }
 
-.canvas-node-shell[data-shell-status="running"] {
-  animation: node-running-glow 2s ease-in-out infinite;
+.canvas-node-shell[data-shell-status="running"]::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  z-index: 2;
+  border-radius: inherit;
+  padding: 1.5px;
+  pointer-events: none;
+  background: conic-gradient(
+    from var(--node-spin),
+    transparent 0deg,
+    color-mix(
+        in srgb,
+        var(--node-color, var(--color-primary)) 90%,
+        transparent
+      )
+      70deg,
+    transparent 170deg
+  );
+  -webkit-mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask:
+    linear-gradient(#000 0 0) content-box,
+    linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  animation: node-running-spin 1.6s linear infinite;
 }
 
-@keyframes node-running-glow {
-  0%,
-  100% {
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.08),
-      0 0 0 2px color-mix(in srgb, var(--color-primary) 40%, transparent),
-      0 0 16px color-mix(in srgb, var(--color-primary) 16%, transparent),
-      0 6px 16px -4px rgba(0, 0, 0, 0.2);
-  }
-  50% {
-    box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.08),
-      0 0 0 2px color-mix(in srgb, var(--color-primary) 60%, transparent),
-      0 0 32px color-mix(in srgb, var(--color-primary) 28%, transparent),
-      0 6px 16px -4px rgba(0, 0, 0, 0.2);
+@keyframes node-running-spin {
+  to {
+    --node-spin: 360deg;
   }
 }
 
@@ -482,7 +432,7 @@ body {
   .canvas-node-shell:hover {
     transform: none;
   }
-  .canvas-node-shell[data-shell-status="running"] {
+  .canvas-node-shell[data-shell-status="running"]::before {
     animation: none;
   }
   .canvas-node-shell[data-shell-status="failed"] {
@@ -563,10 +513,6 @@ body {
   box-shadow: none;
 }
 
-.canvas-node-shell {
-  border-color: var(--node-color, var(--color-border));
-}
-
 .port-row .typed-port {
   top: 50% !important;
   transform: translateY(-50%) !important;
@@ -578,65 +524,102 @@ body {
 }
 
 .typed-port {
-  width: 10px !important;
-  height: 10px !important;
+  width: 12px !important;
+  height: 12px !important;
   border: 2px solid var(--port-color, var(--color-border)) !important;
-  background: transparent !important;
+  background: var(--color-surface) !important;
   transition:
     transform 0.15s ease,
     background-color 0.15s ease,
-    border-color 0.15s ease;
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+/* hover 时在端口正上方浮出数据类型 label（由 TypedPort 写入 data-port-type-label） */
+.typed-port::after {
+  content: attr(data-port-type-label);
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  z-index: 20;
+  transform: translate(-50%, -50%) translateY(-18px);
+  padding: 2px 6px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  background: var(--color-popover);
+  color: var(--color-foreground);
+  border: 1px solid var(--color-border);
+  box-shadow: var(--shadow-popover);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+.typed-port:hover::after {
+  opacity: 1;
 }
 
 .typed-port-shape--circle {
   border-radius: 50% !important;
 }
 .typed-port-shape--square {
-  border-radius: 2px !important;
+  border-radius: 3px !important;
 }
 .typed-port-shape--diamond {
   border-radius: 2px !important;
   transform: translateY(-50%) rotate(45deg) !important;
-  width: 9px !important;
-  height: 9px !important;
-}
-.typed-port-shape--hexagon {
-  border-radius: 50% !important;
   width: 11px !important;
   height: 11px !important;
 }
+.typed-port-shape--hexagon {
+  border-radius: 50% !important;
+  width: 13px !important;
+  height: 13px !important;
+}
 .typed-port-shape--triangle {
   border-radius: 50% 50% 2px 2px !important;
-  width: 10px !important;
-  height: 10px !important;
+  width: 12px !important;
+  height: 12px !important;
 }
 .typed-port-shape--book {
-  border-radius: 2px 5px 5px 2px !important;
-  width: 10px !important;
-  height: 12px !important;
+  border-radius: 2px 6px 6px 2px !important;
+  width: 12px !important;
+  height: 14px !important;
 }
 .typed-port-shape--capsule {
   border-radius: 9999px !important;
-  width: 14px !important;
-  height: 8px !important;
+  width: 16px !important;
+  height: 10px !important;
 }
 .typed-port-shape--arrow {
-  width: 10px !important;
-  height: 10px !important;
+  width: 12px !important;
+  height: 12px !important;
   border-radius: 2px 50% 50% 2px !important;
 }
 
 .typed-port-state--idle {
-  background: transparent !important;
+  background: var(--color-surface) !important;
 }
 .typed-port-state--hover {
   transform: translateY(-50%) scale(1.15) !important;
 }
+/* 已连接端口填实：与空心的未连接端口形成一眼可辨的对比 */
 .typed-port-state--connected {
   background: var(--port-color) !important;
+  box-shadow: 0 0 0 2px
+    color-mix(in srgb, var(--port-color) 22%, transparent);
 }
 .typed-port-state--incompatible {
   border-color: var(--color-error) !important;
+}
+
+/* hover 放大：与 .port-row .typed-port 的 !important transform 同特异性，靠后置声明胜出 */
+.typed-port:hover {
+  transform: translateY(-50%) scale(1.3) !important;
 }
 
 .typed-port--connect-source,
@@ -663,37 +646,38 @@ body {
 }
 
 /* ─── SmartEdge ────────────────────────────────────────── */
+/* 描边颜色 / 辉光由 SmartEdge 注入自定义属性（`url(#edge-gradient-*)` 类型渐变，
+   解析不到端口类型时退回 `--color-primary` 单色）。这里保持低特异性，
+   让 `.react-flow__edge.dep-active` 的执行态覆盖仍然生效。 */
 .smart-edge-path {
   fill: none;
-  stroke-width: 2;
+  stroke: var(--edge-stroke, var(--color-primary));
+  stroke-width: 1.75;
   stroke-linecap: round;
   transition:
-    stroke 0.2s ease,
     stroke-width 0.2s ease,
-    opacity 0.2s ease;
+    opacity 0.2s ease,
+    filter 0.2s ease;
 }
 
-.smart-edge-path--l0 {
-  stroke: var(--color-compat-l0);
-}
-.smart-edge-path--l1 {
-  stroke: var(--color-compat-l1);
-}
+/* L0 / L1 的颜色完全交给类型渐变，这里只保留类名供执行态与测试选择 */
 .smart-edge-path--checking {
   stroke: var(--color-info);
   stroke-dasharray: 6 4;
+  animation: edge-checking-dash 0.8s linear infinite;
 }
 .smart-edge-path--error {
   stroke: var(--color-compat-l3);
+  stroke-dasharray: 4 4;
 }
 
 .smart-edge-path--selected {
-  stroke-width: 3;
-  filter: drop-shadow(0 0 4px currentColor);
+  stroke-width: 2.5;
+  filter: drop-shadow(0 0 4px var(--edge-glow, var(--color-primary)));
 }
 
 .smart-edge-path--hovered {
-  stroke-width: 3;
+  stroke-width: 2.25;
 }
 
 /* 交互区域（透明宽路径提升点击命中率） */
@@ -704,22 +688,15 @@ body {
   cursor: pointer;
 }
 
-/* CSS motion-path 粒子 */
+/* 执行粒子：仅在目标节点 running 时由 SmartEdge 挂载，空闲边不渲染 */
 .smart-edge-particle {
   r: 3;
   opacity: 0;
   pointer-events: none;
 }
 
-.smart-edge-particle--l0 {
-  fill: var(--color-compat-l0);
-}
-.smart-edge-particle--l1 {
-  fill: var(--color-compat-l1);
-}
-
 .smart-edge-particle--running {
-  opacity: 0.8;
+  opacity: 0.85;
   animation: edge-particle-flow 2s linear infinite;
 }
 
@@ -729,10 +706,10 @@ body {
     opacity: 0;
   }
   10% {
-    opacity: 0.8;
+    opacity: 0.85;
   }
   90% {
-    opacity: 0.8;
+    opacity: 0.85;
   }
   100% {
     offset-distance: 100%;
@@ -747,30 +724,42 @@ body {
   }
 }
 
-.smart-edge-path--checking {
-  animation: edge-checking-dash 0.8s linear infinite;
-}
-
-/* ─── Edge Badge（hover 信息徽标） ─────────────────────── */
+/* ─── Edge Badge（连线中点 pill 徽标） ─────────────────── */
 .edge-badge {
   position: absolute;
   pointer-events: none;
   display: flex;
   align-items: center;
   gap: 4px;
-  padding: 2px 8px;
+  padding: 2px 7px;
   border-radius: 9999px;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 500;
   line-height: 1;
   white-space: nowrap;
   background: var(--color-surface-elevated);
   border: 1px solid var(--color-border);
   color: var(--color-foreground);
+  box-shadow: var(--shadow-node);
   opacity: 0;
   transform: translateX(-50%) translateY(-50%);
-  transition: opacity 0.15s ease;
+  transition:
+    opacity 0.15s ease,
+    border-color 0.15s ease;
   user-select: none;
+}
+
+/* L1 / error 的 pill 常驻显示（由 SmartEdge 决定），并带语义色描边 */
+.edge-badge--l1 {
+  background: color-mix(in srgb, var(--color-compat-l1) 12%, var(--color-surface-elevated));
+  border-color: color-mix(in srgb, var(--color-compat-l1) 45%, var(--color-border));
+  color: var(--color-compat-l1);
+}
+
+.edge-badge--error {
+  background: color-mix(in srgb, var(--color-compat-l3) 12%, var(--color-surface-elevated));
+  border-color: color-mix(in srgb, var(--color-compat-l3) 45%, var(--color-border));
+  color: var(--color-compat-l3);
 }
 
 .edge-badge--visible {
@@ -802,6 +791,10 @@ body {
   background: var(--color-compat-l3);
 }
 
+.edge-badge__icon {
+  flex-shrink: 0;
+}
+
 .edge-badge__summary {
   display: flex;
   align-items: center;
@@ -814,6 +807,13 @@ body {
   cursor: pointer;
 }
 
+.edge-badge__warning {
+  flex-shrink: 0;
+  color: var(--color-warning);
+  font-size: 10px;
+  line-height: 1;
+}
+
 .edge-badge__delete {
   display: flex;
   align-items: center;
@@ -824,7 +824,7 @@ body {
   margin-left: 2px;
   background: transparent;
   border: none;
-  color: var(--color-muted);
+  color: var(--color-muted-foreground);
   cursor: pointer;
   padding: 0;
   transition:
@@ -1129,6 +1129,7 @@ body {
 
 /* ─── 节点执行状态覆盖层 ───────────────────────────────── */
 
+/* 卡片内右上角；头部徽章区通过 pr 预留出这块空间，两者组成同一个状态簇 */
 .exec-overlay {
   position: absolute;
   top: 4px;
@@ -1144,12 +1145,13 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   border-radius: 9999px;
   color: var(--exec-color);
-  background: hsl(from var(--exec-color) h s l / 0.12);
-  box-shadow: 0 1px 3px hsl(from var(--exec-color) h s l / 0.15);
+  border: 1px solid color-mix(in srgb, var(--exec-color) 40%, transparent);
+  background: color-mix(in srgb, var(--exec-color) 16%, var(--color-surface));
+  box-shadow: var(--shadow-node);
 }
 
 .exec-overlay__retry {
@@ -1176,18 +1178,25 @@ body {
 
 .canvas-node-shell:has(.exec-overlay--running) {
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 0 0 2px hsl(from var(--color-primary) h s l / 0.4),
-    0 0 16px color-mix(in srgb, var(--color-primary) 14%, transparent),
-    0 6px 16px -4px rgba(0, 0, 0, 0.2);
+    0 0 0 1px
+      color-mix(
+        in srgb,
+        var(--node-color, var(--color-primary)) 45%,
+        transparent
+      ),
+    var(--shadow-node-selected);
 }
 
 .canvas-node-shell[data-shell-status="completed"] {
-  border-color: hsl(from var(--color-success, #22c55e) h s l / 0.4);
+  border-color: color-mix(
+    in srgb,
+    var(--color-success) 45%,
+    var(--color-border)
+  );
 }
 
 .canvas-node-shell:has(.exec-overlay[data-exec-status="failed"]) {
-  border-color: hsl(from var(--color-error, #ef4444) h s l / 0.4);
+  border-color: color-mix(in srgb, var(--color-error) 45%, var(--color-border));
 }
 
 @keyframes exec-spin {
@@ -1207,39 +1216,25 @@ body {
 }
 
 /* ─── Execution dependency highlight ──────────────────── */
-/* running 节点的直接输入节点：明显的 primary 光晕（弱于 running 但清晰可见） */
+/* running 节点的直接输入节点：primary 描边，弱于 running 但清晰可见 */
 .canvas-node-shell--dep-active {
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.08),
-    0 0 0 1.5px color-mix(in srgb, var(--color-primary) 40%, transparent),
-    0 0 14px -2px color-mix(in srgb, var(--color-primary) 22%, transparent),
-    0 6px 16px -4px rgba(0, 0, 0, 0.2);
-  border-color: color-mix(in srgb, var(--color-primary) 40%, transparent);
-}
-
-:root:not(.dark) .canvas-node-shell--dep-active {
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.85),
-    0 0 0 1.5px color-mix(in srgb, var(--color-primary) 36%, transparent),
-    0 0 14px -2px color-mix(in srgb, var(--color-primary) 16%, transparent),
-    0 6px 16px -4px rgba(0, 0, 0, 0.1);
-  border-color: color-mix(in srgb, var(--color-primary) 36%, transparent);
-}
-
-/* running 节点到其输入源的边：加粗 + primary 发光 */
-.react-flow__edge.dep-active path.smart-edge-path {
-  stroke-width: 2.5;
-  filter: drop-shadow(
-    0 0 4px color-mix(in srgb, var(--color-primary) 50%, transparent)
+  border-color: color-mix(
+    in srgb,
+    var(--color-primary) 45%,
+    var(--color-border)
   );
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--color-primary) 35%, transparent),
+    var(--shadow-node-selected);
 }
 
-.react-flow__edge.dep-active path.smart-edge-path--l0 {
-  stroke: color-mix(in srgb, var(--color-primary) 70%, var(--color-compat-l0));
-}
-
-.react-flow__edge.dep-active path.smart-edge-path--l1 {
-  stroke: color-mix(in srgb, var(--color-primary) 70%, var(--color-compat-l1));
+/* running 节点到其输入源的边：加粗 + 沿用该边自身的类型色发光。
+   不再改写 stroke，保证执行中依然看得出端口类型渐变。 */
+.react-flow__edge.dep-active path.smart-edge-path {
+  stroke-width: 2.75;
+  filter: drop-shadow(
+    0 0 5px color-mix(in srgb, var(--edge-glow, var(--color-primary)) 60%, transparent)
+  );
 }
 
 @media (prefers-reduced-motion: reduce) {

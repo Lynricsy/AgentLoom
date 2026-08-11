@@ -18,10 +18,10 @@ type ExecutionStatus = 'pending' | 'running' | 'paused' | 'completed' | 'failed'
 
 const executionStatusConfig: Record<ExecutionStatus, { label: string; icon: typeof Play; className: string }> = {
   pending: { label: '等待中', icon: Loader2, className: 'text-muted-foreground' },
-  running: { label: '执行中', icon: Play, className: 'text-sky-500' },
-  paused: { label: '已暂停', icon: Pause, className: 'text-amber-500' },
-  completed: { label: '已完成', icon: CheckCircle2, className: 'text-emerald-500' },
-  failed: { label: '失败', icon: XCircle, className: 'text-red-500' },
+  running: { label: '执行中', icon: Play, className: 'text-info' },
+  paused: { label: '已暂停', icon: Pause, className: 'text-warning' },
+  completed: { label: '已完成', icon: CheckCircle2, className: 'text-success' },
+  failed: { label: '失败', icon: XCircle, className: 'text-error' },
   cancelled: { label: '已取消', icon: XCircle, className: 'text-muted-foreground' },
 }
 
@@ -48,20 +48,20 @@ export const WorkflowStatusBar = memo(function WorkflowStatusBar() {
 
   return (
     <div
-      className="absolute bottom-0 left-0 right-0 z-20 flex h-7 items-center gap-2 border-t border-border/70 bg-surface/90 px-3 text-xs text-muted-foreground backdrop-blur-sm"
+      className="absolute bottom-3 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2.5 rounded-panel border border-border bg-surface/90 px-3 py-1.5 text-xs text-muted-foreground shadow-popover backdrop-blur-sm"
       data-testid="workflow-status-bar"
     >
-      <span>{nodeCount} 节点</span>
-      <span className="text-border">|</span>
-      <span>{edgeCount} 连接</span>
-      <span className="text-border">|</span>
-      <span>{zoomPercent}%</span>
-      <span className="text-border">|</span>
+      <span className="tabular-nums">{nodeCount} 节点</span>
+      <span aria-hidden className="h-3 w-px bg-border" />
+      <span className="tabular-nums">{edgeCount} 连接</span>
+      <span aria-hidden className="h-3 w-px bg-border" />
+      <span className="tabular-nums">{zoomPercent}%</span>
+      <span aria-hidden className="h-3 w-px bg-border" />
       <StatusIndicator isDirty={isDirty} isSaving={isSaving} lastSavedAt={lastSavedAt} />
 
       {executionStatus && (
         <>
-          <span className="text-border">|</span>
+          <span aria-hidden className="h-3 w-px bg-border" />
           <ExecutionStatusIndicator
             status={executionStatus}
             completedSteps={completedSteps}
@@ -103,7 +103,7 @@ const StatusIndicator = memo(function StatusIndicator({
 
   if (isSaving) {
     return (
-      <span className={cn('flex items-center gap-1 text-muted-foreground')}>
+      <span className="flex items-center gap-1 text-muted-foreground">
         <Loader2 className="h-3 w-3 animate-spin" />
         保存中...
       </span>
@@ -112,7 +112,7 @@ const StatusIndicator = memo(function StatusIndicator({
 
   if (isDirty) {
     return (
-      <span className="flex items-center gap-1 text-amber-500">
+      <span className="flex items-center gap-1 text-warning">
         <Circle className="h-2 w-2 fill-current" />
         未保存
       </span>
@@ -121,7 +121,7 @@ const StatusIndicator = memo(function StatusIndicator({
 
   if (lastSavedAt) {
     return (
-      <span className="flex items-center gap-1 text-emerald-500">
+      <span className="flex items-center gap-1 text-success">
         <Check className="h-3 w-3" />
         已保存 · {formatRelativeTime(lastSavedAt, now)}
       </span>
@@ -129,7 +129,7 @@ const StatusIndicator = memo(function StatusIndicator({
   }
 
   return (
-    <span className="flex items-center gap-1 text-emerald-500">
+    <span className="flex items-center gap-1 text-success">
       <Check className="h-3 w-3" />
       已保存
     </span>

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
+import { PackagePlus, Trash2 } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
 import { useCanvasActions } from '../stores/canvasStore'
 import type { CanvasContextMenuState } from '../types'
@@ -86,7 +87,7 @@ export function CanvasContextMenu({
       role="menu"
       aria-label="画布上下文菜单"
       data-testid="canvas-context-menu"
-      className="z-[1000] min-w-48 overflow-hidden rounded-xl border border-border bg-surface-elevated/95 p-1 shadow-2xl backdrop-blur"
+      className="z-[1000] min-w-48 overflow-hidden rounded-card border border-border bg-popover p-1 shadow-popover"
       style={{
         position: 'fixed',
         left: `${state.x}px`,
@@ -98,12 +99,15 @@ export function CanvasContextMenu({
         role="menuitem"
         data-testid="canvas-context-menu-delete"
         className={cn(
-          'flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm text-foreground transition-colors',
-          canDelete ? 'hover:bg-muted focus:bg-muted' : 'cursor-not-allowed opacity-50',
+          'flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm transition-colors',
+          canDelete
+            ? 'text-foreground hover:bg-error/10 hover:text-error focus:bg-error/10 focus:text-error'
+            : 'cursor-not-allowed text-muted-foreground opacity-50',
         )}
         onClick={handleDelete}
         disabled={!canDelete}
       >
+        <Trash2 aria-hidden className="h-3.5 w-3.5 shrink-0" />
         <span>删除</span>
       </button>
 
@@ -112,9 +116,10 @@ export function CanvasContextMenu({
           type="button"
           role="menuitem"
           data-testid="canvas-context-menu-encapsulate"
-          className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm text-foreground transition-colors hover:bg-muted focus:bg-muted"
+          className="flex w-full items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-sm text-foreground transition-colors hover:bg-surface-elevated focus:bg-surface-elevated"
           onClick={handleEncapsulate}
         >
+          <PackagePlus aria-hidden className="h-3.5 w-3.5 shrink-0" />
           <span>封装为可复用块</span>
         </button>
       ) : null}

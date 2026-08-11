@@ -1,4 +1,8 @@
 import { memo, useMemo, useState, useCallback, type DragEvent } from 'react'
+import { PanelLeftClose, PanelLeftOpen, Search } from 'lucide-react'
+import { Button } from '@/shared/ui/button'
+import { Input } from '@/shared/ui/input'
+import { TooltipHint, TooltipProvider } from '@/shared/ui/tooltip'
 import { cn } from '../../../shared/lib/utils'
 import {
   buildPaletteSearchText,
@@ -6,6 +10,13 @@ import {
   NODE_CATEGORIES,
 } from './nodeCategories'
 import { DRAG_TRANSFER_TYPE } from './NodePalette'
+import {
+  applyPaletteDragPreview,
+  PALETTE_SHELL_CLASS,
+  PaletteItemButton,
+  PaletteRailItem,
+  PaletteSectionHeader,
+} from './paletteChrome'
 import {
   AGENT_CANVAS_NODE_REGISTRY,
   type AgentCanvasNodeType,
@@ -121,6 +132,7 @@ export const AgentNodePalette = memo(function AgentNodePalette({
 }: AgentNodePaletteProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
+  const [isPaletteCollapsed, setIsPaletteCollapsed] = useState(false)
 
   const toggleGroup = useCallback((groupKey: string) => {
     setCollapsedGroups((prev) => {
@@ -134,66 +146,141 @@ export const AgentNodePalette = memo(function AgentNodePalette({
     })
   }, [])
 
-  const onDragStart = useCallback((event: DragEvent, item: AgentPaletteNodeItem) => {
-    if (item.isAutoCreated) {
-      event.preventDefault()
-      return
-    }
-    event.dataTransfer.setData(DRAG_TRANSFER_TYPE, JSON.stringify(item))
-    event.dataTransfer.effectAllowed = 'move'
-  }, [])
+  const onDragStart = useCallback(
+    (event: DragEvent<HTMLButtonElement>, item: AgentPaletteNodeItem) => {
+      if (item.isAutoCreated) {
+        event.preventDefault()
+        return
+      }
+      event.dataTransfer.setData(DRAG_TRANSFER_TYPE, JSON.stringify(item))
+      event.dataTransfer.effectAllowed = 'move'
+      applyPaletteDragPreview(event, {
+        label: item.label,
+        color: NODE_CATEGORIES[item.category]?.color ?? NODE_CATEGORIES.control.color,
+      })
+    },
+    [],
+  )
+
+  const visibleGroups = useMemo(
+    () =>
+      AGENT_PALETTE_GROUPS.map((group) => ({
+        ...group,
+        items: group.items.filter((item) =>
+          runtimeMode === 'sandbox' ? true : !NO_SANDBOX_NODE_TYPES.has(item.type),
+        ),
+      })).filter((group) => group.items.length > 0),
+    [runtimeMode],
+  )
 
   const filteredGroups = useMemo(() => {
-    const visibleGroups = AGENT_PALETTE_GROUPS.map((group) => ({
-      ...group,
-      items: group.items.filter((item) =>
-        runtimeMode === 'sandbox' ? true : !NO_SANDBOX_NODE_TYPES.has(item.type),
-      ),
-    })).filter((group) => group.items.length > 0)
-
     if (!searchQuery.trim()) return visibleGroups
     return visibleGroups.map((group) => ({
       ...group,
       items: group.items.filter((item) => matchesPaletteSearch(item, searchQuery)),
     })).filter((group) => group.items.length > 0)
-  }, [runtimeMode, searchQuery])
+  }, [searchQuery, visibleGroups])
+
+  if (isPaletteCollapsed) {
+    return (
+      <TooltipProvider delayDuration={200}>
+        <aside
+          className={cn(
+            PALETTE_SHELL_CLASS,
+            'w-[var(--spacing-palette-collapsed)] items-center gap-1 py-3',
+            className,
+          )}
+        >
+          <TooltipHint side="right" label="展开节点面板">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="展开节点面板"
+              onClick={() => setIsPaletteCollapsed(false)}
+            >
+              <PanelLeftOpen className="h-4 w-4" />
+            </Button>
+          </TooltipHint>
+
+          <div className="flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto pt-1">
+            {visibleGroups.flatMap((group) =>
+              group.items.map((item) => (
+                <PaletteRailItem
+                  key={item.type}
+                  icon={item.icon}
+                  color={
+                    NODE_CATEGORIES[item.category]?.color ?? NODE_CATEGORIES.control.color
+                  }
+                  label={item.label}
+                  description={item.description}
+                  disabled={item.isAutoCreated}
+                  onDragStart={(event) => onDragStart(event, item)}
+                />
+              )),
+            )}
+          </div>
+        </aside>
+      </TooltipProvider>
+    )
+  }
 
   return (
-    <aside
-      className={cn(
-        'flex h-full w-[var(--spacing-palette-expanded)] flex-col border-r border-border bg-surface',
-        className,
-      )}
-    >
-      <div className="border-b border-border p-3">
-        <input
-          type="text"
-          placeholder="搜索节点..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground placeholder:text-muted outline-none focus:border-info"
-        />
-      </div>
-
-      <div className="flex-1 overflow-y-auto p-2">
-        <p className="mb-2 px-2 text-[11px] text-muted">拖拽节点到画布以添加</p>
-        {filteredGroups.map((group) => {
-          const groupKey = getGroupKey(group)
-          return (
-            <AgentPaletteGroupSection
-              key={groupKey}
-              group={group}
-              isCollapsed={collapsedGroups.has(groupKey)}
-              onToggle={() => toggleGroup(groupKey)}
-              onDragStart={onDragStart}
-            />
-          )
-        })}
-        {filteredGroups.length === 0 && (
-          <p className="mt-4 text-center text-sm text-muted">无匹配节点</p>
+    <TooltipProvider delayDuration={200}>
+      <aside
+        className={cn(
+          PALETTE_SHELL_CLASS,
+          'w-[var(--spacing-palette-expanded)]',
+          className,
         )}
-      </div>
-    </aside>
+      >
+        <div className="flex items-center gap-2 border-b border-border p-3">
+          <div className="relative flex-1">
+            <Search
+              aria-hidden
+              className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
+            />
+            <Input
+              type="text"
+              placeholder="搜索节点..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="h-8 pl-8 text-xs"
+            />
+          </div>
+          <TooltipHint side="right" label="折叠节点面板">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="折叠节点面板"
+              onClick={() => setIsPaletteCollapsed(true)}
+            >
+              <PanelLeftClose className="h-4 w-4" />
+            </Button>
+          </TooltipHint>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-2">
+          <p className="mb-2 px-2 text-[11px] text-muted-foreground">
+            拖拽节点到画布以添加
+          </p>
+          {filteredGroups.map((group) => {
+            const groupKey = getGroupKey(group)
+            return (
+              <AgentPaletteGroupSection
+                key={groupKey}
+                group={group}
+                isCollapsed={collapsedGroups.has(groupKey)}
+                onToggle={() => toggleGroup(groupKey)}
+                onDragStart={onDragStart}
+              />
+            )
+          })}
+          {filteredGroups.length === 0 && (
+            <p className="mt-4 text-center text-sm text-muted-foreground">无匹配节点</p>
+          )}
+        </div>
+      </aside>
+    </TooltipProvider>
   )
 })
 
@@ -201,7 +288,7 @@ interface AgentPaletteGroupSectionProps {
   group: AgentPaletteGroup
   isCollapsed: boolean
   onToggle: () => void
-  onDragStart: (event: DragEvent, item: AgentPaletteNodeItem) => void
+  onDragStart: (event: DragEvent<HTMLButtonElement>, item: AgentPaletteNodeItem) => void
 }
 
 const AgentPaletteGroupSection = memo(function AgentPaletteGroupSection({
@@ -212,53 +299,35 @@ const AgentPaletteGroupSection = memo(function AgentPaletteGroupSection({
 }: AgentPaletteGroupSectionProps) {
   return (
     <div className="mb-2">
-      <button
-        type="button"
-        onClick={onToggle}
-        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-foreground hover:bg-surface-elevated"
-      >
-        <span className="h-2 w-2 rounded-full" style={{ backgroundColor: group.color }} />
-        <span className="flex-1 text-left">{group.label}</span>
-        <span className="text-muted text-xs">{isCollapsed ? '▸' : '▾'}</span>
-      </button>
+      <PaletteSectionHeader
+        icon={group.icon}
+        color={group.color}
+        label={group.label}
+        isCollapsed={isCollapsed}
+        onToggle={onToggle}
+      />
 
       {!isCollapsed && (
-        <div className="mt-1 space-y-0.5 pl-2">
+        <div className="mt-1 space-y-0.5 pl-1">
           {group.items.map((item) => (
-            <button
-              type="button"
+            <PaletteItemButton
               key={item.type}
-              draggable={!item.isAutoCreated}
-              onDragStart={(e) => onDragStart(e, item)}
-              className={cn(
-                'flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left text-sm',
-                item.isAutoCreated
-                  ? 'cursor-default text-muted-foreground/50'
-                  : 'cursor-grab text-muted-foreground hover:bg-surface-elevated hover:text-foreground active:cursor-grabbing',
-              )}
-              title={item.description}
-            >
-              <span className="min-w-0 flex-1">
-                <span className="flex items-center gap-1.5">
-                  <span className={cn(
-                    'text-xs font-medium',
-                    item.isAutoCreated ? 'text-muted-foreground/50' : 'text-foreground',
-                  )}>
-                    {item.label}
+              icon={item.icon}
+              color={
+                NODE_CATEGORIES[item.category]?.color ?? NODE_CATEGORIES.control.color
+              }
+              label={item.label}
+              description={item.description}
+              disabled={item.isAutoCreated}
+              badge={
+                item.isAutoCreated ? (
+                  <span className="inline-flex shrink-0 rounded bg-surface-elevated px-1 py-0.5 text-[10px] leading-none text-muted-foreground">
+                    自动创建
                   </span>
-                  {item.isAutoCreated && (
-                    <span className="inline-flex rounded bg-surface-elevated px-1 py-0.5 text-[10px] leading-none text-muted-foreground/60">
-                      自动创建
-                    </span>
-                  )}
-                </span>
-                {item.description ? (
-                  <span className="mt-0.5 block text-[11px] leading-4 text-muted-foreground">
-                    {item.description}
-                  </span>
-                ) : null}
-              </span>
-            </button>
+                ) : undefined
+              }
+              onDragStart={(event) => onDragStart(event, item)}
+            />
           ))}
         </div>
       )}

@@ -43,6 +43,7 @@ export const TypedPort = memo(function TypedPort({
       data-port-id={port.id}
       data-port-direction={port.direction}
       data-port-type={port.dataType}
+      data-port-type-label={meta.label}
       data-port-shape={meta.shape}
       data-port-state={resolvedState}
       aria-label={`${port.direction === 'input' ? '输入端口' : '输出端口'}: ${port.label}, 类型: ${meta.label}`}

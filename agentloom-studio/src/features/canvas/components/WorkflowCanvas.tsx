@@ -1064,7 +1064,12 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
         proOptions={{ hideAttribution: true }}
         colorMode={resolvedTheme}
       >
-        <Background variant={BackgroundVariant.Dots} gap={20} size={1} />
+        <Background
+          variant={BackgroundVariant.Dots}
+          gap={20}
+          size={2}
+          color="var(--color-border)"
+        />
         <Controls
           showInteractive={false}
           className="!bg-surface-elevated !border-border !shadow-lg"

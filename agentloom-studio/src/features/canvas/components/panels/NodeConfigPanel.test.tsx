@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { NodeExecutionState } from '@/features/execution/stores/executionStore'
@@ -192,6 +192,33 @@ function createUnknownNode(): CanvasNode {
   }
 }
 
+// Node 22 的实验性 localStorage 全局在未传 --localstorage-file 时为 undefined，
+// 且会遮蔽 jsdom 的实现，因此这里装一个内存版供宽度持久化用例使用。
+function installMemoryLocalStorage(): Storage {
+  const entries = new Map<string, string>()
+  const storage: Storage = {
+    get length() {
+      return entries.size
+    },
+    clear: () => entries.clear(),
+    getItem: (key) => entries.get(key) ?? null,
+    key: (index) => [...entries.keys()][index] ?? null,
+    removeItem: (key) => {
+      entries.delete(key)
+    },
+    setItem: (key, value) => {
+      entries.set(key, value)
+    },
+  }
+
+  Object.defineProperty(window, 'localStorage', {
+    configurable: true,
+    value: storage,
+  })
+
+  return storage
+}
+
 describe('NodeConfigPanel', () => {
   beforeEach(() => {
     mocks.selectedNodeId = 'node-1'
@@ -202,6 +229,7 @@ describe('NodeConfigPanel', () => {
     mocks.selectNode.mockReset()
     mocks.updateNodeData.mockReset()
     mocks.setNodeValidationError.mockReset()
+    installMemoryLocalStorage()
   })
 
   it('renders idle execution placeholder when there is no node execution state', () => {
@@ -220,7 +248,7 @@ describe('NodeConfigPanel', () => {
 
     render(<NodeConfigPanel />)
 
-    expect(screen.getByText('Legacy Node')).toBeInTheDocument()
+    expect(screen.getByDisplayValue('Legacy Node')).toBeInTheDocument()
     expect(screen.getByText('当前节点类型暂不受支持')).toBeInTheDocument()
     expect(
       screen.getByText(/已检测到未知节点类型/, { exact: false }),
@@ -363,5 +391,121 @@ describe('NodeConfigPanel', () => {
     await user.click(screen.getByRole('button', { name: '触发动态表单校验' }))
 
     expect(mocks.setNodeValidationError).toHaveBeenCalledWith('node-1', true)
+  })
+
+  it('renames the node through the editable panel title', async () => {
+    const user = userEvent.setup()
+
+    render(<NodeConfigPanel />)
+    await user.type(screen.getByLabelText('节点名称'), '!')
+
+    expect(mocks.updateNodeData).toHaveBeenLastCalledWith('node-1', {
+      label: `${mocks.node!.data.label}!`,
+    })
+  })
+
+  it('restores the persisted panel width and clamps it into the allowed range', () => {
+    window.localStorage.setItem('agentloom-config-panel-width', '900')
+
+    render(<NodeConfigPanel />)
+
+    expect(screen.getByTestId('node-config-panel')).toHaveStyle({ width: '560px' })
+  })
+
+  it('falls back to the default width when the persisted value is unusable', () => {
+    window.localStorage.setItem('agentloom-config-panel-width', 'not-a-number')
+
+    render(<NodeConfigPanel />)
+
+    expect(screen.getByTestId('node-config-panel')).toHaveStyle({ width: '360px' })
+  })
+
+  it('widens the panel while dragging the left edge and persists on release', () => {
+    const { unmount } = render(<NodeConfigPanel />)
+
+    const handle = screen.getByTestId('node-config-panel-resize-handle')
+    fireEvent.pointerDown(handle, { pointerId: 1, clientX: 800 })
+    // 面板贴右缘，向左拖 80px 即加宽 80px
+    fireEvent.pointerMove(handle, { pointerId: 1, clientX: 720 })
+
+    expect(screen.getByTestId('node-config-panel')).toHaveStyle({ width: '440px' })
+
+    // 越界拖拽被夹回上限
+    fireEvent.pointerMove(handle, { pointerId: 1, clientX: 0 })
+    expect(screen.getByTestId('node-config-panel')).toHaveStyle({ width: '560px' })
+
+    fireEvent.pointerUp(handle, { pointerId: 1, clientX: 0 })
+    expect(window.localStorage.getItem('agentloom-config-panel-width')).toBe('560')
+
+    unmount()
+    render(<NodeConfigPanel />)
+
+    expect(screen.getByTestId('node-config-panel')).toHaveStyle({ width: '560px' })
+  })
+
+  it('persists the width after a keyboard resize so a reload keeps it', () => {
+    const { unmount } = render(<NodeConfigPanel />)
+
+    fireEvent.keyDown(screen.getByTestId('node-config-panel-resize-handle'), {
+      key: 'ArrowLeft',
+    })
+
+    expect(screen.getByTestId('node-config-panel')).toHaveStyle({ width: '376px' })
+    expect(window.localStorage.getItem('agentloom-config-panel-width')).toBe('376')
+
+    unmount()
+    render(<NodeConfigPanel />)
+
+    expect(screen.getByTestId('node-config-panel')).toHaveStyle({ width: '376px' })
+  })
+
+  it('keeps the config tab mounted while showing the execution tab', async () => {
+    const user = userEvent.setup()
+    mocks.node = createNode('loop')
+
+    render(<NodeConfigPanel />)
+
+    expect(screen.getByTestId('node-config-tab-panel-config')).toHaveAttribute(
+      'data-active',
+      'true',
+    )
+
+    await user.click(screen.getByTestId('node-config-tab-output'))
+
+    expect(screen.getByTestId('node-config-tab-panel-output')).toHaveAttribute(
+      'data-active',
+      'true',
+    )
+    // 自定义面板持有本地编辑状态，切 tab 只隐藏不卸载
+    expect(screen.getByText(/^Dynamic Form:/)).toBeInTheDocument()
+  })
+
+  it('adds the intervention tab and focuses it while the node waits for a human', () => {
+    mocks.nodeState = {
+      stepId: 'step-7',
+      nodeId: 'node-1',
+      status: 'waiting_intervention',
+      output: '',
+      isStreaming: false,
+      toolCalls: {},
+      agentEvents: [],
+      subAgentStreams: {},
+    }
+
+    render(<NodeConfigPanel />)
+
+    expect(screen.getByTestId('node-config-tab-intervention')).toBeInTheDocument()
+    expect(
+      screen.getByTestId('node-config-tab-panel-intervention'),
+    ).toHaveAttribute('data-active', 'true')
+    expect(screen.getByTestId('intervention-panel-mock')).toBeInTheDocument()
+  })
+
+  it('hides the intervention tab when the node is not waiting for a human', () => {
+    render(<NodeConfigPanel />)
+
+    expect(
+      screen.queryByTestId('node-config-tab-intervention'),
+    ).not.toBeInTheDocument()
   })
 })

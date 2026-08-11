@@ -370,7 +370,7 @@ export function WorkflowCanvasPage() {
           >
             <div className="order-1 flex justify-end xl:order-2">
               <div
-                className="pointer-events-auto w-full rounded-2xl border border-border/70 bg-background/85 p-2 shadow-lg backdrop-blur-md xl:w-auto"
+                className="pointer-events-auto w-full xl:w-auto"
                 data-testid="workflow-toolbar-shell"
               >
                 <VersionToolbar
