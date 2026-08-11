@@ -3,8 +3,11 @@ import { useAuthToken } from "@/features/execution";
 import { useIsAuthenticated, useAuthLoading } from "@/features/auth";
 import { useAuthStore } from "@/features/auth/stores/auth.store";
 import { useNotificationSocket } from "@/features/notification";
-import { AppSidebar } from "@/shared/components/app-sidebar";
+import { AppSidebar, MobileTopBar } from "@/shared/components/app-sidebar";
+import { CommandPalette } from "@/shared/components/command-palette/CommandPalette";
 import { SettingsLayout } from "@/shared/components/settings-layout";
+import { useMediaQuery, LG_QUERY } from "@/shared/hooks/use-media-query";
+import { cn } from "@/shared/lib/utils";
 import { indexRoute } from "./index";
 import { workflowCanvasRoute } from "./workflows/$workflowId";
 import { resourceKnowledgeBaseDetailRoute } from "./resources/knowledge-bases.$knowledgeBaseId";
@@ -62,6 +65,9 @@ export function RootLayout() {
   const isAuthenticated = useIsAuthenticated();
   const isLoading = useAuthLoading();
   const needsOnboarding = useAuthStore((state) => state.needsOnboarding);
+  // 壳层按视口二选一挂载：同时挂载会出现两个 NotificationBell，
+  // 而它的展开状态在全局 store 上，两个实例的外部点击监听会互相关掉下拉。
+  const isDesktop = useMediaQuery(LG_QUERY);
 
   const pathname = window.location.pathname;
   const isPublicRoute =
@@ -104,10 +110,21 @@ export function RootLayout() {
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-background text-foreground">
-      {isSettingsRoute ? <SettingsLayout /> : <AppSidebar />}
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <Outlet />
+      {isSettingsRoute ? (
+        <SettingsLayout />
+      ) : isDesktop ? (
+        <AppSidebar />
+      ) : null}
+      {/* 仅 settings 路由需要 56px 顶部让位：SettingsLayout 小屏是 fixed 顶部条，
+          已退出流式布局，不占据高度；非 settings 路由的 MobileTopBar 是流内 h-14
+          元素，会自然占位，再加内距就会多出 56px 空白。≥lg 两者都是流内侧栏，无需补偿。 */}
+      <div className={cn("flex min-w-0 flex-1 flex-col", isSettingsRoute && "pt-14 lg:pt-0")}>
+        {isSettingsRoute || isDesktop ? null : <MobileTopBar />}
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <Outlet />
+        </div>
       </div>
+      <CommandPalette />
     </div>
   );
 }

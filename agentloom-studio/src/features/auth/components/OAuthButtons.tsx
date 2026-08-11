@@ -1,7 +1,9 @@
 import { useState } from 'react';
 
+import { Spinner } from '@/shared/components/spinner/Spinner';
 import { supabase } from '@/shared/lib/supabase';
 import { cn } from '@/shared/lib/utils';
+import { Button } from '@/shared/ui/button';
 
 interface OAuthButtonsProps {
   className?: string;
@@ -33,95 +35,52 @@ export function OAuthButtons({ className, disabled }: OAuthButtonsProps) {
   const isDisabled = disabled || loadingProvider !== null;
 
   return (
-    <div className={cn('flex flex-col gap-3', className)}>
-      <button
-        type="button"
+    <div className={cn('flex flex-col gap-2.5', className)}>
+      <Button
+        variant="outline"
+        size="lg"
         disabled={isDisabled}
         onClick={() => handleOAuth('google')}
-        className={cn(
-          'flex h-10 w-full items-center justify-center gap-3 rounded-lg border border-border',
-          'bg-surface-elevated text-sm font-medium text-foreground',
-          'transition-colors hover:bg-zinc-700',
-          'disabled:cursor-not-allowed disabled:opacity-50',
-        )}
+        className="w-full gap-2.5"
       >
-        {loadingProvider === 'google' ? (
-          <LoadingSpinner />
-        ) : (
-          <GoogleIcon />
-        )}
+        {loadingProvider === 'google' ? <Spinner /> : <GoogleIcon />}
         使用 Google 继续
-      </button>
+      </Button>
 
-      <button
-        type="button"
+      <Button
+        variant="outline"
+        size="lg"
         disabled={isDisabled}
         onClick={() => handleOAuth('github')}
-        className={cn(
-          'flex h-10 w-full items-center justify-center gap-3 rounded-lg border border-border',
-          'bg-surface-elevated text-sm font-medium text-foreground',
-          'transition-colors hover:bg-zinc-700',
-          'disabled:cursor-not-allowed disabled:opacity-50',
-        )}
+        className="w-full gap-2.5"
       >
-        {loadingProvider === 'github' ? (
-          <LoadingSpinner />
-        ) : (
-          <GitHubIcon />
-        )}
+        {loadingProvider === 'github' ? <Spinner /> : <GitHubIcon />}
         使用 GitHub 继续
-      </button>
+      </Button>
     </div>
   );
 }
 
-function LoadingSpinner() {
-  return (
-    <svg
-      className="h-5 w-5 animate-spin text-muted"
-      xmlns="http://www.w3.org/2000/svg"
-      fill="none"
-      viewBox="0 0 24 24"
-      role="img"
-      aria-label="加载中"
-    >
-      <title>加载中</title>
-      <circle
-        className="opacity-25"
-        cx="12"
-        cy="12"
-        r="10"
-        stroke="currentColor"
-        strokeWidth="4"
-      />
-      <path
-        className="opacity-75"
-        fill="currentColor"
-        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-      />
-    </svg>
-  );
-}
-
+/** Google 官方彩色标识，配色属于品牌资产，不走主题令牌 */
 function GoogleIcon() {
   return (
-    <svg className="h-5 w-5" viewBox="0 0 24 24" role="img" aria-label="Google">
+    <svg className="h-4 w-4" viewBox="0 0 24 24" role="img" aria-label="Google">
       <title>Google</title>
       <path
-        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"
         fill="#4285F4"
+        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1z"
       />
       <path
-        d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
         fill="#34A853"
+        d="M12 23c2.97 0 5.46-.98 7.28-2.65l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A10.99 10.99 0 0012 23z"
       />
       <path
-        d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"
         fill="#FBBC05"
+        d="M5.84 14.11a6.6 6.6 0 01-.34-2.11c0-.73.13-1.44.34-2.11V7.05H2.18A10.99 10.99 0 001 12c0 1.77.42 3.45 1.18 4.95l3.66-2.84z"
       />
       <path
-        d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"
         fill="#EA4335"
+        d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.05l3.66 2.84C6.71 7.31 9.14 5.38 12 5.38z"
       />
     </svg>
   );
@@ -129,13 +88,15 @@ function GoogleIcon() {
 
 function GitHubIcon() {
   return (
-    <svg className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24" role="img" aria-label="GitHub">
+    <svg
+      className="h-4 w-4"
+      fill="currentColor"
+      viewBox="0 0 24 24"
+      role="img"
+      aria-label="GitHub"
+    >
       <title>GitHub</title>
-      <path
-        fillRule="evenodd"
-        clipRule="evenodd"
-        d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"
-      />
+      <path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.286-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 21.795 24 17.295 24 12c0-6.63-5.37-12-12-12z" />
     </svg>
   );
 }

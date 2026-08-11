@@ -1,48 +1,17 @@
 import {
-  createContext,
   forwardRef,
-  useContext,
   type ComponentPropsWithoutRef,
   type ElementRef,
-  type PropsWithChildren,
 } from 'react'
 import * as SelectPrimitive from '@radix-ui/react-select'
-import { AnimatePresence, motion } from 'motion/react'
+import { motion } from 'motion/react'
 import { Check, ChevronDown, ChevronUp } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
 import { scaleIn } from '@/shared/lib/motion'
-import {
-  useControllableOpen,
-  type ControllableOpenProps,
-} from './use-controllable-open'
 
-const SelectOpenContext = createContext(false)
+export type SelectProps = ComponentPropsWithoutRef<typeof SelectPrimitive.Root>
 
-export type SelectProps = PropsWithChildren<
-  ControllableOpenProps &
-    Omit<
-      ComponentPropsWithoutRef<typeof SelectPrimitive.Root>,
-      'open' | 'defaultOpen' | 'onOpenChange' | 'children'
-    >
->
-
-export function Select({
-  children,
-  open,
-  defaultOpen,
-  onOpenChange,
-  ...props
-}: SelectProps) {
-  const [isOpen, setOpen] = useControllableOpen({ open, defaultOpen, onOpenChange })
-
-  return (
-    <SelectPrimitive.Root open={isOpen} onOpenChange={setOpen} {...props}>
-      <SelectOpenContext.Provider value={isOpen}>
-        {children}
-      </SelectOpenContext.Provider>
-    </SelectPrimitive.Root>
-  )
-}
+export const Select = SelectPrimitive.Root
 
 export const SelectGroup = SelectPrimitive.Group
 export const SelectValue = SelectPrimitive.Value
@@ -75,44 +44,42 @@ export const SelectContent = forwardRef<
   { className, children, position = 'popper', sideOffset = 4, ...props },
   ref,
 ) {
-  const open = useContext(SelectOpenContext)
-
+  // Content 必须始终挂载：关闭态下 Radix 会把 children 渲染到隐藏 fragment 里登记选项文案，
+  // SelectValue 正是靠它回显当前值。若按 open 条件渲染，trigger 会一直是空白。
+  // 因此出场动画交给 Radix 的即时卸载，入场动画由内部 motion.div 承担。
   return (
-    <AnimatePresence>
-      {open ? (
-        <SelectPrimitive.Portal forceMount>
-          <SelectPrimitive.Content
-            ref={ref}
-            position={position}
-            sideOffset={sideOffset}
-            asChild
-            forceMount
-            {...props}
-          >
-            <motion.div
-              {...scaleIn}
-              className={cn(
-                'relative z-50 max-h-72 min-w-[8rem] overflow-hidden rounded-card border border-border bg-popover text-popover-foreground shadow-popover',
-                position === 'popper' && 'w-[var(--radix-select-trigger-width)]',
-                className,
-              )}
-            >
-              <SelectPrimitive.ScrollUpButton className="flex h-6 items-center justify-center text-muted">
-                <ChevronUp className="h-3.5 w-3.5" />
-              </SelectPrimitive.ScrollUpButton>
+    <SelectPrimitive.Portal>
+      <SelectPrimitive.Content
+        ref={ref}
+        position={position}
+        sideOffset={sideOffset}
+        asChild
+        {...props}
+      >
+        <motion.div
+          initial={scaleIn.initial}
+          animate={scaleIn.animate}
+          transition={scaleIn.transition}
+          className={cn(
+            'relative z-50 max-h-72 min-w-[8rem] overflow-hidden rounded-card border border-border bg-popover text-popover-foreground shadow-popover',
+            position === 'popper' && 'w-[var(--radix-select-trigger-width)]',
+            className,
+          )}
+        >
+          <SelectPrimitive.ScrollUpButton className="flex h-6 items-center justify-center text-muted">
+            <ChevronUp className="h-3.5 w-3.5" />
+          </SelectPrimitive.ScrollUpButton>
 
-              <SelectPrimitive.Viewport className="p-1">
-                {children}
-              </SelectPrimitive.Viewport>
+          <SelectPrimitive.Viewport className="p-1">
+            {children}
+          </SelectPrimitive.Viewport>
 
-              <SelectPrimitive.ScrollDownButton className="flex h-6 items-center justify-center text-muted">
-                <ChevronDown className="h-3.5 w-3.5" />
-              </SelectPrimitive.ScrollDownButton>
-            </motion.div>
-          </SelectPrimitive.Content>
-        </SelectPrimitive.Portal>
-      ) : null}
-    </AnimatePresence>
+          <SelectPrimitive.ScrollDownButton className="flex h-6 items-center justify-center text-muted">
+            <ChevronDown className="h-3.5 w-3.5" />
+          </SelectPrimitive.ScrollDownButton>
+        </motion.div>
+      </SelectPrimitive.Content>
+    </SelectPrimitive.Portal>
   )
 })
 

@@ -1,8 +1,12 @@
 import { useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
+import { AnimatePresence, motion } from 'motion/react';
+import { AlertCircle } from 'lucide-react';
 
-import { cn } from '@/shared/lib/utils';
+import { AuthLayout } from '@/features/auth/components/AuthLayout';
 import { useAuthStore } from '@/features/auth/stores/auth.store';
+import { fadeInUp } from '@/shared/lib/motion';
+import { Progress } from '@/shared/ui/progress';
 
 import { createOrganization } from '../api';
 
@@ -14,28 +18,21 @@ type Step = 1 | 2 | 3;
 
 const TOTAL_STEPS = 3;
 
-function StepIndicator({ current }: { current: Step }) {
-  return (
-    <div className="flex items-center gap-2">
-      {Array.from({ length: TOTAL_STEPS }, (_, i) => {
-        const step = (i + 1) as Step;
-        return (
-          <div
-            key={step}
-            className={cn(
-              'h-2 w-2 rounded-full transition-colors',
-              step === current
-                ? 'bg-primary'
-                : step < current
-                  ? 'bg-primary/40'
-                  : 'bg-muted',
-            )}
-          />
-        );
-      })}
-    </div>
-  );
-}
+/** 每一步的卡片标题与说明，由 AuthLayout 头部统一渲染 */
+const STEP_META: Record<Step, { title: string; subtitle: string }> = {
+  1: {
+    title: '欢迎使用 AgentLoom',
+    subtitle: '几步之内完成初始化，随后即可开始编排你的第一个工作流。',
+  },
+  2: {
+    title: '创建组织',
+    subtitle: '这是您的团队构建和运行 AI 工作流的工作空间。',
+  },
+  3: {
+    title: '偏好设置',
+    subtitle: '自定义使用体验，之后可在设置中修改。',
+  },
+};
 
 export function OnboardingWizard() {
   const [currentStep, setCurrentStep] = useState<Step>(1);
@@ -94,47 +91,55 @@ export function OnboardingWizard() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
-      <div className="w-full max-w-lg space-y-8">
-        <div className="flex flex-col items-center gap-2">
-          <div className="flex items-center gap-2">
-            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-primary-foreground font-bold text-lg">
-              AL
-            </div>
-            <span className="text-2xl font-bold text-foreground">
-              AgentLoom
-            </span>
-          </div>
+    <AuthLayout
+      title={STEP_META[currentStep].title}
+      subtitle={STEP_META[currentStep].subtitle}
+    >
+      <div className="space-y-6">
+        <div className="flex items-center gap-3">
+          <Progress
+            className="h-1.5"
+            value={(currentStep / TOTAL_STEPS) * 100}
+            aria-label={`初始化进度：第 ${currentStep} 步，共 ${TOTAL_STEPS} 步`}
+          />
+          <span className="shrink-0 text-[11px] font-medium tabular-nums text-muted">
+            {currentStep} / {TOTAL_STEPS}
+          </span>
         </div>
 
-        <div className="rounded-xl border border-border bg-surface p-8 shadow-lg">
-          {currentStep === 1 && (
-            <WelcomeStep onGetStarted={handleGetStarted} />
-          )}
-          {currentStep === 2 && (
-            <>
-              <OrgSetupStep
-                onSubmit={handleOrgSubmit}
-                onBack={handleBackToWelcome}
-                isSubmitting={isSubmitting}
+        <AnimatePresence mode="wait" initial={false}>
+          <motion.div key={currentStep} {...fadeInUp}>
+            {currentStep === 1 && <WelcomeStep onGetStarted={handleGetStarted} />}
+            {currentStep === 2 && (
+              <div className="space-y-4">
+                {orgError && (
+                  <div
+                    role="alert"
+                    className="flex items-start gap-2 rounded-card border border-error/30 bg-error/10 px-3 py-2.5 text-sm text-error"
+                  >
+                    <AlertCircle
+                      className="mt-0.5 h-4 w-4 shrink-0"
+                      aria-hidden
+                    />
+                    <span>{orgError}</span>
+                  </div>
+                )}
+                <OrgSetupStep
+                  onSubmit={handleOrgSubmit}
+                  onBack={handleBackToWelcome}
+                  isSubmitting={isSubmitting}
+                />
+              </div>
+            )}
+            {currentStep === 3 && (
+              <PreferencesStep
+                onComplete={handlePreferencesComplete}
+                onSkip={handlePreferencesSkip}
               />
-              {orgError && (
-                <p className="mt-3 text-xs text-red-400">{orgError}</p>
-              )}
-            </>
-          )}
-          {currentStep === 3 && (
-            <PreferencesStep
-              onComplete={handlePreferencesComplete}
-              onSkip={handlePreferencesSkip}
-            />
-          )}
-        </div>
-
-        <div className="flex justify-center">
-          <StepIndicator current={currentStep} />
-        </div>
+            )}
+          </motion.div>
+        </AnimatePresence>
       </div>
-    </div>
+    </AuthLayout>
   );
 }

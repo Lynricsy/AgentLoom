@@ -2,13 +2,19 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { createRoute, Link, useNavigate } from "@tanstack/react-router";
+import { AlertCircle } from "lucide-react";
 import { z } from "zod";
 
 import { AuthLayout } from "@/features/auth/components/AuthLayout";
 import { MfaVerifyDialog } from "@/features/auth/components/MfaVerifyDialog";
 import { OAuthButtons } from "@/features/auth/components/OAuthButtons";
 import { PasswordInput } from "@/features/auth/components/PasswordInput";
+import { Spinner } from "@/shared/components/spinner/Spinner";
 import { supabase } from "@/shared/lib/supabase";
+import { Button } from "@/shared/ui/button";
+// FormItem 只提供字段行排版（不依赖 react-hook-form 上下文）；
+// FormLabel 会把 htmlFor 落到 Label 的 <span> 上而无法建立标签关联，故这里用原生 <label>。
+import { FormItem } from "@/shared/ui/form";
 import { Input } from "@/shared/ui/input";
 import { rootRoute } from "../__root";
 
@@ -21,6 +27,8 @@ type LoginFormValues = z.infer<typeof loginSchema>;
 
 // 临时隐藏第三方登录入口，保留底层 OAuth 实现便于后续恢复。
 const SOCIAL_LOGIN_ENTRY_ENABLED = false;
+
+const FIELD_LABEL_CLASS = "text-xs font-medium text-foreground";
 
 export function LoginPage() {
   const navigate = useNavigate();
@@ -84,13 +92,8 @@ export function LoginPage() {
   };
 
   return (
-    <AuthLayout>
+    <AuthLayout title="登录" subtitle="登录您的 AgentLoom 账号">
       <div className="space-y-6">
-        <div className="text-center">
-          <h1 className="text-xl font-semibold text-foreground">登录</h1>
-          <p className="mt-1 text-sm text-muted">登录您的 AgentLoom 账号</p>
-        </div>
-
         {SOCIAL_LOGIN_ENTRY_ENABLED ? (
           <>
             <OAuthButtons disabled={isSubmitting} />
@@ -103,18 +106,24 @@ export function LoginPage() {
           </>
         ) : null}
 
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        {/* noValidate：校验反馈统一由 zod schema 提供，避免浏览器原生气泡与之并存 */}
+        <form
+          noValidate
+          onSubmit={handleSubmit(onSubmit)}
+          className="space-y-4"
+        >
           {serverError && (
-            <div className="rounded-lg border border-error/30 bg-error/10 px-4 py-3 text-sm text-error">
-              {serverError}
+            <div
+              role="alert"
+              className="flex items-start gap-2 rounded-card border border-error/30 bg-error/10 px-3 py-2.5 text-sm text-error"
+            >
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+              <span>{serverError}</span>
             </div>
           )}
 
-          <div className="space-y-1.5">
-            <label
-              htmlFor="login-email"
-              className="text-xs font-medium text-foreground"
-            >
+          <FormItem>
+            <label htmlFor="login-email" className={FIELD_LABEL_CLASS}>
               邮箱
             </label>
             <Input
@@ -122,18 +131,19 @@ export function LoginPage() {
               type="email"
               placeholder="your@email.com"
               autoComplete="email"
+              aria-invalid={!!errors.email}
+              className={errors.email ? "border-error" : undefined}
               {...register("email")}
             />
             {errors.email && (
-              <p className="text-xs text-error">{errors.email.message}</p>
+              <p className="text-xs font-medium text-error">
+                {errors.email.message}
+              </p>
             )}
-          </div>
+          </FormItem>
 
-          <div className="space-y-1.5">
-            <label
-              htmlFor="login-password"
-              className="text-xs font-medium text-foreground"
-            >
+          <FormItem>
+            <label htmlFor="login-password" className={FIELD_LABEL_CLASS}>
               密码
             </label>
             <PasswordInput
@@ -141,25 +151,36 @@ export function LoginPage() {
               placeholder="输入密码"
               autoComplete="current-password"
               error={!!errors.password}
+              aria-invalid={!!errors.password}
               {...register("password")}
             />
             {errors.password && (
-              <p className="text-xs text-error">{errors.password.message}</p>
+              <p className="text-xs font-medium text-error">
+                {errors.password.message}
+              </p>
             )}
-          </div>
+          </FormItem>
 
-          <button
+          <Button
             type="submit"
+            size="lg"
+            className="w-full"
             disabled={isSubmitting}
-            className="flex h-10 w-full items-center justify-center rounded-lg bg-primary text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {isSubmitting ? "登录中..." : "登录"}
-          </button>
+            {isSubmitting ? (
+              <>
+                <Spinner className="text-primary-foreground" />
+                登录中...
+              </>
+            ) : (
+              "登录"
+            )}
+          </Button>
         </form>
 
-        <p className="text-center text-sm text-muted">
+        <p className="text-sm text-muted">
           还没有账号？{" "}
-          <Link to="/register" className="text-primary hover:underline">
+          <Link to="/register" className="font-medium text-primary hover:underline">
             立即注册
           </Link>
         </p>
