@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { VersionListResponse, WorkflowVersion } from '@/features/workflow/types';
@@ -100,7 +100,7 @@ describe('PublishSheet', () => {
     render(<PublishSheet {...defaultProps} initialVersionId="ver-001" />);
 
     expect(screen.getByRole('radio', { name: /选择已有记录/ })).toBeChecked();
-    expect(screen.getByTestId('version-select')).toHaveValue('ver-001');
+    expect(screen.getByTestId('version-select')).toHaveTextContent('快照 #2 - 稳定版');
   });
 
   it('切换到已有版本显示版本选择器', () => {
@@ -186,9 +186,17 @@ describe('PublishSheet', () => {
     render(<PublishSheet {...defaultProps} />);
 
     fireEvent.click(screen.getByRole('radio', { name: /选择已有记录/ }));
-    fireEvent.change(screen.getByTestId('version-select'), {
-      target: { value: 'ver-001' },
+
+    // Radix Select 是 button + portal：键盘事件展开后再选中，避免 userEvent 与 Sheet 焦点陷阱互斥
+    fireEvent.keyDown(screen.getByTestId('version-select'), { key: 'Enter' });
+    await act(async () => {
+      fireEvent.keyDown(
+        screen.getByRole('option', { name: '快照 #2 - 稳定版' }),
+        { key: 'Enter' },
+      );
+      await Promise.resolve();
     });
+
     fireEvent.click(screen.getByTestId('confirm-publish'));
 
     await waitFor(() => {
@@ -202,9 +210,7 @@ describe('PublishSheet', () => {
     render(<PublishSheet {...defaultProps} />);
 
     fireEvent.click(screen.getByRole('radio', { name: /选择已有记录/ }));
-    fireEvent.change(screen.getByTestId('version-select'), {
-      target: { value: '' },
-    });
+    // 切到「已有记录」但未选任何一条，提交须被拦下
     fireEvent.click(screen.getByTestId('confirm-publish'));
 
     expect(screen.getByTestId('publish-validation-error')).toBeInTheDocument();

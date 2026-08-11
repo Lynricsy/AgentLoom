@@ -1,5 +1,7 @@
 import { memo, useCallback, useRef, useState } from 'react'
 import { Bot, Brain, ChevronDown, ChevronRight, User } from 'lucide-react'
+import { motion } from 'motion/react'
+import { DUR, EASE } from '@/shared/lib/motion'
 import { MarkdownRenderer } from '@/shared/components/markdown/MarkdownRenderer'
 import { ToolCallCard } from '@/shared/components/tool-renderers'
 import type { ToolCallData } from '@/shared/components/tool-renderers/types'
@@ -9,6 +11,7 @@ import {
   type MessageSegment,
   type SubAgentStream,
 } from '@/features/agent-conversation'
+import { EmptyState } from '@/shared/components/empty-state/EmptyState'
 
 function toToolCallData(toolCall: ConversationMessage['toolCalls'][number]): ToolCallData {
   return {
@@ -43,9 +46,20 @@ function formatTime(ts: number): string {
 function TypingIndicator() {
   return (
     <div className="flex items-center gap-1 px-1 py-2">
-      <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:0ms]" />
-      <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:150ms]" />
-      <span className="size-1.5 animate-bounce rounded-full bg-muted-foreground [animation-delay:300ms]" />
+      {[0, 1, 2].map((index) => (
+        <motion.span
+          key={index}
+          className="size-1.5 rounded-full bg-muted-foreground"
+          animate={{ opacity: 0.25 }}
+          transition={{
+            duration: DUR.slow,
+            ease: EASE,
+            repeat: Infinity,
+            repeatType: 'reverse',
+            delay: index * DUR.fast,
+          }}
+        />
+      ))}
     </div>
   )
 }
@@ -58,17 +72,17 @@ const ThinkingBlock = memo(function ThinkingBlock({
   const [open, setOpen] = useState(false)
 
   return (
-    <div className="rounded-lg border border-border/50 bg-surface-elevated/30 px-3 py-2">
+    <div className="rounded-card border border-border bg-surface-elevated px-3 py-2">
       <button
         type="button"
-        className="flex w-full cursor-pointer items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
+        className="flex w-full cursor-pointer items-center gap-1.5 text-xs text-muted transition-colors hover:text-foreground"
         onClick={() => setOpen((value) => !value)}
       >
         {open ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
-        <Brain className="size-3 text-primary/60" />
+        <Brain className="size-3 text-primary" />
         <span className="font-medium">思考过程</span>
         {!open && content.length > 0 && (
-          <span className="ml-auto max-w-[200px] truncate text-[10px] text-muted-foreground/50">
+          <span className="ml-auto max-w-[200px] truncate text-[10px] text-muted">
             {content.slice(0, 60)}...
           </span>
         )}
@@ -76,7 +90,7 @@ const ThinkingBlock = memo(function ThinkingBlock({
 
       {open && (
         <div className="mt-2 border-l-2 border-primary/20 pl-5">
-          <p className="whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
+          <p className="whitespace-pre-wrap break-words text-xs leading-relaxed text-muted">
             {content}
           </p>
         </div>
@@ -92,14 +106,14 @@ const UserBubble = memo(function UserBubble({
 }) {
   return (
     <div className="flex flex-row-reverse gap-3 px-4 py-3">
-      <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-foreground/10 text-foreground">
+      <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-surface-elevated text-foreground">
         <User className="size-4" />
       </div>
       <div className="flex max-w-[80%] flex-col items-end gap-1">
-        <div className="rounded-2xl rounded-br-md bg-foreground/10 px-4 py-2.5 text-sm leading-relaxed text-foreground">
-          <p className="whitespace-pre-wrap">{message.content}</p>
+        <div className="rounded-2xl rounded-br-md bg-surface-elevated px-4 py-2.5 text-sm leading-relaxed text-foreground">
+          <p className="whitespace-pre-wrap break-words">{message.content}</p>
         </div>
-        <span className="px-1 text-[10px] text-muted-foreground/60">
+        <span className="px-1 text-[10px] text-muted">
           {formatTime(message.createdAt)}
         </span>
       </div>
@@ -172,7 +186,7 @@ const AssistantMessage = memo(function AssistantMessage({
 
         {message.isStreaming && <TypingIndicator />}
 
-        <span className="block px-1 text-[10px] text-muted-foreground/60">
+        <span className="block px-1 text-[10px] text-muted">
           {formatTime(message.createdAt)}
         </span>
       </div>
@@ -234,18 +248,15 @@ export const ExecutionAgentMessageList = memo(function ExecutionAgentMessageList
       onScroll={handleScroll}
     >
       {messages.length === 0 && childStreams.length === 0 ? (
-        <div className="flex h-full items-center justify-center">
-          <div className="text-center">
-            <Bot className="mx-auto size-12 text-muted-foreground/30" />
-            <p className="mt-3 text-sm text-foreground">{emptyTitle}</p>
-            <p className="mt-2 max-w-sm text-xs text-muted-foreground">
-              {emptyDescription}
-            </p>
-            {isExecuting && (
-              <div className="mt-4 flex justify-center">
-                <TypingIndicator />
-              </div>
-            )}
+        <div className="flex h-full items-center justify-center p-4">
+          <div className="flex flex-col items-center gap-3">
+            <EmptyState
+              className="border-0 px-0 py-0"
+              icon={Bot}
+              title={emptyTitle}
+              description={emptyDescription}
+            />
+            {isExecuting && <TypingIndicator />}
           </div>
         </div>
       ) : (
@@ -259,7 +270,7 @@ export const ExecutionAgentMessageList = memo(function ExecutionAgentMessageList
           )}
           {childStreams.length > 0 && (
             <div className="space-y-3 px-4 py-2">
-              <div className="px-1 text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+              <div className="px-1 text-[10px] uppercase tracking-[0.18em] text-muted">
                 子 Agent 瀑布流
               </div>
               {childStreams.map((stream) => (

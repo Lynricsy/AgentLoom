@@ -1,7 +1,11 @@
 import { memo, useState } from 'react'
-import { AlertCircle, History, Loader2, X } from 'lucide-react'
+import { motion } from 'motion/react'
+import { History, TriangleAlert, X } from 'lucide-react'
 import { Pagination } from '@/shared/components'
+import { EmptyState } from '@/shared/components/empty-state/EmptyState'
 import { Button } from '@/shared/ui/button'
+import { Skeleton } from '@/shared/ui/skeleton'
+import { staggerList } from '@/shared/lib/motion'
 import { useExecutionList } from '../hooks/useExecutionList'
 import { RunCard } from './RunCard'
 import { cn } from '@/shared/lib/utils'
@@ -31,21 +35,21 @@ export const ExecutionHistoryPanel = memo(function ExecutionHistoryPanel({
   return (
     <aside
       className={cn(
-        'flex h-full min-h-[320px] w-full flex-col overflow-hidden rounded-3xl border border-border/70 bg-background/95 shadow-2xl backdrop-blur-md',
+        'flex h-full min-h-[320px] w-full flex-col overflow-hidden rounded-panel border border-border bg-surface shadow-panel',
         className,
       )}
       data-testid="execution-history-panel"
     >
-      <div className="flex items-center justify-between border-b border-border/60 px-4 py-3">
-        <div className="flex items-center gap-2">
-          <History className="h-4 w-4 text-primary" />
-          <div>
-            <h2 className="text-sm font-semibold text-foreground">执行记录</h2>
-            <p className="text-xs text-muted-foreground">浏览工作流最近运行历史</p>
+      <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <History className="h-4 w-4 shrink-0 text-primary" />
+          <div className="min-w-0">
+            <h2 className="truncate text-sm font-semibold text-foreground">执行记录</h2>
+            <p className="truncate text-xs text-muted">浏览工作流最近运行历史</p>
           </div>
         </div>
         {onClose ? (
-          <Button variant="ghost" size="sm" className="h-8 w-8 px-0" onClick={onClose} aria-label="关闭执行记录">
+          <Button variant="ghost" size="icon-sm" onClick={onClose} aria-label="关闭执行记录">
             <X className="h-4 w-4" />
           </Button>
         ) : null}
@@ -53,35 +57,49 @@ export const ExecutionHistoryPanel = memo(function ExecutionHistoryPanel({
 
       <div className="flex-1 overflow-y-auto px-4 py-4">
         {isLoading ? (
-          <div className="flex h-full min-h-[220px] flex-col items-center justify-center gap-3 text-muted-foreground" data-testid="execution-history-loading">
-            <Loader2 className="h-6 w-6 animate-spin" />
-            <p className="text-sm">正在加载执行记录...</p>
+          <div className="space-y-3" data-testid="execution-history-loading">
+            {Array.from({ length: 3 }, (_, index) => (
+              <Skeleton key={index} className="h-28 w-full rounded-card" />
+            ))}
           </div>
         ) : error ? (
-          <div className="flex h-full min-h-[220px] flex-col items-center justify-center gap-3 text-center" data-testid="execution-history-error">
-            <AlertCircle className="h-8 w-8 text-rose-400" />
-            <div>
-              <p className="text-sm font-medium text-foreground">加载执行记录失败</p>
-              <p className="text-xs text-muted-foreground">{error.message}</p>
-            </div>
+          <div
+            className="flex h-full min-h-[220px] items-center justify-center"
+            data-testid="execution-history-error"
+          >
+            <EmptyState
+              className="border-0 px-0 py-0"
+              icon={TriangleAlert}
+              tone="var(--color-error)"
+              title="加载执行记录失败"
+              description={error.message}
+            />
           </div>
         ) : executions.length === 0 ? (
-          <div className="flex h-full min-h-[220px] flex-col items-center justify-center gap-2 text-center text-muted-foreground" data-testid="execution-history-empty">
-            <History className="h-8 w-8 opacity-50" />
-            <p className="text-sm font-medium text-foreground">还没有执行记录</p>
-            <p className="max-w-xs text-xs">点击 Run 按钮后，这里会出现完整的执行历史与调试入口。</p>
+          <div
+            className="flex h-full min-h-[220px] items-center justify-center"
+            data-testid="execution-history-empty"
+          >
+            <EmptyState
+              className="border-0 px-0 py-0"
+              icon={History}
+              title="还没有执行记录"
+              description="点击 Run 按钮后，这里会出现完整的执行历史与调试入口。"
+            />
           </div>
         ) : (
           <div className="space-y-3" data-testid="execution-history-list">
-            {executions.map((execution) => (
-              <RunCard key={execution.id} execution={execution} />
+            {executions.map((execution, index) => (
+              <motion.div key={execution.id} {...staggerList(index)}>
+                <RunCard execution={execution} />
+              </motion.div>
             ))}
           </div>
         )}
       </div>
 
       {executions.length > 0 ? (
-        <div className="border-t border-border/60 px-4 py-3">
+        <div className="border-t border-border px-4 py-3">
           <Pagination
             page={page}
             totalPages={totalPages}

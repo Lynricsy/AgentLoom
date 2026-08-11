@@ -8,10 +8,17 @@ import {
   useState,
   type DragEvent,
 } from 'react';
-import * as Dialog from '@radix-ui/react-dialog';
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/shared/ui/dialog';
 import JSZip from 'jszip';
 import {
-  X,
   Loader2,
   Upload,
   FileText,
@@ -24,7 +31,9 @@ import {
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
 import { Label } from '@/shared/ui/label';
+import { Textarea } from '@/shared/ui/textarea';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/shared/ui/tabs';
+import { formatSkillBytes as formatBytes } from '../lib/format';
 import {
   useCreateSkill,
   useUpdateSkill,
@@ -45,13 +54,6 @@ const SKILL_FILE_MAX_SIZE = 5_242_880;
 const SKILL_TOTAL_MAX_SIZE = 52_428_800;
 
 const MonacoEditor = lazy(() => import('@monaco-editor/react'));
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const units = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return `${(bytes / Math.pow(k, i)).toFixed(i > 0 ? 1 : 0)} ${units[i]}`;
-}
 
 /** 解析 SKILL.md frontmatter 中的 name 和 description */
 function parseSkillFrontmatter(content: string): { name?: string; description?: string } {
@@ -163,7 +165,7 @@ function FileItem({
             type="button"
             onClick={() => onDelete(file.name)}
             disabled={isDeleting}
-            className="rounded p-1 text-muted-foreground transition-colors hover:bg-red-500/10 hover:text-red-400 disabled:opacity-50"
+            className="rounded p-1 text-muted transition-colors hover:bg-error/10 hover:text-error disabled:opacity-50"
             title="删除"
           >
             {isDeleting ? (
@@ -357,8 +359,8 @@ function ImportDropZone({
       )}
 
       {status === 'success' && (
-        <div className="flex flex-col gap-1 rounded-md border border-green-500/30 bg-green-500/5 px-3 py-2">
-          <div className="flex items-center gap-2 text-sm text-green-400">
+        <div className="flex flex-col gap-1 rounded-card border border-success/30 bg-success/5 px-3 py-2">
+          <div className="flex items-center gap-2 text-sm text-success">
             <CircleCheck className="h-3.5 w-3.5" />
             {message}
           </div>
@@ -372,9 +374,9 @@ function ImportDropZone({
       )}
 
       {status === 'error' && (
-        <div className="flex items-start gap-2 rounded-md border border-red-500/30 bg-red-500/5 px-3 py-2">
-          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
-          <p className="text-xs text-red-400">{message}</p>
+        <div className="flex items-start gap-2 rounded-card border border-error/30 bg-error/5 px-3 py-2">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-error" />
+          <p className="text-xs text-error">{message}</p>
         </div>
       )}
     </div>
@@ -676,26 +678,18 @@ export function CreateSkillDialog({
 
 
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
-        <Dialog.Content className="fixed left-1/2 top-1/2 z-50 max-h-[90vh] w-full max-w-3xl -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-border bg-background shadow-2xl data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%]">
-          <div className="flex flex-col gap-5 p-6">
-            {/* 标题 */}
-            <div className="flex items-center justify-between">
-              <Dialog.Title className="text-lg font-bold">
-                {isEditing ? '编辑技能' : '新建技能'}
-              </Dialog.Title>
-              <Dialog.Description className="sr-only">
-                {isEditing
-                  ? '编辑技能的名称、描述、SKILL.md 内容与附件。'
-                  : '创建新技能，可填写名称、描述、SKILL.md 内容并上传附件。'}
-              </Dialog.Description>
-              <Dialog.Close className="rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2">
-                <X className="h-4 w-4" />
-                <span className="sr-only">关闭</span>
-              </Dialog.Close>
-            </div>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent size="xl" className="max-h-[90vh]">
+        <DialogHeader>
+          <DialogTitle>{isEditing ? '编辑技能' : '新建技能'}</DialogTitle>
+          <DialogDescription>
+            {isEditing
+              ? '编辑技能的名称、描述、SKILL.md 内容与附件。'
+              : '创建新技能，可填写名称、描述、SKILL.md 内容并上传附件。'}
+          </DialogDescription>
+        </DialogHeader>
+
+        <DialogBody className="flex flex-col gap-5">
 
             {/* 导入区域 (仅新建模式) */}
             {!isEditing && (
@@ -723,19 +717,18 @@ export function CreateSkillDialog({
                   autoFocus
                 />
                 {nameError && (
-                  <p className="text-xs text-red-400">{nameError}</p>
+                  <p className="text-xs font-medium text-error">{nameError}</p>
                 )}
               </div>
 
               <div className="space-y-1.5">
                 <Label>描述</Label>
-                <textarea
+                <Textarea
                   id="skill-description"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="简要描述技能的用途"
                   rows={3}
-                  className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 resize-y"
                 />
               </div>
             </div>
@@ -817,7 +810,7 @@ export function CreateSkillDialog({
                                   prev.filter((_, i) => i !== idx),
                                 )
                               }
-                              className="rounded p-1 text-muted-foreground transition-colors hover:bg-red-500/10 hover:text-red-400"
+                              className="rounded p-1 text-muted transition-colors hover:bg-error/10 hover:text-error"
                               title="移除"
                             >
                               <Trash2 className="h-3.5 w-3.5" />
@@ -840,9 +833,9 @@ export function CreateSkillDialog({
 
                     {/* 错误信息 */}
                     {fileError && (
-                      <div className="flex items-start gap-2 rounded-md border border-red-500/30 bg-red-500/5 px-3 py-2">
-                        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
-                        <p className="text-xs text-red-400">{fileError}</p>
+                      <div className="flex items-start gap-2 rounded-card border border-error/30 bg-error/5 px-3 py-2">
+                        <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-error" />
+                        <p className="text-xs text-error">{fileError}</p>
                       </div>
                     )}
 
@@ -892,26 +885,24 @@ export function CreateSkillDialog({
                 )}
               </TabsContent>
             </Tabs>
+        </DialogBody>
 
-            {/* 底部操作栏 */}
-            <div className="flex justify-end gap-2 border-t border-border pt-4">
-              <Button
-                variant="outline"
-                onClick={() => onOpenChange(false)}
-                disabled={isPending}
-              >
-                取消
-              </Button>
-              <Button onClick={handleSubmit} disabled={isPending}>
-                {isPending && (
-                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                )}
-                {isEditing ? '保存' : '创建'}
-              </Button>
-            </div>
-          </div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={isPending}
+          >
+            取消
+          </Button>
+          <Button onClick={handleSubmit} disabled={isPending}>
+            {isPending && (
+              <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+            )}
+            {isEditing ? '保存' : '创建'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

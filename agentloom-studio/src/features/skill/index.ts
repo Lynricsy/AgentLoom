@@ -26,6 +26,5 @@ export {
 } from './api/skillQueries';
 
 export { SkillBrowsePage } from './components/SkillBrowsePage';
-export { SkillCard } from './components/SkillCard';
 export { SkillDetailDialog } from './components/SkillDetailDialog';
 export { CreateSkillDialog } from './components/CreateSkillDialog';

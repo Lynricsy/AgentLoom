@@ -1,27 +1,16 @@
 import { memo } from 'react'
-import { cva } from 'class-variance-authority'
 
-import { cn } from '@/shared/lib/utils'
+import { Badge, type BadgeProps } from '@/shared/ui/badge'
 
-const outputLevelVariants = cva(
-  'inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium',
-  {
-    variants: {
-      level: {
-        1: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300',
-        2: 'border-sky-500/40 bg-sky-500/10 text-sky-300',
-        3: 'border-amber-500/40 bg-amber-500/10 text-amber-300',
-        4: 'border-rose-500/40 bg-rose-500/10 text-rose-300',
-      },
-    },
-  },
-)
-
-const levelLabels: Record<number, string> = {
-  1: 'L1 原生结构化',
-  2: 'L2 提示约束',
-  3: 'L3 验证修复',
-  4: 'L4 降级解析',
+/** 结构化输出等级 → 语义色；L1 最可靠、L4 已降级 */
+const levelMeta: Record<
+  1 | 2 | 3 | 4,
+  { label: string; variant: NonNullable<BadgeProps['variant']> }
+> = {
+  1: { label: 'L1 原生结构化', variant: 'success' },
+  2: { label: 'L2 提示约束', variant: 'info' },
+  3: { label: 'L3 验证修复', variant: 'warning' },
+  4: { label: 'L4 降级解析', variant: 'error' },
 }
 
 interface OutputLevelBadgeProps {
@@ -37,15 +26,16 @@ export const OutputLevelBadge = memo(function OutputLevelBadge({
     return null
   }
 
+  const meta = levelMeta[level as 1 | 2 | 3 | 4]
+
   return (
-    <span
-      className={cn(
-        outputLevelVariants({ level: level as 1 | 2 | 3 | 4 }),
-        className,
-      )}
+    <Badge
+      variant={meta.variant}
+      size="sm"
+      className={className}
       data-testid={`output-level-badge-${level}`}
     >
-      {levelLabels[level]}
-    </span>
+      {meta.label}
+    </Badge>
   )
 })

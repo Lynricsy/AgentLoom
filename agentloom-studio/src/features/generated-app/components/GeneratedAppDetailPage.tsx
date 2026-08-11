@@ -2,19 +2,38 @@ import { Link } from '@tanstack/react-router'
 import { useState, type ReactNode } from 'react'
 import {
   AlertTriangle,
-  ArrowLeft,
+  AppWindow,
   CheckCircle2,
   ExternalLink,
   FileCode2,
   PencilLine,
-  Loader2,
   ListChecks,
   ShieldAlert,
   WandSparkles,
 } from 'lucide-react'
 
+import { EmptyState } from '@/shared/components/empty-state/EmptyState'
+import { PageHeader } from '@/shared/components/page-header/PageHeader'
+import { Spinner } from '@/shared/components/spinner/Spinner'
 import { cn } from '@/shared/lib/utils'
+import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/shared/ui/card'
+import { Skeleton } from '@/shared/ui/skeleton'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/shared/ui/table'
 import { useToast } from '@/shared/ui/toast'
 import {
   useGeneratedApp,
@@ -31,9 +50,9 @@ import {
   GENERATED_APP_READINESS_LABELS,
   GENERATED_APP_STATUS_LABELS,
   formatGeneratedAppDateTime,
-  getGeneratedAppGateStatusBadgeClass,
-  getGeneratedAppReadinessBadgeClass,
-  getGeneratedAppStatusBadgeClass,
+  getGeneratedAppGateStatusBadgeVariant,
+  getGeneratedAppReadinessBadgeVariant,
+  getGeneratedAppStatusBadgeVariant,
   isGeneratedAppPublicShareEligible,
 } from '../lib/generatedAppDisplay'
 import type {
@@ -57,32 +76,25 @@ interface DetailSectionProps {
 
 function DetailSection({ title, description, children }: DetailSectionProps) {
   return (
-    <section className="rounded-lg border border-border bg-card p-5 shadow-sm">
-      <div className="mb-4 space-y-1">
-        <h2 className="text-base font-semibold text-foreground">{title}</h2>
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">{title}</CardTitle>
         {description ? (
-          <p className="break-words text-sm text-muted-foreground">
+          <CardDescription className="break-words text-sm">
             {description}
-          </p>
+          </CardDescription>
         ) : null}
-      </div>
-      {children}
-    </section>
+      </CardHeader>
+      <CardContent>{children}</CardContent>
+    </Card>
   )
 }
 
 function BooleanValue({ value }: { value: boolean }) {
   return (
-    <span
-      className={cn(
-        'inline-flex rounded-full px-2 py-0.5 text-xs font-medium',
-        value
-          ? 'bg-emerald-500/10 text-emerald-300'
-          : 'bg-muted text-muted-foreground',
-      )}
-    >
+    <Badge variant={value ? 'success' : 'secondary'} size="sm">
       {value ? '是' : '否'}
-    </span>
+    </Badge>
   )
 }
 
@@ -176,14 +188,9 @@ function AcceptanceScenarioList({
 
 function GateStatusBadge({ gate }: { gate: GeneratedAppGateResult }) {
   return (
-    <span
-      className={cn(
-        'inline-flex rounded-full border px-2 py-0.5 text-xs font-medium',
-        getGeneratedAppGateStatusBadgeClass(gate.status),
-      )}
-    >
+    <Badge variant={getGeneratedAppGateStatusBadgeVariant(gate.status)}>
       {GENERATED_APP_GATE_STATUS_LABELS[gate.status]}
-    </span>
+    </Badge>
   )
 }
 
@@ -193,64 +200,58 @@ function GateResultsTable({ gates }: { gates: GeneratedAppGateResult[] }) {
   }
 
   return (
-    <div className="overflow-x-auto" data-testid="generated-app-gates">
-      <table className="min-w-full text-left text-sm">
-        <thead className="border-b border-border text-xs text-muted-foreground">
-          <tr>
-            <th className="whitespace-nowrap px-3 py-2 font-medium">Order</th>
-            <th className="whitespace-nowrap px-3 py-2 font-medium">Name</th>
-            <th className="whitespace-nowrap px-3 py-2 font-medium">Status</th>
-            <th className="whitespace-nowrap px-3 py-2 font-medium">
-              Blocking
-            </th>
-            <th className="min-w-72 px-3 py-2 font-medium">Summary</th>
-            <th className="whitespace-nowrap px-3 py-2 font-medium">
-              Evidence
-            </th>
-            <th className="whitespace-nowrap px-3 py-2 font-medium">Updated</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-border">
-          {gates
-            .slice()
-            .sort((left, right) => left.order - right.order)
-            .map((gate) => (
-              <tr key={gate.gateId} className="align-top">
-                <td className="whitespace-nowrap px-3 py-3 text-muted-foreground">
-                  Gate {gate.order}
-                </td>
-                <td className="min-w-48 px-3 py-3">
-                  <div className="space-y-1">
-                    <p className="break-words font-medium text-foreground">
-                      {gate.name}
-                    </p>
-                    <code className="break-all text-xs text-muted-foreground">
-                      {gate.gateId}
-                    </code>
-                  </div>
-                </td>
-                <td className="whitespace-nowrap px-3 py-3">
-                  <GateStatusBadge gate={gate} />
-                </td>
-                <td className="whitespace-nowrap px-3 py-3 text-muted-foreground">
-                  {gate.blocking ? '阻断' : '非阻断'}
-                </td>
-                <td className="px-3 py-3">
-                  <p className="break-words text-muted-foreground">
-                    {gate.summary}
+    <Table data-testid="generated-app-gates">
+      <TableHeader>
+        <TableRow>
+          <TableHead>Order</TableHead>
+          <TableHead>Name</TableHead>
+          <TableHead>Status</TableHead>
+          <TableHead>Blocking</TableHead>
+          <TableHead className="min-w-72">Summary</TableHead>
+          <TableHead>Evidence</TableHead>
+          <TableHead>Updated</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {gates
+          .slice()
+          .sort((left, right) => left.order - right.order)
+          .map((gate) => (
+            <TableRow key={gate.gateId} className="align-top">
+              <TableCell className="whitespace-nowrap py-3 text-muted-foreground">
+                Gate {gate.order}
+              </TableCell>
+              <TableCell className="min-w-48 py-3">
+                <div className="space-y-1">
+                  <p className="break-words font-medium text-foreground">
+                    {gate.name}
                   </p>
-                </td>
-                <td className="whitespace-nowrap px-3 py-3 text-muted-foreground">
-                  {gate.evidence.length}
-                </td>
-                <td className="whitespace-nowrap px-3 py-3 text-muted-foreground">
-                  {formatGeneratedAppDateTime(gate.updatedAt)}
-                </td>
-              </tr>
-            ))}
-        </tbody>
-      </table>
-    </div>
+                  <code className="break-all text-xs text-muted-foreground">
+                    {gate.gateId}
+                  </code>
+                </div>
+              </TableCell>
+              <TableCell className="whitespace-nowrap py-3">
+                <GateStatusBadge gate={gate} />
+              </TableCell>
+              <TableCell className="whitespace-nowrap py-3 text-muted-foreground">
+                {gate.blocking ? '阻断' : '非阻断'}
+              </TableCell>
+              <TableCell className="py-3">
+                <p className="break-words text-muted-foreground">
+                  {gate.summary}
+                </p>
+              </TableCell>
+              <TableCell className="whitespace-nowrap py-3 text-muted-foreground">
+                {gate.evidence.length}
+              </TableCell>
+              <TableCell className="whitespace-nowrap py-3 text-muted-foreground">
+                {formatGeneratedAppDateTime(gate.updatedAt)}
+              </TableCell>
+            </TableRow>
+          ))}
+      </TableBody>
+    </Table>
   )
 }
 
@@ -262,36 +263,32 @@ function TraceabilityTable({ app }: { app: GeneratedApp }) {
   }
 
   return (
-    <div className="overflow-x-auto" data-testid="generated-app-traceability">
-      <table className="min-w-full text-left text-sm">
-        <thead className="border-b border-border text-xs text-muted-foreground">
-          <tr>
-            <th className="whitespace-nowrap px-3 py-2 font-medium">
-              Requirement
-            </th>
-            <th className="min-w-56 px-3 py-2 font-medium">Scenarios</th>
-            <th className="min-w-56 px-3 py-2 font-medium">Evidence</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-border">
-          {rows.map((row) => (
-            <tr key={row.requirementId} className="align-top">
-              <td className="px-3 py-3">
-                <code className="break-all rounded bg-muted px-1.5 py-0.5 text-xs text-foreground">
-                  {row.requirementId}
-                </code>
-              </td>
-              <td className="px-3 py-3">
-                <IdList values={row.scenarioIds} />
-              </td>
-              <td className="px-3 py-3">
-                <IdList values={row.evidenceIds} />
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <Table data-testid="generated-app-traceability">
+      <TableHeader>
+        <TableRow>
+          <TableHead>Requirement</TableHead>
+          <TableHead className="min-w-56">Scenarios</TableHead>
+          <TableHead className="min-w-56">Evidence</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {rows.map((row) => (
+          <TableRow key={row.requirementId} className="align-top">
+            <TableCell className="py-3">
+              <code className="break-all rounded bg-muted px-1.5 py-0.5 text-xs text-foreground">
+                {row.requirementId}
+              </code>
+            </TableCell>
+            <TableCell className="py-3">
+              <IdList values={row.scenarioIds} />
+            </TableCell>
+            <TableCell className="py-3">
+              <IdList values={row.evidenceIds} />
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
   )
 }
 
@@ -372,7 +369,7 @@ function GeneratedAppArtifactDeliveryPanel({ appId }: { appId: string }) {
   if (manifestQuery.isLoading) {
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Loader2 className="h-4 w-4 animate-spin" />
+        <Spinner size="sm" />
         正在读取受控 workspace 交付物
       </div>
     )
@@ -381,10 +378,10 @@ function GeneratedAppArtifactDeliveryPanel({ appId }: { appId: string }) {
   if (manifestQuery.isError) {
     return (
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <AlertTriangle className="h-4 w-4 text-amber-300" />
-            交付物清单暂时无法读取。
-          </div>
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <AlertTriangle className="h-4 w-4 text-warning" />
+          交付物清单暂时无法读取。
+        </div>
         <Button
           variant="outline"
           size="sm"
@@ -422,7 +419,7 @@ function GeneratedAppArtifactDeliveryPanel({ appId }: { appId: string }) {
       />
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-        <div className="min-h-0 overflow-hidden rounded-md border border-border">
+        <div className="min-h-0 overflow-hidden rounded-card border border-border">
           <div className="border-b border-border px-3 py-2 text-xs font-medium uppercase text-muted-foreground">
             交付文件
           </div>
@@ -507,8 +504,8 @@ function GeneratedAppBuildPreview({
 
   if (isLoading) {
     return (
-      <div className="flex min-h-44 items-center justify-center rounded-md border border-border p-6 text-sm text-muted-foreground">
-        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+      <div className="flex min-h-44 items-center justify-center rounded-card border border-border p-6 text-sm text-muted-foreground">
+        <Spinner className="mr-2" />
         正在读取构建预览
       </div>
     )
@@ -516,7 +513,7 @@ function GeneratedAppBuildPreview({
 
   if (isError) {
     return (
-      <div className="flex min-h-44 flex-col items-center justify-center gap-3 rounded-md border border-border p-6 text-center text-sm text-muted-foreground">
+      <div className="flex min-h-44 flex-col items-center justify-center gap-3 rounded-card border border-border p-6 text-center text-sm text-muted-foreground">
         <span>构建预览读取失败。</span>
         <Button variant="outline" size="sm" onClick={onRetry}>
           重试
@@ -527,7 +524,7 @@ function GeneratedAppBuildPreview({
 
   return (
     <div
-      className="overflow-hidden rounded-md border border-border"
+      className="overflow-hidden rounded-card border border-border"
       data-testid="generated-app-build-preview"
     >
       <div className="flex flex-col gap-1 border-b border-border px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
@@ -565,7 +562,7 @@ function ArtifactWorkspaceSummary({
   }
 
   return (
-    <dl className="grid gap-3 rounded-md border border-border bg-muted/20 p-3 text-xs text-muted-foreground md:grid-cols-3">
+    <dl className="grid gap-3 rounded-card border border-border bg-muted/20 p-3 text-xs text-muted-foreground md:grid-cols-3">
       <div className="min-w-0">
         <dt>Workspace</dt>
         <dd className="break-all font-medium text-foreground">
@@ -601,7 +598,7 @@ function ArtifactContentPreview({
 }) {
   if (!artifact) {
     return (
-      <div className="flex min-h-56 items-center justify-center rounded-md border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+      <div className="flex min-h-56 items-center justify-center rounded-card border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
         选择一个已物化且可读的源码或测试产物查看内容。
       </div>
     )
@@ -609,7 +606,7 @@ function ArtifactContentPreview({
 
   if (!artifact.readable) {
     return (
-      <div className="flex min-h-56 items-center justify-center rounded-md border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+      <div className="flex min-h-56 items-center justify-center rounded-card border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
         该交付物尚未物化，或大小超过内联查看限制。
       </div>
     )
@@ -617,8 +614,8 @@ function ArtifactContentPreview({
 
   if (isLoading) {
     return (
-      <div className="flex min-h-56 items-center justify-center rounded-md border border-border p-6 text-sm text-muted-foreground">
-        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+      <div className="flex min-h-56 items-center justify-center rounded-card border border-border p-6 text-sm text-muted-foreground">
+        <Spinner className="mr-2" />
         正在读取 {artifact.label}
       </div>
     )
@@ -626,7 +623,7 @@ function ArtifactContentPreview({
 
   if (isError) {
     return (
-      <div className="flex min-h-56 flex-col items-center justify-center gap-3 rounded-md border border-border p-6 text-center text-sm text-muted-foreground">
+      <div className="flex min-h-56 flex-col items-center justify-center gap-3 rounded-card border border-border p-6 text-center text-sm text-muted-foreground">
         <span>交付物内容读取失败。</span>
         <Button variant="outline" size="sm" onClick={onRetry}>
           重试
@@ -636,7 +633,7 @@ function ArtifactContentPreview({
   }
 
   return (
-    <div className="overflow-hidden rounded-md border border-border">
+    <div className="overflow-hidden rounded-card border border-border">
       <div className="flex flex-col gap-1 border-b border-border px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
           <h3 className="break-words text-sm font-medium text-foreground">
@@ -714,7 +711,7 @@ function RuntimeBindingReadinessPanel({
   if (isLoading) {
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <Loader2 className="h-4 w-4 animate-spin" />
+        <Spinner size="sm" />
         正在检查绑定 Workflow 的运行状态
       </div>
     )
@@ -724,7 +721,7 @@ function RuntimeBindingReadinessPanel({
     return (
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <AlertTriangle className="h-4 w-4 text-amber-300" />
+          <AlertTriangle className="h-4 w-4 text-warning" />
           运行绑定状态暂时无法读取。
         </div>
         <Button variant="outline" size="sm" onClick={onRetry}>
@@ -741,21 +738,14 @@ function RuntimeBindingReadinessPanel({
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0 space-y-2">
           <div className="flex flex-wrap items-center gap-2">
-            <span
-              className={cn(
-                'inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs font-medium',
-                canStart
-                  ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
-                  : 'border-amber-500/30 bg-amber-500/10 text-amber-200',
-              )}
-            >
+            <Badge variant={canStart ? 'success' : 'warning'}>
               {canStart ? (
                 <CheckCircle2 className="h-3.5 w-3.5" />
               ) : (
                 <ShieldAlert className="h-3.5 w-3.5" />
               )}
               {RUNTIME_BINDING_READINESS_LABELS[readiness.state]}
-            </span>
+            </Badge>
             <span className="text-xs text-muted-foreground">
               {canStart ? '公开提交可创建异步执行' : '公开提交不会启动 Workflow'}
             </span>
@@ -885,35 +875,43 @@ export function GeneratedAppDetailPage({ appId }: GeneratedAppDetailPageProps) {
 
   if (isLoading) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className="h-full overflow-auto">
+        <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6">
+          <div className="space-y-3">
+            <Skeleton className="h-3.5 w-40" />
+            <Skeleton className="h-7 w-72" />
+            <Skeleton className="h-4 w-full max-w-2xl" />
+          </div>
+          {Array.from({ length: 3 }, (_, index) => (
+            <Skeleton key={index} className="h-40 rounded-card" />
+          ))}
+        </div>
       </div>
     )
   }
 
   if (!app || isError) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-4 p-6">
-        <AlertTriangle className="h-8 w-8 text-rose-300" />
-        <div className="space-y-1 text-center">
-          <h1 className="text-base font-semibold text-foreground">
-            生成应用详情加载失败
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            应用不存在、无权限访问，或网络请求失败。
-          </p>
-        </div>
-        <div className="flex flex-wrap justify-center gap-2">
-          <Button variant="outline" onClick={() => void refetch()}>
-            重新加载
-          </Button>
-          <Link
-            to="/generated-apps"
-            className="inline-flex h-9 items-center justify-center rounded-md border border-border bg-background px-4 py-2 text-sm font-medium text-foreground hover:bg-muted"
-          >
-            返回列表
-          </Link>
-        </div>
+      <div className="mx-auto w-full max-w-3xl px-4 py-16">
+        <EmptyState
+          icon={AlertTriangle}
+          tone="var(--color-error)"
+          title="生成应用详情加载失败"
+          description="应用不存在、无权限访问，或网络请求失败。"
+          action={
+            <div className="flex flex-wrap justify-center gap-2">
+              <Button variant="outline" onClick={() => void refetch()}>
+                重新加载
+              </Button>
+              <Link
+                to="/generated-apps"
+                className="inline-flex h-9 items-center justify-center rounded-md border border-border bg-background px-4 text-sm font-medium text-foreground transition-colors hover:bg-surface-elevated"
+              >
+                返回列表
+              </Link>
+            </div>
+          }
+        />
       </div>
     )
   }
@@ -959,60 +957,40 @@ export function GeneratedAppDetailPage({ appId }: GeneratedAppDetailPageProps) {
       data-testid="generated-app-detail-page"
     >
       <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6">
-        <header className="space-y-4">
-          <Link
-            to="/generated-apps"
-            className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            返回生成应用列表
-          </Link>
+        <PageHeader
+          icon={AppWindow}
+          title={app.appName}
+          description={app.description}
+          breadcrumb={[
+            { label: '生成应用', to: '/generated-apps' },
+            { label: app.appName },
+          ]}
+          actions={
+            <>
+              <Badge variant={getGeneratedAppStatusBadgeVariant(app.status)}>
+                {GENERATED_APP_STATUS_LABELS[app.status]}
+              </Badge>
+              <Badge
+                variant={getGeneratedAppReadinessBadgeVariant(app.readiness)}
+              >
+                {GENERATED_APP_READINESS_LABELS[app.readiness.state]}
+              </Badge>
+            </>
+          }
+        />
 
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div className="min-w-0 space-y-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <span
-                  className={cn(
-                    'inline-flex rounded-full px-2 py-0.5 text-xs font-medium',
-                    getGeneratedAppStatusBadgeClass(app.status),
-                  )}
-                >
-                  {GENERATED_APP_STATUS_LABELS[app.status]}
-                </span>
-                <span
-                  className={cn(
-                    'inline-flex rounded-full border px-2 py-0.5 text-xs font-medium',
-                    getGeneratedAppReadinessBadgeClass(app.readiness),
-                  )}
-                >
-                  {GENERATED_APP_READINESS_LABELS[app.readiness.state]}
-                </span>
-              </div>
-              <div className="space-y-2">
-                <h1 className="break-words text-2xl font-semibold text-foreground">
-                  {app.appName}
-                </h1>
-                <p className="max-w-4xl break-words text-sm text-muted-foreground">
-                  {app.description}
-                </p>
-              </div>
-            </div>
-            <dl className="grid gap-3 text-sm text-muted-foreground sm:grid-cols-2 lg:min-w-80">
-              <div className="border-l border-border pl-3">
-                <dt>更新时间</dt>
-                <dd className="font-medium text-foreground">
-                  {formatGeneratedAppDateTime(app.updatedAt)}
-                </dd>
-              </div>
-              <div className="border-l border-border pl-3">
-                <dt>公开访问</dt>
-                <dd className="font-medium text-foreground">
-                  {publicAccessLabel}
-                </dd>
-              </div>
-            </dl>
+        <dl className="grid gap-3 text-sm text-muted-foreground sm:max-w-md sm:grid-cols-2">
+          <div className="border-l border-border pl-3">
+            <dt>更新时间</dt>
+            <dd className="font-medium text-foreground">
+              {formatGeneratedAppDateTime(app.updatedAt)}
+            </dd>
           </div>
-        </header>
+          <div className="border-l border-border pl-3">
+            <dt>公开访问</dt>
+            <dd className="font-medium text-foreground">{publicAccessLabel}</dd>
+          </div>
+        </dl>
 
         <DetailSection
           title="自动生成与验证"
@@ -1032,7 +1010,7 @@ export function GeneratedAppDetailPage({ appId }: GeneratedAppDetailPageProps) {
               className="shrink-0"
             >
               {startGenerationRunMutation.isPending ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Spinner className="mr-2" />
               ) : (
                 <WandSparkles className="mr-2 h-4 w-4" />
               )}

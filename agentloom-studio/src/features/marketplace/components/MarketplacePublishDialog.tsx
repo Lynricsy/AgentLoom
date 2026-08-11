@@ -1,9 +1,20 @@
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
-import * as Dialog from '@radix-ui/react-dialog'
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { AlertCircle, CheckCircle2, Loader2, Store, X, XCircle } from 'lucide-react'
+import { Badge } from '@/shared/ui/badge'
+import { Button } from '@/shared/ui/button'
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from '@/shared/ui/dialog'
+import { Input } from '@/shared/ui/input'
+import { Textarea } from '@/shared/ui/textarea'
 import { cn } from '@/shared/lib/utils'
 import { useWorkflow } from '@/features/workflow'
 import { useSubmitMarketplaceListing } from '../api/marketplaceMutations'
@@ -39,6 +50,11 @@ interface MarketplacePublishDialogProps {
   workflowId: string
 }
 
+/** ky 抛出的 HTTPError 携带原始 Response，用于区分 409 冲突 */
+function hasResponseStatus(error: unknown): error is { response?: Response } {
+  return typeof error === 'object' && error !== null && 'response' in error
+}
+
 const ReviewCheckList = memo(function ReviewCheckList({
   checks,
 }: {
@@ -53,16 +69,16 @@ const ReviewCheckList = memo(function ReviewCheckList({
           data-testid="review-check-item"
         >
           {check.status === 'passed' ? (
-            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-500" />
+            <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
           ) : (
-            <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
+            <XCircle className="mt-0.5 h-4 w-4 shrink-0 text-error" />
           )}
           <div className="min-w-0 flex-1">
-            <p className={check.status === 'passed' ? 'text-foreground' : 'text-red-400'}>
+            <p className={check.status === 'passed' ? 'text-foreground' : 'text-error'}>
               {check.message}
             </p>
             {check.fixHint && (
-              <p className="mt-0.5 text-xs text-muted-foreground">{check.fixHint}</p>
+              <p className="mt-0.5 text-xs text-muted">{check.fixHint}</p>
             )}
           </div>
         </li>
@@ -219,12 +235,7 @@ export const MarketplacePublishDialog = memo(function MarketplacePublishDialog({
           setDialogState({ kind: 'review-failed', result: response.reviewResult })
         }
       } catch (err) {
-        if (
-          err &&
-          typeof err === 'object' &&
-          'response' in err &&
-          (err as { response?: Response }).response?.status === 409
-        ) {
+        if (hasResponseStatus(err) && err.response?.status === 409) {
           setDialogState({ kind: 'conflict' })
         } else {
           setDialogState({ kind: 'form' })
@@ -238,96 +249,84 @@ export const MarketplacePublishDialog = memo(function MarketplacePublishDialog({
   const isFormDisabled = isSubmitting || !publishedVersionId
 
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
-        <Dialog.Content
-          className={cn(
-            'fixed left-1/2 top-1/2 z-50 w-full max-w-lg -translate-x-1/2 -translate-y-1/2',
-            'rounded-lg border border-border bg-surface shadow-xl',
-            'data-[state=open]:animate-in data-[state=closed]:animate-out',
-            'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
-            'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
-            'max-h-[85vh] overflow-y-auto',
-          )}
-          data-testid="marketplace-publish-dialog"
-        >
-          <div className="flex items-center justify-between border-b border-border px-6 py-4">
-            <div className="flex items-center gap-2">
-              <Store className="h-5 w-5 text-amber-500" />
-              <div>
-                <Dialog.Title className="text-base font-medium">发布到市场</Dialog.Title>
-                <Dialog.Description className="mt-0.5 text-xs text-muted-foreground">
-                  将工作流发布到市场供其他用户使用
-                </Dialog.Description>
-              </div>
-            </div>
-            <Dialog.Close asChild>
-              <button
-                type="button"
-                className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-                aria-label="关闭"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </Dialog.Close>
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        size="md"
+        className="sm:max-h-[88vh]"
+        data-testid="marketplace-publish-dialog"
+      >
+        <DialogHeader className="flex-row items-start gap-3">
+          <span
+            aria-hidden
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-card"
+            style={{
+              backgroundColor:
+                'color-mix(in srgb, var(--color-node-tool) 14%, transparent)',
+              color: 'var(--color-node-tool)',
+            }}
+          >
+            <Store className="h-5 w-5" />
+          </span>
+          <div className="min-w-0">
+            <DialogTitle>发布到市场</DialogTitle>
+            <DialogDescription className="mt-0.5 text-xs">
+              将工作流发布到市场供其他用户使用
+            </DialogDescription>
           </div>
+        </DialogHeader>
 
-          {dialogState.kind === 'success' && (
-            <div className="flex flex-col items-center gap-3 px-6 py-12">
-              <CheckCircle2 className="h-12 w-12 text-emerald-500" />
-              <p className="text-lg font-medium">提交成功</p>
-              <p className="text-sm text-muted-foreground">工作流已通过审核并上架市场</p>
-              <button
-                type="button"
-                className="mt-2 rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700"
-                onClick={() => onOpenChange(false)}
-              >
-                完成
-              </button>
-            </div>
-          )}
+        {dialogState.kind === 'success' && (
+          <DialogBody className="flex flex-col items-center gap-3 py-12">
+            <CheckCircle2 className="h-12 w-12 text-success" />
+            <p className="text-lg font-medium text-foreground">提交成功</p>
+            <p className="text-sm text-muted">工作流已通过审核并上架市场</p>
+            <Button className="mt-2" onClick={() => onOpenChange(false)}>
+              完成
+            </Button>
+          </DialogBody>
+        )}
 
-          {dialogState.kind === 'conflict' && (
-            <div className="flex flex-col items-center gap-3 px-6 py-12">
-              <AlertCircle className="h-12 w-12 text-amber-500" />
-              <p className="text-lg font-medium">已存在</p>
-              <p className="text-sm text-muted-foreground">该工作流版本已提交到市场</p>
-              <button
-                type="button"
-                className="mt-2 rounded-md border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-muted"
-                onClick={() => onOpenChange(false)}
-              >
-                关闭
-              </button>
-            </div>
-          )}
-
-          {dialogState.kind === 'review-failed' && (
-            <div className="space-y-4 px-6 py-6">
-              <div className="flex items-center gap-2 text-red-400">
-                <XCircle className="h-5 w-5" />
-                <p className="text-sm font-medium">审核未通过，请修复以下问题后重试</p>
-              </div>
-              <ReviewCheckList checks={dialogState.result.checks} />
-              <button
-                type="button"
-                className="w-full rounded-md border border-border px-4 py-2 text-sm font-medium text-foreground hover:bg-muted"
-                onClick={() => setDialogState({ kind: 'form' })}
-              >
-                返回修改
-              </button>
-            </div>
-          )}
-
-          {(dialogState.kind === 'form' || dialogState.kind === 'submitting') && (
-            <form
-              className="space-y-4 px-6 py-6"
-              onSubmit={handleSubmit(onSubmit)}
-              data-testid="marketplace-publish-form"
+        {dialogState.kind === 'conflict' && (
+          <DialogBody className="flex flex-col items-center gap-3 py-12">
+            <AlertCircle className="h-12 w-12 text-warning" />
+            <p className="text-lg font-medium text-foreground">已存在</p>
+            <p className="text-sm text-muted">该工作流版本已提交到市场</p>
+            <Button
+              variant="outline"
+              className="mt-2"
+              onClick={() => onOpenChange(false)}
             >
+              关闭
+            </Button>
+          </DialogBody>
+        )}
+
+        {dialogState.kind === 'review-failed' && (
+          <DialogBody className="space-y-4">
+            <div className="flex items-center gap-2 text-error">
+              <XCircle className="h-5 w-5" />
+              <p className="text-sm font-medium">审核未通过，请修复以下问题后重试</p>
+            </div>
+            <ReviewCheckList checks={dialogState.result.checks} />
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => setDialogState({ kind: 'form' })}
+            >
+              返回修改
+            </Button>
+          </DialogBody>
+        )}
+
+        {(dialogState.kind === 'form' || dialogState.kind === 'submitting') && (
+          <form
+            className="flex min-h-0 flex-1 flex-col"
+            onSubmit={handleSubmit(onSubmit)}
+            data-testid="marketplace-publish-form"
+          >
+            <DialogBody className="space-y-4">
               {!publishedVersionId && (
-                <div className="flex items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-400">
+                <div className="flex items-center gap-2 rounded-card border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning">
                   <AlertCircle className="h-4 w-4 shrink-0" />
                   工作流尚未发布，请先发布工作流后再提交到市场
                 </div>
@@ -335,84 +334,70 @@ export const MarketplacePublishDialog = memo(function MarketplacePublishDialog({
 
               <div className="space-y-1.5">
                 <label htmlFor="mp-title" className="text-sm font-medium text-foreground">
-                  标题 <span className="text-red-400">*</span>
+                  标题 <span className="text-error">*</span>
                 </label>
-                <input
+                <Input
                   id="mp-title"
                   type="text"
-                  className={cn(
-                    'w-full rounded-md border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground',
-                    'focus:outline-none focus:ring-2 focus:ring-primary/50',
-                    errors.title ? 'border-red-500' : 'border-border',
-                  )}
+                  className={cn(errors.title && 'border-error')}
                   placeholder="为你的工作流取一个吸引人的标题"
                   disabled={isFormDisabled}
                   data-testid="marketplace-title-input"
                   {...register('title')}
                 />
                 {errors.title && (
-                  <p className="text-xs text-red-400">{errors.title.message}</p>
+                  <p className="text-xs font-medium text-error">{errors.title.message}</p>
                 )}
               </div>
 
               <div className="space-y-1.5">
                 <label htmlFor="mp-summary" className="text-sm font-medium text-foreground">
-                  简介 <span className="text-red-400">*</span>
+                  简介 <span className="text-error">*</span>
                 </label>
-                <textarea
+                <Textarea
                   id="mp-summary"
-                  className={cn(
-                    'w-full rounded-md border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground',
-                    'focus:outline-none focus:ring-2 focus:ring-primary/50',
-                    'min-h-[80px] resize-y',
-                    errors.summary ? 'border-red-500' : 'border-border',
-                  )}
+                  className={cn('min-h-20', errors.summary && 'border-error')}
                   placeholder="描述工作流的用途和特点"
                   disabled={isFormDisabled}
                   data-testid="marketplace-summary-input"
                   {...register('summary')}
                 />
                 {errors.summary && (
-                  <p className="text-xs text-red-400">{errors.summary.message}</p>
+                  <p className="text-xs font-medium text-error">
+                    {errors.summary.message}
+                  </p>
                 )}
               </div>
 
               <div className="space-y-1.5">
                 <label htmlFor="mp-tags" className="text-sm font-medium text-foreground">
-                  标签 <span className="text-red-400">*</span>
-                  <span className="ml-1 text-xs font-normal text-muted-foreground">
+                  标签 <span className="text-error">*</span>
+                  <span className="ml-1 text-xs font-normal text-muted">
                     ({tags.length}/{L.maxTags})
                   </span>
                 </label>
                 {tags.length > 0 && (
                   <div className="flex flex-wrap gap-1.5">
                     {tags.map((tag) => (
-                      <span
-                        key={tag}
-                        className="inline-flex items-center gap-1 rounded-full border border-border bg-muted px-2 py-0.5 text-xs text-foreground"
-                      >
+                      <Badge key={tag} variant="secondary" className="pr-1 text-foreground">
                         {tag}
                         <button
                           type="button"
-                          className="rounded-full p-0.5 hover:bg-background"
+                          className="rounded-full p-0.5 text-muted transition-colors hover:bg-background hover:text-foreground"
                           onClick={() => removeTag(tag)}
                           aria-label={`移除标签 ${tag}`}
                           disabled={isFormDisabled}
                         >
                           <X className="h-3 w-3" />
                         </button>
-                      </span>
+                      </Badge>
                     ))}
                   </div>
                 )}
-                <input
+                <Input
                   id="mp-tags"
                   type="text"
-                  className={cn(
-                    'w-full rounded-md border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground',
-                    'focus:outline-none focus:ring-2 focus:ring-primary/50',
-                    tagError ? 'border-red-500' : 'border-border',
-                  )}
+                  className={cn(tagError && 'border-error')}
                   placeholder="输入标签后按 Enter 或逗号分隔"
                   value={tagInput}
                   onChange={(e) => setTagInput(e.target.value)}
@@ -423,39 +408,34 @@ export const MarketplacePublishDialog = memo(function MarketplacePublishDialog({
                   disabled={isFormDisabled}
                   data-testid="marketplace-tags-input"
                 />
-                {tagError && <p className="text-xs text-red-400">{tagError}</p>}
+                {tagError && (
+                  <p className="text-xs font-medium text-error">{tagError}</p>
+                )}
               </div>
 
               <div className="space-y-1.5">
                 <label htmlFor="mp-cover" className="text-sm font-medium text-foreground">
                   封面图片 URL
-                  <span className="ml-1 text-xs font-normal text-muted-foreground">(可选)</span>
+                  <span className="ml-1 text-xs font-normal text-muted">(可选)</span>
                 </label>
-                <input
+                <Input
                   id="mp-cover"
                   type="text"
-                  className={cn(
-                    'w-full rounded-md border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground',
-                    'focus:outline-none focus:ring-2 focus:ring-primary/50',
-                    errors.coverImageUrl ? 'border-red-500' : 'border-border',
-                  )}
+                  className={cn(errors.coverImageUrl && 'border-error')}
                   placeholder="https://example.com/cover.png"
                   disabled={isFormDisabled}
                   {...register('coverImageUrl')}
                 />
                 {errors.coverImageUrl && (
-                  <p className="text-xs text-red-400">{errors.coverImageUrl.message}</p>
+                  <p className="text-xs font-medium text-error">
+                    {errors.coverImageUrl.message}
+                  </p>
                 )}
               </div>
 
-              <button
+              <Button
                 type="submit"
-                className={cn(
-                  'inline-flex w-full items-center justify-center gap-2 rounded-md px-4 py-2 text-sm font-medium shadow-sm',
-                  isFormDisabled
-                    ? 'cursor-not-allowed bg-muted text-muted-foreground'
-                    : 'bg-amber-600 text-white hover:bg-amber-700',
-                )}
+                className="w-full"
                 disabled={isFormDisabled}
                 data-testid="marketplace-submit-btn"
               >
@@ -470,12 +450,12 @@ export const MarketplacePublishDialog = memo(function MarketplacePublishDialog({
                     提交到市场
                   </>
                 )}
-              </button>
-            </form>
-          )}
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+              </Button>
+            </DialogBody>
+          </form>
+        )}
+      </DialogContent>
+    </Dialog>
   )
 })
 

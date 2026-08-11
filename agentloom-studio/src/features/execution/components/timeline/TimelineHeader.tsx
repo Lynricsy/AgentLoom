@@ -7,6 +7,7 @@ import {
   formatExecutionDuration,
   stepStatusMeta,
 } from '../../lib/presentation'
+import { StatusDot, StepStatusBadge } from '../StatusBadge'
 
 interface TimelineHeaderProps {
   nodeName: string
@@ -30,29 +31,22 @@ export const TimelineHeader = memo(function TimelineHeader({
       className="flex flex-wrap items-start justify-between gap-2"
       data-testid="timeline-header"
     >
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className={cn('h-2.5 w-2.5 rounded-full', meta.dotClassName)} />
-          <p className="text-sm font-semibold text-foreground">{nodeName}</p>
-          <span className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-            {nodeType}
-          </span>
-        </div>
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <StatusDot
+          className={cn('h-2.5 w-2.5', meta.dotClassName)}
+          pulse={status === 'running'}
+        />
+        <p className="truncate text-sm font-semibold text-foreground">{nodeName}</p>
+        <span className="truncate text-[11px] uppercase tracking-[0.18em] text-muted">
+          {nodeType}
+        </span>
       </div>
 
-      <div className="flex items-center gap-2">
-        <span className="text-xs text-muted-foreground">
+      <div className="flex shrink-0 items-center gap-2">
+        <span className="text-xs text-muted">
           {formatExecutionDuration(startedAt, completedAt)}
         </span>
-        <span
-          className={cn(
-            'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium',
-            meta.badgeClassName,
-          )}
-        >
-          <span className={cn('h-1.5 w-1.5 rounded-full', meta.dotClassName)} />
-          {meta.label}
-        </span>
+        <StepStatusBadge status={status} />
       </div>
     </div>
   )

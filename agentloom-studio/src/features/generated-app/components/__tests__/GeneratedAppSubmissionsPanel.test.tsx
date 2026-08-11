@@ -435,7 +435,8 @@ describe('GeneratedAppSubmissionsPanel', () => {
 
     render(<GeneratedAppSubmissionsPanel appId="app-1" />)
 
-    await user.selectOptions(screen.getByLabelText('状态筛选'), 'failed')
+    await user.click(screen.getByRole('combobox', { name: '状态筛选' }))
+    await user.click(await screen.findByRole('option', { name: '失败' }))
 
     await waitFor(() => {
       const lastCall =

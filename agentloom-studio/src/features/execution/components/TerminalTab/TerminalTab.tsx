@@ -1,7 +1,9 @@
 import { memo, useCallback, useMemo } from 'react'
 import { TerminalSquare } from 'lucide-react'
+import { EmptyState } from '@/shared/components/empty-state/EmptyState'
+import { Card } from '@/shared/ui/card'
 import { TerminalSessionList } from './TerminalSessionList'
-import { TerminalInstance } from './TerminalInstance'
+import { TerminalInstance, TERMINAL_THEME } from './TerminalInstance'
 import { usePtyBufferDump } from '../../hooks/usePtyBufferDump'
 import type { PtySessionState } from '../../types/pty'
 
@@ -26,15 +28,24 @@ export const TerminalTab = memo(function TerminalTab({
   onInput,
 }: TerminalTabProps) {
   if (sessions.length === 0) {
-    return <TerminalEmptyState />
+    return (
+      <div className="h-full" data-testid="terminal-tab-empty">
+        <EmptyState
+          className="h-full"
+          icon={TerminalSquare}
+          title="没有终端会话"
+          description="AI Agent 在执行过程中创建的终端会话将显示在这里"
+        />
+      </div>
+    )
   }
 
   return (
-    <div
-      className="flex h-full min-h-0 overflow-hidden rounded-lg border border-border/60"
+    <Card
+      className="flex h-full min-h-0 flex-col overflow-hidden sm:flex-row"
       data-testid="terminal-tab"
     >
-      <div className="w-56 shrink-0">
+      <div className="max-h-40 shrink-0 overflow-hidden border-b border-border sm:max-h-none sm:w-56 sm:border-b-0 sm:border-r">
         <TerminalSessionList
           sessions={sessions}
           activeSessionId={activeSessionId}
@@ -42,7 +53,11 @@ export const TerminalTab = memo(function TerminalTab({
         />
       </div>
 
-      <div className="flex-1 overflow-hidden bg-[#1a1a2e]">
+      {/* 暗色终端区：底色与 xterm 主题同源，滚动完全交给 xterm 自身 */}
+      <div
+        className="min-w-0 flex-1 overflow-hidden"
+        style={{ backgroundColor: TERMINAL_THEME.background }}
+      >
         {activeSessionId ? (
           <ActiveTerminalPane
             executionId={executionId}
@@ -51,29 +66,14 @@ export const TerminalTab = memo(function TerminalTab({
             onInput={onInput}
           />
         ) : (
-          <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+          <div className="flex h-full items-center justify-center text-sm text-muted">
             选择一个终端会话
           </div>
         )}
       </div>
-    </div>
+    </Card>
   )
 })
-
-function TerminalEmptyState() {
-  return (
-    <div
-      className="flex h-full flex-col items-center justify-center gap-3 text-muted-foreground"
-      data-testid="terminal-tab-empty"
-    >
-      <TerminalSquare className="h-10 w-10 opacity-40" />
-      <p className="text-sm font-medium">没有终端会话</p>
-      <p className="max-w-xs text-center text-xs opacity-70">
-        AI Agent 在执行过程中创建的终端会话将显示在这里
-      </p>
-    </div>
-  )
-}
 
 /**
  * 隔离 buffer dump 查询到当前激活 session，

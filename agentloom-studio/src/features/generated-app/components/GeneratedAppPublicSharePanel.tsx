@@ -3,12 +3,12 @@ import {
   CheckCircle2,
   Copy,
   ExternalLink,
-  Loader2,
   RefreshCw,
   Share2,
   ShieldAlert,
 } from 'lucide-react'
 
+import { Spinner } from '@/shared/components/spinner/Spinner'
 import { cn } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
 import { useToast } from '@/shared/ui/toast'
@@ -134,12 +134,12 @@ export function GeneratedAppPublicSharePanel({
     return (
       <div
         className={cn(
-          'space-y-3 border-l border-emerald-500/40 pl-3',
+          'space-y-3 border-l border-success/40 pl-3',
           className,
         )}
         data-testid="generated-app-public-share-panel"
       >
-        <div className="flex flex-wrap items-center gap-2 text-xs text-emerald-200">
+        <div className="flex flex-wrap items-center gap-2 text-xs text-success">
           <CheckCircle2 className="h-3.5 w-3.5" />
           <span>公开分享已启用</span>
           <span className="text-muted-foreground">
@@ -154,7 +154,7 @@ export function GeneratedAppPublicSharePanel({
             </span>
             <button
               type="button"
-              className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+              className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               onClick={handleCopyPublicUrl}
               aria-label={`复制 ${app.appName} 公开链接`}
             >
@@ -164,7 +164,7 @@ export function GeneratedAppPublicSharePanel({
               href={app.publicShareUrl}
               target="_blank"
               rel="noreferrer"
-              className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+              className="rounded p-1 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               aria-label={`打开 ${app.appName} 公开链接`}
             >
               <ExternalLink className="h-3.5 w-3.5" />
@@ -184,7 +184,7 @@ export function GeneratedAppPublicSharePanel({
             disabled={isMutating}
           >
             {regenerateShareMutation.isPending ? (
-              <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+              <Spinner size="sm" className="mr-2" />
             ) : (
               <RefreshCw className="mr-2 h-3.5 w-3.5" />
             )}
@@ -197,7 +197,7 @@ export function GeneratedAppPublicSharePanel({
             disabled={isMutating}
           >
             {disableShareMutation.isPending ? (
-              <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+              <Spinner size="sm" className="mr-2" />
             ) : null}
             关闭分享
           </Button>
@@ -221,7 +221,7 @@ export function GeneratedAppPublicSharePanel({
         data-testid={`generated-app-enable-share-${app.id}`}
       >
         {enableShareMutation.isPending ? (
-          <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+          <Spinner size="sm" className="mr-2" />
         ) : (
           <Share2 className="mr-2 h-3.5 w-3.5" />
         )}

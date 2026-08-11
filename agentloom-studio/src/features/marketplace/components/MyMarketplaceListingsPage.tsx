@@ -1,17 +1,32 @@
 import { useCallback, useState } from 'react'
 
-import * as Dialog from '@radix-ui/react-dialog'
-import {
-  AlertCircle,
-  Loader2,
-  Package,
-  Store,
-  X,
-} from 'lucide-react'
+import { motion } from 'motion/react'
+import { AlertCircle, Loader2, Package, Store } from 'lucide-react'
 
+import { EmptyState } from '@/shared/components/empty-state/EmptyState'
+import { PageHeader } from '@/shared/components/page-header/PageHeader'
 import { Pagination } from '@/shared/components/Pagination'
-import { cn } from '@/shared/lib/utils'
+import { staggerList } from '@/shared/lib/motion'
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogTitle,
+} from '@/shared/ui/alert-dialog'
 import { Button } from '@/shared/ui/button'
+import {
+  Dialog,
+  DialogBody,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/shared/ui/dialog'
+import { Skeleton } from '@/shared/ui/skeleton'
+import { Tabs, TabsList, TabsTrigger } from '@/shared/ui/tabs'
 import { useToast } from '@/shared/ui/toast'
 import {
   useRelistPluginMarketplaceListing,
@@ -51,22 +66,20 @@ function ReviewResultView({
   const passed = checks.filter((c) => c.status === 'passed')
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       {failed.length > 0 && (
         <div className="space-y-2">
-          <p className="text-xs font-medium text-red-400">
+          <p className="text-xs font-medium text-error">
             未通过项 ({failed.length})
           </p>
           {failed.map((check) => (
             <div
               key={check.code}
-              className="rounded border border-red-500/20 bg-red-500/5 p-2"
+              className="rounded-card border border-error/25 bg-error/5 p-2.5"
             >
-              <p className="text-xs text-red-400">{check.message}</p>
+              <p className="text-xs text-error">{check.message}</p>
               {check.fixHint && (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  💡 {check.fixHint}
-                </p>
+                <p className="mt-1 text-xs text-muted">💡 {check.fixHint}</p>
               )}
             </div>
           ))}
@@ -74,11 +87,11 @@ function ReviewResultView({
       )}
       {passed.length > 0 && (
         <div className="space-y-1">
-          <p className="text-xs font-medium text-emerald-400">
+          <p className="text-xs font-medium text-success">
             已通过项 ({passed.length})
           </p>
           {passed.map((check) => (
-            <p key={check.code} className="text-xs text-muted-foreground">
+            <p key={check.code} className="text-xs text-muted">
               ✓ {check.message}
             </p>
           ))}
@@ -117,18 +130,26 @@ export function MyMarketplaceListingsPage() {
   const listings = data?.data ?? []
   const meta = data?.meta
 
-  const handleListingTypeChange = useCallback((listingType: MarketplaceListingTypeFilter) => {
-    setListingTypeFilter(listingType)
+  const handleListingTypeChange = useCallback((listingType: string) => {
+    setListingTypeFilter(listingType as MarketplaceListingTypeFilter)
     setPage(1)
   }, [])
 
-  const handleStatusChange = useCallback((status: StatusFilter) => {
-    setStatusFilter(status)
+  const handleStatusChange = useCallback((status: string) => {
+    setStatusFilter(status as StatusFilter)
     setPage(1)
   }, [])
 
   const handleUnlist = useCallback((listing: MyMarketplaceListingItem) => {
     setUnlistTarget(listing)
+  }, [])
+
+  const handleUnlistOpenChange = useCallback((open: boolean) => {
+    if (!open) setUnlistTarget(null)
+  }, [])
+
+  const handleReviewOpenChange = useCallback((open: boolean) => {
+    if (!open) setReviewTarget(null)
   }, [])
 
   const handleConfirmUnlist = useCallback(async () => {
@@ -199,90 +220,97 @@ export function MyMarketplaceListingsPage() {
     [],
   )
 
+  const isUnlistPending =
+    unlistMutation.isPending || unlistPluginMutation.isPending
+
   return (
     <div
-      className="mx-auto max-w-6xl space-y-6 p-6"
+      className="mx-auto flex max-w-6xl flex-col gap-5 p-4 sm:p-6"
       data-testid="my-marketplace-listings-page"
     >
-      <div className="flex items-center gap-2">
-        <Store className="h-5 w-5 text-muted-foreground" />
-        <h1 className="text-lg font-semibold">我的市场发布</h1>
-      </div>
+      <PageHeader
+        icon={Store}
+        title="我的市场发布"
+        description="管理已提交到市场的工作流与插件，随时上下架或查看审核结果。"
+      />
 
-      <div className="flex flex-wrap gap-1.5">
-        {MARKETPLACE_LISTING_TYPE_TABS.map((tab) => (
-          <button
-            key={tab.value}
-            type="button"
-            className={cn(
-              'rounded-full px-3 py-1 text-xs font-medium transition-colors',
-              listingTypeFilter === tab.value
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-muted text-muted-foreground hover:text-foreground',
-            )}
-            onClick={() => handleListingTypeChange(tab.value)}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      <div className="flex flex-col gap-3 rounded-panel border border-border bg-surface p-3 shadow-node sm:p-4">
+        <Tabs
+          value={listingTypeFilter}
+          defaultValue="all"
+          onValueChange={handleListingTypeChange}
+        >
+          <TabsList>
+            {MARKETPLACE_LISTING_TYPE_TABS.map((tab) => (
+              <TabsTrigger key={tab.value} value={tab.value}>
+                {tab.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
 
-      <div className="flex flex-wrap gap-1.5">
-        {STATUS_TABS.map((tab) => (
-          <button
-            key={tab.value}
-            type="button"
-            className={cn(
-              'rounded-full px-3 py-1 text-xs font-medium transition-colors',
-              statusFilter === tab.value
-                ? 'bg-primary text-primary-foreground'
-                : 'bg-muted text-muted-foreground hover:text-foreground',
-            )}
-            onClick={() => handleStatusChange(tab.value)}
-          >
-            {tab.label}
-          </button>
-        ))}
+        <Tabs value={statusFilter} defaultValue="all" onValueChange={handleStatusChange}>
+          <TabsList>
+            {STATUS_TABS.map((tab) => (
+              <TabsTrigger key={tab.value} value={tab.value}>
+                {tab.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+        </Tabs>
       </div>
 
       {isLoading && (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           {Array.from({ length: 6 }).map((_, i) => (
             <div
               key={`skeleton-${String(i)}`}
-              className="h-48 animate-pulse rounded-lg border border-border bg-card"
-            />
+              className="space-y-3 rounded-card border border-border bg-card p-4"
+              data-testid="listing-skeleton"
+            >
+              <Skeleton className="h-5 w-24 rounded-full" />
+              <Skeleton className="h-4 w-3/4 rounded-md" />
+              <Skeleton className="h-3 w-full rounded-md" />
+              <Skeleton className="h-3 w-2/3 rounded-md" />
+              <Skeleton className="h-8 w-20 rounded-md" />
+            </div>
           ))}
         </div>
       )}
 
       {isError && (
-        <div className="flex flex-col items-center gap-3 py-16 text-center">
-          <AlertCircle className="h-8 w-8 text-destructive" />
-          <p className="text-sm text-muted-foreground">加载失败</p>
-          <Button variant="outline" size="sm" onClick={() => refetch()}>
-            重试
-          </Button>
-        </div>
+        <EmptyState
+          icon={AlertCircle}
+          tone="var(--color-error)"
+          title="加载失败"
+          description="无法获取你的市场发布记录，请稍后重试。"
+          action={
+            <Button variant="outline" size="sm" onClick={() => refetch()}>
+              重试
+            </Button>
+          }
+        />
       )}
 
       {!isLoading && !isError && listings.length === 0 && (
-        <div className="flex flex-col items-center gap-3 py-16 text-center">
-          <Package className="h-12 w-12 text-muted-foreground/40" />
-          <p className="text-sm text-muted-foreground">暂无发布记录</p>
-        </div>
+        <EmptyState
+          icon={Package}
+          title="暂无发布记录"
+          description="在工作流画布中点击「发布到市场」，通过审核后即可在这里管理上架内容。"
+        />
       )}
 
       {!isLoading && !isError && listings.length > 0 && (
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {listings.map((listing) => (
-            <ListingCard
-              key={listing.id}
-              listing={listing}
-              onUnlist={handleUnlist}
-              onRelist={handleRelist}
-              onViewReview={handleViewReview}
-            />
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {listings.map((listing, index) => (
+            <motion.div key={listing.id} className="h-full" {...staggerList(index)}>
+              <ListingCard
+                listing={listing}
+                onUnlist={handleUnlist}
+                onRelist={handleRelist}
+                onViewReview={handleViewReview}
+              />
+            </motion.div>
           ))}
         </div>
       )}
@@ -296,129 +324,65 @@ export function MyMarketplaceListingsPage() {
         />
       )}
 
-      <Dialog.Root
-         open={unlistTarget !== null}
-         onOpenChange={(open) => {
-           if (!open) setUnlistTarget(null)
-         }}
-       >
-        <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
-          <Dialog.Content
-            className={cn(
-              'fixed left-1/2 top-1/2 z-50 w-full max-w-sm -translate-x-1/2 -translate-y-1/2',
-              'rounded-lg border border-border bg-surface p-6 shadow-xl',
-              'data-[state=open]:animate-in data-[state=closed]:animate-out',
-              'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
-              'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
-            )}
-            data-testid="unlist-confirm-dialog"
-          >
-            <div className="flex items-start gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-amber-100">
-                <AlertCircle className="h-5 w-5 text-amber-600" />
-              </div>
-              <div>
-                <Dialog.Title className="text-base font-medium">
-                  确认下架
-                </Dialog.Title>
-                <Dialog.Description className="mt-1 text-sm text-muted-foreground">
-                  下架后该发布将不再展示在市场中，你可以随时重新上架。
-                </Dialog.Description>
-              </div>
-            </div>
-
-            <div className="mt-6 flex justify-end gap-2">
-              <Dialog.Close asChild>
-                <button
-                  type="button"
-                  className="rounded-md px-4 py-2 text-sm text-muted-foreground hover:bg-muted"
-                >
-                  取消
-                </button>
-              </Dialog.Close>
-              <button
-                type="button"
-                className="inline-flex items-center gap-1.5 rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50"
-                onClick={handleConfirmUnlist}
-                disabled={
-                  unlistMutation.isPending || unlistPluginMutation.isPending
-                }
-              >
-                {(unlistMutation.isPending || unlistPluginMutation.isPending) && (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                )}
-                确认下架
-              </button>
-            </div>
-
-            <Dialog.Close asChild>
-              <button
-                type="button"
-                className="absolute right-3 top-3 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-                aria-label="关闭"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </Dialog.Close>
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
-
-      <Dialog.Root
-        open={reviewTarget !== null}
-        onOpenChange={(open) => {
-          if (!open) setReviewTarget(null)
-        }}
+      <AlertDialog
+        open={unlistTarget !== null}
+        onOpenChange={handleUnlistOpenChange}
       >
-        <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
-          <Dialog.Content
-            className={cn(
-              'fixed left-1/2 top-1/2 z-50 w-full max-w-md -translate-x-1/2 -translate-y-1/2',
-              'rounded-lg border border-border bg-surface p-6 shadow-xl',
-              'data-[state=open]:animate-in data-[state=closed]:animate-out',
-              'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
-              'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
-              'max-h-[80vh] overflow-y-auto',
-            )}
-            data-testid="review-result-dialog"
-          >
-            <Dialog.Title className="text-base font-medium">
-              审核结果
-            </Dialog.Title>
-            <Dialog.Description className="mt-1 text-sm text-muted-foreground">
-              {reviewTarget?.title}
-            </Dialog.Description>
-
-            {reviewTarget?.reviewResult && (
-              <div className="mt-4">
-                <ReviewResultView
-                  checks={reviewTarget.reviewResult.checks}
-                />
-              </div>
-            )}
-
-            <div className="mt-6 flex justify-end">
-              <Dialog.Close asChild>
-                <Button variant="outline" size="sm">
-                  关闭
-                </Button>
-              </Dialog.Close>
+        <AlertDialogContent data-testid="unlist-confirm-dialog">
+          <div className="flex items-start gap-3">
+            <span
+              aria-hidden
+              className="grid h-10 w-10 shrink-0 place-items-center rounded-card"
+              style={{
+                backgroundColor:
+                  'color-mix(in srgb, var(--color-warning) 14%, transparent)',
+                color: 'var(--color-warning)',
+              }}
+            >
+              <AlertCircle className="h-5 w-5" />
+            </span>
+            <div className="space-y-1">
+              <AlertDialogTitle>确认下架</AlertDialogTitle>
+              <AlertDialogDescription>
+                下架后该发布将不再展示在市场中，你可以随时重新上架。
+              </AlertDialogDescription>
             </div>
+          </div>
 
-            <Dialog.Close asChild>
-              <button
-                type="button"
-                className="absolute right-3 top-3 rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-                aria-label="关闭"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </Dialog.Close>
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
+          <div className="mt-5 flex justify-end gap-2">
+            <AlertDialogCancel asChild>
+              <Button variant="outline">取消</Button>
+            </AlertDialogCancel>
+            <Button onClick={handleConfirmUnlist} disabled={isUnlistPending}>
+              {isUnlistPending && <Loader2 className="h-4 w-4 animate-spin" />}
+              确认下架
+            </Button>
+          </div>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <Dialog open={reviewTarget !== null} onOpenChange={handleReviewOpenChange}>
+        <DialogContent size="md" data-testid="review-result-dialog">
+          <DialogHeader>
+            <DialogTitle>审核结果</DialogTitle>
+            <DialogDescription>{reviewTarget?.title}</DialogDescription>
+          </DialogHeader>
+
+          <DialogBody>
+            {reviewTarget?.reviewResult && (
+              <ReviewResultView checks={reviewTarget.reviewResult.checks} />
+            )}
+          </DialogBody>
+
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline" size="sm">
+                关闭
+              </Button>
+            </DialogClose>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

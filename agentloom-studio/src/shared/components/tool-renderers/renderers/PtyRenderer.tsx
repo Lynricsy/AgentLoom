@@ -163,7 +163,7 @@ function PendingState({ message }: { message: string }) {
 
 function ErrorState({ error }: { error: string }) {
   return (
-    <pre className="overflow-auto rounded-md bg-red-950/30 p-3 font-mono text-xs leading-relaxed text-red-400">
+    <pre className="overflow-auto rounded-md bg-error/10 p-3 font-mono text-xs leading-relaxed text-error">
       {error}
     </pre>
   )
@@ -191,7 +191,7 @@ const PtySpawnDetail = memo(function PtySpawnDetail({ toolCall, state }: ToolRen
   if (state === 'failed' && toolCall.error) return <ErrorState error={toolCall.error} />
 
   return (
-    <div className="space-y-0.5 rounded-lg bg-zinc-900 p-3">
+    <div className="space-y-0.5 rounded-lg bg-background p-3">
       <KeyValue label="ID" value={result.id} />
       <KeyValue label="命令" value={[args.command, ...(args.args ?? [])].join(' ')} />
       <KeyValue label="CWD" value={result.cwd ?? args.cwd} />
@@ -214,7 +214,7 @@ const PtyReadDetail = memo(function PtyReadDetail({ toolCall, state }: ToolRende
 
   if (!output) {
     return (
-      <div className="flex items-center justify-center rounded-lg bg-zinc-900 p-6 text-xs text-muted-foreground">
+      <div className="flex items-center justify-center rounded-lg bg-background p-6 text-xs text-muted-foreground">
         无输出
       </div>
     )
@@ -226,7 +226,7 @@ const PtyReadDetail = memo(function PtyReadDetail({ toolCall, state }: ToolRende
       {result.totalLines != null && (
         <div className="flex items-center gap-3 text-[10px] text-muted-foreground">
           <span>Total: {result.totalLines} lines</span>
-          {result.hasMore && <span className="text-amber-400">还有更多</span>}
+          {result.hasMore && <span className="text-warning">还有更多</span>}
         </div>
       )}
     </div>
@@ -240,7 +240,7 @@ const PtyWriteDetail = memo(function PtyWriteDetail({ toolCall, state }: ToolRen
   if (state === 'failed' && toolCall.error) return <ErrorState error={toolCall.error} />
 
   return (
-    <div className="rounded-lg bg-zinc-900 p-3">
+    <div className="rounded-lg bg-background p-3">
       <div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
         输入数据
       </div>
@@ -264,17 +264,17 @@ const PtyListDetail = memo(function PtyListDetail({ toolCall, state }: ToolRende
 
   if (list.length === 0) {
     return (
-      <div className="flex items-center justify-center rounded-lg bg-zinc-900 p-6 text-xs text-muted-foreground">
+      <div className="flex items-center justify-center rounded-lg bg-background p-6 text-xs text-muted-foreground">
         无活跃的 PTY 会话
       </div>
     )
   }
 
   return (
-    <div className="overflow-auto rounded-lg bg-zinc-900">
+    <div className="overflow-auto rounded-lg bg-background">
       <table className="w-full text-xs">
         <thead>
-          <tr className="border-b border-zinc-700/50 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+          <tr className="border-b border-border text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
             <th className="px-3 py-1.5 text-left">状态</th>
             <th className="px-3 py-1.5 text-left">ID</th>
             <th className="px-3 py-1.5 text-left">命令</th>
@@ -284,13 +284,13 @@ const PtyListDetail = memo(function PtyListDetail({ toolCall, state }: ToolRende
         </thead>
         <tbody>
           {list.map((session, i) => (
-            <tr key={session.id ?? i} className="border-b border-zinc-700/20 last:border-0">
+            <tr key={session.id ?? i} className="border-b border-border/40 last:border-0">
               <td className="px-3 py-1.5">
                 <span
                   className={cn(
                     'inline-block size-2 rounded-full',
-                    session.status === 'running' ? 'bg-emerald-400' :
-                    session.status === 'exited' ? 'bg-zinc-500' : 'bg-amber-400',
+                    session.status === 'running' ? 'bg-success' :
+                    session.status === 'exited' ? 'bg-muted-foreground' : 'bg-warning',
                   )}
                 />
               </td>
@@ -313,9 +313,9 @@ const PtyKillDetail = memo(function PtyKillDetail({ toolCall, state }: ToolRende
   if (state === 'failed' && toolCall.error) return <ErrorState error={toolCall.error} />
 
   return (
-    <div className="rounded-lg bg-zinc-900 p-3">
+    <div className="rounded-lg bg-background p-3">
       <div className="flex items-center gap-2 text-xs text-foreground/90">
-        <span className="text-red-400">已终止</span>
+        <span className="text-error">已终止</span>
         <span className="font-mono">{args.id}</span>
         <span className="text-muted-foreground">signal: {args.signal ?? 'SIGTERM'}</span>
       </div>

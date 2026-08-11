@@ -4,10 +4,11 @@ import {
   useRef,
   useState,
   type ChangeEvent,
+  type ReactNode,
 } from 'react'
 import {
   AlertTriangle,
-  Loader2,
+  Gauge,
   OctagonAlert,
   PauseCircle,
   Plus,
@@ -15,9 +16,22 @@ import {
   Trash2,
 } from 'lucide-react'
 import { useAuthToken } from '@/features/execution'
+import { DataTable, type DataTableColumn } from '@/shared/components/data-table/DataTable'
+import { PageHeader } from '@/shared/components/page-header/PageHeader'
+import { Spinner } from '@/shared/components/spinner/Spinner'
+import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card'
 import { Input } from '@/shared/ui/input'
-import { NativeSelect } from '@/shared/ui/native-select'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/shared/ui/select'
+import { Skeleton } from '@/shared/ui/skeleton'
+import { Textarea } from '@/shared/ui/textarea'
 import { useToast } from '@/shared/ui/toast'
 import {
   useResourceGovernance,
@@ -150,6 +164,9 @@ interface ActionSummaryCardProps {
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
+const PAGE_DESCRIPTION =
+  '管理租户的执行配额、治理暂停与异常执行终止。这里的治理暂停只会阻止新的执行进入，不等同于执行中的 paused 状态。'
+
 function formatTimestamp(value?: string | null): string {
   if (!value) {
     return '—'
@@ -169,12 +186,6 @@ function formatTimestamp(value?: string | null): string {
 
 function getGovernanceStatusLabel(status: ExecutionGovernanceState): string {
   return status === 'paused' ? '治理暂停' : '治理放行'
-}
-
-function getGovernanceStatusClassName(status: ExecutionGovernanceState): string {
-  return status === 'paused'
-    ? 'border-amber-500/40 bg-amber-500/10 text-amber-100'
-    : 'border-emerald-500/30 bg-emerald-500/10 text-emerald-100'
 }
 
 function createDraftId() {
@@ -251,128 +262,95 @@ function validateIntegerValue(
   return value
 }
 
-function getForbiddenMessage(authToken?: string, role?: string | null) {
-  if (!authToken || !role) {
-    return '当前未识别到可管理资源治理的租户身份，请使用 owner 或 admin 角色重新登录。'
-  }
-
-  return `当前租户角色为 ${role}，只有 owner 或 admin 可以管理资源治理设置。`
-}
-
 function GovernanceStatusBadge({ status }: { status: ExecutionGovernanceState }) {
   return (
-    <span
-      className={`rounded-full border px-2.5 py-1 text-xs font-medium ${getGovernanceStatusClassName(status)}`}
-    >
+    <Badge variant={status === 'paused' ? 'warning' : 'success'} size="sm">
       {getGovernanceStatusLabel(status)}
-    </span>
+    </Badge>
+  )
+}
+
+/** 元数据小格：统一 label / value 的字号与间距 */
+function MetaTile({ label, value }: { label: string; value: ReactNode }) {
+  return (
+    <div className="rounded-card border border-border bg-surface p-3">
+      <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted">{label}</p>
+      <div className="mt-1.5 break-all text-xs font-medium text-foreground">{value}</div>
+    </div>
   )
 }
 
 function ActionSummaryCard({ testId, title, action }: ActionSummaryCardProps) {
   return (
     <div
-      className="rounded-xl border border-border/60 bg-background/30 p-4"
+      className="rounded-card border border-border bg-surface-elevated p-4"
       data-testid={testId}
     >
       <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <p className="text-sm font-medium text-foreground">{title}</p>
-          <p className="mt-1 text-xs text-muted-foreground">
+        <div className="min-w-0">
+          <p className="text-xs font-semibold text-foreground">{title}</p>
+          <p className="mt-1 text-[11px] text-muted">
             操作人：{action.operator ?? '—'} · 生效时间：{formatTimestamp(action.effectedAt)}
           </p>
         </div>
-        <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-          <span className="rounded-full border border-border px-2.5 py-1">动作：{action.action}</span>
-          <span className="rounded-full border border-border px-2.5 py-1">范围：{action.scope}</span>
-          <span className="rounded-full border border-border px-2.5 py-1">
+        <div className="flex flex-wrap gap-1.5">
+          <Badge variant="secondary" size="sm">
+            动作：{action.action}
+          </Badge>
+          <Badge variant="secondary" size="sm">
+            范围：{action.scope}
+          </Badge>
+          <Badge variant="secondary" size="sm">
             影响：{action.affectedSummary.affected}
-          </span>
+          </Badge>
         </div>
       </div>
 
       {action.reason ? (
-        <p className="mt-3 text-sm text-muted-foreground">原因：{action.reason}</p>
+        <p className="mt-3 text-xs leading-relaxed text-muted">原因：{action.reason}</p>
       ) : null}
 
       {'execution' in action ? (
-        <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-lg border border-border/60 bg-surface-elevated/70 p-3">
-            <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">执行 ID</p>
-            <p className="mt-2 break-all text-sm font-medium text-foreground">{action.execution.id}</p>
-          </div>
-          <div className="rounded-lg border border-border/60 bg-surface-elevated/70 p-3">
-            <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">工作流 ID</p>
-            <p className="mt-2 break-all text-sm font-medium text-foreground">{action.execution.workflowId}</p>
-          </div>
-          <div className="rounded-lg border border-border/60 bg-surface-elevated/70 p-3">
-            <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">最终状态</p>
-            <p className="mt-2 text-sm font-medium text-foreground">{action.execution.status}</p>
-          </div>
-          <div className="rounded-lg border border-border/60 bg-surface-elevated/70 p-3">
-            <p className="text-xs uppercase tracking-[0.16em] text-muted-foreground">时间线链接</p>
-            <p className="mt-2 break-all text-sm text-muted-foreground">{action.execution.timelineUrl}</p>
-          </div>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          <MetaTile label="执行 ID" value={action.execution.id} />
+          <MetaTile label="工作流 ID" value={action.execution.workflowId} />
+          <MetaTile label="最终状态" value={action.execution.status} />
+          <MetaTile
+            label="时间线链接"
+            value={<span className="text-muted">{action.execution.timelineUrl}</span>}
+          />
         </div>
       ) : null}
     </div>
   )
 }
 
-function ResourceGovernanceForbiddenState({
-  authToken,
-  role,
+function ResourceGovernanceBlockedState({
+  testId,
+  icon: Icon,
+  title,
+  message,
 }: {
-  authToken?: string
-  role?: string | null
+  testId: string
+  icon: typeof ShieldAlert
+  title: string
+  message: string
 }) {
   return (
-    <div className="space-y-6 px-4 py-6 sm:px-6 lg:px-8" data-testid="resource-governance-forbidden">
-      <div className="space-y-2">
-        <h1 className="text-2xl font-semibold text-foreground">资源治理</h1>
-        <p className="max-w-3xl text-sm text-muted-foreground">
-          管理租户的执行配额、治理暂停与异常执行终止。这里的治理暂停只会阻止新的执行进入，不等同于执行中的 paused 状态。
-        </p>
-      </div>
+    <div className="space-y-6 px-4 py-6 sm:px-6 lg:px-8" data-testid={testId}>
+      <PageHeader icon={Gauge} title="资源治理" description={PAGE_DESCRIPTION} />
 
-      <section className="rounded-2xl border border-amber-500/30 bg-surface-elevated p-6 shadow-sm">
-        <div className="flex items-start gap-3">
-          <span className="rounded-full bg-amber-500/10 p-2 text-amber-300">
-            <ShieldAlert className="h-5 w-5" />
+      <Card className="border-warning/30">
+        <CardContent className="flex items-start gap-3 p-5">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-card bg-warning/10 text-warning">
+            <Icon className="h-5 w-5" />
           </span>
-          <div className="space-y-2">
-            <h2 className="text-lg font-semibold text-foreground">无权访问资源治理</h2>
-            <p className="text-sm text-muted-foreground">{getForbiddenMessage(authToken, role)}</p>
+          <div className="space-y-1.5">
+            <h2 className="text-sm font-semibold text-foreground">{title}</h2>
+            <p className="text-xs leading-relaxed text-muted">{message}</p>
           </div>
-        </div>
-      </section>
-    </div>
-  )
-}
-
-function ResourceGovernanceMissingOrgState() {
-  return (
-    <div className="space-y-6 px-4 py-6 sm:px-6 lg:px-8" data-testid="resource-governance-missing-org">
-      <div className="space-y-2">
-        <h1 className="text-2xl font-semibold text-foreground">资源治理</h1>
-        <p className="max-w-3xl text-sm text-muted-foreground">
-          管理租户的执行配额、治理暂停与异常执行终止。这里的治理暂停只会阻止新的执行进入，不等同于执行中的 paused 状态。
-        </p>
-      </div>
-
-      <section className="rounded-2xl border border-amber-500/30 bg-surface-elevated p-6 shadow-sm">
-        <div className="flex items-start gap-3">
-          <span className="rounded-full bg-amber-500/10 p-2 text-amber-300">
-            <AlertTriangle className="h-5 w-5" />
-          </span>
-          <div className="space-y-2">
-            <h2 className="text-lg font-semibold text-foreground">无法识别当前组织</h2>
-            <p className="text-sm text-muted-foreground">
-              当前登录令牌里没有可用的 organizationId / orgId / tenantId 信息，暂时无法加载资源治理设置。
-            </p>
-          </div>
-        </div>
-      </section>
+        </CardContent>
+      </Card>
     </div>
   )
 }
@@ -455,16 +433,57 @@ function ResourceGovernanceContent({
     [tenantStatus],
   )
 
-  function updateQuotaDraftField(key: QuotaDraftKey, value: string) {
-    setQuotaDraft((current) => ({ ...current, [key]: value }))
-  }
+  const quotaColumns = useMemo<DataTableColumn<QuotaFieldConfig>[]>(
+    () => [
+      {
+        key: 'label',
+        header: '配额项',
+        className: 'align-top',
+        cell: (field) => (
+          <div className="min-w-0 space-y-1">
+            <p className="text-xs font-medium text-foreground">{field.label}</p>
+            <p className="text-[11px] leading-relaxed text-muted">{field.description}</p>
+          </div>
+        ),
+      },
+      {
+        key: 'current',
+        header: '当前值',
+        className: 'w-24 align-top',
+        hideBelow: 'sm',
+        cell: (field) => {
+          const current = state?.quota[field.key] ?? null
 
-  function handleQuotaInputChange(
-    key: QuotaDraftKey,
-    event: ChangeEvent<HTMLInputElement>,
-  ) {
-    updateQuotaDraftField(key, event.target.value)
-  }
+          return (
+            <span className="text-xs tabular-nums text-muted">
+              {current == null ? '未限制' : current}
+            </span>
+          )
+        },
+      },
+      {
+        key: 'draft',
+        header: '新值',
+        className: 'w-[12rem] align-top',
+        cell: (field) => (
+          <Input
+            id={`resource-governance-quota-${field.key}`}
+            type="number"
+            min={field.min}
+            max={field.max}
+            step="1"
+            value={quotaDraft[field.key]}
+            onChange={(event: ChangeEvent<HTMLInputElement>) =>
+              setQuotaDraft((current) => ({ ...current, [field.key]: event.target.value }))
+            }
+            aria-label={field.label}
+            placeholder={field.placeholder}
+          />
+        ),
+      },
+    ],
+    [quotaDraft, state],
+  )
 
   function handleAddWorkflowDraft() {
     setWorkflowDrafts((current) => [...current, createWorkflowControlDraft()])
@@ -669,10 +688,13 @@ function ResourceGovernanceContent({
   if (isLoading) {
     return (
       <div className="space-y-6 px-4 py-6 sm:px-6 lg:px-8" data-testid="resource-governance-page">
-        <div className="space-y-2">
-          <h1 className="text-2xl font-semibold text-foreground">资源治理</h1>
-          <p className="max-w-3xl text-sm text-muted-foreground">加载资源治理设置中…</p>
+        <PageHeader icon={Gauge} title="资源治理" description="加载资源治理设置中…" />
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          {Array.from({ length: 4 }, (_, index) => (
+            <Skeleton key={index} className="h-20 rounded-card" />
+          ))}
         </div>
+        <Skeleton className="h-72 rounded-card" />
       </div>
     )
   }
@@ -680,396 +702,412 @@ function ResourceGovernanceContent({
   if (isError || !state) {
     return (
       <div className="space-y-6 px-4 py-6 sm:px-6 lg:px-8" data-testid="resource-governance-page">
-        <div className="space-y-2">
-          <h1 className="text-2xl font-semibold text-foreground">资源治理</h1>
-          <p className="max-w-3xl text-sm text-muted-foreground">
-            管理租户的执行配额、治理暂停与异常执行终止。这里的治理暂停只会阻止新的执行进入，不等同于执行中的 paused 状态。
-          </p>
-        </div>
+        <PageHeader icon={Gauge} title="资源治理" description={PAGE_DESCRIPTION} />
 
-        <div className="rounded-2xl border border-error/40 bg-error/5 p-6 shadow-sm">
-          <p className="text-sm font-medium text-foreground">加载资源治理设置失败</p>
-          <p className="mt-1 text-sm text-error">{error instanceof Error ? error.message : '未知错误'}</p>
-        </div>
+        <Card className="border-error/40">
+          <CardContent className="space-y-1 p-5">
+            <p className="text-sm font-medium text-foreground">加载资源治理设置失败</p>
+            <p className="text-xs font-medium text-error">
+              {error instanceof Error ? error.message : '未知错误'}
+            </p>
+          </CardContent>
+        </Card>
       </div>
     )
   }
 
   return (
     <div className="space-y-6 px-4 py-6 sm:px-6 lg:px-8" data-testid="resource-governance-page">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div className="space-y-2">
-          <h1 className="text-2xl font-semibold text-foreground">资源治理</h1>
-          <p className="max-w-3xl text-sm text-muted-foreground">
-            统一查看并调整组织的执行配额、治理暂停控制和异常执行终止能力。治理暂停只会阻止新的执行进入，不会把已在运行中的执行改成 paused。
-          </p>
-        </div>
-        <div className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground">
-          仅 owner / admin 可访问
-        </div>
-      </div>
+      <PageHeader
+        icon={Gauge}
+        title="资源治理"
+        description="统一查看并调整组织的执行配额、治理暂停控制和异常执行终止能力。治理暂停只会阻止新的执行进入，不会把已在运行中的执行改成 paused。"
+        actions={<Badge variant="secondary">仅 owner / admin 可访问</Badge>}
+      />
 
-      <section
-        className="rounded-2xl border border-border bg-surface-elevated p-5 shadow-sm"
-        data-testid="resource-governance-metadata"
-      >
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          <div className="space-y-2">
-            <div className="flex items-center gap-2 text-foreground">
-              <PauseCircle className="h-4 w-4" />
-              <h2 className="text-lg font-semibold">当前组织状态</h2>
+      <Card data-testid="resource-governance-metadata">
+        <CardHeader>
+          <div className="flex flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0 space-y-1">
+              <div className="flex items-center gap-2 text-foreground">
+                <PauseCircle className="h-4 w-4" />
+                <CardTitle>当前组织状态</CardTitle>
+              </div>
+              <p className="text-xs leading-relaxed text-muted">
+                这里展示后端返回的当前资源治理状态。租户级治理状态为{' '}
+                <span className="font-medium text-foreground">
+                  {getGovernanceStatusLabel(state.governance.tenantControl.status)}
+                </span>
+                。
+              </p>
             </div>
-            <p className="text-sm text-muted-foreground">
-              这里展示后端返回的当前资源治理状态。租户级治理状态为{' '}
-              <span className="font-medium text-foreground">
-                {getGovernanceStatusLabel(state.governance.tenantControl.status)}
-              </span>
-              。
-            </p>
+            <GovernanceStatusBadge status={state.governance.tenantControl.status} />
           </div>
-          <GovernanceStatusBadge status={state.governance.tenantControl.status} />
-        </div>
+        </CardHeader>
 
-        <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-xl border border-border/60 bg-background/30 p-4">
-            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">组织 ID</p>
-            <p className="mt-2 break-all text-sm font-medium text-foreground">{state.organizationId}</p>
+        <CardContent className="space-y-3">
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            <MetaTile label="组织 ID" value={state.organizationId} />
+            <MetaTile label="租户 ID" value={resolvedTenantId} />
+            <MetaTile label="配额版本" value={state.quota.version} />
+            <MetaTile label="治理版本" value={state.governance.version} />
           </div>
-          <div className="rounded-xl border border-border/60 bg-background/30 p-4">
-            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">租户 ID</p>
-            <p className="mt-2 break-all text-sm font-medium text-foreground">{resolvedTenantId}</p>
-          </div>
-          <div className="rounded-xl border border-border/60 bg-background/30 p-4">
-            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">配额版本</p>
-            <p className="mt-2 text-2xl font-semibold text-foreground">{state.quota.version}</p>
-          </div>
-          <div className="rounded-xl border border-border/60 bg-background/30 p-4">
-            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">治理版本</p>
-            <p className="mt-2 text-2xl font-semibold text-foreground">{state.governance.version}</p>
-          </div>
-        </div>
 
-        <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2 text-xs text-muted-foreground">
-          <span>配额更新人：{state.quota.updatedBy ?? '—'}</span>
-          <span>配额更新时间：{formatTimestamp(state.quota.updatedAt)}</span>
-          <span>治理更新人：{state.governance.tenantControl.updatedBy ?? '—'}</span>
-          <span>治理更新时间：{formatTimestamp(state.governance.tenantControl.updatedAt)}</span>
-        </div>
-      </section>
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-muted">
+            <span>配额更新人：{state.quota.updatedBy ?? '—'}</span>
+            <span>配额更新时间：{formatTimestamp(state.quota.updatedAt)}</span>
+            <span>治理更新人：{state.governance.tenantControl.updatedBy ?? '—'}</span>
+            <span>治理更新时间：{formatTimestamp(state.governance.tenantControl.updatedAt)}</span>
+          </div>
+        </CardContent>
+      </Card>
 
-      <section
-        className="rounded-2xl border border-border bg-surface-elevated p-5 shadow-sm"
-        data-testid="resource-governance-quota-form"
-      >
-        <div className="space-y-1">
-          <h2 className="text-lg font-semibold text-foreground">资源配额</h2>
-          <p className="text-sm text-muted-foreground">
+      <Card data-testid="resource-governance-quota-form">
+        <CardHeader>
+          <CardTitle>资源配额</CardTitle>
+          <p className="text-xs leading-relaxed text-muted">
             配额会直接影响新的执行请求、API 调用和沙箱容量。除 API 每分钟限流外，其余字段留空表示不设置额外上限。
           </p>
-        </div>
+        </CardHeader>
 
-        <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {QUOTA_FIELD_CONFIGS.map((field) => (
-            <label
-              key={field.key}
-              className="space-y-2 text-sm text-foreground"
-              htmlFor={`resource-governance-quota-${field.key}`}
+        <CardContent className="space-y-4">
+          <DataTable
+            columns={quotaColumns}
+            data={QUOTA_FIELD_CONFIGS}
+            rowKey={(field) => field.key}
+          />
+
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleSubmitQuota}
+              disabled={actionsDisabled}
+              className="gap-2"
             >
-              <span>{field.label}</span>
-              <Input
-                id={`resource-governance-quota-${field.key}`}
-                type="number"
-                min={field.min}
-                max={field.max}
-                step="1"
-                value={quotaDraft[field.key]}
-                onChange={(event) => handleQuotaInputChange(field.key, event)}
-                aria-label={field.label}
-                placeholder={field.placeholder}
-              />
-              <span className="block text-xs leading-5 text-muted-foreground">{field.description}</span>
-            </label>
-          ))}
-        </div>
+              {quotaMutation.isPending ? <Spinner size="sm" /> : null}
+              保存配额
+            </Button>
+            <span className="text-xs text-muted">
+              当前 API 每分钟限流：{state.quota.apiRateLimitPerMinute}，沙箱 CPU 上限：
+              {state.quota.maxSandboxCpuPercent ?? '未限制'}。
+            </span>
+          </div>
+        </CardContent>
+      </Card>
 
-        <div className="mt-5 flex flex-wrap items-center gap-3">
-          <Button type="button" onClick={handleSubmitQuota} disabled={actionsDisabled} className="gap-2">
-            {quotaMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-            保存配额
-          </Button>
-          <span className="text-xs text-muted-foreground">
-            当前 API 每分钟限流：{state.quota.apiRateLimitPerMinute}，沙箱 CPU 上限：
-            {state.quota.maxSandboxCpuPercent ?? '未限制'}。
-          </span>
-        </div>
-      </section>
-
-      <section
-        className="rounded-2xl border border-border bg-surface-elevated p-5 shadow-sm"
-        data-testid="resource-governance-controls-form"
-      >
-        <div className="space-y-2">
-          <h2 className="text-lg font-semibold text-foreground">治理暂停控制</h2>
-          <p className="text-sm text-muted-foreground">
+      <Card data-testid="resource-governance-controls-form">
+        <CardHeader>
+          <CardTitle>治理暂停控制</CardTitle>
+          <p className="text-xs leading-relaxed text-muted">
             治理暂停只会阻止新的执行进入，不会把已经运行中的执行改成 paused。若需要解除某个治理暂停，请把状态切回 active。
           </p>
-        </div>
+        </CardHeader>
 
-        <div className="mt-5 grid gap-4 lg:grid-cols-2">
-          <div className="rounded-xl border border-border/60 bg-background/30 p-4">
-            <p className="text-sm font-medium text-foreground">当前租户总控</p>
-            <div className="mt-3 flex flex-wrap items-center gap-3">
-              <GovernanceStatusBadge status={state.governance.tenantControl.status} />
-              <span className="text-xs text-muted-foreground">
-                更新时间：{formatTimestamp(state.governance.tenantControl.updatedAt)}
-              </span>
-            </div>
-            <p className="mt-3 text-sm text-muted-foreground">
-              原因：{state.governance.tenantControl.reason ?? '未填写治理原因'}
-            </p>
-          </div>
-
-          <div className="rounded-xl border border-border/60 bg-background/30 p-4">
-            <p className="text-sm font-medium text-foreground">工作流级治理目标</p>
-            <div className="mt-3 flex flex-wrap gap-3 text-sm text-muted-foreground">
-              <span>总数：{workflowControlCount}</span>
-              <span>治理暂停：{pausedWorkflowCount}</span>
-              <span>治理放行：{workflowControlCount - pausedWorkflowCount}</span>
-            </div>
-            <p className="mt-3 text-sm text-muted-foreground">
-              当前租户治理状态不影响已在运行中的执行，只决定新执行是否允许进入。
-            </p>
-          </div>
-        </div>
-
-        <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,18rem)_minmax(0,1fr)]">
-          <div className="rounded-xl border border-border/60 bg-background/30 p-4">
-            <p className="text-sm font-medium text-foreground">租户总控编辑</p>
-            <div className="mt-4 space-y-4">
-              <label
-                className="space-y-2 text-sm text-foreground"
-                htmlFor="resource-governance-tenant-status"
-              >
-                <span>租户治理状态</span>
-                <NativeSelect
-                  id="resource-governance-tenant-status"
-                  value={tenantStatus}
-                  aria-label="租户治理状态"
-                  onValueChange={(value) => setTenantStatus(value as ExecutionGovernanceState)}
-                >
-                  {GOVERNANCE_STATUSES.map((status) => (
-                    <option key={status.value} value={status.value}>
-                      {status.label}
-                    </option>
-                  ))}
-                </NativeSelect>
-              </label>
-
-              <div className="rounded-lg border border-border/60 bg-surface-elevated/70 p-3 text-xs leading-5 text-muted-foreground">
-                {tenantStatusDescription}
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 lg:grid-cols-2">
+            <div className="rounded-card border border-border bg-surface-elevated p-4">
+              <p className="text-xs font-semibold text-foreground">当前租户总控</p>
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <GovernanceStatusBadge status={state.governance.tenantControl.status} />
+                <span className="text-[11px] text-muted">
+                  更新时间：{formatTimestamp(state.governance.tenantControl.updatedAt)}
+                </span>
               </div>
+              <p className="mt-2 text-xs text-muted">
+                原因：{state.governance.tenantControl.reason ?? '未填写治理原因'}
+              </p>
+            </div>
 
-              <label
-                className="space-y-2 text-sm text-foreground"
-                htmlFor="resource-governance-tenant-reason"
-              >
-                <span>租户治理原因</span>
-                <textarea
-                  id="resource-governance-tenant-reason"
-                  value={tenantReason}
-                  rows={5}
-                  maxLength={500}
-                  aria-label="租户治理原因"
-                  onChange={(event) => setTenantReason(event.target.value)}
-                  placeholder="例如：为缓解高峰期资源抢占，临时阻止新的执行进入。"
-                  className="w-full resize-none rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                />
-              </label>
+            <div className="rounded-card border border-border bg-surface-elevated p-4">
+              <p className="text-xs font-semibold text-foreground">工作流级治理目标</p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                <Badge variant="secondary" size="sm">
+                  总数：{workflowControlCount}
+                </Badge>
+                <Badge variant="warning" size="sm">
+                  治理暂停：{pausedWorkflowCount}
+                </Badge>
+                <Badge variant="success" size="sm">
+                  治理放行：{workflowControlCount - pausedWorkflowCount}
+                </Badge>
+              </div>
+              <p className="mt-2 text-xs leading-relaxed text-muted">
+                当前租户治理状态不影响已在运行中的执行，只决定新执行是否允许进入。
+              </p>
             </div>
           </div>
 
-          <div className="rounded-xl border border-border/60 bg-background/30 p-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p className="text-sm font-medium text-foreground">工作流治理目标</p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  可以逐个指定工作流目标的治理状态；新增空白行后填写 UUID 即可提交。
-                </p>
-              </div>
-
-              <Button type="button" variant="outline" size="sm" onClick={handleAddWorkflowDraft} className="gap-2">
-                <Plus className="h-4 w-4" />
-                新增工作流目标
-              </Button>
-            </div>
-
-            <div className="mt-4 space-y-4">
-              {workflowDrafts.map((draft, index) => (
-                <div key={draft.draftId} className="rounded-xl border border-border/60 bg-surface-elevated/70 p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-sm font-medium text-foreground">工作流目标 {index + 1}</p>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleRemoveWorkflowDraft(draft.draftId)}
-                      aria-label={`移除工作流治理目标 ${index + 1}`}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-
-                  <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_14rem]">
-                    <label
-                      className="space-y-2 text-sm text-foreground"
-                      htmlFor={`resource-governance-workflow-target-${draft.draftId}`}
-                    >
-                      <span>工作流目标 ID</span>
-                      <Input
-                        id={`resource-governance-workflow-target-${draft.draftId}`}
-                        value={draft.targetId}
-                        aria-label={`工作流目标 ID ${index + 1}`}
-                        onChange={(event) =>
-                          handleUpdateWorkflowDraft(draft.draftId, 'targetId', event.target.value)
-                        }
-                        placeholder="填写 workflow UUID"
-                      />
-                    </label>
-
-                    <label
-                      className="space-y-2 text-sm text-foreground"
-                      htmlFor={`resource-governance-workflow-status-${draft.draftId}`}
-                    >
-                      <span>治理状态</span>
-                      <NativeSelect
-                        id={`resource-governance-workflow-status-${draft.draftId}`}
-                        value={draft.status}
-                        aria-label={`工作流治理状态 ${index + 1}`}
-                        onValueChange={(value) =>
-                          handleUpdateWorkflowDraft(draft.draftId, 'status', value)
-                        }
-                      >
-                        {GOVERNANCE_STATUSES.map((status) => (
-                          <option key={status.value} value={status.value}>
-                            {status.label}
-                          </option>
-                        ))}
-                      </NativeSelect>
-                    </label>
-                  </div>
-
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
+            <div className="rounded-card border border-border bg-surface-elevated p-4">
+              <p className="text-xs font-semibold text-foreground">租户总控编辑</p>
+              <div className="mt-3 space-y-3">
+                <div className="space-y-1.5">
                   <label
-                    className="mt-4 block space-y-2 text-sm text-foreground"
-                    htmlFor={`resource-governance-workflow-reason-${draft.draftId}`}
+                    className="block text-xs font-medium text-muted"
+                    htmlFor="resource-governance-tenant-status"
                   >
-                    <span>治理原因</span>
-                    <textarea
-                      id={`resource-governance-workflow-reason-${draft.draftId}`}
-                      value={draft.reason}
-                      rows={3}
-                      maxLength={500}
-                      aria-label={`工作流治理原因 ${index + 1}`}
-                      onChange={(event) =>
-                        handleUpdateWorkflowDraft(draft.draftId, 'reason', event.target.value)
-                      }
-                      placeholder="例如：该工作流近期出现异常流量，先阻止新的执行进入。"
-                      className="w-full resize-none rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                    />
+                    租户治理状态
                   </label>
+                  <Select
+                    value={tenantStatus}
+                    onValueChange={(value) => setTenantStatus(value as ExecutionGovernanceState)}
+                  >
+                    <SelectTrigger
+                      id="resource-governance-tenant-status"
+                      aria-label="租户治理状态"
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {GOVERNANCE_STATUSES.map((status) => (
+                        <SelectItem key={status.value} value={status.value}>
+                          {status.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-              ))}
+
+                <p className="rounded-card border border-border bg-surface p-2.5 text-[11px] leading-relaxed text-muted">
+                  {tenantStatusDescription}
+                </p>
+
+                <div className="space-y-1.5">
+                  <label
+                    className="block text-xs font-medium text-muted"
+                    htmlFor="resource-governance-tenant-reason"
+                  >
+                    租户治理原因
+                  </label>
+                  <Textarea
+                    id="resource-governance-tenant-reason"
+                    value={tenantReason}
+                    rows={5}
+                    maxLength={500}
+                    aria-label="租户治理原因"
+                    onChange={(event) => setTenantReason(event.target.value)}
+                    placeholder="例如：为缓解高峰期资源抢占，临时阻止新的执行进入。"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-card border border-border bg-surface-elevated p-4">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-foreground">工作流治理目标</p>
+                  <p className="mt-1 text-[11px] text-muted">
+                    可以逐个指定工作流目标的治理状态；新增空白行后填写 UUID 即可提交。
+                  </p>
+                </div>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleAddWorkflowDraft}
+                  className="gap-1.5"
+                >
+                  <Plus className="h-4 w-4" />
+                  新增工作流目标
+                </Button>
+              </div>
+
+              <div className="mt-3 space-y-3">
+                {workflowDrafts.map((draft, index) => (
+                  <div
+                    key={draft.draftId}
+                    className="rounded-card border border-border bg-surface p-3"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs font-medium text-foreground">
+                        工作流目标 {index + 1}
+                      </p>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        onClick={() => handleRemoveWorkflowDraft(draft.draftId)}
+                        aria-label={`移除工作流治理目标 ${index + 1}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+
+                    <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_14rem]">
+                      <div className="space-y-1.5">
+                        <label
+                          className="block text-xs font-medium text-muted"
+                          htmlFor={`resource-governance-workflow-target-${draft.draftId}`}
+                        >
+                          工作流目标 ID
+                        </label>
+                        <Input
+                          id={`resource-governance-workflow-target-${draft.draftId}`}
+                          value={draft.targetId}
+                          aria-label={`工作流目标 ID ${index + 1}`}
+                          onChange={(event) =>
+                            handleUpdateWorkflowDraft(draft.draftId, 'targetId', event.target.value)
+                          }
+                          placeholder="填写 workflow UUID"
+                        />
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label
+                          className="block text-xs font-medium text-muted"
+                          htmlFor={`resource-governance-workflow-status-${draft.draftId}`}
+                        >
+                          治理状态
+                        </label>
+                        <Select
+                          value={draft.status}
+                          onValueChange={(value) =>
+                            handleUpdateWorkflowDraft(draft.draftId, 'status', value)
+                          }
+                        >
+                          <SelectTrigger
+                            id={`resource-governance-workflow-status-${draft.draftId}`}
+                            aria-label={`工作流治理状态 ${index + 1}`}
+                          >
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {GOVERNANCE_STATUSES.map((status) => (
+                              <SelectItem key={status.value} value={status.value}>
+                                {status.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 space-y-1.5">
+                      <label
+                        className="block text-xs font-medium text-muted"
+                        htmlFor={`resource-governance-workflow-reason-${draft.draftId}`}
+                      >
+                        治理原因
+                      </label>
+                      <Textarea
+                        id={`resource-governance-workflow-reason-${draft.draftId}`}
+                        value={draft.reason}
+                        rows={3}
+                        maxLength={500}
+                        aria-label={`工作流治理原因 ${index + 1}`}
+                        onChange={(event) =>
+                          handleUpdateWorkflowDraft(draft.draftId, 'reason', event.target.value)
+                        }
+                        placeholder="例如：该工作流近期出现异常流量，先阻止新的执行进入。"
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
-        </div>
 
-        <div className="mt-5 flex flex-wrap items-center gap-3">
-          <Button type="button" onClick={handleSubmitControls} disabled={actionsDisabled} className="gap-2">
-            {controlsMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-            更新治理控制
-          </Button>
-          <span className="text-xs text-muted-foreground">
-            若要解除某个治理暂停，请把该目标状态改回 active 并重新提交。
-          </span>
-        </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleSubmitControls}
+              disabled={actionsDisabled}
+              className="gap-2"
+            >
+              {controlsMutation.isPending ? <Spinner size="sm" /> : null}
+              更新治理控制
+            </Button>
+            <span className="text-xs text-muted">
+              若要解除某个治理暂停，请把该目标状态改回 active 并重新提交。
+            </span>
+          </div>
 
-        {governanceActionResult ? (
-          <div className="mt-5">
+          {governanceActionResult ? (
             <ActionSummaryCard
               testId="resource-governance-governance-action"
               title="最近一次治理控制更新"
               action={governanceActionResult}
             />
-          </div>
-        ) : null}
-      </section>
+          ) : null}
+        </CardContent>
+      </Card>
 
-      <section
-        className="rounded-2xl border border-border bg-surface-elevated p-5 shadow-sm"
-        data-testid="resource-governance-terminate-form"
-      >
-        <div className="space-y-2">
+      <Card data-testid="resource-governance-terminate-form">
+        <CardHeader>
           <div className="flex items-center gap-2 text-foreground">
             <OctagonAlert className="h-4 w-4" />
-            <h2 className="text-lg font-semibold">终止异常执行</h2>
+            <CardTitle>终止异常执行</CardTitle>
           </div>
-          <p className="text-sm text-muted-foreground">
+          <p className="text-xs leading-relaxed text-muted">
             仅在确认执行异常且需要立即止损时使用。这个动作会直接终止指定执行，不会把治理暂停误写成执行 paused。
           </p>
-        </div>
+        </CardHeader>
 
-        <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,18rem)_minmax(0,1fr)]">
-          <label
-            className="space-y-2 text-sm text-foreground"
-            htmlFor="resource-governance-execution-id"
-          >
-            <span>异常执行 ID</span>
-            <Input
-              id="resource-governance-execution-id"
-              value={executionId}
-              aria-label="异常执行 ID"
-              onChange={(event) => setExecutionId(event.target.value)}
-              placeholder="填写 execution UUID"
-            />
-          </label>
+        <CardContent className="space-y-4">
+          <div className="grid gap-3 lg:grid-cols-[minmax(0,20rem)_minmax(0,1fr)]">
+            <div className="space-y-1.5">
+              <label
+                className="block text-xs font-medium text-muted"
+                htmlFor="resource-governance-execution-id"
+              >
+                异常执行 ID
+              </label>
+              <Input
+                id="resource-governance-execution-id"
+                value={executionId}
+                aria-label="异常执行 ID"
+                onChange={(event) => setExecutionId(event.target.value)}
+                placeholder="填写 execution UUID"
+              />
+            </div>
 
-          <label
-            className="space-y-2 text-sm text-foreground"
-            htmlFor="resource-governance-termination-reason"
-          >
-            <span>终止原因</span>
-            <textarea
-              id="resource-governance-termination-reason"
-              value={terminationReason}
-              rows={4}
-              maxLength={500}
-              aria-label="终止原因"
-              onChange={(event) => setTerminationReason(event.target.value)}
-              placeholder="例如：检测到异常循环调用，先终止该执行以避免继续消耗资源。"
-              className="w-full resize-none rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-            />
-          </label>
-        </div>
+            <div className="space-y-1.5">
+              <label
+                className="block text-xs font-medium text-muted"
+                htmlFor="resource-governance-termination-reason"
+              >
+                终止原因
+              </label>
+              <Textarea
+                id="resource-governance-termination-reason"
+                value={terminationReason}
+                rows={4}
+                maxLength={500}
+                aria-label="终止原因"
+                onChange={(event) => setTerminationReason(event.target.value)}
+                placeholder="例如：检测到异常循环调用，先终止该执行以避免继续消耗资源。"
+              />
+            </div>
+          </div>
 
-        <div className="mt-5 flex flex-wrap items-center gap-3">
-          <Button type="button" onClick={handleTerminateExecution} disabled={actionsDisabled} className="gap-2">
-            {terminateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-            终止异常执行
-          </Button>
-          <span className="text-xs text-muted-foreground">
-            建议在填写明确原因后再执行终止，以便后续审计和回溯。
-          </span>
-        </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleTerminateExecution}
+              disabled={actionsDisabled}
+              className="gap-2"
+            >
+              {terminateMutation.isPending ? <Spinner size="sm" /> : null}
+              终止异常执行
+            </Button>
+            <span className="text-xs text-muted">
+              建议在填写明确原因后再执行终止，以便后续审计和回溯。
+            </span>
+          </div>
 
-        {terminationResult ? (
-          <div className="mt-5">
+          {terminationResult ? (
             <ActionSummaryCard
               testId="resource-governance-termination-action"
               title="最近一次异常执行终止结果"
               action={terminationResult}
             />
-          </div>
-        ) : null}
-      </section>
+          ) : null}
+        </CardContent>
+      </Card>
     </div>
   )
 }
@@ -1081,11 +1119,29 @@ export function ResourceGovernancePage() {
   const tenantClaimId = getResourceGovernanceTenantIdFromToken(authToken)
 
   if (!canManageResourceGovernance(currentUserRole)) {
-    return <ResourceGovernanceForbiddenState authToken={authToken} role={currentUserRole} />
+    return (
+      <ResourceGovernanceBlockedState
+        testId="resource-governance-forbidden"
+        icon={ShieldAlert}
+        title="无权访问资源治理"
+        message={
+          !authToken || !currentUserRole
+            ? '当前未识别到可管理资源治理的租户身份，请使用 owner 或 admin 角色重新登录。'
+            : `当前租户角色为 ${currentUserRole}，只有 owner 或 admin 可以管理资源治理设置。`
+        }
+      />
+    )
   }
 
   if (!organizationId) {
-    return <ResourceGovernanceMissingOrgState />
+    return (
+      <ResourceGovernanceBlockedState
+        testId="resource-governance-missing-org"
+        icon={AlertTriangle}
+        title="无法识别当前组织"
+        message="当前登录令牌里没有可用的 organizationId / orgId / tenantId 信息，暂时无法加载资源治理设置。"
+      />
+    )
   }
 
   return <ResourceGovernanceContent organizationId={organizationId} tenantClaimId={tenantClaimId} />

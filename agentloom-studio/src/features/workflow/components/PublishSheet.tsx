@@ -1,10 +1,39 @@
 import { memo, useCallback, useEffect, useState } from 'react'
-import * as Dialog from '@radix-ui/react-dialog'
-import { AlertCircle, AlertTriangle, CheckCircle2, ChevronDown, ChevronRight, Loader2, Upload, X } from 'lucide-react'
-import { cn } from '@/shared/lib/utils'
 import {
-  usePublishWorkflow,
-} from '../api/versionMutations'
+  AlertCircle,
+  AlertTriangle,
+  CheckCircle2,
+  ChevronDown,
+  ChevronRight,
+  Loader2,
+  Upload,
+  X,
+} from 'lucide-react'
+import { cn } from '@/shared/lib/utils'
+import { Badge } from '@/shared/ui/badge'
+import { Button } from '@/shared/ui/button'
+import { Input } from '@/shared/ui/input'
+import { Label } from '@/shared/ui/label'
+import { RadioGroup, RadioGroupItem } from '@/shared/ui/radio-group'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/shared/ui/select'
+import {
+  Sheet,
+  SheetBody,
+  SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetFooter,
+  SheetHeader,
+  SheetTitle,
+} from '@/shared/ui/sheet'
+import { Textarea } from '@/shared/ui/textarea'
+import { usePublishWorkflow } from '../api/versionMutations'
 import { useWorkflowVersions } from '../api/versionQueries'
 import { useToast } from '@/shared/ui/toast'
 import type { PublishWarning, WorkflowVersion } from '../types'
@@ -22,6 +51,31 @@ interface PublishErrorPayload {
     message?: unknown
   }>
 }
+
+type VersionSource = 'current' | 'existing'
+
+const VERSION_SOURCE_OPTIONS: Array<{
+  value: VersionSource
+  id: string
+  testId: string
+  title: string
+  description: string
+}> = [
+  {
+    value: 'current',
+    id: 'publish-source-current',
+    testId: 'source-current',
+    title: '当前编辑稿',
+    description: '将当前画布状态创建为新的发布版本',
+  },
+  {
+    value: 'existing',
+    id: 'publish-source-existing',
+    testId: 'source-existing',
+    title: '选择已有记录',
+    description: '从已保存快照或历史发布中选择一条记录进行发布',
+  },
+]
 
 async function extractPublishErrorMessages(error: unknown): Promise<string[]> {
   if (error && typeof error === 'object' && 'response' in error) {
@@ -54,10 +108,10 @@ async function extractPublishErrorMessages(error: unknown): Promise<string[]> {
 
 function formatPublishableRecordLabel(version: WorkflowVersion): string {
   if (typeof version.releaseNumber === 'number') {
-    return `版本 v${version.releaseNumber}${version.label ? ` - ${version.label}` : ''}`
+    return `版本 v${String(version.releaseNumber)}${version.label ? ` - ${version.label}` : ''}`
   }
 
-  return `快照 #${version.versionNumber}${version.label ? ` - ${version.label}` : ''}`
+  return `快照 #${String(version.versionNumber)}${version.label ? ` - ${version.label}` : ''}`
 }
 
 export const PublishSheet = memo(function PublishSheet({
@@ -68,7 +122,7 @@ export const PublishSheet = memo(function PublishSheet({
 }: PublishSheetProps) {
   const [label, setLabel] = useState('')
   const [releaseNotes, setReleaseNotes] = useState('')
-  const [versionSource, setVersionSource] = useState<'current' | 'existing'>('current')
+  const [versionSource, setVersionSource] = useState<VersionSource>('current')
   const [selectedVersionId, setSelectedVersionId] = useState<string>('')
   const [validationErrors, setValidationErrors] = useState<string[]>([])
   const [publishWarnings, setPublishWarnings] = useState<PublishWarning[] | null>(null)
@@ -118,7 +172,7 @@ export const PublishSheet = memo(function PublishSheet({
         if (warnings.length > 0) {
           notify({
             title: '发布成功',
-            description: `工作流已发布，并返回 ${warnings.length} 条兼容性警告`,
+            description: `工作流已发布，并返回 ${String(warnings.length)} 条兼容性警告`,
             variant: 'success',
           })
           setPublishWarnings(warnings)
@@ -170,112 +224,113 @@ export const PublishSheet = memo(function PublishSheet({
   }, [])
 
   return (
-    <Dialog.Root open={open} onOpenChange={handleOpenChange}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/40 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
-        <Dialog.Content
-          className={cn(
-            'fixed right-0 top-0 z-50 flex h-full w-[420px] flex-col',
-            'border-l border-border bg-surface shadow-xl',
-            'data-[state=open]:animate-in data-[state=closed]:animate-out',
-            'data-[state=closed]:slide-out-to-right data-[state=open]:slide-in-from-right',
-          )}
-          data-testid="publish-sheet"
-        >
-          {/* 头部 */}
-          <div className="flex items-center justify-between border-b border-border px-6 py-4">
-            <div>
-              <Dialog.Title className="text-base font-medium">发布工作流</Dialog.Title>
-              <Dialog.Description className="mt-0.5 text-xs text-muted-foreground">
+    <Sheet open={open} onOpenChange={handleOpenChange}>
+      <SheetContent side="right" hideClose data-testid="publish-sheet">
+        <SheetHeader className="pr-5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <SheetTitle>发布工作流</SheetTitle>
+              <SheetDescription className="mt-0.5 text-xs">
                 发布后工作流将可被执行引擎调用
-              </Dialog.Description>
+              </SheetDescription>
             </div>
-            <Dialog.Close asChild>
-              <button
-                type="button"
-                className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+            <SheetClose asChild>
+              <Button
+                variant="ghost"
+                size="icon-sm"
                 aria-label="关闭"
                 data-testid="close-publish-sheet"
               >
                 <X className="h-4 w-4" />
-              </button>
-            </Dialog.Close>
+              </Button>
+            </SheetClose>
           </div>
+        </SheetHeader>
 
-          {/* 内容 */}
-          {publishWarnings ? (
-            <div className="flex flex-1 flex-col overflow-y-auto">
-              <div className="flex-1 space-y-4 px-6 py-4">
-                <div className="flex items-start gap-2 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
-                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-                  <span>工作流已成功发布</span>
+        {publishWarnings ? (
+          <>
+            <SheetBody className="space-y-4">
+              <div className="flex items-start gap-2 rounded-card border border-success/25 bg-success/10 p-3 text-sm text-success">
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+                <span>工作流已成功发布</span>
+              </div>
+
+              <div className="space-y-2" data-testid="publish-warnings-list">
+                <div className="flex items-center gap-1.5 text-sm font-medium text-warning">
+                  <AlertTriangle className="h-4 w-4" />
+                  <span>{publishWarnings.length} 条兼容性警告</span>
                 </div>
-                <div className="space-y-2" data-testid="publish-warnings-list">
-                  <div className="flex items-center gap-1.5 text-sm font-medium text-amber-600">
-                    <AlertTriangle className="h-4 w-4" />
-                    <span>{publishWarnings.length} 条兼容性警告</span>
-                  </div>
-                  {publishWarnings.map((warning, index) => (
+
+                {publishWarnings.map((warning, index) => {
+                  const expanded = expandedWarnings.has(index)
+
+                  return (
                     <div
-                      key={`${warning.sourceNodeId}-${warning.targetNodeId}-${index}`}
-                      className="rounded-md border border-amber-200 bg-amber-50/50"
+                      key={`${warning.sourceNodeId}-${warning.targetNodeId}-${String(index)}`}
+                      className="overflow-hidden rounded-card border border-warning/25 bg-warning/5"
                       data-testid="publish-warning-item"
                     >
                       <button
                         type="button"
-                        className="flex w-full items-start gap-2 p-3 text-left text-sm text-amber-800 hover:bg-amber-50"
+                        className="flex w-full items-start gap-2 p-3 text-left text-sm text-foreground transition-colors hover:bg-warning/10"
                         onClick={() => toggleWarning(index)}
+                        aria-expanded={expanded}
                         data-testid="publish-warning-toggle"
                       >
-                        {expandedWarnings.has(index) ? (
-                          <ChevronDown className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                        {expanded ? (
+                          <ChevronDown className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
                         ) : (
-                          <ChevronRight className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                          <ChevronRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
                         )}
                         <span>{warning.message}</span>
                       </button>
-                      {expandedWarnings.has(index) && (
-                        <div className="border-t border-amber-200 px-3 py-2 text-xs text-amber-700" data-testid="publish-warning-detail">
-                          <div className="flex items-center gap-1 font-mono">
+
+                      {expanded && (
+                        <div
+                          className="border-t border-warning/25 px-3 py-2 text-xs text-muted"
+                          data-testid="publish-warning-detail"
+                        >
+                          <div className="flex flex-wrap items-center gap-1 font-mono">
                             <span>{warning.sourceNodeId}.{warning.sourcePort.name}</span>
-                            <span className="rounded bg-amber-200 px-1">{warning.sourcePort.dataType}</span>
+                            <Badge variant="warning" size="sm">
+                              {warning.sourcePort.dataType}
+                            </Badge>
                             <span>→</span>
                             <span>{warning.targetNodeId}.{warning.targetPort.name}</span>
-                            <span className="rounded bg-amber-200 px-1">{warning.targetPort.dataType}</span>
+                            <Badge variant="warning" size="sm">
+                              {warning.targetPort.dataType}
+                            </Badge>
                           </div>
                         </div>
                       )}
                     </div>
-                  ))}
-                </div>
+                  )
+                })}
               </div>
-              <div className="flex justify-end border-t border-border px-6 py-4">
-                <button
-                  type="button"
-                  className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-                  onClick={() => { resetForm(); onOpenChange(false) }}
-                  data-testid="publish-warnings-done"
-                >
-                  完成
-                </button>
-              </div>
-            </div>
-          ) : (
-          <form onSubmit={handleSubmit} className="flex flex-1 flex-col overflow-y-auto">
-            <div className="flex-1 space-y-6 px-6 py-4">
-              {/* 验证错误 */}
+            </SheetBody>
+
+            <SheetFooter>
+              <Button
+                type="button"
+                onClick={() => { resetForm(); onOpenChange(false) }}
+                data-testid="publish-warnings-done"
+              >
+                完成
+              </Button>
+            </SheetFooter>
+          </>
+        ) : (
+          <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col">
+            <SheetBody className="space-y-6">
               {validationErrors.length > 0 && (
                 <div
-                  className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+                  className="flex items-start gap-2 rounded-card border border-error/25 bg-error/10 p-3 text-sm text-error"
                   data-testid="publish-validation-error"
                 >
                   <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
                   <div className="space-y-1">
                     {validationErrors.map((message) => (
-                      <p
-                        key={message}
-                        data-testid="publish-validation-error-item"
-                      >
+                      <p key={message} data-testid="publish-validation-error-item">
                         {message}
                       </p>
                     ))}
@@ -283,138 +338,118 @@ export const PublishSheet = memo(function PublishSheet({
                 </div>
               )}
 
-              {/* 版本标签 */}
-              <div>
-                <label htmlFor="publish-label" className="text-sm font-medium">
-                  发布标签 <span className="text-muted-foreground">（可选）</span>
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="publish-label">
+                  <Label>
+                    发布标签 <span className="text-muted">（可选）</span>
+                  </Label>
                 </label>
-                <input
+                <Input
                   id="publish-label"
                   type="text"
                   maxLength={255}
                   value={label}
                   onChange={(e) => setLabel(e.target.value)}
                   placeholder="例如：v1.0 正式版"
-                  className="mt-1.5 w-full rounded-md border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                   data-testid="publish-label-input"
                 />
               </div>
 
-              <div>
-                <label htmlFor="publish-release-notes" className="text-sm font-medium">
-                  发布说明 <span className="text-muted-foreground">（可选）</span>
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="publish-release-notes">
+                  <Label>
+                    发布说明 <span className="text-muted">（可选）</span>
+                  </Label>
                 </label>
-                <textarea
+                <Textarea
                   id="publish-release-notes"
                   maxLength={1000}
                   value={releaseNotes}
                   onChange={(e) => setReleaseNotes(e.target.value)}
                   placeholder="可填写本次发布的变更说明、注意事项或上线备注"
-                  className="mt-1.5 min-h-28 w-full rounded-md border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  className="min-h-28"
                   data-testid="publish-release-notes-input"
                 />
               </div>
 
-              {/* 版本来源选择 */}
               <fieldset>
-                <legend className="text-sm font-medium">发布版本来源</legend>
-                <div className="mt-2 space-y-2">
-                  <label
-                    className={cn(
-                      'flex cursor-pointer items-start gap-3 rounded-md border p-3 transition-colors',
-                      versionSource === 'current'
-                        ? 'border-primary bg-primary/5'
-                        : 'border-border hover:border-muted-foreground/30',
-                    )}
-                    data-testid="source-current"
-                  >
-                    <input
-                      type="radio"
-                      name="versionSource"
-                      value="current"
-                      checked={versionSource === 'current'}
-                      onChange={() => setVersionSource('current')}
-                      className="mt-0.5"
-                    />
-                    <div>
-                      <span className="text-sm font-medium">当前编辑稿</span>
-                      <p className="text-xs text-muted-foreground">
-                        将当前画布状态创建为新的发布版本
-                      </p>
-                    </div>
-                  </label>
-
-                  <label
-                    className={cn(
-                      'flex cursor-pointer items-start gap-3 rounded-md border p-3 transition-colors',
-                      versionSource === 'existing'
-                        ? 'border-primary bg-primary/5'
-                        : 'border-border hover:border-muted-foreground/30',
-                    )}
-                    data-testid="source-existing"
-                  >
-                    <input
-                      type="radio"
-                      name="versionSource"
-                      value="existing"
-                      checked={versionSource === 'existing'}
-                      onChange={() => setVersionSource('existing')}
-                      className="mt-0.5"
-                    />
-                    <div>
-                      <span className="text-sm font-medium">选择已有记录</span>
-                      <p className="text-xs text-muted-foreground">
-                        从已保存快照或历史发布中选择一条记录进行发布
-                      </p>
-                    </div>
-                  </label>
-                </div>
+                <legend className="mb-2 text-xs font-medium text-foreground">
+                  发布版本来源
+                </legend>
+                <RadioGroup
+                  value={versionSource}
+                  onValueChange={(value) => {
+                    setVersionSource(value === 'existing' ? 'existing' : 'current')
+                  }}
+                >
+                  {VERSION_SOURCE_OPTIONS.map((option) => (
+                    <label
+                      key={option.value}
+                      htmlFor={option.id}
+                      className={cn(
+                        'flex cursor-pointer items-start gap-3 rounded-card border p-3 transition-colors',
+                        versionSource === option.value
+                          ? 'border-primary bg-primary/10'
+                          : 'border-border hover:border-border-hover hover:bg-surface-elevated',
+                      )}
+                      data-testid={option.testId}
+                    >
+                      <RadioGroupItem
+                        id={option.id}
+                        value={option.value}
+                        className="mt-0.5"
+                      />
+                      <span className="min-w-0">
+                        <span className="block text-sm font-medium text-foreground">
+                          {option.title}
+                        </span>
+                        <span className="mt-0.5 block text-xs text-muted">
+                          {option.description}
+                        </span>
+                      </span>
+                    </label>
+                  ))}
+                </RadioGroup>
               </fieldset>
 
-              {/* 已有版本选择 */}
               {versionSource === 'existing' && (
-                <div>
-                  <label htmlFor="version-select" className="text-sm font-medium">
-                    选择记录
-                  </label>
+                <div className="flex flex-col gap-1.5">
+                  <Label id="version-select-label">选择记录</Label>
                   {unpublishedVersions.length === 0 ? (
-                    <p className="mt-1.5 text-xs text-muted-foreground">
-                      暂无可发布记录，请先保存快照
-                    </p>
+                    <p className="text-xs text-muted">暂无可发布记录，请先保存快照</p>
                   ) : (
-                    <select
-                      id="version-select"
+                    <Select
                       value={selectedVersionId}
-                      onChange={(e) => setSelectedVersionId(e.target.value)}
-                      className="mt-1.5 w-full rounded-md border border-border bg-background px-3 py-2 text-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                      data-testid="version-select"
+                      onValueChange={setSelectedVersionId}
                     >
-                      <option value="">请选择记录...</option>
-                      {unpublishedVersions.map((v) => (
-                        <option key={v.id} value={v.id}>
-                          {formatPublishableRecordLabel(v)}
-                        </option>
-                      ))}
-                    </select>
+                      <SelectTrigger
+                        aria-labelledby="version-select-label"
+                        data-testid="version-select"
+                      >
+                        <SelectValue placeholder="请选择记录..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {unpublishedVersions.map((v) => (
+                          <SelectItem key={v.id} value={v.id}>
+                            {formatPublishableRecordLabel(v)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   )}
                 </div>
               )}
-            </div>
+            </SheetBody>
 
-            {/* 底部操作 */}
-            <div className="flex justify-end gap-2 border-t border-border px-6 py-4">
-              <Dialog.Close asChild>
-                <button
-                  type="button"
-                  className="rounded-md px-4 py-2 text-sm text-muted-foreground hover:bg-muted"
-                  data-testid="cancel-publish"
-                >
+            <SheetFooter>
+              <SheetClose asChild>
+                <Button type="button" variant="ghost" data-testid="cancel-publish">
                   取消
-                </button>
-              </Dialog.Close>
-              <button
+                </Button>
+              </SheetClose>
+              <Button
                 type="submit"
-                className="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+                className="bg-success text-white hover:bg-success/90"
                 disabled={publishMutation.isPending}
                 data-testid="confirm-publish"
               >
@@ -424,12 +459,11 @@ export const PublishSheet = memo(function PublishSheet({
                   <Upload className="h-4 w-4" />
                 )}
                 发布
-              </button>
-            </div>
+              </Button>
+            </SheetFooter>
           </form>
-          )}
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+        )}
+      </SheetContent>
+    </Sheet>
   )
 })

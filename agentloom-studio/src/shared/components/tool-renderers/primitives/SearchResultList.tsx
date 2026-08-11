@@ -103,7 +103,7 @@ const SearchResultLine = memo(function SearchResultLine({
       <span className="min-w-0 whitespace-pre-wrap break-all text-foreground/80">
         {segments.map((seg, i) =>
           seg.highlighted ? (
-            <mark key={`${i}-${seg.text.slice(0, 8)}`} className="rounded-sm bg-amber-500/30 text-amber-200">
+            <mark key={`${i}-${seg.text.slice(0, 8)}`} className="rounded-sm bg-warning/25 text-warning">
               {seg.text}
             </mark>
           ) : (
@@ -127,7 +127,7 @@ export const SearchResultList = memo(function SearchResultList({
     return (
       <div
         className={cn(
-          'flex flex-col items-center justify-center gap-2 rounded-lg bg-zinc-900 p-8 text-muted-foreground',
+          'flex flex-col items-center justify-center gap-2 rounded-lg bg-background p-8 text-muted-foreground',
           className,
         )}
       >
@@ -139,13 +139,13 @@ export const SearchResultList = memo(function SearchResultList({
 
   return (
     <div
-      className={cn('overflow-auto rounded-lg bg-zinc-900', className)}
+      className={cn('overflow-auto rounded-lg bg-background', className)}
       style={{ maxHeight }}
     >
       {Array.from(grouped.entries()).map(([filePath, fileResults]) => (
-        <div key={filePath} className="border-b border-zinc-700/30 last:border-0">
+        <div key={filePath} className="border-b border-border/60 last:border-0">
           {/* File path header */}
-          <div className="sticky top-0 flex items-center gap-1.5 bg-zinc-800/90 px-3 py-1.5 backdrop-blur-sm">
+          <div className="sticky top-0 flex items-center gap-1.5 bg-surface-elevated/90 px-3 py-1.5 backdrop-blur-sm">
             <File className="size-3 shrink-0 text-muted-foreground" />
             <span className="truncate text-xs font-medium text-foreground/90">
               {filePath}

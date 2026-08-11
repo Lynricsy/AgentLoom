@@ -14,6 +14,7 @@ import {
 import ReactMarkdown from 'react-markdown'
 
 import { cn } from '@/shared/lib/utils'
+import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
 import { useDecryptContent } from '@/features/tenant-key/hooks/useDecryptContent'
 import type { EncryptedPayload } from '@/features/tenant-key/types'
@@ -37,23 +38,24 @@ interface EvidenceCardProps {
   className?: string
 }
 
+/** 证据来源 → 图标/标签/领域类别色 */
 const sourceTypeConfig: Record<
   EvidenceSourceType,
   { icon: typeof FileSearch2; label: string; color: string }
 > = {
-  rag_retrieval: { icon: FileSearch2, label: 'RAG 检索', color: 'text-blue-500' },
-  agent_decision: { icon: Bot, label: 'Agent 决策', color: 'text-violet-500' },
-  tool_output: { icon: Wrench, label: '工具输出', color: 'text-orange-500' },
-  user_input: { icon: MessageSquare, label: '用户输入', color: 'text-emerald-500' },
-  intervention: { icon: ShieldCheck, label: '人工介入', color: 'text-rose-500' },
-  node_error: { icon: AlertTriangle, label: '节点错误', color: 'text-rose-500' },
+  rag_retrieval: { icon: FileSearch2, label: 'RAG 检索', color: 'text-node-knowledge' },
+  agent_decision: { icon: Bot, label: 'Agent 决策', color: 'text-node-agent' },
+  tool_output: { icon: Wrench, label: '工具输出', color: 'text-node-tool' },
+  user_input: { icon: MessageSquare, label: '用户输入', color: 'text-info' },
+  intervention: { icon: ShieldCheck, label: '人工介入', color: 'text-warning' },
+  node_error: { icon: AlertTriangle, label: '节点错误', color: 'text-error' },
 }
 
-const cardVariants = cva('rounded-xl border p-3 transition-colors', {
+const cardVariants = cva('rounded-card border p-3 transition-colors', {
   variants: {
     selected: {
-      true: 'border-primary/40 bg-primary/5 shadow-sm',
-      false: 'border-border/60 bg-card/60 hover:border-border hover:bg-card/80',
+      true: 'border-primary bg-primary/5 shadow-node',
+      false: 'border-border bg-surface hover:border-border-hover hover:bg-surface-elevated',
     },
   },
   defaultVariants: {
@@ -124,12 +126,12 @@ function renderTypeMismatchPreview(
   }
 
   return (
-    <div className="rounded-lg border border-amber-500/20 bg-amber-500/5 p-2 text-[11px] text-amber-700">
+    <div className="rounded-lg border border-warning/20 bg-warning/10 p-2 text-[11px] text-warning">
       <p className="font-medium uppercase tracking-wide">类型不匹配</p>
-      <p className="mt-1">
+      <p className="mt-1 break-words">
         {typeMismatch.sourceType} → {typeMismatch.targetType}
       </p>
-      <p className="mt-1 text-amber-700/80">
+      <p className="mt-1 break-all text-muted">
         {typeMismatch.sourceNodeId}
         {typeMismatch.sourcePortId ? ` · ${typeMismatch.sourcePortId}` : ''}
         {' → '}
@@ -142,7 +144,7 @@ function renderTypeMismatchPreview(
 
 function renderJsonPreview(value: unknown): ReactNode {
   return (
-    <pre className="max-h-40 overflow-auto rounded-lg bg-muted/60 p-2 text-[11px] leading-relaxed text-muted-foreground">
+    <pre className="max-h-40 overflow-auto rounded-lg bg-surface-elevated p-2 text-[11px] leading-relaxed text-muted">
       {stringifyValue(value)}
     </pre>
   )
@@ -164,9 +166,9 @@ function renderStructuredDetails(
     case 'rag_retrieval': {
       const { semanticLocation, retrievedContent } = record.packet
       return (
-        <div className="mt-3 space-y-2 text-xs text-muted-foreground">
-          <div className="rounded-lg bg-blue-500/5 p-2">
-            <p className="text-[10px] font-medium uppercase tracking-wide text-blue-600">
+        <div className="mt-3 space-y-2 text-xs text-muted">
+          <div className="rounded-lg bg-info/5 p-2">
+            <p className="text-[10px] font-medium uppercase tracking-wide text-info">
               语义上下文
             </p>
             <p className="mt-1 line-clamp-3 leading-relaxed">
@@ -174,11 +176,11 @@ function renderStructuredDetails(
             </p>
           </div>
           {retrievedContent && retrievedContent !== node.packetSummary?.excerpt && (
-            <details className="rounded-lg border border-border/60 px-2 py-1.5">
+            <details className="rounded-lg border border-border px-2 py-1.5">
               <summary className="cursor-pointer text-[11px] font-medium text-foreground">
                 查看缓存片段
               </summary>
-              <p className="mt-2 whitespace-pre-wrap leading-relaxed text-muted-foreground">
+              <p className="mt-2 whitespace-pre-wrap break-words leading-relaxed text-muted">
                 {retrievedContent}
               </p>
             </details>
@@ -197,36 +199,36 @@ function renderStructuredDetails(
       return (
         <div className="mt-3 space-y-3 text-xs">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full bg-violet-500/10 px-2 py-0.5 font-medium text-violet-600">
+            <Badge tone="var(--color-node-agent)" size="sm">
               {agentDecision.selectedAction}
-            </span>
-            <span className="rounded-full bg-muted px-2 py-0.5 text-muted-foreground">
+            </Badge>
+            <Badge variant="secondary" size="sm">
               {agentDecision.autonomyMode}
-            </span>
-            <span className="text-muted-foreground">{agentDecision.agentName}</span>
+            </Badge>
+            <span className="text-muted">{agentDecision.agentName}</span>
           </div>
 
           {confidence != null && (
             <div className="space-y-1">
-              <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+              <div className="flex items-center justify-between text-[11px] text-muted">
                 <span>置信度</span>
                 <span>{agentDecision.confidence}</span>
               </div>
-              <span className="flex h-1.5 w-full overflow-hidden rounded-full bg-muted">
-                <span className="h-full bg-violet-500" style={{ width: `${confidence}%` }} />
+              <span className="flex h-1.5 w-full overflow-hidden rounded-full bg-surface-elevated">
+                <span className="h-full bg-node-agent" style={{ width: `${confidence}%` }} />
               </span>
             </div>
           )}
 
           <div className="space-y-1">
             <p className="text-[11px] font-medium text-foreground">推理</p>
-            <div className="rounded-lg bg-muted/50 p-2 text-muted-foreground">
+            <div className="rounded-lg bg-surface-elevated p-2 text-muted">
               <ReactMarkdown
                 skipHtml
                 components={{
                   p: ({ children }) => <p className="whitespace-pre-wrap leading-relaxed">{children}</p>,
                   code: ({ children }) => (
-                    <code className="rounded bg-background px-1 py-0.5 font-mono text-[11px] text-foreground">
+                    <code className="rounded bg-surface px-1 py-0.5 font-mono text-[11px] text-foreground">
                       {children}
                     </code>
                   ),
@@ -238,11 +240,11 @@ function renderStructuredDetails(
           </div>
 
           {!!agentDecision.alternatives?.length && (
-            <details className="rounded-lg border border-border/60 px-2 py-1.5">
+            <details className="rounded-lg border border-border px-2 py-1.5">
               <summary className="cursor-pointer text-[11px] font-medium text-foreground">
                 备选方案（{agentDecision.alternatives.length}）
               </summary>
-              <ul className="mt-2 space-y-1 text-muted-foreground">
+              <ul className="mt-2 space-y-1 text-muted">
                 {agentDecision.alternatives.map((alternative) => (
                   <li key={alternative} className="leading-relaxed">
                     • {alternative}
@@ -262,13 +264,13 @@ function renderStructuredDetails(
       return (
         <div className="mt-3 space-y-2 text-xs">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full bg-orange-500/10 px-2 py-0.5 font-medium text-orange-600">
+            <Badge tone="var(--color-node-tool)" size="sm">
               {toolOutput.toolName}
-            </span>
+            </Badge>
             {lastTransition && (
-              <span className="rounded-full bg-muted px-2 py-0.5 text-muted-foreground">
+              <Badge variant="secondary" size="sm">
                 {lastTransition.to}
-              </span>
+              </Badge>
             )}
           </div>
           {renderJsonPreview(toolOutput.toolOutput)}
@@ -278,7 +280,7 @@ function renderStructuredDetails(
 
     case 'user_input':
       return (
-        <div className="mt-3 space-y-2 text-xs text-muted-foreground">
+        <div className="mt-3 space-y-2 text-xs text-muted">
           {renderJsonPreview(record.packet.userInput.content)}
           <p>记录时间：{formatTimestamp(record.createdAt)}</p>
         </div>
@@ -288,15 +290,15 @@ function renderStructuredDetails(
       const { intervention } = record.packet
 
       return (
-        <div className="mt-3 space-y-2 text-xs text-muted-foreground">
+        <div className="mt-3 space-y-2 text-xs text-muted">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full bg-rose-500/10 px-2 py-0.5 font-medium text-rose-600">
+            <Badge variant="warning" size="sm">
               {formatInterventionAction(intervention.action)}
-            </span>
+            </Badge>
             <span>处理人：{intervention.resolvedBy}</span>
           </div>
           {intervention.feedback && (
-            <p className="whitespace-pre-wrap leading-relaxed">{intervention.feedback}</p>
+            <p className="whitespace-pre-wrap break-words leading-relaxed">{intervention.feedback}</p>
           )}
           {intervention.modifiedContent != null && renderJsonPreview(intervention.modifiedContent)}
           <p>处理时间：{formatTimestamp(intervention.resolvedAt)}</p>
@@ -308,18 +310,18 @@ function renderStructuredDetails(
       const { nodeError } = record.packet
 
       return (
-        <div className="mt-3 space-y-2 text-xs text-muted-foreground">
+        <div className="mt-3 space-y-2 text-xs text-muted">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full bg-rose-500/10 px-2 py-0.5 font-medium text-rose-600">
+            <Badge variant="error" size="sm">
               {formatErrorTypeLabel(nodeError.errorType ?? nodeError.errorTitle)}
-            </span>
+            </Badge>
             <span>节点：{nodeError.nodeId}</span>
           </div>
-          <p className="whitespace-pre-wrap leading-relaxed text-foreground/90">
+          <p className="whitespace-pre-wrap break-words leading-relaxed text-foreground">
             {nodeError.errorMessage}
           </p>
           {nodeError.errorDetail && (
-            <p className="whitespace-pre-wrap leading-relaxed">{nodeError.errorDetail}</p>
+            <p className="whitespace-pre-wrap break-words leading-relaxed">{nodeError.errorDetail}</p>
           )}
           {renderTypeMismatchPreview(nodeError.typeMismatch)}
         </div>
@@ -451,35 +453,35 @@ export const EvidenceCard = memo(function EvidenceCard({
                 {node.packetSummary?.title ?? config.label}
               </span>
               {isEncrypted && !decryptedContent && (
-                <Lock className="h-3 w-3 shrink-0 text-amber-500" />
+                <Lock className="h-3 w-3 shrink-0 text-warning" />
               )}
               {isEncrypted && decryptedContent && (
-                <Unlock className="h-3 w-3 shrink-0 text-emerald-500" />
+                <Unlock className="h-3 w-3 shrink-0 text-success" />
               )}
             </div>
 
             {node.packetSummary?.excerpt && (
-              <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+              <p className="mt-2 line-clamp-2 break-words text-xs leading-relaxed text-muted">
                 {node.packetSummary.excerpt}
               </p>
             )}
 
             {detailQuery.isLoading && (
-              <p className="mt-3 text-[11px] text-muted-foreground">加载证据详情中…</p>
+              <p className="mt-3 text-[11px] text-muted">加载证据详情中…</p>
             )}
 
             {detailQuery.error && (
-              <p className="mt-3 text-[11px] text-rose-500">证据详情加载失败</p>
+              <p className="mt-3 text-[11px] text-error">证据详情加载失败</p>
             )}
           </button>
 
           {isEncrypted && !decryptedContent && (
-            <div className="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3">
-              <p className="text-[11px] font-medium text-amber-700">🔒 已加密</p>
+            <div className="mt-3 rounded-lg border border-warning/20 bg-warning/10 p-3">
+              <p className="text-[11px] font-medium text-warning">🔒 已加密</p>
               {decryptError ? (
-                <p className="mt-1 text-[11px] text-rose-500">{decryptError}</p>
+                <p className="mt-1 break-words text-[11px] text-error">{decryptError}</p>
               ) : (
-                <p className="mt-1 text-[11px] text-muted-foreground">
+                <p className="mt-1 text-[11px] text-muted">
                   此证据内容已加密保护
                 </p>
               )}
@@ -505,8 +507,8 @@ export const EvidenceCard = memo(function EvidenceCard({
 
           {isEncrypted && decryptedContent && (
             <div className="mt-3 space-y-1">
-              <p className="text-[10px] font-medium text-emerald-600">已解密内容</p>
-              <pre className="max-h-40 overflow-auto rounded-lg bg-muted/60 p-2 text-[11px] leading-relaxed text-muted-foreground">
+              <p className="text-[10px] font-medium text-success">已解密内容</p>
+              <pre className="max-h-40 overflow-auto rounded-lg bg-surface-elevated p-2 text-[11px] leading-relaxed text-muted">
                 {decryptedContent}
               </pre>
             </div>
@@ -536,22 +538,22 @@ export const EvidenceCard = memo(function EvidenceCard({
       </div>
 
       {snapshotVisible && node.originalSnapshot && (
-        <div className="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/5 p-3">
-          <p className="text-[11px] font-medium text-amber-700">缓存快照</p>
-          <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap text-[11px] leading-relaxed text-muted-foreground">
+        <div className="mt-3 rounded-lg border border-warning/20 bg-warning/10 p-3">
+          <p className="text-[11px] font-medium text-warning">缓存快照</p>
+          <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap break-words text-[11px] leading-relaxed text-muted">
             {node.originalSnapshot}
           </pre>
         </div>
       )}
 
-      <div className="mt-3 flex flex-wrap items-center gap-2 text-[10px] text-muted-foreground">
+      <div className="mt-3 flex flex-wrap items-center gap-2 text-[10px] text-muted">
         {node.sourceType === 'rag_retrieval' && (
           <>
             {metadata.relevanceScore != null && (
               <span>相关度 {String(metadata.relevanceScore)}</span>
             )}
             {relevancePercent != null && (
-              <span className="flex h-1.5 w-24 overflow-hidden rounded-full bg-muted">
+              <span className="flex h-1.5 w-24 overflow-hidden rounded-full bg-surface-elevated">
                 <span className="h-full bg-primary" style={{ width: `${relevancePercent}%` }} />
               </span>
             )}

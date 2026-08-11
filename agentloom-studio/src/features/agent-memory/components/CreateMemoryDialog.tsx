@@ -1,7 +1,17 @@
-import { useCallback, useRef, useState } from 'react';
-import { Loader2, X } from 'lucide-react';
+import { useCallback, useState } from 'react';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
+import { Textarea } from '@/shared/ui/textarea';
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/shared/ui/dialog';
+import { Spinner } from '@/shared/components/spinner/Spinner';
 import { useCreateMemoryInstance } from '../hooks/useMemoryInstances';
 
 interface CreateMemoryDialogProps {
@@ -17,7 +27,6 @@ export function CreateMemoryDialog({
 }: CreateMemoryDialogProps) {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
-  const nameInputRef = useRef<HTMLInputElement>(null);
   const createMutation = useCreateMemoryInstance();
 
   const handleClose = useCallback(() => {
@@ -46,78 +55,62 @@ export function CreateMemoryDialog({
     [name, description, createMutation, handleClose, onSuccess],
   );
 
-  if (!open) return null;
-
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) handleClose();
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) handleClose();
       }}
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="create-memory-dialog-title"
     >
-      <div className="w-full max-w-md rounded-lg border border-border bg-card p-6 shadow-lg">
-        <div className="mb-4 flex items-center justify-between">
-          <h2
-            id="create-memory-dialog-title"
-            className="text-lg font-semibold"
-          >
-            新建记忆实例
-          </h2>
-          <button
-            onClick={handleClose}
-            className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
-            aria-label="关闭"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
+      <DialogContent size="sm">
+        <DialogHeader>
+          <DialogTitle>新建记忆实例</DialogTitle>
+          <DialogDescription>
+            记忆实例承载 Agent 的长期知识图谱，创建后可继续配置知识域与提示词。
+          </DialogDescription>
+        </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label
-              htmlFor="memory-name"
-              className="mb-1.5 block text-sm font-medium"
-            >
-              名称 <span className="text-destructive">*</span>
-            </label>
-            <Input
-              ref={nameInputRef}
-              id="memory-name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="输入记忆实例名称"
-              required
-              autoFocus
-            />
-          </div>
+        <form onSubmit={handleSubmit} className="contents">
+          <DialogBody className="space-y-4">
+            <div className="space-y-1.5">
+              <label
+                htmlFor="memory-name"
+                className="block text-sm font-medium text-foreground"
+              >
+                名称 <span className="text-error">*</span>
+              </label>
+              <Input
+                id="memory-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="输入记忆实例名称"
+                required
+                autoFocus
+              />
+            </div>
 
-          <div>
-            <label
-              htmlFor="memory-description"
-              className="mb-1.5 block text-sm font-medium"
-            >
-              描述
-            </label>
-            <textarea
-              id="memory-description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="输入描述（可选）"
-              rows={3}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
-            />
-          </div>
+            <div className="space-y-1.5">
+              <label
+                htmlFor="memory-description"
+                className="block text-sm font-medium text-foreground"
+              >
+                描述
+              </label>
+              <Textarea
+                id="memory-description"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="输入描述（可选）"
+                rows={3}
+              />
+            </div>
 
-          {createMutation.isError && (
-            <p className="text-sm text-destructive">
-              创建失败，请重试
-            </p>
-          )}
+            {createMutation.isError && (
+              <p className="text-xs font-medium text-error">创建失败，请重试</p>
+            )}
+          </DialogBody>
 
-          <div className="flex justify-end gap-2">
+          <DialogFooter>
             <Button
               type="button"
               variant="outline"
@@ -130,14 +123,12 @@ export function CreateMemoryDialog({
               type="submit"
               disabled={!name.trim() || createMutation.isPending}
             >
-              {createMutation.isPending && (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              )}
+              {createMutation.isPending && <Spinner className="text-current" />}
               创建
             </Button>
-          </div>
+          </DialogFooter>
         </form>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

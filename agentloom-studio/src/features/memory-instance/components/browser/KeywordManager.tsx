@@ -9,6 +9,8 @@ interface KeywordManagerProps {
   onUpdate?: () => void
 }
 
+const GLOSSARY_TONE = 'var(--color-type-knowledge)'
+
 export function KeywordManager({
   keywords,
   instanceId,
@@ -58,20 +60,28 @@ export function KeywordManager({
   }
 
   return (
-    <div className="flex items-start gap-2 text-xs text-muted-foreground">
-      <Tag size={13} className="mt-0.5 shrink-0 text-amber-700" />
+    <div className="flex items-start gap-2 text-xs text-muted">
+      <Tag size={13} className="mt-0.5 shrink-0" style={{ color: GLOSSARY_TONE }} />
       <div className="flex flex-wrap items-center gap-1.5">
-        <span className="font-medium text-amber-700">Glossary:</span>
+        <span className="font-medium" style={{ color: GLOSSARY_TONE }}>
+          Glossary:
+        </span>
         {keywords.map((kw) => (
           <span
             key={kw}
-            className="inline-flex items-center gap-1 rounded border border-amber-800/30 bg-amber-950/30 px-1.5 py-0.5 font-mono text-[11px] text-amber-400/80"
+            className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-mono text-[11px]"
+            style={{
+              border: `1px solid color-mix(in srgb, ${GLOSSARY_TONE} 30%, transparent)`,
+              backgroundColor: `color-mix(in srgb, ${GLOSSARY_TONE} 12%, transparent)`,
+              color: GLOSSARY_TONE,
+            }}
           >
             {kw}
             <button
               type="button"
+              aria-label={`移除关键词 ${kw}`}
               onClick={() => handleRemove(kw)}
-              className="text-amber-700 transition-colors hover:text-amber-400"
+              className="opacity-70 transition-opacity hover:opacity-100"
             >
               <X size={9} />
             </button>
@@ -82,6 +92,7 @@ export function KeywordManager({
             <input
               ref={inputRef}
               type="text"
+              aria-label="新增 Glossary 关键词"
               value={newKeyword}
               onChange={(e) => setNewKeyword(e.target.value)}
               onKeyDown={handleKeyDown}
@@ -89,12 +100,14 @@ export function KeywordManager({
                 if (!newKeyword.trim()) setAdding(false)
               }}
               placeholder="keyword..."
-              className="w-28 rounded border border-amber-800/40 bg-background px-1.5 py-0.5 font-mono text-[11px] text-amber-300 focus:border-amber-500/50 focus:outline-none"
+              className="w-28 rounded-md border border-input bg-background px-1.5 py-0.5 font-mono text-[11px] text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
             />
             <button
               type="button"
+              aria-label="保存关键词"
               onClick={handleAdd}
-              className="text-amber-600 transition-colors hover:text-amber-400"
+              className="opacity-70 transition-opacity hover:opacity-100"
+              style={{ color: GLOSSARY_TONE }}
             >
               <Save size={11} />
             </button>
@@ -103,7 +116,7 @@ export function KeywordManager({
           <button
             type="button"
             onClick={() => setAdding(true)}
-            className="inline-flex items-center gap-0.5 rounded border border-dashed border-amber-800/30 px-1.5 py-0.5 text-[11px] text-amber-700 transition-colors hover:border-amber-600/40 hover:text-amber-400"
+            className="inline-flex items-center gap-0.5 rounded-md border border-dashed border-border px-1.5 py-0.5 text-[11px] text-muted transition-colors hover:border-border-hover hover:text-foreground"
           >
             <Plus size={9} /> add
           </button>

@@ -1,4 +1,6 @@
 import { memo, useMemo } from 'react'
+import { motion } from 'motion/react'
+import { ListTree } from 'lucide-react'
 import type { ExecutionStep } from '../types'
 import {
   formatClockTime,
@@ -6,6 +8,10 @@ import {
   stepStatusMeta,
   summarizeDataShape,
 } from '../lib/presentation'
+import { StatusDot, StepStatusBadge } from './StatusBadge'
+import { Card } from '@/shared/ui/card'
+import { EmptyState } from '@/shared/components/empty-state/EmptyState'
+import { staggerList } from '@/shared/lib/motion'
 import { cn } from '@/shared/lib/utils'
 
 interface ExecutionTimelineProps {
@@ -113,30 +119,36 @@ export const ExecutionTimeline = memo(function ExecutionTimeline({
   const rows = useMemo(() => buildTimelineRows(steps), [steps])
 
   return (
-    <section className="flex h-full min-h-[320px] flex-col rounded-3xl border border-border/70 bg-background/80" data-testid="execution-timeline">
-      <div className="border-b border-border/60 px-4 py-3">
+    <Card className="flex h-full min-h-[320px] flex-col overflow-hidden" data-testid="execution-timeline">
+      <div className="border-b border-border px-4 py-3">
         <h2 className="text-sm font-semibold text-foreground">执行时间线</h2>
-        <p className="text-xs text-muted-foreground">每个节点一行，展示开始、结束、耗时与相对执行跨度。</p>
+        <p className="text-xs text-muted">每个节点一行，展示开始、结束、耗时与相对执行跨度。</p>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-4">
         {rows.length === 0 ? (
-          <div className="flex h-full min-h-[220px] items-center justify-center text-sm text-muted-foreground">
-            暂无执行步骤
+          <div className="flex h-full min-h-[220px] items-center justify-center">
+            <EmptyState
+              className="border-0 px-0 py-0"
+              icon={ListTree}
+              title="暂无执行步骤"
+              description="工作流开始运行后，节点执行顺序会按时间线逐条呈现。"
+            />
           </div>
         ) : (
           <div className="space-y-3">
-            {rows.map((row) => {
+            {rows.map((row, index) => {
               const statusMeta = stepStatusMeta[row.status]
               const isSelected = row.nodeId === selectedNodeId
 
               return (
-                <button
+                <motion.button
                   key={row.id}
                   type="button"
+                  {...staggerList(index)}
                   className={cn(
-                    'w-full rounded-2xl border border-border/60 bg-surface/60 px-4 py-4 text-left transition hover:border-border/80 hover:bg-surface/80',
-                    isSelected && 'border-primary/40 bg-primary/5',
+                    'w-full rounded-card border border-border bg-surface px-4 py-4 text-left transition-colors hover:border-border-hover hover:bg-surface-elevated',
+                    isSelected && 'border-primary bg-primary/5',
                   )}
                   onClick={() => onSelectNode(row.nodeId)}
                   data-testid={`execution-timeline-item-${row.id}`}
@@ -145,28 +157,23 @@ export const ExecutionTimeline = memo(function ExecutionTimeline({
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className={cn('h-2.5 w-2.5 rounded-full', statusMeta.dotClassName)} />
-                          <p className="text-sm font-semibold text-foreground">{row.nodeName}</p>
-                          <span className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                          <StatusDot
+                            className={cn('h-2.5 w-2.5', statusMeta.dotClassName)}
+                            pulse={row.status === 'running'}
+                          />
+                          <p className="truncate text-sm font-semibold text-foreground">{row.nodeName}</p>
+                          <span className="truncate text-[11px] uppercase tracking-[0.18em] text-muted">
                             {row.nodeType}
                           </span>
                         </div>
-                        <p className="mt-1 text-sm text-foreground/90">{row.summary}</p>
+                        <p className="mt-1 break-words text-sm text-foreground">{row.summary}</p>
                       </div>
 
-                      <span
-                        className={cn(
-                          'inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] font-medium',
-                          statusMeta.badgeClassName,
-                        )}
-                      >
-                        <span className={cn('h-1.5 w-1.5 rounded-full', statusMeta.dotClassName)} />
-                        {statusMeta.label}
-                      </span>
+                      <StepStatusBadge status={row.status} />
                     </div>
 
                     <div className="space-y-2">
-                      <div className="h-2 rounded-full bg-muted/70">
+                      <div className="h-2 rounded-full bg-surface-elevated">
                         <div
                           className={cn('h-full rounded-full', statusMeta.dotClassName)}
                           style={{
@@ -176,19 +183,19 @@ export const ExecutionTimeline = memo(function ExecutionTimeline({
                         />
                       </div>
 
-                      <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-3">
+                      <div className="grid gap-2 text-xs text-muted sm:grid-cols-3">
                         <span>开始：{formatClockTime(row.startedAt)}</span>
                         <span>结束：{formatClockTime(row.completedAt)}</span>
                         <span>耗时：{row.durationLabel}</span>
                       </div>
                     </div>
                   </div>
-                </button>
+                </motion.button>
               )
             })}
           </div>
         )}
       </div>
-    </section>
+    </Card>
   )
 })

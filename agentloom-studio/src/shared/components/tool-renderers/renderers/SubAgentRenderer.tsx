@@ -72,7 +72,7 @@ function PendingState({ message }: { message: string }) {
 
 function ErrorState({ error }: { error: string }) {
   return (
-    <pre className="overflow-auto rounded-md bg-red-950/30 p-3 font-mono text-xs leading-relaxed text-red-400">
+    <pre className="overflow-auto rounded-md bg-error/10 p-3 font-mono text-xs leading-relaxed text-error">
       {error}
     </pre>
   );
@@ -148,9 +148,9 @@ const CallDetail = memo(function CallDetail({
 
   return (
     <div className="space-y-2">
-      <div className="rounded-lg bg-zinc-900 p-3 space-y-1">
+      <div className="rounded-lg bg-background p-3 space-y-1">
         <div className="flex items-center gap-2">
-          <Bot className="size-4 text-purple-400" />
+          <Bot className="size-4" style={{ color: 'var(--color-node-agent)' }} />
           <span className="text-xs font-medium text-foreground">{alias}</span>
           {handle && (
             <span className="text-[10px] font-mono text-muted-foreground/50">
@@ -183,7 +183,7 @@ const CallDetail = memo(function CallDetail({
           <div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
             输出
           </div>
-          <pre className="max-h-[200px] overflow-auto rounded-md bg-zinc-900 p-3 font-mono text-xs leading-relaxed text-foreground/80 whitespace-pre-wrap break-all">
+          <pre className="max-h-[200px] overflow-auto rounded-md bg-background p-3 font-mono text-xs leading-relaxed text-foreground/80 whitespace-pre-wrap break-all">
             {truncate(output, 500)}
           </pre>
         </div>
@@ -212,17 +212,20 @@ const WaitDetail = memo(function WaitDetail({
       {handles.map((h) => (
         <div
           key={h}
-          className="flex items-center justify-between rounded-lg bg-zinc-900 px-3 py-2"
+          className="flex items-center justify-between rounded-lg bg-background px-3 py-2"
         >
           <div className="flex items-center gap-2">
-            <Bot className="size-3.5 text-purple-400" />
+            <Bot
+              className="size-3.5"
+              style={{ color: 'var(--color-node-agent)' }}
+            />
             <span className="font-mono text-xs text-foreground">{h}</span>
           </div>
           <DrillInButton handle={h} />
         </div>
       ))}
       {state === "completed" && resultStr && (
-        <pre className="max-h-[200px] overflow-auto rounded-md bg-zinc-900 p-3 font-mono text-xs leading-relaxed text-foreground/80 whitespace-pre-wrap break-all">
+        <pre className="max-h-[200px] overflow-auto rounded-md bg-background p-3 font-mono text-xs leading-relaxed text-foreground/80 whitespace-pre-wrap break-all">
           {truncate(resultStr, 300)}
         </pre>
       )}
@@ -243,10 +246,13 @@ const StatusDetail = memo(function StatusDetail({
 
   return (
     <div className="space-y-2">
-      <div className="rounded-lg bg-zinc-900 p-3">
+      <div className="rounded-lg bg-background p-3">
         {args.handle && (
           <div className="flex items-center gap-2">
-            <Bot className="size-3.5 text-purple-400" />
+            <Bot
+              className="size-3.5"
+              style={{ color: 'var(--color-node-agent)' }}
+            />
             <span className="font-mono text-xs text-foreground">
               {args.handle}
             </span>

@@ -1,24 +1,39 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
+import { motion } from "motion/react";
 import {
   Brain,
   Calendar,
   GitFork,
-  Loader2,
   Network,
   Plus,
   Search,
+  SearchX,
   Trash2,
 } from "lucide-react";
 import { Pagination, ResourceSourceCategoryTabs } from "@/shared/components";
+import { PageHeader } from "@/shared/components/page-header/PageHeader";
+import { EmptyState } from "@/shared/components/empty-state/EmptyState";
 import { convertResourceSourceToManual } from "@/shared/api/resourceSourceApi";
 import {
   getResourceSourceLabel,
   type ResourceSourceKind,
 } from "@/shared/lib/resourceSource";
+import { staggerList } from "@/shared/lib/motion";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
-import { cn } from "@/shared/lib/utils";
+import { Badge } from "@/shared/ui/badge";
+import { Card } from "@/shared/ui/card";
+import { Skeleton } from "@/shared/ui/skeleton";
+import { useToast } from "@/shared/ui/toast";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogTitle,
+} from "@/shared/ui/alert-dialog";
 import {
   useAllMemoryInstances,
   useDeleteMemoryInstance,
@@ -30,15 +45,20 @@ import { CreateMemoryDialog } from "./CreateMemoryDialog";
 
 const PAGE_SIZE = 12;
 
+/** 记忆域主色 — 与画布 memory 类别节点同源 */
+const MEMORY_TONE = "var(--color-node-memory)";
+
+const GRID_CLASS = "grid gap-4 sm:grid-cols-2 xl:grid-cols-3";
+
 export function MemoryInstancesPage() {
   const navigate = useNavigate();
+  const { notify } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
   const [page, setPage] = useState(1);
   const [sourceKindFilter, setSourceKindFilter] =
     useState<ResourceSourceKind>("manual");
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<MemoryInstance | null>(null);
-  const deleteRestoreFocusRef = useRef<HTMLButtonElement | null>(null);
 
   const deleteMutation = useDeleteMemoryInstance();
 
@@ -80,17 +100,19 @@ export function MemoryInstancesPage() {
     [navigate],
   );
 
-  const handleDelete = useCallback(
-    async (instance: MemoryInstance) => {
-      try {
-        await deleteMutation.mutateAsync(instance.id);
-        setDeleteTarget(null);
-      } catch {
-        // 错误已由 mutation 状态管理
-      }
-    },
-    [deleteMutation],
-  );
+  const handleDelete = useCallback(async () => {
+    if (!deleteTarget) return;
+    try {
+      await deleteMutation.mutateAsync(deleteTarget.id);
+      setDeleteTarget(null);
+    } catch {
+      notify({
+        variant: "error",
+        title: "删除失败",
+        description: `「${deleteTarget.name}」未能删除，请稍后重试。`,
+      });
+    }
+  }, [deleteMutation, deleteTarget, notify]);
 
   const handleCreateSuccess = useCallback(
     (id: string) => {
@@ -108,10 +130,14 @@ export function MemoryInstancesPage() {
           await allQuery.refetch();
         }
       } catch {
-        // noop
+        notify({
+          variant: "error",
+          title: "转换失败",
+          description: `「${instance.name}」未能转为自己创建，请稍后重试。`,
+        });
       }
     },
-    [allQuery, isSearching, paginatedQuery],
+    [allQuery, isSearching, notify, paginatedQuery],
   );
 
   const formatDate = (dateStr: string) => {
@@ -123,20 +149,19 @@ export function MemoryInstancesPage() {
   };
 
   return (
-    <div className="flex h-full flex-col p-6 gap-4">
-      {/* 页面头部 */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">记忆管理</h1>
-          <p className="text-sm text-muted-foreground">
-            管理 Agent 记忆图谱实例，配置知识域和系统提示词
-          </p>
-        </div>
-        <Button onClick={() => setShowCreateDialog(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          新建实例
-        </Button>
-      </div>
+    <div className="flex h-full flex-col gap-5 p-6">
+      <PageHeader
+        title="记忆管理"
+        description="管理 Agent 记忆图谱实例，配置知识域和系统提示词"
+        icon={Brain}
+        tone={MEMORY_TONE}
+        actions={
+          <Button onClick={() => setShowCreateDialog(true)}>
+            <Plus className="h-4 w-4" />
+            新建实例
+          </Button>
+        }
+      />
 
       <ResourceSourceCategoryTabs
         value={sourceKindFilter}
@@ -146,9 +171,8 @@ export function MemoryInstancesPage() {
         }}
       />
 
-      {/* 搜索栏 */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+      <div className="relative max-w-md">
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
         <Input
           className="pl-9"
           placeholder="搜索记忆实例..."
@@ -160,155 +184,130 @@ export function MemoryInstancesPage() {
         />
       </div>
 
-      {/* 内容区域 */}
       {isLoading ? (
-        <div className="flex flex-1 items-center justify-center">
-          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <div className={GRID_CLASS}>
+          {Array.from({ length: 6 }, (_, i) => (
+            <Card
+              key={i}
+              data-testid="memory-instance-skeleton"
+              className="flex flex-col gap-3 p-4"
+            >
+              <div className="flex items-center gap-3">
+                <Skeleton className="h-9 w-9 rounded-card" />
+                <Skeleton className="h-4 w-32 rounded" />
+              </div>
+              <Skeleton className="h-3 w-full rounded" />
+              <Skeleton className="h-3 w-2/3 rounded" />
+            </Card>
+          ))}
         </div>
       ) : displayItems.length === 0 ? (
-        <div className="flex flex-1 flex-col items-center justify-center gap-2 text-muted-foreground">
-          <Brain className="h-12 w-12" />
-          <p className="text-lg font-medium">
-            {isSearching
+        <EmptyState
+          icon={isSearching ? SearchX : Brain}
+          tone={MEMORY_TONE}
+          title={
+            isSearching
               ? "没有找到匹配的记忆实例"
-              : `还没有${getResourceSourceLabel(sourceKindFilter)}的记忆实例`}
-          </p>
-          {!isSearching && sourceKindFilter === "manual" && (
-            <p className="text-sm">
-              点击「新建实例」创建你的第一个 Agent 记忆图谱
-            </p>
-          )}
-        </div>
+              : `还没有${getResourceSourceLabel(sourceKindFilter)}的记忆实例`
+          }
+          description={
+            isSearching
+              ? "换个关键词试试，或切换上方的来源分类。"
+              : sourceKindFilter === "manual"
+                ? "点击「新建实例」创建你的第一个 Agent 记忆图谱"
+                : "从分享链接导入记忆实例后会出现在这里。"
+          }
+        />
       ) : (
         <>
-          {/* 卡片网格 */}
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+          <div className={GRID_CLASS}>
             {displayItems.map((instance, i) => (
-              <div
-                key={instance.id}
-                className="card-hover-lift card-stagger-enter group relative rounded-xl border border-border bg-card p-4"
-                style={{ animationDelay: `${i * 40}ms` }}
-              >
-                {/* 可点击区域 */}
-                <button
-                  className="w-full cursor-pointer text-left"
-                  onClick={() => handleCardClick(instance.id)}
+              <motion.div key={instance.id} {...staggerList(i)}>
+                <Card
+                  interactive
+                  className="group flex h-full flex-col overflow-hidden"
                 >
-                  <div className="mb-2 flex items-start justify-between">
-                    <div className="flex items-center gap-2">
-                      <Brain className="h-5 w-5 text-primary" />
-                      <h3 className="font-semibold line-clamp-1">
-                        {instance.name}
-                      </h3>
-                    </div>
-                    <span
-                      className={cn(
-                        "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
-                        {
-                          "bg-emerald-500/20 text-emerald-400":
-                            getMemoryStatusVariant(instance.status) ===
-                            "default",
-                          "bg-muted text-muted-foreground":
-                            getMemoryStatusVariant(instance.status) ===
-                            "secondary",
-                          "bg-destructive/20 text-destructive":
-                            getMemoryStatusVariant(instance.status) ===
-                            "destructive",
-                        },
-                      )}
-                    >
-                      {getMemoryStatusLabel(instance.status)}
-                    </span>
-                  </div>
-
-                  {instance.description && (
-                    <p className="mb-3 text-sm text-muted-foreground line-clamp-2">
-                      {instance.description}
-                    </p>
-                  )}
-
-                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                    <span className="flex items-center gap-1">
-                      <Network className="h-3 w-3" />
-                      {instance.nodeCount ?? 0} 节点
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <GitFork className="h-3 w-3" />
-                      {instance.validDomains?.length ?? 0} 域
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Calendar className="h-3 w-3" />
-                      {formatDate(instance.createdAt)}
-                    </span>
-                  </div>
-                </button>
-
-                {/* 删除按钮 */}
-                <button
-                  ref={
-                    deleteTarget?.id === instance.id
-                      ? deleteRestoreFocusRef
-                      : undefined
-                  }
-                  className="absolute right-3 top-3 rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setDeleteTarget(instance);
-                  }}
-                  aria-label={`删除 ${instance.name}`}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </button>
-                {instance.sourceKind === "share_imported" ? (
                   <button
                     type="button"
-                    onClick={() => void handleConvertSource(instance)}
-                    className="absolute right-12 top-3 rounded-md border border-border px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                    className="flex-1 rounded-card px-4 pb-3 pt-4 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                    onClick={() => handleCardClick(instance.id)}
                   >
-                    转为自己创建
-                  </button>
-                ) : null}
+                    <div className="flex items-start gap-3">
+                      <span
+                        aria-hidden
+                        className="grid h-9 w-9 shrink-0 place-items-center rounded-card"
+                        style={{
+                          backgroundColor: `color-mix(in srgb, ${MEMORY_TONE} 14%, transparent)`,
+                          color: MEMORY_TONE,
+                        }}
+                      >
+                        <Brain className="h-[18px] w-[18px]" />
+                      </span>
 
-                {/* 删除确认弹出框 */}
-                {deleteTarget?.id === instance.id && (
-                  <div className="absolute right-3 top-12 z-10 w-64 rounded-lg border border-border bg-popover p-4 shadow-lg">
-                    <p className="mb-3 text-sm">
-                      确定要删除「{instance.name}」吗？此操作不可恢复。
-                    </p>
-                    <div className="flex justify-end gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setDeleteTarget(null);
-                        }}
-                        disabled={deleteMutation.isPending}
-                      >
-                        取消
-                      </Button>
-                      <Button
-                        variant="default"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          void handleDelete(instance);
-                        }}
-                        disabled={deleteMutation.isPending}
-                      >
-                        {deleteMutation.isPending && (
-                          <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <h3 className="truncate text-sm font-semibold text-foreground">
+                            {instance.name}
+                          </h3>
+                          <Badge
+                            size="sm"
+                            variant={getMemoryStatusVariant(instance.status)}
+                          >
+                            {getMemoryStatusLabel(instance.status)}
+                          </Badge>
+                        </div>
+                        {instance.description && (
+                          <p className="mt-1 line-clamp-2 text-xs leading-relaxed text-muted">
+                            {instance.description}
+                          </p>
                         )}
-                        删除
+                      </div>
+                    </div>
+                  </button>
+
+                  <div className="flex items-center justify-between gap-2 border-t border-border px-4 py-2">
+                    <div className="flex min-w-0 items-center gap-3 text-[11px] text-muted">
+                      <span className="flex items-center gap-1">
+                        <Network className="h-3 w-3" />
+                        {instance.nodeCount ?? 0} 节点
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <GitFork className="h-3 w-3" />
+                        {instance.validDomains?.length ?? 0} 域
+                      </span>
+                      <span className="hidden items-center gap-1 sm:flex">
+                        <Calendar className="h-3 w-3" />
+                        {formatDate(instance.createdAt)}
+                      </span>
+                    </div>
+
+                    <div className="flex shrink-0 items-center gap-1">
+                      {instance.sourceKind === "share_imported" ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-[11px] text-muted hover:text-foreground"
+                          onClick={() => void handleConvertSource(instance)}
+                        >
+                          转为自己创建
+                        </Button>
+                      ) : null}
+                      <Button
+                        variant="ghost"
+                        size="icon-sm"
+                        className="h-7 w-7 text-muted opacity-70 transition-opacity hover:bg-error/10 hover:text-error group-hover:opacity-100"
+                        onClick={() => setDeleteTarget(instance)}
+                        aria-label={`删除 ${instance.name}`}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
                       </Button>
                     </div>
                   </div>
-                )}
-              </div>
+                </Card>
+              </motion.div>
             ))}
           </div>
 
-          {/* 分页 */}
           {!isSearching && totalPages > 1 && (
             <div className="flex justify-center pt-2">
               <Pagination
@@ -321,7 +320,35 @@ export function MemoryInstancesPage() {
         </>
       )}
 
-      {/* 创建对话框 */}
+      <AlertDialog
+        open={deleteTarget !== null}
+        onOpenChange={(next) => {
+          if (!next) setDeleteTarget(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogTitle>删除记忆实例</AlertDialogTitle>
+          <AlertDialogDescription>
+            确定要删除「{deleteTarget?.name}」吗？此操作不可恢复。
+          </AlertDialogDescription>
+          <div className="mt-5 flex justify-end gap-2">
+            <AlertDialogCancel disabled={deleteMutation.isPending}>
+              取消
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-error text-white hover:bg-error/90"
+              disabled={deleteMutation.isPending}
+              onClick={(e) => {
+                e.preventDefault();
+                void handleDelete();
+              }}
+            >
+              删除
+            </AlertDialogAction>
+          </div>
+        </AlertDialogContent>
+      </AlertDialog>
+
       <CreateMemoryDialog
         open={showCreateDialog}
         onClose={() => setShowCreateDialog(false)}

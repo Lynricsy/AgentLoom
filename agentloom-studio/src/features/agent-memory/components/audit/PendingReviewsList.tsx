@@ -1,20 +1,19 @@
 import { useMemo } from 'react';
-import type { PendingReview, AuditOperationType, ReviewStatus } from './types';
+import { motion } from 'motion/react';
+import { ClipboardCheck } from 'lucide-react';
+import { EmptyState } from '@/shared/components/empty-state/EmptyState';
+import { Badge } from '@/shared/ui/badge';
+import { Card } from '@/shared/ui/card';
+import { Skeleton } from '@/shared/ui/skeleton';
+import { staggerList } from '@/shared/lib/motion';
+import { OPERATION_TONES, REVIEW_STATUS_META } from './AuditTimeline';
+import type { PendingReview, AuditOperationType } from './types';
 
 const OPERATION_LABELS: Record<AuditOperationType, string> = {
   create: '创建',
   update: '更新',
   delete: '删除',
   rollback: '回滚',
-};
-
-const REVIEW_STATUS_BADGE: Record<
-  ReviewStatus,
-  { label: string; className: string }
-> = {
-  pending: { label: '🟡 待审核', className: 'bg-yellow-100 text-yellow-800' },
-  approved: { label: '✅ 已批准', className: 'bg-green-100 text-green-800' },
-  rejected: { label: '❌ 已拒绝', className: 'bg-red-100 text-red-800' },
 };
 
 function formatTimestamp(iso: string): string {
@@ -51,10 +50,10 @@ export function PendingReviewsList({
     return (
       <div className="space-y-3" data-testid="pending-reviews-loading">
         {Array.from({ length: 3 }).map((_, i) => (
-          <div key={i} className="animate-pulse rounded-lg border p-4">
-            <div className="h-4 w-2/3 rounded bg-gray-200" />
-            <div className="mt-2 h-3 w-1/3 rounded bg-gray-200" />
-          </div>
+          <Card key={i} className="space-y-2 p-4">
+            <Skeleton className="h-4 w-2/3 rounded" />
+            <Skeleton className="h-3 w-1/3 rounded" />
+          </Card>
         ))}
       </div>
     );
@@ -62,56 +61,58 @@ export function PendingReviewsList({
 
   if (sortedReviews.length === 0) {
     return (
-      <div
-        className="py-8 text-center text-gray-500"
-        data-testid="pending-reviews-empty"
-      >
-        暂无待审核项
+      <div data-testid="pending-reviews-empty">
+        <EmptyState
+          icon={ClipboardCheck}
+          tone="var(--color-success)"
+          title="暂无待审核项"
+          description="所有记忆变更都已处理完毕。"
+        />
       </div>
     );
   }
 
   return (
     <div className="space-y-3" data-testid="pending-reviews-list">
-      <div className="mb-2 text-sm font-medium text-gray-600">
+      <p className="text-sm font-medium text-muted">
         共 {sortedReviews.length} 项待审核
-      </div>
+      </p>
 
-      {sortedReviews.map((review) => (
-        <div
+      {sortedReviews.map((review, index) => (
+        <motion.button
           key={review.id}
-          className="cursor-pointer rounded-lg border border-gray-200 p-4 transition-colors hover:border-blue-300 hover:bg-blue-50/50"
+          type="button"
+          {...staggerList(index)}
+          className="block w-full rounded-card border border-border bg-card p-4 text-left shadow-node transition-all duration-150 hover:-translate-y-0.5 hover:border-border-hover hover:shadow-node-selected focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
           onClick={() => onSelectReview?.(review)}
           data-testid={`pending-review-${review.id}`}
         >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-gray-900">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex min-w-0 items-center gap-2">
+              <span className="truncate text-sm font-medium text-foreground">
                 {review.nodeName}
               </span>
-              <span className="inline-flex items-center rounded-full bg-blue-100 px-2 py-0.5 text-xs font-medium text-blue-800">
+              <Badge size="sm" tone={OPERATION_TONES[review.operationType]}>
                 {OPERATION_LABELS[review.operationType]}
-              </span>
+              </Badge>
             </div>
-            <span
-              className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${REVIEW_STATUS_BADGE.pending.className}`}
-            >
-              {REVIEW_STATUS_BADGE.pending.label}
-            </span>
+            <Badge size="sm" tone={REVIEW_STATUS_META.pending.tone}>
+              {REVIEW_STATUS_META.pending.label}
+            </Badge>
           </div>
 
           {review.changeSummary && (
-            <p className="mt-2 text-sm text-gray-600 line-clamp-2">
+            <p className="mt-2 line-clamp-2 text-sm text-muted">
               {review.changeSummary}
             </p>
           )}
 
-          <div className="mt-2 flex items-center gap-3 text-xs text-gray-400">
+          <div className="mt-2 flex items-center gap-3 text-[11px] text-muted-foreground">
             <span>v{review.versionNumber}</span>
             <span>{review.actor}</span>
             <span>{formatTimestamp(review.createdAt)}</span>
           </div>
-        </div>
+        </motion.button>
       ))}
     </div>
   );

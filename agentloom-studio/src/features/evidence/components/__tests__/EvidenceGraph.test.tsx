@@ -445,7 +445,7 @@ describe('EvidenceGraph components', () => {
       renderNode({ isHighlighted: true })
 
       expect(screen.getByTestId('agent-graph-node-n-1').className).toContain(
-        'ring-yellow-400/80',
+        'ring-warning',
       )
     })
 

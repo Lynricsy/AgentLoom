@@ -30,9 +30,9 @@ const autonomyVariants = cva(
   {
     variants: {
       mode: {
-        FIXED: 'border-border bg-muted/40 text-muted-foreground',
-        LLM_SUGGEST: 'border-amber-500/40 bg-amber-500/10 text-amber-300',
-        LLM_DECIDE: 'border-sky-500/40 bg-sky-500/10 text-sky-300',
+        FIXED: 'border-border bg-surface-elevated text-muted',
+        LLM_SUGGEST: 'border-warning/25 bg-warning/10 text-warning',
+        LLM_DECIDE: 'border-info/25 bg-info/10 text-info',
       },
     },
     defaultVariants: {
@@ -164,15 +164,15 @@ export const ReasoningBlock = memo(function ReasoningBlock({
     <section
       aria-label="Agent decision reasoning"
       className={cn(
-        'rounded-xl border border-border/60 bg-muted/20 px-3 py-2',
+        'rounded-card border border-border bg-surface-elevated px-3 py-2',
         className,
       )}
       data-testid="reasoning-block"
     >
-      <p className="mb-1 text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+      <p className="mb-1 text-[11px] font-medium uppercase tracking-wider text-muted">
         推理过程
       </p>
-      <div className="space-y-2 text-xs text-foreground/90 [&_code]:rounded-md [&_code]:bg-background/60 [&_code]:px-1 [&_code]:py-0.5 [&_h1]:text-sm [&_h1]:font-semibold [&_h2]:text-sm [&_h2]:font-semibold [&_h3]:text-xs [&_h3]:font-semibold [&_li]:ml-4 [&_li]:list-disc [&_ol]:list-decimal [&_ol]:pl-4 [&_p]:leading-5 [&_pre]:overflow-auto [&_pre]:rounded-lg [&_pre]:bg-background/60 [&_pre]:p-3 [&_ul]:list-disc [&_ul]:pl-4">
+      <div className="space-y-2 break-words text-xs text-foreground [&_code]:rounded-md [&_code]:bg-surface [&_code]:px-1 [&_code]:py-0.5 [&_h1]:text-sm [&_h1]:font-semibold [&_h2]:text-sm [&_h2]:font-semibold [&_h3]:text-xs [&_h3]:font-semibold [&_li]:ml-4 [&_li]:list-disc [&_ol]:list-decimal [&_ol]:pl-4 [&_p]:leading-5 [&_pre]:overflow-auto [&_pre]:rounded-lg [&_pre]:bg-surface [&_pre]:p-3 [&_ul]:list-disc [&_ul]:pl-4">
         <Markdown
           skipHtml
           components={{
@@ -230,10 +230,10 @@ export const AlternativesList = memo(function AlternativesList({
       className={cn('space-y-1', className)}
       data-testid="alternatives-list"
     >
-      <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+      <p className="text-[11px] font-medium uppercase tracking-wider text-muted">
         备选方案
         {formatConfidenceLabel(confidence) && (
-          <span className="ml-2 normal-case tracking-normal text-foreground/70">
+          <span className="ml-2 normal-case tracking-normal text-foreground">
             置信度 {formatConfidenceLabel(confidence)}
           </span>
         )}
@@ -242,7 +242,7 @@ export const AlternativesList = memo(function AlternativesList({
         {alternatives.map((alt) => (
           <li
             key={alt}
-            className="flex items-start gap-1.5 text-xs text-foreground/80"
+            className="flex items-start gap-1.5 text-xs text-foreground"
           >
             <span className="mt-1 h-1 w-1 shrink-0 rounded-full bg-muted-foreground" />
             {alt}
@@ -264,15 +264,15 @@ const actionLabels: Record<
 > = {
   approve: {
     label: '已批准',
-    className: 'text-emerald-300',
+    className: 'text-success',
     Icon: ShieldCheck,
   },
   modify: {
     label: '已修改',
-    className: 'text-amber-300',
+    className: 'text-warning',
     Icon: PencilLine,
   },
-  reject: { label: '已拒绝', className: 'text-rose-300', Icon: Ban },
+  reject: { label: '已拒绝', className: 'text-error', Icon: Ban },
 }
 
 function summarizeModifiedContent(modifiedContent: unknown) {
@@ -320,7 +320,7 @@ export const InterventionTag = memo(function InterventionTag({
   return (
     <div
       className={cn(
-        'space-y-2 rounded-xl border border-border/60 bg-muted/20 px-3 py-2',
+        'space-y-2 rounded-card border border-border bg-surface-elevated px-3 py-2',
         className,
       )}
       data-testid="intervention-tag"
@@ -331,20 +331,20 @@ export const InterventionTag = memo(function InterventionTag({
           {actionMeta.label}
         </span>
         {resolvedBy && (
-          <span className="text-xs text-muted-foreground">处理人 {resolvedBy}</span>
+          <span className="text-xs text-muted">处理人 {resolvedBy}</span>
         )}
       </div>
 
       {feedback && (
-        <p className="w-full text-xs text-foreground/80">{feedback}</p>
+        <p className="w-full break-words text-xs text-foreground">{feedback}</p>
       )}
 
       {modifiedSummary && (
-        <div className="rounded-lg border border-border/50 bg-background/50 px-2.5 py-2">
-          <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+        <div className="rounded-lg border border-border bg-surface px-2.5 py-2">
+          <p className="text-[11px] font-medium uppercase tracking-wider text-muted">
             修改摘要
           </p>
-          <p className="mt-1 text-xs text-foreground/80" data-testid="intervention-modified-content">
+          <p className="mt-1 break-words text-xs text-foreground" data-testid="intervention-modified-content">
             {modifiedSummary}
           </p>
         </div>

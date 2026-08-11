@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ToastProvider } from '@/shared/ui/toast';
 import { MemoryInstanceDetailPage } from './MemoryInstanceDetailPage';
 import type { MemoryInstanceDetail } from '../types';
 
@@ -10,7 +11,6 @@ const mocks = vi.hoisted(() => ({
   useMemoryInstance: vi.fn(),
   useDeleteMemoryInstance: vi.fn(),
   navigate: vi.fn(),
-  confirmResult: true,
 }));
 
 vi.mock('../hooks/useMemoryInstances', () => ({
@@ -20,10 +20,17 @@ vi.mock('../hooks/useMemoryInstances', () => ({
 
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => mocks.navigate,
+  Link: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
 }));
 
-// 模拟 window.confirm
-vi.stubGlobal('confirm', () => mocks.confirmResult);
+/** 页面依赖 ToastProvider 上报删除失败 */
+function renderPage(memoryInstanceId = 'mi-1') {
+  return render(
+    <ToastProvider>
+      <MemoryInstanceDetailPage memoryInstanceId={memoryInstanceId} />
+    </ToastProvider>,
+  );
+}
 
 // --- Test data factory ---
 
@@ -86,18 +93,17 @@ function setupMocks(
 describe('MemoryInstanceDetailPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.confirmResult = true;
   });
 
   it('显示加载状态', () => {
     setupMocks({ isLoading: true });
-    render(<MemoryInstanceDetailPage memoryInstanceId="mi-1" />);
-    expect(document.querySelector('.animate-spin')).toBeInTheDocument();
+    renderPage();
+    expect(screen.getByTestId('memory-detail-skeleton')).toBeInTheDocument();
   });
 
   it('显示错误信息', () => {
     setupMocks({ isError: true, instance: null });
-    render(<MemoryInstanceDetailPage memoryInstanceId="mi-1" />);
+    renderPage();
     expect(screen.getByText('加载记忆实例失败')).toBeInTheDocument();
     expect(screen.getByText('返回列表')).toBeInTheDocument();
   });
@@ -109,7 +115,7 @@ describe('MemoryInstanceDetailPage', () => {
         description: '包含产品相关的知识图谱',
       }),
     });
-    render(<MemoryInstanceDetailPage memoryInstanceId="mi-1" />);
+    renderPage();
 
     expect(screen.getByText('产品知识库')).toBeInTheDocument();
     expect(
@@ -124,14 +130,16 @@ describe('MemoryInstanceDetailPage', () => {
         validDomains: ['d1', 'd2'],
       }),
     });
-    render(<MemoryInstanceDetailPage memoryInstanceId="mi-1" />);
+    renderPage();
 
     expect(screen.getByText('节点数')).toBeInTheDocument();
     expect(screen.getByText('42')).toBeInTheDocument();
     expect(screen.getByText('边数')).toBeInTheDocument();
     expect(screen.getByText('78')).toBeInTheDocument();
-    const statCards = document.querySelectorAll('.rounded-lg.border.border-border.bg-card.p-4');
-    expect(statCards.length).toBeGreaterThanOrEqual(4);
+    const statCards = document.querySelectorAll(
+      '[data-testid="memory-stat-card"]',
+    );
+    expect(statCards.length).toBe(4);
     expect(screen.getByText('创建时间')).toBeInTheDocument();
   });
 
@@ -141,7 +149,7 @@ describe('MemoryInstanceDetailPage', () => {
         validDomains: ['product-knowledge', 'customer-service'],
       }),
     });
-    render(<MemoryInstanceDetailPage memoryInstanceId="mi-1" />);
+    renderPage();
 
     expect(screen.getByText('product-knowledge')).toBeInTheDocument();
     expect(screen.getByText('customer-service')).toBeInTheDocument();
@@ -151,7 +159,7 @@ describe('MemoryInstanceDetailPage', () => {
     setupMocks({
       instance: createMemoryInstanceDetail({ validDomains: [] }),
     });
-    render(<MemoryInstanceDetailPage memoryInstanceId="mi-1" />);
+    renderPage();
     expect(screen.getByText('未配置有效域')).toBeInTheDocument();
   });
 
@@ -161,7 +169,7 @@ describe('MemoryInstanceDetailPage', () => {
         coreMemoryUris: ['memory://persona/default', 'memory://rules/safety'],
       }),
     });
-    render(<MemoryInstanceDetailPage memoryInstanceId="mi-1" />);
+    renderPage();
 
     expect(
       screen.getByText('memory://persona/default'),
@@ -175,7 +183,7 @@ describe('MemoryInstanceDetailPage', () => {
     setupMocks({
       instance: createMemoryInstanceDetail({ coreMemoryUris: [] }),
     });
-    render(<MemoryInstanceDetailPage memoryInstanceId="mi-1" />);
+    renderPage();
     expect(screen.getByText('未配置核心记忆 URI')).toBeInTheDocument();
   });
 
@@ -185,7 +193,7 @@ describe('MemoryInstanceDetailPage', () => {
         systemPromptOverride: '你是一个专业的客服助手',
       }),
     });
-    render(<MemoryInstanceDetailPage memoryInstanceId="mi-1" />);
+    renderPage();
     expect(
       screen.getByText('你是一个专业的客服助手'),
     ).toBeInTheDocument();
@@ -197,13 +205,13 @@ describe('MemoryInstanceDetailPage', () => {
         systemPromptOverride: null,
       }),
     });
-    render(<MemoryInstanceDetailPage memoryInstanceId="mi-1" />);
+    renderPage();
     expect(screen.getByText('使用默认模板')).toBeInTheDocument();
   });
 
   it('点击返回按钮导航到列表', async () => {
     setupMocks();
-    render(<MemoryInstanceDetailPage memoryInstanceId="mi-1" />);
+    renderPage();
 
     await userEvent.click(screen.getByText('返回'));
     expect(mocks.navigate).toHaveBeenCalledWith({ to: '/memory' });
@@ -211,7 +219,7 @@ describe('MemoryInstanceDetailPage', () => {
 
   it('点击设置按钮导航到设置页', async () => {
     setupMocks();
-    render(<MemoryInstanceDetailPage memoryInstanceId="mi-1" />);
+    renderPage();
 
     await userEvent.click(screen.getByText('设置'));
     expect(mocks.navigate).toHaveBeenCalledWith({
@@ -221,11 +229,12 @@ describe('MemoryInstanceDetailPage', () => {
   });
 
   it('点击删除按钮并确认后调用 mutation', async () => {
-    mocks.confirmResult = true;
     const { deleteFn } = setupMocks();
-    render(<MemoryInstanceDetailPage memoryInstanceId="mi-1" />);
+    renderPage();
 
-    await userEvent.click(screen.getByText('删除'));
+    // 删除走 AlertDialog 二次确认，不再使用 window.confirm
+    await userEvent.click(screen.getByRole('button', { name: '删除' }));
+    await userEvent.click(screen.getByRole('button', { name: '确认删除' }));
 
     expect(deleteFn).toHaveBeenCalledWith('mi-1');
     expect(mocks.navigate).toHaveBeenCalledWith({ to: '/memory' });
@@ -235,13 +244,13 @@ describe('MemoryInstanceDetailPage', () => {
     setupMocks({
       instance: createMemoryInstanceDetail({ status: 'active' }),
     });
-    render(<MemoryInstanceDetailPage memoryInstanceId="mi-1" />);
+    renderPage();
     expect(screen.getByText('运行中')).toBeInTheDocument();
   });
 
   it('错误页面返回列表按钮可用', async () => {
     setupMocks({ isError: true, instance: null });
-    render(<MemoryInstanceDetailPage memoryInstanceId="mi-1" />);
+    renderPage();
 
     await userEvent.click(screen.getByText('返回列表'));
     expect(mocks.navigate).toHaveBeenCalledWith({ to: '/memory' });

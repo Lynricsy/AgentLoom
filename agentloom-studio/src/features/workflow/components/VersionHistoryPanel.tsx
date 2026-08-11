@@ -10,6 +10,10 @@ import {
   Archive,
 } from "lucide-react";
 import { cn } from "@/shared/lib/utils";
+import { EmptyState } from "@/shared/components/empty-state/EmptyState";
+import { Badge } from "@/shared/ui/badge";
+import { Button } from "@/shared/ui/button";
+import { Skeleton } from "@/shared/ui/skeleton";
 import { formatRelativeTime } from "@/features/canvas/lib/formatRelativeTime";
 import type { WorkflowStatus, WorkflowVersion } from "../types";
 import { useWorkflowVersions } from "../api/versionQueries";
@@ -61,15 +65,12 @@ function formatHistoryRecordLabel(version: WorkflowVersion): string {
 
 function VersionItemSkeleton() {
   return (
-    <div
-      className="animate-pulse border-b border-border p-4"
-      data-testid="version-item-skeleton"
-    >
+    <div className="border-b border-border p-4" data-testid="version-item-skeleton">
       <div className="flex items-center gap-2">
-        <div className="h-5 w-10 rounded bg-muted" />
-        <div className="h-4 w-32 rounded bg-muted" />
+        <Skeleton className="h-5 w-10 rounded" />
+        <Skeleton className="h-4 w-32 rounded" />
       </div>
-      <div className="mt-2 h-3 w-24 rounded bg-muted" />
+      <Skeleton className="mt-2 h-3 w-24 rounded" />
     </div>
   );
 }
@@ -100,21 +101,14 @@ const VersionItem = memo(function VersionItem({
 
   return (
     <div
-      className="group border-b border-border p-4 transition-colors hover:bg-muted/30"
+      className="group border-b border-border p-4 transition-colors hover:bg-surface-elevated"
       data-testid={`version-item-${version.versionNumber}`}
     >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span
-            className={cn(
-              "inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium",
-              isReleased
-                ? "bg-primary/10 text-primary"
-                : "bg-muted text-muted-foreground",
-            )}
-          >
+          <Badge variant={isReleased ? "default" : "secondary"} className="rounded-md">
             {formatVersionRecordLabel(version)}
-          </span>
+          </Badge>
           {version.label && (
             <span className="flex items-center gap-1 text-sm text-foreground">
               <Tag className="h-3 w-3" />
@@ -124,34 +118,26 @@ const VersionItem = memo(function VersionItem({
         </div>
 
         <div className="flex items-center gap-1">
-          {isPublished && (
-            <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-2 py-0.5 text-xs font-medium text-emerald-600">
-              当前发布
-            </span>
-          )}
-          {!isPublished && isReleased && (
-            <span className="inline-flex items-center rounded-full bg-sky-500/10 px-2 py-0.5 text-xs font-medium text-sky-600">
-              历史发布
-            </span>
-          )}
+          {isPublished && <Badge variant="success">当前发布</Badge>}
+          {!isPublished && isReleased && <Badge variant="info">历史发布</Badge>}
           {isArchived && (
-            <span className="inline-flex items-center rounded-full bg-gray-500/10 px-2 py-0.5 text-xs font-medium text-gray-500">
-              <Archive className="mr-1 h-3 w-3" />
+            <Badge variant="secondary">
+              <Archive className="h-3 w-3" />
               已归档
-            </span>
+            </Badge>
           )}
         </div>
       </div>
 
       <div className="mt-2 flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1 space-y-2">
-          <span className="flex items-center gap-1 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1 text-xs text-muted">
             <Clock className="h-3 w-3" />
             {formatRelativeTime(new Date(version.createdAt))}
           </span>
 
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 font-medium text-primary">
+          <div className="flex items-center gap-2 text-xs text-muted">
+            <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-[10px] font-medium text-primary">
               {formatCreatorInitial(version.createdBy)}
             </span>
             <span data-testid={`version-created-by-${version.versionNumber}`}>
@@ -160,35 +146,37 @@ const VersionItem = memo(function VersionItem({
           </div>
 
           {version.snapshot?.metadata && (
-            <div className="text-xs text-muted-foreground">
+            <div className="text-xs text-muted">
               {version.snapshot.metadata.nodeCount} 个节点 ·{" "}
               {version.snapshot.metadata.edgeCount} 条连线
             </div>
           )}
 
           {releaseNotes && (
-            <p className="rounded-md border border-border/70 bg-muted/40 px-3 py-2 text-xs leading-5 text-foreground/80">
+            <p className="rounded-card border border-border bg-surface-elevated px-3 py-2 text-xs leading-5 text-foreground">
               {releaseNotes}
             </p>
           )}
         </div>
 
         {!isWorkflowArchived && (
-          <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+          <div className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
             {!isPublished && !isArchived && onPublish && (
-              <button
-                type="button"
-                className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-primary hover:bg-primary/10"
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-primary hover:bg-primary/10"
                 onClick={() => onPublish(version.id)}
                 data-testid={`publish-version-${version.versionNumber}`}
               >
                 <Upload className="h-3 w-3" />
                 {publishActionLabel}
-              </button>
+              </Button>
             )}
-            <button
-              type="button"
-              className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs text-amber-600 hover:bg-amber-500/10"
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-warning hover:bg-warning/10"
               onClick={() => onRollback(version)}
               disabled={isRollingBack}
               data-testid={`rollback-version-${version.versionNumber}`}
@@ -199,7 +187,7 @@ const VersionItem = memo(function VersionItem({
                 <RotateCcw className="h-3 w-3" />
               )}
               回滚
-            </button>
+            </Button>
           </div>
         )}
       </div>
@@ -341,7 +329,7 @@ export const VersionHistoryPanel = memo(function VersionHistoryPanel({
   return (
     <aside
       className={cn(
-        "fixed right-0 top-0 z-40 flex h-full w-[400px] flex-col border-l border-border bg-surface shadow-xl transition-transform duration-300",
+        "fixed right-0 top-0 z-40 flex h-full w-[min(400px,100vw)] flex-col border-l border-border bg-surface shadow-panel transition-transform duration-300",
         open ? "translate-x-0" : "translate-x-full",
       )}
       data-testid="version-history-panel"
@@ -350,38 +338,36 @@ export const VersionHistoryPanel = memo(function VersionHistoryPanel({
       {/* 头部 */}
       <div className="flex items-center justify-between border-b border-border px-4 py-3">
         <div className="flex items-center gap-2">
-          <History className="h-4 w-4 text-muted-foreground" />
-          <h2 className="text-sm font-medium">历史记录</h2>
-          {total > 0 && (
-            <span className="text-xs text-muted-foreground">({total})</span>
-          )}
+          <History className="h-4 w-4 text-muted" />
+          <h2 className="text-sm font-medium text-foreground">历史记录</h2>
+          {total > 0 && <span className="text-xs text-muted">({total})</span>}
         </div>
-        <button
-          type="button"
-          className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+        <Button
+          variant="ghost"
+          size="icon-sm"
           onClick={onClose}
           aria-label="关闭历史记录"
           data-testid="close-version-history"
         >
           <X className="h-4 w-4" />
-        </button>
+        </Button>
       </div>
 
       {/* 回滚确认 */}
       {rollbackTarget && (
         <div
-          className="border-b border-amber-500/20 bg-amber-500/5 p-4"
+          className="border-b border-warning/25 bg-warning/5 p-4"
           data-testid="rollback-confirm"
         >
-          <p className="text-sm text-amber-700">
+          <p className="text-sm text-foreground">
             确定要回滚到{formatHistoryRecordLabel(rollbackTarget)}
             {rollbackTarget.label ? `（${rollbackTarget.label}）` : ""}
             吗？当前未保存的更改将丢失。
           </p>
           <div className="mt-3 flex gap-2">
-            <button
-              type="button"
-              className="inline-flex items-center gap-1 rounded bg-amber-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-amber-700 disabled:opacity-50"
+            <Button
+              size="sm"
+              className="bg-warning text-white hover:bg-warning/90"
               onClick={confirmRollback}
               disabled={!!rollingBackId}
               data-testid="confirm-rollback"
@@ -392,15 +378,15 @@ export const VersionHistoryPanel = memo(function VersionHistoryPanel({
                 <RotateCcw className="h-3 w-3" />
               )}
               确认回滚
-            </button>
-            <button
-              type="button"
-              className="rounded px-3 py-1.5 text-xs text-muted-foreground hover:bg-muted"
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={cancelRollback}
               data-testid="cancel-rollback"
             >
               取消
-            </button>
+            </Button>
           </div>
         </div>
       )}
@@ -414,15 +400,12 @@ export const VersionHistoryPanel = memo(function VersionHistoryPanel({
             <VersionItemSkeleton />
           </div>
         ) : displayVersions.length === 0 ? (
-          <div
-            className="flex h-full flex-col items-center justify-center gap-2 text-muted-foreground"
-            data-testid="version-list-empty"
-          >
-            <History className="h-8 w-8 opacity-40" />
-            <p className="text-sm">暂无发布记录或快照</p>
-            <p className="text-xs">
-              保存快照或发布当前画布后，会在这里展示历史记录
-            </p>
+          <div className="p-4" data-testid="version-list-empty">
+            <EmptyState
+              icon={History}
+              title="暂无发布记录或快照"
+              description="保存快照或发布当前画布后，会在这里展示历史记录"
+            />
           </div>
         ) : (
           <div
@@ -442,10 +425,10 @@ export const VersionHistoryPanel = memo(function VersionHistoryPanel({
             ))}
             {isFetching && hasMorePages && (
               <div
-                className="flex items-center justify-center py-4 text-xs text-muted-foreground"
+                className="flex items-center justify-center gap-2 py-4 text-xs text-muted"
                 data-testid="version-list-loading-more"
               >
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <Loader2 className="h-4 w-4 animate-spin" />
                 正在加载更多版本...
               </div>
             )}
@@ -455,10 +438,10 @@ export const VersionHistoryPanel = memo(function VersionHistoryPanel({
 
       {footerLabel && (
         <div className="flex items-center justify-between border-t border-border px-4 py-2">
-          <span className="text-xs text-muted-foreground">
+          <span className="text-xs text-muted">
             已加载 {displayVersions.length}/{total} 条记录
           </span>
-          <span className="text-xs text-muted-foreground">{footerLabel}</span>
+          <span className="text-xs text-muted">{footerLabel}</span>
         </div>
       )}
     </aside>

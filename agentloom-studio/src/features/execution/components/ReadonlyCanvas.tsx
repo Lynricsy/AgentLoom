@@ -13,6 +13,9 @@ import {
 } from '@xyflow/react'
 import type { ExecutionDetail, ExecutionStep, ExecutionStepStatus } from '../types'
 import { stepStatusMeta } from '../lib/presentation'
+import { StepStatusBadge } from './StatusBadge'
+import { Badge } from '@/shared/ui/badge'
+import { Card } from '@/shared/ui/card'
 import { cn } from '@/shared/lib/utils'
 import { useTheme } from '@/shared/hooks/use-theme'
 
@@ -102,12 +105,11 @@ function ReadonlyCanvasNodeCard({ data }: NodeProps<ExecutionCanvasNode>) {
   return (
     <article
       className={cn(
-        'relative h-full w-full rounded-[26px] border px-3 py-2 text-left shadow-md transition',
+        'relative h-full w-full rounded-panel border px-3 py-2 text-left shadow-node transition-colors',
         data.isCompoundContainer
-          ? 'overflow-hidden border-dashed bg-[linear-gradient(180deg,rgba(15,23,42,0.72),rgba(15,23,42,0.46))]'
+          ? 'overflow-hidden border-dashed bg-surface-elevated'
           : 'min-w-[180px]',
         statusMeta.nodeClassName,
-        data.status === 'running' && 'animate-pulse',
         data.isSelected &&
           'ring-2 ring-primary/50 ring-offset-2 ring-offset-background',
       )}
@@ -115,7 +117,7 @@ function ReadonlyCanvasNodeCard({ data }: NodeProps<ExecutionCanvasNode>) {
       {data.isCompoundContainer ? (
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute inset-x-3 bottom-3 top-[72px] rounded-2xl border border-dashed border-border/40 bg-[radial-gradient(circle_at_top,rgba(148,163,184,0.12),transparent_60%)]"
+          className="pointer-events-none absolute inset-x-3 bottom-3 top-[72px] rounded-card border border-dashed border-border"
         />
       ) : null}
 
@@ -123,29 +125,21 @@ function ReadonlyCanvasNodeCard({ data }: NodeProps<ExecutionCanvasNode>) {
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold text-foreground">{data.label}</p>
           <div className="mt-1 flex flex-wrap items-center gap-2">
-            <p className="truncate text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+            <p className="truncate text-[11px] uppercase tracking-[0.18em] text-muted">
               {data.nodeType}
             </p>
             {data.isCompoundContainer ? (
-              <span className="inline-flex items-center rounded-full border border-border/60 bg-background/40 px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
+              <Badge variant="outline" size="sm">
                 compound
-              </span>
+              </Badge>
             ) : null}
           </div>
         </div>
-        <span
-          className={cn(
-            'inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium',
-            statusMeta.badgeClassName,
-          )}
-        >
-          <span className={cn('h-1.5 w-1.5 rounded-full', statusMeta.dotClassName)} />
-          {statusMeta.label}
-        </span>
+        <StepStatusBadge status={data.status} />
       </div>
 
       {data.summary ? (
-        <p className="relative z-[1] mt-3 text-[11px] leading-4 text-muted-foreground">
+        <p className="relative z-[1] mt-3 text-[11px] leading-4 text-muted">
           {data.summary}
         </p>
       ) : null}
@@ -255,8 +249,8 @@ export const ReadonlyCanvas = memo(function ReadonlyCanvas({
   }, [graph.edges, stepStatusByNodeId])
 
   return (
-    <div
-      className="h-full min-h-[320px] overflow-hidden rounded-3xl border border-border/70 bg-background/80"
+    <Card
+      className="h-full min-h-[320px] overflow-hidden"
       data-testid="readonly-canvas"
     >
       <ReactFlow<ExecutionCanvasNode, ExecutionCanvasEdge>
@@ -281,6 +275,6 @@ export const ReadonlyCanvas = memo(function ReadonlyCanvas({
           className="!border-border !bg-surface-elevated !shadow-lg"
         />
       </ReactFlow>
-    </div>
+    </Card>
   )
 })

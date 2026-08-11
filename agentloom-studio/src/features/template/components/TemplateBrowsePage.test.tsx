@@ -90,7 +90,7 @@ describe('TemplateBrowsePage', () => {
     expect(screen.getByText('报告')).toBeInTheDocument();
   });
 
-  it('加载中显示 spinner', () => {
+  it('加载中显示骨架屏', () => {
     mockUseTemplates.mockReturnValue({
       data: null,
       isLoading: true,
@@ -98,9 +98,9 @@ describe('TemplateBrowsePage', () => {
       refetch: vi.fn(),
     });
 
-    const { container } = render(<TemplateBrowsePage />);
+    render(<TemplateBrowsePage />);
 
-    expect(container.querySelector('.animate-spin')).toBeInTheDocument();
+    expect(screen.getAllByTestId('template-skeleton')).toHaveLength(6);
   });
 
   it('无模板时显示空状态', () => {

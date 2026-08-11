@@ -7,7 +7,7 @@ function MemoryGraphRoute() {
   const { id } = useParams({ from: '/memory/$id/graph' })
   return (
     <ReactFlowProvider>
-      <div className="h-screen w-screen bg-background">
+      <div className="h-full w-full bg-background">
         <MemoryGraphPage instanceId={id} />
       </div>
     </ReactFlowProvider>

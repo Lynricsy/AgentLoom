@@ -154,6 +154,23 @@ describe('PublicSharePage', () => {
     expect(screen.getByText('加载分享内容...')).toBeInTheDocument()
   })
 
+  it('shows empty state when the request settles without share data', () => {
+    render(<PublicSharePage />)
+
+    expect(screen.getByTestId('public-share-page')).toBeInTheDocument()
+    expect(screen.getByText('没有可展示的分享内容')).toBeInTheDocument()
+  })
+
+  it('falls back to an empty preview notice when the definition has no nodes', () => {
+    publicShareMock.data = makePublicShareData({
+      definition: { nodes: [], edges: [], viewport: { x: 0, y: 0, zoom: 1 } },
+    })
+    render(<PublicSharePage />)
+
+    expect(screen.queryByTestId('public-share-preview')).not.toBeInTheDocument()
+    expect(screen.getByText('这个分享没有可预览的画布')).toBeInTheDocument()
+  })
+
   it('renders workflow name, description, and ReactFlow canvas when data loaded', () => {
     publicShareMock.data = makePublicShareData()
     render(<PublicSharePage />)

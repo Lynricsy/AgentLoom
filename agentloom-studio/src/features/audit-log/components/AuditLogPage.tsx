@@ -1,5 +1,5 @@
-import { useMemo, useState, type ChangeEvent, type FormEvent } from 'react'
-import { History, ShieldAlert } from 'lucide-react'
+import { useMemo, useState, type ChangeEvent, type FormEvent, type ReactNode } from 'react'
+import { FileSearch, History, ShieldAlert } from 'lucide-react'
 
 import {
   useCreateEvidenceExport,
@@ -10,10 +10,21 @@ import {
   type EvidenceExportRequest,
 } from '@/features/evidence'
 import { useAuthToken } from '@/features/execution'
-import { Pagination } from '@/shared/components'
+import { DataTable, type DataTableColumn } from '@/shared/components/data-table/DataTable'
+import { EmptyState } from '@/shared/components/empty-state/EmptyState'
+import { PageHeader } from '@/shared/components/page-header/PageHeader'
+import { cn } from '@/shared/lib/utils'
+import { Badge } from '@/shared/ui/badge'
 import { Button, buttonVariants } from '@/shared/ui/button'
+import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card'
 import { Input } from '@/shared/ui/input'
-import { NativeSelect } from '@/shared/ui/native-select'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/shared/ui/select'
 
 import { useAuditLogDetail, useAuditLogResourceSequence, useAuditLogs } from '../hooks/useAuditLogs'
 import {
@@ -42,6 +53,9 @@ interface AuditLogFilterFormState {
 
 const DEFAULT_PAGE_SIZE = 20
 
+/** Radix Select 不接受空字符串 Item，用哨兵值表达「不筛选」 */
+const ANY_ACTOR_TYPE = '__any__'
+
 const EMPTY_FILTER_FORM: AuditLogFilterFormState = {
   from: '',
   to: '',
@@ -51,6 +65,18 @@ const EMPTY_FILTER_FORM: AuditLogFilterFormState = {
   executionId: '',
   actorType: '',
   actorId: '',
+}
+
+/** 导出任务状态 → Badge 语义色 */
+const EXPORT_STATUS_VARIANT: Record<
+  EvidenceExportJob['status'],
+  'default' | 'secondary' | 'success' | 'warning' | 'error'
+> = {
+  queued: 'secondary',
+  running: 'default',
+  completed: 'success',
+  failed: 'error',
+  expired: 'warning',
 }
 
 function formatTimestamp(value?: string | null): string {
@@ -174,6 +200,30 @@ function getExportStatusDescription(job: EvidenceExportJob): string {
   }
 }
 
+/** 筛选表单字段：统一 label 与控件的间距、字号 */
+function FilterField({
+  htmlFor,
+  label,
+  children,
+}: {
+  htmlFor: string
+  label: string
+  children: ReactNode
+}) {
+  return (
+    <div className="space-y-1.5">
+      <label className="block text-xs font-medium text-muted" htmlFor={htmlFor}>
+        {label}
+      </label>
+      {children}
+    </div>
+  )
+}
+
+function ErrorText({ children }: { children: ReactNode }) {
+  return <p className="text-xs font-medium text-error">{children}</p>
+}
+
 function EvidenceExportPanel({
   exportJob,
   downloadUrl,
@@ -205,20 +255,20 @@ function EvidenceExportPanel({
     : '基于当前筛选条件向服务端发起证据导出任务，并在这里查看状态与下载链接。'
 
   return (
-    <section className="mt-4 rounded-xl border border-border/60 bg-background/30 p-4">
+    <section className="mt-5 rounded-card border border-border bg-surface-elevated p-4">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-        <div className="space-y-2">
+        <div className="min-w-0 space-y-2">
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-sm font-semibold text-foreground">{statusTitle}</h2>
             {exportJob ? (
-              <span className="rounded-full border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground">
+              <Badge variant={EXPORT_STATUS_VARIANT[exportJob.status] ?? 'secondary'} size="sm">
                 状态：{exportJob.status}
-              </span>
+              </Badge>
             ) : null}
           </div>
-          <p className="max-w-2xl text-sm text-muted-foreground">{statusDescription}</p>
+          <p className="max-w-2xl text-xs leading-relaxed text-muted">{statusDescription}</p>
           {exportJob ? (
-            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
               <span>导出任务：{exportJob.id}</span>
               <span>命中执行：{exportJob.matchedExecutionCount}</span>
               <span>请求时间：{formatTimestamp(exportJob.requestedAt)}</span>
@@ -227,18 +277,18 @@ function EvidenceExportPanel({
           ) : null}
         </div>
 
-        <div className="flex flex-wrap gap-3">
-          <Button type="button" onClick={onCreate} disabled={isCreating}>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" size="sm" onClick={onCreate} disabled={isCreating}>
             {isCreating ? '创建中…' : '创建证据导出'}
           </Button>
           {exportJob ? (
-            <Button type="button" variant="outline" onClick={onRefreshStatus}>
+            <Button type="button" size="sm" variant="outline" onClick={onRefreshStatus}>
               刷新导出状态
             </Button>
           ) : null}
           {exportJob?.status === 'completed' && exportJob.matchedExecutionCount > 0 && downloadUrl ? (
             <a
-              className={buttonVariants({ variant: 'outline' })}
+              className={buttonVariants({ variant: 'outline', size: 'sm' })}
               href={downloadUrl}
               rel="noreferrer"
               target="_blank"
@@ -249,6 +299,7 @@ function EvidenceExportPanel({
           {exportJob?.status === 'completed' && exportJob.matchedExecutionCount > 0 ? (
             <Button
               type="button"
+              size="sm"
               variant="outline"
               onClick={onRefreshDownload}
               disabled={isRefreshingDownload}
@@ -259,31 +310,42 @@ function EvidenceExportPanel({
         </div>
       </div>
 
-      <div className="mt-3 space-y-2 text-sm">
-        {createError ? <p className="text-rose-400">{createError}</p> : null}
-        {jobError ? <p className="text-rose-400">{jobError}</p> : null}
-        {downloadError ? <p className="text-rose-400">{downloadError}</p> : null}
-        {refreshDownloadError ? <p className="text-rose-400">{refreshDownloadError}</p> : null}
-        {exportJob?.status === 'failed' && exportJob.lastError ? (
-          <p className="text-rose-400">{exportJob.lastError}</p>
-        ) : null}
-      </div>
+      {createError || jobError || downloadError || refreshDownloadError ||
+      (exportJob?.status === 'failed' && exportJob.lastError) ? (
+        <div className="mt-3 space-y-1">
+          {createError ? <ErrorText>{createError}</ErrorText> : null}
+          {jobError ? <ErrorText>{jobError}</ErrorText> : null}
+          {downloadError ? <ErrorText>{downloadError}</ErrorText> : null}
+          {refreshDownloadError ? <ErrorText>{refreshDownloadError}</ErrorText> : null}
+          {exportJob?.status === 'failed' && exportJob.lastError ? (
+            <ErrorText>{exportJob.lastError}</ErrorText>
+          ) : null}
+        </div>
+      ) : null}
     </section>
   )
 }
 
-function renderJsonPanel(label: string, value: unknown, testId?: string) {
+function JsonPanel({
+  label,
+  value,
+  testId,
+}: {
+  label: string
+  value: unknown
+  testId?: string
+}) {
   return (
-    <details open className="rounded-xl border border-border/60 bg-muted/20 p-4">
-      <summary className="cursor-pointer text-sm font-medium text-foreground">
+    <details open className="rounded-card border border-border bg-surface-elevated p-3">
+      <summary className="cursor-pointer text-xs font-semibold text-foreground">
         {label}
       </summary>
-      <div className="mt-3">
+      <div className="mt-2">
         {value == null ? (
-          <p className="text-sm text-muted-foreground">暂无数据</p>
+          <p className="text-xs text-muted">暂无数据</p>
         ) : (
           <pre
-            className="max-h-72 overflow-auto rounded-lg bg-muted/60 p-2 text-[11px] leading-relaxed text-muted-foreground"
+            className="max-h-72 overflow-auto rounded-md bg-background p-2 text-[11px] leading-relaxed text-muted"
             data-testid={testId}
           >
             {stringifyValue(value)}
@@ -305,86 +367,25 @@ function getForbiddenMessage(authToken?: string, role?: string | null) {
 function AuditLogForbiddenState({ authToken, role }: { authToken?: string; role?: string | null }) {
   return (
     <div className="space-y-6 px-4 py-6 sm:px-6 lg:px-8" data-testid="audit-log-forbidden">
-      <div className="space-y-2">
-        <h1 className="text-2xl font-semibold text-foreground">审计日志</h1>
-        <p className="max-w-2xl text-sm text-muted-foreground">
-          审计日志用于回溯关键配置、资源和执行变更，只对具备合规查看权限的成员开放。
-        </p>
-      </div>
+      <PageHeader
+        icon={History}
+        title="审计日志"
+        description="审计日志用于回溯关键配置、资源和执行变更，只对具备合规查看权限的成员开放。"
+      />
 
-      <section className="rounded-2xl border border-amber-500/30 bg-surface-elevated p-6 shadow-sm">
-        <div className="flex items-start gap-3">
-          <span className="rounded-full bg-amber-500/10 p-2 text-amber-300">
+      <Card className="border-warning/30">
+        <CardContent className="flex items-start gap-3 p-5">
+          <span className="grid h-10 w-10 shrink-0 place-items-center rounded-card bg-warning/10 text-warning">
             <ShieldAlert className="h-5 w-5" />
           </span>
-          <div className="space-y-2">
-            <h2 className="text-lg font-semibold text-foreground">无权访问审计日志</h2>
-            <p className="text-sm text-muted-foreground">
+          <div className="space-y-1.5">
+            <h2 className="text-sm font-semibold text-foreground">无权访问审计日志</h2>
+            <p className="text-xs leading-relaxed text-muted">
               {getForbiddenMessage(authToken, role)}
             </p>
           </div>
-        </div>
-      </section>
-    </div>
-  )
-}
-
-function AuditLogList({
-  records,
-  selectedAuditLogId,
-  onSelect,
-}: {
-  records: AuditLogRecord[]
-  selectedAuditLogId: string | null
-  onSelect: (id: string) => void
-}) {
-  return (
-    <div className="space-y-3">
-      {records.map((record) => {
-        const isSelected = record.id === selectedAuditLogId
-
-        return (
-          <button
-            key={record.id}
-            type="button"
-            className={[
-              'w-full rounded-xl border p-4 text-left transition-colors',
-              isSelected
-                ? 'border-primary/40 bg-primary/5 shadow-sm'
-                : 'border-border bg-background/40 hover:border-border/80 hover:bg-background/60',
-            ].join(' ')}
-            data-testid={`audit-log-row-${record.id}`}
-            onClick={() => onSelect(record.id)}
-          >
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="min-w-0 flex-1 space-y-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="rounded-full border border-border px-2.5 py-1 text-xs font-medium text-foreground">
-                    {record.eventType}
-                  </span>
-                  <span className="rounded-full border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground">
-                    {record.resourceType}
-                  </span>
-                  <span className="rounded-full border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground">
-                    {record.actorType}
-                  </span>
-                </div>
-                <p className="text-sm font-medium text-foreground">
-                  {record.summary ?? '未提供摘要'}
-                </p>
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                  <span>资源 ID：{record.resourceId}</span>
-                  <span>执行 ID：{record.executionId ?? '—'}</span>
-                  <span>操作人：{record.actorId ?? '系统'}</span>
-                </div>
-              </div>
-              <span className="text-xs text-muted-foreground">
-                {formatTimestamp(record.createdAt)}
-              </span>
-            </div>
-          </button>
-        )
-      })}
+        </CardContent>
+      </Card>
     </div>
   )
 }
@@ -406,132 +407,130 @@ function AuditLogDetailView({
 }) {
   return (
     <div className="space-y-4" data-testid="audit-log-detail">
-      <section className="rounded-2xl border border-border bg-surface-elevated p-5 shadow-sm">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="rounded-full border border-border px-2.5 py-1 text-xs font-medium text-foreground">
-                {detail.eventType}
-              </span>
-              <span className="rounded-full border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground">
-                {detail.resourceType}
-              </span>
-              <span className="rounded-full border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground">
-                {detail.actorType}
-              </span>
-            </div>
-            <div className="space-y-2">
-              <h2 className="text-xl font-semibold text-foreground">
-                {detail.summary ?? '未提供摘要'}
-              </h2>
-              <p className="text-sm text-muted-foreground">
+      <Card>
+        <CardHeader className="gap-3">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <Badge variant="outline" size="sm">
+              {detail.eventType}
+            </Badge>
+            <Badge variant="secondary" size="sm">
+              {detail.resourceType}
+            </Badge>
+            <Badge variant="secondary" size="sm">
+              {detail.actorType}
+            </Badge>
+          </div>
+
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0 space-y-1">
+              <CardTitle className="text-base">{detail.summary ?? '未提供摘要'}</CardTitle>
+              <p className="text-xs leading-relaxed text-muted">
                 记录于 {formatTimestamp(detail.createdAt)}，用于追踪资源与执行相关的配置或状态变更。
               </p>
             </div>
+
+            <Button size="sm" onClick={onLoadSequence} variant="outline" className="shrink-0">
+              查看资源时序
+            </Button>
           </div>
+        </CardHeader>
 
-          <Button onClick={onLoadSequence} variant="outline">
-            查看资源时序
-          </Button>
-        </div>
-
-        <div className="mt-5 grid gap-4 text-sm sm:grid-cols-2">
+        <CardContent className="grid gap-4 sm:grid-cols-2">
           <div className="space-y-1">
-            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+            <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted">
               日志 ID
             </p>
-            <p className="font-mono text-xs break-all text-foreground">{detail.id}</p>
+            <p className="break-all font-mono text-xs text-foreground">{detail.id}</p>
           </div>
           <div className="space-y-1">
-            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+            <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted">
               资源 ID
             </p>
-            <p className="font-mono text-xs break-all text-foreground">{detail.resourceId}</p>
+            <p className="break-all font-mono text-xs text-foreground">{detail.resourceId}</p>
           </div>
           <div className="space-y-1">
-            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+            <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted">
               操作人
             </p>
-            <p className="text-foreground">{detail.actorId ?? '系统 / 服务账号'}</p>
+            <p className="text-xs text-foreground">{detail.actorId ?? '系统 / 服务账号'}</p>
           </div>
           <div className="space-y-1">
-            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+            <p className="text-[11px] font-medium uppercase tracking-[0.14em] text-muted">
               执行 ID
             </p>
-            <p className="font-mono text-xs break-all text-foreground">
+            <p className="break-all font-mono text-xs text-foreground">
               {detail.executionId ?? '—'}
             </p>
           </div>
-        </div>
-      </section>
+        </CardContent>
+      </Card>
 
-      <section className="grid gap-4 xl:grid-cols-3">
-        {renderJsonPanel('变更前', detail.before, 'audit-log-before')}
-        {renderJsonPanel('变更后', detail.after, 'audit-log-after')}
-        {renderJsonPanel('附加元数据', detail.metadata, 'audit-log-metadata')}
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-1">
+        <JsonPanel label="变更前" value={detail.before} testId="audit-log-before" />
+        <JsonPanel label="变更后" value={detail.after} testId="audit-log-after" />
+        <JsonPanel label="附加元数据" value={detail.metadata} testId="audit-log-metadata" />
       </section>
 
       {isSequenceVisible ? (
-        <section
-          className="rounded-2xl border border-border bg-surface-elevated p-5 shadow-sm"
-          data-testid="audit-log-sequence"
-        >
-          <div className="flex items-center justify-between gap-3">
-            <div className="space-y-1">
-              <h3 className="text-lg font-semibold text-foreground">资源时序</h3>
-              <p className="text-sm text-muted-foreground">
-                同一资源的审计记录按时间顺序展示，便于回溯状态演进。
-              </p>
+        <Card data-testid="audit-log-sequence">
+          <CardHeader>
+            <div className="flex flex-wrap items-start justify-between gap-2">
+              <div className="space-y-1">
+                <CardTitle>资源时序</CardTitle>
+                <p className="text-xs text-muted">
+                  同一资源的审计记录按时间顺序展示，便于回溯状态演进。
+                </p>
+              </div>
+              <Badge variant="secondary" size="sm">
+                {sequenceRecords.length} 条记录
+              </Badge>
             </div>
-            <span className="rounded-full border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground">
-              {sequenceRecords.length} 条记录
-            </span>
-          </div>
+          </CardHeader>
 
-          {isSequenceLoading ? (
-            <p className="mt-4 text-sm text-muted-foreground">加载资源时序中…</p>
-          ) : null}
+          <CardContent className="space-y-2">
+            {isSequenceLoading ? (
+              <p className="text-xs text-muted" role="status">
+                加载资源时序中…
+              </p>
+            ) : null}
 
-          {sequenceError ? (
-            <p className="mt-4 text-sm text-rose-400">{sequenceError}</p>
-          ) : null}
+            {sequenceError ? <ErrorText>{sequenceError}</ErrorText> : null}
 
-          {!isSequenceLoading && !sequenceError ? (
-            <div className="mt-4 space-y-3">
-              {sequenceRecords.length > 0 ? (
+            {!isSequenceLoading && !sequenceError ? (
+              sequenceRecords.length > 0 ? (
                 sequenceRecords.map((record) => (
                   <div
                     key={record.id}
-                    className={[
-                      'rounded-xl border p-4',
+                    className={cn(
+                      'rounded-card border p-3 transition-colors',
                       record.id === detail.id
                         ? 'border-primary/40 bg-primary/5'
-                        : 'border-border/60 bg-background/30',
-                    ].join(' ')}
+                        : 'border-border bg-surface-elevated',
+                    )}
                   >
-                    <div className="flex flex-wrap items-center justify-between gap-3">
-                      <div className="space-y-1">
-                        <p className="text-sm font-medium text-foreground">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="min-w-0 space-y-1">
+                        <p className="text-xs font-medium text-foreground">
                           {record.summary ?? '未提供摘要'}
                         </p>
-                        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                        <div className="flex flex-wrap items-center gap-2 text-[11px] text-muted">
                           <span>{record.eventType}</span>
                           <span>{record.actorType}</span>
                           <span>{record.actorId ?? '系统'}</span>
                         </div>
                       </div>
-                      <span className="text-xs text-muted-foreground">
+                      <span className="text-[11px] text-muted">
                         {formatTimestamp(record.createdAt)}
                       </span>
                     </div>
                   </div>
                 ))
               ) : (
-                <p className="text-sm text-muted-foreground">该资源暂无额外时序记录。</p>
-              )}
-            </div>
-          ) : null}
-        </section>
+                <p className="text-xs text-muted">该资源暂无额外时序记录。</p>
+              )
+            ) : null}
+          </CardContent>
+        </Card>
       ) : null}
     </div>
   )
@@ -539,7 +538,7 @@ function AuditLogDetailView({
 
 function AuditLogContent() {
   const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
+  const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE)
   const [filterForm, setFilterForm] = useState<AuditLogFilterFormState>(EMPTY_FILTER_FORM)
   const [appliedFilters, setAppliedFilters] = useState<AuditLogListParams>({})
   const [selectedAuditLogId, setSelectedAuditLogId] = useState<string | null>(null)
@@ -617,6 +616,72 @@ function AuditLogContent() {
       ? refreshDownloadMutation.error.message
       : null
 
+  const columns = useMemo<DataTableColumn<AuditLogRecord>[]>(
+    () => [
+      {
+        key: 'createdAt',
+        header: '时间',
+        className: 'w-[9.5rem]',
+        cell: (record) => (
+          <div
+            className="flex items-center gap-2"
+            data-testid={`audit-log-row-${record.id}`}
+          >
+            <span
+              aria-hidden
+              className={cn(
+                'h-6 w-0.5 shrink-0 rounded-full transition-colors',
+                record.id === resolvedSelectedAuditLogId ? 'bg-primary' : 'bg-transparent',
+              )}
+            />
+            <span className="whitespace-nowrap text-xs text-muted">
+              {formatTimestamp(record.createdAt)}
+            </span>
+          </div>
+        ),
+      },
+      {
+        key: 'event',
+        header: '事件与摘要',
+        cell: (record) => (
+          <div className="min-w-0 space-y-1">
+            <Badge variant="outline" size="sm">
+              {record.eventType}
+            </Badge>
+            <p className="truncate text-xs font-medium text-foreground">
+              {record.summary ?? '未提供摘要'}
+            </p>
+          </div>
+        ),
+      },
+      {
+        key: 'resource',
+        header: '资源',
+        hideBelow: 'md',
+        cell: (record) => (
+          <div className="min-w-0 space-y-1">
+            <p className="text-xs text-foreground">{record.resourceType}</p>
+            <p className="truncate font-mono text-[11px] text-muted">{record.resourceId}</p>
+          </div>
+        ),
+      },
+      {
+        key: 'actor',
+        header: '操作人',
+        hideBelow: 'lg',
+        cell: (record) => (
+          <div className="min-w-0 space-y-1">
+            <Badge variant="secondary" size="sm">
+              {record.actorType}
+            </Badge>
+            <p className="truncate text-[11px] text-muted">{record.actorId ?? '系统'}</p>
+          </div>
+        ),
+      },
+    ],
+    [resolvedSelectedAuditLogId],
+  )
+
   function handleFilterChange(
     key: keyof AuditLogFilterFormState,
     event: ChangeEvent<HTMLInputElement | HTMLSelectElement>,
@@ -668,213 +733,218 @@ function AuditLogContent() {
 
   return (
     <div className="space-y-6 px-4 py-6 sm:px-6 lg:px-8" data-testid="audit-log-page">
-      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div className="space-y-2">
-          <h1 className="text-2xl font-semibold text-foreground">审计日志</h1>
-          <p className="max-w-3xl text-sm text-muted-foreground">
-            按时间、事件、资源与操作人筛选关键变更记录，并查看变更前后内容与同资源时序。
-          </p>
-        </div>
-        <div className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground">
-          仅 owner / admin 可访问
-        </div>
-      </div>
+      <PageHeader
+        icon={History}
+        title="审计日志"
+        description="按时间、事件、资源与操作人筛选关键变更记录，并查看变更前后内容与同资源时序。"
+        actions={<Badge variant="secondary">仅 owner / admin 可访问</Badge>}
+      />
 
-      <form
-        className="rounded-2xl border border-border bg-surface-elevated p-5 shadow-sm"
-        onSubmit={handleApplyFilters}
-      >
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-          <label className="space-y-2 text-sm text-foreground" htmlFor="audit-log-filter-from">
-            <span>开始时间</span>
-            <Input
-              id="audit-log-filter-from"
-              type="datetime-local"
-              value={filterForm.from}
-              onChange={(event) => handleFilterChange('from', event)}
-            />
-          </label>
-          <label className="space-y-2 text-sm text-foreground" htmlFor="audit-log-filter-to">
-            <span>结束时间</span>
-            <Input
-              id="audit-log-filter-to"
-              type="datetime-local"
-              value={filterForm.to}
-              onChange={(event) => handleFilterChange('to', event)}
-            />
-          </label>
-          <label className="space-y-2 text-sm text-foreground" htmlFor="audit-log-filter-event-type">
-            <span>事件类型</span>
-            <Input
-              id="audit-log-filter-event-type"
-              placeholder="如 workflow.updated"
-              value={filterForm.eventType}
-              onChange={(event) => handleFilterChange('eventType', event)}
-            />
-          </label>
-          <label className="space-y-2 text-sm text-foreground" htmlFor="audit-log-filter-resource-type">
-            <span>资源类型</span>
-            <Input
-              id="audit-log-filter-resource-type"
-              placeholder="如 workflow_definition"
-              value={filterForm.resourceType}
-              onChange={(event) => handleFilterChange('resourceType', event)}
-            />
-          </label>
-          <label className="space-y-2 text-sm text-foreground" htmlFor="audit-log-filter-resource-id">
-            <span>资源 ID</span>
-            <Input
-              id="audit-log-filter-resource-id"
-              placeholder="resource-id"
-              value={filterForm.resourceId}
-              onChange={(event) => handleFilterChange('resourceId', event)}
-            />
-          </label>
-          <label className="space-y-2 text-sm text-foreground" htmlFor="audit-log-filter-execution-id">
-            <span>执行 ID</span>
-            <Input
-              id="audit-log-filter-execution-id"
-              placeholder="execution-id"
-              value={filterForm.executionId}
-              onChange={(event) => handleFilterChange('executionId', event)}
-            />
-          </label>
-          <label className="space-y-2 text-sm text-foreground" htmlFor="audit-log-filter-actor-type">
-            <span>操作人类型</span>
-            <NativeSelect
-              id="audit-log-filter-actor-type"
-              value={filterForm.actorType}
-              onValueChange={(value) => setFilterForm((current) => ({ ...current, actorType: value }))}
-            >
-              <option value="">全部类型</option>
-              {AUDIT_ACTOR_TYPES.map((actorType) => (
-                <option key={actorType} value={actorType}>
-                  {actorType}
-                </option>
-              ))}
-            </NativeSelect>
-          </label>
-          <label className="space-y-2 text-sm text-foreground" htmlFor="audit-log-filter-actor-id">
-            <span>操作人 ID</span>
-            <Input
-              id="audit-log-filter-actor-id"
-              placeholder="actor-id"
-              value={filterForm.actorId}
-              onChange={(event) => handleFilterChange('actorId', event)}
-            />
-          </label>
-          <label className="space-y-2 text-sm text-foreground" htmlFor="audit-log-filter-page-size">
-            <span>每页条数</span>
-            <NativeSelect
-              id="audit-log-filter-page-size"
-              value={String(pageSize)}
-              onValueChange={handlePageSizeChange}
-            >
-              {AUDIT_PAGE_SIZE_OPTIONS.map((option) => (
-                <option key={option} value={String(option)}>
-                  {option} / 页
-                </option>
-              ))}
-            </NativeSelect>
-          </label>
-        </div>
+      <Card>
+        <form onSubmit={handleApplyFilters}>
+          <CardContent className="p-4">
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              <FilterField htmlFor="audit-log-filter-from" label="开始时间">
+                <Input
+                  id="audit-log-filter-from"
+                  type="datetime-local"
+                  value={filterForm.from}
+                  onChange={(event) => handleFilterChange('from', event)}
+                />
+              </FilterField>
+              <FilterField htmlFor="audit-log-filter-to" label="结束时间">
+                <Input
+                  id="audit-log-filter-to"
+                  type="datetime-local"
+                  value={filterForm.to}
+                  onChange={(event) => handleFilterChange('to', event)}
+                />
+              </FilterField>
+              <FilterField htmlFor="audit-log-filter-event-type" label="事件类型">
+                <Input
+                  id="audit-log-filter-event-type"
+                  placeholder="如 workflow.updated"
+                  value={filterForm.eventType}
+                  onChange={(event) => handleFilterChange('eventType', event)}
+                />
+              </FilterField>
+              <FilterField htmlFor="audit-log-filter-resource-type" label="资源类型">
+                <Input
+                  id="audit-log-filter-resource-type"
+                  placeholder="如 workflow_definition"
+                  value={filterForm.resourceType}
+                  onChange={(event) => handleFilterChange('resourceType', event)}
+                />
+              </FilterField>
+              <FilterField htmlFor="audit-log-filter-resource-id" label="资源 ID">
+                <Input
+                  id="audit-log-filter-resource-id"
+                  placeholder="resource-id"
+                  value={filterForm.resourceId}
+                  onChange={(event) => handleFilterChange('resourceId', event)}
+                />
+              </FilterField>
+              <FilterField htmlFor="audit-log-filter-execution-id" label="执行 ID">
+                <Input
+                  id="audit-log-filter-execution-id"
+                  placeholder="execution-id"
+                  value={filterForm.executionId}
+                  onChange={(event) => handleFilterChange('executionId', event)}
+                />
+              </FilterField>
+              <FilterField htmlFor="audit-log-filter-actor-type" label="操作人类型">
+                <Select
+                  value={filterForm.actorType === '' ? ANY_ACTOR_TYPE : filterForm.actorType}
+                  onValueChange={(value) =>
+                    setFilterForm((current) => ({
+                      ...current,
+                      actorType: value === ANY_ACTOR_TYPE ? '' : value,
+                    }))
+                  }
+                >
+                  <SelectTrigger id="audit-log-filter-actor-type">
+                    <SelectValue placeholder="全部类型" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={ANY_ACTOR_TYPE}>全部类型</SelectItem>
+                    {AUDIT_ACTOR_TYPES.map((actorType) => (
+                      <SelectItem key={actorType} value={actorType}>
+                        {actorType}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </FilterField>
+              <FilterField htmlFor="audit-log-filter-actor-id" label="操作人 ID">
+                <Input
+                  id="audit-log-filter-actor-id"
+                  placeholder="actor-id"
+                  value={filterForm.actorId}
+                  onChange={(event) => handleFilterChange('actorId', event)}
+                />
+              </FilterField>
+              <FilterField htmlFor="audit-log-filter-page-size" label="每页条数">
+                <Select value={String(pageSize)} onValueChange={handlePageSizeChange}>
+                  <SelectTrigger id="audit-log-filter-page-size">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {AUDIT_PAGE_SIZE_OPTIONS.map((option) => (
+                      <SelectItem key={option} value={String(option)}>
+                        {option} / 页
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </FilterField>
+            </div>
 
-        <div className="mt-4 flex flex-wrap gap-3">
-          <Button type="submit">应用筛选</Button>
-          <Button type="button" variant="outline" onClick={handleResetFilters}>
-            重置筛选
-          </Button>
-        </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button type="submit" size="sm">
+                应用筛选
+              </Button>
+              <Button type="button" size="sm" variant="outline" onClick={handleResetFilters}>
+                重置筛选
+              </Button>
+            </div>
 
-        <EvidenceExportPanel
-          exportJob={exportJob}
-          downloadUrl={downloadDetail?.url ?? null}
-          isCreating={createEvidenceExportMutation.isPending}
-          isRefreshingDownload={refreshDownloadMutation.isPending}
-          jobError={exportJobError}
-          downloadError={downloadDetailError}
-          refreshDownloadError={refreshDownloadError}
-          createError={createExportError}
-          onCreate={handleCreateEvidenceExport}
-          onRefreshStatus={handleRefreshExportStatus}
-          onRefreshDownload={handleRefreshDownloadLink}
-        />
-      </form>
+            <EvidenceExportPanel
+              exportJob={exportJob}
+              downloadUrl={downloadDetail?.url ?? null}
+              isCreating={createEvidenceExportMutation.isPending}
+              isRefreshingDownload={refreshDownloadMutation.isPending}
+              jobError={exportJobError}
+              downloadError={downloadDetailError}
+              refreshDownloadError={refreshDownloadError}
+              createError={createExportError}
+              onCreate={handleCreateEvidenceExport}
+              onRefreshStatus={handleRefreshExportStatus}
+              onRefreshDownload={handleRefreshDownloadLink}
+            />
+          </CardContent>
+        </form>
+      </Card>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
-        <section className="space-y-4 rounded-2xl border border-border bg-surface-elevated p-5 shadow-sm">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            <div className="space-y-1">
-              <h2 className="text-lg font-semibold text-foreground">记录列表</h2>
-              <p className="text-sm text-muted-foreground">
-                {paginationMeta
-                  ? `当前第 ${paginationMeta.page} 页，共 ${paginationMeta.total} 条记录`
-                  : '按当前筛选条件查看审计记录'}
-              </p>
-            </div>
+        <section className="min-w-0 space-y-3">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-sm font-semibold text-foreground">记录列表</h2>
+            <p className="text-xs text-muted">
+              {paginationMeta
+                ? `当前第 ${paginationMeta.page} 页，共 ${paginationMeta.total} 条记录`
+                : '按当前筛选条件查看审计记录'}
+            </p>
           </div>
 
           {auditLogsQuery.isLoading ? (
-            <p className="text-sm text-muted-foreground">加载审计日志中…</p>
+            <p className="text-xs text-muted" role="status">
+              加载审计日志中…
+            </p>
           ) : null}
 
           {auditLogsQuery.error ? (
-            <div className="rounded-xl border border-rose-500/30 bg-rose-500/5 p-4">
-              <p className="text-sm font-medium text-foreground">审计日志加载失败</p>
-              <p className="mt-1 text-sm text-rose-400">{listError}</p>
+            <div className="rounded-card border border-error/30 bg-error/5 p-4">
+              <p className="text-xs font-medium text-foreground">审计日志加载失败</p>
+              <p className="mt-1 text-xs text-error">{listError}</p>
             </div>
-          ) : null}
-
-          {!auditLogsQuery.isLoading && !auditLogsQuery.error && records.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-border bg-background/30 p-8 text-center">
-              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-muted/50 text-muted-foreground">
-                <History className="h-5 w-5" />
-              </div>
-              <p className="mt-3 text-sm text-muted-foreground">还没有匹配的审计记录</p>
-            </div>
-          ) : null}
-
-          {!auditLogsQuery.isLoading && !auditLogsQuery.error && records.length > 0 ? (
-            <>
-              <AuditLogList
-                records={records}
-                selectedAuditLogId={resolvedSelectedAuditLogId}
-                onSelect={(id) => {
-                  setIsSequenceVisible(false)
-                  setSelectedAuditLogId(id)
-                }}
-              />
-
-              <Pagination
-                page={paginationMeta?.page ?? page}
-                totalPages={paginationMeta?.totalPages ?? 1}
-                onPageChange={setPage}
-                isLoading={auditLogsQuery.isFetching}
-              />
-            </>
-          ) : null}
+          ) : (
+            <DataTable
+              columns={columns}
+              data={records}
+              rowKey={(record) => record.id}
+              loading={auditLogsQuery.isLoading}
+              skeletonRows={6}
+              onRowClick={(record) => {
+                setIsSequenceVisible(false)
+                setSelectedAuditLogId(record.id)
+              }}
+              empty={
+                <EmptyState
+                  icon={FileSearch}
+                  title="还没有匹配的审计记录"
+                  description="调整时间范围、事件类型或操作人后重新筛选。"
+                />
+              }
+              pagination={
+                paginationMeta
+                  ? {
+                      page: paginationMeta.page,
+                      pageSize: paginationMeta.pageSize,
+                      total: paginationMeta.total,
+                      onPageChange: setPage,
+                    }
+                  : undefined
+              }
+            />
+          )}
         </section>
 
-        <section className="space-y-4">
+        <section className="min-w-0 space-y-4">
           {resolvedSelectedAuditLogId == null && !auditLogsQuery.isLoading ? (
-            <div className="rounded-2xl border border-dashed border-border bg-surface-elevated p-8 text-center shadow-sm">
-              <p className="text-sm text-muted-foreground">
-                选择一条审计记录后，这里会显示结构化详情、变更前后内容与附加元数据。
-              </p>
-            </div>
+            <EmptyState
+              icon={FileSearch}
+              title="尚未选择审计记录"
+              description="选择一条审计记录后，这里会显示结构化详情、变更前后内容与附加元数据。"
+            />
           ) : null}
 
           {resolvedSelectedAuditLogId != null && detailQuery.isLoading ? (
-            <div className="rounded-2xl border border-border bg-surface-elevated p-6 shadow-sm">
-              <p className="text-sm text-muted-foreground">加载审计详情中…</p>
-            </div>
+            <Card>
+              <CardContent className="p-5">
+                <p className="text-xs text-muted" role="status">
+                  加载审计详情中…
+                </p>
+              </CardContent>
+            </Card>
           ) : null}
 
           {resolvedSelectedAuditLogId != null && detailQuery.error ? (
-            <div className="rounded-2xl border border-rose-500/30 bg-surface-elevated p-6 shadow-sm">
-              <p className="text-sm font-medium text-foreground">审计详情加载失败</p>
-              <p className="mt-1 text-sm text-rose-400">{detailError}</p>
-            </div>
+            <Card className="border-error/30">
+              <CardContent className="space-y-1 p-5">
+                <p className="text-xs font-medium text-foreground">审计详情加载失败</p>
+                <ErrorText>{detailError}</ErrorText>
+              </CardContent>
+            </Card>
           ) : null}
 
           {selectedRecord ? (

@@ -90,7 +90,7 @@ describe('MemoryGraphNode', () => {
     expect(screen.queryByTestId('disclosure-badge')).not.toBeInTheDocument()
   })
 
-  it('高亮状态添加 ring-yellow 样式', () => {
+  it('高亮状态使用 warning 令牌描边', () => {
     render(
       <MemoryGraphNode
         id="node-1"
@@ -100,7 +100,8 @@ describe('MemoryGraphNode', () => {
       />,
     )
     const el = screen.getByTestId('memory-graph-node-node-1')
-    expect(el.className).toContain('ring-yellow')
+    expect(el.className).toContain('ring-warning')
+    expect(el).toHaveAttribute('data-highlighted', 'true')
   })
 
   it('淡化状态降低透明度', () => {

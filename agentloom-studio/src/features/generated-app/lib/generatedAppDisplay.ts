@@ -8,6 +8,10 @@ import type {
   GeneratedAppStatus,
   GeneratedAppSubmissionStatus,
 } from '../types'
+import type { BadgeProps } from '@/shared/ui/badge'
+
+/** Badge 语义色枚举，统一状态着色出口 */
+type BadgeVariant = NonNullable<BadgeProps['variant']>
 
 export const GENERATED_APP_STATUS_LABELS: Record<GeneratedAppStatus, string> = {
   app_spec_ready: '规格就绪',
@@ -83,105 +87,103 @@ export const GENERATED_APP_REPAIR_ATTEMPT_STATUS_LABELS: Record<
   skipped: '已跳过',
 }
 
-export function getGeneratedAppReadinessBadgeClass(
+export function getGeneratedAppReadinessBadgeVariant(
   readiness: GeneratedAppReadiness,
-): string {
+): BadgeVariant {
   switch (readiness.state) {
     case 'publish_candidate':
-      return readiness.canCreatePublicShare
-        ? 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
-        : 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+      return readiness.canCreatePublicShare ? 'success' : 'warning'
     case 'trial':
-      return 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+      return 'warning'
     case 'blocked':
-      return 'border-rose-500/30 bg-rose-500/10 text-rose-300'
+      return 'error'
     default:
-      return 'border-sky-500/30 bg-sky-500/10 text-sky-300'
+      return 'info'
   }
 }
 
-export function getGeneratedAppStatusBadgeClass(
+export function getGeneratedAppStatusBadgeVariant(
   status: GeneratedAppStatus,
-): string {
+): BadgeVariant {
   switch (status) {
     case 'published':
     case 'publish_candidate':
-      return 'bg-emerald-500/10 text-emerald-300'
+      return 'success'
     case 'failed':
-      return 'bg-rose-500/10 text-rose-300'
+      return 'error'
     case 'trial_ready':
-      return 'bg-amber-500/10 text-amber-300'
+      return 'warning'
     default:
-      return 'bg-sky-500/10 text-sky-300'
+      return 'info'
   }
 }
 
-export function getGeneratedAppGateStatusBadgeClass(
+export function getGeneratedAppGateStatusBadgeVariant(
   status: GeneratedAppGateStatus,
-): string {
+): BadgeVariant {
   switch (status) {
     case 'passed':
-      return 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+      return 'success'
     case 'failed':
-      return 'border-rose-500/30 bg-rose-500/10 text-rose-300'
+      return 'error'
     case 'warning':
-      return 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+      return 'warning'
     case 'running':
-      return 'border-violet-500/30 bg-violet-500/10 text-violet-300'
+      return 'default'
     case 'skipped':
-      return 'border-border bg-muted/60 text-muted-foreground'
+      return 'secondary'
     default:
-      return 'border-sky-500/30 bg-sky-500/10 text-sky-300'
+      return 'info'
   }
 }
 
-export function getGeneratedAppSubmissionStatusBadgeClass(
+export function getGeneratedAppSubmissionStatusBadgeVariant(
   status: GeneratedAppSubmissionStatus,
-): string {
+): BadgeVariant {
   switch (status) {
     case 'completed':
-      return 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+      return 'success'
     case 'failed':
-      return 'border-rose-500/30 bg-rose-500/10 text-rose-300'
+      return 'error'
     case 'running':
-      return 'border-violet-500/30 bg-violet-500/10 text-violet-300'
+      return 'default'
     default:
-      return 'border-sky-500/30 bg-sky-500/10 text-sky-300'
+      return 'info'
   }
 }
 
-export function getGeneratedAppGenerationRunStatusBadgeClass(
+export function getGeneratedAppGenerationRunStatusBadgeVariant(
   status: GeneratedAppGenerationRunStatus,
-): string {
+): BadgeVariant {
   switch (status) {
     case 'passed':
-      return 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+      return 'success'
     case 'failed':
     case 'cancelled':
-      return 'border-rose-500/30 bg-rose-500/10 text-rose-300'
+      return 'error'
     case 'repairing':
-      return 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+      return 'warning'
     case 'running':
-      return 'border-violet-500/30 bg-violet-500/10 text-violet-300'
+      return 'default'
     default:
-      return 'border-sky-500/30 bg-sky-500/10 text-sky-300'
+      return 'info'
   }
 }
 
-export function getGeneratedAppRepairAttemptStatusBadgeClass(
+export function getGeneratedAppRepairAttemptStatusBadgeVariant(
   status: GeneratedAppRepairAttemptStatus,
-): string {
+): BadgeVariant {
   switch (status) {
     case 'completed':
-      return 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300'
+      return 'success'
     case 'failed':
-      return 'border-rose-500/30 bg-rose-500/10 text-rose-300'
+      return 'error'
     case 'running':
-      return 'border-violet-500/30 bg-violet-500/10 text-violet-300'
+      return 'default'
     case 'skipped':
-      return 'border-border bg-muted/60 text-muted-foreground'
+      return 'secondary'
     default:
-      return 'border-sky-500/30 bg-sky-500/10 text-sky-300'
+      return 'info'
   }
 }
 

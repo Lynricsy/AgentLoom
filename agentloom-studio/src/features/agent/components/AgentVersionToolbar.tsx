@@ -2,6 +2,9 @@ import { memo } from "react";
 import { History, Loader2, Save, Share2, Tag, Upload } from "lucide-react";
 
 import { cn } from "@/shared/lib/utils";
+import { Badge, type BadgeProps } from "@/shared/ui/badge";
+import { Button } from "@/shared/ui/button";
+import { Separator } from "@/shared/ui/separator";
 
 import type { AgentStatus } from "../types";
 
@@ -17,21 +20,14 @@ interface AgentVersionToolbarProps {
   className?: string;
 }
 
-const statusConfig: Record<AgentStatus, { label: string; className: string }> =
-  {
-    draft: {
-      label: "草稿",
-      className: "border-sky-200 bg-sky-50 text-sky-700",
-    },
-    published: {
-      label: "已发布",
-      className: "border-emerald-200 bg-emerald-50 text-emerald-700",
-    },
-    archived: {
-      label: "已归档",
-      className: "border-gray-200 bg-gray-100 text-gray-500",
-    },
-  };
+const STATUS_META: Record<
+  AgentStatus,
+  { label: string; variant: NonNullable<BadgeProps["variant"]> }
+> = {
+  draft: { label: "草稿", variant: "info" },
+  published: { label: "已发布", variant: "success" },
+  archived: { label: "已归档", variant: "secondary" },
+};
 
 export const AgentVersionToolbar = memo(function AgentVersionToolbar({
   agentStatus,
@@ -45,7 +41,7 @@ export const AgentVersionToolbar = memo(function AgentVersionToolbar({
   className,
 }: AgentVersionToolbarProps) {
   const isArchived = agentStatus === "archived";
-  const config = statusConfig[agentStatus];
+  const status = STATUS_META[agentStatus];
 
   return (
     <div
@@ -55,22 +51,16 @@ export const AgentVersionToolbar = memo(function AgentVersionToolbar({
       )}
       data-testid="agent-version-toolbar"
     >
-      <span
-        className={cn(
-          "rounded-full border px-2.5 py-0.5 text-xs font-medium",
-          config.className,
-        )}
-        data-testid="agent-status-badge"
-      >
-        {config.label}
-      </span>
+      <Badge variant={status.variant} data-testid="agent-status-badge">
+        {status.label}
+      </Badge>
 
-      <div className="mx-1 h-4 w-px bg-border" />
+      <Separator orientation="vertical" className="mx-1 h-4" />
 
       {!isArchived && (
-        <button
-          type="button"
-          className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs font-medium text-foreground shadow-sm hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+        <Button
+          variant="secondary"
+          size="sm"
           onClick={onSaveCanvas}
           disabled={isCanvasSaving || !isCanvasDirty}
           data-testid="btn-save-agent-canvas"
@@ -81,53 +71,53 @@ export const AgentVersionToolbar = memo(function AgentVersionToolbar({
             <Save className="h-3.5 w-3.5" />
           )}
           {isCanvasSaving ? "保存中…" : "保存画布"}
-        </button>
+        </Button>
       )}
 
       {!isArchived && (
-        <button
-          type="button"
-          className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs font-medium text-foreground shadow-sm hover:bg-muted"
+        <Button
+          variant="secondary"
+          size="sm"
           onClick={onOpenCreateVersion}
           data-testid="btn-create-agent-version"
         >
           <Tag className="h-3.5 w-3.5" />
           保存版本
-        </button>
+        </Button>
       )}
 
-      <button
-        type="button"
-        className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs font-medium text-foreground shadow-sm hover:bg-muted"
+      <Button
+        variant="secondary"
+        size="sm"
         onClick={onOpenVersionHistory}
         data-testid="btn-agent-version-history"
       >
         <History className="h-3.5 w-3.5" />
         历史记录
-      </button>
+      </Button>
 
       {!isArchived && (
-        <button
-          type="button"
-          className="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 px-2.5 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-emerald-700"
+        <Button
+          size="sm"
+          className="bg-success text-white hover:bg-success/90"
           onClick={() => onOpenPublish()}
           data-testid="btn-publish-agent"
         >
           <Upload className="h-3.5 w-3.5" />
           发布
-        </button>
+        </Button>
       )}
 
       {onShare && (
-        <button
-          type="button"
-          className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs font-medium text-foreground shadow-sm hover:bg-muted"
+        <Button
+          variant="secondary"
+          size="sm"
           onClick={onShare}
           data-testid="btn-share-agent"
         >
           <Share2 className="h-3.5 w-3.5" />
           分享
-        </button>
+        </Button>
       )}
     </div>
   );

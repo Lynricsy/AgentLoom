@@ -6,6 +6,7 @@ import {
   XCircle,
 } from 'lucide-react';
 import { cn } from '@/shared/lib/utils';
+import { Card } from '@/shared/ui/card';
 import type { PreparationPhase } from '../types';
 
 /** Ordered preparation phases for display. */
@@ -54,13 +55,13 @@ function getStepStatus(
 function StepIcon({ status }: { status: StepStatus }) {
   switch (status) {
     case 'completed':
-      return <CheckCircle2 className="size-4 text-emerald-500 shrink-0" />;
+      return <CheckCircle2 className="size-4 shrink-0 text-success" />;
     case 'current':
-      return <Loader2 className="size-4 text-blue-500 animate-spin shrink-0" />;
+      return <Loader2 className="size-4 shrink-0 animate-spin text-info" />;
     case 'failed':
-      return <XCircle className="size-4 text-destructive shrink-0" />;
+      return <XCircle className="size-4 shrink-0 text-error" />;
     case 'pending':
-      return <Circle className="size-4 text-muted-foreground/40 shrink-0" />;
+      return <Circle className="size-4 shrink-0 text-muted-foreground/40" />;
   }
 }
 
@@ -85,9 +86,9 @@ function StepItem({
             className={cn(
               'w-px flex-1 min-h-3',
               status === 'completed'
-                ? 'bg-emerald-500/40'
+                ? 'bg-success/40'
                 : status === 'failed'
-                  ? 'bg-destructive/40'
+                  ? 'bg-error/40'
                   : 'bg-border',
             )}
           />
@@ -102,15 +103,13 @@ function StepItem({
             status === 'completed' && 'text-muted-foreground',
             status === 'current' && 'text-foreground font-medium',
             status === 'pending' && 'text-muted-foreground/40',
-            status === 'failed' && 'text-destructive font-medium',
+            status === 'failed' && 'text-error font-medium',
           )}
         >
           {label}
         </span>
         {status === 'failed' && error && (
-          <p className="mt-1 text-xs text-destructive/80 leading-relaxed">
-            {error}
-          </p>
+          <p className="mt-1 text-xs leading-relaxed text-error/80">{error}</p>
         )}
       </div>
     </div>
@@ -177,16 +176,14 @@ export const PreparationCard = memo(function PreparationCard({
   // Collapsed summary view
   if (collapsed) {
     return (
-      <div className="transition-all duration-300 ease-in-out overflow-hidden">
-        <div className="flex items-center gap-2 rounded-lg bg-card border border-border/50 px-3 py-2 shadow-sm">
-          <CheckCircle2 className="size-3.5 text-emerald-500 shrink-0" />
-          <span className="text-xs text-muted-foreground">
-            {failedPhase
-              ? '启动失败'
-              : `环境就绪 · 用时 ${elapsedSnapshotRef.current || elapsedText}`}
-          </span>
-        </div>
-      </div>
+      <Card className="flex items-center gap-2 px-3 py-2 shadow-none">
+        <CheckCircle2 className="size-3.5 shrink-0 text-success" />
+        <span className="text-xs text-muted-foreground">
+          {failedPhase
+            ? '启动失败'
+            : `环境就绪 · 用时 ${elapsedSnapshotRef.current || elapsedText}`}
+        </span>
+      </Card>
     );
   }
 
@@ -196,35 +193,33 @@ export const PreparationCard = memo(function PreparationCard({
   }
 
   return (
-    <div className="transition-all duration-300 ease-in-out overflow-hidden">
-      <div className="rounded-lg bg-card border border-border shadow-sm p-4">
-        {displayPhases.map((stepPhase, index) => {
-          const stepStatus = getStepStatus(
-            stepPhase,
-            phase,
-            failedPhase,
-            displayPhases,
-          );
+    <Card className="p-4 shadow-none">
+      {displayPhases.map((stepPhase, index) => {
+        const stepStatus = getStepStatus(
+          stepPhase,
+          phase,
+          failedPhase,
+          displayPhases,
+        );
 
-          return (
-            <StepItem
-              key={stepPhase}
-              label={PHASE_LABELS[stepPhase]}
-              status={stepStatus}
-              error={stepPhase === failedPhase ? error : null}
-              isLast={index === displayPhases.length - 1}
-            />
-          );
-        })}
+        return (
+          <StepItem
+            key={stepPhase}
+            label={PHASE_LABELS[stepPhase]}
+            status={stepStatus}
+            error={stepPhase === failedPhase ? error : null}
+            isLast={index === displayPhases.length - 1}
+          />
+        );
+      })}
 
-        {elapsedText && (
-          <div className="mt-2 pt-2 border-t border-border/50">
-            <span className="text-xs text-muted-foreground/60">
-              已用时 {elapsedText}
-            </span>
-          </div>
-        )}
-      </div>
-    </div>
+      {elapsedText && (
+        <div className="mt-2 border-t border-border pt-2">
+          <span className="text-xs text-muted-foreground">
+            已用时 {elapsedText}
+          </span>
+        </div>
+      )}
+    </Card>
   );
 });

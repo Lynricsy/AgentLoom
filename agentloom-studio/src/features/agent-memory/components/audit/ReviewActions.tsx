@@ -1,5 +1,16 @@
 import { useState, useCallback } from 'react';
+import { Check, RotateCcw, X } from 'lucide-react';
+import { Badge } from '@/shared/ui/badge';
 import { Button } from '@/shared/ui/button';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogTitle,
+} from '@/shared/ui/alert-dialog';
+import { REVIEW_STATUS_META } from './AuditTimeline';
 import { useReview, useRollback } from './api';
 import type { AuditLogEntry, ReviewAction } from './types';
 
@@ -8,10 +19,16 @@ interface ReviewActionsProps {
   entry: AuditLogEntry | null;
 }
 
+type ConfirmKind = ReviewAction | 'rollback';
+
+const CONFIRM_TITLES: Record<ConfirmKind, string> = {
+  approve: '批准版本变更',
+  reject: '拒绝版本变更',
+  rollback: '回滚节点版本',
+};
+
 export function ReviewActions({ instanceId, entry }: ReviewActionsProps) {
-  const [confirmAction, setConfirmAction] = useState<
-    ReviewAction | 'rollback' | null
-  >(null);
+  const [confirmAction, setConfirmAction] = useState<ConfirmKind | null>(null);
 
   const reviewMutation = useReview(instanceId);
   const rollbackMutation = useRollback(instanceId);
@@ -45,60 +62,22 @@ export function ReviewActions({ instanceId, entry }: ReviewActionsProps) {
 
   if (!entry) {
     return (
-      <div
-        className="py-4 text-center text-sm text-gray-400"
+      <p
+        className="py-4 text-center text-sm text-muted"
         data-testid="review-actions-empty"
       >
         选择一条记录以执行审核操作
-      </div>
+      </p>
     );
   }
 
   const isPending = entry.reviewStatus === 'pending';
   const isProcessing = reviewMutation.isPending || rollbackMutation.isPending;
+  const statusMeta = REVIEW_STATUS_META[entry.reviewStatus];
 
   return (
     <div data-testid="review-actions">
-      {/* 确认对话框 */}
-      {confirmAction && (
-        <div
-          className="mb-4 rounded-lg border border-gray-200 bg-white p-4 shadow-sm"
-          data-testid="confirm-dialog"
-        >
-          <p className="mb-3 text-sm text-gray-700">
-            {confirmAction === 'approve' && '确认批准此版本变更？'}
-            {confirmAction === 'reject' && '确认拒绝此版本变更？拒绝后可回滚到上一版本。'}
-            {confirmAction === 'rollback' &&
-              `确认回滚节点 "${entry.nodeName}" 到版本 ${entry.versionId.slice(0, 8)}？此操作不可撤销。`}
-          </p>
-          <div className="flex gap-2">
-            <Button
-              size="sm"
-              onClick={() => {
-                if (confirmAction === 'rollback') {
-                  handleRollback();
-                } else {
-                  handleReview(confirmAction);
-                }
-              }}
-              disabled={isProcessing}
-            >
-              {isProcessing ? '处理中...' : '确认'}
-            </Button>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setConfirmAction(null)}
-              disabled={isProcessing}
-            >
-              取消
-            </Button>
-          </div>
-        </div>
-      )}
-
-      {/* 操作按钮 */}
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         {isPending && (
           <>
             <Button
@@ -107,16 +86,18 @@ export function ReviewActions({ instanceId, entry }: ReviewActionsProps) {
               disabled={isProcessing}
               data-testid="approve-btn"
             >
+              <Check className="h-3.5 w-3.5" />
               批准
             </Button>
             <Button
               variant="outline"
               size="sm"
-              className="text-red-600 hover:text-red-700"
+              className="text-error hover:border-error/40 hover:bg-error/10 hover:text-error"
               onClick={() => setConfirmAction('reject')}
               disabled={isProcessing}
               data-testid="reject-btn"
             >
+              <X className="h-3.5 w-3.5" />
               拒绝
             </Button>
           </>
@@ -124,22 +105,58 @@ export function ReviewActions({ instanceId, entry }: ReviewActionsProps) {
         <Button
           variant="ghost"
           size="sm"
-          className="text-amber-600 hover:text-amber-700"
+          className="text-warning hover:bg-warning/10 hover:text-warning"
           onClick={() => setConfirmAction('rollback')}
           disabled={isProcessing}
           data-testid="rollback-btn"
         >
+          <RotateCcw className="h-3.5 w-3.5" />
           回滚
         </Button>
+
+        <span className="ml-auto flex items-center gap-2 text-xs text-muted">
+          当前状态
+          <Badge size="sm" tone={statusMeta.tone}>
+            {statusMeta.label}
+          </Badge>
+        </span>
       </div>
 
-      {/* 当前状态 */}
-      <div className="mt-3 text-xs text-gray-400">
-        当前状态:{' '}
-        {entry.reviewStatus === 'pending' && '🟡 待审核'}
-        {entry.reviewStatus === 'approved' && '✅ 已批准'}
-        {entry.reviewStatus === 'rejected' && '❌ 已拒绝'}
-      </div>
+      <AlertDialog
+        open={confirmAction !== null}
+        onOpenChange={(next) => {
+          if (!next) setConfirmAction(null);
+        }}
+      >
+        <AlertDialogContent data-testid="confirm-dialog">
+          <AlertDialogTitle>
+            {confirmAction ? CONFIRM_TITLES[confirmAction] : ''}
+          </AlertDialogTitle>
+          <AlertDialogDescription>
+            {confirmAction === 'approve' && '确认批准此版本变更？'}
+            {confirmAction === 'reject' &&
+              '确认拒绝此版本变更？拒绝后可回滚到上一版本。'}
+            {confirmAction === 'rollback' &&
+              `确认回滚节点 "${entry.nodeName}" 到版本 ${entry.versionId.slice(0, 8)}？此操作不可撤销。`}
+          </AlertDialogDescription>
+          <div className="mt-5 flex justify-end gap-2">
+            <AlertDialogCancel disabled={isProcessing}>取消</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isProcessing}
+              onClick={(e) => {
+                e.preventDefault();
+                if (confirmAction === 'rollback') {
+                  handleRollback();
+                } else if (confirmAction) {
+                  handleReview(confirmAction);
+                }
+              }}
+            >
+              {isProcessing ? '处理中...' : '确认'}
+            </AlertDialogAction>
+          </div>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

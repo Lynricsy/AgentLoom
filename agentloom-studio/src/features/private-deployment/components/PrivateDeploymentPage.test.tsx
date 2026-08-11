@@ -214,7 +214,8 @@ describe('PrivateDeploymentPage', () => {
 
     expect(screen.queryByText(llmSecretRef)).not.toBeInTheDocument()
 
-    await user.selectOptions(screen.getByLabelText('代理模式'), 'enterprise_proxy')
+    await user.click(screen.getByLabelText('代理模式'))
+    await user.click(await screen.findByRole('option', { name: 'enterprise_proxy（企业代理）' }))
 
     const baseUrlInput = screen.getByLabelText('代理基地址')
     await user.clear(baseUrlInput)

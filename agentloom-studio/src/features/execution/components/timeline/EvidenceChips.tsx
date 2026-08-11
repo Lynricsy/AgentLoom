@@ -30,8 +30,8 @@ export const EvidenceChips = memo(function EvidenceChips({
     <button
       type="button"
       className={cn(
-        'inline-flex items-center gap-1 rounded-full border border-border/60 bg-muted/30 px-2 py-0.5 text-[11px] text-muted-foreground transition',
-        executionId && 'cursor-pointer hover:bg-accent/10 hover:text-foreground',
+        'inline-flex items-center gap-1 rounded-full border border-border bg-surface-elevated px-2 py-0.5 text-[11px] text-muted transition-colors',
+        executionId && 'cursor-pointer hover:bg-primary/10 hover:text-primary',
         className,
       )}
       onClick={(e) => {

@@ -3,6 +3,8 @@ import { createPortal } from 'react-dom'
 import { BookOpen, X } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
 
+const GLOSSARY_TONE = 'var(--color-type-knowledge)'
+
 interface GlossaryEntry {
   keyword: string
   nodes: Array<{ uri: string; nodeUuid: string; contentSnippet?: string }>
@@ -77,16 +79,22 @@ function GlossaryPopup({ keyword, nodes, position, onClose, onNavigate }: Glossa
   return createPortal(
     <div
       ref={popupRef}
-      className="fixed z-[100] flex w-72 flex-col overflow-hidden rounded-xl border border-amber-800/40 bg-surface-elevated shadow-2xl"
-      style={style}
+      className="fixed z-[100] flex w-72 flex-col overflow-hidden rounded-panel border bg-surface shadow-popover"
+      style={{
+        ...style,
+        borderColor: `color-mix(in srgb, ${GLOSSARY_TONE} 35%, var(--color-border))`,
+      }}
     >
       <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
-        <BookOpen size={12} className="text-amber-400" />
-        <span className="text-xs font-semibold text-amber-300">{keyword}</span>
+        <BookOpen size={12} style={{ color: GLOSSARY_TONE }} />
+        <span className="text-xs font-semibold" style={{ color: GLOSSARY_TONE }}>
+          {keyword}
+        </span>
         <button
           type="button"
+          aria-label="关闭词条卡片"
           onClick={onClose}
-          className="ml-auto text-muted-foreground transition-colors hover:text-foreground"
+          className="ml-auto text-muted transition-colors hover:text-foreground"
         >
           <X size={12} />
         </button>
@@ -123,7 +131,7 @@ function GlossaryPopup({ keyword, nodes, position, onClose, onNavigate }: Glossa
                   {node.uri}
                 </code>
                 {isUnlinked && (
-                  <span className="shrink-0 rounded border border-rose-900/50 bg-rose-950/40 px-1.5 py-0.5 text-[9px] text-rose-400">
+                  <span className="shrink-0 rounded-md border border-error/40 bg-error/10 px-1.5 py-0.5 text-[9px] text-error">
                     Orphaned
                   </span>
                 )}
@@ -232,7 +240,8 @@ export function GlossaryHighlighter({
           part.isMatch ? (
             <span
               key={i}
-              className="cursor-pointer text-amber-300 underline decoration-amber-600/50 decoration-dotted transition-colors hover:text-amber-200 hover:decoration-amber-400"
+              className="cursor-pointer underline decoration-dotted underline-offset-2 transition-opacity hover:opacity-80"
+              style={{ color: GLOSSARY_TONE, textDecorationColor: `color-mix(in srgb, ${GLOSSARY_TONE} 60%, transparent)` }}
               onClick={(e) => handleKeywordClick(e, part.match!)}
             >
               {part.text}

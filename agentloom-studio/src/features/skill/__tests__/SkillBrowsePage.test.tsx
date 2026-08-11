@@ -1,4 +1,4 @@
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 
@@ -35,6 +35,10 @@ vi.mock("../components/SkillDetailDialog", () => ({
     open ? (
       <div data-testid="skill-detail-dialog">SkillDetailDialog</div>
     ) : null,
+}));
+
+vi.mock("@/shared/ui/toast", () => ({
+  useToast: () => ({ notify: vi.fn() }),
 }));
 
 import type { Skill } from "../types";
@@ -112,13 +116,13 @@ describe("SkillBrowsePage", () => {
     it("渲染新建技能按钮", () => {
       render(<SkillBrowsePage />);
       expect(
-        screen.getByRole("button", { name: /新建技能/ }),
+        screen.getByRole("button", { name: "新建技能" }),
       ).toBeInTheDocument();
     });
   });
 
   describe("加载状态", () => {
-    it("isLoading 时显示 spinner 而非列表", () => {
+    it("isLoading 时显示骨架占位而非列表", () => {
       useSkillListMock.mockReturnValue({
         data: undefined,
         isLoading: true,
@@ -127,7 +131,7 @@ describe("SkillBrowsePage", () => {
       });
 
       const { container } = render(<SkillBrowsePage />);
-      expect(container.querySelector(".animate-spin")).toBeInTheDocument();
+      expect(container.querySelector(".shimmer")).toBeInTheDocument();
       expect(screen.queryByRole("table")).not.toBeInTheDocument();
     });
   });
@@ -212,6 +216,13 @@ describe("SkillBrowsePage", () => {
       expect(screen.getByText("Skill Beta")).toBeInTheDocument();
       expect(screen.getByText("Desc A")).toBeInTheDocument();
       expect(screen.getByText("Desc B")).toBeInTheDocument();
+      // 每张卡片的更多操作按钮带技能名，可访问名唯一（getByRole 命中多个会抛错）
+      expect(
+        screen.getByRole("button", { name: "Skill Alpha 的更多操作" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "Skill Beta 的更多操作" }),
+      ).toBeInTheDocument();
     });
 
     it("内置技能显示内置徽章", () => {
@@ -232,14 +243,12 @@ describe("SkillBrowsePage", () => {
       ]);
 
       render(<SkillBrowsePage />);
-      // '活跃' 同时出现在 filter option 和 badge span 中，用 getAllByText 确认有 badge
-      const activeBadges = screen.getAllByText("活跃");
-      expect(activeBadges.length).toBeGreaterThanOrEqual(2); // option + badge
-      expect(activeBadges.some((el) => el.tagName === "SPAN")).toBe(true);
 
-      const archivedBadges = screen.getAllByText("已归档");
-      expect(archivedBadges.length).toBeGreaterThanOrEqual(2); // option + badge
-      expect(archivedBadges.some((el) => el.tagName === "SPAN")).toBe(true);
+      const activeCard = screen.getByText("Active").closest("article")!;
+      expect(within(activeCard).getByText("活跃")).toBeInTheDocument();
+
+      const archivedCard = screen.getByText("Archived").closest("article")!;
+      expect(within(archivedCard).getByText("已归档")).toBeInTheDocument();
     });
 
     it("显示文件数", () => {
@@ -259,40 +268,50 @@ describe("SkillBrowsePage", () => {
   });
 
   describe("筛选 Select", () => {
-    it("状态筛选有全部状态/活跃/已归档选项", () => {
+    it("状态筛选有全部状态/活跃/已归档选项", async () => {
       render(<SkillBrowsePage />);
-      const selects = screen.getAllByRole("combobox");
-      const statusSelect = selects[0]!;
 
-      const options = statusSelect.querySelectorAll("option");
-      const values = Array.from(options).map((o) => o.textContent);
-      expect(values).toEqual(["全部状态", "活跃", "已归档"]);
+      await userEvent.click(screen.getByRole("combobox", { name: "状态筛选" }));
+
+      const options = await screen.findAllByRole("option");
+      expect(options.map((o) => o.textContent)).toEqual([
+        "全部状态",
+        "活跃",
+        "已归档",
+      ]);
     });
 
-    it("类型筛选有全部类型/内置技能/自定义技能选项", () => {
+    it("类型筛选有全部类型/内置技能/自定义技能选项", async () => {
       render(<SkillBrowsePage />);
-      const selects = screen.getAllByRole("combobox");
-      const builtinSelect = selects[1]!;
 
-      const options = builtinSelect.querySelectorAll("option");
-      const values = Array.from(options).map((o) => o.textContent);
-      expect(values).toEqual(["全部类型", "内置技能", "自定义技能"]);
+      await userEvent.click(screen.getByRole("combobox", { name: "类型筛选" }));
+
+      const options = await screen.findAllByRole("option");
+      expect(options.map((o) => o.textContent)).toEqual([
+        "全部类型",
+        "内置技能",
+        "自定义技能",
+      ]);
     });
 
-    it("更改状态筛选会将 status 参数传入 hook", () => {
+    it("更改状态筛选会将 status 参数传入 hook", async () => {
       render(<SkillBrowsePage />);
-      const selects = screen.getAllByRole("combobox");
-      fireEvent.change(selects[0]!, { target: { value: "active" } });
+
+      await userEvent.click(screen.getByRole("combobox", { name: "状态筛选" }));
+      await userEvent.click(await screen.findByRole("option", { name: "活跃" }));
 
       expect(useSkillListMock).toHaveBeenCalledWith(
         expect.objectContaining({ status: "active" }),
       );
     });
 
-    it("更改类型筛选会将 isBuiltin 参数传入 hook", () => {
+    it("更改类型筛选会将 isBuiltin 参数传入 hook", async () => {
       render(<SkillBrowsePage />);
-      const selects = screen.getAllByRole("combobox");
-      fireEvent.change(selects[1]!, { target: { value: "builtin" } });
+
+      await userEvent.click(screen.getByRole("combobox", { name: "类型筛选" }));
+      await userEvent.click(
+        await screen.findByRole("option", { name: "内置技能" }),
+      );
 
       expect(useSkillListMock).toHaveBeenCalledWith(
         expect.objectContaining({ isBuiltin: true }),
@@ -318,8 +337,27 @@ describe("SkillBrowsePage", () => {
         screen.queryByTestId("create-skill-dialog"),
       ).not.toBeInTheDocument();
 
-      const createBtn = screen.getByRole("button", { name: /新建技能/ });
+      const createBtn = screen.getByRole("button", { name: "新建技能" });
       await userEvent.click(createBtn);
+
+      expect(screen.getByTestId("create-skill-dialog")).toBeInTheDocument();
+    });
+
+    it("空列表时点击空态 CTA 也能打开 CreateSkillDialog", async () => {
+      setupListReturn([]);
+      render(<SkillBrowsePage />);
+
+      // 页头 CTA 与空态 CTA 文案不同，精确名称可分别唯一命中
+      expect(
+        screen.getByRole("button", { name: "新建技能" }),
+      ).toBeInTheDocument();
+      const emptyCta = screen.getByRole("button", { name: "创建第一个技能" });
+
+      expect(
+        screen.queryByTestId("create-skill-dialog"),
+      ).not.toBeInTheDocument();
+
+      await userEvent.click(emptyCta);
 
       expect(screen.getByTestId("create-skill-dialog")).toBeInTheDocument();
     });
@@ -350,11 +388,9 @@ describe("SkillBrowsePage", () => {
       ]);
       render(<SkillBrowsePage />);
 
-      const moreButtons = screen.getAllByRole("button").filter((b) => {
-        const svg = b.querySelector("svg");
-        return svg && b.textContent === "";
-      });
-      await userEvent.click(moreButtons[moreButtons.length - 1]!);
+      await userEvent.click(
+        screen.getByRole("button", { name: "Editable 的更多操作" }),
+      );
 
       await waitFor(() => {
         expect(screen.getByText("查看详情")).toBeInTheDocument();
@@ -375,11 +411,9 @@ describe("SkillBrowsePage", () => {
       ]);
       render(<SkillBrowsePage />);
 
-      const moreButtons = screen.getAllByRole("button").filter((b) => {
-        const svg = b.querySelector("svg");
-        return svg && b.textContent === "";
-      });
-      await userEvent.click(moreButtons[moreButtons.length - 1]!);
+      await userEvent.click(
+        screen.getByRole("button", { name: "BuiltinSkill 的更多操作" }),
+      );
 
       await waitFor(() => {
         expect(screen.getByText("查看详情")).toBeInTheDocument();
@@ -399,11 +433,9 @@ describe("SkillBrowsePage", () => {
       ]);
       render(<SkillBrowsePage />);
 
-      const moreButtons = screen.getAllByRole("button").filter((b) => {
-        const svg = b.querySelector("svg");
-        return svg && b.textContent === "";
-      });
-      await userEvent.click(moreButtons[moreButtons.length - 1]!);
+      await userEvent.click(
+        screen.getByRole("button", { name: "ToDelete 的更多操作" }),
+      );
 
       await waitFor(() => {
         expect(screen.getByText("删除")).toBeInTheDocument();

@@ -4,7 +4,7 @@ import { MemoryAuditPage } from '@/features/agent-memory/components/audit/Memory
 
 function MemoryAuditRoute() {
   return (
-    <div className="h-screen w-screen bg-background">
+    <div className="h-full w-full bg-background">
       <MemoryAuditPage />
     </div>
   )

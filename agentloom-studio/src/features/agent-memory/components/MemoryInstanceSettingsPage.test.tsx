@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ToastProvider } from '@/shared/ui/toast';
 import { MemoryInstanceSettingsPage } from './MemoryInstanceSettingsPage';
 import type { MemoryInstanceDetail } from '../types';
 
@@ -19,7 +20,17 @@ vi.mock('../hooks/useMemoryInstances', () => ({
 
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => mocks.navigate,
+  Link: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
 }));
+
+/** 页面依赖 ToastProvider 上报保存失败 */
+function renderPage(memoryInstanceId = 'mi-1') {
+  return render(
+    <ToastProvider>
+      <MemoryInstanceSettingsPage memoryInstanceId={memoryInstanceId} />
+    </ToastProvider>,
+  );
+}
 
 // --- Test data factory ---
 
@@ -84,13 +95,13 @@ describe('MemoryInstanceSettingsPage', () => {
 
   it('显示加载状态', () => {
     setupMocks({ isLoading: true });
-    render(<MemoryInstanceSettingsPage memoryInstanceId="mi-1" />);
-    expect(document.querySelector('.animate-spin')).toBeInTheDocument();
+    renderPage();
+    expect(screen.getByTestId('memory-settings-skeleton')).toBeInTheDocument();
   });
 
   it('显示错误页面', () => {
     setupMocks({ isError: true, instance: null });
-    render(<MemoryInstanceSettingsPage memoryInstanceId="mi-1" />);
+    renderPage();
     expect(screen.getByText('加载记忆实例失败')).toBeInTheDocument();
     expect(screen.getByText('返回列表')).toBeInTheDocument();
   });
@@ -104,7 +115,7 @@ describe('MemoryInstanceSettingsPage', () => {
         coreMemoryUris: ['uri1'],
       }),
     });
-    render(<MemoryInstanceSettingsPage memoryInstanceId="mi-1" />);
+    renderPage();
 
     expect(screen.getByDisplayValue('预填充名称')).toBeInTheDocument();
     expect(screen.getByDisplayValue('预填充描述')).toBeInTheDocument();
@@ -120,7 +131,7 @@ describe('MemoryInstanceSettingsPage', () => {
         systemPromptOverride: null,
       }),
     });
-    render(<MemoryInstanceSettingsPage memoryInstanceId="mi-1" />);
+    renderPage();
 
     expect(screen.getByText('使用默认模板')).toBeInTheDocument();
     expect(
@@ -136,7 +147,7 @@ describe('MemoryInstanceSettingsPage', () => {
         systemPromptOverride: '自定义提示词内容',
       }),
     });
-    render(<MemoryInstanceSettingsPage memoryInstanceId="mi-1" />);
+    renderPage();
 
     expect(
       screen.getByDisplayValue('自定义提示词内容'),
@@ -149,7 +160,7 @@ describe('MemoryInstanceSettingsPage', () => {
         systemPromptOverride: null,
       }),
     });
-    render(<MemoryInstanceSettingsPage memoryInstanceId="mi-1" />);
+    renderPage();
 
     // 默认不显示编辑器
     expect(
@@ -157,7 +168,7 @@ describe('MemoryInstanceSettingsPage', () => {
     ).not.toBeInTheDocument();
 
     // 切换到自定义模式
-    await userEvent.click(screen.getByText('自定义覆盖'));
+    await userEvent.click(screen.getByRole('radio', { name: '自定义覆盖' }));
 
     // 现在显示编辑器
     expect(
@@ -173,7 +184,7 @@ describe('MemoryInstanceSettingsPage', () => {
         coreMemoryUris: [],
       }),
     });
-    render(<MemoryInstanceSettingsPage memoryInstanceId="mi-1" />);
+    renderPage();
 
     // 修改名称
     const nameInput = screen.getByDisplayValue('原始名称');
@@ -206,10 +217,10 @@ describe('MemoryInstanceSettingsPage', () => {
         systemPromptOverride: null,
       }),
     });
-    render(<MemoryInstanceSettingsPage memoryInstanceId="mi-1" />);
+    renderPage();
 
     // 切换到自定义模式
-    await userEvent.click(screen.getByText('自定义覆盖'));
+    await userEvent.click(screen.getByRole('radio', { name: '自定义覆盖' }));
 
     // 输入提示词
     const textarea = screen.getByPlaceholderText(
@@ -236,10 +247,10 @@ describe('MemoryInstanceSettingsPage', () => {
         systemPromptOverride: '旧提示词',
       }),
     });
-    render(<MemoryInstanceSettingsPage memoryInstanceId="mi-1" />);
+    renderPage();
 
     // 切换回默认模板
-    await userEvent.click(screen.getByText('使用默认模板'));
+    await userEvent.click(screen.getByRole('radio', { name: '使用默认模板' }));
 
     // 保存
     await userEvent.click(screen.getByText('保存'));
@@ -256,7 +267,7 @@ describe('MemoryInstanceSettingsPage', () => {
 
   it('名称为空时保存按钮禁用', async () => {
     setupMocks();
-    render(<MemoryInstanceSettingsPage memoryInstanceId="mi-1" />);
+    renderPage();
 
     const nameInput = screen.getByDisplayValue('测试记忆实例');
     await userEvent.clear(nameInput);
@@ -267,7 +278,7 @@ describe('MemoryInstanceSettingsPage', () => {
 
   it('点击返回详情按钮导航', async () => {
     setupMocks();
-    render(<MemoryInstanceSettingsPage memoryInstanceId="mi-1" />);
+    renderPage();
 
     await userEvent.click(screen.getByText('返回详情'));
     expect(mocks.navigate).toHaveBeenCalledWith({
@@ -278,7 +289,7 @@ describe('MemoryInstanceSettingsPage', () => {
 
   it('点击取消按钮导航返回', async () => {
     setupMocks();
-    render(<MemoryInstanceSettingsPage memoryInstanceId="mi-1" />);
+    renderPage();
 
     await userEvent.click(screen.getByText('取消'));
     expect(mocks.navigate).toHaveBeenCalledWith({
@@ -291,7 +302,7 @@ describe('MemoryInstanceSettingsPage', () => {
     const { mutateAsyncFn } = setupMocks({
       instance: createMemoryInstanceDetail({ validDomains: [] }),
     });
-    render(<MemoryInstanceSettingsPage memoryInstanceId="mi-1" />);
+    renderPage();
 
     const domainTextarea = screen.getByLabelText('有效域');
     await userEvent.type(

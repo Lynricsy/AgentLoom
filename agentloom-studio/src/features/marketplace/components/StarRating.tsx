@@ -42,7 +42,7 @@ export const StarRating = memo(function StarRating({
         className={cn('text-muted-foreground', TEXT_SIZES[size])}
         data-testid="star-rating-empty"
       >
-        No ratings yet
+        暂无评分
       </span>
     )
   }
@@ -62,12 +62,12 @@ export const StarRating = memo(function StarRating({
               className={cn('relative inline-flex', STAR_SIZES[size])}
               aria-hidden="true"
             >
-              <StarIcon className={cn('text-muted/40', STAR_SIZES[size])} />
+              <StarIcon className={cn('text-border', STAR_SIZES[size])} />
               <span
                 className="absolute inset-y-0 left-0 overflow-hidden"
                 style={{ width: `${fillRatio * 100}%` }}
               >
-                <StarIcon className={cn('text-amber-400', STAR_SIZES[size])} />
+                <StarIcon className={cn('text-warning', STAR_SIZES[size])} />
               </span>
             </span>
           )

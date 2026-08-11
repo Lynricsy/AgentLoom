@@ -117,7 +117,8 @@ describe('OrganizationAutonomyPolicyPage', () => {
 
     render(<OrganizationAutonomyPolicyPage />)
 
-    await user.selectOptions(screen.getByLabelText('目标自治上限'), 'LLM_SUGGEST')
+    await user.click(screen.getByLabelText('目标自治上限'))
+    await user.click(await screen.findByRole('option', { name: 'LLM 建议' }))
     await user.click(screen.getByRole('button', { name: '保存策略' }))
 
     expect(mocks.updateMutate).toHaveBeenCalledWith(
@@ -182,7 +183,8 @@ describe('OrganizationAutonomyPolicyPage', () => {
 
     render(<OrganizationAutonomyPolicyPage />)
 
-    await user.selectOptions(screen.getByLabelText('目标自治上限'), 'MANUAL_CONFIRM')
+    await user.click(screen.getByLabelText('目标自治上限'))
+    await user.click(await screen.findByRole('option', { name: '手动确认' }))
     await user.click(screen.getByRole('button', { name: '预览批量降级影响' }))
 
     await waitFor(() => {

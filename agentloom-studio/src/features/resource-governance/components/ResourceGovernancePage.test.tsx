@@ -207,7 +207,8 @@ describe('ResourceGovernancePage', () => {
 
     render(<ResourceGovernancePage />)
 
-    await user.selectOptions(screen.getByLabelText('租户治理状态'), 'paused')
+    await user.click(screen.getByLabelText('租户治理状态'))
+    await user.click(await screen.findByRole('option', { name: 'paused（治理暂停）' }))
     await user.clear(screen.getByLabelText('租户治理原因'))
     await user.type(screen.getByLabelText('租户治理原因'), '高峰期先阻止新执行进入。')
     await user.clear(screen.getByLabelText('工作流治理原因 1'))

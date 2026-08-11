@@ -1,3 +1,4 @@
+import type { BadgeProps } from '@/shared/ui/badge';
 import type { ResourceSourceKind } from '@/shared/lib/resourceSource';
 
 export const MEMORY_INSTANCE_STATUSES = [
@@ -17,16 +18,17 @@ export function getMemoryStatusLabel(status: MemoryInstanceStatus): string {
   return labels[status] ?? status;
 }
 
+/** 状态 → Badge 语义色档位（design token 驱动，禁止硬编码调色板类） */
 export function getMemoryStatusVariant(
   status: MemoryInstanceStatus,
-): 'default' | 'secondary' | 'destructive' | 'outline' {
+): NonNullable<BadgeProps['variant']> {
   const variants: Record<
     MemoryInstanceStatus,
-    'default' | 'secondary' | 'destructive' | 'outline'
+    NonNullable<BadgeProps['variant']>
   > = {
-    active: 'default',
+    active: 'success',
     archived: 'secondary',
-    error: 'destructive',
+    error: 'error',
   };
   return variants[status] ?? 'outline';
 }

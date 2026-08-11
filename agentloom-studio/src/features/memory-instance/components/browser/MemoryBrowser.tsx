@@ -16,8 +16,11 @@ import {
   Loader2,
 } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
+import { EmptyState } from '@/shared/components/empty-state/EmptyState'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
+import { Skeleton } from '@/shared/ui/skeleton'
+import { Textarea } from '@/shared/ui/textarea'
 import { useMemoryBrowse, useMemoryDomains, useMemorySearch } from '../../api/memoryInstanceQueries'
 import { useCreateNodeVersion } from '../../api/memoryInstanceMutations'
 import { useMemoryInstanceDetail } from '../../api/memoryInstanceQueries'
@@ -192,18 +195,16 @@ export function MemoryBrowser() {
         <div className="sticky top-0 z-20 flex h-14 shrink-0 items-center gap-3 border-b border-border bg-background/80 px-6 backdrop-blur-md">
           <MemoryBreadcrumb items={breadcrumbs} onNavigate={navigateTo} />
           <div className="flex-1" />
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="icon"
             onClick={() => setShowSearch(!showSearch)}
             aria-label={showSearch ? '关闭搜索' : '打开搜索'}
             title={showSearch ? '关闭搜索' : '打开搜索'}
-            className={cn(
-              'rounded-md p-2 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground',
-              showSearch && 'bg-muted text-foreground',
-            )}
+            className={cn(showSearch && 'bg-surface-elevated text-foreground')}
           >
             <Search size={16} />
-          </button>
+          </Button>
         </div>
 
         {/* Search bar */}
@@ -239,19 +240,28 @@ export function MemoryBrowser() {
         {/* Content */}
         <div className="flex-1 overflow-y-auto p-6">
           {isLoading ? (
-            <div className="flex h-full flex-col items-center justify-center gap-4 text-muted-foreground">
-              <Loader2 className="h-8 w-8 animate-spin text-primary/50" />
-              <span className="text-xs uppercase tracking-widest">加载中...</span>
+            <div className="mx-auto max-w-7xl space-y-6">
+              <Skeleton className="h-8 w-64" />
+              <Skeleton className="h-48 rounded-panel" />
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {Array.from({ length: 4 }, (_, index) => (
+                  <Skeleton key={index} className="h-28 rounded-card" />
+                ))}
+              </div>
             </div>
           ) : error ? (
-            <div className="flex h-full flex-col items-center justify-center gap-4 text-red-500">
-              <p className="text-lg">加载失败</p>
-              <p className="text-sm opacity-60">
-                {error instanceof Error ? error.message : '未知错误'}
-              </p>
-              <Button variant="outline" onClick={() => navigateTo('')}>
-                返回根目录
-              </Button>
+            <div className="flex h-full items-center justify-center">
+              <EmptyState
+                icon={AlertTriangle}
+                tone="var(--color-error)"
+                title="加载失败"
+                description={error instanceof Error ? error.message : '未知错误'}
+                action={
+                  <Button variant="outline" onClick={() => navigateTo('')}>
+                    返回根目录
+                  </Button>
+                }
+              />
             </div>
           ) : (
             <div className="mx-auto max-w-7xl space-y-8">
@@ -268,7 +278,16 @@ export function MemoryBrowser() {
                       </div>
 
                       {node.disclosure && !editing && (
-                        <div className="inline-flex max-w-full items-center gap-2 rounded-lg border border-amber-900/30 bg-amber-950/20 px-3 py-1.5 text-xs text-amber-500/80">
+                        <div
+                          className="inline-flex max-w-full items-center gap-2 rounded-card px-3 py-1.5 text-xs"
+                          style={{
+                            border:
+                              '1px solid color-mix(in srgb, var(--color-warning) 30%, transparent)',
+                            backgroundColor:
+                              'color-mix(in srgb, var(--color-warning) 10%, transparent)',
+                            color: 'var(--color-warning)',
+                          }}
+                        >
                           <AlertTriangle size={14} className="shrink-0" />
                           <span className="mr-1 font-medium">披露条件:</span>
                           <span className="truncate italic">{node.disclosure}</span>
@@ -317,15 +336,15 @@ export function MemoryBrowser() {
                       )}
                       {editing ? (
                         <>
-                          <button
-                            type="button"
+                          <Button
+                            variant="ghost"
+                            size="icon"
                             onClick={cancelEditing}
                             aria-label="取消编辑"
                             title="取消编辑"
-                            className="rounded-md p-2 text-muted-foreground transition-colors hover:bg-muted"
                           >
                             <X size={18} />
-                          </button>
+                          </Button>
                           <Button
                             onClick={handleSave}
                             disabled={createVersionMutation.isPending}
@@ -350,37 +369,38 @@ export function MemoryBrowser() {
 
                   {/* Edit metadata */}
                   {editing && (
-                    <div className="grid grid-cols-1 gap-4 rounded-xl border border-border bg-card p-4 md:grid-cols-2">
+                    <div className="grid grid-cols-1 gap-4 rounded-card border border-border bg-surface p-4 md:grid-cols-2">
                       <div className="space-y-1.5">
-                        <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                        <label htmlFor="memory-node-priority" className="flex items-center gap-1.5 text-xs font-medium text-muted">
                           <Star size={12} />
                           优先级
-                          <span className="font-normal text-muted-foreground/60">
+                          <span className="font-normal text-muted">
                             (值越小优先级越高)
                           </span>
                         </label>
-                        <input
+                        <Input
+                          id="memory-node-priority"
                           type="number"
                           min={0}
                           value={editPriority}
                           onChange={(e) => setEditPriority(parseInt(e.target.value) || 0)}
-                          className="w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-sm text-foreground transition-colors focus:border-primary/50 focus:outline-none"
+                          className="font-mono"
                         />
                       </div>
                       <div className="space-y-1.5">
-                        <label className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                        <label htmlFor="memory-node-disclosure" className="flex items-center gap-1.5 text-xs font-medium text-muted">
                           <AlertTriangle size={12} />
                           披露条件
-                          <span className="font-normal text-muted-foreground/60">
+                          <span className="font-normal text-muted">
                             (何时召回)
                           </span>
                         </label>
-                        <input
+                        <Input
+                          id="memory-node-disclosure"
                           type="text"
                           value={editDisclosure}
                           onChange={(e) => setEditDisclosure(e.target.value)}
                           placeholder="例如：当我需要记住..."
-                          className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground transition-colors focus:border-primary/50 focus:outline-none"
                         />
                       </div>
                     </div>
@@ -389,17 +409,18 @@ export function MemoryBrowser() {
                   {/* Content area */}
                   <div
                     className={cn(
-                      'relative overflow-hidden rounded-xl border transition-all duration-300',
+                      'relative overflow-hidden rounded-panel border transition-colors duration-200',
                       editing
-                        ? 'border-primary/50 bg-card shadow-[0_0_30px_rgba(var(--color-primary)/0.1)]'
-                        : 'border-border bg-card/50',
+                        ? 'border-primary/50 bg-surface shadow-panel'
+                        : 'border-border bg-surface',
                     )}
                   >
                     {editing ? (
-                      <textarea
+                      <Textarea
+                        aria-label="节点内容"
                         value={editContent}
                         onChange={(e) => setEditContent(e.target.value)}
-                        className="h-96 w-full resize-y bg-transparent p-6 font-mono text-sm leading-relaxed text-foreground focus:outline-none"
+                        className="h-96 w-full resize-y rounded-none border-0 bg-transparent p-6 font-mono text-sm leading-relaxed focus-visible:ring-0"
                         spellCheck={false}
                       />
                     ) : (
@@ -444,10 +465,11 @@ export function MemoryBrowser() {
 
               {/* Empty state */}
               {!isLoading && !children.length && !node && (
-                <div className="flex flex-col items-center justify-center gap-4 py-20 text-muted-foreground">
-                  <Folder size={48} className="opacity-20" />
-                  <p className="text-sm">暂无节点</p>
-                </div>
+                <EmptyState
+                  icon={Folder}
+                  title="暂无节点"
+                  description="这个路径下还没有记忆节点，可从父级节点新建或导入。"
+                />
               )}
             </div>
           )}

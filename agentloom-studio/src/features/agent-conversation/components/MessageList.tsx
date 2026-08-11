@@ -1,19 +1,25 @@
 import { memo, useCallback, useRef, useState } from "react";
+import { motion } from "motion/react";
 import {
   Bot,
   ChevronDown,
   ChevronRight,
-  User,
   Brain,
   AlertTriangle,
   FileText,
   ImageIcon,
+  MessagesSquare,
+  Sparkles,
 } from "lucide-react";
 import { MarkdownRenderer } from "@/shared/components/markdown/MarkdownRenderer";
+import { EmptyState } from "@/shared/components/empty-state/EmptyState";
 import { ToolCallCard } from "@/shared/components/tool-renderers";
 import type { ToolCallData } from "@/shared/components/tool-renderers";
 import type { AgentRuntimeMode } from "@/features/agent/types";
+import { Avatar, AvatarFallback } from "@/shared/ui/avatar";
 import { Button } from "@/shared/ui/button";
+import { Card } from "@/shared/ui/card";
+import { DUR, EASE, staggerList } from "@/shared/lib/motion";
 import type {
   ConversationAttachment,
   ConversationMessage,
@@ -69,24 +75,34 @@ function truncateAttachmentText(content: string): string {
   return `${content.slice(0, 240)}\n…`;
 }
 
+/** 助手头像 —— 消息、准备卡片、执行指示器共用，保证左栏基线一致 */
+function AssistantAvatar() {
+  return (
+    <Avatar className="mt-0.5">
+      <AvatarFallback className="bg-primary/12 text-primary">
+        <Bot className="size-4" />
+      </AvatarFallback>
+    </Avatar>
+  );
+}
+
 const AttachmentCard = memo(function AttachmentCard({
   attachment,
 }: {
   attachment: ConversationAttachment;
 }) {
-
   if (attachment.kind === "image") {
     const imageSrc = attachment.dataBase64
       ? `data:${attachment.mimeType};base64,${attachment.dataBase64}`
       : null;
 
     return (
-      <div className="overflow-hidden rounded-xl border border-border/60 bg-background/70">
+      <div className="overflow-hidden rounded-card border border-border bg-surface">
         {imageSrc ? (
           <img
             src={imageSrc}
             alt={attachment.fileName}
-            className="max-h-72 w-full bg-black/5 object-contain"
+            className="max-h-72 w-full bg-surface-elevated object-contain"
           />
         ) : (
           <div className="flex items-center gap-2 px-3 py-3 text-xs text-muted-foreground">
@@ -94,7 +110,7 @@ const AttachmentCard = memo(function AttachmentCard({
             <span>图片已随消息发送给 Agent。</span>
           </div>
         )}
-        <div className="flex items-center justify-between gap-3 border-t border-border/60 px-3 py-2 text-[11px] text-muted-foreground">
+        <div className="flex items-center justify-between gap-3 border-t border-border px-3 py-2 text-[11px] text-muted-foreground">
           <span className="truncate font-medium text-foreground">
             {attachment.fileName}
           </span>
@@ -105,9 +121,9 @@ const AttachmentCard = memo(function AttachmentCard({
   }
 
   return (
-    <div className="rounded-xl border border-border/60 bg-background/70 px-3 py-3">
+    <div className="rounded-card border border-border bg-surface px-3 py-3">
       <div className="flex items-start gap-2">
-        <div className="mt-0.5 rounded-md bg-foreground/5 p-2 text-muted-foreground">
+        <div className="mt-0.5 rounded-md bg-surface-elevated p-2 text-muted-foreground">
           <FileText className="h-4 w-4" />
         </div>
         <div className="min-w-0 flex-1">
@@ -126,7 +142,7 @@ const AttachmentCard = memo(function AttachmentCard({
       </div>
 
       {attachment.textContent ? (
-        <pre className="mt-3 overflow-x-auto rounded-lg bg-foreground/[0.04] px-3 py-2 text-[11px] leading-relaxed text-foreground whitespace-pre-wrap">
+        <pre className="mt-3 overflow-x-auto rounded-md bg-surface-elevated px-3 py-2 text-[11px] leading-relaxed text-foreground whitespace-pre-wrap">
           {truncateAttachmentText(attachment.textContent)}
         </pre>
       ) : (
@@ -162,6 +178,9 @@ const AttachmentPreview = memo(function AttachmentPreview({
 
 /** 将 conversation ToolCall 转为 ToolCallCard 所需的 ToolCallData */
 function toToolCallData(tc: ToolCall): ToolCallData {
+  const isSettled =
+    tc.status === "completed" || tc.status === "failed" || tc.status === "denied";
+
   return {
     id: tc.id,
     tool: tc.tool,
@@ -169,6 +188,8 @@ function toToolCallData(tc: ToolCall): ToolCallData {
     result: tc.result,
     error: tc.error,
     status: tc.status,
+    startedAt: tc.startedAt,
+    ...(isSettled ? { completedAt: tc.updatedAt } : {}),
     permissionDescription: tc.permissionRequest?.description,
     permissionResourcePaths: tc.permissionRequest?.resourcePaths,
     permissionDomain: tc.permissionRequest?.domain,
@@ -253,6 +274,7 @@ function readRecordLike(value: unknown): Record<string, unknown> | null {
   return record;
 }
 
+/** 自进化升级提示卡片 —— 交互语义与回调保持不变，仅视觉套用 Card */
 function RestartToLatestVersionCard({
   publishedVersionNumber,
   onRestart,
@@ -275,13 +297,13 @@ function RestartToLatestVersionCard({
   }, [onRestart, submitting]);
 
   return (
-    <div className="rounded-xl border border-info/30 bg-info/10 px-4 py-3">
+    <Card className="border-primary/30 bg-primary/[0.06] p-4 shadow-none">
       <div className="flex items-start gap-3">
-        <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-full bg-info/15 text-info">
-          <Bot className="size-4" />
+        <div className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-md bg-primary/12 text-primary">
+          <Sparkles className="size-4" />
         </div>
         <div className="min-w-0 flex-1">
-          <div className="text-sm font-medium text-foreground">
+          <div className="text-sm font-semibold text-foreground">
             Agent 已升级到最新已发布版本
             {typeof publishedVersionNumber === "number"
               ? ` v${publishedVersionNumber}`
@@ -301,17 +323,18 @@ function RestartToLatestVersionCard({
           </div>
         </div>
       </div>
-    </div>
+    </Card>
   );
 }
 
 function ThinkingBlock({ content }: { content: string }) {
   const [open, setOpen] = useState(false);
   return (
-    <div className="rounded-lg border border-border/50 bg-surface-elevated/30 px-3 py-2">
+    <div className="rounded-card border border-border bg-surface-elevated/50 px-3 py-2">
       <button
         type="button"
-        className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer w-full"
+        aria-expanded={open}
+        className="flex w-full cursor-pointer items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground"
         onClick={() => setOpen((v) => !v)}
       >
         {open ? (
@@ -319,17 +342,17 @@ function ThinkingBlock({ content }: { content: string }) {
         ) : (
           <ChevronRight className="size-3" />
         )}
-        <Brain className="size-3 text-primary/60" />
+        <Brain className="size-3 text-primary" />
         <span className="font-medium">思考过程</span>
         {!open && content.length > 0 && (
-          <span className="ml-auto text-[10px] text-muted-foreground/50 truncate max-w-[200px]">
+          <span className="ml-auto max-w-[200px] truncate text-[10px] text-muted-foreground">
             {content.slice(0, 60)}...
           </span>
         )}
       </button>
       {open && (
-        <div className="mt-2 pl-5 border-l-2 border-primary/20">
-          <p className="text-xs leading-relaxed text-muted-foreground whitespace-pre-wrap">
+        <div className="mt-2 border-l-2 border-primary/25 pl-5">
+          <p className="text-xs leading-relaxed whitespace-pre-wrap text-muted-foreground">
             {content}
           </p>
         </div>
@@ -338,17 +361,48 @@ function ThinkingBlock({ content }: { content: string }) {
   );
 }
 
+/** 流式输出光标 —— 呼吸节奏取自全局动画规范 */
+function StreamingCaret() {
+  return (
+    <motion.span
+      aria-hidden
+      data-testid="streaming-caret"
+      className="inline-block h-4 w-[2px] rounded-full bg-primary align-text-bottom"
+      animate={{ opacity: 0.15 }}
+      transition={{
+        duration: DUR.slow,
+        ease: EASE,
+        repeat: Infinity,
+        repeatType: "reverse",
+      }}
+    />
+  );
+}
+
+/** 等待首个 token 时的三点指示器 */
 function TypingIndicator() {
   return (
-    <div className="flex items-center gap-1 px-1 py-2">
-      <span className="size-1.5 rounded-full bg-muted-foreground animate-bounce [animation-delay:0ms]" />
-      <span className="size-1.5 rounded-full bg-muted-foreground animate-bounce [animation-delay:150ms]" />
-      <span className="size-1.5 rounded-full bg-muted-foreground animate-bounce [animation-delay:300ms]" />
+    <div className="flex items-center gap-1 py-1.5" aria-label="Agent 正在输入">
+      {[0, 1, 2].map((index) => (
+        <motion.span
+          key={index}
+          aria-hidden
+          className="size-1.5 rounded-full bg-muted-foreground"
+          animate={{ opacity: 0.2 }}
+          transition={{
+            duration: DUR.slow,
+            ease: EASE,
+            repeat: Infinity,
+            repeatType: "reverse",
+            delay: index * DUR.fast,
+          }}
+        />
+      ))}
     </div>
   );
 }
 
-/** 用户消息气泡（保持原有气泡风格） */
+/** 用户消息 —— 右对齐气泡 */
 const UserBubble = memo(function UserBubble({
   message,
 }: {
@@ -358,26 +412,21 @@ const UserBubble = memo(function UserBubble({
     message.content.trim().length > 0 && !isAttachmentAutoSummary(message);
 
   return (
-    <div className="flex gap-3 px-4 py-3 flex-row-reverse">
-      <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-foreground/10 text-foreground">
-        <User className="size-4" />
+    <div className="flex flex-col items-end gap-1">
+      <div className="max-w-[88%] min-w-0 rounded-panel bg-primary/10 px-4 py-2.5 text-sm leading-relaxed text-foreground sm:max-w-[75%]">
+        {shouldShowText ? (
+          <p className="break-words whitespace-pre-wrap">{message.content}</p>
+        ) : null}
+        <AttachmentPreview message={message} />
       </div>
-      <div className="flex max-w-[80%] flex-col gap-1 items-end">
-        <div className="rounded-2xl rounded-br-md bg-foreground/10 text-foreground px-4 py-2.5 text-sm leading-relaxed">
-          {shouldShowText ? (
-            <p className="whitespace-pre-wrap">{message.content}</p>
-          ) : null}
-          <AttachmentPreview message={message} />
-        </div>
-        <span className="px-1 text-[10px] text-muted-foreground/60">
-          {formatTime(message.createdAt)}
-        </span>
-      </div>
+      <span className="text-[10px] text-muted-foreground">
+        {formatTime(message.createdAt)}
+      </span>
     </div>
   );
 });
 
-/** 助手消息 - 按 segments 瀑布流渲染 */
+/** 助手消息 —— 无框全宽，按 segments 瀑布流渲染 */
 const AssistantMessage = memo(function AssistantMessage({
   message,
   loadedPublishedVersionId,
@@ -422,12 +471,10 @@ const AssistantMessage = memo(function AssistantMessage({
         : null;
 
   return (
-    <div className="flex gap-3 px-4 py-3">
-      <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-info/15 text-info mt-0.5">
-        <Bot className="size-4" />
-      </div>
+    <div className="flex gap-3">
+      <AssistantAvatar />
 
-      <div className="flex-1 min-w-0 space-y-2">
+      <div className="min-w-0 flex-1 space-y-3">
         {segments.length > 0 ? (
           segments.map((seg, i) => (
             <SegmentRenderer
@@ -440,16 +487,16 @@ const AssistantMessage = memo(function AssistantMessage({
         ) : message.isStreaming ? (
           <TypingIndicator />
         ) : showEmptyTurnPlaceholder ? (
-          <p className="italic text-muted-foreground text-sm">
+          <p className="text-sm text-muted-foreground italic">
             本轮未返回可展示内容
           </p>
         ) : null}
 
         {/* 流式输出时最后一个 segment 后的光标 */}
-        {message.isStreaming && segments.length > 0 && <TypingIndicator />}
+        {message.isStreaming && segments.length > 0 && <StreamingCaret />}
 
         {incompleteError && (
-          <div className="flex items-start gap-2 rounded-md border border-error/30 bg-error/10 px-3 py-2 text-xs text-error">
+          <div className="flex items-start gap-2 rounded-card border border-error/30 bg-error/10 px-3 py-2 text-xs text-error">
             <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
             <span>本轮在输出过程中中断：{incompleteError}</span>
           </div>
@@ -457,12 +504,14 @@ const AssistantMessage = memo(function AssistantMessage({
 
         {activeRestartSuggestion && (
           <RestartToLatestVersionCard
-            publishedVersionNumber={activeRestartSuggestion.publishedVersionNumber}
+            publishedVersionNumber={
+              activeRestartSuggestion.publishedVersionNumber
+            }
             onRestart={onRestartConversation}
           />
         )}
 
-        <span className="block px-1 text-[10px] text-muted-foreground/60">
+        <span className="block text-[10px] text-muted-foreground">
           {formatTime(message.createdAt)}
         </span>
       </div>
@@ -486,7 +535,12 @@ const SegmentRenderer = memo(function SegmentRenderer({
 }) {
   switch (segment.type) {
     case "text":
-      return <MarkdownRenderer content={segment.content} />;
+      return (
+        <MarkdownRenderer
+          content={segment.content}
+          className="text-sm break-words"
+        />
+      );
     case "thinking":
       return <ThinkingBlock content={segment.content} />;
     case "tool_call": {
@@ -575,17 +629,17 @@ export function MessageList({
       onScroll={handleScroll}
     >
       {messages.length === 0 && !showPreparationCard ? (
-        <div className="flex h-full items-center justify-center">
-          <div className="text-center">
-            <Bot className="mx-auto size-12 text-muted-foreground/30" />
-            <p className="mt-3 text-sm text-muted-foreground">
-              与 Agent 开始对话吧
-            </p>
-          </div>
+        <div className="flex h-full items-center justify-center p-6">
+          <EmptyState
+            className="border-0"
+            icon={MessagesSquare}
+            title="与 Agent 开始对话吧"
+            description="在下方输入需求，或直接拖入文件与截图作为上下文。"
+          />
         </div>
       ) : (
-        <div className="space-y-1 py-4">
-          {messages.map((msg) =>
+        <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6">
+          {messages.map((msg, index) =>
             isCompletionNotice(msg) ? (
               <SubAgentCompletionNotice
                 key={msg.id}
@@ -610,25 +664,26 @@ export function MessageList({
                     | undefined
                 }
               />
-            ) : msg.role === "user" ? (
-              <UserBubble key={msg.id} message={msg} />
             ) : (
-              <AssistantMessage
-                key={msg.id}
-                message={msg}
-                loadedPublishedVersionId={loadedPublishedVersionId}
-                onRestartConversation={onRestartConversation}
-              />
+              <motion.div key={msg.id} {...staggerList(index)}>
+                {msg.role === "user" ? (
+                  <UserBubble message={msg} />
+                ) : (
+                  <AssistantMessage
+                    message={msg}
+                    loadedPublishedVersionId={loadedPublishedVersionId}
+                    onRestartConversation={onRestartConversation}
+                  />
+                )}
+              </motion.div>
             ),
           )}
 
           {/* Preparation card in the agent message position */}
           {showPreparationCard && (
-            <div className="flex gap-3 px-4 py-3">
-              <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-info/15 text-info mt-0.5">
-                <Bot className="size-4" />
-              </div>
-              <div className="flex-1 min-w-0">
+            <div className="flex gap-3">
+              <AssistantAvatar />
+              <div className="min-w-0 flex-1">
                 <PreparationCard
                   phase={preparationPhase}
                   startTime={preparationStartTime}
@@ -645,13 +700,9 @@ export function MessageList({
           {isExecuting &&
             !showPreparationCard &&
             !messages.some((m) => m.role === "assistant" && m.isStreaming) && (
-              <div className="flex gap-3 px-4 py-3">
-                <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-info/15 text-info">
-                  <Bot className="size-4" />
-                </div>
-                <div className="py-2.5">
-                  <TypingIndicator />
-                </div>
+              <div className="flex gap-3">
+                <AssistantAvatar />
+                <TypingIndicator />
               </div>
             )}
         </div>

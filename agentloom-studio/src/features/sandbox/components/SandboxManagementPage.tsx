@@ -1,7 +1,27 @@
-import { useState, useCallback, useMemo } from "react";
-import { Search, Plus, Container, Loader2, AlertCircle } from "lucide-react";
+import { useState, useCallback, useEffect, useMemo } from "react";
+import { AlertCircle, Container, Loader2, Plus, Search } from "lucide-react";
+import { motion } from "motion/react";
+import { staggerList } from "@/shared/lib/motion";
+import { EmptyState } from "@/shared/components/empty-state/EmptyState";
+import { PageHeader } from "@/shared/components/page-header/PageHeader";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
+import { Skeleton } from "@/shared/ui/skeleton";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/shared/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogTitle,
+} from "@/shared/ui/alert-dialog";
 import { Pagination } from "@/shared/components";
 import { useToast } from "@/shared/ui/toast";
 import { useSandboxes } from "../api/sandboxQueries";
@@ -20,8 +40,11 @@ import type {
 
 const PAGE_SIZE = 20;
 
-const STATUS_OPTIONS: { value: SandboxStatus | ""; label: string }[] = [
-  { value: "", label: "全部状态" },
+/** Radix Select 不接受空字符串 value，用哨兵值表示「不过滤」 */
+const ANY = "__any__";
+
+const STATUS_OPTIONS: { value: SandboxStatus | typeof ANY; label: string }[] = [
+  { value: ANY, label: "全部状态" },
   { value: "creating", label: "创建中" },
   { value: "ready", label: "就绪" },
   { value: "busy", label: "运行中" },
@@ -31,20 +54,20 @@ const STATUS_OPTIONS: { value: SandboxStatus | ""; label: string }[] = [
 ];
 
 const LIFECYCLE_OPTIONS: {
-  value: "" | "session" | "persistent";
+  value: typeof ANY | "session" | "persistent";
   label: string;
 }[] = [
-  { value: "", label: "全部类型" },
+  { value: ANY, label: "全部类型" },
   { value: "session", label: "临时" },
   { value: "persistent", label: "持久" },
 ];
 
 const BINDING_OPTIONS: {
-  value: "" | "resource" | "conversation" | "execution";
+  value: typeof ANY | "resource" | "conversation" | "execution";
   label: string;
 }[] = [
   { value: "resource", label: "资源沙箱" },
-  { value: "", label: "全部绑定" },
+  { value: ANY, label: "全部绑定" },
   { value: "conversation", label: "对话沙箱" },
   { value: "execution", label: "执行沙箱" },
 ];
@@ -83,6 +106,15 @@ export function SandboxManagementPage() {
   const { data, isLoading, isError, refetch } = useSandboxes(params);
   const sessions = data?.data ?? [];
   const meta = data?.meta;
+
+  useEffect(() => {
+    if (!isError) return;
+    notify({
+      title: "沙箱列表加载失败",
+      description: "请检查网络后重试。",
+      variant: "error",
+    });
+  }, [isError, notify]);
 
   const handleSearch = useCallback((value: string) => {
     setSearch(value);
@@ -162,25 +194,23 @@ export function SandboxManagementPage() {
     search.trim() !== "" || statusFilter !== "" || lifecycleFilter !== "";
 
   return (
-    <div className="flex h-full flex-col gap-4 p-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-foreground">沙箱</h1>
-          <p className="text-sm text-muted-foreground">
-            管理 Agent 的代码执行沙箱环境
-          </p>
-        </div>
-        <Button onClick={() => setCreateOpen(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          创建沙箱
-        </Button>
-      </div>
+    <div className="flex h-full flex-col gap-5 overflow-y-auto p-6">
+      <PageHeader
+        icon={Container}
+        tone="var(--color-type-sandbox)"
+        title="沙箱"
+        description="管理 Agent 的代码执行沙箱环境"
+        actions={
+          <Button onClick={() => setCreateOpen(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            创建沙箱
+          </Button>
+        }
+      />
 
-      {/* Filter row */}
-      <div className="flex items-center gap-3">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
           <Input
             type="text"
             value={search}
@@ -189,88 +219,125 @@ export function SandboxManagementPage() {
             className="pl-9"
           />
         </div>
-        <select
-          value={statusFilter}
-          onChange={(e) => {
-            setStatusFilter(e.target.value as SandboxStatus | "");
-            setPage(1);
-          }}
-          className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-        >
-          {STATUS_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
-        <select
-          value={lifecycleFilter}
-          onChange={(e) => {
-            setLifecycleFilter(e.target.value as "" | "session" | "persistent");
-            setPage(1);
-          }}
-          className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-        >
-          {LIFECYCLE_OPTIONS.map((opt) => (
-            <option key={opt.value} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
-        <select
-          value={bindingFilter}
-          onChange={(e) => {
-            setBindingFilter(
-              e.target.value as "" | "resource" | "conversation" | "execution",
-            );
-            setPage(1);
-          }}
-          className="h-9 rounded-md border border-input bg-background px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-        >
-          {BINDING_OPTIONS.map((opt) => (
-            <option key={opt.value || "all"} value={opt.value}>
-              {opt.label}
-            </option>
-          ))}
-        </select>
+        <div className="grid grid-cols-3 gap-2 lg:flex lg:shrink-0">
+          <Select
+            value={statusFilter || ANY}
+            onValueChange={(value) => {
+              setStatusFilter(value === ANY ? "" : (value as SandboxStatus));
+              setPage(1);
+            }}
+          >
+            <SelectTrigger className="lg:w-32" aria-label="状态筛选">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {STATUS_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select
+            value={lifecycleFilter || ANY}
+            onValueChange={(value) => {
+              setLifecycleFilter(
+                value === ANY ? "" : (value as "session" | "persistent"),
+              );
+              setPage(1);
+            }}
+          >
+            <SelectTrigger className="lg:w-32" aria-label="生命周期筛选">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {LIFECYCLE_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select
+            value={bindingFilter || ANY}
+            onValueChange={(value) => {
+              setBindingFilter(
+                value === ANY
+                  ? ""
+                  : (value as "resource" | "conversation" | "execution"),
+              );
+              setPage(1);
+            }}
+          >
+            <SelectTrigger className="lg:w-36" aria-label="绑定类型筛选">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {BINDING_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
-      <p className="text-xs text-muted-foreground">
+      <p className="text-xs text-muted">
         默认只显示真正可复用的资源型沙箱；对话和执行过程里的会话沙箱可按需切换查看。
       </p>
 
-      {/* Content */}
       {isLoading ? (
-        <div className="flex flex-1 items-center justify-center py-20">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {Array.from({ length: 6 }, (_, index) => (
+            <Skeleton key={index} className="h-44 rounded-card" />
+          ))}
         </div>
       ) : isError ? (
-        <div className="flex flex-1 flex-col items-center justify-center gap-3 py-20 text-center">
-          <AlertCircle className="h-12 w-12 text-muted-foreground" />
-          <p className="text-sm font-medium">沙箱列表加载失败</p>
-          <p className="text-sm text-muted-foreground">请稍后重试</p>
-          <Button variant="outline" onClick={() => void refetch()}>
-            重新加载
-          </Button>
-        </div>
+        <EmptyState
+          icon={AlertCircle}
+          tone="var(--color-error)"
+          title="沙箱列表加载失败"
+          description="请稍后重试，或检查沙箱服务是否可用。"
+          action={
+            <Button variant="outline" onClick={() => void refetch()}>
+              重新加载
+            </Button>
+          }
+        />
       ) : sessions.length === 0 ? (
-        <div className="flex flex-1 flex-col items-center justify-center gap-2 py-20">
-          <Container className="h-12 w-12 text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">
-            {hasFilters ? "没有匹配的沙箱" : "暂无沙箱，点击右上角创建"}
-          </p>
-        </div>
+        <EmptyState
+          icon={Container}
+          tone="var(--color-type-sandbox)"
+          title={hasFilters ? "没有匹配的沙箱" : "暂无沙箱"}
+          description={
+            hasFilters
+              ? "换个关键词，或放宽状态与类型筛选。"
+              : "持久沙箱可跨会话复用，适合长期驻留的开发与调试环境。"
+          }
+          action={
+            hasFilters ? null : (
+              <Button size="sm" onClick={() => setCreateOpen(true)}>
+                <Plus className="mr-1.5 h-4 w-4" />
+                创建沙箱
+              </Button>
+            )
+          }
+        />
       ) : (
         <>
-          <div className="grid gap-4 xl:grid-cols-2">
-            {sessions.map((session) => (
-              <SandboxCard
-                key={session.id}
-                session={session}
-                onStop={handleStop}
-                onStart={handleStart}
-                onDelete={handleDelete}
-              />
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {sessions.map((session, index) => (
+              <motion.div key={session.id} {...staggerList(index)}>
+                <SandboxCard
+                  session={session}
+                  onStop={handleStop}
+                  onStart={handleStart}
+                  onDelete={handleDelete}
+                />
+              </motion.div>
             ))}
           </div>
 
@@ -285,52 +352,41 @@ export function SandboxManagementPage() {
         </>
       )}
 
-      {/* Create dialog */}
       <CreateSandboxDialog open={createOpen} onOpenChange={setCreateOpen} />
 
-      {/* Delete confirmation */}
-      {confirmDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-            onClick={() => setConfirmDelete(null)}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") setConfirmDelete(null);
-            }}
-            role="button"
-            tabIndex={-1}
-            aria-label="关闭对话框"
-          />
-          <div className="relative z-10 w-full max-w-sm rounded-xl border border-border bg-background p-6 shadow-2xl">
-            <h3 className="text-base font-semibold">确认删除</h3>
-            <p className="mt-2 text-sm text-muted-foreground">
-              确定要删除沙箱「
-              {confirmDelete.config.name || confirmDelete.id.slice(0, 8)}
-              」吗？此操作不可撤销。
-            </p>
-            <div className="mt-4 flex justify-end gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setConfirmDelete(null)}
-              >
-                取消
-              </Button>
-              <Button
-                size="sm"
-                className="bg-red-600 text-white hover:bg-red-700"
-                disabled={deleteMutation.isPending}
-                onClick={handleConfirmDelete}
-              >
-                {deleteMutation.isPending && (
-                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                )}
-                删除
-              </Button>
-            </div>
+      <AlertDialog
+        open={confirmDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmDelete(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogTitle>确认删除</AlertDialogTitle>
+          <AlertDialogDescription>
+            确定要删除沙箱「
+            {confirmDelete
+              ? confirmDelete.config.name || confirmDelete.id.slice(0, 8)
+              : ""}
+            」吗？此操作不可撤销。
+          </AlertDialogDescription>
+          <div className="mt-5 flex justify-end gap-2">
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-error text-white hover:bg-error/90"
+              disabled={deleteMutation.isPending}
+              onClick={(event) => {
+                event.preventDefault();
+                handleConfirmDelete();
+              }}
+            >
+              {deleteMutation.isPending && (
+                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+              )}
+              删除
+            </AlertDialogAction>
           </div>
-        </div>
-      )}
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

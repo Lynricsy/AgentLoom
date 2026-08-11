@@ -48,8 +48,8 @@ function truncate(str: string, maxLen: number): string {
 }
 
 function scoreColor(score: number): string {
-  if (score >= 0.9) return 'text-emerald-400'
-  if (score >= 0.7) return 'text-amber-400'
+  if (score >= 0.9) return 'text-success'
+  if (score >= 0.7) return 'text-warning'
   return 'text-muted-foreground'
 }
 
@@ -81,7 +81,7 @@ const KnowledgeDetail = memo(function KnowledgeDetail({ toolCall, state }: ToolR
 
   if (state === 'failed' && toolCall.error) {
     return (
-      <pre className="overflow-auto rounded-md bg-red-950/30 p-3 font-mono text-xs leading-relaxed text-red-400">
+      <pre className="overflow-auto rounded-md bg-error/10 p-3 font-mono text-xs leading-relaxed text-error">
         {toolCall.error}
       </pre>
     )
@@ -89,7 +89,7 @@ const KnowledgeDetail = memo(function KnowledgeDetail({ toolCall, state }: ToolR
 
   if (entries.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center gap-2 rounded-lg bg-zinc-900 p-8 text-muted-foreground">
+      <div className="flex flex-col items-center justify-center gap-2 rounded-lg bg-background p-8 text-muted-foreground">
         <BookOpen className="size-5 opacity-40" />
         <span className="text-xs">未找到结果</span>
       </div>
@@ -101,7 +101,7 @@ const KnowledgeDetail = memo(function KnowledgeDetail({ toolCall, state }: ToolR
       {entries.map((entry, i) => {
         const source = entry.metadata?.source ?? `result-${i}`
         return (
-          <div key={`${source}-${i}`} className="rounded-lg bg-zinc-900 p-3 space-y-1">
+          <div key={`${source}-${i}`} className="rounded-lg bg-background p-3 space-y-1">
             <div className="flex items-center justify-between gap-2">
               <span className="truncate font-mono text-xs text-info">
                 {source}
