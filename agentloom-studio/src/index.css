@@ -18,25 +18,25 @@
   --color-brand-foreground: #ffffff;
 
   /* 基础色 (light defaults — :root 和 .dark 各自覆盖) */
-  --color-background: #f5f3ff;
-  --color-foreground: #1e1b4b;
+  --color-background: #f7f8fa;
+  --color-foreground: #101828;
   --color-surface: #ffffff;
-  --color-surface-elevated: #f8f7ff;
+  --color-surface-elevated: #f2f4f7;
 
   /* 文字 */
-  --color-muted: #64748b;
-  --color-muted-foreground: #94a3b8;
+  --color-muted: #667085;
+  --color-muted-foreground: #98a2b3;
 
   /* 边框与输入 */
-  --color-border: #e0e7ff;
-  --color-border-hover: #c7d2fe;
-  --color-input: #e0e7ff;
+  --color-border: #e4e7ec;
+  --color-border-hover: #cfd4dc;
+  --color-input: #e4e7ec;
 
   /* 卡片与弹出层 */
   --color-card: #ffffff;
-  --color-card-foreground: #1e1b4b;
-  --color-popover: #f8f7ff;
-  --color-popover-foreground: #1e1b4b;
+  --color-card-foreground: #101828;
+  --color-popover: #ffffff;
+  --color-popover-foreground: #101828;
 
   /* 状态色 */
   --color-success: #059669;
@@ -57,6 +57,19 @@
   --color-type-exec: #94a3b8;
   --color-type-volume: #22c55e;
 
+  /* 节点类别色 — 与 NodeCategory 一一对应, 另含三个 nodeType 级别覆盖 */
+  --color-node-agent: #8b5cf6;
+  --color-node-tool: #f59e0b;
+  --color-node-trigger: #10b981;
+  --color-node-knowledge: #14b8a6;
+  --color-node-output: #0ea5e9;
+  --color-node-control: #f43f5e;
+  --color-node-plugin: #d946ef;
+  --color-node-memory: #ec4899;
+  --color-node-routing: #6366f1;
+  --color-node-preprocessing: #64748b;
+  --color-node-skill: #a855f7;
+
   /* 兼容性色 (两主题共用) */
   --color-compat-l0: #22c55e;
   --color-compat-l1: #eab308;
@@ -67,11 +80,21 @@
   --font-sans: "Inter Variable", "Noto Sans SC Variable", system-ui, sans-serif;
   --font-mono: "JetBrains Mono Variable", ui-monospace, monospace;
 
+  /* 圆角层级 */
+  --radius-card: 12px;
+  --radius-panel: 16px;
+
+  /* 阴影层级 (light defaults) */
+  --shadow-node: 0 1px 2px rgba(16, 24, 40, 0.06), 0 2px 6px rgba(16, 24, 40, 0.06);
+  --shadow-node-selected: 0 4px 12px rgba(16, 24, 40, 0.12);
+  --shadow-panel: 0 1px 2px rgba(16, 24, 40, 0.04), -4px 0 20px rgba(16, 24, 40, 0.06);
+  --shadow-popover: 0 4px 6px -2px rgba(16, 24, 40, 0.04), 0 12px 24px -6px rgba(16, 24, 40, 0.14);
+
   /* 间距 */
   --spacing-toolbar: 44px;
   --spacing-palette-expanded: 220px;
   --spacing-palette-collapsed: 52px;
-  --spacing-property-panel: 300px;
+  --spacing-property-panel: 360px;
   --spacing-bottom-panel-collapsed: 40px;
   --spacing-bottom-panel-expanded: 200px;
   --spacing-mapping-panel: 320px;
@@ -86,19 +109,19 @@
   --color-primary-foreground: #ffffff;
   --color-brand: #6366f1;
   --color-brand-foreground: #ffffff;
-  --color-background: #f5f3ff;
-  --color-foreground: #1e1b4b;
+  --color-background: #f7f8fa;
+  --color-foreground: #101828;
   --color-surface: #ffffff;
-  --color-surface-elevated: #f8f7ff;
-  --color-muted: #64748b;
-  --color-muted-foreground: #94a3b8;
-  --color-border: #e0e7ff;
-  --color-border-hover: #c7d2fe;
-  --color-input: #e0e7ff;
+  --color-surface-elevated: #f2f4f7;
+  --color-muted: #667085;
+  --color-muted-foreground: #98a2b3;
+  --color-border: #e4e7ec;
+  --color-border-hover: #cfd4dc;
+  --color-input: #e4e7ec;
   --color-card: #ffffff;
-  --color-card-foreground: #1e1b4b;
-  --color-popover: #f8f7ff;
-  --color-popover-foreground: #1e1b4b;
+  --color-card-foreground: #101828;
+  --color-popover: #ffffff;
+  --color-popover-foreground: #101828;
   --color-success: #059669;
   --color-error: #dc2626;
   --color-warning: #d97706;
@@ -109,30 +132,49 @@
 /* ─── Dark theme ─────────────────────────────────────── */
 :root.dark {
   color-scheme: dark;
-  --color-primary: #6366f1;
-  --color-primary-hover: #818cf8;
-  --color-primary-glow: rgba(99, 102, 241, 0.2);
-  --color-primary-foreground: #ffffff;
-  --color-brand: #6366f1;
-  --color-brand-foreground: #ffffff;
-  --color-background: #050506;
-  --color-foreground: #ededef;
-  --color-surface: #0a0a0c;
-  --color-surface-elevated: #141418;
-  --color-muted: #8a8f98;
-  --color-muted-foreground: #5e6068;
-  --color-border: rgba(255, 255, 255, 0.08);
-  --color-border-hover: rgba(255, 255, 255, 0.15);
-  --color-input: rgba(255, 255, 255, 0.08);
-  --color-card: #0a0a0c;
-  --color-card-foreground: #ededef;
-  --color-popover: #141418;
-  --color-popover-foreground: #ededef;
-  --color-success: #22c55e;
-  --color-error: #ef4444;
-  --color-warning: #eab308;
-  --color-info: #3b82f6;
-  --color-brand-gradient: linear-gradient(135deg, #6366f1, #8b5cf6);
+  --color-primary: #818cf8;
+  --color-primary-hover: #a5b4fc;
+  --color-primary-glow: rgba(129, 140, 248, 0.2);
+  --color-primary-foreground: #0b0d10;
+  --color-brand: #818cf8;
+  --color-brand-foreground: #0b0d10;
+  --color-background: #0b0d10;
+  --color-foreground: #e8eaed;
+  --color-surface: #14171c;
+  --color-surface-elevated: #1c2027;
+  --color-muted: #9aa3af;
+  --color-muted-foreground: #6b7280;
+  --color-border: #2a2f38;
+  --color-border-hover: #3a414d;
+  --color-input: #2a2f38;
+  --color-card: #14171c;
+  --color-card-foreground: #e8eaed;
+  --color-popover: #1c2027;
+  --color-popover-foreground: #e8eaed;
+  --color-success: #34d399;
+  --color-error: #f87171;
+  --color-warning: #fbbf24;
+  --color-info: #60a5fa;
+  --color-brand-gradient: linear-gradient(135deg, #818cf8, #a78bfa);
+
+  /* 节点类别色 — 深色下亮度提升约 10% */
+  --color-node-agent: #a78bfa;
+  --color-node-tool: #fbbf24;
+  --color-node-trigger: #34d399;
+  --color-node-knowledge: #2dd4bf;
+  --color-node-output: #38bdf8;
+  --color-node-control: #fb7185;
+  --color-node-plugin: #e879f9;
+  --color-node-memory: #f472b6;
+  --color-node-routing: #818cf8;
+  --color-node-preprocessing: #94a3b8;
+  --color-node-skill: #c084fc;
+
+  /* 阴影 — 深色用黑色大扩散低透明度 */
+  --shadow-node: 0 1px 2px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.3);
+  --shadow-node-selected: 0 6px 20px rgba(0, 0, 0, 0.5);
+  --shadow-panel: -4px 0 24px rgba(0, 0, 0, 0.45);
+  --shadow-popover: 0 12px 32px rgba(0, 0, 0, 0.55);
 }
 
 body {

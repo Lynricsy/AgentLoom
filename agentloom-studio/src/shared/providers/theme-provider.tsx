@@ -27,7 +27,7 @@ function applyTheme(resolved: ResolvedTheme) {
 export function ThemeProvider({ children }: PropsWithChildren) {
   const [theme, setThemeState] = useState<Theme>(() => {
     if (typeof window === 'undefined') return 'system'
-    return (localStorage.getItem(STORAGE_KEY) as Theme | null) ?? 'dark'
+    return (localStorage.getItem(STORAGE_KEY) as Theme | null) ?? 'system'
   })
 
   const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>(() =>
