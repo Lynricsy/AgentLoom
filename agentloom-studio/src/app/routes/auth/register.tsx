@@ -2,13 +2,19 @@ import { useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { Link, createRoute, useNavigate } from '@tanstack/react-router';
+import { AlertCircle } from 'lucide-react';
 import { HTTPError } from 'ky';
 import { z } from 'zod';
 
 import { AuthLayout } from '@/features/auth/components/AuthLayout';
 import { PasswordInput } from '@/features/auth/components/PasswordInput';
+import { Spinner } from '@/shared/components/spinner/Spinner';
 import { apiClient } from '@/shared/api/client';
 import { supabase } from '@/shared/lib/supabase';
+import { Button } from '@/shared/ui/button';
+// FormItem 只提供字段行排版（不依赖 react-hook-form 上下文）；
+// FormLabel 会把 htmlFor 落到 Label 的 <span> 上而无法建立标签关联，故这里用原生 <label>。
+import { FormItem } from '@/shared/ui/form';
 import { Input } from '@/shared/ui/input';
 import { rootRoute } from '../__root';
 
@@ -36,7 +42,7 @@ type RegisterFormValues = z.infer<typeof registerSchema>;
 
 interface RegisterResponse {
   data: {
-    tokens: {
+    tokens?: {
       accessToken: string;
       refreshToken: string;
       expiresIn: number;
@@ -45,23 +51,26 @@ interface RegisterResponse {
   };
 }
 
+const FIELD_LABEL_CLASS = 'text-xs font-medium text-foreground';
+
 async function readRegisterErrorMessage(error: unknown): Promise<string> {
   if (error instanceof HTTPError) {
     try {
-      const payload = (await error.response.json()) as {
-        detail?: unknown;
-        message?: unknown;
+      const body = (await error.response.json()) as {
+        message?: string | string[];
       };
-
-      if (typeof payload.detail === 'string' && payload.detail.length > 0) {
-        return payload.detail;
+      if (Array.isArray(body.message)) {
+        return body.message.join('；');
       }
-
-      if (typeof payload.message === 'string' && payload.message.length > 0) {
-        return payload.message;
+      if (typeof body.message === 'string' && body.message.length > 0) {
+        return body.message;
       }
     } catch {
-      /* noop */
+      // 响应体不是 JSON 时回落到通用错误文案
+    }
+
+    if (error.response.status === 409) {
+      return '该邮箱已被注册，请直接登录';
     }
   }
 
@@ -134,78 +143,108 @@ export function RegisterPage() {
   };
 
   return (
-    <AuthLayout>
+    <AuthLayout title="创建账号" subtitle="注册一个 AgentLoom 账号">
       <div className="space-y-6">
-        <div className="text-center">
-          <h1 className="text-xl font-semibold text-foreground">创建账号</h1>
-          <p className="mt-1 text-sm text-muted">
-            注册一个 AgentLoom 账号
-          </p>
-        </div>
-
-        <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+        {/* noValidate：校验反馈统一由 zod schema 提供，避免浏览器原生气泡与之并存 */}
+        <form
+          noValidate
+          onSubmit={handleSubmit(onSubmit)}
+          className="space-y-4"
+        >
           {serverError && (
-            <div className="rounded-lg border border-error/30 bg-error/10 px-4 py-3 text-sm text-error">
-              {serverError}
+            <div
+              role="alert"
+              className="flex items-start gap-2 rounded-card border border-error/30 bg-error/10 px-3 py-2.5 text-sm text-error"
+            >
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden />
+              <span>{serverError}</span>
             </div>
           )}
 
-          <div className="space-y-1.5">
-            <label htmlFor="register-email" className="text-xs font-medium text-foreground">邮箱</label>
+          <FormItem>
+            <label htmlFor="register-email" className={FIELD_LABEL_CLASS}>
+              邮箱
+            </label>
             <Input
               id="register-email"
               type="email"
               placeholder="your@email.com"
               autoComplete="email"
+              aria-invalid={!!errors.email}
+              className={errors.email ? 'border-error' : undefined}
               {...register('email')}
             />
             {errors.email && (
-              <p className="text-xs text-error">{errors.email.message}</p>
+              <p className="text-xs font-medium text-error">
+                {errors.email.message}
+              </p>
             )}
-          </div>
+          </FormItem>
 
-          <div className="space-y-1.5">
-            <label htmlFor="register-password" className="text-xs font-medium text-foreground">密码</label>
+          <FormItem>
+            <label htmlFor="register-password" className={FIELD_LABEL_CLASS}>
+              密码
+            </label>
             <PasswordInput
               id="register-password"
               placeholder="至少 8 个字符，含大写、小写和数字"
               autoComplete="new-password"
               error={!!errors.password}
+              aria-invalid={!!errors.password}
               {...register('password')}
             />
             {errors.password && (
-              <p className="text-xs text-error">{errors.password.message}</p>
+              <p className="text-xs font-medium text-error">
+                {errors.password.message}
+              </p>
             )}
-          </div>
+          </FormItem>
 
-          <div className="space-y-1.5">
-            <label htmlFor="register-confirmPassword" className="text-xs font-medium text-foreground">确认密码</label>
+          <FormItem>
+            <label
+              htmlFor="register-confirmPassword"
+              className={FIELD_LABEL_CLASS}
+            >
+              确认密码
+            </label>
             <PasswordInput
               id="register-confirmPassword"
               placeholder="再次输入密码"
               autoComplete="new-password"
               error={!!errors.confirmPassword}
+              aria-invalid={!!errors.confirmPassword}
               {...register('confirmPassword')}
             />
             {errors.confirmPassword && (
-              <p className="text-xs text-error">
+              <p className="text-xs font-medium text-error">
                 {errors.confirmPassword.message}
               </p>
             )}
-          </div>
+          </FormItem>
 
-          <button
+          <Button
             type="submit"
+            size="lg"
+            className="w-full"
             disabled={isSubmitting}
-            className="flex h-10 w-full items-center justify-center rounded-lg bg-primary text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {isSubmitting ? '注册中...' : '注册'}
-          </button>
+            {isSubmitting ? (
+              <>
+                <Spinner className="text-primary-foreground" />
+                注册中...
+              </>
+            ) : (
+              '注册'
+            )}
+          </Button>
         </form>
 
-        <p className="text-center text-sm text-muted">
+        <p className="text-sm text-muted">
           已有账号？{' '}
-          <Link to="/login" className="text-primary hover:underline">
+          <Link
+            to="/login"
+            className="font-medium text-primary hover:underline"
+          >
             返回登录
           </Link>
         </p>

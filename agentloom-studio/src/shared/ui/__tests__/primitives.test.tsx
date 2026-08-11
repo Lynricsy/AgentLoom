@@ -291,5 +291,27 @@ describe('Select', () => {
     await user.click(await screen.findByText('Claude'))
 
     await waitFor(() => expect(trigger).toHaveTextContent('Claude'))
+
+    // 关闭后仍须显示已选文案：Radix 依赖 SelectContent 常驻挂载登记选项文案
+    await waitFor(() =>
+      expect(screen.queryByRole('listbox')).not.toBeInTheDocument(),
+    )
+    expect(trigger).toHaveTextContent('Claude')
+  })
+
+  it('首次渲染即回显预设值，无需展开下拉', () => {
+    render(
+      <Select value="claude">
+        <SelectTrigger aria-label="模型">
+          <SelectValue placeholder="请选择" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="gpt">GPT</SelectItem>
+          <SelectItem value="claude">Claude</SelectItem>
+        </SelectContent>
+      </Select>,
+    )
+
+    expect(screen.getByLabelText('模型')).toHaveTextContent('Claude')
   })
 })

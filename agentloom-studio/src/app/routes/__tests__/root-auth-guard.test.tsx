@@ -32,6 +32,8 @@ vi.mock('@tanstack/react-router', () => ({
     <a href={to} {...rest}>{children}</a>
   ),
   useRouterState: vi.fn().mockReturnValue({ pathname: '/' }),
+  // RootLayout 现在挂载 CommandPalette，后者依赖 useNavigate
+  useNavigate: vi.fn().mockReturnValue(vi.fn()),
 }));
 
 vi.mock('@tanstack/router-devtools', () => ({
@@ -67,10 +69,31 @@ import { RootLayout } from '../__root';
 
 describe('RootLayout auth guard', () => {
   const originalLocation = window.location;
+  const originalMatchMedia = window.matchMedia;
+
+  /**
+   * 壳层按视口二选一挂载（AppSidebar 或 MobileTopBar），jsdom 没有 matchMedia，
+   * 因此每个用例都要显式声明视口；默认桌面态，保持既有布局断言的语义。
+   */
+  function setViewport(isDesktop: boolean) {
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      configurable: true,
+      value: (query: string) => ({
+        matches: isDesktop,
+        media: query,
+        onchange: null,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      }),
+    });
+  }
 
   beforeEach(() => {
     vi.clearAllMocks();
     mockUseAuthToken.mockReturnValue(undefined);
+    setViewport(true);
     Object.defineProperty(window, 'location', {
       writable: true,
       value: { pathname: '/', search: '', href: '' },
@@ -81,6 +104,11 @@ describe('RootLayout auth guard', () => {
     Object.defineProperty(window, 'location', {
       writable: true,
       value: originalLocation,
+    });
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      configurable: true,
+      value: originalMatchMedia,
     });
   });
 
@@ -222,5 +250,32 @@ describe('RootLayout auth guard', () => {
 
     expect(screen.getByTestId('outlet')).toBeInTheDocument();
     expect(document.querySelector('.animate-spin')).not.toBeInTheDocument();
+  });
+
+  it('桌面视口只挂载侧边栏，通知铃有且仅有一个', () => {
+    mockUseAuthLoading.mockReturnValue(false);
+    mockUseIsAuthenticated.mockReturnValue(true);
+    setViewport(true);
+    window.location.pathname = '/workflows/draft';
+
+    render(<RootLayout />);
+
+    expect(screen.queryAllByTestId('notification-bell')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: '收起侧边栏' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('打开导航')).not.toBeInTheDocument();
+  });
+
+  it('移动视口只挂载顶部条，通知铃有且仅有一个', () => {
+    mockUseAuthLoading.mockReturnValue(false);
+    mockUseIsAuthenticated.mockReturnValue(true);
+    setViewport(false);
+    window.location.pathname = '/workflows/draft';
+
+    render(<RootLayout />);
+
+    expect(screen.queryAllByTestId('notification-bell')).toHaveLength(1);
+    expect(screen.getByLabelText('打开导航')).toBeInTheDocument();
+    // 侧边栏整体不在树上，导航文字只存在于抽屉里（默认收起）
+    expect(screen.queryByText('工作流')).not.toBeInTheDocument();
   });
 });

@@ -1,134 +1,17 @@
 import { useCallback, useState } from "react";
 import { Link, useRouterState } from "@tanstack/react-router";
-import {
-  AppWindow,
-  BookOpen,
-  Bot,
-  BrainCircuit,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  Code,
-  Compass,
-  Container,
-  Cpu,
-  FolderOpen,
-  Server,
-  Settings,
-  Sparkles,
-  Workflow,
-} from "lucide-react";
+import { ChevronLeft, ChevronRight, Settings } from "lucide-react";
 import { NotificationBell } from "@/features/notification";
 import { BrandMark } from "@/shared/components/brand";
+import { cn } from "@/shared/lib/utils";
+import { SidebarNav } from "./SidebarNav";
 import { UserMenu } from "./UserMenu";
 
 const STORAGE_KEY = "agentloom-sidebar-collapsed";
 const GROUP_EXPANDED_KEY = "agentloom-sidebar-group-expanded";
-const DEVELOPER_NAV_ENTRY_ENABLED = false;
 
-interface NavItem {
-  label: string;
-  icon: typeof Workflow;
-  to: string;
-  params?: Record<string, string>;
-  matchPrefix: string;
-}
-
-interface NavGroup {
-  label: string;
-  icon: typeof Workflow;
-  matchPrefix: string;
-  children: NavItem[];
-}
-
-const NAV_ITEMS: NavItem[] = [
-  {
-    label: "工作流",
-    icon: Workflow,
-    to: "/workflows",
-    matchPrefix: "/workflows",
-  },
-  {
-    label: "Agent",
-    icon: Bot,
-    to: "/agents",
-    matchPrefix: "/agents",
-  },
-  {
-    label: "生成应用",
-    icon: AppWindow,
-    to: "/generated-apps",
-    matchPrefix: "/generated-apps",
-  },
-  {
-    label: "发现",
-    icon: Compass,
-    to: "/discover",
-    matchPrefix: "/discover",
-  },
-  ...(DEVELOPER_NAV_ENTRY_ENABLED
-    ? [
-        {
-          label: "开发者",
-          icon: Code,
-          to: "/developer-console/earnings",
-          matchPrefix: "/developer-console",
-        },
-      ]
-    : []),
-];
-
-const NAV_GROUPS: NavGroup[] = [
-  {
-    label: "资源",
-    icon: Server,
-    matchPrefix: "/resources",
-    children: [
-      {
-        label: "MCP 服务",
-        icon: Server,
-        to: "/resources/mcp-servers",
-        matchPrefix: "/resources/mcp-servers",
-      },
-      {
-        label: "LLM 模型",
-        icon: Cpu,
-        to: "/resources/llm-models",
-        matchPrefix: "/resources/llm-models",
-      },
-      {
-        label: "技能",
-        icon: Sparkles,
-        to: "/resources/skills",
-        matchPrefix: "/resources/skills",
-      },
-      {
-        label: "知识库",
-        icon: BookOpen,
-        to: "/resources/knowledge-bases",
-        matchPrefix: "/resources/knowledge-bases",
-      },
-      {
-        label: "记忆",
-        icon: BrainCircuit,
-        to: "/resources/memory-instances",
-        matchPrefix: "/resources/memory-instances",
-      },
-      {
-        label: "工作区",
-        icon: FolderOpen,
-        to: "/resources/workspaces",
-        matchPrefix: "/resources/workspaces",
-      },
-      {
-        label: "沙箱",
-        icon: Container,
-        to: "/resources/sandboxes",
-        matchPrefix: "/resources/sandboxes",
-      },
-    ],
-  },
-];
+const EXPANDED_WIDTH = 240;
+const COLLAPSED_WIDTH = 64;
 
 function getInitialCollapsed(): boolean {
   try {
@@ -148,14 +31,6 @@ function getInitialGroupExpanded(): Record<string, boolean> {
   return {};
 }
 
-function persistGroupExpanded(state: Record<string, boolean>) {
-  try {
-    localStorage.setItem(GROUP_EXPANDED_KEY, JSON.stringify(state));
-  } catch {
-    /* noop */
-  }
-}
-
 export function AppSidebar() {
   const [collapsed, setCollapsed] = useState(getInitialCollapsed);
   const [groupExpanded, setGroupExpanded] = useState(getInitialGroupExpanded);
@@ -165,202 +40,103 @@ export function AppSidebar() {
   const toggle = useCallback(() => {
     setCollapsed((prev) => {
       const next = !prev;
-      localStorage.setItem(STORAGE_KEY, String(next));
+      try {
+        localStorage.setItem(STORAGE_KEY, String(next));
+      } catch {
+        /* noop */
+      }
       return next;
     });
   }, []);
 
-  const toggleGroup = useCallback((key: string) => {
+  const toggleGroup = useCallback((groupId: string) => {
     setGroupExpanded((prev) => {
-      const next = { ...prev, [key]: !prev[key] };
-      persistGroupExpanded(next);
+      const next = { ...prev, [groupId]: !(prev[groupId] ?? true) };
+      try {
+        localStorage.setItem(GROUP_EXPANDED_KEY, JSON.stringify(next));
+      } catch {
+        /* noop */
+      }
       return next;
     });
   }, []);
 
-  const isActive = (prefix: string) => pathname.startsWith(prefix);
+  const settingsActive = pathname.startsWith("/settings");
 
   return (
     <aside
-      className="flex h-full shrink-0 flex-col border-r border-border bg-surface/80 backdrop-blur-xl"
+      className="flex h-full shrink-0 flex-col border-r border-border bg-surface"
       style={{
-        width: collapsed ? 56 : 200,
+        width: collapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH,
         transition: "width 250ms cubic-bezier(0.16,1,0.3,1)",
       }}
     >
-      {/* Logo + collapse */}
-      <div className="flex h-16 items-center justify-between gap-2 px-3">
-        {!collapsed && (
+      {/* 品牌区 + 折叠开关 */}
+      <div
+        className={cn(
+          "flex h-16 items-center gap-2 px-3",
+          collapsed ? "justify-center" : "justify-between",
+        )}
+      >
+        {collapsed ? null : (
           <Link
             to="/"
-            className="flex min-w-0 items-center gap-3 rounded-xl px-1 py-1 transition-colors hover:bg-surface-elevated/70"
+            className="flex min-w-0 items-center gap-3 rounded-md px-1 py-1 transition-colors hover:bg-surface-elevated"
           >
-            <BrandMark
-              size="sm"
-              className="bg-surface ring-border shadow-[0_14px_40px_rgba(2,6,23,0.3)]"
-            />
+            <BrandMark size="sm" />
             <div className="min-w-0">
               <p className="truncate text-sm font-semibold text-foreground">
                 AgentLoom
               </p>
-              <p className="truncate text-[11px] uppercase tracking-[0.24em] text-muted">
+              <p className="truncate text-[11px] uppercase tracking-[0.24em] text-muted-foreground">
                 Studio
               </p>
             </div>
           </Link>
         )}
+
         <button
           type="button"
           onClick={toggle}
-          className="flex h-8 w-8 items-center justify-center rounded-lg text-muted transition-colors hover:bg-surface-elevated hover:text-foreground"
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-muted transition-colors hover:bg-surface-elevated hover:text-foreground"
           title={collapsed ? "展开侧边栏" : "收起侧边栏"}
+          aria-label={collapsed ? "展开侧边栏" : "收起侧边栏"}
         >
           {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
         </button>
       </div>
 
-      {/* Main nav */}
-      <nav className="flex flex-1 flex-col gap-1 overflow-y-auto px-2 py-2">
-        {/* Flat nav items */}
-        {NAV_ITEMS.map((item) => {
-          const active = isActive(item.matchPrefix);
-          const Icon = item.icon;
-          return (
-            <Link
-              key={item.to}
-              to={item.to}
-              params={item.params ?? {}}
-              className={`group relative flex items-center gap-3 rounded-lg px-2 py-2 text-sm font-medium transition-colors ${
-                active
-                  ? "bg-primary/10 text-primary"
-                  : "text-muted hover:bg-surface-elevated hover:text-foreground"
-              }`}
-              title={collapsed ? item.label : undefined}
-            >
-              {/* active indicator */}
-              {active && (
-                <span className="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-full bg-primary" />
-              )}
-              <Icon size={18} className="shrink-0" />
-              {!collapsed && <span>{item.label}</span>}
-            </Link>
-          );
-        })}
+      <SidebarNav
+        pathname={pathname}
+        collapsed={collapsed}
+        groupExpanded={groupExpanded}
+        onToggleGroup={toggleGroup}
+      />
 
-        {/* Nav groups */}
-        {NAV_GROUPS.map((group) => {
-          const groupActive = isActive(group.matchPrefix);
-          const expanded = groupExpanded[group.matchPrefix] ?? groupActive;
-          const GroupIcon = group.icon;
-
-          // When sidebar is collapsed, show children directly as icon-only items
-          if (collapsed) {
-            return group.children.map((child) => {
-              const childActive = isActive(child.matchPrefix);
-              const ChildIcon = child.icon;
-              return (
-                <Link
-                  key={child.to}
-                  to={child.to}
-                  className={`group relative flex items-center justify-center rounded-lg px-2 py-2 text-sm font-medium transition-colors ${
-                    childActive
-                      ? "bg-primary/10 text-primary"
-                      : "text-muted hover:bg-surface-elevated hover:text-foreground"
-                  }`}
-                  title={child.label}
-                >
-                  {childActive && (
-                    <span className="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-full bg-primary" />
-                  )}
-                  <ChildIcon size={18} className="shrink-0" />
-                </Link>
-              );
-            });
-          }
-
-          return (
-            <div key={group.matchPrefix}>
-              {/* Group header */}
-              <button
-                type="button"
-                onClick={() => toggleGroup(group.matchPrefix)}
-                className={`flex w-full items-center gap-3 rounded-lg px-2 py-2 text-xs font-semibold uppercase tracking-wider transition-colors ${
-                  groupActive
-                    ? "text-primary/80"
-                    : "text-muted-foreground/60 hover:text-muted-foreground"
-                }`}
-              >
-                <GroupIcon size={16} className="shrink-0" />
-                <span className="flex-1 text-left">{group.label}</span>
-                {expanded ? (
-                  <ChevronDown size={14} className="shrink-0" />
-                ) : (
-                  <ChevronRight size={14} className="shrink-0" />
-                )}
-              </button>
-
-              {/* Group children with collapse animation */}
-              <div
-                className="overflow-hidden transition-all duration-200 ease-in-out"
-                style={{
-                  maxHeight: expanded
-                    ? `${group.children.length * 40}px`
-                    : "0px",
-                  opacity: expanded ? 1 : 0,
-                }}
-              >
-                {group.children.map((child) => {
-                  const childActive = isActive(child.matchPrefix);
-                  const ChildIcon = child.icon;
-                  return (
-                    <Link
-                      key={child.to}
-                      to={child.to}
-                      className={`group relative flex items-center gap-3 rounded-lg py-1.5 pl-5 pr-2 text-sm font-medium transition-colors ${
-                        childActive
-                          ? "bg-primary/10 text-primary"
-                          : "text-muted hover:bg-surface-elevated hover:text-foreground"
-                      }`}
-                    >
-                      {childActive && (
-                        <span className="absolute left-0 top-1/2 h-5 w-0.5 -translate-y-1/2 rounded-full bg-primary" />
-                      )}
-                      <ChildIcon size={16} className="shrink-0" />
-                      <span className="truncate">{child.label}</span>
-                    </Link>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })}
-      </nav>
-
-      {/* Bottom section */}
+      {/* 底部：设置 / 通知 / 用户 */}
       <div className="flex flex-col gap-1 border-t border-border px-2 py-2">
-        {/* Settings */}
         <Link
           to="/settings"
-          className={`flex items-center gap-3 rounded-lg px-2 py-2 text-sm font-medium transition-colors ${
-            isActive("/settings")
+          className={cn(
+            "flex items-center gap-3 rounded-md px-2 py-2 text-sm font-medium transition-colors",
+            collapsed && "justify-center",
+            settingsActive
               ? "bg-primary/10 text-primary"
-              : "text-muted hover:bg-surface-elevated hover:text-foreground"
-          }`}
+              : "text-muted hover:bg-surface-elevated hover:text-foreground",
+          )}
           title={collapsed ? "设置" : undefined}
         >
           <Settings size={18} className="shrink-0" />
-          {!collapsed && <span>设置</span>}
+          {collapsed ? null : <span>设置</span>}
         </Link>
 
-        {/* Notifications */}
         <div
-          className={`flex items-center ${collapsed ? "justify-center" : "px-2"}`}
+          className={cn("flex items-center", collapsed ? "justify-center" : "px-2")}
           title={collapsed ? "通知" : undefined}
         >
           <NotificationBell />
         </div>
 
-        {/* User */}
         <UserMenu collapsed={collapsed} />
       </div>
     </aside>

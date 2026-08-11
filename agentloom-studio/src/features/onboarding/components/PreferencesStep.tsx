@@ -1,7 +1,14 @@
 import { useState } from 'react';
 
 import { Button } from '@/shared/ui/button';
-import { NativeSelect } from '@/shared/ui/native-select';
+import { FormItem } from '@/shared/ui/form';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/shared/ui/select';
 import { Switch } from '@/shared/ui/switch';
 
 interface PreferencesStepProps {
@@ -9,49 +16,49 @@ interface PreferencesStepProps {
   onSkip: () => void;
 }
 
+const LANGUAGE_OPTIONS = [
+  { value: 'en', label: 'English' },
+  { value: 'zh', label: '中文' },
+] as const;
+
 export function PreferencesStep({ onComplete, onSkip }: PreferencesStepProps) {
   const [language, setLanguage] = useState('en');
   const [notifications, setNotifications] = useState(true);
 
-  function handleComplete() {
-    onComplete({ language, notifications });
-  }
-
   return (
     <div className="flex flex-col">
-      <h2 className="text-xl font-bold text-foreground">偏好设置</h2>
-      <p className="mt-1 text-sm text-muted-foreground">
-        自定义使用体验，之后可在设置中修改。
-      </p>
-
-      <div className="mt-6 space-y-5">
-        <div className="space-y-2">
+      <div className="space-y-5">
+        <FormItem>
           <label
             htmlFor="language-select"
             className="text-xs font-medium text-foreground"
           >
             语言
           </label>
-          <NativeSelect
-            id="language-select"
-            value={language}
-            onValueChange={setLanguage}
-          >
-            <option value="en">English</option>
-            <option value="zh">中文</option>
-          </NativeSelect>
-        </div>
+          <Select value={language} onValueChange={setLanguage}>
+            <SelectTrigger id="language-select">
+              <SelectValue placeholder="选择语言" />
+            </SelectTrigger>
+            <SelectContent>
+              {LANGUAGE_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </FormItem>
 
-        <div className="flex items-center justify-between">
-          <div>
-            <span className="text-sm font-medium text-foreground">
-              通知
-            </span>
-            <p className="text-xs text-muted-foreground">
-              接收工作流执行的更新通知
-            </p>
+        <div className="flex items-start justify-between gap-4 rounded-card border border-border bg-surface-elevated px-3.5 py-3">
+          <div className="space-y-0.5">
+            <span className="text-sm font-medium text-foreground">通知</span>
+            <p className="text-xs text-muted">接收工作流执行的更新通知</p>
           </div>
-          <Switch checked={notifications} onCheckedChange={setNotifications} />
+          <Switch
+            aria-label="通知"
+            checked={notifications}
+            onCheckedChange={setNotifications}
+          />
         </div>
       </div>
 
@@ -59,7 +66,10 @@ export function PreferencesStep({ onComplete, onSkip }: PreferencesStepProps) {
         <Button variant="ghost" onClick={onSkip}>
           跳过
         </Button>
-        <Button className="flex-1" onClick={handleComplete}>
+        <Button
+          className="flex-1"
+          onClick={() => onComplete({ language, notifications })}
+        >
           完成设置
         </Button>
       </div>

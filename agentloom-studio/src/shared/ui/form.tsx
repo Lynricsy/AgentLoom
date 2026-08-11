@@ -5,6 +5,7 @@ import {
   useContext,
   useId,
   type HTMLAttributes,
+  type LabelHTMLAttributes,
 } from 'react'
 import {
   Controller,
@@ -15,7 +16,6 @@ import {
   type FieldValues,
 } from 'react-hook-form'
 import { cn } from '@/shared/lib/utils'
-import { Label } from './label'
 
 /** react-hook-form 的 `<FormProvider>` 别名，语义与其余 Form* 组件对齐 */
 export const Form = FormProvider
@@ -82,15 +82,21 @@ export const FormItem = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement
 
 export const FormLabel = forwardRef<
   HTMLLabelElement,
-  HTMLAttributes<HTMLLabelElement> & { htmlFor?: string }
+  LabelHTMLAttributes<HTMLLabelElement>
 >(function FormLabel({ className, ...props }, ref) {
   const { error, formItemId } = useFormField()
 
+  // 必须是原生 <label>：htmlFor 只有落在 label 元素上才建立控件关联，
+  // 屏幕阅读器与 getByLabelText 都依赖它。shared/ui 的 Label 是排版用 <span>，不能承担此职责。
   return (
-    <Label
+    <label
       ref={ref}
       htmlFor={formItemId}
-      className={cn(error && 'text-error', className)}
+      className={cn(
+        'text-xs font-medium text-foreground',
+        error && 'text-error',
+        className,
+      )}
       {...props}
     />
   )

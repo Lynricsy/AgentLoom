@@ -43,6 +43,8 @@ export function CommandDialog({
       <DialogContent
         hideClose
         size="md"
+        // 命令面板无描述文本，显式清空以关闭 Radix 的 aria-describedby 校验告警
+        aria-describedby={undefined}
         className="max-h-[70vh] overflow-hidden p-0 sm:rounded-panel"
       >
         <DialogHiddenTitle>{label}</DialogHiddenTitle>
