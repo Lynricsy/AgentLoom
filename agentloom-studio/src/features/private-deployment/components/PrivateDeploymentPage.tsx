@@ -11,7 +11,7 @@ import {
 import { useAuthToken } from '@/features/execution'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
-import { Select } from '@/shared/ui/select'
+import { NativeSelect } from '@/shared/ui/native-select'
 import { Switch } from '@/shared/ui/switch'
 import { useToast } from '@/shared/ui/toast'
 import {
@@ -901,7 +901,7 @@ function PrivateDeploymentContent({
             htmlFor="private-deployment-llm-proxy-mode"
           >
             <span>代理模式</span>
-            <Select
+            <NativeSelect
               id="private-deployment-llm-proxy-mode"
               value={llmProxyDraft.mode}
               aria-label="代理模式"
@@ -917,7 +917,7 @@ function PrivateDeploymentContent({
                   {option.label}
                 </option>
               ))}
-            </Select>
+            </NativeSelect>
           </label>
 
           <div className="rounded-xl border border-border/60 bg-background/30 p-4 text-xs leading-5 text-muted-foreground">
@@ -1019,7 +1019,7 @@ function PrivateDeploymentContent({
             htmlFor="private-deployment-certificates-source"
           >
             <span>证书来源</span>
-            <Select
+            <NativeSelect
               id="private-deployment-certificates-source"
               value={certificatesDraft.source}
               aria-label="证书来源"
@@ -1035,7 +1035,7 @@ function PrivateDeploymentContent({
                   {option.label}
                 </option>
               ))}
-            </Select>
+            </NativeSelect>
           </label>
 
           <div className="rounded-xl border border-border/60 bg-background/30 p-4 text-xs leading-5 text-muted-foreground">

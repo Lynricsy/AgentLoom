@@ -15,7 +15,7 @@ import { getOrganizationIdFromToken } from '@/features/organization-autonomy-pol
 import { useTheme } from '@/shared/hooks/use-theme'
 import { Input } from '@/shared/ui/input'
 import { Label } from '@/shared/ui/label'
-import { Select } from '@/shared/ui/select'
+import { NativeSelect } from '@/shared/ui/native-select'
 import {
   DEFAULT_AUTONOMY_CONFIG,
   type AutonomyConfig,
@@ -694,7 +694,7 @@ export const LlmAgentConfigPanel = memo(function LlmAgentConfigPanel({
           name="mode"
           control={control}
           render={({ field }) => (
-            <Select
+            <NativeSelect
               aria-label="自主模式"
               id="llm-agent-autonomy-mode"
               value={field.value}
@@ -722,7 +722,7 @@ export const LlmAgentConfigPanel = memo(function LlmAgentConfigPanel({
                   </option>
                 )
               })}
-            </Select>
+            </NativeSelect>
           )}
         />
 
@@ -821,7 +821,7 @@ export const LlmAgentConfigPanel = memo(function LlmAgentConfigPanel({
               name="fallbackStrategy"
               control={control}
               render={({ field }) => (
-                <Select
+                <NativeSelect
                   aria-label="兜底策略"
                   id="llm-agent-fallback-strategy"
                   value={field.value}
@@ -834,7 +834,7 @@ export const LlmAgentConfigPanel = memo(function LlmAgentConfigPanel({
                       {FALLBACK_STRATEGY_META[strategy].label}
                     </option>
                   ))}
-                </Select>
+                </NativeSelect>
               )}
             />
             <p className="mt-1 text-xs text-muted-foreground/80">

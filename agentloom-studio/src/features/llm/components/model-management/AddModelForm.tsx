@@ -10,7 +10,7 @@ import {
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
-import { Select } from "@/shared/ui/select";
+import { NativeSelect } from "@/shared/ui/native-select";
 import { Switch } from "@/shared/ui/switch";
 import { useToast } from "@/shared/ui/toast";
 import { cn } from "@/shared/lib/utils";
@@ -274,14 +274,14 @@ export function AddModelForm({
         <div className="flex items-end gap-3">
           <div className="flex-1 space-y-1.5">
             <Label className="text-xs">模型类型</Label>
-            <Select
+            <NativeSelect
               value={modelType}
               onValueChange={(v) => setModelType(v as "chat" | "embedding")}
               className="h-8 text-xs"
             >
               <option value="chat">聊天</option>
               <option value="embedding">Embedding</option>
-            </Select>
+            </NativeSelect>
           </div>
           <div className="flex items-center gap-2 pb-1">
             <Switch checked={isDefault} onCheckedChange={setIsDefault} />

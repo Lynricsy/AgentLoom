@@ -10,7 +10,7 @@ import {
   isKnowledgeBaseConfigured,
 } from "@/features/knowledge/types";
 import { useAllKnowledgeBases } from "@/features/knowledge/hooks/useKnowledgeBases";
-import { Select } from "@/shared/ui/select";
+import { NativeSelect } from "@/shared/ui/native-select";
 
 const EMPTY_KNOWLEDGE_BASES = [] as const;
 
@@ -127,7 +127,7 @@ export const KnowledgeBaseConfigPanel = memo(function KnowledgeBaseConfigPanel({
             control={control}
             render={({ field }) => (
               <>
-                <Select
+                <NativeSelect
                   aria-label="选择知识库"
                   id="kb-select"
                   value={field.value}
@@ -148,7 +148,7 @@ export const KnowledgeBaseConfigPanel = memo(function KnowledgeBaseConfigPanel({
                       {getKnowledgeNodeCountLabel(kb)}
                     </option>
                   ))}
-                </Select>
+                </NativeSelect>
                 {errors.knowledgeBaseId && (
                   <p className="mt-1 text-xs text-error">
                     {errors.knowledgeBaseId.message}

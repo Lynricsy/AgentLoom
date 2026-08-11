@@ -4,7 +4,7 @@ import { useNavigate } from '@tanstack/react-router'
 import { Clock3, ExternalLink, Loader2, X } from 'lucide-react'
 import { Pagination } from '@/shared/components/Pagination'
 import { Button } from '@/shared/ui/button'
-import { Select } from '@/shared/ui/select'
+import { NativeSelect } from '@/shared/ui/native-select'
 import { cn } from '@/shared/lib/utils'
 import { useTriggerHistory } from '../api/triggerQueries'
 import type { Trigger, TriggerHistoryRecord, TriggerHistoryStatus } from '../types'
@@ -137,7 +137,7 @@ export function TriggerHistoryDialog({
             </div>
 
             <div className="w-full sm:w-48">
-              <Select
+              <NativeSelect
                 value={status}
                 onValueChange={(value) => {
                   setPage(1)
@@ -149,7 +149,7 @@ export function TriggerHistoryDialog({
                 <option value="failed">失败</option>
                 <option value="skipped">跳过</option>
                 <option value="signature_failed">签名失败</option>
-              </Select>
+              </NativeSelect>
             </div>
           </div>
 

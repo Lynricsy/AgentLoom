@@ -20,7 +20,7 @@ import {
 } from "@/shared/lib/resourceSource";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
-import { Select } from "@/shared/ui/select";
+import { NativeSelect } from "@/shared/ui/native-select";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -266,7 +266,7 @@ export function SkillBrowsePage() {
             className="pl-9"
           />
         </div>
-        <Select
+        <NativeSelect
           value={statusFilter}
           onValueChange={handleStatusChange}
           className="w-32"
@@ -274,8 +274,8 @@ export function SkillBrowsePage() {
           <option value="all">全部状态</option>
           <option value="active">活跃</option>
           <option value="archived">已归档</option>
-        </Select>
-        <Select
+        </NativeSelect>
+        <NativeSelect
           value={builtinFilter}
           onValueChange={handleBuiltinChange}
           className="w-32"
@@ -283,7 +283,7 @@ export function SkillBrowsePage() {
           <option value="all">全部类型</option>
           <option value="builtin">内置技能</option>
           <option value="custom">自定义技能</option>
-        </Select>
+        </NativeSelect>
       </div>
 
       {/* 列表内容 */}

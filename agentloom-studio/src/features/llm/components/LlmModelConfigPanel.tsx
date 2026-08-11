@@ -13,7 +13,7 @@ import { z } from "zod";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
-import { Select } from "@/shared/ui/select";
+import { NativeSelect } from "@/shared/ui/native-select";
 import { Slider } from "@/shared/ui/slider";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/ui/tabs";
 import { useToast } from "@/shared/ui/toast";
@@ -701,13 +701,13 @@ export const LlmModelConfigPanel = memo(function LlmModelConfigPanel({
                   control={form.control}
                   name="provider"
                   render={({ field }) => (
-                    <Select value={field.value} onValueChange={field.onChange}>
+                    <NativeSelect value={field.value} onValueChange={field.onChange}>
                       {providerCatalog.map((provider) => (
                         <option key={provider.id} value={provider.id}>
                           {provider.name}
                         </option>
                       ))}
-                    </Select>
+                    </NativeSelect>
                   )}
                 />
               </div>
@@ -732,7 +732,7 @@ export const LlmModelConfigPanel = memo(function LlmModelConfigPanel({
                         control={form.control}
                         name="modelName"
                         render={({ field }) => (
-                          <Select
+                          <NativeSelect
                             value={field.value}
                             onValueChange={field.onChange}
                           >
@@ -742,7 +742,7 @@ export const LlmModelConfigPanel = memo(function LlmModelConfigPanel({
                                 {model}
                               </option>
                             ))}
-                          </Select>
+                          </NativeSelect>
                         )}
                       />
                     )}

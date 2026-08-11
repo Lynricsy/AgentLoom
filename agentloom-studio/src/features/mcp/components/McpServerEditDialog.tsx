@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
-import { Select } from "@/shared/ui/select";
+import { NativeSelect } from "@/shared/ui/native-select";
 import { Switch } from "@/shared/ui/switch";
 import { useToast } from "@/shared/ui/toast";
 import { useMcpServerConfig } from "../api/mcpQueries";
@@ -364,7 +364,7 @@ export function McpServerEditDialog({
                   <label className="text-sm font-medium text-foreground">
                     传输类型
                   </label>
-                  <Select
+                  <NativeSelect
                     value={transportType}
                     onValueChange={(v) =>
                       setTransportType(v as McpTransportType)
@@ -374,7 +374,7 @@ export function McpServerEditDialog({
                     <option value="stdio">stdio</option>
                     <option value="sse">SSE</option>
                     <option value="streamable_http">Streamable HTTP</option>
-                  </Select>
+                  </NativeSelect>
                 </div>
 
                 {transportType === "stdio" ? (

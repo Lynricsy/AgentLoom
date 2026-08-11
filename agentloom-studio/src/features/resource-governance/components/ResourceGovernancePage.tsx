@@ -17,7 +17,7 @@ import {
 import { useAuthToken } from '@/features/execution'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
-import { Select } from '@/shared/ui/select'
+import { NativeSelect } from '@/shared/ui/native-select'
 import { useToast } from '@/shared/ui/toast'
 import {
   useResourceGovernance,
@@ -851,7 +851,7 @@ function ResourceGovernanceContent({
                 htmlFor="resource-governance-tenant-status"
               >
                 <span>租户治理状态</span>
-                <Select
+                <NativeSelect
                   id="resource-governance-tenant-status"
                   value={tenantStatus}
                   aria-label="租户治理状态"
@@ -862,7 +862,7 @@ function ResourceGovernanceContent({
                       {status.label}
                     </option>
                   ))}
-                </Select>
+                </NativeSelect>
               </label>
 
               <div className="rounded-lg border border-border/60 bg-surface-elevated/70 p-3 text-xs leading-5 text-muted-foreground">
@@ -941,7 +941,7 @@ function ResourceGovernanceContent({
                       htmlFor={`resource-governance-workflow-status-${draft.draftId}`}
                     >
                       <span>治理状态</span>
-                      <Select
+                      <NativeSelect
                         id={`resource-governance-workflow-status-${draft.draftId}`}
                         value={draft.status}
                         aria-label={`工作流治理状态 ${index + 1}`}
@@ -954,7 +954,7 @@ function ResourceGovernanceContent({
                             {status.label}
                           </option>
                         ))}
-                      </Select>
+                      </NativeSelect>
                     </label>
                   </div>
 

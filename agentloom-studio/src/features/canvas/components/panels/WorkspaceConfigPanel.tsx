@@ -1,7 +1,7 @@
 import { memo, useCallback } from 'react'
 import { FolderOpen, Loader2 } from 'lucide-react'
 import { useAllWorkspaces } from '@/features/workspace'
-import { Select } from '@/shared/ui/select'
+import { NativeSelect } from '@/shared/ui/native-select'
 
 interface WorkspaceConfigPanelProps {
   config: Record<string, unknown>
@@ -76,7 +76,7 @@ export const WorkspaceConfigPanel = memo(function WorkspaceConfigPanel({
             暂无可用工作区，请先创建一个工作区。
           </p>
         ) : (
-          <Select
+          <NativeSelect
             aria-label="选择工作区"
             id="workspace-select"
             value={currentId}
@@ -88,7 +88,7 @@ export const WorkspaceConfigPanel = memo(function WorkspaceConfigPanel({
                 {ws.name} · {formatSize(ws.sizeBytes)}
               </option>
             ))}
-          </Select>
+          </NativeSelect>
         )}
       </div>
 

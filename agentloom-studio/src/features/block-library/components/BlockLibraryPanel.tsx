@@ -3,7 +3,7 @@ import { useCallback, useMemo, useState, type DragEvent } from 'react';
 import { cn } from '@/shared/lib/utils';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
-import { Select } from '@/shared/ui/select';
+import { NativeSelect } from '@/shared/ui/native-select';
 
 import { useBlocks } from '../api/blockQueries';
 import { BLOCK_CATEGORIES, type BlockCategory, type ReusableBlockListItem } from '../types';
@@ -90,7 +90,7 @@ export function BlockLibraryPanel({ className }: BlockLibraryPanelProps) {
           value={searchQuery}
         />
 
-        <Select
+        <NativeSelect
           data-testid="block-library-category"
           onValueChange={(value) =>
             setCategoryFilter(value === 'all' ? 'all' : (value as BlockCategory))
@@ -103,7 +103,7 @@ export function BlockLibraryPanel({ className }: BlockLibraryPanelProps) {
               {CATEGORY_LABELS[category]}
             </option>
           ))}
-        </Select>
+        </NativeSelect>
       </div>
 
       <div className="flex-1 overflow-y-auto p-3">

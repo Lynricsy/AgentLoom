@@ -1,7 +1,7 @@
 import type { WorkflowInputSchema } from '@/features/workflow/types'
 import { cn } from '@/shared/lib/utils'
 import { Input } from '@/shared/ui/input'
-import { Select } from '@/shared/ui/select'
+import { NativeSelect } from '@/shared/ui/native-select'
 import { isWorkflowInputFieldVisible } from '../lib/schemaHelpers'
 
 interface InputSchemaRendererProps {
@@ -104,7 +104,7 @@ function RendererField({
       ) : null}
 
       {field.type === 'single_select' ? (
-        <Select
+        <NativeSelect
           value={typeof value === 'string' ? value : ''}
           onValueChange={(nextValue) => onChange?.(field.id, nextValue)}
           aria-label={field.label}
@@ -118,7 +118,7 @@ function RendererField({
               {option}
             </option>
           ))}
-        </Select>
+        </NativeSelect>
       ) : null}
 
       {field.type === 'multi_select' ? (

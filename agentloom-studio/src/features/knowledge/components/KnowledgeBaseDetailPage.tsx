@@ -14,7 +14,7 @@ import { useLlmModels } from '@/features/llm'
 import { Pagination } from '@/shared/components'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
-import { Select } from '@/shared/ui/select'
+import { NativeSelect } from '@/shared/ui/native-select'
 import { useToast } from '@/shared/ui/toast'
 import {
   useDeleteDocument,
@@ -550,7 +550,7 @@ export function KnowledgeBaseDetailPage({
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <label className="space-y-2 text-sm">
               <span className="font-medium">Embedding 模型</span>
-              <Select
+              <NativeSelect
                 value={settings.embeddingModelConfigId ?? ''}
                 onValueChange={(value) => {
                   setSettings((current) => ({
@@ -565,12 +565,12 @@ export function KnowledgeBaseDetailPage({
                     {model.name} · {model.modelName}
                   </option>
                 ))}
-              </Select>
+              </NativeSelect>
             </label>
 
             <label className="space-y-2 text-sm">
               <span className="font-medium">分块策略</span>
-              <Select
+              <NativeSelect
                 value={chunkingStrategy.type}
                 onValueChange={(value) => {
                   const nextStrategy: KnowledgeChunkingStrategy =
@@ -591,7 +591,7 @@ export function KnowledgeBaseDetailPage({
                     {option.label}
                   </option>
                 ))}
-              </Select>
+              </NativeSelect>
             </label>
 
             {chunkingStrategy.type === 'sentence' && (
@@ -708,7 +708,7 @@ export function KnowledgeBaseDetailPage({
 
             <label className="space-y-2 text-sm">
               <span className="font-medium">重排策略</span>
-              <Select
+              <NativeSelect
                 value={rerankingStrategy.type}
                 onValueChange={(value) => {
                   const nextStrategy: KnowledgeRerankingStrategy =
@@ -733,7 +733,7 @@ export function KnowledgeBaseDetailPage({
                     {option.label}
                   </option>
                 ))}
-              </Select>
+              </NativeSelect>
             </label>
 
             {rerankingStrategy.type === 'cohere' && (
@@ -776,7 +776,7 @@ export function KnowledgeBaseDetailPage({
 
             <label className="space-y-2 text-sm md:col-span-2">
               <span className="font-medium">Query Orchestration</span>
-              <Select
+              <NativeSelect
                 value={queryOrchestration.type}
                 onValueChange={(value) => {
                   const nextStrategy: KnowledgeQueryOrchestration =
@@ -799,14 +799,14 @@ export function KnowledgeBaseDetailPage({
                     {option.label}
                   </option>
                 ))}
-              </Select>
+              </NativeSelect>
             </label>
 
             {queryOrchestration.type === 'hyde' && (
               <>
                 <label className="space-y-2 text-sm">
                   <span className="font-medium">HyDE 模型</span>
-                  <Select
+                  <NativeSelect
                     value={queryOrchestration.modelConfigId ?? ''}
                     onValueChange={(value) => {
                       setSettings((current) => ({
@@ -824,7 +824,7 @@ export function KnowledgeBaseDetailPage({
                         {model.name} · {model.modelName}
                       </option>
                     ))}
-                  </Select>
+                  </NativeSelect>
                 </label>
 
                 <label className="space-y-2 text-sm md:col-span-2">
@@ -930,7 +930,7 @@ export function KnowledgeBaseDetailPage({
             </p>
           </div>
           <div className="flex items-center gap-2">
-            <Select
+            <NativeSelect
               value={statusFilter}
               onValueChange={(value) => {
                 setStatusFilter(value as DocumentStatusFilter)
@@ -942,7 +942,7 @@ export function KnowledgeBaseDetailPage({
                   {option.label}
                 </option>
               ))}
-            </Select>
+            </NativeSelect>
             <input
               ref={fileInputRef}
               type="file"

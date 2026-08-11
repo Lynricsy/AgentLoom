@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
 import { Button } from '@/shared/ui/button';
-import { Select } from '@/shared/ui/select';
+import { NativeSelect } from '@/shared/ui/native-select';
 import { Switch } from '@/shared/ui/switch';
 
 interface PreferencesStepProps {
@@ -32,14 +32,14 @@ export function PreferencesStep({ onComplete, onSkip }: PreferencesStepProps) {
           >
             语言
           </label>
-          <Select
+          <NativeSelect
             id="language-select"
             value={language}
             onValueChange={setLanguage}
           >
             <option value="en">English</option>
             <option value="zh">中文</option>
-          </Select>
+          </NativeSelect>
         </div>
 
         <div className="flex items-center justify-between">
