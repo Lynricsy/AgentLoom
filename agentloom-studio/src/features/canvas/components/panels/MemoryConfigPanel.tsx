@@ -4,7 +4,13 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { BrainCircuit, Loader2, X } from 'lucide-react'
 import { useAllMemoryInstances } from '@/features/canvas/hooks/useMemoryInstances'
-import { NativeSelect } from '@/shared/ui/native-select'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/shared/ui/select'
 import { Input } from '@/shared/ui/input'
 
 const memoryConfigSchema = z.object({
@@ -230,21 +236,24 @@ export const MemoryConfigPanel = memo(function MemoryConfigPanel({
   const showMissingWarning = Boolean(currentId) && !selectedInstance && !isLoading
 
   return (
-    <div className="space-y-4 px-4 py-4" data-testid="memory-config-panel">
+    <div className="space-y-5 px-4 py-4" data-testid="memory-config-panel">
       {/* 头部标签 */}
       <div className="flex items-center gap-2">
-        <BrainCircuit className="h-4 w-4 text-purple-400" />
-        <span className="rounded-full bg-purple-500/10 px-2 py-0.5 text-xs font-medium text-purple-400">
+        <BrainCircuit className="h-4 w-4 text-node-memory" />
+        <span className="rounded-full bg-node-memory/10 px-2 py-0.5 text-xs font-medium text-node-memory">
           Memory
         </span>
       </div>
 
       {/* Memory 实例选择器 */}
-      <div>
-        <span className="mb-2 inline-flex items-center gap-1 text-xs font-medium text-foreground">
-          <label htmlFor="memory-instance-select">选择 Memory 实例</label>
+      <div className="flex flex-col gap-1.5">
+        <label
+          htmlFor="memory-instance-select"
+          className="inline-flex items-center gap-0.5 text-xs font-medium text-foreground"
+        >
+          选择 Memory 实例
           <span className="text-error">*</span>
-        </span>
+        </label>
         {isLoading ? (
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -260,29 +269,36 @@ export const MemoryConfigPanel = memo(function MemoryConfigPanel({
             control={control}
             render={({ field }) => (
               <>
-                <NativeSelect
-                  aria-label="选择 Memory 实例"
-                  id="memory-instance-select"
+                <Select
                   value={field.value}
                   onValueChange={(selectedId) => {
                     field.onChange(selectedId)
                     handleInstanceSelect(selectedId)
                     void trigger('memoryInstanceId', { shouldFocus: false })
                   }}
-                  onBlur={() => {
-                    field.onBlur()
-                    void trigger(undefined, { shouldFocus: false })
-                  }}
                 >
-                  <option value="">请选择 Memory 实例</option>
-                  {memoryInstances.map((mi) => (
-                    <option key={mi.id} value={mi.id}>
-                      {mi.name} · {mi.graphEngine}
-                    </option>
-                  ))}
-                </NativeSelect>
+                  <SelectTrigger
+                    aria-label="选择 Memory 实例"
+                    id="memory-instance-select"
+                    onBlur={() => {
+                      field.onBlur()
+                      void trigger(undefined, { shouldFocus: false })
+                    }}
+                  >
+                    <SelectValue placeholder="请选择 Memory 实例" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {memoryInstances.map((mi) => (
+                      <SelectItem key={mi.id} value={mi.id}>
+                        {mi.name} · {mi.graphEngine}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 {errors.memoryInstanceId && (
-                  <p className="mt-1 text-xs text-error">{errors.memoryInstanceId.message}</p>
+                  <p className="text-xs font-medium text-error">
+                    {errors.memoryInstanceId.message}
+                  </p>
                 )}
               </>
             )}
@@ -291,39 +307,51 @@ export const MemoryConfigPanel = memo(function MemoryConfigPanel({
       </div>
 
       {/* Role 选择 */}
-      <div>
-        <span className="mb-2 inline-flex items-center gap-1 text-xs font-medium text-foreground">
-          <label htmlFor="memory-role-select">角色</label>
-        </span>
+      <div className="flex flex-col gap-1.5">
+        <label
+          htmlFor="memory-role-select"
+          className="text-xs font-medium text-foreground"
+        >
+          角色
+        </label>
         <Controller
           name="role"
           control={control}
           render={({ field }) => (
-            <NativeSelect
-              aria-label="选择角色"
-              id="memory-role-select"
+            <Select
               value={field.value}
               onValueChange={(val) => {
                 field.onChange(val)
                 handleFieldChange()
               }}
-              onBlur={() => {
-                field.onBlur()
-                void trigger(undefined, { shouldFocus: false })
-              }}
             >
-              <option value="primary">primary（可读写）</option>
-              <option value="readonly">readonly（只读）</option>
-            </NativeSelect>
+              <SelectTrigger
+                aria-label="选择角色"
+                id="memory-role-select"
+                onBlur={() => {
+                  field.onBlur()
+                  void trigger(undefined, { shouldFocus: false })
+                }}
+              >
+                <SelectValue placeholder="请选择角色" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="primary">primary（可读写）</SelectItem>
+                <SelectItem value="readonly">readonly（只读）</SelectItem>
+              </SelectContent>
+            </Select>
           )}
         />
       </div>
 
       {/* Fusion Priority */}
-      <div>
-        <span className="mb-2 inline-flex items-center gap-1 text-xs font-medium text-foreground">
-          <label htmlFor="memory-fusion-priority">融合优先级 (1-10)</label>
-        </span>
+      <div className="flex flex-col gap-1.5">
+        <label
+          htmlFor="memory-fusion-priority"
+          className="text-xs font-medium text-foreground"
+        >
+          融合优先级 (1-10)
+        </label>
         <Controller
           name="fusionPriority"
           control={control}
@@ -348,15 +376,20 @@ export const MemoryConfigPanel = memo(function MemoryConfigPanel({
           )}
         />
         {errors.fusionPriority && (
-          <p className="mt-1 text-xs text-error">{errors.fusionPriority.message}</p>
+          <p className="text-xs font-medium text-error">
+            {errors.fusionPriority.message}
+          </p>
         )}
       </div>
 
       {/* Boot URIs */}
-      <div>
-        <span className="mb-2 inline-flex items-center gap-1 text-xs font-medium text-foreground">
-          <label htmlFor="memory-boot-uris">Boot URIs</label>
-        </span>
+      <div className="flex flex-col gap-1.5">
+        <label
+          htmlFor="memory-boot-uris"
+          className="text-xs font-medium text-foreground"
+        >
+          Boot URIs
+        </label>
         <Controller
           name="bootUris"
           control={control}
@@ -379,7 +412,7 @@ export const MemoryConfigPanel = memo(function MemoryConfigPanel({
       {/* 已选实例详情卡片 */}
       {selectedInstance && (
         <div
-          className="space-y-2 rounded-lg border border-border bg-card p-3 text-xs"
+          className="space-y-2 rounded-card border border-border bg-surface-elevated p-3 text-xs"
           data-testid="memory-instance-details"
         >
           <p className="font-medium text-foreground">{selectedInstance.name}</p>
@@ -389,8 +422,8 @@ export const MemoryConfigPanel = memo(function MemoryConfigPanel({
             <span
               className={
                 selectedInstance.status === 'active'
-                  ? 'text-green-400'
-                  : 'text-amber-400'
+                  ? 'text-success'
+                  : 'text-warning'
               }
             >
               {selectedInstance.status}
@@ -406,13 +439,13 @@ export const MemoryConfigPanel = memo(function MemoryConfigPanel({
       {/* 缺失实例警告 */}
       {showMissingWarning && (
         <div
-          className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs"
+          className="space-y-2 rounded-card border border-warning/30 bg-warning/10 p-3 text-xs"
           data-testid="memory-instance-missing-warning"
         >
-          <p className="font-medium text-amber-700 dark:text-amber-300">
+          <p className="font-medium text-warning">
             当前已选择的 Memory 实例不可用或已删除，请重新选择。
           </p>
-          <p className="break-all text-amber-700/80 dark:text-amber-200/80">ID: {currentId}</p>
+          <p className="break-all text-warning/80">ID: {currentId}</p>
         </div>
       )}
     </div>

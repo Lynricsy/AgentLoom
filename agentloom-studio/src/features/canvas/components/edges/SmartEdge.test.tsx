@@ -7,11 +7,22 @@ import { createDefaultEdgeData, type CanvasEdgeData } from '../../types'
 const mockOnEdgesChange = vi.fn()
 const mockOpenFieldMapping = vi.fn()
 
+/** ReactFlow store 里的节点端口定义（渐变配色的唯一数据来源） */
+const { nodeLookup, executionState } = vi.hoisted(() => ({
+  nodeLookup: new Map<string, { data: unknown }>(),
+  executionState: { nodes: {} as Record<string, { status: string }> },
+}))
+
 vi.mock('../../stores/canvasStore', () => ({
   useCanvasActions: () => ({
     onEdgesChange: mockOnEdgesChange,
     openFieldMapping: mockOpenFieldMapping,
   }),
+}))
+
+vi.mock('@/features/execution/stores/executionStore', () => ({
+  useExecutionStore: (selector: (state: typeof executionState) => unknown) =>
+    selector(executionState),
 }))
 
 vi.mock('@xyflow/react', () => ({
@@ -41,11 +52,16 @@ vi.mock('@xyflow/react', () => ({
   ),
   getBezierPath: () => ['M 0,0 C 50,0 50,100 100,100', 50, 50, 0, 0],
   Position: { Left: 'left', Right: 'right', Top: 'top', Bottom: 'bottom' },
+  useStore: (selector: (state: { nodeLookup: typeof nodeLookup }) => unknown) =>
+    selector({ nodeLookup }),
 }))
 
 vi.mock('lucide-react', () => ({
   X: ({ size }: { size: number }) => (
     <svg data-testid="x-icon" width={size} height={size} />
+  ),
+  Shuffle: ({ size }: { size: number }) => (
+    <svg data-testid="shuffle-icon" width={size} height={size} />
   ),
 }))
 
@@ -59,8 +75,19 @@ const baseProps = {
   targetY: 100,
   sourcePosition: Position.Right,
   targetPosition: Position.Left,
+  sourceHandleId: 'text-out',
+  targetHandleId: 'text-in',
   selected: false,
   data: createDefaultEdgeData(),
+}
+
+function seedTypedPorts(sourceType: string, targetType: string) {
+  nodeLookup.set('node-a', {
+    data: { outputPorts: [{ id: 'text-out', dataType: sourceType }] },
+  })
+  nodeLookup.set('node-b', {
+    data: { inputPorts: [{ id: 'text-in', dataType: targetType }] },
+  })
 }
 
 function renderSmartEdge(props?: Partial<typeof baseProps>) {
@@ -75,6 +102,8 @@ function renderSmartEdge(props?: Partial<typeof baseProps>) {
 describe('SmartEdge', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    nodeLookup.clear()
+    executionState.nodes = {}
   })
 
   function readClassName(element: Element): string {
@@ -97,7 +126,62 @@ describe('SmartEdge', () => {
     expect(readClassName(basePath)).toContain('smart-edge-path--selected')
   })
 
-  it('renders particles for L0 visual level', () => {
+  it('paints a source→target type gradient when both port types resolve', () => {
+    seedTypedPorts('text', 'json')
+    const { container } = renderSmartEdge()
+
+    const gradient = container.querySelector('#edge-gradient-edge-1')
+    expect(gradient).not.toBeNull()
+    expect(gradient?.getAttribute('gradientUnits')).toBe('userSpaceOnUse')
+
+    const stops = gradient!.querySelectorAll('stop')
+    expect(stops).toHaveLength(2)
+    expect(stops[0]!.getAttribute('stop-color')).toBe('var(--color-type-text)')
+    expect(stops[1]!.getAttribute('stop-color')).toBe('var(--color-type-json)')
+
+    const basePath = screen.getByTestId('edge-node-a-node-b')
+    expect(basePath.style.getPropertyValue('--edge-stroke')).toBe(
+      'url(#edge-gradient-edge-1)',
+    )
+  })
+
+  it('falls back to the primary token when port types cannot be resolved', () => {
+    const { container } = renderSmartEdge()
+
+    expect(container.querySelector('#edge-gradient-edge-1')).toBeNull()
+    const basePath = screen.getByTestId('edge-node-a-node-b')
+    expect(basePath.style.getPropertyValue('--edge-stroke')).toBe(
+      'var(--color-primary)',
+    )
+  })
+
+  it('uses the single resolved port color when only one side is known', () => {
+    nodeLookup.set('node-a', {
+      data: { outputPorts: [{ id: 'text-out', dataType: 'image' }] },
+    })
+    const { container } = renderSmartEdge()
+
+    expect(container.querySelector('#edge-gradient-edge-1')).toBeNull()
+    const basePath = screen.getByTestId('edge-node-a-node-b')
+    expect(basePath.style.getPropertyValue('--edge-stroke')).toBe(
+      'var(--color-type-image)',
+    )
+  })
+
+  it('does not render particles on an idle edge', () => {
+    seedTypedPorts('text', 'text')
+    const { container } = renderSmartEdge()
+
+    expect(
+      container.querySelectorAll('.smart-edge-particle--running'),
+    ).toHaveLength(0)
+  })
+
+  it('renders particles while the target node is running', () => {
+    seedTypedPorts('text', 'text')
+    executionState.nodes = {
+      'node-b': { status: 'running' },
+    }
     const { container } = renderSmartEdge()
 
     const particles = container.querySelectorAll('.smart-edge-particle--running')
@@ -105,12 +189,13 @@ describe('SmartEdge', () => {
     expect(readClassName(particles[0]!)).toContain('smart-edge-particle--l0')
   })
 
-  it('renders particles for L1 visual level', () => {
+  it('renders particles for L1 while running', () => {
     const l1Data: CanvasEdgeData = {
       ...createDefaultEdgeData(),
       visualLevel: 'L1',
       rawCompatibilityLevel: 'TRANSFORM',
     }
+    executionState.nodes = { 'node-b': { status: 'running' } }
     const { container } = renderSmartEdge({ data: l1Data })
 
     const particles = container.querySelectorAll('.smart-edge-particle--running')
@@ -123,6 +208,7 @@ describe('SmartEdge', () => {
       ...createDefaultEdgeData(),
       visualLevel: 'checking',
     }
+    executionState.nodes = { 'node-b': { status: 'running' } }
     const { container } = renderSmartEdge({ data: checkingData })
 
     const particles = container.querySelectorAll('.smart-edge-particle--running')
@@ -135,6 +221,7 @@ describe('SmartEdge', () => {
       visualLevel: 'error',
       rawCompatibilityLevel: 'INCOMPATIBLE',
     }
+    executionState.nodes = { 'node-b': { status: 'running' } }
     const { container } = renderSmartEdge({ data: errorData })
 
     const particles = container.querySelectorAll('.smart-edge-particle--running')
@@ -163,8 +250,62 @@ describe('SmartEdge', () => {
     expect(badge.textContent).toContain('4 已映射')
   })
 
+  it('renders a persistent transform pill for L1 edges', () => {
+    const l1Data: CanvasEdgeData = {
+      ...createDefaultEdgeData(),
+      visualLevel: 'L1',
+      rawCompatibilityLevel: 'TRANSFORM',
+    }
+    renderSmartEdge({ data: l1Data })
+
+    const badge = screen.getByTestId('edge-badge-edge-1')
+    expect(badge.className).toContain('edge-badge--l1')
+    expect(badge.className).toContain('edge-badge--visible')
+    expect(badge.textContent).toContain('转换')
+    expect(screen.getByTestId('shuffle-icon')).toBeInTheDocument()
+  })
+
+  it('L1 pill still opens the field mapping panel', () => {
+    const l1Data: CanvasEdgeData = {
+      ...createDefaultEdgeData(),
+      visualLevel: 'L1',
+      rawCompatibilityLevel: 'TRANSFORM',
+    }
+    renderSmartEdge({ data: l1Data })
+
+    fireEvent.click(screen.getByTestId('edge-badge-action-edge-1'))
+
+    expect(mockOpenFieldMapping).toHaveBeenCalledWith('edge-1')
+  })
+
+  it('renders a persistent error pill for incompatible edges', () => {
+    const errorData: CanvasEdgeData = {
+      ...createDefaultEdgeData(),
+      visualLevel: 'error',
+      rawCompatibilityLevel: 'INCOMPATIBLE',
+    }
+    renderSmartEdge({ data: errorData })
+
+    const badge = screen.getByTestId('edge-badge-edge-1')
+    expect(badge.className).toContain('edge-badge--error')
+    expect(badge.className).toContain('edge-badge--visible')
+  })
+
+  it('delete button only exists while the edge is selected', () => {
+    const { rerender } = renderSmartEdge()
+    expect(screen.queryByTestId('edge-delete-edge-1')).toBeNull()
+
+    rerender(
+      <svg aria-label="SmartEdge test canvas">
+        <title>SmartEdge test canvas</title>
+        <SmartEdge {...baseProps} selected />
+      </svg>
+    )
+    expect(screen.getByTestId('edge-delete-edge-1')).toBeInTheDocument()
+  })
+
   it('delete button dispatches remove edge change', () => {
-    renderSmartEdge()
+    renderSmartEdge({ selected: true })
 
     const deleteBtn = screen.getByTestId('edge-delete-edge-1')
     fireEvent.click(deleteBtn)
@@ -211,20 +352,17 @@ describe('SmartEdge', () => {
     const interactionPath = screen.getByTestId('edge-node-a-node-b')
     const badge = screen.getByTestId('edge-badge-edge-1')
     const badgeAction = screen.getByTestId('edge-badge-action-edge-1')
-    const deleteButton = screen.getByTestId('edge-delete-edge-1')
 
     expect(badge.className).not.toContain('edge-badge--visible')
     expect(badge).toHaveStyle({ pointerEvents: 'none' })
     expect(badge).toHaveAttribute('aria-hidden', 'true')
     expect(badgeAction).toHaveAttribute('tabindex', '-1')
-    expect(deleteButton).toHaveAttribute('tabindex', '-1')
 
     fireEvent.mouseEnter(interactionPath)
     expect(badge.className).toContain('edge-badge--visible')
     expect(badge).toHaveStyle({ pointerEvents: 'all' })
     expect(badge).toHaveAttribute('aria-hidden', 'false')
     expect(badgeAction).toHaveAttribute('tabindex', '0')
-    expect(deleteButton).toHaveAttribute('tabindex', '0')
 
     fireEvent.mouseLeave(interactionPath)
     expect(badge.className).not.toContain('edge-badge--visible')

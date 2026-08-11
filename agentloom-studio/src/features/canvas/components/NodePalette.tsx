@@ -1,7 +1,11 @@
 import { memo, useMemo, useState, useCallback, type DragEvent } from 'react'
+import { PanelLeftClose, PanelLeftOpen, Search } from 'lucide-react'
 import { BlockLibraryPanel } from '@/features/block-library/components/BlockLibraryPanel'
 import { useActivePlugins, type PluginNodeDefinition } from '@/features/plugin'
+import { Button } from '@/shared/ui/button'
+import { Input } from '@/shared/ui/input'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/shared/ui/tabs'
+import { TooltipHint, TooltipProvider } from '@/shared/ui/tooltip'
 import { cn } from '../../../shared/lib/utils'
 import { useCanvasStore, useSelectedNodeData } from '../stores/canvasStore'
 import {
@@ -10,6 +14,13 @@ import {
   PALETTE_GROUPS,
   NODE_CATEGORIES,
 } from './nodeCategories'
+import {
+  applyPaletteDragPreview,
+  PALETTE_SHELL_CLASS,
+  PaletteItemButton,
+  PaletteRailItem,
+  PaletteSectionHeader,
+} from './paletteChrome'
 import type { PaletteGroup, PaletteNodeItem } from '../types'
 import {
   getNodeTypeConfig,
@@ -66,6 +77,7 @@ export const NodePalette = memo(function NodePalette({ className }: NodePaletteP
   const [activeTab, setActiveTab] = useState('nodes')
   const [searchQuery, setSearchQuery] = useState('')
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set())
+  const [isPaletteCollapsed, setIsPaletteCollapsed] = useState(false)
   const { data: pluginsResponse } = useActivePlugins()
   const selectedNodeData = useSelectedNodeData()
   const selectedNodeId = useCanvasStore((state) => state.selectedNodeId)
@@ -178,10 +190,17 @@ export const NodePalette = memo(function NodePalette({ className }: NodePaletteP
     })
   }, [])
 
-  const onDragStart = useCallback((event: DragEvent, item: PaletteNodeItem) => {
-    event.dataTransfer.setData(DRAG_TRANSFER_TYPE, JSON.stringify(item))
-    event.dataTransfer.effectAllowed = 'move'
-  }, [])
+  const onDragStart = useCallback(
+    (event: DragEvent<HTMLButtonElement>, item: PaletteNodeItem) => {
+      event.dataTransfer.setData(DRAG_TRANSFER_TYPE, JSON.stringify(item))
+      event.dataTransfer.effectAllowed = 'move'
+      applyPaletteDragPreview(event, {
+        label: item.label,
+        color: NODE_CATEGORIES[item.category]?.color ?? NODE_CATEGORIES.control.color,
+      })
+    },
+    [],
+  )
 
   const filteredGroups = searchQuery.trim()
     ? allGroups.map((group) => ({
@@ -192,71 +211,144 @@ export const NodePalette = memo(function NodePalette({ className }: NodePaletteP
       })).filter((group) => group.items.length > 0)
     : allGroups
 
-  return (
-    <aside
-      className={cn(
-        'flex h-full w-[var(--spacing-palette-expanded)] flex-col border-r border-border bg-surface',
-        className
-      )}
-    >
-      <Tabs
-        className="flex h-full flex-col"
-        defaultValue="nodes"
-        onValueChange={setActiveTab}
-        value={activeTab}
-      >
-        <div className="border-b border-border p-3">
-          <TabsList>
-            <TabsTrigger value="nodes">节点</TabsTrigger>
-            <TabsTrigger value="blocks">My Blocks</TabsTrigger>
-          </TabsList>
-        </div>
+  if (isPaletteCollapsed) {
+    return (
+      <TooltipProvider delayDuration={200}>
+        <aside
+          className={cn(
+            PALETTE_SHELL_CLASS,
+            'w-[var(--spacing-palette-collapsed)] items-center gap-1 py-3',
+            className,
+          )}
+        >
+          <TooltipHint side="right" label="展开节点面板">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="展开节点面板"
+              onClick={() => setIsPaletteCollapsed(false)}
+            >
+              <PanelLeftOpen className="h-4 w-4" />
+            </Button>
+          </TooltipHint>
 
-        <TabsContent className="flex min-h-0 flex-1 flex-col" value="nodes">
-          <div className="border-b border-border p-3">
-            <input
-              type="text"
-              placeholder="搜索节点..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full rounded-md border border-border bg-background px-3 py-1.5 text-sm text-foreground placeholder:text-muted outline-none focus:border-info"
-            />
-          </div>
-
-          <div className="flex-1 overflow-y-auto p-2">
-            <p className="mb-2 px-2 text-[11px] text-muted">拖拽节点到画布以添加</p>
-            {filteredGroups.map((group) => {
-              const groupKey = getGroupKey(group)
-
-              return (
-                <PaletteGroupSection
-                  key={groupKey}
-                  group={group}
-                  isCollapsed={collapsedGroups.has(groupKey)}
-                  onToggle={() => toggleGroup(groupKey)}
-                  onDragStart={onDragStart}
+          <div className="flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto pt-1">
+            {allGroups.flatMap((group) =>
+              group.items.map((item) => (
+                <PaletteRailItem
+                  key={getPaletteItemKey(item)}
+                  icon={item.icon}
+                  color={
+                    NODE_CATEGORIES[item.category]?.color ?? NODE_CATEGORIES.control.color
+                  }
+                  label={item.label}
+                  description={item.description}
+                  onDragStart={(event) => onDragStart(event, item)}
                 />
-              )
-            })}
-            {filteredGroups.length === 0 && (
-              <p className="mt-4 text-center text-sm text-muted">无匹配节点</p>
+              )),
             )}
           </div>
-        </TabsContent>
+        </aside>
+      </TooltipProvider>
+    )
+  }
 
-        <TabsContent className="min-h-0 flex-1" value="blocks">
-          <BlockLibraryPanel className="h-full" />
-        </TabsContent>
-      </Tabs>
-    </aside>
+  return (
+    <TooltipProvider delayDuration={200}>
+      <aside
+        className={cn(
+          PALETTE_SHELL_CLASS,
+          'w-[var(--spacing-palette-expanded)]',
+          className,
+        )}
+      >
+        <Tabs
+          className="flex h-full flex-col"
+          defaultValue="nodes"
+          onValueChange={setActiveTab}
+          value={activeTab}
+        >
+          <div className="flex items-center gap-2 border-b border-border p-3">
+            <TabsList className="flex-1">
+              <TabsTrigger value="nodes">节点</TabsTrigger>
+              <TabsTrigger value="blocks">My Blocks</TabsTrigger>
+            </TabsList>
+            <TooltipHint side="right" label="折叠节点面板">
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="折叠节点面板"
+                onClick={() => setIsPaletteCollapsed(true)}
+              >
+                <PanelLeftClose className="h-4 w-4" />
+              </Button>
+            </TooltipHint>
+          </div>
+
+          <TabsContent className="flex min-h-0 flex-1 flex-col" value="nodes">
+            <div className="border-b border-border p-3">
+              <div className="relative">
+                <Search
+                  aria-hidden
+                  className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground"
+                />
+                <Input
+                  type="text"
+                  placeholder="搜索节点..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="h-8 pl-8 text-xs"
+                />
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-2">
+              <p className="mb-2 px-2 text-[11px] text-muted-foreground">
+                拖拽节点到画布以添加
+              </p>
+              {filteredGroups.map((group) => {
+                const groupKey = getGroupKey(group)
+
+                return (
+                  <PaletteGroupSection
+                    key={groupKey}
+                    group={group}
+                    isCollapsed={collapsedGroups.has(groupKey)}
+                    onToggle={() => toggleGroup(groupKey)}
+                    onDragStart={onDragStart}
+                  />
+                )
+              })}
+              {filteredGroups.length === 0 && (
+                <p className="mt-4 text-center text-sm text-muted-foreground">
+                  无匹配节点
+                </p>
+              )}
+            </div>
+          </TabsContent>
+
+          <TabsContent className="min-h-0 flex-1" value="blocks">
+            <BlockLibraryPanel className="h-full" />
+          </TabsContent>
+        </Tabs>
+      </aside>
+    </TooltipProvider>
   )
 })
+
+function getPaletteItemKey(item: PaletteNodeItem): string {
+  if (item.pluginId && item.pluginNodeType) {
+    return `${item.pluginId}:${item.pluginNodeType}`
+  }
+
+  return item.pluginId ?? item.type
+}
 
 interface PaletteGroupSectionProps {
   group: PaletteGroup
   isCollapsed: boolean
   onToggle: () => void
-  onDragStart: (event: DragEvent, item: PaletteNodeItem) => void
+  onDragStart: (event: DragEvent<HTMLButtonElement>, item: PaletteNodeItem) => void
 }
 
 const PaletteGroupSection = memo(function PaletteGroupSection({
@@ -267,43 +359,27 @@ const PaletteGroupSection = memo(function PaletteGroupSection({
 }: PaletteGroupSectionProps) {
   return (
     <div className="mb-2">
-      <button
-        type="button"
-        onClick={onToggle}
-        className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm font-medium text-foreground hover:bg-surface-elevated"
-      >
-        <span
-          className="h-2 w-2 rounded-full"
-          style={{ backgroundColor: group.color }}
-        />
-        <span className="flex-1 text-left">{group.label}</span>
-        <span className="text-muted text-xs">{isCollapsed ? '▸' : '▾'}</span>
-      </button>
+      <PaletteSectionHeader
+        icon={group.icon}
+        color={group.color}
+        label={group.label}
+        isCollapsed={isCollapsed}
+        onToggle={onToggle}
+      />
 
       {!isCollapsed && (
-        <div className="mt-1 space-y-0.5 pl-2">
+        <div className="mt-1 space-y-0.5 pl-1">
           {group.items.map((item) => (
-            <button
-              type="button"
-              key={
-                item.pluginId && item.pluginNodeType
-                  ? `${item.pluginId}:${item.pluginNodeType}`
-                  : item.pluginId ?? item.type
+            <PaletteItemButton
+              key={getPaletteItemKey(item)}
+              icon={item.icon}
+              color={
+                NODE_CATEGORIES[item.category]?.color ?? NODE_CATEGORIES.control.color
               }
-              draggable
-              onDragStart={(e) => onDragStart(e, item)}
-              className="flex w-full cursor-grab items-start gap-2 rounded-md px-2 py-1.5 text-left text-sm text-muted-foreground hover:bg-surface-elevated hover:text-foreground active:cursor-grabbing"
-              title={item.description}
-            >
-              <span className="min-w-0 flex-1">
-                <span className="block text-xs font-medium text-foreground">{item.label}</span>
-                {item.description ? (
-                  <span className="mt-0.5 block text-[11px] leading-4 text-muted-foreground">
-                    {item.description}
-                  </span>
-                ) : null}
-              </span>
-            </button>
+              label={item.label}
+              description={item.description}
+              onDragStart={(event) => onDragStart(event, item)}
+            />
           ))}
         </div>
       )}

@@ -226,14 +226,14 @@ const EMPTY_NODE_CONFIG_SCHEMA: NodeConfigSchema = {
 };
 
 const CATEGORY_COLOR_TOKENS: Record<NodeCategory, string> = {
-  agent: "var(--color-type-model)",
-  tool: "var(--color-type-tool)",
-  trigger: "var(--color-warning)",
-  knowledge: "var(--color-type-knowledge)",
-  output: "var(--color-type-text)",
-  control: "var(--color-muted)",
-  plugin: "var(--color-type-tool)",
-  memory: "var(--color-type-json)",
+  agent: "var(--color-node-agent)",
+  tool: "var(--color-node-tool)",
+  trigger: "var(--color-node-trigger)",
+  knowledge: "var(--color-node-knowledge)",
+  output: "var(--color-node-output)",
+  control: "var(--color-node-control)",
+  plugin: "var(--color-node-plugin)",
+  memory: "var(--color-node-memory)",
 };
 
 const EMPTY_CONFIG_SCHEMA: NodeConfigSchema = {

@@ -36,11 +36,16 @@
 ```
 WorkflowCanvasPage.tsx
 └── WorkflowCanvas.tsx (728L, 核心)
-    ├── CanvasNode.tsx (React.memo 包裹)
-    │   ├── CanvasNodeShell.tsx (外壳)
-    │   ├── CanvasNodeCard.tsx (内容卡片)
-    │   ├── TypedPort.tsx (类型化端口，含形状/颜色)
-    │   └── nodes/ (每种节点的 Body 组件，含 `ReusableBlockBody`)
+    ├── CanvasNode.tsx (仅 `export { CanvasNodeShell } from './node/CanvasNodeShell'`)
+    │   └── node/
+    │       ├── CanvasNodeShell.tsx (入口，React.memo + LOD 分发 + 状态/compound 计算)
+    │       ├── NodeHeader.tsx (full / compact 两档头部，类别色图标芯片 + 状态徽章)
+    │       ├── NodeBodyRenderer.tsx (full LOD 下按 `data.nodeType` 分发 Body)
+    │       ├── NodePortRows.tsx (输入/输出端口行 + minimal 连线锚点)
+    │       ├── CompoundFrame.tsx (NodeResizer + loop/iteration 内框)
+    │       └── nodeVisualMeta.ts (图标表/状态元数据/类别色令牌)
+    ├── TypedPort.tsx (类型化端口，含形状/颜色)
+    ├── nodes/ (每种节点的 Body 组件，含 `ReusableBlockBody`)
     ├── edges/SmartEdge.tsx (粒子动画连线)
     ├── overlays/
     │   ├── CompatibilityPreviewOverlay.tsx (拖拽时兼容性预览)
@@ -117,10 +122,17 @@ WorkflowPreviewCanvas.tsx
 - `WorkflowCanvas` 现使用自定义 Portal `CanvasContextMenu`（禁止使用 Radix ContextMenu）；多选封装相关的纯函数分析/替换逻辑位于 `lib/encapsulation.ts`，创建前确认表单位于 `components/BlockCreateDialog.tsx`
 - `CanvasNode` 使用 `React.memo` 避免重渲染
 - `CanvasNode` 现在有 3 档 LOD：`full (>=0.7)` / `compact (0.4–0.7)` / `minimal (<0.4)`；minimal 模式应保持图标方块 + 可连线 handles，不渲染 body、port row 与 execution overlay
+- 节点渲染层已拆到 `components/node/`：`CanvasNodeShell.tsx` 只负责数据/状态计算与 LOD 分发，视觉分别落在 `NodeHeader` / `NodeBodyRenderer` / `NodePortRows` / `CompoundFrame`。`components/CanvasNode.tsx` 只剩 re-export，导出名 `CanvasNodeShell` 与 `NodeProps<CanvasNode>` 契约不能改（`workflowFlowRegistry.ts` / `AgentCanvas.tsx` / 只读预览都依赖它）
+- 节点主色统一走 `node/nodeVisualMeta.ts` 的 `getNodeAccentToken(nodeType, category)`：基础取 `--color-node-<category>`，`smart-routing` / `input-preprocessor` / `skill` 三个 nodeType 有类别外覆盖；`llm-model` 的 unconfigured / warning 仍降级为 muted / warning。`NodeConfigPanel` 头部芯片与该函数共用同一套色，禁止另建映射
+- 节点外壳的边框 / 阴影 / 选中 ring / running conic 描边全在 `index.css` 的 `.canvas-node-shell` 段，组件只通过内联 `--node-color` 传色；`NodeExecutionOverlay` 常驻卡片右上角，头部徽章区靠 `pr-8` 让位，改任一侧都要同步另一侧
 - `text-output` / `json-output` 节点在 full LOD 下使用可点击的轻量预览卡；点击后通过 Radix Dialog 打开完整输出详情。手机端详情为全屏弹层，桌面端为大尺寸对话框。`text-output` 详情复用 `MarkdownRenderer`（含 LaTeX / Mermaid / 代码块），`json-output` 详情优先使用结构化 JSON 树，流式或非法 JSON 回退为原文代码视图
 - `compoundLayout.ts` 是 `loop / iteration` 内框布局的单一事实源：负责容器最小尺寸、frame insets、child extent 与 resize 下限。这里的 `child extent` 表示**内框本身**，不要在 `buildCompoundChildExtent()` 里提前扣掉子节点宽高；`@xyflow/react` 在真实拖拽时会再按 `node.measured.width/height` 做一次 clamp，所以尺寸扣减必须放在 `clampPositionToExtent()` 阶段完成。compound 子节点仍需按节点 `measured.width/height`（回退到内部默认尺寸）计算最终可达位置，且 `expandParent` 必须保持 `false`，因为父容器本身就是权威拖拽边界。另一个易错点是：ReactFlow 的 `dimensions` 变更会更新 `measured/width/height`，但不会同步刷新 `style.width/height`，所以 resize 相关逻辑必须优先读取 live `measured/width/height`，不能优先信任 `style`
-- SmartEdge 有粒子动画效果
-- `NodeConfigPanel` 会在节点状态为 `waiting_intervention` 时嵌入 `InterventionPanel`；所需数据由 executionStore 的实时事件和 snapshot 恢复共同驱动。其“输出流”区域现在复用 `components/output/OutputContentRenderer`：`text-output` / `json-output` 与节点详情弹层保持同一套渲染语义，避免手机端与桌面侧栏表现漂移
+- `SmartEdge` 的描边颜色是**源端口 → 目标端口的数据类型渐变**：`CanvasEdgeData` 里没有端口类型字段，颜色必须靠 `useStore` 从 `nodeLookup` 的 `outputPorts/inputPorts` 按 `sourceHandleId/targetHandleId` 现场解析，取 `PORT_DATA_TYPE_META[type].colorToken`；任一侧解析不到就退回 `--color-primary` 单色。组件只写 `--edge-stroke` / `--edge-glow` 两个自定义属性，具体 `stroke` 声明留在 `index.css`，这样 `.react-flow__edge.dep-active` 之类的高特异性执行态覆盖才不会被内联样式压掉
+- `SmartEdge` 粒子只在**目标节点 `status === 'running'`** 时挂载（与 `useExecutionHighlight` 的 dep-active 语义一致），空闲画布上的边一律静止；`error` / `checking` 任何时候都不出粒子
+- 边的中点 pill：`L1` / `error` 常驻显示（`L1` 为 `Shuffle` 图标 + 「转换」，点击照旧打开 `FieldMappingPanel`），`L0` / `checking` 仍是 hover / 选中才出现；删除按钮 `edge-delete-*` 只在 `selected` 时渲染
+- `NodeConfigPanel` 现在是「头部 chrome + tabs」结构：头部为类别色图标芯片（`getNodeAccentToken`）+ 可编辑标题（直接 `updateNodeData({ label })`）+ 关闭按钮；下接「配置」/「输出」两 tab，节点 `status === 'waiting_intervention'` 时追加「介入」tab 内嵌 `InterventionPanel` 并自动切过去，干预结束后退回「配置」。tab 内容常驻挂载、只切 `hidden`——自定义面板持有 Monaco / 草稿等本地状态，用会卸载的 `TabsContent` 会丢编辑上下文。所需数据仍由 executionStore 的实时事件和 snapshot 恢复共同驱动；「输出」tab 复用 `components/output/OutputContentRenderer`，与 `text-output` / `json-output` 节点详情弹层保持同一套渲染语义
+- `NodeConfigPanel` 左缘 4px 拖柄可调宽：默认 360px、夹取区间 `[320, 560]`，宽度持久化在 `localStorage['agentloom-config-panel-width']`，读写全部包 try/catch。面板贴右缘，所以「向左拖 = 变宽」；拖柄同时支持方向键微调。注意 Node 22 的实验性 `localStorage` 全局会遮蔽 jsdom 实现且为 `undefined`，相关测试需自行装内存版 Storage
+- 画布侧栏表单的目标形态：`@/shared/ui/form`（`DynamicConfigForm` 已接 rhf `Form` provider）+ `@/shared/ui/select` 的 Radix `Select`。`NativeSelect` 在 `panels/` 下已清零，新代码禁止再引；但 `AgentNodeConfigPanel` / `CodeTool` / `InputPreprocessor` / `Iteration` / `Jump` / `Loop` / `Merge` / `ScheduleTrigger` / `SmartRouting` / `WebhookTrigger` 仍有裸 `<select>` 未迁移，改到哪个面板就顺手换掉。未接 rhf 的面板不要为了用 `FormLabel` 强行引入 rhf，改用原生 `<label htmlFor>` + `<p className="text-xs font-medium text-error">`，字段容器统一 `flex flex-col gap-1.5`
 - `NodeConfigPanel` 配置分发规则：先命中自定义面板（llm-model/mcp-tool/knowledge-base/sandbox/llm-agent/http-tool/reusable-block），否则走 `DynamicConfigForm`，空 schema 显示“该节点无需额外配置”
 - `loop-start / iteration-start` 的配置面板不会把固定上下文端口做成任意增删；固定输出始终由运行时提供，额外透传端口与标签的真实单一事实源仍是父 `loop / iteration` 容器输入，但 start 面板现在也允许直接编辑这些透传端口，并会同步回父容器与当前 start 节点输出
 - `llm-model` 节点在 full LOD 下的展示层级固定为：header title 显示配置名称（`config.name`），subtitle 显示 Provider 名称，body 第一行显示模型 ID（`config.modelName`）与状态 badge；不要在 subtitle 或 body 再拼接 `provider:modelId` 这类重复文案

@@ -1,4 +1,5 @@
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryConfigPanel } from '../MemoryConfigPanel';
 
@@ -142,6 +143,8 @@ describe('MemoryConfigPanel', () => {
   });
 
   it('calls onApply when instance is selected', async () => {
+    const user = userEvent.setup();
+
     render(
       <MemoryConfigPanel
         config={createMemoryConfig({ memoryInstanceId: '' })}
@@ -150,8 +153,8 @@ describe('MemoryConfigPanel', () => {
       />,
     );
 
-    const instanceSelect = screen.getAllByRole('combobox')[0]!;
-    fireEvent.change(instanceSelect, { target: { value: 'inst-002' } });
+    await user.click(screen.getByLabelText('选择 Memory 实例'));
+    await user.click(await screen.findByRole('option', { name: /Knowledge Graph/ }));
 
     await waitFor(() => {
       expect(onApply).toHaveBeenCalled();
@@ -159,6 +162,8 @@ describe('MemoryConfigPanel', () => {
   });
 
   it('calls onApply when role is changed', async () => {
+    const user = userEvent.setup();
+
     render(
       <MemoryConfigPanel
         config={createMemoryConfig()}
@@ -167,9 +172,8 @@ describe('MemoryConfigPanel', () => {
       />,
     );
 
-    const roleSelects = screen.getAllByRole('combobox');
-    const roleSelect = roleSelects[1]!;
-    fireEvent.change(roleSelect, { target: { value: 'readonly' } });
+    await user.click(screen.getByLabelText('选择角色'));
+    await user.click(await screen.findByRole('option', { name: /readonly/ }));
 
     await waitFor(() => {
       expect(onApply).toHaveBeenCalled();

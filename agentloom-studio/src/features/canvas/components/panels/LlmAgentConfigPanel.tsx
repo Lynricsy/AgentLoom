@@ -15,7 +15,13 @@ import { getOrganizationIdFromToken } from '@/features/organization-autonomy-pol
 import { useTheme } from '@/shared/hooks/use-theme'
 import { Input } from '@/shared/ui/input'
 import { Label } from '@/shared/ui/label'
-import { NativeSelect } from '@/shared/ui/native-select'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/shared/ui/select'
 import {
   DEFAULT_AUTONOMY_CONFIG,
   type AutonomyConfig,
@@ -694,35 +700,41 @@ export const LlmAgentConfigPanel = memo(function LlmAgentConfigPanel({
           name="mode"
           control={control}
           render={({ field }) => (
-            <NativeSelect
-              aria-label="自主模式"
-              id="llm-agent-autonomy-mode"
+            <Select
               value={field.value}
               onValueChange={(value) =>
                 handleModeChange(value as AutonomyMode, field.value, field.onChange)
               }
-              onBlur={() => {
-                acknowledgeLegacyMode()
-                field.onBlur()
-              }}
-              data-testid="llm-agent-autonomy-mode-select"
             >
-              {AUTONOMY_MODES.map((autonomyMode) => {
-                const isBlockedByPolicy =
-                  autonomyCap != null && !isAutonomyModeWithinCap(autonomyMode, autonomyCap)
+              <SelectTrigger
+                aria-label="自主模式"
+                id="llm-agent-autonomy-mode"
+                onBlur={() => {
+                  acknowledgeLegacyMode()
+                  field.onBlur()
+                }}
+                data-testid="llm-agent-autonomy-mode-select"
+              >
+                <SelectValue placeholder="选择自主模式" />
+              </SelectTrigger>
+              <SelectContent>
+                {AUTONOMY_MODES.map((autonomyMode) => {
+                  const isBlockedByPolicy =
+                    autonomyCap != null && !isAutonomyModeWithinCap(autonomyMode, autonomyCap)
 
-                return (
-                  <option
-                    key={autonomyMode}
-                    value={autonomyMode}
-                    disabled={isBlockedByPolicy && autonomyMode !== field.value}
-                  >
-                    {getAutonomyModeLabel(autonomyMode)}
-                    {isBlockedByPolicy ? '（受组织策略限制）' : ''}
-                  </option>
-                )
-              })}
-            </NativeSelect>
+                  return (
+                    <SelectItem
+                      key={autonomyMode}
+                      value={autonomyMode}
+                      disabled={isBlockedByPolicy && autonomyMode !== field.value}
+                    >
+                      {getAutonomyModeLabel(autonomyMode)}
+                      {isBlockedByPolicy ? '（受组织策略限制）' : ''}
+                    </SelectItem>
+                  )
+                })}
+              </SelectContent>
+            </Select>
           )}
         />
 
@@ -738,7 +750,7 @@ export const LlmAgentConfigPanel = memo(function LlmAgentConfigPanel({
 
         {legacyModeMessage ? (
           <div
-            className="rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200"
+            className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning"
             data-testid="llm-agent-autonomy-legacy-warning"
           >
             {legacyModeMessage}
@@ -821,20 +833,23 @@ export const LlmAgentConfigPanel = memo(function LlmAgentConfigPanel({
               name="fallbackStrategy"
               control={control}
               render={({ field }) => (
-                <NativeSelect
-                  aria-label="兜底策略"
-                  id="llm-agent-fallback-strategy"
-                  value={field.value}
-                  onValueChange={field.onChange}
-                  onBlur={field.onBlur}
-                  data-testid="llm-agent-fallback-strategy-select"
-                >
-                  {FALLBACK_STRATEGIES.map((strategy) => (
-                    <option key={strategy} value={strategy}>
-                      {FALLBACK_STRATEGY_META[strategy].label}
-                    </option>
-                  ))}
-                </NativeSelect>
+                <Select value={field.value} onValueChange={field.onChange}>
+                  <SelectTrigger
+                    aria-label="兜底策略"
+                    id="llm-agent-fallback-strategy"
+                    onBlur={field.onBlur}
+                    data-testid="llm-agent-fallback-strategy-select"
+                  >
+                    <SelectValue placeholder="选择兜底策略" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {FALLBACK_STRATEGIES.map((strategy) => (
+                      <SelectItem key={strategy} value={strategy}>
+                        {FALLBACK_STRATEGY_META[strategy].label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               )}
             />
             <p className="mt-1 text-xs text-muted-foreground/80">

@@ -15,6 +15,9 @@ import {
   Share2,
 } from "lucide-react";
 import { cn } from "@/shared/lib/utils";
+import { Badge, type BadgeProps } from "@/shared/ui/badge";
+import { Button } from "@/shared/ui/button";
+import { TooltipHint, TooltipProvider } from "@/shared/ui/tooltip";
 import type { WorkflowStatus } from "@/features/workflow";
 import { CreateVersionDialog } from "@/features/workflow/components/CreateVersionDialog";
 import { ArchiveDialog } from "@/features/workflow/components/ArchiveDialog";
@@ -43,21 +46,16 @@ interface VersionToolbarProps {
 
 const statusConfig: Record<
   WorkflowStatus,
-  { label: string; className: string }
+  { label: string; variant: BadgeProps["variant"] }
 > = {
-  draft: {
-    label: "草稿",
-    className: "border-sky-200 bg-sky-50 text-sky-700",
-  },
-  published: {
-    label: "已发布",
-    className: "border-emerald-200 bg-emerald-50 text-emerald-700",
-  },
-  archived: {
-    label: "已归档",
-    className: "border-gray-200 bg-gray-100 text-gray-500",
-  },
+  draft: { label: "草稿", variant: "info" },
+  published: { label: "已发布", variant: "success" },
+  archived: { label: "已归档", variant: "secondary" },
 };
+
+/** 面板开关按钮：开启态用品牌色轻底强调 */
+const TOGGLE_ACTIVE_CLASS =
+  "border-primary/25 bg-primary/10 text-primary hover:bg-primary/15";
 
 export const VersionToolbar = memo(function VersionToolbar({
   workflowId,
@@ -94,173 +92,188 @@ export const VersionToolbar = memo(function VersionToolbar({
   const config = statusConfig[workflowStatus];
 
   return (
-    <>
+    <TooltipProvider delayDuration={300}>
       <div
         className={cn(
-          "flex flex-wrap items-center justify-end gap-1.5",
+          "flex flex-wrap items-center justify-end gap-1 rounded-panel border border-border bg-surface/90 px-2 py-1.5 shadow-popover backdrop-blur-sm",
           className,
         )}
         data-testid="version-toolbar"
       >
-        <span
-          className={cn(
-            "rounded-full border px-2.5 py-0.5 text-xs font-medium",
-            config.className,
-          )}
+        <Badge
+          variant={config.variant}
+          size="sm"
+          className="mx-1"
           data-testid="workflow-status-badge"
         >
           {config.label}
-        </span>
+        </Badge>
 
-        <div className="mx-1 h-4 w-px bg-border" />
+        <span aria-hidden className="mx-0.5 h-5 w-px bg-border" />
 
         {!isArchived && (
-          <button
-            type="button"
-            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs font-medium text-foreground shadow-sm hover:bg-muted"
-            onClick={handleOpenCreate}
-            data-testid="btn-create-version"
-          >
-            <Save className="h-3.5 w-3.5" />
-            保存快照
-          </button>
+          <TooltipHint label="保存当前画布为版本快照">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="保存快照"
+              onClick={handleOpenCreate}
+              data-testid="btn-create-version"
+            >
+              <Save className="h-4 w-4" />
+            </Button>
+          </TooltipHint>
         )}
 
-        <button
-          type="button"
-          className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs font-medium text-foreground shadow-sm hover:bg-muted"
-          onClick={onOpenVersionHistory}
-          data-testid="btn-version-history"
-        >
-          <History className="h-3.5 w-3.5" />
-          历史记录
-        </button>
+        <TooltipHint label="版本历史记录">
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="历史记录"
+            onClick={onOpenVersionHistory}
+            data-testid="btn-version-history"
+          >
+            <History className="h-4 w-4" />
+          </Button>
+        </TooltipHint>
+
+        {hasNodes && onExport && (
+          <TooltipHint label="导出工作流 JSON">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="导出"
+              onClick={onExport}
+              disabled={isExporting}
+              data-testid="btn-export-workflow"
+            >
+              {isExporting ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4" />
+              )}
+            </Button>
+          </TooltipHint>
+        )}
+
+        {onImport && (
+          <TooltipHint label="导入工作流 JSON">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="导入"
+              onClick={onImport}
+              data-testid="btn-import-workflow"
+            >
+              <FolderInput className="h-4 w-4" />
+            </Button>
+          </TooltipHint>
+        )}
+
+        {isPublished && onShare && (
+          <TooltipHint label="分享工作流">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="分享"
+              onClick={onShare}
+              data-testid="btn-share-workflow"
+            >
+              <Share2 className="h-4 w-4" />
+            </Button>
+          </TooltipHint>
+        )}
+
+        {canArchive && (
+          <TooltipHint label="归档工作流">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="归档"
+              onClick={handleOpenArchive}
+              className={cn(isPublished && "text-warning hover:text-warning")}
+              data-testid="btn-archive"
+            >
+              <Archive className="h-4 w-4" />
+            </Button>
+          </TooltipHint>
+        )}
+
+        {(onToggleInterventionPolicies ||
+          onToggleInputSchema ||
+          onToggleTriggers) && (
+          <span aria-hidden className="mx-0.5 h-5 w-px bg-border" />
+        )}
 
         {onToggleInterventionPolicies && (
-          <button
-            type="button"
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium shadow-sm transition-colors",
-              isInterventionPoliciesOpen
-                ? "border-cyan-400/30 bg-cyan-500/10 text-cyan-100 hover:bg-cyan-500/15"
-                : "border-border bg-surface text-foreground hover:bg-muted",
-            )}
+          <Button
+            variant="outline"
+            size="sm"
+            className={cn(isInterventionPoliciesOpen && TOGGLE_ACTIVE_CLASS)}
             onClick={onToggleInterventionPolicies}
             data-testid="btn-intervention-policies"
           >
             <ShieldAlert className="h-3.5 w-3.5" />
             {isInterventionPoliciesOpen ? "隐藏介入策略" : "介入策略"}
-          </button>
+          </Button>
         )}
 
         {onToggleInputSchema && (
-          <button
-            type="button"
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium shadow-sm transition-colors",
-              isInputSchemaOpen
-                ? "border-sky-400/30 bg-sky-500/10 text-sky-100 hover:bg-sky-500/15"
-                : "border-border bg-surface text-foreground hover:bg-muted",
-            )}
+          <Button
+            variant="outline"
+            size="sm"
+            className={cn(isInputSchemaOpen && TOGGLE_ACTIVE_CLASS)}
             onClick={onToggleInputSchema}
             data-testid="btn-input-schema"
           >
             <SlidersHorizontal className="h-3.5 w-3.5" />
             {isInputSchemaOpen ? "隐藏输入参数" : "输入参数"}
-          </button>
+          </Button>
         )}
 
         {onToggleTriggers && (
-          <button
-            type="button"
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium shadow-sm transition-colors",
-              isTriggersOpen
-                ? "border-violet-400/30 bg-violet-500/10 text-violet-100 hover:bg-violet-500/15"
-                : "border-border bg-surface text-foreground hover:bg-muted",
-            )}
+          <Button
+            variant="outline"
+            size="sm"
+            className={cn(isTriggersOpen && TOGGLE_ACTIVE_CLASS)}
             onClick={onToggleTriggers}
             data-testid="btn-triggers"
           >
             <Clock3 className="h-3.5 w-3.5" />
             {isTriggersOpen ? "隐藏触发器" : "触发器"}
-          </button>
+          </Button>
         )}
 
-        {canPublish && (
-          <button
-            type="button"
-            className="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 px-2.5 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-emerald-700"
-            onClick={() => onOpenPublish()}
-            data-testid="btn-publish"
-          >
-            <Upload className="h-3.5 w-3.5" />
-            发布
-          </button>
+        {(canPublish || (isPublished && onPublishToMarketplace) || (!isArchived && onRun)) && (
+          <span aria-hidden className="mx-0.5 h-5 w-px bg-border" />
         )}
 
         {isPublished && onPublishToMarketplace && (
-          <button
-            type="button"
-            className="inline-flex items-center gap-1.5 rounded-md bg-amber-600 px-2.5 py-1.5 text-xs font-medium text-white shadow-sm hover:bg-amber-700"
+          <Button
+            variant="secondary"
+            size="sm"
             onClick={onPublishToMarketplace}
             data-testid="btn-publish-to-marketplace"
           >
             <Store className="h-3.5 w-3.5" />
             发布到市场
-          </button>
+          </Button>
         )}
 
-        {hasNodes && onExport && (
-          <button
-            type="button"
-            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs font-medium text-foreground shadow-sm hover:bg-muted disabled:opacity-50"
-            onClick={onExport}
-            disabled={isExporting}
-            data-testid="btn-export-workflow"
+        {canPublish && (
+          <Button
+            size="sm"
+            onClick={() => onOpenPublish()}
+            data-testid="btn-publish"
           >
-            {isExporting ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Download className="h-3.5 w-3.5" />
-            )}
-            导出
-          </button>
-        )}
-
-        {onImport && (
-          <button
-            type="button"
-            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs font-medium text-foreground shadow-sm hover:bg-muted"
-            onClick={onImport}
-            data-testid="btn-import-workflow"
-          >
-            <FolderInput className="h-3.5 w-3.5" />
-            导入
-          </button>
-        )}
-
-        {isPublished && onShare && (
-          <button
-            type="button"
-            className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 py-1.5 text-xs font-medium text-foreground shadow-sm hover:bg-muted"
-            onClick={onShare}
-            data-testid="btn-share-workflow"
-          >
-            <Share2 className="h-3.5 w-3.5" />
-            分享
-          </button>
+            <Upload className="h-3.5 w-3.5" />
+            发布
+          </Button>
         )}
 
         {!isArchived && onRun && (
-          <button
-            type="button"
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium shadow-sm",
-              isRunning
-                ? "border border-amber-300 bg-amber-50 text-amber-700"
-                : "bg-sky-600 text-white hover:bg-sky-700",
-            )}
+          <Button
+            size="sm"
             onClick={onRun}
             disabled={isRunning}
             data-testid="btn-run-workflow"
@@ -276,24 +289,7 @@ export const VersionToolbar = memo(function VersionToolbar({
                 运行
               </>
             )}
-          </button>
-        )}
-
-        {canArchive && (
-          <button
-            type="button"
-            className={cn(
-              "inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs font-medium shadow-sm",
-              isPublished
-                ? "border-amber-300 text-amber-700 hover:bg-amber-50"
-                : "border-border text-muted-foreground hover:bg-muted",
-            )}
-            onClick={handleOpenArchive}
-            data-testid="btn-archive"
-          >
-            <Archive className="h-3.5 w-3.5" />
-            归档
-          </button>
+          </Button>
         )}
       </div>
 
@@ -307,6 +303,6 @@ export const VersionToolbar = memo(function VersionToolbar({
         workflowId={workflowId}
         onOpenChange={setArchiveOpen}
       />
-    </>
+    </TooltipProvider>
   );
 });

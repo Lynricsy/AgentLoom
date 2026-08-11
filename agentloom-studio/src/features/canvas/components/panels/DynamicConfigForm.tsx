@@ -1,16 +1,24 @@
-import { memo, useCallback, useEffect, useMemo, useRef, type FocusEvent } from 'react'
-import {
-  Controller,
-  useForm,
-  type Control,
-  type FieldValues,
-  type UseFormRegister,
-} from 'react-hook-form'
+import { memo, useCallback, useEffect, useMemo, useRef } from 'react'
+import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Input } from '@/shared/ui/input'
-import { Label } from '@/shared/ui/label'
-import { NativeSelect } from '@/shared/ui/native-select'
 import { Switch } from '@/shared/ui/switch'
+import {
+  Form,
+  FormControl,
+  FormDescription,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/shared/ui/form'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/shared/ui/select'
 import type {
   NodeConfigFieldSchema,
   NodeConfigSchema,
@@ -72,24 +80,31 @@ const DynamicFormInner = memo(function DynamicFormInner({
     for (const [key, field] of Object.entries(configSchema.properties)) {
       if (field.default !== undefined) {
         defaults[key] = field.default
+        continue
+      }
+
+      // 自由文本字段以空串起步：受控 <input> 的「未填」就是空串，
+      // 这样必填校验命中 `.min(1, '此字段为必填项')` 而不是 zod 的类型缺失文案。
+      // 枚举字段不能这么做——非必填枚举是 `z.enum().optional()`，空串会被判非法。
+      if (field.type === 'string' && !(field.enum && field.enum.length > 0)) {
+        defaults[key] = ''
       }
     }
 
     return { ...defaults, ...values }
   }, [configSchema, values])
 
-  const {
-    control,
-    register,
-    reset,
-    trigger,
-    watch,
-    formState: { errors },
-  } = useForm({
+  const form = useForm({
     resolver: zodResolver(zodSchema),
     defaultValues,
     mode: 'onBlur',
   })
+  const {
+    reset,
+    trigger,
+    watch,
+    formState: { errors },
+  } = form
 
   const didMountRef = useRef(false)
   useEffect(() => {
@@ -104,13 +119,10 @@ const DynamicFormInner = memo(function DynamicFormInner({
   const onApplyRef = useRef(onApply)
   onApplyRef.current = onApply
 
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   useEffect(() => {
     const subscription = watch((formValues) => {
-      const activeTimer = debounceRef.current
-      if (activeTimer !== null) {
-        clearTimeout(activeTimer)
-      }
+      clearTimeout(debounceRef.current)
       debounceRef.current = setTimeout(() => {
         onApplyRef.current({ config: { ...formValues } })
       }, 300)
@@ -118,10 +130,7 @@ const DynamicFormInner = memo(function DynamicFormInner({
 
     return () => {
       subscription.unsubscribe()
-      const activeTimer = debounceRef.current
-      if (activeTimer !== null) {
-        clearTimeout(activeTimer)
-      }
+      clearTimeout(debounceRef.current)
     }
   }, [watch])
 
@@ -132,6 +141,7 @@ const DynamicFormInner = memo(function DynamicFormInner({
     onValidationChangeRef.current?.(hasErrors)
   }, [hasErrors])
 
+  // 任一字段 blur 都跑整表校验，保证多个必填字段能同时报错
   const handleFieldBlur = useCallback(() => {
     void trigger(undefined, { shouldFocus: false })
   }, [trigger])
@@ -142,20 +152,19 @@ const DynamicFormInner = memo(function DynamicFormInner({
   )
 
   return (
-    <div className="space-y-4 px-4 py-4" data-testid="dynamic-config-form">
-      {fields.map(([key, field]) => (
-        <ConfigField
-          key={key}
-          name={key}
-          field={field}
-          required={configSchema.required.includes(key)}
-          control={control}
-          register={register}
-          onFieldBlur={handleFieldBlur}
-          error={(errors[key] as { message?: string } | undefined)?.message}
-        />
-      ))}
-    </div>
+    <Form {...form}>
+      <div className="space-y-5 px-4 py-4" data-testid="dynamic-config-form">
+        {fields.map(([key, field]) => (
+          <ConfigField
+            key={key}
+            name={key}
+            field={field}
+            required={configSchema.required.includes(key)}
+            onFieldBlur={handleFieldBlur}
+          />
+        ))}
+      </div>
+    </Form>
   )
 })
 
@@ -163,27 +172,24 @@ interface ConfigFieldProps {
   name: string
   field: NodeConfigFieldSchema
   required: boolean
-  control: Control<FieldValues>
-  register: UseFormRegister<FieldValues>
   onFieldBlur: () => void
-  error?: string
 }
 
 const ConfigField = memo(function ConfigField({
   name,
   field,
   required,
-  control,
-  register,
   onFieldBlur,
-  error,
 }: ConfigFieldProps) {
-  const fieldTitle = (
-    <span className="inline-flex items-center gap-1">
-      <Label>{field.title}</Label>
-      {required ? <span className="text-error">*</span> : null}
-    </span>
+  const labelNode = (
+    <FormLabel>
+      {field.title}
+      {required ? <span className="ml-0.5 text-error">*</span> : null}
+    </FormLabel>
   )
+  const descriptionNode = field.description ? (
+    <FormDescription>{field.description}</FormDescription>
+  ) : null
 
   switch (field.type) {
     case 'string': {
@@ -191,127 +197,127 @@ const ConfigField = memo(function ConfigField({
         const enumOptions = field.enum
 
         return (
-          <Controller
+          <FormField
             name={name}
-            control={control}
             render={({ field: formField }) => (
-              <div>
-                {fieldTitle}
-                {field.description && (
-                  <p className="mb-1 text-xs text-muted-foreground">
-                    {field.description}
-                  </p>
-                )}
-                <NativeSelect
-                  aria-label={field.title}
-                  id={name}
+              <FormItem>
+                {labelNode}
+                {descriptionNode}
+                <Select
                   value={(formField.value as string) ?? ''}
-                  onValueChange={formField.onChange}
-                  onBlur={() => {
-                    formField.onBlur()
+                  onValueChange={(nextValue) => {
+                    formField.onChange(nextValue)
                     onFieldBlur()
                   }}
                 >
-                  <option value="" disabled>
-                    选择...
-                  </option>
-                  {enumOptions.map((option) => (
-                    <option key={option} value={option}>
-                      {option}
-                    </option>
-                  ))}
-                </NativeSelect>
-                {error ? <p className="mt-1 text-xs text-error">{error}</p> : null}
-              </div>
+                  <FormControl>
+                    <SelectTrigger
+                      aria-label={field.title}
+                      onBlur={() => {
+                        formField.onBlur()
+                        onFieldBlur()
+                      }}
+                    >
+                      <SelectValue placeholder="选择..." />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {enumOptions.map((option) => (
+                      <SelectItem key={option} value={option}>
+                        {option}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
             )}
           />
         )
       }
 
-      const registration = register(name)
-
       return (
-        <div>
-          {fieldTitle}
-          {field.description && (
-            <p className="mb-1 text-xs text-muted-foreground">
-              {field.description}
-            </p>
+        <FormField
+          name={name}
+          render={({ field: formField }) => (
+            <FormItem>
+              {labelNode}
+              {descriptionNode}
+              <FormControl>
+                <Input
+                  aria-label={field.title}
+                  placeholder={
+                    typeof field.default === 'string' ? field.default : undefined
+                  }
+                  value={typeof formField.value === 'string' ? formField.value : ''}
+                  onChange={formField.onChange}
+                  onBlur={() => {
+                    formField.onBlur()
+                    onFieldBlur()
+                  }}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
           )}
-          <Input
-            aria-label={field.title}
-            id={name}
-            placeholder={typeof field.default === 'string' ? field.default : undefined}
-            {...registration}
-            onBlur={(event: FocusEvent<HTMLInputElement>) => {
-              registration.onBlur(event)
-              onFieldBlur()
-            }}
-          />
-          {error ? <p className="mt-1 text-xs text-error">{error}</p> : null}
-        </div>
+        />
       )
     }
 
     case 'number':
       return (
-        <Controller
+        <FormField
           name={name}
-          control={control}
           render={({ field: formField }) => (
-            <div>
-              {fieldTitle}
-              {field.description && (
-                <p className="mb-1 text-xs text-muted-foreground">
-                  {field.description}
-                </p>
-              )}
-              <Input
-                aria-label={field.title}
-                id={name}
-                type="number"
-                value={typeof formField.value === 'number' ? formField.value : ''}
-                onChange={(event) => {
-                  const value = event.target.value
-                  formField.onChange(value === '' ? undefined : Number(value))
-                }}
-                onBlur={() => {
-                  formField.onBlur()
-                  onFieldBlur()
-                }}
-              />
-              {error ? <p className="mt-1 text-xs text-error">{error}</p> : null}
-            </div>
+            <FormItem>
+              {labelNode}
+              {descriptionNode}
+              <FormControl>
+                <Input
+                  aria-label={field.title}
+                  type="number"
+                  value={typeof formField.value === 'number' ? formField.value : ''}
+                  onChange={(event) => {
+                    const value = event.target.value
+                    formField.onChange(value === '' ? undefined : Number(value))
+                  }}
+                  onBlur={() => {
+                    formField.onBlur()
+                    onFieldBlur()
+                  }}
+                />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
           )}
         />
       )
 
     case 'boolean':
       return (
-        <Controller
+        <FormField
           name={name}
-          control={control}
           render={({ field: formField }) => (
-            <div className="flex items-center justify-between">
-              <div>
-                {fieldTitle}
-                {field.description && (
-                  <p className="text-xs text-muted-foreground">
-                    {field.description}
-                  </p>
-                )}
+            <FormItem>
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex min-w-0 flex-col gap-1">
+                  {labelNode}
+                  {descriptionNode}
+                </div>
+                <FormControl>
+                  <Switch
+                    aria-label={field.title}
+                    checked={!!formField.value}
+                    onCheckedChange={formField.onChange}
+                    onBlur={() => {
+                      formField.onBlur()
+                      onFieldBlur()
+                    }}
+                  />
+                </FormControl>
               </div>
-              <Switch
-                aria-label={field.title}
-                id={name}
-                checked={!!formField.value}
-                onCheckedChange={formField.onChange}
-                onBlur={() => {
-                  formField.onBlur()
-                  onFieldBlur()
-                }}
-              />
-            </div>
+              <FormMessage />
+            </FormItem>
           )}
         />
       )

@@ -1,5 +1,15 @@
 import { memo, useCallback, type ChangeEvent } from 'react'
 import { Globe, Plus, Trash2 } from 'lucide-react'
+import { Input } from '@/shared/ui/input'
+import { Textarea } from '@/shared/ui/textarea'
+import { Separator } from '@/shared/ui/separator'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/shared/ui/select'
 
 const HTTP_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] as const
 type HttpMethod = (typeof HTTP_METHODS)[number]
@@ -69,11 +79,11 @@ function parseHttpToolConfig(config: Record<string, unknown>): HttpToolConfig {
 }
 
 const METHOD_BADGE_COLORS: Record<string, string> = {
-  GET: 'bg-emerald-500/15 text-emerald-400',
-  POST: 'bg-blue-500/15 text-blue-400',
-  PUT: 'bg-orange-500/15 text-orange-400',
-  PATCH: 'bg-yellow-500/15 text-yellow-400',
-  DELETE: 'bg-red-500/15 text-red-400',
+  GET: 'bg-success/15 text-success',
+  POST: 'bg-info/15 text-info',
+  PUT: 'bg-warning/15 text-warning',
+  PATCH: 'bg-node-tool/15 text-node-tool',
+  DELETE: 'bg-error/15 text-error',
 }
 
 // -- sub-components -----------------------------------------------------------
@@ -115,13 +125,13 @@ const KeyValueList = memo(function KeyValueList({
   )
 
   return (
-    <div>
-      <div className="mb-2 flex items-center justify-between">
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center justify-between">
         <span className="text-xs font-medium text-foreground">{label}</span>
         <button
           type="button"
           onClick={handleAdd}
-          className="flex items-center gap-1 rounded px-1.5 py-0.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+          className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-surface-elevated hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
         >
           <Plus className="h-3 w-3" />
           添加
@@ -129,29 +139,28 @@ const KeyValueList = memo(function KeyValueList({
       </div>
 
       {items.length === 0 ? (
-        <p className="text-xs text-muted-foreground/60">暂无条目</p>
+        <p className="text-xs text-muted">暂无条目</p>
       ) : (
         <div className="space-y-2">
           {items.map((item, index) => (
             <div key={index} className="flex items-center gap-1.5">
-              <input
-                type="text"
+              <Input
                 value={item.key}
                 onChange={(e) => handleChange(index, 'key', e.target.value)}
                 placeholder={keyPlaceholder}
-                className="w-[40%] rounded-md border border-border bg-background px-2 py-1.5 text-xs"
+                className="h-8 w-[40%] text-xs"
               />
-              <input
-                type="text"
+              <Input
                 value={item.value}
                 onChange={(e) => handleChange(index, 'value', e.target.value)}
                 placeholder={valuePlaceholder}
-                className="min-w-0 flex-1 rounded-md border border-border bg-background px-2 py-1.5 text-xs"
+                className="h-8 min-w-0 flex-1 text-xs"
               />
               <button
                 type="button"
                 onClick={() => handleRemove(index)}
-                className="shrink-0 rounded p-1 text-muted-foreground hover:bg-error/10 hover:text-error transition-colors"
+                aria-label={`删除${label}第 ${index + 1} 项`}
+                className="shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:bg-error/10 hover:text-error focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
               >
                 <Trash2 className="h-3.5 w-3.5" />
               </button>
@@ -183,8 +192,8 @@ export const HttpToolConfigPanel = memo(function HttpToolConfigPanel({
   )
 
   const handleMethod = useCallback(
-    (e: ChangeEvent<HTMLSelectElement>) => {
-      applyPatch({ method: e.target.value as HttpMethod })
+    (value: string) => {
+      applyPatch({ method: value as HttpMethod })
     },
     [applyPatch],
   )
@@ -218,8 +227,8 @@ export const HttpToolConfigPanel = memo(function HttpToolConfigPanel({
   )
 
   const handleAuthType = useCallback(
-    (e: ChangeEvent<HTMLSelectElement>) => {
-      applyPatch({ authType: e.target.value as AuthType, authConfig: {} })
+    (value: string) => {
+      applyPatch({ authType: value as AuthType, authConfig: {} })
     },
     [applyPatch],
   )
@@ -253,39 +262,48 @@ export const HttpToolConfigPanel = memo(function HttpToolConfigPanel({
       </div>
 
       <div className="flex items-start gap-2">
-        <div className="w-[100px] shrink-0">
-          <label htmlFor="http-method" className="mb-1 block text-xs font-medium text-foreground">
+        <div className="flex w-[104px] shrink-0 flex-col gap-1.5">
+          <label
+            htmlFor="http-method"
+            className="text-xs font-medium text-foreground"
+          >
             Method
           </label>
-          <select
-            id="http-method"
-            value={parsed.method}
-            onChange={handleMethod}
-            className={`w-full rounded-md border border-border px-2 py-2 text-xs font-bold ${methodColor}`}
-          >
-            {HTTP_METHODS.map((m) => (
-              <option key={m} value={m}>
-                {m}
-              </option>
-            ))}
-          </select>
+          <Select value={parsed.method} onValueChange={handleMethod}>
+            <SelectTrigger
+              id="http-method"
+              aria-label="Method"
+              className={`font-bold ${methodColor}`}
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {HTTP_METHODS.map((m) => (
+                <SelectItem key={m} value={m}>
+                  {m}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
-        <div className="min-w-0 flex-1">
-          <label htmlFor="http-url" className="mb-1 block text-xs font-medium text-foreground">
-            URL <span className="text-error">*</span>
+        <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+          <label
+            htmlFor="http-url"
+            className="inline-flex items-center gap-0.5 text-xs font-medium text-foreground"
+          >
+            URL
+            <span className="text-error">*</span>
           </label>
-          <input
+          <Input
             id="http-url"
-            type="text"
             value={parsed.url}
             onChange={handleUrl}
             placeholder="https://api.example.com/endpoint"
-            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
           />
         </div>
       </div>
 
-      <hr className="border-border" />
+      <Separator />
 
       {/* Headers */}
       <KeyValueList
@@ -296,7 +314,7 @@ export const HttpToolConfigPanel = memo(function HttpToolConfigPanel({
         onChange={handleHeaders}
       />
 
-      <hr className="border-border" />
+      <Separator />
 
       {/* Query Params */}
       <KeyValueList
@@ -307,104 +325,100 @@ export const HttpToolConfigPanel = memo(function HttpToolConfigPanel({
         onChange={handleQueryParams}
       />
 
-      <hr className="border-border" />
+      <Separator />
 
       {/* Request Body */}
-      <div>
-        <label
-          htmlFor="http-body"
-          className="mb-2 block text-xs font-medium text-foreground"
-        >
+      <div className="flex flex-col gap-1.5">
+        <label htmlFor="http-body" className="text-xs font-medium text-foreground">
           请求体
         </label>
-        <textarea
+        <Textarea
           id="http-body"
           value={parsed.body}
           onChange={handleBody}
           rows={5}
           placeholder='{"key": "value"}'
-          className="w-full rounded-md border border-border bg-background px-3 py-2 font-mono text-sm"
+          className="font-mono"
         />
-        <p className="mt-1 text-xs text-muted-foreground">
+        <p className="text-xs text-muted">
           JSON 格式的请求体，适用于 POST / PUT / PATCH 请求
         </p>
       </div>
 
-      <hr className="border-border" />
+      <Separator />
 
       {/* Auth */}
-      <div className="space-y-3">
-        <div>
+      <div className="space-y-4">
+        <div className="flex flex-col gap-1.5">
           <label
             htmlFor="http-auth-type"
-            className="mb-2 block text-xs font-medium text-foreground"
+            className="text-xs font-medium text-foreground"
           >
             认证方式
           </label>
-          <select
-            id="http-auth-type"
-            value={parsed.authType}
-            onChange={handleAuthType}
-            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-          >
-            <option value="none">无认证</option>
-            <option value="bearer">Bearer Token</option>
-            <option value="basic">Basic Auth</option>
-            <option value="api-key">API Key</option>
-          </select>
+          <Select value={parsed.authType} onValueChange={handleAuthType}>
+            <SelectTrigger id="http-auth-type" aria-label="认证方式">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">无认证</SelectItem>
+              <SelectItem value="bearer">Bearer Token</SelectItem>
+              <SelectItem value="basic">Basic Auth</SelectItem>
+              <SelectItem value="api-key">API Key</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
 
         {parsed.authType === 'bearer' && (
-          <div>
+          <div className="flex flex-col gap-1.5">
             <label
               htmlFor="http-auth-token"
-              className="mb-1 block text-xs font-medium text-foreground"
+              className="inline-flex items-center gap-0.5 text-xs font-medium text-foreground"
             >
-              Token <span className="text-error">*</span>
+              Token
+              <span className="text-error">*</span>
             </label>
-            <input
+            <Input
               id="http-auth-token"
               type="password"
               value={parsed.authConfig.token ?? ''}
               onChange={(e) => handleAuthField('token', e.target.value)}
               placeholder="Bearer token"
-              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
             />
           </div>
         )}
 
         {parsed.authType === 'basic' && (
           <>
-            <div>
+            <div className="flex flex-col gap-1.5">
               <label
                 htmlFor="http-auth-username"
-                className="mb-1 block text-xs font-medium text-foreground"
+                className="inline-flex items-center gap-0.5 text-xs font-medium text-foreground"
               >
-                用户名 <span className="text-error">*</span>
+                用户名
+                <span className="text-error">*</span>
               </label>
-              <input
+              <Input
                 id="http-auth-username"
-                type="text"
                 value={parsed.authConfig.username ?? ''}
                 onChange={(e) => handleAuthField('username', e.target.value)}
                 placeholder="用户名"
-                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
               />
             </div>
-            <div>
+            <div className="flex flex-col gap-1.5">
               <label
                 htmlFor="http-auth-password"
-                className="mb-1 block text-xs font-medium text-foreground"
+                className="inline-flex items-center gap-0.5 text-xs font-medium text-foreground"
               >
-                密码 <span className="text-error">*</span>
+                密码
+                <span className="text-error">*</span>
               </label>
-              <input
+              <Input
                 id="http-auth-password"
                 type="password"
                 value={parsed.authConfig.password ?? ''}
                 onChange={(e) => handleAuthField('password', e.target.value)}
                 placeholder="密码"
-                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
               />
             </div>
           </>
@@ -412,79 +426,81 @@ export const HttpToolConfigPanel = memo(function HttpToolConfigPanel({
 
         {parsed.authType === 'api-key' && (
           <>
-            <div>
+            <div className="flex flex-col gap-1.5">
               <label
                 htmlFor="http-auth-key-name"
-                className="mb-1 block text-xs font-medium text-foreground"
+                className="inline-flex items-center gap-0.5 text-xs font-medium text-foreground"
               >
-                Key 名称 <span className="text-error">*</span>
+                Key 名称
+                <span className="text-error">*</span>
               </label>
-              <input
+              <Input
                 id="http-auth-key-name"
-                type="text"
                 value={parsed.authConfig.keyName ?? ''}
                 onChange={(e) => handleAuthField('keyName', e.target.value)}
                 placeholder="例：X-API-Key"
-                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
               />
             </div>
-            <div>
+            <div className="flex flex-col gap-1.5">
               <label
                 htmlFor="http-auth-key-value"
-                className="mb-1 block text-xs font-medium text-foreground"
+                className="inline-flex items-center gap-0.5 text-xs font-medium text-foreground"
               >
-                Key 值 <span className="text-error">*</span>
+                Key 值
+                <span className="text-error">*</span>
               </label>
-              <input
+              <Input
                 id="http-auth-key-value"
                 type="password"
                 value={parsed.authConfig.keyValue ?? ''}
                 onChange={(e) => handleAuthField('keyValue', e.target.value)}
                 placeholder="API Key"
-                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
               />
             </div>
-            <div>
+            <div className="flex flex-col gap-1.5">
               <label
                 htmlFor="http-auth-key-location"
-                className="mb-1 block text-xs font-medium text-foreground"
+                className="text-xs font-medium text-foreground"
               >
                 传递位置
               </label>
-              <select
-                id="http-auth-key-location"
+              <Select
                 value={parsed.authConfig.location ?? 'header'}
-                onChange={(e) => handleAuthField('location', e.target.value)}
-                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+                onValueChange={(value) => handleAuthField('location', value)}
               >
-                <option value="header">请求头</option>
-                <option value="query">Query 参数</option>
-              </select>
+                <SelectTrigger id="http-auth-key-location" aria-label="传递位置">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="header">请求头</SelectItem>
+                  <SelectItem value="query">Query 参数</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </>
         )}
       </div>
 
-      <hr className="border-border" />
+      <Separator />
 
       {/* Timeout */}
-      <div>
+      <div className="flex flex-col gap-1.5">
         <label
           htmlFor="http-timeout"
-          className="mb-2 block text-xs font-medium text-foreground"
+          className="text-xs font-medium text-foreground"
         >
           超时时间（秒）
         </label>
-        <input
+        <Input
           id="http-timeout"
           type="number"
           min={1}
           max={300}
           value={parsed.timeout}
           onChange={handleTimeout}
-          className="w-24 rounded-md border border-border bg-background px-3 py-2 text-sm"
+          className="w-24"
         />
-        <p className="mt-1 text-xs text-muted-foreground">
+        <p className="text-xs text-muted">
           请求超时时间，默认 30 秒，最长 300 秒
         </p>
       </div>

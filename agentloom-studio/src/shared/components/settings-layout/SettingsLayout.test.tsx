@@ -33,6 +33,7 @@ describe('SettingsLayout', () => {
 
     for (const label of [
       '概览',
+      '个人偏好',
       '安全设置',
       '加密',
       '自治策略',
@@ -44,6 +45,30 @@ describe('SettingsLayout', () => {
       expect(await screen.findByText(label)).toBeInTheDocument()
     }
     expect(screen.getByLabelText('返回工作台')).toHaveAttribute('href', '/')
+  })
+
+  it('个人偏好指向 /settings/preferences', async () => {
+    renderAt('/settings')
+    expect(await screen.findByRole('link', { name: '个人偏好' })).toHaveAttribute(
+      'href',
+      '/settings/preferences',
+    )
+  })
+
+  // 设置页新增时必须同步补导航入口：此断言是「个人偏好」曾长期缺失的回归闸门
+  it('导航项数量与设置页总数一致（9 项）', async () => {
+    renderAt('/settings')
+    await screen.findByText('设置')
+    const navLinks = screen.getAllByRole('link').filter((el) => {
+      const href = el.getAttribute('href')
+      return href !== null && href.startsWith('/settings')
+    })
+    expect(navLinks).toHaveLength(9)
+  })
+
+  it('个人偏好路径下仅个人偏好高亮', async () => {
+    renderAt('/settings/preferences')
+    expect(await currentLabels()).toEqual(['个人偏好'])
   })
 
   it('概览仅在精确匹配 /settings 时高亮', async () => {

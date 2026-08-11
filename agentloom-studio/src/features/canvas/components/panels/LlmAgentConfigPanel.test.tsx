@@ -54,6 +54,29 @@ vi.mock('@monaco-editor/react', () => ({
   ),
 }))
 
+/** Radix Select 是 button + portal，选中项只能从 trigger 文案读，读不到表单 value */
+function expectComboboxValue(name: string, optionLabel: string) {
+  expect(screen.getByRole('combobox', { name })).toHaveTextContent(optionLabel)
+}
+
+/**
+ * 展开 Radix Select 并选中一项。
+ * 全程用 fireEvent 键盘事件同步派发：userEvent 在 fake timers 下会卡在内部 delay，
+ * 而本文件多数用例都开着 fake timers 验证 300ms autosave。
+ */
+async function chooseOption(comboboxName: string, optionLabel: string) {
+  fireEvent.keyDown(screen.getByRole('combobox', { name: comboboxName }), {
+    key: 'Enter',
+  })
+
+  await act(async () => {
+    fireEvent.keyDown(screen.getByRole('option', { name: optionLabel }), {
+      key: 'Enter',
+    })
+    await Promise.resolve()
+  })
+}
+
 function asRecord(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -202,12 +225,12 @@ describe('LlmAgentConfigPanel', () => {
       />,
     )
 
-    expect(screen.getByRole('combobox', { name: '自主模式' })).toHaveValue('RULE_BASED')
+    expectComboboxValue('自主模式', '规则补全')
     expect(screen.getByRole('textbox', { name: '允许推断字段' })).toHaveValue(
       'context.summary\ninputs.userGoal',
     )
     expect(screen.queryByRole('spinbutton', { name: '确认阈值' })).not.toBeInTheDocument()
-    expect(screen.getByRole('combobox', { name: '兜底策略' })).toHaveValue('USE_DEFAULT')
+    expectComboboxValue('兜底策略', '使用默认值')
 
     act(() => {
       setSelectedAgentNode(
@@ -225,12 +248,12 @@ describe('LlmAgentConfigPanel', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByRole('combobox', { name: '自主模式' })).toHaveValue('LLM_SUGGEST')
+      expectComboboxValue('自主模式', 'LLM 建议')
     })
 
     expect(screen.getByRole('textbox', { name: '允许推断字段' })).toHaveValue('context.summary')
     expect(screen.getByRole('spinbutton', { name: '确认阈值' })).toHaveValue(0.55)
-    expect(screen.getByRole('combobox', { name: '兜底策略' })).toHaveValue('ABORT_EXECUTION')
+    expectComboboxValue('兜底策略', '终止执行')
     expect(screen.getByText(/建议可回退，不构成强承诺/)).toBeInTheDocument()
   })
 
@@ -270,11 +293,11 @@ describe('LlmAgentConfigPanel', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByRole('combobox', { name: '自主模式' })).toHaveValue('LLM_SUGGEST')
+      expectComboboxValue('自主模式', 'LLM 建议')
     })
     expect(screen.getByRole('textbox', { name: '允许推断字段' })).toHaveValue('context.summary')
     expect(screen.getByRole('spinbutton', { name: '确认阈值' })).toHaveValue(0.64)
-    expect(screen.getByRole('combobox', { name: '兜底策略' })).toHaveValue('USE_DEFAULT')
+    expectComboboxValue('兜底策略', '使用默认值')
   })
 
   it('falls back from settings.autonomyMode to config.autonomyMode when higher-priority mirrors are absent', async () => {
@@ -312,11 +335,11 @@ describe('LlmAgentConfigPanel', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByRole('combobox', { name: '自主模式' })).toHaveValue('RULE_BASED')
+      expectComboboxValue('自主模式', '规则补全')
     })
     expect(screen.getByRole('textbox', { name: '允许推断字段' })).toHaveValue('context.summary')
     expect(screen.queryByRole('spinbutton', { name: '确认阈值' })).not.toBeInTheDocument()
-    expect(screen.getByRole('combobox', { name: '兜底策略' })).toHaveValue('USE_DEFAULT')
+    expectComboboxValue('兜底策略', '使用默认值')
   })
 
   it('shows and hides autonomy fields dynamically when switching modes', async () => {
@@ -334,24 +357,18 @@ describe('LlmAgentConfigPanel', () => {
 
     const modeSelect = screen.getByRole('combobox', { name: '自主模式' })
 
-    expect(modeSelect).toHaveValue('MANUAL_CONFIRM')
+    expect(modeSelect).toHaveTextContent('手动确认')
     expect(screen.queryByRole('textbox', { name: '允许推断字段' })).not.toBeInTheDocument()
     expect(screen.queryByRole('spinbutton', { name: '确认阈值' })).not.toBeInTheDocument()
     expect(screen.queryByRole('combobox', { name: '兜底策略' })).not.toBeInTheDocument()
 
-    await act(async () => {
-      fireEvent.change(modeSelect, { target: { value: 'RULE_BASED' } })
-      await Promise.resolve()
-    })
+    await chooseOption('自主模式', '规则补全')
 
     expect(screen.getByRole('textbox', { name: '允许推断字段' })).toBeInTheDocument()
     expect(screen.queryByRole('spinbutton', { name: '确认阈值' })).not.toBeInTheDocument()
     expect(screen.getByRole('combobox', { name: '兜底策略' })).toBeInTheDocument()
 
-    await act(async () => {
-      fireEvent.change(modeSelect, { target: { value: 'LLM_SUGGEST' } })
-      await Promise.resolve()
-    })
+    await chooseOption('自主模式', 'LLM 建议')
 
     expect(screen.getByRole('textbox', { name: '允许推断字段' })).toBeInTheDocument()
     expect(screen.getByRole('spinbutton', { name: '确认阈值' })).toBeInTheDocument()
@@ -388,10 +405,17 @@ describe('LlmAgentConfigPanel', () => {
     expect(screen.getByTestId('llm-agent-autonomy-cap-notice')).toHaveTextContent(
       '组织自治上限：规则补全',
     )
+    // Radix Select 的选项只有在展开时才进入无障碍树
+    fireEvent.keyDown(screen.getByRole('combobox', { name: '自主模式' }), {
+      key: 'Enter',
+    })
+
     expect(
       screen.getByRole('option', { name: 'LLM 建议（受组织策略限制）' }),
-    ).toBeDisabled()
-    expect(screen.getByRole('option', { name: '规则补全' })).not.toBeDisabled()
+    ).toHaveAttribute('data-disabled')
+    expect(screen.getByRole('option', { name: '规则补全' })).not.toHaveAttribute(
+      'data-disabled',
+    )
   })
 
   it('keeps stale over-cap modes visible and blocks autosave until downgraded', async () => {
@@ -434,7 +458,7 @@ describe('LlmAgentConfigPanel', () => {
       />,
     )
 
-    expect(screen.getByRole('combobox', { name: '自主模式' })).toHaveValue('LLM_SUGGEST')
+    expectComboboxValue('自主模式', 'LLM 建议')
     expect(screen.getByTestId('llm-agent-autonomy-policy-warning')).toHaveTextContent(
       '高于组织自治上限“规则补全”',
     )
@@ -453,12 +477,7 @@ describe('LlmAgentConfigPanel', () => {
 
     expect(onApply).not.toHaveBeenCalled()
 
-    await act(async () => {
-      fireEvent.change(screen.getByRole('combobox', { name: '自主模式' }), {
-        target: { value: 'RULE_BASED' },
-      })
-      await Promise.resolve()
-    })
+    await chooseOption('自主模式', '规则补全')
 
     act(() => {
       vi.advanceTimersByTime(300)
@@ -516,7 +535,7 @@ describe('LlmAgentConfigPanel', () => {
     expect(screen.getByTestId('llm-agent-autonomy-legacy-warning')).toHaveTextContent(
       '检测到历史自主模式“LLM_DECIDE”',
     )
-    expect(screen.getByRole('combobox', { name: '自主模式' })).toHaveValue('MANUAL_CONFIRM')
+    expectComboboxValue('自主模式', '手动确认')
     expect(onValidationChange).toHaveBeenLastCalledWith(true)
 
     await act(async () => {
@@ -564,33 +583,25 @@ describe('LlmAgentConfigPanel', () => {
       />,
     )
 
-    const modeSelect = screen.getByRole('combobox', { name: '自主模式' })
-
     expect(screen.getByRole('textbox', { name: '允许推断字段' })).toHaveValue(
       'context.topic\ninputs.summary.title',
     )
     expect(screen.getByRole('spinbutton', { name: '确认阈值' })).toHaveValue(0.55)
-    expect(screen.getByRole('combobox', { name: '兜底策略' })).toHaveValue('ABORT_EXECUTION')
+    expectComboboxValue('兜底策略', '终止执行')
 
-    await act(async () => {
-      fireEvent.change(modeSelect, { target: { value: 'MANUAL_CONFIRM' } })
-      await Promise.resolve()
-    })
+    await chooseOption('自主模式', '手动确认')
 
     expect(screen.queryByRole('textbox', { name: '允许推断字段' })).not.toBeInTheDocument()
     expect(screen.queryByRole('spinbutton', { name: '确认阈值' })).not.toBeInTheDocument()
     expect(screen.queryByRole('combobox', { name: '兜底策略' })).not.toBeInTheDocument()
 
-    await act(async () => {
-      fireEvent.change(modeSelect, { target: { value: 'LLM_SUGGEST' } })
-      await Promise.resolve()
-    })
+    await chooseOption('自主模式', 'LLM 建议')
 
     expect(screen.getByRole('textbox', { name: '允许推断字段' })).toHaveValue(
       'context.topic\ninputs.summary.title',
     )
     expect(screen.getByRole('spinbutton', { name: '确认阈值' })).toHaveValue(0.55)
-    expect(screen.getByRole('combobox', { name: '兜底策略' })).toHaveValue('ABORT_EXECUTION')
+    expectComboboxValue('兜底策略', '终止执行')
   })
 
   it('autosaves canonical MANUAL_CONFIRM while preserving hidden drafts for a later switch back', async () => {
@@ -620,12 +631,7 @@ describe('LlmAgentConfigPanel', () => {
       />,
     )
 
-    const modeSelect = screen.getByRole('combobox', { name: '自主模式' })
-
-    await act(async () => {
-      fireEvent.change(modeSelect, { target: { value: 'MANUAL_CONFIRM' } })
-      await Promise.resolve()
-    })
+    await chooseOption('自主模式', '手动确认')
 
     act(() => {
       vi.advanceTimersByTime(300)
@@ -644,14 +650,11 @@ describe('LlmAgentConfigPanel', () => {
       autonomyConfig: DEFAULT_AUTONOMY_CONFIG,
     })
 
-    await act(async () => {
-      fireEvent.change(modeSelect, { target: { value: 'LLM_SUGGEST' } })
-      await Promise.resolve()
-    })
+    await chooseOption('自主模式', 'LLM 建议')
 
     expect(screen.getByRole('textbox', { name: '允许推断字段' })).toHaveValue('context.topic')
     expect(screen.getByRole('spinbutton', { name: '确认阈值' })).toHaveValue(0.55)
-    expect(screen.getByRole('combobox', { name: '兜底策略' })).toHaveValue('USE_DEFAULT')
+    expectComboboxValue('兜底策略', '使用默认值')
   })
 
   it('preserves hidden drafts after the real store write-back resets the form', async () => {
@@ -678,12 +681,7 @@ describe('LlmAgentConfigPanel', () => {
 
     render(<StoreBackedLlmAgentConfigPanel />)
 
-    const modeSelect = screen.getByRole('combobox', { name: '自主模式' })
-
-    await act(async () => {
-      fireEvent.change(modeSelect, { target: { value: 'MANUAL_CONFIRM' } })
-      await Promise.resolve()
-    })
+    await chooseOption('自主模式', '手动确认')
 
     act(() => {
       vi.advanceTimersByTime(300)
@@ -702,14 +700,11 @@ describe('LlmAgentConfigPanel', () => {
       autonomyMode: 'MANUAL_CONFIRM',
     })
 
-    await act(async () => {
-      fireEvent.change(modeSelect, { target: { value: 'LLM_SUGGEST' } })
-      await Promise.resolve()
-    })
+    await chooseOption('自主模式', 'LLM 建议')
 
     expect(screen.getByRole('textbox', { name: '允许推断字段' })).toHaveValue('context.topic')
     expect(screen.getByRole('spinbutton', { name: '确认阈值' })).toHaveValue(0.55)
-    expect(screen.getByRole('combobox', { name: '兜底策略' })).toHaveValue('USE_DEFAULT')
+    expectComboboxValue('兜底策略', '使用默认值')
   })
 
   it('shows threshold errors before blur when the current llm-suggest threshold becomes invalid', async () => {

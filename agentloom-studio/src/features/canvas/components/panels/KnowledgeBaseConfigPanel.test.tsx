@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { buildKnowledgeBaseNodeConfig, type KnowledgeBase } from '@/features/knowledge/types'
@@ -84,7 +84,8 @@ describe('KnowledgeBaseConfigPanel', () => {
 
     render(<KnowledgeBaseConfigPanel config={{}} onApply={onApply} />)
 
-    await user.selectOptions(screen.getByLabelText('选择知识库'), 'kb-2')
+    await user.click(screen.getByLabelText('选择知识库'))
+    await user.click(await screen.findByRole('option', { name: /研发规范库/ }))
 
     expect(onApply).toHaveBeenCalledWith({
       config: buildKnowledgeBaseNodeConfig(selectedKnowledgeBase),
@@ -136,15 +137,16 @@ describe('KnowledgeBaseConfigPanel', () => {
     )
 
     const select = screen.getByLabelText('选择知识库')
-    await user.click(select)
-    await user.tab()
+    fireEvent.focus(select)
+    fireEvent.blur(select)
 
     await waitFor(() => {
       expect(screen.getByText('此字段为必填项')).toBeInTheDocument()
     })
     expect(onValidationChange).toHaveBeenLastCalledWith(true)
 
-    await user.selectOptions(select, 'kb-1')
+    await user.click(select)
+    await user.click(await screen.findByRole('option', { name: /产品手册库/ }))
 
     expect(screen.queryByText('此字段为必填项')).not.toBeInTheDocument()
     expect(onValidationChange).toHaveBeenLastCalledWith(false)

@@ -21,14 +21,14 @@ export interface AgentNodeTypeConfig extends Omit<NodeTypeConfig, "type"> {
 
 // Local color tokens — mirrors the unexported CATEGORY_COLOR_TOKENS in nodeTypeRegistry.ts
 const AGENT_CATEGORY_COLOR_TOKENS: Record<NodeCategory, string> = {
-  agent: "var(--color-type-model)",
-  tool: "var(--color-type-tool)",
-  trigger: "var(--color-warning)",
-  knowledge: "var(--color-type-knowledge)",
-  output: "var(--color-type-text)",
-  control: "var(--color-muted)",
-  plugin: "var(--color-type-tool)",
-  memory: "var(--color-type-json)",
+  agent: "var(--color-node-agent)",
+  tool: "var(--color-node-tool)",
+  trigger: "var(--color-node-trigger)",
+  knowledge: "var(--color-node-knowledge)",
+  output: "var(--color-node-output)",
+  control: "var(--color-node-control)",
+  plugin: "var(--color-node-plugin)",
+  memory: "var(--color-node-memory)",
 };
 
 const EMPTY_AGENT_CONFIG_SCHEMA: NodeConfigSchema = {

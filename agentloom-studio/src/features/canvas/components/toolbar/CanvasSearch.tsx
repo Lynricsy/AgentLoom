@@ -1,7 +1,11 @@
 import { memo, useCallback, useEffect, useRef } from 'react'
 import { useReactFlow } from '@xyflow/react'
+import { motion } from 'motion/react'
 import { Search, ChevronUp, ChevronDown, X } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
+import { fadeInUp } from '@/shared/lib/motion'
+import { Button } from '@/shared/ui/button'
+import { TooltipHint, TooltipProvider } from '@/shared/ui/tooltip'
 import { useCanvasActions, useSearchState } from '../../stores/canvasStore'
 
 export const CanvasSearch = memo(function CanvasSearch() {
@@ -44,54 +48,69 @@ export const CanvasSearch = memo(function CanvasSearch() {
   if (!isSearchOpen) return null
 
   return (
-    <div
-      className="absolute left-1/2 top-3 z-50 flex -translate-x-1/2 items-center gap-1.5 rounded-lg border bg-surface px-3 py-1.5 shadow-lg"
-      data-testid="canvas-search"
-    >
-      <Search className="h-4 w-4 shrink-0 text-muted-foreground" />
-      <input
-        ref={inputRef}
-        type="text"
-        value={searchQuery}
-        onChange={(e) => setSearchQuery(e.target.value)}
-        onKeyDown={handleKeyDown}
-        placeholder="搜索节点..."
-        className="w-48 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-        data-testid="canvas-search-input"
-      />
-      {searchQuery && (
-        <span className={cn('text-xs tabular-nums', searchMatchIds.length === 0 ? 'text-destructive' : 'text-muted-foreground')}>
-          {searchMatchIds.length === 0 ? '无结果' : `${currentSearchIndex + 1}/${searchMatchIds.length}`}
-        </span>
-      )}
-      <div className="flex items-center border-l pl-1.5">
-        <button
-          type="button"
-          onClick={prevSearchResult}
-          disabled={searchMatchIds.length === 0}
-          className="rounded p-0.5 text-muted-foreground hover:bg-muted disabled:opacity-40"
-          aria-label="上一个"
-        >
-          <ChevronUp className="h-3.5 w-3.5" />
-        </button>
-        <button
-          type="button"
-          onClick={nextSearchResult}
-          disabled={searchMatchIds.length === 0}
-          className="rounded p-0.5 text-muted-foreground hover:bg-muted disabled:opacity-40"
-          aria-label="下一个"
-        >
-          <ChevronDown className="h-3.5 w-3.5" />
-        </button>
-        <button
-          type="button"
-          onClick={clearSearch}
-          className="rounded p-0.5 text-muted-foreground hover:bg-muted"
-          aria-label="关闭搜索"
-        >
-          <X className="h-3.5 w-3.5" />
-        </button>
-      </div>
-    </div>
+    <TooltipProvider delayDuration={300}>
+      <motion.div
+        {...fadeInUp}
+        className="absolute left-1/2 top-3 z-50 flex -translate-x-1/2 items-center gap-1.5 rounded-panel border border-border bg-surface/90 px-3 py-1.5 shadow-popover backdrop-blur-sm"
+        data-testid="canvas-search"
+      >
+        <Search aria-hidden className="h-4 w-4 shrink-0 text-muted-foreground" />
+        <input
+          ref={inputRef}
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="搜索节点..."
+          aria-label="搜索节点"
+          className="w-48 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground"
+          data-testid="canvas-search-input"
+        />
+        {searchQuery && (
+          <span
+            className={cn(
+              'text-xs tabular-nums',
+              searchMatchIds.length === 0 ? 'text-error' : 'text-muted-foreground',
+            )}
+          >
+            {searchMatchIds.length === 0 ? '无结果' : `${currentSearchIndex + 1}/${searchMatchIds.length}`}
+          </span>
+        )}
+        <div className="ml-0.5 flex items-center gap-0.5 border-l border-border pl-1.5">
+          <TooltipHint label="上一个 (Shift+Enter)">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={prevSearchResult}
+              disabled={searchMatchIds.length === 0}
+              aria-label="上一个"
+            >
+              <ChevronUp className="h-3.5 w-3.5" />
+            </Button>
+          </TooltipHint>
+          <TooltipHint label="下一个 (Enter)">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={nextSearchResult}
+              disabled={searchMatchIds.length === 0}
+              aria-label="下一个"
+            >
+              <ChevronDown className="h-3.5 w-3.5" />
+            </Button>
+          </TooltipHint>
+          <TooltipHint label="关闭搜索 (Esc)">
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={clearSearch}
+              aria-label="关闭搜索"
+            >
+              <X className="h-3.5 w-3.5" />
+            </Button>
+          </TooltipHint>
+        </div>
+      </motion.div>
+    </TooltipProvider>
   )
 })

@@ -1,5 +1,13 @@
 import { memo, useCallback, type ChangeEvent } from "react";
 import { Container, Loader2 } from "lucide-react";
+import { Input } from "@/shared/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/shared/ui/select";
 import { usePersistentSandboxes } from "@/features/sandbox/api/sandboxQueries";
 import type { SandboxSession } from "@/features/sandbox/types";
 import { SandboxPresetSelector } from "@/features/sandbox/components/SandboxPresetSelector";
@@ -88,7 +96,7 @@ function PersistentSandboxSelector({
 
   if (isError) {
     return (
-      <p className="py-2 text-xs text-destructive">
+      <p className="py-2 text-xs font-medium text-error">
         持久沙箱列表加载失败，请稍后重试。
       </p>
     );
@@ -103,22 +111,24 @@ function PersistentSandboxSelector({
   }
 
   return (
-    <select
+    <Select
       value={selectedId}
-      onChange={(e) => {
-        const found = available.find((s) => s.id === e.target.value) ?? null;
-        onSelect(found);
+      onValueChange={(value) => {
+        onSelect(available.find((s) => s.id === value) ?? null);
       }}
-      className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
     >
-      <option value="">请选择持久沙箱</option>
-      {available.map((s) => (
-        <option key={s.id} value={s.id}>
-          {s.config.name || s.id.slice(0, 8)} (
-          {s.status === "ready" ? "就绪" : "已停止"})
-        </option>
-      ))}
-    </select>
+      <SelectTrigger id="sandbox-persistent-select" aria-label="选择持久沙箱">
+        <SelectValue placeholder="请选择持久沙箱" />
+      </SelectTrigger>
+      <SelectContent>
+        {available.map((s) => (
+          <SelectItem key={s.id} value={s.id}>
+            {s.config.name || s.id.slice(0, 8)} (
+            {s.status === "ready" ? "就绪" : "已停止"})
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }
 
@@ -225,7 +235,7 @@ export const SandboxConfigPanel = memo(function SandboxConfigPanel({
   );
 
   return (
-    <div className="space-y-4 px-4 py-4">
+    <div className="space-y-5 px-4 py-4">
       <div className="flex items-center gap-2">
         <Container className="h-4 w-4 text-type-tool" />
         <span className="rounded-full bg-type-tool/10 px-2 py-0.5 text-xs font-medium text-type-tool">
@@ -234,17 +244,15 @@ export const SandboxConfigPanel = memo(function SandboxConfigPanel({
       </div>
 
       {/* Lifecycle mode toggle */}
-      <div>
-        <label className="mb-2 block text-xs font-medium text-foreground">
-          生命周期模式
-        </label>
+      <div className="flex flex-col gap-1.5">
+        <span className="text-xs font-medium text-foreground">生命周期模式</span>
         <div className="flex gap-2">
           <button
             type="button"
             onClick={() => handleLifecycleMode("session")}
             className={`flex-1 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors ${
               sandbox.lifecycleMode === "session"
-                ? "border-amber-500/50 bg-amber-500/10 text-amber-400"
+                ? "border-warning/50 bg-warning/10 text-warning"
                 : "border-border bg-background text-muted-foreground hover:bg-muted"
             }`}
           >
@@ -255,7 +263,7 @@ export const SandboxConfigPanel = memo(function SandboxConfigPanel({
             onClick={() => handleLifecycleMode("persistent")}
             className={`flex-1 rounded-md border px-3 py-1.5 text-xs font-medium transition-colors ${
               sandbox.lifecycleMode === "persistent"
-                ? "border-blue-500/50 bg-blue-500/10 text-blue-400"
+                ? "border-info/50 bg-info/10 text-info"
                 : "border-border bg-background text-muted-foreground hover:bg-muted"
             }`}
           >
@@ -276,15 +284,15 @@ export const SandboxConfigPanel = memo(function SandboxConfigPanel({
           />
 
           {/* CPU */}
-          <div>
-            <div className="mb-2 flex items-center justify-between gap-3">
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between gap-3">
               <label
                 htmlFor="sandbox-cpu"
                 className="block text-xs font-medium text-foreground"
               >
                 CPU ({sandbox.cpu} 核)
               </label>
-              <input
+              <Input
                 aria-label="CPU 数值"
                 type="number"
                 min={0.5}
@@ -292,7 +300,7 @@ export const SandboxConfigPanel = memo(function SandboxConfigPanel({
                 step={0.5}
                 value={sandbox.cpu}
                 onChange={handleCpu}
-                className="w-24 rounded-md border border-border bg-background px-2 py-1 text-right text-sm"
+                className="h-8 w-24 text-right"
               />
             </div>
             <input
@@ -304,24 +312,24 @@ export const SandboxConfigPanel = memo(function SandboxConfigPanel({
               step={0.5}
               value={sandbox.cpu}
               onChange={handleCpu}
-              className="w-full"
+              className="w-full accent-primary"
             />
-            <div className="mt-1 flex justify-between text-xs text-muted-foreground">
+            <div className="flex justify-between text-xs text-muted">
               <span>0.5 核</span>
               <span>4 核</span>
             </div>
           </div>
 
           {/* Memory */}
-          <div>
-            <div className="mb-2 flex items-center justify-between gap-3">
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between gap-3">
               <label
                 htmlFor="sandbox-memory"
                 className="block text-xs font-medium text-foreground"
               >
                 Memory ({sandbox.memory} MB)
               </label>
-              <input
+              <Input
                 aria-label="Memory 数值"
                 type="number"
                 min={256}
@@ -329,7 +337,7 @@ export const SandboxConfigPanel = memo(function SandboxConfigPanel({
                 step={256}
                 value={sandbox.memory}
                 onChange={handleMemory}
-                className="w-24 rounded-md border border-border bg-background px-2 py-1 text-right text-sm"
+                className="h-8 w-24 text-right"
               />
             </div>
             <input
@@ -341,24 +349,24 @@ export const SandboxConfigPanel = memo(function SandboxConfigPanel({
               step={256}
               value={sandbox.memory}
               onChange={handleMemory}
-              className="w-full"
+              className="w-full accent-primary"
             />
-            <div className="mt-1 flex justify-between text-xs text-muted-foreground">
+            <div className="flex justify-between text-xs text-muted">
               <span>256 MB</span>
               <span>4096 MB</span>
             </div>
           </div>
 
           {/* Disk */}
-          <div>
-            <div className="mb-2 flex items-center justify-between gap-3">
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between gap-3">
               <label
                 htmlFor="sandbox-disk"
                 className="block text-xs font-medium text-foreground"
               >
                 Disk ({sandbox.disk} GB)
               </label>
-              <input
+              <Input
                 aria-label="Disk 数值"
                 type="number"
                 min={1}
@@ -366,7 +374,7 @@ export const SandboxConfigPanel = memo(function SandboxConfigPanel({
                 step={1}
                 value={sandbox.disk}
                 onChange={handleDisk}
-                className="w-24 rounded-md border border-border bg-background px-2 py-1 text-right text-sm"
+                className="h-8 w-24 text-right"
               />
             </div>
             <input
@@ -378,24 +386,24 @@ export const SandboxConfigPanel = memo(function SandboxConfigPanel({
               step={1}
               value={sandbox.disk}
               onChange={handleDisk}
-              className="w-full"
+              className="w-full accent-primary"
             />
-            <div className="mt-1 flex justify-between text-xs text-muted-foreground">
+            <div className="flex justify-between text-xs text-muted">
               <span>1 GB</span>
               <span>10 GB</span>
             </div>
           </div>
 
           {/* Timeout */}
-          <div>
-            <div className="mb-2 flex items-center justify-between gap-3">
+          <div className="flex flex-col gap-1.5">
+            <div className="flex items-center justify-between gap-3">
               <label
                 htmlFor="sandbox-timeout"
                 className="block text-xs font-medium text-foreground"
               >
                 Timeout ({formatSandboxTimeoutHours(sandbox.timeout)})
               </label>
-              <input
+              <Input
                 aria-label="Timeout 数值"
                 type="number"
                 min={0}
@@ -403,7 +411,7 @@ export const SandboxConfigPanel = memo(function SandboxConfigPanel({
                 step={0.5}
                 value={sandbox.timeout}
                 onChange={handleTimeout}
-                className="w-24 rounded-md border border-border bg-background px-2 py-1 text-right text-sm"
+                className="h-8 w-24 text-right"
               />
             </div>
             <input
@@ -415,22 +423,22 @@ export const SandboxConfigPanel = memo(function SandboxConfigPanel({
               step={0.5}
               value={sandbox.timeout}
               onChange={handleTimeout}
-              className="w-full"
+              className="w-full accent-primary"
             />
-            <div className="mt-1 flex justify-between text-xs text-muted-foreground">
+            <div className="flex justify-between text-xs text-muted">
               <span>0 = 不超时</span>
               <span>168 小时</span>
             </div>
-            <p className="mt-2 text-xs text-muted-foreground">
+            <p className="text-xs text-muted">
               设为 0 表示不超时；如需显式限制，可设置到最多 168 小时。
             </p>
           </div>
 
           {/* Summary */}
-          <div className="space-y-2 rounded-lg border border-border bg-card p-3 text-xs">
+          <div className="space-y-2 rounded-card border border-border bg-surface-elevated p-3 text-xs">
             <p className="font-medium text-foreground">当前配置</p>
             <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
-              <span className="inline-flex items-center rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-400">
+              <span className="inline-flex items-center rounded-full bg-warning/10 px-2 py-0.5 text-[10px] font-medium text-warning">
                 临时
               </span>
               <span>{sandbox.cpu} 核</span>
@@ -446,8 +454,11 @@ export const SandboxConfigPanel = memo(function SandboxConfigPanel({
       ) : (
         <>
           {/* Persistent sandbox selector */}
-          <div>
-            <label className="mb-2 block text-xs font-medium text-foreground">
+          <div className="flex flex-col gap-1.5">
+            <label
+              htmlFor="sandbox-persistent-select"
+              className="text-xs font-medium text-foreground"
+            >
               选择持久沙箱
             </label>
             <PersistentSandboxSelector
@@ -457,10 +468,10 @@ export const SandboxConfigPanel = memo(function SandboxConfigPanel({
           </div>
 
           {/* Summary */}
-          <div className="space-y-2 rounded-lg border border-border bg-card p-3 text-xs">
+          <div className="space-y-2 rounded-card border border-border bg-surface-elevated p-3 text-xs">
             <p className="font-medium text-foreground">当前配置</p>
             <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
-              <span className="inline-flex items-center rounded-full bg-blue-500/10 px-2 py-0.5 text-[10px] font-medium text-blue-400">
+              <span className="inline-flex items-center rounded-full bg-info/10 px-2 py-0.5 text-[10px] font-medium text-info">
                 持久
               </span>
               {sandbox.persistentSandboxName ? (

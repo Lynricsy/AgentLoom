@@ -1,7 +1,13 @@
 import { memo, useCallback } from 'react'
 import { FolderOpen, Loader2 } from 'lucide-react'
 import { useAllWorkspaces } from '@/features/workspace'
-import { NativeSelect } from '@/shared/ui/native-select'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/shared/ui/select'
 
 interface WorkspaceConfigPanelProps {
   config: Record<string, unknown>
@@ -51,21 +57,22 @@ export const WorkspaceConfigPanel = memo(function WorkspaceConfigPanel({
   )
 
   return (
-    <div className="space-y-4 px-4 py-4" data-testid="workspace-config-panel">
-      {/* Header badge */}
+    <div className="space-y-5 px-4 py-4" data-testid="workspace-config-panel">
       <div className="flex items-center gap-2">
-        <FolderOpen className="h-4 w-4 text-teal-400" />
-        <span className="rounded-full bg-teal-500/10 px-2 py-0.5 text-xs font-medium text-teal-400">
+        <FolderOpen className="h-4 w-4 text-type-volume" />
+        <span className="rounded-full bg-type-volume/10 px-2 py-0.5 text-xs font-medium text-type-volume">
           Workspace
         </span>
       </div>
 
-      {/* Workspace selector */}
-      <div>
-        <span className="mb-2 inline-flex items-center gap-1 text-xs font-medium text-foreground">
-          <label htmlFor="workspace-select">选择工作区</label>
+      <div className="flex flex-col gap-1.5">
+        <label
+          htmlFor="workspace-select"
+          className="inline-flex items-center gap-0.5 text-xs font-medium text-foreground"
+        >
+          选择工作区
           <span className="text-error">*</span>
-        </span>
+        </label>
         {isLoading ? (
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -76,33 +83,31 @@ export const WorkspaceConfigPanel = memo(function WorkspaceConfigPanel({
             暂无可用工作区，请先创建一个工作区。
           </p>
         ) : (
-          <NativeSelect
-            aria-label="选择工作区"
-            id="workspace-select"
-            value={currentId}
-            onValueChange={handleSelect}
-          >
-            <option value="">请选择工作区</option>
-            {readyWorkspaces.map((ws) => (
-              <option key={ws.id} value={ws.id}>
-                {ws.name} · {formatSize(ws.sizeBytes)}
-              </option>
-            ))}
-          </NativeSelect>
+          <Select value={currentId} onValueChange={handleSelect}>
+            <SelectTrigger aria-label="选择工作区" id="workspace-select">
+              <SelectValue placeholder="请选择工作区" />
+            </SelectTrigger>
+            <SelectContent>
+              {readyWorkspaces.map((ws) => (
+                <SelectItem key={ws.id} value={ws.id}>
+                  {ws.name} · {formatSize(ws.sizeBytes)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         )}
       </div>
 
-      {/* Selected workspace details */}
       {selectedWorkspace && (
         <div
-          className="space-y-2 rounded-lg border border-border bg-card p-3 text-xs"
+          className="space-y-2 rounded-card border border-border bg-surface-elevated p-3 text-xs"
           data-testid="workspace-details"
         >
           <p className="font-medium text-foreground">{selectedWorkspace.name}</p>
           <div className="flex flex-wrap items-center gap-2 text-muted-foreground">
             <span>大小: {formatSize(selectedWorkspace.sizeBytes)}</span>
             <span>·</span>
-            <span className="text-green-400">{selectedWorkspace.status}</span>
+            <span className="text-success">{selectedWorkspace.status}</span>
           </div>
           {selectedWorkspace.description && (
             <p className="text-muted-foreground">{selectedWorkspace.description}</p>
@@ -111,16 +116,15 @@ export const WorkspaceConfigPanel = memo(function WorkspaceConfigPanel({
         </div>
       )}
 
-      {/* Missing workspace warning */}
       {showMissingWarning && (
         <div
-          className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs"
+          className="space-y-2 rounded-card border border-warning/30 bg-warning/10 p-3 text-xs"
           data-testid="workspace-missing-warning"
         >
-          <p className="font-medium text-amber-700 dark:text-amber-300">
+          <p className="font-medium text-warning">
             当前已选择的工作区不可用或已删除，请重新选择。
           </p>
-          <p className="break-all text-amber-700/80 dark:text-amber-200/80">ID: {currentId}</p>
+          <p className="break-all text-warning/80">ID: {currentId}</p>
         </div>
       )}
     </div>

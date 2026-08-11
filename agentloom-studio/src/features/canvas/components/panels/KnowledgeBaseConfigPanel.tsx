@@ -10,7 +10,13 @@ import {
   isKnowledgeBaseConfigured,
 } from "@/features/knowledge/types";
 import { useAllKnowledgeBases } from "@/features/knowledge/hooks/useKnowledgeBases";
-import { NativeSelect } from "@/shared/ui/native-select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/shared/ui/select";
 
 const EMPTY_KNOWLEDGE_BASES = [] as const;
 
@@ -103,7 +109,7 @@ export const KnowledgeBaseConfigPanel = memo(function KnowledgeBaseConfigPanel({
     Boolean(currentId) && !selectedKnowledgeBase && !isLoading;
 
   return (
-    <div className="space-y-4 px-4 py-4">
+    <div className="space-y-5 px-4 py-4">
       <div className="flex items-center gap-2">
         <BookOpen className="h-4 w-4 text-type-knowledge" />
         <span className="rounded-full bg-type-knowledge/10 px-2 py-0.5 text-xs font-medium text-type-knowledge">
@@ -111,11 +117,14 @@ export const KnowledgeBaseConfigPanel = memo(function KnowledgeBaseConfigPanel({
         </span>
       </div>
 
-      <div>
-        <span className="mb-2 inline-flex items-center gap-1 text-xs font-medium text-foreground">
-          <label htmlFor="kb-select">选择知识库</label>
+      <div className="flex flex-col gap-1.5">
+        <label
+          htmlFor="kb-select"
+          className="inline-flex items-center gap-0.5 text-xs font-medium text-foreground"
+        >
+          选择知识库
           <span className="text-error">*</span>
-        </span>
+        </label>
         {isLoading ? (
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -127,30 +136,35 @@ export const KnowledgeBaseConfigPanel = memo(function KnowledgeBaseConfigPanel({
             control={control}
             render={({ field }) => (
               <>
-                <NativeSelect
-                  aria-label="选择知识库"
-                  id="kb-select"
+                <Select
                   value={field.value}
                   onValueChange={(selectedId) => {
                     field.onChange(selectedId);
                     handleSelect(selectedId);
                     void trigger("knowledgeBaseId", { shouldFocus: false });
                   }}
-                  onBlur={() => {
-                    field.onBlur();
-                    void trigger(undefined, { shouldFocus: false });
-                  }}
                 >
-                  <option value="">请选择知识库</option>
-                  {knowledgeBases.map((kb) => (
-                    <option key={kb.id} value={kb.id}>
-                      {kb.name} · {kb.documentCount} 文档 ·{" "}
-                      {getKnowledgeNodeCountLabel(kb)}
-                    </option>
-                  ))}
-                </NativeSelect>
+                  <SelectTrigger
+                    aria-label="选择知识库"
+                    id="kb-select"
+                    onBlur={() => {
+                      field.onBlur();
+                      void trigger(undefined, { shouldFocus: false });
+                    }}
+                  >
+                    <SelectValue placeholder="请选择知识库" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {knowledgeBases.map((kb) => (
+                      <SelectItem key={kb.id} value={kb.id}>
+                        {kb.name} · {kb.documentCount} 文档 ·{" "}
+                        {getKnowledgeNodeCountLabel(kb)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 {errors.knowledgeBaseId && (
-                  <p className="mt-1 text-xs text-error">
+                  <p className="text-xs font-medium text-error">
                     {errors.knowledgeBaseId.message}
                   </p>
                 )}
@@ -161,7 +175,7 @@ export const KnowledgeBaseConfigPanel = memo(function KnowledgeBaseConfigPanel({
       </div>
 
       {selectedKnowledgeBase && (
-        <div className="space-y-2 rounded-lg border border-border bg-card p-3 text-xs">
+        <div className="space-y-2 rounded-card border border-border bg-surface-elevated p-3 text-xs">
           <p className="font-medium text-foreground">
             {selectedKnowledgeBase.name}
           </p>
@@ -180,13 +194,13 @@ export const KnowledgeBaseConfigPanel = memo(function KnowledgeBaseConfigPanel({
 
       {showMissingKnowledgeBaseWarning && (
         <div
-          className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs"
+          className="space-y-2 rounded-card border border-warning/30 bg-warning/10 p-3 text-xs"
           data-testid="knowledge-base-missing-warning"
         >
-          <p className="font-medium text-amber-700 dark:text-amber-300">
+          <p className="font-medium text-warning">
             当前已选择的知识库不可用或已删除，请重新选择。
           </p>
-          <p className="break-all text-amber-700/80 dark:text-amber-200/80">
+          <p className="break-all text-warning/80">
             ID: {currentId}
           </p>
         </div>

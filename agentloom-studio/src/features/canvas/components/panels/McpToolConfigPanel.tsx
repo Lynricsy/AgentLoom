@@ -2,6 +2,7 @@ import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { Plug, Search, ArrowLeft, Server, Loader2, ChevronRight, ChevronDown, Check } from 'lucide-react'
 import { useMcpServerConfigs, useMcpServerConfig } from '@/features/mcp'
 import { cn } from '@/shared/lib/utils'
+import { Input } from '@/shared/ui/input'
 import { buildMcpToolPorts } from '../../types/mcpToolMapping'
 import type { McpToolDefinition } from '../../types/mcpToolMapping'
 import type { CanvasNodeData } from '../../types'
@@ -164,7 +165,7 @@ export const McpToolConfigPanel = memo(function McpToolConfigPanel({
   const showConfigured = isConfigured && !selectedServerId
 
   return (
-    <div className="space-y-4 px-4 py-4">
+    <div className="space-y-5 px-4 py-4">
       {/* 标题区域 */}
       <div className="flex items-center gap-2">
         <Plug className="h-4 w-4 text-info" />
@@ -176,7 +177,7 @@ export const McpToolConfigPanel = memo(function McpToolConfigPanel({
       {/* 已配置展示 */}
       {showConfigured && (
         <div className="space-y-3">
-          <div className="rounded-md border border-border bg-surface-elevated p-3">
+          <div className="rounded-card border border-border bg-surface-elevated p-3">
             <div className="flex items-start justify-between gap-2">
               <div className="flex items-start gap-2 min-w-0">
                 <Server className="mt-0.5 h-4 w-4 shrink-0 text-info" />
@@ -262,23 +263,23 @@ export const McpToolConfigPanel = memo(function McpToolConfigPanel({
       {/* Step 1: 选择 MCP Server */}
       {!selectedServerId && !isConfigured && (
         <div className="flex flex-col gap-3">
-          <span className="inline-flex items-center gap-1 text-xs font-medium text-foreground">
-            <label>选择 MCP Server</label>
+          <span className="inline-flex items-center gap-0.5 text-xs font-medium text-foreground">
+            <span>选择 MCP Server</span>
             <span className="text-error">*</span>
           </span>
 
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-            <input
-              type="text"
+            <Input
+              aria-label="搜索 MCP Server"
               value={serverSearch}
               onChange={(e) => setServerSearch(e.target.value)}
               placeholder="搜索 MCP Server..."
-              className="w-full rounded-md border border-border bg-surface py-1.5 pl-8 pr-3 text-xs text-foreground placeholder:text-muted-foreground outline-none focus:border-info/50"
+              className="h-8 pl-8 text-xs"
             />
           </div>
 
-          <div className="max-h-64 overflow-y-auto rounded-md border border-border">
+          <div className="max-h-64 overflow-y-auto rounded-card border border-border">
             {serversLoading ? (
               <div className="flex items-center justify-center gap-2 py-6 text-xs text-muted-foreground">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -366,17 +367,17 @@ export const McpToolConfigPanel = memo(function McpToolConfigPanel({
           {/* 搜索框 */}
           <div className="relative">
             <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-            <input
-              type="text"
+            <Input
+              aria-label="搜索工具"
               value={toolSearch}
               onChange={(e) => setToolSearch(e.target.value)}
               placeholder="搜索工具..."
-              className="w-full rounded-md border border-border bg-surface py-1.5 pl-8 pr-3 text-xs text-foreground placeholder:text-muted-foreground outline-none focus:border-info/50"
+              className="h-8 pl-8 text-xs"
             />
           </div>
 
           {/* 工具复选列表 */}
-          <div className="max-h-64 overflow-y-auto rounded-md border border-border">
+          <div className="max-h-64 overflow-y-auto rounded-card border border-border">
             {detailLoading ? (
               <div className="flex items-center justify-center gap-2 py-6 text-xs text-muted-foreground">
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
