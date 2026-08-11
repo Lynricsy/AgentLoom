@@ -10,7 +10,7 @@ import type {
 import { cn } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
-import { Select } from '@/shared/ui/select'
+import { NativeSelect } from '@/shared/ui/native-select'
 import { useToast } from '@/shared/ui/toast'
 import {
   DEFAULT_CONVERSATION_PLAN,
@@ -200,7 +200,7 @@ export function WorkflowInputSchemaTab({
       <fieldset disabled={isReadOnly} className="contents">
         <div className="grid gap-4 md:grid-cols-[minmax(0,240px)_1fr]">
           <FieldInput label="收集模式">
-            <Select
+            <NativeSelect
               value={schema.collectionMode}
               onValueChange={(value) => {
                 const nextMode = value as WorkflowInputCollectionMode
@@ -222,7 +222,7 @@ export function WorkflowInputSchemaTab({
                   {option.label}
                 </option>
               ))}
-            </Select>
+            </NativeSelect>
           </FieldInput>
 
           <div className="rounded-xl border border-border/70 bg-background/60 px-4 py-3 text-xs text-muted-foreground">
@@ -425,7 +425,7 @@ export function WorkflowInputSchemaTab({
                 </FieldInput>
 
                 <FieldInput label="字段类型">
-                  <Select
+                  <NativeSelect
                     value={field.type}
                     onValueChange={(value) => {
                       updateField(index, (currentField) => {
@@ -450,7 +450,7 @@ export function WorkflowInputSchemaTab({
                         {option.label}
                       </option>
                     ))}
-                  </Select>
+                  </NativeSelect>
                 </FieldInput>
 
                 <FieldInput label="必填">
@@ -534,7 +534,7 @@ export function WorkflowInputSchemaTab({
                 ) : null}
 
                 <FieldInput label="显示条件字段">
-                  <Select
+                  <NativeSelect
                     value={visibilityController}
                     onValueChange={(value) => {
                       updateField(index, (currentField) => ({
@@ -558,7 +558,7 @@ export function WorkflowInputSchemaTab({
                           {option.label}
                         </option>
                       ))}
-                  </Select>
+                  </NativeSelect>
                 </FieldInput>
 
                 <FieldInput label="显示条件取值">

@@ -1,7 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { Check, ChevronDown } from "lucide-react";
 import { cn } from "@/shared/lib/utils";
-import type { SelectProps } from "@/shared/ui/select";
+import type { NativeSelectProps } from "@/shared/ui/native-select";
 import { useLlmModels, useLlmProviders } from "../hooks/useLlmModels";
 import type { LlmModelInfo, LlmProviderEntity } from "../types";
 import { ProviderIcon } from "./ProviderIcon";
@@ -17,7 +17,7 @@ interface SelectedModelEntry {
 }
 
 export interface GlobalModelSelectorProps extends Pick<
-  SelectProps,
+  NativeSelectProps,
   "aria-label" | "className" | "disabled" | "id" | "name" | "required"
 > {
   /** 当前选中的模型配置 ID */

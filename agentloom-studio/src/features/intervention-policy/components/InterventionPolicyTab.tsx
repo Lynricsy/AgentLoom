@@ -8,7 +8,7 @@ import {
   type CanvasNode,
 } from '@/features/canvas'
 import { Button } from '@/shared/ui/button'
-import { Select } from '@/shared/ui/select'
+import { NativeSelect } from '@/shared/ui/native-select'
 import { Slider } from '@/shared/ui/slider'
 import { useToast } from '@/shared/ui/toast'
 import {
@@ -721,7 +721,7 @@ export function InterventionPolicyTab({
                   control={workflowForm.control}
                   name="timeoutAction"
                   render={({ field }) => (
-                    <Select
+                    <NativeSelect
                       id="workflow-timeout-action"
                       aria-label="工作流超时动作"
                       value={field.value}
@@ -733,7 +733,7 @@ export function InterventionPolicyTab({
                           {TIMEOUT_ACTION_LABELS[action]}
                         </option>
                       ))}
-                    </Select>
+                    </NativeSelect>
                   )}
                 />
               </div>
@@ -748,7 +748,7 @@ export function InterventionPolicyTab({
                   control={workflowForm.control}
                   name="escalateToRole"
                   render={({ field }) => (
-                    <Select
+                    <NativeSelect
                       id="workflow-escalate-role"
                       aria-label="工作流升级目标角色"
                       value={field.value}
@@ -761,7 +761,7 @@ export function InterventionPolicyTab({
                           {INTERVENTION_ROLE_LABELS[role]}
                         </option>
                       ))}
-                    </Select>
+                    </NativeSelect>
                   )}
                 />
                 {workflowForm.formState.errors.escalateToRole ? (
@@ -858,7 +858,7 @@ export function InterventionPolicyTab({
                   <label htmlFor="node-policy-target" className="text-sm font-medium text-foreground">
                     选择 Agent 节点
                   </label>
-                  <Select
+                  <NativeSelect
                     id="node-policy-target"
                     aria-label="选择 Agent 节点"
                     value={selectedNodeId}
@@ -870,7 +870,7 @@ export function InterventionPolicyTab({
                         {node.data.label}
                       </option>
                     ))}
-                  </Select>
+                  </NativeSelect>
                 </div>
 
                 <PolicySummary
@@ -954,7 +954,7 @@ export function InterventionPolicyTab({
                       control={nodeForm.control}
                       name="timeoutAction"
                       render={({ field }) => (
-                        <Select
+                        <NativeSelect
                           id="node-timeout-action"
                           aria-label="节点超时动作"
                           value={field.value}
@@ -966,7 +966,7 @@ export function InterventionPolicyTab({
                               {TIMEOUT_ACTION_LABELS[action]}
                             </option>
                           ))}
-                        </Select>
+                        </NativeSelect>
                       )}
                     />
                   </div>
@@ -981,7 +981,7 @@ export function InterventionPolicyTab({
                       control={nodeForm.control}
                       name="escalateToRole"
                       render={({ field }) => (
-                        <Select
+                        <NativeSelect
                           id="node-escalate-role"
                           aria-label="节点升级目标角色"
                           value={field.value}
@@ -994,7 +994,7 @@ export function InterventionPolicyTab({
                               {INTERVENTION_ROLE_LABELS[role]}
                             </option>
                           ))}
-                        </Select>
+                        </NativeSelect>
                       )}
                     />
                     {nodeForm.formState.errors.escalateToRole ? (

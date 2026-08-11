@@ -22,7 +22,7 @@ import {
 } from "@/shared/lib/resourceSource";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
-import { Select } from "@/shared/ui/select";
+import { NativeSelect } from "@/shared/ui/native-select";
 import { Pagination, ResourceSourceCategoryTabs } from "@/shared/components";
 import { useToast } from "@/shared/ui/toast";
 import { useMcpServerConfigs } from "../api/mcpQueries";
@@ -408,7 +408,7 @@ export function McpServerManagementPage() {
             className="pl-9"
           />
         </div>
-        <Select
+        <NativeSelect
           value={statusFilter}
           onValueChange={handleStatusChange}
           className="w-32"
@@ -417,8 +417,8 @@ export function McpServerManagementPage() {
           <option value="active">活跃</option>
           <option value="inactive">未激活</option>
           <option value="error">错误</option>
-        </Select>
-        <Select
+        </NativeSelect>
+        <NativeSelect
           value={transportFilter}
           onValueChange={handleTransportChange}
           className="w-40"
@@ -427,7 +427,7 @@ export function McpServerManagementPage() {
           <option value="stdio">stdio</option>
           <option value="sse">SSE</option>
           <option value="streamable_http">HTTP</option>
-        </Select>
+        </NativeSelect>
       </div>
 
       {/* 列表内容 */}

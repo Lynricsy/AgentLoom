@@ -9,7 +9,7 @@ import {
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Input } from '@/shared/ui/input'
 import { Label } from '@/shared/ui/label'
-import { Select } from '@/shared/ui/select'
+import { NativeSelect } from '@/shared/ui/native-select'
 import { Switch } from '@/shared/ui/switch'
 import type {
   NodeConfigFieldSchema,
@@ -202,7 +202,7 @@ const ConfigField = memo(function ConfigField({
                     {field.description}
                   </p>
                 )}
-                <Select
+                <NativeSelect
                   aria-label={field.title}
                   id={name}
                   value={(formField.value as string) ?? ''}
@@ -220,7 +220,7 @@ const ConfigField = memo(function ConfigField({
                       {option}
                     </option>
                   ))}
-                </Select>
+                </NativeSelect>
                 {error ? <p className="mt-1 text-xs text-error">{error}</p> : null}
               </div>
             )}

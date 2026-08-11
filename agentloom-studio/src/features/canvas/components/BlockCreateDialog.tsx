@@ -7,7 +7,7 @@ import { z } from 'zod'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import { Label } from '@/shared/ui/label'
-import { Select } from '@/shared/ui/select'
+import { NativeSelect } from '@/shared/ui/native-select'
 import type { DerivedPort, EncapsulationAnalysis } from '../lib/encapsulation'
 
 const BLOCK_CATEGORY_OPTIONS = [
@@ -144,13 +144,13 @@ export const BlockCreateDialog = memo(function BlockCreateDialog({
 
               <label htmlFor="block-category" className="space-y-2">
                 <Label>分类</Label>
-                <Select id="block-category" aria-label="分类" {...register('category')}>
+                <NativeSelect id="block-category" aria-label="分类" {...register('category')}>
                   {BLOCK_CATEGORY_OPTIONS.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
                     </option>
                   ))}
-                </Select>
+                </NativeSelect>
                 {errors.category && <p className="text-xs text-error">{errors.category.message}</p>}
               </label>
             </div>

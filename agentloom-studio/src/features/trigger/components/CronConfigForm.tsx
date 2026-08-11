@@ -2,7 +2,7 @@ import type { FieldErrors, UseFormRegister, UseFormSetValue, UseFormWatch } from
 import cronstrue from 'cronstrue'
 import { Label } from '@/shared/ui/label'
 import { Input } from '@/shared/ui/input'
-import { Select } from '@/shared/ui/select'
+import { NativeSelect } from '@/shared/ui/native-select'
 import { Switch } from '@/shared/ui/switch'
 import type { TriggerDialogFormValues } from './TriggerCreateDialog'
 
@@ -101,13 +101,13 @@ export function CronConfigForm({
 
         <label htmlFor="cron-timezone" className="space-y-2">
           <Label>时区</Label>
-          <Select id="cron-timezone" {...register('cron.timezone')}>
+          <NativeSelect id="cron-timezone" {...register('cron.timezone')}>
             {COMMON_TIMEZONES.map((option) => (
               <option key={option} value={option}>
                 {option}
               </option>
             ))}
-          </Select>
+          </NativeSelect>
           {errors.cron?.timezone && (
             <p className="text-xs text-error">{errors.cron.timezone.message}</p>
           )}

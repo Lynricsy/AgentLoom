@@ -12,7 +12,7 @@ import { Pagination } from '@/shared/components/Pagination'
 import { cn } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
 import { Checkbox } from '@/shared/ui/checkbox'
-import { Select } from '@/shared/ui/select'
+import { NativeSelect } from '@/shared/ui/native-select'
 import { useToast } from '@/shared/ui/toast'
 import {
   useDeleteGeneratedAppSubmission,
@@ -577,7 +577,7 @@ export function GeneratedAppSubmissionsPanel({
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
           <label className="space-y-1 text-xs text-muted-foreground">
             <span>状态筛选</span>
-            <Select
+            <NativeSelect
               value={statusFilter}
               onValueChange={handleStatusFilterChange}
               aria-label="状态筛选"
@@ -588,7 +588,7 @@ export function GeneratedAppSubmissionsPanel({
                   {option.label}
                 </option>
               ))}
-            </Select>
+            </NativeSelect>
           </label>
 
           <Button

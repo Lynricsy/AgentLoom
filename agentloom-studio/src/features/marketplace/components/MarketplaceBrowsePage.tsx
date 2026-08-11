@@ -12,7 +12,7 @@ import { Compass, Search, Store } from 'lucide-react'
 import { Pagination } from '@/shared/components/Pagination'
 import { buttonVariants } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
-import { Select } from '@/shared/ui/select'
+import { NativeSelect } from '@/shared/ui/native-select'
 import { Tabs, TabsList, TabsTrigger } from '@/shared/ui/tabs'
 import { cn } from '@/shared/lib/utils'
 import { usePublicListings } from '../api/publicMarketplaceQueries'
@@ -160,7 +160,7 @@ export function MarketplaceBrowsePage({
             />
         </div>
 
-        <Select
+        <NativeSelect
           value={sort}
           onValueChange={handleSortChange}
           aria-label="排序市场内容"
@@ -171,7 +171,7 @@ export function MarketplaceBrowsePage({
               {option.label}
             </option>
           ))}
-        </Select>
+        </NativeSelect>
       </div>
 
       <Tabs

@@ -13,7 +13,7 @@ import { z } from "zod";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
-import { Select } from "@/shared/ui/select";
+import { NativeSelect } from "@/shared/ui/native-select";
 import { Slider } from "@/shared/ui/slider";
 import { Switch } from "@/shared/ui/switch";
 import { useToast } from "@/shared/ui/toast";
@@ -514,14 +514,14 @@ export function LlmModelConfigDialog({
                   control={form.control}
                   name="modelType"
                   render={({ field }) => (
-                    <Select
+                    <NativeSelect
                       value={field.value}
                       onValueChange={field.onChange}
                       disabled={isEditMode}
                     >
                       <option value="chat">聊天 / 推理</option>
                       <option value="embedding">Embedding / 向量化</option>
-                    </Select>
+                    </NativeSelect>
                   )}
                 />
               </div>
@@ -538,7 +538,7 @@ export function LlmModelConfigDialog({
                     </span>
                   </div>
                 ) : (
-                  <Select
+                  <NativeSelect
                     value={selectedProvider}
                     onValueChange={handleProviderChange}
                   >
@@ -547,7 +547,7 @@ export function LlmModelConfigDialog({
                         {provider.name}
                       </option>
                     ))}
-                  </Select>
+                  </NativeSelect>
                 )}
               </div>
 
@@ -576,7 +576,7 @@ export function LlmModelConfigDialog({
                           control={form.control}
                           name="modelName"
                           render={({ field }) => (
-                            <Select
+                            <NativeSelect
                               value={field.value}
                               onValueChange={field.onChange}
                             >
@@ -586,7 +586,7 @@ export function LlmModelConfigDialog({
                                   {model}
                                 </option>
                               ))}
-                            </Select>
+                            </NativeSelect>
                           )}
                         />
                         {form.formState.errors.modelName ? (

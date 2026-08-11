@@ -5,7 +5,7 @@ import { CheckCircle2, Loader2, Lock, PlugZap, XCircle } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
-import { Select } from "@/shared/ui/select";
+import { NativeSelect } from "@/shared/ui/native-select";
 
 import {
   AUTH_METHODS,
@@ -242,7 +242,7 @@ export function PrivateCloudConfigSection({
             control={form.control}
             name="authMethod"
             render={({ field }) => (
-              <Select
+              <NativeSelect
                 value={field.value}
                 onValueChange={field.onChange}
                 data-testid="auth-method-select"
@@ -256,7 +256,7 @@ export function PrivateCloudConfigSection({
                     {AUTH_METHOD_LABELS[method]}
                   </option>
                 ))}
-              </Select>
+              </NativeSelect>
             )}
           />
           {form.formState.errors.authMethod ? (
@@ -406,7 +406,7 @@ export function PrivateCloudConfigSection({
             control={form.control}
             name="modelName"
             render={({ field }) => (
-              <Select
+              <NativeSelect
                 value={field.value}
                 onValueChange={field.onChange}
                 data-testid="remote-model-select"
@@ -417,7 +417,7 @@ export function PrivateCloudConfigSection({
                     {model.ownedBy ? ` (${model.ownedBy})` : ""}
                   </option>
                 ))}
-              </Select>
+              </NativeSelect>
             )}
           />
           <p className="text-[11px] text-muted-foreground">

@@ -12,7 +12,7 @@ import {
 import { cn } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
-import { Select } from '@/shared/ui/select'
+import { NativeSelect } from '@/shared/ui/native-select'
 import {
   useCreateGeneratedAppPublicSubmission,
   useGeneratedAppPublicRuntime,
@@ -495,7 +495,7 @@ function RuntimeFormField({
       ) : null}
 
       {field.type === 'single_select' ? (
-        <Select
+        <NativeSelect
           id={inputId}
           value={stringValue}
           onValueChange={(nextValue) => onChange(field.id, nextValue)}
@@ -507,7 +507,7 @@ function RuntimeFormField({
               {option.label}
             </option>
           ))}
-        </Select>
+        </NativeSelect>
       ) : null}
 
       {field.type === 'multi_select' ? (

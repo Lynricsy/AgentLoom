@@ -4,7 +4,7 @@ import { AlertTriangle, Loader2, RefreshCw } from 'lucide-react'
 import { Pagination } from '@/shared/components/Pagination'
 import { cn } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
-import { Select } from '@/shared/ui/select'
+import { NativeSelect } from '@/shared/ui/native-select'
 import {
   useGeneratedAppGateRuns,
   useGeneratedAppGenerationRuns,
@@ -516,7 +516,7 @@ export function GeneratedAppGenerationEvidencePanel({
           </div>
           <label className="space-y-1 text-xs text-muted-foreground">
             <span>运行状态</span>
-            <Select
+            <NativeSelect
               value={runStatusFilter}
               onValueChange={handleRunStatusFilterChange}
               aria-label="生成运行状态筛选"
@@ -527,7 +527,7 @@ export function GeneratedAppGenerationEvidencePanel({
                   {option.label}
                 </option>
               ))}
-            </Select>
+            </NativeSelect>
           </label>
         </div>
 

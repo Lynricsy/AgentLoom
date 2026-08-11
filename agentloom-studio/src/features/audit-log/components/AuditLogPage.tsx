@@ -13,7 +13,7 @@ import { useAuthToken } from '@/features/execution'
 import { Pagination } from '@/shared/components'
 import { Button, buttonVariants } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
-import { Select } from '@/shared/ui/select'
+import { NativeSelect } from '@/shared/ui/native-select'
 
 import { useAuditLogDetail, useAuditLogResourceSequence, useAuditLogs } from '../hooks/useAuditLogs'
 import {
@@ -741,7 +741,7 @@ function AuditLogContent() {
           </label>
           <label className="space-y-2 text-sm text-foreground" htmlFor="audit-log-filter-actor-type">
             <span>操作人类型</span>
-            <Select
+            <NativeSelect
               id="audit-log-filter-actor-type"
               value={filterForm.actorType}
               onValueChange={(value) => setFilterForm((current) => ({ ...current, actorType: value }))}
@@ -752,7 +752,7 @@ function AuditLogContent() {
                   {actorType}
                 </option>
               ))}
-            </Select>
+            </NativeSelect>
           </label>
           <label className="space-y-2 text-sm text-foreground" htmlFor="audit-log-filter-actor-id">
             <span>操作人 ID</span>
@@ -765,7 +765,7 @@ function AuditLogContent() {
           </label>
           <label className="space-y-2 text-sm text-foreground" htmlFor="audit-log-filter-page-size">
             <span>每页条数</span>
-            <Select
+            <NativeSelect
               id="audit-log-filter-page-size"
               value={String(pageSize)}
               onValueChange={handlePageSizeChange}
@@ -775,7 +775,7 @@ function AuditLogContent() {
                   {option} / 页
                 </option>
               ))}
-            </Select>
+            </NativeSelect>
           </label>
         </div>
 

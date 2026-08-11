@@ -8,7 +8,7 @@ import { AlertTriangle, ShieldAlert, SlidersHorizontal } from 'lucide-react'
 import type { AutonomyMode } from '@/features/canvas/autonomy.types'
 import { useAuthToken } from '@/features/execution'
 import { Button } from '@/shared/ui/button'
-import { Select } from '@/shared/ui/select'
+import { NativeSelect } from '@/shared/ui/native-select'
 import { useToast } from '@/shared/ui/toast'
 import {
   useConfirmOrganizationAutonomyDowngrade,
@@ -398,7 +398,7 @@ function OrganizationAutonomyPolicyContent({
         <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,18rem)_minmax(0,1fr)]">
           <label className="space-y-2 text-sm text-foreground" htmlFor="organization-autonomy-cap-select">
             <span>目标自治上限</span>
-            <Select
+            <NativeSelect
               id="organization-autonomy-cap-select"
               aria-label="目标自治上限"
               value={draftCap}
@@ -409,7 +409,7 @@ function OrganizationAutonomyPolicyContent({
                   {option.label}
                 </option>
               ))}
-            </Select>
+            </NativeSelect>
           </label>
 
           <div className="rounded-xl border border-border/60 bg-background/30 p-4">

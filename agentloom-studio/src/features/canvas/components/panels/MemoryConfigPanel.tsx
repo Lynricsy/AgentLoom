@@ -4,7 +4,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { z } from 'zod'
 import { BrainCircuit, Loader2, X } from 'lucide-react'
 import { useAllMemoryInstances } from '@/features/canvas/hooks/useMemoryInstances'
-import { Select } from '@/shared/ui/select'
+import { NativeSelect } from '@/shared/ui/native-select'
 import { Input } from '@/shared/ui/input'
 
 const memoryConfigSchema = z.object({
@@ -260,7 +260,7 @@ export const MemoryConfigPanel = memo(function MemoryConfigPanel({
             control={control}
             render={({ field }) => (
               <>
-                <Select
+                <NativeSelect
                   aria-label="选择 Memory 实例"
                   id="memory-instance-select"
                   value={field.value}
@@ -280,7 +280,7 @@ export const MemoryConfigPanel = memo(function MemoryConfigPanel({
                       {mi.name} · {mi.graphEngine}
                     </option>
                   ))}
-                </Select>
+                </NativeSelect>
                 {errors.memoryInstanceId && (
                   <p className="mt-1 text-xs text-error">{errors.memoryInstanceId.message}</p>
                 )}
@@ -299,7 +299,7 @@ export const MemoryConfigPanel = memo(function MemoryConfigPanel({
           name="role"
           control={control}
           render={({ field }) => (
-            <Select
+            <NativeSelect
               aria-label="选择角色"
               id="memory-role-select"
               value={field.value}
@@ -314,7 +314,7 @@ export const MemoryConfigPanel = memo(function MemoryConfigPanel({
             >
               <option value="primary">primary（可读写）</option>
               <option value="readonly">readonly（只读）</option>
-            </Select>
+            </NativeSelect>
           )}
         />
       </div>

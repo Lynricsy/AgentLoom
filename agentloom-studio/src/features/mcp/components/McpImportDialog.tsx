@@ -23,7 +23,7 @@ import {
 import { cn } from "@/shared/lib/utils";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
-import { Select } from "@/shared/ui/select";
+import { NativeSelect } from "@/shared/ui/native-select";
 import { useToast } from "@/shared/ui/toast";
 
 type StepId = 1 | 2 | 3 | 4;
@@ -670,7 +670,7 @@ export function McpImportDialog({
                       >
                         传输方式
                       </label>
-                      <Select
+                      <NativeSelect
                         autoComplete="off"
                         id="mcp-transport-type"
                         name="transportType"
@@ -685,7 +685,7 @@ export function McpImportDialog({
                         <option value="stdio">stdio</option>
                         <option value="sse">sse</option>
                         <option value="streamable_http">streamable_http</option>
-                      </Select>
+                      </NativeSelect>
                     </div>
 
                     {connectionForm.transportType === "stdio" ? (
@@ -1032,7 +1032,7 @@ export function McpImportDialog({
                     >
                       冲突处理策略
                     </label>
-                    <Select
+                    <NativeSelect
                       id="mcp-conflict-strategy"
                       onValueChange={(value) =>
                         setConflictStrategy(value as McpImportConflictStrategy)
@@ -1041,7 +1041,7 @@ export function McpImportDialog({
                     >
                       <option value="overwrite">覆盖已存在工具</option>
                       <option value="skip">跳过已存在工具</option>
-                    </Select>
+                    </NativeSelect>
                   </div>
                 </div>
 

@@ -2,7 +2,7 @@ import { useState, useCallback, useMemo } from 'react'
 import { Search, Plus, Brain, Loader2, AlertCircle } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
-import { Select } from '@/shared/ui/select'
+import { NativeSelect } from '@/shared/ui/native-select'
 import { Pagination } from '@/shared/components'
 import { useToast } from '@/shared/ui/toast'
 import { useMemoryInstances } from '../api/memoryInstanceQueries'
@@ -135,7 +135,7 @@ export function MemoryInstanceManagementPage() {
             className="pl-9"
           />
         </div>
-        <Select
+        <NativeSelect
           value={statusFilter}
           onValueChange={handleStatusChange}
           className="w-32"
@@ -143,7 +143,7 @@ export function MemoryInstanceManagementPage() {
           <option value="all">全部状态</option>
           <option value="active">活跃</option>
           <option value="archived">已归档</option>
-        </Select>
+        </NativeSelect>
       </div>
 
       {/* Content */}
