@@ -32,6 +32,7 @@ function makePlugin(overrides: Partial<PluginListItem> = {}): PluginListItem {
     version: '1.0.0',
     author: '酒狐',
     description: '一个测试插件',
+    license: 'MIT',
     status: 'active',
     nodeDefinitions: [
       {
@@ -47,6 +48,8 @@ function makePlugin(overrides: Partial<PluginListItem> = {}): PluginListItem {
         ],
       },
     ],
+    metadata: null,
+    occVersion: 1,
     createdAt: '2026-03-15T00:00:00.000Z',
     updatedAt: '2026-03-15T00:00:00.000Z',
     ...overrides,
@@ -56,10 +59,8 @@ function makePlugin(overrides: Partial<PluginListItem> = {}): PluginListItem {
 function makePluginRecord(overrides: Partial<PluginRecord> = {}): PluginRecord {
   return {
     ...makePlugin(),
-    license: 'MIT',
     manifest: {},
     permissions: [],
-    metadata: null,
     ...overrides,
   }
 }

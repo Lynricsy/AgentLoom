@@ -10,6 +10,10 @@ import {
   applySuggestion,
   dismissSuggestion,
   fetchAdoptionStats,
+  fetchSuggestions,
+  SUGGESTION_PAGE_SIZE,
+  type SuggestionListQuery,
+  type SuggestionListResult,
 } from './optimization-suggestion-api'
 import type {
   OptimizationSuggestion,
@@ -35,6 +39,21 @@ export function useNodeSuggestions(
     queryFn: () => fetchNodeSuggestions(workflowId, nodeId),
     select: (response) => response.data,
     ...options,
+  })
+}
+
+/** 租户级全局建议列表（画布面板走 useNodeSuggestions，二者互不影响） */
+export function useSuggestionList(query: SuggestionListQuery = {}) {
+  const limit = query.limit ?? SUGGESTION_PAGE_SIZE
+  const offset = query.offset ?? 0
+
+  return useQuery<SuggestionListResult, Error>({
+    queryKey: optimizationSuggestionKeys.list({
+      limit,
+      offset,
+      status: query.status,
+    }),
+    queryFn: () => fetchSuggestions({ ...query, limit, offset }),
   })
 }
 

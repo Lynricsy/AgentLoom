@@ -191,6 +191,18 @@ export class OrganizationController {
     return { data: result };
   }
 
+  @Get('organizations/:id/members')
+  @Roles('owner', 'admin')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '获取组织成员列表' })
+  @ApiResponse({ status: 200, description: '获取成功' })
+  @ApiResponse({ status: 403, description: '无权限查看成员列表' })
+  @ApiResponse({ status: 404, description: '组织不存在' })
+  async listMembers(@Param('id') id: string) {
+    const result = await this.organizationService.listMembers(id);
+    return { data: result };
+  }
+
   @Put('organizations/:id/members/:userId/role')
   @Roles('owner', 'admin')
   @HttpCode(HttpStatus.OK)

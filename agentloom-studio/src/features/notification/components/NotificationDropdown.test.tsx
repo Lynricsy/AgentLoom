@@ -1,5 +1,11 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import {
+  RouterProvider,
+  createMemoryHistory,
+  createRootRoute,
+  createRouter,
+} from '@tanstack/react-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useNotificationStore } from '../stores/notificationStore'
 import type { NotificationType } from '../types'
@@ -40,6 +46,17 @@ function makeNotification(
   }
 }
 
+/** 下拉底部的「查看全部通知」是 <Link>，需要路由上下文 */
+function renderDropdown() {
+  const rootRoute = createRootRoute({ component: () => <NotificationDropdown /> })
+  const router = createRouter({
+    routeTree: rootRoute,
+    history: createMemoryHistory({ initialEntries: ['/'] }),
+  })
+  // 路由树仅用于提供 <Link> 上下文，类型与运行时行为无关
+  return render(<RouterProvider router={router as never} />)
+}
+
 describe('NotificationDropdown', () => {
   beforeEach(() => {
     useNotificationStore.getState().actions.reset()
@@ -77,7 +94,7 @@ describe('NotificationDropdown', () => {
       error: null,
     })
 
-    render(<NotificationDropdown />)
+    renderDropdown()
 
     expect(await screen.findByText('执行完成')).toBeInTheDocument()
     expect(
@@ -107,7 +124,7 @@ describe('NotificationDropdown', () => {
     })
 
     const user = userEvent.setup()
-    render(<NotificationDropdown />)
+    renderDropdown()
 
     await user.click(await screen.findByTestId('notification-item-notification-1'))
 
@@ -136,7 +153,7 @@ describe('NotificationDropdown', () => {
       error: null,
     })
 
-    render(<NotificationDropdown />)
+    renderDropdown()
 
     expect(await screen.findByTestId('notification-empty')).toHaveTextContent(
       '暂无通知',
@@ -170,7 +187,7 @@ describe('NotificationDropdown', () => {
     useNotificationStore.getState().actions.setUnreadCount(2)
 
     const user = userEvent.setup()
-    render(<NotificationDropdown />)
+    renderDropdown()
 
     await user.click(await screen.findByTestId('mark-all-read'))
 
@@ -181,5 +198,23 @@ describe('NotificationDropdown', () => {
         useNotificationStore.getState().notifications.every((item) => item.isRead),
       ).toBe(true)
     })
+  })
+
+  it('底部「查看全部通知」指向通知中心', async () => {
+    useNotificationsMock.mockReturnValue({
+      data: {
+        data: [],
+        meta: { page: 1, pageSize: 20, total: 0, totalPages: 1 },
+      },
+      isLoading: false,
+      error: null,
+    })
+
+    renderDropdown()
+
+    expect(await screen.findByTestId('notification-view-all')).toHaveAttribute(
+      'href',
+      '/notifications',
+    )
   })
 })

@@ -9,6 +9,7 @@ import { useTimelineData } from '../hooks/useTimelineData'
 import { ExecutionNodeDetail } from './ExecutionNodeDetail'
 import { ExecutionStatusBadge } from './StatusBadge'
 import { TerminalTab } from './TerminalTab'
+import { ExecutionTelemetryPanel } from './ExecutionTelemetryPanel'
 import { usePtySessions } from '../hooks/usePtySessions'
 import { sendPtyWrite } from '../api/pty'
 import type { PtySessionState } from '../types/pty'
@@ -45,9 +46,11 @@ export const ExecutionDebugView = memo(function ExecutionDebugView({
   const { notify } = useToast()
   const { data: execution, isLoading, error } = useLiveExecutionDetail(executionId)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<'debug' | 'provenance' | 'terminals'>('debug')
+  const [activeTab, setActiveTab] = useState<
+    'debug' | 'provenance' | 'telemetry' | 'terminals'
+  >('debug')
   const handleTabChange = useCallback((value: string) => {
-    setActiveTab(value as 'debug' | 'provenance' | 'terminals')
+    setActiveTab(value as 'debug' | 'provenance' | 'telemetry' | 'terminals')
   }, [])
   const { timelineData } = useTimelineData(
     executionId,
@@ -280,6 +283,7 @@ export const ExecutionDebugView = memo(function ExecutionDebugView({
           <TabsList>
             <TabsTrigger value="debug" data-testid="execution-debug-tab-debug">调试面板</TabsTrigger>
             <TabsTrigger value="provenance" data-testid="execution-debug-tab-provenance">溯源图</TabsTrigger>
+            <TabsTrigger value="telemetry" data-testid="execution-debug-tab-telemetry">遥测</TabsTrigger>
             <TabsTrigger value="terminals" data-testid="execution-debug-tab-terminals">
               终端
               {terminalSessions.length > 0 && (
@@ -366,6 +370,12 @@ export const ExecutionDebugView = memo(function ExecutionDebugView({
         <TabsContent value="provenance" className="flex-1 overflow-hidden p-4" data-testid="execution-debug-provenance-tab">
           <motion.div className="h-full" {...fadeIn}>
             <EvidenceGraphView executionId={executionId} />
+          </motion.div>
+        </TabsContent>
+
+        <TabsContent value="telemetry" className="flex-1 overflow-y-auto p-4" data-testid="execution-debug-telemetry-tab">
+          <motion.div {...fadeIn}>
+            <ExecutionTelemetryPanel executionId={executionId} />
           </motion.div>
         </TabsContent>
 

@@ -22,6 +22,8 @@ vi.mock('@/features/execution', () => ({
 vi.mock('@/features/notification', () => ({
   useNotificationSocket: mockUseNotificationSocket,
   NotificationBell: () => <div data-testid="notification-bell" />,
+  NotificationPreferencesPage: () => <div data-testid="notification-preferences-page" />,
+  NotificationCenterPage: () => <div data-testid="notification-center-page" />,
 }));
 
 vi.mock('@tanstack/react-router', () => ({

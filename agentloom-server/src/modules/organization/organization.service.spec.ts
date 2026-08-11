@@ -137,6 +137,7 @@ interface DeleteChain {
 
 interface SelectChain {
   from: MockFunction;
+  innerJoin: MockFunction;
   where: MockFunction;
 }
 
@@ -215,9 +216,11 @@ function createDeleteChain(result: unknown = undefined): DeleteChain {
 function createSelectChain(result: unknown[] = []): SelectChain {
   const chain: SelectChain = {
     from: vi.fn(),
+    innerJoin: vi.fn(),
     where: vi.fn().mockResolvedValue(result),
   };
   chain.from.mockReturnValue(chain);
+  chain.innerJoin.mockReturnValue(chain);
   return chain;
 }
 
@@ -530,6 +533,59 @@ describe('OrganizationService', () => {
       await expect(
         service.getOrganization(ORG_ID, USER_ID),
       ).rejects.toBeInstanceOf(OrganizationNotFoundException);
+
+      expect(db.select).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('listMembers', () => {
+    it('通过租户数据库联结成员与用户并返回公开字段', async () => {
+      const members = [
+        {
+          userId: USER_ID,
+          email: 'owner@example.com',
+          displayName: 'Owner',
+          role: 'owner' as const,
+          createdAt: NOW,
+        },
+        {
+          userId: TARGET_USER_ID,
+          email: 'invitee@example.com',
+          displayName: null,
+          role: 'viewer' as const,
+          createdAt: NOW,
+        },
+      ];
+      const selectChain = createSelectChain(members);
+      db.query.organizations.findFirst.mockResolvedValue(
+        createOrganizationRecord(),
+      );
+      db.select.mockReturnValue(selectChain);
+
+      const result = await service.listMembers(ORG_ID);
+
+      expect(result).toEqual(members);
+      expect(db.select).toHaveBeenCalledWith({
+        userId: organizationMembers.userId,
+        email: users.email,
+        displayName: users.displayName,
+        role: organizationMembers.role,
+        createdAt: organizationMembers.joinedAt,
+      });
+      expect(selectChain.from).toHaveBeenCalledWith(organizationMembers);
+      expect(selectChain.innerJoin).toHaveBeenCalledWith(
+        users,
+        expect.anything(),
+      );
+      expect(selectChain.where).toHaveBeenCalledTimes(1);
+    });
+
+    it('跨租户或组织不存在时沿用组织不存在异常且不查询成员', async () => {
+      db.query.organizations.findFirst.mockResolvedValue(undefined);
+
+      await expect(service.listMembers(ORG_ID)).rejects.toBeInstanceOf(
+        OrganizationNotFoundException,
+      );
 
       expect(db.select).not.toHaveBeenCalled();
     });

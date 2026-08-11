@@ -12,4 +12,6 @@ export const executionKeys = {
     [...executionKeys.lists(), filters] as const,
   details: () => [...executionKeys.all, 'detail'] as const,
   detail: (id: string) => [...executionKeys.details(), id] as const,
+  records: (query: { executionId: string; limit: number; offset: number }) =>
+    [...executionKeys.all, 'records', query] as const,
 }

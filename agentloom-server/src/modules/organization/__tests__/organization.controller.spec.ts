@@ -28,6 +28,7 @@ const mockedFactories = vi.hoisted(() => ({
   createMockOrganizationService: () => ({
     createOrganization: vi.fn(),
     getOrganization: vi.fn(),
+    listMembers: vi.fn(),
     inviteMember: vi.fn(),
     acceptInvitation: vi.fn(),
     updateMemberRole: vi.fn(),
@@ -168,6 +169,7 @@ async function createTestingApp() {
   return {
     app,
     organizationService,
+    rbacCacheService,
     autonomyPolicyService,
   };
 }
@@ -196,6 +198,7 @@ describe('OrganizationController', () => {
   it('applies owner/admin roles only to organization management routes', () => {
     expect(getMethodRoles('getOrganization')).toBeUndefined();
     expect(getMethodRoles('acceptInvitation')).toBeUndefined();
+    expect(getMethodRoles('listMembers')).toEqual(['owner', 'admin']);
     expect(getMethodRoles('inviteMember')).toEqual(['owner', 'admin']);
     expect(getMethodRoles('updateMemberRole')).toEqual(['owner', 'admin']);
     expect(getMethodRoles('removeMember')).toEqual(['owner', 'admin']);
@@ -268,6 +271,83 @@ describe('OrganizationController', () => {
       );
       expect(response.json()).toEqual({ data: organization });
       expect(response.json().data.tenantId).toBe('tenant-1');
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('wraps the organization member list in the standard data envelope', async () => {
+    const members = [
+      {
+        userId: 'user-1',
+        email: 'owner@example.com',
+        displayName: 'Owner',
+        role: 'owner' as const,
+        createdAt: new Date('2026-03-25T00:00:00.000Z'),
+      },
+    ];
+    service.listMembers.mockResolvedValue(members);
+
+    const result = await controller.listMembers('org-1');
+
+    expect(service.listMembers).toHaveBeenCalledWith('org-1');
+    expect(result).toEqual({ data: members });
+  });
+
+  it.each(['owner', 'admin'] as const)(
+    'allows %s to read GET /organizations/:id/members',
+    async (role) => {
+      const members = [
+        {
+          userId: 'user-1',
+          email: 'owner@example.com',
+          displayName: null,
+          role: 'owner' as const,
+          createdAt: '2026-03-25T00:00:00.000Z',
+        },
+      ];
+      const { app, organizationService, rbacCacheService } =
+        await createTestingApp();
+      rbacCacheService.getUserRole.mockResolvedValue(role);
+      organizationService.listMembers.mockResolvedValue(members);
+
+      try {
+        const response = await app.inject({
+          method: 'GET',
+          url: '/organizations/org-1/members',
+          headers: {
+            authorization: `Bearer ${createAccessToken({
+              tenant_id: '11111111-1111-4111-8111-111111111111',
+            })}`,
+          },
+        });
+
+        expect(response.statusCode).toBe(200);
+        expect(response.json()).toEqual({ data: members });
+      } finally {
+        await app.close();
+      }
+    },
+  );
+
+  it('rejects a viewer from GET /organizations/:id/members', async () => {
+    const { app, organizationService, rbacCacheService } =
+      await createTestingApp();
+    rbacCacheService.getUserRole.mockResolvedValue('viewer');
+
+    try {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/organizations/org-1/members',
+        headers: {
+          authorization: `Bearer ${createAccessToken({
+            tenant_id: '11111111-1111-4111-8111-111111111111',
+          })}`,
+        },
+      });
+
+      expect(response.statusCode).toBe(403);
+      expect(organizationService.listMembers).not.toHaveBeenCalled();
     } finally {
       await app.close();
     }

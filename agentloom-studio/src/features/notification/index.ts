@@ -1,4 +1,5 @@
 export type {
+  NotificationChannel,
   NotificationListParams,
   NotificationPreference,
   NotificationType,
@@ -6,6 +7,12 @@ export type {
   UnreadCountPayload,
   UpsertNotificationPreferenceInput,
 } from './types'
+
+export {
+  NOTIFICATION_CHANNELS,
+  NOTIFICATION_TYPES,
+  NOTIFICATION_TYPE_META,
+} from './lib/notificationMeta'
 
 export {
   getPreferences,
@@ -35,6 +42,8 @@ export {
 export { NotificationBell } from './components/NotificationBell'
 export { NotificationDropdown } from './components/NotificationDropdown'
 export { NotificationItem } from './components/NotificationItem'
+export { NotificationCenterPage } from './components/NotificationCenterPage'
+export { NotificationPreferencesPage } from './components/NotificationPreferencesPage'
 
 export {
   useNotificationActions,

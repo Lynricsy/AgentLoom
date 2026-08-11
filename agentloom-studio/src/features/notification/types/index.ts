@@ -1,8 +1,16 @@
+/** 与服务端 `notification_type_enum`（database/schema/notifications.schema.ts）逐项对齐 */
 export type NotificationTypeEnum =
   | 'execution_completed'
   | 'execution_failed'
   | 'intervention_required'
+  | 'resource_governance_execution_blocked'
+  | 'resource_governance_quota_updated'
+  | 'resource_governance_controls_updated'
+  | 'resource_governance_execution_terminated'
   | 'system'
+
+/** 与服务端 `UpsertPreferenceDto` 的 channel 枚举对齐 */
+export type NotificationChannel = 'in_app' | 'email' | 'push'
 
 export interface NotificationType {
   id: string
@@ -20,7 +28,7 @@ export interface NotificationPreference {
   userId: string
   tenantId: string
   type: NotificationTypeEnum
-  channel: 'in_app' | 'email'
+  channel: NotificationChannel
   enabled: boolean
 }
 

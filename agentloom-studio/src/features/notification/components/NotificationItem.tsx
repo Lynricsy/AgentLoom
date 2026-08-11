@@ -1,13 +1,10 @@
 import { cva } from 'class-variance-authority'
-import {
-  CheckCircle2,
-  CircleAlert,
-  Info,
-  XCircle,
-  type LucideIcon,
-} from 'lucide-react'
 import { formatRelativeTime } from '@/features/canvas/lib/formatRelativeTime'
 import { cn } from '@/shared/lib/utils'
+import {
+  FALLBACK_TYPE_META,
+  NOTIFICATION_TYPE_META,
+} from '../lib/notificationMeta'
 import type { NotificationType } from '../types'
 
 interface NotificationItemProps {
@@ -21,9 +18,9 @@ const itemVariants = cva(
   {
     variants: {
       unread: {
-        true: 'border-l-sky-400 bg-sky-500/10 hover:bg-sky-500/15',
+        true: 'border-l-primary bg-primary/10 hover:bg-primary/15',
         false:
-          'border-l-transparent bg-transparent hover:border-l-border hover:bg-muted/60',
+          'border-l-transparent bg-transparent hover:border-l-border hover:bg-surface-elevated',
       },
     },
   },
@@ -34,54 +31,22 @@ const iconContainerVariants = cva(
   {
     variants: {
       tone: {
-        success: 'border-emerald-400/40 bg-emerald-500/10 text-emerald-300',
-        error: 'border-rose-400/40 bg-rose-500/10 text-rose-300',
-        warning: 'border-amber-400/40 bg-amber-500/10 text-amber-200',
-        info: 'border-slate-400/40 bg-slate-500/10 text-slate-200',
+        success: 'border-success/30 bg-success/10 text-success',
+        error: 'border-error/30 bg-error/10 text-error',
+        warning: 'border-warning/30 bg-warning/10 text-warning',
+        info: 'border-info/30 bg-info/10 text-info',
       },
     },
   },
 )
-
-function getNotificationMeta(type: NotificationType['type']): {
-  icon: LucideIcon
-  tone: 'success' | 'error' | 'warning' | 'info'
-  label: string
-} {
-  switch (type) {
-    case 'execution_completed':
-      return {
-        icon: CheckCircle2,
-        tone: 'success',
-        label: '执行完成',
-      }
-    case 'execution_failed':
-      return {
-        icon: XCircle,
-        tone: 'error',
-        label: '执行失败',
-      }
-    case 'intervention_required':
-      return {
-        icon: CircleAlert,
-        tone: 'warning',
-        label: '需要人工介入',
-      }
-    default:
-      return {
-        icon: Info,
-        tone: 'info',
-        label: '系统通知',
-      }
-  }
-}
 
 export function NotificationItem({
   notification,
   onSelect,
   disabled = false,
 }: NotificationItemProps) {
-  const meta = getNotificationMeta(notification.type)
+  const meta =
+    NOTIFICATION_TYPE_META[notification.type] ?? FALLBACK_TYPE_META
   const Icon = meta.icon
 
   return (
