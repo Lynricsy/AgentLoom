@@ -16,6 +16,7 @@ export const MemoryGraphEdge = memo(function MemoryGraphEdge({
   targetY,
   sourcePosition,
   targetPosition,
+  selected,
   data: rawData,
 }: EdgeProps) {
   const data = rawData as MemoryGraphEdgeData | undefined
@@ -38,15 +39,19 @@ export const MemoryGraphEdge = memo(function MemoryGraphEdge({
       <BaseEdge
         id={id}
         path={edgePath}
-        className="!stroke-border"
-        style={{ strokeWidth: 1.5 }}
+        style={{
+          stroke: selected
+            ? 'var(--color-node-memory)'
+            : 'var(--color-border-hover)',
+          strokeWidth: selected ? 2.5 : 1.75,
+        }}
       />
       {hasLabel && (
         <EdgeLabelRenderer>
           <div
             className={cn(
-              'pointer-events-none absolute rounded-md border px-2 py-0.5 text-[10px]',
-              'border-border/60 bg-popover/95 backdrop-blur-sm',
+              'pointer-events-none absolute rounded-md border border-border px-2 py-0.5 text-[10px]',
+              'bg-surface/90 shadow-node backdrop-blur-sm',
             )}
             style={{
               transform: `translate(-50%, -50%) translate(${labelX}px,${labelY}px)`,
@@ -57,9 +62,7 @@ export const MemoryGraphEdge = memo(function MemoryGraphEdge({
               <span className="font-medium text-foreground">{edgeName}</span>
             )}
             {priority != null && (
-              <span className="ml-1 text-muted-foreground">
-                #{priority}
-              </span>
+              <span className="ml-1 text-muted">#{priority}</span>
             )}
           </div>
         </EdgeLabelRenderer>

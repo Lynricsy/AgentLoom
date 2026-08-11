@@ -1,5 +1,8 @@
 import { useMemo } from 'react';
 import { diffLines } from 'diff';
+import { GitCompare } from 'lucide-react';
+import { EmptyState } from '@/shared/components/empty-state/EmptyState';
+import { cn } from '@/shared/lib/utils';
 import type { MemoryVersion } from './types';
 
 interface VersionDiffViewProps {
@@ -20,11 +23,13 @@ export function VersionDiffView({
 
   if (!oldVersion && !newVersion) {
     return (
-      <div
-        className="py-8 text-center text-gray-500"
-        data-testid="version-diff-empty"
-      >
-        选择一条审计记录以查看版本对比
+      <div data-testid="version-diff-empty">
+        <EmptyState
+          icon={GitCompare}
+          tone="var(--color-info)"
+          title="选择一条审计记录以查看版本对比"
+          description="选中版本后会逐行高亮新增与删除的内容。"
+        />
       </div>
     );
   }
@@ -32,19 +37,25 @@ export function VersionDiffView({
   return (
     <div data-testid="version-diff-view">
       {/* 版本标题 */}
-      <div className="mb-3 flex items-center gap-4 text-sm">
+      <div className="mb-3 flex flex-wrap items-center gap-4 text-sm">
         {oldVersion && (
           <div className="flex items-center gap-2">
-            <span className="inline-block h-3 w-3 rounded-full bg-red-400" />
-            <span className="text-gray-600">
+            <span
+              aria-hidden
+              className="inline-block h-2.5 w-2.5 rounded-full bg-error"
+            />
+            <span className="text-muted">
               v{oldVersion.versionNumber} — {oldVersion.nodeName}
             </span>
           </div>
         )}
         {newVersion && (
           <div className="flex items-center gap-2">
-            <span className="inline-block h-3 w-3 rounded-full bg-green-400" />
-            <span className="text-gray-600">
+            <span
+              aria-hidden
+              className="inline-block h-2.5 w-2.5 rounded-full bg-success"
+            />
+            <span className="text-muted">
               v{newVersion.versionNumber} — {newVersion.nodeName}
             </span>
           </div>
@@ -52,19 +63,15 @@ export function VersionDiffView({
       </div>
 
       {/* 差异内容 */}
-      <div className="overflow-x-auto rounded-lg border border-gray-200 bg-gray-50">
-        <pre className="p-4 text-sm leading-relaxed">
+      <div className="overflow-x-auto rounded-card border border-border bg-surface-elevated">
+        <pre className="p-3 font-mono text-xs leading-relaxed">
           {changes?.map((part, index) => {
-            let className = 'text-gray-700';
-            let prefix = ' ';
-
-            if (part.added) {
-              className = 'bg-green-100 text-green-900';
-              prefix = '+';
-            } else if (part.removed) {
-              className = 'bg-red-100 text-red-900';
-              prefix = '-';
-            }
+            const lineClass = part.added
+              ? 'bg-success/12 text-success'
+              : part.removed
+                ? 'bg-error/12 text-error'
+                : 'text-foreground';
+            const prefix = part.added ? '+' : part.removed ? '-' : ' ';
 
             // 按行分割，为每行加前缀
             const lines = part.value.replace(/\n$/, '').split('\n');
@@ -72,7 +79,7 @@ export function VersionDiffView({
             return lines.map((line, lineIdx) => (
               <div
                 key={`${index}-${lineIdx}`}
-                className={`${className} px-2`}
+                className={cn('px-2', lineClass)}
                 data-testid={
                   part.added
                     ? 'diff-added'
@@ -81,7 +88,7 @@ export function VersionDiffView({
                       : 'diff-unchanged'
                 }
               >
-                <span className="mr-2 select-none text-gray-400">
+                <span aria-hidden className="mr-2 select-none text-muted">
                   {prefix}
                 </span>
                 {line || '\u00A0'}

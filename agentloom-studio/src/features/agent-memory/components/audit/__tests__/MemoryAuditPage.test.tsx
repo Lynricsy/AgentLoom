@@ -38,6 +38,7 @@ const mockIo = vi.hoisted(() =>
 vi.mock('@tanstack/react-router', () => ({
   useParams: mockUseParams,
   useNavigate: () => mockNavigate,
+  Link: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
 }));
 
 vi.mock('@/features/execution', () => ({
@@ -145,12 +146,12 @@ describe('MemoryAuditPage', () => {
 
   it('渲染返回按钮', () => {
     render(<MemoryAuditPage />, { wrapper: createWrapper() });
-    expect(screen.getByText('← 返回')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '返回' })).toBeInTheDocument();
   });
 
   it('点击返回按钮触发导航', () => {
     render(<MemoryAuditPage />, { wrapper: createWrapper() });
-    fireEvent.click(screen.getByText('← 返回'));
+    fireEvent.click(screen.getByRole('button', { name: '返回' }));
     expect(mockNavigate).toHaveBeenCalledWith(
       expect.objectContaining({
         to: '/memory/$id',

@@ -1,96 +1,102 @@
+import type { BadgeProps } from '@/shared/ui/badge'
 import type { ExecutionStatus, ExecutionStepStatus } from '../types'
 import type { ExecutionResponse } from '../api/executionApi'
 
+/** shared/ui Badge 的语义变体，状态色一律走设计令牌 */
+type StatusVariant = NonNullable<BadgeProps['variant']>
+
 export const executionStatusMeta: Record<ExecutionStatus, {
   label: string
-  badgeClassName: string
-  pulseClassName?: string
+  variant: StatusVariant
+  /** 状态圆点底色（令牌类） */
+  dotClassName: string
 }> = {
   pending: {
     label: '等待中',
-    badgeClassName: 'border-border bg-muted/40 text-muted-foreground',
-    pulseClassName: 'bg-muted-foreground/70',
+    variant: 'secondary',
+    dotClassName: 'bg-muted-foreground',
   },
   running: {
     label: '执行中',
-    badgeClassName: 'border-sky-500/40 bg-sky-500/10 text-sky-300',
-    pulseClassName: 'bg-sky-400',
+    variant: 'info',
+    dotClassName: 'bg-info',
   },
   paused: {
     label: '已暂停',
-    badgeClassName: 'border-amber-500/40 bg-amber-500/10 text-amber-300',
-    pulseClassName: 'bg-amber-400',
+    variant: 'warning',
+    dotClassName: 'bg-warning',
   },
   completed: {
     label: '已完成',
-    badgeClassName: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300',
-    pulseClassName: 'bg-emerald-400',
+    variant: 'success',
+    dotClassName: 'bg-success',
   },
   failed: {
     label: '失败',
-    badgeClassName: 'border-rose-500/40 bg-rose-500/10 text-rose-300',
-    pulseClassName: 'bg-rose-400',
+    variant: 'error',
+    dotClassName: 'bg-error',
   },
   cancelled: {
     label: '已取消',
-    badgeClassName: 'border-amber-500/40 bg-amber-500/10 text-amber-300',
-    pulseClassName: 'bg-amber-400',
+    variant: 'warning',
+    dotClassName: 'bg-warning',
   },
 }
 
 export const stepStatusMeta: Record<ExecutionStepStatus, {
   label: string
-  badgeClassName: string
+  variant: StatusVariant
+  /** 只读画布节点卡片的描边/底色 */
   nodeClassName: string
   dotClassName: string
 }> = {
   pending: {
     label: '等待中',
-    badgeClassName: 'border-border bg-muted/40 text-muted-foreground',
-    nodeClassName: 'border-border/80 bg-surface/95',
+    variant: 'secondary',
+    nodeClassName: 'border-border bg-surface',
     dotClassName: 'bg-muted-foreground',
   },
   queued: {
     label: '排队中',
-    badgeClassName: 'border-border bg-muted/40 text-muted-foreground',
-    nodeClassName: 'border-border/80 bg-surface/95',
+    variant: 'secondary',
+    nodeClassName: 'border-border bg-surface',
     dotClassName: 'bg-muted-foreground',
   },
   running: {
     label: '执行中',
-    badgeClassName: 'border-sky-500/40 bg-sky-500/10 text-sky-300',
-    nodeClassName: 'border-sky-400/80 bg-sky-500/5 shadow-[0_0_0_1px_rgba(59,130,246,0.25)]',
-    dotClassName: 'bg-sky-400',
+    variant: 'info',
+    nodeClassName: 'border-info/60 bg-info/5 shadow-node',
+    dotClassName: 'bg-info',
   },
   waiting_for_intervention: {
     label: '等待干预',
-    badgeClassName: 'border-amber-500/40 bg-amber-500/10 text-amber-300',
-    nodeClassName: 'border-amber-400/80 bg-amber-500/5',
-    dotClassName: 'bg-amber-400',
+    variant: 'warning',
+    nodeClassName: 'border-warning/60 bg-warning/5',
+    dotClassName: 'bg-warning',
   },
   completed: {
     label: '已完成',
-    badgeClassName: 'border-emerald-500/40 bg-emerald-500/10 text-emerald-300',
-    nodeClassName: 'border-emerald-400/80 bg-emerald-500/5',
-    dotClassName: 'bg-emerald-400',
+    variant: 'success',
+    nodeClassName: 'border-success/60 bg-success/5',
+    dotClassName: 'bg-success',
   },
   failed: {
     label: '失败',
-    badgeClassName: 'border-rose-500/40 bg-rose-500/10 text-rose-300',
-    nodeClassName: 'border-rose-400/80 bg-rose-500/5',
-    dotClassName: 'bg-rose-400',
+    variant: 'error',
+    nodeClassName: 'border-error/60 bg-error/5',
+    dotClassName: 'bg-error',
   },
   skipped: {
     label: '已跳过',
-    badgeClassName: 'border-border bg-muted/40 text-muted-foreground',
-    nodeClassName: 'border-border/70 border-dashed bg-background/80',
+    variant: 'secondary',
+    nodeClassName: 'border-dashed border-border bg-background',
     dotClassName: 'bg-muted-foreground',
   },
   cancelled: {
     label: '已取消',
-    badgeClassName: 'border-amber-500/40 bg-amber-500/10 text-amber-300',
-    nodeClassName: 'border-amber-400/70 bg-amber-500/5',
-    dotClassName: 'bg-amber-400',
+    variant: 'warning',
+    nodeClassName: 'border-warning/50 bg-warning/5',
+    dotClassName: 'bg-warning',
   },
 }
 

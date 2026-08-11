@@ -1,5 +1,6 @@
 import { memo } from 'react'
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react'
+import { motion } from 'motion/react'
 import {
   Globe,
   Wrench,
@@ -7,6 +8,8 @@ import {
   FileText,
   Workflow,
 } from 'lucide-react'
+import { Badge } from '@/shared/ui/badge'
+import { DUR, EASE } from '@/shared/lib/motion'
 import { cn } from '@/shared/lib/utils'
 import type { AgentGraphNode as AgentGraphNodeData } from '../types'
 
@@ -18,43 +21,53 @@ const NODE_TYPE_ICONS: Record<string, React.ElementType> = {
   'reusable-block': Workflow,
 }
 
-const STATUS_COLORS: Record<string, { bg: string; ring: string; dot: string }> = {
+const STATUS_COLORS: Record<
+  string,
+  { bg: string; ring: string; dot: string; pulse: boolean }
+> = {
   completed: {
-    bg: 'bg-emerald-500/10',
-    ring: 'ring-emerald-500/30',
-    dot: 'bg-emerald-400',
+    bg: 'bg-success/10',
+    ring: 'ring-success/30',
+    dot: 'bg-success',
+    pulse: false,
   },
   running: {
-    bg: 'bg-blue-500/10',
-    ring: 'ring-blue-500/30',
-    dot: 'bg-blue-400 animate-pulse',
+    bg: 'bg-info/10',
+    ring: 'ring-info/30',
+    dot: 'bg-info',
+    pulse: true,
   },
   failed: {
-    bg: 'bg-rose-500/10',
-    ring: 'ring-rose-500/30',
-    dot: 'bg-rose-400',
+    bg: 'bg-error/10',
+    ring: 'ring-error/30',
+    dot: 'bg-error',
+    pulse: false,
   },
   waiting_for_intervention: {
-    bg: 'bg-amber-500/10',
-    ring: 'ring-amber-500/30',
-    dot: 'bg-amber-400',
+    bg: 'bg-warning/10',
+    ring: 'ring-warning/30',
+    dot: 'bg-warning',
+    pulse: false,
   },
   pending: {
-    bg: 'bg-zinc-500/10',
-    ring: 'ring-zinc-500/30',
-    dot: 'bg-zinc-400',
+    bg: 'bg-surface-elevated',
+    ring: 'ring-border',
+    dot: 'bg-muted-foreground',
+    pulse: false,
   },
   cancelled: {
-    bg: 'bg-zinc-500/10',
-    ring: 'ring-zinc-500/30',
-    dot: 'bg-zinc-500',
+    bg: 'bg-surface-elevated',
+    ring: 'ring-border',
+    dot: 'bg-muted-foreground',
+    pulse: false,
   },
 }
 
 const DEFAULT_STATUS = {
-  bg: 'bg-zinc-500/10',
-  ring: 'ring-zinc-500/30',
-  dot: 'bg-zinc-400',
+  bg: 'bg-surface-elevated',
+  ring: 'ring-border',
+  dot: 'bg-muted-foreground',
+  pulse: false,
 }
 
 export interface AgentGraphNodeFlowData
@@ -76,14 +89,14 @@ export const AgentGraphNode = memo(function AgentGraphNode({
   return (
     <div
       className={cn(
-        'relative rounded-xl border px-4 py-3 shadow-md transition-all duration-200',
+        'relative rounded-card border px-4 py-3 shadow-node transition-all duration-200',
         'min-w-[160px] max-w-[220px]',
-        'bg-card/90 backdrop-blur-sm',
+        'bg-surface',
         statusColors.ring,
         selected
-          ? 'ring-2 ring-primary border-primary/60'
-          : 'ring-1 border-border/60',
-        isHighlighted && 'ring-2 ring-yellow-400/80 border-yellow-400/60',
+          ? 'ring-2 ring-primary border-primary'
+          : 'ring-1 border-border',
+        isHighlighted && 'ring-2 ring-warning border-warning',
       )}
       data-testid={`agent-graph-node-${data.nodeId}`}
     >
@@ -100,14 +113,14 @@ export const AgentGraphNode = memo(function AgentGraphNode({
             statusColors.bg,
           )}
         >
-          <IconComponent className="h-4 w-4 text-foreground/80" />
+          <IconComponent className="h-4 w-4 text-foreground" />
         </div>
 
         <div className="min-w-0 flex-1">
           <p className="truncate text-xs font-medium text-foreground">
             {data.nodeName}
           </p>
-          <p className="truncate text-[10px] text-muted-foreground">
+          <p className="truncate text-[10px] text-muted">
             {data.nodeType}
           </p>
         </div>
@@ -115,19 +128,30 @@ export const AgentGraphNode = memo(function AgentGraphNode({
 
       <div className="mt-2 flex items-center justify-between">
         <div className="flex items-center gap-1.5">
-          <span className={cn('h-1.5 w-1.5 rounded-full', statusColors.dot)} />
-          <span className="text-[10px] text-muted-foreground">
+          <motion.span
+            aria-hidden
+            className={cn('h-1.5 w-1.5 rounded-full', statusColors.dot)}
+            animate={statusColors.pulse ? { opacity: 0.35 } : undefined}
+            transition={
+              statusColors.pulse
+                ? {
+                    duration: DUR.slow,
+                    ease: EASE,
+                    repeat: Infinity,
+                    repeatType: 'reverse',
+                  }
+                : undefined
+            }
+          />
+          <span className="text-[10px] text-muted">
             {data.executionStatus}
           </span>
         </div>
 
         {data.evidenceCount > 0 && (
-          <span
-            className="inline-flex items-center rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary"
-            data-testid="evidence-badge"
-          >
+          <Badge size="sm" data-testid="evidence-badge">
             {data.evidenceCount}
-          </span>
+          </Badge>
         )}
       </div>
 

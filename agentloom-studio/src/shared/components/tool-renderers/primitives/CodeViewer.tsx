@@ -132,17 +132,17 @@ export const CodeViewer = memo(function CodeViewer({
   const lineNumberWidth = String(startLine + lines.length - 1).length;
 
   return (
-    <div className={cn("group relative rounded-lg bg-zinc-900", className)}>
+    <div className={cn("group relative rounded-lg bg-background", className)}>
       {/* Header with language label and copy button */}
       {(resolvedLanguage ?? fileName) && (
-        <div className="flex items-center justify-between border-b border-zinc-700/50 px-3 py-1.5">
+        <div className="flex items-center justify-between border-b border-border px-3 py-1.5">
           <span className="text-[10px] font-medium text-muted-foreground">
             {fileName ?? resolvedLanguage}
           </span>
           <button
             type="button"
             onClick={() => void handleCopy()}
-            className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:bg-zinc-800 hover:text-foreground"
+            className="flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-muted-foreground transition-colors hover:bg-surface-elevated hover:text-foreground"
           >
             {copied ? (
               <>
@@ -164,7 +164,7 @@ export const CodeViewer = memo(function CodeViewer({
         <button
           type="button"
           onClick={() => void handleCopy()}
-          className="absolute right-2 top-2 z-10 flex items-center gap-1 rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
+          className="absolute right-2 top-2 z-10 flex items-center gap-1 rounded bg-surface-elevated px-1.5 py-0.5 text-[10px] text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
         >
           {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
         </button>
@@ -175,9 +175,9 @@ export const CodeViewer = memo(function CodeViewer({
         <table className="w-full border-collapse font-mono text-xs leading-relaxed">
           <tbody>
             {lines.map((line, i) => (
-              <tr key={`${startLine + i}`} className="hover:bg-zinc-800/50">
+              <tr key={`${startLine + i}`} className="hover:bg-surface-elevated/50">
                 <td
-                  className="select-none border-r border-zinc-700/40 px-3 py-0 text-right align-top text-muted-foreground/40"
+                  className="select-none border-r border-border px-3 py-0 text-right align-top text-muted-foreground/40"
                   style={{ minWidth: `${lineNumberWidth + 2}ch` }}
                 >
                   {startLine + i}

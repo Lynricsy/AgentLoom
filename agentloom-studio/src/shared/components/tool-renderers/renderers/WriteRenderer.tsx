@@ -44,7 +44,7 @@ const WriteDetail = memo(function WriteDetail({ toolCall, state }: ToolRendererP
 
   if (state === 'failed' && toolCall.error) {
     return (
-      <pre className="overflow-auto rounded-md bg-red-950/30 p-3 font-mono text-xs leading-relaxed text-red-400">
+      <pre className="overflow-auto rounded-md bg-error/10 p-3 font-mono text-xs leading-relaxed text-error">
         {toolCall.error}
       </pre>
     )

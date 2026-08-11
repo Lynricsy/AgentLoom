@@ -1,7 +1,18 @@
 import { useState } from 'react'
-import * as Dialog from '@radix-ui/react-dialog'
-import { X, Loader2, History, RotateCcw } from 'lucide-react'
+import { Loader2, History, RotateCcw } from 'lucide-react'
+import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
+import {
+  Dialog,
+  DialogBody,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/shared/ui/dialog'
+import { Skeleton } from '@/shared/ui/skeleton'
 import { useNodeVersions } from '../../api/memoryInstanceQueries'
 import { useRollbackNodeVersion } from '../../api/memoryInstanceMutations'
 import { useToast } from '@/shared/ui/toast'
@@ -13,15 +24,6 @@ interface VersionHistoryDialogProps {
   instanceId: string
   nodeId: string
   nodeName: string
-}
-
-function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleString('zh-CN', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
 }
 
 function VersionRow({
@@ -36,24 +38,31 @@ function VersionRow({
   isRollingBack: boolean
 }) {
   return (
-    <div className="flex items-start gap-3 rounded-lg border border-border bg-card p-3">
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-xs font-bold text-primary">
+    <div className="flex items-start gap-3 rounded-card border border-border bg-surface p-3">
+      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-primary/10 text-xs font-bold text-primary">
         v{version.versionNumber}
-      </div>
+      </span>
       <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <span className="text-xs font-medium text-foreground">
             {version.mode === 'patch' ? '编辑' : version.mode === 'rollback' ? '回滚' : version.mode}
           </span>
           {isLatest && (
-            <span className="rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[10px] font-medium text-emerald-500">
+            <Badge size="sm" variant="success">
               最新
-            </span>
+            </Badge>
           )}
-          <span className="text-[11px] text-muted-foreground">{formatDate(version.createdAt)}</span>
+          <span className="text-[11px] text-muted">
+            {new Date(version.createdAt).toLocaleString('zh-CN', {
+              month: '2-digit',
+              day: '2-digit',
+              hour: '2-digit',
+              minute: '2-digit',
+            })}
+          </span>
         </div>
         {version.content && (
-          <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{version.content}</p>
+          <p className="mt-1 line-clamp-2 text-xs text-muted">{version.content}</p>
         )}
       </div>
       {!isLatest && (
@@ -114,69 +123,51 @@ export function VersionHistoryDialog({
   }
 
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
-      <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm" />
-        <Dialog.Content
-          aria-describedby="version-history-desc"
-          className="fixed left-1/2 top-1/2 z-50 flex w-[min(36rem,calc(100vw-2rem))] max-h-[70vh] -translate-x-1/2 -translate-y-1/2 flex-col rounded-2xl border border-border bg-surface-elevated shadow-2xl"
-        >
-          {/* Header */}
-          <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-border">
-            <div className="flex items-center gap-2">
-              <History className="h-4 w-4 text-primary" />
-              <Dialog.Title className="text-lg font-semibold text-foreground">
-                版本历史
-              </Dialog.Title>
-              <span className="text-sm text-muted-foreground">— {nodeName}</span>
-            </div>
-            <Dialog.Close asChild>
-              <button
-                type="button"
-                className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </Dialog.Close>
-          </div>
-          <Dialog.Description className="sr-only" id="version-history-desc">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent size="lg" className="max-h-[70vh]">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <History className="h-4 w-4 text-primary" />
+            版本历史
+            <span className="text-sm font-normal text-muted">— {nodeName}</span>
+          </DialogTitle>
+          <DialogDescription>
             查看和管理记忆节点的版本历史
-          </Dialog.Description>
+          </DialogDescription>
+        </DialogHeader>
 
-          {/* Body */}
-          <div className="flex-1 overflow-y-auto px-6 py-4">
-            {isLoading ? (
-              <div className="flex items-center justify-center gap-2 py-12 text-muted-foreground">
-                <Loader2 className="h-5 w-5 animate-spin" />
-                <span className="text-sm">加载版本历史...</span>
-              </div>
-            ) : !versions || versions.length === 0 ? (
-              <div className="py-12 text-center text-sm text-muted-foreground">暂无版本记录</div>
-            ) : (
-              <div className="space-y-2">
-                {versions.map((version, i) => (
-                  <VersionRow
-                    key={version.id}
-                    version={version}
-                    isLatest={i === 0}
-                    onRollback={handleRollback}
-                    isRollingBack={rollingBackId === version.id}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
+        <DialogBody>
+          {isLoading ? (
+            <div className="space-y-2">
+              {Array.from({ length: 3 }, (_, index) => (
+                <Skeleton key={index} className="h-16 rounded-card" />
+              ))}
+            </div>
+          ) : !versions || versions.length === 0 ? (
+            <p className="py-12 text-center text-sm text-muted">暂无版本记录</p>
+          ) : (
+            <div className="space-y-2">
+              {versions.map((version, i) => (
+                <VersionRow
+                  key={version.id}
+                  version={version}
+                  isLatest={i === 0}
+                  onRollback={handleRollback}
+                  isRollingBack={rollingBackId === version.id}
+                />
+              ))}
+            </div>
+          )}
+        </DialogBody>
 
-          {/* Footer */}
-          <div className="flex justify-end border-t border-border px-6 py-3">
-            <Dialog.Close asChild>
-              <Button variant="outline" size="sm">
-                关闭
-              </Button>
-            </Dialog.Close>
-          </div>
-        </Dialog.Content>
-      </Dialog.Portal>
-    </Dialog.Root>
+        <DialogFooter>
+          <DialogClose asChild>
+            <Button variant="outline" size="sm">
+              关闭
+            </Button>
+          </DialogClose>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

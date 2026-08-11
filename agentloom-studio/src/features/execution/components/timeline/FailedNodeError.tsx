@@ -2,6 +2,7 @@ import { memo } from 'react'
 import { AlertTriangle } from 'lucide-react'
 
 import type { EvidenceRecord } from '@/features/evidence'
+import { Badge } from '@/shared/ui/badge'
 import { cn } from '@/shared/lib/utils'
 import type { ExecutionStepErrorDetail, TypeMismatchInfo } from '../../types'
 
@@ -30,36 +31,31 @@ interface FailedNodeErrorProps {
   className?: string
 }
 
+/** 已知异常类型 → 中文标签；配色统一走 error 语义，避免用色彩编码低信息量的分类 */
 const KNOWN_ERROR_CLASSIFICATIONS = [
   {
     match: ['agentexecutionexception', 'agent-execution'],
     label: 'Agent 执行失败',
-    className: 'border-rose-400/30 bg-rose-400/10 text-rose-100',
   },
   {
     match: ['nodeinputresolutionexception', 'node-input-resolution'],
     label: '节点输入解析失败',
-    className: 'border-orange-400/30 bg-orange-400/10 text-orange-100',
   },
   {
     match: ['invalidsteptransitionexception', 'invalid-step-transition'],
     label: '状态迁移错误',
-    className: 'border-fuchsia-400/30 bg-fuchsia-400/10 text-fuchsia-100',
   },
   {
     match: ['workflowpublishvalidationexception', 'workflow-publish-validation'],
     label: '发布校验失败',
-    className: 'border-amber-400/30 bg-amber-400/10 text-amber-100',
   },
   {
     match: ['workflownotpublishedexception', 'workflow-not-published'],
     label: '工作流未发布',
-    className: 'border-sky-400/30 bg-sky-400/10 text-sky-100',
   },
   {
     match: ['interventionnotallowedexception', 'intervention-not-allowed'],
     label: '人工介入不可用',
-    className: 'border-violet-400/30 bg-violet-400/10 text-violet-100',
   },
 ] as const
 
@@ -93,9 +89,9 @@ function ErrorClassificationBadge({
 }) {
   if (typeMismatch) {
     return (
-      <span className="inline-flex items-center rounded-full border border-amber-400/30 bg-amber-400/10 px-2 py-0.5 text-[11px] font-medium text-amber-100">
+      <Badge variant="warning" size="sm">
         Type Mismatch
-      </span>
+      </Badge>
     )
   }
 
@@ -109,15 +105,9 @@ function ErrorClassificationBadge({
   )
 
   return (
-    <span
-      className={cn(
-        'inline-flex items-center rounded-full border px-2 py-0.5 text-[11px] font-medium',
-        matched?.className ??
-          'border-rose-400/30 bg-rose-400/10 text-rose-100',
-      )}
-    >
+    <Badge variant="error" size="sm">
       {matched?.label ?? formatTypeLabel(type)}
-    </span>
+    </Badge>
   )
 }
 
@@ -131,31 +121,31 @@ function TypeMismatchComparison({
   }
 
   return (
-    <div className="rounded-xl border border-amber-400/25 bg-gradient-to-br from-amber-500/10 to-rose-500/10 p-3">
-      <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-amber-100/80">
+    <div className="rounded-card border border-warning/25 bg-warning/5 p-3">
+      <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-warning">
         类型对比
       </p>
 
       <div className="mt-2 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] sm:items-center">
-        <div className="rounded-lg border border-amber-400/20 bg-amber-400/10 p-2">
-          <p className="text-[11px] font-medium text-amber-100">
+        <div className="min-w-0 rounded-lg border border-warning/20 bg-warning/10 p-2">
+          <p className="truncate text-[11px] font-medium text-warning">
             {typeMismatch.sourceType}
           </p>
-          <p className="mt-1 text-[11px] text-amber-100/70">
+          <p className="mt-1 break-all text-[11px] text-muted">
             节点 {typeMismatch.sourceNodeId}
             {typeMismatch.sourcePortId ? ` · 端口 ${typeMismatch.sourcePortId}` : ''}
           </p>
         </div>
 
-        <div className="justify-self-center text-sm font-semibold text-rose-100/80">
+        <div className="justify-self-center text-sm font-semibold text-muted">
           →
         </div>
 
-        <div className="rounded-lg border border-rose-400/20 bg-rose-400/10 p-2">
-          <p className="text-[11px] font-medium text-rose-100">
+        <div className="min-w-0 rounded-lg border border-error/20 bg-error/10 p-2">
+          <p className="truncate text-[11px] font-medium text-error">
             {typeMismatch.targetType}
           </p>
-          <p className="mt-1 text-[11px] text-rose-100/70">
+          <p className="mt-1 break-all text-[11px] text-muted">
             节点 {typeMismatch.targetNodeId}
             {typeMismatch.targetPortId ? ` · 端口 ${typeMismatch.targetPortId}` : ''}
           </p>
@@ -163,7 +153,7 @@ function TypeMismatchComparison({
       </div>
 
       {typeMismatch.edgeId && (
-        <p className="mt-2 text-[11px] text-amber-100/60">
+        <p className="mt-2 break-all text-[11px] text-muted">
           Edge: {typeMismatch.edgeId}
         </p>
       )}
@@ -181,18 +171,18 @@ function FieldErrorList({
   }
 
   return (
-    <div className="rounded-xl border border-rose-400/20 bg-black/10 p-3">
-      <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-rose-100/70">
+    <div className="rounded-card border border-error/20 bg-surface-elevated p-3">
+      <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-muted">
         字段错误
       </p>
-      <ul className="mt-2 space-y-1.5 text-xs text-rose-100/80">
+      <ul className="mt-2 space-y-1.5 text-xs text-foreground">
         {errors.map((error) => (
           <li
             key={`${error.field}:${error.message}`}
-            className="rounded-lg border border-rose-400/10 bg-rose-400/5 px-2.5 py-2"
+            className="rounded-lg border border-error/15 bg-error/5 px-2.5 py-2"
           >
-            <span className="font-medium text-rose-100">{error.field}</span>
-            <span className="mx-1 text-rose-100/40">·</span>
+            <span className="font-medium text-error">{error.field}</span>
+            <span className="mx-1 text-muted">·</span>
             <span>{error.message}</span>
           </li>
         ))}
@@ -276,21 +266,21 @@ export const FailedNodeError = memo(function FailedNodeError({
   return (
     <div
       className={cn(
-        'rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3',
+        'rounded-card border border-error/30 bg-error/10 px-4 py-3',
         className,
       )}
       data-testid="failed-node-error"
     >
       <div className="flex items-start gap-2">
-        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-rose-400" />
+        <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-error" />
         <div className="min-w-0 space-y-1">
           {rfc ? (
             <>
-              <p className="text-sm font-medium text-rose-300">
+              <p className="text-sm font-medium text-error">
                 {rfc.title ?? '执行失败'}
               </p>
               {detailText && (
-                <p className="text-xs text-rose-300/80">{detailText}</p>
+                <p className="break-words text-xs text-foreground">{detailText}</p>
               )}
               <div className="flex flex-wrap items-center gap-2 pt-1">
                 <ErrorClassificationBadge
@@ -299,14 +289,14 @@ export const FailedNodeError = memo(function FailedNodeError({
                 />
               </div>
               {rfc.nodeId && (
-                <p className="text-[11px] text-rose-300/60">
+                <p className="break-all text-[11px] text-muted">
                   Node: {rfc.nodeId}
                 </p>
               )}
             </>
           ) : (
             <>
-              <p className="text-sm text-rose-300">{errorMessage}</p>
+              <p className="break-words text-sm text-error">{errorMessage}</p>
               <div className="flex flex-wrap items-center gap-2 pt-1">
                 <ErrorClassificationBadge
                   type={errorDetail?.type ?? undefined}
@@ -323,20 +313,20 @@ export const FailedNodeError = memo(function FailedNodeError({
         <FieldErrorList errors={rfc?.errors} />
 
         {!!rfc?.attempts?.length && (
-          <details className="rounded-xl border border-rose-400/20 bg-black/10 px-3 py-2">
-            <summary className="cursor-pointer text-[11px] font-medium text-rose-100/80">
+          <details className="rounded-card border border-error/20 bg-surface-elevated px-3 py-2">
+            <summary className="cursor-pointer text-[11px] font-medium text-muted">
               重试记录（{rfc.attempts.length}）
             </summary>
-            <ul className="mt-2 space-y-2 text-xs text-rose-100/75">
+            <ul className="mt-2 space-y-2 text-xs text-foreground">
               {rfc.attempts.map((attempt) => (
                 <li
                   key={`${attempt.attempt}:${attempt.timestamp}`}
-                  className="rounded-lg border border-rose-400/10 bg-rose-400/5 px-2.5 py-2"
+                  className="rounded-lg border border-error/15 bg-error/5 px-2.5 py-2"
                 >
-                  <p className="font-medium text-rose-100">
+                  <p className="font-medium text-error">
                     第 {attempt.attempt} 次 · {formatTimestamp(attempt.timestamp)}
                   </p>
-                  <p className="mt-1 whitespace-pre-wrap leading-relaxed text-rose-100/75">
+                  <p className="mt-1 whitespace-pre-wrap break-words leading-relaxed text-muted">
                     {attempt.message}
                   </p>
                 </li>
@@ -351,7 +341,7 @@ export const FailedNodeError = memo(function FailedNodeError({
             executionId={primaryNodeErrorRecord?.executionId}
             nodeId={chipNodeId}
             nodeName={chipNodeId}
-            className="border-rose-400/20 bg-rose-400/10 text-rose-100/80 hover:bg-rose-400/15 hover:text-rose-50"
+            className="border-error/20 bg-error/10 text-error hover:bg-error/15 hover:text-error"
           />
         )}
       </div>

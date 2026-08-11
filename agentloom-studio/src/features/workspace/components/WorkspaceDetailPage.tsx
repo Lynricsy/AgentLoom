@@ -1,16 +1,19 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import {
+  AlertCircle,
   ArrowLeft,
   Calendar,
   FolderTree,
   HardDrive,
-  Loader2,
   PackageOpen,
 } from "lucide-react";
 import { WorkspaceFileTree } from "@/features/agent-conversation";
+import { EmptyState } from "@/shared/components/empty-state/EmptyState";
+import { PageHeader } from "@/shared/components/page-header/PageHeader";
+import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
-import { cn } from "@/shared/lib/utils";
+import { Skeleton } from "@/shared/ui/skeleton";
 import {
   useWorkspaceDetail,
   useWorkspaceFilePreview,
@@ -18,8 +21,8 @@ import {
 } from "../api/workspaceQueries";
 import { formatWorkspaceSize } from "../lib/formatSize";
 import {
-  WORKSPACE_SOURCE_BADGE,
   WORKSPACE_SOURCE_LABEL,
+  WORKSPACE_SOURCE_TONE,
 } from "../lib/workspacePresentation";
 import { WorkspaceFilePreviewPanel } from "./WorkspaceFilePreviewPanel";
 import type { WorkspaceFileNode } from "../types";
@@ -51,16 +54,6 @@ function hasPath(nodes: WorkspaceFileNode[], path: string | null): boolean {
   }
 
   return false;
-}
-
-function formatDateTime(value: string): string {
-  return new Date(value).toLocaleString("zh-CN", {
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  });
 }
 
 export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
@@ -102,85 +95,94 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
 
   if (detailQuery.isLoading) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div className="flex h-full flex-col gap-5 p-6">
+        <Skeleton className="h-10 w-72" />
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Skeleton className="h-16" />
+          <Skeleton className="h-16" />
+          <Skeleton className="h-16" />
+        </div>
+        <Skeleton className="min-h-0 flex-1" />
       </div>
     );
   }
 
   if (!workspace || workspaceError) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-4">
-        <p className="text-muted-foreground">
-          {workspaceError ?? "工作区不存在"}
-        </p>
-        <Button
-          variant="outline"
-          onClick={() => void navigate({ to: "/resources/workspaces" })}
-        >
-          返回列表
-        </Button>
+      <div className="flex h-full items-center justify-center p-6">
+        <EmptyState
+          icon={AlertCircle}
+          tone="var(--color-error)"
+          title={workspaceError ?? "工作区不存在"}
+          description="该工作区可能已被删除，或你没有访问权限。"
+          action={
+            <Button
+              variant="outline"
+              onClick={() => void navigate({ to: "/resources/workspaces" })}
+            >
+              返回列表
+            </Button>
+          }
+        />
       </div>
     );
   }
 
   return (
-    <div className="flex h-full flex-col gap-6 p-6">
-      <div className="flex items-center gap-4">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={() => void navigate({ to: "/resources/workspaces" })}
-        >
-          <ArrowLeft className="mr-1 h-4 w-4" />
-          返回
-        </Button>
-      </div>
+    <div className="flex h-full flex-col gap-5 p-6">
+      <PageHeader
+        icon={PackageOpen}
+        tone="var(--color-type-volume)"
+        breadcrumb={[
+          { label: "工作区", to: "/resources/workspaces" },
+          { label: workspace.name },
+        ]}
+        title={
+          <span className="flex flex-wrap items-center gap-2">
+            {workspace.name}
+            <Badge size="sm" tone={WORKSPACE_SOURCE_TONE[sourceKind]}>
+              {WORKSPACE_SOURCE_LABEL[sourceKind]}
+            </Badge>
+          </span>
+        }
+        description={workspace.description || undefined}
+        actions={
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => void navigate({ to: "/resources/workspaces" })}
+          >
+            <ArrowLeft className="mr-1 h-4 w-4" />
+            返回
+          </Button>
+        }
+      />
 
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-        <div className="flex items-start gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
-            <PackageOpen className="h-6 w-6 text-primary" />
-          </div>
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              <h1 className="text-2xl font-bold text-foreground">
-                {workspace.name}
-              </h1>
-              <span
-                className={cn(
-                  "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium",
-                  WORKSPACE_SOURCE_BADGE[sourceKind],
-                )}
-              >
-                {WORKSPACE_SOURCE_LABEL[sourceKind]}
-              </span>
-            </div>
-            {workspace.description && (
-              <p className="mt-1 text-sm text-muted-foreground">
-                {workspace.description}
-              </p>
-            )}
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <DetailStat
-            icon={<HardDrive className="h-4 w-4 text-emerald-400" />}
-            label="大小"
-            value={formatWorkspaceSize(workspace.sizeBytes)}
-          />
-          <DetailStat
-            icon={<Calendar className="h-4 w-4 text-orange-400" />}
-            label="创建时间"
-            value={formatDateTime(workspace.createdAt)}
-          />
-          <DetailStat
-            icon={<FolderTree className="h-4 w-4 text-blue-400" />}
-            label="状态"
-            value={STATUS_LABEL[workspace.status] ?? workspace.status}
-          />
-        </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <DetailStat
+          icon={<HardDrive className="h-4 w-4" />}
+          tone="var(--color-type-volume)"
+          label="大小"
+          value={formatWorkspaceSize(workspace.sizeBytes)}
+        />
+        <DetailStat
+          icon={<Calendar className="h-4 w-4" />}
+          tone="var(--color-type-audio)"
+          label="创建时间"
+          value={new Date(workspace.createdAt).toLocaleString("zh-CN", {
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+            hour: "2-digit",
+            minute: "2-digit",
+          })}
+        />
+        <DetailStat
+          icon={<FolderTree className="h-4 w-4" />}
+          tone="var(--color-type-text)"
+          label="状态"
+          value={STATUS_LABEL[workspace.status] ?? workspace.status}
+        />
       </div>
 
       <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
@@ -191,9 +193,7 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
             onSelectFile={setSelectedPath}
             isLoading={treeQuery.isLoading}
           />
-          {treeError && (
-            <p className="mt-2 text-xs text-muted-foreground">{treeError}</p>
-          )}
+          {treeError && <p className="mt-2 text-xs text-error">{treeError}</p>}
         </div>
 
         <div className="min-h-[320px] xl:min-h-0">
@@ -214,15 +214,17 @@ function DetailStat({
   icon,
   label,
   value,
+  tone,
 }: {
   icon: ReactNode;
   label: string;
   value: string;
+  tone: string;
 }) {
   return (
-    <div className="rounded-lg border border-border bg-card px-4 py-3">
-      <div className="mb-1 flex items-center gap-2 text-xs text-muted-foreground">
-        {icon}
+    <div className="rounded-card border border-border bg-surface px-4 py-3">
+      <div className="mb-1 flex items-center gap-2 text-xs text-muted">
+        <span style={{ color: tone }}>{icon}</span>
         <span>{label}</span>
       </div>
       <p className="text-sm font-semibold text-foreground">{value}</p>

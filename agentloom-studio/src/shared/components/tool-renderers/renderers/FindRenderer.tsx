@@ -68,7 +68,7 @@ const FindDetail = memo(function FindDetail({ toolCall, state }: ToolRendererPro
 
   if (state === 'failed' && toolCall.error) {
     return (
-      <pre className="overflow-auto rounded-md bg-red-950/30 p-3 font-mono text-xs leading-relaxed text-red-400">
+      <pre className="overflow-auto rounded-md bg-error/10 p-3 font-mono text-xs leading-relaxed text-error">
         {toolCall.error}
       </pre>
     )
@@ -76,7 +76,7 @@ const FindDetail = memo(function FindDetail({ toolCall, state }: ToolRendererPro
 
   if (entries.length === 0) {
     return (
-      <div className="flex items-center justify-center gap-2 rounded-lg bg-zinc-900 p-6 text-xs text-muted-foreground">
+      <div className="flex items-center justify-center gap-2 rounded-lg bg-background p-6 text-xs text-muted-foreground">
         <FolderSearch className="size-4 opacity-40" />
         未找到文件
       </div>
@@ -84,23 +84,23 @@ const FindDetail = memo(function FindDetail({ toolCall, state }: ToolRendererPro
   }
 
   return (
-    <div className="max-h-[480px] overflow-auto rounded-lg bg-zinc-900">
+    <div className="max-h-[480px] overflow-auto rounded-lg bg-background">
       {entries.map((entry, i) => {
         const isDir = isDirectory(entry)
         return (
           <div
             key={`${i}-${entry}`}
-            className="flex items-center gap-2 border-b border-zinc-700/30 px-3 py-1.5 font-mono text-xs last:border-0"
+            className="flex items-center gap-2 border-b border-border/60 px-3 py-1.5 font-mono text-xs last:border-0"
           >
             {isDir ? (
-              <Folder className="size-3.5 shrink-0 text-amber-400" />
+              <Folder className="size-3.5 shrink-0 text-warning" />
             ) : (
               <File className="size-3.5 shrink-0 text-muted-foreground" />
             )}
             <span
               className={cn(
                 'truncate',
-                isDir ? 'text-amber-400' : 'text-foreground/80',
+                isDir ? 'text-warning' : 'text-foreground/80',
               )}
             >
               {entry}

@@ -1,15 +1,20 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { ArrowLeft, FileCode2, RefreshCw } from "lucide-react";
+import {
+  ArrowLeft,
+  Bot,
+  FileCode2,
+  RefreshCw,
+  TriangleAlert,
+} from "lucide-react";
 import { ExecutionAgentMessageList } from "./ExecutionAgentMessageList";
+import { ExecutionStatusBadge, StepStatusBadge } from "./StatusBadge";
 import { useLiveExecutionDetail } from "../hooks/useLiveExecutionDetail";
 import { useNodeExecutionState } from "../stores/executionStore";
 import { buildWorkflowAgentViewerState } from "../lib/workflowAgentViewer";
 import {
-  executionStatusMeta,
   formatExecutionDateTime,
   formatExecutionDuration,
-  stepStatusMeta,
 } from "../lib/presentation";
 import {
   getExecutionStepWorkspaceFile,
@@ -17,7 +22,13 @@ import {
   type ExecutionWorkspaceFileContent,
   type ExecutionWorkspaceFileNode,
 } from "../api/executionApi";
+import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
+import { Card } from "@/shared/ui/card";
+import { Skeleton } from "@/shared/ui/skeleton";
+import { PageHeader } from "@/shared/components/page-header/PageHeader";
+import { EmptyState } from "@/shared/components/empty-state/EmptyState";
+import { Spinner } from "@/shared/components/spinner/Spinner";
 import { cn } from "@/shared/lib/utils";
 import {
   SandboxComputerPanel,
@@ -71,19 +82,19 @@ const WorkspaceFilePreviewPanel = memo(function WorkspaceFilePreviewPanel({
   const fileName = selectedPath?.split("/").pop() ?? selectedPath;
 
   return (
-    <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-surface">
-      <div className="flex items-center gap-2 border-b border-border bg-surface-elevated/50 px-3 py-2">
-        <FileCode2 className="size-4 text-info/80" />
+    <Card className="flex h-full min-h-0 flex-col overflow-hidden">
+      <div className="flex items-center gap-2 border-b border-border bg-surface-elevated px-3 py-2">
+        <FileCode2 className="size-4 shrink-0 text-info" />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium text-foreground">
             {fileName || "文件预览"}
           </p>
-          <p className="truncate text-[11px] text-muted-foreground">
+          <p className="truncate text-[11px] text-muted">
             {selectedPath || "选择文件后显示当前内容"}
           </p>
         </div>
         {selectedFile && (
-          <span className="text-[10px] text-muted-foreground">
+          <span className="shrink-0 text-[10px] text-muted">
             {selectedFile.size} bytes
           </span>
         )}
@@ -91,37 +102,37 @@ const WorkspaceFilePreviewPanel = memo(function WorkspaceFilePreviewPanel({
 
       <div className="min-h-0 flex-1 overflow-hidden">
         {!selectedPath ? (
-          <div className="flex h-full items-center justify-center px-4 text-center text-sm text-muted-foreground">
-            <div>
-              <FileCode2 className="mx-auto mb-3 size-5 opacity-40" />
-              <p>选择左侧文件后，这里会显示该步骤工作区中的最新内容。</p>
-            </div>
-          </div>
+          <EmptyState
+            className="h-full border-0 px-4 py-0"
+            icon={FileCode2}
+            title="尚未选择文件"
+            description="选择左侧文件后，这里会显示该步骤工作区中的最新内容。"
+          />
         ) : isLoading ? (
-          <div className="flex h-full items-center justify-center gap-2 text-sm text-muted-foreground">
-            <div className="size-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+          <div className="flex h-full items-center justify-center gap-2 text-sm text-muted">
+            <Spinner className="size-4" />
             <span>正在加载文件内容…</span>
           </div>
         ) : error ? (
-          <div className="flex h-full items-center justify-center px-4 text-center text-sm text-muted-foreground">
+          <div className="flex h-full items-center justify-center px-4 text-center text-sm text-muted">
             <p>{error}</p>
           </div>
         ) : selectedFile ? (
           <div className="h-full overflow-auto bg-background p-3">
             <pre
               data-testid="workflow-agent-file-preview"
-              className="whitespace-pre-wrap break-all font-mono text-xs leading-relaxed text-foreground/90"
+              className="whitespace-pre-wrap break-all font-mono text-xs leading-relaxed text-foreground"
             >
               {selectedFile.content}
             </pre>
           </div>
         ) : (
-          <div className="flex h-full items-center justify-center px-4 text-center text-sm text-muted-foreground">
+          <div className="flex h-full items-center justify-center px-4 text-center text-sm text-muted">
             <p>当前文件暂时不可读取。</p>
           </div>
         )}
       </div>
-    </section>
+    </Card>
   );
 });
 
@@ -289,52 +300,48 @@ export const WorkflowAgentViewer = memo(function WorkflowAgentViewer({
 
   if (isLoading) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      <div
+        className="flex h-full flex-col gap-4 p-5"
+        data-testid="workflow-agent-viewer-loading"
+      >
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <Skeleton className="h-10 w-10 rounded-card" />
+            <div className="space-y-2">
+              <Skeleton className="h-4 w-44 rounded-full" />
+              <Skeleton className="h-3 w-56 rounded-full" />
+            </div>
+          </div>
+          <Skeleton className="h-8 w-40 rounded-full" />
+        </div>
+        <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[58fr_42fr]">
+          <Skeleton className="h-full min-h-[240px] rounded-panel" />
+          <Skeleton className="hidden h-full min-h-[240px] rounded-panel lg:block" />
+        </div>
       </div>
     );
   }
 
   if (error || !execution || !step || !isAgentStep || !viewerState) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-4 px-6 text-center">
-        <p className="text-sm text-foreground">
-          未找到可查看的 workflow agent 运行视图。
-        </p>
-        <p className="max-w-md text-xs text-muted-foreground">
-          {error instanceof Error
-            ? error.message
-            : "该步骤可能不是 agent 节点，或执行详情尚未加载完成。"}
-        </p>
-        <Button
-          type="button"
-          variant="outline"
-          onClick={() => {
-            navigate({
-              to: "/executions/$executionId",
-              params: { executionId },
-            });
-          }}
-        >
-          <ArrowLeft className="mr-2 size-4" />
-          返回执行调试页
-        </Button>
-      </div>
-    );
-  }
-
-  const executionStatus = executionStatusMeta[execution.status];
-  const stepStatus = stepStatusMeta[step.status];
-
-  return (
-    <div className="flex h-full flex-col overflow-hidden">
-      <header className="border-b border-border/50 px-5 py-4">
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="space-y-2">
+      <div
+        className="flex h-full items-center justify-center p-6"
+        data-testid="workflow-agent-viewer-error"
+      >
+        <EmptyState
+          icon={TriangleAlert}
+          tone="var(--color-error)"
+          title="未找到可查看的 workflow agent 运行视图。"
+          description={
+            error instanceof Error
+              ? error.message
+              : "该步骤可能不是 agent 节点，或执行详情尚未加载完成。"
+          }
+          action={
             <Button
               type="button"
-              variant="ghost"
-              className="-ml-3 h-8 px-3 text-muted-foreground"
+              variant="outline"
+              size="sm"
               onClick={() => {
                 navigate({
                   to: "/executions/$executionId",
@@ -345,53 +352,46 @@ export const WorkflowAgentViewer = memo(function WorkflowAgentViewer({
               <ArrowLeft className="mr-2 size-4" />
               返回执行调试页
             </Button>
-            <div>
-              <p className="text-lg font-semibold text-foreground">
-                {step.nodeName || "Agent 节点运行"}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Step #{step.id.slice(0, 8)} ·{" "}
-                {formatExecutionDateTime(step.startedAt)}
-              </p>
-            </div>
-          </div>
+          }
+        />
+      </div>
+    );
+  }
 
-          <div className="flex flex-wrap items-center gap-3">
-            <span
-              className={cn(
-                "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium",
-                executionStatus.badgeClassName,
-              )}
-            >
-              <span
-                className={cn(
-                  "h-2 w-2 rounded-full",
-                  executionStatus.pulseClassName,
-                  execution.status === "running" && "animate-pulse",
-                )}
-              />
-              执行 {executionStatus.label}
-            </span>
-            <span
-              className={cn(
-                "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium",
-                stepStatus.badgeClassName,
-              )}
-            >
-              <span
-                className={cn("h-2 w-2 rounded-full", stepStatus.dotClassName)}
-              />
-              节点 {stepStatus.label}
-            </span>
-            <span className="text-xs text-muted-foreground">
-              Socket {monitor.connectionStatus}
-            </span>
-            <span className="text-xs text-muted-foreground">
-              耗时 {formatExecutionDuration(step.startedAt, step.completedAt)}
-            </span>
-          </div>
-        </div>
-      </header>
+  return (
+    <div className="flex h-full flex-col overflow-hidden">
+      <div className="border-b border-border px-5 py-4">
+        <PageHeader
+          icon={Bot}
+          tone="var(--color-node-agent)"
+          title={step.nodeName || "Agent 节点运行"}
+          description={`Step #${step.id.slice(0, 8)} · ${formatExecutionDateTime(step.startedAt)}`}
+          actions={
+            <>
+              <ExecutionStatusBadge status={execution.status} prefix="执行" />
+              <StepStatusBadge status={step.status} prefix="节点" />
+              <Badge variant="outline">Socket {monitor.connectionStatus}</Badge>
+              <Badge variant="outline">
+                耗时 {formatExecutionDuration(step.startedAt, step.completedAt)}
+              </Badge>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  navigate({
+                    to: "/executions/$executionId",
+                    params: { executionId },
+                  });
+                }}
+              >
+                <ArrowLeft className="mr-2 size-4" />
+                返回执行调试页
+              </Button>
+            </>
+          }
+        />
+      </div>
 
       <div ref={containerRef} className="hidden min-h-0 flex-1 lg:flex">
         <div
@@ -408,7 +408,7 @@ export const WorkflowAgentViewer = memo(function WorkflowAgentViewer({
         <button
           type="button"
           aria-label="调整消息流与上下文宽度"
-          className="mx-3 w-1 cursor-col-resize rounded-full bg-border/80 transition hover:bg-primary/60"
+          className="mx-3 w-1 shrink-0 cursor-col-resize rounded-full bg-border transition-colors hover:bg-primary"
           onMouseDown={() => {
             resizingRef.current = true;
           }}
@@ -429,8 +429,8 @@ export const WorkflowAgentViewer = memo(function WorkflowAgentViewer({
             />
           </div>
 
-          <div className="flex items-center justify-between border-b border-border/40 px-3 py-2">
-            <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+          <div className="flex items-center justify-between border-b border-border px-3 py-2">
+            <span className="text-xs uppercase tracking-[0.18em] text-muted">
               Workspace
             </span>
             <Button
@@ -458,7 +458,7 @@ export const WorkflowAgentViewer = memo(function WorkflowAgentViewer({
                   onSelectFile={setSelectedPath}
                 />
                 {workspaceError && (
-                  <p className="mt-2 text-xs text-muted-foreground">
+                  <p className="mt-2 text-xs text-muted">
                     {workspaceError}
                   </p>
                 )}
@@ -492,7 +492,7 @@ export const WorkflowAgentViewer = memo(function WorkflowAgentViewer({
         />
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+            <span className="text-xs uppercase tracking-[0.18em] text-muted">
               Workspace
             </span>
             <Button
@@ -522,7 +522,7 @@ export const WorkflowAgentViewer = memo(function WorkflowAgentViewer({
             error={selectedFileError}
           />
           {workspaceError && (
-            <p className="text-xs text-muted-foreground">{workspaceError}</p>
+            <p className="text-xs text-muted">{workspaceError}</p>
           )}
         </div>
       </div>

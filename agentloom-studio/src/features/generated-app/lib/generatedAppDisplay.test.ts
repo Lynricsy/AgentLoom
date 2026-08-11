@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   getGeneratedAppPublicShareUnavailableReason,
+  getGeneratedAppReadinessBadgeVariant,
   isGeneratedAppPublicShareEligible,
 } from './generatedAppDisplay'
 import type { GeneratedAppReadiness } from '../types'
@@ -60,5 +61,34 @@ describe('generatedAppDisplay', () => {
         makeReadiness({ state: 'trial', warningCount: 1 }),
       ),
     ).toContain('非阻断 warning')
+  })
+
+  it('maps readiness state to badge semantics, downgrading publish candidates that cannot share', () => {
+    expect(
+      getGeneratedAppReadinessBadgeVariant(
+        makeReadiness({ state: 'publish_candidate', canCreatePublicShare: true }),
+      ),
+    ).toBe('success')
+
+    expect(
+      getGeneratedAppReadinessBadgeVariant(
+        makeReadiness({
+          state: 'publish_candidate',
+          canCreatePublicShare: false,
+        }),
+      ),
+    ).toBe('warning')
+
+    expect(
+      getGeneratedAppReadinessBadgeVariant(makeReadiness({ state: 'trial' })),
+    ).toBe('warning')
+
+    expect(
+      getGeneratedAppReadinessBadgeVariant(makeReadiness({ state: 'blocked' })),
+    ).toBe('error')
+
+    expect(
+      getGeneratedAppReadinessBadgeVariant(makeReadiness({ state: 'preview' })),
+    ).toBe('info')
   })
 })

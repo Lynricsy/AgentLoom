@@ -229,7 +229,8 @@ describe('AuditLogPage', () => {
     await user.type(screen.getByLabelText('资源类型'), 'workflow_definition')
     await user.type(screen.getByLabelText('资源 ID'), 'wf-77')
     await user.type(screen.getByLabelText('执行 ID'), 'exec-77')
-    await user.selectOptions(screen.getByLabelText('操作人类型'), 'user')
+    await user.click(screen.getByLabelText('操作人类型'))
+    await user.click(await screen.findByRole('option', { name: 'user' }))
     await user.type(screen.getByLabelText('操作人 ID'), 'user-77')
     await user.click(screen.getByRole('button', { name: '应用筛选' }))
 

@@ -4,15 +4,25 @@ import {
   AppWindow,
   CheckCircle2,
   ExternalLink,
-  Loader2,
+  Inbox,
   Send,
   ShieldCheck,
 } from 'lucide-react'
 
+import { EmptyState } from '@/shared/components/empty-state/EmptyState'
+import { Spinner } from '@/shared/components/spinner/Spinner'
 import { cn } from '@/shared/lib/utils'
+import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
-import { NativeSelect } from '@/shared/ui/native-select'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/shared/ui/select'
+import { Textarea } from '@/shared/ui/textarea'
 import {
   useCreateGeneratedAppPublicSubmission,
   useGeneratedAppPublicRuntime,
@@ -21,7 +31,7 @@ import {
 import {
   GENERATED_APP_SUBMISSION_STATUS_LABELS,
   formatGeneratedAppDateTime,
-  getGeneratedAppSubmissionStatusBadgeClass,
+  getGeneratedAppSubmissionStatusBadgeVariant,
 } from '../lib/generatedAppDisplay'
 import type {
   GeneratedAppPublicRuntime,
@@ -69,7 +79,7 @@ function PublicRuntimeLoading() {
       data-testid="generated-app-public-runtime-loading"
     >
       <div className="flex items-center gap-3 text-sm text-muted-foreground">
-        <Loader2 className="h-5 w-5 animate-spin" />
+        <Spinner size="lg" />
         正在打开应用…
       </div>
     </main>
@@ -82,9 +92,9 @@ function PublicRuntimeError({ onRetry }: { onRetry: () => void }) {
       className="flex min-h-screen items-center justify-center bg-background px-4 text-foreground"
       data-testid="generated-app-public-runtime-error"
     >
-      <section className="w-full max-w-xl border border-rose-500/30 bg-rose-500/5 p-6">
+      <section className="w-full max-w-xl rounded-panel border border-error/30 bg-error/5 p-6">
         <div className="flex items-start gap-3">
-          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-rose-300" />
+          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-error" />
           <div className="min-w-0 space-y-4">
             <div className="space-y-2">
               <h1 className="break-words text-lg font-semibold text-foreground">
@@ -94,13 +104,9 @@ function PublicRuntimeError({ onRetry }: { onRetry: () => void }) {
                 这个链接不存在、已被创建者关闭，或应用当前不满足公开访问条件。
               </p>
             </div>
-            <button
-              type="button"
-              onClick={onRetry}
-              className="inline-flex h-9 items-center justify-center rounded-md border border-border bg-background px-4 text-sm font-medium text-foreground hover:bg-muted"
-            >
+            <Button variant="outline" onClick={onRetry}>
               重新加载
-            </button>
+            </Button>
           </div>
         </div>
       </section>
@@ -114,14 +120,9 @@ function SubmissionStatusBadge({
   status: GeneratedAppPublicSubmission['status']
 }) {
   return (
-    <span
-      className={cn(
-        'inline-flex rounded-full border px-2 py-0.5 text-xs font-medium',
-        getGeneratedAppSubmissionStatusBadgeClass(status),
-      )}
-    >
+    <Badge variant={getGeneratedAppSubmissionStatusBadgeVariant(status)}>
       {GENERATED_APP_SUBMISSION_STATUS_LABELS[status]}
-    </span>
+    </Badge>
   )
 }
 
@@ -336,32 +337,32 @@ function WorkflowExecutionStatusPanel({
   return (
     <section
       className={cn(
-        'space-y-3 border p-4',
+        'space-y-3 rounded-card border p-4',
         completed
-          ? 'border-emerald-500/30 bg-emerald-500/5'
+          ? 'border-success/30 bg-success/5'
           : incomplete
-            ? 'border-amber-500/30 bg-amber-500/5'
-            : 'border-sky-500/30 bg-sky-500/5',
+            ? 'border-warning/30 bg-warning/5'
+            : 'border-info/30 bg-info/5',
       )}
       data-testid="workflow-execution-status"
       data-execution-status={handoff.executionStatus ?? 'unavailable'}
     >
       <div className="flex items-start gap-3">
         {active ? (
-          <Loader2 className="mt-0.5 h-5 w-5 shrink-0 animate-spin text-sky-300" />
+          <Spinner className="mt-0.5 h-5 w-5 shrink-0 text-info" />
         ) : completed ? (
-          <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-300" />
+          <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-success" />
         ) : (
-          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-300" />
+          <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-warning" />
         )}
         <div className="min-w-0 space-y-2">
           <div className="flex flex-wrap items-center gap-2">
             <h4 className="break-words text-sm font-semibold text-foreground">
               Workflow 执行状态
             </h4>
-            <span className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">
+            <Badge variant="secondary" size="sm">
               {getWorkflowExecutionStatusLabel(handoff.executionStatus)}
-            </span>
+            </Badge>
           </div>
           <p className="break-words text-sm leading-6 text-muted-foreground">
             {getWorkflowExecutionStateText(handoff)}
@@ -409,7 +410,7 @@ function FieldHelp({
         </p>
       ) : null}
       {error ? (
-        <p className="break-words text-sm text-rose-300">{error}</p>
+        <p className="break-words text-sm text-error">{error}</p>
       ) : null}
     </div>
   )
@@ -446,13 +447,12 @@ function RuntimeFormField({
       </label>
 
       {field.type === 'textarea' ? (
-        <textarea
+        <Textarea
           id={inputId}
           value={stringValue}
           onChange={(event) => onChange(field.id, event.target.value)}
           placeholder={field.placeholder}
           rows={4}
-          className="w-full resize-y border border-input bg-background px-3 py-2 text-sm text-foreground outline-none placeholder:text-muted-foreground focus:border-ring focus:ring-2 focus:ring-ring/30"
           disabled={disabled}
         />
       ) : null}
@@ -495,19 +495,22 @@ function RuntimeFormField({
       ) : null}
 
       {field.type === 'single_select' ? (
-        <NativeSelect
-          id={inputId}
+        <Select
           value={stringValue}
           onValueChange={(nextValue) => onChange(field.id, nextValue)}
           disabled={disabled}
         >
-          <option value="">请选择</option>
-          {field.options.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </NativeSelect>
+          <SelectTrigger id={inputId}>
+            <SelectValue placeholder="请选择" />
+          </SelectTrigger>
+          <SelectContent>
+            {field.options.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       ) : null}
 
       {field.type === 'multi_select' ? (
@@ -596,9 +599,9 @@ function PublicSubmissionResult({
           </div>
           <div className="flex items-start gap-3">
             {failed ? (
-              <AlertTriangle className="mt-1 h-5 w-5 shrink-0 text-rose-300" />
+              <AlertTriangle className="mt-1 h-5 w-5 shrink-0 text-error" />
             ) : (
-              <CheckCircle2 className="mt-1 h-5 w-5 shrink-0 text-emerald-300" />
+              <CheckCircle2 className="mt-1 h-5 w-5 shrink-0 text-success" />
             )}
             <div className="min-w-0 space-y-2">
               <h3 className="break-words text-lg font-semibold text-foreground">
@@ -617,7 +620,7 @@ function PublicSubmissionResult({
       ) : null}
 
       {submission.errorMessage ? (
-        <div className="border border-rose-500/30 bg-rose-500/5 p-3 text-sm text-rose-200">
+        <div className="rounded-card border border-error/30 bg-error/5 p-3 text-sm text-error">
           {submission.errorMessage}
         </div>
       ) : null}
@@ -814,7 +817,7 @@ function PublicRuntimeSuccess({
 
         <section className="border-y border-border bg-surface-elevated px-4 py-4 sm:px-5">
           <div className="flex items-start gap-3">
-            <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-emerald-300" />
+            <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-success" />
             <p className="break-words text-sm leading-6 text-muted-foreground">
               {app.dataUseNotice}
             </p>
@@ -906,14 +909,14 @@ function PublicRuntimeSuccess({
               ) : null}
 
               {formError ? (
-                <p className="break-words text-sm text-rose-300">{formError}</p>
+                <p className="break-words text-sm text-error">{formError}</p>
               ) : null}
               <Button
                 type="submit"
                 disabled={createSubmissionMutation.isPending}
               >
                 {createSubmissionMutation.isPending ? (
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <Spinner className="mr-2" />
                 ) : (
                   <Send className="mr-2 h-4 w-4" />
                 )}
@@ -933,7 +936,7 @@ function PublicRuntimeSuccess({
                 </div>
                 {submissionQuery.isFetching ? (
                   <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    <Spinner size="sm" />
                     正在刷新
                   </span>
                 ) : null}
@@ -945,9 +948,10 @@ function PublicRuntimeSuccess({
                   submission={visibleSubmission}
                 />
               ) : (
-                <div className="border border-dashed border-border p-4 text-sm text-muted-foreground">
-                  {app.runtimeForm.resultView.emptyState}
-                </div>
+                <EmptyState
+                  icon={Inbox}
+                  title={app.runtimeForm.resultView.emptyState}
+                />
               )}
             </div>
           </div>

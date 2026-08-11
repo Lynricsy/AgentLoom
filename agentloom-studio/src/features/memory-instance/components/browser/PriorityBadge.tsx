@@ -1,4 +1,5 @@
 import { Star } from 'lucide-react'
+import { Badge } from '@/shared/ui/badge'
 import { cn } from '@/shared/lib/utils'
 
 interface PriorityBadgeProps {
@@ -6,31 +7,29 @@ interface PriorityBadgeProps {
   size?: 'sm' | 'lg'
 }
 
+/** 优先级越小越靠前：0 为最高优先级，用错误色示警，其余依次降温 */
 export function PriorityBadge({ priority, size = 'sm' }: PriorityBadgeProps) {
   if (priority === null || priority === undefined) return null
 
-  const colors =
+  const variant =
     priority === 0
-      ? 'bg-rose-950/40 text-rose-400 border-rose-800/40'
+      ? 'error'
       : priority <= 2
-        ? 'bg-amber-950/30 text-amber-400 border-amber-800/30'
+        ? 'warning'
         : priority <= 5
-          ? 'bg-sky-950/30 text-sky-400 border-sky-800/30'
-          : 'bg-muted text-muted-foreground border-border'
-
-  const sizeClass =
-    size === 'lg' ? 'px-2.5 py-1 text-xs gap-1.5' : 'px-1.5 py-0.5 text-[10px] gap-1'
+          ? 'info'
+          : 'secondary'
 
   return (
-    <span
+    <Badge
+      variant={variant}
       className={cn(
-        'inline-flex items-center rounded border font-mono font-semibold',
-        colors,
-        sizeClass,
+        'rounded-md font-mono font-semibold',
+        size === 'lg' ? 'gap-1.5 px-2.5 py-1 text-xs' : 'gap-1 px-1.5 py-0.5 text-[10px]',
       )}
     >
       <Star size={size === 'lg' ? 12 : 9} />
       {priority}
-    </span>
+    </Badge>
   )
 }

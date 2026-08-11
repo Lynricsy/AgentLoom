@@ -1,8 +1,16 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate } from '@tanstack/react-router';
-import { ArrowLeft, Loader2, Save, X } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Save, Settings, X } from 'lucide-react';
+import { PageHeader } from '@/shared/components/page-header/PageHeader';
+import { EmptyState } from '@/shared/components/empty-state/EmptyState';
+import { Spinner } from '@/shared/components/spinner/Spinner';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
+import { Textarea } from '@/shared/ui/textarea';
+import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card';
+import { RadioGroup, RadioGroupItem } from '@/shared/ui/radio-group';
+import { Skeleton } from '@/shared/ui/skeleton';
+import { useToast } from '@/shared/ui/toast';
 import {
   useMemoryInstance,
   useUpdateMemoryInstance,
@@ -12,11 +20,18 @@ interface MemoryInstanceSettingsPageProps {
   memoryInstanceId: string;
 }
 
+const MEMORY_TONE = 'var(--color-node-memory)';
+
 export function MemoryInstanceSettingsPage({
   memoryInstanceId,
 }: MemoryInstanceSettingsPageProps) {
   const navigate = useNavigate();
-  const { data: instance, isLoading, isError } = useMemoryInstance(memoryInstanceId);
+  const { notify } = useToast();
+  const {
+    data: instance,
+    isLoading,
+    isError,
+  } = useMemoryInstance(memoryInstanceId);
   const updateMutation = useUpdateMemoryInstance();
 
   // 表单状态
@@ -72,7 +87,11 @@ export function MemoryInstanceSettingsPage({
       });
       handleBack();
     } catch {
-      // 错误已由 mutation 状态管理
+      notify({
+        variant: 'error',
+        title: '保存失败',
+        description: '实例设置未能保存，请稍后重试。',
+      });
     }
   }, [
     memoryInstanceId,
@@ -84,75 +103,100 @@ export function MemoryInstanceSettingsPage({
     systemPromptOverride,
     updateMutation,
     handleBack,
+    notify,
   ]);
 
   if (isLoading) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      <div
+        className="flex h-full flex-col gap-6 p-6"
+        data-testid="memory-settings-skeleton"
+      >
+        <div className="flex items-center gap-3">
+          <Skeleton className="h-10 w-10 rounded-card" />
+          <Skeleton className="h-4 w-40 rounded" />
+        </div>
+        {Array.from({ length: 3 }, (_, i) => (
+          <Skeleton key={i} className="h-44 rounded-card" />
+        ))}
       </div>
     );
   }
 
   if (isError || !instance) {
     return (
-      <div className="flex h-full flex-col items-center justify-center gap-4">
-        <p className="text-muted-foreground">加载记忆实例失败</p>
-        <Button variant="outline" onClick={() => void navigate({ to: '/memory' })}>
-          返回列表
-        </Button>
+      <div className="flex h-full items-center justify-center p-6">
+        <EmptyState
+          icon={AlertCircle}
+          tone="var(--color-error)"
+          title="加载记忆实例失败"
+          description="实例可能已被删除，或网络暂时不可用。"
+          action={
+            <Button
+              variant="outline"
+              onClick={() => void navigate({ to: '/memory' })}
+            >
+              返回列表
+            </Button>
+          }
+        />
       </div>
     );
   }
 
   return (
-    <div className="flex h-full flex-col p-6 gap-6">
-      {/* 顶部导航 */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={handleBack}>
-            <ArrowLeft className="mr-1 h-4 w-4" />
-            返回详情
-          </Button>
-          <h1 className="text-xl font-bold">实例设置</h1>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={handleBack}>
-            <X className="mr-1 h-4 w-4" />
-            取消
-          </Button>
-          <Button
-            size="sm"
-            onClick={() => void handleSave()}
-            disabled={!name.trim() || updateMutation.isPending}
-          >
-            {updateMutation.isPending ? (
-              <Loader2 className="mr-1 h-4 w-4 animate-spin" />
-            ) : (
-              <Save className="mr-1 h-4 w-4" />
-            )}
-            保存
-          </Button>
-        </div>
+    <div className="flex h-full flex-col gap-6 p-6">
+      <div className="flex flex-col gap-4">
+        <Button
+          variant="ghost"
+          size="sm"
+          className="-ml-2 self-start text-muted hover:text-foreground"
+          onClick={handleBack}
+        >
+          <ArrowLeft className="h-4 w-4" />
+          返回详情
+        </Button>
+
+        <PageHeader
+          icon={Settings}
+          tone={MEMORY_TONE}
+          title="实例设置"
+          description={`调整「${instance.name}」的基本信息、知识域与系统提示词`}
+          actions={
+            <>
+              <Button variant="outline" size="sm" onClick={handleBack}>
+                <X className="h-4 w-4" />
+                取消
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => void handleSave()}
+                disabled={!name.trim() || updateMutation.isPending}
+              >
+                {updateMutation.isPending ? (
+                  <Spinner size="sm" className="text-current" />
+                ) : (
+                  <Save className="h-4 w-4" />
+                )}
+                保存
+              </Button>
+            </>
+          }
+        />
       </div>
 
-      {updateMutation.isError && (
-        <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
-          保存失败，请重试
-        </div>
-      )}
-
-      <div className="flex-1 space-y-6 overflow-y-auto">
-        {/* 基本信息 */}
-        <section className="rounded-lg border border-border bg-card p-5">
-          <h2 className="mb-4 text-base font-semibold">基本信息</h2>
-          <div className="space-y-4">
-            <div>
+      <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pb-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>基本信息</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-1.5">
               <label
                 htmlFor="settings-name"
-                className="mb-1.5 block text-sm font-medium"
+                className="block text-sm font-medium text-foreground"
               >
-                名称 <span className="text-destructive">*</span>
+                名称 <span className="text-error">*</span>
               </label>
               <Input
                 id="settings-name"
@@ -161,126 +205,136 @@ export function MemoryInstanceSettingsPage({
                 placeholder="记忆实例名称"
               />
             </div>
-            <div>
+            <div className="space-y-1.5">
               <label
                 htmlFor="settings-description"
-                className="mb-1.5 block text-sm font-medium"
+                className="block text-sm font-medium text-foreground"
               >
                 描述
               </label>
-              <textarea
+              <Textarea
                 id="settings-description"
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="输入描述（可选）"
                 rows={3}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
               />
             </div>
-          </div>
-        </section>
+          </CardContent>
+        </Card>
 
-        {/* 知识域配置 */}
-        <section className="rounded-lg border border-border bg-card p-5">
-          <h2 className="mb-4 text-base font-semibold">知识域配置</h2>
-          <div className="space-y-4">
-            <div>
+        <Card>
+          <CardHeader>
+            <CardTitle>知识域配置</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-1.5">
               <label
                 htmlFor="settings-valid-domains"
-                className="mb-1.5 block text-sm font-medium"
+                className="block text-sm font-medium text-foreground"
               >
                 有效域
               </label>
-              <p className="mb-2 text-xs text-muted-foreground">
+              <p className="text-xs text-muted">
                 每行一个域名，用于限定记忆搜索范围
               </p>
-              <textarea
+              <Textarea
                 id="settings-valid-domains"
                 value={validDomainsText}
                 onChange={(e) => setValidDomainsText(e.target.value)}
-                placeholder={"例如:\nproduct-knowledge\ncustomer-service\ntechnical-docs"}
+                placeholder={
+                  '例如:\nproduct-knowledge\ncustomer-service\ntechnical-docs'
+                }
                 rows={4}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                className="font-mono"
               />
             </div>
-            <div>
+            <div className="space-y-1.5">
               <label
                 htmlFor="settings-core-uris"
-                className="mb-1.5 block text-sm font-medium"
+                className="block text-sm font-medium text-foreground"
               >
                 核心记忆 URI
               </label>
-              <p className="mb-2 text-xs text-muted-foreground">
+              <p className="text-xs text-muted">
                 每行一个 URI，指定始终加载到上下文的核心记忆节点
               </p>
-              <textarea
+              <Textarea
                 id="settings-core-uris"
                 value={coreMemoryUrisText}
                 onChange={(e) => setCoreMemoryUrisText(e.target.value)}
-                placeholder={"例如:\nmemory://persona/default\nmemory://rules/safety"}
+                placeholder={
+                  '例如:\nmemory://persona/default\nmemory://rules/safety'
+                }
                 rows={4}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                className="font-mono"
               />
             </div>
-          </div>
-        </section>
+          </CardContent>
+        </Card>
 
-        {/* 系统提示词 */}
-        <section className="rounded-lg border border-border bg-card p-5">
-          <h2 className="mb-4 text-base font-semibold">系统提示词</h2>
-          <div className="space-y-4">
-            <div className="flex items-center gap-3">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="prompt-mode"
-                  checked={!useCustomPrompt}
-                  onChange={() => setUseCustomPrompt(false)}
-                  className="h-4 w-4 accent-primary"
+        <Card>
+          <CardHeader>
+            <CardTitle>系统提示词</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <RadioGroup
+              value={useCustomPrompt ? 'custom' : 'default'}
+              onValueChange={(next) => setUseCustomPrompt(next === 'custom')}
+              className="flex flex-wrap items-center gap-5"
+            >
+              <label
+                htmlFor="prompt-mode-default"
+                className="flex cursor-pointer items-center gap-2 text-sm text-foreground"
+              >
+                <RadioGroupItem
+                  id="prompt-mode-default"
+                  value="default"
+                  aria-label="使用默认模板"
                 />
-                <span className="text-sm">使用默认模板</span>
+                使用默认模板
               </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="prompt-mode"
-                  checked={useCustomPrompt}
-                  onChange={() => setUseCustomPrompt(true)}
-                  className="h-4 w-4 accent-primary"
+              <label
+                htmlFor="prompt-mode-custom"
+                className="flex cursor-pointer items-center gap-2 text-sm text-foreground"
+              >
+                <RadioGroupItem
+                  id="prompt-mode-custom"
+                  value="custom"
+                  aria-label="自定义覆盖"
                 />
-                <span className="text-sm">自定义覆盖</span>
+                自定义覆盖
               </label>
-            </div>
+            </RadioGroup>
 
-            {useCustomPrompt && (
-              <div>
+            {useCustomPrompt ? (
+              <div className="space-y-1.5">
                 <label
                   htmlFor="settings-system-prompt"
-                  className="mb-1.5 block text-sm font-medium"
+                  className="block text-sm font-medium text-foreground"
                 >
                   自定义系统提示词
                 </label>
-                <p className="mb-2 text-xs text-muted-foreground">
-                  覆盖默认的系统提示词模板。支持 {'{{memory_context}}'} 等变量占位符。
+                <p className="text-xs text-muted">
+                  覆盖默认的系统提示词模板。支持 {'{{memory_context}}'}{' '}
+                  等变量占位符。
                 </p>
-                <textarea
+                <Textarea
                   id="settings-system-prompt"
                   value={systemPromptOverride}
                   onChange={(e) => setSystemPromptOverride(e.target.value)}
                   placeholder="输入自定义系统提示词..."
                   rows={10}
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-mono placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+                  className="font-mono"
                 />
               </div>
-            )}
-
-            {!useCustomPrompt && (
-              <p className="text-sm text-muted-foreground">
+            ) : (
+              <p className="text-sm text-muted">
                 将使用系统默认的记忆提示词模板。如需定制，请切换到「自定义覆盖」模式。
               </p>
             )}
-          </div>
-        </section>
+          </CardContent>
+        </Card>
       </div>
     </div>
   );

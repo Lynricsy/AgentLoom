@@ -83,17 +83,6 @@ export function getAlertSeverityLabel(severity: MonitoringAlertSeverity): string
   }
 }
 
-export function getAlertSeverityClassName(severity: MonitoringAlertSeverity): string {
-  switch (severity) {
-    case 'critical':
-      return 'border-rose-500/30 bg-rose-500/10 text-rose-100'
-    case 'warning':
-      return 'border-amber-500/30 bg-amber-500/10 text-amber-100'
-    default:
-      return 'border-sky-500/30 bg-sky-500/10 text-sky-100'
-  }
-}
-
 export function getAlertCategoryLabel(category: MonitoringAlertCategory): string {
   switch (category) {
     case 'error-rate':
@@ -118,17 +107,6 @@ export function getRiskLevelLabel(level: MonitoringRiskLevel): string {
   }
 }
 
-export function getRiskLevelClassName(level: MonitoringRiskLevel): string {
-  switch (level) {
-    case 'critical':
-      return 'border-rose-500/30 bg-rose-500/10 text-rose-100'
-    case 'warning':
-      return 'border-amber-500/30 bg-amber-500/10 text-amber-100'
-    default:
-      return 'border-emerald-500/30 bg-emerald-500/10 text-emerald-100'
-  }
-}
-
 export function getHotspotKindLabel(kind: MonitoringHotspotKind): string {
   return kind === 'workflow' ? '工作流热点' : '执行热点'
 }
@@ -147,22 +125,6 @@ export function getHotspotStatusLabel(status: MonitoringHotspotStatus): string {
       return '运行中'
     default:
       return '稳定'
-  }
-}
-
-export function getHotspotStatusClassName(status: MonitoringHotspotStatus): string {
-  switch (status) {
-    case 'governance-paused':
-    case 'blocked':
-      return 'border-amber-500/30 bg-amber-500/10 text-amber-100'
-    case 'failed':
-      return 'border-rose-500/30 bg-rose-500/10 text-rose-100'
-    case 'paused':
-      return 'border-violet-500/30 bg-violet-500/10 text-violet-100'
-    case 'running':
-      return 'border-sky-500/30 bg-sky-500/10 text-sky-100'
-    default:
-      return 'border-emerald-500/30 bg-emerald-500/10 text-emerald-100'
   }
 }
 

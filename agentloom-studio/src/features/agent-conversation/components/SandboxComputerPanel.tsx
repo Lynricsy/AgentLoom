@@ -4,7 +4,6 @@ import {
   Terminal,
   Cpu,
   HardDrive,
-  Loader2,
   ChevronDown,
   ChevronRight,
   FileCode,
@@ -14,6 +13,9 @@ import {
   Wrench,
 } from "lucide-react";
 import { cn } from "@/shared/lib/utils";
+import { EmptyState } from "@/shared/components/empty-state/EmptyState";
+import { Spinner } from "@/shared/components/spinner/Spinner";
+import { Badge, type BadgeProps } from "@/shared/ui/badge";
 import {
   useConversationSandboxProcesses,
   useConversationSandboxStats,
@@ -55,7 +57,7 @@ const HeaderMetric = memo(function HeaderMetric({
   const Icon = icon;
 
   return (
-    <div className="flex items-center gap-1 rounded-md border border-border/40 bg-surface px-2 py-1 text-[10px] text-muted-foreground">
+    <div className="flex items-center gap-1 rounded-md border border-border bg-surface px-2 py-1 text-[10px] text-muted-foreground">
       {Icon ? <Icon className="h-3 w-3 shrink-0" /> : null}
       <span className="uppercase tracking-wide">{label}</span>
       <span className="font-medium text-foreground">{value}</span>
@@ -175,21 +177,16 @@ function getToolProcessStatus(status: ToolCallData["status"]): {
   }
 }
 
-function getProcessStatusClasses(tone: ProcessStatusTone): string {
-  switch (tone) {
-    case "success":
-      return "border-success/30 bg-success/10 text-success";
-    case "warning":
-      return "border-warning/30 bg-warning/10 text-warning";
-    case "error":
-      return "border-error/30 bg-error/10 text-error";
-    case "muted":
-      return "border-border/60 bg-surface text-muted-foreground";
-    case "info":
-    default:
-      return "border-info/30 bg-info/10 text-info";
-  }
-}
+const PROCESS_TONE_VARIANT: Record<
+  ProcessStatusTone,
+  NonNullable<BadgeProps["variant"]>
+> = {
+  success: "success",
+  warning: "warning",
+  error: "error",
+  muted: "secondary",
+  info: "info",
+};
 
 function buildFallbackActivityItems(params: {
   terminalEntries: TerminalEntry[];
@@ -307,9 +304,9 @@ const ActivityCard = memo(function ActivityCard({
   const Icon = item.icon;
 
   return (
-    <div className="rounded-lg border border-border/60 bg-surface-elevated/40 p-3">
+    <div className="rounded-card border border-border bg-surface-elevated/40 p-3">
       <div className="flex items-start gap-3">
-        <div className="rounded-md border border-border/50 bg-background/70 p-2 text-muted-foreground">
+        <div className="rounded-md border border-border bg-surface p-2 text-muted-foreground">
           <Icon className="h-3.5 w-3.5" />
         </div>
         <div className="min-w-0 flex-1">
@@ -322,18 +319,17 @@ const ActivityCard = memo(function ActivityCard({
                 {item.subtitle}
               </div>
             </div>
-            <span
-              className={cn(
-                "shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-medium",
-                getProcessStatusClasses(item.statusTone),
-              )}
+            <Badge
+              variant={PROCESS_TONE_VARIANT[item.statusTone]}
+              size="sm"
+              className="shrink-0"
             >
               {item.statusLabel}
-            </span>
+            </Badge>
           </div>
 
           {item.command ? (
-            <div className="mt-2 rounded-md border border-success/20 bg-success/5 px-2.5 py-2 font-mono text-[11px] text-success break-all">
+            <div className="mt-2 rounded-md border border-success/20 bg-success/5 px-2.5 py-2 font-mono text-[11px] break-all text-success">
               <span className="mr-1 text-muted-foreground">$</span>
               {item.command}
             </div>
@@ -350,7 +346,7 @@ const ActivityCard = memo(function ActivityCard({
               {item.meta.map((meta) => (
                 <span
                   key={`${item.id}-${meta}`}
-                  className="rounded-md border border-border/50 bg-background/60 px-1.5 py-0.5 text-[10px] text-muted-foreground"
+                  className="rounded-md border border-border bg-surface px-1.5 py-0.5 text-[10px] text-muted-foreground"
                 >
                   {meta}
                 </span>
@@ -417,14 +413,13 @@ const ProcessTableRow = memo(function ProcessTableRow({
       </td>
       <td className="px-3 py-2">
         <div className="flex flex-col gap-1">
-          <span
-            className={cn(
-              "inline-flex w-fit rounded-full border px-2 py-0.5 text-[10px] font-medium",
-              getProcessStatusClasses(stateMeta.tone),
-            )}
+          <Badge
+            variant={PROCESS_TONE_VARIANT[stateMeta.tone]}
+            size="sm"
+            className="w-fit"
           >
             {stateMeta.label}
-          </span>
+          </Badge>
           <span className="font-mono text-[10px] text-muted-foreground">
             {process.state}
           </span>
@@ -456,10 +451,10 @@ function ProcessMonitorView({
 }) {
   if (isLoading && (!processes || processes.length === 0)) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center px-6 text-center text-muted-foreground">
-        <Loader2 className="mb-3 h-5 w-5 animate-spin" />
+      <div className="flex flex-1 flex-col items-center justify-center gap-2 px-6 text-center text-muted-foreground">
+        <Spinner size="lg" label="正在读取容器进程快照" />
         <div className="text-sm">正在读取容器进程快照…</div>
-        <div className="mt-1 text-xs leading-relaxed">
+        <div className="text-xs leading-relaxed">
           {hasRealtimeSource
             ? "进程数据每 5 秒自动刷新一次。"
             : "当前视图还没有连接到实时进程数据源。"}
@@ -471,8 +466,8 @@ function ProcessMonitorView({
   if (processes && processes.length > 0) {
     return (
       <div className="flex h-full flex-1 flex-col overflow-hidden">
-        <div className="border-b border-border/30 bg-surface-elevated/20 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
-          <div className="font-medium text-foreground/90">实时进程快照</div>
+        <div className="border-b border-border bg-surface-elevated/40 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
+          <div className="font-medium text-foreground">实时进程快照</div>
           <div className="mt-0.5">
             按 CPU /
             内存占用排序展示当前沙箱进程，效果更接近任务管理器而不是终端日志。
@@ -484,7 +479,7 @@ function ProcessMonitorView({
             className="min-w-full border-collapse"
           >
             <thead className="sticky top-0 z-10 bg-surface text-left">
-              <tr className="border-b border-border/40 text-[10px] uppercase tracking-[0.18em] text-muted-foreground">
+              <tr className="border-b border-border text-[10px] tracking-[0.18em] text-muted-foreground uppercase">
                 <th className="px-3 py-2 font-medium">PID</th>
                 <th className="px-3 py-2 font-medium">命令</th>
                 <th className="px-3 py-2 font-medium">状态</th>
@@ -527,17 +522,20 @@ function ProcessMonitorView({
   return (
     <div
       data-testid="sandbox-process-empty"
-      className="flex flex-1 flex-col items-center justify-center px-6 text-center text-muted-foreground"
+      className="flex flex-1 items-center justify-center p-4"
     >
-      <Cpu className="mb-3 h-5 w-5 opacity-50" />
-      <div className="text-sm">
-        {hasRealtimeSource ? "暂无可展示的进程快照" : "当前视图未接入进程快照"}
-      </div>
-      <div className="mt-1 text-xs leading-relaxed">
-        {hasRealtimeSource
-          ? "当沙箱启动并产生活动后，这里会显示真实的进程表。"
-          : "这里保留给会话沙箱的实时进程监视器使用。"}
-      </div>
+      <EmptyState
+        className="border-0"
+        icon={Cpu}
+        title={
+          hasRealtimeSource ? "暂无可展示的进程快照" : "当前视图未接入进程快照"
+        }
+        description={
+          hasRealtimeSource
+            ? "当沙箱启动并产生活动后，这里会显示真实的进程表。"
+            : "这里保留给会话沙箱的实时进程监视器使用。"
+        }
+      />
     </div>
   );
 }
@@ -582,7 +580,7 @@ const FileChangeItem = memo(function FileChangeItem({
   }, [hasDiff, hasContent]);
 
   return (
-    <div className="border-b border-border/30 last:border-0">
+    <div className="border-b border-border last:border-0">
       <button
         type="button"
         onClick={toggleExpand}
@@ -607,16 +605,19 @@ const FileChangeItem = memo(function FileChangeItem({
             {dirPath}
           </span>
         )}
-        <span
-          className={cn(
-            "text-[10px] px-1.5 py-0.5 rounded shrink-0",
-            change.changeType === "created" && "bg-success/15 text-success",
-            change.changeType === "modified" && "bg-warning/15 text-warning",
-            change.changeType === "deleted" && "bg-error/15 text-error",
-          )}
+        <Badge
+          variant={
+            change.changeType === "created"
+              ? "success"
+              : change.changeType === "modified"
+                ? "warning"
+                : "error"
+          }
+          size="sm"
+          className="shrink-0"
         >
           {changeTypeLabel(change.changeType)}
-        </span>
+        </Badge>
       </button>
 
       {expanded && (hasDiff || hasContent) && (
@@ -660,9 +661,13 @@ function DiffHighlight({ diff }: { diff: string }) {
 function FileChangesView({ changes }: { changes: FileChange[] }) {
   if (changes.length === 0) {
     return (
-      <div className="flex flex-1 flex-col items-center justify-center px-6 text-center text-muted-foreground">
-        <FileCode className="h-4 w-4 mr-2 opacity-50" />
-        <span>暂无文件变更</span>
+      <div className="flex flex-1 items-center justify-center p-4">
+        <EmptyState
+          className="border-0"
+          icon={FileCode}
+          title="暂无文件变更"
+          description="Agent 写入或修改沙箱文件后，变更会在这里逐条列出。"
+        />
       </div>
     );
   }
@@ -684,26 +689,28 @@ function ActiveToolView({ toolCall }: { toolCall: ToolCallData }) {
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <div className="flex items-center gap-2 border-b border-border/30 px-3 py-2">
+      <div className="flex items-center gap-2 border-b border-border px-3 py-2">
         <Icon className="size-3.5 text-muted-foreground" />
-        <span className="text-xs font-mono font-medium text-foreground truncate">
+        <span className="truncate font-mono text-xs font-medium text-foreground">
           {toolCall.tool}
         </span>
-        <span
-          className={cn(
-            "ml-auto text-[10px] px-1.5 py-0.5 rounded",
-            state === "completed" && "bg-success/15 text-success",
-            state === "failed" && "bg-error/15 text-error",
-            (state === "pending" || state === "streaming") &&
-              "bg-info/15 text-info",
-          )}
+        <Badge
+          variant={
+            state === "completed"
+              ? "success"
+              : state === "failed"
+                ? "error"
+                : "info"
+          }
+          size="sm"
+          className="ml-auto shrink-0"
         >
           {state === "completed"
             ? "完成"
             : state === "failed"
               ? "失败"
               : "执行中"}
-        </span>
+        </Badge>
       </div>
       <div className="flex-1 overflow-y-auto p-3">
         <renderer.Detail toolCall={toolCall} state={state} />
@@ -716,14 +723,15 @@ function ToolIdleView() {
   return (
     <div
       data-testid="sandbox-tool-empty"
-      className="flex flex-1 flex-col items-center justify-center px-6 text-center text-muted-foreground"
+      className="flex flex-1 items-center justify-center p-4"
     >
-      <Wrench className="mb-3 h-5 w-5 opacity-50" />
-      <div className="text-sm">本轮执行已开始，等待工具调用</div>
-      <div className="mt-1 text-xs leading-relaxed">
-        如果 Agent
-        正在思考或只输出文本，这里会暂时保持空态；一旦调用工具，详情会实时更新。
-      </div>
+      <EmptyState
+        className="border-0"
+        icon={Wrench}
+        tone="var(--color-type-tool)"
+        title="本轮执行已开始，等待工具调用"
+        description="如果 Agent 正在思考或只输出文本，这里会暂时保持空态；一旦调用工具，详情会实时更新。"
+      />
     </div>
   );
 }
@@ -796,17 +804,17 @@ export function SandboxComputerPanel({
   }, [activeTab, showToolTab]);
 
   return (
-    <div className="flex flex-col h-full bg-surface rounded-lg border border-border overflow-hidden">
-      <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-surface-elevated/50">
-        <div className="flex items-center gap-2">
-          <Monitor className="h-4 w-4 text-info" />
-          <span className="text-sm font-medium text-foreground">
+    <div className="flex h-full flex-col overflow-hidden rounded-card border border-border bg-surface">
+      <div className="flex items-center justify-between gap-2 border-b border-border bg-surface-elevated/50 px-3 py-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <Monitor className="h-4 w-4 text-primary" />
+          <span className="truncate text-sm font-medium text-foreground">
             {agentName}的电脑
           </span>
           <StatusDot status={sandboxStatus} />
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <HeaderMetric icon={Cpu} label="CPU" value={cpuLabel} />
           <HeaderMetric label="MEM" value={memoryLabel} />
           <HeaderMetric icon={HardDrive} label="DISK" value={diskLabel} />
@@ -818,16 +826,16 @@ export function SandboxComputerPanel({
           type="button"
           onClick={() => setActiveTab("process")}
           className={cn(
-            "flex items-center gap-1.5 px-3 py-1.5 text-xs transition-colors",
+            "flex items-center gap-1.5 border-b-2 px-3 py-1.5 text-xs transition-colors",
             visibleActiveTab === "process"
-              ? "text-foreground border-b-2 border-info"
-              : "text-muted-foreground hover:text-foreground",
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground",
           )}
         >
           <Cpu className="h-3 w-3" />
           进程
           {visibleProcessCount > 0 && (
-            <span className="text-[10px] bg-surface-elevated px-1 rounded">
+            <span className="rounded bg-surface-elevated px-1 text-[10px] text-muted-foreground">
               {visibleProcessCount}
             </span>
           )}
@@ -836,16 +844,16 @@ export function SandboxComputerPanel({
           type="button"
           onClick={() => setActiveTab("changes")}
           className={cn(
-            "flex items-center gap-1.5 px-3 py-1.5 text-xs transition-colors",
+            "flex items-center gap-1.5 border-b-2 px-3 py-1.5 text-xs transition-colors",
             visibleActiveTab === "changes"
-              ? "text-foreground border-b-2 border-info"
-              : "text-muted-foreground hover:text-foreground",
+              ? "border-primary text-primary"
+              : "border-transparent text-muted-foreground hover:text-foreground",
           )}
         >
           <FileCode className="h-3 w-3" />
           文件变更
           {fileChanges.length > 0 && (
-            <span className="text-[10px] bg-surface-elevated px-1 rounded">
+            <span className="rounded bg-surface-elevated px-1 text-[10px] text-muted-foreground">
               {fileChanges.length}
             </span>
           )}
@@ -855,10 +863,10 @@ export function SandboxComputerPanel({
             type="button"
             onClick={() => setActiveTab("tool")}
             className={cn(
-              "flex items-center gap-1.5 px-3 py-1.5 text-xs transition-colors",
+              "flex items-center gap-1.5 border-b-2 px-3 py-1.5 text-xs transition-colors",
               visibleActiveTab === "tool"
-                ? "text-foreground border-b-2 border-info"
-                : "text-muted-foreground hover:text-foreground",
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground",
             )}
           >
             <Wrench className="h-3 w-3" />

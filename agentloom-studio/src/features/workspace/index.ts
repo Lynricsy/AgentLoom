@@ -1,6 +1,5 @@
 export { WorkspaceManagementPage } from "./components/WorkspaceManagementPage";
 export { WorkspaceDetailPage } from "./components/WorkspaceDetailPage";
-export { WorkspaceCard } from "./components/WorkspaceCard";
 export { CreateWorkspaceDialog } from "./components/CreateWorkspaceDialog";
 export { WorkspaceFilePreviewPanel } from "./components/WorkspaceFilePreviewPanel";
 

@@ -1,5 +1,6 @@
 import { createRoute } from '@tanstack/react-router';
 import { Link } from '@tanstack/react-router';
+import { motion } from 'motion/react';
 import {
   Shield,
   KeyRound,
@@ -8,8 +9,12 @@ import {
   Gauge,
   Server,
   FileText,
+  Settings,
   SlidersHorizontal,
 } from 'lucide-react';
+import { PageHeader } from '@/shared/components/page-header/PageHeader';
+import { staggerList } from '@/shared/lib/motion';
+import { Card, CardContent, CardDescription, CardTitle } from '@/shared/ui/card';
 import { rootRoute } from '../__root';
 
 const SETTINGS_SECTIONS = [
@@ -66,36 +71,34 @@ const SETTINGS_SECTIONS = [
 function SettingsOverviewPage() {
   return (
     <div className="space-y-6 px-4 py-6 sm:px-6 lg:px-8">
-      <div className="space-y-2">
-        <h1 className="text-2xl font-semibold text-foreground">设置</h1>
-        <p className="max-w-2xl text-sm text-muted-foreground">
-          管理平台安全、监控、资源配额与部署相关配置。
-        </p>
-      </div>
+      <PageHeader
+        icon={Settings}
+        title="设置"
+        description="管理平台安全、监控、资源配额与部署相关配置。"
+      />
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {SETTINGS_SECTIONS.map((section) => {
+        {SETTINGS_SECTIONS.map((section, index) => {
           const Icon = section.icon;
           return (
-            <Link
-              key={section.to}
-              to={section.to}
-              className="group rounded-2xl border border-border bg-surface-elevated p-5 shadow-sm transition-colors hover:border-primary/40"
-            >
-              <div className="flex items-start gap-4">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary transition-colors group-hover:bg-primary/15">
-                  <Icon className="h-5 w-5" />
-                </div>
-                <div className="min-w-0 space-y-1">
-                  <h2 className="text-sm font-semibold text-foreground">
-                    {section.label}
-                  </h2>
-                  <p className="text-xs text-muted-foreground">
-                    {section.description}
-                  </p>
-                </div>
-              </div>
-            </Link>
+            <motion.div key={section.to} {...staggerList(index)}>
+              <Link to={section.to} className="group block h-full">
+                <Card interactive className="h-full">
+                  <CardContent className="flex items-start gap-3 p-4">
+                    <span
+                      aria-hidden
+                      className="grid h-10 w-10 shrink-0 place-items-center rounded-card bg-primary/10 text-primary transition-colors group-hover:bg-primary/15"
+                    >
+                      <Icon className="h-5 w-5" />
+                    </span>
+                    <div className="min-w-0 space-y-1">
+                      <CardTitle>{section.label}</CardTitle>
+                      <CardDescription>{section.description}</CardDescription>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+            </motion.div>
           );
         })}
       </div>

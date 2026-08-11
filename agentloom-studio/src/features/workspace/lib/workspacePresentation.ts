@@ -2,10 +2,11 @@ import type { Workspace } from "../types";
 
 type WorkspaceSourceKind = NonNullable<Workspace["sourceKind"]>;
 
-export const WORKSPACE_SOURCE_BADGE: Record<WorkspaceSourceKind, string> = {
-  manual: "bg-slate-500/10 text-slate-300",
-  sandbox_snapshot: "bg-blue-500/10 text-blue-400",
-  execution_archive: "bg-amber-500/10 text-amber-400",
+/** 来源着色统一取数据类型令牌，与画布端口体系同源 */
+export const WORKSPACE_SOURCE_TONE: Record<WorkspaceSourceKind, string> = {
+  manual: "var(--color-type-volume)",
+  sandbox_snapshot: "var(--color-type-sandbox)",
+  execution_archive: "var(--color-type-exec)",
 };
 
 export const WORKSPACE_SOURCE_LABEL: Record<WorkspaceSourceKind, string> = {

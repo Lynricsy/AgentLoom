@@ -45,89 +45,6 @@ vi.mock("@xyflow/react", () => ({
   BackgroundVariant: { Dots: "dots" },
 }));
 
-vi.mock("@radix-ui/react-dialog", async () => {
-  const React = await import("react");
-  const { Fragment, createContext, useContext, cloneElement, isValidElement } =
-    React;
-
-  const DialogContext = createContext<{
-    onOpenChange?: (open: boolean) => void;
-  } | null>(null);
-
-  function Root({
-    open,
-    onOpenChange,
-    children,
-  }: {
-    open?: boolean;
-    onOpenChange?: (open: boolean) => void;
-    children?: React.ReactNode;
-  }) {
-    if (!open) {
-      return null;
-    }
-
-    return React.createElement(
-      DialogContext.Provider,
-      { value: { onOpenChange } },
-      children,
-    );
-  }
-
-  function Portal({ children }: { children?: React.ReactNode }) {
-    return React.createElement(Fragment, null, children);
-  }
-
-  function Overlay(props: Record<string, unknown>) {
-    return React.createElement("div", props);
-  }
-
-  function Content(props: Record<string, unknown>) {
-    return React.createElement("div", { role: "dialog", ...props });
-  }
-
-  function Title(props: Record<string, unknown>) {
-    return React.createElement("h2", props);
-  }
-
-  function Description(props: Record<string, unknown>) {
-    return React.createElement("p", props);
-  }
-
-  type CloseChildProps = {
-    onClick?: React.MouseEventHandler;
-  };
-
-  function Close({
-    asChild,
-    children,
-  }: {
-    asChild?: boolean;
-    children?: React.ReactNode;
-  }) {
-    const ctx = useContext(DialogContext);
-    const onOpenChange = ctx?.onOpenChange;
-
-    if (asChild && isValidElement<CloseChildProps>(children)) {
-      const child = children;
-      return cloneElement(child, {
-        onClick: (event: React.MouseEvent) => {
-          child.props.onClick?.(event);
-          onOpenChange?.(false);
-        },
-      });
-    }
-
-    return React.createElement(
-      "button",
-      { type: "button", onClick: () => onOpenChange?.(false) },
-      children,
-    );
-  }
-
-  return { Root, Portal, Overlay, Content, Title, Description, Close };
-});
-
 const { detailQueryMock, reviewsQueryMock } = vi.hoisted(() => ({
   detailQueryMock: {
     data: undefined as PublicMarketplaceListingDetail | undefined,
@@ -281,18 +198,14 @@ describe("MarketplaceDetailDialog", () => {
 
     expect(dialog).toBeInTheDocument();
     expect(
-      within(dialog).getAllByText("Agent Workflow", {
-        selector: "h2",
-      }),
-    ).toHaveLength(2);
+      within(dialog).getByText("Agent Workflow", { selector: "h2" }),
+    ).toBeInTheDocument();
     expect(
-      within(dialog).getAllByText(
+      within(dialog).getByText(
         "A detailed workflow summary for marketplace preview.",
-        {
-          selector: "p",
-        },
+        { selector: "p" },
       ),
-    ).toHaveLength(2);
+    ).toBeInTheDocument();
     expect(screen.getByText("作者：酒狐")).toBeInTheDocument();
     expect(screen.getByText("42 次安装")).toBeInTheDocument();
     expect(screen.getByText("4.5")).toBeInTheDocument();
@@ -362,10 +275,8 @@ describe("MarketplaceDetailDialog", () => {
     const dialog = screen.getByTestId("marketplace-detail-dialog");
 
     expect(
-      within(dialog).getAllByText("Text Uppercase Plugin", {
-        selector: "h2",
-      }),
-    ).toHaveLength(2);
+      within(dialog).getByText("Text Uppercase Plugin", { selector: "h2" }),
+    ).toBeInTheDocument();
     expect(screen.queryByTestId("marketplace-preview")).not.toBeInTheDocument();
     expect(screen.queryByTestId("reactflow-preview")).not.toBeInTheDocument();
     expect(screen.getByText("插件信息")).toBeInTheDocument();

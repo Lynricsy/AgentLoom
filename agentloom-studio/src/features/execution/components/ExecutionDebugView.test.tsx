@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { ToastProvider } from '@/shared/ui/toast'
 import { ExecutionDebugView } from './ExecutionDebugView'
 import type { ExecutionDetail } from '../types'
 
@@ -122,6 +123,15 @@ function createExecutionDetail(): ExecutionDetail {
   }
 }
 
+/** 组件依赖 ToastProvider 上报执行详情加载失败 */
+function renderView() {
+  return render(
+    <ToastProvider>
+      <ExecutionDebugView executionId="exec-001" />
+    </ToastProvider>,
+  )
+}
+
 describe('ExecutionDebugView', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -138,7 +148,7 @@ describe('ExecutionDebugView', () => {
   })
 
   it('渲染三栏布局并默认选中最高优先级节点', async () => {
-    render(<ExecutionDebugView executionId="exec-001" />)
+    renderView()
     const desktopLayout = screen.getByTestId('execution-debug-desktop-layout')
 
     expect(screen.getByTestId('execution-debug-left-panel')).toBeInTheDocument()
@@ -151,7 +161,7 @@ describe('ExecutionDebugView', () => {
   })
 
   it('节点选择在各面板间同步', async () => {
-    render(<ExecutionDebugView executionId="exec-001" />)
+    renderView()
     const desktopLayout = screen.getByTestId('execution-debug-desktop-layout')
 
     await waitFor(() => {

@@ -92,7 +92,8 @@ describe('AuditTimeline', () => {
       />,
     );
     const el = screen.getByTestId('audit-entry-entry-1');
-    expect(el.className).toContain('bg-blue-50');
+    expect(el).toHaveAttribute('aria-current', 'true');
+    expect(el.className).toContain('bg-primary/10');
   });
 
   it('按时间倒序排列条目', () => {

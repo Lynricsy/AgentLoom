@@ -1,4 +1,5 @@
 import { memo, useCallback, useState } from 'react'
+import { AnimatePresence, motion } from 'motion/react'
 import {
   ChevronDown,
   ChevronRight,
@@ -8,6 +9,10 @@ import {
   ShieldAlert,
 } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
+import { DUR, EASE } from '@/shared/lib/motion'
+import { Badge } from '@/shared/ui/badge'
+import { Button } from '@/shared/ui/button'
+import { Card } from '@/shared/ui/card'
 import { getToolRenderer } from './registry'
 import { defaultRendererDefinition } from './DefaultRenderer'
 import type { ToolCallData, ToolRenderState } from './types'
@@ -31,16 +36,85 @@ export function deriveRenderState(status: string): ToolRenderState {
   }
 }
 
-function StatusIndicator({ state }: { state: ToolRenderState }) {
+/** 工具类型色芯片 —— 统一取数据类型令牌，避免各页面各自着色 */
+const TOOL_TONE = 'var(--color-type-tool)'
+
+const STATE_META = {
+  pending: { label: '排队中', variant: 'secondary' as const },
+  streaming: { label: '执行中', variant: 'info' as const },
+  completed: { label: '完成', variant: 'success' as const },
+  failed: { label: '失败', variant: 'error' as const },
+} satisfies Record<
+  ToolRenderState,
+  { label: string; variant: 'secondary' | 'info' | 'success' | 'error' }
+>
+
+function StateIcon({ state }: { state: ToolRenderState }) {
   switch (state) {
     case 'pending':
     case 'streaming':
-      return <Loader2 className="size-3.5 shrink-0 animate-spin text-info" />
+      return <Loader2 className="size-3 shrink-0 animate-spin" />
     case 'completed':
-      return <CheckCircle2 className="size-3.5 shrink-0 text-success" />
+      return <CheckCircle2 className="size-3 shrink-0" />
     case 'failed':
-      return <XCircle className="size-3.5 shrink-0 text-error" />
+      return <XCircle className="size-3 shrink-0" />
   }
+}
+
+/** 状态徽章：pending / running / success / error 一律走状态色令牌 */
+function StatusBadge({
+  state,
+  awaitingPermission,
+}: {
+  state: ToolRenderState
+  awaitingPermission: boolean
+}) {
+  if (awaitingPermission) {
+    return (
+      <Badge variant="warning" size="sm" className="shrink-0">
+        <ShieldAlert className="size-3 shrink-0" />
+        待授权
+      </Badge>
+    )
+  }
+
+  const meta = STATE_META[state]
+
+  return (
+    <Badge variant={meta.variant} size="sm" className="shrink-0">
+      <StateIcon state={state} />
+      {meta.label}
+    </Badge>
+  )
+}
+
+/** 工具耗时文案；时间戳缺失或时长无效时返回 null */
+function formatDuration(startedAt?: number, completedAt?: number): string | null {
+  if (typeof startedAt !== 'number' || !Number.isFinite(startedAt)) {
+    return null
+  }
+
+  const end =
+    typeof completedAt === 'number' && Number.isFinite(completedAt)
+      ? completedAt
+      : startedAt
+  const elapsedMs = end - startedAt
+  if (elapsedMs <= 0) {
+    return null
+  }
+
+  if (elapsedMs < 1000) {
+    return `${Math.round(elapsedMs)}ms`
+  }
+
+  const totalSeconds = elapsedMs / 1000
+  if (totalSeconds < 60) {
+    return `${totalSeconds.toFixed(1)}s`
+  }
+
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = Math.round(totalSeconds % 60)
+  return `${minutes}m ${seconds}s`
 }
 
 export interface ToolCallCardProps {
@@ -92,6 +166,21 @@ function formatRiskLabel(riskLevel?: ToolCallData['permissionRiskLevel']): strin
   }
 }
 
+function riskBadgeVariant(
+  riskLevel?: ToolCallData['permissionRiskLevel'],
+): 'success' | 'warning' | 'error' | 'outline' {
+  switch (riskLevel) {
+    case 'low':
+      return 'success'
+    case 'medium':
+      return 'warning'
+    case 'high':
+      return 'error'
+    default:
+      return 'outline'
+  }
+}
+
 function stringifyDiffPreview(value?: Record<string, unknown>): string | null {
   if (!value) {
     return null
@@ -126,6 +215,7 @@ export const ToolCallCard = memo(function ToolCallCard({
   const state = deriveRenderState(toolCall.status)
   const Icon = renderer.icon
   const isAwaitingPermission = toolCall.status === 'awaiting_permission'
+  const duration = formatDuration(toolCall.startedAt, toolCall.completedAt)
 
   const toggleExpanded = useCallback(() => {
     setExpanded((prev) => !prev)
@@ -158,10 +248,10 @@ export const ToolCallCard = memo(function ToolCallCard({
   const diffPreview = stringifyDiffPreview(toolCall.permissionDiffPreview)
 
   return (
-    <div
+    <Card
       className={cn(
-        'rounded-lg border border-border/60 bg-card/50 transition-colors',
-        isAwaitingPermission && 'border-amber-500/40',
+        'overflow-hidden shadow-none transition-colors',
+        isAwaitingPermission && 'border-warning/45',
       )}
       data-testid={`tool-call-card-${toolCall.id}`}
     >
@@ -169,7 +259,8 @@ export const ToolCallCard = memo(function ToolCallCard({
       <button
         type="button"
         onClick={toggleExpanded}
-        className="flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-surface-elevated/30"
+        aria-expanded={expanded}
+        className="flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-surface-elevated/60"
       >
         {expanded ? (
           <ChevronDown className="size-3 shrink-0 text-muted-foreground" />
@@ -177,33 +268,44 @@ export const ToolCallCard = memo(function ToolCallCard({
           <ChevronRight className="size-3 shrink-0 text-muted-foreground" />
         )}
 
-        <StatusIndicator state={state} />
-
-        <Icon className="size-3.5 shrink-0 text-muted-foreground" />
+        <span
+          aria-hidden
+          className="grid size-6 shrink-0 place-items-center rounded-md"
+          style={{
+            backgroundColor: `color-mix(in srgb, ${TOOL_TONE} 14%, transparent)`,
+            color: TOOL_TONE,
+          }}
+        >
+          <Icon className="size-3.5" />
+        </span>
 
         <div className="min-w-0 flex-1">
           <renderer.Summary toolCall={toolCall} state={state} />
         </div>
 
-        {isAwaitingPermission && (
-          <ShieldAlert className="size-3.5 shrink-0 text-amber-400" />
-        )}
+        {duration ? (
+          <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
+            {duration}
+          </span>
+        ) : null}
+
+        <StatusBadge state={state} awaitingPermission={isAwaitingPermission} />
       </button>
 
       {/* Permission approval buttons (shown when awaiting permission) */}
       {isAwaitingPermission && onResolvePermission && (
-        <div className="border-t border-border/40 px-3 py-2">
+        <div className="border-t border-border/60 bg-warning/[0.06] px-3 py-3">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-300">
+            <Badge variant="warning" size="sm">
               {formatPermissionCategoryLabel(toolCall.permissionCategory)}
-            </span>
-            <span className="rounded-full border border-border/60 px-2 py-0.5 text-[10px] text-muted-foreground">
+            </Badge>
+            <Badge variant={riskBadgeVariant(toolCall.permissionRiskLevel)} size="sm">
               {formatRiskLabel(toolCall.permissionRiskLevel)}
-            </span>
+            </Badge>
           </div>
 
           {toolCall.permissionDescription && (
-            <p className="mt-2 text-[11px] leading-relaxed text-foreground/90">
+            <p className="mt-2 text-xs leading-relaxed text-foreground">
               {toolCall.permissionDescription}
             </p>
           )}
@@ -211,19 +313,22 @@ export const ToolCallCard = memo(function ToolCallCard({
           {(toolCall.permissionSourceLabel ||
             toolCall.permissionTargetLabel ||
             toolCall.permissionTargetType) && (
-            <div className="mt-2 grid gap-1 rounded-md border border-border/40 bg-background/40 p-2 text-[11px] text-muted-foreground">
+            <div className="mt-2 grid gap-1 rounded-md border border-border/60 bg-surface px-2.5 py-2 text-[11px] text-muted-foreground">
               {toolCall.permissionSourceLabel && (
                 <div>
-                  请求来源: <span className="text-foreground/90">{toolCall.permissionSourceLabel}</span>
+                  请求来源:{' '}
+                  <span className="text-foreground">
+                    {toolCall.permissionSourceLabel}
+                  </span>
                 </div>
               )}
               {(toolCall.permissionTargetLabel || toolCall.permissionTargetType) && (
                 <div>
-                  目标对象:{" "}
-                  <span className="text-foreground/90">
+                  目标对象:{' '}
+                  <span className="text-foreground">
                     {[toolCall.permissionTargetType, toolCall.permissionTargetLabel]
                       .filter(Boolean)
-                      .join(" / ")}
+                      .join(' / ')}
                   </span>
                 </div>
               )}
@@ -232,45 +337,52 @@ export const ToolCallCard = memo(function ToolCallCard({
 
           {toolCall.permissionApproveEffect && (
             <p className="mt-2 text-[11px] text-muted-foreground">
-              批准后: <span className="text-foreground/90">{toolCall.permissionApproveEffect}</span>
+              批准后:{' '}
+              <span className="text-foreground">
+                {toolCall.permissionApproveEffect}
+              </span>
             </p>
           )}
 
           {toolCall.permissionDenyEffect && (
             <p className="mt-1 text-[11px] text-muted-foreground">
-              拒绝后: <span className="text-foreground/90">{toolCall.permissionDenyEffect}</span>
+              拒绝后:{' '}
+              <span className="text-foreground">{toolCall.permissionDenyEffect}</span>
             </p>
           )}
 
-          {toolCall.permissionResourcePaths && toolCall.permissionResourcePaths.length > 0 && (
-            <pre className="mt-2 overflow-x-auto rounded bg-background p-2 text-[11px] text-muted-foreground">
-              {toolCall.permissionResourcePaths.join('\n')}
-            </pre>
-          )}
+          {toolCall.permissionResourcePaths &&
+            toolCall.permissionResourcePaths.length > 0 && (
+              <pre className="mt-2 overflow-x-auto rounded-md bg-surface-elevated px-2.5 py-2 text-[11px] text-muted-foreground">
+                {toolCall.permissionResourcePaths.join('\n')}
+              </pre>
+            )}
 
           {diffPreview && (
-            <pre className="mt-2 overflow-x-auto rounded border border-border/40 bg-background p-2 text-[11px] text-muted-foreground">
+            <pre className="mt-2 overflow-x-auto rounded-md border border-border/60 bg-surface-elevated px-2.5 py-2 text-[11px] text-muted-foreground">
               {diffPreview}
             </pre>
           )}
 
           <div className="mt-3 flex items-center gap-2">
-            <span className="text-[10px] text-amber-400">需要授权</span>
+            <span className="text-[10px] font-medium text-warning">需要授权</span>
           </div>
 
           <div className="mt-2 flex flex-wrap gap-2">
-            <button
-              type="button"
-              className="rounded border border-success/40 px-2 py-1 text-[11px] text-success transition-colors hover:bg-success/10 disabled:cursor-not-allowed disabled:opacity-60"
+            <Button
+              size="sm"
+              variant="outline"
+              className="border-success/40 text-success hover:border-success/60 hover:bg-success/10"
               onClick={() => void handlePermission('approve')}
               disabled={submitting !== null}
             >
               {submitting === 'approve_once' ? '处理中…' : '允许一次'}
-            </button>
+            </Button>
             {toolCall.permissionRememberable && (
-              <button
-                type="button"
-                className="rounded border border-success/40 px-2 py-1 text-[11px] text-success transition-colors hover:bg-success/10 disabled:cursor-not-allowed disabled:opacity-60"
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-success/40 text-success hover:border-success/60 hover:bg-success/10"
                 onClick={() =>
                   void handlePermission('approve', 'conversation_category')
                 }
@@ -279,20 +391,22 @@ export const ToolCallCard = memo(function ToolCallCard({
                 {submitting === 'approve_session'
                   ? '处理中…'
                   : '本会话同类始终允许'}
-              </button>
+              </Button>
             )}
-            <button
-              type="button"
-              className="rounded border border-error/40 px-2 py-1 text-[11px] text-error transition-colors hover:bg-error/10 disabled:cursor-not-allowed disabled:opacity-60"
+            <Button
+              size="sm"
+              variant="outline"
+              className="border-error/40 text-error hover:border-error/60 hover:bg-error/10"
               onClick={() => void handlePermission('deny')}
               disabled={submitting !== null}
             >
               {submitting === 'deny_once' ? '处理中…' : '拒绝一次'}
-            </button>
+            </Button>
             {toolCall.permissionRememberable && (
-              <button
-                type="button"
-                className="rounded border border-error/40 px-2 py-1 text-[11px] text-error transition-colors hover:bg-error/10 disabled:cursor-not-allowed disabled:opacity-60"
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-error/40 text-error hover:border-error/60 hover:bg-error/10"
                 onClick={() =>
                   void handlePermission('deny', 'conversation_category')
                 }
@@ -301,18 +415,29 @@ export const ToolCallCard = memo(function ToolCallCard({
                 {submitting === 'deny_session'
                   ? '处理中…'
                   : '本会话同类始终拒绝'}
-              </button>
+              </Button>
             )}
           </div>
         </div>
       )}
 
       {/* Expanded detail area */}
-      {expanded && (
-        <div className="max-h-[480px] overflow-y-auto border-t border-border/40 px-3 py-2">
-          <renderer.Detail toolCall={toolCall} state={state} />
-        </div>
-      )}
-    </div>
+      <AnimatePresence initial={false}>
+        {expanded && (
+          <motion.div
+            key="tool-call-detail"
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: DUR.fast, ease: EASE }}
+            className="overflow-hidden"
+          >
+            <div className="max-h-[480px] overflow-y-auto border-t border-border/60 px-3 py-2">
+              <renderer.Detail toolCall={toolCall} state={state} />
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </Card>
   )
 })

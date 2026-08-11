@@ -8,6 +8,8 @@ import {
   FolderTree,
 } from 'lucide-react';
 import { cn } from '@/shared/lib/utils';
+import { EmptyState } from '@/shared/components/empty-state/EmptyState';
+import { Skeleton } from '@/shared/ui/skeleton';
 import type { FileTreeNode } from '../types';
 
 interface WorkspaceFileTreeProps {
@@ -41,9 +43,9 @@ function FileTreeSkeleton() {
           className="flex items-center gap-1.5 px-2 py-1"
           style={{ paddingLeft: `${row.depth * 16 + 8}px` }}
         >
-          <div className="h-3 w-3 shrink-0 animate-pulse rounded bg-muted-foreground/15" />
-          <div className="h-3.5 w-3.5 shrink-0 animate-pulse rounded bg-muted-foreground/10" />
-          <div className={cn('h-3 animate-pulse rounded bg-muted-foreground/15', row.width)} />
+          <Skeleton className="h-3 w-3 shrink-0 rounded-sm" />
+          <Skeleton className="h-3.5 w-3.5 shrink-0 rounded-sm" />
+          <Skeleton className={cn('h-3 rounded-sm', row.width)} />
         </div>
       ))}
     </div>
@@ -82,10 +84,10 @@ const TreeNodeItem = memo(function TreeNodeItem({
         type="button"
         onClick={handleClick}
         className={cn(
-          'w-full flex items-center gap-1.5 py-1 px-2 text-xs text-left transition-colors rounded-sm',
+          'flex w-full items-center gap-1.5 rounded-sm px-2 py-1 text-left text-xs transition-colors',
           isSelected
-            ? 'bg-info/15 text-info'
-            : 'text-foreground/80 hover:bg-surface-elevated/70',
+            ? 'bg-primary/12 text-primary'
+            : 'text-foreground hover:bg-surface-elevated',
         )}
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
       >
@@ -101,9 +103,15 @@ const TreeNodeItem = memo(function TreeNodeItem({
               <span className="w-3 shrink-0" />
             )}
             {expanded ? (
-              <FolderOpen className="h-3.5 w-3.5 text-warning/80 shrink-0" />
+              <FolderOpen
+                className="h-3.5 w-3.5 shrink-0"
+                style={{ color: 'var(--color-node-tool)' }}
+              />
             ) : (
-              <Folder className="h-3.5 w-3.5 text-warning/80 shrink-0" />
+              <Folder
+                className="h-3.5 w-3.5 shrink-0"
+                style={{ color: 'var(--color-node-tool)' }}
+              />
             )}
           </>
         ) : (
@@ -140,11 +148,8 @@ export function WorkspaceFileTree({
 }: WorkspaceFileTreeProps) {
   if (isLoading && tree.length === 0) {
     return (
-      <div className="flex flex-col h-full bg-surface rounded-lg border border-border overflow-hidden">
-        <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-surface-elevated/50">
-          <FolderTree className="h-4 w-4 text-warning/80" />
-          <span className="text-sm font-medium text-foreground">工作区</span>
-        </div>
+      <div className="flex h-full flex-col overflow-hidden rounded-card border border-border bg-surface">
+        <WorkspaceHeader />
         <FileTreeSkeleton />
       </div>
     );
@@ -152,25 +157,24 @@ export function WorkspaceFileTree({
 
   if (tree.length === 0) {
     return (
-      <div className="flex flex-col h-full bg-surface rounded-lg border border-border overflow-hidden">
-        <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-surface-elevated/50">
-          <FolderTree className="h-4 w-4 text-warning/80" />
-          <span className="text-sm font-medium text-foreground">工作区</span>
-        </div>
-        <div className="flex-1 flex items-center justify-center text-muted-foreground text-sm">
-          <FolderTree className="h-4 w-4 mr-2 opacity-50" />
-          <span>暂无文件</span>
+      <div className="flex h-full flex-col overflow-hidden rounded-card border border-border bg-surface">
+        <WorkspaceHeader />
+        <div className="flex flex-1 items-center justify-center p-4">
+          <EmptyState
+            className="border-0 px-2 py-6"
+            icon={FolderTree}
+            tone="var(--color-node-tool)"
+            title="暂无文件"
+            description="Agent 在沙箱中创建文件后，这里会实时列出目录结构。"
+          />
         </div>
       </div>
     );
   }
 
   return (
-    <div className="flex flex-col h-full bg-surface rounded-lg border border-border overflow-hidden">
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-surface-elevated/50">
-        <FolderTree className="h-4 w-4 text-warning/80" />
-        <span className="text-sm font-medium text-foreground">工作区</span>
-      </div>
+    <div className="flex h-full flex-col overflow-hidden rounded-card border border-border bg-surface">
+      <WorkspaceHeader />
       <div className="flex-1 overflow-y-auto py-1">
         {tree.map((node) => (
           <TreeNodeItem
@@ -182,6 +186,18 @@ export function WorkspaceFileTree({
           />
         ))}
       </div>
+    </div>
+  );
+}
+
+function WorkspaceHeader() {
+  return (
+    <div className="flex items-center gap-2 border-b border-border bg-surface-elevated/50 px-3 py-2">
+      <FolderTree
+        className="h-4 w-4"
+        style={{ color: 'var(--color-node-tool)' }}
+      />
+      <span className="text-sm font-medium text-foreground">工作区</span>
     </div>
   );
 }

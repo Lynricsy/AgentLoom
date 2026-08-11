@@ -1,4 +1,5 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
+import { motion } from "motion/react";
 import {
   Search,
   Plus,
@@ -12,15 +13,36 @@ import {
   FolderSync,
   ShieldCheck,
   FileText,
+  AlertCircle,
 } from "lucide-react";
 import { convertResourceSourceToManual } from "@/shared/api/resourceSourceApi";
 import {
   getResourceSourceLabel,
   type ResourceSourceKind,
 } from "@/shared/lib/resourceSource";
+import { staggerList } from "@/shared/lib/motion";
+import { EmptyState } from "@/shared/components/empty-state/EmptyState";
+import { PageHeader } from "@/shared/components/page-header/PageHeader";
+import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
+import { Card } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
-import { NativeSelect } from "@/shared/ui/native-select";
+import { Skeleton } from "@/shared/ui/skeleton";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/shared/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogTitle,
+} from "@/shared/ui/alert-dialog";
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -29,11 +51,13 @@ import {
   DropdownMenuSeparator,
 } from "@/shared/ui/dropdown-menu";
 import { Pagination, ResourceSourceCategoryTabs } from "@/shared/components";
+import { useToast } from "@/shared/ui/toast";
 import {
   useSkillList,
   useDeleteSkill,
   useArchiveSkill,
 } from "../api/skillQueries";
+import { formatSkillBytes, formatSkillTimestamp } from "../lib/format";
 import { CreateSkillDialog } from "./CreateSkillDialog";
 import { SkillDetailDialog } from "./SkillDetailDialog";
 import type { Skill, SkillStatus } from "../types";
@@ -41,46 +65,7 @@ import type { ListSkillsParams } from "../api/skillApi";
 
 const PAGE_SIZE = 20;
 
-function formatTimestamp(value?: string | null): string {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat("zh-CN", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return "0 B";
-  const units = ["B", "KB", "MB", "GB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(1024));
-  return `${(bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
-}
-
-function StatusBadge({ status }: { status: SkillStatus }) {
-  if (status === "active") {
-    return (
-      <span className="inline-flex items-center rounded-full bg-green-500/15 px-2 py-0.5 text-[11px] font-medium text-green-400">
-        活跃
-      </span>
-    );
-  }
-  return (
-    <span className="inline-flex items-center rounded-full bg-yellow-500/15 px-2 py-0.5 text-[11px] font-medium text-yellow-500">
-      已归档
-    </span>
-  );
-}
-
-function BuiltinBadge() {
-  return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-blue-500/15 px-2 py-0.5 text-[11px] font-medium text-blue-400">
-      <ShieldCheck className="h-3 w-3" />
-      内置
-    </span>
-  );
-}
+const SKILL_TONE = "var(--color-type-skill)";
 
 interface SkillCardActionsProps {
   skill: Skill;
@@ -102,12 +87,13 @@ function SkillCardActions({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          className="cursor-pointer rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={`${skill.name} 的更多操作`}
         >
           <MoreVertical className="h-4 w-4" />
-        </button>
+        </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-36">
         <DropdownMenuItem onClick={() => onView(skill)}>
@@ -145,6 +131,7 @@ function SkillCardActions({
 }
 
 export function SkillBrowsePage() {
+  const { notify } = useToast();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -171,6 +158,15 @@ export function SkillBrowsePage() {
   const { data, isLoading, isError, refetch } = useSkillList(params);
   const skills = data?.data ?? [];
   const meta = data?.meta;
+
+  useEffect(() => {
+    if (!isError) return;
+    notify({
+      title: "技能列表加载失败",
+      description: "请检查网络后重试。",
+      variant: "error",
+    });
+  }, [isError, notify]);
 
   const handleSearch = useCallback((value: string) => {
     setSearch(value);
@@ -234,20 +230,19 @@ export function SkillBrowsePage() {
   }, [confirmDelete, deleteMutation]);
 
   return (
-    <div className="flex h-full flex-col gap-4 p-6">
-      {/* 页头 */}
-      <div className="flex items-center justify-between">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-bold">技能管理</h1>
-          <p className="text-sm text-muted-foreground">
-            管理 Agent 可使用的技能，包括内置技能和自定义技能
-          </p>
-        </div>
-        <Button onClick={() => setCreateDialogOpen(true)}>
-          <Plus className="mr-1.5 h-4 w-4" />
-          新建技能
-        </Button>
-      </div>
+    <div className="flex h-full flex-col gap-5 overflow-y-auto p-6">
+      <PageHeader
+        icon={Zap}
+        tone={SKILL_TONE}
+        title="技能管理"
+        description="管理 Agent 可使用的技能，包括内置技能和自定义技能"
+        actions={
+          <Button onClick={() => setCreateDialogOpen(true)}>
+            <Plus className="mr-1.5 h-4 w-4" />
+            新建技能
+          </Button>
+        }
+      />
 
       <ResourceSourceCategoryTabs
         value={sourceKindFilter}
@@ -255,9 +250,9 @@ export function SkillBrowsePage() {
       />
 
       {/* 筛选行 */}
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
           <Input
             type="text"
             value={search}
@@ -266,103 +261,145 @@ export function SkillBrowsePage() {
             className="pl-9"
           />
         </div>
-        <NativeSelect
-          value={statusFilter}
-          onValueChange={handleStatusChange}
-          className="w-32"
-        >
-          <option value="all">全部状态</option>
-          <option value="active">活跃</option>
-          <option value="archived">已归档</option>
-        </NativeSelect>
-        <NativeSelect
-          value={builtinFilter}
-          onValueChange={handleBuiltinChange}
-          className="w-32"
-        >
-          <option value="all">全部类型</option>
-          <option value="builtin">内置技能</option>
-          <option value="custom">自定义技能</option>
-        </NativeSelect>
+        <div className="grid grid-cols-2 gap-2 sm:flex sm:shrink-0">
+          <Select value={statusFilter} onValueChange={handleStatusChange}>
+            <SelectTrigger className="sm:w-32" aria-label="状态筛选">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部状态</SelectItem>
+              <SelectItem value="active">活跃</SelectItem>
+              <SelectItem value="archived">已归档</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={builtinFilter} onValueChange={handleBuiltinChange}>
+            <SelectTrigger className="sm:w-32" aria-label="类型筛选">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部类型</SelectItem>
+              <SelectItem value="builtin">内置技能</SelectItem>
+              <SelectItem value="custom">自定义技能</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {/* 列表内容 */}
       {isLoading ? (
-        <div className="flex flex-1 items-center justify-center py-20">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {Array.from({ length: 6 }, (_, index) => (
+            <Skeleton key={index} className="h-36 rounded-card" />
+          ))}
         </div>
       ) : isError ? (
-        <div className="flex flex-1 flex-col items-center justify-center gap-3 py-20 text-center">
-          <Zap className="h-12 w-12 text-muted-foreground" />
-          <p className="text-sm font-medium">技能列表加载失败</p>
-          <p className="text-sm text-muted-foreground">请稍后重试</p>
-          <Button variant="outline" onClick={() => void refetch()}>
-            重新加载
-          </Button>
-        </div>
+        <EmptyState
+          icon={AlertCircle}
+          tone="var(--color-error)"
+          title="技能列表加载失败"
+          description="请稍后重试，或检查后端服务是否可用。"
+          action={
+            <Button variant="outline" onClick={() => void refetch()}>
+              重新加载
+            </Button>
+          }
+        />
       ) : skills.length === 0 ? (
-        <div className="flex flex-1 flex-col items-center justify-center gap-2 py-20">
-          <Zap className="h-12 w-12 text-muted-foreground" />
-          <p className="text-sm text-muted-foreground">
-            {hasListFilters
+        <EmptyState
+          icon={Zap}
+          tone={SKILL_TONE}
+          title={
+            hasListFilters
               ? "没有匹配的技能"
               : sourceKindFilter === "manual"
                 ? "还没有自己创建的技能，点击右上角新建"
-                : `还没有${getResourceSourceLabel(sourceKindFilter)}的技能`}
-          </p>
-        </div>
+                : `还没有${getResourceSourceLabel(sourceKindFilter)}的技能`
+          }
+          description={
+            hasListFilters
+              ? "换个关键词，或放宽状态与类型筛选。"
+              : "技能是可复用的提示词与文件包，Agent 会按需加载。"
+          }
+          action={
+            hasListFilters ? null : (
+              <Button size="sm" onClick={() => setCreateDialogOpen(true)}>
+                <Plus className="mr-1.5 h-4 w-4" />
+                创建第一个技能
+              </Button>
+            )
+          }
+        />
       ) : (
         <>
-          {/* 卡片列表 */}
-          <div className="grid gap-4 xl:grid-cols-2">
-            {skills.map((skill) => (
-              <article
-                key={skill.id}
-                className="rounded-2xl border border-border bg-surface-elevated p-5 shadow-sm transition-colors hover:border-border/80"
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/15 text-primary">
-                        <Zap className="h-4 w-4" />
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {skills.map((skill, index) => (
+              <motion.div key={skill.id} {...staggerList(index)}>
+                <Card className="h-full p-5">
+                  <article className="flex h-full flex-col">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span
+                            aria-hidden
+                            className="grid h-8 w-8 shrink-0 place-items-center rounded-card"
+                            style={{
+                              backgroundColor: `color-mix(in srgb, ${SKILL_TONE} 14%, transparent)`,
+                              color: SKILL_TONE,
+                            }}
+                          >
+                            <Zap className="h-4 w-4" />
+                          </span>
+                          <button
+                            type="button"
+                            className="cursor-pointer truncate text-sm font-semibold text-foreground transition-colors hover:text-primary"
+                            onClick={() => handleView(skill)}
+                          >
+                            {skill.name}
+                          </button>
+                          {skill.isBuiltin && (
+                            <Badge size="sm" variant="info">
+                              <ShieldCheck className="h-3 w-3" />
+                              内置
+                            </Badge>
+                          )}
+                          <Badge
+                            size="sm"
+                            variant={
+                              skill.status === "active" ? "success" : "warning"
+                            }
+                          >
+                            {skill.status === "active" ? "活跃" : "已归档"}
+                          </Badge>
+                        </div>
+                        <p className="mt-2 line-clamp-2 text-xs text-muted">
+                          {skill.description || "暂无描述"}
+                        </p>
                       </div>
-                      <button
-                        type="button"
-                        className="cursor-pointer truncate text-sm font-semibold text-foreground hover:text-primary"
-                        onClick={() => handleView(skill)}
-                      >
-                        {skill.name}
-                      </button>
-                      {skill.isBuiltin && <BuiltinBadge />}
-                      <StatusBadge status={skill.status} />
+                      <SkillCardActions
+                        skill={skill}
+                        onView={handleView}
+                        onEdit={handleEdit}
+                        onArchive={handleArchive}
+                        onDelete={handleDelete}
+                        onConvertSource={handleConvertSource}
+                      />
                     </div>
-                    <p className="mt-2 line-clamp-2 text-xs text-muted-foreground">
-                      {skill.description || "暂无描述"}
-                    </p>
-                  </div>
-                  <SkillCardActions
-                    skill={skill}
-                    onView={handleView}
-                    onEdit={handleEdit}
-                    onArchive={handleArchive}
-                    onDelete={handleDelete}
-                    onConvertSource={handleConvertSource}
-                  />
-                </div>
 
-                <div className="mt-4 flex flex-wrap items-center gap-4 text-xs text-muted-foreground">
-                  <span className="flex items-center gap-1">
-                    <FileText className="h-3.5 w-3.5" />
-                    {skill.fileCount} 个文件
-                    {skill.totalSizeBytes > 0 && (
-                      <span className="text-muted-foreground/60">
-                        ({formatBytes(skill.totalSizeBytes)})
+                    <div className="mt-auto flex flex-wrap items-center gap-x-4 gap-y-1 pt-4 text-xs text-muted">
+                      <span className="flex items-center gap-1">
+                        <FileText className="h-3.5 w-3.5" />
+                        {skill.fileCount} 个文件
+                        {skill.totalSizeBytes > 0 && (
+                          <span className="opacity-70">
+                            ({formatSkillBytes(skill.totalSizeBytes)})
+                          </span>
+                        )}
                       </span>
-                    )}
-                  </span>
-                  <span>更新于 {formatTimestamp(skill.updatedAt)}</span>
-                </div>
-              </article>
+                      <span>更新于 {formatSkillTimestamp(skill.updatedAt)}</span>
+                    </div>
+                  </article>
+                </Card>
+              </motion.div>
             ))}
           </div>
 
@@ -400,40 +437,35 @@ export function SkillBrowsePage() {
       />
 
       {/* 删除确认对话框 */}
-      {confirmDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-            onClick={() => setConfirmDelete(null)}
-          />
-          <div className="relative z-10 w-full max-w-sm rounded-xl border border-border bg-background p-6 shadow-2xl">
-            <h3 className="text-base font-semibold">确认删除</h3>
-            <p className="mt-2 text-sm text-muted-foreground">
-              确定要删除技能「{confirmDelete.name}」吗？此操作不可撤销。
-            </p>
-            <div className="mt-4 flex justify-end gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setConfirmDelete(null)}
-              >
-                取消
-              </Button>
-              <Button
-                size="sm"
-                className="bg-red-600 text-white hover:bg-red-700"
-                disabled={deleteMutation.isPending}
-                onClick={handleConfirmDelete}
-              >
-                {deleteMutation.isPending && (
-                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                )}
-                删除
-              </Button>
-            </div>
+      <AlertDialog
+        open={confirmDelete !== null}
+        onOpenChange={(open) => {
+          if (!open) setConfirmDelete(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogTitle>确认删除</AlertDialogTitle>
+          <AlertDialogDescription>
+            确定要删除技能「{confirmDelete?.name}」吗？此操作不可撤销。
+          </AlertDialogDescription>
+          <div className="mt-5 flex justify-end gap-2">
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-error text-white hover:bg-error/90"
+              disabled={deleteMutation.isPending}
+              onClick={(event) => {
+                event.preventDefault();
+                handleConfirmDelete();
+              }}
+            >
+              {deleteMutation.isPending && (
+                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+              )}
+              删除
+            </AlertDialogAction>
           </div>
-        </div>
-      )}
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

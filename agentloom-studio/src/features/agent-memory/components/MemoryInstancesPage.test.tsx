@@ -1,6 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { ToastProvider } from "@/shared/ui/toast";
 import { MemoryInstancesPage } from "./MemoryInstancesPage";
 import type { MemoryInstance } from "../types";
 
@@ -39,7 +40,17 @@ vi.mock("./CreateMemoryDialog", () => ({
 
 vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => mocks.navigate,
+  Link: ({ children }: { children?: React.ReactNode }) => <>{children}</>,
 }));
+
+/** 页面依赖 ToastProvider 上报 mutation 失败 */
+function renderPage() {
+  return render(
+    <ToastProvider>
+      <MemoryInstancesPage />
+    </ToastProvider>,
+  );
+}
 
 // --- Test data factory ---
 
@@ -120,14 +131,16 @@ describe("MemoryInstancesPage", () => {
 
   it("显示加载状态", () => {
     setupMocks({ isLoading: true });
-    render(<MemoryInstancesPage />);
-    // Loader2 图标会渲染，无文本指示但有旋转动画
-    expect(document.querySelector(".animate-spin")).toBeInTheDocument();
+    renderPage();
+    // 加载态渲染卡片骨架栅格
+    expect(
+      screen.getAllByTestId("memory-instance-skeleton").length,
+    ).toBeGreaterThan(0);
   });
 
   it("显示空状态提示", () => {
     setupMocks({ memoryInstances: [] });
-    render(<MemoryInstancesPage />);
+    renderPage();
     expect(screen.getByText("还没有自己创建的记忆实例")).toBeInTheDocument();
     expect(
       screen.getByText(/点击「新建实例」创建你的第一个 Agent 记忆图谱/),
@@ -136,7 +149,7 @@ describe("MemoryInstancesPage", () => {
 
   it("默认显示顶部来源分类并按自己创建过滤", () => {
     setupMocks({ memoryInstances: [createMemoryInstance()] });
-    render(<MemoryInstancesPage />);
+    renderPage();
 
     expect(
       screen.getByRole("button", { name: "自己创建" }),
@@ -172,7 +185,7 @@ describe("MemoryInstancesPage", () => {
       }),
     ];
     setupMocks({ memoryInstances: items });
-    render(<MemoryInstancesPage />);
+    renderPage();
 
     expect(screen.getByText("知识记忆A")).toBeInTheDocument();
     expect(screen.getByText("描述A")).toBeInTheDocument();
@@ -193,7 +206,7 @@ describe("MemoryInstancesPage", () => {
       memoryInstances: items,
       allMemoryInstances: items,
     });
-    render(<MemoryInstancesPage />);
+    renderPage();
 
     const searchInput = screen.getByPlaceholderText("搜索记忆实例...");
     await userEvent.type(searchInput, "Alpha");
@@ -208,7 +221,7 @@ describe("MemoryInstancesPage", () => {
 
   it("点击顶部来源分类后会切换为分享导入", async () => {
     setupMocks({ memoryInstances: [] });
-    render(<MemoryInstancesPage />);
+    renderPage();
 
     await userEvent.click(screen.getByRole("button", { name: "分享导入" }));
 
@@ -227,7 +240,7 @@ describe("MemoryInstancesPage", () => {
       memoryInstances: items,
       allMemoryInstances: items,
     });
-    render(<MemoryInstancesPage />);
+    renderPage();
 
     const searchInput = screen.getByPlaceholderText("搜索记忆实例...");
     await userEvent.type(searchInput, "不存在的内容");
@@ -238,7 +251,7 @@ describe("MemoryInstancesPage", () => {
   it("点击卡片导航到详情页", async () => {
     const item = createMemoryInstance({ id: "mi-123", name: "点击测试" });
     setupMocks({ memoryInstances: [item] });
-    render(<MemoryInstancesPage />);
+    renderPage();
 
     await userEvent.click(screen.getByText("点击测试"));
 
@@ -250,7 +263,7 @@ describe("MemoryInstancesPage", () => {
 
   it("打开和关闭创建对话框", async () => {
     setupMocks();
-    render(<MemoryInstancesPage />);
+    renderPage();
 
     // 打开对话框
     await userEvent.click(screen.getByText("新建实例"));
@@ -265,7 +278,7 @@ describe("MemoryInstancesPage", () => {
 
   it("创建成功后导航到详情页", async () => {
     setupMocks();
-    render(<MemoryInstancesPage />);
+    renderPage();
 
     await userEvent.click(screen.getByText("新建实例"));
     await userEvent.click(screen.getByText("创建"));
@@ -282,7 +295,7 @@ describe("MemoryInstancesPage", () => {
       name: "待删除实例",
     });
     setupMocks({ memoryInstances: [item] });
-    render(<MemoryInstancesPage />);
+    renderPage();
 
     await userEvent.click(screen.getByLabelText("删除 待删除实例"));
     expect(
@@ -296,7 +309,7 @@ describe("MemoryInstancesPage", () => {
       name: "待删除实例",
     });
     const { deleteFn } = setupMocks({ memoryInstances: [item] });
-    render(<MemoryInstancesPage />);
+    renderPage();
 
     // 打开确认框
     await userEvent.click(screen.getByLabelText("删除 待删除实例"));
@@ -312,17 +325,12 @@ describe("MemoryInstancesPage", () => {
       name: "待删除实例",
     });
     setupMocks({ memoryInstances: [item] });
-    render(<MemoryInstancesPage />);
+    renderPage();
 
     await userEvent.click(screen.getByLabelText("删除 待删除实例"));
     expect(screen.getByText(/确定要删除/)).toBeInTheDocument();
 
-    // 找到弹出框中的取消按钮（不是对话框的取消）
-    const popover = screen.getByText(/确定要删除/).closest("div")!;
-    const cancelBtn = popover.querySelector(
-      "button:first-of-type",
-    ) as HTMLButtonElement;
-    await userEvent.click(cancelBtn);
+    await userEvent.click(screen.getByRole("button", { name: "取消" }));
 
     expect(screen.queryByText(/确定要删除/)).not.toBeInTheDocument();
   });

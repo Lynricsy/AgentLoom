@@ -1,4 +1,7 @@
-import { SlidersHorizontal, Loader2 } from 'lucide-react'
+import { SlidersHorizontal } from 'lucide-react'
+import { PageHeader } from '@/shared/components/page-header/PageHeader'
+import { Spinner } from '@/shared/components/spinner/Spinner'
+import { Card, CardContent, CardHeader, CardTitle } from '@/shared/ui/card'
 import { Skeleton } from '@/shared/ui/skeleton'
 import { useToast } from '@/shared/ui/toast'
 import { GlobalModelSelector } from '@/features/llm/components/GlobalModelSelector'
@@ -30,15 +33,15 @@ export function UserPreferencesPage() {
       {
         onSuccess: () => {
           notify({
-            title: '偏好已保存',
-            description: '标题生成模型偏好已更新。',
+            title: '偏好已更新',
+            description: '对话标题生成模型已保存。',
             variant: 'success',
           })
         },
         onError: () => {
           notify({
-            title: '保存失败',
-            description: '更新偏好时出现错误，请稍后重试。',
+            title: '更新偏好失败',
+            description: '请稍后重试。',
             variant: 'error',
           })
         },
@@ -53,34 +56,35 @@ export function UserPreferencesPage() {
 
   return (
     <div className="space-y-6 px-4 py-6 sm:px-6 lg:px-8">
-      <div className="space-y-2">
-        <div className="flex items-center gap-2 text-foreground">
-          <SlidersHorizontal className="h-6 w-6 text-primary" />
-          <h1 className="text-2xl font-semibold">个人偏好</h1>
-        </div>
-        <p className="max-w-2xl text-sm text-muted-foreground">
-          管理个人专属的 AI 行为偏好设置，这些设置仅对当前账号生效。
-        </p>
-      </div>
+      <PageHeader
+        icon={SlidersHorizontal}
+        title="个人偏好"
+        description="管理个人专属的 AI 行为偏好设置，这些设置仅对当前账号生效。"
+      />
 
-      <section className="rounded-2xl border border-border bg-surface-elevated p-5 shadow-sm">
-        <div className="space-y-1">
-          <h2 className="text-lg font-semibold text-foreground">对话标题生成</h2>
-          <p className="text-sm text-muted-foreground">
+      <Card>
+        <CardHeader>
+          <CardTitle>对话标题生成</CardTitle>
+          <p className="text-xs leading-relaxed text-muted">
             为自动生成对话标题单独指定一个 LLM 模型，不设置时使用组织默认模型。
           </p>
-        </div>
+        </CardHeader>
 
-        <div className="mt-5 max-w-sm">
+        <CardContent className="max-w-sm">
           {isLoading ? (
             <div className="space-y-2">
-              <Skeleton className="h-4 w-24 rounded" />
+              <Skeleton className="h-3 w-24" />
               <Skeleton className="h-9 w-full rounded-md" />
             </div>
           ) : (
-            <label className="space-y-2 text-sm text-foreground" htmlFor="title-model-select">
-              <span>标题生成模型</span>
-              <div className="relative flex items-center gap-2">
+            <div className="space-y-1.5">
+              <label
+                className="block text-xs font-medium text-muted"
+                htmlFor="title-model-select"
+              >
+                标题生成模型
+              </label>
+              <div className="flex items-center gap-2">
                 <GlobalModelSelector
                   id="title-model-select"
                   value={currentValue}
@@ -91,17 +95,15 @@ export function UserPreferencesPage() {
                   aria-label="标题生成模型"
                   className="flex-1"
                 />
-                {updateMutation.isPending ? (
-                  <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" />
-                ) : null}
+                {updateMutation.isPending ? <Spinner size="sm" /> : null}
               </div>
-              <span className="block text-xs leading-5 text-muted-foreground">
+              <p className="text-[11px] leading-relaxed text-muted">
                 选择「使用组织默认」可清除当前偏好，恢复使用组织级默认设置。
-              </span>
-            </label>
+              </p>
+            </div>
           )}
-        </div>
-      </section>
+        </CardContent>
+      </Card>
     </div>
   )
 }

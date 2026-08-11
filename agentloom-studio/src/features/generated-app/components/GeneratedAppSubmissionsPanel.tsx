@@ -3,16 +3,34 @@ import {
   AlertTriangle,
   CheckCircle2,
   Eye,
-  Loader2,
+  Inbox,
   RefreshCw,
   Trash2,
 } from 'lucide-react'
 
 import { Pagination } from '@/shared/components/Pagination'
+import { EmptyState } from '@/shared/components/empty-state/EmptyState'
+import { Spinner } from '@/shared/components/spinner/Spinner'
 import { cn } from '@/shared/lib/utils'
+import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
 import { Checkbox } from '@/shared/ui/checkbox'
-import { NativeSelect } from '@/shared/ui/native-select'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/shared/ui/select'
+import { Skeleton } from '@/shared/ui/skeleton'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/shared/ui/table'
 import { useToast } from '@/shared/ui/toast'
 import {
   useDeleteGeneratedAppSubmission,
@@ -23,7 +41,7 @@ import {
 import {
   GENERATED_APP_SUBMISSION_STATUS_LABELS,
   formatGeneratedAppDateTime,
-  getGeneratedAppSubmissionStatusBadgeClass,
+  getGeneratedAppSubmissionStatusBadgeVariant,
 } from '../lib/generatedAppDisplay'
 import type {
   GeneratedAppPublicWorkflowExecutionHandoff,
@@ -79,14 +97,9 @@ function SubmissionStatusBadge({
   status: GeneratedAppSubmissionStatus
 }) {
   return (
-    <span
-      className={cn(
-        'inline-flex rounded-full border px-2 py-0.5 text-xs font-medium',
-        getGeneratedAppSubmissionStatusBadgeClass(status),
-      )}
-    >
+    <Badge variant={getGeneratedAppSubmissionStatusBadgeVariant(status)}>
       {GENERATED_APP_SUBMISSION_STATUS_LABELS[status]}
-    </span>
+    </Badge>
   )
 }
 
@@ -216,14 +229,14 @@ function getWorkflowExecutionPanelClass(
   status: ReturnType<typeof getWorkflowExecutionDisplayStatus>,
 ): string {
   if (status === 'completed') {
-    return 'border-emerald-500/30 bg-emerald-500/5'
+    return 'border-success/30 bg-success/5'
   }
 
   if (status === 'pending' || status === 'running' || status === 'paused') {
-    return 'border-sky-500/30 bg-sky-500/5'
+    return 'border-info/30 bg-info/5'
   }
 
-  return 'border-amber-500/30 bg-amber-500/5'
+  return 'border-warning/30 bg-warning/5'
 }
 
 function WorkflowExecutionStatusBlock({
@@ -248,7 +261,7 @@ function WorkflowExecutionStatusBlock({
   return (
     <section
       className={cn(
-        'rounded-md border p-3',
+        'rounded-card border p-3',
         getWorkflowExecutionPanelClass(displayStatus),
       )}
       data-testid="creator-workflow-execution-status"
@@ -256,18 +269,18 @@ function WorkflowExecutionStatusBlock({
     >
       <div className="flex items-start gap-3">
         {isActive ? (
-          <Loader2 className="mt-0.5 h-4 w-4 shrink-0 animate-spin text-sky-300" />
+          <Spinner className="mt-0.5 shrink-0 text-info" />
         ) : displayStatus === 'completed' ? (
-          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-300" />
+          <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
         ) : (
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-warning" />
         )}
         <div className="min-w-0 flex-1 space-y-2">
           <div className="flex flex-wrap items-center gap-2">
             <h4 className="break-words text-sm font-semibold text-foreground">
               Workflow 执行状态
             </h4>
-            <span className="rounded-full border border-border bg-background/30 px-2 py-0.5 text-xs text-muted-foreground">
+            <Badge variant="secondary" size="sm">
               {handoff
                 ? getWorkflowExecutionStatusLabel(
                     displayStatus === 'not-enabled' ||
@@ -276,7 +289,7 @@ function WorkflowExecutionStatusBlock({
                       : displayStatus,
                   )
                 : '未启用'}
-            </span>
+            </Badge>
           </div>
           <p className="break-words text-xs leading-5 text-muted-foreground">
             {getWorkflowExecutionMessage(handoff)}
@@ -529,17 +542,22 @@ export function GeneratedAppSubmissionsPanel({
 
   if (submissionsQuery.isLoading) {
     return (
-      <div className="flex items-center gap-3 text-sm text-muted-foreground">
-        <Loader2 className="h-4 w-4 animate-spin" />
-        正在加载提交记录...
+      <div className="space-y-3">
+        <p className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Spinner size="sm" />
+          正在加载提交记录...
+        </p>
+        {Array.from({ length: 3 }, (_, index) => (
+          <Skeleton key={index} className="h-14 rounded-card" />
+        ))}
       </div>
     )
   }
 
   if (submissionsQuery.isError) {
     return (
-      <div className="flex items-start gap-3 rounded-md border border-rose-500/30 bg-rose-500/5 p-4">
-        <AlertTriangle className="mt-0.5 h-5 w-5 text-rose-300" />
+      <div className="flex items-start gap-3 rounded-card border border-error/30 bg-error/5 p-4">
+        <AlertTriangle className="mt-0.5 h-5 w-5 text-error" />
         <div className="min-w-0 space-y-3">
           <div>
             <h3 className="text-sm font-semibold text-foreground">
@@ -575,21 +593,24 @@ export function GeneratedAppSubmissionsPanel({
         </div>
 
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-          <label className="space-y-1 text-xs text-muted-foreground">
-            <span>状态筛选</span>
-            <NativeSelect
+          <div className="space-y-1 text-xs text-muted-foreground">
+            <span className="block">状态筛选</span>
+            <Select
               value={statusFilter}
               onValueChange={handleStatusFilterChange}
-              aria-label="状态筛选"
-              className="min-w-40"
             >
-              {SUBMISSION_STATUS_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </NativeSelect>
-          </label>
+              <SelectTrigger aria-label="状态筛选" className="min-w-40">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {SUBMISSION_STATUS_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
           <Button
             variant="outline"
@@ -598,7 +619,7 @@ export function GeneratedAppSubmissionsPanel({
             disabled={selectedCount === 0 || isDeleting}
           >
             {deleteSubmissionsMutation.isPending ? (
-              <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+              <Spinner size="sm" className="mr-2" />
             ) : (
               <Trash2 className="mr-2 h-3.5 w-3.5" />
             )}
@@ -609,120 +630,109 @@ export function GeneratedAppSubmissionsPanel({
       </div>
 
       {submissions.length === 0 ? (
-        <div className="rounded-md border border-dashed border-border p-6 text-center">
-          <p className="text-sm font-medium text-foreground">暂无提交记录</p>
-          <p className="mt-1 text-sm text-muted-foreground">
-            终端用户通过公开应用提交后，会在这里展示输入、运行状态和报告。
-          </p>
-        </div>
+        <EmptyState
+          icon={Inbox}
+          title="暂无提交记录"
+          description="终端用户通过公开应用提交后，会在这里展示输入、运行状态和报告。"
+        />
       ) : (
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-left text-sm">
-            <thead className="border-b border-border text-xs text-muted-foreground">
-              <tr>
-                <th className="w-10 px-3 py-2 font-medium">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-10">
+                <Checkbox
+                  aria-label="选择当前页提交记录"
+                  checked={
+                    allVisibleSelected
+                      ? true
+                      : someVisibleSelected
+                        ? 'indeterminate'
+                        : false
+                  }
+                  onCheckedChange={handleSelectVisible}
+                />
+              </TableHead>
+              <TableHead>状态</TableHead>
+              <TableHead className="min-w-44">匿名会话</TableHead>
+              <TableHead>提交时间</TableHead>
+              <TableHead className="min-w-64">Input</TableHead>
+              <TableHead className="min-w-64">Result</TableHead>
+              <TableHead className="min-w-64">Report</TableHead>
+              <TableHead className="min-w-56">Error</TableHead>
+              <TableHead>操作</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {submissions.map((submission) => (
+              <TableRow
+                key={submission.id}
+                className="align-top"
+                data-state={
+                  selectedSubmissionId === submission.id
+                    ? 'selected'
+                    : undefined
+                }
+              >
+                <TableCell className="py-3">
                   <Checkbox
-                    aria-label="选择当前页提交记录"
-                    checked={
-                      allVisibleSelected
-                        ? true
-                        : someVisibleSelected
-                          ? 'indeterminate'
-                          : false
+                    aria-label={`选择提交记录 ${submission.id}`}
+                    checked={selectedIds.has(submission.id)}
+                    onCheckedChange={(checked) =>
+                      handleSelectSubmission(submission.id, checked)
                     }
-                    onCheckedChange={handleSelectVisible}
                   />
-                </th>
-                <th className="whitespace-nowrap px-3 py-2 font-medium">
-                  状态
-                </th>
-                <th className="min-w-44 px-3 py-2 font-medium">
-                  匿名会话
-                </th>
-                <th className="whitespace-nowrap px-3 py-2 font-medium">
-                  提交时间
-                </th>
-                <th className="min-w-64 px-3 py-2 font-medium">Input</th>
-                <th className="min-w-64 px-3 py-2 font-medium">Result</th>
-                <th className="min-w-64 px-3 py-2 font-medium">Report</th>
-                <th className="min-w-56 px-3 py-2 font-medium">Error</th>
-                <th className="whitespace-nowrap px-3 py-2 font-medium">
-                  操作
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {submissions.map((submission) => (
-                <tr
-                  key={submission.id}
-                  className={cn(
-                    'align-top',
-                    selectedSubmissionId === submission.id
-                      ? 'bg-primary/5'
-                      : 'hover:bg-muted/30',
-                  )}
-                >
-                  <td className="px-3 py-3">
-                    <Checkbox
-                      aria-label={`选择提交记录 ${submission.id}`}
-                      checked={selectedIds.has(submission.id)}
-                      onCheckedChange={(checked) =>
-                        handleSelectSubmission(submission.id, checked)
-                      }
-                    />
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-3">
-                    <SubmissionStatusBadge status={submission.status} />
-                  </td>
-                  <td className="px-3 py-3">
-                    <code className="break-all text-xs text-muted-foreground">
-                      {submission.anonymousSessionId}
-                    </code>
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-3 text-xs text-muted-foreground">
-                    {formatGeneratedAppDateTime(submission.createdAt)}
-                  </td>
-                  <td className="px-3 py-3">
-                    <SummaryText>{summarizeJson(submission.input)}</SummaryText>
-                  </td>
-                  <td className="px-3 py-3">
-                    <SummaryText>{summarizeJson(submission.result)}</SummaryText>
-                  </td>
-                  <td className="px-3 py-3">
-                    <SummaryText>{summarizeJson(submission.report)}</SummaryText>
-                  </td>
-                  <td className="px-3 py-3">
-                    <SummaryText>
-                      {submission.errorMessage?.trim() || '暂无'}
-                    </SummaryText>
-                  </td>
-                  <td className="whitespace-nowrap px-3 py-3">
-                    <div className="flex items-center gap-1.5">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setSelectedSubmissionId(submission.id)}
-                        aria-label={`查看提交记录 ${submission.id} 详情`}
-                      >
-                        <Eye className="mr-2 h-3.5 w-3.5" />
-                        查看
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => void handleDeleteSubmission(submission)}
-                        disabled={isDeleting}
-                        aria-label={`删除提交记录 ${submission.id}`}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                </TableCell>
+                <TableCell className="whitespace-nowrap py-3">
+                  <SubmissionStatusBadge status={submission.status} />
+                </TableCell>
+                <TableCell className="py-3">
+                  <code className="break-all text-xs text-muted-foreground">
+                    {submission.anonymousSessionId}
+                  </code>
+                </TableCell>
+                <TableCell className="whitespace-nowrap py-3 text-xs text-muted-foreground">
+                  {formatGeneratedAppDateTime(submission.createdAt)}
+                </TableCell>
+                <TableCell className="py-3">
+                  <SummaryText>{summarizeJson(submission.input)}</SummaryText>
+                </TableCell>
+                <TableCell className="py-3">
+                  <SummaryText>{summarizeJson(submission.result)}</SummaryText>
+                </TableCell>
+                <TableCell className="py-3">
+                  <SummaryText>{summarizeJson(submission.report)}</SummaryText>
+                </TableCell>
+                <TableCell className="py-3">
+                  <SummaryText>
+                    {submission.errorMessage?.trim() || '暂无'}
+                  </SummaryText>
+                </TableCell>
+                <TableCell className="whitespace-nowrap py-3">
+                  <div className="flex items-center gap-1.5">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSelectedSubmissionId(submission.id)}
+                      aria-label={`查看提交记录 ${submission.id} 详情`}
+                    >
+                      <Eye className="mr-2 h-3.5 w-3.5" />
+                      查看
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void handleDeleteSubmission(submission)}
+                      disabled={isDeleting}
+                      aria-label={`删除提交记录 ${submission.id}`}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
       )}
 
       {meta && meta.totalPages > 1 ? (
@@ -741,12 +751,12 @@ export function GeneratedAppSubmissionsPanel({
           </p>
         ) : detailQuery.isLoading && !selectedSubmission ? (
           <div className="flex items-center gap-3 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
+            <Spinner />
             正在加载提交详情...
           </div>
         ) : detailQuery.isError || !selectedSubmission ? (
-          <div className="flex items-start gap-3 rounded-md border border-rose-500/30 bg-rose-500/5 p-4">
-            <AlertTriangle className="mt-0.5 h-5 w-5 text-rose-300" />
+          <div className="flex items-start gap-3 rounded-card border border-error/30 bg-error/5 p-4">
+            <AlertTriangle className="mt-0.5 h-5 w-5 text-error" />
             <div className="min-w-0 space-y-3">
               <div>
                 <h3 className="text-sm font-semibold text-foreground">
@@ -776,10 +786,10 @@ export function GeneratedAppSubmissionsPanel({
                 <div className="flex flex-wrap items-center gap-2">
                   <SubmissionStatusBadge status={selectedSubmission.status} />
                   {detailQuery.isFetching ? (
-                    <span className="inline-flex items-center gap-1 rounded-full border border-border bg-background/30 px-2 py-0.5 text-xs text-muted-foreground">
-                      <Loader2 className="h-3 w-3 animate-spin" />
+                    <Badge variant="secondary" size="sm">
+                      <Spinner size="sm" className="h-3 w-3" />
                       正在刷新
-                    </span>
+                    </Badge>
                   ) : null}
                   <code className="break-all rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
                     {selectedSubmission.id}
@@ -820,7 +830,7 @@ export function GeneratedAppSubmissionsPanel({
                 disabled={isDeleting}
               >
                 {deleteSubmissionMutation.isPending ? (
-                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                  <Spinner size="sm" className="mr-2" />
                 ) : (
                   <Trash2 className="mr-2 h-3.5 w-3.5" />
                 )}
@@ -828,7 +838,7 @@ export function GeneratedAppSubmissionsPanel({
               </Button>
             </div>
 
-            <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-xs text-amber-100">
+            <div className="rounded-card border border-warning/30 bg-warning/5 p-3 text-xs text-warning">
               审计信息仅展示匿名会话、应用版本和时间信息；公开分享
               token 不在创建者详情面板明文展示。
             </div>

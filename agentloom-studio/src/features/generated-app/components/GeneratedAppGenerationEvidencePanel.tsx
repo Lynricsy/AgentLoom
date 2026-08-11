@@ -1,10 +1,33 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { AlertTriangle, Loader2, RefreshCw } from 'lucide-react'
+import {
+  AlertTriangle,
+  FileSearch,
+  History,
+  RefreshCw,
+  Wrench,
+} from 'lucide-react'
 
 import { Pagination } from '@/shared/components/Pagination'
-import { cn } from '@/shared/lib/utils'
+import { EmptyState } from '@/shared/components/empty-state/EmptyState'
+import { Spinner } from '@/shared/components/spinner/Spinner'
+import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
-import { NativeSelect } from '@/shared/ui/native-select'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/shared/ui/select'
+import { Skeleton } from '@/shared/ui/skeleton'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/shared/ui/table'
 import {
   useGeneratedAppGateRuns,
   useGeneratedAppGenerationRuns,
@@ -16,9 +39,9 @@ import {
   GENERATED_APP_GENERATION_RUN_TRIGGER_LABELS,
   GENERATED_APP_REPAIR_ATTEMPT_STATUS_LABELS,
   formatGeneratedAppDateTime,
-  getGeneratedAppGateStatusBadgeClass,
-  getGeneratedAppGenerationRunStatusBadgeClass,
-  getGeneratedAppRepairAttemptStatusBadgeClass,
+  getGeneratedAppGateStatusBadgeVariant,
+  getGeneratedAppGenerationRunStatusBadgeVariant,
+  getGeneratedAppRepairAttemptStatusBadgeVariant,
 } from '../lib/generatedAppDisplay'
 import type {
   GeneratedAppGateEvidence,
@@ -77,8 +100,8 @@ function InlineErrorState({
   onRetry: () => void
 }) {
   return (
-    <div className="flex items-start gap-3 rounded-md border border-rose-500/30 bg-rose-500/5 p-4">
-      <AlertTriangle className="mt-0.5 h-5 w-5 text-rose-300" />
+    <div className="flex items-start gap-3 rounded-card border border-error/30 bg-error/5 p-4">
+      <AlertTriangle className="mt-0.5 h-5 w-5 text-error" />
       <div className="min-w-0 space-y-3">
         <div>
           <h3 className="text-sm font-semibold text-foreground">{title}</h3>
@@ -95,26 +118,17 @@ function InlineErrorState({
   )
 }
 
-function EmptyState({
-  title,
-  description,
-}: {
-  title: string
-  description: string
-}) {
+/** 三个区块共用的骨架列表：先给出行位占位，再由真实表格替换 */
+function LoadingState({ label, rows = 3 }: { label: string; rows?: number }) {
   return (
-    <div className="rounded-md border border-dashed border-border p-6 text-center">
-      <p className="text-sm font-medium text-foreground">{title}</p>
-      <p className="mt-1 text-sm text-muted-foreground">{description}</p>
-    </div>
-  )
-}
-
-function LoadingState({ label }: { label: string }) {
-  return (
-    <div className="flex items-center gap-3 text-sm text-muted-foreground">
-      <Loader2 className="h-4 w-4 animate-spin" />
-      {label}
+    <div className="space-y-3">
+      <p className="flex items-center gap-2 text-sm text-muted-foreground">
+        <Spinner size="sm" />
+        {label}
+      </p>
+      {Array.from({ length: rows }, (_, index) => (
+        <Skeleton key={index} className="h-12 rounded-card" />
+      ))}
     </div>
   )
 }
@@ -125,14 +139,9 @@ function GenerationRunStatusBadge({
   status: GeneratedAppGenerationRunStatus
 }) {
   return (
-    <span
-      className={cn(
-        'inline-flex rounded-full border px-2 py-0.5 text-xs font-medium',
-        getGeneratedAppGenerationRunStatusBadgeClass(status),
-      )}
-    >
+    <Badge variant={getGeneratedAppGenerationRunStatusBadgeVariant(status)}>
       {GENERATED_APP_GENERATION_RUN_STATUS_LABELS[status]}
-    </span>
+    </Badge>
   )
 }
 
@@ -142,27 +151,17 @@ function RepairAttemptStatusBadge({
   status: GeneratedAppRepairAttemptStatus
 }) {
   return (
-    <span
-      className={cn(
-        'inline-flex rounded-full border px-2 py-0.5 text-xs font-medium',
-        getGeneratedAppRepairAttemptStatusBadgeClass(status),
-      )}
-    >
+    <Badge variant={getGeneratedAppRepairAttemptStatusBadgeVariant(status)}>
       {GENERATED_APP_REPAIR_ATTEMPT_STATUS_LABELS[status]}
-    </span>
+    </Badge>
   )
 }
 
 function GateRunStatusBadge({ status }: { status: GeneratedAppGateRunStatus }) {
   return (
-    <span
-      className={cn(
-        'inline-flex rounded-full border px-2 py-0.5 text-xs font-medium',
-        getGeneratedAppGateStatusBadgeClass(status),
-      )}
-    >
+    <Badge variant={getGeneratedAppGateStatusBadgeVariant(status)}>
       {GENERATED_APP_GATE_STATUS_LABELS[status]}
-    </span>
+    </Badge>
   )
 }
 
@@ -203,8 +202,8 @@ function AutomaticRepairAttemptNotice({
   }
 
   return (
-    <div className="rounded-md border border-amber-500/30 bg-amber-500/5 p-3 text-xs">
-      <p className="font-medium text-amber-200">已定位失败 Gate，尚未应用补丁</p>
+    <div className="rounded-card border border-warning/30 bg-warning/5 p-3 text-xs">
+      <p className="font-medium text-warning">已定位失败 Gate，尚未应用补丁</p>
       <p className="mt-1 break-words text-muted-foreground">
         自动修复循环已把 {attempt.targetGateId}{' '}
         标记为下一轮修复目标；当前同步 runner 未修改源码、Workflow
@@ -224,7 +223,7 @@ function RepairPlanSummary({
   }
 
   return (
-    <div className="space-y-1 rounded-md border border-border bg-muted/30 p-3 text-xs">
+    <div className="space-y-1 rounded-card border border-border bg-muted/30 p-3 text-xs">
       {attempt.repairPlan ? (
         <p className="break-words text-muted-foreground">
           修复工作单：{attempt.repairPlan.patchTargets.join('、') || '暂无目标'}
@@ -304,10 +303,6 @@ function FailureSummary({ gateRun }: { gateRun: GeneratedAppGateRun }) {
       ) : null}
     </div>
   )
-}
-
-function formatBudget(run: GeneratedAppGenerationRun): string {
-  return `${run.maxRepairAttempts} 次修复 / ${run.maxRuntimeSeconds}s`
 }
 
 export function GeneratedAppGenerationEvidencePanel({
@@ -514,21 +509,27 @@ export function GeneratedAppGenerationEvidencePanel({
               不在此处展示。
             </p>
           </div>
-          <label className="space-y-1 text-xs text-muted-foreground">
-            <span>运行状态</span>
-            <NativeSelect
+          <div className="space-y-1 text-xs text-muted-foreground">
+            <span className="block">运行状态</span>
+            <Select
               value={runStatusFilter}
               onValueChange={handleRunStatusFilterChange}
-              aria-label="生成运行状态筛选"
-              className="min-w-44"
             >
-              {GENERATION_RUN_STATUS_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </NativeSelect>
-          </label>
+              <SelectTrigger
+                aria-label="生成运行状态筛选"
+                className="min-w-44"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {GENERATION_RUN_STATUS_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         {generationRunsQuery.isLoading ? (
@@ -541,105 +542,88 @@ export function GeneratedAppGenerationEvidencePanel({
           />
         ) : generationRuns.length === 0 ? (
           <EmptyState
+            icon={History}
             title="暂无生成运行记录"
             description="自动开发测试循环写入 generation run 后，会在这里展示运行状态、预算、摘要和失败原因。"
           />
         ) : (
           <>
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-left text-sm">
-                <thead className="border-b border-border text-xs text-muted-foreground">
-                  <tr>
-                    <th className="whitespace-nowrap px-3 py-2 font-medium">
-                      Run
-                    </th>
-                    <th className="whitespace-nowrap px-3 py-2 font-medium">
-                      状态
-                    </th>
-                    <th className="whitespace-nowrap px-3 py-2 font-medium">
-                      触发来源
-                    </th>
-                    <th className="whitespace-nowrap px-3 py-2 font-medium">
-                      预算
-                    </th>
-                    <th className="min-w-72 px-3 py-2 font-medium">摘要</th>
-                    <th className="min-w-56 px-3 py-2 font-medium">失败原因</th>
-                    <th className="whitespace-nowrap px-3 py-2 font-medium">
-                      Started
-                    </th>
-                    <th className="whitespace-nowrap px-3 py-2 font-medium">
-                      Completed
-                    </th>
-                    <th className="whitespace-nowrap px-3 py-2 font-medium">
-                      操作
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {generationRuns.map((run) => (
-                    <tr
-                      key={run.id}
-                      className={cn(
-                        'align-top',
-                        selectedRunId === run.id
-                          ? 'bg-primary/5'
-                          : 'hover:bg-muted/30',
-                      )}
-                    >
-                      <td className="whitespace-nowrap px-3 py-3">
-                        <div className="space-y-1">
-                          <p className="font-medium text-foreground">
-                            Run #{run.runNumber}
-                          </p>
-                          <code className="text-xs text-muted-foreground">
-                            {run.id}
-                          </code>
-                        </div>
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-3">
-                        <GenerationRunStatusBadge status={run.status} />
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-3 text-xs text-muted-foreground">
-                        {
-                          GENERATED_APP_GENERATION_RUN_TRIGGER_LABELS[
-                            run.triggerSource
-                          ]
-                        }
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-3 text-xs text-muted-foreground">
-                        {formatBudget(run)}
-                      </td>
-                      <td className="px-3 py-3">
-                        <SummaryText>{run.summary}</SummaryText>
-                      </td>
-                      <td className="px-3 py-3">
-                        <SummaryText>
-                          {run.failureReason?.trim() || '暂无'}
-                        </SummaryText>
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-3 text-xs text-muted-foreground">
-                        {formatGeneratedAppDateTime(run.startedAt)}
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-3 text-xs text-muted-foreground">
-                        {formatGeneratedAppDateTime(run.completedAt)}
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-3">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          aria-pressed={selectedRunId === run.id}
-                          onClick={() => handleSelectRun(run.id)}
-                        >
-                          {selectedRunId === run.id
-                            ? `当前 Run #${run.runNumber}`
-                            : `选择 Run #${run.runNumber}`}
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Run</TableHead>
+                  <TableHead>状态</TableHead>
+                  <TableHead>触发来源</TableHead>
+                  <TableHead>预算</TableHead>
+                  <TableHead className="min-w-72">摘要</TableHead>
+                  <TableHead className="min-w-56">失败原因</TableHead>
+                  <TableHead>Started</TableHead>
+                  <TableHead>Completed</TableHead>
+                  <TableHead>操作</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {generationRuns.map((run) => (
+                  <TableRow
+                    key={run.id}
+                    className="align-top"
+                    data-state={
+                      selectedRunId === run.id ? 'selected' : undefined
+                    }
+                  >
+                    <TableCell className="whitespace-nowrap py-3">
+                      <div className="space-y-1">
+                        <p className="font-medium text-foreground">
+                          Run #{run.runNumber}
+                        </p>
+                        <code className="text-xs text-muted-foreground">
+                          {run.id}
+                        </code>
+                      </div>
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap py-3">
+                      <GenerationRunStatusBadge status={run.status} />
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap py-3 text-xs text-muted-foreground">
+                      {
+                        GENERATED_APP_GENERATION_RUN_TRIGGER_LABELS[
+                          run.triggerSource
+                        ]
+                      }
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap py-3 text-xs text-muted-foreground">
+                      {run.maxRepairAttempts} 次修复 / {run.maxRuntimeSeconds}s
+                    </TableCell>
+                    <TableCell className="py-3">
+                      <SummaryText>{run.summary}</SummaryText>
+                    </TableCell>
+                    <TableCell className="py-3">
+                      <SummaryText>
+                        {run.failureReason?.trim() || '暂无'}
+                      </SummaryText>
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap py-3 text-xs text-muted-foreground">
+                      {formatGeneratedAppDateTime(run.startedAt)}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap py-3 text-xs text-muted-foreground">
+                      {formatGeneratedAppDateTime(run.completedAt)}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap py-3">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        aria-pressed={selectedRunId === run.id}
+                        onClick={() => handleSelectRun(run.id)}
+                      >
+                        {selectedRunId === run.id
+                          ? `当前 Run #${run.runNumber}`
+                          : `选择 Run #${run.runNumber}`}
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
 
             {generationRunMeta && generationRunMeta.totalPages > 1 ? (
               <Pagination
@@ -683,97 +667,86 @@ export function GeneratedAppGenerationEvidencePanel({
           />
         ) : repairAttempts.length === 0 ? (
           <EmptyState
+            icon={Wrench}
             title="暂无修复尝试"
             description="Repair loop 写入失败摘要、变更摘要和再验证摘要后，会按所选 generation run 展示。"
           />
         ) : (
           <>
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-left text-sm">
-                <thead className="border-b border-border text-xs text-muted-foreground">
-                  <tr>
-                    <th className="whitespace-nowrap px-3 py-2 font-medium">
-                      Attempt
-                    </th>
-                    <th className="whitespace-nowrap px-3 py-2 font-medium">
-                      Target gate
-                    </th>
-                    <th className="whitespace-nowrap px-3 py-2 font-medium">
-                      状态
-                    </th>
-                    <th className="min-w-64 px-3 py-2 font-medium">失败摘要</th>
-                    <th className="min-w-64 px-3 py-2 font-medium">变更摘要</th>
-                    <th className="min-w-64 px-3 py-2 font-medium">
-                      再验证摘要
-                    </th>
-                    <th className="whitespace-nowrap px-3 py-2 font-medium">
-                      操作
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {repairAttempts.map((attempt) => (
-                    <tr
-                      key={attempt.id}
-                      className={cn(
-                        'align-top',
-                        selectedRepairAttemptId === attempt.id
-                          ? 'bg-primary/5'
-                          : 'hover:bg-muted/30',
-                      )}
-                    >
-                      <td className="whitespace-nowrap px-3 py-3">
-                        <div className="space-y-1">
-                          <p className="font-medium text-foreground">
-                            Repair #{attempt.attemptNumber}
-                          </p>
-                          <code className="text-xs text-muted-foreground">
-                            {attempt.id}
-                          </code>
-                        </div>
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-3">
-                        <code className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
-                          {attempt.targetGateId}
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Attempt</TableHead>
+                  <TableHead>Target gate</TableHead>
+                  <TableHead>状态</TableHead>
+                  <TableHead className="min-w-64">失败摘要</TableHead>
+                  <TableHead className="min-w-64">变更摘要</TableHead>
+                  <TableHead className="min-w-64">再验证摘要</TableHead>
+                  <TableHead>操作</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {repairAttempts.map((attempt) => (
+                  <TableRow
+                    key={attempt.id}
+                    className="align-top"
+                    data-state={
+                      selectedRepairAttemptId === attempt.id
+                        ? 'selected'
+                        : undefined
+                    }
+                  >
+                    <TableCell className="whitespace-nowrap py-3">
+                      <div className="space-y-1">
+                        <p className="font-medium text-foreground">
+                          Repair #{attempt.attemptNumber}
+                        </p>
+                        <code className="text-xs text-muted-foreground">
+                          {attempt.id}
                         </code>
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-3">
-                        <RepairAttemptStatusBadge status={attempt.status} />
-                      </td>
-                      <td className="px-3 py-3">
-                        <div className="min-w-0 space-y-2">
-                          <AutomaticRepairAttemptNotice attempt={attempt} />
-                          <RepairPlanSummary attempt={attempt} />
-                          <SummaryText>{attempt.failureSummary}</SummaryText>
-                        </div>
-                      </td>
-                      <td className="px-3 py-3">
-                        <SummaryText>
-                          {attempt.changeSummary?.trim() || '暂无'}
-                        </SummaryText>
-                      </td>
-                      <td className="px-3 py-3">
-                        <SummaryText>
-                          {attempt.verificationSummary?.trim() || '暂无'}
-                        </SummaryText>
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-3">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          aria-pressed={selectedRepairAttemptId === attempt.id}
-                          onClick={() => handleSelectRepairAttempt(attempt.id)}
-                        >
-                          {selectedRepairAttemptId === attempt.id
-                            ? '取消过滤'
-                            : `过滤 Repair #${attempt.attemptNumber}`}
-                        </Button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                      </div>
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap py-3">
+                      <code className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">
+                        {attempt.targetGateId}
+                      </code>
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap py-3">
+                      <RepairAttemptStatusBadge status={attempt.status} />
+                    </TableCell>
+                    <TableCell className="py-3">
+                      <div className="min-w-0 space-y-2">
+                        <AutomaticRepairAttemptNotice attempt={attempt} />
+                        <RepairPlanSummary attempt={attempt} />
+                        <SummaryText>{attempt.failureSummary}</SummaryText>
+                      </div>
+                    </TableCell>
+                    <TableCell className="py-3">
+                      <SummaryText>
+                        {attempt.changeSummary?.trim() || '暂无'}
+                      </SummaryText>
+                    </TableCell>
+                    <TableCell className="py-3">
+                      <SummaryText>
+                        {attempt.verificationSummary?.trim() || '暂无'}
+                      </SummaryText>
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap py-3">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        aria-pressed={selectedRepairAttemptId === attempt.id}
+                        onClick={() => handleSelectRepairAttempt(attempt.id)}
+                      >
+                        {selectedRepairAttemptId === attempt.id
+                          ? '取消过滤'
+                          : `过滤 Repair #${attempt.attemptNumber}`}
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
 
             {repairAttemptMeta && repairAttemptMeta.totalPages > 1 ? (
               <Pagination
@@ -809,79 +782,66 @@ export function GeneratedAppGenerationEvidencePanel({
           />
         ) : gateRuns.length === 0 ? (
           <EmptyState
+            icon={FileSearch}
             title="暂无 Gate run 证据"
             description="Gate runner 写入证据后，会按所选 generation run 和 repair attempt 自动过滤展示。"
           />
         ) : (
           <>
-            <div className="overflow-x-auto">
-              <table className="min-w-full text-left text-sm">
-                <thead className="border-b border-border text-xs text-muted-foreground">
-                  <tr>
-                    <th className="whitespace-nowrap px-3 py-2 font-medium">
-                      Gate
-                    </th>
-                    <th className="whitespace-nowrap px-3 py-2 font-medium">
-                      状态
-                    </th>
-                    <th className="whitespace-nowrap px-3 py-2 font-medium">
-                      Attempt
-                    </th>
-                    <th className="whitespace-nowrap px-3 py-2 font-medium">
-                      Blocking
-                    </th>
-                    <th className="min-w-72 px-3 py-2 font-medium">摘要</th>
-                    <th className="min-w-72 px-3 py-2 font-medium">Evidence</th>
-                    <th className="min-w-64 px-3 py-2 font-medium">
-                      Failure / repair
-                    </th>
-                    <th className="whitespace-nowrap px-3 py-2 font-medium">
-                      Completed
-                    </th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {gateRuns.map((gateRun) => (
-                    <tr key={gateRun.id} className="align-top">
-                      <td className="whitespace-nowrap px-3 py-3">
-                        <div className="space-y-1">
-                          <p className="font-medium text-foreground">
-                            Gate {gateRun.gateOrder}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {gateRun.gateName}
-                          </p>
-                          <code className="text-xs text-muted-foreground">
-                            {gateRun.gateId}
-                          </code>
-                        </div>
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-3">
-                        <GateRunStatusBadge status={gateRun.status} />
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-3 text-xs text-muted-foreground">
-                        #{gateRun.attemptNumber}
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-3 text-xs text-muted-foreground">
-                        {gateRun.blocking ? '阻断' : '非阻断'}
-                      </td>
-                      <td className="px-3 py-3">
-                        <SummaryText>{gateRun.summary}</SummaryText>
-                      </td>
-                      <td className="px-3 py-3">
-                        <EvidenceSummaryList evidence={gateRun.evidence} />
-                      </td>
-                      <td className="px-3 py-3">
-                        <FailureSummary gateRun={gateRun} />
-                      </td>
-                      <td className="whitespace-nowrap px-3 py-3 text-xs text-muted-foreground">
-                        {formatGeneratedAppDateTime(gateRun.completedAt)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Gate</TableHead>
+                  <TableHead>状态</TableHead>
+                  <TableHead>Attempt</TableHead>
+                  <TableHead>Blocking</TableHead>
+                  <TableHead className="min-w-72">摘要</TableHead>
+                  <TableHead className="min-w-72">Evidence</TableHead>
+                  <TableHead className="min-w-64">Failure / repair</TableHead>
+                  <TableHead>Completed</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {gateRuns.map((gateRun) => (
+                  <TableRow key={gateRun.id} className="align-top">
+                    <TableCell className="whitespace-nowrap py-3">
+                      <div className="space-y-1">
+                        <p className="font-medium text-foreground">
+                          Gate {gateRun.gateOrder}
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {gateRun.gateName}
+                        </p>
+                        <code className="text-xs text-muted-foreground">
+                          {gateRun.gateId}
+                        </code>
+                      </div>
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap py-3">
+                      <GateRunStatusBadge status={gateRun.status} />
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap py-3 text-xs text-muted-foreground">
+                      #{gateRun.attemptNumber}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap py-3 text-xs text-muted-foreground">
+                      {gateRun.blocking ? '阻断' : '非阻断'}
+                    </TableCell>
+                    <TableCell className="py-3">
+                      <SummaryText>{gateRun.summary}</SummaryText>
+                    </TableCell>
+                    <TableCell className="py-3">
+                      <EvidenceSummaryList evidence={gateRun.evidence} />
+                    </TableCell>
+                    <TableCell className="py-3">
+                      <FailureSummary gateRun={gateRun} />
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap py-3 text-xs text-muted-foreground">
+                      {formatGeneratedAppDateTime(gateRun.completedAt)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
 
             {gateRunMeta && gateRunMeta.totalPages > 1 ? (
               <Pagination

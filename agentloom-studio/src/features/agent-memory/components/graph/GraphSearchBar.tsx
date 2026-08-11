@@ -39,13 +39,13 @@ export const GraphSearchBar = memo(function GraphSearchBar({
   return (
     <div
       className={cn(
-        'flex items-center gap-2 rounded-lg border px-3 py-1.5',
-        'border-border/60 bg-popover/95 backdrop-blur-sm',
-        'shadow-md',
+        'flex items-center gap-2 rounded-panel border border-border px-3 py-2',
+        'bg-surface/90 shadow-popover backdrop-blur-md',
+        'focus-within:border-border-hover',
       )}
       data-testid="graph-search-bar"
     >
-      <Search className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+      <Search className="h-3.5 w-3.5 shrink-0 text-muted" />
       <input
         ref={inputRef}
         type="text"
@@ -60,7 +60,7 @@ export const GraphSearchBar = memo(function GraphSearchBar({
         <button
           type="button"
           onClick={handleClear}
-          className="shrink-0 rounded p-0.5 text-muted-foreground transition-colors hover:text-foreground"
+          className="shrink-0 rounded p-0.5 text-muted transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
           aria-label="清除搜索"
           data-testid="graph-search-clear"
         >

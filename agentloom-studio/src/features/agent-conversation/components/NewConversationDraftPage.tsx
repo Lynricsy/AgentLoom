@@ -1,7 +1,11 @@
-import { AlertCircle, ArrowLeft, FolderTree, Loader2 } from "lucide-react";
+import { AlertCircle, ArrowLeft, MessagesSquare } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "@tanstack/react-router";
 
+import { EmptyState } from "@/shared/components/empty-state/EmptyState";
+import { Badge } from "@/shared/ui/badge";
+import { Button } from "@/shared/ui/button";
+import { Spinner } from "@/shared/components/spinner/Spinner";
 import { useAgent } from "@/features/agent/api/agentQueries";
 import { fetchWorkspaceFileTree } from "@/features/workspace/api/workspaceApi";
 import { useStartConversation } from "../api/conversationMutations";
@@ -150,34 +154,38 @@ export function NewConversationDraftPage({
 
   return (
     <div className="flex h-full flex-col bg-background">
-      <header className="flex items-center gap-3 border-b border-border bg-surface px-4 py-2.5 shrink-0">
+      <header className="flex shrink-0 items-center gap-3 border-b border-border bg-surface px-4 py-2.5">
         {onBack ? (
-          <button
-            type="button"
+          <Button
+            variant="ghost"
+            size="icon-sm"
             onClick={onBack}
-            className="rounded-md p-1.5 text-muted-foreground transition-colors hover:bg-surface-elevated hover:text-foreground"
+            className="text-muted-foreground"
+            title="返回"
           >
             <ArrowLeft className="h-4 w-4" />
-          </button>
+          </Button>
         ) : null}
-        <div className="flex items-center gap-2">
-          <div
-            className={`h-2 w-2 rounded-full ${
+        <div className="flex min-w-0 items-center gap-2">
+          <span
+            className={`h-2 w-2 shrink-0 rounded-full ${
               startConversation.isPending
                 ? "bg-warning animate-pulse"
                 : "bg-muted-foreground"
             }`}
           />
-          <h1 className="text-sm font-medium text-foreground">Agent 新对话</h1>
-          <span className="rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground">
+          <h1 className="truncate text-sm font-semibold text-foreground">
+            Agent 新对话
+          </h1>
+          <Badge variant="secondary" size="sm" className="shrink-0">
             {runtimeModeLabel}
-          </span>
+          </Badge>
         </div>
         {startConversation.isPending ? (
-          <div className="ml-auto flex items-center gap-1.5 text-xs text-info">
-            <Loader2 className="h-3 w-3 animate-spin" />
-            <span>正在创建并发送</span>
-          </div>
+          <Badge variant="info" size="sm" className="ml-auto shrink-0">
+            <Spinner size="sm" className="text-info" label="正在创建并发送" />
+            正在创建并发送
+          </Badge>
         ) : null}
       </header>
 
@@ -190,7 +198,14 @@ export function NewConversationDraftPage({
 
       <div className="flex min-h-0 flex-1 overflow-hidden">
         <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          <div className="min-h-0 flex-1 bg-background" />
+          <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-6">
+            <EmptyState
+              className="border-0"
+              icon={MessagesSquare}
+              title="开始一个新对话"
+              description="描述你希望 Agent 完成的任务，也可以先带上文件或截图作为上下文。"
+            />
+          </div>
 
           <ConversationComposer
             onSend={handleSend}
@@ -203,7 +218,7 @@ export function NewConversationDraftPage({
         {hasSandbox ? (
           <div
             data-testid="draft-conversation-context-pane"
-            className="flex min-w-[320px] flex-1 flex-col gap-2 border-l border-border bg-surface p-2"
+            className="hidden min-w-[320px] flex-1 flex-col gap-2 border-l border-border bg-surface p-2 lg:flex"
           >
             <div className="min-h-[220px] flex-[3] overflow-hidden">
               <SandboxComputerPanel
@@ -221,33 +236,19 @@ export function NewConversationDraftPage({
                 {workspacePreviewId ? (
                   <div
                     data-testid="workspace-snapshot-preview-hint"
-                    className="rounded-lg border border-info/30 bg-info/10 px-3 py-2 text-xs text-info"
+                    className="rounded-card border border-info/30 bg-info/10 px-3 py-2 text-xs text-info"
                   >
                     当前显示的是持久化工作区目录预览；对话开始并恢复沙箱后，这里会切换为实时工作区。
                   </div>
                 ) : null}
 
                 <div className="min-h-0 flex-1 overflow-hidden">
-                  {isPreviewLoading ? (
-                    <div className="flex h-full flex-col overflow-hidden rounded-lg border border-border bg-surface">
-                      <div className="flex items-center gap-2 border-b border-border bg-surface-elevated/50 px-3 py-2">
-                        <FolderTree className="h-4 w-4 text-warning/80" />
-                        <span className="text-sm font-medium text-foreground">
-                          工作区
-                        </span>
-                      </div>
-                      <div className="flex flex-1 items-center justify-center gap-2 text-sm text-muted-foreground">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        <span>正在加载目录预览</span>
-                      </div>
-                    </div>
-                  ) : (
-                    <WorkspaceFileTree
-                      tree={previewTree}
-                      selectedPath={selectedPreviewPath}
-                      onSelectFile={setSelectedPreviewPath}
-                    />
-                  )}
+                  <WorkspaceFileTree
+                    tree={previewTree}
+                    selectedPath={selectedPreviewPath}
+                    onSelectFile={setSelectedPreviewPath}
+                    isLoading={isPreviewLoading}
+                  />
                 </div>
               </div>
             </div>

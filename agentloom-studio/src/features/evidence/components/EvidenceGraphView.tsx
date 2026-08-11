@@ -20,7 +20,6 @@ import {
   type SimulationLinkDatum,
 } from 'd3-force'
 import { Loader2, AlertCircle, GitBranch } from 'lucide-react'
-import { cn } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
 import { useEvidenceGraph } from '../api/evidenceQueries'
 import { useEvidenceUiStore } from '../stores/evidenceUiStore'
@@ -29,7 +28,11 @@ import type {
   AgentGraphEdge as AgentGraphEdgeType,
   EvidenceGraphResponse,
 } from '../types'
-import { AgentGraphNode, type AgentGraphNodeFlowData, type AgentGraphFlowNode } from './AgentGraphNode'
+import {
+  AgentGraphNode,
+  type AgentGraphNodeFlowData,
+  type AgentGraphFlowNode,
+} from './AgentGraphNode'
 import {
   AgentGraphEdge,
   type AgentGraphEdgeFlowData,
@@ -291,9 +294,7 @@ export const EvidenceGraphView = memo(function EvidenceGraphView({
   if (isError) {
     return (
       <div
-        className={cn(
-          'flex h-full flex-col items-center justify-center gap-3 text-destructive',
-        )}
+        className="flex h-full flex-col items-center justify-center gap-3 text-error"
         data-testid="evidence-graph-error"
       >
         <AlertCircle className="h-8 w-8" />

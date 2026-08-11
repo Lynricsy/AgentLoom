@@ -1,4 +1,5 @@
-import { act, fireEvent, render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type {
@@ -35,6 +36,10 @@ vi.mock('@tanstack/react-router', () => ({
 
 vi.mock('../../api/publicMarketplaceQueries', () => ({
   usePublicListings: (filters: PublicListingsFilters) => usePublicListingsMock(filters),
+}))
+
+vi.mock('@/shared/ui/toast', () => ({
+  useToast: () => ({ notify: vi.fn() }),
 }))
 
 vi.mock('../MarketplaceListingCard', () => ({
@@ -203,7 +208,8 @@ describe('MarketplaceBrowsePage', () => {
     })
   })
 
-  it('updates sort selection', () => {
+  it('updates sort selection', async () => {
+    const user = userEvent.setup()
     listingsQueryMock.data = {
       data: [makeListing()],
       meta: {
@@ -216,14 +222,49 @@ describe('MarketplaceBrowsePage', () => {
 
     render(<MarketplaceBrowsePage />)
 
-    fireEvent.change(screen.getByTestId('marketplace-sort-select'), {
-      target: { value: 'newest' },
-    })
+    await user.click(screen.getByTestId('marketplace-sort-select'))
+    await user.click(await screen.findByRole('option', { name: '最新发布' }))
 
-    expect(usePublicListingsMock.mock.lastCall?.[0]).toMatchObject({
-      sort: 'newest',
-      page: 1,
+    await waitFor(() => {
+      expect(usePublicListingsMock.mock.lastCall?.[0]).toMatchObject({
+        sort: 'newest',
+        page: 1,
+      })
     })
+  })
+
+  it('filters current page by pricing model', async () => {
+    const user = userEvent.setup()
+    listingsQueryMock.data = {
+      data: [
+        makeListing({ id: 'free-1', title: 'Free Workflow', pricingModel: 'free' }),
+        makeListing({
+          id: 'paid-1',
+          title: 'Paid Workflow',
+          pricingModel: 'per_execution',
+          pricePerExecution: '0.01',
+        }),
+      ],
+      meta: {
+        total: 2,
+        page: 1,
+        pageSize: 12,
+        totalPages: 1,
+      },
+    }
+
+    render(<MarketplaceBrowsePage />)
+
+    expect(screen.getAllByTestId('marketplace-listing-card')).toHaveLength(2)
+
+    await user.click(screen.getByTestId('marketplace-pricing-select'))
+    await user.click(await screen.findByRole('option', { name: '免费' }))
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('marketplace-listing-card')).toHaveLength(1)
+    })
+    expect(screen.getByText('Free Workflow')).toBeInTheDocument()
+    expect(screen.queryByText('Paid Workflow')).not.toBeInTheDocument()
   })
 
   it('shows an empty state when no listings are returned', () => {

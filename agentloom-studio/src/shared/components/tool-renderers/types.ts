@@ -51,6 +51,10 @@ export interface ToolCallData {
   permissionDenyEffect?: string
   permissionDiffPreview?: Record<string, unknown>
   permissionRememberable?: boolean
+  /** 工具调用开始时间戳（ms）。提供后卡片展示耗时，缺省则不展示。 */
+  startedAt?: number
+  /** 工具调用最后更新/结束时间戳（ms） */
+  completedAt?: number
 }
 
 /**

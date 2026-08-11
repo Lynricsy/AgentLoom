@@ -5,6 +5,7 @@ import {
   useEffect,
   useMemo,
   type ChangeEvent,
+  type CSSProperties,
   type KeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
@@ -23,6 +24,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/shared/lib/utils";
 import { Button } from "@/shared/ui/button";
+import { Badge } from "@/shared/ui/badge";
+import { Textarea } from "@/shared/ui/textarea";
 import { useToast } from "@/shared/ui/toast";
 import { useAuthToken } from "@/features/auth/hooks/useAuthToken";
 import { useAgent } from "@/features/agent/api/agentQueries";
@@ -197,9 +200,11 @@ function buildAttachmentConversationMessage(
 function ResizableDivider({
   onResize,
   direction,
+  className,
 }: {
   onResize: (delta: number) => void;
   direction: "horizontal" | "vertical";
+  className?: string;
 }) {
   const startPosRef = useRef(0);
   const isDraggingRef = useRef(false);
@@ -236,10 +241,11 @@ function ResizableDivider({
   return (
     <div
       className={cn(
-        "shrink-0 transition-colors hover:bg-info/30 active:bg-info/50",
+        "shrink-0 bg-border/40 transition-colors hover:bg-primary/40 active:bg-primary/60",
         direction === "horizontal"
           ? "w-1 cursor-col-resize hover:w-1.5"
           : "h-1 cursor-row-resize hover:h-1.5",
+        className,
       )}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
@@ -389,50 +395,51 @@ export function ConversationComposer({
   }, [isBusy]);
 
   return (
-    <div className="border-t border-border bg-surface px-4 py-3">
-      {pendingAttachments.length > 0 ? (
-        <div
-          className="mb-3 flex flex-wrap gap-2"
-          data-testid="attachment-draft-list"
-        >
-          {pendingAttachments.map((attachment, index) => (
-            <div
-              key={`${attachment.fileName}-${attachment.sizeBytes}-${index}`}
-              className="flex min-w-0 max-w-full items-start gap-2 rounded-xl border border-border/70 bg-background/80 px-3 py-2"
-            >
-              <div className="mt-0.5 rounded-md bg-foreground/5 p-2 text-muted-foreground">
-                {attachment.kind === "image" ? (
-                  <ImageIcon className="h-4 w-4" />
-                ) : (
-                  <FileText className="h-4 w-4" />
-                )}
-              </div>
-              <div className="min-w-0">
-                <p className="truncate text-sm font-medium text-foreground">
-                  {attachment.fileName}
-                </p>
-                <p className="text-[11px] text-muted-foreground">
-                  {attachment.mimeType} ·{" "}
-                  {attachment.sizeBytes < 1024 * 1024
-                    ? `${(attachment.sizeBytes / 1024).toFixed(1)} KB`
-                    : `${(attachment.sizeBytes / (1024 * 1024)).toFixed(1)} MB`}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => handleRemoveAttachment(index)}
-                disabled={isBusy}
-                className="ml-1 rounded-md p-1 text-muted-foreground transition-colors hover:bg-surface-elevated hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                aria-label={`移除附件 ${attachment.fileName}`}
+    <div className="shrink-0 px-4 pt-2 pb-4">
+      <div className="mx-auto w-full max-w-3xl rounded-panel border border-border bg-surface shadow-popover">
+        {pendingAttachments.length > 0 ? (
+          <div
+            className="flex flex-wrap gap-2 border-b border-border px-3 py-3"
+            data-testid="attachment-draft-list"
+          >
+            {pendingAttachments.map((attachment, index) => (
+              <div
+                key={`${attachment.fileName}-${attachment.sizeBytes}-${index}`}
+                className="flex min-w-0 max-w-full items-start gap-2 rounded-card border border-border bg-surface-elevated px-3 py-2"
               >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          ))}
-        </div>
-      ) : null}
+                <div className="mt-0.5 rounded-md bg-surface p-2 text-muted-foreground">
+                  {attachment.kind === "image" ? (
+                    <ImageIcon className="h-4 w-4" />
+                  ) : (
+                    <FileText className="h-4 w-4" />
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-foreground">
+                    {attachment.fileName}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {attachment.mimeType} ·{" "}
+                    {attachment.sizeBytes < 1024 * 1024
+                      ? `${(attachment.sizeBytes / 1024).toFixed(1)} KB`
+                      : `${(attachment.sizeBytes / (1024 * 1024)).toFixed(1)} MB`}
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  onClick={() => handleRemoveAttachment(index)}
+                  disabled={isBusy}
+                  className="ml-1 h-6 w-6 shrink-0 text-muted-foreground"
+                  aria-label={`移除附件 ${attachment.fileName}`}
+                >
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            ))}
+          </div>
+        ) : null}
 
-      <div className="flex items-end gap-2">
         <input
           ref={fileInputRef}
           type="file"
@@ -450,78 +457,82 @@ export function ConversationComposer({
           data-testid="conversation-image-input"
           onChange={handleImageChange}
         />
-        <div className="flex gap-1">
-          <button
-            type="button"
+
+        <Textarea
+          ref={textareaRef}
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={handleKeyDown}
+          onInput={handleInput}
+          placeholder={
+            isBusy
+              ? (busyPlaceholder ?? "Agent 正在思考中...")
+              : (idlePlaceholder ?? "输入消息，Enter 发送，Shift+Enter 换行")
+          }
+          className={cn(
+            "max-h-[160px] min-h-[44px] resize-none rounded-none border-0 bg-transparent px-4 py-3",
+            "focus-visible:ring-0",
+          )}
+          rows={1}
+          disabled={isBusy}
+        />
+
+        <div className="flex items-center gap-1 px-2 pb-2">
+          <Button
+            variant="ghost"
+            size="icon-sm"
             onClick={handleFileClick}
             disabled={isBusy}
-            className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-surface-elevated transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+            className="text-muted-foreground"
             title="上传文件"
           >
             <Paperclip className="h-4 w-4" />
-          </button>
-          <button
-            type="button"
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
             onClick={handleImageClick}
             disabled={isBusy}
-            className="p-2 rounded-md text-muted-foreground hover:text-foreground hover:bg-surface-elevated transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+            className="text-muted-foreground"
             title="上传图片"
           >
             <ImagePlus className="h-4 w-4" />
-          </button>
-        </div>
+          </Button>
 
-        <div className="flex-1 relative">
-          <textarea
-            ref={textareaRef}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={handleKeyDown}
-            onInput={handleInput}
-            placeholder={
-              isBusy
-                ? (busyPlaceholder ?? "Agent 正在思考中...")
-                : (idlePlaceholder ?? "输入消息，Enter 发送，Shift+Enter 换行")
-            }
-            className={cn(
-              "w-full resize-none rounded-lg border border-border bg-background px-3 py-2.5",
-              "text-sm text-foreground placeholder:text-muted-foreground",
-              "focus:outline-none focus:ring-1 focus:ring-info/50 focus:border-info/50",
-              "min-h-[40px] max-h-[160px]",
+          <div className="ml-auto flex items-center gap-3">
+            <span className="hidden text-[11px] text-muted-foreground sm:inline">
+              Enter 发送 · Shift+Enter 换行
+            </span>
+
+            {isBusy && onCancel ? (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onCancel}
+                className="border-error/40 text-error hover:border-error/60 hover:bg-error/10"
+              >
+                <Square className="h-3.5 w-3.5" />
+                停止
+              </Button>
+            ) : isBusy ? (
+              <Button size="sm" disabled>
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                {busyActionLabel ?? "发送中"}
+              </Button>
+            ) : (
+              <Button
+                size="sm"
+                onClick={() => void handleSend()}
+                disabled={
+                  draft.trim().length === 0 && pendingAttachments.length === 0
+                }
+              >
+                <Send className="h-3.5 w-3.5" />
+                发送
+              </Button>
             )}
-            rows={1}
-            disabled={isBusy}
-          />
+          </div>
         </div>
-
-        {isBusy && onCancel ? (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={onCancel}
-            className="shrink-0 text-error border-error/30 hover:bg-error/10"
-          >
-            <Square className="h-3.5 w-3.5 mr-1.5" />
-            停止
-          </Button>
-        ) : isBusy ? (
-          <Button size="sm" disabled className="shrink-0">
-            <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
-            {busyActionLabel ?? "发送中"}
-          </Button>
-        ) : (
-          <Button
-            size="sm"
-            onClick={() => void handleSend()}
-            disabled={
-              draft.trim().length === 0 && pendingAttachments.length === 0
-            }
-            className="shrink-0"
-          >
-            <Send className="h-3.5 w-3.5 mr-1.5" />
-            发送
-          </Button>
-        )}
       </div>
     </div>
   );
@@ -865,20 +876,22 @@ export function AgentConversationPage({
   return (
     <SubAgentNavContext.Provider value={subAgentNavValue}>
       <div className="flex flex-col h-full bg-background">
-        <header className="flex items-center gap-3 px-4 py-2.5 border-b border-border bg-surface shrink-0">
+        <header className="flex shrink-0 items-center gap-3 border-b border-border bg-surface px-4 py-2.5">
           {onBack && (
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="icon-sm"
               onClick={onBack}
-              className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-surface-elevated transition-colors"
+              className="text-muted-foreground"
+              title="返回"
             >
               <ArrowLeft className="h-4 w-4" />
-            </button>
+            </Button>
           )}
-          <div className="flex items-center gap-2">
-            <div
+          <div className="flex min-w-0 items-center gap-2">
+            <span
               className={cn(
-                "h-2 w-2 rounded-full",
+                "h-2 w-2 shrink-0 rounded-full",
                 status === "connected" || status === "executing"
                   ? "bg-success"
                   : status === "connecting"
@@ -888,18 +901,18 @@ export function AgentConversationPage({
                       : "bg-muted-foreground",
               )}
             />
-            <h1 className="text-sm font-medium text-foreground">
+            <h1 className="truncate text-sm font-semibold text-foreground">
               {agentName || "Agent"} 对话
             </h1>
-            <span className="rounded-full border border-border px-2 py-0.5 text-[11px] text-muted-foreground">
+            <Badge variant="secondary" size="sm" className="shrink-0">
               {runtimeModeLabel}
-            </span>
+            </Badge>
           </div>
           {isExecuting && (
-            <div className="flex items-center gap-1.5 text-xs text-info ml-auto">
+            <Badge variant="info" size="sm" className="ml-auto shrink-0">
               <Loader2 className="h-3 w-3 animate-spin" />
-              <span>处理中</span>
-            </div>
+              处理中
+            </Badge>
           )}
         </header>
 
@@ -922,11 +935,15 @@ export function AgentConversationPage({
           <div
             className={cn(
               "flex min-w-0 flex-col overflow-hidden",
-              hasSandbox ? "shrink-0" : "flex-1",
+              hasSandbox
+                ? "w-full lg:w-[var(--conversation-left-width)] lg:min-w-[360px] lg:shrink-0"
+                : "flex-1",
             )}
             style={
               hasSandbox
-                ? { width: `${currentLeftWidth}px`, minWidth: MIN_LEFT_WIDTH }
+                ? ({
+                    "--conversation-left-width": `${currentLeftWidth}px`,
+                  } as CSSProperties)
                 : undefined
             }
           >
@@ -953,6 +970,7 @@ export function AgentConversationPage({
           {hasSandbox ? (
             <>
               <ResizableDivider
+                className="hidden lg:flex"
                 onResize={handleHorizontalResize}
                 direction="horizontal"
               />
@@ -960,7 +978,7 @@ export function AgentConversationPage({
               <div
                 data-right-column
                 data-testid="agent-conversation-context-pane"
-                className="flex flex-col flex-1 overflow-hidden"
+                className="hidden flex-1 flex-col overflow-hidden lg:flex"
                 style={{ minWidth: MIN_RIGHT_WIDTH }}
               >
                 <div
@@ -990,7 +1008,7 @@ export function AgentConversationPage({
                   {workspaceSource === "snapshot_preview" ? (
                     <div
                       data-testid="workspace-snapshot-preview-hint"
-                      className="rounded-lg border border-info/30 bg-info/10 px-3 py-2 text-xs text-info"
+                      className="rounded-card border border-info/30 bg-info/10 px-3 py-2 text-xs text-info"
                     >
                       当前显示的是持久化工作区目录预览；对话开始并恢复沙箱后，这里会切换为实时工作区。
                     </div>

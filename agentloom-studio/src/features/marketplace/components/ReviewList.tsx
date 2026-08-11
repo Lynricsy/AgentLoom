@@ -9,7 +9,7 @@ export function ReviewList({ reviews }: ReviewListProps) {
   if (reviews.length === 0) {
     return (
       <div
-        className="rounded-lg border border-dashed border-border bg-card/40 px-4 py-6 text-center text-sm text-muted-foreground"
+        className="rounded-card border border-dashed border-border px-4 py-6 text-center text-sm text-muted"
         data-testid="review-list-empty"
       >
         还没有评价，来写下第一条反馈吧。
@@ -22,7 +22,7 @@ export function ReviewList({ reviews }: ReviewListProps) {
       {reviews.map((review) => (
         <article
           key={review.id}
-          className="rounded-lg border border-border bg-card/60 p-4"
+          className="rounded-card border border-border bg-surface-elevated p-4"
         >
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -37,11 +37,11 @@ export function ReviewList({ reviews }: ReviewListProps) {
           </div>
 
           {review.content ? (
-            <p className="mt-3 whitespace-pre-wrap text-sm text-muted-foreground">
+            <p className="mt-3 whitespace-pre-wrap text-sm text-muted">
               {review.content}
             </p>
           ) : (
-            <p className="mt-3 text-sm italic text-muted-foreground/80">
+            <p className="mt-3 text-sm italic text-muted-foreground">
               这条评价没有留下文字内容。
             </p>
           )}

@@ -156,9 +156,7 @@ describe('MyMarketplaceListingsPage', () => {
   it('shows 6 loading skeleton items when isLoading is true', () => {
     listingsQueryMock.isLoading = true;
     renderWithProviders(<MyMarketplaceListingsPage />);
-    const skeletons = document
-      .querySelectorAll('.animate-pulse');
-    expect(skeletons).toHaveLength(6);
+    expect(screen.getAllByTestId('listing-skeleton')).toHaveLength(6);
   });
 
   it('shows error state with retry button when isError is true', () => {
@@ -234,11 +232,11 @@ describe('MyMarketplaceListingsPage', () => {
 
     const listedTab = screen.getByRole('button', { name: '已上架' });
     const allTab = screen.getByRole('button', { name: '全部' });
-    expect(allTab.className).toContain('bg-primary');
+    expect(allTab).toHaveAttribute('data-state', 'active');
 
     await user.click(listedTab);
-    expect(listedTab.className).toContain('bg-primary');
-    expect(allTab.className).not.toContain('bg-primary');
+    expect(listedTab).toHaveAttribute('data-state', 'active');
+    expect(allTab).toHaveAttribute('data-state', 'inactive');
   });
 
   it('unlist flow: clicking 下架 opens confirm dialog and confirming calls mutateAsync', async () => {

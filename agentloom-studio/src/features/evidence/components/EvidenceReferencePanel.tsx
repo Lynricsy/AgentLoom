@@ -1,8 +1,11 @@
 import { memo, useEffect, useRef } from 'react'
-import { AlertTriangle, Loader2, ShieldCheck, X } from 'lucide-react'
+import { AlertTriangle, ShieldCheck, TriangleAlert, X } from 'lucide-react'
 
 import { cn } from '@/shared/lib/utils'
+import { Badge } from '@/shared/ui/badge'
 import { Button } from '@/shared/ui/button'
+import { Skeleton } from '@/shared/ui/skeleton'
+import { EmptyState } from '@/shared/components/empty-state/EmptyState'
 
 import { useEvidenceChain } from '../api/evidenceQueries'
 import type { EvidenceChainNode } from '../types'
@@ -96,29 +99,30 @@ export const EvidenceReferencePanel = memo(function EvidenceReferencePanel({
   return (
     <aside
       className={cn(
-        'fixed right-0 top-0 z-50 flex h-full w-full flex-col border-l border-border/60 bg-background/95 shadow-2xl backdrop-blur-md transition-transform duration-300 ease-out sm:w-[400px]',
+        'fixed right-0 top-0 z-50 flex h-full w-full flex-col border-l border-border bg-surface shadow-panel transition-transform duration-300 ease-out sm:w-[400px]',
         isOpen ? 'translate-x-0' : 'translate-x-full',
         className,
       )}
       aria-label="证据引用面板"
       data-testid="evidence-reference-panel"
     >
-      <div className="flex items-center justify-between border-b border-border/60 px-4 py-3">
-        <div className="flex items-center gap-2">
-          <ShieldCheck className="h-4 w-4 text-primary" />
-          <span className="text-sm font-semibold text-foreground">
+      <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <ShieldCheck className="h-4 w-4 shrink-0 text-primary" />
+          <span className="truncate text-sm font-semibold text-foreground">
             {nodeName ? `${nodeName} · 证据引用` : '证据引用'}
           </span>
           {chain && (
-            <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">
+            <Badge variant="secondary" size="sm">
               {chain.totalNodes} 条
-            </span>
+            </Badge>
           )}
         </div>
         <Button
           variant="ghost"
-          size="sm"
+          size="icon-sm"
           onClick={closePanel}
+          aria-label="关闭证据引用面板"
           data-testid="evidence-panel-close"
         >
           <X className="h-4 w-4" />
@@ -126,9 +130,9 @@ export const EvidenceReferencePanel = memo(function EvidenceReferencePanel({
       </div>
 
       {integrityIssues.length > 0 && (
-        <div className="flex items-center gap-2 border-b border-amber-500/20 bg-amber-500/5 px-4 py-2">
-          <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
-          <span className="text-xs text-amber-600">
+        <div className="flex items-center gap-2 border-b border-warning/25 bg-warning/10 px-4 py-2">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-warning" />
+          <span className="text-xs text-warning">
             {integrityIssues.length} 个完整性问题
           </span>
         </div>
@@ -140,22 +144,30 @@ export const EvidenceReferencePanel = memo(function EvidenceReferencePanel({
         <>
           <div className="flex-1 overflow-y-auto px-4 py-3">
             {isLoading && (
-              <div className="flex items-center justify-center py-12">
-                <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              <div className="space-y-2" data-testid="evidence-chain-loading">
+                {Array.from({ length: 3 }, (_, index) => (
+                  <Skeleton key={index} className="h-24 w-full rounded-card" />
+                ))}
               </div>
             )}
 
             {error && (
-              <div className="rounded-xl border border-rose-500/20 bg-rose-500/5 p-4 text-center">
-                <p className="text-xs text-rose-500">加载证据链失败</p>
-                <p className="mt-1 text-[11px] text-muted-foreground">{error.message}</p>
-              </div>
+              <EmptyState
+                className="border-0 px-0 py-8"
+                icon={TriangleAlert}
+                tone="var(--color-error)"
+                title="加载证据链失败"
+                description={error.message}
+              />
             )}
 
             {!isLoading && !error && allNodes.length === 0 && (
-              <div className="py-12 text-center text-xs text-muted-foreground">
-                暂无证据记录
-              </div>
+              <EmptyState
+                className="border-0 px-0 py-8"
+                icon={ShieldCheck}
+                title="暂无证据记录"
+                description="节点执行产生检索、决策或工具输出后，证据链会出现在这里。"
+              />
             )}
 
             {allNodes.length > 0 && (
@@ -191,7 +203,7 @@ export const EvidenceReferencePanel = memo(function EvidenceReferencePanel({
           </div>
 
           {chain && (
-            <div className="border-t border-border/60 px-4 py-2 text-[11px] text-muted-foreground">
+            <div className="border-t border-border px-4 py-2 text-[11px] text-muted">
               链完整度：{chain.chainCompleteness ?? '未知'} · 共 {chain.totalNodes} 个节点
             </div>
           )}

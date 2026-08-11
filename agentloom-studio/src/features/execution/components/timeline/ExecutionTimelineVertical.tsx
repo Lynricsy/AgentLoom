@@ -1,5 +1,11 @@
 import { memo, useMemo, useRef } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
+import { motion } from 'motion/react'
+import { ListTree } from 'lucide-react'
+
+import { Card } from '@/shared/ui/card'
+import { EmptyState } from '@/shared/components/empty-state/EmptyState'
+import { staggerList } from '@/shared/lib/motion'
 
 import type { TimelineData } from '../../hooks/useTimelineData'
 import { TimelineEntry } from './TimelineEntry'
@@ -16,10 +22,13 @@ function groupByStepOrder(data: TimelineData[]): TimelineGroup[] {
   )
 
   for (const item of sorted) {
-    const order = item.step.stepOrder ?? 0
-    const group = groups.get(order) ?? []
-    group.push(item)
-    groups.set(order, group)
+    const stepOrder = item.step.stepOrder ?? 0
+    const bucket = groups.get(stepOrder)
+    if (bucket) {
+      bucket.push(item)
+      continue
+    }
+    groups.set(stepOrder, [item])
   }
 
   return Array.from(groups.entries())
@@ -88,13 +97,13 @@ export const ExecutionTimelineVertical = memo(
     )
 
     return (
-      <section
-        className="flex h-full min-h-[320px] flex-col rounded-3xl border border-border/70 bg-background/80"
+      <Card
+        className="flex h-full min-h-[320px] flex-col overflow-hidden"
         data-testid="execution-timeline-vertical"
       >
-        <div className="border-b border-border/60 px-4 py-3">
+        <div className="border-b border-border px-4 py-3">
           <h2 className="text-sm font-semibold text-foreground">执行时间线</h2>
-          <p className="text-xs text-muted-foreground">
+          <p className="text-xs text-muted">
             节点执行顺序、决策详情与证据链
           </p>
         </div>
@@ -104,11 +113,13 @@ export const ExecutionTimelineVertical = memo(
           className="flex-1 overflow-y-auto px-4 py-4"
         >
           {groups.length === 0 ? (
-            <div
-              className="flex h-full min-h-[220px] items-center justify-center text-sm text-muted-foreground"
-              data-testid="timeline-empty"
-            >
-              暂无执行步骤
+            <div className="flex h-full min-h-[220px] items-center justify-center" data-testid="timeline-empty">
+              <EmptyState
+                className="border-0 px-0 py-0"
+                icon={ListTree}
+                title="暂无执行步骤"
+                description="工作流开始运行后，节点执行顺序会按时间线逐条呈现。"
+              />
             </div>
           ) : useVirtual ? (
             <div
@@ -138,11 +149,15 @@ export const ExecutionTimelineVertical = memo(
             </div>
           ) : (
             <div className="space-y-3">
-              {groups.map((group) => renderGroup(group))}
+              {groups.map((group, index) => (
+                <motion.div key={group.stepOrder} {...staggerList(index)}>
+                  {renderGroup(group)}
+                </motion.div>
+              ))}
             </div>
           )}
         </div>
-      </section>
+      </Card>
     )
   },
 )

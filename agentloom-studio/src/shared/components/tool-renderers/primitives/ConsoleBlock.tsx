@@ -80,7 +80,7 @@ export const ConsoleBlock = memo(function ConsoleBlock({
   return (
     <div
       className={cn(
-        'group relative rounded-lg bg-zinc-900 font-mono text-sm',
+        'group relative rounded-lg bg-background font-mono text-sm',
         className,
       )}
     >
@@ -88,7 +88,7 @@ export const ConsoleBlock = memo(function ConsoleBlock({
       <button
         type="button"
         onClick={() => void handleCopy()}
-        className="absolute right-2 top-2 z-10 flex items-center gap-1 rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
+        className="absolute right-2 top-2 z-10 flex items-center gap-1 rounded bg-surface-elevated px-1.5 py-0.5 text-[10px] text-muted-foreground opacity-0 transition-opacity hover:text-foreground group-hover:opacity-100"
       >
         {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
       </button>
@@ -97,8 +97,8 @@ export const ConsoleBlock = memo(function ConsoleBlock({
         {/* Command line */}
         {command && (
           <div className="mb-1 flex items-start gap-2">
-            <span className="select-none text-emerald-400">$</span>
-            <span className="text-zinc-100">{command}</span>
+            <span className="select-none text-success">$</span>
+            <span className="text-foreground">{command}</span>
           </div>
         )}
 
@@ -106,14 +106,14 @@ export const ConsoleBlock = memo(function ConsoleBlock({
         <div
           className={cn(
             'whitespace-pre-wrap break-all leading-relaxed',
-            isError ? 'text-red-400' : 'text-zinc-300',
+            isError ? 'text-error' : 'text-muted',
           )}
           dangerouslySetInnerHTML={{ __html: outputHtml }}
         />
 
         {/* Exit code */}
         {exitCode !== undefined && exitCode !== 0 && (
-          <div className="mt-2 border-t border-zinc-700/50 pt-2 text-xs text-red-400">
+          <div className="mt-2 border-t border-border pt-2 text-xs text-error">
             退出代码: {exitCode}
           </div>
         )}

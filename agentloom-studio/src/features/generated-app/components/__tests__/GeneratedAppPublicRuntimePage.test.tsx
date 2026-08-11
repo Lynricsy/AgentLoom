@@ -347,7 +347,8 @@ describe('GeneratedAppPublicRuntimePage', () => {
     fireEvent.change(screen.getByLabelText(/严重程度/), {
       target: { value: '7' },
     })
-    await user.selectOptions(screen.getByLabelText(/联系偏好/), 'online')
+    await user.click(screen.getByLabelText(/联系偏好/))
+    await user.click(await screen.findByRole('option', { name: '线上沟通' }))
     await user.type(screen.getByLabelText(/未分组关注点/), '夜间加重')
     await user.click(screen.getByRole('button', { name: '提交问诊信息' }))
 
@@ -395,7 +396,8 @@ describe('GeneratedAppPublicRuntimePage', () => {
     fireEvent.change(screen.getByLabelText(/严重程度/), {
       target: { value: '7' },
     })
-    await user.selectOptions(screen.getByLabelText(/联系偏好/), 'online')
+    await user.click(screen.getByLabelText(/联系偏好/))
+    await user.click(await screen.findByRole('option', { name: '线上沟通' }))
     await user.type(screen.getByLabelText(/补充说明/), '夜间加重')
     await user.click(screen.getByRole('button', { name: '提交问诊信息' }))
 

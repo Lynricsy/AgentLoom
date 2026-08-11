@@ -1,7 +1,14 @@
 import { useMemo } from 'react';
+import { motion } from 'motion/react';
+import { FileClock } from 'lucide-react';
+import { EmptyState } from '@/shared/components/empty-state/EmptyState';
+import { Badge } from '@/shared/ui/badge';
+import { Skeleton } from '@/shared/ui/skeleton';
+import { staggerList } from '@/shared/lib/motion';
+import { cn } from '@/shared/lib/utils';
 import type { AuditLogEntry, AuditOperationType, ReviewStatus } from './types';
 
-// --- 操作类型配置 ---
+// --- 操作类型配置（全部走设计令牌，禁止硬编码调色板类） ---
 
 const OPERATION_LABELS: Record<AuditOperationType, string> = {
   create: '创建',
@@ -10,21 +17,24 @@ const OPERATION_LABELS: Record<AuditOperationType, string> = {
   rollback: '回滚',
 };
 
-const OPERATION_COLORS: Record<AuditOperationType, string> = {
-  create: 'bg-green-100 text-green-800',
-  update: 'bg-blue-100 text-blue-800',
-  delete: 'bg-red-100 text-red-800',
-  rollback: 'bg-amber-100 text-amber-800',
+/** 操作类型 → 语义色令牌 */
+export const OPERATION_TONES: Record<AuditOperationType, string> = {
+  create: 'var(--color-success)',
+  update: 'var(--color-info)',
+  delete: 'var(--color-error)',
+  rollback: 'var(--color-warning)',
 };
 
-const REVIEW_STATUS_BADGE: Record<
+const REVIEW_STATUS_META: Record<
   ReviewStatus,
-  { label: string; className: string }
+  { label: string; tone: string }
 > = {
-  pending: { label: '待审核', className: 'bg-yellow-100 text-yellow-800' },
-  approved: { label: '已批准', className: 'bg-green-100 text-green-800' },
-  rejected: { label: '已拒绝', className: 'bg-red-100 text-red-800' },
+  pending: { label: '待审核', tone: 'var(--color-warning)' },
+  approved: { label: '已批准', tone: 'var(--color-success)' },
+  rejected: { label: '已拒绝', tone: 'var(--color-error)' },
 };
+
+export { REVIEW_STATUS_META };
 
 function formatTimestamp(iso: string): string {
   return new Intl.DateTimeFormat('zh-CN', {
@@ -61,13 +71,13 @@ export function AuditTimeline({
 
   if (isLoading) {
     return (
-      <div className="space-y-4" data-testid="audit-timeline-loading">
+      <div className="space-y-4 p-3" data-testid="audit-timeline-loading">
         {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} className="animate-pulse flex gap-4">
-            <div className="h-8 w-8 rounded-full bg-gray-200" />
+          <div key={i} className="flex gap-3">
+            <Skeleton className="h-8 w-8 shrink-0 rounded-full" />
             <div className="flex-1 space-y-2">
-              <div className="h-4 w-3/4 rounded bg-gray-200" />
-              <div className="h-3 w-1/2 rounded bg-gray-200" />
+              <Skeleton className="h-4 w-3/4 rounded" />
+              <Skeleton className="h-3 w-1/2 rounded" />
             </div>
           </div>
         ))}
@@ -77,74 +87,79 @@ export function AuditTimeline({
 
   if (sortedEntries.length === 0) {
     return (
-      <div
-        className="py-12 text-center text-gray-500"
-        data-testid="audit-timeline-empty"
-      >
-        暂无审计记录
+      <div className="p-3" data-testid="audit-timeline-empty">
+        <EmptyState
+          icon={FileClock}
+          tone="var(--color-node-memory)"
+          title="暂无审计记录"
+          description="记忆节点发生变更后，这里会按时间倒序记录每一次操作。"
+        />
       </div>
     );
   }
 
   return (
-    <div className="relative" data-testid="audit-timeline">
+    <div className="relative p-3" data-testid="audit-timeline">
       {/* 时间线竖线 */}
-      <div className="absolute left-4 top-0 bottom-0 w-0.5 bg-gray-200" />
+      <div
+        aria-hidden
+        className="absolute bottom-6 left-[26px] top-6 w-px bg-border"
+      />
 
-      <div className="space-y-6">
-        {sortedEntries.map((entry) => {
-          const opConfig = OPERATION_COLORS[entry.operationType];
-          const reviewConfig = REVIEW_STATUS_BADGE[entry.reviewStatus];
+      <div className="space-y-2">
+        {sortedEntries.map((entry, index) => {
+          const tone = OPERATION_TONES[entry.operationType];
+          const reviewMeta = REVIEW_STATUS_META[entry.reviewStatus];
           const isSelected = selectedEntryId === entry.id;
 
           return (
-            <div
+            <motion.button
               key={entry.id}
-              className={`relative flex gap-4 pl-10 cursor-pointer rounded-lg p-3 transition-colors ${
+              type="button"
+              {...staggerList(index)}
+              className={cn(
+                'relative flex w-full gap-3 rounded-card border p-3 pl-9 text-left transition-colors',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30',
                 isSelected
-                  ? 'bg-blue-50 ring-1 ring-blue-200'
-                  : 'hover:bg-gray-50'
-              }`}
+                  ? 'border-primary/40 bg-primary/10'
+                  : 'border-transparent hover:bg-surface-elevated',
+              )}
+              aria-current={isSelected ? 'true' : undefined}
               onClick={() => onSelectEntry?.(entry)}
               data-testid={`audit-entry-${entry.id}`}
             >
               {/* 时间线节点 */}
-              <div
-                className={`absolute left-2 top-4 h-5 w-5 rounded-full border-2 border-white ${opConfig.split(' ')[0]}`}
+              <span
+                aria-hidden
+                className="absolute left-[10px] top-[18px] h-2.5 w-2.5 rounded-full ring-2 ring-surface"
+                style={{ backgroundColor: tone }}
               />
 
-              <div className="flex-1 min-w-0">
-                {/* 标题行 */}
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span
-                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${opConfig}`}
-                  >
+              <div className="min-w-0 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge size="sm" tone={tone}>
                     {OPERATION_LABELS[entry.operationType]}
-                  </span>
-                  <span
-                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${reviewConfig.className}`}
-                  >
-                    {reviewConfig.label}
-                  </span>
-                  <span className="text-sm font-medium text-gray-900 truncate">
+                  </Badge>
+                  <Badge size="sm" tone={reviewMeta.tone}>
+                    {reviewMeta.label}
+                  </Badge>
+                  <span className="truncate text-sm font-medium text-foreground">
                     {entry.nodeName}
                   </span>
                 </div>
 
-                {/* 变更摘要 */}
                 {entry.changeSummary && (
-                  <p className="mt-1 text-sm text-gray-600 line-clamp-2">
+                  <p className="mt-1 line-clamp-2 text-xs text-muted">
                     {entry.changeSummary}
                   </p>
                 )}
 
-                {/* 元信息 */}
-                <div className="mt-1 flex items-center gap-3 text-xs text-gray-400">
+                <div className="mt-1.5 flex items-center gap-3 text-[11px] text-muted-foreground">
                   <span>{entry.actor}</span>
                   <span>{formatTimestamp(entry.timestamp)}</span>
                 </div>
               </div>
-            </div>
+            </motion.button>
           );
         })}
       </div>

@@ -13,6 +13,7 @@ import {
   Wrench,
 } from 'lucide-react';
 import { cn } from '@/shared/lib/utils';
+import { Badge, type BadgeProps } from '@/shared/ui/badge';
 import type {
   SubAgentStream,
   SubAgentRunStatus,
@@ -22,42 +23,54 @@ import type {
 
 const STATUS_CONFIG: Record<
   SubAgentRunStatus,
-  { emoji: string; label: string; colorClass: string; icon: ReactNode }
+  {
+    emoji: string;
+    label: string;
+    variant: NonNullable<BadgeProps['variant']>;
+    textClass: string;
+    icon: ReactNode;
+  }
 > = {
   pending: {
     emoji: '⏳',
     label: '等待中',
-    colorClass: 'text-cyan-400 bg-cyan-400/15',
+    variant: 'info',
+    textClass: 'text-info',
     icon: <Loader2 className="size-3 animate-spin" />,
   },
   running: {
     emoji: '⏳',
     label: '运行中',
-    colorClass: 'text-cyan-400 bg-cyan-400/15',
+    variant: 'info',
+    textClass: 'text-info',
     icon: <Loader2 className="size-3 animate-spin" />,
   },
   completed: {
     emoji: '✅',
     label: '完成',
-    colorClass: 'text-success bg-success/15',
+    variant: 'success',
+    textClass: 'text-success',
     icon: <CheckCircle2 className="size-3" />,
   },
   failed: {
     emoji: '❌',
     label: '失败',
-    colorClass: 'text-error bg-error/15',
+    variant: 'error',
+    textClass: 'text-error',
     icon: <XCircle className="size-3" />,
   },
   timeout: {
     emoji: '⏱️',
     label: '超时',
-    colorClass: 'text-amber-400 bg-amber-400/15',
+    variant: 'warning',
+    textClass: 'text-warning',
     icon: <Clock className="size-3" />,
   },
   cancelled: {
     emoji: '🚫',
     label: '已取消',
-    colorClass: 'text-neutral-400 bg-neutral-400/15',
+    variant: 'secondary',
+    textClass: 'text-muted-foreground',
     icon: <Ban className="size-3" />,
   },
 };
@@ -65,15 +78,10 @@ const STATUS_CONFIG: Record<
 function StatusBadge({ status }: { status: SubAgentRunStatus }) {
   const config = STATUS_CONFIG[status];
   return (
-    <span
-      className={cn(
-        'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-medium',
-        config.colorClass,
-      )}
-    >
+    <Badge variant={config.variant} size="sm">
       {config.icon}
       {config.label}
-    </span>
+    </Badge>
   );
 }
 
@@ -110,7 +118,7 @@ function ElapsedTime({
       : `${remainingSeconds}s`;
 
   return (
-    <span className="text-[10px] tabular-nums text-muted-foreground/60">
+    <span className="text-[10px] tabular-nums text-muted-foreground">
       {display}
     </span>
   );
@@ -282,7 +290,7 @@ function SubAgentEventList({ events }: { events: SubAgentEvent[] }) {
       )}
 
       {messageText && (
-        <div className="prose prose-invert prose-sm max-w-none text-xs [&_pre]:bg-background [&_pre]:rounded [&_pre]:p-3 [&_code]:text-info [&_a]:text-info">
+        <div className="prose prose-sm dark:prose-invert max-w-none text-xs [&_pre]:rounded [&_pre]:bg-background [&_pre]:p-3 [&_code]:text-info [&_a]:text-info">
           <ReactMarkdown>{messageText}</ReactMarkdown>
         </div>
       )}
@@ -388,14 +396,14 @@ export const SubAgentStreamView = memo(function SubAgentStreamView({
   return (
     <div
       className={cn(
-        'rounded-lg border border-neutral-700/50 bg-neutral-900/50',
-        !isTerminal && 'border-l-2 border-l-cyan-500/40',
+        'rounded-card border border-border bg-surface-elevated/50',
+        !isTerminal && 'border-l-2 border-l-primary/50',
       )}
       style={{ marginLeft: `${indentPx}px` }}
     >
       <button
         type="button"
-        className="flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-neutral-800/50 cursor-pointer"
+        className="flex w-full cursor-pointer items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-surface-elevated"
         onClick={() => setOpen((v) => !v)}
       >
         {open ? (
@@ -404,14 +412,21 @@ export const SubAgentStreamView = memo(function SubAgentStreamView({
           <ChevronRight className="size-3 shrink-0 text-muted-foreground" />
         )}
 
-        <div className="flex size-5 shrink-0 items-center justify-center rounded-full bg-purple-500/15 text-purple-400">
+        <div
+          className="flex size-5 shrink-0 items-center justify-center rounded-full"
+          style={{
+            backgroundColor:
+              'color-mix(in srgb, var(--color-node-agent) 15%, transparent)',
+            color: 'var(--color-node-agent)',
+          }}
+        >
           <Bot className="size-3" />
         </div>
 
         <span className="text-xs font-medium text-foreground truncate">
           {statusConfig.emoji} {alias}
         </span>
-        <span className="text-[10px] font-mono text-muted-foreground/50 truncate">
+        <span className="truncate font-mono text-[10px] text-muted-foreground">
           {handle}
         </span>
 
@@ -422,7 +437,7 @@ export const SubAgentStreamView = memo(function SubAgentStreamView({
       </button>
 
       {open && (
-        <div className="border-t border-neutral-700/30 px-3 py-2">
+        <div className="border-t border-border px-3 py-2">
           {error && (
             <div className="mb-2 rounded bg-error/10 px-2.5 py-1.5 text-xs text-error">
               {error}
@@ -462,22 +477,22 @@ export const SubAgentCompletionNotice = memo(
     const config = STATUS_CONFIG[status];
 
     return (
-      <div className="flex items-center gap-2 px-4 py-1.5">
-        <div className="flex flex-1 items-center gap-2 rounded-md bg-neutral-800/40 px-3 py-1.5">
-          {config.icon}
+      <div className="flex items-center gap-2">
+        <div className="flex flex-1 items-center gap-2 rounded-card border border-border bg-surface-elevated/60 px-3 py-1.5">
+          <span className={config.textClass}>{config.icon}</span>
           <span className="text-xs text-muted-foreground">
-            <span className="font-medium text-foreground/80">{alias}</span>
-            <span className="mx-1.5 text-muted-foreground/40">·</span>
-            <span className={cn('text-[10px]', config.colorClass.split(' ')[0])}>
+            <span className="font-medium text-foreground">{alias}</span>
+            <span className="mx-1.5 text-muted-foreground">·</span>
+            <span className={cn('text-[10px]', config.textClass)}>
               {config.label}
             </span>
             {error && (
-              <span className="ml-1.5 text-[10px] text-error/70 truncate">
+              <span className="ml-1.5 truncate text-[10px] text-error">
                 — {error}
               </span>
             )}
           </span>
-          <span className="ml-auto text-[10px] font-mono text-muted-foreground/40">
+          <span className="ml-auto font-mono text-[10px] text-muted-foreground">
             {handle}
           </span>
         </div>

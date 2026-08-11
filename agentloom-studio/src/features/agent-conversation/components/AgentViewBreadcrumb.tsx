@@ -47,7 +47,12 @@ export const AgentViewBreadcrumb = memo(function AgentViewBreadcrumb({
               {i > 0 && (
                 <ChevronRight className="size-3 shrink-0 text-muted-foreground/40" />
               )}
-              {isFirst && <Bot className="size-3 shrink-0 text-purple-400" />}
+              {isFirst && (
+                <Bot
+                  className="size-3 shrink-0"
+                  style={{ color: "var(--color-node-agent)" }}
+                />
+              )}
               {isLast ? (
                 <span className="truncate text-xs font-medium text-foreground">
                   {seg.label}

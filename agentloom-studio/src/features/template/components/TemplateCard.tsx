@@ -1,5 +1,7 @@
 import { memo } from 'react'
-import { Layers, Zap } from 'lucide-react'
+import { Layers, LayoutTemplate, Zap } from 'lucide-react'
+import { Badge, type BadgeProps } from '@/shared/ui/badge'
+import { Card } from '@/shared/ui/card'
 import type { TemplateListItem } from '../types'
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -16,10 +18,10 @@ const COMPLEXITY_LABELS: Record<string, string> = {
   advanced: '高级',
 }
 
-const COMPLEXITY_COLORS: Record<string, string> = {
-  beginner: 'bg-green-500/10 text-green-600',
-  intermediate: 'bg-amber-500/10 text-amber-600',
-  advanced: 'bg-red-500/10 text-red-600',
+const COMPLEXITY_VARIANTS: Record<string, NonNullable<BadgeProps['variant']>> = {
+  beginner: 'success',
+  intermediate: 'warning',
+  advanced: 'error',
 }
 
 interface TemplateCardProps {
@@ -37,40 +39,68 @@ export const TemplateCard = memo(function TemplateCard({
   return (
     <button
       type="button"
-      className="flex w-full flex-col items-start gap-3 rounded-lg border border-border bg-card p-4 text-left transition-colors hover:bg-muted/50 focus:outline-none focus:ring-1 focus:ring-primary"
+      className="group h-full w-full rounded-card text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
       onClick={() => onClick(template)}
     >
-      <div className="flex w-full items-start justify-between gap-2">
-        <h3 className="line-clamp-1 text-sm font-medium text-foreground">
-          {template.name}
-        </h3>
-        <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-          {CATEGORY_LABELS[template.category] ?? template.category}
-        </span>
-      </div>
+      <Card interactive className="flex h-full flex-col overflow-hidden">
+        {/* 缩略图：无图时用品牌色渐变占位，保持栅格节奏 */}
+        <div
+          className="relative aspect-[16/9] w-full overflow-hidden border-b border-border"
+          style={{
+            background:
+              'linear-gradient(135deg, color-mix(in srgb, var(--color-primary) 20%, var(--color-surface)), color-mix(in srgb, var(--color-primary) 5%, var(--color-surface)))',
+          }}
+        >
+          {template.thumbnailUrl ? (
+            <img
+              src={template.thumbnailUrl}
+              alt=""
+              loading="lazy"
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <LayoutTemplate
+              aria-hidden
+              className="absolute bottom-3 right-3 h-9 w-9"
+              style={{
+                color: 'color-mix(in srgb, var(--color-primary) 50%, transparent)',
+              }}
+            />
+          )}
+        </div>
 
-      {template.description && (
-        <p className="line-clamp-2 text-xs leading-relaxed text-muted-foreground">
-          {template.description}
-        </p>
-      )}
+        <div className="flex flex-1 flex-col gap-2.5 p-4">
+          <div className="flex items-start justify-between gap-2">
+            <h3 className="line-clamp-2 text-sm font-semibold leading-snug text-foreground">
+              {template.name}
+            </h3>
+            <Badge variant="secondary" className="shrink-0">
+              {CATEGORY_LABELS[template.category] ?? template.category}
+            </Badge>
+          </div>
 
-      <div className="flex w-full items-center gap-3 text-xs text-muted-foreground">
-        {complexity && (
-          <span
-            className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${COMPLEXITY_COLORS[complexity] ?? ''}`}
-          >
-            <Zap className="h-3 w-3" />
-            {COMPLEXITY_LABELS[complexity] ?? complexity}
-          </span>
-        )}
-        {nodeCount > 0 && (
-          <span className="inline-flex items-center gap-1">
-            <Layers className="h-3 w-3" />
-            {nodeCount} 节点
-          </span>
-        )}
-      </div>
+          {template.description && (
+            <p className="line-clamp-2 text-xs leading-relaxed text-muted">
+              {template.description}
+            </p>
+          )}
+
+          <div className="mt-auto flex flex-wrap items-center gap-2 border-t border-border pt-3">
+            {complexity && (
+              <Badge variant={COMPLEXITY_VARIANTS[complexity] ?? 'secondary'}>
+                <Zap className="h-3 w-3" />
+                {COMPLEXITY_LABELS[complexity] ?? complexity}
+              </Badge>
+            )}
+            {nodeCount > 0 && (
+              <span className="inline-flex items-center gap-1 text-xs text-muted">
+                <Layers className="h-3 w-3" />
+                {nodeCount} 节点
+              </span>
+            )}
+          </div>
+        </div>
+      </Card>
     </button>
   )
 })

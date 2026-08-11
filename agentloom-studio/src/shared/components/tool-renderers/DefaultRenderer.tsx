@@ -48,7 +48,7 @@ function CopyButton({ text }: { text: string }) {
     <button
       type="button"
       onClick={() => void handleCopy()}
-      className="shrink-0 rounded p-1 text-muted-foreground transition-colors hover:bg-zinc-700 hover:text-foreground"
+      className="shrink-0 rounded p-1 text-muted-foreground transition-colors hover:bg-border hover:text-foreground"
       title="复制"
     >
       {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
@@ -67,7 +67,7 @@ function JsonBlock({ label, value }: { label: string; value: unknown }) {
         </span>
         <CopyButton text={formatted} />
       </div>
-      <pre className="overflow-auto rounded-md bg-zinc-900 p-3 font-mono text-xs leading-relaxed text-zinc-300">
+      <pre className="overflow-auto rounded-md bg-background p-3 font-mono text-xs leading-relaxed text-muted">
         <code>{formatted}</code>
       </pre>
     </div>
@@ -107,7 +107,7 @@ export const DefaultDetail = memo(function DefaultDetail({
           </span>
           <pre
             className={cn(
-              'overflow-auto rounded-md bg-red-950/30 p-3 font-mono text-xs leading-relaxed text-red-400',
+              'overflow-auto rounded-md bg-error/10 p-3 font-mono text-xs leading-relaxed text-error',
             )}
           >
             {toolCall.error}

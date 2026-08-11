@@ -64,7 +64,7 @@ function TextDiffFallback({ oldText, newText }: { oldText: string; newText: stri
         <div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
           原始内容
         </div>
-        <pre className="overflow-auto rounded-md bg-red-950/20 p-2 text-red-400 leading-relaxed whitespace-pre-wrap break-all">
+        <pre className="overflow-auto rounded-md bg-error/10 p-2 text-error leading-relaxed whitespace-pre-wrap break-all">
           {oldText || '\u00A0'}
         </pre>
       </div>
@@ -72,7 +72,7 @@ function TextDiffFallback({ oldText, newText }: { oldText: string; newText: stri
         <div className="mb-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
           修改后
         </div>
-        <pre className="overflow-auto rounded-md bg-emerald-950/20 p-2 text-emerald-400 leading-relaxed whitespace-pre-wrap break-all">
+        <pre className="overflow-auto rounded-md bg-success/10 p-2 text-success leading-relaxed whitespace-pre-wrap break-all">
           {newText || '\u00A0'}
         </pre>
       </div>
@@ -82,7 +82,7 @@ function TextDiffFallback({ oldText, newText }: { oldText: string; newText: stri
 
 function DiffEditorFallback() {
   return (
-    <div className="flex items-center justify-center rounded-md bg-zinc-900 p-8">
+    <div className="flex items-center justify-center rounded-md bg-background p-8">
       <span className="text-xs text-muted-foreground">正在加载对比编辑器...</span>
     </div>
   )
@@ -105,7 +105,7 @@ const DiffView = memo(function DiffView({
 
   return (
     <Suspense fallback={<DiffEditorFallback />}>
-      <div className="overflow-hidden rounded-md border border-zinc-700/50">
+      <div className="overflow-hidden rounded-md border border-border">
         <DiffEditor
           height={height}
           original={oldText}
@@ -167,7 +167,7 @@ const EditDetail = memo(function EditDetail({ toolCall, state }: ToolRendererPro
 
   if (state === 'failed' && toolCall.error) {
     return (
-      <pre className="overflow-auto rounded-md bg-red-950/30 p-3 font-mono text-xs leading-relaxed text-red-400">
+      <pre className="overflow-auto rounded-md bg-error/10 p-3 font-mono text-xs leading-relaxed text-error">
         {toolCall.error}
       </pre>
     )
@@ -194,7 +194,7 @@ const EditDetail = memo(function EditDetail({ toolCall, state }: ToolRendererPro
               type="button"
               onClick={handlePrev}
               disabled={currentIndex === 0}
-              className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-zinc-800 hover:text-foreground disabled:opacity-30"
+              className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-surface-elevated hover:text-foreground disabled:opacity-30"
             >
               <ChevronLeft className="size-3.5" />
             </button>
@@ -202,7 +202,7 @@ const EditDetail = memo(function EditDetail({ toolCall, state }: ToolRendererPro
               type="button"
               onClick={handleNext}
               disabled={currentIndex >= args.edits.length - 1}
-              className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-zinc-800 hover:text-foreground disabled:opacity-30"
+              className="rounded p-0.5 text-muted-foreground transition-colors hover:bg-surface-elevated hover:text-foreground disabled:opacity-30"
             >
               <ChevronRight className="size-3.5" />
             </button>

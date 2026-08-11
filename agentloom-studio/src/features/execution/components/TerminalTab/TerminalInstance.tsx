@@ -11,7 +11,8 @@ interface TerminalInstanceProps {
   onInput: (data: string) => void
 }
 
-const TERMINAL_THEME = {
+/** xterm 主题（暗色终端区维持现状）；导出供外层容器底色复用，避免颜色两处各写一份。 */
+export const TERMINAL_THEME = {
   background: '#1a1a2e',
   foreground: '#e0e0e0',
   cursor: '#e0e0e0',
