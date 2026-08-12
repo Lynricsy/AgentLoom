@@ -1,3 +1,11 @@
+/**
+ * 私有部署设置的令牌权限判定。
+ *
+ * 这里只判定「令牌里的角色」与「令牌里的租户 id」：组织 id 不在登录令牌的 claim 里
+ * （实测 Supabase JWT 只有 tenant_id / tenant_role），且 tenantId 不是 organizationId ——
+ * 需要组织 id 请用 `useCurrentOrganization()`（GET organizations/current，由服务端按租户解析）。
+ */
+
 import {
   type InterventionPolicyTokenPayload,
   type InterventionRole,
@@ -5,41 +13,21 @@ import {
 } from '@/features/intervention-policy/types'
 
 export interface PrivateDeploymentTokenPayload extends InterventionPolicyTokenPayload {
-  organizationId?: string
-  organization_id?: string
-  orgId?: string
-  org_id?: string
   tenantId?: string
   tenant_id?: string
   appMetadata?: InterventionPolicyTokenPayload['appMetadata'] & {
-    organizationId?: string
-    organization_id?: string
-    orgId?: string
-    org_id?: string
     tenantId?: string
     tenant_id?: string
   }
   app_metadata?: InterventionPolicyTokenPayload['app_metadata'] & {
-    organizationId?: string
-    organization_id?: string
-    orgId?: string
-    org_id?: string
     tenantId?: string
     tenant_id?: string
   }
   userMetadata?: InterventionPolicyTokenPayload['userMetadata'] & {
-    organizationId?: string
-    organization_id?: string
-    orgId?: string
-    org_id?: string
     tenantId?: string
     tenant_id?: string
   }
   user_metadata?: InterventionPolicyTokenPayload['user_metadata'] & {
-    organizationId?: string
-    organization_id?: string
-    orgId?: string
-    org_id?: string
     tenantId?: string
     tenant_id?: string
   }
@@ -112,45 +100,6 @@ function collectRoleCandidates(payload: PrivateDeploymentTokenPayload | null): s
   return candidates.filter((value): value is string => typeof value === 'string')
 }
 
-function collectOrganizationIdCandidates(payload: PrivateDeploymentTokenPayload | null): string[] {
-  if (!payload) {
-    return []
-  }
-
-  return normalizeStringCandidates([
-    payload.organizationId,
-    payload.organization_id,
-    payload.orgId,
-    payload.org_id,
-    payload.tenantId,
-    payload.tenant_id,
-    payload.appMetadata?.organizationId,
-    payload.appMetadata?.organization_id,
-    payload.appMetadata?.orgId,
-    payload.appMetadata?.org_id,
-    payload.appMetadata?.tenantId,
-    payload.appMetadata?.tenant_id,
-    payload.app_metadata?.organizationId,
-    payload.app_metadata?.organization_id,
-    payload.app_metadata?.orgId,
-    payload.app_metadata?.org_id,
-    payload.app_metadata?.tenantId,
-    payload.app_metadata?.tenant_id,
-    payload.userMetadata?.organizationId,
-    payload.userMetadata?.organization_id,
-    payload.userMetadata?.orgId,
-    payload.userMetadata?.org_id,
-    payload.userMetadata?.tenantId,
-    payload.userMetadata?.tenant_id,
-    payload.user_metadata?.organizationId,
-    payload.user_metadata?.organization_id,
-    payload.user_metadata?.orgId,
-    payload.user_metadata?.org_id,
-    payload.user_metadata?.tenantId,
-    payload.user_metadata?.tenant_id,
-  ])
-}
-
 function collectTenantIdCandidates(payload: PrivateDeploymentTokenPayload | null): string[] {
   if (!payload) {
     return []
@@ -198,12 +147,7 @@ export function canManagePrivateDeployment(
   return role === 'owner' || role === 'admin'
 }
 
-export function getPrivateDeploymentOrganizationIdFromToken(token?: string): string | null {
-  return collectOrganizationIdCandidates(parsePayload(token))[0] ?? null
-}
-
+/** 只读令牌里的租户 claim。tenantId 不是 organizationId，因此不做任何组织 id 回退 */
 export function getPrivateDeploymentTenantIdFromToken(token?: string): string | null {
-  const payload = parsePayload(token)
-
-  return collectTenantIdCandidates(payload)[0] ?? collectOrganizationIdCandidates(payload)[0] ?? null
+  return collectTenantIdCandidates(parsePayload(token))[0] ?? null
 }

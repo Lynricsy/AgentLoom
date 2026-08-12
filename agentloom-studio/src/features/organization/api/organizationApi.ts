@@ -9,11 +9,15 @@ import type {
   OrganizationRole,
 } from '../types'
 
-export async function fetchOrganization(
-  organizationId: string,
-): Promise<Organization> {
+/**
+ * 取当前请求租户所属的组织。
+ *
+ * 组织 id 不在登录凭证的 claim 里（实测 Supabase JWT 只有 tenant_id / tenant_role），
+ * 因此前端无法自行推导，只能由服务端按租户上下文解析。
+ */
+export async function fetchCurrentOrganization(): Promise<Organization> {
   const response = await apiClient
-    .get(`organizations/${organizationId}`)
+    .get('organizations/current')
     .json<ApiResponse<Organization>>()
 
   return response.data

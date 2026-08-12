@@ -9,11 +9,11 @@ import { LlmAgentConfigPanel } from './LlmAgentConfigPanel'
 
 const {
   mockUseAuthToken,
-  mockGetOrganizationIdFromToken,
+  mockUseCurrentOrganization,
   mockUseOrganizationAutonomyPolicy,
 } = vi.hoisted(() => ({
   mockUseAuthToken: vi.fn(),
-  mockGetOrganizationIdFromToken: vi.fn(),
+  mockUseCurrentOrganization: vi.fn(),
   mockUseOrganizationAutonomyPolicy: vi.fn(),
 }))
 
@@ -25,16 +25,10 @@ vi.mock('@/features/organization-autonomy-policy/hooks/useOrganizationAutonomyPo
   useOrganizationAutonomyPolicy: (...args: unknown[]) => mockUseOrganizationAutonomyPolicy(...args),
 }))
 
-vi.mock('@/features/organization-autonomy-policy/lib/organizationAutonomyPolicyPermissions', async () => {
-  const actual = await vi.importActual<
-    typeof import('@/features/organization-autonomy-policy/lib/organizationAutonomyPolicyPermissions')
-  >('@/features/organization-autonomy-policy/lib/organizationAutonomyPolicyPermissions')
-
-  return {
-    ...actual,
-    getOrganizationIdFromToken: (...args: unknown[]) => mockGetOrganizationIdFromToken(...args),
-  }
-})
+// 组织 id 只能由服务端解析（GET organizations/current），令牌里没有组织 claim
+vi.mock('@/features/organization/api/organizationQueries', () => ({
+  useCurrentOrganization: (...args: unknown[]) => mockUseCurrentOrganization(...args),
+}))
 
 vi.mock('@monaco-editor/react', () => ({
   default: ({
@@ -154,7 +148,7 @@ describe('LlmAgentConfigPanel', () => {
   beforeEach(() => {
     useCanvasStore.getState().actions.reset()
     mockUseAuthToken.mockReturnValue(undefined)
-    mockGetOrganizationIdFromToken.mockReturnValue(undefined)
+    mockUseCurrentOrganization.mockReturnValue({ data: undefined })
     mockUseOrganizationAutonomyPolicy.mockReturnValue({ data: undefined })
   })
 
@@ -378,7 +372,7 @@ describe('LlmAgentConfigPanel', () => {
 
   it('shows the organization cap and disables higher autonomy options', async () => {
     mockUseAuthToken.mockReturnValue('owner-token')
-    mockGetOrganizationIdFromToken.mockReturnValue('org-1')
+    mockUseCurrentOrganization.mockReturnValue({ data: { id: 'org-1' } })
     mockUseOrganizationAutonomyPolicy.mockReturnValue({
       data: {
         organizationId: 'org-1',
@@ -418,13 +412,59 @@ describe('LlmAgentConfigPanel', () => {
     )
   })
 
+  it('用 organizations/current 返回的组织 id 请求组织自治策略', async () => {
+    mockUseAuthToken.mockReturnValue('owner-token')
+    mockUseCurrentOrganization.mockReturnValue({ data: { id: 'org-1' } })
+    setSelectedAgentNode(DEFAULT_AUTONOMY_CONFIG)
+
+    await act(async () => {
+      render(
+        <LlmAgentConfigPanel
+          config={{ systemPrompt: '', outputSchemaTitle: '' }}
+          onApply={vi.fn()}
+        />,
+      )
+      await Promise.resolve()
+    })
+
+    expect(mockUseCurrentOrganization).toHaveBeenCalledWith({ enabled: true })
+    expect(mockUseOrganizationAutonomyPolicy).toHaveBeenCalledWith('org-1', { enabled: true })
+    expect(mockUseOrganizationAutonomyPolicy).not.toHaveBeenCalledWith(
+      undefined,
+      expect.objectContaining({ enabled: true }),
+    )
+  })
+
+  it('拿不到当前组织时不请求组织自治策略，面板降级为无上限', async () => {
+    mockUseAuthToken.mockReturnValue('owner-token')
+    mockUseCurrentOrganization.mockReturnValue({ data: undefined })
+    setSelectedAgentNode(DEFAULT_AUTONOMY_CONFIG)
+
+    await act(async () => {
+      render(
+        <LlmAgentConfigPanel
+          config={{ systemPrompt: '', outputSchemaTitle: '' }}
+          onApply={vi.fn()}
+        />,
+      )
+      await Promise.resolve()
+    })
+
+    expect(mockUseOrganizationAutonomyPolicy).toHaveBeenCalledWith(undefined, { enabled: false })
+    expect(screen.queryByTestId('llm-agent-autonomy-cap-notice')).not.toBeInTheDocument()
+
+    fireEvent.keyDown(screen.getByRole('combobox', { name: '自主模式' }), { key: 'Enter' })
+
+    expect(screen.getByRole('option', { name: 'LLM 建议' })).not.toHaveAttribute('data-disabled')
+  })
+
   it('keeps stale over-cap modes visible and blocks autosave until downgraded', async () => {
     vi.useFakeTimers()
     const onApply = vi.fn()
     const onValidationChange = vi.fn()
 
     mockUseAuthToken.mockReturnValue('owner-token')
-    mockGetOrganizationIdFromToken.mockReturnValue('org-1')
+    mockUseCurrentOrganization.mockReturnValue({ data: { id: 'org-1' } })
     mockUseOrganizationAutonomyPolicy.mockReturnValue({
       data: {
         organizationId: 'org-1',

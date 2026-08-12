@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   acceptOrganizationInvitation,
-  fetchOrganization,
+  fetchCurrentOrganization,
   fetchOrganizationMembers,
   inviteOrganizationMember,
   removeOrganizationMember,
@@ -18,14 +18,11 @@ function requireOrganizationId(organizationId?: string): string {
   return organizationId
 }
 
-export function useOrganization(
-  organizationId?: string,
-  options?: { enabled?: boolean },
-) {
+export function useCurrentOrganization(options?: { enabled?: boolean }) {
   return useQuery({
-    queryKey: organizationKeys.detail(organizationId ?? '__missing__'),
-    queryFn: () => fetchOrganization(requireOrganizationId(organizationId)),
-    enabled: Boolean(organizationId) && (options?.enabled ?? true),
+    queryKey: organizationKeys.current(),
+    queryFn: fetchCurrentOrganization,
+    enabled: options?.enabled ?? true,
   })
 }
 
@@ -75,13 +72,13 @@ export function useRemoveOrganizationMember(organizationId?: string) {
     onSuccess: async () => {
       const resolvedOrganizationId = requireOrganizationId(organizationId)
 
-      // 成员数展示在信息卡上，移除后详情与名册都要失效
+      // 成员数展示在信息卡上，移除后当前组织与名册都要失效
       await Promise.all([
         queryClient.invalidateQueries({
           queryKey: organizationKeys.members(resolvedOrganizationId),
         }),
         queryClient.invalidateQueries({
-          queryKey: organizationKeys.detail(resolvedOrganizationId),
+          queryKey: organizationKeys.current(),
         }),
       ])
     },

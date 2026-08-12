@@ -18,6 +18,7 @@ import { UserIdentityResolverService } from '../../../common/services/user-ident
 import { OrganizationController } from '../organization.controller';
 import { OrganizationAutonomyPolicyService } from '../organization-autonomy-policy.service';
 import { OrganizationService } from '../organization.service';
+import { OrganizationNotFoundException } from '../organization.exceptions';
 import type { CreateOrganizationDto } from '../dto/create-organization.dto';
 import type { InviteMemberDto } from '../dto/invite-member.dto';
 import type { UpdateOrganizationAutonomyPolicyDto } from '../dto/update-organization-autonomy-policy.dto';
@@ -28,6 +29,7 @@ const mockedFactories = vi.hoisted(() => ({
   createMockOrganizationService: () => ({
     createOrganization: vi.fn(),
     getOrganization: vi.fn(),
+    getCurrentOrganization: vi.fn(),
     listMembers: vi.fn(),
     inviteMember: vi.fn(),
     acceptInvitation: vi.fn(),
@@ -197,6 +199,7 @@ describe('OrganizationController', () => {
 
   it('applies owner/admin roles only to organization management routes', () => {
     expect(getMethodRoles('getOrganization')).toBeUndefined();
+    expect(getMethodRoles('getCurrentOrganization')).toBeUndefined();
     expect(getMethodRoles('acceptInvitation')).toBeUndefined();
     expect(getMethodRoles('listMembers')).toEqual(['owner', 'admin']);
     expect(getMethodRoles('inviteMember')).toEqual(['owner', 'admin']);
@@ -292,6 +295,63 @@ describe('OrganizationController', () => {
 
     expect(service.listMembers).toHaveBeenCalledWith('org-1');
     expect(result).toEqual({ data: members });
+  });
+
+  it('returns the current tenant organization in the standard data envelope', async () => {
+    const organization = createOrganizationRecord({ memberCount: 3 });
+    service.getCurrentOrganization.mockResolvedValue(organization);
+
+    const result = await controller.getCurrentOrganization({
+      tenantId: 'tenant-1',
+      user: { sub: 'user-1' },
+    } as never);
+
+    expect(service.getCurrentOrganization).toHaveBeenCalledWith(
+      'tenant-1',
+      'user-1',
+    );
+    expect(result).toEqual({ data: organization });
+  });
+
+  it('propagates organization-not-found for a tenant without an organization', async () => {
+    service.getCurrentOrganization.mockRejectedValue(
+      new OrganizationNotFoundException(),
+    );
+
+    await expect(
+      controller.getCurrentOrganization({
+        tenantId: 'tenant-without-org',
+        user: { sub: 'user-1' },
+      } as never),
+    ).rejects.toBeInstanceOf(OrganizationNotFoundException);
+  });
+
+  it('matches GET /organizations/current before the parameterized organization route', async () => {
+    const organization = createOrganizationRecord({ memberCount: 1 });
+    const { app, organizationService } = await createTestingApp();
+    organizationService.getCurrentOrganization.mockResolvedValue(organization);
+
+    try {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/organizations/current',
+        headers: {
+          authorization: `Bearer ${createAccessToken({
+            tenant_id: '11111111-1111-4111-8111-111111111111',
+          })}`,
+        },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(organizationService.getCurrentOrganization).toHaveBeenCalledWith(
+        '11111111-1111-4111-8111-111111111111',
+        'user-1',
+      );
+      expect(organizationService.getOrganization).not.toHaveBeenCalled();
+      expect(response.json()).toEqual({ data: organization });
+    } finally {
+      await app.close();
+    }
   });
 
   it.each(['owner', 'admin'] as const)(

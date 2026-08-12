@@ -9,7 +9,9 @@ import {
   ServerCog,
   ShieldAlert,
 } from 'lucide-react'
+import { HTTPError } from 'ky'
 import { useAuthToken } from '@/features/execution'
+import { useCurrentOrganization } from '@/features/organization/api/organizationQueries'
 import { cn } from '@/shared/lib/utils'
 import { PageHeader } from '@/shared/components/page-header/PageHeader'
 import { Spinner } from '@/shared/components/spinner/Spinner'
@@ -34,7 +36,6 @@ import {
 } from '../hooks/usePrivateDeployment'
 import {
   canManagePrivateDeployment,
-  getPrivateDeploymentOrganizationIdFromToken,
   getPrivateDeploymentRoleFromToken,
   getPrivateDeploymentTenantIdFromToken,
 } from '../lib/privateDeploymentPermissions'
@@ -360,11 +361,13 @@ function PrivateDeploymentBlockedState({
   icon: Icon,
   title,
   message,
+  action,
 }: {
   testId: string
   icon: typeof ShieldAlert
   title: string
   message: string
+  action?: ReactNode
 }) {
   return (
     <div className="space-y-6 px-4 py-6 sm:px-6 lg:px-8" data-testid={testId}>
@@ -378,9 +381,32 @@ function PrivateDeploymentBlockedState({
           <div className="space-y-1.5">
             <h2 className="text-sm font-semibold text-foreground">{title}</h2>
             <p className="text-xs leading-relaxed text-muted">{message}</p>
+            {action ? <div className="pt-1">{action}</div> : null}
           </div>
         </CardContent>
       </Card>
+    </div>
+  )
+}
+
+/** 组织解析中：只出骨架，避免闪现「无法确定当前组织」的错误态 */
+function PrivateDeploymentOrganizationLoadingState() {
+  return (
+    <div
+      className="space-y-6 px-4 py-6 sm:px-6 lg:px-8"
+      data-testid="private-deployment-organization-loading"
+    >
+      <PageHeader icon={ServerCog} title="私有部署设置" description={PAGE_DESCRIPTION} />
+
+      <p className="flex items-center gap-2 text-xs text-muted">
+        <Spinner size="sm" />
+        正在确认当前组织…
+      </p>
+
+      <div className="space-y-3">
+        <Skeleton className="h-28 rounded-card" />
+        <Skeleton className="h-44 rounded-card" />
+      </div>
     </div>
   )
 }
@@ -1195,11 +1221,20 @@ function PrivateDeploymentContent({
 
 export function PrivateDeploymentPage() {
   const authToken = useAuthToken()
+  // 角色与租户 id 仍然从令牌里读（tenant_role / tenant_id claim 真实存在），
+  // 只有组织 id 改由服务端解析
   const currentUserRole = getPrivateDeploymentRoleFromToken(authToken)
-  const organizationId = getPrivateDeploymentOrganizationIdFromToken(authToken)
   const tenantClaimId = getPrivateDeploymentTenantIdFromToken(authToken)
+  const canManage = canManagePrivateDeployment(currentUserRole)
+  const {
+    data: currentOrganization,
+    isLoading: isOrganizationLoading,
+    error: organizationError,
+    refetch: refetchOrganization,
+  } = useCurrentOrganization({ enabled: canManage })
+  const organizationId = currentOrganization?.id
 
-  if (!canManagePrivateDeployment(currentUserRole)) {
+  if (!canManage) {
     return (
       <PrivateDeploymentBlockedState
         testId="private-deployment-forbidden"
@@ -1214,13 +1249,31 @@ export function PrivateDeploymentPage() {
     )
   }
 
+  if (isOrganizationLoading) {
+    return <PrivateDeploymentOrganizationLoadingState />
+  }
+
   if (!organizationId) {
     return (
       <PrivateDeploymentBlockedState
         testId="private-deployment-missing-org"
         icon={AlertTriangle}
-        title="无法识别当前组织"
-        message="当前登录令牌里没有可用的 organizationId / orgId / tenantId 信息，暂时无法加载私有部署设置。"
+        title="无法确定当前组织"
+        message={
+          organizationError instanceof HTTPError && organizationError.response.status === 404
+            ? '当前租户还没有关联组织，或当前账号不是该组织成员，因此无法加载私有部署设置。'
+            : '获取当前组织信息失败，暂时无法加载私有部署设置，请稍后重试。'
+        }
+        action={
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => void refetchOrganization()}
+          >
+            重试
+          </Button>
+        }
       />
     )
   }

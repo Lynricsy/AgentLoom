@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import { Activity, AlertTriangle, RadioTower, ShieldAlert } from 'lucide-react'
+import { HTTPError } from 'ky'
 import { useAuthToken } from '@/features/execution'
+import { useCurrentOrganization } from '@/features/organization/api/organizationQueries'
 import {
   canManageResourceGovernance,
-  getResourceGovernanceOrganizationIdFromToken,
   getResourceGovernanceRoleFromToken,
 } from '@/features/resource-governance'
 import { EmptyState } from '@/shared/components/empty-state/EmptyState'
@@ -39,11 +40,13 @@ function MonitoringBlockedState({
   icon: Icon,
   title,
   message,
+  action,
 }: {
   testId: string
   icon: typeof ShieldAlert
   title: string
   message: string
+  action?: ReactNode
 }) {
   return (
     <div className="space-y-6 px-4 py-6 sm:px-6 lg:px-8" data-testid={testId}>
@@ -57,9 +60,34 @@ function MonitoringBlockedState({
           <div className="space-y-1.5">
             <h2 className="text-sm font-semibold text-foreground">{title}</h2>
             <p className="text-xs leading-relaxed text-muted">{message}</p>
+            {action ? <div className="pt-1">{action}</div> : null}
           </div>
         </CardContent>
       </Card>
+    </div>
+  )
+}
+
+/** 组织解析中：只出骨架，避免闪现「无法确定当前组织」的错误态 */
+function MonitoringOrganizationLoadingState() {
+  return (
+    <div
+      className="space-y-6 px-4 py-6 sm:px-6 lg:px-8"
+      data-testid="monitoring-organization-loading"
+    >
+      <PageHeader icon={Activity} title="运行监控" description={PAGE_DESCRIPTION} />
+
+      <p className="flex items-center gap-2 text-xs text-muted">
+        <Spinner className="h-3.5 w-3.5" />
+        正在确认当前组织…
+      </p>
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {Array.from({ length: 4 }, (_, index) => (
+          <Skeleton key={index} className="h-[6.5rem] rounded-card" />
+        ))}
+      </div>
+      <Skeleton className="h-80 rounded-card" />
     </div>
   )
 }
@@ -252,10 +280,18 @@ function MonitoringDashboardContent({ organizationId }: { organizationId: string
 
 export function MonitoringDashboardPage() {
   const authToken = useAuthToken()
+  // 角色仍然从令牌里读（tenant_role claim 真实存在），只有组织 id 改由服务端解析
   const currentUserRole = getResourceGovernanceRoleFromToken(authToken)
-  const organizationId = getResourceGovernanceOrganizationIdFromToken(authToken)
+  const canManage = canManageResourceGovernance(currentUserRole)
+  const {
+    data: currentOrganization,
+    isLoading: isOrganizationLoading,
+    error: organizationError,
+    refetch: refetchOrganization,
+  } = useCurrentOrganization({ enabled: canManage })
+  const organizationId = currentOrganization?.id
 
-  if (!canManageResourceGovernance(currentUserRole)) {
+  if (!canManage) {
     return (
       <MonitoringBlockedState
         testId="monitoring-forbidden"
@@ -270,13 +306,31 @@ export function MonitoringDashboardPage() {
     )
   }
 
+  if (isOrganizationLoading) {
+    return <MonitoringOrganizationLoadingState />
+  }
+
   if (!organizationId) {
     return (
       <MonitoringBlockedState
         testId="monitoring-missing-org"
         icon={AlertTriangle}
-        title="无法识别当前组织"
-        message="当前登录令牌里没有可用的 organizationId / orgId / tenantId 信息，暂时无法加载监控仪表板。"
+        title="无法确定当前组织"
+        message={
+          organizationError instanceof HTTPError && organizationError.response.status === 404
+            ? '当前租户还没有关联组织，或当前账号不是该组织成员，因此无法加载监控仪表板。'
+            : '获取当前组织信息失败，暂时无法加载监控仪表板，请稍后重试。'
+        }
+        action={
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => void refetchOrganization()}
+          >
+            重试
+          </Button>
+        }
       />
     )
   }

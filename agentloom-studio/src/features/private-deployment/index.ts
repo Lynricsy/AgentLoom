@@ -26,7 +26,6 @@ export {
 } from './hooks/usePrivateDeployment'
 export {
   canManagePrivateDeployment,
-  getPrivateDeploymentOrganizationIdFromToken,
   getPrivateDeploymentRoleFromToken,
   getPrivateDeploymentTenantIdFromToken,
 } from './lib/privateDeploymentPermissions'

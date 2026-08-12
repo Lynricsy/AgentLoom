@@ -11,7 +11,7 @@ import {
   isAutonomyModeWithinCap,
 } from '@/features/organization-autonomy-policy/lib/autonomyModePolicy'
 import { useOrganizationAutonomyPolicy } from '@/features/organization-autonomy-policy/hooks/useOrganizationAutonomyPolicy'
-import { getOrganizationIdFromToken } from '@/features/organization-autonomy-policy/lib/organizationAutonomyPolicyPermissions'
+import { useCurrentOrganization } from '@/features/organization/api/organizationQueries'
 import { useTheme } from '@/shared/hooks/use-theme'
 import { Input } from '@/shared/ui/input'
 import { Label } from '@/shared/ui/label'
@@ -332,7 +332,12 @@ export const LlmAgentConfigPanel = memo(function LlmAgentConfigPanel({
 }: LlmAgentConfigPanelProps) {
   const { resolvedTheme } = useTheme()
   const authToken = useAuthToken()
-  const organizationId = useMemo(() => getOrganizationIdFromToken(authToken) ?? undefined, [authToken])
+  // 组织 id 不在登录令牌的 claim 里（实测 Supabase JWT 只有 tenant_id / tenant_role），
+  // 只能由服务端按租户解析；tenantId 不是 organizationId，不能拿来兜底。
+  const { data: currentOrganization } = useCurrentOrganization({
+    enabled: Boolean(authToken),
+  })
+  const organizationId = currentOrganization?.id
   const { data: organizationAutonomyPolicy } = useOrganizationAutonomyPolicy(organizationId, {
     enabled: Boolean(organizationId),
   })

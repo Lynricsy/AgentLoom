@@ -1,6 +1,7 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { makeHttpError } from '@/features/organization/testing/makeHttpError'
 import { MonitoringDashboardPage } from './MonitoringDashboardPage'
 import type {
   MonitoringDashboard,
@@ -10,11 +11,17 @@ import type {
 
 const mocks = vi.hoisted(() => ({
   useAuthToken: vi.fn(),
+  useCurrentOrganization: vi.fn(),
+  refetchCurrentOrganization: vi.fn(),
   useMonitoringDashboard: vi.fn(),
 }))
 
 vi.mock('@/features/execution', () => ({
   useAuthToken: mocks.useAuthToken,
+}))
+
+vi.mock('@/features/organization/api/organizationQueries', () => ({
+  useCurrentOrganization: mocks.useCurrentOrganization,
 }))
 
 vi.mock('../hooks/useMonitoringDashboard', () => ({
@@ -140,10 +147,10 @@ function createDashboard(window: MonitoringWindow): MonitoringDashboard {
   }
 }
 
-const ownerToken = createToken({ tenantRole: 'owner', organizationId: 'org-1', tenantId: 'tenant-1' })
-const adminToken = createToken({ tenantRole: 'admin', organizationId: 'org-1', tenantId: 'tenant-1' })
-const creatorToken = createToken({ tenantRole: 'creator', organizationId: 'org-1' })
-const ownerWithoutOrgToken = createToken({ tenantRole: 'owner' })
+// 真实部署的 Supabase JWT 里没有任何组织 claim，只有 tenant_role / tenant_id
+const ownerToken = createToken({ tenantRole: 'owner', tenantId: 'tenant-1' })
+const adminToken = createToken({ tenantRole: 'admin', tenantId: 'tenant-1' })
+const creatorToken = createToken({ tenantRole: 'creator', tenantId: 'tenant-1' })
 
 describe('MonitoringDashboardPage', () => {
   beforeEach(() => {
@@ -157,6 +164,12 @@ describe('MonitoringDashboardPage', () => {
       error: null,
       isFetching: false,
     }))
+    mocks.useCurrentOrganization.mockReturnValue({
+      data: { id: 'org-1' },
+      isLoading: false,
+      error: null,
+      refetch: mocks.refetchCurrentOrganization,
+    })
   })
 
   it('shows a forbidden state for direct non-owner/admin access', () => {
@@ -170,14 +183,48 @@ describe('MonitoringDashboardPage', () => {
     expect(mocks.useMonitoringDashboard).not.toHaveBeenCalled()
   })
 
-  it('shows a missing-organization state when the owner token has no org claim', () => {
-    mocks.useAuthToken.mockReturnValue(ownerWithoutOrgToken)
+  it('组织解析中只展示骨架，不发起监控请求', () => {
+    mocks.useCurrentOrganization.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      error: null,
+      refetch: mocks.refetchCurrentOrganization,
+    })
+
+    render(<MonitoringDashboardPage />)
+
+    expect(screen.getByTestId('monitoring-organization-loading')).toBeInTheDocument()
+    expect(screen.queryByTestId('monitoring-missing-org')).not.toBeInTheDocument()
+    expect(mocks.useMonitoringDashboard).not.toHaveBeenCalled()
+  })
+
+  it('当前组织请求失败时展示错误态、可重试，且不发起监控请求', async () => {
+    const user = userEvent.setup()
+
+    mocks.useCurrentOrganization.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: makeHttpError(404, { detail: '组织未找到' }),
+      refetch: mocks.refetchCurrentOrganization,
+    })
 
     render(<MonitoringDashboardPage />)
 
     expect(screen.getByTestId('monitoring-missing-org')).toBeInTheDocument()
-    expect(screen.getByText('无法识别当前组织')).toBeInTheDocument()
+    expect(screen.getByText('无法确定当前组织')).toBeInTheDocument()
+    expect(screen.getByText(/当前租户还没有关联组织/)).toBeInTheDocument()
     expect(mocks.useMonitoringDashboard).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: '重试' }))
+
+    expect(mocks.refetchCurrentOrganization).toHaveBeenCalledTimes(1)
+  })
+
+  it('用 organizations/current 返回的组织 id 请求监控数据，而不是租户 id', () => {
+    render(<MonitoringDashboardPage />)
+
+    expect(mocks.useMonitoringDashboard).toHaveBeenCalledWith('org-1', '1h')
+    expect(mocks.useMonitoringDashboard).not.toHaveBeenCalledWith('tenant-1', '1h')
   })
 
   it('renders content for admin users and keeps the page read-only', () => {

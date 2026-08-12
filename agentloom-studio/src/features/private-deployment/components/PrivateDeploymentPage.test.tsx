@@ -1,11 +1,14 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { makeHttpError } from '@/features/organization/testing/makeHttpError'
 import type { PrivateDeploymentSettings } from '../types/privateDeployment'
 import { PrivateDeploymentPage } from './PrivateDeploymentPage'
 
 const mocks = vi.hoisted(() => ({
   useAuthToken: vi.fn(),
+  useCurrentOrganization: vi.fn(),
+  refetchCurrentOrganization: vi.fn(),
   usePrivateDeployment: vi.fn(),
   useUpdatePrivateDeploymentSettings: vi.fn(),
   updateMutate: vi.fn(),
@@ -14,6 +17,10 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/features/execution', () => ({
   useAuthToken: mocks.useAuthToken,
+}))
+
+vi.mock('@/features/organization/api/organizationQueries', () => ({
+  useCurrentOrganization: mocks.useCurrentOrganization,
 }))
 
 vi.mock('../hooks/usePrivateDeployment', () => ({
@@ -32,10 +39,10 @@ function createToken(payload: Record<string, unknown>) {
   return `${header}.${body}.signature`
 }
 
-const ownerToken = createToken({ tenantRole: 'owner', organizationId: 'org-1', tenantId: 'tenant-1' })
-const adminToken = createToken({ tenantRole: 'admin', organizationId: 'org-1', tenantId: 'tenant-1' })
-const creatorToken = createToken({ tenantRole: 'creator', organizationId: 'org-1' })
-const ownerWithoutOrgToken = createToken({ tenantRole: 'owner' })
+// 真实部署的 Supabase JWT 里没有任何组织 claim，只有 tenant_role / tenant_id
+const ownerToken = createToken({ tenantRole: 'owner', tenantId: 'tenant-1' })
+const adminToken = createToken({ tenantRole: 'admin', tenantId: 'tenant-1' })
+const creatorToken = createToken({ tenantRole: 'creator', tenantId: 'tenant-1' })
 
 const smtpSecretRef = 'private-deployment://organizations/org-1/smtp/password'
 const llmSecretRef = 'private-deployment://organizations/org-1/llm-proxy/api-key'
@@ -99,6 +106,12 @@ describe('PrivateDeploymentPage', () => {
       mutate: mocks.updateMutate,
       isPending: false,
     })
+    mocks.useCurrentOrganization.mockReturnValue({
+      data: { id: 'org-1' },
+      isLoading: false,
+      error: null,
+      refetch: mocks.refetchCurrentOrganization,
+    })
   })
 
   it('shows a forbidden state for direct non-owner/admin access', () => {
@@ -111,13 +124,48 @@ describe('PrivateDeploymentPage', () => {
     expect(screen.getByText(/当前租户角色为 creator/)).toBeInTheDocument()
   })
 
-  it('shows a missing-organization state when the owner token has no org claim', () => {
-    mocks.useAuthToken.mockReturnValue(ownerWithoutOrgToken)
+  it('组织解析中只展示骨架，不发起私有部署请求', () => {
+    mocks.useCurrentOrganization.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      error: null,
+      refetch: mocks.refetchCurrentOrganization,
+    })
+
+    render(<PrivateDeploymentPage />)
+
+    expect(screen.getByTestId('private-deployment-organization-loading')).toBeInTheDocument()
+    expect(screen.queryByTestId('private-deployment-missing-org')).not.toBeInTheDocument()
+    expect(mocks.usePrivateDeployment).not.toHaveBeenCalled()
+  })
+
+  it('当前组织请求失败时展示错误态、可重试，且不发起私有部署请求', async () => {
+    const user = userEvent.setup()
+
+    mocks.useCurrentOrganization.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: makeHttpError(404, { detail: '组织未找到' }),
+      refetch: mocks.refetchCurrentOrganization,
+    })
 
     render(<PrivateDeploymentPage />)
 
     expect(screen.getByTestId('private-deployment-missing-org')).toBeInTheDocument()
-    expect(screen.getByText('无法识别当前组织')).toBeInTheDocument()
+    expect(screen.getByText('无法确定当前组织')).toBeInTheDocument()
+    expect(screen.getByText(/当前租户还没有关联组织/)).toBeInTheDocument()
+    expect(mocks.usePrivateDeployment).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: '重试' }))
+
+    expect(mocks.refetchCurrentOrganization).toHaveBeenCalledTimes(1)
+  })
+
+  it('用 organizations/current 返回的组织 id 请求私有部署设置，而不是租户 id', () => {
+    render(<PrivateDeploymentPage />)
+
+    expect(mocks.usePrivateDeployment).toHaveBeenCalledWith('org-1')
+    expect(mocks.usePrivateDeployment).not.toHaveBeenCalledWith('tenant-1')
   })
 
   it('renders content for admin users without exposing managed secret refs', () => {

@@ -120,6 +120,18 @@ export class OrganizationService {
     );
   }
 
+  async getCurrentOrganization(tenantId: string, userId: string) {
+    const org = await this.tenantDb.query.organizations.findFirst({
+      where: eq(organizations.tenantId, tenantId),
+    });
+
+    if (!org) {
+      throw new OrganizationNotFoundException();
+    }
+
+    return this.getOrganizationDetails(org, userId);
+  }
+
   async getOrganization(orgId: string, userId: string) {
     const org = await this.tenantDb.query.organizations.findFirst({
       where: eq(organizations.id, orgId),
@@ -129,9 +141,16 @@ export class OrganizationService {
       throw new OrganizationNotFoundException();
     }
 
+    return this.getOrganizationDetails(org, userId);
+  }
+
+  private async getOrganizationDetails<T extends { id: string }>(
+    org: T,
+    userId: string,
+  ) {
     const member = await this.tenantDb.query.organizationMembers.findFirst({
       where: and(
-        eq(organizationMembers.organizationId, orgId),
+        eq(organizationMembers.organizationId, org.id),
         eq(organizationMembers.userId, userId),
       ),
     });
@@ -143,7 +162,7 @@ export class OrganizationService {
     const [memberCountResult] = await this.tenantDb
       .select({ count: sql<number>`count(*)` })
       .from(organizationMembers)
-      .where(eq(organizationMembers.organizationId, orgId));
+      .where(eq(organizationMembers.organizationId, org.id));
 
     return { ...org, memberCount: Number(memberCountResult.count) };
   }
