@@ -42,7 +42,7 @@ export const LocationLink = memo(function LocationLink({
         'inline-flex min-w-0 items-center gap-1.5 text-xs transition',
         disabled
           ? 'cursor-not-allowed text-muted-foreground/60'
-          : 'cursor-pointer text-blue-500 hover:text-blue-700 hover:underline',
+          : 'cursor-pointer text-info hover:text-info/80 hover:underline',
         className,
       )}
       disabled={disabled}

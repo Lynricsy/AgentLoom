@@ -56,7 +56,7 @@ export const AgentGraphEdge = memo(function AgentGraphEdge({
         className={cn(
           'transition-all duration-200',
           isHighlighted
-            ? '!stroke-yellow-400/80'
+            ? '!stroke-highlight/80'
             : selected
               ? '!stroke-primary'
               : '!stroke-border',

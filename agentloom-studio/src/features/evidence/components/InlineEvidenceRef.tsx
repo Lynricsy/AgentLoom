@@ -91,7 +91,7 @@ export const InlineEvidenceRef = memo(function InlineEvidenceRef({
           <button
             type="button"
             className={cn(
-              'inline-flex cursor-pointer text-blue-500 transition hover:text-blue-700',
+              'inline-flex cursor-pointer text-info transition hover:text-info/80',
               className,
             )}
             onClick={(e) => {
