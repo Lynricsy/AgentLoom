@@ -3,6 +3,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type KeyboardEvent,
 } from "react";
@@ -13,7 +14,13 @@ import { z } from "zod";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
-import { NativeSelect } from "@/shared/ui/native-select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/shared/ui/select";
 import { Slider } from "@/shared/ui/slider";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/ui/tabs";
 import { useToast } from "@/shared/ui/toast";
@@ -339,7 +346,28 @@ export const LlmModelConfigPanel = memo(function LlmModelConfigPanel({
   onApply,
 }: LlmModelConfigPanelProps) {
   const { notify } = useToast();
-  const normalizedConfig = parseLlmModelConfig(config);
+  // parseLlmModelConfig 是纯函数，每次调用都返回新的对象字面量；而画布侧的
+  // customPanelRegistry 也是每次渲染现算一份 config 传进来（引用永不稳定）。
+  // 若在渲染期直接调用，下方 reset effect 的依赖便会每次渲染都变化 ->
+  // form.reset 触发重渲染 -> effect 再次执行，形成无限循环（面板一打开就冻结）。
+  // 因此这里按「内容」而非「引用」稳定化：内容指纹未变就复用上一次的解析结果。
+  // 这是一个纯派生缓存（值只由 config 决定），在渲染期写 ref 是安全的。
+  const normalizedConfigCacheRef = useRef<{
+    fingerprint: string;
+    value: LlmModelConfig | null;
+  } | null>(null);
+  const normalizedConfig = useMemo(() => {
+    const parsed = parseLlmModelConfig(config);
+    const fingerprint = JSON.stringify(parsed);
+
+    if (normalizedConfigCacheRef.current?.fingerprint === fingerprint) {
+      return normalizedConfigCacheRef.current.value;
+    }
+
+    normalizedConfigCacheRef.current = { fingerprint, value: parsed };
+
+    return parsed;
+  }, [config]);
   const llmModelsQuery = useLlmModels();
   const providersQuery = useLlmProviders();
   const createMutation = useCreateLlmModel();
@@ -701,13 +729,21 @@ export const LlmModelConfigPanel = memo(function LlmModelConfigPanel({
                   control={form.control}
                   name="provider"
                   render={({ field }) => (
-                    <NativeSelect value={field.value} onValueChange={field.onChange}>
-                      {providerCatalog.map((provider) => (
-                        <option key={provider.id} value={provider.id}>
-                          {provider.name}
-                        </option>
-                      ))}
-                    </NativeSelect>
+                    <Select
+                      value={field.value}
+                      onValueChange={field.onChange}
+                    >
+                      <SelectTrigger aria-label="Provider">
+                        <SelectValue placeholder="请选择 Provider" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {providerCatalog.map((provider) => (
+                          <SelectItem key={provider.id} value={provider.id}>
+                            {provider.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   )}
                 />
               </div>
@@ -732,17 +768,21 @@ export const LlmModelConfigPanel = memo(function LlmModelConfigPanel({
                         control={form.control}
                         name="modelName"
                         render={({ field }) => (
-                          <NativeSelect
+                          <Select
                             value={field.value}
                             onValueChange={field.onChange}
                           >
-                            <option value="">请选择模型</option>
-                            {availableModels.map((model) => (
-                              <option key={model} value={model}>
-                                {model}
-                              </option>
-                            ))}
-                          </NativeSelect>
+                            <SelectTrigger aria-label="模型">
+                              <SelectValue placeholder="请选择模型" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {availableModels.map((model) => (
+                                <SelectItem key={model} value={model}>
+                                  {model}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         )}
                       />
                     )}

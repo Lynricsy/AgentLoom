@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { McpImportDialog } from "./McpImportDialog";
@@ -280,9 +280,10 @@ describe("McpImportDialog", () => {
       expect(screen.getByText("步骤 4 · 导入并复核")).toBeInTheDocument();
       expect(screen.getByRole("checkbox", { name: "搜索文件" })).toBeChecked();
 
-      fireEvent.change(screen.getByLabelText("冲突处理策略"), {
-        target: { value: "skip" },
-      });
+      await user.click(screen.getByLabelText("冲突处理策略"));
+      await user.click(
+        screen.getByRole("option", { name: "跳过已存在工具" }),
+      );
 
       await user.click(screen.getByRole("button", { name: "开始导入" }));
 
@@ -341,9 +342,8 @@ describe("McpImportDialog", () => {
 
     await user.click(screen.getByRole("button", { name: "继续选择导入" }));
 
-    fireEvent.change(screen.getByLabelText("冲突处理策略"), {
-      target: { value: "overwrite" },
-    });
+    await user.click(screen.getByLabelText("冲突处理策略"));
+    await user.click(screen.getByRole("option", { name: "覆盖已存在工具" }));
 
     await user.click(screen.getByRole("button", { name: "开始重新导入" }));
 

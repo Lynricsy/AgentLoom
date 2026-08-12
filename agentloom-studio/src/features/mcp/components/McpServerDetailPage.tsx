@@ -1,10 +1,33 @@
 import { useMemo, useRef, useState, type MouseEvent } from "react";
-import { Link } from "@tanstack/react-router";
-import * as Dialog from "@radix-ui/react-dialog";
-import { ArrowLeft, Download, Loader2, Pencil, RefreshCw } from "lucide-react";
+import { useNavigate } from "@tanstack/react-router";
+import {
+  AlertCircle,
+  ArrowLeft,
+  Download,
+  Loader2,
+  Pencil,
+  RefreshCw,
+  Search,
+  Server,
+  Wrench,
+} from "lucide-react";
 import { formatRelativeTime } from "@/features/canvas/lib/formatRelativeTime";
+import { EmptyState } from "@/shared/components/empty-state/EmptyState";
+import { PageHeader } from "@/shared/components/page-header/PageHeader";
+import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
+import { Card } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
+import { Label } from "@/shared/ui/label";
+import { Skeleton } from "@/shared/ui/skeleton";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogTitle,
+} from "@/shared/ui/alert-dialog";
 import { useToast } from "@/shared/ui/toast";
 import { useMcpServerConfig } from "../api/mcpQueries";
 import {
@@ -13,11 +36,14 @@ import {
 } from "../api/mcpMutations";
 import { McpImportDialog } from "./McpImportDialog";
 import { McpServerEditDialog } from "./McpServerEditDialog";
-import type {
-  McpServerConfigDetail,
-  McpToolDefinition,
-  McpTransportType,
-} from "../types";
+import {
+  SERVER_STATUS_META,
+  TRANSPORT_LABEL,
+  TRANSPORT_TONE,
+} from "../lib/mcpPresentation";
+import type { McpToolDefinition } from "../types";
+
+const MCP_TONE = "var(--color-node-tool)";
 
 // ---------- helpers ----------
 
@@ -60,63 +86,6 @@ function getToolImportedAt(tool: McpToolDefinition): string | null {
   return tool.importedAt ?? tool.createdAt ?? null;
 }
 
-function getStatusLabel(tool: McpToolDefinition): string {
-  return tool.isActive ? "\u5DF2\u542F\u7528" : "\u5DF2\u505C\u7528";
-}
-
-function getStatusClassName(tool: McpToolDefinition): string {
-  return tool.isActive
-    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-    : "border-border bg-muted/60 text-muted-foreground";
-}
-
-// ---------- sub-components ----------
-
-function TransportBadge({ type }: { type: McpTransportType }) {
-  const styles: Record<McpTransportType, string> = {
-    stdio: "bg-blue-500/15 text-blue-400",
-    sse: "bg-green-500/15 text-green-400",
-    streamable_http: "bg-purple-500/15 text-purple-400",
-  };
-  const labels: Record<McpTransportType, string> = {
-    stdio: "stdio",
-    sse: "SSE",
-    streamable_http: "HTTP",
-  };
-
-  return (
-    <span
-      className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${styles[type]}`}
-    >
-      {labels[type]}
-    </span>
-  );
-}
-
-function ServerStatusDot({
-  status,
-}: {
-  status: McpServerConfigDetail["status"];
-}) {
-  const colors: Record<McpServerConfigDetail["status"], string> = {
-    active: "bg-green-400",
-    inactive: "bg-yellow-400",
-    error: "bg-red-400",
-  };
-  const labels: Record<McpServerConfigDetail["status"], string> = {
-    active: "活跃",
-    inactive: "未激活",
-    error: "错误",
-  };
-
-  return (
-    <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-      <span className={`inline-block h-2 w-2 rounded-full ${colors[status]}`} />
-      {labels[status]}
-    </span>
-  );
-}
-
 // ---------- main ----------
 
 interface McpServerDetailPageProps {
@@ -125,11 +94,8 @@ interface McpServerDetailPageProps {
 
 export function McpServerDetailPage({ serverId }: McpServerDetailPageProps) {
   const { notify } = useToast();
-  const {
-    data: detail,
-    isLoading,
-    error,
-  } = useMcpServerConfig(serverId);
+  const navigate = useNavigate();
+  const { data: detail, isLoading, error } = useMcpServerConfig(serverId);
 
   const rediscoverMutation = useRediscoverMcpTools();
   const deactivateMutation = useDeactivateMcpTool();
@@ -164,8 +130,7 @@ export function McpServerDetailPage({ serverId }: McpServerDetailPageProps) {
 
       if (leftUpdatedAt && rightUpdatedAt) {
         return (
-          new Date(rightUpdatedAt).getTime() -
-          new Date(leftUpdatedAt).getTime()
+          new Date(rightUpdatedAt).getTime() - new Date(leftUpdatedAt).getTime()
         );
       }
 
@@ -188,17 +153,17 @@ export function McpServerDetailPage({ serverId }: McpServerDetailPageProps) {
     try {
       await rediscoverMutation.mutateAsync(serverId);
       notify({
-        title: "\u5DF2\u91CD\u65B0\u53D1\u73B0\u5DE5\u5177",
-        description: "\u5DE5\u5177\u5217\u8868\u5DF2\u5237\u65B0\u3002",
+        title: "已重新发现工具",
+        description: "工具列表已刷新。",
         variant: "success",
       });
     } catch (mutationError) {
       notify({
-        title: "\u91CD\u65B0\u53D1\u73B0\u5931\u8D25",
+        title: "重新发现失败",
         description:
           mutationError instanceof Error
             ? mutationError.message
-            : "\u8BF7\u7A0D\u540E\u91CD\u8BD5\u3002",
+            : "请稍后重试。",
         variant: "error",
       });
     }
@@ -212,19 +177,18 @@ export function McpServerDetailPage({ serverId }: McpServerDetailPageProps) {
     try {
       await deactivateMutation.mutateAsync(toolToDeactivate.id);
       notify({
-        title: "\u5DF2\u505C\u7528\u5DE5\u5177",
-        description:
-          "\u5DE5\u5177\u5DF2\u505C\u7528\uFF0C\u753B\u5E03\u4E2D\u7684 Imported Tools \u5C06\u540C\u6B65\u9690\u85CF\u8BE5\u9879\u3002",
+        title: "已停用工具",
+        description: "工具已停用，画布中的 Imported Tools 将同步隐藏该项。",
         variant: "success",
       });
       setToolToDeactivate(null);
     } catch (mutationError) {
       notify({
-        title: "\u505C\u7528\u5931\u8D25",
+        title: "停用失败",
         description:
           mutationError instanceof Error
             ? mutationError.message
-            : "\u8BF7\u7A0D\u540E\u91CD\u8BD5\u3002",
+            : "请稍后重试。",
         variant: "error",
       });
     }
@@ -266,230 +230,250 @@ export function McpServerDetailPage({ serverId }: McpServerDetailPageProps) {
 
   if (isLoading) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="space-y-6 px-4 py-6 sm:px-6 lg:px-8">
-        <Link
-          to="/resources/mcp-servers"
-          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          返回 MCP Servers
-        </Link>
-        <div className="rounded-2xl border border-error/50 bg-surface-elevated p-6">
-          <h2 className="text-lg font-semibold text-foreground">
-            加载服务器详情失败
-          </h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            {error instanceof Error ? error.message : "未知错误"}
-          </p>
+      <div
+        className="flex h-full flex-col gap-5 p-6"
+        data-testid="mcp-server-detail-skeleton"
+      >
+        <Skeleton className="h-12 w-72 rounded-card" />
+        <Skeleton className="h-10 w-full max-w-xl rounded-card" />
+        <div className="grid gap-4 xl:grid-cols-2">
+          {Array.from({ length: 4 }, (_, index) => (
+            <Skeleton key={index} className="h-48 rounded-card" />
+          ))}
         </div>
       </div>
     );
   }
 
-  if (!detail) {
-    return null;
+  if (error || !detail) {
+    return (
+      <div className="flex h-full items-center justify-center p-6">
+        <EmptyState
+          icon={AlertCircle}
+          tone="var(--color-error)"
+          title="加载服务器详情失败"
+          description={
+            error instanceof Error
+              ? error.message
+              : "该服务器可能已被删除，或你没有访问权限。"
+          }
+          action={
+            <Button
+              variant="outline"
+              onClick={() => void navigate({ to: "/resources/mcp-servers" })}
+            >
+              返回 MCP Servers
+            </Button>
+          }
+        />
+      </div>
+    );
   }
 
+  const statusMeta = SERVER_STATUS_META[detail.status];
+
   return (
-    <div className="space-y-6 px-4 py-6 sm:px-6 lg:px-8">
-      {/* 头部导航与服务器信息 */}
-      <div className="space-y-4">
-        <Link
-          to="/resources/mcp-servers"
-          className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          返回 MCP Servers
-        </Link>
-
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="flex flex-wrap items-center gap-3">
-            <h1 className="text-2xl font-semibold text-foreground">
-              {detail.name}
-            </h1>
-            <TransportBadge type={detail.transportType} />
-            <ServerStatusDot status={detail.status} />
-          </div>
-
-          <div className="flex flex-wrap gap-2">
+    <div className="flex h-full flex-col gap-5 overflow-y-auto p-6">
+      <PageHeader
+        icon={Server}
+        tone={MCP_TONE}
+        breadcrumb={[
+          { label: "MCP Servers", to: "/resources/mcp-servers" },
+          { label: detail.name },
+        ]}
+        title={
+          <span className="flex flex-wrap items-center gap-2">
+            {detail.name}
+            <Badge size="sm" tone={TRANSPORT_TONE[detail.transportType]}>
+              {TRANSPORT_LABEL[detail.transportType]}
+            </Badge>
+            <Badge size="sm" variant={statusMeta.variant}>
+              {statusMeta.label}
+            </Badge>
+          </span>
+        }
+        description={detail.description || "这个服务器还没有描述"}
+        actions={
+          <>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => void navigate({ to: "/resources/mcp-servers" })}
+            >
+              <ArrowLeft className="mr-1 h-4 w-4" />
+              返回
+            </Button>
             <Button
               variant="outline"
               disabled={rediscoverMutation.isPending}
               onClick={() => void handleRediscover()}
             >
-              <RefreshCw className="mr-1.5 h-4 w-4" />
+              {rediscoverMutation.isPending ? (
+                <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+              ) : (
+                <RefreshCw className="mr-1.5 h-4 w-4" />
+              )}
               重新发现工具
             </Button>
             <Button variant="outline" onClick={openReimportDialog}>
               <Download className="mr-1.5 h-4 w-4" />
               重新导入工具
             </Button>
-            <Button
-              variant="outline"
-              onClick={() => setEditDialogOpen(true)}
-            >
+            <Button variant="outline" onClick={() => setEditDialogOpen(true)}>
               <Pencil className="mr-1.5 h-4 w-4" />
               编辑
             </Button>
-          </div>
-        </div>
-
-        {detail.description ? (
-          <p className="max-w-2xl text-sm text-muted-foreground">
-            {detail.description}
-          </p>
-        ) : null}
-      </div>
+          </>
+        }
+      />
 
       {/* 搜索 */}
-      <div className="max-w-xl space-y-2">
-        <label
-          className="block text-sm font-medium text-foreground"
-          htmlFor="server-tool-search"
-        >
-          搜索工具
+      <div className="max-w-xl space-y-1.5">
+        <label htmlFor="server-tool-search">
+          <Label>搜索工具</Label>
         </label>
-        <Input
-          autoComplete="off"
-          id="server-tool-search"
-          name="serverToolSearch"
-          onChange={(event) => setSearch(event.target.value)}
-          placeholder="按名称或描述搜索…"
-          type="search"
-          value={search}
-        />
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
+          <Input
+            autoComplete="off"
+            id="server-tool-search"
+            name="serverToolSearch"
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="按名称或描述搜索…"
+            type="search"
+            value={search}
+            className="pl-9"
+          />
+        </div>
       </div>
 
-      {/* 空状态 */}
       {visibleTools.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-border bg-surface-elevated p-8 text-center">
-          <p className="text-sm text-muted-foreground">
-            {hasSearch
-              ? "没有匹配的工具"
-              : "该服务器下暂无已导入的工具"}
-          </p>
-        </div>
-      ) : null}
-
-      {/* 工具卡片列表 */}
-      {visibleTools.length > 0 ? (
+        <EmptyState
+          icon={Wrench}
+          tone={MCP_TONE}
+          title={hasSearch ? "没有匹配的工具" : "该服务器下暂无已导入的工具"}
+          description={
+            hasSearch
+              ? "换个关键词试试，搜索会匹配工具名称与描述。"
+              : "点击「重新发现工具」从服务器拉取最新的工具定义。"
+          }
+          action={
+            hasSearch ? null : (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={rediscoverMutation.isPending}
+                onClick={() => void handleRediscover()}
+              >
+                <RefreshCw className="mr-1.5 h-4 w-4" />
+                重新发现工具
+              </Button>
+            )
+          }
+        />
+      ) : (
         <div className="grid gap-4 xl:grid-cols-2">
           {visibleTools.map((tool) => (
-            <article
-              key={tool.id}
-              className="rounded-2xl border border-border bg-surface-elevated p-5 shadow-sm"
-            >
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0 flex-1 space-y-2">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <h2 className="text-lg font-semibold text-foreground">
-                      {tool.title ?? tool.name}
-                    </h2>
-                    <span
-                      className={`rounded-full border px-2.5 py-1 text-xs font-medium ${getStatusClassName(tool)}`}
-                    >
-                      {getStatusLabel(tool)}
-                    </span>
+            <Card key={tool.id} className="p-5">
+              <article>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h2 className="min-w-0 truncate text-base font-semibold text-foreground">
+                        {tool.title ?? tool.name}
+                      </h2>
+                      <Badge
+                        size="sm"
+                        variant={tool.isActive ? "success" : "secondary"}
+                      >
+                        {tool.isActive ? "已启用" : "已停用"}
+                      </Badge>
+                    </div>
+
+                    <p className="text-sm text-muted">
+                      {tool.description ?? "这个工具没有提供额外描述。"}
+                    </p>
                   </div>
+                </div>
 
-                  {tool.description ? (
-                    <p className="text-sm text-muted-foreground">
-                      {tool.description}
+                <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
+                  <div className="min-w-0 space-y-1">
+                    <p className="text-xs uppercase tracking-[0.18em] text-muted">
+                      工具名称
                     </p>
-                  ) : (
-                    <p className="text-sm text-muted-foreground">
-                      这个工具没有提供额外描述。
+                    <p className="truncate font-mono text-xs text-foreground">
+                      {tool.name}
                     </p>
-                  )}
+                  </div>
+                  <div className="min-w-0 space-y-1">
+                    <p className="text-xs uppercase tracking-[0.18em] text-muted">
+                      最后更新
+                    </p>
+                    <p className="text-foreground">
+                      {formatRelativeDateTime(getToolLastUpdatedAt(tool))}
+                    </p>
+                    <p className="text-xs text-muted">
+                      {formatDateTime(getToolLastUpdatedAt(tool))}
+                    </p>
+                  </div>
+                  <div className="min-w-0 space-y-1">
+                    <p className="text-xs uppercase tracking-[0.18em] text-muted">
+                      首次导入
+                    </p>
+                    <p className="text-foreground">
+                      {formatRelativeDateTime(getToolImportedAt(tool))}
+                    </p>
+                    <p className="text-xs text-muted">
+                      {formatDateTime(getToolImportedAt(tool))}
+                    </p>
+                  </div>
                 </div>
-              </div>
 
-              <div className="mt-4 grid gap-3 text-sm sm:grid-cols-2">
-                <div className="space-y-1">
-                  <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                    工具名称
-                  </p>
-                  <p className="font-mono text-xs text-foreground">
-                    {tool.name}
-                  </p>
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {tool.portMappingMetadata ? (
+                    <>
+                      <Badge size="sm" variant="outline">
+                        输入 {tool.portMappingMetadata.inputs.length}
+                      </Badge>
+                      <Badge size="sm" variant="outline">
+                        输出 {tool.portMappingMetadata.outputs.length}
+                      </Badge>
+                    </>
+                  ) : null}
+                  {tool.annotations ? (
+                    <Badge size="sm" variant="outline">
+                      注解 {Object.keys(tool.annotations).length} 项
+                    </Badge>
+                  ) : null}
+                  {tool.inputSchema ? (
+                    <Badge size="sm" variant="outline">
+                      已提供 inputSchema
+                    </Badge>
+                  ) : null}
                 </div>
-                <div className="space-y-1">
-                  <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                    最后更新
-                  </p>
-                  <p className="text-foreground">
-                    {formatRelativeDateTime(getToolLastUpdatedAt(tool))}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {formatDateTime(getToolLastUpdatedAt(tool))}
-                  </p>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-                    首次导入
-                  </p>
-                  <p className="text-foreground">
-                    {formatRelativeDateTime(getToolImportedAt(tool))}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {formatDateTime(getToolImportedAt(tool))}
-                  </p>
-                </div>
-              </div>
 
-              <div className="mt-4 flex flex-wrap gap-2 text-xs text-muted-foreground">
-                {tool.portMappingMetadata ? (
-                  <>
-                    <span className="rounded-full border border-border px-2 py-1">
-                      输入 {tool.portMappingMetadata.inputs.length}
-                    </span>
-                    <span className="rounded-full border border-border px-2 py-1">
-                      输出 {tool.portMappingMetadata.outputs.length}
-                    </span>
-                  </>
+                {!tool.isActive ? (
+                  <p className="mt-4 rounded-card border border-border bg-surface-elevated px-3 py-2 text-sm text-muted">
+                    该工具已停用，不会再出现在画布的 Imported Tools 分组中。
+                  </p>
                 ) : null}
-                {tool.annotations ? (
-                  <span className="rounded-full border border-border px-2 py-1">
-                    注解 {Object.keys(tool.annotations).length} 项
-                  </span>
-                ) : null}
-                {tool.inputSchema ? (
-                  <span className="rounded-full border border-border px-2 py-1">
-                    已提供 inputSchema
-                  </span>
-                ) : null}
-              </div>
 
-              {!tool.isActive ? (
-                <p className="mt-4 rounded-xl border border-border bg-surface px-3 py-2 text-sm text-muted-foreground">
-                  该工具已停用，不会再出现在画布的 Imported Tools 分组中。
-                </p>
-              ) : null}
-
-              <div className="mt-5 flex flex-wrap gap-3">
-                <Button
-                  aria-label={`停用 ${tool.title ?? tool.name}`}
-                  disabled={!tool.isActive}
-                  onClick={(event) => openDeactivateDialog(event, tool)}
-                  variant="outline"
-                >
-                  {tool.isActive
-                    ? `停用 ${tool.title ?? tool.name}`
-                    : "已停用"}
-                </Button>
-              </div>
-            </article>
+                <div className="mt-5 flex flex-wrap gap-3">
+                  <Button
+                    aria-label={`停用 ${tool.title ?? tool.name}`}
+                    disabled={!tool.isActive}
+                    onClick={(event) => openDeactivateDialog(event, tool)}
+                    variant="outline"
+                    size="sm"
+                  >
+                    {tool.isActive ? `停用 ${tool.title ?? tool.name}` : "已停用"}
+                  </Button>
+                </div>
+              </article>
+            </Card>
           ))}
         </div>
-      ) : null}
+      )}
 
       {/* 重新导入对话框 */}
       <McpImportDialog
@@ -518,51 +502,48 @@ export function McpServerDetailPage({ serverId }: McpServerDetailPageProps) {
       />
 
       {/* 停用确认对话框 */}
-      <Dialog.Root
+      <AlertDialog
+        open={toolToDeactivate !== null}
         onOpenChange={(nextOpen) => {
           if (!nextOpen) {
             setToolToDeactivate(null);
           }
         }}
-        open={Boolean(toolToDeactivate)}
       >
-        <Dialog.Portal>
-          <Dialog.Overlay className="fixed inset-0 z-50 bg-black/70 px-4 backdrop-blur-sm" />
-          <Dialog.Content
-            aria-describedby="mcp-tool-deactivate-description"
-            className="fixed left-1/2 top-1/2 z-50 w-[min(28rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-border bg-surface-elevated p-6 shadow-2xl"
-            onCloseAutoFocus={(event) => {
-              const restoreFocusElement = deactivateRestoreFocusRef.current;
+        <AlertDialogContent
+          onCloseAutoFocus={(event) => {
+            const restoreFocusElement = deactivateRestoreFocusRef.current;
 
-              if (restoreFocusElement) {
+            if (restoreFocusElement) {
+              event.preventDefault();
+              restoreFocusElement.focus();
+            }
+
+            deactivateRestoreFocusRef.current = null;
+          }}
+        >
+          <AlertDialogTitle>停用 MCP 工具</AlertDialogTitle>
+          <AlertDialogDescription>
+            停用后，这个工具会从工具库中标记为停用，并从画布的 Imported Tools
+            中移除。
+          </AlertDialogDescription>
+          <div className="mt-5 flex justify-end gap-2">
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deactivateMutation.isPending}
+              onClick={(event) => {
                 event.preventDefault();
-                restoreFocusElement.focus();
-              }
-
-              deactivateRestoreFocusRef.current = null;
-            }}
-          >
-            <div className="space-y-2">
-              <Dialog.Title className="text-lg font-semibold text-foreground">
-                停用 MCP 工具
-              </Dialog.Title>
-              <Dialog.Description
-                className="text-sm text-muted-foreground"
-                id="mcp-tool-deactivate-description"
-              >
-                停用后，这个工具会从工具库中标记为停用，并从画布的 Imported
-                Tools 中移除。
-              </Dialog.Description>
-            </div>
-            <div className="mt-6 flex justify-end gap-3">
-              <Dialog.Close asChild>
-                <Button variant="outline">取消</Button>
-              </Dialog.Close>
-              <Button onClick={handleDeactivate}>确认停用</Button>
-            </div>
-          </Dialog.Content>
-        </Dialog.Portal>
-      </Dialog.Root>
+                void handleDeactivate();
+              }}
+            >
+              {deactivateMutation.isPending && (
+                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+              )}
+              确认停用
+            </AlertDialogAction>
+          </div>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

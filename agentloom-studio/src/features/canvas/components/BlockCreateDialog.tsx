@@ -2,12 +2,18 @@ import { memo, useEffect } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { X } from 'lucide-react'
-import { useForm } from 'react-hook-form'
+import { Controller, useForm } from 'react-hook-form'
 import { z } from 'zod'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
 import { Label } from '@/shared/ui/label'
-import { NativeSelect } from '@/shared/ui/native-select'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/shared/ui/select'
 import type { DerivedPort, EncapsulationAnalysis } from '../lib/encapsulation'
 
 const BLOCK_CATEGORY_OPTIONS = [
@@ -69,6 +75,7 @@ export const BlockCreateDialog = memo(function BlockCreateDialog({
   onConfirm,
 }: BlockCreateDialogProps) {
   const {
+    control,
     register,
     handleSubmit,
     reset,
@@ -142,17 +149,28 @@ export const BlockCreateDialog = memo(function BlockCreateDialog({
                 {errors.name && <p className="text-xs text-error">{errors.name.message}</p>}
               </label>
 
-              <label htmlFor="block-category" className="space-y-2">
+              <div className="space-y-2">
                 <Label>分类</Label>
-                <NativeSelect id="block-category" aria-label="分类" {...register('category')}>
-                  {BLOCK_CATEGORY_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </NativeSelect>
+                <Controller
+                  control={control}
+                  name="category"
+                  render={({ field }) => (
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <SelectTrigger id="block-category" aria-label="分类">
+                        <SelectValue placeholder="请选择分类" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {BLOCK_CATEGORY_OPTIONS.map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
                 {errors.category && <p className="text-xs text-error">{errors.category.message}</p>}
-              </label>
+              </div>
             </div>
 
             <label htmlFor="block-description" className="block space-y-2">

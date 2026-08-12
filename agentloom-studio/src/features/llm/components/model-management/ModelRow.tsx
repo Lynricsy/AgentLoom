@@ -85,7 +85,7 @@ export function ModelRow({ model, onEdit, onDelete, onToggleEnabled }: ModelRowP
         <Button
           variant="ghost"
           size="sm"
-          className="h-7 w-7 p-0 text-red-400 hover:text-red-400"
+          className="h-7 w-7 p-0 text-muted hover:text-error"
           onClick={() => onDelete(model)}
           title="删除"
         >

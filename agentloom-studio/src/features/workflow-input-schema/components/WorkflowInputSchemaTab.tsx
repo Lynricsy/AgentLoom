@@ -10,7 +10,13 @@ import type {
 import { cn } from '@/shared/lib/utils'
 import { Button } from '@/shared/ui/button'
 import { Input } from '@/shared/ui/input'
-import { NativeSelect } from '@/shared/ui/native-select'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/shared/ui/select'
 import { useToast } from '@/shared/ui/toast'
 import {
   DEFAULT_CONVERSATION_PLAN,
@@ -65,6 +71,12 @@ const COLLECTION_MODE_OPTIONS: Array<{
 
 const TEXTAREA_CLASSNAME =
   'min-h-24 w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-50'
+
+/**
+ * Radix Select 不允许空串 value 的 SelectItem，而「始终显示」是用户必须能重新选回的真实选项
+ * （用于撤销显示条件），因此用哨兵值承载，写回 schema 前再映射回「无 visibility」。
+ */
+const ALWAYS_VISIBLE = '__always_visible__'
 
 export function WorkflowInputSchemaTab({
   workflowId,
@@ -200,7 +212,7 @@ export function WorkflowInputSchemaTab({
       <fieldset disabled={isReadOnly} className="contents">
         <div className="grid gap-4 md:grid-cols-[minmax(0,240px)_1fr]">
           <FieldInput label="收集模式">
-            <NativeSelect
+            <Select
               value={schema.collectionMode}
               onValueChange={(value) => {
                 const nextMode = value as WorkflowInputCollectionMode
@@ -214,15 +226,21 @@ export function WorkflowInputSchemaTab({
                       : current.conversationPlan ?? { ...DEFAULT_CONVERSATION_PLAN },
                 }))
               }}
-              aria-label="收集模式"
-              data-testid="input-schema-collection-mode"
             >
-              {COLLECTION_MODE_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </NativeSelect>
+              <SelectTrigger
+                aria-label="收集模式"
+                data-testid="input-schema-collection-mode"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {COLLECTION_MODE_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </FieldInput>
 
           <div className="rounded-xl border border-border/70 bg-background/60 px-4 py-3 text-xs text-muted-foreground">
@@ -425,7 +443,7 @@ export function WorkflowInputSchemaTab({
                 </FieldInput>
 
                 <FieldInput label="字段类型">
-                  <NativeSelect
+                  <Select
                     value={field.type}
                     onValueChange={(value) => {
                       updateField(index, (currentField) => {
@@ -442,15 +460,21 @@ export function WorkflowInputSchemaTab({
                         }
                       })
                     }}
-                    aria-label={`字段 ${index + 1} 类型`}
-                    data-testid={`input-schema-field-type-${index}`}
                   >
-                    {FIELD_TYPE_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>
-                        {option.label}
-                      </option>
-                    ))}
-                  </NativeSelect>
+                    <SelectTrigger
+                      aria-label={`字段 ${index + 1} 类型`}
+                      data-testid={`input-schema-field-type-${index}`}
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {FIELD_TYPE_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>
+                          {option.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </FieldInput>
 
                 <FieldInput label="必填">
@@ -534,31 +558,39 @@ export function WorkflowInputSchemaTab({
                 ) : null}
 
                 <FieldInput label="显示条件字段">
-                  <NativeSelect
-                    value={visibilityController}
+                  <Select
+                    value={visibilityController || ALWAYS_VISIBLE}
                     onValueChange={(value) => {
+                      const nextFieldId = value === ALWAYS_VISIBLE ? '' : value
+
                       updateField(index, (currentField) => ({
                         ...currentField,
-                        visibility: value
+                        visibility: nextFieldId
                           ? {
-                              fieldId: value,
+                              fieldId: nextFieldId,
                               equals: currentField.visibility?.equals ?? '',
                             }
                           : undefined,
                       }))
                     }}
-                    aria-label={`字段 ${index + 1} 显示条件字段`}
-                    data-testid={`input-schema-visibility-field-${index}`}
                   >
-                    <option value="">始终显示</option>
-                    {fieldOptions
-                      .filter((option) => option.value !== field.id)
-                      .map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                  </NativeSelect>
+                    <SelectTrigger
+                      aria-label={`字段 ${index + 1} 显示条件字段`}
+                      data-testid={`input-schema-visibility-field-${index}`}
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value={ALWAYS_VISIBLE}>始终显示</SelectItem>
+                      {fieldOptions
+                        .filter((option) => option.value !== field.id)
+                        .map((option) => (
+                          <SelectItem key={option.value} value={option.value}>
+                            {option.label}
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
                 </FieldInput>
 
                 <FieldInput label="显示条件取值">

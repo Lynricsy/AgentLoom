@@ -13,7 +13,13 @@ import { z } from "zod";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
-import { NativeSelect } from "@/shared/ui/native-select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/shared/ui/select";
 import { Slider } from "@/shared/ui/slider";
 import { Switch } from "@/shared/ui/switch";
 import { useToast } from "@/shared/ui/toast";
@@ -514,14 +520,21 @@ export function LlmModelConfigDialog({
                   control={form.control}
                   name="modelType"
                   render={({ field }) => (
-                    <NativeSelect
+                    <Select
                       value={field.value}
                       onValueChange={field.onChange}
                       disabled={isEditMode}
                     >
-                      <option value="chat">聊天 / 推理</option>
-                      <option value="embedding">Embedding / 向量化</option>
-                    </NativeSelect>
+                      <SelectTrigger aria-label="模型用途">
+                        <SelectValue placeholder="请选择用途" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="chat">聊天 / 推理</SelectItem>
+                        <SelectItem value="embedding">
+                          Embedding / 向量化
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
                   )}
                 />
               </div>
@@ -538,16 +551,21 @@ export function LlmModelConfigDialog({
                     </span>
                   </div>
                 ) : (
-                  <NativeSelect
+                  <Select
                     value={selectedProvider}
                     onValueChange={handleProviderChange}
                   >
-                    {providerCatalog.map((provider) => (
-                      <option key={provider.id} value={provider.id}>
-                        {provider.name}
-                      </option>
-                    ))}
-                  </NativeSelect>
+                    <SelectTrigger aria-label="提供商">
+                      <SelectValue placeholder="请选择提供商" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {providerCatalog.map((provider) => (
+                        <SelectItem key={provider.id} value={provider.id}>
+                          {provider.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 )}
               </div>
 
@@ -576,17 +594,21 @@ export function LlmModelConfigDialog({
                           control={form.control}
                           name="modelName"
                           render={({ field }) => (
-                            <NativeSelect
+                            <Select
                               value={field.value}
                               onValueChange={field.onChange}
                             >
-                              <option value="">请选择模型</option>
-                              {availableModels.map((model) => (
-                                <option key={model} value={model}>
-                                  {model}
-                                </option>
-                              ))}
-                            </NativeSelect>
+                              <SelectTrigger aria-label="模型">
+                                <SelectValue placeholder="请选择模型" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {availableModels.map((model) => (
+                                  <SelectItem key={model} value={model}>
+                                    {model}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
                           )}
                         />
                         {form.formState.errors.modelName ? (

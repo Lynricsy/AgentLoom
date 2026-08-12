@@ -1,4 +1,5 @@
-import { act, render, screen } from "@testing-library/react";
+import type { ReactNode } from "react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { KnowledgeBasesPage } from "./KnowledgeBasesPage";
@@ -12,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   useCreateKnowledgeBase: vi.fn(),
   useDeleteKnowledgeBase: vi.fn(),
   navigate: vi.fn(),
+  notify: vi.fn(),
 }));
 
 vi.mock("../hooks/useKnowledgeBases", () => ({
@@ -23,6 +25,11 @@ vi.mock("../hooks/useKnowledgeBases", () => ({
 
 vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => mocks.navigate,
+  Link: ({ children }: { children?: ReactNode }) => <>{children}</>,
+}));
+
+vi.mock("@/shared/ui/toast", () => ({
+  useToast: () => ({ notify: mocks.notify }),
 }));
 
 // --- Test data factory ---
@@ -129,7 +136,9 @@ describe("KnowledgeBasesPage", () => {
   it("显示加载状态", () => {
     setupMocks({ isLoading: true });
     render(<KnowledgeBasesPage />);
-    expect(screen.getByText("加载中...")).toBeInTheDocument();
+    expect(
+      screen.getAllByTestId("knowledge-base-card-skeleton").length,
+    ).toBeGreaterThan(0);
   });
 
   it("显示错误信息", () => {
@@ -137,6 +146,12 @@ describe("KnowledgeBasesPage", () => {
     render(<KnowledgeBasesPage />);
     expect(screen.getByText(/加载知识库失败/)).toBeInTheDocument();
     expect(screen.getByText(/网络错误/)).toBeInTheDocument();
+    expect(mocks.notify).toHaveBeenCalledWith(
+      expect.objectContaining({
+        title: "知识库列表加载失败",
+        variant: "error",
+      }),
+    );
   });
 
   it("显示空状态提示", () => {
@@ -296,9 +311,11 @@ describe("KnowledgeBasesPage", () => {
       screen.getByRole("dialog", { name: "创建知识库" }),
     ).toBeInTheDocument();
 
-    // 关闭对话框
+    // 关闭对话框：DialogContent 有退场动画，需等待卸载完成
     await userEvent.click(screen.getByText("取消"));
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
   });
 
   it("创建知识库时调用 mutation", async () => {
@@ -318,13 +335,9 @@ describe("KnowledgeBasesPage", () => {
       "新描述",
     );
 
-    // 提交
-    // 对话框内有两个"创建"文字相关的按钮，找创建提交按钮
+    // 提交：页头触发按钮叫「创建知识库」，对话框内提交按钮叫「创建」
     const dialog = screen.getByRole("dialog");
-    const createBtn = dialog.querySelector(
-      "button:last-child",
-    ) as HTMLButtonElement;
-    await userEvent.click(createBtn);
+    await userEvent.click(within(dialog).getByRole("button", { name: "创建" }));
 
     expect(mutateFn).toHaveBeenCalledWith(
       { name: "新知识库", description: "新描述" },
@@ -358,10 +371,9 @@ describe("KnowledgeBasesPage", () => {
     await userEvent.click(screen.getByText("创建知识库"));
 
     const dialog = screen.getByRole("dialog");
-    // 找到对话框底部的创建/提交按钮
-    const buttons = dialog.querySelectorAll("button");
-    const submitBtn = buttons[buttons.length - 1] as HTMLButtonElement;
-    expect(submitBtn).toBeDisabled();
+    expect(
+      within(dialog).getByRole("button", { name: "创建" }),
+    ).toBeDisabled();
   });
 
   it("删除知识库时调用 mutation", async () => {

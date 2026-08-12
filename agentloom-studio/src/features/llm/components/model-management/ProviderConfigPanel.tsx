@@ -7,7 +7,10 @@ import {
   Server,
   Sparkles,
 } from "lucide-react";
+import { EmptyState } from "@/shared/components/empty-state/EmptyState";
+import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
+import { Card } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
 import { useToast } from "@/shared/ui/toast";
@@ -232,10 +235,10 @@ export function ProviderConfigPanel({ provider, models }: ProviderConfigPanelPro
   }, [provider.id]);
 
   return (
-    <div className="flex-1 overflow-y-auto">
-      <div className="mx-auto max-w-3xl space-y-6 p-6">
+    <div className="min-w-0 flex-1 overflow-y-auto">
+      <div className="mx-auto max-w-3xl space-y-6 p-4 sm:p-6">
         {/* 头部 */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-start gap-3">
           <ProviderIcon
             slug={provider.slug}
             iconUrl={provider.iconUrl}
@@ -243,7 +246,7 @@ export function ProviderConfigPanel({ provider, models }: ProviderConfigPanelPro
           />
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-lg font-bold text-foreground">
+              <h2 className="min-w-0 truncate text-lg font-semibold text-foreground">
                 {provider.name}
               </h2>
               <ModelMetaChip compact>
@@ -254,18 +257,18 @@ export function ProviderConfigPanel({ provider, models }: ProviderConfigPanelPro
                   内置
                 </ModelMetaChip>
               )}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              {provider.slug}
               {!provider.isEnabled && (
-                <span className="ml-2 text-amber-400">(已禁用)</span>
+                <Badge size="sm" variant="warning">
+                  已禁用
+                </Badge>
               )}
-            </p>
+            </div>
+            <p className="truncate text-xs text-muted">{provider.slug}</p>
           </div>
         </div>
 
         {/* Base URL */}
-        <section className="space-y-2">
+        <Card className="space-y-2 p-4">
           <Label>Base URL</Label>
           <div className="flex gap-2">
             <Input
@@ -305,14 +308,14 @@ export function ProviderConfigPanel({ provider, models }: ProviderConfigPanelPro
             )}
           </div>
           {provider.defaultBaseUrl && (
-            <p className="text-[11px] text-muted-foreground">
+            <p className="text-[11px] text-muted">
               默认: {provider.defaultBaseUrl}
             </p>
           )}
-        </section>
+        </Card>
 
         {/* API Key */}
-        <section className="space-y-2">
+        <Card className="space-y-2 p-4">
           <Label>API Key</Label>
           <ManagedApiKeyField
             value={apiKey}
@@ -346,10 +349,10 @@ export function ProviderConfigPanel({ provider, models }: ProviderConfigPanelPro
               )}
             </Button>
           </div>
-        </section>
+        </Card>
 
         {/* 连接测试 */}
-        <section className="space-y-2">
+        <Card className="space-y-2 p-4">
           <Label>连接测试</Label>
           <div className="flex items-center gap-3">
             <Button
@@ -369,9 +372,7 @@ export function ProviderConfigPanel({ provider, models }: ProviderConfigPanelPro
               <span
                 className={cn(
                   "text-xs",
-                  connectionResult.success
-                    ? "text-emerald-500"
-                    : "text-red-400",
+                  connectionResult.success ? "text-success" : "text-error",
                 )}
               >
                 {connectionResult.success
@@ -382,14 +383,10 @@ export function ProviderConfigPanel({ provider, models }: ProviderConfigPanelPro
               </span>
             )}
           </div>
-        </section>
+        </Card>
 
-        {/* 分隔线 */}
-        <hr className="border-border" />
-
-        {/* 模型列表 */}
-        <section className="space-y-3">
-          <div className="flex items-center justify-between">
+        <Card className="space-y-3 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-sm font-semibold text-foreground">
               模型配置 ({models.length})
             </h3>
@@ -441,15 +438,12 @@ export function ProviderConfigPanel({ provider, models }: ProviderConfigPanelPro
 
           {/* 模型行列表 */}
           {models.length === 0 && !showAddModel ? (
-            <div className="flex flex-col items-center gap-2 py-8 text-center">
-              <Server className="h-8 w-8 text-muted-foreground" />
-              <p className="text-sm text-muted-foreground">
-                该提供商下暂无模型配置
-              </p>
-              <p className="text-xs text-muted-foreground">
-                点击「发现模型」自动获取，或手动「添加模型」
-              </p>
-            </div>
+            <EmptyState
+              icon={Server}
+              tone="var(--color-type-model)"
+              title="该提供商下暂无模型配置"
+              description="点击「发现模型」自动获取，或手动「添加模型」。"
+            />
           ) : (
             <div className="space-y-2">
               {models.map((model) => (
@@ -466,7 +460,7 @@ export function ProviderConfigPanel({ provider, models }: ProviderConfigPanelPro
               ))}
             </div>
           )}
-        </section>
+        </Card>
       </div>
 
       {/* 删除模型确认对话框 */}
@@ -484,7 +478,7 @@ export function ProviderConfigPanel({ provider, models }: ProviderConfigPanelPro
           <div className="mt-4 flex justify-end gap-2">
             <AlertDialogCancel>取消</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-red-600 text-white hover:bg-red-700"
+              className="bg-error text-white hover:bg-error/90"
               disabled={deleteMutation.isPending}
               onClick={() => void handleConfirmDeleteModel()}
             >

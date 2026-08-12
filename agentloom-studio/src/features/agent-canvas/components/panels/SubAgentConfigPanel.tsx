@@ -3,6 +3,13 @@ import { Bot, Clock, AlertCircle } from 'lucide-react'
 import { useAgentVersions } from '@/features/agent/api/agentQueries'
 import type { AgentDefinition, AgentVersion } from '@/features/agent/types'
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/shared/ui/select'
+import {
   useAgentCanvasStore,
   useAgentCanvasNodes,
 } from '../../stores/agent-canvas.store'
@@ -48,6 +55,12 @@ function generateAlias(name: string): string {
 }
 
 const ALIAS_PATTERN = /^[a-zA-Z][a-zA-Z0-9_-]*$/
+
+/**
+ * “最新发布版”在语义上是一个真实可选项（对应 agentVersionId = null），
+ * 但 Radix Select 不接受 value=""，因此用哨兵值承载。
+ */
+const LATEST_VERSION_VALUE = '__latest__'
 
 export const SubAgentConfigPanel = memo(function SubAgentConfigPanel({
   config,
@@ -123,16 +136,15 @@ export const SubAgentConfigPanel = memo(function SubAgentConfigPanel({
   }, [config, onApply])
 
   const handleVersionChange = useCallback(
-    (e: React.ChangeEvent<HTMLSelectElement>) => {
-      const val = e.target.value
-      if (val === '') {
+    (value: string) => {
+      if (value === LATEST_VERSION_VALUE) {
         onApply({ ...config, agentVersionId: null, _versionLabel: '' })
         return
       }
-      const ver = versions.find((v: AgentVersion) => v.id === val)
+      const ver = versions.find((v: AgentVersion) => v.id === value)
       onApply({
         ...config,
-        agentVersionId: val,
+        agentVersionId: value,
         _versionLabel: ver
           ? `v${ver.versionNumber}${ver.label ? ` (${ver.label})` : ''}`
           : '',
@@ -171,9 +183,9 @@ export const SubAgentConfigPanel = memo(function SubAgentConfigPanel({
 
   return (
     <div className="flex flex-col gap-4">
-      <section>
-        <span className="mb-1.5 block text-xs font-medium text-neutral-300">
-          Agent 选择 <span className="text-red-400">*</span>
+      <section className="flex flex-col gap-1.5">
+        <span className="text-xs font-medium text-foreground">
+          Agent 选择 <span className="text-error">*</span>
         </span>
         <AgentSearchPicker
           selectedAgentId={parsed.agentDefinitionId}
@@ -186,38 +198,47 @@ export const SubAgentConfigPanel = memo(function SubAgentConfigPanel({
       </section>
 
       {parsed.agentDefinitionId && (
-        <section>
+        <section className="flex flex-col gap-1.5">
           <label
             htmlFor="sub-agent-version"
-            className="mb-1.5 block text-xs font-medium text-neutral-300"
+            className="text-xs font-medium text-foreground"
           >
             版本
           </label>
-          <select
-            id="sub-agent-version"
-            value={parsed.agentVersionId ?? ''}
-            onChange={handleVersionChange}
+          <Select
+            value={parsed.agentVersionId ?? LATEST_VERSION_VALUE}
+            onValueChange={handleVersionChange}
             disabled={versionsLoading}
-            className="w-full rounded-md border border-neutral-700 bg-neutral-800 px-3 py-1.5 text-xs text-neutral-200 outline-none focus:border-cyan-500/50 disabled:opacity-50"
           >
-            <option value="">最新发布版</option>
-            {versions.map((v: AgentVersion) => (
-              <option key={v.id} value={v.id}>
-                v{v.versionNumber}
-                {v.label ? ` — ${v.label}` : ''}
-                {v.publishedAt ? '' : ' (未发布)'}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger
+              id="sub-agent-version"
+              aria-label="版本"
+              className="h-8 text-xs"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={LATEST_VERSION_VALUE} className="text-xs">
+                最新发布版
+              </SelectItem>
+              {versions.map((v: AgentVersion) => (
+                <SelectItem key={v.id} value={v.id} className="text-xs">
+                  v{v.versionNumber}
+                  {v.label ? ` — ${v.label}` : ''}
+                  {v.publishedAt ? '' : ' (未发布)'}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </section>
       )}
 
-      <section>
+      <section className="flex flex-col gap-1.5">
         <label
           htmlFor="sub-agent-alias"
-          className="mb-1.5 block text-xs font-medium text-neutral-300"
+          className="text-xs font-medium text-foreground"
         >
-          别名 <span className="text-red-400">*</span>
+          别名 <span className="text-error">*</span>
         </label>
         <input
           id="sub-agent-alias"
@@ -226,29 +247,30 @@ export const SubAgentConfigPanel = memo(function SubAgentConfigPanel({
           onChange={handleAliasChange}
           onBlur={handleAliasBlur}
           placeholder="例如: code-reviewer"
-          className={`w-full rounded-md border bg-neutral-800 px-3 py-1.5 text-xs text-neutral-200 placeholder:text-neutral-600 outline-none ${
+          aria-invalid={aliasError ? true : undefined}
+          className={`w-full rounded-md border bg-background px-3 py-1.5 text-xs text-foreground outline-none transition-colors placeholder:text-muted-foreground focus-visible:ring-2 ${
             aliasError
-              ? 'border-red-500/50 focus:border-red-500/70'
-              : 'border-neutral-700 focus:border-cyan-500/50'
+              ? 'border-error focus-visible:ring-error/30'
+              : 'border-input focus-visible:ring-primary/30'
           }`}
         />
         {aliasError && (
-          <div className="mt-1 flex items-center gap-1 text-[11px] text-red-400">
+          <p className="flex items-center gap-1 text-xs font-medium text-error">
             <AlertCircle className="h-3 w-3 shrink-0" />
             <span>{aliasError}</span>
-          </div>
+          </p>
         )}
-        <p className="mt-1 text-[11px] text-neutral-500">
+        <p className="text-xs text-muted-foreground">
           唯一标识，用于在工作流中引用此子 Agent
         </p>
       </section>
 
-      <section>
+      <section className="flex flex-col gap-1.5">
         <label
           htmlFor="sub-agent-timeout"
-          className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-neutral-300"
+          className="flex items-center gap-1.5 text-xs font-medium text-foreground"
         >
-          <Clock className="h-3.5 w-3.5 text-neutral-400" />
+          <Clock className="h-3.5 w-3.5 text-muted-foreground" />
           最大超时
         </label>
         <div className="flex items-center gap-3">
@@ -260,22 +282,22 @@ export const SubAgentConfigPanel = memo(function SubAgentConfigPanel({
             step={10}
             value={timeoutSec}
             onChange={handleTimeoutChange}
-            className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-neutral-700 accent-cyan-500 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-cyan-400"
+            className="h-1.5 flex-1 cursor-pointer appearance-none rounded-full bg-border accent-primary [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-primary"
           />
-          <span className="w-12 text-right text-xs tabular-nums text-neutral-300">
+          <span className="w-12 text-right text-xs tabular-nums text-foreground">
             {timeoutSec}s
           </span>
         </div>
       </section>
 
       {parsed._agentDescription && (
-        <section>
-          <span className="mb-1.5 flex items-center gap-1.5 text-xs font-medium text-neutral-300">
-            <Bot className="h-3.5 w-3.5 text-neutral-400" />
+        <section className="flex flex-col gap-1.5">
+          <span className="flex items-center gap-1.5 text-xs font-medium text-foreground">
+            <Bot className="h-3.5 w-3.5 text-muted-foreground" />
             描述
           </span>
-          <div className="rounded-md border border-neutral-700/50 bg-neutral-800/30 px-3 py-2">
-            <p className="text-xs leading-relaxed text-neutral-400">
+          <div className="rounded-card border border-border bg-surface-elevated px-3 py-2">
+            <p className="text-xs leading-relaxed text-muted-foreground">
               {parsed._agentDescription}
             </p>
           </div>

@@ -71,4 +71,20 @@ describe('CommandPalette', () => {
     )
     expect(screen.getByText('沙箱')).toBeInTheDocument()
   })
+
+  it('能检索并跳转到通知中心', async () => {
+    const user = userEvent.setup()
+    render(<CommandPalette />)
+
+    await user.keyboard('{Control>}k{/Control}')
+    await user.type(await screen.findByPlaceholderText(/跳转到页面/), '通知')
+
+    const item = await screen.findByText('通知')
+    await user.click(item)
+
+    expect(navigate).toHaveBeenCalledWith({ to: '/notifications' })
+    await waitFor(() =>
+      expect(screen.queryByPlaceholderText(/跳转到页面/)).not.toBeInTheDocument(),
+    )
+  })
 })

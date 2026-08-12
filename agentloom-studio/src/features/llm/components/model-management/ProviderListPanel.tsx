@@ -39,11 +39,11 @@ export function ProviderListPanel({
   }, [providers, search]);
 
   return (
-    <div className="flex w-[280px] shrink-0 flex-col border-r border-border">
+    <div className="flex w-full shrink-0 flex-col border-b border-border lg:w-[280px] lg:border-b-0 lg:border-r">
       {/* 搜索 */}
       <div className="p-3">
         <div className="relative">
-          <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+          <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
           <Input
             type="text"
             value={search}
@@ -66,7 +66,7 @@ export function ProviderListPanel({
             ))}
           </div>
         ) : filtered.length === 0 ? (
-          <p className="px-3 py-6 text-center text-xs text-muted-foreground">
+          <p className="px-3 py-6 text-center text-xs text-muted">
             {search.trim() ? "没有匹配的提供商" : "暂无提供商"}
           </p>
         ) : (
@@ -75,10 +75,10 @@ export function ProviderListPanel({
               <div
                 key={provider.id}
                 className={cn(
-                  "group flex cursor-pointer items-center gap-2 rounded-lg px-2.5 py-2 transition-colors",
+                  "group flex cursor-pointer items-center gap-2 rounded-card px-2.5 py-2 transition-colors",
                   selectedId === provider.id
                     ? "bg-primary/10 text-foreground"
-                    : "text-foreground hover:bg-muted/50",
+                    : "text-foreground hover:bg-surface-elevated",
                 )}
                 role="button"
                 tabIndex={0}
@@ -111,7 +111,8 @@ export function ProviderListPanel({
                 {!provider.isBuiltin && (
                   <button
                     type="button"
-                    className="shrink-0 rounded p-0.5 text-muted-foreground opacity-0 transition-opacity hover:text-red-400 group-hover:opacity-100"
+                    aria-label={`删除提供商 ${provider.name}`}
+                    className="shrink-0 rounded p-0.5 text-muted opacity-0 transition-opacity hover:text-error focus-visible:opacity-100 group-hover:opacity-100"
                     onClick={(e) => {
                       e.stopPropagation();
                       onDelete(provider);

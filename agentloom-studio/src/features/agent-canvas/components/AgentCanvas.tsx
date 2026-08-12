@@ -10,17 +10,20 @@ import {
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { cn } from '@/shared/lib/utils';
+import { LG_QUERY, useMediaQuery } from '@/shared/hooks/use-media-query';
 import { CanvasNodeShell } from '@/features/canvas/components/CanvasNode';
 import { SmartEdge } from '@/features/canvas/components/edges/SmartEdge';
 import { AgentNodePalette } from '@/features/canvas/components/AgentNodePalette';
 import { arePortDataTypesCompatible } from '@/features/canvas/lib/connectionCompatibility';
 import { useConnectionPreview } from '@/features/canvas/hooks/useConnectionPreview';
+import { ReadOnlyNodeSheet } from '@/features/canvas/components/readonly/ReadOnlyNodeSheet';
 import type { CanvasEdgeData, CanvasNodeData } from '@/features/canvas/types';
 import {
   useAgentCanvasNodes,
   useAgentCanvasEdges,
   useAgentCanvasActions,
   useAgentCanvasRuntimeMode,
+  useAgentCanvasSelectedNodeId,
   type AgentCanvasEdge,
 } from '../stores/agent-canvas.store';
 import { useAgentCanvasDrop } from '../hooks/useAgentCanvasDrop';
@@ -57,6 +60,10 @@ export const AgentCanvas = memo(function AgentCanvas({
   const nodes = useAgentCanvasNodes();
   const edges = useAgentCanvasEdges();
   const runtimeMode = useAgentCanvasRuntimeMode();
+  const selectedNodeId = useAgentCanvasSelectedNodeId();
+  const isDesktopViewport = useMediaQuery(LG_QUERY);
+  /** 小屏（<lg）只读浏览：保留平移 / 缩放，关闭全部编辑入口 */
+  const isMobileReadOnly = !isDesktopViewport;
   const {
     onNodesChange,
     onEdgesChange,
@@ -103,6 +110,16 @@ export const AgentCanvas = memo(function AgentCanvas({
     selectEdge(null);
   }, [selectNode, selectEdge]);
 
+  /** 底部弹层关闭即取消节点选中，语义与桌面端关闭配置面板一致 */
+  const handleReadOnlyNodeSheetOpenChange = useCallback(
+    (open: boolean) => {
+      if (!open) {
+        selectNode(null);
+      }
+    },
+    [selectNode],
+  );
+
   const onMoveEnd = useCallback(
     (_: unknown, viewport: { x: number; y: number; zoom: number }) => {
       setViewport(viewport);
@@ -112,6 +129,8 @@ export const AgentCanvas = memo(function AgentCanvas({
 
   const isValidConnection = useCallback(
     (connection: Connection | AgentCanvasEdge) => {
+      if (isMobileReadOnly) return false;
+
       const sourceNode = nodes.find((n) => n.id === connection.source);
       const targetNode = nodes.find((n) => n.id === connection.target);
       if (!sourceNode || !targetNode) return false;
@@ -126,7 +145,7 @@ export const AgentCanvas = memo(function AgentCanvas({
 
       return arePortDataTypesCompatible(sourcePort.dataType, targetPort.dataType);
     },
-    [nodes],
+    [isMobileReadOnly, nodes],
   );
 
   const defaultViewport = { x: 0, y: 0, zoom: 1 };
@@ -140,18 +159,21 @@ export const AgentCanvas = memo(function AgentCanvas({
         edgeTypes={EDGE_TYPES}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
-        onConnect={createConnection}
-        onConnectStart={onConnectStart}
-        onConnectEnd={onConnectEnd}
+        onConnect={isMobileReadOnly ? undefined : createConnection}
+        onConnectStart={isMobileReadOnly ? undefined : onConnectStart}
+        onConnectEnd={isMobileReadOnly ? undefined : onConnectEnd}
         isValidConnection={isValidConnection}
         onInit={onInit}
         onNodeClick={onNodeClick}
         onEdgeClick={onEdgeClick}
         onPaneClick={onPaneClick}
         onMoveEnd={onMoveEnd}
-        onDragOver={onDragOver}
-        onDrop={onDrop}
+        onDragOver={isMobileReadOnly ? undefined : onDragOver}
+        onDrop={isMobileReadOnly ? undefined : onDrop}
         defaultViewport={defaultViewport}
+        nodesDraggable={!isMobileReadOnly}
+        nodesConnectable={!isMobileReadOnly}
+        elementsSelectable={!isMobileReadOnly}
         fitView
         deleteKeyCode={['Backspace', 'Delete']}
         minZoom={0.1}
@@ -162,11 +184,23 @@ export const AgentCanvas = memo(function AgentCanvas({
         <Controls showInteractive={false} />
       </ReactFlow>
 
-      <AgentNodePalette
-        className="absolute top-3 left-3 z-10"
-        runtimeMode={runtimeMode}
-      />
-      <AgentNodeConfigPanel />
+      {!isMobileReadOnly && (
+        <>
+          <AgentNodePalette
+            className="absolute top-3 left-3 z-10"
+            runtimeMode={runtimeMode}
+          />
+          <AgentNodeConfigPanel />
+        </>
+      )}
+
+      {isMobileReadOnly && (
+        <ReadOnlyNodeSheet
+          node={nodes.find((node) => node.id === selectedNodeId) ?? null}
+          open={!!selectedNodeId}
+          onOpenChange={handleReadOnlyNodeSheetOpenChange}
+        />
+      )}
     </div>
   );
 });

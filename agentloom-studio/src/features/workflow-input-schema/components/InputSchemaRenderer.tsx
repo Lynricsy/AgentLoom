@@ -1,7 +1,13 @@
 import type { WorkflowInputSchema } from '@/features/workflow/types'
 import { cn } from '@/shared/lib/utils'
 import { Input } from '@/shared/ui/input'
-import { NativeSelect } from '@/shared/ui/native-select'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/shared/ui/select'
 import { isWorkflowInputFieldVisible } from '../lib/schemaHelpers'
 
 interface InputSchemaRendererProps {
@@ -104,21 +110,28 @@ function RendererField({
       ) : null}
 
       {field.type === 'single_select' ? (
-        <NativeSelect
+        <Select
           value={typeof value === 'string' ? value : ''}
-          onValueChange={(nextValue) => onChange?.(field.id, nextValue)}
-          aria-label={field.label}
-          aria-invalid={error ? 'true' : 'false'}
-          aria-describedby={describedBy}
+          onValueChange={(nextValue) => {
+            onChange?.(field.id, nextValue)
+          }}
           disabled={isDisabled}
         >
-          <option value="">请选择</option>
-          {(field.options ?? []).map((option) => (
-            <option key={option} value={option}>
-              {option}
-            </option>
-          ))}
-        </NativeSelect>
+          <SelectTrigger
+            aria-label={field.label}
+            aria-invalid={error ? 'true' : 'false'}
+            aria-describedby={describedBy}
+          >
+            <SelectValue placeholder="请选择" />
+          </SelectTrigger>
+          <SelectContent>
+            {(field.options ?? []).map((option) => (
+              <SelectItem key={option} value={option}>
+                {option}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       ) : null}
 
       {field.type === 'multi_select' ? (

@@ -4,7 +4,13 @@ import { useNavigate } from '@tanstack/react-router'
 import { Clock3, ExternalLink, Loader2, X } from 'lucide-react'
 import { Pagination } from '@/shared/components/Pagination'
 import { Button } from '@/shared/ui/button'
-import { NativeSelect } from '@/shared/ui/native-select'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/shared/ui/select'
 import { cn } from '@/shared/lib/utils'
 import { useTriggerHistory } from '../api/triggerQueries'
 import type { Trigger, TriggerHistoryRecord, TriggerHistoryStatus } from '../types'
@@ -17,10 +23,10 @@ const statusLabels: Record<TriggerHistoryStatus, string> = {
 }
 
 const statusBadgeClassNames: Record<TriggerHistoryStatus, string> = {
-  success: 'border-emerald-400/30 bg-emerald-500/10 text-emerald-200',
-  failed: 'border-rose-400/30 bg-rose-500/10 text-rose-200',
-  skipped: 'border-amber-400/30 bg-amber-500/10 text-amber-200',
-  signature_failed: 'border-orange-400/30 bg-orange-500/10 text-orange-200',
+  success: 'border-success/30 bg-success/10 text-success',
+  failed: 'border-error/30 bg-error/10 text-error',
+  skipped: 'border-border bg-muted/10 text-muted-foreground',
+  signature_failed: 'border-warning/30 bg-warning/10 text-warning',
 }
 
 interface TriggerHistoryDialogProps {
@@ -137,19 +143,24 @@ export function TriggerHistoryDialog({
             </div>
 
             <div className="w-full sm:w-48">
-              <NativeSelect
+              <Select
                 value={status}
                 onValueChange={(value) => {
                   setPage(1)
                   setStatus(value as 'all' | TriggerHistoryStatus)
                 }}
               >
-                <option value="all">全部状态</option>
-                <option value="success">成功</option>
-                <option value="failed">失败</option>
-                <option value="skipped">跳过</option>
-                <option value="signature_failed">签名失败</option>
-              </NativeSelect>
+                <SelectTrigger aria-label="触发状态筛选">
+                  <SelectValue placeholder="全部状态" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">全部状态</SelectItem>
+                  <SelectItem value="success">成功</SelectItem>
+                  <SelectItem value="failed">失败</SelectItem>
+                  <SelectItem value="skipped">跳过</SelectItem>
+                  <SelectItem value="signature_failed">签名失败</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
@@ -162,8 +173,8 @@ export function TriggerHistoryDialog({
                 </div>
               </div>
             ) : historyQuery.isError ? (
-              <div className="flex min-h-[240px] items-center justify-center rounded-xl border border-rose-500/20 bg-rose-500/10 px-6 text-center">
-                <p className="text-sm text-rose-200">
+              <div className="flex min-h-[240px] items-center justify-center rounded-xl border border-error/20 bg-error/10 px-6 text-center">
+                <p className="text-sm text-error">
                   无法加载触发历史，请稍后重试。
                 </p>
               </div>
@@ -223,7 +234,7 @@ export function TriggerHistoryDialog({
                         </div>
 
                         {record.errorMessage ? (
-                          <div className="rounded-lg border border-rose-500/20 bg-rose-500/10 p-3 text-sm text-rose-100">
+                          <div className="rounded-lg border border-error/20 bg-error/10 p-3 text-sm text-error">
                             {record.errorMessage}
                           </div>
                         ) : null}

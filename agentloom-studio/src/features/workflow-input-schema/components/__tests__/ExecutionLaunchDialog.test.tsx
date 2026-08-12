@@ -87,6 +87,15 @@ vi.mock('@radix-ui/react-dialog', async () => {
   }
 })
 
+/**
+ * 用 fireEvent 驱动 Radix Select：trigger 未收到 pointerdown 时按非鼠标指针处理，
+ * click 即可展开面板；option 同理，直接 click 就会触发选中。
+ */
+function chooseRadixOption(trigger: HTMLElement, optionName: string) {
+  fireEvent.click(trigger)
+  fireEvent.click(screen.getByRole('option', { name: optionName }))
+}
+
 const useWorkflowInputSchemaMock = vi.fn()
 const startExecutionMock = vi.fn()
 const notifyMock = vi.fn()
@@ -161,9 +170,7 @@ describe('ExecutionLaunchDialog', () => {
     expect(useWorkflowInputSchemaMock).toHaveBeenCalledWith('wf-001', { enabled: true })
     expect(screen.queryByLabelText('阈值')).not.toBeInTheDocument()
 
-    fireEvent.change(screen.getByLabelText('运行模式'), {
-      target: { value: 'advanced' },
-    })
+    chooseRadixOption(screen.getByLabelText('运行模式'), 'advanced')
 
     expect(screen.getByLabelText('阈值')).toBeInTheDocument()
 
@@ -340,15 +347,11 @@ describe('ExecutionLaunchDialog', () => {
       />,
     )
 
-    fireEvent.change(screen.getByLabelText('运行模式'), {
-      target: { value: 'advanced' },
-    })
+    chooseRadixOption(screen.getByLabelText('运行模式'), 'advanced')
     fireEvent.change(screen.getByLabelText('阈值'), {
       target: { value: '10' },
     })
-    fireEvent.change(screen.getByLabelText('运行模式'), {
-      target: { value: 'basic' },
-    })
+    chooseRadixOption(screen.getByLabelText('运行模式'), 'basic')
 
     expect(screen.queryByLabelText('阈值')).not.toBeInTheDocument()
 

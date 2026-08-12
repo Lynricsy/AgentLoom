@@ -1,5 +1,12 @@
 import { memo, useCallback, type WheelEvent } from 'react';
 import { cn } from '@/shared/lib/utils';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/shared/ui/select';
 import type { CanvasNode, CanvasNodeData } from '@/features/canvas/types';
 import { CUSTOM_PANEL_REGISTRY } from '@/features/canvas/components/panels/customPanelRegistry';
 import { AgentMainConfigPanel } from './AgentMainConfigPanel';
@@ -47,23 +54,23 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
   return (
     <div
       className={cn(
-        'absolute top-3 right-3 z-10 flex max-h-[calc(100vh-6rem)] w-80 flex-col overflow-hidden rounded-lg border border-neutral-700 bg-neutral-900/95 backdrop-blur-sm',
+        'absolute top-3 right-3 z-10 flex max-h-[calc(100vh-6rem)] w-80 flex-col overflow-hidden rounded-card border border-border bg-surface/95 shadow-panel backdrop-blur-sm',
         className,
       )}
     >
-      <div className="flex shrink-0 items-center justify-between border-b border-neutral-700 p-3">
+      <div className="flex shrink-0 items-center justify-between border-b border-border p-3">
         <div className="flex flex-col gap-0.5">
-          <span className="text-sm font-medium text-neutral-200">
+          <span className="text-sm font-medium text-foreground">
             {nodeData.label}
           </span>
-          <span className="text-xs text-neutral-500">{nodeData.nodeType}</span>
+          <span className="text-xs text-muted">{nodeData.nodeType}</span>
         </div>
         <button
           type="button"
-          className="text-xs text-red-400 hover:text-red-300 cursor-pointer"
+          className="cursor-pointer text-xs text-error transition-colors hover:text-error/80"
           onClick={deleteSelectedNode}
         >
-          Delete
+          删除
         </button>
       </div>
 
@@ -120,8 +127,8 @@ const AgentOnlyNodeConfig = memo(function AgentOnlyNodeConfig({
       );
     default:
       return (
-        <div className="text-xs text-neutral-500">
-          Node configuration for <strong>{nodeData.nodeType}</strong> not yet available.
+        <div className="text-xs text-muted">
+          暂不支持配置节点类型 <strong>{nodeData.nodeType}</strong>
         </div>
       );
   }
@@ -147,21 +154,34 @@ const SmartRoutingConfigStub = memo(function SmartRoutingConfigStub({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex flex-col gap-1">
-        <span className="text-xs text-neutral-400">Strategy</span>
-        <select
-          value={(config.strategy as string) ?? 'FALLBACK_CHAIN'}
-          onChange={(e) =>
-            onConfigChange({ ...config, strategy: e.target.value })
-          }
-          className="bg-neutral-800 border border-neutral-700 rounded px-2 py-1.5 text-xs text-neutral-200 outline-none focus:border-blue-500 appearance-none"
+      <div className="flex flex-col gap-1.5">
+        <label
+          htmlFor="agent-smart-routing-strategy"
+          className="text-xs font-medium text-muted"
         >
-          {strategies.map((s) => (
-            <option key={s} value={s}>
-              {s.replace(/_/g, ' ')}
-            </option>
-          ))}
-        </select>
+          路由策略
+        </label>
+        <Select
+          value={(config.strategy as string) ?? 'FALLBACK_CHAIN'}
+          onValueChange={(strategy) => {
+            onConfigChange({ ...config, strategy });
+          }}
+        >
+          <SelectTrigger
+            id="agent-smart-routing-strategy"
+            aria-label="路由策略"
+            className="h-8 text-xs"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {strategies.map((strategy) => (
+              <SelectItem key={strategy} value={strategy} className="text-xs">
+                {strategy.replace(/_/g, ' ')}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
     </div>
   );

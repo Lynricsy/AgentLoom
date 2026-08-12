@@ -1,5 +1,12 @@
 import { memo, type ChangeEvent } from 'react'
 import { Filter } from 'lucide-react'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/shared/ui/select'
 
 type InputPreprocessorTransformType = 'jmespath' | 'jsonata' | 'template' | 'script'
 
@@ -60,8 +67,8 @@ export const InputPreprocessorConfigPanel = memo(function InputPreprocessorConfi
     onApply({ config: next })
   }
 
-  const handleTransformType = (e: ChangeEvent<HTMLSelectElement>) => {
-    applyPatch({ transformType: e.target.value as InputPreprocessorTransformType })
+  const handleTransformType = (value: string) => {
+    applyPatch({ transformType: value as InputPreprocessorTransformType })
   }
 
   const handleExpression = (e: ChangeEvent<HTMLTextAreaElement>) => {
@@ -90,18 +97,18 @@ export const InputPreprocessorConfigPanel = memo(function InputPreprocessorConfi
         >
           转换类型
         </label>
-        <select
-          id="preprocessor-transform-type"
-          value={parsed.transformType}
-          onChange={handleTransformType}
-          className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-        >
-          {TRANSFORM_TYPE_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              {option.label}
-            </option>
-          ))}
-        </select>
+        <Select value={parsed.transformType} onValueChange={handleTransformType}>
+          <SelectTrigger id="preprocessor-transform-type" aria-label="转换类型">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {TRANSFORM_TYPE_OPTIONS.map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <div>

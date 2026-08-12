@@ -169,7 +169,12 @@ describe('SubAgentConfigPanel', () => {
       />,
     )
 
-    await user.selectOptions(screen.getByLabelText('版本'), 'version-2')
+    const versionSelect = screen.getByRole('combobox', { name: '版本' })
+    expect(versionSelect).toHaveTextContent('最新发布版')
+
+    // Radix Select 是 button + portal，选项只在展开后进入无障碍树
+    await user.click(versionSelect)
+    await user.click(await screen.findByRole('option', { name: 'v2 — 稳定版' }))
 
     expect(onApply).toHaveBeenCalledWith({
       agentDefinitionId: 'agent-2',
@@ -177,6 +182,45 @@ describe('SubAgentConfigPanel', () => {
       _agentName: 'Review Agent',
       agentVersionId: 'version-2',
       _versionLabel: 'v2 (稳定版)',
+    })
+  })
+
+  it('选回最新发布版时清空版本 id 与展示标签', async () => {
+    const user = userEvent.setup()
+    const onApply = vi.fn()
+
+    mocks.useAgentVersions.mockReturnValue({
+      data: {
+        data: [createVersion()],
+      },
+      isLoading: false,
+    })
+
+    render(
+      <SubAgentConfigPanel
+        config={{
+          agentDefinitionId: 'agent-2',
+          alias: 'review-agent',
+          _agentName: 'Review Agent',
+          agentVersionId: 'version-2',
+          _versionLabel: 'v2 (稳定版)',
+        }}
+        onApply={onApply}
+      />,
+    )
+
+    const versionSelect = screen.getByRole('combobox', { name: '版本' })
+    expect(versionSelect).toHaveTextContent('v2 — 稳定版')
+
+    await user.click(versionSelect)
+    await user.click(await screen.findByRole('option', { name: '最新发布版' }))
+
+    expect(onApply).toHaveBeenCalledWith({
+      agentDefinitionId: 'agent-2',
+      alias: 'review-agent',
+      _agentName: 'Review Agent',
+      agentVersionId: null,
+      _versionLabel: '',
     })
   })
 })

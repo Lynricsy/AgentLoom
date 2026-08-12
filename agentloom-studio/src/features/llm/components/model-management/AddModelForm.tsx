@@ -10,7 +10,13 @@ import {
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
-import { NativeSelect } from "@/shared/ui/native-select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/shared/ui/select";
 import { Switch } from "@/shared/ui/switch";
 import { useToast } from "@/shared/ui/toast";
 import { cn } from "@/shared/lib/utils";
@@ -220,7 +226,7 @@ export function AddModelForm({
             <div className="text-[11px]">
               {metadata ? (
                 <div className="space-y-2">
-                  <div className="flex flex-wrap items-center gap-2 text-emerald-500">
+                  <div className="flex flex-wrap items-center gap-2 text-success">
                     <Check className="h-3 w-3" />
                     <span>已获取元数据</span>
                   </div>
@@ -274,14 +280,18 @@ export function AddModelForm({
         <div className="flex items-end gap-3">
           <div className="flex-1 space-y-1.5">
             <Label className="text-xs">模型类型</Label>
-            <NativeSelect
+            <Select
               value={modelType}
               onValueChange={(v) => setModelType(v as "chat" | "embedding")}
-              className="h-8 text-xs"
             >
-              <option value="chat">聊天</option>
-              <option value="embedding">Embedding</option>
-            </NativeSelect>
+              <SelectTrigger aria-label="模型类型" className="h-8 text-xs">
+                <SelectValue placeholder="请选择模型类型" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="chat">聊天</SelectItem>
+                <SelectItem value="embedding">Embedding</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div className="flex items-center gap-2 pb-1">
             <Switch checked={isDefault} onCheckedChange={setIsDefault} />

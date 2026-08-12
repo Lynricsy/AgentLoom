@@ -1,6 +1,13 @@
 import { memo, useCallback, useMemo } from 'react'
 import { ChevronDown, ChevronUp, CircleOff, FastForward, Plus, Trash2 } from 'lucide-react'
 import { useToast } from '@/shared/ui/toast'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/shared/ui/select'
 import type { PortDefinition } from '../../types/nodeTypeRegistry'
 import {
   getCompoundExtraInputPortIds,
@@ -63,11 +70,11 @@ export const JumpConfigPanel = memo(function JumpConfigPanel({
   )
 
   const handleModeChange = useCallback(
-    (event: React.ChangeEvent<HTMLSelectElement>) => {
+    (value: string) => {
       onApply({
         config: {
           ...parsed,
-          mode: event.target.value === 'expression' ? 'expression' : 'always',
+          mode: value === 'expression' ? 'expression' : 'always',
         },
       })
     },
@@ -220,15 +227,15 @@ export const JumpConfigPanel = memo(function JumpConfigPanel({
         >
           触发模式
         </label>
-        <select
-          id={`${nodeType}-mode`}
-          value={parsed.mode}
-          onChange={handleModeChange}
-          className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-        >
-          <option value="always">总是触发</option>
-          <option value="expression">表达式触发</option>
-        </select>
+        <Select value={parsed.mode} onValueChange={handleModeChange}>
+          <SelectTrigger id={`${nodeType}-mode`} aria-label="触发模式">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="always">总是触发</SelectItem>
+            <SelectItem value="expression">表达式触发</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="space-y-2 rounded-lg border border-border bg-card p-3">

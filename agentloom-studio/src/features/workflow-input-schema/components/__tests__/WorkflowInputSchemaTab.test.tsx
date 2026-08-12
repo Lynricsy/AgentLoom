@@ -17,6 +17,15 @@ vi.mock('@/shared/ui/toast', () => ({
   useToast: () => ({ notify: notifyMock }),
 }))
 
+/**
+ * 用 fireEvent 驱动 Radix Select：trigger 未收到 pointerdown 时按非鼠标指针处理，
+ * click 即可展开面板；option 同理，直接 click 就会触发选中。
+ */
+function chooseRadixOption(trigger: HTMLElement, optionName: string) {
+  fireEvent.click(trigger)
+  fireEvent.click(screen.getByRole('option', { name: optionName }))
+}
+
 describe('WorkflowInputSchemaTab', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -127,9 +136,7 @@ describe('WorkflowInputSchemaTab', () => {
     fireEvent.change(screen.getByTestId('input-schema-field-label-1'), {
       target: { value: '监护人姓名' },
     })
-    fireEvent.change(screen.getByTestId('input-schema-visibility-field-1'), {
-      target: { value: 'age' },
-    })
+    chooseRadixOption(screen.getByTestId('input-schema-visibility-field-1'), '年龄')
     fireEvent.change(screen.getByTestId('input-schema-visibility-equals-1'), {
       target: { value: '18' },
     })
@@ -249,9 +256,7 @@ describe('WorkflowInputSchemaTab', () => {
     expect(screen.getByText('表单预览')).toBeInTheDocument()
     expect(screen.queryByLabelText('阈值')).not.toBeInTheDocument()
 
-    fireEvent.change(screen.getByLabelText('运行模式'), {
-      target: { value: 'advanced' },
-    })
+    chooseRadixOption(screen.getByLabelText('运行模式'), 'advanced')
 
     expect(screen.getByLabelText('阈值')).toBeInTheDocument()
   })
@@ -279,9 +284,7 @@ describe('WorkflowInputSchemaTab', () => {
       />,
     )
 
-    fireEvent.change(screen.getByTestId('input-schema-collection-mode'), {
-      target: { value: 'conversation' },
-    })
+    chooseRadixOption(screen.getByTestId('input-schema-collection-mode'), '对话模式')
 
     expect(screen.getByLabelText('系统提示词')).toBeInTheDocument()
     expect(screen.getByLabelText('最大轮次')).toBeInTheDocument()

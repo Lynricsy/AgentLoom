@@ -11,6 +11,7 @@ import {
 } from '@xyflow/react'
 import { cn } from '@/shared/lib/utils'
 import { useTheme } from '@/shared/hooks/use-theme'
+import { LG_QUERY, useMediaQuery } from '@/shared/hooks/use-media-query'
 import { useToast } from '@/shared/ui/toast'
 import type { WorkflowStatus } from '@/features/workflow/types'
 import { CanvasContextMenu } from './CanvasContextMenu'
@@ -370,7 +371,15 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
   const { resolvedTheme } = useTheme()
   const reactFlowInstance = useReactFlow<CanvasNode, CanvasEdge>()
   const { onDragOver, onDrop } = useCanvasDrop(reactFlowInstance)
+  const isDesktopViewport = useMediaQuery(LG_QUERY)
+  /** 小屏（<lg）只读浏览：保留平移 / 缩放，关闭全部编辑入口 */
+  const isMobileReadOnly = !isDesktopViewport
   const isReadOnly = workflowStatus === 'archived'
+  /**
+   * 归档与小屏都禁止编辑；但视口写入只受归档态限制——
+   * `viewport` 是受控 prop，小屏若一并冻结就连平移缩放都做不了。
+   */
+  const isEditingDisabled = isReadOnly || isMobileReadOnly
   const hiddenCompoundNodeIds = useMemo(
     () => collectCollapsedCompoundDescendantIds(nodes),
     [nodes],
@@ -463,7 +472,7 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
         return
       }
 
-      if (isReadOnly) {
+      if (isEditingDisabled) {
         return
       }
 
@@ -483,7 +492,7 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
     return () => {
       window.removeEventListener('keydown', handleWindowKeyDown)
     }
-  }, [handleDeleteSelection, isReadOnly, toggleSearch])
+  }, [handleDeleteSelection, isEditingDisabled, toggleSearch])
 
   useEffect(() => {
     if (!activeConnection) {
@@ -641,7 +650,7 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
 
   const onConnectStart = useCallback(
     (event: MouseEvent | TouchEvent, params: OnConnectStartParams) => {
-      if (isReadOnly) {
+      if (isEditingDisabled) {
         return
       }
 
@@ -809,7 +818,7 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
         setActiveConnection(refreshedState)
       })
     },
-    [isReadOnly, edges, nodes],
+    [isEditingDisabled, edges, nodes],
   )
 
   const onConnectEnd = useCallback(() => {
@@ -818,7 +827,7 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
 
   const onConnect = useCallback(
     async (connection: Connection) => {
-      if (isReadOnly) {
+      if (isEditingDisabled) {
         return
       }
 
@@ -867,12 +876,12 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
         notify({ description: warn.message, variant: 'warning' })
       }
     },
-    [createConnection, edges, isReadOnly, nodes, notify],
+    [createConnection, edges, isEditingDisabled, nodes, notify],
   )
 
   const isValidConnection = useCallback(
     (connectionOrEdge: Connection | CanvasEdge) => {
-      if (isReadOnly) {
+      if (isEditingDisabled) {
         return false
       }
 
@@ -908,7 +917,7 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
 
       return validationPreview.blockingError === null
     },
-    [edges, isReadOnly, nodes],
+    [edges, isEditingDisabled, nodes],
   )
 
   const onViewportChange = useCallback(
@@ -938,7 +947,7 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
     (event: React.MouseEvent, node: CanvasNode) => {
       event.preventDefault()
 
-      if (isReadOnly) {
+      if (isEditingDisabled) {
         closeContextMenu()
         return
       }
@@ -953,18 +962,18 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
         nodeId: node.id,
       })
     },
-    [closeContextMenu, isReadOnly, selectNode, selectedNodeIds],
+    [closeContextMenu, isEditingDisabled, selectNode, selectedNodeIds],
   )
 
   const onEdgeClick = useCallback(
     (_event: React.MouseEvent, edge: CanvasEdge) => {
       closeContextMenu()
       selectEdge(edge.id)
-      if (!isReadOnly) {
+      if (!isEditingDisabled) {
         openFieldMapping(edge.id)
       }
     },
-    [closeContextMenu, isReadOnly, openFieldMapping, selectEdge],
+    [closeContextMenu, isEditingDisabled, openFieldMapping, selectEdge],
   )
 
   const onPaneClick = useCallback(() => {
@@ -976,7 +985,7 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
     (event: MouseEvent | React.MouseEvent<Element, MouseEvent>) => {
       event.preventDefault()
 
-      if (isReadOnly) {
+      if (isEditingDisabled) {
         closeContextMenu()
         return
       }
@@ -986,7 +995,7 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
         y: event.clientY,
       })
     },
-    [closeContextMenu, isReadOnly],
+    [closeContextMenu, isEditingDisabled],
   )
 
   const handleEncapsulate = useCallback(() => {
@@ -995,37 +1004,37 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
 
   const onMoveEnd = useCallback(
     (_event: MouseEvent | TouchEvent | null, nextViewport: Viewport) => {
-      if (isReadOnly) {
+      if (isEditingDisabled) {
         return
       }
 
       commitViewport(nextViewport)
     },
-    [commitViewport, isReadOnly],
+    [commitViewport, isEditingDisabled],
   )
 
   const handleDragOver = useCallback(
     (event: React.DragEvent<HTMLDivElement>) => {
-      if (isReadOnly) {
+      if (isEditingDisabled) {
         event.preventDefault()
         return
       }
 
       onDragOver(event)
     },
-    [isReadOnly, onDragOver],
+    [isEditingDisabled, onDragOver],
   )
 
   const handleDrop = useCallback(
     (event: React.DragEvent<HTMLDivElement>) => {
-      if (isReadOnly) {
+      if (isEditingDisabled) {
         event.preventDefault()
         return
       }
 
       onDrop(event)
     },
-    [isReadOnly, onDrop],
+    [isEditingDisabled, onDrop],
   )
 
   return (
@@ -1052,9 +1061,10 @@ export const WorkflowCanvas = memo(function WorkflowCanvas({
         viewport={viewport}
         onViewportChange={onViewportChange}
         onMoveEnd={onMoveEnd}
-        nodesDraggable={!isReadOnly}
-        nodesConnectable={!isReadOnly}
-        connectOnClick={!isReadOnly}
+        nodesDraggable={!isEditingDisabled}
+        nodesConnectable={!isEditingDisabled}
+        elementsSelectable={!isMobileReadOnly}
+        connectOnClick={!isEditingDisabled}
         deleteKeyCode={null}
         multiSelectionKeyCode={['Meta', 'Control', 'Shift']}
         selectionKeyCode="Shift"

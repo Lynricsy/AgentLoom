@@ -1,14 +1,47 @@
-import { useState, useCallback, useEffect, useMemo, useRef } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { useNavigate } from "@tanstack/react-router";
-import { Plus, Search, Database, Trash2 } from "lucide-react";
+import { motion } from "motion/react";
+import {
+  AlertCircle,
+  Database,
+  FolderSync,
+  Loader2,
+  Plus,
+  Search,
+  Trash2,
+} from "lucide-react";
 import { Pagination, ResourceSourceCategoryTabs } from "@/shared/components";
+import { EmptyState } from "@/shared/components/empty-state/EmptyState";
+import { PageHeader } from "@/shared/components/page-header/PageHeader";
 import { convertResourceSourceToManual } from "@/shared/api/resourceSourceApi";
 import {
   getResourceSourceLabel,
   type ResourceSourceKind,
 } from "@/shared/lib/resourceSource";
+import { staggerList } from "@/shared/lib/motion";
+import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
+import { Card } from "@/shared/ui/card";
 import { Input } from "@/shared/ui/input";
+import { Label } from "@/shared/ui/label";
+import { Skeleton } from "@/shared/ui/skeleton";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogTitle,
+} from "@/shared/ui/alert-dialog";
+import {
+  Dialog,
+  DialogBody,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/shared/ui/dialog";
+import { useToast } from "@/shared/ui/toast";
 import {
   useKnowledgeBases,
   useAllKnowledgeBases,
@@ -25,26 +58,29 @@ import {
 
 const EMPTY_KNOWLEDGE_BASES: KnowledgeBase[] = [];
 
-function getKnowledgeBaseStatusClass(status: KnowledgeBaseStatus): string {
-  switch (status) {
-    case "ready":
-      return "bg-emerald-500/10 text-emerald-700";
-    case "processing":
-      return "bg-blue-500/10 text-blue-700";
-    case "failed":
-      return "bg-rose-500/10 text-rose-700";
-    default:
-      return "bg-muted text-muted-foreground";
-  }
-}
+const KNOWLEDGE_TONE = "var(--color-type-knowledge)";
+
+const STATUS_VARIANT: Record<
+  KnowledgeBaseStatus,
+  "success" | "info" | "error" | "secondary"
+> = {
+  ready: "success",
+  processing: "info",
+  failed: "error",
+  empty: "secondary",
+};
 
 /**
  * 知识库列表页面
  * 路由: /resources/knowledge-bases
  * 功能: 展示知识库卡片列表、搜索过滤、创建知识库
+ *
+ * 选用卡片栅格而非 DataTable：单条知识库要同时呈现描述、文档数、知识节点数、
+ * 可见性、分块策略与更新时间共 6 项异构信息，表格列会挤成一行难以扫读。
  */
 export function KnowledgeBasesPage() {
   const pageSize = 20;
+  const { notify } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
   const [page, setPage] = useState(1);
   const [sourceKindFilter, setSourceKindFilter] =
@@ -53,7 +89,6 @@ export function KnowledgeBasesPage() {
   const [newKbName, setNewKbName] = useState("");
   const [newKbDescription, setNewKbDescription] = useState("");
   const [deleteTarget, setDeleteTarget] = useState<KnowledgeBase | null>(null);
-  const deleteRestoreFocusRef = useRef<HTMLElement | null>(null);
 
   const navigate = useNavigate();
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
@@ -131,14 +166,21 @@ export function KnowledgeBasesPage() {
     }
   }, [page, paginationMeta]);
 
-  const restoreDeleteFocus = useCallback(() => {
-    const element = deleteRestoreFocusRef.current;
-    deleteRestoreFocusRef.current = null;
+  useEffect(() => {
+    if (!error) return;
+    notify({
+      title: "知识库列表加载失败",
+      description: error.message,
+      variant: "error",
+    });
+  }, [error, notify]);
 
-    if (element?.isConnected) {
-      element.focus();
+  const handleRetry = useCallback(() => {
+    void refetchPageKnowledgeBases();
+    if (isSearching) {
+      void refetchAllKnowledgeBases();
     }
-  }, []);
+  }, [isSearching, refetchAllKnowledgeBases, refetchPageKnowledgeBases]);
 
   const handleCreate = useCallback(() => {
     if (!newKbName.trim()) return;
@@ -161,26 +203,14 @@ export function KnowledgeBasesPage() {
     );
   }, [createMutation, navigate, newKbDescription, newKbName]);
 
-  const handleDelete = useCallback((e: React.MouseEvent, kb: KnowledgeBase) => {
-    e.stopPropagation();
-    deleteRestoreFocusRef.current = e.currentTarget as HTMLElement;
-    setDeleteTarget(kb);
-  }, []);
-
   const handleConfirmDelete = useCallback(() => {
     if (!deleteTarget) return;
     deleteMutation.mutate(deleteTarget.id, {
       onSettled: () => {
         setDeleteTarget(null);
-        restoreDeleteFocus();
       },
     });
-  }, [deleteTarget, deleteMutation, restoreDeleteFocus]);
-
-  const handleCancelDelete = useCallback(() => {
-    setDeleteTarget(null);
-    restoreDeleteFocus();
-  }, [restoreDeleteFocus]);
+  }, [deleteTarget, deleteMutation]);
 
   const handleCardClick = useCallback(
     (kb: KnowledgeBase) => {
@@ -207,24 +237,20 @@ export function KnowledgeBasesPage() {
     [isSearching, refetchAllKnowledgeBases, refetchPageKnowledgeBases],
   );
 
-  if (error) {
-    return (
-      <div className="flex items-center justify-center h-full">
-        <p className="text-destructive">加载知识库失败: {error.message}</p>
-      </div>
-    );
-  }
-
   return (
-    <div className="flex flex-col h-full p-6 gap-4">
-      {/* 页头 */}
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">知识库管理</h1>
-        <Button onClick={() => setShowCreateDialog(true)}>
-          <Plus className="w-4 h-4 mr-2" />
-          创建知识库
-        </Button>
-      </div>
+    <div className="flex h-full flex-col gap-5 overflow-y-auto p-6">
+      <PageHeader
+        icon={Database}
+        tone={KNOWLEDGE_TONE}
+        title="知识库管理"
+        description="管理 Agent 检索用的知识库，上传文档后自动完成解析、切分与索引"
+        actions={
+          <Button onClick={() => setShowCreateDialog(true)}>
+            <Plus className="mr-2 h-4 w-4" />
+            创建知识库
+          </Button>
+        }
+      />
 
       <ResourceSourceCategoryTabs
         value={sourceKindFilter}
@@ -234,9 +260,8 @@ export function KnowledgeBasesPage() {
         }}
       />
 
-      {/* 搜索 */}
       <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted" />
         <Input
           placeholder="搜索知识库..."
           value={searchQuery}
@@ -248,125 +273,139 @@ export function KnowledgeBasesPage() {
         />
       </div>
 
-      {/* 加载状态 */}
-      {isLoading && (
-        <div className="flex items-center justify-center flex-1">
-          <p className="text-muted-foreground">加载中...</p>
+      {error ? (
+        <EmptyState
+          icon={AlertCircle}
+          tone="var(--color-error)"
+          title="加载知识库失败"
+          description={error.message}
+          action={
+            <Button variant="outline" onClick={handleRetry}>
+              重新加载
+            </Button>
+          }
+        />
+      ) : isLoading ? (
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {Array.from({ length: 6 }, (_, index) => (
+            <Skeleton
+              key={index}
+              data-testid="knowledge-base-card-skeleton"
+              className="h-36 rounded-card"
+            />
+          ))}
         </div>
-      )}
-
-      {/* 空状态 */}
-      {!isLoading && visibleKnowledgeBases.length === 0 && (
-        <div className="flex flex-col items-center justify-center flex-1 gap-2">
-          <Database className="w-12 h-12 text-muted-foreground" />
-          <p className="text-muted-foreground">
-            {searchQuery
+      ) : visibleKnowledgeBases.length === 0 ? (
+        <EmptyState
+          icon={Database}
+          tone={KNOWLEDGE_TONE}
+          title={
+            isSearching
               ? "没有匹配的知识库"
-              : `还没有${getResourceSourceLabel(sourceKindFilter)}的知识库，点击上方按钮创建`}
-          </p>
-        </div>
-      )}
-
-      {/* 卡片网格 */}
-      {!isLoading && visibleKnowledgeBases.length > 0 && (
+              : sourceKindFilter === "manual"
+                ? "还没有自己创建的知识库，点击上方按钮创建"
+                : `还没有${getResourceSourceLabel(sourceKindFilter)}的知识库`
+          }
+          description={
+            isSearching
+              ? "换个关键词试试，搜索会覆盖全部分页。"
+              : "知识库把文档切分成可检索的知识节点，供 Agent 在对话与工作流中调用。"
+          }
+          action={
+            isSearching ? null : (
+              <Button size="sm" onClick={() => setShowCreateDialog(true)}>
+                <Plus className="mr-1.5 h-4 w-4" />
+                创建第一个知识库
+              </Button>
+            )
+          }
+        />
+      ) : (
         <div className="flex flex-col gap-4">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {visibleKnowledgeBases.map((kb) => (
-              <div
-                key={kb.id}
-                className="relative rounded-lg border border-border bg-card p-4 transition-colors hover:bg-muted/50"
-              >
-                <button
-                  type="button"
-                  onClick={() => handleCardClick(kb)}
-                  className="w-full cursor-pointer text-left"
-                >
-                  <div className="pr-8">
-                    <div className="flex items-center gap-2">
-                      <h3 className="truncate font-medium">{kb.name}</h3>
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${getKnowledgeBaseStatusClass(
-                          kb.status,
-                        )}`}
-                      >
-                        {getKnowledgeBaseStatusLabel(kb.status)}
+          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {visibleKnowledgeBases.map((kb, index) => (
+              <motion.div key={kb.id} {...staggerList(index)}>
+                <Card className="h-full p-5">
+                  <article className="flex h-full flex-col">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span
+                            aria-hidden
+                            className="grid h-8 w-8 shrink-0 place-items-center rounded-card"
+                            style={{
+                              backgroundColor: `color-mix(in srgb, ${KNOWLEDGE_TONE} 14%, transparent)`,
+                              color: KNOWLEDGE_TONE,
+                            }}
+                          >
+                            <Database className="h-4 w-4" />
+                          </span>
+                          <button
+                            type="button"
+                            className="cursor-pointer truncate text-sm font-semibold text-foreground transition-colors hover:text-primary"
+                            onClick={() => handleCardClick(kb)}
+                          >
+                            {kb.name}
+                          </button>
+                          <Badge
+                            size="sm"
+                            variant={STATUS_VARIANT[kb.status]}
+                            className="whitespace-nowrap"
+                          >
+                            {getKnowledgeBaseStatusLabel(kb.status)}
+                          </Badge>
+                        </div>
+                        {kb.description && (
+                          <p className="mt-2 line-clamp-2 text-xs text-muted">
+                            {kb.description}
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="flex shrink-0 items-center gap-1">
+                        {kb.sourceKind === "share_imported" ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="whitespace-nowrap"
+                            onClick={() => void handleConvertSource(kb)}
+                          >
+                            <FolderSync className="h-3.5 w-3.5 sm:mr-1.5" />
+                            <span className="hidden sm:inline">
+                              转为自己创建
+                            </span>
+                          </Button>
+                        ) : null}
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          className="text-muted hover:text-error"
+                          aria-label={`删除 ${kb.name}`}
+                          onClick={() => setDeleteTarget(kb)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="mt-auto flex flex-wrap items-center gap-x-3 gap-y-1 pt-4 text-xs text-muted">
+                      <span>{kb.documentCount} 个文档</span>
+                      <span aria-hidden>·</span>
+                      <span>{getKnowledgeNodeCountLabel(kb)}</span>
+                      <span aria-hidden>·</span>
+                      <span>
+                        {kb.visibility === "organization" ? "组织" : "私有"}
+                      </span>
+                      <span aria-hidden>·</span>
+                      <span>{getChunkingStrategyLabel(kb.chunkingStrategy)}</span>
+                      <span aria-hidden>·</span>
+                      <span>
+                        更新于 {new Date(kb.updatedAt).toLocaleDateString()}
                       </span>
                     </div>
-                    {kb.description && (
-                      <p className="mt-1 line-clamp-2 text-sm text-muted-foreground">
-                        {kb.description}
-                      </p>
-                    )}
-                  </div>
-                  <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                    <span>{kb.documentCount} 个文档</span>
-                    <span>·</span>
-                    <span>{getKnowledgeNodeCountLabel(kb)}</span>
-                    <span>·</span>
-                    <span>
-                      {kb.visibility === "organization" ? "组织" : "私有"}
-                    </span>
-                    <span>·</span>
-                    <span>{getChunkingStrategyLabel(kb.chunkingStrategy)}</span>
-                    <span>·</span>
-                    <span>
-                      更新于 {new Date(kb.updatedAt).toLocaleDateString()}
-                    </span>
-                  </div>
-                </button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={(e) => handleDelete(e, kb)}
-                  className="absolute right-3 top-3 text-muted-foreground hover:text-destructive"
-                  aria-label={`删除 ${kb.name}`}
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-                {kb.sourceKind === "share_imported" ? (
-                  <button
-                    type="button"
-                    onClick={() => void handleConvertSource(kb)}
-                    className="absolute right-12 top-3 rounded-md border border-border px-2 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                  >
-                    转为自己创建
-                  </button>
-                ) : null}
-
-                {deleteTarget?.id === kb.id && (
-                  <div
-                    className="absolute right-3 top-12 z-10 w-72 rounded-xl border border-border bg-surface-elevated p-4 shadow-2xl"
-                    onPointerDown={(event) => event.stopPropagation()}
-                  >
-                    <div className="space-y-2">
-                      <p className="text-sm font-semibold text-foreground">
-                        删除知识库
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        确认删除知识库「{deleteTarget.name}
-                        」吗？该操作会同时删除其下文档、知识节点与向量索引，且不可恢复。
-                      </p>
-                    </div>
-                    <div className="mt-4 flex justify-end gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleCancelDelete}
-                      >
-                        取消
-                      </Button>
-                      <Button
-                        size="sm"
-                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                        onClick={handleConfirmDelete}
-                        disabled={deleteMutation.isPending}
-                      >
-                        {deleteMutation.isPending ? "删除中..." : "确认删除"}
-                      </Button>
-                    </div>
-                  </div>
-                )}
-              </div>
+                  </article>
+                </Card>
+              </motion.div>
             ))}
           </div>
 
@@ -381,70 +420,92 @@ export function KnowledgeBasesPage() {
         </div>
       )}
 
-      {!isLoading &&
-        visibleKnowledgeBases.length === 0 &&
-        paginationMeta &&
-        paginationMeta.totalPages > 1 && (
-          <Pagination
-            page={paginationMeta.page}
-            totalPages={paginationMeta.totalPages}
-            onPageChange={setPage}
-            isLoading={isLoading}
-          />
-        )}
-
       {/* 创建知识库对话框 */}
-      {showCreateDialog && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-          role="dialog"
-          aria-label="创建知识库"
-        >
-          <div className="bg-background rounded-lg border border-border p-6 w-full max-w-md shadow-lg">
-            <h2 className="text-lg font-semibold mb-4">创建知识库</h2>
-            <div className="flex flex-col gap-3">
-              <div>
-                <label htmlFor="kb-name" className="text-sm font-medium">
-                  名称
-                </label>
-                <Input
-                  id="kb-name"
-                  placeholder="输入知识库名称"
-                  value={newKbName}
-                  onChange={(e) => setNewKbName(e.target.value)}
-                  className="mt-1"
-                />
-              </div>
-              <div>
-                <label htmlFor="kb-description" className="text-sm font-medium">
-                  描述
-                </label>
-                <Input
-                  id="kb-description"
-                  placeholder="输入描述（可选）"
-                  value={newKbDescription}
-                  onChange={(e) => setNewKbDescription(e.target.value)}
-                  className="mt-1"
-                />
-              </div>
+      <Dialog
+        open={showCreateDialog}
+        onOpenChange={(open) => {
+          if (!open) setShowCreateDialog(false);
+        }}
+      >
+        <DialogContent size="sm">
+          <DialogHeader>
+            <DialogTitle>创建知识库</DialogTitle>
+          </DialogHeader>
+          <DialogBody className="flex flex-col gap-4">
+            <div className="space-y-1.5">
+              <label htmlFor="kb-name">
+                <Label>名称</Label>
+              </label>
+              <Input
+                id="kb-name"
+                placeholder="输入知识库名称"
+                value={newKbName}
+                onChange={(e) => setNewKbName(e.target.value)}
+              />
             </div>
-            <div className="flex justify-end gap-2 mt-6">
-              <Button
-                variant="outline"
-                onClick={() => setShowCreateDialog(false)}
-              >
-                取消
-              </Button>
-              <Button
-                onClick={handleCreate}
-                disabled={!newKbName.trim() || createMutation.isPending}
-              >
-                {createMutation.isPending ? "创建中..." : "创建"}
-              </Button>
+            <div className="space-y-1.5">
+              <label htmlFor="kb-description">
+                <Label>描述</Label>
+              </label>
+              <Input
+                id="kb-description"
+                placeholder="输入描述（可选）"
+                value={newKbDescription}
+                onChange={(e) => setNewKbDescription(e.target.value)}
+              />
             </div>
+          </DialogBody>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowCreateDialog(false)}
+            >
+              取消
+            </Button>
+            <Button
+              onClick={handleCreate}
+              disabled={!newKbName.trim() || createMutation.isPending}
+            >
+              {createMutation.isPending && (
+                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+              )}
+              创建
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 删除确认对话框 */}
+      <AlertDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogTitle>删除知识库</AlertDialogTitle>
+          <AlertDialogDescription>
+            确认删除知识库「{deleteTarget?.name}
+            」吗？该操作会同时删除其下文档、知识节点与向量索引，且不可恢复。
+          </AlertDialogDescription>
+          <div className="mt-5 flex justify-end gap-2">
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-error text-white hover:bg-error/90"
+              disabled={deleteMutation.isPending}
+              onClick={(event) => {
+                event.preventDefault();
+                handleConfirmDelete();
+              }}
+            >
+              {deleteMutation.isPending && (
+                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+              )}
+              确认删除
+            </AlertDialogAction>
           </div>
-        </div>
-      )}
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

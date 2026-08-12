@@ -1,5 +1,6 @@
 import {
   forwardRef,
+  useCallback,
   type ComponentPropsWithoutRef,
   type ElementRef,
 } from 'react'
@@ -11,7 +12,32 @@ import { scaleIn } from '@/shared/lib/motion'
 
 export type SelectProps = ComponentPropsWithoutRef<typeof SelectPrimitive.Root>
 
-export const Select = SelectPrimitive.Root
+/**
+ * Radix Select 的轻量包装：在原语层统一丢弃空串回吐。
+ *
+ * 处于 `<form>` 内时 Radix 会额外渲染一个隐藏的 `SelectBubbleInput`（原生 `<select>`）用于表单
+ * 冒泡。当受控 value 变成当前尚未登记 `SelectItem` 的值时——异步回填、`reset()`、选项列表随接口
+ * 返回才出现，都会命中这个时序——该隐藏 select 找不到匹配 option，便以空串触发一次 change，
+ * 经由 `onValueChange('')` 回吐给调用方。放行会把刚回填的字段静默清空。
+ *
+ * 项目约定 `SelectItem` 禁止使用空串 value（Radix 本身也不接受），「未选择」由 `SelectValue` 的
+ * placeholder 表达，因此空串永远不可能来自一次真实选择，在此一律拦下。若某个下拉需要「无 / 使用
+ * 默认」这类用户可主动选回的真实选项，请用哨兵常量（如 `'__use_default__'`）承载，并在调用点把
+ * 哨兵映射回 `null` / `undefined`——不要指望空串。
+ */
+export function Select({ onValueChange, ...props }: SelectProps) {
+  const handleValueChange = useCallback(
+    (value: string) => {
+      if (value === '') {
+        return
+      }
+      onValueChange?.(value)
+    },
+    [onValueChange],
+  )
+
+  return <SelectPrimitive.Root onValueChange={handleValueChange} {...props} />
+}
 
 export const SelectGroup = SelectPrimitive.Group
 export const SelectValue = SelectPrimitive.Value

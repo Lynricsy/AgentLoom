@@ -17,6 +17,8 @@ interface AgentVersionToolbarProps {
   onOpenVersionHistory: () => void;
   onOpenPublish: (versionId?: string) => void;
   onShare?: () => void;
+  /** 只读浏览（小屏）：只保留状态徽章与历史记录等查看类入口 */
+  isReadOnly?: boolean;
   className?: string;
 }
 
@@ -38,9 +40,11 @@ export const AgentVersionToolbar = memo(function AgentVersionToolbar({
   onOpenVersionHistory,
   onOpenPublish,
   onShare,
+  isReadOnly = false,
   className,
 }: AgentVersionToolbarProps) {
-  const isArchived = agentStatus === "archived";
+  /** 归档与小屏只读浏览都不应暴露写操作入口 */
+  const hideWriteActions = agentStatus === "archived" || isReadOnly;
   const status = STATUS_META[agentStatus];
 
   return (
@@ -57,7 +61,7 @@ export const AgentVersionToolbar = memo(function AgentVersionToolbar({
 
       <Separator orientation="vertical" className="mx-1 h-4" />
 
-      {!isArchived && (
+      {!hideWriteActions && (
         <Button
           variant="secondary"
           size="sm"
@@ -74,7 +78,7 @@ export const AgentVersionToolbar = memo(function AgentVersionToolbar({
         </Button>
       )}
 
-      {!isArchived && (
+      {!hideWriteActions && (
         <Button
           variant="secondary"
           size="sm"
@@ -96,7 +100,7 @@ export const AgentVersionToolbar = memo(function AgentVersionToolbar({
         历史记录
       </Button>
 
-      {!isArchived && (
+      {!hideWriteActions && (
         <Button
           size="sm"
           className="bg-success text-white hover:bg-success/90"
@@ -108,7 +112,7 @@ export const AgentVersionToolbar = memo(function AgentVersionToolbar({
         </Button>
       )}
 
-      {onShare && (
+      {onShare && !hideWriteActions && (
         <Button
           variant="secondary"
           size="sm"

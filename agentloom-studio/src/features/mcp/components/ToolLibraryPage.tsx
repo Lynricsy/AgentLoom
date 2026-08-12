@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState, type MouseEvent } from "react";
 import * as Dialog from "@radix-ui/react-dialog";
 import { formatRelativeTime } from "@/features/canvas/lib/formatRelativeTime";
+import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { useToast } from "@/shared/ui/toast";
@@ -49,16 +50,6 @@ function getToolLastUpdatedAt(tool: McpToolDefinition): string | null {
 
 function getToolImportedAt(tool: McpToolDefinition): string | null {
   return tool.importedAt ?? tool.createdAt ?? null;
-}
-
-function getStatusLabel(tool: McpToolDefinition): string {
-  return tool.isActive ? "已启用" : "已停用";
-}
-
-function getStatusClassName(tool: McpToolDefinition): string {
-  return tool.isActive
-    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
-    : "border-border bg-muted/60 text-muted-foreground";
 }
 
 export function ToolLibraryPage() {
@@ -357,14 +348,15 @@ export function ToolLibraryPage() {
                     <h2 className="text-lg font-semibold text-foreground">
                       {tool.title ?? tool.name}
                     </h2>
-                    <span
-                      className={`rounded-full border px-2.5 py-1 text-xs font-medium ${getStatusClassName(tool)}`}
+                    <Badge
+                      size="sm"
+                      variant={tool.isActive ? "success" : "secondary"}
                     >
-                      {getStatusLabel(tool)}
-                    </span>
-                    <span className="rounded-full border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground">
+                      {tool.isActive ? "已启用" : "已停用"}
+                    </Badge>
+                    <Badge size="sm" variant="outline">
                       来源 MCP
-                    </span>
+                    </Badge>
                   </div>
 
                   {tool.description ? (

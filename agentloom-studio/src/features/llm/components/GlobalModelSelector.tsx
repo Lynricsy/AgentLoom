@@ -1,7 +1,13 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type SelectHTMLAttributes,
+} from "react";
 import { Check, ChevronDown } from "lucide-react";
 import { cn } from "@/shared/lib/utils";
-import type { NativeSelectProps } from "@/shared/ui/native-select";
 import { useLlmModels, useLlmProviders } from "../hooks/useLlmModels";
 import type { LlmModelInfo, LlmProviderEntity } from "../types";
 import { ProviderIcon } from "./ProviderIcon";
@@ -16,10 +22,14 @@ interface SelectedModelEntry {
   model: LlmModelInfo;
 }
 
-export interface GlobalModelSelectorProps extends Pick<
-  NativeSelectProps,
+/** 触发器需要透传的原生属性子集，与旧 NativeSelect 契约保持一致 */
+type GlobalModelSelectorNativeProps = Pick<
+  SelectHTMLAttributes<HTMLSelectElement>,
   "aria-label" | "className" | "disabled" | "id" | "name" | "required"
-> {
+>;
+
+export interface GlobalModelSelectorProps
+  extends GlobalModelSelectorNativeProps {
   /** 当前选中的模型配置 ID */
   value: string;
   /** 选中值变更回调 */
@@ -275,7 +285,7 @@ export function GlobalModelSelector({
                       </span>
                     </span>
                     {model.isDefault ? (
-                      <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-medium text-amber-400">
+                      <span className="rounded-full bg-warning/15 px-2 py-0.5 text-[10px] font-medium text-warning">
                         默认
                       </span>
                     ) : null}

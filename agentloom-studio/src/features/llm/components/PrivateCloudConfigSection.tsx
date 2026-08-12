@@ -5,7 +5,13 @@ import { CheckCircle2, Loader2, Lock, PlugZap, XCircle } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
-import { NativeSelect } from "@/shared/ui/native-select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/shared/ui/select";
 
 import {
   AUTH_METHODS,
@@ -242,21 +248,28 @@ export function PrivateCloudConfigSection({
             control={form.control}
             name="authMethod"
             render={({ field }) => (
-              <NativeSelect
+              <Select
                 value={field.value}
                 onValueChange={field.onChange}
-                data-testid="auth-method-select"
               >
-                {AUTH_METHODS.map((method) => (
-                  <option
-                    key={method}
-                    value={method}
-                    disabled={method === "mtls"}
-                  >
-                    {AUTH_METHOD_LABELS[method]}
-                  </option>
-                ))}
-              </NativeSelect>
+                <SelectTrigger
+                  aria-label="认证方式"
+                  data-testid="auth-method-select"
+                >
+                  <SelectValue placeholder="请选择认证方式" />
+                </SelectTrigger>
+                <SelectContent>
+                  {AUTH_METHODS.map((method) => (
+                    <SelectItem
+                      key={method}
+                      value={method}
+                      disabled={method === "mtls"}
+                    >
+                      {AUTH_METHOD_LABELS[method]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             )}
           />
           {form.formState.errors.authMethod ? (
@@ -375,7 +388,7 @@ export function PrivateCloudConfigSection({
         <div
           className={
             connectionStatus.success
-              ? "flex items-center gap-2 rounded-lg border border-emerald-500/30 bg-emerald-500/5 px-3 py-2 text-xs text-emerald-400"
+              ? "flex items-center gap-2 rounded-lg border border-success/40 bg-success/5 px-3 py-2 text-xs text-success"
               : "flex items-center gap-2 rounded-lg border border-error/50 bg-error/5 px-3 py-2 text-xs text-error"
           }
           data-testid="connection-status"
@@ -406,18 +419,25 @@ export function PrivateCloudConfigSection({
             control={form.control}
             name="modelName"
             render={({ field }) => (
-              <NativeSelect
+              <Select
                 value={field.value}
                 onValueChange={field.onChange}
-                data-testid="remote-model-select"
               >
-                {remoteModels.map((model) => (
-                  <option key={model.id} value={model.id}>
-                    {model.name}
-                    {model.ownedBy ? ` (${model.ownedBy})` : ""}
-                  </option>
-                ))}
-              </NativeSelect>
+                <SelectTrigger
+                  aria-label="可用模型"
+                  data-testid="remote-model-select"
+                >
+                  <SelectValue placeholder="请选择模型" />
+                </SelectTrigger>
+                <SelectContent>
+                  {remoteModels.map((model) => (
+                    <SelectItem key={model.id} value={model.id}>
+                      {model.name}
+                      {model.ownedBy ? ` (${model.ownedBy})` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             )}
           />
           <p className="text-[11px] text-muted-foreground">

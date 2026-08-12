@@ -1,9 +1,14 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import * as crypto from 'node:crypto'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { WorkflowDefinition } from '@/features/workflow'
 import type { WorkflowInputSchema } from '@/features/workflow/types'
 import { clonePortDefinitions, getNodeTypeConfig } from '@/features/canvas'
+import {
+  DESKTOP_WIDTH,
+  restoreViewport,
+  stubViewportWidth,
+} from '../../testing/viewport'
 import { WorkflowCanvasPage } from '../WorkflowCanvasPage'
 
 function createNodeData(nodeType: Parameters<typeof getNodeTypeConfig>[0]) {
@@ -294,6 +299,8 @@ vi.mock('../../hooks/useAutoSave', () => ({
 
 describe('WorkflowCanvasPage workflow settings integration', () => {
   beforeEach(() => {
+    // 本文件全部用例断言的都是桌面端编辑行为，视口必须显式声明为桌面态
+    stubViewportWidth(DESKTOP_WIDTH)
     routeWorkflowId = 'wf-001'
     authToken = undefined
     workflow.status = 'draft'
@@ -301,6 +308,10 @@ describe('WorkflowCanvasPage workflow settings integration', () => {
     workflow.inputSchema = workflowInputSchema
     vi.clearAllMocks()
     notifyMock.mockReset()
+  })
+
+  afterEach(() => {
+    restoreViewport()
   })
 
   it('将共享 settings panel 的 tab 状态透传给 toolbar，并在不同入口之间切换', () => {

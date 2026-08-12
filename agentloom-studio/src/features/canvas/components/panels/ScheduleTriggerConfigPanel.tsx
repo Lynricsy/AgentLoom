@@ -1,5 +1,12 @@
 import { memo, useCallback, type ChangeEvent } from 'react'
 import { Clock } from 'lucide-react'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/shared/ui/select'
 
 interface ScheduleTriggerConfigPanelProps {
   config: Record<string, unknown>
@@ -57,8 +64,8 @@ export const ScheduleTriggerConfigPanel = memo(function ScheduleTriggerConfigPan
   )
 
   const handleTimezoneChange = useCallback(
-    (e: ChangeEvent<HTMLSelectElement>) => {
-      applyPatch({ timezone: e.target.value })
+    (value: string) => {
+      applyPatch({ timezone: value })
     },
     [applyPatch],
   )
@@ -129,18 +136,18 @@ export const ScheduleTriggerConfigPanel = memo(function ScheduleTriggerConfigPan
         >
           时区
         </label>
-        <select
-          id="schedule-timezone"
-          value={parsed.timezone}
-          onChange={handleTimezoneChange}
-          className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-        >
-          {COMMON_TIMEZONES.map((tz) => (
-            <option key={tz} value={tz}>
-              {tz}
-            </option>
-          ))}
-        </select>
+        <Select value={parsed.timezone} onValueChange={handleTimezoneChange}>
+          <SelectTrigger id="schedule-timezone" aria-label="时区">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {COMMON_TIMEZONES.map((tz) => (
+              <SelectItem key={tz} value={tz}>
+                {tz}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <p className="mt-1 text-xs text-muted-foreground">
           Cron 表达式将基于该时区解析执行
         </p>

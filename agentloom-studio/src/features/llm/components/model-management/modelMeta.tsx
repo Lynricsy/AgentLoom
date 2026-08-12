@@ -17,14 +17,12 @@ const MODEL_META_CHIP_BASE =
   "inline-flex max-w-full items-center gap-1 whitespace-nowrap rounded-full border px-2 py-1 text-[11px] font-medium leading-none shadow-sm";
 
 const MODEL_META_CHIP_TONE_CLASS: Record<ModelMetaTone, string> = {
-  neutral: "border-border/80 bg-background/90 text-foreground/80",
+  neutral: "border-border bg-surface-elevated text-muted",
   primary: "border-primary/35 bg-primary/10 text-primary",
-  info: "border-sky-500/35 bg-sky-500/12 text-sky-700 dark:text-sky-300",
-  success:
-    "border-emerald-500/35 bg-emerald-500/12 text-emerald-700 dark:text-emerald-300",
-  warning:
-    "border-amber-500/35 bg-amber-500/14 text-amber-800 dark:text-amber-300",
-};
+  info: "border-info/35 bg-info/12 text-info",
+  success: "border-success/35 bg-success/12 text-success",
+  warning: "border-warning/35 bg-warning/14 text-warning",
+}
 
 interface PricingBadgeSpec {
   key: string;

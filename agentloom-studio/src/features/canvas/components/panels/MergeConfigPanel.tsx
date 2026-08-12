@@ -1,6 +1,13 @@
 import { memo, useCallback, useMemo, type ChangeEvent } from 'react'
 import { GitMerge } from 'lucide-react'
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/shared/ui/select'
+import {
   parseMergeNodeConfig,
   buildMergeInputPorts,
   type MergeNodeConfig,
@@ -35,8 +42,8 @@ export const MergeConfigPanel = memo(function MergeConfigPanel({
 
   // ── mode ─────────────────────────────────────────────────────
   const handleModeChange = useCallback(
-    (e: ChangeEvent<HTMLSelectElement>) => {
-      applyConfig({ mode: e.target.value as MergeMode })
+    (value: string) => {
+      applyConfig({ mode: value as MergeMode })
     },
     [applyConfig],
   )
@@ -97,15 +104,15 @@ export const MergeConfigPanel = memo(function MergeConfigPanel({
         >
           合并模式
         </label>
-        <select
-          id="merge-mode"
-          value={parsed.mode}
-          onChange={handleModeChange}
-          className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-        >
-          <option value="append">追加拼接</option>
-          <option value="merge-by-key">按键合并</option>
-        </select>
+        <Select value={parsed.mode} onValueChange={handleModeChange}>
+          <SelectTrigger id="merge-mode" aria-label="合并模式">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="append">追加拼接</SelectItem>
+            <SelectItem value="merge-by-key">按键合并</SelectItem>
+          </SelectContent>
+        </Select>
         <p className="mt-1 text-[10px] text-muted-foreground">
           {parsed.mode === 'append'
             ? '将所有输入数据按顺序拼接为数组'
