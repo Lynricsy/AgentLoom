@@ -10,6 +10,11 @@ interface WorkflowPublishAutonomyViolation {
   message: string;
 }
 
+interface WorkflowAgentBindingViolation {
+  nodeId: string;
+  nodeLabel: string;
+}
+
 export class WorkflowArchivedException extends DomainException {
   constructor(workflowId: string) {
     super({
@@ -34,6 +39,31 @@ export class WorkflowPublishValidationException extends DomainException {
         field: 'workflow',
         message,
       })),
+    });
+  }
+}
+
+export class WorkflowPublishAgentBindingException extends DomainException {
+  constructor(violations: WorkflowAgentBindingViolation[]) {
+    const nodeDetails = violations
+      .map(
+        ({ nodeId, nodeLabel }) =>
+          `Agent 节点「${nodeLabel}」（${nodeId}）未绑定已发布的 Agent Definition`,
+      )
+      .join('；');
+    const remediation =
+      '请在画布上为该节点选择一个已发布的 Agent Definition 后再发布';
+
+    super({
+      type: 'https://agentloom.dev/errors/workflow-publish-agent-binding',
+      title: '工作流 Agent 绑定校验失败',
+      status: HttpStatus.UNPROCESSABLE_ENTITY,
+      detail: `${nodeDetails}。${remediation}`,
+      errors: violations.map(({ nodeId, nodeLabel }) => ({
+        field: `nodes.${nodeId}.agentDefinitionId`,
+        message: `Agent 节点「${nodeLabel}」（${nodeId}）未绑定已发布的 Agent Definition。${remediation}`,
+      })),
+      extensions: { violations },
     });
   }
 }

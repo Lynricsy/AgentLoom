@@ -22,6 +22,7 @@ import { WorkflowVersionService } from '../workflow-version.service';
 import {
   WorkflowArchivedException,
   WorkflowPublishAutonomyCapException,
+  WorkflowPublishAgentBindingException,
   WorkflowNotFoundException,
   WorkflowPublishValidationException,
   WorkflowVersionConflictException,
@@ -161,6 +162,9 @@ function createPortMappedWorkflow(sourceType: string, targetType: string) {
   });
 }
 
+// 刻意保留 legacy `llm-agent` 类型：归一化会把它收敛成 canonical `agent`，
+// 这条 fixture 因此顺带覆盖了「legacy 别名生效后自治上限校验仍能命中该节点」。
+// 绑定字段是必需的——发布前的 Agent 绑定校验先于自治校验，不带绑定就走不到被测逻辑。
 function createAutonomyWorkflow(
   autonomyMode: 'MANUAL_CONFIRM' | 'RULE_BASED' | 'LLM_SUGGEST' | 'FULL_AUTO',
   source: 'canonical' | 'legacy',
@@ -175,10 +179,12 @@ function createAutonomyWorkflow(
           source === 'legacy'
             ? {
                 label: 'Planner',
+                agentDefinitionId: 'published-agent-definition-1',
                 autonomyMode,
               }
             : {
                 label: 'Planner',
+                agentDefinitionId: 'published-agent-definition-1',
                 autonomyConfig: { mode: autonomyMode },
               },
       },
@@ -208,6 +214,7 @@ function createNoSandboxWorkflowWithUpstreamMcp() {
           label: 'NoSandbox News Agent',
           nodeType: 'agent',
           agentRuntimeMode: 'no_sandbox',
+          agentDefinitionId: 'published-agent-definition-1',
         },
       },
     ],
@@ -1793,6 +1800,170 @@ describe('WorkflowVersionService', () => {
       ).rejects.toBeInstanceOf(WorkflowPublishValidationException);
     });
 
+    it('发布时 agent 节点未绑定已发布 Agent Definition 应阻断', async () => {
+      const workflow = createDraftWorkflow({
+        nodes: [
+          {
+            id: 'agent-unbound',
+            type: 'agent',
+            position: { x: 0, y: 0 },
+            data: { label: '未绑定助手' },
+          },
+          {
+            id: 'chat-agent-unbound',
+            type: 'chat-agent',
+            position: { x: 200, y: 0 },
+            data: {},
+          },
+        ],
+        edges: [],
+      });
+      db.select.mockReturnValueOnce(createSelectChain([workflow]));
+
+      const publishPromise = service.publish(WORKFLOW_ID, {}, USER_ID);
+
+      await expect(publishPromise).rejects.toBeInstanceOf(
+        WorkflowPublishAgentBindingException,
+      );
+      await expect(publishPromise).rejects.toMatchObject({
+        detail: expect.stringMatching(
+          /未绑定助手.*agent-unbound.*chat-agent-unbound/,
+        ),
+      });
+      expect(db.insert).not.toHaveBeenCalled();
+      expect(db.update).not.toHaveBeenCalled();
+    });
+
+    // 防回归：agentVersionId 只是版本锁定，不是 Agent Definition 绑定。
+    // 调度器的 getWorkflowAgentDefinitionId() 不认它；发布校验若把它算作绑定，
+    // 就会放行一个发布得掉、运行时却判定未绑定而失败的节点。
+    it('发布时只有 agentVersionId 而无 Agent Definition 绑定仍应阻断', async () => {
+      const workflow = createDraftWorkflow({
+        nodes: [
+          {
+            id: 'agent-version-only',
+            type: 'agent',
+            position: { x: 0, y: 0 },
+            data: {
+              label: '仅锁版本助手',
+              agentVersionId: 'agent-version-1',
+            },
+          },
+        ],
+        edges: [],
+      });
+      db.select.mockReturnValueOnce(createSelectChain([workflow]));
+
+      const publishPromise = service.publish(WORKFLOW_ID, {}, USER_ID);
+
+      await expect(publishPromise).rejects.toBeInstanceOf(
+        WorkflowPublishAgentBindingException,
+      );
+      await expect(publishPromise).rejects.toMatchObject({
+        detail: expect.stringContaining('仅锁版本助手'),
+      });
+      expect(db.insert).not.toHaveBeenCalled();
+      expect(db.update).not.toHaveBeenCalled();
+    });
+
+    it('发布时 agent 节点已绑定则正常通过', async () => {
+      const workflow = createDraftWorkflow({
+        nodes: [
+          {
+            id: 'agent-bound',
+            type: 'agent',
+            position: { x: 0, y: 0 },
+            data: {
+              label: '已绑定助手',
+              agentDefinitionId: 'published-agent-definition-1',
+            },
+          },
+        ],
+        edges: [],
+      });
+      db.select
+        .mockReturnValueOnce(createSelectChain([workflow]))
+        .mockReturnValueOnce(createSelectChain([]))
+        .mockReturnValueOnce(createSelectChain([{ maxVersion: 1 }]));
+      db.insert.mockReturnValueOnce(
+        createInsertChain([
+          createMockVersion({ versionNumber: 2, publishedAt: NOW }),
+        ]),
+      );
+      db.update
+        .mockReturnValueOnce(createUpdateChainVoid())
+        .mockReturnValueOnce(createUpdateChainVoid());
+
+      await expect(
+        service.publish(WORKFLOW_ID, {}, USER_ID),
+      ).resolves.toBeDefined();
+    });
+
+    it('非 agent 节点不受 Agent 绑定校验影响', async () => {
+      const workflow = createDraftWorkflow({
+        nodes: [
+          {
+            id: 'text-node',
+            type: 'text',
+            position: { x: 0, y: 0 },
+            data: { label: '文本输入' },
+          },
+        ],
+        edges: [],
+      });
+      db.select
+        .mockReturnValueOnce(createSelectChain([workflow]))
+        .mockReturnValueOnce(createSelectChain([]))
+        .mockReturnValueOnce(createSelectChain([{ maxVersion: 1 }]));
+      db.insert.mockReturnValueOnce(
+        createInsertChain([
+          createMockVersion({ versionNumber: 2, publishedAt: NOW }),
+        ]),
+      );
+      db.update
+        .mockReturnValueOnce(createUpdateChainVoid())
+        .mockReturnValueOnce(createUpdateChainVoid());
+
+      await expect(
+        service.publish(WORKFLOW_ID, {}, USER_ID),
+      ).resolves.toBeDefined();
+    });
+
+    it('发布时 data.config 内嵌 Agent 绑定也算通过', async () => {
+      const workflow = createDraftWorkflow({
+        nodes: [
+          {
+            id: 'chat-agent-bound',
+            type: 'chat-agent',
+            position: { x: 0, y: 0 },
+            data: {
+              label: '内嵌绑定助手',
+              config: {
+                selected_agent_id: 'published-agent-definition-2',
+              },
+            },
+          },
+        ],
+        edges: [],
+      });
+      db.select
+        .mockReturnValueOnce(createSelectChain([workflow]))
+        .mockReturnValueOnce(createSelectChain([]))
+        .mockReturnValueOnce(createSelectChain([{ maxVersion: 1 }]));
+      db.insert.mockReturnValueOnce(
+        createInsertChain([
+          createMockVersion({ versionNumber: 2, publishedAt: NOW }),
+        ]),
+      );
+      db.update
+        .mockReturnValueOnce(createUpdateChainVoid())
+        .mockReturnValueOnce(createUpdateChainVoid());
+
+      await expect(
+        service.publish(WORKFLOW_ID, {}, USER_ID),
+      ).resolves.toBeDefined();
+    });
+
     it('no_sandbox workflow agent 连接 stdio MCP 节点时应阻止发布', async () => {
       const selectWf = createSelectChain([
         createNoSandboxWorkflowWithUpstreamMcp(),
@@ -1972,8 +2143,14 @@ describe('WorkflowVersionService', () => {
                 autonomyConfig: {
                   mode: 'LLM_SUGGEST',
                 },
-                inputPorts: [],
-                outputPorts: [],
+                // legacy `llm-agent` 经别名收敛为 canonical `agent` 后，
+                // 会拿到 agent 的默认端口模板，不再是空端口
+                inputPorts: expect.arrayContaining([
+                  expect.objectContaining({ id: 'system-prompt-in' }),
+                ]),
+                outputPorts: expect.arrayContaining([
+                  expect.objectContaining({ id: 'agent-out' }),
+                ]),
               }),
             }),
           ],

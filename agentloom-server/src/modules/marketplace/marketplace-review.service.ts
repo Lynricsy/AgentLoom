@@ -11,6 +11,7 @@ import {
   type MarketplaceReviewResult,
 } from '../../database/schema';
 import type { WorkflowVersionSnapshot } from '../../database/schema/workflow-versions.schema';
+import { getWorkflowAgentDefinitionId } from '../execution/workflow-runtime-input.util';
 
 @Injectable()
 export class MarketplaceReviewService {
@@ -48,17 +49,15 @@ export class MarketplaceReviewService {
     return { ...config, ...nodeData };
   }
 
+  /**
+   * 判据复用调度器的 `getWorkflowAgentDefinitionId()`——「节点是否可执行」的单一事实源。
+   * **不要**在这里另写字段列表：`agentVersionId` 不被调度器认作绑定，
+   * 把它算进来会让一个运行不了的工作流通过上架审核。
+   */
   private hasWorkflowAgentBinding(
     runtimeNodeData: Record<string, unknown>,
   ): boolean {
-    return !!this.readNonEmptyString(
-      runtimeNodeData.agentDefinitionId,
-      runtimeNodeData.agent_definition_id,
-      runtimeNodeData.selectedAgentId,
-      runtimeNodeData.selected_agent_id,
-      runtimeNodeData.agentVersionId,
-      runtimeNodeData.agent_version_id,
-    );
+    return !!getWorkflowAgentDefinitionId(runtimeNodeData);
   }
 
   async review(
@@ -231,24 +230,9 @@ export class MarketplaceReviewService {
         this.hasWorkflowAgentBinding(runtimeNodeData);
       const missing: string[] = [];
 
-      if (
-        !this.readNonEmptyString(
-          runtimeNodeData.systemPrompt,
-          runtimeNodeData.system_prompt,
-        ) &&
-        !hasWorkflowAgentBinding
-      ) {
-        missing.push('systemPrompt');
-      }
-
-      if (
-        !this.readNonEmptyString(
-          runtimeNodeData.llmModelId,
-          runtimeNodeData.llm_model_id,
-        ) &&
-        !hasWorkflowAgentBinding
-      ) {
-        missing.push('llmModelId');
+      // Agent 节点必须绑定已发布的 Agent Definition。
+      if (!hasWorkflowAgentBinding) {
+        missing.push('agentDefinitionId');
       }
 
       if (missing.length > 0) {
@@ -266,8 +250,7 @@ export class MarketplaceReviewService {
           'WORKFLOW_CRITICAL_CONFIG_INCOMPLETE',
           `${misconfiguredNodes.length} 个 Agent 节点配置不完整`,
           {
-            fixHint:
-              '确保每个 Agent 节点都配置了 System Prompt 和 LLM 模型，或绑定已发布 Agent 版本',
+            fixHint: '确保每个 Agent 节点都绑定已发布的 Agent Definition',
             nodeId: misconfiguredNodes[0].nodeId,
             nodeType: misconfiguredNodes[0].nodeType,
             missingFields: misconfiguredNodes[0].missingFields,

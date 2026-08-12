@@ -31,6 +31,7 @@ import {
 } from '../workflow/dto/workflow-input-schema.dto';
 import { TemplateService } from '../template/template.service';
 import { WorkflowNotPublishedException } from '../execution/execution.exceptions';
+import { getWorkflowAgentDefinitionId } from '../execution/workflow-runtime-input.util';
 import { OrganizationAutonomyPolicyService } from '../organization/organization-autonomy-policy.service';
 import { generateSlug, appendSlugSuffix } from '../organization/slug.utils';
 import { cloneDefinitionWithNewIds } from './utils/clone-template.utils';
@@ -62,6 +63,7 @@ import {
 import {
   WorkflowArchivedException,
   WorkflowPublishAutonomyCapException,
+  WorkflowPublishAgentBindingException,
   WorkflowNotFoundException,
   WorkflowPublishValidationException,
   WorkflowVersionConflictException,
@@ -1175,6 +1177,7 @@ export class WorkflowVersionService {
           normalizedGraph.nodes,
           normalizedGraph.edges,
         );
+        this.assertWorkflowAgentBindings(normalizedGraph.nodes);
         await this.assertNoSandboxWorkflowMcpConstraints(
           dbClient,
           workflow.tenantId,
@@ -1592,6 +1595,36 @@ export class WorkflowVersionService {
     }
 
     return warnings;
+  }
+
+  /**
+   * 发布前校验：每个 agent 节点都必须绑定一个已发布的 Agent Definition。
+   *
+   * 判据直接复用调度器的 `getWorkflowAgentDefinitionId()`，这是「节点是否可执行」的
+   * 单一事实源。**不要**在这里另写一套字段列表：`agentVersionId` 不被调度器认作绑定，
+   * 把它算进来会放行一个发布得掉、却在运行时判定未绑定而失败的节点。
+   */
+  private assertWorkflowAgentBindings(nodes: schema.ReactFlowNode[]): void {
+    const violations = nodes.flatMap((node) => {
+      if (node.type !== 'agent' && node.type !== 'chat-agent') {
+        return [];
+      }
+
+      if (getWorkflowAgentDefinitionId(node.data ?? {})) {
+        return [];
+      }
+
+      return [
+        {
+          nodeId: node.id,
+          nodeLabel: this.getWorkflowNodeLabel(node) ?? node.id,
+        },
+      ];
+    });
+
+    if (violations.length > 0) {
+      throw new WorkflowPublishAgentBindingException(violations);
+    }
   }
 
   private async assertNoSandboxWorkflowMcpConstraints(

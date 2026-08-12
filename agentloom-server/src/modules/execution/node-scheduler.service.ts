@@ -434,34 +434,35 @@ export class NodeSchedulerService {
     switch (step.nodeType) {
       case 'agent':
       case 'chat-agent':
-        if (getWorkflowAgentDefinitionId(step.nodeData ?? {})) {
-          await this.executeWorkflowAgentNode(
-            step,
-            input,
+        if (!getWorkflowAgentDefinitionId(step.nodeData ?? {})) {
+          await this.failUnschedulableNode(
             tenantId,
             executionId,
-            resolvedSnapshot.edges,
-            resolvedSteps,
+            step,
+            'agent 节点必须绑定已发布的 Agent Definition；画布上的内联 Agent 配置已不再支持',
           );
           break;
         }
 
-        await this.stepStateMachine.updateStepStatus(
+        await this.executeWorkflowAgentNode(
+          step,
+          input,
           tenantId,
-          step.id,
-          'queued',
+          executionId,
+          resolvedSnapshot.edges,
+          resolvedSteps,
         );
-        {
-          const { data, options } = await this.buildAgentTaskJobData({
-            executionId,
-            tenantId,
-            step,
-            input,
-            sandboxBinding,
-            memorySessionIds,
-          });
-          await this.agentTaskQueue.add('agent-task', data, options);
-        }
+        break;
+
+      // 已废弃的内联 Agent 节点类型。存量已发布快照不可变，无法就地迁移，
+      // 因此这里单独给一条可操作的诊断，而不是落到 default 的泛化「不支持的节点类型」。
+      case 'llm-agent':
+        await this.failUnschedulableNode(
+          tenantId,
+          executionId,
+          step,
+          'llm-agent 是已废弃的内联 Agent 节点类型；请在画布中改用 agent 节点并绑定已发布的 Agent Definition，然后重新发布工作流',
+        );
         break;
 
       case 'manual-trigger':
@@ -600,24 +601,32 @@ export class NodeSchedulerService {
         break;
 
       default:
-        this.logger.warn(`未知节点类型 "${step.nodeType}"，按 agent 处理`);
-        await this.stepStateMachine.updateStepStatus(
+        await this.failUnschedulableNode(
           tenantId,
-          step.id,
-          'queued',
+          executionId,
+          step,
+          `不支持的节点类型 "${step.nodeType}"`,
         );
-        {
-          const { data, options } = await this.buildAgentTaskJobData({
-            executionId,
-            tenantId,
-            step,
-            input,
-            sandboxBinding,
-            memorySessionIds,
-          });
-          await this.agentTaskQueue.add('agent-task', data, options);
-        }
     }
+  }
+
+  /**
+   * 把无法进入任何执行器的节点显式标记为失败，并推进调度。
+   *
+   * 覆盖两种情况：节点类型不受支持，以及 agent 节点没有绑定 Agent Definition。
+   * 这两种都必须显式失败——静默降级到别的执行路径只会把配置缺失伪装成正常运行。
+   */
+  private async failUnschedulableNode(
+    tenantId: string,
+    executionId: string,
+    step: ExecutionStep,
+    message: string,
+  ): Promise<void> {
+    this.logger.warn(`节点 ${step.nodeId} 无法调度：${message}`);
+    await this.stepStateMachine.updateStepStatus(tenantId, step.id, 'failed', {
+      errorMessage: { message, nodeId: step.nodeId },
+    });
+    await this.onNodeFailed(executionId, step.id, tenantId);
   }
 
   private async executePlugin(

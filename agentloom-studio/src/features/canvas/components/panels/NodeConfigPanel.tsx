@@ -495,7 +495,9 @@ const NodeConfigDispatch = memo(function NodeConfigDispatch({
       ? node.data.outputPorts
       : undefined,
   })
-  const customPanel = CUSTOM_PANEL_REGISTRY[nodeType]
+  // 用归一化后的类型查表：只有这样 legacy 别名（例如已废除的 llm-agent）
+  // 才能命中它 canonical 对应的自定义面板，而不是掉到 DynamicConfigForm
+  const customPanel = CUSTOM_PANEL_REGISTRY[nodeConfig.type]
   const hasDynamicConfigFields =
     Object.keys(nodeConfig.configSchema.properties).length > 0
 

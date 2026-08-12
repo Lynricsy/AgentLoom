@@ -1,5 +1,5 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react'
-import { Brain, Container, Loader2, Plus, Search, Trash2 } from 'lucide-react'
+import { AlertTriangle, Brain, Container, Copy, Loader2, Plus, Search, Trash2 } from 'lucide-react'
 import {
   Select,
   SelectContent,
@@ -7,6 +7,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/shared/ui/select'
+import { useToast } from '@/shared/ui/toast'
 import { listAgents, listAgentVersions } from '@/features/agent/api/agentDefinitionApi'
 import type { AgentDefinition, AgentVersion } from '@/features/agent/types'
 import type { AgentRuntimeMode } from '@/features/agent/types/agentRuntimeMode'
@@ -26,6 +27,26 @@ interface AgentConfig {
   agentRuntimeMode: AgentRuntimeMode | null
   versionLabel: string | null
   inputMapping: Record<string, string>
+}
+
+// 已废除的内联 Agent 节点（legacy `llm-agent`）会把这两个字段留在节点 data 上。
+// 它们不再参与执行，面板只做只读展示，避免用户保存后彻底丢失原始配置。
+interface LegacyInlineAgentConfig {
+  systemPrompt: string | null
+  model: string | null
+}
+
+function readLegacyString(
+  runtimeView: readonly Record<string, unknown>[],
+  keys: readonly string[],
+): string | null {
+  for (const source of runtimeView) {
+    for (const key of keys) {
+      const value = source[key]
+      if (typeof value === 'string' && value.trim().length > 0) return value
+    }
+  }
+  return null
 }
 
 function parseInputMapping(raw: unknown): Record<string, string> {
@@ -51,12 +72,38 @@ function parseAgentConfig(config: Record<string, unknown>): AgentConfig {
   }
 }
 
+// 顶层 node.data 优先、node.data.config 兜底：存量节点两处都可能落过值。
+function readLegacyInlineConfig(data: Record<string, unknown>): LegacyInlineAgentConfig {
+  const nested = data.config
+  const runtimeView =
+    nested != null && typeof nested === 'object' && !Array.isArray(nested)
+      ? [data, nested as Record<string, unknown>]
+      : [data]
+
+  return {
+    systemPrompt: readLegacyString(runtimeView, ['systemPrompt', 'system_prompt']),
+    model: readLegacyString(runtimeView, ['model']),
+  }
+}
+
 export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
   node,
   config,
   onApply,
 }: AgentNodeConfigPanelProps) {
   const agentConfig = parseAgentConfig(config)
+  const { notify } = useToast()
+  const legacyInline = useMemo(() => readLegacyInlineConfig(node.data), [node.data])
+
+  const handleCopyLegacyPrompt = useCallback(async () => {
+    if (!legacyInline.systemPrompt) return
+    try {
+      await navigator.clipboard?.writeText(legacyInline.systemPrompt)
+      notify({ description: '系统提示词已复制，可粘贴到 text 节点', variant: 'success' })
+    } catch {
+      // 剪贴板不可用（无权限或非安全上下文）时静默降级，用户仍可手动选中复制
+    }
+  }, [legacyInline.systemPrompt, notify])
 
   const [agents, setAgents] = useState<AgentDefinition[]>([])
   const [versions, setVersions] = useState<AgentVersion[]>([])
@@ -300,6 +347,56 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
           )}
         </div>
       </div>
+
+      {/* 遗留内联 Agent 配置（只读） */}
+      {(legacyInline.systemPrompt || legacyInline.model) && (
+        <div
+          data-testid="agent-legacy-inline-config"
+          className="space-y-3 rounded-card border border-warning/30 bg-warning/10 p-3 text-xs"
+        >
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warning" />
+            <div className="space-y-1">
+              <p className="font-medium text-warning">
+                旧版内联 Agent 配置（已废除，不再参与执行）
+              </p>
+              <p className="text-warning/80">
+                下列内容来自旧的内联 Agent 节点，仅供查阅与迁移。
+                请把系统提示词复制到一个 text 节点，再把它的输出连到本节点的「系统提示词」输入端口；
+                模型由所绑定的 Agent Definition 决定。
+              </p>
+            </div>
+          </div>
+
+          {legacyInline.systemPrompt && (
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-medium text-foreground">系统提示词</span>
+                <button
+                  type="button"
+                  onClick={handleCopyLegacyPrompt}
+                  className="flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-[11px] text-warning transition-colors hover:bg-warning/15"
+                >
+                  <Copy className="h-3 w-3" />
+                  复制
+                </button>
+              </div>
+              <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-md border border-warning/20 bg-background/60 p-2 font-mono text-[11px] leading-relaxed text-foreground">
+                {legacyInline.systemPrompt}
+              </pre>
+            </div>
+          )}
+
+          {legacyInline.model && (
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-medium text-foreground">模型</span>
+              <span className="truncate font-mono text-[11px] text-foreground">
+                {legacyInline.model}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 版本选择 */}
       {agentConfig.selectedAgentId && (

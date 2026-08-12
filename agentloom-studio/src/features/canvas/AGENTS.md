@@ -55,7 +55,7 @@ WorkflowCanvasPage.tsx
     │   ├── WorkflowSettingsPanel.tsx (触发器/介入策略共享设置面板，tabs 容器)
     │   ├── NodeConfigPanel.tsx (节点配置 + 实时输出 + 自定义面板/动态表单分发，含 `ReusableBlockPanel`)
     │   ├── DynamicConfigForm.tsx (schema 驱动表单)
-    │   ├── LlmAgentConfigPanel.tsx (lazy Monaco + output schema title)
+    │   ├── AgentNodeConfigPanel.tsx (选已发布 Agent + 版本 + 输入映射，含 legacy 内联配置只读区块)
     │   ├── HttpToolConfigPanel.tsx (method/url)
     │   ├── InterventionPanel.tsx (人工介入面板)
     │   ├── FieldMappingPanel.tsx (字段映射)
@@ -133,12 +133,13 @@ WorkflowPreviewCanvas.tsx
 - `NodeConfigPanel` 现在是「头部 chrome + tabs」结构：头部为类别色图标芯片（`getNodeAccentToken`）+ 可编辑标题（直接 `updateNodeData({ label })`）+ 关闭按钮；下接「配置」/「输出」两 tab，节点 `status === 'waiting_intervention'` 时追加「介入」tab 内嵌 `InterventionPanel` 并自动切过去，干预结束后退回「配置」。tab 内容常驻挂载、只切 `hidden`——自定义面板持有 Monaco / 草稿等本地状态，用会卸载的 `TabsContent` 会丢编辑上下文。所需数据仍由 executionStore 的实时事件和 snapshot 恢复共同驱动；「输出」tab 复用 `components/output/OutputContentRenderer`，与 `text-output` / `json-output` 节点详情弹层保持同一套渲染语义
 - `NodeConfigPanel` 左缘 4px 拖柄可调宽：默认 360px、夹取区间 `[320, 560]`，宽度持久化在 `localStorage['agentloom-config-panel-width']`，读写全部包 try/catch。面板贴右缘，所以「向左拖 = 变宽」；拖柄同时支持方向键微调。注意 Node 22 的实验性 `localStorage` 全局会遮蔽 jsdom 实现且为 `undefined`，相关测试需自行装内存版 Storage
 - 画布侧栏表单统一形态：`@/shared/ui/form`（`DynamicConfigForm` 已接 rhf `Form` provider）+ `@/shared/ui/select` 的 Radix `Select`；`components/` 下不存在原生 `<select>` / `NativeSelect`，新代码也禁止引入。Radix 的 `SelectItem` 不接受空串 value，「未选择 / 继承默认」一律靠 `SelectValue` 的 placeholder 表达；选项集合来自运行时数据（上游端口、策略清单、Agent 版本列表）时，空列表要禁用 trigger 并在 placeholder 里给出空态文案。空串由 `@/shared/ui/select` 的 `Select` 原语统一拦下（隐藏的 `SelectBubbleInput` 会在 `SelectItem` 登记完成前回吐一次空串），调用点无需自行守卫，直接 `onValueChange={setX}` / `onValueChange={field.onChange}`；需要用户可主动选回的「无 / 使用默认」用哨兵常量承载并在调用点映射回 `null` / `undefined`。`SelectContent` 常驻挂载但关闭态挂在游离 fragment 上，测试要先展开（`fireEvent.keyDown(trigger, { key: 'Enter' })`）才能拿到 `role="option"`，选中值只能读 trigger 文案。未接 rhf 的面板不要为了用 `FormLabel` 强行引入 rhf，改用原生 `<label htmlFor>` + `<p className="text-xs font-medium text-error">`，字段容器统一 `flex flex-col gap-1.5`
-- `NodeConfigPanel` 配置分发规则：先命中自定义面板（llm-model/mcp-tool/knowledge-base/sandbox/llm-agent/http-tool/reusable-block），否则走 `DynamicConfigForm`，空 schema 显示“该节点无需额外配置”
+- `NodeConfigPanel` 配置分发规则：先命中自定义面板（llm-model/mcp-tool/knowledge-base/sandbox/agent/http-tool/reusable-block），否则走 `DynamicConfigForm`，空 schema 显示“该节点无需额外配置”。查表用的是 `getResolvedNodeTypeConfig()` 归一化后的 `nodeConfig.type` 而非原始 `node.data.nodeType`——legacy 别名要靠它才能命中 canonical 面板
 - `loop-start / iteration-start` 的配置面板不会把固定上下文端口做成任意增删；固定输出始终由运行时提供，额外透传端口与标签的真实单一事实源仍是父 `loop / iteration` 容器输入，但 start 面板现在也允许直接编辑这些透传端口，并会同步回父容器与当前 start 节点输出
 - `llm-model` 节点在 full LOD 下的展示层级固定为：header title 显示配置名称（`config.name`），subtitle 显示 Provider 名称，body 第一行显示模型 ID（`config.modelName`）与状态 badge；不要在 subtitle 或 body 再拼接 `provider:modelId` 这类重复文案
 - `knowledge-base` 节点不再直接向运行时展开成独立工具；连接到 Agent 的这些节点会汇总成统一 `search_knowledge` 工具的可选 `knowledgeBaseIds` 白名单，模型调用时必须显式选择知识库 ID
 - `DynamicConfigForm` 使用 react-hook-form + Zod；任一字段 blur 后会触发整表校验，以满足多必填字段同时报错
-- `LlmAgentConfigPanel` 使用 `@monaco-editor/react` lazy import，编辑器内容必须能在 mount 后响应外部 config 更新；面板通过 `useCurrentOrganization()`（`GET organizations/current`，组织 id **不在** auth token claim 里，tenantId 也不是 organizationId）拿到组织 id 后查询 organization autonomy policy，显示自治上限、禁用超 cap 的新选项、阻止保存 stale over-cap 模式，并对 legacy raw mode 给出显式迁移提示，拿不到组织时 policy 查询 `enabled: false` 并降级为无上限，同时保持现有 react-hook-form + zodResolver + 300ms debounce + hidden drafts 架构；当前 autonomy mode 读取优先级为 `node.data.autonomyMode -> node.data.autonomyConfig.mode -> node.data.settings.autonomyMode -> node.data.config.autonomyMode`，autosave 必须同步写回这四个 mirror 并保留 `config/settings/autonomyConfig` 里的无关字段
+- `AgentNodeConfigPanel` 是 workflow `agent` 节点的配置面板：选择已发布的 Agent Definition + 版本 + 输入映射。节点 data 上若残留 legacy 内联字段（`systemPrompt` / `system_prompt` / `model`，顶层优先、`data.config` 兜底），面板会在 Agent 选择器之后渲染一个只读的「旧版内联 Agent 配置」区块（`data-testid="agent-legacy-inline-config"`，warning 令牌配色，提示词可复制），并指引用户改用 `text` 节点接 `system-prompt-in`。该区块只读——不写回 config、不删除、不改写
+- `resolveLegacyNodeTypeAlias`（`types/nodeTypeRegistry.ts`）是前端 legacy 节点类型别名表：`mcp -> mcp-tool`、`llm-agent -> agent`。它只做读取兼容，使存量节点在画布上可识别、可配置；服务端 `normalize-workflow-graph.utils.ts` 的归一化与发布时的 Agent 绑定 422 校验是同一契约的另两个环节
 - 端口兼容性检查在拖拽连线时实时触发
 - `lib/typeEngine/runtime.worker.ts` 实质上是平台级服务（WASM 加载 + Web Worker 通信），寄存在 feature `lib/` 下而非 `shared/`
 - 小屏（`useMediaQuery(LG_QUERY)` 为 false）画布进入**只读浏览**：`WorkflowCanvas` 用 `isEditingDisabled = isReadOnly(归档) || isMobileReadOnly` 统一关掉快捷键删除、右键菜单、连线、拖放、`onMoveEnd` 持久化与 `nodesDraggable/nodesConnectable/connectOnClick`，另加 `elementsSelectable={!isMobileReadOnly}`；但 `onViewportChange` 只受**归档**限制——`viewport` 是受控 prop，小屏一起冻结就连平移缩放都做不了。`onNodeClick` 在 `elementsSelectable=false` 下仍会触发（React Flow 的 `hasPointerEvents` 把 `onClick` 也算进去），底部只读弹层就靠它选中节点

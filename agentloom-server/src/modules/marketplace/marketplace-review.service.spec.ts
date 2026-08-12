@@ -45,8 +45,8 @@ function createNode(overrides: Partial<WorkflowNode> = {}): WorkflowNode {
     type: 'agent',
     position: { x: 0, y: 0 },
     data: {
-      systemPrompt: '你是一个测试代理',
-      llmModelId: 'llm-model-1',
+      selectedAgentId: 'agent-def-default',
+      agentVersionId: 'agent-version-default',
       workflowId: WORKFLOW_ID,
     },
     ...overrides,
@@ -339,43 +339,7 @@ describe('MarketplaceReviewService', () => {
     );
   });
 
-  it('Agent 节点缺少 systemPrompt 时应返回关键配置失败', async () => {
-    db.select
-      .mockReturnValueOnce(createSelectChain([createVersionRecord()]))
-      .mockReturnValueOnce(
-        createSelectChain([
-          {
-            snapshot: createWorkflowSnapshot({
-              nodes: [
-                createNode({
-                  data: { llmModelId: 'llm-model-1', workflowId: WORKFLOW_ID },
-                }),
-              ],
-            }),
-          },
-        ]),
-      )
-      .mockReturnValueOnce(
-        createExecutionSelectChain([createExecutionRecord()]),
-      );
-
-    const result = await service.review(
-      TENANT_ID,
-      VERSION_ID,
-      createMetadata(),
-    );
-
-    expect(result.outcome).toBe('failed');
-    expect(
-      getCheck(result, 'WORKFLOW_CRITICAL_CONFIG_INCOMPLETE'),
-    ).toMatchObject({
-      status: 'failed',
-      nodeId: 'node-1',
-      missingFields: ['systemPrompt'],
-    });
-  });
-
-  it('Agent 节点缺少 snake_case 的 llm_model_id 时也应失败', async () => {
+  it('Agent 节点未绑定已发布 Agent Definition 时应返回关键配置失败', async () => {
     db.select
       .mockReturnValueOnce(createSelectChain([createVersionRecord()]))
       .mockReturnValueOnce(
@@ -385,7 +349,8 @@ describe('MarketplaceReviewService', () => {
               nodes: [
                 createNode({
                   data: {
-                    system_prompt: '你是一个测试代理',
+                    systemPrompt: '已废弃的内联提示词',
+                    llmModelId: 'llm-model-1',
                     workflowId: WORKFLOW_ID,
                   },
                 }),
@@ -409,11 +374,12 @@ describe('MarketplaceReviewService', () => {
       getCheck(result, 'WORKFLOW_CRITICAL_CONFIG_INCOMPLETE'),
     ).toMatchObject({
       status: 'failed',
-      missingFields: ['llmModelId'],
+      nodeId: 'node-1',
+      missingFields: ['agentDefinitionId'],
     });
   });
 
-  it('应支持 camelCase 的 Agent 配置字段', async () => {
+  it('应支持 camelCase 的 Agent 绑定字段', async () => {
     db.select
       .mockReturnValueOnce(createSelectChain([createVersionRecord()]))
       .mockReturnValueOnce(
@@ -423,8 +389,8 @@ describe('MarketplaceReviewService', () => {
               nodes: [
                 createNode({
                   data: {
-                    systemPrompt: '你是一个 camelCase 测试代理',
-                    llmModelId: 'llm-model-camel',
+                    agentDefinitionId: 'agent-def-camel',
+                    agentVersionId: 'agent-version-camel',
                     workflowId: WORKFLOW_ID,
                   },
                 }),
@@ -449,7 +415,7 @@ describe('MarketplaceReviewService', () => {
     );
   });
 
-  it('应支持 snake_case 的 Agent 配置字段', async () => {
+  it('应支持 snake_case 的 Agent 绑定字段', async () => {
     db.select
       .mockReturnValueOnce(createSelectChain([createVersionRecord()]))
       .mockReturnValueOnce(
@@ -459,8 +425,8 @@ describe('MarketplaceReviewService', () => {
               nodes: [
                 createNode({
                   data: {
-                    system_prompt: '你是一个 snake_case 测试代理',
-                    llm_model_id: 'llm-model-snake',
+                    agent_definition_id: 'agent-def-snake',
+                    agent_version_id: 'agent-version-snake',
                     workflowId: WORKFLOW_ID,
                   },
                 }),
@@ -559,7 +525,7 @@ describe('MarketplaceReviewService', () => {
     );
   });
 
-  it('非 Agent 节点不需要 systemPrompt 和 llmModelId', async () => {
+  it('非 Agent 节点不需要绑定 Agent Definition', async () => {
     db.select
       .mockReturnValueOnce(createSelectChain([createVersionRecord()]))
       .mockReturnValueOnce(
