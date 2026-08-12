@@ -58,7 +58,7 @@
       <div class="stack s">
         <h3>三条贯穿全局的主线</h3>
         <ul class="dash">
-          <li><strong>快照优先</strong> — 工作流、Agent、插件、生成应用全部“草稿可改、发布不可变”。执行永远读快照，不读草稿。</li>
+          <li><strong>快照优先</strong> — 工作流、Agent、插件、生成应用全部“草稿可改、发布不可变”。执行默认读快照；唯一例外是编辑器里的 Run（<code>launchSource='web-studio'</code>）会读当前草稿，见 B3。</li>
           <li><strong>租户是第一等公民</strong> — 每个请求包在一个设置了 <code>app.current_tenant</code> 的数据库事务里，PostgreSQL RLS 兜底，而不是靠代码里记得加 <code>where tenant_id</code>。</li>
           <li><strong>不可信代码只在一个地方跑</strong> — Agent 生成的代码进 Firecracker 微虚拟机，插件进 Extism WASM。业务进程既没有 KVM 也没有 Docker socket。</li>
         </ul>

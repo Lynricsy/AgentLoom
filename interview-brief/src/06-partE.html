@@ -103,7 +103,7 @@
         <h3>端口定义</h3>
         <p class="sm"><code>PortDefinition</code>：<code>id / label / direction / dataType / required / multiple / maxConnections / schema / acceptsAnyDataType</code>。<code>schema</code> 支持 Scalar / Object / Array。</p>
         <p class="sm">边上另存一整套兼容性元数据：<code>rawCompatibilityLevel</code>、<code>visualLevel</code>、<code>reasonKey</code>、<code>missingFields</code>、<code>candidateMappings</code>、<code>fieldMapping</code>、<code>mappingSummary</code>、<code>transformFn</code>。</p>
-        <p class="sm">这么重的边数据是为了让「这条连线为什么是黄色的、缺哪几个字段、可以怎么映射」在<strong>重新打开画布时不用重算</strong>，也能被后端在执行前复用。</p>
+        <p class="sm">这么重的边数据是为了让「这条连线为什么是黄色的、缺哪几个字段、可以怎么映射」在<strong>重新打开画布时不用重算</strong>——它随图一起存进 <code>workflow_definitions.edges</code>，因此也会进入发布快照。</p>
       </div>
       <div class="stack s">
         <h3>两阶段校验</h3>
@@ -228,7 +228,7 @@
 
     <div class="g g-7-5">
       <div class="stack s">
-        <p class="sm"><code>audit_logs</code> 与 <code>audit_log_archives</code> 列结构完全相同：<code>id, tenant, actor, event/resource/execution, summary, before/after/metadata (JSONB), createdAt</code>。两张表都用 <code>createAppendOnlyTenantPolicies</code>——数据库层<strong>只授 SELECT 和 INSERT</strong>，没有 UPDATE / DELETE 权限。审计记录在数据库层面就不可篡改。</p>
+        <p class="sm"><code>audit_logs</code> 与 <code>audit_log_archives</code> 列结构完全相同：<code>id, tenant, actor, event/resource/execution, summary, before/after/metadata (JSONB), createdAt</code>。两张表都用 <code>createAppendOnlyTenantPolicies</code>——数据库层<strong>只授 SELECT 和 INSERT</strong>，没有 UPDATE / DELETE 权限。也就是说，<strong>应用使用的 <code>authenticated</code> 角色没有能力改写或删除审计记录</strong>；能绕过的只有直接持有更高权限的数据库账号（迁移/DBA），那已经属于另一个信任层级。</p>
         <h3>归档链路</h3>
         <ol class="num">
           <li><code>AuditLogRetentionScheduler</code> 用 BullMQ <code>upsertJobScheduler</code> + 固定 ID 注册<strong>单例</strong>周期任务（多副本部署下只会有一个）</li>

@@ -397,7 +397,7 @@
           <li><strong>缓冲不够。</strong><code>getEventsSince()</code> 返回 null，服务端改发一份完整 <strong>state snapshot</strong> + 活跃 step 的初始事件，客户端整体覆盖本地状态。</li>
           <li><strong>没落后。</strong>当前 eventId ≤ 客户端游标，什么都不发。</li>
         </ol>
-        <p class="sm">终态处理很讲究：<strong>先 flush 输出与排队事件，立即广播终态，30 秒后才清理 counter 和 buffer</strong>。这样刚好错过终态的客户端还有 30 秒窗口能拉到完整结局。</p>
+        <p class="sm">终态处理很讲究：<strong>先 <code>flushExecutionQueue()</code> 排空积压事件，再立即广播终态，30 秒后才清理 counter 和 buffer</strong>。这样刚好错过终态的客户端还有 30 秒窗口能拉到完整结局。</p>
       </div>
     </div>
 
@@ -409,7 +409,7 @@
         <div class="st"><span class="i">01</span><b>令牌充足</b><span class="d">直接 emit</span></div>
         <div class="st"><span class="i">02</span><b>令牌耗尽</b><span class="d">进入该执行的专属队列</span></div>
         <div class="st"><span class="i">03</span><b>队列满 500</b><span class="d">丢最旧的事件，保新不保全</span></div>
-        <div class="st"><span class="i">04</span><b>100ms drain</b><span class="d">定时排空，终态与 title 走 immediate 通道插队</span></div>
+        <div class="st"><span class="i">04</span><b>100ms drain</b><span class="d">定时排空；终态前先整体 flush，保证结局不被积压挡住</span></div>
       </div>
       <div class="g g2 gap-s">
         <div class="note">

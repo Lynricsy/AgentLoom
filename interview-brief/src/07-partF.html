@@ -175,7 +175,7 @@
       </div>
       <div class="qa">
         <div class="q"><span class="i">Q14</span><span>计费怎么保证不重复算钱？</span></div>
-        <div class="a">两层幂等：worker 在租户事务内跳过 0 值与已存在记录，service 层再用 <code>onConflictDoNothing(plugin, period)</code> 兜底。<b>钱相关的写入必须一层在业务逻辑、一层在数据库唯一约束。</b>另外用量记录本身是 fire-and-forget，计费失败不能让用户的执行失败。</div>
+        <div class="a">两层幂等：worker 在租户事务内跳过 0 值与已存在记录，service 层再用 <code>onConflictDoNothing(plugin, period)</code> 兜底。<b>钱相关的写入必须一层在业务逻辑、一层在数据库唯一约束。</b>另外用量记录虽然是 <code>await</code> 的，但外面包着只 <code>warn</code> 的 <code>try/catch</code>——记账失败不会让用户的执行失败。</div>
       </div>
     </div>
   </div>
@@ -192,7 +192,7 @@
     <div class="stack s">
       <div class="qa">
         <div class="q"><span class="i">Q15</span><span>为什么用 Firecracker 而不是 Docker 跑 Agent 代码？</span></div>
-        <div class="a">容器共享宿主内核，一个内核漏洞即逃逸。Firecracker 每个沙箱独立内核，逃逸要先打穿 KVM/virtio，攻击面小一个数量级，冷启动仍在百毫秒级。<b>而且业务进程根本不持有 KVM 和 Docker socket</b>，权限集中在一个单例 Go manager。</div>
+        <div class="a">容器共享宿主内核，一个内核漏洞即逃逸。Firecracker 每个沙箱独立内核，逃逸要先打穿 KVM/virtio，攻击面小一个数量级，启动开销又远低于完整虚拟机。<b>而且业务进程根本不持有 KVM 和 Docker socket</b>，权限集中在一个单例 Go manager。</div>
       </div>
       <div class="qa">
         <div class="q"><span class="i">Q16</span><span>网络隔离具体防什么？只写 nftables 不行吗？</span></div>
@@ -216,7 +216,7 @@
       </div>
       <div class="qa">
         <div class="q"><span class="i">Q21</span><span>让模型改自己的配置，风险怎么控？</span></div>
-        <div class="a">工具拆成读 / 提案 / 写三类，只有 <code>apply_change</code> 和 <code>create_resource</code> 需要人工审批。审批状态是 <b>tool-level 的 <code>awaiting_permission</code>，step 保持 running</b>，因为等待的只是一次工具调用，模型这一轮还在进行中。审批记录存 Redis 跨进程共享，可按「会话 × 分类」记住决定。<b>超时 30 秒默认拒绝。</b></div>
+        <div class="a">工具拆成读 / 提案 / 写三类，只有 <code>apply_change</code> 和 <code>create_resource</code> 需要人工审批。审批状态是 <b>tool-level 的 <code>awaiting_permission</code>，step 保持 running</b>，因为等待的只是一次工具调用，模型这一轮还在进行中。审批记录存 Redis 跨进程共享，可按「会话 × 分类」记住决定。<b>服务端等待审批的超时是 300 秒（<code>SELF_EVOLUTION_PERMISSION_TIMEOUT_MS</code>）；沙箱 guest 侧那条 permission 回调 HTTP 请求另有 30 秒 abort，两个数字别搞混。</b></div>
       </div>
     </div>
   </div>

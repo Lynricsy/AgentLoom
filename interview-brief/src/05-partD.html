@@ -25,7 +25,7 @@
       <h2>为什么不是容器</h2>
     </div>
 
-    <p class="lead">Agent 会执行模型生成的任意代码。容器共享宿主内核，一个内核漏洞就是一次逃逸。Firecracker 给每个沙箱一个<strong>独立内核</strong>，逃逸需要先打穿 KVM/virtio——攻击面小一个数量级，同时冷启动仍在百毫秒级。</p>
+    <p class="lead">Agent 会执行模型生成的任意代码。容器共享宿主内核，一个内核漏洞就是一次逃逸。Firecracker 给每个沙箱一个<strong>独立内核</strong>，逃逸需要先打穿 KVM/virtio——攻击面小一个数量级，而启动开销远低于完整虚拟机。<em>（本项目没有做过冷启动耗时基准测试，不要在面试里报具体毫秒数。）</em></p>
 
     <div class="stackdiag">
       <div><span><b>server / worker</b> 普通权限，只持有 manager client 证书</span><span class="t">mTLS CLIENT</span></div>
@@ -261,7 +261,7 @@
             <tr><td>来源校验</td><td>RemoteAddr = guest IP，双重绑定</td></tr>
           </tbody>
         </table>
-        <p class="sm">权限请求 30 秒无响应<strong>默认拒绝</strong>（<code>deploy/sandbox/src/event-stream.ts</code>）——超时不能默认放行。</p>
+        <p class="sm">guest 侧发出的 permission 回调请求 30 秒无响应就 abort 并<strong>按拒绝处理</strong>（<code>PERMISSION_TIMEOUT_MS</code>，<code>deploy/sandbox/src/event-stream.ts</code>）——超时不能默认放行。注意服务端等待人工审批用的是另一个 300 秒超时，见 F4 Q21。</p>
       </div>
       <div class="stack s">
         <div class="card card-accent">
@@ -344,7 +344,7 @@
       <div class="stack s">
         <h3>执行 worker 的事务边界</h3>
         <p class="sm"><code>PluginExecutionWorker.process</code> 全程在 <code>runInTenantTransaction(tenantId)</code> 内：step 置 running → 找 active 插件 → 从 MinIO 下载 WASM → 构造 config → 执行 → 归一化输出 → step 置 completed/failed，最后回调 <code>NodeSchedulerService.onNodeCompleted/onNodeFailed</code>。</p>
-        <p class="sm">用量记录 <code>plugin_usage_records</code> 是 <strong>fire-and-forget</strong>：计费失败不能让用户的执行失败。</p>
+        <p class="sm">用量记录 <code>plugin_usage_records</code> 虽然是 <code>await</code> 的，但整段包在只 <code>warn</code> 的 <code>try/catch</code> 里：<strong>记账失败不会让用户的执行失败</strong>。</p>
       </div>
     </div>
 
