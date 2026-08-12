@@ -1,0 +1,297 @@
+<!-- ============ PART F 分隔 ============ -->
+<section class="page ink" data-sec="PART F">
+  <div class="body stack" style="justify-content:space-between">
+    <div class="stack s">
+      <div class="kicker">PART F</div>
+      <div class="bignum w" style="font-size:96pt">F</div>
+    </div>
+    <div class="stack m">
+      <h2 style="color:#fff;font-size:34pt">复盘</h2>
+      <p class="lead">主动交代技术债，比被追问出来强。这一部分先列出所有已知的实现缺口与契约漂移，再把最可能被问到的问题整理成可以直接说出口的答案。</p>
+      <div class="g g3 gap-s" style="border-top:1px solid rgba(255,255,255,.28);padding-top:4mm">
+        <div><div class="kicker" style="opacity:.6">F1</div><p class="sm" style="color:#fff;margin-top:1.5mm">技术债与契约漂移</p></div>
+        <div><div class="kicker" style="opacity:.6">F2–F4</div><p class="sm" style="color:#fff;margin-top:1.5mm">问答速查</p></div>
+        <div><div class="kicker" style="opacity:.6">F5</div><p class="sm" style="color:#fff;margin-top:1.5mm">自我介绍脚本</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ F1 技术债 ============ -->
+<section class="page" data-sec="F1 · 技术债">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">F1 · KNOWN DEBT</div>
+      <h2>已知缺口清单</h2>
+      <p class="xs">每一条都是实测发现的、当前代码与设计意图不一致的地方。被问到时应该直接承认并说出修复方向。</p>
+    </div>
+
+    <table class="tight">
+      <thead><tr><th style="width:34mm">问题</th><th style="width:62mm">现状</th><th>修复方向</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>端口类型四处漂移</strong></td>
+          <td>Rust <code>port.rs</code> 12 值；Studio <code>typeSchema.ts</code> 14 值（多 <code>exec</code>/<code>volume</code>）；文档写 10 值</td>
+          <td>抽 <code>@agentloom/contracts</code> 单包，Rust 端由它生成；加跨包一致性测试</td>
+        </tr>
+        <tr>
+          <td><strong>对话回放未接通</strong></td>
+          <td><code>/agent-conversation</code> 前端 store 有 <code>lastEventId</code> 字段，但 subscribe 不传、事件处理不更新游标</td>
+          <td>照抄 <code>/execution</code> 的两段式（snapshot + 增量）实现</td>
+        </tr>
+        <tr>
+          <td><strong>入队不是事务性发件箱</strong></td>
+          <td><code>afterCommit</code> 解决了「先发后提交」，但提交后进程崩溃仍会丢任务</td>
+          <td>引入 outbox 表 + 轮询补偿</td>
+        </tr>
+        <tr>
+          <td><strong>节点副作用非幂等</strong></td>
+          <td>checkpoint 保证调度层可恢复，但 HTTP / 写文件类节点重跑会重复执行</td>
+          <td>节点级幂等键 + 结果去重表</td>
+        </tr>
+        <tr>
+          <td><strong>加密失败明文降级</strong></td>
+          <td><code>agent-task.worker.ts</code> 加密异常时 warn 后写明文</td>
+          <td>改为按组织策略选择「失败即失败」还是「降级」</td>
+        </tr>
+        <tr>
+          <td><strong>审计写入口非绝对唯一</strong></td>
+          <td><code>resource-governance.service.ts</code> 有独立直写 <code>audit_logs</code> 的兜底</td>
+          <td>把该路径也收敛进 <code>AuditLogService</code></td>
+        </tr>
+        <tr>
+          <td><strong>优化建议面板不可达</strong></td>
+          <td><code>OptimizationSuggestionsPanel</code> 无生产挂载点，只被测试引用</td>
+          <td>接进节点配置面板，或删掉避免僵尸代码</td>
+        </tr>
+        <tr>
+          <td><strong>CLI 命令与文档不符</strong></td>
+          <td><code>keys</code> 只有 <code>generate</code> 没有 <code>list</code>；<code>publish</code> 不做真正上传</td>
+          <td>补齐实现或修正文档，二选一</td>
+        </tr>
+        <tr>
+          <td><strong>兼容层未启用</strong></td>
+          <td><code>createVercelStreamFn</code> 写好但无生产调用点</td>
+          <td>接入或移除</td>
+        </tr>
+        <tr>
+          <td><strong>文档英文版只有壳</strong></td>
+          <td><code>zh/</code> 8 章 36 篇，<code>en/</code> 只有首页 stub</td>
+          <td>要么补，要么先关闭 en locale</td>
+        </tr>
+        <tr>
+          <td><strong>runtime manager 单点</strong></td>
+          <td><code>replicas=1</code> + RWO + 绑节点，无 HA</td>
+          <td>需要 microVM 状态复制才谈得上 HA，属于明确的取舍而非疏忽</td>
+        </tr>
+        <tr>
+          <td><strong>没有 CI/CD</strong></td>
+          <td>只有本地测试与覆盖率门槛</td>
+          <td>最低限度接一条跑 lint + test + typecheck 的流水线</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="note">
+      <span class="t">How to say it</span>
+      面试里讲技术债的正确姿势是<strong>「问题 + 影响范围 + 我会怎么修 + 为什么当时没修」</strong>。最后一项尤其重要——「当时优先做了 X，因为 Y」比「没时间」有说服力得多。
+    </div>
+  </div>
+</section>
+
+<!-- ============ F2 QA 架构 ============ -->
+<section class="page" data-sec="F2 · 问答 · 架构">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">F2 · Q&amp;A · ARCHITECTURE</div>
+      <h2>架构类追问</h2>
+    </div>
+
+    <div class="stack s">
+      <div class="qa">
+        <div class="q"><span class="i">Q1</span><span>为什么 Agent 和 Workflow 是两个顶层概念，而不是一个？</span></div>
+        <div class="a">生命周期和恢复边界不同。工作流执行是一次性 DAG，有确定终点，需要逐步重放与审计；Agent 对话长期存在、可跨会话继续、要独立版本与权限策略。合并会让其中一方被另一方的模型扭曲。<b>用 <code>WorkflowAgentAdapter</code> 做协议桥接，保证 Agent 逻辑只有一份。</b></div>
+      </div>
+      <div class="qa">
+        <div class="q"><span class="i">Q2</span><span>多租户为什么用 RLS 而不是在代码里加过滤条件？</span></div>
+        <div class="a">代码过滤的正确性上限等于代码审查严格程度，一个新人漏写一次就是数据泄露。RLS 把隔离下沉到数据库：<code>FORCE ROW LEVEL SECURITY</code> + <code>SET LOCAL ROLE authenticated</code> + 事务级 <code>app.current_tenant</code>，<b>即使拿到裸连接也查不到别的租户</b>。代价是每个请求必须开事务，响应要等提交，副作用得注册 <code>afterCommit</code>。</div>
+      </div>
+      <div class="qa">
+        <div class="q"><span class="i">Q3</span><span>调度器为什么每次都回数据库查前驱状态，不用内存计数器？</span></div>
+        <div class="a">内存计数器在进程重启后就丢了，多 worker 并发推进同一张图时还会不同步，导致卡死或重复调度。<b>数据库是唯一真相源</b>，多几次查询换来重启可恢复和水平扩展安全。</div>
+      </div>
+      <div class="qa">
+        <div class="q"><span class="i">Q4</span><span>DAG 里怎么表达循环？</span></div>
+        <div class="a">不画回边。循环体是带 <code>parentId</code> 的子图，拓扑排序时先 <code>filterTopLevel</code> 排除它们；每一轮开始前 reset 子步骤的 input/result/checkpoint。这样每个内部节点在 <code>execution_steps</code> 里始终只有一行，轮次信息记在父节点的 <code>rounds</code> 里。<b>代价是历史轮次的中间产物只能从事件流回看。</b></div>
+      </div>
+      <div class="qa">
+        <div class="q"><span class="i">Q5</span><span>为什么工作流执行钉死快照，Agent 对话却自动跟随新版本？</span></div>
+        <div class="a">因为可复现性要求不同。工作流执行必须能被审计和重放，配置中途变形不可接受；对话本身就有模型随机性，不可能严格复现，让 bug 修复无法到达老对话反而更糟。<b>同一个问题，两种实体给了相反答案，理由是需求不同而不是实现不一致。</b></div>
+      </div>
+      <div class="qa">
+        <div class="q"><span class="i">Q6</span><span>没有共享类型包，跨端契约怎么保证？</span></div>
+        <div class="a">靠约定手工镜像 —— <b>而且已经漂移了</b>：端口类型在 Rust 是 12 值、Studio 是 14 值。这是这个项目最明确的架构失误。正确做法是抽一个 contracts 包生成各端类型，并加跨包一致性测试。</div>
+      </div>
+      <div class="qa">
+        <div class="q"><span class="i">Q7</span><span>为什么用非标准 monorepo？</span></div>
+        <div class="a">各包独立 lockfile，让 SDK 能停在 Zod 3（插件生态兼容）而服务端用 Zod 4，Rust / Go / Flutter 也本来就无法进 pnpm workspace。代价是没有一键构建和统一依赖升级。</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ F3 QA 并发 ============ -->
+<section class="page" data-sec="F3 · 问答 · 并发">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">F3 · Q&amp;A · CONCURRENCY</div>
+      <h2>并发与一致性追问</h2>
+    </div>
+
+    <div class="stack s">
+      <div class="qa">
+        <div class="q"><span class="i">Q8</span><span>入队为什么必须在事务提交之后？</span></div>
+        <div class="a">经典的「消息先于数据可见」问题：worker 抢先按 executionId 查行，因为未提交 + RLS 而查不到，任务直接失败。所以入队注册成事务的 <code>afterCommit</code> 回调，并用 <code>jobId = executionId</code> 让 BullMQ 天然去重。<b>还没解决的是「提交成功但入队前崩溃」——那需要 outbox。</b></div>
+      </div>
+      <div class="qa">
+        <div class="q"><span class="i">Q9</span><span>两个人同时编辑一张图怎么办？</span></div>
+        <div class="a">草稿表的 <code>version</code> 字段兼作 OCC 版本，每次保存 +1，写入时带上期望版本，不匹配就拒绝。优化建议 apply 时还叠了第二层 guard：<code>WHERE status='pending'</code>，防止同一条建议被消费两次。<b>并发写必须同时防「覆盖别人」和「重复自己」。</b></div>
+      </div>
+      <div class="qa">
+        <div class="q"><span class="i">Q10</span><span>断线重连怎么保证事件不丢也不重？</span></div>
+        <div class="a">每个执行维护单调递增 <code>eventId</code> 和 500 条环形缓冲。客户端带 <code>lastEventId</code> 订阅：缓冲够就补增量；缓冲不够就发完整 state snapshot 让客户端整体覆盖；没落后就什么都不发。<b>终态事件广播后要等 30 秒再清缓冲</b>，给刚好错过的客户端留窗口。</div>
+      </div>
+      <div class="qa">
+        <div class="q"><span class="i">Q11</span><span>事件太多把前端打爆怎么办？</span></div>
+        <div class="a">令牌桶 + 每执行队列（cap 500，100ms drain）。<b>队列满时丢最旧的</b>，因为 LLM 流式 token 越新越有用；而终态和标题更新走 immediate 通道插队，永不进队列也永不被丢。</div>
+      </div>
+      <div class="qa">
+        <div class="q"><span class="i">Q12</span><span>同一个工作区被两个沙箱挂载怎么办？</span></div>
+        <div class="a"><code>workspace_runtime_leases</code>：workspace_id 唯一 + <b>fencing token</b> + 过期时间。挂载前 acquire，恢复后 <code>assertHeld</code>，最后一个 mount 离开才释放并回写快照。没有 fencing token 的锁是假锁——卡住的旧持有者恢复后仍会写入。</div>
+      </div>
+      <div class="qa">
+        <div class="q"><span class="i">Q13</span><span>沙箱管理器重启后残留的虚拟机怎么处理？</span></div>
+        <div class="a"><code>Recover()</code> 扫描：persistent 且磁盘 <code>e2fsck</code> 通过就标记 stopped 可重启；但 jailer / cgroup / PID / netns 清理只要有一项失败，就保留 handle 并置 failed、<b>拒绝继续</b>。宁可留个需要人工处理的资源，也不冒两个 VM 抢同一块可写磁盘的风险。</div>
+      </div>
+      <div class="qa">
+        <div class="q"><span class="i">Q14</span><span>计费怎么保证不重复算钱？</span></div>
+        <div class="a">两层幂等：worker 在租户事务内跳过 0 值与已存在记录，service 层再用 <code>onConflictDoNothing(plugin, period)</code> 兜底。<b>钱相关的写入必须一层在业务逻辑、一层在数据库唯一约束。</b>另外用量记录本身是 fire-and-forget，计费失败不能让用户的执行失败。</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ F4 QA 安全 ============ -->
+<section class="page" data-sec="F4 · 问答 · 安全">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">F4 · Q&amp;A · SECURITY</div>
+      <h2>安全类追问</h2>
+    </div>
+
+    <div class="stack s">
+      <div class="qa">
+        <div class="q"><span class="i">Q15</span><span>为什么用 Firecracker 而不是 Docker 跑 Agent 代码？</span></div>
+        <div class="a">容器共享宿主内核，一个内核漏洞即逃逸。Firecracker 每个沙箱独立内核，逃逸要先打穿 KVM/virtio，攻击面小一个数量级，冷启动仍在百毫秒级。<b>而且业务进程根本不持有 KVM 和 Docker socket</b>，权限集中在一个单例 Go manager。</div>
+      </div>
+      <div class="qa">
+        <div class="q"><span class="i">Q16</span><span>网络隔离具体防什么？只写 nftables 不行吗？</span></div>
+        <div class="a">不行。guest 里的 root 可以改自己的 IP 和 MAC，按 IP 写的规则形同虚设。所以在 host 侧 veth 的 <b>tc ingress 同时校验源 IPv4 + MAC 以及 ARP 的 sender IP + MAC</b>，其余帧全丢；guest 内核禁 IPv6 堵旁路；nftables 再拒绝 sibling VM、private CIDR 和非 relay host；manager 连 guest 时按分配 IP 校验证书 IP SAN 且禁止 ServerName。<b>把网络地址变成不可伪造的身份，这是关键。</b></div>
+      </div>
+      <div class="qa">
+        <div class="q"><span class="i">Q17</span><span>沙箱里的工具要回调服务端，怎么不被利用成 SSRF？</span></div>
+        <div class="a">guest 永远拿不到真实地址。manager 在代理请求时把回调 URL 改写成不透明 relay URL + 32 字节随机 token；回调进来时先校验 <code>RemoteAddr</code> 等于该 guest 的分配 IP，再校验 token，然后 manager 代持真实上游凭证转发到白名单主机（只有 server/worker）。<b>token 24 小时过期，注册表上限 10000 条。</b></div>
+      </div>
+      <div class="qa">
+        <div class="q"><span class="i">Q18</span><span>插件签名为什么不直接对 ZIP 文件签？</span></div>
+        <div class="a">ZIP 字节表示不唯一——条目顺序、压缩级别、时间戳都会变，任何无害的重打包都会让签名失效。所以对 <b>canonical descriptor</b>（深度排序的 manifest + 按路径排序的 <code>[path, sha256]</code> 列表）签名，只绑定业务内容不绑定容器格式。用 RSA-PSS，验签侧 saltLength 用 AUTO。</div>
+      </div>
+      <div class="qa">
+        <div class="q"><span class="i">Q19</span><span>号称端到端加密，服务端真的解不开吗？</span></div>
+        <div class="a">要先把边界说清楚，否则这个说法会被拆穿。<b>准确的表述是「服务端没有持久化的解密能力」，而不是「服务端从未见过明文」</b>——LLM 输出是在 worker 进程里产生的，加密发生在写库之前，所以在线进程和模型提供商本来就在信任边界之内。它真正防的是<b>静态数据泄露</b>：数据库里只有 RSA-4096 公钥，私钥只在租户浏览器 IndexedDB 以 PKCS8 存放、导入时 <code>extractable:false</code>，服务端代码里没有任何解密函数，所以拖库、备份泄露、DBA 越权都读不到内容。密钥表 append-only（org+fingerprint 唯一 + 单 active partial index），轮换插新行而非覆盖，否则历史密文永久变乱码。<b>另外两个要主动承认的口子：IndexedDB 仍受同源脚本影响；加密失败时当前实现会 warn 后明文降级。</b></div>
+      </div>
+      <div class="qa">
+        <div class="q"><span class="i">Q20</span><span>审计日志怎么保证不可篡改？</span></div>
+        <div class="a">数据库层只授 SELECT + INSERT，没有 UPDATE/DELETE 权限。归档走 <b>copy → 回读校验 → 才删除</b>，校验失败不删。读侧并行查热表与归档表，按 id 去重、按 <code>(createdAt,id)</code> 排序，对调用方完全透明。</div>
+      </div>
+      <div class="qa">
+        <div class="q"><span class="i">Q21</span><span>让模型改自己的配置，风险怎么控？</span></div>
+        <div class="a">工具拆成读 / 提案 / 写三类，只有 <code>apply_change</code> 和 <code>create_resource</code> 需要人工审批。审批状态是 <b>tool-level 的 <code>awaiting_permission</code>，step 保持 running</b>，因为等待的只是一次工具调用，模型这一轮还在进行中。审批记录存 Redis 跨进程共享，可按「会话 × 分类」记住决定。<b>超时 30 秒默认拒绝。</b></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ F5 自我介绍 ============ -->
+<section class="page" data-sec="F5 · 脚本">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">F5 · SCRIPT</div>
+      <h2>三个长度的说法</h2>
+    </div>
+
+    <div class="card card-accent">
+      <div class="kicker">30 秒版</div>
+      <p class="sm" style="margin-top:2mm;font-size:9.2pt;line-height:1.75">「AgentLoom 是一个多智能体工作流编排平台。用户在画布上把 AI Agent、工具、知识库、条件循环连成 DAG 并执行；Agent 也可以脱离工作流独立对话。技术上是 NestJS + PostgreSQL RLS 多租户、BullMQ 调度、Socket.IO 实时流，Agent 代码跑在 Firecracker 微虚拟机里，第三方插件跑在 Extism WASM 沙箱里。<strong>整个系统的组织原则是：不可信代码只在受控边界内执行，业务进程本身不持有任何宿主级权限。</strong>」</p>
+    </div>
+
+    <div class="g g2 gap-s">
+      <div class="card card-fill">
+        <h4>2 分钟版 · 加这三段</h4>
+        <ul class="dash" style="margin-top:2mm">
+          <li><strong>数据一致性怎么做的。</strong>每个请求包在设置了 <code>app.current_tenant</code> 的事务里，RLS 兜底；副作用注册 afterCommit；写冲突用 OCC + 状态 guard 双层防护。</li>
+          <li><strong>实时怎么做的。</strong>带单调 eventId 的事件信封 + 500 条环形缓冲 + 断线按 lastEventId 增量回放，缓冲不够降级为整体快照；令牌桶背压，丢最旧保最新，终态走 immediate 通道。</li>
+          <li><strong>隔离怎么做的。</strong>特权收敛到单例 Go manager；网络层用 tc 做 IP+MAC+ARP 三重绑定把地址变成身份；回调经不透明 relay 中转防 SSRF。</li>
+        </ul>
+      </div>
+      <div class="card card-outlined">
+        <h4>如果被问「AI 写的还是你写的」</h4>
+        <p class="sm" style="margin-top:2mm">直接承认高强度使用 AI 辅助，然后<strong>立刻把话题拉到判断力上</strong>：</p>
+        <p class="sm" style="margin-top:2mm">「AI 能写出代码，但决定<em>不</em>做什么是我的工作。比如：为什么工作流不自动重试而 agent-task 重试 4 次；为什么监控趋势里 queueDepth 返回 null 而不是 0；为什么冷恢复清理失败要 fail closed 留个脏资源给人工。<strong>这些都是取舍，不是生成。</strong>」</p>
+        <p class="sm" style="margin-top:2mm">再补一句技术债清单（F1）——能准确说出自己系统的缺陷，是最有力的真实性证明。</p>
+      </div>
+    </div>
+
+    <hr class="hair">
+
+    <div class="stack s">
+      <h3>三个可以主动抛出的「亮点故事」</h3>
+      <div class="g g3 gap-s">
+        <div class="card card-top acc">
+          <h4>tc 层身份绑定</h4>
+          <p class="xs" style="margin-top:1.5mm">「按 IP 写防火墙规则是没用的，因为 guest 能改自己的 IP。」——这句话本身就能说明你真的想过威胁模型。</p>
+        </div>
+        <div class="card card-top acc">
+          <h4>canonical archive 签名</h4>
+          <p class="xs" style="margin-top:1.5mm">「对 ZIP 签名是错的，因为容器格式不唯一。」——展示你懂得区分「内容」和「表示」。</p>
+        </div>
+        <div class="card card-top acc">
+          <h4>tool-level 权限门</h4>
+          <p class="xs" style="margin-top:1.5mm">「step 保持 running 而不是 waiting，因为暂停的是一次工具调用不是整个回合。」——展示你理解 agent loop 的状态机。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 封底 ============ -->
+<section class="page accent" data-nochrome>
+  <div style="position:absolute;inset:0;padding:20mm 17mm 16mm;display:flex;flex-direction:column;justify-content:space-between">
+    <div class="spread" style="border-bottom:1px solid rgba(255,255,255,.28);padding-bottom:3.4mm">
+      <div class="kicker">AgentLoom · Technical Field Note</div>
+      <div class="kicker">END</div>
+    </div>
+    <div class="stack m">
+      <h1 style="color:#fff;font-size:40pt;font-weight:200">先讲取舍，<br><span style="font-style:italic;font-weight:300">再讲实现</span>。</h1>
+      <div style="width:34mm;height:1.6mm;background:#fff"></div>
+      <p class="lead" style="max-width:56ch">面试官判断的不是你写了多少代码，而是你能不能解释每一个决定背后的约束。这份文档里的每一节都为此准备。</p>
+    </div>
+    <div style="border-top:1px solid rgba(255,255,255,.28);padding-top:4mm">
+      <div class="g g3 gap-s">
+        <div><div class="kicker" style="opacity:.7">生成方式</div><p class="xs" style="color:rgba(255,255,255,.85);margin-top:1.5mm">源码实测 + 七路并行调研，数字均来自本地工作树命令输出</p></div>
+        <div><div class="kicker" style="opacity:.7">视觉体系</div><p class="xs" style="color:rgba(255,255,255,.85);margin-top:1.5mm">瑞士国际主义 · IKB 克莱因蓝 · Inter / Noto Sans CJK / JetBrains Mono</p></div>
+        <div><div class="kicker" style="opacity:.7">仓库</div><p class="xs" style="color:rgba(255,255,255,.85);margin-top:1.5mm">interview-brief/ · <code>node build.mjs</code> 可重新生成</p></div>
+      </div>
+    </div>
+  </div>
+</section>

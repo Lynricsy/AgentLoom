@@ -1,0 +1,472 @@
+<!-- ============ PART B 分隔 ============ -->
+<section class="page ink" data-sec="PART B">
+  <div class="body stack" style="justify-content:space-between">
+    <div class="stack s">
+      <div class="kicker">PART B</div>
+      <div class="bignum w" style="font-size:96pt">B</div>
+    </div>
+    <div class="stack m">
+      <h2 style="color:#fff;font-size:34pt">执行内核</h2>
+      <p class="lead">从 HTTP 请求到 DAG 节点跑完，中间隔着租户事务、发布快照、准入判定、队列、拓扑排序、复合节点状态机、检查点和事件回放。这一部分是整个系统的心脏，也是面试最容易深挖的地方。</p>
+      <div class="g g3 gap-s" style="border-top:1px solid rgba(255,255,255,.28);padding-top:4mm">
+        <div><div class="kicker" style="opacity:.6">B1–B3</div><p class="sm" style="color:#fff;margin-top:1.5mm">骨架 · 多租户 · 版本语义</p></div>
+        <div><div class="kicker" style="opacity:.6">B4–B7</div><p class="sm" style="color:#fff;margin-top:1.5mm">调度 · 复合节点 · 检查点</p></div>
+        <div><div class="kicker" style="opacity:.6">B8–B9</div><p class="sm" style="color:#fff;margin-top:1.5mm">实时协议 · 背压 · 触发器</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ B1 骨架 ============ -->
+<section class="page" data-sec="B1 · 服务端骨架">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">B1 · BOOTSTRAP</div>
+      <h2>全局管线的顺序<br>就是安全模型</h2>
+    </div>
+
+    <p class="sm" style="max-width:72ch"><code>src/main.ts</code> 用 <code>FastifyAdapter({ rawBody: true })</code> 起 Nest（rawBody 是给 webhook HMAC 验签用的），全局前缀 <code>/api/v1</code>，multipart 上限 50MB，<code>RedisIoAdapter</code> 让 Socket.IO 跨进程广播（失败降级单实例），再挂 <code>AllExceptionsFilter</code> + <code>ZodValidationPipe</code> + Swagger。</p>
+
+    <div class="pipe" style="grid-template-columns:repeat(5,1fr)">
+      <div class="st"><span class="i">01</span><b>TenantMiddleware</b><span class="d">无 X-Api-Key 时，从 JWT payload <em>不验签</em>提取 tenantId，只为尽早拿到租户</span></div>
+      <div class="st"><span class="i">02</span><b>Throttler</b><span class="d">按租户动态限流，读 <code>tenant_quotas.apiRateLimitPerMinute</code></span></div>
+      <div class="st"><span class="i">03</span><b>AuthGuard</b><span class="d">JWT 优先验签（HS256 / aud=authenticated / 黑名单 / MFA），无 Bearer 才回落 <code>X-Api-Key</code></span></div>
+      <div class="st"><span class="i">04</span><b>TenantGuard</b><span class="d">校验用户确实属于该租户</span></div>
+      <div class="st"><span class="i">05</span><b>RolesGuard</b><span class="d">owner / admin / creator / operator / viewer</span></div>
+    </div>
+
+    <div class="note">
+      <span class="t">Subtle</span>
+      中间件里的 JWT 解析<strong>不验签</strong>，这看起来像漏洞，其实是分工：它只负责「提前知道租户是谁」，真正的信任建立在 <code>AuthGuard</code>。而事务拦截器依赖的是 <code>request.user.tenantId</code>——也就是<strong>验签之后</strong>的值，所以伪造 JWT 拿不到别的租户事务。这是个典型的「看起来危险、实际分层正确」的追问点。
+    </div>
+
+    <hr class="hair">
+
+    <div class="g g-5-7">
+      <div class="stack s">
+        <h3>核心队列</h3>
+        <table class="tight">
+          <thead><tr><th>队列</th><th>要点</th></tr></thead>
+          <tbody>
+            <tr><td><code>workflow-execution</code></td><td>attempts=1，不自动重试整条执行</td></tr>
+            <tr><td><code>agent-task</code></td><td>并发 10，attempts=4，指数退避 2s</td></tr>
+            <tr><td><code>plugin-execution</code></td><td>由调度器注入，WASM 执行</td></tr>
+            <tr><td><code>trigger-scheduler</code></td><td>cron repeat + timezone</td></tr>
+            <tr><td><code>notification</code></td><td>attempts=3，扇出三通道</td></tr>
+            <tr><td><code>audit-log-retention</code></td><td>单例 scheduler，归档冷数据</td></tr>
+            <tr><td><code>earnings-settlement</code></td><td>插件收益周期结算</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="stack s">
+        <h3>为什么整条执行不自动重试</h3>
+        <p class="sm">工作流节点会调用 LLM、写文件、发 HTTP 请求，<strong>绝大多数副作用不幂等</strong>。整条重跑等于重复扣费、重复下单。所以 <code>workflow-execution</code> 只跑一次，失败后由用户显式 <code>POST /executions/:id/resume</code>，并且 resume 会跳过已 <code>completed</code> 的步骤。</p>
+        <p class="sm">相反 <code>agent-task</code> 允许 4 次退避重试，因为它的失败绝大多数是模型侧的瞬时错误（限流、超时），而单个 Agent 回合内部有自己的检查点。</p>
+        <div class="note">
+          <span class="t">Interview</span>
+          「重试策略怎么定的」——按<strong>副作用幂等性</strong>分层，不是按重要性分层。
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ B2 多租户 ============ -->
+<section class="page" data-sec="B2 · 多租户">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">B2 · MULTI-TENANCY</div>
+      <h2>不靠「记得加 where」</h2>
+    </div>
+
+    <p class="lead">租户隔离如果依赖每个查询都手写 <code>where tenant_id = ?</code>，那它的正确性上限就等于代码审查的严格程度。这里改成数据库强制。</p>
+
+    <div class="g g-7-5">
+      <div class="stack s">
+        <h3>三段式</h3>
+        <ol class="num">
+          <li><strong>迁移期建立策略。</strong><code>0005_lazy_tomorrow_man.sql</code> 定义 <code>get_tenant_id()</code> = <code>NULLIF(current_setting('app.current_tenant', true),'')::uuid</code>，为每张业务表 <code>ENABLE</code> + <code>FORCE ROW LEVEL SECURITY</code>，并按 <code>createDirectTenantPolicies</code> / <code>createAppendOnlyTenantPolicies</code> 生成策略。</li>
+          <li><strong>请求期开事务。</strong>全局 <code>TenantTransactionInterceptor</code> 把整个 handler 包进 <code>runInTenantTransaction</code>：先 <code>SET LOCAL ROLE authenticated</code>，再 <code>set_config('app.current_tenant', tenantId, true)</code>（第三参 <code>true</code> = 事务级，事务结束自动失效）。</li>
+          <li><strong>取连接。</strong>事务句柄放进 <code>AsyncLocalStorage</code>；所有 service 通过 <code>getTenantDb()</code> 取，拿到的永远是<strong>带租户上下文的那条连接</strong>，而不是连接池里的裸连接。</li>
+        </ol>
+      </div>
+      <div class="stack s">
+        <div class="card card-ink">
+          <div class="kicker">WHY FORCE</div>
+          <p class="sm" style="margin-top:2mm">普通 <code>ENABLE RLS</code> 对表 owner 不生效。<code>FORCE</code> 让策略对所有人生效，包括迁移用的高权限角色。配合 <code>SET LOCAL ROLE authenticated</code>，应用即使拿到超级用户连接也会被降权。</p>
+        </div>
+        <div class="note">
+          <span class="t">Side effect</span>
+          响应在<strong>事务提交后</strong>才发出。这就要求所有「提交后才能做」的副作用（比如把执行任务丢进 BullMQ）注册成 <code>afterCommit</code> hook，否则 worker 可能读到还没提交的行。
+        </div>
+        <div class="note warn">
+          <span class="t">Exception</span>
+          <code>platform_api_tokens</code> 没有 RLS——因为验证 API Key 时还不知道租户是谁，属于「先有鸡还是先有蛋」。这张表靠 service 层按 <code>token_hash</code> 精确查询兜底。
+        </div>
+      </div>
+    </div>
+
+    <hr class="hair">
+
+    <div class="g g3 gap-s">
+      <div class="card card-outlined"><div class="kicker mute">DIRECT</div><p class="xs" style="margin-top:1.5mm">主表：<code>tenant_id = get_tenant_id()</code>，四条策略（S/I/U/D）</p></div>
+      <div class="card card-outlined"><div class="kicker mute">JOIN</div><p class="xs" style="margin-top:1.5mm">子表：<code>EXISTS(SELECT 1 FROM 父表 WHERE id = ... AND tenant_id = get_tenant_id())</code></p></div>
+      <div class="card card-outlined"><div class="kicker mute">APPEND-ONLY</div><p class="xs" style="margin-top:1.5mm">审计表：只授 <code>SELECT</code> + <code>INSERT</code>，数据库层面拒绝 UPDATE / DELETE</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ B3 版本语义 ============ -->
+<section class="page" data-sec="B3 · 版本语义">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">B3 · VERSIONING</div>
+      <h2>草稿号 ≠ 版本号</h2>
+    </div>
+
+    <p class="sm" style="max-width:72ch">这里有一个很容易被问住的点：<code>workflow_definitions.version</code> 和用户看到的「v3」<strong>不是同一个东西</strong>。</p>
+
+    <div class="g g2 gap-s">
+      <div class="card card-fill">
+        <h4><code>workflow_definitions.version</code></h4>
+        <p class="sm" style="margin-top:1.5mm">草稿修订号，兼作<strong>乐观并发控制（OCC）</strong>版本。每次自动保存 +1。前端 2 秒防抖 <code>PATCH</code>，服务端用它检测「你编辑的是不是最新的图」。</p>
+        <p class="xs" style="margin-top:2mm">它会一路涨到几百，跟发布无关。</p>
+      </div>
+      <div class="card card-accent">
+        <h4 style="color:#fff"><code>snapshot.metadata.releaseNumber</code></h4>
+        <p class="sm" style="margin-top:1.5mm">用户可见的发布号，<strong>只在快照首次发布时分配</strong>（取历史最大值 +1）。API 以 <code>publishedReleaseNumber</code> 暴露。重新发布一个历史版本会沿用它原来的号，不会造成号段跳跃。</p>
+      </div>
+    </div>
+
+    <div class="stack s">
+      <h3>发布链路</h3>
+      <div class="pipe" style="grid-template-columns:repeat(4,1fr)">
+        <div class="st"><span class="i">DRAFT</span><b>编辑草稿</b><span class="d"><code>nodes/edges/viewport</code> 直接存在定义表，version++ 作 OCC</span></div>
+        <div class="st"><span class="i">SNAPSHOT</span><b>createVersion</b><span class="d">插入 <code>workflow_versions</code>，<code>versionNumber</code> = max+1，<strong>不发布</strong></span></div>
+        <div class="st"><span class="i">VALIDATE</span><b>publish 前校验</b><span class="d">图合法性、Agent 绑定存在、no_sandbox 节点不得引用 stdio MCP</span></div>
+        <div class="st"><span class="i">PUBLISH</span><b>原子切换</b><span class="d">清旧 <code>publishedAt</code>，写 <code>publishedVersionId</code> 与 status</span></div>
+      </div>
+    </div>
+
+    <hr class="hair">
+
+    <div class="g g-5-7">
+      <div class="stack s">
+        <h3>执行读哪一份</h3>
+        <p class="sm">默认读 <code>publishedVersionId</code> 指向的<strong>不可变快照</strong>——保证一次执行从头到尾用的是同一份图，不会因为有人在编辑而中途变形。</p>
+        <p class="sm">唯一例外：<code>RunWorkflowDto.launchSource === 'web-studio'</code> 时读当前草稿。这是给编辑器里的「Run」按钮用的，否则改一行就得发布一次，开发体验不可接受。</p>
+      </div>
+      <div class="stack s">
+        <h3>三处 fail-closed 校验</h3>
+        <ul class="sq">
+          <li><strong>未发布不能执行。</strong>没有 <code>publishedVersionId</code> 直接拒，不会「凑合用草稿」。</li>
+          <li><strong>Agent 节点必须有绑定。</strong>找不到 Agent 定义时直接失败，而不是跳过节点。</li>
+          <li><strong>no_sandbox + stdio MCP 在发布期拒绝</strong>，不留到运行期才炸。</li>
+        </ul>
+        <div class="note">
+          <span class="t">Principle</span>
+          能在发布期发现的问题，绝不留到执行期。执行期的失败要通知人、要清理状态、要写审计，成本高一个数量级。
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ B4 runWorkflow ============ -->
+<section class="page" data-sec="B4 · runWorkflow">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">B4 · EXECUTION ENTRY</div>
+      <h2><code style="font-size:19pt;background:none;padding:0">runWorkflow()</code> 的九步</h2>
+      <p class="xs"><code>src/modules/execution/execution.service.ts</code></p>
+    </div>
+
+    <div class="stackdiag">
+      <div><span><b>1 · 维护模式闸门</b> 平台维护中直接拒绝</span><span class="t">GUARD</span></div>
+      <div><span><b>2 · 租户内查工作流</b> 必须 <code>published</code> 且有 <code>publishedVersionId</code></span><span class="t">RLS</span></div>
+      <div><span><b>3 · 输入参数校验</b> 按 <code>input_schema</code>（form / conversation / hybrid 三种采集模式）归一化</span><span class="t">ZOD</span></div>
+      <div><span><b>4 · 读发布快照</b> 或在 <code>web-studio</code> 来源下读草稿快照</span><span class="t">SNAPSHOT</span></div>
+      <div class="hl"><span><b>5 · 资源治理准入</b> 租户/工作流暂停？并发数超？日执行量超？→ 阻断</span><span class="t">ADMISSION</span></div>
+      <div><span><b>6 · 插入 workflow_executions</b> 状态 pending，同时冻结 <code>definitionSnapshot</code></span><span class="t">WRITE</span></div>
+      <div class="dk"><span><b>7 · afterCommit 才入队</b> jobId = executionId，天然幂等</span><span class="t">CRITICAL</span></div>
+      <div><span><b>8 · Worker initializeSteps</b> 短事务内按快照为每个节点建 <code>execution_steps</code>(pending)</span><span class="t">WORKER</span></div>
+      <div><span><b>9 · NodeScheduler.startExecution</b> 进入 DAG 调度</span><span class="t">SCHEDULE</span></div>
+    </div>
+
+    <div class="g g2 gap-s">
+      <div class="stack s">
+        <h3>第 5 步为什么在插入之前</h3>
+        <p class="sm">被治理阻断的请求<strong>不产生任何执行记录、也不入队</strong>。如果先插入再判断，数据库里会积累一堆「刚创建就失败」的噪声行，监控面板的成功率会失真，用户也会以为「跑过了但挂了」。</p>
+        <p class="sm">阻断路径统一抛 <code>ResourceGovernanceDecisionBlockedException</code>：分钟级 API 限流返回 <span class="mark">429</span> 并带 <code>Retry-After</code> / <code>X-RateLimit-*</code>；配额与暂停类返回 <span class="mark">409</span>，body 是 RFC 7807 problem+json，并且同步写审计。</p>
+      </div>
+      <div class="stack s">
+        <h3>第 7 步为什么必须 afterCommit</h3>
+        <p class="sm">这是分布式系统里最经典的一类 bug：<strong>事务还没提交，消息已经发出去了</strong>。Worker 抢先执行，按 <code>executionId</code> 去查行——查不到（RLS + 未提交），任务直接失败。</p>
+        <p class="sm">解决方式不是 sleep，也不是重试，而是把入队注册成事务的 <code>afterCommit</code> 回调。配合 <code>jobId = executionId</code>，BullMQ 天然去重，即使回调被触发两次也只会有一个任务。</p>
+        <div class="note warn">
+          <span class="t">Not solved</span>
+          这仍不是严格的事务性发件箱：提交成功但进程在入队前崩溃，任务会丢。彻底解决要引入 outbox 表 + 轮询补偿，当前没做。
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ B5 NodeScheduler ============ -->
+<section class="page" data-sec="B5 · 调度">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">B5 · SCHEDULER</div>
+      <h2>逐层推进，不是遍历</h2>
+      <p class="xs"><code>src/modules/execution/node-scheduler.service.ts</code></p>
+    </div>
+
+    <div class="g g-7-5">
+      <div class="stack s">
+        <p class="sm"><code>DagResolver</code> 用 Kahn 算法做拓扑排序，检测到环直接抛 <code>CyclicGraphException</code>。第 0 层（无前驱的节点）<strong>并行</strong>调度，之后完全由完成事件驱动：</p>
+        <ol class="num">
+          <li>节点开始前先 <code>resolveNodeInput()</code>，从上游 step 的 <code>result</code> 按端口取值，写入本 step 的 <code>input</code>（<strong>持久化</strong>，便于事后排查「它到底收到了什么」）。</li>
+          <li>按 <code>nodeType</code> 分发：<code>agent</code>/<code>chat-agent</code> → agent-task 队列；<code>plugin</code> → plugin-execution 队列；<code>text</code>/<code>condition</code>/<code>merge</code>/<code>http</code>/<code>code</code> 等同步执行。</li>
+          <li>完成时 <code>onNodeCompleted()</code> <strong>重新读库</strong>，逐个检查后继节点的所有前驱状态：全完成 → 调度；有 pending → 等待；条件分支未命中 → <code>skip</code> 并级联跳过下游。</li>
+          <li>失败时取消所有 pending / queued / waiting 步骤，执行整体置 failed。</li>
+        </ol>
+      </div>
+      <div class="stack s">
+        <div class="card card-ink">
+          <div class="kicker">WHY RE-READ DB</div>
+          <p class="sm" style="margin-top:2mm">调度器不在内存里维护「还差几个前驱」的计数器，而是每次完成都回数据库查前驱状态。</p>
+          <p class="sm" style="margin-top:2mm">代价是多几次查询；收益是<strong>进程重启后调度状态不丢</strong>，而且多个 worker 并发处理同一执行的不同分支时不会因为内存计数器不同步而卡死或重复调度。数据库是唯一的真相源。</p>
+        </div>
+        <div class="note">
+          <span class="t">Skip vs Fail</span>
+          条件分支没命中是 <code>skipped</code> 不是 <code>failed</code>，并且要<strong>级联</strong>——否则下游节点会永远等一个永远不会完成的前驱。
+        </div>
+      </div>
+    </div>
+
+    <hr class="hair">
+
+    <div class="stack s">
+      <h3>节点分派表（节选）</h3>
+      <table class="tight">
+        <thead><tr><th style="width:38mm">类型</th><th style="width:26mm">执行方式</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td><code>agent</code> / <code>chat-agent</code></td><td>agent-task 队列</td><td>经 <code>WorkflowAgentAdapter</code>；无 Agent 绑定则 fail closed</td></tr>
+          <tr><td><code>plugin</code></td><td>plugin-execution 队列</td><td>Extism WASM，回调 <code>onNodeCompleted</code></td></tr>
+          <tr><td><code>condition</code></td><td>同步</td><td>只调度命中的分支，其余 skip + 级联</td></tr>
+          <tr><td><code>loop</code> / <code>iteration</code></td><td>复合上下文</td><td>见 B6</td></tr>
+          <tr><td><code>http</code> / <code>code</code> / <code>text</code> / <code>merge</code></td><td>同步</td><td>纯函数式转换，逻辑抽在同级 util 便于单测</td></tr>
+          <tr><td><code>smart-routing</code></td><td>同步</td><td>6 种服务端策略纯函数 + 学习子模块（MLP / Elo / KNN）</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- ============ B6 复合节点 ============ -->
+<section class="page" data-sec="B6 · 复合节点">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">B6 · COMPOUND NODES</div>
+      <h2>DAG 里怎么放循环</h2>
+    </div>
+
+    <p class="lead">DAG 的定义就是「无环」，而循环天然有环。解决办法是：<strong>循环体不是环，而是一个被反复重置的子图</strong>。</p>
+
+    <div class="g g-5-7">
+      <div class="stack s">
+        <h3>机制</h3>
+        <ul class="dash">
+          <li>调度前先 <code>filterTopLevel()</code>，只把顶层节点纳入拓扑排序；带 <code>parentId</code> 的节点属于某个复合节点的内部子图。</li>
+          <li><code>loop</code> / <code>iteration</code> 节点建立内存中的 <code>compoundContexts</code>，把内部子图单独做一次 DAG 排序。</li>
+          <li>每一轮开始前 <strong>reset 子步骤</strong>：清空 <code>input</code> / <code>result</code> / <code>checkpointData</code>，然后按序调度。</li>
+          <li>父 step 的 <code>result</code> 汇总 <code>exec-out</code>、<code>rounds</code> 和 <code>compound</code> 元信息。</li>
+        </ul>
+      </div>
+      <div class="stack s">
+        <h3>两种语义</h3>
+        <table class="tight">
+          <thead><tr><th style="width:24mm">类型</th><th>终止条件</th></tr></thead>
+          <tbody>
+            <tr><td><code>iteration</code></td><td>遍历完 <code>normalizeLoopItemsInput()</code> 归一后的数组（foreach）</td></tr>
+            <tr><td><code>loop</code></td><td>由 <code>state</code> / <code>next-state</code> 端口驱动的条件循环，<strong>硬上限 <code>maxIterations</code> 默认 100</strong></td></tr>
+          </tbody>
+        </table>
+        <div class="note">
+          <span class="t">Guard</span>
+          默认 100 轮上限是防「模型判断条件永远为真」导致的无限循环烧钱。这类硬闸门在 AI 系统里必须有，且不能只靠提示词约束。
+        </div>
+      </div>
+    </div>
+
+    <hr class="hair">
+
+    <div class="g g3 gap-s">
+      <div class="card card-outlined">
+        <div class="kicker mute">BREAK</div>
+        <p class="xs" style="margin-top:1.5mm">优先级最高：先执行本轮的 <code>result</code> 节点保住已产出的数据，再 finalize 整个复合节点。不会丢掉最后一轮的成果。</p>
+      </div>
+      <div class="card card-outlined">
+        <div class="kicker mute">CONTINUE</div>
+        <p class="xs" style="margin-top:1.5mm">丢弃本轮输出，直接推进下一轮。语义与编程语言一致，降低用户心智负担。</p>
+      </div>
+      <div class="card card-outlined">
+        <div class="kicker mute">OUTPUT MODE</div>
+        <p class="xs" style="margin-top:1.5mm"><code>none</code>（不收集）/ <code>last</code>（只留最后一轮）/ <code>collect-array</code>（聚合成数组）。默认收集会撑爆 result 体积，所以要显式选。</p>
+      </div>
+    </div>
+
+    <div class="note">
+      <span class="t">Interview</span>
+      「为什么不直接在图里画一条回边？」——回边会让拓扑排序失效，也让「某个节点跑到第几轮」这件事无法在 <code>execution_steps</code> 里表达（一个节点只有一行）。用父子层级 + 每轮 reset，可以让每个内部节点保持单行记录，同时把轮次信息存进父节点的 <code>rounds</code>。代价是丢失了历史轮次的中间产物，只能靠事件流回看。
+    </div>
+  </div>
+</section>
+
+<!-- ============ B7 checkpoint ============ -->
+<section class="page" data-sec="B7 · 检查点">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">B7 · CHECKPOINT &amp; RESUME</div>
+      <h2>崩溃之后从哪继续</h2>
+    </div>
+
+    <div class="g g-7-5">
+      <div class="stack s">
+        <p class="sm"><code>CheckpointService.saveCheckpoint()</code> 在每个节点完成后<strong>合并式</strong>更新 <code>execution_steps.checkpointData</code>，而不是整体覆盖：</p>
+        <table class="tight">
+          <thead><tr><th style="width:38mm">字段</th><th>内容</th></tr></thead>
+          <tbody>
+            <tr><td><code>output</code></td><td>节点结果</td></tr>
+            <tr><td><code>completedAt</code></td><td>ISO 时间戳</td></tr>
+            <tr><td><code>dagState</code></td><td><code>{ completedNodes[], pendingNodes[] }</code></td></tr>
+            <tr><td><code>session</code></td><td>Agent 运行时会话快照（工作流侧持久化位置）</td></tr>
+            <tr><td><code>partialContent</code></td><td>流式输出的已收到部分</td></tr>
+            <tr><td><code>toolCalls</code></td><td>工具调用及其权限状态</td></tr>
+            <tr><td><code>round</code> / <code>subAgentStreams</code></td><td>复合轮次与子 Agent 流</td></tr>
+          </tbody>
+        </table>
+        <p class="sm"><code>attemptCount</code> 单独计数，不混在 checkpoint 里，避免合并语义把重试次数覆盖掉。</p>
+      </div>
+      <div class="stack s">
+        <h3>resume 的两种模式</h3>
+        <div class="card card-fill">
+          <h4>整体续跑</h4>
+          <p class="xs" style="margin-top:1.5mm">把 <code>failed</code> / <code>cancelled</code> 的步骤重置为 pending，<code>attemptCount=0</code>，执行置 running，投 <code>resume-execution</code>。调度器跳过 <code>completed</code> 步骤。</p>
+        </div>
+        <div class="card card-fill">
+          <h4>从指定节点重跑</h4>
+          <p class="xs" style="margin-top:1.5mm">带 <code>fromNodeId</code> 时按 BFS 找出该节点<strong>及全部下游</strong>，一起重置并清 <code>result</code>。上游成果保留。</p>
+        </div>
+        <div class="note">
+          <span class="t">Constraint</span>
+          <code>POST /executions/:id/resume</code> 只接受 <code>failed</code> 状态。running 中的执行不允许续跑，否则会出现两个调度器同时推进同一张图。
+        </div>
+      </div>
+    </div>
+
+    <hr class="hair">
+
+    <div class="note warn">
+      <span class="t">Honest limitation</span>
+      检查点保证的是「<strong>调度层面</strong>可恢复」，不是「副作用可恢复」。如果一个节点已经发出了 HTTP POST 然后进程挂了，重跑会再发一次。要做到真正的 exactly-once，需要节点级幂等键，目前只有部分节点（如插件执行按 step 记录）具备。这是可以主动承认的设计边界。
+    </div>
+  </div>
+</section>
+
+<!-- ============ B8 实时协议 ============ -->
+<section class="page" data-sec="B8 · 实时协议">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">B8 · REALTIME</div>
+      <h2>带单调游标的事件流</h2>
+    </div>
+
+    <div class="g g-5-7">
+      <div class="stack s">
+        <h3>事件信封</h3>
+        <div class="card card-ink">
+          <p class="sm" style="font-family:var(--mono);font-size:7.4pt;line-height:1.7;color:#fff">ExecutionEvent&lt;T&gt; {<br>&nbsp;&nbsp;eventId: number   // 每执行单调递增<br>&nbsp;&nbsp;event: string     // execution.node.*<br>&nbsp;&nbsp;timestamp: string<br>&nbsp;&nbsp;executionId: string<br>&nbsp;&nbsp;tenantId: string<br>&nbsp;&nbsp;data: T<br>}</p>
+        </div>
+        <p class="sm">房间命名 <code>execution:{tenant}:{execution}</code>，Redis adapter 负责跨进程。每个执行维护一个 <strong>500 条环形缓冲</strong>。</p>
+      </div>
+      <div class="stack s">
+        <h3>断线重连的三种情况</h3>
+        <ol class="num">
+          <li><strong>缓冲够。</strong>客户端带 <code>lastEventId</code> 订阅，服务端从缓冲区取增量补发。</li>
+          <li><strong>缓冲不够。</strong><code>getEventsSince()</code> 返回 null，服务端改发一份完整 <strong>state snapshot</strong> + 活跃 step 的初始事件，客户端整体覆盖本地状态。</li>
+          <li><strong>没落后。</strong>当前 eventId ≤ 客户端游标，什么都不发。</li>
+        </ol>
+        <p class="sm">终态处理很讲究：<strong>先 flush 输出与排队事件，立即广播终态，30 秒后才清理 counter 和 buffer</strong>。这样刚好错过终态的客户端还有 30 秒窗口能拉到完整结局。</p>
+      </div>
+    </div>
+
+    <hr class="hair">
+
+    <div class="stack s">
+      <h3>背压：令牌桶 + 每执行队列</h3>
+      <div class="pipe" style="grid-template-columns:repeat(4,1fr)">
+        <div class="st"><span class="i">01</span><b>令牌充足</b><span class="d">直接 emit</span></div>
+        <div class="st"><span class="i">02</span><b>令牌耗尽</b><span class="d">进入该执行的专属队列</span></div>
+        <div class="st"><span class="i">03</span><b>队列满 500</b><span class="d">丢最旧的事件，保新不保全</span></div>
+        <div class="st"><span class="i">04</span><b>100ms drain</b><span class="d">定时排空，终态与 title 走 immediate 通道插队</span></div>
+      </div>
+      <div class="g g2 gap-s">
+        <div class="note">
+          <span class="t">Why drop oldest</span>
+          LLM 流式输出的 token 事件是「越新越有用」。丢最旧的 chunk 只会让用户看到内容跳一下，丢最新的会让界面卡在过去。而真正重要的终态事件走 immediate 通道，永不进队列。
+        </div>
+        <div class="note warn">
+          <span class="t">Drift</span>
+          <code>/agent-conversation</code> 的前端 store 虽然有 <code>lastEventId</code> 字段，但 subscribe 时只发了 <code>conversationId</code> / <code>tenantId</code>，事件处理也没更新游标——<strong>对话侧的回放契约实际未接通</strong>。这是必须主动交代的实现缺口。
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ B9 触发器与通知 ============ -->
+<section class="page" data-sec="B9 · 触发与通知">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">B9 · TRIGGERS &amp; NOTIFICATION</div>
+      <h2>三种入口，一个出口</h2>
+    </div>
+
+    <div class="g g3 gap-s">
+      <div class="card card-fill">
+        <div class="kicker mute">CRON</div>
+        <p class="xs" style="margin-top:1.5mm">BullMQ repeat pattern + timezone，持久化 <code>nextFireAt</code>，启动时同步所有 enabled 定时器。执行走 <code>triggerType='system'</code>。</p>
+      </div>
+      <div class="card card-fill">
+        <div class="kicker mute">WEBHOOK</div>
+        <p class="xs" style="margin-top:1.5mm"><code>@Public</code> 的 <code>/webhooks/:token</code>。<code>signed</code> 模式做 <code>HMAC-SHA256(timestamp + '.' + rawBody)</code> + <code>timingSafeEqual</code>，时间戳容差 300 秒，可配 IP 白名单。</p>
+      </div>
+      <div class="card card-fill">
+        <div class="kicker mute">API EVENT</div>
+        <p class="xs" style="margin-top:1.5mm"><code>POST /api-events</code> 受完整鉴权保护。<code>EventSourceAdapterRegistry</code> 按 source 分发到 <code>GithubWebhookAdapter</code>（HMAC 验签）或 <code>GenericEventAdapter</code>。</p>
+      </div>
+    </div>
+
+    <div class="g g-5-7">
+      <div class="stack s">
+        <h3>失败也要留痕</h3>
+        <p class="sm">验签失败不是静默 401，而是往 <code>workflow_trigger_history</code> 写一条 <code>signature_failed</code>。不匹配任何 trigger 的事件写 <code>skipped</code>。</p>
+        <p class="sm">理由：webhook 是最容易「配错了但没人知道」的集成点。有历史记录，用户能自己排查；没有的话，所有问题都会变成支持工单。</p>
+        <div class="note">
+          <span class="t">Limit</span>
+          每个工作流最多 10 个 trigger，且创建 trigger 要求工作流已发布。
+        </div>
+      </div>
+      <div class="stack s">
+        <h3>通知扇出</h3>
+        <p class="sm">执行状态变化通过 <code>EventEmitter2</code> 发出，<code>NotificationListener</code> 监听 <code>execution.status.changed</code>（completed / failed）和 intervention-required，在<strong>独立的租户事务</strong>里解析收件人（工作流编辑者等），写 <code>notifications</code> 表后投递队列。</p>
+        <p class="sm">Processor 再按用户的 <code>notification_preferences</code> 决定走 <code>in_app</code>（Socket.IO <code>/notification</code> namespace 推 <code>notification.new</code> + 未读数）、<code>email</code> 还是 <code>push</code>（FCM）。</p>
+        <div class="note">
+          <span class="t">Why separate transaction</span>
+          通知失败不能回滚执行。用独立事务把两件事解耦，通知是「尽力而为」，执行是「必须正确」。
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

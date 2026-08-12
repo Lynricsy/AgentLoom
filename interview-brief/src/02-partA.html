@@ -1,0 +1,225 @@
+<!-- ============ PART A 分隔 ============ -->
+<section class="page ink" data-sec="PART A">
+  <div class="body stack" style="justify-content:space-between">
+    <div class="stack s">
+      <div class="kicker">PART A</div>
+      <div class="bignum w" style="font-size:96pt">A</div>
+    </div>
+    <div class="stack m">
+      <h2 style="color:#fff;font-size:34pt">全景</h2>
+      <p class="lead">先建立坐标系：这个平台在解决什么问题、由哪些运行单元组成、代码怎么切包、数据怎么分域。后面所有细节都挂在这张骨架上。</p>
+      <div class="g g4 gap-s" style="border-top:1px solid rgba(255,255,255,.28);padding-top:4mm">
+        <div><div class="kicker" style="opacity:.6">A1</div><p class="sm" style="color:#fff;margin-top:1.5mm">项目定位与产品形态</p></div>
+        <div><div class="kicker" style="opacity:.6">A2</div><p class="sm" style="color:#fff;margin-top:1.5mm">系统全景架构</p></div>
+        <div><div class="kicker" style="opacity:.6">A3</div><p class="sm" style="color:#fff;margin-top:1.5mm">仓库结构与包边界</p></div>
+        <div><div class="kicker" style="opacity:.6">A4</div><p class="sm" style="color:#fff;margin-top:1.5mm">数据模型全景</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ A1 项目定位 ============ -->
+<section class="page" data-sec="A1 · 项目定位">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">A1 · POSITIONING</div>
+      <h2>把「编排」和「智能体」<br>当成两个顶层概念</h2>
+    </div>
+
+    <p class="lead">市面上大多数同类产品只选一边：要么是 DAG 编排器（节点里塞一个 LLM 调用），要么是 Agent 框架（用对话驱动一切）。AgentLoom 把两者做成<strong>并列的顶层实体</strong>，各自拥有定义、版本、执行记录与恢复边界，再用一个适配器把 Agent 嵌进工作流节点。</p>
+
+    <div class="g g2 gap-s">
+      <div class="card card-fill">
+        <div class="kicker mute">CONCEPT 01</div>
+        <h4 style="margin-top:2mm">Workflow · 确定性编排</h4>
+        <p class="sm" style="margin-top:1.5mm">ReactFlow DAG，节点类型 30+，含条件、循环、迭代、合并、插件、沙箱。由 <code>NodeSchedulerService</code> 拓扑调度，状态落 <code>workflow_executions</code> / <code>execution_steps</code>，可断点续跑。</p>
+        <p class="xs" style="margin-top:2mm">适合：流程固定、要审计、要重放。</p>
+      </div>
+      <div class="card card-fill">
+        <div class="kicker mute">CONCEPT 02</div>
+        <h4 style="margin-top:2mm">Agent · 自主对话</h4>
+        <p class="sm" style="margin-top:1.5mm">独立的 Agent 定义 / 版本 / 对话 / 消息体系，带模型、工具、知识库、记忆、Skill、子 Agent。运行在 Firecracker 沙箱或进程内 pi-agent-core。</p>
+        <p class="xs" style="margin-top:2mm">适合：路径不确定、需要探索和写代码。</p>
+      </div>
+    </div>
+
+    <div class="card card-accent">
+      <div class="kicker">BRIDGE</div>
+      <p class="sm" style="margin-top:2mm"><code>WorkflowAgentAdapter</code>（<code>src/modules/execution/workflow-agent-adapter.ts</code>）按 <code>agentVersionId</code> 或当前 <code>publishedVersionId</code> 取 Agent 快照，编译成统一 runtime session 以 <code>mode:'workflow'</code> 运行，输出经 EventBridge 转成 step / output / tool 事件。<strong>Agent 逻辑只有一份</strong>，工作流侧不复制。</p>
+    </div>
+
+    <hr class="hair">
+
+    <div class="g g-5-7">
+      <div class="stack s">
+        <h3>产品面上的六条主线</h3>
+        <ul class="dash">
+          <li>可视化编排与执行监控</li>
+          <li>独立 Agent 对话与自进化</li>
+          <li>自然语言生成应用（Generated App）</li>
+          <li>签名插件生态与市场分成</li>
+          <li>知识库 RAG、Memory 图谱、MCP 工具</li>
+          <li>企业治理：审计、配额、监控、私有部署</li>
+        </ul>
+      </div>
+      <div class="stack s">
+        <h3>为什么不把 Agent 做成一种节点类型</h3>
+        <p class="sm">因为<strong>生命周期和故障恢复边界不同</strong>。工作流执行是一次性的、有确定终点的 DAG；Agent 对话是长期存在、可以跨会话继续、需要独立版本发布和权限策略的实体。如果 Agent 只是节点，就没法在工作流之外单独复用它，也没法给它单独的版本审计线。</p>
+        <p class="sm">反过来，如果一切都是 Agent，就失去了 DAG 的确定性、可视化和逐步重放能力——这正是企业客户最想要的部分。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ A2 全景架构 ============ -->
+<section class="page" data-sec="A2 · 全景架构">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">A2 · TOPOLOGY</div>
+      <h2>运行单元与信任域</h2>
+    </div>
+
+    <p class="sm" style="max-width:70ch">整套系统在部署上分成四类进程，划分依据不是「功能」，而是<strong>持有什么权限</strong>。这是理解整个架构最快的入口。</p>
+
+    <div class="stackdiag">
+      <div><span><b>Studio (React) / Mobile (Flutter)</b> — 浏览器与设备内，只持有用户 JWT 与本地私钥</span><span class="t">CLIENT</span></div>
+      <div class="hl"><span><b>server</b> — 公网 REST <code>/api/v1</code> + Socket.IO 入口。无 Docker socket，无 KVM，无 NET_ADMIN</span><span class="t">PUBLIC EDGE</span></div>
+      <div class="hl"><span><b>worker</b> — 同一镜像同一入口，只处理队列与内部回调中继，不对公网暴露</span><span class="t">INTERNAL</span></div>
+      <div class="dk"><span><b>firecracker-runtime (Go)</b> — 唯一 privileged 单例：/dev/kvm、TUN、cgroup、CNI、nftables、jailer</span><span class="t">PRIVILEGED</span></div>
+      <div><span><b>microVM guest</b> — pi-coding-agent + Fastify + agentloom-guestd，被认为<strong>完全不可信</strong></span><span class="t">UNTRUSTED</span></div>
+    </div>
+
+    <div class="g g-8-4">
+      <div class="stack s">
+        <h3>数据面依赖</h3>
+        <div class="g g4 gap-xs">
+          <div class="node soft"><b>PostgreSQL</b><span class="t">Supabase / Drizzle</span><br>租户数据 · RLS · 74 表</div>
+          <div class="node soft"><b>Redis</b><span class="t">BullMQ</span><br>队列 · 调度 · 限流 · Socket adapter</div>
+          <div class="node soft"><b>Qdrant</b><span class="t">Vector</span><br>知识库向量检索</div>
+          <div class="node soft"><b>MinIO</b><span class="t">S3</span><br>文档 · 工作区 · 插件 · Skill</div>
+        </div>
+      </div>
+      <div class="stack s">
+        <h3>五个实时 namespace</h3>
+        <p class="sm"><code>/execution</code> · <code>/agent-conversation</code> · <code>/memory</code> · <code>/knowledge</code> · <code>/notification</code></p>
+      </div>
+    </div>
+
+    <hr class="hair">
+
+    <div class="g g2 gap-l">
+      <div class="stack s">
+        <h3>一次工作流执行的数据流</h3>
+        <ol class="num">
+          <li>Studio <code>POST /workflow-definitions/:id/run</code></li>
+          <li>治理准入判定 → 写 <code>workflow_executions</code>（pending）</li>
+          <li><strong>事务提交后</strong>才入队 <code>workflow-execution</code></li>
+          <li>Worker 初始化 <code>execution_steps</code>，交给 NodeScheduler</li>
+          <li>逐层调度，Agent 节点走 <code>agent-task</code> 队列、插件走 <code>plugin-execution</code></li>
+          <li>事件经 EventBridge 编号后广播到 <code>/execution</code></li>
+          <li>前端按 <code>lastEventId</code> 增量消费，断线可回放</li>
+        </ol>
+      </div>
+      <div class="stack s">
+        <h3>为什么权限要按进程切</h3>
+        <p class="sm">Agent 会执行模型生成的任意代码。如果业务进程同时持有 KVM 或 Docker socket，一旦应用层出现 RCE 或 SSRF，攻击者就直接拿到宿主。</p>
+        <p class="sm">把「能创建虚拟机」这件事收敛到<strong>一个单例、只说 mTLS、只接受白名单调用</strong>的 Go 进程后，业务侧的漏洞最多影响业务数据，不会升级为宿主逃逸。</p>
+        <div class="note">
+          <span class="t">Trade-off</span>
+          代价是 runtime manager 成为单点：Helm 里它是 <code>replicas=1</code> 的 StatefulSet，绑 RWO 卷、绑节点。HA 需要另做状态复制，当前明确不做。
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ A3 包边界 ============ -->
+<section class="page" data-sec="A3 · 包边界">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">A3 · REPOSITORY</div>
+      <h2>十一个包，没有 workspace</h2>
+    </div>
+
+    <p class="sm" style="max-width:72ch">这是一个<strong>非标准 monorepo</strong>：根目录没有 <code>pnpm-workspace.yaml</code>，每个包自带 lockfile 和命令。好处是包之间没有隐式提升依赖、可以各自锁版本（例如 SDK 停在 Zod 3 而服务端用 Zod 4）；代价是没有统一的一键构建，跨包重构要手动同步。</p>
+
+    <table class="tight">
+      <thead><tr><th style="width:34mm">包</th><th style="width:44mm">技术栈</th><th>职责与边界</th></tr></thead>
+      <tbody>
+        <tr><td><strong>agentloom-server</strong></td><td>NestJS 11 · Fastify 5 · Drizzle</td><td>唯一权威：认证、租户、定义、执行编排、插件注册、门禁、证据、审计、治理</td></tr>
+        <tr><td><strong>agentloom-studio</strong></td><td>React 19 · Vite 7 · React Flow</td><td>画布编辑、执行监控、Agent 对话、全部管理页；只是契约的消费方</td></tr>
+        <tr><td><strong>agentloom_mobile</strong></td><td>Flutter 3.41 · Riverpod</td><td>观测与操作（启动、监控、对话、轻资源管理），<strong>不做编辑器</strong></td></tr>
+        <tr><td><strong>firecracker-runtime</strong></td><td>Go</td><td>microVM 生命周期、CNI/nft、jailer、mutable disk、guest mTLS 代理</td></tr>
+        <tr><td><strong>type-engine</strong></td><td>Rust 2024 · wasm-bindgen</td><td>端口 schema 兼容性判定，编译成 WASM 在浏览器 Worker 内跑</td></tr>
+        <tr><td><strong>plugin-sdk</strong></td><td>TypeScript · Zod 3 · tsup</td><td>插件类型、校验、RSA-PSS 规范化签名工具，双 ESM/CJS 输出</td></tr>
+        <tr><td><strong>plugin-cli</strong></td><td>Commander · archiver</td><td><code>create / dev / build / keys generate / publish</code></td></tr>
+        <tr><td><strong>agentloom-deploy</strong></td><td>Compose · Helm · Shell</td><td>私有化部署资产、备份恢复、Firecracker 产物构建链</td></tr>
+        <tr><td><strong>agentloom-docs</strong></td><td>VitePress 2</td><td>中英 locale 文档站，构建前同步 OpenAPI spec</td></tr>
+        <tr><td><strong>plugin-template</strong></td><td>SDK 示例插件</td><td><code>text-to-uppercase</code>，作为脚手架产物的参考实现</td></tr>
+        <tr><td><strong>agentloom-user-docs</strong></td><td>VitePress</td><td>面向终端用户的文档站，与开发者文档分开</td></tr>
+      </tbody>
+    </table>
+
+    <div class="g g2 gap-s">
+      <div class="note">
+        <span class="t">Known cost</span>
+        <strong>没有共享类型包。</strong>端口类型、事件信封等契约靠约定手工镜像在 Rust / Studio / Server / SDK 四处，已经产生实际漂移（见 F1）。如果重做，第一件事就是抽一个 <code>@agentloom/contracts</code>。
+      </div>
+      <div class="note warn">
+        <span class="t">No CI</span>
+        项目只有本地开发环境，没有 CI/CD。质量靠 Vitest 80% 覆盖率门槛 + Testcontainers E2E 本地跑，这是个明确的短板。
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ A4 数据模型 ============ -->
+<section class="page" data-sec="A4 · 数据模型">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">A4 · DATA MODEL</div>
+      <h2>74 张表，八个域</h2>
+      <p class="xs">统计口径：<code>src/database/schema/*.ts</code> 中的 <code>pgTable(</code> 定义去重计数。</p>
+    </div>
+
+    <div class="g g2 gap-s">
+      <div class="card card-top acc">
+        <h4>编排域 · 12</h4>
+        <p class="xs" style="margin-top:1.5mm"><code>workflow_definitions</code> <code>workflow_versions</code> <code>workflow_executions</code> <code>execution_steps</code> <code>workflow_triggers</code> <code>workflow_trigger_history</code> <code>workflow_templates</code> <code>workflow_shares</code> <code>reusable_blocks</code> <code>intervention_policies</code> <code>execution_governance_controls</code> <code>tool_definitions</code></p>
+      </div>
+      <div class="card card-top acc">
+        <h4>智能体域 · 10</h4>
+        <p class="xs" style="margin-top:1.5mm"><code>agent_definitions</code> <code>agent_versions</code> <code>agent_conversations</code> <code>agent_messages</code> <code>agent_execution_records</code> <code>agent_shares</code> <code>acp_conversation_sessions</code> <code>skills</code> <code>optimization_suggestions</code> <code>organization_autonomy_policies</code></p>
+      </div>
+      <div class="card card-top">
+        <h4>记忆域 · 7</h4>
+        <p class="xs" style="margin-top:1.5mm"><code>agent_memory_instances</code> <code>memory_nodes</code> <code>memory_edges</code> <code>memory_versions</code> <code>memory_paths</code> <code>memory_sessions</code> <code>memory_glossary_keywords</code></p>
+      </div>
+      <div class="card card-top">
+        <h4>沙箱与工作区 · 5</h4>
+        <p class="xs" style="margin-top:1.5mm"><code>sandbox_sessions</code> <code>sandbox_logs</code> <code>sandbox_runtime_migrations</code> <code>workspace_snapshots</code> <code>workspace_runtime_leases</code></p>
+      </div>
+      <div class="card card-top">
+        <h4>生态与计费 · 11</h4>
+        <p class="xs" style="margin-top:1.5mm"><code>plugins</code> <code>plugin_developer_keys</code> <code>plugin_usage_records</code> <code>plugin_earnings</code> <code>marketplace_listings</code> <code>marketplace_reviews</code> <code>generated_apps</code> 及其 <code>gate_runs</code> / <code>generation_runs</code> / <code>repair_attempts</code> / <code>submissions</code></p>
+      </div>
+      <div class="card card-top">
+        <h4>知识与模型 · 9</h4>
+        <p class="xs" style="margin-top:1.5mm"><code>knowledge_bases</code> <code>knowledge_nodes</code> <code>documents</code> <code>llm_providers</code> <code>llm_model_configs</code> <code>provider_health_status</code> <code>router_models</code> <code>routing_decisions</code> <code>routing_benchmarks</code></p>
+      </div>
+      <div class="card card-top">
+        <h4>治理与安全 · 9</h4>
+        <p class="xs" style="margin-top:1.5mm"><code>audit_logs</code> <code>audit_log_archives</code> <code>evidence_records</code> <code>evidence_export_jobs</code> <code>tenant_quotas</code> <code>tenant_encryption_keys</code> <code>private_deployment_settings</code> <code>platform_api_tokens</code> <code>revoked_tokens</code></p>
+      </div>
+      <div class="card card-top">
+        <h4>身份与其他 · 11</h4>
+        <p class="xs" style="margin-top:1.5mm"><code>users</code> <code>organizations</code> <code>organization_members</code> <code>organization_invitations</code> <code>user_preferences</code> <code>notifications</code> <code>notification_preferences</code> <code>device_tokens</code> <code>api_keys</code> <code>mcp_server_configs</code> <code>resource_source_records</code></p>
+      </div>
+    </div>
+
+    <div class="note">
+      <span class="t">Pattern</span>
+      几乎所有业务表都带 <code>tenant_id</code> 并启用 <code>FORCE ROW LEVEL SECURITY</code>。子表（如 <code>execution_steps</code>）不重复存租户，而是用 <code>createJoinTenantPolicies</code> 生成 <code>EXISTS(父表 WHERE tenant_id = get_tenant_id())</code> 的策略——少一列冗余，多一次索引 join，换取「租户列不会写错」的强保证。
+    </div>
+  </div>
+</section>

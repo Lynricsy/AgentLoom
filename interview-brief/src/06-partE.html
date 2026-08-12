@@ -1,0 +1,445 @@
+<!-- ============ PART E 分隔 ============ -->
+<section class="page ink" data-sec="PART E">
+  <div class="body stack" style="justify-content:space-between">
+    <div class="stack s">
+      <div class="kicker">PART E</div>
+      <div class="bignum w" style="font-size:96pt">E</div>
+    </div>
+    <div class="stack m">
+      <h2 style="color:#fff;font-size:34pt">平台面</h2>
+      <p class="lead">前端怎么切、类型兼容为什么用 Rust、审计为什么是两张表、密钥为什么服务端解不开、移动端为什么不做编辑器、部署为什么只有一个特权进程。</p>
+      <div class="g g3 gap-s" style="border-top:1px solid rgba(255,255,255,.28);padding-top:4mm">
+        <div><div class="kicker" style="opacity:.6">E1–E4</div><p class="sm" style="color:#fff;margin-top:1.5mm">Studio · 画布 · 类型引擎 · 加密</p></div>
+        <div><div class="kicker" style="opacity:.6">E5–E7</div><p class="sm" style="color:#fff;margin-top:1.5mm">审计 · 配额 · RAG 与 MCP</p></div>
+        <div><div class="kicker" style="opacity:.6">E8–E9</div><p class="sm" style="color:#fff;margin-top:1.5mm">移动端 · 部署与备份</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ E1 Studio ============ -->
+<section class="page" data-sec="E1 · Studio 架构">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">E1 · STUDIO</div>
+      <h2>服务端状态与本地状态<br>分开管</h2>
+    </div>
+
+    <div class="g g-5-7">
+      <div class="stack s">
+        <h3>Feature-Slice 三层</h3>
+        <table class="tight">
+          <thead><tr><th style="width:24mm">层</th><th>允许放什么</th></tr></thead>
+          <tbody>
+            <tr><td><code>app/</code></td><td>应用壳、providers、<strong>手写</strong>路由树、认证守卫</td></tr>
+            <tr><td><code>features/</code></td><td>每个切片自带 <code>api / keys / queries / hooks / stores / components / types</code></td></tr>
+            <tr><td><code>shared/</code></td><td>ky 客户端、QueryClient、大小写转换、基础 UI 控件。<strong>禁止放业务状态</strong></td></tr>
+          </tbody>
+        </table>
+        <p class="sm">路由用 TanStack Router 但<strong>不用文件约定生成</strong>，而是手动 import 后 <code>rootRoute.addChildren([...])</code>。手写更啰嗦，但路由树是显式的、可搜索的，也避免了约定式生成在重命名时的隐式破坏。</p>
+      </div>
+      <div class="stack s">
+        <h3>两种状态，两套工具</h3>
+        <div class="card card-fill">
+          <h4>TanStack Query · 服务端状态</h4>
+          <p class="xs" style="margin-top:1.5mm">默认 <code>staleTime=30s</code>、<code>retry=1</code>、<code>refetchOnWindowFocus=false</code>。每个 feature 定义 <code>xxxKeys / xxxApi / useXxx</code>，负责缓存与失效。</p>
+        </div>
+        <div class="card card-fill">
+          <h4>Zustand · 高频本地态</h4>
+          <p class="xs" style="margin-top:1.5mm">immer + devtools + subscribeWithSelector。<code>canvasStore</code>（图与 dirty 标记）、<code>agentCanvasStore</code>、<code>executionStore</code>（节点输出/重试/介入）、<code>authStore</code>、<code>agentConversationStore</code>（消息流/沙箱/终端）。</p>
+        </div>
+        <p class="sm">分界线：<strong>「能从服务器重新拉到」的用 Query，「毫秒级变化或正在编辑」的用 Zustand</strong>。画布自动保存就是 store subscribe + 2 秒防抖 <code>PATCH</code>。</p>
+      </div>
+    </div>
+
+    <hr class="hair">
+
+    <div class="g g2 gap-s">
+      <div class="stack s">
+        <h3>ky 拦截链</h3>
+        <ul class="dash">
+          <li><code>beforeRequest</code> 注入 Bearer</li>
+          <li><code>beforeRetry</code> 仅对 401 <strong>重试一次</strong>：<code>refreshSession()</code>，失败即 signOut 并跳 <code>/login</code></li>
+          <li><code>afterResponse</code> 全局 snake_case → camelCase；写请求走 <code>toSnakeBody()</code></li>
+        </ul>
+        <p class="sm">只重试一次是为了避免刷新失败时的请求风暴，同时把「会话真的过期了」这件事尽快告诉用户。</p>
+      </div>
+      <div class="stack s">
+        <h3>执行监控的两段式</h3>
+        <p class="sm"><code>useExecutionSocket</code> 连接后发 <code>execution:subscribe {tenantId, executionId, lastEventId}</code>，ACK 回 <code>currentState</code>：<strong>先合并快照，再按 eventId 单调推进游标</strong>。重连 5s 起步、上限 30s、无限重试。</p>
+        <p class="sm"><code>useExecutionMonitor</code> 把回调桥进 <code>executionStore</code>；状态事件若带 <code>result</code>/<code>checkpointData</code> 会立即恢复一次性输出，避免用户必须刷新详情页才看到结果。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ E2 画布 ============ -->
+<section class="page" data-sec="E2 · 画布契约">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">E2 · CANVAS CONTRACT</div>
+      <h2>两套注册表</h2>
+    </div>
+
+    <div class="g g2 gap-s">
+      <div class="card card-top acc">
+        <h4>工作流画布 · <code>NODE_TYPE_REGISTRY</code></h4>
+        <p class="xs" style="margin-top:1.5mm"><code>llm-model · http-tool · code-tool · mcp-tool · sandbox · manual-trigger · schedule-trigger · webhook-trigger · api-event-trigger · knowledge-base · text · text-output · json-output · condition · loop · iteration · loop-start · iteration-start · loop-state · result · break · continue · reusable-block · smart-routing · plugin · input-preprocessor · memory · agent · skill · workspace · merge</code></p>
+      </div>
+      <div class="card card-top">
+        <h4>Agent 配置画布 · <code>AGENT_CANVAS_NODE_REGISTRY</code></h4>
+        <p class="xs" style="margin-top:1.5mm"><code>agent-main · llm-model · smart-routing · mcp-tool · knowledge-base · memory · text · sub-agent · input-preprocessor · skill · sandbox · workspace</code></p>
+        <p class="xs" style="margin-top:2mm"><strong>这不是执行 DAG</strong>，而是一个用图的形式表达的参数编辑器。<code>agent-main</code> 上挂 <code>nativeToolPolicy</code> 和 <code>selfEvolutionPolicy</code>。</p>
+      </div>
+    </div>
+
+    <div class="note">
+      <span class="t">Gotcha</span>
+      <code>node.type</code> 只代表<strong>渲染类别</strong>，真正的业务类型必须读 <code>node.data.nodeType</code>。这是历史包袱，也是新人最容易踩的坑。
+    </div>
+
+    <div class="g g-7-5">
+      <div class="stack s">
+        <h3>端口定义</h3>
+        <p class="sm"><code>PortDefinition</code>：<code>id / label / direction / dataType / required / multiple / maxConnections / schema / acceptsAnyDataType</code>。<code>schema</code> 支持 Scalar / Object / Array。</p>
+        <p class="sm">边上另存一整套兼容性元数据：<code>rawCompatibilityLevel</code>、<code>visualLevel</code>、<code>reasonKey</code>、<code>missingFields</code>、<code>candidateMappings</code>、<code>fieldMapping</code>、<code>mappingSummary</code>、<code>transformFn</code>。</p>
+        <p class="sm">这么重的边数据是为了让「这条连线为什么是黄色的、缺哪几个字段、可以怎么映射」在<strong>重新打开画布时不用重算</strong>，也能被后端在执行前复用。</p>
+      </div>
+      <div class="stack s">
+        <h3>两阶段校验</h3>
+        <ol class="num">
+          <li><strong>同步 guard。</strong>拖拽 hover 时只读缓存和 <code>arePortDataTypesCompatible()</code>：exec/volume/memory 严格匹配，其余允许 <code>text↔json</code>、<code>json↔array</code>、<code>skill→text</code>。<code>runSynchronousGuards()</code> 再查端口存在性、自环、compound 边界、目标 <code>maxConnections</code>。</li>
+          <li><strong>异步权威判定。</strong><code>onConnect</code> 时调 <code>evaluateConnection()</code> → TypeEngineService → WASM。</li>
+        </ol>
+        <div class="note">
+          <span class="t">Why two</span>
+          React Flow 的连接回调是同步的，不能 <code>await</code>。所以先用便宜的规则挡掉明显错误保证拖拽跟手，再用贵的 schema 深比较给最终结论。
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ E3 类型引擎 ============ -->
+<section class="page" data-sec="E3 · 类型引擎">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">E3 · TYPE ENGINE</div>
+      <h2>用 Rust 判断<br>两个端口能不能连</h2>
+    </div>
+
+    <div class="g g-5-7">
+      <div class="stack s">
+        <h3>四级结论</h3>
+        <table class="tight">
+          <thead><tr><th style="width:32mm">Level</th><th>含义</th></tr></thead>
+          <tbody>
+            <tr><td><code>EXACT</code></td><td>完全一致，直连</td></tr>
+            <tr><td><code>TRANSFORM</code></td><td>需要一次确定性转换（给出 <code>transformFn</code>）</td></tr>
+            <tr><td><code>PARTIAL</code></td><td>结构部分匹配：给出 <code>missingFields</code> 与 <code>candidateMappings</code></td></tr>
+            <tr><td><code>INCOMPATIBLE</code></td><td>拒绝，附 <code>reasonKey</code> 与 <code>conflictPath</code></td></tr>
+          </tbody>
+        </table>
+        <p class="sm"><strong>PARTIAL 允许连线</strong>——因为大多数真实场景就是「字段名不一样但语义相同」。二值拒绝会逼用户在中间插一堆转换节点。边上持久化候选映射，让用户在配置面板里确认。</p>
+        <p class="sm">导出三个 WASM 函数：<code>checkCompatibility</code>、<code>checkSchemaCompatibility</code>、<code>validateSchema</code>。</p>
+      </div>
+      <div class="stack s">
+        <h3>运行时韧性</h3>
+        <ul class="dash">
+          <li>Worker 里单例 WASM，加载优先 <code>instantiateStreaming</code>，失败回落 <code>arrayBuffer</code></li>
+          <li>按稳定端口签名做 cache key；<code>inFlight</code> 合并重复请求</li>
+          <li>单次请求 <strong>4 秒超时</strong></li>
+          <li>Worker crash 或 init fatal：清空 ready / cache / inFlight 并 <code>terminate()</code></li>
+          <li>Service 捕获后走 <code>fallback.ts</code>——<strong>受控降级，不是吞异常</strong></li>
+        </ul>
+        <p class="sm">Criterion benchmark 用 10 字段对象做基准，集成测试要求 &lt; 100ms。</p>
+      </div>
+    </div>
+
+    <hr class="hair">
+
+    <div class="g g2 gap-s">
+      <div class="stack s">
+        <h3>为什么值得引入 Rust</h3>
+        <ul class="sq">
+          <li><strong>规则单一来源。</strong>同一套判定逻辑可以同时给浏览器和服务端用，不会出现「前端说能连、后端说不能」。</li>
+          <li><strong>递归 schema 比较 + 字段相似度</strong>是纯计算，放主线程会掉帧，放 Worker 天然合适；WASM 的性能让它在拖拽交互中感觉不到延迟。</li>
+        </ul>
+        <p class="xs">（第二点在代码里没有写明唯一动机，属于架构推断。）</p>
+      </div>
+      <div class="note warn">
+        <span class="t">Reality: drift</span>
+        这个「单一来源」目前<strong>没有真正做到</strong>。Rust <code>src/types/port.rs</code> 是 12 个 <code>PortDataType</code>；Studio 的 <code>typeSchema.ts</code> 已经扩到 14 个（多出 <code>exec</code>、<code>volume</code>）；文档里写的「canonical 10 值」是更早的历史描述。<strong>四处镜像已经漂移</strong>——见 F1。
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ E4 认证与 E2EE ============ -->
+<section class="page" data-sec="E4 · 认证与加密">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">E4 · AUTH &amp; E2EE</div>
+      <h2>数据库拖走也读不出</h2>
+    </div>
+
+    <div class="g g-5-7">
+      <div class="stack s">
+        <h3>混合加密</h3>
+        <p class="sm"><code>LlmEncryptionService</code>：随机 32 字节 DEK + 12 字节 IV，<code>AAD = tenantId:timestamp</code>，AES-256-GCM 加密载荷，再用租户 <strong>RSA-OAEP-4096 公钥</strong>包住 DEK。返回 ciphertext / encryptedSessionKey / iv / authTag / aad / fingerprint / algorithm，<code>finally</code> 里把 DEK 清零。</p>
+        <p class="sm"><strong>数据库里只有公钥。</strong>私钥只存在租户浏览器的 IndexedDB（<code>agentloom-keystore / private-keys</code>，PKCS8 二进制），解密时用 <code>importKey('pkcs8', ..., extractable:false)</code> 导入不可导出的 CryptoKey。服务端<strong>没有任何解密函数</strong>。</p>
+        <p class="sm">但要把边界说准：<strong>加密发生在写库之前，明文在 worker 进程里存在过</strong>，模型提供商也看得到。所以它保护的是<strong>静态数据</strong>——拖库、备份泄露、DBA 越权读不到内容；它<strong>不</strong>保护「在线服务进程被攻陷」这个场景。把它讲成「服务端从未见过明文」是会被拆穿的。</p>
+        <table class="tight">
+          <thead><tr><th style="width:34mm">加密对象</th><th>处理</th></tr></thead>
+          <tbody>
+            <tr><td>LLM 输出</td><td><code>agent-task.worker.ts</code> 把 <code>result.content</code> 换成 <code>[ENCRYPTED]</code>，密文入 <code>encryptedContent</code></td></tr>
+            <tr><td><code>agent_decision</code> / <code>tool_output</code> 证据</td><td>整个 packet 加密，库里存 <code>encryptedPacket</code> + 脱敏摘要，<code>isEncrypted=true</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="stack s">
+        <h3>密钥表是 append-only</h3>
+        <p class="sm"><code>tenant_encryption_keys</code>：<code>organization_id + key_fingerprint</code> 唯一，外加<strong>单 active 的 partial unique index</strong>。<code>rotateKey</code> 先把旧 active 置 <code>rotating</code> 再插新 active，失败会恢复旧状态。</p>
+        <p class="sm">为什么不原地更新公钥？因为<strong>历史密文必须能被对应的历史私钥解开</strong>。覆盖公钥等于把过去的数据永久变成乱码。</p>
+        <div class="note warn">
+          <span class="t">Trade-off to admit</span>
+          <code>agent-task.worker.ts</code> 在加密失败时会 <strong>warn 后明文降级</strong>。这是「可用性优先于机密性」的选择，面试时应该主动说出来——更严格的做法是加密失败即执行失败。
+        </div>
+      </div>
+    </div>
+
+    <hr class="hair">
+
+    <div class="g g3 gap-s">
+      <div class="card card-outlined"><div class="kicker mute">SUPABASE PKCE</div><p class="xs" style="margin-top:1.5mm">授权码 + code_verifier，防授权码窃取。回调页 <code>exchangeCodeForSession</code>；<code>authStore</code> 监听 SIGNED_IN / TOKEN_REFRESHED / SIGNED_OUT，从 JWT 顶层取 <code>tenant_id</code>，缺失则进 onboarding。</p></div>
+      <div class="card card-outlined"><div class="kicker mute">MFA TOTP</div><p class="xs" style="margin-top:1.5mm">enroll（QR/URI/secret）→ challenge → verify → unenroll，AAL1/AAL2 分级。移动端是服务端 REST TOTP 的原生实现。</p></div>
+      <div class="card card-outlined"><div class="kicker mute">API KEY</div><p class="xs" style="margin-top:1.5mm"><code>al_</code> + 32 字节随机，库里只存 <strong>SHA-256 hash</strong> 与 <code>token_prefix</code>；明文只在创建响应里出现一次。每用户每租户上限 20 个。</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ E5 审计 ============ -->
+<section class="page" data-sec="E5 · 审计">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">E5 · AUDIT</div>
+      <h2>只能追加的两张表</h2>
+    </div>
+
+    <div class="g g-7-5">
+      <div class="stack s">
+        <p class="sm"><code>audit_logs</code> 与 <code>audit_log_archives</code> 列结构完全相同：<code>id, tenant, actor, event/resource/execution, summary, before/after/metadata (JSONB), createdAt</code>。两张表都用 <code>createAppendOnlyTenantPolicies</code>——数据库层<strong>只授 SELECT 和 INSERT</strong>，没有 UPDATE / DELETE 权限。审计记录在数据库层面就不可篡改。</p>
+        <h3>归档链路</h3>
+        <ol class="num">
+          <li><code>AuditLogRetentionScheduler</code> 用 BullMQ <code>upsertJobScheduler</code> + 固定 ID 注册<strong>单例</strong>周期任务（多副本部署下只会有一个）</li>
+          <li>Worker 按 <code>retentionDays</code> 算 cutoff，分租户批量选出热表旧行</li>
+          <li><code>INSERT INTO archives ... ON CONFLICT DO NOTHING</code></li>
+          <li><strong>回读校验 archive 里确实有这些 ID</strong></li>
+          <li>校验通过才从热表删除；校验失败<strong>不删</strong></li>
+        </ol>
+        <p class="sm">这个「copy → verify → delete」顺序保证任何一步崩溃都不会丢数据，最坏情况只是数据同时存在于两张表——而读侧本来就会去重。</p>
+      </div>
+      <div class="stack s">
+        <h3>合并读取</h3>
+        <p class="sm"><code>readMergedRecall</code> 并行查热表与归档表，按 id 建 Map 去重（<strong>先放 archive，再用 hot 覆盖</strong>），最后按 <code>(createdAt, id)</code> 升序返回。<code>findById</code> 先热后档；<code>findResourceSequence</code> 同样合并。</p>
+        <p class="sm">对调用方来说归档是完全透明的。</p>
+        <div class="note">
+          <span class="t">Interfaces</span>
+          <code>GET /audit-logs</code>、<code>/audit-logs/:id</code>、<code>/audit-logs/resources/:type/:id/sequence</code>，运行时权限固定 owner / admin。
+        </div>
+        <div class="note warn">
+          <span class="t">Honest</span>
+          <code>AuditLogService.record()</code> 是<strong>规范</strong>唯一写入口，但 <code>resource-governance.service.ts</code> 里有一个 <code>recordAuditIndependently</code> 兜底：在没有事务上下文时自己开事务直写 <code>audit_logs</code>。别把「唯一入口」说得太绝对。
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ E6 配额与监控 ============ -->
+<section class="page" data-sec="E6 · 配额与监控">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">E6 · GOVERNANCE</div>
+      <h2>七个配额，两种拒绝</h2>
+    </div>
+
+    <div class="g g-5-7">
+      <div class="stack s">
+        <h3><code>tenant_quotas</code></h3>
+        <table class="tight">
+          <thead><tr><th style="width:52mm">字段</th><th>默认</th></tr></thead>
+          <tbody>
+            <tr><td><code>apiRateLimitPerMinute</code></td><td>100</td></tr>
+            <tr><td><code>maxConcurrentExecutions</code></td><td>—</td></tr>
+            <tr><td><code>dailyExecutionLimit</code></td><td>—</td></tr>
+            <tr><td><code>dailyApiCallLimit</code></td><td>—</td></tr>
+            <tr><td><code>storageQuotaMb</code></td><td>—</td></tr>
+            <tr><td><code>maxSandboxCpuPercent</code></td><td>—</td></tr>
+            <tr><td><code>maxSandboxMemoryMb</code></td><td>—</td></tr>
+          </tbody>
+        </table>
+        <p class="sm"><code>execution_governance_controls</code> 另存暂停开关：<code>scope</code>（tenant / workflow）+ targetId + status（active / paused）+ reason，<code>(org, scope, target)</code> 唯一。</p>
+      </div>
+      <div class="stack s">
+        <h3>两种 HTTP 语义</h3>
+        <div class="g g2 gap-xs">
+          <div class="card card-accent"><div class="kicker">429</div><p class="xs" style="margin-top:1.5mm;color:rgba(255,255,255,.9)">分钟级速率限制。带 <code>Retry-After</code> 和 <code>X-RateLimit-Limit/Remaining/Reset</code>。语义是「<strong>等一下再来</strong>」。</p></div>
+          <div class="card card-ink"><div class="kicker">409</div><p class="xs" style="margin-top:1.5mm;color:rgba(255,255,255,.86)">日配额、并发上限、治理暂停。RFC 7807 problem+json。语义是「<strong>现在这个状态就是不行</strong>」，重试无意义。</p></div>
+        </div>
+        <p class="sm">区分这两个很重要：客户端 SDK 会对 429 自动退避重试，对 409 直接报错给用户。混用会导致要么无脑重试打爆服务，要么用户看到莫名其妙的失败。</p>
+        <p class="sm"><code>CustomThrottlerGuard</code> 的 tracker 是 <code>tenant:{tenantId}</code>（未识别租户时回落 <code>apikey:prefix</code> / <code>jwt:sub</code> / <code>ip</code>），计数存 Redis。所有阻断都写审计。</p>
+      </div>
+    </div>
+
+    <hr class="hair">
+
+    <div class="g g-7-5">
+      <div class="stack s">
+        <h3>监控仪表板</h3>
+        <p class="sm"><code>GET /organizations/:id/monitoring</code>（owner / admin）。三档窗口：<strong>15m/5m 桶、1h/10m 桶、24h/4h 桶</strong>。事务内聚合执行记录、Agent 执行摘要、四类告警通知、两类治理阻断审计事件，以及 BullMQ <code>agent-task</code> 队列的当前快照。</p>
+        <p class="sm">输出 summary（执行数、成功率、失败率、平均时长、队列深度、治理阻断数、活跃告警）+ trend + alerts + hotspots + riskSummary + deep links。</p>
+      </div>
+      <div class="note">
+        <span class="t">Detail worth telling</span>
+        趋势里的 <code>queueDepth</code> 是 <strong><code>null</code></strong> 而不是 0。队列深度只有「当前」快照，没有历史时序。<strong>宁可返回 null 让图上断线，也不伪造一个看起来合理的历史值</strong>——监控数据一旦开始编，整个面板就失去了决策价值。
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ E7 RAG 与 MCP ============ -->
+<section class="page" data-sec="E7 · RAG 与 MCP">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">E7 · KNOWLEDGE &amp; TOOLS</div>
+      <h2>检索链路与外部工具</h2>
+    </div>
+
+    <div class="stack s">
+      <h3>文档入库</h3>
+      <div class="pipe" style="grid-template-columns:repeat(5,1fr)">
+        <div class="st"><span class="i">01</span><b>解析</b><span class="d">按 MIME 分发：PDF（pdf-parse）/ DOCX（mammoth）/ Markdown / 纯文本</span></div>
+        <div class="st"><span class="i">02</span><b>分块</b><span class="d"><code>KnowledgeNodeFactory</code> 按知识库配置：sentence / sentence_window / markdown</span></div>
+        <div class="st"><span class="i">03</span><b>落库</b><span class="d">替换式写入 <code>knowledge_nodes</code></span></div>
+        <div class="st"><span class="i">04</span><b>向量化</b><span class="d">按配置生成 embedding</span></div>
+        <div class="st"><span class="i">05</span><b>索引</b><span class="d">Qdrant collection <code>knowledge_&lt;kbId&gt;</code>，Cosine，失败清理已写向量</span></div>
+      </div>
+    </div>
+
+    <div class="g g-7-5">
+      <div class="stack s">
+        <h3>检索：四段可插拔</h3>
+        <ol class="num">
+          <li><strong>Query orchestration。</strong><code>none</code> 或 <strong>HyDE</strong>——先让 LLM 生成一个「假设答案」当查询，因为答案的向量通常比问题的向量更接近真实文档。</li>
+          <li><strong>向量召回。</strong>多 query variant 分别检索，<code>mergeNodeScores</code> 去重取高分。</li>
+          <li><strong>阈值过滤</strong>，然后 <strong>rerank</strong>（none 或 Cohere topN，密钥经 <code>DecryptionBoundary</code> 取）。</li>
+          <li><strong>映射输出</strong>：chunk / node / content / location / document / file metadata。有 <code>evidenceContext</code> 时发 <code>RAG_RETRIEVED</code> 证据事件。</li>
+        </ol>
+        <div class="note">
+          <span class="t">Fallback</span>
+          Qdrant 集合缺失或异常时，回落到 <code>knowledge_nodes</code> 的词法 token LIKE 查询。质量下降但不至于「知识库整个不可用」。
+        </div>
+      </div>
+      <div class="stack s">
+        <h3>MCP 三种 transport</h3>
+        <p class="sm"><code>StdioClientTransport</code>（command/args/env）、<code>SSEClientTransport</code>、<code>StreamableHTTPClientTransport</code>。超时：连接 120s / list 60s / call 60s。</p>
+        <p class="sm"><code>mcp_server_configs</code> 的凭证用信封加密存 <code>encryptedData / DEK / iv / tag</code>；<code>findConfig</code> <strong>只返回 credentialKeys 不返回值</strong>。</p>
+        <div class="note warn">
+          <span class="t">Two-place fail-closed</span>
+          no_sandbox 禁 stdio 在<strong>两处</strong>拦截：<code>agent-definition.service.assertRuntimeModeConstraints</code>（Agent 发布时）和 <code>workflow-version.service.assertNoSandboxWorkflowMcpConstraints</code>（工作流发布时）。只拦一处的话，用户可以先建合法 Agent 再在工作流里改配置绕过。
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ E8 移动端 ============ -->
+<section class="page" data-sec="E8 · 移动端">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">E8 · MOBILE</div>
+      <h2>观测与操作，不做编辑器</h2>
+    </div>
+
+    <div class="g g-5-7">
+      <div class="stack s">
+        <p class="sm">Flutter 3.41.2 + Riverpod + GoRouter + Dio。<code>StatefulShellRoute.indexedStack</code> 五个分支：<code>/dashboard</code>、<code>/workflows</code>、<code>/agents</code>、<code>/resources</code>、<code>/settings</code>。执行详情、Agent 对话、OAuth 回调、MFA 在 Shell 之外。宽度 ≥ 1080 用 <code>NavigationRail</code>，否则 <code>NavigationBar</code>。</p>
+        <h3>移动端有 / 没有</h3>
+        <table class="tight">
+          <thead><tr><th style="width:16mm">范围</th><th>能力</th></tr></thead>
+          <tbody>
+            <tr><td><strong>有</strong></td><td>列表浏览、参数化启动、执行监控、Agent 对话（含工具调用瀑布流与权限审批）、Memory / Skill / 工作区 / 沙箱 / 知识库 / MCP / 模型的轻管理、原生 MFA、FCM 深链、附件上传</td></tr>
+            <tr><td><strong>没有</strong></td><td>React Flow 画布与节点配置、版本发布、组织成员管理、治理与自主策略、私有部署运维、插件与开发者控制台、监控面板、证据导出、优化建议、触发器与 Block Library</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="stack s">
+        <h3>三个值得讲的细节</h3>
+        <div class="card card-fill">
+          <h4>独立的 auth Dio</h4>
+          <p class="xs" style="margin-top:1.2mm"><code>AuthApi</code> 用一个<strong>不挂 AuthInterceptor</strong> 的 Dio 实例——否则刷新 token 的请求自己也会触发刷新，形成死循环。</p>
+        </div>
+        <div class="card card-fill">
+          <h4>队列化 401</h4>
+          <p class="xs" style="margin-top:1.2mm"><code>QueuedInterceptorsWrapper</code> 序列化并发 401：<code>token-expired</code> 刷新重试，<code>token-revoked/invalid/missing</code> 直接登出。stale-token 比较避免重复刷新。</p>
+        </div>
+        <div class="card card-fill">
+          <h4>Web-first onboarding</h4>
+          <p class="xs" style="margin-top:1.2mm">注册成功<strong>不保存 session</strong>，而是用 <code>url_launcher</code> 打开 Web <code>/login?returnUrl=/onboarding</code>。因为新用户还没有租户，存一个 <code>tenant_id=null</code> 的半初始化会话会污染后续所有请求。</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="note">
+      <span class="t">Realtime</span>
+      原生端 transport 强制 <code>websocket</code>，Flutter Web 保留 <code>polling → websocket</code> 升级（适配代理）。事件同样是带 <code>eventId</code> 的 <code>ExecutionEventEnvelope&lt;T&gt;</code>（Freezed 生成）。<strong>断连后每 5 秒 <code>GET /executions/:id</code> 轮询兜底</strong>，重连再切回 WS——WS 优先、REST 保底。
+    </div>
+  </div>
+</section>
+
+<!-- ============ E9 部署 ============ -->
+<section class="page" data-sec="E9 · 部署">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">E9 · DEPLOYMENT</div>
+      <h2>一个入口，一个特权进程</h2>
+    </div>
+
+    <div class="g g-7-5">
+      <div class="stack s">
+        <h3>Compose 拓扑</h3>
+        <p class="sm">OpenResty 是唯一公网端口（默认 8080）：<code>/api/</code> 与 <code>/socket.io/</code> → <code>server:3000</code>（后者升级 WebSocket），<code>/auth/</code> → Supabase Kong，<code>/</code> → <code>studio:8080</code>，<code>/healthz</code> 本地 200。</p>
+        <p class="sm">服务清单：<code>reverse-proxy · studio · docs · server · worker · firecracker-runtime · postgres:16 · redis:7 · minio · qdrant v1.17 · createbuckets</code>，另有 tools/migration profile 下的 <code>server-migrator</code> 与 <code>sandbox-cutover</code>。Supabase 栈通过外部 <code>supabase-shared</code> 网络接入。</p>
+        <div class="note">
+          <span class="t">server vs worker</span>
+          <strong>同一个镜像、同一个入口 <code>node dist/src/main.js</code></strong>，都跑完整的 Nest + BullMQ processors。拆成两个部署单元的边界是<strong>暴露面与回调地址</strong>：server 面向公网，worker 只在内网做队列与 callback relay，各自配自己的 <code>APP_SANDBOX_CALLBACK_BASE_URL</code>，可以分别限额扩容。两者都不挂 Docker socket / KVM / NET_ADMIN。
+        </div>
+      </div>
+      <div class="stack s">
+        <h3>Helm</h3>
+        <p class="sm">server / worker / studio 是普通 Deployment + HPA；<code>firecracker-runtime</code> 是 <strong><code>replicas=1</code> 的 StatefulSet</strong>：RWO state PVC、privileged、只读 rootfs、hostPID、hostPath 挂 <code>/dev/kvm</code> + TUN + cgroup、60 秒终止宽限、mTLS readiness，必须固定到预检过的 x86_64 节点。</p>
+        <p class="sm">关闭内置依赖时模板会 <code>fail()</code> 强制要求提供外部连接串——避免「以为连了外部 PG，其实连的是被删掉的内置实例」。</p>
+      </div>
+    </div>
+
+    <hr class="hair">
+
+    <div class="g g2 gap-s">
+      <div class="stack s">
+        <h3>备份必须两边都做</h3>
+        <p class="sm"><code>backup-postgres.sh</code> 用 <code>pg_dump -Fc</code> 产出 <code>.dump / .sha256 / .meta</code>，并用 <code>pg_restore --list</code> <strong>验证结构可读</strong>；<code>backup-minio.sh</code> 用 <code>mc mirror</code> 做桶快照。默认各保留 7 天，systemd timer 每小时 :05 / :20，RPO &lt; 1 小时。</p>
+        <p class="sm"><code>restore.sh</code> 顺序：校验 SHA 与结构 → 停应用 → 重建库 + <code>pg_restore</code> → <code>mc mirror --overwrite --remove</code> 回灌 → 启动 → 检查 DB、<code>/api/v1/health</code>、<code>/healthz</code>。</p>
+        <p class="sm"><strong>只备数据库是不够的</strong>：元数据在 PG，文档 / 工作区 / 插件包在 MinIO，缺一边恢复出来就是断的。</p>
+      </div>
+      <div class="stack s">
+        <h3>Firecracker 产物链</h3>
+        <p class="sm"><code>build-artifacts.sh</code> 按 <code>artifact-lock.json</code> 下载并 <strong>SHA-256 校验</strong> Firecracker/jailer、内核、BusyBox、Arch rootfs digest；构建 guest 侧 Fastify（npm ci + typecheck + build）与静态 Go <code>agentloom-guestd</code>；组装 rootfs、2GiB ext4、内核与 initramfs；验证 vmlinux ELF；最后生成含 <strong>git commit</strong> 的 manifest，runtime 启动时再校验一次。</p>
+        <div class="note">
+          <span class="t">Why</span>
+          沙箱镜像是安全边界的一部分。锁定 + 校验 + 启动时复验，保证跑的确实是审过的那份产物。
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

@@ -1,0 +1,455 @@
+<!-- ============ PART D 分隔 ============ -->
+<section class="page ink" data-sec="PART D">
+  <div class="body stack" style="justify-content:space-between">
+    <div class="stack s">
+      <div class="kicker">PART D</div>
+      <div class="bignum w" style="font-size:96pt">D</div>
+    </div>
+    <div class="stack m">
+      <h2 style="color:#fff;font-size:34pt">隔离与生态</h2>
+      <p class="lead">这一部分回答同一个问题的两半：<strong>怎么安全地跑别人写的代码</strong>。Agent 生成的代码进 Firecracker 微虚拟机，第三方插件进 Extism WASM，生成的应用要过八道门禁。</p>
+      <div class="g g3 gap-s" style="border-top:1px solid rgba(255,255,255,.28);padding-top:4mm">
+        <div><div class="kicker" style="opacity:.6">D1–D3</div><p class="sm" style="color:#fff;margin-top:1.5mm">microVM · 网络身份 · 租约</p></div>
+        <div><div class="kicker" style="opacity:.6">D4–D5</div><p class="sm" style="color:#fff;margin-top:1.5mm">ACP 协议 · 回调中继</p></div>
+        <div><div class="kicker" style="opacity:.6">D6–D9</div><p class="sm" style="color:#fff;margin-top:1.5mm">插件 · 市场 · 生成应用</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ D1 Firecracker ============ -->
+<section class="page" data-sec="D1 · 沙箱拓扑">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">D1 · FIRECRACKER</div>
+      <h2>为什么不是容器</h2>
+    </div>
+
+    <p class="lead">Agent 会执行模型生成的任意代码。容器共享宿主内核，一个内核漏洞就是一次逃逸。Firecracker 给每个沙箱一个<strong>独立内核</strong>，逃逸需要先打穿 KVM/virtio——攻击面小一个数量级，同时冷启动仍在百毫秒级。</p>
+
+    <div class="stackdiag">
+      <div><span><b>server / worker</b> 普通权限，只持有 manager client 证书</span><span class="t">mTLS CLIENT</span></div>
+      <div class="hl"><span><b>runtime manager (Go, 单例 privileged)</b> 独占 <code>/dev/kvm</code>、<code>/dev/net/tun</code>、host cgroup</span><span class="t">CONTROL PLANE</span></div>
+      <div><span><b>jailer</b> chroot + 降权 + namespace，启动 Firecracker 进程</span><span class="t">SANDBOX LAUNCHER</span></div>
+      <div><span><b>CNI + netns + veth + tc + nftables</b> 每 VM 独立网络命名空间</span><span class="t">NETWORK</span></div>
+      <div><span><b>只读 rootfs + 可写 mutable ext4 disk</b> cgroup v2 <code>cpu.max</code>/<code>memory.max</code>/<code>pids.max</code>，SMT=false，MMDSv2，seccomp</span><span class="t">VM</span></div>
+      <div class="dk"><span><b>guest</b> pi-coding-agent + Fastify + agentloom-guestd，视为完全不可信</span><span class="t">UNTRUSTED</span></div>
+    </div>
+
+    <div class="g g-5-7">
+      <div class="stack s">
+        <h3>创建流程</h3>
+        <p class="sm"><code>internal/manager/manager.go</code> 先校验规格（CPU 0.5–4、内存 256–4096MB、磁盘 1–10GB），然后：</p>
+        <ol class="num">
+          <li><code>Ext4DiskManager.Ensure</code>：<code>mke2fs</code> 建 <code>mutable.ext4</code>，已存在则 <code>e2fsck</code></li>
+          <li>CNI Provision：建 netns / veth / TAP</li>
+          <li>launcher + jailer 启动 Firecracker</li>
+          <li>GuestChecker 健康探测（HTTPS + IP SAN 校验）</li>
+        </ol>
+      </div>
+      <div class="stack s">
+        <h3>guest 暴露的接口</h3>
+        <table class="tight">
+          <thead><tr><th style="width:34mm">来源</th><th>接口</th></tr></thead>
+          <tbody>
+            <tr><td>Fastify (TS)</td><td><code>POST /v1/session</code>、<code>/v1/prompt</code>（SSE）、<code>/v1/abort</code>、PTY buffer / 写入 / resize / kill</td></tr>
+            <tr><td>guestd (Go)</td><td><code>/v1/runtime/archive</code>（tar）、<code>/files</code> GET/HEAD/PUT、<code>/exec</code> + output/wait/kill、stats、processes</td></tr>
+          </tbody>
+        </table>
+        <p class="sm">全部只能经 <code>api/proxy.go</code> 的 <code>/v1/vms/{id}/guest/{path}</code> 访问，manager 注入自己持有的 bearer token 并按分配 IP 建连。</p>
+      </div>
+    </div>
+
+    <div class="note">
+      <span class="t">Guest-side guards</span>
+      路径只允许 <code>/workspace</code> 或 <code>/tmp</code>，用 <code>EvalSymlinks</code> 防逃逸；文本 ≤ 10MiB 且拒绝含 NUL 的二进制；tar 上限 10GiB 并防 traversal / symlink；exec 限制命令、参数与环境变量，显式禁 <code>LD_PRELOAD</code> / <code>LD_LIBRARY_PATH</code> / <code>NODE_OPTIONS</code>。
+    </div>
+  </div>
+</section>
+
+<!-- ============ D2 网络身份 ============ -->
+<section class="page" data-sec="D2 · 网络身份">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">D2 · NETWORK IDENTITY</div>
+      <h2>假设 guest 会撒谎</h2>
+    </div>
+
+    <p class="lead">网络隔离最常见的失败模式不是「忘了加规则」，而是「规则按 IP 写，而 guest 可以伪造 IP」。所以这里的每一层都在<strong>验证身份</strong>，不只是过滤地址。</p>
+
+    <div class="stack s">
+      <div class="pipe" style="grid-template-columns:repeat(4,1fr)">
+        <div class="st"><span class="i">L1 · GUEST</span><b>内核禁用 IPv6</b><span class="d">堵掉「v4 规则齐全、v6 完全放行」这个经典旁路</span></div>
+        <div class="st"><span class="i">L2 · VETH</span><b>tc ingress 校验</b><span class="d">host 侧 veth 上同时校验源 IPv4 + MAC，以及 ARP 的 sender IP + MAC；其余帧 <code>matchall drop</code></span></div>
+        <div class="st"><span class="i">L3 · NFT</span><b>拓扑拒绝</b><span class="d">拒绝 sibling VM 互访、private/reserved CIDR、非 relay host；只放行 relay 端口 18080 入站</span></div>
+        <div class="st"><span class="i">L4 · TLS</span><b>IP SAN 校验</b><span class="d">manager 连 guest 时按分配 IP 校验证书 IP SAN，<strong>禁止 ServerName</strong>，不用共享 DNS SNI</span></div>
+      </div>
+    </div>
+
+    <div class="g g-5-7">
+      <div class="stack s">
+        <h3>这套设计防的攻击</h3>
+        <ul class="sq">
+          <li>伪造源 IP / MAC 冒充其他 VM</li>
+          <li>ARP 欺骗劫持同网段流量</li>
+          <li>IPv6 绕过 v4 规则</li>
+          <li>横向移动到 sibling VM</li>
+          <li>访问宿主、云 metadata（169.254.169.254）、公司内网</li>
+          <li>伪造回调制造 SSRF</li>
+        </ul>
+      </div>
+      <div class="stack s">
+        <h3>两个独立信任域</h3>
+        <p class="sm">manager ↔ server/worker 是一套 PKI；manager ↔ guest 是<strong>另一套 guest CA</strong>。server/worker <strong>不持有 guest CA 私钥</strong>，guest 也不持有应用侧 client 证书。</p>
+        <p class="sm">这意味着即使应用服务被完全攻陷，攻击者也签不出能让 manager 信任的 guest 证书；反过来 guest 被攻陷也无法直接伪装成 server 去调用 manager 的控制接口。</p>
+        <div class="note">
+          <span class="t">Egress</span>
+          出网默认只允许公网（private CIDR 默认集合全拒），需要访问内网必须显式配置 allowed private CIDR 白名单。guest 出网做 IP masquerade。
+        </div>
+      </div>
+    </div>
+
+    <div class="note warn">
+      <span class="t">Why bother</span>
+      如果只用 nftables 按 IP 过滤：guest 里的 root 可以直接改自己的 IP/MAC，冒充另一个租户的 VM 或宿主，规则就形同虚设。<strong>tc 层的 IP+MAC+ARP 三重绑定，是把「网络地址」变成「不可伪造的身份」的关键。</strong>这是这套沙箱最值得讲的一个细节。
+    </div>
+  </div>
+</section>
+
+<!-- ============ D3 生命周期 ============ -->
+<section class="page" data-sec="D3 · 会话与租约">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">D3 · LIFECYCLE &amp; LEASE</div>
+      <h2>谁在用这个盘</h2>
+    </div>
+
+    <div class="g g-5-7">
+      <div class="stack s">
+        <h3><code>sandbox_sessions</code></h3>
+        <p class="sm">双外键：<code>execution_id</code> <strong>OR</strong> <code>agent_conversation_id</code>，加 CHECK 约束「至少一个非空」。这让同一套沙箱基础设施同时服务工作流和 Agent 对话，而不用建两张几乎一样的表。</p>
+        <p class="sm">字段还包括 <code>sandbox_node_id</code>、<code>tenant_id</code>、不透明的 <code>runtime_handle</code>、status、config JSON、workspacePath。</p>
+        <table class="tight">
+          <thead><tr><th style="width:26mm">模式</th><th>销毁语义</th></tr></thead>
+          <tbody>
+            <tr><td><code>session</code></td><td>最后一个直接消费者完成后销毁</td></tr>
+            <tr><td><code>persistent</code></td><td>解绑回到 ready/idle；stop / timeout / 过期只停 VM，<strong>保留 handle 与 ext4 盘</strong>；只有显式 <code>deleteSandbox()</code> 才删盘</td></tr>
+          </tbody>
+        </table>
+        <p class="sm">工作流侧粒度是 <code>(execution_id, sandboxNodeId)</code>，同一次执行内多个节点引用同一 persistent 沙箱时，用 <code>config.activeBindings</code> 计数追踪。</p>
+      </div>
+      <div class="stack s">
+        <h3>Workspace 租约：防双挂载</h3>
+        <p class="sm"><code>workspace_runtime_leases</code>：<code>workspace_id</code> 唯一 + <code>sandbox_session_id</code> 外键 + <strong><code>fencing_token</code></strong> + 过期时间。</p>
+        <p class="sm">恢复工作区前先 acquire 租约，恢复后 <code>assertHeld</code>；stop / destroy / timeout / detach 时回写快照，最后一个 mount 离开才释放。</p>
+        <div class="card card-ink">
+          <div class="kicker">FENCING</div>
+          <p class="sm" style="margin-top:2mm">没有 fencing token 的分布式锁是假锁：一个卡住的旧持有者恢复后仍会写入，覆盖新持有者的数据。带单调递增 token 后，存储侧可以拒绝低版本写入。</p>
+        </div>
+      </div>
+    </div>
+
+    <hr class="hair">
+
+    <div class="g g2 gap-s">
+      <div class="stack s">
+        <h3>冷恢复：fail closed</h3>
+        <p class="sm">manager 重启后 <code>Recover()</code> 扫描残留：persistent 且 <code>e2fsck</code> 通过 → 标记 <code>stopped</code> 可重启。</p>
+        <p class="sm">但只要清理 jailer / cgroup / PID / netns 中<strong>任意一项失败</strong>，就<strong>保留内部 handle 并置 failed，拒绝继续</strong>。宁可留下一个需要人工处理的资源，也不冒「以为清干净了其实还在跑」的风险——那会导致两个 VM 抢同一块可写磁盘。</p>
+      </div>
+      <div class="stack s">
+        <h3>Workspace 快照</h3>
+        <p class="sm"><code>workspace_snapshots</code>：storageKey 指向 MinIO 里的 <code>snapshot.tar</code>，status 为 <code>creating|ready|archived|deleted</code>。</p>
+        <p class="sm">读取接口：<code>GET /workspaces/:id/tree</code>、<code>/preview/*</code>、<code>/raw/*</code>，<code>PUT /:id/files/*</code>。Studio 侧可预览文本 / 图片 / PDF，其他类型给下载兜底。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ D4 ACP ============ -->
+<section class="page" data-sec="D4 · ACP 网关">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">D4 · ACP GATEWAY</div>
+      <h2>把平台接进编辑器</h2>
+    </div>
+
+    <p class="sm" style="max-width:74ch">ACP（Agent Client Protocol）是基于 JSON-RPC 2.0 over stdio 的协议，让外部客户端（编辑器、IDE）把 AgentLoom 当作后端 Agent 使用。入口是独立的 <code>src/acp-stdio.ts</code>（<code>pnpm start:acp:stdio</code>），逐行异步读取，用 <code>writeChain</code> 串行化 stdout 写入避免交错。</p>
+
+    <div class="g g2 gap-s">
+      <div class="stack s">
+        <h3>方法集</h3>
+        <table class="tight">
+          <thead><tr><th style="width:34mm">域</th><th>方法</th></tr></thead>
+          <tbody>
+            <tr><td>握手</td><td><code>initialize</code>（仅接受协议 <code>2026-02-18</code>）、<code>authenticate</code></td></tr>
+            <tr><td>会话</td><td><code>session/new</code>、<code>session/prompt</code>、<code>session/cancel</code>、<code>session/load</code>、<code>session/update</code></td></tr>
+            <tr><td>文件</td><td><code>fs/read_text_file</code>、<code>fs/write_text_file</code></td></tr>
+            <tr><td>终端</td><td><code>terminal/create|output|wait_for_exit|kill|release</code></td></tr>
+            <tr><td>反向请求</td><td>server → client 的 <code>session/request_permission</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="stack s">
+        <h3>能力协商</h3>
+        <p class="sm">canonical 名是 <code>readTextFile</code> / <code>writeTextFile</code>（兼容 legacy <code>read</code>/<code>write</code> 别名）。</p>
+        <p class="sm"><strong>terminal 能力只有在 client 同时声明 <code>terminal.create</code> 和 <code>terminal.output</code> 时才暴露</strong>——半支持的客户端拿不到一半能力，避免运行到一半才发现对端不会读输出。</p>
+        <div class="note">
+          <span class="t">Write gate</span>
+          写文件前必须先发起官方 <code>session/request_permission</code> 并等到响应。<code>session/cancel</code> 会清理所有 pending permission，防止取消后请求悬挂。
+        </div>
+      </div>
+    </div>
+
+    <hr class="hair">
+
+    <div class="g g-5-7">
+      <div class="stack s">
+        <h3>文件边界</h3>
+        <p class="sm"><code>AcpFilesystemSandboxService</code> 只解析 <code>/workspace</code> 下的路径，相对路径基于 session cwd；traversal / 越界一律拒绝。runtime 绑定按 tenant + execution/conversation 查 active 的 ready/busy 会话，最终 realpath 由 guest 侧<strong>再校验一次</strong>（不信任 server 侧的解析结果）。读写上限 10MiB，含 NUL 的二进制拒绝。</p>
+      </div>
+      <div class="stack s">
+        <h3>终端边界</h3>
+        <ul class="dash">
+          <li>只允许 <code>server_sandbox</code> 模式</li>
+          <li>命令 basename 黑名单：<code>bash sh zsh fish sudo su docker kubectl</code></li>
+          <li>拒绝 shell 注入、<code>rm -rf</code> 危险目标、cwd 与赋值型 flag 的路径越界</li>
+          <li>每 session 并发 <strong>5</strong>，ring buffer 默认 <strong>1MiB</strong>，offset 过旧返回 <code>trimmed</code></li>
+          <li>lifetime <strong>300s</strong> 自动 TERM；退出后再取 output 返回稳定错误</li>
+          <li>manual kill 与 cleanup kill 都写正式审计</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="note warn">
+      <span class="t">Cold recovery</span>
+      <code>session/load</code> 在冷恢复场景 <strong>fail-closed</strong>：如果无法确认原会话的沙箱与权限上下文，宁可报错让客户端重开，也不「尽力恢复」到一个权限状态不明的会话。
+    </div>
+  </div>
+</section>
+
+<!-- ============ D5 回调中继 ============ -->
+<section class="page" data-sec="D5 · 回调中继">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">D5 · CALLBACK RELAY</div>
+      <h2>guest 要回头找人，<br>但不能知道人在哪</h2>
+    </div>
+
+    <p class="lead">Agent 在沙箱里调用工具时，有些工具必须回到创建这个会话的<strong>那一个</strong> server/worker 进程执行（权限确认、session-local 远程工具）。直接给 guest 一个内部 URL，等于把内网地址和令牌交给不可信代码。</p>
+
+    <div class="stack s">
+      <div class="pipe" style="grid-template-columns:repeat(5,1fr)">
+        <div class="st"><span class="i">01</span><b>server 发起</b><span class="d">prompt 请求里带真实 <code>permissionCallbackUrl</code> 和上游 token</span></div>
+        <div class="st"><span class="i">02</span><b>manager 改写</b><span class="d"><code>proxy.go</code> 的 <code>rewriteCallbacks</code> 换成不透明 relay URL + 32 字节随机 token</span></div>
+        <div class="st"><span class="i">03</span><b>guest 只见 relay</b><span class="d">看不到任何内部主机名或上游凭证</span></div>
+        <div class="st"><span class="i">04</span><b>manager 校验</b><span class="d">来源 RemoteAddr 必须等于该 guest 的分配 IP；再校验不透明 header</span></div>
+        <div class="st"><span class="i">05</span><b>代持转发</b><span class="d">manager 换回真实 upstream token 转发给白名单主机</span></div>
+      </div>
+    </div>
+
+    <div class="g g-7-5">
+      <div class="stack s">
+        <h3><code>callbackRegistry</code> 的约束</h3>
+        <table class="tight">
+          <thead><tr><th style="width:34mm">项</th><th>值 / 理由</th></tr></thead>
+          <tbody>
+            <tr><td>allowedHosts</td><td>只允许 server / worker，别的地址一概拒绝（反 SSRF）</td></tr>
+            <tr><td>token</td><td>32 字节随机，不透明，与业务无关联</td></tr>
+            <tr><td>TTL</td><td>24 小时</td></tr>
+            <tr><td>上限</td><td>10,000 条，防注册表被打爆</td></tr>
+            <tr><td>来源校验</td><td>RemoteAddr = guest IP，双重绑定</td></tr>
+          </tbody>
+        </table>
+        <p class="sm">权限请求 30 秒无响应<strong>默认拒绝</strong>（<code>deploy/sandbox/src/event-stream.ts</code>）——超时不能默认放行。</p>
+      </div>
+      <div class="stack s">
+        <div class="card card-accent">
+          <div class="kicker">WHY NOT DIRECT</div>
+          <p class="sm" style="margin-top:2mm">三个理由叠加：</p>
+          <p class="sm" style="margin-top:1.5mm">① guest 在隔离网段，本来就不该有到应用内网的路由；<br>② 直接给 URL/token 等于把内部拓扑和凭证泄露给不可信代码；<br>③ 必须精确回到<strong>创建 session 的那个进程</strong>——它内存里有活的 runtime，随便负载均衡到另一个副本会找不到会话。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ D6 插件签名 ============ -->
+<section class="page" data-sec="D6 · 插件签名">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">D6 · PLUGIN PACKAGE</div>
+      <h2>规范化归档签名</h2>
+    </div>
+
+    <p class="lead"><code>.alp</code> 本质是一个 ZIP。问题在于：<strong>ZIP 的字节表示不唯一</strong>——条目顺序、压缩级别、时间戳、额外字段都会变。对整个文件签名，任何一次无害的重打包都会让签名失效。</p>
+
+    <div class="g g-5-7">
+      <div class="stack s">
+        <h3>canonical descriptor</h3>
+        <p class="sm"><code>plugin-sdk/src/signing/archive.ts</code> 读取所有 entry，规范化路径并拒绝 <code>.</code> / <code>..</code> / 重复路径，然后构造：</p>
+        <div class="card card-ink">
+          <p class="sm" style="font-family:var(--mono);font-size:7.6pt;line-height:1.75;color:#fff">{<br>&nbsp;&nbsp;manifest: deepSort(manifest 去掉<br>&nbsp;&nbsp;&nbsp;&nbsp;signature / contentHash /<br>&nbsp;&nbsp;&nbsp;&nbsp;developerKeyFingerprint),<br>&nbsp;&nbsp;files: [ [path, sha256(content)] ... ]<br>&nbsp;&nbsp;&nbsp;&nbsp;// 按 path 排序<br>}</p>
+        </div>
+        <p class="sm">对这个 JSON 做 SHA-256，再用 <strong>RSA-PSS / SHA-256 / saltLength=DIGEST</strong> 签名。验签侧用 <code>AUTO</code> saltLength。</p>
+        <p class="sm"><strong>只绑定业务内容，不绑定容器格式。</strong>重新打包不影响签名有效性。</p>
+      </div>
+      <div class="stack s">
+        <h3>服务端注册链路</h3>
+        <ol class="num">
+          <li>multipart 上传 <code>.alp</code>（≤ 50MB），必须带三元组：signature、contentHash、developerKeyFingerprint</li>
+          <li>按 <code>org + fingerprint</code> 找 <strong>active</strong> 的开发者公钥</li>
+          <li>重算 canonical descriptor 验签 + 比对 <code>content_hash</code></li>
+          <li>通过后才上传 MinIO 并写 <code>plugins</code> 表</li>
+        </ol>
+        <p class="sm"><code>plugin-signature.service.ts</code> 校验公钥本身：<strong>拒绝私钥</strong>（防手滑上传）、必须 RSA、位长 ≥ 2048，指纹 = SPKI DER 的 SHA-256。</p>
+        <div class="note">
+          <span class="t">Key lifecycle</span>
+          <code>plugin_developer_keys</code> 唯一键 <code>org + fingerprint</code>，状态 <code>active | revoked</code>，撤销带 <code>revoked_at</code>。API 在 <code>/plugins/developer-keys</code>，creator 及以上可用。
+        </div>
+      </div>
+    </div>
+
+    <div class="note warn">
+      <span class="t">CLI reality check</span>
+      <code>plugin-cli</code> 的 <code>keys</code> 命令<strong>目前只实现了 <code>generate</code></strong>（RSA 2048/3072/4096，私钥落盘 0600），没有 <code>list</code>；<code>publish</code> 也只做签名 + 自验 + 提示走 Web 上传，<strong>没有真正的 HTTP 上传</strong>。文档里写的完整命令集与实现有出入。
+    </div>
+  </div>
+</section>
+
+<!-- ============ D7 插件执行与分成 ============ -->
+<section class="page" data-sec="D7 · 执行与分成">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">D7 · WASM &amp; ECONOMICS</div>
+      <h2>三十秒，256MB，没网</h2>
+    </div>
+
+    <div class="g g-5-7">
+      <div class="stack s">
+        <h3>平台硬限制（不可被插件放宽）</h3>
+        <table class="tight">
+          <thead><tr><th style="width:38mm">项</th><th>值</th></tr></thead>
+          <tbody>
+            <tr><td><code>timeoutMs</code></td><td>30,000</td></tr>
+            <tr><td><code>maxMemoryPages</code></td><td>4,096（≈ 256MB）</td></tr>
+            <tr><td><code>allowedPaths</code></td><td><code>{}</code> 空——无文件系统</td></tr>
+            <tr><td><code>useWasi</code></td><td><code>false</code></td></tr>
+            <tr><td><code>runInWorker</code></td><td><code>true</code>（Extism 只有在 worker 里才支持 timeout 与 allowedHosts）</td></tr>
+            <tr><td>网络</td><td>默认无；只有 manifest 声明 <code>network:outbound</code> <strong>且</strong> 提供 <code>sandbox.allowedHosts</code> 数组时才开放</td></tr>
+          </tbody>
+        </table>
+        <p class="sm">运行时配置<strong>只能进一步收紧</strong> timeout / memory / hosts，永远不能放宽。这是「能力只能收窄」原则在插件侧的复用。</p>
+      </div>
+      <div class="stack s">
+        <h3>执行 worker 的事务边界</h3>
+        <p class="sm"><code>PluginExecutionWorker.process</code> 全程在 <code>runInTenantTransaction(tenantId)</code> 内：step 置 running → 找 active 插件 → 从 MinIO 下载 WASM → 构造 config → 执行 → 归一化输出 → step 置 completed/failed，最后回调 <code>NodeSchedulerService.onNodeCompleted/onNodeFailed</code>。</p>
+        <p class="sm">用量记录 <code>plugin_usage_records</code> 是 <strong>fire-and-forget</strong>：计费失败不能让用户的执行失败。</p>
+      </div>
+    </div>
+
+    <hr class="hair">
+
+    <div class="stack s">
+      <h3>收益分成</h3>
+      <div class="g g4 gap-s">
+        <div class="kpi"><span class="v s acc">70%</span><span class="k">开发者毛收入</span></div>
+        <div class="kpi"><span class="v s">×15%</span><span class="k">上架佣金（从毛收入扣）</span></div>
+        <div class="kpi"><span class="v s acc">59.5%</span><span class="k">开发者净收入</span></div>
+        <div class="kpi"><span class="v s">30%</span><span class="k">平台份额</span></div>
+      </div>
+      <div class="g g2 gap-s">
+        <div class="stack s">
+          <p class="sm"><code>PluginEarningsService.calculateSettlementShares</code>：<code>gross = total × 0.70</code>，<code>commission = gross × 0.15</code>，<code>developerShare = gross − commission</code>，<code>platformShare = total × 0.30</code>。</p>
+          <p class="sm">payout 状态机：<code>pending → processing → completed | failed</code>。</p>
+        </div>
+        <div class="note">
+          <span class="t">Idempotency ×2</span>
+          <code>EarningsSettlementWorker</code> 在租户事务内聚合周期用量，跳过 0 值与已有记录；service 侧再用 <code>onConflictDoNothing(plugin, period)</code> 兜底。<strong>钱相关的写入必须有两层幂等</strong>——一层在业务逻辑，一层在数据库唯一约束。
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ D8 市场与分享 ============ -->
+<section class="page" data-sec="D8 · 市场与分享">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">D8 · MARKETPLACE &amp; SHARE</div>
+      <h2>三条分发路径</h2>
+    </div>
+
+    <div class="g g3 gap-s">
+      <div class="card card-fill">
+        <div class="kicker mute">MARKETPLACE</div>
+        <p class="xs" style="margin-top:1.5mm">审核制上架。<code>marketplace_listings</code> 的 <code>listingType</code> 为 workflow / plugin，<code>pricingModel</code> 为 free / per_execution，<code>workflowVersionId</code> 与 <code>pluginDbId</code> 都可空但有 CHECK 强制二选一绑定。状态 <code>pending_review → review_failed | listed → unlisted</code>。</p>
+      </div>
+      <div class="card card-fill">
+        <div class="kicker mute">SHARE LINK</div>
+        <p class="xs" style="margin-top:1.5mm">点对点短链。管理端 <code>/workflow-shares</code>、<code>/agent-shares</code>，公开只读 <code>/s/:token</code>。创建要求已发布，公开读取从快照返回 nodes/edges/viewport，并<strong>原子递增</strong> view_count / copy_count。</p>
+      </div>
+      <div class="card card-fill">
+        <div class="kicker mute">DISCOVER</div>
+        <p class="xs" style="margin-top:1.5mm"><code>/discover</code> 复用 Marketplace 已上架内容做公共浏览入口，<strong>不承载直链分享池</strong>——避免出现一个没人审核的公开内容池。</p>
+      </div>
+    </div>
+
+    <div class="g g-5-7">
+      <div class="stack s">
+        <h3>Agent 导入为什么要回执</h3>
+        <p class="sm"><code>POST /agent-shares/:token/import</code> 返回 <code>summary</code> + <code>report[]</code>，而不是一个 ID。</p>
+        <p class="sm">因为 Agent 会关联知识库、Memory、MCP、Skill、工作区——这些<strong>跨租户不可能原样搬</strong>。导入时 workspace 被清空，模型等外部资源标记为 <code>needs_rebind</code>。用户必须知道「哪些搬过来了、哪些需要你自己接」，否则会拿到一个静默半残的 Agent。</p>
+        <p class="sm">Workflow 侧简单些：直接按 <code>share_token</code> 克隆导入（<code>cloneDefinitionWithNewIds()</code>）。</p>
+      </div>
+      <div class="stack s">
+        <h3>来源分类</h3>
+        <p class="sm"><code>resource_source_records</code> 统一记录 workflow / agent / knowledge / memory / mcp / skill 六类资源的来源：<code>origin</code> 与 <code>currentKind</code> 取值 <code>manual | share_imported</code>。</p>
+        <p class="sm"><code>POST /resource-sources/:type/:id/convert-to-manual</code> <strong>只切换当前分类，不复制新资源</strong>，并保留 <code>origin</code>。这样「这东西是我自己建的还是导入的」永远查得到，同时用户又能把导入的东西「认领」为自己维护。</p>
+        <div class="note">
+          <span class="t">Export</span>
+          导出用 <code>agentloom-workflow-v1</code> 信封 + <code>sanitizeDefinition()</code> 递归剥离敏感信息；导入含 Zod 校验。创建工作流支持 <code>template_slug</code> / <code>share_token</code> / <code>marketplace_listing_id</code> 三种克隆源，互斥。
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ D9 Generated App ============ -->
+<section class="page" data-sec="D9 · 生成应用">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">D9 · GENERATED APP</div>
+      <h2>八道门禁</h2>
+      <p class="xs">自然语言 → 可发布应用。每一道 Gate 的产物都写进 <code>generated_app_gate_runs</code> 作为证据。</p>
+    </div>
+
+    <div class="stackdiag">
+      <div><span><b>Gate 0 · AppSpec</b> 把自然语言变成结构化规格</span><span class="t">SPEC</span></div>
+      <div><span><b>Gate 1 · 架构计划</b> 模块、数据流、依赖</span><span class="t">PLAN</span></div>
+      <div><span><b>Gate 2 · 静态契约</b> 接口与类型先定死</span><span class="t">CONTRACT</span></div>
+      <div><span><b>Gate 3 · 受控工作区</b> 生成源码 + 构建 + 单元测试</span><span class="t">BUILD</span></div>
+      <div><span><b>Gate 4 · 集成测试</b> 模块间真实联调</span><span class="t">INTEGRATION</span></div>
+      <div class="hl"><span><b>Gate 5 · 浏览器验收</b> 真实驱动 UI 跑验收场景</span><span class="t">ACCEPTANCE</span></div>
+      <div class="hl"><span><b>Gate 6 · 独立验证</b> 换一个 verifier 重新检查，不信任生成者的自评</span><span class="t">VERIFY</span></div>
+      <div class="dk"><span><b>Gate 7 · 发布候选</b> 全部阻断项通过才允许 public share</span><span class="t">RELEASE</span></div>
+    </div>
+
+    <div class="g g-5-7">
+      <div class="stack s">
+        <h3>为什么要 Gate 6</h3>
+        <p class="sm">让生成代码的模型自己判断「我写得对不对」，通过率虚高。Gate 6 用<strong>独立的验证者</strong>重跑检查，相当于把「自测」和「验收」分离。失败可以走 repair / retry 循环，修复尝试记在 <code>generated_app_repair_attempts</code>。</p>
+      </div>
+      <div class="stack s">
+        <h3>公开运行时的清洗</h3>
+        <p class="sm"><code>generated-app.public-sanitizer.util.ts</code> 剥离 token / secret / API key、内部 gate 与 plan 快照、插件 ID、绝对路径，并限制递归深度、字段数、数组长度和文本长度（防 DoS 式膨胀）。</p>
+        <p class="sm">公开页 CSP <code>default-src 'none'</code>，只暴露运行时表单与报告/执行交接，<strong>不暴露画布和证据</strong>。</p>
+      </div>
+    </div>
+
+    <div class="note">
+      <span class="t">Code organization</span>
+      <code>GeneratedAppService</code> 只保留 DB / 事务 / 公开运行时 / 插件绑定 / Gate 编排；各 Gate 的计划构建在 <code>plan-builders/</code>，校验、清洗、runtime binding、AppSpec 转换在同级<strong>纯函数 util</strong>。这样最复杂的判定逻辑可以脱离数据库与队列单独测——服务端 80% 覆盖率门槛就是靠这种拆法达成的。
+    </div>
+  </div>
+</section>

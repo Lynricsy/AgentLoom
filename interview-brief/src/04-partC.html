@@ -1,0 +1,327 @@
+<!-- ============ PART C 分隔 ============ -->
+<section class="page ink" data-sec="PART C">
+  <div class="body stack" style="justify-content:space-between">
+    <div class="stack s">
+      <div class="kicker">PART C</div>
+      <div class="bignum w" style="font-size:96pt">C</div>
+    </div>
+    <div class="stack m">
+      <h2 style="color:#fff;font-size:34pt">智能体</h2>
+      <p class="lead">Agent 有自己的定义、版本、对话、运行时、记忆和自我修改能力。这一部分讲清楚：谁负责持久化、谁负责活的运行态、模型想改自己的配置时怎么拦。</p>
+      <div class="g g3 gap-s" style="border-top:1px solid rgba(255,255,255,.28);padding-top:4mm">
+        <div><div class="kicker" style="opacity:.6">C1–C2</div><p class="sm" style="color:#fff;margin-top:1.5mm">边界 · 版本漂移</p></div>
+        <div><div class="kicker" style="opacity:.6">C3–C4</div><p class="sm" style="color:#fff;margin-top:1.5mm">双运行态 · Skill</p></div>
+        <div><div class="kicker" style="opacity:.6">C5–C6</div><p class="sm" style="color:#fff;margin-top:1.5mm">记忆图谱 · 自进化</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ C1 边界 ============ -->
+<section class="page" data-sec="C1 · Agent 边界">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">C1 · AGENT vs WORKFLOW</div>
+      <h2>一份逻辑，两种入口</h2>
+    </div>
+
+    <div class="g g3 gap-s">
+      <div class="node soft"><b>Standalone 对话</b><span class="t">REST + /agent-conversation</span><br>用户直接和 Agent 聊，长期存在、可继续、可重启到新版本</div>
+      <div class="node soft"><b>Workflow 节点</b><span class="t">agent-task 队列</span><br>DAG 里的一步，有明确输入输出端口和终点</div>
+      <div class="node soft"><b>Sub-Agent</b><span class="t">递归复用同一桥接层</span><br>父 Agent 把子任务派发给子 Agent，共享同一 runtime 抽象</div>
+    </div>
+
+    <div class="stack s">
+      <h3>三条入口收敛到同一个接口</h3>
+      <div class="card card-ink">
+        <p class="sm" style="font-family:var(--mono);font-size:8pt;line-height:1.8;color:#fff">interface IAgentRuntime {<br>&nbsp;&nbsp;createSession(config: AgentRuntimeConfig)<br>&nbsp;&nbsp;loadSession(snapshot)<br>&nbsp;&nbsp;prompt(input) / cancel()<br>}</p>
+        <p class="xs" style="margin-top:2.5mm;color:rgba(255,255,255,.7)"><code>AgentRuntimeConfig</code> 含 modelConfig / tools / knowledgeBindings / subAgents / memoryInstanceIds / skillIds / outputSchema / nativeToolPolicy</p>
+      </div>
+      <p class="sm">两个实现：<code>SandboxAgentAdapter</code>（Firecracker guest）和 <code>InProcessAgentAdapter</code>（进程内）。上层三种入口都只依赖这个接口，所以换运行时不影响业务代码。</p>
+    </div>
+
+    <hr class="hair">
+
+    <div class="g g-5-7">
+      <div class="stack s">
+        <h3>Sub-Agent 的端口语义</h3>
+        <table class="tight">
+          <thead><tr><th>端口</th><th>语义</th></tr></thead>
+          <tbody>
+            <tr><td><code>system-prompt-in</code><br><code>model-in</code> / <code>schema-in</code></td><td><strong>override</strong>：覆盖父配置</td></tr>
+            <tr><td><code>tools-in</code> / <code>skills-in</code><br><code>sub-agents-in</code> / <code>knowledge-in</code> / <code>memory-in</code></td><td><strong>extension</strong>：在父配置基础上追加</td></tr>
+            <tr><td><code>sandbox-in</code></td><td><strong>不提供</strong></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="stack s">
+        <h3>为什么 sub-agent 不能自带沙箱</h3>
+        <p class="sm">如果每个子 Agent 都能开自己的 microVM，一次对话可能瞬间拉起十几个虚拟机，成本和调度都失控；而且父子之间的文件系统割裂，「父让子改一下这个文件」这种最常见的协作就做不了。</p>
+        <p class="sm">所以规则是：<strong>子 Agent 并入父的沙箱</strong>，并且如果父是 sandbox 模式、子是 no_sandbox，子会被降级为只读的 native tool policy；反过来 no_sandbox 父调用 sandbox 子<strong>直接拒绝</strong>——进程内运行时没有能力托管一个 microVM 的生命周期。</p>
+        <div class="note">
+          <span class="t">Principle</span>
+          能力只能收窄，不能在调用链中途放宽。这是权限设计里最省事也最不容易出错的规则。
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ C2 版本漂移 ============ -->
+<section class="page" data-sec="C2 · 版本漂移">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">C2 · VERSION DRIFT</div>
+      <h2>对话跨越了发布</h2>
+    </div>
+
+    <p class="lead">一个真实存在的麻烦：用户昨天和 Agent 聊了 20 轮，今天你发布了新版本改了系统提示词。这个对话继续时，应该用旧配置还是新配置？</p>
+
+    <div class="g g2 gap-s">
+      <div class="card card-fill">
+        <h4>设计选择</h4>
+        <p class="sm" style="margin-top:1.5mm">对话表<strong>只关联 <code>agentDefinitionId</code></strong>，不永久绑定版本。当前 runtime 实际加载的版本记录在 <code>agent_conversations.metadata.execution.loadedPublishedVersionId</code>。</p>
+        <p class="sm" style="margin-top:1.5mm">继续执行时 worker 比对它和定义当前的 <code>publishedVersionId</code>：不同就<strong>自动刷新</strong>——清理旧 Memory session、释放 direct sandbox、清空 sessionId，以 idle 状态用新配置重建。</p>
+      </div>
+      <div class="card card-outlined">
+        <h4>手动路径</h4>
+        <p class="sm" style="margin-top:1.5mm"><code>POST /agent-conversations/:id/restart-latest-version</code> 显式刷新。它<strong>只在当前对话内</strong>切换配置，不新建会话，历史消息和会话级 remembered policy 全部保留。</p>
+        <p class="xs" style="margin-top:2mm">早期实现是「新建一个对话」，用户会丢失上下文并抱怨对话列表被刷屏，后来改成原地重启。</p>
+      </div>
+    </div>
+
+    <hr class="hair">
+
+    <div class="g g-7-5">
+      <div class="stack s">
+        <h3>Agent 侧的版本模型（与工作流对称）</h3>
+        <table class="tight">
+          <thead><tr><th style="width:44mm">对象</th><th>要点</th></tr></thead>
+          <tbody>
+            <tr><td><code>agent_definitions</code></td><td>canvas <code>nodes/edges/viewport</code>、<code>runtimeMode</code>、草稿 <code>version</code>（OCC）、status、<code>publishedVersionId</code></td></tr>
+            <tr><td><code>agent_versions</code></td><td><code>(agentDefinitionId, versionNumber)</code> 唯一；快照含 canvas、runtimeMode、sandboxConfig、inputSchema、memoryInstanceIds、releaseNotes</td></tr>
+            <tr><td>写入保护</td><td>画布保存在 <code>withAgentWriteLock</code> 内递增草稿 version</td></tr>
+            <tr><td>发布</td><td>先清所有旧版本的 <code>publishedAt</code>，再发布指定历史版本或从草稿新建快照，最后原子更新定义</td></tr>
+            <tr><td>归档</td><td>同时给所有版本打 <code>archivedAt</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="stack s">
+        <div class="note">
+          <span class="t">Why not pin</span>
+          「把对话钉死在创建时的版本」也是一种设计，但它会让 bug 修复永远无法到达老对话。选自动刷新 + 显式重启，是把「配置正确性」排在「绝对可复现」之前——因为对话本来就不可复现（模型有随机性），而工作流执行必须可复现，所以工作流那边选的是钉死快照。<strong>同一个问题，两种实体给了相反的答案，理由是可复现性要求不同。</strong>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ C3 双运行态 ============ -->
+<section class="page" data-sec="C3 · 双运行态">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">C3 · DUAL RUNTIME</div>
+      <h2>沙箱与进程内</h2>
+      <p class="xs">创建 Agent 时显式固定 <code>runtimeMode = sandbox | no_sandbox</code>，之后不可改。</p>
+    </div>
+
+    <table class="tight">
+      <thead><tr><th style="width:32mm">维度</th><th style="width:60mm">sandbox</th><th>no_sandbox</th></tr></thead>
+      <tbody>
+        <tr><td>执行位置</td><td>Firecracker microVM 内的 pi-coding-agent</td><td>服务进程内 pi-agent-core</td></tr>
+        <tr><td>调用链</td><td><code>SandboxAgentAdapter</code> → manager mTLS proxy → guest</td><td><code>InProcessAgentAdapter</code> → <code>PiAgentCoreAdapter</code></td></tr>
+        <tr><td>Coding 工具</td><td>完整：读写文件、终端、执行命令</td><td><strong>不提供</strong></td></tr>
+        <tr><td>Workspace</td><td>真实文件系统 + 快照</td><td>无</td></tr>
+        <tr><td>MCP</td><td>HTTP + stdio</td><td><strong>仅 HTTP，stdio 在发布期 fail-closed</strong></td></tr>
+        <tr><td>启动开销</td><td>microVM 冷启动 + 网络配置</td><td>近乎为零</td></tr>
+        <tr><td>Skill / 知识库 / Memory / 自进化</td><td colspan="2">两者都支持</td></tr>
+      </tbody>
+    </table>
+
+    <div class="note warn">
+      <span class="t">Key rationale</span>
+      no_sandbox 禁 stdio 不是「懒得做」。stdio MCP 意味着在<strong>服务进程里 spawn 任意本地命令并注入环境变量</strong>——这等于把 Node 进程的全部权限交给一段配置。HTTP MCP 仍然是远程调用，受网络与凭证治理约束。
+    </div>
+
+    <hr class="hair">
+
+    <div class="stack s">
+      <h3>持久化层与活运行态的分工</h3>
+      <div class="g g2 gap-s">
+        <div class="card card-accent">
+          <h4 style="color:#fff">PiAgentCoreAdapter · 易失</h4>
+          <p class="sm" style="margin-top:1.5mm">只管内存里活着的 <code>Agent</code> 实例：订阅事件、prompt / abort、工具调用分发、权限门。进程重启即消失。</p>
+        </div>
+        <div class="card card-ink">
+          <h4 style="color:#fff">InProcessAgentAdapter · 持久</h4>
+          <p class="sm" style="margin-top:1.5mm">维护 session 映射与快照。工作流写 <code>execution_steps.checkpoint_data.session</code>；对话写 <code>acp_conversation_sessions.session_snapshot</code>，并把 user_message / plan / message_chunk / tool_call / decision 追加进 <code>replay_entries</code>。</p>
+        </div>
+      </div>
+      <p class="sm">这样切的原因很直接：<strong>pi-agent-core 是一个通用运行时库，它不该知道你的数据库长什么样</strong>；而业务侧必须能在进程崩溃后重建对话，不能依赖内存。代价是要维护两套状态并保证它们一致——这是本项目里最容易出 bug 的接缝之一。</p>
+      <div class="g g2 gap-s">
+        <div class="note">
+          <span class="t">Zod ↔ TypeBox</span>
+          <code>tool-schema-converter.ts</code> 做双向转换：AI SDK 侧用 Zod / JSON Schema，pi-agent-core 侧用 TypeBox。支持 object / array / enum / optional / nullable。不做转换的话，工具参数就无法在 pi 侧被校验。
+        </div>
+        <div class="note warn">
+          <span class="t">Honest</span>
+          <code>stream-fn.adapter.ts</code> 里的 <code>createVercelStreamFn</code>（把 AI SDK <code>streamText().fullStream</code> 桥成 pi 的 start/text/thinking/toolcall/done 事件）目前<strong>在生产代码里没有调用点</strong>，属于已写好但未启用的兼容层。别把它讲成「已经在跑」。
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ C4 Skill ============ -->
+<section class="page" data-sec="C4 · Skill">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">C4 · SKILL SYSTEM</div>
+      <h2>把「怎么做」外置成文件</h2>
+    </div>
+
+    <p class="sm" style="max-width:74ch">Skill 是一份 <code>SKILL.md</code>（YAML frontmatter + Markdown 正文）加可选附件。它解决的问题是：同一套方法论（比如「怎么做 code review」）不该被复制粘贴进每个 Agent 的系统提示词里。</p>
+
+    <div class="stack s">
+      <h3>存储与注入</h3>
+      <div class="pipe" style="grid-template-columns:repeat(4,1fr)">
+        <div class="st"><span class="i">STORE</span><b>MinIO + Postgres</b><span class="d">对象键 <code>tenants/{tenantId}/skills/{skillId}/</code>；<code>skills</code> 表存租户、slug、frontmatter、版本、<code>is_builtin</code>、<code>file_count</code></span></div>
+        <div class="st"><span class="i">RESOLVE</span><b>SkillResolverService</b><span class="d">按租户过滤 enabled skill，生成转义后的 <code>&lt;available_skills&gt;</code> XML</span></div>
+        <div class="st"><span class="i">INJECT A</span><b>提示词通道</b><span class="d">小内容连正文一起注入；大内容<strong>只给摘要</strong>，避免上下文爆炸</span></div>
+        <div class="st"><span class="i">INJECT B</span><b>文件通道</b><span class="d">sandbox 由 <code>pi-config-input.builder.ts</code> 下发 <code>skills[].files</code> 真实多文件</span></div>
+      </div>
+    </div>
+
+    <div class="g g-5-7">
+      <div class="stack s">
+        <h3>六个内置 Skill</h3>
+        <p class="sm"><code>code-review</code> · <code>documentation</code> · <code>test-generation</code> · <code>refactoring</code> · <code>debugging</code> · <code>self-evolution</code></p>
+        <p class="sm">由 <code>pnpm db:seed</code> 的 <code>seedSkills()</code> 按 slug 幂等 upsert，用哨兵 UUID <code>00000000-...-0000</code> 标记系统内置，<code>isBuiltin=true</code> 不可删除。</p>
+        <div class="note">
+          <span class="t">Note</span>
+          <code>self-evolution</code> 本身就是一个 Skill——教 Agent 怎么用那五个自进化工具。能力和使用说明用同一套机制分发。
+        </div>
+      </div>
+      <div class="stack s">
+        <h3>为什么要两条通道</h3>
+        <p class="sm">no_sandbox 没有文件系统，只能靠提示词；sandbox 有真实工作区，把附件压成一个字符串塞进 prompt 既浪费 token 又让 Agent 无法用 <code>grep</code> 之类的工具去检索。</p>
+        <p class="sm">所以同一份 Skill 数据，按运行态选择投递形态：<strong>提示词是「知道有这件事」，文件是「能真的读它」</strong>。这也顺带解释了为什么大 Skill 只注入摘要——模型看到摘要后，如果需要细节，会自己去读文件。</p>
+        <div class="note warn">
+          <span class="t">Cost</span>
+          代价是同一个 Skill 在两种运行态下模型看到的东西不完全一样，行为可能有细微差异。这是刻意接受的不一致。
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ C5 Memory ============ -->
+<section class="page" data-sec="C5 · 记忆图谱">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">C5 · AGENT MEMORY</div>
+      <h2>不是向量库，是图</h2>
+    </div>
+
+    <p class="lead">Memory 用 PostgreSQL 存图谱，检索用 PostgreSQL 全文检索（<code>to_tsvector</code> / <code>to_tsquery</code> / <code>ts_rank</code>），<strong>没有走 Qdrant</strong>。这是个会被追问的选择。</p>
+
+    <div class="g g2 gap-s">
+      <div class="stack s">
+        <h3>七张表</h3>
+        <table class="tight">
+          <thead><tr><th style="width:40mm">表</th><th>作用</th></tr></thead>
+          <tbody>
+            <tr><td><code>agent_memory_instances</code></td><td>实例与 OCC 版本</td></tr>
+            <tr><td><code>memory_nodes</code></td><td>节点内容与披露级别</td></tr>
+            <tr><td><code>memory_edges</code></td><td>父子关系，唯一结构关系，EdgeService 防环</td></tr>
+            <tr><td><code>memory_versions</code></td><td>内容版本、deprecated、reviewStatus</td></tr>
+            <tr><td><code>memory_paths</code></td><td>路径索引</td></tr>
+            <tr><td><code>memory_glossary_keywords</code></td><td>术语表</td></tr>
+            <tr><td><code>memory_sessions</code></td><td>按 <code>execution_id</code> 或 <code>agent_conversation_id</code> 绑定</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="stack s">
+        <h3>为什么是图 + FTS</h3>
+        <ul class="dash">
+          <li><strong>记忆需要结构。</strong>「项目 A → 模块 B → 约定 C」这种层级关系，向量检索表达不了，但对 Agent 复用知识至关重要。</li>
+          <li><strong>记忆需要版本与审阅。</strong><code>memory_versions</code> 带 <code>reviewStatus</code>，错误的记忆可以被标记废弃而不是物理删除——这是向量库很难做的。</li>
+          <li><strong>记忆需要披露控制。</strong>按 disclosure 级别过滤，不同场景看到不同深度。</li>
+          <li><strong>规模不同。</strong>知识库是几万个文档 chunk，记忆是几百条精炼结论。FTS 足够，省一个外部依赖。</li>
+        </ul>
+      </div>
+    </div>
+
+    <hr class="hair">
+
+    <div class="g g-7-5">
+      <div class="stack s">
+        <h3>融合读取</h3>
+        <p class="sm"><code>MemoryFusionService</code> 按 session priority 融合「读 / 搜 / 写 / boot protocol」四类操作。boot protocol 是会话启动时先注入一批高优先级记忆，让 Agent 一开始就有上下文，而不是等它自己想起来去搜。</p>
+      </div>
+      <div class="stack s">
+        <h3><code>/memory</code> namespace</h3>
+        <p class="sm">WsJwtGuard 鉴权，房间 <code>memory:{tenantId}:{instanceId}</code>，<code>lastEventId</code> 最多回放 1000 条，背压每实例 500 / 100ms drain。事件：<code>memory.node.*</code>、<code>memory.version.created|rollback</code>、<code>memory.review.submitted</code>。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ C6 自进化 ============ -->
+<section class="page" data-sec="C6 · 自进化">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">C6 · SELF-EVOLUTION</div>
+      <h2>让 Agent 改自己，<br>但要人点头</h2>
+    </div>
+
+    <div class="g g-7-5">
+      <div class="stack s">
+        <h3>五个低层工具</h3>
+        <table class="tight">
+          <thead><tr><th style="width:40mm">工具</th><th>性质</th></tr></thead>
+          <tbody>
+            <tr><td><code>query_state</code></td><td>读：当前自身配置</td></tr>
+            <tr><td><code>query_resource_pool</code></td><td>读：可用的模型 / 工具 / Skill / MCP / 工作区</td></tr>
+            <tr><td><code>propose_change</code></td><td>提案：产出 diff，不落盘</td></tr>
+            <tr><td><code>apply_change</code></td><td><strong>写</strong>：需要审批</td></tr>
+            <tr><td><code>create_resource</code></td><td><strong>写</strong>：需要审批</td></tr>
+          </tbody>
+        </table>
+        <p class="sm">提案对象包含 target、<code>baseVersion</code>、节点/边操作、diff、分类、risk、<code>requiresConfirmation</code>。分类覆盖「自编辑 / 改别的 Agent / 改 Workflow / 改 Skill / 改 MCP / 改 Model / 改 Workspace / 改 Sandbox」。</p>
+      </div>
+      <div class="stack s">
+        <div class="card card-accent">
+          <div class="kicker">THE KEY TRICK</div>
+          <p class="sm" style="margin-top:2mm"><code>awaiting_permission</code> 是 <strong>tool-level</strong> 状态，step 本身保持 <code>running</code>。</p>
+          <p class="sm" style="margin-top:2mm">因为等待的是<strong>一次工具调用</strong>，模型的这一轮回合还在进行中。如果把整个 step 置成 waiting，恢复时就得重建整个 agent loop 的状态机；只冻结那个工具调用，用户点了「同意」之后 loop 可以原地继续。</p>
+        </div>
+        <p class="sm"><code>SelfEvolutionPermissionService</code> 把高风险请求登记为 pending，用 <strong>Redis 跨进程共享</strong>——因为发起 prompt 的 worker 和接收审批 HTTP 请求的 server 通常不是同一个进程。</p>
+      </div>
+    </div>
+
+    <hr class="hair">
+
+    <div class="g g2 gap-s">
+      <div class="stack s">
+        <h3>记住决定</h3>
+        <p class="sm">用户可以按 <code>rememberScope = conversation_category</code> 记住 approve / deny，策略写进 <code>agent_conversations.metadata.rememberedPolicies</code>，刷新版本时保留。</p>
+        <p class="sm">粒度选「会话 × 分类」而不是「全局」或「单次」：全局太危险（一次同意等于永久授权），单次太烦（同一类操作要点二十次）。</p>
+      </div>
+      <div class="stack s">
+        <h3>审批接口</h3>
+        <p class="sm"><code>POST /agent-conversations/:id/tool-permissions/:toolCallId/resolve</code></p>
+        <p class="sm">工作流侧对称：<code>POST /executions/:executionId/steps/:stepId/tool-calls/:toolCallId/resolve</code></p>
+        <div class="note">
+          <span class="t">Scope</span>
+          目前只有自进化的两个写工具会触发 <code>awaiting_permission</code>。普通工具（读文件、搜索、HTTP）自动放行，否则人会被打断到无法使用。
+        </div>
+      </div>
+    </div>
+
+    <div class="note warn">
+      <span class="t">Related</span>
+      配套还有一条<strong>离线优化闭环</strong>：<code>optimization_suggestions</code> 表存 <code>model_downgrade</code> / <code>timeout_adjustment</code> / <code>tool_pruning</code> / <code>autonomy_upgrade</code> 四类建议，BullMQ <code>upsertJobScheduler</code> 注册 UTC <code>0 2 * * 1</code> 周任务，读近 28 天 <code>agent_execution_records</code>，遥测不足 20 条的节点跳过。apply 时<strong>双重 guard</strong>：工作流 <code>version</code> OCC 防覆盖并发编辑 + <code>WHERE status='pending'</code> 防重复消费，任一失败返回 409。注意 <code>OptimizationSuggestionsPanel</code> 目前<strong>没有生产挂载点</strong>，只被测试引用。
+    </div>
+  </div>
+</section>

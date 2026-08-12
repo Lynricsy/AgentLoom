@@ -1,0 +1,212 @@
+<!-- ============ P1 封面 ============ -->
+<section class="page accent nofolio" data-nochrome>
+  <div style="position:absolute;inset:0;padding:20mm 17mm 16mm;display:flex;flex-direction:column">
+    <div class="spread" style="border-bottom:1px solid rgba(255,255,255,.28);padding-bottom:3.4mm">
+      <div class="kicker">AgentLoom · Technical Field Note</div>
+      <div class="kicker">IKB · REV 2026.08 · 面试自用</div>
+    </div>
+
+    <div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:8mm">
+      <div class="kicker" style="letter-spacing:.26em">SYSTEM DESIGN REVIEW / 面试复盘手册</div>
+      <h1 style="color:#fff;font-size:56pt">AgentLoom<br><span style="font-weight:300;font-style:italic">多智能体工作流</span><br>编排平台</h1>
+      <div style="width:34mm;height:1.6mm;background:#fff"></div>
+      <p class="lead" style="font-size:11.5pt">一个把可视化 DAG 编排、独立 Agent 运行时、Firecracker 微虚拟机沙箱、签名插件生态与企业级治理面收拢进同一套多租户契约的平台。本手册按“设计意图 → 结构 → 取舍 → 追问”组织，用于快速重建心智模型。</p>
+    </div>
+
+    <div style="border-top:1px solid rgba(255,255,255,.28);padding-top:4mm">
+      <div class="g g4" style="gap:5mm">
+        <div><div class="kicker" style="opacity:.7">代码规模</div><div style="font-weight:200;font-size:19pt;color:#fff;margin-top:1.5mm">686k 行</div></div>
+        <div><div class="kicker" style="opacity:.7">服务端模块</div><div style="font-weight:200;font-size:19pt;color:#fff;margin-top:1.5mm">41 个</div></div>
+        <div><div class="kicker" style="opacity:.7">数据表</div><div style="font-weight:200;font-size:19pt;color:#fff;margin-top:1.5mm">74 张</div></div>
+        <div><div class="kicker" style="opacity:.7">提交</div><div style="font-weight:200;font-size:19pt;color:#fff;margin-top:1.5mm">1,031 次</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ P2 阅读指南 ============ -->
+<section class="page" data-sec="READING GUIDE">
+  <div class="body stack l">
+    <div class="stack s">
+      <div class="kicker">HOW TO READ · 00</div>
+      <h2>这份文档要解决的<br>不是“有什么功能”</h2>
+    </div>
+
+    <p class="lead">面试官不会问“你有几个模块”，只会问“这里为什么这么做、不这么做会怎样、边界在哪”。所以本手册的每一节都固定回答三件事：<strong>结构是什么</strong>、<strong>为什么这样切</strong>、<strong>失败时会怎样</strong>。</p>
+
+    <div class="g g3 gap-s">
+      <div class="card card-fill">
+        <div class="midnum">01</div>
+        <h4 style="margin-top:2mm">结构</h4>
+        <p class="sm" style="margin-top:1.2mm">用图和表给出模块、数据流、协议信封。落到具体文件路径和表名，方便当场翻代码。</p>
+      </div>
+      <div class="card card-fill">
+        <div class="midnum">02</div>
+        <h4 style="margin-top:2mm">取舍</h4>
+        <p class="sm" style="margin-top:1.2mm">每个设计都记录被放弃的替代方案，以及放弃的代价。这是面试里最值钱的部分。</p>
+      </div>
+      <div class="card card-accent">
+        <div class="midnum" style="color:#fff">03</div>
+        <h4 style="margin-top:2mm;color:#fff">失效</h4>
+        <p class="sm" style="margin-top:1.2mm;color:rgba(255,255,255,.9)">fail-closed 点、竞态防护、幂等键、降级路径。答不出失效模式等于没设计过。</p>
+      </div>
+    </div>
+
+    <hr class="hair">
+
+    <div class="g g-7-5">
+      <div class="stack s">
+        <h3>三条贯穿全局的主线</h3>
+        <ul class="dash">
+          <li><strong>快照优先</strong> — 工作流、Agent、插件、生成应用全部“草稿可改、发布不可变”。执行永远读快照，不读草稿。</li>
+          <li><strong>租户是第一等公民</strong> — 每个请求包在一个设置了 <code>app.current_tenant</code> 的数据库事务里，PostgreSQL RLS 兜底，而不是靠代码里记得加 <code>where tenant_id</code>。</li>
+          <li><strong>不可信代码只在一个地方跑</strong> — Agent 生成的代码进 Firecracker 微虚拟机，插件进 Extism WASM。业务进程既没有 KVM 也没有 Docker socket。</li>
+        </ul>
+      </div>
+      <div class="stack s">
+        <div class="card card-outlined" style="padding:3.6mm 4mm">
+          <div class="kicker mute">SELF-HONESTY</div>
+          <p class="sm" style="margin-top:2mm">文档末尾有一章<strong>「技术债与漂移」</strong>，逐条列出当前实现与设计意图不一致的地方。面试时主动讲这些，比被追问出来强得多。</p>
+        </div>
+        <div class="note">
+          <span class="t">Convention</span>
+          正文中 <code>等宽字体</code> 一律是真实存在的文件、符号、表名或接口路径；未经实测的推断会显式标注为「推断」。
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ P3 目录 ============ -->
+<section class="page" data-sec="CONTENTS">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">CONTENTS · 目录</div>
+      <h2>六个部分</h2>
+    </div>
+
+    <div class="g g2 gap-l" style="align-items:start">
+      <div class="toc stack" style="gap:0">
+        <div class="e" style="border-bottom:1px solid var(--ink);padding-bottom:2mm"><span class="n">A</span><span class="t">全景</span><span class="d"></span></div>
+        <div class="e" data-ref="A1"><span class="n">A1</span><span class="t">项目定位与产品形态</span><span class="d"></span><span class="p">07</span></div>
+        <div class="e" data-ref="A2"><span class="n">A2</span><span class="t">系统全景架构</span><span class="d"></span><span class="p">08</span></div>
+        <div class="e" data-ref="A3"><span class="n">A3</span><span class="t">仓库结构与包边界</span><span class="d"></span><span class="p">09</span></div>
+        <div class="e" data-ref="A4"><span class="n">A4</span><span class="t">数据模型全景 · 74 张表</span><span class="d"></span><span class="p">10</span></div>
+
+        <div class="e" style="border-bottom:1px solid var(--ink);padding-bottom:2mm;margin-top:5mm"><span class="n">B</span><span class="t">执行内核</span><span class="d"></span></div>
+        <div class="e" data-ref="B1"><span class="n">B1</span><span class="t">服务端骨架与全局管线</span><span class="d"></span><span class="p">12</span></div>
+        <div class="e" data-ref="B2"><span class="n">B2</span><span class="t">多租户：RLS + 事务上下文</span><span class="d"></span><span class="p">13</span></div>
+        <div class="e" data-ref="B3"><span class="n">B3</span><span class="t">定义、版本与发布语义</span><span class="d"></span><span class="p">14</span></div>
+        <div class="e" data-ref="B4"><span class="n">B4</span><span class="t">runWorkflow 全链路</span><span class="d"></span><span class="p">15</span></div>
+        <div class="e" data-ref="B5"><span class="n">B5</span><span class="t">NodeScheduler：DAG 调度</span><span class="d"></span><span class="p">16</span></div>
+        <div class="e" data-ref="B6"><span class="n">B6</span><span class="t">复合节点：循环与分支</span><span class="d"></span><span class="p">17</span></div>
+        <div class="e" data-ref="B7"><span class="n">B7</span><span class="t">Checkpoint 与断点续跑</span><span class="d"></span><span class="p">18</span></div>
+        <div class="e" data-ref="B8"><span class="n">B8</span><span class="t">实时协议与事件回放</span><span class="d"></span><span class="p">19</span></div>
+        <div class="e" data-ref="B9"><span class="n">B9</span><span class="t">背压、队列与触发器</span><span class="d"></span><span class="p">20</span></div>
+
+        <div class="e" style="border-bottom:1px solid var(--ink);padding-bottom:2mm;margin-top:5mm"><span class="n">C</span><span class="t">智能体</span><span class="d"></span></div>
+        <div class="e" data-ref="C1"><span class="n">C1</span><span class="t">Agent 与 Workflow 的并行关系</span><span class="d"></span><span class="p">22</span></div>
+        <div class="e" data-ref="C2"><span class="n">C2</span><span class="t">版本漂移与对话刷新</span><span class="d"></span><span class="p">23</span></div>
+        <div class="e" data-ref="C3"><span class="n">C3</span><span class="t">双运行态与适配器分层</span><span class="d"></span><span class="p">24</span></div>
+        <div class="e" data-ref="C4"><span class="n">C4</span><span class="t">Skill 注入体系</span><span class="d"></span><span class="p">25</span></div>
+        <div class="e" data-ref="C5"><span class="n">C5</span><span class="t">Memory 图谱</span><span class="d"></span><span class="p">26</span></div>
+        <div class="e" data-ref="C6"><span class="n">C6</span><span class="t">自进化与审批边界</span><span class="d"></span><span class="p">27</span></div>
+      </div>
+
+      <div class="toc stack" style="gap:0">
+        <div class="e" style="border-bottom:1px solid var(--ink);padding-bottom:2mm"><span class="n">D</span><span class="t">隔离与生态</span><span class="d"></span></div>
+        <div class="e" data-ref="D1"><span class="n">D1</span><span class="t">Firecracker 沙箱拓扑</span><span class="d"></span><span class="p">29</span></div>
+        <div class="e" data-ref="D2"><span class="n">D2</span><span class="t">网络身份边界</span><span class="d"></span><span class="p">30</span></div>
+        <div class="e" data-ref="D3"><span class="n">D3</span><span class="t">会话生命周期与工作区租约</span><span class="d"></span><span class="p">31</span></div>
+        <div class="e" data-ref="D4"><span class="n">D4</span><span class="t">ACP 网关</span><span class="d"></span><span class="p">32</span></div>
+        <div class="e" data-ref="D5"><span class="n">D5</span><span class="t">回调中继与 SSRF 防护</span><span class="d"></span><span class="p">33</span></div>
+        <div class="e" data-ref="D6"><span class="n">D6</span><span class="t">插件包与规范化签名</span><span class="d"></span><span class="p">34</span></div>
+        <div class="e" data-ref="D7"><span class="n">D7</span><span class="t">WASM 执行与分成结算</span><span class="d"></span><span class="p">35</span></div>
+        <div class="e" data-ref="D8"><span class="n">D8</span><span class="t">市场、分享与来源分类</span><span class="d"></span><span class="p">36</span></div>
+        <div class="e" data-ref="D9"><span class="n">D9</span><span class="t">Generated App 八道门禁</span><span class="d"></span><span class="p">37</span></div>
+
+        <div class="e" style="border-bottom:1px solid var(--ink);padding-bottom:2mm;margin-top:5mm"><span class="n">E</span><span class="t">平台面</span><span class="d"></span></div>
+        <div class="e" data-ref="E1"><span class="n">E1</span><span class="t">Studio 架构与状态分层</span><span class="d"></span><span class="p">39</span></div>
+        <div class="e" data-ref="E2"><span class="n">E2</span><span class="t">画布节点与端口契约</span><span class="d"></span><span class="p">40</span></div>
+        <div class="e" data-ref="E3"><span class="n">E3</span><span class="t">Rust/WASM 类型引擎</span><span class="d"></span><span class="p">41</span></div>
+        <div class="e" data-ref="E4"><span class="n">E4</span><span class="t">认证与端到端加密</span><span class="d"></span><span class="p">42</span></div>
+        <div class="e" data-ref="E5"><span class="n">E5</span><span class="t">审计：append-only 双表</span><span class="d"></span><span class="p">43</span></div>
+        <div class="e" data-ref="E6"><span class="n">E6</span><span class="t">配额、限流与监控</span><span class="d"></span><span class="p">44</span></div>
+        <div class="e" data-ref="E7"><span class="n">E7</span><span class="t">知识库 RAG 与 MCP</span><span class="d"></span><span class="p">45</span></div>
+        <div class="e" data-ref="E8"><span class="n">E8</span><span class="t">移动端</span><span class="d"></span><span class="p">46</span></div>
+        <div class="e" data-ref="E9"><span class="n">E9</span><span class="t">部署拓扑与备份恢复</span><span class="d"></span><span class="p">47</span></div>
+
+        <div class="e" style="border-bottom:1px solid var(--ink);padding-bottom:2mm;margin-top:5mm"><span class="n">F</span><span class="t">复盘</span><span class="d"></span></div>
+        <div class="e" data-ref="F1"><span class="n">F1</span><span class="t">技术债与契约漂移</span><span class="d"></span><span class="p">49</span></div>
+        <div class="e" data-ref="F2"><span class="n">F2</span><span class="t">面试问答速查 · 架构</span><span class="d"></span><span class="p">50</span></div>
+        <div class="e" data-ref="F3"><span class="n">F3</span><span class="t">面试问答速查 · 并发与一致性</span><span class="d"></span><span class="p">51</span></div>
+        <div class="e" data-ref="F4"><span class="n">F4</span><span class="t">面试问答速查 · 安全</span><span class="d"></span><span class="p">52</span></div>
+        <div class="e" data-ref="F5"><span class="n">F5</span><span class="t">一分钟自我介绍脚本</span><span class="d"></span><span class="p">53</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ P4 数字速览 ============ -->
+<section class="page" data-sec="AT A GLANCE">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">AT A GLANCE · 数字速览</div>
+      <h2>规模</h2>
+      <p class="xs">数字来自本地工作树实测（<code>find</code> + <code>wc -l</code>，排除 <code>node_modules</code>），非估算。</p>
+    </div>
+
+    <div class="g g4 gap-s">
+      <div class="kpi"><span class="v acc">686k</span><span class="k">总代码行数</span></div>
+      <div class="kpi"><span class="v">1,031</span><span class="k">Git 提交 · 08-12</span></div>
+      <div class="kpi"><span class="v">5.2</span><span class="k">开发月数</span></div>
+      <div class="kpi"><span class="v">11</span><span class="k">子包</span></div>
+    </div>
+
+    <hr class="hair">
+
+    <div class="g g-7-5">
+      <div class="stack s">
+        <h3>各包体量</h3>
+        <table class="tight">
+          <thead><tr><th>包</th><th>技术栈</th><th style="text-align:right">文件</th><th style="text-align:right">行数</th></tr></thead>
+          <tbody>
+            <tr><td><strong>agentloom-server</strong></td><td>NestJS 11 / Fastify 5</td><td class="num" style="text-align:right">1,805</td><td class="num" style="text-align:right">399,862</td></tr>
+            <tr><td><strong>agentloom-studio</strong></td><td>React 19 / Vite 7</td><td class="num" style="text-align:right">1,089</td><td class="num" style="text-align:right">198,148</td></tr>
+            <tr><td><strong>agentloom_mobile</strong></td><td>Flutter 3.41</td><td class="num" style="text-align:right">305</td><td class="num" style="text-align:right">73,777</td></tr>
+            <tr><td><strong>firecracker-runtime</strong></td><td>Go</td><td class="num" style="text-align:right">51</td><td class="num" style="text-align:right">8,780</td></tr>
+            <tr><td><strong>type-engine</strong></td><td>Rust 2024 / WASM</td><td class="num" style="text-align:right">26</td><td class="num" style="text-align:right">2,005</td></tr>
+            <tr><td><strong>plugin-cli</strong></td><td>TypeScript / Commander</td><td class="num" style="text-align:right">18</td><td class="num" style="text-align:right">1,961</td></tr>
+            <tr><td><strong>plugin-sdk</strong></td><td>TypeScript / Zod 3</td><td class="num" style="text-align:right">27</td><td class="num" style="text-align:right">1,786</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="stack m">
+        <div class="stack s">
+          <h3>测试与门禁</h3>
+          <div class="g g2 gap-xs">
+            <div class="kpi"><span class="v s">334</span><span class="k">*.spec.ts</span></div>
+            <div class="kpi"><span class="v s">299</span><span class="k">*.test.ts(x)</span></div>
+            <div class="kpi"><span class="v s">92</span><span class="k">*_test.dart</span></div>
+            <div class="kpi"><span class="v s">80%</span><span class="k">Server 覆盖率门槛</span></div>
+          </div>
+        </div>
+        <div class="card card-ink">
+          <div class="kicker">TIMELINE</div>
+          <p class="sm" style="margin-top:2mm">首次提交 <code>f1d766b</code> · 2026-03-07<br>最近提交 · 2026-08-12</p>
+          <p class="sm" style="margin-top:2mm">约 <strong>5 个月</strong>、平均每天 6～7 次提交的高强度 AI 辅助开发。</p>
+        </div>
+      </div>
+    </div>
+
+    <hr class="hair">
+
+    <div class="g g4 gap-s">
+      <div class="card card-outlined"><div class="kicker mute">SERVER</div><div style="font-weight:200;font-size:17pt;margin-top:1.5mm">41</div><p class="xs">业务模块目录</p></div>
+      <div class="card card-outlined"><div class="kicker mute">POSTGRES</div><div style="font-weight:200;font-size:17pt;margin-top:1.5mm">74</div><p class="xs">Drizzle pgTable</p></div>
+      <div class="card card-outlined"><div class="kicker mute">SOCKET.IO</div><div style="font-weight:200;font-size:17pt;margin-top:1.5mm">5</div><p class="xs">实时 namespace</p></div>
+      <div class="card card-outlined"><div class="kicker mute">BULLMQ</div><div style="font-weight:200;font-size:17pt;margin-top:1.5mm">10+</div><p class="xs">队列与调度器</p></div>
+    </div>
+  </div>
+</section>
