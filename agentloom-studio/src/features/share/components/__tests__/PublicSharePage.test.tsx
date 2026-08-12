@@ -85,8 +85,6 @@ vi.mock('@xyflow/react', () => ({
   MiniMap: () => <div data-testid="reactflow-minimap" />,
 }))
 
-vi.mock('@xyflow/react/dist/style.css', () => ({}))
-
 const { PublicSharePage } = await import('../PublicSharePage')
 
 // --- helpers ---

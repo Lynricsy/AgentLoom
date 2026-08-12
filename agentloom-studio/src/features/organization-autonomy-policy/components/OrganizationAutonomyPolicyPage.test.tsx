@@ -1,10 +1,13 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { makeHttpError } from '@/features/organization/testing/makeHttpError'
 import { OrganizationAutonomyPolicyPage } from './OrganizationAutonomyPolicyPage'
 
 const mocks = vi.hoisted(() => ({
   useAuthToken: vi.fn(),
+  useCurrentOrganization: vi.fn(),
+  refetchCurrentOrganization: vi.fn(),
   useOrganizationAutonomyPolicy: vi.fn(),
   useUpdateOrganizationAutonomyPolicy: vi.fn(),
   usePreviewOrganizationAutonomyDowngrade: vi.fn(),
@@ -17,6 +20,10 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/features/execution', () => ({
   useAuthToken: mocks.useAuthToken,
+}))
+
+vi.mock('@/features/organization/api/organizationQueries', () => ({
+  useCurrentOrganization: mocks.useCurrentOrganization,
 }))
 
 vi.mock('../hooks/useOrganizationAutonomyPolicy', () => ({
@@ -37,9 +44,9 @@ function createToken(payload: Record<string, unknown>) {
   return `${header}.${body}.signature`
 }
 
-const ownerToken = createToken({ tenantRole: 'owner', organizationId: 'org-1' })
-const creatorToken = createToken({ tenantRole: 'creator', organizationId: 'org-1' })
-const ownerWithoutOrgToken = createToken({ tenantRole: 'owner' })
+// 真实部署的 Supabase JWT 里没有任何组织 claim，只有 tenant_role / tenant_id
+const ownerToken = createToken({ tenantRole: 'owner', tenantId: 'tenant-1' })
+const creatorToken = createToken({ tenantRole: 'creator', tenantId: 'tenant-1' })
 
 const basePolicy = {
   organizationId: 'org-1',
@@ -77,6 +84,12 @@ describe('OrganizationAutonomyPolicyPage', () => {
       mutate: mocks.confirmMutate,
       isPending: false,
     })
+    mocks.useCurrentOrganization.mockReturnValue({
+      data: { id: 'org-1' },
+      isLoading: false,
+      error: null,
+      refetch: mocks.refetchCurrentOrganization,
+    })
   })
 
   it('shows a forbidden state for direct non-owner access', () => {
@@ -89,13 +102,52 @@ describe('OrganizationAutonomyPolicyPage', () => {
     expect(screen.getByText(/当前租户角色为 creator/)).toBeInTheDocument()
   })
 
-  it('shows a missing-organization state when the owner token has no org claim', () => {
-    mocks.useAuthToken.mockReturnValue(ownerWithoutOrgToken)
+  it('组织解析中只展示骨架，不发起自治策略请求', () => {
+    mocks.useCurrentOrganization.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      error: null,
+      refetch: mocks.refetchCurrentOrganization,
+    })
+
+    render(<OrganizationAutonomyPolicyPage />)
+
+    expect(
+      screen.getByTestId('organization-autonomy-policy-organization-loading'),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByTestId('organization-autonomy-policy-missing-org'),
+    ).not.toBeInTheDocument()
+    expect(mocks.useOrganizationAutonomyPolicy).not.toHaveBeenCalled()
+  })
+
+  it('当前组织请求失败时展示错误态、可重试，且不发起自治策略请求', async () => {
+    const user = userEvent.setup()
+
+    mocks.useCurrentOrganization.mockReturnValue({
+      data: undefined,
+      isLoading: false,
+      error: makeHttpError(404, { detail: '组织未找到' }),
+      refetch: mocks.refetchCurrentOrganization,
+    })
 
     render(<OrganizationAutonomyPolicyPage />)
 
     expect(screen.getByTestId('organization-autonomy-policy-missing-org')).toBeInTheDocument()
-    expect(screen.getByText('无法识别当前组织')).toBeInTheDocument()
+    expect(screen.getByText('无法确定当前组织')).toBeInTheDocument()
+    expect(screen.getByText(/当前租户还没有关联组织/)).toBeInTheDocument()
+    expect(mocks.useOrganizationAutonomyPolicy).not.toHaveBeenCalled()
+
+    await user.click(screen.getByRole('button', { name: '重试' }))
+
+    expect(mocks.refetchCurrentOrganization).toHaveBeenCalledTimes(1)
+  })
+
+  it('用 organizations/current 返回的组织 id 请求自治策略，而不是租户 id', () => {
+    render(<OrganizationAutonomyPolicyPage />)
+
+    expect(mocks.useOrganizationAutonomyPolicy).toHaveBeenCalledWith('org-1')
+    expect(mocks.useOrganizationAutonomyPolicy).not.toHaveBeenCalledWith('tenant-1')
   })
 
   it('renders updatedBy metadata on the current policy card', () => {

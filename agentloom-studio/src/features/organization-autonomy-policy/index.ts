@@ -33,6 +33,5 @@ export {
 export {
   canManageOrganizationAutonomyPolicy,
   getOrganizationAutonomyPolicyRoleFromToken,
-  getOrganizationIdFromToken,
 } from './lib/organizationAutonomyPolicyPermissions'
 export { OrganizationAutonomyPolicyPage } from './components/OrganizationAutonomyPolicyPage'

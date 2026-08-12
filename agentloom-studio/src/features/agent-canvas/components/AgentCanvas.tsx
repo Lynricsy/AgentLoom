@@ -8,7 +8,6 @@ import {
   type Node,
   type ReactFlowInstance,
 } from '@xyflow/react';
-import '@xyflow/react/dist/style.css';
 import { cn } from '@/shared/lib/utils';
 import { LG_QUERY, useMediaQuery } from '@/shared/hooks/use-media-query';
 import { CanvasNodeShell } from '@/features/canvas/components/CanvasNode';

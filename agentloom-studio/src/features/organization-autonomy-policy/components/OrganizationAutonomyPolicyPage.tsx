@@ -3,11 +3,14 @@ import {
   useMemo,
   useRef,
   useState,
+  type ReactNode,
 } from 'react'
 import { AlertTriangle, ShieldAlert, ShieldCheck, SlidersHorizontal } from 'lucide-react'
 import { motion } from 'motion/react'
+import { HTTPError } from 'ky'
 import type { AutonomyMode } from '@/features/canvas/autonomy.types'
 import { useAuthToken } from '@/features/execution'
+import { useCurrentOrganization } from '@/features/organization/api/organizationQueries'
 import { EmptyState } from '@/shared/components/empty-state/EmptyState'
 import { PageHeader } from '@/shared/components/page-header/PageHeader'
 import { staggerList } from '@/shared/lib/motion'
@@ -39,7 +42,6 @@ import {
 import {
   canManageOrganizationAutonomyPolicy,
   getOrganizationAutonomyPolicyRoleFromToken,
-  getOrganizationIdFromToken,
 } from '../lib/organizationAutonomyPolicyPermissions'
 import type {
   OrganizationAutonomyDowngradePreview,
@@ -157,11 +159,13 @@ function AutonomyPolicyBlockedState({
   icon: Icon,
   title,
   message,
+  action,
 }: {
   testId: string
   icon: typeof ShieldAlert
   title: string
   message: string
+  action?: ReactNode
 }) {
   return (
     <div className="space-y-6 px-4 py-6 sm:px-6 lg:px-8" data-testid={testId}>
@@ -179,9 +183,33 @@ function AutonomyPolicyBlockedState({
           <div className="space-y-1.5">
             <h2 className="text-sm font-semibold text-foreground">{title}</h2>
             <p className="text-xs leading-relaxed text-muted">{message}</p>
+            {action ? <div className="pt-1">{action}</div> : null}
           </div>
         </CardContent>
       </Card>
+    </div>
+  )
+}
+
+/** 组织解析中：只出骨架，避免闪现「无法确定当前组织」的错误态 */
+function AutonomyPolicyOrganizationLoadingState() {
+  return (
+    <div
+      className="space-y-6 px-4 py-6 sm:px-6 lg:px-8"
+      data-testid="organization-autonomy-policy-organization-loading"
+    >
+      <PageHeader
+        icon={SlidersHorizontal}
+        title="组织自治策略"
+        description={PAGE_DESCRIPTION}
+      />
+
+      <p className="text-xs text-muted">正在确认当前组织…</p>
+
+      <div className="space-y-3">
+        <Skeleton className="h-28 rounded-card" />
+        <Skeleton className="h-44 rounded-card" />
+      </div>
     </div>
   )
 }
@@ -507,10 +535,18 @@ function OrganizationAutonomyPolicyContent({
 
 export function OrganizationAutonomyPolicyPage() {
   const authToken = useAuthToken()
+  // 角色仍然从令牌里读（tenant_role claim 真实存在），只有组织 id 改由服务端解析
   const currentUserRole = getOrganizationAutonomyPolicyRoleFromToken(authToken)
-  const organizationId = getOrganizationIdFromToken(authToken)
+  const canManage = canManageOrganizationAutonomyPolicy(currentUserRole)
+  const {
+    data: currentOrganization,
+    isLoading: isOrganizationLoading,
+    error: organizationError,
+    refetch: refetchOrganization,
+  } = useCurrentOrganization({ enabled: canManage })
+  const organizationId = currentOrganization?.id
 
-  if (!canManageOrganizationAutonomyPolicy(currentUserRole)) {
+  if (!canManage) {
     return (
       <AutonomyPolicyBlockedState
         testId="organization-autonomy-policy-forbidden"
@@ -525,13 +561,31 @@ export function OrganizationAutonomyPolicyPage() {
     )
   }
 
+  if (isOrganizationLoading) {
+    return <AutonomyPolicyOrganizationLoadingState />
+  }
+
   if (!organizationId) {
     return (
       <AutonomyPolicyBlockedState
         testId="organization-autonomy-policy-missing-org"
         icon={AlertTriangle}
-        title="无法识别当前组织"
-        message="当前登录令牌里没有可用的 organizationId / orgId / tenantId 信息，暂时无法加载组织自治策略。"
+        title="无法确定当前组织"
+        message={
+          organizationError instanceof HTTPError && organizationError.response.status === 404
+            ? '当前租户还没有关联组织，或当前账号不是该组织成员，因此无法加载组织自治策略。'
+            : '获取当前组织信息失败，暂时无法加载组织自治策略，请稍后重试。'
+        }
+        action={
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => void refetchOrganization()}
+          >
+            重试
+          </Button>
+        }
       />
     )
   }

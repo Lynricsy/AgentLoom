@@ -33,7 +33,6 @@ export {
 } from './hooks/useResourceGovernance'
 export {
   canManageResourceGovernance,
-  getResourceGovernanceOrganizationIdFromToken,
   getResourceGovernanceRoleFromToken,
   getResourceGovernanceTenantIdFromToken,
 } from './lib/resourceGovernancePermissions'

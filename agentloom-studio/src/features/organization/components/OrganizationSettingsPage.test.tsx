@@ -1,14 +1,17 @@
 import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { makeHttpError } from '../testing/makeHttpError'
 import type { Organization, OrganizationMember } from '../types'
 
 const mocks = vi.hoisted(() => ({
   authToken: vi.fn<() => string | undefined>(() => 'token'),
-  organizationId: vi.fn<() => string | null>(() => 'org-1'),
   role: vi.fn<() => string | null>(() => 'owner'),
-  useOrganization: vi.fn(),
+  useCurrentOrganization: vi.fn(),
   useOrganizationMembers: vi.fn(),
+  useInviteOrganizationMember: vi.fn(),
+  useUpdateOrganizationMemberRole: vi.fn(),
+  useRemoveOrganizationMember: vi.fn(),
   invite: vi.fn(),
   updateRole: vi.fn(),
   remove: vi.fn(),
@@ -19,13 +22,6 @@ vi.mock('@/features/execution', () => ({
   useAuthToken: () => mocks.authToken(),
 }))
 
-vi.mock(
-  '@/features/organization-autonomy-policy/lib/organizationAutonomyPolicyPermissions',
-  () => ({
-    getOrganizationIdFromToken: () => mocks.organizationId(),
-  }),
-)
-
 vi.mock('@/features/intervention-policy/lib/policyPermissions', () => ({
   getInterventionPolicyRoleFromToken: () => mocks.role(),
 }))
@@ -34,21 +30,23 @@ vi.mock('@/shared/ui/toast', () => ({
   useToast: () => ({ notify: mocks.notify }),
 }))
 
+// 组织 id 现在来自服务端响应，测试要能看到各 hook 实际收到的 id
 vi.mock('../api/organizationQueries', () => ({
-  useOrganization: () => mocks.useOrganization(),
-  useOrganizationMembers: () => mocks.useOrganizationMembers(),
-  useInviteOrganizationMember: () => ({
-    mutateAsync: mocks.invite,
-    isPending: false,
-  }),
-  useUpdateOrganizationMemberRole: () => ({
-    mutateAsync: mocks.updateRole,
-    isPending: false,
-  }),
-  useRemoveOrganizationMember: () => ({
-    mutateAsync: mocks.remove,
-    isPending: false,
-  }),
+  useCurrentOrganization: () => mocks.useCurrentOrganization(),
+  useOrganizationMembers: (organizationId?: string, options?: unknown) =>
+    mocks.useOrganizationMembers(organizationId, options),
+  useInviteOrganizationMember: (organizationId?: string) => {
+    mocks.useInviteOrganizationMember(organizationId)
+    return { mutateAsync: mocks.invite, isPending: false }
+  },
+  useUpdateOrganizationMemberRole: (organizationId?: string) => {
+    mocks.useUpdateOrganizationMemberRole(organizationId)
+    return { mutateAsync: mocks.updateRole, isPending: false }
+  },
+  useRemoveOrganizationMember: (organizationId?: string) => {
+    mocks.useRemoveOrganizationMember(organizationId)
+    return { mutateAsync: mocks.remove, isPending: false }
+  },
 }))
 
 import { OrganizationSettingsPage } from './OrganizationSettingsPage'
@@ -87,6 +85,7 @@ function organizationQuery(overrides: Record<string, unknown> = {}) {
     data: organization,
     isLoading: false,
     isError: false,
+    error: null,
     refetch: vi.fn(),
     ...overrides,
   }
@@ -106,19 +105,61 @@ describe('OrganizationSettingsPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     mocks.authToken.mockReturnValue('token')
-    mocks.organizationId.mockReturnValue('org-1')
     mocks.role.mockReturnValue('owner')
-    mocks.useOrganization.mockReturnValue(organizationQuery())
+    mocks.useCurrentOrganization.mockReturnValue(organizationQuery())
     mocks.useOrganizationMembers.mockReturnValue(membersQuery())
   })
 
-  it('凭证里没有组织时提示未归属组织', () => {
-    mocks.organizationId.mockReturnValue(null)
+  it('用 organizations/current 返回的组织 id 拉取成员名册', () => {
+    render(<OrganizationSettingsPage />)
+
+    expect(screen.getByText('Acme 智能体')).toBeInTheDocument()
+    expect(mocks.useOrganizationMembers).toHaveBeenCalledWith('org-1', {
+      enabled: true,
+    })
+  })
+
+  it('当前组织加载失败时展示错误态且不请求成员名册', () => {
+    mocks.useCurrentOrganization.mockReturnValue(
+      organizationQuery({
+        data: undefined,
+        isError: true,
+        error: new Error('network down'),
+      }),
+    )
+
+    render(<OrganizationSettingsPage />)
+
+    expect(screen.getByText('组织信息加载失败')).toBeInTheDocument()
+    // 名册区块整体不渲染，且成员 hook 拿不到 id，自然不会发请求
+    expect(screen.queryByText('成员名册')).not.toBeInTheDocument()
+    expect(mocks.useOrganizationMembers).toHaveBeenCalledWith(undefined, {
+      enabled: true,
+    })
+  })
+
+  it('服务端未找到当前租户对应组织时提示未归属组织', () => {
+    mocks.useCurrentOrganization.mockReturnValue(
+      organizationQuery({
+        data: undefined,
+        isError: true,
+        error: makeHttpError(404, { detail: '组织不存在或无权限' }),
+      }),
+    )
 
     render(<OrganizationSettingsPage />)
 
     expect(screen.getByText('当前账号未归属任何组织')).toBeInTheDocument()
+    expect(screen.queryByText('组织信息加载失败')).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /邀请成员/ })).not.toBeInTheDocument()
+  })
+
+  it('邀请与成员管理都使用服务端返回的真实组织 id', () => {
+    render(<OrganizationSettingsPage />)
+
+    expect(mocks.useInviteOrganizationMember).toHaveBeenCalledWith('org-1')
+    expect(mocks.useUpdateOrganizationMemberRole).toHaveBeenCalledWith('org-1')
+    expect(mocks.useRemoveOrganizationMember).toHaveBeenCalledWith('org-1')
   })
 
   it('渲染组织信息卡与成员名册', () => {
@@ -167,16 +208,6 @@ describe('OrganizationSettingsPage', () => {
     expect(screen.getByText('成员名册加载失败')).toBeInTheDocument()
     await user.click(screen.getByRole('button', { name: '重新加载' }))
     expect(refetch).toHaveBeenCalledTimes(1)
-  })
-
-  it('组织详情加载失败时展示错误态', () => {
-    mocks.useOrganization.mockReturnValue(
-      organizationQuery({ data: undefined, isError: true }),
-    )
-
-    render(<OrganizationSettingsPage />)
-
-    expect(screen.getByText('组织信息加载失败')).toBeInTheDocument()
   })
 
   it('非 owner/admin 隐藏邀请入口与成员名册', () => {

@@ -15,7 +15,9 @@ import {
   ShieldAlert,
   Trash2,
 } from 'lucide-react'
+import { HTTPError } from 'ky'
 import { useAuthToken } from '@/features/execution'
+import { useCurrentOrganization } from '@/features/organization/api/organizationQueries'
 import { DataTable, type DataTableColumn } from '@/shared/components/data-table/DataTable'
 import { PageHeader } from '@/shared/components/page-header/PageHeader'
 import { Spinner } from '@/shared/components/spinner/Spinner'
@@ -41,7 +43,6 @@ import {
 } from '../hooks/useResourceGovernance'
 import {
   canManageResourceGovernance,
-  getResourceGovernanceOrganizationIdFromToken,
   getResourceGovernanceRoleFromToken,
   getResourceGovernanceTenantIdFromToken,
 } from '../lib/resourceGovernancePermissions'
@@ -330,11 +331,13 @@ function ResourceGovernanceBlockedState({
   icon: Icon,
   title,
   message,
+  action,
 }: {
   testId: string
   icon: typeof ShieldAlert
   title: string
   message: string
+  action?: ReactNode
 }) {
   return (
     <div className="space-y-6 px-4 py-6 sm:px-6 lg:px-8" data-testid={testId}>
@@ -348,9 +351,32 @@ function ResourceGovernanceBlockedState({
           <div className="space-y-1.5">
             <h2 className="text-sm font-semibold text-foreground">{title}</h2>
             <p className="text-xs leading-relaxed text-muted">{message}</p>
+            {action ? <div className="pt-1">{action}</div> : null}
           </div>
         </CardContent>
       </Card>
+    </div>
+  )
+}
+
+/** 组织解析中：只出骨架，避免闪现「无法确定当前组织」的错误态 */
+function ResourceGovernanceOrganizationLoadingState() {
+  return (
+    <div
+      className="space-y-6 px-4 py-6 sm:px-6 lg:px-8"
+      data-testid="resource-governance-organization-loading"
+    >
+      <PageHeader icon={Gauge} title="资源治理" description={PAGE_DESCRIPTION} />
+
+      <p className="flex items-center gap-2 text-xs text-muted">
+        <Spinner size="sm" />
+        正在确认当前组织…
+      </p>
+
+      <div className="space-y-3">
+        <Skeleton className="h-28 rounded-card" />
+        <Skeleton className="h-44 rounded-card" />
+      </div>
     </div>
   )
 }
@@ -1114,11 +1140,20 @@ function ResourceGovernanceContent({
 
 export function ResourceGovernancePage() {
   const authToken = useAuthToken()
+  // 角色与租户 id 仍然从令牌里读（tenant_role / tenant_id claim 真实存在），
+  // 只有组织 id 改由服务端解析
   const currentUserRole = getResourceGovernanceRoleFromToken(authToken)
-  const organizationId = getResourceGovernanceOrganizationIdFromToken(authToken)
   const tenantClaimId = getResourceGovernanceTenantIdFromToken(authToken)
+  const canManage = canManageResourceGovernance(currentUserRole)
+  const {
+    data: currentOrganization,
+    isLoading: isOrganizationLoading,
+    error: organizationError,
+    refetch: refetchOrganization,
+  } = useCurrentOrganization({ enabled: canManage })
+  const organizationId = currentOrganization?.id
 
-  if (!canManageResourceGovernance(currentUserRole)) {
+  if (!canManage) {
     return (
       <ResourceGovernanceBlockedState
         testId="resource-governance-forbidden"
@@ -1133,13 +1168,31 @@ export function ResourceGovernancePage() {
     )
   }
 
+  if (isOrganizationLoading) {
+    return <ResourceGovernanceOrganizationLoadingState />
+  }
+
   if (!organizationId) {
     return (
       <ResourceGovernanceBlockedState
         testId="resource-governance-missing-org"
         icon={AlertTriangle}
-        title="无法识别当前组织"
-        message="当前登录令牌里没有可用的 organizationId / orgId / tenantId 信息，暂时无法加载资源治理设置。"
+        title="无法确定当前组织"
+        message={
+          organizationError instanceof HTTPError && organizationError.response.status === 404
+            ? '当前租户还没有关联组织，或当前账号不是该组织成员，因此无法加载资源治理设置。'
+            : '获取当前组织信息失败，暂时无法加载资源治理设置，请稍后重试。'
+        }
+        action={
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => void refetchOrganization()}
+          >
+            重试
+          </Button>
+        }
       />
     )
   }

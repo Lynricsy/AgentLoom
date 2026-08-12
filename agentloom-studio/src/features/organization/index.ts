@@ -5,8 +5,8 @@ export { OrganizationMembersTable } from './components/OrganizationMembersTable'
 export { organizationKeys } from './api/organizationKeys'
 export {
   useAcceptOrganizationInvitation,
+  useCurrentOrganization,
   useInviteOrganizationMember,
-  useOrganization,
   useOrganizationMembers,
   useRemoveOrganizationMember,
   useUpdateOrganizationMemberRole,

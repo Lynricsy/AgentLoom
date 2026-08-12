@@ -14,6 +14,7 @@ import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import type { FastifyRequest } from 'fastify';
 import type { JwtPayload } from '../../common/guards/auth.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { TenantRequiredException } from '../../common/exceptions/auth.exceptions';
 import {
   CaptureAuditLog,
   auditLogCaptureConfigs,
@@ -25,7 +26,10 @@ import { InviteMemberDto } from './dto/invite-member.dto';
 import { UpdateOrganizationAutonomyPolicyDto } from './dto/update-organization-autonomy-policy.dto';
 import { UpdateMemberRoleDto } from './dto/update-member-role.dto';
 
-type AuthenticatedRequest = FastifyRequest & { user: JwtPayload };
+type AuthenticatedRequest = FastifyRequest & {
+  tenantId?: string;
+  user: JwtPayload;
+};
 
 @ApiTags('Organizations')
 @Controller()
@@ -48,6 +52,19 @@ export class OrganizationController {
     const result = await this.organizationService.createOrganization(
       request.user.supabaseUserId ?? request.user.sub,
       dto,
+    );
+    return { data: result };
+  }
+
+  @Get('organizations/current')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: '获取当前租户的组织详情' })
+  @ApiResponse({ status: 200, description: '获取成功' })
+  @ApiResponse({ status: 404, description: '当前租户未关联组织' })
+  async getCurrentOrganization(@Req() request: AuthenticatedRequest) {
+    const result = await this.organizationService.getCurrentOrganization(
+      this.getTenantId(request),
+      request.user.sub,
     );
     return { data: result };
   }
@@ -245,5 +262,15 @@ export class OrganizationController {
     @Req() request: AuthenticatedRequest,
   ) {
     await this.organizationService.removeMember(id, userId, request.user.sub);
+  }
+
+  private getTenantId(request: AuthenticatedRequest): string {
+    const tenantId = request.tenantId ?? request.user.tenantId;
+
+    if (!tenantId) {
+      throw new TenantRequiredException();
+    }
+
+    return tenantId;
   }
 }

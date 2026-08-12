@@ -1,4 +1,5 @@
 import { Test } from '@nestjs/testing';
+import { eq } from 'drizzle-orm';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { DRIZZLE } from '../../database/database.module';
 import { RbacCacheService } from '../../common/services/rbac-cache.service';
@@ -535,6 +536,56 @@ describe('OrganizationService', () => {
       ).rejects.toBeInstanceOf(OrganizationNotFoundException);
 
       expect(db.select).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('getCurrentOrganization', () => {
+    it('按当前租户返回组织详情和成员数量', async () => {
+      const org = createOrganizationRecord();
+      const selectChain = createSelectChain([{ count: 2 }]);
+      db.query.organizations.findFirst.mockResolvedValue(org);
+      db.query.organizationMembers.findFirst.mockResolvedValue(
+        createMemberRecord(),
+      );
+      db.select.mockReturnValue(selectChain);
+
+      const result = await service.getCurrentOrganization('tenant-1', USER_ID);
+
+      expect(result).toEqual({ ...org, memberCount: 2 });
+      expect(db.query.organizations.findFirst).toHaveBeenCalledWith({
+        where: eq(organizations.tenantId, 'tenant-1'),
+      });
+      expect(selectChain.from).toHaveBeenCalledWith(organizationMembers);
+    });
+
+    it('当前租户没有关联组织时抛出 OrganizationNotFoundException', async () => {
+      db.query.organizations.findFirst.mockResolvedValue(undefined);
+
+      await expect(
+        service.getCurrentOrganization('tenant-without-org', USER_ID),
+      ).rejects.toBeInstanceOf(OrganizationNotFoundException);
+
+      expect(db.query.organizationMembers.findFirst).not.toHaveBeenCalled();
+      expect(db.select).not.toHaveBeenCalled();
+    });
+
+    it('仅按请求租户查询，不返回其他租户的组织', async () => {
+      const otherTenantOrganization = createOrganizationRecord({
+        tenantId: 'tenant-other',
+      });
+      db.query.organizations.findFirst.mockResolvedValue(undefined);
+
+      await expect(
+        service.getCurrentOrganization('tenant-request', USER_ID),
+      ).rejects.toBeInstanceOf(OrganizationNotFoundException);
+
+      expect(db.query.organizations.findFirst).toHaveBeenCalledWith({
+        where: eq(organizations.tenantId, 'tenant-request'),
+      });
+      expect(db.query.organizations.findFirst).not.toHaveBeenCalledWith({
+        where: eq(organizations.tenantId, otherTenantOrganization.tenantId),
+      });
+      expect(db.query.organizationMembers.findFirst).not.toHaveBeenCalled();
     });
   });
 
