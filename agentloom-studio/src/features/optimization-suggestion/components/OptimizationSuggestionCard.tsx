@@ -101,6 +101,11 @@ interface OptimizationSuggestionCardProps {
   onApply: (id: string) => void
   onDismiss: (id: string) => void
   actionsDisabled?: boolean
+  /**
+   * 该建议采纳后能否真正落到执行路径。false 时禁用「采纳」并给出说明，
+   * 「忽略」保持可用，用户仍可把无效建议清掉。由调用方按建议类型判定。
+   */
+  canApply?: boolean
 }
 
 export const OptimizationSuggestionCard = memo(function OptimizationSuggestionCard({
@@ -108,6 +113,7 @@ export const OptimizationSuggestionCard = memo(function OptimizationSuggestionCa
   onApply,
   onDismiss,
   actionsDisabled = false,
+  canApply = true,
 }: OptimizationSuggestionCardProps) {
   const typeLabel = SUGGESTION_TYPE_LABELS[suggestion.suggestionType]
   const isPending = suggestion.status === 'pending'
@@ -213,19 +219,35 @@ export const OptimizationSuggestionCard = memo(function OptimizationSuggestionCa
       ) : null}
 
       {isPending ? (
-        <div className="flex items-center gap-2 pt-1">
-          <Button type="button" size="sm" onClick={handleApply} disabled={actionsDisabled}>
-            采纳
-          </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={handleDismiss}
-            disabled={actionsDisabled}
-          >
-            忽略
-          </Button>
+        <div className="space-y-2 pt-1">
+          {canApply ? null : (
+            <p
+              className="text-xs leading-relaxed text-zinc-500"
+              data-testid="optimization-suggestion-no-effect-note"
+            >
+              该节点的模型、工具、超时与自治级别均由所绑定的 Agent Definition 决定，节点上的这些字段不参与执行，因此该建议无法在画布上采纳；请到对应 Agent Definition 中调整。
+            </p>
+          )}
+          <div className="flex items-center gap-2">
+            <Button
+              type="button"
+              size="sm"
+              onClick={handleApply}
+              disabled={actionsDisabled || !canApply}
+              data-testid={canApply ? undefined : 'optimization-suggestion-apply-disabled'}
+            >
+              采纳
+            </Button>
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              onClick={handleDismiss}
+              disabled={actionsDisabled}
+            >
+              忽略
+            </Button>
+          </div>
         </div>
       ) : null}
     </div>

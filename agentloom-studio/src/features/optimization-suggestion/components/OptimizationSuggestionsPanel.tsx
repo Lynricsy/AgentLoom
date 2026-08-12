@@ -9,7 +9,23 @@ import {
   useDismissSuggestion,
   useNodeSuggestions,
 } from '../api/optimization-suggestion-queries'
+import type { SuggestionType } from '../types/optimization-suggestion.types'
 import { OptimizationSuggestionCard } from './OptimizationSuggestionCard'
+
+/**
+ * 当前架构下「采纳」真正有执行落点的建议类型 —— 现在一个都没有，故为空。
+ *
+ * workflow agent 节点的模型、工具、超时由所绑定的 Agent Definition 快照决定：
+ * 服务端把 `model_downgrade` / `timeout_adjustment` / `tool_pruning` 写进节点
+ * `data.config` 的 modelId / timeoutMs / tools，但执行路径不读这些字段。
+ * `autonomy_upgrade` 写的 autonomy 镜像字段也不进入 agent 执行（`createSession()`
+ * 只传 Agent Definition 编译出的 runtimeConfig / systemPrompt），它仅在发布时用于
+ * 组织自治上限校验，属于治理标记，不改变 agent 行为。
+ *
+ * 因此四类建议一律禁用采纳。将来某类建议真正接上执行路径后，把它加进这里即可恢复
+ * 采纳入口——这是唯一需要改的地方。
+ */
+const APPLICABLE_SUGGESTION_TYPES: ReadonlySet<SuggestionType> = new Set<SuggestionType>()
 
 interface OptimizationSuggestionsPanelProps {
   workflowDefinitionId: string
@@ -197,7 +213,12 @@ export const OptimizationSuggestionsPanel = memo(function OptimizationSuggestion
       className="space-y-3 px-4 py-3"
       data-testid="optimization-suggestions-panel"
     >
-      {currentWorkflowId === workflowDefinitionId && isDirty ? (
+      {/* 保存提示只在确实存在可采纳建议时才有意义，否则会暗示用户「保存后就能采纳」 */}
+      {suggestions.some((suggestion) =>
+        APPLICABLE_SUGGESTION_TYPES.has(suggestion.suggestionType),
+      ) &&
+      currentWorkflowId === workflowDefinitionId &&
+      isDirty ? (
         <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
           画布存在未保存修改。请先等待自动保存完成，再采纳优化建议，避免覆盖本地编辑。
         </div>
@@ -213,6 +234,7 @@ export const OptimizationSuggestionsPanel = memo(function OptimizationSuggestion
           onApply={handleApply}
           onDismiss={handleDismiss}
           actionsDisabled={applyMutation.isPending || dismissMutation.isPending}
+          canApply={APPLICABLE_SUGGESTION_TYPES.has(suggestion.suggestionType)}
         />
       ))}
     </div>

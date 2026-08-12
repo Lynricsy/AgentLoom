@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   listAgents: vi.fn(),
   listAgentVersions: vi.fn(),
   notify: vi.fn(),
+  workflowId: 'wf-1' as string | null,
 }))
 
 vi.mock('@/features/agent/api/agentDefinitionApi', () => ({
@@ -19,6 +20,25 @@ vi.mock('@/features/agent/api/agentDefinitionApi', () => ({
 
 vi.mock('@/shared/ui/toast', () => ({
   useToast: () => ({ notify: mocks.notify }),
+}))
+
+vi.mock('../../stores/canvasStore', () => ({
+  useCanvasStore: (selector: (state: { workflowId: string | null }) => unknown) =>
+    selector({ workflowId: mocks.workflowId }),
+}))
+
+vi.mock('@/features/optimization-suggestion', () => ({
+  OptimizationSuggestionsPanel: ({
+    workflowDefinitionId,
+    nodeId,
+  }: {
+    workflowDefinitionId: string
+    nodeId: string
+  }) => (
+    <div data-testid="optimization-suggestions-panel-mock">
+      {workflowDefinitionId}:{nodeId}
+    </div>
+  ),
 }))
 
 // legacy 内联字段落在 node.data 顶层，而不是 node.data.config 里
@@ -45,6 +65,7 @@ function createAgentNode(dataOverrides: Record<string, unknown> = {}): CanvasNod
 describe('AgentNodeConfigPanel 的旧版内联配置展示', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mocks.workflowId = 'wf-1'
     mocks.listAgents.mockResolvedValue({ data: [] })
     mocks.listAgentVersions.mockResolvedValue({ data: [] })
   })
@@ -140,5 +161,36 @@ describe('AgentNodeConfigPanel 的旧版内联配置展示', () => {
     await user.click(await screen.findByRole('button', { name: '复制' }))
 
     expect(mocks.notify).not.toHaveBeenCalled()
+  })
+})
+
+describe('AgentNodeConfigPanel 的节点级优化建议接线', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    mocks.workflowId = 'wf-1'
+    mocks.listAgents.mockResolvedValue({ data: [] })
+    mocks.listAgentVersions.mockResolvedValue({ data: [] })
+  })
+
+  it('画布已有 workflowId 时渲染建议面板，并透传工作流与节点 id', async () => {
+    const node = createAgentNode()
+
+    render(<AgentNodeConfigPanel node={node} config={node.data.config} onApply={vi.fn()} />)
+
+    expect(await screen.findByTestId('optimization-suggestions-panel-mock')).toHaveTextContent(
+      'wf-1:node-agent-1',
+    )
+  })
+
+  it('画布尚未保存（workflowId 为空）时不渲染建议面板', async () => {
+    mocks.workflowId = null
+    const node = createAgentNode()
+
+    render(<AgentNodeConfigPanel node={node} config={node.data.config} onApply={vi.fn()} />)
+
+    await waitFor(() => {
+      expect(mocks.listAgents).toHaveBeenCalled()
+    })
+    expect(screen.queryByTestId('optimization-suggestions-panel-mock')).not.toBeInTheDocument()
   })
 })
