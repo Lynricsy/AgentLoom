@@ -163,8 +163,8 @@ Agent 配置的自动优化建议：
 
 - 4 种建议类型：`model_downgrade` / `timeout_adjustment` / `tool_pruning` / `autonomy_upgrade`
 - 周期分析任务（每周一 UTC 02:00）分析 `agent_execution_records`
-- 建议面板挂载在 live `llm-agent` 的 `NodeConfigPanel` 下
-- apply 复用 `workflow_definitions.version` OCC（乐观并发控制）
+- 两个入口：`/settings/monitoring` 的 suggestions tab（`OptimizationSuggestionsBoard`，忽略 + 深链到画布）与 agent 节点配置面板内的 `OptimizationSuggestionsPanel`
+- 四类建议当前都不可采纳：写入的字段不参与 workflow `agent` 节点的执行，服务端与前端各用一个空的 `APPLICABLE_SUGGESTION_TYPES` 白名单 fail-closed，服务端返回 409。忽略始终可用
 - dirty canvas / server version refresh 时避免静默覆盖本地编辑
 
 ### knowledge — 知识库 RAG
@@ -203,11 +203,11 @@ MCP（Model Context Protocol）工具管理，对应画布中的 `mcp-tool` 节�
 组织级别的 Agent 自主性策略管理，控制 Agent 在无人干预下的操作范围。
 
 - 入口：`/settings/security/autonomy-policy`，仅 `owner` 可访问
-- 通过 auth token 解析 `organizationId` 后调用组织自治策略 API
+- 组织 id 不在 auth token claim 里，由 `useCurrentOrganization()`（`GET organizations/current`）解析后再调用组织自治策略 API
 - 支持上限查看 / 更新，以及 `downgrade-preview` + `downgrade-confirm` 两段式收紧流程
 - 策略卡片展示 `organizationId`、`version`、`updatedAt`、`updatedBy` 元信息
 - 共享 `autonomyModePolicy.ts` 提供 `AUTONOMY_MODES`、mode label/description、cap 比较和格式化 helper
-- 供 settings 页、`LlmAgentConfigPanel` 与优化建议阻断 UI 复用
+- 供 settings 页与优化建议阻断 UI 复用
 
 ## 生态与市场
 

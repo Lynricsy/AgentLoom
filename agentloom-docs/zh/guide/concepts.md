@@ -140,7 +140,7 @@ flowchart TB
 | 节点                   | 说明                                                                      |
 | ---------------------- | ------------------------------------------------------------------------- |
 | **smart-routing**      | 根据 6 种策略智能选择最优模型（成本 / 质量 / 延迟 / 历史最优 / Fallback） |
-| **agent**              | 核心 AI 节点，封装 LLM 调用 + 工具使用 + 自主决策循环，通过 `WorkflowAgentAdapter` 桥接 Agent 体系 |
+| **agent**              | 工作流中的 AI 推理节点，引用一个已发布的 Agent Definition，通过 `WorkflowAgentAdapter` 桥接 Agent 体系 |
 | **mcp-tool**           | 调用 MCP（Model Context Protocol）兼容的外部工具                          |
 | **workspace**          | 工作区存储卷，提供 `volume` 端口输出供沙箱和 Agent 挂载                   |
 | **webhook-trigger**    | 外部系统通过 HTTP 回调触发工作流，含签名验证                              |
@@ -265,7 +265,7 @@ Agent 的核心是一个 **Reasoning-Action 循环**：
 6. **输出** — 将结果通过输出端口传递给下游节点
 
 ::: info 自主性模式
-Agent 节点支持配置 `autonomyMode`，控制工具调用时的人工介入粒度。优化建议模块会基于历史执行数据提出自主性升级建议。
+`agent` 节点上的 `autonomyMode` 是发布期的治理标记：组织自治上限会在发布时校验它，超过上限则阻止发布。它不进入 `WorkflowAgentAdapter.createSession()`，因此不是引用式 agent 节点的执行输入。
 :::
 
 ## DAG 调度
@@ -370,7 +370,7 @@ AgentLoom 内置多项企业级运维和治理能力：
 | **资源治理** | 7 个配额字段（并发/日执行量/API 限流/存储/沙箱 CPU 与内存等），超限返回 429（限流）或 409（治理阻断） |
 | **审计日志** | hot/archive 双表架构，append-only 写入，支持保留归档与资源级事件序列回放 |
 | **监控仪表板** | 15m / 1h / 24h 时间窗口，执行趋势、队列快照、告警热点 |
-| **优化建议** | 4 类建议（模型降级 / 超时调整 / 工具精简 / 自主性升级），应用时复用工作流 OCC 保护 |
+| **优化建议** | 4 类建议（模型降级 / 超时调整 / 工具精简 / 自主性升级），周期分析执行记录后生成；当前四类均不可采纳，仅可查看与忽略 |
 | **Agent Memory** | 图拓扑记忆系统，d3-force + dagre 可视化，`/memory` namespace 实时操作 |
 
 ## 下一步

@@ -184,6 +184,8 @@ flowchart TB
 
 使用 `upsertJobScheduler()` 注册固定 scheduler ID。
 
+分析器持续生成这四类建议，但采纳入口对四类都返回 409（详见模块文档「优化建议 4 类」）。去重只比对同节点同类型的 `pending` 记录，因此建议被忽略后，只要执行特征不变，下一轮仍会重新生成。
+
 ### 8. audit-log-retention（审计日志归档）
 
 | 属性   | 值                                   |
