@@ -24,6 +24,9 @@ import { ExecutionLaunchDialog } from "@/features/workflow-input-schema/componen
 import { MarketplacePublishDialog } from "@/features/marketplace";
 import { ShareManagementDialog } from "@/features/share/components/ShareManagementDialog";
 import { NodePalette } from "./NodePalette";
+import { ReadOnlyCanvasBanner } from "./readonly/ReadOnlyCanvasBanner";
+import { ReadOnlyNodeSheet } from "./readonly/ReadOnlyNodeSheet";
+import { ReadOnlyWorkflowToolbar } from "./readonly/ReadOnlyWorkflowToolbar";
 import { WorkflowCanvas } from "./WorkflowCanvas";
 import { WorkflowStatusBar } from "./status/WorkflowStatusBar";
 import { FieldMappingPanel } from "./panels/FieldMappingPanel";
@@ -39,6 +42,7 @@ import {
   useCanvasStore,
   useMappingPanelEdgeId,
 } from "../stores/canvasStore";
+import { LG_QUERY, useMediaQuery } from "@/shared/hooks/use-media-query";
 import { useToast } from "@/shared/ui/toast";
 
 function buildVersionHistoryRestoreKey(workflowId: string): string {
@@ -78,11 +82,24 @@ export function WorkflowCanvasPage() {
   const currentWorkflowId = useCanvasStore((state) => state.workflowId);
   const currentCanvasVersion = useCanvasStore((state) => state.version);
   const isCanvasDirty = useCanvasStore((state) => state.isDirty);
-  const { applyServerSnapshot, reset, closeFieldMapping, updateFieldMapping } =
-    useCanvasActions();
+  const {
+    applyServerSnapshot,
+    reset,
+    closeFieldMapping,
+    updateFieldMapping,
+    selectNode,
+  } = useCanvasActions();
   const { notify } = useToast();
   const mappingPanelEdgeId = useMappingPanelEdgeId();
   const selectedNodeId = useCanvasStore((s) => s.selectedNodeId);
+  const selectedNode = useCanvasStore((s) =>
+    s.selectedNodeId
+      ? (s.nodes.find((n) => n.id === s.selectedNodeId) ?? null)
+      : null,
+  );
+  const isDesktopViewport = useMediaQuery(LG_QUERY);
+  /** 小屏（<lg）只读浏览：隐藏所有编辑入口，节点详情改走底部弹层 */
+  const isMobileReadOnly = !isDesktopViewport;
   const skippedSnapshotRef = useRef<string | null>(null);
   const reopenVersionHistoryAfterPublishRef = useRef(false);
 
@@ -216,6 +233,16 @@ export function WorkflowCanvasPage() {
     [],
   );
 
+  /** 底部弹层关闭即取消节点选中，保持与桌面端「关闭配置面板」同一语义 */
+  const handleReadOnlyNodeSheetOpenChange = useCallback(
+    (open: boolean) => {
+      if (!open) {
+        selectNode(null);
+      }
+    },
+    [selectNode],
+  );
+
   const mappingPanelEdge = useCanvasStore((s) =>
     mappingPanelEdgeId
       ? (s.edges.find((e) => e.id === mappingPanelEdgeId) ?? null)
@@ -330,7 +357,7 @@ export function WorkflowCanvasPage() {
 
   return (
     <div className="flex h-full w-full">
-      {!isWorkflowArchived && <NodePalette />}
+      {!isWorkflowArchived && !isMobileReadOnly && <NodePalette />}
 
       <div className="relative flex-1">
         {workflow ? (
@@ -368,47 +395,61 @@ export function WorkflowCanvasPage() {
             className="pointer-events-none absolute inset-x-4 top-4 z-30 flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between"
             data-testid="workflow-top-overlay"
           >
+            {isMobileReadOnly && (
+              <ReadOnlyCanvasBanner message="当前为只读浏览，请在桌面端编辑工作流" />
+            )}
+
             <div className="order-1 flex justify-end xl:order-2">
               <div
                 className="pointer-events-auto w-full xl:w-auto"
                 data-testid="workflow-toolbar-shell"
               >
-                <VersionToolbar
-                  workflowId={workflowId}
-                  workflowStatus={workflow.status}
-                  onOpenVersionHistory={handleOpenVersionHistory}
-                  onOpenPublish={handleOpenPublishSheet}
-                  onToggleInterventionPolicies={
-                    handleToggleInterventionPolicyPanel
-                  }
-                  onToggleInputSchema={handleToggleInputSchemaPanel}
-                  onToggleTriggers={handleToggleTriggerPanel}
-                  onPublishToMarketplace={
-                    canPublishToMarketplace
-                      ? handleOpenMarketplacePublish
-                      : undefined
-                  }
-                  onRun={
-                    workflow.status === "published"
-                      ? handleRunWorkflow
-                      : undefined
-                  }
-                  onExport={handleExportWorkflow}
-                  onImport={handleOpenImportDialog}
-                  onShare={
-                    workflow.status === "published"
-                      ? handleOpenShareDialog
-                      : undefined
-                  }
-                  isInterventionPoliciesOpen={
-                    activeSettingsTab === "intervention-policies"
-                  }
-                  isInputSchemaOpen={activeSettingsTab === "input-schema"}
-                  isTriggersOpen={activeSettingsTab === "triggers"}
-                  isRunning={isStarting || isExecutionActive}
-                  isExporting={exportMutation.isPending}
-                  hasNodes={(workflow.nodes ?? []).length > 0}
-                />
+                {isMobileReadOnly ? (
+                  <ReadOnlyWorkflowToolbar
+                    workflowStatus={workflow.status}
+                    onOpenVersionHistory={handleOpenVersionHistory}
+                    onExport={handleExportWorkflow}
+                    isExporting={exportMutation.isPending}
+                    hasNodes={(workflow.nodes ?? []).length > 0}
+                  />
+                ) : (
+                  <VersionToolbar
+                    workflowId={workflowId}
+                    workflowStatus={workflow.status}
+                    onOpenVersionHistory={handleOpenVersionHistory}
+                    onOpenPublish={handleOpenPublishSheet}
+                    onToggleInterventionPolicies={
+                      handleToggleInterventionPolicyPanel
+                    }
+                    onToggleInputSchema={handleToggleInputSchemaPanel}
+                    onToggleTriggers={handleToggleTriggerPanel}
+                    onPublishToMarketplace={
+                      canPublishToMarketplace
+                        ? handleOpenMarketplacePublish
+                        : undefined
+                    }
+                    onRun={
+                      workflow.status === "published"
+                        ? handleRunWorkflow
+                        : undefined
+                    }
+                    onExport={handleExportWorkflow}
+                    onImport={handleOpenImportDialog}
+                    onShare={
+                      workflow.status === "published"
+                        ? handleOpenShareDialog
+                        : undefined
+                    }
+                    isInterventionPoliciesOpen={
+                      activeSettingsTab === "intervention-policies"
+                    }
+                    isInputSchemaOpen={activeSettingsTab === "input-schema"}
+                    isTriggersOpen={activeSettingsTab === "triggers"}
+                    isRunning={isStarting || isExecutionActive}
+                    isExporting={exportMutation.isPending}
+                    hasNodes={(workflow.nodes ?? []).length > 0}
+                  />
+                )}
               </div>
             </div>
 
@@ -457,8 +498,18 @@ export function WorkflowCanvasPage() {
         )}
       </div>
 
-      {!isWorkflowArchived && selectedNodeId && !mappingPanelEdgeId && (
-        <NodeConfigPanel />
+      {!isWorkflowArchived &&
+        !isMobileReadOnly &&
+        selectedNodeId &&
+        !mappingPanelEdgeId && <NodeConfigPanel />}
+
+      {isMobileReadOnly && (
+        <ReadOnlyNodeSheet
+          node={selectedNode}
+          open={!!selectedNode}
+          onOpenChange={handleReadOnlyNodeSheetOpenChange}
+          showOutput
+        />
       )}
 
       {!isWorkflowArchived && mappingPanelEdgeId && mappingPanelEdge && (

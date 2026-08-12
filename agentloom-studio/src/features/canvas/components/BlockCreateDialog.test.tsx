@@ -181,7 +181,8 @@ describe('BlockCreateDialog', () => {
 
     await user.type(screen.getByLabelText('块名称'), '分析块')
     await user.type(screen.getByLabelText('描述'), '封装内部分析流程')
-    await user.selectOptions(screen.getByLabelText('分类'), 'development')
+    await user.click(screen.getByLabelText('分类'))
+    await user.click(await screen.findByRole('option', { name: '开发' }))
     await user.type(screen.getByLabelText('标签'), 'alpha, beta , , gamma')
 
     const inputPortLabel = screen.getByTestId('block-input-port-label-input-port-1')

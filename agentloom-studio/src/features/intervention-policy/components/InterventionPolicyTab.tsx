@@ -8,7 +8,13 @@ import {
   type CanvasNode,
 } from '@/features/canvas'
 import { Button } from '@/shared/ui/button'
-import { NativeSelect } from '@/shared/ui/native-select'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/shared/ui/select'
 import { Slider } from '@/shared/ui/slider'
 import { useToast } from '@/shared/ui/toast'
 import {
@@ -368,12 +374,12 @@ function LegacyRoleWarning({
 
   return (
     <div
-      className="rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100"
+      className="rounded-xl border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning"
       data-testid={testId}
     >
-      <p className="font-medium text-amber-50">检测到旧版兼容角色配置</p>
-      <p className="mt-1 leading-6">{warningParts.join('；')}。</p>
-      <p className="mt-2 text-amber-100/85">
+      <p className="font-medium text-warning">检测到旧版兼容角色配置</p>
+      <p className="mt-1 leading-6 text-foreground">{warningParts.join('；')}。</p>
+      <p className="mt-2 text-foreground/85">
         {requiresAction
           ? '请先重新选择当前界面支持的角色后再保存；保存后会以你当前的可见选择覆盖旧版兼容角色。'
           : '当前保存将以你现在的可见选择覆盖旧版兼容角色，请确认后再继续。'}
@@ -595,10 +601,10 @@ export function InterventionPolicyTab({
   if (policiesQuery.isError || workflowResolvedQuery.isError || nodeResolvedQuery.isError) {
     return (
       <section className="flex h-full flex-col rounded-2xl border border-border/70 bg-surface/95 p-4 shadow-xl backdrop-blur-md">
-        <div className="flex min-h-[280px] flex-1 items-center justify-center rounded-2xl border border-rose-500/20 bg-rose-500/10 px-6 text-center">
+        <div className="flex min-h-[280px] flex-1 items-center justify-center rounded-2xl border border-error/20 bg-error/10 px-6 text-center">
           <div>
-            <p className="text-base font-medium text-rose-100">加载介入策略失败</p>
-            <p className="mt-2 text-sm text-rose-200/80">
+            <p className="text-base font-medium text-error">加载介入策略失败</p>
+            <p className="mt-2 text-sm text-muted-foreground">
               {error instanceof Error ? error.message : '请稍后重试。'}
             </p>
           </div>
@@ -621,7 +627,7 @@ export function InterventionPolicyTab({
         </div>
 
         {isReadOnly ? (
-          <div className="inline-flex items-center gap-2 rounded-full border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-medium text-amber-100">
+          <div className="inline-flex items-center gap-2 rounded-full border border-warning/30 bg-warning/10 px-3 py-1.5 text-xs font-medium text-warning">
             <ShieldAlert className="h-3.5 w-3.5" />
             当前角色仅可查看策略配置
           </div>
@@ -721,19 +727,22 @@ export function InterventionPolicyTab({
                   control={workflowForm.control}
                   name="timeoutAction"
                   render={({ field }) => (
-                    <NativeSelect
-                      id="workflow-timeout-action"
-                      aria-label="工作流超时动作"
+                    <Select
                       value={field.value}
                       disabled={isReadOnly || isSaving}
                       onValueChange={field.onChange}
                     >
-                      {TIMEOUT_ACTIONS.map((action) => (
-                        <option key={action} value={action}>
-                          {TIMEOUT_ACTION_LABELS[action]}
-                        </option>
-                      ))}
-                    </NativeSelect>
+                      <SelectTrigger id="workflow-timeout-action" aria-label="工作流超时动作">
+                        <SelectValue placeholder="请选择超时动作" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {TIMEOUT_ACTIONS.map((action) => (
+                          <SelectItem key={action} value={action}>
+                            {TIMEOUT_ACTION_LABELS[action]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   )}
                 />
               </div>
@@ -748,20 +757,22 @@ export function InterventionPolicyTab({
                   control={workflowForm.control}
                   name="escalateToRole"
                   render={({ field }) => (
-                    <NativeSelect
-                      id="workflow-escalate-role"
-                      aria-label="工作流升级目标角色"
-                      value={field.value}
+                    <Select
+                      value={field.value ?? ''}
                       disabled={isReadOnly || isSaving}
                       onValueChange={field.onChange}
                     >
-                      <option value="">请选择角色</option>
-                       {CONFIGURABLE_INTERVENTION_ROLES.map((role) => (
-                        <option key={role} value={role}>
-                          {INTERVENTION_ROLE_LABELS[role]}
-                        </option>
-                      ))}
-                    </NativeSelect>
+                      <SelectTrigger id="workflow-escalate-role" aria-label="工作流升级目标角色">
+                        <SelectValue placeholder="请选择角色" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {CONFIGURABLE_INTERVENTION_ROLES.map((role) => (
+                          <SelectItem key={role} value={role}>
+                            {INTERVENTION_ROLE_LABELS[role]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   )}
                 />
                 {workflowForm.formState.errors.escalateToRole ? (
@@ -858,19 +869,22 @@ export function InterventionPolicyTab({
                   <label htmlFor="node-policy-target" className="text-sm font-medium text-foreground">
                     选择 Agent 节点
                   </label>
-                  <NativeSelect
-                    id="node-policy-target"
-                    aria-label="选择 Agent 节点"
+                  <Select
                     value={selectedNodeId}
                     disabled={isSaving}
                     onValueChange={setSelectedNodeId}
                   >
-                    {agentNodes.map((node) => (
-                      <option key={node.id} value={node.id}>
-                        {node.data.label}
-                      </option>
-                    ))}
-                  </NativeSelect>
+                    <SelectTrigger id="node-policy-target" aria-label="选择 Agent 节点">
+                      <SelectValue placeholder="请选择 Agent 节点" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {agentNodes.map((node) => (
+                        <SelectItem key={node.id} value={node.id}>
+                          {node.data.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 <PolicySummary
@@ -954,19 +968,22 @@ export function InterventionPolicyTab({
                       control={nodeForm.control}
                       name="timeoutAction"
                       render={({ field }) => (
-                        <NativeSelect
-                          id="node-timeout-action"
-                          aria-label="节点超时动作"
+                        <Select
                           value={field.value}
                           disabled={isReadOnly || isSaving}
                           onValueChange={field.onChange}
                         >
-                          {TIMEOUT_ACTIONS.map((action) => (
-                            <option key={action} value={action}>
-                              {TIMEOUT_ACTION_LABELS[action]}
-                            </option>
-                          ))}
-                        </NativeSelect>
+                          <SelectTrigger id="node-timeout-action" aria-label="节点超时动作">
+                            <SelectValue placeholder="请选择超时动作" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {TIMEOUT_ACTIONS.map((action) => (
+                              <SelectItem key={action} value={action}>
+                                {TIMEOUT_ACTION_LABELS[action]}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       )}
                     />
                   </div>
@@ -981,20 +998,22 @@ export function InterventionPolicyTab({
                       control={nodeForm.control}
                       name="escalateToRole"
                       render={({ field }) => (
-                        <NativeSelect
-                          id="node-escalate-role"
-                          aria-label="节点升级目标角色"
-                          value={field.value}
+                        <Select
+                          value={field.value ?? ''}
                           disabled={isReadOnly || isSaving}
                           onValueChange={field.onChange}
                         >
-                          <option value="">请选择角色</option>
-                           {CONFIGURABLE_INTERVENTION_ROLES.map((role) => (
-                            <option key={role} value={role}>
-                              {INTERVENTION_ROLE_LABELS[role]}
-                            </option>
-                          ))}
-                        </NativeSelect>
+                          <SelectTrigger id="node-escalate-role" aria-label="节点升级目标角色">
+                            <SelectValue placeholder="请选择角色" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {CONFIGURABLE_INTERVENTION_ROLES.map((role) => (
+                              <SelectItem key={role} value={role}>
+                                {INTERVENTION_ROLE_LABELS[role]}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       )}
                     />
                     {nodeForm.formState.errors.escalateToRole ? (

@@ -108,7 +108,9 @@ describe("AgentPublishDialog", () => {
     render(<AgentPublishDialog {...defaultProps} initialVersionId="ver-001" />);
 
     expect(screen.getByTestId("source-existing")).toBeChecked();
-    expect(screen.getByTestId("version-select")).toHaveValue("ver-001");
+    expect(screen.getByTestId("version-select")).toHaveTextContent(
+      "v2 - 稳定版",
+    );
   });
 
   it("发布当前编辑稿时带上标签与发布说明", async () => {
@@ -146,9 +148,13 @@ describe("AgentPublishDialog", () => {
     render(<AgentPublishDialog {...defaultProps} />);
 
     fireEvent.click(screen.getByTestId("source-existing"));
-    fireEvent.change(screen.getByTestId("version-select"), {
-      target: { value: "ver-001" },
-    });
+    // Radix Select 是 button + portal，只能靠键盘/点击选中，读不到表单 value；
+    // 这里全程用 fireEvent 同步派发，避免 userEvent 与 Radix 的 pointer 模拟互相干扰。
+    fireEvent.keyDown(screen.getByTestId("version-select"), { key: "Enter" });
+    fireEvent.keyDown(
+      await screen.findByRole("option", { name: "v2 - 稳定版" }),
+      { key: "Enter" },
+    );
     fireEvent.click(screen.getByTestId("confirm-publish"));
 
     await waitFor(() => {

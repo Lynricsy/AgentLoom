@@ -4,9 +4,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   adaptModelEntityToInfo,
   type CreateLlmModelInput,
+  type LlmModelConfig,
   type LlmModelConfigEntity,
   type LlmProviderEntity,
 } from "../types";
+import type * as LlmTypes from "../types";
 import { LlmModelConfigPanel } from "./LlmModelConfigPanel";
 
 const mocks = vi.hoisted(() => ({
@@ -19,6 +21,9 @@ const mocks = vi.hoisted(() => ({
   createMutateAsync: vi.fn(),
   updateMutateAsync: vi.fn(),
   updateProviderMutateAsync: vi.fn(),
+  // 渲染探针状态：见下方 ../types mock
+  parseCalls: { count: 0 },
+  renderBudget: { value: Number.POSITIVE_INFINITY },
 }));
 
 vi.mock("../hooks/useLlmModels", () => ({
@@ -34,6 +39,28 @@ vi.mock("@/shared/ui/toast", () => ({
     notify: mocks.notify,
   }),
 }));
+
+// 渲染探针：LlmModelConfigPanel 每渲染一次就会调用一次 parseLlmModelConfig，
+// 因此调用次数即渲染次数。超出预算时直接抛错熔断 —— 无限重渲染会占满事件
+// 循环，vitest 的 testTimeout 此时不会生效，只能靠探针自己中断。
+vi.mock("../types", async (importOriginal) => {
+  const actual = await importOriginal<typeof LlmTypes>();
+
+  return {
+    ...actual,
+    parseLlmModelConfig: (value: unknown) => {
+      mocks.parseCalls.count += 1;
+
+      if (mocks.parseCalls.count > mocks.renderBudget.value) {
+        throw new Error(
+          `LlmModelConfigPanel 渲染次数超过 ${mocks.renderBudget.value} 次，判定为无限重渲染`,
+        );
+      }
+
+      return actual.parseLlmModelConfig(value);
+    },
+  };
+});
 
 const MOCK_PROVIDER: LlmProviderEntity = {
   id: "prov-openai-uuid",
@@ -97,9 +124,49 @@ function createLlmModelEntity(
   };
 }
 
+function createLlmModelConfig(
+  overrides: Partial<LlmModelConfig> = {},
+): LlmModelConfig {
+  return {
+    llmConfigId: "cfg-1",
+    name: "OpenAI 主模型",
+    provider: "openai",
+    modelType: "chat",
+    modelName: "gpt-4o",
+    parameters: {
+      temperature: 0.7,
+      maxTokens: undefined,
+      topP: 1,
+      frequencyPenalty: 0,
+      presencePenalty: 0,
+      stop: [],
+    },
+    apiKeyId: null,
+    embeddingDimensions: null,
+    isDefault: false,
+    endpointUrl: null,
+    authMethod: null,
+    authConfig: null,
+    timeoutMs: null,
+    ...overrides,
+  };
+}
+
+const CUSTOM_CONFIG_PARAMETERS = {
+  temperature: 0.3,
+  maxTokens: 2048,
+  topP: 0.9,
+  frequencyPenalty: 0,
+  presencePenalty: 0,
+  stop: ["END"],
+} as const;
+
 describe("LlmModelConfigPanel", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.parseCalls.count = 0;
+    // 兜底熔断：任何用例都不允许无限重渲染把事件循环占满（届时 testTimeout 失效）。
+    mocks.renderBudget.value = 400;
     mocks.useLlmModels.mockReturnValue({
       data: [adaptModelEntityToInfo(createLlmModelEntity())],
       isLoading: false,
@@ -290,6 +357,127 @@ describe("LlmModelConfigPanel", () => {
         title: "LLM 配置已保存",
         variant: "success",
       }),
+    );
+  });
+
+  it("非空 config 首屏渲染不会陷入无限重渲染", () => {
+    mocks.renderBudget.value = 30;
+
+    render(
+      <LlmModelConfigPanel config={createLlmModelConfig()} onApply={vi.fn()} />,
+    );
+
+    // 带 llmConfigId 的配置应停在「选择已有配置」并回显既有配置摘要
+    expect(screen.getByText("模型")).toBeInTheDocument();
+    expect(screen.getByText("未绑定")).toBeInTheDocument();
+    // 稳定化生效后，config 引用不变时不应重复解析
+    expect(mocks.parseCalls.count).toBeLessThanOrEqual(5);
+  });
+
+  it("父级每次渲染都传入新 config 对象时不会无限重渲染", () => {
+    mocks.renderBudget.value = 30;
+
+    // 画布 customPanelRegistry 就是每次渲染现算 parseLlmModelConfig(node.data)，
+    // 因此这里模拟「内容相同但引用每次都新」的父级。
+    const { rerender } = render(
+      <LlmModelConfigPanel config={createLlmModelConfig()} onApply={vi.fn()} />,
+    );
+
+    rerender(
+      <LlmModelConfigPanel config={createLlmModelConfig()} onApply={vi.fn()} />,
+    );
+
+    expect(screen.getByText("未绑定")).toBeInTheDocument();
+    expect(mocks.parseCalls.count).toBeLessThanOrEqual(10);
+  });
+
+  it("父级重渲染传入内容相同的新 config 时不会冲掉用户草稿", async () => {
+    const user = userEvent.setup();
+    // 面板在画布里是常驻挂载的，父级因无关状态重渲染时必须保住未提交的编辑内容。
+    const buildConfig = () =>
+      createLlmModelConfig({ llmConfigId: null, name: "自定义 GPT 配置" });
+
+    const { rerender } = render(
+      <LlmModelConfigPanel config={buildConfig()} onApply={vi.fn()} />,
+    );
+
+    const nameInput = screen.getByPlaceholderText("例如：OpenAI 主模型");
+    await user.clear(nameInput);
+    await user.type(nameInput, "草稿中的名称");
+
+    rerender(<LlmModelConfigPanel config={buildConfig()} onApply={vi.fn()} />);
+
+    expect(nameInput).toHaveValue("草稿中的名称");
+  });
+
+  it("非空 config 无 llmConfigId 时在创建表单回显既有参数", () => {
+    mocks.renderBudget.value = 30;
+
+    render(
+      <LlmModelConfigPanel
+        config={createLlmModelConfig({
+          llmConfigId: null,
+          name: "自定义 GPT 配置",
+          parameters: { ...CUSTOM_CONFIG_PARAMETERS, stop: ["END"] },
+        })}
+        onApply={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByPlaceholderText("例如：OpenAI 主模型")).toHaveValue(
+      "自定义 GPT 配置",
+    );
+    expect(screen.getByPlaceholderText("留空表示使用模型默认值")).toHaveValue(
+      2048,
+    );
+    expect(screen.getByText("0.3")).toBeInTheDocument();
+    expect(screen.getByText("END")).toBeInTheDocument();
+  });
+
+  it("非空 config 回显的参数会随创建提交一并写回节点", async () => {
+    const user = userEvent.setup();
+    const onApply = vi.fn();
+    const savedModel = createLlmModelEntity({
+      id: "cfg-3",
+      name: "自定义 GPT 配置",
+    });
+
+    mocks.createMutateAsync.mockResolvedValue(savedModel);
+
+    render(
+      <LlmModelConfigPanel
+        config={createLlmModelConfig({
+          llmConfigId: null,
+          name: "自定义 GPT 配置",
+          parameters: { ...CUSTOM_CONFIG_PARAMETERS, stop: ["END"] },
+        })}
+        onApply={onApply}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "保存并应用新配置" }));
+
+    await waitFor(() => {
+      expect(mocks.createMutateAsync).toHaveBeenCalledWith({
+        name: "自定义 GPT 配置",
+        providerId: MOCK_PROVIDER.id,
+        modelId: "gpt-4o",
+        modelType: "chat",
+        parameters: {
+          temperature: 0.3,
+          maxTokens: 2048,
+          topP: 0.9,
+          frequencyPenalty: 0,
+          presencePenalty: 0,
+          stop: ["END"],
+        },
+        isDefault: false,
+        timeoutMs: undefined,
+      } satisfies CreateLlmModelInput);
+    });
+
+    expect(onApply).toHaveBeenCalledWith(
+      expect.objectContaining({ llmConfigId: "cfg-3" }),
     );
   });
 });

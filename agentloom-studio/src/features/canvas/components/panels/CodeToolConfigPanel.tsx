@@ -1,6 +1,13 @@
 import { memo, useCallback, Suspense, lazy, type ChangeEvent } from 'react'
 import { Code } from 'lucide-react'
 import { useTheme } from '@/shared/hooks/use-theme'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/shared/ui/select'
 
 const MonacoEditor = lazy(() => import('@monaco-editor/react'))
 
@@ -68,8 +75,8 @@ export const CodeToolConfigPanel = memo(function CodeToolConfigPanel({
   )
 
   const handleLanguage = useCallback(
-    (e: ChangeEvent<HTMLSelectElement>) => {
-      applyPatch({ language: e.target.value as Language })
+    (value: string) => {
+      applyPatch({ language: value as Language })
     },
     [applyPatch],
   )
@@ -109,18 +116,18 @@ export const CodeToolConfigPanel = memo(function CodeToolConfigPanel({
         <label htmlFor="code-language" className="mb-1 block text-xs font-medium text-foreground">
           语言 <span className="text-error">*</span>
         </label>
-        <select
-          id="code-language"
-          value={parsed.language}
-          onChange={handleLanguage}
-          className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-        >
-          {LANGUAGES.map((lang) => (
-            <option key={lang} value={lang}>
-              {LANGUAGE_LABELS[lang]}
-            </option>
-          ))}
-        </select>
+        <Select value={parsed.language} onValueChange={handleLanguage}>
+          <SelectTrigger id="code-language" aria-label="语言">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {LANGUAGES.map((lang) => (
+              <SelectItem key={lang} value={lang}>
+                {LANGUAGE_LABELS[lang]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       {/* 描述 */}

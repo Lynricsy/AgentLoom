@@ -10,6 +10,7 @@ import {
   useAgentCanvasSaveStatus,
   useAgentCanvasStore,
 } from "@/features/agent-canvas";
+import { ReadOnlyCanvasBanner } from "@/features/canvas/components/readonly/ReadOnlyCanvasBanner";
 import { useAgent } from "@/features/agent/api/agentQueries";
 import { AgentCreateVersionDialog } from "@/features/agent/components/AgentCreateVersionDialog";
 import { AgentPublishDialog } from "@/features/agent/components/AgentPublishDialog";
@@ -17,6 +18,7 @@ import { AgentVersionHistoryPanel } from "@/features/agent/components/AgentVersi
 import { AgentVersionToolbar } from "@/features/agent/components/AgentVersionToolbar";
 import { ShareManagementDialog } from "@/features/share/components/ShareManagementDialog";
 import type { ApiError } from "@/shared/types/api";
+import { LG_QUERY, useMediaQuery } from "@/shared/hooks/use-media-query";
 import { useToast } from "@/shared/ui/toast";
 
 import { rootRoute } from "../__root";
@@ -70,6 +72,8 @@ function AgentCanvasPage() {
   const { saveCanvas } = useAgentCanvasActions();
   const { data: agent } = useAgent(agentId);
   const { notify } = useToast();
+  /** 小屏（<lg）画布只读浏览，工具条同步收起写操作入口 */
+  const isMobileReadOnly = !useMediaQuery(LG_QUERY);
 
   const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
   const [isCreateVersionDialogOpen, setIsCreateVersionDialogOpen] =
@@ -143,6 +147,13 @@ function AgentCanvasPage() {
           className="pointer-events-none absolute inset-x-4 top-4 z-30 flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between"
           data-testid="agent-top-overlay"
         >
+          {isMobileReadOnly && (
+            <ReadOnlyCanvasBanner
+              className="order-none xl:hidden"
+              message="当前为只读浏览，请在桌面端编辑 Agent 画布"
+            />
+          )}
+
           <div className="order-1 flex max-w-[min(320px,calc(100%-2rem))] xl:order-1">
             <div className="pointer-events-auto">
               <AgentBreadcrumb agentName={agentName} isDirty={isDirty} />
@@ -165,6 +176,7 @@ function AgentCanvasPage() {
                 onShare={
                   canShare ? () => setIsShareDialogOpen(true) : undefined
                 }
+                isReadOnly={isMobileReadOnly}
               />
             </div>
           </div>

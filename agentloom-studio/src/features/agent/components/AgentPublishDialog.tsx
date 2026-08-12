@@ -4,6 +4,13 @@ import { AlertCircle, Loader2, Upload, X } from "lucide-react";
 
 import { cn } from "@/shared/lib/utils";
 import { useToast } from "@/shared/ui/toast";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/shared/ui/select";
 
 import { usePublishAgent } from "../api/agentMutations";
 import { useAgentVersions } from "../api/agentQueries";
@@ -187,7 +194,7 @@ export const AgentPublishDialog = memo(function AgentPublishDialog({
             <Dialog.Close asChild>
               <button
                 type="button"
-                className="rounded p-1 text-muted-foreground hover:bg-muted hover:text-foreground"
+                className="rounded p-1 text-muted-foreground transition-colors hover:bg-surface-elevated hover:text-foreground"
                 aria-label="关闭"
               >
                 <X className="h-4 w-4" />
@@ -236,7 +243,7 @@ export const AgentPublishDialog = memo(function AgentPublishDialog({
               <div className="space-y-3">
                 <p className="text-sm font-medium">发布来源</p>
 
-                <label className="flex items-start gap-3 rounded-md border border-border p-3 hover:bg-muted/30">
+                <label className="flex items-start gap-3 rounded-md border border-border p-3 transition-colors hover:bg-surface-elevated">
                   <input
                     type="radio"
                     name="version-source"
@@ -254,7 +261,7 @@ export const AgentPublishDialog = memo(function AgentPublishDialog({
                   </div>
                 </label>
 
-                <label className="flex items-start gap-3 rounded-md border border-border p-3 hover:bg-muted/30">
+                <label className="flex items-start gap-3 rounded-md border border-border p-3 transition-colors hover:bg-surface-elevated">
                   <input
                     type="radio"
                     name="version-source"
@@ -280,22 +287,25 @@ export const AgentPublishDialog = memo(function AgentPublishDialog({
                     >
                       可发布记录
                     </label>
-                    <select
-                      id="agent-version-select"
+                    <Select
                       value={selectedVersionId}
-                      onChange={(event) =>
-                        setSelectedVersionId(event.target.value)
-                      }
-                      className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-                      data-testid="version-select"
+                      onValueChange={setSelectedVersionId}
                     >
-                      <option value="">请选择一条记录</option>
-                      {publishableVersions.map((version) => (
-                        <option key={version.id} value={version.id}>
-                          {formatPublishableRecordLabel(version)}
-                        </option>
-                      ))}
-                    </select>
+                      <SelectTrigger
+                        id="agent-version-select"
+                        aria-label="可发布记录"
+                        data-testid="version-select"
+                      >
+                        <SelectValue placeholder="请选择一条记录" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {publishableVersions.map((version) => (
+                          <SelectItem key={version.id} value={version.id}>
+                            {formatPublishableRecordLabel(version)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     {publishableVersions.length === 0 && (
                       <p className="text-xs text-muted-foreground">
                         当前没有可直接发布的历史记录
@@ -307,14 +317,14 @@ export const AgentPublishDialog = memo(function AgentPublishDialog({
 
               {validationErrors.length > 0 && (
                 <div
-                  className="rounded-md border border-red-200 bg-red-50 p-3"
+                  className="rounded-md border border-error/30 bg-error/10 p-3"
                   data-testid="publish-validation-error"
                 >
-                  <div className="flex items-center gap-2 text-sm font-medium text-red-700">
+                  <div className="flex items-center gap-2 text-sm font-medium text-error">
                     <AlertCircle className="h-4 w-4" />
                     <span>发布失败</span>
                   </div>
-                  <ul className="mt-2 space-y-1 text-sm text-red-700">
+                  <ul className="mt-2 space-y-1 text-sm text-error">
                     {validationErrors.map((message) => (
                       <li
                         key={message}
@@ -332,7 +342,7 @@ export const AgentPublishDialog = memo(function AgentPublishDialog({
               <Dialog.Close asChild>
                 <button
                   type="button"
-                  className="rounded-md px-4 py-2 text-sm text-muted-foreground hover:bg-muted"
+                  className="rounded-md px-4 py-2 text-sm text-muted-foreground transition-colors hover:bg-surface-elevated hover:text-foreground"
                   data-testid="cancel-publish"
                 >
                   取消

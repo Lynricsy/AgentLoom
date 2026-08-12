@@ -9,6 +9,13 @@ import { memo, useCallback, type ChangeEvent } from 'react'
 import { Code, Eye, Plus, Trash2 } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/shared/ui/select'
+import {
   CONDITION_OPERATORS,
   OPERATOR_META,
   createDefaultRule,
@@ -62,10 +69,10 @@ const ConditionRuleRow = memo(function ConditionRuleRow({
   const supportsFieldPath = selectedPort?.supportsFieldPath ?? false
 
   const handlePortChange = useCallback(
-    (event: ChangeEvent<HTMLSelectElement>) => {
-      const nextPort = findSelectedPort(availablePorts, event.target.value)
+    (value: string) => {
+      const nextPort = findSelectedPort(availablePorts, value)
       onUpdate(index, {
-        sourcePortId: event.target.value,
+        sourcePortId: value,
         fieldPath: nextPort?.supportsFieldPath ? rule.fieldPath : '',
       })
     },
@@ -80,8 +87,8 @@ const ConditionRuleRow = memo(function ConditionRuleRow({
   )
 
   const handleOperatorChange = useCallback(
-    (event: ChangeEvent<HTMLSelectElement>) => {
-      onUpdate(index, { operator: event.target.value as ConditionOperator })
+    (value: string) => {
+      onUpdate(index, { operator: value as ConditionOperator })
     },
     [index, onUpdate],
   )
@@ -108,8 +115,8 @@ const ConditionRuleRow = memo(function ConditionRuleRow({
             className={cn(
               'rounded px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider transition-colors',
               logic === 'and'
-                ? 'bg-blue-500/15 text-blue-400 hover:bg-blue-500/25'
-                : 'bg-amber-500/15 text-amber-400 hover:bg-amber-500/25',
+                ? 'bg-info/15 text-info hover:bg-info/25'
+                : 'bg-warning/15 text-warning hover:bg-warning/25',
             )}
           >
             {logic === 'and' ? 'AND' : 'OR'}
@@ -119,17 +126,29 @@ const ConditionRuleRow = memo(function ConditionRuleRow({
       )}
 
       <div className="grid gap-1.5 md:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)_auto_minmax(0,1fr)_auto]">
-        <select
+        <Select
           value={selectedPort?.portId ?? rule.sourcePortId}
-          onChange={handlePortChange}
-          className="h-8 min-w-0 rounded-md border border-border bg-background px-2 text-xs"
+          onValueChange={handlePortChange}
+          disabled={availablePorts.length === 0}
         >
-          {availablePorts.map((port) => (
-            <option key={port.portId} value={port.portId}>
-              {port.label} · {port.portRef}
-            </option>
-          ))}
-        </select>
+          <SelectTrigger
+            aria-label={`条件 ${index + 1} 输入端口`}
+            className="h-8 min-w-0 px-2 text-xs"
+          >
+            <SelectValue
+              placeholder={
+                availablePorts.length === 0 ? '暂无可用输入端口' : '选择输入端口'
+              }
+            />
+          </SelectTrigger>
+          <SelectContent>
+            {availablePorts.map((port) => (
+              <SelectItem key={port.portId} value={port.portId} className="text-xs">
+                {port.label} · {port.portRef}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
 
         <input
           type="text"
@@ -140,17 +159,21 @@ const ConditionRuleRow = memo(function ConditionRuleRow({
           className="h-8 min-w-0 rounded-md border border-border bg-background px-2 text-xs disabled:cursor-not-allowed disabled:opacity-50"
         />
 
-        <select
-          value={rule.operator}
-          onChange={handleOperatorChange}
-          className="h-8 shrink-0 rounded-md border border-border bg-background px-1.5 text-xs"
-        >
-          {CONDITION_OPERATORS.map((operator) => (
-            <option key={operator} value={operator}>
-              {OPERATOR_META[operator].label}
-            </option>
-          ))}
-        </select>
+        <Select value={rule.operator} onValueChange={handleOperatorChange}>
+          <SelectTrigger
+            aria-label={`条件 ${index + 1} 运算符`}
+            className="h-8 w-auto shrink-0 px-1.5 text-xs"
+          >
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent className="w-auto min-w-[10rem]">
+            {CONDITION_OPERATORS.map((operator) => (
+              <SelectItem key={operator} value={operator} className="text-xs">
+                {OPERATOR_META[operator].label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
 
         {operatorMeta.requiresValue ? (
           <input

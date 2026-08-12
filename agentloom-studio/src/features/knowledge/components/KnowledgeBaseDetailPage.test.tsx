@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -42,6 +43,7 @@ vi.mock('@/features/llm', () => ({
 
 vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => mocks.navigate,
+  Link: ({ children }: { children?: ReactNode }) => <>{children}</>,
 }))
 
 vi.mock('@/shared/ui/toast', () => ({
@@ -292,7 +294,10 @@ describe('KnowledgeBaseDetailPage', () => {
 
     render(<KnowledgeBaseDetailPage knowledgeBaseId="kb-1" />)
 
-    expect(screen.getByText('API 文档库')).toBeInTheDocument()
+    // 面包屑与 h1 都会出现库名，这里断言页头标题
+    expect(
+      screen.getByRole('heading', { level: 1, name: /API 文档库/ }),
+    ).toBeInTheDocument()
     expect(screen.getByText('存放 API 与 SDK 文档')).toBeInTheDocument()
     expect(screen.getByText('18')).toBeInTheDocument()
     expect(screen.getByText('Sentence Window · 4')).toBeInTheDocument()
@@ -321,7 +326,9 @@ describe('KnowledgeBaseDetailPage', () => {
       error: null,
     })
     const { rerender } = render(<KnowledgeBaseDetailPage knowledgeBaseId="kb-1" />)
-    expect(screen.getByText('加载知识库中...')).toBeInTheDocument()
+    expect(
+      screen.getByTestId('knowledge-base-detail-skeleton'),
+    ).toBeInTheDocument()
 
     mocks.useKnowledgeBase.mockReturnValue({
       data: null,
@@ -410,11 +417,12 @@ describe('KnowledgeBaseDetailPage', () => {
     const { updateSettingsFn } = setupMocks()
     render(<KnowledgeBaseDetailPage knowledgeBaseId="kb-1" />)
 
-    await userEvent.selectOptions(
-      screen.getByLabelText('Embedding 模型'),
-      'embedding-model-2',
+    await userEvent.click(screen.getByLabelText('Embedding 模型'))
+    await userEvent.click(
+      await screen.findByRole('option', { name: '高级 Embedding 模型 · Qwen/Qwen3-Embedding-8B' }),
     )
-    await userEvent.selectOptions(screen.getByLabelText('分块策略'), 'sentence')
+    await userEvent.click(screen.getByLabelText('分块策略'))
+    await userEvent.click(await screen.findByRole('option', { name: '句子分块' }))
     await userEvent.clear(screen.getByLabelText('Chunk Size'))
     await userEvent.type(screen.getByLabelText('Chunk Size'), '1024')
     await userEvent.clear(screen.getByLabelText('Chunk Overlap'))

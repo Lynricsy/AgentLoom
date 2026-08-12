@@ -2,7 +2,13 @@ import type { FieldErrors, UseFormRegister, UseFormSetValue, UseFormWatch } from
 import cronstrue from 'cronstrue'
 import { Label } from '@/shared/ui/label'
 import { Input } from '@/shared/ui/input'
-import { NativeSelect } from '@/shared/ui/native-select'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/shared/ui/select'
 import { Switch } from '@/shared/ui/switch'
 import type { TriggerDialogFormValues } from './TriggerCreateDialog'
 
@@ -99,23 +105,33 @@ export function CronConfigForm({
           )}
         </label>
 
-        <label htmlFor="cron-timezone" className="space-y-2">
+        <div className="space-y-2">
           <Label>时区</Label>
-          <NativeSelect id="cron-timezone" {...register('cron.timezone')}>
-            {COMMON_TIMEZONES.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </NativeSelect>
+          <Select
+            value={timezone}
+            onValueChange={(value) =>
+              setValue('cron.timezone', value, { shouldDirty: true, shouldValidate: true })
+            }
+          >
+            <SelectTrigger id="cron-timezone" aria-label="时区">
+              <SelectValue placeholder="请选择时区" />
+            </SelectTrigger>
+            <SelectContent>
+              {COMMON_TIMEZONES.map((option) => (
+                <SelectItem key={option} value={option}>
+                  {option}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           {errors.cron?.timezone && (
             <p className="text-xs text-error">{errors.cron.timezone.message}</p>
           )}
-        </label>
+        </div>
       </div>
 
-      <div className="rounded-xl border border-sky-500/20 bg-sky-500/10 p-4">
-        <p className="text-xs font-medium uppercase tracking-[0.18em] text-sky-200">执行预览</p>
+      <div className="rounded-xl border border-info/20 bg-info/10 p-4">
+        <p className="text-xs font-medium uppercase tracking-[0.18em] text-info">执行预览</p>
         <p className="mt-2 text-sm text-foreground">{getCronPreview(expression)}</p>
         <p className="mt-2 text-xs text-muted-foreground">当前时区：{timezone || 'UTC'}</p>
       </div>

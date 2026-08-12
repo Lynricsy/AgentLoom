@@ -137,6 +137,7 @@ export function WorkspaceManagementPage() {
       {
         key: "name",
         header: "工作区",
+        className: "w-full max-w-0",
         cell: (workspace) => (
           <div className="flex min-w-0 items-center gap-3">
             <span
@@ -204,20 +205,24 @@ export function WorkspaceManagementPage() {
       },
       {
         key: "actions",
-        header: <span className="sr-only">操作</span>,
-        className: "w-32 text-right",
+        // 不用 sr-only：绝对定位元素会逃出 DataTable 的横向滚动容器，撑破小屏文档宽度
+        header: "操作",
+        className: "w-px whitespace-nowrap text-right",
         cell: (workspace) => (
           <div
             className="flex items-center justify-end gap-1"
             onClick={(event) => event.stopPropagation()}
           >
+            {/* <sm 只留图标：整行本身就可点进详情，文字按钮会把主文本列压到 60px 上下 */}
             <Button
               variant="outline"
               size="sm"
+              aria-label={`预览工作区 ${workspace.name}`}
+              className="px-2 sm:px-3"
               onClick={() => handleOpenWorkspace(workspace)}
             >
-              <Eye className="mr-1.5 h-3.5 w-3.5" />
-              预览
+              <Eye className="h-3.5 w-3.5 sm:mr-1.5" />
+              <span className="hidden sm:inline">预览</span>
             </Button>
             <Button
               variant="ghost"

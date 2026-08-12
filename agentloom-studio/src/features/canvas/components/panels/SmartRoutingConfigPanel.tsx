@@ -35,6 +35,15 @@ import type {
   JsonSchemaProperty,
 } from '@/features/smart-routing'
 import { useHealthStatus, useConfigSchema, useStrategies } from '@/features/smart-routing'
+import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectTrigger,
+  SelectValue,
+} from '@/shared/ui/select'
 import { cn } from '@/shared/lib/utils'
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -74,9 +83,9 @@ const HEALTH_STATUS_STYLES: Record<
   ProviderHealthStatus,
   { bg: string; text: string; label: string }
 > = {
-  healthy: { bg: 'bg-emerald-500/15', text: 'text-emerald-400', label: '正常' },
-  degraded: { bg: 'bg-amber-500/15', text: 'text-amber-400', label: '降级' },
-  open: { bg: 'bg-red-500/15', text: 'text-red-400', label: '断路' },
+  healthy: { bg: 'bg-success/15', text: 'text-success', label: '正常' },
+  degraded: { bg: 'bg-warning/15', text: 'text-warning', label: '降级' },
+  open: { bg: 'bg-error/15', text: 'text-error', label: '断路' },
 }
 
 function computeHealthSummary(healthData: ProviderHealth[]) {
@@ -105,19 +114,23 @@ const SchemaField = memo(function SchemaField({ name, schema, value, onChange }:
         <label htmlFor={fieldId} className="text-xs font-medium text-muted-foreground">
           {label}
         </label>
-        <select
-          id={fieldId}
-          data-testid={fieldId}
+        <Select
           value={String(value ?? schema.default ?? '')}
-          onChange={(e) => onChange(name, e.target.value)}
-          className="rounded-md border border-border bg-background px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
+          onValueChange={(next) => {
+            onChange(name, next)
+          }}
         >
-          {schema.enum.map((v) => (
-            <option key={String(v)} value={String(v)}>
-              {String(v)}
-            </option>
-          ))}
-        </select>
+          <SelectTrigger id={fieldId} data-testid={fieldId} aria-label={label}>
+            <SelectValue placeholder="请选择" />
+          </SelectTrigger>
+          <SelectContent>
+            {schema.enum.map((v) => (
+              <SelectItem key={String(v)} value={String(v)}>
+                {String(v)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         {description ? <p className="text-[10px] text-muted-foreground/70">{description}</p> : null}
       </div>
     )
@@ -259,8 +272,8 @@ export const SmartRoutingConfigPanel = memo(function SmartRoutingConfigPanel({
   const healthSummary = useMemo(() => computeHealthSummary(healthList), [healthList])
 
   const handleStrategyChange = useCallback(
-    (e: React.ChangeEvent<HTMLSelectElement>) => {
-      const nextStrategy = e.target.value as RoutingStrategy
+    (value: string) => {
+      const nextStrategy = value as RoutingStrategy
       const patch: Record<string, unknown> = {
         strategy: nextStrategy,
         strategyConfig: {},
@@ -328,6 +341,9 @@ export const SmartRoutingConfigPanel = memo(function SmartRoutingConfigPanel({
 
   const schemaProperties = configSchema?.properties ?? {}
   const schemaPropertyEntries = Object.entries(schemaProperties)
+  const hasStrategyOptions = CATEGORY_ORDER.some(
+    (cat) => strategyNamesByCategory[cat].length > 0,
+  )
 
   return (
     <div className="flex flex-col gap-4 p-4" data-testid="smart-routing-config-panel">
@@ -340,35 +356,36 @@ export const SmartRoutingConfigPanel = memo(function SmartRoutingConfigPanel({
         <label htmlFor="strategy-select" className="text-xs font-medium text-muted-foreground">
           路由策略
         </label>
-        <select
-          id="strategy-select"
-          data-testid="strategy-select"
+        <Select
           value={strategy}
-          onChange={handleStrategyChange}
-          disabled={isStrategiesLoading}
-          className="rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary disabled:cursor-not-allowed disabled:opacity-50"
+          onValueChange={handleStrategyChange}
+          disabled={isStrategiesLoading || !hasStrategyOptions}
         >
-          {CATEGORY_ORDER.map((cat) => {
-            const names = strategyNamesByCategory[cat]
-            if (names.length === 0) return null
-            return (
-              <optgroup
-                key={cat}
-                label={STRATEGY_CATEGORY_LABELS[cat]}
-                data-testid={`strategy-group-${cat}`}
-              >
-                {names.map((name) => {
-                  const m = STRATEGY_META[name]
-                  return (
-                    <option key={name} value={name}>
-                      {m?.displayName ?? name}
-                    </option>
-                  )
-                })}
-              </optgroup>
-            )
-          })}
-        </select>
+          <SelectTrigger id="strategy-select" data-testid="strategy-select" aria-label="路由策略">
+            <SelectValue
+              placeholder={isStrategiesLoading ? '策略加载中…' : '暂无可用策略'}
+            />
+          </SelectTrigger>
+          <SelectContent>
+            {CATEGORY_ORDER.map((cat) => {
+              const names = strategyNamesByCategory[cat]
+              if (names.length === 0) return null
+              return (
+                <SelectGroup key={cat} data-testid={`strategy-group-${cat}`}>
+                  <SelectLabel>{STRATEGY_CATEGORY_LABELS[cat]}</SelectLabel>
+                  {names.map((name) => {
+                    const m = STRATEGY_META[name]
+                    return (
+                      <SelectItem key={name} value={name}>
+                        {m?.displayName ?? name}
+                      </SelectItem>
+                    )
+                  })}
+                </SelectGroup>
+              )
+            })}
+          </SelectContent>
+        </Select>
         {meta ? (
           <div className="flex items-center gap-1.5">
             {ICON_MAP[meta.icon] ? (
@@ -414,7 +431,7 @@ export const SmartRoutingConfigPanel = memo(function SmartRoutingConfigPanel({
             )}
           </div>
           {healthSummary.degraded > 0 || healthSummary.open > 0 ? (
-            <div className="flex items-start gap-1.5 rounded-md bg-amber-500/5 px-2 py-1.5 text-[10px] text-amber-400">
+            <div className="flex items-start gap-1.5 rounded-md bg-warning/10 px-2 py-1.5 text-[10px] text-warning">
               <AlertCircle className="mt-0.5 h-3 w-3 shrink-0" />
               <span>
                 {healthSummary.open > 0

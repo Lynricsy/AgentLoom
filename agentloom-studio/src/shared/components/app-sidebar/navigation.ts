@@ -1,6 +1,7 @@
 import {
   Activity,
   AppWindow,
+  Bell,
   BookOpen,
   Bot,
   BrainCircuit,
@@ -142,6 +143,12 @@ export const NAV_GROUPS: NavGroup[] = [
         icon: FileText,
         to: '/settings/audit-logs',
         matchPrefix: '/settings/audit-logs',
+      },
+      {
+        label: '通知',
+        icon: Bell,
+        to: '/notifications',
+        matchPrefix: '/notifications',
       },
     ],
   },

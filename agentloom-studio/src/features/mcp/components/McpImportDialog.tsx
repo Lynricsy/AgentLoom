@@ -23,7 +23,13 @@ import {
 import { cn } from "@/shared/lib/utils";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
-import { NativeSelect } from "@/shared/ui/native-select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/shared/ui/select";
 import { useToast } from "@/shared/ui/toast";
 
 type StepId = 1 | 2 | 3 | 4;
@@ -670,9 +676,8 @@ export function McpImportDialog({
                       >
                         传输方式
                       </label>
-                      <NativeSelect
+                      <Select
                         autoComplete="off"
-                        id="mcp-transport-type"
                         name="transportType"
                         onValueChange={(value) =>
                           updateConnectionForm(
@@ -682,10 +687,20 @@ export function McpImportDialog({
                         }
                         value={connectionForm.transportType}
                       >
-                        <option value="stdio">stdio</option>
-                        <option value="sse">sse</option>
-                        <option value="streamable_http">streamable_http</option>
-                      </NativeSelect>
+                        <SelectTrigger
+                          aria-label="传输方式"
+                          id="mcp-transport-type"
+                        >
+                          <SelectValue placeholder="请选择传输方式" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="stdio">stdio</SelectItem>
+                          <SelectItem value="sse">sse</SelectItem>
+                          <SelectItem value="streamable_http">
+                            streamable_http
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
 
                     {connectionForm.transportType === "stdio" ? (
@@ -1032,16 +1047,25 @@ export function McpImportDialog({
                     >
                       冲突处理策略
                     </label>
-                    <NativeSelect
-                      id="mcp-conflict-strategy"
+                    <Select
                       onValueChange={(value) =>
                         setConflictStrategy(value as McpImportConflictStrategy)
                       }
                       value={conflictStrategy}
                     >
-                      <option value="overwrite">覆盖已存在工具</option>
-                      <option value="skip">跳过已存在工具</option>
-                    </NativeSelect>
+                      <SelectTrigger
+                        aria-label="冲突处理策略"
+                        id="mcp-conflict-strategy"
+                      >
+                        <SelectValue placeholder="请选择冲突处理策略" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="overwrite">
+                          覆盖已存在工具
+                        </SelectItem>
+                        <SelectItem value="skip">跳过已存在工具</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
 

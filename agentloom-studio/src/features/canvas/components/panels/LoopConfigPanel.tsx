@@ -1,5 +1,12 @@
 import { memo, useCallback, useMemo } from "react";
 import { Repeat } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/shared/ui/select";
 import { useCanvasActions, useCanvasNodes } from "../../stores/canvasStore";
 import type { PortDefinition } from "../../types/nodeTypeRegistry";
 import {
@@ -101,11 +108,11 @@ export const LoopConfigPanel = memo(function LoopConfigPanel({
   );
 
   const handleOutputModeChange = useCallback(
-    (event: React.ChangeEvent<HTMLSelectElement>) => {
+    (value: string) => {
       onApply({
         config: {
           ...parsed,
-          outputMode: event.target.value,
+          outputMode: value,
         },
       });
     },
@@ -260,16 +267,16 @@ export const LoopConfigPanel = memo(function LoopConfigPanel({
         >
           输出模式
         </label>
-        <select
-          id="loop-output-mode"
-          value={parsed.outputMode}
-          onChange={handleOutputModeChange}
-          className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground"
-        >
-          <option value="none">纯控制流</option>
-          <option value="last">保留最后一次结果</option>
-          <option value="collect-array">收集为数组</option>
-        </select>
+        <Select value={parsed.outputMode} onValueChange={handleOutputModeChange}>
+          <SelectTrigger id="loop-output-mode" aria-label="输出模式">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="none">纯控制流</SelectItem>
+            <SelectItem value="last">保留最后一次结果</SelectItem>
+            <SelectItem value="collect-array">收集为数组</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
 
       <label className="flex items-center gap-2 text-xs text-foreground">

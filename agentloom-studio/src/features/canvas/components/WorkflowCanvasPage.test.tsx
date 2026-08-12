@@ -1,11 +1,17 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WorkflowDefinition } from "@/features/workflow";
 import type { ExecutionStatus } from "@/features/execution/types";
 import type { WorkflowInputSchema } from "@/features/workflow/types";
 import { useCanvasStore } from "../stores/canvasStore";
 import { getNodeTypeConfig } from "../types/nodeTypeRegistry";
 import { clonePortDefinitions } from "../types/portSchema";
+import {
+  DESKTOP_WIDTH,
+  MOBILE_WIDTH,
+  restoreViewport,
+  stubViewportWidth,
+} from "../testing/viewport";
 import { WorkflowCanvasPage } from "./WorkflowCanvasPage";
 
 function createNodeData(nodeType: Parameters<typeof getNodeTypeConfig>[0]) {
@@ -349,6 +355,8 @@ const workflowTwo: WorkflowDefinition = {
 
 describe("WorkflowCanvasPage", () => {
   beforeEach(() => {
+    // 默认桌面态：既有用例断言的都是桌面端编辑行为
+    stubViewportWidth(DESKTOP_WIDTH);
     routeWorkflowId = "wf-001";
     workflowResult = {
       data: workflowOne,
@@ -366,6 +374,10 @@ describe("WorkflowCanvasPage", () => {
     downloadWorkflowExportMock.mockReset();
     window.sessionStorage.clear();
     useCanvasStore.getState().actions.reset();
+  });
+
+  afterEach(() => {
+    restoreViewport();
   });
 
   it("相同工作流且服务端版本未变化时不应重新覆盖本地画布状态", () => {
@@ -804,5 +816,42 @@ describe("WorkflowCanvasPage", () => {
         draftInputSchema: null,
       }),
     );
+  });
+
+  describe("小屏只读浏览（<lg）", () => {
+    beforeEach(() => {
+      stubViewportWidth(MOBILE_WIDTH);
+    });
+
+    it("隐藏节点面板与编辑类工具条，只留只读工具条与顶部提示", () => {
+      render(<WorkflowCanvasPage />);
+
+      expect(screen.queryByText("Node Palette")).not.toBeInTheDocument();
+      expect(versionToolbarMock).not.toHaveBeenCalled();
+      expect(
+        screen.getByTestId("readonly-workflow-toolbar"),
+      ).toBeInTheDocument();
+      expect(screen.getByTestId("canvas-readonly-banner")).toHaveTextContent(
+        "当前为只读浏览，请在桌面端编辑工作流",
+      );
+      expect(screen.queryByTestId("btn-publish")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("btn-create-version")).not.toBeInTheDocument();
+      expect(screen.getByTestId("btn-version-history")).toBeInTheDocument();
+    });
+
+    it("选中节点时打开底部只读弹层而不是右侧配置面板", async () => {
+      render(<WorkflowCanvasPage />);
+
+      expect(screen.queryByTestId("readonly-node-sheet")).not.toBeInTheDocument();
+
+      act(() => {
+        useCanvasStore.getState().actions.selectNode("node-1");
+      });
+
+      const sheet = await screen.findByTestId("readonly-node-sheet");
+      expect(sheet).toBeInTheDocument();
+      expect(screen.queryByTestId("node-config-panel")).not.toBeInTheDocument();
+      expect(screen.getByTestId("readonly-node-output-section")).toBeInTheDocument();
+    });
   });
 });

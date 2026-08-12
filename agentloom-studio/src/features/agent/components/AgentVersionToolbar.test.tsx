@@ -51,6 +51,27 @@ describe("AgentVersionToolbar", () => {
     expect(screen.queryByTestId("btn-share-agent")).not.toBeInTheDocument();
   });
 
+  it("只读浏览时只保留状态徽章与历史记录", () => {
+    render(
+      <AgentVersionToolbar
+        {...defaultProps}
+        isReadOnly
+        onShare={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId("agent-status-badge")).toHaveTextContent("草稿");
+    expect(screen.getByTestId("btn-agent-version-history")).toBeInTheDocument();
+    expect(
+      screen.queryByTestId("btn-save-agent-canvas"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("btn-create-agent-version"),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByTestId("btn-publish-agent")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("btn-share-agent")).not.toBeInTheDocument();
+  });
+
   it("传入 onShare 时显示分享按钮并可触发", () => {
     const onShare = vi.fn();
     render(<AgentVersionToolbar {...defaultProps} onShare={onShare} />);

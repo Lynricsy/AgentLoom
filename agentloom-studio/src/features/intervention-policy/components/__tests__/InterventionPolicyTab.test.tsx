@@ -132,7 +132,9 @@ describe('InterventionPolicyTab', () => {
     }))
   })
 
-  it('展示工作流级策略摘要，并且节点选择器只包含 agent 节点', () => {
+  it('展示工作流级策略摘要，并且节点选择器只包含 agent 节点', async () => {
+    const user = userEvent.setup()
+
     render(
       <InterventionPolicyTab
         workflowId="wf-001"
@@ -145,16 +147,17 @@ describe('InterventionPolicyTab', () => {
     expect(screen.getByText('工作流级介入策略')).toBeInTheDocument()
     expect(screen.getByText('超时：24 小时')).toBeInTheDocument()
     expect(screen.getAllByText('智能体一号').length).toBeGreaterThan(0)
+    expect(screen.queryByText('Viewer')).not.toBeInTheDocument()
+    expect(screen.getByLabelText('工作流超时时间')).toHaveAttribute('type', 'range')
+    expect(screen.getByLabelText('节点超时时间')).toHaveAttribute('type', 'range')
 
-    const selector = screen.getByLabelText('选择 Agent 节点') as HTMLSelectElement
-    const options = Array.from(selector.options).map((option) => option.textContent)
+    await user.click(screen.getByLabelText('选择 Agent 节点'))
+
+    const options = (await screen.findAllByRole('option')).map((option) => option.textContent)
 
     expect(options).toContain('智能体一号')
     expect(options).toContain('聊天智能体')
     expect(options).not.toContain('HTTP 工具')
-    expect(screen.queryByText('Viewer')).not.toBeInTheDocument()
-    expect(screen.getByLabelText('工作流超时时间')).toHaveAttribute('type', 'range')
-    expect(screen.getByLabelText('节点超时时间')).toHaveAttribute('type', 'range')
   })
 
   it('超时滑块切换时会更新人类可读标签', async () => {
@@ -186,13 +189,19 @@ describe('InterventionPolicyTab', () => {
       />,
     )
 
-    await user.selectOptions(screen.getByLabelText('工作流超时动作'), 'escalate')
+    await user.click(screen.getByLabelText('工作流超时动作'))
+    await user.click(await screen.findByRole('option', { name: '升级到指定角色' }))
 
-    const options = Array.from(
-      screen.getByLabelText('工作流升级目标角色').querySelectorAll('option'),
-    ).map((option) => option.textContent)
+    const roleTrigger = screen.getByLabelText('工作流升级目标角色')
 
-    expect(options).toEqual(['请选择角色', 'Owner', 'Admin', 'Creator', 'Operator'])
+    // Radix Select 无空值选项，未选择态由 placeholder 承担
+    expect(roleTrigger).toHaveTextContent('请选择角色')
+
+    await user.click(roleTrigger)
+
+    const options = (await screen.findAllByRole('option')).map((option) => option.textContent)
+
+    expect(options).toEqual(['Owner', 'Admin', 'Creator', 'Operator'])
   })
 
   it('只读模式下禁用工作流与节点级保存按钮', () => {
@@ -221,7 +230,8 @@ describe('InterventionPolicyTab', () => {
       />,
     )
 
-    await user.selectOptions(screen.getByLabelText('工作流超时动作'), 'escalate')
+    await user.click(screen.getByLabelText('工作流超时动作'))
+    await user.click(await screen.findByRole('option', { name: '升级到指定角色' }))
 
     expect(screen.getByLabelText('工作流升级目标角色')).toBeInTheDocument()
 
@@ -243,8 +253,10 @@ describe('InterventionPolicyTab', () => {
       />,
     )
 
-    await user.selectOptions(screen.getByLabelText('工作流超时动作'), 'escalate')
-    await user.selectOptions(screen.getByLabelText('工作流升级目标角色'), 'owner')
+    await user.click(screen.getByLabelText('工作流超时动作'))
+    await user.click(await screen.findByRole('option', { name: '升级到指定角色' }))
+    await user.click(screen.getByLabelText('工作流升级目标角色'))
+    await user.click(await screen.findByRole('option', { name: 'Owner' }))
     await user.click(screen.getByRole('button', { name: '保存工作流策略' }))
 
     await waitFor(() => {
@@ -279,7 +291,8 @@ describe('InterventionPolicyTab', () => {
       />,
     )
 
-    await user.selectOptions(screen.getByLabelText('选择 Agent 节点'), 'node-agent-2')
+    await user.click(screen.getByLabelText('选择 Agent 节点'))
+    await user.click(await screen.findByRole('option', { name: '聊天智能体' }))
     await user.click(screen.getByRole('button', { name: '保存节点策略' }))
 
     await waitFor(() => {

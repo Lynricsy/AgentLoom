@@ -1,5 +1,12 @@
 import { memo, useCallback, useEffect, useMemo, useState } from 'react'
 import { Brain, Container, Loader2, Plus, Search, Trash2 } from 'lucide-react'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/shared/ui/select'
 import { listAgents, listAgentVersions } from '@/features/agent/api/agentDefinitionApi'
 import type { AgentDefinition, AgentVersion } from '@/features/agent/types'
 import type { AgentRuntimeMode } from '@/features/agent/types/agentRuntimeMode'
@@ -318,23 +325,30 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
               加载版本...
             </div>
           ) : (
-            <select
-              id="agent-version"
+            <Select
               value={agentConfig.agentVersionId ?? ''}
-              onChange={(e) => {
-                const v = versions.find((ver) => ver.id === e.target.value)
+              onValueChange={(value) => {
+                const v = versions.find((ver) => ver.id === value)
                 if (v) handleSelectVersion(v)
               }}
-              className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
+              disabled={versions.length === 0}
             >
-              <option value="">使用最新发布版本</option>
-              {versions.map((v) => (
-                <option key={v.id} value={v.id}>
-                  {v.label || `v${v.versionNumber}`}
-                  {v.publishedAt ? ` (${new Date(v.publishedAt).toLocaleDateString()})` : ''}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger id="agent-version" aria-label="版本">
+                <SelectValue
+                  placeholder={
+                    versions.length === 0 ? '暂无已发布版本' : '使用最新发布版本'
+                  }
+                />
+              </SelectTrigger>
+              <SelectContent>
+                {versions.map((v) => (
+                  <SelectItem key={v.id} value={v.id}>
+                    {v.label || `v${v.versionNumber}`}
+                    {v.publishedAt ? ` (${new Date(v.publishedAt).toLocaleDateString()})` : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           )}
         </div>
       )}

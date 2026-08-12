@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { useEffect, type ReactNode } from 'react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { Viewport } from '@xyflow/react'
 import type { TypeEngineServiceLike } from '../lib/typeEngine/contracts'
 import { setTypeEngineServiceForTesting } from '../lib/typeEngine/service'
 import { useCanvasStore } from '../stores/canvasStore'
@@ -8,6 +9,12 @@ import { createDefaultEdgeData } from '../types'
 import type { CanvasEdge, CanvasNode } from '../types'
 import { getNodeTypeConfig } from '../types/nodeTypeRegistry'
 import { clonePortDefinitions } from '../types/portSchema'
+import {
+  DESKTOP_WIDTH,
+  MOBILE_WIDTH,
+  restoreViewport,
+  stubViewportWidth,
+} from '../testing/viewport'
 import { WorkflowCanvas } from './WorkflowCanvas'
 
 let capturedProps: Record<string, unknown> = {}
@@ -253,6 +260,8 @@ vi.mock('@/shared/ui/toast', () => ({
 
 describe('WorkflowCanvas', () => {
   beforeEach(() => {
+    // 默认桌面态：既有用例断言的都是桌面端编辑行为
+    stubViewportWidth(DESKTOP_WIDTH)
     useCanvasStore.getState().actions.reset()
     capturedProps = {}
     notifyMock.mockReset()
@@ -260,6 +269,10 @@ describe('WorkflowCanvas', () => {
     evaluateCompatibilityMock.mockReset()
     getCachedCompatibilityMock.mockReset()
     setTypeEngineServiceForTesting(mockTypeEngineService)
+  })
+
+  afterEach(() => {
+    restoreViewport()
   })
 
   it('注册了 smart edge 类型', () => {
@@ -642,5 +655,90 @@ describe('WorkflowCanvas', () => {
         deleteSelectedNode: originalDeleteSelectedNode,
       },
     }))
+  })
+
+  describe('小屏只读浏览（<lg）', () => {
+    beforeEach(() => {
+      stubViewportWidth(MOBILE_WIDTH)
+    })
+
+    it('关闭拖拽 / 连线 / 选中，但保留视口平移缩放', () => {
+      render(<WorkflowCanvas />)
+
+      expect(capturedProps.nodesDraggable).toBe(false)
+      expect(capturedProps.nodesConnectable).toBe(false)
+      expect(capturedProps.elementsSelectable).toBe(false)
+      expect(capturedProps.connectOnClick).toBe(false)
+      expect(capturedProps.panOnScroll).toBe(true)
+      expect(capturedProps.zoomOnScroll).toBe(true)
+
+      act(() => {
+        ;(capturedProps.onViewportChange as (viewport: Viewport) => void)({
+          x: 42,
+          y: 24,
+          zoom: 1.5,
+        })
+      })
+
+      expect(useCanvasStore.getState().viewport).toEqual({
+        x: 42,
+        y: 24,
+        zoom: 1.5,
+      })
+    })
+
+    it('拒绝新建连接并且不再把画布标脏', () => {
+      useCanvasStore.setState((state) => ({
+        ...state,
+        nodes: compatibleNodes,
+        edges: [],
+      }))
+
+      render(<WorkflowCanvas />)
+
+      const isValidConnection = capturedProps.isValidConnection as (connection: {
+        source: string
+        target: string
+        sourceHandle: string
+        targetHandle: string
+      }) => boolean
+
+      expect(
+        isValidConnection({
+          source: 'n-1',
+          target: 'n-2',
+          sourceHandle: 'result',
+          targetHandle: 'input',
+        }),
+      ).toBe(false)
+
+      act(() => {
+        ;(
+          capturedProps.onMoveEnd as (
+            event: null,
+            viewport: Viewport,
+          ) => void
+        )(null, { x: 1, y: 2, zoom: 1 })
+      })
+
+      expect(useCanvasStore.getState().isDirty).toBe(false)
+    })
+
+    it('点击边只选中，不打开字段映射面板', () => {
+      render(<WorkflowCanvas />)
+
+      fireEvent.click(screen.getByTestId('trigger-edge-click'))
+
+      expect(useCanvasStore.getState().selectedEdgeId).toBe('e-1')
+      expect(useCanvasStore.getState().mappingPanelEdgeId).toBeNull()
+    })
+
+    it('点击节点仍然选中，供底部只读弹层消费', () => {
+      render(<WorkflowCanvas />)
+
+      fireEvent.click(screen.getByTestId('trigger-node-click'))
+
+      expect(useCanvasStore.getState().selectedNodeId).toBe('n-1')
+    })
   })
 })

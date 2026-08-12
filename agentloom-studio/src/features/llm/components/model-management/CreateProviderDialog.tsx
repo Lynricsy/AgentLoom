@@ -4,7 +4,13 @@ import { Loader2, X } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
 import { Label } from "@/shared/ui/label";
-import { NativeSelect } from "@/shared/ui/native-select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/shared/ui/select";
 import { useToast } from "@/shared/ui/toast";
 import type { ApiProtocol, CreateLlmProviderInput } from "../../types";
 import { API_PROTOCOL_VALUES } from "../../types";
@@ -117,16 +123,21 @@ export function CreateProviderDialog({
 
             <div className="space-y-2">
               <Label>API 协议</Label>
-              <NativeSelect
+              <Select
                 value={apiProtocol}
                 onValueChange={(v) => setApiProtocol(v as ApiProtocol)}
               >
-                {API_PROTOCOL_VALUES.map((p) => (
-                  <option key={p} value={p}>
-                    {PROTOCOL_LABELS[p]}
-                  </option>
-                ))}
-              </NativeSelect>
+                <SelectTrigger aria-label="API 协议">
+                  <SelectValue placeholder="请选择 API 协议" />
+                </SelectTrigger>
+                <SelectContent>
+                  {API_PROTOCOL_VALUES.map((p) => (
+                    <SelectItem key={p} value={p}>
+                      {PROTOCOL_LABELS[p]}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-2">

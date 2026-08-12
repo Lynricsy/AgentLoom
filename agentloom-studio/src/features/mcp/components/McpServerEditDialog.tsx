@@ -11,7 +11,13 @@ import {
 } from "lucide-react";
 import { Button } from "@/shared/ui/button";
 import { Input } from "@/shared/ui/input";
-import { NativeSelect } from "@/shared/ui/native-select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/shared/ui/select";
 import { Switch } from "@/shared/ui/switch";
 import { useToast } from "@/shared/ui/toast";
 import { useMcpServerConfig } from "../api/mcpQueries";
@@ -364,17 +370,23 @@ export function McpServerEditDialog({
                   <label className="text-sm font-medium text-foreground">
                     传输类型
                   </label>
-                  <NativeSelect
+                  <Select
                     value={transportType}
                     onValueChange={(v) =>
                       setTransportType(v as McpTransportType)
                     }
-                    className="w-full"
                   >
-                    <option value="stdio">stdio</option>
-                    <option value="sse">SSE</option>
-                    <option value="streamable_http">Streamable HTTP</option>
-                  </NativeSelect>
+                    <SelectTrigger aria-label="传输类型" className="w-full">
+                      <SelectValue placeholder="请选择传输类型" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="stdio">stdio</SelectItem>
+                      <SelectItem value="sse">SSE</SelectItem>
+                      <SelectItem value="streamable_http">
+                        Streamable HTTP
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
 
                 {transportType === "stdio" ? (
@@ -496,12 +508,12 @@ export function McpServerEditDialog({
                     测试已保存的连接
                   </Button>
                   {testMutation.isSuccess && (
-                    <span className="flex items-center gap-1 text-xs text-green-400">
+                    <span className="flex items-center gap-1 text-xs text-success">
                       <Check className="h-3.5 w-3.5" /> 连接正常
                     </span>
                   )}
                   {testMutation.isError && (
-                    <span className="flex items-center gap-1 text-xs text-red-400">
+                    <span className="flex items-center gap-1 text-xs text-error">
                       <AlertCircle className="h-3.5 w-3.5" /> 连接失败
                     </span>
                   )}

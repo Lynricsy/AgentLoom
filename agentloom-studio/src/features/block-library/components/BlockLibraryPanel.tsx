@@ -3,7 +3,13 @@ import { useCallback, useMemo, useState, type DragEvent } from 'react';
 import { cn } from '@/shared/lib/utils';
 import { Button } from '@/shared/ui/button';
 import { Input } from '@/shared/ui/input';
-import { NativeSelect } from '@/shared/ui/native-select';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/shared/ui/select';
 
 import { useBlocks } from '../api/blockQueries';
 import { BLOCK_CATEGORIES, type BlockCategory, type ReusableBlockListItem } from '../types';
@@ -90,20 +96,24 @@ export function BlockLibraryPanel({ className }: BlockLibraryPanelProps) {
           value={searchQuery}
         />
 
-        <NativeSelect
-          data-testid="block-library-category"
+        <Select
+          value={categoryFilter}
           onValueChange={(value) =>
             setCategoryFilter(value === 'all' ? 'all' : (value as BlockCategory))
           }
-          value={categoryFilter}
         >
-          <option value="all">全部分类</option>
-          {BLOCK_CATEGORIES.map((category) => (
-            <option key={category} value={category}>
-              {CATEGORY_LABELS[category]}
-            </option>
-          ))}
-        </NativeSelect>
+          <SelectTrigger data-testid="block-library-category" aria-label="块分类筛选">
+            <SelectValue placeholder="全部分类" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">全部分类</SelectItem>
+            {BLOCK_CATEGORIES.map((category) => (
+              <SelectItem key={category} value={category}>
+                {CATEGORY_LABELS[category]}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       <div className="flex-1 overflow-y-auto p-3">

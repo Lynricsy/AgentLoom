@@ -314,4 +314,41 @@ describe('Select', () => {
 
     expect(screen.getByLabelText('模型')).toHaveTextContent('Claude')
   })
+
+  it('原语层丢弃空串回吐，真实选择仍照常上报', async () => {
+    const user = userEvent.setup()
+    const onValueChange = vi.fn()
+
+    // 置于 <form> 内才会渲染隐藏的 SelectBubbleInput（原生 select）
+    function Harness({ value }: { value: string }) {
+      return (
+        <form>
+          <Select value={value} onValueChange={onValueChange}>
+            <SelectTrigger aria-label="模型">
+              <SelectValue placeholder="请选择" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="gpt">GPT</SelectItem>
+              <SelectItem value="claude">Claude</SelectItem>
+            </SelectContent>
+          </Select>
+        </form>
+      )
+    }
+
+    const { rerender } = render(<Harness value="gpt" />)
+    const trigger = screen.getByLabelText('模型')
+    expect(trigger).toHaveTextContent('GPT')
+
+    // 受控值切到没有对应 SelectItem 的值（异步回填 / reset 的真实时序）：
+    // 隐藏 select 找不到匹配 option，会以空串触发一次 change，原语层必须吞掉
+    rerender(<Harness value="unregistered-model" />)
+    expect(onValueChange).not.toHaveBeenCalled()
+
+    await user.click(trigger)
+    await user.click(await screen.findByRole('option', { name: 'Claude' }))
+
+    await waitFor(() => expect(onValueChange).toHaveBeenCalledWith('claude'))
+    expect(onValueChange).toHaveBeenCalledTimes(1)
+  })
 })

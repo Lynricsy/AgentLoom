@@ -282,10 +282,9 @@ describe("PrivateCloudConfigSection", () => {
     });
 
     await waitFor(() => {
-      const select = screen.getByTestId(
-        "remote-model-select",
-      ) as HTMLSelectElement;
-      expect(select.value).toBe("llama-3-70b");
+      expect(screen.getByTestId("remote-model-select")).toHaveTextContent(
+        "Llama 3 70B (meta)",
+      );
     });
   });
 

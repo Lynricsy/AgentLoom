@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Loader2, Plus, Server, Zap } from "lucide-react";
+import { AlertCircle, Cpu, Loader2, Plus, Server } from "lucide-react";
+import { EmptyState } from "@/shared/components/empty-state/EmptyState";
+import { PageHeader } from "@/shared/components/page-header/PageHeader";
 import { Button } from "@/shared/ui/button";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { useToast } from "@/shared/ui/toast";
@@ -116,76 +118,117 @@ export function LlmModelManagementPage() {
     providers,
   ]);
 
+  const isError = providersQuery.isError || modelsQuery.isError;
+
+  useEffect(() => {
+    if (!isError) return;
+    notify({
+      title: "提供商列表加载失败",
+      description: "请检查网络后重试。",
+      variant: "error",
+    });
+  }, [isError, notify]);
+
+  const handleRetry = useCallback(() => {
+    void providersQuery.refetch();
+    void modelsQuery.refetch();
+  }, [modelsQuery, providersQuery]);
+
   // 全局 loading 态
   const isLoading = providersQuery.isLoading || modelsQuery.isLoading;
 
   return (
     <div className="flex h-full flex-col">
-      {/* 页头 */}
-      <div className="flex items-center justify-between border-b border-border px-6 py-4">
-        <div className="space-y-0.5">
-          <h1 className="text-xl font-bold text-foreground">LLM 提供商</h1>
-          <p className="text-sm text-muted-foreground">
-            管理 AI 模型提供商和模型配置
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        className="border-b border-border px-4 py-4 sm:px-6"
+        icon={Cpu}
+        tone="var(--color-type-model)"
+        title="LLM 提供商"
+        description="管理 AI 模型提供商和模型配置"
+        actions={
+          <Button variant="outline" onClick={() => setShowCreateDialog(true)}>
+            <Plus className="mr-1.5 h-4 w-4" />
+            添加自定义提供商
+          </Button>
+        }
+      />
 
-      {/* 主体: 左右布局 */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* 左侧: Provider 列表 */}
-        <ProviderListPanel
-          providers={providers}
-          isLoading={isLoading}
-          selectedId={selectedProviderId}
-          onSelect={setSelectedProviderId}
-          onToggleEnabled={(p) => void handleToggleProviderEnabled(p)}
-          onDelete={setDeleteConfirmProvider}
-          onAdd={() => setShowCreateDialog(true)}
-        />
-
-        {/* 右侧: Provider 配置 */}
-        {selectedProvider ? (
-          <ProviderConfigPanel
-            key={selectedProvider.id}
-            provider={selectedProvider}
-            models={selectedProviderModels}
+      {isError ? (
+        <div className="flex flex-1 items-center justify-center p-6">
+          <EmptyState
+            icon={AlertCircle}
+            tone="var(--color-error)"
+            title="提供商列表加载失败"
+            description="请稍后重试，或检查后端服务是否可用。"
+            action={
+              <Button variant="outline" onClick={handleRetry}>
+                重新加载
+              </Button>
+            }
           />
-        ) : (
-          <div className="flex flex-1 flex-col items-center justify-center gap-3">
-            {isLoading ? (
-              <div className="space-y-3">
-                <Skeleton className="h-8 w-48 rounded" />
-                <Skeleton className="h-4 w-64 rounded" />
-              </div>
-            ) : providers.length === 0 ? (
-              <>
-                <Zap className="h-12 w-12 text-muted-foreground" />
-                <p className="text-sm font-medium text-foreground">
-                  暂无提供商
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  添加自定义提供商或等待内置提供商同步
-                </p>
-                <Button
-                  variant="outline"
-                  onClick={() => setShowCreateDialog(true)}
+        </div>
+      ) : (
+        /* 主体: <lg 上下堆叠，lg 起左右分栏 */
+        <div className="flex flex-1 flex-col overflow-y-auto overflow-x-hidden lg:flex-row lg:overflow-hidden">
+          {/* 左侧: Provider 列表 */}
+          <ProviderListPanel
+            providers={providers}
+            isLoading={isLoading}
+            selectedId={selectedProviderId}
+            onSelect={setSelectedProviderId}
+            onToggleEnabled={(p) => void handleToggleProviderEnabled(p)}
+            onDelete={setDeleteConfirmProvider}
+            onAdd={() => setShowCreateDialog(true)}
+          />
+
+          {/* 右侧: Provider 配置 */}
+          {selectedProvider ? (
+            <ProviderConfigPanel
+              key={selectedProvider.id}
+              provider={selectedProvider}
+              models={selectedProviderModels}
+            />
+          ) : (
+            <div className="flex min-w-0 flex-1 items-center justify-center px-6 py-12">
+              {isLoading ? (
+                <div
+                  className="w-full max-w-3xl space-y-3"
+                  data-testid="llm-provider-config-skeleton"
                 >
-                  <Plus className="mr-1.5 h-4 w-4" />
-                  添加自定义提供商
-                </Button>
-              </>
-            ) : (
-              <>
-                <Server className="h-10 w-10 text-muted-foreground" />
-                <p className="text-sm text-muted-foreground">
-                  从左侧选择一个提供商查看配置
-                </p>
-              </>
-            )}
-          </div>
-        )}
-      </div>
+                  <Skeleton className="h-9 w-56 rounded-card" />
+                  <Skeleton className="h-10 w-full rounded-card" />
+                  <Skeleton className="h-10 w-full rounded-card" />
+                  <Skeleton className="h-24 w-full rounded-card" />
+                </div>
+              ) : providers.length === 0 ? (
+                <EmptyState
+                  icon={Cpu}
+                  tone="var(--color-type-model)"
+                  title="暂无提供商"
+                  description="添加自定义提供商，或等待内置提供商同步完成。"
+                  action={
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setShowCreateDialog(true)}
+                    >
+                      <Plus className="mr-1.5 h-4 w-4" />
+                      添加自定义提供商
+                    </Button>
+                  }
+                />
+              ) : (
+                <EmptyState
+                  icon={Server}
+                  tone="var(--color-type-model)"
+                  title="尚未选择提供商"
+                  description="从左侧列表挑一个提供商，查看它的 Base URL、凭据与模型配置。"
+                />
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* 创建 Provider 对话框 */}
       <CreateProviderDialog
@@ -209,7 +252,7 @@ export function LlmModelManagementPage() {
           <div className="mt-4 flex justify-end gap-2">
             <AlertDialogCancel>取消</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-red-600 text-white hover:bg-red-700"
+              className="bg-error text-white hover:bg-error/90"
               disabled={deleteProviderMutation.isPending}
               onClick={() => void handleConfirmDeleteProvider()}
             >

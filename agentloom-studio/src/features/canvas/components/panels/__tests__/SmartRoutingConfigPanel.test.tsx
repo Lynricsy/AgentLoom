@@ -3,6 +3,21 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CanvasNode } from '../../../types'
 import { SmartRoutingConfigPanel } from '../SmartRoutingConfigPanel'
 
+/**
+ * Radix Select 渲染的是 button + portal：关闭态下选项挂在游离 fragment 上读不到，
+ * 选中值只能从 trigger 文案读；展开与选中统一用同步键盘事件驱动。
+ */
+function openSelect(trigger: HTMLElement) {
+  fireEvent.keyDown(trigger, { key: 'Enter' })
+}
+
+function chooseOption(trigger: HTMLElement, optionLabel: string) {
+  openSelect(trigger)
+  fireEvent.keyDown(screen.getByRole('option', { name: optionLabel }), {
+    key: 'Enter',
+  })
+}
+
 const mocks = vi.hoisted(() => ({
   updateNodeData: vi.fn(),
   useStrategies: vi.fn().mockReturnValue({
@@ -138,8 +153,7 @@ describe('SmartRoutingConfigPanel', () => {
         />,
       )
 
-      const select = screen.getByTestId('strategy-select') as HTMLSelectElement
-      expect(select.value).toBe('random')
+      expect(screen.getByTestId('strategy-select')).toHaveTextContent('随机路由')
     })
 
     it('shows strategy description', () => {
@@ -163,12 +177,17 @@ describe('SmartRoutingConfigPanel', () => {
         />,
       )
 
-      const select = screen.getByTestId('strategy-select')
-      const optgroups = select.querySelectorAll('optgroup')
-      expect(optgroups.length).toBe(4)
+      openSelect(screen.getByTestId('strategy-select'))
 
-      const labels = Array.from(optgroups).map((og) => og.getAttribute('label'))
-      expect(labels).toEqual(['基础策略', '机器学习', 'RAG 增强', '插件扩展'])
+      const groupLabels: [string, string][] = [
+        ['simple', '基础策略'],
+        ['ml', '机器学习'],
+        ['rag', 'RAG 增强'],
+        ['plugin', '插件扩展'],
+      ]
+      for (const [category, label] of groupLabels) {
+        expect(screen.getByTestId(`strategy-group-${category}`)).toHaveTextContent(label)
+      }
     })
 
     it('renders all 10 strategy options', () => {
@@ -179,9 +198,9 @@ describe('SmartRoutingConfigPanel', () => {
         />,
       )
 
-      const select = screen.getByTestId('strategy-select')
-      const options = select.querySelectorAll('option')
-      expect(options.length).toBe(10)
+      openSelect(screen.getByTestId('strategy-select'))
+
+      expect(screen.getAllByRole('option')).toHaveLength(10)
     })
 
     it('shows category badge for selected strategy', () => {
@@ -205,9 +224,7 @@ describe('SmartRoutingConfigPanel', () => {
         />,
       )
 
-      fireEvent.change(screen.getByTestId('strategy-select'), {
-        target: { value: 'round_robin' },
-      })
+      chooseOption(screen.getByTestId('strategy-select'), '轮询路由')
 
       expect(onConfigChange).toHaveBeenCalledWith({
         strategy: 'round_robin',
@@ -223,9 +240,7 @@ describe('SmartRoutingConfigPanel', () => {
         />,
       )
 
-      fireEvent.change(screen.getByTestId('strategy-select'), {
-        target: { value: 'fallback_chain' },
-      })
+      chooseOption(screen.getByTestId('strategy-select'), '回退链')
 
       expect(onConfigChange).toHaveBeenCalledWith({
         strategy: 'fallback_chain',
@@ -364,10 +379,12 @@ describe('SmartRoutingConfigPanel', () => {
         />,
       )
 
-      const select = screen.getByTestId('strategy-param-distanceMetric') as HTMLSelectElement
-      expect(select).toBeInTheDocument()
-      expect(select.value).toBe('euclidean')
-      expect(select.querySelectorAll('option').length).toBe(3)
+      const trigger = screen.getByTestId('strategy-param-distanceMetric')
+      expect(trigger).toBeInTheDocument()
+      expect(trigger).toHaveTextContent('euclidean')
+
+      openSelect(trigger)
+      expect(screen.getAllByRole('option')).toHaveLength(3)
     })
 
     it('calls onConfigChange when a schema param changes', () => {

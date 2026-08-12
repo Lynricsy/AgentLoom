@@ -1,5 +1,12 @@
 import { memo, useCallback, useState, type ChangeEvent } from 'react'
 import { Copy, KeyRound, Link as LinkIcon, Webhook } from 'lucide-react'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/shared/ui/select'
 import { useCanvasStore } from '../../stores/canvasStore'
 import { useTriggers, isWebhookConfig, hasWebhookSecret } from '@/features/trigger'
 import { buildWebhookUrl } from '@/features/trigger/components/WebhookSecretDisplay'
@@ -60,8 +67,8 @@ export const WebhookTriggerConfigPanel = memo(function WebhookTriggerConfigPanel
   )
 
   const handleAuthModeChange = useCallback(
-    (e: ChangeEvent<HTMLSelectElement>) => {
-      applyPatch({ authMode: e.target.value as AuthMode })
+    (value: string) => {
+      applyPatch({ authMode: value as AuthMode })
     },
     [applyPatch],
   )
@@ -104,15 +111,15 @@ export const WebhookTriggerConfigPanel = memo(function WebhookTriggerConfigPanel
         >
           鉴权模式
         </label>
-        <select
-          id="webhook-auth-mode"
-          value={parsed.authMode}
-          onChange={handleAuthModeChange}
-          className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm"
-        >
-          <option value="simple">{AUTH_MODE_META.simple.label}</option>
-          <option value="signed">{AUTH_MODE_META.signed.label}</option>
-        </select>
+        <Select value={parsed.authMode} onValueChange={handleAuthModeChange}>
+          <SelectTrigger id="webhook-auth-mode" aria-label="鉴权模式">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="simple">{AUTH_MODE_META.simple.label}</SelectItem>
+            <SelectItem value="signed">{AUTH_MODE_META.signed.label}</SelectItem>
+          </SelectContent>
+        </Select>
         <p className="mt-1 text-xs text-muted-foreground">
           {currentMeta.description}
         </p>
@@ -184,7 +191,7 @@ function DeployedWebhookInfo({ token, secret, authMode, isEnabled }: DeployedWeb
         <span
           className={
             isEnabled
-              ? 'rounded-full bg-emerald-500/15 px-2 py-0.5 text-[10px] font-medium text-emerald-400'
+              ? 'rounded-full bg-success/15 px-2 py-0.5 text-[10px] font-medium text-success'
               : 'rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground'
           }
         >
@@ -263,7 +270,7 @@ function CredentialRow({ icon, label, value, masked, copied, onCopy }: Credentia
           </button>
         </div>
       </div>
-      <code className="block truncate rounded border border-border/60 bg-black/20 px-2 py-1 text-[10px] text-foreground/80">
+      <code className="block truncate rounded border border-border/60 bg-surface-elevated px-2 py-1 text-[10px] text-foreground/80">
         {displayValue}
       </code>
     </div>

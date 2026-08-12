@@ -1,8 +1,14 @@
-import { render } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import type { ReactNode } from 'react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { getAgentNodeTypeConfig } from '@/features/canvas/registry/agent-canvas-registry';
 import type { CanvasNodeData } from '@/features/canvas/types';
+import {
+  DESKTOP_WIDTH,
+  MOBILE_WIDTH,
+  restoreViewport,
+  stubViewportWidth,
+} from '@/features/canvas/testing/viewport';
 import { AgentCanvas } from './AgentCanvas';
 
 interface ReactFlowStubProps {
@@ -14,6 +20,11 @@ interface ReactFlowStubProps {
     target?: string | null;
     targetHandle?: string | null;
   }) => boolean;
+  nodesDraggable?: boolean;
+  nodesConnectable?: boolean;
+  elementsSelectable?: boolean;
+  onConnect?: unknown;
+  onDrop?: unknown;
 }
 
 const mocks = vi.hoisted(() => ({
@@ -24,6 +35,7 @@ const mocks = vi.hoisted(() => ({
     data: CanvasNodeData;
   }>,
   edges: [] as Array<Record<string, unknown>>,
+  selectedNodeId: null as string | null,
   lastReactFlowProps: null as ReactFlowStubProps | null,
   onNodesChange: vi.fn(),
   onEdgesChange: vi.fn(),
@@ -72,6 +84,7 @@ vi.mock('../hooks/useAgentCanvasDrop', () => ({
 vi.mock('../stores/agent-canvas.store', () => ({
   useAgentCanvasNodes: () => mocks.nodes,
   useAgentCanvasEdges: () => mocks.edges,
+  useAgentCanvasSelectedNodeId: () => mocks.selectedNodeId,
   useAgentCanvasRuntimeMode: () => 'sandbox',
   useAgentCanvasActions: () => ({
     onNodesChange: mocks.onNodesChange,
@@ -114,6 +127,8 @@ function createNode(nodeType: 'memory' | 'agent-main', id: string): {
 
 describe('AgentCanvas', () => {
   beforeEach(() => {
+    stubViewportWidth(DESKTOP_WIDTH);
+    mocks.selectedNodeId = null;
     mocks.nodes = [createNode('memory', 'memory-node'), createNode('agent-main', 'agent-main')];
     mocks.edges = [];
     mocks.lastReactFlowProps = null;
@@ -125,6 +140,10 @@ describe('AgentCanvas', () => {
     mocks.setViewport.mockReset();
     mocks.loadAgent.mockReset();
     mocks.reset.mockReset();
+  });
+
+  afterEach(() => {
+    restoreViewport();
   });
 
   it('registers dedicated renderers for memory and output nodes and accepts memory connections', () => {
@@ -145,5 +164,51 @@ describe('AgentCanvas', () => {
         targetHandle: 'memory-in',
       }),
     ).toBe(true);
+  });
+
+  describe('小屏只读浏览（<lg）', () => {
+    beforeEach(() => {
+      stubViewportWidth(MOBILE_WIDTH);
+    });
+
+    it('关闭拖拽 / 连线 / 选中与编辑面板', () => {
+      render(<AgentCanvas agentId="agent-1" />);
+
+      expect(mocks.lastReactFlowProps?.nodesDraggable).toBe(false);
+      expect(mocks.lastReactFlowProps?.nodesConnectable).toBe(false);
+      expect(mocks.lastReactFlowProps?.elementsSelectable).toBe(false);
+      expect(mocks.lastReactFlowProps?.onConnect).toBeUndefined();
+      expect(mocks.lastReactFlowProps?.onDrop).toBeUndefined();
+      expect(
+        mocks.lastReactFlowProps?.isValidConnection?.({
+          source: 'memory-node',
+          sourceHandle: 'memory-out',
+          target: 'agent-main',
+          targetHandle: 'memory-in',
+        }),
+      ).toBe(false);
+
+      expect(screen.queryByTestId('agent-node-palette')).not.toBeInTheDocument();
+      expect(
+        screen.queryByTestId('agent-node-config-panel'),
+      ).not.toBeInTheDocument();
+      // 只读提示条由 agent 路由页的顶部 overlay 统一渲染，画布容器不再重复挂一份
+      expect(
+        screen.queryByTestId('canvas-readonly-banner'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('选中节点时打开底部只读弹层', async () => {
+      mocks.selectedNodeId = 'memory-node';
+
+      render(<AgentCanvas agentId="agent-1" />);
+
+      expect(await screen.findByTestId('readonly-node-sheet')).toBeInTheDocument();
+      expect(screen.getByTestId('readonly-node-config')).toBeInTheDocument();
+      // agent 画布没有执行态，不渲染输出区块
+      expect(
+        screen.queryByTestId('readonly-node-output-section'),
+      ).not.toBeInTheDocument();
+    });
   });
 });
