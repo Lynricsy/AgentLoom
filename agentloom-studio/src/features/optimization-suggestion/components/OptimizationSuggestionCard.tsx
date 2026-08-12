@@ -225,7 +225,7 @@ export const OptimizationSuggestionCard = memo(function OptimizationSuggestionCa
               className="text-xs leading-relaxed text-zinc-500"
               data-testid="optimization-suggestion-no-effect-note"
             >
-              该节点的模型、工具、超时与自治级别均由所绑定的 Agent Definition 决定，节点上的这些字段不参与执行，因此该建议无法在画布上采纳；请到对应 Agent Definition 中调整。
+              该节点上的模型、工具、超时与自治级别字段不参与执行，采纳后不会产生任何效果。agent 节点的运行时配置来自所绑定的 Agent Definition，请到该 Agent 中调整。
             </p>
           )}
           <div className="flex items-center gap-2">

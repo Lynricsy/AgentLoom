@@ -526,7 +526,7 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
         )}
       </div>
 
-      {/* 节点级优化建议：Board 的「去画布处理」深链最终落到这里 */}
+      {/* 节点级优化建议：Board 的「在画布中查看」深链最终落到这里 */}
       {workflowId ? (
         <div className="-mx-4 border-t border-border pt-1">
           <OptimizationSuggestionsPanel workflowDefinitionId={workflowId} nodeId={node.id} />
