@@ -43,6 +43,8 @@
   --color-warning: #d97706;
   --color-error: #dc2626;
   --color-info: #2563eb;
+  /* 证据/引用命中高亮（区别于 warning 警告语义） */
+  --color-highlight: #eab308;
 
   /* 数据类型色 (两主题共用) */
   --color-type-model: #a78bfa;
@@ -126,6 +128,8 @@
   --color-error: #dc2626;
   --color-warning: #d97706;
   --color-info: #2563eb;
+  /* 证据/引用命中高亮（区别于 warning 警告语义） */
+  --color-highlight: #eab308;
   --color-brand-gradient: linear-gradient(135deg, #6366f1, #8b5cf6);
 }
 
@@ -155,6 +159,8 @@
   --color-error: #f87171;
   --color-warning: #fbbf24;
   --color-info: #60a5fa;
+  /* 证据/引用命中高亮（区别于 warning 警告语义） */
+  --color-highlight: #facc15;
   --color-brand-gradient: linear-gradient(135deg, #818cf8, #a78bfa);
 
   /* 节点类别色 — 深色下亮度提升约 10% */

@@ -28,8 +28,8 @@ const badgeVariants = cva(
   {
     variants: {
       status: {
-        valid: 'border-emerald-500/20 bg-emerald-500/10 text-emerald-600',
-        modified: 'border-amber-500/20 bg-amber-500/10 text-amber-600',
+        valid: 'border-success/20 bg-success/10 text-success',
+        modified: 'border-warning/20 bg-warning/10 text-warning',
         unavailable: 'border-border/60 bg-muted text-muted-foreground',
       },
     },

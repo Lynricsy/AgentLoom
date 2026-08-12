@@ -122,9 +122,9 @@ function clearEvidenceHighlights(container: HTMLElement) {
       if (!(el instanceof HTMLElement)) return
       el.removeAttribute('data-evidence-paragraph-highlight')
       el.classList.remove(
-        'bg-yellow-200/10',
+        'bg-highlight/10',
         'ring-1',
-        'ring-yellow-400/50',
+        'ring-highlight/50',
         'rounded-md',
       )
     })
@@ -186,7 +186,7 @@ function highlightTextRangeInElement(
 
     const mark = document.createElement('mark')
     mark.dataset.evidenceHighlight = 'true'
-    mark.className = 'rounded bg-yellow-200/60 px-0.5'
+    mark.className = 'rounded bg-highlight/40 px-0.5'
 
     const fragment = range.extractContents()
     mark.appendChild(fragment)
@@ -383,7 +383,7 @@ export const DocumentViewer = memo(function DocumentViewer({
 
       return [
         escapeHtml(safeText.slice(0, localStart)),
-        `<mark data-evidence-highlight="true" class="rounded bg-yellow-200/60 px-0.5">${escapeHtml(safeText.slice(localStart, localEnd))}</mark>`,
+        `<mark data-evidence-highlight="true" class="rounded bg-highlight/40 px-0.5">${escapeHtml(safeText.slice(localStart, localEnd))}</mark>`,
         escapeHtml(safeText.slice(localEnd)),
       ].join('')
     },
@@ -525,9 +525,9 @@ export const DocumentViewer = memo(function DocumentViewer({
 
     paragraphEl.dataset.evidenceParagraphHighlight = 'true'
     paragraphEl.classList.add(
-      'bg-yellow-200/10',
+      'bg-highlight/10',
       'ring-1',
-      'ring-yellow-400/50',
+      'ring-highlight/50',
       'rounded-md',
     )
     paragraphEl.scrollIntoView?.({ block: 'center', behavior: 'smooth' })
@@ -544,9 +544,9 @@ export const DocumentViewer = memo(function DocumentViewer({
     const timeout = window.setTimeout(() => {
       paragraphEl.removeAttribute('data-evidence-paragraph-highlight')
       paragraphEl.classList.remove(
-        'bg-yellow-200/10',
+        'bg-highlight/10',
         'ring-1',
-        'ring-yellow-400/50',
+        'ring-highlight/50',
         'rounded-md',
       )
       if (mark) {
@@ -590,8 +590,8 @@ export const DocumentViewer = memo(function DocumentViewer({
         )}
 
         {hasKbId && error && (
-          <div className="m-4 rounded-xl border border-rose-500/20 bg-rose-500/5 p-4 text-center">
-            <p className="text-xs text-rose-500">加载文档失败</p>
+          <div className="m-4 rounded-xl border border-error/20 bg-error/5 p-4 text-center">
+            <p className="text-xs text-error">加载文档失败</p>
             <p className="mt-1 text-[11px] text-muted-foreground">
               {error.message}
             </p>
@@ -605,7 +605,7 @@ export const DocumentViewer = memo(function DocumentViewer({
             data-testid="document-viewer-pdf"
           >
             {pdfHighlightActive && !pdfHighlightRange && (
-              <div className="pointer-events-none absolute inset-4 rounded-lg bg-yellow-200/15 ring-1 ring-yellow-400/40" />
+              <div className="pointer-events-none absolute inset-4 rounded-lg bg-highlight/15 ring-1 ring-highlight/40" />
             )}
             <Document
               file={contentUrl}
@@ -651,7 +651,7 @@ export const DocumentViewer = memo(function DocumentViewer({
                   }}
                   className={cn(
                     'rounded px-0.5',
-                    textHighlightActive ? 'bg-yellow-200/60' : 'bg-transparent',
+                    textHighlightActive ? 'bg-highlight/40' : 'bg-transparent',
                   )}
                   data-testid="document-viewer-text-highlight"
                 >
@@ -666,8 +666,8 @@ export const DocumentViewer = memo(function DocumentViewer({
         )}
 
         {hasKbId && fetchError && (
-          <div className="m-4 rounded-xl border border-rose-500/20 bg-rose-500/5 p-4 text-center">
-            <p className="text-xs text-rose-500">加载文档内容失败</p>
+          <div className="m-4 rounded-xl border border-error/20 bg-error/5 p-4 text-center">
+            <p className="text-xs text-error">加载文档内容失败</p>
             <p className="mt-1 text-[11px] text-muted-foreground">
               {fetchError}
             </p>
