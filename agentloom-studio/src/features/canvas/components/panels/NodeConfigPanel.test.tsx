@@ -87,17 +87,6 @@ vi.mock('./InterventionPanel', () => ({
   InterventionPanel: () => <div data-testid="intervention-panel-mock">Intervention Panel</div>,
 }))
 
-vi.mock('./LlmAgentConfigPanel', () => ({
-  LlmAgentConfigPanel: ({ onValidationChange }: { onValidationChange?: (hasErrors: boolean) => void }) => (
-    <div>
-      <span>LLM Agent Panel</span>
-      <button type="button" onClick={() => onValidationChange?.(true)}>
-        触发 LLM Agent 校验
-      </button>
-    </div>
-  ),
-}))
-
 vi.mock('./HttpToolConfigPanel', () => ({
   HttpToolConfigPanel: ({ onValidationChange }: { onValidationChange?: (hasErrors: boolean) => void }) => (
     <div>

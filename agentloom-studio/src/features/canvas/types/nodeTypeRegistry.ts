@@ -1195,8 +1195,20 @@ export function getWorkflowAgentInputPorts(
     : inputPorts;
 }
 
+// 历史节点类型 → canonical 节点类型的读取兼容映射。
+// - `mcp`：早期命名，统一为 `mcp-tool`。
+// - `llm-agent`：已废除的「内联 Agent」节点类型（系统提示词与模型直接写在节点 data 上）。
+//   这里只做读取兼容，让存量节点在画布上仍可识别、可选中、可配置；
+//   它与服务端归一化（normalize-workflow-graph 把 `llm-agent` 收敛为 `agent`）
+//   以及发布校验（未绑定 Agent Definition 的 agent 节点直接 422）同属一个契约的三个环节。
+//   新建节点一律使用 canonical 的 `agent`，系统提示词改由 `text` 节点连入 `system-prompt-in`。
+const LEGACY_NODE_TYPE_ALIASES: Readonly<Record<string, NodeType>> = {
+  mcp: "mcp-tool",
+  "llm-agent": "agent",
+};
+
 function resolveLegacyNodeTypeAlias(type: string): string {
-  return type === "mcp" ? "mcp-tool" : type;
+  return LEGACY_NODE_TYPE_ALIASES[type] ?? type;
 }
 
 export function getNodeTypeConfig(type: NodeType): NodeTypeConfig {

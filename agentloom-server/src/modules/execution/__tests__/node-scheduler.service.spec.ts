@@ -639,19 +639,25 @@ describe('NodeSchedulerService', () => {
   });
 
   describe('startExecution', () => {
-    it('会调度首层节点，并把 input 与 nodeData 一并入队', async () => {
-      const nodes = [makeNode('A'), makeNode('B'), makeNode('C')];
+    it('会调度首层 sub-agent 节点，并把 input 与 nodeData 一并入队', async () => {
+      const nodes = [
+        makeNode('A', 'sub-agent'),
+        makeNode('B', 'sub-agent'),
+        makeNode('C'),
+      ];
       const edges = [makeEdge('A', 'C'), makeEdge('B', 'C')];
       const snapshot = makeSnapshot(nodes, edges);
       const steps = [
         makeStep({
           id: 'step-a',
           nodeId: 'A',
+          nodeType: 'sub-agent',
           nodeData: { agentId: 'agent-a' },
         }),
         makeStep({
           id: 'step-b',
           nodeId: 'B',
+          nodeType: 'sub-agent',
           nodeData: { agentId: 'agent-b' },
         }),
         makeStep({ id: 'step-c', nodeId: 'C' }),
@@ -734,9 +740,9 @@ describe('NodeSchedulerService', () => {
   });
 
   describe('scheduleNode', () => {
-    it('agent 节点会保存 input 后进入队列，并携带 nodeData', async () => {
+    it('sub-agent 节点会保存 input 后进入队列，并携带 nodeData', async () => {
       const snapshot = makeSnapshot(
-        [makeNode('A'), makeNode('B')],
+        [makeNode('A'), makeNode('B', 'sub-agent')],
         [makeEdge('A', 'B')],
       );
       const steps = [
@@ -750,7 +756,7 @@ describe('NodeSchedulerService', () => {
           id: 'step-b',
           nodeId: 'B',
           status: 'pending',
-          nodeType: 'agent',
+          nodeType: 'sub-agent',
           nodeData: { agentId: 'agent-b' },
         }),
       ];
@@ -926,9 +932,9 @@ describe('NodeSchedulerService', () => {
       expect(mockQueue.add).not.toHaveBeenCalled();
     });
 
-    it('agent 节点会从上游 llm-model 输入解析模型并注入合成 agentId', async () => {
+    it('sub-agent 节点会从上游 llm-model 输入解析模型并注入合成 agentId', async () => {
       const snapshot = makeSnapshot(
-        [makeNode('M', 'llm-model'), makeNode('C', 'agent')],
+        [makeNode('M', 'llm-model'), makeNode('C', 'sub-agent')],
         [makeEdge('M', 'C', 'model-out', 'model')],
       );
       const steps = [
@@ -946,7 +952,7 @@ describe('NodeSchedulerService', () => {
           id: 'step-c',
           nodeId: 'C',
           status: 'pending',
-          nodeType: 'agent',
+          nodeType: 'sub-agent',
           nodeData: {
             config: {
               systemPrompt: '你是一个测试助手',
@@ -2063,9 +2069,9 @@ describe('NodeSchedulerService', () => {
       });
     });
 
-    it('agent 节点上游有 sandbox 时 job 数据应包含 hasSandbox: true', async () => {
+    it('sub-agent 节点上游有 sandbox 时 job 数据应包含 hasSandbox: true', async () => {
       const snapshot = makeSnapshot(
-        [makeNode('S', 'sandbox'), makeNode('A', 'agent')],
+        [makeNode('S', 'sandbox'), makeNode('A', 'sub-agent')],
         [makeEdge('S', 'A')],
       );
       const steps = [
@@ -2080,7 +2086,7 @@ describe('NodeSchedulerService', () => {
           id: 'step-a',
           nodeId: 'A',
           status: 'pending',
-          nodeType: 'agent',
+          nodeType: 'sub-agent',
           nodeData: { agentId: 'agent-1' },
         }),
       ];
@@ -2152,9 +2158,9 @@ describe('NodeSchedulerService', () => {
       expect(mockQueue.add).not.toHaveBeenCalled();
     });
 
-    it('agent 节点无 sandbox 上游时 hasSandbox 应为 false', async () => {
+    it('sub-agent 节点无 sandbox 上游时 hasSandbox 应为 false', async () => {
       const snapshot = makeSnapshot(
-        [makeNode('A'), makeNode('B')],
+        [makeNode('A'), makeNode('B', 'sub-agent')],
         [makeEdge('A', 'B')],
       );
       const steps = [
@@ -2168,7 +2174,7 @@ describe('NodeSchedulerService', () => {
           id: 'step-b',
           nodeId: 'B',
           status: 'pending',
-          nodeType: 'agent',
+          nodeType: 'sub-agent',
           nodeData: { agentId: 'agent-b' },
         }),
       ];
@@ -2755,7 +2761,7 @@ describe('NodeSchedulerService', () => {
       );
     });
 
-    it('agent 节点会继承 smart-routing 输出的 llmModelConfigId，并在 FALLBACK_CHAIN 下强制 attempts=1', async () => {
+    it('sub-agent 节点会继承 smart-routing 输出的 llmModelConfigId，并在 FALLBACK_CHAIN 下强制 attempts=1', async () => {
       const routingResult = {
         selectedModelId: 'model-2',
         llmModelConfigId: 'model-2',
@@ -2773,7 +2779,7 @@ describe('NodeSchedulerService', () => {
         tokenThreshold: 4096,
       };
       const snapshot = makeSnapshot(
-        [makeNode('R', 'smart-routing'), makeNode('A', 'agent')],
+        [makeNode('R', 'smart-routing'), makeNode('A', 'sub-agent')],
         [makeEdge('R', 'A')],
       );
       const steps = [
@@ -2788,7 +2794,7 @@ describe('NodeSchedulerService', () => {
           id: 'step-a',
           nodeId: 'A',
           status: 'pending',
-          nodeType: 'agent',
+          nodeType: 'sub-agent',
           nodeData: { agentId: 'agent-a' },
         }),
       ];
@@ -3405,43 +3411,112 @@ describe('NodeSchedulerService', () => {
       },
     );
 
-    it.each(['sub-agent', 'future-custom-node'])(
-      '%s 节点应使用 agent 任务队列兜底执行',
-      async (nodeType) => {
-        const step = makeStep({
-          id: `step-${nodeType}`,
-          nodeId: `node-${nodeType}`,
-          nodeType,
-          nodeData: {},
-        });
-        const snapshot = makeSnapshot([makeNode(step.nodeId, nodeType)], []);
-        db.update.mockReturnValueOnce(createUpdateChainVoid());
+    it('sub-agent 节点应使用 agent 任务队列执行', async () => {
+      const step = makeStep({
+        id: 'step-sub-agent',
+        nodeId: 'node-sub-agent',
+        nodeType: 'sub-agent',
+        nodeData: {},
+      });
+      const snapshot = makeSnapshot(
+        [makeNode(step.nodeId, 'sub-agent')],
+        [],
+      );
+      db.update.mockReturnValueOnce(createUpdateChainVoid());
 
-        await service.scheduleNode(
-          EXECUTION_ID,
-          step.nodeId,
-          TENANT_ID,
-          snapshot,
-          [step],
-          { skipLatestState: true },
-        );
+      await service.scheduleNode(
+        EXECUTION_ID,
+        step.nodeId,
+        TENANT_ID,
+        snapshot,
+        [step],
+        { skipLatestState: true },
+      );
 
-        expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
-          TENANT_ID,
-          step.id,
-          'queued',
-        );
-        expect(mockQueue.add).toHaveBeenCalledWith(
-          'agent-task',
-          expect.objectContaining({
-            executionId: EXECUTION_ID,
-            stepId: step.id,
-            nodeData: { agentId: step.nodeId },
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID,
+        step.id,
+        'queued',
+      );
+      expect(mockQueue.add).toHaveBeenCalledWith(
+        'agent-task',
+        expect.objectContaining({
+          executionId: EXECUTION_ID,
+          stepId: step.id,
+          nodeData: { agentId: step.nodeId },
+        }),
+        undefined,
+      );
+    });
+
+    it('未知节点类型应显式失败，不再降级到 agent 队列', async () => {
+      const step = makeStep({
+        id: 'step-future-custom-node',
+        nodeId: 'node-future-custom-node',
+        nodeType: 'future-custom-node',
+        nodeData: {},
+      });
+      const snapshot = makeSnapshot(
+        [makeNode(step.nodeId, 'future-custom-node')],
+        [],
+      );
+      db.update.mockReturnValueOnce(createUpdateChainVoid());
+
+      await service.scheduleNode(
+        EXECUTION_ID,
+        step.nodeId,
+        TENANT_ID,
+        snapshot,
+        [step],
+        { skipLatestState: true },
+      );
+
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID,
+        step.id,
+        'failed',
+        expect.objectContaining({
+          errorMessage: expect.objectContaining({
+            message: expect.stringContaining('不支持的节点类型'),
           }),
-          undefined,
-        );
-      },
-    );
+        }),
+      );
+      expect(mockQueue.add).not.toHaveBeenCalled();
+    });
+
+    it('agent 节点缺少 agentDefinitionId 时显式失败', async () => {
+      const step = makeStep({
+        id: 'step-agent',
+        nodeId: 'node-agent',
+        nodeType: 'agent',
+        nodeData: { systemPrompt: '缺少已发布的 Agent Definition' },
+      });
+      const snapshot = makeSnapshot([makeNode(step.nodeId, 'agent')], []);
+      db.update.mockReturnValueOnce(createUpdateChainVoid());
+
+      await service.scheduleNode(
+        EXECUTION_ID,
+        step.nodeId,
+        TENANT_ID,
+        snapshot,
+        [step],
+        { skipLatestState: true },
+      );
+
+      expect(mockStateMachine.updateStepStatus).toHaveBeenCalledWith(
+        TENANT_ID,
+        step.id,
+        'failed',
+        expect.objectContaining({
+          errorMessage: expect.objectContaining({
+            message: expect.stringContaining(
+              '必须绑定已发布的 Agent Definition',
+            ),
+          }),
+        }),
+      );
+      expect(mockQueue.add).not.toHaveBeenCalled();
+    });
   });
 
   describe('onNodeCompleted', () => {
@@ -4839,13 +4914,13 @@ describe('NodeSchedulerService', () => {
       mcpService = module.get(NodeSchedulerService);
     });
 
-    it('agent 节点的 input 包含 MCP tool 描述符时注入 mcpServers', async () => {
+    it('sub-agent 节点的 input 包含 MCP tool 描述符时注入 mcpServers', async () => {
       mockMcpService.resolveRuntimeConnection.mockResolvedValue(
         mockMcpConnection1,
       );
 
       const snapshot = makeSnapshot(
-        [makeNode('mcp-1', 'mcp-tool'), makeNode('agent-1')],
+        [makeNode('mcp-1', 'mcp-tool'), makeNode('agent-1', 'sub-agent')],
         [makeEdge('mcp-1', 'agent-1')],
       );
       const steps = [
@@ -4863,7 +4938,7 @@ describe('NodeSchedulerService', () => {
           id: 'step-agent',
           nodeId: 'agent-1',
           status: 'pending',
-          nodeType: 'agent',
+          nodeType: 'sub-agent',
           nodeData: { agentId: 'agent-001' },
         }),
       ];
@@ -4901,7 +4976,7 @@ describe('NodeSchedulerService', () => {
       );
 
       const snapshot = makeSnapshot(
-        [makeNode('mcp-1', 'mcp-tool'), makeNode('agent-1')],
+        [makeNode('mcp-1', 'mcp-tool'), makeNode('agent-1', 'sub-agent')],
         [makeEdge('mcp-1', 'agent-1')],
       );
       const steps = [
@@ -4921,7 +4996,7 @@ describe('NodeSchedulerService', () => {
           id: 'step-agent',
           nodeId: 'agent-1',
           status: 'pending',
-          nodeType: 'agent',
+          nodeType: 'sub-agent',
           nodeData: {},
         }),
       ];
@@ -4962,7 +5037,7 @@ describe('NodeSchedulerService', () => {
         [
           makeNode('mcp-1', 'mcp-tool'),
           makeNode('mcp-2', 'mcp-tool'),
-          makeNode('agent-1'),
+          makeNode('agent-1', 'sub-agent'),
         ],
         [makeEdge('mcp-1', 'agent-1'), makeEdge('mcp-2', 'agent-1')],
       );
@@ -4991,7 +5066,7 @@ describe('NodeSchedulerService', () => {
           id: 'step-agent',
           nodeId: 'agent-1',
           status: 'pending',
-          nodeType: 'agent',
+          nodeType: 'sub-agent',
           nodeData: {},
         }),
       ];
@@ -5030,7 +5105,7 @@ describe('NodeSchedulerService', () => {
         [
           makeNode('mcp-1', 'mcp-tool'),
           makeNode('mcp-2', 'mcp-tool'),
-          makeNode('agent-1'),
+          makeNode('agent-1', 'sub-agent'),
         ],
         [makeEdge('mcp-1', 'agent-1'), makeEdge('mcp-2', 'agent-1')],
       );
@@ -5059,7 +5134,7 @@ describe('NodeSchedulerService', () => {
           id: 'step-agent',
           nodeId: 'agent-1',
           status: 'pending',
-          nodeType: 'agent',
+          nodeType: 'sub-agent',
           nodeData: {},
         }),
       ];
@@ -5091,7 +5166,7 @@ describe('NodeSchedulerService', () => {
 
     it('input 中没有 MCP 工具描述符时不注入 workflowContext', async () => {
       const snapshot = makeSnapshot(
-        [makeNode('A'), makeNode('B')],
+        [makeNode('A'), makeNode('B', 'sub-agent')],
         [makeEdge('A', 'B')],
       );
       const steps = [
@@ -5105,7 +5180,7 @@ describe('NodeSchedulerService', () => {
           id: 'step-b',
           nodeId: 'B',
           status: 'pending',
-          nodeType: 'agent',
+          nodeType: 'sub-agent',
           nodeData: { agentId: 'agent-b' },
         }),
       ];
@@ -5131,7 +5206,7 @@ describe('NodeSchedulerService', () => {
       );
 
       const snapshot = makeSnapshot(
-        [makeNode('mcp-1', 'mcp-tool'), makeNode('agent-1')],
+        [makeNode('mcp-1', 'mcp-tool'), makeNode('agent-1', 'sub-agent')],
         [makeEdge('mcp-1', 'agent-1')],
       );
       const steps = [
@@ -5149,7 +5224,7 @@ describe('NodeSchedulerService', () => {
           id: 'step-agent',
           nodeId: 'agent-1',
           status: 'pending',
-          nodeType: 'agent',
+          nodeType: 'sub-agent',
           nodeData: {},
         }),
       ];
@@ -5164,7 +5239,7 @@ describe('NodeSchedulerService', () => {
         steps,
       );
 
-      // 即使解析失败也不会阻止 agent 任务入队
+      // 即使解析失败也不会阻止 sub-agent 任务入队
       expect(mcpMockQueue.add).toHaveBeenCalledWith(
         'agent-task',
         expect.not.objectContaining({ workflowContext: expect.anything() }),
@@ -5181,7 +5256,7 @@ describe('NodeSchedulerService', () => {
         [
           makeNode('mcp-1', 'mcp-tool'),
           makeNode('mcp-2', 'mcp-tool'),
-          makeNode('agent-1'),
+          makeNode('agent-1', 'sub-agent'),
         ],
         [makeEdge('mcp-1', 'agent-1'), makeEdge('mcp-2', 'agent-1')],
       );
@@ -5210,7 +5285,7 @@ describe('NodeSchedulerService', () => {
           id: 'step-agent',
           nodeId: 'agent-1',
           status: 'pending',
-          nodeType: 'agent',
+          nodeType: 'sub-agent',
           nodeData: {},
         }),
       ];

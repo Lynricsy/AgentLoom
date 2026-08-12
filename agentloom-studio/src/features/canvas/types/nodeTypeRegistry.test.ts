@@ -124,6 +124,13 @@ describe("nodeTypeRegistry", () => {
     expect(getNodeTypeConfigOrNull("mcp")?.type).toBe("mcp-tool");
   });
 
+  it("把已废除的 llm-agent 类型映射到 canonical 的 agent 配置", () => {
+    expect(getNodeTypeConfig("llm-agent" as NodeType).type).toBe("agent");
+    expect(getNodeTypeConfigOrNull("llm-agent")?.type).toBe("agent");
+    expect(getResolvedNodeTypeConfig("llm-agent").isKnownType).toBe(true);
+    expect(getResolvedNodeTypeConfig("llm-agent").type).toBe("agent");
+  });
+
   it("returns a fallback presentation config for unknown node types", () => {
     const config = getResolvedNodeTypeConfig("mystery-node", {
       category: "tool",

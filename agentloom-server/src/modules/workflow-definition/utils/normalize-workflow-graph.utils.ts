@@ -1085,6 +1085,26 @@ function hydratePortRecords(
   return [...orderedPorts, ...extraPorts];
 }
 
+/**
+ * legacy 工作流节点类型别名。
+ *
+ * `llm-agent` 是已废弃的内联 Agent 节点类型，canonical 形态是 `agent`（必须绑定已发布的
+ * Agent Definition）。存量定义在归一化时统一收敛到 canonical 类型，节点因此在画布上重新
+ * 可识别、可配置，用户下次保存或发布时数据自然落盘为新形态——不需要批量数据迁移。
+ *
+ * 注意这只是**读取兼容**：内联执行语义已经移除，未绑定 Agent Definition 的 agent 节点
+ * 在发布时被阻断、在调度时显式失败。节点 data 上遗留的内联 `systemPrompt` / `model`
+ * 不在这里删除，Studio 的 Agent 节点配置面板会把它们作为 legacy 配置展示出来，
+ * 供用户迁移到 `text -> system-prompt-in` 后再自行清理。
+ */
+const LEGACY_WORKFLOW_NODE_TYPE_ALIASES: Record<string, string> = {
+  'llm-agent': 'agent',
+};
+
+function resolveLegacyWorkflowNodeType(nodeType: string): string {
+  return LEGACY_WORKFLOW_NODE_TYPE_ALIASES[nodeType] ?? nodeType;
+}
+
 function resolveWorkflowNodeType(
   node: ReactFlowNode,
   nodeData: JsonRecord,
@@ -1094,19 +1114,21 @@ function resolveWorkflowNodeType(
     nodeData.node_type,
   );
   if (dataNodeType) {
-    return dataNodeType;
+    return resolveLegacyWorkflowNodeType(dataNodeType);
   }
 
-  if (
-    typeof node.type === 'string' &&
-    node.type.trim().length > 0 &&
-    node.type !== 'workflow-node' &&
-    Object.prototype.hasOwnProperty.call(
-      WORKFLOW_NODE_CATEGORY_BY_NODE_TYPE,
-      node.type,
-    )
-  ) {
-    return node.type.trim();
+  const rawNodeType =
+    typeof node.type === 'string' ? node.type.trim() : undefined;
+  if (rawNodeType && rawNodeType !== 'workflow-node') {
+    const aliasedNodeType = resolveLegacyWorkflowNodeType(rawNodeType);
+    if (
+      Object.prototype.hasOwnProperty.call(
+        WORKFLOW_NODE_CATEGORY_BY_NODE_TYPE,
+        aliasedNodeType,
+      )
+    ) {
+      return aliasedNodeType;
+    }
   }
 
   return undefined;

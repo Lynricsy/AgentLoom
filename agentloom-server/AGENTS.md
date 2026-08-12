@@ -174,6 +174,15 @@ HTTP POST /executions
                                          (500 cap, 100ms interval)
 ```
 
+### Workflow Agent 节点契约
+
+- workflow `agent` / `chat-agent` 节点必须绑定一个已发布的 Agent Definition。判据的单一事实源是 `getWorkflowAgentDefinitionId()`（`execution/workflow-runtime-input.util.ts`），只认 `agentDefinitionId` / `selectedAgentId` 及其 snake_case 镜像，`data.config` 与顶层合并后读取；`agentVersionId` **不算**绑定，它只是可选的版本锁定。发布校验与上架审核都复用这个函数，不得另写字段列表——判据漂移会放行能发布却跑不了的节点。
+- 系统提示词由显式的 `text -> system-prompt-in` 连线表达，agent 节点自身不承载内联 prompt / model 配置。
+- `WorkflowVersionService.publish()` 在写入版本快照前调用 `assertWorkflowAgentBindings()`；存在未绑定的 agent 节点时抛 `WorkflowPublishAgentBindingException`（422），逐个列出节点 id 与 label。
+- `NodeSchedulerService.scheduleNode()` 对未绑定 Agent Definition 的 `agent` / `chat-agent` 节点，以及任何不受支持的节点类型，统一走 `failUnschedulableNode()` 显式失败，不做降级执行。`buildAgentTaskJobData()` 与 `agent-task` 队列只服务 `sub-agent` 节点。
+- `llm-agent` 是已废弃的内联 Agent 节点类型，只保留读取兼容：`normalize-workflow-graph.utils.ts` 的 `LEGACY_WORKFLOW_NODE_TYPE_ALIASES` 在归一化时把它收敛为 `agent`，`node.type` 与 `data.nodeType` 两种来源都覆盖，存量定义因此在画布上重新可配置，并在下次保存 / 发布时落盘为 canonical 形态。未经归一化的存量发布快照在调度时命中 `case 'llm-agent'`，得到「改用 agent 节点绑定 Agent Definition 后重新发布」的诊断。节点 data 上遗留的内联 `systemPrompt` / `model` 不会被自动删除，由 Studio 的 Agent 节点配置面板作为 legacy 配置只读展示。
+- 5 个预置模板（`template-seeds.ts`）均为 `text -> agent` 组合，agent 节点 `config: {}` 未绑定，`metadata.required_capabilities` 为 `['agent-definition']`；使用者需先为每个 agent 节点选择已发布的 Agent Definition 才能发布。
+
 ## 断点恢复与检查点
 
 - `CheckpointService` (`checkpoint.service.ts`) 在节点完成后保存 dagState 快照 (`saveCheckpoint`)，支持恢复失败执行 (`resumeExecution`)
@@ -292,7 +301,7 @@ Schema 在 `src/database/schema/`，启用 RLS (`rls-policies.ts`，RLS 策略�
 - `MarketplaceService.findPublicById()` 只返回 `definition { nodes, edges, viewport }` 与 latest 20 reviews，不再暴露 `workflowVersionId`、`definition.inputSchema`、author id/avatar 等内部字段。
 - `GET /marketplace/browse/:id/reviews` 现使用 `QueryPublicReviewsDto`（`pageSize.max(50)`）并返回 `{ data, meta }`；`MarketplaceReviewUserService.submitReview()` 返回精简 `{ id, rating, content, createdAt }`，重复评论继续映射 409。
 - `POST /marketplace/listings/:id/install` 允许 `owner/admin/creator/operator` 安装公开 listing 到当前租户；内部仍通过 `WorkflowVersionService.create(..., { marketplace_listing_id })` 克隆 snapshot + inputSchema、写入 `metadata.cloned_from_marketplace`，并原子递增 `use_count`，但公开响应已收敛为 `{ workflowDefinitionId, name, message }`。
-- `MarketplaceReviewService.checkCanvasStructure()` 现在会先把 `node.data.config` 与顶层 `node.data` 合并成 runtime 视图；workflow `agent` 节点只要具备内联 `systemPrompt + llmModelId`，或具备 `agentDefinitionId / selectedAgentId / agentVersionId`（含 snake_case 镜像）中的任一已绑定 Agent 引用，就视为配置完整，不再错误拦截引用已发布 Agent Definition/Version 的多 Agent 工作流上架。
+- `MarketplaceReviewService.checkCanvasStructure()` 会先把 `node.data.config` 与顶层 `node.data` 合并成 runtime 视图；workflow `agent` 节点的配置完整性判据是**存在已绑定的 Agent 引用**（`agentDefinitionId / selectedAgentId / agentVersionId`，含 snake_case 镜像），内联 `systemPrompt + llmModelId` 不构成完整配置。
 
 ## WebSocket
 
