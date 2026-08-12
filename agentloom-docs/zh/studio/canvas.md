@@ -151,7 +151,7 @@ graph TB
 
     CN -.-> Panel[NodeConfigPanel<br/>配置面板]
     Panel --> DynForm[DynamicConfigForm<br/>动态表单]
-    Panel --> LlmPanel[LlmAgentConfigPanel<br/>lazy Monaco]
+    Panel --> AgentPanel[AgentNodeConfigPanel<br/>已发布 Agent 选择]
 ```
 
 ### 关键组件说明
@@ -163,7 +163,7 @@ graph TB
 | `CanvasNodeShell`     | —    | 统一外壳：阴影、选中态、拖拽                      |
 | `TypedPort`           | —    | 类型化端口渲染，显示端口颜色与标签                |
 | `NodeConfigPanel`     | —    | 右侧配置面板，选中节点时弹出                      |
-| `LlmAgentConfigPanel` | —    | LLM Agent 专用面板，lazy 加载 Monaco 编辑器       |
+| `AgentNodeConfigPanel` | —    | `agent` 节点专用面板，选择已发布的 Agent Definition、版本与输入映射 |
 
 ### Overlay 层
 

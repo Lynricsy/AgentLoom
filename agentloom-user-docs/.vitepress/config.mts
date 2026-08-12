@@ -50,7 +50,6 @@ const zhSidebar = {
     {
       text: 'AI 与推理',
       items: [
-        { text: 'LLM Agent 节点', link: '/zh/nodes/llm-agent' },
         { text: 'Agent 节点', link: '/zh/nodes/agent' },
         { text: '智能路由', link: '/zh/nodes/smart-routing' },
       ],
@@ -318,7 +317,6 @@ const enSidebar = {
     {
       text: 'AI & Reasoning',
       items: [
-        { text: 'LLM Agent Node', link: '/en/nodes/llm-agent' },
         { text: 'Agent Node', link: '/en/nodes/agent' },
         { text: 'Smart Routing', link: '/en/nodes/smart-routing' },
       ],

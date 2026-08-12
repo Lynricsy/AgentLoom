@@ -22,8 +22,7 @@ AgentLoom 的节点按功能分为以下几个大类。
 
 | 节点 | 说明 |
 |------|------|
-| [LLM Agent](./llm-agent.md) | 工作流中最核心的 AI 推理节点，直接在工作流内配置 LLM 进行对话和推理 |
-| [Agent](./agent.md) | 引用已创建的独立 Agent，在工作流中复用 Agent 的全部能力 |
+| [Agent](./agent.md) | 工作流中的 AI 推理节点，引用已发布的 Agent |
 | [智能路由](./smart-routing.md) | 根据策略从多个 LLM 模型中选择最优模型 |
 
 ### 输入与输出
@@ -154,8 +153,7 @@ AgentLoom 的节点按功能分为以下几个大类。
 
 ### AI 与推理
 
-- [LLM Agent 节点](./llm-agent.md) — 工作流内直接配置的 AI 推理节点
-- [Agent 节点](./agent.md) — 引用独立 Agent 定义的节点
+- [Agent 节点](./agent.md) — 工作流中的 AI 推理节点，引用已发布的 Agent
 - [智能路由](./smart-routing.md) — 多模型智能选择
 
 ### 输入与输出

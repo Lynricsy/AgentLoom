@@ -175,7 +175,7 @@ AgentLoom Studio 采用左侧边栏加主内容区的经典布局。根据你所
 
 **配置区域**
 - 根据节点类型不同，显示对应的配置表单
-- 例如 Chat Agent 有"System Prompt"字段、HTTP Request 有 URL/Method/Headers 等字段
+- 例如 HTTP Request 节点有 URL、Method、Headers 等字段，Agent 节点提供已发布 Agent 的选择器
 - 某些节点有专用的配置面板（如智能路由的策略选择、知识库的 ID 绑定等）
 - 没有额外配置的节点会显示"该节点无需额外配置"的提示
 

@@ -126,6 +126,8 @@ AgentLoom 服务端包含 **37 个 NestJS 模块**，按职责划分为 8 个领
 | `tool_pruning`       | 清理未使用的工具      |
 | `autonomy_upgrade`   | 提升 Agent 自主性级别 |
 
+四类建议当前都不可采纳：`POST /optimization-suggestions/:id/apply` 用空的 `APPLICABLE_SUGGESTION_TYPES` 白名单在任何读写之前返回 `OPTIMIZATION_SUGGESTION_NOT_APPLICABLE`（409）——它们写入的字段不参与 workflow `agent` 节点的执行。忽略（dismiss）不受影响。
+
 ## 插件生态
 
 | 模块       | 职责                                                                   | 关键端点                                                 |
