@@ -308,9 +308,9 @@ export const OptimizationSuggestionsBoard = memo(
         </div>
 
         <p className="text-xs leading-relaxed text-muted">
-          workflow agent 节点的模型、工具、超时与自治级别由所绑定的 Agent Definition
-          决定，节点上的这些字段不参与执行，因此这些建议当前无法采纳；如需调整请到对应的
-          Agent Definition 中修改。建议可以忽略，也可以在画布中查看所属节点的上下文。
+          workflow agent 节点上的模型、工具、超时与自治级别字段不参与执行，采纳后不会产生
+          任何效果，因此这些建议当前无法采纳。agent 节点的运行时配置来自所绑定的 Agent
+          Definition，如需调整请到该 Agent 中修改。建议可以忽略，也可以在画布中查看所属节点的上下文。
         </p>
 
         {isError ? (
