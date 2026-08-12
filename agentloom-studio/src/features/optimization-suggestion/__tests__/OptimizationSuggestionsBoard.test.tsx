@@ -159,7 +159,7 @@ describe('OptimizationSuggestionsBoard', () => {
     expect(screen.getByTestId('optimization-suggestions-empty')).toBeInTheDocument()
   })
 
-  it('行内提供忽略与去画布处理深链，不提供采纳', async () => {
+  it('行内提供忽略与在画布中查看深链，不提供采纳', async () => {
     const user = userEvent.setup()
     mocks.useSuggestionList.mockReturnValue(withList([createSuggestion()]))
     renderBoard()

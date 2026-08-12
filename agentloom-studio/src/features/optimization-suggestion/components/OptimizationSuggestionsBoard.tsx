@@ -123,7 +123,10 @@ function AdoptionStatsCard() {
 
 /**
  * 全局优化建议列表。
- * 采纳（apply）依赖画布上的 OCC 上下文，这里只提供「忽略」与「去画布处理」深链。
+ *
+ * 只提供「忽略」与跳转画布的深链。四类建议当前都不可采纳（判据见
+ * `OptimizationSuggestionsPanel` 的 `APPLICABLE_SUGGESTION_TYPES`），
+ * 深链的用途是到画布上查看该建议所属节点的上下文。
  */
 export const OptimizationSuggestionsBoard = memo(
   function OptimizationSuggestionsBoard() {
@@ -260,7 +263,7 @@ export const OptimizationSuggestionsBoard = memo(
                 className="inline-flex items-center gap-1 rounded-md text-xs font-medium text-primary transition-colors hover:text-primary-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
                 data-testid={`suggestion-canvas-link-${suggestion.id}`}
               >
-                去画布处理
+                在画布中查看
                 <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
               </a>
             </div>
@@ -305,7 +308,9 @@ export const OptimizationSuggestionsBoard = memo(
         </div>
 
         <p className="text-xs leading-relaxed text-muted">
-          采纳建议需要画布上的节点配置上下文与乐观并发校验，因此这里只提供「忽略」；要采纳请点「去画布处理」在对应工作流内完成。
+          workflow agent 节点的模型、工具、超时与自治级别由所绑定的 Agent Definition
+          决定，节点上的这些字段不参与执行，因此这些建议当前无法采纳；如需调整请到对应的
+          Agent Definition 中修改。建议可以忽略，也可以在画布中查看所属节点的上下文。
         </p>
 
         {isError ? (

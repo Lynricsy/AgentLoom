@@ -75,7 +75,6 @@ function createUpdateReturning(result: unknown) {
     }),
   };
 }
-
 function createWorkflowNode(
   config: Record<string, unknown>,
   id = NODE_ID,
@@ -282,6 +281,112 @@ describe('OptimizationSuggestionService', () => {
   });
 
   describe('applySuggestion', () => {
+    it.each([
+      'model_downgrade',
+      'timeout_adjustment',
+      'tool_pruning',
+      'autonomy_upgrade',
+    ] as const)(
+      '%s 建议应因当前没有执行落点而拒绝采纳且不写入任何数据',
+      async (suggestionType) => {
+        const suggestion = createSuggestion({ suggestionType });
+        const workflowUpdate = createUpdateReturning([{ id: WORKFLOW_ID }]);
+        const suggestionUpdate = createUpdateReturning([
+          createSuggestion({ ...suggestion, status: 'applied' }),
+        ]);
+
+        db.select.mockReturnValue(createSelectWhereResolved([suggestion]));
+        txDb.update
+          .mockReturnValueOnce(workflowUpdate)
+          .mockReturnValueOnce(suggestionUpdate);
+
+        await expect(
+          service.applySuggestion(SUGGESTION_ID, USER_ID),
+        ).rejects.toMatchObject({
+          type: 'OPTIMIZATION_SUGGESTION_NOT_APPLICABLE',
+          status: 409,
+          // 断语义而非逐字文案：必须说清「采纳无效果」且指向 Agent Definition
+          detail: expect.stringContaining('采纳后不会产生任何效果') as unknown,
+        } as Record<string, unknown>);
+
+        expect(workflowUpdate.set).not.toHaveBeenCalled();
+        expect(suggestionUpdate.set).not.toHaveBeenCalled();
+        expect(db.update).not.toHaveBeenCalled();
+        expect(db.transaction).not.toHaveBeenCalled();
+      },
+    );
+
+    it('建议已被策略阻塞时应直接拒绝采纳', async () => {
+      db.select.mockReturnValue(
+        createSelectWhereResolved([
+          createSuggestion({
+            status: 'blocked',
+            analysisMetadata: {
+              totalRecords: 100,
+              analyzerVersion: '1.0.0',
+              policyBlock: {
+                autonomyCap: 'MANUAL_CONFIRM',
+                reasonCode: 'mode_exceeds_cap',
+                message:
+                  '自治模式 RULE_BASED 超出组织上限 MANUAL_CONFIRM，应降级为 MANUAL_CONFIRM',
+              },
+            },
+          }),
+        ]),
+      );
+
+      await expect(
+        service.applySuggestion(SUGGESTION_ID, USER_ID),
+      ).rejects.toMatchObject({
+        type: 'OPTIMIZATION_SUGGESTION_POLICY_BLOCKED',
+        status: 422,
+        detail: expect.stringContaining('MANUAL_CONFIRM'),
+      } as Record<string, unknown>);
+
+      expect(db.update).not.toHaveBeenCalled();
+      expect(db.transaction).not.toHaveBeenCalled();
+    });
+
+    it('建议不存在时应抛出 404 DomainException', async () => {
+      db.select.mockReturnValue(createSelectWhereResolved([]));
+
+      await expect(
+        service.applySuggestion(SUGGESTION_ID, USER_ID),
+      ).rejects.toMatchObject({
+        type: 'OPTIMIZATION_SUGGESTION_NOT_FOUND',
+        status: 404,
+      } as Record<string, unknown>);
+    });
+
+    it('建议非 pending 状态时应抛出 409 DomainException', async () => {
+      db.select.mockReturnValue(
+        createSelectWhereResolved([createSuggestion({ status: 'applied' })]),
+      );
+
+      await expect(
+        service.applySuggestion(SUGGESTION_ID, USER_ID),
+      ).rejects.toMatchObject({
+        type: 'OPTIMIZATION_SUGGESTION_STATUS_CONFLICT',
+        status: 409,
+      } as Record<string, unknown>);
+    });
+  });
+
+  describe('applySuggestion（白名单非空时的采纳链路）', () => {
+    beforeEach(() => {
+      // 覆盖落点修好、白名单加回类型后的采纳链路；生产默认行为仍是全部拒绝。
+      Reflect.set(
+        service,
+        'applicableSuggestionTypes',
+        new Set([
+          'model_downgrade',
+          'timeout_adjustment',
+          'tool_pruning',
+          'autonomy_upgrade',
+        ]),
+      );
+    });
+
     it('应应用 model_downgrade 建议并更新工作流', async () => {
       const suggestion = createSuggestion({
         suggestionType: 'model_downgrade',
@@ -484,118 +589,6 @@ describe('OptimizationSuggestionService', () => {
       });
     });
 
-    it('应在 autonomy_upgrade 超出组织上限时将建议标记为 blocked 并拒绝应用', async () => {
-      const suggestion = createSuggestion({
-        suggestionType: 'autonomy_upgrade',
-        suggestedValue: {
-          autonomyMode: 'LLM_SUGGEST',
-        } satisfies AutonomyUpgradeValue,
-      });
-      const workflow = createWorkflowDefinition([
-        createWorkflowNode({ autonomyMode: 'RULE_BASED' }),
-      ]);
-      const blockedSuggestion = createSuggestion({
-        ...suggestion,
-        status: 'blocked',
-        analysisMetadata: {
-          totalRecords: 100,
-          analyzerVersion: '1.0.0',
-          policyBlock: {
-            autonomyCap: 'RULE_BASED',
-            reasonCode: 'mode_exceeds_cap',
-            message:
-              '自治模式 LLM_SUGGEST 超出组织上限 RULE_BASED，应降级为 RULE_BASED',
-          },
-        },
-      });
-      const blockUpdate = createUpdateReturning([blockedSuggestion]);
-
-      organizationAutonomyPolicyService.resolveAutonomyCapForTenant.mockResolvedValue(
-        'RULE_BASED',
-      );
-      db.select
-        .mockReturnValueOnce(createSelectWhereResolved([suggestion]))
-        .mockReturnValueOnce(createSelectWhereResolved([workflow]));
-      db.update.mockReturnValue(blockUpdate);
-
-      await expect(
-        service.applySuggestion(SUGGESTION_ID, USER_ID),
-      ).rejects.toMatchObject({
-        type: 'OPTIMIZATION_SUGGESTION_POLICY_BLOCKED',
-        status: 422,
-        detail: expect.stringContaining('RULE_BASED'),
-      } as Record<string, unknown>);
-
-      expect(db.update).toHaveBeenCalledTimes(1);
-      expect(blockUpdate.set).toHaveBeenCalledWith(
-        expect.objectContaining({
-          status: 'blocked',
-          analysisMetadata: expect.objectContaining({
-            policyBlock: expect.objectContaining({
-              autonomyCap: 'RULE_BASED',
-              reasonCode: 'mode_exceeds_cap',
-            }),
-          }),
-        }),
-      );
-      expect(db.transaction).not.toHaveBeenCalled();
-    });
-
-    it('应在建议已被策略阻塞时直接拒绝应用', async () => {
-      db.select.mockReturnValue(
-        createSelectWhereResolved([
-          createSuggestion({
-            status: 'blocked',
-            analysisMetadata: {
-              totalRecords: 100,
-              analyzerVersion: '1.0.0',
-              policyBlock: {
-                autonomyCap: 'MANUAL_CONFIRM',
-                reasonCode: 'mode_exceeds_cap',
-                message:
-                  '自治模式 RULE_BASED 超出组织上限 MANUAL_CONFIRM，应降级为 MANUAL_CONFIRM',
-              },
-            },
-          }),
-        ]),
-      );
-
-      await expect(
-        service.applySuggestion(SUGGESTION_ID, USER_ID),
-      ).rejects.toMatchObject({
-        type: 'OPTIMIZATION_SUGGESTION_POLICY_BLOCKED',
-        status: 422,
-        detail: expect.stringContaining('MANUAL_CONFIRM'),
-      } as Record<string, unknown>);
-
-      expect(db.update).not.toHaveBeenCalled();
-      expect(db.transaction).not.toHaveBeenCalled();
-    });
-
-    it('建议不存在时应抛出 404 DomainException', async () => {
-      db.select.mockReturnValue(createSelectWhereResolved([]));
-
-      await expect(
-        service.applySuggestion(SUGGESTION_ID, USER_ID),
-      ).rejects.toMatchObject({
-        type: 'OPTIMIZATION_SUGGESTION_NOT_FOUND',
-        status: 404,
-      } as Record<string, unknown>);
-    });
-
-    it('建议非 pending 状态时应抛出 409 DomainException', async () => {
-      db.select.mockReturnValue(
-        createSelectWhereResolved([createSuggestion({ status: 'applied' })]),
-      );
-
-      await expect(
-        service.applySuggestion(SUGGESTION_ID, USER_ID),
-      ).rejects.toMatchObject({
-        type: 'OPTIMIZATION_SUGGESTION_STATUS_CONFLICT',
-        status: 409,
-      } as Record<string, unknown>);
-    });
-
     it('工作流节点不存在时应抛出 404 DomainException', async () => {
       const suggestion = createSuggestion();
       const workflow = createWorkflowDefinition([
@@ -667,25 +660,94 @@ describe('OptimizationSuggestionService', () => {
         detail: `Optimization suggestion ${SUGGESTION_ID} is already dismissed`,
       } as Record<string, unknown>);
     });
+
+    it('应在 autonomy_upgrade 超出组织上限时将建议标记为 blocked 并拒绝应用', async () => {
+      const suggestion = createSuggestion({
+        suggestionType: 'autonomy_upgrade',
+        suggestedValue: {
+          autonomyMode: 'LLM_SUGGEST',
+        } satisfies AutonomyUpgradeValue,
+      });
+      const workflow = createWorkflowDefinition([
+        createWorkflowNode({ autonomyMode: 'RULE_BASED' }),
+      ]);
+      const blockedSuggestion = createSuggestion({
+        ...suggestion,
+        status: 'blocked',
+        analysisMetadata: {
+          totalRecords: 100,
+          analyzerVersion: '1.0.0',
+          policyBlock: {
+            autonomyCap: 'RULE_BASED',
+            reasonCode: 'mode_exceeds_cap',
+            message:
+              '自治模式 LLM_SUGGEST 超出组织上限 RULE_BASED，应降级为 RULE_BASED',
+          },
+        },
+      });
+      const blockUpdate = createUpdateReturning([blockedSuggestion]);
+
+      organizationAutonomyPolicyService.resolveAutonomyCapForTenant.mockResolvedValue(
+        'RULE_BASED',
+      );
+      db.select
+        .mockReturnValueOnce(createSelectWhereResolved([suggestion]))
+        .mockReturnValueOnce(createSelectWhereResolved([workflow]));
+      db.update.mockReturnValue(blockUpdate);
+
+      await expect(
+        service.applySuggestion(SUGGESTION_ID, USER_ID),
+      ).rejects.toMatchObject({
+        type: 'OPTIMIZATION_SUGGESTION_POLICY_BLOCKED',
+        status: 422,
+        detail: expect.stringContaining('RULE_BASED'),
+      } as Record<string, unknown>);
+
+      expect(db.update).toHaveBeenCalledTimes(1);
+      expect(blockUpdate.set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          status: 'blocked',
+          analysisMetadata: expect.objectContaining({
+            policyBlock: expect.objectContaining({
+              autonomyCap: 'RULE_BASED',
+              reasonCode: 'mode_exceeds_cap',
+            }),
+          }),
+        }),
+      );
+      expect(db.transaction).not.toHaveBeenCalled();
+    });
   });
 
   describe('dismissSuggestion', () => {
-    it('应将 pending 建议标记为 dismissed', async () => {
-      const suggestion = createSuggestion();
-      const updatedSuggestion = createSuggestion({
-        status: 'dismissed',
-        dismissedAt: NOW,
-        dismissedByUserId: USER_ID,
-      });
-      const updateChain = createUpdateReturning([updatedSuggestion]);
+    it.each([
+      'model_downgrade',
+      'timeout_adjustment',
+      'tool_pruning',
+      'autonomy_upgrade',
+    ] as const)(
+      '%s 建议应不受采纳闸门影响并可正常忽略',
+      async (suggestionType) => {
+        const suggestion = createSuggestion({ suggestionType });
+        const updatedSuggestion = createSuggestion({
+          ...suggestion,
+          status: 'dismissed',
+          dismissedAt: NOW,
+          dismissedByUserId: USER_ID,
+        });
+        const updateChain = createUpdateReturning([updatedSuggestion]);
 
-      db.select.mockReturnValue(createSelectWhereResolved([suggestion]));
-      db.update.mockReturnValue(updateChain);
+        db.select.mockReturnValue(createSelectWhereResolved([suggestion]));
+        db.update.mockReturnValue(updateChain);
 
-      await expect(
-        service.dismissSuggestion(SUGGESTION_ID, USER_ID),
-      ).resolves.toEqual(updatedSuggestion);
-    });
+        await expect(
+          service.dismissSuggestion(SUGGESTION_ID, USER_ID),
+        ).resolves.toEqual(updatedSuggestion);
+        expect(updateChain.set).toHaveBeenCalledWith(
+          expect.objectContaining({ status: 'dismissed' }),
+        );
+      },
+    );
 
     it('建议不存在时应抛出 404 DomainException', async () => {
       db.select.mockReturnValue(createSelectWhereResolved([]));

@@ -25,6 +25,19 @@ import { syncAutonomyModeMirrors } from '../agent/autonomy-mode-mirrors';
 import { OrganizationAutonomyPolicyService } from '../organization/organization-autonomy-policy.service';
 import { WorkflowVersionConflictException } from '../workflow-definition/workflow-version.exceptions';
 
+/**
+ * 当前可采纳建议类型白名单为空。
+ *
+ * model_downgrade、timeout_adjustment、tool_pruning 只会写入节点 config 的
+ * modelId、timeoutMs、tools，但工作流执行路径不读取这些字段；autonomy_upgrade
+ * 只会同步节点的自治级别镜像，不会进入 createSession()，仅作为发布期治理标记。
+ * 前端 OptimizationSuggestionsPanel 维护同名同语义的空白名单，两端共同构成采纳
+ * 契约。将来对应字段接入执行路径后，把建议类型加入此白名单即可恢复采纳。
+ */
+const APPLICABLE_SUGGESTION_TYPES: ReadonlySet<
+  OptimizationSuggestion['suggestionType']
+> = new Set<OptimizationSuggestion['suggestionType']>();
+
 type FindByTenantQuery = {
   limit?: number;
   offset?: number;
@@ -56,6 +69,10 @@ type AdoptionStats = {
 @Injectable()
 export class OptimizationSuggestionService {
   private readonly logger = new Logger(OptimizationSuggestionService.name);
+  // 默认等于空白名单；测试会覆盖此字段以验证白名单非空时的采纳链路。
+  private readonly applicableSuggestionTypes: ReadonlySet<
+    OptimizationSuggestion['suggestionType']
+  > = APPLICABLE_SUGGESTION_TYPES;
 
   private get tenantDb(): DrizzleDB {
     return getTenantDb(this.db);
@@ -147,6 +164,7 @@ export class OptimizationSuggestionService {
     const suggestion = await this.findById(id);
     this.assertSuggestionNotBlocked(suggestion);
     this.assertPendingSuggestion(suggestion);
+    this.assertSuggestionApplicable(suggestion);
 
     const [workflowDefinition] = await this.tenantDb
       .select()
@@ -497,6 +515,20 @@ export class OptimizationSuggestionService {
       title: 'Suggestion Status Conflict',
       status: 409,
       detail: `Optimization suggestion ${suggestion.id} is already ${suggestion.status}`,
+    });
+  }
+
+  private assertSuggestionApplicable(suggestion: OptimizationSuggestion): void {
+    if (this.applicableSuggestionTypes.has(suggestion.suggestionType)) {
+      return;
+    }
+
+    throw new DomainException({
+      type: 'OPTIMIZATION_SUGGESTION_NOT_APPLICABLE',
+      title: '优化建议当前不可采纳',
+      status: 409,
+      detail:
+        '工作流 agent 节点上的模型、工具、超时与自治级别字段不参与该节点的执行，采纳后不会产生任何效果，因此当前无法采纳。agent 节点的运行时配置来自所绑定的 Agent Definition，请到该 Agent 中调整；本条建议仍可忽略。',
     });
   }
 
