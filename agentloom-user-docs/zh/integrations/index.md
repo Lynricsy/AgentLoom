@@ -46,7 +46,7 @@ MCP（Model Context Protocol）是一种让 AI Agent 连接外部工具的标准
 
 ### AI 模型服务
 
-连接各种 AI 模型提供商（如 OpenAI、Anthropic 等），为 Agent 提供不同能力的 AI 模型支持。模型配置在工作流的 Agent 节点中完成。
+连接各种 AI 模型提供商（如 OpenAI、Anthropic 等），为 Agent 提供不同能力的 AI 模型支持。Agent 使用的模型在 Agent 配置画布中绑定；工作流中的 Agent 节点引用该已发布配置。
 
 ### 代码仓库
 

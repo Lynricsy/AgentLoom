@@ -101,8 +101,8 @@ AgentLoom 中的节点按功能分为以下几大类：
 
 **知识与记忆类节点**
 
-- **知识库 (Knowledge Base)**：连接向量知识库，让 Agent 可以检索文档
-- **Memory**：为 Agent 提供图谱记忆能力，跨对话保留信息
+- **知识库 (Knowledge Base)**：提供 `knowledge` 类型的知识库引用；如需让 Agent 检索文档，请在 Agent 配置画布中绑定
+- **Memory**：提供 `memory` 类型的记忆实例；在 Agent 配置画布中绑定后，可为 Agent 提供跨对话记忆
 
 **输出类节点**
 
