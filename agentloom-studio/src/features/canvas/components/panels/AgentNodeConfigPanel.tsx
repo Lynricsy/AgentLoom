@@ -11,6 +11,8 @@ import { useToast } from '@/shared/ui/toast'
 import { listAgents, listAgentVersions } from '@/features/agent/api/agentDefinitionApi'
 import type { AgentDefinition, AgentVersion } from '@/features/agent/types'
 import type { AgentRuntimeMode } from '@/features/agent/types/agentRuntimeMode'
+import { OptimizationSuggestionsPanel } from '@/features/optimization-suggestion'
+import { useCanvasStore } from '../../stores/canvasStore'
 import type { CanvasNode } from '../../types'
 import { getWorkflowAgentInputPorts } from '../../types/nodeTypeRegistry'
 
@@ -92,6 +94,8 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
   onApply,
 }: AgentNodeConfigPanelProps) {
   const agentConfig = parseAgentConfig(config)
+  // 画布尚未保存（新建工作流）时没有 workflowDefinitionId，节点级优化建议无从查询
+  const workflowId = useCanvasStore((s) => s.workflowId)
   const { notify } = useToast()
   const legacyInline = useMemo(() => readLegacyInlineConfig(node.data), [node.data])
 
@@ -521,6 +525,13 @@ export const AgentNodeConfigPanel = memo(function AgentNodeConfigPanel({
           </div>
         )}
       </div>
+
+      {/* 节点级优化建议：Board 的「去画布处理」深链最终落到这里 */}
+      {workflowId ? (
+        <div className="-mx-4 border-t border-border pt-1">
+          <OptimizationSuggestionsPanel workflowDefinitionId={workflowId} nodeId={node.id} />
+        </div>
+      ) : null}
     </div>
   )
 })

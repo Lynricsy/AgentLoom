@@ -28,7 +28,10 @@ vi.mock('@/shared/ui/toast', () => ({
 }))
 
 import { OptimizationSuggestionsPanel } from '../components/OptimizationSuggestionsPanel'
-import type { OptimizationSuggestion } from '../types/optimization-suggestion.types'
+import type {
+  OptimizationSuggestion,
+  SuggestionType,
+} from '../types/optimization-suggestion.types'
 
 function makeSuggestion(
   overrides: Partial<OptimizationSuggestion> = {},
@@ -52,6 +55,14 @@ function makeSuggestion(
     ...overrides,
   }
 }
+
+// 四类建议在当前 Agent Definition 架构下都没有执行落点，采纳一律禁用
+const ALL_SUGGESTION_TYPES: readonly SuggestionType[] = [
+  'model_downgrade',
+  'timeout_adjustment',
+  'tool_pruning',
+  'autonomy_upgrade',
+]
 
 function createHttpError(payload: Record<string, unknown>, status = 422) {
   const response = new Response(JSON.stringify(payload), {
@@ -204,11 +215,12 @@ describe('OptimizationSuggestionsPanel', () => {
     expect(screen.queryByRole('button', { name: '采纳' })).not.toBeInTheDocument()
   })
 
-  it('在画布有未保存修改时阻止采纳并提示用户先保存', async () => {
-    const user = userEvent.setup()
+  it('没有任何可采纳建议时，即便画布有未保存修改也不展示「先保存再采纳」提示', () => {
     canvasState.isDirty = true
     mockUseNodeSuggestions.mockReturnValue({
-      data: [makeSuggestion()],
+      data: ALL_SUGGESTION_TYPES.map((suggestionType, index) =>
+        makeSuggestion({ id: `sug-${index}`, suggestionType }),
+      ),
       isLoading: false,
       isError: false,
       error: null,
@@ -221,52 +233,81 @@ describe('OptimizationSuggestionsPanel', () => {
       />,
     )
 
-    expect(screen.getByText(/画布存在未保存修改/)).toBeInTheDocument()
+    expect(screen.queryByText(/画布存在未保存修改/)).not.toBeInTheDocument()
+  })
+
+  it.each(ALL_SUGGESTION_TYPES)(
+    '%s 建议禁用采纳并说明采纳后不会生效',
+    (suggestionType) => {
+      mockUseNodeSuggestions.mockReturnValue({
+        data: [makeSuggestion({ suggestionType })],
+        isLoading: false,
+        isError: false,
+        error: null,
+      })
+
+      render(
+        <OptimizationSuggestionsPanel
+          workflowDefinitionId="wf-1"
+          nodeId="node-1"
+        />,
+      )
+
+      expect(screen.getByTestId('optimization-suggestion-apply-disabled')).toBeDisabled()
+      expect(screen.getByRole('button', { name: '采纳' })).toBeDisabled()
+      expect(screen.getByTestId('optimization-suggestion-no-effect-note')).toHaveTextContent(
+        'Agent Definition',
+      )
+    },
+  )
+
+  it.each(ALL_SUGGESTION_TYPES)('%s 建议的忽略按钮保持可用', async (suggestionType) => {
+    const user = userEvent.setup()
+    mockUseNodeSuggestions.mockReturnValue({
+      data: [makeSuggestion({ suggestionType })],
+      isLoading: false,
+      isError: false,
+      error: null,
+    })
+
+    render(
+      <OptimizationSuggestionsPanel
+        workflowDefinitionId="wf-1"
+        nodeId="node-1"
+      />,
+    )
+
+    const dismissButton = screen.getByRole('button', { name: '忽略' })
+    expect(dismissButton).toBeEnabled()
+
+    await user.click(dismissButton)
+
+    expect(dismissMutateFn).toHaveBeenCalledWith('sug-1', expect.anything())
+  })
+
+  it('点击被禁用的采纳按钮不会发出采纳请求', async () => {
+    const user = userEvent.setup()
+    mockUseNodeSuggestions.mockReturnValue({
+      data: [makeSuggestion({ suggestionType: 'autonomy_upgrade' })],
+      isLoading: false,
+      isError: false,
+      error: null,
+    })
+
+    render(
+      <OptimizationSuggestionsPanel
+        workflowDefinitionId="wf-1"
+        nodeId="node-1"
+      />,
+    )
 
     await user.click(screen.getByRole('button', { name: '采纳' }))
 
     expect(applyMutateFn).not.toHaveBeenCalled()
-    expect(mockNotify).toHaveBeenCalledWith(
-      expect.objectContaining({
-        title: '请先保存当前画布',
-        variant: 'warning',
-      }),
-    )
+    expect(mockNotify).not.toHaveBeenCalled()
   })
 
-  it('采纳成功时显示成功提示', async () => {
-    const user = userEvent.setup()
-    mockUseNodeSuggestions.mockReturnValue({
-      data: [makeSuggestion()],
-      isLoading: false,
-      isError: false,
-      error: null,
-    })
-    applyMutateFn.mockImplementation(
-      (_id: string, options?: { onSuccess?: () => void }) => {
-        options?.onSuccess?.()
-      },
-    )
-
-    render(
-      <OptimizationSuggestionsPanel
-        workflowDefinitionId="wf-1"
-        nodeId="node-1"
-      />,
-    )
-
-    await user.click(screen.getByRole('button', { name: '采纳' }))
-
-    expect(applyMutateFn).toHaveBeenCalled()
-    expect(mockNotify).toHaveBeenCalledWith(
-      expect.objectContaining({
-        title: '优化建议已采纳',
-        variant: 'success',
-      }),
-    )
-  })
-
-  it('采纳被组织策略阻断时展示清晰的 422 提示', async () => {
+  it('忽略失败时把组织策略阻断详情格式化进错误提示', async () => {
     const user = userEvent.setup()
     mockUseNodeSuggestions.mockReturnValue({
       data: [
@@ -280,18 +321,18 @@ describe('OptimizationSuggestionsPanel', () => {
       isError: false,
       error: null,
     })
-    applyMutateFn.mockImplementation(
+    dismissMutateFn.mockImplementation(
       (_id: string, options?: { onError?: (error: unknown) => void | Promise<void> }) => {
         void options?.onError?.(
           createHttpError({
             type: 'OPTIMIZATION_SUGGESTION_POLICY_BLOCKED',
             title: 'Suggestion Blocked By Organization Policy',
             status: 422,
-            detail: '组织自治上限禁止采纳该建议。',
+            detail: '组织自治上限禁止处理该建议。',
             errors: [
               {
                 field: 'suggestedValue.autonomyMode',
-                message: '组织自治上限禁止采纳该建议。',
+                message: '组织自治上限禁止处理该建议。',
               },
             ],
             extensions: {
@@ -311,12 +352,12 @@ describe('OptimizationSuggestionsPanel', () => {
       />,
     )
 
-    await user.click(screen.getByRole('button', { name: '采纳' }))
+    await user.click(screen.getByRole('button', { name: '忽略' }))
 
     await waitFor(() => {
       expect(mockNotify).toHaveBeenCalledWith(
         expect.objectContaining({
-          title: '采纳优化建议失败',
+          title: '忽略优化建议失败',
           description: expect.stringContaining('组织上限：规则补全'),
           variant: 'error',
         }),
