@@ -1,8 +1,11 @@
 /**
  * 组织自治策略的令牌权限判定。
  *
- * 这里只判定「令牌里的角色」：组织 id 不在登录令牌的 claim 里
- * （实测 Supabase JWT 只有 tenant_id / tenant_role），且 tenantId 不是 organizationId ——
+ * 这里只判定「令牌里的角色」。角色 claim 的来源、可靠性与
+ * 「为什么前端读 claim 是安全的」，见
+ * `@/features/intervention-policy/lib/policyPermissions` 的文件头说明。
+ *
+ * 组织 id 不在登录令牌的 claim 里，且 tenantId 不是 organizationId ——
  * 需要组织 id 请用 `useCurrentOrganization()`（GET organizations/current，由服务端按租户解析）。
  */
 

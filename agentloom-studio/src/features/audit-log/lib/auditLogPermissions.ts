@@ -1,3 +1,11 @@
+/**
+ * 审计日志的令牌权限判定。
+ *
+ * 角色 claim 的来源、可靠性与「为什么前端读 claim 是安全的」，
+ * 见 `@/features/intervention-policy/lib/policyPermissions` 的文件头说明。
+ * 需要组织 id 请用 `useCurrentOrganization()`，不要拿 tenantId 兜底。
+ */
+
 import {
   type InterventionPolicyTokenPayload,
   type InterventionRole,
