@@ -20,6 +20,7 @@ import {
 } from '@/features/smart-routing'
 import type { StrategyName, ProviderHealthStatus } from '@/features/smart-routing'
 import { cn } from '@/shared/lib/utils'
+import { usePreviewMode } from '../PreviewModeContext'
 
 const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   Shuffle,
@@ -54,7 +55,9 @@ export const SmartRoutingNodeBody = memo(function SmartRoutingNodeBody({
   const modelCount = connectedModelCount ?? data.modelConfigIds?.length ?? 0
   const category = meta?.category ?? 'simple'
 
-  const { data: healthData } = useHealthStatus()
+  // 预览态（含匿名公开分享页）不得触发受保护的 health 查询
+  const previewMode = usePreviewMode()
+  const { data: healthData } = useHealthStatus(!previewMode)
   const healthSummary = useMemo(() => {
     const counts: Record<ProviderHealthStatus, number> = { healthy: 0, degraded: 0, open: 0 }
     for (const h of healthData ?? []) {

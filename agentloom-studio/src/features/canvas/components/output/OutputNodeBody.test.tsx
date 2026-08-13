@@ -4,6 +4,7 @@ import { FileText } from 'lucide-react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { NodeExecutionState } from '@/features/execution/stores/executionStore'
 import { OutputNodeBody } from './OutputNodeBody'
+import { PreviewModeContext } from '../PreviewModeContext'
 
 const mocks = vi.hoisted(() => ({
   nodeState: null as NodeExecutionState | null,
@@ -45,5 +46,24 @@ describe('OutputNodeBody', () => {
     expect(screen.getByTestId('node-output-detail-dialog')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: '详情标题' })).toBeInTheDocument()
     expect(screen.getByText(/const answer = 42/)).toBeInTheDocument()
+  })
+
+  it('预览态不显示编辑器执行输出', () => {
+    render(
+      <PreviewModeContext.Provider value={{ edges: [], lodOverride: null }}>
+        <OutputNodeBody
+          nodeId="node-1"
+          format="markdown"
+          icon={FileText}
+          title="文本输出"
+          detailDescription="支持 Markdown 详情查看"
+        />
+      </PreviewModeContext.Provider>,
+    )
+
+    expect(screen.queryByText(/const answer = 42/)).not.toBeInTheDocument()
+    expect(
+      screen.getByText('暂无输出，运行后可在这里查看详情'),
+    ).toBeInTheDocument()
   })
 })

@@ -228,6 +228,18 @@ describe('SmartEdge', () => {
     expect(particles).toHaveLength(0)
   })
 
+  it('does not render particles in readonly preview even when the editor is running', () => {
+    seedTypedPorts('text', 'text')
+    executionState.nodes = { 'node-b': { status: 'running' } }
+    const { container } = renderSmartEdge({
+      data: { ...createDefaultEdgeData(), readonlyPreview: true },
+    })
+
+    expect(
+      container.querySelectorAll('.smart-edge-particle--running'),
+    ).toHaveLength(0)
+  })
+
   it('shows level label on badge by default', () => {
     renderSmartEdge()
 

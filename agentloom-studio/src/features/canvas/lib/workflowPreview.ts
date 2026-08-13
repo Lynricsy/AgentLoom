@@ -128,6 +128,8 @@ function buildFallbackNode(
     id: rawNode.id as string,
     type: 'control',
     position,
+    // 快照里可能带着保存时的选中态；预览是只读的，不得显示选中描边
+    selected: false,
     data: fallbackData,
   } satisfies CanvasNode
 }
@@ -205,6 +207,8 @@ function normalizePreviewNode(rawNode: unknown, index: number): Node | null {
     id,
     type: category,
     position,
+    // 快照里可能带着保存时的选中态；预览是只读的，不得显示选中描边
+    selected: false,
     data: baseData,
   } satisfies CanvasNode
 }
@@ -229,6 +233,7 @@ function normalizePreviewEdge(rawEdge: unknown): Edge | null {
     source,
     target,
     type: 'smart',
+    selected: false,
     sourceHandle:
       readString(rawEdge.sourceHandle) ??
       readString(rawEdge.source_handle) ??

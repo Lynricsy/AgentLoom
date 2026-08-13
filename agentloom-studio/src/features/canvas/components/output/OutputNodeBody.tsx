@@ -3,6 +3,7 @@ import * as Dialog from '@radix-ui/react-dialog'
 import { ChevronRight, X, type LucideIcon } from 'lucide-react'
 import { useNodeExecutionState } from '@/features/execution/stores/executionStore'
 import { cn } from '@/shared/lib/utils'
+import { usePreviewMode } from '../PreviewModeContext'
 import {
   buildOutputPreviewText,
   type OutputContentFormat,
@@ -32,7 +33,10 @@ export const OutputNodeBody = memo(function OutputNodeBody({
   detailDescription,
   previewMaxChars = 320,
 }: OutputNodeBodyProps) {
-  const nodeState = useNodeExecutionState(nodeId)
+  const previewMode = usePreviewMode()
+  const liveNodeState = useNodeExecutionState(nodeId)
+  // 预览复用编辑器卡片：同 id 的编辑器执行输出不能漏进预览
+  const nodeState = previewMode ? null : liveNodeState
   const [open, setOpen] = useState(false)
   const output = nodeState?.output ?? null
   const isStreaming = nodeState?.isStreaming ?? false

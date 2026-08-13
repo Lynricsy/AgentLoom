@@ -2,6 +2,7 @@ import { render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { SmartRoutingNodeData } from '../../../types'
 import { SmartRoutingNodeBody } from '../SmartRoutingNodeBody'
+import { PreviewModeContext } from '../../PreviewModeContext'
 
 const mocks = vi.hoisted(() => ({
   useHealthStatus: vi.fn().mockReturnValue({ data: undefined }),
@@ -198,6 +199,24 @@ describe('SmartRoutingNodeBody', () => {
       render(<SmartRoutingNodeBody data={createSmartRoutingData()} />)
 
       expect(screen.queryByTestId('provider-health-summary')).not.toBeInTheDocument()
+    })
+  })
+
+  describe('预览态隔离', () => {
+    it('editor 渲染时启用 health 查询', () => {
+      render(<SmartRoutingNodeBody data={createSmartRoutingData()} />)
+
+      expect(mocks.useHealthStatus).toHaveBeenCalledWith(true)
+    })
+
+    it('预览态禁用受保护的 health 查询', () => {
+      render(
+        <PreviewModeContext.Provider value={{ edges: [], lodOverride: null }}>
+          <SmartRoutingNodeBody data={createSmartRoutingData()} />
+        </PreviewModeContext.Provider>,
+      )
+
+      expect(mocks.useHealthStatus).toHaveBeenCalledWith(false)
     })
   })
 })
