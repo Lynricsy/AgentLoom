@@ -149,7 +149,7 @@ src/
 - 预览 edge 会统一映射为只读 `smart` edge，并通过 `.workflow-preview-canvas` 关闭节点/连线命中，避免在预览页误触编辑交互
 - 预览默认保留平移与缩放交互：拖动画布可浏览局部，滚轮 / 触控可缩放，但节点与连线仍保持只读
 - 坏数据同样渲染成真实卡片：未识别的 `nodeType` 归一化为 `control` 类别的「未知节点类型」muted 卡片，缺 `position` 的节点排进 3 列 320×200 兜底网格，只有缺 `id` 才被丢弃
-- 预览与编辑器共享节点组件，因此预览态通过 `PreviewModeContext` 与编辑器状态完全隔离：不发起受保护请求（LLM API Keys、smart-routing health），不读执行态 / 校验态 / 搜索态 / hover store，不显示执行浮层与选中描边，连线也不跑执行粒子。匿名公开分享页因此不会再被 401 刷新失败带去 `/login`
+- 预览与编辑器共享节点组件，因此凡是读受保护查询或编辑器全局 store 的组件都必须按 `PreviewModeContext` 短路：当前已收口 LLM API Keys 与 smart-routing health 查询、节点执行态 / 执行浮层 / 输出卡片 / 连线粒子、校验态、搜索三态、hover 写入、可复用块展开按钮，归一化 node/edge 也一律 `selected: false`。匿名公开分享页因此不会再被 401 刷新失败带去 `/login`；新增节点 body 若引入新的查询或 store 读取，需同样接入该契约
 - template 与 marketplace 详情的小尺寸预览传 `lodOverride="full"`（微缩真实卡片），全屏公开分享页不传，保留 zoom 驱动的 LOD
 
 ## 画布控制流容器事实
