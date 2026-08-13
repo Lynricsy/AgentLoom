@@ -1,14 +1,6 @@
 import { render, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { MemoryNodeBody } from '../MemoryNodeBody';
-
-const mocks = vi.hoisted(() => ({
-  useViewport: vi.fn().mockReturnValue({ zoom: 1.0 }),
-}));
-
-vi.mock('@xyflow/react', () => ({
-  useViewport: mocks.useViewport,
-}));
 
 function createMemoryConfig(
   overrides: Record<string, unknown> = {},
@@ -23,11 +15,7 @@ function createMemoryConfig(
 }
 
 describe('MemoryNodeBody', () => {
-  beforeEach(() => {
-    mocks.useViewport.mockReturnValue({ zoom: 1.0 });
-  });
-
-  describe('high zoom (>= 0.7)', () => {
+  describe('configured state', () => {
     it('renders icon, instance name, role badge, and priority', () => {
       render(<MemoryNodeBody config={createMemoryConfig()} />);
 
@@ -67,44 +55,8 @@ describe('MemoryNodeBody', () => {
     });
   });
 
-  describe('medium zoom (0.4 - 0.7)', () => {
-    beforeEach(() => {
-      mocks.useViewport.mockReturnValue({ zoom: 0.5 });
-    });
-
-    it('renders icon and instance name but not role badge or priority', () => {
-      render(<MemoryNodeBody config={createMemoryConfig()} />);
-
-      expect(screen.getByTestId('memory-node-body')).toBeInTheDocument();
-      expect(screen.getByTestId('memory-instance-name')).toBeInTheDocument();
-      expect(
-        screen.queryByTestId('memory-role-badge'),
-      ).not.toBeInTheDocument();
-      expect(screen.queryByTestId('memory-priority')).not.toBeInTheDocument();
-    });
-  });
-
-  describe('low zoom (< 0.4)', () => {
-    beforeEach(() => {
-      mocks.useViewport.mockReturnValue({ zoom: 0.2 });
-    });
-
-    it('renders only icon and Memory label', () => {
-      render(<MemoryNodeBody config={createMemoryConfig()} />);
-
-      expect(screen.getByTestId('memory-node-body')).toBeInTheDocument();
-      expect(screen.getByText('Memory')).toBeInTheDocument();
-      expect(
-        screen.queryByTestId('memory-instance-name'),
-      ).not.toBeInTheDocument();
-      expect(
-        screen.queryByTestId('memory-role-badge'),
-      ).not.toBeInTheDocument();
-    });
-  });
-
   describe('unconfigured state', () => {
-    it('renders "未配置" at high zoom when no memoryInstanceId', () => {
+    it('renders "未配置" when no memoryInstanceId', () => {
       render(
         <MemoryNodeBody
           config={{ role: 'primary', fusionPriority: 1 }}

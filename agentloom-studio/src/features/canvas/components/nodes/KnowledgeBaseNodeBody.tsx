@@ -1,5 +1,4 @@
 import { memo } from 'react'
-import { useViewport } from '@xyflow/react'
 import { BookOpen } from 'lucide-react'
 import {
   getKnowledgeBaseStatusLabel,
@@ -42,8 +41,7 @@ function getStatusBadgeColor(status: KnowledgeBaseStatus): NodeBadgeColor {
 export const KnowledgeBaseNodeBody = memo(function KnowledgeBaseNodeBody({
   config,
 }: KnowledgeBaseNodeBodyProps) {
-  const { zoom } = useViewport()
-
+  // Body 只在外层 shell 的 full LOD 下渲染，这里不再按 zoom 二次降级
   if (!isKnowledgeBaseConfigured(config)) {
     return (
       <div className="flex items-center gap-2 text-muted-foreground/60 italic">
@@ -63,51 +61,33 @@ export const KnowledgeBaseNodeBody = memo(function KnowledgeBaseNodeBody({
     readNumericValue(config.knowledgeBaseNodeCount)
     ?? readNumericValue(config.knowledgeBaseChunkCount)
   const status = readKnowledgeBaseStatus(config.knowledgeBaseStatus)
-  const lod = zoom >= 0.7 ? 'high' : zoom >= 0.4 ? 'medium' : 'low'
-
-  if (lod === 'low') {
-    return (
-      <div className="flex items-center gap-2" data-testid="knowledge-node-low">
-        <BookOpen className="h-3.5 w-3.5 shrink-0 text-primary/80" />
-        <span className="truncate font-medium text-foreground">{name}</span>
-      </div>
-    )
-  }
 
   return (
-    <div className="flex flex-col gap-2" data-testid={`knowledge-node-${lod}`}>
+    <div className="flex flex-col gap-2" data-testid="knowledge-node-body">
       {/* Name row */}
       <div className="flex items-center gap-2">
         <BookOpen className="h-3.5 w-3.5 shrink-0 text-primary/80" />
         <span className="truncate font-medium text-foreground">{name}</span>
       </div>
 
-      {/* Status + stats merged into one row */}
-      {lod === 'medium' && documentCount !== null && (
-        <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
-          <span>{documentCount} 个文档</span>
-        </div>
-      )}
-
-      {lod === 'high' && (
-        <div className="flex flex-wrap items-center gap-1">
-          {status && (
-            <NodeBadge variant="status" color={getStatusBadgeColor(status)}>
-              {getKnowledgeBaseStatusLabel(status)}
-            </NodeBadge>
-          )}
-          {documentCount !== null && (
-            <NodeBadge variant="info" color="default">
-              {documentCount} 个文档
-            </NodeBadge>
-          )}
-          {nodeCount !== null && (
-            <NodeBadge variant="info" color="default">
-              {getKnowledgeNodeCountLabel({ nodeCount, chunkCount: nodeCount })}
-            </NodeBadge>
-          )}
-        </div>
-      )}
+      {/* 状态 + 统计徽章 */}
+      <div className="flex flex-wrap items-center gap-1">
+        {status && (
+          <NodeBadge variant="status" color={getStatusBadgeColor(status)}>
+            {getKnowledgeBaseStatusLabel(status)}
+          </NodeBadge>
+        )}
+        {documentCount !== null && (
+          <NodeBadge variant="info" color="default">
+            {documentCount} 个文档
+          </NodeBadge>
+        )}
+        {nodeCount !== null && (
+          <NodeBadge variant="info" color="default">
+            {getKnowledgeNodeCountLabel({ nodeCount, chunkCount: nodeCount })}
+          </NodeBadge>
+        )}
+      </div>
     </div>
   )
 })

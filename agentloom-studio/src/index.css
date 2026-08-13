@@ -56,6 +56,7 @@
   --color-type-sandbox: #a3e635;
   --color-type-knowledge: #34d399;
   --color-type-skill: #a855f7;
+  --color-type-agent: #f97316;
   --color-type-exec: #94a3b8;
   --color-type-volume: #22c55e;
 
@@ -87,8 +88,8 @@
   --radius-panel: 16px;
 
   /* 阴影层级 (light defaults) */
-  --shadow-node: 0 1px 2px rgba(16, 24, 40, 0.06), 0 2px 6px rgba(16, 24, 40, 0.06);
-  --shadow-node-selected: 0 4px 12px rgba(16, 24, 40, 0.12);
+  --shadow-node: 0 1px 2px rgba(16, 24, 40, 0.05), 0 2px 4px rgba(16, 24, 40, 0.04), 0 8px 16px -8px rgba(16, 24, 40, 0.08);
+  --shadow-node-selected: 0 2px 4px rgba(16, 24, 40, 0.06), 0 12px 28px -10px rgba(16, 24, 40, 0.18);
   --shadow-panel: 0 1px 2px rgba(16, 24, 40, 0.04), -4px 0 20px rgba(16, 24, 40, 0.06);
   --shadow-popover: 0 4px 6px -2px rgba(16, 24, 40, 0.04), 0 12px 24px -6px rgba(16, 24, 40, 0.14);
 
@@ -177,8 +178,8 @@
   --color-node-skill: #c084fc;
 
   /* 阴影 — 深色用黑色大扩散低透明度 */
-  --shadow-node: 0 1px 2px rgba(0, 0, 0, 0.4), 0 2px 8px rgba(0, 0, 0, 0.3);
-  --shadow-node-selected: 0 6px 20px rgba(0, 0, 0, 0.5);
+  --shadow-node: 0 1px 2px rgba(0, 0, 0, 0.5), 0 4px 12px -2px rgba(0, 0, 0, 0.4);
+  --shadow-node-selected: 0 2px 6px rgba(0, 0, 0, 0.5), 0 12px 32px -8px rgba(0, 0, 0, 0.6);
   --shadow-panel: -4px 0 24px rgba(0, 0, 0, 0.45);
   --shadow-popover: 0 12px 32px rgba(0, 0, 0, 0.55);
 }
@@ -396,6 +397,52 @@ body {
   }
 }
 
+/* 头部：类别色 8% 顶部晕染，向下淡出，与卡片圆角对齐 */
+.canvas-node-header {
+  border-radius: calc(var(--radius-card) - 1px) calc(var(--radius-card) - 1px) 0
+    0;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--node-color, var(--color-primary)) 8%, transparent),
+    transparent
+  );
+}
+
+/* 端口行：hover 时用类别色极淡底色标出命中行 */
+.port-row {
+  border-radius: 6px;
+  transition: background-color 120ms ease-out;
+}
+
+.port-row:hover {
+  background: color-mix(
+    in srgb,
+    var(--node-color, var(--color-primary)) 6%,
+    transparent
+  );
+}
+
+/* 不兼容连线时的端口抖动，配合 TypedPort 的 typed-port--shake 类。
+   端口的 transform 链全是 `translateY(-50%) … !important`（见 .typed-port 段），
+   !important 声明会压掉动画，因此改用独立的 `translate` 属性：它在 transform
+   之前应用并与之叠加，不参与那条 !important 竞争。 */
+@keyframes typed-port-shake {
+  0%,
+  100% {
+    translate: 0;
+  }
+  25% {
+    translate: -2px 0;
+  }
+  75% {
+    translate: 2px 0;
+  }
+}
+
+.typed-port--shake {
+  animation: typed-port-shake 0.3s ease-in-out;
+}
+
 /* ─── Card hover effects ────────────────────────────── */
 .card-hover-lift {
   transition:
@@ -442,6 +489,9 @@ body {
     animation: none;
   }
   .canvas-node-shell[data-shell-status="failed"] {
+    animation: none;
+  }
+  .typed-port--shake {
     animation: none;
   }
   .card-hover-lift:hover {

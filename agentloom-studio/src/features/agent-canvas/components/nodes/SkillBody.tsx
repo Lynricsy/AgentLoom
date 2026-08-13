@@ -1,5 +1,4 @@
 import { memo } from 'react'
-import { useViewport } from '@xyflow/react'
 import { BookOpenText } from 'lucide-react'
 import type { CanvasNodeData } from '@/features/canvas/types'
 
@@ -8,7 +7,7 @@ interface SkillBodyProps {
 }
 
 export const SkillBody = memo(function SkillBody({ data }: SkillBodyProps) {
-  const { zoom } = useViewport()
+  // Body 只在外层 shell 的 full LOD 下渲染，这里不再按 zoom 二次降级
   const config = data.config ?? {}
 
   const skillId = typeof config.skillId === 'string' ? config.skillId : ''
@@ -26,18 +25,7 @@ export const SkillBody = memo(function SkillBody({ data }: SkillBodyProps) {
   }
 
   const displayName = skillName || skillId
-  const lod = zoom >= 0.7 ? 'high' : zoom >= 0.4 ? 'medium' : 'low'
 
-  if (lod === 'low') {
-    return (
-      <div className="flex items-center gap-2">
-        <BookOpenText className="h-3.5 w-3.5 shrink-0 text-primary/80" />
-        <span className="truncate text-xs font-medium text-foreground">
-          {displayName}
-        </span>
-      </div>
-    )
-  }
 
   return (
     <div className="space-y-1.5">
@@ -47,7 +35,7 @@ export const SkillBody = memo(function SkillBody({ data }: SkillBodyProps) {
           {displayName}
         </span>
       </div>
-      {lod === 'high' && skillDescription && (
+      {skillDescription && (
         <p className="line-clamp-2 text-[11px] text-muted-foreground">
           {skillDescription}
         </p>
