@@ -91,12 +91,18 @@
       <div class="stack s">
         <h3>这条性质换来了什么</h3>
         <ul class="dash">
-          <li><strong>无需内存计数器。</strong>「还差几个前驱完成」不缓存在内存里，每次完成事件都重新查询前驱状态。多进程并发推进同一张图时不会因计数器不同步而卡死或重复调度。</li>
-          <li><strong>水平扩展是免费的。</strong>工作进程无状态，扩副本不需要额外的一致性协议。</li>
+          <li><strong>无需内存计数器。</strong>「还差几个前驱完成」不缓存在内存里，每次完成事件都重新查询前驱状态，因此进程重启不影响调度进度。</li>
           <li><strong>调度逻辑可单测。</strong><code>next()</code> 是纯函数，测试不需要起数据库和队列。</li>
         </ul>
+        <h3>但「可重建」不等于「并发安全」</h3>
+        <p class="sm">这是两个必须分开讲的性质，混为一谈会被追穿。可重建只说明<strong>状态在外部</strong>；多个工作进程同时推进同一张图，还需要<strong>原子占位</strong>。</p>
+        <p class="sm">本系统的做法是在状态迁移上做<strong>比较并交换</strong>：先读出步骤当前状态，更新时把它写进 <code>WHERE</code> 条件（<code>id = ? AND status = &lt;刚读到的值&gt;</code>），受影响行数为 0 即判定为非法迁移。<strong>因此同一步骤不会被两个调度者同时推入队列</strong>——入队发生在这次条件更新之后。</p>
+        <div class="note warn">
+          <span class="t">仍未解决的两点</span>
+          ① 竞争失败的一方<strong>抛异常</strong>而不是当作良性无操作，这会把一次正常的并发去重表现成错误；② 条件更新<strong>之前</strong>写入的东西（如步骤输入）没有被这道闸门保护。<strong>而且我没有做过并发压力测试</strong>，所以只能说「有 CAS 机制」，不能说「已验证并发安全」。
+        </div>
         <h3>代价</h3>
-        <p class="sm">每个节点完成都要多做几次数据库查询。这是<strong>用吞吐换正确性</strong>——在 LLM 调用动辄数秒的场景里，几毫秒的查询开销可以忽略；如果节点是微秒级计算，这个设计就是错的。</p>
+        <p class="sm">每个节点完成都要多做几次数据库查询。这是<strong>用吞吐换可重建性</strong>——在 LLM 调用动辄数秒的场景里，几毫秒查询可以忽略；如果节点是微秒级计算，这个设计就是错的。</p>
       </div>
     </div>
 
@@ -131,6 +137,7 @@
         <h4 style="margin-top:1.6mm">本系统达到 A2</h4>
         <p class="sm" style="margin-top:1.4mm"><strong>A0</strong> 只有最终输出<br><strong>A1</strong> 每步输入/输出/工具调用被完整记录，可事后回看<br><strong>A2</strong> 在 A1 之上，执行可从持久状态恢复，并支持从任意节点及其下游局部重跑</p>
         <p class="xs" style="margin-top:1.6mm;color:rgba(255,255,255,.8)">它回答的是「<strong>刚才发生了什么</strong>」与「<strong>能不能接着跑</strong>」。与非确定性无关，因此 LLM 的随机性不构成障碍。</p>
+        <p class="xs" style="margin-top:1.6mm;color:rgba(255,255,255,.8)"><strong>边界：A2 成立在编排层</strong>（步骤状态与检查点都落库，可重建调度、可从任意节点及下游重跑）。<strong>一个正在进行中的 Agent 回合不在此列</strong>——它活在发起进程的内存里，进程崩溃即丢失，只能从该步骤整体重跑。</p>
       </div>
       <div class="card card-outlined">
         <div class="kicker mute">轴 R · 重放保真度</div>

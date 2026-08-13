@@ -126,7 +126,7 @@
     <p class="lead">人在回路的设计，真正的自由度不是「要不要审批」，而是<strong>审批的粒度</strong>。粒度决定了两件事：中断频率，以及恢复时需要重建多少状态。</p>
 
     <table class="tight">
-      <thead><tr><th style="width:24mm">粒度</th><th style="width:36mm">暂停的对象</th><th style="width:32mm">恢复成本</th><th>问题</th></tr></thead>
+      <thead><tr><th style="width:24mm">粒度</th><th style="width:36mm">暂停的对象</th><th style="width:32mm">恢复单元与成本</th><th>问题</th></tr></thead>
       <tbody>
         <tr><td><strong>run 级</strong></td><td>整次执行</td><td>低（重新开始）</td><td>审批点太粗，用户看不到「到底在批准什么」</td></tr>
         <tr><td><strong>turn 级</strong></td><td>整个模型回合，步骤状态置为等待</td><td><strong>高</strong>：要重建整个 agent loop 的状态机</td><td>暂停语义与失败语义混淆，监控上分不清「挂了」还是「在等人」</td></tr>
@@ -139,6 +139,10 @@
         <h3>为什么 tool 级是对的</h3>
         <p class="sm">因为<strong>等待的对象本来就是一次工具调用，不是整个回合</strong>。把状态标在回合上是一次不必要的抽象泄漏：模型的这一轮仍在进行中，只是其中一个动作被冻结了。</p>
         <p class="sm">由此得到一个反直觉但正确的结论：<strong>「等待审批」不应该是步骤状态，而应该是工具调用状态；步骤本身仍是「运行中」。</strong>监控面板据此能正确区分「卡住了」和「在等人」。</p>
+        <div class="note">
+          <span class="t">真正该问的维度</span>
+          不是「有没有工具级审批」，而是<strong>审批点的粒度</strong>与<strong>恢复单元的粒度</strong>是否一致。二者不一致时（审批在工具、恢复靠重跑整个节点），暂停前的副作用会被重复执行——<strong>审批本身反而引入了新的正确性风险</strong>。
+        </div>
       </div>
       <div class="stack s">
         <h3>中断预算：一个应该被度量却没人度量的量</h3>
@@ -148,6 +152,10 @@
         </div>
         <p class="sm">它必须随任务规模<strong>次线性</strong>增长，否则自主性的收益会被中断成本吃光。本系统的处理是按操作不可逆性分档，并允许按「会话 × 操作类别」记住决定。</p>
         <div class="note warn">
+          <span class="t">不要overclaim</span>
+          <strong>tool 级审批不是本系统独有</strong>：OpenAI Agents SDK 的 <code>needs_approval</code> 精确到单次工具调用，运行状态可序列化后在另一进程恢复；LlamaIndex Workflows 也在工具内发事件等待人类响应。真正的差异在于<strong>把审批状态与步骤状态解耦</strong>（步骤仍为运行中，批准后不重跑任何已执行代码），以及<strong>审批决策可按「会话 × 类别」固化并写审计</strong>。<br>要同时说出局限：<strong>等待发生在发起进程的内存里</strong>，Redis 只负责把「决定」从接收审批的进程传回来，<strong>发起进程一死这次回合就丢了</strong>——这一点上带外部检查点的 LangGraph 反而更强。
+        </div>
+        <div class="note">
           <span class="t">No data</span>
           我没有测过实际中断率，也没有量化过「记住决定」对它的影响。这是一个容易设计、代价很低的实验（§ V.2）。
         </div>

@@ -1,0 +1,181 @@
+<!-- ============ PART V 分隔 ============ -->
+<section class="page ink" data-sec="PART V">
+  <div class="body stack" style="justify-content:space-between">
+    <div class="stack s">
+      <div class="kicker">PART V</div>
+      <div class="bignum w" style="font-size:88pt">V</div>
+    </div>
+    <div class="stack m">
+      <h2 style="color:#fff;font-size:34pt">评估与<br>开放问题</h2>
+      <p class="lead">这是全册最重要的一部分。工程系统在学术场合的价值，不在于它跑起来了，而在于它<strong>暴露了哪些还没有被解决的问题</strong>，以及作者能不能把这些问题表述成可研究的形式。</p>
+      <div class="g g3 gap-s" style="border-top:1px solid rgba(255,255,255,.28);padding-top:4mm">
+        <div><div class="kicker" style="opacity:.6">V.1–V.2</div><p class="sm" style="color:#fff;margin-top:1.5mm">该怎么评估 · 我没做什么</p></div>
+        <div><div class="kicker" style="opacity:.6">V.3–V.4</div><p class="sm" style="color:#fff;margin-top:1.5mm">五个开放问题</p></div>
+        <div><div class="kicker" style="opacity:.6">V.5–V.6</div><p class="sm" style="color:#fff;margin-top:1.5mm">问答 · 陈述脚本</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ V.1 ============ -->
+<section class="page" data-sec="V.1 · 评估方法">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">V.1 · HOW TO EVALUATE</div>
+      <h2>这类系统<br>该拿什么指标衡量</h2>
+    </div>
+
+    <p class="lead">现有 Agent 评测（工具调用准确率、任务完成率、各类 benchmark）衡量的是<strong>模型能力</strong>。而编排平台的质量与模型能力基本正交——换个更强的模型，平台的隔离强度、恢复能力、中断成本都不会变。这里缺一套面向<strong>系统</strong>的评估口径。</p>
+
+    <div class="stack s">
+      <div class="def">
+        <div class="term"><span class="lv">M1</span><span>恢复保真度 · Recovery fidelity</span></div>
+        <p class="body2"><strong>怎么测：</strong>故障注入。在执行的随机时点杀死工作进程，恢复后比较「继续执行的结果」与「不中断执行的结果」在<em>可观测契约</em>上是否等价——完成的节点集合是否为超集、外部副作用是否重复、审批状态是否丢失。<br><strong>指标：</strong>副作用重复率、状态丢失率、恢复成功率。<br><strong>为什么重要：</strong>这是唯一能把「支持断点续跑」从口号变成数字的方法。</p>
+      </div>
+      <div class="def">
+        <div class="term"><span class="lv">M2</span><span>隔离强度 · Escape resistance</span></div>
+        <p class="body2"><strong>怎么测：</strong>构造对抗性提示词集合，诱导 Agent 尝试逃逸动作——访问宿主元数据地址、扫描同网段其他沙箱、读取沙箱外路径、发起未授权回调、伪造源地址。统计被拦截比例与拦截层级。<br><strong>指标：</strong>逃逸尝试拦截率、最深突破层级。<br><strong>为什么重要：</strong>把「我们做了隔离」变成「在这 N 类攻击下拦截率是多少」。</p>
+      </div>
+      <div class="def">
+        <div class="term"><span class="lv">M3</span><span>中断经济性 · Interruption economics</span></div>
+        <p class="body2"><strong>怎么测：</strong>在固定任务集上统计中断率（需人工确认的工具调用 / 总工具调用），并观察它随任务复杂度的增长曲线；对比开启与关闭「记住决定」两种配置。<br><strong>指标：</strong>中断率、中断率对任务规模的增长阶（希望是次线性）、误批准率。</p>
+      </div>
+      <div class="def">
+        <div class="term"><span class="lv">M4</span><span>协商收益 · Negotiation yield</span></div>
+        <p class="body2"><strong>怎么测：</strong>构造端口对数据集（人工标注「应该允许 / 应该拒绝 / 需映射」），测量四级判定的准确率，以及 PARTIAL 候选映射的 top-k 命中率。<br><strong>指标：</strong>判定准确率、映射建议命中率、用户手工修正率。</p>
+      </div>
+    </div>
+
+    <div class="note warn">
+      <span class="t">缺什么</span>
+      M1–M4 都<strong>没有公开数据集或标准协议</strong>。这本身就是一个可以做的贡献：为「工作流—Agent 混合系统」定义一组系统级评测任务与故障注入协议。目前学界的注意力几乎全在模型能力评测上。
+    </div>
+  </div>
+</section>
+
+<!-- ============ V.2 ============ -->
+<section class="page" data-sec="V.2 · 未做的评估">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">V.2 · WHAT I DID NOT MEASURE</div>
+      <h2>诚实清单</h2>
+      <p class="xs">按「说不出数字」的严重程度排序。被问到任何一条，正确回答是承认 + 说明该怎么测 + 说明为什么当时没测。</p>
+    </div>
+
+    <table class="tight">
+      <thead><tr><th style="width:36mm">缺口</th><th style="width:52mm">影响</th><th>本该怎么做</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>没有任何基准测试</strong></td>
+          <td>无法量化沙箱启动开销、调度吞吐、事件延迟。所有性能表述只能引用第三方文献</td>
+          <td>先测三个量：沙箱冷启动分布、单节点调度往返、事件端到端延迟</td>
+        </tr>
+        <tr>
+          <td><strong>没有逃逸测试集</strong></td>
+          <td>隔离设计的有效性只有论证，没有证据</td>
+          <td>按 M2 构造对抗提示词集，分层统计拦截率</td>
+        </tr>
+        <tr>
+          <td><strong>没有故障注入</strong></td>
+          <td>「可恢复」只在设计上成立，没被验证过</td>
+          <td>按 M1 做随机杀进程实验</td>
+        </tr>
+        <tr>
+          <td><strong>类型判定无评估集</strong></td>
+          <td>字段相似度是纯启发式，准确率未知</td>
+          <td>按 M4 标注端口对数据集</td>
+        </tr>
+        <tr>
+          <td><strong>无对照系统</strong></td>
+          <td>说不出「相比 X 好在哪」，只能说设计取舍不同</td>
+          <td>选 1 个同类系统，在同一组任务上比中断率与恢复成功率</td>
+        </tr>
+        <tr>
+          <td><strong>无真实用户数据</strong></td>
+          <td>循环轮数分布、中断率、PARTIAL 连接占比这些设计假设全部未经检验</td>
+          <td>埋点收集，用于校准 II.4 与 III.3 的取舍</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="g g2 gap-s">
+      <div class="note">
+        <span class="t">为什么当时没做</span>
+        这是一个以「功能完备的可部署系统」为目标的工程项目，不是以「回答某个问题」为目标的研究原型。目标不同，投入方向就不同：所有精力花在覆盖真实工作流所需的功能面与安全边界上。<strong>这是一个明确的选择，不是疏忽</strong>——但它也确实意味着这个系统目前只能作为「问题来源」，不能作为「结论来源」。
+      </div>
+      <div class="note warn">
+        <span class="t">面试里的正确姿态</span>
+        不要说「后续会补上评估」。说：<strong>「这个系统的价值在于它暴露了四个我答不出数字的问题，其中 RQ1 和 RQ3 我认为可以做成独立课题。」</strong>把工程缺口转化为研究入口，这才是委员会想听的。
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ V.3 ============ -->
+<section class="page" data-sec="V.3 · 开放问题 1-3">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">V.3 · OPEN PROBLEMS</div>
+      <h2>三个可以立项的问题</h2>
+    </div>
+
+    <div class="stack m">
+      <div class="rq">
+        <div class="id">RQ 1</div>
+        <div class="t">非确定性执行的重放：如何定义并度量「等价重放」？</div>
+        <p><strong>问题：</strong>LLM 破坏了确定性重放的前提，但完全放弃重放意味着无法做回归测试。折中方案是对模型与工具调用做记录-回放，难点在于<strong>请求指纹的定义</strong>：指纹太严（含完整上下文）则任何提示词微调都导致全部失效；太松则会误命中错误的记录。</p>
+        <p><strong>可研究形式：</strong>定义一族指纹函数（精确匹配 / 语义嵌入近邻 / 结构化槽位匹配），在真实执行轨迹上度量「命中率 × 误命中率」的帕累托前沿；并定义「执行轨迹等价」的形式化判据（如：可观测副作用序列的互模拟）。</p>
+        <p><strong>为什么现在能做：</strong>轨迹数据可以从任意现有 Agent 平台采集，不依赖新系统。</p>
+      </div>
+
+      <div class="rq">
+        <div class="id">RQ 2</div>
+        <div class="t">动态图的静态可分析性：能否给出资源上界的保守估计？</div>
+        <p><strong>问题：</strong>Agent 图的形状运行时才确定，因此无法在提交时回答「这次执行最多花多少钱 / 多长时间 / 调多少次工具」。而这恰恰是企业采用的前置条件——没有成本上界，没人敢把它接进生产流程。</p>
+        <p><strong>可研究形式：</strong>把「有界展开 + 预算上限」的执行模型形式化，借鉴程序分析中的<strong>资源上界推导</strong>（如 amortized resource analysis），在给定循环预算、子 Agent 递归深度、工具调用上限的前提下，推导出保守的令牌与时间上界；再度量该上界相对真实消耗的松紧度。</p>
+        <p><strong>难点：</strong>上界必须足够紧才有用。太松（比如"最多 100 轮 × 最大上下文"）在实践中等于没有。</p>
+      </div>
+
+      <div class="rq">
+        <div class="id">RQ 3</div>
+        <div class="t">类型协商的学习化：字段映射能否从历史连接中学出来？</div>
+        <p><strong>问题：</strong>可视化编排里，端口 schema 的部分匹配需要给出候选字段映射。当前是字段名相似度启发式——没有 ground truth、没有评估集、没有准确率。</p>
+        <p><strong>可研究形式：</strong>把它建模为<strong>schema matching</strong> 问题（数据集成领域的经典问题，已有评测传统），但引入两个新条件：① 训练信号来自用户在图上的历史确认/修正行为，是<em>隐式反馈</em>；② 需要给出 top-k 候选而非单一映射，评估指标应为 top-k 命中率与用户修正代价。</p>
+        <p><strong>为什么有意思：</strong>它把一个纯工程的易用性问题，接到了数据集成领域已有的方法与评测体系上，且天然带有在线学习的反馈闭环。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ V.4 ============ -->
+<section class="page" data-sec="V.4 · 开放问题 4-5">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">V.4 · OPEN PROBLEMS</div>
+      <h2>两个更偏系统安全的问题</h2>
+    </div>
+
+    <div class="stack m">
+      <div class="rq">
+        <div class="id">RQ 4</div>
+        <div class="t">人在回路的最优粒度：中断策略能否形式化为在线决策问题？</div>
+        <p><strong>问题：</strong>审批门设得太密，用户放弃自动化；设得太疏，风险暴露。当前所有系统（包括本系统）都用<strong>静态规则</strong>决定哪些操作需要确认——按工具类型、按可逆性分档。但真实风险显然依赖上下文：同一个「写文件」，写在临时目录和写在配置目录完全不同。</p>
+        <p><strong>可研究形式：</strong>建模为<strong>带风险约束的在线决策</strong>：每次工具调用面临「自动放行 / 请求确认」二选一，放行的期望损失取决于操作的不可逆性与上下文，确认的代价是固定的用户注意力开销。目标是在给定风险预算下最小化累计中断次数。可以用上下文赌博机（contextual bandit）框架，用用户的批准/拒绝作为反馈信号。</p>
+        <p><strong>关键难点：</strong>损失是<strong>非对称且长尾</strong>的——绝大多数误放行没有后果，极少数造成不可逆损失。标准的后悔界分析在这种分布下意义不大，需要引入风险敏感的目标函数。</p>
+      </div>
+
+      <div class="rq">
+        <div class="id">RQ 5</div>
+        <div class="t">自修改 Agent 的可达状态空间：能否证明危险状态不可达？</div>
+        <p><strong>问题：</strong>允许 Agent 修改自身配置（模型、工具集、权限策略）之后，出现一个新问题：<strong>经过若干次自我修改，系统可能到达什么状态？</strong>当前的防护是人工审批每次写操作——这只保证「每一步都被看过」，不保证「若干步之后不会到达危险配置」。人是无法通过审查单步变更来判断多步可达性的。</p>
+        <p><strong>可研究形式：</strong>把 Agent 配置视为状态，把自进化操作视为状态迁移，把「能力单调收窄」等不变式视为安全属性，用<strong>模型检验</strong>回答可达性问题：给定初始配置与允许的操作集合，是否存在一条路径到达违反不变式的状态？如果存在，输出反例路径。</p>
+        <p><strong>与 § II.6 的关系：</strong>这正是把那条不变式从「靠人工遵守」提升为「可自动验证」的路径。也是本系统里工程与形式化方法结合最紧的一个点。</p>
+      </div>
+    </div>
+
+    <div class="note">
+      <span class="t">如何选题</span>
+      如果只能做一个：<strong>RQ1</strong> 门槛最低、数据最易得、结果对整个领域都有用（所有 Agent 平台都需要回归测试）；<strong>RQ5</strong> 理论深度最高，但需要先把配置空间和操作语义形式化，前期投入大。RQ3 介于两者之间，且能直接接上已有的 schema matching 评测传统。
+    </div>
+  </div>
+</section>

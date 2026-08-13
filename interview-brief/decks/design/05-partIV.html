@@ -1,0 +1,114 @@
+<!-- ============ PART IV 分隔 ============ -->
+<section class="page ink" data-sec="PART IV">
+  <div class="body stack" style="justify-content:space-between">
+    <div class="stack s">
+      <div class="kicker">PART IV</div>
+      <div class="bignum w" style="font-size:88pt">IV</div>
+    </div>
+    <div class="stack m">
+      <h2 style="color:#fff;font-size:34pt">在已有工作<br>中的位置</h2>
+      <p class="lead">这一部分的目的不是证明本系统更好——它在多数维度上不更好。目的是<strong>准确说出差异在哪一维</strong>。学术面试最忌讳的两件事是：把别人已有的能力说成自己的创新，以及说不清自己和别人到底哪里不同。</p>
+      <div class="g g3 gap-s" style="border-top:1px solid rgba(255,255,255,.28);padding-top:4mm">
+        <div><div class="kicker" style="opacity:.6">IV.1–IV.2</div><p class="sm" style="color:#fff;margin-top:1.5mm">编排框架 · 持久化引擎</p></div>
+        <div><div class="kicker" style="opacity:.6">IV.3–IV.4</div><p class="sm" style="color:#fff;margin-top:1.5mm">隔离机制 · 协议层</p></div>
+        <div><div class="kicker" style="opacity:.6">IV.5–IV.6</div><p class="sm" style="color:#fff;margin-top:1.5mm">记忆检索 · 定位差异</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ IV.1 ============ -->
+<section class="page" data-sec="IV.1 · 编排框架">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">IV.1 · ORCHESTRATION FRAMEWORKS</div>
+      <h2>四个维度上的实际差异</h2>
+      <p class="xs">以下均据官方文档核实，非印象。中断粒度一栏尤其重要——我原以为工具级审批是差异点，核实后<strong>不是</strong>。</p>
+    </div>
+
+    <table class="tight">
+      <thead><tr><th style="width:26mm">系统</th><th style="width:32mm">计算模型</th><th style="width:36mm">状态与恢复</th><th>人在回路的粒度</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>LangGraph</strong></td>
+          <td>带条件边的状态图，显式支持循环；Pregel 式 super-step 推进</td>
+          <td>checkpointer 在 <strong>super-step 边界</strong>存图状态，<code>thread_id</code> 作为持久游标；内存版进程重启即丢，Postgres/SQLite 版可跨进程</td>
+          <td><code>interrupt()</code> <em>可以</em>写在工具函数里，因此<strong>审批点能到工具调用</strong>；但官方明确检查点只存在 super-step 边界，恢复时<strong>包含它的整个节点从函数开头重跑</strong>，暂停前的代码与副作用会再执行一次（节点内 task 结果可被缓存跳过）</td>
+        </tr>
+        <tr>
+          <td><strong>OpenAI Agents SDK</strong></td>
+          <td>Agent + 工具循环，Runner 驱动</td>
+          <td><code>RunState</code> 可序列化为 JSON，在<strong>另一个进程</strong>反序列化后继续；Session 存储支持 SQLite / Redis / SQLAlchemy 等</td>
+          <td><strong>单次工具调用级</strong>：<code>needs_approval=True</code>，暂停后 <code>RunResult.interruptions</code> 给出待批项，approve / reject 后恢复</td>
+        </tr>
+        <tr>
+          <td><strong>LlamaIndex Workflows</strong></td>
+          <td>事件驱动：step 消费/产出事件；分支即返回不同事件，循环即返回被前序 step 消费的事件</td>
+          <td>默认<strong>易失</strong>；<code>Context.to_dict/from_dict</code> 手动做检查点，可跨进程。恢复时重派未完成事件、已完成 step 不重跑；中途捕获时该 step 从头重跑（at-least-once）</td>
+          <td><strong>工具调用级</strong>：工具发出 <code>InputRequiredEvent</code>，等待 <code>HumanResponseEvent</code></td>
+        </tr>
+        <tr>
+          <td><strong>CrewAI</strong></td>
+          <td>Flows 事件驱动，支持状态、循环、分支</td>
+          <td><code>@persist</code> 默认落 SQLite，按状态 UUID 恢复，可 fork</td>
+          <td><strong>任务 / 回合级</strong>：<code>Task(human_input=True)</code> 在 agent 交付最终答案前请求输入，<strong>不是每次工具调用</strong>；较新版本的 Flow 方法装饰器可做方法级审批并按 approved / rejected / needs_revision 分支</td>
+        </tr>
+        <tr>
+          <td><strong>AutoGen / AG2</strong></td>
+          <td>事件驱动 actor（Core）+ 对话驱动群聊（AgentChat）</td>
+          <td><code>save_state</code> / <code>load_state</code> 导出导入可序列化状态；<strong>不是</strong>内置的持久化工作者/检查点服务</td>
+          <td>AG2 可在工具内直接请求人类输入并由钩子决定交互通道</td>
+        </tr>
+        <tr>
+          <td><strong>MetaGPT</strong></td>
+          <td>角色化 SOP 协作（PM / 架构师 / 工程师）</td>
+          <td>官方 README 未承诺检查点 / 断点续跑</td>
+          <td>未见官方保证</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="note warn">
+      <span class="t">必须修正的自我认知 + 一个更好的切分</span>
+      工具级审批<strong>已经是成熟做法</strong>（OpenAI Agents SDK、LlamaIndex Workflows 都有），讲成自己的创新会被当场戳破。<br>
+      但核实过程中浮现出一个更精确的维度：<strong>「审批点的粒度」与「恢复单元的粒度」是两回事。</strong>LangGraph 允许把审批点放进工具，恢复单元却是整个节点（暂停前的副作用会重跑）；OpenAI Agents SDK 两者都在工具调用级。<strong>真正决定用户体验与正确性的是后者</strong>——恢复单元越大，重复副作用的风险越高。这个切分比「有没有工具级审批」有信息量得多。
+    </div>
+  </div>
+</section>
+
+<!-- ============ IV.2 ============ -->
+<section class="page" data-sec="IV.2 · 持久化引擎">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">IV.2 · DURABLE WORKFLOW ENGINES</div>
+      <h2>为什么不直接用<br>成熟的工作流引擎</h2>
+    </div>
+
+    <p class="lead">这是最容易被问、也最能体现是否真的想清楚的问题。Temporal 与 Airflow 在可靠性上远比任何 Agent 框架成熟——不用它们，必须给出技术理由而不是「想自己写」。</p>
+
+    <div class="g g2 gap-s">
+      <div class="card card-fill">
+        <div class="kicker mute">TEMPORAL</div>
+        <h4 style="margin-top:1.6mm">确定性重放的代价</h4>
+        <p class="sm" style="margin-top:1.4mm">官方要求：<strong>Workflow 代码必须是确定性的</strong>——给定相同输入，必须以相同顺序发出相同的 Workflow API 调用，否则重放会报非确定性错误。因此所有不确定操作（数据库、外部 API、<strong>LLM 调用</strong>）都必须放进 Activity，其结果记入事件历史，重放时不重新执行。随机数与本地时间也必须走 SDK 提供的接口。</p>
+        <p class="xs" style="margin-top:1.6mm"><strong>注意别说错：</strong>「Temporal 要求图必须写在代码里」是<strong>错的</strong>。完全可以写一个固定的、确定性的解释器型 Workflow 去执行一份 JSON 图，把每个节点的副作用放进 Activity——这是成熟做法。所以不能用「产品形态冲突」当理由。</p>
+      </div>
+      <div class="card card-fill">
+        <div class="kicker mute">AIRFLOW</div>
+        <h4 style="margin-top:1.6mm">真环是非法的</h4>
+        <p class="sm" style="margin-top:1.4mm">源码级事实：<code>DAG.check_cycle()</code> 用三色 DFS 检测回边，发现即抛 <code>AirflowDagCycleException</code>。<strong>真正的环不是合法 DAG。</strong></p>
+        <p class="sm" style="margin-top:1.4mm">替代手段是<strong>动态任务映射</strong>：运行时根据上游输出的列表 / 字典展开 n 个独立任务实例，调度器在执行前创建它们。这是<strong>有限扇出</strong>，不是把下游边指回上游，<strong>无法表达次数未知的循环</strong>。</p>
+        <p class="xs" style="margin-top:1.6mm"><strong>结论：</strong>Airflow 的模型与本系统的「有界展开」（§ II.4）其实同源——都用有限展开替代真环。差别在于本系统把展开发生在<em>运行时且由模型决定终止</em>，因此必须额外引入硬预算。</p>
+      </div>
+    </div>
+
+    <div class="landing">
+      <b>诚实版本（推荐这样答）：</b>「Temporal 能提供比我强得多的持久化保证，而且解释器型 Workflow 完全可以承载可视化 JSON 图，所以<strong>技术上没有不可逾越的障碍</strong>。我没用它，真实原因有三条：<strong>①</strong> 调度器在引入它之前已经存在，替换是净成本；<strong>②</strong> 它引入一整套额外基础设施与运维面，而这是个自托管、私有化部署为主的系统；<strong>③</strong> 事件历史与版本化语义会成为长期约束——工作流定义一旦变更就要处理 versioning，而我的图是用户天天在改的。<strong>这三条都是权衡，不是技术不可行。如果重做，我会认真评估直接构建在其上。</strong>」
+    </div>
+
+    <div class="note">
+      <span class="t">n8n 的参照价值</span>
+      n8n 的队列模式是这样分工的：主进程只负责触发，执行 ID 进 Redis，工作进程从数据库取工作流定义后执行，结果写回数据库。<strong>这与本系统的「状态外置 + 无状态工作进程」是同一套结构</strong>——说明这个结构不是我发明的，而是这类系统的收敛解。
+    </div>
+  </div>
+</section>

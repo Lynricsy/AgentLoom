@@ -1,0 +1,153 @@
+<!-- ============ IV.3 ============ -->
+<section class="page" data-sec="IV.3 · 隔离谱系">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">IV.3 · ISOLATION LINEAGE</div>
+      <h2>四档隔离，<br>按攻击面宽度排列</h2>
+    </div>
+
+    <p class="sm" style="max-width:74ch">学术场合谈隔离，正确的语言是<strong>攻击面宽度</strong>，不是「安全 / 不安全」。下表按「不可信代码能直接触达的接口」排序。</p>
+
+    <table class="tight">
+      <thead><tr><th style="width:28mm">机制</th><th style="width:38mm">边界在哪一层</th><th>不可信代码直接触达的接口</th></tr></thead>
+      <tbody>
+        <tr><td><strong>进程 / 命名空间</strong><br><span class="xs">普通容器</span></td><td>共享宿主内核 + 命名空间与 cgroup 隔离</td><td><strong>整个系统调用接口</strong>（Linux 数百个系统调用及其参数空间）。seccomp 可缩小，但缩小到多少取决于配置</td></tr>
+        <tr><td><strong>用户态内核</strong><br><span class="xs">gVisor</span></td><td>在用户态实现一层内核，拦截并代理应用的系统调用</td><td>应用面对的是用户态内核；真正落到宿主内核的系统调用集合被显著收窄。代价是系统调用密集型负载的性能损耗</td></tr>
+        <tr><td><strong>硬件虚拟化</strong><br><span class="xs">Firecracker / Kata</span></td><td>KVM 之上的轻量虚拟机，<strong>每个沙箱独立内核</strong></td><td><strong>虚拟设备接口 + 虚拟机监控器</strong>。Firecracker 刻意只实现极少量 virtio 设备，正是为了压窄这一面</td></tr>
+        <tr><td><strong>语言虚拟机</strong><br><span class="xs">WASM</span></td><td>线性内存 + 无环境权限的执行模型</td><td><strong>只有显式注入的宿主函数</strong>。默认没有文件系统、没有网络、没有系统调用。WASI 会重新引入一部分接口，等于自愿放宽</td></tr>
+      </tbody>
+    </table>
+
+    <div class="g g-5-7">
+      <div class="stack s">
+        <h3>为什么本系统同时用两档</h3>
+        <p class="sm">WASM 的接口面最窄，但它<strong>装不下一个开发环境</strong>——模型生成的代码要读写文件、开终端、装依赖、跑测试。所以：</p>
+        <ul class="dash">
+          <li>第三方插件 → WASM：它需要的能力本来就窄（数据转换），窄接口面正好匹配，且启动开销低，适合高频调用。</li>
+          <li>模型生成的代码 → microVM：需要完整系统调用面，只能靠独立内核来收窄真正的攻击面。</li>
+        </ul>
+        <p class="sm"><strong>这不是「更安全」，是把每类代码放到接口面刚好够用的那一档。</strong></p>
+      </div>
+      <div class="stack s">
+        <div class="note warn">
+          <span class="t">数字纪律</span>
+          Firecracker 的启动延迟与内存开销有公开论文（NSDI 2020，<em>Firecracker: Lightweight Virtualization for Serverless Applications</em>）给出的数字，但那些数字有特定的测量条件（镜像、内核配置、硬件）。<strong>我没有在自己的部署上做过基准测试</strong>，因此面试中<strong>不引用任何具体毫秒数或 MiB 数</strong>，只讲攻击面结构差异。被问到性能，正确回答是「我没测过，如果要测我会这样设计实验」。
+        </div>
+        <div class="note">
+          <span class="t">同类基础设施</span>
+          E2B、Modal、Daytona 这类「Agent 沙箱即服务」把同一层能力做成了产品。<strong>如果只需要沙箱，直接用它们更理性</strong>；本系统自建的理由是沙箱要与编排、租户治理、审计深度耦合（会话与执行的双向绑定、工作区快照、权限回调），而这些耦合点很难跨越服务边界。
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ IV.4 ============ -->
+<section class="page" data-sec="IV.4 · 协议层">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">IV.4 · PROTOCOL LAYER</div>
+      <h2>三个协议，三种关系</h2>
+      <p class="xs">这一页的主要价值是<strong>避免说错</strong>——「ACP」是两个不同的东西，混淆会立刻暴露没读过一手材料。</p>
+    </div>
+
+    <div class="stackdiag">
+      <div class="hl"><span><b>MCP</b>（Model Context Protocol，Anthropic）—— Agent ↔ <strong>工具与上下文</strong></span><span class="t">TOOLS</span></div>
+      <div><span><b>ACP</b>（Agent Client Protocol，Zed）—— Agent ↔ <strong>编辑器客户端</strong>，定位类比 LSP</span><span class="t">CLIENT</span></div>
+      <div><span><b>A2A</b>（Agent2Agent，现属 Linux Foundation）—— Agent ↔ <strong>Agent</strong></span><span class="t">PEER</span></div>
+      <div class="dk"><span><b>另一个 ACP</b>（Agent Communication Protocol，IBM / BeeAI）—— 也是 Agent↔Agent，<strong>与 Zed 的 ACP 同名但不同物</strong>，其仓库已标注并入 A2A</span><span class="t">⚠ 易混</span></div>
+    </div>
+
+    <div class="g g2 gap-s">
+      <div class="stack s">
+        <h3>MCP 的安全假设值得单独讲</h3>
+        <p class="sm">MCP 规范当前的标准传输是 <strong>stdio</strong> 与 <strong>Streamable HTTP</strong>（后者自 2025-03-26 起取代早期的 HTTP+SSE；SSE 现在只是 POST 响应里的可选流）。</p>
+        <p class="sm">官方安全文档写得很直白：<strong>本地 MCP 服务器可以执行任意代码，且与客户端同权限</strong>；一键配置前必须向用户展示完整启动命令，并建议沙箱化与最小权限。授权规范也明确 OAuth 流程适用于 HTTP 传输，stdio 不走该流程、凭据从环境获取。</p>
+      </div>
+      <div class="stack s">
+        <div class="card card-ink">
+          <div class="kicker">本系统的对应决策</div>
+          <p class="sm" style="margin-top:2mm">进程内运行的 Agent <strong>只允许 HTTP 传输的 MCP，stdio 在发布期直接拒绝</strong>。</p>
+          <p class="sm" style="margin-top:2mm">理由要说准：<strong>不是「stdio 本身不安全」</strong>，而是——在一个多租户服务端里，stdio 意味着<strong>由租户可编辑的配置决定服务进程去 spawn 什么本地命令、注入什么环境变量</strong>。这等于把配置写入权限提升为服务进程权限的远程代码执行。而 MCP 官方文档恰好把「本地服务器与客户端同权限、应当沙箱化」写成了明确建议。</p>
+          <p class="xs" style="margin-top:2mm;color:rgba(255,255,255,.7)">沙箱模式下 stdio 是允许的——因为那时「客户端权限」本身就已经被限制在一个独立内核的虚拟机里。这正是 § II.6 能力单调收窄的一个实例。</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="note">
+      <span class="t">版本纪律</span>
+      MCP 规范按日期版本演进（本系统实现时对齐的是当时的稳定版）。面试中提到传输或能力细节时<strong>务必带上规范版本日期</strong>，否则容易和对方记忆中的另一个版本对不上。
+    </div>
+  </div>
+</section>
+
+<!-- ============ IV.5 ============ -->
+<section class="page" data-sec="IV.5 · 记忆与检索">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">IV.5 · MEMORY &amp; RETRIEVAL</div>
+      <h2>不要说「图谱比向量好」</h2>
+    </div>
+
+    <p class="lead">这是本领域最容易被抓住的过度宣称。现有证据是<strong>条件性</strong>的，而且几乎每一项都有明确的实验边界。</p>
+
+    <div class="stack s">
+      <div class="def">
+        <div class="term"><span class="lv">01</span><span>GraphRAG（Microsoft，arXiv:2404.16130）</span></div>
+        <p class="body2">机制：LLM 抽取实体图 → Leiden 层级社区 → 自底向上生成社区摘要 → 查询时 map-reduce。定位是<strong>全局归纳型问题</strong>（query-focused summarization），不是局部事实查找。<br>论文在其两个语料上报告：全面性与多样性优于向量 RAG，<strong>但直接性（directness）上向量方法更好</strong>，且图构建与社区摘要需要额外的 LLM 索引成本。<strong>该文长期标注为预印本 / 微软研究报告，不要说成已被某会议录用。</strong></p>
+      </div>
+      <div class="def">
+        <div class="term"><span class="lv">02</span><span>Zep / Graphiti（arXiv:2501.13956）</span></div>
+        <p class="body2">时序知识图谱式的 Agent 记忆：原始 episode 无损层 → 语义实体与边 → 社区摘要；边带有效区间与失效机制；检索是 <strong>全文 + 向量 + 图遍历的混合</strong>再重排。<br><strong>要点：它的卖点是「动态增量 + 时间有效性 + 混合检索」，不是「图取代向量」。</strong>论文数字为厂商自评，且其中一个基准的部分类别上表现是下降的。</p>
+      </div>
+      <div class="def">
+        <div class="term"><span class="lv">03</span><span>MemGPT / Letta（arXiv:2310.08560）与 Generative Agents（UIST '23）</span></div>
+        <p class="body2">MemGPT：把上下文窗口当作「主存」，用函数调用在主上下文与外部存储间分页与驱逐，属<strong>虚拟内存式</strong>的记忆管理。<br>Generative Agents：memory stream + reflection（周期性把经验综合成高阶记忆）+ retrieval（时近性、重要性、相关性加权）。<strong>论文本身就报告了记忆漏召回与润色式幻觉。</strong></p>
+      </div>
+    </div>
+
+    <div class="note warn">
+      <span class="t">本系统的立场（可安全表述）</span>
+      「我按<strong>查询类型</strong>分配表示，而不是押注某种表示更好：知识库要找相似片段，用向量；Agent 记忆要表达关系、需要版本与作废、规模只有百条量级，用结构化图 + 全文检索。<strong>我没有做过两种表示的对照实验</strong>，所以不声称任何一方更优。」
+    </div>
+  </div>
+</section>
+
+<!-- ============ IV.6 ============ -->
+<section class="page" data-sec="IV.6 · 定位差异">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">IV.6 · WHAT IS ACTUALLY DIFFERENT</div>
+      <h2>三条能被追问的差异</h2>
+      <p class="xs">核实完一圈之后，能站得住的差异只有这三条。其余部分——工具级审批、检查点、事件驱动、状态外置——都是这个领域的<strong>收敛解</strong>，不是我的创新。</p>
+    </div>
+
+    <div class="stack m">
+      <div class="rq">
+        <div class="id">DIFF 1</div>
+        <div class="t">「原地续行」的粒度：与 LangGraph 各强一轴</div>
+        <p>工具级审批已经普遍存在，不是差异。真正的差异在<strong>恢复单元</strong>：LangGraph 的审批点可以放进工具，但恢复时<strong>包含它的整个节点从头重跑</strong>，暂停前的副作用需要自己保证幂等。本系统的审批只冻结那一次工具调用，模型回合仍在原地运行，批准后<strong>不重跑任何已执行的代码</strong>。</p>
+        <p><strong>但必须同时说出反面（我核对过源码）：</strong>这只是<strong>「活着的进程内原地续行」，不是故障恢复</strong>。自进化那条门是发起进程内的一个内存 Promise，Redis 只负责把「决定」从接收审批请求的那个进程传回来（发起进程每 250ms 轮询）；沙箱那条门更简单，挂起表是适配器里的一个本地 Map，没有任何分布式同步。<strong>发起进程一崩，这次回合就没了，没有工具级的故障恢复。</strong>而 LangGraph 配合外部检查点存储可以在<strong>另一个进程</strong>继续。</p>
+        <p><strong>结论要这样讲：</strong>两者各强一轴——我在<strong>续行粒度</strong>上更细（批准后不重跑任何已执行代码），它在<strong>跨进程存活性</strong>上更强（进程死了还能接着跑，代价是重跑整个节点）。<strong>正确目标是两者兼得，我只做到了一半。</strong></p>
+      </div>
+
+      <div class="rq">
+        <div class="id">DIFF 2</div>
+        <div class="t">把执行隔离当成一等公民而非附加层</div>
+        <p>多数编排平台把代码执行隔离作为可选组件，并在文档中标注其局限——例如 n8n 官方明确说任务运行器是用户代码的<strong>唯一</strong>隔离层，而内部模式与主进程同用户运行、可触及数据库与凭据，生产环境应使用外置模式；Dify 的代码节点则运行在阻断文件系统、外网与系统命令的沙箱里。Agent 框架（LangGraph、AutoGen、CrewAI）本身是库，隔离由调用方负责。</p>
+        <p>本系统把隔离级别做成<strong>按代码来源分档的强制属性</strong>，并把创建沙箱的特权收敛到唯一的独立组件，业务进程不持有任何宿主级权限。<strong>代价明确</strong>：该组件是单点，难以水平扩展。</p>
+      </div>
+
+      <div class="rq">
+        <div class="id">DIFF 3</div>
+        <div class="t">把安全性表述为少数几条逐边可判定的不变式</div>
+        <p>大多数系统的权限模型是规则集合；本系统尝试收敛成三条不变式（能力单调收窄、不可信方不自证、状态外置），使「是否安全」在原则上可以逐边检查，而不是依赖每个功能作者的记忆。</p>
+        <p><strong>诚实边界：</strong>这三条<strong>没有被形式化验证过</strong>，目前只是「大部分安全逻辑可以归入其中」。把它变成可自动验证的性质，正是 RQ5。</p>
+      </div>
+    </div>
+
+    <div class="landing">
+      <b>一句话定位：</b>本系统不在计算模型上创新——它在计算模型上比同类<strong>更保守</strong>（坚持顶层无环）。它的位置是：<strong>用表达力换取可分析性，并把执行隔离与多租户治理纳入同一套抽象</strong>。这个组合在现有开源工作里不常见，但它是工程选择，不是研究贡献。
+    </div>
+  </div>
+</section>

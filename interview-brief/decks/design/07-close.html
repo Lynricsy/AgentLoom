@@ -1,0 +1,109 @@
+<!-- ============ V.5 学术问答 ============ -->
+<section class="page" data-sec="V.5 · 学术问答">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">V.5 · Q&amp;A · ACADEMIC</div>
+      <h2>最可能被问的十个问题</h2>
+    </div>
+
+    <div class="stack s">
+      <div class="qa">
+        <div class="q"><span class="i">Q1</span><span>你这个系统解决的科学问题是什么？工程系统和研究有什么区别？</span></div>
+        <div class="a">直说：<b>它现在是一个工程系统，不是研究工作</b>。它的学术价值在于暴露了四个我答不出数字的问题（§ V.2），其中两个我认为可以立项：非确定性执行的等价重放定义（RQ1）、自修改 Agent 的可达状态验证（RQ5）。<b>把工程系统当成问题来源而不是结论来源</b>，这是我对它的定位。</div>
+      </div>
+      <div class="qa">
+        <div class="q"><span class="i">Q2</span><span>你说系统「可复现」，可 LLM 本身就不确定，这怎么成立？</span></div>
+        <div class="a">这是我特意拆开的两条轴（§ II.3）。<b>我提供的是可追溯与可恢复（A 轴），不是重放（R 轴）</b>。而且要说清楚：连「结构重放」都不成立——只要条件分支消费了模型输出，两次执行走的节点集合都可能不同。把 A 轴成果说成「可复现」是最典型的过度宣称。</div>
+      </div>
+      <div class="qa">
+        <div class="q"><span class="i">Q3</span><span>和 LangGraph 这类框架比，你的创新点在哪？</span></div>
+        <div class="a">在计算模型上我没有创新，甚至更保守——它们允许带环状态图，我坚持顶层无环。<b>差异在于我同时承担了执行隔离与多租户治理</b>，而它们是库，把隔离留给调用方。这不是「更好」，是<b>处在设计空间的不同位置</b>（§ I.3）：我用表达力换可分析性与可运维性。</div>
+      </div>
+      <div class="qa">
+        <div class="q"><span class="i">Q4</span><span>为什么不用现成的工作流引擎，比如 Temporal？</span></div>
+        <div class="a">Temporal 的可靠性建立在<b>确定性重放</b>之上，要求 workflow 代码在重放时走出同一控制流。LLM 调用必须被包成 activity（其结果记入历史、重放时不重新执行）才能满足这个约束。这条路可行，但会把「图的形状」从可视化数据结构变成用户代码——而可视化编排恰恰是本系统的产品前提。<b>这是产品约束反过来限制了技术选型</b>，不是技术上做不到。</div>
+      </div>
+      <div class="qa">
+        <div class="q"><span class="i">Q5</span><span>你说的「不变式」，有没有被形式化验证过？</span></div>
+        <div class="a">没有。当前靠人工遵守与测试覆盖。<b>但它被写成了逐边可判定的形式</b>（<code>cap(c) ⊆ cap(p)</code>），这是能否自动验证的前提。把它接到模型检验上就是 RQ5。我不会把「写成了不变式」说成「验证过了」。</div>
+      </div>
+      <div class="qa">
+        <div class="q"><span class="i">Q6</span><span>系统这么复杂，怎么证明复杂度是必要的？</span></div>
+        <div class="a">证明不了，只能给出反例：去掉不可变快照 → 无法归因；去掉能力收窄 → 权限正确性变成全局性质；去掉特权收敛 → 业务层漏洞升级为宿主逃逸。<b>我用的判据是「去掉它系统在哪里塌」，凡是去掉只是代码难看的，都不算抽象</b>（§ II 开篇）。这是论证不是证明，我知道区别。</div>
+      </div>
+      <div class="qa">
+        <div class="q"><span class="i">Q7</span><span>你怎么知道你的设计假设是对的？</span></div>
+        <div class="a">很多假设我<b>确实不知道对不对</b>，因为没有真实用户数据。比如：循环轮数分布（决定 II.4 那笔存储交换划不划算）、PARTIAL 连接的实际占比（决定类型协商值不值得做）、中断率随任务规模的增长阶。这三条都写在 § V.2，都是低成本可测的。</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ V.5b 续 ============ -->
+<section class="page" data-sec="V.5 · 学术问答">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">V.5 · Q&amp;A · CONTINUED</div>
+      <h2>三个更尖锐的</h2>
+    </div>
+
+    <div class="stack s">
+      <div class="qa">
+        <div class="q"><span class="i">Q8</span><span>这个项目是 AI 写的，那你的贡献是什么？</span></div>
+        <div class="a">承认，然后把话题拉到判断上：<b>代码生成解决的是「怎么写」，不解决「写不写、写哪一版、边界在哪」</b>。举三个具体决定——为什么工作流整体不自动重试而 Agent 任务重试四次（按副作用幂等性分层，不按重要性）；为什么监控趋势里队列深度返回空值而不是 0（没有历史时序就不能伪造）；为什么冷恢复清理失败要停住并留下脏资源（误放的代价是两个虚拟机抢同一块盘）。<b>这些是取舍，不是生成。</b>再补一句：我能准确说出自己系统的十几处缺陷（§ V.2 与实现册 F1），这比声称它完美更能说明我真的理解它。</div>
+      </div>
+      <div class="qa">
+        <div class="q"><span class="i">Q9</span><span>如果给你三年时间重做，你会怎么做？</span></div>
+        <div class="a">三件事，按优先级：<br><b>① 先建评估再建功能。</b>现在的处境是「系统能跑但说不出任何数字」，根源是评估从一开始就没进路线图。<br><b>② 抽出共享契约包。</b>端口类型这类跨端契约靠手工镜像在四处，已经实际漂移——这是本项目最明确的架构失误。<br><b>③ 把重放当成一等目标。</b>不是为了「可复现」这个好听的词，而是因为<b>没有重放就没有回归测试</b>，整个系统的演进只能靠人工验证，这在长期是不可持续的。</div>
+      </div>
+      <div class="qa">
+        <div class="q"><span class="i">Q10</span><span>你对这个方向未来的判断是什么？</span></div>
+        <div class="a">给一个可被反驳的判断：<b>Agent 系统的瓶颈正在从「模型能力」转移到「可问责性」</b>。模型能力在快速上升，但企业不敢把 Agent 接进关键流程，卡点是说不清「它做了什么、谁批准的、出事怎么归因、最多花多少钱」。<br>所以我认为下一阶段有价值的工作，是<b>把分布式系统与程序分析里已经成熟的东西——可恢复性、资源上界、状态可达性验证——重新适配到非确定性执行模型上</b>。RQ1、RQ2、RQ5 都在这条线上。<br>反驳方向：如果模型可靠到不需要人类问责（就像今天没人要求编译器给出可审计轨迹），这条线的价值就会大幅缩水。我认为短期内不会，但这是个真实的不确定性。</div>
+      </div>
+    </div>
+
+    <div class="note">
+      <span class="t">通用应答姿态</span>
+      被问到不会的：<strong>「我没做过，但我会这样设计实验：……」</strong>比「不知道」和硬编答案都好。被问到自己系统的缺陷：<strong>直接承认 + 说清影响范围 + 给修复路径 + 解释当时为什么没做</strong>。最后一项最关键——「优先做了 X，因为 Y」比「没时间」有说服力得多。
+    </div>
+  </div>
+</section>
+
+<!-- ============ V.6 陈述脚本 ============ -->
+<section class="page" data-sec="V.6 · 陈述脚本">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">V.6 · SCRIPT</div>
+      <h2>三分钟怎么讲</h2>
+    </div>
+
+    <div class="card card-accent">
+      <div class="kicker">0:00 – 0:40 · 问题</div>
+      <p class="sm" style="margin-top:2mm;font-size:9.4pt;line-height:1.7">「我做的是一个多智能体工作流编排平台。它要解决的核心矛盾是：<strong>Agent 的价值来自自主性，而企业采用它的前提是可问责</strong>——出了事要说得清做了什么、谁批准的、最多花多少钱。这两件事在计算模型上是冲突的：自主推理需要无界循环，可问责需要有限、可分析的结构。」</p>
+    </div>
+
+    <div class="card card-fill">
+      <div class="kicker mute">0:40 – 1:40 · 结构</div>
+      <p class="sm" style="margin-top:2mm">「我的处理是不追求统一模型，而是<strong>三层分离</strong>：外层是确定性图，承载可追溯与可恢复；内层是无界的 Agent 回合，用预算和权限门截断；最底层是硬件级隔离，模型生成的代码在独立内核的微虚拟机里跑。</p>
+      <p class="sm" style="margin-top:1.6mm">三层之间靠三条不变式缝合——<strong>能力只能沿调用链单调收窄</strong>、<strong>不可信方永远不自证身份</strong>、<strong>运行时状态必须外置</strong>。这三条的作用是把安全性从『每处都要记得遵守的规则清单』变成『逐边可判定的性质』。」</p>
+    </div>
+
+    <div class="card card-ink">
+      <div class="kicker">1:40 – 2:20 · 边界</div>
+      <p class="sm" style="margin-top:2mm">「必须说清楚我<strong>没有</strong>提供什么：我提供的是可追溯与可恢复，<strong>不是可重放</strong>。只要条件分支消费了模型输出，连『两次执行走了哪些节点』都不保证一致。而且整个系统<strong>没有做过任何基准测试和对照实验</strong>——所有性能说法我只能引用文献，不能引用自己。」</p>
+    </div>
+
+    <div class="card card-outlined">
+      <div class="kicker mute">2:20 – 3:00 · 问题在哪</div>
+      <p class="sm" style="margin-top:2mm">「所以我把它定位成<strong>问题来源</strong>。做下来最让我在意的是两个问题：</p>
+      <p class="sm" style="margin-top:1.6mm"><strong>第一，非确定性执行怎么做回归测试。</strong>没有重放就没法『改完重跑一遍比对』，而要重放就得定义『请求指纹』——太严则任何提示词微调都失效，太松则误命中。这个权衡曲线我认为是可以量化研究的。</p>
+      <p class="sm" style="margin-top:1.6mm"><strong>第二，允许 Agent 改自己之后，若干步之后它能到达什么状态。</strong>人工审批每一步只保证每步被看过，不保证多步可达性安全——人是没法通过审查单步变更判断这个的。这本质上是个状态可达性验证问题。</p>
+      <p class="sm" style="margin-top:1.6mm">这两个问题都不依赖我这个系统才能研究，用公开的 Agent 平台采集轨迹就能开始。」</p>
+    </div>
+
+    <div class="note">
+      <span class="t">节奏提醒</span>
+      三分钟里<strong>不要出现任何表名、函数名、框架版本号</strong>。技术细节等对方追问再给——主动给细节会让对方认为你只能讲细节。
+    </div>
+  </div>
+</section>

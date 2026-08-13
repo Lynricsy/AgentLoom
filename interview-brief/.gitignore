@@ -1,4 +1,4 @@
 # 构建中间产物：拼接后的 HTML 与页面栅格化图
+out/_*.html
 out/index.html
 out/*.png
-out/_*.html
