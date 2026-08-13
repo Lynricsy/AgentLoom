@@ -47,6 +47,10 @@ const runtime = (title) => String.raw`
     pg.appendChild(f);
   });
 
+  Array.prototype.forEach.call(document.querySelectorAll('[data-selfpages]'), function(el){
+    el.textContent = String(total);
+  });
+
   var miss = [];
   Array.prototype.forEach.call(document.querySelectorAll('[data-ref]'), function(el){
     var ref = el.getAttribute('data-ref');
