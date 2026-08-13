@@ -162,9 +162,9 @@
         <p class="body2"><strong>如何证伪：</strong>如果 WASM 的隔离强度对模型生成代码也够用（或 microVM 的开销可忽略），分档就没有必要。</p>
       </div>
       <div class="def">
-        <div class="term"><span class="lv">P4</span><span>安全性应当表述为少数几条可检查的不变式，而不是一份规则清单</span></div>
-        <p class="body2"><strong>理由：</strong>规则清单的正确性等于「每处都记得遵守」，随功能增长必然衰减；不变式可以逐边检查，甚至可能静态验证（§ V.3 / RQ5）。</p>
-        <p class="body2"><strong>如何证伪：</strong>如果实际系统中存在大量无法归入这几条不变式的安全逻辑，说明抽象没有覆盖真实约束，只是事后叙事。<em>这一条目前只做到了「大部分安全逻辑可归入三条不变式」，没有做形式化验证。</em></p>
+        <div class="term"><span class="lv">P4</span><span>安全性应当表述为少数几条可检查的准则，而不是一份规则清单</span></div>
+        <p class="body2"><strong>理由：</strong>规则清单的正确性等于「每处都记得遵守」，随功能增长必然衰减；写成逐边可判定的形式后，才谈得上机械检查甚至静态验证（§ V.3 / RQ5）。</p>
+        <p class="body2"><strong>如何证伪：</strong>如果实际系统中存在大量无法归入这几条准则的安全逻辑，说明抽象没有覆盖真实约束，只是事后叙事。<em>目前只做到「大部分安全逻辑可归入三条准则」，既没有形式化验证，第三条在 Agent 回合上还明确未贯彻。</em></p>
       </div>
     </div>
   </div>

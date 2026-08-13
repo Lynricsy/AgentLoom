@@ -25,7 +25,7 @@
       </div>
       <div class="qa">
         <div class="q"><span class="i">Q5</span><span>你说的「不变式」，有没有被形式化验证过？</span></div>
-        <div class="a">没有。当前靠人工遵守与测试覆盖。<b>但它被写成了逐边可判定的形式</b>（<code>cap(c) ⊆ cap(p)</code>），这是能否自动验证的前提。把它接到模型检验上就是 RQ5。我不会把「写成了不变式」说成「验证过了」。</div>
+        <div class="a">没有，所以我在文档里一律称它们为<b>设计准则</b>而不是不变式。当前靠人工遵守与测试覆盖。<b>但第一条被写成了逐边可判定的形式</b>（<code>cap(c) ⊆ cap(p)</code>），这是能否自动验证的前提，接到模型检验上就是 RQ5。而且要补一句：<b>第三条「状态外置」我自己就没做到底</b>——编排层成立，进行中的 Agent 回合仍活在发起进程内存里。</div>
       </div>
       <div class="qa">
         <div class="q"><span class="i">Q6</span><span>系统这么复杂，怎么证明复杂度是必要的？</span></div>
@@ -85,7 +85,7 @@
     <div class="card card-fill">
       <div class="kicker mute">0:40 – 1:40 · 结构</div>
       <p class="sm" style="margin-top:2mm">「我的处理是不追求统一模型，而是<strong>三层分离</strong>：外层是确定性图，承载可追溯与可恢复；内层是无界的 Agent 回合，用预算和权限门截断；最底层是硬件级隔离，模型生成的代码在独立内核的微虚拟机里跑。</p>
-      <p class="sm" style="margin-top:1.6mm">三层之间靠三条不变式缝合——<strong>能力只能沿调用链单调收窄</strong>、<strong>不可信方永远不自证身份</strong>、<strong>运行时状态必须外置</strong>。这三条的作用是把安全性从『每处都要记得遵守的规则清单』变成『逐边可判定的性质』。」</p>
+      <p class="sm" style="margin-top:1.6mm">三层之间靠三条<strong>设计准则</strong>缝合——<strong>能力只能沿调用链单调收窄</strong>、<strong>不可信方永远不自证身份</strong>、<strong>状态外置于运行时</strong>。作用是把安全性从『每处都要记得遵守的规则清单』变成『逐边可判定的性质』。<strong>但我要先说清楚：这三条都没有被验证过，第三条我自己在 Agent 回合那一层就没做到。</strong>」</p>
     </div>
 
     <div class="card card-ink">

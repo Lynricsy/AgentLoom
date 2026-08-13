@@ -12,7 +12,7 @@
         <div><div class="kicker" style="opacity:.6">II.1–II.2</div><p class="sm" style="color:#fff;margin-top:1.5mm">计算模型与状态</p></div>
         <div><div class="kicker" style="opacity:.6">II.3–II.4</div><p class="sm" style="color:#fff;margin-top:1.5mm">追溯 / 重放 · 循环</p></div>
         <div><div class="kicker" style="opacity:.6">II.5</div><p class="sm" style="color:#fff;margin-top:1.5mm">类型协商</p></div>
-        <div><div class="kicker" style="opacity:.6">II.6–II.8</div><p class="sm" style="color:#fff;margin-top:1.5mm">不变式与记忆</p></div>
+        <div><div class="kicker" style="opacity:.6">II.6–II.8</div><p class="sm" style="color:#fff;margin-top:1.5mm">准则与记忆</p></div>
       </div>
     </div>
   </div>
@@ -255,7 +255,7 @@
 <section class="page" data-sec="II.6 · 能力单调收窄">
   <div class="body stack m">
     <div class="stack s">
-      <div class="kicker">II.6 · INVARIANT 1</div>
+      <div class="kicker">II.6 · DESIGN TENET 1 · 未验证</div>
       <h2>能力单调收窄</h2>
     </div>
 
@@ -265,7 +265,7 @@
       <span class="cm">且不存在任何运行时路径可以放宽 cap。</span>
     </div>
 
-    <p class="lead">一条约束，四处体现。它的价值不在于「更安全」，而在于把<strong>权限正确性从一个全局性质降级为一个局部可检查的性质</strong>。</p>
+    <p class="lead">一条约束，四处体现。它的价值不在于「更安全」，而在于把<strong>权限正确性从一个全局性质降级为一个局部可检查的性质</strong>。<br><span style="font-size:9pt;color:#737373">注意用词：这里叫<strong>准则</strong>不叫不变式——不变式意味着「已被证明处处成立」，而它目前只是设计意图 + 人工遵守。</span></p>
 
     <div class="g g2 gap-s">
       <div class="stack s">
@@ -280,14 +280,14 @@
       <div class="stack s">
         <h3>为什么这是抽象而不是规则</h3>
         <p class="sm">如果写成规则清单——「子 Agent 不要开沙箱」「插件别放宽超时」——那么正确性等于「每个新功能的作者都记得这几条」，必然随时间衰减。</p>
-        <p class="sm">写成不变式之后，检查对象变成<strong>调用图上的每一条边</strong>：只要每条边都满足 <code>cap(c) ⊆ cap(p)</code>，全局性质自动成立。这是一个可以在代码审查中机械执行、原则上也可以静态验证的判据。</p>
+        <p class="sm">写成这种形式之后，检查对象变成<strong>调用图上的每一条边</strong>：只要每条边都满足 <code>cap(c) ⊆ cap(p)</code>，全局性质自动成立。这是一个可以在代码审查中机械执行、原则上也可以静态验证的判据。</p>
         <div class="landing"><b>一句话答面试：</b>我没有让系统「更安全」，我让「是否安全」变成了一个可以逐边判定的问题。</div>
       </div>
     </div>
 
     <div class="note warn">
       <span class="t">Not verified</span>
-      当前这条不变式靠人工遵守与测试覆盖，<strong>没有静态检查器</strong>。给定系统的能力集合与调用图，自动验证该不变式是否处处成立，是一个明确可做的工程—研究结合点（RQ5）。
+      当前这条准则靠人工遵守与测试覆盖，<strong>没有静态检查器</strong>。给定系统的能力集合与调用图，自动验证它是否处处成立，是一个明确可做的工程—研究结合点（RQ5）。
     </div>
   </div>
 </section>
@@ -296,7 +296,7 @@
 <section class="page" data-sec="II.7 · 单向断言">
   <div class="body stack m">
     <div class="stack s">
-      <div class="kicker">II.7 · INVARIANT 2</div>
+      <div class="kicker">II.7 · DESIGN TENET 2 · 未验证</div>
       <h2>不可信方永远不自证</h2>
     </div>
 
@@ -324,12 +324,16 @@
       <div class="stack s">
         <div class="card card-ink">
           <div class="kicker">GENERALIZATION</div>
-          <p class="sm" style="margin-top:2mm">这三个实例表面上毫无关系——一个是网络、一个是鉴权、一个是供应链。但它们是同一条不变式的三次应用：<strong>把「相信对方说的」替换成「由更高信任级别的一方独立验证」。</strong></p>
+          <p class="sm" style="margin-top:2mm">这三个实例表面上毫无关系——一个是网络、一个是鉴权、一个是供应链。但它们是同一条准则的三次应用：<strong>把「相信对方说的」替换成「由更高信任级别的一方独立验证」。</strong></p>
           <p class="sm" style="margin-top:2mm">能把三件事收敛成一条规则，说明抽象抓对了。反过来，如果某处安全逻辑无法归入这条规则，就应该怀疑那里存在未识别的信任假设。</p>
         </div>
         <div class="note">
           <span class="t">Corollary</span>
           推论：<strong>密钥不跨域下发。</strong>控制面不持有签发 guest 身份的私钥，guest 也不持有控制面的客户端证书。任一侧被攻陷都无法伪装成另一侧。
+        </div>
+        <div class="note warn">
+          <span class="t">验证状态</span>
+          这条准则同样<strong>没有被验证过</strong>：没有逃逸测试集去证明「不存在一条让不可信方自证成功的路径」。它现在是一个用来组织安全设计的透镜，不是一个已证明的性质。
         </div>
       </div>
     </div>

@@ -30,7 +30,7 @@
     <div class="stack s">
       <div class="def">
         <div class="term"><span class="lv">M1</span><span>恢复保真度 · Recovery fidelity</span></div>
-        <p class="body2"><strong>怎么测：</strong>故障注入。在执行的随机时点杀死工作进程，恢复后比较「继续执行的结果」与「不中断执行的结果」在<em>可观测契约</em>上是否等价——完成的节点集合是否为超集、外部副作用是否重复、审批状态是否丢失。<br><strong>指标：</strong>副作用重复率、状态丢失率、恢复成功率。<br><strong>为什么重要：</strong>这是唯一能把「支持断点续跑」从口号变成数字的方法。</p>
+        <p class="body2"><strong>怎么测：</strong>故障注入——在执行的随机时点杀死工作进程，然后检查恢复后的运行。<br><strong>关键在于对照什么：</strong>不能拿「中断过的这次」去比「没中断的另一次」，因为非确定性会让两次执行本来就不同，这样的对照没有意义。正确做法是只检验<strong>与内容无关的不变量</strong>：外部副作用是否被重复执行（用带幂等键的桩工具计数）、已完成步骤是否被回退、已记录的审批决定是否丢失、执行是否最终到达终态。<br><strong>指标：</strong>副作用重复率、状态回退率、审批丢失率、恢复成功率。<br><strong>为什么重要：</strong>这是唯一能把「支持断点续跑」从口号变成数字的方法，而且它<strong>绕开了非确定性</strong>——不变量的成立与否与模型输出无关。</p>
       </div>
       <div class="def">
         <div class="term"><span class="lv">M2</span><span>隔离强度 · Escape resistance</span></div>
@@ -66,8 +66,8 @@
       <thead><tr><th style="width:36mm">缺口</th><th style="width:52mm">影响</th><th>本该怎么做</th></tr></thead>
       <tbody>
         <tr>
-          <td><strong>没有任何基准测试</strong></td>
-          <td>无法量化沙箱启动开销、调度吞吐、事件延迟。所有性能表述只能引用第三方文献</td>
+          <td><strong>没有性能基准</strong><br><span class="xs">功能测试是有的</span></td>
+          <td>无法量化沙箱启动开销、调度吞吐、事件延迟。所有性能表述只能引用第三方文献。<strong>注意区分</strong>：单元与集成测试存在且有 80% 覆盖率门槛，缺的是系统性质的量化证据</td>
           <td>先测三个量：沙箱冷启动分布、单节点调度往返、事件端到端延迟</td>
         </tr>
         <tr>

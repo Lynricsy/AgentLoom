@@ -37,8 +37,8 @@
     <div class="g g2 gap-s">
       <div class="card card-accent">
         <div class="kicker">本册 · 设计与开放问题</div>
-        <h4 style="margin-top:2mm;color:#fff">36 页</h4>
-        <p class="sm" style="margin-top:1.5mm">问题域的本质困难 → 核心抽象与不变式 → 可迁移的设计原则 → 在已有工作中的定位 → 评估方法与五个开放问题。</p>
+        <h4 style="margin-top:2mm;color:#fff">40 页</h4>
+        <p class="sm" style="margin-top:1.5mm">问题域的本质困难 → 核心抽象与设计准则 → 可迁移的设计原则 → 在已有工作中的定位 → 评估方法与五个开放问题。</p>
         <p class="xs" style="margin-top:2mm;color:rgba(255,255,255,.75)">面试时以这一册为主线。</p>
       </div>
       <div class="card card-outlined">
@@ -63,11 +63,11 @@
       <div class="stack s">
         <div class="note">
           <span class="t">一句话主张</span>
-          LLM Agent 系统的工程难点不在「让模型能调工具」，而在<strong>自主性、可追溯性、可隔离性三者互相拉扯，且无法由单一计算模型同时满足</strong>。本系统的全部结构都是这个约束的产物。
+          LLM Agent 系统的工程难点不在「让模型能调工具」，而在<strong>自主性、可追溯性、可隔离性三者互相拉扯</strong>。本系统的全部结构，都来自「不追求统一计算模型，而是分层并显式取舍」这一<strong>选择</strong>——注意这是立场，不是不可能性定理。
         </div>
         <div class="note warn">
           <span class="t">诚实前置</span>
-          本系统是<strong>工程系统，不是研究原型</strong>：没有对照实验、没有 benchmark、没有量化评估。第五部分逐条列出缺什么、以及如果要做该怎么设计实验。
+          本系统是<strong>工程系统，不是研究原型</strong>。它<strong>有</strong>单元与集成测试（服务端设了 80% 覆盖率门槛）；它<strong>没有</strong>的是性能基准、故障注入、逃逸测试与对照实验——也就是说，功能正确性有回归防护，<strong>系统性质没有任何量化证据</strong>。第五部分逐条列出缺什么、以及要做该怎么设计。
         </div>
       </div>
     </div>
@@ -96,7 +96,7 @@
         <div class="e" data-ref="II.3"><span class="n">II.3</span><span class="t">可追溯性与重放：两条轴</span><span class="d"></span><span class="p">--</span></div>
         <div class="e" data-ref="II.4"><span class="n">II.4</span><span class="t">循环的有界展开语义</span><span class="d"></span><span class="p">--</span></div>
         <div class="e" data-ref="II.5"><span class="n">II.5</span><span class="t">类型兼容性作为协商而非拒绝</span><span class="d"></span><span class="p">--</span></div>
-        <div class="e" data-ref="II.6"><span class="n">II.6</span><span class="t">能力单调收窄不变式</span><span class="d"></span><span class="p">--</span></div>
+        <div class="e" data-ref="II.6"><span class="n">II.6</span><span class="t">能力单调收窄准则</span><span class="d"></span><span class="p">--</span></div>
         <div class="e" data-ref="II.7"><span class="n">II.7</span><span class="t">信任域与单向断言</span><span class="d"></span><span class="p">--</span></div>
         <div class="e" data-ref="II.8"><span class="n">II.8</span><span class="t">记忆表示的选择判据</span><span class="d"></span><span class="p">--</span></div>
 
@@ -129,7 +129,7 @@
 
     <div class="note">
       <span class="t">Navigation</span>
-      如果只有十分钟：读第 4 页（主张）、II.5–II.7（三条不变式）、V.3–V.4（开放问题）。这三块决定面试官对「有没有科研潜力」的判断。
+      如果只有十分钟：读第 4 页（主张）、II.5–II.7（三条准则）、V.3–V.4（开放问题）。这三块决定面试官对「有没有科研潜力」的判断。
     </div>
   </div>
 </section>
@@ -144,7 +144,7 @@
 
     <div class="card card-ink">
       <div class="kicker">CLAIM</div>
-      <p class="lead" style="margin-top:2.5mm;color:#fff;max-width:none">LLM Agent 系统的工程难点，不是让模型能调用工具，而是<strong>自主性、可追溯性、可隔离性三个要求互相拉扯</strong>；它们无法由单一计算模型同时满足，因此必须<strong>分层</strong>：用确定性图承载可追溯与可恢复，用无界循环承载自主推理，用硬件级边界承载隔离，再用<strong>一组跨层不变式</strong>把三者缝合。</p>
+      <p class="lead" style="margin-top:2.5mm;color:#fff;max-width:none">LLM Agent 系统的工程难点，不是让模型能调用工具，而是<strong>自主性、可追溯性、可隔离性三个要求互相拉扯</strong>。我的选择是<strong>不追求统一计算模型，而是分层</strong>：用确定性图承载可追溯与可恢复，用无界循环承载自主推理，用硬件级边界承载隔离，再用<strong>三条跨层设计准则</strong>把它们缝合。<br><span style="font-size:8.6pt;opacity:.85">要留出被反驳的余地：单一模型不是不可能——LangGraph 用带环状态图 + 外部检查点也能同时给出自主循环与持久恢复，只是不承担隔离。我的取舍是拿表达力换顶层的可分析性。</span></p>
     </div>
 
     <div class="g g3 gap-s">
@@ -168,7 +168,7 @@
     <hr class="hair">
 
     <div class="stack s">
-      <h3>缝合三层的三条不变式</h3>
+      <h3>缝合三层的三条设计准则</h3>
       <div class="g g3 gap-s">
         <div class="card card-fill">
           <div class="kicker mute">INV-1 · § II.6</div>
@@ -181,15 +181,15 @@
           <p class="xs" style="margin-top:1.4mm">跨信任域的每个断言都由更高信任域验证：guest 的网络身份由宿主验证，回调身份由管理器验证，插件完整性由规范化内容摘要验证。</p>
         </div>
         <div class="card card-fill">
-          <div class="kicker mute">INV-3 · § II.2</div>
+          <div class="kicker mute">准则 3 · § II.2 · <strong>部分成立</strong></div>
           <h4 style="margin-top:1.6mm">状态外置于运行时</h4>
-          <p class="xs" style="margin-top:1.4mm">调度进度、会话快照、审批状态一律落在运行时之外的持久存储。运行时实例是可丢弃的。</p>
+          <p class="xs" style="margin-top:1.4mm"><strong>编排层成立</strong>：调度进度与步骤检查点落库，工作进程可丢弃。<strong>Agent 回合不成立</strong>：进行中的回合活在发起进程内存里，进程崩溃即丢失。这是本系统最清楚的一处「准则未贯彻到底」。</p>
         </div>
       </div>
     </div>
 
     <div class="landing">
-      <b>可以被追问的最短版本：</b>三层分离让每一层只解决一类问题，三条不变式保证跨层组合不会引入新的失效模式。系统的复杂度主要花在<strong>维持这三条不变式</strong>上，而不是功能数量上。
+      <b>可以被追问的最短版本：</b>三层分离让每一层只解决一类问题，三条准则用来防止跨层组合引入新的失效模式。系统的复杂度主要花在<strong>维持这三条准则</strong>上，而不是功能数量上。<strong>它们是设计意图，不是已验证的性质</strong>——其中第三条在 Agent 回合上就没做到。
     </div>
   </div>
 </section>
