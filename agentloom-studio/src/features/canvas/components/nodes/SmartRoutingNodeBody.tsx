@@ -36,9 +36,9 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
 }
 
 const HEALTH_DOT_COLORS: Record<ProviderHealthStatus, string> = {
-  healthy: 'bg-emerald-400',
-  degraded: 'bg-amber-400',
-  open: 'bg-red-400',
+  healthy: 'bg-success',
+  degraded: 'bg-warning',
+  open: 'bg-error',
 }
 
 interface SmartRoutingNodeBodyProps {
