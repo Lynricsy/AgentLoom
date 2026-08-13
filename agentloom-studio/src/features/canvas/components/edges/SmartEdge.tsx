@@ -128,8 +128,8 @@ export const SmartEdge = memo(function SmartEdge({
 
   // 粒子只在“数据正流入目标节点”时出现：与 useExecutionHighlight 的 dep-active
   // 语义一致（running 节点的入边为活跃边）。空闲画布上的边一律静止。
-  // 只读预览与编辑器共用节点 id，必须整体不读执行态，否则同 id 的编辑器执行会
-  // 让预览里的边跑起粒子。
+  // 订阅照旧（hook 顺序不能有条件分支），但只读预览与编辑器共用节点 id，因此
+  // `readonlyPreview` 时该值不得参与渲染，否则同 id 的编辑器执行会让预览的边跑粒子。
   const isFlowing = useExecutionStore(
     (state) => state.nodes[target]?.status === 'running',
   )
