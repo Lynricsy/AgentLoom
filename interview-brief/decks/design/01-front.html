@@ -1,0 +1,195 @@
+<!-- ============ 封面 ============ -->
+<section class="page accent" data-nochrome>
+  <div style="position:absolute;inset:0;padding:20mm 17mm 16mm;display:flex;flex-direction:column">
+    <div class="spread" style="border-bottom:1px solid rgba(255,255,255,.28);padding-bottom:3.4mm">
+      <div class="kicker">AgentLoom · System Design Rationale</div>
+      <div class="kicker">IKB · REV 2026.08</div>
+    </div>
+
+    <div style="flex:1;display:flex;flex-direction:column;justify-content:center;gap:7mm">
+      <div class="kicker" style="letter-spacing:.26em">抽象 · 取舍 · 定位 · 开放问题</div>
+      <h1 style="color:#fff;font-size:48pt">在自主性、<br><span style="font-weight:300;font-style:italic">可追溯性</span>与隔离性<br>之间做取舍</h1>
+      <div style="width:34mm;height:1.6mm;background:#fff"></div>
+      <p class="lead" style="font-size:11pt">一个多智能体编排平台的设计论证。本册不讲怎么实现，只回答：这个问题域的本质困难是什么、我用了哪些抽象、这些抽象在已有工作谱系中处于什么位置、哪些问题我没有解决。</p>
+    </div>
+
+    <div style="border-top:1px solid rgba(255,255,255,.28);padding-top:4mm">
+      <div class="g g4" style="gap:5mm">
+        <div><div class="kicker" style="opacity:.7">本质困难</div><div style="font-weight:200;font-size:19pt;color:#fff;margin-top:1.5mm">4 个</div></div>
+        <div><div class="kicker" style="opacity:.7">核心抽象</div><div style="font-weight:200;font-size:19pt;color:#fff;margin-top:1.5mm">8 条</div></div>
+        <div><div class="kicker" style="opacity:.7">对比对象</div><div style="font-weight:200;font-size:19pt;color:#fff;margin-top:1.5mm">18 个</div></div>
+        <div><div class="kicker" style="opacity:.7">开放问题</div><div style="font-weight:200;font-size:19pt;color:#fff;margin-top:1.5mm">5 个</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 定位说明 ============ -->
+<section class="page" data-sec="ABOUT">
+  <div class="body stack l">
+    <div class="stack s">
+      <div class="kicker">SCOPE · 这一册讲什么</div>
+      <h2>不是「我做了什么」，<br>是「为什么只能这么做」</h2>
+    </div>
+
+    <p class="lead">一个系统的实现细节说明作者会写代码；一个系统的<strong>约束结构</strong>说明作者理解问题。学术面试考的是后者。本册的每一节都以「这里存在一个无法同时满足的要求」开场，以「我选了哪一边、代价是什么、什么条件下这个选择会失效」结束。</p>
+
+    <div class="g g2 gap-s">
+      <div class="card card-accent">
+        <div class="kicker">本册 · 设计与开放问题</div>
+        <h4 style="margin-top:2mm;color:#fff">36 页</h4>
+        <p class="sm" style="margin-top:1.5mm">问题域的本质困难 → 核心抽象与不变式 → 可迁移的设计原则 → 在已有工作中的定位 → 评估方法与五个开放问题。</p>
+        <p class="xs" style="margin-top:2mm;color:rgba(255,255,255,.75)">面试时以这一册为主线。</p>
+      </div>
+      <div class="card card-outlined">
+        <div class="kicker mute">另一册 · 实现细节参考</div>
+        <h4 style="margin-top:2mm">53 页</h4>
+        <p class="sm" style="margin-top:1.5mm">模块、数据表、接口、协议信封、队列策略、具体文件路径。</p>
+        <p class="xs" style="margin-top:2mm">只在被追问「那你具体怎么做的」时翻。<strong>不要主动讲</strong>——在学术场合先讲实现，等于宣布自己没有抽象层。</p>
+      </div>
+    </div>
+
+    <hr class="hair">
+
+    <div class="g g-5-7">
+      <div class="stack s">
+        <h3>三条阅读约定</h3>
+        <ul class="dash">
+          <li><strong>凡是抽象，都给反例。</strong>只说「我做了 X」没有信息量，必须说「不做 X 会怎样」。</li>
+          <li><strong>凡是数字，都给来源。</strong>没有实测过的性能数字一律不写；相关工作的数字标注论文与测量条件。</li>
+          <li><strong>凡是没解决的，写进第五部分。</strong>把局限说成未来工作是包装，说成研究问题才是能力。</li>
+        </ul>
+      </div>
+      <div class="stack s">
+        <div class="note">
+          <span class="t">一句话主张</span>
+          LLM Agent 系统的工程难点不在「让模型能调工具」，而在<strong>自主性、可追溯性、可隔离性三者互相拉扯，且无法由单一计算模型同时满足</strong>。本系统的全部结构都是这个约束的产物。
+        </div>
+        <div class="note warn">
+          <span class="t">诚实前置</span>
+          本系统是<strong>工程系统，不是研究原型</strong>：没有对照实验、没有 benchmark、没有量化评估。第五部分逐条列出缺什么、以及如果要做该怎么设计实验。
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 目录 ============ -->
+<section class="page" data-sec="CONTENTS">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">CONTENTS · 目录</div>
+      <h2>五个部分</h2>
+    </div>
+
+    <div class="g g2 gap-l" style="align-items:start">
+      <div class="toc stack" style="gap:0">
+        <div class="e" style="border-bottom:1px solid var(--ink);padding-bottom:2mm"><span class="n">I</span><span class="t">问题域</span><span class="d"></span></div>
+        <div class="e" data-ref="I.1"><span class="n">I.1</span><span class="t">四个本质困难</span><span class="d"></span><span class="p">--</span></div>
+        <div class="e" data-ref="I.2"><span class="n">I.2</span><span class="t">三组无法同时满足的要求</span><span class="d"></span><span class="p">--</span></div>
+        <div class="e" data-ref="I.3"><span class="n">I.3</span><span class="t">设计空间坐标系</span><span class="d"></span><span class="p">--</span></div>
+        <div class="e" data-ref="I.4"><span class="n">I.4</span><span class="t">本系统的立场</span><span class="d"></span><span class="p">--</span></div>
+
+        <div class="e" style="border-bottom:1px solid var(--ink);padding-bottom:2mm;margin-top:4mm"><span class="n">II</span><span class="t">核心抽象</span><span class="d"></span></div>
+        <div class="e" data-ref="II.1"><span class="n">II.1</span><span class="t">二元计算模型</span><span class="d"></span><span class="p">--</span></div>
+        <div class="e" data-ref="II.2"><span class="n">II.2</span><span class="t">执行状态与调度的可重建性</span><span class="d"></span><span class="p">--</span></div>
+        <div class="e" data-ref="II.3"><span class="n">II.3</span><span class="t">可追溯性与重放：两条轴</span><span class="d"></span><span class="p">--</span></div>
+        <div class="e" data-ref="II.4"><span class="n">II.4</span><span class="t">循环的有界展开语义</span><span class="d"></span><span class="p">--</span></div>
+        <div class="e" data-ref="II.5"><span class="n">II.5</span><span class="t">类型兼容性作为协商而非拒绝</span><span class="d"></span><span class="p">--</span></div>
+        <div class="e" data-ref="II.6"><span class="n">II.6</span><span class="t">能力单调收窄不变式</span><span class="d"></span><span class="p">--</span></div>
+        <div class="e" data-ref="II.7"><span class="n">II.7</span><span class="t">信任域与单向断言</span><span class="d"></span><span class="p">--</span></div>
+        <div class="e" data-ref="II.8"><span class="n">II.8</span><span class="t">记忆表示的选择判据</span><span class="d"></span><span class="p">--</span></div>
+
+        <div class="e" style="border-bottom:1px solid var(--ink);padding-bottom:2mm;margin-top:4mm"><span class="n">III</span><span class="t">可迁移的设计原则</span><span class="d"></span></div>
+        <div class="e" data-ref="III.1"><span class="n">III.1</span><span class="t">归因需求决定配置策略</span><span class="d"></span><span class="p">--</span></div>
+        <div class="e" data-ref="III.2"><span class="n">III.2</span><span class="t">fail-closed 的适用边界</span><span class="d"></span><span class="p">--</span></div>
+        <div class="e" data-ref="III.3"><span class="n">III.3</span><span class="t">人在回路的粒度选择</span><span class="d"></span><span class="p">--</span></div>
+        <div class="e" data-ref="III.4"><span class="n">III.4</span><span class="t">隔离机制的选择函数</span><span class="d"></span><span class="p">--</span></div>
+        <div class="e" data-ref="III.5"><span class="n">III.5</span><span class="t">运行时状态必须外置</span><span class="d"></span><span class="p">--</span></div>
+      </div>
+
+      <div class="toc stack" style="gap:0">
+        <div class="e" style="border-bottom:1px solid var(--ink);padding-bottom:2mm"><span class="n">IV</span><span class="t">在已有工作中的位置</span><span class="d"></span></div>
+        <div class="e" data-ref="IV.1"><span class="n">IV.1</span><span class="t">编排框架谱系</span><span class="d"></span><span class="p">--</span></div>
+        <div class="e" data-ref="IV.2"><span class="n">IV.2</span><span class="t">持久化工作流引擎的对照</span><span class="d"></span><span class="p">--</span></div>
+        <div class="e" data-ref="IV.3"><span class="n">IV.3</span><span class="t">隔离机制谱系</span><span class="d"></span><span class="p">--</span></div>
+        <div class="e" data-ref="IV.4"><span class="n">IV.4</span><span class="t">协议层：MCP / ACP / A2A</span><span class="d"></span><span class="p">--</span></div>
+        <div class="e" data-ref="IV.5"><span class="n">IV.5</span><span class="t">记忆与检索</span><span class="d"></span><span class="p">--</span></div>
+        <div class="e" data-ref="IV.6"><span class="n">IV.6</span><span class="t">三条定位差异</span><span class="d"></span><span class="p">--</span></div>
+
+        <div class="e" style="border-bottom:1px solid var(--ink);padding-bottom:2mm;margin-top:4mm"><span class="n">V</span><span class="t">评估与开放问题</span><span class="d"></span></div>
+        <div class="e" data-ref="V.1"><span class="n">V.1</span><span class="t">这类系统该怎么评估</span><span class="d"></span><span class="p">--</span></div>
+        <div class="e" data-ref="V.2"><span class="n">V.2</span><span class="t">我没有做的评估</span><span class="d"></span><span class="p">--</span></div>
+        <div class="e" data-ref="V.3"><span class="n">V.3</span><span class="t">开放问题 RQ1–RQ3</span><span class="d"></span><span class="p">--</span></div>
+        <div class="e" data-ref="V.4"><span class="n">V.4</span><span class="t">开放问题 RQ4–RQ5</span><span class="d"></span><span class="p">--</span></div>
+        <div class="e" data-ref="V.5"><span class="n">V.5</span><span class="t">学术向问答</span><span class="d"></span><span class="p">--</span></div>
+        <div class="e" data-ref="V.6"><span class="n">V.6</span><span class="t">三分钟陈述脚本</span><span class="d"></span><span class="p">--</span></div>
+      </div>
+    </div>
+
+    <div class="note">
+      <span class="t">Navigation</span>
+      如果只有十分钟：读第 4 页（主张）、II.5–II.7（三条不变式）、V.3–V.4（开放问题）。这三块决定面试官对「有没有科研潜力」的判断。
+    </div>
+  </div>
+</section>
+
+<!-- ============ 一页纸主张 ============ -->
+<section class="page" data-sec="THESIS">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">THESIS · 一页纸主张</div>
+      <h2>整套系统压缩成一页</h2>
+    </div>
+
+    <div class="card card-ink">
+      <div class="kicker">CLAIM</div>
+      <p class="lead" style="margin-top:2.5mm;color:#fff;max-width:none">LLM Agent 系统的工程难点，不是让模型能调用工具，而是<strong>自主性、可追溯性、可隔离性三个要求互相拉扯</strong>；它们无法由单一计算模型同时满足，因此必须<strong>分层</strong>：用确定性图承载可追溯与可恢复，用无界循环承载自主推理，用硬件级边界承载隔离，再用<strong>一组跨层不变式</strong>把三者缝合。</p>
+    </div>
+
+    <div class="g g3 gap-s">
+      <div class="card card-top acc">
+        <div class="kicker mute">LAYER 1</div>
+        <h4 style="margin-top:1.6mm">确定性图</h4>
+        <p class="xs" style="margin-top:1.4mm">不可变发布快照 + 持久化步骤状态。调度是可从持久状态重建的纯函数，因此进程崩溃不丢调度进度。承载：可审计、可续跑、可视化。</p>
+      </div>
+      <div class="card card-top acc">
+        <div class="kicker mute">LAYER 2</div>
+        <h4 style="margin-top:1.6mm">无界循环</h4>
+        <p class="xs" style="margin-top:1.4mm">Agent 回合本身不可预测，只能用<strong>预算</strong>（轮次上限、超时）和<strong>权限门</strong>（工具级审批）截断。对上层暴露为可挂起、可快照、可取消的黑箱。</p>
+      </div>
+      <div class="card card-top acc">
+        <div class="kicker mute">LAYER 3</div>
+        <h4 style="margin-top:1.6mm">硬件边界</h4>
+        <p class="xs" style="margin-top:1.4mm">模型生成的代码在独立内核的 microVM 内执行，第三方插件在 WASM 内执行。业务进程不持有任何宿主级权限。</p>
+      </div>
+    </div>
+
+    <hr class="hair">
+
+    <div class="stack s">
+      <h3>缝合三层的三条不变式</h3>
+      <div class="g g3 gap-s">
+        <div class="card card-fill">
+          <div class="kicker mute">INV-1 · § II.6</div>
+          <h4 style="margin-top:1.6mm">能力单调收窄</h4>
+          <p class="xs" style="margin-top:1.4mm">调用链上任意子体的能力集合必须是父体的子集，任何位置都不得放宽。把「权限正确」从「每处都写对」降为「检查每条边」。</p>
+        </div>
+        <div class="card card-fill">
+          <div class="kicker mute">INV-2 · § II.7</div>
+          <h4 style="margin-top:1.6mm">不可信方不自证</h4>
+          <p class="xs" style="margin-top:1.4mm">跨信任域的每个断言都由更高信任域验证：guest 的网络身份由宿主验证，回调身份由管理器验证，插件完整性由规范化内容摘要验证。</p>
+        </div>
+        <div class="card card-fill">
+          <div class="kicker mute">INV-3 · § II.2</div>
+          <h4 style="margin-top:1.6mm">状态外置于运行时</h4>
+          <p class="xs" style="margin-top:1.4mm">调度进度、会话快照、审批状态一律落在运行时之外的持久存储。运行时实例是可丢弃的。</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="landing">
+      <b>可以被追问的最短版本：</b>三层分离让每一层只解决一类问题，三条不变式保证跨层组合不会引入新的失效模式。系统的复杂度主要花在<strong>维持这三条不变式</strong>上，而不是功能数量上。
+    </div>
+  </div>
+</section>

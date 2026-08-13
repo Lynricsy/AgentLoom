@@ -1,0 +1,372 @@
+<!-- ============ PART II 分隔 ============ -->
+<section class="page ink" data-sec="PART II">
+  <div class="body stack" style="justify-content:space-between">
+    <div class="stack s">
+      <div class="kicker">PART II</div>
+      <div class="bignum w" style="font-size:88pt">II</div>
+    </div>
+    <div class="stack m">
+      <h2 style="color:#fff;font-size:34pt">核心抽象</h2>
+      <p class="lead">八条抽象。判断标准是：去掉它，系统会在哪里塌。凡是去掉之后只是「代码难看一点」的，都不算抽象，只算约定。</p>
+      <div class="g g4 gap-s" style="border-top:1px solid rgba(255,255,255,.28);padding-top:4mm">
+        <div><div class="kicker" style="opacity:.6">II.1–II.2</div><p class="sm" style="color:#fff;margin-top:1.5mm">计算模型与状态</p></div>
+        <div><div class="kicker" style="opacity:.6">II.3–II.4</div><p class="sm" style="color:#fff;margin-top:1.5mm">追溯 / 重放 · 循环</p></div>
+        <div><div class="kicker" style="opacity:.6">II.5</div><p class="sm" style="color:#fff;margin-top:1.5mm">类型协商</p></div>
+        <div><div class="kicker" style="opacity:.6">II.6–II.8</div><p class="sm" style="color:#fff;margin-top:1.5mm">不变式与记忆</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ II.1 ============ -->
+<section class="page" data-sec="II.1 · 二元计算模型">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">II.1 · DUAL COMPUTATION MODEL</div>
+      <h2>外层有界，内层无界</h2>
+    </div>
+
+    <p class="lead">这是全系统的第一性结构：<strong>不试图用一个模型同时表达确定性编排与自主推理，而是承认它们是两类计算，并只定义一个耦合接口。</strong></p>
+
+    <div class="g g2 gap-s">
+      <div class="card card-fill">
+        <div class="kicker mute">OUTER · 有界</div>
+        <h4 style="margin-top:1.6mm">确定性图</h4>
+        <p class="sm" style="margin-top:1.4mm">节点集有限、边在发布时冻结、拓扑序可计算、每个节点有明确的开始与结束。可以回答「跑到哪了」「还剩几步」「重跑哪一段」。</p>
+        <p class="xs" style="margin-top:1.6mm">终止性：由图的有限性保证（循环另有预算上限，见 II.4）。</p>
+      </div>
+      <div class="card card-ink">
+        <div class="kicker">INNER · 无界</div>
+        <h4 style="margin-top:1.6mm">Agent 回合</h4>
+        <p class="sm" style="margin-top:1.4mm">轮次不可预知、工具调用序列由内容决定、可能永不自然停止。<strong>不可能从结构上保证终止</strong>，只能从外部施加预算与权限门。</p>
+        <p class="xs" style="margin-top:1.6mm;color:rgba(255,255,255,.7)">终止性：由预算（最大轮次、超时、令牌上限）与人工中断强制。</p>
+      </div>
+    </div>
+
+    <div class="stack s">
+      <h3>耦合接口只有四个操作</h3>
+      <div class="formula">
+        <span class="cm">// 外层看到的内层，是一个黑箱状态机</span><br>
+        <b>create</b>(config) → Session&nbsp;&nbsp;<span class="cm">// 由不可变快照编译而来</span><br>
+        <b>load</b>(snapshot) → Session&nbsp;&nbsp;&nbsp;<span class="cm">// 崩溃后从持久状态重建</span><br>
+        <b>prompt</b>(session, input) → Stream&lt;Event&gt;<br>
+        <b>cancel</b>(session) → void
+      </div>
+      <p class="sm">这四个操作定义了内外层的<strong>唯一契约</strong>。它带来两个直接后果：</p>
+      <ul class="dash">
+        <li><strong>运行时可替换。</strong>同一接口下有两个实现——进程内运行时与 microVM 内运行时。编排层完全不知道自己调的是哪一个，因此隔离级别成了部署选择而不是代码分叉。</li>
+        <li><strong>Agent 可以脱离编排单独存在。</strong>因为接口不假设调用者是图调度器，同一个 Agent 也能被对话入口、子 Agent 递归调用复用。</li>
+      </ul>
+    </div>
+
+    <div class="note warn">
+      <span class="t">Cost of this choice</span>
+      二元模型的代价是<strong>概念不统一</strong>：用户必须理解两套心智模型，文档要解释两遍，两层的错误处理和事件流也要各写一套。如果面试官问「为什么不像 LangGraph 那样把 Agent 也画成带环的状态图」——那是把两层压成一层的做法，好处是概念统一，代价是外层丧失「有限步内必然终止」这个性质，从而无法给出进度、剩余步数与确定的重跑边界。<strong>这是表达力与可分析性的经典交换。</strong>
+    </div>
+  </div>
+</section>
+
+<!-- ============ II.2 ============ -->
+<section class="page" data-sec="II.2 · 状态与调度">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">II.2 · STATE &amp; SCHEDULING</div>
+      <h2>调度必须是<br>持久状态的纯函数</h2>
+    </div>
+
+    <div class="g g-7-5">
+      <div class="stack s">
+        <p class="sm">把一次执行的状态定义为三元组：</p>
+        <div class="formula">
+          E = ( <b>G</b>, <b>σ</b>, <b>κ</b> )<br><br>
+          <b>G</b> <span class="cm">= 发布快照，不可变。执行期间不随编辑变化</span><br>
+          <b>σ</b> <span class="cm">: NodeId → StepState  （持久化）</span><br>
+          <b>κ</b> <span class="cm">: NodeId → Checkpoint  （持久化）</span><br><br>
+          <b>ready</b>(E) = { n | ∀p ∈ pred(n), σ(p) ∈ {done, skipped} }<br>
+          <b>next</b>(E) ⊆ ready(E)
+        </div>
+        <p class="sm">三个分量全部在运行时之外，于是得到一条性质：</p>
+        <div class="landing"><b>调度状态可从持久存储完全重建。</b>任何一个工作进程在任意时刻崩溃，新进程读库即可继续，不需要恢复内存中的任何数据结构。</div>
+      </div>
+      <div class="stack s">
+        <h3>这条性质换来了什么</h3>
+        <ul class="dash">
+          <li><strong>无需内存计数器。</strong>「还差几个前驱完成」不缓存在内存里，每次完成事件都重新查询前驱状态。多进程并发推进同一张图时不会因计数器不同步而卡死或重复调度。</li>
+          <li><strong>水平扩展是免费的。</strong>工作进程无状态，扩副本不需要额外的一致性协议。</li>
+          <li><strong>调度逻辑可单测。</strong><code>next()</code> 是纯函数，测试不需要起数据库和队列。</li>
+        </ul>
+        <h3>代价</h3>
+        <p class="sm">每个节点完成都要多做几次数据库查询。这是<strong>用吞吐换正确性</strong>——在 LLM 调用动辄数秒的场景里，几毫秒的查询开销可以忽略；如果节点是微秒级计算，这个设计就是错的。</p>
+      </div>
+    </div>
+
+    <hr class="hair">
+
+    <div class="g g2 gap-s">
+      <div class="note">
+        <span class="t">Boundary</span>
+        <strong>「可重建」只覆盖调度层，不覆盖副作用层。</strong>若某节点已发出不可逆的外部请求后崩溃，重跑会再发一次。要做到端到端 exactly-once，需要节点级幂等键——本系统只有部分节点具备（§ V.2）。
+      </div>
+      <div class="note warn">
+        <span class="t">Transactional boundary</span>
+        与之配套的一条工程约束：<strong>任务入队必须发生在事务提交之后</strong>。否则工作进程可能先于数据可见性读到不存在的记录。这是「消息先于数据可见」的经典陷阱，正确解法是事务性发件箱；本系统只做到提交后回调，仍存在「提交成功但入队前崩溃」的窗口。
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ II.3 ============ -->
+<section class="page" data-sec="II.3 · 两条独立的轴">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">II.3 · AUDITABILITY ≠ REPLAYABILITY</div>
+      <h2>「可复现」是两件事，<br>混在一起讲必被追问</h2>
+    </div>
+
+    <p class="lead">最容易出错的表述是「我的系统结构上可复现」。<strong>它不成立</strong>：条件节点可以消费上游 LLM 的输出，因此同一份快照、同一份输入，两次执行走的分支和实际参与的节点集合都可能不同。必须把它拆成两条<strong>互相独立</strong>的轴。</p>
+
+    <div class="g g2 gap-s">
+      <div class="card card-accent">
+        <div class="kicker">轴 A · 可追溯与可恢复</div>
+        <h4 style="margin-top:1.6mm">本系统达到 A2</h4>
+        <p class="sm" style="margin-top:1.4mm"><strong>A0</strong> 只有最终输出<br><strong>A1</strong> 每步输入/输出/工具调用被完整记录，可事后回看<br><strong>A2</strong> 在 A1 之上，执行可从持久状态恢复，并支持从任意节点及其下游局部重跑</p>
+        <p class="xs" style="margin-top:1.6mm;color:rgba(255,255,255,.8)">它回答的是「<strong>刚才发生了什么</strong>」与「<strong>能不能接着跑</strong>」。与非确定性无关，因此 LLM 的随机性不构成障碍。</p>
+      </div>
+      <div class="card card-outlined">
+        <div class="kicker mute">轴 R · 重放保真度</div>
+        <h4 style="margin-top:1.6mm">本系统停在 R0</h4>
+        <p class="sm" style="margin-top:1.4mm"><strong>R0</strong> 无重放保证<br><strong>R1</strong> 结构重放：同快照同输入 ⇒ 同节点集合与同分支<br><strong>R2</strong> 完全重放：连输出文本一致</p>
+        <p class="xs" style="margin-top:1.6mm">它回答的是「<strong>再来一次还会不会一样</strong>」。<strong>R1 并不比 R2 容易多少</strong>——只要分支依赖模型输出，就必须冻结或回放模型与工具的输出，而那基本等价于实现 R2 的机制。</p>
+      </div>
+    </div>
+
+    <div class="landing">
+      <b>准确的一句话：</b>本系统提供 <strong>A2 级可追溯与可恢复</strong>，<strong>不提供任何级别的重放保证</strong>。企业侧真正需要的事故归因、局部重试、合规审计三件事，全部只依赖 A 轴；R 轴主要服务于研究与回归测试场景。
+    </div>
+
+    <div class="g g-5-7">
+      <div class="stack s">
+        <h3>A2 的实现代价</h3>
+        <ul class="dash">
+          <li>图必须冻结成不可变快照 → 需要草稿 / 发布分离与版本表</li>
+          <li>每步的输入必须持久化，而不只是输出 → 存储成本换「它到底收到了什么」</li>
+          <li>事件流必须带单调序号 → 断线后可增量续传，时间线不缺口</li>
+          <li>调度状态必须可从持久存储重建（§ II.2）</li>
+        </ul>
+      </div>
+      <div class="stack s">
+        <div class="note warn">
+          <span class="t">如果被追问「那你怎么做回归测试」</span>
+          没有 R1 就无法用「重跑一遍比对」的方式做回归。可行的替代是<strong>对模型与工具调用做记录-回放</strong>：把每次调用的请求指纹与响应存进账本，重放时命中账本即返回记录值。这条路径技术上清晰、工作量可估，但会引出「请求指纹如何定义才既不过拟合也不误命中」的问题——这正是 RQ1。
+        </div>
+        <div class="note">
+          <span class="t">为什么这个区分重要</span>
+          把 A 轴的成果说成「可复现」是学术场合最典型的过度宣称。<strong>分开讲反而更强</strong>：它说明我知道自己的机制到底保证了什么、边界在哪。
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ II.4 ============ -->
+<section class="page" data-sec="II.4 · 循环展开">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">II.4 · BOUNDED UNROLLING</div>
+      <h2>DAG 里怎么放循环</h2>
+    </div>
+
+    <p class="sm" style="max-width:74ch">DAG 的定义是无环，而迭代天然有环。三种处理方式，代表三种取舍：</p>
+
+    <table class="tight">
+      <thead><tr><th style="width:34mm">方案</th><th style="width:54mm">机制</th><th>代价</th></tr></thead>
+      <tbody>
+        <tr><td><strong>加回边</strong><br><span class="xs">LangGraph 类</span></td><td>图本身允许环，用状态机语义推进</td><td>拓扑序失效；「跑到第几步」无法定义；无法给出剩余进度；静态分析困难</td></tr>
+        <tr><td><strong>事件溯源</strong><br><span class="xs">Temporal 类</span></td><td>保留全部历史事件，重放推导当前状态</td><td>要求确定性重放，与 LLM 冲突；历史无限增长</td></tr>
+        <tr><td><strong>有界展开</strong><br><span class="xs">本系统</span></td><td>循环体是带父子层级的子图，拓扑排序时排除；每轮开始前重置子步骤状态</td><td><strong>历史轮次的中间产物不可寻址</strong>——一个节点只有一行记录，只保留最后一轮的具体状态</td></tr>
+      </tbody>
+    </table>
+
+    <div class="g g-5-7">
+      <div class="stack s">
+        <h3>为什么选有界展开</h3>
+        <ul class="dash">
+          <li>顶层图保持无环，<strong>拓扑序、进度、剩余步数三个属性全部保住</strong>。</li>
+          <li>每个节点在状态表里恒定一行，存储与查询复杂度不随轮次增长。</li>
+          <li>轮次信息聚合在父节点上，天然形成「循环作为一个可折叠的整体」的视图。</li>
+        </ul>
+        <h3>终止性从哪来</h3>
+        <p class="sm">不来自结构，而来自<strong>显式预算</strong>：条件循环有最大轮次硬上限（默认 100）。这不是保守工程，而是必需——终止条件由模型判断时，「条件永远为真」是一个真实且昂贵的失效模式，不能只靠提示词约束。</p>
+      </div>
+      <div class="stack s">
+        <div class="card card-ink">
+          <div class="kicker">TRADE-OFF, STATED</div>
+          <p class="sm" style="margin-top:2mm">有界展开牺牲的是<strong>历史轮次的可寻址性</strong>。用户想问「第 3 轮的第 2 个节点输出了什么」，只能去事件流里翻，不能直接寻址。</p>
+          <p class="sm" style="margin-top:2mm">这是一个可以改进的点：代价是把状态表从「每节点一行」变成「每节点每轮一行」，存储与索引成本随轮数线性增长。<strong>在什么条件下这笔交换划算，取决于实际循环轮数分布——而我没有这个数据。</strong></p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ II.5 ============ -->
+<section class="page" data-sec="II.5 · 类型协商">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">II.5 · TYPES AS NEGOTIATION</div>
+      <h2>把类型系统<br>从拒绝器改成协商器</h2>
+    </div>
+
+    <div class="g g-5-7">
+      <div class="stack s">
+        <p class="sm">可视化编排里，「这两个端口能不能连」是一个类型判定问题。常规做法是二值：类型相同则允许，否则拒绝。实际使用中这条规则几乎立刻失效——上游产出 <code>{userId, name}</code>，下游需要 <code>{id, name}</code>，语义完全一致但结构不同。</p>
+        <p class="sm">本系统把判定结果定义成<strong>一个四级的有序集</strong>，而不是布尔值：</p>
+        <div class="formula">
+          EXACT <span class="cm">&gt;</span> TRANSFORM <span class="cm">&gt;</span> PARTIAL <span class="cm">&gt;</span> INCOMPATIBLE<br><br>
+          <b>EXACT</b>&nbsp;&nbsp;&nbsp;&nbsp;<span class="cm">结构一致，直连</span><br>
+          <b>TRANSFORM</b> <span class="cm">存在确定性转换函数</span><br>
+          <b>PARTIAL</b>&nbsp;&nbsp;<span class="cm">部分匹配 + 缺失字段 + 候选映射</span><br>
+          <b>INCOMPAT</b>&nbsp;<span class="cm">拒绝 + 冲突路径</span>
+        </div>
+        <p class="sm">关键设计：<strong>PARTIAL 允许连接</strong>。缺失字段与候选映射作为「待补证据」持久化在边上，交给用户在配置面板里确认。类型系统从「守门人」变成「协商中介」。</p>
+      </div>
+      <div class="stack s">
+        <h3>学术定位</h3>
+        <p class="sm">这本质上是 <strong>gradual typing</strong> 的思路：允许一部分契约在运行时才被满足，换取开发期的可用性。代价与 gradual typing 一样——把一部分错误从编译期推迟到运行期。</p>
+        <h3>两阶段判定</h3>
+        <p class="sm">交互层面还有一个约束：拖拽连线的回调是同步的，不能等待异步判定。于是拆成两阶段——同步的廉价规则先挡明显错误保证跟手，异步的结构化 schema 深比较给出权威结论。这与编译器的「快速语法检查 + 完整类型检查」分层同构。</p>
+        <div class="note warn">
+          <span class="t">Weakest link</span>
+          候选映射依赖<strong>字段名相似度启发式</strong>。它没有 ground truth、没有评估集、没有准确率数字。这是全系统中最像「研究问题」也最缺乏验证的部分（RQ3）。
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ II.6 ============ -->
+<section class="page" data-sec="II.6 · 能力单调收窄">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">II.6 · INVARIANT 1</div>
+      <h2>能力单调收窄</h2>
+    </div>
+
+    <div class="formula">
+      <span class="cm">对调用链上的任意父子关系 (p → c)：</span><br><br>
+      &nbsp;&nbsp;<b>cap</b>(c) ⊆ <b>cap</b>(p)<br><br>
+      <span class="cm">且不存在任何运行时路径可以放宽 cap。</span>
+    </div>
+
+    <p class="lead">一条约束，四处体现。它的价值不在于「更安全」，而在于把<strong>权限正确性从一个全局性质降级为一个局部可检查的性质</strong>。</p>
+
+    <div class="g g2 gap-s">
+      <div class="stack s">
+        <h3>四处体现</h3>
+        <ul class="sq">
+          <li><strong>子 Agent 不能自带沙箱。</strong>它并入父的执行环境，而不是新开一个。否则一次对话可能拉起十几个虚拟机，且父子文件系统割裂。</li>
+          <li><strong>低隔离父体不能调用高隔离子体。</strong>进程内运行时没有能力托管一个 microVM 生命周期，这类调用在发布期就被拒绝。</li>
+          <li><strong>插件运行时配置只能收紧。</strong>平台设定超时、内存、可访问主机的上限，插件可以要求更少，不能要求更多。</li>
+          <li><strong>沙箱内的 guest 不能声明自己的权限。</strong>能力集由外部注入，guest 侧的任何自述都不被采信（见 II.7）。</li>
+        </ul>
+      </div>
+      <div class="stack s">
+        <h3>为什么这是抽象而不是规则</h3>
+        <p class="sm">如果写成规则清单——「子 Agent 不要开沙箱」「插件别放宽超时」——那么正确性等于「每个新功能的作者都记得这几条」，必然随时间衰减。</p>
+        <p class="sm">写成不变式之后，检查对象变成<strong>调用图上的每一条边</strong>：只要每条边都满足 <code>cap(c) ⊆ cap(p)</code>，全局性质自动成立。这是一个可以在代码审查中机械执行、原则上也可以静态验证的判据。</p>
+        <div class="landing"><b>一句话答面试：</b>我没有让系统「更安全」，我让「是否安全」变成了一个可以逐边判定的问题。</div>
+      </div>
+    </div>
+
+    <div class="note warn">
+      <span class="t">Not verified</span>
+      当前这条不变式靠人工遵守与测试覆盖，<strong>没有静态检查器</strong>。给定系统的能力集合与调用图，自动验证该不变式是否处处成立，是一个明确可做的工程—研究结合点（RQ5）。
+    </div>
+  </div>
+</section>
+
+<!-- ============ II.7 ============ -->
+<section class="page" data-sec="II.7 · 单向断言">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">II.7 · INVARIANT 2</div>
+      <h2>不可信方永远不自证</h2>
+    </div>
+
+    <div class="formula">
+      <span class="cm">对任意跨信任域的断言 a（"我是谁"、"我能做什么"、"这份数据没被改"）：</span><br><br>
+      &nbsp;&nbsp;<b>verifier</b>(a) 的信任级别 &gt; <b>claimant</b>(a) 的信任级别
+    </div>
+
+    <div class="g g-5-7">
+      <div class="stack s">
+        <h3>四个信任域</h3>
+        <div class="stackdiag">
+          <div><span><b>客户端</b> 持用户凭证与本地私钥</span><span class="t">USER</span></div>
+          <div class="hl"><span><b>控制面</b> 业务服务，普通权限</span><span class="t">CONTROL</span></div>
+          <div class="dk"><span><b>运行时管理器</b> 唯一特权组件</span><span class="t">PRIVILEGED</span></div>
+          <div><span><b>沙箱 guest</b> 完全不可信</span><span class="t">UNTRUSTED</span></div>
+        </div>
+        <h3>三个实例</h3>
+        <ul class="dash">
+          <li><strong>网络身份。</strong>guest 声称自己的 IP/MAC 毫无意义——宿主侧在虚拟网卡入口做流量过滤，同时校验源 IP、MAC 与 ARP 发送方地址，不匹配的帧直接丢弃。这是把「网络地址」变成「不可伪造的身份」。</li>
+          <li><strong>回调身份。</strong>guest 拿不到真实的回调地址与上游令牌，只拿到一个不透明中继地址；管理器按来源地址与不透明令牌双重校验后，代持真实凭证转发到白名单主机。</li>
+          <li><strong>制品完整性。</strong>插件签名不签 ZIP 字节，而签一份<strong>规范化内容描述</strong>（排序后的清单 + 逐文件哈希）。因为容器格式的字节表示不唯一，签字节等于把签名绑在打包工具上。</li>
+        </ul>
+      </div>
+      <div class="stack s">
+        <div class="card card-ink">
+          <div class="kicker">GENERALIZATION</div>
+          <p class="sm" style="margin-top:2mm">这三个实例表面上毫无关系——一个是网络、一个是鉴权、一个是供应链。但它们是同一条不变式的三次应用：<strong>把「相信对方说的」替换成「由更高信任级别的一方独立验证」。</strong></p>
+          <p class="sm" style="margin-top:2mm">能把三件事收敛成一条规则，说明抽象抓对了。反过来，如果某处安全逻辑无法归入这条规则，就应该怀疑那里存在未识别的信任假设。</p>
+        </div>
+        <div class="note">
+          <span class="t">Corollary</span>
+          推论：<strong>密钥不跨域下发。</strong>控制面不持有签发 guest 身份的私钥，guest 也不持有控制面的客户端证书。任一侧被攻陷都无法伪装成另一侧。
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ II.8 ============ -->
+<section class="page" data-sec="II.8 · 记忆表示">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">II.8 · MEMORY REPRESENTATION</div>
+      <h2>相似性检索<br>解决不了关系性问题</h2>
+    </div>
+
+    <p class="sm" style="max-width:74ch">系统里同时存在两套「让模型记住东西」的机制，用了两种完全不同的表示。这不是历史包袱，是按<strong>检索目标</strong>分的。</p>
+
+    <table class="tight">
+      <thead><tr><th style="width:26mm">用途</th><th style="width:30mm">表示</th><th style="width:26mm">检索</th><th>判据</th></tr></thead>
+      <tbody>
+        <tr><td><strong>知识库</strong></td><td>文本分块 + 向量</td><td>向量近邻 + 重排</td><td>目标是<strong>相似</strong>：找和问题语义接近的原文片段。规模万级以上，无需版本管理</td></tr>
+        <tr><td><strong>Agent 记忆</strong></td><td>带父子边的结构化图 + 版本 + 披露级别</td><td>全文检索 + 图遍历</td><td>目标是<strong>关系</strong>：「项目 A → 模块 B → 约定 C」。规模百条量级，需要版本、审阅与作废</td></tr>
+      </tbody>
+    </table>
+
+    <div class="g g-5-7">
+      <div class="stack s">
+        <h3>为什么记忆不用向量库</h3>
+        <ul class="dash">
+          <li><strong>结构本身就是信息。</strong>层级与依赖关系无法由向量相似度表达，而它恰恰是复用经验时最有用的部分。</li>
+          <li><strong>记忆会过时，需要作废而非删除。</strong>版本 + 审阅状态让错误结论可被标记废弃并保留追溯，这在纯向量集合里很难表达。</li>
+          <li><strong>需要披露控制。</strong>不同场景看到不同深度的记忆。</li>
+          <li><strong>规模不匹配。</strong>百条精炼结论用全文检索足够，引入向量库只增加一个外部依赖与一致性问题。</li>
+        </ul>
+      </div>
+      <div class="stack s">
+        <div class="note warn">
+          <span class="t">要谨慎表述</span>
+          <strong>不能说「图谱记忆优于向量检索」。</strong>现有证据是<strong>条件性</strong>的：GraphRAG 的论文把向量 RAG 定位为「局部事实强、全局归纳弱」，并报告在其两个语料上全局性问题的全面性与多样性占优，但<strong>直接性（directness）上向量方法更好</strong>，且图抽取与社区摘要需要额外的 LLM 索引成本。目前没有跨语料、统一模型、统一成本口径的证据表明结构化图谱全面胜过向量。
+        </div>
+        <div class="note">
+          <span class="t">Framing</span>
+          正确说法是：<strong>两种表示服务两类查询</strong>。本系统按查询类型分配表示，而不是押注某一种表示更好。
+        </div>
+      </div>
+    </div>
+  </div>
+</section>

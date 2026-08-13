@@ -1,0 +1,171 @@
+<!-- ============ PART I 分隔 ============ -->
+<section class="page ink" data-sec="PART I">
+  <div class="body stack" style="justify-content:space-between">
+    <div class="stack s">
+      <div class="kicker">PART I</div>
+      <div class="bignum w" style="font-size:88pt">I</div>
+    </div>
+    <div class="stack m">
+      <h2 style="color:#fff;font-size:34pt">问题域</h2>
+      <p class="lead">先说清楚这个问题为什么难。如果 Agent 编排只是「把 LLM 调用串起来」，那它不值得做成一个系统，更不值得作为研究对象。它难在四个地方，并且这四个困难两两之间还会互相加强。</p>
+      <div class="g g4 gap-s" style="border-top:1px solid rgba(255,255,255,.28);padding-top:4mm">
+        <div><div class="kicker" style="opacity:.6">I.1</div><p class="sm" style="color:#fff;margin-top:1.5mm">四个本质困难</p></div>
+        <div><div class="kicker" style="opacity:.6">I.2</div><p class="sm" style="color:#fff;margin-top:1.5mm">三组张力</p></div>
+        <div><div class="kicker" style="opacity:.6">I.3</div><p class="sm" style="color:#fff;margin-top:1.5mm">设计空间</p></div>
+        <div><div class="kicker" style="opacity:.6">I.4</div><p class="sm" style="color:#fff;margin-top:1.5mm">本系统立场</p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ I.1 ============ -->
+<section class="page" data-sec="I.1 · 本质困难">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">I.1 · INTRINSIC DIFFICULTIES</div>
+      <h2>为什么它不是<br>一个普通的分布式系统</h2>
+    </div>
+
+    <p class="sm" style="max-width:74ch">传统工作流引擎（Airflow、Temporal）已经把「分布式任务编排」这件事解决得很好。Agent 系统之所以不能直接套用，是因为它破坏了那些引擎赖以成立的四个前提。</p>
+
+    <div class="stack s">
+      <div class="def">
+        <div class="term"><span class="lv">D1</span><span>执行是非确定性的，但恢复语义要求确定性</span></div>
+        <p class="body2">Temporal 这类引擎的可靠性建立在<strong>确定性重放</strong>之上：把历史事件重新喂给同一段代码，必须走出同一条控制流。LLM 调用天然违反这一点——同样的提示词，两次执行可能调用不同工具、循环不同轮数。于是「重放」这个最基本的恢复原语失效了，必须重新定义什么叫「恢复到同一个状态」。</p>
+      </div>
+      <div class="def">
+        <div class="term"><span class="lv">D2</span><span>控制流由内容决定，图的形状运行时才知道</span></div>
+        <p class="body2">静态 DAG 假设「边在提交时已知」。而 Agent 的下一步取决于上一步生成的<em>文本</em>。要么放弃静态结构（退化为自由循环，失去可视化、可审计、可静态分析），要么强行静态化（失去自主性）。这是本领域最核心的表达力冲突。</p>
+      </div>
+      <div class="def">
+        <div class="term"><span class="lv">D3</span><span>能力与风险同源，且主体意图不稳定</span></div>
+        <p class="body2">Agent 的价值随能力单调上升：能读文件 &lt; 能写文件 &lt; 能执行命令 &lt; 能修改自身配置。风险同步上升。经典 RBAC 隐含假设「主体的意图是稳定的、可归因的」，而模型的意图既不稳定也不可归因——它可能被提示词注入改变目标。<strong>权限模型因此不能只绑定主体，必须绑定「这一次具体操作」。</strong></p>
+      </div>
+      <div class="def">
+        <div class="term"><span class="lv">D4</span><span>状态是多源的，「当前状态」没有单一定义</span></div>
+        <p class="body2">一次 Agent 执行的状态同时分布在：模型上下文窗口、工具产生的外部副作用（文件、HTTP 请求）、沙箱文件系统、待人工审批的挂起点。任何一处遗漏，「断点续跑」就只是幻觉。定义清楚<strong>哪些状态必须持久化、哪些可以重建、哪些根本不可恢复</strong>，是这个系统最基础的工作。</p>
+      </div>
+    </div>
+
+    <div class="note warn">
+      <span class="t">Compounding</span>
+      四个困难会互相加强：D2 让图不可预测 → D4 的状态边界随之不可预测 → D1 的恢复语义更难定义 → 为了安全只能在更多地方插入 D3 的权限门 → 人工中断频率上升，自主性收益被抵消。<strong>这个正反馈回路是整个设计的主要敌人。</strong>
+    </div>
+  </div>
+</section>
+
+<!-- ============ I.2 ============ -->
+<section class="page" data-sec="I.2 · 三组张力">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">I.2 · TENSIONS</div>
+      <h2>三组无法同时满足的要求</h2>
+    </div>
+
+    <div class="stack m">
+      <div class="stack s">
+        <h3>T1 · 自主性 ↔ 可控性</h3>
+        <div class="tension">
+          <div class="side"><div class="h">全自主</div><p>模型自行决定一切。失败模式：无限循环烧钱、不可解释的副作用、出事后无法归因。</p></div>
+          <div class="mid">↔</div>
+          <div class="side"><div class="h">全人工确认</div><p>每步都要点同意。失败模式：中断代价超过自动化收益，用户直接关掉这个功能。</p></div>
+        </div>
+        <div class="landing"><b>落点：</b>按<strong>操作的不可逆性</strong>分档，而不是按重要性。只读工具自动放行；可逆写操作记录审计；不可逆或改变系统自身配置的操作需要人工确认，且确认粒度是<strong>单次工具调用</strong>而非整个回合（§ III.3）。</div>
+      </div>
+
+      <div class="stack s">
+        <h3>T2 · 确定性编排 ↔ 涌现推理</h3>
+        <div class="tension">
+          <div class="side"><div class="h">纯 DAG</div><p>可视化、可审计、可续跑。失败模式：表达不了「视情况决定下一步」，退化成穿着工作流外衣的脚本。</p></div>
+          <div class="mid">↔</div>
+          <div class="side"><div class="h">纯 Agent 循环</div><p>能处理开放任务。失败模式：无结构可言，无法被非技术用户理解、无法逐步重放、无法局部重试。</p></div>
+        </div>
+        <div class="landing"><b>落点：</b>不做统一模型，做<strong>二元模型</strong>——外层确定性图，内层无界循环，两者通过「可挂起、可快照、可取消的会话」接口耦合（§ II.1）。代价是概念数量翻倍，用户要理解两套心智模型。</div>
+      </div>
+
+      <div class="stack s">
+        <h3>T3 · 能力开放 ↔ 隔离强度</h3>
+        <div class="tension">
+          <div class="side"><div class="h">进程内执行</div><p>零开销、低延迟、易调试。失败模式：模型生成的代码与业务服务同权限，一次提示词注入即宿主沦陷。</p></div>
+          <div class="mid">↔</div>
+          <div class="side"><div class="h">强隔离</div><p>独立内核、独立网络栈。失败模式：启动开销、运维复杂度、需要特权组件，本身成为新的攻击面与单点。</p></div>
+        </div>
+        <div class="landing"><b>落点：</b>不选一档，而是<strong>按代码来源分档</strong>：平台自有逻辑进程内跑；第三方插件进 WASM（无系统调用面）；模型生成的代码进 microVM（独立内核）。特权收敛到单一组件（§ III.4）。</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ I.3 ============ -->
+<section class="page" data-sec="I.3 · 设计空间">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">I.3 · DESIGN SPACE</div>
+      <h2>两个轴就能把同类系统摆清楚</h2>
+    </div>
+
+    <p class="sm" style="max-width:74ch">横轴是<strong>控制流的确定程度</strong>（编排层允许多大的运行时不确定性），纵轴是<strong>执行隔离的强度</strong>（对不可信代码的防护层级）。绝大多数同类系统只在其中一个轴上做深，很少有系统同时处理两轴。</p>
+
+    <div class="plane">
+      <div class="ax-y">
+        <span>microVM<br>/ 独立内核</span>
+        <span>容器<br>/ 命名空间</span>
+        <span>进程内<br>/ 无隔离</span>
+      </div>
+      <div class="pt me"      style="left:56%;bottom:88%">AgentLoom</div>
+      <div class="pt"         style="left:82%;bottom:86%">E2B / Modal（沙箱即产品）</div>
+      <div class="pt"         style="left:10%;bottom:46%">Airflow</div>
+      <div class="pt"         style="left:20%;bottom:40%">Temporal</div>
+      <div class="pt"         style="left:44%;bottom:16%">LangGraph</div>
+      <div class="pt"         style="left:74%;bottom:10%">AutoGen / CrewAI</div>
+      <div class="pt"         style="left:88%;bottom:22%">MetaGPT</div>
+      <div class="pt"         style="left:30%;bottom:30%">Dify / Coze / n8n</div>
+      <div class="ax-x"><span>静态 DAG</span><span>动态图 / 条件边</span><span>自由 Agent 循环</span></div>
+    </div>
+
+    <div class="g g2 gap-s" style="margin-top:9mm">
+      <div class="note">
+        <span class="t">Reading</span>
+        左下角是成熟的确定性工作流引擎——可靠但表达不了自主推理；右下角是 Agent 框架——表达力强但执行隔离基本靠调用方自觉；右上角是把沙箱本身做成产品的基础设施，不负责编排。
+      </div>
+      <div class="note warn">
+        <span class="t">Positioning</span>
+        本系统落在<strong>中上区域</strong>：编排层保持结构化（可审计、可续跑），但允许节点内部是无界循环；同时自己承担隔离责任而不外包。<strong>这个位置的代价是系统复杂度显著高于单轴系统</strong>，收益是能同时给出「可审计」与「能自主写代码」两个属性。
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ I.4 ============ -->
+<section class="page" data-sec="I.4 · 本系统立场">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">I.4 · POSITION</div>
+      <h2>四条可以被证伪的立场</h2>
+      <p class="xs">每条都写成可反驳的形式——如果反驳成立，对应的设计就应该推翻。</p>
+    </div>
+
+    <div class="stack m">
+      <div class="def">
+        <div class="term"><span class="lv">P1</span><span>Agent 与 Workflow 应当是并列实体，而不是一方包含另一方</span></div>
+        <p class="body2"><strong>理由：</strong>二者的生命周期、恢复边界、复用粒度都不同。工作流执行是一次性的、有确定终点、要求可审计重放；Agent 是长期存在、跨会话继续、需要独立版本与权限策略的实体。</p>
+        <p class="body2"><strong>如何证伪：</strong>如果能给出一个统一的计算模型，同时提供「逐步可重放」和「无界自主循环」，且概念复杂度不高于两套模型之和，那么这条立场就站不住。</p>
+      </div>
+      <div class="def">
+        <div class="term"><span class="lv">P2</span><span>「可追溯」与「可重放」是两件事，必须分开承诺</span></div>
+        <p class="body2"><strong>理由：</strong>「记录了发生过什么、且能从中断处接着跑」与「再跑一次结果一样」是两个独立性质。前者不受非确定性影响，后者被非确定性直接摧毁。合在一起讲会导致过度宣称——因为只要条件分支消费了模型输出，连"走了哪些节点"都不保证一致（§ II.3）。</p>
+        <p class="body2"><strong>如何证伪：</strong>如果用户实际只关心「最终输出是否一致」，那么为可追溯性付出的持久化成本就是无用的工程负担。</p>
+      </div>
+      <div class="def">
+        <div class="term"><span class="lv">P3</span><span>隔离级别应当由代码来源决定，而不是由性能预算决定</span></div>
+        <p class="body2"><strong>理由：</strong>威胁模型不同：平台自有代码经过审查，第三方插件经过签名但逻辑不可信，模型生成的代码完全不可信且每次都不同。用同一档隔离服务三类代码，要么过度付费，要么留下缺口。</p>
+        <p class="body2"><strong>如何证伪：</strong>如果 WASM 的隔离强度对模型生成代码也够用（或 microVM 的开销可忽略），分档就没有必要。</p>
+      </div>
+      <div class="def">
+        <div class="term"><span class="lv">P4</span><span>安全性应当表述为少数几条可检查的不变式，而不是一份规则清单</span></div>
+        <p class="body2"><strong>理由：</strong>规则清单的正确性等于「每处都记得遵守」，随功能增长必然衰减；不变式可以逐边检查，甚至可能静态验证（§ V.3 / RQ5）。</p>
+        <p class="body2"><strong>如何证伪：</strong>如果实际系统中存在大量无法归入这几条不变式的安全逻辑，说明抽象没有覆盖真实约束，只是事后叙事。<em>这一条目前只做到了「大部分安全逻辑可归入三条不变式」，没有做形式化验证。</em></p>
+      </div>
+    </div>
+  </div>
+</section>
