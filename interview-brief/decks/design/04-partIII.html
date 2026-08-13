@@ -130,7 +130,7 @@
       <tbody>
         <tr><td><strong>run 级</strong></td><td>整次执行</td><td>低（重新开始）</td><td>审批点太粗，用户看不到「到底在批准什么」</td></tr>
         <tr><td><strong>turn 级</strong></td><td>整个模型回合，步骤状态置为等待</td><td><strong>高</strong>：要重建整个 agent loop 的状态机</td><td>暂停语义与失败语义混淆，监控上分不清「挂了」还是「在等人」</td></tr>
-        <tr><td><strong>tool 级</strong><br><span class="xs">本系统</span></td><td>单次工具调用；<strong>步骤仍为运行中</strong></td><td>低：模型回合本就在进行，批准后原地继续</td><td>需要跨进程共享挂起状态（发起方与接收审批的进程通常不是同一个）</td></tr>
+        <tr><td><strong>tool 级</strong><br><span class="xs">本系统</span></td><td>单次工具调用；<strong>步骤仍为运行中</strong></td><td>低：模型回合本就在进行，批准后原地继续</td><td>需要把「决定」跨进程送回发起进程（接收审批的进程通常不是发起进程）；但活的回合仍绑定在发起进程，<strong>进程崩溃即丢失</strong></td></tr>
       </tbody>
     </table>
 

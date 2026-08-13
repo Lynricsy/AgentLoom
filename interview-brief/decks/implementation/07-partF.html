@@ -118,7 +118,7 @@
       </div>
       <div class="qa">
         <div class="q"><span class="i">Q3</span><span>调度器为什么每次都回数据库查前驱状态，不用内存计数器？</span></div>
-        <div class="a">内存计数器在进程重启后就丢了，多 worker 并发推进同一张图时还会不同步，导致卡死或重复调度。<b>数据库是唯一真相源</b>，多几次查询换来重启可恢复和水平扩展安全。</div>
+        <div class="a">内存计数器在进程重启后就丢了，多 worker 并发推进同一张图时还会不同步，导致卡死或重复调度。<b>数据库是唯一真相源</b>，多几次查询换来重启可恢复。<b>但别说成「水平扩展安全」</b>：并发正确性另外依赖状态迁移上的比较并交换（<code>WHERE id=? AND status=&lt;刚读到的值&gt;</code>），而且竞争失败方是抛异常而非良性无操作，CAS 之前写入的步骤输入也不受保护，我没做过并发压测。</div>
       </div>
       <div class="qa">
         <div class="q"><span class="i">Q4</span><span>DAG 里怎么表达循环？</span></div>
@@ -163,7 +163,7 @@
       </div>
       <div class="qa">
         <div class="q"><span class="i">Q11</span><span>事件太多把前端打爆怎么办？</span></div>
-        <div class="a">令牌桶 + 每执行队列（cap 500，100ms drain）。<b>队列满时丢最旧的</b>，因为 LLM 流式 token 越新越有用；而终态和标题更新走 immediate 通道插队，永不进队列也永不被丢。</div>
+        <div class="a">令牌桶 + 每执行队列（cap 500，100ms drain）。<b>队列满时丢最旧的</b>，因为 LLM 流式 token 越新越有用。终态不是靠「插队」保证的——是<b>先 flush 排空该执行的队列，再广播终态</b>。（标题事件属于 <code>/agent-conversation</code> namespace，不在 <code>/execution</code> 这套背压里。）</div>
       </div>
       <div class="qa">
         <div class="q"><span class="i">Q12</span><span>同一个工作区被两个沙箱挂载怎么办？</span></div>
@@ -192,7 +192,7 @@
     <div class="stack s">
       <div class="qa">
         <div class="q"><span class="i">Q15</span><span>为什么用 Firecracker 而不是 Docker 跑 Agent 代码？</span></div>
-        <div class="a">容器共享宿主内核，一个内核漏洞即逃逸。Firecracker 每个沙箱独立内核，逃逸要先打穿 KVM/virtio，攻击面小一个数量级，启动开销又远低于完整虚拟机。<b>而且业务进程根本不持有 KVM 和 Docker socket</b>，权限集中在一个单例 Go manager。</div>
+        <div class="a">容器共享宿主内核，一个内核漏洞即逃逸。Firecracker 每个沙箱独立内核，逃逸要先打穿 KVM/virtio——攻击面从<b>整个系统调用接口</b>收窄到<b>虚拟设备接口与虚拟机监控器</b>，启动开销又远低于完整虚拟机。<b>而且业务进程根本不持有 KVM 和 Docker socket</b>，权限集中在一个单例 Go manager。</div>
       </div>
       <div class="qa">
         <div class="q"><span class="i">Q16</span><span>网络隔离具体防什么？只写 nftables 不行吗？</span></div>
@@ -208,7 +208,7 @@
       </div>
       <div class="qa">
         <div class="q"><span class="i">Q19</span><span>号称端到端加密，服务端真的解不开吗？</span></div>
-        <div class="a">要先把边界说清楚，否则这个说法会被拆穿。<b>准确的表述是「服务端没有持久化的解密能力」，而不是「服务端从未见过明文」</b>——LLM 输出是在 worker 进程里产生的，加密发生在写库之前，所以在线进程和模型提供商本来就在信任边界之内。它真正防的是<b>静态数据泄露</b>：数据库里只有 RSA-4096 公钥，私钥只在租户浏览器 IndexedDB 以 PKCS8 存放、导入时 <code>extractable:false</code>，服务端代码里没有任何解密函数，所以拖库、备份泄露、DBA 越权都读不到内容。密钥表 append-only（org+fingerprint 唯一 + 单 active partial index），轮换插新行而非覆盖，否则历史密文永久变乱码。<b>另外两个要主动承认的口子：IndexedDB 仍受同源脚本影响；加密失败时当前实现会 warn 后明文降级。</b></div>
+        <div class="a">要先把边界说清楚，否则这个说法会被拆穿。<b>准确的表述是「服务端没有持久化的解密能力」，而不是「服务端从未见过明文」</b>——LLM 输出是在 worker 进程里产生的，加密发生在写库之前，所以在线进程和模型提供商本来就在信任边界之内。它真正防的是<b>静态数据泄露</b>：数据库里只有 RSA-4096 公钥，私钥只在租户浏览器 IndexedDB 以 PKCS8 存放、导入时 <code>extractable:false</code>，<b>服务端不持有该私钥、也没有对应的解密路径</b>，所以拖库、备份泄露、DBA 越权都读不到这部分内容。<b>说话要精确</b>：服务端并非「没有任何解密函数」——它有一套自管 KEK 的信封解密，用于 MCP 凭证、私有部署配置这类服务端 secret；那是另一套密钥体系，与租户 E2EE 无关。密钥表 append-only（org+fingerprint 唯一 + 单 active partial index），轮换插新行而非覆盖，否则历史密文永久变乱码。<b>另外两个要主动承认的口子：IndexedDB 仍受同源脚本影响；加密失败时当前实现会 warn 后明文降级。</b></div>
       </div>
       <div class="qa">
         <div class="q"><span class="i">Q20</span><span>审计日志怎么保证不可篡改？</span></div>
@@ -240,7 +240,7 @@
         <h4>2 分钟版 · 加这三段</h4>
         <ul class="dash" style="margin-top:2mm">
           <li><strong>数据一致性怎么做的。</strong>每个请求包在设置了 <code>app.current_tenant</code> 的事务里，RLS 兜底；副作用注册 afterCommit；写冲突用 OCC + 状态 guard 双层防护。</li>
-          <li><strong>实时怎么做的。</strong>带单调 eventId 的事件信封 + 500 条环形缓冲 + 断线按 lastEventId 增量回放，缓冲不够降级为整体快照；令牌桶背压，丢最旧保最新，终态走 immediate 通道。</li>
+          <li><strong>实时怎么做的。</strong>带单调 eventId 的事件信封 + 500 条环形缓冲 + 断线按 lastEventId 增量回放，缓冲不够降级为整体快照；令牌桶背压，丢最旧保最新，终态前先整体 flush 排空队列再广播。</li>
           <li><strong>隔离怎么做的。</strong>特权收敛到单例 Go manager；网络层用 tc 做 IP+MAC+ARP 三重绑定把地址变成身份；回调经不透明 relay 中转防 SSRF。</li>
         </ul>
       </div>

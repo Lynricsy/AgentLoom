@@ -1,0 +1,58 @@
+<!-- ============ 参考与核实 ============ -->
+<section class="page" data-sec="REFERENCES">
+  <div class="body stack m">
+    <div class="stack s">
+      <div class="kicker">REFERENCES · 参考与核实</div>
+      <h2>每条外部事实的出处</h2>
+      <p class="xs">核实日期 <strong>2026-08-13</strong>。软件类结论对应当时的主干版本与文档快照；这类项目迭代很快，面试前应重新确认。</p>
+    </div>
+
+    <div class="g g2 gap-l" style="align-items:start">
+      <div class="stack s">
+        <h3>论文</h3>
+        <table class="tight">
+          <tbody>
+            <tr><td style="width:32mm"><strong>Firecracker</strong></td><td><em>Firecracker: Lightweight Virtualization for Serverless Applications</em>，NSDI 2020</td></tr>
+            <tr><td><strong>MemGPT</strong></td><td>Packer et al., <em>MemGPT: Towards LLMs as Operating Systems</em>，arXiv:2310.08560。<span class="xs">未查到正式会议，勿写录用信息</span></td></tr>
+            <tr><td><strong>Generative Agents</strong></td><td>Park et al., UIST '23，arXiv:2304.03442</td></tr>
+            <tr><td><strong>HyDE</strong></td><td>Gao, Ma, Lin, Callan，<em>Precise Zero-Shot Dense Retrieval without Relevance Labels</em>，ACL 2023，arXiv:2212.10496</td></tr>
+            <tr><td><strong>GraphRAG</strong></td><td>Edge et al.，arXiv:2404.16130。<span class="xs">长期标注预印本 / 微软研究报告</span></td></tr>
+            <tr><td><strong>Zep / Graphiti</strong></td><td>Rasmussen et al.，arXiv:2501.13956。<span class="xs">厂商自评，无会议信息</span></td></tr>
+            <tr><td><strong>AutoGen</strong></td><td>Wu et al.，arXiv:2308.08155</td></tr>
+            <tr><td><strong>MetaGPT</strong></td><td>Hong et al.，arXiv:2308.00352，仓库标注 ICLR 2024</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="stack s">
+        <h3>官方文档与源码</h3>
+        <table class="tight">
+          <tbody>
+            <tr><td style="width:32mm"><strong>LangGraph</strong></td><td>Graph API / Persistence / Interrupts 文档；「恢复时节点从函数开头重跑」「检查点在 super-step 边界」均为官方原文。主干版本 1.2.11</td></tr>
+            <tr><td><strong>Temporal</strong></td><td>Workflow Definition 文档：确定性重放要求、LLM 等外部交互须放 Activity；Namespaces 文档：单个 Namespace 仍可多租户</td></tr>
+            <tr><td><strong>Airflow</strong></td><td>源码 <code>DAG.check_cycle()</code> DFS 检测回边抛 <code>AirflowDagCycleException</code>；Dynamic Task Mapping 文档</td></tr>
+            <tr><td><strong>OpenAI Agents SDK</strong></td><td>Human-in-the-loop 文档：<code>needs_approval</code> / <code>ToolApprovalItem</code> / <code>RunState</code> 可跨进程恢复。版本 0.20.0</td></tr>
+            <tr><td><strong>LlamaIndex Workflows</strong></td><td>Durable Workflows 与 HITL 文档：默认易失、手动 <code>Context</code> 检查点、at-least-once</td></tr>
+            <tr><td><strong>CrewAI</strong></td><td>Flows 与 human-input 文档（快照 v1.15.15）：<code>Task.human_input</code> 是最终回答前的任务级</td></tr>
+            <tr><td><strong>AutoGen / AG2</strong></td><td>migration 文档与 AG2 README。<span class="xs">两者是不同发行包，勿互相当作别名</span></td></tr>
+            <tr><td><strong>MCP</strong></td><td>规范（按日期版本）与官方安全最佳实践：本地服务器可执行任意代码且与客户端同权限，建议沙箱化</td></tr>
+            <tr><td><strong>ACP</strong></td><td>Zed 的 Agent Client Protocol。<span class="xs">与 IBM/BeeAI 的 Agent Communication Protocol 同名不同物，后者已并入 A2A</span></td></tr>
+            <tr><td><strong>A2A</strong></td><td>Linux Foundation 项目；官方定位为 agent↔agent，与 MCP 互补而非替代</td></tr>
+            <tr><td><strong>n8n / Dify</strong></td><td>n8n：task runners 是用户代码的唯一隔离层，内部模式与主进程同用户；Dify：代码节点沙箱阻断文件系统、外网、系统命令</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="g g2 gap-s">
+      <div class="note">
+        <span class="t">本系统的事实来源</span>
+        涉及本系统的机制描述均以<strong>工作树源码</strong>为准，而非记忆或早期文档。核实过程中已推翻多条初稿断言（工具级审批并非独有、进程崩溃后无工具级恢复、调度并非「水平扩展安全」、服务端并非「没有任何解密函数」）。
+      </div>
+      <div class="note warn">
+        <span class="t">未引用的量</span>
+        本册<strong>不出现任何未经自测的性能数字</strong>。Firecracker 论文虽给出启动延迟与内存开销，但其测量条件与本部署无关，因此正文只讨论攻击面结构，不引用数值。
+      </div>
+    </div>
+  </div>
+</section>

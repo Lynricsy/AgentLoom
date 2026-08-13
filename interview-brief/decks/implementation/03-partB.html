@@ -188,7 +188,7 @@
       <div><span><b>4 · 读发布快照</b> 或在 <code>web-studio</code> 来源下读草稿快照</span><span class="t">SNAPSHOT</span></div>
       <div class="hl"><span><b>5 · 资源治理准入</b> 租户/工作流暂停？并发数超？日执行量超？→ 阻断</span><span class="t">ADMISSION</span></div>
       <div><span><b>6 · 插入 workflow_executions</b> 状态 pending，同时冻结 <code>definitionSnapshot</code></span><span class="t">WRITE</span></div>
-      <div class="dk"><span><b>7 · afterCommit 才入队</b> jobId = executionId，天然幂等</span><span class="t">CRITICAL</span></div>
+      <div class="dk"><span><b>7 · afterCommit 才入队</b> jobId = executionId，队列按 jobId 去重</span><span class="t">CRITICAL</span></div>
       <div><span><b>8 · Worker initializeSteps</b> 短事务内按快照为每个节点建 <code>execution_steps</code>(pending)</span><span class="t">WORKER</span></div>
       <div><span><b>9 · NodeScheduler.startExecution</b> 进入 DAG 调度</span><span class="t">SCHEDULE</span></div>
     </div>
@@ -414,7 +414,7 @@
       <div class="g g2 gap-s">
         <div class="note">
           <span class="t">Why drop oldest</span>
-          LLM 流式输出的 token 事件是「越新越有用」。丢最旧的 chunk 只会让用户看到内容跳一下，丢最新的会让界面卡在过去。而真正重要的终态事件走 immediate 通道，永不进队列。
+          LLM 流式输出的 token 事件是「越新越有用」。丢最旧的 chunk 只会让用户看到内容跳一下，丢最新的会让界面卡在过去。而终态事件的做法不是「插队」——是<strong>先整体 flush 排空队列，再广播终态</strong>，保证结局不被积压挡住。
         </div>
         <div class="note warn">
           <span class="t">Drift</span>

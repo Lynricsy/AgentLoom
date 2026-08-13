@@ -25,7 +25,7 @@
       <h2>为什么不是容器</h2>
     </div>
 
-    <p class="lead">Agent 会执行模型生成的任意代码。容器共享宿主内核，一个内核漏洞就是一次逃逸。Firecracker 给每个沙箱一个<strong>独立内核</strong>，逃逸需要先打穿 KVM/virtio——攻击面小一个数量级，而启动开销远低于完整虚拟机。<em>（本项目没有做过冷启动耗时基准测试，不要在面试里报具体毫秒数。）</em></p>
+    <p class="lead">Agent 会执行模型生成的任意代码。容器共享宿主内核，一个内核漏洞就是一次逃逸。Firecracker 给每个沙箱一个<strong>独立内核</strong>，逃逸需要先打穿 KVM/virtio——<strong>攻击面从「整个系统调用接口」收窄到「虚拟设备接口 + 虚拟机监控器」</strong>，而启动开销远低于完整虚拟机。<em>（本项目没有做过冷启动耗时基准测试，不要在面试里报具体毫秒数。）</em></p>
 
     <div class="stackdiag">
       <div><span><b>server / worker</b> 普通权限，只持有 manager client 证书</span><span class="t">mTLS CLIENT</span></div>

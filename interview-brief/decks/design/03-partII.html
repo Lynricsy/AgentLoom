@@ -135,7 +135,7 @@
       <div class="card card-accent">
         <div class="kicker">轴 A · 可追溯与可恢复</div>
         <h4 style="margin-top:1.6mm">本系统达到 A2</h4>
-        <p class="sm" style="margin-top:1.4mm"><strong>A0</strong> 只有最终输出<br><strong>A1</strong> 每步输入/输出/工具调用被完整记录，可事后回看<br><strong>A2</strong> 在 A1 之上，执行可从持久状态恢复，并支持从任意节点及其下游局部重跑</p>
+        <p class="sm" style="margin-top:1.4mm"><strong>A0</strong> 只有最终输出<br><strong>A1</strong> 每步的输入、结果与工具调用<strong>按既定契约</strong>落库，可事后回看（不是全量原始流量留存）<br><strong>A2</strong> 在 A1 之上，<strong>编排层</strong>可从持久状态重建调度，并支持从任意节点及其下游局部重跑</p>
         <p class="xs" style="margin-top:1.6mm;color:rgba(255,255,255,.8)">它回答的是「<strong>刚才发生了什么</strong>」与「<strong>能不能接着跑</strong>」。与非确定性无关，因此 LLM 的随机性不构成障碍。</p>
         <p class="xs" style="margin-top:1.6mm;color:rgba(255,255,255,.8)"><strong>边界：A2 成立在编排层</strong>（步骤状态与检查点都落库，可重建调度、可从任意节点及下游重跑）。<strong>一个正在进行中的 Agent 回合不在此列</strong>——它活在发起进程的内存里，进程崩溃即丢失，只能从该步骤整体重跑。</p>
       </div>
@@ -143,7 +143,7 @@
         <div class="kicker mute">轴 R · 重放保真度</div>
         <h4 style="margin-top:1.6mm">本系统停在 R0</h4>
         <p class="sm" style="margin-top:1.4mm"><strong>R0</strong> 无重放保证<br><strong>R1</strong> 结构重放：同快照同输入 ⇒ 同节点集合与同分支<br><strong>R2</strong> 完全重放：连输出文本一致</p>
-        <p class="xs" style="margin-top:1.6mm">它回答的是「<strong>再来一次还会不会一样</strong>」。<strong>R1 并不比 R2 容易多少</strong>——只要分支依赖模型输出，就必须冻结或回放模型与工具的输出，而那基本等价于实现 R2 的机制。</p>
+        <p class="xs" style="margin-top:1.6mm">它回答的是「<strong>再来一次还会不会一样</strong>」。<strong>R1 未必比 R2 容易多少</strong>——只要分支依赖模型输出，就得冻结或回放模型与工具的输出；而一旦有了这套记录-回放机制，R2 往往顺带就到手了。<span style="color:#737373">（这是机制层面的判断，不是定理：如果只需要分支一致而不要求文本一致，理论上可以只记录分支判定点，成本更低。）</span></p>
       </div>
     </div>
 

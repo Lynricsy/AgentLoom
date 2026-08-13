@@ -187,7 +187,7 @@
       <div class="stack s">
         <h3>混合加密</h3>
         <p class="sm"><code>LlmEncryptionService</code>：随机 32 字节 DEK + 12 字节 IV，<code>AAD = tenantId:timestamp</code>，AES-256-GCM 加密载荷，再用租户 <strong>RSA-OAEP-4096 公钥</strong>包住 DEK。返回 ciphertext / encryptedSessionKey / iv / authTag / aad / fingerprint / algorithm，<code>finally</code> 里把 DEK 清零。</p>
-        <p class="sm"><strong>数据库里只有公钥。</strong>私钥只存在租户浏览器的 IndexedDB（<code>agentloom-keystore / private-keys</code>，PKCS8 二进制），解密时用 <code>importKey('pkcs8', ..., extractable:false)</code> 导入不可导出的 CryptoKey。服务端<strong>没有任何解密函数</strong>。</p>
+        <p class="sm"><strong>数据库里只有公钥。</strong>私钥只存在租户浏览器的 IndexedDB（<code>agentloom-keystore / private-keys</code>，PKCS8 二进制），解密时用 <code>importKey('pkcs8', ..., extractable:false)</code> 导入不可导出的 CryptoKey。服务端<strong>不持有该私钥，也没有对应的解密路径</strong>——注意措辞：服务端另有一套自管 KEK 的信封解密（MCP 凭证、私有部署 secret 等），那是独立密钥体系，不能笼统说「服务端没有任何解密函数」。</p>
         <p class="sm">但要把边界说准：<strong>加密发生在写库之前，明文在 worker 进程里存在过</strong>，模型提供商也看得到。所以它保护的是<strong>静态数据</strong>——拖库、备份泄露、DBA 越权读不到内容；它<strong>不</strong>保护「在线服务进程被攻陷」这个场景。把它讲成「服务端从未见过明文」是会被拆穿的。</p>
         <table class="tight">
           <thead><tr><th style="width:34mm">加密对象</th><th>处理</th></tr></thead>
