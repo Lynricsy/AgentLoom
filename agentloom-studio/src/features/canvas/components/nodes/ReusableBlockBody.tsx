@@ -3,6 +3,7 @@ import { ChevronDown, ChevronRight, Package } from 'lucide-react'
 import { Button } from '@/shared/ui/button'
 import type { BlockDefinition, BlockNodeData, CanvasNodeData } from '../../types'
 import { useCanvasActions } from '../../stores/canvasStore'
+import { usePreviewMode } from '../PreviewModeContext'
 import { NodeBadge } from '../shared/NodeBadge'
 
 interface ReusableBlockBodyProps {
@@ -39,6 +40,7 @@ export const ReusableBlockBody = memo(function ReusableBlockBody({
   nodeId,
   data,
 }: ReusableBlockBodyProps) {
+  const previewMode = usePreviewMode()
   const { updateNodeData } = useCanvasActions()
 
   if (!isBlockNodeData(data)) {
@@ -74,23 +76,25 @@ export const ReusableBlockBody = memo(function ReusableBlockBody({
         )}
       </div>
 
-      {/* Toggle button */}
-      <div className="flex items-center justify-end">
-        <Button
-          size="sm"
-          variant="ghost"
-          className="h-7 px-2 text-[11px]"
-          onClick={() => updateNodeData(nodeId, { isExpanded: !data.isExpanded })}
-          aria-label={toggleLabel}
-        >
-          {data.isExpanded ? (
-            <ChevronDown className="h-3 w-3" />
-          ) : (
-            <ChevronRight className="h-3 w-3" />
-          )}
-          <span>{toggleLabel}</span>
-        </Button>
-      </div>
+      {/* Toggle button：写编辑器 store，预览态不提供 */}
+      {previewMode ? null : (
+        <div className="flex items-center justify-end">
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-7 px-2 text-[11px]"
+            onClick={() => updateNodeData(nodeId, { isExpanded: !data.isExpanded })}
+            aria-label={toggleLabel}
+          >
+            {data.isExpanded ? (
+              <ChevronDown className="h-3 w-3" />
+            ) : (
+              <ChevronRight className="h-3 w-3" />
+            )}
+            <span>{toggleLabel}</span>
+          </Button>
+        </div>
+      )}
 
       {/* Expanded preview (limited to MAX_VISIBLE_INTERNAL_NODES) */}
       {data.isExpanded ? (

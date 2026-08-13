@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { BlockNodeData } from '../../types'
 import { ReusableBlockBody } from './ReusableBlockBody'
+import { PreviewModeContext } from '../PreviewModeContext'
 
 const mocks = vi.hoisted(() => ({
   updateNodeData: vi.fn(),
@@ -169,5 +170,18 @@ describe('ReusableBlockBody', () => {
     expect(mocks.updateNodeData).toHaveBeenCalledWith('block-node-1', {
       isExpanded: true,
     })
+  })
+
+  it('预览态不渲染写编辑器 store 的展开按钮', () => {
+    render(
+      <PreviewModeContext.Provider value={{ edges: [], lodOverride: null }}>
+        <ReusableBlockBody nodeId="block-1" data={createBlockNodeData()} />
+      </PreviewModeContext.Provider>,
+    )
+
+    expect(screen.getByTestId('reusable-block-body')).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: '展开内部图' }),
+    ).not.toBeInTheDocument()
   })
 })

@@ -148,7 +148,9 @@ src/
 - `lib/workflowPreview.ts` 会基于快照里的 `data.nodeType` 推导真实节点 category，并对 `inputPorts/outputPorts` 执行与正式画布一致的 hydration
 - 预览 edge 会统一映射为只读 `smart` edge，并通过 `.workflow-preview-canvas` 关闭节点/连线命中，避免在预览页误触编辑交互
 - 预览默认保留平移与缩放交互：拖动画布可浏览局部，滚轮 / 触控可缩放，但节点与连线仍保持只读
-- 当快照中的 `nodeType` 完全无法识别时，预览才会回退到 React Flow 默认节点，作为坏数据兜底而不是常态路径
+- 坏数据同样渲染成真实卡片：未识别的 `nodeType` 归一化为 `control` 类别的「未知节点类型」muted 卡片，缺 `position` 的节点排进 3 列 320×200 兜底网格，只有缺 `id` 才被丢弃
+- 预览与编辑器共享节点组件，因此预览态通过 `PreviewModeContext` 与编辑器状态完全隔离：不发起受保护请求（LLM API Keys、smart-routing health），不读执行态 / 校验态 / 搜索态 / hover store，不显示执行浮层与选中描边，连线也不跑执行粒子。匿名公开分享页因此不会再被 401 刷新失败带去 `/login`
+- template 与 marketplace 详情的小尺寸预览传 `lodOverride="full"`（微缩真实卡片），全屏公开分享页不传，保留 zoom 驱动的 LOD
 
 ## 画布控制流容器事实
 

@@ -192,6 +192,8 @@ src/
 - **cn()** = clsx + tailwind-merge
 - **BEM-like** canvas 专用类在 `index.css`
 - **prefers-reduced-motion** 覆盖
+- **画布节点卡片视觉**: 卡片的层次感全部由令牌驱动——`--shadow-node` / `--shadow-node-selected` 为多层柔和投影，`.canvas-node-header` 用 `--node-color` 8% 顶部晕染向下淡出，`NodeIconChip` 用 25% 内描边，full header 的类型眉标取 60% 类别色混 `--color-muted`；节点 body 内禁止再出现 Tailwind palette 硬编码色（emerald/blue/purple 等），语义色走 `--color-success/error/info`、数据类型色走 `--color-type-*`、类别色走 `--color-node-*`
+- **预览态隔离**: `WorkflowPreviewCanvas` 通过 `features/canvas/components/PreviewModeContext.tsx` 声明「这是只读预览」，预览内的节点/连线组件必须据此跳过受保护查询与编辑器全局 store（详见 `features/canvas/AGENTS.md`）；匿名公开分享页 `/s/:token` 是该契约的回归主场景——任何漏出的受保护请求都会 401 → 刷新失败 → 被 ky hook 带去 `/login`
 
 ## 表单
 

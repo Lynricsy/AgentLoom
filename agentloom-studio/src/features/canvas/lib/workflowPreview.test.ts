@@ -71,6 +71,32 @@ describe('buildWorkflowPreviewGraph', () => {
     expect(preview.viewport).toEqual({ x: 10, y: 20, zoom: 0.8 })
   })
 
+  it('清除快照携带的选中态，预览不显示选中描边', () => {
+    const preview = buildWorkflowPreviewGraph({
+      nodes: [
+        {
+          id: 'node-1',
+          type: 'workflow-node',
+          position: { x: 0, y: 0 },
+          selected: true,
+          data: { nodeType: 'agent', label: '聊天 Agent' },
+        },
+        {
+          id: 'node-2',
+          type: 'workflow-node',
+          selected: true,
+          data: { nodeType: 'future-node-type', label: '未知' },
+        },
+      ],
+      edges: [
+        { id: 'edge-1', source: 'node-1', target: 'node-2', selected: true },
+      ],
+    })
+
+    expect(preview.nodes.map((node) => node.selected)).toEqual([false, false])
+    expect(preview.edges[0]?.selected).toBe(false)
+  })
+
   it('未知节点类型回退为可渲染的 control 卡片并保留原始端口', () => {
     const preview = buildWorkflowPreviewGraph({
       nodes: [
