@@ -1,5 +1,4 @@
 import { memo } from 'react'
-import { useViewport } from '@xyflow/react'
 import { BrainCircuit } from 'lucide-react'
 import { NodeBadge } from '../shared/NodeBadge'
 
@@ -32,10 +31,7 @@ export const MemoryNodeBody = memo(function MemoryNodeBody({
 }: {
   config: Record<string, unknown>
 }) {
-  const { zoom } = useViewport()
-
-  const isHighDetail = zoom >= 0.7
-  const isMedDetail = zoom >= 0.4
+  // Body 只在外层 shell 的 full LOD 下渲染，这里不再按 zoom 二次降级
 
   const configured = isMemoryConfigured(config)
   const instanceName =
@@ -50,55 +46,32 @@ export const MemoryNodeBody = memo(function MemoryNodeBody({
       className="flex flex-col items-center gap-1"
       data-testid="memory-node-body"
     >
-      {/* Icon -- always visible */}
       <BrainCircuit className="h-4 w-4 shrink-0 text-primary/80" />
 
-      {/* Low LOD: just the label */}
-      {!isMedDetail && (
-        <span className="text-[11px] leading-tight text-muted-foreground">
-          Memory
-        </span>
-      )}
+      <span
+        className="max-w-[120px] truncate leading-tight text-foreground"
+        data-testid="memory-instance-name"
+      >
+        {configured ? instanceName : '未配置'}
+      </span>
 
-      {/* Medium LOD: + instance name */}
-      {isMedDetail && !isHighDetail && (
-        <span
-          className="max-w-[100px] truncate text-[11px] leading-tight text-muted-foreground"
-          data-testid="memory-instance-name"
-        >
-          {configured ? instanceName : '未配置'}
-        </span>
-      )}
-
-      {/* High LOD: instance name + role badge + priority */}
-      {isHighDetail && (
-        <>
-          <span
-            className="max-w-[120px] truncate leading-tight text-foreground"
-            data-testid="memory-instance-name"
-          >
-            {configured ? instanceName : '未配置'}
+      {configured && (
+        <div className="flex items-center gap-1">
+          <span data-testid="memory-role-badge">
+            <NodeBadge
+              variant="status"
+              color={role === 'primary' ? 'primary' : 'default'}
+            >
+              {role}
+            </NodeBadge>
           </span>
-
-          {configured && (
-            <div className="flex items-center gap-1">
-              <span data-testid="memory-role-badge">
-                <NodeBadge
-                  variant="status"
-                  color={role === 'primary' ? 'primary' : 'default'}
-                >
-                  {role}
-                </NodeBadge>
-              </span>
-              <span
-                className="text-[11px] leading-tight text-muted-foreground"
-                data-testid="memory-priority"
-              >
-                P{priority}
-              </span>
-            </div>
-          )}
-        </>
+          <span
+            className="text-[11px] leading-tight text-muted-foreground"
+            data-testid="memory-priority"
+          >
+            P{priority}
+          </span>
+        </div>
       )}
     </div>
   )

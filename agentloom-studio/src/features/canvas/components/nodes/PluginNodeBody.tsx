@@ -8,9 +8,9 @@ interface PluginNodeBodyProps {
 
 export const PluginNodeBody = memo(function PluginNodeBody({ data }: PluginNodeBodyProps) {
   return (
-    <div className="flex flex-col gap-1 px-2 py-1">
+    <div className="flex flex-col gap-1">
       <div className="flex items-center gap-1.5">
-        <Puzzle className="h-3.5 w-3.5 text-purple-500" />
+        <Puzzle className="h-3.5 w-3.5 text-node-plugin" />
         <span className="text-xs font-medium truncate">
           {data.pluginName || '未配置插件'}
         </span>
@@ -21,7 +21,7 @@ export const PluginNodeBody = memo(function PluginNodeBody({ data }: PluginNodeB
         </span>
       )}
       {data.pluginVersion && (
-        <span className="inline-flex items-center rounded-full bg-purple-100 px-1.5 py-0.5 text-[10px] font-medium text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 w-fit">
+        <span className="inline-flex w-fit items-center rounded-full border border-border/60 bg-surface-elevated px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
           v{data.pluginVersion}
         </span>
       )}

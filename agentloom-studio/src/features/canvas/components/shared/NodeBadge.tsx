@@ -15,10 +15,10 @@ export type NodeBadgeColor =
 const COLOR_CLASSES: Record<NodeBadgeColor, string> = {
   default: 'bg-muted text-muted-foreground',
   primary: 'bg-primary/10 text-primary',
-  success: 'bg-emerald-500/10 text-emerald-500',
+  success: 'bg-success/10 text-success',
   warning: 'bg-warning/10 text-warning',
-  destructive: 'bg-destructive/10 text-destructive',
-  info: 'bg-blue-500/10 text-blue-500',
+  destructive: 'bg-error/10 text-error',
+  info: 'bg-info/10 text-info',
   muted: 'bg-muted/70 text-muted-foreground',
 }
 

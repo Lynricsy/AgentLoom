@@ -3,11 +3,11 @@ import { buildWorkflowPreviewGraph } from './workflowPreview'
 
 /** 从归一化结果里安全读出端口 id 列表（预览节点 data 是宽松的 Record） */
 function readPortIds(data: unknown, key: 'inputPorts' | 'outputPorts'): string[] {
-  if (!data || typeof data !== 'object' || !(key in data)) {
+  if (!data || typeof data !== 'object') {
     return []
   }
 
-  const ports = data[key]
+  const ports = Reflect.get(data, key)
   if (!Array.isArray(ports)) {
     return []
   }

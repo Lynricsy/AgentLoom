@@ -17,7 +17,7 @@ export const AgentNodeBody = memo(function AgentNodeBody({ data, hasSchemaConnec
   const hasSandboxOverride = !!data.sandboxOverride
 
   return (
-    <div className="flex flex-col gap-1 px-2 py-1">
+    <div className="flex flex-col gap-1">
       <div className="flex items-center gap-1.5">
         <Brain className="h-3.5 w-3.5 text-type-model" />
         <span className="text-xs font-medium truncate">
@@ -25,7 +25,7 @@ export const AgentNodeBody = memo(function AgentNodeBody({ data, hasSchemaConnec
         </span>
       </div>
       {versionLabel && (
-        <span className="inline-flex items-center rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 w-fit">
+        <span className="inline-flex w-fit items-center rounded-full border border-border/60 bg-surface-elevated px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
           {versionLabel}
         </span>
       )}
@@ -38,8 +38,8 @@ export const AgentNodeBody = memo(function AgentNodeBody({ data, hasSchemaConnec
       <div className="flex items-center gap-1 text-[10px]">
         {hasSchemaConnection ? (
           <>
-            <Braces className="h-3 w-3 text-emerald-400" />
-            <span className="text-emerald-400 font-medium">JSON 输出模式</span>
+            <Braces className="h-3 w-3 text-type-json" />
+            <span className="font-medium text-type-json">JSON 输出模式</span>
           </>
         ) : (
           <>

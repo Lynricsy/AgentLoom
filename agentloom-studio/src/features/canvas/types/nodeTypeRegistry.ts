@@ -194,7 +194,11 @@ export const PORT_DATA_TYPE_META: Record<PortDataType, PortDataTypeMeta> = {
     colorToken: "var(--color-type-skill)",
     shape: "diamond",
   },
-  agent: { label: "Agent", colorToken: "#F97316", shape: "circle" },
+  agent: {
+    label: "Agent",
+    colorToken: "var(--color-type-agent)",
+    shape: "circle",
+  },
   memory: {
     label: "Memory",
     colorToken: "var(--color-type-knowledge)",

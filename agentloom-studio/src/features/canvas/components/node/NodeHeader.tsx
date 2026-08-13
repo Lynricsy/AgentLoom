@@ -16,7 +16,7 @@ interface NodeIconChipProps {
   size: "full" | "compact";
 }
 
-/** 类别色图标芯片：类别色 14% 底 + 类别色图标 */
+/** 类别色图标芯片：类别色 14% 底 + 类别色图标 + 25% 内描边 */
 export function NodeIconChip({
   id,
   icon: Icon,
@@ -34,6 +34,8 @@ export function NodeIconChip({
         backgroundColor:
           "color-mix(in srgb, var(--node-color, var(--color-primary)) 14%, transparent)",
         color: "var(--node-color, var(--color-primary))",
+        boxShadow:
+          "inset 0 0 0 1px color-mix(in srgb, var(--node-color, var(--color-primary)) 25%, transparent)",
       }}
     >
       {overrideIcon ?? (
@@ -113,7 +115,7 @@ export function NodeCompactHeader({
     <header
       data-slot="header"
       className={cn(
-        "flex items-center gap-2 border-b border-border/60 py-2 pl-2.5",
+        "canvas-node-header flex items-center gap-2 border-b border-border/60 py-2 pl-2.5",
         // 右上角 NodeExecutionOverlay 常驻该区域，有执行态时预留出位置
         hasExecutionStatus ? "pr-8" : "pr-2.5",
       )}
@@ -163,7 +165,7 @@ export function NodeFullHeader({
     <header
       data-slot="header"
       className={cn(
-        "flex items-start gap-2.5 border-b border-border/60 py-2.5 pl-3",
+        "canvas-node-header flex items-start gap-2.5 border-b border-border/60 py-2.5 pl-3",
         hasExecutionStatus ? "pr-8" : "pr-3",
       )}
     >
@@ -175,7 +177,13 @@ export function NodeFullHeader({
       />
 
       <div className="min-w-0 flex-1">
-        <p className="truncate text-[9px] font-medium uppercase leading-none tracking-[0.1em] text-muted-foreground/60">
+        <p
+          className="truncate text-[9px] font-medium uppercase leading-none tracking-[0.1em]"
+          style={{
+            color:
+              "color-mix(in srgb, var(--node-color, var(--color-primary)) 60%, var(--color-muted))",
+          }}
+        >
           {nodeType}
         </p>
         <div className="mt-1 flex items-center gap-1.5">
