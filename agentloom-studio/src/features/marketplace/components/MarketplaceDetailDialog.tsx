@@ -62,8 +62,9 @@ function WorkflowPreviewSection({
       <WorkflowPreviewCanvas
         className="h-[260px] overflow-hidden rounded-card border border-border sm:h-[300px]"
         definition={listing.definition}
+        lodOverride="full"
         emptyFallback={
-          <div className="flex h-[260px] items-center justify-center rounded-card border border-dashed border-border text-sm text-muted">
+          <div className="flex h-[260px] items-center justify-center rounded-card border border-dashed border-border text-sm text-muted sm:h-[300px]">
             暂无可预览的工作流结构。
           </div>
         }

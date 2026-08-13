@@ -1,4 +1,4 @@
-import { memo } from 'react'
+import { memo, useState } from 'react'
 import { Layers, LayoutTemplate, Zap } from 'lucide-react'
 import { Badge, type BadgeProps } from '@/shared/ui/badge'
 import { Card } from '@/shared/ui/card'
@@ -33,6 +33,7 @@ export const TemplateCard = memo(function TemplateCard({
   template,
   onClick,
 }: TemplateCardProps) {
+  const [coverFailed, setCoverFailed] = useState(false)
   const complexity = template.metadata?.complexity ?? 'beginner'
   const nodeCount = template.metadata?.nodeCount ?? 0
 
@@ -51,12 +52,13 @@ export const TemplateCard = memo(function TemplateCard({
               'linear-gradient(135deg, color-mix(in srgb, var(--color-primary) 20%, var(--color-surface)), color-mix(in srgb, var(--color-primary) 5%, var(--color-surface)))',
           }}
         >
-          {template.thumbnailUrl ? (
+          {template.thumbnailUrl && !coverFailed ? (
             <img
               src={template.thumbnailUrl}
               alt=""
               loading="lazy"
               className="h-full w-full object-cover"
+              onError={() => setCoverFailed(true)}
             />
           ) : (
             <LayoutTemplate
