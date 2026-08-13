@@ -1,4 +1,4 @@
-import { memo } from 'react'
+import { memo, useState } from 'react'
 
 import { Download, UserRound } from 'lucide-react'
 
@@ -23,6 +23,7 @@ export const MarketplaceListingCard = memo(function MarketplaceListingCard({
   listing,
   onClick,
 }: MarketplaceListingCardProps) {
+  const [coverFailed, setCoverFailed] = useState(false)
   const typeMeta = MARKETPLACE_LISTING_TYPE_META[listing.listingType]
   const TypeIcon = typeMeta.icon
   const categoryLabel = listing.category
@@ -44,12 +45,13 @@ export const MarketplaceListingCard = memo(function MarketplaceListingCard({
             background: `linear-gradient(135deg, color-mix(in srgb, ${typeMeta.tone} 24%, var(--color-surface)), color-mix(in srgb, ${typeMeta.tone} 6%, var(--color-surface)))`,
           }}
         >
-          {listing.coverImageUrl ? (
+          {listing.coverImageUrl && !coverFailed ? (
             <img
               src={listing.coverImageUrl}
               alt=""
               loading="lazy"
               className="h-full w-full object-cover"
+              onError={() => setCoverFailed(true)}
             />
           ) : (
             <TypeIcon

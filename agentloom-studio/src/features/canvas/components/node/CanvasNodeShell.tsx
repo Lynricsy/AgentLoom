@@ -28,6 +28,7 @@ import {
   useNodeHasValidationError,
 } from "../../stores/canvasStore";
 import { NodeExecutionOverlay } from "../NodeExecutionOverlay";
+import { usePreviewMode } from "../PreviewModeContext";
 import { isCompoundContainerNodeType } from "../../types/controlFlow.types";
 import {
   getCompoundFrameInsets,
@@ -67,9 +68,14 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
     outputPorts: Array.isArray(data.outputPorts) ? data.outputPorts : undefined,
   });
   const NodeTypeIcon = resolveNodeIcon(config.icon);
-  const { data: activeApiKeys = [] } = useLlmApiKeys();
-  const nodeExecutionState = useNodeExecutionState(id);
-  const hasValidationError = useNodeHasValidationError(id);
+  const previewMode = usePreviewMode();
+  const { data: activeApiKeys = [] } = useLlmApiKeys({
+    enabled: !previewMode,
+  });
+  const liveExecutionState = useNodeExecutionState(id);
+  const liveValidationError = useNodeHasValidationError(id);
+  const nodeExecutionState = previewMode ? undefined : liveExecutionState;
+  const hasValidationError = previewMode ? false : liveValidationError;
   const lod = useLevelOfDetail();
   const llmConfig =
     data.nodeType === "llm-model" ? parseLlmModelConfig(data) : null;
@@ -133,6 +139,10 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
   const compoundMinResizeSize = useCanvasStore(
     useCallback(
       (s) => {
+        if (previewMode) {
+          return null;
+        }
+
         if (!isCompoundContainer || isCompoundCollapsed) {
           return null;
         }
@@ -152,6 +162,7 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
         isCompoundCollapsed,
         isCompoundContainer,
         outputPorts.length,
+        previewMode,
       ],
     ),
   );
@@ -177,7 +188,8 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
   const title = data.nodeType === "llm-model" ? llmDisplayTitle : data.label;
   const executionStatus = nodeExecutionState?.status;
   const compactStatusMeta = COMPACT_STATUS_META[executionStatus ?? "idle"];
-  const canvasEdges = useCanvasStore((s) => s.edges);
+  const storeEdges = useCanvasStore((s) => s.edges);
+  const canvasEdges = previewMode ? previewMode.edges : storeEdges;
   const [showCompletedAccent, setShowCompletedAccent] = useState(
     executionStatus === "completed",
   );
@@ -215,27 +227,38 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
   const { setHoveredNodeId, updateNodeData } = useCanvasActions();
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const isSearchActive = useCanvasStore(
+  const liveSearchActive = useCanvasStore(
     (s) => s.isSearchOpen && s.searchQuery.length > 0,
   );
-  const isMatch = useCanvasStore((s) => s.searchMatchIds.includes(id));
-  const isCurrent = useCanvasStore(
+  const liveIsMatch = useCanvasStore((s) => s.searchMatchIds.includes(id));
+  const liveIsCurrent = useCanvasStore(
     (s) => s.searchMatchIds[s.currentSearchIndex] === id,
   );
+  const isSearchActive = previewMode ? false : liveSearchActive;
+  const isMatch = previewMode ? false : liveIsMatch;
+  const isCurrent = previewMode ? false : liveIsCurrent;
 
   const onMouseEnter = useCallback(() => {
+    if (previewMode) {
+      return;
+    }
+
     hoverTimerRef.current = setTimeout(() => {
       setHoveredNodeId(id);
     }, 300);
-  }, [id, setHoveredNodeId]);
+  }, [id, previewMode, setHoveredNodeId]);
 
   const onMouseLeave = useCallback(() => {
+    if (previewMode) {
+      return;
+    }
+
     if (hoverTimerRef.current) {
       clearTimeout(hoverTimerRef.current);
       hoverTimerRef.current = null;
     }
     setHoveredNodeId(null);
-  }, [setHoveredNodeId]);
+  }, [previewMode, setHoveredNodeId]);
 
   const onToggleCompoundCollapse = useCallback(
     (event: MouseEvent<HTMLButtonElement>) => {
@@ -337,7 +360,9 @@ export const CanvasNodeShell = memo(function CanvasNodeShell({
         />
       ) : null}
 
-      {!isMinimal ? <NodeExecutionOverlay nodeId={id} /> : null}
+      {!isMinimal && !previewMode ? (
+        <NodeExecutionOverlay nodeId={id} />
+      ) : null}
 
       {isCompoundContainer ? (
         <CompoundFrame

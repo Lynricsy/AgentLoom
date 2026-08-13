@@ -209,12 +209,13 @@ export function useLlmModel(id: string | null) {
   });
 }
 
-/** 获取 API Keys */
-export function useLlmApiKeys() {
+/** 获取 API Keys（预览态节点需传 enabled:false，避免匿名页触发受保护请求） */
+export function useLlmApiKeys(options: { enabled?: boolean } = {}) {
   return useQuery({
     queryKey: llmModelKeys.apiKeys(),
     queryFn: fetchApiKeys,
     select: (apiKeys) => apiKeys.filter((item) => item.status === "active"),
+    enabled: options.enabled ?? true,
   });
 }
 

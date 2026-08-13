@@ -130,7 +130,15 @@ export const TemplateWizardDialog = memo(function TemplateWizardDialog({
                   className="h-[200px] overflow-hidden rounded-card border border-border"
                   data-testid="template-preview"
                 >
-                  <WorkflowPreviewCanvas definition={template.definition} />
+                  <WorkflowPreviewCanvas
+                    definition={template.definition}
+                    lodOverride="full"
+                    emptyFallback={
+                      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
+                        该模板暂无画布内容
+                      </div>
+                    }
+                  />
                 </div>
               </div>
             )}

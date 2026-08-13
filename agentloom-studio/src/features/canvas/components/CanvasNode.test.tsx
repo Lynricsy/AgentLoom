@@ -11,6 +11,10 @@ import { getNodeTypeConfig } from "../types/nodeTypeRegistry";
 import { clonePortDefinitions } from "../types/portSchema";
 import type { CanvasNode, CanvasNodeData } from "../types";
 import type { LevelOfDetail } from "../hooks/useLevelOfDetail";
+import {
+  PreviewModeContext,
+  type PreviewModeContextValue,
+} from "./PreviewModeContext";
 
 const nodeShellMocks = vi.hoisted(() => ({
   mockUseLevelOfDetail: vi.fn<() => LevelOfDetail>(() => "full"),
@@ -122,6 +126,7 @@ function createUnknownNodeData(): CanvasNodeData {
 function renderNode(
   data: CanvasNodeData,
   overrides: Partial<NodeProps<CanvasNode>> = {},
+  previewMode: PreviewModeContextValue | null = null,
 ) {
   const props: NodeProps<CanvasNode> = {
     ...overrides,
@@ -139,7 +144,15 @@ function renderNode(
     positionAbsoluteY: overrides.positionAbsoluteY ?? 0,
   };
 
-  return render(<CanvasNodeShell {...props} />);
+  if (!previewMode) {
+    return render(<CanvasNodeShell {...props} />);
+  }
+
+  return render(
+    <PreviewModeContext.Provider value={previewMode}>
+      <CanvasNodeShell {...props} />
+    </PreviewModeContext.Provider>,
+  );
 }
 
 describe("CanvasNodeShell", () => {
@@ -676,5 +689,49 @@ describe("CanvasNodeShell", () => {
     expect(
       screen.queryByTestId("canvas-node-shell-accent-node-completed"),
     ).not.toBeInTheDocument();
+  });
+
+  it("isolates preview nodes from editor stores and protected queries", () => {
+    vi.useFakeTimers();
+    useExecutionStore.setState((state) => ({
+      ...state,
+      status: "running",
+      nodes: {
+        "node-preview": createExecutionState("running", {
+          nodeId: "node-preview",
+        }),
+      },
+    }));
+    useCanvasStore.getState().actions.setNodeValidationError(
+      "node-preview",
+      true,
+    );
+
+    renderNode(
+      createMockNodeData(),
+      { id: "node-preview" },
+      { edges: [], lodOverride: null },
+    );
+
+    expect(llmModuleMocks.mockUseLlmApiKeys).toHaveBeenCalledWith({
+      enabled: false,
+    });
+
+    const node = screen.getByTestId("canvas-node-node-preview");
+
+    expect(node).toHaveAttribute("data-shell-status", "idle");
+    expect(
+      screen.queryByTestId("exec-overlay-node-preview"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId("canvas-node-validation-badge-node-preview"),
+    ).not.toBeInTheDocument();
+
+    fireEvent.mouseEnter(node);
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+
+    expect(useCanvasStore.getState().hoveredNodeId).toBeNull();
   });
 });

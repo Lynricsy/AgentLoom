@@ -1,6 +1,24 @@
 import { describe, expect, it } from 'vitest'
 import { buildWorkflowPreviewGraph } from './workflowPreview'
 
+/** 从归一化结果里安全读出端口 id 列表（预览节点 data 是宽松的 Record） */
+function readPortIds(data: unknown, key: 'inputPorts' | 'outputPorts'): string[] {
+  if (!data || typeof data !== 'object' || !(key in data)) {
+    return []
+  }
+
+  const ports = data[key]
+  if (!Array.isArray(ports)) {
+    return []
+  }
+
+  return ports.flatMap((port) =>
+    port && typeof port === 'object' && 'id' in port && typeof port.id === 'string'
+      ? [port.id]
+      : [],
+  )
+}
+
 describe('buildWorkflowPreviewGraph', () => {
   it('按 nodeType 归一化预览节点并为只读预览边补齐 smart type', () => {
     const preview = buildWorkflowPreviewGraph({
@@ -53,7 +71,7 @@ describe('buildWorkflowPreviewGraph', () => {
     expect(preview.viewport).toEqual({ x: 10, y: 20, zoom: 0.8 })
   })
 
-  it('对未知节点类型回退为默认节点而不是渲染坏壳子', () => {
+  it('未知节点类型回退为可渲染的 control 卡片并保留原始端口', () => {
     const preview = buildWorkflowPreviewGraph({
       nodes: [
         {
@@ -63,6 +81,9 @@ describe('buildWorkflowPreviewGraph', () => {
           data: {
             nodeType: 'unknown-node',
             label: '未知节点',
+            inputPorts: [
+              { id: 'exec-in', label: '', direction: 'input', dataType: 'exec' },
+            ],
           },
         },
       ],
@@ -71,11 +92,45 @@ describe('buildWorkflowPreviewGraph', () => {
 
     expect(preview.nodes[0]).toMatchObject({
       id: 'node-1',
-      type: 'default',
+      type: 'control',
       data: {
         label: '未知节点',
+        nodeType: 'unknown-node',
+        category: 'control',
       },
     })
+    expect(readPortIds(preview.nodes[0]?.data, 'inputPorts')).toEqual([
+      'exec-in',
+    ])
+  })
+
+  it('缺 position 的节点排进兜底网格而不是被丢弃', () => {
+    const preview = buildWorkflowPreviewGraph({
+      nodes: Array.from({ length: 5 }, (_, index) => ({
+        id: `node-${index}`,
+        type: 'workflow-node',
+        data: { nodeType: 'agent', label: `节点 ${index}` },
+      })),
+      edges: [],
+    })
+
+    expect(preview.nodes).toHaveLength(5)
+    expect(preview.nodes.map((node) => node.position)).toEqual([
+      { x: 0, y: 0 },
+      { x: 320, y: 0 },
+      { x: 640, y: 0 },
+      { x: 0, y: 200 },
+      { x: 320, y: 200 },
+    ])
+  })
+
+  it('缺 id 的节点仍然被丢弃', () => {
+    const preview = buildWorkflowPreviewGraph({
+      nodes: [{ type: 'workflow-node', position: { x: 0, y: 0 } }],
+      edges: [],
+    })
+
+    expect(preview.nodes).toHaveLength(0)
   })
 
   it('为 workflow agent 预览补齐新的 system-prompt-in 端口并保留 no_sandbox 过滤', () => {
@@ -95,8 +150,7 @@ describe('buildWorkflowPreviewGraph', () => {
       edges: [],
     })
 
-    const inputPorts = (preview.nodes[0]?.data as { inputPorts?: Array<{ id: string }> }).inputPorts ?? []
-    const inputPortIds = inputPorts.map((port) => port.id)
+    const inputPortIds = readPortIds(preview.nodes[0]?.data, 'inputPorts')
 
     expect(inputPortIds).toContain('system-prompt-in')
     expect(inputPortIds).not.toContain('sandbox-in')

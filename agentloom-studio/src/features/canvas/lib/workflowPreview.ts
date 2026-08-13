@@ -89,41 +89,75 @@ function mergeHydratedPorts(
   ]
 }
 
+/**
+ * 未知/缺失 nodeType 的兜底节点
+ *
+ * 必须落在合法 category（`control`）上：ReactFlow 的 `default` 节点类型会命中
+ * `index.css` 里被清空样式的 `.react-flow__node-default`，在预览里近乎不可见。
+ * `getResolvedNodeTypeConfig()` 对未知 nodeType 已有 muted 卡片兜底。
+ */
 function buildFallbackNode(
   rawNode: Record<string, unknown>,
   rawData: Record<string, unknown>,
   position: { x: number; y: number },
 ): Node {
+  const fallbackData: CanvasNodeData = {
+    ...rawData,
+    label:
+      readString(rawData.label) ??
+      readString(rawData.nodeType) ??
+      readString(rawNode.type) ??
+      'Node',
+    nodeType: (readString(rawData.nodeType) ??
+      readString(rawData.node_type) ??
+      'unknown-node') as NodeType,
+    category: 'control',
+    config: isRecord(rawData.config) ? rawData.config : {},
+    inputPorts: mergeHydratedPorts(
+      rawData.inputPorts ?? rawData.input_ports,
+      [],
+    ),
+    outputPorts: mergeHydratedPorts(
+      rawData.outputPorts ?? rawData.output_ports,
+      [],
+    ),
+  }
+
   return {
     ...rawNode,
     id: rawNode.id as string,
-    type: 'default',
+    type: 'control',
     position,
-    data: {
-      label:
-        readString(rawData.label) ??
-        readString(rawData.nodeType) ??
-        readString(rawNode.type) ??
-        'Node',
-    },
-  }
+    data: fallbackData,
+  } satisfies CanvasNode
 }
 
-function normalizePreviewNode(rawNode: unknown): Node | null {
+/** 缺 position 时的网格兜底步进 */
+const FALLBACK_GRID_COLUMNS = 3
+const FALLBACK_GRID_STEP_X = 320
+const FALLBACK_GRID_STEP_Y = 200
+
+function normalizePreviewNode(rawNode: unknown, index: number): Node | null {
   if (!isRecord(rawNode)) {
     return null
   }
 
   const id = readString(rawNode.id)
-  const positionRecord = isRecord(rawNode.position) ? rawNode.position : null
-  if (!id || !positionRecord) {
+  if (!id) {
     return null
   }
 
-  const position = {
-    x: readNumber(positionRecord.x) ?? 0,
-    y: readNumber(positionRecord.y) ?? 0,
-  }
+  const positionRecord = isRecord(rawNode.position) ? rawNode.position : null
+  // 坏数据不静默消失：缺 position 的节点排进兜底网格，而不是被丢弃成空白预览
+  const position = positionRecord
+    ? {
+        x: readNumber(positionRecord.x) ?? 0,
+        y: readNumber(positionRecord.y) ?? 0,
+      }
+    : {
+        x: (index % FALLBACK_GRID_COLUMNS) * FALLBACK_GRID_STEP_X,
+        y: Math.floor(index / FALLBACK_GRID_COLUMNS) * FALLBACK_GRID_STEP_Y,
+      }
   const rawData = isRecord(rawNode.data) ? rawNode.data : {}
   const nodeTypeValue =
     readString(rawData.nodeType) ?? readString(rawData.node_type)
@@ -232,7 +266,7 @@ export function buildWorkflowPreviewGraph(
 } {
   const nodes = Array.isArray(definition?.nodes)
     ? definition.nodes
-        .map((node) => normalizePreviewNode(node))
+        .map((node, index) => normalizePreviewNode(node, index))
         .filter((node): node is Node => node !== null)
     : []
   const edges = Array.isArray(definition?.edges)

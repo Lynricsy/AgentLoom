@@ -188,6 +188,21 @@ describe("TemplateWizardDialog", () => {
     expect(preview).toHaveAttribute("data-edge-types", "smart,smart");
   });
 
+  it("模板无画布内容时显示预览空态而不是留白", () => {
+    render(
+      <TemplateWizardDialog
+        template={makeTemplateDetail({
+          definition: { nodes: [], edges: [], viewport: { x: 0, y: 0, zoom: 1 } },
+        })}
+        open={true}
+        onOpenChange={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByTestId("reactflow-preview")).not.toBeInTheDocument();
+    expect(screen.getByText("该模板暂无画布内容")).toBeInTheDocument();
+  });
+
   it("提交表单创建工作流并导航", async () => {
     mutateAsyncMock.mockResolvedValue({ id: "wf-new", name: "竞品分析的副本" });
     const onOpenChange = vi.fn();
