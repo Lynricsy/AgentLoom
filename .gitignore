@@ -145,3 +145,9 @@ agentloom-deploy/secrets/firecracker/
 .agents/
 .codex/
 .agent-logs/
+
+# Trellis 本地备份目录
+.trellis/.backup-*/
+
+# Python 字节码缓存
+**/__pycache__/

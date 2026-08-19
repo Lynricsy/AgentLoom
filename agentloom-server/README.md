@@ -111,6 +111,10 @@ pnpm sdk:generate                 # 生成 TypeScript / Python SDK
 - `APP_QDRANT_URL`
 - `FIREBASE_SERVICE_ACCOUNT`
 
+## 依赖说明
+
+- `@llamaindex/qdrant@^0.1.33` 已被上游标记 deprecated 且 `0.1.33` 即 registry 最新版本，无可升级目标；knowledge 模块继续使用该版本，待上游提供替代包后迁移
+
 ## 相关文档
 
 - `AGENTS.md`：持久化架构知识库
