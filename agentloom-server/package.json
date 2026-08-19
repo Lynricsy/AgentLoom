@@ -33,7 +33,7 @@
     "sdk:build:ts": "tsc --noEmit -p sdk/typescript/tsconfig.json"
   },
   "dependencies": {
-    "@agentloom/plugin-sdk": "file:../agentloom-plugin-sdk",
+    "@agentloom/plugin-sdk": "workspace:*",
     "@ai-sdk/anthropic": "^3.0.58",
     "@ai-sdk/google": "^3.0.43",
     "@ai-sdk/openai": "^3.0.41",
@@ -86,7 +86,7 @@
     "socket.io": "^4.8.3",
     "undici": "^7.22.0",
     "uuid": "^13.0.0",
-    "zod": "^4.3.6"
+    "zod": "catalog:"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",
@@ -101,7 +101,7 @@
     "@types/ahocorasick": "^1.0.0",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/minio": "^7.1.1",
-    "@types/node": "^22.10.7",
+    "@types/node": "catalog:",
     "@types/supertest": "^6.0.2",
     "@vitest/coverage-v8": "^4.0.18",
     "drizzle-kit": "^0.31.9",
@@ -116,9 +116,9 @@
     "ts-loader": "^9.5.2",
     "tsconfig-paths": "^4.2.0",
     "tsx": "^4.21.0",
-    "typescript": "^5.7.3",
+    "typescript": "catalog:",
     "typescript-eslint": "^8.20.0",
     "unplugin-swc": "^1.5.9",
-    "vitest": "^4.0.18"
+    "vitest": "catalog:"
   }
 }

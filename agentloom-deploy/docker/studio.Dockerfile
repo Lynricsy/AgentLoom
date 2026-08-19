@@ -10,10 +10,19 @@ WORKDIR /workspace
 
 # 先复制依赖清单（利用 Docker 层缓存）
 COPY agentloom-type-engine/pkg ./agentloom-type-engine/pkg
-COPY agentloom-studio/package.json agentloom-studio/pnpm-lock.yaml agentloom-studio/pnpm-workspace.yaml ./agentloom-studio/
+COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
+COPY agentloom-contracts/package.json  ./agentloom-contracts/
+COPY agentloom-api-client/package.json ./agentloom-api-client/
+COPY agentloom-studio/package.json     ./agentloom-studio/
+
+RUN pnpm install --frozen-lockfile --config.node-linker=hoisted \
+    --filter agentloom-studio... --filter agentloom-studio^...
+
+COPY agentloom-contracts/  ./agentloom-contracts/
+COPY agentloom-api-client/ ./agentloom-api-client/
+RUN pnpm --filter @agentloom/contracts --filter @agentloom/api-client run build
 
 WORKDIR /workspace/agentloom-studio
-RUN pnpm install --frozen-lockfile --config.node-linker=hoisted
 
 # 再复制源码（源码变更不会破坏依赖缓存）
 COPY agentloom-studio/ ./

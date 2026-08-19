@@ -9,10 +9,10 @@
     "dev": "agentloom-plugin dev"
   },
   "dependencies": {
-    "@agentloom/plugin-sdk": "file:../agentloom-plugin-sdk"
+    "@agentloom/plugin-sdk": "workspace:*"
   },
   "devDependencies": {
-    "typescript": "^5.5.0",
-    "vitest": "^2.0.0"
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   }
 }
